@@ -45,6 +45,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.X509Cert
+import org.multipaz.asn1.OID
 import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
 import org.multipaz.document.buildDocumentStore
@@ -208,6 +209,12 @@ class WalletModel(val platform: PlatformServices) {
                 Triple(TrustRole.VERIFIER, "verifier-root.pem", "DIW TEST Verifier Root"),
                 Triple(TrustRole.WALLET_PROVIDER, "wallet-provider-root.pem", "DIW TEST Wallet Provider"),
             )
+            // A Multipaz OpenID4VCI server has no /pki; its IACA is served per credential configuration.
+            if (!http.get("$base/pki/iaca.pem").status.isSuccess()) {
+                val n = addMultipazIssuerAnchors(base)
+                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（僅測試環境有效）"
+                return@launch
+            }
             var added = 0
             for ((role, file, name) in pairs) {
                 val resp = http.get("$base/pki/$file")
@@ -244,6 +251,47 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
+    }
+
+    /** Imports the IACA certificates of the public Multipaz test issuer as TEST anchors. */
+    fun importMultipazTestAnchors() = scope.launch {
+        if (!settings.testEnvironment) {
+            message.value = "請先開啟測試環境"
+            return@launch
+        }
+        try {
+            val n = addMultipazIssuerAnchors(MULTIPAZ_ISSUER)
+            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（僅測試環境有效）"
+        } catch (e: Exception) {
+            message.value = "匯入失敗：${e.message}"
+        }
+    }
+
+    /**
+     * Reads the credential issuer metadata at [base] (or [base]/issuer) and adds the certificate each configuration's
+     * signing_certificate endpoint returns (the root of its signing chain) as ISSUER and STATUS_LIST TEST anchors.
+     */
+    private suspend fun addMultipazIssuerAnchors(base: String): Int {
+        val root = base.trimEnd('/')
+        val (issuer, meta) = listOf(root, "$root/issuer").firstNotNullOfOrNull { candidate ->
+            val r = http.get("$candidate/.well-known/openid-credential-issuer")
+            if (!r.status.isSuccess()) null
+            else runCatching { DiwJson.parseToJsonElement(r.bodyAsText()) as JsonObject }.getOrNull()?.let { candidate to it }
+        } ?: throw ProtocolException("anchor_fetch", "$root 不是 DIW 測試伺服器（無 /pki/iaca.pem），也不是 Multipaz 發行端")
+        val configs = (meta["credential_configurations_supported"] as? JsonObject)?.keys.orEmpty()
+        val certs = configs.mapNotNull { id ->
+            val r = http.get("$issuer/signing_certificate?credential_id=$id")
+            if (r.status.isSuccess()) runCatching { X509Cert.fromPem(r.bodyAsText()) }.getOrNull() else null
+        }.distinctBy { it.encoded }
+        if (certs.isEmpty()) throw ProtocolException("anchor_fetch", "$issuer 沒有提供 signing_certificate")
+        var added = 0
+        for (cert in certs) {
+            val name = "Multipaz " + (cert.subject.components[OID.COMMON_NAME.oid]?.value ?: issuer)
+            for (role in listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST)) {
+                if (trust.addAnchor(role, TrustEnvironment.TEST, cert, name, official = false, source = issuer)) added++
+            }
+        }
+        return added
     }
 
     // ---------------------------------------------------------------- PIN
@@ -518,6 +566,7 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
 
         fun tierTitle(t: TrustTier): String = when (t) {

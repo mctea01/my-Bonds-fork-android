@@ -59,7 +59,7 @@ class WalletModelE2eTest {
     private val pin = "246810"
 
     /** Software-only platform; the browser step follows the issuer's auto-approve redirect and feeds it back like a deep link. */
-    private inner class TestPlatform(val storage: Storage) : PlatformServices {
+    private inner class TestPlatform(val storage: Storage, val proxied: Boolean = false) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
         override val platformName = "test"
@@ -67,7 +67,11 @@ class WalletModelE2eTest {
         override suspend fun openStorage() = storage
         override suspend fun keyBackends(storage: Storage, pinPrompt: suspend (String) -> String?) = listOf(softwareBackend(storage, pinPrompt))
         override fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider = PinOrPlatformUnlock(pinPrompt, null)
-        override fun httpClient() = HttpClient(Java) { followRedirects = false }
+        override fun httpClient() = HttpClient(Java) {
+            followRedirects = false
+            val proxy = System.getenv("HTTPS_PROXY") ?: System.getenv("https_proxy")
+            if (proxied && !proxy.isNullOrBlank()) engine { this.proxy = io.ktor.client.engine.ProxyBuilder.http(io.ktor.http.Url(proxy)) }
+        }
         override fun openBrowser(url: String) {
             CoroutineScope(Dispatchers.Default).launch {
                 val location = http.get(url).headers[HttpHeaders.Location]!!
@@ -89,6 +93,21 @@ class WalletModelE2eTest {
         m.updateSettings { it.copy(testEnvironment = true, allowLoopbackHttp = true, testServerUrl = base) }.join()
         m.importTestAnchors().join()
         return m to p
+    }
+
+    /** A Multipaz issuer URL in the test server field: the anchor import falls back to its signing_certificate endpoint. */
+    @Test
+    fun anchorImportFromMultipazIssuer() = runBlocking<Unit> {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("DIW_INTEROP") == "1")
+        val p = TestPlatform(EphemeralStorage(), proxied = true)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.updateSettings { it.copy(testEnvironment = true, testServerUrl = "https://issuer.multipaz.org") }.join()
+        m.importTestAnchors().join()
+        val text = m.message.value
+        println("ANCHORS $text")
+        assertTrue(text != null && text.startsWith("已從 Multipaz") && !text.contains(" 0 "), "message: $text")
     }
 
     private fun start() = runBlocking {

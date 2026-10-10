@@ -28,7 +28,8 @@
 2. Multipaz 0.101 錢包在 `direct_post` 模式送出 `response=<alg none JWT>`，不是規範的表單欄位（OpenID4VP 1.0 第 8.2 節）。測試驗證端改為接受並在結果中標示 `compatibility_notes`；核心驗證器預設仍拒絕。
 3. 批次發證時軟體金鑰要求輸入 4 次 App PIN（建立 1 次加 3 個 proof 各 1 次），改為每次操作只問一次。
 4. 實機遇到 SD-JWT 設定未宣告 vct 的發行端（舊版草案或 W3C 風格，如 TWDIW）被拒為 invalid_issuer_metadata。改為依 vct、credential_definition.type、設定 ID 依序決定本機歸檔型別；簽章金鑰可由同網域 jku 取得（信任等級 T3、標示未知錨點）。測試發行端新增 w3c_sd_jwt_legacy 設定重現此情境。
-5. 同一類發行端（issuer.mashbean.net）沒有 nonce 端點，c_nonce 放在 token 回應，原本 proof 不帶 nonce 而被拒（invalid_proof）。改為無 nonce 端點時使用 token 回應的 c_nonce，invalid_nonce 錯誤附帶的 c_nonce 也會用於重試；接受單數 credential 回應；發行者為 DID 時以 DID 解析金鑰。
+5. 同一類發行端（issuer.mashbean.net）沒有 nonce 端點，c_nonce 放在 token 回應，原本 proof 不帶 nonce 而被拒（invalid_proof）。改為無 nonce 端點時使用 token 回應的 c_nonce，invalid_nonce 錯誤附帶的 c_nonce 也會用於重試；接受單數 credential 回應；發行者為 DID 時以 DID 解析金鑰。TWDIW 方言的完整支援（client_id、did:key proof、PE 與 jwt_vp 出示）排入 P2。
+6. 測試伺服器網址填 Multipaz 發行端時，「匯入測試信任錨點」原本找 /pki/iaca.pem 而 404。改為偵測 Multipaz OpenID4VCI 伺服器，從各設定的 signing_certificate 取得 IACA 匯入；設定頁另有「匯入 Multipaz 測試發行端錨點」。Multipaz 發行端對公開用戶端回「clientId must be authenticated」，需錢包提供者的 client attestation，且簽發 CA 必須列在該伺服器的 trusted_client_attestations。
 
 ## 仍需處理
 

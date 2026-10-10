@@ -74,6 +74,7 @@ fun SettingsScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("匯入測試信任錨點") }
         }
         OutlinedButton(onClick = { model.importEudiTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 EUDI 參考實作測試錨點") }
+        OutlinedButton(onClick = { model.importMultipazTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 Multipaz 測試發行端錨點") }
         HorizontalDivider()
         Text("平台：${model.platform.platformName}", style = MaterialTheme.typography.bodySmall)
         Text("Client ID：${s.clientId}", style = MaterialTheme.typography.bodySmall)
