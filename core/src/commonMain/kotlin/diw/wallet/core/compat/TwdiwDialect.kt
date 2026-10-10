@@ -25,6 +25,7 @@ class TwdiwDialect(
     private val allowInsecureLoopback: Boolean,
 ) : IssuanceDialect {
     override val id = "twdiw"
+    override val spec = "TWDIW"
 
     override fun storageType(config: CredentialConfiguration): String? =
         config.raw.obj("credential_definition")?.strList("type")?.lastOrNull { it != "VerifiableCredential" }
@@ -48,6 +49,6 @@ class TwdiwDialect(
         val keys = parseJsonObject(resp.bodyAsText(), "invalid_credential").arr("keys").orEmpty().filterIsInstance<JsonObject>()
         val jwk = (if (kid != null) keys.firstOrNull { it.str("kid") == kid } else null)
             ?: keys.singleOrNull() ?: throw ProtocolException("invalid_credential", "No key in jku matches kid '$kid'")
-        return DialectIssuerKey(EcPublicKey.fromJwk(jwk), "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor")
+        return DialectIssuerKey(EcPublicKey.fromJwk(jwk), "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor", "JWS jku (RFC 7515)")
     }
 }

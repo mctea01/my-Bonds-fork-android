@@ -40,8 +40,17 @@ data class CredentialStatus(
     val environment: TrustEnvironment?,
     val checkedAt: Instant,
     val detail: String? = null,
+    /** The status value read from the list. */
+    val code: Int? = null,
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
+
+    /** The value's name in the Token Status List specification, or its hex value for application-specific and reserved values. */
+    val specName: String? get() = code?.let { STATUS_NAMES[it] ?: ("0x" + it.toString(16).uppercase().padStart(2, '0')) }
+
+    companion object {
+        val STATUS_NAMES = mapOf(0 to "VALID", 1 to "INVALID", 2 to "SUSPENDED")
+    }
 }
 
 /**
@@ -90,7 +99,7 @@ class CredentialStatusChecker(
             2 -> RevocationCheckState.SUSPENDED
             else -> RevocationCheckState.UNKNOWN
         }
-        return result(state, cached.trusted, cached.env, if (state == RevocationCheckState.UNKNOWN) "Status code $code" else null)
+        return result(state, cached.trusted, cached.env, if (state == RevocationCheckState.UNKNOWN) "Status code $code" else null, code)
     }
 
     private suspend fun fetch(uri: String, issuerChain: List<X509Cert>?): Cached {
@@ -112,8 +121,8 @@ class CredentialStatusChecker(
         return Cached(list, true, match.environment, until)
     }
 
-    private fun result(state: RevocationCheckState, trusted: Boolean, env: TrustEnvironment?, detail: String?) =
-        CredentialStatus(state, trusted, env, Clock.System.now(), detail)
+    private fun result(state: RevocationCheckState, trusted: Boolean, env: TrustEnvironment?, detail: String?, code: Int? = null) =
+        CredentialStatus(state, trusted, env, Clock.System.now(), detail, code)
 
     companion object {
         /** Extracts the status reference and issuer chain from a stored credential. */

@@ -5,6 +5,10 @@ import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.credential.ClaimLabels
+import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.oid4vci.IssuanceRecord
+import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.CredentialDomains
 import diw.wallet.core.oid4vci.IssuanceResult
@@ -46,6 +50,8 @@ import kotlinx.io.bytestring.decodeToString
 import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.X509Cert
 import org.multipaz.asn1.OID
@@ -75,6 +81,8 @@ data class WalletSettings(
     val compatDraft13: Boolean = true,
     /** TWDIW profile: W3C credentials in SD-JWT without vct, issuer keys via jku. Non-standard, off by default. */
     val compatTwdiw: Boolean = false,
+    /** Show technical details (formats, keys, signatures, validity) expanded by default. */
+    val showDetails: Boolean = false,
 )
 
 sealed class Screen {
@@ -160,6 +168,13 @@ class WalletModel(val platform: PlatformServices) {
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
 
+    /** The user's languages (BCP 47, most preferred first) with English as the last fallback. */
+    val locales: List<String> by lazy {
+        (androidx.compose.ui.text.intl.LocaleList.current.localeList.map { it.toLanguageTag() } + "en").distinct()
+    }
+    /** Claim names in the user's language; names learned from issuer metadata are cached in storage. */
+    val claimLabels by lazy { ClaimLabels(locales) }
+
     val settings: WalletSettings get() = settingsFlow.value
     val environmentPolicy: EnvironmentPolicy
         get() = EnvironmentPolicy(
@@ -172,6 +187,7 @@ class WalletModel(val platform: PlatformServices) {
     suspend fun init() {
         storage = platform.openStorage()
         settingsFlow.value = loadSettings()
+        loadLearnedLabels()
         backends = platform.keyBackends(storage) { reason -> operationPin(reason) }
         val repo = SecureAreaRepository.Builder().apply { backends.map { it.secureArea }.distinct().forEach { add(it) } }.build()
         documentStore = buildDocumentStore(storage, repo) {}
@@ -195,6 +211,25 @@ class WalletModel(val platform: PlatformServices) {
         val t = storage.getTable(settingsTable)
         val raw = t.get("settings") ?: return WalletSettings()
         return runCatching { DiwJson.decodeFromString(WalletSettings.serializer(), raw.decodeToString()) }.getOrDefault(WalletSettings())
+    }
+
+    private suspend fun loadLearnedLabels() {
+        val raw = storage.getTable(settingsTable).get("claim-labels") ?: return
+        runCatching { DiwJson.parseToJsonElement(raw.decodeToString()).jsonObject }.getOrNull()?.forEach { (k, v) ->
+            (v as? JsonPrimitive)?.content?.let { claimLabels.learned[k] = it }
+        }
+    }
+
+    /** Claim name in the user's language: the issuer's own name, a cached or built-in translation, then [typeName]. */
+    fun claimLabel(path: List<String>, typeName: String?, record: IssuanceRecord?): String =
+        claimLabels.label(path, record?.claimNames.orEmpty(), typeName?.takeIf { it != path.joinToString(".") })
+
+    /** Caches the claim names an issuer gives, for credentials whose issuer gives none. */
+    private suspend fun learnLabels(configurations: Collection<CredentialConfiguration>) {
+        if (!claimLabels.learn(configurations)) return
+        val t = storage.getTable(settingsTable)
+        val bytes = JsonObject(claimLabels.learned.mapValues { JsonPrimitive(it.value) }).toString().encodeToByteString()
+        if (t.get("claim-labels") == null) t.insert("claim-labels", bytes) else t.update("claim-labels", bytes)
     }
 
     fun updateSettings(transform: (WalletSettings) -> WalletSettings) = scope.launch {
@@ -370,6 +405,7 @@ class WalletModel(val platform: PlatformServices) {
 
     private fun oid4vci(): Oid4vciClient = Oid4vciClient(
         http, trust, environmentPolicy, walletProvider(), documentStore,
+        locales = locales,
         dialects = buildList {
             val loopback = environmentPolicy.insecureLoopbackAllowed
             if (settings.compatDraft13) add(Draft13Dialect(http, loopback))
@@ -417,7 +453,8 @@ class WalletModel(val platform: PlatformServices) {
                 val c = oid4vci()
                 val session = c.startFromOffer(uri)
                 issuanceSession = session
-                val issuerName = session.issuer.display.pick(listOf("zh-TW", "en"))?.name ?: session.issuer.credentialIssuer
+                learnLabels(session.issuer.configurations.values)
+                val issuerName = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
                 issuance.value = IssuanceUi.Review(
                     session = session,
                     configurations = session.offeredConfigurations,
@@ -452,13 +489,14 @@ class WalletModel(val platform: PlatformServices) {
                 } ?: throw last ?: ProtocolException("invalid_issuer_metadata", "No issuer metadata at $url")
                 issuanceSession = session
                 val issuer = session.issuer
+                learnLabels(issuer.configurations.values)
                 if (session.authServer.authorizationEndpoint == null) {
                     throw ProtocolException("unsupported_grant", "此發行端只接受由它產生的領卡連結（預授權碼），請從發行端網頁取得 QR Code 或連結")
                 }
                 issuance.value = IssuanceUi.Review(
                     session = session,
-                    configurations = issuer.configurations.values.sortedBy { it.display.pick(listOf("zh-TW", "en"))?.name ?: it.id },
-                    issuerName = issuer.display.pick(listOf("zh-TW", "en"))?.name ?: issuer.credentialIssuer,
+                    configurations = issuer.configurations.values.sortedBy { it.display.pick(locales)?.name ?: it.id },
+                    issuerName = issuer.display.pick(locales)?.name ?: issuer.credentialIssuer,
                     trust = issuer.trust,
                     preAuthorized = false,
                     unsupported = issuer.unsupported.toList(),
@@ -544,7 +582,7 @@ class WalletModel(val platform: PlatformServices) {
         try {
             withContext(unlockProvider) {
                 for (config in session.selectedConfigurations) {
-                    val name = config.display.pick(listOf("zh-TW", "en"))?.name ?: config.id
+                    val name = config.display.pick(locales)?.name ?: config.id
                     issuance.value = IssuanceUi.Working("領取 $name")
                     try {
                         var r = c.issue(session, config.id, keyRequest())
@@ -621,7 +659,7 @@ class WalletModel(val platform: PlatformServices) {
             val doc = m.credential.document
             ConsentItem(
                 documentName = doc.displayName ?: "憑證",
-                claims = m.claims.values.map { it.displayName },
+                claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
                 documentTrust = null,
             )
         }

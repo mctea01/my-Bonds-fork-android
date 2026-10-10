@@ -6,8 +6,8 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.EcPublicKey
 
-/** An issuer key found by a dialect, with the reason shown to the user. */
-data class DialectIssuerKey(val key: EcPublicKey, val reason: String)
+/** An issuer key found by a dialect, with the reason shown to the user and the specification it follows. */
+data class DialectIssuerKey(val key: EcPublicKey, val reason: String, val spec: String? = null)
 
 /** What a dialect sees when the standard SD-JWT VC key lookup (x5c, JWT VC issuer metadata) does not apply. */
 data class SdJwtKeyContext(
@@ -22,12 +22,15 @@ data class SdJwtKeyContext(
  *
  * The standard path never contains dialect logic. It calls these hooks only at the points where the standard
  * would stop (no nonce endpoint, a rejected request shape, a response or configuration it cannot read, an issuer
- * key it cannot find), and every credential obtained through a hook is labelled as non-standard. Each hook returns
- * null when the dialect has nothing to add.
+ * key it cannot find), and every credential obtained through a hook records the specification it followed. Each hook
+ * returns null when the dialect has nothing to add.
  */
 interface IssuanceDialect {
     /** Short identifier, e.g. draft13 or twdiw. */
     val id: String
+
+    /** Specification this dialect implements, shown with credentials obtained through it. */
+    val spec: String
 
     /** c_nonce for proofs when the issuer has no nonce endpoint; [tokenResponse] is the raw token response. */
     fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = null
@@ -55,14 +58,20 @@ interface IssuanceDialect {
     suspend fun sdJwtIssuerKey(context: SdJwtKeyContext): DialectIssuerKey? = null
 }
 
-/** Runs dialect hooks in order and remembers which dialects were used for one issuance. */
+/** Runs dialect hooks in order and remembers which dialects, and which specifications, one issuance used. */
 class DialectSet(private val dialects: List<IssuanceDialect>) {
     val used = mutableSetOf<String>()
+    val specs = linkedSetOf<String>()
+
+    fun record(d: IssuanceDialect, spec: String = d.spec) {
+        used += d.id
+        specs += spec
+    }
 
     fun <T : Any> first(hook: (IssuanceDialect) -> T?): T? {
         for (d in dialects) {
             val r = hook(d)
-            if (r != null) { used += d.id; return r }
+            if (r != null) { record(d, (r as? DialectIssuerKey)?.spec ?: d.spec); return r }
         }
         return null
     }
@@ -72,7 +81,7 @@ class DialectSet(private val dialects: List<IssuanceDialect>) {
         var failure: Exception? = null
         for (d in dialects) {
             val r = try { hook(d) } catch (e: Exception) { if (failure == null) failure = e; null }
-            if (r != null) { used += d.id; return r }
+            if (r != null) { record(d, (r as? DialectIssuerKey)?.spec ?: d.spec); return r }
         }
         failure?.let { throw it }
         return null

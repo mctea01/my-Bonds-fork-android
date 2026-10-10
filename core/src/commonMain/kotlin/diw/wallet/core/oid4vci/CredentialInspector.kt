@@ -102,7 +102,7 @@ class CredentialInspector(
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Credential already expired") }
         val trust = if (chain != null) trustRegistry.decide(TrustRole.ISSUER, chain) else TrustDecision(
             tier = TrustTier.T3, environment = null, official = false, anchorName = null,
-            labels = if (dialectReason != null) setOf(TrustLabel.UNKNOWN_ANCHOR, TrustLabel.NON_STANDARD) else setOf(TrustLabel.UNKNOWN_ANCHOR),
+            labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
             reasons = listOf(dialectReason ?: "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"),
         )
         return InspectedCredential(chain, trust, sdJwt.validFrom, sdJwt.validUntil, sdJwt.revocationStatus, sdJwt.kbKey)

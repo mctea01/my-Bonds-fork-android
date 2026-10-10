@@ -44,7 +44,6 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.TIME_NOT_VERIFIED -> "時間未驗證"
     TrustLabel.UNSIGNED_METADATA -> "發行端資訊未簽章"
     TrustLabel.KEY_NOT_ATTESTED -> "金鑰未經證明"
-    TrustLabel.NON_STANDARD -> "非標準格式（相容模式）"
 }
 
 /** One-line advice per tier; official or compliant parties get the short form. */

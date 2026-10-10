@@ -25,6 +25,7 @@ class Draft13Dialect(
     private val allowInsecureLoopback: Boolean,
 ) : IssuanceDialect {
     override val id = "draft13"
+    override val spec = "OpenID4VCI draft 13"
 
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
 
@@ -72,6 +73,6 @@ class Draft13Dialect(
         val method = doc.methods.singleOrNull() ?: kid?.let { doc.find(it) }
             ?: throw ProtocolException("invalid_credential", "No verification method in $iss matches kid '$kid'")
         val key = (method.key as? VerificationKey.Ec)?.key ?: throw ProtocolException("invalid_credential", "Issuer DID key is not an EC key")
-        return DialectIssuerKey(key, "Issuer key comes from the issuer DID $iss, not from an X.509 anchor")
+        return DialectIssuerKey(key, "Issuer key comes from the issuer DID $iss, not from an X.509 anchor", "DID " + iss.split(':').take(2).joinToString(":"))
     }
 }

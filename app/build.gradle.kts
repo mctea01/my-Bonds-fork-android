@@ -1,5 +1,7 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.nio.file.FileSystems
+import java.nio.file.Files
 
 plugins {
     kotlin("multiplatform")
@@ -66,8 +68,21 @@ android {
         applicationId = "diw.wallet.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-p1"
+        // CI passes -Pdiw.versionCode=<run> and -Pdiw.versionName so each build installs over the previous one.
+        versionCode = (findProperty("diw.versionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("diw.versionName") as String?) ?: "0.1.0-p1"
+    }
+    signingConfigs {
+        // Release key from the environment (CI secrets); see docs/release.md.
+        val store = System.getenv("DIW_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
+        if (store != null) {
+            create("release") {
+                storeFile = store
+                storePassword = System.getenv("DIW_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DIW_KEY_ALIAS")
+                keyPassword = System.getenv("DIW_KEY_PASSWORD") ?: System.getenv("DIW_KEYSTORE_PASSWORD")
+            }
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -89,7 +104,11 @@ android {
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Without a release key the optimized APK is signed with the debug key, so it still installs for testing.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
@@ -119,6 +138,31 @@ compose.desktop {
             }
             linux {
                 shortcut = true
+            }
+        }
+        buildTypes.release.proguard {
+            configurationFiles.from(project.file("compose-desktop.pro"))
+            obfuscate.set(false)
+        }
+    }
+}
+
+// Bouncy Castle ships as a signed jar. ProGuard rewrites its classes and the uber jar replaces its manifest, so the
+// signature no longer matches and the JVM refuses to start; both outputs drop the signature files.
+val jarSignatures = listOf("META-INF/*.SF", "META-INF/*.RSA", "META-INF/*.DSA", "META-INF/*.EC")
+tasks.withType<Jar>().matching { it.name.contains("UberJar") }.configureEach { exclude(jarSignatures) }
+val proguardOutput = layout.buildDirectory.dir("compose/tmp/main-release/proguard")
+tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
+    doLast {
+        val signature = Regex(".*\\.(SF|RSA|DSA|EC)", RegexOption.IGNORE_CASE)
+        proguardOutput.get().asFile.listFiles { f -> f.extension == "jar" }?.forEach { jar ->
+            FileSystems.newFileSystem(jar.toPath()).use { fs ->
+                val meta = fs.getPath("META-INF")
+                if (Files.isDirectory(meta)) {
+                    Files.list(meta).use { s -> s.toList() }
+                        .filter { signature.matches(it.fileName.toString()) }
+                        .forEach { Files.delete(it) }
+                }
             }
         }
     }

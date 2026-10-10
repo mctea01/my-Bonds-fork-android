@@ -40,10 +40,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.CredentialDetails
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
@@ -164,6 +166,15 @@ fun HomeScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
     }
 }
 
+@Composable
+fun LabelValue(label: String, value: String, small: Boolean = false) {
+    val style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, Modifier.weight(0.4f), style = style)
+        Text(value, Modifier.weight(0.6f), style = style)
+    }
+}
+
 /** Rebuilds the trust decision stored with a document at issuance time. */
 fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
     TrustDecision(
@@ -172,6 +183,7 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
         official = r.official,
         anchorName = r.anchorName,
         labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet(),
+        reasons = r.reasons,
     )
 }
 
@@ -184,6 +196,7 @@ fun DocumentCard(doc: Document, onClick: () -> Unit) {
                 Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium)
                 Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall)
                 storedTrust(doc)?.let { TierBadge(it) }
+                record?.let { Text(CredentialDetails.specs(it).joinToString("、"), style = MaterialTheme.typography.bodySmall) }
                 if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall)
             }
             if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
@@ -197,37 +210,50 @@ fun DocumentScreen(model: WalletModel, id: String) {
     val statuses by model.statuses.collectAsState()
     val doc = docs.firstOrNull { it.identifier == id } ?: return
     val record = doc.issuanceRecord
+    val settings by model.settingsFlow.collectAsState()
     var claims by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var details by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var count by remember { mutableStateOf(0) }
+    var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
     LaunchedEffect(id) {
         val creds = doc.getCertifiedCredentials()
         count = creds.size
-        claims = creds.firstOrNull()?.let { ClaimReader.read(it, model.documentTypes) }?.map { it.label to it.value }.orEmpty()
+        val first = creds.firstOrNull()
+        claims = first?.let { ClaimReader.read(it, model.documentTypes) }
+            ?.map { model.claimLabel(it.path, it.label, record) to it.value }.orEmpty()
+        details = record?.let { CredentialDetails.issuance(it) }.orEmpty() +
+            (first?.let { runCatching { CredentialDetails.credential(it) }.getOrNull() }.orEmpty())
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.isTestEnvironment == true) TestWatermark()
+        record?.let { Text("規格：" + CredentialDetails.specs(it).joinToString("、"), style = MaterialTheme.typography.bodyMedium) }
         Text("可用次數（批次憑證數）：$count", style = MaterialTheme.typography.bodyMedium)
         record?.keyStorage?.let { Text("金鑰保護：$it", style = MaterialTheme.typography.bodyMedium) }
-        claims.forEach { (k, v) ->
-            Row(Modifier.fillMaxWidth()) {
-                Text(k, Modifier.weight(0.4f), style = MaterialTheme.typography.bodyMedium)
-                Text(v, Modifier.weight(0.6f), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
+        claims.forEach { (k, v) -> LabelValue(k, v) }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
+        if (showDetails) details.forEach { (k, v) -> LabelValue(k, v, small = true) }
         Spacer(Modifier.height(8.dp))
         val status = statuses[id]
         Text(
-            when (status?.state) {
-                null -> "狀態：尚未查詢"
-                RevocationCheckState.VALID -> if (status.trusted) "狀態：有效" else "狀態：有效（狀態清單未經驗證）"
-                RevocationCheckState.INVALID -> "狀態：已撤銷"
-                RevocationCheckState.SUSPENDED -> "狀態：已暫停"
-                RevocationCheckState.UNKNOWN -> "狀態：無法確認（${status.detail ?: ""}）"
-            },
+            statusText(status),
             color = if (status?.state == RevocationCheckState.VALID && status.trusted) MaterialTheme.colorScheme.primary else tierColor(TrustTier.T3),
         )
-        OutlinedButton(onClick = { model.checkStatus(doc) }) { Text("查詢撤銷狀態") }
+        OutlinedButton(onClick = { model.checkStatus(doc) }) { Text("查詢憑證狀態") }
         OutlinedButton(onClick = { model.deleteDocument(doc) }) { Text("刪除此憑證") }
     }
+}
+
+/** Token Status List value by its name in the specification, with a short translation. */
+private fun statusText(s: CredentialStatus?): String {
+    if (s == null) return "狀態：尚未查詢"
+    val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
+    val meaning = when (s.code) {
+        0 -> "有效"
+        1 -> "無效"
+        2 -> "暫停"
+        3, in 12..15 -> "發行端自訂狀態"
+        else -> "規格保留值"
+    }
+    return "狀態：$name（$meaning" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }

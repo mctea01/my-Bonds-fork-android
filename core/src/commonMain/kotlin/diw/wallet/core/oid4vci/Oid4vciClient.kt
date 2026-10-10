@@ -420,7 +420,7 @@ class Oid4vciClient(
             if (!status.isSuccess() && alternative == null && json.str("error") != "invalid_nonce") {
                 val d = dialects.firstOrNull { it.alternativeCredentialRequest(session.issuer, config, identifier, proofs, status, json) != null }
                 if (d != null) {
-                    compat.used += d.id
+                    compat.record(d)
                     alternative = Triple(d, status, json)
                     compat.first { it.nonceFromError(json) }?.let { nonce = it }
                     continue
@@ -724,15 +724,10 @@ class Oid4vciClient(
         byKey.values.forEach { document.deleteCredential(it.identifier) }
         val finalTrust = trust!!.let { t ->
             if (session.issuer.trust.labels.contains(TrustLabel.UNSIGNED_METADATA)) t.copy(labels = t.labels + TrustLabel.UNSIGNED_METADATA) else t
-        }.let { t ->
-            // Anything obtained outside OpenID4VCI 1.0 / SD-JWT VC is marked, whichever step needed the dialect.
-            if (compat.used.isEmpty()) t else t.copy(
-                labels = t.labels + TrustLabel.NON_STANDARD,
-                reasons = t.reasons + "Issued through compatibility mode: ${compat.used.joinToString()}",
-            )
         }
         val notificationId = json.str("notification_id")
-        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId)
+        // Specifications followed outside OpenID4VCI 1.0 / SD-JWT VC are recorded, whichever step needed them.
+        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId, specs = compat.specs.toList())
         document.edit {
             appData = record.encode()
             provisioned = true
@@ -755,6 +750,7 @@ class Oid4vciClient(
             tier = TrustTier.T4.name,
             issuedAt = Clock.System.now().epochSeconds,
             keyStorage = keys.keyStorage,
+            claimNames = diw.wallet.core.credential.ClaimLabels.issuerNames(config),
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: config.id,

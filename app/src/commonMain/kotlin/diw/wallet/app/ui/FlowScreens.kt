@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.CredentialDetails
 import diw.wallet.app.IssuanceUi
 import diw.wallet.app.PresentationUi
 import diw.wallet.app.Screen
@@ -173,6 +175,10 @@ fun PresentationScreen(model: WalletModel) {
                     addAll(req.warnings)
                 }
                 TrustCard("驗證端", v.displayName, v.trust, extra)
+                val settings by model.settingsFlow.collectAsState()
+                var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
+                TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
+                if (showDetails) CredentialDetails.request(req).forEach { (k, value) -> LabelValue(k, value, small = true) }
                 Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
                 s.items.forEach { item ->
                     Card(Modifier.fillMaxWidth()) {

@@ -38,6 +38,12 @@ data class IssuanceRecord(
     val issuedAt: Long,
     val keyStorage: String? = null,
     val pendingTransactionId: String? = null,
+    /** Specifications used besides OpenID4VCI 1.0 and the credential format, e.g. OpenID4VCI draft 13 or TWDIW. */
+    val specs: List<String> = emptyList(),
+    /** Why the issuer got its trust tier, for the details view. */
+    val reasons: List<String> = emptyList(),
+    /** Claim names the issuer gave for the user's language, keyed by claim path joined with '.'. */
+    val claimNames: Map<String, String> = emptyMap(),
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)
@@ -51,6 +57,7 @@ data class IssuanceRecord(
         official = t.official,
         anchorName = t.anchorName,
         labels = t.labels.map(TrustLabel::name),
+        reasons = t.reasons,
     )
 
     companion object {

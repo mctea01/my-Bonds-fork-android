@@ -6,13 +6,16 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.claim.Claim
+import org.multipaz.claim.JsonClaim
+import org.multipaz.claim.MdocClaim
 import org.multipaz.credential.Credential
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.sdjwt.credential.SdJwtVcCredential
 import org.multipaz.util.fromBase64Url
 
-/** One claim for display: label and rendered value. */
-data class DisplayClaim(val label: String, val value: String)
+/** One claim for display: claim path, the credential type's name for it (or the path) and the rendered value. */
+data class DisplayClaim(val label: String, val value: String, val path: List<String> = label.split('.'))
 
 /**
  * Claims of a stored credential for display. Multipaz only reads SD-JWTs signed with an X.509 chain, so SD-JWTs
@@ -25,9 +28,18 @@ object ClaimReader {
 
     suspend fun read(credential: Credential, types: DocumentTypeRepository): List<DisplayClaim> {
         val multipaz = runCatching { credential.getClaims(types) }.getOrNull()
-        if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, it.render()) }
+        // Registered JWT claims (iss, iat, cnf, status, ...) are shown in the details view, not as credential data.
+        if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, it.render(), pathOf(it)) }
+            .filterNot { it.path.size == 1 && it.path[0] in technical }
         if (credential !is SdJwtVcCredential) return emptyList()
         return fromCompact(credential.issuerProvidedData.decodeToString())
+    }
+
+    /** Claim path: namespace and element for mdoc, the JSON path for SD-JWT VC. */
+    fun pathOf(claim: Claim): List<String> = when (claim) {
+        is MdocClaim -> listOf(claim.namespaceName, claim.dataElementName)
+        is JsonClaim -> claim.claimPath.map { (it as? JsonPrimitive)?.content ?: it.toString() }
+        else -> listOf(claim.displayName)
     }
 
     /** Disclosed and plain claims of a compact SD-JWT (issuer part only; a key binding JWT is ignored). */

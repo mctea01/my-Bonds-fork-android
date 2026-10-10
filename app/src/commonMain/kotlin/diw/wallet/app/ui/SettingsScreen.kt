@@ -49,11 +49,16 @@ fun SettingsScreen(model: WalletModel) {
             model.updateSettings { it.copy(requireUserAuth = v) }
         }
         HorizontalDivider()
+        Text("顯示", style = MaterialTheme.typography.titleMedium)
+        Toggle("預設展開詳細資訊", "憑證與驗證請求的技術細節：規格、簽章、憑證鏈、有效期間、金鑰與信任判斷", s.showDetails) { v ->
+            model.updateSettings { it.copy(showDetails = v) }
+        }
+        HorizontalDivider()
         Text("相容模式", style = MaterialTheme.typography.titleMedium)
-        Toggle("舊版草案相容模式", "OpenID4VCI draft 13 與早期 SD-JWT VC（如 walt.id）。以此方式取得的憑證會標示為非標準", s.compatDraft13) { v ->
+        Toggle("舊版草案相容模式", "OpenID4VCI draft 13 與早期 SD-JWT VC（如 walt.id）。憑證會顯示實際使用的規格", s.compatDraft13) { v ->
             model.updateSettings { it.copy(compatDraft13 = v) }
         }
-        Toggle("TWDIW 相容模式", "數位憑證皮夾的非標準格式（無 vct 的 W3C SD-JWT、jku 金鑰）。以此方式取得的憑證會標示為非標準", s.compatTwdiw) { v ->
+        Toggle("TWDIW 相容模式", "數位憑證皮夾的格式（無 vct 的 W3C SD-JWT、jku 金鑰）。憑證會顯示實際使用的規格", s.compatTwdiw) { v ->
             model.updateSettings { it.copy(compatTwdiw = v) }
         }
         HorizontalDivider()

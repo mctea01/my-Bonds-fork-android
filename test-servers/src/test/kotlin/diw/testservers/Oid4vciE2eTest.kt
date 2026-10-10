@@ -116,6 +116,10 @@ class Oid4vciE2eTest {
         val record = r.document.issuanceRecord!!
         assertTrue(record.isTestEnvironment)
         assertEquals("測試身分憑證", r.document.displayName)
+        // Registered JWT claims belong to the details view; only the credential's own data is listed.
+        val paths = diw.wallet.core.credential.ClaimReader.read(r.credentials.first(), w.documentTypes).map { it.path }
+        assertTrue(listOf("given_name") in paths, "paths: $paths")
+        assertTrue(paths.none { it.size == 1 && it[0] in setOf("iss", "iat", "exp", "cnf", "status", "vct") }, "paths: $paths")
         assertTrue(c.notify(session, r.notificationId!!, "credential_accepted"))
         assertEquals("credential_accepted", servers.issuer.notifications.single()["event"]!!.jsonPrimitive.content)
     }
@@ -268,7 +272,10 @@ class Oid4vciE2eTest {
         assertEquals("A123", claims["cardNumber"])
         assertEquals(TrustTier.T3, r.trust.tier)
         assertTrue(TrustLabel.UNKNOWN_ANCHOR in r.trust.labels)
-        assertTrue(TrustLabel.NON_STANDARD in r.trust.labels, "labels: ${r.trust.labels}")
+        // The credential records the specifications it was issued under instead of a generic non-standard label.
+        val record = r.document.issuanceRecord!!
+        assertEquals(listOf("TWDIW", "JWS jku (RFC 7515)"), record.specs, "specs: ${record.specs}")
+        assertTrue(record.reasons.any { "jku" in it }, "reasons: ${record.reasons}")
     }
 
     @Test
@@ -313,15 +320,23 @@ class Oid4vciE2eTest {
         val checker = CredentialStatusChecker(w.httpClient, w.trust)
         val before = checker.check(sd)
         assertEquals(RevocationCheckState.VALID, before.state, before.detail)
+        assertEquals("VALID", before.specName)
         assertTrue(before.usable)
         assertEquals(RevocationCheckState.VALID, checker.check(md).state)
 
         val (sdList, sdIdx) = servers.issuer.issuedStatus.first { it.first == "sdjwt" }
         servers.issuer.setStatus(sdList, sdIdx, 2)
-        assertEquals(RevocationCheckState.SUSPENDED, checker.check(sd, bypassCache = true).state)
+        assertEquals("SUSPENDED", checker.check(sd, bypassCache = true).specName)
+        // Application-specific values are shown by their value, not mapped to a made-up state.
+        servers.issuer.setStatus(sdList, sdIdx, 3)
+        val custom = checker.check(sd, bypassCache = true)
+        assertEquals(RevocationCheckState.UNKNOWN, custom.state)
+        assertEquals("0x03", custom.specName)
         val (mdList, mdIdx) = servers.issuer.issuedStatus.first { it.first == "mdoc" }
         servers.issuer.setStatus(mdList, mdIdx, 1)
-        assertEquals(RevocationCheckState.INVALID, checker.check(md, bypassCache = true).state)
+        val revoked = checker.check(md, bypassCache = true)
+        assertEquals(RevocationCheckState.INVALID, revoked.state)
+        assertEquals("INVALID", revoked.specName)
     }
 
     @Test
