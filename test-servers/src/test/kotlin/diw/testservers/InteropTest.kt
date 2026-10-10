@@ -151,6 +151,24 @@ class InteropTest {
         assertTrue(issued || "CA not registered" in lastError, "Multipaz issuer failed before client authentication: $lastError")
     }
 
+    /** Open-source TWDIW-dialect issuer (twdiw-vc-issuer-lite): token c_nonce, vc+sd-jwt without vct, did:key issuer. */
+    @Test
+    fun mashbeanTwdiwDialectIssuer() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val w = Wallet(http).init()
+        val created = http.post("https://issuer.mashbean.net/api/offers") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"cardId":"sandbox_student_card_v1","personaId":"wang-xiaoming","wallet":"bonds"}""")
+        }.bodyAsText()
+        val offer = Json.parseToJsonElement(created).jsonObject["qr"]!!.jsonPrimitive.content
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore)
+        val session = c.startFromOffer(offer)
+        c.authorizePreAuthorized(session, null)
+        val r = c.issue(session, "sandbox_student_card_v1", w.keys(1))
+        report("mashbean twdiw dialect", r is IssuanceResult.Issued, if (r is IssuanceResult.Issued) "tier=${r.trust.tier} labels=${r.trust.labels} reasons=${r.trust.reasons}" else r.toString())
+        assertIs<IssuanceResult.Issued>(r)
+    }
+
     @Test
     fun eudiIssuerMetadataAndAuthorization() = runBlocking<Unit> {
         assumeTrue(enabled)

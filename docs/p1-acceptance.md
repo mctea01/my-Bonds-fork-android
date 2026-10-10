@@ -19,6 +19,7 @@
 | Multipaz 發行端 issuer.multipaz.org | 部分 | 預授權 offer、metadata、token 請求、DPoP、client attestation 格式皆被接受；最後被拒於「CA not registered」，該伺服器只信任 Multipaz 自家錢包後端的 client attestation CA，需對方登錄我方錢包提供者 CA 才能完成發證。 |
 | Multipaz 驗證端 verifier.multipaz.org | 無法測 | 測試當時回 503。改以 Multipaz 錢包 SDK 對我方測試驗證端互測（上表 5/5）。 |
 | EUDI 發行端 issuer.eudiw.dev | 部分 | metadata、PAR、授權網址建立成功；27 種憑證全部要求 key attestation（iso_18045_high），需 EUDI 信任的錢包提供者，無法在雲端完成發證。 |
+| TWDIW 方言開源發行端 issuer.mashbean.net | 通過 | 預授權碼、token 回應中的 c_nonce、vc+sd-jwt 無 vct、did:key 發行者金鑰；信任等級 T3（未知錨點）。出示端採 PE 加 jwt_vp，P1 未支援。 |
 | EUDI 驗證端 verifier-backend.eudiw.dev | 通過 | x509_hash + direct_post.jwt + verifier_info（registration certificate）請求可解析與驗證；匯入 EUDI 參考實作 CA 為 TEST 錨點後顯示為 TEST 環境；DCQL 可執行（錢包無 EUDI PID 故回 access_denied）。完整出示需 EUDI 發行的 PID。 |
 
 ## 互通中發現並已修正
@@ -27,6 +28,7 @@
 2. Multipaz 0.101 錢包在 `direct_post` 模式送出 `response=<alg none JWT>`，不是規範的表單欄位（OpenID4VP 1.0 第 8.2 節）。測試驗證端改為接受並在結果中標示 `compatibility_notes`；核心驗證器預設仍拒絕。
 3. 批次發證時軟體金鑰要求輸入 4 次 App PIN（建立 1 次加 3 個 proof 各 1 次），改為每次操作只問一次。
 4. 實機遇到 SD-JWT 設定未宣告 vct 的發行端（舊版草案或 W3C 風格，如 TWDIW）被拒為 invalid_issuer_metadata。改為依 vct、credential_definition.type、設定 ID 依序決定本機歸檔型別；簽章金鑰可由同網域 jku 取得（信任等級 T3、標示未知錨點）。測試發行端新增 w3c_sd_jwt_legacy 設定重現此情境。
+5. 同一類發行端（issuer.mashbean.net）沒有 nonce 端點，c_nonce 放在 token 回應，原本 proof 不帶 nonce 而被拒（invalid_proof）。改為無 nonce 端點時使用 token 回應的 c_nonce，invalid_nonce 錯誤附帶的 c_nonce 也會用於重試；接受單數 credential 回應；發行者為 DID 時以 DID 解析金鑰。
 
 ## 仍需處理
 

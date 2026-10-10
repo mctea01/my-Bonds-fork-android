@@ -5,6 +5,8 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
@@ -74,6 +76,8 @@ class CredentialInspector(
             }
             // W3C-style issuers (e.g. TWDIW) publish keys at jku and use a DID as iss.
             jku != null -> resolveJkuKey(jku, header.str("kid"), expectedIssuer)
+            // TWDIW-style issuers sign with a DID (did:key embeds the key) and send neither x5c nor jku.
+            sdJwt.issuer?.startsWith("did:") == true -> resolveDidKey(sdJwt.issuer!!, header.str("kid"))
             else -> resolveJwtVcIssuerKey(sdJwt.issuer ?: expectedIssuer, header.str("kid"))
         }
         try {
@@ -93,8 +97,11 @@ class CredentialInspector(
             tier = TrustTier.T3, environment = null, official = false, anchorName = null,
             labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
             reasons = listOf(
-                if (jku != null) "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor"
-                else "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"
+                when {
+                    jku != null -> "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor"
+                    sdJwt.issuer?.startsWith("did:") == true -> "Issuer key comes from the issuer DID ${sdJwt.issuer}, not from an X.509 anchor"
+                    else -> "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"
+                }
             ),
         )
         return InspectedCredential(chain, trust, sdJwt.validFrom, sdJwt.validUntil, sdJwt.revocationStatus, sdJwt.kbKey)
@@ -157,6 +164,14 @@ class CredentialInspector(
         val jwk = (if (kid != null) keys.firstOrNull { it.str("kid") == kid } else keys.singleOrNull())
             ?: keys.singleOrNull() ?: throw ProtocolException("invalid_credential", "No key in jku matches kid '$kid'")
         return EcPublicKey.fromJwk(jwk)
+    }
+
+    /** Issuer key from a DID; for did:key and did:jwk the single method is used whatever the kid fragment says. */
+    private suspend fun resolveDidKey(did: String, kid: String?): EcPublicKey {
+        val doc = DidResolver(httpClient, allowInsecureLoopback).resolve(did)
+        val method = doc.methods.singleOrNull() ?: kid?.let { doc.find(it) }
+            ?: throw ProtocolException("invalid_credential", "No verification method in $did matches kid '$kid'")
+        return (method.key as? VerificationKey.Ec)?.key ?: throw ProtocolException("invalid_credential", "Issuer DID key is not an EC key")
     }
 
     /** SD-JWT VC issuer metadata (/.well-known/jwt-vc-issuer) key lookup. */

@@ -81,6 +81,8 @@ data class AccessToken(
     val refreshToken: String?,
     /** credential_configuration_id to credential_identifiers from authorization_details. */
     val credentialIdentifiers: Map<String, List<String>>,
+    /** c_nonce from the token response (draft-era issuers without a nonce endpoint). */
+    val cNonce: String? = null,
 ) {
     val authorizationHeader: String get() = if (type.equals("DPoP", ignoreCase = true)) "DPoP $value" else "Bearer $value"
 }
@@ -313,6 +315,7 @@ class Oid4vciClient(
             expiresAt = json.long("expires_in")?.let { Clock.System.now().epochSeconds + it },
             refreshToken = json.str("refresh_token"),
             credentialIdentifiers = ids,
+            cNonce = json.str("c_nonce"),
         )
     }
 
@@ -393,7 +396,7 @@ class Oid4vciClient(
             val (status, json) = credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
             if (status == HttpStatusCode.BadRequest && json.str("error") == "invalid_nonce" && attempt == 0 && config.keyBound) {
                 attempt++
-                nonce = fetchNonce(session)
+                nonce = json.str("c_nonce") ?: fetchNonce(session)
                 // Key attestation challenges are bound at key creation, so attested keys must be recreated.
                 if (config.proofTypes.values.any { it.keyAttestationsRequired != null } || "jwt" !in config.proofTypes) {
                     pending.forEach { document.deleteCredential(it.identifier) }
@@ -450,7 +453,7 @@ class Oid4vciClient(
     }
 
     private suspend fun fetchNonce(session: IssuanceSession): String? {
-        val endpoint = session.issuer.nonceEndpoint ?: return null
+        val endpoint = session.issuer.nonceEndpoint ?: return session.accessToken?.cNonce
         val resp = httpClient.post(endpoint)
         session.dpop?.updateNonce(endpoint, resp.headers["DPoP-Nonce"])
         if (!resp.status.isSuccess()) throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}")
@@ -650,7 +653,9 @@ class Oid4vciClient(
         pending: List<Credential>,
         json: JsonObject,
     ): IssuanceResult.Issued {
+        // Draft-era issuers answer with a single "credential" string.
         val issued = (json["credentials"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.str("credential") }
+            ?: json.str("credential")?.let { listOf(it) }
             ?: throw ProtocolException("invalid_credential_response", "Response has no credentials array")
         if (issued.isEmpty()) throw ProtocolException("invalid_credential_response", "Empty credentials array")
         val byKey = mutableMapOf<EcPublicKey?, Credential>()
