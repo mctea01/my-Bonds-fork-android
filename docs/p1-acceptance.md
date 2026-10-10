@@ -39,6 +39,7 @@
 11. walt.id 發行端回 500「No issuance session found for given issuer state」：它不支援錢包自行發起，授權請求必須帶 offer 裡的 issuer_state。請在 portal.demo.walt.id 產生 offer 再掃描。
 12. 登入失敗或關閉瀏覽器後，錢包原本一直停在等待畫面。改為回到 App 時若沒有收到回跳即顯示失敗，等待畫面也提供取消按鈕。
 13. OpenID 認證測試套件（certification.openid.net）只在測試模組執行中才提供 metadata，否則回 404「No test found with alias」。找不到 metadata 時錯誤訊息改為附上伺服器回應原因，並提示先在套件啟動測試模組。
+14. 實機連區網測試伺服器（如 http://10.133.11.189:8080）時被 Android 擋下「CLEARTEXT communication not permitted」。測試環境的本機 HTTP 改為也接受私有網段（10/8、172.16/12、192.168/16）；debug APK 的網路安全設定允許明文，正式版仍只允許本機與模擬器主機。
 
 ## 仍需處理
 

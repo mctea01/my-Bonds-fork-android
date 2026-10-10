@@ -61,7 +61,7 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->
             model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }
         }
-        Toggle("允許本機 HTTP", "僅限 localhost 與模擬器主機位址，用於本地測試伺服器", s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
+        Toggle("允許本機與區網 HTTP", "僅限 localhost、模擬器主機與私有網段（10.x、172.16 至 172.31、192.168.x），用於本地測試伺服器；正式版 APK 只允許前兩者", s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
             model.updateSettings { it.copy(allowLoopbackHttp = v) }
         }
         Toggle("使用測試錢包提供者", "向測試伺服器取得錢包證明與金鑰證明", s.useWalletProvider, enabled = s.testEnvironment) { v ->

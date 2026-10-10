@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Clear text is limited to local test servers; the app also refuses it unless the test environment allows loopback HTTP. -->
+<!-- Release builds: clear text only to this device and the emulator host; debug builds also allow the local network
+     (src/androidDebug). The app also refuses it unless the test environment allows local HTTP. -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
     <domain-config cleartextTrafficPermitted="true">

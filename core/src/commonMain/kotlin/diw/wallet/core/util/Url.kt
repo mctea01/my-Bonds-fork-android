@@ -36,13 +36,21 @@ fun wellKnownUrlAppended(identifier: String, suffix: String): String =
 
 /**
  * Checks whether a URL is acceptable as an endpoint. HTTPS is required; plain HTTP is only allowed for
- * loopback hosts and only when [allowInsecureLoopback] is set (test environment).
+ * local test hosts ([isLocalTestHost]) and only when [allowInsecureLoopback] is set (test environment).
  */
 fun isAcceptableEndpoint(url: String, allowInsecureLoopback: Boolean): Boolean {
     val u = try { Url(url) } catch (_: Exception) { return false }
     return when (u.protocol.name) {
         "https" -> true
-        "http" -> allowInsecureLoopback && (u.host == "localhost" || u.host == "127.0.0.1" || u.host == "::1" || u.host == "10.0.2.2")
+        "http" -> allowInsecureLoopback && isLocalTestHost(u.host)
         else -> false
     }
+}
+
+/** Hosts a local test server can run on: loopback, the emulator's host alias and private IPv4 networks (RFC 1918). */
+fun isLocalTestHost(host: String): Boolean {
+    if (host == "localhost" || host == "::1" || host == "[::1]") return true
+    val p = host.split('.').map { it.toIntOrNull() ?: return false }
+    if (p.size != 4 || p.any { it !in 0..255 }) return false
+    return p[0] == 127 || p[0] == 10 || (p[0] == 172 && p[1] in 16..31) || (p[0] == 192 && p[1] == 168)
 }

@@ -28,6 +28,7 @@ import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.util.isAcceptableEndpoint
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -213,6 +214,10 @@ class WalletModel(val platform: PlatformServices) {
         }
         try {
             val base = settings.testServerUrl.trimEnd('/')
+            if (!isAcceptableEndpoint(base, environmentPolicy.insecureLoopbackAllowed)) {
+                message.value = "測試伺服器網址需為 https；本機或區網的 http 位址請先開啟「允許本機與區網 HTTP」"
+                return@launch
+            }
             val pairs = listOf(
                 Triple(TrustRole.ISSUER, "iaca.pem", "DIW TEST IACA"),
                 Triple(TrustRole.STATUS_LIST, "iaca.pem", "DIW TEST IACA"),
