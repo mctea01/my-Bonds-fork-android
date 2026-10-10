@@ -108,6 +108,14 @@ data class CredentialConfiguration(
     /** Credentials without cryptographic binding are issued keyless. */
     val keyBound: Boolean get() = bindingMethods.isNotEmpty() || proofTypes.isNotEmpty()
 
+    /**
+     * Type used to file an SD-JWT credential locally. OpenID4VCI 1.0 requires vct in the configuration; draft-era and
+     * W3C-style issuers (e.g. TWDIW) omit it, so fall back to the last W3C type, then the configuration id.
+     */
+    val storageType: String
+        get() = vct ?: docType ?: raw.obj("credential_definition")?.strList("type")
+            ?.lastOrNull { it != "VerifiableCredential" } ?: id
+
     companion object {
         fun parse(id: String, json: JsonObject): CredentialConfiguration {
             val format = CredentialFormatId.fromWire(json.str("format"))
@@ -127,7 +135,7 @@ data class CredentialConfiguration(
                 id = id,
                 format = format,
                 docType = json.str("doctype"),
-                vct = json.str("vct"),
+                vct = json.str("vct") ?: json.obj("credential_definition")?.str("vct"),
                 scope = json.str("scope"),
                 bindingMethods = json.strList("cryptographic_binding_methods_supported"),
                 signingAlgorithms = json.arr("credential_signing_alg_values_supported").orEmpty()

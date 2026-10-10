@@ -90,6 +90,9 @@ fun Route.issuerRoutes(issuer: IssuerService) {
     post("/issuer/notification") {
         call.guard { call.send(issuer.notification(call.receiveText(), call.protocolHeaders())) }
     }
+    get("/issuer/keys") {
+        call.respondText(issuer.w3cKeys().toString(), ContentType.Application.Json)
+    }
     get("/issuer/status/{list}") {
         val jwt = issuer.statusListJwt(call.parameters["list"]!!)
             ?: return@get call.respondError(HttpStatusCode.NotFound, "not_found", "unknown status list")

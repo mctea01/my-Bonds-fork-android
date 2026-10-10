@@ -240,6 +240,21 @@ class Oid4vciE2eTest {
     }
 
     @Test
+    fun legacyW3cSdJwtWithoutVctAndJkuKey() = runBlocking<Unit> {
+        start()
+        val w = wallet()
+        val c = client(w)
+        val session = c.startFromOffer(offer(listOf("w3c_sd_jwt_legacy")))
+        assertEquals("TestCard", session.issuer.configurations.getValue("w3c_sd_jwt_legacy").storageType)
+        c.authorizePreAuthorized(session, null)
+        val r = c.issue(session, "w3c_sd_jwt_legacy", keys(w)) as IssuanceResult.Issued
+        val cred = r.credentials.single() as KeyBoundSdJwtVcCredential
+        assertEquals("TestCard", cred.vct)
+        assertEquals(TrustTier.T3, r.trust.tier)
+        assertTrue(TrustLabel.UNKNOWN_ANCHOR in r.trust.labels)
+    }
+
+    @Test
     fun unsignedMetadataIsLabelled() = runBlocking {
         start()
         val w = wallet()

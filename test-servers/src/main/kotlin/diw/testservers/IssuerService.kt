@@ -101,6 +101,8 @@ class IssuerService(
     val issuerId = "$baseUrl/issuer"
     private val encKey = kotlinx.coroutines.runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
     private val encKid = "enc-1"
+    private val w3cKey = kotlinx.coroutines.runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
+    private val w3cKid = "w3c-1"
     @Volatile private var dpopNonce = PlatformCrypto.randomBytes(16).toBase64Url()
 
     private class PreAuth(val configIds: List<String>, val txCode: String?)
@@ -166,6 +168,16 @@ class IssuerService(
         }))
         put("pid_sd_jwt_deferred", sdJwtConfig("pid_deferred", "測試身分憑證（延遲）", jwtProof(false)))
         put("pid_sd_jwt_keyless", sdJwtConfig("pid_keyless", "測試身分憑證（無金鑰）", null))
+        // Draft-era / W3C-style configuration (as TWDIW publishes): legacy media type, no vct, type list instead.
+        put("w3c_sd_jwt_legacy", buildJsonObject {
+            put("format", "vc+sd-jwt")
+            put("scope", "w3c_legacy")
+            putJsonObject("credential_definition") { putJsonArray("type") { add("VerifiableCredential"); add("TestCard") } }
+            putJsonArray("cryptographic_binding_methods_supported") { add("jwk") }
+            putJsonArray("credential_signing_alg_values_supported") { add("ES256") }
+            put("proof_types_supported", jwtProof(false))
+            putJsonArray("display") { addJsonObject { put("name", "測試卡（W3C 舊式）"); put("locale", "zh-TW") } }
+        })
         put("mdl_mdoc", buildJsonObject {
             put("format", "mso_mdoc")
             put("doctype", DrivingLicense.MDL_DOCTYPE)
@@ -604,8 +616,44 @@ class IssuerService(
         return b.build().compress(10.minutes).serializeAsJwt(pki.documentSigner, statusListUri(list))
     }
 
+    /** Key set referenced by jku in W3C-style credentials. */
+    suspend fun w3cKeys(): JsonObject {
+        val jwk = JsonObject(w3cKey.publicKey.toJwk() + mapOf("kid" to JsonPrimitive(w3cKid)))
+        return buildJsonObject { putJsonArray("keys") { add(jwk) } }
+    }
+
+    /** TWDIW-style SD-JWT: typ vc+sd-jwt, key via kid + jku, DID issuer, no vct, disclosures under vc.credentialSubject. */
+    private suspend fun mintW3cSdJwt(holder: EcPublicKey): String {
+        val now = Clock.System.now().epochSeconds
+        val disclosures = listOf("name" to "林哲全", "cardNumber" to "A123").map { (k, v) ->
+            buildJsonArray { add(PlatformCrypto.randomBytes(16).toBase64Url()); add(k); add(v) }.toString().encodeToByteArray().toBase64Url()
+        }
+        val digests = disclosures.map { Crypto.digest(Algorithm.SHA256, it.encodeToByteArray()).toBase64Url() }
+        val holderJwk = holder.toJwk()
+        val jwt = buildJwt(
+            type = "vc+sd-jwt",
+            key = AsymmetricKey.AnonymousExplicit(w3cKey, Algorithm.ES256),
+            header = { put("kid", w3cKid); put("jku", "$issuerId/keys") },
+        ) {
+            put("iss", "did:example:diw-test-issuer")
+            put("nbf", now)
+            put("exp", now + 365L * 86400)
+            putJsonObject("cnf") { put("jwk", holderJwk) }
+            put("_sd_alg", "sha-256")
+            putJsonObject("vc") {
+                putJsonArray("@context") { add("https://www.w3.org/2018/credentials/v1") }
+                putJsonArray("type") { add("VerifiableCredential"); add("TestCard") }
+                putJsonObject("credentialSubject") {
+                    putJsonArray("_sd") { digests.forEach { add(it) } }
+                }
+            }
+        }
+        return jwt + disclosures.joinToString("") { "~$it" } + "~"
+    }
+
     private suspend fun issueOne(config: JsonObject, holder: EcPublicKey?): String {
         val now = Clock.System.now()
+        if (config.str("scope") == "w3c_legacy") return mintW3cSdJwt(holder!!)
         return if (config.str("format") == "mso_mdoc") {
             val idx = allocateStatus("mdoc")
             issuedStatus.add(0, "mdoc" to idx)

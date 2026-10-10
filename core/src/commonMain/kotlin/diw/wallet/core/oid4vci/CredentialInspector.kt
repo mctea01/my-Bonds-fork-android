@@ -8,6 +8,7 @@ import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
+import diw.wallet.core.util.hostOf
 import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.parseJsonObject
@@ -64,11 +65,16 @@ class CredentialInspector(
             throw ProtocolException("invalid_credential", "Malformed SD-JWT VC", e)
         }
         val chain = sdJwt.x5c?.certificates
-        val issuerKey: EcPublicKey = if (chain != null) {
-            X509CertChainCheck.validate(chain)
-            chain.first().ecPublicKey
-        } else {
-            resolveJwtVcIssuerKey(sdJwt.issuer ?: expectedIssuer, Jws.parse(compact.substringBefore('~')).kid)
+        val header = Jws.parse(compact.substringBefore('~')).header
+        val jku = header.str("jku")
+        val issuerKey: EcPublicKey = when {
+            chain != null -> {
+                X509CertChainCheck.validate(chain)
+                chain.first().ecPublicKey
+            }
+            // W3C-style issuers (e.g. TWDIW) publish keys at jku and use a DID as iss.
+            jku != null -> resolveJkuKey(jku, header.str("kid"), expectedIssuer)
+            else -> resolveJwtVcIssuerKey(sdJwt.issuer ?: expectedIssuer, header.str("kid"))
         }
         try {
             sdJwt.verify(issuerKey)
@@ -86,7 +92,10 @@ class CredentialInspector(
         val trust = if (chain != null) trustRegistry.decide(TrustRole.ISSUER, chain) else TrustDecision(
             tier = TrustTier.T3, environment = null, official = false, anchorName = null,
             labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
-            reasons = listOf("Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"),
+            reasons = listOf(
+                if (jku != null) "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor"
+                else "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"
+            ),
         )
         return InspectedCredential(chain, trust, sdJwt.validFrom, sdJwt.validUntil, sdJwt.revocationStatus, sdJwt.kbKey)
     }
@@ -128,6 +137,26 @@ class CredentialInspector(
             }
         }
         return InspectedCredential(chain, trustRegistry.decide(TrustRole.ISSUER, chain), mso.validFrom, mso.validUntil, mso.revocationStatus, mso.deviceKey)
+    }
+
+    /**
+     * Key lookup through the JWS jku header. The credential arrived over TLS from [credentialIssuer], so a key set on
+     * the same host, or a sibling host under the same organisation domain (at least three labels, e.g. wallet.gov.tw),
+     * is accepted; anything else could let a third party vouch for the credential.
+     */
+    private suspend fun resolveJkuKey(jku: String, kid: String?, credentialIssuer: String): EcPublicKey {
+        if (!isAcceptableEndpoint(jku, allowInsecureLoopback)) throw ProtocolException("invalid_credential", "jku must be https")
+        val keyHost = hostOf(jku).lowercase()
+        val issuerHost = hostOf(credentialIssuer).lowercase()
+        val parent = issuerHost.substringAfter('.', "")
+        val sameOrg = keyHost == issuerHost || (parent.count { it == '.' } >= 2 && keyHost.substringAfter('.', "") == parent)
+        if (!sameOrg) throw ProtocolException("invalid_credential", "jku host $keyHost is not on the credential issuer's domain")
+        val resp = httpClient.get(jku)
+        if (!resp.status.isSuccess()) throw ProtocolException("invalid_credential", "jku key set not available (${resp.status.value})")
+        val keys = parseJsonObject(resp.bodyAsText(), "invalid_credential").arr("keys").orEmpty().filterIsInstance<JsonObject>()
+        val jwk = (if (kid != null) keys.firstOrNull { it.str("kid") == kid } else keys.singleOrNull())
+            ?: keys.singleOrNull() ?: throw ProtocolException("invalid_credential", "No key in jku matches kid '$kid'")
+        return EcPublicKey.fromJwk(jwk)
     }
 
     /** SD-JWT VC issuer metadata (/.well-known/jwt-vc-issuer) key lookup. */

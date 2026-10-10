@@ -380,7 +380,7 @@ class Oid4vciClient(
         val count = keys.count.coerceIn(1, session.issuer.batchSize)
         var nonce = fetchNonce(session)
         var pending = if (config.keyBound) createPendingCredentials(document, config, keys, nonce, count) else
-            listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, config.vct ?: ""))
+            listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, config.storageType))
         var attempt = 0
         while (true) {
             val proofs = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
@@ -475,7 +475,7 @@ class Oid4vciClient(
                 )
                 else -> KeyBoundSdJwtVcCredential.create(
                     document, null, CredentialDomains.SD_JWT, keys.secureArea,
-                    config.vct ?: throw ProtocolException("invalid_issuer_metadata", "SD-JWT VC configuration without vct"),
+                    config.storageType,
                     settings,
                 )
             }
