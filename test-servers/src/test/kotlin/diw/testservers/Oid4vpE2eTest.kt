@@ -49,6 +49,35 @@ class Oid4vpE2eTest {
         return o["id"]!!.jsonPrimitive.content to o["uri"]!!.jsonPrimitive.content
     }
 
+    @Test
+    fun verifierTestPage() = runBlocking {
+        val page = servers.httpClient.get("$base/verifier").bodyAsText()
+        assertTrue("/verifier/sessions" in page && "/verifier/dcapi/sessions" in page && "測試驗證端" in page)
+    }
+
+    /** A test server reached by IP address (local network) puts the IP in the x509_san_dns client_id and certificate. */
+    @Test
+    fun x509SanDnsWithIpAddressHost() = runBlocking {
+        val ipPort = ServerSocket(0).use { it.localPort }
+        val ipBase = "http://127.0.0.1:$ipPort"
+        val ipServers = TestServers(ipBase, servers.pki).init()
+        val ipServer = ipServers.start(ipPort, wait = false)
+        try {
+            val w = wallet()
+            val o = DiwJson.parseToJsonElement(ipServers.httpClient.post("$ipBase/verifier/sessions") {
+                contentType(ContentType.Application.Json); setBody("{}")
+            }.bodyAsText()).jsonObject
+            val uri = o["uri"]!!.jsonPrimitive.content
+            assertTrue("x509_san_dns%3A127.0.0.1" in uri || "x509_san_dns:127.0.0.1" in uri, uri)
+            val prepared = w.holder.prepare(w.holder.resolveUri(uri))
+            assertTrue(w.holder.respond(prepared, prepared.queryResult.select(emptyList())) is PresentationOutcome.Posted)
+            val r = DiwJson.parseToJsonElement(ipServers.httpClient.get("$ipBase/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()).jsonObject
+            assertEquals("passed", r["status"]!!.jsonPrimitive.content, "verifier result: $r")
+        } finally {
+            ipServer.stop(100, 500)
+        }
+    }
+
     private suspend fun result(id: String): JsonObject =
         DiwJson.parseToJsonElement(servers.httpClient.get("$base/verifier/sessions/$id").bodyAsText()).jsonObject
 

@@ -45,7 +45,7 @@ class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOp
     fun start(port: Int, wait: Boolean): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> =
         embeddedServer(Netty, port = port, host = "0.0.0.0") {
             routing {
-                get("/") { call.respondText("DIW MY WALLET test servers (TEST environment only)") }
+                get("/") { call.respondText("DIW MY WALLET test servers (TEST environment only)\nVerifier test page: $baseUrl/verifier") }
                 get("/pki/{name}") {
                     val pem = when (call.parameters["name"]) {
                         "iaca.pem" -> pki.iacaCert.toPem()

@@ -6,7 +6,7 @@
 
 | 範圍 | 指令 | 結果 |
 |---|---|---|
-| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 16/16 通過 |
+| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 18/18 通過 |
 | OpenID4VCI 1.0 用戶端、Token Status List | `:test-servers:test --tests '*Oid4vciE2eTest'` | 18/18 通過 |
 | DIW 測試驗證端 對 Multipaz 錢包 SDK（uriSchemePresentment、digitalCredentialsPresentment） | `:test-servers:test --tests '*MultipazWalletInteropTest'` | 5/5 通過 |
 | App 共用模型（預授權、授權碼經瀏覽器回跳、由發行端網址領卡、DC API origin 檢查、PIN 加密儲存） | `:app:desktopTest` | 5/5 通過（另 2 項需網路，見下節） |
@@ -40,6 +40,7 @@
 12. 登入失敗或關閉瀏覽器後，錢包原本一直停在等待畫面。改為回到 App 時若沒有收到回跳即顯示失敗，等待畫面也提供取消按鈕。
 13. OpenID 認證測試套件（certification.openid.net）只在測試模組執行中才提供 metadata，否則回 404「No test found with alias」。找不到 metadata 時錯誤訊息改為附上伺服器回應原因，並提示先在套件啟動測試模組。
 14. 實機連區網測試伺服器（如 http://10.133.11.189:8080）時被 Android 擋下「CLEARTEXT communication not permitted」。測試環境的本機 HTTP 改為也接受私有網段（10/8、172.16/12、192.168/16）；debug APK 的網路安全設定允許明文，正式版仍只允許本機與模擬器主機。
+15. 測試伺服器新增驗證測試頁 `/verifier`：可選 DCQL 範本、client_id 前綴、回應模式與破壞選項，顯示 QR Code 與同裝置連結並輪詢結果，也可由瀏覽器以 DC API 出示。驗證端以 IP 位址對外時，x509_san_dns 的 client_id 與憑證 SAN 皆使用該 IP，已加測試。
 
 ## 仍需處理
 

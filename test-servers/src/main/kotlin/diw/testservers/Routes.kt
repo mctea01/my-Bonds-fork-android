@@ -6,6 +6,7 @@ import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.withCharset
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.request.receiveParameters
 import io.ktor.server.request.receiveText
@@ -29,8 +30,11 @@ internal suspend fun ApplicationCall.respondError(status: HttpStatusCode, error:
     respondJson(buildJsonObject { put("error", error); put("error_description", description) }, status)
 
 private val REQUEST_OBJECT = ContentType("application", "oauth-authz-req+jwt")
+private val VERIFIER_PAGE by lazy { VerifierService::class.java.getResource("/verifier.html")!!.readText() }
 
 fun Route.verifierRoutes(service: VerifierService) {
+    // Manual test page: QR code or same-device link for OpenID4VP, and a DC API button.
+    get("/verifier") { call.respondText(VERIFIER_PAGE, ContentType.Text.Html.withCharset(Charsets.UTF_8)) }
     post("/verifier/sessions") {
         val body = call.receiveJsonObject()
         val req = VerifierSessionRequest(
