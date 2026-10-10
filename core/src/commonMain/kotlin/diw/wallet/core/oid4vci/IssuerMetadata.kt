@@ -179,6 +179,8 @@ data class IssuerMetadata(
     val configurations: Map<String, CredentialConfiguration>,
     val trust: TrustDecision,
     val raw: JsonObject,
+    /** Configurations this wallet cannot request (unknown format, malformed entry), with the reason, for display. */
+    val unsupported: Map<String, String> = emptyMap(),
 ) {
     /** The authorization server to use for a grant, honouring the offer's hint when it is listed. */
     fun authorizationServerFor(hint: String?): String = when {
@@ -193,11 +195,15 @@ data class IssuerMetadata(
             val issuer = json.reqStr("credential_issuer", "invalid_issuer_metadata")
             val configs = json.obj("credential_configurations_supported")
                 ?: throw ProtocolException("invalid_issuer_metadata", "credential_configurations_supported missing")
-            val parsed = configs.mapNotNull { (id, v) ->
-                (v as? JsonObject)?.let { o ->
-                    runCatching { CredentialConfiguration.parse(id, o) }.getOrNull()?.let { id to it }
-                }
-            }.toMap()
+            val parsed = mutableMapOf<String, CredentialConfiguration>()
+            val unsupported = mutableMapOf<String, String>()
+            for ((id, v) in configs) {
+                val o = v as? JsonObject
+                if (o == null) { unsupported[id] = "Malformed configuration"; continue }
+                runCatching { CredentialConfiguration.parse(id, o) }
+                    .onSuccess { parsed[id] = it }
+                    .onFailure { unsupported[id] = it.message ?: "Unsupported" }
+            }
             return IssuerMetadata(
                 credentialIssuer = issuer,
                 authorizationServers = json.strList("authorization_servers"),
@@ -226,6 +232,7 @@ data class IssuerMetadata(
                 configurations = parsed,
                 trust = trust,
                 raw = json,
+                unsupported = unsupported,
             )
         }
     }

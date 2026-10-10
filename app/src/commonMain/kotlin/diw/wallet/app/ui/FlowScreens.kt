@@ -76,20 +76,32 @@ fun IssuanceScreen(model: WalletModel) {
         is IssuanceUi.Failed -> Failure(model, s.message)
         is IssuanceUi.Review -> {
             var txCode by remember { mutableStateOf("") }
+            // Offers start with everything selected; a wallet-initiated list starts empty.
+            var selected by remember(s) { mutableStateOf(if (s.walletInitiated) emptySet() else s.configurations.map { it.id }.toSet()) }
             val tx = s.session.txCode
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TrustCard("發行端", s.issuerName, s.trust, listOf(s.session.issuer.credentialIssuer))
-                Text("將加入下列憑證：", style = MaterialTheme.typography.titleSmall)
+                Text(if (s.walletInitiated) "此發行端提供下列憑證，請選擇要加入的項目：" else "將加入下列憑證：", style = MaterialTheme.typography.titleSmall)
                 s.configurations.forEach { c ->
                     Card(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(c.display.pick(listOf("zh-TW", "en"))?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
-                            Text("${c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
-                            if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
-                                Text("發行端要求金鑰證明（由錢包提供者出具）", style = MaterialTheme.typography.bodySmall)
+                        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = c.id in selected, onCheckedChange = { on -> selected = if (on) selected + c.id else selected - c.id })
+                            Column(Modifier.weight(1f)) {
+                                Text(c.display.pick(listOf("zh-TW", "en"))?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
+                                Text("${c.raw["format"]?.toString()?.trim('"') ?: c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
+                                if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
+                                    Text("發行端要求金鑰證明（由錢包提供者出具）", style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }
+                }
+                if (s.unsupported.isNotEmpty()) {
+                    Text("另有 ${s.unsupported.size} 種憑證格式本錢包尚不支援：", style = MaterialTheme.typography.bodySmall)
+                    s.unsupported.take(20).forEach { (id, reason) ->
+                        Text("$id：$reason", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                    if (s.unsupported.size > 20) Text("…", style = MaterialTheme.typography.bodySmall)
                 }
                 if (tx != null) {
                     OutlinedTextField(
@@ -103,7 +115,7 @@ fun IssuanceScreen(model: WalletModel) {
                 val ok = riskAcknowledgement(s.trust.tier)
                 val txOk = tx == null || (tx.length == null && txCode.isNotEmpty()) || txCode.length == tx.length
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.acceptOffer(s, txCode.ifEmpty { null }) }, enabled = ok && txOk) {
+                    Button(onClick = { model.acceptOffer(s, txCode.ifEmpty { null }, selected.toList()) }, enabled = ok && txOk && selected.isNotEmpty()) {
                         Text(if (s.preAuthorized) "加入" else "前往登入")
                     }
                     OutlinedButton(onClick = { model.screen.value = Screen.Home }) { Text("取消") }
@@ -116,6 +128,9 @@ fun IssuanceScreen(model: WalletModel) {
                     is IssuanceResult.Issued -> TrustCard("已加入", r.document.displayName ?: "", r.trust, listOf("共 ${r.credentials.size} 份可用憑證"))
                     is IssuanceResult.Deferred -> Text("${r.document.displayName}：發行端尚未完成，稍後會再嘗試")
                 }
+            }
+            s.failures.forEach { (name, reason) ->
+                Text("$name：未加入（$reason）", color = MaterialTheme.colorScheme.error)
             }
             Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
         }

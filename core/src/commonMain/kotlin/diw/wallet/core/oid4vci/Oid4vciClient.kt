@@ -8,6 +8,7 @@ import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
+import diw.wallet.core.util.obj
 import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.long
 import diw.wallet.core.util.parseJsonObject
@@ -108,6 +109,19 @@ class IssuanceSession internal constructor(
     val txCode: TxCode? get() = offer?.preAuthorized?.txCode
     val offeredConfigurations: List<CredentialConfiguration>
         get() = (offer?.credentialConfigurationIds ?: requestedConfigurations).mapNotNull { issuer.configurations[it] }
+
+    private var selection: List<String>? = null
+
+    /** Configurations the user chose to receive; defaults to everything offered (or requested). */
+    val selectedConfigurations: List<CredentialConfiguration>
+        get() = selection?.mapNotNull { issuer.configurations[it] } ?: offeredConfigurations
+
+    /** Restricts this issuance to [ids]; for a wallet-initiated session any supported configuration may be chosen. */
+    fun select(ids: List<String>) {
+        val allowed = offer?.credentialConfigurationIds ?: issuer.configurations.keys
+        selection = ids.filter { it in allowed && it in issuer.configurations }
+        if (offer == null) requestedConfigurations = selection!!
+    }
 }
 
 sealed class IssuanceResult {
@@ -209,7 +223,7 @@ class Oid4vciClient(
         if (asMeta.codeChallengeMethods.isNotEmpty() && "S256" !in asMeta.codeChallengeMethods) {
             throw ProtocolException("invalid_as_metadata", "Authorization server does not support PKCE S256")
         }
-        val ids = configurationIds ?: session.offeredConfigurations.map { it.id }
+        val ids = configurationIds ?: session.selectedConfigurations.map { it.id }
         session.requestedConfigurations = ids
         val verifier = PlatformCrypto.randomBytes(32).toBase64Url()
         val state = PlatformCrypto.randomBytes(16).toBase64Url()
@@ -385,15 +399,22 @@ class Oid4vciClient(
         var pending = if (config.keyBound) createPendingCredentials(document, config, keys, nonce, count) else
             listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, config.storageType))
         var attempt = 0
+        var draft13 = false
         while (true) {
             val proofs = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
-            val body = buildJsonObject {
-                val identifiers = token.credentialIdentifiers[config.id]
+            val identifiers = token.credentialIdentifiers[config.id]
+            val body = if (draft13) draft13Request(config, identifiers?.firstOrNull(), proofs) else buildJsonObject {
                 if (!identifiers.isNullOrEmpty()) put("credential_identifier", identifiers.first())
                 else put("credential_configuration_id", config.id)
                 proofs?.let { put("proofs", it) }
             }
             val (status, json) = credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
+            // Draft-era issuers (OpenID4VCI draft 13, e.g. walt.id) reject the 1.0 request shape; retry once in theirs.
+            if (status == HttpStatusCode.BadRequest && !draft13 && json.str("error") != "invalid_nonce" && session.issuer.nonceEndpoint == null) {
+                draft13 = true
+                json.str("c_nonce")?.let { nonce = it }
+                continue
+            }
             if (status == HttpStatusCode.BadRequest && json.str("error") == "invalid_nonce" && attempt == 0 && config.keyBound) {
                 attempt++
                 nonce = json.str("c_nonce") ?: fetchNonce(session)
@@ -450,6 +471,25 @@ class Oid4vciClient(
             setBody(body.toString())
         }
         return resp.status.isSuccess()
+    }
+
+    /** OpenID4VCI draft 13 credential request: format plus type parameters and a single proof. */
+    private fun draft13Request(config: CredentialConfiguration, identifier: String?, proofs: JsonObject?): JsonObject = buildJsonObject {
+        if (identifier != null) {
+            put("credential_identifier", identifier)
+        } else {
+            put("format", config.raw.str("format") ?: config.format.wire)
+            config.docType?.let { put("doctype", it) }
+            config.raw.str("vct")?.let { put("vct", it) }
+            config.raw.obj("credential_definition")?.let { put("credential_definition", it) }
+        }
+        val jwt = proofs?.arr("jwt")?.firstOrNull()
+        val attestation = proofs?.arr("attestation")?.firstOrNull()
+        if (jwt != null) {
+            putJsonObject("proof") { put("proof_type", "jwt"); put("jwt", jwt) }
+        } else if (attestation != null) {
+            putJsonObject("proof") { put("proof_type", "attestation"); put("attestation", attestation) }
+        }
     }
 
     private suspend fun fetchNonce(session: IssuanceSession): String? {

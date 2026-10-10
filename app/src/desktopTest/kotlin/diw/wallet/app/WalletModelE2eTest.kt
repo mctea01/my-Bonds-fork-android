@@ -110,6 +110,28 @@ class WalletModelE2eTest {
         assertTrue(text != null && text.startsWith("已從 Multipaz") && !text.contains(" 0 "), "message: $text")
     }
 
+    /** Bare public issuer hosts: the issuer path is discovered and every configuration listed. */
+    @Test
+    fun walletInitiatedDiscoveryOnPublicIssuers() = runBlocking<Unit> {
+        org.junit.jupiter.api.Assumptions.assumeTrue(System.getenv("DIW_INTEROP") == "1")
+        for (host in listOf("issuer.demo.walt.id", "https://issuer.multipaz.org", "https://issuer.eudiw.dev", "https://issuer.mashbean.net")) {
+            val p = TestPlatform(EphemeralStorage(), proxied = true)
+            val m = WalletModel(p)
+            p.model = m
+            m.init()
+            withTimeout(60.seconds) {
+                m.handleUri(host)
+                val r = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
+                println("DISCOVERY $host -> " + when (r) {
+                    is IssuanceUi.Review -> "${r.session.issuer.credentialIssuer} configs=${r.configurations.size} unsupported=${r.unsupported.size}"
+                    is IssuanceUi.Failed -> "failed: ${r.message}"
+                    else -> r.toString()
+                })
+                if (host != "https://issuer.mashbean.net") assertIs<IssuanceUi.Review>(r)
+            }
+        }
+    }
+
     private fun start() = runBlocking {
         servers = TestServers(base, TestPki.create()).init()
         server = servers.start(port, wait = false)
@@ -185,6 +207,25 @@ class WalletModelE2eTest {
         val (m, _) = newWallet()
         val results = issue(m, offer(listOf("mdl_mdoc"), grant = "authorization_code"), null)
         assertIs<IssuanceResult.Issued>(results.single())
+    }
+
+    /** Typing the issuer address lists every configuration; unsupported formats are listed apart, the user picks two. */
+    @Test
+    fun walletInitiatedIssuanceFromIssuerUrl() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        withTimeout(60.seconds) {
+            m.handleUri("$base/issuer")
+            val review = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
+            assertIs<IssuanceUi.Review>(review, "review: $review")
+            assertTrue(review.walletInitiated)
+            assertTrue(review.configurations.any { it.id == "mdl_mdoc" } && review.configurations.any { it.id == "pid_sd_jwt" })
+            assertTrue(review.unsupported.any { it.first == "w3c_ldp_vc" }, "unsupported: ${review.unsupported}")
+            m.acceptOffer(review, null, listOf("pid_sd_jwt", "mdl_mdoc"))
+            val done = m.issuance.first { it is IssuanceUi.Done || it is IssuanceUi.Failed }
+            assertIs<IssuanceUi.Done>(done, "issuance: $done")
+            assertEquals(2, done.results.filterIsInstance<IssuanceResult.Issued>().size, "results: ${done.results} failures: ${done.failures}")
+        }
     }
 
     @Test

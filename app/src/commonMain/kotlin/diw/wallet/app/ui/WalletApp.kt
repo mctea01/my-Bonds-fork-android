@@ -150,7 +150,7 @@ fun HomeScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
                 onValueChange = { input = it },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                label = { Text("貼上憑證邀請或驗證請求連結") },
+                label = { Text("貼上憑證邀請、驗證請求或發行端網址") },
             )
             Button(onClick = { model.handleUri(input); input = "" }, enabled = input.isNotBlank()) { Text("開啟") }
         }

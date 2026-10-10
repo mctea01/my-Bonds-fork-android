@@ -172,6 +172,50 @@ class InteropTest {
         assertTrue(claims.any { it.label == "student_id" })
     }
 
+    /** walt.id demo issuer (OpenID4VCI draft 13): offers are created through its issuance API with the API's own examples. */
+    private suspend fun waltOffer(path: String, exampleName: String): String {
+        val api = Json.parseToJsonElement(http.get("https://issuer.demo.walt.id/api.json").bodyAsText()).jsonObject
+        val example = api["paths"]!!.jsonObject[path]!!.jsonObject["post"]!!.jsonObject["requestBody"]!!.jsonObject["content"]!!
+            .jsonObject["application/json"]!!.jsonObject["examples"]!!.jsonObject[exampleName]!!.jsonObject["value"]!!
+        return http.post("https://issuer.demo.walt.id$path") {
+            contentType(ContentType.Application.Json)
+            setBody(example.toString())
+        }.bodyAsText().trim()
+    }
+
+    private fun waltIssue(path: String, example: String, acceptedFailure: String? = null) = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val w = Wallet(http).init()
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore)
+        val session = c.startFromOffer(waltOffer(path, example))
+        report("walt.id metadata", true, "configs=${session.issuer.configurations.size} unsupported=${session.issuer.unsupported.size} offered=${session.offeredConfigurations.map { it.id }}")
+        c.authorizePreAuthorized(session, null)
+        val id = session.offeredConfigurations.single().id
+        val r = try {
+            c.issue(session, id, w.keys(1))
+        } catch (e: diw.wallet.core.util.ProtocolException) {
+            // The demo API's own example signer can be expired; reaching the credential check proves the protocol path.
+            if (acceptedFailure == null || acceptedFailure !in (e.message ?: "")) throw e
+            report("walt.id $example", true, "credential received and rejected as expected: ${e.message}")
+            return@runBlocking
+        }
+        val detail = if (r is IssuanceResult.Issued) {
+            val claims = diw.wallet.core.credential.ClaimReader.read(r.credentials.first(), org.multipaz.documenttype.DocumentTypeRepository())
+            "tier=${r.trust.tier} labels=${r.trust.labels} claims=${claims.size}"
+        } else r.toString()
+        report("walt.id $example", r is IssuanceResult.Issued, detail)
+        assertIs<IssuanceResult.Issued>(r)
+    }
+
+    @Test
+    fun waltSdJwtVcX509() = waltIssue("/openid4vc/sdjwt/issue", "SD-JWT-VC example")
+
+    @Test
+    fun waltSdJwtVcDid() = waltIssue("/openid4vc/sdjwt/issue", "SD-JWT-VC example with issuer DID")
+
+    @Test
+    fun waltMdl() = waltIssue("/openid4vc/mdoc/issue", "mDL example - Mandatory fields only", acceptedFailure = "outside its validity period")
+
     @Test
     fun eudiIssuerMetadataAndAuthorization() = runBlocking<Unit> {
         assumeTrue(enabled)

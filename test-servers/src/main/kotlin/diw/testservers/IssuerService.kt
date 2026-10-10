@@ -178,6 +178,11 @@ class IssuerService(
             put("proof_types_supported", jwtProof(false))
             putJsonArray("display") { addJsonObject { put("name", "測試卡（W3C 舊式）"); put("locale", "zh-TW") } }
         })
+        // A format this wallet does not implement; wallets must list it as unsupported, not fail on the whole metadata.
+        put("w3c_ldp_vc", buildJsonObject {
+            put("format", "ldp_vc")
+            putJsonObject("credential_definition") { putJsonArray("type") { add("VerifiableCredential"); add("TestCard") } }
+        })
         put("mdl_mdoc", buildJsonObject {
             put("format", "mso_mdoc")
             put("doctype", DrivingLicense.MDL_DOCTYPE)

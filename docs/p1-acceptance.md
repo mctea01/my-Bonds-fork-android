@@ -20,6 +20,7 @@
 | Multipaz 驗證端 verifier.multipaz.org | 無法測 | 測試當時回 503。改以 Multipaz 錢包 SDK 對我方測試驗證端互測（上表 5/5）。 |
 | EUDI 發行端 issuer.eudiw.dev | 部分 | metadata、PAR、授權網址建立成功；27 種憑證全部要求 key attestation（iso_18045_high），需 EUDI 信任的錢包提供者，無法在雲端完成發證。 |
 | TWDIW 方言開源發行端 issuer.mashbean.net | 通過 | 預授權碼、token 回應中的 c_nonce、vc+sd-jwt 無 vct、did:key 發行者金鑰；信任等級 T3（未知錨點）。出示端採 PE 加 jwt_vp，P1 未支援。 |
+| walt.id 發行端 issuer.demo.walt.id（OpenID4VCI draft 13） | 通過 | 以其 API 範例建立 offer：SD-JWT VC（x5c 與 did:jwk 兩種簽章）領卡成功；mDL 的協定流程成功，但 API 範例的文件簽署憑證已於 2026-09-02 過期，錢包依規拒收。120 種設定中 43 種可領，其餘為 jwt_vc_json、jwt_vc 等尚未支援格式，會列出但不影響其他項目。 |
 | EUDI 驗證端 verifier-backend.eudiw.dev | 通過 | x509_hash + direct_post.jwt + verifier_info（registration certificate）請求可解析與驗證；匯入 EUDI 參考實作 CA 為 TEST 錨點後顯示為 TEST 環境；DCQL 可執行（錢包無 EUDI PID 故回 access_denied）。完整出示需 EUDI 發行的 PID。 |
 
 ## 互通中發現並已修正
@@ -30,6 +31,9 @@
 4. 實機遇到 SD-JWT 設定未宣告 vct 的發行端（舊版草案或 W3C 風格，如 TWDIW）被拒為 invalid_issuer_metadata。改為依 vct、credential_definition.type、設定 ID 依序決定本機歸檔型別；簽章金鑰可由同網域 jku 取得（信任等級 T3、標示未知錨點）。測試發行端新增 w3c_sd_jwt_legacy 設定重現此情境。
 5. 同一類發行端（issuer.mashbean.net）沒有 nonce 端點，c_nonce 放在 token 回應，原本 proof 不帶 nonce 而被拒（invalid_proof）。改為無 nonce 端點時使用 token 回應的 c_nonce，invalid_nonce 錯誤附帶的 c_nonce 也會用於重試；接受單數 credential 回應；發行者為 DID 時以 DID 解析金鑰。TWDIW 方言的完整支援（client_id、did:key proof、PE 與 jwt_vp 出示）排入 P2。
 6. 測試伺服器網址填 Multipaz 發行端時，「匯入測試信任錨點」原本找 /pki/iaca.pem 而 404。改為偵測 Multipaz OpenID4VCI 伺服器，從各設定的 signing_certificate 取得 IACA 匯入；設定頁另有「匯入 Multipaz 測試發行端錨點」。Multipaz 發行端對公開用戶端回「clientId must be authenticated」，需錢包提供者的 client attestation，且簽發 CA 必須列在該伺服器的 trusted_client_attestations。
+
+7. 相容各種發行端組合：發行端資訊中有不支援的格式時改為列出原因，不再讓整份資訊失敗；無 nonce 端點的發行端若拒絕 1.0 請求格式，自動改用 draft 13 格式（format 加型別參數與單一 proof）重送一次；一次領多種憑證時，單一項目失敗不影響其他項目。
+8. 首頁輸入框可直接輸入發行端網址（可省略 https:// 與路徑，會嘗試 /issuer、/draft13、/openid4vci 等常見路徑），列出所有可領憑證供勾選，以授權碼流程領取。只支援預授權碼的發行端（如 mashbean）會提示改用其網頁產生的領卡連結。
 
 ## 仍需處理
 

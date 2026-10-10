@@ -86,10 +86,14 @@ sealed class IssuanceUi {
         val issuerName: String,
         val trust: TrustDecision,
         val preAuthorized: Boolean,
+        /** Offered or listed configurations the wallet cannot request, with the reason. */
+        val unsupported: List<Pair<String, String>> = emptyList(),
+        /** Wallet-initiated: the user picks from everything the issuer lists. */
+        val walletInitiated: Boolean = false,
     ) : IssuanceUi()
     data class WaitingForBrowser(val session: IssuanceSession) : IssuanceUi()
     data class Working(val message: String) : IssuanceUi()
-    data class Done(val results: List<IssuanceResult>) : IssuanceUi()
+    data class Done(val results: List<IssuanceResult>, val failures: List<Pair<String, String>> = emptyList()) : IssuanceUi()
     data class Failed(val message: String) : IssuanceUi()
 }
 
@@ -344,6 +348,9 @@ class WalletModel(val platform: PlatformServices) {
             u.startsWith(platform.oid4vciRedirectUri) -> completeAuthorization(u)
             scheme in setOf("openid-credential-offer", "haip-vci") || "credential_offer" in u -> startIssuance(u)
             scheme in setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp") || ("client_id=" in u && scheme == "https") -> startPresentation(u)
+            // A bare issuer address: list what it issues and let the user pick (wallet-initiated issuance).
+            scheme == "https" || scheme == "http" -> startFromIssuer(u)
+            '.' in u && ' ' !in u && ':' !in u -> startFromIssuer("https://$u")
             else -> message.value = "無法辨識的連結"
         }
     }
@@ -399,6 +406,9 @@ class WalletModel(val platform: PlatformServices) {
                     issuerName = issuerName,
                     trust = session.issuer.trust,
                     preAuthorized = session.offer?.preAuthorized != null,
+                    unsupported = session.offer?.credentialConfigurationIds.orEmpty()
+                        .filter { it !in session.issuer.configurations }
+                        .map { it to (session.issuer.unsupported[it] ?: "發行端資訊未列出此設定") },
                 )
             } catch (e: Exception) {
                 issuance.value = IssuanceUi.Failed(describe(e))
@@ -406,10 +416,48 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
-    /** User accepted the offer. [txCode] is the PIN from the issuer when the offer asks for one. */
-    fun acceptOffer(review: IssuanceUi.Review, txCode: String?) = scope.launch {
+    /** Wallet-initiated issuance from a credential issuer URL: fetch its metadata and list every configuration. */
+    fun startFromIssuer(url: String) {
+        issuance.value = IssuanceUi.Loading
+        screen.value = Screen.Issuance
+        scope.launch {
+            try {
+                val c = oid4vci()
+                val base = url.substringBefore('?').substringBefore('#')
+                val root = base.trimEnd('/')
+                // A bare host often serves its issuer under a path (Multipaz /issuer, walt.id /draft13, others /openid4vci).
+                val hostOnly = root.substringAfter("://").substringBefore('/') == root.substringAfter("://")
+                val candidates = (listOf(base, root) + if (hostOnly) ISSUER_PATHS.map { root + it } else emptyList()).distinct()
+                var last: Exception? = null
+                val session = candidates.firstNotNullOfOrNull { candidate ->
+                    try { c.startWalletInitiated(candidate, emptyList()) } catch (e: Exception) { last = e; null }
+                } ?: throw last ?: ProtocolException("invalid_issuer_metadata", "No issuer metadata at $url")
+                issuanceSession = session
+                val issuer = session.issuer
+                if (session.authServer.authorizationEndpoint == null) {
+                    throw ProtocolException("unsupported_grant", "此發行端只接受由它產生的領卡連結（預授權碼），請從發行端網頁取得 QR Code 或連結")
+                }
+                issuance.value = IssuanceUi.Review(
+                    session = session,
+                    configurations = issuer.configurations.values.sortedBy { it.display.pick(listOf("zh-TW", "en"))?.name ?: it.id },
+                    issuerName = issuer.display.pick(listOf("zh-TW", "en"))?.name ?: issuer.credentialIssuer,
+                    trust = issuer.trust,
+                    preAuthorized = false,
+                    unsupported = issuer.unsupported.toList(),
+                    walletInitiated = true,
+                )
+            } catch (e: Exception) {
+                issuance.value = IssuanceUi.Failed(describe(e))
+            }
+        }
+    }
+
+    /** User accepted the offer. [txCode] is the PIN from the issuer when the offer asks for one; [selected] are the chosen configuration ids. */
+    fun acceptOffer(review: IssuanceUi.Review, txCode: String?, selected: List<String> = review.configurations.map { it.id }) = scope.launch {
         val c = oid4vci()
         try {
+            if (selected.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種憑證")
+            review.session.select(selected)
             if (review.preAuthorized) {
                 issuance.value = IssuanceUi.Working("向發行端取得授權")
                 c.authorizePreAuthorized(review.session, txCode)
@@ -442,21 +490,28 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /** Issues every selected configuration; one failing configuration does not stop the others. */
     private suspend fun issueAll(c: Oid4vciClient, session: IssuanceSession) {
         val results = mutableListOf<IssuanceResult>()
+        val failures = mutableListOf<Pair<String, String>>()
         try {
             withContext(unlockProvider) {
-                for (config in session.offeredConfigurations) {
-                    issuance.value = IssuanceUi.Working("領取 ${config.display.pick(listOf("zh-TW", "en"))?.name ?: config.id}")
-                    var r = c.issue(session, config.id, keyRequest())
-                    var polls = 0
-                    while (r is IssuanceResult.Deferred && polls < 10) {
-                        kotlinx.coroutines.delay(r.intervalSeconds.coerceIn(1, 30) * 1000)
-                        r = c.pollDeferred(session, r)
-                        polls++
+                for (config in session.selectedConfigurations) {
+                    val name = config.display.pick(listOf("zh-TW", "en"))?.name ?: config.id
+                    issuance.value = IssuanceUi.Working("領取 $name")
+                    try {
+                        var r = c.issue(session, config.id, keyRequest())
+                        var polls = 0
+                        while (r is IssuanceResult.Deferred && polls < 10) {
+                            kotlinx.coroutines.delay(r.intervalSeconds.coerceIn(1, 30) * 1000)
+                            r = c.pollDeferred(session, r)
+                            polls++
+                        }
+                        if (r is IssuanceResult.Issued) r.notificationId?.let { runCatching { c.notify(session, it, "credential_accepted") } }
+                        results += r
+                    } catch (e: Exception) {
+                        failures += name to describe(e)
                     }
-                    if (r is IssuanceResult.Issued) r.notificationId?.let { runCatching { c.notify(session, it, "credential_accepted") } }
-                    results += r
                 }
             }
         } finally {
@@ -464,7 +519,8 @@ class WalletModel(val platform: PlatformServices) {
         }
         refreshDocuments()
         platform.registerDigitalCredentials(this)
-        issuance.value = IssuanceUi.Done(results)
+        issuance.value = if (results.isEmpty() && failures.size == 1) IssuanceUi.Failed(failures.single().second)
+        else IssuanceUi.Done(results, failures)
     }
 
     private fun keyRequest(): KeyRequest {
@@ -566,6 +622,7 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
 
