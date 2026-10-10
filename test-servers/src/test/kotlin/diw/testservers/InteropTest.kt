@@ -67,6 +67,8 @@ class InteropTest {
         }
     }
 
+    private fun dialects() = listOf(diw.wallet.core.compat.Draft13Dialect(http, false), diw.wallet.core.compat.TwdiwDialect(http, false))
+
     private fun report(name: String, ok: Boolean, detail: String) = println("INTEROP ${if (ok) "PASS" else "FAIL"} $name: $detail")
 
     @AfterTest
@@ -161,7 +163,7 @@ class InteropTest {
             setBody("""{"cardId":"sandbox_student_card_v1","personaId":"wang-xiaoming","wallet":"bonds"}""")
         }.bodyAsText()
         val offer = Json.parseToJsonElement(created).jsonObject["qr"]!!.jsonPrimitive.content
-        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore)
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore, dialects = dialects())
         val session = c.startFromOffer(offer)
         c.authorizePreAuthorized(session, null)
         val r = c.issue(session, "sandbox_student_card_v1", w.keys(1))
@@ -186,7 +188,7 @@ class InteropTest {
     private fun waltIssue(path: String, example: String, acceptedFailure: String? = null) = runBlocking<Unit> {
         assumeTrue(enabled)
         val w = Wallet(http).init()
-        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore)
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore, dialects = dialects())
         val session = c.startFromOffer(waltOffer(path, example))
         report("walt.id metadata", true, "configs=${session.issuer.configurations.size} unsupported=${session.issuer.unsupported.size} offered=${session.offeredConfigurations.map { it.id }}")
         c.authorizePreAuthorized(session, null)

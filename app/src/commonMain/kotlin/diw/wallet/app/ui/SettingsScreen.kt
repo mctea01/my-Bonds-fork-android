@@ -49,6 +49,14 @@ fun SettingsScreen(model: WalletModel) {
             model.updateSettings { it.copy(requireUserAuth = v) }
         }
         HorizontalDivider()
+        Text("相容模式", style = MaterialTheme.typography.titleMedium)
+        Toggle("舊版草案相容模式", "OpenID4VCI draft 13 與早期 SD-JWT VC（如 walt.id）。以此方式取得的憑證會標示為非標準", s.compatDraft13) { v ->
+            model.updateSettings { it.copy(compatDraft13 = v) }
+        }
+        Toggle("TWDIW 相容模式", "數位憑證皮夾的非標準格式（無 vct 的 W3C SD-JWT、jku 金鑰）。以此方式取得的憑證會標示為非標準", s.compatTwdiw) { v ->
+            model.updateSettings { it.copy(compatTwdiw = v) }
+        }
+        HorizontalDivider()
         Text("測試環境", style = MaterialTheme.typography.titleMedium)
         Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->
             model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }

@@ -1,3 +1,4 @@
+import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -103,8 +104,22 @@ compose.desktop {
     application {
         mainClass = "diw.wallet.app.desktop.MainKt"
         nativeDistributions {
+            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "DIW-MY-WALLET"
-            packageVersion = "0.1.0"
+            // CI passes -Pdiw.desktopVersion=0.1.<run> so each installer upgrades the previous one.
+            packageVersion = (findProperty("diw.desktopVersion") as String?) ?: "0.1.0"
+            description = "DIW MY WALLET"
+            vendor = "DIW MY WALLET"
+            modules("java.instrument", "java.management", "java.naming", "java.net.http", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            windows {
+                menuGroup = "DIW MY WALLET"
+                upgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"
+                perUserInstall = true
+                shortcut = true
+            }
+            linux {
+                shortcut = true
+            }
         }
     }
 }

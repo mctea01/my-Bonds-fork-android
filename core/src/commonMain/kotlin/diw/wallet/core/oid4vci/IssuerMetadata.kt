@@ -29,8 +29,10 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlin.time.Clock
 
 /** Display entry from metadata (Section 12.2.4). */
@@ -108,14 +110,6 @@ data class CredentialConfiguration(
     /** Credentials without cryptographic binding are issued keyless. */
     val keyBound: Boolean get() = bindingMethods.isNotEmpty() || proofTypes.isNotEmpty()
 
-    /**
-     * Type used to file an SD-JWT credential locally. OpenID4VCI 1.0 requires vct in the configuration; draft-era and
-     * W3C-style issuers (e.g. TWDIW) omit it, so fall back to the last W3C type, then the configuration id.
-     */
-    val storageType: String
-        get() = vct ?: docType ?: raw.obj("credential_definition")?.strList("type")
-            ?.lastOrNull { it != "VerifiableCredential" } ?: id
-
     companion object {
         fun parse(id: String, json: JsonObject): CredentialConfiguration {
             val format = CredentialFormatId.fromWire(json.str("format"))
@@ -135,7 +129,7 @@ data class CredentialConfiguration(
                 id = id,
                 format = format,
                 docType = json.str("doctype"),
-                vct = json.str("vct") ?: json.obj("credential_definition")?.str("vct"),
+                vct = json.str("vct"),
                 scope = json.str("scope"),
                 bindingMethods = json.strList("cryptographic_binding_methods_supported"),
                 signingAlgorithms = json.arr("credential_signing_alg_values_supported").orEmpty()
@@ -285,10 +279,12 @@ class MetadataFetcher(
 ) {
     suspend fun issuer(credentialIssuer: String): IssuerMetadata {
         checkEndpoint(credentialIssuer, "credential_issuer")
-        val resp = getFirst(
+        val lookup = getFirst(
             listOf(wellKnownUrl(credentialIssuer, "openid-credential-issuer"), wellKnownUrlAppended(credentialIssuer, "openid-credential-issuer")),
             accept = "application/jwt, application/json;q=0.9",
-        ) ?: throw ProtocolException("invalid_issuer_metadata", "Issuer metadata not found for $credentialIssuer")
+        )
+        val resp = lookup.response
+            ?: throw ProtocolException("invalid_issuer_metadata", "Issuer metadata not found for $credentialIssuer${lookup.failure}")
         val body = resp.bodyAsText()
         val isJwt = resp.contentType()?.match(ContentType("application", "jwt")) == true ||
             (!body.trimStart().startsWith("{") && body.count { it == '.' } == 2)
@@ -319,14 +315,16 @@ class MetadataFetcher(
 
     suspend fun authorizationServer(identifier: String): AuthServerMetadata {
         checkEndpoint(identifier, "authorization_server")
-        val resp = getFirst(
+        val lookup = getFirst(
             listOf(
                 wellKnownUrl(identifier, "oauth-authorization-server"),
                 wellKnownUrl(identifier, "openid-configuration"),
                 wellKnownUrlAppended(identifier, "openid-configuration"),
             ),
             accept = "application/json",
-        ) ?: throw ProtocolException("invalid_as_metadata", "Authorization server metadata not found for $identifier")
+        )
+        val resp = lookup.response
+            ?: throw ProtocolException("invalid_as_metadata", "Authorization server metadata not found for $identifier${lookup.failure}")
         val meta = AuthServerMetadata.parse(parseJsonObject(resp.bodyAsText(), "invalid_as_metadata"))
         if (meta.issuer.trimEnd('/') != identifier.trimEnd('/')) {
             throw ProtocolException("invalid_as_metadata", "AS issuer '${meta.issuer}' does not match '$identifier'")
@@ -358,14 +356,26 @@ class MetadataFetcher(
         return claims to trustRegistry.decide(TrustRole.ISSUER, chain)
     }
 
-    private suspend fun getFirst(urls: List<String>, accept: String): HttpResponse? {
+    private class Lookup(val response: HttpResponse?, val failure: String)
+
+    /** First successful response; otherwise the last failure, e.g. " (HTTP 404: No test found ...)", for the error message. */
+    private suspend fun getFirst(urls: List<String>, accept: String): Lookup {
+        var failure = ""
         for (u in urls.distinct()) {
-            val r = runCatching {
+            val r = try {
                 httpClient.get(u) { header(HttpHeaders.Accept, accept) }
-            }.getOrNull() ?: continue
-            if (r.status.isSuccess()) return r
+            } catch (e: Exception) {
+                failure = " (${e.message ?: e::class.simpleName})"
+                continue
+            }
+            if (r.status.isSuccess()) return Lookup(r, "")
+            val text = runCatching { r.bodyAsText() }.getOrDefault("")
+            val detail = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull()
+                ?.let { it.str("error_description") ?: it.str("error") ?: it.str("message") }
+                ?: text.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim()
+            failure = " (HTTP ${r.status.value}" + (if (detail.isNotEmpty()) ": ${detail.take(160)}" else "") + ")"
         }
-        return null
+        return Lookup(null, failure)
     }
 
     private fun checkEndpoint(url: String, name: String) {

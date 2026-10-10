@@ -83,8 +83,11 @@ class Oid4vciE2eTest {
         allowInsecureLoopback = true,
     )
 
-    private fun client(w: WalletFixture, provider: WalletProvider = PublicClientWalletProvider("diw-wallet-test")) =
-        Oid4vciClient(w.httpClient, w.trust, w.env, provider, w.documentStore)
+    private fun client(
+        w: WalletFixture,
+        provider: WalletProvider = PublicClientWalletProvider("diw-wallet-test"),
+        dialects: List<diw.wallet.core.compat.IssuanceDialect> = emptyList(),
+    ) = Oid4vciClient(w.httpClient, w.trust, w.env, provider, w.documentStore, dialects = dialects)
 
     private fun keys(w: WalletFixture, count: Int = 1) = KeyRequest(
         secureArea = w.secureArea,
@@ -243,9 +246,18 @@ class Oid4vciE2eTest {
     fun legacyW3cSdJwtWithoutVctAndJkuKey() = runBlocking<Unit> {
         start()
         val w = wallet()
-        val c = client(w)
+        // The standard client does not accept a TWDIW-style configuration; nothing of the dialect leaks into it.
+        val standard = client(w)
+        val s0 = standard.startFromOffer(offer(listOf("w3c_sd_jwt_legacy")))
+        standard.authorizePreAuthorized(s0, null)
+        val rejected = assertFailsWith<ProtocolException> { standard.issue(s0, "w3c_sd_jwt_legacy", keys(w)) }
+        assertEquals("invalid_issuer_metadata", rejected.code)
+
+        val c = client(w, dialects = listOf(
+            diw.wallet.core.compat.Draft13Dialect(w.httpClient, true),
+            diw.wallet.core.compat.TwdiwDialect(w.httpClient, true),
+        ))
         val session = c.startFromOffer(offer(listOf("w3c_sd_jwt_legacy")))
-        assertEquals("TestCard", session.issuer.configurations.getValue("w3c_sd_jwt_legacy").storageType)
         c.authorizePreAuthorized(session, null)
         val r = c.issue(session, "w3c_sd_jwt_legacy", keys(w)) as IssuanceResult.Issued
         val cred = r.credentials.single() as KeyBoundSdJwtVcCredential
@@ -256,6 +268,7 @@ class Oid4vciE2eTest {
         assertEquals("A123", claims["cardNumber"])
         assertEquals(TrustTier.T3, r.trust.tier)
         assertTrue(TrustLabel.UNKNOWN_ANCHOR in r.trust.labels)
+        assertTrue(TrustLabel.NON_STANDARD in r.trust.labels, "labels: ${r.trust.labels}")
     }
 
     @Test

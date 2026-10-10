@@ -66,6 +66,15 @@ fun main(args: Array<String>) {
                     true
                 }
             } else {
+                // Losing focus to the browser and getting it back without a redirect ends the login wait.
+                androidx.compose.runtime.DisposableEffect(m) {
+                    val listener = object : java.awt.event.WindowFocusListener {
+                        override fun windowLostFocus(e: java.awt.event.WindowEvent?) = m.onAppPaused()
+                        override fun windowGainedFocus(e: java.awt.event.WindowEvent?) = m.onAppResumed()
+                    }
+                    window.addWindowFocusListener(listener)
+                    onDispose { window.removeWindowFocusListener(listener) }
+                }
                 WalletApp(m)
             }
         }

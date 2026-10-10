@@ -59,10 +59,12 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         app.platform.promptModel = promptModel
+        app.model.onAppResumed()
     }
 
     override fun onPause() {
         if (app.platform.promptModel === promptModel) app.platform.promptModel = null
+        app.model.onAppPaused()
         super.onPause()
     }
 

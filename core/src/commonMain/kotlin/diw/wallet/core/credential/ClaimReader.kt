@@ -20,6 +20,8 @@ data class DisplayClaim(val label: String, val value: String)
  */
 object ClaimReader {
     private val technical = setOf("iss", "sub", "iat", "nbf", "exp", "jti", "cnf", "vct", "status", "_sd", "_sd_alg", "@context", "type", "credentialStatus")
+    /** W3C VC data model envelope fields under "vc"; the claims themselves are under vc.credentialSubject. */
+    private val w3cEnvelope = setOf("id", "issuer", "issuanceDate", "expirationDate", "validFrom", "validUntil", "credentialSchema", "proof")
 
     suspend fun read(credential: Credential, types: DocumentTypeRepository): List<DisplayClaim> {
         val multipaz = runCatching { credential.getClaims(types) }.getOrNull()
@@ -33,9 +35,8 @@ object ClaimReader {
         val parts = compact.split('~')
         val payload = DiwJson.parseToJsonElement(parts[0].split('.')[1].fromBase64Url().decodeToString()) as JsonObject
         val out = mutableListOf<DisplayClaim>()
-        // W3C-style tokens keep the subject claims under vc.credentialSubject.
-        val subject = ((payload["vc"] as? JsonObject)?.get("credentialSubject") as? JsonObject)
-        plain(subject ?: payload, "", out)
+        // Plain claims, nested objects flattened with dotted names; selectively disclosed ones come from disclosures.
+        plain(payload, "", out)
         for (d in parts.drop(1).filter { it.isNotEmpty() && '.' !in it }) {
             val arr = runCatching { DiwJson.parseToJsonElement(d.fromBase64Url().decodeToString()) as JsonArray }.getOrNull() ?: continue
             if (arr.size == 3) {
@@ -48,10 +49,10 @@ object ClaimReader {
 
     private fun plain(o: JsonObject, prefix: String, out: MutableList<DisplayClaim>) {
         for ((k, v) in o) {
-            if (k in technical || k == "vc") continue
+            if (k in technical || (prefix == "vc." && k in w3cEnvelope)) continue
             when (v) {
                 is JsonObject -> plain(v, "$prefix$k.", out)
-                else -> out += DisplayClaim(prefix + k, render(v))
+                else -> out += DisplayClaim((prefix + k).removePrefix("vc.credentialSubject."), render(v))
             }
         }
     }

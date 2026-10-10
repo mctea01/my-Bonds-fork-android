@@ -1,16 +1,15 @@
 package diw.wallet.core.oid4vci
 
+import diw.wallet.core.compat.DialectSet
+import diw.wallet.core.compat.SdJwtKeyContext
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
-import diw.wallet.core.did.DidResolver
-import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
-import diw.wallet.core.util.hostOf
 import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.parseJsonObject
@@ -60,6 +59,7 @@ class CredentialInspector(
         expectedVct: String?,
         expectedIssuer: String,
         holderKey: EcPublicKey?,
+        compat: DialectSet? = null,
     ): InspectedCredential {
         val sdJwt = try {
             SdJwt.fromCompactSerialization(compact)
@@ -67,18 +67,25 @@ class CredentialInspector(
             throw ProtocolException("invalid_credential", "Malformed SD-JWT VC", e)
         }
         val chain = sdJwt.x5c?.certificates
-        val header = Jws.parse(compact.substringBefore('~')).header
-        val jku = header.str("jku")
-        val issuerKey: EcPublicKey = when {
-            chain != null -> {
-                X509CertChainCheck.validate(chain)
-                chain.first().ecPublicKey
+        val jws = Jws.parse(compact.substringBefore('~'))
+        val header = jws.header
+        // SD-JWT VC key resolution: x5c, else JWT VC issuer metadata for an https iss. Anything else (DID, jku) is
+        // only possible through an enabled dialect.
+        var dialectReason: String? = null
+        val issuerKey: EcPublicKey = if (chain != null) {
+            X509CertChainCheck.validate(chain)
+            chain.first().ecPublicKey
+        } else {
+            val iss = sdJwt.issuer ?: expectedIssuer
+            val standard = if (isAcceptableEndpoint(iss, allowInsecureLoopback)) {
+                runCatching { resolveJwtVcIssuerKey(iss, header.str("kid")) }
+            } else Result.failure(ProtocolException("invalid_credential", "SD-JWT VC without x5c and with non-https iss '$iss'"))
+            standard.getOrNull() ?: run {
+                val found = compat?.firstSuspend { it.sdJwtIssuerKey(SdJwtKeyContext(header, jws.payload, expectedIssuer)) }
+                    ?: throw standard.exceptionOrNull()!!
+                dialectReason = found.reason
+                found.key
             }
-            // W3C-style issuers (e.g. TWDIW) publish keys at jku and use a DID as iss.
-            jku != null -> resolveJkuKey(jku, header.str("kid"), expectedIssuer)
-            // TWDIW-style issuers sign with a DID (did:key embeds the key) and send neither x5c nor jku.
-            sdJwt.issuer?.startsWith("did:") == true -> resolveDidKey(sdJwt.issuer!!, header.str("kid"))
-            else -> resolveJwtVcIssuerKey(sdJwt.issuer ?: expectedIssuer, header.str("kid"))
         }
         try {
             sdJwt.verify(issuerKey)
@@ -95,14 +102,8 @@ class CredentialInspector(
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Credential already expired") }
         val trust = if (chain != null) trustRegistry.decide(TrustRole.ISSUER, chain) else TrustDecision(
             tier = TrustTier.T3, environment = null, official = false, anchorName = null,
-            labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
-            reasons = listOf(
-                when {
-                    jku != null -> "Issuer key comes from jku on the credential issuer's domain, not from an X.509 anchor"
-                    sdJwt.issuer?.startsWith("did:") == true -> "Issuer key comes from the issuer DID ${sdJwt.issuer}, not from an X.509 anchor"
-                    else -> "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"
-                }
-            ),
+            labels = if (dialectReason != null) setOf(TrustLabel.UNKNOWN_ANCHOR, TrustLabel.NON_STANDARD) else setOf(TrustLabel.UNKNOWN_ANCHOR),
+            reasons = listOf(dialectReason ?: "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"),
         )
         return InspectedCredential(chain, trust, sdJwt.validFrom, sdJwt.validUntil, sdJwt.revocationStatus, sdJwt.kbKey)
     }
@@ -144,34 +145,6 @@ class CredentialInspector(
             }
         }
         return InspectedCredential(chain, trustRegistry.decide(TrustRole.ISSUER, chain), mso.validFrom, mso.validUntil, mso.revocationStatus, mso.deviceKey)
-    }
-
-    /**
-     * Key lookup through the JWS jku header. The credential arrived over TLS from [credentialIssuer], so a key set on
-     * the same host, or a sibling host under the same organisation domain (at least three labels, e.g. wallet.gov.tw),
-     * is accepted; anything else could let a third party vouch for the credential.
-     */
-    private suspend fun resolveJkuKey(jku: String, kid: String?, credentialIssuer: String): EcPublicKey {
-        if (!isAcceptableEndpoint(jku, allowInsecureLoopback)) throw ProtocolException("invalid_credential", "jku must be https")
-        val keyHost = hostOf(jku).lowercase()
-        val issuerHost = hostOf(credentialIssuer).lowercase()
-        val parent = issuerHost.substringAfter('.', "")
-        val sameOrg = keyHost == issuerHost || (parent.count { it == '.' } >= 2 && keyHost.substringAfter('.', "") == parent)
-        if (!sameOrg) throw ProtocolException("invalid_credential", "jku host $keyHost is not on the credential issuer's domain")
-        val resp = httpClient.get(jku)
-        if (!resp.status.isSuccess()) throw ProtocolException("invalid_credential", "jku key set not available (${resp.status.value})")
-        val keys = parseJsonObject(resp.bodyAsText(), "invalid_credential").arr("keys").orEmpty().filterIsInstance<JsonObject>()
-        val jwk = (if (kid != null) keys.firstOrNull { it.str("kid") == kid } else keys.singleOrNull())
-            ?: keys.singleOrNull() ?: throw ProtocolException("invalid_credential", "No key in jku matches kid '$kid'")
-        return EcPublicKey.fromJwk(jwk)
-    }
-
-    /** Issuer key from a DID; for did:key and did:jwk the single method is used whatever the kid fragment says. */
-    private suspend fun resolveDidKey(did: String, kid: String?): EcPublicKey {
-        val doc = DidResolver(httpClient, allowInsecureLoopback).resolve(did)
-        val method = doc.methods.singleOrNull() ?: kid?.let { doc.find(it) }
-            ?: throw ProtocolException("invalid_credential", "No verification method in $did matches kid '$kid'")
-        return (method.key as? VerificationKey.Ec)?.key ?: throw ProtocolException("invalid_credential", "Issuer DID key is not an EC key")
     }
 
     /** SD-JWT VC issuer metadata (/.well-known/jwt-vc-issuer) key lookup. */

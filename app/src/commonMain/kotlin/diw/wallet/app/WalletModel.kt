@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.core.compat.Draft13Dialect
+import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
@@ -68,6 +70,10 @@ data class WalletSettings(
     val clientId: String = "diw-wallet",
     val requireUserAuth: Boolean = true,
     val instanceKeyAlias: String? = null,
+    /** OpenID4VCI draft 13 and earlier SD-JWT VC drafts (walt.id and many deployed issuers). */
+    val compatDraft13: Boolean = true,
+    /** TWDIW profile: W3C credentials in SD-JWT without vct, issuer keys via jku. Non-standard, off by default. */
+    val compatTwdiw: Boolean = false,
 )
 
 sealed class Screen {
@@ -357,7 +363,14 @@ class WalletModel(val platform: PlatformServices) {
 
     // ---------------------------------------------------------------- issuance
 
-    private fun oid4vci(): Oid4vciClient = Oid4vciClient(http, trust, environmentPolicy, walletProvider(), documentStore)
+    private fun oid4vci(): Oid4vciClient = Oid4vciClient(
+        http, trust, environmentPolicy, walletProvider(), documentStore,
+        dialects = buildList {
+            val loopback = environmentPolicy.insecureLoopbackAllowed
+            if (settings.compatDraft13) add(Draft13Dialect(http, loopback))
+            if (settings.compatTwdiw) add(TwdiwDialect(http, loopback))
+        },
+    )
 
     private var cachedProvider: WalletProvider? = null
 
@@ -473,6 +486,35 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: Exception) {
             issuance.value = IssuanceUi.Failed(describe(e))
         }
+    }
+
+    private var leftForBrowser = false
+
+    /** The app went to the background (on Android: the login page opened in a browser tab). */
+    fun onAppPaused() {
+        if (issuance.value is IssuanceUi.WaitingForBrowser) leftForBrowser = true
+    }
+
+    /**
+     * The app came back. If the browser was closed, or the issuer showed an error page, no redirect arrives;
+     * after a short grace period for a redirect that is on its way, the wait ends instead of spinning forever.
+     */
+    fun onAppResumed() {
+        if (!leftForBrowser) return
+        leftForBrowser = false
+        val waiting = issuance.value as? IssuanceUi.WaitingForBrowser ?: return
+        scope.launch {
+            kotlinx.coroutines.delay(2500)
+            if (issuance.value === waiting) {
+                issuance.value = IssuanceUi.Failed("登入或授權沒有完成：瀏覽器已關閉，或發行端在網頁上回報錯誤。可以重新掃描或輸入領卡連結再試一次。")
+            }
+        }
+    }
+
+    /** User gave up waiting for the browser. */
+    fun cancelBrowserWait() {
+        if (issuance.value is IssuanceUi.WaitingForBrowser) issuance.value = IssuanceUi.Failed("已取消登入")
+        issuanceSession = null
     }
 
     private fun completeAuthorization(redirect: String) {
@@ -617,8 +659,20 @@ class WalletModel(val platform: PlatformServices) {
 
     fun describe(e: Throwable): String = when (e) {
         is diw.wallet.core.oid4vp.RequestValidationException -> "請求驗證失敗（${e.code}）：${e.message}"
-        is ProtocolException -> "協定錯誤（${e.code}）：${e.message}"
+        is ProtocolException -> "協定錯誤（${e.code}）：${e.message}" + compatHint(e)
         else -> e.message ?: e::class.simpleName ?: "未知錯誤"
+    }
+
+    /** Points at the setting that would help when a failure is one a compatibility mode handles. */
+    private fun compatHint(e: ProtocolException): String {
+        val m = e.message ?: return ""
+        return when {
+            !settings.compatTwdiw && ("without vct" in m || "non-https iss" in m) -> "\n此發行端使用非標準格式（如 TWDIW），可在設定開啟「TWDIW 相容模式」後再試。"
+            !settings.compatDraft13 && ("non-https iss" in m || e.code == "invalid_proof" || e.code == "invalid_credential_response") ->
+                "\n此發行端可能採用 OpenID4VCI 舊版草案，可在設定開啟「舊版草案相容模式」後再試。"
+            "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
+            else -> ""
+        }
     }
 
     companion object {

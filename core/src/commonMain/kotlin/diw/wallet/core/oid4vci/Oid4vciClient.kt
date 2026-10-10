@@ -1,5 +1,7 @@
 package diw.wallet.core.oid4vci
 
+import diw.wallet.core.compat.DialectSet
+import diw.wallet.core.compat.IssuanceDialect
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.trust.TrustDecision
@@ -82,8 +84,8 @@ data class AccessToken(
     val refreshToken: String?,
     /** credential_configuration_id to credential_identifiers from authorization_details. */
     val credentialIdentifiers: Map<String, List<String>>,
-    /** c_nonce from the token response (draft-era issuers without a nonce endpoint). */
-    val cNonce: String? = null,
+    /** The token response as received, for dialects that read fields outside OpenID4VCI 1.0. */
+    val raw: JsonObject = JsonObject(emptyMap()),
 ) {
     val authorizationHeader: String get() = if (type.equals("DPoP", ignoreCase = true)) "DPoP $value" else "Bearer $value"
 }
@@ -155,6 +157,8 @@ class Oid4vciClient(
     private val documentStore: DocumentStore,
     private val locales: List<String> = listOf("zh-TW", "en"),
     private val preferEncryption: Boolean = true,
+    /** Optional non-standard or pre-1.0 behaviour (see [IssuanceDialect]); empty means OpenID4VCI 1.0 only. */
+    private val dialects: List<IssuanceDialect> = emptyList(),
 ) {
     private val loopback = environment.insecureLoopbackAllowed
     private val metadata = MetadataFetcher(httpClient, trustRegistry, loopback)
@@ -240,7 +244,10 @@ class Oid4vciClient(
                 }
             }
         }
+        // OpenID4VCI 1.0 allows scope or authorization_details. Some issuers (EUDI reference issuer) fail when both
+        // are sent, so scope alone is used when every requested configuration has one.
         val scopes = ids.mapNotNull { session.issuer.configurations[it]?.scope }.distinct()
+        val useScope = ids.all { session.issuer.configurations[it]?.scope != null }
         val params = Parameters.build {
             append("response_type", "code")
             append("client_id", walletProvider.clientId)
@@ -248,8 +255,7 @@ class Oid4vciClient(
             append("state", state)
             append("code_challenge", challenge)
             append("code_challenge_method", "S256")
-            append("authorization_details", details.toString())
-            if (scopes.isNotEmpty()) append("scope", scopes.joinToString(" "))
+            if (useScope) append("scope", scopes.joinToString(" ")) else append("authorization_details", details.toString())
             session.issuerState?.let { append("issuer_state", it) }
         }
         val par = asMeta.parEndpoint
@@ -329,7 +335,7 @@ class Oid4vciClient(
             expiresAt = json.long("expires_in")?.let { Clock.System.now().epochSeconds + it },
             refreshToken = json.str("refresh_token"),
             credentialIdentifiers = ids,
-            cNonce = json.str("c_nonce"),
+            raw = json,
         )
     }
 
@@ -394,34 +400,39 @@ class Oid4vciClient(
         document: Document,
         keys: KeyRequest,
     ): IssuanceResult {
+        val compat = DialectSet(dialects)
         val count = keys.count.coerceIn(1, session.issuer.batchSize)
-        var nonce = fetchNonce(session)
-        var pending = if (config.keyBound) createPendingCredentials(document, config, keys, nonce, count) else
-            listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, config.storageType))
+        var nonce = fetchNonce(session, token, compat)
+        var pending = if (config.keyBound) createPendingCredentials(document, config, keys, nonce, count, compat) else
+            listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, sdJwtType(config, compat)))
         var attempt = 0
-        var draft13 = false
+        // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
+        var alternative: Triple<IssuanceDialect, HttpStatusCode, JsonObject>? = null
         while (true) {
             val proofs = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
-            val identifiers = token.credentialIdentifiers[config.id]
-            val body = if (draft13) draft13Request(config, identifiers?.firstOrNull(), proofs) else buildJsonObject {
-                if (!identifiers.isNullOrEmpty()) put("credential_identifier", identifiers.first())
-                else put("credential_configuration_id", config.id)
-                proofs?.let { put("proofs", it) }
-            }
+            val identifier = token.credentialIdentifiers[config.id]?.firstOrNull()
+            val body = alternative?.let { (d, st, err) -> d.alternativeCredentialRequest(session.issuer, config, identifier, proofs, st, err) }
+                ?: buildJsonObject {
+                    if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
+                    proofs?.let { put("proofs", it) }
+                }
             val (status, json) = credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
-            // Draft-era issuers (OpenID4VCI draft 13, e.g. walt.id) reject the 1.0 request shape; retry once in theirs.
-            if (status == HttpStatusCode.BadRequest && !draft13 && json.str("error") != "invalid_nonce" && session.issuer.nonceEndpoint == null) {
-                draft13 = true
-                json.str("c_nonce")?.let { nonce = it }
-                continue
+            if (!status.isSuccess() && alternative == null && json.str("error") != "invalid_nonce") {
+                val d = dialects.firstOrNull { it.alternativeCredentialRequest(session.issuer, config, identifier, proofs, status, json) != null }
+                if (d != null) {
+                    compat.used += d.id
+                    alternative = Triple(d, status, json)
+                    compat.first { it.nonceFromError(json) }?.let { nonce = it }
+                    continue
+                }
             }
             if (status == HttpStatusCode.BadRequest && json.str("error") == "invalid_nonce" && attempt == 0 && config.keyBound) {
                 attempt++
-                nonce = json.str("c_nonce") ?: fetchNonce(session)
+                nonce = compat.first { it.nonceFromError(json) } ?: fetchNonce(session, token, compat)
                 // Key attestation challenges are bound at key creation, so attested keys must be recreated.
                 if (config.proofTypes.values.any { it.keyAttestationsRequired != null } || "jwt" !in config.proofTypes) {
                     pending.forEach { document.deleteCredential(it.identifier) }
-                    pending = createPendingCredentials(document, config, keys, nonce, count)
+                    pending = createPendingCredentials(document, config, keys, nonce, count, compat)
                 }
                 continue
             }
@@ -432,7 +443,7 @@ class Oid4vciClient(
                 return IssuanceResult.Deferred(document, tx, json.long("interval") ?: 5, config.id)
             }
             if (!status.isSuccess()) throw oauthError(json, "Credential request failed (${status.value})")
-            return storeCredentials(session, config, document, pending, json)
+            return storeCredentials(session, config, document, pending, json, compat)
         }
     }
 
@@ -473,27 +484,17 @@ class Oid4vciClient(
         return resp.status.isSuccess()
     }
 
-    /** OpenID4VCI draft 13 credential request: format plus type parameters and a single proof. */
-    private fun draft13Request(config: CredentialConfiguration, identifier: String?, proofs: JsonObject?): JsonObject = buildJsonObject {
-        if (identifier != null) {
-            put("credential_identifier", identifier)
-        } else {
-            put("format", config.raw.str("format") ?: config.format.wire)
-            config.docType?.let { put("doctype", it) }
-            config.raw.str("vct")?.let { put("vct", it) }
-            config.raw.obj("credential_definition")?.let { put("credential_definition", it) }
-        }
-        val jwt = proofs?.arr("jwt")?.firstOrNull()
-        val attestation = proofs?.arr("attestation")?.firstOrNull()
-        if (jwt != null) {
-            putJsonObject("proof") { put("proof_type", "jwt"); put("jwt", jwt) }
-        } else if (attestation != null) {
-            putJsonObject("proof") { put("proof_type", "attestation"); put("attestation", attestation) }
-        }
-    }
+    /** Local type of an SD-JWT configuration: its vct, or what a dialect derives for issuers that omit it. */
+    private fun sdJwtType(config: CredentialConfiguration, compat: DialectSet): String =
+        config.vct ?: compat.first { it.storageType(config) }
+            ?: throw ProtocolException(
+                "invalid_issuer_metadata",
+                "SD-JWT VC configuration without vct" + if (compat.isEmpty) "" else " (compatibility modes tried: ${compat.ids.joinToString()})",
+            )
 
-    private suspend fun fetchNonce(session: IssuanceSession): String? {
-        val endpoint = session.issuer.nonceEndpoint ?: return session.accessToken?.cNonce
+    /** c_nonce from the nonce endpoint; issuers without one get no nonce unless a dialect knows where theirs is. */
+    private suspend fun fetchNonce(session: IssuanceSession, token: AccessToken, compat: DialectSet): String? {
+        val endpoint = session.issuer.nonceEndpoint ?: return compat.first { it.nonceWithoutEndpoint(token.raw) }
         val resp = httpClient.post(endpoint)
         session.dpop?.updateNonce(endpoint, resp.headers["DPoP-Nonce"])
         if (!resp.status.isSuccess()) throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}")
@@ -507,6 +508,7 @@ class Oid4vciClient(
         keys: KeyRequest,
         nonce: String?,
         count: Int,
+        compat: DialectSet,
     ): List<Credential> {
         val settings = keys.createKeySettings(ByteString((nonce ?: PlatformCrypto.randomBytes(16).toBase64Url()).encodeToByteArray()))
         return List(count) {
@@ -518,7 +520,7 @@ class Oid4vciClient(
                 )
                 else -> KeyBoundSdJwtVcCredential.create(
                     document, null, CredentialDomains.SD_JWT, keys.secureArea,
-                    config.storageType,
+                    sdJwtType(config, compat),
                     settings,
                 )
             }
@@ -692,10 +694,10 @@ class Oid4vciClient(
         document: Document,
         pending: List<Credential>,
         json: JsonObject,
+        compat: DialectSet = DialectSet(dialects),
     ): IssuanceResult.Issued {
-        // Draft-era issuers answer with a single "credential" string.
         val issued = (json["credentials"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.str("credential") }
-            ?: json.str("credential")?.let { listOf(it) }
+            ?: compat.first { it.credentialsFromResponse(json) }
             ?: throw ProtocolException("invalid_credential_response", "Response has no credentials array")
         if (issued.isEmpty()) throw ProtocolException("invalid_credential_response", "Empty credentials array")
         val byKey = mutableMapOf<EcPublicKey?, Credential>()
@@ -710,7 +712,7 @@ class Oid4vciClient(
                     val bytes = raw.fromBase64Url()
                     inspector.inspectMdoc(bytes, config.docType, null) to ByteString(bytes)
                 }
-                else -> inspector.inspectSdJwt(raw, config.vct, session.issuer.credentialIssuer, null) to raw.encodeToByteString()
+                else -> inspector.inspectSdJwt(raw, config.vct, session.issuer.credentialIssuer, null, compat) to raw.encodeToByteString()
             }
             val target = byKey.remove(inspected.boundKey)
                 ?: throw ProtocolException("invalid_credential", "Issued credential is bound to a key this wallet did not request")
@@ -722,6 +724,12 @@ class Oid4vciClient(
         byKey.values.forEach { document.deleteCredential(it.identifier) }
         val finalTrust = trust!!.let { t ->
             if (session.issuer.trust.labels.contains(TrustLabel.UNSIGNED_METADATA)) t.copy(labels = t.labels + TrustLabel.UNSIGNED_METADATA) else t
+        }.let { t ->
+            // Anything obtained outside OpenID4VCI 1.0 / SD-JWT VC is marked, whichever step needed the dialect.
+            if (compat.used.isEmpty()) t else t.copy(
+                labels = t.labels + TrustLabel.NON_STANDARD,
+                reasons = t.reasons + "Issued through compatibility mode: ${compat.used.joinToString()}",
+            )
         }
         val notificationId = json.str("notification_id")
         val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId)

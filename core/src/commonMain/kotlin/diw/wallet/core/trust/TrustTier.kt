@@ -23,6 +23,8 @@ enum class TrustLabel {
     TIME_NOT_VERIFIED,
     UNSIGNED_METADATA,
     KEY_NOT_ATTESTED,
+    /** Obtained through a compatibility dialect (pre-1.0 draft or national profile), not the standard path. */
+    NON_STANDARD,
 }
 
 /**

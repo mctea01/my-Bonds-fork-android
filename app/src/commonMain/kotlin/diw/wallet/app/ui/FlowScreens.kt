@@ -72,7 +72,11 @@ fun IssuanceScreen(model: WalletModel) {
     when (val s = state) {
         IssuanceUi.Loading -> Busy("讀取發行端資訊")
         is IssuanceUi.Working -> Busy(s.message)
-        is IssuanceUi.WaitingForBrowser -> Busy("請在瀏覽器完成登入與授權，完成後會自動返回")
+        is IssuanceUi.WaitingForBrowser -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator()
+            Text("請在瀏覽器完成登入與授權，完成後會自動返回", Modifier.padding(vertical = 12.dp))
+            OutlinedButton(onClick = { model.cancelBrowserWait() }) { Text("取消") }
+        }
         is IssuanceUi.Failed -> Failure(model, s.message)
         is IssuanceUi.Review -> {
             var txCode by remember { mutableStateOf("") }
@@ -82,6 +86,9 @@ fun IssuanceScreen(model: WalletModel) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TrustCard("發行端", s.issuerName, s.trust, listOf(s.session.issuer.credentialIssuer))
                 Text(if (s.walletInitiated) "此發行端提供下列憑證，請選擇要加入的項目：" else "將加入下列憑證：", style = MaterialTheme.typography.titleSmall)
+                if (s.walletInitiated) {
+                    Text("部分發行端（如 walt.id）只接受它自己產生的領卡連結；若登入頁顯示錯誤，請改用發行端網頁的 QR Code。", style = MaterialTheme.typography.bodySmall)
+                }
                 s.configurations.forEach { c ->
                     Card(Modifier.fillMaxWidth()) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
