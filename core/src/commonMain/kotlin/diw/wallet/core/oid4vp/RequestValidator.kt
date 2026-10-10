@@ -182,7 +182,7 @@ class RequestValidator(
                 )
             }
 
-            ClientIdPrefix.X509_SAN_DNS, ClientIdPrefix.X509_HASH -> authenticateX509(raw, jws, clientId, responseMode, responseUri)
+            ClientIdPrefix.X509_SAN_DNS, ClientIdPrefix.X509_HASH -> authenticateX509(raw, jws, clientId, responseMode, responseUri, warnings)
 
             ClientIdPrefix.DECENTRALIZED_IDENTIFIER -> {
                 if (!policy.allowDecentralizedIdentifier) throw RequestValidationException("invalid_client", "decentralized_identifier clients are disabled")
@@ -238,6 +238,7 @@ class RequestValidator(
         clientId: ClientId,
         responseMode: ResponseMode,
         responseUri: String?,
+        warnings: MutableList<String>,
     ): VerifierIdentityInfo {
         val req = jws ?: throw RequestValidationException("invalid_request", "${clientId.prefix.wire} requests must be signed")
         val chain: X509CertChain = req.x5c ?: throw RequestValidationException("invalid_request_object", "x5c header is required")
@@ -274,10 +275,12 @@ class RequestValidator(
                 throw RequestValidationException("invalid_request", "response_uri host must match the x509_san_dns client identifier")
             }
         }
-        // For x509_hash without an anchor, require the response_uri host to be one of the certificate's DNS names.
+        // x509_hash puts no constraint on response_uri (OpenID4VP 1.0). Without an anchor the certificate is self-asserted,
+        // so a host check would not add protection; the consent screen shows the destination and this warning instead.
         if (clientId.prefix == ClientIdPrefix.X509_HASH && decision.environment == null && responseUri != null) {
-            if (san.dnsNames.none { dnsMatches(it, hostOf(responseUri)) }) {
-                throw RequestValidationException("invalid_request", "response_uri host is not covered by the unanchored signing certificate")
+            val host = hostOf(responseUri)
+            if (san.dnsNames.none { dnsMatches(it, host) } && san.uris.none { u -> runCatching { hostOf(u) }.getOrNull()?.let { dnsMatches(it, host) } == true }) {
+                warnings += "response_uri host $host is not among the names in the unanchored signing certificate"
             }
         }
         val display = leaf.organization() ?: leaf.displaySubject()

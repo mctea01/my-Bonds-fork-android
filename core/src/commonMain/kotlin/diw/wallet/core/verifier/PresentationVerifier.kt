@@ -11,6 +11,7 @@ import diw.wallet.core.trust.tierFor
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.long
 import diw.wallet.core.util.str
+import org.multipaz.util.fromBase64Url
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -74,6 +75,8 @@ data class PresentationVerification(
     val error: String? = null,
     val errorDescription: String? = null,
     val sessionChecks: List<Check> = emptyList(),
+    /** Non-standard but tolerated wallet behaviour (test Verifier only); does not change [passed]. */
+    val compatibilityNotes: List<String> = emptyList(),
 ) {
     val passed: Boolean
         get() = error == null && credentials.isNotEmpty() && credentials.all { it.passed } &&
@@ -91,21 +94,40 @@ class PresentationVerifier(
     private val revocationChecker: RevocationChecker?,
     private val zkSystemRepository: ZkSystemRepository? = null,
     private val maxKbAge: Duration = 5.minutes,
+    /**
+     * Accept a direct_post body sent as `response=<unsecured JWT (alg none)>` instead of form fields, as Multipaz 0.101
+     * wallets do. Off by default; the test Verifier enables it and reports a compatibility note.
+     */
+    private val acceptUnsecuredJwtResponse: Boolean = false,
 ) {
     /** Verifies a direct_post / direct_post.jwt body (form parameters). */
     suspend fun verifyDirectPost(form: Map<String, String>, session: VerifierSession): PresentationVerification {
+        val notes = mutableListOf<String>()
         val payload: JsonObject = if (session.responseMode == "direct_post.jwt") {
             val jwe = form["response"] ?: return PresentationVerification(emptyList(), "invalid_response", "missing response parameter")
             decrypt(jwe, session) ?: return PresentationVerification(emptyList(), "invalid_response", "response decryption failed")
+        } else if (form.containsKey("response")) {
+            val unsecured = (if (acceptUnsecuredJwtResponse) unsecuredJwtPayload(form.getValue("response")) else null)
+                ?: return PresentationVerification(emptyList(), "invalid_response", "unexpected encrypted response")
+            notes += "direct_post sent as an unsecured JWT (alg none) in 'response' instead of form fields (OpenID4VP 1.0 section 8.2)"
+            unsecured
         } else {
-            if (form.containsKey("response")) return PresentationVerification(emptyList(), "invalid_response", "unexpected encrypted response")
             JsonObject(form.mapValues { (k, v) ->
                 if (k == "vp_token") DiwJson.parseToJsonElement(v) else JsonPrimitive(v)
             })
         }
         val transcript = sessionTranscript(session.clientId, session.nonce, session.encryptionKey, session.responseUri)
-        return verifyPayload(payload, session, transcript, expectedAud = session.clientId)
+        return verifyPayload(payload, session, transcript, expectedAud = session.clientId).copy(compatibilityNotes = notes)
     }
+
+    /** Payload of a `header.payload.` JWT whose header is exactly alg none; null for anything else. */
+    private fun unsecuredJwtPayload(jwt: String): JsonObject? = runCatching {
+        val parts = jwt.split('.')
+        if (parts.size != 3 || parts[2].isNotEmpty()) return null
+        val header = DiwJson.parseToJsonElement(parts[0].fromBase64Url().decodeToString()) as JsonObject
+        if (header.str("alg") != "none") return null
+        DiwJson.parseToJsonElement(parts[1].fromBase64Url().decodeToString()) as JsonObject
+    }.getOrNull()
 
     /** Verifies a DC API response data object. */
     suspend fun verifyDcApi(data: JsonObject, session: VerifierSession, origin: String): PresentationVerification {

@@ -221,6 +221,31 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /**
+     * Imports the EUDI reference implementation CAs (they sign the EUDI test issuers' credentials and the
+     * verifier.eudiw.dev request certificates) as TEST anchors.
+     */
+    fun importEudiTestAnchors() = scope.launch {
+        if (!settings.testEnvironment) {
+            message.value = "請先開啟測試環境"
+            return@launch
+        }
+        try {
+            var added = 0
+            for (name in listOf("pidissuerca02_eu", "pidissuerca02_ut")) {
+                val resp = http.get("$EUDI_ANCHORS/$name.pem")
+                if (!resp.status.isSuccess()) throw ProtocolException("anchor_fetch", "$name HTTP ${resp.status.value}")
+                val cert = X509Cert.fromPem(resp.bodyAsText())
+                for (role in listOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST)) {
+                    if (trust.addAnchor(role, TrustEnvironment.TEST, cert, "EUDI 參考實作 $name", official = false, source = EUDI_ANCHORS)) added++
+                }
+            }
+            message.value = "已匯入 $added 個 EUDI 測試信任錨點（僅測試環境有效）"
+        } catch (e: Exception) {
+            message.value = "匯入失敗：${e.message}"
+        }
+    }
+
     // ---------------------------------------------------------------- PIN
 
     suspend fun requestPin(reason: String): String? {
@@ -493,6 +518,8 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
+
         fun tierTitle(t: TrustTier): String = when (t) {
             TrustTier.T1 -> "T1 官方已驗證"
             TrustTier.T2 -> "T2 已驗證身分"

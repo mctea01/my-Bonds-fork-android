@@ -205,6 +205,7 @@ class VerifierService(
             put("test_environment", r.testEnvironmentOnly)
             r.error?.let { put("error", it) }
             r.errorDescription?.let { put("error_description", it) }
+            put("compatibility_notes", buildJsonArray { r.compatibilityNotes.forEach { add(JsonPrimitive(it)) } })
             put("session_checks", buildJsonArray {
                 r.sessionChecks.forEach { c -> add(buildJsonObject { put("name", c.name); put("status", c.status.name); put("detail", c.detail) }) }
             })

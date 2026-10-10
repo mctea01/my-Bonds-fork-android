@@ -31,7 +31,7 @@ class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOp
         addDocumentType(EUPersonalID.getDocumentType())
     }
     val httpClient = HttpClient(Java)
-    val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient))
+    val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient), acceptUnsecuredJwtResponse = true)
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
     val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
     val walletProvider = WalletProviderService(baseUrl, pki)
