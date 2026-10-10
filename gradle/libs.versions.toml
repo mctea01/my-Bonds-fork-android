@@ -1,0 +1,29 @@
+[versions]
+multipaz = "0.101.0"
+ktor = "3.3.3"
+coroutines = "1.10.2"
+serialization = "1.9.0"
+kotlinxIo = "0.8.2"
+bouncycastle = "1.85"
+
+[libraries]
+multipaz = { module = "org.multipaz:multipaz", version.ref = "multipaz" }
+multipaz-doctypes = { module = "org.multipaz:multipaz-doctypes", version.ref = "multipaz" }
+multipaz-compose = { module = "org.multipaz:multipaz-compose", version.ref = "multipaz" }
+multipaz-dcapi = { module = "org.multipaz:multipaz-dcapi", version.ref = "multipaz" }
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-java = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.51.2.0" }
