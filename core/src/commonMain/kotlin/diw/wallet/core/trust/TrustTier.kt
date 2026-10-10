@@ -21,6 +21,8 @@ enum class TrustLabel {
     HAS_TRANSACTION_DATA,
     SOFTWARE_KEY,
     TIME_NOT_VERIFIED,
+    UNSIGNED_METADATA,
+    KEY_NOT_ATTESTED,
 }
 
 /**

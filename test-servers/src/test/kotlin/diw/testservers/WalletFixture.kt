@@ -44,6 +44,7 @@ import org.multipaz.storage.ephemeral.EphemeralStorage
 class WalletFixture(
     val trustVerifierRoot: Boolean = true,
     val policy: PresentationPolicy = PresentationPolicy(),
+    val trustIssuer: Boolean = true,
 ) {
     val storage = EphemeralStorage()
     val env = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true)
@@ -70,7 +71,7 @@ class WalletFixture(
         if (trustVerifierRoot) {
             trust.addAnchor(TrustRole.VERIFIER, TrustEnvironment.TEST, pki.readerRootCert, "DIW TEST Verifier Root", false, "test")
         }
-        trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
+        if (trustIssuer) trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
         holder = Oid4vpHolder(httpClient, trust, source, env, policy)
         return this
     }

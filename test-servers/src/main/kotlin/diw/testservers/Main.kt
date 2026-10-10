@@ -22,8 +22,8 @@ import org.multipaz.revocation.CachingRevocationChecker
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import java.io.File
 
-/** All test servers in one process: verifier (and later issuer, wallet provider, status lists). */
-class TestServers(val baseUrl: String, val pki: TestPki) {
+/** All test servers in one process: verifier, issuer (with status lists) and wallet provider. */
+class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOptions = IssuerOptions()) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true))
     val documentTypes = DocumentTypeRepository().apply {
@@ -33,9 +33,12 @@ class TestServers(val baseUrl: String, val pki: TestPki) {
     val httpClient = HttpClient(Java)
     val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient))
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
+    val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
+    val walletProvider = WalletProviderService(baseUrl, pki)
 
     suspend fun init(): TestServers {
         trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", official = false, source = "diw-test-servers")
+        trust.addAnchor(TrustRole.WALLET_PROVIDER, TrustEnvironment.TEST, pki.walletProviderRootCert, "DIW TEST Wallet Provider", official = false, source = "diw-test-servers")
         return this
     }
 
@@ -54,6 +57,8 @@ class TestServers(val baseUrl: String, val pki: TestPki) {
                     else call.respondText(pem)
                 }
                 verifierRoutes(verifier)
+                issuerRoutes(issuer)
+                walletProviderRoutes(walletProvider)
             }
         }.start(wait = wait)
 }
