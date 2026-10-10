@@ -1,0 +1,115 @@
+package diw.wallet.app.android
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.fragment.app.FragmentActivity
+import diw.wallet.app.ui.WalletApp
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import org.multipaz.compose.camera.CameraCaptureResolution
+import org.multipaz.compose.camera.CameraSelection
+import org.multipaz.compose.permissions.rememberCameraPermissionState
+import org.multipaz.compose.prompt.PromptDialogs
+import org.multipaz.compose.qrcode.QrCodeScanner
+import org.multipaz.prompt.AndroidPromptModel
+
+/** Main wallet screen; also receives credential offers, presentation requests and the OID4VCI redirect as deep links. */
+class MainActivity : FragmentActivity() {
+    private val app get() = application as WalletApplication
+    private val promptModel = AndroidPromptModel.Builder().apply { addCommonDialogs() }.build()
+    private val scanRequest = MutableStateFlow<CompletableDeferred<String?>?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        setContent {
+            PromptDialogs(promptModel)
+            WalletApp(app.model, scanQr = {
+                val d = CompletableDeferred<String?>()
+                scanRequest.value = d
+                try { d.await() } finally { scanRequest.value = null }
+            })
+            val scan by scanRequest.collectAsState()
+            scan?.let { QrScanDialog(it) }
+        }
+        handle(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        app.platform.promptModel = promptModel
+    }
+
+    override fun onPause() {
+        if (app.platform.promptModel === promptModel) app.platform.promptModel = null
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        promptModel.cancel()
+        super.onDestroy()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handle(intent)
+    }
+
+    private fun handle(intent: Intent?) {
+        val data = intent?.dataString ?: return
+        if (intent.action != Intent.ACTION_VIEW) return
+        app.model.scope.launch {
+            app.awaitReady()
+            app.model.handleUri(data)
+        }
+    }
+}
+
+@Composable
+private fun QrScanDialog(result: CompletableDeferred<String?>) {
+    val permission = rememberCameraPermissionState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(permission.isGranted) {
+        if (!permission.isGranted) permission.launchPermissionRequest()
+    }
+    Dialog(onDismissRequest = { result.complete(null) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (permission.isGranted) {
+                    QrCodeScanner(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        cameraSelection = CameraSelection.DEFAULT_BACK_CAMERA,
+                        captureResolution = CameraCaptureResolution.MEDIUM,
+                        showCameraPreview = true,
+                        onCodeScanned = { code -> if (code != null) result.complete(code) },
+                    )
+                } else {
+                    Text("需要相機權限才能掃描 QR Code")
+                    Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text("允許相機") }
+                }
+                OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) { Text("取消") }
+            }
+        }
+    }
+}

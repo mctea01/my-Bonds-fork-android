@@ -27,3 +27,8 @@ ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref 
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.51.2.0" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.10.1" }
+androidx-fragment = { module = "androidx.fragment:fragment-ktx", version = "1.8.9" }
+androidx-browser = { module = "androidx.browser:browser", version = "1.8.0" }
+androidx-credentials = { module = "androidx.credentials:credentials", version = "1.5.0" }
+androidx-credentials-registry = { module = "androidx.credentials.registry:registry-provider", version = "1.0.0-alpha03" }

@@ -14,4 +14,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "diw-wallet"
-include(":core", ":test-servers")
+include(":core", ":test-servers", ":app")
