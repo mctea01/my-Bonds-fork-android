@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
+import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
@@ -201,7 +202,7 @@ fun DocumentScreen(model: WalletModel, id: String) {
     LaunchedEffect(id) {
         val creds = doc.getCertifiedCredentials()
         count = creds.size
-        claims = creds.firstOrNull()?.getClaims(model.documentTypes)?.map { it.displayName to it.render() }.orEmpty()
+        claims = creds.firstOrNull()?.let { ClaimReader.read(it, model.documentTypes) }?.map { it.label to it.value }.orEmpty()
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }

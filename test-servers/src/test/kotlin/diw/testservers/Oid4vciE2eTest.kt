@@ -250,6 +250,10 @@ class Oid4vciE2eTest {
         val r = c.issue(session, "w3c_sd_jwt_legacy", keys(w)) as IssuanceResult.Issued
         val cred = r.credentials.single() as KeyBoundSdJwtVcCredential
         assertEquals("TestCard", cred.vct)
+        // Multipaz cannot read claims of SD-JWTs without x5c; the wallet decodes them itself.
+        val claims = diw.wallet.core.credential.ClaimReader.read(cred, w.documentTypes).associate { it.label to it.value }
+        assertEquals("林哲全", claims["name"])
+        assertEquals("A123", claims["cardNumber"])
         assertEquals(TrustTier.T3, r.trust.tier)
         assertTrue(TrustLabel.UNKNOWN_ANCHOR in r.trust.labels)
     }

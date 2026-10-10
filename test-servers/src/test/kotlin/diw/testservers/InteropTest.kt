@@ -167,6 +167,9 @@ class InteropTest {
         val r = c.issue(session, "sandbox_student_card_v1", w.keys(1))
         report("mashbean twdiw dialect", r is IssuanceResult.Issued, if (r is IssuanceResult.Issued) "tier=${r.trust.tier} labels=${r.trust.labels} reasons=${r.trust.reasons}" else r.toString())
         assertIs<IssuanceResult.Issued>(r)
+        val claims = diw.wallet.core.credential.ClaimReader.read(r.credentials.first(), org.multipaz.documenttype.DocumentTypeRepository())
+        report("mashbean claims", claims.isNotEmpty(), claims.joinToString { "${it.label}=${it.value}" })
+        assertTrue(claims.any { it.label == "student_id" })
     }
 
     @Test
