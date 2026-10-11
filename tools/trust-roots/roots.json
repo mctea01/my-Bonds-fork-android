@@ -1,0 +1,265 @@
+{
+  "comment": "Inputs of update_roots.py. CCADB roots of the listed owners are taken as they are in the Mozilla and Microsoft root programs; the service hosts are connected to and the roots of the chains they serve are added; SM2 roots are pinned (not in CCADB) and only checked; GPKI anchors are only checked.",
+  "ccadb": {
+    "mozilla": "https://ccadb.my.salesforce-sites.com/mozilla/IncludedCACertificateReportPEMCSV",
+    "microsoft": "https://ccadb.my.salesforce-sites.com/microsoft/IncludedCACertificateReportForMSFTCSVPEM",
+    "mainlandOwners": [
+      {
+        "match": "China Financial Certification Authority",
+        "owner": "中國金融認證中心 CFCA"
+      },
+      {
+        "match": "Global Digital Cybersecurity Authority",
+        "owner": "數安時代 GDCA"
+      },
+      {
+        "match": "Shanghai Electronic Certification Authority",
+        "owner": "上海數字證書認證中心 SHECA"
+      },
+      {
+        "match": "Beijing Certificate Authority",
+        "owner": "北京數字認證 BJCA"
+      },
+      {
+        "match": "iTrusChina",
+        "owner": "天威誠信 iTrusChina"
+      },
+      {
+        "match": "TrustAsia",
+        "owner": "亞洲誠信 TrustAsia"
+      }
+    ],
+    "notes": {
+      "GDCA TrustAUTH R5 ROOT": "電子發票的電子文件驗簽頒發者憑證"
+    },
+    "owners": {
+      "DigiCert": "DigiCert",
+      "TAIWAN-CA": "台灣網路認證 TWCA",
+      "Sectigo": "Sectigo（USERTrust）",
+      "GlobalSign": "GlobalSign"
+    }
+  },
+  "services": [
+    {
+      "host": "inv-veri.chinatax.gov.cn",
+      "name": "國家稅務總局全國增值稅發票查驗平台"
+    },
+    {
+      "host": "etax.chinatax.gov.cn",
+      "name": "國家稅務總局電子稅務局"
+    },
+    {
+      "host": "s.nia.gov.cn",
+      "name": "國家移民管理局"
+    },
+    {
+      "host": "einvoice.nat.gov.tw",
+      "name": "財政部電子發票整合服務平台"
+    },
+    {
+      "host": "www.immigration.gov.tw",
+      "name": "內政部移民署"
+    }
+  ],
+  "sm2": [
+    {
+      "file": "sm2/nrcac-rootca-sm2-2042.pem",
+      "name": "ROOTCA（國家 SM2 根，2042 年版）",
+      "owner": "國家根 CA（NRCAC）",
+      "purposes": "國家 SM2 根憑證；CFCA、GDCA、BJCA、ZJCA 等持牌 CA 的 SM2 中繼憑證由此簽發",
+      "url": "https://www.cfca.com.cn/file/gjzsl-sm2.rar",
+      "page": "https://www.cfca.com.cn/",
+      "fingerprintPublished": false,
+      "sha256": "9C28D3847414BFFF1A5749E7E2381146F82842083E8C592E16A612D04A5BA8CD"
+    },
+    {
+      "file": "sm2/nrcac-rootca-sm2-2054.pem",
+      "name": "ROOTCA（國家 SM2 根，2054 年版）",
+      "owner": "國家根 CA（NRCAC）",
+      "purposes": "同一把金鑰重新簽發的國家 SM2 根憑證",
+      "url": "https://www.sheca.com/repository/certs/fea9dde8fbae49c5b9da8044dd685c25",
+      "page": "https://www.sheca.com/repository",
+      "fingerprintPublished": true,
+      "sha256": "4218EB3B3379E9AEC4B9BD9A5E3EE9F0CBA98DF97E53D9186E18A3CFF56BDAF3"
+    },
+    {
+      "file": "sm2/cfca-cs-sm2-ca.pem",
+      "name": "CFCA CS SM2 CA",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "SM2 金融、網站與身分憑證",
+      "url": "https://www.cfca.com.cn/upload/%E7%94%9F%E4%BA%A7%E8%AF%81%E4%B9%A6%E9%93%BESM2%EF%BC%8820260108%EF%BC%89.zip",
+      "page": "https://www.cfca.com.cn/",
+      "fingerprintPublished": false,
+      "sha256": "5FC09A7DB2B91E876CBEA87060A9FEDF0291698150977853BC4B5AA654989FBD"
+    },
+    {
+      "file": "sm2/cfca-gt-sm2-ca.pem",
+      "name": "CFCA GT SM2 CA",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "SM2 憑證（GT 系列）",
+      "url": "https://www.cfca.com.cn/upload/%E7%94%9F%E4%BA%A7%E8%AF%81%E4%B9%A6%E9%93%BESM2%EF%BC%8820260108%EF%BC%89.zip",
+      "page": "https://www.cfca.com.cn/",
+      "fingerprintPublished": false,
+      "sha256": "79B0DADC671D18D7418A33E1FE669C1A058E6706D7EBD825142137ABB92AC1C0"
+    },
+    {
+      "file": "sm2/cfca-identity-sm2-ca.pem",
+      "name": "CFCA Identity SM2 CA",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "SM2 身分憑證",
+      "url": "https://www.cfca.com.cn/upload/%E7%94%9F%E4%BA%A7%E8%AF%81%E4%B9%A6%E9%93%BESM2%EF%BC%8820260108%EF%BC%89.zip",
+      "page": "https://www.cfca.com.cn/",
+      "fingerprintPublished": false,
+      "sha256": "BC6693903BD9D146D96BC4269C65A4E90068A8D530464712D2E3C027CB9D59BD"
+    },
+    {
+      "file": "sm2/cfca-ev-sm2-root.pem",
+      "name": "CFCA EV SM2 ROOT",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "SM2 EV、OV 網站與程式碼簽章",
+      "url": "https://www.cfca.com.cn/upload/%E7%94%9F%E4%BA%A7%E8%AF%81%E4%B9%A6%E9%93%BESM2%EF%BC%8820260108%EF%BC%89.zip",
+      "page": "https://www.cfca.com.cn/",
+      "fingerprintPublished": false,
+      "sha256": "036C2474CD165B76B353672043B25B6F26C63BA1DCE117EE34F60AA2B6453BBA"
+    },
+    {
+      "file": "sm2/gdca-gm-sm2-root.pem",
+      "name": "GDCA GM SM2 ROOT",
+      "owner": "數安時代 GDCA",
+      "purposes": "SM2 網站與文件簽章",
+      "url": "https://www.gdca.com.cn/customer_service/knowledge_universe/ca_cq/attachments/GDCA_GM_SM2_ROOT.p7b",
+      "page": "https://www.gdca.com.cn/customer_service/knowledge_universe/ca_cq/",
+      "fingerprintPublished": false,
+      "sha256": "B57F25B3469D18984D8B77C1534AF005B884D7BFF6D56E95D538815966908004"
+    },
+    {
+      "file": "sm2/sheca-uca-root-sm2.pem",
+      "name": "UCA Root SM2",
+      "owner": "上海數字證書認證中心 SHECA",
+      "purposes": "SM2 網站憑證",
+      "url": "https://www.sheca.com/repository/certs/uca-root-sm2.cer",
+      "page": "https://www.sheca.com/repository",
+      "fingerprintPublished": true,
+      "sha256": "307C77562B1532AE5FA6E63ED597CD54A0CBCC111F3598A7CCB2E19DD1351362"
+    },
+    {
+      "file": "sm2/sheca-uca-rapid-sm2-root.pem",
+      "name": "UCA Rapid SM2 Root",
+      "owner": "上海數字證書認證中心 SHECA",
+      "purposes": "SM2 網站憑證",
+      "url": "https://www.sheca.com/repository/certs/12592a8a6a84484cb36050d773889f7a",
+      "page": "https://www.sheca.com/repository",
+      "fingerprintPublished": true,
+      "sha256": "3A329593914E083EF2978EC0A41F185EF84AA1B42BE1762CB0CA1E8AEA368FD3"
+    },
+    {
+      "file": "sm2/sheca-unitrust-global-root-ca-r3.pem",
+      "name": "UniTrust Global Root CA R3",
+      "owner": "上海數字證書認證中心 SHECA",
+      "purposes": "SM2 網站與身分憑證",
+      "url": "https://www.sheca.com/repository/certs/rcar3.cer",
+      "page": "https://www.sheca.com/repository",
+      "fingerprintPublished": true,
+      "sha256": "6A19BCC7FAD2A5664F779BF143A72A2B079AC476E56FACBA48C352635CB4718F"
+    },
+    {
+      "file": "sm2/bjca-global-root-ca4.pem",
+      "name": "BJCA Global Root CA4",
+      "owner": "北京數字認證 BJCA",
+      "purposes": "SM2 網站憑證",
+      "url": "https://download.bjca.org.cn/download/help/ca/BJCA%20SM2%20SSL.zip",
+      "page": "https://www.bjca.cn/service/down_198.html",
+      "fingerprintPublished": false,
+      "sha256": "AA486528A63D0017D2C7077B567FC2875B4BB266783CD8A58B726F9AC297201F"
+    },
+    {
+      "file": "sm2/bjca-beijing-sm2-root-ca.pem",
+      "name": "BeiJing SM2 ROOT CA",
+      "owner": "北京數字認證 BJCA",
+      "purposes": "SM2 身分與政務憑證",
+      "url": "https://www.bjca.cn/u4d/SM2%E7%AE%97%E6%B3%95/files/UTrustCA4SM2.zip",
+      "page": "https://www.bjca.cn/service/down_198.html",
+      "fingerprintPublished": false,
+      "sha256": "5BDBB0BDC2744BC6102754B5B2B99D2D3A196858E20E494C489C02461ACA5A6B"
+    },
+    {
+      "file": "sm2/itrus-vtrus-sm2-root-ca-g1.pem",
+      "name": "vTrus SM2 Root CA G1",
+      "owner": "天威誠信 iTrusChina",
+      "purposes": "SM2 網站與身分憑證",
+      "url": "https://www.itrus.com.cn/upload/file/20230426/1682473424323050516.zip",
+      "page": "https://www.itrus.com.cn/repository",
+      "fingerprintPublished": false,
+      "sha256": "8ECEA3AEF6B76A2A96D22F558806224C7BDDA6C0F5163BBA91488DF0A1ECB4F8"
+    },
+    {
+      "file": "sm2/trustasia-sm2-root-ca.pem",
+      "name": "TrustAsia SM2 Root CA",
+      "owner": "亞洲誠信 TrustAsia",
+      "purposes": "SM2 網站、裝置與身分憑證",
+      "url": "https://res.trustasia.com/sm2resources/TrustAsiaSM2RootCA.cer",
+      "page": "https://www.trustasia.com/view-certificate-chain-cn",
+      "fingerprintPublished": false,
+      "sha256": "305AE8BFDE2FA59DBA25243E10C82237AA50516099F32579308E32C02CE10536"
+    },
+    {
+      "file": "sm2/trustasia-global-sm2-root-ca-g2.pem",
+      "name": "TrustAsia Global SM2 Root CA G2",
+      "owner": "亞洲誠信 TrustAsia",
+      "purposes": "SM2 網站憑證",
+      "url": "https://repository.trustasia.com/repo/certs/sm2-g2/TrustAsiaGlobalSM2RootCAG2.cer",
+      "page": "https://repository.trustasia.com/repo/cps/TrustAsia-SM2-CP-CPS_EN_V1.2.1.pdf",
+      "fingerprintPublished": false,
+      "sha256": "8C18BBBA690D957DE6A56AE919335F443431C1D58A8634B336EE239D381AC933"
+    },
+    {
+      "file": "sm2/wotrus-sm2-root.pem",
+      "name": "國密SM2根證書（WoTrus）",
+      "owner": "沃通電子認證 WoTrus",
+      "purposes": "SM2 網站、程式碼簽章與電子郵件",
+      "url": "https://www.wotrus.com/root/wotrus-sm2.crt",
+      "page": "https://www.wotrus.com/root/sm2root.htm",
+      "fingerprintPublished": true,
+      "sha256": "B2CFD068B4D7FCA12107AF4165CCDA613438DDBD90169F5F4B111CAFA221D435"
+    },
+    {
+      "file": "sm2/zjca-sm2-instanttrust-root-ca-g1.pem",
+      "name": "ZJCA SM2 InstantTrust Root CA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "SM2 網站與身分憑證",
+      "url": "https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
+      "page": "https://www.zjca.com.cn/web/webs/service/download.html",
+      "fingerprintPublished": false,
+      "sha256": "D726F197661F182DED707C3BF177288690693D61DCA6969F1E753F340F275150"
+    }
+  ],
+  "gpki": {
+    "builtIn": [
+      "core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInAnchors.kt",
+      "core/src/commonMain/kotlin/diw/wallet/core/profile/bonds/TwPkiAnchors.kt"
+    ],
+    "repositories": [
+      {
+        "ca": "GRCA",
+        "url": "https://grca.nat.gov.tw/repository/Certs/IssuedToThisCA.p7b"
+      },
+      {
+        "ca": "GCA",
+        "url": "https://gca.nat.gov.tw/repository/Certs/IssuedToThisCA.p7b"
+      },
+      {
+        "ca": "XCA",
+        "url": "https://xca.nat.gov.tw/repository/Certs/IssuedToThisCA.p7b"
+      },
+      {
+        "ca": "MOEACA",
+        "url": "https://moeaca.nat.gov.tw/repository/Certs/IssuedToThisCA.p7b"
+      },
+      {
+        "ca": "MOICA",
+        "url": "https://moica.nat.gov.tw/repository/Certs/IssuedToThisCA.p7b"
+      }
+    ]
+  },
+  "warnDays": 540
+}
