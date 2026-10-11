@@ -49,6 +49,8 @@ class RequestResolver(
         if (scheme !in supportedSchemes) {
             throw RequestValidationException("invalid_request", "Unsupported invocation scheme '$scheme'")
         }
+        @Suppress("NAME_SHADOWING")
+        val entryHint = entryHint ?: if (scheme == "openid-vc") "msvid" else null
         val q = queryParameters(uri)
         val outer = q.names().associateWith { q[it]!! }
         val clientId = outer["client_id"]
