@@ -21,6 +21,43 @@ env:
   APP_VERSION: 0.1.${{ github.run_number }}
 
 jobs:
+  # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
+  # and a broken build does not hide the test results. The nightly release still waits for both.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Core and protocol tests
+        run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
+      - name: App flow tests (desktop)
+        if: success() || failure()
+        run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
+      # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
+      - name: Test report
+        uses: mikepenz/action-junit-report@v5
+        if: always()
+        with:
+          report_paths: "**/build/test-results/**/*.xml"
+          include_passed: false
+          detailed_summary: true
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      - name: Upload test results and reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-logs
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/
+            build/reports/problems/
+          retention-days: 14
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -39,13 +76,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Core and protocol tests
-        run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
-      - name: App flow tests (desktop)
-        if: success() || failure()
-        run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
       - name: Signing keys
-        if: success() || failure()
         run: |
           # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
@@ -82,36 +113,16 @@ jobs:
           echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
           echo "Using the release keystore from secrets"
       - name: Android APKs (debug)
-        if: success() || failure()
         run: |
           ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
-      # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
       - name: Android APKs (release)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
-      - name: Test report
-        uses: mikepenz/action-junit-report@v5
-        if: always()
-        with:
-          report_paths: "**/build/test-results/**/*.xml"
-          include_passed: false
-          detailed_summary: true
-          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-      - name: Upload test results and reports
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: test-logs
-          path: |
-            **/build/test-results/**/*.xml
-            **/build/reports/tests/
-            build/reports/problems/
-          retention-days: 14
       - name: Upload APK
         uses: actions/upload-artifact@v4
         if: success()
@@ -171,9 +182,10 @@ jobs:
           retention-days: 14
 
   # Every push to main replaces the "nightly" pre-release; release files are downloaded as-is, not zipped.
+  # Published only when the tests passed too; drop "test" from needs to publish regardless.
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build, desktop]
+    needs: [test, build, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
