@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DIW 測試驗證端</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; max-width: 760px; }
+  label { display: block; margin: 8px 0 2px; font-weight: 600; }
+  select, textarea, input { width: 100%; box-sizing: border-box; font: inherit; }
+  textarea { font-family: monospace; font-size: 13px; }
+  button { margin: 12px 8px 0 0; padding: 8px 16px; font: inherit; }
+  pre { background: #f4f4f4; padding: 8px; overflow: auto; font-size: 12px; }
+  #qr svg { width: 260px; height: 260px; }
+  .note { color: #555; font-size: 14px; }
+</style>
+</head>
+<body>
+<h2>DIW 測試驗證端（僅測試環境）</h2>
+<p class="note">建立 OpenID4VP 1.0 請求：電腦上用錢包掃 QR Code；手機瀏覽器開此頁則點「在此裝置開啟」；DC API 需在 https 或 localhost 開啟此頁。</p>
+
+<label for="preset">要求的憑證</label>
+<select id="preset">
+  <option value="pid">身分憑證 SD-JWT VC（姓名）</option>
+  <option value="mdl">駕照 mdoc（姓名、年滿 18）</option>
+  <option value="both">兩者都要</option>
+  <option value="either">任一即可（credential_sets）</option>
+</select>
+<label for="dcql">DCQL 查詢（可直接修改）</label>
+<textarea id="dcql" rows="8"></textarea>
+
+<label for="prefix">client_id 前綴</label>
+<select id="prefix">
+  <option>x509_san_dns</option><option>x509_hash</option><option>redirect_uri</option>
+  <option>decentralized_identifier</option><option>verifier_attestation</option>
+</select>
+<label for="mode">response_mode</label>
+<select id="mode"><option>direct_post.jwt</option><option>direct_post</option></select>
+<label for="method">request_uri_method</label>
+<select id="method"><option>get</option><option>post</option></select>
+<label for="tamper">故意破壞請求（錢包應拒絕）</label>
+<select id="tamper">
+  <option value="">不破壞</option>
+  <option value="san_mismatch">憑證 SAN 與 client_id 不符</option>
+  <option value="bad_signature">請求簽章錯誤</option>
+  <option value="foreign_response_uri">回應位址指向他處</option>
+  <option value="outer_client_id_mismatch">外層 client_id 不一致</option>
+</select>
+<label><input type="checkbox" id="encrypted" checked style="width:auto"> DC API 回應加密（dc_api.jwt）</label>
+
+<button id="create">建立請求</button>
+<button id="dcapi">以 DC API 出示</button>
+
+<div id="out" hidden>
+  <p><a id="link" href="#">在此裝置開啟</a></p>
+  <div id="qr"></div>
+  <label for="uri">請求連結（可複製貼到錢包）</label>
+  <textarea id="uri" rows="3" readonly></textarea>
+</div>
+<h3 id="status"></h3>
+<pre id="result"></pre>
+
+<script>
+const pid = {id: "pid", format: "dc+sd-jwt", meta: {vct_values: ["urn:eudi:pid:1"]},
+  claims: [{path: ["given_name"]}, {path: ["family_name"]}]};
+const mdl = {id: "mdl", format: "mso_mdoc", meta: {doctype_value: "org.iso.18013.5.1.mDL"},
+  claims: [{path: ["org.iso.18013.5.1", "given_name"]}, {path: ["org.iso.18013.5.1", "age_over_18"]}]};
+const presets = {
+  pid: {credentials: [pid]},
+  mdl: {credentials: [mdl]},
+  both: {credentials: [pid, mdl]},
+  either: {credentials: [pid, mdl], credential_sets: [{options: [["pid"], ["mdl"]]}]},
+};
+const $ = id => document.getElementById(id);
+const statusText = {pending: "等待錢包回應", passed: "驗證通過", not_passed: "驗證未通過", error: "錢包回報錯誤"};
+let timer = null;
+
+function fillPreset() { $("dcql").value = JSON.stringify(presets[$("preset").value], null, 2); }
+$("preset").onchange = fillPreset;
+fillPreset();
+
+async function post(url, body) {
+  const r = await fetch(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  const t = await r.text();
+  if (!r.ok) throw new Error("HTTP " + r.status + " " + t);
+  return JSON.parse(t);
+}
+function show(r) {
+  $("status").textContent = statusText[r.status] || r.status;
+  $("result").textContent = JSON.stringify(r, null, 2);
+}
+function fail(e) { $("status").textContent = "失敗"; $("result").textContent = String(e); }
+function dcql() { return JSON.parse($("dcql").value); }
+
+$("create").onclick = async () => {
+  clearInterval(timer);
+  try {
+    const s = await post("/verifier/sessions", {
+      client_id_prefix: $("prefix").value, response_mode: $("mode").value,
+      request_uri_method: $("method").value, dcql_query: dcql(), tamper: $("tamper").value || undefined,
+    });
+    $("out").hidden = false;
+    $("link").href = s.uri;
+    $("uri").value = s.uri;
+    if (typeof qrcode === "function") {
+      const q = qrcode(0, "L"); q.addData(s.uri); q.make();
+      $("qr").innerHTML = q.createSvgTag({cellSize: 4, margin: 4});
+    } else {
+      $("qr").textContent = "無法載入 QR Code 元件（需要網路），請改用連結。";
+    }
+    show({status: "pending"});
+    timer = setInterval(async () => {
+      try {
+        const r = await (await fetch("/verifier/sessions/" + s.id)).json();
+        show(r);
+        if (r.status !== "pending") clearInterval(timer);
+      } catch (e) { fail(e); clearInterval(timer); }
+    }, 2000);
+  } catch (e) { fail(e); }
+};
+
+$("dcapi").onclick = async () => {
+  clearInterval(timer);
+  if (!window.isSecureContext || typeof DigitalCredential === "undefined") {
+    fail("此瀏覽器不支援 DC API，或此頁不是安全來源。請用 Android Chrome，並以 https 或 http://localhost 開啟此頁。");
+    return;
+  }
+  try {
+    const s = await post("/verifier/dcapi/sessions", {origin: location.origin, signed: true, encrypted: $("encrypted").checked, dcql_query: dcql()});
+    show({status: "pending"});
+    const cred = await navigator.credentials.get({mediation: "required", digital: {requests: [{protocol: s.protocol, data: s.data}]}});
+    const data = typeof cred.data === "string" ? JSON.parse(cred.data) : cred.data;
+    show(await post("/verifier/dcapi/responses/" + s.id, {data: data, origin: location.origin}));
+  } catch (e) { fail(e); }
+};
+</script>
+</body>
+</html>

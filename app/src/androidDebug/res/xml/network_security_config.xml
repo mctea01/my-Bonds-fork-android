@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds allow clear text to any host so a test server on the local network works.
+     The app still refuses HTTP unless the test environment allows it, and then only for local and private addresses. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
