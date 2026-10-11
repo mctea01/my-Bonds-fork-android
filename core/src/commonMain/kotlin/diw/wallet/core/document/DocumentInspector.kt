@@ -38,6 +38,9 @@ expect object DocumentInspector {
     /** Verifies an RFC 3161 token (or a response holding one) over [data] (the stored file). */
     suspend fun verifyTimestamp(token: ByteArray, data: ByteArray, trust: DocumentTrustSource): TimestampInfo
 
+    /** Verifies an RFC 3161 token over data known only by its SHA-256 [sha256] (a derived credential's document). */
+    suspend fun verifyTimestampDigest(token: ByteArray, sha256: ByteArray, trust: DocumentTrustSource): TimestampInfo
+
     /** DER of an RFC 3161 TimeStampReq for SHA-256 of [data], with a random nonce and certReq true. */
     fun timestampRequest(data: ByteArray): ByteArray
 

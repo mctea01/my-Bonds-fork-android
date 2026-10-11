@@ -225,7 +225,8 @@ internal class CmsChecks(private val pki: PkiSupport) {
     }
 
     /** Verifies an RFC 3161 token whose message imprint should be the hash of [covered]. */
-    suspend fun timestamp(token: ByteArray, covered: ByteArray): TimestampInfo {
+    /** [coveredSha256], when given, stands for the covered data (which is then not hashed). */
+    suspend fun timestamp(token: ByteArray, covered: ByteArray, coveredSha256: ByteArray? = null): TimestampInfo {
         val problems = ArrayList<String>()
         val tst = try {
             TimeStampToken(ContentInfo.getInstance(Bc.parse(token)))
@@ -234,7 +235,8 @@ internal class CmsChecks(private val pki: PkiSupport) {
         }
         val info = tst.timeStampInfo
         val algOid = info.messageImprintAlgOID.id
-        val imprint = runCatching { DocCrypto.digest(AlgorithmNames.jcaDigest(algOid), covered) }.getOrNull()
+        val imprint = if (coveredSha256 != null) coveredSha256.takeIf { algOid == SHA256.algorithm.id }
+        else runCatching { DocCrypto.digest(AlgorithmNames.jcaDigest(algOid), covered) }.getOrNull()
         val imprintOk = if (imprint != null && imprint.contentEquals(info.messageImprintDigest)) Check.PASS else {
             problems.add("時戳涵蓋的資料與文件不符"); Check.FAIL
         }

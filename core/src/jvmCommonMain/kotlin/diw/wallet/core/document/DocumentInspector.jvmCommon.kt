@@ -413,6 +413,9 @@ actual object DocumentInspector {
     actual suspend fun verifyTimestamp(token: ByteArray, data: ByteArray, trust: DocumentTrustSource): TimestampInfo =
         CmsChecks(PkiSupport(trust)).timestamp(CmsChecks.tokenOf(token), data)
 
+    actual suspend fun verifyTimestampDigest(token: ByteArray, sha256: ByteArray, trust: DocumentTrustSource): TimestampInfo =
+        CmsChecks(PkiSupport(trust)).timestamp(CmsChecks.tokenOf(token), ByteArray(0), sha256)
+
     actual fun timestampRequest(data: ByteArray): ByteArray = timestampRequestForDigest(DocCrypto.digest("SHA-256", data))
 
     /** A TimeStampReq over an already computed SHA-256 [digest]. */
