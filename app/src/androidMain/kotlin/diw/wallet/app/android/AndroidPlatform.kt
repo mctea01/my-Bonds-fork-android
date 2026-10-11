@@ -152,10 +152,22 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
+    /**
+     * Opens an issuer, sign-in or application page in a Custom Tab inside the wallet's own task, above MainActivity.
+     * These pages end with a deep link back to the wallet (OpenID4VCI callback, TWDIW offer, Verified ID sign-in);
+     * MainActivity is singleTask, so bringing it back finishes the tab above it and the page closes by itself. A tab
+     * started in a new task would stay open behind the wallet, so that is only the fallback when no activity is shown.
+     */
     override fun openBrowser(url: String) {
         val tab = CustomTabsIntent.Builder().setShowTitle(true).build()
-        tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        tab.launchUrl(context, Uri.parse(url))
+        val host = activity?.takeIf { !it.isFinishing && !it.isDestroyed }
+        if (host != null) {
+            // Callers may be on a background coroutine (the authorization code flow); activities start on the UI thread.
+            host.runOnUiThread { tab.launchUrl(host, Uri.parse(url)) }
+        } else {
+            tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            tab.launchUrl(context, Uri.parse(url))
+        }
     }
 
     override fun openRedirect(url: String) {
