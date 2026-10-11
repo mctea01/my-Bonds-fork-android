@@ -128,6 +128,12 @@ class Oid4vpHolder(
     }
 
     /** Responds to a request prepared by the wallet's own engine with its chosen credentials. */
+    /** Responds with the default choice: the first match of each standard query, or the engine's choice for extended requests. */
+    suspend fun respondDefault(prepared: PreparedRequest): PresentationOutcome = when (prepared) {
+        is PreparedExtended -> respond(prepared)
+        is PreparedPresentation -> respond(prepared, prepared.queryResult.select(emptyList()))
+    }
+
     suspend fun respond(prepared: PreparedExtended): PresentationOutcome = when (val o = extended.respond(prepared.prepared)) {
         is ExtendedOutcome.Posted -> PresentationOutcome.Posted(o.redirectUri, o.status)
         is ExtendedOutcome.Redirect -> PresentationOutcome.Redirect(o.url)

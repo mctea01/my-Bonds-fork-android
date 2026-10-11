@@ -1,7 +1,10 @@
 package diw.wallet.app
 
+import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.Draft13Dialect
 import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
@@ -20,12 +23,28 @@ import diw.wallet.core.oid4vci.RemoteWalletProvider
 import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.Oid4vpHolder
+import diw.wallet.core.oid4vp.PreparedExtended
 import diw.wallet.core.oid4vp.PreparedPresentation
+import diw.wallet.core.oid4vp.PreparedRequest
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.PresentationPolicy
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
+import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
+import diw.wallet.core.oid4vp.compat.TwdiwCustomField
+import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsPresentationRequest
+import diw.wallet.core.profile.bonds.BondsQrTransport
+import diw.wallet.core.profile.msvid.LinkedDomains
+import diw.wallet.core.profile.twdiw.TwdiwEntry
+import diw.wallet.core.profile.twdiw.TwdiwEntryParser
+import diw.wallet.core.profile.twdiw.TwdiwOfflineSession
+import diw.wallet.core.profile.twdiw.TwdiwPlatform
+import diw.wallet.core.profile.twdiw.TwdiwServices
+import diw.wallet.core.profile.twdiw.TwdiwTrustList
+import diw.wallet.core.profile.twdiw.TwdiwUserAgent
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.status.CredentialStatusChecker
+import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
@@ -33,10 +52,13 @@ import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.isAcceptableEndpoint
+import diw.wallet.core.w3c.addDiwCredentialImplementations
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.isSuccess
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +88,7 @@ import org.multipaz.presentment.SimplePresentmentSource
 import org.multipaz.securearea.SecureAreaRepository
 import org.multipaz.storage.Storage
 import org.multipaz.storage.StorageTableSpec
+import org.multipaz.util.fromBase64
 import org.multipaz.util.toBase64Url
 
 @Serializable
@@ -77,10 +100,15 @@ data class WalletSettings(
     val clientId: String = "diw-wallet",
     val requireUserAuth: Boolean = true,
     val instanceKeyAlias: String? = null,
-    /** OpenID4VCI draft 13 and earlier SD-JWT VC drafts (walt.id and many deployed issuers). */
-    val compatDraft13: Boolean = true,
-    /** TWDIW profile: W3C credentials in SD-JWT without vct, issuer keys via jku. Non-standard, off by default. */
-    val compatTwdiw: Boolean = false,
+    /**
+     * client_id this wallet presents to TWDIW issuers. The official wallet's moda_dw is what they accept; the
+     * settings screen says that it is the official wallet's identifier.
+     */
+    val twdiwClientId: String = TwdiwDialect.DEFAULT_CLIENT_ID,
+    /** User-Agent sent to wallet.gov.tw hosts only (their Cloudflare front rejects HTTP library defaults). */
+    val twdiwUserAgent: String = TwdiwPlatform.DEFAULT_USER_AGENT,
+    /** TWDIW platform front end; any other address is used only in the test environment (UAT or a local mock). */
+    val twdiwFrontendUrl: String = TwdiwPlatform.PRODUCTION_FRONTEND,
     /** Show technical details (formats, keys, signatures, validity) expanded by default. */
     val showDetails: Boolean = false,
 )
@@ -93,6 +121,12 @@ sealed class Screen {
     /** [from] is where the Back button returns to. */
     data class DocumentDetail(val documentId: String, val from: Screen = Home) : Screen()
     data class Certificate(val chain: List<X509Cert>, val index: Int, val from: Screen) : Screen()
+    /** Taiwan digital credentials: TWDIW cards and services, Bonds offline presentation. */
+    data object Taiwan : Screen()
+    data object TwdiwTrust : Screen()
+    /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
+    data object Offline : Screen()
+    data object MsIssuance : Screen()
 }
 
 sealed class IssuanceUi {
@@ -120,9 +154,14 @@ data class ConsentItem(val documentName: String, val claims: List<String>, val d
 sealed class PresentationUi {
     data object Loading : PresentationUi()
     data class Consent(
-        val prepared: PreparedPresentation,
-        val selection: CredentialSelection,
+        val prepared: PreparedRequest,
+        /** Credential choice for an OpenID4VP 1.0 request; null for requests the wallet's own engine matched. */
+        val selection: CredentialSelection?,
         val items: List<ConsentItem>,
+        /** Fields a TWDIW verifier asks the holder to fill in, sent with the presentation. */
+        val fields: List<TwdiwCustomField> = emptyList(),
+        /** A TWDIW counter presentation: its barcode is fetched after the response. */
+        val offline: TwdiwOfflineSession? = null,
     ) : PresentationUi() {
         val request: ValidatedAuthorizationRequest get() = prepared.request
     }
@@ -165,7 +204,37 @@ class WalletModel(val platform: PlatformServices) {
     }
     lateinit var source: SimplePresentmentSource
         private set
-    val http: HttpClient by lazy { platform.httpClient() }
+    val http: HttpClient by lazy {
+        platform.httpClient().config { install(TwdiwUserAgent) { userAgent = { settings.twdiwUserAgent } } }
+    }
+    lateinit var holderIdentities: HolderIdentities
+        private set
+
+    /** TWDIW production platform, or in the test environment the configured front end (marked TEST). */
+    val twdiwPlatform: TwdiwPlatform
+        get() {
+            val url = settings.twdiwFrontendUrl.trim().trimEnd('/')
+            return if (!settings.testEnvironment || url.isEmpty() || url == TwdiwPlatform.PRODUCTION_FRONTEND) TwdiwPlatform.PRODUCTION
+            else TwdiwPlatform(frontendUrl = url, test = true)
+        }
+    private var twdiwTrustCache: Pair<TwdiwPlatform, TwdiwTrustList>? = null
+    val twdiwTrust: TwdiwTrustList
+        get() {
+            val p = twdiwPlatform
+            twdiwTrustCache?.takeIf { it.first == p }?.let { return it.second }
+            return TwdiwTrustList(http, p, storage = storage).also { twdiwTrustCache = p to it }
+        }
+    val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
+    /** Trust for parties identified by a DID: the TWDIW trust list first, then Linked Domains. */
+    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, linkedDomains))
+    val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrust, twdiwPlatform)
+    /** One instance, so custom field values attached before a response reach the response. */
+    val twdiwPresentation = TwdiwPresentationDialect { did, host -> twdiwTrust.hostRegistered(did, host) }
+    private val msPresentation = MsVerifiedIdPresentationDialect()
+    fun didResolver() = DidResolver(http, environmentPolicy.insecureLoopbackAllowed)
+
+    val taiwan = TaiwanModel(this)
+    val ms = MsIssuanceModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -192,7 +261,8 @@ class WalletModel(val platform: PlatformServices) {
         loadLearnedLabels()
         backends = platform.keyBackends(storage) { reason -> operationPin(reason) }
         val repo = SecureAreaRepository.Builder().apply { backends.map { it.secureArea }.distinct().forEach { add(it) } }.build()
-        documentStore = buildDocumentStore(storage, repo) {}
+        documentStore = buildDocumentStore(storage, repo) { addDiwCredentialImplementations(repo) }
+        holderIdentities = HolderIdentities(storage, repo)
         trust = TrustRegistry(storage, environmentPolicy)
         source = SimplePresentmentSource(
             documentStore = documentStore,
@@ -363,7 +433,7 @@ class WalletModel(val platform: PlatformServices) {
     private suspend fun operationPin(reason: String): String? =
         pinCache ?: requestPin(reason)?.also { pinCache = it }
 
-    private fun endOperation() {
+    fun endOperation() {
         pinCache = null
     }
 
@@ -384,6 +454,16 @@ class WalletModel(val platform: PlatformServices) {
                 screen.value = Screen.Home
             }
             Screen.Settings -> screen.value = Screen.Home
+            Screen.Taiwan -> screen.value = Screen.Home
+            Screen.TwdiwTrust -> screen.value = Screen.Taiwan
+            Screen.Offline -> {
+                taiwan.closeOffline()
+                screen.value = Screen.Taiwan
+            }
+            Screen.MsIssuance -> {
+                ms.cancel()
+                screen.value = Screen.Home
+            }
         }
         return true
     }
@@ -399,26 +479,97 @@ class WalletModel(val platform: PlatformServices) {
         screen.value = Screen.Home
     }
 
+    // ---------------------------------------------------------------- card art
+
+    /** Decoded card logos by URI; SVG and unreachable logos stay absent and the card shows its category icon. */
+    val cardArt = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
+    private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
+    private val artRequested = mutableSetOf<String>()
+
+    fun loadCardArt(uri: String) {
+        if (uri in cardArt.value || !artRequested.add(uri)) return
+        scope.launch {
+            val image = runCatching { fetchArt(uri) }.getOrNull()?.let { platform.decodeImage(it) } ?: return@launch
+            cardArt.value = cardArt.value + (uri to image)
+        }
+    }
+
+    /** Logo bytes from a data: URI or an https URL, cached in storage so cards render offline. */
+    private suspend fun fetchArt(uri: String): ByteArray? {
+        if (uri.startsWith("data:image/")) return uri.substringAfter("base64,", "").ifEmpty { null }?.fromBase64()
+        if (!isAcceptableEndpoint(uri, environmentPolicy.insecureLoopbackAllowed)) return null
+        val key = PlatformCrypto.sha256(uri.encodeToByteArray()).toBase64Url()
+        val t = storage.getTable(artTable)
+        t.get(key)?.let { return it.toByteArray() }
+        val resp = http.get(uri)
+        if (!resp.status.isSuccess()) return null
+        val bytes = resp.readRawBytes()
+        if (bytes.size > MAX_ART_BYTES || platform.decodeImage(bytes) == null) return null
+        t.insert(key, ByteString(bytes))
+        return bytes
+    }
+
     fun checkStatus(doc: Document) = scope.launch {
         val cred = doc.getCertifiedCredentials().firstOrNull() ?: return@launch
-        val s = CredentialStatusChecker(http, trust).check(cred, bypassCache = true)
+        val s = CredentialStatusChecker(http, trust, didTrust = didTrust).check(cred, bypassCache = true)
         statuses.value = statuses.value + (doc.identifier to s)
     }
 
     // ---------------------------------------------------------------- entry
 
-    /** Dispatches any wallet URI: credential offers, presentation requests, and the OID4VCI redirect. */
+    /**
+     * Dispatches any wallet URI: credential offers, presentation requests, the OID4VCI redirect, TWDIW entry
+     * points (deep links, relay pages, static codes), Bonds challenges and Microsoft Verified ID requests.
+     */
     fun handleUri(uri: String) {
         val u = uri.trim()
         val scheme = u.substringBefore(':').lowercase()
+        if (ms.isLoginRedirect(u)) {
+            ms.completeLogin(u)
+            return
+        }
+        if (u.startsWith(platform.oid4vciRedirectUri)) {
+            completeAuthorization(u)
+            return
+        }
+        if (BondsPresentationRequest.looksLike(u)) {
+            taiwan.startBonds(u)
+            return
+        }
+        if (BondsQrTransport.isFrame(u)) {
+            taiwan.acceptVerifierFrame(u)
+            return
+        }
+        when (val entry = TwdiwEntryParser.parse(u)) {
+            is TwdiwEntry.Offer -> return startIssuance(entry.uri, TwdiwEntry.ENTRY_HINT)
+            is TwdiwEntry.Presentation -> return startPresentation(entry.uri, TwdiwEntry.ENTRY_HINT)
+            is TwdiwEntry.StaticQr -> return taiwan.openStatic(entry)
+            null -> {}
+        }
         when {
-            u.startsWith(platform.oid4vciRedirectUri) -> completeAuthorization(u)
+            scheme == "openid-vc" -> startVerifiedId(u)
             scheme in setOf("openid-credential-offer", "haip-vci") || "credential_offer" in u -> startIssuance(u)
-            scheme in setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp") || ("client_id=" in u && scheme == "https") -> startPresentation(u)
+            scheme in setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "openid", "siopv2") ||
+                ("client_id=" in u && scheme == "https") -> startPresentation(u)
             // A bare issuer address: list what it issues and let the user pick (wallet-initiated issuance).
             scheme == "https" || scheme == "http" -> startFromIssuer(u)
             '.' in u && ' ' !in u && ':' !in u -> startFromIssuer("https://$u")
             else -> message.value = "無法辨識的連結"
+        }
+    }
+
+    /** openid-vc: a Verified ID issuance request (prompt=create) or a presentation request. */
+    private fun startVerifiedId(uri: String) {
+        presentation.value = PresentationUi.Loading
+        screen.value = Screen.Presentation
+        scope.launch {
+            try {
+                if (ms.start(uri)) return@launch
+                val h = holder()
+                presentation.value = consentFor(h.prepare(h.resolveUri(uri, MsVerifiedIdPresentationDialect.ENTRY_HINT)))
+            } catch (e: Exception) {
+                presentation.value = PresentationUi.Failed(describe(e))
+            }
         }
     }
 
@@ -427,12 +578,15 @@ class WalletModel(val platform: PlatformServices) {
     private fun oid4vci(): Oid4vciClient = Oid4vciClient(
         http, trust, environmentPolicy, walletProvider(), documentStore,
         locales = locales,
-        dialects = buildList {
-            val loopback = environmentPolicy.insecureLoopbackAllowed
-            if (settings.compatDraft13) add(Draft13Dialect(http, loopback))
-            if (settings.compatTwdiw) add(TwdiwDialect(http, loopback))
-        },
+        dialects = issuanceDialects(),
+        holderIdentities = holderIdentities,
+        didTrust = didTrust,
     )
+
+    /** Always on: each dialect only takes sessions it owns (TWDIW hosts or entry, draft 11/13 metadata). */
+    private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
+        listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect())
+    }
 
     private var cachedProvider: WalletProvider? = null
 
@@ -466,13 +620,13 @@ class WalletModel(val platform: PlatformServices) {
         return AsymmetricKey.AnonymousSecureAreaBased(keyInfo.alias, backend.secureArea, keyInfo, algorithm = org.multipaz.crypto.Algorithm.ES256) to keyInfo.attestation
     }
 
-    fun startIssuance(uri: String) {
+    fun startIssuance(uri: String, entryHint: String? = null) {
         issuance.value = IssuanceUi.Loading
         screen.value = Screen.Issuance
         scope.launch {
             try {
                 val c = oid4vci()
-                val session = c.startFromOffer(uri)
+                val session = c.startFromOffer(uri, entryHint)
                 issuanceSession = session
                 learnLabels(session.issuer.configurations.values)
                 val issuerName = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
@@ -629,7 +783,7 @@ class WalletModel(val platform: PlatformServices) {
         else IssuanceUi.Done(results, failures)
     }
 
-    private fun keyRequest(): KeyRequest {
+    fun keyRequest(): KeyRequest {
         val backend = backends.first()
         val userAuth = settings.requireUserAuth || !backend.protection.hardware
         return KeyRequest(
@@ -643,14 +797,22 @@ class WalletModel(val platform: PlatformServices) {
 
     // ---------------------------------------------------------------- presentation
 
-    private fun holder() = Oid4vpHolder(http, trust, source, environmentPolicy, PresentationPolicy())
+    fun holder() = Oid4vpHolder(
+        http, trust, source, environmentPolicy, PresentationPolicy(),
+        holderIdentities = holderIdentities,
+        didTrust = didTrust,
+        dialects = listOf(twdiwPresentation, msPresentation),
+    )
 
-    fun startPresentation(uri: String) {
+    fun startPresentation(uri: String, entryHint: String? = null, fields: List<TwdiwCustomField> = emptyList(), offline: TwdiwOfflineSession? = null) {
         presentation.value = PresentationUi.Loading
         screen.value = Screen.Presentation
         scope.launch {
             try {
-                presentation.value = consentFor(holder().prepare(holder().resolveUri(uri)))
+                val h = holder()
+                val request = h.resolveUri(uri, entryHint)
+                offline?.let { twdiwServices.checkOfflineRequest(it, request) }
+                presentation.value = consentFor(h.prepare(request), fields, offline)
             } catch (e: Exception) {
                 presentation.value = PresentationUi.Failed(describe(e))
             }
@@ -674,34 +836,65 @@ class WalletModel(val platform: PlatformServices) {
         return done.await()
     }
 
-    private suspend fun consentFor(prepared: PreparedPresentation): PresentationUi.Consent {
-        val selection = prepared.queryResult.select(emptyList())
-        val items = selection.matches.map { m ->
-            val doc = m.credential.document
-            ConsentItem(
-                documentName = doc.displayName ?: "憑證",
-                claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
-                documentTrust = null,
-            )
+    private suspend fun consentFor(
+        prepared: PreparedRequest,
+        fields: List<TwdiwCustomField> = emptyList(),
+        offline: TwdiwOfflineSession? = null,
+    ): PresentationUi.Consent = when (prepared) {
+        is PreparedPresentation -> {
+            val selection = prepared.queryResult.select(emptyList())
+            val items = selection.matches.map { m ->
+                val doc = m.credential.document
+                ConsentItem(
+                    documentName = doc.displayName ?: "憑證",
+                    claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
+                    documentTrust = null,
+                )
+            }
+            PresentationUi.Consent(prepared, selection, items, fields, offline)
         }
-        return PresentationUi.Consent(prepared, selection, items)
+        is PreparedExtended -> {
+            val items = prepared.lines.map { line ->
+                val record = line.document.issuanceRecord
+                ConsentItem(line.documentName, line.claims.map { claimLabels.label(it.split('.'), record?.claimNames.orEmpty(), null) }, null)
+            }
+            PresentationUi.Consent(prepared, null, items, fields, offline)
+        }
     }
 
-    fun approve(consent: PresentationUi.Consent) = scope.launch {
+    /** [values] are the holder's entries for the request's custom fields, by field name. */
+    fun approve(consent: PresentationUi.Consent, values: Map<String, String> = emptyMap()) = scope.launch {
         presentation.value = PresentationUi.Working("產生並送出回應")
         try {
+            if (consent.fields.isNotEmpty()) {
+                twdiwPresentation.attachCustomData(consent.request.nonce, consent.fields.map { it.copy(value = values[it.ename].orEmpty()) })
+            }
             val outcome = try {
-                withContext(unlockProvider) { holder().respond(consent.prepared, consent.selection) }
+                withContext(unlockProvider) {
+                    when (val p = consent.prepared) {
+                        is PreparedExtended -> holder().respond(p)
+                        is PreparedPresentation -> holder().respond(p, consent.selection ?: p.queryResult.select(emptyList()))
+                    }
+                }
             } finally {
                 endOperation()
             }
-            if (outcome is PresentationOutcome.DcApi) {
-                dcApiResult?.complete(outcome.data)
-                dcApiResult = null
+            when (outcome) {
+                is PresentationOutcome.DcApi -> {
+                    dcApiResult?.complete(outcome.data)
+                    dcApiResult = null
+                }
+                is PresentationOutcome.Posted -> outcome.redirectUri?.let { platform.openRedirect(it) }
+                is PresentationOutcome.Redirect -> platform.openRedirect(outcome.url)
             }
-            if (outcome is PresentationOutcome.Posted) outcome.redirectUri?.let { platform.openRedirect(it) }
-            presentation.value = PresentationUi.Done(outcome)
             refreshDocuments()
+            val offline = consent.offline
+            if (offline != null) {
+                presentation.value = PresentationUi.Done(outcome)
+                taiwan.fetchBarcode(offline)
+            } else {
+                presentation.value = PresentationUi.Done(outcome)
+            }
         } catch (e: Exception) {
             presentation.value = PresentationUi.Failed(describe(e))
         }
@@ -723,23 +916,23 @@ class WalletModel(val platform: PlatformServices) {
 
     fun describe(e: Throwable): String = when (e) {
         is diw.wallet.core.oid4vp.RequestValidationException -> "請求驗證失敗（${e.code}）：${e.message}"
-        is ProtocolException -> "協定錯誤（${e.code}）：${e.message}" + compatHint(e)
+        is ProtocolException -> "協定錯誤（${e.code}）：${e.message}" + hint(e)
         else -> e.message ?: e::class.simpleName ?: "未知錯誤"
     }
 
-    /** Points at the setting that would help when a failure is one a compatibility mode handles. */
-    private fun compatHint(e: ProtocolException): String {
+    /** A next step for failures with a known cause. */
+    private fun hint(e: ProtocolException): String {
         val m = e.message ?: return ""
         return when {
-            !settings.compatTwdiw && ("without vct" in m || "non-https iss" in m) -> "\n此發行端使用非標準格式（如 TWDIW），可在設定開啟「TWDIW 相容模式」後再試。"
-            !settings.compatDraft13 && ("non-https iss" in m || e.code == "invalid_proof" || e.code == "invalid_credential_response") ->
-                "\n此發行端可能採用 OpenID4VCI 舊版草案，可在設定開啟「舊版草案相容模式」後再試。"
             "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
+            "1010" in m || ("403" in m && "wallet.gov.tw" in m) -> "\n數位憑證皮夾的伺服器拒絕了連線，可在設定調整送往 wallet.gov.tw 的 User-Agent 後再試。"
+            e.code == "untrusted_verifier" -> "\n對方不在數位憑證皮夾的信任清單或未在區塊鏈上註冊，為保護資料已停止。"
             else -> ""
         }
     }
 
     companion object {
+        const val MAX_ART_BYTES = 1024 * 1024
         val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"

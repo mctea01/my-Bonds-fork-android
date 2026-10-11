@@ -366,7 +366,7 @@ class Oid4vciE2eTest {
         val o: JsonObject = DiwJson.parseToJsonElement(text).jsonObject
         val req = w.holder.resolveUri(o["uri"]!!.jsonPrimitive.content)
         val prepared = w.holder.prepare(req)
-        assertTrue(w.holder.respond(prepared, prepared.queryResult.select(emptyList())) is PresentationOutcome.Posted)
+        assertTrue(w.holder.respondDefault(prepared) is PresentationOutcome.Posted)
         val result = DiwJson.parseToJsonElement(
             servers.httpClient.get("$base/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()
         ).jsonObject

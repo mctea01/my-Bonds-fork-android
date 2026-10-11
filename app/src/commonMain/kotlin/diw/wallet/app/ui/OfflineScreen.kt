@@ -1,0 +1,240 @@
+package diw.wallet.app.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.dp
+import diw.wallet.app.OfflineUi
+import diw.wallet.app.Screen
+import diw.wallet.app.WalletModel
+import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.util.QrEncoder
+import kotlinx.coroutines.delay
+import kotlin.time.Clock
+import kotlin.time.Instant
+
+/** Seconds left until [until], refreshed every second. */
+@Composable
+private fun secondsLeft(until: Instant): Long {
+    var left by remember(until) { mutableStateOf((until - Clock.System.now()).inWholeSeconds) }
+    LaunchedEffect(until) {
+        while (left > 0) {
+            delay(1000)
+            left = (until - Clock.System.now()).inWholeSeconds
+        }
+    }
+    return left.coerceAtLeast(0)
+}
+
+private fun mmss(s: Long) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
+
+/** Codes shown at a counter or to a verifier, and the Bonds verifier flow. */
+@Composable
+fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
+    val state by model.taiwan.offline.collectAsState()
+    when (val s = state) {
+        is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
+        is OfflineUi.Failed -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("無法完成", style = MaterialTheme.typography.titleLarge)
+            Text(s.message)
+            Button(onClick = { model.back() }) { Text("返回") }
+        }
+        is OfflineUi.Barcode -> BarcodeView(model, s)
+        is OfflineUi.BondsChoose -> BondsChooseView(model, s)
+        is OfflineUi.BondsFrames -> BondsFramesView(model, s)
+        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, scanQr)
+        is OfflineUi.VerifierResult -> VerifierResultView(model, s)
+    }
+}
+
+@Composable
+private fun BarcodeView(model: WalletModel, s: OfflineUi.Barcode) {
+    val left = secondsLeft(s.expiresAt)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(s.serviceName, style = MaterialTheme.typography.titleLarge)
+        Text("請出示給店員掃描", style = MaterialTheme.typography.bodyMedium)
+        if (s.image != null && left > 0) {
+            Image(s.image, contentDescription = "取貨條碼", contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp))
+        } else if (s.image == null) {
+            Text("條碼影像無法顯示", color = MaterialTheme.colorScheme.error)
+        }
+        Text(if (left > 0) "有效時間剩餘 ${mmss(left)}" else "條碼已過期，請重新出示", style = MaterialTheme.typography.titleMedium,
+            color = if (left > 30) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+        Text("條碼由服務方系統產生並加密，錢包只負責證明您持有這張憑證。", style = MaterialTheme.typography.bodySmall)
+        Button(onClick = { model.back() }) { Text("完成") }
+    }
+}
+
+@Composable
+private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
+    var cardIndex by remember(s) { mutableStateOf(0) }
+    val card = s.cards[cardIndex]
+    var chosen by remember(s, cardIndex) { mutableStateOf(card.claims.map { it.first }.toSet()) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("查驗方要求出示", style = MaterialTheme.typography.titleMedium)
+                Text("用途：${s.request.purpose}")
+                s.request.audience?.let { Text("查驗方：$it") }
+                Text("挑戰建立時間：${s.request.createdAt}", style = MaterialTheme.typography.bodySmall)
+                Text("Bonds 的查驗挑戰沒有查驗方簽章，無法確認對方身分；請確認用途與眼前的對象相符再出示。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+        }
+        Text("選擇憑證", style = MaterialTheme.typography.titleSmall)
+        s.cards.forEachIndexed { i, c ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = i == cardIndex, onClick = { cardIndex = i })
+                Text(c.name)
+            }
+        }
+        Text("要出示的欄位", style = MaterialTheme.typography.titleSmall)
+        val record = card.document.issuanceRecord
+        card.claims.forEach { (name, value) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = name in chosen, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
+                Column {
+                    Text(model.claimLabel(listOf(name), null, record), style = MaterialTheme.typography.bodyMedium)
+                    Text(value, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { model.taiwan.presentBonds(s.request, card, chosen) }) { Text("出示") }
+            OutlinedButton(onClick = { model.back() }) { Text("取消") }
+        }
+    }
+}
+
+@Composable
+private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
+    var index by remember(s.frames) { mutableStateOf(0) }
+    var paused by remember(s.frames) { mutableStateOf(false) }
+    val left = secondsLeft(s.expiresAt)
+    LaunchedEffect(s.frames, paused) {
+        while (!paused && s.frames.size > 1) {
+            delay(FRAME_INTERVAL_MS)
+            index = (index + 1) % s.frames.size
+        }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("請讓查驗方掃描", style = MaterialTheme.typography.titleMedium)
+        Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        if (left > 0) {
+            QrImage(s.frames[index], Modifier.fillMaxWidth().widthIn(max = 420.dp), QrEncoder.Ecc.Q)
+            Text("第 ${index + 1} / ${s.frames.size} 張　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+            if (s.frames.size > 1) OutlinedButton(onClick = { paused = !paused }) { Text(if (paused) "繼續輪播" else "暫停輪播") }
+        } else {
+            Text("出示已逾時（5 分鐘），請請對方重新產生挑戰。", color = MaterialTheme.colorScheme.error)
+        }
+        val link = model.platform.bondsLink
+        if (s.request.linkServiceId != null && link != null && left > 0) {
+            OutlinedButton(onClick = { model.taiwan.sendOverLink(s) }) {
+                Icon(WalletIcons.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(" 改用藍牙傳送")
+            }
+        }
+        s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        Text("出示內容以本機的持有者金鑰簽章，綁定查驗方的挑戰與用途，無法轉用於其他查驗。", style = MaterialTheme.typography.bodySmall)
+        Button(onClick = { model.back() }) { Text("完成") }
+    }
+}
+
+@Composable
+private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChallenge, scanQr: (suspend () -> String?)?) {
+    var scanning by remember { mutableStateOf(false) }
+    var pasted by remember { mutableStateOf("") }
+    LaunchedEffect(scanning) {
+        if (scanning && scanQr != null) {
+            // One scan per frame until the presentation is complete or the user closes the scanner.
+            while (model.taiwan.verifying) {
+                val text = scanQr() ?: break
+                model.handleUri(text)
+            }
+            scanning = false
+        }
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("請出示者用錢包或 Bonds 掃描", style = MaterialTheme.typography.titleMedium)
+        QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
+        Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        if (s.total > 0) {
+            LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
+            Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
+        }
+        if (scanQr != null) {
+            Button(onClick = { scanning = true }) {
+                Icon(WalletIcons.Scan, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text(" 掃描對方畫面")
+            }
+        } else {
+            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("貼上對方畫面的內容（BTWVP1:...）") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedButton(onClick = { model.handleUri(pasted); pasted = "" }, enabled = pasted.isNotEmpty()) { Text("加入") }
+        }
+        OutlinedButton(onClick = { model.back() }) { Text("取消") }
+    }
+}
+
+@Composable
+private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val r = s.result
+        if (r == null) {
+            Text("驗證失敗", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
+            Text(s.error ?: "")
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(WalletIcons.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                Text(" 簽章與挑戰相符", style = MaterialTheme.typography.titleLarge)
+            }
+            Text("用途：${s.request.purpose}")
+            Text("出示時間：${r.created}", style = MaterialTheme.typography.bodySmall)
+            Text("出示者：${r.holder}", style = MaterialTheme.typography.bodySmall)
+            val issuer = r.moica?.let { "自然人憑證持有人 ${it.cardholderName}（憑證序號 ${it.certificateSerialHex}）" } ?: r.issuer ?: "未知"
+            if (s.issuerTrust != null) TrustCard("發行端", issuer, s.issuerTrust)
+            else Text("發行端：$issuer（不在信任清單，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
+            Text("出示的資料", style = MaterialTheme.typography.titleSmall)
+            r.claims.forEach { (k, v) -> LabelValue(model.claimLabel(listOf(k), null, null), v) }
+            if (r.claims.isEmpty()) Text("對方沒有揭露任何欄位", style = MaterialTheme.typography.bodySmall)
+            r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { model.taiwan.startVerifier(s.request.purpose) }) { Text("再次查驗") }
+            OutlinedButton(onClick = { model.taiwan.closeOffline(); model.screen.value = Screen.Taiwan }) { Text("完成") }
+        }
+    }
+}
+
+private const val FRAME_INTERVAL_MS = 400L

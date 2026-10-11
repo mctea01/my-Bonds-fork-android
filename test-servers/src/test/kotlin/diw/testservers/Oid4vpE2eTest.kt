@@ -70,7 +70,7 @@ class Oid4vpE2eTest {
             val uri = o["uri"]!!.jsonPrimitive.content
             assertTrue("x509_san_dns%3A127.0.0.1" in uri || "x509_san_dns:127.0.0.1" in uri, uri)
             val prepared = w.holder.prepare(w.holder.resolveUri(uri))
-            assertTrue(w.holder.respond(prepared, prepared.queryResult.select(emptyList())) is PresentationOutcome.Posted)
+            assertTrue(w.holder.respondDefault(prepared) is PresentationOutcome.Posted)
             val r = DiwJson.parseToJsonElement(ipServers.httpClient.get("$ipBase/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()).jsonObject
             assertEquals("passed", r["status"]!!.jsonPrimitive.content, "verifier result: $r")
         } finally {
@@ -92,7 +92,7 @@ class Oid4vpE2eTest {
         })
         val req = w.holder.resolveUri(uri)
         val prepared = w.holder.prepare(req)
-        val outcome = w.holder.respond(prepared, prepared.queryResult.select(emptyList()))
+        val outcome = w.holder.respondDefault(prepared)
         assertTrue(outcome is PresentationOutcome.Posted)
         val r = result(id)
         assertEquals("passed", r["status"]!!.jsonPrimitive.content, "verifier result: $r")
@@ -177,7 +177,7 @@ class Oid4vpE2eTest {
         val o = DiwJson.parseToJsonElement(text).jsonObject
         val req = w.holder.resolveDcApi(o["protocol"]!!.jsonPrimitive.content, o["data"]!!.jsonObject, callerOrigin)
         val prepared = w.holder.prepare(req)
-        val outcome = w.holder.respond(prepared, prepared.queryResult.select(emptyList())) as PresentationOutcome.DcApi
+        val outcome = w.holder.respondDefault(prepared) as PresentationOutcome.DcApi
         val res = servers.httpClient.post("$base/verifier/dcapi/responses/${o["id"]!!.jsonPrimitive.content}") {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("origin", origin); put("data", outcome.data) }.toString())
@@ -214,7 +214,7 @@ class Oid4vpE2eTest {
         val o = DiwJson.parseToJsonElement(text).jsonObject
         val req = w.holder.resolveDcApi(o["protocol"]!!.jsonPrimitive.content, o["data"]!!.jsonObject, "https://attacker.example")
         val prepared = w.holder.prepare(req)
-        val outcome = w.holder.respond(prepared, prepared.queryResult.select(emptyList())) as PresentationOutcome.DcApi
+        val outcome = w.holder.respondDefault(prepared) as PresentationOutcome.DcApi
         val session = servers.verifier.session(o["id"]!!.jsonPrimitive.content)!!
         val r = servers.presentationVerifier.verifyDcApi(outcome.data, session.session, "https://rp.example")
         assertTrue(!r.passed, "relayed response must not pass")

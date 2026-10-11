@@ -324,6 +324,9 @@ class MsVerifiedIdIssuance(
             profile = MsVerifiedIdPresentationDialect.ID,
             holderDid = did,
             specs = listOf(SPEC),
+            logoUri = request.contract.obj("display")?.obj("card")?.obj("logo")?.str("uri"),
+            backgroundColor = request.contract.obj("display")?.obj("card")?.str("backgroundColor"),
+            textColor = request.contract.obj("display")?.obj("card")?.str("textColor"),
         ).withTrust(trust)
         val document = documentStore.createDocument(
             displayName = request.cardTitle ?: inspected.types.lastOrNull() ?: "Verified ID",

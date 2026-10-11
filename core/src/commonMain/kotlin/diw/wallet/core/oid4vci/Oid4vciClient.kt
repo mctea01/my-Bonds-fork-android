@@ -969,6 +969,9 @@ class Oid4vciClient(
             claimNames = diw.wallet.core.credential.ClaimLabels.issuerNames(config),
             w3cTypes = config.types,
             profile = session.compat.owner?.id,
+            logoUri = display?.logoUri ?: issuerDisplay?.logoUri,
+            backgroundColor = display?.backgroundColor,
+            textColor = display?.textColor,
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,

@@ -40,7 +40,7 @@ import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.trust.TrustTier
 
 @Composable
-private fun Busy(text: String) {
+internal fun Busy(text: String) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator()
         Text(text, Modifier.padding(top = 12.dp))
@@ -48,7 +48,7 @@ private fun Busy(text: String) {
 }
 
 @Composable
-private fun Failure(model: WalletModel, text: String) {
+internal fun Failure(model: WalletModel, text: String) {
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("無法完成", style = MaterialTheme.typography.titleLarge)
         Text(text)
@@ -58,7 +58,7 @@ private fun Failure(model: WalletModel, text: String) {
 
 /** Untrusted parties (T3/T4) need an explicit acknowledgement; official or anchored parties do not. */
 @Composable
-private fun riskAcknowledgement(tier: TrustTier): Boolean {
+internal fun riskAcknowledgement(tier: TrustTier): Boolean {
     var ack by remember(tier) { mutableStateOf(false) }
     if (tier == TrustTier.T1 || tier == TrustTier.T2) return true
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -165,6 +165,7 @@ fun PresentationScreen(model: WalletModel) {
             when (val o = s.outcome) {
                 is PresentationOutcome.Posted -> Text(if (o.redirectUri != null) "驗證端已接收，將開啟對方頁面" else "驗證端已接收")
                 is PresentationOutcome.DcApi -> Text("已回傳給呼叫的網站或 App")
+                is PresentationOutcome.Redirect -> Text("已交給對方頁面")
             }
             Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
         }
@@ -177,7 +178,9 @@ fun PresentationScreen(model: WalletModel) {
                     if (v.dnsNames.isNotEmpty()) add("網域：${v.dnsNames.joinToString()}")
                     v.did?.let { add("DID：$it") }
                     req.origin?.let { add("呼叫來源：$it") }
-                    req.responseUri?.let { add("回應送往：$it") }
+                    req.target?.let { add("回應送往：$it") }
+                    if (req.specs.isNotEmpty()) add("採用規格：" + req.specs.joinToString("、"))
+                    s.offline?.let { add("臨櫃服務：${it.service.name}，出示後會顯示取貨條碼") }
                     if (req.verifierInfo.isNotEmpty()) add("對方附上 ${req.verifierInfo.size} 份身分或用途證明（將於後續版本逐項驗證）")
                     addAll(req.warnings)
                 }
@@ -197,10 +200,30 @@ fun PresentationScreen(model: WalletModel) {
                         }
                     }
                 }
+                if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
+                val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+                if (s.fields.isNotEmpty()) Text("對方要求填寫：", style = MaterialTheme.typography.titleSmall)
+                s.fields.forEach { f ->
+                    val value = values[f.ename].orEmpty()
+                    val bad = value.isNotEmpty() && f.regex != null && runCatching { !Regex(f.regex!!).matches(value) }.getOrDefault(false)
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { values[f.ename] = it },
+                        label = { Text(f.cname) },
+                        supportingText = { Text(if (bad) "格式不符" else f.description ?: f.ename) },
+                        isError = bad,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                val fieldsOk = s.fields.all { f ->
+                    val v = values[f.ename].orEmpty()
+                    v.isNotEmpty() && (f.regex == null || runCatching { Regex(f.regex!!).matches(v) }.getOrDefault(true))
+                }
                 val ok = riskAcknowledgement(v.trust.tier)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.approve(s) }, enabled = ok) { Text("同意分享") }
+                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk) { Text("同意分享") }
                     OutlinedButton(onClick = { model.decline(s) }) { Text("拒絕") }
                 }
             }

@@ -24,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.WalletModel
+import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
 @Composable
 private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
@@ -40,6 +42,9 @@ private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boo
 fun SettingsScreen(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     var url by remember(s.testServerUrl) { mutableStateOf(s.testServerUrl) }
+    var twdiwClientId by remember(s.twdiwClientId) { mutableStateOf(s.twdiwClientId) }
+    var twdiwUserAgent by remember(s.twdiwUserAgent) { mutableStateOf(s.twdiwUserAgent) }
+    var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("金鑰保護", style = MaterialTheme.typography.titleMedium)
         model.backends.forEachIndexed { i, b ->
@@ -54,12 +59,50 @@ fun SettingsScreen(model: WalletModel) {
             model.updateSettings { it.copy(showDetails = v) }
         }
         HorizontalDivider()
-        Text("相容模式", style = MaterialTheme.typography.titleMedium)
-        Toggle("舊版草案相容模式", "OpenID4VCI draft 13 與早期 SD-JWT VC（如 walt.id）。憑證會顯示實際使用的規格", s.compatDraft13) { v ->
-            model.updateSettings { it.copy(compatDraft13 = v) }
-        }
-        Toggle("TWDIW 相容模式", "數位憑證皮夾的格式（無 vct 的 W3C SD-JWT、jku 金鑰）。憑證會顯示實際使用的規格", s.compatTwdiw) { v ->
-            model.updateSettings { it.copy(compatTwdiw = v) }
+        Text("數位憑證皮夾（TWDIW）", style = MaterialTheme.typography.titleMedium)
+        Text("TWDIW、Bonds、OpenID4VCI 草案 11/13 與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
+            style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(
+            value = twdiwClientId,
+            onValueChange = { twdiwClientId = it.trim() },
+            label = { Text("發行端 client_id") },
+            supportingText = { Text("預設 moda_dw 是官方數位憑證皮夾的識別碼，TWDIW 發行端只接受它；本錢包以它向發行端表明相容官方流程") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = twdiwUserAgent,
+            onValueChange = { twdiwUserAgent = it },
+            label = { Text("送往 wallet.gov.tw 的 User-Agent") },
+            supportingText = { Text("只用於 wallet.gov.tw；其防護會拒絕程式庫預設值（錯誤 1010）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = twdiwFrontend,
+            onValueChange = { twdiwFrontend = it.trim() },
+            label = { Text("平台位址（僅測試環境）") },
+            supportingText = { Text("正式環境固定使用 ${TwdiwPlatform.PRODUCTION_FRONTEND}；UAT 為 ${TwdiwPlatform.UAT_FRONTEND}") },
+            singleLine = true,
+            enabled = s.testEnvironment,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val changed = twdiwClientId != s.twdiwClientId || twdiwUserAgent != s.twdiwUserAgent || twdiwFrontend != s.twdiwFrontendUrl
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                model.updateSettings {
+                    it.copy(
+                        twdiwClientId = twdiwClientId.ifEmpty { TwdiwDialect.DEFAULT_CLIENT_ID },
+                        twdiwUserAgent = twdiwUserAgent.ifBlank { TwdiwPlatform.DEFAULT_USER_AGENT },
+                        twdiwFrontendUrl = twdiwFrontend.ifEmpty { TwdiwPlatform.PRODUCTION_FRONTEND },
+                    )
+                }
+            }, enabled = changed) { Text("儲存") }
+            OutlinedButton(onClick = {
+                twdiwClientId = TwdiwDialect.DEFAULT_CLIENT_ID
+                twdiwUserAgent = TwdiwPlatform.DEFAULT_USER_AGENT
+                twdiwFrontend = TwdiwPlatform.PRODUCTION_FRONTEND
+            }) { Text("還原預設") }
         }
         HorizontalDivider()
         Text("測試環境", style = MaterialTheme.typography.titleMedium)

@@ -1,6 +1,8 @@
 package diw.wallet.core.credential
 
 import diw.wallet.core.util.DiwJson
+import diw.wallet.core.w3c.W3cEncoding
+import diw.wallet.core.w3c.W3cVcCredential
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -28,6 +30,7 @@ object ClaimReader {
     private val w3cEnvelope = setOf("id", "issuer", "issuanceDate", "expirationDate", "validFrom", "validUntil", "credentialSchema", "proof")
 
     suspend fun read(credential: Credential, types: DocumentTypeRepository): List<DisplayClaim> {
+        if (credential is W3cVcCredential) return fromW3c(credential)
         val multipaz = runCatching { credential.getClaims(types) }.getOrNull()
         // Registered JWT claims (iss, iat, cnf, status, ...) are shown in the details view, not as credential data.
         if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, valueOf(it), pathOf(it)) }
@@ -75,6 +78,19 @@ object ClaimReader {
         }
         return out
     }
+
+    /** W3C credentials: disclosures of an SD-JWT, otherwise the credentialSubject claims (without its id). */
+    fun fromW3c(credential: W3cVcCredential): List<DisplayClaim> = runCatching {
+        if (credential.encoding == W3cEncoding.SD_JWT) return@runCatching fromCompact(credential.raw)
+        val out = mutableListOf<DisplayClaim>()
+        val subjects = when (val s = credential.credentialJson()["credentialSubject"]) {
+            is JsonObject -> listOf(s)
+            is JsonArray -> s.filterIsInstance<JsonObject>()
+            else -> emptyList()
+        }
+        subjects.forEach { plain(JsonObject(it - "id"), "", out) }
+        out
+    }.getOrDefault(emptyList())
 
     private fun plain(o: JsonObject, prefix: String, out: MutableList<DisplayClaim>) {
         for ((k, v) in o) {

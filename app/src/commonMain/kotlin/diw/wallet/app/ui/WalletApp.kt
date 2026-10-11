@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,6 +21,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -99,6 +102,10 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.Presentation -> PresentationScreen(model)
                     is Screen.DocumentDetail -> DocumentScreen(model, s)
                     is Screen.Certificate -> CertificateScreen(model, s)
+                    Screen.Taiwan -> TaiwanScreen(model, scanQr)
+                    Screen.TwdiwTrust -> TwdiwTrustScreen(model)
+                    Screen.Offline -> OfflineScreen(model, scanQr)
+                    Screen.MsIssuance -> MsIssuanceScreen(model)
                 }
             }
         }
@@ -113,6 +120,10 @@ private fun titleFor(s: Screen) = when (s) {
     Screen.Presentation -> "分享資料"
     is Screen.DocumentDetail -> "憑證內容"
     is Screen.Certificate -> "證書詳情"
+    Screen.Taiwan -> "台灣數位憑證"
+    Screen.TwdiwTrust -> "數位憑證皮夾信任清單"
+    Screen.Offline -> "出示與查驗"
+    Screen.MsIssuance -> "加入 Verified ID"
 }
 
 @Composable
@@ -160,12 +171,25 @@ fun HomeScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
             )
             Button(onClick = { model.handleUri(input); input = "" }, enabled = input.isNotBlank()) { Text("開啟") }
         }
-        if (scanQr != null) OutlinedButton(onClick = { scanning = true }, modifier = Modifier.fillMaxWidth()) { Text("掃描 QR Code") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (scanQr != null) {
+                OutlinedButton(onClick = { scanning = true }, modifier = Modifier.weight(1f)) {
+                    Icon(WalletIcons.Scan, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("掃描 QR Code")
+                }
+            }
+            OutlinedButton(onClick = { model.screen.value = Screen.Taiwan }, modifier = Modifier.weight(1f)) {
+                Icon(WalletIcons.Government, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("台灣數位憑證")
+            }
+        }
         if (docs.isEmpty()) {
             Text("尚未加入任何憑證。", style = MaterialTheme.typography.bodyLarge)
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(docs, key = { it.identifier }) { doc -> DocumentCard(doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) } }
+            items(docs, key = { it.identifier }) { doc -> CredentialCard(model, doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) } }
         }
     }
 }
@@ -211,23 +235,6 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
 }
 
 @Composable
-fun DocumentCard(doc: Document, onClick: () -> Unit) {
-    val record = doc.issuanceRecord
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Box {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium)
-                Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall)
-                storedTrust(doc)?.let { TierBadge(it) }
-                record?.let { Text((listOf(CredentialDetails.formatLabel(it.format)) + CredentialDetails.specs(it)).joinToString("、"), style = MaterialTheme.typography.bodySmall) }
-                if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall)
-            }
-            if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
-        }
-    }
-}
-
-@Composable
 fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     val id = screen.documentId
     val docs by model.documents.collectAsState()
@@ -248,10 +255,14 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CardLogo(model, record?.logoUri, categoryIcon(record), MaterialTheme.colorScheme.primary, size = 48)
+            Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleLarge)
+        }
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.isTestEnvironment == true) TestWatermark()
         record?.let {
-            LabelValue("格式", CredentialDetails.formatName(it.format))
+            LabelValue("格式", CredentialDetails.formatName(it))
             (it.vct ?: it.docType)?.let { t -> LabelValue("類型", t) }
             LabelValue("規格", CredentialDetails.specs(it).joinToString("、"))
         }
@@ -293,6 +304,7 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
 /** Token Status List value by its name in the specification, with a short translation. */
 private fun statusText(s: CredentialStatus?): String {
     if (s == null) return "狀態：尚未查詢"
+    if (s.label != null) return "狀態：${s.label}（${CredentialDetails.stateMeaning(s.state)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
     val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
     return "狀態：$name（${CredentialDetails.statusMeaning(s.code)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }

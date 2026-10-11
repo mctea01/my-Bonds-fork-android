@@ -52,6 +52,10 @@ data class IssuanceRecord(
     val profile: String? = null,
     /** Holder DID the credential is bound to, when bound to a DID. */
     val holderDid: String? = null,
+    /** Card art from the credential's display metadata (logo URI, background and text colours as written by the issuer). */
+    val logoUri: String? = null,
+    val backgroundColor: String? = null,
+    val textColor: String? = null,
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)
