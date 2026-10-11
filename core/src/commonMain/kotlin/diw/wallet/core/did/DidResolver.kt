@@ -150,7 +150,10 @@ class DidResolver(
             val endpoints = when (val ep = o["serviceEndpoint"]) {
                 is kotlinx.serialization.json.JsonPrimitive -> listOf(ep.content)
                 is kotlinx.serialization.json.JsonArray -> ep.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
-                is JsonObject -> (ep["origins"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+                // LinkedDomains lists origins; Microsoft's IdentityHub lists instances.
+                is JsonObject -> listOf("origins", "instances").flatMap { k ->
+                    (ep[k] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+                }
                 else -> emptyList()
             }
             DidService(o.str("id") ?: "", o.str("type") ?: "", endpoints)

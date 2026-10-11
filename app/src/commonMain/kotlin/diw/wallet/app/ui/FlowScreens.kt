@@ -256,7 +256,7 @@ internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, ri
     val statuses by model.statuses.collectAsState()
     val decisions = items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, risk) } }
     Text("這次請求的風險：" + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
-    Text(requestRiskReason(risk, items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW, verifierTier), style = MaterialTheme.typography.bodySmall)
+    Text(requestRiskReason(risk, items, verifierTier), style = MaterialTheme.typography.bodySmall)
     Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
     items.forEachIndexed { i, item ->
         Card(Modifier.fillMaxWidth()) {
@@ -264,6 +264,9 @@ internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, ri
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(item.documentName, style = MaterialTheme.typography.titleMedium)
                     decisions[i]?.let { RequestStatusLine(it) }
+                    if (item.whole) {
+                        Text("對方要求整張證件。這張證件無法只出示部分欄位，下列欄位都會交給對方：", style = MaterialTheme.typography.bodySmall)
+                    }
                     item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
                 }
             }
@@ -288,12 +291,19 @@ internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, ri
 }
 
 /** Why a request has its risk: the most sensitive field asked for, or a verifier that is not on an official list. */
-private fun requestRiskReason(risk: RiskLevel, fields: RiskLevel, verifier: TrustTier): String = when {
-    risk == RiskLevel.LOW -> "官方信任清單內的查驗方，只要求一般欄位。"
-    fields == risk && fields == RiskLevel.HIGH -> "要求身分證號、照片、地址等高敏感欄位，證件狀態必須在線上確認有效。"
-    fields == risk -> "要求姓名、出生日期等個人資料。"
-    verifier == TrustTier.T4 -> "查驗方身分無法驗證。"
-    else -> "查驗方不在官方信任清單。"
+private fun requestRiskReason(risk: RiskLevel, items: List<ConsentItem>, verifier: TrustTier): String {
+    val fields = items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW
+    val named = items.filter { it.sensitivity == fields }.flatMap { it.notable }.distinct()
+    val which = if (named.isEmpty()) "" else "「" + named.take(4).joinToString("、") + "」" + if (named.size > 4) "等" else ""
+    val whole = if (items.any { it.whole && it.sensitivity == fields }) "（對方要求整張證件，這些欄位會一併交出）" else ""
+    return when {
+        risk == RiskLevel.LOW -> "官方信任清單內的查驗方，只要求一般欄位。"
+        fields == risk && fields == RiskLevel.HIGH ->
+            (if (which.isEmpty()) "要求身分證號、照片、地址等高敏感欄位" else "要交出的資料含有高敏感欄位$which") + whole + "，證件狀態必須在線上確認有效。"
+        fields == risk -> (if (which.isEmpty()) "要求姓名、出生日期等個人資料" else "要交出的資料含有個人資料$which") + whole + "。"
+        verifier == TrustTier.T4 -> "查驗方身分無法驗證。"
+        else -> "查驗方不在官方信任清單。"
+    }
 }
 
 private fun statusWarning(f: StatusFinding, risk: RiskLevel): String = when (f) {

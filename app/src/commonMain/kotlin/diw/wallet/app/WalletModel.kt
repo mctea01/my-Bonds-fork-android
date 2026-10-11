@@ -188,6 +188,10 @@ data class ConsentItem(
     val documentId: String? = null,
     /** The most sensitive of [claims] (identifiers and portraits high, names and birth dates medium). */
     val sensitivity: RiskLevel = RiskLevel.LOW,
+    /** The whole credential is disclosed (it cannot disclose part of itself); [claims] then lists all it holds. */
+    val whole: Boolean = false,
+    /** The claims that set [sensitivity] when it is medium or high, to say why a request is sensitive. */
+    val notable: List<String> = emptyList(),
 )
 
 sealed class PresentationUi {
@@ -1021,23 +1025,29 @@ class WalletModel(val platform: PlatformServices) {
                 val selection = prepared.queryResult.select(emptyList())
                 val items = selection.matches.map { m ->
                     val doc = m.credential.document
+                    val paths = m.claims.values.map { ClaimReader.pathOf(it) }
+                    val labels = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) }
+                    val sensitivity = ClaimSensitivity.ofAll(paths)
                     ConsentItem(
                         documentName = doc.displayName ?: "憑證",
-                        claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
+                        claims = labels,
                         documentTrust = null,
                         documentId = doc.identifier,
-                        sensitivity = ClaimSensitivity.ofAll(m.claims.values.map { ClaimReader.pathOf(it) }),
+                        sensitivity = sensitivity,
+                        notable = notable(paths, labels, sensitivity),
                     )
                 }
                 PresentationUi.Consent(prepared, selection, items, fields, offline)
             }
             is PreparedExtended -> {
                 val items = prepared.lines.map { line ->
-                    val record = line.document.issuanceRecord
+                    val d = lineDisclosure(line.document, line.claims)
                     ConsentItem(
-                        line.documentName, line.claims.map { claimLabels.label(it.split('.'), record?.claimNames.orEmpty(), null) }, null,
+                        line.documentName, d.labels, null,
                         documentId = line.document.identifier,
-                        sensitivity = lineSensitivity(line.document, line.claims),
+                        sensitivity = d.sensitivity,
+                        whole = d.whole,
+                        notable = d.notable,
                     )
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
@@ -1049,17 +1059,30 @@ class WalletModel(val platform: PlatformServices) {
         return consent.copy(risk = risk)
     }
 
+    /** What a presentation line discloses: field labels, their sensitivity, and whether it is the whole credential. */
+    private class LineDisclosure(val labels: List<String>, val sensitivity: RiskLevel, val notable: List<String>, val whole: Boolean)
+
     /**
-     * Sensitivity of what a presentation line discloses. A whole credential ("*", a Presentation Exchange descriptor
-     * without fields) discloses every claim it holds, and is never below the document's own risk.
+     * A line of an extended presentation. A whole credential ("*", a Presentation Exchange descriptor without fields,
+     * or a JWT VC, which cannot disclose part of itself) discloses every claim it holds: those are listed, and the
+     * sensitivity is never below the document's own risk.
      */
-    private suspend fun lineSensitivity(document: Document, claims: List<String>): RiskLevel {
+    private suspend fun lineDisclosure(document: Document, claims: List<String>): LineDisclosure {
+        val record = document.issuanceRecord
         val whole = claims.any { it == "*" || it.isEmpty() }
-        if (!whole) return ClaimSensitivity.ofAll(claims.map { it.split('.') })
-        val all = runCatching {
+        val paths = if (!whole) claims.map { it.split('.') } else runCatching {
             document.getCertifiedCredentials().firstOrNull()?.let { ClaimReader.read(it, documentTypes).map { c -> c.path } }
         }.getOrNull().orEmpty()
-        return RiskLevel.max(ClaimSensitivity.ofAll(all), StatusMonitor.riskOf(document.issuanceRecord))
+        val labels = paths.map { claimLabels.label(it, record?.claimNames.orEmpty(), null) }
+        val fields = ClaimSensitivity.ofAll(paths)
+        val sensitivity = if (whole) RiskLevel.max(fields, StatusMonitor.riskOf(record)) else fields
+        return LineDisclosure(labels.ifEmpty { listOf("整張證件") }, sensitivity, notable(paths, labels, fields), whole)
+    }
+
+    /** Labels of the fields as sensitive as [top], when that is medium or high. */
+    private fun notable(paths: List<List<String>>, labels: List<String>, top: RiskLevel): List<String> {
+        if (top == RiskLevel.LOW) return emptyList()
+        return paths.zip(labels).filter { (p, _) -> ClaimSensitivity.of(p) == top }.map { it.second }.distinct()
     }
 
     /** [values] are the holder's entries for the request's custom fields, by field name. */

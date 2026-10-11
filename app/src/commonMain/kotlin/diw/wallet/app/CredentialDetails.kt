@@ -362,7 +362,9 @@ object CredentialDetails {
         val chain = v.certificateChain?.certificates.orEmpty()
         return listOf(
             DetailSection("請求", buildList {
-                add(DetailRow("規格", "OpenID4VP 1.0、DCQL" + if (req.responseMode.dcApi) "、Digital Credentials API" else ""))
+                // The specification the request actually follows; OpenID4VP 1.0 with DCQL unless the request is older.
+                val spec = req.specs.ifEmpty { listOf("OpenID4VP 1.0", "DCQL") } + if (req.responseMode.dcApi) listOf("Digital Credentials API") else emptyList()
+                add(DetailRow("規格", spec.distinct().joinToString("、")))
                 add(DetailRow("回應方式（response_mode）", req.responseMode.wire))
                 req.responseUri?.let { add(DetailRow("回應位置（response_uri）", it)) }
                 add(DetailRow("nonce", req.nonce))
@@ -380,7 +382,12 @@ object CredentialDetails {
                 req.clientMetadata?.keys?.takeIf { it.isNotEmpty() }?.let { add(DetailRow("client_metadata", it.joinToString())) }
                 addAll(chainRows(chain))
             }),
-            DetailSection("要求內容（DCQL）", listOf(DetailRow("查詢", pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery)))),
+            when {
+                req.presentationDefinition != null -> DetailSection("要求內容（Presentation Exchange）",
+                    listOf(DetailRow("presentation_definition", pretty.encodeToString(JsonElement.serializer(), req.presentationDefinition!!))))
+                req.dcqlQuery.isNotEmpty() -> DetailSection("要求內容（DCQL）", listOf(DetailRow("查詢", pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery))))
+                else -> DetailSection("要求內容", emptyList())
+            },
         ).filter { it.rows.isNotEmpty() }
     }
 

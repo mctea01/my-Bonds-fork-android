@@ -128,7 +128,9 @@ class StatusMonitor(private val model: WalletModel) {
         val now = Clock.System.now()
         model.documents.value.filter { it.identifier in documentIds }.forEach { doc ->
             val s = statuses.value[doc.identifier]
-            if (s == null || now - s.status.checkedAt > risk.maxStatusAge / 2) refresh(doc)
+            // An unconfirmed status is asked again whenever a request needs it: the list may be reachable now.
+            val unconfirmed = s != null && s.status.state == RevocationCheckState.UNKNOWN && s.status.referenced
+            if (s == null || unconfirmed || now - s.status.checkedAt > risk.maxStatusAge / 2) refresh(doc)
         }
     }
 

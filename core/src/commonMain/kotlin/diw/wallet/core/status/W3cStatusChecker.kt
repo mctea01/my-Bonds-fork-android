@@ -20,14 +20,23 @@ import diw.wallet.core.w3c.W3cVc
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import org.multipaz.revocation.RevocationCheckState
+import org.multipaz.util.UUID
 import org.multipaz.util.fromBase64
 import org.multipaz.util.fromBase64Url
 import kotlin.time.Clock
@@ -38,7 +47,9 @@ import kotlin.time.Instant
 
 /**
  * One credentialStatus entry of a W3C credential: Bitstring Status List v1.0 (BitstringStatusListEntry),
- * Status List 2021 (StatusList2021Entry, used by TWDIW) or Revocation List 2020 (RevocationList2020Status).
+ * Status List 2021 (StatusList2021Entry, used by TWDIW), Revocation List 2020 (RevocationList2020Status), or
+ * Microsoft Entra Verified ID's Status List 2021 (RevocationList2021Status, a revocation list served by the
+ * issuer's Identity Hub through a DID URL).
  */
 data class W3cStatusEntry(
     val type: String,
@@ -55,6 +66,7 @@ data class W3cStatusEntry(
         const val BITSTRING = "BitstringStatusListEntry"
         const val STATUS_LIST_2021 = "StatusList2021Entry"
         const val REVOCATION_LIST_2020 = "RevocationList2020Status"
+        const val REVOCATION_LIST_2021 = "RevocationList2021Status"
 
         fun parse(o: JsonObject): W3cStatusEntry? {
             val types = when (val t = o["type"]) {
@@ -62,7 +74,7 @@ data class W3cStatusEntry(
                 is JsonArray -> t.mapNotNull { (it as? JsonPrimitive)?.content }
                 else -> emptyList()
             }
-            val type = types.firstOrNull { it == BITSTRING || it == STATUS_LIST_2021 || it == REVOCATION_LIST_2020 } ?: return null
+            val type = types.firstOrNull { it == BITSTRING || it == STATUS_LIST_2021 || it == REVOCATION_LIST_2020 || it == REVOCATION_LIST_2021 } ?: return null
             val revocationList = type == REVOCATION_LIST_2020
             val url = o.str(if (revocationList) "revocationListCredential" else "statusListCredential") ?: return null
             val index = (o[if (revocationList) "revocationListIndex" else "statusListIndex"] as? JsonPrimitive)?.content?.trim()?.toLongOrNull()
@@ -74,7 +86,9 @@ data class W3cStatusEntry(
                 val v = m.str("status")?.removePrefix("0x")?.toIntOrNull(16) ?: return@mapNotNull null
                 v to (m.str("message") ?: return@mapNotNull null)
             }.toMap()
-            return W3cStatusEntry(type, if (revocationList) "revocation" else (o.str("statusPurpose") ?: "revocation"), url, index, size, messages)
+            // A revocation list has no statusPurpose: its type says what a set bit means.
+            val purpose = if (revocationList || type == REVOCATION_LIST_2021) "revocation" else (o.str("statusPurpose") ?: "revocation")
+            return W3cStatusEntry(type, purpose, url, index, size, messages)
         }
 
         fun parseAll(vc: JsonObject): List<W3cStatusEntry> = W3cVc.statusEntries(vc).mapNotNull { parse(it) }
@@ -139,7 +153,8 @@ class W3cStatusChecker(
 
     suspend fun checkEntry(entry: W3cStatusEntry, issuer: String?, bypassCache: Boolean = false): W3cEntryStatus {
         val loopback = trustRegistry.policy.insecureLoopbackAllowed
-        if (!isAcceptableEndpoint(entry.listUrl, loopback)) {
+        // A DID URL naming the issuer's Identity Hub is resolved to the hub's https endpoint when fetched.
+        if (IdentityHubQuery.parse(entry.listUrl) == null && !isAcceptableEndpoint(entry.listUrl, loopback)) {
             return W3cEntryStatus(entry, null, RevocationCheckState.UNKNOWN, entry.purpose, false, "Status list URL is not https")
         }
         val now = Clock.System.now()
@@ -206,10 +221,44 @@ class W3cStatusChecker(
     }
 
     private suspend fun fetch(url: String): StatusList {
+        IdentityHubQuery.parse(url)?.let { return identityHubList(it) }
         val resp = httpClient.get(url) { header(HttpHeaders.Accept, "application/vc+jwt, application/vc+ld+json, application/json, application/jwt") }
         if (!resp.status.isSuccess()) error("Status list fetch returned ${resp.status.value}")
         val content = unwrap(resp.bodyAsText().trim())
         return if (content.startsWith("{")) jsonLdList(content) else jwtList(content)
+    }
+
+    /**
+     * A status list held by the issuer's Identity Hub (Microsoft Entra Verified ID): the DID URL's queries are posted
+     * to the https hub endpoint listed in the issuer's DID document, and the reply's entry data is the status list
+     * credential as a JWT (base64 encoded), verified like any other list. The query is anonymous: it names the list,
+     * not the credential or the holder.
+     */
+    private suspend fun identityHubList(q: IdentityHubQuery): StatusList {
+        val loopback = trustRegistry.policy.insecureLoopbackAllowed
+        val doc = DidResolver(httpClient, loopback).resolve(q.did)
+        val hub = doc.services.filter { it.type == "IdentityHub" }.flatMap { it.endpoints }.firstOrNull { isAcceptableEndpoint(it, loopback) }
+            ?: error("The issuer DID document names no https Identity Hub")
+        val body = buildJsonObject {
+            put("requestId", UUID.randomUUID().toString())
+            put("target", q.did)
+            putJsonArray("messages") { q.messages.forEach { m -> addJsonObject { put("descriptor", m) } } }
+        }
+        val resp = httpClient.post(hub) {
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        if (!resp.status.isSuccess()) error("Identity Hub returned ${resp.status.value}")
+        val reply = runCatching {
+            ((DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["replies"] as JsonArray).first() as JsonObject
+        }.getOrNull() ?: error("Identity Hub answered without a reply")
+        val code = ((reply["status"] as? JsonObject)?.get("code") as? JsonPrimitive)?.content?.toIntOrNull()
+        if (code != null && code != 200) error("Identity Hub reply status $code")
+        val data = ((reply["entries"] as? JsonArray)?.firstOrNull() as? JsonObject)?.str("data")
+            ?: error("Identity Hub returned no status list")
+        val jwt = if (data.startsWith("eyJ") && data.count { it == '.' } == 2) data
+        else decodeBase64Any(data)?.decodeToString()?.trim() ?: error("Identity Hub data is not base64")
+        return jwtList(jwt)
     }
 
     /** The status list credential inside [body]: the body itself, or a JSON wrapper's statusList / credential / vc member. */
@@ -385,7 +434,7 @@ class W3cStatusChecker(
             error("encodedList is not a GZIP compressed base64 bitstring")
         }
 
-        private fun decodeBase64Any(s: String): ByteArray? {
+        internal fun decodeBase64Any(s: String): ByteArray? {
             val t = s.trim()
             return runCatching { t.trimEnd('=').fromBase64Url() }.getOrNull()
                 ?: runCatching { t.fromBase64() }.getOrNull()
@@ -402,6 +451,43 @@ class W3cStatusChecker(
                 v = (v shl 1) or bit
             }
             return v
+        }
+    }
+}
+
+/**
+ * A DID URL that asks the DID subject's Identity Hub for an object: did:...?service=IdentityHub&queries=<base64 JSON
+ * array of message descriptors>, as Microsoft Entra Verified ID writes statusListCredential.
+ */
+internal class IdentityHubQuery(val did: String, val messages: JsonArray) {
+    companion object {
+        fun parse(url: String): IdentityHubQuery? {
+            if (!url.startsWith("did:") || '?' !in url) return null
+            val did = url.substringBefore('?')
+            val params = url.substringAfter('?').split('&').associate { p -> p.substringBefore('=') to percentDecode(p.substringAfter('=', "")) }
+            if (params["service"] != "IdentityHub") return null
+            val raw = params["queries"] ?: return null
+            val json = W3cStatusChecker.decodeBase64Any(raw)?.decodeToString() ?: return null
+            val messages = runCatching { DiwJson.parseToJsonElement(json) as JsonArray }.getOrNull() ?: return null
+            if (messages.isEmpty() || messages.any { it !is JsonObject }) return null
+            return IdentityHubQuery(did, messages)
+        }
+
+        /** %XX escapes only: a base64 "+" in the query is data, not a space. */
+        private fun percentDecode(s: String): String {
+            if ('%' !in s) return s
+            val out = StringBuilder()
+            var i = 0
+            while (i < s.length) {
+                val c = s[i]
+                if (c == '%' && i + 2 < s.length) {
+                    val v = s.substring(i + 1, i + 3).toIntOrNull(16)
+                    if (v != null) { out.append(v.toChar()); i += 3; continue }
+                }
+                out.append(c)
+                i++
+            }
+            return out.toString()
         }
     }
 }
