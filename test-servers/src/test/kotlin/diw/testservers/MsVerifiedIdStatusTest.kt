@@ -15,6 +15,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -35,7 +36,13 @@ import org.multipaz.crypto.EcCurve
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import org.multipaz.util.toBase64Url
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.ByteArrayOutputStream
+import java.math.BigInteger
+import java.security.KeyPairGenerator
+import java.security.Signature
+import java.security.interfaces.ECPublicKey
+import java.security.spec.ECGenParameterSpec
 import java.util.Base64
 import java.util.zip.GZIPOutputStream
 import kotlin.test.Test
@@ -51,6 +58,19 @@ import kotlin.time.Clock
 class MsVerifiedIdStatusTest {
     private val issuerKey = runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
     private val issuerJwk = runBlocking { issuerKey.publicKey.toJwk() }
+
+    /** The curve Microsoft's own issuers sign with (did.woodgrovedemo.com): secp256k1, ES256K. */
+    private val bc = BouncyCastleProvider()
+    private val k1Key = KeyPairGenerator.getInstance("EC", bc).apply { initialize(ECGenParameterSpec("secp256k1")) }.generateKeyPair()
+    private val k1Jwk = (k1Key.public as ECPublicKey).w.let { w ->
+        buildJsonObject {
+            put("kty", "EC")
+            put("crv", "secp256k1")
+            put("x", w.affineX.unsigned32().toBase64Url())
+            put("y", w.affineY.unsigned32().toBase64Url())
+        }
+    }
+    private var secp256k1 = false
     private val hubRequests = mutableListOf<JsonObject>()
     private val revoked = mutableSetOf<Int>()
 
@@ -65,7 +85,7 @@ class MsVerifiedIdStatusTest {
                     put("id", "#key1")
                     put("controller", DID)
                     put("type", "JsonWebKey2020")
-                    put("publicKeyJwk", issuerJwk)
+                    put("publicKeyJwk", if (secp256k1) k1Jwk else issuerJwk)
                 }
             }
             putJsonArray("assertionMethod") { add("#key1") }
@@ -82,57 +102,83 @@ class MsVerifiedIdStatusTest {
                 }
             }
         })
-        request.url.toString() == HUB && request.method == HttpMethod.Post -> {
-            val body = DiwJson.parseToJsonElement(request.body.toByteArray().decodeToString()) as JsonObject
-            hubRequests += body
-            val list = statusListJwt()
-            json(buildJsonObject {
-                put("requestId", body.str("requestId"))
-                putJsonArray("replies") {
-                    addJsonObject {
-                        put("messageId", "bafyreid")
-                        putJsonObject("status") { put("code", 200) }
-                        putJsonArray("entries") {
-                            addJsonObject {
-                                putJsonObject("descriptor") {
-                                    put("method", "CollectionsWrite")
-                                    put("schema", SCHEMA)
-                                    put("dataFormat", "application/vc+jwt")
-                                    put("objectId", LIST_ID)
-                                }
-                                // As the hub serves it: the JWT, base64 encoded once more.
-                                put("data", Base64.getEncoder().encodeToString(list.encodeToByteArray()))
+        request.url.toString() == HUB && request.method == HttpMethod.Post && request.body.contentType?.match(ContentType.Application.Json) != true ->
+            hubError("NoMessagesField", "The request body is not valid")
+        request.url.toString() == HUB && request.method == HttpMethod.Post -> hub(request)
+        else -> respond("not found", HttpStatusCode.NotFound)
+    }
+
+    private suspend fun MockRequestHandleScope.hub(request: HttpRequestData): HttpResponseData {
+        val body = DiwJson.parseToJsonElement(request.body.toByteArray().decodeToString()) as JsonObject
+        hubRequests += body
+        // As the Microsoft hub does: a requestId that is not a version 4 UUID is refused outright.
+        val requestId = body.str("requestId")
+        if (requestId == null || !UUID_V4.matches(requestId)) return hubError("InvalidRequestId", "The requestId '$requestId' is not valid UUID v4.")
+        val list = statusListJwt()
+        return json(buildJsonObject {
+            put("requestId", body.str("requestId"))
+            putJsonArray("replies") {
+                addJsonObject {
+                    put("messageId", "bafyreid")
+                    putJsonObject("status") { put("code", 200) }
+                    putJsonArray("entries") {
+                        addJsonObject {
+                            putJsonObject("descriptor") {
+                                put("method", "CollectionsWrite")
+                                put("schema", SCHEMA)
+                                put("dataFormat", "application/vc+jwt")
+                                put("objectId", LIST_ID)
                             }
+                            // As the hub serves it: the JWT, base64 encoded once more.
+                            put("data", Base64.getEncoder().encodeToString(list.encodeToByteArray()))
                         }
                     }
                 }
-            })
-        }
-        else -> respond("not found", HttpStatusCode.NotFound)
+            }
+        })
     }
+
+    /** The hub's refusal, as hub.did.msidentity.com answers a malformed request. */
+    private fun MockRequestHandleScope.hubError(code: String, message: String) = respond(
+        buildJsonObject { putJsonObject("error") { put("code", code); put("message", message) } }.toString(),
+        HttpStatusCode.BadRequest, headersOf(HttpHeaders.ContentType, "application/json"),
+    )
 
     private suspend fun statusListJwt(): String {
         val bits = ByteArray(16 * 1024)
         revoked.forEach { i -> bits[i / 8] = (bits[i / 8].toInt() or (0x80 ushr (i % 8))).toByte() }
         val gz = ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(bits) } }.toByteArray()
-        return signJws(
-            buildJsonObject { put("alg", "ES256"); put("typ", "JWT"); put("kid", "$DID#key1") },
-            buildJsonObject {
-                put("iss", DID)
-                put("iat", Clock.System.now().epochSeconds)
-                putJsonObject("vc") {
-                    putJsonArray("@context") { add("https://www.w3.org/2018/credentials/v1"); add("https://w3id.org/vc/status-list/2021/v1") }
-                    putJsonArray("type") { add("VerifiableCredential"); add("StatusList2021Credential") }
-                    putJsonObject("credentialSubject") {
-                        put("id", "urn:uuid:$LIST_ID")
-                        put("type", "RevocationList2021")
-                        put("encodedList", gz.toBase64Url())
-                    }
+        val payload = buildJsonObject {
+            put("iss", DID)
+            put("iat", Clock.System.now().epochSeconds)
+            putJsonObject("vc") {
+                putJsonArray("@context") { add("https://www.w3.org/2018/credentials/v1"); add("https://w3id.org/vc/status-list/2021/v1") }
+                putJsonArray("type") { add("VerifiableCredential"); add("StatusList2021Credential") }
+                putJsonObject("credentialSubject") {
+                    put("id", "urn:uuid:$LIST_ID")
+                    put("type", "RevocationList2021")
+                    put("encodedList", gz.toBase64Url())
                 }
-            },
-            AsymmetricKey.anonymous(issuerKey, Algorithm.ES256),
-        )
+            }
+        }
+        if (!secp256k1) {
+            return signJws(
+                buildJsonObject { put("alg", "ES256"); put("typ", "JWT"); put("kid", "$DID#key1") }, payload,
+                AsymmetricKey.anonymous(issuerKey, Algorithm.ES256),
+            )
+        }
+        val header = buildJsonObject { put("alg", "ES256K"); put("typ", "JWT"); put("kid", "$DID#key1") }
+        val input = header.toString().encodeToByteArray().toBase64Url() + "." + payload.toString().encodeToByteArray().toBase64Url()
+        // PLAIN-ECDSA gives r || s, the JWS form of an ECDSA signature.
+        val signature = Signature.getInstance("SHA256withPLAIN-ECDSA", bc).run {
+            initSign(k1Key.private)
+            update(input.encodeToByteArray())
+            sign()
+        }
+        return input + "." + signature.toBase64Url()
     }
+
+    private fun BigInteger.unsigned32(): ByteArray = toByteArray().takeLast(32).toByteArray().let { ByteArray(32 - it.size) + it }
 
     /** credentialStatus as Microsoft writes it, with the query base64 encoded into the DID URL. */
     private fun credential(index: Int): JsonObject {
@@ -180,11 +226,24 @@ class MsVerifiedIdStatusTest {
         assertEquals(RevocationCheckState.VALID, checker.w3c.check(credential(13), DID, bypassCache = true).state)
     }
 
+    @Test
+    fun identityHubStatusListSignedWithSecp256k1() = runBlocking<Unit> {
+        secp256k1 = true
+        val http = HttpClient(MockEngine { request -> handle(request) })
+        val checker = CredentialStatusChecker(http, TrustRegistry(EphemeralStorage(), EnvironmentPolicy()), didTrust = DidTrust.NONE)
+        val valid = checker.w3c.check(credential(12), DID, bypassCache = true)
+        assertEquals(RevocationCheckState.VALID, valid.state, "detail: ${valid.detail}")
+        assertTrue(valid.trusted)
+        revoked += 12
+        assertEquals(RevocationCheckState.INVALID, checker.w3c.check(credential(12), DID, bypassCache = true).state)
+    }
+
     companion object {
         const val HOST = "verifiedid.mock.example"
         const val DID = "did:web:$HOST"
         const val HUB = "https://hub.mock.example/v1.0/00000000-0000-0000-0000-000000000000"
         const val SCHEMA = "https://w3id.org/vc-status-list-2021/v1"
         const val LIST_ID = "cca8bd0a-83c2-4ae1-9f43-e99943cdfa5c"
+        val UUID_V4 = Regex("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
     }
 }

@@ -36,7 +36,6 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import org.multipaz.revocation.RevocationCheckState
-import org.multipaz.util.UUID
 import org.multipaz.util.fromBase64
 import org.multipaz.util.fromBase64Url
 import kotlin.time.Clock
@@ -44,6 +43,8 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * One credentialStatus entry of a W3C credential: Bitstring Status List v1.0 (BitstringStatusListEntry),
@@ -232,15 +233,16 @@ class W3cStatusChecker(
      * A status list held by the issuer's Identity Hub (Microsoft Entra Verified ID): the DID URL's queries are posted
      * to the https hub endpoint listed in the issuer's DID document, and the reply's entry data is the status list
      * credential as a JWT (base64 encoded), verified like any other list. The query is anonymous: it names the list,
-     * not the credential or the holder.
+     * not the credential or the holder. The hub answers 400 unless requestId is a version 4 UUID.
      */
+    @OptIn(ExperimentalUuidApi::class)
     private suspend fun identityHubList(q: IdentityHubQuery): StatusList {
         val loopback = trustRegistry.policy.insecureLoopbackAllowed
         val doc = DidResolver(httpClient, loopback).resolve(q.did)
         val hub = doc.services.filter { it.type == "IdentityHub" }.flatMap { it.endpoints }.firstOrNull { isAcceptableEndpoint(it, loopback) }
             ?: error("The issuer DID document names no https Identity Hub")
         val body = buildJsonObject {
-            put("requestId", UUID.randomUUID().toString())
+            put("requestId", Uuid.random().toString())
             put("target", q.did)
             putJsonArray("messages") { q.messages.forEach { m -> addJsonObject { put("descriptor", m) } } }
         }
@@ -248,7 +250,14 @@ class W3cStatusChecker(
             contentType(ContentType.Application.Json)
             setBody(body.toString())
         }
-        if (!resp.status.isSuccess()) error("Identity Hub returned ${resp.status.value}")
+        if (!resp.status.isSuccess()) {
+            // The hub explains a refusal as {"error":{"code","message"}}.
+            val why = runCatching {
+                val e = (DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["error"] as JsonObject
+                listOfNotNull(e.str("code"), e.str("message")).joinToString(": ")
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            error("Identity Hub returned ${resp.status.value}" + (why?.let { " ($it)" } ?: ""))
+        }
         val reply = runCatching {
             ((DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["replies"] as JsonArray).first() as JsonObject
         }.getOrNull() ?: error("Identity Hub answered without a reply")

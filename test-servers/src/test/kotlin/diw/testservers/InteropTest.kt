@@ -18,7 +18,9 @@ import kotlin.test.assertEquals
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.engine.java.Java
+import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.cookies.HttpCookies
+import io.ktor.client.plugins.plugin
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.post
@@ -282,6 +284,39 @@ class InteropTest {
         report("twdiw status list jku", r.assurance != diw.wallet.core.status.StatusAssurance.UNVERIFIED,
             "state=${r.state} value=${r.value} assurance=${r.assurance} detail=${r.detail}")
         assertTrue(r.assurance != diw.wallet.core.status.StatusAssurance.UNVERIFIED, "detail: ${r.detail}")
+    }
+
+    /**
+     * Microsoft Entra Verified ID status through the Woodgrove demo issuer's Identity Hub. The list ID is a fresh UUID,
+     * so the hub has no entry for it: an accepted query answers 200 with no entries, a malformed one answers 400.
+     */
+    @Test
+    fun verifiedIdIdentityHubQuery() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val sent = mutableListOf<String>()
+        val client = http.config {}
+        client.plugin(HttpSend).intercept { request ->
+            val body = request.body as? io.ktor.http.content.OutgoingContent.ByteArrayContent
+            sent += "${request.method.value} ${request.url.buildString()} type=${(request.body as? io.ktor.http.content.OutgoingContent)?.contentType} body=${body?.bytes()?.decodeToString()}"
+            execute(request)
+        }
+        val w = Wallet(client).init()
+        val checker = diw.wallet.core.status.W3cStatusChecker(client, w.trust, diw.wallet.core.trust.DidTrust.NONE)
+        val did = "did:web:did.woodgrovedemo.com"
+        val queries = """[{"method":"CollectionsQuery","schema":"https://w3id.org/vc-status-list-2021/v1","objectId":"${java.util.UUID.randomUUID()}"}]"""
+        val credential = kotlinx.serialization.json.buildJsonObject {
+            put("issuer", did)
+            put("credentialStatus", kotlinx.serialization.json.buildJsonObject {
+                put("id", "urn:uuid:${java.util.UUID.randomUUID()}?bit-index=7")
+                put("type", "RevocationList2021Status")
+                put("statusListIndex", 7)
+                put("statusListCredential", "$did?service=IdentityHub&queries=" + java.util.Base64.getEncoder().encodeToString(queries.encodeToByteArray()))
+            })
+        }
+        val r = checker.check(credential, did, bypassCache = true)
+        sent.forEach { println("INTEROP request $it") }
+        report("verified id identity hub", r.detail?.contains("no status list") == true, "state=${r.state} detail=${r.detail}")
+        assertEquals("Identity Hub returned no status list", r.detail?.substringAfterLast(": ")?.trim(), "detail: ${r.detail}")
     }
 
     /** walt.id demo issuer (OpenID4VCI draft 13): offers are created through its issuance API with the API's own examples. */
