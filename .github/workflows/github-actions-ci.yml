@@ -47,18 +47,40 @@ jobs:
       - name: Signing keys
         if: success() || failure()
         run: |
+          # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
             mkdir -p ~/.android
-            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > ~/.android/debug.keystore
             echo "Using the debug keystore from secrets"
           fi
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "DIW_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-            echo "Using the release keystore from secrets"
-          else
-            echo "No release keystore: the release APK is signed with the debug key"
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_BASE64: the release APK is signed with the debug key"
+            exit 0
           fi
+          jks="$RUNNER_TEMP/release.jks"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$jks"; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64 (docs/release.md)"
+            exit 1
+          fi
+          if [ -z "$DIW_KEYSTORE_PASSWORD" ] || [ -z "$DIW_KEY_ALIAS" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS are required with ANDROID_KEYSTORE_BASE64"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD > "$RUNNER_TEMP/keys.txt" 2>&1; then
+            grep -v JAVA_TOOL_OPTIONS "$RUNNER_TEMP/keys.txt" | tail -n 2
+            echo "::error::ANDROID_KEYSTORE_PASSWORD does not open the keystore, or ANDROID_KEYSTORE_BASE64 is not the whole .jks file"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "Keys in the keystore: $(grep -i PrivateKeyEntry "$RUNNER_TEMP/keys.txt" | cut -d, -f1 | paste -sd' ')"
+            echo "::error::ANDROID_KEY_ALIAS is not a key in the keystore"
+            exit 1
+          fi
+          # Compare with keytool -list -v on your own .jks; the key password itself is checked by the Gradle build.
+          keytool -list -v -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" 2>/dev/null | grep -m1 'SHA256:' || true
+          rm -f "$RUNNER_TEMP/keys.txt"
+          echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
+          echo "Using the release keystore from secrets"
       - name: Android APKs (debug)
         if: success() || failure()
         run: |
