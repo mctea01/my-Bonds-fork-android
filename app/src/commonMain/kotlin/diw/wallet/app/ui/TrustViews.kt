@@ -85,7 +85,7 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
 fun TierLegend() {
     val rows = listOf(
         TrustTier.T1 to "列於官方信任清單，並可完整驗證：數位憑證皮夾（TWDIW）信任清單內、DID 文件自簽有效且與 Arbitrum One 註冊相符的組織，以及標為官方的正式信任錨點。",
-        TrustTier.T2 to "身分已確認，但不是完整驗證的官方清單成員：列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符；或憑證鏈連到內建的政府憑證（GPKI：GCA、XCA、MOEACA，查驗方另含 MOICA 自然人憑證），證明是哪個機關、組織或公司，但不代表列於發行端或查驗方清單。",
+        TrustTier.T2 to "身分已確認，但不是完整驗證的官方清單成員：列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符；或憑證鏈連到內建的政府憑證（GPKI：GCA、XCA、MOEACA，查驗方與文件簽章另含 MOICA 自然人憑證），證明是哪個機關、組織或公司，但不代表列於發行端或查驗方清單。",
         TrustTier.T3 to "簽章可驗證，但沒有官方背書：系統憑證庫與內建公開憑證機構（含中國大陸憑證機構、常用服務的根憑證，只確認網域或組織名稱）、Microsoft Verified ID 的 Linked Domains（確認網域擁有權）、自行匯入的根憑證與自行信任的 DID、不在任何清單的 DID，以及測試環境的所有錨點。除了 Linked Domains，出示或領卡前都需要勾選確認。",
         TrustTier.T4 to "驗證失敗：簽章或憑證鏈不成立、要求未簽章、信任清單內容與鏈上註冊不符，或網域連結失效。除非確定來源，否則不要分享或接受。",
     )

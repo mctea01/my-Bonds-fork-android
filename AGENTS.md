@@ -15,8 +15,8 @@
 |---|---|
 | `core/src/commonMain` | 協議與信任核心，不依賴 UI |
 | `core/src/jvmCommonMain` | JVM 與 Android 共用的密碼學實作 |
-| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態、流程、紀錄）、`TaiwanModel`（TWDIW 平台服務與 Bonds）、`MsIssuanceModel`（Verified ID）、`ProximityModel`（ISO 18013-5 出示與 DC API Annex C）、`ReaderModel`（ISO 18013-5 查驗）、`StatusMonitor`、`History`（紀錄）、`ui/` |
-| `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼、NFC：Android 的 HCE `WalletNfcService`、讀卡模式與 USB CCID `AndroidNfcReaders`，桌面的 PC/SC `PcscReaders`） |
+| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態、流程、紀錄）、`TaiwanModel`（TWDIW 平台服務與 Bonds）、`MsIssuanceModel`（Verified ID）、`ProximityModel`（ISO 18013-5 出示與 DC API Annex C）、`ReaderModel`（ISO 18013-5 查驗）、`StatusMonitor`、`History`（紀錄）、`FilesModel`（文件保存、檢查、時戳、簽署、衍生憑證、取件入口）、`ui/` |
+| `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼、NFC：Android 的 HCE `WalletNfcService`、讀卡模式與 USB CCID `AndroidNfcReaders`，桌面的 PC/SC `PcscReaders`；取件入口 `PortalWebView`、檔案選取與儲存） |
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
 
@@ -32,6 +32,12 @@
 | `profile/twdiw` | TWDIW 信任清單、Arbitrum 錨定、入口解析、平台服務（卡片目錄、DWVP-05 離線條碼） |
 | `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
+| `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
+| `document/pdf` | 純 Kotlin PDF 解析（加密、增量更新、xref stream）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`） |
+| `document/sign` | 簽署（`DocumentSigning`：PAdES、CAdES、ASiC-E、XAdES、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`） |
+| `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
+| `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、證據查驗（`DerivedEvidence`） |
+| `document/official` | 電子公文「函」XML（`OfficialLetter`，DTD 104_2_utf8） |
 | `w3c`、`status`、`trust`、`did`、`holder` | W3C VC、狀態清單、信任錨與 DID 信任、DID 解析、錢包層級持有者金鑰 |
 
 ## 已定的設計規則
@@ -39,7 +45,7 @@
 1. **標準優先，方言隔離。** 標準路徑（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、mdoc）不含任何方言邏輯。方言只在標準會停下的位置透過 hook 介入（`IssuanceDialect`、`PresentationDialect` 的介面註解列出每個 hook），而且只對它擁有的 session 生效。
 2. **所有方言常駐啟用，不提供開關。** TWDIW 官方實作與 Bonds 必須完整支援；新增方言時加入 `WalletModel` 的方言清單，不新增設定。
 3. **信任分層。** T1 列於官方信任清單且可完整驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 身分已確認但不是完整驗證的官方清單成員（TWDIW 已列名但鏈上註冊無法確認或角色不符、內建 GPKI 證明身分）；T3 可驗證但非官方（系統憑證庫與內建公開根憑證、Linked Domains、使用者匯入的根憑證與信任的 DID、未列名 DID、所有測試錨）；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
-   - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA 只用於查驗方（自然人憑證），不用於發行端。
+   - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA（自然人憑證）用於查驗方與文件簽章，不用於發行端。
    - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T3（`SYSTEM_ANCHOR`）。同一個環境還包含兩組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
      - 常用服務憑證鏈的根憑證，跟著系統憑證庫的開關；
      - 中國大陸憑證機構，有獨立開關，預設開啟，加上 `MAINLAND_CHINA_CA` 標籤。內容包括 Mozilla 或 Microsoft 根憑證計畫收錄的 CFCA、GDCA、SHECA、BJCA、iTrusChina、TrustAsia，以及持牌 CA 在官網公布的國密 SM2 根憑證。
@@ -53,7 +59,7 @@
 6. **兜底實作。** 平台或 SDK 不支援時改用純軟體實作（軟體金鑰、純 Kotlin QR 編碼），模擬器、AOSP、桌面都要能用。
 7. **金鑰證明只確認金鑰有效，不檢查 RKP。**
 8. **CI release 產物必須經 R8 / ProGuard 最佳化**，不可只是 debug 建置。
-9. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（簽章文件、公文、MyData，保留區域）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
+9. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（文件保存、檢查、簽署、衍生憑證、取件入口）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
 10. **設計 token 沿用 Bonds**（`ui/UiKit.kt`）：互動主色為靛色，綠、橙、紅只用於判定（判定卡為 0.14 透明度色底、符號與文字三者並用，「部分」不可看起來像「通過」）；空狀態附直達動作；尚未實作的功能顯示為停用列並寫明原因，不隱藏；結果用畫面或判定卡呈現，警示對話框只用於確認有後果的動作。
 11. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T3，不會顯示為官方。
 
@@ -69,6 +75,21 @@
 - Android 讀卡模式依 Multipaz：NFC-A/B、略過 NDEF 檢查、無系統音效，標籤在 callback 內處理，transceive 逾時 20 秒；Activity 回到前景時重新開啟讀卡模式。
 - DC API 的 `org-iso-mdoc`（ISO 18013-7 Annex C）由 `ProximityModel.presentDcApi` 處理，Android 註冊時要列出這個 protocol。
 - 查驗端用 Multipaz 驗證 ISO 回應內的 SD-JWT VC（OtherDocument，ISO 18013-5 第二版）時，`nbf` 是必要欄位（`OtherDocument.verifySdJwtVc`）；SD-JWT VC 規格中 `nbf` 是選填，EUDI 的 PID 沒有這個欄位，查驗端會回「No nbf claim」。這是查驗端程式庫的限制，錢包端無法補上。
+
+## 文件、簽章與衍生憑證要點（P3）
+
+- 文件保存在 `FilesModel`（儲存區表格 `DiwFiles` 中繼資料、`DiwFileData` 內容），以 SHA-256 去重，單檔上限 64 MB。每次開啟重新檢查簽章，信任判定用 `TrustRole.DOCUMENT` 與 `TrustRole.TSA`（GPKI、MOICA、系統憑證庫與使用者匯入的根憑證），AIA 補中繼憑證只抓 http(s)、上限 256 KB。
+- 檢查結果是 `DocumentReport`：每個簽章分完整性、憑證鏈信任、時戳與後續變更（`LaterChanges`），判定 `VALID`、`PARTIAL`、`INVALID`、`UNSIGNED`，信任等級沿用 T1 到 T4。自簽憑證只能證明完整性，判定為 `PARTIAL`。
+- 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存。
+- 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
+- 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。有 TSA 時為 B-T。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
+- 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位（姓名、文件名稱、簽署者、簽署時間、來源）為 disclosure。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
+- vc+moica 與 Bonds 相容：payload 以 JCS 序列化，卡片簽 `"bonds-tw-credential-v1:" + hex(sha256(payload))`（RS256），issuerJWS 為 BONDS_SELF_ISSUED did:key 的 ES256。Bonds 請求 `k=s` 時列出有自然人憑證證據的衍生憑證；MOICA G3 與 GRCA G3 固定在 `MoicaCa.PRODUCTION`，測試以 `MoicaCa(moica, root)` 注入。
+- asdt 只保存原檔（加密給戶政司，錢包無法解開）；OpenCerts 只匯入、檢查 Merkle 完整性並保存；MyData 的 ZIP 可在文件畫面解出，每個檔案各自保存並記錄來自哪個壓縮檔。
+- 取件入口（`DocumentSources`）：MyData、MyDoc、教育部大專校院電子證書、數位證明管理中心、戶政、地政、移民署入出國日期證明書。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載）；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
+- 停用列（寫明原因）：行動自然人憑證簽章（需要內政部 SP 帳號）、CSC 遠端簽章、公文交換收發（需要機關的公文電子交換帳號與憑證）。
+- EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
+- 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。
 
 ## TWDIW 與 Bonds 要點
 
@@ -99,6 +120,7 @@
 DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots'   # 離屏渲染主要畫面為 PNG
 ./gradlew :app:assembleRelease                 # Android release（R8）
 python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生內建公開根憑證；--check 只檢查，--strict 有警告時回傳 2
+./gradlew -p tools/dss-check run --args=<資料夾>   # 以 EU DSS 驗證錢包簽出的檔案（見上方 P3 要點）
 ```
 
 測試慣例：

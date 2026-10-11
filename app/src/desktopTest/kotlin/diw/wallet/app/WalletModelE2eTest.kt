@@ -280,12 +280,19 @@ class WalletModelE2eTest {
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("13-trust-anchors", Screen.TrustAnchors)
+        val pdf = diw.wallet.core.document.pdf.PdfComposer.compose("在學證明", listOf(diw.wallet.core.document.pdf.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.first()
+        screen("14-file-detail", Screen.FileDetail(stored.id))
+        screen("15-file-sign", Screen.FileSign(stored.id))
+        screen("16-file-derive", Screen.FileDerive(stored.id))
+        screen("17-compose-letter", Screen.FileCompose(true))
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
             diw.wallet.app.ui.WalletTheme {
                 androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-                    diw.wallet.app.ui.AddDocumentSheet(onDismiss = {}, onList = {}, onScan = {})
+                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, onScan = {})
                 }
             }
         }
@@ -767,6 +774,78 @@ class WalletModelE2eTest {
         val presented = withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
         assertEquals(1, presented.claims.size)
         assertNull(presented.failure)
+    }
+
+    /**
+     * The document vault: a PDF is stored and checked, signed with the wallet's own key (PAdES, a new file whose
+     * signature verifies but whose signer is not anchored), turned into a derived SD-JWT VC, and that credential is
+     * presented offline to another wallet, which sees the chosen claims and the evidence.
+     */
+    @Test
+    fun documentVaultSignDeriveAndPresent() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        val pdf = diw.wallet.core.document.pdf.PdfComposer.compose(
+            "在學證明", listOf(diw.wallet.core.document.pdf.PdfComposer.Block.Heading("在學證明"), diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("測試")),
+        )
+        holder.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val original = holder.files.files.value.single()
+        assertEquals(diw.wallet.core.document.DocumentVerdict.UNSIGNED, original.report?.verdict)
+        assertEquals(Screen.FileDetail(original.id), holder.screen.value)
+        // The same content is not stored twice.
+        holder.files.import(PickedFile("copy.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        assertEquals(1, holder.files.files.value.size)
+
+        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false).join()
+        assertNull(holder.files.error.value, "sign: ${holder.files.error.value}")
+        val signed = holder.files.files.value.first { it.origin == FileOrigin.SIGNED }
+        val sig = signed.report!!.signatures.single()
+        assertEquals(diw.wallet.core.document.Check.PASS, sig.integrity)
+        assertEquals("測試使用者", sig.signer?.commonName)
+        assertEquals(original.id, signed.parentId)
+        assertTrue(holder.history.value.any { it.kind == HistoryKind.SIGNED })
+
+        val claims = diw.wallet.core.document.derived.DerivedCredentials.suggestedClaims(original.report!!, original.name, null)
+        holder.files.derive(original, claims, null, timestamp = false, validDays = 365).join()
+        assertNull(holder.files.error.value, "derive: ${holder.files.error.value}")
+        val derivedId = assertNotNull(holder.files.file(original.id)?.derivedDocumentId)
+        val doc = holder.documents.value.single { it.identifier == derivedId }
+        assertEquals(diw.wallet.core.document.derived.DerivedCredentials.VCT, doc.issuanceRecord?.vct)
+
+        val (verifier, _) = newWallet()
+        verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
+        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.taiwan.preferredDocument = derivedId
+        holder.handleUri(any.encode())
+        val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
+        val card = choose.cards.first()
+        assertEquals(derivedId, card.document.identifier)
+        holder.taiwan.presentBonds(choose.request, card, setOf("documentTitle"))
+        val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
+        frames.frames.forEach { verifier.handleUri(it) }
+        val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+        assertNull(result.error, "error: ${result.error}")
+        val r = assertNotNull(result.result)
+        assertEquals("在學證明", r.claims["documentTitle"])
+        assertEquals(original.sha256, r.claims["document.sha256"])
+        assertEquals(diw.wallet.core.document.Check.NOT_CHECKED, r.evidence.single().check)
+
+        // No vc+moica card yet: a request for a self-issued card says how to make one.
+        verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+        val self = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.taiwan.offline.value = OfflineUi.Working("")
+        holder.handleUri(self.encode())
+        val failed = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
+        assertTrue("自然人憑證" in failed.message)
+
+        // An official letter is written and signed with XAdES.
+        holder.files.composeLetter(diw.wallet.core.document.official.OfficialLetter(sender = "測試機關", recipient = "王小明", subject = "測試公文")).join()
+        val letter = holder.files.files.value.first { it.origin == FileOrigin.LETTER }
+        assertEquals("測試公文", letter.report?.title)
+        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false).join()
+        assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
+        val signedLetter = holder.files.files.value.first { it.origin == FileOrigin.SIGNED && it.parentId == letter.id }
+        assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */

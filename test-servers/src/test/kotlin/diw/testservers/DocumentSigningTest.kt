@@ -57,32 +57,35 @@ import kotlin.test.assertTrue
 
 /** Signing documents with a software key and checking the result with the wallet's own inspector and the JDK. */
 class DocumentSigningTest {
-    private val bc = BouncyCastleProvider()
-    private val now = Date()
+    // One PKI for the whole class, so samples saved by different tests share a root.
+    companion object {
+        private val bc = BouncyCastleProvider()
+        private val now = Date()
 
-    private fun keys(ec: Boolean): KeyPair = if (ec) KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
-    else KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        private fun keys(ec: Boolean): KeyPair = if (ec) KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        else KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
 
-    private fun cert(subject: String, issuer: String, key: KeyPair, signer: PrivateKey, ca: Boolean, tsa: Boolean = false, issuerKey: java.security.PublicKey = key.public): X509CertificateHolder {
-        val b = JcaX509v3CertificateBuilder(X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now.time - 86_400_000), Date(now.time + 86_400_000L * 365), X500Name(subject), key.public)
-        val ext = org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils()
-        b.addExtension(Extension.subjectKeyIdentifier, false, ext.createSubjectKeyIdentifier(key.public))
-        b.addExtension(Extension.authorityKeyIdentifier, false, ext.createAuthorityKeyIdentifier(issuerKey))
-        b.addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
-        b.addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
-        if (tsa) b.addExtension(Extension.extendedKeyUsage, true, ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping))
-        val alg = if (signer.algorithm == "RSA") "SHA256withRSA" else "SHA256withECDSA"
-        return b.build(JcaContentSignerBuilder(alg).setProvider(bc).build(signer))
+        private fun cert(subject: String, issuer: String, key: KeyPair, signer: PrivateKey, ca: Boolean, tsa: Boolean = false, issuerKey: java.security.PublicKey = key.public): X509CertificateHolder {
+            val b = JcaX509v3CertificateBuilder(X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now.time - 86_400_000), Date(now.time + 86_400_000L * 365), X500Name(subject), key.public)
+            val ext = org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils()
+            b.addExtension(Extension.subjectKeyIdentifier, false, ext.createSubjectKeyIdentifier(key.public))
+            b.addExtension(Extension.authorityKeyIdentifier, false, ext.createAuthorityKeyIdentifier(issuerKey))
+            b.addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
+            b.addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
+            if (tsa) b.addExtension(Extension.extendedKeyUsage, true, ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping))
+            val alg = if (signer.algorithm == "RSA") "SHA256withRSA" else "SHA256withECDSA"
+            return b.build(JcaContentSignerBuilder(alg).setProvider(bc).build(signer))
+        }
+
+        private val rootKey = keys(false)
+        private val root = cert("CN=Document Test Root", "CN=Document Test Root", rootKey, rootKey.private, true)
+        private val rsaKey = keys(false)
+        private val rsaCert = cert("CN=Test Signer RSA", "CN=Document Test Root", rsaKey, rootKey.private, false, issuerKey = rootKey.public)
+        private val ecKey = keys(true)
+        private val ecCert = cert("CN=Test Signer EC", "CN=Document Test Root", ecKey, rootKey.private, false, issuerKey = rootKey.public)
+        private val tsaKey = keys(false)
+        private val tsaCert = cert("CN=Test TSA", "CN=Document Test Root", tsaKey, rootKey.private, false, tsa = true, issuerKey = rootKey.public)
     }
-
-    private val rootKey = keys(false)
-    private val root = cert("CN=Document Test Root", "CN=Document Test Root", rootKey, rootKey.private, true)
-    private val rsaKey = keys(false)
-    private val rsaCert = cert("CN=Test Signer RSA", "CN=Document Test Root", rsaKey, rootKey.private, false, issuerKey = rootKey.public)
-    private val ecKey = keys(true)
-    private val ecCert = cert("CN=Test Signer EC", "CN=Document Test Root", ecKey, rootKey.private, false, issuerKey = rootKey.public)
-    private val tsaKey = keys(false)
-    private val tsaCert = cert("CN=Test TSA", "CN=Document Test Root", tsaKey, rootKey.private, false, tsa = true, issuerKey = rootKey.public)
 
     private fun signer(ec: Boolean) = object : DocumentSigner {
         override val certificateChain = listOf(if (ec) ecCert.encoded else rsaCert.encoded)
@@ -113,6 +116,8 @@ class DocumentSigningTest {
     }
 
     private suspend fun trustRoot() {
+        save("root.cer", root.encoded)
+        save("tsa.cer", tsaCert.encoded)
         for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA)) {
             registry.addAnchor(role, TrustEnvironment.USER, X509Cert(ByteString(root.encoded)), "Document Test Root", official = false, source = "test")
         }
@@ -199,6 +204,8 @@ class DocumentSigningTest {
         trustRoot()
         val content = "內容 content".toByteArray()
         val p7s = DocumentSigning.signCades(content, signer(false), detached = true, timestamper = timestamper)
+        save("detached.p7s", p7s)
+        save("detached.bin", content)
         val r = DocumentInspector.inspect(p7s, "a.p7s", trust, content)
         assertEquals(Check.PASS, r.signatures.single().integrity, r.signatures.single().problems.toString())
         assertEquals(Check.PASS, r.signatures.single().timestamp?.imprint)
@@ -206,6 +213,7 @@ class DocumentSigningTest {
         assertEquals(Check.FAIL, wrong.signatures.single().integrity)
 
         val p7m = DocumentSigning.signCades(content, signer(true), detached = false, timestamper = null)
+        save("enveloping.p7m", p7m)
         assertTrue(DocumentInspector.encapsulatedContent(p7m)!!.contentEquals(content))
         assertEquals(DocumentVerdict.VALID, DocumentInspector.inspect(p7m, "a.p7m", trust).verdict)
 

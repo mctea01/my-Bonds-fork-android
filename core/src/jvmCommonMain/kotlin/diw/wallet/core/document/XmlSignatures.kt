@@ -312,7 +312,9 @@ internal object XmlDsig {
             append("<ds:Object><xades:QualifyingProperties xmlns:xades=\"$XADES\" Target=\"#sig-$id\"><xades:SignedProperties Id=\"xades-$id\"><xades:SignedSignatureProperties>")
             append("<xades:SigningTime>$time</xades:SigningTime><xades:SigningCertificateV2><xades:Cert><xades:CertDigest>")
             append("<ds:DigestMethod Algorithm=\"$SHA256\"/><ds:DigestValue>" + b64.encodeToString(DocCrypto.digest("SHA-256", leaf)) + "</ds:DigestValue>")
-            append("</xades:CertDigest></xades:Cert></xades:SigningCertificateV2></xades:SignedSignatureProperties></xades:SignedProperties>")
+            append("</xades:CertDigest></xades:Cert></xades:SigningCertificateV2></xades:SignedSignatureProperties>")
+            // XAdES baseline B requires a DataObjectFormat for each signed data object (EN 319 132-1 6.3 k).
+            append("<xades:SignedDataObjectProperties><xades:DataObjectFormat ObjectReference=\"#ref-$id\"><xades:MimeType>text/xml</xades:MimeType></xades:DataObjectFormat></xades:SignedDataObjectProperties></xades:SignedProperties>")
             append(unsigned)
             append("</xades:QualifyingProperties></ds:Object></ds:Signature>")
         }
