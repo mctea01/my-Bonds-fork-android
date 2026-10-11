@@ -180,7 +180,7 @@ class GpkiCard(private val channel: CardChannel) {
     }
 
     private fun pinBytes(pin: String): ByteArray {
-        if (pin.length !in 4..PIN_MAX || pin.any { it.code > 0x7E || it.code < 0x20 }) throw SigningException("PIN 碼格式不正確（應為 6 至 8 碼）")
+        if (pin.length !in PIN_MIN..PIN_MAX || pin.any { it.code > 0x7E || it.code < 0x20 }) throw SigningException("PIN 碼格式不正確（應為 $PIN_MIN 至 $PIN_MAX 碼）")
         val b = ByteArray(PIN_MAX) { 0xFF.toByte() }
         pin.encodeToByteArray().copyInto(b)
         return b
@@ -298,6 +298,8 @@ class GpkiCard(private val channel: CardChannel) {
     }
 
     companion object {
+        /** PIN length accepted by the card; the PIN block is [PIN_MAX] bytes padded with FF. */
+        const val PIN_MIN = 6
         const val PIN_MAX = 10
         private const val CHUNK = 0xC8
         private const val RSA_LEN = 256

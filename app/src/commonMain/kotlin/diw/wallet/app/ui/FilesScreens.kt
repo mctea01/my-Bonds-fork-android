@@ -61,6 +61,7 @@ import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.LaterChanges
 import diw.wallet.core.document.SignatureInfo
 import diw.wallet.core.document.TimestampInfo
+import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.EvidenceResult
@@ -227,6 +228,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     val error by model.files.error.collectAsState()
     val docs by model.documents.collectAsState()
     val f = files.firstOrNull { it.id == screen.fileId }
+    // Every open checks the signatures again with the current time and trust anchors.
+    LaunchedEffect(screen.fileId) { model.files.refresh(screen.fileId) }
     if (f == null) {
         EmptyState(WalletIcons.Document, "找不到這份文件", "文件可能已刪除。", "回到文件") { model.showTab(HomeTab.FILES) }
         return
@@ -434,7 +437,7 @@ private fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Uni
         readers = runCatching { model.platform.nfcReaders() }.getOrElse { NfcReaderList(emptyList(), model.describe(it)) }
         reader = readers?.readers?.firstOrNull()
     }
-    fun update() = onChange(reader?.takeIf { pin.length in 6..12 }?.let { SignerChoice.Card(it, pin) })
+    fun update() = onChange(reader?.takeIf { pin.length in GpkiCard.PIN_MIN..GpkiCard.PIN_MAX }?.let { SignerChoice.Card(it, pin) })
     val list = readers
     when {
         list == null -> CircularProgressIndicator(Modifier.size(20.dp))
@@ -448,8 +451,8 @@ private fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Uni
     }
     OutlinedTextField(
         value = pin,
-        onValueChange = { v -> pin = v.filter { it.isDigit() }.take(12); update() },
-        label = { Text("卡片 PIN 碼（6 至 12 位數字）") },
+        onValueChange = { v -> pin = v.filter { it.isDigit() }.take(GpkiCard.PIN_MAX); update() },
+        label = { Text("卡片 PIN 碼（${GpkiCard.PIN_MIN} 至 ${GpkiCard.PIN_MAX} 位數字）") },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),

@@ -241,11 +241,26 @@ class FilesModel(private val model: WalletModel) {
         model.screen.value = Screen.FileDetail(f.id)
     }
 
-    /** Checks the file again with the current trust anchors. */
-    fun reinspect(f: StoredFile) = run("重新檢查簽章") {
+    /** Checks the file again with the current time and trust anchors and stores the new report. */
+    suspend fun refreshed(f: StoredFile): StoredFile {
         val report = DocumentInspector.inspect(data(f.id), f.name, trustSource, f.contentId?.let { data(it) })
-        save(f.copy(report = report))
+        // Apply the report to the latest copy so changes made meanwhile (a new time stamp) are kept.
+        return (file(f.id) ?: f).copy(report = report).also { save(it) }
     }
+
+    /** Re-checks a file when it is opened; the stored report stays if the check cannot run. */
+    fun refresh(id: String) = model.scope.launch {
+        val f = file(id) ?: return@launch
+        try {
+            refreshed(f)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Checks the file again with the current trust anchors. */
+    fun reinspect(f: StoredFile) = run("重新檢查簽章") { refreshed(f) }
 
     /** Pairs a detached signature (.p7s) with the file it signs and checks it again. */
     fun attachContent(signature: StoredFile, content: StoredFile) = run("檢查分離式簽章") {
@@ -409,7 +424,8 @@ class FilesModel(private val model: WalletModel) {
      */
     fun derive(f: StoredFile, claims: List<DerivedClaim>, card: SignerChoice.Card?, timestamp: Boolean, validDays: Int?) = run("產生衍生憑證") {
         val data = data(f.id)
-        val report = f.report ?: DocumentInspector.inspect(data, f.name, trustSource)
+        // The evidence states the result as of now, never a report cached from an earlier check.
+        val report = refreshed(f).report ?: DocumentInspector.inspect(data, f.name, trustSource)
         val now = Clock.System.now()
         val validUntil = validDays?.let { now + it.days }
         val document = DerivedDocument(f.sha256, f.mediaType, f.size)

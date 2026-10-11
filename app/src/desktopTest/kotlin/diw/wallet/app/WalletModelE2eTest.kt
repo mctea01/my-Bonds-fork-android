@@ -805,6 +805,14 @@ class WalletModelE2eTest {
         assertEquals(original.id, signed.parentId)
         assertTrue(holder.history.value.any { it.kind == HistoryKind.SIGNED })
 
+        // Opening a document checks it again: once the signer's certificate is trusted, the stored result changes.
+        assertEquals(diw.wallet.core.document.DocumentVerdict.PARTIAL, sig.verdict)
+        val pem = "-----BEGIN CERTIFICATE-----\n" + sig.signer!!.der.chunked(64).joinToString("\n") + "\n-----END CERTIFICATE-----\n"
+        holder.importAnchor(pem, "測試使用者", setOf(diw.wallet.core.trust.TrustRole.DOCUMENT)).join()
+        holder.files.refresh(signed.id).join()
+        val rechecked = holder.files.file(signed.id)?.report?.signatures?.single()
+        assertEquals(diw.wallet.core.document.DocumentVerdict.VALID, rechecked?.verdict, "${holder.message.value} ${rechecked?.trust}")
+
         val claims = diw.wallet.core.document.derived.DerivedCredentials.suggestedClaims(original.report!!, original.name, null)
         holder.files.derive(original, claims, null, timestamp = false, validDays = 365).join()
         assertNull(holder.files.error.value, "derive: ${holder.files.error.value}")

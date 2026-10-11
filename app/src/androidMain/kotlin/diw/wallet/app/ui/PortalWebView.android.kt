@@ -29,6 +29,9 @@ import java.net.URL
 
 private const val MAX_DOWNLOAD = 64 * 1024 * 1024
 
+/** Longest data: URL the script interface accepts: base64 of [MAX_DOWNLOAD] bytes plus the header. */
+private const val MAX_DATA_URL = (MAX_DOWNLOAD / 3 + 1) * 4 + 256
+
 /**
  * A source site inside the app: https pages load here, other schemes (mobilemoica:, intent:) go to their apps,
  * and downloads are fetched with the page's cookies and handed to the vault. Downloads made from a blob: URL are
@@ -54,7 +57,17 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 addJavascriptInterface(object {
                     @JavascriptInterface
+                    fun onTooLarge() {
+                        post { onError("檔案超過 64 MB") }
+                    }
+
+                    @JavascriptInterface
                     fun onBlob(name: String, dataUrl: String) {
+                        // Any page can call this interface, so the size is checked before anything is decoded.
+                        if (dataUrl.length > MAX_DATA_URL) {
+                            post { onError("檔案超過 64 MB") }
+                            return
+                        }
                         val comma = dataUrl.indexOf(',')
                         if (comma < 0) return
                         val mime = dataUrl.substring(5, comma).substringBefore(';')
@@ -78,6 +91,7 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                     val name = URLUtil.guessFileName(link, disposition, mime)
                     if (link.startsWith("blob:")) {
                         val script = "(function(){fetch(" + quote(link) + ").then(function(r){return r.blob();}).then(function(b){" +
+                            "if(b.size>$MAX_DOWNLOAD){DiwVault.onTooLarge();return;}" +
                             "var f=new FileReader();f.onload=function(){DiwVault.onBlob(" + quote(name) + ",f.result);};f.readAsDataURL(b);});})();"
                         evaluateJavascript(script, null)
                         return@setDownloadListener

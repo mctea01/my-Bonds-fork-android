@@ -185,6 +185,11 @@ actual object DocumentSigning {
         val ext = ExtensionsGenerator()
         ext.addExtension(Extension.basicConstraints, true, BasicConstraints(false))
         ext.addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
+        // Key identifiers let another wallet import this certificate as its own trust anchor.
+        val keyIds = org.bouncycastle.cert.bc.BcX509ExtensionUtils()
+        val spki = SubjectPublicKeyInfo.getInstance(publicKeyDer)
+        ext.addExtension(Extension.subjectKeyIdentifier, false, keyIds.createSubjectKeyIdentifier(spki))
+        ext.addExtension(Extension.authorityKeyIdentifier, false, keyIds.createAuthorityKeyIdentifier(spki))
         gen.setExtensions(ext.generate())
         val tbs = gen.generateTBSCertificate()
         val sig = sign(tbs.encoded)
