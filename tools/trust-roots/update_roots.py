@@ -26,6 +26,7 @@ import io
 import json
 import os
 import re
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -48,12 +49,18 @@ def warn(text):
     print("WARNING " + text, file=sys.stderr)
 
 
+# Certificates are verified as usual, but without Python's RFC 5280 strict mode: the Taiwan government sites serve
+# chains whose CA certificates lack a Subject Key Identifier, which strict mode refuses.
+TLS = ssl.create_default_context()
+TLS.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+
+
 def fetch(url, attempts=3):
     last = None
     for i in range(attempts):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "diw-wallet-trust-roots/1.0"})
-            with urllib.request.urlopen(req, timeout=90) as r:
+            with urllib.request.urlopen(req, timeout=90, context=TLS) as r:
                 return r.read()
         except Exception as e:  # network errors are retried, then reported by the caller
             last = e
@@ -100,6 +107,7 @@ class Cert:
         text = openssl(["x509", "-inform", "DER", "-noout", "-text"], der).decode("utf-8", "replace")
         self.algorithm = key_algorithm(text)
         self.ca = bool(re.search(r"CA:TRUE", text))
+        self.spki = sha256(openssl(["x509", "-inform", "DER", "-noout", "-pubkey"], der))
 
     @property
     def self_issued(self):
@@ -258,10 +266,17 @@ def check_gpki(cfg, warn_until):
         except Exception as e:
             warn(f"GPKI {repo['ca']} 儲存庫無法取得：{e}")
             continue
-        new = [c for c in certs if c.sha256 not in built and c.valid_at(TODAY) and c.ca]
-        lines.append(f"- {repo['ca']}：儲存庫 {len(certs)} 張，未內建且有效的 CA 憑證 {len(new)} 張")
+        # Compared by key: a link certificate between two built-in keys (GRCA's key rollover) or a re-issue that ends
+        # no later than the built-in certificate of the same key needs nothing.
+        latest = {}
+        for _, b in built.values():
+            latest[b.spki] = max(latest.get(b.spki, b.not_after), b.not_after)
+        new = [c for c in certs if c.sha256 not in built and c.valid_at(TODAY) and c.ca
+               and (c.spki not in latest or c.not_after > latest[c.spki])]
+        lines.append(f"- {repo['ca']}：儲存庫 {len(certs)} 張，金鑰未內建或延長效期的 CA 憑證 {len(new)} 張")
         for c in new:
-            warn(f"GPKI {repo['ca']} 有未內建的 CA 憑證：{c.subject}，簽發者 {c.issuer}，有效至 {c.not_after.date()}，SHA-256 {c.sha256}")
+            what = "延長效期的憑證" if c.spki in latest else "未內建的 CA 金鑰"
+            warn(f"GPKI {repo['ca']} 有{what}：{c.subject}，簽發者 {c.issuer}，有效至 {c.not_after.date()}，SHA-256 {c.sha256}")
     return lines
 
 
@@ -412,7 +427,12 @@ def main():
         except Exception as e:
             roots = [fp for fp in lock.get(host, []) if fp in cc]
             how = "沿用上次結果（" + str(e).splitlines()[0][:80] + "）"
-            warn(f"服務 {s['name']}（{host}）無法取得憑證鏈，沿用上次結果：{e}")
+            # Sites in mainland China often refuse connections from abroad: the last chain seen stays in use, and
+            # only a host never seen needs a person.
+            if roots:
+                notes.append(f"服務 {s['name']}（{host}）這次無法連線，沿用上次取得的根憑證")
+            else:
+                warn(f"服務 {s['name']}（{host}）無法取得憑證鏈，也沒有上次的結果：{e}")
         new_lock[host] = roots
         for fp in roots:
             if fp not in entries:

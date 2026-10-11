@@ -87,19 +87,56 @@ class TrustAnchorsTest {
         // Only issuers, verifiers and status list signers: never a wallet provider.
         assertNull(on.match(TrustRole.WALLET_PROVIDER, listOf(root)))
     }
+    /**
+     * Every built-in public root is what its entry says: the fingerprint matches, it is self-issued and its own key
+     * signed it (SM2 with SM3 and the default SM2 ID for the national algorithm roots), and it was valid on the day
+     * the list was generated. Expiry later is handled at run time: an expired root is no longer an anchor.
+     */
     @Test
     fun builtInPublicRootsAreWhatTheySay() {
-        val now = Clock.System.now()
-        assertTrue(BuiltInPublicRoots.mainlandChina.size >= 15)
+        val updated = Instant.parse(BuiltInPublicRoots.UPDATED + "T00:00:00Z")
+        val bc = BouncyCastleProvider()
+        val factory = java.security.cert.CertificateFactory.getInstance("X.509", bc)
+        assertTrue(BuiltInPublicRoots.mainlandChina.count { !it.national } >= 15)
         for (r in BuiltInPublicRoots.all) {
             val c = r.certificate
             val sha = MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02X".format(it) }
             assertEquals(r.sha256, sha, "${r.name} fingerprint")
             assertEquals(c.subject, c.issuer, "${r.name} is a root")
-            assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${r.name} is not valid now")
+            assertTrue(c.validityNotBefore <= updated && updated <= c.validityNotAfter, "${r.name} was not valid on ${BuiltInPublicRoots.UPDATED}")
+            val jca = factory.generateCertificate(c.encoded.toByteArray().inputStream()) as java.security.cert.X509Certificate
+            jca.verify(jca.publicKey, bc)
+            assertEquals(r.algorithm == "SM2", jca.sigAlgOID == "1.2.156.10197.1.501", "${r.name} signature algorithm")
         }
         // The e-invoice document signature issuer: the GDCA root as published for verifying electronic documents.
         assertTrue(BuiltInPublicRoots.mainlandChina.any { it.sha256 == "BFFF8FD04433487D6A8AA60C1A29767A9FC2BBB05E420F713A13B992891D3893" })
+        // The national SM2 root, as both its 2012 issue and the 2054 re-issue of the same key.
+        val national = BuiltInPublicRoots.mainlandChina.filter { it.national }
+        assertTrue(national.size >= 17)
+        assertTrue(national.any { it.sha256 == "9C28D3847414BFFF1A5749E7E2381146F82842083E8C592E16A612D04A5BA8CD" })
+        assertTrue(national.any { it.sha256 == "4218EB3B3379E9AEC4B9BD9A5E3EE9F0CBA98DF97E53D9186E18A3CFF56BDAF3" })
+    }
+
+    /**
+     * Real SM2 intermediates, as CFCA publishes them, validate to the built-in SM2 roots through the national-algorithm
+     * PKIX path: CFCA CS SM2 CA as issued by the national root, and CFCA's OCAs under its own SM2 roots.
+     */
+    @Test
+    fun builtInSm2RootsValidate() {
+        val at = Instant.parse(BuiltInPublicRoots.UPDATED + "T00:00:00Z")
+        val sm2 = BuiltInPublicRoots.mainlandChina.filter { it.national }
+        fun root(name: String) = sm2.first { it.name == name }.certificate
+        val roots = sm2.map { it.certificate }
+        val national = roots.filter { it.subject == root("ROOTCA（國家 SM2 根，2042 年版）").subject }
+        assertEquals(2, national.size)
+
+        val underNational = pemChain("sm2-cfca-cs-under-rootca")
+        assertTrue(Pkix.anchorOf(underNational, roots - root("CFCA CS SM2 CA"), at) in national)
+        assertEquals(root("CFCA CS SM2 CA"), Pkix.anchorOf(pemChain("sm2-cfca-oca1"), roots, at))
+        assertEquals(root("CFCA EV SM2 ROOT"), Pkix.anchorOf(pemChain("sm2-cfca-ev-oca"), roots, at))
+        // Without the root that signed it, an SM2 chain leads nowhere.
+        assertNull(Pkix.anchorOf(pemChain("sm2-cfca-ev-oca"), roots - root("CFCA EV SM2 ROOT"), at))
+        assertNull(Pkix.anchorOf(underNational, roots - national.toSet() - root("CFCA CS SM2 CA"), at))
     }
 
     private fun pemChain(name: String): List<X509Cert> {
