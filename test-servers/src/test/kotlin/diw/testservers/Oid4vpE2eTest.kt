@@ -1,5 +1,6 @@
 package diw.testservers
 
+import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.RequestValidationException
 import diw.wallet.core.trust.TrustTier
@@ -22,6 +23,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class Oid4vpE2eTest {
@@ -168,13 +170,21 @@ class Oid4vpE2eTest {
         assertTrue(diw.wallet.core.trust.TrustLabel.UNKNOWN_ANCHOR in req.verifier.trust.labels)
     }
 
-    private suspend fun dcApi(origin: String, callerOrigin: String, signed: Boolean): JsonObject {
-        val w = wallet()
+    /** Creates a DC API session on the test verifier: id, protocol and the request data member. */
+    private suspend fun dcApiSession(origin: String, signed: Boolean, dcql: JsonObject? = null): JsonObject {
         val text = servers.httpClient.post("$base/verifier/dcapi/sessions") {
             contentType(ContentType.Application.Json)
-            setBody(buildJsonObject { put("origin", origin); put("signed", signed); put("encrypted", true) }.toString())
+            setBody(buildJsonObject {
+                put("origin", origin); put("signed", signed); put("encrypted", true)
+                dcql?.let { put("dcql_query", it) }
+            }.toString())
         }.bodyAsText()
-        val o = DiwJson.parseToJsonElement(text).jsonObject
+        return DiwJson.parseToJsonElement(text).jsonObject
+    }
+
+    private suspend fun dcApi(origin: String, callerOrigin: String, signed: Boolean): JsonObject {
+        val w = wallet()
+        val o = dcApiSession(origin, signed)
         val req = w.holder.resolveDcApi(o["protocol"]!!.jsonPrimitive.content, o["data"]!!.jsonObject, callerOrigin)
         val prepared = w.holder.prepare(req)
         val outcome = w.holder.respond(prepared, prepared.queryResult.select(emptyList())) as PresentationOutcome.DcApi
@@ -201,6 +211,37 @@ class Oid4vpE2eTest {
     fun dcApiRejectsOriginNotInExpectedOrigins() = runBlocking {
         val e = assertFailsWith<RequestValidationException> { dcApi("https://rp.example", "https://attacker.example", signed = true) }
         assertTrue(e.message!!.contains("expected_origins"))
+    }
+
+    /** A caller origin reported with a trailing slash is the same origin, also for the KB-JWT audience. */
+    @Test
+    fun dcApiOriginWithTrailingSlash() = runBlocking {
+        val r = dcApi("https://rp.example", "https://rp.example/", signed = true)
+        assertEquals("passed", r["status"]!!.jsonPrimitive.content, r.toString())
+    }
+
+    /** OpenID4VP 1.0 A.2: an origin outside expected_origins is answered with invalid_request instead of a cancelled flow. */
+    @Test
+    fun dcApiOriginMismatchReturnsInvalidRequest() = runBlocking {
+        val data = dcApiSession("https://rp.example", signed = true)["data"]!!.jsonObject
+        val e = assertFailsWith<RequestValidationException> { wallet().holder.resolveDcApi("openid4vp-v1-signed", data, "https://attacker.example") }
+        assertEquals(buildJsonObject { put("error", "invalid_request") }, Oid4vpHolder.dcApiError(data, e))
+        assertNull(Oid4vpHolder.dcApiError(data, IllegalStateException("not a validation failure")))
+    }
+
+    /** OpenID4VP 1.0 section 15.9.2: no error before consent for value matching, which could reveal the claim value. */
+    @Test
+    fun dcApiErrorWithheldForValueMatching() = runBlocking {
+        val dcql = DiwJson.parseToJsonElement(
+            """{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["urn:eudi:pid:1"]},
+              "claims":[{"path":["nationality"],"values":["TW"]}]}]}"""
+        ).jsonObject
+        val data = dcApiSession("https://rp.example", signed = true, dcql)["data"]!!.jsonObject
+        val w = wallet()
+        val e = assertFailsWith<RequestValidationException> { w.holder.resolveDcApi("openid4vp-v1-signed", data, "https://attacker.example") }
+        assertNull(Oid4vpHolder.dcApiError(data, e))
+        // Declining such a request cancels the flow instead of answering access_denied.
+        assertNull(w.holder.decline(w.holder.resolveDcApi("openid4vp-v1-signed", data, "https://rp.example")))
     }
 
     @Test

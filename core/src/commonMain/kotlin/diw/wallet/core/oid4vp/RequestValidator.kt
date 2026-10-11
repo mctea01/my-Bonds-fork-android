@@ -111,7 +111,7 @@ class RequestValidator(
             if (expectedOrigins.isEmpty()) {
                 throw RequestValidationException("invalid_request", "Signed DC API requests must contain expected_origins")
             }
-            if (origin !in expectedOrigins) {
+            if (expectedOrigins.none { it.removeSuffix("/") == origin }) {
                 throw RequestValidationException("invalid_request", "Caller origin $origin is not in expected_origins")
             }
         }

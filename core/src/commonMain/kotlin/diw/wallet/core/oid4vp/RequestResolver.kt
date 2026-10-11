@@ -93,12 +93,13 @@ class RequestResolver(
      * Builds a request from a W3C Digital Credentials API invocation.
      * @param protocol e.g. openid4vp-v1-unsigned, openid4vp-v1-signed
      * @param data the request data member
-     * @param origin the caller origin provided by the platform
+     * @param callerOrigin the caller origin provided by the platform; a trailing slash is dropped (an origin has no path)
      */
-    fun fromDcApi(protocol: String, data: JsonObject, origin: String): RawAuthorizationRequest {
+    fun fromDcApi(protocol: String, data: JsonObject, callerOrigin: String): RawAuthorizationRequest {
         if (protocol !in setOf("openid4vp-v1-unsigned", "openid4vp-v1-signed", "openid4vp-v1-multisigned")) {
             throw RequestValidationException("invalid_request", "Unsupported DC API protocol '$protocol'")
         }
+        val origin = callerOrigin.removeSuffix("/")
         val signed = data["request"]
         return if (signed != null) {
             val jwt = (signed as? JsonPrimitive)?.content

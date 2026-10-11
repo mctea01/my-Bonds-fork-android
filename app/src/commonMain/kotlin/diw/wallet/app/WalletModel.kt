@@ -172,6 +172,8 @@ class WalletModel(val platform: PlatformServices) {
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
+    /** Error data for the DC API caller once the user leaves a failed request; null cancels the flow instead. */
+    private var dcApiError: JsonObject? = null
 
     /** The user's languages (BCP 47, most preferred first) with English as the last fallback. */
     val locales: List<String> by lazy {
@@ -383,7 +385,7 @@ class WalletModel(val platform: PlatformServices) {
                 screen.value = Screen.Home
             }
             Screen.Presentation -> {
-                cancelDcApi()
+                leaveDcApi()
                 screen.value = Screen.Home
             }
             Screen.Settings -> screen.value = Screen.Home
@@ -661,21 +663,35 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
-    /** Digital Credentials API entry (Android Credential Manager). Completes with the response data, or null when declined. */
+    /**
+     * Digital Credentials API entry (Android Credential Manager). Completes with the response data (an OpenID4VP error
+     * included), or null to cancel the flow. A failed request stays on screen until the user leaves it, so the reason
+     * can be read instead of the caller only seeing a cancelled request.
+     */
     suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String): JsonObject? {
-        val done = CompletableDeferred<JsonObject?>()
-        dcApiResult = done
-        presentation.value = PresentationUi.Loading
-        screen.value = Screen.Presentation
+        val done = startDcApi()
         try {
             val h = holder()
             presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)))
         } catch (e: Exception) {
+            dcApiError = Oid4vpHolder.dcApiError(data, e)
             presentation.value = PresentationUi.Failed(describe(e))
-            dcApiResult = null
-            return null
         }
         return done.await()
+    }
+
+    /** Shows why a DC API request cannot be handled at all; completes with null (cancel) when the user leaves. */
+    suspend fun failDcApi(reason: String): JsonObject? {
+        val done = startDcApi()
+        presentation.value = PresentationUi.Failed(reason)
+        return done.await()
+    }
+
+    private fun startDcApi(): CompletableDeferred<JsonObject?> {
+        dcApiError = null
+        presentation.value = PresentationUi.Loading
+        screen.value = Screen.Presentation
+        return CompletableDeferred<JsonObject?>().also { dcApiResult = it }
     }
 
     private suspend fun consentFor(prepared: PreparedPresentation): PresentationUi.Consent {
@@ -712,15 +728,18 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     fun decline(consent: PresentationUi.Consent) = scope.launch {
-        runCatching { holder().decline(consent.request) }
-        dcApiResult?.complete(null)
+        // Over the DC API the refusal (access_denied) goes back to the caller; otherwise it is posted to an authenticated Verifier.
+        val outcome = runCatching { holder().decline(consent.request) }.getOrNull()
+        dcApiResult?.complete((outcome as? PresentationOutcome.DcApi)?.data)
         dcApiResult = null
         presentation.value = PresentationUi.Failed("已拒絕分享")
     }
 
-    fun cancelDcApi() {
-        dcApiResult?.complete(null)
+    /** Ends a pending DC API request when the user leaves the presentation: a reportable failure goes to the caller, anything else cancels. */
+    fun leaveDcApi() {
+        dcApiResult?.complete(dcApiError)
         dcApiResult = null
+        dcApiError = null
     }
 
     // ---------------------------------------------------------------- helpers
