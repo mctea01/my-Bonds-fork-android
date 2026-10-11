@@ -19,6 +19,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -26,6 +27,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import diw.wallet.app.WalletModel
+import diw.wallet.app.decodeImageBytes
 import diw.wallet.app.ui.WalletApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -46,13 +48,20 @@ private fun dataDir(): File {
     }
 }
 
+/** Window and taskbar icon, rendered by app/icons/generate_icons.py. */
+private fun appIcon(): BitmapPainter? =
+    Thread.currentThread().contextClassLoader?.getResourceAsStream("app-icon.png")
+        ?.use { decodeImageBytes(it.readBytes()) }
+        ?.let { BitmapPainter(it) }
+
 fun main(args: Array<String>) {
     Security.addProvider(BouncyCastleProvider())
     val dir = dataDir()
     val startUri = args.firstOrNull()
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
-        Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", state = rememberWindowState(width = 480.dp, height = 860.dp)) {
+        val icon = remember { appIcon() }
+        Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
             val m = model
             if (m == null) {
                 UnlockScreen(firstRun = !PinValueCipher.isInitialized(dir)) { pin ->

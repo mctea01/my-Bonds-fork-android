@@ -82,6 +82,7 @@ fun SettingsScreen(model: WalletModel) {
             model.screen.value = Screen.TrustAnchors
         }
         HorizontalDivider()
+        DigitalCredentialsSection(model)
         SectionTitle("資料與隱私")
         Text("紀錄只保存對象、時間、證件與欄位名稱，不保存欄位內容。目前共 ${history.size} 筆。", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { confirmClear = true }, enabled = history.isNotEmpty()) { Text("清除所有紀錄") }
@@ -175,4 +176,25 @@ fun SettingsScreen(model: WalletModel) {
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
         )
     }
+}
+
+/** Registration with the system credential picker (Android Digital Credentials API); hidden where there is none. */
+@Composable
+private fun DigitalCredentialsSection(model: WalletModel) {
+    val reg by model.dcApiRegistration.collectAsState()
+    val r = reg ?: return
+    SectionTitle("瀏覽器與 App 出示")
+    val summary = when {
+        r.error != null -> "最近一次向系統註冊失敗：${r.error}"
+        r.registered == 0 -> "目前沒有可由系統選擇器出示的證件。系統選擇器只支援 mdoc 與 SD-JWT VC 證件。"
+        else -> "已向系統註冊 ${r.registered} 張證件。網頁或其他 App 以 Digital Credentials API 要求證件時，系統選擇器會在證件類型相符時列出本 App。"
+    }
+    Text(summary, style = MaterialTheme.typography.bodySmall,
+        color = if (r.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    if (r.notListable > 0) {
+        Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
+            style = MaterialTheme.typography.bodySmall)
+    }
+    OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text("重新向系統註冊") }
+    HorizontalDivider()
 }

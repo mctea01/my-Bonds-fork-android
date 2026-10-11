@@ -83,6 +83,11 @@
 - Bonds：持有者是 BLE GATT 周邊，以要求中的一次性 UUID 廣播；frames characteristic `2B1D0001-…` notify，查驗方寫 `0x01` 到 `2B1D0002-…` 表示收齊。QR 分幀前綴 `BTWVP1`，以 ECC Q 顯示。
 - Bonds 請求的 `k`：`g` 政府皮夾卡片、`s` 自然人憑證自發卡、`a` 本錢包擴充（任何綁定金鑰的證件）。回應 `g` 時只列 TWDIW 卡片，保持與 Bonds 相容。`a` 的封裝：`data:application/dc+sd-jwt,`（IETF SD-JWT VC 以 `vct` 辨識，持有者 DID 為 cnf 金鑰的 did:jwk；W3C SD-JWT 沿用 TWDIW 檢查）與 `data:application/vc+jwt,`（W3C JWT VC，`sub` 或 credentialSubject.id 為持有者 DID）。SD-JWT VC 的發行端金鑰依序來自 x5c、DID iss、JWT VC issuer metadata（需要網路）。
 
+## Android 平台要點
+
+- Digital Credentials API：multipaz-dcapi 只把 mdoc 與 SD-JWT VC 註冊給系統選擇器，只有 W3C 格式的卡片（如 TWDIW）不會出現在選擇器，需以 QR 碼或連結出示。Multipaz 會以快取雜湊略過「資料未變」的註冊，系統拒絕時也只寫 log，所以 App 每次啟動強制註冊，並等待系統回覆，結果與「重新向系統註冊」顯示在設定。
+- App 圖示：Android 為 `res/mipmap-anydpi-v26` 自適應圖示（含主題圖示）；桌面圖示由 `python3 app/icons/generate_icons.py` 依同一幾何產生，修改圖示時兩者一起更新。
+
 ## 建置與測試
 
 ```bash

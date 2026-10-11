@@ -237,6 +237,8 @@ class WalletModel(val platform: PlatformServices) {
     val settingsFlow = MutableStateFlow(WalletSettings())
     val pinRequest = MutableStateFlow<PinRequest?>(null)
     val message = MutableStateFlow<String?>(null)
+    /** Last registration with the platform Digital Credentials API; null where the platform has none. */
+    val dcApiRegistration = MutableStateFlow<DcApiRegistration?>(null)
     val ready = MutableStateFlow(false)
     /** Document statuses, kept current in the background. */
     val status = StatusMonitor(this)
@@ -561,6 +563,9 @@ class WalletModel(val platform: PlatformServices) {
         }
         return true
     }
+
+    /** Registers the stored credentials with the system credential picker again, whether or not they changed. */
+    fun reregisterDigitalCredentials() = scope.launch { platform.registerDigitalCredentials(this@WalletModel, force = true) }
 
     fun refreshDocuments() = scope.launch {
         documents.value = documentStore.listDocuments()
