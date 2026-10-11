@@ -1,5 +1,6 @@
 package diw.wallet.core.compat
 
+import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.IssuerMetadata
 import io.ktor.http.HttpStatusCode
@@ -56,6 +57,9 @@ interface IssuanceDialect {
 
     /** Issuer key for an SD-JWT that has no x5c and no https iss with JWT VC issuer metadata. */
     suspend fun sdJwtIssuerKey(context: SdJwtKeyContext): DialectIssuerKey? = null
+
+    /** Whether an authorization response [iss] that differs from [authServer]'s issuer (RFC 9207) still names that server. */
+    fun acceptsAuthorizationResponseIssuer(authServer: AuthServerMetadata, iss: String): Boolean = false
 }
 
 /** Runs dialect hooks in order and remembers which dialects, and which specifications, one issuance used. */

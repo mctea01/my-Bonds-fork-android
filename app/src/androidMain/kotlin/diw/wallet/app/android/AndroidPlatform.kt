@@ -14,12 +14,14 @@ import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.WalletModel
 import diw.wallet.app.softwareBackend
+import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.storage.ValueCipher
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.Algorithm
 import org.multipaz.digitalcredentials.DigitalCredentials
 import org.multipaz.digitalcredentials.getDefault
@@ -94,7 +96,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         val software = softwareBackend(storage, pinPrompt)
         val secure = deviceSecure
         fun hw(strongBox: Boolean) = KeyBackend(keystore, if (strongBox) KeyProtection.STRONGBOX else KeyProtection.TEE) { challenge, userAuth ->
-            AndroidKeystoreCreateKeySettings.Builder(challenge)
+            AndroidKeystoreCreateKeySettings.Builder(attestationChallenge(challenge))
                 .setUseStrongBox(strongBox)
                 .apply {
                     // Without a screen lock Android cannot bind keys to the user; such keys are not created (software takes over).
@@ -109,6 +111,13 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         // No screen lock: user-bound hardware keys are impossible, so new credentials use App PIN software keys first.
         return if (secure) hardware + software else listOf(software) + hardware
     }
+
+    /**
+     * KeyMint rejects attestation challenges over 128 bytes (INVALID_INPUT_LENGTH, surfacing as "Error creating key");
+     * longer issuer nonces, such as the 720-byte JWE c_nonce of issuer.eudiw.dev, are bound by their SHA-256 instead.
+     */
+    private fun attestationChallenge(challenge: ByteString): ByteString =
+        if (challenge.size <= MAX_ATTESTATION_CHALLENGE) challenge else ByteString(PlatformCrypto.sha256(challenge.toByteArray()))
 
     override fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider =
         PinOrPlatformUnlock(pinPrompt, object : KeyUnlockDataProvider {
@@ -138,5 +147,9 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") }.toSet()
             dc.register(model.documentStore, model.documentTypes, protocols, false)
         }
+    }
+
+    private companion object {
+        const val MAX_ATTESTATION_CHALLENGE = 128
     }
 }
