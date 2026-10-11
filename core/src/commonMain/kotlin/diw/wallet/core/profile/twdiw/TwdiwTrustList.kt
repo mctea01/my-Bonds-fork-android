@@ -111,10 +111,19 @@ class TwdiwTrustList(
 
     override suspend fun decide(did: String, role: TrustRole): TrustDecision? {
         val snap = verified(did) ?: return null
-        return decisionFor(snap)
+        val required = orgTypeFor(role)
+        // /api/did/{did} answers with one orgType; a DID registered on both sides carries both only in the merged list.
+        val types = if (required == null || required in snap.entry.orgTypes) snap.entry.orgTypes
+        else snap.entry.orgTypes + runCatching { all().firstOrNull { it.did == did }?.orgTypes }.getOrNull().orEmpty()
+        return decisionFor(snap, role, types)
     }
 
-    fun decisionFor(snap: TwdiwTrustSnapshot): TrustDecision {
+    /**
+     * The decision for [snap]. With a [role], the organisation must be registered on that side ([orgTypes], issuer 1,
+     * verifier 2) to be official; listed on the other side only, it is T2. Without a role (trust list screen) the
+     * entry is judged as listed.
+     */
+    fun decisionFor(snap: TwdiwTrustSnapshot, role: TrustRole? = null, orgTypes: Set<Int> = snap.entry.orgTypes): TrustDecision {
         val env = if (platform.test) TrustEnvironment.TEST else TrustEnvironment.PRODUCTION
         val name = snap.entry.displayName
         val offline = Clock.System.now().toEpochMilliseconds() - snap.checkedAt > cacheTtl.inWholeMilliseconds
@@ -125,15 +134,29 @@ class TwdiwTrustList(
             return TrustDecision(TrustTier.T4, env, false, name, setOf(TrustLabel.UNKNOWN_ANCHOR), reasons)
         }
         val state = AnchorState.valueOf(snap.anchor)
+        val required = role?.let { orgTypeFor(it) }
+        val wrongSide = required != null && required !in orgTypes
         return when {
             platform.test -> TrustDecision(TrustTier.T3, env, false, name, setOf(TrustLabel.TEST_ANCHOR), reasons + "TWDIW test trust list")
-            state == AnchorState.VERIFIED -> TrustDecision(TrustTier.T1, env, true, name, emptySet(), reasons)
             state == AnchorState.MISMATCH -> TrustDecision(TrustTier.T4, env, false, name, setOf(TrustLabel.UNKNOWN_ANCHOR),
                 reasons + "The TWDIW trust list entry does not match its Arbitrum registration")
+            wrongSide -> TrustDecision(TrustTier.T2, env, false, name, emptySet(),
+                reasons + "Listed in the TWDIW trust list as ${sides(orgTypes)}, not as ${role!!.id}")
+            state == AnchorState.VERIFIED -> TrustDecision(TrustTier.T1, env, true, name, emptySet(), reasons)
             else -> TrustDecision(TrustTier.T2, env, false, name, emptySet(),
                 reasons + "Listed in the TWDIW trust list; Arbitrum anchor ${state.name.lowercase()}")
         }
     }
+
+    private fun orgTypeFor(role: TrustRole): Int? = when (role) {
+        TrustRole.ISSUER, TrustRole.STATUS_LIST -> ORG_TYPE_ISSUER
+        TrustRole.VERIFIER -> ORG_TYPE_VERIFIER
+        else -> null
+    }
+
+    private fun sides(types: Set<Int>): String = types.mapNotNull {
+        when (it) { ORG_TYPE_ISSUER -> "issuer"; ORG_TYPE_VERIFIER -> "verifier"; else -> null }
+    }.ifEmpty { listOf("an unknown organisation type") }.joinToString(" and ")
 
     /** The checked entry for [did], or null when the DID is not listed. Falls back to the stored snapshot offline. */
     suspend fun verified(did: String, bypassCache: Boolean = false): TwdiwTrustSnapshot? {
@@ -175,7 +198,7 @@ class TwdiwTrustList(
         val now = Clock.System.now()
         allCache?.takeIf { !bypassCache && it.second > now }?.let { return it.first }
         val merged = linkedMapOf<String, TwdiwTrustEntry>()
-        for (orgType in listOf(1, 2)) {
+        for (orgType in listOf(ORG_TYPE_ISSUER, ORG_TYPE_VERIFIER)) {
             var page = 0
             while (page < MAX_PAGES) {
                 val body = getJson("${platform.frontendUrl}/api/did?size=$PAGE_SIZE&page=$page&orgType=$orgType&status=1") ?: break
@@ -283,6 +306,8 @@ class TwdiwTrustList(
 
     companion object {
         const val PAGE_SIZE = 20
+        const val ORG_TYPE_ISSUER = 1
+        const val ORG_TYPE_VERIFIER = 2
         private const val MAX_PAGES = 50
         private val TABLE = StorageTableSpec("DiwTwdiwTrust", supportPartitions = false, supportExpiration = false)
     }

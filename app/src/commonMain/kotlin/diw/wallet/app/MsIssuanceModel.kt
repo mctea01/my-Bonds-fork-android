@@ -81,11 +81,11 @@ class MsIssuanceModel(private val model: WalletModel) {
         }
     }
 
-    /** Stored Verified ID and W3C cards that satisfy a presentation the contract asks for. */
+    /** Stored Verified ID and W3C cards that satisfy a presentation the contract asks for (type and listed issuers). */
     suspend fun candidates(requirement: MsPresentationRequirement): List<Pair<Document, W3cVcCredential>> =
         model.documents.value.mapNotNull { doc ->
             val c = doc.getCertifiedCredentials().filterIsInstance<W3cVcCredential>()
-                .firstOrNull { requirement.credentialType in it.types } ?: return@mapNotNull null
+                .firstOrNull { requirement.accepts(it) } ?: return@mapNotNull null
             doc to c
         }
 

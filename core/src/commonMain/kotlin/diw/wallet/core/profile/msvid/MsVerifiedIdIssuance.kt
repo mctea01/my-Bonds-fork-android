@@ -24,6 +24,7 @@ import diw.wallet.core.util.obj
 import diw.wallet.core.util.queryParameters
 import diw.wallet.core.util.str
 import diw.wallet.core.w3c.W3cInspector
+import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.submitForm
@@ -67,7 +68,15 @@ data class MsTokenRequirement(
 )
 
 /** A credential the contract asks the holder to present (presentations attestation). */
-data class MsPresentationRequirement(val credentialType: String, val required: Boolean, val issuers: List<String>)
+data class MsPresentationRequirement(val credentialType: String, val required: Boolean, val issuers: List<String>) {
+    /** Whether [credential] has the type and, when the contract lists issuers, comes from one of them. */
+    fun accepts(credential: W3cVcCredential): Boolean = accepts(credential.types, runCatching {
+        W3cVc.issuer(credential.credentialJson(), W3cVc.jwtPayloadOrNull(credential.raw, credential.encoding))
+    }.getOrNull())
+
+    fun accepts(types: List<String>, issuer: String?): Boolean =
+        credentialType in types && (issuers.isEmpty() || (issuer != null && issuer in issuers))
+}
 
 /** PIN the issuer requires with an id_token_hint. */
 data class MsPinRequirement(val length: Int, val type: String, val salt: String?)
@@ -271,6 +280,11 @@ class MsVerifiedIdIssuance(
             request.tokenRequirements.filter { !it.accessToken }.forEach { r -> request.tokens[r.configuration]?.let { put(r.configuration, it) } }
         }
         val accessTokens = request.tokenRequirements.filter { it.accessToken }.mapNotNull { r -> request.tokens[r.configuration]?.let { r.configuration to it } }.toMap()
+        for ((type, cred) in request.presentations) {
+            val requirement = request.presentationRequirements.firstOrNull { it.credentialType == type }
+                ?: throw ProtocolException("invalid_request", "The contract does not ask for a $type credential")
+            if (!requirement.accepts(cred)) throw ProtocolException("invalid_request", "The selected $type credential is not from an issuer the contract accepts")
+        }
         val vps = request.presentations.mapValues { (_, cred) -> presentation(cred, request.issuerDid, holder, did) }
         val payload = buildJsonObject {
             put("contract", request.contractUrl)

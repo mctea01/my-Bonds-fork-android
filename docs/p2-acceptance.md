@@ -10,7 +10,7 @@
 | Bonds 離線出示：JSON 挑戰、輪播 QR（ECC Q）、BLE 分幀、查驗端驗證、挑戰不符拒絕、自簽卡提示 P5 | 同上（`bondsOfflinePresentationOverQrAndLink`） | 含在上列 |
 | Microsoft Entra Verified ID 發行：簽章合約、id_token_hint、PIN 雜湊、自填欄位、Linked Domains（T3）、網域連結失效（T4）、callback | `:test-servers:test --tests '*MsVerifiedIdTest'` | 2/2 通過 |
 | OpenID4VCI 草案 11/12（credentials_supported、user_pin、metadata 內 token_endpoint）與草案 13（token 回應 c_nonce、被拒後改用 format 請求） | `:test-servers:test --tests '*DraftIssuersTest'` | 2/2 通過 |
-| P1 既有測試（OpenID4VP 1.0、OpenID4VCI 1.0、Multipaz 互通、QR 編碼、欄位語系、網址政策） | `:test-servers:test` | 全部 55 項通過（ClaimLabels 2、Oid4vciE2e 18、Oid4vpE2e 18、Multipaz 互通 5、QR 2、網址政策 1，加上上列 9 項）；InteropTest 9 項需 `DIW_INTEROP=1`，預設略過 |
+| P1 既有測試（OpenID4VP 1.0、OpenID4VCI 1.0、Multipaz 互通、QR 編碼、欄位語系、網址政策） | `:test-servers:test` | 全部 59 項通過（ClaimLabels 2、Oid4vciE2e 18、Oid4vpE2e 18、Multipaz 互通 5、QR 2、網址政策 1、出示安全規則 4，加上上列 9 項）；InteropTest 9 項需 `DIW_INTEROP=1`，預設略過 |
 | App 共用模型 | `:app:desktopTest` | 8 項：6 通過、2 項需網路而略過 |
 | Android release APK | `:app:assembleRelease`（R8） | 建置成功，app-release.apk 約 21 MB，R8 產生 mapping.txt（縮減與最佳化已套用） |
 
@@ -33,6 +33,14 @@
 6. OpenID4VP 草案的 DID client（`client_id` 為 `did:key:...`）原本被去掉 `did:` 前綴後再解析，任何 DID 簽章的要求物件都會被拒（kid does not reference the client DID）。TWDIW 與 Bonds 驗證端都用 did:key client，已修正並由 TWDIW 出示測試涵蓋。
 7. 草案 11/12 發證端要求 `user_pin`，原本只送 1.0 的 `tx_code`。草案 11 方言改為同時送出。
 8. 舊的「jku 取得簽章金鑰」測試已改為驗證錢包拒絕只能透過 jku 取得金鑰的憑證；TWDIW 實際的 iss did:key 由新的平台測試涵蓋。
+
+PR 審查後再修正（`PresentationSafetyTest`）：
+
+9. TWDIW 信任清單原本不分角色，只登錄為驗證端的機關簽發的憑證也會是 T1。改為必須在對應的一側（發行端 orgType 1、驗證端 2）登錄才是正式，否則為 T2。
+10. 出示時會選到已過期的憑證。改為只提供有效期間內的憑證。
+11. 草案 22/23 的 `x509_hash:` client 沒有比對葉憑證雜湊。改為與 1.0 相同的檢查。
+12. Verified ID 合約指定可接受的發行端時，原本只比對憑證類型。候選清單與送出前都會檢查發行端。
+13. Bonds 藍牙在 GATT service 建立完成前就開始廣播，查驗方太快連線會找不到 characteristic。改為等 `onServiceAdded` 成功後才廣播。
 
 ## 需要實機驗證
 

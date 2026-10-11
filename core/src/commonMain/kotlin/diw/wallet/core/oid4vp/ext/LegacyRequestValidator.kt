@@ -31,6 +31,7 @@ import diw.wallet.core.util.strList
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.x509.organization
 import diw.wallet.core.x509.subjectAltNames
+import diw.wallet.core.x509.x509Hash
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -195,9 +196,10 @@ class LegacyRequestValidator(
                 val ok = when (scheme) {
                     "x509_san_dns" -> san.dnsNames.any { it.equals(value, ignoreCase = true) }
                     "x509_san_uri" -> san.uris.any { it == value }
-                    else -> true
+                    else -> leaf.x509Hash() == value
                 }
-                if (!ok) throw RequestValidationException("invalid_client", "client_id $value is not a SAN of the signing certificate")
+                if (!ok) throw RequestValidationException("invalid_client",
+                    if (scheme == "x509_hash") "client_id $value is not the hash of the signing certificate" else "client_id $value is not a SAN of the signing certificate")
                 val trust = trustRegistry.decide(TrustRole.VERIFIER, chain.certificates)
                 if (trust.environment == null && !policy.allowUnanchoredX509) {
                     throw RequestValidationException("access_denied", "Verifier certificate does not chain to a trusted anchor")
@@ -205,7 +207,8 @@ class LegacyRequestValidator(
                 if (scheme == "x509_san_dns" && trust.environment == null && target != null && runCatching { hostOf(target) }.getOrNull()?.let { h -> h == value || h.endsWith(".$value") } != true) {
                     warnings += "Response endpoint host is not the certificate's name $value"
                 }
-                VerifierIdentityInfo(ClientId(rawClientId, ClientIdPrefix.X509_SAN_DNS, value), rawClientId, leaf.organization() ?: leaf.displaySubject(), chain, san.dnsNames, null, trust)
+                val prefix = if (scheme == "x509_hash") ClientIdPrefix.X509_HASH else ClientIdPrefix.X509_SAN_DNS
+                VerifierIdentityInfo(ClientId(rawClientId, prefix, value), rawClientId, leaf.organization() ?: leaf.displaySubject(), chain, san.dnsNames, null, trust)
             }
             "redirect_uri" -> {
                 if (jws != null) warnings += "redirect_uri client signed its request; the signature cannot be checked against anything"

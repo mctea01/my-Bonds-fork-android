@@ -32,6 +32,9 @@ import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.mdoc.issuersigned.IssuerNamespaces
 import org.multipaz.sdjwt.credential.SdJwtVcCredential
 import org.multipaz.util.toBase64Url
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 /** How a stored credential is secured, which decides how it can be presented. */
 enum class CredentialFamily {
@@ -85,12 +88,18 @@ class WalletCredential(
     val isTwdiw: Boolean get() = document.issuanceRecord?.profile == "twdiw" || (family == CredentialFamily.W3C_SD_JWT && document.issuanceRecord?.specs?.contains("TWDIW") == true)
 
     companion object {
-        /** All certified credentials in [store] the extended engine can present (one per document per kind). */
-        suspend fun load(store: DocumentStore): List<WalletCredential> {
+        /** Allowance for an issuer clock ahead of the wallet's when a credential has just been issued. */
+        private val CLOCK_SKEW = 5.minutes
+
+        /**
+         * All certified credentials in [store] the extended engine can present (one per document per kind). Credentials
+         * outside their validity period (expired, or not yet valid beyond [CLOCK_SKEW]) are left out.
+         */
+        suspend fun load(store: DocumentStore, now: Instant = Clock.System.now()): List<WalletCredential> {
             val out = mutableListOf<WalletCredential>()
             for (id in store.listDocumentIds()) {
                 val doc = store.lookupDocument(id) ?: continue
-                val creds = doc.getCertifiedCredentials()
+                val creds = doc.getCertifiedCredentials().filter { it.validFrom <= now + CLOCK_SKEW && now < it.validUntil }
                 // Prefer the least used credential of each kind so batch issued credentials rotate.
                 creds.groupBy { it::class }.values.mapNotNull { list -> list.minByOrNull { it.usageCount } }.forEach { c ->
                     runCatching { from(doc, c) }.getOrNull()?.let { out += it }

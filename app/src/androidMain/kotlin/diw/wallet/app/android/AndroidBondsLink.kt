@@ -53,6 +53,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
     }
 
     private sealed interface Event {
+        data class ServiceAdded(val status: Int) : Event
         data class Subscribed(val device: BluetoothDevice) : Event
         data class Mtu(val mtu: Int) : Event
         data object Sent : Event
@@ -82,6 +83,10 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         )
         var server: BluetoothGattServer? = null
         val callback = object : BluetoothGattServerCallback() {
+            override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+                events.trySend(Event.ServiceAdded(status))
+            }
+
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_DISCONNECTED) events.trySend(Event.Disconnected(device))
             }
@@ -129,7 +134,20 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 addCharacteristic(frames)
                 addCharacteristic(stateChar)
             }
-            server.addService(service)
+            // addService completes asynchronously; advertising before onServiceAdded lets a fast verifier discover an empty server.
+            if (!server.addService(service)) {
+                onProgress("無法建立藍牙服務")
+                return false
+            }
+            val added = withTimeoutOrNull(SERVICE_TIMEOUT) {
+                var status: Int? = null
+                while (status == null) (events.receive() as? Event.ServiceAdded)?.let { status = it.status }
+                status
+            }
+            if (added != BluetoothGatt.GATT_SUCCESS) {
+                onProgress(if (added == null) "建立藍牙服務逾時" else "無法建立藍牙服務（$added）")
+                return false
+            }
             advertiser.startAdvertising(
                 AdvertiseSettings.Builder()
                     .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -212,6 +230,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         private const val DEFAULT_MTU = 23
         private const val MAX_NOTIFICATION = 512
         private val MTU_GRACE = 1.seconds
+        private val SERVICE_TIMEOUT = 5.seconds
         const val PERMISSION_REQUEST = 4102
     }
 }
