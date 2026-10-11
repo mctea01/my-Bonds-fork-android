@@ -150,6 +150,26 @@ class TwdiwPlatformTest {
         assertEquals(RevocationCheckState.INVALID, checker.check(cred, bypassCache = true).state)
     }
 
+    /**
+     * The live telecom card issuer's metadata names the issuer without the offer's trailing slash. OpenID4VCI 1.0
+     * requires the two to be identical, so the standard client refuses; the TWDIW dialect accepts the slash
+     * difference for its own sessions and keeps the offer's form for the token endpoint and the proof aud.
+     */
+    @Test
+    fun issuerMetadataWithoutTrailingSlash() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.metadataIssuerWithoutSlash = true
+        val standard = Oid4vciClient(s.w.httpClient, s.w.trust, s.w.env, PublicClientWalletProvider("diw-wallet"), s.w.documentStore)
+        val uri = (TwdiwEntryParser.parse(s.mock.offerDeepLink()) as TwdiwEntry.Offer).uri
+        val refused = assertFailsWith<ProtocolException> { standard.startFromOffer(uri) }
+        assertEquals("invalid_issuer_metadata", refused.code)
+
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(TwdiwPlatformMock.ISSUER, r.document.issuanceRecord!!.credentialIssuer)
+        assertEquals("twdiw", r.document.issuanceRecord!!.profile)
+    }
+
     @Test
     fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking<Unit> {
         val s = setup()

@@ -24,6 +24,8 @@ import kotlinx.serialization.json.put
  * Taiwan digital wallet (TWDIW, 數位憑證皮夾) issuance as the official wallet and Bonds perform it:
  *
  * - no authorization server metadata; the token endpoint is {credential_issuer}token;
+ * - the metadata may name the issuer without the offer's trailing slash (the live telecom card issuer does); the
+ *   identifier keeps the slash, so the token endpoint and the proof aud are what the issuer expects;
  * - the token request carries client_id (moda_dw), authorization_details and an empty tx_code when none is asked;
  * - c_nonce comes in the token response;
  * - the proof JWT has kid set to the holder did:key (jwk_jcs-pub) without a fragment, no jwk, and iss = client_id;
@@ -48,6 +50,10 @@ class TwdiwDialect(
         entryHint == ENTRY_HINT || runCatching { isTwdiwHost(hostOf(credentialIssuer)) }.getOrDefault(false)
 
     override fun holderProfile(issuer: IssuerMetadata): HolderProfile = HolderProfile(HolderIdentities.TWDIW, HolderKey.DID_KEY_JWK_JCS)
+
+    /** A trailing slash is the only difference accepted; the identifier is used with the slash, as Bonds does. */
+    override fun issuerIdentifier(given: String, inMetadata: String): String? =
+        if (given.trimEnd('/') == inMetadata.trimEnd('/')) given.trimEnd('/') + "/" else null
 
     override fun authorizationServerFallback(issuer: IssuerMetadata): AuthServerMetadata? {
         if (issuer.authorizationServers.isNotEmpty() || issuer.raw.str("token_endpoint") != null) return null

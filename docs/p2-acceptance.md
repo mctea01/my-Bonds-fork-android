@@ -49,11 +49,13 @@ PR 審查後再修正（`PresentationSafetyTest`）：
 - 衝突處理：P2 的持有者金鑰與證明格式保留 main 的「發行端要求金鑰證明但沒有錢包提供者時仍送一般證明」；延遲發證（含草案 11 acceptance token）沿用原交易的回應加密金鑰；`EudiDialect` 併入常駐方言清單，移除 main 新增的「EUDI 相容模式」開關。
 - 介面：取消「台灣數位憑證」專區。首頁改為證件、文件、使用、查驗、紀錄五個分頁；TWDIW 卡片與其他證件同一清單；卡片目錄移到「從清單選擇」，臨櫃條碼移到「使用」，信任清單移到設定，Bonds 查驗移到「查驗」。文件分頁與查驗方身分、線上查驗、NFC、零知識證明查驗為保留入口。
 - 新增紀錄：領取、出示、拒絕、查驗各記一筆，只存欄位名稱。
+- 實機回饋：遠傳門號卡（`97179430.wallet.gov.tw`）領卡時出現「credential_issuer in metadata does not match」。該發行端的中繼資料寫 `.../issuer/97179430`，領卡連結寫 `.../issuer/97179430/`，只差結尾斜線；OpenID4VCI 1.0 要求兩者相同，標準流程維持拒絕。新增方言 hook `IssuanceDialect.issuerIdentifier`，只有擁有該 session 的方言能放寬；TWDIW 方言只接受結尾斜線的差異，並沿用帶斜線的識別碼，token 端點為 `{識別碼}token`、proof `aud` 帶斜線，與 Bonds 相同。以 `TwdiwPlatformTest.issuerMetadataWithoutTrailingSlash` 重現並驗證，`InteropTest.twdiwTelecomIssuerMetadata` 對正式發行端確認。
 
 | 範圍 | 指令 | 結果 |
 |---|---|---|
-| 協議與互通 | `:test-servers:test` | 74 項：63 通過、11 項需 `DIW_INTEROP=1` 略過 |
-| App 共用模型（含紀錄寫入、重啟後讀回、清除，分頁返回順序） | `:app:desktopTest` | 9 項：7 通過、2 項需網路略過 |
+| 協議與互通 | `:test-servers:test` | 76 項：64 通過、12 項需 `DIW_INTEROP=1` 略過 |
+| 正式 TWDIW 發行端中繼資料（97179430） | `DIW_INTEROP=1 ... --tests '*twdiwTelecomIssuerMetadata'` | 通過：標準流程拒絕、TWDIW 方言接受，token 端點 `.../issuer/97179430/token` |
+| App 共用模型（含紀錄寫入、重啟後讀回、清除，分頁返回順序） | `:app:desktopTest` | 9 項：6 通過、2 項需網路略過、截圖測試需 `DIW_SCREENSHOTS` |
 | 主要畫面離屏截圖 | `DIW_SCREENSHOTS=<資料夾> ./gradlew :app:desktopTest --tests '*uiScreenshots'` | 12 張 PNG |
 | Android | `:app:assembleDebug :app:assembleRelease`（R8） | 建置成功 |
 

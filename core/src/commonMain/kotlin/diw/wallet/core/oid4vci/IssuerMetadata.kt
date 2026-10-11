@@ -328,9 +328,12 @@ class MetadataFetcher(
         val shaped = if (json.obj("credential_configurations_supported") == null) {
             compat?.first { it.normalizeIssuerMetadata(json) } ?: json
         } else json
-        val metadata = IssuerMetadata.parse(shaped, trust)
-        if (metadata.credentialIssuer != credentialIssuer) {
-            throw ProtocolException("invalid_issuer_metadata", "credential_issuer in metadata does not match '${credentialIssuer}'")
+        val parsed = IssuerMetadata.parse(shaped, trust)
+        val metadata = if (parsed.credentialIssuer == credentialIssuer) parsed else {
+            // Only the dialect owning the session may accept a difference; the standard path requires identity.
+            val id = compat?.owned { it.issuerIdentifier(credentialIssuer, parsed.credentialIssuer) }
+                ?: throw ProtocolException("invalid_issuer_metadata", "credential_issuer in metadata does not match '${credentialIssuer}'")
+            parsed.copy(credentialIssuer = id)
         }
         checkEndpoint(metadata.credentialEndpoint, "credential_endpoint")
         metadata.nonceEndpoint?.let { checkEndpoint(it, "nonce_endpoint") }

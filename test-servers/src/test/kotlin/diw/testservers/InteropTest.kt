@@ -236,6 +236,31 @@ class InteropTest {
         assertTrue(anchored > 0, "no sampled entry verified on chain")
     }
 
+    /**
+     * The live telecom card issuer (97179430.wallet.gov.tw) names itself in its metadata without the trailing slash its
+     * offers carry. The standard client refuses that; the TWDIW dialect keeps the offer's form for the token endpoint.
+     */
+    @Test
+    fun twdiwTelecomIssuerMetadata() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val client = http.config { install(diw.wallet.core.profile.twdiw.TwdiwUserAgent) }
+        val w = Wallet(client).init()
+        val provider = PublicClientWalletProvider("diw-wallet-interop")
+        val issuer = "https://97179430.wallet.gov.tw/oid4vci/api/issuer/97179430/"
+        val strict = Oid4vciClient(client, w.trust, w.env, provider, w.documentStore)
+        val e = kotlin.test.assertFailsWith<diw.wallet.core.util.ProtocolException> { strict.startWalletInitiated(issuer, emptyList()) }
+        report("twdiw telecom metadata (standard client)", e.code == "invalid_issuer_metadata", e.message ?: "")
+        assertEquals("invalid_issuer_metadata", e.code)
+        val twdiw = Oid4vciClient(client, w.trust, w.env, provider, w.documentStore,
+            dialects = listOf(diw.wallet.core.compat.TwdiwDialect(client, false)))
+        val session = twdiw.startWalletInitiated(issuer, emptyList())
+        report("twdiw telecom metadata (TWDIW dialect)", true,
+            "issuer=${session.issuer.credentialIssuer} token=${session.authServer.tokenEndpoint} configs=${session.issuer.configurations.keys}")
+        assertEquals(issuer, session.issuer.credentialIssuer)
+        assertEquals(issuer + "token", session.authServer.tokenEndpoint)
+        assertTrue(session.issuer.configurations.isNotEmpty())
+    }
+
     /** walt.id demo issuer (OpenID4VCI draft 13): offers are created through its issuance API with the API's own examples. */
     private suspend fun waltOffer(path: String, exampleName: String): String {
         val api = Json.parseToJsonElement(http.get("https://issuer.demo.walt.id/api.json").bodyAsText()).jsonObject

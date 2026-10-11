@@ -73,6 +73,12 @@ interface IssuanceDialect {
     /** True when the (normalized) metadata shows the issuer follows this dialect, e.g. it was in the draft 11 shape. */
     fun claimsMetadata(issuer: IssuerMetadata): Boolean = false
 
+    /**
+     * The issuer identifier an owned session uses when the metadata's credential_issuer ([inMetadata]) is not
+     * identical to the one the wallet was given ([given]), which OpenID4VCI 1.0 requires; null refuses the metadata.
+     */
+    fun issuerIdentifier(given: String, inMetadata: String): String? = null
+
     /** Holder identity shared by all credentials of an owned session; null keeps one key per credential. */
     fun holderProfile(issuer: IssuerMetadata): HolderProfile? = null
 

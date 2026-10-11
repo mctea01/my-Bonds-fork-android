@@ -87,6 +87,12 @@ class TwdiwPlatformMock private constructor(
     var lastTransactionCompleted = false
         private set
 
+    /**
+     * Metadata names the issuer without the trailing slash the offer has, as the live telecom card issuer
+     * (97179430.wallet.gov.tw) does; token, credential and proof aud keep the offer's form.
+     */
+    var metadataIssuerWithoutSlash = false
+
     private val pending = mutableMapOf<String, PendingRequest>()
     private var accessToken: String? = null
     private var cNonce: String? = null
@@ -250,7 +256,7 @@ class TwdiwPlatformMock private constructor(
     }
 
     private fun metadata() = buildJsonObject {
-        put("credential_issuer", ISSUER)
+        put("credential_issuer", if (metadataIssuerWithoutSlash) ISSUER.trimEnd('/') else ISSUER)
         put("credential_endpoint", ISSUER + "credential")
         putJsonArray("display") { addJsonObject { put("name", "模擬發證機關"); put("locale", "zh-TW") } }
         putJsonObject("credential_configurations_supported") {
