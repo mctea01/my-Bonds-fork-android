@@ -48,6 +48,7 @@ import diw.wallet.app.Screen
 import diw.wallet.app.StatusMonitor
 import diw.wallet.app.WalletModel
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.trust.TrustTier
 import org.multipaz.revocation.RevocationCheckState
@@ -261,6 +262,7 @@ fun FilesTab() {
 fun VerifyTab(model: WalletModel) {
     var purpose by remember { mutableStateOf("身分確認") }
     var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
+    var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             Modifier.fillMaxWidth(),
@@ -272,6 +274,16 @@ fun VerifyTab(model: WalletModel) {
                 Text("查驗他人證件", style = MaterialTheme.typography.titleLarge)
                 Text("這支手機顯示一次性的查驗挑戰，對方用錢包或 Bonds 掃描後出示，簽章、挑戰與發行端都在這支手機上檢查。有網路時也會查詢證件狀態。",
                     style = MaterialTheme.typography.bodyMedium)
+                Text("接受的證件", style = MaterialTheme.typography.titleSmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.ANY).forEach { s ->
+                        FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
+                    }
+                }
+                if (source == BondsCredentialSource.ANY) {
+                    Text("任何綁定金鑰的 SD-JWT VC 或 W3C 證件，由出示者以本錢包出示；發行端由信任錨點或 DID 判定。Bonds App 只能出示政府皮夾卡片。",
+                        style = MaterialTheme.typography.bodySmall)
+                }
                 OutlinedTextField(
                     value = purpose,
                     onValueChange = { purpose = it.take(100) },
@@ -281,7 +293,7 @@ fun VerifyTab(model: WalletModel) {
                 )
                 Text("用途的風險", style = MaterialTheme.typography.titleSmall)
                 RiskSelector(risk) { risk = it }
-                Button(onClick = { model.taiwan.startVerifier(purpose.trim(), risk) }, enabled = purpose.isNotBlank()) {
+                Button(onClick = { model.taiwan.startVerifier(purpose.trim(), risk, source) }, enabled = purpose.isNotBlank()) {
                     Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("產生查驗挑戰")

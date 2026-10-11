@@ -666,7 +666,10 @@ class WalletModelE2eTest {
 
         m.importAnchor(pem, "Example IACA", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
         assertEquals("Example IACA", record().anchorName)
-        val notes = m.history.value.filter { it.kind == HistoryKind.STATUS }.mapNotNull { it.note }
+        // History entries are written in the background.
+        val notes = withTimeout(10.seconds) {
+            m.history.first { h -> h.count { it.kind == HistoryKind.STATUS } >= 3 }
+        }.filter { it.kind == HistoryKind.STATUS }.mapNotNull { it.note }
         assertTrue(notes.any { "移除信任錨點「DIW TEST IACA」" in it }, "notes: $notes")
         assertTrue(notes.any { "移除信任錨點「Example IACA」" in it }, "notes: $notes")
         assertTrue(notes.any { "加入信任錨點" in it }, "notes: $notes")
@@ -710,6 +713,60 @@ class WalletModelE2eTest {
         assertEquals(TrustTier.T3, after.tier)
         assertEquals(TrustEnvironment.USER, after.environment)
         assertEquals("Partner", after.anchorName)
+    }
+
+    /**
+     * Offline presentation is not limited to TWDIW cards: a Bonds-compatible challenge asks for government wallet
+     * cards only, while this wallet's own challenge (source "a") takes any key-bound card. Here an IETF SD-JWT VC with
+     * an x5c issuer, chosen on its document page, answers with one disclosed claim; the verifier checks the holder's
+     * signature, the cnf binding, the issuer chain and the Token Status List.
+     */
+    @Test
+    fun offlinePresentationOfAnyKeyBoundCard() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("pid_sd_jwt")), null).single())
+        holder.refreshDocuments().join()
+        val (verifier, _) = newWallet()
+        val medium = diw.wallet.core.status.RiskLevel.MEDIUM
+
+        verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.TWDIW)
+        val bonds = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.handleUri(bonds.encode())
+        assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
+
+        verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
+        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val docId = holder.documents.value.single().identifier
+        holder.taiwan.preferredDocument = docId
+        holder.taiwan.offline.value = OfflineUi.Working("")
+        holder.handleUri(any.encode())
+        val choose = withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } }
+        assertIs<OfflineUi.BondsChoose>(choose, "choose: $choose")
+        val card = choose.cards.first()
+        assertEquals(docId, card.document.identifier)
+        assertEquals(BondsCardKind.SD_JWT_VC, card.kind)
+        assertEquals(setOf("given_name", "family_name", "birthdate", "nationality"), card.claims.map { it.first }.toSet())
+
+        holder.taiwan.presentBonds(choose.request, card, setOf("birthdate"))
+        val frames = withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } }
+        assertIs<OfflineUi.BondsFrames>(frames, "frames: $frames")
+        assertTrue(frames.presentationJws.isNotEmpty())
+        frames.frames.forEach { verifier.handleUri(it) }
+
+        val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+        assertNull(result.error, "error: ${result.error}")
+        val r = assertNotNull(result.result)
+        assertEquals(diw.wallet.core.profile.bonds.BondsCredentialSource.ANY, r.source)
+        assertEquals(mapOf("birthdate" to "1990-01-01"), r.claims, "only the chosen claim is disclosed")
+        assertTrue(r.holder.startsWith("did:jwk:"))
+        assertNotNull(r.issuerChain)
+        assertEquals(TrustEnvironment.TEST, result.issuerTrust?.environment)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, result.status?.state)
+
+        val presented = withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertEquals(1, presented.claims.size)
+        assertNull(presented.failure)
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */

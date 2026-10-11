@@ -228,6 +228,11 @@ class ReaderModel(private val model: WalletModel) {
             state.value = evaluate(received, request, risk)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: NotImplementedError) {
+            // A transport the platform does not implement (Bluetooth on the desktop).
+            val message = "此平台不支援藍牙近距離傳輸"
+            model.record(HistoryKind.VERIFIED, "出示者", null, note = note(request, null), failure = message)
+            state.value = ReaderUi.Failed(request, message)
         } catch (e: Exception) {
             val message = failure(e)
             model.record(HistoryKind.VERIFIED, "出示者", null, note = note(request, null), failure = message)
@@ -384,7 +389,6 @@ class ReaderModel(private val model: WalletModel) {
         is NfcTagLostException -> "感應中斷：請讓對方的手機保持靠近，直到讀取完成。"
         is MdocTransportClosedException -> "連線已結束，對方沒有提供證件。"
         is MdocTransportException -> "感應中斷或連線失敗：請讓對方的手機保持靠近，直到讀取完成。"
-        is NotImplementedError -> "此平台不支援藍牙近距離傳輸"
         else -> "讀取失敗：" + model.describe(e)
     }
 

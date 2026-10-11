@@ -248,6 +248,9 @@ class ProximityModel(private val model: WalletModel) {
             state.value = ProximityUi.Failed("已拒絕分享")
         } catch (e: PresentmentCannotSatisfyRequestException) {
             state.value = ProximityUi.Failed("這支手機沒有查驗設備要求的證件。近距離出示適用行動駕照等 mdoc 證件。")
+        } catch (e: NotImplementedError) {
+            // A transport the platform does not implement (Bluetooth on the desktop).
+            state.value = ProximityUi.Failed("此平台不支援近距離傳輸（藍牙或 NFC）")
         } catch (e: Exception) {
             // Readers often close the connection or stop talking once they have the response.
             if (sent) finish() else state.value = ProximityUi.Failed(failure(e))
@@ -263,7 +266,6 @@ class ProximityModel(private val model: WalletModel) {
         is Unavailable -> e.message.orEmpty()
         is kotlinx.coroutines.TimeoutCancellationException -> "查驗設備沒有連線。請確認藍牙已開啟，再感應或掃描一次。"
         is MdocTransportClosedException -> "連線中斷。請再感應或掃描一次。"
-        is NotImplementedError -> "此平台不支援近距離傳輸（藍牙或 NFC）"
         else -> "近距離出示失敗：" + model.describe(e)
     }
 

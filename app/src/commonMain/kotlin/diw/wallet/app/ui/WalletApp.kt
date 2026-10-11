@@ -122,7 +122,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.Settings -> SettingsScreen(model)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
-                    is Screen.DocumentDetail -> DocumentScreen(model, s)
+                    is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
                     is Screen.Certificate -> CertificateScreen(model, s)
                     Screen.AddDocument -> AddDocumentScreen(model)
                     Screen.TrustList -> TrustListScreen(model)
@@ -230,8 +230,9 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
     )
 }
 
+/** One document: its card, trust, status, data and details, and how to present it. [scan] opens the camera. */
 @Composable
-fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
+fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() -> Unit)? = null) {
     val id = screen.documentId
     val docs by model.documents.collectAsState()
     val statuses by model.statuses.collectAsState()
@@ -257,6 +258,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
         if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
         claims.forEach { (k, v) -> LabelValue(k, v) }
+        if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
         record?.let {
             LabelValue("格式", CredentialDetails.formatName(it))
@@ -287,6 +289,35 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
         )
+    }
+}
+
+/**
+ * Presenting this document on the holder's own initiative: an mdoc by NFC tap or QR code (ISO/IEC 18013-5); any
+ * other document to the verifier whose QR code is scanned next, listed first when it is an offline challenge.
+ */
+@Composable
+private fun PresentThisDocument(model: WalletModel, doc: Document, scan: (() -> Unit)?) {
+    val record = doc.issuanceRecord
+    var pasted by remember(doc.identifier) { mutableStateOf("") }
+    SectionTitle("出示這張證件")
+    if (record?.format == "mso_mdoc") {
+        ActionRow(WalletIcons.Nfc, "感應出示", "手機靠近查驗設備，或讓對方掃描 QR Code（ISO/IEC 18013-5）") { model.proximity.open() }
+    }
+    if (scan != null) {
+        ActionRow(WalletIcons.Scan, "掃描查驗方的 QR Code", "線上請求（OpenID4VP）或離線查驗挑戰；離線出示時這張證件排在最前面") {
+            model.taiwan.preferredDocument = doc.identifier
+            scan()
+        }
+    } else {
+        Text("這個裝置沒有相機，請貼上查驗方給的連結或查驗挑戰。", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value = pasted, onValueChange = { pasted = it }, label = { Text("查驗方的連結或挑戰") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = {
+            model.taiwan.preferredDocument = doc.identifier
+            model.handleUri(pasted.trim())
+            pasted = ""
+        }, enabled = pasted.isNotBlank()) { Text("出示") }
     }
 }
 

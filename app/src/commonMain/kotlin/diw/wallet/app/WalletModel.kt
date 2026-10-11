@@ -662,6 +662,8 @@ class WalletModel(val platform: PlatformServices) {
             taiwan.startBonds(u)
             return
         }
+        // A document chosen for an offline presentation only applies to the next challenge.
+        taiwan.preferredDocument = null
         if (BondsQrTransport.isFrame(u)) {
             taiwan.acceptVerifierFrame(u)
             return
