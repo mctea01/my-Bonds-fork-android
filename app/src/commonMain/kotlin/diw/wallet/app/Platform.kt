@@ -72,4 +72,16 @@ interface PlatformServices {
 
     /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
     fun keepScreenOn(on: Boolean) {}
+
+    /** Why an NFC tap cannot start a proximity presentation now (no NFC, NFC off, no card emulation); null when it can. */
+    fun nfcPresentationUnavailableReason(): String? = "此裝置不支援 NFC 感應出示"
+
+    /**
+     * Why Bluetooth cannot carry a proximity presentation now (no Bluetooth, turned off, permission missing, which is
+     * then asked for); null when it can.
+     */
+    suspend fun proximityTransportUnavailableReason(): String? = "此平台不支援藍牙近距離傳輸"
+
+    /** While true, NFC taps go to the wallet rather than another wallet app (Android card emulation preference). */
+    fun setNfcPresentationActive(active: Boolean) {}
 }

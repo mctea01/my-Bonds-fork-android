@@ -21,6 +21,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -376,6 +377,115 @@ class WalletModelE2eTest {
         val again = WalletModel(TestPlatform(storage))
         again.init()
         assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, again.statuses.value.getValue(id).status.state)
+    }
+
+    /** A reader as an NFC tag: NDEF engagement goes to the wallet's helper, data transfer to its NFC transport. */
+    private class LoopbackTag(private val helper: org.multipaz.mdoc.nfc.MdocNfcEngagementHelper) : org.multipaz.nfc.NfcIsoTag() {
+        private var selected: ByteString? = null
+        override val maxTransceiveLength: Int get() = 65536
+        override suspend fun close() {}
+        override suspend fun updateDialogMessage(message: String) {}
+        override suspend fun transceive(command: org.multipaz.nfc.CommandApdu): org.multipaz.nfc.ResponseApdu {
+            val select = command.ins == org.multipaz.nfc.Nfc.INS_SELECT && command.p1 == org.multipaz.nfc.Nfc.INS_SELECT_P1_APPLICATION
+            if (select) selected = command.payload
+            if (selected != org.multipaz.nfc.Nfc.ISO_MDOC_NFC_DATA_TRANSFER_APPLICATION_ID) return helper.processApdu(command)
+            // The wallet opens its NFC transport just after the handover; until then a SELECT finds no transport and
+            // is sent again. Any other APDU waits: NFC is half duplex, so the answer to the last ENVELOPE carries the
+            // wallet's response, which comes after the user's consent.
+            repeat(if (select) 40 else 1) {
+                val answer = kotlinx.coroutines.CompletableDeferred<org.multipaz.nfc.ResponseApdu>()
+                org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu(command.encode()) { answer.complete(org.multipaz.nfc.ResponseApdu.decode(it)) }
+                (if (select) kotlinx.coroutines.withTimeoutOrNull(500) { answer.await() } else answer.await())?.let { return it }
+            }
+            error("No answer from the wallet's NFC transport")
+        }
+    }
+
+    /**
+     * In-person presentation by NFC tap (ISO/IEC 18013-5): negotiated handover choosing NFC data transfer, the
+     * reader's request on the wallet's own consent screen, the App PIN for the software key, a DeviceResponse the
+     * reader verifies, and the history entry.
+     */
+    @Test
+    fun nfcProximityPresentation() = runBlocking<Unit> {
+        start()
+        val (m, p) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        m.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        // Not listening: no engagement is offered for a tap.
+        assertNull(m.proximity.nfcEngagement())
+        m.proximity.open()
+        assertEquals(Screen.Proximity, m.screen.value)
+        val tag = LoopbackTag(assertNotNull(m.proximity.nfcEngagement(staticHandover = false)))
+        val nfc = org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc(commandDataFieldMaxLength = 0xffff, responseDataFieldMaxLength = 0x10000)
+        val handover = assertNotNull(withTimeout(30.seconds) { org.multipaz.mdoc.nfc.mdocReaderNfcHandover(tag, listOf(nfc)) })
+        val method = handover.connectionMethods.single() as org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc
+
+        val eReaderKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)
+        val reader = org.multipaz.mdoc.transport.NfcTransportMdocReader(org.multipaz.mdoc.role.MdocRole.MDOC_READER, org.multipaz.mdoc.transport.MdocTransportOptions(), method)
+        reader.setTag(tag)
+        // open() runs its I/O loop in the caller's scope, which therefore stays active until the reader is closed.
+        reader.open(eReaderKey.publicKey)
+        val engagement = org.multipaz.mdoc.engagement.DeviceEngagement.fromDataItem(org.multipaz.cbor.Cbor.decode(handover.encodedDeviceEngagement.toByteArray()))
+        val transcript = org.multipaz.cbor.buildCborArray {
+            add(org.multipaz.cbor.Tagged(org.multipaz.cbor.Tagged.ENCODED_CBOR, org.multipaz.cbor.Bstr(handover.encodedDeviceEngagement.toByteArray())))
+            add(org.multipaz.cbor.Tagged(org.multipaz.cbor.Tagged.ENCODED_CBOR, org.multipaz.cbor.Bstr(org.multipaz.cbor.Cbor.encode(eReaderKey.publicKey.toCoseKey().toDataItem()))))
+            add(handover.handover)
+        }
+        val encodedTranscript = org.multipaz.cbor.Cbor.encode(transcript)
+        val session = org.multipaz.mdoc.sessionencryption.SessionEncryption(
+            role = org.multipaz.mdoc.role.MdocRole.MDOC_READER,
+            eSelfKey = eReaderKey,
+            remotePublicKey = engagement.eDeviceKey,
+            encodedSessionTranscript = encodedTranscript,
+        )
+        val request = org.multipaz.mdoc.request.DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
+            docType = "org.iso.18013.5.1.mDL",
+            itemsToRequest = mapOf("org.iso.18013.5.1" to mapOf("family_name" to false, "given_name" to false)),
+            requestInfo = null,
+            readerKey = null,
+            signatureAlgorithm = org.multipaz.crypto.Algorithm.UNSET,
+            readerKeyCertificateChain = null,
+        ).generate()
+        // The reader waits for the response while the user reads the request.
+        val exchange = async(Dispatchers.Default) {
+            reader.sendMessage(session.encryptMessage(request, null))
+            reader.waitForMessage()
+        }
+
+        val consent = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent")
+        assertEquals(ProximityChannel.NFC, consent.channel)
+        // No reader authentication: the reader cannot be identified (T4), shown as such.
+        assertEquals(TrustTier.T4, consent.trust.tier)
+        assertTrue(consent.chain.isEmpty())
+        assertEquals(2, consent.items.single().claims.size)
+        val pins = p.pinPrompts
+        m.proximity.approve(consent)
+
+        val (plain, _) = session.decryptMessage(withTimeout(30.seconds) { exchange.await() })
+        val response = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(org.multipaz.cbor.Cbor.decode(assertNotNull(plain)))
+        response.verify(sessionTranscript = transcript)
+        val doc = response.documents.single()
+        assertEquals("org.iso.18013.5.1.mDL", doc.docType)
+        assertEquals(setOf("family_name", "given_name"), doc.issuerNamespaces.data.getValue("org.iso.18013.5.1").keys)
+        assertEquals(pins + 1, p.pinPrompts, "the software key is unlocked with the App PIN")
+
+        val done = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Done || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Done>(done, "done: $done")
+        val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertTrue(entry.note!!.contains("NFC"), "note: ${entry.note}")
+        assertEquals(2, entry.claims.size)
+        assertTrue(m.back())
+        assertFalse(m.proximity.listening.value)
+        reader.close()
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */

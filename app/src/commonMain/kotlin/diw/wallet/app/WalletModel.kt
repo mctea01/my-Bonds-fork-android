@@ -120,6 +120,11 @@ data class WalletSettings(
     val showDetails: Boolean = false,
     /** Query document statuses in the background when they are older than the document's risk allows. */
     val autoStatus: Boolean = true,
+    /**
+     * NFC engagement with static handover (the reader picks from the wallet's offer) instead of negotiated handover;
+     * for readers that only read a static handover select message.
+     */
+    val nfcStaticHandover: Boolean = false,
 )
 
 /**
@@ -148,6 +153,8 @@ sealed class Screen {
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
+    /** In-person presentation by NFC tap or QR code (ISO/IEC 18013-5). */
+    data object Proximity : Screen()
 }
 
 sealed class IssuanceUi {
@@ -277,6 +284,7 @@ class WalletModel(val platform: PlatformServices) {
 
     val taiwan = TaiwanModel(this)
     val ms = MsIssuanceModel(this)
+    val proximity = ProximityModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -522,6 +530,10 @@ class WalletModel(val platform: PlatformServices) {
             Screen.MsIssuance -> {
                 ms.cancel()
                 screen.value = Screen.Home
+            }
+            Screen.Proximity -> {
+                proximity.close()
+                showTab(HomeTab.USE)
             }
         }
         return true

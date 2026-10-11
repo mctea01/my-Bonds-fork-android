@@ -67,10 +67,13 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         app.platform.promptModel = promptModel
         app.platform.activity = this
+        // Card emulation preference only holds while this activity is in the foreground.
+        app.platform.applyNfcPreference(this)
         app.model.onAppResumed()
     }
 
     override fun onPause() {
+        app.platform.releaseNfcPreference(this)
         if (app.platform.promptModel === promptModel) app.platform.promptModel = null
         if (app.platform.activity === this) app.platform.activity = null
         app.model.onAppPaused()
@@ -88,12 +91,22 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun handle(intent: Intent?) {
+        // An NFC reader completed the engagement: show the proximity screen, where the request will appear.
+        if (intent?.action == ACTION_PROXIMITY) {
+            app.model.screen.value = Screen.Proximity
+            return
+        }
         val data = intent?.dataString ?: return
         if (intent.action != Intent.ACTION_VIEW) return
         app.model.scope.launch {
             app.awaitReady()
             app.model.handleUri(data)
         }
+    }
+
+    companion object {
+        /** Sent by the NFC service once a reader completed the ISO/IEC 18013-5 engagement. */
+        const val ACTION_PROXIMITY = "diw.wallet.action.PROXIMITY"
     }
 }
 

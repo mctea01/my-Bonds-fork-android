@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.ConsentItem
 import diw.wallet.app.CredentialDetails
 import diw.wallet.app.HomeTab
 import diw.wallet.app.IssuanceUi
@@ -206,38 +207,7 @@ fun PresentationScreen(model: WalletModel) {
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
                 if (showDetails) DetailSections(model, CredentialDetails.request(req))
-                val statuses by model.statuses.collectAsState()
-                val decisions = s.items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, s.risk) } }
-                Text("這次請求的風險：" + StatusTexts.risk(s.risk), style = MaterialTheme.typography.titleSmall)
-                Text(requestRiskReason(s.risk, s.items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW, v.trust.tier),
-                    style = MaterialTheme.typography.bodySmall)
-                Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
-                s.items.forEachIndexed { i, item ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Box(Modifier.padding(12.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(item.documentName, style = MaterialTheme.typography.titleMedium)
-                                decisions[i]?.let { RequestStatusLine(it) }
-                                item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
-                            }
-                        }
-                    }
-                }
-                val rejected = decisions.filterNotNull().filter { it.verdict == StatusVerdict.REJECT }
-                var statusAck by remember(s) { mutableStateOf(false) }
-                if (rejected.isNotEmpty()) {
-                    VerdictCard(
-                        Verdict.FAIL, "證件狀態不符合這次請求",
-                        rejected.map { d -> statusWarning(d.finding, s.risk) }.distinct(),
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = statusAck, onCheckedChange = { statusAck = it })
-                        Text("我了解對方可能拒絕這張證件，仍要出示")
-                    }
-                } else if (decisions.any { it?.verdict == StatusVerdict.CAUTION }) {
-                    Text("部分證件的狀態無法完全確認，對方可能另行查證。", style = MaterialTheme.typography.bodySmall)
-                }
-                val statusOk = rejected.isEmpty() || statusAck
+                val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s)
                 if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
                 val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
@@ -267,6 +237,43 @@ fun PresentationScreen(model: WalletModel) {
             }
         }
     }
+}
+
+/**
+ * The request's risk and the documents asked for, each with its status judged at that risk. A document whose status
+ * the request would reject needs an acknowledgement; returns whether the user may go on. [key] resets the
+ * acknowledgement for a new request.
+ */
+@Composable
+internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, risk: RiskLevel, verifierTier: TrustTier, key: Any): Boolean {
+    val statuses by model.statuses.collectAsState()
+    val decisions = items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, risk) } }
+    Text("這次請求的風險：" + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
+    Text(requestRiskReason(risk, items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW, verifierTier), style = MaterialTheme.typography.bodySmall)
+    Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
+    items.forEachIndexed { i, item ->
+        Card(Modifier.fillMaxWidth()) {
+            Box(Modifier.padding(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.documentName, style = MaterialTheme.typography.titleMedium)
+                    decisions[i]?.let { RequestStatusLine(it) }
+                    item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+        }
+    }
+    val rejected = decisions.filterNotNull().filter { it.verdict == StatusVerdict.REJECT }
+    var statusAck by remember(key) { mutableStateOf(false) }
+    if (rejected.isNotEmpty()) {
+        VerdictCard(Verdict.FAIL, "證件狀態不符合這次請求", rejected.map { d -> statusWarning(d.finding, risk) }.distinct())
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = statusAck, onCheckedChange = { statusAck = it })
+            Text("我了解對方可能拒絕這張證件，仍要出示")
+        }
+    } else if (decisions.any { it?.verdict == StatusVerdict.CAUTION }) {
+        Text("部分證件的狀態無法完全確認，對方可能另行查證。", style = MaterialTheme.typography.bodySmall)
+    }
+    return rejected.isEmpty() || statusAck
 }
 
 /** Why a request has its risk: the most sensitive field asked for, or a verifier that is not on an official list. */

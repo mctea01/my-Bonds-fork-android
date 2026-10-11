@@ -183,6 +183,11 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
                 }
             }
         }
+        ActionRow(
+            WalletIcons.Nfc, "感應出示（NFC）",
+            "手機靠近查驗設備，或讓對方掃描 QR Code；適用行動駕照等 mdoc 證件（ISO/IEC 18013-5）",
+            enabled = docs.isNotEmpty(),
+        ) { model.proximity.open() }
         SectionTitle("臨櫃出示")
         Text("出示證件後，由服務方系統產生條碼，給店員或機台掃描。", style = MaterialTheme.typography.bodySmall)
         when {
