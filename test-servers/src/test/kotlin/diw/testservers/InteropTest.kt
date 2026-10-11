@@ -17,14 +17,18 @@ import kotlin.test.assertEquals
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.engine.java.Java
+import io.ktor.client.plugins.cookies.HttpCookies
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.request
 import io.ktor.http.HttpHeaders
+import io.ktor.http.hostWithPort
 import io.ktor.http.Url
 import io.ktor.http.parameters
 import kotlinx.coroutines.runBlocking
@@ -230,6 +234,136 @@ class InteropTest {
         val url = c.beginAuthorizationCode(session, "diw-wallet://oid4vci/callback")
         assertTrue(Oid4vciClient.isSafeAuthorizationUrl(url, false))
         report("eudi PAR + authorize URL", true, Url(url).host)
+    }
+
+    /**
+     * Walks the EUDI issuer's pages (FormEU test country, PID form, consent) the way a browser would, from [first],
+     * until [result] finds what it needs in a redirect location or a page.
+     */
+    private suspend fun eudiWalk(first: suspend HttpClient.() -> HttpResponse, result: (String) -> String?): String {
+        val browser = HttpClient(Java) {
+            followRedirects = false
+            install(HttpCookies)
+            engine {
+                val proxy = System.getenv("HTTPS_PROXY") ?: System.getenv("https_proxy")
+                if (!proxy.isNullOrBlank()) this.proxy = ProxyBuilder.http(Url(proxy))
+            }
+        }
+        fun unescape(s: String) = s.replace("&quot;", "\"").replace("&#39;", "'").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+        var resp = browser.first()
+        repeat(25) {
+            val location = resp.headers[HttpHeaders.Location]
+            if (location != null) {
+                result(location)?.let { return it }
+                val u = resp.request.url
+                resp = browser.get(if (location.startsWith("/")) "${u.protocol.name}://${u.hostWithPort}$location" else location)
+                return@repeat
+            }
+            val page = unescape(resp.bodyAsText())
+            result(page)?.let { return it }
+            val action = Regex("<form[^>]*action=\"([^\"]+)\"").find(page)?.groupValues?.get(1)
+                ?: error("EUDI page without a form (${resp.status}): ${page.take(300)}")
+            val payload = Regex("name=\"payload\" value='([^']*)'").find(page)?.groupValues?.get(1)
+            resp = browser.submitForm(action, parameters {
+                when {
+                    payload != null -> append("payload", payload)
+                    "name=\"country\"" in page -> { append("country", "FC"); append("proceed", "") }
+                    "name=\"given_name\"" in page -> {
+                        append("birthdate", "1990-01-01")
+                        append("family_name", "Interop")
+                        append("given_name", "Diw")
+                        append("nationalities[0][country_code]", "TW")
+                        append("place_of_birth[0][country]", "TW")
+                        append("proceed", "Submit")
+                    }
+                    "name=\"user_id\"" in page -> {
+                        append("user_id", Regex("value=\"([^\"]+)\" name=\"user_id\"").find(page)!!.groupValues[1])
+                        append("proceed", "Authorize")
+                    }
+                    else -> error("Unknown EUDI page at $action: ${page.take(300)}")
+                }
+            })
+        }
+        error("EUDI pages did not reach the expected result")
+    }
+
+    /** Wallet with the EUDI reference implementation CAs as TEST issuer anchors. */
+    private suspend fun eudiWallet(): Wallet {
+        val w = Wallet(http).init()
+        for (name in listOf("pidissuerca02_eu", "pidissuerca02_ut")) {
+            val pem = http.get("$EUDI_ANCHORS/$name.pem").bodyAsText()
+            w.trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, X509Cert.fromPem(pem), "EUDI $name", false, EUDI_ANCHORS)
+        }
+        return w
+    }
+
+    /** Issues [id], polling a deferred credential like the app does, and checks it is stored as a TEST credential. */
+    private suspend fun eudiIssue(c: Oid4vciClient, session: diw.wallet.core.oid4vci.IssuanceSession, w: Wallet, id: String): IssuanceResult.Issued {
+        var r = c.issue(session, id, w.keys(2))
+        var polls = 0
+        while (r is IssuanceResult.Deferred && polls++ < 10) {
+            kotlinx.coroutines.delay(r.intervalSeconds.coerceIn(1, 10) * 1000)
+            r = c.pollDeferred(session, r)
+        }
+        assertIs<IssuanceResult.Issued>(r)
+        val record = diw.wallet.core.oid4vci.IssuanceRecord.decode(r.document.appData)
+        report("eudi $id", true, "credentials=${r.credentials.size} tier=${r.trust.tier} env=${r.trust.environment} specs=${record?.specs} polls=$polls")
+        assertEquals(TrustEnvironment.TEST, r.trust.environment)
+        return r
+    }
+
+    /**
+     * Authorization code flow with the EUDI issuer and a public client. Its authorization responses carry iss
+     * https://issuer.eudiw.dev/oidc while its metadata names https://issuer.eudiw.dev: the standard client rejects
+     * that as a mix-up, the EUDI dialect accepts it. PID configurations ask for key attestation, which a public
+     * client cannot give; the issuer accepts plain jwt proofs.
+     */
+    @Test
+    fun eudiIssuerAuthorizationCodePid() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val w = eudiWallet()
+        val provider = PublicClientWalletProvider("diw-wallet-interop")
+        val strict = Oid4vciClient(http, w.trust, w.env, provider, w.documentStore)
+        val eudi = Oid4vciClient(http, w.trust, w.env, provider, w.documentStore, dialects = listOf(diw.wallet.core.compat.EudiDialect()))
+        val ids = listOf("eu.europa.ec.eudi.pid_vc_sd_jwt", "eu.europa.ec.eudi.pid_mdoc")
+        val session = eudi.startWalletInitiated("https://issuer.eudiw.dev", ids)
+        val authorizeUrl = eudi.beginAuthorizationCode(session, "diw-wallet://oid4vci/callback")
+        val redirect = eudiWalk({ get(authorizeUrl) }) { it.takeIf { s -> s.startsWith("diw-wallet:") } }
+        report("eudi authorization response", true, redirect.substringAfter("iss=").substringBefore('&'))
+
+        val e = kotlin.test.assertFailsWith<diw.wallet.core.util.ProtocolException> { strict.completeAuthorizationCode(session, redirect) }
+        report("eudi iss (standard client)", "(mix-up)" in (e.message ?: ""), e.message ?: "")
+        assertTrue("(mix-up)" in (e.message ?: ""))
+
+        eudi.completeAuthorizationCode(session, redirect)
+        report("eudi token (EUDI dialect)", true, "token_type=${session.accessToken?.type}")
+        for (id in ids) {
+            val r = eudiIssue(eudi, session, w, id)
+            assertTrue("EUDI 參考實作" in diw.wallet.core.oid4vci.IssuanceRecord.decode(r.document.appData)!!.specs)
+        }
+    }
+
+    /** Pre-authorized offer for the three PID configurations, with a transaction code, from the EUDI offer page. */
+    @Test
+    fun eudiIssuerPreAuthorizedPid() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val w = eudiWallet()
+        val ids = listOf("eu.europa.ec.eudi.pid_vc_sd_jwt", "eu.europa.ec.eudi.pid_mdoc", "eu.europa.ec.eudi.pid_mdoc_deferred")
+        val page = eudiWalk({
+            submitForm("https://backend.issuer.eudiw.dev//credential_offer", parameters {
+                ids.forEach { append(it, it) }
+                append("Authorization Code Grant", "pre_auth_code")
+                append("credential_offer_URI", "openid-credential-offer://")
+                append("proceed", "Submit")
+            })
+        }) { it.takeIf { s -> "\"url_data\"" in s } }
+        val offer = Regex("\"url_data\": \"([^\"]+)\"").find(page)!!.groupValues[1]
+        val txCode = Regex("\"tx_code\": (\\d+)").find(page)!!.groupValues[1]
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore)
+        val session = c.startFromOffer(offer)
+        report("eudi pre-auth offer", true, "configs=${session.offeredConfigurations.map { it.id }} tx_code length=${session.txCode?.length}")
+        c.authorizePreAuthorized(session, txCode)
+        for (id in ids) eudiIssue(c, session, w, id)
     }
 
     @Test

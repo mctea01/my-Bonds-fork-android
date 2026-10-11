@@ -99,7 +99,7 @@ fun IssuanceScreen(model: WalletModel) {
                                 Text(c.display.pick(model.locales)?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
                                 Text("${c.raw["format"]?.toString()?.trim('"') ?: c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
                                 if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
-                                    Text("發行端要求金鑰證明（由錢包提供者出具）", style = MaterialTheme.typography.bodySmall)
+                                    Text("發行端要求金鑰證明（由錢包提供者出具）；沒有時改送一般證明，由發行端決定是否接受", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }

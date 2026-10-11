@@ -61,6 +61,9 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("TWDIW 相容模式", "數位憑證皮夾的格式（無 vct 的 W3C SD-JWT、jku 金鑰）。憑證會顯示實際使用的規格", s.compatTwdiw) { v ->
             model.updateSettings { it.copy(compatTwdiw = v) }
         }
+        Toggle("EUDI 參考實作相容模式", "授權回應的 iss 為授權伺服器網址下的子路徑（如 issuer.eudiw.dev/oidc）時仍接受。憑證會顯示實際使用的規格", s.compatEudi) { v ->
+            model.updateSettings { it.copy(compatEudi = v) }
+        }
         HorizontalDivider()
         Text("測試環境", style = MaterialTheme.typography.titleMedium)
         Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->

@@ -1,6 +1,7 @@
 package diw.wallet.app
 
 import diw.wallet.core.compat.Draft13Dialect
+import diw.wallet.core.compat.EudiDialect
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
@@ -81,6 +82,8 @@ data class WalletSettings(
     val compatDraft13: Boolean = true,
     /** TWDIW profile: W3C credentials in SD-JWT without vct, issuer keys via jku. Non-standard, off by default. */
     val compatTwdiw: Boolean = false,
+    /** EUDI reference issuer: authorization response iss below the published authorization server issuer. */
+    val compatEudi: Boolean = true,
     /** Show technical details (formats, keys, signatures, validity) expanded by default. */
     val showDetails: Boolean = false,
 )
@@ -431,6 +434,7 @@ class WalletModel(val platform: PlatformServices) {
             val loopback = environmentPolicy.insecureLoopbackAllowed
             if (settings.compatDraft13) add(Draft13Dialect(http, loopback))
             if (settings.compatTwdiw) add(TwdiwDialect(http, loopback))
+            if (settings.compatEudi) add(EudiDialect())
         },
     )
 
@@ -724,7 +728,9 @@ class WalletModel(val platform: PlatformServices) {
     fun describe(e: Throwable): String = when (e) {
         is diw.wallet.core.oid4vp.RequestValidationException -> "請求驗證失敗（${e.code}）：${e.message}"
         is ProtocolException -> "協定錯誤（${e.code}）：${e.message}" + compatHint(e)
-        else -> e.message ?: e::class.simpleName ?: "未知錯誤"
+        // Platform errors wrap the reason (e.g. Android Keystore "Error creating key"), so the causes are shown too.
+        else -> generateSequence(e) { it.cause }.take(4).mapNotNull { it.message ?: it::class.simpleName }.distinct()
+            .joinToString("：").ifEmpty { "未知錯誤" }
     }
 
     /** Points at the setting that would help when a failure is one a compatibility mode handles. */
@@ -734,6 +740,7 @@ class WalletModel(val platform: PlatformServices) {
             !settings.compatTwdiw && ("without vct" in m || "non-https iss" in m) -> "\n此發行端使用非標準格式（如 TWDIW），可在設定開啟「TWDIW 相容模式」後再試。"
             !settings.compatDraft13 && ("non-https iss" in m || e.code == "invalid_proof" || e.code == "invalid_credential_response") ->
                 "\n此發行端可能採用 OpenID4VCI 舊版草案，可在設定開啟「舊版草案相容模式」後再試。"
+            !settings.compatEudi && "(mix-up)" in m -> "\n若授權回應的 iss 是授權伺服器網址下的子路徑（如 EUDI 參考實作），可在設定開啟「EUDI 參考實作相容模式」後再試。"
             "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
             else -> ""
         }

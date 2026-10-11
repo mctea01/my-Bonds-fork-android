@@ -106,7 +106,10 @@ class IssuanceSession internal constructor(
     internal var requestedConfigurations: List<String> = emptyList()
     internal var anonymous: Boolean = false
     internal var attestationChallenge: String? = null
+    /** Response encryption key of each deferred transaction; issuers may encrypt the deferred response with it. */
     internal val responseKeys = mutableMapOf<String, EcPrivateKey>()
+    /** Specifications outside OpenID4VCI 1.0 that authorization needed; recorded with every credential of this session. */
+    internal val specs = linkedSetOf<String>()
 
     val txCode: TxCode? get() = offer?.preAuthorized?.txCode
     val offeredConfigurations: List<CredentialConfiguration>
@@ -285,7 +288,11 @@ class Oid4vciClient(
         q["error"]?.let { throw ProtocolException(it, q["error_description"] ?: "Authorization failed") }
         if (q["state"] != session.state) throw ProtocolException("invalid_state", "state mismatch")
         val iss = q["iss"]
-        if (iss != null && iss != session.authServer.issuer) throw ProtocolException("invalid_request", "iss does not match authorization server (mix-up)")
+        if (iss != null && iss != session.authServer.issuer) {
+            val d = dialects.firstOrNull { it.acceptsAuthorizationResponseIssuer(session.authServer, iss) }
+                ?: throw ProtocolException("invalid_request", "iss $iss does not match authorization server ${session.authServer.issuer} (mix-up)")
+            session.specs += d.spec
+        }
         if (iss == null && session.authServer.responseIssParameterSupported) {
             throw ProtocolException("invalid_request", "Authorization response is missing iss")
         }
@@ -409,7 +416,8 @@ class Oid4vciClient(
         // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
         var alternative: Triple<IssuanceDialect, HttpStatusCode, JsonObject>? = null
         while (true) {
-            val proofs = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
+            val built = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
+            val proofs = built?.json
             val identifier = token.credentialIdentifiers[config.id]?.firstOrNull()
             val body = alternative?.let { (d, st, err) -> d.alternativeCredentialRequest(session.issuer, config, identifier, proofs, st, err) }
                 ?: buildJsonObject {
@@ -442,7 +450,11 @@ class Oid4vciClient(
                 document.edit { appData = record.encode() }
                 return IssuanceResult.Deferred(document, tx, json.long("interval") ?: 5, config.id)
             }
-            if (!status.isSuccess()) throw oauthError(json, "Credential request failed (${status.value})")
+            if (!status.isSuccess()) {
+                val e = oauthError(json, "Credential request failed (${status.value})")
+                if (built?.missingKeyAttestation != true) throw e
+                throw ProtocolException(e.code, "${e.message} (the issuer requires key attestation; no wallet provider gave one)")
+            }
             return storeCredentials(session, config, document, pending, json, compat)
         }
     }
@@ -454,10 +466,11 @@ class Oid4vciClient(
         val token = session.accessToken ?: throw ProtocolException("invalid_request", "Not authorized")
         val config = session.issuer.configurations[deferred.configurationId]!!
         val body = buildJsonObject { put("transaction_id", deferred.transactionId) }
-        val (status, json) = credentialEndpointCall(session, endpoint, body, token)
+        val (status, json) = credentialEndpointCall(session, endpoint, body, token, session.responseKeys[deferred.transactionId])
         if (status == HttpStatusCode.Accepted) {
             return deferred.copy(intervalSeconds = json.long("interval") ?: deferred.intervalSeconds)
         }
+        session.responseKeys.remove(deferred.transactionId)
         if (!status.isSuccess()) {
             documentStore.deleteDocument(deferred.document.identifier)
             throw oauthError(json, "Deferred credential request failed (${status.value})")
@@ -527,31 +540,33 @@ class Oid4vciClient(
         }
     }
 
+    /** The proofs of a credential request; [missingKeyAttestation] when the issuer asks for key attestation and none was available. */
+    private class Proofs(val json: JsonObject, val missingKeyAttestation: Boolean)
+
     private suspend fun buildProofs(
         session: IssuanceSession,
         config: CredentialConfiguration,
         credentials: List<SecureAreaBoundCredential>,
         nonce: String?,
         keys: KeyRequest,
-    ): JsonObject {
+    ): Proofs {
         val jwtInfo = config.proofTypes["jwt"]
         val attInfo = config.proofTypes["attestation"]
         val attestations = credentials.map { it.getAttestation() }
         return when {
             jwtInfo != null || (attInfo == null && config.bindingMethods.isNotEmpty()) -> {
                 val algs = jwtInfo?.signingAlgorithms.orEmpty()
-                val keyAttestation = if (jwtInfo?.keyAttestationsRequired != null) {
-                    walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication)
-                        ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires key attestation but the wallet provider gave none")
-                } else null
+                val required = jwtInfo?.keyAttestationsRequired != null
+                // Without key attestation the jwt proofs are still sent; enforcing key_attestations_required is the issuer's call.
+                val keyAttestation = if (required) walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication) else null
                 val signers = if (keyAttestation != null) credentials.take(1) else credentials
                 val jwts = signers.map { proofJwt(session, it, algs, nonce, keyAttestation) }
-                buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }
+                Proofs(buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }, required && keyAttestation == null)
             }
             attInfo != null -> {
                 val ka = walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication)
                     ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires an attestation proof but the wallet provider gave none")
-                buildJsonObject { putJsonArray("attestation") { add(ka) } }
+                Proofs(buildJsonObject { putJsonArray("attestation") { add(ka) } }, false)
             }
             else -> throw ProtocolException("unsupported_proof_type", "No supported proof type for ${config.id}")
         }
@@ -594,18 +609,23 @@ class Oid4vciClient(
         }
     }
 
-    /** Calls the credential or deferred endpoint with optional request/response encryption. */
+    /**
+     * Calls the credential or deferred endpoint with optional request/response encryption. A deferred call reuses the
+     * transaction's response key ([reuseKey]): some issuers (issuer.eudiw.dev) encrypt the deferred response with the key
+     * of the original request and ignore a new one.
+     */
     private suspend fun credentialEndpointCall(
         session: IssuanceSession,
         url: String,
         plainBody: JsonObject,
         token: AccessToken,
+        reuseKey: EcPrivateKey? = null,
     ): Pair<HttpStatusCode, JsonObject> {
         val issuer = session.issuer
         val respEnc = issuer.responseEncryption
         val reqEnc = issuer.requestEncryption
         val encryptResponse = respEnc != null && (respEnc.required || (preferEncryption && reqEnc != null))
-        val responseKey = if (encryptResponse) Crypto.createEcPrivateKey(EcCurve.P256) else null
+        val responseKey = if (encryptResponse) reuseKey ?: Crypto.createEcPrivateKey(EcCurve.P256) else null
         val encValue = respEnc?.let { pickEnc(it.encValues) }
         val responseJwk = responseKey?.publicKey?.toJwk()
         val body = if (responseJwk != null) {
@@ -652,6 +672,9 @@ class Oid4vciClient(
                 }
                 runCatching { parseJsonObject(text) }.getOrElse { JsonObject(emptyMap()) }
             }
+        }
+        if (resp.status == HttpStatusCode.Accepted && responseKey != null) {
+            json.str("transaction_id")?.let { session.responseKeys[it] = responseKey }
         }
         return resp.status to json
     }
@@ -727,7 +750,7 @@ class Oid4vciClient(
         }
         val notificationId = json.str("notification_id")
         // Specifications followed outside OpenID4VCI 1.0 / SD-JWT VC are recorded, whichever step needed them.
-        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId, specs = compat.specs.toList())
+        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId, specs = (session.specs + compat.specs).toList())
         document.edit {
             appData = record.encode()
             provisioned = true

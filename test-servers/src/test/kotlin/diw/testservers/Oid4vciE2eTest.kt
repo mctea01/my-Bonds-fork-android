@@ -196,14 +196,16 @@ class Oid4vciE2eTest {
     }
 
     @Test
-    fun publicClientCannotSatisfyKeyAttestation() = runBlocking {
+    fun publicClientKeyAttestationLeftToIssuer() = runBlocking {
         start()
         val w = wallet()
         val c = client(w)
         val session = c.startFromOffer(offer(listOf("pid_sd_jwt_attested")))
         c.authorizePreAuthorized(session, null)
+        // Plain jwt proofs are sent; this issuer enforces key_attestations_required and rejects them.
         val e = assertFailsWith<ProtocolException> { c.issue(session, "pid_sd_jwt_attested", keys(w)) }
-        assertEquals("key_attestation_unavailable", e.code)
+        assertEquals("invalid_proof", e.code)
+        assertTrue("no wallet provider gave one" in (e.message ?: ""), e.message)
         assertTrue(w.documentStore.listDocuments().isEmpty(), "failed issuance must not leave a document")
     }
 
@@ -218,8 +220,14 @@ class Oid4vciE2eTest {
     }
 
     @Test
-    fun deferredIssuance() = runBlocking {
-        start()
+    fun deferredIssuance() = deferred(IssuerOptions())
+
+    /** issuer.eudiw.dev encrypts the deferred response to the key of the original request, not the one sent when polling. */
+    @Test
+    fun deferredIssuanceEncryptedToOriginalKey() = deferred(IssuerOptions(deferredToOriginalKey = true))
+
+    private fun deferred(options: IssuerOptions) = runBlocking {
+        start(options)
         val w = wallet()
         val c = client(w)
         val session = c.startFromOffer(offer(listOf("pid_sd_jwt_deferred")))
