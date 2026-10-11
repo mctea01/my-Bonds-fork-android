@@ -77,7 +77,8 @@ class CredentialOfferResolver(
     private val httpClient: HttpClient,
     private val allowInsecureLoopback: Boolean,
 ) {
-    suspend fun resolve(uri: String): CredentialOffer {
+    /** Resolves an offer; an offer in an older shape (draft 11/12 credentials array) is normalized by [compat]. */
+    suspend fun resolve(uri: String, compat: diw.wallet.core.compat.DialectSet? = null): CredentialOffer {
         val scheme = uri.substringBefore(':', "").lowercase()
         if (scheme !in CredentialOffer.SCHEMES) {
             throw ProtocolException("invalid_credential_offer", "Unsupported offer scheme '$scheme'")
@@ -93,7 +94,8 @@ class CredentialOfferResolver(
             byRef != null -> fetch(byRef)
             else -> throw ProtocolException("invalid_credential_offer", "No credential offer in URI")
         }
-        val offer = CredentialOffer.parse(json)
+        val shaped = if (json.strList("credential_configuration_ids").isEmpty()) compat?.first { it.normalizeOffer(json) } ?: json else json
+        val offer = CredentialOffer.parse(shaped)
         if (!isAcceptableEndpoint(offer.credentialIssuer, allowInsecureLoopback)) {
             throw ProtocolException("invalid_credential_offer", "credential_issuer must be an https URL")
         }

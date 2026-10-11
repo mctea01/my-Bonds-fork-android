@@ -1,7 +1,28 @@
 package diw.wallet.core.oid4vci
 
 import diw.wallet.core.compat.DialectSet
+import diw.wallet.core.compat.Draft11Dialect
+import diw.wallet.core.compat.HolderProfile
 import diw.wallet.core.compat.IssuanceDialect
+import diw.wallet.core.compat.ProofKid
+import diw.wallet.core.compat.ProofStyle
+import diw.wallet.core.compat.TokenContext
+import diw.wallet.core.did.DidKeys
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.holder.HolderIdentities
+import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.w3c.DataIntegrity
+import diw.wallet.core.w3c.W3cInspector
+import diw.wallet.core.w3c.W3cVc
+import diw.wallet.core.w3c.W3cVcCredential
+import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.buildCborMap
+import org.multipaz.cbor.toDataItem
+import org.multipaz.cose.Cose
+import org.multipaz.cose.CoseNumberLabel
+import org.multipaz.cose.CoseTextLabel
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.trust.TrustDecision
@@ -97,7 +118,15 @@ class IssuanceSession internal constructor(
     val authServer: AuthServerMetadata,
     internal val dpop: DpopSigner?,
     internal val issuerState: String?,
+    /** Dialects of this session; the owner, if any, is the profile the issuer follows. */
+    internal val compat: DialectSet,
 ) {
+    /** Specifications this session followed besides OpenID4VCI 1.0, e.g. TWDIW or OpenID4VCI draft 13. */
+    val specs: Set<String> get() = compat.specs
+
+    /** Profile that owns the session (twdiw, draft11), or null for an OpenID4VCI 1.0 issuer. */
+    val profile: String? get() = compat.owner?.id
+
     var accessToken: AccessToken? = null
         internal set
     internal var pkceVerifier: String? = null
@@ -141,6 +170,8 @@ sealed class IssuanceResult {
         val transactionId: String,
         val intervalSeconds: Long,
         val configurationId: String,
+        /** True for a draft 11 acceptance_token, sent as a bearer token to the deferred endpoint. */
+        val acceptanceToken: Boolean = false,
     ) : IssuanceResult()
 }
 
@@ -157,34 +188,62 @@ class Oid4vciClient(
     private val documentStore: DocumentStore,
     private val locales: List<String> = listOf("zh-TW", "en"),
     private val preferEncryption: Boolean = true,
-    /** Optional non-standard or pre-1.0 behaviour (see [IssuanceDialect]); empty means OpenID4VCI 1.0 only. */
+    /** Non-standard or pre-1.0 behaviour (see [IssuanceDialect]); empty means OpenID4VCI 1.0 only. */
     private val dialects: List<IssuanceDialect> = emptyList(),
+    /** Wallet-level holder keys for profiles that bind all their credentials to one holder (TWDIW). */
+    private val holderIdentities: HolderIdentities? = null,
+    /** Trust for issuers identified by a DID (TWDIW trust list, linked domains). */
+    private val didTrust: DidTrust = DidTrust.NONE,
 ) {
     private val loopback = environment.insecureLoopbackAllowed
     private val metadata = MetadataFetcher(httpClient, trustRegistry, loopback)
     private val offers = CredentialOfferResolver(httpClient, loopback)
     private val inspector = CredentialInspector(httpClient, trustRegistry, loopback)
+    private val w3cInspector = W3cInspector(httpClient, trustRegistry, loopback, didTrust)
 
     // ---------------------------------------------------------------- session start
 
-    suspend fun startFromOffer(uri: String): IssuanceSession {
-        val offer = offers.resolve(uri)
-        val issuer = metadata.issuer(offer.credentialIssuer)
+    /**
+     * Starts from a credential offer. [entryHint] names the profile whose entry point delivered the offer
+     * (twdiw for the modadigitalwallet scheme), so that profile owns the session.
+     */
+    suspend fun startFromOffer(uri: String, entryHint: String? = null): IssuanceSession {
+        val compat = DialectSet(dialects)
+        val offer = offers.resolve(uri, compat)
+        compat.claimFor(offer.credentialIssuer, entryHint)
+        val issuer = metadata.issuer(offer.credentialIssuer, compat)
+        compat.claimFor(issuer)
         val unknown = offer.credentialConfigurationIds.filter { it !in issuer.configurations }
         if (unknown.isNotEmpty()) {
             throw ProtocolException("invalid_credential_offer", "Offer references unknown configurations $unknown")
         }
         val asHint = offer.preAuthorized?.authorizationServer ?: offer.authorizationCode?.authorizationServer
-        val asMeta = metadata.authorizationServer(issuer.authorizationServerFor(asHint))
-        return IssuanceSession(offer, issuer, asMeta, newDpop(asMeta), offer.authorizationCode?.issuerState)
+        val asMeta = authorizationServer(issuer, asHint, compat)
+        return IssuanceSession(offer, issuer, asMeta, newDpop(asMeta), offer.authorizationCode?.issuerState, compat)
     }
 
-    suspend fun startWalletInitiated(credentialIssuer: String, configurationIds: List<String>): IssuanceSession {
-        val issuer = metadata.issuer(credentialIssuer)
-        val asMeta = metadata.authorizationServer(issuer.authorizationServerFor(null))
-        return IssuanceSession(null, issuer, asMeta, newDpop(asMeta), null).also {
+    suspend fun startWalletInitiated(credentialIssuer: String, configurationIds: List<String>, entryHint: String? = null): IssuanceSession {
+        val compat = DialectSet(dialects)
+        compat.claimFor(credentialIssuer, entryHint)
+        val issuer = metadata.issuer(credentialIssuer, compat)
+        compat.claimFor(issuer)
+        val asMeta = authorizationServer(issuer, null, compat)
+        return IssuanceSession(null, issuer, asMeta, newDpop(asMeta), null, compat).also {
             it.requestedConfigurations = configurationIds.filter { id -> id in issuer.configurations }
         }
+    }
+
+    /** Authorization server metadata, or what a dialect knows for issuers that publish none (draft 11, TWDIW). */
+    private suspend fun authorizationServer(issuer: IssuerMetadata, hint: String?, compat: DialectSet): AuthServerMetadata {
+        val identifier = issuer.authorizationServerFor(hint)
+        val standard = runCatching { metadata.authorizationServer(identifier) }
+        standard.getOrNull()?.let { return it }
+        for (d in listOfNotNull(compat.owner) + compat.all) {
+            val fallback = d.authorizationServerFallback(issuer) ?: continue
+            compat.claim(d)
+            return metadata.checkFallback(fallback)
+        }
+        throw standard.exceptionOrNull()!!
     }
 
     private suspend fun newDpop(asMeta: AuthServerMetadata): DpopSigner? {
@@ -206,12 +265,16 @@ class Oid4vciClient(
             if (txCode!!.length != len) throw ProtocolException("invalid_tx_code", "Transaction code must have $len characters")
         }
         val attestation = clientAttestationFor(session)
-        session.anonymous = attestation == null && session.authServer.preAuthorizedAnonymousAccess
+        val extra = session.compat.owned {
+            it.tokenParameters(TokenContext(session.offer, session.issuer, session.selectedConfigurations.map { c -> c.id }, txCode?.takeIf { grant.txCode != null }))
+        }.orEmpty()
+        session.anonymous = attestation == null && session.authServer.preAuthorizedAnonymousAccess && "client_id" !in extra
         val form = Parameters.build {
             append("grant_type", GRANT_PRE_AUTHORIZED_CODE)
             append("pre-authorized_code", grant.preAuthorizedCode)
             if (txCode != null && grant.txCode != null) append("tx_code", txCode)
             if (!session.anonymous) append("client_id", walletProvider.clientId)
+            for ((k, v) in extra) set(k, v)
         }
         session.accessToken = tokenRequest(session, form, attestation)
     }
@@ -400,23 +463,36 @@ class Oid4vciClient(
         document: Document,
         keys: KeyRequest,
     ): IssuanceResult {
-        val compat = DialectSet(dialects)
-        val count = keys.count.coerceIn(1, session.issuer.batchSize)
+        val compat = session.compat
+        val profile = if (config.format.isW3c) compat.owned { it.holderProfile(session.issuer) } else null
+        // A shared holder identity has one key, so one credential is requested.
+        val count = if (profile != null) 1 else keys.count.coerceIn(1, session.issuer.batchSize)
         var nonce = fetchNonce(session, token, compat)
-        var pending = if (config.keyBound) createPendingCredentials(document, config, keys, nonce, count, compat) else
-            listOf(KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, sdJwtType(config, compat)))
+        var pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
         var attempt = 0
         // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
         var alternative: Triple<IssuanceDialect, HttpStatusCode, JsonObject>? = null
         while (true) {
-            val proofs = if (config.keyBound) buildProofs(session, config, pending.map { it as SecureAreaBoundCredential }, nonce, keys) else null
+            val holderKeys = if (config.keyBound) pending.map { holderKeyOf(it) } else emptyList()
+            val proofs = if (config.keyBound) buildProofs(session, config, holderKeys, nonce, keys) else null
             val identifier = token.credentialIdentifiers[config.id]?.firstOrNull()
-            val body = alternative?.let { (d, st, err) -> d.alternativeCredentialRequest(session.issuer, config, identifier, proofs, st, err) }
-                ?: buildJsonObject {
-                    if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
-                    proofs?.let { put("proofs", it) }
+            val alt = alternative
+            val batch = alt?.first?.batchEndpoint(session.issuer)?.takeIf { (proofs?.arr("jwt")?.size ?: 0) > 1 }
+            val (status, json) = if (alt != null && batch != null) {
+                // Draft 13 batch endpoint: one single-proof request per key.
+                val requests = proofs!!.arr("jwt")!!.mapNotNull { jwt ->
+                    alt.first.alternativeCredentialRequest(session.issuer, config, identifier, buildJsonObject { putJsonArray("jwt") { add(jwt) } }, alt.second, alt.third)
                 }
-            val (status, json) = credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
+                credentialEndpointCall(session, batch, buildJsonObject { putJsonArray("credential_requests") { requests.forEach { add(it) } } }, token)
+            } else {
+                val body = alt?.let { (d, st, err) -> d.alternativeCredentialRequest(session.issuer, config, identifier, proofs, st, err) }
+                    ?: compat.owned { it.credentialRequest(session.issuer, config, identifier, proofs) }
+                    ?: buildJsonObject {
+                        if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
+                        proofs?.let { put("proofs", it) }
+                    }
+                credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
+            }
             if (!status.isSuccess() && alternative == null && json.str("error") != "invalid_nonce") {
                 val d = dialects.firstOrNull { it.alternativeCredentialRequest(session.issuer, config, identifier, proofs, status, json) != null }
                 if (d != null) {
@@ -432,30 +508,42 @@ class Oid4vciClient(
                 // Key attestation challenges are bound at key creation, so attested keys must be recreated.
                 if (config.proofTypes.values.any { it.keyAttestationsRequired != null } || "jwt" !in config.proofTypes) {
                     pending.forEach { document.deleteCredential(it.identifier) }
-                    pending = createPendingCredentials(document, config, keys, nonce, count, compat)
+                    pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
                 }
                 continue
             }
             if (status == HttpStatusCode.Accepted) {
                 val tx = json.str("transaction_id") ?: throw ProtocolException("invalid_credential_response", "202 without transaction_id")
-                val record = document.issuanceRecord!!.copy(pendingTransactionId = tx)
-                document.edit { appData = record.encode() }
-                return IssuanceResult.Deferred(document, tx, json.long("interval") ?: 5, config.id)
+                return deferred(document, tx, json, config, false)
             }
             if (!status.isSuccess()) throw oauthError(json, "Credential request failed (${status.value})")
+            if (json["credentials"] == null) {
+                compat.first { it.deferral(json) }?.let { return deferred(document, it.id, json, config, it.acceptanceToken) }
+            }
             return storeCredentials(session, config, document, pending, json, compat)
         }
+    }
+
+    private suspend fun deferred(document: Document, id: String, json: JsonObject, config: CredentialConfiguration, acceptanceToken: Boolean): IssuanceResult.Deferred {
+        val record = document.issuanceRecord!!.copy(pendingTransactionId = id)
+        document.edit { appData = record.encode() }
+        return IssuanceResult.Deferred(document, id, json.long("interval") ?: 5, config.id, acceptanceToken)
     }
 
     /** Polls the deferred endpoint once. Returns Deferred again while the issuer is not ready. */
     suspend fun pollDeferred(session: IssuanceSession, deferred: IssuanceResult.Deferred): IssuanceResult {
         val endpoint = session.issuer.deferredCredentialEndpoint
             ?: throw ProtocolException("invalid_issuer_metadata", "No deferred_credential_endpoint")
-        val token = session.accessToken ?: throw ProtocolException("invalid_request", "Not authorized")
         val config = session.issuer.configurations[deferred.configurationId]!!
-        val body = buildJsonObject { put("transaction_id", deferred.transactionId) }
-        val (status, json) = credentialEndpointCall(session, endpoint, body, token)
-        if (status == HttpStatusCode.Accepted) {
+        val (status, json) = if (deferred.acceptanceToken) {
+            // Draft 11: the acceptance token is the bearer token of the deferred request.
+            val token = AccessToken(deferred.transactionId, "Bearer", null, null, emptyMap())
+            credentialEndpointCall(session, endpoint, JsonObject(emptyMap()), token)
+        } else {
+            val token = session.accessToken ?: throw ProtocolException("invalid_request", "Not authorized")
+            credentialEndpointCall(session, endpoint, buildJsonObject { put("transaction_id", deferred.transactionId) }, token)
+        }
+        if (status == HttpStatusCode.Accepted || (!status.isSuccess() && session.compat.any { it.isIssuancePending(status, json) })) {
             return deferred.copy(intervalSeconds = json.long("interval") ?: deferred.intervalSeconds)
         }
         if (!status.isSuccess()) {
@@ -465,7 +553,7 @@ class Oid4vciClient(
         val pending = deferred.document.getPendingCredentials()
         val record = deferred.document.issuanceRecord!!.copy(pendingTransactionId = null)
         deferred.document.edit { appData = record.encode() }
-        return storeCredentials(session, config, deferred.document, pending, json)
+        return storeCredentials(session, config, deferred.document, pending, json, session.compat)
     }
 
     /** Sends a notification (credential_accepted, credential_failure, credential_deleted). Best effort. */
@@ -489,7 +577,7 @@ class Oid4vciClient(
         config.vct ?: compat.first { it.storageType(config) }
             ?: throw ProtocolException(
                 "invalid_issuer_metadata",
-                "SD-JWT VC configuration without vct" + if (compat.isEmpty) "" else " (compatibility modes tried: ${compat.ids.joinToString()})",
+                "SD-JWT VC configuration without vct" + if (compat.isEmpty) "" else " (profiles tried: ${compat.ids.joinToString()})",
             )
 
     /** c_nonce from the nonce endpoint; issuers without one get no nonce unless a dialect knows where theirs is. */
@@ -503,14 +591,37 @@ class Oid4vciClient(
     }
 
     private suspend fun createPendingCredentials(
+        session: IssuanceSession,
         document: Document,
         config: CredentialConfiguration,
         keys: KeyRequest,
         nonce: String?,
         count: Int,
-        compat: DialectSet,
+        profile: HolderProfile?,
     ): List<Credential> {
+        val compat = session.compat
+        if (!config.keyBound) {
+            return listOf(
+                if (config.format.isW3c) W3cVcCredential.createKeyless(document, CredentialDomains.W3C, config.format.wire, config.types)
+                else KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, sdJwtType(config, compat))
+            )
+        }
         val settings = keys.createKeySettings(ByteString((nonce ?: PlatformCrypto.randomBytes(16).toBase64Url()).encodeToByteArray()))
+        if (config.format.isW3c) {
+            if (profile != null) {
+                val identities = holderIdentities
+                    ?: throw ProtocolException("holder_identity_unavailable", "Profile ${profile.id} needs a wallet holder identity store")
+                val hk = identities.getOrCreate(profile.id, profile.didMethod, keys.secureArea, settings)
+                return listOf(W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, hk.secureArea, hk.alias, true, hk.did))
+            }
+            val style = compat.owned { it.proofStyle(session.issuer, config) }
+            val needsDid = config.didBindingOnly || (style != null && style.kid != ProofKid.JWK)
+            return List(count) {
+                val info = keys.secureArea.createKey(null, settings)
+                val did = if (needsDid) HolderKey.didFor(info.publicKey, didMethodFor(config)) else null
+                W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, keys.secureArea, info.alias, false, did)
+            }
+        }
         return List(count) {
             when (config.format) {
                 CredentialFormatId.MSO_MDOC -> MdocCredential.create(
@@ -527,25 +638,48 @@ class Oid4vciClient(
         }
     }
 
+    /** DID method for a holder bound to a DID: did:jwk when allowed (or any DID), else did:key. */
+    private fun didMethodFor(config: CredentialConfiguration): String {
+        val m = config.didMethods
+        return when {
+            m.isEmpty() || "did" in m || "did:jwk" in m -> "did:jwk"
+            "did:key" in m -> "did:key"
+            else -> throw ProtocolException("unsupported_binding_method", "Issuer binds to ${m.joinToString()}, this wallet uses did:jwk or did:key")
+        }
+    }
+
+    private suspend fun holderKeyOf(c: Credential): HolderKey = when (c) {
+        is SecureAreaBoundCredential -> HolderKey(c.secureArea, c.secureArea.getKeyInfo(c.alias), shared = false)
+        is W3cVcCredential -> {
+            val sa = c.secureArea ?: throw ProtocolException("invalid_request", "Credential has no holder key")
+            HolderKey(sa, sa.getKeyInfo(c.alias!!), c.sharedKey, c.holderDid)
+        }
+        else -> throw ProtocolException("invalid_request", "Credential has no holder key")
+    }
+
     private suspend fun buildProofs(
         session: IssuanceSession,
         config: CredentialConfiguration,
-        credentials: List<SecureAreaBoundCredential>,
+        holderKeys: List<HolderKey>,
         nonce: String?,
         keys: KeyRequest,
     ): JsonObject {
         val jwtInfo = config.proofTypes["jwt"]
         val attInfo = config.proofTypes["attestation"]
-        val attestations = credentials.map { it.getAttestation() }
+        val diInfo = config.proofTypes["di_vp"] ?: config.proofTypes["ldp_vp"]
+        val cwtInfo = config.proofTypes["cwt"]
+        val attestations by lazy { holderKeys.mapNotNull { it.keyInfo.attestation } }
+        val style = session.compat.owned { it.proofStyle(session.issuer, config) }
+            ?: ProofStyle(if (config.didBindingOnly) ProofKid.DID_URL else ProofKid.JWK, null)
         return when {
-            jwtInfo != null || (attInfo == null && config.bindingMethods.isNotEmpty()) -> {
+            jwtInfo != null || (attInfo == null && diInfo == null && cwtInfo == null && config.bindingMethods.isNotEmpty()) -> {
                 val algs = jwtInfo?.signingAlgorithms.orEmpty()
                 val keyAttestation = if (jwtInfo?.keyAttestationsRequired != null) {
                     walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication)
                         ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires key attestation but the wallet provider gave none")
                 } else null
-                val signers = if (keyAttestation != null) credentials.take(1) else credentials
-                val jwts = signers.map { proofJwt(session, it, algs, nonce, keyAttestation) }
+                val signers = if (keyAttestation != null) holderKeys.take(1) else holderKeys
+                val jwts = signers.map { proofJwt(session, it, algs, nonce, keyAttestation, style) }
                 buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }
             }
             attInfo != null -> {
@@ -553,45 +687,98 @@ class Oid4vciClient(
                     ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires an attestation proof but the wallet provider gave none")
                 buildJsonObject { putJsonArray("attestation") { add(ka) } }
             }
+            diInfo != null -> {
+                val vps = holderKeys.map { diVpProof(session, it, nonce, config) }
+                buildJsonObject { putJsonArray(if (config.proofTypes.containsKey("di_vp")) "di_vp" else "ldp_vp") { vps.forEach { add(it) } } }
+            }
+            cwtInfo != null -> {
+                val cwts = holderKeys.map { cwtProof(session, it, nonce, style) }
+                buildJsonObject { putJsonArray("cwt") { cwts.forEach { add(it) } } }
+            }
             else -> throw ProtocolException("unsupported_proof_type", "No supported proof type for ${config.id}")
         }
     }
 
-    private suspend fun proofJwt(
-        session: IssuanceSession,
-        credential: SecureAreaBoundCredential,
-        algs: List<String>,
-        nonce: String?,
-        keyAttestation: String?,
-    ): String {
-        val info = credential.secureArea.getKeyInfo(credential.alias)
-        val curve = info.publicKey.curve
-        val label = when (curve) {
+    private fun proofAlg(holder: HolderKey, algs: List<String>): String {
+        val curve = holder.publicKey.curve
+        return when (curve) {
             EcCurve.P256 -> listOf("ES256", "ESP256")
             EcCurve.P384 -> listOf("ES384", "ESP384")
             EcCurve.P521 -> listOf("ES512", "ESP512")
             EcCurve.ED25519 -> listOf("EdDSA", "Ed25519")
-            else -> listOf(info.algorithm.joseAlgorithmIdentifier ?: "ES256")
+            else -> listOf(holder.keyInfo.algorithm.joseAlgorithmIdentifier ?: "ES256")
         }.let { candidates -> if (algs.isEmpty()) candidates.first() else candidates.firstOrNull { it in algs } }
             ?: throw ProtocolException("unsupported_proof_alg", "Issuer accepts $algs, key curve is $curve")
-        val key = AsymmetricKey.AnonymousSecureAreaBased(
-            alias = credential.alias,
-            secureArea = credential.secureArea,
-            keyInfo = info,
-            algorithm = Algorithm.fromJoseAlgorithmIdentifier(label),
-        )
+    }
+
+    private suspend fun proofJwt(
+        session: IssuanceSession,
+        holder: HolderKey,
+        algs: List<String>,
+        nonce: String?,
+        keyAttestation: String?,
+        style: ProofStyle,
+    ): String {
+        val label = proofAlg(holder, algs)
+        val did = if (style.kid != ProofKid.JWK) holder.did ?: HolderKey.didFor(holder.publicKey, "did:jwk") else null
         return buildJwt(
             type = "openid4vci-proof+jwt",
-            key = key,
+            key = holder.signingKey(label),
             header = {
-                if (keyAttestation != null) put("key_attestation", keyAttestation)
-                else put("jwk", info.publicKey.toJwk())
+                when {
+                    keyAttestation != null -> put("key_attestation", keyAttestation)
+                    style.kid == ProofKid.BARE_DID -> put("kid", did!!)
+                    style.kid == ProofKid.DID_URL -> put("kid", DidKeys.verificationMethod(did!!))
+                    else -> put("jwk", holder.publicKey.toJwk())
+                }
             },
         ) {
-            if (!session.anonymous) put("iss", walletProvider.clientId)
+            val iss = style.iss ?: walletProvider.clientId.takeIf { !session.anonymous }
+            iss?.let { put("iss", it) }
             put("aud", session.issuer.credentialIssuer)
             nonce?.let { put("nonce", it) }
         }
+    }
+
+    /** di_vp (OpenID4VCI 1.0) / ldp_vp (draft 13) proof: a presentation with a Data Integrity authentication proof. */
+    private suspend fun diVpProof(session: IssuanceSession, holder: HolderKey, nonce: String?, config: CredentialConfiguration): JsonObject {
+        val did = holder.did ?: HolderKey.didFor(holder.publicKey, if ("did:key" in config.didMethods) "did:key" else "did:jwk")
+        val vp = buildJsonObject {
+            putJsonArray("@context") { add(if (config.proofTypes.containsKey("di_vp")) W3cVc.CONTEXT_V2 else W3cVc.CONTEXT_V1) }
+            putJsonArray("type") { add("VerifiablePresentation") }
+            put("holder", did)
+        }
+        return DataIntegrity(DidResolver(httpClient, loopback)).sign(
+            unsecured = vp,
+            key = holder.signingKey(),
+            verificationMethod = DidKeys.verificationMethod(did),
+            proofPurpose = "authentication",
+            challenge = nonce,
+            domain = session.issuer.credentialIssuer,
+        )
+    }
+
+    /** cwt proof (OpenID4VCI draft 13): COSE_Sign1 over CWT claims, with the holder key as COSE_Key in the protected header. */
+    private suspend fun cwtProof(session: IssuanceSession, holder: HolderKey, nonce: String?, style: ProofStyle): String {
+        val key = holder.signingKey(proofAlg(holder, emptyList()))
+        val claims = buildCborMap {
+            (style.iss ?: walletProvider.clientId.takeIf { !session.anonymous })?.let { put(1, it) }
+            put(3, session.issuer.credentialIssuer)
+            put(6, Clock.System.now().epochSeconds)
+            nonce?.let { put(10, it.encodeToByteArray()) }
+        }
+        val sign1 = Cose.coseSign1Sign(
+            key,
+            Cbor.encode(claims),
+            true,
+            mapOf(
+                CoseNumberLabel(Cose.COSE_LABEL_ALG) to key.algorithm.coseAlgorithmIdentifier!!.toDataItem(),
+                CoseNumberLabel(3) to "openid4vci-proof+cwt".toDataItem(),
+                CoseTextLabel("COSE_Key") to Bstr(Cbor.encode(holder.publicKey.toCoseKey().toDataItem())),
+            ),
+            emptyMap(),
+        )
+        return Cbor.encode(sign1.toDataItem()).toBase64Url()
     }
 
     /** Calls the credential or deferred endpoint with optional request/response encryption. */
@@ -608,7 +795,7 @@ class Oid4vciClient(
         val responseKey = if (encryptResponse) Crypto.createEcPrivateKey(EcCurve.P256) else null
         val encValue = respEnc?.let { pickEnc(it.encValues) }
         val responseJwk = responseKey?.publicKey?.toJwk()
-        val body = if (responseJwk != null) {
+        val body1_0 = if (responseJwk != null) {
             JsonObject(plainBody + ("credential_response_encryption" to buildJsonObject {
                 put("jwk", JsonObject(responseJwk + mapOf(
                     "alg" to JsonPrimitive("ECDH-ES"),
@@ -618,6 +805,7 @@ class Oid4vciClient(
                 put("enc", encValue!!.joseAlgorithmIdentifier)
             }))
         } else plainBody
+        val body = session.compat.first { it.adaptRequestBody(issuer, body1_0) } ?: body1_0
         val encryptRequest = reqEnc != null && (reqEnc.required || encryptResponse)
         val (contentType, payload) = if (encryptRequest) {
             val jwk = reqEnc!!.jwks.filterIsInstance<JsonObject>().firstOrNull {
@@ -694,19 +882,42 @@ class Oid4vciClient(
         document: Document,
         pending: List<Credential>,
         json: JsonObject,
-        compat: DialectSet = DialectSet(dialects),
+        compat: DialectSet,
     ): IssuanceResult.Issued {
-        val issued = (json["credentials"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.str("credential") }
+        val issued = (json["credentials"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.get("credential")?.let(Draft11Dialect::credentialText) }
             ?: compat.first { it.credentialsFromResponse(json) }
             ?: throw ProtocolException("invalid_credential_response", "Response has no credentials array")
         if (issued.isEmpty()) throw ProtocolException("invalid_credential_response", "Empty credentials array")
         val byKey = mutableMapOf<EcPublicKey?, Credential>()
         for (c in pending) {
-            byKey[(c as? SecureAreaBoundCredential)?.let { it.secureArea.getKeyInfo(it.alias).publicKey }] = c
+            val key = when (c) {
+                is SecureAreaBoundCredential -> c.secureArea.getKeyInfo(c.alias).publicKey
+                is W3cVcCredential -> c.holderPublicKey()
+                else -> null
+            }
+            byKey[key] = c
         }
         var trust: TrustDecision? = null
         val certified = mutableListOf<Credential>()
+        var holderDid: String? = null
         for (raw in issued) {
+            if (config.format.isW3c) {
+                val sdJwtAllowed = compat.any { it.w3cDeliveredAsSdJwt(config) }
+                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtAllowed, compat)
+                // A credential bound to nothing this wallet can check (e.g. a did:web subject) is matched to the only key.
+                val target = (byKey.remove(inspected.boundKey) ?: if (inspected.boundKey == null && byKey.size == 1) byKey.remove(byKey.keys.first()) else null)
+                    as? W3cVcCredential
+                    ?: throw ProtocolException("invalid_credential", "Issued credential is bound to a key this wallet did not request")
+                if (target.holderDid != null && inspected.holderDid != null && inspected.holderDid != target.holderDid) {
+                    throw ProtocolException("invalid_credential", "Issued credential is bound to a different holder DID")
+                }
+                target.setIssuedFormBeforeCertify(inspected.encoding, inspected.types, inspected.holderDid)
+                target.certify(raw.encodeToByteString())
+                holderDid = target.holderDid
+                certified += target
+                trust = weaker(trust, inspected.trust)
+                continue
+            }
             val (inspected, data) = when (config.format) {
                 CredentialFormatId.MSO_MDOC -> {
                     val bytes = raw.fromBase64Url()
@@ -720,14 +931,19 @@ class Oid4vciClient(
             certified += target
             trust = weaker(trust, inspected.trust)
         }
-        // Keys the issuer did not use are discarded.
+        // Keys the issuer did not use are discarded (a shared holder key is kept by the credential type).
         byKey.values.forEach { document.deleteCredential(it.identifier) }
         val finalTrust = trust!!.let { t ->
             if (session.issuer.trust.labels.contains(TrustLabel.UNSIGNED_METADATA)) t.copy(labels = t.labels + TrustLabel.UNSIGNED_METADATA) else t
         }
         val notificationId = json.str("notification_id")
-        // Specifications followed outside OpenID4VCI 1.0 / SD-JWT VC are recorded, whichever step needed them.
-        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(notificationId = notificationId, specs = compat.specs.toList())
+        // Specifications followed outside OpenID4VCI 1.0 / the credential format are recorded, whichever step needed them.
+        val record = document.issuanceRecord!!.withTrust(finalTrust).copy(
+            notificationId = notificationId,
+            specs = compat.specs.toList(),
+            profile = compat.owner?.id,
+            holderDid = holderDid,
+        )
         document.edit {
             appData = record.encode()
             provisioned = true
@@ -751,9 +967,11 @@ class Oid4vciClient(
             issuedAt = Clock.System.now().epochSeconds,
             keyStorage = keys.keyStorage,
             claimNames = diw.wallet.core.credential.ClaimLabels.issuerNames(config),
+            w3cTypes = config.types,
+            profile = session.compat.owner?.id,
         )
         return documentStore.createDocument(
-            displayName = display?.name ?: config.docType ?: config.vct ?: config.id,
+            displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,
             typeDisplayName = issuerDisplay?.name ?: session.issuer.credentialIssuer,
             appData = record.encode(),
         )

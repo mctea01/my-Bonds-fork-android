@@ -13,7 +13,6 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 
 /**
  * OpenID4VCI draft 13 and earlier SD-JWT VC drafts, still deployed by many issuers (walt.id, TWDIW-based ones):
@@ -50,17 +49,20 @@ class Draft13Dialect(
                 config.raw.str("vct")?.let { put("vct", it) }
                 config.raw.obj("credential_definition")?.let { put("credential_definition", it) }
             }
-            val jwt = proofs?.arr("jwt")?.firstOrNull()
-            val attestation = proofs?.arr("attestation")?.firstOrNull()
-            if (jwt != null) {
-                putJsonObject("proof") { put("proof_type", "jwt"); put("jwt", jwt) }
-            } else if (attestation != null) {
-                putJsonObject("proof") { put("proof_type", "attestation"); put("attestation", attestation) }
-            }
+            Draft11Dialect.singleProof(proofs)?.let { put("proof", it) }
         }
     }
 
-    override fun credentialsFromResponse(response: JsonObject): List<String>? = response.str("credential")?.let { listOf(it) }
+    override fun batchEndpoint(issuer: IssuerMetadata): String? = issuer.raw.str("batch_credential_endpoint")
+
+    override fun credentialsFromResponse(response: JsonObject): List<String>? =
+        response["credential"]?.let { listOf(Draft11Dialect.credentialText(it)) }
+            ?: response.arr("credential_responses")?.mapNotNull { (it as? JsonObject)?.get("credential")?.let(Draft11Dialect::credentialText) }?.takeIf { it.isNotEmpty() }
+
+    override fun deferral(response: JsonObject): Deferral? =
+        if (response["credential"] == null && response["credentials"] == null) response.str("transaction_id")?.let { Deferral(it, acceptanceToken = false) } else null
+
+    override fun isIssuancePending(status: HttpStatusCode, error: JsonObject): Boolean = error.str("error") == "issuance_pending"
 
     override fun storageType(config: CredentialConfiguration): String? = config.raw.obj("credential_definition")?.str("vct")
 
