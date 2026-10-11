@@ -185,3 +185,10 @@ fun jwkThumbprint(jwk: JsonObject): String {
 fun publicJwk(jwk: JsonObject): JsonObject = JsonObject(jwk.filterKeys { it !in setOf("d", "p", "q", "dp", "dq", "qi", "k") })
 
 fun JsonPrimitive.contentOrNull(): String? = if (isString) content else null
+
+/** Signs a compact JWS with exactly [header] (alg must match [key]) and [payload]. */
+suspend fun signJws(header: JsonObject, payload: JsonObject, key: org.multipaz.crypto.AsymmetricKey): String {
+    val input = header.toString().encodeToByteArray().toBase64Url() + "." + payload.toString().encodeToByteArray().toBase64Url()
+    val sig = key.sign(input.encodeToByteArray())
+    return input + "." + sig.toCoseEncoded().toBase64Url()
+}

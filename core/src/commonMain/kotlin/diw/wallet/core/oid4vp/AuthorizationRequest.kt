@@ -14,11 +14,20 @@ enum class RequestChannel {
     DC_API,
 }
 
-enum class ResponseMode(val wire: String, val encrypted: Boolean, val dcApi: Boolean) {
+enum class ResponseMode(val wire: String, val encrypted: Boolean, val dcApi: Boolean, val standard: Boolean = true) {
     DIRECT_POST("direct_post", false, false),
     DIRECT_POST_JWT("direct_post.jwt", true, false),
     DC_API("dc_api", false, true),
-    DC_API_JWT("dc_api.jwt", true, true);
+    DC_API_JWT("dc_api.jwt", true, true),
+    /** OAuth 2.0 response modes used by pre-1.0 drafts and SIOPv2: parameters in the redirect_uri fragment or query. */
+    FRAGMENT("fragment", false, false, standard = false),
+    QUERY("query", false, false, standard = false),
+    /** Form post to redirect_uri (OAuth form_post; Microsoft Verified ID sends "post"). */
+    FORM_POST("form_post", false, false, standard = false),
+    POST("post", false, false, standard = false);
+
+    /** True for modes that deliver to the Verifier by an HTTP POST from the wallet. */
+    val posted: Boolean get() = this == DIRECT_POST || this == DIRECT_POST_JWT || this == FORM_POST || this == POST
 
     companion object {
         fun fromWire(w: String?): ResponseMode? = entries.firstOrNull { it.wire == w }
@@ -40,6 +49,8 @@ data class RawAuthorizationRequest(
     val walletNonce: String?,
     /** The DC API protocol identifier, e.g. openid4vp-v1-signed. */
     val dcApiProtocol: String? = null,
+    /** Profile whose entry point delivered the request (twdiw for the modadigitalwallet scheme). */
+    val entryHint: String? = null,
 )
 
 /** Identity of the Verifier as established by the request validation layer. */
@@ -71,8 +82,24 @@ data class ValidatedAuthorizationRequest(
     val verifierInfo: List<VerifierInfoEntry>,
     val expectedOrigins: List<String>,
     val warnings: List<String>,
+    /** Presentation Exchange definition of a pre-1.0 request (instead of [dcqlQuery], which is then empty). */
+    val presentationDefinition: JsonObject? = null,
+    /** response_type values; vp_token for OpenID4VP 1.0, id_token or both for SIOPv2 and pre-1.0 drafts. */
+    val responseTypes: Set<String> = setOf("vp_token"),
+    /** redirect_uri for fragment, query and post response modes. */
+    val redirectUri: String? = null,
+    /** Profile that owns the request (twdiw, msvid) or the legacy draft it follows (legacy); null for OpenID4VP 1.0. */
+    val profile: String? = null,
+    /** Specifications followed besides OpenID4VP 1.0, shown with the consent screen. */
+    val specs: List<String> = emptyList(),
 ) {
     val origin: String? get() = raw.origin
+
+    /** True when the request needs the wallet's own engine (pre-1.0, SIOP, profile requests). */
+    val isLegacy: Boolean get() = profile != null || presentationDefinition != null || responseTypes != setOf("vp_token") || !responseMode.standard
+
+    /** Where the response goes: response_uri for direct_post, redirect_uri otherwise. */
+    val target: String? get() = responseUri ?: redirectUri
 }
 
 /** Validation failure. [canNotifyVerifier] is true only when the Verifier was authenticated, so an error response is safe to send. */

@@ -96,6 +96,8 @@ class HolderIdentities(
         const val TWDIW = "twdiw"
         const val MS_VERIFIED_ID = "msvid"
         const val BONDS_SELF_ISSUED = "bonds-self"
+        /** Self-issued OpenID Provider identity for id_token-only (sign in) requests. */
+        const val SIOP = "siop"
 
         private val TABLE = StorageTableSpec("DiwHolderIdentities", supportPartitions = false, supportExpiration = false)
     }
