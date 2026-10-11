@@ -74,9 +74,18 @@ enum class CredentialFormatId(val wire: String) {
     MSO_MDOC("mso_mdoc"),
     SD_JWT_VC("dc+sd-jwt"),
     /** Pre-1.0 media type still emitted by older issuers; handled as SD-JWT VC. */
-    SD_JWT_VC_LEGACY("vc+sd-jwt");
+    SD_JWT_VC_LEGACY("vc+sd-jwt"),
+    /** W3C VC secured as a JWT, not using JSON-LD (Appendix A.1.1). */
+    JWT_VC_JSON("jwt_vc_json"),
+    /** W3C VC secured as a JWT, using JSON-LD (Appendix A.1.2). */
+    JWT_VC_JSON_LD("jwt_vc_json-ld"),
+    /** W3C VC secured with Data Integrity / Linked Data Proofs (Appendix A.1.3). */
+    LDP_VC("ldp_vc"),
+    /** Draft 11 and earlier name for jwt_vc_json. */
+    JWT_VC("jwt_vc");
 
-    val isSdJwt: Boolean get() = this != MSO_MDOC
+    val isSdJwt: Boolean get() = this == SD_JWT_VC || this == SD_JWT_VC_LEGACY
+    val isW3c: Boolean get() = this == JWT_VC_JSON || this == JWT_VC_JSON_LD || this == LDP_VC || this == JWT_VC
 
     companion object {
         fun fromWire(s: String?): CredentialFormatId? = entries.firstOrNull { it.wire == s }
@@ -106,9 +115,19 @@ data class CredentialConfiguration(
     val display: List<DisplayInfo>,
     val claims: JsonArray?,
     val raw: JsonObject,
+    /** W3C type list (credential_definition.type), most specific last; empty for other formats. */
+    val types: List<String> = emptyList(),
+    /** W3C @context list (credential_definition.@context) for jwt_vc_json-ld and ldp_vc. */
+    val contexts: List<String> = emptyList(),
 ) {
     /** Credentials without cryptographic binding are issued keyless. */
     val keyBound: Boolean get() = bindingMethods.isNotEmpty() || proofTypes.isNotEmpty()
+
+    /** DID methods the issuer binds to (did:key, did:jwk, did:web, or "did" for any); empty when keys are bound as JWK/COSE key. */
+    val didMethods: List<String> get() = bindingMethods.filter { it == "did" || it.startsWith("did:") }
+
+    /** True when the issuer binds only to DIDs, so proofs must carry a DID URL kid rather than a jwk. */
+    val didBindingOnly: Boolean get() = bindingMethods.isNotEmpty() && didMethods.size == bindingMethods.size
 
     companion object {
         fun parse(id: String, json: JsonObject): CredentialConfiguration {
@@ -125,6 +144,7 @@ data class CredentialConfiguration(
             }?.toMap().orEmpty()
             val credentialMetadata = json.obj("credential_metadata")
             val display = DisplayInfo.list(credentialMetadata?.arr("display") ?: json.arr("display"))
+            val definition = json.obj("credential_definition")
             return CredentialConfiguration(
                 id = id,
                 format = format,
@@ -138,6 +158,8 @@ data class CredentialConfiguration(
                 display = display,
                 claims = credentialMetadata?.arr("claims") ?: json.arr("claims"),
                 raw = json,
+                types = definition?.strList("type").orEmpty(),
+                contexts = definition?.strList("@context").orEmpty(),
             )
         }
     }
@@ -277,7 +299,8 @@ class MetadataFetcher(
     private val trustRegistry: TrustRegistry,
     private val allowInsecureLoopback: Boolean,
 ) {
-    suspend fun issuer(credentialIssuer: String): IssuerMetadata {
+    /** Fetches issuer metadata; metadata in an older shape is normalized by [compat] (draft 11/12 credentials_supported). */
+    suspend fun issuer(credentialIssuer: String, compat: diw.wallet.core.compat.DialectSet? = null): IssuerMetadata {
         checkEndpoint(credentialIssuer, "credential_issuer")
         val lookup = getFirst(
             listOf(wellKnownUrl(credentialIssuer, "openid-credential-issuer"), wellKnownUrlAppended(credentialIssuer, "openid-credential-issuer")),
@@ -302,15 +325,28 @@ class MetadataFetcher(
                 )
             }
         }
-        val metadata = IssuerMetadata.parse(json, trust)
-        if (metadata.credentialIssuer != credentialIssuer) {
-            throw ProtocolException("invalid_issuer_metadata", "credential_issuer in metadata does not match '${credentialIssuer}'")
+        val shaped = if (json.obj("credential_configurations_supported") == null) {
+            compat?.first { it.normalizeIssuerMetadata(json) } ?: json
+        } else json
+        val parsed = IssuerMetadata.parse(shaped, trust)
+        val metadata = if (parsed.credentialIssuer == credentialIssuer) parsed else {
+            // Only the dialect owning the session may accept a difference; the standard path requires identity.
+            val id = compat?.owned { it.issuerIdentifier(credentialIssuer, parsed.credentialIssuer) }
+                ?: throw ProtocolException("invalid_issuer_metadata", "credential_issuer in metadata does not match '${credentialIssuer}'")
+            parsed.copy(credentialIssuer = id)
         }
         checkEndpoint(metadata.credentialEndpoint, "credential_endpoint")
         metadata.nonceEndpoint?.let { checkEndpoint(it, "nonce_endpoint") }
         metadata.deferredCredentialEndpoint?.let { checkEndpoint(it, "deferred_credential_endpoint") }
         metadata.notificationEndpoint?.let { checkEndpoint(it, "notification_endpoint") }
         return metadata
+    }
+
+    /** Checks authorization server metadata a dialect supplied for an issuer that publishes none. */
+    fun checkFallback(meta: AuthServerMetadata): AuthServerMetadata {
+        checkEndpoint(meta.tokenEndpoint, "token_endpoint")
+        meta.authorizationEndpoint?.let { checkEndpoint(it, "authorization_endpoint") }
+        return meta
     }
 
     suspend fun authorizationServer(identifier: String): AuthServerMetadata {

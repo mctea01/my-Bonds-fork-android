@@ -4,6 +4,9 @@ import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.status.CredentialStatus
+import diw.wallet.core.status.W3cStatusEntry
+import diw.wallet.core.w3c.W3cEncoding
+import diw.wallet.core.w3c.W3cVcCredential
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.x509.subjectAltNames
@@ -53,20 +56,31 @@ object CredentialDetails {
         "mso_mdoc" -> "ISO/IEC 18013-5 mdoc（mso_mdoc）"
         "dc+sd-jwt" -> "SD-JWT VC（dc+sd-jwt）"
         "vc+sd-jwt" -> "SD-JWT VC 草案（vc+sd-jwt）"
+        "jwt_vc_json" -> "W3C VC，JWT（jwt_vc_json）"
+        "jwt_vc_json-ld" -> "W3C VC，JWT 與 JSON-LD（jwt_vc_json-ld）"
+        "ldp_vc" -> "W3C VC，Data Integrity（ldp_vc）"
+        "jwt_vc" -> "W3C VC，JWT（jwt_vc，舊版草案）"
         else -> format
     }
+
+    /** Format of a stored credential; TWDIW issues W3C credentials in SD-JWT under the vc+sd-jwt name. */
+    fun formatName(r: IssuanceRecord): String =
+        if (r.profile == "twdiw" && r.format == "vc+sd-jwt") "W3C VC，SD-JWT（vc+sd-jwt，TWDIW）" else formatName(r.format)
 
     /** Short format name for the credential list. */
     fun formatLabel(format: String): String = when (format) {
         "mso_mdoc" -> "mdoc"
         "dc+sd-jwt", "vc+sd-jwt" -> "SD-JWT VC"
+        "jwt_vc_json", "jwt_vc_json-ld", "ldp_vc", "jwt_vc" -> "W3C VC"
         else -> format
     }
 
+    fun formatLabel(r: IssuanceRecord): String = if (r.profile == "twdiw") "W3C VC SD-JWT" else formatLabel(r.format)
+
     /** Specifications the credential was issued under: the protocol and anything recorded during issuance. */
     fun specs(r: IssuanceRecord): List<String> {
-        val protocol = if (r.specs.any { it.startsWith("OpenID4VCI") }) null else "OpenID4VCI 1.0"
-        return listOfNotNull(protocol) + r.specs
+        val ownProtocol = r.profile == "msvid" || r.specs.any { it.startsWith("OpenID4VCI") }
+        return listOfNotNull(if (ownProtocol) null else "OpenID4VCI 1.0") + r.specs
     }
 
     fun keyStorageName(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.displayName ?: wire
@@ -75,6 +89,7 @@ object CredentialDetails {
         val parsed = when (c) {
             is SdJwtVcCredential -> sdJwt(c.issuerProvidedData.decodeToString())
             is MdocCredential -> mdoc(c.issuerProvidedData.toByteArray())
+            is W3cVcCredential -> w3c(c)
             else -> Parsed()
         }
         return listOf(
@@ -82,7 +97,7 @@ object CredentialDetails {
                 r?.let {
                     add(DetailRow("發行端", it.credentialIssuer))
                     add(DetailRow("設定 ID", it.configurationId))
-                    add(DetailRow("格式", formatName(it.format)))
+                    add(DetailRow("格式", formatName(it)))
                     it.vct?.let { v -> add(DetailRow("類型（vct）", v)) }
                     it.docType?.let { v -> add(DetailRow("類型（docType）", v)) }
                     add(DetailRow("規格", specs(it).joinToString("、")))
@@ -119,6 +134,13 @@ object CredentialDetails {
                         add(DetailRow("簽章演算法", it.algorithm.name))
                     }
                     add(DetailRow("私鑰", "只存在金鑰位置內，無法匯出或顯示"))
+                }
+                if (c is W3cVcCredential) {
+                    c.holderDid?.let { add(DetailRow("持有者 DID", it)) }
+                    c.secureArea?.let { add(DetailRow("金鑰位置", it.displayName)) }
+                    if (c.sharedKey) add(DetailRow("金鑰用途", "此服務的所有憑證共用同一把持有者金鑰（如官方皮夾的做法）"))
+                    if (!c.keyBound) add(DetailRow("持有者綁定", "無（持有即可出示的憑證）"))
+                    else add(DetailRow("私鑰", "只存在金鑰位置內，無法匯出或顯示"))
                 }
                 r?.keyStorage?.let { add(DetailRow("金鑰保護", keyStorageName(it))) }
             }),
@@ -162,6 +184,44 @@ object CredentialDetails {
             add(DetailRow("選擇性揭露項目數", parts.drop(1).count { it.isNotEmpty() && '.' !in it }.toString()))
         }
         return Parsed(signature, chain, validity, status, holderKey, other)
+    }
+
+    /** W3C credentials: the JOSE header and claims of the JWT or SD-JWT, or the Data Integrity proof, plus credentialStatus. */
+    private suspend fun w3c(c: W3cVcCredential): Parsed {
+        val vc = runCatching { c.credentialJson() }.getOrNull()
+        val status = vc?.let { W3cStatusEntry.parseAll(it) }.orEmpty().flatMap { e ->
+            listOf(
+                DetailRow("機制", e.type),
+                DetailRow("用途（statusPurpose）", e.purpose),
+                DetailRow("清單位置", e.listUrl),
+                DetailRow("索引", e.index.toString()),
+            )
+        }
+        val types = DetailRow("W3C 類型", c.types.joinToString())
+        if (c.encoding == W3cEncoding.JSON_LD) {
+            val proofs = when (val p = vc?.get("proof")) {
+                is JsonObject -> listOf(p)
+                is JsonArray -> p.filterIsInstance<JsonObject>()
+                else -> emptyList()
+            }
+            val signature = proofs.flatMap { p ->
+                listOfNotNull(
+                    p.text("type")?.let { DetailRow("證明類型", it) },
+                    p.text("cryptosuite")?.let { DetailRow("密碼套件（cryptosuite）", it) },
+                    p.text("verificationMethod")?.let { DetailRow("驗證方法", it) },
+                    p.text("created")?.let { DetailRow("建立時間", it) },
+                )
+            }
+            val validity = listOfNotNull(
+                vc?.text("validFrom")?.let { DetailRow("生效時間（validFrom）", it) },
+                vc?.text("issuanceDate")?.let { DetailRow("簽發時間（issuanceDate）", it) },
+                vc?.text("validUntil")?.let { DetailRow("到期時間（validUntil）", it) },
+                vc?.text("expirationDate")?.let { DetailRow("到期時間（expirationDate）", it) },
+            )
+            return Parsed(signature, emptyList(), validity, status, emptyList(), listOf(types))
+        }
+        val base = sdJwt(c.raw)
+        return Parsed(base.signature, base.chain, base.validity, status + base.status, base.holderKey, listOf(types) + base.other)
     }
 
     private suspend fun mdoc(issuerSigned: ByteArray): Parsed {
@@ -221,6 +281,7 @@ object CredentialDetails {
 
     /** Parsed status after a status query, by the Token Status List terms. */
     fun status(s: CredentialStatus): List<DetailSection> {
+        if (s.w3cEntries.isNotEmpty() || s.label != null) return w3cStatus(s)
         val value = s.code?.let { "${s.specName}（0x${it.toString(16).uppercase().padStart(2, '0')}）" }
         val token = s.list
         return listOf(
@@ -244,6 +305,38 @@ object CredentialDetails {
                 }
             }),
         ).filter { it.rows.isNotEmpty() }
+    }
+
+    /** W3C status lists: each credentialStatus entry by its statusPurpose and value as the specification names them. */
+    private fun w3cStatus(s: CredentialStatus): List<DetailSection> {
+        val overall = DetailSection("狀態查詢結果", buildList {
+            s.label?.let { add(DetailRow("狀態", it)) }
+            add(DetailRow("意義", stateMeaning(s.state)))
+            s.detail?.let { add(DetailRow("說明", it)) }
+            add(DetailRow("查詢時間", time(s.checkedAt)))
+            add(DetailRow("清單簽章", if (s.trusted) "已驗證" else "未驗證"))
+            s.environment?.let { add(DetailRow("信任環境", it.id)) }
+        })
+        val entries = s.w3cEntries.mapIndexed { i, e ->
+            DetailSection("狀態項目 ${i + 1}（${e.entry.purpose}）", buildList {
+                add(DetailRow("機制", e.entry.type))
+                add(DetailRow("狀態", e.label))
+                e.value?.let { add(DetailRow("值", "0x" + it.toString(16).uppercase())) }
+                add(DetailRow("意義", stateMeaning(e.state)))
+                add(DetailRow("清單位置", e.entry.listUrl))
+                add(DetailRow("索引", e.entry.index.toString()))
+                add(DetailRow("清單簽章", if (e.trusted) "已驗證" else "未驗證"))
+                e.detail?.let { add(DetailRow("說明", it)) }
+            })
+        }
+        return listOf(overall) + entries
+    }
+
+    fun stateMeaning(state: org.multipaz.revocation.RevocationCheckState): String = when (state) {
+        org.multipaz.revocation.RevocationCheckState.VALID -> "有效"
+        org.multipaz.revocation.RevocationCheckState.INVALID -> "無效（已撤銷）"
+        org.multipaz.revocation.RevocationCheckState.SUSPENDED -> "暫停"
+        else -> "無法判斷"
     }
 
     /** Short translation of a Token Status List value. */

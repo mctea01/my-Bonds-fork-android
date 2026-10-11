@@ -23,6 +23,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.ktor.client.mock)
 }
 
 configurations.all {

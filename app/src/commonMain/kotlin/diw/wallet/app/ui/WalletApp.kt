@@ -9,16 +9,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -42,6 +43,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
 import diw.wallet.app.DetailSection
+import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
@@ -49,7 +51,6 @@ import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
-import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
 import org.multipaz.revocation.RevocationCheckState
@@ -57,62 +58,108 @@ import org.multipaz.revocation.RevocationCheckState
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
  * scanner; it returns the scanned text or null.
+ *
+ * The home screen has five tabs: the documents list and the history log as in the EUDI wallet, Use as in Bonds
+ * (present, counter services, add), Files for signed files and official documents, and Verify for the wallet
+ * acting as a verifier. Settings sit behind the gear at the top right.
  */
 @Composable
 fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val ready by model.ready.collectAsState()
     val screen by model.screen.collectAsState()
+    val tab by model.tab.collectAsState()
     val settings by model.settingsFlow.collectAsState()
     val msg by model.message.collectAsState()
     val pin by model.pinRequest.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    var addSheet by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf(false) }
 
     LaunchedEffect(msg) {
         msg?.let { snackbar.showSnackbar(it); model.message.value = null }
     }
+    LaunchedEffect(scanning) {
+        if (scanning && scanQr != null) {
+            scanQr()?.let { model.handleUri(it) }
+            scanning = false
+        }
+    }
+    // One scanner for every entry: the scanned code decides the flow (offer, request, Bonds challenge, static code).
+    val scan: (() -> Unit)? = if (scanQr != null) ({ scanning = true }) else null
 
-    MaterialTheme {
+    WalletTheme {
         Scaffold(
             topBar = {
                 Column {
                     TopAppBar(
-                        title = { Text(titleFor(screen)) },
+                        title = { Text(titleFor(screen, tab)) },
                         navigationIcon = {
-                            if (screen != Screen.Home) TextButton(onClick = { model.back() }) { Text("返回") }
+                            if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
                         },
                         actions = {
-                            if (screen == Screen.Home) TextButton(onClick = { model.screen.value = Screen.Settings }) { Text("設定") }
+                            if (screen == Screen.Home) {
+                                if (tab == HomeTab.DOCUMENTS) IconButton(onClick = { addSheet = true }) { Icon(WalletIcons.Add, contentDescription = "加入證件") }
+                                IconButton(onClick = { model.screen.value = Screen.Settings }) { Icon(WalletIcons.Settings, contentDescription = "設定") }
+                            }
                         },
                     )
                     if (settings.testEnvironment) TestEnvironmentBanner()
                 }
             },
+            bottomBar = { if (ready && screen == Screen.Home) HomeNavigationBar(tab) { model.tab.value = it } },
             snackbarHost = { SnackbarHost(snackbar) },
         ) { padding ->
             Box(Modifier.padding(padding).fillMaxSize()) {
                 if (!ready) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                 } else when (val s = screen) {
-                    Screen.Home -> HomeScreen(model, scanQr)
+                    Screen.Home -> when (tab) {
+                        HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
+                        HomeTab.FILES -> FilesTab()
+                        HomeTab.USE -> UseTab(model, scan)
+                        HomeTab.VERIFY -> VerifyTab(model)
+                        HomeTab.HISTORY -> HistoryTab(model)
+                    }
                     Screen.Settings -> SettingsScreen(model)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
                     is Screen.DocumentDetail -> DocumentScreen(model, s)
                     is Screen.Certificate -> CertificateScreen(model, s)
+                    Screen.AddDocument -> AddDocumentScreen(model)
+                    Screen.TrustList -> TrustListScreen(model)
+                    Screen.Offline -> OfflineScreen(model, scanQr)
+                    Screen.MsIssuance -> MsIssuanceScreen(model)
                 }
             }
+        }
+        if (addSheet) {
+            AddDocumentSheet(
+                onDismiss = { addSheet = false },
+                onList = { addSheet = false; model.screen.value = Screen.AddDocument },
+                onScan = scan?.let { start -> { addSheet = false; start() } },
+            )
         }
         pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
     }
 }
 
-private fun titleFor(s: Screen) = when (s) {
-    Screen.Home -> "DIW MY WALLET"
+private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
+    Screen.Home -> when (tab) {
+        HomeTab.DOCUMENTS -> "證件"
+        HomeTab.FILES -> "文件"
+        HomeTab.USE -> "使用"
+        HomeTab.VERIFY -> "查驗"
+        HomeTab.HISTORY -> "紀錄"
+    }
     Screen.Settings -> "設定"
-    Screen.Issuance -> "加入憑證"
-    Screen.Presentation -> "分享資料"
-    is Screen.DocumentDetail -> "憑證內容"
+    Screen.Issuance -> "加入證件"
+    Screen.Presentation -> "出示證件"
+    is Screen.DocumentDetail -> "證件內容"
     is Screen.Certificate -> "證書詳情"
+    Screen.AddDocument -> "從清單選擇"
+    Screen.TrustList -> "信任清單"
+    Screen.Offline -> "出示與查驗"
+    Screen.MsIssuance -> "加入 Verified ID"
 }
 
 @Composable
@@ -136,38 +183,6 @@ fun PinDialog(reason: String, onResult: (String?) -> Unit) {
         confirmButton = { Button(onClick = { onResult(value) }, enabled = value.length >= 6) { Text("確認") } },
         dismissButton = { TextButton(onClick = { onResult(null) }) { Text("取消") } },
     )
-}
-
-@Composable
-fun HomeScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
-    val docs by model.documents.collectAsState()
-    var input by remember { mutableStateOf("") }
-    var scanning by remember { mutableStateOf(false) }
-    LaunchedEffect(scanning) {
-        if (scanning && scanQr != null) {
-            scanQr()?.let { model.handleUri(it) }
-            scanning = false
-        }
-    }
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = { input = it },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                label = { Text("貼上憑證邀請、驗證請求或發行端網址") },
-            )
-            Button(onClick = { model.handleUri(input); input = "" }, enabled = input.isNotBlank()) { Text("開啟") }
-        }
-        if (scanQr != null) OutlinedButton(onClick = { scanning = true }, modifier = Modifier.fillMaxWidth()) { Text("掃描 QR Code") }
-        if (docs.isEmpty()) {
-            Text("尚未加入任何憑證。", style = MaterialTheme.typography.bodyLarge)
-        }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            items(docs, key = { it.identifier }) { doc -> DocumentCard(doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) } }
-        }
-    }
 }
 
 @Composable
@@ -211,23 +226,6 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
 }
 
 @Composable
-fun DocumentCard(doc: Document, onClick: () -> Unit) {
-    val record = doc.issuanceRecord
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Box {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium)
-                Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall)
-                storedTrust(doc)?.let { TierBadge(it) }
-                record?.let { Text((listOf(CredentialDetails.formatLabel(it.format)) + CredentialDetails.specs(it)).joinToString("、"), style = MaterialTheme.typography.bodySmall) }
-                if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall)
-            }
-            if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
-        }
-    }
-}
-
-@Composable
 fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     val id = screen.documentId
     val docs by model.documents.collectAsState()
@@ -239,6 +237,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
+    var confirmDelete by remember { mutableStateOf(false) }
     LaunchedEffect(id) {
         val creds = doc.getCertifiedCredentials()
         count = creds.size
@@ -248,28 +247,46 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        CredentialCard(model, doc) {}
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
-        if (record?.isTestEnvironment == true) TestWatermark()
+        val status = statuses[id]
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val ok = status?.state == RevocationCheckState.VALID && status.trusted
+            Icon(if (ok) WalletIcons.Pass else WalletIcons.Caution, contentDescription = null,
+                tint = if (ok) Tokens.Pass else Tokens.Caution, modifier = Modifier.size(20.dp))
+            Text(statusText(status), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            TextButton(onClick = { model.checkStatus(doc) }) { Text("查詢") }
+        }
+        status?.let { DetailSections(model, CredentialDetails.status(it)) }
+        if (claims.isNotEmpty()) SectionTitle("證件資料")
+        claims.forEach { (k, v) -> LabelValue(k, v) }
+        SectionTitle("證件資訊")
         record?.let {
-            LabelValue("格式", CredentialDetails.formatName(it.format))
+            LabelValue("格式", CredentialDetails.formatName(it))
             (it.vct ?: it.docType)?.let { t -> LabelValue("類型", t) }
             LabelValue("規格", CredentialDetails.specs(it).joinToString("、"))
         }
         LabelValue("可用次數", "$count（批次憑證數）")
         record?.keyStorage?.let { LabelValue("金鑰保護", CredentialDetails.keyStorageName(it)) }
-        if (claims.isNotEmpty()) Text("憑證資料", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        claims.forEach { (k, v) -> LabelValue(k, v) }
-        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
         if (showDetails) DetailSections(model, details)
         Spacer(Modifier.height(8.dp))
-        val status = statuses[id]
-        Text(
-            statusText(status),
-            color = if (status?.state == RevocationCheckState.VALID && status.trusted) MaterialTheme.colorScheme.primary else tierColor(TrustTier.T3),
+        OutlinedButton(onClick = { confirmDelete = true }) {
+            Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("刪除證件", color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("刪除這張證件？") },
+            text = { Text("證件與它的金鑰會從這支手機刪除，無法復原。需要時請向發行端重新申請。") },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; model.deleteDocument(doc) }) { Text("刪除證件", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
         )
-        status?.let { DetailSections(model, CredentialDetails.status(it)) }
-        OutlinedButton(onClick = { model.checkStatus(doc) }) { Text("查詢憑證狀態") }
-        OutlinedButton(onClick = { model.deleteDocument(doc) }) { Text("刪除此憑證") }
     }
 }
 
@@ -293,6 +310,7 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
 /** Token Status List value by its name in the specification, with a short translation. */
 private fun statusText(s: CredentialStatus?): String {
     if (s == null) return "狀態：尚未查詢"
+    if (s.label != null) return "狀態：${s.label}（${CredentialDetails.stateMeaning(s.state)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
     val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
     return "狀態：$name（${CredentialDetails.statusMeaning(s.code)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }

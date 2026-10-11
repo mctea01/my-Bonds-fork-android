@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
+import diw.wallet.app.HomeTab
 import diw.wallet.app.IssuanceUi
 import diw.wallet.app.PresentationUi
 import diw.wallet.app.Screen
@@ -40,7 +41,7 @@ import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.trust.TrustTier
 
 @Composable
-private fun Busy(text: String) {
+internal fun Busy(text: String) {
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         CircularProgressIndicator()
         Text(text, Modifier.padding(top = 12.dp))
@@ -48,17 +49,16 @@ private fun Busy(text: String) {
 }
 
 @Composable
-private fun Failure(text: String, onClose: () -> Unit) {
+internal fun Failure(text: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("無法完成", style = MaterialTheme.typography.titleLarge)
-        Text(text)
+        VerdictCard(Verdict.FAIL, "無法完成", listOf(text))
         Button(onClick = onClose) { Text("回首頁") }
     }
 }
 
 /** Untrusted parties (T3/T4) need an explicit acknowledgement; official or anchored parties do not. */
 @Composable
-private fun riskAcknowledgement(tier: TrustTier): Boolean {
+internal fun riskAcknowledgement(tier: TrustTier): Boolean {
     var ack by remember(tier) { mutableStateOf(false) }
     if (tier == TrustTier.T1 || tier == TrustTier.T2) return true
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -132,7 +132,13 @@ fun IssuanceScreen(model: WalletModel) {
             }
         }
         is IssuanceUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (s.results.any { it is IssuanceResult.Issued }) Text("點選憑證可查看內容", style = MaterialTheme.typography.bodySmall)
+            val issued = s.results.count { it is IssuanceResult.Issued }
+            when {
+                s.failures.isEmpty() && issued == s.results.size -> VerdictCard(Verdict.PASS, "已加入 $issued 張證件")
+                issued > 0 -> VerdictCard(Verdict.CAUTION, "部分證件已加入", listOf("已加入 $issued 張，其餘未完成，原因列在下方。"))
+                else -> VerdictCard(Verdict.CAUTION, "發行端尚未完成", listOf("完成後會出現在「證件」。"))
+            }
+            if (issued > 0) Text("點選證件可查看內容", style = MaterialTheme.typography.bodySmall)
             s.results.forEach { r ->
                 when (r) {
                     is IssuanceResult.Issued -> TrustCard(
@@ -148,7 +154,7 @@ fun IssuanceScreen(model: WalletModel) {
             s.failures.forEach { (name, reason) ->
                 Text("$name：未加入（$reason）", color = MaterialTheme.colorScheme.error)
             }
-            Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
+            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text("完成") }
         }
     }
 }
@@ -162,11 +168,17 @@ fun PresentationScreen(model: WalletModel) {
         // Leaving through back() also ends a pending DC API request, returning the caller to its page.
         is PresentationUi.Failed -> Failure(s.message) { model.back() }
         is PresentationUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("已送出", style = MaterialTheme.typography.titleLarge)
-            when (val o = s.outcome) {
-                is PresentationOutcome.Posted -> Text(if (o.redirectUri != null) "驗證端已接收，將開啟對方頁面" else "驗證端已接收")
-                is PresentationOutcome.DcApi -> Text("已回傳給呼叫的網站或 App")
-            }
+            VerdictCard(
+                Verdict.PASS, "已出示",
+                listOf(
+                    when (val o = s.outcome) {
+                        is PresentationOutcome.Posted -> if (o.redirectUri != null) "查驗方已接收，將開啟對方頁面。" else "查驗方已接收。"
+                        is PresentationOutcome.DcApi -> "已回傳給呼叫的網站或 App。"
+                        is PresentationOutcome.Redirect -> "已交給對方頁面。"
+                    },
+                    "出示的對象與欄位名稱記在「紀錄」。",
+                ),
+            )
             Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
         }
         is PresentationUi.Consent -> {
@@ -178,11 +190,13 @@ fun PresentationScreen(model: WalletModel) {
                     if (v.dnsNames.isNotEmpty()) add("網域：${v.dnsNames.joinToString()}")
                     v.did?.let { add("DID：$it") }
                     req.origin?.let { add("呼叫來源：$it") }
-                    req.responseUri?.let { add("回應送往：$it") }
+                    req.target?.let { add("回應送往：$it") }
+                    if (req.specs.isNotEmpty()) add("採用規格：" + req.specs.joinToString("、"))
+                    s.offline?.let { add("臨櫃服務：${it.service.name}，出示後會顯示取貨條碼") }
                     if (req.verifierInfo.isNotEmpty()) add("對方附上 ${req.verifierInfo.size} 份身分或用途證明（將於後續版本逐項驗證）")
                     addAll(req.warnings)
                 }
-                TrustCard("驗證端", v.displayName, v.trust, extra)
+                TrustCard("查驗方", v.displayName, v.trust, extra)
                 val settings by model.settingsFlow.collectAsState()
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
@@ -198,10 +212,30 @@ fun PresentationScreen(model: WalletModel) {
                         }
                     }
                 }
+                if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
+                val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+                if (s.fields.isNotEmpty()) Text("對方要求填寫：", style = MaterialTheme.typography.titleSmall)
+                s.fields.forEach { f ->
+                    val value = values[f.ename].orEmpty()
+                    val bad = value.isNotEmpty() && f.regex != null && runCatching { !Regex(f.regex!!).matches(value) }.getOrDefault(false)
+                    OutlinedTextField(
+                        value = value,
+                        onValueChange = { values[f.ename] = it },
+                        label = { Text(f.cname) },
+                        supportingText = { Text(if (bad) "格式不符" else f.description ?: f.ename) },
+                        isError = bad,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                val fieldsOk = s.fields.all { f ->
+                    val v = values[f.ename].orEmpty()
+                    v.isNotEmpty() && (f.regex == null || runCatching { Regex(f.regex!!).matches(v) }.getOrDefault(true))
+                }
                 val ok = riskAcknowledgement(v.trust.tier)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.approve(s) }, enabled = ok) { Text("同意分享") }
+                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk) { Text("同意分享") }
                     OutlinedButton(onClick = { model.decline(s) }) { Text("拒絕") }
                 }
             }

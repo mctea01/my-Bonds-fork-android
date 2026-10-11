@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,7 +25,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
+import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
 @Composable
 private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
@@ -39,33 +44,82 @@ private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boo
 @Composable
 fun SettingsScreen(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
+    val history by model.history.collectAsState()
     var url by remember(s.testServerUrl) { mutableStateOf(s.testServerUrl) }
+    var twdiwClientId by remember(s.twdiwClientId) { mutableStateOf(s.twdiwClientId) }
+    var twdiwUserAgent by remember(s.twdiwUserAgent) { mutableStateOf(s.twdiwUserAgent) }
+    var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
+    var confirmClear by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("金鑰保護", style = MaterialTheme.typography.titleMedium)
+        SectionTitle("安全")
         model.backends.forEachIndexed { i, b ->
-            Text((if (i == 0) "使用中：" else "備用：") + b.protection.displayName, style = MaterialTheme.typography.bodyMedium)
+            Text((if (i == 0) "金鑰保護：" else "備用：") + b.protection.displayName, style = MaterialTheme.typography.bodyMedium)
         }
-        Toggle("每次使用需驗證", "使用憑證金鑰前要求生物辨識或裝置 PIN（軟體金鑰一律需 App PIN）", s.requireUserAuth) { v ->
+        Toggle("每次使用需驗證", "使用證件金鑰前要求生物辨識或裝置 PIN（軟體金鑰一律需 App PIN）", s.requireUserAuth) { v ->
             model.updateSettings { it.copy(requireUserAuth = v) }
         }
         HorizontalDivider()
-        Text("顯示", style = MaterialTheme.typography.titleMedium)
-        Toggle("預設展開詳細資訊", "憑證與驗證請求的技術細節：規格、簽章、憑證鏈、有效期間、金鑰與信任判斷", s.showDetails) { v ->
+        SectionTitle("顯示")
+        Toggle("預設展開技術細節", "證件與出示請求的規格、簽章、憑證鏈、有效期間、金鑰與信任判斷", s.showDetails) { v ->
             model.updateSettings { it.copy(showDetails = v) }
         }
         HorizontalDivider()
-        Text("相容模式", style = MaterialTheme.typography.titleMedium)
-        Toggle("舊版草案相容模式", "OpenID4VCI draft 13 與早期 SD-JWT VC（如 walt.id）。憑證會顯示實際使用的規格", s.compatDraft13) { v ->
-            model.updateSettings { it.copy(compatDraft13 = v) }
-        }
-        Toggle("TWDIW 相容模式", "數位憑證皮夾的格式（無 vct 的 W3C SD-JWT、jku 金鑰）。憑證會顯示實際使用的規格", s.compatTwdiw) { v ->
-            model.updateSettings { it.copy(compatTwdiw = v) }
-        }
-        Toggle("EUDI 參考實作相容模式", "授權回應的 iss 為授權伺服器網址下的子路徑（如 issuer.eudiw.dev/oidc）時仍接受。憑證會顯示實際使用的規格", s.compatEudi) { v ->
-            model.updateSettings { it.copy(compatEudi = v) }
+        SectionTitle("信任")
+        ActionRow(WalletIcons.Shield, "信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
+            model.screen.value = Screen.TrustList
         }
         HorizontalDivider()
-        Text("測試環境", style = MaterialTheme.typography.titleMedium)
+        SectionTitle("資料與隱私")
+        Text("紀錄只保存對象、時間、證件與欄位名稱，不保存欄位內容。目前共 ${history.size} 筆。", style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = { confirmClear = true }, enabled = history.isNotEmpty()) { Text("清除所有紀錄") }
+        HorizontalDivider()
+        SectionTitle("互通設定")
+        Text("數位憑證皮夾（TWDIW）、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
+            style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(
+            value = twdiwClientId,
+            onValueChange = { twdiwClientId = it.trim() },
+            label = { Text("數位憑證皮夾發行端 client_id") },
+            supportingText = { Text("預設 moda_dw 是官方數位憑證皮夾的識別碼，發行端只接受它；這個 App 以它表明相容官方流程") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = twdiwUserAgent,
+            onValueChange = { twdiwUserAgent = it },
+            label = { Text("送往 wallet.gov.tw 的 User-Agent") },
+            supportingText = { Text("只用於 wallet.gov.tw；其防護會拒絕程式庫預設值（錯誤 1010）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = twdiwFrontend,
+            onValueChange = { twdiwFrontend = it.trim() },
+            label = { Text("數位憑證皮夾平台位址（僅測試環境）") },
+            supportingText = { Text("正式環境固定使用 ${TwdiwPlatform.PRODUCTION_FRONTEND}；UAT 為 ${TwdiwPlatform.UAT_FRONTEND}") },
+            singleLine = true,
+            enabled = s.testEnvironment,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        val changed = twdiwClientId != s.twdiwClientId || twdiwUserAgent != s.twdiwUserAgent || twdiwFrontend != s.twdiwFrontendUrl
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                model.updateSettings {
+                    it.copy(
+                        twdiwClientId = twdiwClientId.ifEmpty { TwdiwDialect.DEFAULT_CLIENT_ID },
+                        twdiwUserAgent = twdiwUserAgent.ifBlank { TwdiwPlatform.DEFAULT_USER_AGENT },
+                        twdiwFrontendUrl = twdiwFrontend.ifEmpty { TwdiwPlatform.PRODUCTION_FRONTEND },
+                    )
+                }
+            }, enabled = changed) { Text("儲存") }
+            OutlinedButton(onClick = {
+                twdiwClientId = TwdiwDialect.DEFAULT_CLIENT_ID
+                twdiwUserAgent = TwdiwPlatform.DEFAULT_USER_AGENT
+                twdiwFrontend = TwdiwPlatform.PRODUCTION_FRONTEND
+            }) { Text("還原預設") }
+        }
+        HorizontalDivider()
+        SectionTitle("測試環境")
         Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->
             model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }
         }
@@ -92,7 +146,20 @@ fun SettingsScreen(model: WalletModel) {
         OutlinedButton(onClick = { model.importEudiTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 EUDI 參考實作測試錨點") }
         OutlinedButton(onClick = { model.importMultipazTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 Multipaz 測試發行端錨點") }
         HorizontalDivider()
+        SectionTitle("關於")
         Text("平台：${model.platform.platformName}", style = MaterialTheme.typography.bodySmall)
         Text("Client ID：${s.clientId}", style = MaterialTheme.typography.bodySmall)
+        Text("數位憑證皮夾 client_id：${s.twdiwClientId}", style = MaterialTheme.typography.bodySmall)
+    }
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("清除所有紀錄？") },
+            text = { Text("紀錄刪除後無法復原。證件本身不受影響。") },
+            confirmButton = {
+                TextButton(onClick = { confirmClear = false; model.clearHistory() }) { Text("清除紀錄", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+        )
     }
 }

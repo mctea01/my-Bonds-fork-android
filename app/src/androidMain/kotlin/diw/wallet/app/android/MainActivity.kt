@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
+import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
 import diw.wallet.app.ui.WalletApp
 import kotlinx.coroutines.CompletableDeferred
@@ -46,9 +47,10 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // The system Back gesture follows the in-app Back button; on the home screen it leaves the app.
+            // The system Back gesture follows the in-app Back button; on the documents tab it leaves the app.
             val screen by app.model.screen.collectAsState()
-            BackHandler(enabled = screen != Screen.Home) { app.model.back() }
+            val tab by app.model.tab.collectAsState()
+            BackHandler(enabled = screen != Screen.Home || tab != HomeTab.DOCUMENTS) { app.model.back() }
             PromptDialogs(promptModel)
             WalletApp(app.model, scanQr = {
                 val d = CompletableDeferred<String?>()
@@ -64,11 +66,13 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         app.platform.promptModel = promptModel
+        app.platform.activity = this
         app.model.onAppResumed()
     }
 
     override fun onPause() {
         if (app.platform.promptModel === promptModel) app.platform.promptModel = null
+        if (app.platform.activity === this) app.platform.activity = null
         app.model.onAppPaused()
         super.onPause()
     }

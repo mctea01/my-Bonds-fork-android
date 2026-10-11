@@ -255,7 +255,7 @@ class Oid4vciE2eTest {
     }
 
     @Test
-    fun legacyW3cSdJwtWithoutVctAndJkuKey() = runBlocking<Unit> {
+    fun jkuOnlyIssuerKeyIsRejected() = runBlocking<Unit> {
         start()
         val w = wallet()
         // The standard client does not accept a TWDIW-style configuration; nothing of the dialect leaks into it.
@@ -265,25 +265,16 @@ class Oid4vciE2eTest {
         val rejected = assertFailsWith<ProtocolException> { standard.issue(s0, "w3c_sd_jwt_legacy", keys(w)) }
         assertEquals("invalid_issuer_metadata", rejected.code)
 
+        // With the dialects, a credential whose issuer key is only published through jku (and a non-resolvable
+        // did:example issuer) is still refused: jku is never followed. TwdiwPlatformTest covers the real TWDIW shape.
         val c = client(w, dialects = listOf(
             diw.wallet.core.compat.Draft13Dialect(w.httpClient, true),
             diw.wallet.core.compat.TwdiwDialect(w.httpClient, true),
         ))
         val session = c.startFromOffer(offer(listOf("w3c_sd_jwt_legacy")))
         c.authorizePreAuthorized(session, null)
-        val r = c.issue(session, "w3c_sd_jwt_legacy", keys(w)) as IssuanceResult.Issued
-        val cred = r.credentials.single() as KeyBoundSdJwtVcCredential
-        assertEquals("TestCard", cred.vct)
-        // Multipaz cannot read claims of SD-JWTs without x5c; the wallet decodes them itself.
-        val claims = diw.wallet.core.credential.ClaimReader.read(cred, w.documentTypes).associate { it.label to it.value }
-        assertEquals("林哲全", claims["name"])
-        assertEquals("A123", claims["cardNumber"])
-        assertEquals(TrustTier.T3, r.trust.tier)
-        assertTrue(TrustLabel.UNKNOWN_ANCHOR in r.trust.labels)
-        // The credential records the specifications it was issued under instead of a generic non-standard label.
-        val record = r.document.issuanceRecord!!
-        assertEquals(listOf("TWDIW", "JWS jku (RFC 7515)"), record.specs, "specs: ${record.specs}")
-        assertTrue(record.reasons.any { "jku" in it }, "reasons: ${record.reasons}")
+        val e = assertFailsWith<ProtocolException> { c.issue(session, "w3c_sd_jwt_legacy", keys(w)) }
+        assertTrue("x5c" in (e.message ?: "") || "jku" in (e.message ?: "") || "did:example" in (e.message ?: ""), "message: ${e.message}")
     }
 
     @Test
@@ -374,7 +365,7 @@ class Oid4vciE2eTest {
         val o: JsonObject = DiwJson.parseToJsonElement(text).jsonObject
         val req = w.holder.resolveUri(o["uri"]!!.jsonPrimitive.content)
         val prepared = w.holder.prepare(req)
-        assertTrue(w.holder.respond(prepared, prepared.queryResult.select(emptyList())) is PresentationOutcome.Posted)
+        assertTrue(w.holder.respondDefault(prepared) is PresentationOutcome.Posted)
         val result = DiwJson.parseToJsonElement(
             servers.httpClient.get("$base/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()
         ).jsonObject

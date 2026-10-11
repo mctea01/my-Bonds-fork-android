@@ -1,6 +1,8 @@
 package diw.wallet.app.android
 
+import android.app.Activity
 import android.app.KeyguardManager
+import android.view.WindowManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,6 +10,7 @@ import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.browser.customtabs.CustomTabsIntent
+import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
 import diw.wallet.app.PinOrPlatformUnlock
@@ -83,6 +86,26 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     /** Prompt model of the activity in the foreground; biometric prompts need one. */
     @Volatile var promptModel: AndroidPromptModel? = null
 
+    /** The activity in the foreground, for window flags and permission requests. */
+    @Volatile var activity: Activity? = null
+
+    override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    override fun keepScreenOn(on: Boolean) {
+        val a = activity ?: return
+        a.runOnUiThread {
+            val attrs = a.window.attributes
+            if (on) {
+                a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+            } else {
+                a.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            a.window.attributes = attrs
+        }
+    }
+
     private val deviceSecure: Boolean
         get() = context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true
 
@@ -129,10 +152,22 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
+    /**
+     * Opens an issuer, sign-in or application page in a Custom Tab inside the wallet's own task, above MainActivity.
+     * These pages end with a deep link back to the wallet (OpenID4VCI callback, TWDIW offer, Verified ID sign-in);
+     * MainActivity is singleTask, so bringing it back finishes the tab above it and the page closes by itself. A tab
+     * started in a new task would stay open behind the wallet, so that is only the fallback when no activity is shown.
+     */
     override fun openBrowser(url: String) {
         val tab = CustomTabsIntent.Builder().setShowTitle(true).build()
-        tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        tab.launchUrl(context, Uri.parse(url))
+        val host = activity?.takeIf { !it.isFinishing && !it.isDestroyed }
+        if (host != null) {
+            // Callers may be on a background coroutine (the authorization code flow); activities start on the UI thread.
+            host.runOnUiThread { tab.launchUrl(host, Uri.parse(url)) }
+        } else {
+            tab.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            tab.launchUrl(context, Uri.parse(url))
+        }
     }
 
     override fun openRedirect(url: String) {

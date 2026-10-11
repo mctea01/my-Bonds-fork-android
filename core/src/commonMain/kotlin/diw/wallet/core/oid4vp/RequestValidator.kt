@@ -45,6 +45,7 @@ class RequestValidator(
         }
         val responseMode = ResponseMode.fromWire(p.str("response_mode") ?: if (raw.channel == RequestChannel.DC_API) "dc_api" else "fragment")
             ?: throw RequestValidationException("invalid_request", "Unsupported response_mode '${p.str("response_mode")}'")
+        if (!responseMode.standard) throw RequestValidationException("invalid_request", "response_mode ${responseMode.wire} is not part of OpenID4VP 1.0")
         if (raw.channel == RequestChannel.DC_API && !responseMode.dcApi) {
             throw RequestValidationException("invalid_request", "DC API requests must use dc_api or dc_api.jwt")
         }
@@ -58,7 +59,7 @@ class RequestValidator(
         if (nonce.length < 16) warnings += "nonce is shorter than 16 characters"
         val dcql = p.obj("dcql_query")
             ?: if (p.containsKey("presentation_definition") || p.containsKey("presentation_definition_uri"))
-                throw RequestValidationException("invalid_request", "Presentation Exchange is not part of OpenID4VP 1.0; enable a legacy profile")
+                throw RequestValidationException("invalid_request", "Presentation Exchange is not part of OpenID4VP 1.0")
             else throw RequestValidationException("invalid_request", "dcql_query is required")
         if (p.containsKey("presentation_definition")) {
             throw RequestValidationException("invalid_request", "dcql_query and presentation_definition must not both be present")

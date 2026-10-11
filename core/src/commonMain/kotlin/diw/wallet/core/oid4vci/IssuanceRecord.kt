@@ -16,6 +16,8 @@ object CredentialDomains {
     const val MDOC = "mdoc"
     const val SD_JWT = "sdjwt"
     const val SD_JWT_KEYLESS = "sdjwt-keyless"
+    /** W3C Verifiable Credentials (JWT, SD-JWT wrapped, JSON-LD), key bound or bearer. */
+    const val W3C = "w3c"
 }
 
 /**
@@ -44,6 +46,16 @@ data class IssuanceRecord(
     val reasons: List<String> = emptyList(),
     /** Claim names the issuer gave for the user's language, keyed by claim path joined with '.'. */
     val claimNames: Map<String, String> = emptyMap(),
+    /** W3C credential types from the issuer configuration. */
+    val w3cTypes: List<String> = emptyList(),
+    /** Profile the issuer follows (twdiw, draft11, msvid), or null for OpenID4VCI 1.0. */
+    val profile: String? = null,
+    /** Holder DID the credential is bound to, when bound to a DID. */
+    val holderDid: String? = null,
+    /** Card art from the credential's display metadata (logo URI, background and text colours as written by the issuer). */
+    val logoUri: String? = null,
+    val backgroundColor: String? = null,
+    val textColor: String? = null,
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)

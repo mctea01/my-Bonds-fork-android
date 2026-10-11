@@ -4,6 +4,7 @@ import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.isAcceptableEndpoint
+import diw.wallet.core.util.parseJsonObject
 import diw.wallet.core.util.queryParameters
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
@@ -37,13 +38,19 @@ class RequestResolver(
     private val allowInsecureLoopback: Boolean,
 ) {
     /** Schemes the wallet registers for OpenID4VP invocation. */
-    val supportedSchemes = setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "https")
+    val supportedSchemes = setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "https", "openid-vc", "openid", "siopv2")
 
-    suspend fun fromUri(uri: String): RawAuthorizationRequest {
+    /** Parameters whose values are JSON in a request passed by value. */
+    private val jsonParameters = setOf("dcql_query", "client_metadata", "presentation_definition", "claims", "registration")
+
+    /** Resolves a URI invocation; [entryHint] names the profile whose entry point delivered it (twdiw). */
+    suspend fun fromUri(uri: String, entryHint: String? = null): RawAuthorizationRequest {
         val scheme = uri.substringBefore(':', "").lowercase()
         if (scheme !in supportedSchemes) {
             throw RequestValidationException("invalid_request", "Unsupported invocation scheme '$scheme'")
         }
+        @Suppress("NAME_SHADOWING")
+        val entryHint = entryHint ?: if (scheme == "openid-vc") "msvid" else null
         val q = queryParameters(uri)
         val outer = q.names().associateWith { q[it]!! }
         val clientId = outer["client_id"]
@@ -57,19 +64,24 @@ class RequestResolver(
                 if (clientId == null) throw RequestValidationException("invalid_request", "client_id is required with request_uri")
                 val method = outer["request_uri_method"] ?: "get"
                 val (jwt, walletNonce) = fetchRequestObject(requestUri, method)
-                val jws = parseRequestObject(jwt)
-                RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, walletNonce)
+                // Some pre-1.0 verifiers serve the request as a plain JSON object rather than a JWT.
+                if (jwt.startsWith("{")) {
+                    RawAuthorizationRequest(RequestChannel.URI, outer, null, parseJsonObject(jwt, "invalid_request_uri"), null, walletNonce, entryHint = entryHint)
+                } else {
+                    val jws = parseRequestObject(jwt)
+                    RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, walletNonce, entryHint = entryHint)
+                }
             }
             requestValue != null -> {
                 if (clientId == null) throw RequestValidationException("invalid_request", "client_id is required with request")
                 val jws = parseRequestObject(requestValue)
-                RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, null)
+                RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, null, entryHint = entryHint)
             }
             else -> {
                 val params = buildJsonObject {
                     for ((k, v) in outer) {
                         val parsed: JsonElement = when (k) {
-                            "dcql_query", "client_metadata" -> try {
+                            in jsonParameters -> try {
                                 DiwJson.parseToJsonElement(v)
                             } catch (e: Exception) {
                                 throw RequestValidationException("invalid_request", "$k is not valid JSON", cause = e)
@@ -84,7 +96,7 @@ class RequestResolver(
                         put(k, parsed)
                     }
                 }
-                RawAuthorizationRequest(RequestChannel.URI, outer, null, params, null, null)
+                RawAuthorizationRequest(RequestChannel.URI, outer, null, params, null, null, entryHint = entryHint)
             }
         }
     }
@@ -158,7 +170,8 @@ class RequestResolver(
             throw RequestValidationException("invalid_request_uri", "Request object too large (${bytes.size} bytes)")
         }
         val ct = resp.contentType()
-        if (ct != null && !ct.match(reqObjType) && !ct.match(ContentType("application", "jwt"))) {
+        // Pre-1.0 verifiers serve request objects as application/jwt, text/plain or JSON; only HTML is certainly wrong.
+        if (ct != null && ct.match(ContentType.Text.Html)) {
             throw RequestValidationException("invalid_request_uri", "Unexpected request object content type $ct")
         }
         return bytes.decodeToString().trim() to walletNonce

@@ -5,10 +5,12 @@ import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
+import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.EcCurve
@@ -20,11 +22,14 @@ import org.multipaz.util.fromBase64Url
 data class DidVerificationMethod(val id: String, val key: VerificationKey, val jwk: JsonObject?)
 
 /** Minimal DID document view: verification methods plus the methods allowed for assertions/authentication. */
+data class DidService(val id: String, val type: String, val endpoints: List<String>)
+
 data class DidDocument(
     val id: String,
     val methods: List<DidVerificationMethod>,
     val assertionMethodIds: Set<String>,
     val authenticationIds: Set<String>,
+    val services: List<DidService> = emptyList(),
 ) {
     fun find(kidOrFragment: String): DidVerificationMethod? {
         val absolute = if (kidOrFragment.startsWith("#")) id + kidOrFragment else kidOrFragment
@@ -39,6 +44,7 @@ data class DidDocument(
 class DidResolver(
     private val httpClient: HttpClient,
     private val allowInsecureLoopback: Boolean = false,
+    private val ionResolver: String = "https://discover.did.msidentity.com/v1.0/identifiers/",
 ) {
     suspend fun resolve(did: String): DidDocument {
         val base = did.substringBefore('#')
@@ -46,6 +52,7 @@ class DidResolver(
             base.startsWith("did:jwk:") -> resolveJwk(base)
             base.startsWith("did:key:") -> resolveKey(base)
             base.startsWith("did:web:") -> resolveWeb(base)
+            base.startsWith("did:ion:") -> resolveIon(base)
             else -> throw ProtocolException("unsupported_did", "Unsupported DID method in '$base'")
         }
     }
@@ -100,10 +107,32 @@ class DidResolver(
         if (!resp.status.isSuccess()) throw ProtocolException("did_resolution_failed", "did:web fetch $url -> ${resp.status}")
         val doc = DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject
         if (doc.str("id") != did) throw ProtocolException("did_resolution_failed", "did:web document id mismatch")
+        return parseDocument(did, doc)
+    }
+
+    /**
+     * did:ion (Microsoft Entra Verified ID): resolved through Microsoft's public DID resolver, the resolver the
+     * Microsoft wallet uses. The result is as trustworthy as that service and TLS.
+     */
+    private suspend fun resolveIon(did: String): DidDocument {
+        val resp = httpClient.get(ionResolver + did.encodeURLPathPart())
+        if (!resp.status.isSuccess()) throw ProtocolException("did_resolution_failed", "did:ion resolution returned ${resp.status}")
+        val body = DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject
+        val doc = body.obj("didDocument") ?: body
+        val id = doc.str("id") ?: did
+        if (id != did && !did.startsWith("$id:") && !id.startsWith(did.substringBefore('?'))) {
+            throw ProtocolException("did_resolution_failed", "did:ion document id mismatch")
+        }
+        return parseDocument(did, doc)
+    }
+
+    /** Verification methods and relationships of a DID document (JSON-LD or plain JSON). */
+    fun parseDocument(did: String, doc: JsonObject): DidDocument {
         val methods = (doc.arr("verificationMethod") ?: emptyList()).mapNotNull { e ->
             val o = e as? JsonObject ?: return@mapNotNull null
             val id = o.str("id") ?: return@mapNotNull null
             val absolute = if (id.startsWith("#")) did + id else id
+            if (o.str("type") == "EcdsaSecp256k1VerificationKey2019" && o["publicKeyJwk"] == null && o.str("publicKeyMultibase") == null) return@mapNotNull null
             val jwk = o["publicKeyJwk"] as? JsonObject
             val key = when {
                 jwk != null -> VerificationKey.fromJwk(jwk)
@@ -116,7 +145,17 @@ class DidResolver(
             val r = (it as? kotlinx.serialization.json.JsonPrimitive)?.content ?: (it as? JsonObject)?.str("id")
             r?.let { x -> if (x.startsWith("#")) did + x else x }
         }.toSet()
-        return DidDocument(did, methods, refs("assertionMethod"), refs("authentication"))
+        val services = (doc.arr("service") ?: emptyList()).mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            val endpoints = when (val ep = o["serviceEndpoint"]) {
+                is kotlinx.serialization.json.JsonPrimitive -> listOf(ep.content)
+                is kotlinx.serialization.json.JsonArray -> ep.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }
+                is JsonObject -> (ep["origins"] as? kotlinx.serialization.json.JsonArray)?.mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.content }.orEmpty()
+                else -> emptyList()
+            }
+            DidService(o.str("id") ?: "", o.str("type") ?: "", endpoints)
+        }
+        return DidDocument(did, methods, refs("assertionMethod"), refs("authentication"), services)
     }
 
     private fun decodePercent(s: String): String = s.replace("%3A", ":").replace("%3a", ":")

@@ -1,11 +1,15 @@
 package diw.wallet.app
 
+import androidx.compose.ui.graphics.ImageBitmap
 import io.ktor.client.HttpClient
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.securearea.SecureArea
 import org.multipaz.storage.Storage
+
+/** Decodes PNG, JPEG or WebP bytes with the platform image codec. */
+expect fun decodeImageBytes(bytes: ByteArray): ImageBitmap?
 
 /** Where credential keys live; listed from strongest to weakest. */
 enum class KeyProtection(val wire: String, val displayName: String, val hardware: Boolean) {
@@ -21,6 +25,17 @@ class KeyBackend(
     /** challenge is the issuer nonce (Android attestation challenge); userAuth requests biometric or PIN per use. */
     val settings: suspend (challenge: ByteString, userAuth: Boolean) -> CreateKeySettings,
 )
+
+/**
+ * Bonds BLE link: the holder is the GATT peripheral advertising the verifier's one-time service UUID, notifies
+ * the frames and finishes when the verifier writes "received". [send] returns true when the verifier confirmed.
+ */
+interface BondsLinkPeripheral {
+    /** Null when the link can be used now, otherwise why not (Bluetooth off, permission missing, no peripheral mode). */
+    suspend fun unavailableReason(): String?
+
+    suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean
+}
 
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
@@ -48,4 +63,13 @@ interface PlatformServices {
 
     /** Registers stored credentials with the platform Digital Credentials API (no-op where unavailable). */
     suspend fun registerDigitalCredentials(model: WalletModel) {}
+
+    /** Decodes a PNG (or another platform image format) for display; null when it is not an image. */
+    fun decodeImage(bytes: ByteArray): ImageBitmap? = decodeImageBytes(bytes)
+
+    /** Bonds BLE link, where the platform can act as a GATT peripheral. */
+    val bondsLink: BondsLinkPeripheral? get() = null
+
+    /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
+    fun keepScreenOn(on: Boolean) {}
 }
