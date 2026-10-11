@@ -59,14 +59,19 @@ jobs:
           else
             echo "No release keystore: the release APK is signed with the debug key"
           fi
-      - name: Android APKs (release and debug)
+      - name: Android APKs (debug)
         if: success() || failure()
         run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
       # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
+      - name: Android APKs (release)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
       - name: Test report
         uses: mikepenz/action-junit-report@v5
         if: always()
