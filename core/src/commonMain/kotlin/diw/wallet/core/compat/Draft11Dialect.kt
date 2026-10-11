@@ -150,6 +150,10 @@ class Draft11Dialect : IssuanceDialect {
         )
     }
 
+    /** Draft 11/12 names the transaction code user_pin; tx_code is sent as well for issuers already past draft 12. */
+    override fun tokenParameters(context: TokenContext): Map<String, String> =
+        context.txCode?.let { mapOf("user_pin" to it) }.orEmpty()
+
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
 
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
