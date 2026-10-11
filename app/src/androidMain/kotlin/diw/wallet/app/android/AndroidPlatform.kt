@@ -1,6 +1,8 @@
 package diw.wallet.app.android
 
+import android.app.Activity
 import android.app.KeyguardManager
+import android.view.WindowManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -8,6 +10,7 @@ import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.browser.customtabs.CustomTabsIntent
+import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
 import diw.wallet.app.PinOrPlatformUnlock
@@ -80,6 +83,26 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     /** Prompt model of the activity in the foreground; biometric prompts need one. */
     @Volatile var promptModel: AndroidPromptModel? = null
+
+    /** The activity in the foreground, for window flags and permission requests. */
+    @Volatile var activity: Activity? = null
+
+    override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    override fun keepScreenOn(on: Boolean) {
+        val a = activity ?: return
+        a.runOnUiThread {
+            val attrs = a.window.attributes
+            if (on) {
+                a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+            } else {
+                a.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                attrs.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            a.window.attributes = attrs
+        }
+    }
 
     private val deviceSecure: Boolean
         get() = context.getSystemService(KeyguardManager::class.java)?.isDeviceSecure == true

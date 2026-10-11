@@ -36,7 +36,8 @@ object TwdiwEntryParser {
 
     fun parse(scanned: String, depth: Int = 0): TwdiwEntry? {
         if (depth > 3) return null
-        val text = scanned.replace("\r", "").replace("\n", "").trim()
+        // The official deep link carries a CR/LF after '?', raw in QR codes and percent-encoded in intents.
+        val text = scanned.replace("\r", "").replace("\n", "").replace(Regex("%0[dDaA]"), "").trim()
         val scheme = text.substringBefore(':', "").lowercase()
         return when (scheme) {
             SCHEME -> parseScheme(text)

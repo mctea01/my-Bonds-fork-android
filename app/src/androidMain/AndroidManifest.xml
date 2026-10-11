@@ -5,6 +5,12 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Bonds BLE link: the wallet advertises the verifier's one-time service as a GATT peripheral. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
 
@@ -34,6 +40,23 @@
                 <data android:scheme="mdoc-openid4vp" />
                 <data android:scheme="openid-credential-offer" />
                 <data android:scheme="haip-vci" />
+                <data android:scheme="openid" />
+                <data android:scheme="siopv2" />
+            </intent-filter>
+            <intent-filter>
+                <!-- TWDIW deep links (credential_offer, authorize, staticqrcode). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="modadigitalwallet" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Microsoft Entra Verified ID requests and the sign-in redirect of its contracts. -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="openid-vc" />
+                <data android:scheme="vcclient" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
