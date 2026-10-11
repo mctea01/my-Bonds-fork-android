@@ -43,7 +43,7 @@ fun MsIssuanceScreen(model: WalletModel) {
     when (val s = state) {
         MsIssuanceUi.Loading -> Busy("讀取發行要求")
         is MsIssuanceUi.Working -> Busy(s.message)
-        is MsIssuanceUi.Failed -> Failure(model, s.message)
+        is MsIssuanceUi.Failed -> Failure(s.message) { model.screen.value = Screen.Home }
         is MsIssuanceUi.WaitingForLogin -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()

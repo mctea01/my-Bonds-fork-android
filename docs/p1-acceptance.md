@@ -6,8 +6,8 @@
 
 | 範圍 | 指令 | 結果 |
 |---|---|---|
-| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 18/18 通過 |
-| OpenID4VCI 1.0 用戶端、Token Status List | `:test-servers:test --tests '*Oid4vciE2eTest'` | 18/18 通過 |
+| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 21/21 通過 |
+| OpenID4VCI 1.0 用戶端、Token Status List | `:test-servers:test --tests '*Oid4vciE2eTest'` | 19/19 通過 |
 | DIW 測試驗證端 對 Multipaz 錢包 SDK（uriSchemePresentment、digitalCredentialsPresentment） | `:test-servers:test --tests '*MultipazWalletInteropTest'` | 5/5 通過 |
 | App 共用模型（預授權、授權碼經瀏覽器回跳、由發行端網址領卡、DC API origin 檢查、PIN 加密儲存） | `:app:desktopTest` | 5/5 通過（另 2 項需網路，見下節） |
 | 欄位名稱語系與網址政策 | `:test-servers:test --tests '*ClaimLabelsTest' --tests '*UrlPolicyTest'` | 3/3 通過 |
@@ -20,7 +20,7 @@
 |---|---|---|
 | Multipaz 發行端 issuer.multipaz.org | 部分 | 預授權 offer、metadata、token 請求、DPoP、client attestation 格式皆被接受；最後被拒於「CA not registered」，該伺服器只信任 Multipaz 自家錢包後端的 client attestation CA，需對方登錄我方錢包提供者 CA 才能完成發證。 |
 | Multipaz 驗證端 verifier.multipaz.org | 無法測 | 測試當時回 503。改以 Multipaz 錢包 SDK 對我方測試驗證端互測（上表 5/5）。 |
-| EUDI 發行端 issuer.eudiw.dev | 部分 | metadata、PAR、授權網址建立成功，授權頁可進入國家選擇；27 種憑證全部要求 key attestation（iso_18045_high），需 EUDI 信任的錢包提供者，無法在雲端完成發證。 |
+| EUDI 發行端 issuer.eudiw.dev | 通過 | 測試以其網頁流程（FormEU 測試國家）自動產生領卡連結：預授權（含交易碼）領取 PID 的 SD-JWT VC、mso_mdoc 與延遲發證 mso_mdoc；授權碼（PAR、PKCE、DPoP）領取 SD-JWT VC 與 mso_mdoc，皆為公開用戶端。27 種設定雖都宣告 key attestation（iso_18045_high），發行端實際接受不含金鑰證明的 jwt proof。授權碼流程需 EUDI 參考實作相容模式（見第 23 項）。 |
 | TWDIW 方言開源發行端 issuer.mashbean.net | 通過（相容模式） | 需開啟「舊版草案相容模式」與「TWDIW 相容模式」：token 回應中的 c_nonce、vc+sd-jwt 無 vct、did:key 發行者金鑰；信任等級 T3，憑證顯示實際使用的規格（TWDIW、JWS jku 或 DID）。出示端採 PE 加 jwt_vp，P1 未支援。 |
 | walt.id 發行端 issuer.demo.walt.id（OpenID4VCI draft 13） | 通過 | 以其 API 範例建立 offer：SD-JWT VC（x5c 與 did:jwk 兩種簽章）領卡成功；mDL 的協定流程成功，但 API 範例的文件簽署憑證已於 2026-09-02 過期，錢包依規拒收。120 種設定中 43 種可領，其餘為 jwt_vc_json、jwt_vc 等尚未支援格式，會列出但不影響其他項目。 |
 | EUDI 驗證端 verifier-backend.eudiw.dev | 通過 | x509_hash + direct_post.jwt + verifier_info（registration certificate）請求可解析與驗證；匯入 EUDI 參考實作 CA 為 TEST 錨點後顯示為 TEST 環境；DCQL 可執行（錢包無 EUDI PID 故回 access_denied）。完整出示需 EUDI 發行的 PID。 |
@@ -49,13 +49,19 @@
 19. 發佈建置改為 release 最佳化：Android 以 R8 縮減與最佳化（21.8 MB，debug 為 105 MB），桌面版以 ProGuard 最佳化（不混淆）。桌面 release 版原本因 Bouncy Castle 簽章檔在重寫後不符而無法啟動，改為 ProGuard 輸出與 uber jar 皆移除簽章檔；已在 Linux 以 release deb 實際建立錢包、領取 PID 與 mDL 並檢視詳細資訊。說明見 `docs/release.md`。
 20. 實機回饋（2026-10-11）：一次領多張憑證後結果頁可捲動，點選即開啟該憑證，返回會回到結果頁；Android 返回鍵改為回上一頁，首頁才離開 App；憑證內容頁列出格式與類型；詳細資訊依發證、信任、簽章、有效期間、狀態清單、持有者金鑰分類，持有者公鑰只顯示類型與 JWK 指紋（RFC 7638），不顯示原始座標，私鑰不離開金鑰位置；簽章、驗證端與狀態清單的憑證可點選開啟證書詳情（主體、簽發者、序號、有效期間、金鑰用途、延伸金鑰用途、主體別名、CRL 發布點、指紋，並可切換憑證鏈中的其他憑證）；查詢狀態後顯示解析後的狀態清單權杖（狀態值、索引、bits、iat、exp、ttl、簽署憑證與信任錨點）；國碼類欄位顯示憑證內的原始代碼。
 
+21. 實機（2026-10-11）由 EUDI 預授權連結領 PID，三種都失敗「Error creating key」：EUDI 的 c_nonce 是 720 bytes 的 JWE，錢包把它當作 Android 金鑰的 attestation challenge，而 KeyMint 上限為 128 bytes。超過 128 bytes 時改以 c_nonce 的 SHA-256 作為 challenge。平台錯誤訊息改為一併顯示底層原因（例如 Keystore 的錯誤碼）。
+22. 發行端要求 key attestation 而錢包沒有錢包提供者（公開用戶端）時，原本直接停止（key_attestation_unavailable）。改為照送一般 jwt proof，由發行端決定是否接受；被拒時錯誤訊息註明發行端要求金鑰證明。EUDI 發行端接受，測試發行端（強制要求）拒絕，兩者皆有測試。
+23. EUDI 授權碼流程「iss does not match authorization server (mix-up)」：其授權伺服器 metadata 的 issuer 為 https://issuer.eudiw.dev，授權回應的 iss 卻是 https://issuer.eudiw.dev/oidc（該路徑下的 metadata 又宣告 https://dev.issuer.eudiw.dev/oidc）。標準流程依 RFC 9207 維持拒絕，錯誤訊息列出兩個值；新增「EUDI 參考實作相容模式」（`EudiDialect`，預設開啟）：iss 位於授權伺服器 issuer 網址之下、且 token endpoint 位於該 iss 之下時才接受，授權碼仍送回簽發它的伺服器；這樣取得的憑證規格記錄為「EUDI 參考實作」。
+24. EUDI 延遲發證（PID MSO Mdoc Deferred）輪詢時「Error decrypting」：EUDI 以第一次 credential request 帶的回應加密金鑰加密 deferred 回應，忽略輪詢時帶的新金鑰。改為同一 transaction 輪詢時沿用原本的金鑰（OpenID4VCI 1.0 允許）；測試發行端新增 `deferredToOriginalKey` 選項重現此行為。
+25. 實機以 EUDI 驗證端（verifier.eudiw.dev）的 DC API 出示，網頁只顯示「Request is cancelled.」。Google Play 服務對數位憑證一律把錯誤回報為使用者取消（不洩漏是否持有憑證），而錢包在請求驗證失敗時又立刻關閉畫面，使用者與驗證端都看不到原因。最可能的原因是呼叫來源：錢包只信任 Chrome 正式版的一個簽章，請求由 Google Play 服務轉發或來自其他瀏覽器（Chrome Beta、Samsung、Edge 等）時取不到網站 origin，改以 App 簽章作為來源，與 `expected_origins`（EUDI 預設為網頁本身的 origin）不符。修正：特權瀏覽器清單改用 Google 密碼管理工具公開的清單（`app/src/androidMain/assets/privileged_user_agents.json`，73 個 App，含 Google Play 服務）；origin 結尾的斜線視為同一 origin；失敗畫面留在錢包直到使用者離開，請求驗證失敗時回傳 OpenID4VP 錯誤（`expected_origins` 不符為 invalid_request，附錄 A.2、A.4），使用者拒絕時回傳 access_denied，驗證端可顯示實際原因；含值比對或指定發行者的請求依第 15.9.2 節仍以取消結束。另以 EUDI 後端實際產生的已簽章請求（x509_hash、dc_api.jwt、verifier_info）確認核心驗證、DCQL 比對與加密回應皆可完成。
+
 ## P1 狀態
 
 P1 以本地測試可驗證的範圍完成後暫停（2026-10-11），之後遇到問題再重新處理。
 
 ## 仍需處理
 
-- 完整發證互通：需 Multipaz 或 EUDI 登錄 DIW 錢包提供者 CA，或使用其官方錢包後端；或在實機上以 Android key attestation 搭配對方錢包後端。
-- Android 實機驗收：StrongBox/TEE 金鑰與生物辨識提示、Credential Manager（DC API）選取與回傳、QR 掃描、深層連結。
+- Multipaz 發行端完整發證：需對方登錄 DIW 錢包提供者 CA，或使用其官方錢包後端；或在實機上以 Android key attestation 搭配對方錢包後端。
+- Android 實機驗收：StrongBox/TEE 金鑰與生物辨識提示（含第 21 項長 c_nonce 的金鑰建立）、Credential Manager（DC API）選取與回傳、QR 掃描、深層連結。
 - CI：由使用者維護於 `.github/workflows/github-actions-ci.yml`，只在 push 到 main 與 pull_request 時執行。release 檔案由 `:app:assembleRelease`、`:app:packageReleaseMsi`（Windows）、`:app:packageReleaseDeb`（Linux）與 `:app:packageReleaseUberJarForCurrentOS`（需 Java 21）產生，版本可用 `-Pdiw.versionCode`、`-Pdiw.versionName`、`-Pdiw.desktopVersion` 指定。
 - Android release APK 的 R8 結果尚未在實機執行驗證。

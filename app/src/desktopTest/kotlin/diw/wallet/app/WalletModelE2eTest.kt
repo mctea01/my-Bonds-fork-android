@@ -289,11 +289,27 @@ class WalletModelE2eTest {
         val verification = servers.verifier.receiveDcApi(stored.id, out, origin)
         assertTrue(verification.passed, "verification: $verification")
 
-        // Same request from another origin is rejected by expected_origins before any consent.
+        // Same request from another origin is rejected by expected_origins before any consent. The reason stays on
+        // screen; leaving it answers invalid_request (OpenID4VP 1.0 A.2) instead of a cancelled request.
         val (_, protocol2, data2) = servers.verifier.createDcApi(origin, signed = true, encrypted = true)
+        val leave = CoroutineScope(Dispatchers.Default).launch {
+            val failed = withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Failed } }
+            assertTrue("expected_origins" in (failed as PresentationUi.Failed).message, "failure: $failed")
+            m.back()
+        }
         val rejected = withTimeout(60.seconds) { m.presentDcApi(protocol2, data2, "https://evil.example") }
-        assertNull(rejected)
-        assertIs<PresentationUi.Failed>(m.presentation.value)
+        leave.join()
+        assertEquals(buildJsonObject { put("error", "invalid_request") }, rejected)
+
+        // Declining on the consent screen answers access_denied.
+        val (_, protocol3, data3) = servers.verifier.createDcApi(origin, signed = true, encrypted = true)
+        val decline = CoroutineScope(Dispatchers.Default).launch {
+            val consent = withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Consent } }
+            m.decline(consent as PresentationUi.Consent)
+        }
+        val declined = withTimeout(60.seconds) { m.presentDcApi(protocol3, data3, origin) }
+        decline.join()
+        assertEquals(buildJsonObject { put("error", "access_denied") }, declined)
     }
 
     @Test

@@ -60,7 +60,7 @@ fun SettingsScreen(model: WalletModel) {
         }
         HorizontalDivider()
         Text("數位憑證皮夾（TWDIW）", style = MaterialTheme.typography.titleMedium)
-        Text("TWDIW、Bonds、OpenID4VCI 草案 11/13 與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
+        Text("TWDIW、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
             style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(
             value = twdiwClientId,

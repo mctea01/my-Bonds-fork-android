@@ -68,6 +68,8 @@ data class IssuerOptions(
     val signedMetadata: Boolean = false,
     val batchSize: Int = 3,
     val requirePar: Boolean = true,
+    /** Encrypts deferred responses to the key of the original credential request, as issuer.eudiw.dev does. */
+    val deferredToOriginalKey: Boolean = false,
 )
 
 /** Error that maps to an OAuth error response. */
@@ -109,7 +111,7 @@ class IssuerService(
     private class ParRequest(val params: Parameters, val expires: Long)
     private class AuthCode(val clientId: String, val redirectUri: String, val challenge: String, val configIds: List<String>)
     private class TokenInfo(val configIds: List<String>, val jkt: String?, val identifiers: Map<String, String>, val expires: Long)
-    private class DeferredTx(val credentials: JsonArray, var pollsLeft: Int)
+    private class DeferredTx(val credentials: JsonArray, var pollsLeft: Int, val encryption: JsonObject?)
     private class StatusListState(val bits: Int, val statuses: MutableMap<Int, Int> = ConcurrentHashMap(), var next: Int = 0)
 
     private val offers = ConcurrentHashMap<String, JsonObject>()
@@ -505,7 +507,7 @@ class IssuerService(
         val credentials = buildJsonArray { minted.forEach { c -> addJsonObject { put("credential", c) } } }
         if (configId.endsWith("_deferred")) {
             val tx = PlatformCrypto.randomBytes(12).toBase64Url()
-            deferred[tx] = DeferredTx(credentials, 1)
+            deferred[tx] = DeferredTx(credentials, 1, req.obj("credential_response_encryption"))
             return reply(HttpStatusCode.Accepted, buildJsonObject { put("transaction_id", tx); put("interval", 1) }, req)
         }
         return reply(HttpStatusCode.OK, buildJsonObject {
@@ -516,9 +518,12 @@ class IssuerService(
 
     suspend fun deferredCredential(body: String, contentType: String?, headers: Map<String, String?>): IssuerReply {
         authorizeResource(headers, "$issuerId/deferred")
-        val req = readBody(body, contentType)
-        val tx = deferred[req.str("transaction_id") ?: ""]
+        val received = readBody(body, contentType)
+        val tx = deferred[received.str("transaction_id") ?: ""]
             ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_transaction_id", "Unknown transaction_id")
+        val req = if (options.deferredToOriginalKey && tx.encryption != null) {
+            JsonObject(received + ("credential_response_encryption" to tx.encryption))
+        } else received
         if (tx.pollsLeft > 0) {
             tx.pollsLeft--
             return reply(HttpStatusCode.Accepted, buildJsonObject { put("interval", 1) }, req)

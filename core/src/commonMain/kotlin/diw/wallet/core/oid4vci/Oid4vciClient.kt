@@ -135,6 +135,7 @@ class IssuanceSession internal constructor(
     internal var requestedConfigurations: List<String> = emptyList()
     internal var anonymous: Boolean = false
     internal var attestationChallenge: String? = null
+    /** Response encryption key of each deferred transaction; issuers may encrypt the deferred response with it. */
     internal val responseKeys = mutableMapOf<String, EcPrivateKey>()
 
     val txCode: TxCode? get() = offer?.preAuthorized?.txCode
@@ -348,7 +349,11 @@ class Oid4vciClient(
         q["error"]?.let { throw ProtocolException(it, q["error_description"] ?: "Authorization failed") }
         if (q["state"] != session.state) throw ProtocolException("invalid_state", "state mismatch")
         val iss = q["iss"]
-        if (iss != null && iss != session.authServer.issuer) throw ProtocolException("invalid_request", "iss does not match authorization server (mix-up)")
+        if (iss != null && iss != session.authServer.issuer) {
+            if (!session.compat.any { it.acceptsAuthorizationResponseIssuer(session.authServer, iss) }) {
+                throw ProtocolException("invalid_request", "iss $iss does not match authorization server ${session.authServer.issuer} (mix-up)")
+            }
+        }
         if (iss == null && session.authServer.responseIssParameterSupported) {
             throw ProtocolException("invalid_request", "Authorization response is missing iss")
         }
@@ -474,7 +479,8 @@ class Oid4vciClient(
         var alternative: Triple<IssuanceDialect, HttpStatusCode, JsonObject>? = null
         while (true) {
             val holderKeys = if (config.keyBound) pending.map { holderKeyOf(it) } else emptyList()
-            val proofs = if (config.keyBound) buildProofs(session, config, holderKeys, nonce, keys) else null
+            val built = if (config.keyBound) buildProofs(session, config, holderKeys, nonce, keys) else null
+            val proofs = built?.json
             val identifier = token.credentialIdentifiers[config.id]?.firstOrNull()
             val alt = alternative
             val batch = alt?.first?.batchEndpoint(session.issuer)?.takeIf { (proofs?.arr("jwt")?.size ?: 0) > 1 }
@@ -516,7 +522,11 @@ class Oid4vciClient(
                 val tx = json.str("transaction_id") ?: throw ProtocolException("invalid_credential_response", "202 without transaction_id")
                 return deferred(document, tx, json, config, false)
             }
-            if (!status.isSuccess()) throw oauthError(json, "Credential request failed (${status.value})")
+            if (!status.isSuccess()) {
+                val e = oauthError(json, "Credential request failed (${status.value})")
+                if (built?.missingKeyAttestation != true) throw e
+                throw ProtocolException(e.code, "${e.message} (the issuer requires key attestation; no wallet provider gave one)")
+            }
             if (json["credentials"] == null) {
                 compat.first { it.deferral(json) }?.let { return deferred(document, it.id, json, config, it.acceptanceToken) }
             }
@@ -535,17 +545,19 @@ class Oid4vciClient(
         val endpoint = session.issuer.deferredCredentialEndpoint
             ?: throw ProtocolException("invalid_issuer_metadata", "No deferred_credential_endpoint")
         val config = session.issuer.configurations[deferred.configurationId]!!
+        val reuseKey = session.responseKeys[deferred.transactionId]
         val (status, json) = if (deferred.acceptanceToken) {
             // Draft 11: the acceptance token is the bearer token of the deferred request.
             val token = AccessToken(deferred.transactionId, "Bearer", null, null, emptyMap())
-            credentialEndpointCall(session, endpoint, JsonObject(emptyMap()), token)
+            credentialEndpointCall(session, endpoint, JsonObject(emptyMap()), token, reuseKey)
         } else {
             val token = session.accessToken ?: throw ProtocolException("invalid_request", "Not authorized")
-            credentialEndpointCall(session, endpoint, buildJsonObject { put("transaction_id", deferred.transactionId) }, token)
+            credentialEndpointCall(session, endpoint, buildJsonObject { put("transaction_id", deferred.transactionId) }, token, reuseKey)
         }
         if (status == HttpStatusCode.Accepted || (!status.isSuccess() && session.compat.any { it.isIssuancePending(status, json) })) {
             return deferred.copy(intervalSeconds = json.long("interval") ?: deferred.intervalSeconds)
         }
+        session.responseKeys.remove(deferred.transactionId)
         if (!status.isSuccess()) {
             documentStore.deleteDocument(deferred.document.identifier)
             throw oauthError(json, "Deferred credential request failed (${status.value})")
@@ -657,13 +669,16 @@ class Oid4vciClient(
         else -> throw ProtocolException("invalid_request", "Credential has no holder key")
     }
 
+    /** The proofs of a credential request; [missingKeyAttestation] when the issuer asks for key attestation and none was available. */
+    private class Proofs(val json: JsonObject, val missingKeyAttestation: Boolean)
+
     private suspend fun buildProofs(
         session: IssuanceSession,
         config: CredentialConfiguration,
         holderKeys: List<HolderKey>,
         nonce: String?,
         keys: KeyRequest,
-    ): JsonObject {
+    ): Proofs {
         val jwtInfo = config.proofTypes["jwt"]
         val attInfo = config.proofTypes["attestation"]
         val diInfo = config.proofTypes["di_vp"] ?: config.proofTypes["ldp_vp"]
@@ -674,26 +689,25 @@ class Oid4vciClient(
         return when {
             jwtInfo != null || (attInfo == null && diInfo == null && cwtInfo == null && config.bindingMethods.isNotEmpty()) -> {
                 val algs = jwtInfo?.signingAlgorithms.orEmpty()
-                val keyAttestation = if (jwtInfo?.keyAttestationsRequired != null) {
-                    walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication)
-                        ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires key attestation but the wallet provider gave none")
-                } else null
+                val required = jwtInfo?.keyAttestationsRequired != null
+                // Without key attestation the jwt proofs are still sent; enforcing key_attestations_required is the issuer's call.
+                val keyAttestation = if (required) walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication) else null
                 val signers = if (keyAttestation != null) holderKeys.take(1) else holderKeys
                 val jwts = signers.map { proofJwt(session, config, it, algs, nonce, keyAttestation, style) }
-                buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }
+                Proofs(buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }, required && keyAttestation == null)
             }
             attInfo != null -> {
                 val ka = walletProvider.keyAttestation(attestations, nonce, keys.userAuthentication)
                     ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires an attestation proof but the wallet provider gave none")
-                buildJsonObject { putJsonArray("attestation") { add(ka) } }
+                Proofs(buildJsonObject { putJsonArray("attestation") { add(ka) } }, false)
             }
             diInfo != null -> {
                 val vps = holderKeys.map { diVpProof(session, it, nonce, config) }
-                buildJsonObject { putJsonArray(if (config.proofTypes.containsKey("di_vp")) "di_vp" else "ldp_vp") { vps.forEach { add(it) } } }
+                Proofs(buildJsonObject { putJsonArray(if (config.proofTypes.containsKey("di_vp")) "di_vp" else "ldp_vp") { vps.forEach { add(it) } } }, false)
             }
             cwtInfo != null -> {
                 val cwts = holderKeys.map { cwtProof(session, it, nonce, style) }
-                buildJsonObject { putJsonArray("cwt") { cwts.forEach { add(it) } } }
+                Proofs(buildJsonObject { putJsonArray("cwt") { cwts.forEach { add(it) } } }, false)
             }
             else -> throw ProtocolException("unsupported_proof_type", "No supported proof type for ${config.id}")
         }
@@ -783,18 +797,23 @@ class Oid4vciClient(
         return Cbor.encode(sign1.toDataItem()).toBase64Url()
     }
 
-    /** Calls the credential or deferred endpoint with optional request/response encryption. */
+    /**
+     * Calls the credential or deferred endpoint with optional request/response encryption. A deferred call reuses the
+     * transaction's response key ([reuseKey]): some issuers (issuer.eudiw.dev) encrypt the deferred response with the key
+     * of the original request and ignore a new one.
+     */
     private suspend fun credentialEndpointCall(
         session: IssuanceSession,
         url: String,
         plainBody: JsonObject,
         token: AccessToken,
+        reuseKey: EcPrivateKey? = null,
     ): Pair<HttpStatusCode, JsonObject> {
         val issuer = session.issuer
         val respEnc = issuer.responseEncryption
         val reqEnc = issuer.requestEncryption
         val encryptResponse = respEnc != null && (respEnc.required || (preferEncryption && reqEnc != null))
-        val responseKey = if (encryptResponse) Crypto.createEcPrivateKey(EcCurve.P256) else null
+        val responseKey = if (encryptResponse) reuseKey ?: Crypto.createEcPrivateKey(EcCurve.P256) else null
         val encValue = respEnc?.let { pickEnc(it.encValues) }
         val responseJwk = responseKey?.publicKey?.toJwk()
         val body1_0 = if (responseJwk != null) {
@@ -842,6 +861,9 @@ class Oid4vciClient(
                 }
                 runCatching { parseJsonObject(text) }.getOrElse { JsonObject(emptyMap()) }
             }
+        }
+        if (resp.status == HttpStatusCode.Accepted && responseKey != null) {
+            json.str("transaction_id")?.let { session.responseKeys[it] = responseKey }
         }
         return resp.status to json
     }

@@ -48,11 +48,11 @@ internal fun Busy(text: String) {
 }
 
 @Composable
-internal fun Failure(model: WalletModel, text: String) {
-    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+internal fun Failure(text: String, onClose: () -> Unit) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("無法完成", style = MaterialTheme.typography.titleLarge)
         Text(text)
-        Button(onClick = { model.screen.value = Screen.Home }) { Text("回首頁") }
+        Button(onClick = onClose) { Text("回首頁") }
     }
 }
 
@@ -79,7 +79,7 @@ fun IssuanceScreen(model: WalletModel) {
             Text("請在瀏覽器完成登入與授權，完成後會自動返回", Modifier.padding(vertical = 12.dp))
             OutlinedButton(onClick = { model.cancelBrowserWait() }) { Text("取消") }
         }
-        is IssuanceUi.Failed -> Failure(model, s.message)
+        is IssuanceUi.Failed -> Failure(s.message) { model.screen.value = Screen.Home }
         is IssuanceUi.Review -> {
             var txCode by remember { mutableStateOf("") }
             // Offers start with everything selected; a wallet-initiated list starts empty.
@@ -99,7 +99,7 @@ fun IssuanceScreen(model: WalletModel) {
                                 Text(c.display.pick(model.locales)?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
                                 Text("${c.raw["format"]?.toString()?.trim('"') ?: c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
                                 if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
-                                    Text("發行端要求金鑰證明（由錢包提供者出具）", style = MaterialTheme.typography.bodySmall)
+                                    Text("發行端要求金鑰證明（由錢包提供者出具）；沒有時改送一般證明，由發行端決定是否接受", style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
@@ -159,7 +159,8 @@ fun PresentationScreen(model: WalletModel) {
     when (val s = state) {
         PresentationUi.Loading -> Busy("驗證請求中")
         is PresentationUi.Working -> Busy(s.message)
-        is PresentationUi.Failed -> Failure(model, s.message)
+        // Leaving through back() also ends a pending DC API request, returning the caller to its page.
+        is PresentationUi.Failed -> Failure(s.message) { model.back() }
         is PresentationUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("已送出", style = MaterialTheme.typography.titleLarge)
             when (val o = s.outcome) {
