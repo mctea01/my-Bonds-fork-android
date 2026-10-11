@@ -35,6 +35,9 @@ object BuiltInPublicRoots {
         val national: Boolean get() = algorithm == "SM2"
     }
 
+    /** The date the set of roots last changed (UTC). */
+    const val UPDATED = "2026-10-11"
+
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
 

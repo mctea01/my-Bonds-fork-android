@@ -166,20 +166,13 @@ internal fun readVerdict(d: ReadDocument, risk: RiskLevel): Triple<Verdict, Stri
     val official = (tier == TrustTier.T1 || tier == TrustTier.T2) && !test
     val status = d.statusDecision
     val statusLine = StatusTexts.summary(status) + "。" + StatusTexts.explain(status.finding)
-    val issuerLine = when {
-        test -> "發行端只在測試環境受信任，結果不具效力。"
-        tier == TrustTier.T1 -> "簽章、資料與出示者的金鑰都相符，發行端是正式信任錨點。"
-        tier == TrustTier.T2 -> "簽章、資料與出示者的金鑰都相符，發行端已列名，但無法完全驗證。"
-        d.issuerTrust.environment == TrustEnvironment.USER -> "簽章相符，發行端由你自行信任的錨點簽發（非官方）。"
-        d.issuerTrust.environment == TrustEnvironment.SYSTEM -> "簽章相符，發行端憑證連到系統憑證庫（只確認網域，非官方身分）。"
-        else -> "簽章相符，但發行端不在任何信任錨點，無法確認這張證件由誰簽發。"
-    }
+    val issuerLine = (if (test) "" else "簽章、資料與出示者的金鑰都相符。") + issuerTrustLine(d.issuerTrust)
     return when {
         status.verdict == StatusVerdict.REJECT -> Triple(
             Verdict.FAIL, "查驗未通過：證件狀態不符",
             listOf(statusLine, "用途風險為${StatusTexts.risk(risk)}，" + StatusTexts.verdict(StatusVerdict.REJECT) + "這張證件。", issuerLine),
         )
-        risk == RiskLevel.HIGH && !official -> Triple(Verdict.FAIL, "查驗未通過：發行端無法確認", listOf(issuerLine, "高風險用途只接受信任清單內的發行端。", statusLine))
+        risk == RiskLevel.HIGH && !official -> Triple(Verdict.FAIL, "查驗未通過：發行端無法確認", listOf(issuerLine, "高風險用途只接受官方信任清單（T1）或政府憑證確認身分（T2）的發行端。", statusLine))
         official && status.verdict == StatusVerdict.ACCEPT -> Triple(Verdict.PASS, "查驗通過", listOf(issuerLine, statusLine))
         official -> Triple(Verdict.CAUTION, "簽章相符，證件狀態需留意", listOf(issuerLine, statusLine))
         else -> Triple(Verdict.CAUTION, "簽章相符，發行端無法確認", listOf(issuerLine, statusLine))

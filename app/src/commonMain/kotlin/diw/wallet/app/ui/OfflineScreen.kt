@@ -250,12 +250,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             val test = s.issuerTrust?.environment == TrustEnvironment.TEST
             val status = s.statusDecision
             val statusLine = status?.let { StatusTexts.summary(it) + "。" + StatusTexts.explain(it.finding) }
-            val issuerLine = when {
-                official && !test && s.issuerTrust?.tier == TrustTier.T2 -> "發行端已列名，但無法完全驗證（例如區塊鏈註冊暫時無法確認）。"
-                official && !test -> "簽章與這次的挑戰相符，發行端在信任清單內。"
-                test -> "發行端只在測試環境受信任，結果不具效力。"
-                else -> "發行端不在信任清單，無法確認這張卡片由誰簽發。"
-            }
+            val issuerLine = (if (official && !test) "簽章與這次的挑戰相符。" else "") + issuerTrustLine(s.issuerTrust)
             when {
                 status?.verdict == StatusVerdict.REJECT -> VerdictCard(
                     Verdict.FAIL, "查驗未通過：證件狀態不符",
@@ -263,7 +258,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
                 )
                 s.risk == RiskLevel.HIGH && (!official || test) -> VerdictCard(
                     Verdict.FAIL, "查驗未通過：發行端無法確認",
-                    listOfNotNull(issuerLine, "高風險用途只接受信任清單內的發行端。", statusLine),
+                    listOfNotNull(issuerLine, "高風險用途只接受官方信任清單（T1）或政府憑證確認身分（T2）的發行端。", statusLine),
                 )
                 official && !test && status?.verdict != StatusVerdict.CAUTION -> VerdictCard(
                     Verdict.PASS, "查驗通過", listOfNotNull(issuerLine, statusLine),
@@ -280,7 +275,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             Text("出示者：${r.holder}", style = MaterialTheme.typography.bodySmall)
             val issuer = r.moica?.let { "自然人憑證持有人 ${it.cardholderName}（憑證序號 ${it.certificateSerialHex}）" } ?: r.issuer ?: "未知"
             if (s.issuerTrust != null) TrustCard("發行端", issuer, s.issuerTrust)
-            else Text("發行端：$issuer（不在信任清單，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
+            else Text("發行端：$issuer（不在任何信任來源，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
             Text("出示的資料", style = MaterialTheme.typography.titleSmall)
             r.credentialType?.let { LabelValue("證件類型", it, small = true) }
             r.issuerChain?.let { chain ->

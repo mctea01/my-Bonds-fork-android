@@ -52,9 +52,9 @@ private fun roleName(r: TrustRole): String = when (r) {
 }
 
 private fun environmentTitle(e: TrustEnvironment): String = when (e) {
-    TrustEnvironment.PRODUCTION -> "正式錨點"
+    TrustEnvironment.PRODUCTION -> "正式錨點（官方 T1、政府憑證 T2）"
     TrustEnvironment.USER -> "使用者匯入（T3，非官方）"
-    TrustEnvironment.TEST -> "測試錨點"
+    TrustEnvironment.TEST -> "測試錨點（T3，只在測試環境）"
     TrustEnvironment.SYSTEM -> "系統憑證庫（T3，非官方）"
 }
 
@@ -76,8 +76,9 @@ fun TrustAnchorsScreen(model: WalletModel) {
     var removing by remember { mutableStateOf<AnchorGroup?>(null) }
     LaunchedEffect(Unit) { model.loadAnchors() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("信任錨點決定哪些發行端、查驗方與狀態清單可以信任。官方清單內的組織為 T1；內建的政府憑證（GPKI）證明對方身分，為 T2；自行匯入的根憑證、自行信任的 DID 與系統憑證庫為 T3（可驗證但非官方），會被接受但不會顯示為官方。測試錨點只在開啟測試環境時使用。",
+        Text("信任錨點決定哪些發行端、查驗方與狀態清單可以信任，以及信任到什麼程度。只有 T1 會顯示為官方。",
             style = MaterialTheme.typography.bodyMedium)
+        CollapsibleSection("信任等級說明（T1 至 T4）", initiallyExpanded = true, key = "tier-legend") { TierLegend() }
 
         SectionTitle("DID 信任來源")
         ActionRow(WalletIcons.Government, "數位憑證皮夾信任清單", "數位發展部公布的組織，DID 文件自簽並在 Arbitrum One 註冊") {
@@ -101,20 +102,22 @@ fun TrustAnchorsScreen(model: WalletModel) {
             val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }
             TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.forEach { env ->
                 val inEnv = groups.filter { it.environment == env }
-                Text(environmentTitle(env) + "（${inEnv.size}）", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                 if (env == TrustEnvironment.TEST && !settings.testEnvironment && inEnv.isNotEmpty()) {
-                    Text("測試環境未開啟，這些錨點目前不使用。", style = MaterialTheme.typography.bodySmall)
+                    Text("測試環境未開啟，測試錨點目前不使用。", style = MaterialTheme.typography.bodySmall)
                 }
-                if (inEnv.isEmpty()) Text(
-                    when (env) {
-                        TrustEnvironment.PRODUCTION -> "尚未載入內建錨點。"
-                        TrustEnvironment.USER -> "尚未匯入。可在下方貼上其他國家、組織或企業的根憑證。"
-                        TrustEnvironment.TEST -> "尚未匯入。測試錨點在「設定 > 測試環境」匯入。"
-                        TrustEnvironment.SYSTEM -> ""
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                inEnv.forEach { g -> AnchorCard(g) { removing = g } }
+                // Long lists start folded; the user's own imports stay open so a new import is seen at once.
+                CollapsibleSection(environmentTitle(env), inEnv.size, initiallyExpanded = env == TrustEnvironment.USER || inEnv.size <= 3, key = "anchors-$env") {
+                    if (inEnv.isEmpty()) Text(
+                        when (env) {
+                            TrustEnvironment.PRODUCTION -> "尚未載入內建錨點。"
+                            TrustEnvironment.USER -> "尚未匯入。可在下方貼上其他國家、組織或企業的根憑證。"
+                            TrustEnvironment.TEST -> "尚未匯入。測試錨點在「設定 > 測試環境」匯入。"
+                            TrustEnvironment.SYSTEM -> ""
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    inEnv.forEach { g -> AnchorCard(g) { removing = g } }
+                }
             }
         }
         SystemStoreSection(model)
@@ -176,7 +179,8 @@ private fun SystemStoreSection(model: WalletModel) {
         }
         androidx.compose.material3.Switch(checked = settings.systemTrustStore, onCheckedChange = { v -> model.updateSettings { it.copy(systemTrustStore = v) } })
     }
-    BuiltInRootList(model, diw.wallet.core.trust.BuiltInPublicRoots.services)
+    val services = diw.wallet.core.trust.BuiltInPublicRoots.services
+    CollapsibleSection("常用服務的根憑證", services.size, key = "roots-services") { BuiltInRootList(model, services) }
 
     HorizontalDivider()
     SectionTitle("中國大陸憑證機構（T3，非官方）")
@@ -186,12 +190,17 @@ private fun SystemStoreSection(model: WalletModel) {
         Column(Modifier.weight(1f)) {
             Text("信任中國大陸的憑證機構", style = MaterialTheme.typography.titleSmall)
             Text("內建 ${mainland.size} 個根憑證" + (if (national > 0) "，其中 $national 個為國密 SM2 根憑證" else "") +
-                "：列於 Mozilla 或 Microsoft 根憑證計畫的中國大陸 CA，以及持牌 CA 公布的 SM2 根憑證。國家稅務總局的發票查驗與數電票平台、國家移民管理局的網站，以及電子發票的電子文件驗簽，都連到其中的根憑證。信任等級 T3，不顯示為官方。",
+                "：列於 Mozilla 或 Microsoft 根憑證計畫的中國大陸 CA，以及持牌 CA 與國家根 CA 公布的 SM2 根憑證。國家稅務總局的發票查驗與數電票平台、國家移民管理局的網站，以及電子發票的電子文件驗簽，都連到其中的根憑證。信任等級 T3，不顯示為官方。",
                 style = MaterialTheme.typography.bodySmall)
         }
         androidx.compose.material3.Switch(checked = settings.mainlandChinaRoots, onCheckedChange = { v -> model.updateSettings { it.copy(mainlandChinaRoots = v) } })
     }
-    BuiltInRootList(model, mainland)
+    val programs = mainland.filter { !it.national }
+    val sm2 = mainland.filter { it.national }
+    CollapsibleSection("根憑證計畫收錄", programs.size, key = "roots-mainland") { BuiltInRootList(model, programs) }
+    if (sm2.isNotEmpty()) CollapsibleSection("國密 SM2 根憑證", sm2.size, key = "roots-sm2") { BuiltInRootList(model, sm2) }
+    Text("內建清單更新於 ${diw.wallet.core.trust.BuiltInPublicRoots.UPDATED}。清單隨 App 更新，到期的根憑證自動停用。",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
 }
 
 /** Built-in public roots: name, owner, algorithm and purpose; a tap opens the certificate. */
@@ -203,6 +212,8 @@ private fun BuiltInRootList(model: WalletModel, roots: List<diw.wallet.core.trus
         }.padding(vertical = 4.dp)) {
             Text(r.name + if (r.national) "（國密 SM2）" else "", style = MaterialTheme.typography.bodyMedium)
             Text("${r.owner}・${r.algorithm}・${r.purposes}", style = MaterialTheme.typography.bodySmall)
+            Text("有效至 " + localTime(r.certificate.validityNotAfter) + "・來源：" + r.source, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline)
         }
     }
 }

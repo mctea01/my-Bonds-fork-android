@@ -21,7 +21,7 @@ object PublicRoots {
      */
     fun anchorOf(chain: List<X509Cert>, at: Instant, platform: Boolean, mainlandChina: Boolean): Found? {
         if (mainlandChina) {
-            val roots = BuiltInPublicRoots.mainlandChina
+            val roots = BuiltInPublicRoots.mainlandChina.validAt(at)
             Pkix.anchorOf(chain, roots.map { it.certificate }, at)?.let { a ->
                 val r = roots.first { it.certificate == a }
                 return Found(a, "中國大陸憑證機構：${r.name}", BuiltInPublicRoots.MAINLAND_SOURCE, "CN")
@@ -29,7 +29,7 @@ object PublicRoots {
         }
         if (platform) {
             SystemTrustStore.anchorOf(chain, at)?.let { a -> return Found(a, "系統憑證庫：" + commonName(a), "system", null) }
-            val services = BuiltInPublicRoots.services
+            val services = BuiltInPublicRoots.services.validAt(at)
             Pkix.anchorOf(chain, services.map { it.certificate }, at)?.let { a ->
                 val r = services.first { it.certificate == a }
                 return Found(a, "常用服務憑證機構：${r.name}", BuiltInPublicRoots.SERVICE_SOURCE, null)
@@ -37,6 +37,10 @@ object PublicRoots {
         }
         return null
     }
+
+    /** A built-in root that has expired (or is not yet valid) is no longer an anchor, until a release replaces it. */
+    private fun List<BuiltInPublicRoots.Root>.validAt(at: Instant) =
+        filter { it.certificate.validityNotBefore <= at && at <= it.certificate.validityNotAfter }
 
     private fun commonName(c: X509Cert): String = c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject()
 }
