@@ -42,6 +42,21 @@ PR 審查後再修正（`PresentationSafetyTest`）：
 12. Verified ID 合約指定可接受的發行端時，原本只比對憑證類型。候選清單與送出前都會檢查發行端。
 13. Bonds 藍牙在 GATT service 建立完成前就開始廣播，查驗方太快連線會找不到 characteristic。改為等 `onServiceAdded` 成功後才廣播。
 
+## 合併 main 與介面重整（2026-10-11）
+
+分支 `claude/merge-conflict-ui-design-q5s134`：以 P2 為基礎合併 main（#2 release 簽章、#3 EUDI 發行端、#4 DC API 錯誤回傳），並依 EUDI Wallet 與 Bonds 的設計重整介面。
+
+- 衝突處理：P2 的持有者金鑰與證明格式保留 main 的「發行端要求金鑰證明但沒有錢包提供者時仍送一般證明」；延遲發證（含草案 11 acceptance token）沿用原交易的回應加密金鑰；`EudiDialect` 併入常駐方言清單，移除 main 新增的「EUDI 相容模式」開關。
+- 介面：取消「台灣數位憑證」專區。首頁改為證件、文件、使用、查驗、紀錄五個分頁；TWDIW 卡片與其他證件同一清單；卡片目錄移到「從清單選擇」，臨櫃條碼移到「使用」，信任清單移到設定，Bonds 查驗移到「查驗」。文件分頁與查驗方身分、線上查驗、NFC、零知識證明查驗為保留入口。
+- 新增紀錄：領取、出示、拒絕、查驗各記一筆，只存欄位名稱。
+
+| 範圍 | 指令 | 結果 |
+|---|---|---|
+| 協議與互通 | `:test-servers:test` | 74 項：63 通過、11 項需 `DIW_INTEROP=1` 略過 |
+| App 共用模型（含紀錄寫入、重啟後讀回、清除，分頁返回順序） | `:app:desktopTest` | 9 項：7 通過、2 項需網路略過 |
+| 主要畫面離屏截圖 | `DIW_SCREENSHOTS=<資料夾> ./gradlew :app:desktopTest --tests '*uiScreenshots'` | 12 張 PNG |
+| Android | `:app:assembleDebug :app:assembleRelease`（R8） | 建置成功 |
+
 ## 需要實機驗證
 
 | 項目 | 步驟 | 預期 |
@@ -49,11 +64,11 @@ PR 審查後再修正（`PresentationSafetyTest`）：
 | TWDIW 正式發證 | 在數位憑證皮夾的發行端網頁產生 QR，用本 App 掃描 | 顯示發行機關名稱與 T1（Arbitrum 已驗證）或 T2；卡面顯示發行端 logo 與顏色 |
 | TWDIW 正式出示 | 以政府驗證端（如臨櫃服務）的 QR 出示 | 驗證端顯示成功；同意畫面只列要求欄位 |
 | 靜態 QR 自訂欄位 | 掃描需要填寫欄位的靜態 QR | 欄位依 regex 檢查，送出後驗證端收到 |
-| 7-ELEVEN 取貨條碼 | 台灣數位憑證頁的「臨櫃與線上出示服務」選 7-ELEVEN | 出示後顯示伺服器產生的條碼與倒數，螢幕保持常亮並調高亮度 |
-| Cloudflare 1010 | 若出現 1010 或 403，到設定的 TWDIW 區塊改 User-Agent | 改用其他 UA 後可連線 |
-| 信任清單與 Arbitrum | 開啟「數位憑證皮夾信任清單」，按重新整理 | 各組織顯示鏈上狀態；離線時顯示快照時間 |
+| 7-ELEVEN 取貨條碼 | 「使用」分頁的「臨櫃出示」選 7-ELEVEN | 出示後顯示伺服器產生的條碼與倒數，螢幕保持常亮並調高亮度 |
+| Cloudflare 1010 | 若出現 1010 或 403，到設定的「互通設定」改 User-Agent | 改用其他 UA 後可連線 |
+| 信任清單與 Arbitrum | 設定中開啟「信任清單」，按重新整理 | 各組織顯示鏈上狀態；離線時顯示快照時間 |
 | Bonds 藍牙 | Bonds iOS 查驗方產生挑戰，本 App 掃描後選「藍牙傳送」 | 第一次要求「附近的裝置」權限；傳送完成後對方顯示驗證結果 |
 | Bonds 輪播 QR | 同上改用輪播 QR | 對方掃描完成並驗證 |
-| 本 App 作為 Bonds 查驗方 | 「自行查驗他人出示」產生挑戰，以另一台手機的 Bonds 出示 | 顯示出示者 DID、揭露欄位與發行端信任 |
+| 本 App 作為 Bonds 查驗方 | 「查驗」分頁產生查驗挑戰，以另一台手機的 Bonds 出示 | 判定卡顯示通過或注意，並列出出示者 DID、揭露欄位與發行端信任；「紀錄」新增一筆查驗 |
 | Microsoft Entra Verified ID | 以 Entra 租戶的發行 QR（`openid-vc://`）領卡，含 PIN 或登入 | 顯示網域與 T3；領卡後到 Verified ID 驗證端出示成功 |
 | UAT 平台 | 設定開啟測試環境並把 TWDIW 前端改為 UAT | 頁面標示「測試平台（結果不具效力）」，信任等級為測試環境 |

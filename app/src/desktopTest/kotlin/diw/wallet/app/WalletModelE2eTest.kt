@@ -10,6 +10,7 @@ import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.util.DiwJson
+import androidx.compose.foundation.layout.fillMaxSize
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import io.ktor.client.request.get
@@ -21,6 +22,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -200,6 +202,80 @@ class WalletModelE2eTest {
         assertEquals(2, p.pinPrompts, "presentation unlocks the software key with the App PIN")
         val result = DiwJson.parseToJsonElement(http.get("$base/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()).jsonObject
         assertEquals("passed", result["status"]!!.jsonPrimitive.content, "verifier result: $result")
+
+        // The history keeps who received what and when, with claim names only, and survives a restart.
+        val log = withTimeout(10.seconds) { m.history.first { it.size >= 2 } }
+        assertEquals(listOf(HistoryKind.PRESENTED, HistoryKind.ISSUED), log.map { it.kind })
+        assertTrue(log.all { it.failure == null && it.test && it.tier == "T3" }, "history: $log")
+        assertTrue(log.first().claims.isNotEmpty() && log.first().documents.isNotEmpty(), "history: $log")
+        withTimeout(10.seconds) { while (HistoryLog(m.storage).load().size < 2) delay(50) }
+        assertEquals(log, HistoryLog(m.storage).load())
+        m.clearHistory().join()
+        assertTrue(m.history.value.isEmpty() && HistoryLog(m.storage).load().isEmpty())
+    }
+
+    /**
+     * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
+     * The wallet holds a PID and an mDL from the test issuer and has presented once.
+     */
+    @Test
+    fun uiScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        start()
+        val (m, _) = newWallet()
+        issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
+        m.refreshDocuments().join()
+        val text = http.post("$base/verifier/sessions") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("client_id_prefix", "x509_san_dns") }.toString())
+        }.bodyAsText()
+        m.handleUri(DiwJson.parseToJsonElement(text).jsonObject["uri"]!!.jsonPrimitive.content)
+        val consent = withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Consent || it is PresentationUi.Failed } }
+
+        fun shot(name: String, content: @androidx.compose.runtime.Composable () -> Unit) {
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, 892 * 2, androidx.compose.ui.unit.Density(2f), content = content)
+            try {
+                var image = scene.render(0)
+                // Let effects, flows and card art settle.
+                for (i in 1..12) {
+                    Thread.sleep(150)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+
+        fun screen(name: String, s: Screen, tab: HomeTab = HomeTab.DOCUMENTS) {
+            m.tab.value = tab
+            m.screen.value = s
+            shot(name) { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+        }
+
+        screen("05-presentation-consent", Screen.Presentation)
+        m.approve(assertIs<PresentationUi.Consent>(consent))
+        withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Done || it is PresentationUi.Failed } }
+        screen("06-presentation-done", Screen.Presentation)
+        screen("01-documents", Screen.Home, HomeTab.DOCUMENTS)
+        screen("02-use", Screen.Home, HomeTab.USE)
+        screen("03-history", Screen.Home, HomeTab.HISTORY)
+        screen("04-document-detail", Screen.DocumentDetail(m.documents.value.first().identifier))
+        screen("07-add-document", Screen.AddDocument)
+        screen("08-settings", Screen.Settings)
+        screen("09-verify", Screen.Home, HomeTab.VERIFY)
+        screen("12-files", Screen.Home, HomeTab.FILES)
+        m.taiwan.startVerifier("年齡確認")
+        screen("11-verifier-challenge", Screen.Offline)
+        shot("10-add-sheet") {
+            diw.wallet.app.ui.WalletTheme {
+                androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
+                    diw.wallet.app.ui.AddDocumentSheet(onDismiss = {}, onList = {}, onScan = {})
+                }
+            }
+        }
     }
 
     /** Two credentials at once: each opens from the result list, Back returns there, and the details are grouped. */
@@ -215,6 +291,10 @@ class WalletModelE2eTest {
         assertEquals(Screen.Issuance, m.screen.value)
         assertTrue(m.back())
         assertEquals(Screen.Home, m.screen.value)
+        // Another tab goes back to the documents tab first; the documents tab leaves the app.
+        m.tab.value = HomeTab.HISTORY
+        assertTrue(m.back())
+        assertEquals(HomeTab.DOCUMENTS, m.tab.value)
         assertFalse(m.back())
 
         for (r in results.filterIsInstance<IssuanceResult.Issued>()) {

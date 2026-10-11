@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.HomeTab
 import diw.wallet.app.MsIssuanceUi
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
@@ -51,9 +52,9 @@ fun MsIssuanceScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.back() }) { Text("取消") }
         }
         is MsIssuanceUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("已加入", style = MaterialTheme.typography.titleLarge)
+            VerdictCard(Verdict.PASS, "已加入證件")
             CredentialCard(model, s.document) { model.screen.value = Screen.DocumentDetail(s.document.identifier) }
-            Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
+            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text("完成") }
         }
         // A new revision (after a sign-in) recomposes the review with the request's new tokens.
         is MsIssuanceUi.Review -> androidx.compose.runtime.key(s.revision) { ReviewView(model, s.request) }

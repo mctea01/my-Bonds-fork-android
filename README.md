@@ -13,20 +13,33 @@
 | 發證 | OpenID4VCI 1.0，以及 draft 11/12、draft 13 發證端；pre-authorized code（含 tx_code / user_pin）、authorization code（PKCE、PAR）、DPoP、wallet attestation、批次與延遲發證、回應加密 |
 | 憑證格式 | ISO mdoc（mso_mdoc）、SD-JWT VC（dc+sd-jwt、vc+sd-jwt）、W3C VC（jwt_vc_json、jwt_vc_json-ld、ldp_vc）、包在 SD-JWT 中的 W3C VC |
 | 出示 | OpenID4VP 1.0（DCQL、DC API），以及 draft 13 到 23（Presentation Exchange 2.0、client_id_scheme、did / x509_san_* client）、SIOPv2、OAuth fragment / query / form_post 回應 |
-| 近距離 | ISO 18013-5（QR 交握、BLE）與 ISO 18013-7 Annex B |
+| 遠端 mdoc | ISO 18013-7 Annex B（OpenID4VP 草案的 mdoc handover）；ISO 18013-5 近距離（QR／NFC 交握、BLE）尚未實作，介面已預留入口 |
 | 信任 | X.509 信任錨（正式與測試環境分開顯示）、DID（did:key、did:jwk、did:web）、DIF Linked Domains、TWDIW 信任清單與 Arbitrum 錨定 |
 | 狀態 | IETF Token Status List、W3C Bitstring Status List、Status List 2021、Revocation List 2020，顯示規格原文狀態 |
 
-### 台灣數位憑證（常駐啟用，不需開關）
+### 介面
 
-首頁的「台灣數位憑證」頁集中顯示：
+介面以 EUDI Wallet 與 Bonds 的設計為準：所有證件在同一份清單，各發行端與 Profile 的功能併入共同的流程，不另開專區。
 
-- **數位憑證皮夾（TWDIW）官方流程**：`modadigitalwallet://` 與 wallet.gov.tw 連結、發證（client_id `moda_dw`、did:key jwk_jcs 持有者）、出示（含靜態 QR 自訂欄位）、可申請卡片目錄、7-ELEVEN 等離線條碼（DWVP-05）。
+| 分頁 | 內容 |
+|---|---|
+| 證件 | 所有證件同一份清單，依身分證件、政府皮夾卡片、組織與會員卡、其他證件分組，可搜尋與篩選；右上「+」從清單選擇或掃描 QR Code 加入 |
+| 文件 | 簽章文件與檔案、電子公文（個人公文接收站）、MyData 資料保險箱的保留區域，後續版本啟用 |
+| 使用 | 出示我的證件（掃描後依內容自動分流：OpenID4VP、數位憑證皮夾、Bonds 挑戰、靜態 QR）、臨櫃出示（超商取貨等條碼）、加入證件、貼上連結 |
+| 查驗 | 以 Bonds 離線挑戰查驗他人證件；查驗方身分、線上查驗（OpenID4VP）、NFC 感應與零知識證明查驗先保留入口，詳細設計後續實作 |
+| 紀錄 | 領取、出示、拒絕與查驗的對象、時間、證件與欄位名稱，不保存欄位內容 |
+
+右上齒輪進入設定：金鑰保護、信任清單（數位憑證皮夾公布的發行端與查驗方、Arbitrum 錨定）、紀錄清除、互通設定與測試環境。
+
+「從清單選擇」列出數位憑證皮夾可申請的卡片，也可輸入任一 OpenID4VCI 發行端網址。以 NFC 讀取自然人憑證實體卡、Bonds 的文件與自然人憑證自簽卡（vc+moica，P5）已在介面預留入口。
+
+### 相容處理（常駐啟用，不需開關）
+
+- **數位憑證皮夾（TWDIW）官方流程**：`modadigitalwallet://` 與 wallet.gov.tw 連結、發證（client_id `moda_dw`、did:key jwk_jcs 持有者）、出示（含靜態 QR 自訂欄位）、可申請卡片目錄、7-ELEVEN 等離線條碼（DWVP-05）。卡片與其他證件在同一份清單。
 - **TWDIW 信任清單**：每個機關的 DID 文件簽章與 Arbitrum One 鏈上登記；測試環境（UAT、sandbox）只在開啟測試環境後才計入。
-- **Bonds 離線出示**：掃描 Bonds 查驗方的 JSON QR，以輪播 QR（BTWVP1）或藍牙（手機作為 GATT 周邊）出示 TWDIW 卡片；也可作為查驗方，掃描對方的輪播 QR 驗證。
+- **Bonds 離線出示**：掃描 Bonds 查驗方的 JSON QR，以輪播 QR（BTWVP1）或藍牙（手機作為 GATT 周邊）出示 TWDIW 卡片；也可在「查驗」分頁作為查驗方，掃描對方的輪播 QR 驗證。
 - **Microsoft Entra Verified ID**：`openid-vc://` 發行（合約、PIN、id_token_hint、身分提供者登入、自填欄位）與出示，發行端以 Linked Domains 判斷信任。
-
-Bonds 的文件與自然人憑證自簽卡（vc+moica）排在 P5，頁面上已預留位置。
+- **EUDI 參考實作**：授權回應的 iss 為授權伺服器下的子路徑時仍接受（issuer.eudiw.dev/oidc）。
 
 各方言的程式碼與標準路徑隔離，只在對方使用該方言時才介入，詳見 [AGENTS.md](AGENTS.md)。
 

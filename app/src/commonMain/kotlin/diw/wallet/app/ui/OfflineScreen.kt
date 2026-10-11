@@ -32,9 +32,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.HomeTab
 import diw.wallet.app.OfflineUi
-import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
+import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.util.QrEncoder
 import kotlinx.coroutines.delay
@@ -62,9 +64,8 @@ fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
         is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
-        is OfflineUi.Failed -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("無法完成", style = MaterialTheme.typography.titleLarge)
-            Text(s.message)
+        is OfflineUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            VerdictCard(Verdict.FAIL, "無法完成", listOf(s.message))
             Button(onClick = { model.back() }) { Text("返回") }
         }
         is OfflineUi.Barcode -> BarcodeView(model, s)
@@ -189,6 +190,7 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
         Text("請出示者用錢包或 Bonds 掃描", style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
         Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
             LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
             Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
@@ -212,12 +214,25 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val r = s.result
         if (r == null) {
-            Text("驗證失敗", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.error)
-            Text(s.error ?: "")
+            VerdictCard(Verdict.FAIL, "查驗未通過", listOf(s.error ?: "出示內容無法驗證"))
         } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(WalletIcons.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Text(" 簽章與挑戰相符", style = MaterialTheme.typography.titleLarge)
+            val official = s.issuerTrust?.tier == TrustTier.T1 || s.issuerTrust?.tier == TrustTier.T2
+            val test = s.issuerTrust?.environment == TrustEnvironment.TEST
+            when {
+                official && !test -> VerdictCard(
+                    Verdict.PASS, "查驗通過",
+                    listOfNotNull(
+                        "簽章與這次的挑戰相符，發行端在信任清單內。",
+                        if (s.issuerTrust?.tier == TrustTier.T2) "發行端已列名，但無法完全驗證（例如區塊鏈註冊暫時無法確認）。" else null,
+                    ),
+                )
+                else -> VerdictCard(
+                    Verdict.CAUTION, "簽章相符，發行端無法確認",
+                    listOf(
+                        "出示者的簽章與這次的挑戰相符。",
+                        if (test) "發行端只在測試環境受信任，結果不具效力。" else "發行端不在信任清單，無法確認這張卡片由誰簽發。",
+                    ),
+                )
             }
             Text("用途：${s.request.purpose}")
             Text("出示時間：${r.created}", style = MaterialTheme.typography.bodySmall)
@@ -232,7 +247,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.taiwan.startVerifier(s.request.purpose) }) { Text("再次查驗") }
-            OutlinedButton(onClick = { model.taiwan.closeOffline(); model.screen.value = Screen.Taiwan }) { Text("完成") }
+            OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text("完成") }
         }
     }
 }

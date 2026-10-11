@@ -15,7 +15,7 @@
 |---|---|
 | `core/src/commonMain` | 協議與信任核心，不依賴 UI |
 | `core/src/jvmCommonMain` | JVM 與 Android 共用的密碼學實作 |
-| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態與流程）、`TaiwanModel`（TWDIW / Bonds）、`MsIssuanceModel`（Verified ID）、`ui/` |
+| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態、流程、紀錄）、`TaiwanModel`（TWDIW 平台服務與 Bonds）、`MsIssuanceModel`（Verified ID）、`History`（紀錄）、`ui/` |
 | `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼） |
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
@@ -27,7 +27,7 @@
 | `oid4vci` | OpenID4VCI 1.0 用戶端（`Oid4vciClient`），中繼資料、offer、DPoP、wallet attestation |
 | `oid4vp` | OpenID4VP 1.0（`Oid4vpHolder`、`RequestValidator`、`ResponseBuilder`） |
 | `oid4vp/ext` | 1.0 以外的出示：Presentation Exchange、自有 DCQL、舊版要求、SIOPv2、W3C 出示 |
-| `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect` |
+| `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect`、`EudiDialect` |
 | `oid4vp/compat` | 出示方言：`TwdiwPresentationDialect`、`MsVerifiedIdPresentationDialect` |
 | `profile/twdiw` | TWDIW 信任清單、Arbitrum 錨定、入口解析、平台服務（卡片目錄、DWVP-05 離線條碼） |
 | `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證 |
@@ -44,6 +44,8 @@
 6. **兜底實作。** 平台或 SDK 不支援時改用純軟體實作（軟體金鑰、純 Kotlin QR 編碼），模擬器、AOSP、桌面都要能用。
 7. **金鑰證明只確認金鑰有效，不檢查 RKP。**
 8. **CI release 產物必須經 R8 / ProGuard 最佳化**，不可只是 debug 建置。
+9. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（簽章文件、公文、MyData，保留區域）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
+10. **設計 token 沿用 Bonds**（`ui/UiKit.kt`）：互動主色為靛色，綠、橙、紅只用於判定（判定卡為 0.14 透明度色底、符號與文字三者並用，「部分」不可看起來像「通過」）；空狀態附直達動作；尚未實作的功能顯示為停用列並寫明原因，不隱藏；結果用畫面或判定卡呈現，警示對話框只用於確認有後果的動作。
 
 ## TWDIW 與 Bonds 要點
 
@@ -62,6 +64,7 @@
 ./gradlew :test-servers:test                   # 協議、互通、方言測試
 ./gradlew :test-servers:test --tests 'diw.testservers.TwdiwPlatformTest'
 ./gradlew :app:desktopTest                     # App 流程測試
+DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots'   # 離屏渲染主要畫面為 PNG
 ./gradlew :app:assembleRelease                 # Android release（R8）
 ```
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
+import diw.wallet.app.HomeTab
 import diw.wallet.app.IssuanceUi
 import diw.wallet.app.PresentationUi
 import diw.wallet.app.Screen
@@ -50,8 +51,7 @@ internal fun Busy(text: String) {
 @Composable
 internal fun Failure(text: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("無法完成", style = MaterialTheme.typography.titleLarge)
-        Text(text)
+        VerdictCard(Verdict.FAIL, "無法完成", listOf(text))
         Button(onClick = onClose) { Text("回首頁") }
     }
 }
@@ -132,7 +132,13 @@ fun IssuanceScreen(model: WalletModel) {
             }
         }
         is IssuanceUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (s.results.any { it is IssuanceResult.Issued }) Text("點選憑證可查看內容", style = MaterialTheme.typography.bodySmall)
+            val issued = s.results.count { it is IssuanceResult.Issued }
+            when {
+                s.failures.isEmpty() && issued == s.results.size -> VerdictCard(Verdict.PASS, "已加入 $issued 張證件")
+                issued > 0 -> VerdictCard(Verdict.CAUTION, "部分證件已加入", listOf("已加入 $issued 張，其餘未完成，原因列在下方。"))
+                else -> VerdictCard(Verdict.CAUTION, "發行端尚未完成", listOf("完成後會出現在「證件」。"))
+            }
+            if (issued > 0) Text("點選證件可查看內容", style = MaterialTheme.typography.bodySmall)
             s.results.forEach { r ->
                 when (r) {
                     is IssuanceResult.Issued -> TrustCard(
@@ -148,7 +154,7 @@ fun IssuanceScreen(model: WalletModel) {
             s.failures.forEach { (name, reason) ->
                 Text("$name：未加入（$reason）", color = MaterialTheme.colorScheme.error)
             }
-            Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
+            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text("完成") }
         }
     }
 }
@@ -162,12 +168,17 @@ fun PresentationScreen(model: WalletModel) {
         // Leaving through back() also ends a pending DC API request, returning the caller to its page.
         is PresentationUi.Failed -> Failure(s.message) { model.back() }
         is PresentationUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("已送出", style = MaterialTheme.typography.titleLarge)
-            when (val o = s.outcome) {
-                is PresentationOutcome.Posted -> Text(if (o.redirectUri != null) "驗證端已接收，將開啟對方頁面" else "驗證端已接收")
-                is PresentationOutcome.DcApi -> Text("已回傳給呼叫的網站或 App")
-                is PresentationOutcome.Redirect -> Text("已交給對方頁面")
-            }
+            VerdictCard(
+                Verdict.PASS, "已出示",
+                listOf(
+                    when (val o = s.outcome) {
+                        is PresentationOutcome.Posted -> if (o.redirectUri != null) "查驗方已接收，將開啟對方頁面。" else "查驗方已接收。"
+                        is PresentationOutcome.DcApi -> "已回傳給呼叫的網站或 App。"
+                        is PresentationOutcome.Redirect -> "已交給對方頁面。"
+                    },
+                    "出示的對象與欄位名稱記在「紀錄」。",
+                ),
+            )
             Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
         }
         is PresentationUi.Consent -> {
@@ -185,7 +196,7 @@ fun PresentationScreen(model: WalletModel) {
                     if (req.verifierInfo.isNotEmpty()) add("對方附上 ${req.verifierInfo.size} 份身分或用途證明（將於後續版本逐項驗證）")
                     addAll(req.warnings)
                 }
-                TrustCard("驗證端", v.displayName, v.trust, extra)
+                TrustCard("查驗方", v.displayName, v.trust, extra)
                 val settings by model.settingsFlow.collectAsState()
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }

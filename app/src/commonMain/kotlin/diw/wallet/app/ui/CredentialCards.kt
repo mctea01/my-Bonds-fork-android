@@ -48,15 +48,28 @@ fun parseColor(hex: String?): Color? {
     }
 }
 
-/** Category icon of a credential when the issuer gives no logo. */
-fun categoryIcon(record: IssuanceRecord?): ImageVector = when {
-    record == null -> WalletIcons.Card
-    record.profile == TaiwanModel.TWDIW -> WalletIcons.Government
-    record.profile == TaiwanModel.MSVID -> WalletIcons.Organization
-    record.docType?.contains("mDL") == true || record.docType?.contains("pid", ignoreCase = true) == true ||
-        record.vct?.contains("pid", ignoreCase = true) == true -> WalletIcons.Person
-    else -> WalletIcons.Card
+/**
+ * Groups of the documents list, as Bonds groups its cards. A category only orders and filters the one list; no
+ * issuer or profile gets a page of its own.
+ */
+enum class DocumentCategory(val title: String, val icon: ImageVector) {
+    IDENTITY("身分證件", WalletIcons.Person),
+    GOVERNMENT("政府皮夾卡片", WalletIcons.Government),
+    ORGANIZATION("組織與會員卡", WalletIcons.Organization),
+    OTHER("其他證件", WalletIcons.Card),
 }
+
+fun categoryOf(record: IssuanceRecord?): DocumentCategory = when {
+    record == null -> DocumentCategory.OTHER
+    record.docType?.contains("mDL") == true || record.docType?.contains("pid", ignoreCase = true) == true ||
+        record.vct?.contains("pid", ignoreCase = true) == true -> DocumentCategory.IDENTITY
+    record.profile == TaiwanModel.TWDIW -> DocumentCategory.GOVERNMENT
+    record.profile == TaiwanModel.MSVID -> DocumentCategory.ORGANIZATION
+    else -> DocumentCategory.OTHER
+}
+
+/** Category icon of a credential when the issuer gives no logo. */
+fun categoryIcon(record: IssuanceRecord?): ImageVector = categoryOf(record).icon
 
 /** The issuer's logo when it can be shown, otherwise [fallback] drawn in [tint]. */
 @Composable
@@ -77,9 +90,9 @@ fun CredentialCard(model: WalletModel, doc: Document, onClick: () -> Unit) {
     val record = doc.issuanceRecord
     val background = parseColor(record?.backgroundColor)
     val text = parseColor(record?.textColor) ?: if (background != null) contrastOn(background) else MaterialTheme.colorScheme.onSurface
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(20.dp)) {
         Box {
-            Column(Modifier.fillMaxWidth().then(if (background != null) Modifier.background(background) else Modifier).padding(14.dp),
+            Column(Modifier.fillMaxWidth().then(if (background != null) Modifier.background(background) else Modifier).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     CardLogo(model, record?.logoUri, categoryIcon(record), if (background != null) text else MaterialTheme.colorScheme.primary)

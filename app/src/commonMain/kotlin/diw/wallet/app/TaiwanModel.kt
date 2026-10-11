@@ -75,8 +75,9 @@ sealed class OfflineUi {
 }
 
 /**
- * Taiwan digital credentials: the TWDIW platform services (card catalogue, counter pickup, static codes, trust
- * list) and the Bonds offline presentation, as holder and as verifier.
+ * TWDIW platform services and the Bonds offline presentation behind the common screens: the card catalogue (Add
+ * document), counter services (Use), static codes, the trust list (Settings), Bonds as holder (Use) and as
+ * verifier (Verify). Their cards are ordinary documents in the one documents list.
  */
 class TaiwanModel(private val model: WalletModel) {
     val offline = MutableStateFlow<OfflineUi>(OfflineUi.Working(""))
@@ -92,19 +93,22 @@ class TaiwanModel(private val model: WalletModel) {
     /** TWDIW cards: issued under the TWDIW profile. */
     fun twdiwDocuments(docs: List<Document>): List<Document> = docs.filter { it.issuanceRecord?.profile == TWDIW }
 
-    /** Microsoft Verified ID cards. */
-    fun verifiedIdDocuments(docs: List<Document>): List<Document> = docs.filter { it.issuanceRecord?.profile == MSVID }
-
     // ---------------------------------------------------------------- TWDIW services
 
-    fun loadServices() = model.scope.launch {
-        servicesError.value = null
-        try {
-            val s = model.twdiwServices
-            offlineServices.value = s.offlineServices()
-            cardServices.value = s.cardServices()
-        } catch (e: Exception) {
-            servicesError.value = "無法取得數位憑證皮夾的服務清單：" + model.describe(e)
+    private var servicesJob: Job? = null
+
+    /** Loads the counter services and the card catalogue; a load already running is not started again. */
+    fun loadServices() {
+        if (servicesJob?.isActive == true) return
+        servicesJob = model.scope.launch {
+            servicesError.value = null
+            try {
+                val s = model.twdiwServices
+                offlineServices.value = s.offlineServices()
+                cardServices.value = s.cardServices()
+            } catch (e: Exception) {
+                servicesError.value = "無法取得數位憑證皮夾的服務清單：" + model.describe(e)
+            }
         }
     }
 
@@ -222,7 +226,7 @@ class TaiwanModel(private val model: WalletModel) {
                         .firstOrNull { it.encoding == W3cEncoding.SD_JWT && it.keyBound } ?: return@mapNotNull null
                     BondsCard(doc, cred, doc.displayName ?: "數位憑證", BondsOfflinePresentation.disclosableClaims(cred))
                 }
-                offline.value = if (cards.isEmpty()) OfflineUi.Failed("沒有可出示的數位憑證皮夾憑證，請先領取憑證。")
+                offline.value = if (cards.isEmpty()) OfflineUi.Failed("這支手機沒有可出示的政府皮夾卡片。先到「證件」加入卡片，就能出示給查驗方。")
                 else OfflineUi.BondsChoose(request, cards)
             } catch (e: Exception) {
                 offline.value = OfflineUi.Failed("無法讀取查驗方的 QR Code：" + model.describe(e))
@@ -247,10 +251,20 @@ class TaiwanModel(private val model: WalletModel) {
                 }
                 offline.value = OfflineUi.BondsFrames(request, BondsOfflinePresentation.qrFrames(jws), jws, Clock.System.now() + 5.minutes)
                 model.platform.keepScreenOn(true)
+                recordBonds(request, card, disclosing, null)
             } catch (e: Exception) {
+                recordBonds(request, card, disclosing, model.describe(e))
                 offline.value = OfflineUi.Failed(model.describe(e))
             }
         }
+    }
+
+    private fun recordBonds(request: BondsPresentationRequest, card: BondsCard, disclosing: Set<String>, failure: String?) {
+        val record = card.document.issuanceRecord
+        model.record(
+            HistoryKind.PRESENTED, request.audience ?: "Bonds 查驗方", null, listOf(card.name),
+            disclosing.map { model.claimLabel(listOf(it), null, record) }, "離線出示，用途：${request.purpose}", failure,
+        )
     }
 
     /** Sends the shown presentation over the verifier's one-time BLE service as well. */
@@ -296,7 +310,7 @@ class TaiwanModel(private val model: WalletModel) {
         val state = offline.value as? OfflineUi.VerifierChallenge
         val collector = verifierCollector
         if (state == null || collector == null) {
-            model.message.value = "這是 Bonds 出示畫面；要查驗請先在「台灣數位憑證」頁開始查驗"
+            model.message.value = "這是出示給查驗方的畫面；要查驗對方，請先到「查驗」產生查驗挑戰"
             return
         }
         try {
@@ -318,13 +332,22 @@ class TaiwanModel(private val model: WalletModel) {
             offline.value = try {
                 val result = BondsOfflineVerifier(model.didResolver()).verify(jws, request)
                 val trust = result.issuer?.let { runCatching { model.didTrust.decide(it, TrustRole.ISSUER) }.getOrNull() }
+                model.record(
+                    HistoryKind.VERIFIED, result.moica?.cardholderName ?: "出示者 ${shortDid(result.holder)}", trust,
+                    listOfNotNull(trust?.anchorName ?: result.issuer?.let { "發行端 ${shortDid(it)}" }),
+                    result.claims.keys.map { model.claimLabel(listOf(it), null, null) }, verifierNote(request),
+                )
                 OfflineUi.VerifierResult(request, result, trust, null)
             } catch (e: Exception) {
+                model.record(HistoryKind.VERIFIED, "出示者", null, note = verifierNote(request), failure = model.describe(e))
                 OfflineUi.VerifierResult(request, null, null, model.describe(e))
             }
             verifierCollector = null
         }
     }
+
+    private fun verifierNote(request: BondsPresentationRequest) =
+        "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
 
     fun closeOffline() {
         linkJob?.cancel()
@@ -336,5 +359,8 @@ class TaiwanModel(private val model: WalletModel) {
     companion object {
         const val TWDIW = "twdiw"
         const val MSVID = "msvid"
+
+        /** A DID shortened for a list line: method and the last characters of the identifier. */
+        fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)
     }
 }

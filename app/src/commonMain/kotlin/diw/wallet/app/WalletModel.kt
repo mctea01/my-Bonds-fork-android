@@ -67,6 +67,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString
@@ -114,7 +116,16 @@ data class WalletSettings(
     val showDetails: Boolean = false,
 )
 
+/**
+ * Tabs of the home screen. The layout follows the EUDI wallet (documents, history) and Bonds (documents, use):
+ * every credential, whatever its issuer or profile, lives in the one documents list, and every holder action is
+ * in Use. Verify is the wallet acting as a verifier (the offline check works; the rest is laid out for later).
+ * Files is the area for signed files and official documents, laid out for a later phase.
+ */
+enum class HomeTab { DOCUMENTS, FILES, USE, VERIFY, HISTORY }
+
 sealed class Screen {
+    /** The tabbed home screen; [WalletModel.tab] is the selected tab. */
     data object Home : Screen()
     data object Settings : Screen()
     data object Issuance : Screen()
@@ -122,9 +133,10 @@ sealed class Screen {
     /** [from] is where the Back button returns to. */
     data class DocumentDetail(val documentId: String, val from: Screen = Home) : Screen()
     data class Certificate(val chain: List<X509Cert>, val index: Int, val from: Screen) : Screen()
-    /** Taiwan digital credentials: TWDIW cards and services, Bonds offline presentation. */
-    data object Taiwan : Screen()
-    data object TwdiwTrust : Screen()
+    /** Documents that can be requested: the cards the TWDIW platform lists, or any issuer address. */
+    data object AddDocument : Screen()
+    /** Issuers and verifiers on the TWDIW trust list, opened from the settings. */
+    data object TrustList : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -182,6 +194,9 @@ class WalletModel(val platform: PlatformServices) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val screen = MutableStateFlow<Screen>(Screen.Home)
+    val tab = MutableStateFlow(HomeTab.DOCUMENTS)
+    /** Interactions with issuers and verifiers, newest first. */
+    val history = MutableStateFlow<List<HistoryEntry>>(emptyList())
     val documents = MutableStateFlow<List<Document>>(emptyList())
     val issuance = MutableStateFlow<IssuanceUi>(IssuanceUi.Loading)
     val presentation = MutableStateFlow<PresentationUi>(PresentationUi.Loading)
@@ -210,6 +225,8 @@ class WalletModel(val platform: PlatformServices) {
     }
     lateinit var holderIdentities: HolderIdentities
         private set
+    private lateinit var historyLog: HistoryLog
+    private val historyLock = Mutex()
 
     /** TWDIW production platform, or in the test environment the configured front end (marked TEST). */
     val twdiwPlatform: TwdiwPlatform
@@ -274,6 +291,8 @@ class WalletModel(val platform: PlatformServices) {
             domainsKeyBoundSdJwt = listOf(CredentialDomains.SD_JWT),
             domainsKeylessSdJwt = listOf(CredentialDomains.SD_JWT_KEYLESS),
         )
+        historyLog = HistoryLog(storage)
+        history.value = historyLog.load()
         refreshDocuments()
         ready.value = true
     }
@@ -442,10 +461,22 @@ class WalletModel(val platform: PlatformServices) {
 
     // ---------------------------------------------------------------- documents
 
-    /** Goes back one screen, as the Back button does; false on the home screen, where the platform handles it. */
+    /** Shows the home screen on [t]. */
+    fun showTab(t: HomeTab) {
+        tab.value = t
+        screen.value = Screen.Home
+    }
+
+    /**
+     * Goes back one screen, as the Back button does. On the home screen another tab returns to the documents tab;
+     * false on the documents tab, where the platform handles it.
+     */
     fun back(): Boolean {
         when (val s = screen.value) {
-            Screen.Home -> return false
+            Screen.Home -> {
+                if (tab.value == HomeTab.DOCUMENTS) return false
+                tab.value = HomeTab.DOCUMENTS
+            }
             is Screen.DocumentDetail -> screen.value = s.from
             is Screen.Certificate -> screen.value = s.from
             Screen.Issuance -> {
@@ -457,11 +488,11 @@ class WalletModel(val platform: PlatformServices) {
                 screen.value = Screen.Home
             }
             Screen.Settings -> screen.value = Screen.Home
-            Screen.Taiwan -> screen.value = Screen.Home
-            Screen.TwdiwTrust -> screen.value = Screen.Taiwan
+            Screen.AddDocument -> screen.value = Screen.Home
+            Screen.TrustList -> screen.value = Screen.Settings
             Screen.Offline -> {
                 taiwan.closeOffline()
-                screen.value = Screen.Taiwan
+                screen.value = Screen.Home
             }
             Screen.MsIssuance -> {
                 ms.cancel()
@@ -479,7 +510,47 @@ class WalletModel(val platform: PlatformServices) {
         documentStore.deleteDocument(doc.identifier)
         refreshDocuments()
         platform.registerDigitalCredentials(this@WalletModel)
-        screen.value = Screen.Home
+        showTab(HomeTab.DOCUMENTS)
+    }
+
+    // ---------------------------------------------------------------- history
+
+    /** Adds an entry to the history log. Claim values are never recorded, only their names. */
+    fun record(
+        kind: HistoryKind,
+        party: String,
+        trust: TrustDecision?,
+        documents: List<String> = emptyList(),
+        claims: List<String> = emptyList(),
+        note: String? = null,
+        failure: String? = null,
+    ) {
+        val entry = HistoryEntry(
+            id = PlatformCrypto.randomBytes(9).toBase64Url(),
+            epochSeconds = kotlin.time.Clock.System.now().epochSeconds,
+            kind = kind,
+            party = party,
+            tier = trust?.tier?.name,
+            test = trust?.environment == TrustEnvironment.TEST,
+            documents = documents,
+            claims = claims.distinct(),
+            note = note,
+            failure = failure,
+        )
+        scope.launch {
+            historyLock.withLock {
+                val list = (listOf(entry) + history.value).take(HistoryLog.MAX)
+                history.value = list
+                runCatching { historyLog.save(list) }
+            }
+        }
+    }
+
+    fun clearHistory() = scope.launch {
+        historyLock.withLock {
+            history.value = emptyList()
+            runCatching { historyLog.save(emptyList()) }
+        }
     }
 
     // ---------------------------------------------------------------- card art
@@ -697,7 +768,12 @@ class WalletModel(val platform: PlatformServices) {
             review.session.select(selected)
             if (review.preAuthorized) {
                 issuance.value = IssuanceUi.Working("向發行端取得授權")
-                c.authorizePreAuthorized(review.session, txCode)
+                try {
+                    c.authorizePreAuthorized(review.session, txCode)
+                } catch (e: Exception) {
+                    recordIssuanceFailure(review.session, describe(e))
+                    throw e
+                }
                 issueAll(c, review.session)
             } else {
                 val url = c.beginAuthorizationCode(review.session, platform.oid4vciRedirectUri)
@@ -749,6 +825,12 @@ class WalletModel(val platform: PlatformServices) {
             try {
                 issuance.value = IssuanceUi.Working("完成授權")
                 c.completeAuthorizationCode(session, redirect)
+            } catch (e: Exception) {
+                recordIssuanceFailure(session, describe(e))
+                issuance.value = IssuanceUi.Failed(describe(e))
+                return@launch
+            }
+            try {
                 issueAll(c, session)
             } catch (e: Exception) {
                 issuance.value = IssuanceUi.Failed(describe(e))
@@ -785,8 +867,25 @@ class WalletModel(val platform: PlatformServices) {
         }
         refreshDocuments()
         platform.registerDigitalCredentials(this)
+        val issuerName = issuerName(session)
+        results.forEach { r ->
+            record(
+                HistoryKind.ISSUED, issuerName, (r as? IssuanceResult.Issued)?.trust ?: session.issuer.trust,
+                documents = listOf(r.document.displayName ?: "證件"),
+                note = if (r is IssuanceResult.Deferred) "發行端尚未完成（延遲發證）" else null,
+            )
+        }
+        failures.forEach { (name, reason) -> record(HistoryKind.ISSUED, issuerName, session.issuer.trust, listOf(name), failure = reason) }
         issuance.value = if (results.isEmpty() && failures.size == 1) IssuanceUi.Failed(failures.single().second)
         else IssuanceUi.Done(results, failures)
+    }
+
+    private fun issuerName(session: IssuanceSession) = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
+
+    /** Authorization failed after the user accepted: the documents they asked for are recorded as not received. */
+    private fun recordIssuanceFailure(session: IssuanceSession, reason: String) {
+        val names = session.selectedConfigurations.map { it.display.pick(locales)?.name ?: it.id }
+        record(HistoryKind.ISSUED, issuerName(session), session.issuer.trust, names, failure = reason)
     }
 
     fun keyRequest(): KeyRequest {
@@ -908,6 +1007,7 @@ class WalletModel(val platform: PlatformServices) {
                 is PresentationOutcome.Redirect -> platform.openRedirect(outcome.url)
             }
             refreshDocuments()
+            recordPresentation(HistoryKind.PRESENTED, consent)
             val offline = consent.offline
             if (offline != null) {
                 presentation.value = PresentationUi.Done(outcome)
@@ -916,13 +1016,21 @@ class WalletModel(val platform: PlatformServices) {
                 presentation.value = PresentationUi.Done(outcome)
             }
         } catch (e: Exception) {
+            recordPresentation(HistoryKind.PRESENTED, consent, describe(e))
             presentation.value = PresentationUi.Failed(describe(e))
         }
+    }
+
+    private fun recordPresentation(kind: HistoryKind, consent: PresentationUi.Consent, failure: String? = null) {
+        val v = consent.request.verifier
+        val note = consent.offline?.service?.name ?: if (consent.request.responseMode.dcApi) "經由瀏覽器或 App（Digital Credentials API）" else null
+        record(kind, v.displayName, v.trust, consent.items.map { it.documentName }, consent.items.flatMap { it.claims }, note, failure)
     }
 
     fun decline(consent: PresentationUi.Consent) = scope.launch {
         // Over the DC API the refusal (access_denied) goes back to the caller; otherwise it is posted to an authenticated Verifier.
         val outcome = runCatching { holder().decline(consent.request) }.getOrNull()
+        recordPresentation(HistoryKind.DECLINED, consent)
         dcApiResult?.complete((outcome as? PresentationOutcome.DcApi)?.data)
         dcApiResult = null
         presentation.value = PresentationUi.Failed("已拒絕分享")

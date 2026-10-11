@@ -107,12 +107,16 @@ class MsIssuanceModel(private val model: WalletModel) {
             }
             current = null
             model.refreshDocuments()
+            model.record(HistoryKind.ISSUED, issuerName(request), request.trust, listOf(doc.displayName ?: request.cardTitle ?: "Verified ID"))
             state.value = MsIssuanceUi.Done(doc)
         } catch (e: Exception) {
             current = null
+            model.record(HistoryKind.ISSUED, issuerName(request), request.trust, listOf(request.cardTitle ?: "Verified ID"), failure = model.describe(e))
             state.value = MsIssuanceUi.Failed(model.describe(e))
         }
     }
+
+    private fun issuerName(request: MsIssuanceRequest) = request.issuedBy ?: request.clientName ?: request.issuerDid
 
     /** Declines a pending request and tells the issuer. */
     fun cancel() {
