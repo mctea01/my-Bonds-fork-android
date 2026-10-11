@@ -803,7 +803,8 @@ class WalletModelE2eTest {
         assertEquals(diw.wallet.core.document.Check.PASS, sig.integrity)
         assertEquals("測試使用者", sig.signer?.commonName)
         assertEquals(original.id, signed.parentId)
-        assertTrue(holder.history.value.any { it.kind == HistoryKind.SIGNED })
+        // History is written asynchronously, so wait for the entry instead of reading it right away.
+        withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.SIGNED } } }
 
         // Opening a document checks it again: once the signer's certificate is trusted, the stored result changes.
         assertEquals(diw.wallet.core.document.DocumentVerdict.PARTIAL, sig.verdict)
