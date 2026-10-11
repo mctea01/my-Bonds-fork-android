@@ -156,7 +156,9 @@ class LegacyRequestValidator(
             jws?.x5c != null -> "x509_san_dns"
             else -> "pre-registered"
         }
-        val value = rawClientId.substringAfter("$scheme:", rawClientId).removePrefix("decentralized_identifier:")
+        // A DID client keeps its own "did:" prefix; only the OpenID4VP 1.0 decentralized_identifier: prefix is removed.
+        val value = if (scheme == "did") rawClientId.removePrefix("decentralized_identifier:")
+        else rawClientId.substringAfter("$scheme:", rawClientId)
         val unknown = TrustDecision.unknown("The Verifier is not authenticated", labels = setOf(TrustLabel.UNSIGNED_REQUEST))
         return when (scheme) {
             "did" -> {

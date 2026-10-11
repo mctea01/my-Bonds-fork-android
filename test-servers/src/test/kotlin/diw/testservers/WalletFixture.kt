@@ -2,10 +2,12 @@ package diw.testservers
 
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationPolicy
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.w3c.addDiwCredentialImplementations
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import kotlinx.io.bytestring.ByteString
@@ -45,9 +47,10 @@ class WalletFixture(
     val trustVerifierRoot: Boolean = true,
     val policy: PresentationPolicy = PresentationPolicy(),
     val trustIssuer: Boolean = true,
+    val httpClient: HttpClient = HttpClient(Java) { followRedirects = false },
+    val env: EnvironmentPolicy = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true),
 ) {
     val storage = EphemeralStorage()
-    val env = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true)
     val trust = TrustRegistry(storage, env)
     lateinit var secureArea: SoftwareSecureArea
     lateinit var documentStore: DocumentStore
@@ -57,22 +60,25 @@ class WalletFixture(
     }
     lateinit var source: SimplePresentmentSource
     lateinit var holder: Oid4vpHolder
-    val httpClient = HttpClient(Java) { followRedirects = false }
+    lateinit var secureAreas: SecureAreaRepository
+    lateinit var holderIdentities: HolderIdentities
 
-    suspend fun init(pki: TestPki): WalletFixture {
+    suspend fun init(pki: TestPki? = null): WalletFixture {
         secureArea = SoftwareSecureArea.create(storage)
-        documentStore = buildDocumentStore(storage, SecureAreaRepository.Builder().add(secureArea).build()) {}
+        secureAreas = SecureAreaRepository.Builder().add(secureArea).build()
+        documentStore = buildDocumentStore(storage, secureAreas) { addDiwCredentialImplementations(secureAreas) }
+        holderIdentities = HolderIdentities(storage, secureAreas)
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
             domainsMdocSignature = listOf("mdoc"),
             domainsKeyBoundSdJwt = listOf("sdjwt"),
         )
-        if (trustVerifierRoot) {
+        if (trustVerifierRoot && pki != null) {
             trust.addAnchor(TrustRole.VERIFIER, TrustEnvironment.TEST, pki.readerRootCert, "DIW TEST Verifier Root", false, "test")
         }
-        if (trustIssuer) trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
-        holder = Oid4vpHolder(httpClient, trust, source, env, policy)
+        if (trustIssuer && pki != null) trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
+        holder = Oid4vpHolder(httpClient, trust, source, env, policy, holderIdentities)
         return this
     }
 

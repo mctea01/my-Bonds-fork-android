@@ -1,0 +1,190 @@
+package diw.testservers
+
+import diw.wallet.core.compat.Draft11Dialect
+import diw.wallet.core.compat.Draft13Dialect
+import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.env.EnvironmentPolicy
+import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.holder.HolderIdentities
+import diw.wallet.core.oid4vci.IssuanceResult
+import diw.wallet.core.oid4vci.KeyRequest
+import diw.wallet.core.oid4vci.Oid4vciClient
+import diw.wallet.core.oid4vci.PublicClientWalletProvider
+import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.oid4vp.Oid4vpHolder
+import diw.wallet.core.oid4vp.PresentationOutcome
+import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
+import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.twdiw.TwdiwEntry
+import diw.wallet.core.profile.twdiw.TwdiwEntryParser
+import diw.wallet.core.profile.twdiw.TwdiwPlatform
+import diw.wallet.core.profile.twdiw.TwdiwServices
+import diw.wallet.core.profile.twdiw.TwdiwTrustList
+import diw.wallet.core.profile.twdiw.TwdiwUserAgent
+import diw.wallet.core.status.CredentialStatusChecker
+import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.w3c.W3cVcCredential
+import io.ktor.client.HttpClient
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.revocation.RevocationCheckState
+import org.multipaz.securearea.software.SoftwareCreateKeySettings
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+/** The TWDIW official issuance, status, trust list, presentation and offline barcode flows against [TwdiwPlatformMock]. */
+class TwdiwPlatformTest {
+    private class Setup(val mock: TwdiwPlatformMock, val w: WalletFixture) {
+        val platform = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = true)
+        val trustList = TwdiwTrustList(w.httpClient, platform, storage = w.storage)
+        val didTrust = DidTrust(listOf(trustList))
+        val services = TwdiwServices(w.httpClient, trustList, platform)
+        val presentation = TwdiwPresentationDialect { did, host -> trustList.hostRegistered(did, host) }
+        val holder = Oid4vpHolder(
+            w.httpClient, w.trust, w.source, w.env, holderIdentities = w.holderIdentities, didTrust = didTrust,
+            dialects = listOf(presentation, MsVerifiedIdPresentationDialect()),
+        )
+
+        fun client() = Oid4vciClient(
+            w.httpClient, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore,
+            dialects = listOf(
+                TwdiwDialect(w.httpClient, false),
+                Draft13Dialect(w.httpClient, false),
+                Draft11Dialect(),
+            ),
+            holderIdentities = w.holderIdentities,
+            didTrust = didTrust,
+        )
+
+        fun keys() = KeyRequest(
+            secureArea = w.secureArea,
+            createKeySettings = { SoftwareCreateKeySettings.Builder().build() },
+            count = 1,
+            keyStorage = "software",
+        )
+
+        /** Receives the mock card from the official deep link, as the wallet does for a scanned QR code. */
+        suspend fun receive(): IssuanceResult.Issued {
+            val entry = TwdiwEntryParser.parse(mock.offerDeepLink()) as TwdiwEntry.Offer
+            val c = client()
+            val session = c.startFromOffer(entry.uri, TwdiwDialect.ENTRY_HINT)
+            c.authorizePreAuthorized(session, null)
+            return c.issue(session, TwdiwPlatformMock.CONFIG_ID, keys()) as IssuanceResult.Issued
+        }
+    }
+
+    private fun setup(): Setup = runBlocking {
+        val mock = TwdiwPlatformMock.create()
+        val http = HttpClient(mock.engine) {
+            followRedirects = false
+            install(TwdiwUserAgent) { userAgent = { TwdiwPlatform.DEFAULT_USER_AGENT } }
+        }
+        val w = WalletFixture(
+            trustVerifierRoot = false,
+            trustIssuer = false,
+            httpClient = http,
+            env = EnvironmentPolicy(testEnvironmentEnabled = true),
+        ).init()
+        Setup(mock, w)
+    }
+
+    @Test
+    fun officialIssuanceAndStatus() = runBlocking {
+        val s = setup()
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        val cred = r.credentials.single() as W3cVcCredential
+        // Announced as jwt_vc_json, delivered as an SD-JWT bound to the wallet's TWDIW holder DID.
+        val holderKey = assertNotNull(s.w.holderIdentities.find(HolderIdentities.TWDIW))
+        assertEquals(holderKey.did, cred.holderDid)
+        assertTrue(holderKey.did!!.startsWith("did:key:z"))
+        val claims = ClaimReader.read(cred, s.w.documentTypes).associate { it.label to it.value }
+        assertEquals("林哲全", claims["name"])
+        assertEquals("A123456789", claims["cardNumber"])
+        // Listed in the (test) TWDIW trust list: a test-environment issuer, never official.
+        assertEquals(TrustEnvironment.TEST, r.trust.environment)
+        assertEquals(TrustTier.T3, r.trust.tier)
+        assertTrue(TrustLabel.TEST_ANCHOR in r.trust.labels, "labels: ${r.trust.labels}")
+        assertEquals("模擬發證機關", r.trust.anchorName)
+        val record = r.document.issuanceRecord!!
+        assertEquals("twdiw", record.profile)
+        assertTrue("TWDIW" in record.specs, "specs: ${record.specs}")
+        assertEquals("${TwdiwPlatformMock.ISSUER_ORIGIN}/logo.png", record.logoUri)
+        assertEquals("#1A4C8B", record.backgroundColor)
+        // Every request to wallet.gov.tw carried the configured agent (their Cloudflare front rejects library agents).
+        assertTrue(s.mock.userAgents.all { it.second == TwdiwPlatform.DEFAULT_USER_AGENT }, "agents: ${s.mock.userAgents}")
+
+        // StatusList2021: revocation and suspension lists wrapped as {statusList: jwt}, signed by the issuer DID.
+        val checker = CredentialStatusChecker(s.w.httpClient, s.w.trust, didTrust = s.didTrust)
+        val valid = checker.check(cred, bypassCache = true)
+        assertEquals(RevocationCheckState.VALID, valid.state, "detail: ${valid.detail}")
+        assertTrue(valid.trusted)
+        assertEquals(2, valid.w3cEntries.size)
+        s.mock.suspension[s.mock.issuedIndex] = true
+        assertEquals(RevocationCheckState.SUSPENDED, checker.check(cred, bypassCache = true).state)
+        s.mock.revocation[s.mock.issuedIndex] = true
+        assertEquals(RevocationCheckState.INVALID, checker.check(cred, bypassCache = true).state)
+    }
+
+    @Test
+    fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking {
+        val s = setup()
+        s.receive()
+        val entry = TwdiwEntryParser.parse(s.mock.presentationDeepLink(listOf("name"))) as TwdiwEntry.Presentation
+        val request = s.holder.resolveUri(entry.uri, TwdiwDialect.ENTRY_HINT)
+        assertEquals("twdiw", request.profile)
+        assertEquals(s.mock.verifierDid, request.verifier.did)
+        assertEquals(TrustEnvironment.TEST, request.verifier.trust.environment)
+        assertEquals("模擬驗證機關", request.verifier.trust.anchorName)
+        assertTrue(request.warnings.none { "not a service registered" in it }, "warnings: ${request.warnings}")
+        val prepared = s.holder.prepare(request) as PreparedExtended
+        assertEquals(listOf("name"), prepared.prepared.lines.single().claims)
+        val outcome = s.holder.respond(prepared)
+        assertTrue(outcome is PresentationOutcome.Posted, "outcome: $outcome")
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        val got = s.mock.received.single()
+        assertEquals(listOf("name"), got.disclosedNames)
+        // The VP lives 30 days like the official wallet's.
+        val nbf = (got.vpPayload["nbf"] as JsonPrimitive).content.toLong()
+        val exp = (got.vpPayload["exp"] as JsonPrimitive).content.toLong()
+        assertEquals(TwdiwPresentationDialect.VP_LIFETIME_SECONDS, exp - nbf)
+    }
+
+    @Test
+    fun offlinePickupBarcode() = runBlocking {
+        val s = setup()
+        s.receive()
+        val service = s.services.offlineServices().single()
+        assertEquals(TwdiwPlatformMock.VP_UID_PICKUP, service.vpUid)
+        val session = s.services.startOffline(service)
+        assertEquals("phone", session.fields.single().ename)
+        val request = s.holder.resolveUri(session.entry.uri, TwdiwDialect.ENTRY_HINT)
+        s.services.checkOfflineRequest(session, request)
+        s.presentation.attachCustomData(request.nonce, session.fields.map { it.copy(value = "0912345678") })
+        val outcome = s.holder.respondDefault(s.holder.prepare(request))
+        assertTrue(outcome is PresentationOutcome.Posted, "outcome: $outcome")
+        val got = s.mock.received.single()
+        assertEquals("0912345678", (got.customData.single()["value"] as JsonPrimitive).content)
+        val holderKey = assertNotNull(s.w.holderIdentities.find(HolderIdentities.TWDIW))
+        val barcode = s.services.barcode(session, holderKey)
+        assertTrue(barcode.png.size > 8)
+        assertTrue(s.mock.lastTransactionCompleted)
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    @Test
+    fun offlineModuleOutsideTrustListIsRefused() = runBlocking {
+        val s = setup()
+        val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://other.mock.wallet.gov.tw", null)
+        val e = assertFailsWith<ProtocolException> { s.services.startOffline(stranger) }
+        assertEquals("untrusted_verifier", e.code)
+    }
+}
