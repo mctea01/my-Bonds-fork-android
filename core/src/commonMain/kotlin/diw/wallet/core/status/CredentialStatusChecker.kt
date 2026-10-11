@@ -19,6 +19,8 @@ import org.multipaz.crypto.X509Cert
 import org.multipaz.crypto.X509CertChain
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import org.multipaz.util.fromBase64Url
 import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.revocation.CompressedStatusList
@@ -42,6 +44,11 @@ data class CredentialStatus(
     val detail: String? = null,
     /** The status value read from the list. */
     val code: Int? = null,
+    /** The credential's status reference (status.status_list uri and idx). */
+    val uri: String? = null,
+    val index: Int? = null,
+    /** The status list token the value was read from. */
+    val list: StatusListToken? = null,
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
 
@@ -52,6 +59,17 @@ data class CredentialStatus(
         val STATUS_NAMES = mapOf(0 to "VALID", 1 to "INVALID", 2 to "SUSPENDED")
     }
 }
+
+/** Parsed status list token (draft-ietf-oauth-status-list): list parameters, lifetime and signer. */
+data class StatusListToken(
+    val bitsPerItem: Int,
+    val issuedAt: Instant,
+    val expiresAt: Instant?,
+    /** Seconds the token may be cached (ttl claim). */
+    val ttl: Long?,
+    val signer: List<X509Cert>,
+    val anchorName: String?,
+)
 
 /**
  * Token Status List checker (draft-ietf-oauth-status-list) on top of Multipaz status list parsing.
@@ -64,7 +82,7 @@ class CredentialStatusChecker(
     private val trustRegistry: TrustRegistry,
     private val maxCacheAge: Duration = 60.minutes,
 ) {
-    private data class Cached(val list: CompressedStatusList, val trusted: Boolean, val env: TrustEnvironment?, val until: Instant)
+    private data class Cached(val list: CompressedStatusList, val trusted: Boolean, val env: TrustEnvironment?, val until: Instant, val token: StatusListToken)
 
     private val cache = mutableMapOf<String, Cached>()
 
@@ -86,12 +104,12 @@ class CredentialStatusChecker(
         val cached = cache[status.uri]?.takeIf { !bypassCache && it.until > now } ?: try {
             fetch(status.uri, issuerChain).also { cache[status.uri] = it }
         } catch (e: Exception) {
-            return result(RevocationCheckState.UNKNOWN, false, null, e.message)
+            return result(RevocationCheckState.UNKNOWN, false, null, e.message, uri = status.uri, index = status.idx)
         }
         val code = try {
             cached.list.decompress()[status.idx]
         } catch (e: Exception) {
-            return result(RevocationCheckState.UNKNOWN, false, cached.env, "Index ${status.idx} outside the status list")
+            return result(RevocationCheckState.UNKNOWN, false, cached.env, "Index ${status.idx} outside the status list", null, status.uri, status.idx, cached.token)
         }
         val state = when (code) {
             0 -> RevocationCheckState.VALID
@@ -99,7 +117,8 @@ class CredentialStatusChecker(
             2 -> RevocationCheckState.SUSPENDED
             else -> RevocationCheckState.UNKNOWN
         }
-        return result(state, cached.trusted, cached.env, if (state == RevocationCheckState.UNKNOWN) "Status code $code" else null, code)
+        val detail = if (state == RevocationCheckState.UNKNOWN) "Status code $code" else null
+        return result(state, cached.trusted, cached.env, detail, code, status.uri, status.idx, cached.token)
     }
 
     private suspend fun fetch(uri: String, issuerChain: List<X509Cert>?): Cached {
@@ -118,11 +137,28 @@ class CredentialStatusChecker(
             checks = mapOf(WebTokenCheck.SUB to uri),
         )
         val until = minOf(list.expirationTime, Clock.System.now() + maxCacheAge)
-        return Cached(list, true, match.environment, until)
+        val payload = runCatching { DiwJson.parseToJsonElement(jwt.split('.')[1].fromBase64Url().decodeToString()) as JsonObject }.getOrNull()
+        val token = StatusListToken(
+            bitsPerItem = list.bitsPerItem,
+            issuedAt = list.creationTime,
+            expiresAt = (payload?.get("exp") as? JsonPrimitive)?.longOrNull?.let { Instant.fromEpochSeconds(it) },
+            ttl = (payload?.get("ttl") as? JsonPrimitive)?.longOrNull,
+            signer = signerChain,
+            anchorName = match.metadata.displayName,
+        )
+        return Cached(list, true, match.environment, until, token)
     }
 
-    private fun result(state: RevocationCheckState, trusted: Boolean, env: TrustEnvironment?, detail: String?, code: Int? = null) =
-        CredentialStatus(state, trusted, env, Clock.System.now(), detail, code)
+    private fun result(
+        state: RevocationCheckState,
+        trusted: Boolean,
+        env: TrustEnvironment?,
+        detail: String?,
+        code: Int? = null,
+        uri: String? = null,
+        index: Int? = null,
+        token: StatusListToken? = null,
+    ) = CredentialStatus(state, trusted, env, Clock.System.now(), detail, code, uri, index, token)
 
     companion object {
         /** Extracts the status reference and issuer chain from a stored credential. */

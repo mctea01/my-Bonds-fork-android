@@ -96,7 +96,7 @@ fun IssuanceScreen(model: WalletModel) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = c.id in selected, onCheckedChange = { on -> selected = if (on) selected + c.id else selected - c.id })
                             Column(Modifier.weight(1f)) {
-                                Text(c.display.pick(listOf("zh-TW", "en"))?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
+                                Text(c.display.pick(model.locales)?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
                                 Text("${c.raw["format"]?.toString()?.trim('"') ?: c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
                                 if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
                                     Text("發行端要求金鑰證明（由錢包提供者出具）", style = MaterialTheme.typography.bodySmall)
@@ -131,10 +131,17 @@ fun IssuanceScreen(model: WalletModel) {
                 }
             }
         }
-        is IssuanceUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is IssuanceUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (s.results.any { it is IssuanceResult.Issued }) Text("點選憑證可查看內容", style = MaterialTheme.typography.bodySmall)
             s.results.forEach { r ->
                 when (r) {
-                    is IssuanceResult.Issued -> TrustCard("已加入", r.document.displayName ?: "", r.trust, listOf("共 ${r.credentials.size} 份可用憑證"))
+                    is IssuanceResult.Issued -> TrustCard(
+                        "已加入",
+                        r.document.displayName ?: "",
+                        r.trust,
+                        listOf("共 ${r.credentials.size} 份可用憑證"),
+                        onClick = { model.screen.value = Screen.DocumentDetail(r.document.identifier, from = Screen.Issuance) },
+                    )
                     is IssuanceResult.Deferred -> Text("${r.document.displayName}：發行端尚未完成，稍後會再嘗試")
                 }
             }
@@ -178,7 +185,7 @@ fun PresentationScreen(model: WalletModel) {
                 val settings by model.settingsFlow.collectAsState()
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
-                if (showDetails) CredentialDetails.request(req).forEach { (k, value) -> LabelValue(k, value, small = true) }
+                if (showDetails) DetailSections(model, CredentialDetails.request(req))
                 Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
                 s.items.forEach { item ->
                     Card(Modifier.fillMaxWidth()) {

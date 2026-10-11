@@ -1,6 +1,7 @@
 package diw.wallet.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,9 +68,9 @@ fun TierBadge(trust: TrustDecision, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun TrustCard(title: String, subject: String, trust: TrustDecision, extra: List<String> = emptyList()) {
+fun TrustCard(title: String, subject: String, trust: TrustDecision, extra: List<String> = emptyList(), onClick: (() -> Unit)? = null) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
         colors = CardDefaults.cardColors(containerColor = tierColor(trust.tier).copy(alpha = 0.08f)),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {

@@ -42,6 +42,7 @@ import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -199,6 +200,47 @@ class WalletModelE2eTest {
         assertEquals(2, p.pinPrompts, "presentation unlocks the software key with the App PIN")
         val result = DiwJson.parseToJsonElement(http.get("$base/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()).jsonObject
         assertEquals("passed", result["status"]!!.jsonPrimitive.content, "verifier result: $result")
+    }
+
+    /** Two credentials at once: each opens from the result list, Back returns there, and the details are grouped. */
+    @Test
+    fun batchIssuanceDetailsAndBackNavigation() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        val results = issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
+        assertEquals(2, results.filterIsInstance<IssuanceResult.Issued>().size)
+        val first = (results.first() as IssuanceResult.Issued).document
+        m.screen.value = Screen.DocumentDetail(first.identifier, from = Screen.Issuance)
+        assertTrue(m.back())
+        assertEquals(Screen.Issuance, m.screen.value)
+        assertTrue(m.back())
+        assertEquals(Screen.Home, m.screen.value)
+        assertFalse(m.back())
+
+        for (r in results.filterIsInstance<IssuanceResult.Issued>()) {
+            val doc = r.document
+            val cred = doc.getCertifiedCredentials().first()
+            val sections = CredentialDetails.credential(doc.issuanceRecord, cred).associateBy { it.title }
+            val chain = sections.getValue("發行者簽章").rows.first { it.certs.isNotEmpty() }.certs
+            val key = sections.getValue("持有者金鑰").rows
+            assertTrue(key.any { it.label == "公鑰指紋（JWK SHA-256）" }, "key rows: $key")
+            assertTrue(key.none { "\"x\"" in it.value || "\"d\"" in it.value }, "raw JWK shown: $key")
+            assertTrue(sections.getValue("狀態清單").rows.any { it.label == "索引（idx）" })
+            val cert = CredentialDetails.certificate(chain.first()).associateBy { it.title }
+            assertTrue(cert.getValue("基本資訊").rows.any { it.label == "版本" && it.value == "v3" })
+            assertTrue(cert.getValue("指紋").rows.single().value.count { c -> c == ':' } == 31)
+
+            m.checkStatus(doc).join()
+            val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier)).associateBy { it.title }
+            assertEquals("VALID（0x00）", status.getValue("狀態查詢結果").rows.first { it.label == "狀態值" }.value)
+            val token = status.getValue("狀態清單權杖").rows
+            assertTrue(token.any { it.label == "每項位元數（bits）" }, "token rows: $token")
+            assertTrue(token.any { it.certs.isNotEmpty() }, "status list signer is listed: $token")
+        }
+        // Country codes are shown as issued, not as the document type's option name.
+        val mdl = results.filterIsInstance<IssuanceResult.Issued>().first { it.document.issuanceRecord?.format == "mso_mdoc" }
+        val claims = diw.wallet.core.credential.ClaimReader.read(mdl.credentials.first(), m.documentTypes).associate { it.path.last() to it.value }
+        assertEquals("TW", claims["issuing_country"], "claims: $claims")
     }
 
     @Test

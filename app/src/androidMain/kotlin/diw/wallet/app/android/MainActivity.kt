@@ -2,6 +2,7 @@ package diw.wallet.app.android
 
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
+import diw.wallet.app.Screen
 import diw.wallet.app.ui.WalletApp
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,6 +46,9 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            // The system Back gesture follows the in-app Back button; on the home screen it leaves the app.
+            val screen by app.model.screen.collectAsState()
+            BackHandler(enabled = screen != Screen.Home) { app.model.back() }
             PromptDialogs(promptModel)
             WalletApp(app.model, scanQr = {
                 val d = CompletableDeferred<String?>()

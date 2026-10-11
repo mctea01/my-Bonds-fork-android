@@ -90,7 +90,9 @@ sealed class Screen {
     data object Settings : Screen()
     data object Issuance : Screen()
     data object Presentation : Screen()
-    data class DocumentDetail(val documentId: String) : Screen()
+    /** [from] is where the Back button returns to. */
+    data class DocumentDetail(val documentId: String, val from: Screen = Home) : Screen()
+    data class Certificate(val chain: List<X509Cert>, val index: Int, val from: Screen) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -366,6 +368,25 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     // ---------------------------------------------------------------- documents
+
+    /** Goes back one screen, as the Back button does; false on the home screen, where the platform handles it. */
+    fun back(): Boolean {
+        when (val s = screen.value) {
+            Screen.Home -> return false
+            is Screen.DocumentDetail -> screen.value = s.from
+            is Screen.Certificate -> screen.value = s.from
+            Screen.Issuance -> {
+                cancelBrowserWait()
+                screen.value = Screen.Home
+            }
+            Screen.Presentation -> {
+                cancelDcApi()
+                screen.value = Screen.Home
+            }
+            Screen.Settings -> screen.value = Screen.Home
+        }
+        return true
+    }
 
     fun refreshDocuments() = scope.launch {
         documents.value = documentStore.listDocuments()

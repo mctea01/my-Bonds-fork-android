@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.cbor.Tstr
 import org.multipaz.claim.Claim
 import org.multipaz.claim.JsonClaim
 import org.multipaz.claim.MdocClaim
@@ -29,10 +30,26 @@ object ClaimReader {
     suspend fun read(credential: Credential, types: DocumentTypeRepository): List<DisplayClaim> {
         val multipaz = runCatching { credential.getClaims(types) }.getOrNull()
         // Registered JWT claims (iss, iat, cnf, status, ...) are shown in the details view, not as credential data.
-        if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, it.render(), pathOf(it)) }
+        if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, valueOf(it), pathOf(it)) }
             .filterNot { it.path.size == 1 && it.path[0] in technical }
         if (credential !is SdJwtVcCredential) return emptyList()
         return fromCompact(credential.issuerProvidedData.decodeToString())
+    }
+
+    /**
+     * Rendered value, except country codes: the credential's own ISO 3166 code is shown instead of the type's
+     * option name, which may not be the name the holder uses for their country.
+     */
+    private fun valueOf(claim: Claim): String {
+        val name = pathOf(claim).lastOrNull().orEmpty()
+        if ("country" in name || "nationalit" in name) {
+            when (claim) {
+                is MdocClaim -> (claim.value as? Tstr)?.let { return it.value }
+                is JsonClaim -> return render(claim.value)
+                else -> {}
+            }
+        }
+        return claim.render()
     }
 
     /** Claim path: namespace and element for mdoc, the JSON path for SD-JWT VC. */

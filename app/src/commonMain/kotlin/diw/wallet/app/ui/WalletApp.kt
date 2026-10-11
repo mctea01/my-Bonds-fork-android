@@ -41,6 +41,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
+import diw.wallet.app.DetailSection
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
@@ -49,6 +50,7 @@ import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
 import org.multipaz.revocation.RevocationCheckState
 
@@ -76,7 +78,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     TopAppBar(
                         title = { Text(titleFor(screen)) },
                         navigationIcon = {
-                            if (screen != Screen.Home) TextButton(onClick = { model.screen.value = Screen.Home; model.cancelDcApi() }) { Text("返回") }
+                            if (screen != Screen.Home) TextButton(onClick = { model.back() }) { Text("返回") }
                         },
                         actions = {
                             if (screen == Screen.Home) TextButton(onClick = { model.screen.value = Screen.Settings }) { Text("設定") }
@@ -95,7 +97,8 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.Settings -> SettingsScreen(model)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
-                    is Screen.DocumentDetail -> DocumentScreen(model, s.documentId)
+                    is Screen.DocumentDetail -> DocumentScreen(model, s)
+                    is Screen.Certificate -> CertificateScreen(model, s)
                 }
             }
         }
@@ -109,6 +112,7 @@ private fun titleFor(s: Screen) = when (s) {
     Screen.Issuance -> "加入憑證"
     Screen.Presentation -> "分享資料"
     is Screen.DocumentDetail -> "憑證內容"
+    is Screen.Certificate -> "證書詳情"
 }
 
 @Composable
@@ -167,11 +171,30 @@ fun HomeScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
 }
 
 @Composable
-fun LabelValue(label: String, value: String, small: Boolean = false) {
+fun LabelValue(label: String, value: String, small: Boolean = false, onClick: (() -> Unit)? = null) {
     val style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium
-    Row(Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Text(label, Modifier.weight(0.4f), style = style)
-        Text(value, Modifier.weight(0.6f), style = style)
+        Text(
+            if (onClick != null) "$value  >" else value,
+            Modifier.weight(0.6f),
+            style = style,
+            color = if (onClick != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** Grouped details; rows holding certificates open the certificate view. */
+@Composable
+fun DetailSections(model: WalletModel, sections: List<DetailSection>) {
+    sections.forEach { section ->
+        Text(section.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        section.rows.forEach { row ->
+            val open = if (row.certs.isEmpty()) null else {
+                { model.screen.value = Screen.Certificate(row.certs, row.certIndex, model.screen.value) }
+            }
+            LabelValue(row.label, row.value, small = true, onClick = open)
+        }
     }
 }
 
@@ -196,7 +219,7 @@ fun DocumentCard(doc: Document, onClick: () -> Unit) {
                 Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium)
                 Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall)
                 storedTrust(doc)?.let { TierBadge(it) }
-                record?.let { Text(CredentialDetails.specs(it).joinToString("、"), style = MaterialTheme.typography.bodySmall) }
+                record?.let { Text((listOf(CredentialDetails.formatLabel(it.format)) + CredentialDetails.specs(it)).joinToString("、"), style = MaterialTheme.typography.bodySmall) }
                 if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall)
             }
             if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
@@ -205,14 +228,15 @@ fun DocumentCard(doc: Document, onClick: () -> Unit) {
 }
 
 @Composable
-fun DocumentScreen(model: WalletModel, id: String) {
+fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
+    val id = screen.documentId
     val docs by model.documents.collectAsState()
     val statuses by model.statuses.collectAsState()
     val doc = docs.firstOrNull { it.identifier == id } ?: return
     val record = doc.issuanceRecord
     val settings by model.settingsFlow.collectAsState()
     var claims by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
-    var details by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
     LaunchedEffect(id) {
@@ -221,26 +245,48 @@ fun DocumentScreen(model: WalletModel, id: String) {
         val first = creds.firstOrNull()
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
             ?.map { model.claimLabel(it.path, it.label, record) to it.value }.orEmpty()
-        details = record?.let { CredentialDetails.issuance(it) }.orEmpty() +
-            (first?.let { runCatching { CredentialDetails.credential(it) }.getOrNull() }.orEmpty())
+        details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.isTestEnvironment == true) TestWatermark()
-        record?.let { Text("規格：" + CredentialDetails.specs(it).joinToString("、"), style = MaterialTheme.typography.bodyMedium) }
-        Text("可用次數（批次憑證數）：$count", style = MaterialTheme.typography.bodyMedium)
-        record?.keyStorage?.let { Text("金鑰保護：$it", style = MaterialTheme.typography.bodyMedium) }
+        record?.let {
+            LabelValue("格式", CredentialDetails.formatName(it.format))
+            (it.vct ?: it.docType)?.let { t -> LabelValue("類型", t) }
+            LabelValue("規格", CredentialDetails.specs(it).joinToString("、"))
+        }
+        LabelValue("可用次數", "$count（批次憑證數）")
+        record?.keyStorage?.let { LabelValue("金鑰保護", CredentialDetails.keyStorageName(it)) }
+        if (claims.isNotEmpty()) Text("憑證資料", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
         claims.forEach { (k, v) -> LabelValue(k, v) }
         TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
-        if (showDetails) details.forEach { (k, v) -> LabelValue(k, v, small = true) }
+        if (showDetails) DetailSections(model, details)
         Spacer(Modifier.height(8.dp))
         val status = statuses[id]
         Text(
             statusText(status),
             color = if (status?.state == RevocationCheckState.VALID && status.trusted) MaterialTheme.colorScheme.primary else tierColor(TrustTier.T3),
         )
+        status?.let { DetailSections(model, CredentialDetails.status(it)) }
         OutlinedButton(onClick = { model.checkStatus(doc) }) { Text("查詢憑證狀態") }
         OutlinedButton(onClick = { model.deleteDocument(doc) }) { Text("刪除此憑證") }
+    }
+}
+
+/** One certificate of a chain, with the other certificates of the chain selectable. */
+@Composable
+fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
+    var index by remember(screen) { mutableStateOf(screen.index) }
+    val cert = screen.chain[index]
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(cert.displaySubject(), style = MaterialTheme.typography.titleMedium)
+        if (screen.chain.size > 1) {
+            Text("憑證鏈（由簽署憑證往根憑證）", style = MaterialTheme.typography.titleSmall)
+            screen.chain.forEachIndexed { i, c ->
+                LabelValue("第 ${i + 1} 張", c.displaySubject(), small = true, onClick = if (i == index) null else ({ index = i }))
+            }
+        }
+        DetailSections(model, CredentialDetails.certificate(cert))
     }
 }
 
@@ -248,12 +294,5 @@ fun DocumentScreen(model: WalletModel, id: String) {
 private fun statusText(s: CredentialStatus?): String {
     if (s == null) return "狀態：尚未查詢"
     val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
-    val meaning = when (s.code) {
-        0 -> "有效"
-        1 -> "無效"
-        2 -> "暫停"
-        3, in 12..15 -> "發行端自訂狀態"
-        else -> "規格保留值"
-    }
-    return "狀態：$name（$meaning" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
+    return "狀態：$name（${CredentialDetails.statusMeaning(s.code)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }
