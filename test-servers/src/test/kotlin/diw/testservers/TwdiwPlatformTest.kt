@@ -33,6 +33,7 @@ import diw.wallet.core.profile.twdiw.TwdiwServices
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
 import diw.wallet.core.profile.twdiw.TwdiwUserAgent
 import diw.wallet.core.status.CredentialStatusChecker
+import diw.wallet.core.status.StatusAssurance
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
@@ -132,12 +133,20 @@ class TwdiwPlatformTest {
         assertTrue(s.mock.userAgents.all { it.second == TwdiwPlatform.DEFAULT_USER_AGENT }, "agents: ${s.mock.userAgents}")
 
         // StatusList2021: revocation and suspension lists wrapped as {statusList: jwt}. TWDIW signs them with key-2,
-        // reachable only through jku: the bits are read and shown, but the result is not trusted.
+        // published only at the jku. The key set is on the platform, bound to the listed issuer: the result is trusted.
         val checker = CredentialStatusChecker(s.w.httpClient, s.w.trust, didTrust = s.didTrust)
-        val unverified = checker.check(cred, bypassCache = true)
-        assertEquals(RevocationCheckState.VALID, unverified.state, "detail: ${unverified.detail}")
-        assertTrue(!unverified.trusted)
-        assertTrue(unverified.detail?.contains("jku") == true, "detail: ${unverified.detail}")
+        val bound = checker.check(cred, bypassCache = true)
+        assertEquals(RevocationCheckState.VALID, bound.state, "detail: ${bound.detail}")
+        assertTrue(bound.trusted, "detail: ${bound.detail}")
+        assertEquals(StatusAssurance.TRUSTED, bound.assurance)
+        assertTrue(bound.detail?.contains("jku") == true, "detail: ${bound.detail}")
+        // A key set on a host nothing ties to the issuer still verifies the list, downgraded to TLS only.
+        s.mock.statusJkuHost = "keys.example.org"
+        val tlsOnly = checker.check(cred, bypassCache = true)
+        assertEquals(RevocationCheckState.VALID, tlsOnly.state, "detail: ${tlsOnly.detail}")
+        assertTrue(!tlsOnly.trusted)
+        assertEquals(StatusAssurance.TLS_ONLY, tlsOnly.assurance, "detail: ${tlsOnly.detail}")
+        s.mock.statusJkuHost = TwdiwPlatformMock.ISSUER_HOST
         // A list signed by the issuer DID is trusted like the card.
         s.mock.statusListSignedByIssuerDid = true
         val valid = checker.check(cred, bypassCache = true)

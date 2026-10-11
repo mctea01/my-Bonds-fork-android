@@ -138,6 +138,8 @@ class TwdiwPlatformMock private constructor(
                 FRONTEND_HOST -> frontend(request)
                 ISSUER_HOST -> issuer(request)
                 VERIFIER_HOST -> verifier(request)
+                // A status key set moved off the platform (statusJkuHost), for the TLS-only jku path.
+                statusJkuHost -> if (request.url.encodedPath == "/api/keys") json(keySet()) else notFound()
                 else -> notFound()
             }
         } catch (e: MockFailure) {
@@ -242,6 +244,7 @@ class TwdiwPlatformMock private constructor(
             url == ISSUER + ".well-known/openid-credential-issuer" -> json(metadata())
             url == ISSUER + "token" && request.method == HttpMethod.Post -> token(request)
             url == ISSUER + "credential" && request.method == HttpMethod.Post -> credential(request)
+            url == "$ISSUER_ORIGIN/api/keys" -> json(keySet())
             url.startsWith("$ISSUER_ORIGIN/api/status-list/$CONFIG_ID/") -> {
                 val group = url.substringAfterLast('/')
                 val purpose = when {
@@ -369,6 +372,21 @@ class TwdiwPlatformMock private constructor(
 
     /** TWDIW signs status lists with key-2, published only at /api/keys (jku), not in the issuer DID. */
     var statusListSignedByIssuerDid = false
+
+    /** Host of the status lists' jku; the platform's issuer host unless a test moves it. */
+    var statusJkuHost = ISSUER_HOST
+
+    /** The key set at /api/keys: key-1 is the issuer DID's key, key-2 signs the status lists. */
+    private suspend fun keySet(): JsonObject {
+        val key1 = issuerKey.publicKey.toJwk()
+        val key2 = statusKey.publicKey.toJwk()
+        return buildJsonObject {
+            putJsonArray("keys") {
+                addJsonObject { key1.forEach { (k, v) -> put(k, v) }; put("kid", "key-1"); put("use", "sig"); put("alg", "ES256") }
+                addJsonObject { key2.forEach { (k, v) -> put(k, v) }; put("kid", "key-2"); put("use", "sig"); put("alg", "ES256") }
+            }
+        }
+    }
     private val statusKey = kotlinx.coroutines.runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
 
     private suspend fun statusList(purpose: String, url: String): String {
@@ -380,7 +398,7 @@ class TwdiwPlatformMock private constructor(
         return signJws(
             buildJsonObject {
                 put("typ", "JWT"); put("alg", "ES256")
-                put("kid", if (statusListSignedByIssuerDid) DidKeys.verificationMethod(issuerDid) else "key-2"); put("jku", "$ISSUER_ORIGIN/api/keys")
+                put("kid", if (statusListSignedByIssuerDid) DidKeys.verificationMethod(issuerDid) else "key-2"); put("jku", "https://$statusJkuHost/api/keys")
             },
             buildJsonObject {
                 put("iss", issuerDid)

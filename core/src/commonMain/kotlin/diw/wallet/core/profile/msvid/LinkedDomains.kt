@@ -55,6 +55,10 @@ class LinkedDomains(
         LinkedDomainResult.Missing -> null
     }
 
+    /** A host is bound to [did] when it serves a verified linked origin of the DID. */
+    override suspend fun bindsHost(did: String, host: String): Boolean =
+        (verify(did) as? LinkedDomainResult.Verified)?.let { Url(it.origin).host.equals(host, ignoreCase = true) } == true
+
     suspend fun verify(did: String): LinkedDomainResult {
         val now = Clock.System.now()
         cache[did]?.takeIf { it.second > now }?.let { return it.first }

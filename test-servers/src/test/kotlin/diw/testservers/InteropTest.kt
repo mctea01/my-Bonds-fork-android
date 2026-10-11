@@ -36,6 +36,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.AsymmetricKey
@@ -50,6 +51,7 @@ import java.net.ServerSocket
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -259,6 +261,27 @@ class InteropTest {
         assertEquals(issuer, session.issuer.credentialIssuer)
         assertEquals(issuer + "token", session.authServer.tokenEndpoint)
         assertTrue(session.issuer.configurations.isNotEmpty())
+    }
+
+    /**
+     * A production TWDIW status list (the Ministry's demo driving licence). TWDIW signs lists with key-2, published only
+     * at the jku on the platform host: the key set is followed and bound to the listed issuer.
+     */
+    @Test
+    fun twdiwStatusListJku() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val client = http.config { install(diw.wallet.core.profile.twdiw.TwdiwUserAgent) }
+        val w = Wallet(client).init()
+        val list = diw.wallet.core.profile.twdiw.TwdiwTrustList(client)
+        val checker = diw.wallet.core.status.W3cStatusChecker(client, w.trust, diw.wallet.core.trust.DidTrust(listOf(list)))
+        val entry = assertNotNull(diw.wallet.core.status.W3cStatusEntry.parse(kotlinx.serialization.json.buildJsonObject {
+            put("type", "StatusList2021Entry"); put("statusPurpose", "revocation"); put("statusListIndex", "0")
+            put("statusListCredential", "https://issuer-vc.wallet.gov.tw/api/status-list/00000000_demo_drivinglicense_202504251418/r0")
+        }))
+        val r = checker.checkEntry(entry, null, bypassCache = true)
+        report("twdiw status list jku", r.assurance != diw.wallet.core.status.StatusAssurance.UNVERIFIED,
+            "state=${r.state} value=${r.value} assurance=${r.assurance} detail=${r.detail}")
+        assertTrue(r.assurance != diw.wallet.core.status.StatusAssurance.UNVERIFIED, "detail: ${r.detail}")
     }
 
     /** walt.id demo issuer (OpenID4VCI draft 13): offers are created through its issuance API with the API's own examples. */

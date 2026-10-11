@@ -37,7 +37,19 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** Holder- or verifier-side status of a credential per Token Status List. */
+/** How far a status result can be relied on; the order is from strongest to weakest. */
+enum class StatusAssurance {
+    /** The list is signed by a key tied to the issuer or to a trust anchor. */
+    TRUSTED,
+
+    /** The list's signature verifies with a key that rests on TLS only (a jku not tied to the issuer). */
+    TLS_ONLY,
+
+    /** The list's signature could not be verified, or no list was read. */
+    UNVERIFIED,
+}
+
+/** Holder- or verifier-side status of a credential per Token Status List or a W3C status list. */
 data class CredentialStatus(
     val state: RevocationCheckState,
     /** True when the status list token was signed by a chain leading to an enabled ISSUER/STATUS_LIST anchor. */
@@ -56,6 +68,7 @@ data class CredentialStatus(
     val label: String? = null,
     /** Per-entry results of a W3C credential with several credentialStatus entries. */
     val w3cEntries: List<W3cEntryStatus> = emptyList(),
+    val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
 
