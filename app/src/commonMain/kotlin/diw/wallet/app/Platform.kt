@@ -8,6 +8,7 @@ import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.securearea.SecureArea
 import org.multipaz.storage.Storage
+import kotlin.time.Instant
 
 /** Decodes PNG, JPEG or WebP bytes with the platform image codec. */
 expect fun decodeImageBytes(bytes: ByteArray): ImageBitmap?
@@ -78,8 +79,11 @@ interface PlatformServices {
     /** Redirect URI registered for this platform (custom scheme on Android, loopback on desktop). */
     val oid4vciRedirectUri: String
 
-    /** Registers stored credentials with the platform Digital Credentials API (no-op where unavailable). */
-    suspend fun registerDigitalCredentials(model: WalletModel) {}
+    /**
+     * Registers stored credentials with the platform Digital Credentials API and records the outcome in
+     * [WalletModel.dcApiRegistration] (no-op where unavailable). [force] registers even when nothing changed.
+     */
+    suspend fun registerDigitalCredentials(model: WalletModel, force: Boolean = false) {}
 
     /** Decodes a PNG (or another platform image format) for display; null when it is not an image. */
     fun decodeImage(bytes: ByteArray): ImageBitmap? = decodeImageBytes(bytes)
@@ -105,3 +109,15 @@ interface PlatformServices {
     /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader). */
     suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
 }
+
+/** Outcome of the last registration with the platform Digital Credentials API, shown in settings. */
+data class DcApiRegistration(
+    /** Credentials the system picker can offer (mdoc and SD-JWT VC). */
+    val registered: Int,
+    /** Documents only held as W3C VCs (TWDIW cards and others), which the platform matcher cannot offer. */
+    val notListable: Int,
+    val protocols: Set<String>,
+    /** Why the system refused the registration; null when it was accepted. */
+    val error: String?,
+    val at: Instant,
+)

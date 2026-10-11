@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher foreground: two stacked credential cards and a verification check, inside the 66dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55"
+        android:pathData="M41,34H71A5,5 0,0 1,76 39V51A5,5 0,0 1,71 56H41A5,5 0,0 1,36 51V39A5,5 0,0 1,41 34Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,46H73A5,5 0,0 1,78 51V71A5,5 0,0 1,73 76H35A5,5 0,0 1,30 71V51A5,5 0,0 1,35 46Z" />
+    <path
+        android:strokeColor="#4B4ED6"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M43,61L51,69L66,54" />
+</vector>

@@ -44,6 +44,7 @@ kotlin {
             implementation(libs.androidx.browser)
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.registry)
+            implementation(libs.play.services.identity.credentials)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
             implementation(libs.bcprov)
@@ -181,9 +182,11 @@ compose.desktop {
                 upgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"
                 perUserInstall = true
                 shortcut = true
+                iconFile.set(project.file("icons/app-icon.ico"))
             }
             linux {
                 shortcut = true
+                iconFile.set(project.file("icons/app-icon.png"))
             }
         }
         buildTypes.release.proguard {

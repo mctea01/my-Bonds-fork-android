@@ -15,6 +15,10 @@ import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.browser.customtabs.CustomTabsIntent
+import com.google.android.gms.identitycredentials.IdentityCredentialManager
+import com.google.android.gms.identitycredentials.RegistrationRequest
+import com.google.android.gms.tasks.Task
+import diw.wallet.app.DcApiRegistration
 import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
@@ -28,12 +32,23 @@ import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.storage.ValueCipher
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
+import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.DataItem
 import org.multipaz.crypto.Algorithm
 import org.multipaz.digitalcredentials.DigitalCredentials
 import org.multipaz.digitalcredentials.getDefault
+import org.multipaz.document.DocumentStore
+import org.multipaz.documenttype.DocumentTypeRepository
+import org.multipaz.mdoc.credential.MdocCredential
+import org.multipaz.sdjwt.credential.SdJwtVcCredential
+import org.multipaz.util.Logger
 import org.multipaz.prompt.AndroidPromptModel
 import org.multipaz.prompt.Reason
 import org.multipaz.securearea.AndroidKeystoreCreateKeySettings
@@ -47,11 +62,17 @@ import org.multipaz.securearea.UserAuthenticationType
 import org.multipaz.storage.Storage
 import org.multipaz.storage.android.AndroidStorage
 import java.io.File
+import java.lang.reflect.InvocationTargetException
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlin.coroutines.Continuation
+import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.time.Clock
 import kotlin.time.Duration
 
 /** AES-256-GCM with a non-exportable Android Keystore key; output is iv(12) || ciphertext || tag. */
@@ -230,18 +251,69 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    override suspend fun registerDigitalCredentials(model: WalletModel) {
-        runCatching {
+    private val dcApiLock = Mutex()
+
+    override suspend fun registerDigitalCredentials(model: WalletModel, force: Boolean) = dcApiLock.withLock {
+        val now = Clock.System.now()
+        model.dcApiRegistration.value = try {
             val dc = DigitalCredentials.getDefault()
-            if (!dc.registerAvailable) return
-            // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
-            // the wallet's mdoc consent; both use the wallet's own screens.
-            val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
-            dc.register(model.documentStore, model.documentTypes, protocols, false)
+            if (!dc.registerAvailable) {
+                DcApiRegistration(0, notListable(model), emptySet(), "此裝置沒有提供 Digital Credentials API 註冊", now)
+            } else {
+                // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
+                // the wallet's mdoc consent; both use the wallet's own screens.
+                val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
+                dc.register(model.documentStore, model.documentTypes, protocols, force)
+                // Multipaz only logs the system's answer and remembers the data as registered either way, so the
+                // Digital Credentials entry is registered again here and the answer awaited.
+                val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
+                val database = credentialDatabase(appName, model, protocols)
+                val matcher = withContext(Dispatchers.IO) { context.assets.open(MATCHER_ASSET).use { it.readBytes() } }
+                IdentityCredentialManager.getClient(context)
+                    .registerCredentials(RegistrationRequest(Cbor.encode(database), matcher, DIGITAL_CREDENTIAL_TYPE, "", emptyList()))
+                    .awaitResult()
+                DcApiRegistration(database["credentials"].asArray.size, notListable(model), protocols, null, now)
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.e(TAG, "Digital Credentials registration failed", e)
+            DcApiRegistration(0, runCatching { notListable(model) }.getOrDefault(0), emptySet(), e.message ?: e::class.simpleName, now)
         }
     }
 
+    /**
+     * The credential database multipaz-dcapi registers, in the format its matcher reads. The library keeps
+     * calculateCredentialDatabase internal, so it is called through its JVM signature (the class is kept by R8).
+     */
+    private suspend fun credentialDatabase(appName: String, model: WalletModel, protocols: Set<String>): DataItem {
+        val method = Class.forName("org.multipaz.digitalcredentials.DigitalCredentialsExt_androidKt").getMethod(
+            "calculateCredentialDatabase", String::class.java, DocumentStore::class.java, DocumentTypeRepository::class.java,
+            Set::class.java, Continuation::class.java,
+        )
+        return suspendCoroutineUninterceptedOrReturn<Any?> { c ->
+            try {
+                method.invoke(null, appName, model.documentStore, model.documentTypes, protocols, c)
+            } catch (e: InvocationTargetException) {
+                throw e.targetException
+            }
+        } as DataItem
+    }
+
+    /** Documents held only as W3C VCs: the platform matcher offers mdoc and SD-JWT VC credentials only. */
+    private suspend fun notListable(model: WalletModel): Int = model.documentStore.listDocuments().count { doc ->
+        doc.getCertifiedCredentials().none { it is MdocCredential || it is SdJwtVcCredential }
+    }
+
+    private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { c ->
+        addOnSuccessListener { c.resume(it) }
+        addOnFailureListener { c.resumeWithException(it) }
+    }
+
     private companion object {
+        const val TAG = "AndroidPlatform"
+        /** Matcher shipped in multipaz-dcapi; the system runs it against each request to list matching credentials. */
+        const val MATCHER_ASSET = "identitycredentialmatcher.wasm"
+        const val DIGITAL_CREDENTIAL_TYPE = "androidx.credentials.TYPE_DIGITAL_CREDENTIAL"
         const val MAX_ATTESTATION_CHALLENGE = 128
         const val PROXIMITY_PERMISSION_REQUEST = 7302
     }

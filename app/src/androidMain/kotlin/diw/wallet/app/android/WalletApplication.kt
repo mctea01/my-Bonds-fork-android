@@ -25,7 +25,8 @@ class WalletApplication : Application() {
         model.scope.launch {
             try {
                 model.init()
-                platform.registerDigitalCredentials(model)
+                // Forced once per launch: Multipaz skips unchanged data even when the system refused the previous registration.
+                platform.registerDigitalCredentials(model, force = true)
             } catch (e: Exception) {
                 model.message.value = "錢包初始化失敗：${e.message}"
             }
