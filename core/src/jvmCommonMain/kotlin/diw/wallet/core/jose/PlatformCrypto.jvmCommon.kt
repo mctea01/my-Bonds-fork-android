@@ -55,6 +55,73 @@ actual object PlatformCrypto {
         return spec.curve.decodePoint(compressed).getEncoded(false)
     }
 
+    actual fun verifyEcdsaRaw(curveName: String, x: ByteArray, y: ByteArray, data: ByteArray, signature: ByteArray): Boolean = try {
+        val spec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(curveName)
+        val point = spec.curve.createPoint(BigInteger(1, x), BigInteger(1, y))
+        val signer = org.bouncycastle.crypto.signers.ECDSASigner()
+        val domain = org.bouncycastle.crypto.params.ECDomainParameters(spec.curve, spec.g, spec.n, spec.h)
+        signer.init(false, org.bouncycastle.crypto.params.ECPublicKeyParameters(point, domain))
+        val half = signature.size / 2
+        signer.verifySignature(sha256(data), BigInteger(1, signature.copyOfRange(0, half)), BigInteger(1, signature.copyOfRange(half, signature.size)))
+    } catch (_: Exception) {
+        false
+    }
+
+    actual fun gzip(data: ByteArray): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.GZIPOutputStream(out).use { it.write(data) }
+        return out.toByteArray()
+    }
+
+    actual fun gunzip(data: ByteArray, maxBytes: Int): ByteArray =
+        java.util.zip.GZIPInputStream(ByteArrayInputStream(data)).use { readLimited(it, maxBytes) }
+
+    actual fun deflate(data: ByteArray, raw: Boolean): ByteArray {
+        val deflater = java.util.zip.Deflater(java.util.zip.Deflater.BEST_COMPRESSION, raw)
+        val out = java.io.ByteArrayOutputStream()
+        java.util.zip.DeflaterOutputStream(out, deflater).use { it.write(data) }
+        deflater.end()
+        return out.toByteArray()
+    }
+
+    actual fun inflate(data: ByteArray, raw: Boolean, maxBytes: Int): ByteArray {
+        val inflater = java.util.zip.Inflater(raw)
+        return try {
+            java.util.zip.InflaterInputStream(ByteArrayInputStream(data), inflater).use { readLimited(it, maxBytes) }
+        } finally {
+            inflater.end()
+        }
+    }
+
+    private fun readLimited(input: java.io.InputStream, maxBytes: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
+            if (out.size() > maxBytes) throw IllegalArgumentException("Decompressed data exceeds $maxBytes bytes")
+        }
+        return out.toByteArray()
+    }
+
+    actual fun certificateSignedBy(childDer: ByteArray, issuerDer: ByteArray): Boolean = try {
+        val cf = CertificateFactory.getInstance("X.509")
+        val child = cf.generateCertificate(ByteArrayInputStream(childDer))
+        val issuer = cf.generateCertificate(ByteArrayInputStream(issuerDer))
+        child.verify(issuer.publicKey)
+        true
+    } catch (_: Exception) {
+        false
+    }
+
+    actual fun certificateSubjectCn(der: ByteArray): String? = try {
+        val cert = org.bouncycastle.cert.X509CertificateHolder(der)
+        cert.subject.getRDNs(org.bouncycastle.asn1.x500.style.BCStyle.CN).firstOrNull()?.first?.value?.toString()
+    } catch (_: Exception) {
+        null
+    }
+
     private fun BigInteger.toUnsignedBytes(): ByteArray {
         val b = toByteArray()
         return if (b.size > 1 && b[0] == 0.toByte()) b.copyOfRange(1, b.size) else b

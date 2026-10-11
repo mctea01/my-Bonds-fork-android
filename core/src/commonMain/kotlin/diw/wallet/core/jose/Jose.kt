@@ -24,9 +24,18 @@ sealed class VerificationKey {
         override fun equals(other: Any?) = other is Rsa && modulus.contentEquals(other.modulus) && exponent.contentEquals(other.exponent)
         override fun hashCode() = modulus.contentHashCode() * 31 + exponent.contentHashCode()
     }
+    /** secp256k1 (ES256K), which Multipaz does not implement; only used to verify older credentials. */
+    data class Secp256k1(val x: ByteArray, val y: ByteArray) : VerificationKey() {
+        override fun equals(other: Any?) = other is Secp256k1 && x.contentEquals(other.x) && y.contentEquals(other.y)
+        override fun hashCode() = x.contentHashCode() * 31 + y.contentHashCode()
+    }
 
     companion object {
-        fun fromJwk(jwk: JsonObject): VerificationKey = when (jwk.str("kty")) {
+        fun fromJwk(jwk: JsonObject): VerificationKey = when (if (jwk.str("crv") == "secp256k1") "secp256k1" else jwk.str("kty")) {
+            "secp256k1" -> Secp256k1(
+                (jwk.str("x") ?: throw ProtocolException("invalid_key", "EC JWK without x")).fromBase64Url(),
+                (jwk.str("y") ?: throw ProtocolException("invalid_key", "EC JWK without y")).fromBase64Url(),
+            )
             "EC", "OKP" -> Ec(EcPublicKey.fromJwk(jwk))
             "RSA" -> Rsa(
                 modulus = (jwk.str("n") ?: throw ProtocolException("invalid_key", "RSA JWK without n")).fromBase64Url(),
@@ -52,6 +61,18 @@ expect object PlatformCrypto {
     fun randomBytes(size: Int): ByteArray
     /** Decompresses a SEC1 compressed point for a named curve (secp256r1, secp384r1, secp521r1, secp256k1). */
     fun decompressEcPoint(curveName: String, compressed: ByteArray): ByteArray
+    /** Verifies an ECDSA signature (raw r||s) with SHA-256 on a named curve given affine coordinates. */
+    fun verifyEcdsaRaw(curveName: String, x: ByteArray, y: ByteArray, data: ByteArray, signature: ByteArray): Boolean
+    /** RFC 1952 gzip. */
+    fun gzip(data: ByteArray): ByteArray
+    fun gunzip(data: ByteArray, maxBytes: Int = 16 * 1024 * 1024): ByteArray
+    /** RFC 1950 zlib (or raw RFC 1951 DEFLATE with [raw]). */
+    fun deflate(data: ByteArray, raw: Boolean = false): ByteArray
+    fun inflate(data: ByteArray, raw: Boolean = false, maxBytes: Int = 16 * 1024 * 1024): ByteArray
+    /** True when [childDer] is signed by the key of [issuerDer] (any key type the platform supports). */
+    fun certificateSignedBy(childDer: ByteArray, issuerDer: ByteArray): Boolean
+    /** Common name of a certificate subject, any key type. */
+    fun certificateSubjectCn(der: ByteArray): String?
 }
 
 /** A parsed compact JWS. */
@@ -122,7 +143,7 @@ fun ecAlgorithmFor(alg: String): Algorithm = when (alg) {
     "ESB320" -> Algorithm.ESB320
     "ESB384" -> Algorithm.ESB384
     "ESB512" -> Algorithm.ESB512
-    "ES256K" -> throw ProtocolException("unsupported_alg", "ES256K requires the secp256k1 profile")
+    "ES256K" -> throw ProtocolException("unsupported_alg", "ES256K keys are verified as VerificationKey.Secp256k1")
     else -> try {
         Algorithm.fromJoseAlgorithmIdentifier(alg)
     } catch (e: Exception) {
@@ -131,6 +152,7 @@ fun ecAlgorithmFor(alg: String): Algorithm = when (alg) {
 }
 
 suspend fun verifySignature(alg: String, key: VerificationKey, data: ByteArray, signature: ByteArray): Boolean = when (key) {
+    is VerificationKey.Secp256k1 -> alg == "ES256K" && PlatformCrypto.verifyEcdsaRaw("secp256k1", key.x, key.y, data, signature)
     is VerificationKey.Rsa -> {
         if (!alg.startsWith("RS") && !alg.startsWith("PS")) false
         else PlatformCrypto.verifyRsa(alg, key, data, signature)
