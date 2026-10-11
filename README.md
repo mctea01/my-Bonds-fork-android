@@ -15,8 +15,8 @@
 | 出示 | OpenID4VP 1.0（DCQL、DC API），以及 draft 13 到 23（Presentation Exchange 2.0、client_id_scheme、did / x509_san_* client）、SIOPv2、OAuth fragment / query / form_post 回應；DC API 同時接受 `openid4vp` 與 `org-iso-mdoc` |
 | mdoc 近距離 | ISO/IEC 18013-5：出示（NFC 交握，static 或 negotiated handover；QR Code 交握；資料經 BLE 或 NFC）與查驗（手機 NFC、手機 OTG 接 USB CCID 讀卡機、電腦的 PC/SC 讀卡機） |
 | 遠端 mdoc | ISO/IEC 18013-7 Annex B（OpenID4VP 草案的 mdoc handover）與 Annex C（DC API 的 org-iso-mdoc，回應以 HPKE 加密並綁定網頁來源） |
-| 信任 | X.509 信任錨（正式、使用者匯入、系統憑證庫、測試環境分開顯示，可匯入任何組織的根憑證；內建運作中的政府憑證總管理中心根憑證與 GCA、XCA、MOEACA、MOICA 中繼憑證；RSA 憑證鏈以 PKIX 驗證）、DID（did:key、did:jwk、did:web、did:ion）、DIF Linked Domains（依 Microsoft 規則，已驗證網域不另行警示）、TWDIW 信任清單與 Arbitrum 錨定、使用者自行信任的 DID |
-| 狀態 | IETF Token Status List、W3C Bitstring Status List、Status List 2021、Revocation List 2020，顯示規格原文狀態；狀態清單的 jku 金鑰先綁定發行端，綁不上時標示「僅經 HTTPS 確認」；背景自動更新，依用途風險（低、中、高）判斷是否接受 |
+| 信任 | X.509 信任錨（正式、使用者匯入、系統憑證庫、測試環境分開顯示，可匯入任何組織的根憑證；內建運作中的政府憑證總管理中心根憑證與 GCA、XCA、MOEACA、MOICA 中繼憑證；內建中國大陸憑證機構的根憑證，含國密 SM2，可單獨關閉；內建發票、移民等常用服務憑證鏈的根憑證；RSA 與國密 SM2 憑證鏈以 PKIX 驗證）、DID（did:key、did:jwk、did:web、did:ion）、DIF Linked Domains（依 Microsoft 規則，已驗證網域不另行警示）、TWDIW 信任清單與 Arbitrum 錨定、使用者自行信任的 DID |
+| 狀態 | IETF Token Status List、W3C Bitstring Status List、Status List 2021（含 Microsoft Verified ID 經 Identity Hub 提供的清單）、Revocation List 2020，顯示規格原文狀態；狀態清單的 jku 金鑰先綁定發行端，綁不上時標示「僅經 HTTPS 確認」；背景自動更新，依用途風險（低、中、高）判斷是否接受 |
 
 ### 介面
 

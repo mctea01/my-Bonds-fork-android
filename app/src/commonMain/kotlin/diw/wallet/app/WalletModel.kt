@@ -127,6 +127,8 @@ data class WalletSettings(
     val nfcStaticHandover: Boolean = false,
     /** Trust chains to the platform's certificate store (public web PKI) as T3. */
     val systemTrustStore: Boolean = true,
+    /** Trust chains to the built-in mainland China CAs (Mozilla and Microsoft program roots, SM2 roots) as T3. */
+    val mainlandChinaRoots: Boolean = true,
 )
 
 /**
@@ -317,6 +319,7 @@ class WalletModel(val platform: PlatformServices) {
             testEnvironmentEnabled = settings.testEnvironment,
             allowInsecureLoopbackHttp = settings.allowLoopbackHttp,
             systemStoreEnabled = settings.systemTrustStore,
+            mainlandChinaRootsEnabled = settings.mainlandChinaRoots,
         )
 
     val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }

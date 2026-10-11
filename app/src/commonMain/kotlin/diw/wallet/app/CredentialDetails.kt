@@ -414,10 +414,12 @@ object CredentialDetails {
                 DetailRow("生效時間", time(c.validityNotBefore)),
                 DetailRow("到期時間", time(c.validityNotAfter)),
                 DetailRow("目前狀態", state),
-                DetailRow("簽章演算法", runCatching { c.signatureAlgorithm.name }.getOrNull() ?: c.signatureAlgorithmOid),
+                DetailRow("簽章演算法", if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM3withSM2（國密）"
+                    else runCatching { c.signatureAlgorithm.name }.getOrNull() ?: c.signatureAlgorithmOid),
             )),
             DetailSection("公鑰", listOfNotNull(
-                runCatching { c.ecPublicKey.curve.name }.getOrNull()?.let { DetailRow("演算法與曲線", "EC $it") },
+                (runCatching { c.ecPublicKey.curve.name }.getOrNull()?.let { "EC $it" }
+                    ?: if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM2（國密）" else null)?.let { DetailRow("演算法與曲線", it) },
                 runCatching { c.subjectKeyIdentifier }.getOrNull()?.let { DetailRow("主體金鑰識別碼", hex(it)) },
             )),
             DetailSection("擴充欄位", buildList {
@@ -475,6 +477,8 @@ object CredentialDetails {
     private const val OID_AKI = "2.5.29.35"
     private const val OID_EKU = "2.5.29.37"
     private const val OID_AIA = "1.3.6.1.5.5.7.1.1"
+    /** SM3withSM2, the signature of Chinese national algorithm (GM/T) certificates. */
+    private const val SM3_WITH_SM2 = "1.2.156.10197.1.501"
 
     private val EXTENSION_NAMES = mapOf(
         "2.5.29.18" to "簽發者別名",

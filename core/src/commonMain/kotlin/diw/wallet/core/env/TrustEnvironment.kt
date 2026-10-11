@@ -10,7 +10,10 @@ enum class TrustEnvironment(val id: String) {
     TEST("test"),
     USER("user"),
 
-    /** The platform's own certificate store (Android system CAs, the JDK and OS stores on desktop): public web PKI. */
+    /**
+     * Public CAs: the platform's own certificate store (Android system CAs, the JDK and OS stores on desktop), the
+     * roots of common services built into the wallet, and the built-in mainland China CAs.
+     */
     SYSTEM("system");
 
     companion object {
@@ -29,13 +32,15 @@ data class EnvironmentPolicy(
     val userAnchorsEnabled: Boolean = true,
     /** Accept chains to the platform's certificate store, as T3 (the public CA verified a domain, not an official list). */
     val systemStoreEnabled: Boolean = false,
+    /** Accept chains to the built-in mainland China CAs (including SM2 roots), as T3 like the platform store. */
+    val mainlandChinaRootsEnabled: Boolean = false,
 ) {
     val insecureLoopbackAllowed: Boolean get() = testEnvironmentEnabled && allowInsecureLoopbackHttp
 
     fun enabledEnvironments(): List<TrustEnvironment> = buildList {
         add(TrustEnvironment.PRODUCTION)
         if (userAnchorsEnabled) add(TrustEnvironment.USER)
-        if (systemStoreEnabled) add(TrustEnvironment.SYSTEM)
+        if (systemStoreEnabled || mainlandChinaRootsEnabled) add(TrustEnvironment.SYSTEM)
         if (testEnvironmentEnabled) add(TrustEnvironment.TEST)
     }
 }

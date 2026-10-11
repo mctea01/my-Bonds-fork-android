@@ -28,6 +28,8 @@ object TrustMetadataKeys {
     const val SOURCE = "diw.source"
     /** "true": the anchor certifies the identity of the parties below it (T2), not that they are listed (T1). */
     const val IDENTITY = "diw.identity"
+    /** Region of a built-in public CA ("CN" for mainland China). */
+    const val REGION = "diw.region"
 }
 
 fun trustMetadata(
@@ -37,6 +39,7 @@ fun trustMetadata(
     source: String,
     privacyPolicyUrl: String? = null,
     identity: Boolean = false,
+    region: String? = null,
 ): TrustMetadata = TrustMetadata(
     displayName = displayName,
     privacyPolicyUrl = privacyPolicyUrl,
@@ -46,6 +49,7 @@ fun trustMetadata(
         put(TrustMetadataKeys.OFFICIAL, official.toString())
         put(TrustMetadataKeys.SOURCE, source)
         if (identity) put(TrustMetadataKeys.IDENTITY, "true")
+        region?.let { put(TrustMetadataKeys.REGION, it) }
     }
 )
 
@@ -151,9 +155,11 @@ class TrustRegistry(
         for (env in policy.enabledEnvironments()) {
             if (env == TrustEnvironment.SYSTEM) {
                 if (role !in SYSTEM_ROLES) continue
-                val anchor = runCatching { SystemTrustStore.anchorOf(chain, atTime) }.getOrNull() ?: continue
-                val name = anchor.subject.components[org.multipaz.asn1.OID.COMMON_NAME.oid]?.value ?: anchor.displaySubject()
-                return AnchorMatch(env, trustMetadata("系統憑證庫：$name", env, official = false, source = "system"), false, anchor)
+                val found = runCatching {
+                    PublicRoots.anchorOf(chain, atTime, platform = policy.systemStoreEnabled, mainlandChina = policy.mainlandChinaRootsEnabled)
+                }.getOrNull() ?: continue
+                val metadata = trustMetadata(found.label, env, official = false, source = found.source, region = found.region)
+                return AnchorMatch(env, metadata, false, found.certificate)
             }
             val m = manager(role, env)
             // Multipaz handles EC chains; an RSA chain (GPKI, web PKI) makes it throw and is validated with PKIX.
@@ -190,6 +196,7 @@ class TrustRegistry(
             if (m.environment == TrustEnvironment.TEST) add(TrustLabel.TEST_ANCHOR)
             if (m.environment == TrustEnvironment.USER) add(TrustLabel.USER_ANCHOR)
             if (m.environment == TrustEnvironment.SYSTEM) add(TrustLabel.SYSTEM_ANCHOR)
+            if (m.metadata.extensions[TrustMetadataKeys.REGION] == "CN") add(TrustLabel.MAINLAND_CHINA_CA)
             if (identity && !m.official) add(TrustLabel.IDENTITY_VERIFIED)
         }
         return TrustDecision(

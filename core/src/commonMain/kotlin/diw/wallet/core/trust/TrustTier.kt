@@ -35,6 +35,12 @@ enum class TrustLabel {
 
     /** A built-in anchor certifies who the party is (Taiwan GPKI), not that it is a listed issuer: T2. */
     IDENTITY_VERIFIED,
+
+    /**
+     * The chain leads to a built-in mainland China certification authority (public CAs in the Mozilla or Microsoft
+     * programs, and SM2 roots of licensed CAs): a public CA verified a domain or organisation, as for [SYSTEM_ANCHOR].
+     */
+    MAINLAND_CHINA_CA,
 }
 
 /**

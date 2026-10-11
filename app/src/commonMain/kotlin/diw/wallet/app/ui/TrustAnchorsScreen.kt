@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -170,10 +171,39 @@ private fun SystemStoreSection(model: WalletModel) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("信任系統憑證庫", style = MaterialTheme.typography.titleSmall)
-            Text("憑證鏈連到這台裝置的系統根憑證（公開憑證機構）時，接受為發行端、查驗方或狀態清單簽署者，信任等級 T3，不顯示為官方。" +
+            Text("憑證鏈連到這台裝置的系統根憑證（公開憑證機構），或下列常用服務的根憑證時，接受為發行端、查驗方或狀態清單簽署者，信任等級 T3，不顯示為官方。" +
                 (count?.let { "目前系統憑證庫有 $it 個根憑證。" } ?: ""), style = MaterialTheme.typography.bodySmall)
         }
         androidx.compose.material3.Switch(checked = settings.systemTrustStore, onCheckedChange = { v -> model.updateSettings { it.copy(systemTrustStore = v) } })
+    }
+    BuiltInRootList(model, diw.wallet.core.trust.BuiltInPublicRoots.services)
+
+    HorizontalDivider()
+    SectionTitle("中國大陸憑證機構（T3，非官方）")
+    val mainland = diw.wallet.core.trust.BuiltInPublicRoots.mainlandChina
+    val national = mainland.count { it.national }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("信任中國大陸的憑證機構", style = MaterialTheme.typography.titleSmall)
+            Text("內建 ${mainland.size} 個根憑證" + (if (national > 0) "，其中 $national 個為國密 SM2 根憑證" else "") +
+                "：列於 Mozilla 或 Microsoft 根憑證計畫的中國大陸 CA，以及持牌 CA 公布的 SM2 根憑證。國家稅務總局的發票查驗與數電票平台、國家移民管理局的網站，以及電子發票的電子文件驗簽，都連到其中的根憑證。信任等級 T3，不顯示為官方。",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        androidx.compose.material3.Switch(checked = settings.mainlandChinaRoots, onCheckedChange = { v -> model.updateSettings { it.copy(mainlandChinaRoots = v) } })
+    }
+    BuiltInRootList(model, mainland)
+}
+
+/** Built-in public roots: name, owner, algorithm and purpose; a tap opens the certificate. */
+@Composable
+private fun BuiltInRootList(model: WalletModel, roots: List<diw.wallet.core.trust.BuiltInPublicRoots.Root>) {
+    roots.forEach { r ->
+        Column(Modifier.fillMaxWidth().clickable {
+            model.screen.value = Screen.Certificate(listOf(r.certificate), 0, Screen.TrustAnchors)
+        }.padding(vertical = 4.dp)) {
+            Text(r.name + if (r.national) "（國密 SM2）" else "", style = MaterialTheme.typography.bodyMedium)
+            Text("${r.owner}・${r.algorithm}・${r.purposes}", style = MaterialTheme.typography.bodySmall)
+        }
     }
 }
 
