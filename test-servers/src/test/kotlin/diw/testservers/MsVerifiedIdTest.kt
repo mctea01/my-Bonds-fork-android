@@ -18,6 +18,7 @@ import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.util.arr
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.w3c.W3cInspector
@@ -36,6 +37,7 @@ import io.ktor.http.headersOf
 import io.ktor.http.parseQueryString
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -53,6 +55,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
@@ -334,6 +337,22 @@ class MsVerifiedIdTest {
         assertEquals(DID, idToken.str("aud"))
         val vp = Jws.parse(assertNotNull(post["vp_token"])).payload
         assertEquals("n-2", vp.str("nonce"))
+        // Resolved as the Verified ID service does (wallet library PresentationResponseFormatter): jwt_vp at "$",
+        // then jwt_vc at "$.verifiableCredential[i]" inside the vp claim. A real verifier answered 401 "The
+        // presentation does not include any verifiable credentials" to the $.vp.verifiableCredential[i] path.
+        val submission = assertNotNull(idToken.obj("_vp_token")?.obj("presentation_submission"))
+        assertNull(post["presentation_submission"])
+        val descriptor = submission.arr("descriptor_map")!!.single() as JsonObject
+        assertEquals(presentType, descriptor.str("id"))
+        assertEquals("jwt_vp", descriptor.str("format"))
+        assertEquals("\$", descriptor.str("path"))
+        val nested = assertNotNull(descriptor.obj("path_nested"))
+        assertEquals("jwt_vc", nested.str("format"))
+        val index = assertNotNull(Regex("""^\$\.verifiableCredential\[(\d+)]$""").find(nested.str("path")!!), "path: ${nested.str("path")}").groupValues[1].toInt()
+        val vc = Jws.parse((vp.obj("vp")!!.arr("verifiableCredential")!![index] as JsonPrimitive).content).payload
+        assertEquals(DID, vc.str("iss"))
+        assertEquals(vp.str("iss"), vc.str("sub"), "the card is bound to the DID that signs the presentation")
+        assertEquals(vp.str("iss"), idToken.str("sub"))
 
         // The schema names the card type: a request for another type finds nothing to present.
         presentType = "OtherCard"

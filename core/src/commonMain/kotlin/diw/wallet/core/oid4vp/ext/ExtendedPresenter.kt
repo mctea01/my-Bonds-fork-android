@@ -220,7 +220,7 @@ class ExtendedPresenter(
                 val idx = tokens.size
                 tokens += vp
                 group.forEachIndexed { i, c ->
-                    val vcPath = if (ldp) "\$.verifiableCredential[$i]" else "\$.vp.verifiableCredential[$i]"
+                    val vcPath = if (ldp) "\$.verifiableCredential[$i]" else dialect?.nestedPath(i) ?: "\$.vp.verifiableCredential[$i]"
                     val nestedFormat = dialect?.nestedFormat(c.credential) ?: if (ldp) "ldp_vc" else nestedJwtFormat(request, c)
                     addPe(c.descriptorId, if (ldp) "ldp_vp" else "jwt_vp", "\$[$idx]", buildJsonObject {
                         put("id", c.descriptorId); put("format", nestedFormat); put("path", vcPath)
