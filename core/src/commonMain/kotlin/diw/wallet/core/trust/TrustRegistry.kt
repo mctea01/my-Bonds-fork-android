@@ -8,6 +8,7 @@ import org.multipaz.trustmanagement.TrustManager
 import org.multipaz.trustmanagement.TrustMetadata
 import org.multipaz.trustmanagement.TrustEntryAlreadyExistsException
 import org.multipaz.trustmanagement.TrustEntryX509Cert
+import diw.wallet.core.x509.displaySubject
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -25,6 +26,8 @@ object TrustMetadataKeys {
     const val ENVIRONMENT = "diw.environment"
     const val OFFICIAL = "diw.official"
     const val SOURCE = "diw.source"
+    /** "true": the anchor certifies the identity of the parties below it (T2), not that they are listed (T1). */
+    const val IDENTITY = "diw.identity"
 }
 
 fun trustMetadata(
@@ -33,15 +36,17 @@ fun trustMetadata(
     official: Boolean,
     source: String,
     privacyPolicyUrl: String? = null,
+    identity: Boolean = false,
 ): TrustMetadata = TrustMetadata(
     displayName = displayName,
     privacyPolicyUrl = privacyPolicyUrl,
     testOnly = environment == TrustEnvironment.TEST,
-    extensions = mapOf(
-        TrustMetadataKeys.ENVIRONMENT to environment.id,
-        TrustMetadataKeys.OFFICIAL to official.toString(),
-        TrustMetadataKeys.SOURCE to source,
-    )
+    extensions = buildMap {
+        put(TrustMetadataKeys.ENVIRONMENT, environment.id)
+        put(TrustMetadataKeys.OFFICIAL, official.toString())
+        put(TrustMetadataKeys.SOURCE, source)
+        if (identity) put(TrustMetadataKeys.IDENTITY, "true")
+    }
 )
 
 /** Result of a chain lookup in one role across enabled environments. */
@@ -72,6 +77,11 @@ class TrustRegistry(
     private val storage: Storage,
     var policy: EnvironmentPolicy,
 ) {
+    private companion object {
+        /** The system store holds web PKI CAs: they may identify issuers, verifiers and status list signers, nothing else. */
+        val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST)
+    }
+
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
 
     fun manager(role: TrustRole, environment: TrustEnvironment): TrustManager =
@@ -86,21 +96,34 @@ class TrustRegistry(
         displayName: String,
         official: Boolean,
         source: String,
+        identity: Boolean = false,
     ): Boolean = try {
         manager(role, environment).addX509Cert(
             certificate,
-            trustMetadata(displayName, environment, official, source)
+            trustMetadata(displayName, environment, official, source, identity = identity)
         )
         true
     } catch (_: TrustEntryAlreadyExistsException) {
         false
     }
 
+    /**
+     * Adds the [BuiltInAnchors] (Taiwan GPKI) as PRODUCTION identity anchors for their roles; anchors already stored
+     * are left as they are. Returns how many were added.
+     */
+    suspend fun seedBuiltInAnchors(): Int {
+        var added = 0
+        for (a in BuiltInAnchors.all) for (role in a.roles) {
+            if (addAnchor(role, TrustEnvironment.PRODUCTION, a.certificate, a.name, official = false, source = BuiltInAnchors.SOURCE, identity = true)) added++
+        }
+        return added
+    }
+
     suspend fun anchors(role: TrustRole, environment: TrustEnvironment): List<Pair<X509Cert, TrustMetadata>> =
         manager(role, environment).getTrustPoints().map { it.certificate to it.metadata }
 
-    /** Every stored X.509 anchor of every role and environment, enabled or not. */
-    suspend fun allAnchors(): List<StoredAnchor> = TrustEnvironment.entries.flatMap { env ->
+    /** Every stored X.509 anchor of every role and environment, enabled or not (the system store is not stored here). */
+    suspend fun allAnchors(): List<StoredAnchor> = TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.flatMap { env ->
         TrustRole.entries.flatMap { role ->
             manager(role, env).getEntries().filterIsInstance<TrustEntryX509Cert>()
                 .map { StoredAnchor(role, env, it.certificate, it.metadata, it.identifier) }
@@ -126,9 +149,21 @@ class TrustRegistry(
     ): AnchorMatch? {
         if (chain.isEmpty()) return null
         for (env in policy.enabledEnvironments()) {
-            val result = manager(role, env).verify(chain, atTime, validateCaValidity = true, docType = docType)
-            if (result.isTrusted) {
-                val point = result.trustPoints.first()
+            if (env == TrustEnvironment.SYSTEM) {
+                if (role !in SYSTEM_ROLES) continue
+                val anchor = runCatching { SystemTrustStore.anchorOf(chain, atTime) }.getOrNull() ?: continue
+                val name = anchor.subject.components[org.multipaz.asn1.OID.COMMON_NAME.oid]?.value ?: anchor.displaySubject()
+                return AnchorMatch(env, trustMetadata("系統憑證庫：$name", env, official = false, source = "system"), false, anchor)
+            }
+            val m = manager(role, env)
+            // Multipaz handles EC chains; an RSA chain (GPKI, web PKI) makes it throw and is validated with PKIX.
+            val result = runCatching { m.verify(chain, atTime, validateCaValidity = true, docType = docType) }.getOrNull()
+            // Only when Multipaz could not evaluate the chain: an EC chain it found untrusted stays untrusted.
+            val point = if (result != null) result.trustPoints.firstOrNull()?.takeIf { result.isTrusted } else {
+                val points = m.getTrustPoints()
+                Pkix.anchorOf(chain, points.map { it.certificate }, atTime)?.let { a -> points.first { it.certificate == a } }
+            }
+            if (point != null) {
                 val official = point.metadata.extensions[TrustMetadataKeys.OFFICIAL] == "true" &&
                     env == TrustEnvironment.PRODUCTION
                 return AnchorMatch(env, point.metadata, official, point.certificate)
@@ -150,12 +185,15 @@ class TrustRegistry(
                 reasons = listOf("Certificate chain does not lead to an enabled trust anchor")
             )
         }
+        val identity = m.environment == TrustEnvironment.PRODUCTION && m.metadata.extensions[TrustMetadataKeys.IDENTITY] == "true"
         val labels = buildSet {
             if (m.environment == TrustEnvironment.TEST) add(TrustLabel.TEST_ANCHOR)
             if (m.environment == TrustEnvironment.USER) add(TrustLabel.USER_ANCHOR)
+            if (m.environment == TrustEnvironment.SYSTEM) add(TrustLabel.SYSTEM_ANCHOR)
+            if (identity && !m.official) add(TrustLabel.IDENTITY_VERIFIED)
         }
         return TrustDecision(
-            tier = tierFor(m.environment, m.official, cryptographicallyVerified = true),
+            tier = if (identity && !m.official) TrustTier.T2 else tierFor(m.environment, m.official, cryptographicallyVerified = true),
             environment = m.environment,
             official = m.official,
             anchorName = m.metadata.displayName,

@@ -13,6 +13,7 @@ import diw.wallet.core.util.DiwJson
 import androidx.compose.foundation.layout.fillMaxSize
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
+import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -32,6 +33,7 @@ import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -63,7 +65,12 @@ class WalletModelE2eTest {
     private val pin = "246810"
 
     /** Software-only platform; the browser step follows the issuer's auto-approve redirect and feeds it back like a deep link. */
-    private inner class TestPlatform(val storage: Storage, val proxied: Boolean = false) : PlatformServices {
+    private inner class TestPlatform(
+        val storage: Storage,
+        val proxied: Boolean = false,
+        /** Replaces the network, for hosts the local test servers cannot stand in for (https did:web). */
+        val client: (() -> HttpClient)? = null,
+    ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
         override val platformName = "test"
@@ -71,7 +78,7 @@ class WalletModelE2eTest {
         override suspend fun openStorage() = storage
         override suspend fun keyBackends(storage: Storage, pinPrompt: suspend (String) -> String?) = listOf(softwareBackend(storage, pinPrompt))
         override fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider = PinOrPlatformUnlock(pinPrompt, null)
-        override fun httpClient() = HttpClient(Java) {
+        override fun httpClient() = client?.invoke() ?: HttpClient(Java) {
             followRedirects = false
             val proxy = System.getenv("HTTPS_PROXY") ?: System.getenv("https_proxy")
             if (proxied && !proxy.isNullOrBlank()) engine { this.proxy = io.ktor.client.engine.ProxyBuilder.http(io.ktor.http.Url(proxy)) }
@@ -486,6 +493,129 @@ class WalletModelE2eTest {
         assertTrue(m.back())
         assertFalse(m.proximity.listening.value)
         reader.close()
+    }
+
+    /**
+     * The Digital Credentials API with the ISO mdoc protocol (ISO/IEC 18013-7 Annex C): the page's DeviceRequest on the
+     * wallet's consent screen, and a DeviceResponse HPKE-encrypted to the page's key and bound to its origin, which
+     * the page decrypts and verifies.
+     */
+    @Test
+    fun dcApiIsoMdocPresentation() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        val origin = "https://verifier.example.com"
+        val nonce = ByteString(diw.wallet.core.jose.PlatformCrypto.randomBytes(16))
+        val pageKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)
+        val request = org.multipaz.verification.VerificationUtil.generateDcRequestMdoc(
+            exchangeProtocols = listOf("org-iso-mdoc"),
+            docType = "org.iso.18013.5.1.mDL",
+            claims = listOf(org.multipaz.request.MdocRequestedClaim(docType = "org.iso.18013.5.1.mDL", namespaceName = "org.iso.18013.5.1", dataElementName = "family_name", intentToRetain = false)),
+            nonce = nonce,
+            origin = origin,
+            responseEncryptionKey = pageKey.publicKey,
+            verifierIdentities = emptyList(),
+            zkSystemSpecs = emptyList(),
+        )
+        val entry = request["requests"]!!.jsonArray.single().jsonObject
+        val answer = async(Dispatchers.Default) { m.proximity.presentDcApi("org-iso-mdoc", entry["data"]!!.jsonObject, origin, null) }
+        val consent = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent")
+        assertEquals(ProximityChannel.DC_API, consent.channel)
+        assertEquals(origin, consent.verifier, "an unauthenticated page is named by its origin")
+        m.proximity.approve(consent)
+        val response = assertNotNull(withTimeout(30.seconds) { answer.await() })
+        val clear = org.multipaz.verification.VerificationUtil.decryptDcResponse(response, nonce, origin, org.multipaz.crypto.AsymmetricKey.anonymous(pageKey))
+        assertIs<org.multipaz.verification.MdocApiDcResponse>(clear)
+        val deviceResponse = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(clear.deviceResponse)
+        deviceResponse.verify(sessionTranscript = clear.sessionTranscript)
+        assertEquals(setOf("family_name"), deviceResponse.documents.single().issuerNamespaces.data.getValue("org.iso.18013.5.1").keys)
+        val entryLog = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertTrue(entryLog.note!!.contains("Annex C"), "note: ${entryLog.note}")
+    }
+
+    /**
+     * A held document follows its trust sources: removing the anchor it was trusted through judges it again (here it
+     * moves to another anchor, then to no anchor), and adding an anchor brings an unanchored document under it. Each
+     * change is written to the document and recorded.
+     */
+    @Test
+    fun trustSourceChangesReevaluateHeldDocuments() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        suspend fun record(): diw.wallet.core.oid4vci.IssuanceRecord {
+            m.refreshDocuments().join()
+            return assertNotNull(m.documents.value.single().issuanceRecord)
+        }
+        assertEquals("DIW TEST IACA", record().anchorName)
+        val pem = http.get("$base/pki/iaca.pem").bodyAsText()
+        m.importAnchor(pem, "Example IACA", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        // Already anchored: a new source does not move it.
+        assertEquals("DIW TEST IACA", record().anchorName)
+
+        m.loadAnchors().join()
+        val testIaca = m.anchors.value!!.first {
+            it.environment == TrustEnvironment.TEST && it.role == diw.wallet.core.trust.TrustRole.ISSUER && it.metadata.displayName == "DIW TEST IACA"
+        }
+        m.removeAnchor(testIaca).join()
+        assertEquals("Example IACA", record().anchorName)
+        assertEquals(TrustEnvironment.USER, record().trustEnvironment)
+
+        val user = m.anchors.value!!.first { it.environment == TrustEnvironment.USER }
+        m.removeAnchor(user).join()
+        assertNull(record().anchorName, "the removed anchor is no longer shown")
+        assertNull(record().trustEnvironment)
+
+        m.importAnchor(pem, "Example IACA", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        assertEquals("Example IACA", record().anchorName)
+        val notes = m.history.value.filter { it.kind == HistoryKind.STATUS }.mapNotNull { it.note }
+        assertTrue(notes.any { "移除信任錨點「DIW TEST IACA」" in it }, "notes: $notes")
+        assertTrue(notes.any { "移除信任錨點「Example IACA」" in it }, "notes: $notes")
+        assertTrue(notes.any { "加入信任錨點" in it }, "notes: $notes")
+    }
+
+    /**
+     * A DID the user trusts stays trusted when its Linked Domains configuration cannot be verified: the user's own
+     * decision is asked before the domain linkage, whose failure would otherwise make it T4.
+     */
+    @Test
+    fun userTrustedDidOverridesBrokenDomainLink() = runBlocking<Unit> {
+        val host = "partner.mock.example"
+        val did = "did:web:$host"
+        val jwk = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey.toJwk()
+        val doc = buildJsonObject {
+            put("id", did)
+            putJsonArray("verificationMethod") {
+                add(buildJsonObject { put("id", "$did#key1"); put("type", "JsonWebKey2020"); put("controller", did); put("publicKeyJwk", jwk) })
+            }
+            putJsonArray("assertionMethod") { add("$did#key1") }
+            putJsonArray("service") {
+                add(buildJsonObject { put("id", "$did#domain"); put("type", "LinkedDomains"); put("serviceEndpoint", "https://$host/") })
+            }
+        }
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            if (request.url.host == host && request.url.encodedPath == "/.well-known/did.json") {
+                respond(doc.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                // The domain's did-configuration.json, the TWDIW list and anything else are unreachable.
+                respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        val before = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
+        assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
+        m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        val after = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
+        assertEquals(TrustTier.T3, after.tier)
+        assertEquals(TrustEnvironment.USER, after.environment)
+        assertEquals("Partner", after.anchorName)
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */

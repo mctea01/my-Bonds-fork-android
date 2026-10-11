@@ -54,6 +54,7 @@ private fun environmentTitle(e: TrustEnvironment): String = when (e) {
     TrustEnvironment.PRODUCTION -> "正式錨點"
     TrustEnvironment.USER -> "使用者匯入（T3，非官方）"
     TrustEnvironment.TEST -> "測試錨點"
+    TrustEnvironment.SYSTEM -> "系統憑證庫（T3，非官方）"
 }
 
 /** One certificate in one environment with every role it is an anchor for. */
@@ -74,7 +75,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
     var removing by remember { mutableStateOf<AnchorGroup?>(null) }
     LaunchedEffect(Unit) { model.loadAnchors() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("信任錨點決定哪些發行端、查驗方與狀態清單可以信任。官方清單內的組織為 T1；自行匯入的根憑證與自行信任的 DID 為 T3（可驗證但非官方），會被接受但不會顯示為官方。測試錨點只在開啟測試環境時使用。",
+        Text("信任錨點決定哪些發行端、查驗方與狀態清單可以信任。官方清單內的組織為 T1；內建的政府憑證（GPKI）證明對方身分，為 T2；自行匯入的根憑證、自行信任的 DID 與系統憑證庫為 T3（可驗證但非官方），會被接受但不會顯示為官方。測試錨點只在開啟測試環境時使用。",
             style = MaterialTheme.typography.bodyMedium)
 
         SectionTitle("DID 信任來源")
@@ -97,7 +98,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
         if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
             val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }
-            TrustEnvironment.entries.forEach { env ->
+            TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.forEach { env ->
                 val inEnv = groups.filter { it.environment == env }
                 Text(environmentTitle(env) + "（${inEnv.size}）", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
                 if (env == TrustEnvironment.TEST && !settings.testEnvironment && inEnv.isNotEmpty()) {
@@ -105,15 +106,17 @@ fun TrustAnchorsScreen(model: WalletModel) {
                 }
                 if (inEnv.isEmpty()) Text(
                     when (env) {
-                        TrustEnvironment.PRODUCTION -> "目前沒有內建的正式 X.509 錨點；數位憑證皮夾的組織以 DID 與區塊鏈驗證。"
+                        TrustEnvironment.PRODUCTION -> "尚未載入內建錨點。"
                         TrustEnvironment.USER -> "尚未匯入。可在下方貼上其他國家、組織或企業的根憑證。"
                         TrustEnvironment.TEST -> "尚未匯入。測試錨點在「設定 > 測試環境」匯入。"
+                        TrustEnvironment.SYSTEM -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
                 inEnv.forEach { g -> AnchorCard(g) { removing = g } }
             }
         }
+        SystemStoreSection(model)
         ImportAnchorSection(model)
     }
     removing?.let { g ->
@@ -149,7 +152,28 @@ private fun AnchorCard(g: AnchorGroup, onRemove: () -> Unit) {
             Text("有效至 " + localTime(a.certificate.validityNotAfter), style = MaterialTheme.typography.bodySmall)
             a.source?.takeIf { it != "pasted" }?.let { Text("來源：$it", style = MaterialTheme.typography.bodySmall) }
             if (a.official) Text("官方來源", style = MaterialTheme.typography.bodySmall)
+            if (a.metadata.extensions[diw.wallet.core.trust.TrustMetadataKeys.IDENTITY] == "true") {
+                Text("內建：證明對方身分（T2），不代表列於發行端清單", style = MaterialTheme.typography.bodySmall)
+            }
         }
+    }
+}
+
+/** The platform's certificate store: on or off, and how many authorities it holds. */
+@Composable
+private fun SystemStoreSection(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    var count by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(Unit) { count = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { diw.wallet.core.trust.SystemTrustStore.anchors().size } }
+    HorizontalDivider()
+    SectionTitle(environmentTitle(TrustEnvironment.SYSTEM))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("信任系統憑證庫", style = MaterialTheme.typography.titleSmall)
+            Text("憑證鏈連到這台裝置的系統根憑證（公開憑證機構）時，接受為發行端、查驗方或狀態清單簽署者，信任等級 T3，不顯示為官方。" +
+                (count?.let { "目前系統憑證庫有 $it 個根憑證。" } ?: ""), style = MaterialTheme.typography.bodySmall)
+        }
+        androidx.compose.material3.Switch(checked = settings.systemTrustStore, onCheckedChange = { v -> model.updateSettings { it.copy(systemTrustStore = v) } })
     }
 }
 

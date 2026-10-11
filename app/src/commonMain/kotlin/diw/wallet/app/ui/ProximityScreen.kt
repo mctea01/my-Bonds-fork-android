@@ -122,18 +122,18 @@ private fun ReadyView(model: WalletModel, s: ProximityUi.Ready) {
 private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val extra = buildList {
-            add("出示方式：${s.channel.title}（ISO/IEC 18013-5）")
-            if (s.chain.isEmpty()) add("查驗設備沒有提供身分憑證（reader authentication），無法確認是誰在讀取。")
+            add("出示方式：${s.channel.title}（${s.channel.spec}）")
+            if (s.chain.isEmpty()) add("對方沒有提供身分憑證（reader authentication），無法確認是誰在讀取。")
             if (s.retained.isNotEmpty()) add("對方表示會保存：" + s.retained.joinToString("、"))
         }
-        TrustCard("查驗設備", s.verifier, s.trust, extra)
+        TrustCard(if (s.channel == diw.wallet.app.ProximityChannel.DC_API) "查驗方" else "查驗設備", s.verifier, s.trust, extra)
         if (s.chain.isNotEmpty()) {
             LabelValue("查驗設備憑證", s.chain.first().displaySubject(), small = true) {
                 model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity)
             }
         }
         val statusOk = requestedDocuments(model, s.items, s.risk, s.trust.tier, s)
-        val ok = riskAcknowledgement(s.trust.tier)
+        val ok = riskAcknowledgement(s.trust)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk) { Text("同意分享") }
             OutlinedButton(onClick = { model.proximity.decline(s) }) { Text("拒絕") }

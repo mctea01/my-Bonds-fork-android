@@ -125,6 +125,8 @@ data class WalletSettings(
      * for readers that only read a static handover select message.
      */
     val nfcStaticHandover: Boolean = false,
+    /** Trust chains to the platform's certificate store (public web PKI) as T3. */
+    val systemTrustStore: Boolean = true,
 )
 
 /**
@@ -274,8 +276,12 @@ class WalletModel(val platform: PlatformServices) {
     val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
     /** DIDs the user trusts themselves, outside any national list. */
     val userDids: UserDidTrust by lazy { UserDidTrust(storage) }
-    /** Trust for parties identified by a DID: the TWDIW trust list first, then Linked Domains, then the user's own list. */
-    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, linkedDomains, userDids))
+    /**
+     * Trust for parties identified by a DID: the TWDIW trust list first, then the DIDs the user trusts, then Linked
+     * Domains. The user's own decision comes before Linked Domains, so a link that cannot be fetched or verified does
+     * not override a DID the user chose to trust.
+     */
+    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, userDids, linkedDomains))
     val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrust, twdiwPlatform)
     /** One instance, so custom field values attached before a response reach the response. */
     val twdiwPresentation = TwdiwPresentationDialect { did, host -> twdiwTrust.hostRegistered(did, host) }
@@ -303,6 +309,7 @@ class WalletModel(val platform: PlatformServices) {
         get() = EnvironmentPolicy(
             testEnvironmentEnabled = settings.testEnvironment,
             allowInsecureLoopbackHttp = settings.allowLoopbackHttp,
+            systemStoreEnabled = settings.systemTrustStore,
         )
 
     val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }
@@ -316,6 +323,8 @@ class WalletModel(val platform: PlatformServices) {
         documentStore = buildDocumentStore(storage, repo) { addDiwCredentialImplementations(repo) }
         holderIdentities = HolderIdentities(storage, repo)
         trust = TrustRegistry(storage, environmentPolicy)
+        // The Taiwan GPKI anchors in operation are trusted without an import (identity, T2).
+        runCatching { trust.seedBuiltInAnchors() }
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
@@ -1019,7 +1028,7 @@ class WalletModel(val platform: PlatformServices) {
                     ConsentItem(
                         line.documentName, line.claims.map { claimLabels.label(it.split('.'), record?.claimNames.orEmpty(), null) }, null,
                         documentId = line.document.identifier,
-                        sensitivity = ClaimSensitivity.ofAll(line.claims.map { it.split('.') }),
+                        sensitivity = lineSensitivity(line.document, line.claims),
                     )
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
@@ -1029,6 +1038,19 @@ class WalletModel(val platform: PlatformServices) {
         // A status older than the request's risk allows is queried again while the user reads the request.
         status.refreshFor(consent.items.mapNotNull { it.documentId }, risk)
         return consent.copy(risk = risk)
+    }
+
+    /**
+     * Sensitivity of what a presentation line discloses. A whole credential ("*", a Presentation Exchange descriptor
+     * without fields) discloses every claim it holds, and is never below the document's own risk.
+     */
+    private suspend fun lineSensitivity(document: Document, claims: List<String>): RiskLevel {
+        val whole = claims.any { it == "*" || it.isEmpty() }
+        if (!whole) return ClaimSensitivity.ofAll(claims.map { it.split('.') })
+        val all = runCatching {
+            document.getCertifiedCredentials().firstOrNull()?.let { ClaimReader.read(it, documentTypes).map { c -> c.path } }
+        }.getOrNull().orEmpty()
+        return RiskLevel.max(ClaimSensitivity.ofAll(all), StatusMonitor.riskOf(document.issuanceRecord))
     }
 
     /** [values] are the holder's entries for the request's custom fields, by field name. */
@@ -1127,6 +1149,8 @@ class WalletModel(val platform: PlatformServices) {
             }
             message.value = if (added == 0) "這些憑證已經是信任錨點" else "已加入 $added 個信任錨點（使用者自訂，信任等級 T3）"
             loadAnchors()
+            // Documents whose issuer had no anchor may chain to the new one.
+            if (added > 0) status.reevaluateIssuers("加入信任錨點", affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
         } catch (e: Exception) {
             message.value = "匯入失敗：" + describe(e)
         }
@@ -1136,6 +1160,9 @@ class WalletModel(val platform: PlatformServices) {
         if (anchor.environment == TrustEnvironment.PRODUCTION) return@launch
         trust.removeAnchor(anchor)
         loadAnchors()
+        // Documents trusted through this anchor are judged again and no longer show it.
+        val name = anchor.metadata.displayName
+        status.reevaluateIssuers("移除信任錨點「$name」", affected = { it.trustEnvironment == anchor.environment && it.anchorName == name })
     }
 
     /** Trusts [did] for [roles] as the user's own anchor. */
@@ -1148,14 +1175,19 @@ class WalletModel(val platform: PlatformServices) {
             userDids.put(d, name, roles, kotlin.time.Clock.System.now().epochSeconds)
             message.value = "已信任 ${name.trim().ifEmpty { d }}"
             loadAnchors()
+            status.reevaluateIssuers("信任 DID", affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
         } catch (e: Exception) {
             message.value = "無法加入：" + describe(e)
         }
     }
 
     fun untrustDid(did: String) = scope.launch {
+        val name = userDids.all().firstOrNull { it.did == did }?.name
         userDids.remove(did)
         loadAnchors()
+        if (name != null) {
+            status.reevaluateIssuers("不再信任 DID「$name」", affected = { it.trustEnvironment == TrustEnvironment.USER && it.anchorName == name })
+        }
     }
 
     // ---------------------------------------------------------------- helpers

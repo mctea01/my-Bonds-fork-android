@@ -13,6 +13,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -42,16 +44,19 @@ import org.multipaz.presentment.Iso18013Presentment
 import org.multipaz.presentment.PresentmentCanceledException
 import org.multipaz.presentment.PresentmentCannotSatisfyRequestException
 import org.multipaz.presentment.SimplePresentmentSource
+import org.multipaz.presentment.digitalCredentialsPresentment
 import org.multipaz.request.MdocRequestedClaim
 import org.multipaz.request.Requester
 import org.multipaz.util.UUID
 import org.multipaz.util.toBase64Url
 import kotlin.time.Duration.Companion.minutes
 
-/** How a proximity (ISO/IEC 18013-5) presentation was engaged. */
-enum class ProximityChannel(val title: String) {
-    NFC("NFC 感應"),
-    QR("QR Code"),
+/** How an ISO mdoc presentation was started. */
+enum class ProximityChannel(val title: String, val spec: String) {
+    NFC("NFC 感應", "ISO/IEC 18013-5"),
+    QR("QR Code", "ISO/IEC 18013-5"),
+    /** A web page or app through the Digital Credentials API, protocol org-iso-mdoc. */
+    DC_API("瀏覽器或 App（Digital Credentials API）", "ISO/IEC 18013-7 Annex C"),
 }
 
 /** What the proximity presentation screen shows. */
@@ -262,7 +267,60 @@ class ProximityModel(private val model: WalletModel) {
         else -> "近距離出示失敗：" + model.describe(e)
     }
 
-    private fun note(channel: ProximityChannel) = "近距離出示（ISO/IEC 18013-5，${channel.title}）"
+    private fun note(channel: ProximityChannel) =
+        if (channel == ProximityChannel.DC_API) "${channel.title}，${channel.spec}" else "近距離出示（${channel.spec}，${channel.title}）"
+
+    /**
+     * A Digital Credentials API request in the ISO mdoc protocol (ISO/IEC 18013-7 Annex C): the DeviceRequest is
+     * answered on the same consent screen as in person, and the DeviceResponse is HPKE-encrypted to the page's key,
+     * bound to its origin. Returns the response object ({protocol, data}), or null when the user declines or the
+     * request cannot be answered; a failure stays on screen until the user leaves it.
+     */
+    suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String, appId: String?): JsonObject? {
+        cancel()
+        listening.value = false
+        state.value = ProximityUi.Working("驗證請求中")
+        model.screen.value = Screen.Proximity
+        var shared: Shared? = null
+        var refused: Shared? = null
+        val channel = ProximityChannel.DC_API
+        return try {
+            val response = withContext(model.unlockProvider) {
+                digitalCredentialsPresentment(
+                    protocol = protocol,
+                    data = data,
+                    appId = appId,
+                    origin = origin,
+                    preselectedDocuments = emptyList(),
+                    source = source(channel, onShared = { shared = it }, onRefused = { refused = it }),
+                )
+            }
+            shared?.let { s ->
+                state.value = ProximityUi.Done(s.verifier, s.items.map { it.documentName })
+                model.record(HistoryKind.PRESENTED, s.verifier, s.trust, s.items.map { it.documentName }, s.items.flatMap { it.claims }, note(channel))
+            }
+            response
+        } catch (e: CancellationException) {
+            state.value = ProximityUi.Ready()
+            throw e
+        } catch (e: PresentmentCanceledException) {
+            refused?.let { model.record(HistoryKind.DECLINED, it.verifier, it.trust, it.items.map { i -> i.documentName }, it.items.flatMap { i -> i.claims }, note(channel)) }
+            null
+        } catch (e: PresentmentCannotSatisfyRequestException) {
+            failAndWait("這支手機沒有對方要求的證件。")
+        } catch (e: Exception) {
+            failAndWait("請求無法處理：" + model.describe(e))
+        } finally {
+            model.endOperation()
+        }
+    }
+
+    /** Shows why a request failed and waits until the user leaves the screen. */
+    private suspend fun failAndWait(message: String): JsonObject? {
+        state.value = ProximityUi.Failed(message)
+        model.screen.first { it != Screen.Proximity }
+        return null
+    }
 
     /** The presentment source: the wallet's documents, with the wallet's consent screen in place of Multipaz's prompt. */
     private fun source(channel: ProximityChannel, onShared: (Shared) -> Unit, onRefused: (Shared) -> Unit) = SimplePresentmentSource(
@@ -309,7 +367,8 @@ class ProximityModel(private val model: WalletModel) {
             // The reader's signature over the request was verified against this chain before the prompt.
             model.trust.decide(TrustRole.VERIFIER, chain)
         }
-        val verifier = chain.firstOrNull()?.let { c -> c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject() } ?: "未提供身分的查驗設備"
+        val verifier = chain.firstOrNull()?.let { c -> c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject() }
+            ?: requester.origin ?: requester.appId ?: "未提供身分的查驗設備"
         val risk = WalletModel.requestRisk(items, trust.tier)
         model.status.refreshFor(items.mapNotNull { it.documentId }, risk)
         val answer = CompletableDeferred<Boolean>()

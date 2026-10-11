@@ -45,13 +45,19 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.TIME_NOT_VERIFIED -> "時間未驗證"
     TrustLabel.UNSIGNED_METADATA -> "發行端資訊未簽章"
     TrustLabel.KEY_NOT_ATTESTED -> "金鑰未經證明"
+    TrustLabel.LINKED_DOMAIN -> "網域已驗證（Microsoft Verified ID 規範）"
+    TrustLabel.SYSTEM_ANCHOR -> "系統憑證庫（公開憑證機構）"
+    TrustLabel.IDENTITY_VERIFIED -> "身分由政府憑證（GPKI）證明"
 }
 
 /** One-line advice per tier; official or compliant parties get the short form. */
 fun tierAdvice(t: TrustDecision): String = when {
     t.environment == TrustEnvironment.TEST -> "這是測試環境，結果不具任何正式效力。"
     t.tier == TrustTier.T1 -> "官方信任清單內的對象。"
+    TrustLabel.IDENTITY_VERIFIED in t.labels -> "身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。證明對方是誰，不代表它列於數位憑證皮夾的發行端或查驗方清單。"
     t.tier == TrustTier.T2 -> "身分已由其憑證證明，但不在官方清單。"
+    TrustLabel.LINKED_DOMAIN in t.labels -> "已確認對方擁有網域 ${t.anchorName ?: ""}（DIF Well-Known DID Configuration，與 Microsoft Authenticator 相同的驗證方式）。這證明網域擁有權，不代表組織列於官方清單。"
+    TrustLabel.SYSTEM_ANCHOR in t.labels -> "憑證鏈連到系統憑證庫的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱，但不在官方清單。"
     t.tier == TrustTier.T3 -> "簽章有效，但無法確認對方是誰。請確認你認識這個對象再繼續。"
     else -> "無法驗證對方身分。除非你確定來源，否則不要分享或接受。"
 }

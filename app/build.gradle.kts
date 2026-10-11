@@ -57,6 +57,7 @@ kotlin {
                 implementation(project(":test-servers"))
                 implementation(libs.ktor.server.netty)
                 implementation(libs.ktor.client.java)
+                implementation(libs.ktor.client.mock)
             }
         }
     }

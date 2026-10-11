@@ -68,6 +68,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val tab by model.tab.collectAsState()
     val settings by model.settingsFlow.collectAsState()
     val msg by model.message.collectAsState()
+    val proximityListening by model.proximity.listening.collectAsState()
     val pin by model.pinRequest.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
@@ -90,7 +91,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
             topBar = {
                 Column {
                     TopAppBar(
-                        title = { Text(titleFor(screen, tab)) },
+                        title = { Text(if (screen == Screen.Proximity && !proximityListening) "出示證件" else titleFor(screen, tab)) },
                         navigationIcon = {
                             if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
                         },

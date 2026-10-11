@@ -272,8 +272,10 @@ class MsVerifiedIdTest {
         val request = assertNotNull(issuance.resolve(uri))
         assertEquals("模擬員工證", request.cardTitle)
         assertEquals("模擬人資系統", request.clientName)
-        // Linked Domains proves the domain, not the organisation: T3 with the domain as the name.
+        // Linked Domains proves the domain, not the organisation: T3 with the domain as the name, labelled as the
+        // verified domain Microsoft Authenticator shows.
         assertEquals(TrustTier.T3, request.trust.tier)
+        assertTrue(diw.wallet.core.trust.TrustLabel.LINKED_DOMAIN in request.trust.labels, "labels: ${request.trust.labels}")
         assertEquals(HOST, request.trust.anchorName)
         assertEquals(listOf("displayName"), request.selfIssuedClaims.map { it.claim })
         assertTrue(request.tokenRequirements.single().injected)

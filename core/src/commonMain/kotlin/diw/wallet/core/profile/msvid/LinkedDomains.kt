@@ -34,11 +34,14 @@ sealed interface LinkedDomainResult {
 
 /**
  * Linked Domains (DIF Well Known DID Configuration), the root of trust Microsoft Entra Verified ID uses for issuers
- * and verifiers: the DID document names a LinkedDomains origin, and that origin's /.well-known/did-configuration.json
- * holds a DomainLinkageCredential signed by the same DID. HTTPS only and no redirects.
+ * and verifiers, checked as the Microsoft wallet library (LinkedDomainsService, JwtDomainLinkageCredentialValidator)
+ * does: the DID document names a LinkedDomains origin; that origin's /.well-known/did-configuration.json, fetched
+ * over HTTPS without redirects, holds a DomainLinkageCredential JWT whose header kid names the DID, signed by it,
+ * with iss, sub and credentialSubject.id equal to the DID and credentialSubject.origin equal to the origin.
  *
- * It proves control of a domain, not who the organisation is, so a verified link is T3 (verifiable, not anchored in
- * an official list) with the domain as the shown name; a declared link that fails is T4.
+ * A verified link is what Microsoft Authenticator shows as a verified domain: T3 here (verifiable, not on an official
+ * list) with the LINKED_DOMAIN label and the domain as the shown name, accepted without a warning. A declared link
+ * that fails is T4, which Authenticator shows as a full-page warning.
  */
 class LinkedDomains(
     private val httpClient: HttpClient,
@@ -48,8 +51,9 @@ class LinkedDomains(
     private val cache = mutableMapOf<String, Pair<LinkedDomainResult, Instant>>()
 
     override suspend fun decide(did: String, role: TrustRole): TrustDecision? = when (val r = verify(did)) {
-        is LinkedDomainResult.Verified -> TrustDecision(TrustTier.T3, null, false, Url(r.origin).host, setOf(TrustLabel.UNKNOWN_ANCHOR),
-            listOf("Domain ${r.origin} is linked to $did (DIF Well Known DID Configuration); the organisation itself is not verified"))
+        // Microsoft Entra Verified ID's root of trust: a verified domain, shown as verified without a warning.
+        is LinkedDomainResult.Verified -> TrustDecision(TrustTier.T3, null, false, Url(r.origin).host, setOf(TrustLabel.LINKED_DOMAIN),
+            listOf("Domain ${r.origin} is linked to $did (DIF Well Known DID Configuration, the Microsoft Entra Verified ID root of trust); the organisation itself is not on an official list"))
         is LinkedDomainResult.Unverified -> TrustDecision(TrustTier.T4, null, false, null, setOf(TrustLabel.UNKNOWN_ANCHOR),
             listOf("Linked domain ${r.origin} could not be verified: ${r.reason}"))
         LinkedDomainResult.Missing -> null

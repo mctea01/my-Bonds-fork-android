@@ -23,6 +23,18 @@ enum class TrustLabel {
     TIME_NOT_VERIFIED,
     UNSIGNED_METADATA,
     KEY_NOT_ATTESTED,
+
+    /**
+     * The party's DID is linked to its domain per DIF Well Known DID Configuration, the root of trust of Microsoft
+     * Entra Verified ID (shown as a verified domain, as Microsoft Authenticator does).
+     */
+    LINKED_DOMAIN,
+
+    /** The chain leads to the platform's certificate store (public web PKI). */
+    SYSTEM_ANCHOR,
+
+    /** A built-in anchor certifies who the party is (Taiwan GPKI), not that it is a listed issuer: T2. */
+    IDENTITY_VERIFIED,
 }
 
 /**

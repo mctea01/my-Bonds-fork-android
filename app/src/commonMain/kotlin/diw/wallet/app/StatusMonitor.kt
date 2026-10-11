@@ -33,7 +33,12 @@ import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
+import org.multipaz.cose.Cose
+import org.multipaz.cose.CoseNumberLabel
 import org.multipaz.document.Document
+import org.multipaz.mdoc.credential.MdocCredential
+import org.multipaz.sdjwt.SdJwt
+import org.multipaz.sdjwt.credential.SdJwtVcCredential
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.storage.StorageTableSpec
 import kotlin.time.Clock
@@ -231,18 +236,47 @@ class StatusMonitor(private val model: WalletModel) {
         return runCatching { model.didTrust.decideOrDefault(did, TrustRole.ISSUER, "Not listed by any trust source") }.getOrNull()
     }
 
-    private suspend fun applyTrust(doc: Document, trust: TrustDecision): Boolean {
+    private suspend fun applyTrust(doc: Document, trust: TrustDecision, why: String = "重新查驗信任清單與區塊鏈註冊"): Boolean {
         val record = doc.issuanceRecord ?: return false
-        if (record.tier == trust.tier.name && record.anchorName == trust.anchorName && record.official == trust.official) return false
-        val before = WalletModel.tierTitle(record.trustTier)
+        if (record.tier == trust.tier.name && record.anchorName == trust.anchorName && record.official == trust.official &&
+            record.environment == trust.environment?.id) return false
+        val before = WalletModel.tierTitle(record.trustTier) + (record.anchorName?.let { "（$it）" } ?: "")
         doc.edit { appData = record.withTrust(trust).encode() }
         val name = doc.displayName ?: "證件"
         model.record(
             HistoryKind.STATUS, issuerName(doc), trust, listOf(name),
-            note = "發行端信任：$before → ${WalletModel.tierTitle(trust.tier)}（重新查驗信任清單與區塊鏈註冊）", status = TRUST_CHANGE,
+            note = "發行端信任：$before → ${WalletModel.tierTitle(trust.tier)}" + (trust.anchorName?.let { "（$it）" } ?: "") + "，$why",
+            status = TRUST_CHANGE,
         )
-        model.message.value = "「$name」的發行端信任等級變更為 ${WalletModel.tierTitle(trust.tier)}"
+        model.message.value = "「$name」的發行端信任變更為 ${WalletModel.tierTitle(trust.tier)}"
         return true
+    }
+
+    /**
+     * Judges again the issuer of every held document that [affected] selects, after a trust source changed (an anchor
+     * or DID removed or added), and writes a changed trust to it with a history entry and a message. [accept] filters
+     * the new decisions, so that adding a source can only bring a document under that source.
+     */
+    suspend fun reevaluateIssuers(why: String, affected: (IssuanceRecord) -> Boolean, accept: (TrustDecision) -> Boolean = { true }) {
+        var changed = false
+        for (doc in model.documents.value) {
+            val record = doc.issuanceRecord ?: continue
+            if (!affected(record)) continue
+            val trust = runCatching { currentIssuerTrust(doc) }.getOrNull() ?: continue
+            if (accept(trust) && applyTrust(doc, trust, why)) changed = true
+        }
+        if (changed) model.refreshDocuments()
+    }
+
+    /** The issuer's trust by the sources as they are now: its DID, or its certificate chain (mdoc, SD-JWT VC x5c). */
+    private suspend fun currentIssuerTrust(doc: Document): TrustDecision? {
+        issuerDid(doc)?.let { return model.didTrust.decideOrDefault(it, TrustRole.ISSUER, "Not listed by any trust source") }
+        val chain = when (val cred = doc.getCertifiedCredentials().firstOrNull()) {
+            is MdocCredential -> cred.issuerAuth.unprotectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_X5CHAIN)]?.asX509CertChain?.certificates
+            is SdJwtVcCredential -> SdJwt.fromCompactSerialization(cred.issuerProvidedData.decodeToString()).x5c?.certificates
+            else -> null
+        } ?: return null
+        return model.trust.decide(TrustRole.ISSUER, chain)
     }
 
     private suspend fun issuerDid(doc: Document): String? {

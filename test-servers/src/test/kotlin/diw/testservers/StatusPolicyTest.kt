@@ -1,6 +1,7 @@
 package diw.testservers
 
 import diw.wallet.core.credential.ClaimSensitivity
+import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.status.RiskLevel
@@ -8,15 +9,23 @@ import diw.wallet.core.status.StatusAssurance
 import diw.wallet.core.status.StatusFinding
 import diw.wallet.core.status.StatusPolicy
 import diw.wallet.core.status.StatusVerdict
+import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.JkuKeys
 import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.trust.UserDidTrust
+import diw.wallet.core.util.ProtocolException
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
 import kotlinx.coroutines.runBlocking
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -124,5 +133,19 @@ class StatusPolicyTest {
         assertEquals(1, UserDidTrust(storage).all().size)
         trust.remove(did)
         assertNull(UserDidTrust(storage).decide(did, TrustRole.ISSUER))
+    }
+
+    /** A key set is fetched over HTTPS only, even when the test environment allows local HTTP for its servers. */
+    @Test
+    fun jkuIsHttpsOnly() = runBlocking<Unit> {
+        var fetched = 0
+        val http = HttpClient(MockEngine { fetched++; respond("""{"keys":[]}""") })
+        val policy = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true)
+        val keys = JkuKeys(http, TrustRegistry(EphemeralStorage(), policy), DidTrust.NONE)
+        for (url in listOf("http://127.0.0.1:8080/jwks", "http://10.0.2.2/jwks", "http://192.168.1.20/jwks")) {
+            val e = assertFailsWith<ProtocolException> { keys.resolve(url, "key-1", "did:web:127.0.0.1", TrustRole.STATUS_LIST) }
+            assertEquals("invalid_key", e.code)
+        }
+        assertEquals(0, fetched, "nothing is fetched over plain HTTP")
     }
 }

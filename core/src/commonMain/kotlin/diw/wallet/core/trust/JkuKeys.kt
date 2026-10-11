@@ -68,7 +68,8 @@ class JkuKeys(
      * fetches the set again instead of using the cached one.
      */
     suspend fun resolve(jku: String, kid: String?, signer: String?, role: TrustRole, refresh: Boolean = false): JkuKey {
-        if (!isAcceptableEndpoint(jku, trustRegistry.policy.insecureLoopbackAllowed)) {
+        // HTTPS without exception: the test environment's local HTTP allowance never applies to key sets.
+        if (!isAcceptableEndpoint(jku, allowInsecureLoopback = false)) {
             throw ProtocolException("invalid_key", "jku $jku is not an https URL")
         }
         val jwk = select(keySet(jku, refresh), kid, jku)

@@ -224,8 +224,9 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         runCatching {
             val dc = DigitalCredentials.getDefault()
             if (!dc.registerAvailable) return
-            // Only OpenID4VP goes through the DIW request validation layer, so only those protocols are offered.
-            val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") }.toSet()
+            // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
+            // the wallet's mdoc consent; both use the wallet's own screens.
+            val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
             dc.register(model.documentStore, model.documentTypes, protocols, false)
         }
     }
