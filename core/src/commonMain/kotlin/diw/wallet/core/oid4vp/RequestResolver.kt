@@ -28,6 +28,9 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.multipaz.util.toBase64Url
 
+/** Entry hint of Microsoft Verified ID requests (openid-vc), matching MsVerifiedIdPresentationDialect.ENTRY_HINT. */
+private const val MS_VERIFIED_ID_ENTRY = "msvid"
+
 /**
  * Turns an OpenID4VP invocation (URI or DC API payload) into a [RawAuthorizationRequest].
  * It fetches request_uri, but performs no trust decisions; that is [RequestValidator]'s job.
@@ -50,7 +53,7 @@ class RequestResolver(
             throw RequestValidationException("invalid_request", "Unsupported invocation scheme '$scheme'")
         }
         @Suppress("NAME_SHADOWING")
-        val entryHint = entryHint ?: if (scheme == "openid-vc") "msvid" else null
+        val entryHint = entryHint ?: if (scheme == "openid-vc") MS_VERIFIED_ID_ENTRY else null
         val q = queryParameters(uri)
         val outer = q.names().associateWith { q[it]!! }
         val clientId = outer["client_id"]
@@ -61,9 +64,16 @@ class RequestResolver(
         }
         return when {
             requestUri != null -> {
-                if (clientId == null) throw RequestValidationException("invalid_request", "client_id is required with request_uri")
+                // OpenID4VP 1.0 and JAR need client_id beside request_uri. Microsoft Verified ID (openid-vc) sends only
+                // request_uri; its client_id is in the signed request object, which the legacy validator requires.
+                if (clientId == null && entryHint != MS_VERIFIED_ID_ENTRY) {
+                    throw RequestValidationException("invalid_request", "client_id is required with request_uri")
+                }
                 val method = outer["request_uri_method"] ?: "get"
                 val (jwt, walletNonce) = fetchRequestObject(requestUri, method)
+                if (clientId == null && jwt.startsWith("{")) {
+                    throw RequestValidationException("invalid_request", "client_id is required with an unsigned request_uri object")
+                }
                 // Some pre-1.0 verifiers serve the request as a plain JSON object rather than a JWT.
                 if (jwt.startsWith("{")) {
                     RawAuthorizationRequest(RequestChannel.URI, outer, null, parseJsonObject(jwt, "invalid_request_uri"), null, walletNonce, entryHint = entryHint)

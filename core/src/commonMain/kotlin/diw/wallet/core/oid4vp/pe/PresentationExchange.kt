@@ -36,6 +36,11 @@ data class InputDescriptor(
     val fields: List<PeField>,
     val limitDisclosure: String?,
     val raw: JsonObject,
+    /**
+     * Presentation Exchange 1.0 schema URIs: a credential matches one through its type, credentialSchema id, vct or
+     * docType. Verified ID verifiers name the card type this way and send no constraints.
+     */
+    val schemaUris: List<String> = emptyList(),
 )
 
 data class SubmissionRequirement(
@@ -82,6 +87,7 @@ data class PresentationDefinition(
                     }.orEmpty(),
                     limitDisclosure = constraints?.str("limit_disclosure"),
                     raw = d,
+                    schemaUris = d.arr("schema")?.mapNotNull { (it as? JsonObject)?.str("uri") }.orEmpty(),
                 )
             } ?: throw ProtocolException("invalid_request", "presentation_definition without input_descriptors")
             return PresentationDefinition(id, json.str("name"), json.str("purpose"), descriptors, parseRequirements(json.arr("submission_requirements")), json.obj("format")?.keys, json)
@@ -108,6 +114,7 @@ object PresentationExchange {
     fun matchOne(definition: PresentationDefinition, d: InputDescriptor, c: WalletCredential): DescriptorMatch? {
         val accepted = d.formats ?: definition.formats
         if (accepted != null && accepted.none { it in c.formats }) return null
+        if (d.schemaUris.isNotEmpty() && d.schemaUris.none { schemaMatches(it, c) }) return null
         val matched = mutableListOf<FieldMatch>()
         for (f in d.fields) {
             val m = matchField(f, c)
@@ -116,6 +123,19 @@ object PresentationExchange {
             } else matched += m
         }
         return DescriptorMatch(d, c, matched)
+    }
+
+    /** A PE 1.0 schema URI names the credential when it is one of its types (also as a URI ending in #type or /type). */
+    private fun schemaMatches(uri: String, c: WalletCredential): Boolean {
+        val schemaIds = (c.w3c ?: c.json)["credentialSchema"].let { s ->
+            when (s) {
+                is JsonObject -> listOfNotNull(s.str("id"))
+                is JsonArray -> s.mapNotNull { (it as? JsonObject)?.str("id") }
+                else -> emptyList()
+            }
+        }
+        val names = c.types + listOfNotNull(c.vct, c.docType)
+        return uri in names || uri in schemaIds || names.any { uri.endsWith("#$it") || uri.endsWith("/$it") }
     }
 
     private fun matchField(f: PeField, c: WalletCredential): FieldMatch? {

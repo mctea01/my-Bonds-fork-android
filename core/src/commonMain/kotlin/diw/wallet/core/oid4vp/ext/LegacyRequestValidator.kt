@@ -61,7 +61,11 @@ class LegacyRequestValidator(
         val dialect = dialects.firstOrNull { it.owns(raw, p) }
         dialect?.let { specs += it.spec }
 
-        val responseTypes = (p.str("response_type") ?: "vp_token").split(' ').filter { it.isNotBlank() }.toSet()
+        val declared = (p.str("response_type") ?: "vp_token").split(' ').filter { it.isNotBlank() }.toSet()
+        // OpenID4VP drafts up to 10 ask through claims.vp_token with response_type id_token; the vp_token is then
+        // returned beside the id_token (Microsoft Verified ID still asks this way).
+        val claimsSyntax = p.obj("claims")?.obj("vp_token") != null
+        val responseTypes = if (claimsSyntax) declared + "vp_token" else declared
         if (responseTypes.none { it == "vp_token" || it == "id_token" }) {
             throw RequestValidationException("unsupported_response_type", "response_type ${responseTypes.joinToString(" ")} is not supported")
         }
@@ -82,7 +86,11 @@ class LegacyRequestValidator(
             throw RequestValidationException("invalid_request", "vp_token requested without dcql_query or presentation_definition")
         }
         if (definition != null) specs += "DIF Presentation Exchange 2.0"
-        specs += if (dcql != null) "OpenID4VP draft 22-28 (DCQL)" else "OpenID4VP draft 13-21"
+        specs += when {
+            dcql != null -> "OpenID4VP draft 22-28 (DCQL)"
+            claimsSyntax -> "OpenID4VP draft 10 (claims.vp_token)"
+            else -> "OpenID4VP draft 13-21"
+        }
 
         val clientMetadata = p.obj("client_metadata") ?: p.obj("registration")
             ?: p.str("client_metadata_uri")?.let { fetchJson(it, "client_metadata_uri") }

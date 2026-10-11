@@ -9,6 +9,9 @@ import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vci.KeyRequest
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.oid4vp.Oid4vpHolder
+import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.profile.msvid.LinkedDomains
 import diw.wallet.core.profile.msvid.MsVerifiedIdIssuance
 import diw.wallet.core.trust.DidTrust
@@ -30,6 +33,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.headersOf
+import io.ktor.http.parseQueryString
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -47,6 +51,7 @@ import kotlin.io.encoding.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -62,6 +67,9 @@ class MsVerifiedIdTest {
     private val callbacks = mutableListOf<JsonObject>()
     private val errors = mutableListOf<String>()
     private var linkDomain = true
+    /** Card type the presentation request asks for in its Presentation Exchange 1.0 schema. */
+    private var presentType = "MockEmployee"
+    private val presented = mutableListOf<Map<String, String>>()
 
     private fun MockRequestHandleScope.json(o: JsonObject) = respond(o.toString(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
 
@@ -97,6 +105,12 @@ class MsVerifiedIdTest {
                 })
             }
             "/request/1" -> respond(requestJwt(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/oauth-authz-req+jwt"))
+            "/request/2" -> respond(presentationJwt(), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/oauth-authz-req+jwt"))
+            "/present" -> {
+                val form = parseQueryString(request.body.toByteArray().decodeToString())
+                presented += form.names().associateWith { form[it]!! }
+                respond("", HttpStatusCode.OK)
+            }
             "/manifest" -> {
                 if (request.headers["x-ms-sign-contract"] != "true") errors += "contract fetched without x-ms-sign-contract"
                 json(buildJsonObject { put("token", contractJwt()) })
@@ -139,6 +153,36 @@ class MsVerifiedIdTest {
             }
         }
         put("iat", now()); put("exp", now() + 300)
+    })
+
+    /** A presentation request as the Verified ID request service signs it (no prompt, PE 1.0 schema, form post). */
+    private suspend fun presentationJwt() = sign(buildJsonObject {
+        put("jti", "p-2"); put("iat", now()); put("exp", now() + 300)
+        put("response_type", "id_token"); put("response_mode", "post"); put("scope", "openid")
+        put("client_id", DID)
+        put("redirect_uri", "$ORIGIN/present")
+        put("nonce", "n-2"); put("state", "s-2")
+        putJsonObject("registration") {
+            put("client_name", "模擬驗證端")
+            putJsonArray("subject_syntax_types_supported") { add("did:web"); add("did:jwk") }
+            putJsonObject("vp_formats") {
+                putJsonObject("jwt_vp") { putJsonArray("alg") { add("ES256"); add("ES256K"); add("EdDSA") } }
+                putJsonObject("jwt_vc") { putJsonArray("alg") { add("ES256"); add("ES256K"); add("EdDSA") } }
+            }
+        }
+        putJsonObject("claims") {
+            putJsonObject("vp_token") {
+                putJsonObject("presentation_definition") {
+                    put("id", "pd-2")
+                    putJsonArray("input_descriptors") {
+                        addJsonObject {
+                            put("id", presentType); put("name", presentType); put("purpose", "確認在職")
+                            putJsonArray("schema") { addJsonObject { put("uri", presentType) } }
+                        }
+                    }
+                }
+            }
+        }
     })
 
     private suspend fun contractJwt() = sign(buildJsonObject {
@@ -255,6 +299,47 @@ class MsVerifiedIdTest {
         val cred = doc.getCertifiedCredentials().single() as W3cVcCredential
         val claims = ClaimReader.read(cred, w.documentTypes).associate { it.label to it.value }
         assertEquals("林哲全", claims["displayName"])
+    }
+
+    /**
+     * Presentation as Verified ID verifiers ask for it: openid-vc:// with request_uri only (client_id is in the signed
+     * request), the card type in a Presentation Exchange 1.0 schema, and a form post of id_token, vp_token and state.
+     */
+    @Test
+    fun presentationWithRequestUriOnly() = runBlocking<Unit> {
+        val wallet = wallet()
+        val w = wallet.w
+        val issue = assertNotNull(wallet.issuance.resolve(uri))
+        issue.selfIssued["displayName"] = "林哲全"
+        issue.pin = PIN
+        wallet.issuance.complete(issue, keys(w))
+        val holder = Oid4vpHolder(
+            w.httpClient, w.trust, w.source, w.env, holderIdentities = w.holderIdentities,
+            didTrust = DidTrust(listOf(LinkedDomains(w.httpClient, DidResolver(w.httpClient)))),
+            dialects = listOf(MsVerifiedIdPresentationDialect()),
+        )
+        val presentUri = "openid-vc://?request_uri=" + "$ORIGIN/request/2".encodeURLParameter()
+        val request = holder.resolveUri(presentUri, MsVerifiedIdPresentationDialect.ENTRY_HINT)
+        assertEquals(DID, request.verifier.did)
+        assertEquals(TrustTier.T3, request.verifier.trust.tier)
+        val prepared = assertIs<PreparedExtended>(holder.prepare(request))
+        assertEquals(1, prepared.prepared.lines.size)
+        holder.respond(prepared)
+        assertTrue(errors.isEmpty(), "mock errors: $errors")
+        val post = presented.single()
+        assertEquals("s-2", post["state"])
+        val idToken = Jws.parse(assertNotNull(post["id_token"])).payload
+        assertEquals(MsVerifiedIdPresentationDialect.SELF_ISSUED, idToken.str("iss"))
+        assertEquals("n-2", idToken.str("nonce"))
+        assertEquals(DID, idToken.str("aud"))
+        val vp = Jws.parse(assertNotNull(post["vp_token"])).payload
+        assertEquals("n-2", vp.str("nonce"))
+
+        // The schema names the card type: a request for another type finds nothing to present.
+        presentType = "OtherCard"
+        val other = holder.resolveUri(presentUri, MsVerifiedIdPresentationDialect.ENTRY_HINT)
+        val none = assertFailsWith<ProtocolException> { holder.prepare(other) }
+        assertEquals("access_denied", none.code)
     }
 
     @Test
