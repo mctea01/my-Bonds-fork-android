@@ -38,12 +38,12 @@
 
 1. **標準優先，方言隔離。** 標準路徑（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、mdoc）不含任何方言邏輯。方言只在標準會停下的位置透過 hook 介入（`IssuanceDialect`、`PresentationDialect` 的介面註解列出每個 hook），而且只對它擁有的 session 生效。
 2. **所有方言常駐啟用，不提供開關。** TWDIW 官方實作與 Bonds 必須完整支援；新增方言時加入 `WalletModel` 的方言清單，不新增設定。
-3. **信任分層。** T1 正式信任錨、T2 已列名但無法完全驗證、T3 可驗證但非官方（測試錨、使用者匯入、系統憑證庫、Linked Domains、未列名 DID）、T4 驗證失敗。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
+3. **信任分層。** T1 列於官方信任清單且可完整驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 身分已確認但不是完整驗證的官方清單成員（TWDIW 已列名但鏈上註冊無法確認或角色不符、內建 GPKI 證明身分）；T3 可驗證但非官方（系統憑證庫與內建公開根憑證、Linked Domains、使用者匯入的根憑證與信任的 DID、未列名 DID、所有測試錨）；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
    - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA 只用於查驗方（自然人憑證），不用於發行端。
    - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T3（`SYSTEM_ANCHOR`）。同一個環境還包含兩組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
      - 常用服務憑證鏈的根憑證，跟著系統憑證庫的開關；
      - 中國大陸憑證機構，有獨立開關，預設開啟，加上 `MAINLAND_CHINA_CA` 標籤。內容包括 Mozilla 或 Microsoft 根憑證計畫收錄的 CFCA、GDCA、SHECA、BJCA、iTrusChina、TrustAsia，以及持牌 CA 在官網公布的國密 SM2 根憑證。
-     - 加入或更新時以 CCADB 或 CA 官網核對 SHA-256，並由測試檢查指紋與有效期。
+     - `BuiltInPublicRoots.kt` 由 `tools/trust-roots/update_roots.py` 產生，不手動修改：CCADB 依 `roots.json` 的機構挑選中國大陸 CA；服務主機實際連線取得憑證鏈的根憑證（連不上時沿用 `services.lock.json`）；SM2 根憑證以 `tools/trust-roots/sm2/*.pem` 與 SHA-256 釘選；GPKI 只檢查並回報（以公鑰比對，GRCA 換金鑰的連結憑證不算新憑證）。內容沒有變更時不改檔案與 `UPDATED` 日期。測試檢查指紋、自簽章（SM2 以 BouncyCastle）與 `UPDATED` 當天的有效期；執行時已過期的內建根憑證不再當成錨點。
    - 國密憑證（SM2 金鑰、SM3withSM2 簽章，OID 1.2.156.10197）由 `Pkix` 改用 BouncyCastle 驗證；provider 以實例使用，不註冊為全域。JOSE 與 COSE 沒有定義 SM2，這些錨點目前只用於憑證鏈驗證。
    - Multipaz 的 TrustManager 只支援 EC 金鑰，RSA 憑證鏈在它丟出例外時改用 PKIX（`trust/SystemTrustStore` 的 `Pkix`）驗證。
    - Microsoft Verified ID 依 Microsoft 錢包程式庫的規則：Linked Domains 驗證成功為 T3（`LINKED_DOMAIN`），與 Authenticator 一樣不需要額外勾選警示；驗證失敗為 T4。使用者自行信任的 DID 排在 Linked Domains 之前，連結暫時失效不會蓋過使用者的決定。
@@ -93,6 +93,7 @@
 ./gradlew :app:desktopTest                     # App 流程測試
 DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots'   # 離屏渲染主要畫面為 PNG
 ./gradlew :app:assembleRelease                 # Android release（R8）
+python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生內建公開根憑證；--check 只檢查，--strict 有警告時回傳 2
 ```
 
 測試慣例：
@@ -105,4 +106,5 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 - 每個階段（P1、P2…）在各自的 `claude/...` 分支開發並開新 PR，PR 合併後不再沿用同一個 PR。
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
+- CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly）需要三者都成功。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
 - 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。

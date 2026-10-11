@@ -15,7 +15,7 @@
 | 出示 | OpenID4VP 1.0（DCQL、DC API），以及 draft 13 到 23（Presentation Exchange 2.0、client_id_scheme、did / x509_san_* client）、SIOPv2、OAuth fragment / query / form_post 回應；DC API 同時接受 `openid4vp` 與 `org-iso-mdoc` |
 | mdoc 近距離 | ISO/IEC 18013-5：出示（NFC 交握，static 或 negotiated handover；QR Code 交握；資料經 BLE 或 NFC）與查驗（手機 NFC、手機 OTG 接 USB CCID 讀卡機、電腦的 PC/SC 讀卡機） |
 | 遠端 mdoc | ISO/IEC 18013-7 Annex B（OpenID4VP 草案的 mdoc handover）與 Annex C（DC API 的 org-iso-mdoc，回應以 HPKE 加密並綁定網頁來源） |
-| 信任 | X.509 信任錨（正式、使用者匯入、系統憑證庫、測試環境分開顯示，可匯入任何組織的根憑證；內建運作中的政府憑證總管理中心根憑證與 GCA、XCA、MOEACA、MOICA 中繼憑證；內建中國大陸憑證機構的根憑證，含國密 SM2，可單獨關閉；內建發票、移民等常用服務憑證鏈的根憑證；RSA 與國密 SM2 憑證鏈以 PKIX 驗證）、DID（did:key、did:jwk、did:web、did:ion）、DIF Linked Domains（依 Microsoft 規則，已驗證網域不另行警示）、TWDIW 信任清單與 Arbitrum 錨定、使用者自行信任的 DID |
+| 信任 | X.509 信任錨（正式、使用者匯入、系統憑證庫、測試環境分開顯示，可匯入任何組織的根憑證；內建運作中的政府憑證總管理中心根憑證與 GCA、XCA、MOEACA、MOICA 中繼憑證；內建中國大陸憑證機構的根憑證，含國家根與持牌 CA 的國密 SM2 根憑證，可單獨關閉；內建發票、移民等常用服務憑證鏈的根憑證，每月由 CI 依來源更新；RSA 與國密 SM2 憑證鏈以 PKIX 驗證）、DID（did:key、did:jwk、did:web、did:ion）、DIF Linked Domains（依 Microsoft 規則，已驗證網域不另行警示）、TWDIW 信任清單與 Arbitrum 錨定、使用者自行信任的 DID |
 | 狀態 | IETF Token Status List、W3C Bitstring Status List、Status List 2021（含 Microsoft Verified ID 經 Identity Hub 提供的清單）、Revocation List 2020，顯示規格原文狀態；狀態清單的 jku 金鑰先綁定發行端，綁不上時標示「僅經 HTTPS 確認」；背景自動更新，依用途風險（低、中、高）判斷是否接受 |
 
 ### 介面
@@ -31,6 +31,8 @@
 | 紀錄 | 領取、出示、拒絕、查驗與證件狀態變更的對象、時間、證件與欄位名稱，不保存欄位內容 |
 
 右上齒輪進入設定：金鑰保護、證件狀態自動更新、信任清單（數位憑證皮夾公布的發行端與查驗方，開啟時自動查驗 Arbitrum 錨定）、信任錨點（X.509 根憑證與自行信任的 DID，不限 TWDIW）、紀錄清除、互通設定與測試環境。
+
+發行端與查驗方依信任等級顯示：T1 列於官方信任清單且可完整驗證；T2 身分已確認（TWDIW 已列名但鏈上註冊暫時無法確認，或憑證鏈連到內建的政府憑證 GPKI）；T3 可驗證但非官方（系統憑證庫與內建公開憑證機構、Linked Domains、自行匯入的根憑證與自行信任的 DID、未列名的 DID、測試環境）；T4 驗證失敗。設定 > 信任錨點有各等級的說明，長列表可折疊。
 
 每張證件顯示狀態判定（有效、僅經 HTTPS 確認、無法確認、已撤銷等），依證件分類的風險決定顯示為通過、需留意或不應接受；出示前依要求欄位的敏感度與查驗方信任等級計算請求風險，證件狀態被判定為不接受時不能出示（撤銷、暫停），無法確認時可重新查詢。
 
@@ -65,7 +67,10 @@ CI 在 main 每次更新後發佈「nightly」預先發行版，檔案說明見 
 ./gradlew :app:run                    # 桌面版
 ./gradlew :test-servers:test          # 協議與互通測試
 ./gradlew :app:desktopTest            # App 流程測試
+python3 -I tools/trust-roots/update_roots.py --report report.md   # 依來源重新產生內建公開根憑證（需要網路與 openssl）
 ```
+
+CI 的測試是獨立的 job，與 Android、桌面版的建置平行執行；main 的 nightly 預先發行版在測試與建置都成功後才發佈。內建公開根憑證由每月的 workflow 重新產生，有變更時開 PR 並附上報告。
 
 Windows 的 PowerShell 請先執行 `chcp 65001` 並設定 `$env:JAVA_TOOL_OPTIONS="-Dfile.encoding=UTF-8"`，避免中文輸出亂碼。
 

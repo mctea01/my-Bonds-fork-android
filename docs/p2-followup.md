@@ -166,3 +166,166 @@
 | Verified ID 信任 | 以 Entra 租戶的發行 QR 領卡 | 顯示 Linked Domain 已驗證（T3），不需勾選警示 |
 | 系統憑證庫 | 設定 > 信任錨點關閉「系統憑證庫」 | 只連到公開 CA 的發行端改為未列名 |
 
+## 第三輪：Verified ID 狀態、信任等級、中國大陸與國密憑證、內建清單更新（2026-10-11）
+
+### Verified ID 卡片被判定「無法確認狀態，不應接受」
+
+實機截圖：對 did.woodgrovedemo.com 出示 Verified Employee 時，同意畫面顯示「無法確認狀態，不應接受」、高風險，「同意分享」停用；要求內容頁寫「OpenID4VP 1.0、DCQL」與空的 DCQL `{}`。
+
+1. **原因：沒有實作 Microsoft 的狀態查詢。**
+   - Verified ID 的 `credentialStatus` 型別是 `RevocationList2021Status`，`statusListCredential` 是 DID URL：`did:web:...?service=IdentityHub&queries=<base64 查詢>`，不是 https 網址。錢包原本不認得這個型別，也不能下載 DID URL，所以狀態是「無法確認」。
+   - Verified Employee 揭露整張憑證，含姓名、職稱、照片等欄位，請求風險為高；依 `StatusPolicy`，高風險下「無法確認」為拒絕。
+2. **修正：經發行端的 Identity Hub 取得清單（`W3cStatusChecker`）。**
+   - 解析 DID URL 的 `queries`，向發行端 DID 文件中 `IdentityHub` 服務的 `instances` 端點 POST `{requestId, target, messages:[{descriptor}]}`。查詢只帶發行端 DID 與清單 ID，不帶持有者資訊。
+   - 回應 `replies[0].entries[0].data` 經 base64 解碼後是 StatusList2021 的 JWT，由發行端 DID 簽章（Woodgrove 用 secp256k1），驗簽通過後保證等級為「已驗證」。
+   - `DidResolver` 的服務端點物件同時讀 `origins` 與 `instances`。
+3. **實機回報「Identity Hub returned 400」。**
+   - 原因：Microsoft 的 hub（hub.did.msidentity.com）要求 `requestId` 是 UUID 第 4 版，否則回 HTTP 400 `InvalidRequestId`。Multipaz 的 `UUID.randomUUID()` 沒有設定版本位元，送出的 `f7ce7b81-3ef6-e477-…` 不是第 4 版。
+   - 修正：改用 `kotlin.uuid.Uuid.random()`；hub 拒絕時，錯誤訊息附上 hub 回傳的錯誤碼與說明。
+   - 以錢包程式碼直接對 Woodgrove 的 hub 查詢，修正前回 400，修正後回 200（測試用的清單 ID 不存在，所以沒有內容）。
+4. **同意畫面與要求內容。**
+   - 揭露整張憑證時，同意畫面寫明「對方要求整張證件。這張證件無法只出示部分欄位，下列欄位都會交給對方」，並列出全部欄位。
+   - 風險原因列出造成高風險的欄位（最多 4 個）。
+   - 要求內容頁：Presentation Exchange 的要求顯示 presentation_definition，不再顯示成空的 DCQL。
+5. 已持有、狀態為「無法確認」的證件，下次開啟 App 時會重新查詢（`StatusMonitor.refreshFor`）。
+
+測試：
+- `MsVerifiedIdStatusTest.identityHubStatusList`：有效、撤銷第 12 位、同清單其他位不受影響、送出的查詢內容。模擬 hub 和真實 hub 一樣，requestId 不是第 4 版或 Content-Type 不是 JSON 時回 400；舊程式在這個測試會得到「Identity Hub returned 400」。
+- `MsVerifiedIdStatusTest.identityHubStatusListSignedWithSecp256k1`：清單以 ES256K 簽章。
+- `InteropTest.verifiedIdIdentityHubQuery`：需 `DIW_INTEROP=1`，對 Woodgrove 的 hub 實際查詢。
+
+### DC API 查驗結果「No nbf claim」
+
+使用者提供的查驗端畫面：`org-iso-mdoc`、端對端加密 true、OtherDocument `dc+sd-jwt`、Key Binding Verified、iss `https://issuer.eudiw.dev`、vct `urn:eudi:pid:1`，錯誤為 `java.lang.IllegalStateException: No nbf claim`。
+
+- 錢包端正常：DC API 的 ISO 18013-7 Annex C 流程、HPKE 加密、SD-JWT 的 Key Binding 都通過驗證。
+- 錯誤來自查驗端的 Multipaz 程式庫：`OtherDocument.verifySdJwtVc` 要求 `nbf`。SD-JWT VC 規格的 `nbf` 是選填，EUDI 發行端的 PID 只有 `iat` 與 `exp`。
+- 錢包不能修改發行端已簽章的內容，無法補上 `nbf`。需要查驗端改為 `nbf` 選填，或回報 Multipaz。
+- 「Issuer not in trust list」是查驗端自己的信任清單沒有 EUDI 測試發行端（PID DS - 003），與錢包無關。
+
+### 信任等級說明修正
+
+信任體系加入 GPKI、系統憑證庫、內建公開根憑證與 Linked Domains 後，原本的說明與實際判定不一致：查驗結果把 GPKI 的 T2 寫成「已列名但無法完全驗證」，把 Linked Domains 與中國大陸 CA 寫成「不在任何信任錨點」。
+
+| 等級 | 判定來源 |
+|---|---|
+| T1 官方已驗證 | TWDIW 信任清單內、DID 文件自簽有效且與 Arbitrum One 註冊相符的組織；標為官方的正式錨點 |
+| T2 已驗證身分 | TWDIW 已列名但鏈上註冊暫時無法確認或角色不符；憑證鏈連到內建的 GPKI（GCA、XCA、MOEACA，查驗方另含 MOICA） |
+| T3 可驗證但非官方 | 系統憑證庫與內建公開根憑證（中國大陸 CA、常用服務）、Linked Domains、使用者匯入的根憑證與信任的 DID、未列名的 DID、所有測試錨 |
+| T4 無法驗證 | 簽章或憑證鏈不成立、要求未簽章、清單內容與鏈上註冊不符、網域連結失效 |
+
+- 設定 > 信任錨點新增四個等級的說明（`TierLegend`）。
+- 查驗與離線查驗的結果改用同一個發行端說明（`issuerTrustLine`），依實際來源描述。
+- 高風險用途的說明改為「只接受官方信任清單（T1）或政府憑證確認身分（T2）的發行端」，與判定一致。
+
+### 信任錨點列表可折疊
+
+- 各組錨點（正式、使用者匯入、測試）、常用服務根憑證、根憑證計畫收錄的中國大陸 CA、國密 SM2 根憑證都可折疊，標題保留數量。
+- 項目多的列表預設收合；使用者匯入的錨點與四級說明預設展開。
+- 每個內建根憑證顯示有效期與來源；過期的內建根憑證不再當成錨點（`PublicRoots`）。
+
+### 中國大陸憑證機構、國密 SM2 與服務根憑證
+
+內建公開根憑證（`trust/BuiltInPublicRoots`）共 38 個。連到這些根憑證的憑證鏈判定為 T3（`SYSTEM_ANCHOR`），只確認網域或組織，不會顯示為官方。設定 > 信任錨點的「中國大陸憑證機構」有獨立開關（預設開啟），標示 `MAINLAND_CHINA_CA`。
+
+根憑證計畫收錄的中國大陸憑證機構（CCADB 依機構挑選，用途取自 Mozilla 信任位元與 Microsoft EKU）：
+
+| 根憑證 | 機構 | 演算法 | 用途 | 根憑證計畫 |
+|---|---|---|---|---|
+| UCA Extended Validation Root | 上海數字證書認證中心 SHECA | RSA 4096 | 網站、程式碼簽章 | Mozilla、Microsoft |
+| UCA Global G2 Root | 上海數字證書認證中心 SHECA | RSA 4096 | 網站、電子郵件、程式碼簽章、文件簽章、時間戳記 | Mozilla、Microsoft |
+| CFCA EV ROOT | 中國金融認證中心 CFCA | RSA 4096 | 網站、電子郵件、程式碼簽章、時間戳記；國家稅務總局全國增值稅發票查驗平台（inv-veri.chinatax.gov.cn）、國家移民管理局（s.nia.gov.cn）的網站憑證鏈 | Mozilla、Microsoft |
+| CFCA Identity CA | 中國金融認證中心 CFCA | RSA 4096 | 文件簽章 | Microsoft |
+| TrustAsia Global Root CA G3 | 亞洲誠信 TrustAsia | RSA 4096 | 網站 | Mozilla |
+| TrustAsia Global Root CA G4 | 亞洲誠信 TrustAsia | ECC P-384 | 網站 | Mozilla |
+| TrustAsia SMIME ECC Root CA | 亞洲誠信 TrustAsia | ECC P-384 | 電子郵件 | Mozilla |
+| TrustAsia SMIME RSA Root CA | 亞洲誠信 TrustAsia | RSA 4096 | 電子郵件 | Mozilla |
+| TrustAsia TLS ECC Root CA | 亞洲誠信 TrustAsia | ECC P-384 | 網站 | Mozilla |
+| TrustAsia TLS RSA Root CA | 亞洲誠信 TrustAsia | RSA 4096 | 網站 | Mozilla |
+| BJCA Global Root CA1 | 北京數字認證 BJCA | RSA 4096 | 網站 | Mozilla |
+| BJCA Global Root CA2 | 北京數字認證 BJCA | ECC P-384 | 網站 | Mozilla |
+| vTrus ECC Root CA | 天威誠信 iTrusChina | ECC P-384 | 網站 | Mozilla |
+| vTrus Root CA | 天威誠信 iTrusChina | RSA 4096 | 網站 | Mozilla |
+| GDCA TrustAUTH R5 ROOT | 數安時代 GDCA | RSA 4096 | 網站、電子郵件、程式碼簽章、文件簽章、時間戳記；電子發票的電子文件驗簽頒發者憑證 | Mozilla、Microsoft |
+
+國密 SM2 根憑證（各 CA 官網下載，以 SHA-256 釘選；每張都確認是 SM2 金鑰、SM3withSM2 自簽且簽章有效）：
+
+| 根憑證 | 機構 | 用途 | 來源 |
+|---|---|---|---|
+| UCA Rapid SM2 Root | 上海數字證書認證中心 SHECA | SM2 網站憑證 | www.sheca.com，指紋與官網公布相符 |
+| UCA Root SM2 | 上海數字證書認證中心 SHECA | SM2 網站憑證 | www.sheca.com，指紋與官網公布相符 |
+| UniTrust Global Root CA R3 | 上海數字證書認證中心 SHECA | SM2 網站與身分憑證 | www.sheca.com，指紋與官網公布相符 |
+| CFCA CS SM2 CA | 中國金融認證中心 CFCA | SM2 金融、網站與身分憑證 | www.cfca.com.cn |
+| CFCA EV SM2 ROOT | 中國金融認證中心 CFCA | SM2 EV、OV 網站與程式碼簽章 | www.cfca.com.cn |
+| CFCA GT SM2 CA | 中國金融認證中心 CFCA | SM2 憑證（GT 系列） | www.cfca.com.cn |
+| CFCA Identity SM2 CA | 中國金融認證中心 CFCA | SM2 身分憑證 | www.cfca.com.cn |
+| TrustAsia Global SM2 Root CA G2 | 亞洲誠信 TrustAsia | SM2 網站憑證 | repository.trustasia.com |
+| TrustAsia SM2 Root CA | 亞洲誠信 TrustAsia | SM2 網站、裝置與身分憑證 | res.trustasia.com |
+| BJCA Global Root CA4 | 北京數字認證 BJCA | SM2 網站憑證 | download.bjca.org.cn |
+| BeiJing SM2 ROOT CA | 北京數字認證 BJCA | SM2 身分與政務憑證 | www.bjca.cn |
+| ROOTCA（國家 SM2 根，2042 年版） | 國家根 CA（NRCAC） | 國家 SM2 根憑證；CFCA、GDCA、BJCA、ZJCA 等持牌 CA 的 SM2 中繼憑證由此簽發 | www.cfca.com.cn |
+| ROOTCA（國家 SM2 根，2054 年版） | 國家根 CA（NRCAC） | 同一把金鑰重新簽發的國家 SM2 根憑證 | www.sheca.com，指紋與官網公布相符 |
+| vTrus SM2 Root CA G1 | 天威誠信 iTrusChina | SM2 網站與身分憑證 | www.itrus.com.cn |
+| GDCA GM SM2 ROOT | 數安時代 GDCA | SM2 網站與文件簽章 | www.gdca.com.cn |
+| 國密SM2根證書（WoTrus） | 沃通電子認證 WoTrus | SM2 網站、程式碼簽章與電子郵件 | www.wotrus.com，指紋與官網公布相符 |
+| ZJCA SM2 InstantTrust Root CA G1 | 浙江省數字安全證書管理中心 ZJCA | SM2 網站與身分憑證 | www.zjca.com.cn |
+
+沒有收錄的 SM2 根憑證：
+- ZoTrus 的 9 張：無法確認持有電子認證服務許可，根憑證主要供自家瀏覽器信任。
+- MeSince、MeSign Identity CA SM2：香港的關係企業，不是中國大陸持牌 CA。
+- GDCA Test SM2 ROOTCA：測試用。
+- 公務人員應用根（SM2）與 rootca.gov.cn 原檔：網站無法連線；國家根 ROOTCA 取自 CFCA、GDCA、BJCA 的轉載（內容完全相同），2054 年版與 SHECA 官網公布的指紋相符。
+
+常用服務（實際連線取得的憑證鏈，交叉簽署的路徑都列入）：
+
+| 根憑證 | 機構 | 用途 |
+|---|---|---|
+| DigiCert Global Root CA | DigiCert | 國家稅務總局電子稅務局（etax.chinatax.gov.cn）的網站憑證鏈 |
+| DigiCert Global Root G2 | DigiCert | 國家稅務總局電子稅務局（etax.chinatax.gov.cn）的網站憑證鏈 |
+| Sectigo Public Server Authentication Root R46 | Sectigo（USERTrust） | 內政部移民署（www.immigration.gov.tw）的網站憑證鏈 |
+| USERTrust RSA Certification Authority | Sectigo（USERTrust） | 內政部移民署（www.immigration.gov.tw）的網站憑證鏈 |
+| TWCA Global Root CA | 台灣網路認證 TWCA | 財政部電子發票整合服務平台（einvoice.nat.gov.tw）的網站憑證鏈 |
+| TWCA Root Certification Authority | 台灣網路認證 TWCA | 財政部電子發票整合服務平台（einvoice.nat.gov.tw）的網站憑證鏈 |
+
+國家稅務總局全國增值稅發票查驗平台（inv-veri.chinatax.gov.cn）與國家移民管理局（s.nia.gov.cn）的憑證鏈連到 CFCA EV ROOT，已在中國大陸群組。使用者提供的「电子文件验签颁发者证书.cer」是 GDCA TrustAUTH R5 ROOT，SHA-256 與 CCADB 相符。
+
+- 國密憑證鏈由 `Pkix` 改用 BouncyCastle 驗證，provider 以實例使用，不註冊為全域。
+- JOSE 與 COSE 沒有定義 SM2，SD-JWT、JWT VC、mdoc 都不能用 SM2 簽章；這些錨點目前只用於憑證鏈驗證。
+
+### 內建清單定期更新
+
+- `tools/trust-roots/update_roots.py`（Python 標準函式庫與 openssl）依 `roots.json` 重新產生 `BuiltInPublicRoots.kt`：
+  - CCADB：Mozilla 與 Microsoft 報表中這些中國大陸機構的所有根憑證，新增或移除會自動反映；
+  - 服務主機：實際連線，找出憑證鏈對應的 CCADB 根憑證；連不上時沿用 `services.lock.json`；
+  - SM2：釘選的 PEM，核對 SHA-256、演算法與有效期，一年半內到期時提醒；
+  - GPKI：比對 grca、gca、xca、moeaca、moica 儲存庫與內建錨點，以公鑰比對，回報新的 CA 金鑰或延長效期的憑證。
+- 根憑證沒有變更時不改檔案，也不改 `UPDATED` 日期。
+- 每月執行的 workflow（`update-trust-roots.yml`，需要使用者手動加入）在有變更時開 PR 並附上報告，有需要人處理的警告時讓該次執行失敗。
+- 2026-10-11 執行結果：38 個根憑證，GPKI 五個儲存庫沒有未內建的金鑰（GRCA 的換金鑰連結憑證已判定為不需要），`--strict` 沒有警告。
+
+### CI 的測試獨立
+
+`test` job 與 `build`（Android）、`desktop` 平行執行，測試失敗不再擋住 APK 與桌面版的建置；main 的 nightly 預先發行版仍要三者都成功。workflow 檔案由使用者手動套用。
+
+### 測試結果
+
+| 範圍 | 指令 | 結果 |
+|---|---|---|
+| 協議與互通 | `:test-servers:test` | 100 項：86 通過，14 項需 `DIW_INTEROP=1` 略過 |
+| App 共用模型 | `:app:desktopTest` | 19 項：16 通過、3 項略過 |
+| Android | `:app:compileDebugKotlinAndroid` | 編譯成功 |
+
+新增或修改的測試：
+- `TrustAnchorsTest.builtInPublicRootsAreWhatTheySay`：每個內建根憑證的指紋、自簽章（SM2 以 BouncyCastle）、`UPDATED` 當天有效；國家 SM2 根兩個版本都在。
+- `TrustAnchorsTest.builtInSm2RootsValidate`：CFCA 公布的真實 SM2 中繼憑證（國家根簽發的 CFCA CS SM2 CA、CFCA SM2 OCA1、CFCA EV SM2 OCA）驗證到對應的內建根憑證；拿掉簽發的根之後驗證失敗。
+- `TrustAnchorsTest.mainlandChinaServiceChains`、`sm2ChainsValidate`。
+
+### 需要實機驗證
+
+| 項目 | 步驟 | 預期 |
+|---|---|---|
+| Verified ID 狀態 | 開啟 Verified Employee 的內容頁，按「重新查詢狀態」，或再次對 did.woodgrovedemo.com 出示 | 狀態顯示「有效」，簽章欄為已驗證；同意畫面列出整張證件的欄位，「同意分享」可按 |
+| 信任等級說明 | 設定 > 信任錨點 | 最上方有 T1 至 T4 說明；各列表可折疊，標題顯示數量 |
+| 中國大陸憑證機構 | 設定 > 信任錨點，開關「中國大陸憑證機構」 | 連到這些根憑證的發行端在開啟時為 T3 並標示中國大陸憑證機構，關閉後改為未列名 |
+| 國密憑證 | 接收以 SM2 憑證鏈簽署的 x5c，或在信任錨點點開任一 SM2 根憑證 | 憑證內容頁顯示 SM3withSM2（國密）與 SM2（國密） |
+| DC API | 以不要求 `nbf` 的查驗端重試 | 回應驗證通過 |

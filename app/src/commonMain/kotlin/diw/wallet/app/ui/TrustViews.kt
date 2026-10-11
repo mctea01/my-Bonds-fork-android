@@ -89,15 +89,16 @@ fun TierLegend() {
         TrustTier.T3 to "簽章可驗證，但沒有官方背書：系統憑證庫與內建公開憑證機構（含中國大陸憑證機構、常用服務的根憑證，只確認網域或組織名稱）、Microsoft Verified ID 的 Linked Domains（確認網域擁有權）、自行匯入的根憑證與自行信任的 DID、不在任何清單的 DID，以及測試環境的所有錨點。除了 Linked Domains，出示或領卡前都需要勾選確認。",
         TrustTier.T4 to "驗證失敗：簽章或憑證鏈不成立、要求未簽章、信任清單內容與鏈上註冊不符，或網域連結失效。除非確定來源，否則不要分享或接受。",
     )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // The badge sits above its text, so the text keeps the full width on a narrow phone.
         rows.forEach { (tier, text) ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Box(
                     Modifier.background(tierColor(tier), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp)
                 ) {
                     Text(WalletModel.tierTitle(tier), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                Text(text, style = MaterialTheme.typography.bodySmall)
             }
         }
         Text("測試環境的錨點最高為 T3，結果永遠不是官方。", style = MaterialTheme.typography.bodySmall)
