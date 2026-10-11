@@ -148,9 +148,9 @@
 
 | 範圍 | 指令 | 結果 |
 |---|---|---|
-| 協議與互通 | `:test-servers:test` | TEST_SERVERS_RESULT |
-| App 共用模型 | `:app:desktopTest` | DESKTOP_RESULT |
-| Android | `:app:assembleDebug :app:assembleRelease`（R8） | ANDROID_RESULT |
+| 協議與互通 | `:test-servers:test` | 93 項：80 通過，13 項需 `DIW_INTEROP=1` 略過。新增 `BondsAnyCardTest` 3 項（SD-JWT VC 選擇性揭露、他人金鑰與來源不符被拒、JWT VC 以 subject DID 綁定）、`TrustAnchorsTest` 3 項、`StatusPolicyTest.jkuIsHttpsOnly` |
+| App 共用模型 | `:app:desktopTest` | 19 項：16 通過、3 項略過。新增：`nfcReaderVerifiesAnotherWallet`、`nfcReaderWithShortApdus`（PC/SC 式短 APDU）、`pcscListWithoutReaders`、`dcApiIsoMdocPresentation`、`offlinePresentationOfAnyKeyBoundCard`、`trustSourceChangesReevaluateHeldDocuments`、`userTrustedDidOverridesBrokenDomainLink` |
+| Android | `:app:assembleDebug :app:assembleRelease`（R8） | 建置成功，release APK 約 22.5 MB |
 
 ### 需要實機驗證
 
