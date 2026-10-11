@@ -139,7 +139,9 @@ class ExtendedPresenter(
             else -> chosen = emptyList()
         }
         val lines = chosen.map { c ->
-            ConsentLine(c.credential.document, c.credential.displayName, c.memberPaths.map { p -> label(p) }.distinct())
+            // Structural members a filter matches on (the card type, schema, status) carry no personal data; they are not listed.
+            val shown = c.memberPaths.filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
+            ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct())
         }
         return ExtendedPrepared(request, chosen, lines, definition, dcql)
     }
@@ -517,6 +519,9 @@ class ExtendedPresenter(
             EcCurve.ED25519 -> "EdDSA"
             else -> "ES256"
         }
+
+        /** W3C credential members that identify the card rather than describe its holder. */
+        private val STRUCTURAL_MEMBERS = setOf("type", "@context", "issuer", "credentialSchema", "credentialStatus", "iss", "vct")
 
         fun uuid(): String {
             val b = PlatformCrypto.randomBytes(16)

@@ -226,14 +226,25 @@ class W3cStatusChecker(
                 true
             }
             iss != null && iss.startsWith("did:") -> {
-                val method = DidResolver(httpClient, trustRegistry.policy.insecureLoopbackAllowed)
-                    .resolveKey(iss, jws.kid?.takeIf { it.startsWith("did:") || it.startsWith("#") })
-                jws.verify(method.key)
-                val decision = didTrust.decide(iss, TrustRole.ISSUER)
-                env = decision?.environment
-                // Signed by the issuer DID: as trustworthy as the credential itself.
-                trusted = true
-                true
+                val signedByIssuer = runCatching {
+                    val method = DidResolver(httpClient, trustRegistry.policy.insecureLoopbackAllowed)
+                        .resolveKey(iss, jws.kid?.takeIf { it.startsWith("did:") || it.startsWith("#") })
+                    jws.verify(method.key)
+                }
+                when {
+                    signedByIssuer.isSuccess -> {
+                        env = didTrust.decide(iss, TrustRole.ISSUER)?.environment
+                        // Signed by the issuer DID: as trustworthy as the credential itself.
+                        trusted = true
+                        true
+                    }
+                    // TWDIW signs its lists with a separate key published only at jku: the bits are read, never trusted.
+                    jws.header["jku"] != null -> {
+                        note = "unverified: the status list is not signed by $iss; its key is only published through jku, which is not followed"
+                        false
+                    }
+                    else -> throw signedByIssuer.exceptionOrNull()!!
+                }
             }
             jws.header["jku"] != null -> {
                 note = "unverified: the status list key is only published through jku, which is not followed"

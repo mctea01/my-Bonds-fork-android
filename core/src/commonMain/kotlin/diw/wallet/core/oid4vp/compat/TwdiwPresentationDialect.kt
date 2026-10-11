@@ -57,9 +57,12 @@ class TwdiwPresentationDialect(
         if (target != null && runCatching { TwdiwDialect.isTwdiwHost(hostOf(target)) }.getOrDefault(false)) return true
         val clientId = params.str("client_id") ?: raw.outer["client_id"] ?: return false
         val descriptors = params.obj("presentation_definition")?.arr("input_descriptors")?.filterIsInstance<JsonObject>().orEmpty()
-        // TWDIW-based verifiers (official, Bonds, twdiw-vc-issuer-lite) use a bare did:key client and vc+sd-jwt / vc+moica descriptors.
-        return clientId.startsWith("did:key:") && descriptors.isNotEmpty() &&
-            descriptors.all { d -> d.obj("format")?.keys?.any { it == "vc+sd-jwt" || it == "vc+moica" } == true }
+        // TWDIW-based verifiers (official, Bonds, twdiw-vc-issuer-lite) use a bare did:key client and Presentation Exchange,
+        // with vc+sd-jwt / vc+moica descriptor formats, or no descriptor format and jwt_vp / jwt_vc in client_metadata.vp_formats.
+        if (!clientId.startsWith("did:key:") || descriptors.isEmpty()) return false
+        if (descriptors.all { d -> d.obj("format")?.keys?.any { it in DESCRIPTOR_FORMATS } == true }) return true
+        val vpFormats = (params.obj("client_metadata") ?: params.obj("registration"))?.obj("vp_formats")?.keys.orEmpty()
+        return descriptors.none { it.obj("format") != null } && vpFormats.isNotEmpty() && vpFormats.all { it in VP_FORMATS }
     }
 
     override suspend fun warnings(request: ValidatedAuthorizationRequest): List<String> {
@@ -128,5 +131,7 @@ class TwdiwPresentationDialect(
         const val ID = "twdiw"
         /** The official wallet and Bonds give the VP a 30 day lifetime. */
         const val VP_LIFETIME_SECONDS = 60L * 60 * 24 * 30
+        private val DESCRIPTOR_FORMATS = setOf("vc+sd-jwt", "vc+moica")
+        private val VP_FORMATS = setOf("jwt_vp", "jwt_vc", "jwt_vp_json", "jwt_vc_json", "vc+sd-jwt")
     }
 }

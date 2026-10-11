@@ -93,7 +93,9 @@ class ArbitrumAnchor(
         val data = "0x" + GET_DOC_SELECTOR + Abi.toHex(Abi.encodeBytes(did.encodeToByteArray()))
         val call = buildJsonObject { put("to", platform.anchorContract); put("data", data) }
         val result = (rpc("eth_call", call, JsonPrimitive("latest")) as? JsonPrimitive)?.content ?: return null
-        val out = Abi.hex(result)
+        val raw = Abi.hex(result)
+        // The contract returns one struct: a head word pointing at it (0x20), then its fields relative to that offset.
+        val out = if (raw.size >= 32 * 6 && Abi.uintAt(raw, 0) == 32) raw.copyOfRange(32, raw.size) else raw
         if (out.size < 32 * 5) return null
         val doc = Abi.string(out, 0)
         if (doc.isEmpty()) return null
@@ -130,7 +132,7 @@ class ArbitrumAnchor(
     companion object {
         /** register(string did, string signedDidDocument, string organisation, ...) */
         const val REGISTER_SELECTOR = "f6e0d282"
-        /** getDocById(bytes) returns (string signedDidDocument, string organisation, orgType, orgGroup, bool revoked) */
+        /** getDocById(bytes) returns the struct (string signedDidDocument, string organisation, orgType, orgGroup, bool revoked) */
         const val GET_DOC_SELECTOR = "fba6fe49"
     }
 }
@@ -146,6 +148,9 @@ internal object Abi {
     fun toHex(b: ByteArray): String = b.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
     fun word(data: ByteArray, index: Int): ByteArray = data.copyOfRange(index * 32, index * 32 + 32)
+
+    /** The head word at byte [offset] as an unsigned integer. */
+    fun uintAt(data: ByteArray, offset: Int): Int = uint(data, offset)
 
     private fun uint(data: ByteArray, offset: Int): Int {
         val w = data.copyOfRange(offset, offset + 32)

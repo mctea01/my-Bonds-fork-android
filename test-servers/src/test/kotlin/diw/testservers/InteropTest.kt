@@ -13,6 +13,7 @@ import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.env.TrustEnvironment
 import org.multipaz.crypto.X509Cert
+import diw.wallet.core.w3c.addDiwCredentialImplementations
 import kotlin.test.assertEquals
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.ProxyBuilder
@@ -82,10 +83,13 @@ class InteropTest {
         val trust = TrustRegistry(storage, env)
         lateinit var secureArea: SoftwareSecureArea
         lateinit var documentStore: org.multipaz.document.DocumentStore
+        lateinit var holderIdentities: diw.wallet.core.holder.HolderIdentities
 
         suspend fun init(): Wallet {
             secureArea = SoftwareSecureArea.create(storage)
-            documentStore = buildDocumentStore(storage, SecureAreaRepository.Builder().add(secureArea).build()) {}
+            val areas = SecureAreaRepository.Builder().add(secureArea).build()
+            documentStore = buildDocumentStore(storage, areas) { addDiwCredentialImplementations(areas) }
+            holderIdentities = diw.wallet.core.holder.HolderIdentities(storage, areas)
             return this
         }
 
@@ -163,7 +167,8 @@ class InteropTest {
             setBody("""{"cardId":"sandbox_student_card_v1","personaId":"wang-xiaoming","wallet":"bonds"}""")
         }.bodyAsText()
         val offer = Json.parseToJsonElement(created).jsonObject["qr"]!!.jsonPrimitive.content
-        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore, dialects = dialects())
+        val c = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet-interop"), w.documentStore,
+            dialects = dialects(), holderIdentities = w.holderIdentities)
         val session = c.startFromOffer(offer)
         c.authorizePreAuthorized(session, null)
         val r = c.issue(session, "sandbox_student_card_v1", w.keys(1))
@@ -172,6 +177,59 @@ class InteropTest {
         val claims = diw.wallet.core.credential.ClaimReader.read(r.credentials.first(), org.multipaz.documenttype.DocumentTypeRepository())
         report("mashbean claims", claims.isNotEmpty(), claims.joinToString { "${it.label}=${it.value}" })
         assertTrue(claims.any { it.label == "student_id" })
+    }
+
+    /** The open-source TWDIW-dialect verifier (verifier.mashbean.net): did:key client, signed request, TWDIW and Bonds links. */
+    @Test
+    fun mashbeanVerifierRequests() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val w = WalletFixture(trustVerifierRoot = false, trustIssuer = false, httpClient = http, env = EnvironmentPolicy(testEnvironmentEnabled = true)).init()
+        val holder = diw.wallet.core.oid4vp.Oid4vpHolder(
+            http, w.trust, w.source, w.env, holderIdentities = w.holderIdentities,
+            dialects = listOf(diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect(), diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect()),
+        )
+        for (family in listOf("twdiw", "bonds")) {
+            val created = http.post("https://verifier.mashbean.net/api/presentations") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"profileId":"identity-name","walletFamily":"$family","credentialSource":"government","ruleParams":{}}""")
+            }.bodyAsText()
+            val o = Json.parseToJsonElement(created).jsonObject
+            val link = o["qr"]!!.jsonPrimitive.content
+            val clientId = o["clientId"]!!.jsonPrimitive.content
+            val entry = diw.wallet.core.profile.twdiw.TwdiwEntryParser.parse(link) as? diw.wallet.core.profile.twdiw.TwdiwEntry.Presentation
+            val request = holder.resolveUri(entry?.uri ?: link, if (entry != null) diw.wallet.core.compat.TwdiwDialect.ENTRY_HINT else null)
+            report("mashbean verifier ($family)", true,
+                "profile=${request.profile} client=${request.verifier.did} tier=${request.verifier.trust.tier} specs=${request.specs} mode=${request.responseMode}")
+            assertEquals(clientId, request.verifier.did)
+            assertEquals("twdiw", request.profile)
+            // No government card in this wallet: the match fails as access_denied instead of a request error.
+            val e = kotlin.test.assertFailsWith<diw.wallet.core.util.ProtocolException> { holder.prepare(request).let { p ->
+                if (p is diw.wallet.core.oid4vp.PreparedExtended && p.prepared.chosen.isEmpty()) throw diw.wallet.core.util.ProtocolException("access_denied", "nothing chosen")
+            } }
+            assertEquals("access_denied", e.code)
+        }
+    }
+
+    /** The production TWDIW trust list (frontend.wallet.gov.tw) and its Arbitrum One anchors, with the configured agent. */
+    @Test
+    fun twdiwProductionTrustList() = runBlocking<Unit> {
+        assumeTrue(enabled)
+        val client = http.config { install(diw.wallet.core.profile.twdiw.TwdiwUserAgent) }
+        val list = diw.wallet.core.profile.twdiw.TwdiwTrustList(client)
+        val all = list.all()
+        report("twdiw trust list", all.isNotEmpty(), "entries=${all.size} issuers=${all.count { 1 in it.orgTypes }} verifiers=${all.count { 2 in it.orgTypes }}")
+        assertTrue(all.isNotEmpty())
+        val sample = all.filter { it.onChain.isNotEmpty() }.take(3).ifEmpty { all.take(3) }
+        var anchored = 0
+        for (e in sample) {
+            val snap = list.verified(e.did)
+            val decision = snap?.let { list.decisionFor(it) }
+            report("twdiw anchor ${e.displayName}", snap?.documentVerified == true,
+                "anchor=${snap?.anchor} tx=${snap?.txHash} block=${snap?.blockNumber} tier=${decision?.tier} reasons=${decision?.reasons}")
+            if (snap?.anchor == diw.wallet.core.profile.twdiw.AnchorState.VERIFIED.name) anchored++
+        }
+        // Registered organisations verify against the Arbitrum registry (getDocById returns a struct).
+        assertTrue(anchored > 0, "no sampled entry verified on chain")
     }
 
     /** walt.id demo issuer (OpenID4VCI draft 13): offers are created through its issuance API with the API's own examples. */

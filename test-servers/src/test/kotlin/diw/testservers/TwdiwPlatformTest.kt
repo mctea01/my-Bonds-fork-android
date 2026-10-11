@@ -131,8 +131,15 @@ class TwdiwPlatformTest {
         // Every request to wallet.gov.tw carried the configured agent (their Cloudflare front rejects library agents).
         assertTrue(s.mock.userAgents.all { it.second == TwdiwPlatform.DEFAULT_USER_AGENT }, "agents: ${s.mock.userAgents}")
 
-        // StatusList2021: revocation and suspension lists wrapped as {statusList: jwt}, signed by the issuer DID.
+        // StatusList2021: revocation and suspension lists wrapped as {statusList: jwt}. TWDIW signs them with key-2,
+        // reachable only through jku: the bits are read and shown, but the result is not trusted.
         val checker = CredentialStatusChecker(s.w.httpClient, s.w.trust, didTrust = s.didTrust)
+        val unverified = checker.check(cred, bypassCache = true)
+        assertEquals(RevocationCheckState.VALID, unverified.state, "detail: ${unverified.detail}")
+        assertTrue(!unverified.trusted)
+        assertTrue(unverified.detail?.contains("jku") == true, "detail: ${unverified.detail}")
+        // A list signed by the issuer DID is trusted like the card.
+        s.mock.statusListSignedByIssuerDid = true
         val valid = checker.check(cred, bypassCache = true)
         assertEquals(RevocationCheckState.VALID, valid.state, "detail: ${valid.detail}")
         assertTrue(valid.trusted)
@@ -165,6 +172,15 @@ class TwdiwPlatformTest {
         val nbf = (got.vpPayload["nbf"] as JsonPrimitive).content.toLong()
         val exp = (got.vpPayload["exp"] as JsonPrimitive).content.toLong()
         assertEquals(TwdiwPresentationDialect.VP_LIFETIME_SECONDS, exp - nbf)
+
+        // Scanned as a plain openid4vp:// link, the official request shape is still recognised as TWDIW.
+        val plain = s.holder.resolveUri(s.mock.presentationUri(listOf("name", "birthDate")))
+        assertEquals("twdiw", plain.profile)
+        val second = s.holder.prepare(plain) as PreparedExtended
+        assertEquals(listOf("name", "birthDate"), second.prepared.lines.single().claims)
+        assertTrue(s.holder.respond(second) is PresentationOutcome.Posted)
+        assertEquals(listOf("name", "birthDate"), s.mock.received.last().disclosedNames)
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
     }
 
     @Test

@@ -251,7 +251,7 @@ class WalletModelE2eTest {
         assertIs<IssuanceResult.Issued>(results.single())
     }
 
-    /** Typing the issuer address lists every configuration; unsupported formats are listed apart, the user picks two. */
+    /** Typing the issuer address lists every configuration (ldp_vc included since P2); the user picks two. */
     @Test
     fun walletInitiatedIssuanceFromIssuerUrl() = runBlocking<Unit> {
         start()
@@ -262,7 +262,8 @@ class WalletModelE2eTest {
             assertIs<IssuanceUi.Review>(review, "review: $review")
             assertTrue(review.walletInitiated)
             assertTrue(review.configurations.any { it.id == "mdl_mdoc" } && review.configurations.any { it.id == "pid_sd_jwt" })
-            assertTrue(review.unsupported.any { it.first == "w3c_ldp_vc" }, "unsupported: ${review.unsupported}")
+            assertTrue(review.configurations.any { it.id == "w3c_ldp_vc" }, "configurations: ${review.configurations.map { it.id }}")
+            assertTrue(review.unsupported.isEmpty(), "unsupported: ${review.unsupported}")
             m.acceptOffer(review, null, listOf("pid_sd_jwt", "mdl_mdoc"))
             val done = m.issuance.first { it is IssuanceUi.Done || it is IssuanceUi.Failed }
             assertIs<IssuanceUi.Done>(done, "issuance: $done")

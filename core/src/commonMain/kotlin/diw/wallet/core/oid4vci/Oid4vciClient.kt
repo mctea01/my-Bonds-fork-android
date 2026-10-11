@@ -679,7 +679,7 @@ class Oid4vciClient(
                         ?: throw ProtocolException("key_attestation_unavailable", "Issuer requires key attestation but the wallet provider gave none")
                 } else null
                 val signers = if (keyAttestation != null) holderKeys.take(1) else holderKeys
-                val jwts = signers.map { proofJwt(session, it, algs, nonce, keyAttestation, style) }
+                val jwts = signers.map { proofJwt(session, config, it, algs, nonce, keyAttestation, style) }
                 buildJsonObject { putJsonArray("jwt") { jwts.forEach { add(it) } } }
             }
             attInfo != null -> {
@@ -713,6 +713,7 @@ class Oid4vciClient(
 
     private suspend fun proofJwt(
         session: IssuanceSession,
+        config: CredentialConfiguration,
         holder: HolderKey,
         algs: List<String>,
         nonce: String?,
@@ -720,7 +721,8 @@ class Oid4vciClient(
         style: ProofStyle,
     ): String {
         val label = proofAlg(holder, algs)
-        val did = if (style.kid != ProofKid.JWK) holder.did ?: HolderKey.didFor(holder.publicKey, "did:jwk") else null
+        // A key without its own DID (SD-JWT VC, mdoc) is named with a method the issuer lists.
+        val did = if (style.kid != ProofKid.JWK) holder.did ?: HolderKey.didFor(holder.publicKey, didMethodFor(config)) else null
         return buildJwt(
             type = "openid4vci-proof+jwt",
             key = holder.signingKey(label),

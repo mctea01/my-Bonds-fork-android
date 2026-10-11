@@ -114,6 +114,13 @@ class TwdiwPlatformMock private constructor(
         return deepLink(id)
     }
 
+    /** The same request as a plain openid4vp:// link (Bonds and other wallets scan these). */
+    fun presentationUri(fields: List<String> = listOf("name")): String {
+        val id = "online-" + (pending.size + 1)
+        pending[id] = PendingRequest(id, VP_UID_ONLINE, "nonce-$id", fields)
+        return "openid4vp://?client_id=${verifierDid.encodeURLParameter()}&request_uri=${"$VERIFIER/api/oidvp/request/$id".encodeURLParameter()}"
+    }
+
     private fun deepLink(id: String) =
         "modadigitalwallet://authorize?\r\nclient_id=${verifierDid.encodeURLParameter()}&request_uri=${"$VERIFIER/api/oidvp/request/$id".encodeURLParameter()}"
 
@@ -354,6 +361,10 @@ class TwdiwPlatformMock private constructor(
         return jwt + disclosures.joinToString("") { "~$it" } + "~"
     }
 
+    /** TWDIW signs status lists with key-2, published only at /api/keys (jku), not in the issuer DID. */
+    var statusListSignedByIssuerDid = false
+    private val statusKey = kotlinx.coroutines.runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
+
     private suspend fun statusList(purpose: String, url: String): String {
         val bits = if (purpose == "revocation") revocation else suspension
         val bytes = ByteArray(STATUS_BITS / 8)
@@ -363,7 +374,7 @@ class TwdiwPlatformMock private constructor(
         return signJws(
             buildJsonObject {
                 put("typ", "JWT"); put("alg", "ES256")
-                put("kid", DidKeys.verificationMethod(issuerDid)); put("jku", "$ISSUER_ORIGIN/api/keys")
+                put("kid", if (statusListSignedByIssuerDid) DidKeys.verificationMethod(issuerDid) else "key-2"); put("jku", "$ISSUER_ORIGIN/api/keys")
             },
             buildJsonObject {
                 put("iss", issuerDid)
@@ -379,7 +390,7 @@ class TwdiwPlatformMock private constructor(
                     }
                 }
             },
-            AsymmetricKey.AnonymousExplicit(issuerKey, Algorithm.ES256),
+            AsymmetricKey.AnonymousExplicit(if (statusListSignedByIssuerDid) issuerKey else statusKey, Algorithm.ES256),
         )
     }
 
@@ -430,16 +441,47 @@ class TwdiwPlatformMock private constructor(
                 put("exp", now + 300)
                 putJsonObject("presentation_definition") {
                     put("id", p.definitionId)
-                    putJsonArray("input_descriptors") {
-                        addJsonObject {
-                            put("id", CONFIG_ID)
-                            putJsonObject("format") { putJsonObject("vc+sd-jwt") { putJsonArray("alg") { add("ES256") } } }
-                            putJsonObject("constraints") {
-                                putJsonArray("fields") {
-                                    for (f in p.fields) addJsonObject { putJsonArray("path") { add("$.credentialSubject.$f") } }
+                    if (p.definitionId == VP_UID_PICKUP) {
+                        // Shape seen from TWDIW-based services: a descriptor format per input descriptor.
+                        putJsonArray("input_descriptors") {
+                            addJsonObject {
+                                put("id", CONFIG_ID)
+                                putJsonObject("format") { putJsonObject("vc+sd-jwt") { putJsonArray("alg") { add("ES256") } } }
+                                putJsonObject("constraints") {
+                                    putJsonArray("fields") {
+                                        for (f in p.fields) addJsonObject { putJsonArray("path") { add("$.credentialSubject.$f") } }
+                                    }
                                 }
                             }
                         }
+                    } else {
+                        // The official verifier's shape: no descriptor format, the card type as a $.type filter, groups.
+                        putJsonArray("submission_requirements") {
+                            addJsonObject { put("name", "姓名"); put("rule", "pick"); put("max", 1); put("from", "Group_1") }
+                        }
+                        putJsonArray("input_descriptors") {
+                            for ((i, type) in listOf("99999999_other_card", CONFIG_ID).withIndex()) addJsonObject {
+                                put("id", "${type}_${i + 1}")
+                                put("name", "{\"org_tw_name\":\"模擬發證機關\",\"vc_name\":\"$type\"}")
+                                putJsonArray("group") { add("Group_1") }
+                                putJsonObject("constraints") {
+                                    putJsonArray("fields") {
+                                        addJsonObject {
+                                            putJsonArray("path") { add("$.type") }
+                                            putJsonObject("filter") { put("type", "array"); putJsonObject("contains") { put("const", type) } }
+                                        }
+                                        for (f in p.fields) addJsonObject { putJsonArray("path") { add("$.credentialSubject.$f") } }
+                                    }
+                                    put("limit_disclosure", "required")
+                                }
+                            }
+                        }
+                    }
+                }
+                putJsonObject("client_metadata") {
+                    putJsonObject("vp_formats") {
+                        putJsonObject("jwt_vc") { putJsonArray("alg") { add("ES256") } }
+                        putJsonObject("jwt_vp") { putJsonArray("alg") { add("ES256") } }
                     }
                 }
             },
@@ -463,6 +505,8 @@ class TwdiwPlatformMock private constructor(
         val submission = DiwJson.parseToJsonElement(form["presentation_submission"] ?: fail("presentation_submission missing")) as JsonObject
         expect(submission.str("definition_id") == p.definitionId) { "definition_id ${submission.str("definition_id")}" }
         val map = submission.arr("descriptor_map")?.singleOrNull() as? JsonObject ?: fail("descriptor_map")
+        val expectedId = if (p.definitionId == VP_UID_PICKUP) CONFIG_ID else "${CONFIG_ID}_2"
+        expect(map.str("id") == expectedId) { "descriptor id ${map.str("id")}" }
         expect(map.str("format") == "jwt_vp" && map.str("path") == "$") { "descriptor $map" }
         val nested = map.obj("path_nested") ?: fail("path_nested missing")
         expect(nested.str("format") == "jwt_vc" && nested.str("path") == "$.vp.verifiableCredential[0]") { "path_nested $nested" }
