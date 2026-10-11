@@ -130,6 +130,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.Offline -> OfflineScreen(model, scanQr)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
+                    Screen.Reader -> ReaderScreen(model)
                 }
             }
         }
@@ -163,6 +164,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"
+    Screen.Reader -> "感應查驗"
 }
 
 @Composable

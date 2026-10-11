@@ -18,6 +18,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
+import diw.wallet.app.NfcReaderList
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.WalletModel
@@ -125,8 +126,17 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         a.runOnUiThread { if (active) applyNfcPreference(a) else releaseNfcPreference(a) }
     }
 
-    /** While the proximity screen is open, taps go to this wallet rather than another wallet with the same AIDs. */
+    /** The reader mode of an in-person verification in progress; Android ends reader mode when the activity pauses. */
+    @Volatile var readerMode: ((Activity) -> Unit)? = null
+
+    override suspend fun nfcReaders(): NfcReaderList = AndroidNfcReaders.list(context, this)
+
+    /**
+     * While the proximity screen is open, taps go to this wallet rather than another wallet with the same AIDs; while
+     * a verification waits for a tap, reader mode is turned on again.
+     */
     fun applyNfcPreference(a: Activity) {
+        readerMode?.let { enable -> runCatching { enable(a) } }
         if (!nfcPresentationActive) return
         val adapter = NfcAdapter.getDefaultAdapter(context) ?: return
         runCatching { CardEmulation.getInstance(adapter).setPreferredService(a, ComponentName(context, WalletNfcService::class.java)) }

@@ -14,7 +14,13 @@ plugins {
 
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
-    jvm("desktop") { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }
+    jvm("desktop") {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_21)
+            // PC/SC readers (javax.smartcardio) are outside the java.se module set resolved by default.
+            freeCompilerArgs.add("-Xadd-modules=java.smartcardio")
+        }
+    }
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("androidx.compose.material3.ExperimentalMaterial3Api")
@@ -159,6 +165,9 @@ configurations.all {
 compose.desktop {
     application {
         mainClass = "diw.wallet.app.desktop.MainKt"
+        // PC/SC: the module is not resolved by default from the class path, and the reader list re-establishes the
+        // smart card context after Windows restarts the service.
+        jvmArgs += listOf("--add-modules=java.smartcardio", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "DIW-MY-WALLET"
@@ -166,7 +175,7 @@ compose.desktop {
             packageVersion = (findProperty("diw.desktopVersion") as String?) ?: "0.1.0"
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
-            modules("java.instrument", "java.management", "java.naming", "java.net.http", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            modules("java.instrument", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
             windows {
                 menuGroup = "DIW MY WALLET"
                 upgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"
@@ -207,7 +216,7 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 
 tasks.named<Test>("desktopTest") {
     useJUnitPlatform()
-    jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g")
+    jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g", "--add-modules=java.smartcardio")
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

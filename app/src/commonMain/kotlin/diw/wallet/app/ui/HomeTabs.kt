@@ -254,8 +254,8 @@ fun FilesTab() {
 // ---------------------------------------------------------------- verify
 
 /**
- * The wallet as a verifier. The offline check of a Bonds or TWDIW presentation works now; the rest of the
- * verifier is laid out and stays disabled until its design is implemented.
+ * The wallet as a verifier: the offline check of a Bonds or TWDIW presentation, and in-person reading of an mdoc
+ * by NFC. The rest of the verifier is laid out and stays disabled until its design is implemented.
  */
 @Composable
 fun VerifyTab(model: WalletModel) {
@@ -292,7 +292,7 @@ fun VerifyTab(model: WalletModel) {
         ActionRow(WalletIcons.Person, "以誰的身分查驗", "個人、法人或組織中的個人，以查驗方的認證憑證為證據，將於後續版本支援", enabled = false) {}
         SectionTitle("其他查驗方式")
         ActionRow(WalletIcons.Link, "線上查驗（OpenID4VP）", "產生出示請求並驗證回應，將於後續版本支援", enabled = false) {}
-        ActionRow(WalletIcons.Nfc, "感應查驗（NFC）", "以 NFC 讀取對方的行動駕照等 ISO 18013-5 證件，將於後續版本支援", enabled = false) {}
+        ActionRow(WalletIcons.Nfc, "感應查驗（NFC）", "以手機的 NFC 或電腦的 PC/SC 讀卡機，讀取對方的行動駕照等 ISO 18013-5 證件") { model.reader.open() }
         ActionRow(WalletIcons.Shield, "查驗零知識證明", "只確認年齡等條件、不看原始資料，將於後續版本支援", enabled = false) {}
     }
 }

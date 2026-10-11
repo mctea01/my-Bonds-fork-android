@@ -157,6 +157,8 @@ sealed class Screen {
     data object MsIssuance : Screen()
     /** In-person presentation by NFC tap or QR code (ISO/IEC 18013-5). */
     data object Proximity : Screen()
+    /** In-person verification: the wallet reads another wallet's mdoc by NFC (ISO/IEC 18013-5 reader). */
+    data object Reader : Screen()
 }
 
 sealed class IssuanceUi {
@@ -291,6 +293,7 @@ class WalletModel(val platform: PlatformServices) {
     val taiwan = TaiwanModel(this)
     val ms = MsIssuanceModel(this)
     val proximity = ProximityModel(this)
+    val reader = ReaderModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -543,6 +546,10 @@ class WalletModel(val platform: PlatformServices) {
             Screen.Proximity -> {
                 proximity.close()
                 showTab(HomeTab.USE)
+            }
+            Screen.Reader -> {
+                reader.close()
+                showTab(HomeTab.VERIFY)
             }
         }
         return true

@@ -2,6 +2,7 @@ package diw.wallet.app.desktop
 
 import com.sun.net.httpserver.HttpServer
 import diw.wallet.app.KeyBackend
+import diw.wallet.app.NfcReaderList
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.softwareBackend
@@ -9,6 +10,8 @@ import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.storage.ValueCipher
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.jdbc.JdbcStorage
@@ -119,6 +122,11 @@ class DesktopPlatform(
             ProcessBuilder("xdg-open", url).start()
         }
     }
+
+    /** PC/SC readers poll for cards and cannot emulate one, so a computer reads wallets but does not present by NFC. */
+    override fun nfcPresentationUnavailableReason(): String = "電腦的 PC/SC 讀卡機只能讀取，不能模擬卡片；感應出示請使用手機"
+
+    override suspend fun nfcReaders(): NfcReaderList = withContext(Dispatchers.IO) { PcscReaders.list() }
 
     fun close() = server.stop(0)
 }

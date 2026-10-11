@@ -387,10 +387,14 @@ class WalletModelE2eTest {
     }
 
     /** A reader as an NFC tag: NDEF engagement goes to the wallet's helper, data transfer to its NFC transport. */
-    private class LoopbackTag(private val helper: org.multipaz.mdoc.nfc.MdocNfcEngagementHelper) : org.multipaz.nfc.NfcIsoTag() {
+    private class LoopbackTag(
+        private val helper: org.multipaz.mdoc.nfc.MdocNfcEngagementHelper,
+        /** 261 is a reader limited to short APDUs, as PC/SC contactless readers are. */
+        override val maxTransceiveLength: Int = 65536,
+    ) : org.multipaz.nfc.NfcIsoTag() {
         private var selected: ByteString? = null
-        override val maxTransceiveLength: Int get() = 65536
-        override suspend fun close() {}
+        // The phone leaves the field: the card emulation side drops its transport, as Android's HCE service does.
+        override suspend fun close() = org.multipaz.mdoc.transport.NfcTransportMdoc.onDeactivated()
         override suspend fun updateDialogMessage(message: String) {}
         override suspend fun transceive(command: org.multipaz.nfc.CommandApdu): org.multipaz.nfc.ResponseApdu {
             val select = command.ins == org.multipaz.nfc.Nfc.INS_SELECT && command.p1 == org.multipaz.nfc.Nfc.INS_SELECT_P1_APPLICATION
@@ -493,6 +497,96 @@ class WalletModelE2eTest {
         assertTrue(m.back())
         assertFalse(m.proximity.listening.value)
         reader.close()
+    }
+
+    /** An NFC reader handed one tag, like a phone held to it. */
+    private class LoopbackReader(private val tag: org.multipaz.nfc.NfcIsoTag) : org.multipaz.nfc.NfcTagReader {
+        override val external = true
+        override val dialogAlwaysShown = false
+        override val dialogNeverShown = true
+        override suspend fun <T : Any> scan(
+            message: String?,
+            tagInteractionFunc: suspend (tag: org.multipaz.nfc.NfcIsoTag) -> T?,
+            options: org.multipaz.nfc.NfcScanOptions,
+            context: kotlin.coroutines.CoroutineContext,
+        ): T = try {
+            tagInteractionFunc(tag) ?: error("The tag is not an mdoc")
+        } catch (e: Throwable) {
+            tag.close()
+            throw e
+        }
+    }
+
+    /**
+     * One wallet reads another in person (ISO/IEC 18013-5 mdoc reader): NFC engagement, the request on the holder's
+     * consent screen, NFC data transfer, and on the reader the integrity checks, the issuer's trust, the status and the
+     * history entry with field names only. [maxTransceive] 261 is a PC/SC reader limited to short APDUs.
+     */
+    private suspend fun readAnotherWallet(maxTransceive: Int, request: ReaderRequest): ReaderUi.Result {
+        start()
+        val (holder, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)), maxTransceive)
+
+        val (verifier, _) = newWallet()
+        verifier.reader.open()
+        assertEquals(Screen.Reader, verifier.screen.value)
+        verifier.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)), request, diw.wallet.core.status.RiskLevel.MEDIUM)
+
+        val consent = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent; reader: ${verifier.reader.state.value}")
+        assertTrue(consent.chain.isEmpty(), "the reader does not authenticate")
+        holder.proximity.approve(consent)
+
+        val result = withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } }
+        assertIs<ReaderUi.Result>(result, "result: $result")
+        assertNull(result.integrityError)
+        assertEquals("NFC", result.transport)
+        val d = result.documents.single()
+        assertEquals("行動駕照", d.title)
+        // The test issuer chains to the test IACA: verified, but never official.
+        assertEquals(TrustEnvironment.TEST, d.issuerTrust.environment)
+        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdict(d, diw.wallet.core.status.RiskLevel.MEDIUM).first)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, d.status.state)
+
+        val entry = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
+        assertTrue(entry.note!!.contains("感應查驗"), "note: ${entry.note}")
+        assertEquals(d.claims.map { it.label }, entry.claims)
+        assertNull(entry.failure)
+        withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+        assertTrue(verifier.back())
+        assertEquals(HomeTab.VERIFY, verifier.tab.value)
+        return result
+    }
+
+    @Test
+    fun nfcReaderVerifiesAnotherWallet() = runBlocking<Unit> {
+        val d = readAnotherWallet(65536, ReaderRequest.MDL_IDENTITY).documents.single()
+        val values = d.claims.associate { it.label to it.value }
+        assertTrue("Lin" in values.values && "Che-Chuan" in values.values, "claims: $values")
+        assertEquals(3, d.claims.size, "only what the credential holds and the request asked for: $values")
+    }
+
+    @Test
+    fun nfcReaderWithShortApdus() = runBlocking<Unit> {
+        val d = readAnotherWallet(261, ReaderRequest.AGE_OVER_18).documents.single()
+        assertEquals(listOf("是"), d.claims.map { it.value })
+    }
+
+    /** Without PC/SC (no pcscd, no reader) the list is empty with a reason, never an error. */
+    @Test
+    fun pcscListWithoutReaders() {
+        val list = diw.wallet.app.desktop.PcscReaders.list()
+        if (list.readers.isEmpty()) assertNotNull(list.problem)
     }
 
     /**
