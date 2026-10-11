@@ -195,6 +195,9 @@ class WalletModelE2eTest {
             assertIs<PresentationUi.Consent>(consent, "consent: $consent")
             assertEquals(TrustEnvironment.TEST, consent.request.verifier.trust.environment)
             assertTrue(consent.items.single().claims.isNotEmpty())
+            // A TEST verifier is not on an official list, so the request is at least medium risk.
+            assertNotNull(consent.items.single().documentId)
+            assertTrue(consent.risk >= diw.wallet.core.status.RiskLevel.MEDIUM, "risk: ${consent.risk}")
             m.approve(consent)
             val done = m.presentation.first { it is PresentationUi.Done || it is PresentationUi.Failed }
             assertIs<PresentationOutcome.Posted>(assertIs<PresentationUi.Done>(done, "presentation: $done").outcome)
@@ -227,6 +230,7 @@ class WalletModelE2eTest {
         val (m, _) = newWallet()
         issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
         m.refreshDocuments().join()
+        withTimeout(30.seconds) { m.statuses.first { it.size >= 2 } }
         val text = http.post("$base/verifier/sessions") {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("client_id_prefix", "x509_san_dns") }.toString())
@@ -267,6 +271,7 @@ class WalletModelE2eTest {
         screen("08-settings", Screen.Settings)
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
+        screen("13-trust-anchors", Screen.TrustAnchors)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -311,7 +316,7 @@ class WalletModelE2eTest {
             assertTrue(cert.getValue("指紋").rows.single().value.count { c -> c == ':' } == 31)
 
             m.checkStatus(doc).join()
-            val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier)).associateBy { it.title }
+            val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier).status).associateBy { it.title }
             assertEquals("VALID（0x00）", status.getValue("狀態查詢結果").rows.first { it.label == "狀態值" }.value)
             val token = status.getValue("狀態清單權杖").rows
             assertTrue(token.any { it.label == "每項位元數（bits）" }, "token rows: $token")
@@ -321,6 +326,79 @@ class WalletModelE2eTest {
         val mdl = results.filterIsInstance<IssuanceResult.Issued>().first { it.document.issuanceRecord?.format == "mso_mdoc" }
         val claims = diw.wallet.core.credential.ClaimReader.read(mdl.credentials.first(), m.documentTypes).associate { it.path.last() to it.value }
         assertEquals("TW", claims["issuing_country"], "claims: $claims")
+    }
+
+    /**
+     * Statuses are kept current without a tap: the issuance queries the new document, a revocation is found by the
+     * next background run, announced and recorded, and the results survive a restart. A failed query keeps the
+     * last meaningful result.
+     */
+    @Test
+    fun statusMonitorAnnouncesRevocationAndKeepsResults() = runBlocking<Unit> {
+        start()
+        val storage = EphemeralStorage()
+        val (m, _) = newWallet(storage)
+        val issued = assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("pid_sd_jwt")), null).single())
+        val id = issued.document.identifier
+        val first = withTimeout(30.seconds) { m.statuses.first { it[id] != null } }.getValue(id)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, first.status.state)
+        // The list chains to a TEST anchor: valid, but a test result never shows as a plain pass.
+        assertEquals(TrustEnvironment.TEST, first.status.environment)
+        assertEquals(diw.wallet.core.status.StatusVerdict.CAUTION, m.status.decision(issued.document).verdict)
+        assertTrue(m.status.decision(issued.document).test)
+        // A PID is an identity document: its status is judged at high risk.
+        assertEquals(diw.wallet.core.status.RiskLevel.HIGH, m.status.decision(issued.document).risk)
+
+        val list = first.status.uri!!.substringAfterLast('/')
+        http.post("$base/issuer/admin/status") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("list", list); put("idx", first.status.index!!); put("status", 1) }.toString())
+        }
+        m.status.refreshDue(force = true)
+        val revoked = withTimeout(30.seconds) {
+            m.statuses.first { it[id]?.status?.state == org.multipaz.revocation.RevocationCheckState.INVALID }
+        }.getValue(id)
+        assertNull(revoked.lastError)
+        assertEquals(diw.wallet.core.status.StatusVerdict.REJECT, m.status.decision(issued.document).verdict)
+        val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.STATUS } } }.first { it.kind == HistoryKind.STATUS }
+        assertEquals("INVALID", entry.status)
+        assertEquals(listOf(issued.document.displayName), entry.documents)
+
+        // Offline: the query fails, the revocation stays and the failure is noted.
+        server?.stop(100, 500)
+        server = null
+        m.checkStatus(issued.document).join()
+        val offline = m.statuses.value.getValue(id)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, offline.status.state)
+        assertNotNull(offline.lastError)
+
+        // A restart reads the stored results.
+        val again = WalletModel(TestPlatform(storage))
+        again.init()
+        assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, again.statuses.value.getValue(id).status.state)
+    }
+
+    /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */
+    @Test
+    fun userAnchorImportAndRemoval() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        val pem = http.get("$base/pki/verifier-root.pem").bodyAsText()
+        m.importAnchor(pem, "Example Root", setOf(diw.wallet.core.trust.TrustRole.ISSUER, diw.wallet.core.trust.TrustRole.STATUS_LIST)).join()
+        withTimeout(10.seconds) { m.anchors.first { a -> a?.any { it.environment == TrustEnvironment.USER } == true } }
+        val user = m.anchors.value!!.filter { it.environment == TrustEnvironment.USER }
+        assertEquals(setOf(diw.wallet.core.trust.TrustRole.ISSUER, diw.wallet.core.trust.TrustRole.STATUS_LIST), user.map { it.role }.toSet())
+        assertTrue(user.all { it.metadata.displayName == "Example Root" && !it.official })
+        val stored = m.trust.anchors(diw.wallet.core.trust.TrustRole.ISSUER, TrustEnvironment.USER).map { it.first }
+        assertTrue(user.first().certificate in stored)
+        // USER anchors are consulted in production use, without the test environment.
+        assertTrue(TrustEnvironment.USER in diw.wallet.core.env.EnvironmentPolicy().enabledEnvironments())
+        user.forEach { m.removeAnchor(it).join() }
+        m.loadAnchors().join()
+        assertTrue(m.anchors.value!!.none { it.environment == TrustEnvironment.USER })
+        // Not a certificate: nothing is added and the reason is shown.
+        m.importAnchor("hello", "", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        assertTrue(m.message.value!!.startsWith("匯入失敗"), "message: ${m.message.value}")
     }
 
     @Test

@@ -7,6 +7,7 @@ import org.multipaz.storage.Storage
 import org.multipaz.trustmanagement.TrustManager
 import org.multipaz.trustmanagement.TrustMetadata
 import org.multipaz.trustmanagement.TrustEntryAlreadyExistsException
+import org.multipaz.trustmanagement.TrustEntryX509Cert
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -51,6 +52,18 @@ data class AnchorMatch(
     val anchor: X509Cert,
 )
 
+/** An X.509 anchor as stored: the role and environment it applies to, and its metadata. */
+data class StoredAnchor(
+    val role: TrustRole,
+    val environment: TrustEnvironment,
+    val certificate: X509Cert,
+    val metadata: TrustMetadata,
+    val identifier: String,
+) {
+    val official: Boolean get() = metadata.extensions[TrustMetadataKeys.OFFICIAL] == "true" && environment == TrustEnvironment.PRODUCTION
+    val source: String? get() = metadata.extensions[TrustMetadataKeys.SOURCE]
+}
+
 /**
  * Holds one Multipaz [TrustManager] per (role, environment). Lookups only consult the environments
  * enabled by the current [EnvironmentPolicy], in the order PRODUCTION, USER, TEST.
@@ -85,6 +98,21 @@ class TrustRegistry(
 
     suspend fun anchors(role: TrustRole, environment: TrustEnvironment): List<Pair<X509Cert, TrustMetadata>> =
         manager(role, environment).getTrustPoints().map { it.certificate to it.metadata }
+
+    /** Every stored X.509 anchor of every role and environment, enabled or not. */
+    suspend fun allAnchors(): List<StoredAnchor> = TrustEnvironment.entries.flatMap { env ->
+        TrustRole.entries.flatMap { role ->
+            manager(role, env).getEntries().filterIsInstance<TrustEntryX509Cert>()
+                .map { StoredAnchor(role, env, it.certificate, it.metadata, it.identifier) }
+        }
+    }
+
+    /** Removes [anchor]; false when it was not stored. */
+    suspend fun removeAnchor(anchor: StoredAnchor): Boolean {
+        val m = manager(anchor.role, anchor.environment)
+        val entry = m.getEntries().firstOrNull { it.identifier == anchor.identifier } ?: return false
+        return m.deleteEntry(entry)
+    }
 
     /**
      * Finds a trusted anchor for [chain] (leaf first, root may be omitted).

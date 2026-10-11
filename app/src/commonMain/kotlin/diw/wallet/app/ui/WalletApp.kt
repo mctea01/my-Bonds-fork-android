@@ -48,12 +48,10 @@ import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
-import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
-import org.multipaz.revocation.RevocationCheckState
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
@@ -127,6 +125,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     is Screen.Certificate -> CertificateScreen(model, s)
                     Screen.AddDocument -> AddDocumentScreen(model)
                     Screen.TrustList -> TrustListScreen(model)
+                    Screen.TrustAnchors -> TrustAnchorsScreen(model)
                     Screen.Offline -> OfflineScreen(model, scanQr)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                 }
@@ -158,6 +157,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.Certificate -> "證書詳情"
     Screen.AddDocument -> "從清單選擇"
     Screen.TrustList -> "信任清單"
+    Screen.TrustAnchors -> "信任錨點"
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
 }
@@ -249,15 +249,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
-        val status = statuses[id]
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val ok = status?.state == RevocationCheckState.VALID && status.trusted
-            Icon(if (ok) WalletIcons.Pass else WalletIcons.Caution, contentDescription = null,
-                tint = if (ok) Tokens.Pass else Tokens.Caution, modifier = Modifier.size(20.dp))
-            Text(statusText(status), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { model.checkStatus(doc) }) { Text("查詢") }
-        }
-        status?.let { DetailSections(model, CredentialDetails.status(it)) }
+        if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
         claims.forEach { (k, v) -> LabelValue(k, v) }
         SectionTitle("證件資訊")
@@ -269,7 +261,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
         LabelValue("可用次數", "$count（批次憑證數）")
         record?.keyStorage?.let { LabelValue("金鑰保護", CredentialDetails.keyStorageName(it)) }
         TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
-        if (showDetails) DetailSections(model, details)
+        if (showDetails) {
+            statuses[id]?.status?.let { DetailSections(model, CredentialDetails.status(it)) }
+            DetailSections(model, details)
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -305,12 +300,4 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
         }
         DetailSections(model, CredentialDetails.certificate(cert))
     }
-}
-
-/** Token Status List value by its name in the specification, with a short translation. */
-private fun statusText(s: CredentialStatus?): String {
-    if (s == null) return "狀態：尚未查詢"
-    if (s.label != null) return "狀態：${s.label}（${CredentialDetails.stateMeaning(s.state)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
-    val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
-    return "狀態：$name（${CredentialDetails.statusMeaning(s.code)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }

@@ -17,18 +17,30 @@ import diw.wallet.core.profile.twdiw.TwdiwOfflineSession
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 import diw.wallet.core.profile.twdiw.TwdiwStaticTarget
 import diw.wallet.core.profile.twdiw.TwdiwTrustEntry
+import diw.wallet.core.status.CredentialStatus
+import diw.wallet.core.status.CredentialStatusChecker
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusDecision
+import diw.wallet.core.status.StatusPolicy
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.multipaz.document.Document
+import org.multipaz.revocation.RevocationCheckState
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /** A TWDIW card that can answer a Bonds request, with its disclosable claims. */
@@ -40,7 +52,13 @@ data class BondsCard(
 )
 
 /** One organisation of the TWDIW trust list, with its checked decision once verified. */
-data class TwdiwTrustRow(val entry: TwdiwTrustEntry, val decision: TrustDecision?, val anchor: String?)
+data class TwdiwTrustRow(
+    val entry: TwdiwTrustEntry,
+    val decision: TrustDecision?,
+    val anchor: String?,
+    /** When the decision was checked (epoch milliseconds). */
+    val checkedAt: Long? = null,
+)
 
 /** What the offline screen shows. */
 sealed class OfflineUi {
@@ -64,13 +82,22 @@ sealed class OfflineUi {
     ) : OfflineUi()
 
     /** Verifier side: the challenge is shown; frames are scanned until complete. */
-    data class VerifierChallenge(val request: BondsPresentationRequest, val received: Int, val total: Int) : OfflineUi()
+    data class VerifierChallenge(
+        val request: BondsPresentationRequest,
+        val received: Int,
+        val total: Int,
+        val risk: RiskLevel = RiskLevel.MEDIUM,
+    ) : OfflineUi()
 
     data class VerifierResult(
         val request: BondsPresentationRequest,
         val result: BondsVerifiedPresentation?,
         val issuerTrust: TrustDecision?,
         val error: String?,
+        val risk: RiskLevel = RiskLevel.MEDIUM,
+        /** The presented card's status, queried online when the phone has a connection. */
+        val status: CredentialStatus? = null,
+        val statusDecision: StatusDecision? = null,
     ) : OfflineUi()
 }
 
@@ -86,9 +113,13 @@ class TaiwanModel(private val model: WalletModel) {
     val servicesError = MutableStateFlow<String?>(null)
     val trustRows = MutableStateFlow<List<TwdiwTrustRow>?>(null)
     val trustError = MutableStateFlow<String?>(null)
+    /** Automatic check of the trust list: (checked, total) while it runs, null when idle. */
+    val trustProgress = MutableStateFlow<Pair<Int, Int>?>(null)
 
     private var verifierCollector: BondsFrameCollector? = null
+    private var verifierRisk = RiskLevel.MEDIUM
     private var linkJob: Job? = null
+    private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
     fun twdiwDocuments(docs: List<Document>): List<Document> = docs.filter { it.issuanceRecord?.profile == TWDIW }
@@ -183,6 +214,11 @@ class TaiwanModel(private val model: WalletModel) {
 
     // ---------------------------------------------------------------- trust list
 
+    /**
+     * Loads the trust list and then checks every organisation on its own (self-signed DID document and Arbitrum
+     * registration) without the user asking: those never checked or checked more than a day ago, or all of them
+     * when [refresh] is set.
+     */
     fun loadTrust(refresh: Boolean = false) = model.scope.launch {
         trustError.value = null
         try {
@@ -190,23 +226,52 @@ class TaiwanModel(private val model: WalletModel) {
             val snaps = list.snapshots().associateBy { it.entry.did }
             trustRows.value = list.all(refresh).map { e ->
                 val s = snaps[e.did]
-                TwdiwTrustRow(e, s?.let { list.decisionFor(it) }, s?.anchor)
+                TwdiwTrustRow(e, s?.let { list.decisionFor(it) }, s?.anchor, s?.checkedAt)
             }.sortedBy { it.entry.displayName }
+            verifyAll(force = refresh)
         } catch (e: Exception) {
             trustError.value = "無法取得信任清單：" + model.describe(e)
         }
     }
 
+    /** Checks the organisations of the loaded list, three at a time, updating each row as its check ends. */
+    fun verifyAll(force: Boolean) {
+        if (verifyAllJob?.isActive == true) return
+        val now = Clock.System.now().toEpochMilliseconds()
+        val due = trustRows.value.orEmpty().filter { force || it.checkedAt == null || now - it.checkedAt > TRUST_RECHECK.inWholeMilliseconds }
+        if (due.isEmpty()) return
+        verifyAllJob = model.scope.launch {
+            val gate = Semaphore(3)
+            var done = 0
+            trustProgress.value = 0 to due.size
+            try {
+                coroutineScope {
+                    due.forEach { row ->
+                        launch {
+                            gate.withPermit { check(row) }
+                            trustProgress.value = ++done to due.size
+                        }
+                    }
+                }
+            } finally {
+                trustProgress.value = null
+            }
+        }
+    }
+
     /** Checks one organisation now: its self-signed DID document and its Arbitrum registration. */
     fun verifyEntry(row: TwdiwTrustRow) = model.scope.launch {
-        try {
-            val list = model.twdiwTrust
-            val snap = list.verified(row.entry.did, bypassCache = true)
-            val updated = TwdiwTrustRow(row.entry, snap?.let { list.decisionFor(it) }, snap?.anchor)
-            trustRows.value = trustRows.value?.map { if (it.entry.did == row.entry.did) updated else it }
-        } catch (e: Exception) {
-            model.message.value = "驗證失敗：" + model.describe(e)
-        }
+        if (!check(row)) model.message.value = "無法連線查驗 ${row.entry.displayName}，請稍後再試"
+    }
+
+    private suspend fun check(row: TwdiwTrustRow): Boolean = try {
+        val list = model.twdiwTrust
+        val snap = list.recheck(row.entry.did)
+        val updated = TwdiwTrustRow(row.entry, snap?.let { list.decisionFor(it) }, snap?.anchor, snap?.checkedAt)
+        trustRows.value = trustRows.value?.map { if (it.entry.did == row.entry.did) updated else it }
+        true
+    } catch (_: Exception) {
+        false
     }
 
     // ---------------------------------------------------------------- Bonds holder
@@ -290,12 +355,16 @@ class TaiwanModel(private val model: WalletModel) {
 
     // ---------------------------------------------------------------- Bonds verifier
 
-    /** Shows a fresh challenge for a Bonds holder to answer. */
-    fun startVerifier(purpose: String) {
+    /**
+     * Shows a fresh challenge for a Bonds holder to answer. [risk] is the risk of the purpose: it decides whether a
+     * card whose status cannot be confirmed (offline, unreadable list) or whose issuer is not listed is accepted.
+     */
+    fun startVerifier(purpose: String, risk: RiskLevel = verifierRisk) {
         try {
             val request = BondsPresentationRequest.generate(purpose, BondsCredentialSource.TWDIW)
             verifierCollector = BondsFrameCollector()
-            offline.value = OfflineUi.VerifierChallenge(request, 0, 0)
+            verifierRisk = risk
+            offline.value = OfflineUi.VerifierChallenge(request, 0, 0, risk)
             model.screen.value = Screen.Offline
             model.platform.keepScreenOn(true)
         } catch (e: Exception) {
@@ -328,22 +397,39 @@ class TaiwanModel(private val model: WalletModel) {
 
     private fun verify(request: BondsPresentationRequest, jws: String) {
         offline.value = OfflineUi.Working("驗證出示資料")
+        val risk = verifierRisk
         model.scope.launch {
             offline.value = try {
                 val result = BondsOfflineVerifier(model.didResolver()).verify(jws, request)
                 val trust = result.issuer?.let { runCatching { model.didTrust.decide(it, TrustRole.ISSUER) }.getOrNull() }
+                offline.value = OfflineUi.Working("查詢證件狀態")
+                val status = cardStatus(result)
+                val decision = StatusPolicy.decide(status, risk)
                 model.record(
                     HistoryKind.VERIFIED, result.moica?.cardholderName ?: "出示者 ${shortDid(result.holder)}", trust,
                     listOfNotNull(trust?.anchorName ?: result.issuer?.let { "發行端 ${shortDid(it)}" }),
-                    result.claims.keys.map { model.claimLabel(listOf(it), null, null) }, verifierNote(request),
+                    result.claims.keys.map { model.claimLabel(listOf(it), null, null) },
+                    verifierNote(request) + "；" + StatusTexts.summary(decision),
                 )
-                OfflineUi.VerifierResult(request, result, trust, null)
+                OfflineUi.VerifierResult(request, result, trust, null, risk, status, decision)
             } catch (e: Exception) {
                 model.record(HistoryKind.VERIFIED, "出示者", null, note = verifierNote(request), failure = model.describe(e))
-                OfflineUi.VerifierResult(request, null, null, model.describe(e))
+                OfflineUi.VerifierResult(request, null, null, model.describe(e), risk)
             }
             verifierCollector = null
         }
+    }
+
+    /**
+     * The presented card's status from its credentialStatus, when the phone is online. Offline, or after
+     * [STATUS_TIMEOUT], the status is unknown and the risk of the purpose decides.
+     */
+    private suspend fun cardStatus(result: BondsVerifiedPresentation): CredentialStatus {
+        val vc = result.credential
+            ?: return CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), "Card carries no status reference", referenced = false)
+        val checker = CredentialStatusChecker(model.http, model.trust, didTrust = model.didTrust)
+        return withTimeoutOrNull(STATUS_TIMEOUT) { runCatching { checker.w3c.check(vc, result.issuer, bypassCache = true) }.getOrNull() }
+            ?: CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), "離線或狀態清單逾時未回應")
     }
 
     private fun verifierNote(request: BondsPresentationRequest) =
@@ -359,6 +445,8 @@ class TaiwanModel(private val model: WalletModel) {
     companion object {
         const val TWDIW = "twdiw"
         const val MSVID = "msvid"
+        private val TRUST_RECHECK = 1.days
+        private val STATUS_TIMEOUT = 8.seconds
 
         /** A DID shortened for a list line: method and the last characters of the identifier. */
         fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)

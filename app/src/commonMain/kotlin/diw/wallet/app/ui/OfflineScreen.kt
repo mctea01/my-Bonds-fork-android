@@ -34,7 +34,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.HomeTab
 import diw.wallet.app.OfflineUi
+import diw.wallet.app.StatusTexts
 import diw.wallet.app.WalletModel
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusVerdict
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.oid4vci.issuanceRecord
@@ -189,7 +192,7 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text("請出示者用錢包或 Bonds 掃描", style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
-        Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）", style = MaterialTheme.typography.bodyMedium)
         s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
             LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
@@ -218,23 +221,34 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
         } else {
             val official = s.issuerTrust?.tier == TrustTier.T1 || s.issuerTrust?.tier == TrustTier.T2
             val test = s.issuerTrust?.environment == TrustEnvironment.TEST
+            val status = s.statusDecision
+            val statusLine = status?.let { StatusTexts.summary(it) + "。" + StatusTexts.explain(it.finding) }
+            val issuerLine = when {
+                official && !test && s.issuerTrust?.tier == TrustTier.T2 -> "發行端已列名，但無法完全驗證（例如區塊鏈註冊暫時無法確認）。"
+                official && !test -> "簽章與這次的挑戰相符，發行端在信任清單內。"
+                test -> "發行端只在測試環境受信任，結果不具效力。"
+                else -> "發行端不在信任清單，無法確認這張卡片由誰簽發。"
+            }
             when {
-                official && !test -> VerdictCard(
-                    Verdict.PASS, "查驗通過",
-                    listOfNotNull(
-                        "簽章與這次的挑戰相符，發行端在信任清單內。",
-                        if (s.issuerTrust?.tier == TrustTier.T2) "發行端已列名，但無法完全驗證（例如區塊鏈註冊暫時無法確認）。" else null,
-                    ),
+                status?.verdict == StatusVerdict.REJECT -> VerdictCard(
+                    Verdict.FAIL, "查驗未通過：證件狀態不符",
+                    listOfNotNull(statusLine, "用途風險為${StatusTexts.risk(s.risk)}，" + StatusTexts.verdict(StatusVerdict.REJECT) + "這張證件。", issuerLine),
                 )
+                s.risk == RiskLevel.HIGH && (!official || test) -> VerdictCard(
+                    Verdict.FAIL, "查驗未通過：發行端無法確認",
+                    listOfNotNull(issuerLine, "高風險用途只接受信任清單內的發行端。", statusLine),
+                )
+                official && !test && status?.verdict != StatusVerdict.CAUTION -> VerdictCard(
+                    Verdict.PASS, "查驗通過", listOfNotNull(issuerLine, statusLine),
+                )
+                official && !test -> VerdictCard(Verdict.CAUTION, "簽章相符，證件狀態需留意", listOfNotNull(issuerLine, statusLine))
                 else -> VerdictCard(
                     Verdict.CAUTION, "簽章相符，發行端無法確認",
-                    listOf(
-                        "出示者的簽章與這次的挑戰相符。",
-                        if (test) "發行端只在測試環境受信任，結果不具效力。" else "發行端不在信任清單，無法確認這張卡片由誰簽發。",
-                    ),
+                    listOfNotNull("出示者的簽章與這次的挑戰相符。", issuerLine, statusLine),
                 )
             }
-            Text("用途：${s.request.purpose}")
+            Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）")
+            specStatus(s.status)?.let { Text("規格狀態值：$it", style = MaterialTheme.typography.bodySmall) }
             Text("出示時間：${r.created}", style = MaterialTheme.typography.bodySmall)
             Text("出示者：${r.holder}", style = MaterialTheme.typography.bodySmall)
             val issuer = r.moica?.let { "自然人憑證持有人 ${it.cardholderName}（憑證序號 ${it.certificateSerialHex}）" } ?: r.issuer ?: "未知"
@@ -246,7 +260,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.taiwan.startVerifier(s.request.purpose) }) { Text("再次查驗") }
+            Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk) }) { Text("再次查驗") }
             OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text("完成") }
         }
     }

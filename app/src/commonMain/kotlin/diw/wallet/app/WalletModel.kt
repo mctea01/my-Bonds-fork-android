@@ -11,6 +11,7 @@ import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.credential.ClaimLabels
 import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.credential.ClaimSensitivity
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vci.CredentialConfiguration
@@ -43,17 +44,20 @@ import diw.wallet.core.profile.twdiw.TwdiwPlatform
 import diw.wallet.core.profile.twdiw.TwdiwServices
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
 import diw.wallet.core.profile.twdiw.TwdiwUserAgent
-import diw.wallet.core.status.CredentialStatus
-import diw.wallet.core.status.CredentialStatusChecker
+import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.StoredAnchor
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.trust.UserDidTrust
+import diw.wallet.core.trust.UserTrustedDid
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.w3c.addDiwCredentialImplementations
+import diw.wallet.core.x509.displaySubject
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -114,6 +118,8 @@ data class WalletSettings(
     val twdiwFrontendUrl: String = TwdiwPlatform.PRODUCTION_FRONTEND,
     /** Show technical details (formats, keys, signatures, validity) expanded by default. */
     val showDetails: Boolean = false,
+    /** Query document statuses in the background when they are older than the document's risk allows. */
+    val autoStatus: Boolean = true,
 )
 
 /**
@@ -137,6 +143,8 @@ sealed class Screen {
     data object AddDocument : Screen()
     /** Issuers and verifiers on the TWDIW trust list, opened from the settings. */
     data object TrustList : Screen()
+    /** X.509 trust anchors of every environment and the DIDs the user trusts, opened from the settings. */
+    data object TrustAnchors : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -162,7 +170,14 @@ sealed class IssuanceUi {
 }
 
 /** A claim the user is about to share, grouped by document. */
-data class ConsentItem(val documentName: String, val claims: List<String>, val documentTrust: TrustDecision?)
+data class ConsentItem(
+    val documentName: String,
+    val claims: List<String>,
+    val documentTrust: TrustDecision?,
+    val documentId: String? = null,
+    /** The most sensitive of [claims] (identifiers and portraits high, names and birth dates medium). */
+    val sensitivity: RiskLevel = RiskLevel.LOW,
+)
 
 sealed class PresentationUi {
     data object Loading : PresentationUi()
@@ -175,6 +190,8 @@ sealed class PresentationUi {
         val fields: List<TwdiwCustomField> = emptyList(),
         /** A TWDIW counter presentation: its barcode is fetched after the response. */
         val offline: TwdiwOfflineSession? = null,
+        /** Risk of the request: the most sensitive field asked for, raised for a verifier that is not on an official list. */
+        val risk: RiskLevel = RiskLevel.LOW,
     ) : PresentationUi() {
         val request: ValidatedAuthorizationRequest get() = prepared.request
     }
@@ -203,8 +220,13 @@ class WalletModel(val platform: PlatformServices) {
     val settingsFlow = MutableStateFlow(WalletSettings())
     val pinRequest = MutableStateFlow<PinRequest?>(null)
     val message = MutableStateFlow<String?>(null)
-    val statuses = MutableStateFlow<Map<String, CredentialStatus>>(emptyMap())
     val ready = MutableStateFlow(false)
+    /** Document statuses, kept current in the background. */
+    val status = StatusMonitor(this)
+    val statuses get() = status.statuses
+    /** Stored X.509 anchors (null until loaded) and the DIDs the user trusts, for the trust anchors screen. */
+    val anchors = MutableStateFlow<List<StoredAnchor>?>(null)
+    val trustedDids = MutableStateFlow<List<UserTrustedDid>>(emptyList())
 
     lateinit var storage: Storage
         private set
@@ -243,8 +265,10 @@ class WalletModel(val platform: PlatformServices) {
             return TwdiwTrustList(http, p, storage = storage).also { twdiwTrustCache = p to it }
         }
     val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
-    /** Trust for parties identified by a DID: the TWDIW trust list first, then Linked Domains. */
-    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, linkedDomains))
+    /** DIDs the user trusts themselves, outside any national list. */
+    val userDids: UserDidTrust by lazy { UserDidTrust(storage) }
+    /** Trust for parties identified by a DID: the TWDIW trust list first, then Linked Domains, then the user's own list. */
+    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, linkedDomains, userDids))
     val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrust, twdiwPlatform)
     /** One instance, so custom field values attached before a response reach the response. */
     val twdiwPresentation = TwdiwPresentationDialect { did, host -> twdiwTrust.hostRegistered(did, host) }
@@ -293,13 +317,13 @@ class WalletModel(val platform: PlatformServices) {
         )
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
-        refreshDocuments()
+        status.load()
+        documents.value = documentStore.listDocuments()
         ready.value = true
+        status.refreshDue()
     }
 
     // ---------------------------------------------------------------- settings
-
-    private val settingsTable = StorageTableSpec(name = "DiwSettings", supportPartitions = false, supportExpiration = false)
 
     private suspend fun loadSettings(): WalletSettings {
         val t = storage.getTable(settingsTable)
@@ -490,6 +514,7 @@ class WalletModel(val platform: PlatformServices) {
             Screen.Settings -> screen.value = Screen.Home
             Screen.AddDocument -> screen.value = Screen.Home
             Screen.TrustList -> screen.value = Screen.Settings
+            Screen.TrustAnchors -> screen.value = Screen.Settings
             Screen.Offline -> {
                 taiwan.closeOffline()
                 screen.value = Screen.Home
@@ -508,6 +533,7 @@ class WalletModel(val platform: PlatformServices) {
 
     fun deleteDocument(doc: Document) = scope.launch {
         documentStore.deleteDocument(doc.identifier)
+        status.forget(doc.identifier)
         refreshDocuments()
         platform.registerDigitalCredentials(this@WalletModel)
         showTab(HomeTab.DOCUMENTS)
@@ -524,6 +550,7 @@ class WalletModel(val platform: PlatformServices) {
         claims: List<String> = emptyList(),
         note: String? = null,
         failure: String? = null,
+        status: String? = null,
     ) {
         val entry = HistoryEntry(
             id = PlatformCrypto.randomBytes(9).toBase64Url(),
@@ -536,6 +563,7 @@ class WalletModel(val platform: PlatformServices) {
             claims = claims.distinct(),
             note = note,
             failure = failure,
+            status = status,
         )
         scope.launch {
             historyLock.withLock {
@@ -557,7 +585,6 @@ class WalletModel(val platform: PlatformServices) {
 
     /** Decoded card logos by URI; SVG and unreachable logos stay absent and the card shows its category icon. */
     val cardArt = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
-    private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
     private val artRequested = mutableSetOf<String>()
 
     fun loadCardArt(uri: String) {
@@ -583,11 +610,8 @@ class WalletModel(val platform: PlatformServices) {
         return bytes
     }
 
-    fun checkStatus(doc: Document) = scope.launch {
-        val cred = doc.getCertifiedCredentials().firstOrNull() ?: return@launch
-        val s = CredentialStatusChecker(http, trust, didTrust = didTrust).check(cred, bypassCache = true)
-        statuses.value = statuses.value + (doc.identifier to s)
-    }
+    /** Queries [doc]'s status now. */
+    fun checkStatus(doc: Document) = status.refresh(doc)
 
     // ---------------------------------------------------------------- entry
 
@@ -800,6 +824,7 @@ class WalletModel(val platform: PlatformServices) {
      * after a short grace period for a redirect that is on its way, the wait ends instead of spinning forever.
      */
     fun onAppResumed() {
+        if (ready.value) status.refreshDue()
         if (!leftForBrowser) return
         leftForBrowser = false
         val waiting = issuance.value as? IssuanceUi.WaitingForBrowser ?: return
@@ -867,6 +892,7 @@ class WalletModel(val platform: PlatformServices) {
         }
         refreshDocuments()
         platform.registerDigitalCredentials(this)
+        results.filterIsInstance<IssuanceResult.Issued>().forEach { status.refresh(it.document) }
         val issuerName = issuerName(session)
         results.forEach { r ->
             record(
@@ -959,26 +985,38 @@ class WalletModel(val platform: PlatformServices) {
         prepared: PreparedRequest,
         fields: List<TwdiwCustomField> = emptyList(),
         offline: TwdiwOfflineSession? = null,
-    ): PresentationUi.Consent = when (prepared) {
-        is PreparedPresentation -> {
-            val selection = prepared.queryResult.select(emptyList())
-            val items = selection.matches.map { m ->
-                val doc = m.credential.document
-                ConsentItem(
-                    documentName = doc.displayName ?: "憑證",
-                    claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
-                    documentTrust = null,
-                )
+    ): PresentationUi.Consent {
+        val consent = when (prepared) {
+            is PreparedPresentation -> {
+                val selection = prepared.queryResult.select(emptyList())
+                val items = selection.matches.map { m ->
+                    val doc = m.credential.document
+                    ConsentItem(
+                        documentName = doc.displayName ?: "憑證",
+                        claims = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
+                        documentTrust = null,
+                        documentId = doc.identifier,
+                        sensitivity = ClaimSensitivity.ofAll(m.claims.values.map { ClaimReader.pathOf(it) }),
+                    )
+                }
+                PresentationUi.Consent(prepared, selection, items, fields, offline)
             }
-            PresentationUi.Consent(prepared, selection, items, fields, offline)
-        }
-        is PreparedExtended -> {
-            val items = prepared.lines.map { line ->
-                val record = line.document.issuanceRecord
-                ConsentItem(line.documentName, line.claims.map { claimLabels.label(it.split('.'), record?.claimNames.orEmpty(), null) }, null)
+            is PreparedExtended -> {
+                val items = prepared.lines.map { line ->
+                    val record = line.document.issuanceRecord
+                    ConsentItem(
+                        line.documentName, line.claims.map { claimLabels.label(it.split('.'), record?.claimNames.orEmpty(), null) }, null,
+                        documentId = line.document.identifier,
+                        sensitivity = ClaimSensitivity.ofAll(line.claims.map { it.split('.') }),
+                    )
+                }
+                PresentationUi.Consent(prepared, null, items, fields, offline)
             }
-            PresentationUi.Consent(prepared, null, items, fields, offline)
         }
+        val risk = requestRisk(consent.items, consent.request.verifier.trust.tier)
+        // A status older than the request's risk allows is queried again while the user reads the request.
+        status.refreshFor(consent.items.mapNotNull { it.documentId }, risk)
+        return consent.copy(risk = risk)
     }
 
     /** [values] are the holder's entries for the request's custom fields, by field name. */
@@ -1043,6 +1081,71 @@ class WalletModel(val platform: PlatformServices) {
         dcApiError = null
     }
 
+    // ---------------------------------------------------------------- trust anchors
+
+    fun loadAnchors() = scope.launch {
+        anchors.value = trust.allAnchors().sortedWith(compareBy({ it.environment.ordinal }, { it.metadata.displayName }))
+        trustedDids.value = userDids.all().sortedBy { it.name }
+    }
+
+    /**
+     * Imports the certificates in [input] (PEM text, or an https address serving PEM) as the user's own anchors for
+     * [roles]. They are trusted in production use, marked as the user's (T3, never official).
+     */
+    fun importAnchor(input: String, name: String, roles: Set<TrustRole>) = scope.launch {
+        try {
+            if (roles.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種用途")
+            val text = input.trim()
+            val source = if (text.startsWith("https://") || text.startsWith("http://")) text else "pasted"
+            val pem = if (source != "pasted") {
+                if (!isAcceptableEndpoint(text, environmentPolicy.insecureLoopbackAllowed)) throw ProtocolException("invalid_request", "憑證網址需為 https")
+                val resp = http.get(text)
+                if (!resp.status.isSuccess()) throw ProtocolException("anchor_fetch", "HTTP ${resp.status.value}")
+                resp.bodyAsText()
+            } else text
+            val certs = PEM_CERT.findAll(pem).map { X509Cert.fromPem(it.value) }.toList()
+            if (certs.isEmpty()) throw ProtocolException("invalid_request", "找不到 PEM 格式的憑證（-----BEGIN CERTIFICATE-----）")
+            val now = kotlin.time.Clock.System.now()
+            var added = 0
+            for (cert in certs) {
+                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "憑證已於 ${cert.validityNotAfter} 過期")
+                val cn = cert.subject.components[OID.COMMON_NAME.oid]?.value ?: cert.displaySubject()
+                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
+                for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) added++
+            }
+            message.value = if (added == 0) "這些憑證已經是信任錨點" else "已加入 $added 個信任錨點（使用者自訂，信任等級 T3）"
+            loadAnchors()
+        } catch (e: Exception) {
+            message.value = "匯入失敗：" + describe(e)
+        }
+    }
+
+    fun removeAnchor(anchor: StoredAnchor) = scope.launch {
+        if (anchor.environment == TrustEnvironment.PRODUCTION) return@launch
+        trust.removeAnchor(anchor)
+        loadAnchors()
+    }
+
+    /** Trusts [did] for [roles] as the user's own anchor. */
+    fun trustDid(did: String, name: String, roles: Set<TrustRole>) = scope.launch {
+        try {
+            if (roles.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種用途")
+            val d = did.trim()
+            // The DID must resolve, so a typo is caught now rather than at the next issuance.
+            didResolver().resolveKey(d, null)
+            userDids.put(d, name, roles, kotlin.time.Clock.System.now().epochSeconds)
+            message.value = "已信任 ${name.trim().ifEmpty { d }}"
+            loadAnchors()
+        } catch (e: Exception) {
+            message.value = "無法加入：" + describe(e)
+        }
+    }
+
+    fun untrustDid(did: String) = scope.launch {
+        userDids.remove(did)
+        loadAnchors()
+    }
+
     // ---------------------------------------------------------------- helpers
 
     fun describe(e: Throwable): String = when (e) {
@@ -1065,6 +1168,9 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        /** One spec per table name and process: storage rejects a second spec object for the same table. */
+        private val settingsTable = StorageTableSpec(name = "DiwSettings", supportPartitions = false, supportExpiration = false)
+        private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
         const val MAX_ART_BYTES = 1024 * 1024
         val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
@@ -1078,5 +1184,17 @@ class WalletModel(val platform: PlatformServices) {
         }
 
         fun randomId() = PlatformCrypto.randomBytes(9).toBase64Url()
+
+        private val PEM_CERT = Regex("-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\\s]+-----END CERTIFICATE-----")
+
+        /** Risk a verifier adds to a request: none when officially listed, high when its identity cannot be verified. */
+        fun verifierRisk(tier: TrustTier): RiskLevel = when (tier) {
+            TrustTier.T1 -> RiskLevel.LOW
+            TrustTier.T2, TrustTier.T3 -> RiskLevel.MEDIUM
+            TrustTier.T4 -> RiskLevel.HIGH
+        }
+
+        fun requestRisk(items: List<ConsentItem>, verifierTier: TrustTier): RiskLevel =
+            items.fold(verifierRisk(verifierTier)) { acc, i -> RiskLevel.max(acc, i.sensitivity) }
     }
 }

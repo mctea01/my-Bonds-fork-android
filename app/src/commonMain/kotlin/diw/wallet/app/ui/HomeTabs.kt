@@ -45,9 +45,12 @@ import diw.wallet.app.HistoryEntry
 import diw.wallet.app.HistoryKind
 import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
+import diw.wallet.app.StatusMonitor
 import diw.wallet.app.WalletModel
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.trust.TrustTier
+import org.multipaz.revocation.RevocationCheckState
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -252,6 +255,7 @@ fun FilesTab() {
 @Composable
 fun VerifyTab(model: WalletModel) {
     var purpose by remember { mutableStateOf("身分確認") }
+    var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             Modifier.fillMaxWidth(),
@@ -261,7 +265,7 @@ fun VerifyTab(model: WalletModel) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(WalletIcons.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 Text("查驗他人證件", style = MaterialTheme.typography.titleLarge)
-                Text("這支手機顯示一次性的查驗挑戰，對方用錢包或 Bonds 掃描後出示，簽章、挑戰與發行端都在這支手機上檢查，不需連網。",
+                Text("這支手機顯示一次性的查驗挑戰，對方用錢包或 Bonds 掃描後出示，簽章、挑戰與發行端都在這支手機上檢查。有網路時也會查詢證件狀態。",
                     style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = purpose,
@@ -270,7 +274,9 @@ fun VerifyTab(model: WalletModel) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Button(onClick = { model.taiwan.startVerifier(purpose.trim()) }, enabled = purpose.isNotBlank()) {
+                Text("用途的風險", style = MaterialTheme.typography.titleSmall)
+                RiskSelector(risk) { risk = it }
+                Button(onClick = { model.taiwan.startVerifier(purpose.trim(), risk) }, enabled = purpose.isNotBlank()) {
                     Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("產生查驗挑戰")
@@ -292,6 +298,7 @@ private enum class HistoryFilter(val title: String, val kinds: Set<HistoryKind>)
     PRESENTED("出示", setOf(HistoryKind.PRESENTED, HistoryKind.DECLINED)),
     ISSUED("領取", setOf(HistoryKind.ISSUED)),
     VERIFIED("查驗", setOf(HistoryKind.VERIFIED)),
+    STATUS("狀態", setOf(HistoryKind.STATUS)),
 }
 
 /** Who received what and when, newest first; tapping an entry shows the documents and claim names. */
@@ -302,7 +309,7 @@ fun HistoryTab(model: WalletModel) {
     var open by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
     if (entries.isEmpty()) {
-        EmptyState(WalletIcons.History, "還沒有紀錄", "領取、出示與查驗證件後，這裡會列出對象、時間與交出的欄位名稱。欄位內容不會留存。")
+        EmptyState(WalletIcons.History, "還沒有紀錄", "領取、出示與查驗證件後，這裡會列出對象、時間與交出的欄位名稱；證件狀態或發行端信任改變時也會記錄。欄位內容不會留存。")
         return
     }
     val zone = TimeZone.currentSystemDefault()
@@ -346,6 +353,7 @@ private fun historyTitle(e: HistoryEntry): String = when (e.kind) {
     HistoryKind.PRESENTED -> "出示給 ${e.party}"
     HistoryKind.DECLINED -> "拒絕 ${e.party} 的要求"
     HistoryKind.VERIFIED -> "查驗 ${e.party}"
+    HistoryKind.STATUS -> (e.documents.firstOrNull() ?: "證件") + if (e.status == StatusMonitor.TRUST_CHANGE) " 發行端信任變更" else " 狀態變更"
 }
 
 private fun hhmm(t: LocalDateTime) = t.hour.toString().padStart(2, '0') + ":" + t.minute.toString().padStart(2, '0')
@@ -355,6 +363,17 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
     val (verdict, status) = when {
         e.failure != null -> Verdict.FAIL to "未完成"
         e.kind == HistoryKind.DECLINED -> Verdict.CAUTION to "已拒絕"
+        e.kind == HistoryKind.STATUS -> when (e.status) {
+            RevocationCheckState.VALID.name -> Verdict.PASS to "有效"
+            RevocationCheckState.INVALID.name -> Verdict.FAIL to "已撤銷"
+            RevocationCheckState.SUSPENDED.name -> Verdict.CAUTION to "暫停"
+            else -> when (e.tier?.let { runCatching { TrustTier.valueOf(it) }.getOrNull() }) {
+                TrustTier.T1 -> Verdict.PASS to "T1"
+                TrustTier.T2 -> Verdict.CAUTION to "T2"
+                TrustTier.T3 -> Verdict.CAUTION to "T3"
+                else -> Verdict.FAIL to "T4"
+            }
+        }
         else -> Verdict.PASS to "完成"
     }
     val icon = when (e.kind) {
@@ -362,6 +381,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
         HistoryKind.PRESENTED -> WalletIcons.Send
         HistoryKind.DECLINED -> WalletIcons.Fail
         HistoryKind.VERIFIED -> WalletIcons.Shield
+        HistoryKind.STATUS -> WalletIcons.Caution
     }
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -384,7 +404,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
             if (expanded) {
                 e.tier?.let { t ->
                     val tier = runCatching { TrustTier.valueOf(t) }.getOrNull()
-                    if (tier != null) Text("對方的信任等級：" + WalletModel.tierTitle(tier) + (if (e.test) "（測試環境）" else ""), style = MaterialTheme.typography.bodySmall)
+                    if (tier != null) Text((if (e.kind == HistoryKind.STATUS) "發行端" else "對方") + "的信任等級：" + WalletModel.tierTitle(tier) + (if (e.test) "（測試環境）" else ""), style = MaterialTheme.typography.bodySmall)
                 }
                 e.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 if (e.claims.isNotEmpty()) {

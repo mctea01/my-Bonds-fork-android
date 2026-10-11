@@ -179,6 +179,18 @@ class TwdiwTrustList(
         return snap
     }
 
+    /**
+     * Checks [did] again now, without caches or the offline snapshot: its listing, its self-signed document and its
+     * Arbitrum registration. Null when the DID is no longer listed; a network failure throws, so a background
+     * re-check never mistakes being offline for a delisting.
+     */
+    suspend fun recheck(did: String): TwdiwTrustSnapshot? {
+        val snap = fetchEntry(did)?.let { check(it) }
+        cache[did] = Cached(snap, Clock.System.now() + cacheTtl)
+        if (snap != null) saveSnapshot(snap)
+        return snap
+    }
+
     /** Whether [host] is registered for [did] (response_uri / request_uri gates); null when the DID is unknown. */
     suspend fun hostRegistered(did: String, host: String): Boolean? {
         val snap = verified(did) ?: return null

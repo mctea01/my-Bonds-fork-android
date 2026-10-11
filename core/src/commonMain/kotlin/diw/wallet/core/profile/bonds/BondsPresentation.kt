@@ -389,6 +389,8 @@ data class BondsVerifiedPresentation(
     val created: Instant,
     val boundToAudience: Boolean,
     val moica: MoicaVerification?,
+    /** The card's W3C credential (disclosures resolved), whose credentialStatus a verifier checks online when it can. */
+    val credential: JsonObject? = null,
 )
 
 /**
@@ -434,7 +436,7 @@ class BondsOfflineVerifier(private val didResolver: DidResolver) {
                 val resolved = SdJwtDisclosures.resolve(cjws.payload, parts.disclosures)
                 val subject = resolved.obj("vc")?.obj("credentialSubject") ?: resolved.obj("credentialSubject") ?: JsonObject(emptyMap())
                 val claims = subject.filterKeys { it != "id" && !it.startsWith("_") }.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: v.toString() }
-                BondsVerifiedPresentation(holder, BondsCredentialSource.TWDIW, claims, iss, created, bound, null)
+                BondsVerifiedPresentation(holder, BondsCredentialSource.TWDIW, claims, iss, created, bound, null, resolved.obj("vc") ?: resolved)
             }
             id.startsWith(BondsOfflinePresentation.MOICA_PREFIX) -> {
                 if (request.source != BondsCredentialSource.SELF_ISSUED) throw ProtocolException("invalid_presentation", "Credential source mismatch")
@@ -442,7 +444,7 @@ class BondsOfflineVerifier(private val didResolver: DidResolver) {
                 val card = MoicaSignedCredential.parse(serialized)
                 val result = card.verify(didResolver, now)
                 if (result.credential.obj("credentialSubject")?.str("id") != holder) throw ProtocolException("invalid_credential", "Card subject is not the presenter")
-                BondsVerifiedPresentation(holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result)
+                BondsVerifiedPresentation(holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result, result.credential)
             }
             else -> throw ProtocolException("invalid_presentation", "Unsupported credential envelope")
         }

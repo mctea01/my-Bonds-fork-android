@@ -69,6 +69,8 @@ data class CredentialStatus(
     /** Per-entry results of a W3C credential with several credentialStatus entries. */
     val w3cEntries: List<W3cEntryStatus> = emptyList(),
     val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
+    /** False when the credential names no status list at all (the issuer offers no status), as opposed to a list that could not be read. */
+    val referenced: Boolean = true,
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
 
@@ -118,7 +120,7 @@ class CredentialStatusChecker(
             return w3c.check(vc, W3cVc.issuer(vc, jwt), bypassCache)
         }
         val (status, issuerChain) = statusOf(credential)
-            ?: return result(RevocationCheckState.UNKNOWN, false, null, "Credential carries no status reference")
+            ?: return result(RevocationCheckState.UNKNOWN, false, null, "Credential carries no status reference").copy(referenced = false)
         return check(status, issuerChain, bypassCache)
     }
 

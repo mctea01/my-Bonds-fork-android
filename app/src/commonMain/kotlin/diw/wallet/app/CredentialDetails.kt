@@ -291,7 +291,7 @@ object CredentialDetails {
                 s.uri?.let { add(DetailRow("清單位置（uri）", it)) }
                 s.index?.let { add(DetailRow("索引（idx）", it.toString())) }
                 add(DetailRow("查詢時間", time(s.checkedAt)))
-                add(DetailRow("清單簽章", if (s.trusted) "已驗證" else "未驗證"))
+                add(DetailRow("清單簽章", assuranceText(s.assurance)))
                 s.environment?.let { add(DetailRow("信任環境", it.id)) }
             }),
             DetailSection("狀態清單權杖", buildList {
@@ -314,7 +314,7 @@ object CredentialDetails {
             add(DetailRow("意義", stateMeaning(s.state)))
             s.detail?.let { add(DetailRow("說明", it)) }
             add(DetailRow("查詢時間", time(s.checkedAt)))
-            add(DetailRow("清單簽章", if (s.trusted) "已驗證" else "未驗證"))
+            add(DetailRow("清單簽章", assuranceText(s.assurance)))
             s.environment?.let { add(DetailRow("信任環境", it.id)) }
         })
         val entries = s.w3cEntries.mapIndexed { i, e ->
@@ -325,11 +325,18 @@ object CredentialDetails {
                 add(DetailRow("意義", stateMeaning(e.state)))
                 add(DetailRow("清單位置", e.entry.listUrl))
                 add(DetailRow("索引", e.entry.index.toString()))
-                add(DetailRow("清單簽章", if (e.trusted) "已驗證" else "未驗證"))
+                add(DetailRow("清單簽章", assuranceText(e.assurance)))
                 e.detail?.let { add(DetailRow("說明", it)) }
             })
         }
         return listOf(overall) + entries
+    }
+
+    /** How far the list's signature ties it to the issuer. */
+    fun assuranceText(a: diw.wallet.core.status.StatusAssurance): String = when (a) {
+        diw.wallet.core.status.StatusAssurance.TRUSTED -> "已驗證（金鑰綁定發行端或信任錨點）"
+        diw.wallet.core.status.StatusAssurance.TLS_ONLY -> "已驗證，但金鑰只經 HTTPS 確認（jku 無法對應發行端）"
+        diw.wallet.core.status.StatusAssurance.UNVERIFIED -> "未驗證"
     }
 
     fun stateMeaning(state: org.multipaz.revocation.RevocationCheckState): String = when (state) {

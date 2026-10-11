@@ -101,7 +101,10 @@ fun CredentialCard(model: WalletModel, doc: Document, onClick: () -> Unit) {
                         Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall, color = text)
                     }
                 }
-                storedTrust(doc)?.let { TierBadge(it) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    storedTrust(doc)?.let { TierBadge(it) }
+                    if (record?.pendingTransactionId == null) StatusChip(model, doc)
+                }
                 record?.let {
                     Text((listOf(CredentialDetails.formatLabel(it)) + CredentialDetails.specs(it)).joinToString("、"),
                         style = MaterialTheme.typography.bodySmall, color = text)

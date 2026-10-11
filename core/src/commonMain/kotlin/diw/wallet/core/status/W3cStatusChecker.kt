@@ -90,6 +90,8 @@ data class W3cEntryStatus(
     val trusted: Boolean,
     val detail: String?,
     val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
+    /** Environment of the anchor or trust source the list's key is tied to. */
+    val environment: TrustEnvironment? = null,
 )
 
 /**
@@ -127,8 +129,9 @@ class W3cStatusChecker(
     suspend fun check(vc: JsonObject, issuer: String?, bypassCache: Boolean = false): CredentialStatus {
         val entries = W3cStatusEntry.parseAll(vc)
         if (entries.isEmpty()) {
-            val detail = if (W3cVc.statusEntries(vc).isEmpty()) "Credential carries no status reference" else "Unsupported credentialStatus type"
-            return CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), detail)
+            val none = W3cVc.statusEntries(vc).isEmpty()
+            val detail = if (none) "Credential carries no status reference" else "Unsupported credentialStatus type"
+            return CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), detail, referenced = !none)
         }
         val results = entries.map { checkEntry(it, issuer, bypassCache) }
         return combine(results)
@@ -172,7 +175,7 @@ class W3cStatusChecker(
             list.assurance == StatusAssurance.TLS_ONLY && (issuer == null || list.issuer == null || list.issuer == issuer) -> StatusAssurance.TLS_ONLY
             else -> StatusAssurance.UNVERIFIED
         }
-        return W3cEntryStatus(entry, value, state, label, trusted && list.verified, notes.joinToString("; ").ifEmpty { null }, assurance)
+        return W3cEntryStatus(entry, value, state, label, trusted && list.verified, notes.joinToString("; ").ifEmpty { null }, assurance, list.environment)
     }
 
     private fun combine(results: List<W3cEntryStatus>): CredentialStatus {
@@ -188,7 +191,8 @@ class W3cStatusChecker(
         return CredentialStatus(
             state = state,
             trusted = results.all { it.trusted },
-            environment = null,
+            // A test list anywhere makes the whole result a test result.
+            environment = results.mapNotNull { it.environment }.let { envs -> envs.firstOrNull { it == TrustEnvironment.TEST } ?: envs.firstOrNull() },
             checkedAt = Clock.System.now(),
             detail = results.mapNotNull { it.detail }.distinct().joinToString("; ").ifEmpty { null },
             code = first.value,
