@@ -28,7 +28,7 @@
 1. **正式信任清單全部誤判為「與鏈上不符」（T4）。** 合約 getDocById 回傳的是一個 struct（開頭多一個 0x20 位移），原本直接當成欄位解析。修正後正式組織判定為 T1，已以對外互通測試確認。
 2. **mashbean 發證端拒絕 proof（kid 不是 did:key）。** SD-JWT VC 等本身沒有 DID 的金鑰，原本一律用 did:jwk 命名；改為使用發行端列出的方法。
 3. **官方出示要求從一般 `openid4vp://` 連結進入時未套用 TWDIW 方言。** 官方格式的 input descriptor 沒有 format，改以 did:key client 加上 client_metadata.vp_formats（jwt_vp / jwt_vc）辨識。
-4. **TWDIW 狀態清單以 key-2 簽章（只公布在 jku），原本驗簽失敗變成「未知」。** 改為讀取位元並標示「未驗證」，不當成可信結果。
+4. **TWDIW 狀態清單以 key-2 簽章（只公布在 jku），原本驗簽失敗變成「未知」。** 改為讀取位元並標示「未驗證」，不當成可信結果。後續已改為以綁定發行端的 jku 金鑰驗簽，見 [p2-followup.md](p2-followup.md)。
 5. 同意畫面不再列出比對用的結構欄位（type、credentialSchema、credentialStatus 等）。
 6. OpenID4VP 草案的 DID client（`client_id` 為 `did:key:...`）原本被去掉 `did:` 前綴後再解析，任何 DID 簽章的要求物件都會被拒（kid does not reference the client DID）。TWDIW 與 Bonds 驗證端都用 did:key client，已修正並由 TWDIW 出示測試涵蓋。
 7. 草案 11/12 發證端要求 `user_pin`，原本只送 1.0 的 `tx_code`。草案 11 方言改為同時送出。
