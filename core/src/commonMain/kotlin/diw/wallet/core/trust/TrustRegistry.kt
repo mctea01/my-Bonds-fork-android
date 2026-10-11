@@ -19,6 +19,8 @@ enum class TrustRole(val id: String) {
     WALLET_PROVIDER("wallet-provider"),
     STATUS_LIST("status-list"),
     TSA("tsa"),
+    /** Signers of documents (PDF, CMS, XML, OFD signatures and seals). */
+    DOCUMENT("document"),
 }
 
 /** Metadata extension keys stored in [TrustMetadata.extensions]. */
@@ -82,8 +84,14 @@ class TrustRegistry(
     var policy: EnvironmentPolicy,
 ) {
     private companion object {
-        /** The system store holds web PKI CAs: they may identify issuers, verifiers and status list signers, nothing else. */
-        val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST)
+        /**
+         * The system store holds web PKI CAs: they may identify issuers, verifiers, status list signers, document
+         * signers and time-stamp authorities, nothing else (never a wallet provider).
+         */
+        val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA)
+
+        /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
+        val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
     }
 
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
@@ -163,7 +171,9 @@ class TrustRegistry(
             }
             val m = manager(role, env)
             // Multipaz handles EC chains; an RSA chain (GPKI, web PKI) makes it throw and is validated with PKIX.
-            val result = runCatching { m.verify(chain, atTime, validateCaValidity = true, docType = docType) }.getOrNull()
+            // Document signers and time-stamp authorities are plain PKIX chains: Multipaz's mdoc profile checks
+            // (signing key usage of the leaf) do not apply to them.
+            val result = if (role in PKIX_ROLES) null else runCatching { m.verify(chain, atTime, validateCaValidity = true, docType = docType) }.getOrNull()
             // Only when Multipaz could not evaluate the chain: an EC chain it found untrusted stays untrusted.
             val point = if (result != null) result.trustPoints.firstOrNull()?.takeIf { result.isTrusted } else {
                 val points = m.getTrustPoints()

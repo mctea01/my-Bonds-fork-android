@@ -12,7 +12,7 @@ import org.multipaz.util.fromBase64
  *
  * They certify who a party is (an agency, an organisation, a company, a citizen), not that it is a listed issuer of
  * wallet credentials, so a match is T2 (identity verified) rather than T1. Citizen certificates (MOICA) identify
- * individuals: they anchor verifiers (a person checking a document) but never issuers. The medical CA (HCA) is not
+ * individuals: they anchor verifiers (a person checking a document) and document signatures, but never issuers. The medical CA (HCA) is not
  * included: its repository was not reachable when the list was built.
  */
 object BuiltInAnchors {
@@ -23,9 +23,11 @@ object BuiltInAnchors {
 
     const val SOURCE = "https://grca.nat.gov.tw"
 
-    private val ORGANISATION = setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER)
-    private val PERSON = setOf(TrustRole.VERIFIER)
-    private val ROOT = setOf(TrustRole.TSA)
+    private val ORGANISATION = setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT)
+    /** Citizens verify and sign documents; they never issue wallet credentials. */
+    private val PERSON = setOf(TrustRole.VERIFIER, TrustRole.DOCUMENT)
+    /** GRCA anchors time stamps and, for documents, every GPKI chain that includes its CA certificate. */
+    private val ROOT = setOf(TrustRole.TSA, TrustRole.DOCUMENT)
 
     val all: List<Anchor> by lazy {
         listOf(

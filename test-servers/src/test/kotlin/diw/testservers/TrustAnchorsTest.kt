@@ -47,10 +47,10 @@ class TrustAnchorsTest {
             val c = a.certificate
             assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${a.name} is not valid now")
         }
-        // Citizen certificates identify persons: never an issuer anchor.
+        // Citizen certificates identify persons (verifiers and document signers): never an issuer anchor.
         val moica = BuiltInAnchors.all.filter { "MOICA" in it.name }
         assertEquals(2, moica.size)
-        assertTrue(moica.all { it.roles == setOf(TrustRole.VERIFIER) })
+        assertTrue(moica.all { it.roles == setOf(TrustRole.VERIFIER, TrustRole.DOCUMENT) })
     }
 
     @Test
