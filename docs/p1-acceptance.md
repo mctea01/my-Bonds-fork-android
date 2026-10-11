@@ -6,7 +6,7 @@
 
 | 範圍 | 指令 | 結果 |
 |---|---|---|
-| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 18/18 通過 |
+| OpenID4VP 1.0 / DCQL 持有端與驗證層 | `:test-servers:test --tests '*Oid4vpE2eTest'` | 21/21 通過 |
 | OpenID4VCI 1.0 用戶端、Token Status List | `:test-servers:test --tests '*Oid4vciE2eTest'` | 19/19 通過 |
 | DIW 測試驗證端 對 Multipaz 錢包 SDK（uriSchemePresentment、digitalCredentialsPresentment） | `:test-servers:test --tests '*MultipazWalletInteropTest'` | 5/5 通過 |
 | App 共用模型（預授權、授權碼經瀏覽器回跳、由發行端網址領卡、DC API origin 檢查、PIN 加密儲存） | `:app:desktopTest` | 5/5 通過（另 2 項需網路，見下節） |
@@ -53,6 +53,7 @@
 22. 發行端要求 key attestation 而錢包沒有錢包提供者（公開用戶端）時，原本直接停止（key_attestation_unavailable）。改為照送一般 jwt proof，由發行端決定是否接受；被拒時錯誤訊息註明發行端要求金鑰證明。EUDI 發行端接受，測試發行端（強制要求）拒絕，兩者皆有測試。
 23. EUDI 授權碼流程「iss does not match authorization server (mix-up)」：其授權伺服器 metadata 的 issuer 為 https://issuer.eudiw.dev，授權回應的 iss 卻是 https://issuer.eudiw.dev/oidc（該路徑下的 metadata 又宣告 https://dev.issuer.eudiw.dev/oidc）。標準流程依 RFC 9207 維持拒絕，錯誤訊息列出兩個值；新增「EUDI 參考實作相容模式」（`EudiDialect`，預設開啟）：iss 位於授權伺服器 issuer 網址之下、且 token endpoint 位於該 iss 之下時才接受，授權碼仍送回簽發它的伺服器；這樣取得的憑證規格記錄為「EUDI 參考實作」。
 24. EUDI 延遲發證（PID MSO Mdoc Deferred）輪詢時「Error decrypting」：EUDI 以第一次 credential request 帶的回應加密金鑰加密 deferred 回應，忽略輪詢時帶的新金鑰。改為同一 transaction 輪詢時沿用原本的金鑰（OpenID4VCI 1.0 允許）；測試發行端新增 `deferredToOriginalKey` 選項重現此行為。
+25. 實機以 EUDI 驗證端（verifier.eudiw.dev）的 DC API 出示，網頁只顯示「Request is cancelled.」。Google Play 服務對數位憑證一律把錯誤回報為使用者取消（不洩漏是否持有憑證），而錢包在請求驗證失敗時又立刻關閉畫面，使用者與驗證端都看不到原因。最可能的原因是呼叫來源：錢包只信任 Chrome 正式版的一個簽章，請求由 Google Play 服務轉發或來自其他瀏覽器（Chrome Beta、Samsung、Edge 等）時取不到網站 origin，改以 App 簽章作為來源，與 `expected_origins`（EUDI 預設為網頁本身的 origin）不符。修正：特權瀏覽器清單改用 Google 密碼管理工具公開的清單（`app/src/androidMain/assets/privileged_user_agents.json`，73 個 App，含 Google Play 服務）；origin 結尾的斜線視為同一 origin；失敗畫面留在錢包直到使用者離開，請求驗證失敗時回傳 OpenID4VP 錯誤（`expected_origins` 不符為 invalid_request，附錄 A.2、A.4），使用者拒絕時回傳 access_denied，驗證端可顯示實際原因；含值比對或指定發行者的請求依第 15.9.2 節仍以取消結束。另以 EUDI 後端實際產生的已簽章請求（x509_hash、dc_api.jwt、verifier_info）確認核心驗證、DCQL 比對與加密回應皆可完成。
 
 ## P1 狀態
 

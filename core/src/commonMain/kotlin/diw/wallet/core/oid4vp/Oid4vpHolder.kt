@@ -2,10 +2,13 @@ package diw.wallet.core.oid4vp
 
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.env.EnvironmentPolicy
+import diw.wallet.core.jose.Jws
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.util.arr
 import diw.wallet.core.util.isAcceptableEndpoint
+import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.submitForm
@@ -84,10 +87,33 @@ class Oid4vpHolder(
     /** Tells an authenticated Verifier that the user declined or the wallet failed. Unauthenticated Verifiers get nothing. */
     suspend fun decline(request: ValidatedAuthorizationRequest, error: String = "access_denied", description: String? = null): PresentationOutcome? {
         val payload = ResponseBuilder.errorPayload(error, description, request.state)
-        if (request.responseMode.dcApi) return PresentationOutcome.DcApi(payload)
+        if (request.responseMode.dcApi) return if (selectsByValueOrIssuer(request.dcqlQuery)) null else PresentationOutcome.DcApi(payload)
         if (request.verifier.trust.tier == diw.wallet.core.trust.TrustTier.T4 &&
             request.verifier.clientId.prefix != ClientIdPrefix.REDIRECT_URI) return null
         return post(request.responseUri!!, payload)
+    }
+
+    companion object {
+        /**
+         * Data returned to a DC API caller whose request failed validation (OpenID4VP 1.0 A.4, e.g. invalid_request when
+         * the origin is not in expected_origins), or null to cancel the flow instead. Other failures are not reported.
+         */
+        fun dcApiError(data: JsonObject, e: Throwable): JsonObject? {
+            if (e !is RequestValidationException) return null
+            val request = data["request"]
+            val params = if (request == null) data else runCatching { Jws.parse((request as JsonPrimitive).content).payload }.getOrNull()
+            return if (selectsByValueOrIssuer(params?.obj("dcql_query"))) null else ResponseBuilder.errorPayload(e.code, null, null)
+        }
+
+        /**
+         * Value matching or issuer selection: over the DC API an error before consent would reveal that the user holds a
+         * matching value or a credential from that issuer (OpenID4VP 1.0 section 15.9.2), so such flows are cancelled.
+         */
+        private fun selectsByValueOrIssuer(dcql: JsonObject?): Boolean =
+            dcql?.arr("credentials").orEmpty().any { c ->
+                val q = c as? JsonObject ?: return@any false
+                "trusted_authorities" in q || q.arr("claims").orEmpty().any { (it as? JsonObject)?.containsKey("values") == true }
+            }
     }
 
     private suspend fun post(responseUri: String, payload: JsonObject): PresentationOutcome.Posted {
