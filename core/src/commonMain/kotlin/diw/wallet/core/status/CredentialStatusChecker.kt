@@ -1,10 +1,13 @@
 package diw.wallet.core.status
 
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.isAcceptableEndpoint
+import diw.wallet.core.w3c.W3cVc
+import diw.wallet.core.w3c.W3cVcCredential
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -49,11 +52,15 @@ data class CredentialStatus(
     val index: Int? = null,
     /** The status list token the value was read from. */
     val list: StatusListToken? = null,
+    /** The status in the specification's own terms when it is not a Token Status List value (W3C statusPurpose and value). */
+    val label: String? = null,
+    /** Per-entry results of a W3C credential with several credentialStatus entries. */
+    val w3cEntries: List<W3cEntryStatus> = emptyList(),
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
 
     /** The value's name in the Token Status List specification, or its hex value for application-specific and reserved values. */
-    val specName: String? get() = code?.let { STATUS_NAMES[it] ?: ("0x" + it.toString(16).uppercase().padStart(2, '0')) }
+    val specName: String? get() = label ?: code?.let { STATUS_NAMES[it] ?: ("0x" + it.toString(16).uppercase().padStart(2, '0')) }
 
     companion object {
         val STATUS_NAMES = mapOf(0 to "VALID", 1 to "INVALID", 2 to "SUSPENDED")
@@ -81,12 +88,22 @@ class CredentialStatusChecker(
     private val httpClient: HttpClient,
     private val trustRegistry: TrustRegistry,
     private val maxCacheAge: Duration = 60.minutes,
+    didTrust: DidTrust = DidTrust.NONE,
 ) {
+    /** W3C credentials (Bitstring Status List, Status List 2021, Revocation List 2020) are checked here. */
+    val w3c = W3cStatusChecker(httpClient, trustRegistry, didTrust, maxCacheAge)
+
     private data class Cached(val list: CompressedStatusList, val trusted: Boolean, val env: TrustEnvironment?, val until: Instant, val token: StatusListToken)
 
     private val cache = mutableMapOf<String, Cached>()
 
     suspend fun check(credential: Credential, bypassCache: Boolean = false): CredentialStatus {
+        if (credential is W3cVcCredential) {
+            val vc = runCatching { credential.credentialJson() }.getOrNull()
+                ?: return result(RevocationCheckState.UNKNOWN, false, null, "Credential cannot be parsed")
+            val jwt = W3cVc.jwtPayloadOrNull(credential.raw, credential.encoding)
+            return w3c.check(vc, W3cVc.issuer(vc, jwt), bypassCache)
+        }
         val (status, issuerChain) = statusOf(credential)
             ?: return result(RevocationCheckState.UNKNOWN, false, null, "Credential carries no status reference")
         return check(status, issuerChain, bypassCache)
