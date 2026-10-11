@@ -4,6 +4,15 @@ import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.Draft13Dialect
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.profile.bonds.BondsFrameCollector
+import diw.wallet.core.profile.bonds.BondsLinkCollector
+import diw.wallet.core.profile.bonds.BondsOfflinePresentation
+import diw.wallet.core.profile.bonds.BondsOfflineVerifier
+import diw.wallet.core.profile.bonds.BondsPresentationRequest
+import diw.wallet.core.profile.bonds.BondsReception
+import diw.wallet.core.util.QrEncoder
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderIdentities
@@ -97,7 +106,7 @@ class TwdiwPlatformTest {
     }
 
     @Test
-    fun officialIssuanceAndStatus() = runBlocking {
+    fun officialIssuanceAndStatus() = runBlocking<Unit> {
         val s = setup()
         val r = s.receive()
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
@@ -135,7 +144,7 @@ class TwdiwPlatformTest {
     }
 
     @Test
-    fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking {
+    fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking<Unit> {
         val s = setup()
         s.receive()
         val entry = TwdiwEntryParser.parse(s.mock.presentationDeepLink(listOf("name"))) as TwdiwEntry.Presentation
@@ -159,7 +168,7 @@ class TwdiwPlatformTest {
     }
 
     @Test
-    fun offlinePickupBarcode() = runBlocking {
+    fun offlinePickupBarcode() = runBlocking<Unit> {
         val s = setup()
         s.receive()
         val service = s.services.offlineServices().single()
@@ -181,7 +190,56 @@ class TwdiwPlatformTest {
     }
 
     @Test
-    fun offlineModuleOutsideTrustListIsRefused() = runBlocking {
+    fun bondsOfflinePresentationOverQrAndLink() = runBlocking<Unit> {
+        val s = setup()
+        val cred = s.receive().credentials.single() as W3cVcCredential
+        val holderKey = assertNotNull(s.w.holderIdentities.find(HolderIdentities.TWDIW))
+        val resolver = DidResolver(s.w.httpClient)
+        // The verifier shows its challenge as a JSON QR; the holder reads it as untrusted text.
+        val request = BondsPresentationRequest.generate("會員身分查驗", BondsCredentialSource.TWDIW, audience = "櫃台 1")
+        val scanned = request.encode()
+        assertTrue(BondsPresentationRequest.looksLike(scanned))
+        val parsed = BondsPresentationRequest.parse(scanned)
+        assertEquals(request, parsed)
+        assertEquals(listOf("name", "birthDate", "cardNumber"), BondsOfflinePresentation.disclosableClaims(cred).map { it.first })
+        val jws = BondsOfflinePresentation.present(parsed, cred, holderKey, resolver, disclosing = setOf("name"))
+        val verifier = BondsOfflineVerifier(resolver)
+
+        // Rotating QR frames, scanned out of order and with repeats; every frame fits a QR code at ECC Q.
+        val frames = BondsOfflinePresentation.qrFrames(jws)
+        frames.forEach { QrEncoder.encode(it, QrEncoder.Ecc.Q) }
+        val collector = BondsFrameCollector()
+        var payload: ByteArray? = null
+        for (f in (frames.reversed() + frames)) {
+            val r = collector.accept(f)
+            if (r is BondsReception.Completed) { payload = r.payload; break }
+        }
+        val viaQr = verifier.verify(assertNotNull(payload).decodeToString(), request)
+        assertEquals(mapOf("name" to "林哲全"), viaQr.claims)
+        assertEquals(s.mock.issuerDid, viaQr.issuer)
+        assertEquals(holderKey.did, viaQr.holder)
+        assertTrue(viaQr.boundToAudience)
+
+        // BLE link frames at a 185 byte MTU, delivered in reverse.
+        val link = BondsLinkCollector()
+        var linked: ByteArray? = null
+        for (f in BondsOfflinePresentation.linkFrames(jws, 185 - 3).reversed()) {
+            assertTrue(f.size <= 182)
+            val r = link.accept(f)
+            if (r is BondsReception.Completed) linked = r.payload
+        }
+        assertEquals(jws, assertNotNull(linked).decodeToString())
+
+        // A presentation answers only the challenge it was made for.
+        val other = BondsPresentationRequest.generate("會員身分查驗", BondsCredentialSource.TWDIW, audience = "櫃台 1")
+        assertFailsWith<ProtocolException> { verifier.verify(jws, other) }
+        // Self-issued (vc+moica) cards are P5; the wallet says so instead of answering with another card.
+        val selfIssued = BondsPresentationRequest.generate("會員身分查驗", BondsCredentialSource.SELF_ISSUED)
+        assertFailsWith<ProtocolException> { BondsOfflinePresentation.present(selfIssued, cred, holderKey, resolver) }
+    }
+
+    @Test
+    fun offlineModuleOutsideTrustListIsRefused() = runBlocking<Unit> {
         val s = setup()
         val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://other.mock.wallet.gov.tw", null)
         val e = assertFailsWith<ProtocolException> { s.services.startOffline(stranger) }
