@@ -97,9 +97,16 @@ class DcApiActivity : FragmentActivity() {
                 ?.firstOrNull { selected == null || it["protocol"]?.jsonPrimitive?.content == selected }
                 ?: throw IllegalStateException("請求中沒有可處理的協定")
             val p = entry["protocol"]!!.jsonPrimitive.content
-            if (!p.startsWith("openid4vp")) throw IllegalStateException("不支援的協定：$p")
             protocol = p
-            app.model.presentDcApi(p, entry["data"]!!.jsonObject, origin)
+            when {
+                p.startsWith("openid4vp") -> app.model.presentDcApi(p, entry["data"]!!.jsonObject, origin)
+                // ISO/IEC 18013-7 Annex C: the mdoc DeviceRequest, answered on the same consent screen as in person.
+                p == "org-iso-mdoc" || p == "org.iso.mdoc" -> {
+                    val appId = if (origin.startsWith("android:")) caller.packageName else null
+                    app.model.proximity.presentDcApi(p, entry["data"]!!.jsonObject, origin, appId)?.get("data")?.jsonObject
+                }
+                else -> throw IllegalStateException("不支援的協定：$p")
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

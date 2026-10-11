@@ -291,7 +291,7 @@ object CredentialDetails {
                 s.uri?.let { add(DetailRow("清單位置（uri）", it)) }
                 s.index?.let { add(DetailRow("索引（idx）", it.toString())) }
                 add(DetailRow("查詢時間", time(s.checkedAt)))
-                add(DetailRow("清單簽章", if (s.trusted) "已驗證" else "未驗證"))
+                add(DetailRow("清單簽章", assuranceText(s.assurance)))
                 s.environment?.let { add(DetailRow("信任環境", it.id)) }
             }),
             DetailSection("狀態清單權杖", buildList {
@@ -314,7 +314,7 @@ object CredentialDetails {
             add(DetailRow("意義", stateMeaning(s.state)))
             s.detail?.let { add(DetailRow("說明", it)) }
             add(DetailRow("查詢時間", time(s.checkedAt)))
-            add(DetailRow("清單簽章", if (s.trusted) "已驗證" else "未驗證"))
+            add(DetailRow("清單簽章", assuranceText(s.assurance)))
             s.environment?.let { add(DetailRow("信任環境", it.id)) }
         })
         val entries = s.w3cEntries.mapIndexed { i, e ->
@@ -325,11 +325,18 @@ object CredentialDetails {
                 add(DetailRow("意義", stateMeaning(e.state)))
                 add(DetailRow("清單位置", e.entry.listUrl))
                 add(DetailRow("索引", e.entry.index.toString()))
-                add(DetailRow("清單簽章", if (e.trusted) "已驗證" else "未驗證"))
+                add(DetailRow("清單簽章", assuranceText(e.assurance)))
                 e.detail?.let { add(DetailRow("說明", it)) }
             })
         }
         return listOf(overall) + entries
+    }
+
+    /** How far the list's signature ties it to the issuer. */
+    fun assuranceText(a: diw.wallet.core.status.StatusAssurance): String = when (a) {
+        diw.wallet.core.status.StatusAssurance.TRUSTED -> "已驗證（金鑰綁定發行端或信任錨點）"
+        diw.wallet.core.status.StatusAssurance.TLS_ONLY -> "已驗證，但金鑰只經 HTTPS 確認（jku 無法對應發行端）"
+        diw.wallet.core.status.StatusAssurance.UNVERIFIED -> "未驗證"
     }
 
     fun stateMeaning(state: org.multipaz.revocation.RevocationCheckState): String = when (state) {
@@ -355,7 +362,9 @@ object CredentialDetails {
         val chain = v.certificateChain?.certificates.orEmpty()
         return listOf(
             DetailSection("請求", buildList {
-                add(DetailRow("規格", "OpenID4VP 1.0、DCQL" + if (req.responseMode.dcApi) "、Digital Credentials API" else ""))
+                // The specification the request actually follows; OpenID4VP 1.0 with DCQL unless the request is older.
+                val spec = req.specs.ifEmpty { listOf("OpenID4VP 1.0", "DCQL") } + if (req.responseMode.dcApi) listOf("Digital Credentials API") else emptyList()
+                add(DetailRow("規格", spec.distinct().joinToString("、")))
                 add(DetailRow("回應方式（response_mode）", req.responseMode.wire))
                 req.responseUri?.let { add(DetailRow("回應位置（response_uri）", it)) }
                 add(DetailRow("nonce", req.nonce))
@@ -373,7 +382,12 @@ object CredentialDetails {
                 req.clientMetadata?.keys?.takeIf { it.isNotEmpty() }?.let { add(DetailRow("client_metadata", it.joinToString())) }
                 addAll(chainRows(chain))
             }),
-            DetailSection("要求內容（DCQL）", listOf(DetailRow("查詢", pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery)))),
+            when {
+                req.presentationDefinition != null -> DetailSection("要求內容（Presentation Exchange）",
+                    listOf(DetailRow("presentation_definition", pretty.encodeToString(JsonElement.serializer(), req.presentationDefinition!!))))
+                req.dcqlQuery.isNotEmpty() -> DetailSection("要求內容（DCQL）", listOf(DetailRow("查詢", pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery))))
+                else -> DetailSection("要求內容", emptyList())
+            },
         ).filter { it.rows.isNotEmpty() }
     }
 
@@ -400,10 +414,12 @@ object CredentialDetails {
                 DetailRow("生效時間", time(c.validityNotBefore)),
                 DetailRow("到期時間", time(c.validityNotAfter)),
                 DetailRow("目前狀態", state),
-                DetailRow("簽章演算法", runCatching { c.signatureAlgorithm.name }.getOrNull() ?: c.signatureAlgorithmOid),
+                DetailRow("簽章演算法", if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM3withSM2（國密）"
+                    else runCatching { c.signatureAlgorithm.name }.getOrNull() ?: c.signatureAlgorithmOid),
             )),
             DetailSection("公鑰", listOfNotNull(
-                runCatching { c.ecPublicKey.curve.name }.getOrNull()?.let { DetailRow("演算法與曲線", "EC $it") },
+                (runCatching { c.ecPublicKey.curve.name }.getOrNull()?.let { "EC $it" }
+                    ?: if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM2（國密）" else null)?.let { DetailRow("演算法與曲線", it) },
                 runCatching { c.subjectKeyIdentifier }.getOrNull()?.let { DetailRow("主體金鑰識別碼", hex(it)) },
             )),
             DetailSection("擴充欄位", buildList {
@@ -461,6 +477,8 @@ object CredentialDetails {
     private const val OID_AKI = "2.5.29.35"
     private const val OID_EKU = "2.5.29.37"
     private const val OID_AIA = "1.3.6.1.5.5.7.1.1"
+    /** SM3withSM2, the signature of Chinese national algorithm (GM/T) certificates. */
+    private const val SM3_WITH_SM2 = "1.2.156.10197.1.501"
 
     private val EXTENSION_NAMES = mapOf(
         "2.5.29.18" to "簽發者別名",

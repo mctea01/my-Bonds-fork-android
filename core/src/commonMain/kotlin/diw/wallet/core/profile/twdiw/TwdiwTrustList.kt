@@ -73,6 +73,12 @@ data class TwdiwTrustSnapshot(
 
 /** Host comparison rules for the TWDIW gates: https only, exact host, no userinfo, default port, ASCII, no trailing dot. */
 object TwdiwHosts {
+    /** The TWDIW platform domain (wallet.gov.tw and its subdomains), operated by the trust list's own operator. */
+    fun isPlatformHost(host: String): Boolean {
+        val h = host.lowercase().trimEnd('.')
+        return h == "wallet.gov.tw" || h.endsWith(".wallet.gov.tw")
+    }
+
     fun canonicalHost(url: String): String? {
         val u = runCatching { Url(url.trim()) }.getOrNull() ?: return null
         if (u.protocol.name != "https") return null
@@ -173,11 +179,35 @@ class TwdiwTrustList(
         return snap
     }
 
+    /**
+     * Checks [did] again now, without caches or the offline snapshot: its listing, its self-signed document and its
+     * Arbitrum registration. Null when the DID is no longer listed; a network failure throws, so a background
+     * re-check never mistakes being offline for a delisting.
+     */
+    suspend fun recheck(did: String): TwdiwTrustSnapshot? {
+        val snap = fetchEntry(did)?.let { check(it) }
+        cache[did] = Cached(snap, Clock.System.now() + cacheTtl)
+        if (snap != null) saveSnapshot(snap)
+        return snap
+    }
+
     /** Whether [host] is registered for [did] (response_uri / request_uri gates); null when the DID is unknown. */
     suspend fun hostRegistered(did: String, host: String): Boolean? {
         val snap = verified(did) ?: return null
         val h = host.lowercase()
         return h in snap.entry.hosts || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
+    }
+
+    /**
+     * A key host bound to a listed organisation whose document verifies and whose registration is not contradicted
+     * on chain: one of its registered hosts, or the platform itself (wallet.gov.tw), which serves the listed
+     * organisations' issuance and status keys.
+     */
+    override suspend fun bindsHost(did: String, host: String): Boolean {
+        val snap = verified(did) ?: return false
+        if (!snap.documentVerified || snap.anchor == AnchorState.MISMATCH.name) return false
+        val h = host.lowercase()
+        return h in snap.entry.hosts || TwdiwHosts.isPlatformHost(h) || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
     }
 
     /** Whether [url]'s host belongs to any listed organisation (or a sandbox when testing). */

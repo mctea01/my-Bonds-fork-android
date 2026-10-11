@@ -39,6 +39,12 @@ interface PresentationDialect {
     /** path_nested format of a credential inside a jwt_vp (jwt_vc for TWDIW, vc+moica for Bonds self-issued cards). */
     fun nestedFormat(credential: WalletCredential): String? = null
 
+    /**
+     * path_nested path of the [index]th credential inside a jwt_vp; null keeps the JWT claim path
+     * $.vp.verifiableCredential[index]. Microsoft Verified ID resolves it inside the vp claim.
+     */
+    fun nestedPath(index: Int): String? = null
+
     /** Parameters added to the response (TWDIW custom_data). */
     suspend fun extraResponseParameters(request: ValidatedAuthorizationRequest, holder: HolderKey?): Map<String, String> = emptyMap()
 

@@ -3,6 +3,7 @@ package diw.wallet.app
 import androidx.compose.ui.graphics.ImageBitmap
 import io.ktor.client.HttpClient
 import kotlinx.io.bytestring.ByteString
+import org.multipaz.nfc.NfcTagReader
 import org.multipaz.securearea.CreateKeySettings
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.securearea.SecureArea
@@ -36,6 +37,22 @@ interface BondsLinkPeripheral {
 
     suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean
 }
+
+/**
+ * An NFC reader the wallet can read another wallet with: the phone's own NFC, or an external reader (PC/SC on a
+ * computer, USB CCID on a phone).
+ */
+class NfcReaderOption(
+    val name: String,
+    /** Attached to the device rather than its own antenna. */
+    val external: Boolean,
+    val reader: NfcTagReader,
+    /** After the tap the data may also go over Bluetooth (a phone); a computer's reader is NFC only. */
+    val bluetooth: Boolean = false,
+)
+
+/** The NFC readers found now; [problem] says why there are none, or why some may be missing. */
+data class NfcReaderList(val readers: List<NfcReaderOption>, val problem: String? = null)
 
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
@@ -72,4 +89,19 @@ interface PlatformServices {
 
     /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
     fun keepScreenOn(on: Boolean) {}
+
+    /** Why an NFC tap cannot start a proximity presentation now (no NFC, NFC off, no card emulation); null when it can. */
+    fun nfcPresentationUnavailableReason(): String? = "此裝置不支援 NFC 感應出示"
+
+    /**
+     * Why Bluetooth cannot carry a proximity presentation now (no Bluetooth, turned off, permission missing, which is
+     * then asked for); null when it can.
+     */
+    suspend fun proximityTransportUnavailableReason(): String? = "此平台不支援藍牙近距離傳輸"
+
+    /** While true, NFC taps go to the wallet rather than another wallet app (Android card emulation preference). */
+    fun setNfcPresentationActive(active: Boolean) {}
+
+    /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader). */
+    suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
 }

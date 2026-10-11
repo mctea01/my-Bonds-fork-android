@@ -64,9 +64,22 @@ fun SettingsScreen(model: WalletModel) {
             model.updateSettings { it.copy(showDetails = v) }
         }
         HorizontalDivider()
+        SectionTitle("證件狀態")
+        Toggle(
+            "自動更新證件狀態",
+            "開啟或回到 App 時，在背景查詢逾時的狀態：身分證件每 30 分鐘、政府皮夾卡片每 12 小時、其他每 3 天；狀態改變時通知並記入紀錄。也會每 12 小時重新查驗所持卡片發行端的信任清單與區塊鏈註冊。",
+            s.autoStatus,
+        ) { v -> model.updateSettings { it.copy(autoStatus = v) } }
+        val issuerCheck by model.status.issuerCheck.collectAsState()
+        issuerCheck?.let { (done, total) -> Text("正在重新查驗發行端：$done / $total", style = MaterialTheme.typography.bodySmall) }
+        OutlinedButton(onClick = { model.status.refreshDue(force = true) }) { Text("立即更新所有證件狀態") }
+        HorizontalDivider()
         SectionTitle("信任")
         ActionRow(WalletIcons.Shield, "信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
             model.screen.value = Screen.TrustList
+        }
+        ActionRow(WalletIcons.Shield, "信任錨點", "X.509 根憑證與自行信任的 DID，不限數位憑證皮夾；可匯入其他國家、組織或企業的錨點") {
+            model.screen.value = Screen.TrustAnchors
         }
         HorizontalDivider()
         SectionTitle("資料與隱私")

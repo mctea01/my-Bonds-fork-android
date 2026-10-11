@@ -8,7 +8,13 @@ package diw.wallet.core.env
 enum class TrustEnvironment(val id: String) {
     PRODUCTION("production"),
     TEST("test"),
-    USER("user");
+    USER("user"),
+
+    /**
+     * Public CAs: the platform's own certificate store (Android system CAs, the JDK and OS stores on desktop), the
+     * roots of common services built into the wallet, and the built-in mainland China CAs.
+     */
+    SYSTEM("system");
 
     companion object {
         fun fromId(id: String?): TrustEnvironment? = entries.firstOrNull { it.id == id }
@@ -24,12 +30,17 @@ data class EnvironmentPolicy(
     val testEnvironmentEnabled: Boolean = false,
     val allowInsecureLoopbackHttp: Boolean = false,
     val userAnchorsEnabled: Boolean = true,
+    /** Accept chains to the platform's certificate store, as T3 (the public CA verified a domain, not an official list). */
+    val systemStoreEnabled: Boolean = false,
+    /** Accept chains to the built-in mainland China CAs (including SM2 roots), as T3 like the platform store. */
+    val mainlandChinaRootsEnabled: Boolean = false,
 ) {
     val insecureLoopbackAllowed: Boolean get() = testEnvironmentEnabled && allowInsecureLoopbackHttp
 
     fun enabledEnvironments(): List<TrustEnvironment> = buildList {
         add(TrustEnvironment.PRODUCTION)
         if (userAnchorsEnabled) add(TrustEnvironment.USER)
+        if (systemStoreEnabled || mainlandChinaRootsEnabled) add(TrustEnvironment.SYSTEM)
         if (testEnvironmentEnabled) add(TrustEnvironment.TEST)
     }
 }

@@ -7,6 +7,7 @@ import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.oid4vci.X509CertChainCheck
 import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.JkuKeys
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.util.DiwJson
@@ -19,13 +20,21 @@ import diw.wallet.core.w3c.W3cVc
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.util.fromBase64
 import org.multipaz.util.fromBase64Url
@@ -34,10 +43,14 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * One credentialStatus entry of a W3C credential: Bitstring Status List v1.0 (BitstringStatusListEntry),
- * Status List 2021 (StatusList2021Entry, used by TWDIW) or Revocation List 2020 (RevocationList2020Status).
+ * Status List 2021 (StatusList2021Entry, used by TWDIW), Revocation List 2020 (RevocationList2020Status), or
+ * Microsoft Entra Verified ID's Status List 2021 (RevocationList2021Status, a revocation list served by the
+ * issuer's Identity Hub through a DID URL).
  */
 data class W3cStatusEntry(
     val type: String,
@@ -54,6 +67,7 @@ data class W3cStatusEntry(
         const val BITSTRING = "BitstringStatusListEntry"
         const val STATUS_LIST_2021 = "StatusList2021Entry"
         const val REVOCATION_LIST_2020 = "RevocationList2020Status"
+        const val REVOCATION_LIST_2021 = "RevocationList2021Status"
 
         fun parse(o: JsonObject): W3cStatusEntry? {
             val types = when (val t = o["type"]) {
@@ -61,7 +75,7 @@ data class W3cStatusEntry(
                 is JsonArray -> t.mapNotNull { (it as? JsonPrimitive)?.content }
                 else -> emptyList()
             }
-            val type = types.firstOrNull { it == BITSTRING || it == STATUS_LIST_2021 || it == REVOCATION_LIST_2020 } ?: return null
+            val type = types.firstOrNull { it == BITSTRING || it == STATUS_LIST_2021 || it == REVOCATION_LIST_2020 || it == REVOCATION_LIST_2021 } ?: return null
             val revocationList = type == REVOCATION_LIST_2020
             val url = o.str(if (revocationList) "revocationListCredential" else "statusListCredential") ?: return null
             val index = (o[if (revocationList) "revocationListIndex" else "statusListIndex"] as? JsonPrimitive)?.content?.trim()?.toLongOrNull()
@@ -73,7 +87,9 @@ data class W3cStatusEntry(
                 val v = m.str("status")?.removePrefix("0x")?.toIntOrNull(16) ?: return@mapNotNull null
                 v to (m.str("message") ?: return@mapNotNull null)
             }.toMap()
-            return W3cStatusEntry(type, if (revocationList) "revocation" else (o.str("statusPurpose") ?: "revocation"), url, index, size, messages)
+            // A revocation list has no statusPurpose: its type says what a set bit means.
+            val purpose = if (revocationList || type == REVOCATION_LIST_2021) "revocation" else (o.str("statusPurpose") ?: "revocation")
+            return W3cStatusEntry(type, purpose, url, index, size, messages)
         }
 
         fun parseAll(vc: JsonObject): List<W3cStatusEntry> = W3cVc.statusEntries(vc).mapNotNull { parse(it) }
@@ -88,13 +104,17 @@ data class W3cEntryStatus(
     val label: String,
     val trusted: Boolean,
     val detail: String?,
+    val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
+    /** Environment of the anchor or trust source the list's key is tied to. */
+    val environment: TrustEnvironment? = null,
 )
 
 /**
  * Holder- and verifier-side checker for W3C status lists. The status list credential is fetched from the entry's
  * URL (a JWT, an SD-JWT, a JSON-LD credential, or a JSON wrapper holding one of these, as TWDIW serves it),
  * verified by x5c, the issuer DID or a Data Integrity proof, and must come from the credential's issuer. A list
- * whose key is only reachable through a jku header is read but reported as unverified, never trusted.
+ * whose key is only published at a jku (TWDIW signs lists with a key outside the issuer DID) is verified with that
+ * key: trusted when the key set is tied to the issuer ([JkuKeys]), otherwise verified on TLS only.
  */
 class W3cStatusChecker(
     private val httpClient: HttpClient,
@@ -111,16 +131,22 @@ class W3cStatusChecker(
         val environment: TrustEnvironment?,
         val note: String?,
         val until: Instant,
+        val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
     )
 
+    /** The outcome of verifying a list with a jku key. */
+    private class JkuCheck(val verified: Boolean, val trusted: Boolean, val environment: TrustEnvironment?, val note: String, val assurance: StatusAssurance)
+
     private val cache = mutableMapOf<String, StatusList>()
+    private val jkuKeys = JkuKeys(httpClient, trustRegistry, didTrust)
 
     /** Combined status of all entries of [vc]; the most severe state wins. */
     suspend fun check(vc: JsonObject, issuer: String?, bypassCache: Boolean = false): CredentialStatus {
         val entries = W3cStatusEntry.parseAll(vc)
         if (entries.isEmpty()) {
-            val detail = if (W3cVc.statusEntries(vc).isEmpty()) "Credential carries no status reference" else "Unsupported credentialStatus type"
-            return CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), detail)
+            val none = W3cVc.statusEntries(vc).isEmpty()
+            val detail = if (none) "Credential carries no status reference" else "Unsupported credentialStatus type"
+            return CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), detail, referenced = !none)
         }
         val results = entries.map { checkEntry(it, issuer, bypassCache) }
         return combine(results)
@@ -128,7 +154,8 @@ class W3cStatusChecker(
 
     suspend fun checkEntry(entry: W3cStatusEntry, issuer: String?, bypassCache: Boolean = false): W3cEntryStatus {
         val loopback = trustRegistry.policy.insecureLoopbackAllowed
-        if (!isAcceptableEndpoint(entry.listUrl, loopback)) {
+        // A DID URL naming the issuer's Identity Hub is resolved to the hub's https endpoint when fetched.
+        if (IdentityHubQuery.parse(entry.listUrl) == null && !isAcceptableEndpoint(entry.listUrl, loopback)) {
             return W3cEntryStatus(entry, null, RevocationCheckState.UNKNOWN, entry.purpose, false, "Status list URL is not https")
         }
         val now = Clock.System.now()
@@ -157,7 +184,14 @@ class W3cStatusChecker(
             else -> RevocationCheckState.UNKNOWN
         }
         val label = entry.messages[value]?.let { "${entry.purpose} $hex ($it)" } ?: "${entry.purpose} $hex"
-        return W3cEntryStatus(entry, value, state, label, trusted && list.verified, notes.joinToString("; ").ifEmpty { null })
+        val assurance = when {
+            !list.verified -> StatusAssurance.UNVERIFIED
+            trusted -> StatusAssurance.TRUSTED
+            // A list from another issuer is never downgraded to TLS_ONLY: it says nothing about this credential.
+            list.assurance == StatusAssurance.TLS_ONLY && (issuer == null || list.issuer == null || list.issuer == issuer) -> StatusAssurance.TLS_ONLY
+            else -> StatusAssurance.UNVERIFIED
+        }
+        return W3cEntryStatus(entry, value, state, label, trusted && list.verified, notes.joinToString("; ").ifEmpty { null }, assurance, list.environment)
     }
 
     private fun combine(results: List<W3cEntryStatus>): CredentialStatus {
@@ -173,7 +207,8 @@ class W3cStatusChecker(
         return CredentialStatus(
             state = state,
             trusted = results.all { it.trusted },
-            environment = null,
+            // A test list anywhere makes the whole result a test result.
+            environment = results.mapNotNull { it.environment }.let { envs -> envs.firstOrNull { it == TrustEnvironment.TEST } ?: envs.firstOrNull() },
             checkedAt = Clock.System.now(),
             detail = results.mapNotNull { it.detail }.distinct().joinToString("; ").ifEmpty { null },
             code = first.value,
@@ -182,14 +217,57 @@ class W3cStatusChecker(
             list = null,
             label = results.joinToString(", ") { it.label },
             w3cEntries = results,
+            assurance = results.maxOf { it.assurance },
         )
     }
 
     private suspend fun fetch(url: String): StatusList {
+        IdentityHubQuery.parse(url)?.let { return identityHubList(it) }
         val resp = httpClient.get(url) { header(HttpHeaders.Accept, "application/vc+jwt, application/vc+ld+json, application/json, application/jwt") }
         if (!resp.status.isSuccess()) error("Status list fetch returned ${resp.status.value}")
         val content = unwrap(resp.bodyAsText().trim())
         return if (content.startsWith("{")) jsonLdList(content) else jwtList(content)
+    }
+
+    /**
+     * A status list held by the issuer's Identity Hub (Microsoft Entra Verified ID): the DID URL's queries are posted
+     * to the https hub endpoint listed in the issuer's DID document, and the reply's entry data is the status list
+     * credential as a JWT (base64 encoded), verified like any other list. The query is anonymous: it names the list,
+     * not the credential or the holder. The hub answers 400 unless requestId is a version 4 UUID.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private suspend fun identityHubList(q: IdentityHubQuery): StatusList {
+        val loopback = trustRegistry.policy.insecureLoopbackAllowed
+        val doc = DidResolver(httpClient, loopback).resolve(q.did)
+        val hub = doc.services.filter { it.type == "IdentityHub" }.flatMap { it.endpoints }.firstOrNull { isAcceptableEndpoint(it, loopback) }
+            ?: error("The issuer DID document names no https Identity Hub")
+        val body = buildJsonObject {
+            put("requestId", Uuid.random().toString())
+            put("target", q.did)
+            putJsonArray("messages") { q.messages.forEach { m -> addJsonObject { put("descriptor", m) } } }
+        }
+        val resp = httpClient.post(hub) {
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        if (!resp.status.isSuccess()) {
+            // The hub explains a refusal as {"error":{"code","message"}}.
+            val why = runCatching {
+                val e = (DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["error"] as JsonObject
+                listOfNotNull(e.str("code"), e.str("message")).joinToString(": ")
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+            error("Identity Hub returned ${resp.status.value}" + (why?.let { " ($it)" } ?: ""))
+        }
+        val reply = runCatching {
+            ((DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["replies"] as JsonArray).first() as JsonObject
+        }.getOrNull() ?: error("Identity Hub answered without a reply")
+        val code = ((reply["status"] as? JsonObject)?.get("code") as? JsonPrimitive)?.content?.toIntOrNull()
+        if (code != null && code != 200) error("Identity Hub reply status $code")
+        val data = ((reply["entries"] as? JsonArray)?.firstOrNull() as? JsonObject)?.str("data")
+            ?: error("Identity Hub returned no status list")
+        val jwt = if (data.startsWith("eyJ") && data.count { it == '.' } == 2) data
+        else decodeBase64Any(data)?.decodeToString()?.trim() ?: error("Identity Hub data is not base64")
+        return jwtList(jwt)
     }
 
     /** The status list credential inside [body]: the body itself, or a JSON wrapper's statusList / credential / vc member. */
@@ -217,12 +295,17 @@ class W3cStatusChecker(
         var trusted = false
         var env: TrustEnvironment? = null
         var note: String? = null
+        var assurance = StatusAssurance.UNVERIFIED
+        fun apply(c: JkuCheck): Boolean {
+            trusted = c.trusted; env = c.environment; note = c.note; assurance = c.assurance
+            return c.verified
+        }
         val verified = when {
             chain != null -> {
                 X509CertChainCheck.validate(chain)
                 jws.verify(VerificationKey.fromCertificate(chain.first()))
                 val m = trustRegistry.match(TrustRole.STATUS_LIST, chain) ?: trustRegistry.match(TrustRole.ISSUER, chain)
-                if (m != null) { trusted = true; env = m.environment } else note = "Status list signer does not chain to an enabled anchor"
+                if (m != null) { trusted = true; env = m.environment; assurance = StatusAssurance.TRUSTED } else note = "Status list signer does not chain to an enabled anchor"
                 true
             }
             iss != null && iss.startsWith("did:") -> {
@@ -236,20 +319,15 @@ class W3cStatusChecker(
                         env = didTrust.decide(iss, TrustRole.ISSUER)?.environment
                         // Signed by the issuer DID: as trustworthy as the credential itself.
                         trusted = true
+                        assurance = StatusAssurance.TRUSTED
                         true
                     }
-                    // TWDIW signs its lists with a separate key published only at jku: the bits are read, never trusted.
-                    jws.header["jku"] != null -> {
-                        note = "unverified: the status list is not signed by $iss; its key is only published through jku, which is not followed"
-                        false
-                    }
+                    // TWDIW signs its lists with a separate key (key-2) published only at the jku.
+                    jws.header["jku"] != null -> apply(withJku(jws, iss))
                     else -> throw signedByIssuer.exceptionOrNull()!!
                 }
             }
-            jws.header["jku"] != null -> {
-                note = "unverified: the status list key is only published through jku, which is not followed"
-                false
-            }
+            jws.header["jku"] != null -> apply(withJku(jws, iss))
             else -> {
                 note = "unverified: no way to find the status list signing key"
                 false
@@ -269,7 +347,35 @@ class W3cStatusChecker(
             environment = env,
             note = note,
             until = cacheUntil(ttl, exp),
+            assurance = assurance,
         )
+    }
+
+    /**
+     * Verifies [jws] with its jku key. A key the issuer cannot be tied to still verifies the list, on TLS only. The
+     * set is fetched again when the signature does not match: TWDIW's key endpoint answers with different key-2
+     * values from request to request (servers behind one host disagree), while its lists are signed with one of them.
+     */
+    private suspend fun withJku(jws: Jws, iss: String?): JkuCheck {
+        val jku = jws.header.str("jku")!!
+        var failure: String? = null
+        for (attempt in 0 until JKU_ATTEMPTS) {
+            val key = try {
+                jkuKeys.resolve(jku, jws.kid, iss, TrustRole.STATUS_LIST, refresh = attempt > 0)
+            } catch (e: Exception) {
+                return JkuCheck(false, false, null, "unverified: the jku key set could not be used: ${e.message}", StatusAssurance.UNVERIFIED)
+            }
+            try {
+                jws.verify(key.key)
+            } catch (e: Exception) {
+                failure = e.message
+                continue
+            }
+            val retried = if (attempt > 0) " (the key set changed between requests; matched on attempt ${attempt + 1})" else ""
+            return if (key.bound) JkuCheck(true, true, key.environment, "key from jku: ${key.reason}$retried", StatusAssurance.TRUSTED)
+            else JkuCheck(true, false, null, "key from jku over TLS only: ${key.reason}$retried", StatusAssurance.TLS_ONLY)
+        }
+        return JkuCheck(false, false, null, "unverified: the status list signature does not match the jku key ${jws.kid} ($failure)", StatusAssurance.UNVERIFIED)
     }
 
     private suspend fun jsonLdList(json: String): StatusList {
@@ -308,6 +414,9 @@ class W3cStatusChecker(
     }
 
     companion object {
+        /** Key set fetches for one list when the signature does not match (see [withJku]). */
+        private const val JKU_ATTEMPTS = 4
+
         private fun subjectOf(vc: JsonObject): JsonObject = when (val s = vc["credentialSubject"]) {
             is JsonObject -> s
             is JsonArray -> s.filterIsInstance<JsonObject>().firstOrNull { it["encodedList"] != null }
@@ -334,7 +443,7 @@ class W3cStatusChecker(
             error("encodedList is not a GZIP compressed base64 bitstring")
         }
 
-        private fun decodeBase64Any(s: String): ByteArray? {
+        internal fun decodeBase64Any(s: String): ByteArray? {
             val t = s.trim()
             return runCatching { t.trimEnd('=').fromBase64Url() }.getOrNull()
                 ?: runCatching { t.fromBase64() }.getOrNull()
@@ -351,6 +460,43 @@ class W3cStatusChecker(
                 v = (v shl 1) or bit
             }
             return v
+        }
+    }
+}
+
+/**
+ * A DID URL that asks the DID subject's Identity Hub for an object: did:...?service=IdentityHub&queries=<base64 JSON
+ * array of message descriptors>, as Microsoft Entra Verified ID writes statusListCredential.
+ */
+internal class IdentityHubQuery(val did: String, val messages: JsonArray) {
+    companion object {
+        fun parse(url: String): IdentityHubQuery? {
+            if (!url.startsWith("did:") || '?' !in url) return null
+            val did = url.substringBefore('?')
+            val params = url.substringAfter('?').split('&').associate { p -> p.substringBefore('=') to percentDecode(p.substringAfter('=', "")) }
+            if (params["service"] != "IdentityHub") return null
+            val raw = params["queries"] ?: return null
+            val json = W3cStatusChecker.decodeBase64Any(raw)?.decodeToString() ?: return null
+            val messages = runCatching { DiwJson.parseToJsonElement(json) as JsonArray }.getOrNull() ?: return null
+            if (messages.isEmpty() || messages.any { it !is JsonObject }) return null
+            return IdentityHubQuery(did, messages)
+        }
+
+        /** %XX escapes only: a base64 "+" in the query is data, not a space. */
+        private fun percentDecode(s: String): String {
+            if ('%' !in s) return s
+            val out = StringBuilder()
+            var i = 0
+            while (i < s.length) {
+                val c = s[i]
+                if (c == '%' && i + 2 < s.length) {
+                    val v = s.substring(i + 1, i + 3).toIntOrNull(16)
+                    if (v != null) { out.append(v.toChar()); i += 3; continue }
+                }
+                out.append(c)
+                i++
+            }
+            return out.toString()
         }
     }
 }

@@ -29,15 +29,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.ConsentItem
 import diw.wallet.app.CredentialDetails
 import diw.wallet.app.HomeTab
 import diw.wallet.app.IssuanceUi
 import diw.wallet.app.PresentationUi
 import diw.wallet.app.Screen
+import diw.wallet.app.StatusTexts
 import diw.wallet.app.WalletModel
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.PresentationOutcome
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusFinding
+import diw.wallet.core.status.StatusPolicy
+import diw.wallet.core.status.StatusVerdict
+import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 
 @Composable
@@ -56,11 +64,16 @@ internal fun Failure(text: String, onClose: () -> Unit) {
     }
 }
 
-/** Untrusted parties (T3/T4) need an explicit acknowledgement; official or anchored parties do not. */
+/**
+ * Untrusted parties (T3/T4) need an explicit acknowledgement; official or anchored parties do not, and neither does a
+ * verified Microsoft Verified ID domain, which Microsoft Authenticator also accepts without a warning.
+ */
 @Composable
-internal fun riskAcknowledgement(tier: TrustTier): Boolean {
-    var ack by remember(tier) { mutableStateOf(false) }
+internal fun riskAcknowledgement(trust: TrustDecision): Boolean {
+    val tier = trust.tier
+    var ack by remember(trust) { mutableStateOf(false) }
     if (tier == TrustTier.T1 || tier == TrustTier.T2) return true
+    if (tier == TrustTier.T3 && TrustLabel.LINKED_DOMAIN in trust.labels) return true
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = ack, onCheckedChange = { ack = it })
         Text(if (tier == TrustTier.T4) "我了解對方身分無法驗證，仍要繼續" else "我了解對方不在官方信任清單，仍要繼續")
@@ -121,7 +134,7 @@ fun IssuanceScreen(model: WalletModel) {
                         keyboardOptions = KeyboardOptions(keyboardType = if (tx.inputMode == "numeric") KeyboardType.Number else KeyboardType.Text),
                     )
                 }
-                val ok = riskAcknowledgement(s.trust.tier)
+                val ok = riskAcknowledgement(s.trust)
                 val txOk = tx == null || (tx.length == null && txCode.isNotEmpty()) || txCode.length == tx.length
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { model.acceptOffer(s, txCode.ifEmpty { null }, selected.toList()) }, enabled = ok && txOk && selected.isNotEmpty()) {
@@ -201,17 +214,7 @@ fun PresentationScreen(model: WalletModel) {
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
                 if (showDetails) DetailSections(model, CredentialDetails.request(req))
-                Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
-                s.items.forEach { item ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Box(Modifier.padding(12.dp)) {
-                            Column {
-                                Text(item.documentName, style = MaterialTheme.typography.titleMedium)
-                                item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
-                            }
-                        }
-                    }
-                }
+                val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s)
                 if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
                 val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
@@ -233,12 +236,78 @@ fun PresentationScreen(model: WalletModel) {
                     val v = values[f.ename].orEmpty()
                     v.isNotEmpty() && (f.regex == null || runCatching { Regex(f.regex!!).matches(v) }.getOrDefault(true))
                 }
-                val ok = riskAcknowledgement(v.trust.tier)
+                val ok = riskAcknowledgement(v.trust)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk) { Text("同意分享") }
+                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk && statusOk) { Text("同意分享") }
                     OutlinedButton(onClick = { model.decline(s) }) { Text("拒絕") }
                 }
             }
         }
     }
+}
+
+/**
+ * The request's risk and the documents asked for, each with its status judged at that risk. A document whose status
+ * the request rejects (revoked; suspended or unconfirmed for the risk) cannot be shared: there is no override, only a
+ * new status query. Returns whether the user may go on. [key] identifies the request.
+ */
+@Composable
+internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, risk: RiskLevel, verifierTier: TrustTier, key: Any): Boolean {
+    val statuses by model.statuses.collectAsState()
+    val decisions = items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, risk) } }
+    Text("這次請求的風險：" + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
+    Text(requestRiskReason(risk, items, verifierTier), style = MaterialTheme.typography.bodySmall)
+    Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
+    items.forEachIndexed { i, item ->
+        Card(Modifier.fillMaxWidth()) {
+            Box(Modifier.padding(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item.documentName, style = MaterialTheme.typography.titleMedium)
+                    decisions[i]?.let { RequestStatusLine(it) }
+                    if (item.whole) {
+                        Text("對方要求整張證件。這張證件無法只出示部分欄位，下列欄位都會交給對方：", style = MaterialTheme.typography.bodySmall)
+                    }
+                    item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
+        }
+    }
+    val rejected = decisions.filterNotNull().filter { it.verdict == StatusVerdict.REJECT }
+    val checking by model.status.checking.collectAsState()
+    if (rejected.isNotEmpty()) {
+        VerdictCard(Verdict.FAIL, "證件狀態不符合這次請求，無法出示", rejected.map { d -> statusWarning(d.finding, risk) }.distinct())
+        // Unconfirmed states may clear with a fresh query; a revocation never does.
+        if (rejected.any { it.finding != StatusFinding.REVOKED }) {
+            val ids = items.mapIndexedNotNull { i, item -> item.documentId.takeIf { decisions[i]?.verdict == StatusVerdict.REJECT } }
+            val busy = ids.any { it in checking }
+            OutlinedButton(onClick = {
+                model.documents.value.filter { it.identifier in ids }.forEach { model.checkStatus(it) }
+            }, enabled = !busy) { Text(if (busy) "查詢中" else "重新查詢狀態") }
+        }
+    } else if (decisions.any { it?.verdict == StatusVerdict.CAUTION }) {
+        Text("部分證件的狀態無法完全確認，對方可能另行查證。", style = MaterialTheme.typography.bodySmall)
+    }
+    return rejected.isEmpty()
+}
+
+/** Why a request has its risk: the most sensitive field asked for, or a verifier that is not on an official list. */
+private fun requestRiskReason(risk: RiskLevel, items: List<ConsentItem>, verifier: TrustTier): String {
+    val fields = items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW
+    val named = items.filter { it.sensitivity == fields }.flatMap { it.notable }.distinct()
+    val which = if (named.isEmpty()) "" else "「" + named.take(4).joinToString("、") + "」" + if (named.size > 4) "等" else ""
+    val whole = if (items.any { it.whole && it.sensitivity == fields }) "（對方要求整張證件，這些欄位會一併交出）" else ""
+    return when {
+        risk == RiskLevel.LOW -> "官方信任清單內的查驗方，只要求一般欄位。"
+        fields == risk && fields == RiskLevel.HIGH ->
+            (if (which.isEmpty()) "要求身分證號、照片、地址等高敏感欄位" else "要交出的資料含有高敏感欄位$which") + whole + "，證件狀態必須在線上確認有效。"
+        fields == risk -> (if (which.isEmpty()) "要求姓名、出生日期等個人資料" else "要交出的資料含有個人資料$which") + whole + "。"
+        verifier == TrustTier.T4 -> "查驗方身分無法驗證。"
+        else -> "查驗方不在官方信任清單。"
+    }
+}
+
+private fun statusWarning(f: StatusFinding, risk: RiskLevel): String = when (f) {
+    StatusFinding.REVOKED -> "證件已被發行端撤銷，不能再出示。"
+    StatusFinding.SUSPENDED -> "證件目前暫停使用，恢復前不能出示。"
+    else -> "證件${StatusTexts.finding(f)}；${StatusTexts.risk(risk)}的請求需要線上確認有效的狀態，請連線後重新查詢。"
 }

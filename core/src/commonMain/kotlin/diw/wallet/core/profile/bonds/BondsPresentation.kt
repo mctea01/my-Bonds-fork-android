@@ -7,6 +7,7 @@ import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.jose.signJws
+import diw.wallet.core.oid4vci.X509CertChainCheck
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.Jcs
 import diw.wallet.core.util.ProtocolException
@@ -16,13 +17,18 @@ import diw.wallet.core.util.strList
 import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cVcCredential
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.EcPublicKey
+import org.multipaz.crypto.X509Cert
+import org.multipaz.revocation.RevocationStatus
+import org.multipaz.sdjwt.SdJwt
 import org.multipaz.util.fromBase64
 import org.multipaz.util.fromBase64Url
 import org.multipaz.util.toBase64Url
@@ -35,7 +41,12 @@ enum class BondsCredentialSource(val wire: String) {
     /** A vc+moica card signed by its holder with the citizen digital certificate. */
     SELF_ISSUED("s"),
     /** A TWDIW card (SD-JWT issued by a government issuer). */
-    TWDIW("g");
+    TWDIW("g"),
+    /**
+     * Any key-bound card the holder chooses: IETF SD-JWT VC, W3C VC as SD-JWT or W3C JWT VC. An extension of this
+     * wallet for its own verifier; Bonds verifiers ask for g or s.
+     */
+    ANY("a");
 
     companion object {
         fun fromWire(w: String?): BondsCredentialSource? = entries.firstOrNull { it.wire == w }
@@ -148,8 +159,10 @@ data class BondsPresentationRequest(
 
 /**
  * The Bonds offline presentation: a vp+jwt JWS signed by the holder DID key over a VCDM 2.0 presentation with
- * one EnvelopedVerifiableCredential (data:application/dc+sd-jwt for TWDIW cards, data:application/vc+moica for
- * self-issued cards), the verifier's challenge, purpose, optional audience and the creation time.
+ * one EnvelopedVerifiableCredential (data:application/dc+sd-jwt for TWDIW cards and SD-JWT VC,
+ * data:application/vc+jwt for JWT VC, data:application/vc+moica for self-issued cards), the verifier's challenge,
+ * purpose, optional audience and the creation time. For an SD-JWT VC bound by cnf to a plain key, the holder DID
+ * is the did:jwk of that key.
  */
 object BondsOfflinePresentation {
     const val CREDENTIALS_V2 = "https://www.w3.org/ns/credentials/v2"
@@ -167,7 +180,17 @@ object BondsOfflinePresentation {
             name to ((d.value as? JsonPrimitive)?.content ?: d.value.toString())
         }
 
-    /** Answers [request] with a TWDIW card, disclosing [disclosing] (all disclosures when null). */
+    /** Name and value of each named disclosure of an SD-JWT (IETF SD-JWT VC or W3C VC as SD-JWT). */
+    fun disclosableClaims(compactSdJwt: String): List<Pair<String, String>> =
+        SdJwtDisclosures.parse(compactSdJwt).disclosures.mapNotNull { d ->
+            val name = d.name ?: return@mapNotNull null
+            name to ((d.value as? JsonPrimitive)?.content ?: d.value.toString())
+        }
+
+    /**
+     * Answers [request] with a W3C VC in SD-JWT form (a TWDIW card, or for [BondsCredentialSource.ANY] any such card),
+     * disclosing [disclosing] (all disclosures when null).
+     */
     suspend fun present(
         request: BondsPresentationRequest,
         credential: W3cVcCredential,
@@ -176,7 +199,7 @@ object BondsOfflinePresentation {
         disclosing: Set<String>? = null,
         now: Instant = Clock.System.now(),
     ): String {
-        if (request.source != BondsCredentialSource.TWDIW) {
+        if (request.source == BondsCredentialSource.SELF_ISSUED) {
             throw ProtocolException("credential_unavailable", "Self-issued citizen certificate cards are not on this device")
         }
         val parts = SdJwtDisclosures.parse(credential.raw)
@@ -189,11 +212,61 @@ object BondsOfflinePresentation {
             throw ProtocolException("invalid_key", "The holder DID does not match the card key")
         }
         val keep = if (disclosing == null) parts.disclosures else parts.disclosures.filter { it.name != null && it.name in disclosing }
-        return sign(SD_JWT_PREFIX + parts.withDisclosures(keep), request, holder, holderDid, now)
+        return sign(SD_JWT_PREFIX + parts.withDisclosures(keep), request, holder.signingKey("ES256"), holderDid, now)
     }
 
-    /** Signs a presentation enveloping [envelopeId] (one of the data: URLs above). */
-    suspend fun sign(envelopeId: String, request: BondsPresentationRequest, holder: HolderKey, holderDid: String, now: Instant): String {
+    /**
+     * Answers an [BondsCredentialSource.ANY] request with an IETF SD-JWT VC bound by cnf to [holderKey], signed with
+     * [signingKey] (the same key). A disclosure is kept when its path names one of [disclosing] (all when null), with
+     * the disclosures its digest is nested in.
+     */
+    suspend fun presentSdJwtVc(
+        request: BondsPresentationRequest,
+        compact: String,
+        signingKey: AsymmetricKey,
+        holderKey: EcPublicKey,
+        disclosing: Set<String>? = null,
+        now: Instant = Clock.System.now(),
+    ): String {
+        requireAny(request)
+        val sdJwt = SdJwt.fromCompactSerialization(compact.substringBeforeLast('~') + "~")
+        if (sdJwt.kbKey != holderKey) throw ProtocolException("invalid_key", "The card is bound to another key")
+        val kept = if (disclosing == null) sdJwt else sdJwt.filter { path, _ ->
+            path.any { (it as? JsonPrimitive)?.isString == true && it.content in disclosing }
+        }
+        return sign(SD_JWT_PREFIX + kept.compactSerialization, request, signingKey, DidKeys.didJwk(holderKey), now)
+    }
+
+    /**
+     * Answers an [BondsCredentialSource.ANY] request with a W3C JWT VC whose subject is the holder DID ([holderDid],
+     * or the card's sub or credentialSubject.id), which must resolve to [holderKey]. A JWT VC is shown whole.
+     */
+    suspend fun presentJwtVc(
+        request: BondsPresentationRequest,
+        jwt: String,
+        signingKey: AsymmetricKey,
+        holderKey: EcPublicKey,
+        holderDid: String?,
+        didResolver: DidResolver,
+        now: Instant = Clock.System.now(),
+    ): String {
+        requireAny(request)
+        val payload = Jws.parse(jwt.trim()).payload
+        val did = holderDid ?: payload.str("sub") ?: payload.obj("vc")?.obj("credentialSubject")?.str("id")
+            ?: throw ProtocolException("invalid_key", "The card names no holder")
+        val resolved = runCatching { didResolver.resolveKey(did, null) }.getOrNull()
+        if ((resolved?.key as? VerificationKey.Ec)?.key != holderKey) throw ProtocolException("invalid_key", "The holder DID does not match the card key")
+        return sign(VC_JWT_PREFIX + jwt.trim(), request, signingKey, did, now)
+    }
+
+    private fun requireAny(request: BondsPresentationRequest) {
+        if (request.source != BondsCredentialSource.ANY) {
+            throw ProtocolException("credential_unavailable", "This verifier accepts government wallet cards only")
+        }
+    }
+
+    /** Signs a presentation enveloping [envelopeId] (one of the data: URLs above) with the holder's [key]. */
+    suspend fun sign(envelopeId: String, request: BondsPresentationRequest, key: AsymmetricKey, holderDid: String, now: Instant): String {
         val created = Instant.fromEpochSeconds(now.epochSeconds).toString()
         val payload = buildJsonObject {
             putJsonArray("@context") {
@@ -226,7 +299,7 @@ object BondsOfflinePresentation {
             put("kid", DidKeys.verificationMethod(holderDid))
             put("typ", "vp+jwt")
         }
-        return signJws(header, payload, holder.signingKey("ES256"))
+        return signJws(header, payload, key)
     }
 
     /** QR frames for the presentation, shown in rotation. */
@@ -389,14 +462,27 @@ data class BondsVerifiedPresentation(
     val created: Instant,
     val boundToAudience: Boolean,
     val moica: MoicaVerification?,
+    /** The card's W3C credential (disclosures resolved), whose credentialStatus a verifier checks online when it can. */
+    val credential: JsonObject? = null,
+    /** The issuer's X.509 chain (x5c), when it signed with a certificate rather than a DID. */
+    val issuerChain: List<X509Cert>? = null,
+    /** Token Status List reference of an SD-JWT VC; a W3C card carries its own in [credential]. */
+    val revocationStatus: RevocationStatus? = null,
+    /** vct of an SD-JWT VC, or the most specific W3C type. */
+    val credentialType: String? = null,
 )
 
 /**
  * Verifier side of the Bonds offline presentation: checks the vp+jwt signature with the holder DID key, the
  * challenge and purpose this verifier issued, the audience, freshness (5 minutes, 2 minutes clock skew), and the
- * enveloped card (TWDIW SD-JWT bound to the holder key, or vc+moica whose subject is the holder).
+ * enveloped card: TWDIW SD-JWT bound to the holder key, vc+moica whose subject is the holder, and for
+ * [BondsCredentialSource.ANY] an IETF SD-JWT VC whose cnf is the holder key or a JWT VC whose subject is the holder.
+ * An SD-JWT VC issuer key comes from x5c, a DID iss, or [issuerMetadataKey] (JWT VC issuer metadata, online only).
  */
-class BondsOfflineVerifier(private val didResolver: DidResolver) {
+class BondsOfflineVerifier(
+    private val didResolver: DidResolver,
+    private val issuerMetadataKey: (suspend (issuer: String, kid: String?) -> EcPublicKey)? = null,
+) {
     suspend fun verify(presentationJws: String, request: BondsPresentationRequest, now: Instant = Clock.System.now()): BondsVerifiedPresentation {
         val jws = Jws.parse(presentationJws.trim())
         if (jws.header.str("alg") != "ES256") throw ProtocolException("invalid_presentation", "Unsupported algorithm")
@@ -420,21 +506,34 @@ class BondsOfflineVerifier(private val didResolver: DidResolver) {
         val bound = request.audience != null && vp.str("audience") == request.audience
         return when {
             id.startsWith(BondsOfflinePresentation.SD_JWT_PREFIX) -> {
-                if (request.source != BondsCredentialSource.TWDIW) throw ProtocolException("invalid_presentation", "Credential source mismatch")
+                if (request.source == BondsCredentialSource.SELF_ISSUED) throw ProtocolException("invalid_presentation", "Credential source mismatch")
                 val sd = id.removePrefix(BondsOfflinePresentation.SD_JWT_PREFIX)
                 val parts = SdJwtDisclosures.parse(sd)
                 val cjws = Jws.parse(parts.issuerJwt)
+                // An IETF SD-JWT VC names its type in vct; a W3C VC as SD-JWT (TWDIW) carries the vc claim.
+                if (cjws.payload["vct"] != null && cjws.payload["vc"] == null) {
+                    if (request.source != BondsCredentialSource.ANY) throw ProtocolException("invalid_presentation", "Credential source mismatch")
+                    return verifySdJwtVc(sd, holder, holderKey, created, bound, now)
+                }
                 val iss = cjws.payload.str("iss") ?: throw ProtocolException("invalid_credential", "No issuer")
                 cjws.verify(didResolver.resolveKey(iss, null).key)
                 val cnf = cjws.payload.obj("cnf")?.obj("jwk")?.let { VerificationKey.fromJwk(it) }
-                if (cnf != holderKey || cjws.payload.str("sub") != holder) throw ProtocolException("invalid_credential", "Card not bound to the presenter")
+                // A TWDIW card names its holder in sub; another W3C card may be bound by cnf alone.
+                val sub = cjws.payload.str("sub")
+                val subjectOk = sub == holder || (sub == null && request.source == BondsCredentialSource.ANY)
+                if (cnf != holderKey || !subjectOk) throw ProtocolException("invalid_credential", "Card not bound to the presenter")
                 cjws.payload["exp"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() }?.let {
                     if (Instant.fromEpochSeconds(it) < now) throw ProtocolException("invalid_credential", "Card expired")
                 }
                 val resolved = SdJwtDisclosures.resolve(cjws.payload, parts.disclosures)
                 val subject = resolved.obj("vc")?.obj("credentialSubject") ?: resolved.obj("credentialSubject") ?: JsonObject(emptyMap())
                 val claims = subject.filterKeys { it != "id" && !it.startsWith("_") }.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: v.toString() }
-                BondsVerifiedPresentation(holder, BondsCredentialSource.TWDIW, claims, iss, created, bound, null)
+                val vc = resolved.obj("vc") ?: resolved
+                BondsVerifiedPresentation(holder, request.source, claims, iss, created, bound, null, vc, credentialType = vc.strList("type").lastOrNull())
+            }
+            id.startsWith(BondsOfflinePresentation.VC_JWT_PREFIX) -> {
+                if (request.source != BondsCredentialSource.ANY) throw ProtocolException("invalid_presentation", "Credential source mismatch")
+                verifyJwtVc(id.removePrefix(BondsOfflinePresentation.VC_JWT_PREFIX), holder, created, bound, now)
             }
             id.startsWith(BondsOfflinePresentation.MOICA_PREFIX) -> {
                 if (request.source != BondsCredentialSource.SELF_ISSUED) throw ProtocolException("invalid_presentation", "Credential source mismatch")
@@ -442,9 +541,105 @@ class BondsOfflineVerifier(private val didResolver: DidResolver) {
                 val card = MoicaSignedCredential.parse(serialized)
                 val result = card.verify(didResolver, now)
                 if (result.credential.obj("credentialSubject")?.str("id") != holder) throw ProtocolException("invalid_credential", "Card subject is not the presenter")
-                BondsVerifiedPresentation(holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result)
+                BondsVerifiedPresentation(holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result, result.credential)
             }
             else -> throw ProtocolException("invalid_presentation", "Unsupported credential envelope")
+        }
+    }
+
+    /** IETF SD-JWT VC: issuer signature, cnf bound to the presenter's key, validity; claims with disclosures applied. */
+    private suspend fun verifySdJwtVc(
+        compact: String,
+        holder: String,
+        holderKey: VerificationKey,
+        created: Instant,
+        bound: Boolean,
+        now: Instant,
+    ): BondsVerifiedPresentation {
+        val sdJwt = runCatching { SdJwt.fromCompactSerialization(compact) }.getOrNull() ?: throw ProtocolException("invalid_credential", "Malformed SD-JWT VC")
+        val chain = sdJwt.x5c?.certificates
+        val iss = sdJwt.issuer
+        val kid = sdJwt.jwtHeader.str("kid")
+        val issuerKey: EcPublicKey = when {
+            chain != null -> {
+                X509CertChainCheck.validate(chain)
+                chain.first().ecPublicKey
+            }
+            iss != null && iss.startsWith("did:") -> (didResolver.resolveKey(iss, kid).key as? VerificationKey.Ec)?.key
+                ?: throw ProtocolException("invalid_credential", "The issuer DID has no EC key")
+            iss != null && issuerMetadataKey != null -> issuerMetadataKey.invoke(iss, kid)
+            else -> throw ProtocolException("invalid_credential", "The issuer key cannot be found without a connection")
+        }
+        val processed = try {
+            sdJwt.verify(issuerKey)
+        } catch (e: Exception) {
+            throw ProtocolException("invalid_credential", "Issuer signature is invalid", e)
+        }
+        val cnf = sdJwt.kbKey ?: throw ProtocolException("invalid_credential", "Card not bound to a key")
+        if ((holderKey as? VerificationKey.Ec)?.key != cnf) throw ProtocolException("invalid_credential", "Card not bound to the presenter")
+        sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Card expired") }
+        sdJwt.validFrom?.let { if (it > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid") }
+        val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL }))
+        return BondsVerifiedPresentation(
+            holder, BondsCredentialSource.ANY, claims, iss, created, bound, null,
+            issuerChain = chain, revocationStatus = sdJwt.revocationStatus, credentialType = sdJwt.credentialType,
+        )
+    }
+
+    /** W3C JWT VC: issuer signature (x5c or DID), subject is the presenter, validity; claims of credentialSubject. */
+    private suspend fun verifyJwtVc(jwt: String, holder: String, created: Instant, bound: Boolean, now: Instant): BondsVerifiedPresentation {
+        val cjws = runCatching { Jws.parse(jwt) }.getOrNull() ?: throw ProtocolException("invalid_credential", "Malformed JWT VC")
+        val payload = cjws.payload
+        val vc = payload.obj("vc") ?: payload
+        val iss = payload.str("iss") ?: vc.str("issuer") ?: vc.obj("issuer")?.str("id")
+        val chain = (cjws.header["x5c"] as? JsonArray)?.let { a ->
+            runCatching { org.multipaz.crypto.X509CertChain.fromX5c(a).certificates }.getOrNull()
+                ?: throw ProtocolException("invalid_credential", "Malformed x5c")
+        }
+        val key = when {
+            chain != null -> {
+                X509CertChainCheck.validate(chain)
+                VerificationKey.Ec(chain.first().ecPublicKey)
+            }
+            iss != null && iss.startsWith("did:") -> didResolver.resolveKey(iss, cjws.header.str("kid")).key
+            else -> throw ProtocolException("invalid_credential", "The issuer key cannot be found")
+        }
+        cjws.verify(key)
+        val subject = vc.obj("credentialSubject") ?: JsonObject(emptyMap())
+        if (payload.str("sub") != holder && subject.str("id") != holder) throw ProtocolException("invalid_credential", "Card subject is not the presenter")
+        payload["exp"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() }?.let {
+            if (Instant.fromEpochSeconds(it) < now) throw ProtocolException("invalid_credential", "Card expired")
+        }
+        payload["nbf"]?.let { (it as? JsonPrimitive)?.content?.toLongOrNull() }?.let {
+            if (Instant.fromEpochSeconds(it) > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid")
+        }
+        return BondsVerifiedPresentation(
+            holder, BondsCredentialSource.ANY, flatten(JsonObject(subject.filterKeys { it != "id" })), iss, created, bound, null, vc,
+            issuerChain = chain, credentialType = vc.strList("type").lastOrNull(),
+        )
+    }
+
+    private companion object {
+        /** Registered and structural SD-JWT VC claims, shown elsewhere or not at all. */
+        val SD_JWT_VC_TECHNICAL = setOf("iss", "sub", "iat", "nbf", "exp", "jti", "cnf", "vct", "vct#integrity", "status", "_sd", "_sd_alg")
+
+        /** Nested objects as dotted names ("address.locality"); arrays and other values as text. */
+        fun flatten(o: JsonObject, prefix: String = ""): Map<String, String> = buildMap {
+            for ((k, v) in o) {
+                if (k.startsWith("_")) continue
+                val name = prefix + k
+                when (v) {
+                    is JsonObject -> putAll(flatten(v, "$name."))
+                    is JsonPrimitive -> put(name, v.content)
+                    else -> put(name, text(v))
+                }
+            }
+        }
+
+        fun text(v: JsonElement): String = when (v) {
+            is JsonPrimitive -> v.content
+            is JsonArray -> v.joinToString("、") { text(it) }
+            is JsonObject -> v.toString()
         }
     }
 }

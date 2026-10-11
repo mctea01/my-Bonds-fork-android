@@ -7,6 +7,7 @@ import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vp.RawAuthorizationRequest
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.ext.ExtendedPresenter
+import diw.wallet.core.oid4vp.ext.WalletCredential
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import kotlinx.serialization.json.JsonObject
@@ -22,6 +23,11 @@ import kotlin.time.Clock
  * Verified ID wallet library answer them): response_type id_token with claims.vp_token.presentation_definition,
  * response_mode post to redirect_uri, an id_token from https://self-issued.me/v2/openid-vc carrying the
  * presentation_submission in _vp_token, and a vp_token signed by the wallet's Verified ID holder DID.
+ *
+ * The submission follows the wallet library's PresentationResponseFormatter: format jwt_vp at "$", and path_nested
+ * format jwt_vc at "$.verifiableCredential[i]", resolved inside the vp claim. A JWT claim path
+ * ($.vp.verifiableCredential[i]) finds nothing there, and the verifier answers 401 "The presentation does not
+ * include any verifiable credentials".
  */
 class MsVerifiedIdPresentationDialect : PresentationDialect {
     override val id = ID
@@ -50,6 +56,10 @@ class MsVerifiedIdPresentationDialect : PresentationDialect {
             holder.signingKey(ExtendedPresenter.joseAlg(holder.publicKey)),
         )
     }
+
+    override fun nestedFormat(credential: WalletCredential): String = "jwt_vc"
+
+    override fun nestedPath(index: Int): String = "\$.verifiableCredential[$index]"
 
     override suspend fun jwtVp(input: VpInput): String {
         val holder = input.holder

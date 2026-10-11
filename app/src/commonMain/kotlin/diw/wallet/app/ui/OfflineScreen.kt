@@ -32,9 +32,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.BondsCardKind
 import diw.wallet.app.HomeTab
+import diw.wallet.app.Screen
 import diw.wallet.app.OfflineUi
+import diw.wallet.app.StatusTexts
 import diw.wallet.app.WalletModel
+import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.x509.displaySubject
+import diw.wallet.core.status.StatusVerdict
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.oid4vci.issuanceRecord
@@ -115,16 +122,22 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
         s.cards.forEachIndexed { i, c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = i == cardIndex, onClick = { cardIndex = i })
-                Text(c.name)
+                Column {
+                    Text(c.name)
+                    Text(bondsKindLabel(c.kind), style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
         Text("要出示的欄位", style = MaterialTheme.typography.titleSmall)
         val record = card.document.issuanceRecord
+        if (!card.selective) {
+            Text("這張證件不支援選擇性揭露，會出示下列全部欄位。", style = MaterialTheme.typography.bodySmall)
+        }
         card.claims.forEach { (name, value) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = name in chosen, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
-                Column {
-                    Text(model.claimLabel(listOf(name), null, record), style = MaterialTheme.typography.bodyMedium)
+                if (card.selective) Checkbox(checked = name in chosen, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
+                Column(if (card.selective) Modifier else Modifier.padding(start = 12.dp)) {
+                    Text(model.claimLabel(name.split('.'), null, record), style = MaterialTheme.typography.bodyMedium)
                     Text(value, style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -134,6 +147,19 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
             OutlinedButton(onClick = { model.back() }) { Text("取消") }
         }
     }
+}
+
+private fun bondsKindLabel(kind: BondsCardKind): String = when (kind) {
+    BondsCardKind.W3C_SD_JWT -> "W3C VC（SD-JWT），可選擇欄位"
+    BondsCardKind.SD_JWT_VC -> "SD-JWT VC，可選擇欄位"
+    BondsCardKind.JWT_VC -> "W3C VC（JWT），出示全部欄位"
+}
+
+/** What a verifier's challenge accepts, in the holder's and the verifier's words. */
+internal fun bondsSourceLabel(source: BondsCredentialSource): String = when (source) {
+    BondsCredentialSource.TWDIW -> "政府皮夾卡片（與 Bonds 相容）"
+    BondsCredentialSource.ANY -> "任何綁定金鑰的證件（SD-JWT VC、W3C VC）"
+    BondsCredentialSource.SELF_ISSUED -> "自然人憑證自發卡片"
 }
 
 @Composable
@@ -189,7 +215,11 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text("請出示者用錢包或 Bonds 掃描", style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
-        Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）", style = MaterialTheme.typography.bodyMedium)
+        Text("接受：" + bondsSourceLabel(s.request.source), style = MaterialTheme.typography.bodySmall)
+        if (s.request.source == BondsCredentialSource.ANY) {
+            Text("這是本錢包的擴充格式，請對方使用本錢包出示；Bonds App 只能出示政府皮夾卡片。", style = MaterialTheme.typography.bodySmall)
+        }
         s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
             LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
@@ -218,35 +248,47 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
         } else {
             val official = s.issuerTrust?.tier == TrustTier.T1 || s.issuerTrust?.tier == TrustTier.T2
             val test = s.issuerTrust?.environment == TrustEnvironment.TEST
+            val status = s.statusDecision
+            val statusLine = status?.let { StatusTexts.summary(it) + "。" + StatusTexts.explain(it.finding) }
+            val issuerLine = (if (official && !test) "簽章與這次的挑戰相符。" else "") + issuerTrustLine(s.issuerTrust)
             when {
-                official && !test -> VerdictCard(
-                    Verdict.PASS, "查驗通過",
-                    listOfNotNull(
-                        "簽章與這次的挑戰相符，發行端在信任清單內。",
-                        if (s.issuerTrust?.tier == TrustTier.T2) "發行端已列名，但無法完全驗證（例如區塊鏈註冊暫時無法確認）。" else null,
-                    ),
+                status?.verdict == StatusVerdict.REJECT -> VerdictCard(
+                    Verdict.FAIL, "查驗未通過：證件狀態不符",
+                    listOfNotNull(statusLine, "用途風險為${StatusTexts.risk(s.risk)}，" + StatusTexts.verdict(StatusVerdict.REJECT) + "這張證件。", issuerLine),
                 )
+                s.risk == RiskLevel.HIGH && (!official || test) -> VerdictCard(
+                    Verdict.FAIL, "查驗未通過：發行端無法確認",
+                    listOfNotNull(issuerLine, "高風險用途只接受官方信任清單（T1）或政府憑證確認身分（T2）的發行端。", statusLine),
+                )
+                official && !test && status?.verdict != StatusVerdict.CAUTION -> VerdictCard(
+                    Verdict.PASS, "查驗通過", listOfNotNull(issuerLine, statusLine),
+                )
+                official && !test -> VerdictCard(Verdict.CAUTION, "簽章相符，證件狀態需留意", listOfNotNull(issuerLine, statusLine))
                 else -> VerdictCard(
                     Verdict.CAUTION, "簽章相符，發行端無法確認",
-                    listOf(
-                        "出示者的簽章與這次的挑戰相符。",
-                        if (test) "發行端只在測試環境受信任，結果不具效力。" else "發行端不在信任清單，無法確認這張卡片由誰簽發。",
-                    ),
+                    listOfNotNull("出示者的簽章與這次的挑戰相符。", issuerLine, statusLine),
                 )
             }
-            Text("用途：${s.request.purpose}")
+            Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）")
+            specStatus(s.status)?.let { Text("規格狀態值：$it", style = MaterialTheme.typography.bodySmall) }
             Text("出示時間：${r.created}", style = MaterialTheme.typography.bodySmall)
             Text("出示者：${r.holder}", style = MaterialTheme.typography.bodySmall)
             val issuer = r.moica?.let { "自然人憑證持有人 ${it.cardholderName}（憑證序號 ${it.certificateSerialHex}）" } ?: r.issuer ?: "未知"
             if (s.issuerTrust != null) TrustCard("發行端", issuer, s.issuerTrust)
-            else Text("發行端：$issuer（不在信任清單，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
+            else Text("發行端：$issuer（不在任何信任來源，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
             Text("出示的資料", style = MaterialTheme.typography.titleSmall)
-            r.claims.forEach { (k, v) -> LabelValue(model.claimLabel(listOf(k), null, null), v) }
+            r.credentialType?.let { LabelValue("證件類型", it, small = true) }
+            r.issuerChain?.let { chain ->
+                LabelValue("發行端憑證", chain.first().displaySubject(), small = true) {
+                    model.screen.value = Screen.Certificate(chain, 0, Screen.Offline)
+                }
+            }
+            r.claims.forEach { (k, v) -> LabelValue(model.claimLabel(k.split('.'), null, null), v) }
             if (r.claims.isEmpty()) Text("對方沒有揭露任何欄位", style = MaterialTheme.typography.bodySmall)
             r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.taiwan.startVerifier(s.request.purpose) }) { Text("再次查驗") }
+            Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk, s.request.source) }) { Text("再次查驗") }
             OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text("完成") }
         }
     }

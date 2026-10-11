@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -95,10 +96,12 @@ private fun anchorText(anchor: String?): String = when (anchor?.let { runCatchin
 fun TrustListScreen(model: WalletModel) {
     val rows by model.taiwan.trustRows.collectAsState()
     val error by model.taiwan.trustError.collectAsState()
+    val progress by model.taiwan.trustProgress.collectAsState()
     var filter by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) { if (rows == null) model.taiwan.loadTrust() }
+    // Opening the list checks every organisation not checked in the last day, without a tap per entry.
+    LaunchedEffect(Unit) { if (rows == null) model.taiwan.loadTrust() else model.taiwan.verifyAll(force = false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("數位憑證皮夾公布的發行端與查驗方。組織的 DID 文件需自簽有效，並與 Arbitrum One 上的註冊內容相符，才列為官方已驗證（T1）。",
+        Text("數位憑證皮夾公布的發行端與查驗方。組織的 DID 文件需自簽有效，並與 Arbitrum One 上的註冊內容相符，才列為官方已驗證（T1）。開啟清單時會自動查驗一天內未查驗的組織。",
             style = MaterialTheme.typography.bodyMedium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
@@ -112,6 +115,10 @@ fun TrustListScreen(model: WalletModel) {
             TextButton(onClick = { model.taiwan.loadTrust(refresh = true) }) { Text("重新整理") }
         }
         error?.let { InlineError(it) { model.taiwan.loadTrust(refresh = true) } }
+        progress?.let { (done, total) ->
+            LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
+            Text("正在查驗 DID 文件與區塊鏈註冊：$done / $total", style = MaterialTheme.typography.bodySmall)
+        }
         val list = rows
         if (list == null && error == null) CircularProgressIndicator(Modifier.size(24.dp))
         list?.filter { r ->
@@ -138,7 +145,8 @@ private fun TrustRowCard(model: WalletModel, row: TwdiwTrustRow) {
             Text(roles.joinToString("、") + (e.taxId?.let { "　統一編號 $it" } ?: ""), style = MaterialTheme.typography.bodySmall)
             Text(e.did, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
             if (e.hosts.isNotEmpty()) Text("服務網域：" + e.hosts.joinToString(), style = MaterialTheme.typography.bodySmall)
-            Text("區塊鏈：" + anchorText(row.anchor), style = MaterialTheme.typography.bodySmall)
+            Text("區塊鏈：" + anchorText(row.anchor) + (row.checkedAt?.let { "（${localTime(kotlin.time.Instant.fromEpochMilliseconds(it))} 查驗）" } ?: ""),
+                style = MaterialTheme.typography.bodySmall)
             row.decision?.let { TierBadge(it) }
             TextButton(onClick = { model.taiwan.verifyEntry(row) }) { Text(if (row.decision == null) "驗證" else "重新驗證") }
         }

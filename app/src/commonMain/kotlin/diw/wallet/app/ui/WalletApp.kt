@@ -48,12 +48,10 @@ import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
-import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
-import org.multipaz.revocation.RevocationCheckState
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
@@ -70,6 +68,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val tab by model.tab.collectAsState()
     val settings by model.settingsFlow.collectAsState()
     val msg by model.message.collectAsState()
+    val proximityListening by model.proximity.listening.collectAsState()
     val pin by model.pinRequest.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
@@ -92,7 +91,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
             topBar = {
                 Column {
                     TopAppBar(
-                        title = { Text(titleFor(screen, tab)) },
+                        title = { Text(if (screen == Screen.Proximity && !proximityListening) "出示證件" else titleFor(screen, tab)) },
                         navigationIcon = {
                             if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
                         },
@@ -123,12 +122,15 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.Settings -> SettingsScreen(model)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
-                    is Screen.DocumentDetail -> DocumentScreen(model, s)
+                    is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
                     is Screen.Certificate -> CertificateScreen(model, s)
                     Screen.AddDocument -> AddDocumentScreen(model)
                     Screen.TrustList -> TrustListScreen(model)
+                    Screen.TrustAnchors -> TrustAnchorsScreen(model)
                     Screen.Offline -> OfflineScreen(model, scanQr)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
+                    Screen.Proximity -> ProximityScreen(model)
+                    Screen.Reader -> ReaderScreen(model)
                 }
             }
         }
@@ -158,8 +160,11 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.Certificate -> "證書詳情"
     Screen.AddDocument -> "從清單選擇"
     Screen.TrustList -> "信任清單"
+    Screen.TrustAnchors -> "信任錨點"
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
+    Screen.Proximity -> "感應出示"
+    Screen.Reader -> "感應查驗"
 }
 
 @Composable
@@ -225,8 +230,9 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
     )
 }
 
+/** One document: its card, trust, status, data and details, and how to present it. [scan] opens the camera. */
 @Composable
-fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
+fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() -> Unit)? = null) {
     val id = screen.documentId
     val docs by model.documents.collectAsState()
     val statuses by model.statuses.collectAsState()
@@ -249,17 +255,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
-        val status = statuses[id]
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val ok = status?.state == RevocationCheckState.VALID && status.trusted
-            Icon(if (ok) WalletIcons.Pass else WalletIcons.Caution, contentDescription = null,
-                tint = if (ok) Tokens.Pass else Tokens.Caution, modifier = Modifier.size(20.dp))
-            Text(statusText(status), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = { model.checkStatus(doc) }) { Text("查詢") }
-        }
-        status?.let { DetailSections(model, CredentialDetails.status(it)) }
+        if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
         claims.forEach { (k, v) -> LabelValue(k, v) }
+        if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
         record?.let {
             LabelValue("格式", CredentialDetails.formatName(it))
@@ -269,7 +268,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
         LabelValue("可用次數", "$count（批次憑證數）")
         record?.keyStorage?.let { LabelValue("金鑰保護", CredentialDetails.keyStorageName(it)) }
         TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
-        if (showDetails) DetailSections(model, details)
+        if (showDetails) {
+            statuses[id]?.status?.let { DetailSections(model, CredentialDetails.status(it)) }
+            DetailSections(model, details)
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -290,6 +292,35 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail) {
     }
 }
 
+/**
+ * Presenting this document on the holder's own initiative: an mdoc by NFC tap or QR code (ISO/IEC 18013-5); any
+ * other document to the verifier whose QR code is scanned next, listed first when it is an offline challenge.
+ */
+@Composable
+private fun PresentThisDocument(model: WalletModel, doc: Document, scan: (() -> Unit)?) {
+    val record = doc.issuanceRecord
+    var pasted by remember(doc.identifier) { mutableStateOf("") }
+    SectionTitle("出示這張證件")
+    if (record?.format == "mso_mdoc") {
+        ActionRow(WalletIcons.Nfc, "感應出示", "手機靠近查驗設備，或讓對方掃描 QR Code（ISO/IEC 18013-5）") { model.proximity.open() }
+    }
+    if (scan != null) {
+        ActionRow(WalletIcons.Scan, "掃描查驗方的 QR Code", "線上請求（OpenID4VP）或離線查驗挑戰；離線出示時這張證件排在最前面") {
+            model.taiwan.preferredDocument = doc.identifier
+            scan()
+        }
+    } else {
+        Text("這個裝置沒有相機，請貼上查驗方給的連結或查驗挑戰。", style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value = pasted, onValueChange = { pasted = it }, label = { Text("查驗方的連結或挑戰") }, singleLine = true,
+            modifier = Modifier.fillMaxWidth())
+        OutlinedButton(onClick = {
+            model.taiwan.preferredDocument = doc.identifier
+            model.handleUri(pasted.trim())
+            pasted = ""
+        }, enabled = pasted.isNotBlank()) { Text("出示") }
+    }
+}
+
 /** One certificate of a chain, with the other certificates of the chain selectable. */
 @Composable
 fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
@@ -305,12 +336,4 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
         }
         DetailSections(model, CredentialDetails.certificate(cert))
     }
-}
-
-/** Token Status List value by its name in the specification, with a short translation. */
-private fun statusText(s: CredentialStatus?): String {
-    if (s == null) return "狀態：尚未查詢"
-    if (s.label != null) return "狀態：${s.label}（${CredentialDetails.stateMeaning(s.state)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
-    val name = s.specName ?: return "狀態：無法查詢（${s.detail ?: ""}）"
-    return "狀態：$name（${CredentialDetails.statusMeaning(s.code)}" + (if (s.trusted) "" else "，狀態清單未經驗證") + "）"
 }

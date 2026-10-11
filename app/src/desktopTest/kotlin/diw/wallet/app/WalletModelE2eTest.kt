@@ -13,6 +13,7 @@ import diw.wallet.core.util.DiwJson
 import androidx.compose.foundation.layout.fillMaxSize
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
+import io.ktor.client.engine.mock.respond
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -21,6 +22,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -31,6 +33,7 @@ import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -62,7 +65,12 @@ class WalletModelE2eTest {
     private val pin = "246810"
 
     /** Software-only platform; the browser step follows the issuer's auto-approve redirect and feeds it back like a deep link. */
-    private inner class TestPlatform(val storage: Storage, val proxied: Boolean = false) : PlatformServices {
+    private inner class TestPlatform(
+        val storage: Storage,
+        val proxied: Boolean = false,
+        /** Replaces the network, for hosts the local test servers cannot stand in for (https did:web). */
+        val client: (() -> HttpClient)? = null,
+    ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
         override val platformName = "test"
@@ -70,7 +78,7 @@ class WalletModelE2eTest {
         override suspend fun openStorage() = storage
         override suspend fun keyBackends(storage: Storage, pinPrompt: suspend (String) -> String?) = listOf(softwareBackend(storage, pinPrompt))
         override fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider = PinOrPlatformUnlock(pinPrompt, null)
-        override fun httpClient() = HttpClient(Java) {
+        override fun httpClient() = client?.invoke() ?: HttpClient(Java) {
             followRedirects = false
             val proxy = System.getenv("HTTPS_PROXY") ?: System.getenv("https_proxy")
             if (proxied && !proxy.isNullOrBlank()) engine { this.proxy = io.ktor.client.engine.ProxyBuilder.http(io.ktor.http.Url(proxy)) }
@@ -195,6 +203,9 @@ class WalletModelE2eTest {
             assertIs<PresentationUi.Consent>(consent, "consent: $consent")
             assertEquals(TrustEnvironment.TEST, consent.request.verifier.trust.environment)
             assertTrue(consent.items.single().claims.isNotEmpty())
+            // A TEST verifier is not on an official list, so the request is at least medium risk.
+            assertNotNull(consent.items.single().documentId)
+            assertTrue(consent.risk >= diw.wallet.core.status.RiskLevel.MEDIUM, "risk: ${consent.risk}")
             m.approve(consent)
             val done = m.presentation.first { it is PresentationUi.Done || it is PresentationUi.Failed }
             assertIs<PresentationOutcome.Posted>(assertIs<PresentationUi.Done>(done, "presentation: $done").outcome)
@@ -227,6 +238,7 @@ class WalletModelE2eTest {
         val (m, _) = newWallet()
         issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
         m.refreshDocuments().join()
+        withTimeout(30.seconds) { m.statuses.first { it.size >= 2 } }
         val text = http.post("$base/verifier/sessions") {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject { put("client_id_prefix", "x509_san_dns") }.toString())
@@ -267,6 +279,7 @@ class WalletModelE2eTest {
         screen("08-settings", Screen.Settings)
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
+        screen("13-trust-anchors", Screen.TrustAnchors)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -311,7 +324,7 @@ class WalletModelE2eTest {
             assertTrue(cert.getValue("指紋").rows.single().value.count { c -> c == ':' } == 31)
 
             m.checkStatus(doc).join()
-            val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier)).associateBy { it.title }
+            val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier).status).associateBy { it.title }
             assertEquals("VALID（0x00）", status.getValue("狀態查詢結果").rows.first { it.label == "狀態值" }.value)
             val token = status.getValue("狀態清單權杖").rows
             assertTrue(token.any { it.label == "每項位元數（bits）" }, "token rows: $token")
@@ -321,6 +334,462 @@ class WalletModelE2eTest {
         val mdl = results.filterIsInstance<IssuanceResult.Issued>().first { it.document.issuanceRecord?.format == "mso_mdoc" }
         val claims = diw.wallet.core.credential.ClaimReader.read(mdl.credentials.first(), m.documentTypes).associate { it.path.last() to it.value }
         assertEquals("TW", claims["issuing_country"], "claims: $claims")
+    }
+
+    /**
+     * Statuses are kept current without a tap: the issuance queries the new document, a revocation is found by the
+     * next background run, announced and recorded, and the results survive a restart. A failed query keeps the
+     * last meaningful result.
+     */
+    @Test
+    fun statusMonitorAnnouncesRevocationAndKeepsResults() = runBlocking<Unit> {
+        start()
+        val storage = EphemeralStorage()
+        val (m, _) = newWallet(storage)
+        val issued = assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("pid_sd_jwt")), null).single())
+        val id = issued.document.identifier
+        val first = withTimeout(30.seconds) { m.statuses.first { it[id] != null } }.getValue(id)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, first.status.state)
+        // The list chains to a TEST anchor: valid, but a test result never shows as a plain pass.
+        assertEquals(TrustEnvironment.TEST, first.status.environment)
+        assertEquals(diw.wallet.core.status.StatusVerdict.CAUTION, m.status.decision(issued.document).verdict)
+        assertTrue(m.status.decision(issued.document).test)
+        // A PID is an identity document: its status is judged at high risk.
+        assertEquals(diw.wallet.core.status.RiskLevel.HIGH, m.status.decision(issued.document).risk)
+
+        val list = first.status.uri!!.substringAfterLast('/')
+        http.post("$base/issuer/admin/status") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("list", list); put("idx", first.status.index!!); put("status", 1) }.toString())
+        }
+        m.status.refreshDue(force = true)
+        val revoked = withTimeout(30.seconds) {
+            m.statuses.first { it[id]?.status?.state == org.multipaz.revocation.RevocationCheckState.INVALID }
+        }.getValue(id)
+        assertNull(revoked.lastError)
+        assertEquals(diw.wallet.core.status.StatusVerdict.REJECT, m.status.decision(issued.document).verdict)
+        val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.STATUS } } }.first { it.kind == HistoryKind.STATUS }
+        assertEquals("INVALID", entry.status)
+        assertEquals(listOf(issued.document.displayName), entry.documents)
+
+        // Offline: the query fails, the revocation stays and the failure is noted.
+        server?.stop(100, 500)
+        server = null
+        m.checkStatus(issued.document).join()
+        val offline = m.statuses.value.getValue(id)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, offline.status.state)
+        assertNotNull(offline.lastError)
+
+        // A restart reads the stored results.
+        val again = WalletModel(TestPlatform(storage))
+        again.init()
+        assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, again.statuses.value.getValue(id).status.state)
+    }
+
+    /** A reader as an NFC tag: NDEF engagement goes to the wallet's helper, data transfer to its NFC transport. */
+    private class LoopbackTag(
+        private val helper: org.multipaz.mdoc.nfc.MdocNfcEngagementHelper,
+        /** 261 is a reader limited to short APDUs, as PC/SC contactless readers are. */
+        override val maxTransceiveLength: Int = 65536,
+    ) : org.multipaz.nfc.NfcIsoTag() {
+        private var selected: ByteString? = null
+        // The phone leaves the field: the card emulation side drops its transport, as Android's HCE service does.
+        override suspend fun close() = org.multipaz.mdoc.transport.NfcTransportMdoc.onDeactivated()
+        override suspend fun updateDialogMessage(message: String) {}
+        override suspend fun transceive(command: org.multipaz.nfc.CommandApdu): org.multipaz.nfc.ResponseApdu {
+            val select = command.ins == org.multipaz.nfc.Nfc.INS_SELECT && command.p1 == org.multipaz.nfc.Nfc.INS_SELECT_P1_APPLICATION
+            if (select) selected = command.payload
+            if (selected != org.multipaz.nfc.Nfc.ISO_MDOC_NFC_DATA_TRANSFER_APPLICATION_ID) return helper.processApdu(command)
+            // The wallet opens its NFC transport just after the handover; until then a SELECT finds no transport and
+            // is sent again. Any other APDU waits: NFC is half duplex, so the answer to the last ENVELOPE carries the
+            // wallet's response, which comes after the user's consent.
+            repeat(if (select) 40 else 1) {
+                val answer = kotlinx.coroutines.CompletableDeferred<org.multipaz.nfc.ResponseApdu>()
+                org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu(command.encode()) { answer.complete(org.multipaz.nfc.ResponseApdu.decode(it)) }
+                (if (select) kotlinx.coroutines.withTimeoutOrNull(500) { answer.await() } else answer.await())?.let { return it }
+            }
+            error("No answer from the wallet's NFC transport")
+        }
+    }
+
+    /**
+     * In-person presentation by NFC tap (ISO/IEC 18013-5): negotiated handover choosing NFC data transfer, the
+     * reader's request on the wallet's own consent screen, the App PIN for the software key, a DeviceResponse the
+     * reader verifies, and the history entry.
+     */
+    @Test
+    fun nfcProximityPresentation() = runBlocking<Unit> {
+        start()
+        val (m, p) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        m.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        // Not listening: no engagement is offered for a tap.
+        assertNull(m.proximity.nfcEngagement())
+        m.proximity.open()
+        assertEquals(Screen.Proximity, m.screen.value)
+        val tag = LoopbackTag(assertNotNull(m.proximity.nfcEngagement(staticHandover = false)))
+        val nfc = org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc(commandDataFieldMaxLength = 0xffff, responseDataFieldMaxLength = 0x10000)
+        val handover = assertNotNull(withTimeout(30.seconds) { org.multipaz.mdoc.nfc.mdocReaderNfcHandover(tag, listOf(nfc)) })
+        val method = handover.connectionMethods.single() as org.multipaz.mdoc.connectionmethod.MdocConnectionMethodNfc
+
+        val eReaderKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)
+        val reader = org.multipaz.mdoc.transport.NfcTransportMdocReader(org.multipaz.mdoc.role.MdocRole.MDOC_READER, org.multipaz.mdoc.transport.MdocTransportOptions(), method)
+        reader.setTag(tag)
+        // open() runs its I/O loop in the caller's scope, which therefore stays active until the reader is closed.
+        reader.open(eReaderKey.publicKey)
+        val engagement = org.multipaz.mdoc.engagement.DeviceEngagement.fromDataItem(org.multipaz.cbor.Cbor.decode(handover.encodedDeviceEngagement.toByteArray()))
+        val transcript = org.multipaz.cbor.buildCborArray {
+            add(org.multipaz.cbor.Tagged(org.multipaz.cbor.Tagged.ENCODED_CBOR, org.multipaz.cbor.Bstr(handover.encodedDeviceEngagement.toByteArray())))
+            add(org.multipaz.cbor.Tagged(org.multipaz.cbor.Tagged.ENCODED_CBOR, org.multipaz.cbor.Bstr(org.multipaz.cbor.Cbor.encode(eReaderKey.publicKey.toCoseKey().toDataItem()))))
+            add(handover.handover)
+        }
+        val encodedTranscript = org.multipaz.cbor.Cbor.encode(transcript)
+        val session = org.multipaz.mdoc.sessionencryption.SessionEncryption(
+            role = org.multipaz.mdoc.role.MdocRole.MDOC_READER,
+            eSelfKey = eReaderKey,
+            remotePublicKey = engagement.eDeviceKey,
+            encodedSessionTranscript = encodedTranscript,
+        )
+        val request = org.multipaz.mdoc.request.DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
+            docType = "org.iso.18013.5.1.mDL",
+            itemsToRequest = mapOf("org.iso.18013.5.1" to mapOf("family_name" to false, "given_name" to false)),
+            requestInfo = null,
+            readerKey = null,
+            signatureAlgorithm = org.multipaz.crypto.Algorithm.UNSET,
+            readerKeyCertificateChain = null,
+        ).generate()
+        // The reader waits for the response while the user reads the request.
+        val exchange = async(Dispatchers.Default) {
+            reader.sendMessage(session.encryptMessage(request, null))
+            reader.waitForMessage()
+        }
+
+        val consent = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent")
+        assertEquals(ProximityChannel.NFC, consent.channel)
+        // No reader authentication: the reader cannot be identified (T4), shown as such.
+        assertEquals(TrustTier.T4, consent.trust.tier)
+        assertTrue(consent.chain.isEmpty())
+        assertEquals(2, consent.items.single().claims.size)
+        val pins = p.pinPrompts
+        m.proximity.approve(consent)
+
+        val (plain, _) = session.decryptMessage(withTimeout(30.seconds) { exchange.await() })
+        val response = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(org.multipaz.cbor.Cbor.decode(assertNotNull(plain)))
+        response.verify(sessionTranscript = transcript)
+        val doc = response.documents.single()
+        assertEquals("org.iso.18013.5.1.mDL", doc.docType)
+        assertEquals(setOf("family_name", "given_name"), doc.issuerNamespaces.data.getValue("org.iso.18013.5.1").keys)
+        assertEquals(pins + 1, p.pinPrompts, "the software key is unlocked with the App PIN")
+
+        val done = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Done || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Done>(done, "done: $done")
+        val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertTrue(entry.note!!.contains("NFC"), "note: ${entry.note}")
+        assertEquals(2, entry.claims.size)
+        assertTrue(m.back())
+        assertFalse(m.proximity.listening.value)
+        reader.close()
+    }
+
+    /** An NFC reader handed one tag, like a phone held to it. */
+    private class LoopbackReader(private val tag: org.multipaz.nfc.NfcIsoTag) : org.multipaz.nfc.NfcTagReader {
+        override val external = true
+        override val dialogAlwaysShown = false
+        override val dialogNeverShown = true
+        override suspend fun <T : Any> scan(
+            message: String?,
+            tagInteractionFunc: suspend (tag: org.multipaz.nfc.NfcIsoTag) -> T?,
+            options: org.multipaz.nfc.NfcScanOptions,
+            context: kotlin.coroutines.CoroutineContext,
+        ): T = try {
+            tagInteractionFunc(tag) ?: error("The tag is not an mdoc")
+        } catch (e: Throwable) {
+            tag.close()
+            throw e
+        }
+    }
+
+    /**
+     * One wallet reads another in person (ISO/IEC 18013-5 mdoc reader): NFC engagement, the request on the holder's
+     * consent screen, NFC data transfer, and on the reader the integrity checks, the issuer's trust, the status and the
+     * history entry with field names only. [maxTransceive] 261 is a PC/SC reader limited to short APDUs.
+     */
+    private suspend fun readAnotherWallet(maxTransceive: Int, request: ReaderRequest): ReaderUi.Result {
+        start()
+        val (holder, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)), maxTransceive)
+
+        val (verifier, _) = newWallet()
+        verifier.reader.open()
+        assertEquals(Screen.Reader, verifier.screen.value)
+        verifier.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)), request, diw.wallet.core.status.RiskLevel.MEDIUM)
+
+        val consent = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent; reader: ${verifier.reader.state.value}")
+        assertTrue(consent.chain.isEmpty(), "the reader does not authenticate")
+        holder.proximity.approve(consent)
+
+        val result = withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } }
+        assertIs<ReaderUi.Result>(result, "result: $result")
+        assertNull(result.integrityError)
+        assertEquals("NFC", result.transport)
+        val d = result.documents.single()
+        assertEquals("行動駕照", d.title)
+        // The test issuer chains to the test IACA: verified, but never official.
+        assertEquals(TrustEnvironment.TEST, d.issuerTrust.environment)
+        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdict(d, diw.wallet.core.status.RiskLevel.MEDIUM).first)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, d.status.state)
+
+        val entry = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
+        assertTrue(entry.note!!.contains("感應查驗"), "note: ${entry.note}")
+        assertEquals(d.claims.map { it.label }, entry.claims)
+        assertNull(entry.failure)
+        withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+        assertTrue(verifier.back())
+        assertEquals(HomeTab.VERIFY, verifier.tab.value)
+        return result
+    }
+
+    @Test
+    fun nfcReaderVerifiesAnotherWallet() = runBlocking<Unit> {
+        val d = readAnotherWallet(65536, ReaderRequest.MDL_IDENTITY).documents.single()
+        val values = d.claims.associate { it.label to it.value }
+        assertTrue("Lin" in values.values && "Che-Chuan" in values.values, "claims: $values")
+        assertEquals(3, d.claims.size, "only what the credential holds and the request asked for: $values")
+    }
+
+    @Test
+    fun nfcReaderWithShortApdus() = runBlocking<Unit> {
+        val d = readAnotherWallet(261, ReaderRequest.AGE_OVER_18).documents.single()
+        assertEquals(listOf("是"), d.claims.map { it.value })
+    }
+
+    /** Without PC/SC (no pcscd, no reader) the list is empty with a reason, never an error. */
+    @Test
+    fun pcscListWithoutReaders() {
+        val list = diw.wallet.app.desktop.PcscReaders.list()
+        if (list.readers.isEmpty()) assertNotNull(list.problem)
+    }
+
+    /**
+     * The Digital Credentials API with the ISO mdoc protocol (ISO/IEC 18013-7 Annex C): the page's DeviceRequest on the
+     * wallet's consent screen, and a DeviceResponse HPKE-encrypted to the page's key and bound to its origin, which
+     * the page decrypts and verifies.
+     */
+    @Test
+    fun dcApiIsoMdocPresentation() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        val origin = "https://verifier.example.com"
+        val nonce = ByteString(diw.wallet.core.jose.PlatformCrypto.randomBytes(16))
+        val pageKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)
+        val request = org.multipaz.verification.VerificationUtil.generateDcRequestMdoc(
+            exchangeProtocols = listOf("org-iso-mdoc"),
+            docType = "org.iso.18013.5.1.mDL",
+            claims = listOf(org.multipaz.request.MdocRequestedClaim(docType = "org.iso.18013.5.1.mDL", namespaceName = "org.iso.18013.5.1", dataElementName = "family_name", intentToRetain = false)),
+            nonce = nonce,
+            origin = origin,
+            responseEncryptionKey = pageKey.publicKey,
+            verifierIdentities = emptyList(),
+            zkSystemSpecs = emptyList(),
+        )
+        val entry = request["requests"]!!.jsonArray.single().jsonObject
+        val answer = async(Dispatchers.Default) { m.proximity.presentDcApi("org-iso-mdoc", entry["data"]!!.jsonObject, origin, null) }
+        val consent = withTimeout(30.seconds) { m.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        assertIs<ProximityUi.Consent>(consent, "consent: $consent")
+        assertEquals(ProximityChannel.DC_API, consent.channel)
+        assertEquals(origin, consent.verifier, "an unauthenticated page is named by its origin")
+        m.proximity.approve(consent)
+        val response = assertNotNull(withTimeout(30.seconds) { answer.await() })
+        val clear = org.multipaz.verification.VerificationUtil.decryptDcResponse(response, nonce, origin, org.multipaz.crypto.AsymmetricKey.anonymous(pageKey))
+        assertIs<org.multipaz.verification.MdocApiDcResponse>(clear)
+        val deviceResponse = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(clear.deviceResponse)
+        deviceResponse.verify(sessionTranscript = clear.sessionTranscript)
+        assertEquals(setOf("family_name"), deviceResponse.documents.single().issuerNamespaces.data.getValue("org.iso.18013.5.1").keys)
+        val entryLog = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertTrue(entryLog.note!!.contains("Annex C"), "note: ${entryLog.note}")
+    }
+
+    /**
+     * A held document follows its trust sources: removing the anchor it was trusted through judges it again (here it
+     * moves to another anchor, then to no anchor), and adding an anchor brings an unanchored document under it. Each
+     * change is written to the document and recorded.
+     */
+    @Test
+    fun trustSourceChangesReevaluateHeldDocuments() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(m, offer(listOf("mdl_mdoc")), null).single())
+        m.refreshDocuments().join()
+        suspend fun record(): diw.wallet.core.oid4vci.IssuanceRecord {
+            m.refreshDocuments().join()
+            return assertNotNull(m.documents.value.single().issuanceRecord)
+        }
+        assertEquals("DIW TEST IACA", record().anchorName)
+        val pem = http.get("$base/pki/iaca.pem").bodyAsText()
+        m.importAnchor(pem, "Example IACA", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        // Already anchored: a new source does not move it.
+        assertEquals("DIW TEST IACA", record().anchorName)
+
+        m.loadAnchors().join()
+        val testIaca = m.anchors.value!!.first {
+            it.environment == TrustEnvironment.TEST && it.role == diw.wallet.core.trust.TrustRole.ISSUER && it.metadata.displayName == "DIW TEST IACA"
+        }
+        m.removeAnchor(testIaca).join()
+        assertEquals("Example IACA", record().anchorName)
+        assertEquals(TrustEnvironment.USER, record().trustEnvironment)
+
+        val user = m.anchors.value!!.first { it.environment == TrustEnvironment.USER }
+        m.removeAnchor(user).join()
+        assertNull(record().anchorName, "the removed anchor is no longer shown")
+        assertNull(record().trustEnvironment)
+
+        m.importAnchor(pem, "Example IACA", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        assertEquals("Example IACA", record().anchorName)
+        // History entries are written in the background.
+        val notes = withTimeout(10.seconds) {
+            m.history.first { h -> h.count { it.kind == HistoryKind.STATUS } >= 3 }
+        }.filter { it.kind == HistoryKind.STATUS }.mapNotNull { it.note }
+        assertTrue(notes.any { "移除信任錨點「DIW TEST IACA」" in it }, "notes: $notes")
+        assertTrue(notes.any { "移除信任錨點「Example IACA」" in it }, "notes: $notes")
+        assertTrue(notes.any { "加入信任錨點" in it }, "notes: $notes")
+    }
+
+    /**
+     * A DID the user trusts stays trusted when its Linked Domains configuration cannot be verified: the user's own
+     * decision is asked before the domain linkage, whose failure would otherwise make it T4.
+     */
+    @Test
+    fun userTrustedDidOverridesBrokenDomainLink() = runBlocking<Unit> {
+        val host = "partner.mock.example"
+        val did = "did:web:$host"
+        val jwk = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey.toJwk()
+        val doc = buildJsonObject {
+            put("id", did)
+            putJsonArray("verificationMethod") {
+                add(buildJsonObject { put("id", "$did#key1"); put("type", "JsonWebKey2020"); put("controller", did); put("publicKeyJwk", jwk) })
+            }
+            putJsonArray("assertionMethod") { add("$did#key1") }
+            putJsonArray("service") {
+                add(buildJsonObject { put("id", "$did#domain"); put("type", "LinkedDomains"); put("serviceEndpoint", "https://$host/") })
+            }
+        }
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            if (request.url.host == host && request.url.encodedPath == "/.well-known/did.json") {
+                respond(doc.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            } else {
+                // The domain's did-configuration.json, the TWDIW list and anything else are unreachable.
+                respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        val before = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
+        assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
+        m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        val after = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
+        assertEquals(TrustTier.T3, after.tier)
+        assertEquals(TrustEnvironment.USER, after.environment)
+        assertEquals("Partner", after.anchorName)
+    }
+
+    /**
+     * Offline presentation is not limited to TWDIW cards: a Bonds-compatible challenge asks for government wallet
+     * cards only, while this wallet's own challenge (source "a") takes any key-bound card. Here an IETF SD-JWT VC with
+     * an x5c issuer, chosen on its document page, answers with one disclosed claim; the verifier checks the holder's
+     * signature, the cnf binding, the issuer chain and the Token Status List.
+     */
+    @Test
+    fun offlinePresentationOfAnyKeyBoundCard() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("pid_sd_jwt")), null).single())
+        holder.refreshDocuments().join()
+        val (verifier, _) = newWallet()
+        val medium = diw.wallet.core.status.RiskLevel.MEDIUM
+
+        verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.TWDIW)
+        val bonds = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.handleUri(bonds.encode())
+        assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
+
+        verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
+        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val docId = holder.documents.value.single().identifier
+        holder.taiwan.preferredDocument = docId
+        holder.taiwan.offline.value = OfflineUi.Working("")
+        holder.handleUri(any.encode())
+        val choose = withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } }
+        assertIs<OfflineUi.BondsChoose>(choose, "choose: $choose")
+        val card = choose.cards.first()
+        assertEquals(docId, card.document.identifier)
+        assertEquals(BondsCardKind.SD_JWT_VC, card.kind)
+        assertEquals(setOf("given_name", "family_name", "birthdate", "nationality"), card.claims.map { it.first }.toSet())
+
+        holder.taiwan.presentBonds(choose.request, card, setOf("birthdate"))
+        val frames = withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } }
+        assertIs<OfflineUi.BondsFrames>(frames, "frames: $frames")
+        assertTrue(frames.presentationJws.isNotEmpty())
+        frames.frames.forEach { verifier.handleUri(it) }
+
+        val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+        assertNull(result.error, "error: ${result.error}")
+        val r = assertNotNull(result.result)
+        assertEquals(diw.wallet.core.profile.bonds.BondsCredentialSource.ANY, r.source)
+        assertEquals(mapOf("birthdate" to "1990-01-01"), r.claims, "only the chosen claim is disclosed")
+        assertTrue(r.holder.startsWith("did:jwk:"))
+        assertNotNull(r.issuerChain)
+        assertEquals(TrustEnvironment.TEST, result.issuerTrust?.environment)
+        assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, result.status?.state)
+
+        val presented = withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
+        assertEquals(1, presented.claims.size)
+        assertNull(presented.failure)
+    }
+
+    /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */
+    @Test
+    fun userAnchorImportAndRemoval() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        val pem = http.get("$base/pki/verifier-root.pem").bodyAsText()
+        m.importAnchor(pem, "Example Root", setOf(diw.wallet.core.trust.TrustRole.ISSUER, diw.wallet.core.trust.TrustRole.STATUS_LIST)).join()
+        withTimeout(10.seconds) { m.anchors.first { a -> a?.any { it.environment == TrustEnvironment.USER } == true } }
+        val user = m.anchors.value!!.filter { it.environment == TrustEnvironment.USER }
+        assertEquals(setOf(diw.wallet.core.trust.TrustRole.ISSUER, diw.wallet.core.trust.TrustRole.STATUS_LIST), user.map { it.role }.toSet())
+        assertTrue(user.all { it.metadata.displayName == "Example Root" && !it.official })
+        val stored = m.trust.anchors(diw.wallet.core.trust.TrustRole.ISSUER, TrustEnvironment.USER).map { it.first }
+        assertTrue(user.first().certificate in stored)
+        // USER anchors are consulted in production use, without the test environment.
+        assertTrue(TrustEnvironment.USER in diw.wallet.core.env.EnvironmentPolicy().enabledEnvironments())
+        user.forEach { m.removeAnchor(it).join() }
+        m.loadAnchors().join()
+        assertTrue(m.anchors.value!!.none { it.environment == TrustEnvironment.USER })
+        // Not a certificate: nothing is added and the reason is shown.
+        m.importAnchor("hello", "", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
+        assertTrue(m.message.value!!.startsWith("匯入失敗"), "message: ${m.message.value}")
     }
 
     @Test

@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DIW MY WALLET</string>
+    <string name="nfc_presentation_service">DIW MY WALLET 感應出示</string>
+    <string name="nfc_engagement_aid_group">ISO/IEC 18013-5 NFC 交握（NDEF）</string>
+    <string name="nfc_data_transfer_aid_group">ISO/IEC 18013-5 NFC 資料傳輸</string>
 </resources>

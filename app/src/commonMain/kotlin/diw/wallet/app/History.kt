@@ -22,6 +22,9 @@ enum class HistoryKind {
 
     /** This wallet checked someone else's presentation. */
     VERIFIED,
+
+    /** A held document's status, or its issuer's trust, changed on a background check. */
+    STATUS,
 }
 
 /**
@@ -46,6 +49,8 @@ data class HistoryEntry(
     val note: String? = null,
     /** Null when the interaction completed, otherwise why it did not. */
     val failure: String? = null,
+    /** For [HistoryKind.STATUS]: the new state (a RevocationCheckState name), or TRUST for an issuer trust change. */
+    val status: String? = null,
 )
 
 /** The history log in wallet storage, newest first, capped at [MAX] entries. */

@@ -1,7 +1,12 @@
 package diw.wallet.app.android
 
+import android.Manifest
 import android.app.Activity
 import android.app.KeyguardManager
+import android.bluetooth.BluetoothManager
+import android.content.ComponentName
+import android.nfc.NfcAdapter
+import android.nfc.cardemulation.CardEmulation
 import android.view.WindowManager
 import android.content.Context
 import android.content.Intent
@@ -13,6 +18,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
+import diw.wallet.app.NfcReaderList
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.WalletModel
@@ -90,6 +96,56 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     @Volatile var activity: Activity? = null
 
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    @Volatile private var nfcPresentationActive = false
+
+    override fun nfcPresentationUnavailableReason(): String? {
+        val adapter = NfcAdapter.getDefaultAdapter(context) ?: return "此裝置沒有 NFC"
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) return "此裝置不支援 NFC 卡片模擬"
+        if (!adapter.isEnabled) return "NFC 未開啟，請到系統設定開啟"
+        return null
+    }
+
+    override suspend fun proximityTransportUnavailableReason(): String? {
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return "此裝置沒有藍牙"
+        val needed = if (android.os.Build.VERSION.SDK_INT >= 31) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
+        } else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        val missing = needed.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) {
+            activity?.let { a -> a.runOnUiThread { a.requestPermissions(missing.toTypedArray(), PROXIMITY_PERMISSION_REQUEST) } }
+            return "請允許「附近的裝置」權限"
+        }
+        if (!adapter.isEnabled) return "藍牙未開啟"
+        return null
+    }
+
+    override fun setNfcPresentationActive(active: Boolean) {
+        nfcPresentationActive = active
+        val a = activity ?: return
+        a.runOnUiThread { if (active) applyNfcPreference(a) else releaseNfcPreference(a) }
+    }
+
+    /** The reader mode of an in-person verification in progress; Android ends reader mode when the activity pauses. */
+    @Volatile var readerMode: ((Activity) -> Unit)? = null
+
+    override suspend fun nfcReaders(): NfcReaderList = AndroidNfcReaders.list(context, this)
+
+    /**
+     * While the proximity screen is open, taps go to this wallet rather than another wallet with the same AIDs; while
+     * a verification waits for a tap, reader mode is turned on again.
+     */
+    fun applyNfcPreference(a: Activity) {
+        readerMode?.let { enable -> runCatching { enable(a) } }
+        if (!nfcPresentationActive) return
+        val adapter = NfcAdapter.getDefaultAdapter(context) ?: return
+        runCatching { CardEmulation.getInstance(adapter).setPreferredService(a, ComponentName(context, WalletNfcService::class.java)) }
+    }
+
+    fun releaseNfcPreference(a: Activity) {
+        val adapter = NfcAdapter.getDefaultAdapter(context) ?: return
+        runCatching { CardEmulation.getInstance(adapter).unsetPreferredService(a) }
+    }
 
     override fun keepScreenOn(on: Boolean) {
         val a = activity ?: return
@@ -178,13 +234,15 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         runCatching {
             val dc = DigitalCredentials.getDefault()
             if (!dc.registerAvailable) return
-            // Only OpenID4VP goes through the DIW request validation layer, so only those protocols are offered.
-            val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") }.toSet()
+            // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
+            // the wallet's mdoc consent; both use the wallet's own screens.
+            val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
             dc.register(model.documentStore, model.documentTypes, protocols, false)
         }
     }
 
     private companion object {
         const val MAX_ATTESTATION_CHALLENGE = 128
+        const val PROXIMITY_PERMISSION_REQUEST = 7302
     }
 }

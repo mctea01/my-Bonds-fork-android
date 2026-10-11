@@ -122,7 +122,7 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
             request.tokenRequirements.all { !it.required || it.injected || request.tokens[it.configuration] != null } &&
             request.presentationRequirements.all { !it.required || chosen[it.credentialType] != null } &&
             (request.pinRequirement == null || pin.length == request.pinRequirement!!.length)
-        val ok = riskAcknowledgement(request.trust.tier)
+        val ok = riskAcknowledgement(request.trust)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.ms.complete(request, selfIssued.toMap(), pin, chosen.toMap()) }, enabled = ready && ok) { Text("加入") }
             OutlinedButton(onClick = { model.back() }) { Text("取消") }
