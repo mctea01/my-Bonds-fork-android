@@ -1,0 +1,85 @@
+name: Update built-in roots
+
+# Once a month, rebuild the built-in public CA roots from their sources (tools/trust-roots): the mainland China CA
+# roots in the Mozilla and Microsoft programs (CCADB), the roots of the chains the e-invoice and immigration services
+# serve, the pinned SM2 roots and the Taiwan GPKI repositories. A change to the roots opens a pull request with the
+# report; anything that needs a person (an SM2 or GPKI certificate to renew, a host that cannot be reached) fails the
+# run, so GitHub notifies the repository owner.
+on:
+  schedule:
+    - cron: "17 3 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-trust-roots
+  cancel-in-progress: false
+
+env:
+  LANG: C.UTF-8
+  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Rebuild the roots
+        id: roots
+        run: |
+          set +e
+          python3 -I tools/trust-roots/update_roots.py --strict --report "$RUNNER_TEMP/report.md"
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ $code -ne 0 ] && [ $code -ne 2 ]; then exit $code; fi
+          echo "warnings=$([ $code -eq 2 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if git diff --quiet -- core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInPublicRoots.kt; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-java@v4
+        if: steps.roots.outputs.changed == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.roots.outputs.changed == 'true'
+      # Every root is checked again by the tests: fingerprint, self-signature (SM2 included) and validity.
+      - name: Check the new roots
+        if: steps.roots.outputs.changed == 'true'
+        run: ./gradlew --no-daemon --stacktrace :test-servers:test --tests 'diw.testservers.TrustAnchorsTest'
+      # Needs "Allow GitHub Actions to create and approve pull requests" (Settings > Actions > General). A pull
+      # request opened with the workflow token does not start CI by itself: re-run it from the pull request, or
+      # push to its branch.
+      - name: Open or update the pull request
+        if: steps.roots.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="trust-roots/update"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInPublicRoots.kt tools/trust-roots/services.lock.json
+          git commit -m "Update the built-in public roots from their sources"
+          git push --force origin "$branch"
+          if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --body-file "$RUNNER_TEMP/report.md"
+          else
+            gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+              --title "Update the built-in public roots ($(date -u +%Y-%m-%d))" --body-file "$RUNNER_TEMP/report.md"
+          fi
+      - name: Warnings need a person
+        if: steps.roots.outputs.warnings == 'true'
+        run: |
+          grep '^- 警告' "$RUNNER_TEMP/report.md" | sed 's/^- 警告：/::error::/'
+          exit 1
