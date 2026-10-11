@@ -55,6 +55,9 @@ class NfcReaderOption(
 /** The NFC readers found now; [problem] says why there are none, or why some may be missing. */
 data class NfcReaderList(val readers: List<NfcReaderOption>, val problem: String? = null)
 
+/** A file the user picked or another app handed over. */
+class PickedFile(val name: String, val bytes: ByteArray, val mediaType: String? = null)
+
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
     val platformName: String
@@ -106,8 +109,20 @@ interface PlatformServices {
     /** While true, NFC taps go to the wallet rather than another wallet app (Android card emulation preference). */
     fun setNfcPresentationActive(active: Boolean) {}
 
-    /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader). */
+    /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader) or a citizen certificate card. */
     suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
+
+    /** Lets the user pick a file to store; null when cancelled or not possible. */
+    suspend fun pickFile(): PickedFile? = null
+
+    /** Lets the user save [bytes] under a name they choose; false when cancelled or not possible. */
+    suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = false
+
+    /** Document source pages open inside the app (downloads go straight to the vault) rather than in a browser. */
+    val embeddedBrowser: Boolean get() = false
+
+    /** Hands a link of another app (such as mobilemoica: for the mobile citizen certificate) to the system; false when no app takes it. */
+    fun openExternal(url: String): Boolean = false
 }
 
 /** Outcome of the last registration with the platform Digital Credentials API, shown in settings. */

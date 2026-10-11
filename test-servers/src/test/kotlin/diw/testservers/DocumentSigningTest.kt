@@ -254,6 +254,25 @@ class DocumentSigningTest {
     }
 
     @Test
+    fun officialLetterSignedWithXades() = runBlocking<Unit> {
+        trustRoot()
+        val letter = diw.wallet.core.document.official.OfficialLetter(
+            sender = "測試機關", senderCode = "A00000000", recipient = "王小明", subject = "檢送測試文件 <請查照>",
+            explanations = List(12) { "說明第 ${it + 1} 項" }, wordPrefix = "測字", serial = "1150000001",
+            date = kotlin.time.Instant.parse("2026-10-11T04:00:00Z"),
+        )
+        assertEquals("中華民國115年10月11日", letter.rocDate().second)
+        val xml = letter.toXml()
+        assertTrue(String(xml).contains("序號=\"十二、\""))
+        val signed = DocumentSigning.signXml(xml, signer(false), timestamper)
+        save("letter.di", signed)
+        val r = DocumentInspector.inspect(signed, "letter.di", trust)
+        assertEquals("檢送測試文件 <請查照>", r.title)
+        assertTrue(r.notes.any { it.contains("函") })
+        assertEquals(DocumentVerdict.VALID, r.signatures.single().verdict, r.signatures.single().problems.toString())
+    }
+
+    @Test
     fun selfIssuedCertificate() = runBlocking<Unit> {
         val k = keys(true)
         val der = DocumentSigning.selfIssuedCertificate(k.public.encoded, "王小明", { data ->

@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.document.sign.TsaServices
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
 @Composable
@@ -73,6 +76,20 @@ fun SettingsScreen(model: WalletModel) {
         val issuerCheck by model.status.issuerCheck.collectAsState()
         issuerCheck?.let { (done, total) -> Text("正在重新查驗發行端：$done / $total", style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = { model.status.refreshDue(force = true) }) { Text("立即更新所有證件狀態") }
+        HorizontalDivider()
+        SectionTitle("文件與時戳")
+        Text("簽署文件、保存檔案與產生衍生憑證時使用的時戳機構（RFC 3161）。只會送出檔案的 SHA-256。", style = MaterialTheme.typography.bodySmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TsaServices.all.forEach { t ->
+                FilterChip(selected = s.tsaId == t.id, onClick = { model.updateSettings { it.copy(tsaId = t.id) } }, label = { Text(t.name) })
+            }
+        }
+        val tsa = TsaServices.byId(s.tsaId)
+        Text(tsa.url + if (tsa.publicRoot) "（根憑證在常見憑證庫，信任等級 T3）" else "（根憑證不在內建清單，需在信任錨點匯入，用途選時間戳記）",
+            style = MaterialTheme.typography.bodySmall)
+        Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
+            model.updateSettings { it.copy(timestampOnSave = v) }
+        }
         HorizontalDivider()
         SectionTitle("信任")
         ActionRow(WalletIcons.Shield, "信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {

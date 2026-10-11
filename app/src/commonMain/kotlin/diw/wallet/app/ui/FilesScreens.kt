@@ -1,0 +1,700 @@
+package diw.wallet.app.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import diw.wallet.app.DocumentSources
+import diw.wallet.app.FileOrigin
+import diw.wallet.app.HomeTab
+import diw.wallet.app.NfcReaderList
+import diw.wallet.app.NfcReaderOption
+import diw.wallet.app.PickedFile
+import diw.wallet.app.Screen
+import diw.wallet.app.SignForm
+import diw.wallet.app.SignerChoice
+import diw.wallet.app.StoredFile
+import diw.wallet.app.WalletModel
+import diw.wallet.core.document.Check
+import diw.wallet.core.document.CertInfo
+import diw.wallet.core.document.DocumentFormat
+import diw.wallet.core.document.DocumentReport
+import diw.wallet.core.document.DocumentVerdict
+import diw.wallet.core.document.LaterChanges
+import diw.wallet.core.document.SignatureInfo
+import diw.wallet.core.document.TimestampInfo
+import diw.wallet.core.document.derived.DerivedClaim
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.document.official.OfficialLetter
+import diw.wallet.core.document.sign.TsaServices
+import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlinx.io.bytestring.ByteString
+import org.multipaz.crypto.X509Cert
+import org.multipaz.util.fromBase64
+import kotlin.time.Instant
+
+/** A site page shown inside the app; downloads come back as [onFile], links for other apps go to [onExternal]. */
+@Composable
+expect fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit)
+
+internal fun localTime(epochSeconds: Long): String {
+    val t = Instant.fromEpochSeconds(epochSeconds).toLocalDateTime(TimeZone.currentSystemDefault())
+    fun two(n: Int) = n.toString().padStart(2, '0')
+    return "${t.year}-${two(t.month.ordinal + 1)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}"
+}
+
+internal fun sizeText(size: Long): String = when {
+    size < 1024 -> "$size B"
+    size < 1024 * 1024 -> "${size / 1024} KB"
+    else -> "${size / 1024 / 1024}.${(size % (1024 * 1024)) * 10 / (1024 * 1024)} MB"
+}
+
+private fun verdictOf(v: DocumentVerdict): Pair<Verdict, String> = when (v) {
+    DocumentVerdict.VALID -> Verdict.PASS to "簽章有效"
+    DocumentVerdict.PARTIAL -> Verdict.CAUTION to "簽章部分通過"
+    DocumentVerdict.INVALID -> Verdict.FAIL to "簽章無效"
+    DocumentVerdict.UNSIGNED -> Verdict.CAUTION to "沒有簽章"
+}
+
+private fun checkVerdict(c: Check): Verdict = when (c) {
+    Check.PASS -> Verdict.PASS
+    Check.FAIL -> Verdict.FAIL
+    else -> Verdict.CAUTION
+}
+
+private fun checkText(c: Check): String = when (c) {
+    Check.PASS -> "通過"
+    Check.WARN -> "需留意"
+    Check.FAIL -> "失敗"
+    Check.NOT_CHECKED -> "無法檢查"
+}
+
+private fun formatTitle(f: DocumentFormat): String = when (f) {
+    DocumentFormat.PDF -> "PDF"
+    DocumentFormat.CMS_SIGNED -> "CMS 簽章（PKCS#7）"
+    DocumentFormat.CMS_ENVELOPED -> "CMS 加密信封（PKCS#7）"
+    DocumentFormat.TIMESTAMP -> "RFC 3161 時戳"
+    DocumentFormat.XML -> "XML"
+    DocumentFormat.OFD -> "OFD"
+    DocumentFormat.ASIC_E -> "ASiC-E 容器"
+    DocumentFormat.ZIP -> "ZIP 壓縮檔"
+    DocumentFormat.OPENCERTS -> "OpenCerts（OpenAttestation）"
+    DocumentFormat.JSON -> "JSON"
+    DocumentFormat.IMAGE -> "圖片"
+    DocumentFormat.TEXT -> "文字檔"
+    DocumentFormat.OTHER -> "其他檔案"
+}
+
+// ---------------------------------------------------------------- files tab
+
+/**
+ * Files and official documents, as Bonds keeps its MyData vault and official document inbox beside the cards: the
+ * stored files with their signature checks, the sites that issue documents, and making and signing documents.
+ */
+@Composable
+fun FilesTab(model: WalletModel) {
+    val files by model.files.files.collectAsState()
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(Tokens.ContainerRadius),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(WalletIcons.Document, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                Text("文件與公文", style = MaterialTheme.typography.titleLarge)
+                Text("簽章文件、檔案與電子公文保存在這支裝置，連同簽章、時戳與憑證鏈的檢查結果；也可以用自然人憑證簽署，或把文件變成可出示的衍生憑證。",
+                    style = MaterialTheme.typography.bodyMedium)
+                Button(onClick = { model.files.pickAndImport() }, enabled = busy == null) {
+                    Icon(WalletIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("匯入文件")
+                }
+            }
+        }
+        BusyLine(busy, error)
+        SectionTitle("我的文件")
+        if (files.isEmpty()) {
+            Text("還沒有文件。匯入 PDF、XML（公文）、OFD、.p7s／.p7m、ASiC-E、ZIP（MyData）、OpenCerts 等檔案，或從下方的來源網站取得。",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        files.forEach { f ->
+            FileRow(f) { model.screen.value = Screen.FileDetail(f.id) }
+        }
+        SectionTitle("取得文件")
+        Text(
+            if (model.platform.embeddedBrowser) "在 App 內開啟來源網站，下載的文件直接保存到這裡；需要行動自然人憑證登入時會轉到官方 App。"
+            else "在系統瀏覽器開啟來源網站，下載後用「匯入文件」保存。",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        DocumentSources.all.forEach { src ->
+            ActionRow(WalletIcons.Government, src.name, src.detail) {
+                if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(src.id) else model.platform.openBrowser(src.url)
+            }
+        }
+        SectionTitle("製作文件")
+        ActionRow(WalletIcons.Document, "製作 PDF 文件", "輸入標題與內容產生 PDF，之後可用自然人憑證簽署（PAdES）") { model.screen.value = Screen.FileCompose(false) }
+        ActionRow(WalletIcons.Government, "製作電子公文（函）", "依文書處理手冊的公文 XML（.di）格式產生，之後可加 XAdES 簽章") { model.screen.value = Screen.FileCompose(true) }
+        SectionTitle("電子公文收發")
+        ActionRow(WalletIcons.Send, "公文交換（收發）", "需要機關的公文電子交換帳號與憑證，個人錢包目前無法收發；製作的公文可保存或匯出", enabled = false) {}
+        SectionTitle("遠端與行動簽章")
+        ActionRow(WalletIcons.Phone, "行動自然人憑證簽章", "需要內政部核發的服務提供者（SP）帳號才能發出簽章請求；目前只支援在來源網站登入時轉到官方 App", enabled = false) {}
+        ActionRow(WalletIcons.Link, "CSC 遠端簽章", "需要遠端簽章服務商的帳號與 CSC API 授權，尚無可用的服務商", enabled = false) {}
+    }
+}
+
+@Composable
+private fun BusyLine(busy: String?, error: String?) {
+    busy?.let {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CircularProgressIndicator(Modifier.size(18.dp))
+            Text(it, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+    error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+}
+
+@Composable
+private fun FileRow(f: StoredFile, onClick: () -> Unit) {
+    val (verdict, text) = f.report?.let { verdictOf(it.verdict) } ?: (Verdict.CAUTION to "尚未檢查")
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(WalletIcons.Document, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(f.report?.title ?: f.name, style = MaterialTheme.typography.titleSmall)
+                Text(listOfNotNull(f.report?.format?.let { formatTitle(it) }, sizeText(f.size), f.origin.title, localTime(f.addedAt)).joinToString("　"),
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    VerdictPill(verdict, text)
+                    if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, "時戳")
+                    if (f.derivedDocumentId != null) VerdictPill(Verdict.PASS, "已衍生憑證")
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- file detail
+
+@Composable
+fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
+    val files by model.files.files.collectAsState()
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    val docs by model.documents.collectAsState()
+    val f = files.firstOrNull { it.id == screen.fileId }
+    if (f == null) {
+        EmptyState(WalletIcons.Document, "找不到這份文件", "文件可能已刪除。", "回到文件") { model.showTab(HomeTab.FILES) }
+        return
+    }
+    val report = f.report
+    var confirmDelete by remember { mutableStateOf(false) }
+    var pickContent by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BusyLine(busy, error)
+        if (report != null) ReportVerdict(report)
+        SectionTitle("文件")
+        LabelValue("檔名", f.name)
+        report?.title?.let { LabelValue("標題", it) }
+        LabelValue("格式", report?.format?.let { formatTitle(it) } ?: f.mediaType)
+        LabelValue("大小", sizeText(f.size))
+        report?.pages?.let { LabelValue("頁數", "$it") }
+        LabelValue("保存時間", localTime(f.addedAt))
+        LabelValue("來源", f.origin.title + (f.source?.let { "（$it）" } ?: ""))
+        LabelValue("SHA-256", f.sha256, small = true)
+        f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
+            LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
+        }
+        if (report != null) {
+            report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) }
+            report.envelope?.let { e ->
+                SectionTitle("加密信封")
+                Text("這是加密給特定對象的檔案（CMS EnvelopedData），錢包無法開啟內容，只能保存原檔。", style = MaterialTheme.typography.bodySmall)
+                e.recipients.forEach { LabelValue("收件者", it, small = true) }
+                e.contentEncryption?.let { LabelValue("內容加密", it, small = true) }
+            }
+            report.openCert?.let { oc ->
+                SectionTitle("OpenCerts 證書")
+                oc.name?.let { LabelValue("名稱", it) }
+                LabelValue("內容完整性", checkText(oc.integrity))
+                LabelValue("發行者驗證", checkText(oc.issuerVerified))
+                oc.issuers.forEach { LabelValue("發行者", it, small = true) }
+                oc.fields.forEach { (k, v) -> LabelValue(k, v, small = true) }
+                Text("OpenCerts 只匯入保存；發行者以 DNS 或以太坊合約證明身分，需在官方網站查驗。", style = MaterialTheme.typography.bodySmall)
+            }
+            if (report.entries.isNotEmpty()) {
+                SectionTitle("容器內的檔案")
+                report.entries.take(50).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (report.entries.size > 50) Text("另有 ${report.entries.size - 50} 個檔案", style = MaterialTheme.typography.bodySmall)
+            }
+            report.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            report.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            Text("檢查時間：${localTime(report.checkedAt)}", style = MaterialTheme.typography.bodySmall)
+        }
+        SectionTitle("時戳")
+        if (f.timestamps.isEmpty()) Text("還沒有時戳。時戳由時戳機構證明這份檔案在某個時間已存在，只會送出檔案的 SHA-256。", style = MaterialTheme.typography.bodySmall)
+        f.timestamps.forEach { t ->
+            VerdictPill(if (t.trusted) Verdict.PASS else Verdict.CAUTION, "${t.tsa ?: "時戳機構"}　${localTime(t.time)}" + if (t.trusted) "" else "（機構不在信任錨點）")
+        }
+        OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) {
+            Text("加上時戳（${TsaServices.byId(model.settings.tsaId).name}）")
+        }
+        SectionTitle("衍生憑證")
+        val derived = f.derivedDocumentId?.let { id -> docs.firstOrNull { it.identifier == id } }
+        if (derived != null) {
+            ActionRow(WalletIcons.Card, derived.displayName ?: "文件衍生憑證", "在「證件」出示：SD-JWT VC" + if (f.moica != null) "；另有自然人憑證簽署的 vc+moica" else "") {
+                model.screen.value = Screen.DocumentDetail(derived.identifier, Screen.FileDetail(f.id))
+            }
+        } else {
+            Text("把文件變成可出示的證件（SD-JWT VC），附上簽章檢查與時戳；用自然人憑證簽署時也能匯出 Bonds 的 vc+moica 卡片。", style = MaterialTheme.typography.bodySmall)
+        }
+        ActionRow(WalletIcons.Card, if (derived != null) "重新產生衍生憑證" else "產生衍生憑證", "選擇要放進證件的欄位與證據") {
+            model.screen.value = Screen.FileDerive(f.id)
+        }
+        if (f.moica != null) ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
+        SectionTitle("動作")
+        ActionRow(WalletIcons.Shield, "簽署", "自然人憑證卡、憑證檔（PKCS#12）或錢包自有金鑰") { model.screen.value = Screen.FileSign(f.id) }
+        if (report?.format == DocumentFormat.ZIP) ActionRow(WalletIcons.Document, "解出檔案", "逐一保存並檢查壓縮檔內的檔案（MyData 下載檔）") { model.files.extract(f) }
+        if (report?.format == DocumentFormat.CMS_SIGNED && f.contentId == null && report.signatures.any { it.integrity == Check.NOT_CHECKED }) {
+            ActionRow(WalletIcons.Link, "選擇被簽署的檔案", "分離式簽章（.p7s）需要原檔才能檢查") { pickContent = true }
+        }
+        ActionRow(WalletIcons.History, "重新檢查", "以目前的信任錨點再檢查一次") { model.files.reinspect(f) }
+        ActionRow(WalletIcons.Send, "匯出", "另存原檔") { model.files.export(f) }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = { confirmDelete = true }) {
+            Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("刪除文件", color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("刪除這份文件？") },
+            text = { Text("檔案與它的時戳會從這支裝置刪除，無法復原。已產生的衍生憑證保留在「證件」。") },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.delete(f) }) { Text("刪除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+        )
+    }
+    if (pickContent) {
+        AlertDialog(
+            onDismissRequest = { pickContent = false },
+            title = { Text("選擇被簽署的檔案") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val others = files.filter { it.id != f.id }
+                    if (others.isEmpty()) Text("請先匯入原檔。")
+                    others.forEach { c ->
+                        Text(c.name, Modifier.fillMaxWidth().clickable { pickContent = false; model.files.attachContent(f, c) }.padding(vertical = 6.dp),
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { pickContent = false }) { Text("取消") } },
+        )
+    }
+}
+
+@Composable
+private fun ReportVerdict(report: DocumentReport) {
+    val (verdict, title) = verdictOf(report.verdict)
+    val caveats = buildList {
+        when (report.verdict) {
+            DocumentVerdict.VALID -> report.bestTier?.let { add("簽署者信任等級：" + WalletModel.tierTitle(it)) }
+            DocumentVerdict.PARTIAL -> add("簽章本身完整，但有項目無法確認，請看下方各簽章的說明。")
+            DocumentVerdict.INVALID -> add("文件在簽署後被修改，或簽章、憑證不成立，不要依賴它的內容。")
+            DocumentVerdict.UNSIGNED -> add(if (report.envelope != null) "這是加密信封，不是簽章文件。" else "這份檔案沒有可檢查的數位簽章，只保存原檔與指紋。")
+        }
+        if (report.encrypted) add("PDF 已加密，簽章仍可檢查。")
+    }
+    VerdictCard(verdict, title, caveats)
+}
+
+private fun certOf(c: CertInfo): X509Cert? = runCatching { X509Cert(ByteString(c.der.fromBase64())) }.getOrNull()
+
+@Composable
+private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int) {
+    val (verdict, text) = verdictOf(s.verdict)
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (count > 1) "簽章 ${index + 1}" else "簽章", style = MaterialTheme.typography.titleSmall)
+                VerdictPill(verdict, text)
+            }
+            Text(s.format.title, style = MaterialTheme.typography.bodySmall)
+            s.signer?.let { signer ->
+                LabelValue("簽署者", signer.commonName ?: signer.subject, onClick = {
+                    val chain = s.chain.mapNotNull { certOf(it) }
+                    if (chain.isNotEmpty()) model.screen.value = Screen.Certificate(chain, 0, model.screen.value)
+                })
+            }
+            s.trust?.let { t ->
+                val d = t.decision()
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TierBadge(d)
+                    d.anchorName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+                Text(tierAdvice(d), style = MaterialTheme.typography.bodySmall)
+            }
+            LabelValue("內容完整", checkText(s.integrity), small = true)
+            LabelValue("憑證效期", checkText(s.certificateValidity), small = true)
+            s.coversWholeDocument?.let { LabelValue("涵蓋整份文件", if (it) "是" else "否", small = true) }
+            s.laterChanges?.let {
+                LabelValue("簽署後的修改", when (it) {
+                    LaterChanges.NONE -> "沒有"
+                    LaterChanges.SIGNATURES_ONLY -> "只有後續簽章或時戳"
+                    LaterChanges.OTHER -> "有其他修改"
+                }, small = true)
+            }
+            s.timestamp?.let { TimestampLine(it) } ?: s.claimedTime?.let { LabelValue("聲稱的簽署時間", localTime(it) + "（未經時戳證明）", small = true) }
+            LabelValue("撤銷資訊", if (s.revocationData) "簽章或文件內附 OCSP／CRL" else "沒有內附", small = true)
+            s.reason?.let { LabelValue("原因", it, small = true) }
+            s.location?.let { LabelValue("地點", it, small = true) }
+            s.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            s.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+@Composable
+private fun TimestampLine(t: TimestampInfo) {
+    LabelValue("時戳", localTime(t.time) + "　" + (t.tsa ?: "") + if (t.trusted) "" else "（${checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)}）", small = true)
+}
+
+/** Checked evidence of a derived credential, for the verifier result. */
+@Composable
+fun EvidenceRows(evidence: List<EvidenceResult>) {
+    if (evidence.isEmpty()) return
+    Text("文件證據", style = MaterialTheme.typography.titleSmall)
+    evidence.forEach { e ->
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            VerdictPill(checkVerdict(e.check), e.title + "：" + checkText(e.check))
+            Text(e.detail, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+// ---------------------------------------------------------------- signer choice
+
+private enum class SignerKind(val title: String) { CARD("自然人憑證卡"), PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰") }
+
+/** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
+@Composable
+private fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Unit) {
+    var readers by remember { mutableStateOf<NfcReaderList?>(null) }
+    var reader by remember { mutableStateOf<NfcReaderOption?>(null) }
+    var pin by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        readers = runCatching { model.platform.nfcReaders() }.getOrElse { NfcReaderList(emptyList(), model.describe(it)) }
+        reader = readers?.readers?.firstOrNull()
+    }
+    fun update() = onChange(reader?.takeIf { pin.length in 6..12 }?.let { SignerChoice.Card(it, pin) })
+    val list = readers
+    when {
+        list == null -> CircularProgressIndicator(Modifier.size(20.dp))
+        list.readers.isEmpty() -> {
+            Text(list.problem ?: "找不到 NFC 或讀卡機", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); update() } }) { Text("重新尋找") }
+        }
+        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; update() }, label = { Text(r.name) }) }
+        }
+    }
+    OutlinedTextField(
+        value = pin,
+        onValueChange = { v -> pin = v.filter { it.isDigit() }.take(12); update() },
+        label = { Text("卡片 PIN 碼（6 至 12 位數字）") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text("PIN 碼只用於這次簽署，不會保存或記錄。輸入錯誤時會立即停止並顯示剩餘次數，以免鎖卡。手機需感應兩次：先讀取憑證，再簽署。",
+        style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable
+private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    var kind by remember { mutableStateOf(SignerKind.CARD) }
+    var p12 by remember { mutableStateOf<PickedFile?>(null) }
+    var password by remember { mutableStateOf("") }
+    var walletName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    fun update(card: SignerChoice.Card? = null) = onChange(
+        when (kind) {
+            SignerKind.CARD -> card
+            SignerKind.PKCS12 -> p12?.takeIf { password.isNotEmpty() }?.let { SignerChoice.Pkcs12(it.bytes, password) }
+            SignerKind.WALLET -> SignerChoice.Wallet(walletName)
+        }
+    )
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; update() }, label = { Text(k.title) }) }
+    }
+    when (kind) {
+        SignerKind.CARD -> CardPicker(model) { update(it) }
+        SignerKind.PKCS12 -> {
+            OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
+            OutlinedTextField(
+                value = password, onValueChange = { password = it; update() }, label = { Text("憑證檔密碼") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+            Text("憑證檔與密碼只用於這次簽署，不會保存。", style = MaterialTheme.typography.bodySmall)
+        }
+        SignerKind.WALLET -> {
+            OutlinedTextField(value = walletName, onValueChange = { walletName = it.take(64); update() }, label = { Text("憑證上的名稱") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth())
+            Text("以錢包的金鑰與自簽憑證簽署：可證明文件沒有被修改，但無法證明你是誰（查驗方會看到 T3 或無法確認）。", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+// ---------------------------------------------------------------- sign
+
+@Composable
+fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
+    val f = model.files.file(screen.fileId) ?: return
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    val forms = remember(f) { model.files.formsFor(f) }
+    var form by remember { mutableStateOf(forms.first()) }
+    var choice by remember { mutableStateOf<SignerChoice?>(null) }
+    var reason by remember { mutableStateOf("") }
+    var location by remember { mutableStateOf("") }
+    var timestamp by remember { mutableStateOf(true) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(f.name, style = MaterialTheme.typography.titleMedium)
+        SectionTitle("簽章格式")
+        forms.forEach { sf ->
+            Row(Modifier.fillMaxWidth().clickable { form = sf }, verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(selected = sf == form, onClick = { form = sf })
+                Column {
+                    Text(sf.title, style = MaterialTheme.typography.bodyMedium)
+                    Text(sf.detail, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        SectionTitle("簽署者")
+        SignerPicker(model) { choice = it }
+        if (form == SignForm.PADES) {
+            OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
+            Text("加上簽章時戳（${TsaServices.byId(model.settings.tsaId).name}，需要網路）")
+        }
+        BusyLine(busy, error)
+        Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp) } }, enabled = choice != null && busy == null) {
+            Text("簽署")
+        }
+    }
+}
+
+// ---------------------------------------------------------------- derive
+
+@Composable
+fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
+    val f = model.files.file(screen.fileId) ?: return
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    val suggested = remember(f) { f.report?.let { DerivedCredentials.suggestedClaims(it, f.name, f.source) }.orEmpty() }
+    var chosen by remember(f) { mutableStateOf(suggested.map { it.name }.toSet()) }
+    var noteName by remember { mutableStateOf("") }
+    var noteValue by remember { mutableStateOf("") }
+    var withCard by remember { mutableStateOf(false) }
+    var card by remember { mutableStateOf<SignerChoice.Card?>(null) }
+    var timestamp by remember { mutableStateOf(true) }
+    var validDays by remember { mutableStateOf<Int?>(null) }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("把「${f.report?.title ?: f.name}」變成可出示的證件。查驗方只會看到你勾選的欄位，以及文件指紋、格式與大小；原檔不會送出。",
+            style = MaterialTheme.typography.bodyMedium)
+        f.report?.let { ReportVerdict(it) }
+        SectionTitle("欄位")
+        suggested.forEach { c ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = c.name in chosen, onCheckedChange = { chosen = if (it) chosen + c.name else chosen - c.name })
+                Column {
+                    Text(DerivedCredentials.claimLabels[c.name] ?: c.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(c.value, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Text("自訂欄位（選填）", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(value = noteName, onValueChange = { v -> noteName = v.filter { it.isLetterOrDigit() || it == '_' }.take(32) },
+                label = { Text("欄位名稱（英數）") }, singleLine = true, modifier = Modifier.weight(1f))
+            OutlinedTextField(value = noteValue, onValueChange = { noteValue = it.take(200) }, label = { Text("內容") }, singleLine = true, modifier = Modifier.weight(1f))
+        }
+        SectionTitle("證據")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
+            Text(if (f.timestamps.any { it.trusted }) "附上已保存的時戳" else "取得並附上文件時戳（只送出 SHA-256）")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = withCard, onCheckedChange = { withCard = it })
+            Text("以自然人憑證簽署（加入姓名，可匯出 vc+moica）")
+        }
+        if (withCard) CardPicker(model) { card = it }
+        SectionTitle("有效期間")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf<Pair<Int?, String>>(null to "不限", 365 to "一年", 1825 to "五年").forEach { (d, t) ->
+                FilterChip(selected = validDays == d, onClick = { validDays = d }, label = { Text(t) })
+            }
+        }
+        BusyLine(busy, error)
+        val claims = suggested.filter { it.name in chosen } +
+            listOfNotNull(if (noteName.isNotBlank() && noteValue.isNotBlank() && suggested.none { it.name == noteName }) DerivedClaim(noteName, noteValue.trim()) else null)
+        Button(
+            onClick = { model.files.derive(f, claims, if (withCard) card else null, timestamp, validDays) },
+            enabled = busy == null && (claims.isNotEmpty() || withCard) && (!withCard || card != null),
+        ) { Text("產生衍生憑證") }
+        Text("衍生憑證由這支錢包的文件發行金鑰（did:key）簽發，信任等級為 T3：它證明你在何時、以哪些證據保存了這份文件，不代表原發文機關另行背書。",
+            style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+// ---------------------------------------------------------------- compose
+
+@Composable
+fun FileComposeScreen(model: WalletModel, screen: Screen.FileCompose) {
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (screen.letter) LetterForm(model, busy == null) else PdfForm(model, busy == null)
+        BusyLine(busy, error)
+    }
+}
+
+@Composable
+private fun PdfForm(model: WalletModel, enabled: Boolean) {
+    var title by remember { mutableStateOf("") }
+    var body by remember { mutableStateOf("") }
+    var author by remember { mutableStateOf("") }
+    OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text("標題") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = body, onValueChange = { body = it.take(20000) }, label = { Text("內容（空一行分段）") }, minLines = 8, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = author, onValueChange = { author = it.take(64) }, label = { Text("作者（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Text("PDF 使用閱讀器內建的繁體中文字型（MSung-Light），不嵌入字型檔。", style = MaterialTheme.typography.bodySmall)
+    Button(onClick = { model.files.composePdf(title.trim(), body, author.trim()) }, enabled = enabled && title.isNotBlank()) { Text("製作 PDF") }
+}
+
+@Composable
+private fun LetterForm(model: WalletModel, enabled: Boolean) {
+    var sender by remember { mutableStateOf("") }
+    var senderCode by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf("") }
+    var contact by remember { mutableStateOf("") }
+    var recipient by remember { mutableStateOf("") }
+    var subject by remember { mutableStateOf("") }
+    var explanations by remember { mutableStateOf("") }
+    var word by remember { mutableStateOf("") }
+    var serial by remember { mutableStateOf("") }
+    var speed by remember { mutableStateOf("普通件") }
+    var attachments by remember { mutableStateOf("") }
+    var copies by remember { mutableStateOf("") }
+    @Composable
+    fun field(label: String, value: String, lines: Int = 1, onChange: (String) -> Unit) = OutlinedTextField(
+        value = value, onValueChange = { onChange(it.take(if (lines > 1) 5000 else 200)) }, label = { Text(label) },
+        singleLine = lines == 1, minLines = lines, modifier = Modifier.fillMaxWidth(),
+    )
+    field("發文機關（全銜）", sender) { sender = it }
+    field("機關代碼（選填）", senderCode) { senderCode = it }
+    field("地址（選填）", address) { address = it }
+    field("聯絡方式（選填）", contact) { contact = it }
+    field("受文者", recipient) { recipient = it }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(value = word, onValueChange = { word = it.take(20) }, label = { Text("發文字") }, singleLine = true, modifier = Modifier.weight(1f))
+        OutlinedTextField(value = serial, onValueChange = { v -> serial = v.filter { it.isLetterOrDigit() }.take(20) }, label = { Text("流水號") }, singleLine = true, modifier = Modifier.weight(1f))
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OfficialLetter.SPEEDS.forEach { s -> FilterChip(selected = speed == s, onClick = { speed = s }, label = { Text(s) }) }
+    }
+    field("主旨", subject, 2) { subject = it }
+    field("說明（一行一項，自動編號）", explanations, 5) { explanations = it }
+    field("附件（選填）", attachments) { attachments = it }
+    field("副本（選填，以頓號分隔）", copies) { copies = it }
+    Text("產生的 .di 檔可保存、匯出，或在文件畫面加上 XAdES 簽章；送出需透過機關的公文交換系統。", style = MaterialTheme.typography.bodySmall)
+    Button(
+        onClick = {
+            model.files.composeLetter(
+                OfficialLetter(
+                    sender = sender.trim(), senderCode = senderCode.trim(), address = address.trim(), contact = contact.trim(),
+                    recipient = recipient.trim(), subject = subject.trim(),
+                    explanations = explanations.lines().map { it.trim() }.filter { it.isNotEmpty() }.take(99),
+                    wordPrefix = word.trim(), serial = serial, speed = speed, attachments = attachments.trim(),
+                    copies = copies.split('、', ',', '，').map { it.trim() }.filter { it.isNotEmpty() },
+                )
+            )
+        },
+        enabled = enabled && sender.isNotBlank() && recipient.isNotBlank() && subject.isNotBlank(),
+    ) { Text("製作公文") }
+}
+
+// ---------------------------------------------------------------- source sites
+
+@Composable
+fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
+    val src = DocumentSources.byId(screen.sourceId) ?: return
+    val busy by model.files.busy.collectAsState()
+    Column(Modifier.fillMaxSize()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(src.name, style = MaterialTheme.typography.titleSmall)
+            Text("下載的文件會直接保存並檢查；網站要求行動自然人憑證時，會轉到官方 App 完成登入後回到這裡。", style = MaterialTheme.typography.bodySmall)
+            busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+        }
+        PortalWebView(
+            url = src.url,
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            onFile = { model.files.import(it, FileOrigin.DOWNLOADED, src.name) },
+            onExternal = { url ->
+                if (!model.platform.openExternal(url)) model.message.value = "這支手機沒有可開啟這個連結的 App（例如行動自然人憑證）"
+            },
+            onError = { model.message.value = it },
+        )
+    }
+}

@@ -3,6 +3,7 @@ package diw.wallet.app.desktop
 import com.sun.net.httpserver.HttpServer
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.NfcReaderList
+import diw.wallet.app.PickedFile
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.softwareBackend
@@ -16,6 +17,9 @@ import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.jdbc.JdbcStorage
 import java.awt.Desktop
+import java.awt.EventQueue
+import java.awt.FileDialog
+import java.awt.Frame
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -128,5 +132,35 @@ class DesktopPlatform(
 
     override suspend fun nfcReaders(): NfcReaderList = withContext(Dispatchers.IO) { PcscReaders.list() }
 
+    override suspend fun pickFile(): PickedFile? = withContext(Dispatchers.IO) {
+        val chosen = dialog("匯入文件", FileDialog.LOAD, null) ?: return@withContext null
+        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException("檔案超過 64 MB")
+        PickedFile(chosen.name, chosen.readBytes())
+    }
+
+    override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        val chosen = dialog("另存文件", FileDialog.SAVE, name) ?: return@withContext false
+        chosen.writeBytes(bytes)
+        true
+    }
+
+    override fun openExternal(url: String): Boolean = runCatching { openBrowser(url) }.isSuccess
+
+    /** A native file dialog on the AWT event thread; null when cancelled. */
+    private fun dialog(title: String, mode: Int, name: String?): File? {
+        var result: File? = null
+        EventQueue.invokeAndWait {
+            val d = FileDialog(null as Frame?, title, mode)
+            name?.let { d.file = it }
+            d.isVisible = true
+            if (d.file != null) result = File(d.directory, d.file)
+        }
+        return result
+    }
+
     fun close() = server.stop(0)
+
+    private companion object {
+        const val MAX_FILE_BYTES = 64L * 1024 * 1024
+    }
 }

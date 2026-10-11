@@ -80,7 +80,7 @@ fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
 
 /** Add a document: from the list of documents that can be requested, or by scanning the issuer's code. */
 @Composable
-fun AddDocumentSheet(onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> Unit)?) {
+fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> Unit)?) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("加入證件", style = MaterialTheme.typography.titleLarge)
@@ -91,7 +91,7 @@ fun AddDocumentSheet(onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> U
                 if (onScan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請到「使用」貼上領卡連結",
                 enabled = onScan != null,
             ) { onScan?.invoke() }
-            NfcCardRow()
+            NfcCardRow(model)
         }
     }
 }
@@ -146,10 +146,15 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
 
 // ---------------------------------------------------------------- use
 
-/** Reading the citizen digital certificate card over NFC: shown, disabled, until it is implemented. */
+/**
+ * The citizen digital certificate card: it is not stored as a card in the wallet, it signs. The row leads to the
+ * Files tab, where documents are signed with it and turned into credentials (vc+moica).
+ */
 @Composable
-fun NfcCardRow() {
-    ActionRow(WalletIcons.Nfc, "感應自然人憑證卡（NFC）", "以 NFC 讀取自然人憑證實體卡內的 X.509 憑證，將於後續版本支援", enabled = false) {}
+fun NfcCardRow(model: WalletModel) {
+    ActionRow(WalletIcons.Nfc, "自然人憑證卡（NFC／讀卡機）", "以卡片簽署文件，或把文件變成以自然人憑證簽署的衍生憑證（vc+moica）") {
+        model.showTab(HomeTab.FILES)
+    }
 }
 
 /**
@@ -222,36 +227,6 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
     }
 }
 
-// ---------------------------------------------------------------- files
-
-/**
- * Files and official documents, as Bonds keeps its MyData vault and official document inbox beside the cards.
- * The area is laid out now; its rows say what each part will hold and stay disabled until it is implemented.
- */
-@Composable
-fun FilesTab() {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(Tokens.ContainerRadius),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(WalletIcons.Document, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Text("文件與公文", style = MaterialTheme.typography.titleLarge)
-                Text("簽章文件、檔案與電子公文會保存在這裡，連同簽章、時間戳與憑證鏈的檢查結果。這個區域將於後續版本啟用。",
-                    style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        SectionTitle("簽章文件與檔案")
-        ActionRow(WalletIcons.Document, "匯入文件", "PDF（PAdES）、XML 等簽章文件，檢查簽章、時間戳與憑證鏈後保存，將於後續版本支援", enabled = false) {}
-        SectionTitle("電子公文")
-        ActionRow(WalletIcons.Government, "個人公文接收站", "接收並保存機關寄送的電子公文，將於後續版本支援", enabled = false) {}
-        SectionTitle("MyData")
-        ActionRow(WalletIcons.Person, "MyData 資料保險箱", "保存從 MyData 下載的個人資料原檔與指紋，將於後續版本支援", enabled = false) {}
-    }
-}
-
 // ---------------------------------------------------------------- verify
 
 /**
@@ -276,9 +251,13 @@ fun VerifyTab(model: WalletModel) {
                     style = MaterialTheme.typography.bodyMedium)
                 Text("接受的證件", style = MaterialTheme.typography.titleSmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.ANY).forEach { s ->
+                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED, BondsCredentialSource.ANY).forEach { s ->
                         FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
                     }
+                }
+                if (source == BondsCredentialSource.SELF_ISSUED) {
+                    Text("以自然人憑證簽署的 Bonds 自發卡片（vc+moica），包括本錢包由文件衍生的憑證；姓名一定揭露並與自然人憑證比對。",
+                        style = MaterialTheme.typography.bodySmall)
                 }
                 if (source == BondsCredentialSource.ANY) {
                     Text("任何綁定金鑰的 SD-JWT VC 或 W3C 證件，由出示者以本錢包出示；發行端由信任錨點或 DID 判定。Bonds App 只能出示政府皮夾卡片。",
@@ -316,6 +295,7 @@ private enum class HistoryFilter(val title: String, val kinds: Set<HistoryKind>)
     ISSUED("領取", setOf(HistoryKind.ISSUED)),
     VERIFIED("查驗", setOf(HistoryKind.VERIFIED)),
     STATUS("狀態", setOf(HistoryKind.STATUS)),
+    SIGNED("簽署", setOf(HistoryKind.SIGNED)),
 }
 
 /** Who received what and when, newest first; tapping an entry shows the documents and claim names. */
@@ -371,6 +351,7 @@ private fun historyTitle(e: HistoryEntry): String = when (e.kind) {
     HistoryKind.DECLINED -> "拒絕 ${e.party} 的要求"
     HistoryKind.VERIFIED -> "查驗 ${e.party}"
     HistoryKind.STATUS -> (e.documents.firstOrNull() ?: "證件") + if (e.status == StatusMonitor.TRUST_CHANGE) " 發行端信任變更" else " 狀態變更"
+    HistoryKind.SIGNED -> "以 ${e.party} 簽署"
 }
 
 private fun hhmm(t: LocalDateTime) = t.hour.toString().padStart(2, '0') + ":" + t.minute.toString().padStart(2, '0')
@@ -399,6 +380,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
         HistoryKind.DECLINED -> WalletIcons.Fail
         HistoryKind.VERIFIED -> WalletIcons.Shield
         HistoryKind.STATUS -> WalletIcons.Caution
+        HistoryKind.SIGNED -> WalletIcons.Document
     }
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {

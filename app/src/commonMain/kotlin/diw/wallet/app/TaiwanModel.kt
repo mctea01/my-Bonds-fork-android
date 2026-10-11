@@ -9,6 +9,7 @@ import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
+import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.BondsReception
 import diw.wallet.core.profile.bonds.BondsVerifiedPresentation
@@ -60,6 +61,8 @@ enum class BondsCardKind {
     SD_JWT_VC,
     /** W3C JWT VC, shown whole. */
     JWT_VC,
+    /** vc+moica: the citizen certificate form of a credential derived from a document. */
+    MOICA,
 }
 
 /** A card that can answer a Bonds request, with its claims; [selective] when the holder picks which to show. */
@@ -69,6 +72,8 @@ data class BondsCard(
     val kind: BondsCardKind,
     val name: String,
     val claims: List<Pair<String, String>>,
+    /** The vc+moica card for [BondsCardKind.MOICA]. */
+    val moica: MoicaSignedCredential? = null,
 ) {
     val selective: Boolean get() = kind != BondsCardKind.JWT_VC
 }
@@ -314,7 +319,14 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 val request = BondsPresentationRequest.parse(text)
                 if (request.source == BondsCredentialSource.SELF_ISSUED) {
-                    offline.value = OfflineUi.Failed("對方要求以自然人憑證自發的 Bonds 卡片（vc+moica），本錢包將在後續版本（P5 文件與自發卡）支援。")
+                    val docs = model.documents.value
+                    val cards = model.files.moicaCards().mapNotNull { (f, card) ->
+                        val doc = docs.firstOrNull { it.identifier == f.derivedDocumentId } ?: return@mapNotNull null
+                        val credential = doc.getCertifiedCredentials().firstOrNull() ?: return@mapNotNull null
+                        BondsCard(doc, credential, BondsCardKind.MOICA, doc.displayName ?: f.name, BondsOfflinePresentation.disclosableClaims(card), card)
+                    }.sortedBy { if (it.document.identifier == preferred) 0 else 1 }
+                    offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
+                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 卡片（vc+moica）。到「文件」選一份文件產生衍生憑證並勾選「以自然人憑證簽署」，就能出示；姓名一定會揭露。")
                     return@launch
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value
@@ -389,6 +401,11 @@ class TaiwanModel(private val model: WalletModel) {
                 request, cred.issuerProvidedData.decodeToString(),
                 AsymmetricKey.AnonymousSecureAreaBased(alias = cred.alias, secureArea = cred.secureArea, keyInfo = info, algorithm = Algorithm.ES256), info.publicKey, disclosing,
             )
+        }
+        BondsCardKind.MOICA -> {
+            val holder = model.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED)
+                ?: throw ProtocolException("credential_unavailable", "找不到自然人憑證卡片的持有者金鑰")
+            BondsOfflinePresentation.presentMoica(request, card.moica!!, holder, disclosing)
         }
         BondsCardKind.JWT_VC -> {
             val cred = card.credential as W3cVcCredential
@@ -482,10 +499,14 @@ class TaiwanModel(private val model: WalletModel) {
         model.scope.launch {
             offline.value = try {
                 val metadata = JwtVcIssuerKeys(model.http, model.environmentPolicy.insecureLoopbackAllowed)
-                val result = BondsOfflineVerifier(model.didResolver()) { iss, kid ->
-                    withTimeoutOrNull(STATUS_TIMEOUT) { metadata.resolve(iss, kid) }
-                        ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
-                }.verify(jws, request)
+                val result = BondsOfflineVerifier(
+                    model.didResolver(),
+                    { iss, kid ->
+                        withTimeoutOrNull(STATUS_TIMEOUT) { metadata.resolve(iss, kid) }
+                            ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
+                    },
+                    documentTrust = model.files.trustSource,
+                ).verify(jws, request)
                 val trust = issuerTrust(result)
                 offline.value = OfflineUi.Working("查詢證件狀態")
                 val status = cardStatus(result)

@@ -23,6 +23,7 @@ import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
 import diw.wallet.app.NfcReaderList
+import diw.wallet.app.PickedFile
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.WalletModel
@@ -117,6 +118,26 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     @Volatile var activity: Activity? = null
 
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
+    @Volatile var fileAccess: AndroidFileAccess? = null
+
+    override suspend fun pickFile(): PickedFile? = fileAccess?.pick()
+
+    override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
+
+    override val embeddedBrowser: Boolean get() = true
+
+    override fun openExternal(url: String): Boolean = try {
+        val intent = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(null)
+        else Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: android.content.ActivityNotFoundException) {
+        false
+    } catch (_: java.net.URISyntaxException) {
+        false
+    }
 
     @Volatile private var nfcPresentationActive = false
 

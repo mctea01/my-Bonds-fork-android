@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
+import diw.wallet.app.FileOrigin
 import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
 import diw.wallet.app.ui.WalletApp
@@ -42,9 +43,11 @@ class MainActivity : FragmentActivity() {
     private val app get() = application as WalletApplication
     private val promptModel = AndroidPromptModel.Builder().apply { addCommonDialogs() }.build()
     private val scanRequest = MutableStateFlow<CompletableDeferred<String?>?>(null)
+    private val fileAccess = AndroidFileAccess(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        app.platform.fileAccess = fileAccess
         enableEdgeToEdge()
         setContent {
             // The system Back gesture follows the in-app Back button; on the documents tab it leaves the app.
@@ -81,6 +84,7 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onDestroy() {
+        if (app.platform.fileAccess === fileAccess) app.platform.fileAccess = null
         promptModel.cancel()
         super.onDestroy()
     }
@@ -96,6 +100,18 @@ class MainActivity : FragmentActivity() {
             app.model.screen.value = Screen.Proximity
             return
         }
+        // A file shared to the wallet or opened with it goes to the document vault.
+        val stream = if (intent?.action == Intent.ACTION_SEND) intentStream(intent) else null
+        val viewed = intent?.data?.takeIf { intent.action == Intent.ACTION_VIEW && (it.scheme == "content" || it.scheme == "file") }
+        (stream ?: viewed)?.let { uri ->
+            app.model.scope.launch {
+                app.awaitReady()
+                val picked = runCatching { AndroidFileAccess.read(this@MainActivity, uri) }.getOrNull()
+                if (picked == null) app.model.message.value = "無法讀取這個檔案"
+                else app.model.files.import(picked, FileOrigin.IMPORTED, "其他 App")
+            }
+            return
+        }
         val data = intent?.dataString ?: return
         if (intent.action != Intent.ACTION_VIEW) return
         app.model.scope.launch {
@@ -103,6 +119,11 @@ class MainActivity : FragmentActivity() {
             app.model.handleUri(data)
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun intentStream(intent: Intent): android.net.Uri? =
+        if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+        else intent.getParcelableExtra(Intent.EXTRA_STREAM)
 
     companion object {
         /** Sent by the NFC service once a reader completed the ISO/IEC 18013-5 engagement. */

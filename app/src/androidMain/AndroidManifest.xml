@@ -15,6 +15,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Opening the mobile citizen certificate app (mobilemoica:) from a source site. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="mobilemoica" />
+        </intent>
+    </queries>
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
@@ -66,6 +73,24 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="openid-vc" />
                 <data android:scheme="vcclient" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Documents opened with or shared to the wallet are stored in the document vault. -->
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/pkcs7-signature" />
+                <data android:mimeType="application/pkcs7-mime" />
+                <data android:mimeType="application/x-pkcs7-signature" />
+                <data android:mimeType="application/x-pkcs7-mime" />
+                <data android:mimeType="application/timestamp-reply" />
+                <data android:mimeType="application/vnd.etsi.asic-e+zip" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/ofd" />
+                <data android:mimeType="application/json" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

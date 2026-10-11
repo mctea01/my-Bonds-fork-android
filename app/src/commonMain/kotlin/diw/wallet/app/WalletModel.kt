@@ -129,6 +129,10 @@ data class WalletSettings(
     val systemTrustStore: Boolean = true,
     /** Trust chains to the built-in mainland China CAs (Mozilla and Microsoft program roots, SM2 roots) as T3. */
     val mainlandChinaRoots: Boolean = true,
+    /** Time-stamp authority for signatures and stored files (see TsaServices). */
+    val tsaId: String = "digicert",
+    /** Time-stamp every file when it is stored (only its SHA-256 is sent). */
+    val timestampOnSave: Boolean = false,
 )
 
 /**
@@ -161,6 +165,14 @@ sealed class Screen {
     data object Proximity : Screen()
     /** In-person verification: the wallet reads another wallet's mdoc by NFC (ISO/IEC 18013-5 reader). */
     data object Reader : Screen()
+    /** A stored file with its signature report. */
+    data class FileDetail(val fileId: String) : Screen()
+    data class FileSign(val fileId: String) : Screen()
+    data class FileDerive(val fileId: String) : Screen()
+    /** Writing a PDF ([letter] false) or an official letter. */
+    data class FileCompose(val letter: Boolean) : Screen()
+    /** A document source site opened inside the app. */
+    data class Portal(val sourceId: String) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -302,6 +314,7 @@ class WalletModel(val platform: PlatformServices) {
     val ms = MsIssuanceModel(this)
     val proximity = ProximityModel(this)
     val reader = ReaderModel(this)
+    val files = FilesModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -347,6 +360,7 @@ class WalletModel(val platform: PlatformServices) {
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
         status.load()
+        files.load()
         documents.value = documentStore.listDocuments()
         ready.value = true
         status.refreshDue()
@@ -560,6 +574,10 @@ class WalletModel(val platform: PlatformServices) {
                 reader.close()
                 showTab(HomeTab.VERIFY)
             }
+            is Screen.FileDetail -> showTab(HomeTab.FILES)
+            is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.FileDerive -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.FileCompose, is Screen.Portal -> showTab(HomeTab.FILES)
         }
         return true
     }

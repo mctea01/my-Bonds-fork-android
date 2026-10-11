@@ -114,7 +114,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                 } else when (val s = screen) {
                     Screen.Home -> when (tab) {
                         HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
-                        HomeTab.FILES -> FilesTab()
+                        HomeTab.FILES -> FilesTab(model)
                         HomeTab.USE -> UseTab(model, scan)
                         HomeTab.VERIFY -> VerifyTab(model)
                         HomeTab.HISTORY -> HistoryTab(model)
@@ -131,11 +131,17 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
                     Screen.Reader -> ReaderScreen(model)
+                    is Screen.FileDetail -> FileDetailScreen(model, s)
+                    is Screen.FileSign -> FileSignScreen(model, s)
+                    is Screen.FileDerive -> FileDeriveScreen(model, s)
+                    is Screen.FileCompose -> FileComposeScreen(model, s)
+                    is Screen.Portal -> PortalScreen(model, s)
                 }
             }
         }
         if (addSheet) {
             AddDocumentSheet(
+                model = model,
                 onDismiss = { addSheet = false },
                 onList = { addSheet = false; model.screen.value = Screen.AddDocument },
                 onScan = scan?.let { start -> { addSheet = false; start() } },
@@ -165,6 +171,11 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"
     Screen.Reader -> "感應查驗"
+    is Screen.FileDetail -> "文件內容"
+    is Screen.FileSign -> "簽署文件"
+    is Screen.FileDerive -> "產生衍生憑證"
+    is Screen.FileCompose -> if (s.letter) "製作電子公文" else "製作 PDF 文件"
+    is Screen.Portal -> "取得文件"
 }
 
 @Composable

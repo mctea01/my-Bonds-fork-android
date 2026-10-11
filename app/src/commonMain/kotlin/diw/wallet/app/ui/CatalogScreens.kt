@@ -76,9 +76,9 @@ fun AddDocumentScreen(model: WalletModel) {
             )
             Button(onClick = { model.handleUri(issuer) }, enabled = issuer.isNotEmpty()) { Text("查詢") }
         }
-        SectionTitle("後續版本")
-        NfcCardRow()
-        ActionRow(WalletIcons.Document, "以自然人憑證建立身分證卡", "Bonds 的自發身分證卡（vc+moica）與簽章文件將於後續版本支援", enabled = false) {}
+        SectionTitle("自然人憑證")
+        NfcCardRow(model)
+        ActionRow(WalletIcons.Document, "以自然人憑證建立身分證卡", "Bonds 只含自填欄位的自發身分證卡尚未支援；文件衍生憑證可用自然人憑證簽署並匯出 vc+moica", enabled = false) {}
     }
 }
 
