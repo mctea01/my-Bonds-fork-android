@@ -2,6 +2,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.security.KeyStore
 
 plugins {
     kotlin("multiplatform")
@@ -61,6 +62,38 @@ kotlin {
     }
 }
 
+// Release key from the environment (CI secrets); see docs/release.md. Blank values count as unset, because GitHub
+// Actions passes a missing secret as an empty string. The key is opened here so a wrong secret fails with a clear
+// message instead of a padding error at packaging time.
+class ReleaseKey(val file: File, val storePassword: String, val alias: String, val keyPassword: String)
+
+val releaseKey: Result<ReleaseKey?> = runCatching {
+    fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
+    val path = env("DIW_KEYSTORE_FILE") ?: return@runCatching null
+    val store = file(path)
+    if (!store.isFile || store.length() == 0L) {
+        throw GradleException("Release keystore $path is missing or empty: check ANDROID_KEYSTORE_BASE64")
+    }
+    val storePassword = env("DIW_KEYSTORE_PASSWORD")
+        ?: throw GradleException("DIW_KEYSTORE_PASSWORD (secret ANDROID_KEYSTORE_PASSWORD) is not set")
+    val alias = env("DIW_KEY_ALIAS") ?: throw GradleException("DIW_KEY_ALIAS (secret ANDROID_KEY_ALIAS) is not set")
+    val keyStore = try {
+        KeyStore.getInstance(store, storePassword.toCharArray())
+    } catch (e: Exception) {
+        throw GradleException("Cannot open the release keystore: wrong ANDROID_KEYSTORE_PASSWORD or damaged ANDROID_KEYSTORE_BASE64 (${e.message})")
+    }
+    if (!keyStore.isKeyEntry(alias)) {
+        throw GradleException("No key \"$alias\" in the release keystore (ANDROID_KEY_ALIAS); its entries: ${keyStore.aliases().toList()}")
+    }
+    // keytool saves PKCS12 keys under the store password, so that one is tried when the key password does not work.
+    val passwords = listOfNotNull(env("DIW_KEY_PASSWORD"), storePassword).distinct()
+    val keyPassword = passwords.firstOrNull { runCatching { keyStore.getKey(alias, it.toCharArray()) }.isSuccess }
+        ?: throw GradleException("Key \"$alias\" opens with neither ANDROID_KEY_PASSWORD nor ANDROID_KEYSTORE_PASSWORD")
+    if (keyPassword != passwords.first()) logger.warn("ANDROID_KEY_PASSWORD does not open the release key; using the keystore password")
+    logger.lifecycle("Release APK signed with key \"$alias\" from $path")
+    ReleaseKey(store, storePassword, alias, keyPassword)
+}
+
 android {
     namespace = "diw.wallet.app"
     compileSdk = 36
@@ -73,14 +106,12 @@ android {
         versionName = (findProperty("diw.versionName") as String?) ?: "0.1.0-p1"
     }
     signingConfigs {
-        // Release key from the environment (CI secrets); see docs/release.md.
-        val store = System.getenv("DIW_KEYSTORE_FILE")?.let { file(it) }?.takeIf { it.exists() }
-        if (store != null) {
+        releaseKey.getOrNull()?.let { key ->
             create("release") {
-                storeFile = store
-                storePassword = System.getenv("DIW_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("DIW_KEY_ALIAS")
-                keyPassword = System.getenv("DIW_KEY_PASSWORD") ?: System.getenv("DIW_KEYSTORE_PASSWORD")
+                storeFile = key.file
+                storePassword = key.storePassword
+                keyAlias = key.alias
+                keyPassword = key.keyPassword
             }
         }
     }
@@ -111,6 +142,11 @@ android {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
+}
+
+// A release key that is set but does not open stops release builds at once; debug builds and tests still run.
+releaseKey.exceptionOrNull()?.message?.let { problem ->
+    tasks.matching { it.name == "preReleaseBuild" }.configureEach { doFirst { throw GradleException(problem) } }
 }
 
 configurations.all {
