@@ -65,6 +65,21 @@ fun tierAdvice(t: TrustDecision): String = when {
     else -> "無法驗證對方身分。除非你確定來源，否則不要分享或接受。"
 }
 
+/**
+ * Who a document signer or time-stamp authority is, by the trust of its certificate chain. It says nothing about the
+ * signature itself, whose integrity and validity are shown beside it (an invalid signature must not read as valid).
+ */
+fun signerTrustLine(t: TrustDecision): String = when {
+    t.environment == TrustEnvironment.TEST -> "簽署者只在測試環境受信任，不具正式效力。"
+    t.tier == TrustTier.T1 -> "簽署者列於官方信任清單。"
+    TrustLabel.IDENTITY_VERIFIED in t.labels -> "簽署者身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。"
+    TrustLabel.MAINLAND_CHINA_CA in t.labels -> "簽署者憑證連到中國大陸的公開憑證機構（${t.anchorName ?: ""}），可確認組織名稱，但不在台灣的官方清單。"
+    TrustLabel.SYSTEM_ANCHOR in t.labels -> "簽署者憑證連到公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱，但不是官方身分。"
+    t.environment == TrustEnvironment.USER -> "簽署者由你自行匯入的根憑證確認（非官方）。"
+    t.tier == TrustTier.T4 -> "簽署者的憑證鏈驗證失敗。"
+    else -> "憑證鏈沒有連到任何信任錨點，無法確認簽署者是誰。"
+}
+
 /** What the trust says about the issuer of a document being verified, one sentence for a verdict card. */
 fun issuerTrustLine(t: TrustDecision?): String = when {
     t == null -> "發行端不在任何信任來源，無法確認這張證件由誰簽發。"

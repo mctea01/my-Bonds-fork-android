@@ -4,6 +4,7 @@
 Sources (tools/trust-roots/roots.json):
   - CCADB (Mozilla and Microsoft root programs): every included root of the listed mainland China CA owners;
   - service hosts: each host is connected to, and the CCADB roots of the chain it serves are built in;
+  - time stamping: CCADB roots the Microsoft program includes for the Time Stamping EKU (TSA anchors only);
   - SM2 roots: pinned PEM files (not in CCADB), checked against their SHA-256 and validity;
   - GPKI: the Taiwan government CA repositories, compared with the built-in GPKI anchors (report only).
 
@@ -313,13 +314,16 @@ import org.multipaz.util.fromBase64
  *   Microsoft root program (CCADB, SHA-256 checked), and the SM2 roots (Chinese national algorithms) of the national
  *   root CA and licensed CAs, pinned by SHA-256 as downloaded from each CA's own site;
  * - common services: the roots of the certificate chains that the e-invoice and immigration services serve
- *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency).
+ *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency);
+ * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
+ *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
  *
  * A chain to any of them is T3, like the platform store: a public CA verified a domain or organisation. The mainland
- * China group is switched on and off on its own. A root is used only while it is valid.
+ * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
+ * while it is valid.
  */
 object BuiltInPublicRoots {
-    enum class Group { MAINLAND_CHINA, SERVICE }
+    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
 
     class Root(
         val name: String,
@@ -342,6 +346,7 @@ object BuiltInPublicRoots {
 
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
+    const val TIMESTAMPING_SOURCE = "builtin:timestamping"
 
     val all: List<Root> by lazy {
         listOf(
@@ -351,6 +356,7 @@ object BuiltInPublicRoots {
 
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
+    val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
 }
 """
 
@@ -470,6 +476,19 @@ def main():
                                 "base": s["purposes"], "services": [], "source": source, "sha256": s["sha256"], "der": der}
     report.append("")
 
+    # Time stamping: roots the Microsoft program includes for the Time Stamping EKU, valid now. Many TSA roots
+    # (Sectigo and GlobalSign time stamping roots, for instance) are in no platform store, which only serves TLS.
+    for fp, e in cc.items():
+        if fp in entries or "microsoft" not in e["programs"] or "時間戳記" not in e["uses"]:
+            continue
+        c = cert_of(fp)
+        if not c.valid_at(TODAY):
+            continue
+        owner = next((v for k, v in cfg["ccadb"]["owners"].items() if k.lower() in e["owner"].lower()), e["owner"])
+        entries[fp] = {"name": e["name"], "owner": owner, "group": "TIMESTAMPING", "algorithm": c.algorithm,
+                       "base": uses_text(e["uses"]), "services": [], "source": "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+                       "sha256": fp, "der": e["der"]}
+
     for e in entries.values():
         parts = [p for p in (e["base"], ("、".join(e["services"]) + "的網站憑證鏈") if e["services"] else "") if p]
         e["purposes"] = "；".join(parts)
@@ -477,7 +496,7 @@ def main():
         if e["algorithm"] != "SM2" and cert_of(e["sha256"]).not_after < warn_until:
             notes.append(f"{e['name']} 將於 {cert_of(e['sha256']).not_after.date()} 到期，到期後依來源自動移除或更新")
 
-    order = {"MAINLAND_CHINA": 0, "SERVICE": 1}
+    order = {"MAINLAND_CHINA": 0, "SERVICE": 1, "TIMESTAMPING": 2}
     ordered = sorted(entries.values(), key=lambda e: (order[e["group"]], e["algorithm"] == "SM2", e["owner"], e["name"], e["sha256"]))
 
     # GPKI: report only.
@@ -493,7 +512,8 @@ def main():
 
     report[4:4] = ["## 摘要", "",
                    f"- 內建根憑證 {len(ordered)} 個：中國大陸 {sum(1 for e in ordered if e['group'] == 'MAINLAND_CHINA')} 個"
-                   f"（SM2 {sum(1 for e in ordered if e['algorithm'] == 'SM2')} 個），常用服務 {sum(1 for e in ordered if e['group'] == 'SERVICE')} 個",
+                   f"（SM2 {sum(1 for e in ordered if e['algorithm'] == 'SM2')} 個），常用服務 {sum(1 for e in ordered if e['group'] == 'SERVICE')} 個"
+                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個",
                    "- 檔案" + ("有變更" if changed else "沒有變更"),
                    *[f"- 新增：{e['name']}（{e['owner']}，SHA-256 {e['sha256']}）" for e in added],
                    *[f"- 移除：{n}（SHA-256 {fp}）" for fp, n in removed],

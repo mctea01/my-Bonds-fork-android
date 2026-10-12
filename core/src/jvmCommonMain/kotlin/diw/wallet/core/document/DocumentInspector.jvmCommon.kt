@@ -82,7 +82,7 @@ actual object DocumentInspector {
         if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
             val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
             when (oid) {
-                SIGNED_DATA -> return if (runCatching { CMSSignedData(b).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
+                SIGNED_DATA -> return if (runCatching { CmsChecks.signedData(b, null).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
                 GmSignedData.GM_SIGNED_DATA -> return DocumentFormat.CMS_SIGNED
                 ENVELOPED_DATA -> return DocumentFormat.CMS_ENVELOPED
             }
@@ -208,21 +208,23 @@ actual object DocumentInspector {
         val dssCerts = dss?.certificates.orEmpty()
         val dssOcsps = dss?.ocsps.orEmpty()
         val dssCrls = dss?.crls.orEmpty()
+        // The /M entry stands for the claimed signing time when the CMS has no signingTime attribute (PDF PKCS#7).
+        val m = PdfDates.parse(f.claimedTime)
         return when (f.subFilter) {
             "ETSI.RFC3161" -> {
                 val ts = checks.timestamp(contents, signed)
                 timestampSignature(ts, SignatureFormat.PDF_DOC_TIMESTAMP, label, checks, contents)
             }
             "adbe.pkcs7.sha1" -> {
-                val r = checks.verify(contents, null, SignatureFormat.PDF_PKCS7_SHA1, label, now, dssCerts, dssOcsps, dssCrls).first()
-                val inner = runCatching { CMSSignedData(contents).signedContent?.content as? ByteArray }.getOrNull()
+                val r = checks.verify(contents, null, SignatureFormat.PDF_PKCS7_SHA1, label, now, dssCerts, dssOcsps, dssCrls, fallbackClaimed = m).first()
+                val inner = runCatching { CmsChecks.signedData(contents, null).signedContent?.content as? ByteArray }.getOrNull()
                 if (inner == null || !inner.contentEquals(DocCrypto.digest("SHA-1", signed))) {
                     r.copy(integrity = Check.FAIL, problems = r.problems + "SHA-1 摘要與文件內容不符")
                 } else r.copy(notes = r.notes + "使用較弱的 SHA-1（adbe.pkcs7.sha1）")
             }
             "adbe.x509.rsa_sha1" -> x509RsaSha1(f, signed, contents, label, checks, now)
-            "ETSI.CAdES.detached" -> checks.verify(contents, signed, SignatureFormat.PADES, label, now, dssCerts, dssOcsps, dssCrls).first()
-            else -> checks.verify(contents, signed, SignatureFormat.PDF_PKCS7, label, now, dssCerts, dssOcsps, dssCrls).first()
+            "ETSI.CAdES.detached" -> checks.verify(contents, signed, SignatureFormat.PADES, label, now, dssCerts, dssOcsps, dssCrls, fallbackClaimed = m).first()
+            else -> checks.verify(contents, signed, SignatureFormat.PDF_PKCS7, label, now, dssCerts, dssOcsps, dssCrls, fallbackClaimed = m).first()
         }
     }
 
@@ -311,7 +313,7 @@ actual object DocumentInspector {
             }
             return base.copy(format = DocumentFormat.CMS_SIGNED, signatures = sigs, notes = listOf("國密 SignedData（GM/T 0010）"))
         }
-        val sd = CMSSignedData(bytes)
+        val sd = CmsChecks.signedData(bytes, null)
         val encapsulated = sd.signedContent?.content as? ByteArray
         if (sd.signerInfos.size() == 0) {
             val n = sd.certificates.getMatches(null).size
@@ -433,6 +435,6 @@ actual object DocumentInspector {
     }
 
     actual fun encapsulatedContent(cms: ByteArray): ByteArray? = runCatching {
-        if (GmSignedData.isGm(cms)) GmSignedData.parse(cms).content else CMSSignedData(cms).signedContent?.content as? ByteArray
+        if (GmSignedData.isGm(cms)) GmSignedData.parse(cms).content else CmsChecks.signedData(cms, null).signedContent?.content as? ByteArray
     }.getOrNull()
 }

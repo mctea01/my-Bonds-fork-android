@@ -10,13 +10,16 @@ import org.multipaz.util.fromBase64
  *   Microsoft root program (CCADB, SHA-256 checked), and the SM2 roots (Chinese national algorithms) of the national
  *   root CA and licensed CAs, pinned by SHA-256 as downloaded from each CA's own site;
  * - common services: the roots of the certificate chains that the e-invoice and immigration services serve
- *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency).
+ *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency);
+ * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
+ *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
  *
  * A chain to any of them is T3, like the platform store: a public CA verified a domain or organisation. The mainland
- * China group is switched on and off on its own. A root is used only while it is valid.
+ * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
+ * while it is valid.
  */
 object BuiltInPublicRoots {
-    enum class Group { MAINLAND_CHINA, SERVICE }
+    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
 
     class Root(
         val name: String,
@@ -35,10 +38,11 @@ object BuiltInPublicRoots {
     }
 
     /** The date the set of roots last changed (UTC). */
-    const val UPDATED = "2026-10-11"
+    const val UPDATED = "2026-10-12"
 
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
+    const val TIMESTAMPING_SOURCE = "builtin:timestamping"
 
     val all: List<Root> by lazy {
         listOf(
@@ -844,9 +848,3529 @@ object BuiltInPublicRoots {
             "REG6Sb4gumlc7rh3zc5sH62Dlhh9DrUUOYTxKOkto557HnpyWoOzeW/vtPzQCqVYT0bf+215WfKEIlKuD8z7fDvnaspHYcN6+NOS" +
             "BB+4IIThNlQWx0DeO4pz3N/GCUzf7Nr/1FNCocnyYh0igzyXxfkZYiesZSLX0zzG5Y6yU8xJzrww/nsOM5D77dIUkR8Hrw==",
         ),
+        Root(
+            name = "CHAMBERS OF COMMERCE ROOT - 2016",
+            owner = "AC Camerfirma, S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "04F1BEC36951BC1454A904CE32890C5DA3CDE1356B7900F6E62DFA2041EBAD51",
+            b64 = "MIIG4DCCBMigAwIBAgIINJotoYIGsrMwDQYJKoZIhvcNAQELBQAwggEMMQswCQYDVQQGEwJFUzEPMA0GA1UECAwGTUFEUklEMQ8w" +
+            "DQYDVQQHDAZNQURSSUQxOjA4BgNVBAsMMXNlZSBjdXJyZW50IGFkZHJlc3MgYXQgd3d3LmNhbWVyZmlybWEuY29tL2FkZHJlc3Mx" +
+            "KTAnBgNVBAsMIENIQU1CRVJTIE9GIENPTU1FUkNFIFJPT1QgLSAyMDE2MRIwEAYDVQQFEwlBODI3NDMyODcxGDAWBgNVBGEMD1ZB" +
+            "VEVTLUE4Mjc0MzI4NzEbMBkGA1UECgwSQUMgQ0FNRVJGSVJNQSBTLkEuMSkwJwYDVQQDDCBDSEFNQkVSUyBPRiBDT01NRVJDRSBS" +
+            "T09UIC0gMjAxNjAeFw0xNjA0MTQwNzM1NDhaFw00MDA0MDgwNzM1NDhaMIIBDDELMAkGA1UEBhMCRVMxDzANBgNVBAgMBk1BRFJJ" +
+            "RDEPMA0GA1UEBwwGTUFEUklEMTowOAYDVQQLDDFzZWUgY3VycmVudCBhZGRyZXNzIGF0IHd3dy5jYW1lcmZpcm1hLmNvbS9hZGRy" +
+            "ZXNzMSkwJwYDVQQLDCBDSEFNQkVSUyBPRiBDT01NRVJDRSBST09UIC0gMjAxNjESMBAGA1UEBRMJQTgyNzQzMjg3MRgwFgYDVQRh" +
+            "DA9WQVRFUy1BODI3NDMyODcxGzAZBgNVBAoMEkFDIENBTUVSRklSTUEgUy5BLjEpMCcGA1UEAwwgQ0hBTUJFUlMgT0YgQ09NTUVS" +
+            "Q0UgUk9PVCAtIDIwMTYwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDqxqSh1K2Zlsmf9bxQAPQsz/J46PIsAifWg4wE" +
+            "q9MOe1cgydSvZfSH3TAI185Bo3YK24pG5Kb97QjOcD/6EGB5TGuBVIBV5Od6IbZ1mtxe9g6Z/PjC30GOL6vHW20cUFnA7eisgkL+" +
+            "ua8vDEFRnL0AbmRRsjvlNquVkRL7McdzrBzYZXY7zhtMTrAfIAb7ULT7m6F5jhaV45/rGEuEqzmTzTeD0Ol8CyeP7UII6YZGMqya" +
+            "JmlwYS0YvT9Q8J72aFBOaZVwwe2TqZdOKaK63cKfbkkIK6P6I/EpXrB9MVmb7YzNpm74+PfYGOjaVulI8kB0fp7NIK8UJFnudzWF" +
+            "v0qZSql13bMm4wbOfW9LZKN2NBk+FG+FVDjiiy1AtWRmH1czHHDNw7QoWhQjXPy4vbP+OxJf9rmMHciUClbbcn7vJwcNALS/fZk/" +
+            "TUWzm/cdGdBPBPrHc5SIfYsUKpng6ZmSCcbWAWu38NtDV2Ibx0RS4pdjus/qzmDmCuUYaC0zgHWgMAdo9tX3Eyw6sJ7oWFVujFZE" +
+            "TUMXQQLMd9xfRQVZz81g07/S9uL01dyHcTMHGvVvtH89l/tfZPRODgBECenr7D5xGQQXOUhguEv/XshlmSumMvJbhqid6CN0EHjv" +
+            "yyedMbpgi04GUOJQHQdgwkGMFbRbNxwK5QkZcgSKPOMB2wIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBSeLmVP" +
+            "Plf1q32WxovfszVtSuieizAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQELBQADggIBAAVpKoWXJlC6QjkckyzST1vRXUQm2m9p" +
+            "K7V7ntD0Si5Ix+x/n8pZerlE9z6991BrUZ90/5AaQNCTeZIPiiNei6+BC9CLrWbgKtyaKb012GxAFElCPYkvupsrOLwaowu3iNet" +
+            "xhQM7nxJrK7s8j0YT4xtFF0Oqrffd6s7j2JOiwxlxhmOzcAMoXeqtN16pxMF5jkYx5VkfgO2i5DB5V8AI5jmc9oR0hD/HlMiJ8fT" +
+            "AckvxTsybvDDOMoSZ7y6Iym7xJVJWgbd1FqQ1BNt59XCfOJYBMDsxL2iPH7GI4F1fKtwXzSElfez1UeWT3HKeDIIILRCpEJr1SWc" +
+            "sifrwQ5HRAnhKw/QIzZuHLm6TqzM8AyUzkEPa90P1cjgF4veOl1Svul1JR26BQfaVhk8jdHX8VE22ZLvonhRBVi9UswKXm+v2tDl" +
+            "DNtswSPvOTF3FwcAjPa6D3D5vL7h5H3hzER6pCHsRz+o1hWl7AGpyHDomGcdvVlUfqFXFTUHxXLJPrcpho2f2jJ5MtzbqOUJ/+9W" +
+            "Kv6TsY4qE+2toitrLwTezS+SktY+YLV4AZUHCKls4xza++WbI1YgW+nQXMZKJDu847YiFiqEkv+o/pe/o53bYV7uGSos1+sNdlY4" +
+            "dX5JAJNXyfwjWvz08d8qnbCMafQQo1WdcDwi/wfWK7aZwJfQ9Cqg",
+        ),
+        Root(
+            name = "Chambers of Commerce Root - 2008",
+            owner = "AC Camerfirma, S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "063E4AFAC491DFD332F3089B8542E94617D893D7FE944E10A7937EE29D9693C0",
+            b64 = "MIIHTzCCBTegAwIBAgIJAKPaQn6ksa7aMA0GCSqGSIb3DQEBBQUAMIGuMQswCQYDVQQGEwJFVTFDMEEGA1UEBxM6TWFkcmlkIChz" +
+            "ZWUgY3VycmVudCBhZGRyZXNzIGF0IHd3dy5jYW1lcmZpcm1hLmNvbS9hZGRyZXNzKTESMBAGA1UEBRMJQTgyNzQzMjg3MRswGQYD" +
+            "VQQKExJBQyBDYW1lcmZpcm1hIFMuQS4xKTAnBgNVBAMTIENoYW1iZXJzIG9mIENvbW1lcmNlIFJvb3QgLSAyMDA4MB4XDTA4MDgw" +
+            "MTEyMjk1MFoXDTM4MDczMTEyMjk1MFowga4xCzAJBgNVBAYTAkVVMUMwQQYDVQQHEzpNYWRyaWQgKHNlZSBjdXJyZW50IGFkZHJl" +
+            "c3MgYXQgd3d3LmNhbWVyZmlybWEuY29tL2FkZHJlc3MpMRIwEAYDVQQFEwlBODI3NDMyODcxGzAZBgNVBAoTEkFDIENhbWVyZmly" +
+            "bWEgUy5BLjEpMCcGA1UEAxMgQ2hhbWJlcnMgb2YgQ29tbWVyY2UgUm9vdCAtIDIwMDgwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAw" +
+            "ggIKAoICAQCvAMtwNyuAWko6bHiUfaN/Gh/2NdW928sNRHI+JrKQUrpjOyhYb6WzbZSm891kDFX29ufyIiKAXuFixrYp4YFs8r/l" +
+            "fTJqVKAyGVn+H4vXPWCGhSRv4xGzdz4gljUha7MI2XAuZPeEklPWDrCQiorjh40G072QDuKZoRuGDtqaCrsLYVAGUvGef3bsyw/Q" +
+            "Hg3PmTA9HMRFEFis1tPo1+XqxQEHd9ZR5gN/ikilTWh1uem8nk4ZcfUyS5xtYBkL+8ydddy/Js2Pk3g5eXNeJQ7KXOt3EgfLZEFH" +
+            "cpOrUMPrCXZkNNI5t3YRCQ12RcSprj1qr7V9ZS+UWBDsXHyvfuK2GNnQm05aSd+pZgvMPMZ4fKecHePOjlO+Bd5gD2vlGts/4+Eh" +
+            "ySnB8esHnFIbAURRPHsl18TlUlRdJQfKFiC4reRB7noI/plvg6aRArBsNlVq5331lubKgdaX8ZSD6e2wsWsSaR6s+12pxZjptFtY" +
+            "er49okQ6Y1nUCyXeG0+95QGezdIp1Z8XGQpvvwyQ0wlf2eOKNcx5Wk0ZN5K3xMGtr/R5JJqyAQuxr1yW84Ay+1w9mPGgP0revq+U" +
+            "LtlVmhduYJ1jbLhjya6BXBg14JC7vjxPNyK5fuvPnnchpj04gftI2jE9K+OJ9dC1vX7gUMQSibMjmhAxhduub+84Mxh2EQIDAQAB" +
+            "o4IBbDCCAWgwEgYDVR0TAQH/BAgwBgEB/wIBDDAdBgNVHQ4EFgQU+SSsD7K1+HnA+mCIG8TZTQKeFxkwgeMGA1UdIwSB2zCB2IAU" +
+            "+SSsD7K1+HnA+mCIG8TZTQKeFxmhgbSkgbEwga4xCzAJBgNVBAYTAkVVMUMwQQYDVQQHEzpNYWRyaWQgKHNlZSBjdXJyZW50IGFk" +
+            "ZHJlc3MgYXQgd3d3LmNhbWVyZmlybWEuY29tL2FkZHJlc3MpMRIwEAYDVQQFEwlBODI3NDMyODcxGzAZBgNVBAoTEkFDIENhbWVy" +
+            "ZmlybWEgUy5BLjEpMCcGA1UEAxMgQ2hhbWJlcnMgb2YgQ29tbWVyY2UgUm9vdCAtIDIwMDiCCQCj2kJ+pLGu2jAOBgNVHQ8BAf8E" +
+            "BAMCAQYwPQYDVR0gBDYwNDAyBgRVHSAAMCowKAYIKwYBBQUHAgEWHGh0dHA6Ly9wb2xpY3kuY2FtZXJmaXJtYS5jb20wDQYJKoZI" +
+            "hvcNAQEFBQADggIBAJASryI1wqM58C7e6bXpeHxIvj99RZJe6dqxGfwWPJ+0W2aeaufDuV2I6A+tzyMP3iU6XsxPpcG1Lawk0lgH" +
+            "3qLPaYRgM+gQDROpI9CF5Y57pp49chNyM/WqfcZjHwj0/gF/JM8rLFQJ3uIrbZLGOU8W6jx+ekbURWpGqOt1glanq6B8aBMz9p0w" +
+            "8G8nOSQjKpD9kCk18pPfNKXG9/jvjA9iSnyu0/VU+I22mlaHFoI6M6taIgj3grrqLuBHmrS1RaMFO9ncLkVAO+rcf+g769HsJtg1" +
+            "pDDFOqxXnrN2pSB7+R5KBWIBpih1YJeSDW4+TTdDDZIVnBgizVGZoCkaPF+KMjNbMMeJL0eYD6MDxvbxrN8y8NmBGuScvfaAFPDR" +
+            "LLmF9dijscilIeUcE5fuDr3fKanvNFNb0+RqE4QGtjICxFKuItLcsiFCGtpA8CnJ7AoMXOLQusxI0zcKzBIKinmwPQN/aUv0NCB9" +
+            "szTqjktk9T79syNnFQ0EuPAtwQlRPLJsFfClI9eDdOTlLsn+mCdCxqvGnrDQWzilm1DefhiYtUU79nm06PcaewaD+9CL2rvHvRir" +
+            "CG88gGtAPxkZumWK5r7VXNM21+9AUiRgOGcEMeyP84LG3rlV8zsxkVrctQgVrXYlCg17LofiDKYGvCYQbTed7N14jHyAxfDZd0jQ",
+        ),
+        Root(
+            name = "Global Chambersign Root - 2008",
+            owner = "AC Camerfirma, S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "136335439334A7698016A0D324DE72284E079D7B5220BB8FBD747816EEBEBACA",
+            b64 = "MIIHSTCCBTGgAwIBAgIJAMnN0+nVfSPOMA0GCSqGSIb3DQEBBQUAMIGsMQswCQYDVQQGEwJFVTFDMEEGA1UEBxM6TWFkcmlkIChz" +
+            "ZWUgY3VycmVudCBhZGRyZXNzIGF0IHd3dy5jYW1lcmZpcm1hLmNvbS9hZGRyZXNzKTESMBAGA1UEBRMJQTgyNzQzMjg3MRswGQYD" +
+            "VQQKExJBQyBDYW1lcmZpcm1hIFMuQS4xJzAlBgNVBAMTHkdsb2JhbCBDaGFtYmVyc2lnbiBSb290IC0gMjAwODAeFw0wODA4MDEx" +
+            "MjMxNDBaFw0zODA3MzExMjMxNDBaMIGsMQswCQYDVQQGEwJFVTFDMEEGA1UEBxM6TWFkcmlkIChzZWUgY3VycmVudCBhZGRyZXNz" +
+            "IGF0IHd3dy5jYW1lcmZpcm1hLmNvbS9hZGRyZXNzKTESMBAGA1UEBRMJQTgyNzQzMjg3MRswGQYDVQQKExJBQyBDYW1lcmZpcm1h" +
+            "IFMuQS4xJzAlBgNVBAMTHkdsb2JhbCBDaGFtYmVyc2lnbiBSb290IC0gMjAwODCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC" +
+            "ggIBAMDfVtPkOpt2RbQT2//BthmLN0EYlVJH6xedKYiONWwGMi5HYvNJBL99RDaxccy9Wglz1dmFRP+RVyXfXjaOcNFccUMd2drv" +
+            "XNL7G706tcuto8xEpw2uIRU/uXpbknXYpBI4iRmKt4DS4jJvVpyR1ogQC7N0ZJJ0YPP2zxhPYLIj0Mc7zmFLmY/CDNBAspjcDahO" +
+            "o7kKrmCgrUVSY7pmvWjg+b4aqIG7HkF4ddPB/gBVsIdU6CeQNR1MM62X/JcumIS/LMmjv9GYERTtY/jKmIhYF5ntRQOXfjyGHoiM" +
+            "vvKRhI9lNNgATH23MRdaKXoKGCQwoze1eqkBfSbW+Q6OWfH9GzO1KTsXO0G2Id3UwD2ln58fQ1DJu7xsepeY7s2MH/ucUa6LcL0n" +
+            "n3HAa6x9kGbo1106DbDVwo3VyJ2dwW3Q0L9R5OP4wzg2rtandeavhENdk5IMagfeOx2YItaswTXbo6Al/3K1dh3ebeksZixShNBF" +
+            "ks4c5eUzHdwHU1SjqoI7mjcv3N2gZOnm3b2u/GSFHTynyQbehP9r6GsaPMWis0L7iwk+XwhSx2LE1AVxv8Rk5Pihg+g+EpuoHtQ2" +
+            "TS9x9o0o9oOpE9JhwZG7SMA0j0GMS0zbaRL/UJScIINZc+18ofLx/d33SdNDWKBWY8o9PeU1VlnpDsogzCtLkykPAgMBAAGjggFq" +
+            "MIIBZjASBgNVHRMBAf8ECDAGAQH/AgEMMB0GA1UdDgQWBBS5CcqcHtvTbDprru1U8VuTBjUuXjCB4QYDVR0jBIHZMIHWgBS5Ccqc" +
+            "HtvTbDprru1U8VuTBjUuXqGBsqSBrzCBrDELMAkGA1UEBhMCRVUxQzBBBgNVBAcTOk1hZHJpZCAoc2VlIGN1cnJlbnQgYWRkcmVz" +
+            "cyBhdCB3d3cuY2FtZXJmaXJtYS5jb20vYWRkcmVzcykxEjAQBgNVBAUTCUE4Mjc0MzI4NzEbMBkGA1UEChMSQUMgQ2FtZXJmaXJt" +
+            "YSBTLkEuMScwJQYDVQQDEx5HbG9iYWwgQ2hhbWJlcnNpZ24gUm9vdCAtIDIwMDiCCQDJzdPp1X0jzjAOBgNVHQ8BAf8EBAMCAQYw" +
+            "PQYDVR0gBDYwNDAyBgRVHSAAMCowKAYIKwYBBQUHAgEWHGh0dHA6Ly9wb2xpY3kuY2FtZXJmaXJtYS5jb20wDQYJKoZIhvcNAQEF" +
+            "BQADggIBAICIf3DekijZBZRG/5BXqfEv3xoNa/p8DhxJJHkn2EaqbylZUohwEurdPfWbU1Rv4WCiqAm57OtZfMY18dwY6fFn5a+6" +
+            "ReAJ3spED8IXDneRRXozX1+WLGiLwUePmJs9wOzL9dWCkoQ10b42OFZyMVtHLaoXpGNR6woBrX/sdZ7LoR/xfxKxueRkf2fWIyr0" +
+            "uDldmOghp+G9PUIadJpwr2hsUF1Jz//7Dl3mLEfXgTpZALVza2Mg9jFFCDkO9HB+QHBaP9BrQql0PSgvAm11cpUJjUhjxsYjV5KT" +
+            "XjXBjfkK9yydYhz2rXzdpjEetrHHfoUm+qRqtdpjMNHvkzeyZi99Bffnt0uYlDXA2TopwZ2yUDMdSqlapskD7+3056huirRXhOuk" +
+            "P9DuqqqHW2Pok+JrqNS4cnhrG+055F3Lm6qH1U9OAP7Zap88MQ8oAgF9mOinsKJknnn4SPIVqczmyETrP3iZ8ntxPjzxmKfFGBI/" +
+            "5rsoM0LpRQp8bfKGeS/Fghl9CYl8slR2iK7ewfPM4W7bMdaTrpmg7yVqc5iJWzouE4gev8CSlDQb4ye3ix5vQv/n6TebUB0tovkC" +
+            "7stYWDpxvGjjqsGvHCgfotwjZT+B6q6Z09gwzxMNTxXJhLynSC34MCN32EZLeW32jO06f2ARePTpm67VVMB0gNELQp/B",
+        ),
+        Root(
+            name = "Actalis Authentication Root CA",
+            owner = "Actalis",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "55926084EC963A64B96E2ABE01CE0BA86A64FBFEBCC7AAB5AFC155B37FD76066",
+            b64 = "MIIFuzCCA6OgAwIBAgIIVwoRl0LE48wwDQYJKoZIhvcNAQELBQAwazELMAkGA1UEBhMCSVQxDjAMBgNVBAcMBU1pbGFuMSMwIQYD" +
+            "VQQKDBpBY3RhbGlzIFMucC5BLi8wMzM1ODUyMDk2NzEnMCUGA1UEAwweQWN0YWxpcyBBdXRoZW50aWNhdGlvbiBSb290IENBMB4X" +
+            "DTExMDkyMjExMjIwMloXDTMwMDkyMjExMjIwMlowazELMAkGA1UEBhMCSVQxDjAMBgNVBAcMBU1pbGFuMSMwIQYDVQQKDBpBY3Rh" +
+            "bGlzIFMucC5BLi8wMzM1ODUyMDk2NzEnMCUGA1UEAwweQWN0YWxpcyBBdXRoZW50aWNhdGlvbiBSb290IENBMIICIjANBgkqhkiG" +
+            "9w0BAQEFAAOCAg8AMIICCgKCAgEAp8bEpSmkLO/lGMWwUKNvUTufClrJwkg4CsIcoBh/kbWHuUA/3R1oHwiD1S0eiKD4j1aPbZkC" +
+            "kpAW1V8IbInX4ay8IMKx4INRimlNAJZaby/ARH6jDuSRzVju3PvHHkVH3Se5CAGfpiEd9UEtL0z9KK3giq0itFZljoZUj5NDKd45" +
+            "RnijMCO6zfB9E1fAXdKDa0hMxKufgFpbOr3JpyI/gCczWw63igxdBzcIy2zSekciRDXFzMwujt0q7bd9Zg1fYVEiVRvjRuPjPdA1" +
+            "YprbrxTIW6HMiRvhMCb8oJsfgadHHwTrozmSBp+Z07/T6k9QnBn+locePGX2oxgkg4YQ51Q+qDp2JE+BIcXjDwL4k5RHILv+1A7T" +
+            "aLndxHqEguNTVHnd25zS8gebLra8Pu2Fbe8lEfKXGkJh90qX6IuxEAf6ZYGyojnP9zz/GPvG8VqLWeICrHuS0E4UT1lF9gxeKF+w" +
+            "6D9Fz8+vm2/7hNN3WpVvrJSEnu68wEqPSpP4RCHiMUVhUE4Q2OM1fEwZtN4Fv6MGn8i1zeQf1xcGDXqVdFUNaBr8EBtiZJ1t4JWg" +
+            "w5QHVw0U5r0F+7if5t+L4sbnfpb2U8WANFAoWPASUHEXMLrmeGO89LKtmyuy/uE5jF66CyCU3nuDuP/jVo23Eek7jPKxwV2dpAtM" +
+            "K9myGPW1n0sCAwEAAaNjMGEwHQYDVR0OBBYEFFLYiDrIn3hm7YnzezhwlMkCAjbQMA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgw" +
+            "FoAUUtiIOsifeGbtifN7OHCUyQICNtAwDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUAA4ICAQALe3KHwGCmSUyIWOYdiPcU" +
+            "ZEim2FgKDk8TNd81HdTtBjHIgT5q1d07GjLukD0R0i70jsNjLiNmsGe+b7bAEzlgqqI0JZN1Ut6nna0Oh4lScWoWPBkdg/iaKWW+" +
+            "9D+a2fDzWochcYBNy+A4mz+7+uAwTc+G02UQGRjRlwKxK3JCaKygvU5a2hi/a5iB0P2avl4VSM0RFbnAKVy06Ij3Pjaut2L9HmLe" +
+            "cHgQHEhb2rykOLpn7VU+Xlff1ANATIGk0k9jpwlCCRT8AKnCgHNPLsBA2RF7SOp6AsDT6ygBJlh0wcBzIm2Tlf05fbsq4/aC4yyX" +
+            "X04fkZT6/iyj2HYauE2yOE+b+h1IYHkm4vP9qdCa6HCPSXrW5b0KDtst842/6+OkfcvHlXHo2qN8xcL4dJIEG4aspCJTQLas/kx2" +
+            "z/uUMsA1n3Y/buWQbqCmJqK4LL7RK4X9p2jIugErsWx0Hbhzlefut8cl8ABMALJ+tguLHPPAUJ4lueAI3jZm/zel0btUZCzJJ7VL" +
+            "kn5l/9Mt4blOvH+kQSGQQXemOR/qnuOf0GZvBeyqdn6/axag67XH/JJULysRJyU3eExRarDzzFhdFPFqSBX/wge2sY0PjlxQRrM9" +
+            "vwGYT7JZVEc+NHt4bVaTLnPqZih4zR0Uv6CPLy64Lo7yFIrM6bV8+2ydDKXhlg==",
+        ),
+        Root(
+            name = "Actalis Time Stamping ECC Root CA 2025",
+            owner = "Actalis",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5BB2824AA8D9068FD87E4713434B9EF543669DC95BA9080E7C9B6682333482FE",
+            b64 = "MIICTjCCAdSgAwIBAgIQeJT/gcwWxDq8JGfuQxOdEzAKBggqhkjOPQQDAzBXMQswCQYDVQQGEwJJVDEXMBUGA1UECgwOQWN0YWxp" +
+            "cyBTLnAuQS4xLzAtBgNVBAMMJkFjdGFsaXMgVGltZSBTdGFtcGluZyBFQ0MgUm9vdCBDQSAyMDI1MCAXDTI1MDIyODA5MzgyOVoY" +
+            "DzIwNTAwMjIyMDkzODI4WjBXMQswCQYDVQQGEwJJVDEXMBUGA1UECgwOQWN0YWxpcyBTLnAuQS4xLzAtBgNVBAMMJkFjdGFsaXMg" +
+            "VGltZSBTdGFtcGluZyBFQ0MgUm9vdCBDQSAyMDI1MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEW7CaTh5Azg0QgOYU5djwpAIts3vH" +
+            "KE68U1oT9XA2SYtbi7ejKp3Oh9uPB3gvwG/68KpoHaBX0axNGa3gfS292c2mSEVMl8aae8tFpIVKubVMG5zrRHfW+HxLyqq5ctb+" +
+            "o2MwYTAPBgNVHRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFBiMKmB7AstKQJsDhnl3bnStUIGuMB0GA1UdDgQWBBQYjCpgewLLSkCb" +
+            "A4Z5d250rVCBrjAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZIzj0EAwMDaAAwZQIwC8UofMEJ2LOgiRKlYwIIW0y7WoA7lPoTJ3LuimYi" +
+            "iFxjCMdE2u+noO0jGS4pCqDFAjEAyxmNfel8FDSgd0bhtKA/XVCjWhX4MOtP/uiXdMPf/6dlTGJy+6VSshjsAj5sNvDH",
+        ),
+        Root(
+            name = "Actalis Time Stamping RSA Root CA 2025",
+            owner = "Actalis",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "C40621D2F61C51CE082A8697653D966441A52AAA6523482ED93F87A07EA8BF30",
+            b64 = "MIIFnTCCA4WgAwIBAgIQSUtOihuqSjJOsQw25sdVkjANBgkqhkiG9w0BAQ0FADBXMQswCQYDVQQGEwJJVDEXMBUGA1UECgwOQWN0" +
+            "YWxpcyBTLnAuQS4xLzAtBgNVBAMMJkFjdGFsaXMgVGltZSBTdGFtcGluZyBSU0EgUm9vdCBDQSAyMDI1MCAXDTI1MDIyODA5MTkz" +
+            "MFoYDzIwNTAwMjIyMDkxOTI5WjBXMQswCQYDVQQGEwJJVDEXMBUGA1UECgwOQWN0YWxpcyBTLnAuQS4xLzAtBgNVBAMMJkFjdGFs" +
+            "aXMgVGltZSBTdGFtcGluZyBSU0EgUm9vdCBDQSAyMDI1MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAvhOmPalFYvie" +
+            "FGe8736ykcLcsnZa17Vbb96946X5RVPF/7vP7O7Ek3C5UeR/QWru70PpAoy17N8HN5vKnrVwAilqd+igp5ka20TaleShe1KF29od" +
+            "HDNXzp2+yccXaiMptvt5IsT42rRRd3b7M7zK2hm+c/f3B+poBZFb0umLe/dGTXRrq4qywIuP7FbpRLg6BEUmkewnC7JeRV9/n5Wf" +
+            "0eGbWRCT0lbA/EVxuoRUILDIvqZ3ZK6VqTxFB3LGupZk2sONZv+mZQiepV6hBY1/pJrw7mqL18kgNWiPXY825Bw6vPMUYk3YRQPA" +
+            "ie1+/Cbkbiv3IQv0I3OlH9FRdv3qgJiiDrIhSnMHrzDf5UKwbyTXAbjxD9F5Aq+RqTKSvgpGUchxtHVrM5oiEYANDgyAIh4G/wep" +
+            "7Ylxg/PpKciunN6wuKOmGrVjMkkldEQzeeBFYe2jRAgFV41smzdCM0Pgdw5WgMMQRBFkFOaZQao4uGZNwLnw42kMFM6oGXPauUn4" +
+            "0jqaLfQm2GyzqbFPP1RCe1okU6+yfaACvMtcOv9sUKGw9dAOe4OgRJeHt2z58W2YpcpsUYBGXObf5sKUNIaVO/iyNW5AkG+hDIeB" +
+            "7oMVM52qnoaXFAL7MRPVtg8vYtsGXGS4sEdHOe0Ejh5VWXzTswjcKiwBA+Eds9AiyLEeifkCAwEAAaNjMGEwDwYDVR0TAQH/BAUw" +
+            "AwEB/zAfBgNVHSMEGDAWgBTo0w5NsXZBIoAZTVBIhPIvNZCdjjAdBgNVHQ4EFgQU6NMOTbF2QSKAGU1QSITyLzWQnY4wDgYDVR0P" +
+            "AQH/BAQDAgEGMA0GCSqGSIb3DQEBDQUAA4ICAQA06wgkaudmjlHKaVW8G2+wTZURs3+CsYs1ADKzubYFPd/YzM2/ltbh781hvRZU" +
+            "4kQ/JwDkWsTYQd5I6cOVwSojTpbUPWeX+eU/7WcEbmei5DgMg8t4ncN819v/GEM7nLlzsZzQa8FevXpEXMeZZDlK9SQBSulDZATO" +
+            "WwAsJGNl2+ZR4c7ApD97rq6YtK06MRlK9TpAD6MH2u8Ay3EuM2Bjef93hqsspbZAtN9Tnt1boiEoNQLnOXm/iJe1bn7n+6/GwHc1" +
+            "Ae0BjZT8GP1Sp0bW2Pc/bTLdkid6sspNnNHGAhQMSjU05LDHmaCy/xInZs2GkMuZWRpzVfZpdTONyp+Iax1rVi09RcGezU6QjAJE" +
+            "7s+TLxrpA0IHTzwY8CZgwkAkGr+iLT51tz9saP/VUszRJRsCMr9RoENlpN1UQ4fKnXhgc90LO62YjIarb9scxerjkkkNWVfki9wP" +
+            "qrQpKgABloZTdYIHyYU5v9v73YcAe0zB5IKh4vbb44uqV6PkyEi9as4wRJg3GS4bUIaUIPzu/pw9ZMjcASOkxgvq55FBLnAl82Hz" +
+            "AMK/gWs2UKxX6sMh5Ulh8NFI4t+/nLq5MhjYGs0QLYl6nvWb7XqSJIyMfoi+fyk+tieLVuzOx/SKi30e2bUydrwjl0eQpIXxkFXN" +
+            "5aEq7yFK5iRAdDTP0hTJ5g==",
+        ),
+        Root(
+            name = "Amazon Root CA 1",
+            owner = "Amazon Trust Services",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "8ECDE6884F3D87B1125BA31AC3FCB13D7016DE7F57CC904FE1CB97C6AE98196E",
+            b64 = "MIIDQTCCAimgAwIBAgITBmyfz5m/jAo54vB4ikPmljZbyjANBgkqhkiG9w0BAQsFADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMG" +
+            "QW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSAxMB4XDTE1MDUyNjAwMDAwMFoXDTM4MDExNzAwMDAwMFowOTELMAkGA1UE" +
+            "BhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC" +
+            "AQoCggEBALJ4gHHKeNXjca9HgFB0fW7Y14h29Jlo91ghYPl0hAEvrAIthtOgQ3pOsqTQNroBvo3bSMgHFzZM9O6II8c+6zf1tRn4" +
+            "SWiw3te5djgdYZ6k/oI2peVKVuRF4fn9tBb6dNqcmzU5L/qwIFAGbHrQgLKm+a/sRxmPUDgH3KKHOVj4utWp+UhnMJbulHheb4mj" +
+            "UcAwhmahRWa6VOujw5H5SNz/0egwLX0tdHA114gk957EWW67c4cX8jJGKLhD+rcdqsq08p8kDi1L93FcXmn/6pUCyziKrlA4b9v7" +
+            "LWIbxcceVOF34GfID5yHI9Y/QCB/IIDEgEw+OyQmjgSubJrIqg0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8E" +
+            "BAMCAYYwHQYDVR0OBBYEFIQYzIU07LwMlJQuCFmcx7IQTgoIMA0GCSqGSIb3DQEBCwUAA4IBAQCY8jdaQZChGsV2USggNiMOruYo" +
+            "u6r4lK5IpDB/G/wkjUu0yKGX9rbxenDIU5PMCCjjmCXPI6T53iHTfIUJrU6adTrCC2qJeHZERxhlbI1Bjjt/msv0tadQ1wUsN+gD" +
+            "S63pYaACbvXy8MWy7Vu33PqUXHeeE6V/Uq2V8viTO96LXFvKWlJbYK8U90vvo/ufQJVtMVT8QtPHRh8jrdkPSHCa2XV4cdFyQzR1" +
+            "bldZwgJcJmApzyMZFo6IQ6XU5MsI+yMRQ+hDKXJioaldXgjUkK642M4UwtBV8ob2xJNDd2ZhwLnoQdeXeGADbkpyrqXRfboQnoZs" +
+            "G4q5WTP468SQvvG5",
+        ),
+        Root(
+            name = "Amazon Root CA 2",
+            owner = "Amazon Trust Services",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1BA5B2AA8C65401A82960118F80BEC4F62304D83CEC4713A19C39C011EA46DB4",
+            b64 = "MIIFQTCCAymgAwIBAgITBmyf0pY1hp8KD+WGePhbJruKNzANBgkqhkiG9w0BAQwFADA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMG" +
+            "QW1hem9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSAyMB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UE" +
+            "BhMCVVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgMjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC" +
+            "AgoCggIBAK2Wny2cSkxKgXlRmeyKy2tgURO8TW0G/LAIjd0ZEGrHJgw12MBvIITplLGbhQPDW9tK6Mj4kHbZW0/jTOgGNk3Mmqw9" +
+            "DJArktQGGWCsN0R5hYGCrVo34A3MnaZMUnbqQ523BNFQ9lXg1dKmSYXpN+nKfq5clU1Imj+uIFptiJXZNLhSGkOQsL9sBbm2eLfq" +
+            "0OQ6PBJTYv9K8nu+NQWpEjTj82R0Yiw9AElaKP4yRLuH3WUnAnE72kr3H9rN9yFVkE8P7K6C4Z9r2UXTu/Bfh+08LDmG2j/e7HJV" +
+            "63mjrdvdfLC6HM783k81ds8P+HgfajZRRidhW+mez/CiVX18JYpvL7TFz4QuK/0NURBs+18bvBt+xa47mAExkv8LV/SasrlX6avv" +
+            "DXbR8O70zoan4G7ptGmh32n2M8ZpLpcTnqWHsFcQgTfJU7O7f/aS0ZzQGPSSbtqDT6ZjmUyl+17vIWR6IF9sZIUVyzfpYgwLKhbc" +
+            "AS4y2j5L9Z469hdAlO+ekQiG+r5jqFoz7Mt0Q5X5bGlSNscpb/xVA1wf+5+9R+vnSUeVC06JIglJ4PVhHvG/LopyboBZ/1c6+XUy" +
+            "o05f7O0oYtlNc/LMgRdg7c3r3NunysV+Ar3yVAhU/bQtCSwXVEqY0VThUWcI0u1ufm8/0i2BWSlmy5A5lREedCf+3euvAgMBAAGj" +
+            "QjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBSwDPBMMPQFWAJI/TPlUq9LhONmUjANBgkqhkiG" +
+            "9w0BAQwFAAOCAgEAqqiAjw54o+Ci1M3m9Zh6O+oAA7CXDpO8Wqj2LIxyh6mx/H9z/WNxeKWHWc8w4Q0QshNabYL1auaAn6AFC2jk" +
+            "R2vHat+2/XcycuUY+gn0oJMsXdKMdYV2ZZAMA3m3MSNjrXiDCYZohMr/+c8mmpJ5581LxedhpxfL86kSk5Nrp+gvU5LEYFiwzAJR" +
+            "GFuFjWJZY7attN6a+yb3ACfAXVU3dJnJUH/jWS5E4ywl7uxMMne0nxrpS10gxdr9HIcWxkPo1LsmmkVwXqkLN1PiRnsn/eBG8om3" +
+            "zEK2yygmbtmlyTrIQRNg91CMFa6ybRoVGld45pIq2WWQgj9sAq+uEjonljYE1x2igGOpm/HlurR8FLBOybEfdF849lHqm/osohHU" +
+            "qS0nGkWxr7JOcQ3AWEbWaQbLU8uz/mtBzUF+fUwPfHJ5elnNXkoOrJupmHN5fLT0zLm4BwyydFy4x2+IoZCn9Kr5v2c69BoVYh63" +
+            "n749sSmvZ6ES8lgQGVMDMBu4Gon2nL2XA46jCfMdiyHxtN/kHNGfZQIG6lzWE7OE76KlXIx3KadowGuuQNKotOrN8I1LOJwZmhso" +
+            "VLiJkO/KdYE+HvJkJMcYr07/R54H9jVlpNMKVv/1F2Rs76giJUmTtt8AF9pYfl3uxRuw0dFfIRDH+fO6AgonB8Xx1sfT4PsJYGw=",
+        ),
+        Root(
+            name = "Amazon Root CA 3",
+            owner = "Amazon Trust Services",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-256",
+            purposes = "網站、電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "18CE6CFE7BF14E60B2E347B8DFE868CB31D02EBB3ADA271569F50343B46DB3A4",
+            b64 = "MIIBtjCCAVugAwIBAgITBmyf1XSXNmY/Owua2eiedgPySjAKBggqhkjOPQQDAjA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1h" +
+            "em9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSAzMB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMC" +
+            "VVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgMzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABCmX" +
+            "p8ZBf8ANm+gBG1bG8lKlui2yEujSLtf6ycXYqm0fc4E7O5hrOXwzpcVOho6AF2hiRVd9RFgdszflZwjrZt6jQjBAMA8GA1UdEwEB" +
+            "/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBSrttvXBp43rDCGB5Fwx5zEGbF4wDAKBggqhkjOPQQDAgNJADBGAiEA" +
+            "4IWSoxe3jfkrBqWTrBqYaGFy+uGh0PsceGCmQ5nFuMQCIQCcAu/xlJyzlvnrxir4tiz+OpAUFteMYyRIHN8wfdVoOw==",
+        ),
+        Root(
+            name = "Amazon Root CA 4",
+            owner = "Amazon Trust Services",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E35D28419ED02025CFA69038CD623962458DA5C695FBDEA3C22B0BFB25897092",
+            b64 = "MIIB8jCCAXigAwIBAgITBmyf18G7EEwpQ+Vxe3ssyBrBDjAKBggqhkjOPQQDAzA5MQswCQYDVQQGEwJVUzEPMA0GA1UEChMGQW1h" +
+            "em9uMRkwFwYDVQQDExBBbWF6b24gUm9vdCBDQSA0MB4XDTE1MDUyNjAwMDAwMFoXDTQwMDUyNjAwMDAwMFowOTELMAkGA1UEBhMC" +
+            "VVMxDzANBgNVBAoTBkFtYXpvbjEZMBcGA1UEAxMQQW1hem9uIFJvb3QgQ0EgNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABNKrijdP" +
+            "o1MN/sGKe0uoe0ZLY7Bi9i0b2whxIdIA6GO9mif78DluXeo9pcmBqqNbIJhFXRbb/egQbeOc4OO9X4Ri83BkM6DLJC9wuoihKqB1" +
+            "+IGuYgbEgds5bimwHvouXKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNPsxzplbszh2naa" +
+            "Vvuc84ZtV+WBMAoGCCqGSM49BAMDA2gAMGUCMDqLIfG9fhGt0O9Yli/W651+kI0rz2ZVwyzjKKlwCkcO8DdZEv8tmZQoTipPNU0z" +
+            "WgIxAOp1AE47xDqUEpHJWEadIRNyp4iciuRMStuW1KyLa2tJElMzrdfkviT8tQp21KW8EA==",
+        ),
+        Root(
+            name = "Starfield Services Root Certificate Authority - G2",
+            owner = "Amazon Trust Services",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "568D6905A2C88708A4B3025190EDCFEDB1974A606A13C6E5290FCB2AE63EDAB5",
+            b64 = "MIID7zCCAtegAwIBAgIBADANBgkqhkiG9w0BAQsFADCBmDELMAkGA1UEBhMCVVMxEDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcT" +
+            "ClNjb3R0c2RhbGUxJTAjBgNVBAoTHFN0YXJmaWVsZCBUZWNobm9sb2dpZXMsIEluYy4xOzA5BgNVBAMTMlN0YXJmaWVsZCBTZXJ2" +
+            "aWNlcyBSb290IENlcnRpZmljYXRlIEF1dGhvcml0eSAtIEcyMB4XDTA5MDkwMTAwMDAwMFoXDTM3MTIzMTIzNTk1OVowgZgxCzAJ" +
+            "BgNVBAYTAlVTMRAwDgYDVQQIEwdBcml6b25hMRMwEQYDVQQHEwpTY290dHNkYWxlMSUwIwYDVQQKExxTdGFyZmllbGQgVGVjaG5v" +
+            "bG9naWVzLCBJbmMuMTswOQYDVQQDEzJTdGFyZmllbGQgU2VydmljZXMgUm9vdCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgLSBHMjCC" +
+            "ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANUMOsQq+U7i9b4Zl1+OiFOxHz/Lz58gE20pOsgPfTz3a3Y4Y9k2YKibXlwA" +
+            "gLIvWX/2h/klQ4bnaRtSmpDhcePYLQ1Ob/bISdm28xpWriu2dBTrz/sm4xq6HZYuajtYlIlHVv8loJNwU4PahHQUw2eeBGg6345A" +
+            "Wh1KTs9DkTvnVtYAcMtS7nt9rjrnvDH5RfbCYM8TWQIrgMw0R9+53pBlbQLPLJGmpufehRhJfGZOozptqbXuNC66DQO4M99H67Fr" +
+            "jSXZm86B0UVGMpZwh94CDklDhbZsc7tk6mFBrMnUVN+HL8cisibMn1lUaJ/8viovxFUcdUBgF4UCVTmLfwUCAwEAAaNCMEAwDwYD" +
+            "VR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFJxfAN+qAdcwKziIorhtSpzyEZGDMA0GCSqGSIb3DQEBCwUA" +
+            "A4IBAQBLNqaEd2ndOxmfZyMIbw5hyf2E3F/YNoHN2BtBLZ9g3ccaaNnRbobhiCPPE95Dz+I0swSdHynVv/heyNXBve6SbzJ08pGC" +
+            "L72CQnqtKrcgfU28elUSwhXqvfdqlS5sdJ/PHLTyxQGjhdByPq1zqwubdQxtRbeOlKyWN7Wg0I8VRw7j6IPdj/3vQQF3zCepYoUz" +
+            "8jcI73HPdwbeyBkdiEDPfUYd/x7H4c7/I9vG+o1VTqkC50cRRj70/b17KSa7qWFiNyi2LSr2EIZkyXCn0q23KXB56jzaYyWf/Wi3" +
+            "MOxw+3WKt21gZ7IeyLnp2KhvAotnDU0mV3HaIPzBSlCNsSi6",
+        ),
+        Root(
+            name = "Certum CA",
+            owner = "Asseco Data Systems S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D8E0FEBC1DB2E38D00940F37D27D41344D993E734B99D5656D9778D4D8143624",
+            b64 = "MIIDDDCCAfSgAwIBAgIDAQAgMA0GCSqGSIb3DQEBBQUAMD4xCzAJBgNVBAYTAlBMMRswGQYDVQQKExJVbml6ZXRvIFNwLiB6IG8u" +
+            "by4xEjAQBgNVBAMTCUNlcnR1bSBDQTAeFw0wMjA2MTExMDQ2MzlaFw0yNzA2MTExMDQ2MzlaMD4xCzAJBgNVBAYTAlBMMRswGQYD" +
+            "VQQKExJVbml6ZXRvIFNwLiB6IG8uby4xEjAQBgNVBAMTCUNlcnR1bSBDQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB" +
+            "AM6xwS7TT3zNJc4YPk/EjG+AanPIW1H4m9LcuwBcsaD8dQPugfCI7iNS6eYVM42sLQnFdvkrOYCJ5JdLkKWoePhzQ3ukYbDYWMzh" +
+            "bGZ+nPMJXlVjhNWo7/OxLjBos8Q82KxujZlakE403Daaj4GIULdtlkIJ89eVgw1BS7Bqa/j8D35in2fE7SZfECYPCE/wpFcozo+4" +
+            "7UX2bu4lXapuOb7kky/ZR6By6/qmW6/KUz/iDsaWVhFu9+lmqSbYf5VT7QqFiLpPKaVCjF62/IUgAKpoC6EahQGcxEZjgoi2IrHu" +
+            "/qpGWX7PNSzVttpd90gzFFS269lvzs2I1qsb2pY7HVkCAwEAAaMTMBEwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQUFAAOC" +
+            "AQEAuI3O7+cUus/usESSbLQ5PqKEbq24IXfS1HeCh+YgQYHu4vgRt2PRFze+GXYkHAQaTOs9qmdvLdTN/mUxcMUbpgIKumB7bVjC" +
+            "mkn+YzILa+M6wKyrO7Do0wlRjBCDxjTgxSvgGrZgFCdsMneMvLJymM/NzD+5yCRCFNZX/OYmQ6kd5YCQzgNUKD73P9P4Te1qCjqT" +
+            "E5s7FCMTY5w/0YcneeVMUeMBrYVdGjux1XMQpNPyvG5k9VpWkKjHDkx0Dy5xO/fIR/RpbxXyEV6DHpx8Uq79AtoSqFlnGNu8cN2b" +
+            "sWntgM6JQEhqDjXKKWYVIZQs6GAqm4VKQPNriiTsBhYscw==",
+        ),
+        Root(
+            name = "Certum EC-384 CA",
+            owner = "Asseco Data Systems S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "6B328085625318AA50D173C98D8BDA09D57E27413D114CF787A0F5D06C030CF6",
+            b64 = "MIICZTCCAeugAwIBAgIQeI8nXIESUiClBNAt3bpz9DAKBggqhkjOPQQDAzB0MQswCQYDVQQGEwJQTDEhMB8GA1UEChMYQXNzZWNv" +
+            "IERhdGEgU3lzdGVtcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxGTAXBgNVBAMTEENlcnR1" +
+            "bSBFQy0zODQgQ0EwHhcNMTgwMzI2MDcyNDU0WhcNNDMwMzI2MDcyNDU0WjB0MQswCQYDVQQGEwJQTDEhMB8GA1UEChMYQXNzZWNv" +
+            "IERhdGEgU3lzdGVtcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxGTAXBgNVBAMTEENlcnR1" +
+            "bSBFQy0zODQgQ0EwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAATEKI6rGFtqvm5kN2PkzeyrOvfMobgOgknXhimfoZTy42B4mIF4Bk3y" +
+            "7JoOV2CDn7TmFy8as10CW4kjPMIRBSqniBMY81CE1700LCeJVf/OTOffph8oxPBUw7l8t1Ot68KjQjBAMA8GA1UdEwEB/wQFMAMB" +
+            "Af8wHQYDVR0OBBYEFI0GZnQkdjrzife81r1HfS+8EF9LMA4GA1UdDwEB/wQEAwIBBjAKBggqhkjOPQQDAwNoADBlAjADVS2m5hjE" +
+            "fO/JUG7BJw+ch69u1RsIGL2SKcHvlJF40jocVYli5RsJHrpka/F2tNQCMQC0QoSZ/6vnnvuRlydd3LBbMHHOXjgaatkl5+r3YZJW" +
+            "+OraNsKHZZYuciUvf9/DE8k=",
+        ),
+        Root(
+            name = "Certum Trusted Network CA",
+            owner = "Asseco Data Systems S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5C58468D55F58E497E743982D2B50010B6D165374ACF83A7D4A32DB768C4408E",
+            b64 = "MIIDuzCCAqOgAwIBAgIDBETAMA0GCSqGSIb3DQEBBQUAMH4xCzAJBgNVBAYTAlBMMSIwIAYDVQQKExlVbml6ZXRvIFRlY2hub2xv" +
+            "Z2llcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxIjAgBgNVBAMTGUNlcnR1bSBUcnVzdGVk" +
+            "IE5ldHdvcmsgQ0EwHhcNMDgxMDIyMTIwNzM3WhcNMjkxMjMxMTIwNzM3WjB+MQswCQYDVQQGEwJQTDEiMCAGA1UEChMZVW5pemV0" +
+            "byBUZWNobm9sb2dpZXMgUy5BLjEnMCUGA1UECxMeQ2VydHVtIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MSIwIAYDVQQDExlDZXJ0" +
+            "dW0gVHJ1c3RlZCBOZXR3b3JrIENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4/t9o3K6wvDJFIf1awFO4W5AB7pt" +
+            "J11/91sts1rHUV+rpDKmYYe2bg+G0jACl/jXaVehGDldamR5xgFZrDwxSjh80gTSSyjoIF87B6LMTXPb865Px1bVWqeWifrzq2jU" +
+            "I4ZZJ88JJ7ysbnKDHDBy3+Ci6dLhdHUZvSqeexVUBBvXQzmtVSjF4hq79MDkrjhJM8x2hZ85RdKknvISjFH4fOQtf/WsX+sWn7Et" +
+            "0brMkUJ3TCXJkDhv2/DM+44el1k+1WBO5gUo7Ul5E0u6SNsv+XLTOcr+H9g0cvW0QM8xAcPs3hEtF10fuFDRXhmnad4HMyjKUJX5" +
+            "p1TLVIZQRan5SQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBQIds3LB/8k9sXN7buQvOKEN0Z19zAOBgNVHQ8B" +
+            "Af8EBAMCAQYwDQYJKoZIhvcNAQEFBQADggEBAKaorSLOAT2mo/9i0Eidi15ysHhE49wcrwn9I0j6vSrEuVUEtRCjjSfeC4Jj0O7e" +
+            "DDd5QVsisrCaQVymcODU0HfLI9MA4GxWL+FpDQ3Zqr8hgVDZBqWo/5U30Kr+4rP1mS1FhIrlQgnXdAIv94nYmem8J9RHjboNRhx3" +
+            "zxSkHLmkMcScKHQDNP8zGSal6Q10tz6XxnboJ5ajZt3hrvJBW8qYVoNzcOSGGtIxQbovvi0TWnZvTuhOgQ4/WwMioBK+ZlgRSssD" +
+            "xLQqKi2WF+A5VLxI03YnnZotBqbJ7DnSq9ufmgsnAjUpsUCV5/nonFWIGUbWtzT1fs45mtk48VH3Tyw=",
+        ),
+        Root(
+            name = "Certum Trusted Root CA",
+            owner = "Asseco Data Systems S.A.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "FE7696573855773E37A95E7AD4D9CC96C30157C15D31765BA9B15704E1AE78FD",
+            b64 = "MIIFwDCCA6igAwIBAgIQHr9ZULjJgDdMBvfrVU+17TANBgkqhkiG9w0BAQ0FADB6MQswCQYDVQQGEwJQTDEhMB8GA1UEChMYQXNz" +
+            "ZWNvIERhdGEgU3lzdGVtcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxHzAdBgNVBAMTFkNl" +
+            "cnR1bSBUcnVzdGVkIFJvb3QgQ0EwHhcNMTgwMzE2MTIxMDEzWhcNNDMwMzE2MTIxMDEzWjB6MQswCQYDVQQGEwJQTDEhMB8GA1UE" +
+            "ChMYQXNzZWNvIERhdGEgU3lzdGVtcyBTLkEuMScwJQYDVQQLEx5DZXJ0dW0gQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxHzAdBgNV" +
+            "BAMTFkNlcnR1bSBUcnVzdGVkIFJvb3QgQ0EwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDRLY67tzbqbTeRn06TpwXk" +
+            "KQMlzhyC93yZn0EGze2jusDbCSzBfN8pfktlL5On1AFrAygYo9idBcEq2EXxkd7fO9CAAozPOA/qp1x4EaTByIVcJdPTsuclzxFU" +
+            "l6s1wB52HO8AU5853BSlLCIls3Jy/I2z5T4IHhQqNwuIPMqw9MjCoa68wb4pZ1Xi/K1ZXP69VyywkI3C7Te2fJmItdUDmj0VDT06" +
+            "qKhF8JVOJVkdzZhpu9PMMsmN74H+rX2Ju7pgE8pllWeg8xn2A1bUatMn4qGtg/BKEiJ3HAVz4hlxQsDsdUaakFjgao4rpUYwBI4Z" +
+            "shfjvqm6f1bxJAPXsiEodg42MEx51UGamqi4NboMOvJEGyCI98Ul1z3G4z5D3Yf+xOr1Uz5MZf87Sst4WmsXXw3Hw09Omiqi7VdN" +
+            "IuJGmj8PkTQkfVXjjJU30xrwCSss0smNtA0Aq2cpKNgB9RkEth2+dv5yXMSFytKAQd8FqKPVhJBPC/PgP5sZ0jeJP/J7UhyM9uH3" +
+            "PAeXjA6iWYEMspA90+NZRu0PqafegGtaqge2Gcu8V/OXIXoMsSt0Puvap2ctTMSYnjYJdmZm/Bo/6khUHL4wvYBQv3y1zgD2DGHZ" +
+            "5yQD4OMBgQ692IU0iL2yNqh7XAjlRICMb/gv1SHKHRzQ+8S1h9E6Tsd2tTVItQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MB0G" +
+            "A1UdDgQWBBSM+xx1vALTn04uSNn5YFSqxLNP+jAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQENBQADggIBAEii1QALLtA/vBzV" +
+            "tVRJHlpr9OTy4EA34MwUe7nJ+jW1dReTagVphZzNTxl4WxmB82M+w85bj/UvXgF2Ez8sALnNllI5SW0ETsXpD4YN4fqzX4IS8TrO" +
+            "ZgYkNCvozMrnadyHncI013nR03e4qllY/p0m+jiGPp2Kh2RX5Rc64vmNueMzeMGQ2Ljdt4NR5MTMI9UGfOZR0800McD2RrsLrfw9" +
+            "EAUqO0qRJe6M1ISHgCq8CYyqOhNf6DR5UMEQGfnTKB7U0VEwKbOukGfWHwpjscWpxkIxYxeU72nLL/qMFH3EQxiJ2fAyQOaA4kZf" +
+            "5ePBAFmo+eggvIksDkc0C+pXwlM2/KfUrzHN/gLldfq5Jwn58/U7yn2fqSLLiMmq0Uc9NneoWWRrJ8/vJ8HjJLWG965+Mk2weWjR" +
+            "OeiQWMODvA8s1pfrzgzhIMfatz7DP78v3DSk+yshzWePS/Tj6tQ/50+6uaWTRRxmHyH6ZF5v4HaUMst19W7l9o/HuKTMqJZ9ZPsk" +
+            "WkoDbGs4xugDQ5r3V7mzKWmTOPQD8rv7gmsHINFSH5pkAnuYZttcTVoP0ISVoDwUQwbKytu4QTbaakRnh6+v40URFWkIsr4WOZck" +
+            "bxJF0WddCajJFdr60qZfE2Efv4WstK2tBZQIgx51F9NxO5NQI1mg7TyRVJ12AMXDuDjb",
+        ),
+        Root(
+            name = "Atos TrustedRoot 2011",
+            owner = "Atos",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "F356BEA244B7A91EB35D53CA9AD7864ACE018E2D35D5F8F96DDF68A6F41AA474",
+            b64 = "MIIDdzCCAl+gAwIBAgIIXDPLYixfszIwDQYJKoZIhvcNAQELBQAwPDEeMBwGA1UEAwwVQXRvcyBUcnVzdGVkUm9vdCAyMDExMQ0w" +
+            "CwYDVQQKDARBdG9zMQswCQYDVQQGEwJERTAeFw0xMTA3MDcxNDU4MzBaFw0zMDEyMzEyMzU5NTlaMDwxHjAcBgNVBAMMFUF0b3Mg" +
+            "VHJ1c3RlZFJvb3QgMjAxMTENMAsGA1UECgwEQXRvczELMAkGA1UEBhMCREUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB" +
+            "AQCVhTuXbyo7LjvPpvMpNb7PGKw+qtn4TaA+Gke5vJrf8v7MPkfoepbCJI419KkM/IL9bcFyYie96mvr54rMVD6QUM+A1JX76LWC" +
+            "1BTFtqlVJVfbsVD2sGBkWXppzwO3bw2+yj5vdHLqqjAqc2K+SZFhyBH+DgMq92og3AIVDV4VavzjgsG1xZ1kCWyjWZgHJ8cblith" +
+            "dHFsQ/H3NYkQ4J7sVaE3IqKHBAUsR320HLliKWYoyrfhk/WklAOZuXCFteZI6o1Q/NnezG8HDt0Lcp2AMBYHlT8oDv3FdU9T1nSa" +
+            "tCQujgKRz3bFmx5VdJx4IbHwLfELn8LVlhgf8FQieowHAgMBAAGjfTB7MB0GA1UdDgQWBBSnpQaxLKYJYO7Rl+lwrrw7GWzbITAP" +
+            "BgNVHRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFKelBrEspglg7tGX6XCuvDsZbNshMBgGA1UdIAQRMA8wDQYLKwYBBAGwLQMEAQEw" +
+            "DgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBCwUAA4IBAQAmdzTblEiGKkGdLD4GkGDEjKwLVLgfuXvTBznk+j57sj1O7Z8jvZfz" +
+            "a1zv7v1Apt+hk6EKhqzvINB5Ab149xnYJDE0BAGmuhWawyfc2E8PzBhj/5kPDpFrdRbhIfzYJsdHt6bPWHJxfrrhTZVHO8mvbaG0" +
+            "weyJ9rQPOLXiZNwlz6bb65pcmaHFCN795trV1lpFDMS3wrUU77QR/w4VtfX128a961qn8FYiqTxlVMYVqL2Gns2Dlmh6cYGJ4Qvh" +
+            "6hEbaAjMaZ7snkGeRDImeuKHCnE96+RapNLbxc3G3mB/ufNPRJLvKrcYPqcZ2Qt9sTdBQrC6YB3y/gkRsPCHe6ed",
+        ),
+        Root(
+            name = "Autoridad de Certificacion Firmaprofesional CIF A62634068",
+            owner = "Autoridad de Certificacion Firmaprofesional",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "04048028BF1F2864D48F9AD4D83294366A828856553F3B14303F90147F5D40EF",
+            b64 = "MIIGFDCCA/ygAwIBAgIIU+w77vuySF8wDQYJKoZIhvcNAQEFBQAwUTELMAkGA1UEBhMCRVMxQjBABgNVBAMMOUF1dG9yaWRhZCBk" +
+            "ZSBDZXJ0aWZpY2FjaW9uIEZpcm1hcHJvZmVzaW9uYWwgQ0lGIEE2MjYzNDA2ODAeFw0wOTA1MjAwODM4MTVaFw0zMDEyMzEwODM4" +
+            "MTVaMFExCzAJBgNVBAYTAkVTMUIwQAYDVQQDDDlBdXRvcmlkYWQgZGUgQ2VydGlmaWNhY2lvbiBGaXJtYXByb2Zlc2lvbmFsIENJ" +
+            "RiBBNjI2MzQwNjgwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDKlmuO6vj78aI14H9M2uDDUtd9thDIAl6zQyrET2qy" +
+            "yhxdKJp4ERppWVevtSBC5IsP5t9bpgOSL/UR5GLXMnE42QQMcas9UX4PB99jBVzpv5RvwSmCwLTaUbDBPLutN0pcyvFLNg4kq7/D" +
+            "hHf9qFD0sefGL9ItWY16Ck6WaVICqjaY7Pz6FIMMNx/Jkjd/14Et5cS54D40/mf0PmbR0/RAz15iNA9wBj4gGFrO93IbJWyTdBST" +
+            "o3OxDqqHECNZXyAFGUftaI6SEspd/NYrspI8IM/hX68gvqB2f3bl7BqGYTM+53u0P6APjqK5am+5hyZvQWyIplD9amML9ZMWGxmP" +
+            "su2bm8mQ9QEM3xk9Dz44I8kvjwzRAv4bVdZO0I08r0+k8/6vKtMFnXkIoctXMbScyJCyZ/QYFpM6/EfY0XiWMR+6KwxfXZmtY4la" +
+            "JCB22N/9q06mIqqdXuYnin1oKaPnirjaEbsXLZmdEyRG98Xi2J+Of8ePdG1asuhy9azuJBCtLxTa/y2aRnFHvkLfuwHb9H/TKI8x" +
+            "WVvTyQKmtFLKbpf7Q8UIJm+K9Lv9nyiqDdVF8xM6HdjAeI9BZzwelGSuewvF6NkBiDkal4ZkQdU7hwxu+g/GvUgUvzlN1J5Bto+W" +
+            "HWOWk9mVBngxaJ43BjuAiUVhOSPHG0SjFeUc+JIwuwIDAQABo4HvMIHsMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQD" +
+            "AgEGMB0GA1UdDgQWBBRlzeurNR4APn7VdMActHNHDhpkLzCBpgYDVR0gBIGeMIGbMIGYBgRVHSAAMIGPMC8GCCsGAQUFBwIBFiNo" +
+            "dHRwOi8vd3d3LmZpcm1hcHJvZmVzaW9uYWwuY29tL2NwczBcBggrBgEFBQcCAjBQHk4AUABhAHMAZQBvACAAZABlACAAbABhACAA" +
+            "QgBvAG4AYQBuAG8AdgBhACAANAA3ACAAQgBhAHIAYwBlAGwAbwBuAGEAIAAwADgAMAAxADcwDQYJKoZIhvcNAQEFBQADggIBABd9" +
+            "oPm03cXF661LJLWhAqvdpYhKsg9VSytXjDvlMd3+xDLx51tkljYyGOylMnfX40S2wBEqgLk9am58m9Ot/MPWo+ZkKXzR4Tgegiv/" +
+            "J2Wv+xYVxC5xhOW1//qkR71kMrv2JYSiJ0L1ILDCExARzRAVukKQKtJE4ZYm6zFIEv0q2skGz3QeqUvVhyj5eTSSPi5E6PaPT481" +
+            "PyWzOdxjKpBrIF/EUhJOlywqrJ2X3kjyo2bbwtKDlaZmp54lD+kLM5FlClrD2VQS3a/DTg4fJl4N3LON7NWBcN7STyQF82xO9UxJ" +
+            "Zo3R/9ILJUFI/lGExkKvgATP0H5kSeTy36LssUzAKh3ntLFlosS88Zj0qnAHY7S42jtM+kAiMFsRpvAFDsYCA0irhpuF3dvd6qJ2" +
+            "gHN99ZwExEWN57kci57q13XRcrHedUTnQn3iV2t93Jm8PYMo6oCTjcVMZcFwgbg4/EMxsvYDNEeyrPsiBsse3RdHHF9mudMaotoR" +
+            "saS8I8nkvof/uZS2+F0gStRf571oe2XyFR7SOqkt6dhrJKyXWERHrVkY8SFlcN7ONGCoQPHzPKTDKCOM/iczQ0CgFzzr6juwcqaj" +
+            "uUpLXhZI9LK8yIySxZ2frHI2vDSANGupi5LAuBft7HZT9SQBjLMi6Et8Vcad+qMUu2WFbm5PEn4KPJ2V",
+        ),
+        Root(
+            name = "Buypass Class 2 Root CA",
+            owner = "Buypass",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "9A114025197C5BB95D94E63D55CD43790847B646B23CDF11ADA4A00EFF15FB48",
+            b64 = "MIIFWTCCA0GgAwIBAgIBAjANBgkqhkiG9w0BAQsFADBOMQswCQYDVQQGEwJOTzEdMBsGA1UECgwUQnV5cGFzcyBBUy05ODMxNjMz" +
+            "MjcxIDAeBgNVBAMMF0J1eXBhc3MgQ2xhc3MgMiBSb290IENBMB4XDTEwMTAyNjA4MzgwM1oXDTQwMTAyNjA4MzgwM1owTjELMAkG" +
+            "A1UEBhMCTk8xHTAbBgNVBAoMFEJ1eXBhc3MgQVMtOTgzMTYzMzI3MSAwHgYDVQQDDBdCdXlwYXNzIENsYXNzIDIgUm9vdCBDQTCC" +
+            "AiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBANfHXvfBB9R3+0Mh9PT1aeTuMgHbo4Yf5FkNuud1g1Lr6hxhFUi7HQfKjK6w" +
+            "3Jad6sNgkoaCKHOcVgb/S2TwDCo3SbXlzwx87vFKu3MwZfPVL4O2fuPn9Z6rYPnT8Z2SdIrkHJasW4DptfQxh6NR/Md+oW+OU3fU" +
+            "l8FVM5I+GC911K2GScuVr1QGbNgGE41b/+EmGVnAJLqBcXmQRFBoJJRfuLMR8SlBYaNByyM21cHxMlAQTn/0hpPshNOOvEu/XAFO" +
+            "Bz3cFIqUCqTqc/sLUegTBxj6DvEr0VQVfTzh97QZQmdiXnfgolXsttlpF9U6r0TtSsWe5HonfOV116rLJeffawrbD02TTqigzXsu" +
+            "8lkBarcNuAeBfos4GzjmCleZPe4h6KP1DBbdi+w0jpwqHAAVF41og9JwnxgIzRFo1clrUs3ERo/ctfPYV3Me6ZQ5BL/T3jjetFPs" +
+            "aRyifsSP5BtwrfKi+fv3FmRmaZ9JUaLiFRhnBkp/1Wy1TbMz4GHrXb7pmA8y1x1LPC5aAVKRCfLf6o3YBkBjqhHk/sM3nhRSP/Ti" +
+            "zPJhk9H9Z2vXUq6/aKtAQ6BXNVN48FP4YUIHZMbXb5tMOA1jrGKvNouicwoN9SG9dKpN6nIDSdvHXx1iY8f93ZHsM+71bbRuMGje" +
+            "yNYmsHVee7QHIJihdjK4TWxPAgMBAAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFMmAd+BikoL1RpzzuvdMw964o605" +
+            "MA4GA1UdDwEB/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAgEAU18h9bqwOlI5LJKwbADJ784g7wbylp7ppHR/ehb8t/W2+xUbP6um" +
+            "wHJdELFx7rxP462sA20ucS6vxOOto70MEae0/0qyexAQH6dXQbLArvQsWdZHEIjzIVEpMMpghq9Gqx3tOluwlN5E40EIosHsHdb9" +
+            "T7bWR9AUC8rmyrV7d35BH16Dx7aMOZawP5aBQW9gkOLo+fsicdl9sz1Gv7SEr5AcD48Saq/v7h56rgJKihcrdv6sVIkkLE8/trKn" +
+            "ToyokZf7KcZ7XC25y2a2t6hbElGFtQl+Ynhw/qlqYLYdDnkM/crqJIByw5c/8nerQyIKx+u2DISCLIBrQYoIwOula9+ZEsuK1V6A" +
+            "DJHgJgg2SMX6OBE1/yWDLfJ6v9r9jv6ly0UsH8SIU653DtmadsWOLB2jutXsMq7Aqqz30XpN69QH4kj3Io6wpJ9qzo6ysmD0oyLQ" +
+            "I+uUWnpp3Q+/QFesa1lQ2aOZ4W7+jQF5JyMV3pKdewlNWudLSDBaGOYKbeaP4NK75t98biGCwWg5TbSYWGZizEqQXsP6JwSxeRV0" +
+            "mcy+rSDeJmAc61ZRpqPq5KM/p/9h3PFaTWwyI0PurKju7koSCTxdccK+efrCh2gdC/1cacwG0Jp9VJkqyTkaGa9LKkPzY11aWOIv" +
+            "4x3kqdbQCtCev9eBCfHJxyYNrJgWVqA=",
+        ),
+        Root(
+            name = "Buypass Class 3 Root CA",
+            owner = "Buypass",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "EDF7EBBCA27A2A384D387B7D4010C666E2EDB4843E4C29B4AE1D5B9332E6B24D",
+            b64 = "MIIFWTCCA0GgAwIBAgIBAjANBgkqhkiG9w0BAQsFADBOMQswCQYDVQQGEwJOTzEdMBsGA1UECgwUQnV5cGFzcyBBUy05ODMxNjMz" +
+            "MjcxIDAeBgNVBAMMF0J1eXBhc3MgQ2xhc3MgMyBSb290IENBMB4XDTEwMTAyNjA4Mjg1OFoXDTQwMTAyNjA4Mjg1OFowTjELMAkG" +
+            "A1UEBhMCTk8xHTAbBgNVBAoMFEJ1eXBhc3MgQVMtOTgzMTYzMzI3MSAwHgYDVQQDDBdCdXlwYXNzIENsYXNzIDMgUm9vdCBDQTCC" +
+            "AiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAKXaCpUWUOOV8l6ddjEGMnqb8RB2uACatVI2zSRHsJ8YZLya9vrVediQYkwi" +
+            "L944PdbgqOkcLNt4EemOaFEVcsfzM4fkoF0LXOBXByow9c3EN3coTRiR5r/VUv1xLXA+58bEiuPwKAv0dpihi4dVsjoT/Lc+JzeO" +
+            "IuOoTyrvYLs9tznDDgFHmV0ST9tD+leh7fmdvhFHJlsTmKtdFoqwNxxXnUX/iJY2v7vKB3tvh2PX0DJq1l1sDPGzbjniazEuOQAn" +
+            "FN44wOwZZoYS6J1yFhNkUsepNxz9gjDthBgd9K5c/3ATAOux9TN6S9ZV+AWNS2mw9bMoNlwUxFFzTWsL8TQH2xc519woe2v1n/Mu" +
+            "wU8XKhDzzMro6/1rqy6any2CbgTUUgGTLT2G/H783+9CHaZr77kgxve9oKeV/afmiSTYzIw0bOIjL9kSGiG5VZFvC5F5GQytQIgL" +
+            "cOJ60g7YaEi7ghM5EFjp2CoHxhLbWNvSO1UQRwUVZ2J+GGOmRj8JDlQyXr8NYnon74Do29lLBlo3WiXQCBJ31G8JUJc9yB3D34xF" +
+            "MFbG02SrZvPAXpacw8Tvw3xrizp5f7NJzz3iiZ+gMEuFuZyUJHmPfWupRWgPK9Dx2hzLabjKSWJtyNBjYt1gD1iqj6G8BaVmos8b" +
+            "drKEZLFMOVLAMLrwjEsCsLa3AgMBAAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFEe4zf/lb+74suwvTg75JbCOPGvD" +
+            "MA4GA1UdDwEB/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAgEAACAjQTUEkMJAYmDv4jVM1z+s4jSQuKFvdvoWFqRINyzpkMLyPPgK" +
+            "n9iB5btb2iUspKdVcSQy9sgL8rxq+JOssgfCX5/bzMiKqr5qb+FJEMwx14C7u8jYog5kV+qi9cKpMRXSIGrs/CIBKM+GuIAeqcwR" +
+            "pTzyFrNHnfzSgCHEy9BHcEGhyoMZCCxt8l13nIoUE9Q2HJLw5QY33KbmkJs4j1xrG0aGQ0JfPgEHU1RdZX33inOhmlRaHylDFCfC" +
+            "hQ+1iHsaO5S3HWCntZznKWlXWpuTekMwGwPXYshApqr8ZORK15FTAaggiG6cX0S5y2CBNOxv033aSF/rtJC8LakcC6wc1aJoIIAE" +
+            "1vyxjy+7SjENSoYc6+I2KSb12tjE8nVhz36udmNKekBlk4f4HoCMhuWG1o8O/FMsYOgWYRqiPkN7zTlgVGr18okmAWiDSKIz6MkE" +
+            "kbIRNBE+6tBDGR8Dk5AM/1E9V/RBbuHLoL7ryWPNbczk+DaqaJ3tvV2XcEQNtg413OEMXbugUZTLfhbrES+jkkXITHHZvMmZUldG" +
+            "L1DPvTVp9D0VzgalLA8+9oG6lLvDu79leNKGef9JOxqDDPDeeOzI8k1MGt6CKfjBWtrt7uYnXuhF0J0cUahoq0Tj0Itq4/g7u9xN" +
+            "12TyUb7mqqta6THuBrxzvxNiCp/HuZc=",
+        ),
+        Root(
+            name = "Certigna",
+            owner = "Certigna",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E3B6A2DB2ED7CE48842F7AC53241C7B71D54144BFB40C11F3F1D0B42F5EEA12D",
+            b64 = "MIIDqDCCApCgAwIBAgIJAP7c4wEPyUj/MA0GCSqGSIb3DQEBBQUAMDQxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMx" +
+            "ETAPBgNVBAMMCENlcnRpZ25hMB4XDTA3MDYyOTE1MTMwNVoXDTI3MDYyOTE1MTMwNVowNDELMAkGA1UEBhMCRlIxEjAQBgNVBAoM" +
+            "CURoaW15b3RpczERMA8GA1UEAwwIQ2VydGlnbmEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDIaPHJ1tazNHUmgh7s" +
+            "tL7qXOEm7RFHYeGifBZ4QCHkYJ5ayGPhxLGWkv8YbWkj4Sti993iNi+RB7lIzw7sebYs5zRLcAglozyHGxnygQcPOJAZ0xH+hrTy" +
+            "0V4eHpbNgGzOOzGTtvKg0KmVEn2lmsxryIRWijOp5yIVUxbwzBfsV1/pogqYCd7jX5xv3EjjhQsVWqa6n6xI4wmy9/Qy3l40vhx4" +
+            "XUJbzg4ij02Q130yGLMLLGq/jj8UEYkgDncUtT2UCIf3JR7VsmAA7G8qKCVuKj4YYxclPz5EIBb2JsglrgVKtOdjLPOMFlN+XPsR" +
+            "GgjBRmKfIrjxwo1p3Po6WAbfAgMBAAGjgbwwgbkwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUGu3+QTmQtCRZvgHyUtVF9lo5" +
+            "3BEwZAYDVR0jBF0wW4AUGu3+QTmQtCRZvgHyUtVF9lo53BGhOKQ2MDQxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMx" +
+            "ETAPBgNVBAMMCENlcnRpZ25hggkA/tzjAQ/JSP8wDgYDVR0PAQH/BAQDAgEGMBEGCWCGSAGG+EIBAQQEAwIABzANBgkqhkiG9w0B" +
+            "AQUFAAOCAQEAhQMeknH2Qq/ho2Ge6/PAD/Kl1NqV5ta+aDY9fm4fTIrv0Q8hbV6lUmPOEvjvKtpv6zf+EwLHyzs+ImvaYS5/1HI9" +
+            "3TDhHkxAGYwP15zRgzB7mFncfca5DClMoTOi62c6ZYTTluLtdkVwj7Ur3vkj1kluPBS1xp81HlDQwY9qcEQCYsuuHWhBp6pX6FOq" +
+            "B9IG9tUUBguRA3UsbHK1YZWaDYu5Def131TN3ubY1gkIl2PlwS6wt0QmwCbAr1UwnjvVNioZBPRcHv/PLLf/0P2HQBHVESO7SMAh" +
+            "qaQoLf0V+LBOK/QwWyH8EZE0vkHve52Xdf+XlcCWWC/qu0bXu+TZLg==",
+        ),
+        Root(
+            name = "Certigna Root CA",
+            owner = "Certigna",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D48D3D23EEDB50A459E55197601C27774B9D7B18C94D5A059511A10250B93168",
+            b64 = "MIIGWzCCBEOgAwIBAgIRAMrpG4nxVQMNo+ZBbcTjpuEwDQYJKoZIhvcNAQELBQAwWjELMAkGA1UEBhMCRlIxEjAQBgNVBAoMCURo" +
+            "aW15b3RpczEcMBoGA1UECwwTMDAwMiA0ODE0NjMwODEwMDAzNjEZMBcGA1UEAwwQQ2VydGlnbmEgUm9vdCBDQTAeFw0xMzEwMDEw" +
+            "ODMyMjdaFw0zMzEwMDEwODMyMjdaMFoxCzAJBgNVBAYTAkZSMRIwEAYDVQQKDAlEaGlteW90aXMxHDAaBgNVBAsMEzAwMDIgNDgx" +
+            "NDYzMDgxMDAwMzYxGTAXBgNVBAMMEENlcnRpZ25hIFJvb3QgQ0EwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDNGDll" +
+            "Glmx6mQWDoyUJJV8g9PFOSbcDO8WV43X2KyjQn+Cyu3NW9sOty3tRQgXstmzy9YXUnIo245Onoq2C/mehJpNdt4iKVzSs9IGPjA5" +
+            "qXSjklYcoW9MCiBtnyN6tMbaLOQdLNyzKNAT8kxOAkmhVECe5uUFoC2EyP+YbNDrihqECB63aCPuI9Vwzm1RaRDuoXrC0SIxwoKF" +
+            "0vJVdlB8JXrJhFwLrN1CTivngqIkicuQstDuI7pmTLtipPlTWmR7fJj6o0ieD5Wupxj0auwuA0Wv8HT4Ks16XdG+RCYyKfHx9WzM" +
+            "fgIhC59vpD++nVPiz32pLHxYGpfhPTc3GGYo0kDFUYqMwy3OU4gkWGQwFsWq4NYKpkDfePb1BHxpE4S80dGnBs8B92jAqFe7OmGt" +
+            "BIyT46388NtEbVncSVmurJqZNjBBe3YzIoejwpKGbvlw7q6Hh5UbxHq9MfPU0uWZ/75I7HX1eBYdpnDBfzwboZL7z8g81sWTCo/1" +
+            "VTp2lc5ZmIoJlXcymoO6LAQ6l73UL77XbJuiyn1tJslV1c/DeVIICZkHJC1kJWumIWmbat10TWuXekG9qxf5kBdIjzb5LdXF2+6q" +
+            "hUVB+s06RbFo5jZMm5BX7CO5hwjCxAnxl4YqKE3idMDaxIzb3+KhF1nOJFl0Mdp//TBt2dzhauH8XwIDAQABo4IBGjCCARYwDwYD" +
+            "VR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFBiHVuBud+4kNTxOc5of1uHieX4rMB8GA1UdIwQYMBaAFBiH" +
+            "VuBud+4kNTxOc5of1uHieX4rMEQGA1UdIAQ9MDswOQYEVR0gADAxMC8GCCsGAQUFBwIBFiNodHRwczovL3d3d3cuY2VydGlnbmEu" +
+            "ZnIvYXV0b3JpdGVzLzBtBgNVHR8EZjBkMC+gLaArhilodHRwOi8vY3JsLmNlcnRpZ25hLmZyL2NlcnRpZ25hcm9vdGNhLmNybDAx" +
+            "oC+gLYYraHR0cDovL2NybC5kaGlteW90aXMuY29tL2NlcnRpZ25hcm9vdGNhLmNybDANBgkqhkiG9w0BAQsFAAOCAgEAlLieT/Dj" +
+            "lQgi581oQfccVdV8AOItOoldaDgvUSILSo3L6btdPrtcPbEo/uRTVRPPoZAbAh1fZkYJMyjhDSSXcNMQH+pkV5a7XdrnxIxPTGRG" +
+            "HVyH41neQtGbqH6mid2PHMkwgu07nM3A6RngatgCdTer9zQoKJHyBApPNeNgJgH60BGM+RFq7q89w1DTj18zeTyGqHNFkIwgtnJz" +
+            "FyO+B2XleJINugHA64wcZr+shncBlA2c5uk5jR+mUYyZDDl34bSb+hxnV29qao6pK0xXeXpXIs/NX2NGjVxZOob4Mkdio2cNGJHc" +
+            "+6Zr9UhhcyNZjgKnvETq9Emd8VRY+WCv2hikLyhF3HqgiIZd8zvn/yk1gPxkQ5Tm4xxvvq0OKmOZK8l+hfZx6AYDlf7ej0gcWtSS" +
+            "6Cvu5zHbugRqh5jnxV/vfaci9wHYTfmJ0A6aBVmknpjZbyvKcL5kwlWj9Omvw5Ip3IgWJJk8jSaYtlu3zM63Nwf9JtmYhST/WSMD" +
+            "mu2dnajkXjjO11INb9I/bbEFa0nOipFGc/T2L/Coc3cOZayhjWZSaX5LaAzHHjcng6WMxwLkFM1JAbBzs/3GkDpv0mztO+7skb6i" +
+            "Q12LAEpmJURw3kAP+HwV96LOPNdeE4yBFxgX0b3xdxA61GU5wSesVywlVP+i2k+KYTlerj1KjL0=",
+        ),
+        Root(
+            name = "ePKI Root Certification Authority",
+            owner = "Chunghwa Telecom",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "C0A6F4DC63A24BFDCF54EF2A6A082A0A72DE35803E2FF5FF527AE5D87206DFD5",
+            b64 = "MIIFsDCCA5igAwIBAgIQFci9ZUdcr7iXAF7kBtK8nTANBgkqhkiG9w0BAQUFADBeMQswCQYDVQQGEwJUVzEjMCEGA1UECgwaQ2h1" +
+            "bmdod2EgVGVsZWNvbSBDby4sIEx0ZC4xKjAoBgNVBAsMIWVQS0kgUm9vdCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw0wNDEy" +
+            "MjAwMjMxMjdaFw0zNDEyMjAwMjMxMjdaMF4xCzAJBgNVBAYTAlRXMSMwIQYDVQQKDBpDaHVuZ2h3YSBUZWxlY29tIENvLiwgTHRk" +
+            "LjEqMCgGA1UECwwhZVBLSSBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKC" +
+            "AgEA4SUP7o3biDN1Z82tH306Tm2d0y8U82N0ywEhajfqhFAHSyZbCUNsIZ5qyNUD9WBpj8zwIuQf5/dqIjG3LBXy4P4AakP/h2XG" +
+            "tRrBp0xtInAhijHyl3SJCRImHJ7K2RKilTza6We/CKBk49ZCt0Xvl/T29de1ShUCWH2YWEtgvM3XDZoTM1PRYfl61dd4s5oz9wCG" +
+            "zh1NlDivqOx4UXCKXBCDUSH3ET00hl7lSM2XgYI1TBnsZfZrxQWh7kcT1rMhJ5QQCtkkO7q+RBNGMD+XPNjX12ruOzjjK9SXDrkb" +
+            "5wdJfzcq+Xd4z1TtW0ado4AOkUPB1ltfFLqfpo0kR0BZv3I4sjZsN/+Z0V0OWQqraffAsgRFelQArr5T9rXn4fg8ozHSqf4hUmTF" +
+            "pmfwdQcGlBSBVcYn5AGPF8Fqcde+S/uUWH1+ETOxQvdibBjWzwloPn9s9h6PYq2lY9sJpx8iQkEeb5mKPtf5P0B6ebClAZLSnT0I" +
+            "FaUQAS2zMnaolQ2zepr7BxB4EW/hj8e6DyUadCrlHJhBmd8hh+iVBmoKs2pHdmX2Os+PYhcZewoozRrSgx4hxyy/vv9haLdnG7t4" +
+            "TY3OZ+XkwY63I2binZB1NJipNiuKmpS5nezMirH4JYlcWrYvjB9teSSnUmjDhDXiZo1jDiVN1Rmy5nk3pyKdVDECAwEAAaNqMGgw" +
+            "HQYDVR0OBBYEFB4M97Zn8uGSJglFwFU5Lnc/QkqiMAwGA1UdEwQFMAMBAf8wOQYEZyoHAAQxMC8wLQIBADAJBgUrDgMCGgUAMAcG" +
+            "BWcqAwAABBRFsMLHClZ87lt4DJX5GFPBphzYEDANBgkqhkiG9w0BAQUFAAOCAgEACbODU1kBPpVJufGBuvl2ICO1J2B01GqZNF5s" +
+            "AFPZn/KmsSQHRGoqxqWOeBLoR9lYGxMqXnmbnwoqZ6YlPwZpVnPDimZI+ymBV3QGypzqKOg4ZyYr8dW1P2WT+DZdjo2NQCCHGerv" +
+            "J8A9tDkPJXtoUHRVnAxZfVo9QZQlUgjgRywVMRnVvwdVxrsStZf0X4OFunHB2WyBEXYKCrC/gpf36j36+uwtqSiUO1bd0lEursC9" +
+            "CBWMd1I0ltabrNMdjmEPNXubrjlpC2JgQCA2j6/7Nu4tCEoduL+bXPjqpRugc6bY+G7gMwRfaKonh+3ZwZCc7b3jajWvY9+rGNm6" +
+            "5ulK6lCKD2GTHuItGeIwlDWSXQ62B68ZgI9HkFFLLk3dheLSClIKF5r8GrBQAuUBo2M3IUxExJtRmREOc5wGj1QupyheRDmHVi03" +
+            "vYVElOEMSyycw5KFNGHLD7ibSkNS/jQ6fbjpKdx2qcgw+BRxgMYeNkh0IkFch4LoGHGLQYlE535YW6i4jRPpp2zDR+2zGp1iro2C" +
+            "6pSe3VkQw63d4k3jMdXH7OjysP6SHhYKGvzZ8/gntsm+HbRsZJB/9OTEW9c3rkIO3aQab3yIVMUWbuF6aC74Or8NpDyJO3inTmOD" +
+            "BCEIZ43ygknQW/2xzQ+DhNQ+IIX3Sj0rnP0qCglN6oH4EZw=",
+        ),
+        Root(
+            name = "ePKI Root Certification Authority - G2",
+            owner = "Chunghwa Telecom",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1E51942B84FD467BF77D1C89DA241C04254DC8F3EF4C22451FE7A89978BDCD4F",
+            b64 = "MIIFkzCCA3ugAwIBAgIRANaWLsEKFZMSr49jvNREyVswDQYJKoZIhvcNAQELBQAwYzELMAkGA1UEBhMCVFcxIzAhBgNVBAoMGkNo" +
+            "dW5naHdhIFRlbGVjb20gQ28uLCBMdGQuMS8wLQYDVQQDDCZlUEtJIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgLSBHMjAe" +
+            "Fw0xNTExMTcwODIzNDJaFw0zNzEyMzExNTU5NTlaMGMxCzAJBgNVBAYTAlRXMSMwIQYDVQQKDBpDaHVuZ2h3YSBUZWxlY29tIENv" +
+            "LiwgTHRkLjEvMC0GA1UEAwwmZVBLSSBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IC0gRzIwggIiMA0GCSqGSIb3DQEBAQUA" +
+            "A4ICDwAwggIKAoICAQCkWR+gL9++4Pvp3LWJ/lqXA8k6d6eOXK/y4xg59ardD0bSaA9XnKdjYNNYzjXCp/aIwk9/Gyjp0KcAxBdN" +
+            "beIPxQ4mIyCr9zoookwKC8yOzuYAmlpADdRQGpvRDZyU+dvuXNDxigfNmitALEmkXWJfp2vf7lYIUPNCGGwxsF7lnHOSvA7SDH3F" +
+            "OFe8u1jbJhkC7eNDhIpOVmvbraEx2cwiZ5Z4/3edzGTFMiBq704w1SQl/Yh5r3Ea/tVLGxWIvBhwqr2tOApmMEbliYXVdiSpqbPm" +
+            "WWAPtKlTwjqdRRrWruN3XsRiNjMvMMS/lfEtOKV16NFqky5Fh0tKot+/WCeaymIZql7UsYBJlt0r7F+Pm+Cdl4j1hAOjr7Olcy1B" +
+            "uuUHt29rcff3yVqvaZmzL8hPQutsa3FneN8KrE/XSoUARhrVzbif6pWdD3zRxgWF5gjeiBeB9tW1buqhHNdhquNZQomcWX6xfGQ0" +
+            "3WEjKjm1EKv8hqlTGsXrauKATlmRwDiJ/rNd1vuR6dewfdl4CMz1K8wr4aHWlHPB/lH0jH0KtZqKufXa4Mmz2I+qgoONaVMt/QAE" +
+            "GEqg2lTheYyJ63/1gueguXdNrvm6AjuIdut8XbNaE9t8KRZrmdEd5Eghog1eAYjovvGYTT7HFlccX+EIbxxMWENW94BljHEOogRn" +
+            "TwIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRyW7qqcjjuJZAktZQi+gmIyosK+zAOBgNVHQ8BAf8EBAMCAQYw" +
+            "DQYJKoZIhvcNAQELBQADggIBAAaj8bZzVcZnZiHlnVvWlC5KImDyVAGQof21v8CVvxhfLPZrNQ78McjtRA6Sl9yv3VbPtR+6cpww" +
+            "yJuxkcB2d9QPGpUa6U0UiKHPawKmautkRU1kjd7862zyUwmhhVEV0E+eYvoRuc7IJA5yZIh1NCMwKj+8PDnMzN0LNru9BoKPEgHF" +
+            "cQXRJKGZbMrk96rtitenCq2v8OCAu6GyP1qHZHCGM3sNHtcAhoNDl3X1O8FI/bYOQ6gCbrg+f49O4l20fZ4wNC+o8esnh2gNWgpN" +
+            "AdvJFFiV8ppNFqpz2/QliBc4t69ZCQm0Hy0Pq/W4J1XuRTAzuO0bjryIbK/4Wipr4KyxBSShCfyjD/OwLXuWuraUBxVFjincWA6p" +
+            "Bdg7OqB7zYrHZoKXz9Yz4Gf8pttALwXlxYt6KnrwsDabDBj2N+lBof2xKPlva73rH0xjcXtQ3Sny/+73x0Vf6DYK6GxbIsPowOcm" +
+            "3OOolYDluToT2wBLGv2uM0d+eJTjsV0rtVa1QoufgcX8k0wQtboKvH434/pUbfUExXCzqQTSUdeFzX1vQ49ZaOUxVhFx+WQpCRP+" +
+            "0B+8iwA4stDKNFZ2EDlWc2bD0UnZvldPPxZ9ani3qIK4W86uhYoKQgwD0RfEGPfYV4jGgrgHuT79pOku3G+6kJLuZbBQNNMH2gGX" +
+            "D7znc4J7",
+        ),
+        Root(
+            name = "ePKI Root Certification Authority - G4",
+            owner = "Chunghwa Telecom",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "19A2FA09332C6D8EAC1393D5F30371DD8B4DD687B0E1E50A6B48AE762CABA2B5",
+            b64 = "MIIFkzCCA3ugAwIBAgIRAPZw+VmI9FIFjjHhaIY++nowDQYJKoZIhvcNAQELBQAwYzELMAkGA1UEBhMCVFcxIzAhBgNVBAoMGkNo" +
+            "dW5naHdhIFRlbGVjb20gQ28uLCBMdGQuMS8wLQYDVQQDDCZlUEtJIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgLSBHNDAe" +
+            "Fw0yMjExMDMwMzQzMTRaFw00NzExMDMxNTU5NTlaMGMxCzAJBgNVBAYTAlRXMSMwIQYDVQQKDBpDaHVuZ2h3YSBUZWxlY29tIENv" +
+            "LiwgTHRkLjEvMC0GA1UEAwwmZVBLSSBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IC0gRzQwggIiMA0GCSqGSIb3DQEBAQUA" +
+            "A4ICDwAwggIKAoICAQC+6rvkEY1CtqIA4KNcNzeta2TDeCz46DTWdEh/JPozqkf6VlTlS994ce3jGXJQeboea4tAmvNa/9OUidhf" +
+            "JJ9JwbIuiCKdq7ANTuyYZaS0qAw3jT9cnmbuZfCwlpwtvFzqQnMjDW7Q9WWS3rP2pZjPoo7k0T9qsLbjdWKTn3SZd75x7OhhVQ9w" +
+            "cvgeX79pGQ/KzRg1Gxmiuo38yLsEqQGhNejQhfE/FePtjqbmFx/SvDEWYi+BXJUC/KYM/VfZiuMRvsoQuNuP3SNY67H8ontqCzga" +
+            "gQCgM16geYHsNQg3sWl3C6pKMMOUxeC9lMsF/auHNTRNI9CRneAdjICoe+Ue7mnS7RSr9a+BaW7WywY6pxAq9bJqvUM6Z7sSVpje" +
+            "eGHmxGn6UCUFdsC734CxTIctDJSQD4z/FTYmfBAe/QitHqGyrqVvXgtEcdBgyj983usjimugpQS2Wt9K5fVc2Kgiydwuw6l4rt+m" +
+            "DcRlr6rohFhNy8e74ipgOaby0xUxx5ce/5BiLKYEiCbTz4oeT+q0vudcahmuibWi39QwhHDzvLsU6quVHWzcvRnab6eVCkT2MjkF" +
+            "cMbmaIxQpx1WWyUBmR8gfQFTXMTsYlu6tK3SDcwklJcg0MB/IPv/yXqoFAsH5Lar2rBzZ4jE1qa92EZo496Jt0tfzYrb9eImYfkR" +
+            "sQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBSNzwp8byGdtlOqRml82j91ZFSgmDAOBgNVHQ8BAf8EBAMCAYYw" +
+            "DQYJKoZIhvcNAQELBQADggIBAFyhwJkz+xQyLikIZWBqMVBDS5UvIrL34rqPmfwII5ZJUQHc0zgXgKt+2lL0JhqXXTvPuSkvv8Uv" +
+            "mEOymBnGH5vPIs/hq8LI53zZZj07KqRQN8wBZ/QsAhKGpo5GKhwwkSPyLZKcEJ4VwJMBkd1du47utkUn8QZk/0O0TEt/FU4comJU" +
+            "pZu8+ObzbDRV1CvWs/5hPX4SQRYNaNSwVpadl85t2rqD5gCmdmu3Jkoc8jnZAue5aLiblf0KsUOKMBDH8r+LKIAdAKY53t1RG++9" +
+            "v9nJ1rPEPkl8k0kvyWYDwT0ZE1ptK0dCtKpwwmmtT12PjZUEOBX9tCjBob0K16cmqYn46IbL938Y7EBigVSPvP9u3CvBXlySb3mB" +
+            "E5KcUwakkoXgaMseZOJ4fKgaxFWwglJ3htLjMvFtoR87IZUELPKfu3SoUrXai1bujou0nrgG3B0/NjrcPHAmAK+GrY/nYyCWxnfm" +
+            "xVxCigAvVTcv70fTSxcXbAnMmZja26b/OzJ7Irt4Iw0ktpDJOaDhH+20hbOwz4qulcGQqU3nbiFYjkhxBE3vYi3hkdOMG4fSJZP2" +
+            "9CmjjLEg1BHz4PzxZ7F++iAbKdOwSalNVNmqduMnYFkKE1M3LjVxiJ5RwyY+yw0SA2BnkQyMAdxv+8ALpRv5xI+OAegoZPS/BHLZ" +
+            "3NH0iv/K",
+        ),
+        Root(
+            name = "ComSign Global Root CA",
+            owner = "ComSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2605875AFCC176B2D66DD66A995D7F8D5EBB86CE120D0E7E9E7C6EF294A27D4C",
+            b64 = "MIIGATCCA+mgAwIBAgIRAI9hcRW6eVgXjH0ROqzW264wDQYJKoZIhvcNAQELBQAwRTEfMB0GA1UEAxMWQ29tU2lnbiBHbG9iYWwg" +
+            "Um9vdCBDQTEVMBMGA1UEChMMQ29tU2lnbiBMdGQuMQswCQYDVQQGEwJJTDAeFw0xMTA3MTgxMDI0NTRaFw0zNjA3MTYxMDI0NTVa" +
+            "MEUxHzAdBgNVBAMTFkNvbVNpZ24gR2xvYmFsIFJvb3QgQ0ExFTATBgNVBAoTDENvbVNpZ24gTHRkLjELMAkGA1UEBhMCSUwwggIi" +
+            "MA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCyKClzKh3rm6n1nvigmV/VU1D4hSwYW2ro3VqpzpPo0Ph33LguqjXd5juDwN4m" +
+            "pxTpD99d7Xu5X6KGTlMVtfN+bTbA4t3x7DU0Zqn0BE5XuOgs3GLH41Vmr5wox1bShVpM+IsjcN4E/hMnDtt/Bkb5s33xCG+ohz5d" +
+            "lq0gA9qfr/g4O9lkHZXTCeYrmVzd/il4x79CqNvGkdL3um+OKYl8rg1dPtD8UsytMaDgBAopKR+Wigc16QJzCbvcinlETlrzP/Ny" +
+            "76BWPnAQgaYBULax/Q5thVU+N3sEOKp6uviTdD+XO6i96gARU4H0xxPFI75PK/YdHrHjfjQevXl4J37FJfPMSHAbgPBhHC+qn/01" +
+            "4DOx46fEGXcdw2BFeIIIwbj2GH70VyJWmuk/xLMCHHpJ/nIF8w25BQtkPpkwESL6esaUb1CyB4Vgjyf16/0nRiCAKAyC/DY/Yh+r" +
+            "DWtXK8c6QkXD2XamrVJo43DVNFqGZzbf5bsUXqiVDOz71AxqqK+p4ek9374xPNMJ2rB5MLPAPycwI0bUuLHhLy6nAIFHLhutTNI+" +
+            "6Y/soYpi5JSaEjcY7pxI8WIkUAzr2r+6UoT0vAdyOt7nt1y8844a7szo/aKfwoziHl2O1w6ZXUC30K+ptXVaOiW79pBDcbLZ9Zdb" +
+            "ONhS7Ea3iH4HJNwktrBJLQIDAQABo4HrMIHoMA8GA1UdEwEB/wQFMAMBAf8wgYQGA1UdHwR9MHswPKA6oDiGNmh0dHA6Ly9mZWRp" +
+            "ci5jb21zaWduLmNvLmlsL2NybC9jb21zaWduZ2xvYmFscm9vdGNhLmNybDA7oDmgN4Y1aHR0cDovL2NybDEuY29tc2lnbi5jby5p" +
+            "bC9jcmwvY29tc2lnbmdsb2JhbHJvb3RjYS5jcmwwDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBQCRZPYDUhirGm6rgZbPvuqJpFQ" +
+            "sTAfBgNVHSMEGDAWgBQCRZPYDUhirGm6rgZbPvuqJpFQsTANBgkqhkiG9w0BAQsFAAOCAgEAk1V5V9701xsfy4mfX+tP9Ln5e9h3" +
+            "N+QMwUfjkr+k3e8iXOqADjTpUHeBkEee5tJq09ZLp/43F5tZ2eHdYq2ZEX7iWHCnOQet6Yw9SU1TahsrGDA6JJD9sdPFnNZooGsU" +
+            "1520e0zNB0dNWwxrWAmu4RsBxvEpWCJbvzQLdOfyX85RWwli81OiVMBc5XvJ1mxsIIqli45oRynKtsWP7E+b0ISJ1n+XFLdQo/Nm" +
+            "WA/5sDfT0F5YPzWdZymudMbXitimxC+n4oQE4mbQ4Zm718Iwg3pP9gMMcSc7Qc1JkJHPH9O7gVubkKHuSYj9T3Ym6c6egL1pb4pz" +
+            "/uT7cT26Fiopc/jdqbe2EAfoJZkvhlp/zdzOoXTWjiKNA5zmgWnZn943FuE9KMRyKtyi/ezJXCh8ypnqLIKxeFfZl69CBwJsPXUT" +
+            "uqj8Fic0s3aZmmr7C4jXycP+Q8V+akMEIoHAxcd960b4wVWKqOcI/kZSQ0cYqWOY1LNjznRt9lweWEfwDBL3FhrHOmD4++1N3Fkk" +
+            "M4W+Q1b2WOL24clDMj+i2n9Iw0lc1llHMSMvA5D0vpsXZpOgcCVahfXczQKi9wQ3oZyonJeWx4/rXdMtagABVBYGFuMEUEQtybI+" +
+            "eIbnp5peO2WAAblQI4eTy/jMVowe5tfMEXovV3sz9ULgmGb3DscLP1I=",
+        ),
+        Root(
+            name = "ACA ROOT",
+            owner = "Consejo General de la Abogacía Española",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "97F654859CBDE586FD90311E82EC7902C238CBA0D6E529564C9C88F44895EC50",
+            b64 = "MIIFyDCCA7CgAwIBAgIQR0ORJD/Oww1XSChr7oBdqzANBgkqhkiG9w0BAQsFADBdMQswCQYDVQQGEwJFUzESMBAGA1UEBRMJUTI4" +
+            "NjMwMDZJMScwJQYDVQQKDB5DT05TRUpPIEdFTkVSQUwgREUgTEEgQUJPR0FDSUExETAPBgNVBAMMCEFDQSBST09UMB4XDTE2MDUy" +
+            "NzEwNTg1MVoXDTQxMDUyNzEwNTg1MVowXTELMAkGA1UEBhMCRVMxEjAQBgNVBAUTCVEyODYzMDA2STEnMCUGA1UECgweQ09OU0VK" +
+            "TyBHRU5FUkFMIERFIExBIEFCT0dBQ0lBMREwDwYDVQQDDAhBQ0EgUk9PVDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "ALkrXvU+uokenfXRE8+7o1666d85cmSYUodppbbe4b+URb7F+KRTZxVQ3FJPKnYsLo0gaozmXbnZaL6RG7ppAxitGE42oqxGqyD4" +
+            "A2qqrXnV3x3B7kVvIXT5TbGxPZA7PDKA7f8Vz1HK16SHLqrlDrbRelrHufhRu9mU3T7Ghk4K/juJ8vhuJM6RA1gFEkrdUKtBes7t" +
+            "qR8RUx6lE9th8PWqgN50eR2k4ynW++D8l9qiuKsiPmWwIcTlxRBEh7Lj4CqCLn3m9LikEyXzd2BfY1OuLrGdimt2ezpxvZKBNrCc" +
+            "gvH3xYkoXf+8QgazCGpPYc2kLZDTObh3/8jHo3m7A7mRAwE0Etgwi7aMAsrkSOw4KjJMbcp2KFqGCrrUII6voF8gLWKciPnxFW1b" +
+            "vbEDUMA/NteuP1HRyuNYZkTmo5t3LjH62X8ixAVM63QbXGN6pgKTfkMOdhQPTW8ylYiAklKXFPU8/JQH02wpBZVGD+Rx4X/4bRQS" +
+            "gpK181M+mRGXR3ZKCXLu1MOWCaza//FLS7bXJc8eTJcmCzS7tpTxLGRxX4nyFTs3pwLkDU9IiTOjjGh4MVFnChnbtOJ0Lz1683cA" +
+            "n3ESY/9zKmRpVOysOq7a8lhjNH74PF7AQjql27Oo1FrBTli4abasgmLb0fsaQyEi/B31nE9OO+WN/3ZaI15bAgMBAAGjgYMwgYAw" +
+            "DwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFBpV5BUx4jGbEdSIcXoAPXAoBb/NMD4GA1UdIAQ3MDUw" +
+            "MwYEVR0gADArMCkGCCsGAQUFBwIBFh1odHRwOi8vd3d3LmFjYWJvZ2FjaWEub3JnL2RvYzANBgkqhkiG9w0BAQsFAAOCAgEAezDK" +
+            "VYbTr+4a17iVmOz5O92QE6OckkWgkolpoXGRvHGFh6AtMAnkwlM99Km3aC1Nmc2kz547kJ2aCikNKkLBPVtrQILFixOxQWePvqR3" +
+            "4MB25PO2KVYs73FPwmTx2rQLytA5X1OygwH7sn3Zg3R6NdDBXY+b917nUt/uqjeTq9k9fR7xvRzb6HXduFtM4xaj9nWIDo88wwts" +
+            "22BZ5AWrKEb3Zmkld97KSjPYWF57j5rPUo49bf3Rsr0+eVeGHkQcB030whCqeMvzURcNdj2NbmhJ6e8HSdG4Fsl5ncyuCwVHev2Y" +
+            "rDGhkFqHYvn4q2Ja4CF20GhC6By+coHwxmd9fnQ81VVvj6VolhHxytMwF71GtjGvcOmkhDdXugk8LtkLE1YHPpXEtXAvk8Kur4Fd" +
+            "RhQw+67F85r3QXqx3ksW2UV1RwJ8FB7VsTugLEG1m0t7o4PwuczOHpS3Xi4jBpWRHDhHHO3EeA6kD/wbfNbya9CKW+qW8zHUXmrE" +
+            "lLgwn5XhB4m4iNInhaRhdOWoRDF6IHXo+Njrs0+q/1M/lu3qu/xRQKYr7CSh+/lEjSPnppcAD8ukar9QoMpxomyub9/Zg4Jm3FNd" +
+            "r/pU94P/qz+Jlae0bfMPCg1IMy+BKcdLBcTGV3SEw5g2/++FMqtinBPRIoexvpjbdJqP6sLWk3lFIMM=",
+        ),
+        Root(
+            name = "EC-ACC",
+            owner = "Consorci Administració Oberta de Catalunya (Consorci AOC, CATCert)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "88497F01602F3154246AE28C4D5AEF10F1D87EBB76626F4AE0B7F95BA7968799",
+            b64 = "MIIFVjCCBD6gAwIBAgIQ7is969Qh3hSoYqwE893EATANBgkqhkiG9w0BAQUFADCB8zELMAkGA1UEBhMCRVMxOzA5BgNVBAoTMkFn" +
+            "ZW5jaWEgQ2F0YWxhbmEgZGUgQ2VydGlmaWNhY2lvIChOSUYgUS0wODAxMTc2LUkpMSgwJgYDVQQLEx9TZXJ2ZWlzIFB1YmxpY3Mg" +
+            "ZGUgQ2VydGlmaWNhY2lvMTUwMwYDVQQLEyxWZWdldSBodHRwczovL3d3dy5jYXRjZXJ0Lm5ldC92ZXJhcnJlbCAoYykwMzE1MDMG" +
+            "A1UECxMsSmVyYXJxdWlhIEVudGl0YXRzIGRlIENlcnRpZmljYWNpbyBDYXRhbGFuZXMxDzANBgNVBAMTBkVDLUFDQzAeFw0wMzAx" +
+            "MDcyMzAwMDBaFw0zMTAxMDcyMjU5NTlaMIHzMQswCQYDVQQGEwJFUzE7MDkGA1UEChMyQWdlbmNpYSBDYXRhbGFuYSBkZSBDZXJ0" +
+            "aWZpY2FjaW8gKE5JRiBRLTA4MDExNzYtSSkxKDAmBgNVBAsTH1NlcnZlaXMgUHVibGljcyBkZSBDZXJ0aWZpY2FjaW8xNTAzBgNV" +
+            "BAsTLFZlZ2V1IGh0dHBzOi8vd3d3LmNhdGNlcnQubmV0L3ZlcmFycmVsIChjKTAzMTUwMwYDVQQLEyxKZXJhcnF1aWEgRW50aXRh" +
+            "dHMgZGUgQ2VydGlmaWNhY2lvIENhdGFsYW5lczEPMA0GA1UEAxMGRUMtQUNDMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC" +
+            "AQEAsyLHT+KXQpWIR4NA9h0X84NzJB5R85iKw5K4/0CQBXCHYMkAqbWUZRkiFRfCQ2xmRJoNBD45b6VLeqpjt4pEndljkYRm4CgP" +
+            "ukLjbo73FCeTae6RDqNfDrHrZqJyTxIThmV6PttPB/SnCWDaOkKZx7J/sxaVHMf5NLWUhdWZXqBIoH7nF2W4onW4HvPlQn2v7fOK" +
+            "SGRdghST2MDk/7NQcvJ29rNdQlB50JQ+awwAvthrDk4q7D7SzIKiGGUzE3eeml0aE9jD2z3Il3rucO2n5nzbcc8tlGLfbdb1OL4/" +
+            "pYUKGbio2Al1QnDE6u/LDsg0qBIimAy4E5S2S+zw0JDnJwIDAQABo4HjMIHgMB0GA1UdEQQWMBSBEmVjX2FjY0BjYXRjZXJ0Lm5l" +
+            "dDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUoMOLRKo3pUW/l4Ba0fF4opvpXY0wfwYDVR0gBHgw" +
+            "djB0BgsrBgEEAfV4AQMBCjBlMCwGCCsGAQUFBwIBFiBodHRwczovL3d3dy5jYXRjZXJ0Lm5ldC92ZXJhcnJlbDA1BggrBgEFBQcC" +
+            "AjApGidWZWdldSBodHRwczovL3d3dy5jYXRjZXJ0Lm5ldC92ZXJhcnJlbCAwDQYJKoZIhvcNAQEFBQADggEBAKBIW4IB9k1IuDlV" +
+            "NZyAelOZ1Vr/sXE7zDkJlF7W2u++AVtd0x7Y/X1PzaBB4DSTv8vihpw3kpBWHNzrKQXlxJ7HNd+KDM3FIUPpqojlNcAZQmNaAl6k" +
+            "SBg6hW/cnbw/nZzBh7h6YQjpdwt/cKt63dmXLGQehb+8dJahw3oS7AwaboMMPOhyRp/7SNVel+axofjk70YllJyJ22k4vuxcDlbH" +
+            "ZVHlUIiIv0LVKz3l+bqeLrPK9HOSAgu+TGbrIP65y7WZf+a2E/rKS03Z7lNGBjvGTq2TWoF+bCpLagVFjPIhpDGQh2xlnJ2lYJU6" +
+            "Un/10asIbvPuW/mIPX64b24D5EI=",
+        ),
+        Root(
+            name = "D-TRUST Root Class 3 CA 2 2009",
+            owner = "D-Trust",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "49E7A442ACF0EA6287050054B52564B650E4F49E42E348D6AA38E039E957B1C1",
+            b64 = "MIIEMzCCAxugAwIBAgIDCYPzMA0GCSqGSIb3DQEBCwUAME0xCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxELVRydXN0IEdtYkgxJzAl" +
+            "BgNVBAMMHkQtVFJVU1QgUm9vdCBDbGFzcyAzIENBIDIgMjAwOTAeFw0wOTExMDUwODM1NThaFw0yOTExMDUwODM1NThaME0xCzAJ" +
+            "BgNVBAYTAkRFMRUwEwYDVQQKDAxELVRydXN0IEdtYkgxJzAlBgNVBAMMHkQtVFJVU1QgUm9vdCBDbGFzcyAzIENBIDIgMjAwOTCC" +
+            "ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANOySs96R+91myP6Oi/WUEWJNTrGa9v+2wBoqOADER03UAifTUpolDWzU9GU" +
+            "Y6cgVq/eUXjsKj3zSEhQPgrfRlWLJ23DEE0NkVJD2IfgXU42tSHKXzlABF9bfsyjxiupQB7ZNoTWSPOSHjRGICTBpFGOShrvUD9p" +
+            "XRl/RcPHAY9RySPocq60vFYJfxLLHLGvKZAKyVXMD9O0Gu1HNVpK7ZxzBCHQqr0ME7UAyiZsxGsMlFqVlNpQmvH/pStmMaTJOKDf" +
+            "HR+4CS7zp+hnUquVH+BGPtikw8paxTGA6Eian5Rp/hnd2HN8gcqW3o7tszIFZYQ05ub9VxC1X3a/L7AQDcUCAwEAAaOCARowggEW" +
+            "MA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFP3aFMSfMN4hvR5COfyrYyNJ4PGEMA4GA1UdDwEB/wQEAwIBBjCB0wYDVR0fBIHL" +
+            "MIHIMIGAoH6gfIZ6bGRhcDovL2RpcmVjdG9yeS5kLXRydXN0Lm5ldC9DTj1ELVRSVVNUJTIwUm9vdCUyMENsYXNzJTIwMyUyMENB" +
+            "JTIwMiUyMDIwMDksTz1ELVRydXN0JTIwR21iSCxDPURFP2NlcnRpZmljYXRlcmV2b2NhdGlvbmxpc3QwQ6BBoD+GPWh0dHA6Ly93" +
+            "d3cuZC10cnVzdC5uZXQvY3JsL2QtdHJ1c3Rfcm9vdF9jbGFzc18zX2NhXzJfMjAwOS5jcmwwDQYJKoZIhvcNAQELBQADggEBAH+X" +
+            "2zDI36ScfSF6gHDOFBJpiBSVYEQBrLLpME+bUMJm2H6NMLVwMeniacfzcNsgFYbQDfC+rAF1hM5+n02/t2A7nPPKHeJeaNijnZfl" +
+            "QGDSNiH+0LS4F9p0o3/U37CYAqxva2ssJSRyoWXuJVrl5jLn8t+rSfrzkGkj2wTZ51xY/GXUl77M/C4KzCUqNQT4YJEVdT1B/yMf" +
+            "Gchs64JTBKbkTCJNjYy6zltz7GRUUG3RnFX7acM2w4y8PIWmawomDeCTmGCufsYkl4phX5GOZpIJhzbNi5stPvZR1FDUWSi9g/LM" +
+            "KHtThm3YJohw1+qRzT65ysCQblrGXnRl11z+o+I=",
+        ),
+        Root(
+            name = "D-TRUST Root Class 3 CA 2 EV 2009",
+            owner = "D-Trust",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "EEC5496B988CE98625B934092EEC2908BED0B0F316C2D4730C84EAF1F3D34881",
+            b64 = "MIIEQzCCAyugAwIBAgIDCYP0MA0GCSqGSIb3DQEBCwUAMFAxCzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxELVRydXN0IEdtYkgxKjAo" +
+            "BgNVBAMMIUQtVFJVU1QgUm9vdCBDbGFzcyAzIENBIDIgRVYgMjAwOTAeFw0wOTExMDUwODUwNDZaFw0yOTExMDUwODUwNDZaMFAx" +
+            "CzAJBgNVBAYTAkRFMRUwEwYDVQQKDAxELVRydXN0IEdtYkgxKjAoBgNVBAMMIUQtVFJVU1QgUm9vdCBDbGFzcyAzIENBIDIgRVYg" +
+            "MjAwOTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJnxhDRwui+3MKCOvXwEz75ivJn9gpfSegpnljgJ9hBOlSJzmY3a" +
+            "FS3nBfwZcyK3jpgAvDw9rKFs+9Z5JUut8Mxk2og+KbgPCdM03TP1YtHhzRnp7hhPTFiu4h7WDFsVWtg6uMQYZB7jM7K1iXdODL/Z" +
+            "lGsTl28So/6ZqQTMFexgaDbtCHu39b+T7WYxg4zGcTSHThfqr4uRjRxWQa4iN1438h3Z0S0NL2lRp75mpoo6Kr3HGrHhFPC+Oh25" +
+            "z1uxav60sUYgovseO3Dvk5h9jHOW8sXvhXCtKSb8HgQ+HKDYD8tSg2J87otTlZCpV6LqYQXY+U3EJ/pure3511H3a6UCAwEAAaOC" +
+            "ASQwggEgMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFNOUikxiEyoZLsyvcop9NteaHNxnMA4GA1UdDwEB/wQEAwIBBjCB3QYD" +
+            "VR0fBIHVMIHSMIGHoIGEoIGBhn9sZGFwOi8vZGlyZWN0b3J5LmQtdHJ1c3QubmV0L0NOPUQtVFJVU1QlMjBSb290JTIwQ2xhc3Ml" +
+            "MjAzJTIwQ0ElMjAyJTIwRVYlMjAyMDA5LE89RC1UcnVzdCUyMEdtYkgsQz1ERT9jZXJ0aWZpY2F0ZXJldm9jYXRpb25saXN0MEag" +
+            "RKBChkBodHRwOi8vd3d3LmQtdHJ1c3QubmV0L2NybC9kLXRydXN0X3Jvb3RfY2xhc3NfM19jYV8yX2V2XzIwMDkuY3JsMA0GCSqG" +
+            "SIb3DQEBCwUAA4IBAQA07XtaPKSUiO8aEXUHL7P+PPoeUSbrh/Yp3uDx1MYkCenBz1UbtDDZzhr+BlGmFaQt77JLvyAoJUnRpjZ3" +
+            "NOhk31KxEcdzes05nsKtjHEh8lprr988TlWvsoRlFIm5d8sqMb7Po23Pb0iUMkZv53GMoKaEGTcH8gNFCSuGdXzfX2lXANtu2KZy" +
+            "IktQ1HWYVt+3GP9DQ1CuekR78HlR10M9p9OB0/DJT7naxpeG0ILD5EJt/rDiZE4OJudANCa1CInXCGNjOCd1HjPqbqjdn5lPdE2B" +
+            "iYBL3ZqXKVwvvoFBuYz/6n1gBp7N1z3TLqMVvKjmJuVvw9y4AyHqnxbxLFS1",
+        ),
+        Root(
+            name = "Australian Defence Public Root CA",
+            owner = "Department of Defence Australia",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "209E956AF04DF3996507C887D356230D6EB49FDBDD2D8A058FF50B8F80F690AA",
+            b64 = "MIIEIjCCAwqgAwIBAgIUKeuSM0ZPMkH/gxkAqa3E2fjj4n8wDQYJKoZIhvcNAQELBQAwcTELMAkGA1UEBhMCQVUxDDAKBgNVBAoT" +
+            "A0dPVjEMMAoGA1UECxMDRG9EMQwwCgYDVQQLEwNQS0kxDDAKBgNVBAsTA0NBczEqMCgGA1UEAxMhQXVzdHJhbGlhbiBEZWZlbmNl" +
+            "IFB1YmxpYyBSb290IENBMB4XDTE2MTEyODIyMjUyOFoXDTM2MTEyODIyMTM0OFowcTELMAkGA1UEBhMCQVUxDDAKBgNVBAoTA0dP" +
+            "VjEMMAoGA1UECxMDRG9EMQwwCgYDVQQLEwNQS0kxDDAKBgNVBAsTA0NBczEqMCgGA1UEAxMhQXVzdHJhbGlhbiBEZWZlbmNlIFB1" +
+            "YmxpYyBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA005UBBvQ9JuduCOH4CDHnpixcXoGkC7irUj+kwVs" +
+            "7Ia/KECFs0x570dTmBAeVO59eLgYEwxEUv3QgaqTCCM5vl8Pa90ll/MBQt/UgQDEUL56iS0Zr3NKP8w6wL+iqMUV9z58QXSCay53" +
+            "ZuJqpZGIbgYxp68L5lrgrn1ary9H0PL7hHOcRqEehERRxF8u2pACX4HfEQ7S+7s6F3Oj8o1jqk//cnplYoNaKjzyzSwjjc/rIR+/" +
+            "1ANX9TcWDF7lVxHCqPr/bDnyPVLmtXnAW+Ky6mMgDA6lKl4S4eavX4t8oK05NTWYX/GvONAm0029Ynd1Pa9rFIZ7WvYhj9bq4qcO" +
+            "rQIDAQABo4GxMIGuMA8GA1UdEwEB/wQFMAMBAf8wSwYDVR0gBEQwQjAGBgRVHSAAMDgGCSokAYJOAQEBBzArMCkGCCsGAQUFBwIB" +
+            "Fh1odHRwOi8vY3JsLmRlZmVuY2UuZ292LmF1L3BraTAOBgNVHQ8BAf8EBAMCAcYwHwYDVR0jBBgwFoAUrJnhAi/oXEtBtzS4Humb" +
+            "gzYNlLQwHQYDVR0OBBYEFKyZ4QIv6FxLQbc0uB7pm4M2DZS0MA0GCSqGSIb3DQEBCwUAA4IBAQB4vIFK2DpXu70mv+oqKPCIivJQ" +
+            "TJBn2kv1uBQIutt/cqiaWbzxHImo9DoDEFQTel3G2ro+D4jVatMbly1iYTpv+QCvcgZz7BDAYR7MXE8ZMkY4wd0/0jcapY6GoPAJ" +
+            "zDXWGQJ8zTn89/kf55R5Tj23+JdOO0RqzZSwufd+4uP5mX/F06ZQtEn7Fn5OQSzPPsd5QLqBGCYI+cWd49jxbxxoP2pbdxdSowbe" +
+            "GcJLbqKV/NUIvyy1aTVR4+PfTxopbYN4PTgkygI/VBDhs2Th1Zre8zf2MxC1drOr18kfUzqtVUEcSMk2nof/ddxp0K/ZelfGyrFD" +
+            "/DmB/Nx6o5qlmFBU",
+        ),
+        Root(
+            name = "DigiCert Assured ID Root CA",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3E9099B5015E8F486C00BCEA9D111EE721FABA355A89BCF1DF69561E3DC6325C",
+            b64 = "MIIDtzCCAp+gAwIBAgIQDOfg5RfYRv6P5WD8G/AwOTANBgkqhkiG9w0BAQUFADBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGln" +
+            "aUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgQ0Ew" +
+            "HhcNMDYxMTEwMDAwMDAwWhcNMzExMTEwMDAwMDAwWjBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYD" +
+            "VQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEB" +
+            "AQUAA4IBDwAwggEKAoIBAQCtDhXO5EOAXLGH87dg+XESpa7cJpSIqvTO9SA5KFhgDPiA2qkVlTJhPLWxKISKityfCgyDF3qPkKyK" +
+            "53lTXDGEKvYPmDI2dsze3Tyoou9q+yHyUmHfnyDXH+Kx2f4YZNISW1/5WBg1vEfNoTb5a3/UsDg+wRvDjDPZ2C8Y/igPs6eD1sNu" +
+            "RMBhNZYW/lmci3Zt1/GiSw0r/wty2p5g0I6QNcZ4VYcgoc/lbQrISXwxmDNsIumH0DJaoroTghHtORedmTpyoeb6pNnVFzF1roV9" +
+            "Iq4/AUaG9ih5yLHa5FcXxH4cDrC0kqZWs72yl+2qp/C3xag/lRbQ/6GW6whfGHdPAgMBAAGjYzBhMA4GA1UdDwEB/wQEAwIBhjAP" +
+            "BgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRF66Kv9JLLgjEtUYunpyGd823IDzAfBgNVHSMEGDAWgBRF66Kv9JLLgjEtUYunpyGd" +
+            "823IDzANBgkqhkiG9w0BAQUFAAOCAQEAog683+Lt8ONyc3pklL/3cmbYMuRCdWKuh+vy1dneVrOfzM4UKLkNl2BcEkxY5NM9g0lF" +
+            "WJc1aRqoR+pWxnmrEthngYTffwk8lOa4JiwgvT2zKIn3X/8i4peEH+ll74fg38FnSbNd67IJKusm7Xi+fT8r87cmNW1fiQG2SVuf" +
+            "AQWbqz0lwcy2f8Lxb4bG+mRo64EtlOtCt/qMHt1i8b5QZ7dsvfPxH2sMNgcWfzd8qVttevESRmCD1ycEvkvOl77DZypoEd+A5wwz" +
+            "Zr8TDRRu838fYxAe+o0bJW1sj6W3YQGx0qMmoRBxna3iw/nDmVG3KwcIzi7mULKn+gpFL6Lw8g==",
+        ),
+        Root(
+            name = "DigiCert Assured ID Root G2",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "7D05EBB682339F8C9451EE094EEBFEFA7953A114EDB2F44949452FAB7D2FC185",
+            b64 = "MIIDljCCAn6gAwIBAgIQC5McOtY5Z+pnI7/Dr5r0SzANBgkqhkiG9w0BAQsFADBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGln" +
+            "aUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgRzIw" +
+            "HhcNMTMwODAxMTIwMDAwWhcNMzgwMTE1MTIwMDAwWjBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYD" +
+            "VQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgRzIwggEiMA0GCSqGSIb3DQEB" +
+            "AQUAA4IBDwAwggEKAoIBAQDZ5ygvUj82ckmIkzTz+GoeMVSAn61UQbVH35ao1K+ALbkKz3X9iaV9JPrjIgwrvJUXCzO/GU1BBpAA" +
+            "vQxNEP4HteccbiJVMWWXvdMX0h5i89vqbFCMP4QMls+3ywPgym2hFEwbid3tALBSfK+RbLE4E9HpEgjAALAcKxHad3A2m67OeYfc" +
+            "gnDmCXRwVWmvo2ifv922ebPynXApVfSr/5Vh88lAbx3RvpO704gqu52/clpWcTs/1PPRCv4o76Pu2ZmvA9OPYLfykqGxvYmJHzDN" +
+            "w6YuYjOuFgJ3RFrngQo8p0Quebg/BLxcoIfhG69Rjs3sLPr4/m3wOnyqi+RnlTGNAgMBAAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8w" +
+            "DgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBTOw0q5mVXyuNtgv6l+vVa1lzan1jANBgkqhkiG9w0BAQsFAAOCAQEAyqVVjOPIQW5p" +
+            "J6d1Ee88hjZv0p3GeDgdaZaikmkuOGybfQTUiaWxMTeKySHMq2zNixya1r9I0jJmwYrA8y8678Dj1JGG0VDjA9tzd29KOVPt3ibH" +
+            "tX2vK0LRdWLjSisCx1BL4GnilmwORGYQRI+tBev4eaymG+g3NJ1TyWGqolKvSnAWhsI6yLETcDbYz+70CjTVW0z9B5yiutkBclzz" +
+            "TcHdDrEcDcRjvq30FPuJ7KJBDkzMyFdA0G4Dqs0MjomZmWzwPDCvON9vvKO+KSAnq3T/EyJ43pdSVR6DtVQgA+6uwE9W3jfMw3+q" +
+            "BCe703e4YtsXfJwoIhNzbM8m9Yop5w==",
+        ),
+        Root(
+            name = "DigiCert Assured ID Root G3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "7E37CB8B4C47090CAB36551BA6F45DB840680FBA166A952DB100717F43053FC2",
+            b64 = "MIICRjCCAc2gAwIBAgIQC6Fa+h3foLVJRK/NJKBs7DAKBggqhkjOPQQDAzBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNl" +
+            "cnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgRzMwHhcN" +
+            "MTMwODAxMTIwMDAwWhcNMzgwMTE1MTIwMDAwWjBlMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQL" +
+            "ExB3d3cuZGlnaWNlcnQuY29tMSQwIgYDVQQDExtEaWdpQ2VydCBBc3N1cmVkIElEIFJvb3QgRzMwdjAQBgcqhkjOPQIBBgUrgQQA" +
+            "IgNiAAQZ57ysRGXtzbg/WPuNsVepRC0FFfLvC/8QdJ+1YlJfZn4f5dwbRXkLzMZTCp2NXQLZqVneAlr2lSoOjThKiknGvMYDOAdf" +
+            "Vdp+CW7if17QRSAPWXYQ1qAk8C3eNvJsKTmjQjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgGGMB0GA1UdDgQWBBTL" +
+            "0L2p4ZgFUaFNN6KDec6NHSrkhDAKBggqhkjOPQQDAwNnADBkAjAlpIFFAmsSS3V0T8gj43DydXLefInwz5FyYZ5eEJJZVrmDxxDn" +
+            "OOlYJjZ91eQ0hjkCMHw2U/Aw5WJjOpnitqM7mzT6HtoQknFekROn3aRukswy1vUhZscv6pZjamVFkpUBtA==",
+        ),
+        Root(
+            name = "DigiCert CS ECC P384 Root G5",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "26C56AD2208D1E9B152F66853BF4797CBEB7552C1F3F477251E8CB1AE7E797BF",
+            b64 = "MIICFjCCAZ2gAwIBAgIQA2mP5xLVGfPO0P23sWQwETAKBggqhkjOPQQDAzBNMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNl" +
+            "cnQsIEluYy4xJTAjBgNVBAMTHERpZ2lDZXJ0IENTIEVDQyBQMzg0IFJvb3QgRzUwHhcNMjEwMTE1MDAwMDAwWhcNNDYwMTE0MjM1" +
+            "OTU5WjBNMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xJTAjBgNVBAMTHERpZ2lDZXJ0IENTIEVDQyBQMzg0" +
+            "IFJvb3QgRzUwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAR/FK2Ftpf9AiE1TWDoOJOTmz0FEG2v0/7v+rv7c5nz7DISjcdouIveiaKI" +
+            "VHeNuyF+M5VWlgno1YyhBLibbhkAYuhCKKZYN4QZVSZ7Mzdn8ppyraGurgBCPBx+uHqeIZyjQjBAMB0GA1UdDgQWBBTwjJhxOThl" +
+            "wjobphdmHcjtZd6SNjAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNnADBkAjAjb+EAGSZQ5EYg" +
+            "ZYs3p8/rBuHMMskqoewyDXOiHgIcNWEqTmmrOXftl4jAfWvqid0CMEPx0VijdT6Gm7ZVEYsX9z3+CmnFf07GdRtalMvqERHGCCKI" +
+            "3tB6oqV56OMhp80Tsw==",
+        ),
+        Root(
+            name = "DigiCert CS RSA4096 Root G5",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "7353B6D6C2D6DA4247773F3F07D075DECB5134212BEAD0928EF1F46115260941",
+            b64 = "MIIFZDCCA0ygAwIBAgIQBs7hMb5tVcgH98DH+0TmIDANBgkqhkiG9w0BAQwFADBMMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGln" +
+            "aUNlcnQsIEluYy4xJDAiBgNVBAMTG0RpZ2lDZXJ0IENTIFJTQTQwOTYgUm9vdCBHNTAeFw0yMTAxMTUwMDAwMDBaFw00NjAxMTQy" +
+            "MzU5NTlaMEwxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjEkMCIGA1UEAxMbRGlnaUNlcnQgQ1MgUlNBNDA5" +
+            "NiBSb290IEc1MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAtjNzgNhiA3AULBEcOV58rnyDhh3+Ji9MJK2L6oNfqbw9" +
+            "W/wLmEwCRzDs4v7s6DRbZl6/O9cspiX/jFmz3+rafCnZRlByCB1u0RsK3R/NmYn6Dw9zxOGcHXUyzW+X2ipqlbJsyQnQ6gt7fRcG" +
+            "SZnv1t7gyFPUrsZ38Ya7Ixy4wN9Z94590e+C5iaLWji1/3XVstlPCfM3iFDaEaSKFBTRUwQAffNqRBj+UHAyBxyomg46HcUKH24L" +
+            "Jmm3PKJXcCyG+kxulalYQ7msEtb/P+3XQxdrTM6exJCr//oQUJqjkFfW54wQrp8WGs81HX/Xdu2KnDWnKLinXSH8MDfd3ggZTxXG" +
+            "56bakEeO95RTTI5TAr79meXqhtCvAwLTm6qT8asojiAB/0z7zLcpQPWHpBITBR9DbtdRUJ84tCDtFwkSj8y5Ga+fzb5pEdOvVRBt" +
+            "F4Z5llLGsgCd5a84sDX0iGuPDgQ9fO6vzdNqEErGzYbKIj2hSlz7Dv+I31xip8C5HtmsbH44N/53kyXChYpPtTcGWgaBFPHOlJ2Z" +
+            "keoyWs5nPW4EZq0MTy2jLvee9Xid9wr9fo/jQopVlrzxnzct/J5flf6MGBv8jv1LkK/XA2gSY6zik6eiywTlT2TOA/rGFJ/Zi+jM" +
+            "1GKMa+QALBmfGgbGMYFU+1Mkmq9Vmbqdda64wt0CAwEAAaNCMEAwHQYDVR0OBBYEFGgBk7HSSkBCaZRGLBxaiKkltEdPMA4GA1Ud" +
+            "DwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBDAUAA4ICAQCS/O64AnkXAlF9IcVJZ6ek8agkOOsMaOpaQmuc" +
+            "9HPBaUotszcFUEKYkp4GeSwuBpn2798roM2zkgGDtaDLJ7U8IxqYSaLsLZmlWUOs0rGT1lfXHLyT1sZA4bNvGVW3E9flQzOktavL" +
+            "2sExZA101iztw41u67uvGUdhYS3A9AW5b3jcOvdCQGVTkb2ZDZOSVKapN1krm8uZxrw99wSE8JQzHQ+CWjnLLkXDKBmjspuYyPwx" +
+            "a2CP9umGKLzgPH10XRaJW2kkxxCLxEu7Nk/UWT/DsKSRmfgu0UoBnfWIEu+/WhFqWU9Za1pn84+0Ew/A2C89KHKqGX8RfWpbn5Xn" +
+            "X7eUT/E+oVr/Lcyd3yd3jzJzHGcKdvP6XLG/vB29DCibsscXZwszD8O9Ntz7ukILq+2Ew2LWhBapsQdrqW7uxs/msEQpwvCzYYAq" +
+            "i2/SFFwlh1Rk86RMwaH4p2vq/uo6/HnbDo/cxvPJ1Gze6YOhjh0i7Mk6sgB73DunQhp/3IupET2Op8Agb10JXUNE5o9mzKlbB/Hv" +
+            "m3oOs1ThlP0OLMaT11X9cZg1uAlK/8YpKCz2Ui3bFBiSJ+IWfozK1GG+goeR65g3P79fXXc/NKwbOEOraHKZMh46GhmlozhMI9ej" +
+            "58zVKpIXkAtaS70WvfuGauKJmezkoFUYyaMIHxPgMghy0A==",
+        ),
+        Root(
+            name = "DigiCert ECC P384 Root G5",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "C1468CF2254E6004B24696ABA209D1A30BA6E2DFF68A9A4E32C6AB414F90C8D9",
+            b64 = "MIICETCCAZegAwIBAgIQDfPZN2WjecWVZuqS4iRPNDAKBggqhkjOPQQDAzBKMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNl" +
+            "cnQsIEluYy4xIjAgBgNVBAMTGURpZ2lDZXJ0IEVDQyBQMzg0IFJvb3QgRzUwHhcNMjEwMTE1MDAwMDAwWhcNNDYwMTE0MjM1OTU5" +
+            "WjBKMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xIjAgBgNVBAMTGURpZ2lDZXJ0IEVDQyBQMzg0IFJvb3Qg" +
+            "RzUwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAT8WR/OmWx/mw62KWNvxoXzCtPWm65XFUwO7V3jCX5tKqOGqrp4oKdxvUT6CMBKBtZv" +
+            "3SxKOHTl0L3/ev/lOU69vRceH0Ot1bwn2Eu/dowwMqT7+VPl2Ko4U12ooDegZwqjQjBAMB0GA1UdDgQWBBSSlvfmutURuvkiLnt+" +
+            "WtnwJeUFGzAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjEA/cBN8aSn26cMJhH0Sb0H" +
+            "OGMrRGIGeQjHw9TPmz6rOieqkMf9WaK4MlLbyo4XCwqQAjBdGuxRidRk3PnlHji9Wy7j5UTkOxh61/CVQI/y68/0+dBlokHysOZ8" +
+            "wTYsj1453Tc=",
+        ),
+        Root(
+            name = "DigiCert Global Root G3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "31AD6648F8104138C738F39EA4320133393E3A18CC02296EF97C2AC9EF6731D0",
+            b64 = "MIICPzCCAcWgAwIBAgIQBVVWvPJepDU1w6QP1atFcjAKBggqhkjOPQQDAzBhMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNl" +
+            "cnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBHMzAeFw0xMzA4" +
+            "MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVTMRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3" +
+            "dy5kaWdpY2VydC5jb20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEczMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE3afZ" +
+            "u4q4C/sLfyHS8L6+c/MzXRq8NOrexpu80JX28MzQC7phW1FGfp4tn+6OYwwX7Adw9c+ELkCDnOg/QW07rdOkFFk2eJ0DQ+4QE2xy" +
+            "3q6Ip6FrtUPOZ9wj/wMco+I+o0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUs9tIpPmhxdiu" +
+            "NkHMEWNpYim8S8YwCgYIKoZIzj0EAwMDaAAwZQIxAK288mw/EkrRLTnDCgmXc/SINoyIJ7vmiI1Qhadj+Z4y3maTD/HMsQmP3Wyr" +
+            "+mt/oAIwOWZbwmSNuJ5Q3KjVSaLtx9zRSX8XAbjIho9OjIgrqJqpisXRAL34VOKa5Vt8sycX",
+        ),
+        Root(
+            name = "DigiCert High Assurance EV Root CA",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "7431E5F4C3C1CE4690774F0B61E05440883BA9A01ED00BA6ABD7806ED3B118CF",
+            b64 = "MIIDxTCCAq2gAwIBAgIQAqxcJmoLQJuPC3nyrkYldzANBgkqhkiG9w0BAQUFADBsMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGln" +
+            "aUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSswKQYDVQQDEyJEaWdpQ2VydCBIaWdoIEFzc3VyYW5jZSBFViBS" +
+            "b290IENBMB4XDTA2MTExMDAwMDAwMFoXDTMxMTExMDAwMDAwMFowbDELMAkGA1UEBhMCVVMxFTATBgNVBAoTDERpZ2lDZXJ0IElu" +
+            "YzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTErMCkGA1UEAxMiRGlnaUNlcnQgSGlnaCBBc3N1cmFuY2UgRVYgUm9vdCBDQTCC" +
+            "ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMbM5XPm+9S75S0tMqbf5YE/yc0lSbZxKsPVlDRnogocsF9ppkCxxLeyj9CY" +
+            "pKlBWTrT3JTWPNt0OKRKzE0lgvdKpVMSOO7zSW1xkX5jtqumX8OkhPhPYlG++MXs2ziS4wblCJEMxChBVfvLWokVfnHoNb9Ncgk9" +
+            "vjo4UFt3MRuNs8ckRZqnrG0AFFoEt7oT61EKmEFBIk5lYYeBQVCmeVyJ3hlKV9Uu5l0cUyx+mM0aBhakaHPQNAQTXKFx01p8Vdte" +
+            "ZOE3hzBWBOURtCmAEvF5OYiiAhF8J2a3iLd48soKqDirCmTCv2ZdlYTBoSUeh10aUAsgEsxBu24LUTi4S8sCAwEAAaNjMGEwDgYD" +
+            "VR0PAQH/BAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFLE+w2kD+L9HAdSYJhoIAu9jZCvDMB8GA1UdIwQYMBaAFLE+" +
+            "w2kD+L9HAdSYJhoIAu9jZCvDMA0GCSqGSIb3DQEBBQUAA4IBAQAcGgaX3NecnzyIZgYIVyHbIUf4KmeqvxgydkAQV8GK83rZEWWO" +
+            "Nfqe/EW1ntlMMUu4kehDLI6zeM7b41N5cdblIZQB2lWHmiRk9opmzN6cN82oNLFpmyPInngiK3BD41VHMWEZ71jFhS9OMPagMRYj" +
+            "yOfiZRYzy78aG6A9+MpeizGLYAiJLQwGXFK3xPkKmNEVX58Svnw2Yzi9RKR/5CYrCsSXaQ3pjOLAEFe4yHYSkVXySGnYvCoCWw9E" +
+            "1CAx2/S6cCZdkGCevEsXCS+0yx5DaMkHJ8HSXPfqIbloEpw8nL+e/IBcm2PN7EeqJSdnoDfzAIJ9VNep+OkuE6N36B9K",
+        ),
+        Root(
+            name = "DigiCert RSA4096 Root G5",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E46A392204A8DCA342A71C1CA9A60C9185B9A930370120C3B9C7E3856F0D8F3B",
+            b64 = "MIIFXjCCA0agAwIBAgIQCL+ib5o/M2WirPCmOMQBcDANBgkqhkiG9w0BAQwFADBJMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGln" +
+            "aUNlcnQsIEluYy4xITAfBgNVBAMTGERpZ2lDZXJ0IFJTQTQwOTYgUm9vdCBHNTAeFw0yMTAxMTUwMDAwMDBaFw00NjAxMTQyMzU5" +
+            "NTlaMEkxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjEhMB8GA1UEAxMYRGlnaUNlcnQgUlNBNDA5NiBSb290" +
+            "IEc1MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqr4NsgZ9JvlH6uQb50JpuJnCue4ksUaQy1kkUlQ1piTCX5EZyLZC" +
+            "1vNHZZVk54VlZ6mufABP4HgDUK3zf464EeeBYrGL3/JJJgneDxa82iibociXL5OQ2iAq44TU/6mesC2/tADemx/IoGNTaIVvTYXG" +
+            "qmP5jbI1dmJ0A9yTmGgFns2QZd3SejGrJC1tQC6QP2NsLOv6HoBUjXkCkBSztU9O9YgEQ4DDSLMmL6xRlTJVJS9BlrBWoQg73Jgf" +
+            "coUsd8qYzDj7jnLJbewF7O1NtzxbFFCF3Zf7WfeQEvQTv4NNgLIVZRGXYOXWXOYEtVDmcTO2IJOpaAA4zknbtFw7ctdFXFS/zTwB" +
+            "Ix581vhpLKUACmwySLTecC06ExfBf2TL8zDtoT2WZ/GUtWBsW2lo9YIzCaK22fOFsm6glPDCxH2hLMpz9a7gUpyiZuYDzurf7RjU" +
+            "uWOL9+j/+7Nbj0PFr7d0lFA1Za7WL/GFj1OhcPSNMl28lsMewgQEnAQPs11+iSDKXicNiUoSI7T2xN3YH/hoszb4HrzG94S26IpO" +
+            "iDA4wCbYcAoJOjQOa4ISlhwv5p6t2HE1gbGMBm70bmb/S0quvfD+11xfU7syPM1i0RSgKR8Q3qlyT7GtZOWDKo+L6oSV7pglmJqz" +
+            "cTzBp1DyrEJiMcKhkMbu4reKqLW2GzsCAwEAAaNCMEAwHQYDVR0OBBYEFGJtt5FPxOqjYmCPoNC+tY8GfGgAMA4GA1UdDwEB/wQE" +
+            "AwIBhjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBDAUAA4ICAQBh6PsnbdbiuLMJr6rwsYJM/j0XiU0tFZ377tC7hOyEddtD" +
+            "E96Mn8cp74d0yxNwgVYAdPyu9Nk63iIIUaWgXIJmtntMqdqPq6wcQZZm1p3eVua/TrGyXl/Aw27UwoSQ9X2xuhbRKYrInenP0McZ" +
+            "Oz/P7vfhM65CyJjACJ7zWvPf1Cs7jqgoVhnHTnc8JVTcuEhI0fknaj7sE6+yBYn9VV/zfY4NnAldLIp+hc744b8RPTKMWtd+PfQz" +
+            "WM+iBZijs/vOib/9whbdbtyISQ0LoAP/50XpBMHp/aqddfi4H4eD2es501qny5isE4kA/G+VTuF9EUZt9jhGoxOgLAH1Ys+/HFCR" +
+            "J3Rdt+xHfNDRdct77tFNIwrDYKV3LYDaZw+Oa3YH8KYP6oSuHnm/CIraCfP07rU289R6Q7qUNeH6wTsblpmkV2PrtaiC9634d9d2" +
+            "hvN2U1Zb/CZChM6fg5GRr/S+cBWApdjoabHYkVS4GbJi+aL6Ve0Ev7lEhuTP8ZsAvxEPvrV0JFH/dzRj7EgjDugR63dt2sqCkb6k" +
+            "hJNM2qH+zAaE6CHoVLrm0x1jPcJa/ObJg55yZKmGWQCMwvcTg7bQpDHGrJGOe6QiVhPGdccjvItb/EY9/l1SKa+v6MnDdkvoq0cC" +
+            "8poN0yyIgAeGwGMPAkyOBFN2uVhCb3wpcF2/Jw==",
+        ),
+        Root(
+            name = "DigiCert Trusted Root G4",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "552F7BDCF1A7AF9E6CE672017F4F12ABF77240C78E761AC203D1D9D20AC89988",
+            b64 = "MIIFkDCCA3igAwIBAgIQBZsbV56OITLiOQe9p3d1XDANBgkqhkiG9w0BAQwFADBiMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGln" +
+            "aUNlcnQgSW5jMRkwFwYDVQQLExB3d3cuZGlnaWNlcnQuY29tMSEwHwYDVQQDExhEaWdpQ2VydCBUcnVzdGVkIFJvb3QgRzQwHhcN" +
+            "MTMwODAxMTIwMDAwWhcNMzgwMTE1MTIwMDAwWjBiMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQL" +
+            "ExB3d3cuZGlnaWNlcnQuY29tMSEwHwYDVQQDExhEaWdpQ2VydCBUcnVzdGVkIFJvb3QgRzQwggIiMA0GCSqGSIb3DQEBAQUAA4IC" +
+            "DwAwggIKAoICAQC/5pBzaN675F1KPDAiMGkz7MKnJS7JIT3yithZwuEppz1Yq3aaza57G4QNxDAf8xukOBbrVsaXbR2rsnnyyhHS" +
+            "5F/WBTxSD1Ifxp4VpX6+n6lXFllVcq9ok3DCsrp1mWpzMpTREEQQLt+C8weE5nQ7bXHiLQwb7iDVySAdYyktzuxeTsiT+CFhmzTr" +
+            "BcZe7FsavOvJz82sNEBfsXpm7nfISKhmV1efVFiODCu3T6cw2Vbuyntd463JT17lNecxy9qTXtyOj4DatpGYQJB5w3jHtrHEtWoY" +
+            "OAMQjdjUN6QuBX2I9YI+EJFwq1WCQTLX2wRzKm6RAXwhTNS8rhsDdV14Ztk6MUSaM0C/CNdaSaTC5qmgZ92kJ7yhTzm1EVgX9yRc" +
+            "Ro9k98FpiHaYdj1ZXUJ2h4mXaXpI8OCiEhtmmnTK3kse5w5jrubU75KSOp493ADkRSWJtppEGSt+wJS00mFt6zPZxd9LBADMfRyV" +
+            "w4/3IbKyEbe7f/LVjHAsQWCqsWMYRJUadmJ+9oCw++hkpjPRiQfhvbfmQ6QYuKZ3AeEPlAwhHbJUKSWJbOUOUlFHdL4mrLZBdd56" +
+            "rF+NP8m800ERElvlEFDrMcXKchYiCd98THU/Y+whX8QgUWtvsauGi0/C1kVfnSD8oR7FwI+isX4KJpn15GkvmB0t9dmpsh3lGwID" +
+            "AQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQU7NfjgtJxXWRM3y5nP+e6mK4cD08wDQYJ" +
+            "KoZIhvcNAQEMBQADggIBALth2X2pbL4XxJEbw6GiAI3jZGgPVs93rnD5/ZpKmbnJeFwMDF/k5hQpVgs2SV1EY+CtnJYYZhsjDT15" +
+            "6W1r1lT40jzBQ0CuHVD1UvyQO7uYmWlrx8GnqGikJ9yd+SeuMIW59mdNOj6PWTkiU0TryF0Dyu1Qen1iIQqAyHNm0aAFYF/opbSn" +
+            "r6j3bTWcfFqK1qI4mfN4i/RN0iAL3gTujJtHgXINwBQy7zBZLq7gcfJW5GqXb5JQbZaNaHqasjYUegbyJLkJEVDXCLG4iXqEI2FC" +
+            "KeWjzaIgQdfRnGTZ6iahixTXTBmyUEFxPT9NcCOGDErcgdLMMpSEDQgJlxxPwO5rIHQw0uA5NBCFIRUBCOhVMt5xSdkoF1BN5r5N" +
+            "0XWs0Mr7QbhDparTwwVETyw2m+L64kW4I1NsBm9nVX9GtUw/bihaeSbSpKhil9Ie4u1Ki7wb/UdKDd9nZn6yW0HQO+T0O/QEY+nv" +
+            "wlQAUaCKKsnOeMzV6ocEGLPOr0mIr/OSmbaz5mEP0oUA51Aa5BuVnRmhuZyxm7EAHu/QD09CbMkKvO5D+jpxpchNJqU1/YldvIVi" +
+            "HTLSoCtU7ZpXwdv6EM8Zt4tKG48BtieVU+i2iW1bvGjUI+iLUaJW+fCmgKDWHrO8Dw9TdSmq6hN35N6MgSGtBxBHEa2HPQfRdbzP" +
+            "82Z+",
+        ),
+        Root(
+            name = "QuoVadis Root CA 1 G3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "8A866FD1B276B57E578E921C65828A2BED58E9F2F288054134B7F1F4BFC9CC74",
+            b64 = "MIIFYDCCA0igAwIBAgIUeFhfLq0sGUvjNwc1NBMotZbUZZMwDQYJKoZIhvcNAQELBQAwSDELMAkGA1UEBhMCQk0xGTAXBgNVBAoT" +
+            "EFF1b1ZhZGlzIExpbWl0ZWQxHjAcBgNVBAMTFVF1b1ZhZGlzIFJvb3QgQ0EgMSBHMzAeFw0xMjAxMTIxNzI3NDRaFw00MjAxMTIx" +
+            "NzI3NDRaMEgxCzAJBgNVBAYTAkJNMRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMR4wHAYDVQQDExVRdW9WYWRpcyBSb290IENB" +
+            "IDEgRzMwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCgvlAQjunybEC0BJyFuTHK3C3kEakEPBtVwedYMB0ktMPvhd6M" +
+            "LOHBPd+C5k+tR4ds7FtJwUrVu4/sh6x/gpqG7D0DmVIB0jWerNrwU8lmPNSsAgHaJNM7qAJGr6Qc4/hzWHa39g6QDbXwz8z6+cZM" +
+            "5cOGMAqNF34168Xfuw6cwI2H44g4hWf6Pser4BOcBRiYz5P1sZK0/CPTz9XEJ0ngnjybCKOLXSoh4Pw5qlPafX7PGglTvF0FBM+h" +
+            "So+LdoINofjSxxR3W5A2B4GbPgb6Ul5jxaYA/qXpUhtStZI5cgMJYr2wYBZupt0lwgNm3fME0UDiTouG9G/lg6AnhF4EwfWQvTA9" +
+            "xO+oabw4m6SkltFi2mnAAZauy8RRNOoMqv8hjlmPSlzkYZqn0ukqeI1RPToV7qJZjqlc3sX5kCLliEVx3ZGZbHqfPT2YfF72vhZo" +
+            "oF6uCyP8Wg+qInYtyaEQHeTTRCOQiJ/GKubX9ZqzWB4vMIkIG1SitZgj7Ah3HJVdYdHLiZxfokqRmu8hqkkWCKi9YSgxyXSthfbZ" +
+            "xbGL0eUQMk1fiyA6PEkfM4VZDdvLCXVDaXP7a3F98N/ETH3Goy7IlXnLc6KOTk0k+17kBL5yG6YnLUlamXrXXAkgt3+UuU/xDRxe" +
+            "iEIbEbfnkduebPRq34wGmAOtzCjvpUfzUwIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4E" +
+            "FgQUo5fW816iEOGrRZ88F2Q87gFwnMwwDQYJKoZIhvcNAQELBQADggIBABj6W3X8PnrHX3fHyt/PX8MSxEBd1DKquGrX1RUVRpgj" +
+            "peaQWxiZTOOtQqOCMTaIzen7xASWSIsBx40Bz1szBpZGZnQdT+3Btrm0DWHMY37XLneMlhwqI2hrhVd2cDMT/uFPpiN3GPoajOi9" +
+            "ZcnPP/TJF9zrx7zABC4tRi9pZsMbj/7sPtPKlL92CiUNqXsCHKnQO18LwIE6PWThv6ctTr1NxNgpxiIY0MWscgKCP6o6ojoilzHd" +
+            "CGPDdRS5YCgtW2jgFqlmgiNR9etT2DGbe+m3nUvriBbP+V04ikkwj+3x6xn0dxoxGE1nVGwvb2X52z3sIexe9PSLymBlVNFxZPT5" +
+            "pqOBMzYzcfCkeF9OrYMh3jRJjehZrJ3ydlo28hP0r+AJx2EqbPfgna67hkooby7utHnNkDPDs3b69fBsnQGQ+p6Q9pxyz0fawx/k" +
+            "NSBT8lTR32GDpgLiJTjehTItXnOQUl1CxM49S+H5GYQd1aJQzEH7QRTDvdbJWqNjZgKAvQU6O0ec7AAmTPWIUb+oI38YB7AL7Ysm" +
+            "oWTTYUrrXJ/es69nA7Mf3W1daWhpq1467HxpvMc7hU6eFbm0FU/DlXpY18ls6Wy58yljXrQs8C097Vpl4KlbQMJImYFtnh8GKjwS" +
+            "tIsPm6Ik8KaN1nrgS7ZklmOVhMJKzRwuJIczYOXD",
+        ),
+        Root(
+            name = "QuoVadis Root CA 2",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "85A0DD7DD720ADB7FF05F83D542B209DC7FF4528F7D677B18389FEA5E5C49E86",
+            b64 = "MIIFtzCCA5+gAwIBAgICBQkwDQYJKoZIhvcNAQEFBQAwRTELMAkGA1UEBhMCQk0xGTAXBgNVBAoTEFF1b1ZhZGlzIExpbWl0ZWQx" +
+            "GzAZBgNVBAMTElF1b1ZhZGlzIFJvb3QgQ0EgMjAeFw0wNjExMjQxODI3MDBaFw0zMTExMjQxODIzMzNaMEUxCzAJBgNVBAYTAkJN" +
+            "MRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMRswGQYDVQQDExJRdW9WYWRpcyBSb290IENBIDIwggIiMA0GCSqGSIb3DQEBAQUA" +
+            "A4ICDwAwggIKAoICAQCaGMpLlA0ALa8DKYrwD4HIrkwZhR0In6spRIXzL4GtMh6QRr+jhiYaHv5+HBg6XJxgFyo6dIMzMH1hVBHL" +
+            "7avg5tKifvVrbxi3Cgst/ek+7wrGsxDp3MJGF/hd/aTa/55JWpzmM+Yklvc/ulsrHHo1wtZn/qtmUIttKGAr79dgw8eTvI02kfN/" +
+            "+NsRE8Scd3bBrrcCaoF6qUWD4gXmuVbBlDePSHFjIuwXZQeVikvfj8ZaCuWw419eaxGrDPmF60Tp+ARz8un+XJiM9XOva7R+zdRc" +
+            "AitMOeGylZUtQofX1bOQQ7dsE/He3fbE+Ik/0XX1ksOR1YqI0JDs3G3eicJlcZaLDQP9nL9bFqyS2+r+eXyt66/3FsvbzSUr5R/7" +
+            "mp/iUcw6UwxI5g69ybR2BlLmEROFcmMDBOAENisgGQLodKcftslWZvB1JdxnwQ5hYIizPtGo/KPaHbDRsSNU30R2be1B2MGyIrZT" +
+            "HN81Hdyhdyox5C315eXbyOD/5YDXC2Og/zOhD7osFRXql7PSorW+8oyWHhqPHWykYTe5hnMz15eWniN9gqRMgeKh0bpnX5UHoycR" +
+            "7hYQe7xFSkyyBNKr79X9DFHOUGoIMfmR2gyPZFwDwzqLID9ujWc9Otb+fVuIyV77zGHcizN300QyNQliBJIWENieJ0f7OyHj+Osd" +
+            "WwIDAQABo4GwMIGtMA8GA1UdEwEB/wQFMAMBAf8wCwYDVR0PBAQDAgEGMB0GA1UdDgQWBBQahGK8SEwzJQTU7tD2A8QZRtGUazBu" +
+            "BgNVHSMEZzBlgBQahGK8SEwzJQTU7tD2A8QZRtGUa6FJpEcwRTELMAkGA1UEBhMCQk0xGTAXBgNVBAoTEFF1b1ZhZGlzIExpbWl0" +
+            "ZWQxGzAZBgNVBAMTElF1b1ZhZGlzIFJvb3QgQ0EgMoICBQkwDQYJKoZIhvcNAQEFBQADggIBAD4KFk2fBluornFdLwUvZ+YTRYPE" +
+            "NvbzwCYMDbVHZF34tHLJRqUDGCdViXh9duqWNIAXINzng/iN/Ae42l9NLmeyhP3ZRPx3UIHmfLTJDQtyU/h2BwdBR5YM++CCJpNV" +
+            "jP4iH2BlfF/nJrP3MpCYUNQ3cVX2kiF495V5+vgtJodmVjB3pjd4M1IQWK4/YY7yarHvGH5KWWPKjaJW1acvvFYfzznB4vsKqBUs" +
+            "fU16Y8Zsl0Q80m/DShcK+JDSV6IZUaUtl0HaB0+pUNqQjZRG4T7wlP0QADj1O+hA4bRuVhogzG9Yje0uRY/W6ZM/57Es3zrWIozc" +
+            "hLsib9D45MY56QSIPMO661V6bYCZJPVsAfv4l7CUW+v90m/xd2gNNWQjrLhVoQPRTUIZ3Ph1WVaj+ahJefivDrkRoHy3au000LYm" +
+            "Yjgahwz46P0u05B/B5EqHdZ+XIWDmbA4CD/pXvk1B+TJYm5Xf6dQlfe6yJvmjqIBxdZmv3lh8zwc4bmCXF2gw+nYSL0ZohEUGW6y" +
+            "hhtoPkg3Goi3XZZenMfvJ2II4pEZXNLxId26F0KCl3GBUzGpn/Z9Yr9y4aOTHcyKJloJONDO1w2AFrR4pTqHTI2KpdVGl/IsELm8" +
+            "VCLAAVBpQ570su9t+Oza8eOx79+Rj1QqCyXBJhnEUhAFZdWCEOrCMc0u",
+        ),
+        Root(
+            name = "QuoVadis Root CA 2 G3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "8FE4FB0AF93A4D0D67DB0BEBB23E37C71BF325DCBCDD240EA04DAF58B47E1840",
+            b64 = "MIIFYDCCA0igAwIBAgIURFc0JFuBiZs18s64KztbpybwdSgwDQYJKoZIhvcNAQELBQAwSDELMAkGA1UEBhMCQk0xGTAXBgNVBAoT" +
+            "EFF1b1ZhZGlzIExpbWl0ZWQxHjAcBgNVBAMTFVF1b1ZhZGlzIFJvb3QgQ0EgMiBHMzAeFw0xMjAxMTIxODU5MzJaFw00MjAxMTIx" +
+            "ODU5MzJaMEgxCzAJBgNVBAYTAkJNMRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMR4wHAYDVQQDExVRdW9WYWRpcyBSb290IENB" +
+            "IDIgRzMwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQChriWyARjcV4g/Ruv5r+LrI3HimtFhZiFfqq8nUeVuGxbULX1Q" +
+            "sFN3vXg6YOJkApt8hpvWGo6t/x8Vf9WVHhLL5hSEBMHfNrMWn4rjyduYNM7YMxcoRvynyfDStNVNCXJJ+fKH46nafaF9a7I6Jalt" +
+            "UkSs+L5u+9ymc5GQYaYDFCDy54ejiK2toIz/pgslUiXnFgHVy7g1gQyjO/Dh4fxaXc6AcW34Sas+O7q414AB+6XrW7PFXmAqMaCv" +
+            "N+ggOp+oMiwMzAkd056OXbxMmO7FGmh77FOm6RQ1o9/NgJ8MSPsc9PG/Srj61YxxSscfrf5BmrODXfKEVu+lV0POKa2Mq1W/xPtb" +
+            "Ad0jIaFYAI7D0GoT7RPjEiuA3GfmlbLNHiJuKvhB1PLKFAeNilUSxmn1uIZoL1NesNKqIcGY5jDjZ1XHm26sGahVpkUG0CM62+tl" +
+            "XSoREfA7T8pt9DTEceT/AFr2XK4jYIVz8eQQsSWu1ZK7E8EM4DnatDlXtas1qnIhO4M15zHfeiFuuDIIfR0ykRVKYnLP43ehvNUR" +
+            "G3YBZwjgQQvD6xVu+KQZ2aKrr+InUlYrAoosFCT5v0ICvybIxo/gbjh9Uy3l7ZizlWNof/k19N+IxWA1ksB8aRxhlRbQ694Lrz4E" +
+            "EEVlWFA4r0jyWbYW8jwNkALGcC4BrTwV1wIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4E" +
+            "FgQU7edvdlq/YOxJW8ald7tyFnGbxD0wDQYJKoZIhvcNAQELBQADggIBAJHfgD9DCX5xwvfrs4iP4VGyvD11+ShdyLyZm3tdquXK" +
+            "4Qr36LLTn91nMX66AarHakE7kNQIXLJgapDwyM4DYvmL7ftuKtwGTTwpD4kWilhMSA/ohGHqPHKmd+RCroijQ1h5fq7KpVMNqT1w" +
+            "vSAZYaRsOPxDMuHBR//47PERIjKWnML2W2mWeyAMQ0GaW/ZZGYjeVYg3UQt4XAoeo0L9x52ID8DyeAIkVJOviYeIyUqAHerQbj5h" +
+            "Lja7NQ4nlv1mNDthcnPxFlxHBlRJAHpYErAK74X9sbgzdWqTHBLmYF5vHX/JHyPLhGGfHoJE+V+tYlUkmlKY7VHnoX6XOuYvHxHa" +
+            "U4AshZ6rNRDbIl9qxV6XU/IyAgkwo1jwDQHVcsaxfGl7w/U2Rcxhbl5MlMVerugOXou/983g7aEOGzPuVBj+D77vfoRrQ+NwmNtd" +
+            "dbINWQeFFSM51vHfqSYP1kjHs6Yi9TM3WpVHn3u6GBVv/9YUZINJ0gpnIdsPNWNgKCLjsZWDzYWm3S8P52dSbrsvhXz1SnPnxT7A" +
+            "vSESBT/8twNJAlvIJebiVDj1eYeMHVOyToV7BjjHLPj4sHKNJeV3UvQDHEimUF+IIDBu8oJDqz2XhOdT+yHBTw8imoa4WSr2Rz0Z" +
+            "iC3oheGe7IUIarFsNMkd7EgrO3jtZsSOeWmD3n+M",
+        ),
+        Root(
+            name = "QuoVadis Root CA 3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "18F1FC7F205DF8ADDDEB7FE007DD57E3AF375A9C4D8D73546BF4F1FED1E18D35",
+            b64 = "MIIGnTCCBIWgAwIBAgICBcYwDQYJKoZIhvcNAQEFBQAwRTELMAkGA1UEBhMCQk0xGTAXBgNVBAoTEFF1b1ZhZGlzIExpbWl0ZWQx" +
+            "GzAZBgNVBAMTElF1b1ZhZGlzIFJvb3QgQ0EgMzAeFw0wNjExMjQxOTExMjNaFw0zMTExMjQxOTA2NDRaMEUxCzAJBgNVBAYTAkJN" +
+            "MRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMRswGQYDVQQDExJRdW9WYWRpcyBSb290IENBIDMwggIiMA0GCSqGSIb3DQEBAQUA" +
+            "A4ICDwAwggIKAoICAQDMV0IWVJzmmNPTTe7+7cefQzlKZbPoFog02w1ZkXTPkrgEQK0CSzGrvI2RaNggDhoB4hp7Thdd4oq3P5ka" +
+            "zethq8Jlph+3t723j/z9cI8LoGe+AaJZz3HmDyl2/7FWeUUrH556VOijKTVopAFPD6QuN+8bv+OPEKhyq1hX51SGyMnzW9os2l2O" +
+            "bjyjPtr7guXd8lyyBTNvijbO0BNO/79KDDRMpsMhvVAEVeuxu537RR5kFd5VAYwCdrXLoT9CabwvvWhDFlaJKjdhkf2mrk7AyxRl" +
+            "lDdLkgbvBNDInIjbC3uBr7E9KsRlOni27tyAsdLTmZw67mtaa7ONt9XOnMK+pUsvFrGeaDsGb659n/je7Mwpp5ijJUMv7/FfJuGI" +
+            "TfhebtfZFG4ZM2mnO4SJk8RTVROhUXhA+LjJou57ulJCg54U7QVSWllWp5f8nT8KKdjcT5EOE7zelaTfi5m+rJsziO+1ga8bxiJT" +
+            "yPbH7pcUsMV8eFLI8M5ud2CEpukqdiDtWAEXMJPpGovgc2PZapKUSU60rUqFxKMiMPwJ7Wgic6aIDFUhWMXhOp8q3crhkODZc6ts" +
+            "gLjoC2SToJyMGf+z0gzskSaHirOi4XCPLArlzW1oUevaPwV/izLmE1xr/l9A4iLItLRkT9a6fUg+qGkM17uGcclzuD87nSVL2v9A" +
+            "6wIDAQABo4IBlTCCAZEwDwYDVR0TAQH/BAUwAwEB/zCB4QYDVR0gBIHZMIHWMIHTBgkrBgEEAb5YAAMwgcUwgZMGCCsGAQUFBwIC" +
+            "MIGGGoGDQW55IHVzZSBvZiB0aGlzIENlcnRpZmljYXRlIGNvbnN0aXR1dGVzIGFjY2VwdGFuY2Ugb2YgdGhlIFF1b1ZhZGlzIFJv" +
+            "b3QgQ0EgMyBDZXJ0aWZpY2F0ZSBQb2xpY3kgLyBDZXJ0aWZpY2F0aW9uIFByYWN0aWNlIFN0YXRlbWVudC4wLQYIKwYBBQUHAgEW" +
+            "IWh0dHA6Ly93d3cucXVvdmFkaXNnbG9iYWwuY29tL2NwczALBgNVHQ8EBAMCAQYwHQYDVR0OBBYEFPLAE+CCQz777i9nMpY1XNu4" +
+            "ywLQMG4GA1UdIwRnMGWAFPLAE+CCQz777i9nMpY1XNu4ywLQoUmkRzBFMQswCQYDVQQGEwJCTTEZMBcGA1UEChMQUXVvVmFkaXMg" +
+            "TGltaXRlZDEbMBkGA1UEAxMSUXVvVmFkaXMgUm9vdCBDQSAzggIFxjANBgkqhkiG9w0BAQUFAAOCAgEAT62gLEz6wPJv92ZVqyM0" +
+            "7ucp2sNbtrCD2dDQ4iH782CnO11gUyeim/YIIirnv6By5ZwkajGxkHon24QRiSemd1o417+shvzuXYO8BsbRd2sPbSQvS3pspweW" +
+            "yuOEn62Iix2rFo1bZhfZFvSLgNLd+LJ2w/w4E6oM3kJpK27zPOuAJ9v1pkQNn1pVWQvVDVJIxa6f8i+AxeoyUDUSly7B4f/xI4hR" +
+            "OJ/yZlZ25w9Rl6VSDE1JUZU2Pb+iSwwQHYaZTKrzchGT5Or2m9qoXadNt54CrnMAyNojA+j56hl0YgCUyyIgvpSnWbWCar6ZeXqp" +
+            "8kokUvd0/bpO5qgdAm6xDYBEwa7TIzdfu4V8K5Iu6H6li92Z4b8nby1dqnuH/grdS/yO9SbkbnBCbjPsMZ57k8HkyWkaPcBrTiJt" +
+            "7qtYTcbQQcEr6k8Sh17rRdhs9ZgC06DYVYoGmRmioHfRMJ6szHXug/WwYjnPbFfiTNKRCw51KBuav/0aQ/HKd/s7j2G4aSgWQgRe" +
+            "cCocIdiP4b0jWy10QJLZYxkNc91pvGJHvOB0K7Lrfb5BG7XARsWhIstfTsEokt4YutUqKLsRixeTmJlglFwjz1onl14LBQaTNx47" +
+            "aTbrqZ5hHY8y2o4M1nQ+ewkk2gF3R8Q7zTSMmfXK4SVhM7JZG+Ju1zdXtg2pEto=",
+        ),
+        Root(
+            name = "QuoVadis Root CA 3 G3",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "88EF81DE202EB018452E43F864725CEA5FBD1FC2D9D205730709C5D8B8690F46",
+            b64 = "MIIFYDCCA0igAwIBAgIULvWbAiin23r/1aOp7r0DoM8Sah0wDQYJKoZIhvcNAQELBQAwSDELMAkGA1UEBhMCQk0xGTAXBgNVBAoT" +
+            "EFF1b1ZhZGlzIExpbWl0ZWQxHjAcBgNVBAMTFVF1b1ZhZGlzIFJvb3QgQ0EgMyBHMzAeFw0xMjAxMTIyMDI2MzJaFw00MjAxMTIy" +
+            "MDI2MzJaMEgxCzAJBgNVBAYTAkJNMRkwFwYDVQQKExBRdW9WYWRpcyBMaW1pdGVkMR4wHAYDVQQDExVRdW9WYWRpcyBSb290IENB" +
+            "IDMgRzMwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCzyw4QZ47qFJenMioKVjZ/aEzHs286IxSR/xl/pcqs7rN2nXrp" +
+            "ixurazHb+gtTTK/FpRp5PIpM/6zfJd5O2YIyC0TeytuMrKNuFoM7pmRLMon7FhY4futD4tN0SsJiCnMK3UmzV9KwCoWdcTzeo8vA" +
+            "MvMBOSBDGzXRU7Ox7sWTaYI+FrUoRqHe6okJ7UO4BUaKhvVZR74bbwEhELn9qdIoyhA5CcoTNs+cra1AdHkrAj80//ogaX3T7mH1" +
+            "urPnMNA3I4ZyYUUpSFlob3emLoG+B01vr87ERRORFHAGjx+f+IdpsQ7vw4kZ6+ocYfx6bIrc1gMLnia6Et3UVDmrJqMz6nWB2i3N" +
+            "D0/kA9HvFZcba5DFApCTZgIhsUfei5pKgLlVj7WiL8DWM2fafsSntARE60f75li59wzweyuxwHApw0BiLTtIadwjPEjrewl5qW3a" +
+            "qDCYz4ByA4imW0aucnl8CAMhZa634RylsSqiMd5mBPfAdOhx3v89WcyWJhKLhZVXGqtrdQtEPREoPHtht+KPZ0/l7DxMYIBpVzge" +
+            "AVuNVejH38DMdyM0SXV89pgR6y3e7UEuFAUCf+D+IOs15xGsIs5XPd7JMG0QA4XN8f+MFrXBsj6IbGB/kE+V9/YtrQE5BwT6dYB9" +
+            "v0lQ7e/JxHwc64B+27bQ3RP+ydOc17KXqQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4E" +
+            "FgQUxhfQvKjqAkPyGwaZXSuQILnXnOQwDQYJKoZIhvcNAQELBQADggIBADRh2Va1EodVTd2jNTFGu6QHcrxfYWLopfsLN7E8trP6" +
+            "KZ1/AvWkyaiTt3pxKGmPc+FSkNrVvjrlt3ZqVoAh313m6Tqe5T72omnHKgqwGEfcIHB9UqM+WXzBusnIFUBhynLWcKzSt/Ac5IYp" +
+            "8M7vaGPQtSCKFWGafoaYtMnCdvvMujAWzKNhxnQT5WvvoxXqA/4Ti2Tk08HS6IT7SdEQTXlm66r99I0xHnAUrdzeZxNMgRVhvLfZ" +
+            "kXdxGYFgu/BYpbWcC/ePIlUnwEsBbTuZDdQdm2NnL9DuDcpmvJRPpq3t/O5jrFc/ZSXPsoaP0Aj/uHYUbt7lJ+yreLVTubY/6CD5" +
+            "0qi+YUbKh4yE8/nxoGibIh6BJpsQBJFxwAYf3KDTuVan45gtf4Od34wrnDKOMpTwATwiKp9Dwi7DmDkHOHv8XgBCH/MyJnmDhPbl" +
+            "8MFREsALHgQjDFSlTC9JxUrRtm5gDWv8a4uFJGS3iQ6rJUdbPM9+Sb3H6QrG2vd+DhcI00iX0HGS8A85PjRqHH3Y8iKuu2n0M7Sm" +
+            "SFXRDw4m6Oy2Cy2nhTXN/VnIn9HNPlopNLk9hM6xZdRZkZFWdSHBd575euFgndOtBBj0fOtek49TSiIp+EgrPk2GrFt/ywaZWWDY" +
+            "WGWVjUTR939+J399roD1B0y2PpxxVJkES/1Y+Zj0",
+        ),
+        Root(
+            name = "QuoVadis Signing ECC P384 Root G4",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "771535D43D4633BD307EB7B8A3966B5DF00707C088089920080C1AE6D3CB0F68",
+            b64 = "MIICNjCCAb2gAwIBAgIUNdzqqPFud6Xd/BatNpw0vRVFzikwCgYIKoZIzj0EAwMwWzELMAkGA1UEBhMCTkwxIDAeBgNVBAoMF1F1" +
+            "b1ZhZGlzIFRydXN0bGluayBCLlYuMSowKAYDVQQDDCFRdW9WYWRpcyBTaWduaW5nIEVDQyBQMzg0IFJvb3QgRzQwHhcNMjMwMzE2" +
+            "MTUzNjAyWhcNNDgwMzA5MTUzNjAxWjBbMQswCQYDVQQGEwJOTDEgMB4GA1UECgwXUXVvVmFkaXMgVHJ1c3RsaW5rIEIuVi4xKjAo" +
+            "BgNVBAMMIVF1b1ZhZGlzIFNpZ25pbmcgRUNDIFAzODQgUm9vdCBHNDB2MBAGByqGSM49AgEGBSuBBAAiA2IABFI7CA12eXWd/JJ/" +
+            "J6R9xlocD5E82+Q5+IKq2PzmYohXxrVz2z72REWsGaRBYykLliyHxKYC012KoqjnXjbs38WhRVVKDFRRkBCcHpoM+PM0sJSy54NI" +
+            "x1jKetHHJGgFLKNCMEAwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUWRZsDiAtkUp02ppPs/4pUbnpynwwDgYDVR0PAQH/BAQD" +
+            "AgGGMAoGCCqGSM49BAMDA2cAMGQCMBZ8eADXpJ2W4XVLDPFJMoABShYkMQVq5PHCRA1/t5l5Lgkw15p6O0DmoSYM500L/QIwRmBo" +
+            "IwwushW7GPd4iqd4bGvn1U+4UL+binQ0f4vyuAw62hoABxh7IH+mdNN+g6gT",
+        ),
+        Root(
+            name = "QuoVadis Signing RSA 4096 Root G4",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "9F8E6DB31E740285E0C2C2DEB09E442BDD4E74BDEEAE2962BC82D1ECB9F39855",
+            b64 = "MIIFhjCCA26gAwIBAgIUDx0XQGkARJQ7rWtetIcEV1mwgI0wDQYJKoZIhvcNAQEMBQAwWzELMAkGA1UEBhMCTkwxIDAeBgNVBAoM" +
+            "F1F1b1ZhZGlzIFRydXN0bGluayBCLlYuMSowKAYDVQQDDCFRdW9WYWRpcyBTaWduaW5nIFJTQSA0MDk2IFJvb3QgRzQwHhcNMjMw" +
+            "MzE2MTUzMjQ4WhcNNDgwMzA5MTUzMjQ3WjBbMQswCQYDVQQGEwJOTDEgMB4GA1UECgwXUXVvVmFkaXMgVHJ1c3RsaW5rIEIuVi4x" +
+            "KjAoBgNVBAMMIVF1b1ZhZGlzIFNpZ25pbmcgUlNBIDQwOTYgUm9vdCBHNDCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "ANCMA/gAIDZZWuEcZP0bo8ss5R5zIRDr5DYOLLh2vyg6HsEKlEXzWuk7wBrF/Od8OMzpHCy3eWGse+BO9i63oTIVG5Usix1Q9qWz" +
+            "sBtj8kbCw1ahydO8E87y24Yapmjr/e+jY6++44IZ/dcSBK5vmJsUr6j353+z1npzUQNo5JeB01o8M73Gwf3kfkkc4xQNj8FluJcr" +
+            "YVr88zQ27Gcpe9JMkCrSpkKpxsgByVy/XDcx/gZZV+5urRyeovFq3IjllYTV1h4BnVAW4y9xraGRIKayq/4IKAI2L0OYjDucphkE" +
+            "mrWxfP6wDX+kMCPCbw8jAWv/2fOFgq0Fq2xAp4FQbQF/xgTcDsm5zq9p8QOsw8wV4B7q+2N+NGtSU/CYTPydg13Dik8/k71zWkWh" +
+            "uQ9S8LChI4MKh+lsKaLEN574U5UABwyoOSDDRurBPRQZrEtzebgE7lwMo3WWWrVuAp5e8rtyLNrxaSVcIDjqRydWbNLF+BB23iKU" +
+            "aZ3tV6RspDUpmsp9Gl9VRErEVJ+/O5kS0M1oMyK9LB3GGTOkW4SGhEMJQiW54pcs8ZQHrF6QjAEib6Ur9DcEB6vI10xQh/I+Qb8m" +
+            "KiyjZpHO/h5i5sbppaG+mMPv5GbN/dvvii+WTHuuM/g6zvyF+GOvyfLA/bRmez3zYyO9W29RPWnDQFTw1q43AgMBAAGjQjBAMA8G" +
+            "A1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFFNw9E+5WtshFimqEnp6WQvW/EXtMA4GA1UdDwEB/wQEAwIBhjANBgkqhkiG9w0BAQwF" +
+            "AAOCAgEABdc9SCegXz5mkfFh+wZoILbKSVY9qoP3Hp4WLAFpeQZiLSOoxvNLVIX4ENWYrM+wzVb+S32XVA9kvl3QK/QJirECmvyy" +
+            "fMprJvKkzYF0ZjNUo0fWUGwJzja4lQjeExGte0dcsQYLvCkqRRnt0v019E5kVDVkXgNBUipl06AULYmUAjJ9xAukbzZcIfr7XuGt" +
+            "pWRZzIGPXA/R55Bn/KkJtWW7ALvB74auDpnnPT6PkJXTdgIlUOqJvtISRy0bLjv3r01ZkZvZaAEzmMswZpCSiFJCX0evKp4BvOBr" +
+            "c/e63FZC4WfU7pqtAS43PzA9h/gdcWug6I9gR0tl50viFBfXmgYbyLcxeEJKDmHnfnWDwMENqAmsvLNroHNwdALkSdipcyA/pnYA" +
+            "aR/8fXg5dYPlpuVy4F6mQhyQ4R4aASXG6NxsR7O+1Y6Q4FL4oE2IHV5kkwkUXJadUHqicmqUZTynAe2cj+d28fmV4066TjbYiSfT" +
+            "RH/Ji6gJnpG9ySiYRCCHtMecjsfZY+wj87Hgonlo4ek+S05aqdOPaUX5v1K6KrchPNN2GE6Tdz5OO2v2ACWyinbBn12XdnnmQphm" +
+            "iOAQhu+wodWXUMTpoURWz+57cSnrKAvNbTz6DPvb1mU5UwNTfSQn09h4h31GcJwT1UuEv1xp188BqF4OvBPFXkjrhyE=",
+        ),
+        Root(
+            name = "VeriSign Universal Root Certification Authority",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2399561127A57125DE8CEFEA610DDF2FA078B5C8067F4E828290BFB860E84B3C",
+            b64 = "MIIEuTCCA6GgAwIBAgIQQBrEZCGzEyEDDrvkEhrFHTANBgkqhkiG9w0BAQsFADCBvTELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDlZl" +
+            "cmlTaWduLCBJbmMuMR8wHQYDVQQLExZWZXJpU2lnbiBUcnVzdCBOZXR3b3JrMTowOAYDVQQLEzEoYykgMjAwOCBWZXJpU2lnbiwg" +
+            "SW5jLiAtIEZvciBhdXRob3JpemVkIHVzZSBvbmx5MTgwNgYDVQQDEy9WZXJpU2lnbiBVbml2ZXJzYWwgUm9vdCBDZXJ0aWZpY2F0" +
+            "aW9uIEF1dGhvcml0eTAeFw0wODA0MDIwMDAwMDBaFw0zNzEyMDEyMzU5NTlaMIG9MQswCQYDVQQGEwJVUzEXMBUGA1UEChMOVmVy" +
+            "aVNpZ24sIEluYy4xHzAdBgNVBAsTFlZlcmlTaWduIFRydXN0IE5ldHdvcmsxOjA4BgNVBAsTMShjKSAyMDA4IFZlcmlTaWduLCBJ" +
+            "bmMuIC0gRm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxODA2BgNVBAMTL1ZlcmlTaWduIFVuaXZlcnNhbCBSb290IENlcnRpZmljYXRp" +
+            "b24gQXV0aG9yaXR5MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx2E3XrEBNNti1xWb/1hajCMj1mCOkdeQmIN65lgZ" +
+            "OIzF9uVkhbSicfvtvbnazU0AtMgtc6XHaXGVHzk8skQHnOgO+k1KxCHfKWGPMiJhgsWHH26MfF8WIFFE0XBPV+rjHOPMee5Y2A7C" +
+            "s0WTwCznmhcrewA3ekEzeOEz4vMQGn+HLL729fdC4uW/h2KJXwBL38Xd5HVEMkE6HnFuacsLdUYI0crSK5XQz/u5QGtkjFdN/BMR" +
+            "eYTtXlT2NJ8IAfMQJQYXStrxHXpma5hgZqTZ79IugvHw7wnqRMkVauIDbjPTrJ9VAMf2CGqUuV/c4DPxhGD5WycRtPwW8rtWaoAl" +
+            "jQIDAQABo4GyMIGvMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMG0GCCsGAQUFBwEMBGEwX6FdoFswWTBXMFUWCWlt" +
+            "YWdlL2dpZjAhMB8wBwYFKw4DAhoEFI/l0xqGrI2Oa8PPgGrUSBgsexkuMCUWI2h0dHA6Ly9sb2dvLnZlcmlzaWduLmNvbS92c2xv" +
+            "Z28uZ2lmMB0GA1UdDgQWBBS2d/ppSEefUxLVwuoHMnYH0ZcHGTANBgkqhkiG9w0BAQsFAAOCAQEASvj4sAPmLGd75JR3Y8xuTPl9" +
+            "Dg3cyLk1uXBPY/ok+myDjEedO2Pzmvl2MpWRsXe8rJq+seQxIcaBlVZaDrHC1LGmWazxY8u4TB1ZkErvkBYoH1quEPuBUDgMbMzx" +
+            "PcP1Y+Oz4yHJJDnp/RVmRvQbEdBNc6N9Rvk97ahfYtTxP/jgdFcrGJ2BtMQo2pSXpXDrrB2+BxHw1dvd5Yzw1TKwg+ZX4o+/vqGq" +
+            "vz0dtdQ46tewXDpPaj+PwGZsY6rp2aQW9IHRlRQOfc2VNNnSj3BzgXucfr2YYdhFh5iQxeuGMMY1v/D/w1WIg0vvBZIGcfK4mJO3" +
+            "7M2CYfE45k+XmCpajQ==",
+        ),
+        Root(
+            name = "Verizon Global Root CA",
+            owner = "DigiCert",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "68AD50909B04363C605EF13581A939FF2C96372E3F12325B0A6861E1D59F6603",
+            b64 = "MIIDdTCCAl2gAwIBAgIBATANBgkqhkiG9w0BAQsFADBcMQswCQYDVQQGEwJVUzEZMBcGA1UECgwQVmVyaXpvbiBCdXNpbmVzczER" +
+            "MA8GA1UECwwIT21uaVJvb3QxHzAdBgNVBAMMFlZlcml6b24gR2xvYmFsIFJvb3QgQ0EwHhcNMDkwNzMwMTQyNzA0WhcNMzQwNzMw" +
+            "MTQyNzA0WjBcMQswCQYDVQQGEwJVUzEZMBcGA1UECgwQVmVyaXpvbiBCdXNpbmVzczERMA8GA1UECwwIT21uaVJvb3QxHzAdBgNV" +
+            "BAMMFlZlcml6b24gR2xvYmFsIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCKAAxwHb/rNIbDmUU1Hn9D" +
+            "96tvJC3NGcIQu7DKKVupIKurcizE4gI5bYK4xRHq+PuznmL4Mx6wH8nj9jfbBMg7Y0824oWkJR3HaR8EvWhFE5YHH5RQ9T7FJ1Se" +
+            "wElXRI4HY9Smru0imcxNlmkEE252iZ90FpT5HVS9ornSgwEiDE1EgKr+NYknJaeGicbVGpLjj8WVoBRymuhWxQJVHJf5IC7Q9TwT" +
+            "GVr24fkLA4Jpp4y31m+cVj6d6CoJYG1L5vuLmRT3NE9lWYCNuVfIojUh2IhxVl3uglctJpAYn5qcnI/v1MVjp1R9R5GHfRoSqBsY" +
+            "b6lvsSe65AR0zjcef2bFAgMBAAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBRMOBG4mABb" +
+            "WitwPqp45NVnZ2enfjANBgkqhkiG9w0BAQsFAAOCAQEAAV+gsQYB9HnXZRhgPs95oLrCI08j34eWX4EOOBUuXMgCaCkg/IvupYoY" +
+            "gWRcmDV+OTCCpIKKULW6w+ha1qie4sMX29vE67AKIA3pnuP/YFRH8Tud1Cg8oq6j+6qLgiIqNYeQuBxZR5DVnS76SeNlqDbrx+Qc" +
+            "aNyzMWyrTs4kgBXIEFkQEXJNepyYnMT8YeCzsp1OoMbCWasY1qJVRewpqiU31k5KPQtAweST5PzNkQv45qvMs3bEYr8Z7Ya2ecMp" +
+            "VFS8mX1GV8+mz/RUKpoDZUcBoUIqyyVHbnxeAEuR2fkbEAZw+UIVpl+q10Ae/clInZeB6lxowqDniaFTTb/H4w==",
+        ),
+        Root(
+            name = "CA Disig Root R2",
+            owner = "Disig, a.s.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E23D4A036D7B70E9F595B1422079D2B91EDFBB1FB651A0633EAA8A9DC5F80703",
+            b64 = "MIIFaTCCA1GgAwIBAgIJAJK4iNuwisFjMA0GCSqGSIb3DQEBCwUAMFIxCzAJBgNVBAYTAlNLMRMwEQYDVQQHEwpCcmF0aXNsYXZh" +
+            "MRMwEQYDVQQKEwpEaXNpZyBhLnMuMRkwFwYDVQQDExBDQSBEaXNpZyBSb290IFIyMB4XDTEyMDcxOTA5MTUzMFoXDTQyMDcxOTA5" +
+            "MTUzMFowUjELMAkGA1UEBhMCU0sxEzARBgNVBAcTCkJyYXRpc2xhdmExEzARBgNVBAoTCkRpc2lnIGEucy4xGTAXBgNVBAMTEENB" +
+            "IERpc2lnIFJvb3QgUjIwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCio8QACdaFXS1tFPbCw3OeNcJxVX6B+6tGUODB" +
+            "fEl45qt5WDza/3wcn9iXAng+a0EE6UG9vgMsRfYvZNSrXaNHPWSb6WiaxswbP7q+sos0Ai6YVRn8jG+qX9pMzk0DIaPY0jSTVpbL" +
+            "TAwAFjxfGs3Ix2ymrdMxp7zo5eFm1tL7A7RBZckQrg4FY8aAamkw/dLukO8NJ9+flXP04SXabBbeQTg06ov80egEFGEtQX6sx3dO" +
+            "y1FU+16SGBsEWmjGycT6txOgmLcRK7fWV8x8nhfRyyX+hk4kLlYMeE2eARKmK6cBZW58Yh2EhN/qwGu1pSqVg8NTEQxzHQuyRpDR" +
+            "QjrOQG6Vrf/GlK1ul4SOfW+eioANSW1z4nuSHsPzwfPrLgVv2RvPN3YEyLRa5Beny912H9AZdugsBbPWnDTYltxhh5EF5EQIM8Ha" +
+            "uQhl1K6yNg3ruji6DOWbnuuNZt2Zz9aJQfYEkoopKW1rOhzndX0CcQ7zwOe9yxndnWCywmZgtrEE7snmhrmaZkCo5xHtgUUDi/Zn" +
+            "WejBBhG93c+AAk9lQHhcR1DIm+YfgXvkRKhbhZri3lrVx/k6RGZL5DJUfORsnLMOPReisjQS1n6yqEm70XooQL6iFh/f5DcfEXP7" +
+            "kAplQ6INfPgGAVUzfbANuPT1rqVCV3w2EYx7XsQDnYx5nQIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIB" +
+            "BjAdBgNVHQ4EFgQUtZn4r7CU9eMg1gqtzk5WpC5uQu0wDQYJKoZIhvcNAQELBQADggIBACYGXnDnZTPIgm7ZnBc6G3pmsgH2eDtp" +
+            "Xi/q/075KMOYKmFMtCQSin1tERT3nLXK5ryeJ45MGcipvXrA1zYObYVybqjGom32+nNjf7xueQgcnYqfGopTpti72TVVsRHFqQOz" +
+            "Vju5hJMiXn7B9hJSi+osZ7z+Nkz1uM/Rs0mSO9MpDpkblvdhuDvEK7Z4bLQjb/D907JedR+Zlais9trhxTF7+9FGs9K8Z7RiVLoJ" +
+            "92Owk6Ka+elSLotgEqv89WBW7xBci8QaQtyDW2QOy7W81k/BfDxujRNt+3vrMNDcTa/F1balTFtxyegxvug4BkihGuLq0t4SOVga" +
+            "/4AOgnXmt8kHbA7v/zjxmHHEt38OFdAlab0inSvtBfZGR6ztwPDUO+Ls7pZbkBNOHlY667DvlruWIxG68kOGdGSVyCh13x01utI3" +
+            "gzhTODY7z2zp+WsO0PsE6E9312UBeIYMej4hYvF/Y3EMyZ9E26gnonW+boE+18DrG5gPcFw0sorMwIUY6256s/daoQe/qUKS82Ai" +
+            "l+QUoQebTnbAjn39pCXHR+3/H3OszMOl6W8KjptlwlCFtaOgUxLMVYdh84GuEEZhvUQhuMI9dM9+JDX6HAcOmz0iyu8xL4ysEr3v" +
+            "QCj8KWefshNPZiTEUxnpHikV7+ZtsH8tZ/3zbBt1RqPlShfppNcL",
+        ),
+        Root(
+            name = "Certinomis - Root CA",
+            owner = "Docaposte Certinomis SAS",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2A99F5BC1174B73CBB1D620884E01C34E51CCB3978DA125F0E33268883BF4158",
+            b64 = "MIIFkjCCA3qgAwIBAgIBATANBgkqhkiG9w0BAQsFADBaMQswCQYDVQQGEwJGUjETMBEGA1UEChMKQ2VydGlub21pczEXMBUGA1UE" +
+            "CxMOMDAwMiA0MzM5OTg5MDMxHTAbBgNVBAMTFENlcnRpbm9taXMgLSBSb290IENBMB4XDTEzMTAyMTA5MTcxOFoXDTMzMTAyMTA5" +
+            "MTcxOFowWjELMAkGA1UEBhMCRlIxEzARBgNVBAoTCkNlcnRpbm9taXMxFzAVBgNVBAsTDjAwMDIgNDMzOTk4OTAzMR0wGwYDVQQD" +
+            "ExRDZXJ0aW5vbWlzIC0gUm9vdCBDQTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBANTMCQosP5L2fxSeC5yaah1AMGT9" +
+            "qt8OHgZbn1CF6s2Nq0Nn3rD6foCWnoR4kkjW4znuzuRZWJflLieY6pOod5tK8O90gC3rMB+12ceAnGInkYjwSond3IjmFPnVAy//" +
+            "ldu9n+ws+hQVWZUKxkd8aRi5pwP5ynapz8dvtF4F/u7BUrJ1Mofs7SlmO/NKFoL21prbcpjp3vDFTKWrteoB4owuZH9kb/2jJZOL" +
+            "yKIOSY008B/sWEUuNKqEUL3nskoTuLAPrjhdsKkb5nPJWqHZZkCqqU2mNAKthH6yI8H7KsZn9DS2sJVqM09xRLWtwHkziOC/7aOg" +
+            "FLScCbAK42C++PhmiM1b8XcF4LVzbsF9Ri6OSyemzTUK/eVNfaoqoynHWmgE6OXWk6RiwsXm9E/G+Z8ajYJJGYrKWUM66A0ywfRM" +
+            "EwNvbqY/kXPLynNvEiCL7sCCeN5LLsJJwx3tFvYk9CcbXFcx3FXuqB5vbKziRcxXV4p1VxngtViZSTYxPDMBbRZKzbgqg4SGm/lg" +
+            "0h9tkQPTYKbVPZrdd5A9NaSfD171UkRpucC63M9933zZxKyGIjK8e2uR73r4F2iw4lNVYC2vPsKD2NkJK/DAZNuHi5HMkesE/Xa0" +
+            "lZrmFAYb1TQdvtj/dBxThZngWVJKYe2InmtJiUZ+IFrZ50rlau7SZRFDAgMBAAGjYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMB" +
+            "Af8EBTADAQH/MB0GA1UdDgQWBBTvkUz1pcMw6C8I6tNxIqSSaHh02TAfBgNVHSMEGDAWgBTvkUz1pcMw6C8I6tNxIqSSaHh02TAN" +
+            "BgkqhkiG9w0BAQsFAAOCAgEAfj1U2iJdGlg+O1QnurrMyOMaauo++RLrVl89UM7g6kgmJs95Vn6RHJk/0KGRHCwPT5iVWVO90CLY" +
+            "iF2cN/z7ZMF4jIuaYAnq1fohX9B0ZedQxb8uuQsLrbWwF6YSjNRieOpWauwK0kDDPAUwPk2Ut59KA9N9J0u2/kTO+hkzGm2kQtHd" +
+            "zMjI1xZSg081lLMSVX3l4kLr5JyTCcBMWwerx20RoFAXlCOotQqSD7J6wWAsOMwaplv/8gzjqh8c3LigkyfeY+N/IZ865Z764BNq" +
+            "deuWXGKRlI5nU7aJ+BIJy29SWwNyhlCVCNSNh4YVH5Uk2KRvms6knZtt0rJ2BobGVgjF6wnaNsIbW0G+YSrjcOa4pvi2WsS9Iff/" +
+            "ql+hbHY5ZtbqTFXhADObE5hjyW/QASAJN1LnDE8+zbz1X5YnpyACleAu6AdBBR8Vbtaw5BngDwKTACdyxYvRVB9dSsNAl35VpnzB" +
+            "MwQUAR1JIGkLGZOdblgi90AMRgwjY/M50n92Uaf0yKHxDHYiI0ZSKS3io0EHVmmY0gUJvGnHWmHNj4FgFU2A3ZDifcRQ8ow7bkrH" +
+            "xuaAKzyBvBGAFhAn1/DNP3nMcyrDflOR1m749fPH0FFNjkulW+YZFzvWgQncItzujrnEj1PhZ7szuIgVRs/taTX/dQ1G885x4cVr" +
+            "hkIGuUE=",
+        ),
+        Root(
+            name = "CAEDICOM Root",
+            owner = "EDICOM",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1501F89C5C4DCF36CF588A17C9FD7CFCEB9EE01E8729BE355E25DE80EB6284B4",
+            b64 = "MIIFUTCCAzmgAwIBAgIIAPtxJlitmeUwDQYJKoZIhvcNAQELBQAwNjEWMBQGA1UEAwwNQ0FFRElDT00gUm9vdDEPMA0GA1UECgwG" +
+            "RURJQ09NMQswCQYDVQQGEwJFUzAeFw0xNDA1MjExMTA2MzVaFw0zNDA1MjExMDIwMDBaMDYxFjAUBgNVBAMMDUNBRURJQ09NIFJv" +
+            "b3QxDzANBgNVBAoMBkVESUNPTTELMAkGA1UEBhMCRVMwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDbgMroSXTH0zgu" +
+            "8cUjYvw2jC8efjkL6Qb0VZulmCmU7YZHMoPzxZJ6BdcpAj4Wwyh/NWQpenm7oeIeYRSN5wDQ3KJUZYrfablxR384OBZGp2kxETVM" +
+            "4Sp//21PlT3jXUhNGVMIWmsh1RIwaZeQry3B9X9BX0k2j024HhqVX9oPb1wVNcQRvF+Fm72tO1Veu9/Ou69cmWDdH2kaSUgh+QkK" +
+            "z3Kn8PLe5XgZvhLdzYd5Qc4vRdcLkRARBB4SnfI4A18Waa6gCtrA+eugDRgPeV6RneQfFJw0ExkCRLpRw+55smAUo6+8SC0oOGgB" +
+            "Q2TKDoaDYtCKGaYn8St7SykhW5rMaEIQyEtPDyOyiHzEXG4XcMV3r5XAJaQiCtN8+dhyyNAtvafo0i2LTKFuCvy0QDO7mmv8pOrJ" +
+            "/uA0iEPMxrw/ddKlqa/6l7k+t85UoE3AXS7BKNhjVHK4rFr1OvsgYQY69KArOKvMgwxJ1G4+bQ8+cy825vNPs8AA0UVJW4z2o5gd" +
+            "hH+ZCsPqCjzD0yR4SGf1GzsOHQ5DsQR1waA5dov22QKlHeGeWwe7NldKIU35iWm0bA/Xr6AVJJnn+NdTlOwSv6Sl1+3ujjV3d9ym" +
+            "fyBUktZj1nKeTSq2j3PzGaHEsB/mNKMLAD6XSSdhqqoEQTM4tVBRzDYV2x//vcpIg0inswIDAQABo2MwYTAdBgNVHQ4EFgQUFM0q" +
+            "WXhjq2EZ6Lg9oeBawHXn+cswDwYDVR0TAQH/BAUwAwEB/zAfBgNVHSMEGDAWgBQUzSpZeGOrYRnouD2h4FrAdef5yzAOBgNVHQ8B" +
+            "Af8EBAMCAQYwDQYJKoZIhvcNAQELBQADggIBAD0JGQC2kQJs7A734eJisL8zDf1VEvQImvcrLa73nEfYHwYBE7WO57KCCz2EWUPU" +
+            "B9grXBB6JCzKjejVozmcMczr4Drh1b/Px4d7YP9HOdejRNYIJlvPWlTsiNOOD3k8yKNPpsKOJ/DeEq5eGa3nIlaKWDLg+QbQqSq0" +
+            "NZsMhiZRAJRHUPylxCVh+VjwRXAuSXZ/EdZvtfkpBeENw05YH68d7DfQSvkGBoHT26CWuA6RMHnmUN+IuAupXNQH9MmozH2Pk2MJ" +
+            "ZAAFKmhmQ7uiu/6VrvnEpQqIYkh4JXwqPxFkptMiIEedMtby48ikYXTngsJEuqDRXV+88UQOg08cUIXE6eds/Oa4VeGiGoC3kESn" +
+            "hCKXRyLeqzg3z7XyHD5CcLt1tmUoa8t/gjWq9vMgeChzB5YwcKUqcVyheaQWuUY9XrQASYWJ0w7fga5YjVjW4cVEeC4cILuiR5e/" +
+            "dhQ7qSiPnwt10qE87SvHjpCheqKZMGL8hR01czvztVkiG80IsQyddWrbhTsOh58yT5IAAQFMSWiCgEFs+f1xvYv0eApgo56xUh3A" +
+            "iuOexb8rGWqYp7HeFVCfqpQlj6mAgqdyuklkCSdhK268IygzXZ5u8Lm9IDKM3aALmbu0hAQkdSmW96elF7hRBet0rVF5lvy7+98J" +
+            "LQiSRM7A0rMYxxQivyHx",
+        ),
+        Root(
+            name = "Fina Root CA",
+            owner = "Financijska agencija (Fina)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5AB4FCDB180B5B6AF0D262A2375A2C77D25602015D96648756611E2E78C53AD3",
+            b64 = "MIIFcDCCA1igAwIBAgINAJgzyagAAAAAVlS8bjANBgkqhkiG9w0BAQsFADBDMQswCQYDVQQGEwJIUjEdMBsGA1UEChMURmluYW5j" +
+            "aWpza2EgYWdlbmNpamExFTATBgNVBAMTDEZpbmEgUm9vdCBDQTAeFw0xNTExMjQxOTA3MzBaFw0zNTExMjQxOTM3MzBaMEMxCzAJ" +
+            "BgNVBAYTAkhSMR0wGwYDVQQKExRGaW5hbmNpanNrYSBhZ2VuY2lqYTEVMBMGA1UEAxMMRmluYSBSb290IENBMIICIjANBgkqhkiG" +
+            "9w0BAQEFAAOCAg8AMIICCgKCAgEAtHPS1mXTAu9YOvSCgtOn4Ipgsjr1sWU4pyQOIWt96aCdM6J0za6RupS1zMaAtXHfSHHKdUun" +
+            "v/8m64T+uXIWyMJ+htS/r+5jNbnA5NoFT7hIniIo/1UFI2uBTrMXESwqJR/k4d9hyDzyVmnQVX2WELKoe1aQW6ZeU4tB48eHxzG9" +
+            "NDnsGSHZgMToDdvaAwwA9Kq1ggYlDMXZGmKd/QpJBfwcvpNG/M6Jkf/NzF9IX9w40HVv0i2rzCISeIgSH+DVTne8LIlNdnqIm10H" +
+            "2rNnmNE5znpGq8/2fVclE/qExANwrwx2DNJAJHxZ33c3WVCxJUZOQh0IIglyVcRC6m9vZVnUTuA9o6twfOYJMFV2Yonzb9IKprNu" +
+            "GT2WhnpmlM3yzHrwBwizaa4b/xxxGKJE+dvWDYQQgXRJYWLXEPABpkXAtdBS9FGGPeL3Fila+kqeJ0uORvFyPqf1pAzgCxeaIv/5" +
+            "fqs1jgGE1XWTf+Z1qHpk3mI6AkcaoCPETD/Q3E4z52y7+vYYECs0MF/HM1CZAumxWUZVZaa6pIMYi83h8coY4tkg5reEhx8LVnxN" +
+            "MVQm8plWyKZZ1oUz8pDMKFrIbKTLpkdGxJpVOYRkjXfnCj3D0BL3dqjMHLMfWIU6xDaN7JrsDuccyZ9P+9B6BwzGBbCrjbpyXU4j" +
+            "2W8MXPimctECAwEAAaNjMGEwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAU/hGibBDu3uIDuFWC" +
+            "TiI8huQ+a1QwHQYDVR0OBBYEFP4RomwQ7t7iA7hVgk4iPIbkPmtUMA0GCSqGSIb3DQEBCwUAA4ICAQCkgIYu56adjf+CV2Ny5xpg" +
+            "36uyubIBEmc4QOZAfFi8zEhxWwGXnHkcHnHSO6PY6KLiGAGlRajj9O+ru4p4/MeIffIFYJrbcMN41av4LTOMa6L2yQPAijxm3Z3o" +
+            "7qdOJQ8U3/gPFi4eF6dYyNkF05iivGRCU/4kyXWqJu5uMjMIYaA2fcq7nbu1cV4GgWr/Z+6miD+2P9MXTM4EzrMLdTnRwOOcs5qi" +
+            "GVYoi5aks58WSdyEICLt73JMXxCqHwkBO1XIxmyvp9Iunu2wzJFtZMPsGL46akuuAS4/ec00HDiuuQ1hBHP3nik7p7aQOrgsIzTD" +
+            "uAwGUcI+IZmfPBSQyqkm9UDjIul9zgMX7P+80ZkuxGSPPyxZYCQ8sNvDlQiqAHWynQsgGbT3bqmjvWDwMw/iZr1H9giKkDV9RYZK" +
+            "yZ7Ez1/fcd7MyW45iE25Ss8DdAdZK+386+7V0tU5bXcN2NF/L353vmGYjSxScTCEvqDmsLAHCMW0dLeLsti62ADyGcf4oSIKZkSo" +
+            "Fgh1XllESEU0NQhK8HslC6ZLUX93zQ0zOKsAkWZMiMFOKtQ6wLSG3oSAylBvgPlNZYAJFXUtIlbltZEjne4l2BgwKHLbf8MxTo7Y" +
+            "vkP6246aBZn999yUiad42J1r6f71JMe60ulED4NLXZ//JBif0dWE6CFJt9sg5w==",
+        ),
+        Root(
+            name = "GlobalSign",
+            owner = "GlobalSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "179FBC148A3DD00FD24EA13458CC43BFA7F59C8182D783A513F6EBEC100C8924",
+            b64 = "MIICHjCCAaSgAwIBAgIRYFlJ4CYuu1X5CneKcflK2GwwCgYIKoZIzj0EAwMwUDEkMCIGA1UECxMbR2xvYmFsU2lnbiBFQ0MgUm9v" +
+            "dCBDQSAtIFI1MRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWduMB4XDTEyMTExMzAwMDAwMFoXDTM4MDEx" +
+            "OTAzMTQwN1owUDEkMCIGA1UECxMbR2xvYmFsU2lnbiBFQ0MgUm9vdCBDQSAtIFI1MRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYD" +
+            "VQQDEwpHbG9iYWxTaWduMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAER0UOlvt9Xb/pOdEh+J8LttV7HpI6SFkc8GIxLcB6KP4ap1yz" +
+            "tsyX50XUWPrRd21DosCHZTQKH3rd6zwzocWdTaRvQZU4f8kehOvRnkmSh5SHDDqFSmafnVmTTZdhBoZKo0IwQDAOBgNVHQ8BAf8E" +
+            "BAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUPeYpSJvqB8ohREom3m7e0oPQn1kwCgYIKoZIzj0EAwMDaAAwZQIxAOVp" +
+            "Eslu28YxuglB4Zf4+/2a4n0Sye18ZNPLBSWLVtmg515dTguDnFt2KaAJJiFqYgIwcdK1j1zqO+F4CYWodZI7yFz9SO8NdCKoCOJu" +
+            "xUnOxwy8p2Fp8fc74SrL+SvzZpA3",
+        ),
+        Root(
+            name = "GlobalSign",
+            owner = "GlobalSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2CABEAFE37D06CA22ABA7391C0033D25982952C453647349763A3AB5AD6CCF69",
+            b64 = "MIIFgzCCA2ugAwIBAgIORea7A4Mzw4VlSOb/RVEwDQYJKoZIhvcNAQEMBQAwTDEgMB4GA1UECxMXR2xvYmFsU2lnbiBSb290IENB" +
+            "IC0gUjYxEzARBgNVBAoTCkdsb2JhbFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wHhcNMTQxMjEwMDAwMDAwWhcNMzQxMjEwMDAw" +
+            "MDAwWjBMMSAwHgYDVQQLExdHbG9iYWxTaWduIFJvb3QgQ0EgLSBSNjETMBEGA1UEChMKR2xvYmFsU2lnbjETMBEGA1UEAxMKR2xv" +
+            "YmFsU2lnbjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAJUH6HPKZvnsFMp7PPcNCPG0RQssgrRIxutbPK6DuEGSMxSk" +
+            "b3/pKszGsIhrxbaJ0cay/xTOURQh7ErdG1rG1ofuTToVBu1kZguSgMpE3nOUTvOniX9PeGMIyBJQbUJmL025eShNUhqKGoC3GYEO" +
+            "fsSKvGRMIRxDaNc9PIrFsmbVkJq3MQbFvuJtMgamHvm566qjuL++gmNQ0PAYid/kD3n16qIfKtJwLnvnvJO7bVPiSHyMEAc4/2ay" +
+            "d2F+4OqMPKq0pPbzlUoSB239jLKJz9CgYXfIWHSw1CM69106yqLbnQneXUQtkPGBzVeS+n68UARjNN9rkxi+azayOeSsJDa38O+2" +
+            "HBNXk7besvjihbdzorg1qkXy4J02oW9UivFyVm4uiMVRQkQVlO6jxTiWm05OWgtH8wY2SXcwvHE35absIQh1/OZhFj931dmRl4QK" +
+            "bNQCTXTAFO39OfuD8l4UoQSwC+n+7o/hbguyCLNhZglqsQY6ZZZZwPA1/cnaKI0aEYdwgQqomnUdnjqGBQCe24DWJfncBZ4nWUx2" +
+            "OVvq+aWh2IMP0f/fMBH5hc8zSPXKbWQULHpYT9NLCEnFlWQaYw55PfWzjMpYrZxCRXluDocZXFSxZba/jJvcE+kNb7gu3GduyYsR" +
+            "tYQUigAZcIN5kZeR1BonvzceMgfYFGM8KEyvAgMBAAGjYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1Ud" +
+            "DgQWBBSubAWjkxPioufi1xzWx/B/yGdToDAfBgNVHSMEGDAWgBSubAWjkxPioufi1xzWx/B/yGdToDANBgkqhkiG9w0BAQwFAAOC" +
+            "AgEAgyXt6NH9lVLNnsAEoJFp5lzQhN7craJP6Ed41mWYqVuoPId8AorRbrcWc+ZfwFSY1XS+wc3iEZGtIxg93eFyRJa0lV7Ae46Z" +
+            "eBZDE1ZXs6KzO7V33EByrKPrmzU+sQghoefEQzd5Mr6155wsTLxDKZmOMNOsIeDjHfrYBzN2VAAiKrlNIC5waNrlU/yDXNOd8v9E" +
+            "DERm8tLjvUYAGm0CuiVdjaExUd1URhxN25mW7xocBFymFe944Hn+Xds+qkxV/ZoVqW/hpvvfcDDpw+5CRu3CkwWJ+n1jez/QcYF8" +
+            "AOiYrg54NMMl+68KnyBr3TsTjxKM4kEaSHpzoHdpx7Zcf4LIHv5YGygrqGytXm3ABdJ7t+uA/iU3/gKbaKxCXcPu9czc8FB10jZp" +
+            "nOZ7BN9uBmm23goJSFmH63sUYHpkqmlD75HHTOwY3WzvUy2MmeFe8nI+z1TIvWfspA9MRf/TuTAjB0yPEL+GltmZWrSZVxykzLsV" +
+            "iVO6LAUP5MSeGbEYNNVMnbrt9x+vJJUEeKgDu+6B5dpffItKoZB0JaezPkvILFa9x8jvOOJckvB595yEunQtYQEgfn7R8k8HWV+L" +
+            "LUNS60YMlOH1Zkd5d9VUWx+tJDfLRVpOoERIyNiwmcUVhAn21klJwGW45hpxbqCo8YLoRT5s1gLXCmeDBVrJpBA=",
+        ),
+        Root(
+            name = "GlobalSign",
+            owner = "GlobalSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "CBB522D7B7F127AD6A0113865BDF1CD4102E7D0759AF635A7CF4720DC963C53B",
+            b64 = "MIIDXzCCAkegAwIBAgILBAAAAAABIVhTCKIwDQYJKoZIhvcNAQELBQAwTDEgMB4GA1UECxMXR2xvYmFsU2lnbiBSb290IENBIC0g" +
+            "UjMxEzARBgNVBAoTCkdsb2JhbFNpZ24xEzARBgNVBAMTCkdsb2JhbFNpZ24wHhcNMDkwMzE4MTAwMDAwWhcNMjkwMzE4MTAwMDAw" +
+            "WjBMMSAwHgYDVQQLExdHbG9iYWxTaWduIFJvb3QgQ0EgLSBSMzETMBEGA1UEChMKR2xvYmFsU2lnbjETMBEGA1UEAxMKR2xvYmFs" +
+            "U2lnbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMwldpB5BngiFvXAg7aEyiie/QV2EcWtiHL8RgJDx7KKnQRfJMsu" +
+            "S+FggkbhUqsMgUdwbN1k0ev1LKMPgj0MK66X17YUhhB5uzsTgHeMCOFJ0mpiLx9e+pZo34knlTifBtc+ycsmWQ1z3rDI6SYOgxXG" +
+            "71uL0gRgykmmKPZpO/bLyCiR5Z2KYVc3rHQU3HTgOu5yLy6c+9C7v/U9AOEGM+iCK65TpjoWc4zdQQ4gOsC0p6Hpsk+QLjJg6VfL" +
+            "uQSSaGjlOCZgdbKfd/+RFO+uIEn8rUAVSNECMWEZXriX7613t2Saer9fwRPvm2L7DWzgVGkWqQPabumDk3F2xmmFghcCAwEAAaNC" +
+            "MEAwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFI/wS3+oLkUkrk1Q+mOai97i3Ru8MA0GCSqGSIb3" +
+            "DQEBCwUAA4IBAQBLQNvAUKr+yAzv95ZURUm7lgAJQayzE4aGKAczymvmdLm6AC2upArT9fHxD4q/c2dKg8dEe3jgr25sbwMpjjM5" +
+            "RcOO5LlXbKr8EpbsU8Yt5CRsuZRj+9xTaGdWPoO4zzUhw8lo/s7awlOqzJCK6fBdRoyV3XpYKBovHd7NADdBj+1EbddTKJd+82cE" +
+            "HhXXipa0095MJ6RMG3NzdvQXmcIfeg7jLQitChws/zyrVQ4PkX4268NXSb7hLi18YIvDQVETI53O9zJrlAGomecsMx86OyXShkDO" +
+            "OyyGeMlhLxS67ttVb9+E7gUJTb0o2HLO02JQZR7rkpeDMdmztcpHWD9f",
+        ),
+        Root(
+            name = "GlobalSign Root CA",
+            owner = "GlobalSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "EBD41040E4BB3EC742C9E381D31EF2A41A48B6685C96E7CEF3C1DF6CD4331C99",
+            b64 = "MIIDdTCCAl2gAwIBAgILBAAAAAABFUtaw5QwDQYJKoZIhvcNAQEFBQAwVzELMAkGA1UEBhMCQkUxGTAXBgNVBAoTEEdsb2JhbFNp" +
+            "Z24gbnYtc2ExEDAOBgNVBAsTB1Jvb3QgQ0ExGzAZBgNVBAMTEkdsb2JhbFNpZ24gUm9vdCBDQTAeFw05ODA5MDExMjAwMDBaFw0y" +
+            "ODAxMjgxMjAwMDBaMFcxCzAJBgNVBAYTAkJFMRkwFwYDVQQKExBHbG9iYWxTaWduIG52LXNhMRAwDgYDVQQLEwdSb290IENBMRsw" +
+            "GQYDVQQDExJHbG9iYWxTaWduIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDaDuaZjc6j40+Kfvvxi4Ml" +
+            "a+pIH/EqsLmVEQS98GPR4mdmzxzdzxtIK+6NiY6arymAZavpxy0Sy6scTHAHoT0KMM0VjU/43dSMUBUc71DuxC73/OlS8pF94G3V" +
+            "NTCOXkNz8kHp1Wrjsok6Vjk4bwY8iGlbKk3Fp1S4bInMm/k8yuX9ifUSPJJ4ltbcdG6TRGHRjcdGsnUOhugZitVtbNV4FpWi6cgK" +
+            "OOvyJBNPc1STE4U6G7weNLWLBYy5d4ux2x8gkasJU26Qzns3dLlwR5EiUWMWea6xrkEmCMgZK9FGqkjWZCrXgzT/LCrBbBlDSgeF" +
+            "59N89iFo7+ryUp9/k5DPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRge2YaRQ2X" +
+            "yolQL30EzTSo//z9SzANBgkqhkiG9w0BAQUFAAOCAQEA1nPnfE920I2/7LqivjTFKDK1fPxsnCwrvQmeU79rXqoRSLblCKOzyj1h" +
+            "TdNGCbM+w6DjY1Ub8rrvrTnhQ7k4o+YviiY776BQVvnGCv04zcQLcFGUl5gE38NflNUVyRRBnMRddWQVDf9VMOyGj/8N7yy5Y0b2" +
+            "qvzfvGn9LhJIZJrglfCm7ymPAbEVtQwdpf5pLGkkeB6zpxxxYu7KyJesF12KwvhHhm4qxFYxldBniYUr+WymXUadDKqC5JlR3XC3" +
+            "21Y9YeRq4VzW9v493kHMB65jUr9TU/Qr6cf9tveCX4XSQRjbgbMEHMUfpIBvFSDJ3gyICh3WZlXi/EjJKSZp4A==",
+        ),
+        Root(
+            name = "GlobalSign Timestamping Root R45",
+            owner = "GlobalSign",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2BCBBFD66282C680491C8CD7735FDBBAB7A8079B127BEC60C535976834399AF7",
+            b64 = "MIIFcjCCA1qgAwIBAgIQdlP+uT3Z5+kmMqzWCr6sODANBgkqhkiG9w0BAQwFADBTMQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xv" +
+            "YmFsU2lnbiBudi1zYTEpMCcGA1UEAxMgR2xvYmFsU2lnbiBUaW1lc3RhbXBpbmcgUm9vdCBSNDUwHhcNMjAwMzE4MDAwMDAwWhcN" +
+            "NDUwMzE4MDAwMDAwWjBTMQswCQYDVQQGEwJCRTEZMBcGA1UEChMQR2xvYmFsU2lnbiBudi1zYTEpMCcGA1UEAxMgR2xvYmFsU2ln" +
+            "biBUaW1lc3RhbXBpbmcgUm9vdCBSNDUwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC6dDPsJ9wSOCEbxdNhKNZavE/f" +
+            "i8yRhEMkV7xkIbw7HB89T4ytB7fzxdcC6REUgpqqtJRyO3ENGu9oa4V5jq9m6liYDbrBfHnS/82zbzFF0AV0BAByaid+uDc/Oojt" +
+            "l4P1qzVND59ZO/Uv31nFfKUydmCWyO3u+AR+GVFyqL9EQXq8ex47AJu8uuCWv5D+jZvDcosAEvggOmA498HMhYr7h3kuoSsg5sug" +
+            "hZEjtsQoB1Qo3uwQMU+K8s0UHx7dVRzqKDFM+SFqqM3zlmf6AUGbzQ8LaH+73vFD6hflsNxwIrNpNll0a8bliSp85QuBXas/j7jR" +
+            "dnLzfKKp4pdBv8yMRf5hyfZsBwsABOgVI0+CKi3278P6ETZIodH9ejk6NF2jLA6bd1AgNEDdsQMxrV/pYodzlgNh95Sw2VxsT+cU" +
+            "xeHxew0jnM1wjB1q3kotiyq720IUBQeq+xTcMdP2H2zLvmhmRHBNbRf5cesFc46RknXraFwe9kRhGCli3RdmiOwouklv2z53/rkx" +
+            "H3UcGKKmR73Y7kiFO/2z4g8/KpjGmvqCb7GlpYYdWjr6pGx0D3dSYWp/hyneOZuL7rNFYDAklxUSKoUwkyaslqYt6HBtC6kyrSyb" +
+            "KAp2QvJVYVGYlN7t9sUXbzwVELAOrbDexRb0ZdHML1pWCM+ZxPBVkcIseQIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0T" +
+            "AQH/BAUwAwEB/zAdBgNVHQ4EFgQURrIcd+F7FfClOaFw3tHELuptst4wDQYJKoZIhvcNAQEMBQADggIBABZ8CmdKAzyTKj4cT0ZV" +
+            "sJqeiOHrU/1MVXmE+Wy2n6kKtomrVAcUFkpJWvS4LoYUxH4ZifmHiLzsstKVjOAM+fKUZqaYVxuh39FxfYy1+HEC3RO2vvqwMcMs" +
+            "Z+saGA4aTdwszzFcYSipneNqLK5QSw460Gn7ijRE335LjhqQCdox2sovpff0Nyw1DRpizTx7PFZ3ZZVclHNwn2EvaWQjHUx5B8IX" +
+            "fDrtqm1xAxRiRcy3PlTYUXFC6juSQqUvVIGjsAxWWFa75JjuZscR+ahFF+JlKore4qjOxS329c6t8OMKCd1Te2ypbIZ+od42NQAP" +
+            "X4D9RbtxZkPURCzQuwFOmZ4+TeFeVh8FeoIdssstpTO5OeXEt9pC4b3QlEKA+hiUO5NDqMiUOm1+nfxPoMLT5aWqECZvBiJb4AHi" +
+            "Sr8Z5USesK2rGdLN60fEYoHs8MJ6jUz9wiW3vCxwjqqtUvQUPKp4HQTTydUlgqday4x8H1cCO4cbyNf5VBodyhpLJ7HiSu/nmkAU" +
+            "T6U8n9WjvpQ1nMLXPyjupBcrQ71kp9ev6VPnp3cexRIbMeJLxn+eHO6jOpRQXaZQBlJeRQMrtADgwe3YDcGuu0kJgYJaQkOvmWO4" +
+            "FNE8i93V8FTtcmfC9so+NYSHgA1SlVBB1rINGUAvthNN97Fg1HbFVzluWqJeCnnc",
+        ),
+        Root(
+            name = "Go Daddy Root Certificate Authority - G2",
+            owner = "GoDaddy",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "45140B3247EB9CC8C5B4F0D7B53091F73292089E6E5A63E2749DD3ACA9198EDA",
+            b64 = "MIIDxTCCAq2gAwIBAgIBADANBgkqhkiG9w0BAQsFADCBgzELMAkGA1UEBhMCVVMxEDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcT" +
+            "ClNjb3R0c2RhbGUxGjAYBgNVBAoTEUdvRGFkZHkuY29tLCBJbmMuMTEwLwYDVQQDEyhHbyBEYWRkeSBSb290IENlcnRpZmljYXRl" +
+            "IEF1dGhvcml0eSAtIEcyMB4XDTA5MDkwMTAwMDAwMFoXDTM3MTIzMTIzNTk1OVowgYMxCzAJBgNVBAYTAlVTMRAwDgYDVQQIEwdB" +
+            "cml6b25hMRMwEQYDVQQHEwpTY290dHNkYWxlMRowGAYDVQQKExFHb0RhZGR5LmNvbSwgSW5jLjExMC8GA1UEAxMoR28gRGFkZHkg" +
+            "Um9vdCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgLSBHMjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL9xYgjx+lk09xvJ" +
+            "GKP3gElY6SKDE6bFIEMBO4Tx5oVJnyfq9oQbTqC023CYxzIBsQU+B07u9PpPL1kwIuerGVZr4oAH/PMWdYA5UXvl+TW2dE6pjYIT" +
+            "5LY/qQOD+qK+ihVqf94Lw7YZFAXK6sOoBJQ7RnwyDfMAZiLIjWltNowRGLfTshxgtDj6AozO091GB94KPutdfMh8+7ArU6SSYmlR" +
+            "JQVhGkSBjCypQ5Yj36w6gZoOKcUcqeldHraenjAKOc7xiID7S13MMuyFYkMlNAJWJwGRtDtwKj9useiciAF9n9T521NtYJ2/LOdY" +
+            "q7hfRvzOxBsDPAnrSTFcaUaz4EcCAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFDqa" +
+            "hQcQZyi27/a9BUFuIMGU2g/eMA0GCSqGSIb3DQEBCwUAA4IBAQCZ21151fmXWWcDYfF+OwYxdS2hII5PZYe096acvNjpL9DbWu7P" +
+            "dIxztDhC2gV7+AJ1uP2lsdeu9tfeE8tTEH6KRtGX+rcuKxGrkLAngPnon1rpN5+r5N9ss4UXnT3ZJE95kTXWXwTrgIOrmgIttRD0" +
+            "2JDHBHNA7XIloKmf7J6raBKZV8aPEjoJpL1E/QYVN8Gb5DKj7Tjo2GTzLH4U/ALqn83/B2gX2yKQOC16jdFU8WnjXzPKej17CuPK" +
+            "f1855eJ1usV2GDPOLPAvTK33sefOT6jEm0pUBsV/fdUID+Ic/n4XuKxe9tQWskMJDE32p2u0mYRlynqI4uJEvlz36hz1",
+        ),
+        Root(
+            name = "Starfield Root Certificate Authority - G2",
+            owner = "GoDaddy",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2CE1CB0BF9D2F9E102993FBE215152C3B2DD0CABDE1C68E5319B839154DBB7F5",
+            b64 = "MIID3TCCAsWgAwIBAgIBADANBgkqhkiG9w0BAQsFADCBjzELMAkGA1UEBhMCVVMxEDAOBgNVBAgTB0FyaXpvbmExEzARBgNVBAcT" +
+            "ClNjb3R0c2RhbGUxJTAjBgNVBAoTHFN0YXJmaWVsZCBUZWNobm9sb2dpZXMsIEluYy4xMjAwBgNVBAMTKVN0YXJmaWVsZCBSb290" +
+            "IENlcnRpZmljYXRlIEF1dGhvcml0eSAtIEcyMB4XDTA5MDkwMTAwMDAwMFoXDTM3MTIzMTIzNTk1OVowgY8xCzAJBgNVBAYTAlVT" +
+            "MRAwDgYDVQQIEwdBcml6b25hMRMwEQYDVQQHEwpTY290dHNkYWxlMSUwIwYDVQQKExxTdGFyZmllbGQgVGVjaG5vbG9naWVzLCBJ" +
+            "bmMuMTIwMAYDVQQDEylTdGFyZmllbGQgUm9vdCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgLSBHMjCCASIwDQYJKoZIhvcNAQEBBQAD" +
+            "ggEPADCCAQoCggEBAL3twQP89o/8ArFvW59I2Z154qK3A2FWGMNHttfKPTUuiUP3oWmb3ooa/RMgnLRJdzIpVv257IzdIvpy3Cdh" +
+            "l+72WoTsbhm5iSzchFvVdPtrX8WJpRBSiUZV9Lh1HOZ/5FSuS/hVclcCGfgXcVnrHigHdMWdSL5stPSksPNkN3mSwOxGXn/hbVNM" +
+            "Yq/NHwtjuzqd+/x5AJhhdM8mgkBj87JyahkNmcrUDnXMN/uLicFZ8WJ/X7NfZTD4p7dNdloedl40wOiWVpmKs/B/pM293DIxfJHP" +
+            "4F8R+GuqSVzRmZTRouNjWwl2tVZi4Ut0HZbUJtQIBFnQmA4O5t78w+wfkPECAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNV" +
+            "HQ8BAf8EBAMCAQYwHQYDVR0OBBYEFHwMMh+n2TB/xH1oo2Kooc6rB1snMA0GCSqGSIb3DQEBCwUAA4IBAQARWfolTwNvlJk7mh+C" +
+            "hTnUdgWUXuEok21iXQnCoKjUsHU48TRqneSfioYmUeYs0cYtbpUgSpIB7LiKZ3sx4mcujJUDJi5DnUox9g61DLu34jd/IroAow57" +
+            "UvtruzvE03lRTs2Q9GcHGcg8RnoNAX3FWOdt5oUwF5okxBDgBPfg8n/Uqgr/Qh037ZTlZFkSIHc40zI+OIF1lnP6aI+xy84fxez6" +
+            "nH7PfrHxBy22/L/KpL/QlwVKvOoYKAKQvVR4CSFx09F9HdkWsKlhPdAKACL8x3vLCWRFCztAgfd9fDL1mMpYjn0q7pBZc2T5NnRe" +
+            "JaH1ZgUufzkVqSr7UIuOhWn0",
+        ),
+        Root(
+            name = "GTS Root R1",
+            owner = "Google Trust Services LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2A575471E31340BC21581CBD2CF13E158463203ECE94BCF9D3CC196BF09A5472",
+            b64 = "MIIFWjCCA0KgAwIBAgIQbkepxUtHDA3sM9CJuRz04TANBgkqhkiG9w0BAQwFADBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29v" +
+            "Z2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjEwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw" +
+            "WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjEw" +
+            "ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC2EQKLHuOhd5s73L+UPreVp0A8of2C+X0yBoJx9vaMf/vo27xqLpeXo4xL" +
+            "+Sv2sfnOhB2x+cWX3u+58qPpvBKJXqeqUqv4IyfLpLGcY9vXmX7wCl7raKb0xlpHDU0QM+NOsROjyBhsS+z8CZDfnWQpJSMHobTS" +
+            "PS5g4M/SCYe7zUjwTcLCeoiKu7rPWRnWr4+wB7CeMfGCwcDfLqZtbBkOtdh+JhpFAz2weaSUKK0PfyblqAj+lug8aJRT7oM6iCsV" +
+            "lgmy4HqMLnXWnOunVmSPlk9orj2XwoSPwLxAwAtcvfaHszVsrBhQf4TgTM2S0yDpM7xSma8ytSmzJSq0SPly4cpk9+aCEI3oncKK" +
+            "iPo4Zor8Y/kB+Xj9e1x3+naH+uzfsQ55lVe0vSbv1gHR6xYKu44LtcXFilWr06zqkUspzBmkMiVOKvFlRNACzqrOSbTqn3yDsEB7" +
+            "50Orp2yjj32JgfpMpf/VjsPOS+C12LOORc92wO1AK/1TD7Cn1TsNsYqiA94xrcx36m97PtbfkSIS5r762DL8EGMUUXLeXdYWk70p" +
+            "aDPvOmbsB4om3xPXV2V4J95eSRQAogB/mqghtqmxlbCluQ0WEdrHbEg8QOB+DVrNVjzRlwW5y0vtOUucxD/SVRNuJLDWcfr0wbrM" +
+            "7Rv1/oFB2ACYPTrIrnqYNxgFlQIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQU5K8r" +
+            "JnEaK0gnhS9SZizv8IkTcT4wDQYJKoZIhvcNAQEMBQADggIBADiWCu49tJYeX++dnAsznyvgyv3SjgofQXSlfKqE1OXyHuY3UjKc" +
+            "C9FhHb8owbZEKTV1d5iyfNm9dKyKaOOpMQkpAWBz40d8U6iQSifvS9efk+eCNs6aaAyC58/UEBZvXw6ZXPYfcX3v73svfuo21pdw" +
+            "CxXu11xWajOl40k4DLh9+42FpLFZXvRq4d2h9mREruZRgyFmxhE+885H7pwoHyXa/6xmld01D1zvICxi/ZG6qcz8WpyTgYMpl0p8" +
+            "WnK0OdC3d8t5/Wk6kjftbjhlRn7pYL15iJdfOBL07q9bgsiG1eGZbYwE8na6SfZu6W0eX6DvJ4J2QPim01hcDyxC2kLGe4g0x8HY" +
+            "RZvBPsVhHdljUEn2NIVq4BjFbkerQUIpm/ZgDdIx02OYI5NaAIFItO/Nis3Jz5nu2Z6qNuFoS3FJFDYoOj0dzpqPJeaAcWErtXvM" +
+            "+SUWgeExX6GjfhaknBZqlxi9dnKlC54dNuYvoS++cJEPqOba+MSSQGwlfnuzCdyyF62ARPBopY+Udf90WuioAnwMCeKpSwughQti" +
+            "ue+hMZL77/ZRBIls6Kl0obsXs7X9SQ98POyDGCBDTtWTurQ0sR8WNh8M5mQ5Fkzc4P4dyKliPUDqysU0ArSuiYgzNdwsE3PYJ/HQ" +
+            "cu51OyLemGhmW/HGY0dVHLqlCFF1pkgl",
+        ),
+        Root(
+            name = "GTS Root R2",
+            owner = "Google Trust Services LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "C45D7BB08E6D67E62E4235110B564E5F78FD92EF058C840AEA4E6455D7585C60",
+            b64 = "MIIFWjCCA0KgAwIBAgIQbkepxlqz5yDFMJo/aFLybzANBgkqhkiG9w0BAQwFADBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29v" +
+            "Z2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjIwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw" +
+            "WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjIw" +
+            "ggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDO3v2m++zsFDQ8BwZabFn3GTXd98GdVarTzTukk3LvCvptnfbwhYBboUhS" +
+            "nznFt+4orO/LdmgUud+tAWyZH8QiHZ/+cnfgLFuv5AS/T3KgGjSY6Dlo7JUle3ah5mm5hRm9iYz+re026nO8/4Piy33B0s5Ks40F" +
+            "notJk9/BW9BuXvAuMC6C/Pq8tBcKSOWIm8Wba96wyrQD8Nr0kLhlZPdcTK3ofmZemde4wj7I0BOdre7kRXuJVfeKH2JShBKzwkCX" +
+            "44ofR5GmdFrS+LFjKBC4swm4VndAoiaYecb+3yXuPuWgf9RhD1FLPD+M2uFwdNjCaKH5wQzpoeJ/u1U8dgbuak7MkogwTZq9TwtI" +
+            "moS1mKPV+3PBV2HdKFZ1E66HjucMUQkQdYhMvI35ezzUIkgfKtzra7tEscszcTJGr61K8YzodDqs5xoic4DSMPclQsciOzsSrZYu" +
+            "xsN2B6ogtzVJV+mSSeh2FnIxZyuWfoqjx5RWIr9qS34BIbIjMt/kmkRtWVtd9QCgHJvGeJeNkP+byKq0rxFROV7Z+2et1VsRnTKa" +
+            "G73VululycslaVNVJ1zgyjbLiGH7HrfQy+4W+9OmTN6SpdTi3/UGVN4unUu0kzCqgc7dGtxRcw1PcOnlthYhGXmy5okLdWTK1au8" +
+            "CcEYof/UVKGFPP0UJAOyh9OktwIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUu//K" +
+            "jiOfT5nK2+JopqUVJxce2Q4wDQYJKoZIhvcNAQEMBQADggIBALZp8KZ3/p7uC4Gt4cCpx/k1HUCCq+YEtN/L9x0Pg/B+E02NjO7j" +
+            "MyLDOfxA325BS0JTvhaI8dI4XsRomRyYUpOM52jtG2pzegVATX9lO9ZY8c6DR2Dj/5epnGB3GFW1fgiTz9D2PGcDFWEJ+YF59exT" +
+            "pJ/JjwGLc8R3dtyDovUMSRqodt6Sm2T4syzFJ9MHwAiApJiS4wGWAqoC7o87xdFtCjMwc3i5T1QWvwsHoaRc5svJXISPD+AVdyx+" +
+            "Jn7axEvbpxZ3B7DNdehyQtaVhJ2Gg/LkkM0JR9SLA3DaWsYDQvTtN6LwG1BUSw7YhN4ZKJmBR64JGz9I0cNv4rBgF/XuIwKl2gBb" +
+            "bZCr7qLpGzvpx0QnRY5rn/WkhLx3+WuXrD5RRaIRpsyF7gpo8j5QOHokYh4XIDdtak23CZvJ/KRY9bb7nE4Yu5UC56GtmwfuNmsk" +
+            "0jmGwZODUNKBRqhfYlcsu2xkiAhu7xNUX90txGdj08+JN7+dIPT7eoOboB6BAFDC5AwiWVIQ7UNWhwD4FFKnHYuTjKJNRn8nxnGb" +
+            "JN7k2oaLDX5rIMHAnuFl2GqjpuiFizoHCBy69Y9Vmhh1fuXsgWbRIXOhNUQLgD1bnF5vKheW0YMjiGZt5obicDIvUiLnyOd/xCxg" +
+            "XS/Dr55FBcOEArf9LAhST4Ldo/DUhgkC",
+        ),
+        Root(
+            name = "GTS Root R3",
+            owner = "Google Trust Services LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "15D5B8774619EA7D54CE1CA6D0B0C403E037A917F131E8A04E1E6B7A71BABCE5",
+            b64 = "MIICDDCCAZGgAwIBAgIQbkepx2ypcyRAiQ8DVd2NHTAKBggqhkjOPQQDAzBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xl" +
+            "IFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjMwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAwWjBH" +
+            "MQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjMwdjAQ" +
+            "BgcqhkjOPQIBBgUrgQQAIgNiAAQfTzOHMymKoYTey8chWEGJ6ladK0uFxh1MJ7x/JlFyb+Kf1qPKzEUURout736GjOyxfi//qXGd" +
+            "GIRFBEFVbivqJn+7kAHjSxm65FSWRQmx1WyRRK2EE46ajA2ADDL24CejQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTAD" +
+            "AQH/MB0GA1UdDgQWBBTB8Sa6oC2uhYHP0/EqEr24Cmf9vDAKBggqhkjOPQQDAwNpADBmAjEAgFukfCPAlaUs3L6JbyO5o91lAFJe" +
+            "kazInXJ0glMLfalAvWhgxeG4VDvBNhcl2MG9AjEAnjWSdIUlUfUk7GRSJFClH9voy8l27OyCbvWFGFPouOOaKaqW04MjyaR7YbPM" +
+            "Auhd",
+        ),
+        Root(
+            name = "GTS Root R4",
+            owner = "Google Trust Services LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "71CCA5391F9E794B04802530B363E121DA8A3043BB26662FEA4DCA7FC951A4BD",
+            b64 = "MIICCjCCAZGgAwIBAgIQbkepyIuUtui7OyrYorLBmTAKBggqhkjOPQQDAzBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xl" +
+            "IFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAwWjBH" +
+            "MQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQ" +
+            "BgcqhkjOPQIBBgUrgQQAIgNiAATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzuhXyiQHY7qca4R9gq" +
+            "55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/lxKvRHYqjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTAD" +
+            "AQH/MB0GA1UdDgQWBBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNnADBkAjBqUFJ0CMRw3J5QdCHojXohw0+WbhXR" +
+            "IjVhLfoIN+4Zba3bssx9BzT1YBkstTTZbyACMANxsbqjYAuG7ZoIapVon+Kz4ZNkfF6Tpt95LY2F45TPI11xzPKwTdb+mciUqXWi" +
+            "4w==",
+        ),
+        Root(
+            name = "GlobalSign",
+            owner = "Google Trust Services LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-256",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "BEC94911C2955676DB6C0A550986D76E3BA005667C442C9762B4FBB773DE228C",
+            b64 = "MIIB4TCCAYegAwIBAgIRKjikHJYKBN5CsiilC+g0mAIwCgYIKoZIzj0EAwIwUDEkMCIGA1UECxMbR2xvYmFsU2lnbiBFQ0MgUm9v" +
+            "dCBDQSAtIFI0MRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYDVQQDEwpHbG9iYWxTaWduMB4XDTEyMTExMzAwMDAwMFoXDTM4MDEx" +
+            "OTAzMTQwN1owUDEkMCIGA1UECxMbR2xvYmFsU2lnbiBFQ0MgUm9vdCBDQSAtIFI0MRMwEQYDVQQKEwpHbG9iYWxTaWduMRMwEQYD" +
+            "VQQDEwpHbG9iYWxTaWduMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuMZ5049sJQ6fLjkZHAOkrprlOQcJFspjsbmG+IpXwVfO" +
+            "QvpzofdlQv8ewQCybnMO/8ch5RikqtlxP6jUuc6MHaNCMEAwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0O" +
+            "BBYEFFSwe61FuOJAf/sKbvu+M8k8o4TVMAoGCCqGSM49BAMCA0gAMEUCIQDckqGgE6bPA7DmxCGXkPoUVy0D7O48027KqGx2vKLe" +
+            "uwIgJ6iFJzWbVsaj8kfSt24bAgAXqmemFZHe+pTsewv4n4Q=",
+        ),
+        Root(
+            name = "Autoridade Certificadora Raiz Brasileira v5",
+            owner = "Government of Brazil, Instituto Nacional de Tecnologia da Informação (ITI)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "CAA53FC6091C6951887C976E378F6EF89AA6377C55D97B6475422B71ED7E9B17",
+            b64 = "MIIGoTCCBImgAwIBAgIBATANBgkqhkiG9w0BAQ0FADCBlzELMAkGA1UEBhMCQlIxEzARBgNVBAoMCklDUC1CcmFzaWwxPTA7BgNV" +
+            "BAsMNEluc3RpdHV0byBOYWNpb25hbCBkZSBUZWNub2xvZ2lhIGRhIEluZm9ybWFjYW8gLSBJVEkxNDAyBgNVBAMMK0F1dG9yaWRh" +
+            "ZGUgQ2VydGlmaWNhZG9yYSBSYWl6IEJyYXNpbGVpcmEgdjUwHhcNMTYwMzAyMTMwMTM4WhcNMjkwMzAyMjM1OTM4WjCBlzELMAkG" +
+            "A1UEBhMCQlIxEzARBgNVBAoMCklDUC1CcmFzaWwxPTA7BgNVBAsMNEluc3RpdHV0byBOYWNpb25hbCBkZSBUZWNub2xvZ2lhIGRh" +
+            "IEluZm9ybWFjYW8gLSBJVEkxNDAyBgNVBAMMK0F1dG9yaWRhZGUgQ2VydGlmaWNhZG9yYSBSYWl6IEJyYXNpbGVpcmEgdjUwggIi" +
+            "MA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQD3LXgabUWsF+gUXw/6YODeF2XkqEyfk3VehdsIx+3/ERgdjCS/ouxYR0Epi2hd" +
+            "oMUVJDNf3XQfjAWXJyCoTneHYAl2McMdvoqtLB2ileQlJiis0fTtYTJayee9BAIdIrCor1Lc0vozXCpDtq5nTwhjIocaZtcuFsdr" +
+            "kl+nbfYxl5m7vjTkTMS6j8ffjmFzbNPDlJuV3Vy7AzapPVJrMl6UHPXCHMYMzl0KxR/47S5XGgmLYkYt8bNCHA3fg07y+Gtvgu+S" +
+            "NhMPwWKIgwhYw+9vErOnavRhOimYo4M2AwNpNK0OKLI7Im5V094jFp4Ty+mlmfQH00k8nkSUEN+1TGGkhv16c2hukbx9iCfbmk7i" +
+            "m2hGKjQA8eH64VPYoS2qdKbPbd3xDDHN2croYKpy2U2oQTVBSf9hC3o6fKo3zp0U3dNiw7ZgWKS9UwP31Q0gwgB1orZgLuF+LIpp" +
+            "HYwxcTG/AovNWa4sTPukMiX2L+p7uIHExTZJJU4YoDacQh/mfbPIz3261He4YFmQ35sfw3eKHQSOLyiVfev/n0l/r308PijEd+d+" +
+            "Hz5RmqIzS8jYXZIeJxym4mEjE1fKpeP56Ea52LlIJ8ZqsJ3xzHWu3WkAVz4hMqrX6BPMGW2IxOuEUQyIaCBg1lI6QLiPMHvo2/J7" +
+            "gu4YfqRcH6i27W3HyzamEQIDAQABo4H1MIHyME4GA1UdIARHMEUwQwYFYEwBAQAwOjA4BggrBgEFBQcCARYsaHR0cDovL2FjcmFp" +
+            "ei5pY3BicmFzaWwuZ292LmJyL0RQQ2FjcmFpei5wZGYwPwYDVR0fBDgwNjA0oDKgMIYuaHR0cDovL2FjcmFpei5pY3BicmFzaWwu" +
+            "Z292LmJyL0xDUmFjcmFpenY1LmNybDAfBgNVHSMEGDAWgBRpqL512cTvbOcTReRhbuVo+LZAXjAdBgNVHQ4EFgQUaai+ddnE72zn" +
+            "E0XkYW7laPi2QF4wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwDQYJKoZIhvcNAQENBQADggIBABRt2/JiWapef7o/" +
+            "plhR4PxymlMIp/JeZ5F0BZ1XafmYpl5g6pRokFrIRMFXLyEhlgo51I05InyCc9Td6UXjlsOASTc/LRavyjB/8NcQjlRYDh6xf7Od" +
+            "P05mFcT/0+6bYRtNgsnUbr10pfsK/UzyUvQWbumGS57hCZrAZOyd9MzukiF/azAa6JfoZk2nDkEudKOY8tRyTpMmDzN5fufPSC3v" +
+            "7tSJUqTqo5z7roN/FmckRzGAYyz5XulbOc5/UsAT/tk+KP/clbbqd/hhevmmdJclLr9qWZZcOgzuFU2YsgProtVu0fFNXGr6KK9f" +
+            "u44pOHajmMsTXK3X7r/Pwh19kFRow5F3RQMUZC6Re0YLfXh+ypnUSCzA+uL4JPtHIGyvkbWiulkustpOKUSVwBPzvA2sQUOvqdbA" +
+            "R7C8jcHYFJMuK2HZFji7pxcWWab/NKsFcJ3sluDjmhizpQaxbYTfAVXu3q8yd0su/BHHhBpteyHvYyyz0Eb9LUysR2cMtWvfPU6v" +
+            "noPgYvOGO1CziyGEsgKULkCH4o2Vgl1gQuKWO4V68rFW8a/jvq28sbY+y/Ao0I5ohpnBcQOAawiFbz6yJtObajYMuztDDP8oY656" +
+            "EuuJXBJhuKAJPI/7WDtgfV8ffOh/iQGQATVMtgDN0gv8bn5NdUX8UMNX1sHhU3H1UpoW",
+        ),
+        Root(
+            name = "CCA India 2022",
+            owner = "Government of India, Ministry of Communications & Information Technology, Controller of Certifying Authorities (CCA)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "9A3FD3176798E842DDCB12C262F11CFACCA70A8B84C6EA6FDA30842A95A94CD8",
+            b64 = "MIIFNDCCAxygAwIBAgIQdiQz69smdlqFYM0KqC/hFzANBgkqhkiG9w0BAQsFADA6MQswCQYDVQQGEwJJTjESMBAGA1UEChMJSW5k" +
+            "aWEgUEtJMRcwFQYDVQQDEw5DQ0EgSW5kaWEgMjAyMjAeFw0yMjAyMDIxMjA0MzdaFw00MjAyMDIxMjA0MzdaMDoxCzAJBgNVBAYT" +
+            "AklOMRIwEAYDVQQKEwlJbmRpYSBQS0kxFzAVBgNVBAMTDkNDQSBJbmRpYSAyMDIyMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIIC" +
+            "CgKCAgEAv3EBudWC8HY0oSwtJZCqpjQTGpEewl3EdDqUORV0qoFp78mdR/vuATXI83G7nF9RLvmNjgQgKr/bMx6gPO4Y57bMjAsg" +
+            "wEzleFclZka/sqc68iN5rS3huhrCX6MEINLyDOQ71MRA7GJCaNL6E3j1438eTu011mlikeZYBdkhvfpAVjCw90w8wcWDmqx66Y56" +
+            "1T/RiXyz2uEhBBZAD43gV58eXStOeOTwAzEZYMrmp232GfmQKabYRfdIRus1avyuGea2nICEsRHE8M2tdzwpGP7oIy2qHBFJJ+3A" +
+            "wmwQA4DjmDkJtCD+58awohQavRNhqjsGD+ZifG3VR4i6WrKv8OWqZzcZj3g3Elr5+fRMlz1GSqkWPBw1Ev8KWTHazSUKF7OMxm3X" +
+            "zyXxQnw7fZF9GOVtx3adpfRPqYGgtbOP34EVkz4wsHvNMrvUrYcKymdOrnkTjlX26fIHUJpKGYkLk9q0jhMNKs4Rn8lj4pJ7YF33" +
+            "/ND4bjpV0ex1EAQz0iZvT37OnxNiuAZ/+4Djf075UuNX2ecWnadOrN1r8NAParZIwUoSUnWhU8TqAWWRqzFURHUZuOMQcA0geg4c" +
+            "9zqtBoUPgtQksbIAEsEXmDuRpwSIFjEkK11f5Eemfmfdg37KyIjQ67TRTmBA+kT9Q5JIm/e7m1ILg/HKckgLUOCnAMsCAwEAAaM2" +
+            "MDQwDwYDVR0TAQH/BAUwAwEB/zARBgNVHQ4ECgQITjtINlziX30wDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUAA4ICAQCd" +
+            "bE8d1c1DysKtrtYlApYIXTlY3N2XHNQ6gKoaVWsKa1TJ/ovrT+FV3bmQLet3aSoEG6pTe/vLZSg8WiF7cn7WuF4XlQS3yA2Uu8/c" +
+            "g/S4owqhQJp6K/Xg6UoSBad9Kog1H8deOfV8Nmb8a89zB4Yf8/AepId+Lr/3I6O7iub+PUT2QBXnksa+cf0yf+49GhyMCILZvctN" +
+            "SQd4Vxr9EgRvBARTrAgNQ9sEOJ6myOz4iTFR7T2pIFP8Cp15e8jEVI1q4IuHu3XlwJNk9f5k3gbwrzoy9P5rP8voQU3u9wh62JZa" +
+            "9U63b+u/Ur1tsKb5Lx0YUedtHvpIiIRurEPxumW0twjrx8TrAcXRrViSL7dsXAoYC0dXo154EE8jBAzgIIur7tJizxgXDEn4i2pu" +
+            "8Yd615YML9ii5BooEJ2j6fQ0nzyPRmx1Egw2Fjlgzzceai4TUOcaCKab86yyu5MZIp+BiPR840nw5MggbRgYH2nFRBA70toVm4VF" +
+            "lbZs3reGmaICm4ST6R395OxYS1iYBm5kXm9tLb4pkIhUxrkgyuiwE+DsWceBjHAYaXnCgUGKtiG9tfBMUw3fChoPb9L1yKdNof3z" +
+            "XDdTloMqEpO4BFrmjco8kt1v0LUQPhNZmQP4nqd4Hqx2384nPmWDXbQ+eePyxRteYGY0hJeDLVpyeYG8VQ==",
+        ),
+        Root(
+            name = "AC RAIZ FNMT-RCM",
+            owner = "Government of Spain, Fábrica Nacional de Moneda y Timbre (FNMT)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "EBC5570C29018C4D67B1AA127BAF12F703B4611EBC17B7DAB5573894179B93FA",
+            b64 = "MIIFgzCCA2ugAwIBAgIPXZONMGc2yAYdGsdUhGkHMA0GCSqGSIb3DQEBCwUAMDsxCzAJBgNVBAYTAkVTMREwDwYDVQQKDAhGTk1U" +
+            "LVJDTTEZMBcGA1UECwwQQUMgUkFJWiBGTk1ULVJDTTAeFw0wODEwMjkxNTU5NTZaFw0zMDAxMDEwMDAwMDBaMDsxCzAJBgNVBAYT" +
+            "AkVTMREwDwYDVQQKDAhGTk1ULVJDTTEZMBcGA1UECwwQQUMgUkFJWiBGTk1ULVJDTTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCC" +
+            "AgoCggIBALpxgHpMhm5/yBNtwMZ9HACXjywMI7sQmkCpGreHiPibVmr75nuOi5KOpyVdWRHbNi63URcfqQgfBBckWKo3Shjf5TnU" +
+            "V/3XwSyRAZHiItQDwFj8d0fsjz50Q7qsNI1NOHZnjrDIbzAzWHFctPVrbtQBULgTfmxKo0nRIBnuvMApGGWn3v7v3QqQIecaZ5JC" +
+            "EJhfTzC8PhxFtBDXaEAUwED653cXeuYLj2VbPNmaUtu1vZ5Gzz3rkQUCwJaydkxNEJY7kvqcfw+Z374jNUUeAlz+taibmSXaXvMi" +
+            "wzn15Cou08YfxGyqxRxqAQVKL9LFwag0Jl1mpdICIfkYtwb1TplvqKtMUejPUBjFd8g5CSxJkjKZqLsXF3mwWsXmo8RZZUc1g16p" +
+            "6DULmbvkzSDGm0oGObVo/CK67lWMK07q87Hj/LaZmtVC+nFNCM+HHmpxffnTtOmlcYF7wk5HlqX2doWjKI/pgG6BU6VtX7hI+cL5" +
+            "NqYuSf+4lsKMB7ObiFj86xsc3i1w4peSMKGJ47xVqCfWS+2QrYv6YyVZLag13cqXM7zlzced0ezvXg5KkAYmY6252TUtB7p2ZSys" +
+            "V4999AeU14ECll2jB0nVetBX+RvnU0Z1qrB5QstocQjpYL05ac70r8NWQMetUqIJ5G+GR4of6ygnXYMgrwTJbFaai0b1AgMBAAGj" +
+            "gYMwgYAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFPd9xf3E6Jobd2Sn9R2gzL+HYJptMD4GA1Ud" +
+            "IAQ3MDUwMwYEVR0gADArMCkGCCsGAQUFBwIBFh1odHRwOi8vd3d3LmNlcnQuZm5tdC5lcy9kcGNzLzANBgkqhkiG9w0BAQsFAAOC" +
+            "AgEAB5BK3/MjTvDDnFFlm5wioooMhfNzKWtN/gHiqQxjAb8EZ6WdmF/9ARP67Jpi6Yb+tmLSbkyU+8B1RXxlDPiyN8+sD8+Nb/kZ" +
+            "94/sHvJwnvDKuO+3/3Y3dlv2bojzr2IyIpMNOmqOFGYMLVN0V2Ue1bLdI4E7pWYjJ2cJj+F3qkPNZVEI7VFY/uY5+ctHhKQV8Xa7" +
+            "pO6kO8Rf77IzlhEYt8llvhjho6Tc+hj507wTmzl6NLrTQfv6MooqtyuGC2mDOL7Nii4LcK2NJpLuHvUBKwrZ1pebbuCoGRw6IYsM" +
+            "HkCtA+fdZn71uSANA+iW+YJF1DngoABd15jmfZ5nc8OaKveri6E6FO80vFIOiZiaBECEHX5FaZNXzuvO+FB8TxxuBEOb+dY7Ixjp" +
+            "6o7RTUaN8Tvkasq6+yO3m/qZASlaWFot4/nUbQ4mrcFuNLwy+AwF+mWj2zs3gyLp1txyM/1d8iC9djwj2ij3+RvrWWTV3F9yfiD8" +
+            "zYm1kGdNYno/Tq0dwzn+evQoFt9B9kiABdcPUXmsEKvU7ANm5mqwujGSQkBqvjrTcuFqN1W8rB2Vt2lh8kORdOag0wokRqEIr9ba" +
+            "RRmW1FMdW4R58MD3R++Lj8UGrp1MYp3/RgT408m2ECVAdf4WqslKYIYvuu8wd+RU4riEmViAqhOLUTpPSPaLtrM=",
+        ),
+        Root(
+            name = "Swedish Government Root Authority v3",
+            owner = "Government of Sweden (Försäkringskassan)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "8F9ADB6D895DAB5ADF5C3D3FAB83927BE0FB64EF82485C62280D584E8BD55D22",
+            b64 = "MIIFqjCCA5KgAwIBAgIQMmmiv0BrjbRHg2Q8iw3JQzANBgkqhkiG9w0BAQsFADBmMQswCQYDVQQGEwJTRTEoMCYGA1UEChMfU3dl" +
+            "ZGlzaCBTb2NpYWwgSW5zdXJhbmNlIEFnZW5jeTEtMCsGA1UEAxMkU3dlZGlzaCBHb3Zlcm5tZW50IFJvb3QgQXV0aG9yaXR5IHYz" +
+            "MB4XDTE1MDkyOTExMzIzMloXDTQwMDkyOTExNDIwOVowZjELMAkGA1UEBhMCU0UxKDAmBgNVBAoTH1N3ZWRpc2ggU29jaWFsIElu" +
+            "c3VyYW5jZSBBZ2VuY3kxLTArBgNVBAMTJFN3ZWRpc2ggR292ZXJubWVudCBSb290IEF1dGhvcml0eSB2MzCCAiIwDQYJKoZIhvcN" +
+            "AQEBBQADggIPADCCAgoCggIBALoeomkbaE9cj7r0I8deZgV4hTZYo6J/Z++iDBaSpEqL4KCSh1U3C8TRxNBAQ5cyUE/slUe3P69D" +
+            "BeWElwnvVlTnQzNH/a3xOpuYpOHkUaO5rIwL7iUGCfLTujVnYYzCvSbL12PM14Mz2Uzi7/kbn6jLDXYBLXLJIrtokd6QDzs9tEK9" +
+            "GX2fhFw8fkI3hrFgwkiHUk5cV/7Okq7KPla3s56VmpT4L6HQoi7CVFpszMzWrUtH0C6HgjOoe1A5pyossVsnCp+t9RTr/I1TsnMr" +
+            "VCP0jJeZl/s13My1+jMUJo11pySm6BQuLaaAKIOaP7jKO8f1GOD97I55+6pCbEpLFn7zggNuuucRBqWfhCvSYG3pRu5BWpa5FP0c" +
+            "P4YS8VQmJv1ngC/lqC0oLkO3ZMLv5Ld+ltyEiyfZdj2YgVMU3EJFoVRn+doYZpAKtEeQPAHlK6Nm72/7MoPxM30yIWylRRU/L/NV" +
+            "kUiTnyXPLTw5O1INGq/H36tvgNiQy55xcmpCaZPqkgA9SQTZo1y6RfsCEP+taXRSpThjmmaIBLIRuhOqOdWDX+1lW1PInVyyhaB4" +
+            "cDVNXCQQpPYxKpJVQdnzF2yZE1j63SjQbBO9W4eNk4OtWClWFbRYJ0qbEWygpmdFOs7Q2M7/kDPsWjFND1IS+632YV/kL28NZjDl" +
+            "oE/Pz/1fAgMBAAGjVDBSMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBScvAHnq2Q19TGbjbX7F5mI" +
+            "Asub8jAQBgkrBgEEAYI3FQEEAwIBADANBgkqhkiG9w0BAQsFAAOCAgEAh6tq5OdrJFI99iKDT1MERTKcYVoWXJxEtaPRltBA/s9m" +
+            "FV5+QAAgFf2nqmTap2FmaMLdUnEloGq53cDNzoYI1Dw1ES999G/S2gyXA2WXg7Q+OssJdI3rBcp66YCwt1EtIpPjmhnu7ZcIIYOt" +
+            "xwqRX8TK216vuOeMujpJ0lUDNRkZUErihqe7eD2V/bEfRvJPZvL7v4VktgojGJIJnklFMbbWFFee/IlFdH85zMBqaMjPR9DhHsfT" +
+            "Ly35LCQ7/Gq6lBPezHLyoh3LH5/Vg3cmXn6boK9pn3jbpcFucVxIQk4r2Hi41Q+lP2zLj5DNR9iQGUmF1mz84quqQr/LE5e/aUR1" +
+            "YzUt2qDH/WH3ykE9VJz0NsDkbiFIn11xYoHT8iXmWYxZQSZIp+PrZ2rT7DS3mPfMyqM2BpXnyDBZ9//JodHkebzfEx8u2bN10QS3" +
+            "IwkhzB0hHCecDiv6wYcYyfr5SYOMEhb7xRLOOw9C+vAFZX6ox+tSSvmYXnGjrBLHKHEaWnXPh8ofNygcFJ2QUG/Gv0rMxyXPMd1b" +
+            "kU52qBHVdmbZv4BzYrDsw/5EvM1ZEwsMLdihzKpiTVRFXqRSo4xXPBQxk1TOpRZUXi1Cs+5lqbadP2zOYdlWy97qoFbebYYD+reB" +
+            "aozS2PPXtsCsKYRZIw6bl2rmoM7VKlQY71CYeSA=",
+        ),
+        Root(
+            name = "Halcom Root Certificate Authority",
+            owner = "HALCOM d.d.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D7BA3F4FF8AD05633451470DDA3378A3491B90005E5C687D2B68D53647CFDD66",
+            b64 = "MIIDgDCCAmigAwIBAgIDDN+bMA0GCSqGSIb3DQEBCwUAMGgxCzAJBgNVBAYTAlNJMRQwEgYDVQQKEwtIYWxjb20gZC5kLjEXMBUG" +
+            "A1UEYRMOVkFUU0ktNDMzNTMxMjYxKjAoBgNVBAMTIUhhbGNvbSBSb290IENlcnRpZmljYXRlIEF1dGhvcml0eTAeFw0xNjA2MTAw" +
+            "NzA3NTBaFw0zNjA2MTAwNzA3NTBaMGgxCzAJBgNVBAYTAlNJMRQwEgYDVQQKEwtIYWxjb20gZC5kLjEXMBUGA1UEYRMOVkFUU0kt" +
+            "NDMzNTMxMjYxKjAoBgNVBAMTIUhhbGNvbSBSb290IENlcnRpZmljYXRlIEF1dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEP" +
+            "ADCCAQoCggEBAOlSpsYa72O7rYH0kLJajw3VFjO0HBj7y4kqMLtlgcTh+wKplAd25dcV5HpkEIDqPNCzoq2uHB/qu4FhmNT5jWmV" +
+            "xEUuAwnKhvpcWhEXQDA+8MZjCcnxjUGlVg0FZGlLWKwqKZa7QDMWNEtnbNfxtEal6lmoQ2gPjDgqqjz2RAOG+IrbRSErKR4St/ql" +
+            "ZUHeBghYcJU+9EzZ6w8pqZGKnq3KEvXlleY42Rqmi5xPpkgTEKV5RL1qOyn1FndAy36bXN++i+vnoBlvnxU/J54psfUN/F9Hojzd" +
+            "LgsC+/SN6uwMsfm0Baz5j6k9biwdOZ/QTp9OyGqegANh3M/4bZTLD88CAwEAAaMzMDEwDwYDVR0TAQH/BAUwAwEB/zARBgNVHQ4E" +
+            "CgQIQq6mQ8eYKLAwCwYDVR0PBAQDAgEGMA0GCSqGSIb3DQEBCwUAA4IBAQBSuXnQ22P+GYH7DPnB5VBZyp2y+1wz0Dioq7UaTlMl" +
+            "dSLTSb/Kgc/T4XujkUZ1yhrr2fVdvHuGNf2Bl5yE1yaYIvyxNdCplbZ8/+SXtEB+SV1oyOLUOXUnTwORsjFXv4bXbcpxACI30DtY" +
+            "JFCgnIyaiY71KEZs5xbtsIGr9EYmr6boGkV3cBaSsntxcdz330lnwDMIDi5TwXerx0qRTBLv5w4J5XUxIK5u/FqKgJwQsNuoSszz" +
+            "K9w2NKb3qQtnnZDLPSafdc1MyR0GCnWLUsCB8NEmrMySphScXDwWQvuTzAKoE/PargrDuBX0sNDU4BYgT6xQmHgmlB5o65Ry/veL",
+        ),
+        Root(
+            name = "HARICA Code Signing ECC Root CA 2021",
+            owner = "HARICA",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "794E774638CE7B3CF05EBC8967CF47315316C351DC26387476E0C099C2ED47CC",
+            b64 = "MIICZjCCAe2gAwIBAgIQTIpjHaljjwWi+3YU/1uizTAKBggqhkjOPQQDAzB1MQswCQYDVQQGEwJHUjE3MDUGA1UECgwuSGVsbGVu" +
+            "aWMgQWNhZGVtaWMgYW5kIFJlc2VhcmNoIEluc3RpdHV0aW9ucyBDQTEtMCsGA1UEAwwkSEFSSUNBIENvZGUgU2lnbmluZyBFQ0Mg" +
+            "Um9vdCBDQSAyMDIxMB4XDTIxMDIxOTExMDQzNloXDTQ1MDIxMzExMDQzNVowdTELMAkGA1UEBhMCR1IxNzA1BgNVBAoMLkhlbGxl" +
+            "bmljIEFjYWRlbWljIGFuZCBSZXNlYXJjaCBJbnN0aXR1dGlvbnMgQ0ExLTArBgNVBAMMJEhBUklDQSBDb2RlIFNpZ25pbmcgRUND" +
+            "IFJvb3QgQ0EgMjAyMTB2MBAGByqGSM49AgEGBSuBBAAiA2IABEOfvFxCakPhrEu4Dl+ABuMFd4t/C3nXYaCQv/JTKKNYupTAZmoc" +
+            "WdqAWIEATLzJeZgQDMcdC+OT3IU5aNm/p0PSMcyCgie6iNHSLVY39zrabjnccRBl7jgLh3oDujBfZKNCMEAwDwYDVR0TAQH/BAUw" +
+            "AwEB/zAdBgNVHQ4EFgQUanHBc2qTQqaXcl67kF+Ckg8r1uswDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMDA2cAMGQCMB6l1QtE" +
+            "lRDkZ3xOhV65RUkCc7CyHLOnItEAYUAPs4c3Fo0A7baLVSUGlJDc1+d1nwIwf3Rr8Urf8PeEe/LFeTADSPIeICJXZFRXNIB3tz8j" +
+            "T7T1gJjCwVZboOfWoY/1DG8d",
+        ),
+        Root(
+            name = "HARICA Code Signing RSA Root CA 2021",
+            owner = "HARICA",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "C40EBDCD75A90E4B7496ABB23E789A48E33C03284F75D95130575AE6860AE13C",
+            b64 = "MIIFtjCCA56gAwIBAgIQFcKuKk2ZmmOM07oTGXYI9TANBgkqhkiG9w0BAQsFADB1MQswCQYDVQQGEwJHUjE3MDUGA1UECgwuSGVs" +
+            "bGVuaWMgQWNhZGVtaWMgYW5kIFJlc2VhcmNoIEluc3RpdHV0aW9ucyBDQTEtMCsGA1UEAwwkSEFSSUNBIENvZGUgU2lnbmluZyBS" +
+            "U0EgUm9vdCBDQSAyMDIxMB4XDTIxMDIxOTEwNTk1NFoXDTQ1MDIxMzEwNTk1M1owdTELMAkGA1UEBhMCR1IxNzA1BgNVBAoMLkhl" +
+            "bGxlbmljIEFjYWRlbWljIGFuZCBSZXNlYXJjaCBJbnN0aXR1dGlvbnMgQ0ExLTArBgNVBAMMJEhBUklDQSBDb2RlIFNpZ25pbmcg" +
+            "UlNBIFJvb3QgQ0EgMjAyMTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAIpq7qoKI1UMiwZC45VbVHhfxY4GLHw8Mb6v" +
+            "Damh7EogWAWd4miyu+tffyozufJVnG+qpB7tEL6DKRE25p4/+m17UeHVd6W9y2kOOyIglAwxZUANCa8QNXqb6nkIRKSLZ6krTcHn" +
+            "0Nen9rU6jdmjqXm4pGVcvPM+95+Z9rjDZWgtq4Mu3YWZBKn10VzVUUIBuZ9BtUsisgD0y2cQ72nEEK36lAZ2UBJXgq7FFK08fbud" +
+            "8XPhfPCucd5b9xLd94Dx3D7xYLrJGZdvdXSFTP05Q8NkbjSsE8EcZbZSQvFG6y/6XabPDkmd93R8eA0GOiwS++JLJuRviyGBM0I5" +
+            "E+hCq1tV1Bu7N7YSkffzfbzS/+yxw9WgzLIrx49dfkxSQkj7j/1akHMQ1alyVI1J2zhSqkZIDi/6ACzMcww2SyTOE2ympKSj1nyb" +
+            "6TgLxiTbTaxnIUlbQTdk5mBrH+0qL2AZMB7YPJwZQ4ffwAr05MpgiHrWo7nkJS554v7Byzy3989OWEz7w62rfarKiPsOOA0fnlw5" +
+            "67gHxFAiTfiFf27sjPq2cU3efZZpxN0+Ht4mkAosTRWVqaI+3D0Od3yNQShPuINRvj63j5A6cDGJWvqTU/xgyY11kO5aLx2EnwCp" +
+            "5sOGI6Ie3RLjoUZgG2e/UBUiknxKtIyPbpyVwizcOzogtryLAgMBAAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFLRk" +
+            "Fkjo/FpLMymJ65lAuSC09mEaMA4GA1UdDwEB/wQEAwIBhjANBgkqhkiG9w0BAQsFAAOCAgEAK6xZi+Y5RNz7rUqI4GT/q8Py0s5w" +
+            "LwPlb7LE9TbWU2uHqx2LmQfIMI5Hcv2huHXWF6EWvWRzkTBXrX39BUCGk9FJlrIL1HxkE4vTIUk4u/vozD4x8a57TCrfggajjgWE" +
+            "nH9wzsC7RRffXWUM5FBIB0SLpC9W2sZ69mCNpDjxnYcWMLLwX3pCVSBxz8zuALESR79CueSztR0ZhLmYbeBptBVBteJQSMcf6pq3" +
+            "eZHd1dVTGfyuGGxp261ZKJtkmKc8x1WO0TAAz9QynmKxwyruNSLGu/B8u4O4AIn13BqX2TiaKVNhGaan9DtH/d1nlQ+OpGYsgpq3" +
+            "LXHm3674+GjBuw/qUKBFl7calRJvyLO2BWjaah4ONYWErHQMirT0dZ8ir7BUu7aeIvnZ69WKDcfc+JgxX576xpf0QRB104G2MV96" +
+            "3YiFCK9wRwI3e+JK7F3y3SkSRMiKqt3SVXgXda9xaQ13cEqwH39C28dx3FjWGL1QxblyBMdne3xTYMpJGBW8QHOuK6grrG8RRDns" +
+            "gkh+Ecr71j+2wLm4BpN1vZMndxcNXKWe6sFbAC0MqDVgx+JvNRs9drXnrd10I0+GskfvyC/QhXw5ljehKykCvT6Hz6j2HXUyzzjj" +
+            "c7HuEIG1KrGIBlEeWjpIUfM2WWLfQmZZULdYvvV2QJoSFuYOqtdsoNU=",
+        ),
+        Root(
+            name = "Hellenic Academic and Research Institutions ECC RootCA 2015",
+            owner = "HARICA",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "44B545AA8A25E65A73CA15DC27FC36D24C1CB9953A066539B11582DC487B4833",
+            b64 = "MIICwzCCAkqgAwIBAgIBADAKBggqhkjOPQQDAjCBqjELMAkGA1UEBhMCR1IxDzANBgNVBAcTBkF0aGVuczFEMEIGA1UEChM7SGVs" +
+            "bGVuaWMgQWNhZGVtaWMgYW5kIFJlc2VhcmNoIEluc3RpdHV0aW9ucyBDZXJ0LiBBdXRob3JpdHkxRDBCBgNVBAMTO0hlbGxlbmlj" +
+            "IEFjYWRlbWljIGFuZCBSZXNlYXJjaCBJbnN0aXR1dGlvbnMgRUNDIFJvb3RDQSAyMDE1MB4XDTE1MDcwNzEwMzcxMloXDTQwMDYz" +
+            "MDEwMzcxMlowgaoxCzAJBgNVBAYTAkdSMQ8wDQYDVQQHEwZBdGhlbnMxRDBCBgNVBAoTO0hlbGxlbmljIEFjYWRlbWljIGFuZCBS" +
+            "ZXNlYXJjaCBJbnN0aXR1dGlvbnMgQ2VydC4gQXV0aG9yaXR5MUQwQgYDVQQDEztIZWxsZW5pYyBBY2FkZW1pYyBhbmQgUmVzZWFy" +
+            "Y2ggSW5zdGl0dXRpb25zIEVDQyBSb290Q0EgMjAxNTB2MBAGByqGSM49AgEGBSuBBAAiA2IABJKgQehLgoRc4vgxEZmGZE4JJS+d" +
+            "QS8KrjVPdJWyUWRrjWvmP3CV8AVER6ZyOFB2lQJajq4onvktTpnvLEhvTCUp6NFxW98dwXU3tNf6e3pCnGoKVlp8aQuqgAkkbH7B" +
+            "RqNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFLQiC4KZJAEOnLvkDv2/+5cgk5kqMAoGCCqG" +
+            "SM49BAMCA2cAMGQCMGfOFmI4oqxiRaeplSTAGiecMjvAwNW6qef4BENThe5SId6d9SWDPp5YSy/XZxMOIQIwBeF1Ad5o7SofTUwJ" +
+            "CA3sS61kFyjndc5FZXIhF8siQQ6ME5g4mlRtm8rifOoCWCKR",
+        ),
+        Root(
+            name = "Hellenic Academic and Research Institutions RootCA 2015",
+            owner = "HARICA",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "A040929A02CE53B4ACF4F2FFC6981CE4496F755E6D45FE0B2A692BCD52523F36",
+            b64 = "MIIGCzCCA/OgAwIBAgIBADANBgkqhkiG9w0BAQsFADCBpjELMAkGA1UEBhMCR1IxDzANBgNVBAcTBkF0aGVuczFEMEIGA1UEChM7" +
+            "SGVsbGVuaWMgQWNhZGVtaWMgYW5kIFJlc2VhcmNoIEluc3RpdHV0aW9ucyBDZXJ0LiBBdXRob3JpdHkxQDA+BgNVBAMTN0hlbGxl" +
+            "bmljIEFjYWRlbWljIGFuZCBSZXNlYXJjaCBJbnN0aXR1dGlvbnMgUm9vdENBIDIwMTUwHhcNMTUwNzA3MTAxMTIxWhcNNDAwNjMw" +
+            "MTAxMTIxWjCBpjELMAkGA1UEBhMCR1IxDzANBgNVBAcTBkF0aGVuczFEMEIGA1UEChM7SGVsbGVuaWMgQWNhZGVtaWMgYW5kIFJl" +
+            "c2VhcmNoIEluc3RpdHV0aW9ucyBDZXJ0LiBBdXRob3JpdHkxQDA+BgNVBAMTN0hlbGxlbmljIEFjYWRlbWljIGFuZCBSZXNlYXJj" +
+            "aCBJbnN0aXR1dGlvbnMgUm9vdENBIDIwMTUwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDC+Kk/G4n8PDwEXT2QNrCR" +
+            "Onk8ZlrvbTkBSRq0t89/TSNTt5AA4xMqKKYx8ZEA4yjsriFBzh/a/X0SWwGDD7mwX5nh8hKDgE0GPt+sr+ehiGsxr/CL0BgzuNtF" +
+            "ajT0AoAkKAoCFZVedioNmToUW/bLy1O8E00BiDeUJRtCvCLYjqOWXjrZMts+6PAQZe104S+nfK8nNLspfZu2zwnI5dMK/IhlZXQK" +
+            "3HMcXM1AsRzUtoSMTFDPaI6oWa7CJ06CojXdFPQf/7J31Ycvqm59JCfnxssm5uX+Zwdj2EUN3TpZZTlYepKZcj2chF6IIbjV9Cz8" +
+            "2XBST3i4vTwri5WY9bPRaM8gFH5MXF/ni+X1NYEZN9cRCLdmvtNKzoNXADrDgfgXy5I2XdGj2HUb4Ysn6npIQf1FGQatJ5lOwXBH" +
+            "3bWfgVMS5bGMSF0xQxfjjMZ6Y5ZLKTBOhE5iGV48zpeQpX8B653g+IuJ3SWYPZK2fu/Z8VFRfS0myGlZYeCsargqNhEEelC9MoS+" +
+            "L9xy1dcdFkfkR2YgP/SWxa+OAXqlD3pk9Q0Yh9muiNX6hME6wGkoLfINaFGq46V3xqSQDqE3izEjR8EJCOtu93ib14L8hCCZSRm2" +
+            "Ekax+0VVFqmjZaycBw/qa9wfLgZy7IaIEuQt218FL+TwA9MmM+eAws1CoRc0CwIDAQABo0IwQDAPBgNVHRMBAf8EBTADAQH/MA4G" +
+            "A1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUcRVnyMjJvXVdctA4GGqd83EkVAswDQYJKoZIhvcNAQELBQADggIBAHW7bVRLqhBYRjTy" +
+            "YtcWNl0IXtVsyIe9tC5G8jH4fOpCtZMWVdyhDBKg2mF+D1hYc2Ryx+hFjtyp8iY/xnmMsVMIM4GwVhO+5lFc2JsKT0ucVlMC6U/2" +
+            "DWDqTUJV6HwbISHTGzrMd/K4kPFox/la/vot9L/J9UUbzjgQKjeKeaO04wlshYaT/4mWJ3iBj2fjRnRUjtkNaeJK9E10A/+yd+2V" +
+            "Z5fkscWrv2oj6NSU4kQoYsRL4vDY4ilrGnB+JGGTe08DMiUNRSQrlrRGar9KC/eaj8GsGsVn82800vpzY4zvFrCopEYq+OsS7HK0" +
+            "7/grfoxSwIuEVPkvPuNVqNxmsdnhX9izjFk0WaSrT2y7HxjbdavYy5LNlDhhDgcGH0tGEPEVvo2FXDtKK4F5D7Rpn0lQl033DlZd" +
+            "wJVqwjbDG2jJ9SrcR5q+ss7FJej6A7na+RZukYT1HCjI/CbM1xyQVqdfbzoEvM14iQuODy+jqk+iGxI9FghAD/FGTNeqewjBCvVt" +
+            "J94Cj8rDtSvK6evIIVM4pcw72Hc3MKJP2W/R8kCtQXoXxdZKNYm3QdV8hn9VTYNKpXMgwDqvkPGaJI7ZjnHKe7iG2rKPmT4dEw0S" +
+            "Ee7Uq/DpFXYC5ODfqiAeW2GFZECpkJcNrVPSWh2HagCXZWK0vm9qp/UsQu0yrbYhnr68",
+        ),
+        Root(
+            name = "IdenTrust Commercial Root CA 1",
+            owner = "IdenTrust Services, LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5D56499BE4D2E08BCFCAD08A3E38723D50503BDE706948E42F55603019E528AE",
+            b64 = "MIIFYDCCA0igAwIBAgIQCgFCgAAAAUUjyES1AAAAAjANBgkqhkiG9w0BAQsFADBKMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRl" +
+            "blRydXN0MScwJQYDVQQDEx5JZGVuVHJ1c3QgQ29tbWVyY2lhbCBSb290IENBIDEwHhcNMTQwMTE2MTgxMjIzWhcNMzQwMTE2MTgx" +
+            "MjIzWjBKMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MScwJQYDVQQDEx5JZGVuVHJ1c3QgQ29tbWVyY2lhbCBSb290" +
+            "IENBIDEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCnUBneP5k91DNG8W9RYYKyqU+PZ4ldhNlT3Qwo2dfw/66VQ3KZ" +
+            "+bVdfIrBQuExUHTRgQ18zZshq0PirK1ehm7zCYofWjK9ouuU+ehcCuz/mNKvcbO0U59Oh++SvL3sTzIwiEsXXlfEU8L2ApeN2WIr" +
+            "vyQfYo3fw7gpS0l4PJNgiCL8mdo2yMKi1CxUAGc1bnO/AljwpN3lsKImesrgNqUZFvX9t++uP0D1bVoE/c40yiTcdCMbXTMTEl3E" +
+            "ASX2MN0CXZ/g1Ue9tOsbobtJSdifWwLziuQkkORiT0/Br4sOdBeo0XKIanoBScy0RnnGF7HamB4HWfp1IYVl3ZBWzvurpWCdxJ35" +
+            "UrCLvYf5jysjCiN2O/cz4ckA82n5S6LgTrx+kzmEB/dEcH7+B1rlsazRGMzyNeVJSQjKVsk9+w8YfYs7wRPCTY/JTw436R+hDmrf" +
+            "Yi7LNQZReSzIJTj0+kuniVyc0uMNOYZKdHzVWYfCP04MXFL0PfdSgvHqo6z9STQaKPNBiDoT7uje/5kdX7rL6B7yuVBgwDHTc+Xv" +
+            "vqDtMwt0viAgxGds8AgDelWAf0ZOlqf0Hj7h9tgJ4TNkK2PXMl6f+cB7D3hvl7yTmvmcEpB4eoCHFddydJxVdHixuuFucAS6T6C6" +
+            "aMN7/zHwcz09lCqxC0EOoP5NiGVreTO01wIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E" +
+            "FgQU7UQZwNPwBovupHu+QucmVMiONnYwDQYJKoZIhvcNAQELBQADggIBAA2ukDL2pkt8RHYZYR4nKM1eVO8lvOMIkPkp165oCOGU" +
+            "AFjvLi5+U1KMtlwH6oi6mYtQlNeCgN9hCQCTrQ0U5s7B8jeUeLBfnLOic7iPBZM4zY0+sLj7wM+x8uwtLRvM7Kqas6pgghstO8OE" +
+            "PVeKlh6cdbjTMM1gCIOQ045U8U1mwF10A0Cj7oV+wh93nAbowacYXVKV7cndJZ5t+qntozo00Fl72u1Q8zW/7esUTTHHYPTa8Yec" +
+            "4kjixsU3+wYQ+nVZZjFHKdp2mhzpgq7vmrlR94gjmmmVYjzlVYA211QC//G5Xc7UI2/YRYRKW2XviQzdFKcgyxilJbQN+QHwotL0" +
+            "AMh0jqEqSI5l2xPE4iUXfeu+h1sXIFRRk0pTAwvsXcoz7WL9RccvW9xYoIA55vrX/hMUpu09lEpCdNTDd1lzzY9GvlU47/rokTLq" +
+            "l1gEIt44w8y8bckzOmoKaT+gyOpyj4xjhiO9bTyWnpXgSUyqorkqG5w2gXjtw+hG4iZZRHUe2XWJUc0QhJ1hYMtd+ZciTY6Y5uN/" +
+            "9lu7rs3KSoFrXgvzUeF0K+l+J6fZmUlO+KWA2yUPHGNiiskzZ2s8EIPGrd6ozRaOjfAHN3Gf8qv8QfXBi+wAN10J5U6A7/qxXDgG" +
+            "pRtK4dw4LTzcqx+QGtVKnO7RcGzM7vRX+Bi6hG6H",
+        ),
+        Root(
+            name = "IdenTrust Commercial Root Timestamp RSA CA 2",
+            owner = "IdenTrust Services, LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D309931736C8F5AAF3C20ADA97FDAF11B5E2D7FD174DC97286ACD613A40AEA55",
+            b64 = "MIIFfDCCA2SgAwIBAgIQQAGT1rlLeUqTQEX1yZ/ABDANBgkqhkiG9w0BAQwFADBYMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRl" +
+            "blRydXN0MTUwMwYDVQQDEyxJZGVuVHJ1c3QgQ29tbWVyY2lhbCBSb290IFRpbWVzdGFtcCBSU0EgQ0EgMjAeFw0yNDEyMTcyMjI0" +
+            "NDdaFw00NDEyMTIyMjI0NDZaMFgxCzAJBgNVBAYTAlVTMRIwEAYDVQQKEwlJZGVuVHJ1c3QxNTAzBgNVBAMTLElkZW5UcnVzdCBD" +
+            "b21tZXJjaWFsIFJvb3QgVGltZXN0YW1wIFJTQSBDQSAyMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqaLICxoR40w6" +
+            "mqcslYZkl8/Qrr0aIAHEWGmaEKvdP8hK4Kj9Xw9fa/Ld0wxxjm8tCb1S/YgQc5R0iFTKZxiMaTifS16icfmJTwI9RsW27C95Bp3+" +
+            "j4yrE0JxzXQznHbMbJAItJntzlNQzFAw8A+rOcZ3ooS8/UP+Ld4Uh/RmF8lodiXifdNIK+rN5FfYwkJ4bocqgFsY+o5WBlsi//UX" +
+            "uxH6/p5Os8EKx0VZ3VykP1ScFhBgZuzhLwLxJUiNPxro2Y2Yw2FPgaDwM/LpUztYwa1Wi0UMPEHraKUX+UH13aGPQo3grBozNNgf" +
+            "W6FGPNz9IwVmlKRYcpjU3DOxHpjPq+mLcnvYZilmRQoj9AnJbFdaALoEsFO+2bnqFfsIvq4sXeo4TV0w8JYsOfT/ULHuXehtgQed" +
+            "fzsedRHpQsZ0TPk+8ezG8gzfaVGAZ9dFlx/FI7bz6SQe0gXi2/ECtzrHEbby2enYyVQkJSFDVTke3pDQgTZOMxMlCPmHTLMjff1q" +
+            "7SMboiqZDkZ6k3V3affcjspoJ+PGs3Qi1qQs6Unn5vblcvHIzMVQ8dilLrEC4uSrWXFkm9Ra88C3sSss8pxtFaznLt8OESuQPqEZ" +
+            "BS1UsVVKavQZHgUAoEsWqEXUr+HgyFy7wBHlKXLbYLn7Y6byGI+iuvjblXREL+hnDNdH490CAwEAAaNCMEAwDwYDVR0TAQH/BAUw" +
+            "AwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFKsFLMPvfRyQ0NyklYn+Tun9QeU7MA0GCSqGSIb3DQEBDAUAA4ICAQAcG5x1" +
+            "lT/oDXbWSDK9s0II5CRW1SNeXwIEk+XIIAfJBYHHSIzdQJP0CTSytdUfxHJFlGhPVzU9KEzsqhn9eViB5pPwm5B8842IyT5QI8dF" +
+            "fjjBEJcrUHqtgRNRIfTMTaeIv2fedI0e3/8tqUjHmxN3i8ZmlJcO7rvrLpn0DvoiByKF1eCqtVQHF3s8VRIgeTnc23ZZh0PtJ+ao" +
+            "BWM1EoQDHWxeSR4BwfHG9nZ73GIS/8siMEtzZsbko6VNmOYMP88RfsdkrWnq02DPFNy5fQWYCS+GAOx+vG35f3x40RcYgc6b5UQ3" +
+            "LRVErRimsAUXyyxhK5or0yFGbXBKbtKxpoGLKnSprrX0Tt6G5mZB7oYEk2AaZ8icBpUmkSgF+qYOADmgPe8OjjVaX9sB9LLl3nW4" +
+            "0nIXpTdbuuws/CxZOSUlk7b4W3ohqRZIVzNOrPUJL+m7mnlf1Jj/bD/dOPauVt9wZJw1XItUuq7noxDHO5DqfFCLTpAEfKCji10E" +
+            "lBfT/eW3yvflJawLqAhBLFRTs840KVyDNd+CY+H9F1jsUglDKX69Q9C6NgM16XCa4PpYVVlsgLg6jzxgOqp52BT9ieqPyznRNfDY" +
+            "ifMcpH9KZNKHsKX4y3V43ssxjuwOj2LR5gnRQKzPVQlZqgeWHLgicIB3VP5ubilsS+sgYroipkeCPg==",
+        ),
+        Root(
+            name = "IdenTrust Public Sector Root CA 1",
+            owner = "IdenTrust Services, LLC",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "30D0895A9A448A262091635522D1F52010B5867ACAE12C78EF958FD4F4389F2F",
+            b64 = "MIIFZjCCA06gAwIBAgIQCgFCgAAAAUUjz0Z8AAAAAjANBgkqhkiG9w0BAQsFADBNMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRl" +
+            "blRydXN0MSowKAYDVQQDEyFJZGVuVHJ1c3QgUHVibGljIFNlY3RvciBSb290IENBIDEwHhcNMTQwMTE2MTc1MzMyWhcNMzQwMTE2" +
+            "MTc1MzMyWjBNMQswCQYDVQQGEwJVUzESMBAGA1UEChMJSWRlblRydXN0MSowKAYDVQQDEyFJZGVuVHJ1c3QgUHVibGljIFNlY3Rv" +
+            "ciBSb290IENBIDEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC2IpT8pEiv6EdrCvsnduTyP4o7ekosMSqMjbCpwzFr" +
+            "qHd2hCa2rIFCDQjrVVi7evi8ZX3yoG2LqEfpYnYeEe4IFNGyRBb06tD6Hi9e28tzQa68ALBKK0CyrOE7S8ItneShm+waOh7wCLPQ" +
+            "5CQ1B5+ctMlSbdsHyo+1W/CD80/HLaXIrcuVIKQxKFdYWuSNG5qrng0M8gozOSI5Cpcu81N3uURF/YTLNiCBWS2ab21ISGHKTN9T" +
+            "0a9SvESfqy9rg3LvdYDaBjMbXcjaY8ZNzaxmMc3R3j6HEDbhuaR672BQssvKplbgN6+rNBM5Jeg5ZuSYeqoSmJxZZoY+rfGwyj4G" +
+            "D3vwEUs3oERte8uojHH01bWRNszwFcYr3lEXsZdMUD2xlVl8BX0tIdUAvwFnol57plzy9yLxkA2T26pEUWbMfXYD62qoKjgZl3YN" +
+            "a4ph+bz27nb9cCvdKTz4Ch5bQhyLVi9VGxyhLrXHFub4qjySjmm2AcG1hp2JDws4lFTo6tyePSW8Uybt1as5qsVATFSrsrTZ2fjX" +
+            "ctscvG29ZV/viDUqZi/u9rNl8DONfJhBaUYPQxxp+pu10GFqzcpL2UyQRqsVWaFHVCkugyhfHMKiq3IXAAaOReyL4jM9f9oZRORi" +
+            "csPfIsbyVtTdX5Vy7W1f90gDW/3FKqD2cyOEEBsB5wIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAd" +
+            "BgNVHQ4EFgQU43HgntinQtnbcZFrlJPrw6PRFKMwDQYJKoZIhvcNAQELBQADggIBAEf63QqwEZE4rU1d9+UOl1QZgkiHVIyqZJnY" +
+            "Wv6IAcVYpZmxI1Qjt2odIFflAWJBF9MJ23XLblSQdf4an4EKwt3X9wnQW3IV5B4Jaj0z8yGa5hV+rVHVDRDtfULAj+7AmgjVQdZc" +
+            "DiFpboBhDhXAuM/FSRJSzL46zNQuOAXeNf0fb7iAaJg9TaDKQGXSc3z1i9kKlT/YPyNtGtEqJBnZhbMX73huqVjRI9PHE+1yJX9d" +
+            "sXNw0H8GlwmEKYBhHfpe/3OsoOOJuBxxFcbeMX8S3OFtm6/n6J91eEyrRjuazr8FGF1NFTwWmhlQBJqymm9li1JfPFgEKCXAZmEx" +
+            "frngdbkaqIHWchezxQMxNRF4eKLg6TCMf4DfWN88uieW4oA0beOY02QnrEh+KHdcxiVhJfiFDGX6xDIvpZgF5PgLZxYWxoK4Mhn5" +
+            "+bl53B/N66+rDt0b20XkeucC4pVd/GnwU2lhlXV5C15V5jgclKlZM57IcXR5f1GJtshquDDIajjDbp7hNxbqBWJMWxJH7ae0s1hW" +
+            "x0nzfxJoCTFx8G34Tkf71oXuxVhAGaQdp/lLQzfcaFpPz+vCZHTetBXZ9FRUGi8c15dxVJCO2SCdUyt/q4/i6jC8UDfv8Ue1fXws" +
+            "BOxonbRJRBD0ckscZOf85muQ3Wl9af0AVqW3rLatt8o+Ae+c",
+        ),
+        Root(
+            name = "MULTICERT Root Certification Authority 01",
+            owner = "MULTICERT",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "604D32D036895AED3BFEFAEB727C009EC0F2B3CDFA42A1C71730E6A72C3BE9D4",
+            b64 = "MIIF8TCCA9mgAwIBAgIIVE2lvEA1VlowDQYJKoZIhvcNAQELBQAwgYUxCzAJBgNVBAYTAlBUMUIwQAYDVQQKDDlNVUxUSUNFUlQg" +
+            "LSBTZXJ2acOnb3MgZGUgQ2VydGlmaWNhw6fDo28gRWxlY3Ryw7NuaWNhIFMuQS4xMjAwBgNVBAMMKU1VTFRJQ0VSVCBSb290IENl" +
+            "cnRpZmljYXRpb24gQXV0aG9yaXR5IDAxMB4XDTE0MDQwNDA4NTk0N1oXDTM5MDQwNDA4NTk0N1owgYUxCzAJBgNVBAYTAlBUMUIw" +
+            "QAYDVQQKDDlNVUxUSUNFUlQgLSBTZXJ2acOnb3MgZGUgQ2VydGlmaWNhw6fDo28gRWxlY3Ryw7NuaWNhIFMuQS4xMjAwBgNVBAMM" +
+            "KU1VTFRJQ0VSVCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IDAxMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA" +
+            "ztw/9BluuxVphvTkzec6cDvHmos7gwCBW/sgFlq+v1gAXynmV29+iiwVB1waY4xCXxbd2omERVcXlqCcoXUiQRo6/cUXkRP2vmIK" +
+            "vG4lLVvAjBBm9+LW+9xIMaMaqOVNSMmiHHP+j2ZAY3dZBzw9FJ/U94WR0MNC9Rths3eAgCptEgKWi1HZwW8nCxoHNAD/0llMKejX" +
+            "GWPYkbQ//I4OJfKhEgdlyjXeq/4WowiMr39+EvRZFgUf6K10eTL3eAK2tMyr2x44YQQZekFA2loRZHUC/WTR1pRCDyLnZc2vkA4M" +
+            "WzEBmVHvRYx9pTjannxL5Kbos6SC1gM0Lk+3Uat3OAn1Bv7cZhsPP/p974xVvuANhpWh3L3EwwjRRR7yvb5w8eYmxrsIsSilwqXt" +
+            "iNahwPsj8Sc5zOGEBxm8fvbMOP9uELtG6SOJJIH/AOJRANxSUH0TUH0WPUCN07/5imXYYhIpd8K6wkk0T4p5aclLFfM03s+vhuLl" +
+            "yKlWYUwGVFrFbBnq88hEzSQadtFxAFlr2XWbzv0Q/rGDoqW3koZ2m0r3HdyMhaZYrYqmaGkXyW0bps8nSyks3XFCGokQ5dWbEl9J" +
+            "i4S82Ahc+884Qq++0W57kapmQMUFfivQZrbH31L+9EVtI5IhnhIBkHOD4qUJDdfA+IWVHmPRPzXalNE32fUCAwEAAaNjMGEwHQYD" +
+            "VR0OBBYEFNU5HJxbbwSqopVM7yDdKXSkxUVxMA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAU1TkcnFtvBKqilUzvIN0pdKTF" +
+            "RXEwDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUAA4ICAQA/51/zIhbeg54g5ILn5Z53yfsrsHQN3xt0Ig9zEKGwF+xMDNQo" +
+            "cGpmckRpEJN2Nc8v+I88qxl8cZKVcRs3FcIbKHrvbng43/uPmwEg3K/21o0JZtrERqn8lapEIxLfR8CwFey1sZ5sD5GqpjrlwQ1g" +
+            "bFBAcFxcyM6zzOvtqogZVqWkyAx65XZAZzO0PZbcd8sjePlTW8+N3rGnjlp6ojJjo4jXJWFaXUk6cubPqpSGbG73guCOZ5MoxagN" +
+            "Te84rXlKZo2EAQgEefNSxkHnmmIGs/USHuzZAEPT65Z3dOF5+RSUhG26VIIFjN8B8jCIgax6L4tDLHY0zjXnh45OCwqlGlexU1q/" +
+            "a9i+AH7G+e5mMQix35QzhJx3T3tkL++OD1koIsvwXD4r/TXWlf8D7GVSfr7yGfh71VIsUneakWZBcI3VSecLSH+Krt5FPd3+5tLk" +
+            "ksN7zjCgSW43rajTLLY9niHbBlfi8K4G+9nFETehe9sdEXxodiA+9byl2Wa1Ia1FJsZdHgKjQcTUfYEZyxeXBg/m7HQARsR13T3w" +
+            "QzSvprz89oL7z8X6sw8lpT9mENaegqXbOhN53o2p16aNhtIv2WkN4nV4fklfIquGcChRs3q2oHn61OWDp7B3ytsBgu/ivk0v08BN" +
+            "0ONpbnwmm+um+0XvsQSKL6ohBvbm1LxBIw==",
+        ),
+        Root(
+            name = "eSignTrust Root Certification Authority (G03)",
+            owner = "Macao Post and Telecommunications Bureau",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "0E30D04A94DCC423E26FDC4C24AFCF4923BD80D83B661B06A2F5856361560407",
+            b64 = "MIIGEjCCA/qgAwIBAgIQPPt99H6ktMZyoD/D0lx8xjANBgkqhkiG9w0BAQsFADB4MQswCQYDVQQGEwJNTzExMC8GA1UEChMoTWFj" +
+            "YW8gUG9zdCBhbmQgVGVsZWNvbW11bmljYXRpb25zIEJ1cmVhdTE2MDQGA1UEAxMtZVNpZ25UcnVzdCBSb290IENlcnRpZmljYXRp" +
+            "b24gQXV0aG9yaXR5IChHMDMpMB4XDTE3MDEwMTAwMDAwMFoXDTQxMTIzMTIzNTk1OVoweDELMAkGA1UEBhMCTU8xMTAvBgNVBAoT" +
+            "KE1hY2FvIFBvc3QgYW5kIFRlbGVjb21tdW5pY2F0aW9ucyBCdXJlYXUxNjA0BgNVBAMTLWVTaWduVHJ1c3QgUm9vdCBDZXJ0aWZp" +
+            "Y2F0aW9uIEF1dGhvcml0eSAoRzAzKTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAMRTjgN1XSSze9lMBwJY56POLX9Y" +
+            "VbYWxPJx8Pzo055B1hR9N6OdkFzPMiSq5LgxZ8JjlqXK82lWKv/JMEZBKcQ20k70hgaQMce/7SXvw5lTQ+O4cNzf7yXVv5/BgOQT" +
+            "tz+ESYJEeniTXeWt1GLyy1NC7hGT79azuQ0I3qnKEyOWUGlboD/2H5M6yPlBXzb334tgTFZ9h8e3m4eoAyj4Aq5tLQwCJPjkcSXc" +
+            "igDniOKxs7bStSSQkoNzp7x4DbgAcNRiPMVXhx/aAGU1KBZ6mPKeYijBBsm1pd1fCPuIQ/qjoiF8gAZl/L66u06Sv5f2JHiIkksW" +
+            "63KN2Vof4v8PtHjCZg4Rqm6HMkbOX89/icxalBVVeEpndvhOSn4i5Pg8xU0YLx3hbe1/P56+pG2Rvv4lHGy1Ic9skiR/gJ72IKwU" +
+            "e+fg2hI0RXHODNRmOF1vVqm4mW4zdg7aGJK/r3fx5NucUsR8yIyBUyX/Cnvsa8AT+zp5/7zvERvbVnVFW/usZYZ/QtWLGRAEKne6" +
+            "t4PDCMIYapVuFgM3mXGGPq97ZsX+sKeACuqi4xLCVlFm+uQ5rSAfxQqUknUrQZicUAM3msRezyFa6nitTfzl/MGV2IM0AtyKgflZ" +
+            "JtXlf5M/dfcRIKdoliAluHy30mA+JgsGL91ab/H9Dyiu9z+fHbVZ8abNAgMBAAGjgZcwgZQwDwYDVR0TAQH/BAUwAwEB/zAOBgNV" +
+            "HQ8BAf8EBAMCAQYwMQYDVR0RBCowKKQmMCQxIjAgBgNVBAMTGU1QRVNULVBST0QtT2ZmbGluZS00MDk2LTEwHQYDVR0OBBYEFBzg" +
+            "IGE9BuTtLG1VuI41rtls5UeBMB8GA1UdIwQYMBaAFBzgIGE9BuTtLG1VuI41rtls5UeBMA0GCSqGSIb3DQEBCwUAA4ICAQBcONUK" +
+            "hiMtAWTYxoo2RwG1wt42Zs+CXIAwaxX/n3SCwrQ5c2MVJrQtGJAsdONidAJOsQo45z2ah1WKFMtDfQHyfIfcv0fbgjPgfZ+H2Xfn" +
+            "QCujZgNQOVPokBtk6JLVdRkM8QEI/ST7DZB1OtsXl32gZRpgf3bC/1fHm1N94wbEvfZp1l9XjYW9yhJxUJt+/4qTlEEojG1D7WaE" +
+            "DagxBGfe7WM7bDAg39TtsTeB7eCrQC4aQvnyYeA86AinuF4BerjVKcwPHl1F+ld/7h8xMONwpNCa49/TK2SeUKQzd/PZbSXz+quS" +
+            "YKAefbW03P4NOFah5duW/Nl+zfwnExGik+Y7NZfXCQ/MhboMrJ5QjVJHULobOqoX5sDYGxo+GDwXz2iEgOBETijPKkPxx7iqx55W" +
+            "fn/H1fsUmMMggB7+dS1jmKf1BVKpXn7pUCm2qZMuaGYJFBv8q5wIaTXac5fOAi9MapIBymFIYY+DjjZxyRraIBn9gYLvwYD8V9R/" +
+            "+SnU3fQ/84CXPp9OHaRkuZehgmYi1uQgYIm1/mkNKy7WBIOdlHHMw2i6bKqFp7Ia4OtAP4nfa2oIQ8T0jENJH/gEwUuTxYZSitBj" +
+            "00TEX528OsyuKoD9OFYsPyamAJclOWXL23QBEXaru0rkm2f0N6rD89yf8GkKtB/r2OAom62ooTchLg==",
+        ),
+        Root(
+            name = "Microsec e-Szigno Root CA 2009",
+            owner = "Microsec Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3C5F81FEA5FAB82C64BFA2EAECAFCDE8E077FC8620A7CAE537163DF36EDBF378",
+            b64 = "MIIECjCCAvKgAwIBAgIJAMJ+QwRORz8ZMA0GCSqGSIb3DQEBCwUAMIGCMQswCQYDVQQGEwJIVTERMA8GA1UEBwwIQnVkYXBlc3Qx" +
+            "FjAUBgNVBAoMDU1pY3Jvc2VjIEx0ZC4xJzAlBgNVBAMMHk1pY3Jvc2VjIGUtU3ppZ25vIFJvb3QgQ0EgMjAwOTEfMB0GCSqGSIb3" +
+            "DQEJARYQaW5mb0BlLXN6aWduby5odTAeFw0wOTA2MTYxMTMwMThaFw0yOTEyMzAxMTMwMThaMIGCMQswCQYDVQQGEwJIVTERMA8G" +
+            "A1UEBwwIQnVkYXBlc3QxFjAUBgNVBAoMDU1pY3Jvc2VjIEx0ZC4xJzAlBgNVBAMMHk1pY3Jvc2VjIGUtU3ppZ25vIFJvb3QgQ0Eg" +
+            "MjAwOTEfMB0GCSqGSIb3DQEJARYQaW5mb0BlLXN6aWduby5odTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOn4j/Nj" +
+            "rdqG2KfgQvvPkd6mJviZpWNwrZuuyjNAfW2WbqEORO7hE52UQlKavXWFdCyoDh2Tthi3jCyoz/tccbna7P7ofo/kLx2yqHWH2Leh" +
+            "5TvPmUpG0IMZfcChEhyVbUr02MelTTMuhTlAdX4UfIASmFDHQWe4oIBhVKZsTh/gnQ4H6cm6M+f+wFUoLAKApxn1ntxVUwOXewdI" +
+            "/5n7N4okxFnMUBBjjqqpGrCEGob5X7uxUG6k0QrM1XF+H6cbfPVTbiJfyyvm1HxdrtbCxkzlBQHZ7Vf8wSN5/PrIJIOV87VqUQHQ" +
+            "d9bpEqH5GoP7ghu5sJf0dgYzQ0mg/wu1+rUCAwEAAaOBgDB+MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMB0GA1Ud" +
+            "DgQWBBTLD8bfQkPMPcu1SCOhGnqmKrs0aDAfBgNVHSMEGDAWgBTLD8bfQkPMPcu1SCOhGnqmKrs0aDAbBgNVHREEFDASgRBpbmZv" +
+            "QGUtc3ppZ25vLmh1MA0GCSqGSIb3DQEBCwUAA4IBAQDJ0Q5eLtXMs3w+y/w9/w0olZMEyL/azXm4Q5DwpL7v8u8hmLzU1F0G9u5C" +
+            "7DBsoKqpyvGvivo/C3NqPuouQH4frlRheesuCDfXI/OMn74dseGkddug4lQUsbocKaQY9hK6ohQU4zE1yED/t+AFdlfBHFny+L/k" +
+            "7SViXITwfn4fs775tyERzAMBVnCnEJIeGzSBHq2cGsMEPO0CYdYeBvNfOofyK/FFh+U9rNHHV4S9a67c2Pm2G2JwCz02yULyMtd6" +
+            "YebS2z3PyKnJm9zbWETXbzivf3jTo60adbocwTZ8jx5tHMN1Rq41Bab2XD0h7lbwyYIiLXpUq3DDfSJlgnCW",
+        ),
+        Root(
+            name = "e-Szigno Root CA 2017",
+            owner = "Microsec Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-256",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "BEB00B30839B9BC32C32E4447905950641F26421B15ED089198B518AE2EA1B99",
+            b64 = "MIICQDCCAeWgAwIBAgIMAVRI7yH9l1kN9QQKMAoGCCqGSM49BAMCMHExCzAJBgNVBAYTAkhVMREwDwYDVQQHDAhCdWRhcGVzdDEW" +
+            "MBQGA1UECgwNTWljcm9zZWMgTHRkLjEXMBUGA1UEYQwOVkFUSFUtMjM1ODQ0OTcxHjAcBgNVBAMMFWUtU3ppZ25vIFJvb3QgQ0Eg" +
+            "MjAxNzAeFw0xNzA4MjIxMjA3MDZaFw00MjA4MjIxMjA3MDZaMHExCzAJBgNVBAYTAkhVMREwDwYDVQQHDAhCdWRhcGVzdDEWMBQG" +
+            "A1UECgwNTWljcm9zZWMgTHRkLjEXMBUGA1UEYQwOVkFUSFUtMjM1ODQ0OTcxHjAcBgNVBAMMFWUtU3ppZ25vIFJvb3QgQ0EgMjAx" +
+            "NzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJbcPYrYsHtvxie+RJCxs1YVe45DJH0ahFnuY2iyxl6H0BVIHqiQrb1TotreOpCm" +
+            "YF9oMrWGQd+HWyx7xf58etqjYzBhMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSHERUI0arBeAyx" +
+            "r87GyZDvvzAEwDAfBgNVHSMEGDAWgBSHERUI0arBeAyxr87GyZDvvzAEwDAKBggqhkjOPQQDAgNJADBGAiEAtVfd14pVCzbhhkT6" +
+            "1NlojbjcI4qKDdQvfepz7L9NbKgCIQDLpbQS+ue16M9+k/zzNY9vTlp8tLxOsvxyqltZ+efcMQ==",
+        ),
+        Root(
+            name = "e-Szigno TSA Root CA 2024",
+            owner = "Microsec Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3D4FB84E009C3A6EDC4389DFE9BE9A22391DBD9ABA19417D0D2A9BA102F0BCC8",
+            b64 = "MIIFojCCA4qgAwIBAgINAQZpt6kUjUpViGIRCjANBgkqhkiG9w0BAQ0FADBcMQswCQYDVQQGEwJIVTERMA8GA1UEBwwIQnVkYXBl" +
+            "c3QxFjAUBgNVBAoMDU1pY3Jvc2VjIEx0ZC4xIjAgBgNVBAMMGWUtU3ppZ25vIFRTQSBSb290IENBIDIwMjQwHhcNMjQwNzE1MDg0" +
+            "NjQ5WhcNMzkwNzE0MDg0NjQ5WjBcMQswCQYDVQQGEwJIVTERMA8GA1UEBwwIQnVkYXBlc3QxFjAUBgNVBAoMDU1pY3Jvc2VjIEx0" +
+            "ZC4xIjAgBgNVBAMMGWUtU3ppZ25vIFRTQSBSb290IENBIDIwMjQwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQC5rvMv" +
+            "Ln2F86cAKkn5kE4a3tkqcQTuUo8t9yY91JHL9nebw7AVCt9fHEqBPZ4Zbe+EU0DPs60/d4CCCWWzRL00PiAo9GcqjvePrxXb3i0B" +
+            "RatmfoY0B7vRX0ucHmdv/bknGManRsDP7cHngyXooJ2+/FQhYbYHDqPvIwjUabOGy73zm/wfMgtKJWZkPuU0Xye4yugNN+qpMfX9" +
+            "sn3/CBX5jFfejq5YByw6mYMCFdugThZgWwY5/CRYo9brmW/aesR11ZQHoCkWyT5ujeVxDRGY5t2xWHjewUKLxg5eStaFbgiPsHfE" +
+            "OUUaeTTEnG3JbRiA/YspLhUxrb5FPrpAB7+pE4bwtsT1Xvj5bbFCGGSeqCNVIPhyBFLzvhXAnitoNvsXNumRNyIGu6voL1P7z7QJ" +
+            "m5v9fX9bGsEjnCxS/mMYKYDznwwBrSd++OAyTnW8vws1EBdXHRXoMypuR7uduLNoA1+/cL8iuQfafnB4WWZNY6IcEeBH856a5FZQ" +
+            "XaYEzpSFXLqHJ7ti9qdUgtEbfll7YHDagPcZIMxHQkLxy40sNNRBZqCLSc7cVfDVwV80qsLf6ic6K8agMuXCH68r3M08/WPFnpoD" +
+            "QpV3lBVBAMASLoIyvmN97y1Uy7je56Sk/U7RcIJRd8v41esDO9WUVYr+OktUiu7tPcQZg1ileZTz7wIDAQABo2MwYTAPBgNVHRMB" +
+            "Af8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUi/w7zgPpHkLYbcibgsy+k24RlCMwHwYDVR0jBBgwFoAUi/w7zgPp" +
+            "HkLYbcibgsy+k24RlCMwDQYJKoZIhvcNAQENBQADggIBAAjPQ2WK64V06+PCXB2y8qMuCqVLN7roBFT7k1Bio+Nrt/fUvPt8UJsk" +
+            "BSGQB9jXOkC3kmYiDONsZmld3xX3+DozpCAxVBE/ppnUtqm1JUmXolF27+rpG13L0qBDkJCgHiCxyqNlYLfO3juc46bLNtPk7HxF" +
+            "JznQl5kRqQ4pZae9sKVtESDlACqwQGvdub9p8BALrVZzcIIrXxjUjlk9qCe8nkWEfvBaO1ln7QrFzBb62oUj4mGR2D5tBdF7vLgB" +
+            "UK1lHtfUPkQxosUQgUYC9vIs7CgPNVp2ipgnHVlJIsbRWEDeueM1/gA06620VGo1LatqZLl0Aw+QPpG44z6ZTbSDviPQ+LMHcHAx" +
+            "hGbnCRwHkJN3nniefaB0Qex90LdOyaB9cyVWAToZiJCRbSTv33CdAZV5w6UUf1ipyoWM9AgTKgmqYSOdN60e5MtCtSasdLFcwBdY" +
+            "VNvTHZ+tM/ehyUQVsKPCndZlgH8HdvWTNyYng5IOFFJ//cfo3VLBftuXFzVboNGtJpTB9IeJXmiJtw/y1tuckgL1ogxUkndBjSLH" +
+            "HLe0fRR8lzZX5HoAFcE/5gzIB0A6Y4i57O4zGw30+/Es2F4kDsbEhx5yD/zmL1Wur+LXfnd9/hlcZUQq40xE/JYoIakJXiqRo+Y2" +
+            "009h3486gi2qWzL4Vv+BIZYW7dcJ",
+        ),
+        Root(
+            name = "Microsoft Identity Verification Root Certificate Authority 2020",
+            owner = "Microsoft Corporation",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5367F20C7ADE0E2BCA790915056D086B720C33C1FA2A2661ACF787E3292E1270",
+            b64 = "MIIFzDCCA7SgAwIBAgIQVJjS0dRbGZVIE3nIEcCHmTANBgkqhkiG9w0BAQwFADB3MQswCQYDVQQGEwJVUzEeMBwGA1UEChMVTWlj" +
+            "cm9zb2Z0IENvcnBvcmF0aW9uMUgwRgYDVQQDEz9NaWNyb3NvZnQgSWRlbnRpdHkgVmVyaWZpY2F0aW9uIFJvb3QgQ2VydGlmaWNh" +
+            "dGUgQXV0aG9yaXR5IDIwMjAwHhcNMjAwNDE2MTgzNjE2WhcNNDUwNDE2MTg0NDQwWjB3MQswCQYDVQQGEwJVUzEeMBwGA1UEChMV" +
+            "TWljcm9zb2Z0IENvcnBvcmF0aW9uMUgwRgYDVQQDEz9NaWNyb3NvZnQgSWRlbnRpdHkgVmVyaWZpY2F0aW9uIFJvb3QgQ2VydGlm" +
+            "aWNhdGUgQXV0aG9yaXR5IDIwMjAwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCzkSoHgwZn/Z6d4MfAt6TmQgR/D6bb" +
+            "X/vVWtdFoPt3C/CA86ZtWk15U9ighoRXRSDHolT7x6K/isduNfOiFcQvTuNKhZZJDf++mdgU9rwnB+5Cmyv1C5IG5P1pE2WokXLy" +
+            "mITrgz0O5NdxEkghyw3t9kdJt5v5yccXtoRP/7ismtdzZ0mF44a9N0DQJYbU3rXCbWJq1al4vC1vSfnlbBQU/RTH02UWN97Lbrxe" +
+            "KY39YpsVLNYF5rmJMjOjYsfX1lJnCMQu9FYrnguHzOyntKaq6wXNGVelOgsEJxyRZ54tYi0vHr7awCDLBBnKM/uJvpjicqByNb55" +
+            "4ZyDb+RtF2+Q8z0AhnU4jtDgSZq729P4MMrVV4hoTXLTv21/cdj9vQ2ukmRIt1tveSa1zZuVIYTR7w8yPXtXjPNFB0x84F4YDjV2" +
+            "i22eyzZ0qwX44HNdMlaUZ5clCsY1PZSX58FEi4D9wfj0dBnlMPYG+yFXPgYci2sVhidJe4KTylnodUfoPzj0x1N5oLa04lxR771f" +
+            "OMET5ngMlVouxUBZKMwPJMDsugl3I5k4prYc2se6ILbXN9h/N68I4ztx225zG32ZcrDkhjNZdLUWAHtQbcaGE9r9xDmCPSQAmmDa" +
+            "upTABVEsNKxQmROHu7MFgLJNMAJcuCaDXbRjc++uI5VPYCi+N9VbpQIDAQABo1QwUjAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/" +
+            "BAUwAwEB/zAdBgNVHQ4EFgQUyH7SaoUqG8oZmAQHJ89QEE9oqKIwEAYJKwYBBAGCNxUBBAMCAQAwDQYJKoZIhvcNAQEMBQADggIB" +
+            "AK9q3eYZ5y2UQxlOy+lQlWSlA5ECi+I2gDsVolLCFhm2alpddEMw9Jv/YHQJsSEekBZtxSSPXGaIY/RPzH3yEkxAEIsBn9qpyK7y" +
+            "lRvPnQXrST50oGhb5VYsZRyCflPaVtlGF3mSRcQQNghSKRfLL6byftRpJIoej7BzDcwcSquyqu2nkWMBZCKoMrh+MiizZ3MtkbTc" +
+            "MQEL90cKpvHXSu1WYMQsCKN7QLC8dCdSh9a+iN03ioluZ4gd9cldoP62qzqA1xqXPBc2IkEerE3Vg+Y8OL1PMOlUqdO2BMMydmG7" +
+            "sBjFKxizwIDVt5WwXlFNIvzsWKro2JS0pS7tkt7nGHwhV91VY/e/bc0f0qZ3KHDH4ls6WwjSW07IAJaz4YM2r4YKZVx09ursemp0" +
+            "oPBL7u+Uo6xQ8oft1zowg8n7fVe+5eP4QcrlZK6zo+xY7IWazO+56vNWGLlcc5qvxXcXg1nbNxoYclSlQdK2I3WjQ5rld3yWebdB" +
+            "jb/s3ICgn9F3dVhfNRPgJRpnC33OJfoHCuRhIdjUHOUHxjaZ9JbQxhX+Ts3Xroud2xb9BMaSvdSI5qmjqrv3ZDg7X8wM0DW+dBkD" +
+            "psWqTKJhNoI+HfMrvJdd20t4Oy31O+9gI+j17AsjNpWvmGa/U9N7uGlKKpZmacSUxvRfbqyYeIiABlyisu2i",
+        ),
+        Root(
+            name = "NetLock Arany (Class Gold) Főtanúsítvány",
+            owner = "NETLOCK",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "6C61DAC3A2DEF031506BE036D2A6FE401994FBD13DF9C8D466599274C446EC98",
+            b64 = "MIIEFTCCAv2gAwIBAgIGSUEs5AAQMA0GCSqGSIb3DQEBCwUAMIGnMQswCQYDVQQGEwJIVTERMA8GA1UEBwwIQnVkYXBlc3QxFTAT" +
+            "BgNVBAoMDE5ldExvY2sgS2Z0LjE3MDUGA1UECwwuVGFuw7pzw610dsOhbnlraWFkw7NrIChDZXJ0aWZpY2F0aW9uIFNlcnZpY2Vz" +
+            "KTE1MDMGA1UEAwwsTmV0TG9jayBBcmFueSAoQ2xhc3MgR29sZCkgRsWRdGFuw7pzw610dsOhbnkwHhcNMDgxMjExMTUwODIxWhcN" +
+            "MjgxMjA2MTUwODIxWjCBpzELMAkGA1UEBhMCSFUxETAPBgNVBAcMCEJ1ZGFwZXN0MRUwEwYDVQQKDAxOZXRMb2NrIEtmdC4xNzA1" +
+            "BgNVBAsMLlRhbsO6c8OtdHbDoW55a2lhZMOzayAoQ2VydGlmaWNhdGlvbiBTZXJ2aWNlcykxNTAzBgNVBAMMLE5ldExvY2sgQXJh" +
+            "bnkgKENsYXNzIEdvbGQpIEbFkXRhbsO6c8OtdHbDoW55MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxCRec75LbRTD" +
+            "ofTjl5Bu0jBFHjzuZ9lk4BqKf8owyoPjIMHj9DrTlF8afFttvzBPhCf2nx9JvMaZCpDyD/V/Q4Q3Y1GLeqVw/HpYzY6b7cNGbIRw" +
+            "XdrzAZAj/E4wqX7hJ2Pn7WQ8oLjJM2P+FpD/sLj916jAwJRDC7bVWaaeVtAkH3B5r9s5VA1lddkVQZQBr17s9o3x/61k/iCa11zr" +
+            "/qYfCGSji3ZVrR47KGAuhyXoqq8fxmRGILdwfzzeSNuWU7c5d+Qa4scWhHaXWy+7GRWF+GmF9ZmnqfI0p6m2pgP8b4Y9VHx2BJtr" +
+            "+UBdADTHLpl1neWIA6pN+APSQnbAGwIDAKiLo0UwQzASBgNVHRMBAf8ECDAGAQH/AgEEMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4E" +
+            "FgQUzPpnk/C2uNClwB7zU/2MU9+D15YwDQYJKoZIhvcNAQELBQADggEBAKt/7hwWqZw8UQCgwBEIBaeZ5m8BiFRhbvG5GK1Krf6B" +
+            "QCOUL/t1fC8oS2IkgYIL9WHxHG64YTjrgfpioTtaYtOUZcTh5m2C+C8lcLIhJsFyUR+MLMOEkMNaj7rP9KdlpeuY0fsFskZ1FSNq" +
+            "b4VjMIDw1Z4fKRzCbLBQWV2QWzuoDTDPv31/zvGdg73JRm4gpvlhUbohL3u+pRVjodSVh/GeufOJ8z2FuLjbvrW5KfnaNwUASZQD" +
+            "hETnv0Mxz3WLJdH0pmT1kvarBes96aULNmLazAZfNou2XjG4Kvte9nHfRCaexOYNkbQudZWAUWpLMKawYqGT8ZvYzsRjdT9ZR7E=",
+        ),
+        Root(
+            name = "NetLock Platina (Class Platinum) Főtanúsítvány",
+            owner = "NETLOCK",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "EB7E05AA58E7BD328A282BF8867033F3C035342B516EE85C01673DFFFFBBFE58",
+            b64 = "MIIGITCCBAmgAwIBAgIGSUEt7AAQMA0GCSqGSIb3DQEBCwUAMIGtMQswCQYDVQQGEwJIVTERMA8GA1UEBwwIQnVkYXBlc3QxFTAT" +
+            "BgNVBAoMDE5ldExvY2sgS2Z0LjE3MDUGA1UECwwuVGFuw7pzw610dsOhbnlraWFkw7NrIChDZXJ0aWZpY2F0aW9uIFNlcnZpY2Vz" +
+            "KTE7MDkGA1UEAwwyTmV0TG9jayBQbGF0aW5hIChDbGFzcyBQbGF0aW51bSkgRsWRdGFuw7pzw610dsOhbnkwHhcNMDgxMjExMTUx" +
+            "MjQ0WhcNMjgxMjA2MTUxMjQ0WjCBrTELMAkGA1UEBhMCSFUxETAPBgNVBAcMCEJ1ZGFwZXN0MRUwEwYDVQQKDAxOZXRMb2NrIEtm" +
+            "dC4xNzA1BgNVBAsMLlRhbsO6c8OtdHbDoW55a2lhZMOzayAoQ2VydGlmaWNhdGlvbiBTZXJ2aWNlcykxOzA5BgNVBAMMMk5ldExv" +
+            "Y2sgUGxhdGluYSAoQ2xhc3MgUGxhdGludW0pIEbFkXRhbsO6c8OtdHbDoW55MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKC" +
+            "AgEAzfLuxBp663QpTLa95NYKF2xl4mY9xNG8DLZa1itwXy3MIdFZEOSxE732zCKV1mxGTpEys+v1rMsEAU923VM+eJ/5Xry1ghNG" +
+            "yhDjHS1pK5QyEHMhq6k4xeNuE2TVY6ntCWbsim+JjRGG0PW/MpYLdXD1KFhCXqxptPX8kTkuopFA0TxUQYcjZFBIeWhLaJNLcuuA" +
+            "abNKHJC+skGjpc0XwNEaaX8CGEq1YocmVy1sqCwhOfWXXpuapvjnTHnEeztW3Hr4tFjOdgquIlXrj8eEZHu9a8qVT9i+MRO/jaEK" +
+            "K9V5t/V2rdpRXIFHYqiq/89T4DRxzw0lU6meY0evhZH4zxkR5U75z+3jNQUBIgPPmnzqHVFay/1zPTkLMevEO8qFKhEUAKAbgaIJ" +
+            "iEjzfKJkoexntFiH8BTqqb6lIkFN7L2kDug9h/cvqs41hk8wV5KNNq541v0Y/NclHs96/Bn9oD9yFzYIQT+XNpUMiZVxRfqE1tQg" +
+            "YLNFCvK3lT0L5aTDuBLykWzpbWCD9kURBbrmR4PZkeJu4btGa0gbvMb7z37eLLuQhO62JznnjaIxD9+BtyxsAOKx2CoXXBseR4lL" +
+            "F1EUQEBPxDkYMsKAYDblekdn9qgFVMFdlqAftohSDAK+jVV+FEvDogHunIpBXflflpEJjrTktcUE39Y2rVm0stcCAwDzkaNFMEMw" +
+            "EgYDVR0TAQH/BAgwBgEB/wIBBDAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFOahE4P+l0vy2P8xoad0M4nOXn+kMA0GCSqGSIb3" +
+            "DQEBCwUAA4ICAQBphELA414TYZcgSfH0FoWln6QRCCXEY4aP8Euvsyn1B1caYscbRW6vXRa3wdBkgzuX9UO2RZDxZiqDJCr/iOl6" +
+            "C/nCW3qvY/cJeIZIWTRem2oQTvFulYk2SmjQb5vgfk+3NQ/jebEFryd8qokKQ976DO/ZVy8occ1pa1JCyYowRVmhzPpZSo/31t1E" +
+            "pbMuWxEY4rK15xFTOP6CTNNzvmWSGjqo0tKqvNS+bTZS/2vU0rUbN/MXQvEup9WQbHSddPX6XyIb09x1qLX/8hrRvCsAXDzFuIYI" +
+            "VEminCP776aNcPRCUk0bIACB+KC49HQjnL70uQ7sHmrYZUoVdfF3W27YseYPtJa4HfqGyJJui+l936IO1fHxfK5K42a/Xfxb70iy" +
+            "nmnHfZCgVbaUcIG5Cr2JdVPshKkDpd9RmQjQdAwC1nNyBnuLu12qTvxnZ9iOEAMZLTc61HepOhydwHl7bCl3Mk1KizCIwuc2zmij" +
+            "mpiG+YkVnr+qUX3xUEZUDwIuXJ/j3lczFf4YkmGo0ikFXWVEHpvj7/vcBd8Vq6bYC6Rzskw64J7Us2rlOg4K8E7PeIEfvqmYb7FH" +
+            "UX1CMzazpqkCUgV0fips1KqSVrA+OyNYsY01pxOPZx5xFaaztQOGuCBmwEhvuazUSgNVsjffBN0iDFOGKkoqocE4PjzlPN91lw==",
+        ),
+        Root(
+            name = "Netrust Root CA 2",
+            owner = "Netrust Pte Ltd",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "65353833CF234C79562164F90849C0D104DBABF8EE41064D83E8CBE03BA1C5A5",
+            b64 = "MIIF4zCCA8ugAwIBAgIEV8fs9DANBgkqhkiG9w0BAQsFADBrMQswCQYDVQQGEwJTRzEYMBYGA1UEChMPTmV0cnVzdCBQdGUgTHRk" +
+            "MSYwJAYDVQQLEx1OZXRydXN0IENlcnRpZmljYXRlIEF1dGhvcml0eTEaMBgGA1UEAxMRTmV0cnVzdCBSb290IENBIDIwHhcNMTYw" +
+            "OTAxMDgyNTE3WhcNNDEwOTAxMDg1NTE3WjBrMQswCQYDVQQGEwJTRzEYMBYGA1UEChMPTmV0cnVzdCBQdGUgTHRkMSYwJAYDVQQL" +
+            "Ex1OZXRydXN0IENlcnRpZmljYXRlIEF1dGhvcml0eTEaMBgGA1UEAxMRTmV0cnVzdCBSb290IENBIDIwggIiMA0GCSqGSIb3DQEB" +
+            "AQUAA4ICDwAwggIKAoICAQDV39ONmRdqmz3gsGnbtAXMvqUg+E8NB7MZPJeDPey8uVwMrKIDZKN/DHcT5siHq1IYTzDv6g7dgveV" +
+            "DzCKwBlQvGBlodwRxn8W8RuY5CJXUUKMynCWXG4NuY9naloFm98ePzjjqiVGwZwrkn/0grEjPN1sZ2ABVPLkqhD9o4p3JyGe1j3d" +
+            "RlwFPxgIFgplyAxNT2Y9XhZfFw8O/8EXC+cid18aC3hpp8oGj17F30CzDvjg12g+cUHJn41h60uZ4K8zAHetxBZZZgg2p0rkUixZ" +
+            "P3t8OEPkC6PT5Yl4U+ZrvPUnMOggNg6xDI4OFMhUNwd6rujTtsBGTMe1MS51/FHyqmz4GKsmhWC/ELnDQRNf9HnBCfaRrPeOxY9I" +
+            "NakW3R7gX4XzGrM/gVvRfkLu5BtnRGy5wen7kHQ/lE6TybTpfUJLHfCnlptIfaKQXLQUcCCpCASL0nyy0glMI2ypMZPWKYFFLsPk" +
+            "qqbvvZvxy64Ct2RdgD1BTYlLi5qct4FvX9xoU4aKcXTSVxcyg77V9Hrbmu4NCtVjq9QR5cxdbT7Bj/SPTl0SJkTPLX1XekED2c0e" +
+            "OC8Q1JShNXI6Yd7uQ4tIKdJ24S1RLtS+vIDb/02LXw0wraMwpTDr1SRnljz6gW249RiBzMW2QgfzvITmHF6D1GkauELq29THck1N" +
+            "pZm/owIDAQABo4GOMIGLMA8GA1UdEwEB/wQFMAMBAf8wKwYDVR0QBCQwIoAPMjAxNjA5MDEwODI1MTdagQ8yMDQxMDkwMTA4NTUx" +
+            "N1owCwYDVR0PBAQDAgEGMB8GA1UdIwQYMBaAFDofR9lvhhjpKfr+Oc7L7YrJVlUrMB0GA1UdDgQWBBQ6H0fZb4YY6Sn6/jnOy+2K" +
+            "yVZVKzANBgkqhkiG9w0BAQsFAAOCAgEARbJm3IEyIRyAmmkJ9aaUVVkB93asquqINx6sVfVKH26JV6OiBuudmCkasa0EVtruWDto" +
+            "Km7j+QSPKlKbW+wQ/kwors+qFCzeFgJAU/3XXGAZ5UWWkuzjHhDf+RtK1aS/opcp20BBb9qu7AmBukLwJDN+wFVssEd2Yo1Y6oG5" +
+            "FpkTBxou/xUqrWW7u9JNjCNVuxYo9SkZnsn8avw+o+4XAgwTNJkvreeu4kA8dgxKsYQ5Ke3DPbiox5ZA/rK8t3LsoU++Pnf4fY7o" +
+            "Dqa5IsPkt5FkD/2RjaWoL4POYf1Z3mNpo4YwbsXubM+272ZcXvZ1Uf2YSCM4yb/pdQb9cWwhf/zJGceoAMYqXACd+vLkc0i1eIte" +
+            "q+l07Cvjph38Kdbhd1GXikEwzNHMk+rJT8V+caOm2Whsbn9Duxa9RbwBQp4O5x/Zn9q+GDfH1COy7jIMy2/owbhGasW4BzI5zUq+" +
+            "w757LqLd8qtL2qbOkF49c35RlNLeL8dxFDaRV/VdpMvtxgIxaML7RfVac/p7oT+o+W3NN9/APyjxvZKAuaCZo5JXcuXrsgXOzEYb" +
+            "obD3w4j1CCR1ZIc/K9MBZ1KPSTADjsdBUW2EmR4blEU+HkRHxSnM+gZp+Usn3GSkFkFrZuPN+c1+9a8nLZ3P7naLqfk3x/LtOfB6" +
+            "wiMDtoXZPJRBvNM=",
+        ),
+        Root(
+            name = "Notarius Root Certificate Authority",
+            owner = "Notarius",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "AAA15BDDB1C924AD7A7F22F89E5CD3E2C61407A064E011B7CF4CB618716449A4",
+            b64 = "MIIFtjCCA56gAwIBAgIMXkDoOwAAAABUkcpSMA0GCSqGSIb3DQEBCwUAMFIxCzAJBgNVBAYTAkNBMRUwEwYDVQQKEwxOb3Rhcml1" +
+            "cyBJbmMxLDAqBgNVBAMTI05vdGFyaXVzIFJvb3QgQ2VydGlmaWNhdGUgQXV0aG9yaXR5MB4XDTIxMDUxNzE3NDcwNloXDTM2MDUx" +
+            "NzE4MTcwNlowUjELMAkGA1UEBhMCQ0ExFTATBgNVBAoTDE5vdGFyaXVzIEluYzEsMCoGA1UEAxMjTm90YXJpdXMgUm9vdCBDZXJ0" +
+            "aWZpY2F0ZSBBdXRob3JpdHkwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDzS+i62ZGguH6ehkx0eVor2OhwlIdDv/td" +
+            "NTedqfNOa7eRThN0GMcR1fFzAHTt0V8fKJh7mq2sT1IJyBRi9qU7wYjCpsWjWoVE55MfOj8XhjMrmeHnvaYkvcV91y/xGjsX/2PO" +
+            "1ZzDIF5FRDYZkg75AHYnI5IYiZPBBHnLqVdzDLW6RnntUtiI1CEVBRVtLC2a9nO5mYd1RzxcJNFW+PEnLUdGrn69nLAaR5CqInb7" +
+            "s/3w8eSkJB02BRM/DFayRjupbMwYzksw3XYOz0/WeCzORlplDbdDr4hl0x14/RPh4te8ME3+AQSGJGpedpa1VssF6UBLoKKhSWRU" +
+            "BDfwwcXZBw91u+CFN7loq3ONceEv/GWVBfnCrwosNPvg/CmOvbq9EAheBT88aBgS6rwyRIC9nj7tMqQzlUDIQCprpfwCYpyqBebj" +
+            "yl9Iepnz6UPb72d/Sqv0VI35h04svEuVezO/hxeVoOF40Un9qhZc/eq7BSae7yTwpC7LaKHs4G0HoehaeW54evoVDxIdfdDK8PPE" +
+            "DzbyuABGm/VjPGjKuxOEXVBHmoMPv8XlfcGCoyYj4af1iNhLT0S/YQKO1kmgDXl8o8e+Xl//RByvjv3hI0eTrHMzjxwz2ZKTiSaY" +
+            "RYQHqqJsM/smWWQYgvvJoVL/M3bESni03uXJ7SW/0wI5S10OywIDAQABo4GLMIGIMCsGA1UdEAQkMCKADzIwMjEwNTE3MTc0NzA2" +
+            "WoEPMjAzNjA1MTcxODE3MDZaMAsGA1UdDwQEAwIBBjAfBgNVHSMEGDAWgBRfzShf2+WR+AoTp6hobMUYHMdYrzAdBgNVHQ4EFgQU" +
+            "X80oX9vlkfgKE6eoaGzFGBzHWK8wDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAgEANvCfug5GG31PyBQqL5cc5rcEhw5s" +
+            "kkbsiSu6uaV7VzBzO+U78vdSSc/AKfKj35U4g+Fr/Ul8F9hLfdN+aTK7V0h11Vv3y58JCICs2m2WWD2omY17gZvR6o6VMgT8UFYJ" +
+            "7S1QhtVLjLpwHY3UZtan1KLqCEQa2Fo3hJGrRGmpeofbqb3ZXoUKsdYM13OQp/sWdBFfNBbconnqa0B1IuJRMWSNB415sKZdVq1D" +
+            "SF3rZP5OX2XSvRkD4F1hSS8hY5vg2zTo9QnwQFaolr1B2TL/qySHEnPsVX7EXl19mwL3IC4lwGrBoPwVDe5E9+eLse0kB+eczlkZ" +
+            "yKVx6kPvd4NTFiIVCW86VLnoqdn8fKQg4iL+danRbUecKBdBcOKvntEpxTEENnu6qqDTpiLHqXTaOf7/8ZdOonIDjeIiUJDMoqfN" +
+            "hODCgf1XBcEAxVuobLBar/hmlFKUmU+Gdn5Qlg/+MSDyW/xiBij092bUnHBr+ThM7X5n5QcIvcl7zwFaVcyhfKITpC4dKjXyVmek" +
+            "uaLS2a/Y4lupS9aDn45Wr9kvizh0LkQO2ZXN/3SSwQd2kv1ep/LCAz/czWIEm5dte7Q3toaZwmAK/G0ZBkI3ZLwXum1LzddoRhN5" +
+            "1ltgmc6NzfDIG97qKL7Mz4leKEMaJ8dId29zULSpxVPgc8dUrdyac1E=",
+        ),
+        Root(
+            name = "OISTE WISeKey Global Root GA CA",
+            owner = "OISTE",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "41C923866AB4CAD6B7AD578081582E020797A6CBDF4FFF78CE8396B38937D7F5",
+            b64 = "MIID8TCCAtmgAwIBAgIQQT1yx/RrH4FDffHSKFTfmjANBgkqhkiG9w0BAQUFADCBijELMAkGA1UEBhMCQ0gxEDAOBgNVBAoTB1dJ" +
+            "U2VLZXkxGzAZBgNVBAsTEkNvcHlyaWdodCAoYykgMjAwNTEiMCAGA1UECxMZT0lTVEUgRm91bmRhdGlvbiBFbmRvcnNlZDEoMCYG" +
+            "A1UEAxMfT0lTVEUgV0lTZUtleSBHbG9iYWwgUm9vdCBHQSBDQTAeFw0wNTEyMTExNjAzNDRaFw0zNzEyMTExNjA5NTFaMIGKMQsw" +
+            "CQYDVQQGEwJDSDEQMA4GA1UEChMHV0lTZUtleTEbMBkGA1UECxMSQ29weXJpZ2h0IChjKSAyMDA1MSIwIAYDVQQLExlPSVNURSBG" +
+            "b3VuZGF0aW9uIEVuZG9yc2VkMSgwJgYDVQQDEx9PSVNURSBXSVNlS2V5IEdsb2JhbCBSb290IEdBIENBMIIBIjANBgkqhkiG9w0B" +
+            "AQEFAAOCAQ8AMIIBCgKCAQEAy0+zAJs9Nt350UlqaxBJH+zYK7LG+DKBKUOVTJoZIyEVRd7jyBxRVVuuk+g3/ytr6dTqvirdqFEr" +
+            "12bDYVxgAsj1znJ7O7jyTmUIms2kahnBAbtzptf2w93NvKSLtZlhuAGio9RN1AU9ka34tAhxZK9w8RxrfvbDd50kc3vkDIzh2Tbh" +
+            "mYsFmQvtRTEJysIA2/dyoJaqlYfQjse2YXMNdmaM3Bu0Y6Kff5MTMPGhJ9vZ/yxViJGg4E8HsChWjBgbl0SOid3gF27nKu+POQox" +
+            "hILYQBRJLnpB5Kf+42TMwVlxSywhp1t94B3RLoGbw9ho972WG6xwsRYUC9tguSYBBQIDAQABo1EwTzALBgNVHQ8EBAMCAYYwDwYD" +
+            "VR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUswN+rja8sHnR3JQmthG+IbJphpQwEAYJKwYBBAGCNxUBBAMCAQAwDQYJKoZIhvcNAQEF" +
+            "BQADggEBAEuh/wuHbrP5wUOxSPMowB0uyQlB+pQAHKSkq0lPjz0e701vvbyk9vImMMkQyh2I+3QZH4VFvbBsUfk2ftv1TDI6QU9b" +
+            "R8/oCy22xBmddMVHxjtqD6wU2zz0c5ypBd8A3HR4+vg1YFkCExh8vPtNsCBtQ7tgMHpnM1zFmdH4LTlSc/uMqpclXHLZCB6rTjzj" +
+            "gTGfA6b7wP4piFXahNVQA7bihKOmNqoROgHhGEvWRGizPflTdISzRpFGlgC3gCy24eMQ4tui5yiPAZZiFj4A4xylNoEYokxSdsAR" +
+            "o27mHbrjWr42U8U+dY+GaSlYU7Wcu2+fXMUY7N0v4ZjJ/L7fCg0=",
+        ),
+        Root(
+            name = "OISTE WISeKey Global Root GB CA",
+            owner = "OISTE",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "6B9C08E86EB0F767CFAD65CD98B62149E5494A67F5845E7BD1ED019F27B86BD6",
+            b64 = "MIIDtTCCAp2gAwIBAgIQdrEgUnTwhYdGs/gjGvbCwDANBgkqhkiG9w0BAQsFADBtMQswCQYDVQQGEwJDSDEQMA4GA1UEChMHV0lT" +
+            "ZUtleTEiMCAGA1UECxMZT0lTVEUgRm91bmRhdGlvbiBFbmRvcnNlZDEoMCYGA1UEAxMfT0lTVEUgV0lTZUtleSBHbG9iYWwgUm9v" +
+            "dCBHQiBDQTAeFw0xNDEyMDExNTAwMzJaFw0zOTEyMDExNTEwMzFaMG0xCzAJBgNVBAYTAkNIMRAwDgYDVQQKEwdXSVNlS2V5MSIw" +
+            "IAYDVQQLExlPSVNURSBGb3VuZGF0aW9uIEVuZG9yc2VkMSgwJgYDVQQDEx9PSVNURSBXSVNlS2V5IEdsb2JhbCBSb290IEdCIENB" +
+            "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2Be3HEokKtaXscriHvt9OO+Y9bI5mE4nuBFde9IllIiCFSZqGzG7qFsh" +
+            "ISvYD06fWvGxWuR51jIjK+FTzJlFXHtPrby/h0oLS5daqPZI7H17Dc0hBt+eFf1Biki3IPShehtX1F1Q/7pn2COZH8g/497/b1t3" +
+            "sWtuuMlk9+HKQUYOKXHQuSP8yYFfTvdv37+ErXNku7dCjmn21HYdfp2nuFeKUWdy19SouJVUQHMD9ur06/4oQnc/nSMbsrY9gBQH" +
+            "TC5P99UKFg29ZkM3fiNDecNAhvVMKdqOmq0NpQSHiB6F4+lT1ZvIiwNjeOvgGUpuuy9rM2RYk61pv48b74JIxwIDAQABo1EwTzAL" +
+            "BgNVHQ8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUNQ/INmNe4qPs+TtmFc5RUuORmj0wEAYJKwYBBAGCNxUBBAMC" +
+            "AQAwDQYJKoZIhvcNAQELBQADggEBAEBM+4eymYGQfp3FsLAmzYh7KzKNbrghcViXfa43FK8+5/ea4n32cZiZBKpDdHij40lhPnOM" +
+            "TZTg+XHEthYOU3gf1qKHLwI5gSk8rxWYITD+KJAAjNHhy/peyP34EEY7onhCkRd0VQreUGdNZtGn//3ZwLWoo4rOZvUPQ82nK1d7" +
+            "Y0Zqqi5S2PTt4W2tKZB4SLrhI6qjiey1q5bAtEuiHZeeevJuQHHfaPFlTc58Bd9TZaml8LGXBHAVRgOY1NK/VLSgWH1Sb9pWJmLU" +
+            "2NuJMW8c8CLC02IcNc1MaRVUGpCY3useX8p3x8uOPUNpnJpY0CQ73xtAln41rYHHTnG6iBM=",
+        ),
+        Root(
+            name = "OISTE WISeKey Global Root GC CA",
+            owner = "OISTE",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "8560F91C3624DABA9570B5FEA0DBE36FF11A8323BE9486854FB3F34A5571198D",
+            b64 = "MIICaTCCAe+gAwIBAgIQISpWDK7aDKtARb8roi066jAKBggqhkjOPQQDAzBtMQswCQYDVQQGEwJDSDEQMA4GA1UEChMHV0lTZUtl" +
+            "eTEiMCAGA1UECxMZT0lTVEUgRm91bmRhdGlvbiBFbmRvcnNlZDEoMCYGA1UEAxMfT0lTVEUgV0lTZUtleSBHbG9iYWwgUm9vdCBH" +
+            "QyBDQTAeFw0xNzA1MDkwOTQ4MzRaFw00MjA1MDkwOTU4MzNaMG0xCzAJBgNVBAYTAkNIMRAwDgYDVQQKEwdXSVNlS2V5MSIwIAYD" +
+            "VQQLExlPSVNURSBGb3VuZGF0aW9uIEVuZG9yc2VkMSgwJgYDVQQDEx9PSVNURSBXSVNlS2V5IEdsb2JhbCBSb290IEdDIENBMHYw" +
+            "EAYHKoZIzj0CAQYFK4EEACIDYgAETOlQwMYPchi82PG6s4nieUqjFqdrVCTbUf/q9Akkwwsin8tqJ4KBDdLArzHkdIJuyiXZjHWd" +
+            "8dvQmqJLIX4Wp2OQ0jnUsYd4XxiWD1AbNTcPasbc2RNNpI6QN+a9WzGRo1QwUjAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw" +
+            "AwEB/zAdBgNVHQ4EFgQUSIcUrOPDnpBgOtfKie7TrYy0UGYwEAYJKwYBBAGCNxUBBAMCAQAwCgYIKoZIzj0EAwMDaAAwZQIwJsdp" +
+            "W9zV57LnyAyMjMPdeYwbY9XJUpROTYJKcx6ygISpJcBMWm1JKWB4E+J+SOtkAjEA2zQgMgj/mkkCtojeFK9dbJlxjRo/i9fgojaG" +
+            "HAeCOnZT/cKi7e97sIBPWA9LUzm9",
+        ),
+        Root(
+            name = "PostSignum Root QCA 4",
+            owner = "PostSignum",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "AC7F7862E685C7A7D9826A58EA32D183D4893FCC8F8FD6D900C9769A987E77F0",
+            b64 = "MIIHMDCCBRigAwIBAgICD6AwDQYJKoZIhvcNAQENBQAwZTELMAkGA1UEBhMCQ1oxFzAVBgNVBGETDk5UUkNaLTQ3MTE0OTgzMR0w" +
+            "GwYDVQQKDBTEjGVza8OhIHBvxaF0YSwgcy5wLjEeMBwGA1UEAxMVUG9zdFNpZ251bSBSb290IFFDQSA0MB4XDTE4MDcyNjA5NTYw" +
+            "OFoXDTM4MDcyNjA5NTYwOFowZTELMAkGA1UEBhMCQ1oxFzAVBgNVBGETDk5UUkNaLTQ3MTE0OTgzMR0wGwYDVQQKDBTEjGVza8Oh" +
+            "IHBvxaF0YSwgcy5wLjEeMBwGA1UEAxMVUG9zdFNpZ251bSBSb290IFFDQSA0MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKC" +
+            "AgEAxmaNgqB+vosiJXgQwAiLmhl/1a0AFA5k3t4hcB3IYUL6VRyLnjvonYJHfLuOAn6dS9zi++i3PZkRqB1xHkfCJNFClXxk4tfb" +
+            "mhDeTJ6mQjx+fu2wywPtxrtd/Dn0xO6Kc7Mb/ffwaFSSh6f0bZt61RLov4JPNKOvhq9qjOQgjGZyrBGIle60IppJm8bl0A5bmRL4" +
+            "FQygNwIascskyl0Vy69LHx4CNUIwtgN7b1s++leVNpETeLFpCtPdLoxEswg/kJuMRf8XaBZmGJIYSArCKIVYyC/gO7PRUmiwv2yL" +
+            "Ydm79xvCd1xoIXHqPd23bqQs4vr5O0QzmYjU6kZbuLV8GIBuVFOH35tjtOUxMrZ+2DjayuNcNc7OGnAoofqXvD5dfp5snqP+ZZYl" +
+            "VPXi9Y+N5e4PLt0rdud+uiLDW27ekSXRhvJMBxJxSb8XFgKPUbMnatCNTmtFaD9nfv5Uhlx7kfn2XzO61rnzuf2CcgSlNiT7TQSX" +
+            "epGBIPjg+5QYJlhacazdL7JHdUTjJqYVbnA/Zje68lzDMfL1wDSMExh2HWGLVGJZj6inVKBZB+4suo7FtdqyzT9AmVW9a1ekPlk7" +
+            "g/s93freyoA/EIwHy/Hvosk7VivLdYwU8IdUbX8JMA1QaxVgkMe6F7A7EKvFujf1L/nAnPt5CC0A2niFS+XBMikCAwEAAaOCAegw" +
+            "ggHkMIGlBgNVHR8EgZ0wgZowMaAvoC2GK2h0dHA6Ly9jcmwucG9zdHNpZ251bS5jei9jcmwvcHNyb290cWNhNC5jcmwwMqAwoC6G" +
+            "LGh0dHA6Ly9jcmwyLnBvc3RzaWdudW0uY3ovY3JsL3Bzcm9vdHFjYTQuY3JsMDGgL6AthitodHRwOi8vY3JsLnBvc3RzaWdudW0u" +
+            "ZXUvY3JsL3Bzcm9vdHFjYTQuY3JsMIHVBgNVHSAEgc0wgcowgccGBFUdIAAwgb4wgbsGCCsGAQUFBwICMIGuGoGrVGVudG8gY2Vy" +
+            "dGlmaWthdCBwcm8gZWxla3Ryb25pY2tvdSBwZWNldCBieWwgdnlkYW4gdiBzb3VsYWR1IHMgbmFyaXplbmltIEVVIGMuIDkxMC8y" +
+            "MDE0LlRoaXMgaXMgYSBjZXJ0aWZpY2F0ZSBmb3IgZWxlY3Ryb25pYyBzZWFsIGFjY29yZGluZyB0byBSZWd1bGF0aW9uIChFVSkg" +
+            "Tm8gOTEwLzIwMTQuMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/BAQDAgEGMB8GA1UdIwQYMBaAFJMYNh+paXBRNapPP6yN" +
+            "UH4mBSkKMB0GA1UdDgQWBBSTGDYfqWlwUTWqTz+sjVB+JgUpCjANBgkqhkiG9w0BAQ0FAAOCAgEAO01Radk3mUuojS9G+JksIhH6" +
+            "qWebQZg0UpN2v5H22JEI+HfBat2ept+TMmB9o9D51rhRoC8Y85yS0WB9JJCMauZcF77PjF2LTT4pO/bvEgI3ahrjf63iJiTNHFNz" +
+            "tqyzKuOBGNAqQ2S0bV9aGNcAqvSbF7gJbyDE/74EFz9Qq0BHnmQJH4xQN3uzGJPM8XkRvxRgj+SD/tXnqGGIPWurj4J6GGBsIfr6" +
+            "ecYReq9B2syPC9E4uB8qFfvEQunA9NJ2mLLoCqtTICU3/t95IvUVOBl1o6q+QmYEfmUg2qJuIBbtXb5WhQ5hkRfIBFlQ8upyZQZa" +
+            "XXqlmJmjZJzkdNk7hstyRP7BhVdgyCyHZtBTX2p+cEO644M0fzw58ORo0s1zvG/tooRm9tWg+5ryhLmG2Xcrll4V+QxjFgmG8wFa" +
+            "kq2AqNq4W7PxDHiAl/xqnh/kNgwkI+7VoTHrdqrzCSbyAwzjDd9T2kgRxQG8U6vfuEt84iNtySCdmp6pWPNPkfjNOGCQEv7GamcU" +
+            "lHw411SfvD70YnW5nxgNdmqxcDcUtxzGngcXtFa/qAjxWR7TS25ESNkzzKAZELQs9ORyDLQkgzbYhCLdvDolc33xA0+Ge1bjzpH6" +
+            "PbpGDZxmWKTFM2ZJQQYNvWH7P55T3pbE53TUes0DYl+ICmA+jPmN4YzcGrI=",
+        ),
+        Root(
+            name = "I.CA Root CA/ECC 05/2022",
+            owner = "První certifikační autorita, a.s.",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3808CE3E961CA532682FFB8708B544E8F175AA065601A45902DF92128FC38532",
+            b64 = "MIICdDCCAfqgAwIBAgIEBfXhAzAKBggqhkjOPQQDAzB4MSEwHwYDVQQDDBhJLkNBIFJvb3QgQ0EvRUNDIDA1LzIwMjIxLTArBgNV" +
+            "BAoMJFBydm7DrSBjZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRSQ1otMjY0MzkzOTUxCzAJBgNVBAYT" +
+            "AkNaMB4XDTIyMDUwMzEyMTAwMFoXDTQ3MDUwMzEyMTAwMFoweDEhMB8GA1UEAwwYSS5DQSBSb290IENBL0VDQyAwNS8yMDIyMS0w" +
+            "KwYDVQQKDCRQcnZuw60gY2VydGlmaWthxI1uw60gYXV0b3JpdGEsIGEucy4xFzAVBgNVBGEMDk5UUkNaLTI2NDM5Mzk1MQswCQYD" +
+            "VQQGEwJDWjB2MBAGByqGSM49AgEGBSuBBAAiA2IABMF8C82CgbNtUNlAE2Vu34TjoDNT6kALav15eU0tqcTIPEOT33uvScANNFdL" +
+            "xOJWDJ74qxSU2R7rU1zihlkzvOoXVsO+Xi1xaNwvxe5BKTzuAihf3FRPd/6YzMQMYwJSUaNVMFMwEQYDVR0gBAowCDAGBgRVHSAA" +
+            "MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBRAJ5B0QwXUzyfgd/MbKC28LUgm4TAKBggqhkjOPQQD" +
+            "AwNoADBlAjEA8ablZ3kU7ULAR/gNaBOnGJ4HYlzUgcoUXVVpZgWR+7vlHmeb15ASCLr7LuQMHHI2AjA/WMRr/DHG41fGi7b3mO0v" +
+            "tTVbiXxFTBWZfdwBnYg8B+xrP2X/HBsFinSYcCkqYqI=",
+        ),
+        Root(
+            name = "I.CA Root CA/RSA",
+            owner = "První certifikační autorita, a.s.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D3D607A9FF24A19523B6DA9D2C649446F8788CB96D9FD130972E120C13677730",
+            b64 = "MIIGfjCCBGagAwIBAgIEBfXhADANBgkqhkiG9w0BAQ0FADBwMQswCQYDVQQGEwJDWjEtMCsGA1UECgwkUHJ2bsOtIGNlcnRpZmlr" +
+            "YcSNbsOtIGF1dG9yaXRhLCBhLnMuMRkwFwYDVQQDDBBJLkNBIFJvb3QgQ0EvUlNBMRcwFQYDVQQFEw5OVFJDWi0yNjQzOTM5NTAe" +
+            "Fw0xNTA1MjcxMjIwMDBaFw00MDA1MjcxMjIwMDBaMHAxCzAJBgNVBAYTAkNaMS0wKwYDVQQKDCRQcnZuw60gY2VydGlmaWthxI1u" +
+            "w60gYXV0b3JpdGEsIGEucy4xGTAXBgNVBAMMEEkuQ0EgUm9vdCBDQS9SU0ExFzAVBgNVBAUTDk5UUkNaLTI2NDM5Mzk1MIICIjAN" +
+            "BgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqj9VtYmvdhQGKmQmlDgPX/bcBG8xRfUK/Tt/m3Jv+EB8/l39NJkFOJRJurHwvfiZ" +
+            "XMBR+qoN++ZxFYVjESp3BpGSBoiz/BThmUa0KYKuhIPutSaHbviLVUSdQNj/Klqq6H/SZeEUR8J8Mf11YQobjIBKnrTiLhRHMe68" +
+            "BVGupn7PEbjFSL0FVMKE5Kdoa/i4+n4oybnP5CFPZcmIaKA42XWlETtMHG5LHtSGbMGtBUfTLJQNzIctGi3D1szehP7sa8DhIxOh" +
+            "05wYfuBy11xVvEyzQDEbnEDNmuuADnGu12JuWhZPH/ZlRdGfeoVBGcJ6Os4hkuSUcEy7qEHGxLs1zfU6nmOpjaBq0SBEqiq2SKVy" +
+            "w86e5FhIRwl/AkHzDRxtCXjw1xTRoFX8EdZaGgB55TvmCMtSnqQJq2vnbJwqLyJ9+7lQst5Q0y8McrnWs7ezCObre6z0tMX2wTIf" +
+            "pxkh9dxeN6rHH1ObQz7mnp/aDddWog9TaS1Vv+uGeBG/ptdaTfMOk3Pq/w7Q54/xyLPw2BhzbKVyiPFwTEdUtpta0bwmN40Y35tr" +
+            "LtsLJbOKsuOtBlxtu30XAwcBijCXiXRtSpR3Luvuz7Aetep29LUUOJXX1dkvP7KkJsxNo1yNCfNeDIUyzlZsAgjxS6Orv8hUoAWF" +
+            "dOR1HXq8nDtgPWr9GZECAwEAAaOCAR4wggEaMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBR2uQNI" +
+            "+9UYoaE3oO3MaIJMUjQ2DTCB1wYDVR0gBIHPMIHMMIHJBgRVHSAAMIHAMIG9BggrBgEFBQcCAjCBsBqBrVRlbnRvIGt2YWxpZmlr" +
+            "b3Zhbnkgc3lzdGVtb3Z5IGNlcnRpZmlrYXQgYnlsIHZ5ZGFuIHBvZGxlIHpha29uYSAyMjcvMjAwMCBTYi4gdiBwbGF0bmVtIHpu" +
+            "ZW5pL1RoaXMgcXVhbGlmaWVkIHN5c3RlbSBjZXJ0aWZpY2F0ZSB3YXMgaXNzdWVkIGFjY29yZGluZyB0byBBY3QgTm8uIDIyNy8y" +
+            "MDAwIENvbGwuMA0GCSqGSIb3DQEBDQUAA4ICAQAZVAIlg9silosdlZ6Z2zTOk9AfLntcYCRqDNeFRHgfHEnyFPiDVBmmnTJmuCOm" +
+            "O4Yqnzb8F/xQD2DGN/0kqPd5p46/2AcVVF5SDL74ptjIQUTx9hPcgxlbr91k9zMWhw8VWvFkvNTnVT8yOIma88xIxWwxcZKaJhfC" +
+            "fEcCbTUnn/Ma4aodDXQRqZN8Qahvu46cxQHkc/a6UC7mENS8bxOaOLlpRqUG1vJMbDerPPjbGsZV8Mj4HSFuLwBqseJtWgQtfd0J" +
+            "T/bvFC/AEuoJGSsayqBxm7E6Mrz/QxjzfS/1LojpUbbxSZBM/ybHw1nddF/BUF04XJ1oVWlqtEB3yV8yKUhUk8GzISN2oVUwaSM/" +
+            "MUnEoc07dlmVWoK0rXG1vqaRzIAVSi/OlK4YVUl1IES48wGbwXgsjhBMp2StrTrrTB1WLn+U1B7QCtXJVIEOHv73lPlhOj817tNg" +
+            "yftIsm7C2b56bpgFcACj0RfHxjSvbPVNj11SDN2Am3pt55jjOYVcP4vMRKJANjKTElaQAp4+WWgCH1aIHq/B/g97VY2X2bumk0e6" +
+            "fPhHtjnXjPJAbIecDP4t3dxx/A6RCKRDPYpX3d0H66eXUdC6hJmti3n+yQSQgxMr6ZcNZYnyES03jku4u9J6OSrF3NBdDd0EJ5if" +
+            "WP2OhrsFf/DtN5KQ3Zy9/A==",
+        ),
+        Root(
+            name = "I.CA Root CA/RSA 05/2022",
+            owner = "První certifikační autorita, a.s.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D279C01A12E8DD9A6230E459FAA447CEB336998477338C2EE4135C96737418EB",
+            b64 = "MIIFwzCCA6ugAwIBAgIEBfXhAjANBgkqhkiG9w0BAQ0FADB4MSEwHwYDVQQDDBhJLkNBIFJvb3QgQ0EvUlNBIDA1LzIwMjIxLTAr" +
+            "BgNVBAoMJFBydm7DrSBjZXJ0aWZpa2HEjW7DrSBhdXRvcml0YSwgYS5zLjEXMBUGA1UEYQwOTlRSQ1otMjY0MzkzOTUxCzAJBgNV" +
+            "BAYTAkNaMB4XDTIyMDUwMzEyMDUwMFoXDTQ3MDUwMzEyMDUwMFoweDEhMB8GA1UEAwwYSS5DQSBSb290IENBL1JTQSAwNS8yMDIy" +
+            "MS0wKwYDVQQKDCRQcnZuw60gY2VydGlmaWthxI1uw60gYXV0b3JpdGEsIGEucy4xFzAVBgNVBGEMDk5UUkNaLTI2NDM5Mzk1MQsw" +
+            "CQYDVQQGEwJDWjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBALI/FKJKQK/bDCQ4rD4u2Y3X3Zo4vey4yPbde1t0CRgV" +
+            "lZnR1y5inR4vB41NFBxi/QOVsos0n68i/Ap2yI8TJWrOTxKCo6gELj1H4cL7zJ4XrheMdbQZ9bkM3j5jbg1dg1fU+zjmQjLPJbQy" +
+            "k9sImf/eq7x/hjPsNr1Uo2Mz1XBa6KY7Svmlx2Bt+P22IptmGAgANpZO91s5TwfHXBJCUSG5s5xr/CdKd/AeXAlh1d7bcfhjkBEM" +
+            "yaAcILqK/TKOh9L8rFKt94s2a98qPXFKIh5fof/qp6hzlIGrnJMibK0g8uEJGv9vqQgdECQ4tJfAF+b2vAFHtYsrBEbH9uxYmu01" +
+            "SKa0KK5XzVvpvHhdm6AnEPG3wSnkKnoteITnS765oxryT6xz9c+E0sO+B3Mau8bdHUUOLwc0Mprn17esgEyGFaivx21NdKRh7hrB" +
+            "oEqTgo4jrS9C+ipqM1x+jbKudDxDG7rv2GQOnJkHctxkUSEh7clq7rrwetU1A/x4Udr2EC+lOhEhse0FS9ffLsux1NpyJv4fEr1n" +
+            "+fg/P4CzrowIpiB+8UTPBAkFafjbUFkLQ5GdNZMkAbkyVBZSC5HdBA9/JmHT/I+lgGzQVUwaL6hba2W+Li3bQB04o6OXj9gLWjmq" +
+            "dSHEiYB9qWXN/dXwPgRwmJyjaBr2syfSVjHo6PZnAgMBAAGjVTBTMBEGA1UdIAQKMAgwBgYEVR0gADAPBgNVHRMBAf8EBTADAQH/" +
+            "MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQU+87+8S3hiIuKF0aIaqm67qoibOcwDQYJKoZIhvcNAQENBQADggIBAFnSddf9L7Ll" +
+            "0uqS+B5+t4vG9c0FigKTOqbal7dfZTbzlxLmd2lMT+97FAkcb7KaXpzSW3ofw0/4yqRxS2RHYwKGzcetZPBho33tgWd+Sq4WB8vc" +
+            "YSpFwnwg7SCFKMNbIQskQJoyLHPQAeEZ6NZd4Tsn+UfRvvuKpHCakYXiw2SNRZrWfwCkmEpECc2wjQPqcwhpuw4POYHdUFlehLVs" +
+            "JJvVRrT8cjuarM86G5RFNUN3mt9o7cAtlRomkbZwHymWkkyTDP0wCanfu09krPdxiHgj9Ti5y+/H6+akmSWuwARvwuY5y47Sxv4e" +
+            "0Icc4HJyzZLduzMMGLn93gVe5SXC6ika3wp2fP+FakFYKUlFO8hqUVSl6Mx+rmzzhsCP2B5cSLFpxdQeomZEh7EZ+rxpb0wE0y9M" +
+            "R7ebn1NJHdoRouq+T2LYR5faoXH6EAh9GFnp8WpTnqogZiYouakkwjUnkpD77nSF0vaUHbiXOPDN6IujHRlT3bTlJu5u/pNg3wJf" +
+            "EP7Dfh5EDvcSsNT8cTZU9pzoqgwQW/7jJ5jjILRQvNSczzUrKstlu4D2iRYfEo7YmOYWH/KH6n2FJkrZV2L2lxpwrVZz/DCjK6qk" +
+            "lzSHBTDguFZ6JcNaPPluO21Zr2CPXwm5JhBwqzyAcF4/c7+vXjOtwYGxiLmIq1RZUjtQ1iJz",
+        ),
+        Root(
+            name = "SECOM Document Signing RSA Root CA 2023",
+            owner = "SECOM Trust Systems Co., Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "46219BBF9148F00E8B7A4C619B57CF7602701FF81348400718870FABD31FC5BE",
+            b64 = "MIIF0TCCA7mgAwIBAgIJAOOiocT+gaENMA0GCSqGSIb3DQEBDAUAMIGFMQswCQYDVQQGEwJKUDEmMCQGA1UEChMdU0VDT00gVHJ1" +
+            "c3QgU3lzdGVtcyBDby4sIEx0ZC4xMDAuBgNVBAMTJ1NFQ09NIERvY3VtZW50IFNpZ25pbmcgUlNBIFJvb3QgQ0EgMjAyMzEcMBoG" +
+            "A1UEYRMTTlRSSlAtNDAxMTAwMTA0MDc4MTAeFw0yMzAxMjUwODMzNTlaFw00ODAxMDEwODMzNTlaMIGFMQswCQYDVQQGEwJKUDEm" +
+            "MCQGA1UEChMdU0VDT00gVHJ1c3QgU3lzdGVtcyBDby4sIEx0ZC4xMDAuBgNVBAMTJ1NFQ09NIERvY3VtZW50IFNpZ25pbmcgUlNB" +
+            "IFJvb3QgQ0EgMjAyMzEcMBoGA1UEYRMTTlRSSlAtNDAxMTAwMTA0MDc4MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "AKyMB9lGvBCA99HZrvIqzl/AQy8EFLvxSLWA+13ZonAeMUhuSPxzfhwkuDs+vWXeKJSFQj0Xv0jfHc7n3e2Mjf26vP7IrCc8MWr8" +
+            "VFJ4LMM/TaTO+N5DwUBUY0bMStZhTakJF9jrultP2N44hkoZTMfIKY07LsWkCj9NVteVHmWfrUzdd73Mf7847d4melxs6RL/8mbh" +
+            "cf0u9oSZf6lRVJ5MjdJWMBOcWSrn6XwB6b0OzfAmy3Sopq508740UkFb55sKslKw19xalw5Djx/HLXcMpWlhlrDJgg30MLFSN8lF" +
+            "EqM9gD1fkLSpgL8O9QMzlbuRYiAOOiKJrzdGZOa+2lzxCPb8Yx6P0przBmPVpPm8qorYWO1sbtinx7B58poFVT5YyTzuWiw+smj5" +
+            "E0Dd1SRu7gR1PDJshuP1qHoy7KuffdqErctLEVak7mLCFJAlzPzjE3MdBH5IpYJ/m2zOKI/S9a7RgM1iugOBsjuIRiNMQcNhFyMX" +
+            "5u+vA4mugQtTt9/pn/6rF1uPt3rv/D4WJwFaBN0vBkRgWYqHqAZVavScRV4lfYAFan5nmLui9bZB8ufI+NBv1vkAFuO3Lw1q/ob3" +
+            "14Ae9bi9iu35pGSAYHEazp+Zbxsk5XGTGkk2W+gNiFgJJEp8YG+2OcLWcy6mZefRnQF3rPDs6Fe3qC77YzC5AgMBAAGjQjBAMB0G" +
+            "A1UdDgQWBBQB3bEkMIksyAODXhCucR5J8u5LBzAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQwF" +
+            "AAOCAgEAoyB4wkvZg/bXHSyvp5g/H+0AGKBsGNOGUpE3GF2ZC3lnw2KB8NFK2hkLfehaPl3mPGIC7cJdCR8lpAnCAtBuSDyhTEx+" +
+            "FUyM9cJzx0Vefz8xEN5f4tYOmQl5QGpRNMkQZKbj9xRHbeDOWGD5lcXC/7NXIOhgqf1uBEWHKb6qz6fSsrC/JNSSEuyBE9h2l9A6" +
+            "4G7CwhmZX9bjLBfTaMGZHB4iVjXEO7ZpoYYA6yw8Y16vEn4IsHbJ62aBSvqefCKGWZGgu2BLNBfxdmLmd5IcHFaZPatcnusbE02+" +
+            "RmS94w28Ujb4MXGiPP0oHeiirO/a6ARKvep/6cBsPMxJzDpFXTUzXbnSFkHzLxCOfCuWIVsO9VBkvRzvGzLhb7GwfqO0FGqhXZbZ" +
+            "/2d9+Bi2FOJ1yBI7xfdyUjygxROBL3WRCWNqO4ZiTCC3t0sq40a9Fs4k07HNjp9vSVszNChBAhBXCOtCbuvUWGKNj1/txsCzmpgs" +
+            "BmlyOt+wTJhj+Rx5v0j+YzxJYbjKJVZ8It+/jkzwdwoRoF9UqrKzrX+o+9+NAhnONLINiuw9ZbCt3b0f6oCi92u6QoI6WVH/ZW5I" +
+            "dfewXQbDuX16BJYSZ7Yt2eSQnr+vfogU+t0XpB1s2QUEC03y6mcxBevoILtv/023F8U2/5Mukg0vtjwR1N4J7abHqTo=",
+        ),
+        Root(
+            name = "Security Communication ECC RootCA1",
+            owner = "SECOM Trust Systems Co., Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E74FBDA55BD564C473A36B441AA799C8A68E077440E8288B9FA1E50E4BBACA11",
+            b64 = "MIICODCCAb6gAwIBAgIJANZdm7N4gS7rMAoGCCqGSM49BAMDMGExCzAJBgNVBAYTAkpQMSUwIwYDVQQKExxTRUNPTSBUcnVzdCBT" +
+            "eXN0ZW1zIENPLixMVEQuMSswKQYDVQQDEyJTZWN1cml0eSBDb21tdW5pY2F0aW9uIEVDQyBSb290Q0ExMB4XDTE2MDYxNjA1MTUy" +
+            "OFoXDTM4MDExODA1MTUyOFowYTELMAkGA1UEBhMCSlAxJTAjBgNVBAoTHFNFQ09NIFRydXN0IFN5c3RlbXMgQ08uLExURC4xKzAp" +
+            "BgNVBAMTIlNlY3VyaXR5IENvbW11bmljYXRpb24gRUNDIFJvb3RDQTEwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAASkpW9gAwPDvTH0" +
+            "0xecK4R1rOX9PVdu12O/5gSJko6BnOPpR27KkBLIE+CnnfdldB9sELLo5OnvbYUymUSxXv3MdhDYW72ixvnWQuRXdtyQwjWpS4g8" +
+            "EkdtXP9JTxpKULGjQjBAMB0GA1UdDgQWBBSGHOf+LaVKiwj+KBH6vqNm+GBZLzAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw" +
+            "AwEB/zAKBggqhkjOPQQDAwNoADBlAjAVXUI9/Lbu9zuxNuie9sRGKEkz0FhDKmMpzE2xtHqiuQ04pV1IKv3LsnNdo4gIxwwCMQDA" +
+            "qy0Obe0YottT6SXbVQjgUMzfRGEWgqtJsLKB7HOHeLRMsmIbEvoWTSVLY70eN9k=",
+        ),
+        Root(
+            name = "Security Communication RootCA2",
+            owner = "SECOM Trust Systems Co., Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "513B2CECB810D4CDE5DD85391ADFC6C2DD60D87BB736D2B521484AA47A0EBEF6",
+            b64 = "MIIDdzCCAl+gAwIBAgIBADANBgkqhkiG9w0BAQsFADBdMQswCQYDVQQGEwJKUDElMCMGA1UEChMcU0VDT00gVHJ1c3QgU3lzdGVt" +
+            "cyBDTy4sTFRELjEnMCUGA1UECxMeU2VjdXJpdHkgQ29tbXVuaWNhdGlvbiBSb290Q0EyMB4XDTA5MDUyOTA1MDAzOVoXDTI5MDUy" +
+            "OTA1MDAzOVowXTELMAkGA1UEBhMCSlAxJTAjBgNVBAoTHFNFQ09NIFRydXN0IFN5c3RlbXMgQ08uLExURC4xJzAlBgNVBAsTHlNl" +
+            "Y3VyaXR5IENvbW11bmljYXRpb24gUm9vdENBMjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBANAVOVKxUrO6xVmCxF1S" +
+            "rjpDZYBLx/KWvNs2l9amZIyoXvDjChz335c9S672XewhtUGrzbl+dp+++T42NKA7wfYxEUV0kz1XgMX5iZnK5atq1LXaQZAQwdbW" +
+            "QonCv/Q4EpVMVAX3NuRFg3sUZdbcDE3R3n4MqzvEFb46VqZab3ZpUql6ucjrappdUtAtCms1FgkQhNBqyjoGADdH5H5XTz+L62e4" +
+            "iKrFvlNVspHEfbmwhRkGeC7bYRr6hfVKkaHnFtWOojnflLhwHyg/i/xAXmODPIMqGplrz95Zajv8bxbXH/1KEOtOghY6rCcMU/Gt" +
+            "1SSwawNQwS08Ft1ENCcadfsCAwEAAaNCMEAwHQYDVR0OBBYEFAqFqXdlBZh8QIH4D5csOPEK7DzPMA4GA1UdDwEB/wQEAwIBBjAP" +
+            "BgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBMOqNErLlFsceTfsgLCkLfZOoc7llsCLqJX2rKSpWeeo8HxdpFcoJx" +
+            "DjrSzG+ntKEju/Ykn8sX/oymzsLS28yN/HH8AynBbF0zX2S2ZTuJbxh2ePXcokgfGT+Ok+vx+hfuzU7jBBJV1uXk3fs+BXziHV7G" +
+            "p7yXT2g69ekuCkO2r1dcYmh8t/2jioSgrGK+KwmHNPBqAbubKVY8/gA3zyNs8U6qtnRGEmyR7jTV7JqR50S+kDFy1UkC9gLl9B/r" +
+            "fNmWVan/7Ir5mUf/NVoCqgTLiluHcSmRvaS0eg29mvVXIwAHIRc/SjnRBUkLp7Y3gaVdjKozXoEofKd9J+sAro03",
+        ),
+        Root(
+            name = "Security Communication RootCA3",
+            owner = "SECOM Trust Systems Co., Ltd.",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "24A55C2AB051442D0617766541239A4AD032D7C55175AA34FFDE2FBC4F5C5294",
+            b64 = "MIIFfzCCA2egAwIBAgIJAOF8N0D9G/5nMA0GCSqGSIb3DQEBDAUAMF0xCzAJBgNVBAYTAkpQMSUwIwYDVQQKExxTRUNPTSBUcnVz" +
+            "dCBTeXN0ZW1zIENPLixMVEQuMScwJQYDVQQDEx5TZWN1cml0eSBDb21tdW5pY2F0aW9uIFJvb3RDQTMwHhcNMTYwNjE2MDYxNzE2" +
+            "WhcNMzgwMTE4MDYxNzE2WjBdMQswCQYDVQQGEwJKUDElMCMGA1UEChMcU0VDT00gVHJ1c3QgU3lzdGVtcyBDTy4sTFRELjEnMCUG" +
+            "A1UEAxMeU2VjdXJpdHkgQ29tbXVuaWNhdGlvbiBSb290Q0EzMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA48lySfcw" +
+            "3gl8qUCBWNO0Ot26YQ+TUG5pPDXC7ltzkBtnTCHsXzW7OT4rCmDvu20rhvtxosis5FaU+cmvsXLUIKx00rgVrVH+hXShuRD+BYD5" +
+            "UpOzQD11EKzAlrenfna84xtSGc4RHwsENPXY9Wk8d/Nk9A2qhd7gCVAEF5aEt8iKvE1y/By7z/MGTfmfZPd+pmaGNXHIEYBMwXFA" +
+            "WB6+oHP2/D5Q4eAvJj1+XCO1eXDe+uDRpdYMQXF79+qMHIjH7Iv10S9VlkZ8WjtYO/u62C21Jdp6Ts9EriGmnpjKIG58u4iFW/vA" +
+            "EGK78vknR+/RiTlDxN/e4UG/VHMgly1s2vPUB6PmudhvrvyMGS7TZ2crldtYXLVqAvO4g160a75BflcJdURQVc1aEWEhCmHCqYj9" +
+            "E7wtiS/NYeCVvsq1e+F7NGcLH7YMx3weGVPKp7FKFSBWFHA9K4IsD50VHUeAR/94mQ4xr28+j+2GaR57GIgUssL8gjMunEst+3A7" +
+            "caoreyYn8xrC3PsXuKHqy6C0rtOUfnrQq8PsOC0RLoi/1D+tEjtCrI8Cbn3M0V9hvqG8OmpI6iZVIhZdXw3/JzOfGAN0iltSIEdr" +
+            "RU0id4xVJ/CvHozJgyJUt5rQT9nO/NkuHJYosQLTA70lUhw0Zk8jq/R3gpYd0VcwCBEF/VfR2ccCAwEAAaNCMEAwHQYDVR0OBBYE" +
+            "FGQUfPxYchamCik0FW8qy7z8r6irMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBDAUAA4ICAQDc" +
+            "AiMI4u8hOscNtybSYpOnpSNyByCCYN8Y11StaSWSntkUz5m5UoHPrmyKO1o5yGwBQ8IibQLwYs1OY0PAFNr0Y/Dq9HHuTofjcan0" +
+            "yVflLl8cebsjqodEV+m9NU1Bu0soo5iyG9kLFwfl9+qd9XbXv8S2gVj/yP9kaWJ5rW4OH3/uHWnlt3Jxs/6lATWUVCvAUm2PVcTJ" +
+            "0rjLyjQIUYWg9by0F1jqClx6vWPGOi//lkkZhOpn2ASxYfQAW0q3nHE3GYV5v4GwxxMOdnE+OoAGrgYWp421wsTL/0ClXI2lyTrt" +
+            "coHKXJg80jQDdwj98ClZXSEIx2C/pHF7uNkegr4Jr2VvKKu/S7XuPghHJ6APbw+LP6yVGPO5DtxnVW5inkYO0QR4ynKudtml+LLf" +
+            "iAlhi+8kTtFZP1rUPcmTPCtk9YENFpb3ksP+MW/oKjJ0DvRMmEoYDjBU1cXrvMUVnuiZIesnKwkK2/HmcBhWuwzkvvnoEKQTkrgc" +
+            "4NtnHVMDpCKn3F2SEDzq//wbEBrD2NCcnWXL0CsnMQMeNuE9dnUM/0Umud1RvCPHX9jYhxBAEg09ODfnRDwYwFMJZI//1ZqmfHAu" +
+            "c1Uh6N//g7kdPjIe1qZ9LPFm6Vwdp6POXiUyK+OVrCoHzrQoeIY8LaadTdJ0MN1kURXbg4NR16/9M51NZg==",
+        ),
+        Root(
+            name = "SI-TRUST Root",
+            owner = "SI-TRUST",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 3072",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "FAD540811AFAE0DC767CDF6572A088FA3CE8493DD82B3B869A67D10AAB4E8124",
+            b64 = "MIIEijCCAvKgAwIBAgINAJCud3YAAAAAVx3QbzANBgkqhkiG9w0BAQsFADBcMQswCQYDVQQGEwJTSTEcMBoGA1UEChMTUmVwdWJs" +
+            "aWthIFNsb3ZlbmlqYTEXMBUGA1UEYRMOVkFUU0ktMTc2NTk5NTcxFjAUBgNVBAMTDVNJLVRSVVNUIFJvb3QwHhcNMTYwNDI1MDcz" +
+            "ODE3WhcNMzcxMjI1MDgwODE3WjBcMQswCQYDVQQGEwJTSTEcMBoGA1UEChMTUmVwdWJsaWthIFNsb3ZlbmlqYTEXMBUGA1UEYRMO" +
+            "VkFUU0ktMTc2NTk5NTcxFjAUBgNVBAMTDVNJLVRSVVNUIFJvb3QwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQDTy5wt" +
+            "wuAwQ2UxJP9LsDjZqVPXNdHbt0uTtHKN8cuV0lMrdJsymqQvPgIG3a9wFaGqzxGHimZ7y8wdcERcj6zK5sNbJ7SNo44Qv25UdAhw" +
+            "iiPoysd0xGaRIN1L6KWEdaWYlYKLG+EgJAdGqwxlNkBni3XuqdmRKRvtby1FwtbiYAGx8045KztvP4W+CPZTK3uiyUWhRIGAZppg" +
+            "OhvEvgzMMBB/ETY4SuaboZZTnJTMEcYETKJVS/+A4a+MHDX8uZM33/ldPdzrDSdsRMlZZitWb/8EG/f1acNdwxj+vafZZC+in2DZ" +
+            "cmw9PHXyJSeYLjq4yd1Ndb2rsCJhWAE3KKYgnS5gXPuQvEZDuP5t2MBmIiRrNHgi5bniWOlIOO5MvQF7bj5A6tHCCkKTZ8MmLz8H" +
+            "W8+v4x3oOuJl4YSRP/VmAP2qM0ZC7BY+0hNlLw4JU/bkKnUUnBkzFppF4dtXz8841Kf37VhD5A6YXMTgMT+UpG9LSqLVSo0mqR1k" +
+            "JQg1DecCAwEAAaNLMEkwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwEwYDVR0jBAwwCoAITKPDaF4IAmMwEQYDVR0O" +
+            "BAoECEyjw2heCAJjMA0GCSqGSIb3DQEBCwUAA4IBgQAmI4W7XUEZbpKDiu4BiwQ1GX+rj9zWM8H5eZZeI/Xwzt3q22E7Wq/dWOlC" +
+            "iUDv+dlnEX9N8e3pEXuxQQ/tpNIWtu/B/Yv2ESss7/wHBkYMzwIL7Tvejwm5M6smgFREQmXX56/NUA7KyIihEpwqlTs+VDxIc/Z8" +
+            "eNSb/5P3ReQphGP8+n4a51zgclewL3gdMMYT/YhfsWWI2l6XE4F7/h7Pe79XMMFwkkOmmfBVn5jFI0K9dBwxjhKl2UVqKlrIWM29" +
+            "1t0+NQsZfwMczgcPh0WTFaFrvTQc4N711LjlkRxLBbUnJrzP0QmYFsbh8VVLOntt3sZntsE3LZ+ojlnHt6bF798W4u3esrfzojak" +
+            "KDI6CpTLP17+blntujayk9bGwxn+9Zl460dH5a1Ceuy8e8kuQU5NDwQOikszh9zxdnxaGIycChLXorPChYeubTFQYjIhoGgWX5Q1" +
+            "dFUp0nGBCErh112qVAGzG3xZrr6sDMq4QGRnW53qBgYR1tAwcx7jvCs=",
+        ),
+        Root(
+            name = "SSL.com Code Signing ECC Root CA 2022",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E17DB396AFC136FF1D6DCDA4BB443DA2D817131855BE1C4B6FECEA221036722A",
+            b64 = "MIICSzCCAdKgAwIBAgIQbo7kWxBMyQx+tNiIj+XsZDAKBggqhkjOPQQDAzBXMQswCQYDVQQGEwJVUzEYMBYGA1UECgwPU1NMIENv" +
+            "cnBvcmF0aW9uMS4wLAYDVQQDDCVTU0wuY29tIENvZGUgU2lnbmluZyBFQ0MgUm9vdCBDQSAyMDIyMB4XDTIyMDgyNTE2MzEzNVoX" +
+            "DTQ2MDgxOTE2MzEzNFowVzELMAkGA1UEBhMCVVMxGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjEuMCwGA1UEAwwlU1NMLmNvbSBD" +
+            "b2RlIFNpZ25pbmcgRUNDIFJvb3QgQ0EgMjAyMjB2MBAGByqGSM49AgEGBSuBBAAiA2IABHbIrNTWlZJ8FzLly2tB+Sm7seuidrU2" +
+            "2GxLjeU+SlcmJsefO19GZidRwCxjHHTdrDnTbz0OlL6+KzCSzqJCVg1Q1KQscfQnYduggT/VTVYWtcwcN8szNBFoxzx7DemUzaNj" +
+            "MGEwDwYDVR0TAQH/BAUwAwEB/zAfBgNVHSMEGDAWgBRYXhbDLbPm6qNJs6W+1t6ueZVrjTAdBgNVHQ4EFgQUWF4Wwy2z5uqjSbOl" +
+            "vtbernmVa40wDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMDA2cAMGQCMFOMczFOgFy3njsPCFgTvtlA9vG/ffeZoOvMgAANqnA2" +
+            "7TYje0G4FBVWdtOW4xWFZAIwJOT2+L0Tbjq3P9y/zXjfJoBXEq9oZ0//8iuxoqGZtMOTG456y3y/FI7r6rj+4QNf",
+        ),
+        Root(
+            name = "SSL.com Code Signing RSA Root CA 2022",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "253E3CA36E37E867EE68867B997B9EC724DCC3161063AB0393B54F2BB7B6C315",
+            b64 = "MIIFmzCCA4OgAwIBAgIQEJfEnIwlQyi7pui5m6tPoTANBgkqhkiG9w0BAQsFADBXMQswCQYDVQQGEwJVUzEYMBYGA1UECgwPU1NM" +
+            "IENvcnBvcmF0aW9uMS4wLAYDVQQDDCVTU0wuY29tIENvZGUgU2lnbmluZyBSU0EgUm9vdCBDQSAyMDIyMB4XDTIyMDgyNTE2MzIw" +
+            "OFoXDTQ2MDgxOTE2MzIwN1owVzELMAkGA1UEBhMCVVMxGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjEuMCwGA1UEAwwlU1NMLmNv" +
+            "bSBDb2RlIFNpZ25pbmcgUlNBIFJvb3QgQ0EgMjAyMjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAIx1IMiM3E6RUQa1" +
+            "W+9Fu9n+YOtKk4fs/5ePYJOecWFA6u9Ly5JY2GsW3N4tiPLz0wSWwCVnIeUd259SgfYAK2aQ8aweqE9hJN12LwPHNcg2rIFTYCLA" +
+            "UZKZ7+gmLplUzQmPX1w88KvnO7OnqwbGMZe+TO30BoExgktQELWgEXncWMvA5R6zwW9IXK2XCrMerC5X2L2+OFBE4zP918G1v6JO" +
+            "+3i0OziYKOlWLVSAi2t+HeOVhqeeF1RGW17/n+ZrNYpRpaZ7XAoiDcLXgy/aPD3yih79Hj6h2BxPbghSbk+sH8n+n5lNu1JUsZKD" +
+            "W0AT7xS1M5E8gqSr9apIaum4+4BABvzlHn4/vAqrJuLFqwcE1014tevaa1NbU4qm8tdeUSJNH8yqi7rADoLZFLrZ8i33JbjLqUPS" +
+            "TEQeFnXMteRwHymBVTSyPv7/0XgaQJInKmgltdKe77z4FEtvUiMWaxCJ1N+63MwYWXGp5svYkHG9IPSkaiZJlZ1GGEUWiR8VXahD" +
+            "sGCXntc22jqyb0tyTpl21zA396adu9tdpu58GOxC+RXoDrjbbEJrEF1EDNbUzoKM7yswi3HhCPJBkWPj/uDAqKWNmQBBYs5CRqGd" +
+            "yuWanFHbYHpEVQ4qKnCkmf8qfmC0HZZXujv827/GMYCqOgAZL4gfSaTrd0D3TIPugpEvAgMBAAGjYzBhMA8GA1UdEwEB/wQFMAMB" +
+            "Af8wHwYDVR0jBBgwFoAUx/bIC2LtFAyjF7aquR7R4INWoV0wHQYDVR0OBBYEFMf2yAti7RQMoxe2qrke0eCDVqFdMA4GA1UdDwEB" +
+            "/wQEAwIBhjANBgkqhkiG9w0BAQsFAAOCAgEAYlDeMj/rNjV4jYl3SA8Po10HqLr2Uj82Us61wHlM610r+BKsQ9vne4wpKp9rOtN8" +
+            "9RV3lzv9If3zyFzJPgWUr3ur6I3irw3AoBvfrwu6qrRFVYHIYZlhuLCa6FnMCRPZp1YHhu7toOyNAWWamcwjosCRHV0G3Q2n+jzE" +
+            "xFkixps6wB1pPSy2sR6Kvj2CD2sxcmBXkAtUit5VCh51SQBstkoz70bY1svE8XxsCZbpqeEY/a//tM9nb38HpUiNBRCWOZB5Wpa3" +
+            "4+Y3ODKxxjEBJHQCxMsLz7p2vlyKIMPpdGfrbRKcOT3gitUrSyTjeYxInJGr14IhOL/Es8EH7pA9rfqivilbUjGqbLMcdfPmoNiM" +
+            "A5aIuvjKUTNhCx3Va5wTGS4Wz88Nh0uXxAfZC6uYkeq6B4OYkkAKIM24a5r3gP47yeL5Q8go502XF8B38zDqJoQb1VO8MIVfae48" +
+            "tAnosZukOIK668BqjG0rKDB45DKrtxvhUiQAkedLGtuhiAxu6l0cR5mNcU293t5AmQSzQOHDi6rEkhiXe/zMg4A82inyf87EaQCb" +
+            "YX1tltYVgoz1gyoc91N2ciXwKYDEMmRTD09U9FcN1gvc/nKItF9L2R4/A4YvORA2pzHFJgeVi0hx8assBurSHE6VjecX6q2xRkXT" +
+            "Nv3LxGFvCSJEMiena2g=",
+        ),
+        Root(
+            name = "SSL.com EV Root Certification Authority ECC",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "22A2C1F7BDED704CC1E701B5F408C310880FE956B5DE2A4A44F99C873A25A7C8",
+            b64 = "MIIClDCCAhqgAwIBAgIILCmcWxbtBZUwCgYIKoZIzj0EAwIwfzELMAkGA1UEBhMCVVMxDjAMBgNVBAgMBVRleGFzMRAwDgYDVQQH" +
+            "DAdIb3VzdG9uMRgwFgYDVQQKDA9TU0wgQ29ycG9yYXRpb24xNDAyBgNVBAMMK1NTTC5jb20gRVYgUm9vdCBDZXJ0aWZpY2F0aW9u" +
+            "IEF1dGhvcml0eSBFQ0MwHhcNMTYwMjEyMTgxNTIzWhcNNDEwMjEyMTgxNTIzWjB/MQswCQYDVQQGEwJVUzEOMAwGA1UECAwFVGV4" +
+            "YXMxEDAOBgNVBAcMB0hvdXN0b24xGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjE0MDIGA1UEAwwrU1NMLmNvbSBFViBSb290IENl" +
+            "cnRpZmljYXRpb24gQXV0aG9yaXR5IEVDQzB2MBAGByqGSM49AgEGBSuBBAAiA2IABKoSR5CYG/vvw0AHgyBO8TCCogbR8pKGYfL2" +
+            "IWjKAMTH6kMAVIbc/R/fALhBYlzccBYy3h+Z1MzFB8gIH2EWB1E9fVwHU+M1OIzfzZ/ZLg1KthkuWnBaBu2+8KGwytAJKaNjMGEw" +
+            "HQYDVR0OBBYEFFvKXuXe0oGqzagtZFG22XKbl+ZPMA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAUW8pe5d7SgarNqC1kUbbZ" +
+            "cpuX5k8wDgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMCA2gAMGUCMQCK5kCJN+vp1RPZytRrJPOwPYdGWBrssd9v+1a6cGvHOMzo" +
+            "sYxPD/fxZ3YOg9AeUY8CMD32IygmTMZgh5Mmm7I1HrrW9zzRHM76JTymGoEVW/MSD2zuZYrJh6j5B+BimoxcSg==",
+        ),
+        Root(
+            name = "SSL.com EV Root Certification Authority RSA R2",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2E7BF16CC22485A7BBE2AA8696750761B0AE39BE3B2FE9D0CC6D4EF73491425C",
+            b64 = "MIIF6zCCA9OgAwIBAgIIVrYpzTS8ePYwDQYJKoZIhvcNAQELBQAwgYIxCzAJBgNVBAYTAlVTMQ4wDAYDVQQIDAVUZXhhczEQMA4G" +
+            "A1UEBwwHSG91c3RvbjEYMBYGA1UECgwPU1NMIENvcnBvcmF0aW9uMTcwNQYDVQQDDC5TU0wuY29tIEVWIFJvb3QgQ2VydGlmaWNh" +
+            "dGlvbiBBdXRob3JpdHkgUlNBIFIyMB4XDTE3MDUzMTE4MTQzN1oXDTQyMDUzMDE4MTQzN1owgYIxCzAJBgNVBAYTAlVTMQ4wDAYD" +
+            "VQQIDAVUZXhhczEQMA4GA1UEBwwHSG91c3RvbjEYMBYGA1UECgwPU1NMIENvcnBvcmF0aW9uMTcwNQYDVQQDDC5TU0wuY29tIEVW" +
+            "IFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgUlNBIFIyMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAjzZlQOHW" +
+            "TcDXtOlG2mvqM0fNTPl9fb69LT3w23jhhqXZuglXaO1XPqDQCEGD5yhBJB/jchXQARr7XnAjssufOePPxU7Gkm0mxnu7s9onnQqG" +
+            "6YE3Bf7wcXHswxzpY6IXFJ3vG2fThVUCAtZJycxa4bH3bzKfydQ7iEGonL3Lq9ttewkfokxykNorCPzPPFTOZw+oz12WGQvE43Lr" +
+            "rdF9HSfvkusQv1vrO6/PgN3B0pYEW3p+pKk8OHakYo6gOV7qd89dAFmPZiw+B6KjBSYRaZfqhbcPlgtLyEDhULouisv3D5oi53+a" +
+            "NxPN8k0TayHRwMwi8qFG9kRpnMphNQcAb9ZhCBHqurj26bNg5U257J8UZslXWNvNh2n4ioYSA0e/ZhN2rHd9NCSFg83XqpyQGp8h" +
+            "LH94t2S42Oim9HizVcuE0jLEeK6jj2HdzghTreyI/BXkmg3mnxp3zkyPuBQVPWKchjgGAGYS5Fl2WlPAApiiECtoRHuOec4zSnaq" +
+            "W4EWG7WK2NAAe15itAnWhmMOpgWVSbooi4iTsjQc2KRVbrcc0N6ZVTsj9CLg+SlmJuwgUHfbSguPvuUCYHBBXtSuUDkiFCbLsjtz" +
+            "dFVHB3mBOagwE0TlBIqulhMlQg+5U8Sb/M3kHN48+qvWBkofZ6aYMBzdLNvcGJVXZsb/XItW9XcCAwEAAaNjMGEwDwYDVR0TAQH/" +
+            "BAUwAwEB/zAfBgNVHSMEGDAWgBT5YLvU49U09rj1BoAlp3PbRmmonjAdBgNVHQ4EFgQU+WC71OPVNPa49QaAJadz20ZpqJ4wDgYD" +
+            "VR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBCwUAA4ICAQBWs47LCp1Jjr+kxJG7ZhcFUZh1++VQLHqe8RT6q9OKPv+RKY9ji9i0qVQB" +
+            "Db6Thi/5Sm3HXvVX+cpVHBK+Rw82xd9qt9t1wkclf7nxY/hoLVUE0fKNsKTPvDxeH3jnpaAgcLAExbf3cqfeIg29MyVGjGSSJuM+" +
+            "LmOW2puMPfgYCdcDzH2GguDKBAdRUNf/ktUM79qGn5nX67evaOI5JpS6aLe/g9Pqemc9YmeuJeVy6OLk7K4S9ksrPJ/psEDzOFSz" +
+            "/bdoyNrGj1E8svuR3Bznm53htw1yj+KkxKl4+esUrMZDBcJlOSgYAsOCsp0FvmXtll9ldDz7CTUue5wT/RsPXcdtgTpWD8w74a8C" +
+            "LyKsRspGPKAcTNZEtF4uXBVmCeEmKf7GUmG6sXP/wwyc5WxqlD8UykAWlYTzWamsX0xhk23RO8yilQwipmdnRC652dKKQbNmC1r7" +
+            "fSOl8hqw/96bg5Qu0T/fkreRrwU7ZcegbLHNYhLDkBvjJc40vG93drEQw/cFGsDWr3RiSBd3kmmQYRzelYB0VI8YHMPzA9C/pEN1" +
+            "hlMYegouCRw2n5H9gooiS9EOUCXdywMMF8mDAAhONU2Ki+3wApRmLER/y5UnlhetCTCstnEXbosX9hwJ1C07mKVx01QT2WDz9Utm" +
+            "T/rx7iASjbSsV7FFY6GsdqnC+w==",
+        ),
+        Root(
+            name = "SSL.com Root Certification Authority ECC",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3417BB06CC6007DA1B961C920B8AB4CE3FAD820E4AA30B9ACBC4A74EBDCEBC65",
+            b64 = "MIICjTCCAhSgAwIBAgIIdebfy8FoW6gwCgYIKoZIzj0EAwIwfDELMAkGA1UEBhMCVVMxDjAMBgNVBAgMBVRleGFzMRAwDgYDVQQH" +
+            "DAdIb3VzdG9uMRgwFgYDVQQKDA9TU0wgQ29ycG9yYXRpb24xMTAvBgNVBAMMKFNTTC5jb20gUm9vdCBDZXJ0aWZpY2F0aW9uIEF1" +
+            "dGhvcml0eSBFQ0MwHhcNMTYwMjEyMTgxNDAzWhcNNDEwMjEyMTgxNDAzWjB8MQswCQYDVQQGEwJVUzEOMAwGA1UECAwFVGV4YXMx" +
+            "EDAOBgNVBAcMB0hvdXN0b24xGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjExMC8GA1UEAwwoU1NMLmNvbSBSb290IENlcnRpZmlj" +
+            "YXRpb24gQXV0aG9yaXR5IEVDQzB2MBAGByqGSM49AgEGBSuBBAAiA2IABEVuqVDEpiM2nl8ojRfLliJkP9x6jh3MCLOicSS6jkm5" +
+            "BBtHllirLZXI7Z4INcgn64mMU1jrYor+8FsPazFSY0E7ic3s7LaNGdM0B9y7xgZ/wkWV7Mt/qCPgCemB+vNH06NjMGEwHQYDVR0O" +
+            "BBYEFILRhXMw5zUE044CkvvlpNHEIejNMA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAUgtGFczDnNQTTjgKS++Wk0cQh6M0w" +
+            "DgYDVR0PAQH/BAQDAgGGMAoGCCqGSM49BAMCA2cAMGQCMG/n61kRpGDPYbCWe+0F+S8Tkdzt5fxQaxFGRrMcIQBiu77D5+jNB5n5" +
+            "DQtdcj7EqgIwH7y6C+IwJPt8bYBVCpk+gA0z5Wajs6O7pdWLjwkspl1+4vAHCGht0nxpbl/f5Wpl",
+        ),
+        Root(
+            name = "SSL.com Root Certification Authority RSA",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "85666A562EE0BE5CE925C1D8890A6F76A87EC16D4D7D5F29EA7419CF20123B69",
+            b64 = "MIIF3TCCA8WgAwIBAgIIeyyb0xaAMpkwDQYJKoZIhvcNAQELBQAwfDELMAkGA1UEBhMCVVMxDjAMBgNVBAgMBVRleGFzMRAwDgYD" +
+            "VQQHDAdIb3VzdG9uMRgwFgYDVQQKDA9TU0wgQ29ycG9yYXRpb24xMTAvBgNVBAMMKFNTTC5jb20gUm9vdCBDZXJ0aWZpY2F0aW9u" +
+            "IEF1dGhvcml0eSBSU0EwHhcNMTYwMjEyMTczOTM5WhcNNDEwMjEyMTczOTM5WjB8MQswCQYDVQQGEwJVUzEOMAwGA1UECAwFVGV4" +
+            "YXMxEDAOBgNVBAcMB0hvdXN0b24xGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjExMC8GA1UEAwwoU1NMLmNvbSBSb290IENlcnRp" +
+            "ZmljYXRpb24gQXV0aG9yaXR5IFJTQTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAPkP3aMrfcvQKv7sZ4Wm5y4bunfh" +
+            "4/WvpOz6Sl2RxFdHaxh3a3by/ZPkPQ/CFp4LZsNWlJ4Xg4XOVu/yFv0AYvUiCVToZRdOQbngT0aXqhvIuG5iXmmxX9sqAn78bMrz" +
+            "Qdjt0Oj8P2FI7bADFB0QDksZ4LtO7IZl/zbzXmcCC52GVWH9ejjt/uIZALdvoVBidXQ8oPrIJZK0bnoix/geoeOy3ZExqysdBP+l" +
+            "SgQ36YWkMyv94tZVNHwZpEpox7Ko07fKoZOI68GXvIz5HdkihCR0xwQ9aqkpk8zruFvh/l8lqjRYyMEjVJ0bmBHDOJx+PYZspQ9A" +
+            "hnwC9FwCTyjLrnGfDzrIM/4RJTXq/LrFYD3ZfBjVsqnTdXgDciLKOsMf7yzlLqn6niy2UUb9rwPW6mBo6oUWNmuF6R7As93EJNyA" +
+            "KoFBbZQ+yODJgUEAnl6/f8UImKIYLEJAs/lvOCdLToD0PYFH4Ih86hzOtXVcUS4cK38acijnALXRdMbX5J+tB5O2UzU1/Dfkw/Zd" +
+            "Fr4hc96SCvigY2q8lpJqPvi8ZVWb3vUNiSYE/CUapiVpy8JtynziWV+XrOvvLsi81xtZPCvM8hnIk2snYxnP/Okm+Mpxm3+T/jRn" +
+            "hE6Z6/yzeAkzcLpmpnbtG3PrGqUNxCITIJRWCk4sbE6x/c+cCbqiM+2HAgMBAAGjYzBhMB0GA1UdDgQWBBTdBAkHovV6fVJTEpKV" +
+            "7jiAJQ2mWTAPBgNVHRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFN0ECQei9Xp9UlMSkpXuOIAlDaZZMA4GA1UdDwEB/wQEAwIBhjAN" +
+            "BgkqhkiG9w0BAQsFAAOCAgEAIBgRlCn7Jp0cHh5wYfGVcpNxJK1ok1iOMq8bs3AD/CUrdIWQPXhq9LmLpZc7tRiRux6n+UBbkflV" +
+            "ma8eEdBcHadm47GUBwwyOabqG7B52B2ccETjit3E+ZUfijhDPwGFpUenPUayvOUiaPd7nNgsPgohyC0zrL/FgZkxdMF1ccW+sfAj" +
+            "RfSda/wZY52jvATGGAslu1OJD7OAUN5F7kR/q5R4ZJjT9ijdh9hwZXT7DrkT66cPYakylszeu+1jTBi7qUD3oFRuIIhxdRjqerQ0" +
+            "cuAjJ3dctpDqhiVAq+8zD8ufgr6iIPv2tS0a5sKFsXQP+8hlAqRSAUfdSSLBv9jra6x+3uxjMxW3IwiPxg+NQVrdjsW5j+VFP3jb" +
+            "utIbQLH+cU0/4IGiul607BXgk90IH37hVZkLId6Tngr75qNJvTYw/ud3sqB1l7UtgYgXZSD32pAAn8lSzDLKNXz1PQ/YK9f1JmzJ" +
+            "BjSWFupwWRoyeXkLtoh/D1JIPb9s2KJELtFOt3JY04kTlf5Eq/jXixtunLwsoFvVagCvXzfh1foQC5ichucmj87w7G6KVwuA406y" +
+            "wKBjYZC6VWg3dGq2ktufoYYitmUnDuy2n0Jg5GfCtdpBC8TTi2EbvPofkSvXRAdeuims2cXp71NIWuuA8ShYIc2wBlX7Jz9TkHCp" +
+            "BB5XJ7k=",
+        ),
+        Root(
+            name = "Secure Global CA",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "4200F5043AC8590EBB527D209ED1503029FBCBD41CA1B506EC27F15ADE7DAC69",
+            b64 = "MIIDvDCCAqSgAwIBAgIQB1YipOjUiolN9BPI8PjqpTANBgkqhkiG9w0BAQUFADBKMQswCQYDVQQGEwJVUzEgMB4GA1UEChMXU2Vj" +
+            "dXJlVHJ1c3QgQ29ycG9yYXRpb24xGTAXBgNVBAMTEFNlY3VyZSBHbG9iYWwgQ0EwHhcNMDYxMTA3MTk0MjI4WhcNMjkxMjMxMTk1" +
+            "MjA2WjBKMQswCQYDVQQGEwJVUzEgMB4GA1UEChMXU2VjdXJlVHJ1c3QgQ29ycG9yYXRpb24xGTAXBgNVBAMTEFNlY3VyZSBHbG9i" +
+            "YWwgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCvNS7YrGxVaQZx5RNoJLNP2MwhR/jxYDiJiQPpvepeRlMJ3Fz1" +
+            "Wuj3RSoC6zFh1ykzTM7HfAo3fg+6MpjhHZevj8fcyTiW89sa/FHtaMbQbqR8JNGuQsiWUGMu4P51/pinX0kuleM5M2SOHqRfkNJn" +
+            "PLLZ/kG5VacJjnIFHovdRIWCQtBJwB1g8NEXLJXr9qXBkqPFwqcIYA1gBBCWeZ4WNOaptvolRTnIHmX5k/Wq8VLcmZg9pYYaDDUz" +
+            "+kulBAYVHDGA76oYa8J719rO+TMg1fW9ajMtgQT7sFzUnKPiXB3jqUJ1XnvUd+85VLrJChgbEplJL4hL/VBi0XPnj3pDAgMBAAGj" +
+            "gZ0wgZowEwYJKwYBBAGCNxQCBAYeBABDAEEwCwYDVR0PBAQDAgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFK9EBMJBfkiD" +
+            "2045AuzshHrmzsmkMDQGA1UdHwQtMCswKaAnoCWGI2h0dHA6Ly9jcmwuc2VjdXJldHJ1c3QuY29tL1NHQ0EuY3JsMBAGCSsGAQQB" +
+            "gjcVAQQDAgEAMA0GCSqGSIb3DQEBBQUAA4IBAQBjGghAfaReUw132HquHw0LURYD7xh8yOOvaliTFGCRsoTciE6+OYo68+aCiV0B" +
+            "N7OrJKQVDpI1WkpEXk5X+nXOH0jOZvQ8QCaSmGwb7iRGDBezUqXbpZGRzzfTb+cnCDpOGR86p1hcF895P4vkp9MmI50mD1hp/Ed+" +
+            "stCNi5O/KU9DaXR2Z0vPB4zmAve14bRDtUstFJ/53CYNv6ZHdAbYiNE6KTCEztI5gGIbqMdXSbxqVVFnFUq+NQfk1XWYN3kwFNsp" +
+            "nWzFacxHVaIw98xcf8LDmBxrThaA63p4ZUWiABqvDA1VZDRIuJK58bRQKfJPIx/abKwfROHdI3hRW8cW",
+        ),
+        Root(
+            name = "SecureTrust CA",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "F1C1B50AE5A20DD8030EC9F6BC24823DD367B5255759B4E71B61FCE9F7375D73",
+            b64 = "MIIDuDCCAqCgAwIBAgIQDPCOXAgWpa1Cf/DrJxhZ0DANBgkqhkiG9w0BAQUFADBIMQswCQYDVQQGEwJVUzEgMB4GA1UEChMXU2Vj" +
+            "dXJlVHJ1c3QgQ29ycG9yYXRpb24xFzAVBgNVBAMTDlNlY3VyZVRydXN0IENBMB4XDTA2MTEwNzE5MzExOFoXDTI5MTIzMTE5NDA1" +
+            "NVowSDELMAkGA1UEBhMCVVMxIDAeBgNVBAoTF1NlY3VyZVRydXN0IENvcnBvcmF0aW9uMRcwFQYDVQQDEw5TZWN1cmVUcnVzdCBD" +
+            "QTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKukgeWVzfX2FI7CT8rU4niVWJxB4Q2ZQCQXOZEzZum+4YOvYlyJ0fwk" +
+            "W2Gz4BERQRwdbvC4u/jep4G6pkjGnx29vo6pQT64lO0pGtSO0gMdA+9tDWccV9cGrcrI9f4Or2YlSASWC12juhbDCE/RRvgUXPLI" +
+            "XgGZbf2IzIaowW8xQmxSPmjL8xk037uHGFaAJsTQ3MBv396gwpEWoGQRS0S8Hvbn+mPeZqx2pHGj7DaUaHp3pLHnDi+BeuK1cobv" +
+            "omuL8A/b01k/unK8RCSc43Oz969XL0Imnal0ugBS8kvNU3xHCzaFDmapCJcWNFfBZveA4+1wVMeT4C4oFVmHursCAwEAAaOBnTCB" +
+            "mjATBgkrBgEEAYI3FAIEBh4EAEMAQTALBgNVHQ8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUQjK2FvoE/f5dS3rD" +
+            "/fdMQB1aQ68wNAYDVR0fBC0wKzApoCegJYYjaHR0cDovL2NybC5zZWN1cmV0cnVzdC5jb20vU1RDQS5jcmwwEAYJKwYBBAGCNxUB" +
+            "BAMCAQAwDQYJKoZIhvcNAQEFBQADggEBADDtT0rhWDpSclu1pqNlGKa7UTt36Z3q059c4EVlew3KW+JwULKUBRSuSceNQQcSc5R+" +
+            "DCMh/bwQf2AQWnL1mA6s7Ll/3XpvXdMc9P+IBWlCqQVxyLesJugutIxq/3HcuLHfmbx8IVQr5Fiiu1cprp6poxkmD5kuCLDv/WnP" +
+            "mRoJjeOnnyvJNjR7JLN4TJUXpAYmHrZkUjZfYGfZnMUFdAvnZyPSCPyI6a6Lf+Ew9Dd+/cYy2i2eRDAwbO4H3tI0/NL/QPZL9GZG" +
+            "BlSm8jIKYyYwa5vR3ItHuuG51WLQoqD0ZwV4KWMabwTW+MZMo5qxN7SN5ShLHZ4swrhovO0C7jE=",
+        ),
+        Root(
+            name = "Trustwave Global Certification Authority",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "97552015F5DDFC3C8788C006944555408894450084F100867086BC1A2BB58DC8",
+            b64 = "MIIF2jCCA8KgAwIBAgIMBfcOhtpJ80Y1LrqyMA0GCSqGSIb3DQEBCwUAMIGIMQswCQYDVQQGEwJVUzERMA8GA1UECAwISWxsaW5v" +
+            "aXMxEDAOBgNVBAcMB0NoaWNhZ28xITAfBgNVBAoMGFRydXN0d2F2ZSBIb2xkaW5ncywgSW5jLjExMC8GA1UEAwwoVHJ1c3R3YXZl" +
+            "IEdsb2JhbCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw0xNzA4MjMxOTM0MTJaFw00MjA4MjMxOTM0MTJaMIGIMQswCQYDVQQG" +
+            "EwJVUzERMA8GA1UECAwISWxsaW5vaXMxEDAOBgNVBAcMB0NoaWNhZ28xITAfBgNVBAoMGFRydXN0d2F2ZSBIb2xkaW5ncywgSW5j" +
+            "LjExMC8GA1UEAwwoVHJ1c3R3YXZlIEdsb2JhbCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTCCAiIwDQYJKoZIhvcNAQEBBQADggIP" +
+            "ADCCAgoCggIBALldUShLPDeS0YLOvR29zd24q88KPuFd5dyqCblXAj7mY2Hf8g+CY66j96xz0XznswuvCAAJWX/NKSqIk4cXGIDt" +
+            "iLK0thAfLdZfVaITXdHG6wZWiYj+rDKd/VzDBcdu7oaJuogDnXIhhpCujwOl3J+IKMujkkkP7NAP4m1ET4BqstTnoApTAbqOl5F2" +
+            "brz81Ws25kCI1nsvXwXoLG0R8+eyvpJETNKXpP7ScoFDB5zpET71ixpZfR9oWN0EACyW80OzfpgZdNmcc9kYvkHHNHnZ9GLCQ7mz" +
+            "J7Aiy/k9UscwR7PJPrhq4ufogXBeQotPJqX+OsIgbrv4Fo7NDKm0G2x2EOFYeUY+VM6AqFcJNykbmROPDMjWLBz7BegIlT1lRtzu" +
+            "zWniTY+HKE40Cz7PFNm73bZQmq131BnW2hqIyE4bJ3XYsgjxroMwuREOzYfwhI0Vcnyh78zyiGG69Gm7DIwLdVcEuE4qFC49Dxwe" +
+            "MqZiNu5m4iK4BUBjECLzMx10coos9TkpoNPnG4CELcU9402x/RpvumUHO1jsQkUm+9jaJXLE9gCxInm943xZYkqcBW89zubWR2OZ" +
+            "xiRvchLIrH+QtAuRcOi35hYQcRfO3gZPSEF9NUqjifLJS3tBEW1ntwiYTOURGa5CgNz7kAXU+FDKvuStx8KU1xad5hePrzb7AgMB" +
+            "AAGjQjBAMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFJngGWcNYtt2s9o9uFvo/ULSMQ6HMA4GA1UdDwEB/wQEAwIBBjANBgkq" +
+            "hkiG9w0BAQsFAAOCAgEAmHNw4rDT7TnsTGDZqRKGFx6W0OhUKDtkLSGm+J1WE2pIPU/HPinbbViDVD2HfSMF1OQc3Og4ZYbFdada" +
+            "2zUFvXfeuyk3QAUHw5RSn8pk3fEbK9xGChACMf1KaA0HZJDmHvUqoai7PF35owgLEQzxPy0QlG/+4jSHg9bP5Rs1bdID4bANqKCq" +
+            "RieCNqcVtgimQlRXtpla4gt5kNdXElE1GYhBaCXUNxeEFfsBctyV3lImIJgm4nb1J2/6ADtKYdkNy1GTKv0WBpanI5ojSP5RvbbE" +
+            "sLFUzt5sQa0WZ37b/TjNuThOssFgy50X31ieemKyJo90lZvkWx3SD92YHJtZuSPTMaCm/zjdzyBP6VhWOmfD0faZmZ26NraAL4hH" +
+            "T4a/RDqA5Dccprrql5gR0IRiR2Qequ5AvzSxnI9O4fKSTx+O856X3vOmeWqJcU9LJxdI/uz0UA9PSX3MReO9ekDFQdxhVicGaeVy" +
+            "QYHTtgGJoC86cnn+OjC/QezHYj6RS8fZMXZC+fc8Y+wmjHMMfRod6qh8h6jCJ3zhM0EPz8/8AKAigJ5Kp28AsEFFtyLKaEjFQqKu" +
+            "3R3y4G5OBVixwJAWKqQ9EEC+j2Jjg6mcgn0tAumDMHzLJ8n9HmYAsC7TIS+OMxZsmO0QqAfWzJPP29FpHOTKyeC2nOnOcXHebD8W" +
+            "pHk=",
+        ),
+        Root(
+            name = "Trustwave Global ECC P256 Certification Authority",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-256",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "945BBC825EA554F489D1FD51A73DDF2EA624AC7019A05205225C22A78CCFA8B4",
+            b64 = "MIICYDCCAgegAwIBAgIMDWpfCD8oXD5Rld9dMAoGCCqGSM49BAMCMIGRMQswCQYDVQQGEwJVUzERMA8GA1UECBMISWxsaW5vaXMx" +
+            "EDAOBgNVBAcTB0NoaWNhZ28xITAfBgNVBAoTGFRydXN0d2F2ZSBIb2xkaW5ncywgSW5jLjE6MDgGA1UEAxMxVHJ1c3R3YXZlIEds" +
+            "b2JhbCBFQ0MgUDI1NiBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw0xNzA4MjMxOTM1MTBaFw00MjA4MjMxOTM1MTBaMIGRMQsw" +
+            "CQYDVQQGEwJVUzERMA8GA1UECBMISWxsaW5vaXMxEDAOBgNVBAcTB0NoaWNhZ28xITAfBgNVBAoTGFRydXN0d2F2ZSBIb2xkaW5n" +
+            "cywgSW5jLjE6MDgGA1UEAxMxVHJ1c3R3YXZlIEdsb2JhbCBFQ0MgUDI1NiBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTBZMBMGByqG" +
+            "SM49AgEGCCqGSM49AwEHA0IABH77bOYj43MyCMpg5lOcunSNGLB4kFKA3TjASh3RqMyTpJcGOMoNFWLGjgEqZZ2q3zSRLoHB5DOS" +
+            "McT9CTqmP62jQzBBMA8GA1UdEwEB/wQFMAMBAf8wDwYDVR0PAQH/BAUDAwcGADAdBgNVHQ4EFgQUo0EGrJBt0UrrdaVKEJmzsaGL" +
+            "SvcwCgYIKoZIzj0EAwIDRwAwRAIgB+ZU2g6gWrKuEZ+Hxbb/ad4lvvigtwjzRM4q3wghDDcCIC0mA6AFvWvR9lz4ZcyGbbOcNEhj" +
+            "hAnFjXca4syc4XR7",
+        ),
+        Root(
+            name = "Trustwave Global ECC P384 Certification Authority",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "55903859C8C0C3EBB8759ECE4E2557225FF5758BBD38EBD48276601E1BD58097",
+            b64 = "MIICnTCCAiSgAwIBAgIMCL2Fl2yZJ6SAaEc7MAoGCCqGSM49BAMDMIGRMQswCQYDVQQGEwJVUzERMA8GA1UECBMISWxsaW5vaXMx" +
+            "EDAOBgNVBAcTB0NoaWNhZ28xITAfBgNVBAoTGFRydXN0d2F2ZSBIb2xkaW5ncywgSW5jLjE6MDgGA1UEAxMxVHJ1c3R3YXZlIEds" +
+            "b2JhbCBFQ0MgUDM4NCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw0xNzA4MjMxOTM2NDNaFw00MjA4MjMxOTM2NDNaMIGRMQsw" +
+            "CQYDVQQGEwJVUzERMA8GA1UECBMISWxsaW5vaXMxEDAOBgNVBAcTB0NoaWNhZ28xITAfBgNVBAoTGFRydXN0d2F2ZSBIb2xkaW5n" +
+            "cywgSW5jLjE6MDgGA1UEAxMxVHJ1c3R3YXZlIEdsb2JhbCBFQ0MgUDM4NCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTB2MBAGByqG" +
+            "SM49AgEGBSuBBAAiA2IABGvaDXU1CDFHBa5FmVXxERMuSvgQMSOjfoPTfygIOiYaOs+Xgh+AtycJj9GOMMQKmw6sWASr9zZ9lCOk" +
+            "mwqKi6vr/TklZvFe/oyujUF5nQlgziip04pt89ZF1PKYhDhloKNDMEEwDwYDVR0TAQH/BAUwAwEB/zAPBgNVHQ8BAf8EBQMDBwYA" +
+            "MB0GA1UdDgQWBBRVqYSJ0sEyvRjLbKYHTsjnnb6CkDAKBggqhkjOPQQDAwNnADBkAjA3AZKXRRJ+oPM+rRk6ct30UJMDEr5E0k9B" +
+            "pIycnR+j9sKS50gU/k6bpZFXrsY3crsCMGclCrEMXu6pY5Jv5ZAL/mYiykf9ijH3g/56vxC+GCsej/YpHpRZ744hN8tRmKVuSw==",
+        ),
+        Root(
+            name = "XRamp Global Certification Authority",
+            owner = "SSL.com",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "CECDDC905099D8DADFC5B1D209B737CBE2C18CFB2C10C0FF0BCF0D3286FC1AA2",
+            b64 = "MIIEMDCCAxigAwIBAgIQUJRs7Bjq1ZxN1ZfvdY+grTANBgkqhkiG9w0BAQUFADCBgjELMAkGA1UEBhMCVVMxHjAcBgNVBAsTFXd3" +
+            "dy54cmFtcHNlY3VyaXR5LmNvbTEkMCIGA1UEChMbWFJhbXAgU2VjdXJpdHkgU2VydmljZXMgSW5jMS0wKwYDVQQDEyRYUmFtcCBH" +
+            "bG9iYWwgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMDQxMTAxMTcxNDA0WhcNMzUwMTAxMDUzNzE5WjCBgjELMAkGA1UEBhMC" +
+            "VVMxHjAcBgNVBAsTFXd3dy54cmFtcHNlY3VyaXR5LmNvbTEkMCIGA1UEChMbWFJhbXAgU2VjdXJpdHkgU2VydmljZXMgSW5jMS0w" +
+            "KwYDVQQDEyRYUmFtcCBHbG9iYWwgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB" +
+            "AQCYJB69FbS638eMpSe2OAtp87ZOqCwuIR1cRN8hXX4jdP5efrRKt6atH67gBhbim1vZZ3RrXYCPKZ2GG9mcDZhtdhAoWORlsH9K" +
+            "mHmf4MMxfoArtYzAQDsRhtDLooY2YKTVMIJt2W7QDxIEM5dfT2Fa8OT5kavnHTu86M/0ay00fOJIYRyO82FEzG+gSqmUsE3a56k0" +
+            "enI4qEHMPJQRfevIpoy3hsvKMzvZPTeL+3o+hiznc9cKV6xkmxnr9A8ECIqsAxcZZPRaJSKNNCyy9mgdEm3Tih4U2sSPpuIjhdV6" +
+            "Db1q4Ons7Be7QhtnqiXtRYMh/MHJfNViPvryxS3T/dRlAgMBAAGjgZ8wgZwwEwYJKwYBBAGCNxQCBAYeBABDAEEwCwYDVR0PBAQD" +
+            "AgGGMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFMZPoj0GY4QJnM5i5ASsjVy16bYbMDYGA1UdHwQvMC0wK6ApoCeGJWh0dHA6" +
+            "Ly9jcmwueHJhbXBzZWN1cml0eS5jb20vWEdDQS5jcmwwEAYJKwYBBAGCNxUBBAMCAQEwDQYJKoZIhvcNAQEFBQADggEBAJEVOQMB" +
+            "G2f7Shz5CmBbodpNl2L5JFMn14JkTpAuw0kbK5rc/Kh4ZzXxHfARvbdI4xD2Dd8/0sm2qlWkSLoC295ZLhVbO50WfUfXN+pfTXYS" +
+            "Nrsf16GBBEYgoyxtqZ4Bfj8pzgCT3/3JknOJiWSe5yvkHJEs0rnOfc5vMZnT5r7SHpDwCRR5XCOrTdLaIR9NmXmd4c8nnxCbHIgN" +
+            "sIpkQTG4DmyQJKSbXHGPurt+HBvbaoAPIbzp26a3QPSyi6mx5O+aGtA9aZnuqCij4Tyz8LIRnM98QObd50N9otg6tamN8jSZxNQQ" +
+            "4Qb9CYQQO+7ETPTsJ3xCwnR8gooJybQDJbw=",
+        ),
+        Root(
+            name = "Saudi National Root CA",
+            owner = "Saudi Data and Artificial Intelligence Authority (SDAIA)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "34BB34E14FAED0D3392F2FC441C0ECD5FD88AD88118DF2D1BA76CDEC1EEA10B8",
+            b64 = "MIIExTCCA62gAwIBAgIESbY1GDANBgkqhkiG9w0BAQsFADBiMQswCQYDVQQGEwJTQTEyMDAGA1UECgwpTmF0aW9uYWwgQ2VudGVy" +
+            "IGZvciBEaWdpdGFsIENlcnRpZmljYXRpb24xHzAdBgNVBAsMFlNhdWRpIE5hdGlvbmFsIFJvb3QgQ0EwHhcNMTIwNDI5MDY1NTIw" +
+            "WhcNMjkxMTI5MDcyNTIwWjBiMQswCQYDVQQGEwJTQTEyMDAGA1UECgwpTmF0aW9uYWwgQ2VudGVyIGZvciBEaWdpdGFsIENlcnRp" +
+            "ZmljYXRpb24xHzAdBgNVBAsMFlNhdWRpIE5hdGlvbmFsIFJvb3QgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDj" +
+            "5CziDK+WOay1n4cRF/Ojv4FFDfMaDLoy4kzop4bbXNK52zVKLs1+cYIk+twf8uS8zrfG4sreKWjP7yRbv6YVz57jaUuUufz7nNhj" +
+            "pblp383u3MhcwKD+KRWTvz2Gg1W1lhy9p3DatwXkOZO/pXnk9ZNGGPLbDecqd2YMgCdKPjzdT5A1xmuBqj1vCaWMLiFXC7AKkOqh" +
+            "HvpYDUmnzyuyqMA46RPalFhAki/lOL22iSZzhIGN60pZNDB4KuqLFkjBN5J1mI0KSi5/2xKO1ik5MCvuvYC2KOlXcBSCfYST/gk1" +
+            "vGD1GHVQlBQkWkwYlxNCogT8mb2oWpvRZ7McG/KfAgMBAAGjggGBMIIBfTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB" +
+            "/zAzBggrBgEFBQcBAQQnMCUwIwYIKwYBBQUHMAGGF2h0dHA6Ly9vY3NwLm5jZGMuZ292LnNhMIHkBgNVHR8EgdwwgdkwgaaggaOg" +
+            "gaCGKWh0dHA6Ly93ZWIubmNkYy5nb3Yuc2EvY3JsL25yY2FwYXJ0YTEuY3JspHMwcTELMAkGA1UEBhMCU0ExMjAwBgNVBAoMKU5h" +
+            "dGlvbmFsIENlbnRlciBmb3IgRGlnaXRhbCBDZXJ0aWZpY2F0aW9uMR8wHQYDVQQLDBZTYXVkaSBOYXRpb25hbCBSb290IENBMQ0w" +
+            "CwYDVQQDDARDUkwxMC6gLKAqhihodHRwOi8vd2ViLm5jZGMuZ292LnNhL2NybC9ucmNhY29tYjEuY3JsMB8GA1UdIwQYMBaAFPyZ" +
+            "mEEX4/M9Hv23cqm/oxbkKumqMB0GA1UdDgQWBBT8mZhBF+PzPR79t3Kpv6MW5CrpqjANBgkqhkiG9w0BAQsFAAOCAQEALpUOix3h" +
+            "+/qcQm1Ai7/f7DMESwUOXCI2H6QClDh1/AhZm52FvznNm86ATFaGmU1zZvW2Asm0JEiPC2Pzjn8xgZt8WXeRtSMIeXptPsXVD0eC" +
+            "sO+XLic0uYfR1AV8Xz0hN6R/yavRmJD3S5EYrsTpI4nou2DGS88L2PcrfSWM4DZk5KuqeD02+qL0SZIDtRnu13JgsP7JB2q4YAWZ" +
+            "P31WBHBI3TPGSOkB88LqRXGaQ1r9vhkzM4nePFjJEodWE2EmHpEQQ3y8Hgw+0Fp8SX523G4BHUuSqdlm5Xod9LiLYC7slSz/TWTI" +
+            "7CUAD9jzEqpL1/PSBmXeLdniE6YHskWu6g==",
+        ),
+        Root(
+            name = "AAA Certificate Services",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "D7A7A0FB5D7E2731D771E9484EBCDEF71D5F0C3E0A2948782BC83EE0EA699EF4",
+            b64 = "MIIEMjCCAxqgAwIBAgIBATANBgkqhkiG9w0BAQUFADB7MQswCQYDVQQGEwJHQjEbMBkGA1UECAwSR3JlYXRlciBNYW5jaGVzdGVy" +
+            "MRAwDgYDVQQHDAdTYWxmb3JkMRowGAYDVQQKDBFDb21vZG8gQ0EgTGltaXRlZDEhMB8GA1UEAwwYQUFBIENlcnRpZmljYXRlIFNl" +
+            "cnZpY2VzMB4XDTA0MDEwMTAwMDAwMFoXDTI4MTIzMTIzNTk1OVowezELMAkGA1UEBhMCR0IxGzAZBgNVBAgMEkdyZWF0ZXIgTWFu" +
+            "Y2hlc3RlcjEQMA4GA1UEBwwHU2FsZm9yZDEaMBgGA1UECgwRQ29tb2RvIENBIExpbWl0ZWQxITAfBgNVBAMMGEFBQSBDZXJ0aWZp" +
+            "Y2F0ZSBTZXJ2aWNlczCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAL5AnfRu4ep2hxxNRUSOvkbIgwadwSr+GB+O5AL6" +
+            "86tdUIoWMQuaBtDFcCLNSS1UY8y2bmhGC1Pqy0wkwLxyTurxFa70VJoSCsN6sjNg4tqJVfMiWPPe3M/vg4aijJRPn2jymJBGhCfH" +
+            "dr/jzDUsi14HZGWCwEiwqJH5YZ92IFCokcdmtet4YgNW8IoaE+oxox6gmf049vYnMlhvB/VruPsUK6+3qszWY19zjNoFmag4qMsX" +
+            "eDZRrOme9Hg6jc8P2ULimAyrL58OAd7vn5lJ8S3frHRNG5i1R8XlKdH5kBjHYpy+g8cmez6KJcfA3Z3mNWgQIJ2P2N7Sw4ScDV7o" +
+            "L8kCAwEAAaOBwDCBvTAdBgNVHQ4EFgQUoBEKIz6W8Qfs4q8p74Klf9AwpLQwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMB" +
+            "Af8wewYDVR0fBHQwcjA4oDagNIYyaHR0cDovL2NybC5jb21vZG9jYS5jb20vQUFBQ2VydGlmaWNhdGVTZXJ2aWNlcy5jcmwwNqA0" +
+            "oDKGMGh0dHA6Ly9jcmwuY29tb2RvLm5ldC9BQUFDZXJ0aWZpY2F0ZVNlcnZpY2VzLmNybDANBgkqhkiG9w0BAQUFAAOCAQEACFb8" +
+            "AvCb6P+k+tZ7xkSAzk/ExfYAWMymtrwUSWgEdujm7l3sAg9g1o1QGE8mTgHj5rCl7r+8dFRBv/38ErjHT1r0iWAFf2C3BUrz9vHC" +
+            "v8S5dIa2LX1rzNLzRt0vxuBqw8M0Ayx9lt1awg6nCpnBBYurDC/zXDrPbDdVCYfeU0BsWO/8tqtlbgT2G9w84FoVxp7Z8VlIMCFl" +
+            "A2zs6SFz7JsDoeA3raAVGI/6ugLOpyypEBMs1OUIJqsil2D4kF501KKaU73yqWjgom7C12yxow+ev+to51byrvLjKzg6CYG1a4XX" +
+            "vi3tPxq3smPi9WIsgtRqAEFQ8TmDn5XpNpaYbg==",
+        ),
+        Root(
+            name = "COMODO Certification Authority",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1A0D20445DE5BA1862D19EF880858CBCE50102B36E8F0A040C3C69E74522FE6E",
+            b64 = "MIID0DCCArigAwIBAgIQIKTEf93f4cdTYwcTiHdgEjANBgkqhkiG9w0BAQUFADCBgTELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdy" +
+            "ZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEaMBgGA1UEChMRQ09NT0RPIENBIExpbWl0ZWQxJzAlBgNVBAMTHkNP" +
+            "TU9ETyBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTAeFw0xMTAxMDEwMDAwMDBaFw0zMDEyMzEyMzU5NTlaMIGBMQswCQYDVQQGEwJH" +
+            "QjEbMBkGA1UECBMSR3JlYXRlciBNYW5jaGVzdGVyMRAwDgYDVQQHEwdTYWxmb3JkMRowGAYDVQQKExFDT01PRE8gQ0EgTGltaXRl" +
+            "ZDEnMCUGA1UEAxMeQ09NT0RPIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA" +
+            "0ECLi3LjkRv3UcEbVASY06m/weaKXTuH+7uIzg3jLz8GlvCiKVCZrts7oVewdFFxze1CkU1B/qnI2GqGd0S7WWaXUF601CxwRM/a" +
+            "N5VCaTwwxHGzUvAhTaHYujl8HJ6jJJ3ygxaYqhZ8Q5sVW7euNJH+1GImGEaaP+vB+fGQV+useg2L23IwambV4EajcNxo2f8ESIl3" +
+            "3rXp+2dtQem8Ob0y2WIC8bGoPW43nOIv4tOiJovGuFVDiOEjPqXSJDlqR6sA1KGzqSX+DT+nHbrTUcELpNqsOO9VUCQFZUaTNE8t" +
+            "ja3G1CEZ0o7KBWFxB3NH5YoZEr0ETc5OnKVIrLsm9wIDAQABo0IwQDAdBgNVHQ4EFgQUC1jli8ZMFTekQKkwqSG+RzZaVv8wDgYD" +
+            "VR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEFBQADggEBAC/JxBwHO89hAgCx2SFRdXIDMLDEFh9sAIsQ" +
+            "rK/xR9SuEDwMGvjUk2ysEDd8t6aDZK3N3w6HM503sMZ7OHKx8xoOo/lVem0DZgMXlUrxsXrfViEGQo+x06iF3u6XHWLrp+cxEmbD" +
+            "D6ZLLkGC9/3JG6gbr+48zuOcrigHoSybJMIPIyaDMouGDx8rEkYlFo92kANr3ryqImhrjKGsKxE5pttwwn1y6TPn/CbxdFqR5p2E" +
+            "rPioBhlG5qfpqjQipKGfeq23sqSaM4hxAjwu1nqyH6LKwN0vEJT9s4yEIHlG1QXUEOTS22RPuFvuG8UgR1uUq27UlTMdphVx8fiU" +
+            "ylQ5PsE=",
+        ),
+        Root(
+            name = "COMODO ECC Certification Authority",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1793927A0614549789ADCE2F8F34F7F0B66D0F3AE3A3B84D21EC15DBBA4FADC7",
+            b64 = "MIICiTCCAg+gAwIBAgIQH0evqmIAcFBUTAGem2OZKjAKBggqhkjOPQQDAzCBhTELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0" +
+            "ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEaMBgGA1UEChMRQ09NT0RPIENBIExpbWl0ZWQxKzApBgNVBAMTIkNPTU9E" +
+            "TyBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMDgwMzA2MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBhTELMAkGA1UEBhMC" +
+            "R0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEaMBgGA1UEChMRQ09NT0RPIENBIExpbWl0" +
+            "ZWQxKzApBgNVBAMTIkNPTU9ETyBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQDR3sv" +
+            "dcmCFYX7deSRFtSrYpn1PlILBs5BAH+X4QokPB0BBO490o0JlwzgdeT6+3eKKvUDYEs2ixYjFq0JcfRK9ChQtP6IHG4/bC8vCVlb" +
+            "pVsLM5niwz2J+Wos77LTBumjQjBAMB0GA1UdDgQWBBR1cacZSBm8nZ3qQUfflMRId5nTeTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0T" +
+            "AQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjEA7wNbeqy3eApyt4jf/7VGFAkK+qDmfQjGGoe9GKhzvSbKYAydzpmfz1wPMOG+" +
+            "FDHqAjAU9JM8SaczepBGR7NjfRObTrdvGDeAU/7dIOA1mjbRxwG55tzd8/8dLDoWV9mSOdY=",
+        ),
+        Root(
+            name = "COMODO RSA Certification Authority",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "52F0E1C4E58EC629291B60317F074671B85D7EA80D5B07273463534B32B40234",
+            b64 = "MIIF2DCCA8CgAwIBAgIQTKr5yttjb+Af907YWwOGnTANBgkqhkiG9w0BAQwFADCBhTELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdy" +
+            "ZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEaMBgGA1UEChMRQ09NT0RPIENBIExpbWl0ZWQxKzApBgNVBAMTIkNP" +
+            "TU9ETyBSU0EgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMTE5MDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBhTELMAkGA1UE" +
+            "BhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4GA1UEBxMHU2FsZm9yZDEaMBgGA1UEChMRQ09NT0RPIENBIExp" +
+            "bWl0ZWQxKzApBgNVBAMTIkNPTU9ETyBSU0EgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAw" +
+            "ggIKAoICAQCR6FSS0gpWsawNJN3Fz0RndJkrN6N9I3AAcbxT38T6KhKPS38QVr2fcHK3YX/JSw8Xpz3jsARh7v8Rl8f0hj4K+j5c" +
+            "+ZPmNHrZFGvnnLOFoIJ6dq9xkNfs/Q36nGz637CC9BR++b7Epi9Pf5l/tfxnQ3K9DADWietrLNPtj5gcFKt+5eNu/Nio5JIk2kNr" +
+            "YrhV/erBvGy2i/MOjZrkm2xpmfh4SDBF1a3hDTxFYPwyllEnvGfDyi62a+pGx8cgoLEfZd5ICLqkTqnyg0Y3hOvozIFIQ2dOciqb" +
+            "XL1MGyiKXCJ7tKuY2e7gUYPDCUZObT6Z+pUX2nwzV0E8jVHtC7ZcryxjGt9XyD+86V3Em69FmeKjWiS0uqlWPc9vqv9JWL7wqP/0" +
+            "uK3pN/u6uPQLOvnoQ0IeidiEyxPx2bvhiWC4jChWrBQdnArncevPDt09qZahSL0896+1DSJMwBGB7FY79tOi4lu3sgQiUpWAk2no" +
+            "jkxl8ZEDLXB0AuqLZxUpaVICu9ffUGpVRr+goyhhf3DQw6KqLCGqR84onAZFdr+CGCe01a60y1Dma/RMhnEw6abfFobg2P9A3fvQ" +
+            "Qoh/ozM6LlweQRGBY84YcWsr7KaKtzFcOmpH4MN5WdYgGq/yapiqcrxXStJLnbsQ/LBMQeXtHT1eKJ2czL+zUdqnR+WEUwIDAQAB" +
+            "o0IwQDAdBgNVHQ4EFgQUu69+Aj36pvE8hI6t7jiY7NkyMtQwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZI" +
+            "hvcNAQEMBQADggIBAArx1UaEt65Ru2yyTUEUAJNMnMvlwFTPoCWOAvn9sKIN9SCYPBMtrFaisNZ+EZLpLrqeLppysb0ZRGxhNaKa" +
+            "tBYSaVqM4dc+pBroLwP0rmEdEBsqpIt6xf4FpuHA1sj+nq6PK7o9mfjYcwlYRm6mnPTXJ9OV2jeDchzTc+CiR5kDOF3VSXkAKRzH" +
+            "7JsgHAckaVd4sjn8OoSgtZx8jb8uk2IntznaFxiuvTwJaP+EmzzV1gsD41eeFPfR60/IvYcjt7ZJQ3mFXLrrkguhxuhoqEwWsRqZ" +
+            "CuhTLJK7oQkYdQxlqHvLI7cawiiFwxv/0Cti76R7CZGYZ4wUAc1oBmpjIXUDgIiKboHGhfKppC3n9KUkEEeDys30jXlYsQab5xoq" +
+            "2Z0B15R97QNKyvDb6KkBPvVWmckejkk9u+UJueBPSZI9FoJAzMxZxuY67RIuaTxslbH9qh17f4a+Hg4yRvv7E491f0yLS0Zj/gA0" +
+            "QHDBw7mh3aZw4gSzQbzpgJHqZJx64SIDqZxubw5lT2yHh17zbqD5daWbQOhTsiedSrnAdyGN/4fy3ryM7xfft0kL0fJuMAsaDk52" +
+            "7RH89elWsn2/x20Kk4yl0MC2Hb46TpSi125sC8KKfPog88Tk5c0NqMuRkrF8hey1FGlmDoLnzc7ILaZRfyHBNVOFBkpdn627G190",
+        ),
+        Root(
+            name = "Entrust Code Signing Root Certification Authority - CSBR1",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "B80847FDA453BF6ED876CA7BC046A2481909E15B6ED376E665E7AD09F3864E71",
+            b64 = "MIIFojCCA4qgAwIBAgIUf/Go+fQ66IduLcb/XkM9su4wpkMwDQYJKoZIhvcNAQENBQAwaTELMAkGA1UEBhMCVVMxFjAUBgNVBAoM" +
+            "DUVudHJ1c3QsIEluYy4xQjBABgNVBAMMOUVudHJ1c3QgQ29kZSBTaWduaW5nIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkg" +
+            "LSBDU0JSMTAeFw0yMTA1MDcxMzI2MzZaFw00MDEyMzAxMzI2MzZaMGkxCzAJBgNVBAYTAlVTMRYwFAYDVQQKDA1FbnRydXN0LCBJ" +
+            "bmMuMUIwQAYDVQQDDDlFbnRydXN0IENvZGUgU2lnbmluZyBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IC0gQ1NCUjEwggIi" +
+            "MA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCngY/3FEW2YkPy2K7TJV5IT1G/xX2fUBw10dZ+YSqUGW0nRqSmGl33VFFqgCLG" +
+            "qGZ1TVSDyV5oG6v2W2Swra0gvVTvRmttAudFrnX2joq5Mi6LuHccUk15iF+lOhjJUCyXJy2/2gB9Y3/vMuxGh2Pbmp/DWiE2e/mb" +
+            "1cqgbnIs/OHxnnBNCFYVb5Cr+0i6udfBgniFZS5/tcnA4hS3NxFBBuKK4Kj25X62eAUBw2DtTwdBLgoTSeOQm3/dvfqsv2RR0Vyb" +
+            "tPVc51z/O5uloBrXfQmywrf/bhy8yH3m6Sv8crMU6UpVEoScRCV1HfYq8E+lID1oJethl3wP5bY9867DwRG8G47M4EcwXkIAhnHj" +
+            "WKwGymUfe5SmS1dnDH5erXhnW1XjXuvH2OxMbobL89z4n4eqclgSD32m+PhCOTs8LOQyTUmM4OEAwjignPqEPkHcblauxhpb9Gdo" +
+            "BQHNG7+uh7ydU/Yu6LZr5JnexU+HWKjSZR7IH9Vybu5ZHFc7CXKd18q3kMbNe0WSkUIDTH0/yvKquMIOhvMQn0YupGaGaFpoGHAp" +
+            "OBGAYGuKQ6NzbOOzazf/5p1nAZKG3y9I0ftQYNVc/iHTAUJj/u9wtBfAj6ju08FLXxLq/f0uDodEYOOp9MIYo+P9zgyEIg3zp3ja" +
+            "k/PbOM+5LzPG/wc8Xr5F0wIDAQABo0IwQDAdBgNVHQ4EFgQUgrrWPZfOn89x6JI3r/2ztWk1V88wDwYDVR0TAQH/BAUwAwEB/zAO" +
+            "BgNVHQ8BAf8EBAMCAYYwDQYJKoZIhvcNAQENBQADggIBABLvOKGI4aGj1mXcR5zzvNzPrEuMPBq+K/T30GcXaIZNcKjyzdAxAld9" +
+            "qQyKO1c5nvBu9yQiBWfRwZbBvtHw+FZnC96614ibjddrCHb1WJHZtcNAUxqk8YXNPwBOP06TO3i50gdSZAyGaW3oVGVWF+gAU4SK" +
+            "89v7s84LVWKPzUxJBjh/UsPzHNc99zPKMq3Bqa9v6xHL7qxRv7AmmnpOI7RK9mm0QmnWoI22jEdKOyA3t0EH7y8g2GYcaZeobDB8" +
+            "d0Nea74mmIMPOtbHcCoWRi0lVIZjZVdC9yNB6VBqB0POTrXpH2jY2NYJSqjosvyQZ5LkkCbzR/rWIPuJgOJEczn3ioYzC/iqqedN" +
+            "7Nxv1c8xTauOH5BA1nxcgg+uF1Jx6aznTTjtKth2eYetF6NMq7dCV78GrOXQTTDpVU/jRcrz4GohNI3HnxyjY0iS0pYHvqVHPsIq" +
+            "mTinjtohfFFt3Ms9B+mpvUnUXTVfW4wEUeqaWJC6G69oeLEWD5QpO4+bKo/JIPBxQkxcTasxjKvpfyZoaaClFg2BxNEFDMOHZuUH" +
+            "Y6obTv+yB0FPpSJGUKxmAIdSbDyyO5yXoUa0W97PwmpZVQeMo6TRdzVnRgQv2Ti5Rq+6jhtyJgIvdlTvg8IvLHdwzHcQkqoDrcrM" +
+            "4E/pg0blszwZb3p5h7Y4mr1CzqRi",
+        ),
+        Root(
+            name = "Entrust Digital Signing Root Certification Authority - DSR1",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E874FE2531EAE4A4B6B62F37496BBAE90EB1D8FC8CEDBEBB00A182CFACDC7E61",
+            b64 = "MIIFpjCCA46gAwIBAgIUbHPJNrGF5QuATVvOwp+D0hpRwaMwDQYJKoZIhvcNAQENBQAwazELMAkGA1UEBhMCVVMxFjAUBgNVBAoT" +
+            "DUVudHJ1c3QsIEluYy4xRDBCBgNVBAMTO0VudHJ1c3QgRGlnaXRhbCBTaWduaW5nIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3Jp" +
+            "dHkgLSBEU1IxMB4XDTIxMTExMjE4Mjg0N1oXDTQwMTIzMDE4Mjg0N1owazELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3Qs" +
+            "IEluYy4xRDBCBgNVBAMTO0VudHJ1c3QgRGlnaXRhbCBTaWduaW5nIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgLSBEU1Ix" +
+            "MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAqS2C6cK4I00zul2xjk6mWjsefTLMd9VRNwOxHEqwrNe39xjzzum6Fi64" +
+            "AUqED5EsHVztKqeoDlWjwzyjIvTxgIaCLBsDDKFdkXIg9buMl3ENopcTgz5Sbta4/0GxSCzgeb9LfMLsDMdbOEZYwP6wcmJCSmWL" +
+            "J/lEbO0HZVFktUoEilsUxHq9ErSUjFEAg9C0Phh7ihJ1YM3XyM0Cr3XT3CtNx2PAy6Ticoxp2S2JA9botrxQ+ebLVnNjz/yTwYGG" +
+            "6Tqv+QdNRoLmVwPye8X8NNGc5j13PeNeWwXXxZIWIX9mnMyugAcyonNX5MQ+hsp/72UHrbbQbtEzaZI0SBHx5Ee3o65S2QymhHuI" +
+            "WBWKQRaDbu/nhdqRtzLyaybx1enpkl1wi4hqz7v1xEcpMu3FS1AlfoexFRSh0NoWGlj10EIkDO8IdDpTH5PghV6qYeVeg7i+2Zrb" +
+            "1vcMHQ5JRWbT6WDAEb1KMN0vuaZdWOkvP7EsRJlKxPtktOq3NcNwvmkhd3Bw8IC0HbX8eT5v8mHlDHGlpvbSQH82j8EUW7ZD8aMv" +
+            "cB1X+ReNv6bTRloBF54kPxjSXcV9ruHPQ/oRWPaKXYUXrciJy/uE7naIAHHqxUrqdy38g6NSiQL4S+qUE4eOfU+UKojit2ezLVkf" +
+            "ifk5px4roxgQ7ha03SMC5sftT0cCAwEAAaNCMEAwHQYDVR0OBBYEFKZlQYHyW4cFat39ilROj5h73CO4MA8GA1UdEwEB/wQFMAMB" +
+            "Af8wDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBDQUAA4ICAQCi6KUmCrRRytbVPFjX33uEW1Ny8j5RxqpvLZ2H1/j9sAhmYdRY" +
+            "NSzJsedQCcFWoqFHBS7Oba+mk7vZPuZToldy27TqT/u2x81nvzjcjGijtWkidwwnCqLyj3EeieMJnOjceMoZ/7NSg9GM5Hz49C51" +
+            "1DBXKY1Ogl+x4RgHMnM39GbAngPPlFDiM76sOP2NxEIlSja/judxsWm2Eh/tOHBnVJu+g6kwMd7Oum1nG5RkUaHcUbUnJ5mlFsTU" +
+            "HAC0c85ky8CwX8uLoZ9Zk39ZLJYMpMtIhi5PqCEaJkvxmDD9EXLlohH58EfV8s98aAQy3GOtkugHapntfbMHjSmPNPUDZo+RYq2s" +
+            "OudOMnsm5FTkW83BDIgPeoLnxBZZHOVy4Yh6gdhpey0cuU5xD++mToxOKAv16LVTWQv0Oifp/L+p7dbvsmndApaLGW4MnHSnn+9Y" +
+            "IJav8WOo/zvKah0U4//xdaHWPQp86Fv4hSWv67uF22v0leAA6fyhN86br750PIv7UR2kBZOfCnF8Fli7fAIzBOK20QTKsEn9loiN" +
+            "7TPb5cHvtvLTRX9Dvr82zadlqpFiHzd/7Uvv7nMXbi8LgNW1asp98aib0wGLtsZCwk7heIOOyen6mlJ9TQJsQZsN6QC9SFMjQ4DR" +
+            "RwSQ6ZxkSl1EwOIeFYBfoTM3VxKKcl+Yqg==",
+        ),
+        Root(
+            name = "Entrust Root Certification Authority",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "73C176434F1BC6D5ADF45B0E76E727287C8DE57616C1E6E6141A2B2CBC7D8E4C",
+            b64 = "MIIEkTCCA3mgAwIBAgIERWtQVDANBgkqhkiG9w0BAQUFADCBsDELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3QsIEluYy4x" +
+            "OTA3BgNVBAsTMHd3dy5lbnRydXN0Lm5ldC9DUFMgaXMgaW5jb3Jwb3JhdGVkIGJ5IHJlZmVyZW5jZTEfMB0GA1UECxMWKGMpIDIw" +
+            "MDYgRW50cnVzdCwgSW5jLjEtMCsGA1UEAxMkRW50cnVzdCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5MB4XDTA2MTEyNzIw" +
+            "MjM0MloXDTI2MTEyNzIwNTM0MlowgbAxCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1FbnRydXN0LCBJbmMuMTkwNwYDVQQLEzB3d3cu" +
+            "ZW50cnVzdC5uZXQvQ1BTIGlzIGluY29ycG9yYXRlZCBieSByZWZlcmVuY2UxHzAdBgNVBAsTFihjKSAyMDA2IEVudHJ1c3QsIElu" +
+            "Yy4xLTArBgNVBAMTJEVudHJ1c3QgUm9vdCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCC" +
+            "AQoCggEBALaVtkNC+sZtKm9I35RMOVcF7sN5EUFoNu3s/poBj6E4KPz3EEZmLk0eGrEaTsbRwJWIsMn/MYszA9u3g3s+IIRe7bJW" +
+            "KKf44LlAcTfFy0cOlypowCKVYhXbR9n10Cv/gkvJrT7eTNuQgFA/CYqEAOwwCj0Yzfv9KlmaI5UXLEWeH25DeW0MXJj+SKfFI0dc" +
+            "Xv1u5x609mhF0YaDW6KKjbHjKYD+JXGIrb68j6xSlkuqUY3kEzEZ6E5Nn9uss2rVvDlUccp6en+Q3X0dgNmBu1kmwhH+5pPi94Dk" +
+            "Zfs0Nw4pgHBNrziGLp5/V6+eF67rHMsoIV+2HNjnogQi+dPa2MsCAwEAAaOBsDCBrTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/" +
+            "BAUwAwEB/zArBgNVHRAEJDAigA8yMDA2MTEyNzIwMjM0MlqBDzIwMjYxMTI3MjA1MzQyWjAfBgNVHSMEGDAWgBRokORnpKZTgMeG" +
+            "ZqTx90tD+4S9bTAdBgNVHQ4EFgQUaJDkZ6SmU4DHhmak8fdLQ/uEvW0wHQYJKoZIhvZ9B0EABBAwDhsIVjcuMTo0LjADAgSQMA0G" +
+            "CSqGSIb3DQEBBQUAA4IBAQCT1DCw1wMgKtD5Y+iRDAUgqV8ZyntyTtSx29CW+1RaGSwMCPeyvIWonX9tO1KzKtvn1ISMY/YPyyYB" +
+            "kVBs9F8U4pN0wBOeMDpQ47RgxRzwIkSNcUesyBrJ6ZuaAGAT/3B+XxFNSRuzFVJ7yVTav52Vr2ua2J7p8eRDjeIRRDq/r72DQnNS" +
+            "i6q7pynP9WQcCk3RvKqsnyrQ/39/2n3qse0wJcGE2jTSW3iDVuycNsMm4hH2Z0kdkquM++v/eu6FSqdQgPCnXEqULl8FmTxSQeDN" +
+            "tGPPAUO6nIPcj2A781q0tHuu2guQOHXvgR1m0vdXcDazv/wor3ElhVsT/h5/WrQ8",
+        ),
+        Root(
+            name = "Entrust Root Certification Authority - EC1",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "02ED0EB28C14DA45165C566791700D6451D7FB56F0B2AB1D3B8EB070E56EDFF5",
+            b64 = "MIIC+TCCAoCgAwIBAgINAKaLeSkAAAAAUNCR+TAKBggqhkjOPQQDAzCBvzELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3Qs" +
+            "IEluYy4xKDAmBgNVBAsTH1NlZSB3d3cuZW50cnVzdC5uZXQvbGVnYWwtdGVybXMxOTA3BgNVBAsTMChjKSAyMDEyIEVudHJ1c3Qs" +
+            "IEluYy4gLSBmb3IgYXV0aG9yaXplZCB1c2Ugb25seTEzMDEGA1UEAxMqRW50cnVzdCBSb290IENlcnRpZmljYXRpb24gQXV0aG9y" +
+            "aXR5IC0gRUMxMB4XDTEyMTIxODE1MjUzNloXDTM3MTIxODE1NTUzNlowgb8xCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1FbnRydXN0" +
+            "LCBJbmMuMSgwJgYDVQQLEx9TZWUgd3d3LmVudHJ1c3QubmV0L2xlZ2FsLXRlcm1zMTkwNwYDVQQLEzAoYykgMjAxMiBFbnRydXN0" +
+            "LCBJbmMuIC0gZm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxMzAxBgNVBAMTKkVudHJ1c3QgUm9vdCBDZXJ0aWZpY2F0aW9uIEF1dGhv" +
+            "cml0eSAtIEVDMTB2MBAGByqGSM49AgEGBSuBBAAiA2IABIQTydC6bUF74mzQ61VfZgIaJPRbiWlH47jCffHyAsWfoPZb1YsGGYZP" +
+            "UxBtByQnoaD41UcZYUx9ypMn6nQM72+WCf5j7HBdNq1nd67JnXxVRDqiY1Ef9eNi1KlHBz7MIKNCMEAwDgYDVR0PAQH/BAQDAgEG" +
+            "MA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFLdj5xrdjekIplWDpOBqUEFlEUJJMAoGCCqGSM49BAMDA2cAMGQCMGF52OVCR98c" +
+            "rlOZF7ZvHH3hvxGU0QOIdeSNiaSKd0bebWHvAvX7td/M/k7//qnmpwIwW5nXhTcGtXsI/esni0qU+eH6p44mCOh8kmhtc9hvJqwh" +
+            "AriZtyZBWyVgrtBIGu4G",
+        ),
+        Root(
+            name = "Entrust Root Certification Authority - G2",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "43DF5774B03E7FEF5FE40D931A7BEDF1BB2E6B42738C4E6D3841103D3AA7F339",
+            b64 = "MIIEPjCCAyagAwIBAgIESlOMKDANBgkqhkiG9w0BAQsFADCBvjELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3QsIEluYy4x" +
+            "KDAmBgNVBAsTH1NlZSB3d3cuZW50cnVzdC5uZXQvbGVnYWwtdGVybXMxOTA3BgNVBAsTMChjKSAyMDA5IEVudHJ1c3QsIEluYy4g" +
+            "LSBmb3IgYXV0aG9yaXplZCB1c2Ugb25seTEyMDAGA1UEAxMpRW50cnVzdCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IC0g" +
+            "RzIwHhcNMDkwNzA3MTcyNTU0WhcNMzAxMjA3MTc1NTU0WjCBvjELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUVudHJ1c3QsIEluYy4x" +
+            "KDAmBgNVBAsTH1NlZSB3d3cuZW50cnVzdC5uZXQvbGVnYWwtdGVybXMxOTA3BgNVBAsTMChjKSAyMDA5IEVudHJ1c3QsIEluYy4g" +
+            "LSBmb3IgYXV0aG9yaXplZCB1c2Ugb25seTEyMDAGA1UEAxMpRW50cnVzdCBSb290IENlcnRpZmljYXRpb24gQXV0aG9yaXR5IC0g" +
+            "RzIwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC6hLZy254Ma+KZ6TABp3bqMriVQRrJ2mFOWHLP/vaCeb9zYQYKpSfY" +
+            "s1/TRU4cctZOMvJyig/3gxnQaoCAAEUesMfnmr8SVycco2gvCoe9amsOXmXzHHfV1IWNcCG0szLni6LVhjkCsbjSR87kyUnEO6fe" +
+            "+1R9V77w6G7CebI6C1XiUJgWMhNcL3hWwcKUs/Ja5CeanyTXxuzQmyWC48zCxEXFjJd6BmsqEZ+pCm5IO2/b1BEZQvePB7/1U1+c" +
+            "PvQXLOZprE4yTGJ36rfo5bs0vBmLrpxR57d+tVOxMyLlbc9wPBr64ptntoP0jaWvYkxN4FisZDQSA/i2jZRjJKRxAgMBAAGjQjBA" +
+            "MA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MB0GA1UdDgQWBBRqciZ60B7vfec7aVHUbI2fkBJmqzANBgkqhkiG9w0B" +
+            "AQsFAAOCAQEAeZ8dlsa2eT8ijYfThwMEYGprmi5ZiXMRrEPR9RP/jTkrwPK9T3CMqS/qF8QLVJ7UG5aYMzyorWKiAHarWWluBh1+" +
+            "xLlEjZivEtRh2woZRkfz6/djwUAFQKXSt/S1mja/qYh2iARVBCuch38aNzx+LaUa2NSJXsq9rD1s2G2v1fN2D807iDginWyTmsQ9" +
+            "v4IbZT+mD12q/OWyFcq1rca8PdCE6OoGcrBNOTJ4vz4RnAuknZoh8/CbCzB428Hch0P+vGOaysXCHMnHjf87ElgI5rY97HosTvuD" +
+            "ls4MPGmHVHOkc8KT/1EQrBVUAdj8BbGJoX90g5pJ19xOe4pIb4tF9g==",
+        ),
+        Root(
+            name = "Entrust Root Certification Authority - G4",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "DB3517D1F6732A2D5AB97C533EC70779EE3270A62FB4AC4238372460E6F01E88",
+            b64 = "MIIGSzCCBDOgAwIBAgIRANm1Q3+vqTkPAAAAAFVlrVgwDQYJKoZIhvcNAQELBQAwgb4xCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1F" +
+            "bnRydXN0LCBJbmMuMSgwJgYDVQQLEx9TZWUgd3d3LmVudHJ1c3QubmV0L2xlZ2FsLXRlcm1zMTkwNwYDVQQLEzAoYykgMjAxNSBF" +
+            "bnRydXN0LCBJbmMuIC0gZm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxMjAwBgNVBAMTKUVudHJ1c3QgUm9vdCBDZXJ0aWZpY2F0aW9u" +
+            "IEF1dGhvcml0eSAtIEc0MB4XDTE1MDUyNzExMTExNloXDTM3MTIyNzExNDExNlowgb4xCzAJBgNVBAYTAlVTMRYwFAYDVQQKEw1F" +
+            "bnRydXN0LCBJbmMuMSgwJgYDVQQLEx9TZWUgd3d3LmVudHJ1c3QubmV0L2xlZ2FsLXRlcm1zMTkwNwYDVQQLEzAoYykgMjAxNSBF" +
+            "bnRydXN0LCBJbmMuIC0gZm9yIGF1dGhvcml6ZWQgdXNlIG9ubHkxMjAwBgNVBAMTKUVudHJ1c3QgUm9vdCBDZXJ0aWZpY2F0aW9u" +
+            "IEF1dGhvcml0eSAtIEc0MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAsewsQu7i0TD/pZJH4i3DumSXbcr3DbVZwbPL" +
+            "qGgZ2K+EbTBwXX7zLtJTmeH+H17ZSK9dE43b/2MzTdMAArzE+NEGCJR5WIoV3imz/f3ET+iq4qA7ec2/a0My3dl0ELn39GjUu9CH" +
+            "1apLiipvKgS1sqbHoHrmSKvS0VnM1n4j5pds8ELl3FFLFUHtSUrJ3hCX1nbB76W1NhSXNdh4IjVS70O92yfbYVaCNNzLiGAMC1rl" +
+            "LAHGVK/XqsEQe9IFWrhAnoanw5CGAlZSCXqc0ieCU0plUmr1POeo8pyvi73TDtTUXm6Hnmo9RR3RXRv06QqsYJn7ibT/mCzPfB3p" +
+            "AqoEmh643IhuJbNsZvc8kPNXwbMv9W3y+8qh+CmdRouzavbmZwe+LGcKKh9asj5XxNMhIWNlUpEbsZmOeX7m640A2Vqq6nPopIIC" +
+            "R5b+W45UYaPrL0swsIsjdXJ8ITzI9vF01Bx7owVV7rtNOzK+mndmnqxpkCIHH2E6lr7lmk/MBTwoWdPBDFSoWWG9yHJM6Nyfh3+9" +
+            "nEg2XpWjDrk4JFX8dWbrAuMINClKxuMrLzOg2qOGpRKX/YAr2hRC45K9PvJdXmd0LhyIRyk0X+IyqJwlN4y6mACXi0mWHv0liqzc" +
+            "2thddG5msP9E36EYxr5ILzeUePiVSj9/E15dWf10hkNjc0kCAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMC" +
+            "AQYwHQYDVR0OBBYEFJ84xFYjwznooHFs6FRM5Og6sb9nMA0GCSqGSIb3DQEBCwUAA4ICAQAS5UKme4sPDORGpbZgQIeMJX6tuGgu" +
+            "W8ZAdjwD+MlZ9POrYs4QjbRaZIxowLByQzTSGwv2LFPSypBLhmb8qoMi9IsabyZIrHZ3CL/FmFz0Jomee8O5ZDIBf9PD3Vht7LGr" +
+            "hFV0d4QEJ1JrhkzO3bll/9bGXp+aEJlLdWr+aumXIOTkdnrG0CSqkM0gkLpHZPt/B7NTeLUKYvJzQ85BK4FqLoUWlFPUa19yIqtR" +
+            "LULVAJyZv967lDtX/Zr1hstWO1uIAeV8KEsD+UmDfLJ/fOPtjqF/YFOOVZ1QNBIPt5d7bIdKROf1beyAN/BYGW5KaHbwH5Lk6rWS" +
+            "02FREAutp9lfx1/cH6NcjKF+m7ee01ZvZl4HliDtC3T7Zk6LERXpgUl+b7DUUH8i119lAg2m9IUe2K4GS0qn0jFmwvjO5QimpAKW" +
+            "RGhXxNUzzxkvFMSUHHuk2fCfDrGA4tGeEWSpiBE6doLlYsKA2KSD7ZPvfC+QsDJMlhVoSFLUmQjAJOgc47OlIQ6SwJAfzyBfyjs4" +
+            "x7dtOvPmRLgOMWuIjnDrnBdSqEGULoe256YSxXXfW8AKbnuk5F6G+TaU33fD6Q3AOfF5u0aOq0NZJ7cguyPpVkAh7DE9ZapD8j3f" +
+            "cEThuk0mEDuYn/PIjhs4ViFqUZPTkcpG2om3PVODLAgfi49T3f+sHw==",
+        ),
+        Root(
+            name = "Entrust.net Certification Authority (2048)",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 2048",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "6DC47172E01CBCB0BF62580D895FE2B8AC9AD4F873801E0C10B9C837D21EB177",
+            b64 = "MIIEKjCCAxKgAwIBAgIEOGPe+DANBgkqhkiG9w0BAQUFADCBtDEUMBIGA1UEChMLRW50cnVzdC5uZXQxQDA+BgNVBAsUN3d3dy5l" +
+            "bnRydXN0Lm5ldC9DUFNfMjA0OCBpbmNvcnAuIGJ5IHJlZi4gKGxpbWl0cyBsaWFiLikxJTAjBgNVBAsTHChjKSAxOTk5IEVudHJ1" +
+            "c3QubmV0IExpbWl0ZWQxMzAxBgNVBAMTKkVudHJ1c3QubmV0IENlcnRpZmljYXRpb24gQXV0aG9yaXR5ICgyMDQ4KTAeFw05OTEy" +
+            "MjQxNzUwNTFaFw0yOTA3MjQxNDE1MTJaMIG0MRQwEgYDVQQKEwtFbnRydXN0Lm5ldDFAMD4GA1UECxQ3d3d3LmVudHJ1c3QubmV0" +
+            "L0NQU18yMDQ4IGluY29ycC4gYnkgcmVmLiAobGltaXRzIGxpYWIuKTElMCMGA1UECxMcKGMpIDE5OTkgRW50cnVzdC5uZXQgTGlt" +
+            "aXRlZDEzMDEGA1UEAxMqRW50cnVzdC5uZXQgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkgKDIwNDgpMIIBIjANBgkqhkiG9w0BAQEF" +
+            "AAOCAQ8AMIIBCgKCAQEArU1LqRKGsuqjIAcVFmQqK0vRvwtKTY7tgHalZ7d4QMBzQshowNtTK91euHaYNZOLGp18EzoOH1u3Hs/l" +
+            "JBQesYGpjX24zGtLA/ECDNyrpUAkAH90lKGdCCmziAv1h3edVc3kw37XamSrhRSGlVuXMlBvPci6Zgzj/L24ScF2iUkZ/cCovYmj" +
+            "Zy/Gn7xxGWC4LeksyZB2ZnuU4q941mVTXTzWnLLPKQP5L6RQstRIzgUyVYr9smRMDuSYB3Xbf9+5CFVghTAp+XtIpGmG4zU/HoZd" +
+            "enoVve8AjhUiVBcAkCaTvA5JaJG/+EfTnZVCwQ5N328mz8MYIWJmQ3DW1cAH4QIDAQABo0IwQDAOBgNVHQ8BAf8EBAMCAQYwDwYD" +
+            "VR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUVeSB0RGAvtiJuQijMfmhJAkWuXAwDQYJKoZIhvcNAQEFBQADggEBADubj1abMOdTmXx6" +
+            "eadNl9cZlZD7Bh/KM3xGY4+WZiT6QBshJ8rmcnPyT/4xmf3IDExoU8aAghOY+rat2l098c5u9hURlIIM7j+VrxGrD9cv3h8Dj1cs" +
+            "Hsm7mhpElesYT6YfzX1XEC+bBAlahLVu2B064dae0Wx5XnkcFMXj0EyTO2U87d89vqbllRrDtRnDvV5bu/8j72gZyxKTJ1wDLW8w" +
+            "0B62GqzeWvfRqqgnpv55gcR5mTNXuhKwqeBCbJPKVt7+bYQLCIt+jerXmCHG8+c8eS9enNFMFY3h7CI3zJpDC5fcgJCNs2ebb0gI" +
+            "FVbPv/ErfF6adulZkMV8gzURZVE=",
+        ),
+        Root(
+            name = "Sectigo Public Time Stamping Root E46",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "E44DDB7952261F15005CD60C1D0C38C18CBFD17C273A31F8ED4C8F53E2685F32",
+            b64 = "MIICKzCCAbGgAwIBAgIQVWKmxZS9D8nZwdZJtffjFTAKBggqhkjOPQQDAzBXMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2VjdGln" +
+            "byBMaW1pdGVkMS4wLAYDVQQDEyVTZWN0aWdvIFB1YmxpYyBUaW1lIFN0YW1waW5nIFJvb3QgRTQ2MB4XDTIxMDMyMjAwMDAwMFoX" +
+            "DTQ2MDMyMTIzNTk1OVowVzELMAkGA1UEBhMCR0IxGDAWBgNVBAoTD1NlY3RpZ28gTGltaXRlZDEuMCwGA1UEAxMlU2VjdGlnbyBQ" +
+            "dWJsaWMgVGltZSBTdGFtcGluZyBSb290IEU0NjB2MBAGByqGSM49AgEGBSuBBAAiA2IABNyiD7Sl1t4p03wWByX1PBd702QZC2Wx" +
+            "ghlJwr4YXAfE48F84LhBns77yP5KSCqZo+dtvK7/MhSh4k5ICLdCR2JwDQbN28S1ypkwT0e4hXM0etMtOotYSlxf8N3ClyGjt6NC" +
+            "MEAwHQYDVR0OBBYEFMxHPqoV3ZI2JS+wAd/PbkXBXd8qMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49" +
+            "BAMDA2gAMGUCMECx3XLh2pJo9kD1/Cukj9yf5UmlMuxgVfxVVvUlYGGz3v4sOgSRDHvy6mzE2WsaVAIxAI4DpnVIJ0Yr/nI9+bEx" +
+            "uc8llPov4BAdnS880mtVlyBYc/s7+vZpK+XBTnzXXeZgOw==",
+        ),
+        Root(
+            name = "Sectigo Public Time Stamping Root R46",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "4941B001B8A97E961B7817C9D9E960EC4B056BFC915A8C1AABF6EF6B3AC046A5",
+            b64 = "MIIFejCCA2KgAwIBAgIQeD0FbPqDLn5p+FYidp8CuTANBgkqhkiG9w0BAQwFADBXMQswCQYDVQQGEwJHQjEYMBYGA1UEChMPU2Vj" +
+            "dGlnbyBMaW1pdGVkMS4wLAYDVQQDEyVTZWN0aWdvIFB1YmxpYyBUaW1lIFN0YW1waW5nIFJvb3QgUjQ2MB4XDTIxMDMyMjAwMDAw" +
+            "MFoXDTQ2MDMyMTIzNTk1OVowVzELMAkGA1UEBhMCR0IxGDAWBgNVBAoTD1NlY3RpZ28gTGltaXRlZDEuMCwGA1UEAxMlU2VjdGln" +
+            "byBQdWJsaWMgVGltZSBTdGFtcGluZyBSb290IFI0NjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAIid2LlFZ50d3ei5" +
+            "JoGaVFTAfEkFm8xaFQ/ZlBBEtEFAgXcUmanU5HYsyAhTXiDQkiUvpVdYqZ1uYoZEMgtHES1l1Cc6HaqZzEbOOp6YiTx63ywTon43" +
+            "4aXVydmhx7Dx4IBrAou7hNGsKioIBPy5GMN7KmgYmuu4f92sKKjbxqohUSfjk1mJlAjthgF7Hjx4vvyVDQGsd5KarLW5d73E3Tho" +
+            "bSkob2SL48LpUR/O627pDchxll+bTSv1gASn/hp6IuHJorEu6EopoB1CNFp/+HpTXeNARXUmdRMKbnXWflq+/g36NJXB35ZvxQw6" +
+            "zid61qmrlD/IbKJA6COw/8lFSPQwBP1ityZdwuCysCKZ9ZjczMqbUcLFyq6KdOpuzVDR3ZUwxDKL1wCAxgL2Mpz7eZbrb/JWXiOc" +
+            "NzDpQsmwGQ6Stw8tTCqPumhLRPb7YkzM8/6NnWH3T9ClmcGSF22LEyJYNWCHrQqYubNeKolzqUbCqhSqmr/UdUeb49zYHr7ALL8b" +
+            "AJyPDmubNqMtuaobKASBqP84uhqcRY/pjnYd+V5/dcu9ieERjiRKKsxCG1t6tG9oj7liwPddXEcYGOUiWLm742st50jGwTzxbMpe" +
+            "pmOP1mLnJskvZaN5e45NuzAHteORlsSuDt5t4BBRCJL+5EZnnw0ezntk9R8QJyAkL6/bAgMBAAGjQjBAMB0GA1UdDgQWBBT2d2rd" +
+            "P/0BE/8WoWyCAi/QCj0UJTAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQwFAAOCAgEACv68sZqZ" +
+            "vmHk7JoU7AfTEZ7bX45u40OrLX/6vzHQAwDg1TB00bWbiwj+7+we60BP8AMsw1h5NCXWxeyvrEVC54MirwVrcF6SFGjRwRoelRui" +
+            "aZ5FDO4oWhaePjZx3/jkQ7j653CA5WscYqlneLXBEZiYo6rRNqnsZHZTQ606mlkNpsy3TFMADv5whZmilVEZ83OvydfH2DNL3FTk" +
+            "pZG7+lHS1DFHMSUB5UtSSeSRg2UWTXwU5oObGjFk/35fC/dlF+nJIXdqsw0TZSS86bi5GRCJVjqjnkpZ0Jut7ucEv4PNOIU8ijkM" +
+            "Rj17QPjHMtdy+WxBDDSdas/UFTVB/GF+FofnOD3iZ4tXxFjPU3EWRcMWx8fcGyzlBfcjeoPNbNC7wfyV9Qkzfk2Bd48jGxG7OThY" +
+            "Wolc56vmBHqDEfguDwYc9AeWirMVRDi+WYlsktzAEObiFoPqs+LWU5q7+Q1+nEcstNuDIedeBRcHmtjL2hV3luuEWwDSnRhSjhPL" +
+            "PXzqpJ1rG3r4yqm1NjKg5A5QO9AzveHqRQldluTSKuu96oPEPusL2oF+4MxkJ+SQMGFWTw/PNCblUN8GXeL5+mR20diP5LiJMq8U" +
+            "3IpM/0Q7OFFQ+lXuYFIuDvUprWBPsp5La2WhL2+iLVVXItSl7up5yQqXXftzTXTX48FRiJ6PA9o=",
+        ),
+        Root(
+            name = "USERTrust ECC Certification Authority",
+            owner = "Sectigo（USERTrust）",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "4FF460D54B9C86DABFBCFC5712E0400D2BED3FBC4D4FBDAA86E06ADCD2A9AD7A",
+            b64 = "MIICjzCCAhWgAwIBAgIQXIuZxVqUxdJxVt7NiYDMJjAKBggqhkjOPQQDAzCBiDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCk5ldyBK" +
+            "ZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5ldHdvcmsxLjAsBgNVBAMTJVVTRVJU" +
+            "cnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwHhcNMTAwMjAxMDAwMDAwWhcNMzgwMTE4MjM1OTU5WjCBiDELMAkGA1UE" +
+            "BhMCVVMxEzARBgNVBAgTCk5ldyBKZXJzZXkxFDASBgNVBAcTC0plcnNleSBDaXR5MR4wHAYDVQQKExVUaGUgVVNFUlRSVVNUIE5l" +
+            "dHdvcmsxLjAsBgNVBAMTJVVTRVJUcnVzdCBFQ0MgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkwdjAQBgcqhkjOPQIBBgUrgQQAIgNi" +
+            "AAQarFRaqfloI+d61SRvU8Za2EurxtW20eZzca7dnNYMYf3boIkDuAUU7FfO7l0/4iGzzvfUinngo4N+LZfQYcTxmdwlkWOrfzCj" +
+            "tHDix6EznPO/LlxTsV+zfTJ/ijTjeXmjQjBAMB0GA1UdDgQWBBQ64QmG1M8ZwpZ2dEl23OA1xmNjmjAOBgNVHQ8BAf8EBAMCAQYw" +
+            "DwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNoADBlAjA2Z6EWCNzklwBBHU6+4WMBzzuqQhFkoJ2UOQIReVx7Hfpkue4WQrO/" +
+            "isIJxOzksU0CMQDpKmFHjFJKS04YcPbWRNZu9YO6bVi9JNlWSOrvxKJGgYhqOkbRqZtNyWHa0V1Xahg=",
+        ),
+        Root(
+            name = "Swiss Government Root CA I",
+            owner = "Swiss BIT, Swiss Federal Office of Information Technology, Systems and Telecommunication (FOITT)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "6EC6614E9A8EFD47D6318FFDFD0BF65B493A141F77C38D0B319BE1BBBC053DD2",
+            b64 = "MIIINDCCBhygAwIBAgIRAP11BI16YIaTaUyqADxl0z0wDQYJKoZIhvcNAQELBQAwgaYxCzAJBgNVBAYTAkNIMTswOQYDVQQKEzJU" +
+            "aGUgRmVkZXJhbCBBdXRob3JpdGllcyBvZiB0aGUgU3dpc3MgQ29uZmVkZXJhdGlvbjERMA8GA1UECxMIU2VydmljZXMxIjAgBgNV" +
+            "BAsTGUNlcnRpZmljYXRpb24gQXV0aG9yaXRpZXMxIzAhBgNVBAMTGlN3aXNzIEdvdmVybm1lbnQgUm9vdCBDQSBJMB4XDTExMDIx" +
+            "NTA5MDAwMFoXDTM1MDIxNTA4NTk1OVowgaYxCzAJBgNVBAYTAkNIMTswOQYDVQQKEzJUaGUgRmVkZXJhbCBBdXRob3JpdGllcyBv" +
+            "ZiB0aGUgU3dpc3MgQ29uZmVkZXJhdGlvbjERMA8GA1UECxMIU2VydmljZXMxIjAgBgNVBAsTGUNlcnRpZmljYXRpb24gQXV0aG9y" +
+            "aXRpZXMxIzAhBgNVBAMTGlN3aXNzIEdvdmVybm1lbnQgUm9vdCBDQSBJMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA" +
+            "yA5y9AEvhnsLwmOwjWjtHz3euYObXKFdug82JxEErQZUILceoObOvvCZaXIZNWRmMY0svY5CCp/GyqmQLNq8hTAD2TKWlvC+oCIN" +
+            "JGzUxn9aTFEkLVRyCHwz6cwox2ZlI2lrlbTrvuOH52PX5PsHrRKS6+fkCkOyqd/HkLwmW5H5o7eHnJS5EI2IxVhcMrwW7A5XT/6n" +
+            "k3iP4MU5uweIYMFUZeuHvp8xl3E8+ovIg2xSluCswO/LaQiVW+Dgu68npMIX8VGfhHZh2CTi/mFtZDVJ6jnEIWK9zOIC/0hrOK9p" +
+            "x7mSLYIRjb0LiYUq6re0ss1L69H6qvDgTAk8Td/2MR2GMKhBiFdwLCdR3s+LTj8C8lClF+BnG3IMQTEfAaKWPjzbAradlOYCTvPw" +
+            "GYKyCCMT65HNUdOqRsJzmJg/usPumvz6za9yCjcTj/mgULPq+z8svPpjVTX00ry4cdKR6+nKylzsUWaonlkFIi+jGttP4EViIzxd" +
+            "VfswlSs0os+ntEvAM8k0UZ3TsyvfxeosLMffRB+2jbn+81zNNy+wbJxKCL3o9db6cOVpMjdcXwvLP+SIAszKs3gvfb9IsyGwH4h5" +
+            "m1qKcdghhCkPSgQxKr0NIUTOdJ0m00kd+Iao5RJ3xcBzDFCDapBrocr40JXZNYbHEaM7FMfLhlhWDfuD9wECAwEAAaOCAlkwggJV" +
+            "MA8GA1UdEwEB/wQFMAMBAf8wgZsGA1UdIASBkzCBkDCBjQYIYIV0AREDAQAwgYAwQwYIKwYBBQUHAgEWN2h0dHA6Ly93d3cucGtp" +
+            "LmFkbWluLmNoL2Nwcy9DUFNfMl8xNl83NTZfMV8xN18zXzFfMC5wZGYwOQYIKwYBBQUHAgIwLRorVGhpcyBpcyB0aGUgU3dpc3Mg" +
+            "R292ZXJubWVudCBSb290IENBIEkgQ1BTLjCBjgYDVR0fBIGGMIGDMIGAoH6gfIZ6bGRhcDovL2FkbWluZGlyLmFkbWluLmNoOjM4" +
+            "OS9jbj1Td2lzcyUyMEdvdmVybm1lbnQlMjBSb290JTIwQ0ElMjBJLG91PUNlcnRpZmljYXRpb24lMjBBdXRob3JpdGllcyxvdT1T" +
+            "ZXJ2aWNlcyxvPUFkbWluLGM9Q0gwHQYDVR0OBBYEFLUbg7s7T7LS++UDjtRhXdEajrCiMA4GA1UdDwEB/wQEAwIBBjCB4wYDVR0j" +
+            "BIHbMIHYgBS1G4O7O0+y0vvlA47UYV3RGo6woqGBrKSBqTCBpjELMAkGA1UEBhMCQ0gxOzA5BgNVBAoTMlRoZSBGZWRlcmFsIEF1" +
+            "dGhvcml0aWVzIG9mIHRoZSBTd2lzcyBDb25mZWRlcmF0aW9uMREwDwYDVQQLEwhTZXJ2aWNlczEiMCAGA1UECxMZQ2VydGlmaWNh" +
+            "dGlvbiBBdXRob3JpdGllczEjMCEGA1UEAxMaU3dpc3MgR292ZXJubWVudCBSb290IENBIEmCEQD9dQSNemCGk2lMqgA8ZdM9MA0G" +
+            "CSqGSIb3DQEBCwUAA4ICAQAl2t94sCbcn5nrM5zJRbpcY1KNbgNzqnRIxQ0L0hcMLAvSxiWD1FTNB4FUL2d2Jafp13+WR3ekHZtF" +
+            "//HY9p5HDnSME8TyvtYHKBg8mHXB2+uSiCbmBmSO+dL94pk1gdHYdRe1c+rd6BgilRYZClkqItyGWkNPJWg2qdiTAI9excNhhvDS" +
+            "FAmVUcR+2FLusI2KiHGl1yin9NwGWCVexFUYCJV0fLgB507Y1vZ8IENIDaPg3lTEqF8ASUPTRTuCZW7ui6MBIlaa8c4p5QzEa+3n" +
+            "TvixVYGtcf+E+whX5kfKrYf4Rvj68DWE7bTYiJcid6SPFsg8Z9HhbgSse482zd6lCKwqjfWnHZ/Hw5EhQqOGgbkq2LHpOB1UCJg5" +
+            "ChHKMg4zzfRM6qhKBukYPkHGz6D24CtrII6nIALrMEGBsOjkrqQYiSvfFPASKW14+k1E+7I05a/zjjX3w84sCxi00HmPE78Di2a4" +
+            "tWHUrA79eD0JrbXSLE9WQZmIRAx+Z+Nkn/paKlh3UWmxzSyapzQQBXT6bkVjy4tSrUeRohLIoiYExdAiHgOzspI3VFf9iYN1A20t" +
+            "O7PxpKIQfJyTjaNQhDmLlVlB9gJ2Boq8DpDn2TrrrSZeV1PRb8h14KuRe2uhf/kbUKjc/k0G4RWKpBDrHgbPVEgVlii2Ix8a43yl" +
+            "j/o3Vw==",
+        ),
+        Root(
+            name = "TeliaSonera Root CA v1",
+            owner = "Telia Company",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "DD6936FE21F8F077C123A1A521C12224F72255B73E03A7260693E8A24B0FA389",
+            b64 = "MIIFODCCAyCgAwIBAgIRAJW+FqD3LkbxezmCcvqLzZYwDQYJKoZIhvcNAQEFBQAwNzEUMBIGA1UECgwLVGVsaWFTb25lcmExHzAd" +
+            "BgNVBAMMFlRlbGlhU29uZXJhIFJvb3QgQ0EgdjEwHhcNMDcxMDE4MTIwMDUwWhcNMzIxMDE4MTIwMDUwWjA3MRQwEgYDVQQKDAtU" +
+            "ZWxpYVNvbmVyYTEfMB0GA1UEAwwWVGVsaWFTb25lcmEgUm9vdCBDQSB2MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "AMK+6yfwIaPzaSZVfp3FVRaRXP3vIb9TgHot0pGMYzHw7CTww6XScnwQbfQ3t+XmfHnqjLWCi65ItqwA3GV17CpNX8GH9SBlK4Go" +
+            "Rz6JI5UwFpB/6FcHSOcZrr9FZ7E3GwYq/t75rH2D+1665I+XZ75Ljo1kB1c4VWk0Nj0TSO9P4tNmHqTPGrdeNjPUtAa9GAH9d4RQ" +
+            "AEX1jF3oI7x+/jXh7VB7qTCNGdMJjmhnXb88lxhTuylixcpecsHHltTbLaC0H2kD7OriUPEMPPCs81Mt8Bz17Ww5OXOAFshSsCPN" +
+            "4D7c3TxHoLs1iuKYaIu+5b9y7tL6pe0S7fyYGKkmdtwoSxAgHNN/Fnct7W+A90m7UwW7XWjH1Mh1Fj+JWov3F0fUTPHSiXk+TT2Y" +
+            "qGHeOh7S+F4D4MHJHIzTjU3TlTazN19jY5szFPAtJmtTfImMMsJu7D0hADnJoWjiUIMusDor8zagrC/kb2HCUQk5PotTubtn2txT" +
+            "uXZZNp1D5SDgPTJghSJRt8czu90VL6R4pgd7gUY2BIbdeTXHlSw7sKMXNeVzH7RcWe/a6hBle3rQf5+ztCo3O3CLm1u5K7fsslES" +
+            "l1MpWtTwEhDcTwK7EpIvYtQ/aUN8Ddb8WHUBiJ1YFkveupD/RwGJBmr2X7KQarMCpgKIv7NHfirZ1fpoeDVNAgMBAAGjPzA9MA8G" +
+            "A1UdEwEB/wQFMAMBAf8wCwYDVR0PBAQDAgEGMB0GA1UdDgQWBBTwj1k4ALP1j5qWDNXr+nuqF+gTEjANBgkqhkiG9w0BAQUFAAOC" +
+            "AgEAvuRcYk4k9AwI//DTDGjkk0kiP0Qnb7tt3oNmzqjMDfz1mgbldxSR651Be5kqhOX//CHBXfDkH1e3damhXwIm/9fH907eT/j3" +
+            "HEbAek9ALCI18Bmx0GtnLLCo4MBANzX2hFxc469CeP6nyQ1Q6g2EdvZR74NTxnr/DlZJLo961gzmJ1TjTQpgcmLNkQfWpb/ImWvt" +
+            "xBnmq0wROMVvMeJuScg/doAmAyYp4Db29iBT4xdwNBedY2gea+zDTYa4EzAvXUYNR0PVG6pZDrlcjQZIrXSHX8f8MVRBE+LHIQ6e" +
+            "4B4N4cB7Q4WQxYpYxmUKeFfyxiMPAdkgS94P+5KFdSpcc41teyWRyu5FrgZLAMzTsVlQ2jqIOylDRl6XK1TOU2+NSueW+r9xDkKL" +
+            "fP0ooNBIytrEgUy7onOTJsjrDNYmiLbAJM+7vVvrdX3pCI6GMyx5dwlppYn8s3CQh3aP0yK7Qs69cwsgJirQmz1wHiRszYd2qReW" +
+            "t88NkvuOGKmYSdGe/mBEciG5Ge3C9THxOUiIkCR1VBatzvT4aRRkOfujuLpwQMcnHL/EVlP6Y2XQ8xwOFvVrhlhNGNTkDY6lnVuR" +
+            "3HYkUD/GKvvZt5y11ubQ2egZixVxSK236thZiNSQvxaz2emsWWFUyBy6ysHK4bkgTI86k4mloMy/0/Z1pHWWbVY=",
+        ),
+        Root(
+            name = "Thailand National Root Certification Authority - G1",
+            owner = "Thailand National Root Certificate Authority (Electronic Transactions Development Agency)",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "2A8DA2F8D23E0CD3B5871ECFB0F42276CA73230667F474EEDE71C5EE32CC3EC6",
+            b64 = "MIIGgTCCBGmgAwIBAgIEUVLFjDANBgkqhkiG9w0BAQ0FADCBzzELMAkGA1UEBhMCVEgxSTBHBgNVBAoMQEVsZWN0cm9uaWMgVHJh" +
+            "bnNhY3Rpb25zIERldmVsb3BtZW50IEFnZW5jeSAoUHVibGljIE9yZ2FuaXphdGlvbikxNzA1BgNVBAsMLlRoYWlsYW5kIE5hdGlv" +
+            "bmFsIFJvb3QgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxPDA6BgNVBAMMM1RoYWlsYW5kIE5hdGlvbmFsIFJvb3QgQ2VydGlmaWNh" +
+            "dGlvbiBBdXRob3JpdHkgLSBHMTAeFw0xMzAzMjcwOTQwMjJaFw0zNjAzMjcxMDEwMjJaMIHPMQswCQYDVQQGEwJUSDFJMEcGA1UE" +
+            "CgxARWxlY3Ryb25pYyBUcmFuc2FjdGlvbnMgRGV2ZWxvcG1lbnQgQWdlbmN5IChQdWJsaWMgT3JnYW5pemF0aW9uKTE3MDUGA1UE" +
+            "CwwuVGhhaWxhbmQgTmF0aW9uYWwgUm9vdCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTE8MDoGA1UEAwwzVGhhaWxhbmQgTmF0aW9u" +
+            "YWwgUm9vdCBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eSAtIEcxMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA1rpK5Izx" +
+            "mi6JF8JA84IAMf4TAnplygjYqyKxAppxNEpkWYLlQkbrI/aLWiKxzzbnc20UbfdJlF7v5zRZZ/aoz1ZZI4RV4vsaEcqj+YqrZx6C" +
+            "E9CLOZq/D8IPPNZh2OqbzxUOvtTwzD9znAT0onFzfYCwnTHxBvmwE+WISTD2Fn2IVyk6LKKMkJjOERbOTVEP/MeyzPJmGCGABYit" +
+            "udDFC3gB/k7SCIs28VbPbrpzJgvW96VGamlOlranBlbM5i4xn26L7ZwAVUf0e6Z6tt8BHUgEC6tCwnBKlL38rFHyqz/W62DfCP/1" +
+            "ErKJKnq5RZklfXzvzxXQSCwQ1tS8CCe1hinU49PEKpAS9qIq+YuvFv8C83puz6LLarTgcgv7PoV/4ofgL0Mj+IXJmerWQN6g++fe" +
+            "dv+PgDnrZxITpvvlo/wmgFlj8tIj6x/GSHNRnbezoFuraoj5v/txUdxutnbvsFvyy4gwugbbG0HTVbSttOogIfzUd7Y9W6EMLSUh" +
+            "UiNS1zRTbRYEUmb41erxLFjyO7HxfkO13IK4XuOH4aOkX+eJDryc6Sk6JafYT2qH1JZElxgWh8JxUoXOeoytHme+ui2/oyEnxecw" +
+            "6QaZG7AM475SZZNNYUvyOOaPGPECUpgupg4dBc8m7AEjBzb24BM3qUeIA4dHy92yAR9fZBsEm8UCAwEAAaNjMGEwDwYDVR0TAQH/" +
+            "BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHwYDVR0jBBgwFoAUfyN2t4Mqcfcs0YgP3UxfMgpou38wHQYDVR0OBBYEFH8jdreDKnH3" +
+            "LNGID91MXzIKaLt/MA0GCSqGSIb3DQEBDQUAA4ICAQANZRxaB6merEzJX0/dMWzZ4lMdP5GNWrOMvTSeLk3KWNOvWWJJNnOwYXYR" +
+            "vos2x5Sq+DZpByDfXC8L9o4CFu9SBjjd7TRgqodeF844bVBN5d/lUb4dBJb03Orl2eqO3p90y4KUU4Fs+14s1aF1lk37MFzNYaCe" +
+            "ocyCuVJyC4djYXthNHS2Lt3i4Ye1SRRhFUdKSz53uQjSNk9YZ0KJgHhaEiPtRTvdvyAmVPxbP2ABGEHjZ3UTtyoVcMzLedIU+PPC" +
+            "4CoQ9/lC2NzaCtMBBdtXmMm26wyZCsqMfe87FijA91/hR1HT+AZFB/ALusKcmOzSf01+/Qb8c8LCVRJi0CNE3yLk+HnnpRBOPsmO" +
+            "qoPpNuqrecYFhM2WaHx0rD8y/67JQOyPUL9QqLdO1a02atcnM/rn2C3ZN5iFG6YM6nsQE3AenojF3D6OuQ1V3wHO0El2UdsQYnhB" +
+            "rWljpZUJtxgGb/0EZ9QQD07bO18MY3zrZL1uSwCogfqSMoYwjAm/fVg/ZQ2pN9FF42ZpxGj0YqmoHjfZLplJoLAGjEB/hbH18UxL" +
+            "OKAIzCrZlsDswA08LkVXw++V2rbL7ltlqCsyr8kn+RVTN3VYH0vql6IiXGdW4qDMNcSswzFAuZwDer3JSA7qahXanLx4b8kV52QD" +
+            "2UkTZkVLLfSEmbPqpxKV5ZMu/A==",
+        ),
+        Root(
+            name = "ZETES TSP ROOT CA 001",
+            owner = "Zetes",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "016E1DCD5F78841BBEBBAE9DDEA08C8D7EC54E698E95BB778ECDD1E10D8BF4F9",
+            b64 = "MIIF7DCCA9SgAwIBAgIIAlQaqVDXzh8wDQYJKoZIhvcNAQELBQAwYTELMAkGA1UEBhMCQkUxJDAiBgNVBAoMG1pFVEVTIFNBIChW" +
+            "QVRCRS0wNDA4NDI1NjI2KTEMMAoGA1UEBRMDMDAxMR4wHAYDVQQDDBVaRVRFUyBUU1AgUk9PVCBDQSAwMDEwHhcNMTYwNTIwMTMy" +
+            "MzM4WhcNMzYwNTIwMTMyMzM4WjBhMQswCQYDVQQGEwJCRTEkMCIGA1UECgwbWkVURVMgU0EgKFZBVEJFLTA0MDg0MjU2MjYpMQww" +
+            "CgYDVQQFEwMwMDExHjAcBgNVBAMMFVpFVEVTIFRTUCBST09UIENBIDAwMTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "AKv5lg6EKHY1gSpWPwLt1fFwkQ5AlyJcu5bmmh4OPCuZPC9rNGGrB8xKJhVlngsozAA4D1v2rEZMxVwiiI4j1lYoXnXixE9S4zkE" +
+            "czk55k/386myIOoMJ9LH9HRzO+wkzmFsGpXb3FVCsRaUMfmmfIwU+DiifaC1OZzX1l+VL4VzUb+sqYgcHMkybDgAw6KwK9aPsobK" +
+            "ujk4bGeDykeHV4udVqR/dk1IFRazwJeKwgz6ZLAgQ1aMaofDLSEXPl7gCKoat6qEPVYjK4Mx49MC2RIDBcI5r29TVhcDqyMcevC8" +
+            "CheVlyaB73ggPebf9Nq+jl9f0R79mXz3IW1ctwSWYsPTbh3K9++mRZNT3yZ75NRE121/sFSZfrYn4sO+SmdCBa5qSvLulwZdZ56B" +
+            "vl/oAFpUSrZM2RUuCPZCGiUZPiuBe1rcGfRqJwLdj5QCl+zilge0VubkLu/dLBaFCPoc9wCWfg7koPopgJC2RFN9O3UV71lG4crc" +
+            "2JcbkElDly5YBXK0XTEGfTnhdP8aTE2VMuiNpa/0PHv/IBzL8LD3MvPmEsWh1+SSGelJZ8A8f5u4gt4E8RVX1rAJHjk6a6bi+Kaf" +
+            "IXCZqLBZeRK6SEbm9XLMzNQPs7dMw6PfLpd4yF97KyEitT6yHNlrQ1GL2yBJjtpqEzQLO071a46HG07GSgArAgMBAAGjgacwgaQw" +
+            "HQYDVR0OBBYEFDi8XDBU3OK7IO/ub0GgMW5c/Yt1MA8GA1UdEwEB/wQFMAMBAf8wHwYDVR0jBBgwFoAUOLxcMFTc4rsg7+5vQaAx" +
+            "blz9i3UwQQYDVR0gBDowODA2BgRVHSAAMC4wLAYIKwYBBQUHAgEWIGh0dHBzOi8vcmVwb3NpdG9yeS50c3AuemV0ZXMuY29tMA4G" +
+            "A1UdDwEB/wQEAwIBBjANBgkqhkiG9w0BAQsFAAOCAgEAnDEKHd7KpKBSsJYq4Pws5aF23BQ4ZYazLtWll/NzYK5GaHWHsTPIEo3Z" +
+            "KaPqH71u/ronUIHhcWzOqzCcJppRcXBnH9FEpxQ0zUbdK+MOZb3GTkNoU7K4sT3wZD0Hh7H5hzIEepbkQrswKMeaXStrx1AKIbaG" +
+            "IvYSrS4V8LtTqTDKLesCoZRnYxHYt+bzpwsGH5J5ofKrU3s/o0gITPtEAAP/yQDCbMJKxYbEs+pZXA595T+2qU+S4xEEXbd3xjXD" +
+            "sjFz2nfXP38QGa0AIt1DyOASfkSYOFHSOMi2QxpMUV2cOovIPHm43LAe693l5p5Em+lQPcsRvFX+x3RlZQgNpKp3PRwTtpyfFSr5" +
+            "TuE0gnA2c9I0GYRV8w3AT43/VhaaW2US8DJBnBtYv72vMhB21y0PxTdx5hr9Mea0Nhhs+0v1qjWwbFAt51siSuD6nTkgQcYuACXk" +
+            "kd+bONMFm5z9BGiRuA6CXNg192LcyWAFi5XMP3zrj8b9mp+pbzIBVJpkpN3lxUVe6lXt4UPLreIebgqejjLk4668AdBTBA6dQk02" +
+            "+5nlGukH1FPwRQdCE8drIT6Et/fFiVdTH/jzTlFb/mcyw1n2kRmIDYBs4d5FCkaZej/MPvAgbPi8z653LPtu9QsRdouZzq6OM5F4" +
+            "CqUMJLNTD2sR6bOwHWQBLpQdIdU=",
+        ),
+        Root(
+            name = "GLOBALTRUST",
+            owner = "e-commerce monitoring GmbH",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "5E3571F33F45A7DF1537A68B5FFB9E036AF9D2F5BC4C9717130DC43D7175AAC7",
+            b64 = "MIIH/jCCBeagAwIBAgIBADANBgkqhkiG9w0BAQUFADCB1DELMAkGA1UEBhMCQVQxDzANBgNVBAcTBlZpZW5uYTEQMA4GA1UECBMH" +
+            "QXVzdHJpYTE6MDgGA1UEChMxQVJHRSBEQVRFTiAtIEF1c3RyaWFuIFNvY2lldHkgZm9yIERhdGEgUHJvdGVjdGlvbjEqMCgGA1UE" +
+            "CxMhR0xPQkFMVFJVU1QgQ2VydGlmaWNhdGlvbiBTZXJ2aWNlMRQwEgYDVQQDEwtHTE9CQUxUUlVTVDEkMCIGCSqGSIb3DQEJARYV" +
+            "aW5mb0BnbG9iYWx0cnVzdC5pbmZvMB4XDTA2MDgwNzE0MTIzNVoXDTM2MDkxODE0MTIzNVowgdQxCzAJBgNVBAYTAkFUMQ8wDQYD" +
+            "VQQHEwZWaWVubmExEDAOBgNVBAgTB0F1c3RyaWExOjA4BgNVBAoTMUFSR0UgREFURU4gLSBBdXN0cmlhbiBTb2NpZXR5IGZvciBE" +
+            "YXRhIFByb3RlY3Rpb24xKjAoBgNVBAsTIUdMT0JBTFRSVVNUIENlcnRpZmljYXRpb24gU2VydmljZTEUMBIGA1UEAxMLR0xPQkFM" +
+            "VFJVU1QxJDAiBgkqhkiG9w0BCQEWFWluZm9AZ2xvYmFsdHJ1c3QuaW5mbzCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIB" +
+            "ANISR+xfmOgNhhVJxN3snvFszVG2+5VPi8SQPVMzsdMTxUjipb/19AOED5x4cfaSl/FbWXUYPycLUS9caMeh6wDz9pU9acN+wqzE" +
+            "CjZyelum0PcBeyjHKscyYO5ZuNcLJ92zRQUre2Snc1zokwKXaOz8hNue1NWBR8acwKyXyxnqh6UKo7h1JOdQJw2rFvlWXbGBARZ9" +
+            "8+nhJPMIIbm6rF2ex0h5f2rK3zl3BG0bbjrNf85cSKwSPFnyas+ASOH2AGd4IOD9tWR7F5ez5SfdRWubYZkGvvLnnqRtiztrDIHu" +
+            "tG+hvhoSQUuerQ75RrRa0QMAlBbAwPOs+3y8lsAp2PkzFomjDh2V2QPUIQzdVghJZciNqyEfVLuZvPFEW3sAGP0qGVjSBcnZKTYl" +
+            "/nfua1lUTwgUopkJRVetB94i/IccoO+ged0KfcB/NegMZk3jtWoWWXFb85CwUl6RAseoucIEb55PtAAt7AjsrkBu8CknIjm2zaCG" +
+            "ELoLNex7Wg22ecP6x63B++vtK4QN6t7565pZM2zBKxKMuD7FNiM4GtZ3k5DWd3VqWBkXoRWObnYOo3PhXJVJ28EPlBTF1WIbmas4" +
+            "1Wdu0qkZ4Vo6h2pIP5GW48bFJ2tXdDGY9j5xce1+3rBNLPPuj9t7aNcQRCmt7KtQWVKabGpyFE0WFFH3134fAgMBAAGjggHXMIIB" +
+            "0zAdBgNVHQ4EFgQUwAHV4HgfL3Q64+vAIVKmBO4my6QwggEBBgNVHSMEgfkwgfaAFMAB1eB4Hy90OuPrwCFSpgTuJsukoYHapIHX" +
+            "MIHUMQswCQYDVQQGEwJBVDEPMA0GA1UEBxMGVmllbm5hMRAwDgYDVQQIEwdBdXN0cmlhMTowOAYDVQQKEzFBUkdFIERBVEVOIC0g" +
+            "QXVzdHJpYW4gU29jaWV0eSBmb3IgRGF0YSBQcm90ZWN0aW9uMSowKAYDVQQLEyFHTE9CQUxUUlVTVCBDZXJ0aWZpY2F0aW9uIFNl" +
+            "cnZpY2UxFDASBgNVBAMTC0dMT0JBTFRSVVNUMSQwIgYJKoZIhvcNAQkBFhVpbmZvQGdsb2JhbHRydXN0LmluZm+CAQAwDwYDVR0T" +
+            "AQH/BAUwAwEB/zALBgNVHQ8EBAMCAcYwEQYDVR0gBAowCDAGBgRVHSAAMD0GA1UdEQQ2MDSBFWluZm9AZ2xvYmFsdHJ1c3QuaW5m" +
+            "b4YbaHR0cDovL3d3dy5nbG9iYWx0cnVzdC5pbmZvMD0GA1UdEgQ2MDSBFWluZm9AZ2xvYmFsdHJ1c3QuaW5mb4YbaHR0cDovL3d3" +
+            "dy5nbG9iYWx0cnVzdC5pbmZvMA0GCSqGSIb3DQEBBQUAA4ICAQAVO4iDXg7ePvA+XdwtoUr6KKXWB6UkSM6eeeh5mlwkjlhyFEGF" +
+            "x0XuPChpOEmuIo27jAVtrmW7h7l+djsoY2rWbzMwiH5VBbq5FQOYHWLSzsAPbhyaNO7krx9i0ey0ec/PaZKKWP3Bx3YLXM1SNEhr" +
+            "5Qt/yTIS35gKFtkzVhaP30M/170/xR7FrSGshyya5BwfhQOsi8e3M2JJwfiqK05dhz52Uq5ZfjHhfLpSi1iQ14BGCzQ23u8RyVwi" +
+            "RsI8p39iBG/fPkiO6gs+CKwYGlLW8fbUYi8DuZrWPFN/VSbGNSshdLCJkFTkAYhcnIUqmmVeS1fygBzsZzSaRtwCdv5yN3IJsfAj" +
+            "j1izAn3ueA65PXMSLVWfF2Ovrtiuc7bHUGqFwdt9+5RZcMbDB2xWxbAH/E59kx25J8CwldXnfAW89w8Ks/RuFVdJG7UUAKQwK1r0" +
+            "Vli/djSiPf4BJvDduG3wpOe8IPZRCPbjN4lXNvb3L/7NuGS96tem0P94737hHB5Ufg80GYEQc9LjeAYXttJR+zV4dtp3gzdBPi1G" +
+            "qH6G3lb0ypCetK2wHkUYPDSIAofo8DaR6/LntdIEuS64XY0dmi4LFhnNdqSr+9Hio6LchH176lDq9bIEO4lSOrLDGU+5JrG8vCyy" +
+            "4YGms2G19EVgLyx1xcgtiEsmu3DuO38BLQ==",
+        ),
+        Root(
+            name = "GLOBALTRUST 2015",
+            owner = "e-commerce monitoring GmbH",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "416B1F9E84E74C1D19B23D8D7191C6AD81246E641601F599132729F507BEB3CC",
+            b64 = "MIIGDDCCA/SgAwIBAgIBADANBgkqhkiG9w0BAQsFADCBlzELMAkGA1UEBhMCQVQxDTALBgNVBAgTBFdpZW4xDTALBgNVBAcTBFdp" +
+            "ZW4xIzAhBgNVBAoTGmUtY29tbWVyY2UgbW9uaXRvcmluZyBHbWJIMSowKAYDVQQLEyFHTE9CQUxUUlVTVCBDZXJ0aWZpY2F0aW9u" +
+            "IFNlcnZpY2UxGTAXBgNVBAMTEEdMT0JBTFRSVVNUIDIwMTUwHhcNMTUwNjExMDAwMDAwWhcNNDAwNjEwMDAwMDAwWjCBlzELMAkG" +
+            "A1UEBhMCQVQxDTALBgNVBAgTBFdpZW4xDTALBgNVBAcTBFdpZW4xIzAhBgNVBAoTGmUtY29tbWVyY2UgbW9uaXRvcmluZyBHbWJI" +
+            "MSowKAYDVQQLEyFHTE9CQUxUUlVTVCBDZXJ0aWZpY2F0aW9uIFNlcnZpY2UxGTAXBgNVBAMTEEdMT0JBTFRSVVNUIDIwMTUwggIg" +
+            "MA0GCSqGSIb3DQEBAQUAA4ICDQAwggIIAoICAQDUppeo8vSQEUOttIJGQfEvkW9jos0NINy9DDiKZUoKKzqodKl3oYuO8i+B94QY" +
+            "za3rYraSfeBB5U5UODeC78vg7c+7ysyjS/db/rh8pwhty0PETCIUZuOdA7l3IatEayFHI8gg+irLkXYddWz4m+kPJulDL5ogBWgY" +
+            "x46ZhS1BB6ZkjljhjZWApE1f9QLYgXnb1effoiL9FKdnFuzZWEzKqd3qGo6pCGRPUSG2cqJO/1BxvTtl5L1/UxGu3xA5e132R3AX" +
+            "90ORA3phJV8s/PiJETzsOVQWScQhmnHgeYt2HXY9B1m4B7GM3MfNTuH7rUNNP0DvIWIvMUROacdvIsurVEvowvoRaKzIbg7ebMUn" +
+            "lglRAk0Btle/MijVCUOW98SItflU/ho6arcstSRk+0p4csP82U/ITiO5KdgNoUhBkwJtvxKFm8bFYC3wkfyZ/SCUnnFjq9VJq5Ds" +
+            "hzmFf42FzAvo20s7DvzCdn1G5zkmnt9V3x6E+UE2JmwCWSuO+7zpHyckYgRnhOE/2J0YTpagJe7KKANPAlHP9zU3aaS01tbVHhlD" +
+            "JxYfR1HuSglMEVq2Wz1h6DsQvtZG5vQc/bhFvXz6dVrs4VIjDY4fhpdTkVybmyjWjuVuJ60gjKfBQamXN4ss6m4YBZf2zgNS8b15" +
+            "NJtAxyOSdPNv7aPpWfBVSwIBA6NjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFMuw3T2MPN9i" +
+            "LCtmPJ486RVtcbTXMB8GA1UdIwQYMBaAFMuw3T2MPN9iLCtmPJ486RVtcbTXMA0GCSqGSIb3DQEBCwUAA4ICAQCifVUEZu4WFLyC" +
+            "gYclGTli9P47H+HAcwBxynWp4nPxxQ1Bo12OwS3ZZVvZieLwjsWgfb3LzEZTH1/tILYCKtYT8p19UUpAVXGtnux26kUgjqr6ekOa" +
+            "cGd+E96Y6MuN3R+sNNKhte3+uOcWz/jRODCNNInSzn2B0h7/URhTNpPcCcsIFrgI11owkIoK+S+1z8TNVHIqxr0B51gLbgZAtAnO" +
+            "tI6zmumJkZSselTh++OELIOgT/7r6MH067Ym0zjELa2sRYA0bSE9XYU64nv+VLfd6IVUy6TxqylQeNcktaMvnq8RZq4YuP1dKM9A" +
+            "11XgLOtSMWhDZgWXkrvF8SEs/RJkMZlDb4udS2D+FF5SsyOo4Zh67hTJoeLMP3YhYv1rDdm0SpXmblt6JMPTxtYfous3a06j32Lr" +
+            "6w5KCL/rGIj7RxqtwlHD1Xz3HyuzyEpQDmlYIGIBSlvKY5YmIq726ZxArGcDnZ1pFcLA+F2nJLEnPL8F4quiysmwLX6jwTEgRiFl" +
+            "kt3K3t+TG7xtL1+pFqRXhyxymlqCZ9FE4j0JCoGMHhD9xjRo7P93YXZ/Jvfb/BJGEqrA0fh5haICzIuqpK1sFMC9/GiuRH0i+QpF" +
+            "XewE5vrjpMXm+bIZw9mMqJN7OoppO1ITPB0zAk6WQJ+5lf2TFzPByQv2/b1pEPWtKfvj2g==",
+        ),
+        Root(
+            name = "GLOBALTRUST 2020",
+            owner = "e-commerce monitoring GmbH",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "9A296A5182D1D451A2E37F439B74DAAFA267523329F90F9A0D2007C334E23C9A",
+            b64 = "MIIFgjCCA2qgAwIBAgILWku9WvtPilv6ZeUwDQYJKoZIhvcNAQELBQAwTTELMAkGA1UEBhMCQVQxIzAhBgNVBAoTGmUtY29tbWVy" +
+            "Y2UgbW9uaXRvcmluZyBHbWJIMRkwFwYDVQQDExBHTE9CQUxUUlVTVCAyMDIwMB4XDTIwMDIxMDAwMDAwMFoXDTQwMDYxMDAwMDAw" +
+            "MFowTTELMAkGA1UEBhMCQVQxIzAhBgNVBAoTGmUtY29tbWVyY2UgbW9uaXRvcmluZyBHbWJIMRkwFwYDVQQDExBHTE9CQUxUUlVT" +
+            "VCAyMDIwMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAri5WrRsc7/aVj6B3GyvTY4+ETUWiD59bRatZe1E0+eyLinjF" +
+            "3WuvvcTfk0Uev5E4C64OFudBc/jbu9G4UeDLgztzOG53ig9ZYybNpyrOVPu44sB8R85gfD+yc/LAGbaKkoc1DZAoouQVBGM+uq/u" +
+            "fF7MpotQsjj3QWPKzv9pj2gOlTblzLmMCcpL3TGQlsjMH/1WljTbjhzqLL6FLmPdqqmV0/0plRPwyJiT2S0WR5ARg6I6IqIoV6Lr" +
+            "/sCMKKCmfecqQjuCgGOlYx8ZzHyyZqjC0203b+J+BlHZRYQfEs4kUmSFC0iAToexIiIwquuuvuAC4EDosEKAA1GqtH6qRNdDYfOi" +
+            "axaJSaSjpCuKAsR49GiKweR6NrFvG5Ybd0mN1MkGco/PU+PcF4UgStyYJ9ORJitHHmkHr96i5OTUawuzXnzUJIBHKWk7buis/UDr" +
+            "2O1xcSvy6Fgd60GXIsUf1DnQJ4+H4xj04KlGDfV0OoIu0G4skaMxXDtG6nsEEFZegB31pWXogvziB4xiRfUg3kZwhqG8k9MedKZs" +
+            "sCz3AwyIDMvUclOGvGBG85hqwvG/Q/lwIHfKN0F5VVJjjVsSn8VoxIidrPIwq7ejMZdnrY8XD2zHc+0klGvIg5rQmjdJBKuxFshs" +
+            "SUktq6HQjJLyQUp5ISXbY9e2nKd+Qmn7OmMCAwEAAaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0O" +
+            "BBYEFNwuH9FhN3nkq9XVsxJxaD1qaJwiMB8GA1UdIwQYMBaAFNwuH9FhN3nkq9XVsxJxaD1qaJwiMA0GCSqGSIb3DQEBCwUAA4IC" +
+            "AQCR8EICaEDuw2jAVC/f7GLDw56KoDEoqoOOpFaWEhCGVrqXctJUMHytGdUdaG/7FELYjQ7ztdGl4wJCXtzoRlgHNQIw4Lx0SsFD" +
+            "Kv/bGtCwr2zD/cuz9X9tAy5ZVp0tLTWMstZDFyySCstd6IwPS3BD0IL/qMy/pJTAvoe9iuOTe8aPmxadJ2W8esVCgmxcB9CpwYhg" +
+            "ROmYhRZf+I/KARDOJcP5YBugxZfD0yyIMaK9MOzQ0MAS8cE54+X1+NZK3TTN+2/BT+MAi1bikvcoskJ3ciNnxz8RFbLEAwW+uxF7" +
+            "Cr+obuf/WEPPm2eggAe2HcqtbepBEX4tdJP7wry+UUTF72glJ4DjyKDUEuzZpTcdN3y0kcra1LGWge9oXHYQSa9+pTeAsRxSvTOB" +
+            "TI/53WXZFM2KJVj04sWDpQmQ1GwUY7VA3+vA/MRYfg0UFodUJ25W5HCEuGwyEn6CMUO+1918oa2u1qsgEu8KwxCMSZY13At1XrFP" +
+            "1U80DhEgB3VDRemjEdqso5nCtnkn4rnvyOL2NSl6dPrFf4IFYqYK6miyeUcGbvJXqBUzxvd4Sj1Ce2t+/vdG6tHrju+IaFvowdlx" +
+            "fv1k7/9nR4hYJS8+hge9+6jlgqispdNpQ80xiEmEU5LAsTkbOYMBMMTyqfrQA71yN2BWHzZ8vTmR9W0Nv3vXkg==",
+        ),
+        Root(
+            name = "emSign ECC Root CA - C3",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "BC4D809B15189D78DB3E1D8CF4F9726A795DA1643CA5F1358E1DDB0EDC0D7EB3",
+            b64 = "MIICKzCCAbGgAwIBAgIKe3G2gla4EnycqDAKBggqhkjOPQQDAzBaMQswCQYDVQQGEwJVUzETMBEGA1UECxMKZW1TaWduIFBLSTEU" +
+            "MBIGA1UEChMLZU11ZGhyYSBJbmMxIDAeBgNVBAMTF2VtU2lnbiBFQ0MgUm9vdCBDQSAtIEMzMB4XDTE4MDIxODE4MzAwMFoXDTQz" +
+            "MDIxODE4MzAwMFowWjELMAkGA1UEBhMCVVMxEzARBgNVBAsTCmVtU2lnbiBQS0kxFDASBgNVBAoTC2VNdWRocmEgSW5jMSAwHgYD" +
+            "VQQDExdlbVNpZ24gRUNDIFJvb3QgQ0EgLSBDMzB2MBAGByqGSM49AgEGBSuBBAAiA2IABP2lYa57JhAd6bciMK4G9IGzsUJxlTm8" +
+            "01Ljr6/58pc1kjZGDoeVjbk5Wum739D+yAdBPLtVb4OjavtisIGJAnB9SMVK4+kiVCJNk7tCDK93nCOmfddhEc5lx/h//vXyqaNC" +
+            "MEAwHQYDVR0OBBYEFPtaSNCAIEDyqOkAB2kZd6fmw/TPMA4GA1UdDwEB/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MAoGCCqGSM49" +
+            "BAMDA2gAMGUCMQC02C8Cif22TGK6Q04ThHK1rt0c3ta13FaPWEBaLd4gTCKDypOofu4SQMfWh0/434UCMBwUZOR8loMRnLDRWmFL" +
+            "pg9J0wD8ofzkpf9/rdcw0Md3f76BB1UwUCAU9Vc4CqgxUQ==",
+        ),
+        Root(
+            name = "emSign ECC Root CA - G3",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "網站、電子郵件、程式碼簽章、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "86A1ECBA089C4A8D3BBE2734C612BA341D813E043CF9E8A862CD5C57A36BBE6B",
+            b64 = "MIICTjCCAdOgAwIBAgIKPPYHqWhwDtqLhDAKBggqhkjOPQQDAzBrMQswCQYDVQQGEwJJTjETMBEGA1UECxMKZW1TaWduIFBLSTEl" +
+            "MCMGA1UEChMcZU11ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4GA1UEAxMXZW1TaWduIEVDQyBSb290IENBIC0gRzMwHhcN" +
+            "MTgwMjE4MTgzMDAwWhcNNDMwMjE4MTgzMDAwWjBrMQswCQYDVQQGEwJJTjETMBEGA1UECxMKZW1TaWduIFBLSTElMCMGA1UEChMc" +
+            "ZU11ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4GA1UEAxMXZW1TaWduIEVDQyBSb290IENBIC0gRzMwdjAQBgcqhkjOPQIB" +
+            "BgUrgQQAIgNiAAQjpQy4LRL1KPOxst3iAhKAnjlfSU2fySU0WXTsuwYc58Byr+iuL+FBVIcUqEqy6HyC5ltqtdyzdc6LBtCGI79G" +
+            "1Y4PPwT01xySfvalY8L1X44uT6EYGQIrMgqCZH0Wk9GjQjBAMB0GA1UdDgQWBBR8XQKEE9TMipuBzhccLikenEhjQjAOBgNVHQ8B" +
+            "Af8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQDAwNpADBmAjEAvvNhzwIQHWSVB7gYboiFBS+DCBeQyh+KTOgNG3qx" +
+            "rdWBCUfvO6wIBHxcmbHtRwfSAjEAnbpV/KlK6O3t5nYBQnvI+GDZjVGLVTv7jHvrZQnD+JbNR6iC8hZVdyR+EhCVBCyj",
+        ),
+        Root(
+            name = "emSign Root CA - C2",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "46CD083B47E80402028DF493960EA19C85FE851950D5165F1C7DA4FAA951E2F8",
+            b64 = "MIIFcjCCA1qgAwIBAgIKLwq3aw3LSq8nWDANBgkqhkiG9w0BAQwFADBWMQswCQYDVQQGEwJVUzETMBEGA1UECxMKZW1TaWduIFBL" +
+            "STEUMBIGA1UEChMLZU11ZGhyYSBJbmMxHDAaBgNVBAMTE2VtU2lnbiBSb290IENBIC0gQzIwHhcNMTgwMjE4MTgzMDAwWhcNNDMw" +
+            "MjE4MTgzMDAwWjBWMQswCQYDVQQGEwJVUzETMBEGA1UECxMKZW1TaWduIFBLSTEUMBIGA1UEChMLZU11ZGhyYSBJbmMxHDAaBgNV" +
+            "BAMTE2VtU2lnbiBSb290IENBIC0gQzIwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCMfX1lA+Tbmh9YInmRgOW97IVx" +
+            "4LUJf2DRZfs837Jrml+py64aVnYgWO4t6C78fgjfS7jX+c4TinIzEquWcI+zi0fd4Sc8NDf7JONp27VWX0qwUYqzLDRCt+s7zpLc" +
+            "fx1ky0zVIJj6L06uPyK3kIr9+YAsrVj+39utm6e2MBQsRNstSI3fCQYAGvoQTQ8fULauTqNWaYAkNYFe6HUHHQPp2u1Ua00odMXi" +
+            "D5oRFxLcDnGAcE1I/9E9mLCdkggXijYUmico7+XwZeFoPhva6eIJ5p03Lt3Du5W3EcHR0cJmmY1pyeA36JaXKWRNM9IRjYMVNCcp" +
+            "4jhB2tIYiZ+LVk8bwQ9/1c23txmv3u97taZlV22NF4ttS1qq3J+MOp0oGULBzpKfRx0qGVqbPukQNGAjOLIN8KDNQNzbR1iAl2d8" +
+            "H+MSoicBo4Aid8TjLWcNv48oCWL53ZrFBMTDjaIA6frG1t4IpbnHadA7qCJJe2qpJN6n2eQKAUn6UiQDHPsSqNBlcUhQ4Y/0Y0mU" +
+            "5rghm2OB9rXQS1Fb1JRCfJMNnJIm5AUB2+2RWzq5Tgz7SbSho8NsZk0UbQnFxciqQ9uoVTAsK14Sk9oG8Q3zfsM08cdPoRb0WlIZ" +
+            "klR6mKD7L8nH/zfGu8PIJv94GGB9RZ9U4A69r3ePmy8MvrzfNxHKtH6svwIDAQABo0IwQDAdBgNVHQ4EFgQUs/eKpNYPiABZ6FEX" +
+            "T9V+7IYigZ0wDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEMBQADggIBADQlpiWM0cv2nZ0H5jVs" +
+            "Bq0x2q62Q0LwqATsCFvyub7gxNCytRuoA8stmPOEu/lg8Igxj4FIjoyhIrWUVxyiLU7No4P+WjEUOwUTxIpkEOtvGUQ9fiOlcGHt" +
+            "IZDNBlZq7WpktXAxeV55RPPsor26p2FNAMRFfZQh0sLXhKgk8iulSSggqx8ezgPye63FaiYEi4c/dzRj3HOCnsZiwZZU02df5YpN" +
+            "FjxSwZvE41cjGpsrpWMfQFI2s53RbeXp47lSAxYE4NzjBFMe+EwFuEveBCJBEAH5rvYu3pi2orsJ424TqWEQV1tCsCkQz+Yq/Oka" +
+            "l7yHAkKDeOXcP7oN4A+TdXc2pdqxuVCnBO0RmWz2JpGSSeJjiTk/OPwRsPNWtwG/KXL04o2ta3jiPpJuICVtWDAc9R3auBEgJl5r" +
+            "ShRmBdszG0LmzsHuZPCFSYC15RBDCOBsa8bDRJ8pBFU2Wi/CVXCACEuavgoveA4Fa5bt38o0PWxsBP+MpocCdVtDMqzQhxy9IohK" +
+            "uXWAGresoIvKDg3xFk6rBOrjfVwJelwi/xAisojHPJVQv9W1zVIoHp+EQg/4MQC21NbIX2RoioB+V3hK439b/w7deU8x2M8cl1OG" +
+            "0nPfbnARl5GPM7vJgi470jto4SeMg6HMAW3Egb56tQcNLwI9U8mZnNvRgUMrkAgL",
+        ),
+        Root(
+            name = "emSign Root CA - G2",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "程式碼簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1AA0C2709E831BD6E3B5129A00BA41F7EEEF020872F1E6504BF0F6C3F24F3AF3",
+            b64 = "MIIFlTCCA32gAwIBAgILAIZNvw/jXtd9jtgwDQYJKoZIhvcNAQEMBQAwZzELMAkGA1UEBhMCSU4xEzARBgNVBAsTCmVtU2lnbiBQ" +
+            "S0kxJTAjBgNVBAoTHGVNdWRocmEgVGVjaG5vbG9naWVzIExpbWl0ZWQxHDAaBgNVBAMTE2VtU2lnbiBSb290IENBIC0gRzIwHhcN" +
+            "MTgwMjE4MTgzMDAwWhcNNDMwMjE4MTgzMDAwWjBnMQswCQYDVQQGEwJJTjETMBEGA1UECxMKZW1TaWduIFBLSTElMCMGA1UEChMc" +
+            "ZU11ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEcMBoGA1UEAxMTZW1TaWduIFJvb3QgQ0EgLSBHMjCCAiIwDQYJKoZIhvcNAQEB" +
+            "BQADggIPADCCAgoCggIBAMNwGIWW2kHfHK+sXTNwxF07K+IVySTuyFM2r1v002wUfcdT+zs5OM5QbMYFFnedXQI6gCFLsjKrcaej" +
+            "48Zt37OyEb3iaPs7CsP4kAyTwzKH9aZe6gXYHrJq40/ZVMNcQVI2PcIp40B/SAN2gUZ+ZaUtIOvVjEx26/ebNaXRIsthlkOG/caB" +
+            "+QRwDw1tl7338Zlv0M2oTBUy4B3e7dGP5pgXH71MjqHPCoNo+xv9f0NTBT+hUDa8h8wUtcGQq9CDeJTpjWcD2bP2AMdVG6oVpMAU" +
+            "eUzocCyglvtFdUMjggxBbw4qhau1HXPG8Ot9hwL7ZMi8tkTzrvUIxxb8G9LF/7kKeCE7tGZaVzDTnXuifl3msR4ErHsQ4P7lVu2A" +
+            "IjIAhrAXoedDidb7pMcf7TABdrYUT1JoG/AiK+J9jO6GTjeADD4LMDSBZhHMuBK/PJ/g0kGBt+/C1L+/HURzQhJkMlRnM6RvXoCt" +
+            "fKopSlns5trZmTi971Wjbn88QXP61lGpBCUPwCjs7rpOYvSUJtI+lcbF+37qkIqOXYkVT3cupDSpw+H89kFtj5GKY+Xny4LxY+3I" +
+            "vDIRiyd6ky1DPj713DI0yqveEpsIr3A0PdwuyUI7CS1jg0NnGFT6Xxyr0xB+VDt83FJYW8v16k2pbaQ4kVxA3aXdX9dZYyVR1S59" +
+            "KM75AgMBAAGjQjBAMB0GA1UdDgQWBBTt7E1FYRgo57MjKBEcTaUnDV7s9DAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB" +
+            "/zANBgkqhkiG9w0BAQwFAAOCAgEACFC/ilQg8KTCVBxFJW/sazomkS0kNYbEIZg4B3obqwsJ7SX98z8ZgfzBpz0nYClwwJjWbFN1" +
+            "R2zY8pCEot6/dgmA8Vbq0GxhwPM5YN/SZquNyRIxO3cUdlAcwf+vSezdVCf9wOzvSAF3q0a5ljvbdbNJNpfScQVp7UUd5sBsZk8j" +
+            "XO1KQ/go/Vf/GDPnrIFmxpAIGE3sgnO8lAv9FzUaAeuv7HWe47xN9J7+bQzF93yHuIXACPTLpQHhg2zMv5C7BAbuDHfbj1Cu294Z" +
+            "832yhSfBcziWGskOvl3es2EcHytbS9c9P+0zMpka7zGC1FHrvLb/FoduH86TeZt0QjZ6pcplNzoaxDnDvzTJ6CC2Eny+qH/APFCu" +
+            "VUv5/wjwF+HPm8Pup2ARj9cEp92+0qcerfHacNq5hMeGZdbA/dzdUR/5z5zXdxAknl8mcfGb0eMNSTXQmmB/i4AecNnr72uYjzla" +
+            "XUGYN7Nrb6XouG0pnh0/BBtWWp0UShIPpWEAqs7RJBj6+1ZUYXZ4ObrCw962DxhN2p19Hxw9LtuUUcLqqTPrFXYvwO4touj7KJnA" +
+            "kaTUfXGdEaFVtFig1EA30WzJY2X1vAQ7hVnniCjgaXAGqjsU6sklNM9nxDx5rFCCCEtj9Kh8UHjGK2QqgP5kwgttjOApQMaCoezM" +
+            "fK4KD7WpOXU=",
+        ),
+        Root(
+            name = "emSign Root TSA CA - G2",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "1997770A5633FB6D0440ABF7D7E87E15D795F094F8C2959DADB00E785866BF48",
+            b64 = "MIIFeDCCA2CgAwIBAgIQBl4OgGWKVy5evb+TpJPjUDANBgkqhkiG9w0BAQwFADBWMQswCQYDVQQGEwJJTjElMCMGA1UECgwcZU11" +
+            "ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4GA1UEAwwXZW1TaWduIFJvb3QgVFNBIENBIC0gRzIwHhcNMjQwMjA4MDgxMTI2" +
+            "WhcNNDkwMjA3MDgxMTI2WjBWMQswCQYDVQQGEwJJTjElMCMGA1UECgwcZU11ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4G" +
+            "A1UEAwwXZW1TaWduIFJvb3QgVFNBIENBIC0gRzIwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCt6+6hYwx283r56KlI" +
+            "giWSqphx632oVsr2LX1x16yFFsud3ymXKSPyOCjFx8E7jVWdVoUI5UOEVgE4EYyqjWc//BLonYQ/oc9epC6f3WtwnaEs3UvzUXFj" +
+            "PBa0jChEsxpwExTqlA0gyKnt5MawNr5XjBoGMlHSxtoVkL0dSXrKt8GjJzcKeLpBC8rqCyBcaOgipaSmDjuiRU2z+LKPzk7e/B3y" +
+            "iPIUohK7t0qNG31AOZHoGltI77gT2goq7iRGDhmXF2eCKvksFPyu8U49lfwrFjos/h9eQmsTMIZ66EkwIiycyXtVHJYSu9LNogiM" +
+            "adTyydim7xAA9o5Ab/WMx5zkLYk3adUczTmpOCwKl5GQK+yCEyQezuGPSM80zvxWy2H/+z8pGF6AAaIFz47sc0YMqPhqkO/CtBwu" +
+            "7zaLrwHFeee/b8sdQfQaDIUYkMXXdSHRu1V/fLwGv0+GDALQsmui/3tVlWJLhxzf4BWkaF+YpyG3mPnsLxba/KFlc9ALSlRk3575" +
+            "3f1NQBG2G/fELDzBq2jK1TZ0H7MuRTBmt+AoFaMIMV4DqJ3uuYLIgnk7qJ4Um6MTttMW69XAAe3iTYPXs/xzuvbP8cLW4m/ox1v8" +
+            "JspVwqcbtCA7aT2iutnP+fGYzIttKIUlQAMHg4VHIU9mHOjcDoDeNRCI+WnsBq45DQIDAQABo0IwQDAdBgNVHQ4EFgQU+iKwGg4P" +
+            "BxMjejj80DcxNojYOCUwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB/wQFMAMBAf8wDQYJKoZIhvcNAQEMBQADggIBAJmjHVAczAzC" +
+            "3CX1tJaOgVRkte5v8MEz7rpbIz4B/o4eRdhp76wWzkelUmRXsQDyBF/lrRGDyki58bTMbiRi4aj+VfFQpoWAVX/KmNabRBuId2Pi" +
+            "TXgB/DqlyeE6rVTFP8oeKQGKnCIiG/Nmc3q7fTyxBl7FquuWUL1jBINh79hA3NmDrRMVdC/w5kkoYiHaIAYaeMeR/NWpd9DSVNjx" +
+            "LCz8D5HLzeAaDSxrlfsZDU8uckH3pqyvPD1jVdGIXuBFSg72yocHYTBP0aUnDfO/2o/HHy+BoUoluMzulgEqP/x/8RSDkfQ4zcFE" +
+            "Atzi+IO6JHcpgxN0Q000rr6Uc2kq4KAjE+QYkcMJhapJlYzrzP5nDoF6OwJ4mf9o2W5WzhBt3dC631eHCLP9t4DafhtcmnErHaoj" +
+            "HB9pOpFDdmeh4fYprSQPCv1ZFV2+8z4zARuDw+LcHoV4UNyKlbNSginSFoQ2AfXma6GD8JLFdedTMXwD8oKYXXfwhtLZKuUtNswv" +
+            "A3lJ4LqFAtze572R+FtcZ3my1yjseLe+1rud5VxYdYYz3eBq1LOuiWKnCl+sIOZGu0o9npW0AMqmtTLSpdfK4x4Oet/bRC63twSZ" +
+            "6WcgI5Ax4eH9tek2vYgWxcHGDABOginSkv2wz22KgxNEo04VnuZhcgC1i74LuRbY5XDTee1h",
+        ),
+        Root(
+            name = "emSign Root TSA CA - G3",
+            owner = "eMudhra Technologies Limited",
+            group = Group.TIMESTAMPING,
+            algorithm = "ECC P-384",
+            purposes = "時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "75D2CE75979CF2A43B172C9F89F733DDA2136031DB4BBF3698B053714C077155",
+            b64 = "MIICKTCCAa+gAwIBAgIQDifwf4ZXCWzP1EfqDiOZ7DAKBggqhkjOPQQDAzBWMQswCQYDVQQGEwJJTjElMCMGA1UECgwcZU11ZGhy" +
+            "YSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4GA1UEAwwXZW1TaWduIFJvb3QgVFNBIENBIC0gRzMwHhcNMjQwMjA4MDgzMDA0WhcN" +
+            "NDkwMjA3MDgzMDA0WjBWMQswCQYDVQQGEwJJTjElMCMGA1UECgwcZU11ZGhyYSBUZWNobm9sb2dpZXMgTGltaXRlZDEgMB4GA1UE" +
+            "AwwXZW1TaWduIFJvb3QgVFNBIENBIC0gRzMwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAATVS8J2I3culPZ2u2/Jx/XI/meaz/MFHr2+" +
+            "V8YbpmAs7NOY73gu0P9MELsIcEWRQKLHEWXBQMFv9c1lo15JB8cQ/HGZnPhYThh8OduKRJR1HdiwkpyJ3GVnhfQ3xSdtzbijQjBA" +
+            "MB0GA1UdDgQWBBRAySGKeEJFuYix7srB9mj1agkztzAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUwAwEB/zAKBggqhkjOPQQD" +
+            "AwNoADBlAjBrYVlkGzFdkMyQ7z6iwVsv9DmFOP6onTslgN3HW/OaeJZDnfb2HsU+gCSVVsWHnAACMQDrMQ6SEOjMHX5mqBBTVraW" +
+            "autmXEQjYDAR/Lq7P0DhatNyJGqgtNVVTAYqXw6Dcr8=",
+        ),
+        Root(
+            name = "TWCA Global Root CA G2",
+            owner = "台灣網路認證 TWCA",
+            group = Group.TIMESTAMPING,
+            algorithm = "RSA 4096",
+            purposes = "電子郵件、文件簽章、時間戳記",
+            source = "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
+            sha256 = "3A0072D49FFC04E996C59AEB75991D3C340F3615D6FD4DCE90AC0B3D88EAD4F4",
+            b64 = "MIIFlTCCA32gAwIBAgIQQAE0jMIAAAAAAAAAAZdY9DANBgkqhkiG9w0BAQwFADBUMQswCQYDVQQGEwJUVzESMBAGA1UEChMJVEFJ" +
+            "V0FOLUNBMRAwDgYDVQQLEwdSb290IENBMR8wHQYDVQQDExZUV0NBIEdsb2JhbCBSb290IENBIEcyMB4XDTIyMTEyMjA2NDIyMVoX" +
+            "DTQ3MTEyMjE1NTk1OVowVDELMAkGA1UEBhMCVFcxEjAQBgNVBAoTCVRBSVdBTi1DQTEQMA4GA1UECxMHUm9vdCBDQTEfMB0GA1UE" +
+            "AxMWVFdDQSBHbG9iYWwgUm9vdCBDQSBHMjCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAKoO1SCSAa2C+QwIkTRrihbQ" +
+            "Rhb/A7jYjeqTNPv/K739bqrcm/KGgVX1iRzEjXVqWHiREx4CE3A9774K5wCPuDHldMUwvv991pnlwkKjzyHWswh/kdVh5qKVEA3v" +
+            "XpcLSTjVIrDXi1lvnzWbf9KRzHp/u6Cf3lUz9kuNCup9CcB53L1E4v4c52QhKM8ESuK0v4Z5KrsOk8mPXqwwOVKQB7nqnCZCFMRn" +
+            "Rv7RGmihPlAZoyYKJymQwva063OaeB7hmPRlDDUhBvgL3mLlTcGzXdm5+mGXKuPqx0RVJJL+Eqc/xHfgLQKBB9X7feYQnjq0qO/s" +
+            "+1DqNc/MfrtCuURsUum/KnIfP96bcOncWsU7u7/wWYWvL8GwFHkFrHWfJfURJwZgIcdtZb6oiZzlrEbf+F1EA41gvfexDcwv70FU" +
+            "L+5rlblOfDTfO/l3nX3NBz0cBjMSgOxynPItgtrVO8TH+QTDZAJ89TVgp7RGKS4b76VYgC56iVE4Njz9oXe4gDDQit6NpzQm7CO7" +
+            "GFUYNkXu7QEGqk2/ZAzKmJcaMQJm+HhoW4jfCajnm/o0bXAcIa0Ii/Khtqx2ar/xgCUAvjweTa65PLaVY71rfkcSkFVFEY3sFx/B" +
+            "vieBk1djaQAmd4vDWeV70Q1E8qjw94WaBffCLnCak4XYlZAxkFSm7AufN0UPAgMBAAGjYzBhMA4GA1UdDwEB/wQEAwIBBjAPBgNV" +
+            "HRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFJKM1DbRW0dTxHENhN1kKvU2ZEDnMB0GA1UdDgQWBBSSjNQ20VtHU8RxDYTdZCr1NmRA" +
+            "5zANBgkqhkiG9w0BAQwFAAOCAgEAJfxL2pC02nXnQTqB0ab+oGrzGHFiaiQIi6l6TclVzs8QKC4EGZYFz10CICo7s1U/Ac1CzbJ3" +
+            "7f9183x325alz4xnBvSkm3L2IUkJmKMyXndaYwnvYkOXAji16jwYUGj8WVvZedTx5FZIE1bY03ELXniUOBFF+gUX9Q51HmJSYUa6" +
+            "LhmthrSID7FQ5kAANBqVnZPgUfnUVUbplTwlhi6X1wExGETsHGDpfWmvMviXQCUkto0aVTzFt/e8BlI7cTBwPnEXfvFmBF5dvIox" +
+            "Q6aSHXtU0qU2i2+N1l7a1MMuHd85VWCCMJ4n/46A3WNMplU12NAzqYBtPl6dzKhngGb6mVcMUsoZdbA4NVUqgcWMHlbXX5DyINja" +
+            "4GZx6bJ4q2e5JG5rNnL8b439f3I5KGdSkQUfV2XSo6cNYfqh59U1RpXJBof2MOwyUamsVsAhTqMUdAU6vOO/bT1OP16lpG0pv4RR" +
+            "dVOOhhr1UXAqDRxOQOH9o+OlK2eQksdsroW/OpsXFcqcKpPUTTkNvCAIo42IbAkNjK5EIU3JcezYJtcXni0RGDyjIn24J1S/aMg7" +
+            "QsyPXk7n3MLF+mpED41WiHrfiYRsoLM+PfFlAAmI6irrQM6zXawyF67Bm+nQwfVJlN2nznxaB+uuIJwXMJJpk3Lzmltxm/5q33ow" +
+            "aY6zLtsPLN0=",
+        ),
         )
     }
 
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
+    val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
 }

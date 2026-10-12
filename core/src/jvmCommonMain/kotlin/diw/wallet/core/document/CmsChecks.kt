@@ -11,6 +11,7 @@ import org.bouncycastle.asn1.ess.SigningCertificateV2
 import org.bouncycastle.asn1.pkcs.PKCSObjectIdentifiers
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 import org.bouncycastle.cert.X509CertificateHolder
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cms.CMSProcessableByteArray
 import org.bouncycastle.cms.CMSSignedData
 import org.bouncycastle.cms.SignerInformation
@@ -47,9 +48,10 @@ internal class CmsChecks(private val pki: PkiSupport) {
         extraOcsps: List<ByteArray> = emptyList(),
         extraCrls: List<ByteArray> = emptyList(),
         claimedTimeOverride: Long? = null,
+        fallbackClaimed: Long? = null,
     ): List<SignatureInfo> {
         val sd = try {
-            if (content != null) CMSSignedData(CMSProcessableByteArray(content), cms) else CMSSignedData(cms)
+            signedData(cms, content)
         } catch (e: Exception) {
             return listOf(failed(format, label, "無法解析 CMS 簽章：" + (e.message ?: e.javaClass.simpleName)))
         }
@@ -61,7 +63,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val detachedMissing = content == null && sd.signedContent == null
         return signers.mapIndexed { i, si ->
             check(si, certs, format, if (signers.size > 1) "$label（簽署者 ${i + 1}）" else label, now, detachedMissing,
-                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride)
+                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed)
         }
     }
 
@@ -75,6 +77,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         ocsps: List<ByteArray>,
         crls: List<ByteArray>,
         claimedTimeOverride: Long?,
+        fallbackClaimed: Long?,
     ): SignatureInfo {
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
@@ -85,7 +88,10 @@ internal class CmsChecks(private val pki: PkiSupport) {
             signer == null -> { problems.add("簽章檔沒有附上簽署者憑證"); Check.NOT_CHECKED }
             detachedMissing -> { notes.add("分離式簽章：需要原始內容檔才能檢查內容是否被修改"); Check.NOT_CHECKED }
             else -> try {
-                if (si.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(signer))) Check.PASS
+                // Verified with the bare key: BouncyCastle would also reject a certificate not valid at the claimed
+                // signingTime, which signers set wrongly (an e-sign service writes 2010); validity is checked below.
+                val key = JcaX509CertificateConverter().setProvider(Bc.provider).getCertificate(signer).publicKey
+                if (si.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(key))) Check.PASS
                 else { problems.add("簽章值不符"); Check.FAIL }
             } catch (e: org.bouncycastle.cms.CMSSignerDigestMismatchException) {
                 problems.add("內容摘要不符：文件在簽署後被修改"); Check.FAIL
@@ -96,7 +102,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val attrs = si.signedAttributes
         val claimed = claimedTimeOverride ?: attrs?.get(CMSAttributes.signingTime)?.let { a ->
             runCatching { Time.getInstance(a.attrValues.getObjectAt(0)).date.time / 1000 }.getOrNull()
-        }
+        } ?: fallbackClaimed
         // ESS signing certificate attributes bind the signer certificate into the signature (CAdES, PAdES).
         var essBound = false
         if (signer != null && attrs != null) {
@@ -272,6 +278,15 @@ internal class CmsChecks(private val pki: PkiSupport) {
     )
 
     companion object {
+        /**
+         * The SignedData of [cms], read leniently: only its first object counts, so the padding of a PDF /Contents
+         * and stray end-of-contents markers after a BER encoding (some e-sign services write one) are ignored.
+         */
+        fun signedData(cms: ByteArray, content: ByteArray?): CMSSignedData {
+            val ci = ContentInfo.getInstance(Bc.parse(cms))
+            return if (content != null) CMSSignedData(CMSProcessableByteArray(content), ci) else CMSSignedData(ci)
+        }
+
         /** The token inside a TimeStampResp, or the token itself. */
         fun tokenOf(bytes: ByteArray): ByteArray {
             runCatching {

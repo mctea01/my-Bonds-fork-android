@@ -394,7 +394,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                     TierBadge(d)
                     d.anchorName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
-                Text(tierAdvice(d), style = MaterialTheme.typography.bodySmall)
+                Text(signerTrustLine(d), style = MaterialTheme.typography.bodySmall)
             }
             LabelValue("內容完整", checkText(s.integrity), small = true)
             LabelValue("憑證效期", checkText(s.certificateValidity), small = true)

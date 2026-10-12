@@ -164,7 +164,8 @@ class TrustRegistry(
             if (env == TrustEnvironment.SYSTEM) {
                 if (role !in SYSTEM_ROLES) continue
                 val found = runCatching {
-                    PublicRoots.anchorOf(chain, atTime, platform = policy.systemStoreEnabled, mainlandChina = policy.mainlandChinaRootsEnabled)
+                    PublicRoots.anchorOf(chain, atTime, platform = policy.systemStoreEnabled, mainlandChina = policy.mainlandChinaRootsEnabled,
+                        timestamping = role == TrustRole.TSA)
                 }.getOrNull() ?: continue
                 val metadata = trustMetadata(found.label, env, official = false, source = found.source, region = found.region)
                 return AnchorMatch(env, metadata, false, found.certificate)
