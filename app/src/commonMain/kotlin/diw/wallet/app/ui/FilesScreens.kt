@@ -66,6 +66,7 @@ import diw.wallet.app.SignForm
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.StoredFile
 import diw.wallet.app.WalletModel
+import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.CertInfo
 import diw.wallet.core.document.DocumentFormat
@@ -89,8 +90,11 @@ import org.multipaz.util.fromBase64
 import kotlin.time.Instant
 
 /** A site page shown inside the app; downloads come back as [onFile], links for other apps go to [onExternal]. */
+/** A script the source site runs on its pages at [host] only (MyData sign-in values), and what to do when it fills inputs. */
+class PortalAutofill(val host: String, val script: String, val onFilled: (Int) -> Unit)
+
 @Composable
-expect fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit)
+expect fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill? = null)
 
 internal fun localTime(epochSeconds: Long): String {
     val t = Instant.fromEpochSeconds(epochSeconds).toLocalDateTime(TimeZone.currentSystemDefault())
@@ -268,7 +272,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         LabelValue("大小", sizeText(f.size))
         report?.pages?.let { LabelValue("頁數", "$it") }
         LabelValue("保存時間", localTime(f.addedAt))
-        LabelValue("來源", f.origin.title + (f.source?.let { "（$it）" } ?: ""))
+        LabelValue("來源", f.source ?: f.origin.title)
+        if (f.source != null || f.archive != null) LabelValue("取得方式", f.origin.title + (f.archive?.let { "（$it）" } ?: ""))
         LabelValue("SHA-256", f.sha256, small = true)
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
             LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
@@ -671,7 +676,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
         SectionTitle("欄位（由文件內容解析）")
         if (fields == null) Text("正在讀取文件內容", style = MaterialTheme.typography.bodySmall)
         if (fields?.locked == true) {
-            Text(if (tried != null) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼，輸入後才能讀出文件內的欄位（MyData 文件通常是身分證統一編號）。密碼只用於這次讀取，不會保存。",
+            Text(if (tried != null) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼，輸入後才能讀出文件內的欄位（MyData 文件通常是身分證統一編號）。密碼只用於這次讀取，不會保存；在設定保存 MyData 自動填入，或已製作身分證卡時，MyData 文件會自動開啟。",
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text("開啟密碼") }, singleLine = true,
@@ -830,6 +835,14 @@ fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
                 if (!model.platform.openExternal(url)) model.message.value = "這支手機沒有可開啟這個連結的 App（例如行動自然人憑證）"
             },
             onError = { model.message.value = it },
+            autofill = myDataAutofill(model).takeIf { src.myData },
         )
     }
+}
+
+/** The saved MyData ID number and birth date, filled into MyData's own pages (Bonds autofill). */
+private fun myDataAutofill(model: WalletModel): PortalAutofill? {
+    val id = model.settings.myDataIdNumber ?: return null
+    val birth = model.settings.myDataBirthDate ?: return null
+    return PortalAutofill(MyDataProfile.HOST, MyDataProfile.autofillScript(id, birth)) { n -> model.message.value = "已在 MyData 頁面填入 $n 個已保存的欄位" }
 }

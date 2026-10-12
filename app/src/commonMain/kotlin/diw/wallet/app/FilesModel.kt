@@ -68,7 +68,7 @@ data class StoredTimestamp(val token: String, val time: Long, val tsa: String? =
 @Serializable
 enum class FileOrigin(val title: String) {
     IMPORTED("匯入"),
-    DOWNLOADED("從來源網站下載"),
+    DOWNLOADED("App 內下載"),
     EXTRACTED("從壓縮檔解出"),
     SIGNED("本錢包簽署"),
     COMPOSED("本錢包製作"),
@@ -86,7 +86,7 @@ data class StoredFile(
     val sha256: String,
     val addedAt: Long,
     val origin: FileOrigin,
-    /** Where it came from: a source site, the file it was signed or extracted from. */
+    /** Where it came from, short: "MyData・現戶全戶戶籍資料", a source site, the file it was signed from. */
     val source: String? = null,
     val report: DocumentReport? = null,
     val timestamps: List<StoredTimestamp> = emptyList(),
@@ -99,6 +99,8 @@ data class StoredFile(
     val moica: String? = null,
     /** The Bonds national ID card (vc+moica NationalIDCredential) made from this MyData national ID PDF. */
     val nationalId: String? = null,
+    /** The archive (ZIP) the file was unpacked from, by name; the archive itself may be gone. */
+    val archive: String? = null,
 )
 
 /** What the file screen shows of a file's content. */
@@ -188,6 +190,27 @@ object MyDataFiles {
     )
 
     fun recognize(name: String): MyDataItem? = items.firstOrNull { (keys, _) -> keys.any { name.contains(it, ignoreCase = true) } }?.second
+
+    /** Mark of a source known only from a file name. */
+    const val BY_NAME = "（依檔名判斷）"
+
+    /** The short source of a MyData file: "MyData・item", marked when only the file name says it is from MyData. */
+    fun label(item: MyDataItem?, byName: Boolean): String =
+        "MyData" + (item?.title?.takeIf { it != "MyData 個人文件" }?.let { "・$it" } ?: "") + if (byName) BY_NAME else ""
+
+    fun isMyData(source: String?): Boolean = source?.startsWith("MyData") == true
+
+    /**
+     * The source of a file stored before labels were shortened ("MyData（App 內下載：X）；解自 Y.zip（X）"), in the
+     * short form, with the archive it named; null when it is not such a label.
+     */
+    fun legacy(source: String?, name: String): Pair<String, String?>? {
+        if (source == null || !source.startsWith("MyData（")) return null
+        val byName = "依檔名判斷" in source
+        val item = recognize(name) ?: recognize(source.substringAfter("；解自", source))
+        val archive = Regex("解自 (.+?\\.zip)").find(source)?.groupValues?.get(1)
+        return label(item, byName) to archive
+    }
 }
 
 /** Who signs a document. */
@@ -241,8 +264,13 @@ class FilesModel(private val model: WalletModel) {
 
     suspend fun load() {
         val t = model.storage.getTable(metaTable)
-        files.value = t.enumerate().mapNotNull { key ->
+        val loaded = t.enumerate().mapNotNull { key ->
             t.get(key)?.let { runCatching { DiwJson.decodeFromString(StoredFile.serializer(), it.decodeToString()) }.getOrNull() }
+        }
+        // Files stored before source labels were shortened get the short label and their archive name.
+        files.value = loaded.map { f ->
+            val (source, archive) = MyDataFiles.legacy(f.source, f.name) ?: return@map f
+            f.copy(source = source, archive = f.archive ?: archive).also { t.update(it.id, DiwJson.encodeToString(StoredFile.serializer(), it).encodeToByteString()) }
         }.sortedByDescending { it.addedAt }
     }
 
@@ -266,6 +294,7 @@ class FilesModel(private val model: WalletModel) {
         source: String? = null,
         parentId: String? = null,
         contentId: String? = null,
+        archive: String? = null,
     ): StoredFile {
         if (bytes.isEmpty()) throw SigningException("檔案是空的")
         if (bytes.size > MAX_FILE_BYTES) throw SigningException("檔案超過 ${MAX_FILE_BYTES / 1024 / 1024} MB，無法保存")
@@ -284,6 +313,7 @@ class FilesModel(private val model: WalletModel) {
             report = report,
             contentId = contentId,
             parentId = parentId,
+            archive = archive,
         )
         model.storage.getTable(dataTable).insert(f.id, ByteString(bytes))
         save(f)
@@ -320,29 +350,30 @@ class FilesModel(private val model: WalletModel) {
     /**
      * Stores a file that came in (picked, shared by another app, or downloaded from [site]) and carries on with it:
      * a MyData ZIP, whether downloaded here or recognised by its file name, is unpacked at once; the national ID PDF
-     * opens the national ID card screen; anything else opens its detail screen. The recorded source says how the
-     * file was identified: downloaded from MyData in the app, or only named like a MyData file.
+     * opens the national ID card screen; anything else opens its detail screen. The recorded source is short
+     * ("MyData・現戶全戶戶籍資料") and marked when only the file name says the file is from MyData. A MyData ZIP is
+     * removed once its files are stored, as Bonds does.
      */
     private suspend fun receive(picked: PickedFile, origin: FileOrigin, source: String?, site: DocumentSource?) {
         val known = files.value.size
         val item = MyDataFiles.recognize(picked.name)
         val myData = site?.myData == true || item != null
         val label = when {
-            site?.myData == true -> "MyData（App 內下載" + (item?.let { "：${it.title}" } ?: site.takeIf { !it.nationalId && it.id != "mydata" }?.let { "：${it.name}" } ?: "") + "）"
+            site?.myData == true -> MyDataFiles.label(item ?: myDataItemOf(site), byName = false)
             site != null -> site.name
-            item != null -> "MyData（依檔名判斷為「${item.title}」，由${source ?: origin.title}取得，未經 App 內下載確認）"
+            item != null -> MyDataFiles.label(item, byName = true)
             else -> source
         }
         val f = store(picked.name, picked.bytes, origin, label)
         val children = if (myData && f.report?.format == DocumentFormat.ZIP) {
             busy.value = "解出 MyData 壓縮檔"
-            extractNow(f, label).first
+            extractNow(f).first
         } else emptyList()
         val pdfs = children.ifEmpty { listOf(f) }.filter { it.report?.format == DocumentFormat.PDF }
         val nationalId = site?.nationalId == true || item?.nationalId == true || pdfs.any { MyDataFiles.recognize(it.name)?.nationalId == true }
         if (nationalId && pdfs.isNotEmpty()) {
             val pdf = pdfs.firstOrNull { MyDataFiles.recognize(it.name)?.nationalId == true } ?: pdfs.first()
-            model.message.value = "已解出 MyData 檔案，輸入身分證統一編號開啟身分證資料"
+            model.message.value = if (unlock(pdf, data(pdf.id), null) != null) "已解出 MyData 檔案，確認身分證資料" else "已解出 MyData 檔案，輸入身分證統一編號開啟身分證資料"
             model.screen.value = Screen.NationalIdCreate(pdf.id)
             return
         }
@@ -383,6 +414,14 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
+    /**
+     * ID numbers the holder's MyData PDFs open with, as Bonds asks for them: those on the holder's national ID cards
+     * and the one saved for MyData sign-in, when the holder saved it.
+     */
+    private fun knownPasswords(): List<String> =
+        (nationalIdCards().mapNotNull { (_, c) -> runCatching { TaiwanModel.nationalIdClaims(c).toMap()["unifiedNo"] }.getOrNull() } +
+            listOfNotNull(model.settings.myDataIdNumber)).distinct()
+
     /** Open passwords of PDFs entered in this session, by file id; never stored. */
     private val passwords = HashMap<String, String>()
     val previews = MutableStateFlow<Map<String, FilePreview>>(emptyMap())
@@ -411,7 +450,7 @@ class FilesModel(private val model: WalletModel) {
      * this session, or none; null while it stays locked. A password that opens it is kept for this session.
      */
     private fun unlock(f: StoredFile, bytes: ByteArray, password: String?): PdfFile? {
-        val tries = listOfNotNull(password, password?.let { BondsNationalId.normalizePassword(it) }, passwords[f.id], "").distinct()
+        val tries = (listOfNotNull(password, password?.let { BondsNationalId.normalizePassword(it) }, passwords[f.id], "") + knownPasswords()).distinct()
         for (pw in tries) {
             val p = PdfFile(bytes, pw)
             if (!p.passwordRequired) {
@@ -504,28 +543,57 @@ class FilesModel(private val model: WalletModel) {
         save(signature.copy(report = report, contentId = content.id))
     }
 
-    /** Stores every file of a ZIP archive (a MyData download) as its own entry. */
+    /** Stores every file of a ZIP archive as its own entry; a MyData archive is removed afterwards. */
     fun extract(f: StoredFile) = run("解出壓縮檔") {
-        val added = extractNow(f, f.source).second
+        val (stored, added) = extractNow(f)
         model.message.value = "已解出 $added 個檔案"
+        if (file(f.id) == null) {
+            val only = stored.singleOrNull()
+            if (only != null) model.screen.value = Screen.FileDetail(only.id) else model.showTab(HomeTab.FILES)
+        }
     }
 
-    /** The files of the archive [f] as stored (new or already there), and how many were new. */
-    private suspend fun extractNow(f: StoredFile, source: String?): Pair<List<StoredFile>, Int> {
-        val entries = DocumentSigning.unzip(data(f.id))
+    /** The MyData item a source site downloads, by its name; null for the generic sign-in page. */
+    private fun myDataItemOf(site: DocumentSource): MyDataItem? =
+        if (site.nationalId) MyDataFiles.recognize("idPhotoRev") else if (site.id == "mydata") null else MyDataFiles.recognize(site.url) ?: MyDataItem(site.name)
+
+    /**
+     * The files of the archive [f] as stored (new or already there), and how many were new. A file of a MyData
+     * archive is named after its item (MyData's own file names are opaque numbers and may carry the holder's name)
+     * and has the archive's short source; once every file is stored the MyData archive itself is removed, keeping
+     * only its name on the files.
+     */
+    private suspend fun extractNow(f: StoredFile): Pair<List<StoredFile>, Int> {
+        val entries = DocumentSigning.unzip(data(f.id)).filter { it.value.isNotEmpty() }
+        val myData = MyDataFiles.isMyData(f.source) || MyDataFiles.recognize(f.name) != null
+        val byName = f.source?.endsWith(MyDataFiles.BY_NAME) == true
         val stored = ArrayList<StoredFile>()
+        val used = HashMap<String, Int>()
         var added = 0
         for ((path, bytes) in entries) {
-            if (bytes.isEmpty()) continue
             val before = files.value.size
-            val name = path.substringAfterLast('/')
-            // The source names the archive and, for MyData, the item the file is.
-            val item = MyDataFiles.recognize(name) ?: MyDataFiles.recognize(f.name)
-            val label = (source?.let { "$it；" } ?: "") + "解自 ${f.name}" + (item?.let { "（${it.title}）" } ?: "")
-            stored.add(store(name, bytes, FileOrigin.EXTRACTED, label, parentId = f.id))
+            val original = path.substringAfterLast('/')
+            val own = MyDataFiles.recognize(original)
+            val item = own ?: MyDataFiles.recognize(f.name) ?: f.source?.let { MyDataFiles.recognize(it) }
+            val name = if (myData && own == null && item != null) {
+                val ext = original.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" }
+                val n = (used[ext] ?: 0) + 1
+                used[ext] = n
+                item.title + (if (n > 1) "-$n" else "") + ext
+            } else original
+            val label = if (myData) MyDataFiles.label(item, byName) else f.source
+            stored.add(store(name, bytes, FileOrigin.EXTRACTED, label, parentId = if (myData) null else f.id, archive = f.name))
             if (files.value.size > before) added++
         }
+        if (myData && stored.size == entries.size && stored.isNotEmpty()) remove(f)
         return stored to added
+    }
+
+    private suspend fun remove(f: StoredFile) {
+        model.storage.getTable(dataTable).delete(f.id)
+        model.storage.getTable(metaTable).delete(f.id)
+        files.value = files.value.filter { it.id != f.id }
+        previews.value = previews.value - f.id
     }
 
     /** A download from a source site in the app. */
@@ -559,9 +627,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     fun delete(f: StoredFile) = run("刪除檔案") {
-        model.storage.getTable(dataTable).delete(f.id)
-        model.storage.getTable(metaTable).delete(f.id)
-        files.value = files.value.filter { it.id != f.id }
+        remove(f)
         model.showTab(HomeTab.FILES)
     }
 
@@ -770,6 +836,15 @@ class FilesModel(private val model: WalletModel) {
         val fields = BondsNationalId.parse(text) ?: throw SigningException("這份 PDF 不是 MyData 的國民身分證資料（找不到統號、姓名或出生日期）")
         if (fields.unifiedNo == null || fields.name == null) throw SigningException("讀不到身分證統一編號或姓名，無法製作身分證卡")
         nationalIdDraft.value = NationalIdDraft(f.id, fields, BondsNationalId.over18(fields.birthdate, Clock.System.now()))
+    }
+
+    /** Reads the national ID PDF [f] at once when an ID number the wallet knows opens it. */
+    fun readNationalIdIfKnown(f: StoredFile) = model.scope.launch {
+        if (nationalIdDraft.value?.fileId == f.id || busy.value != null) return@launch
+        val bytes = data(f.id)
+        val opened = withContext(Dispatchers.Default) { unlock(f, bytes, null) } ?: return@launch
+        if (!opened.encrypted) return@launch
+        passwords[f.id]?.let { readNationalId(f, it) }
     }
 
     /** Signs the confirmed fields with the citizen certificate card and stores the card with the file. */

@@ -143,6 +143,13 @@ data class WalletSettings(
     val tsaId: String = "digicert",
     /** Time-stamp every file when it is stored (only its SHA-256 is sent). */
     val timestampOnSave: Boolean = false,
+    /**
+     * National ID number the holder saved for MyData (Bonds MyDataAutofillProfile): filled into MyData sign-in pages
+     * and tried on MyData PDFs. Saved only when the holder asks.
+     */
+    val myDataIdNumber: String? = null,
+    /** Birth date (yyyyMMdd) saved with [myDataIdNumber] for MyData sign-in pages. */
+    val myDataBirthDate: String? = null,
 )
 
 /**

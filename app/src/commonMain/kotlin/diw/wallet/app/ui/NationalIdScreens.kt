@@ -106,6 +106,8 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
     var card by remember { mutableStateOf<SignerChoice.Card?>(null) }
     LaunchedEffect(screen.fileId) {
         if (model.files.nationalIdDraft.value?.fileId != screen.fileId) model.files.nationalIdDraft.value = null
+        // An ID number the wallet already knows (a national ID card, the saved MyData details) opens it at once.
+        model.files.readNationalIdIfKnown(f)
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("把 MyData 下載的「國民身分證資料」PDF 做成 Bonds 相容的身分證卡：欄位由你的自然人憑證簽署，查驗方可以只看你選的欄位（例如只看是否年滿 18 歲）。",

@@ -31,6 +31,7 @@ import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.document.sign.TsaServices
+import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
 @Composable
@@ -90,6 +91,8 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
             model.updateSettings { it.copy(timestampOnSave = v) }
         }
+        HorizontalDivider()
+        MyDataProfileSection(model)
         HorizontalDivider()
         SectionTitle("信任")
         ActionRow(WalletIcons.Shield, "信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
@@ -214,4 +217,51 @@ private fun DigitalCredentialsSection(model: WalletModel) {
     }
     OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text("重新向系統註冊") }
     HorizontalDivider()
+}
+
+/**
+ * The MyData details the holder may save (Bonds MyDataAutofillProfile): filled into MyData's own sign-in pages in the
+ * app and tried as the open password of MyData PDFs. Nothing is learned from pages; the holder types and removes them.
+ */
+@Composable
+private fun MyDataProfileSection(model: WalletModel) {
+    val s by model.settingsFlow.collectAsState()
+    var id by remember { mutableStateOf("") }
+    var birth by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    SectionTitle("MyData 自動填入")
+    Text("保存身分證統一編號與出生日期後，App 內開啟 MyData 時自動填入登入欄位，下載的 PDF 也會自動用統一編號開啟。只存在這支裝置，不會送到 MyData 以外的網站；不保存也可以，每次自行輸入。",
+        style = MaterialTheme.typography.bodySmall)
+    val saved = s.myDataIdNumber
+    if (saved != null) {
+        LabelValue("身分證統一編號", saved.take(1) + "*".repeat(6) + saved.takeLast(3))
+        s.myDataBirthDate?.let { LabelValue("出生日期", it.take(4) + "-" + it.substring(4, 6) + "-" + it.substring(6)) }
+        OutlinedButton(onClick = { model.updateSettings { it.copy(myDataIdNumber = null, myDataBirthDate = null) } }) { Text("移除已保存的資料") }
+        return
+    }
+    OutlinedTextField(
+        value = id, onValueChange = { v -> id = v.filter { it.isLetterOrDigit() }.take(10); problem = null },
+        label = { Text("身分證統一編號") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = birth, onValueChange = { v -> birth = v.filter { it.isDigit() }.take(8); problem = null },
+        label = { Text("出生日期（西元 19880101 或民國 0770101）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    OutlinedButton(
+        onClick = {
+            val today = kotlin.time.Clock.System.now().toString().take(10).replace("-", "")
+            val date = MyDataProfile.normalizeBirthDate(birth, today)
+            when {
+                !MyDataProfile.isValidId(id) -> problem = "身分證統一編號不正確"
+                date == null -> problem = "出生日期不正確"
+                else -> {
+                    model.updateSettings { it.copy(myDataIdNumber = MyDataProfile.normalizeId(id), myDataBirthDate = date) }
+                    id = ""
+                    birth = ""
+                }
+            }
+        },
+        enabled = id.isNotBlank() && birth.isNotBlank(),
+    ) { Text("保存") }
 }

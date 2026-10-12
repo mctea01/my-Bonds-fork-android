@@ -66,38 +66,81 @@ object DocumentFields {
         return out
     }
 
+    private const val CJK = "\\u3400-\\u9FFF\\uF900-\\uFAFF"
+
     /**
      * A label right before a full or half width colon: CJK characters (with brackets or a slash, no spaces, so that
-     * the value of an earlier label on the same line is not taken in), or up to four Latin words.
+     * the value of an earlier label on the same line is not taken in) or up to four Latin words (hyphens allowed, as
+     * in E-mail), either optionally followed by a bracketed translation ("邮编(Zip Code)") and a "/English" part
+     * ("打印日期/Date").
      */
-    private val labelRe = Regex("([\\u3400-\\u9FFF\\uF900-\\uFAFF][\\u3400-\\u9FFF\\uF900-\\uFAFF（）()／/、A-Za-z]{0,14}|[A-Za-z]+(?: [A-Za-z]+){0,3})\\s*[：:]")
+    private val labelRe = Regex(
+        "((?:[$CJK][$CJK（）()／/、]{0,14}|(?<![A-Za-z])[A-Za-z][A-Za-z-]*(?: [A-Za-z][A-Za-z-]*){0,3})" +
+            "(?:\\s?[（(][^（()）：:]{1,30}[)）])?(?:/[A-Za-z][A-Za-z ]{0,20})?)\\s*[：:]",
+    )
 
     private val notLabels = setOf("http", "https", "mailto", "ftp", "file", "data", "urn", "did")
 
+    /** A value ends at sentence punctuation or at a wide gap (the next column of the line). */
+    private val valueEnd = Regex("[，。；;]|\\s{4,}")
+
+    private val trailing = Regex("[，,。；;、\\s]+$")
+
+    /** A document number printed on its own line: "NO.202610088168". */
+    private val numberLine = Regex("^(?:NO|No|no)\\.?\\s*([A-Za-z0-9][A-Za-z0-9-]{3,})$")
+
+    private fun labels(line: String): List<MatchResult> = labelRe.findAll(line).filter { m ->
+        val label = m.groupValues[1].trim()
+        label.lowercase() !in notLabels && !(m.range.last + 1 < line.length && line[m.range.last + 1] == '/')
+    }.toList()
+
+    private fun cut(raw: String): String = raw.let { r -> valueEnd.find(r)?.let { r.substring(0, it.range.first) } ?: r }.replace(trailing, "").trim()
+
     /**
      * "label: value" pairs of a text layer, several per line when the line holds several labels; the first value of a
-     * label wins. Values that are empty, longer than [MAX_VALUE] characters or only punctuation are left out.
+     * label wins. A value stops at the next label, at sentence punctuation (so "学生：甲，性别：男，出生于..." gives
+     * two short values rather than the sentence) or at a wide gap; a label ending its line takes the start of the
+     * next line. Values that are empty, longer than [MAX_VALUE] characters or only punctuation are left out.
      */
     fun fromText(text: String): List<DerivedClaim> {
         val out = ArrayList<DerivedClaim>()
-        for (line in text.lines()) {
-            val matches = labelRe.findAll(line).filter { m ->
-                val label = m.groupValues[1].trim()
-                label.lowercase() !in notLabels && !(m.range.last + 1 < line.length && line[m.range.last + 1] == '/')
-            }.toList()
+        val lines = text.lines()
+        lines.forEachIndexed { n, line ->
+            numberLine.matchEntire(line.trim())?.let { m -> out.add(DerivedClaim("documentNumber", m.groupValues[1], "文件編號")) }
+            val matches = labels(line)
             matches.forEachIndexed { i, m ->
                 val end = if (i + 1 < matches.size) matches[i + 1].range.first else line.length
-                val label = m.groupValues[1].trim().replace(Regex("\\s+"), "")
-                val v = line.substring(m.range.last + 1, end).trim()
+                val label = m.groupValues[1].trim().replace(Regex("\\s+(?=[（(])"), "")
+                var v = cut(line.substring(m.range.last + 1, end))
+                if (v.isEmpty() && i == matches.lastIndex && n + 1 < lines.size) {
+                    val next = lines[n + 1]
+                    if (labels(next).firstOrNull()?.range?.first != 0) v = cut(next.substring(0, labels(next).firstOrNull()?.range?.first ?: next.length))
+                }
                 if (label.length >= 2 && v.any { it.isLetterOrDigit() }) value(v)?.let { out.add(DerivedClaim(label, it, label)) }
             }
         }
+        val joined = lines.joinToString("") { it.trim() }
+        for ((name, re) in prose) re.find(joined)?.let { m -> value(m.groupValues[1])?.let { out.add(DerivedClaim(name, it, name)) } }
         return unique(out)
     }
 
-    /** The first line of a text layer that reads like a title: short, with letters and not a "label: value" line. */
-    fun titleFromText(text: String): String? = text.lines().map { it.trim() }.firstOrNull { l ->
-        l.length in 2..40 && l.count { it.isLetter() } >= 2 && !labelRe.containsMatchIn(l)
+    private const val DATE = "(\\d{4}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日|民國\\s*\\d{2,3}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日)"
+
+    /** Facts certificates state in a sentence rather than as "label: value" (学籍证明: "出生于 2007 年 02 月 16 日"). */
+    private val prose = listOf(
+        "出生日期" to Regex("出生(?:于|於)\\s*$DATE"),
+        "入學年月" to Regex("(?:于|於)\\s*(\\d{4}\\s*年\\s*\\d{1,2}\\s*月)\\s*(?:入学|入學)"),
+    )
+
+    private val titleWords = listOf("證明", "证明", "證書", "证书", "謄本", "誊本", "資料", "资料", "通知", "公告", "執照", "执照", "Certificate", "Proof", "Transcript")
+
+    /**
+     * The title of a text layer: the first short line naming a kind of document (證明, 證書, 謄本...), else the first
+     * short line with letters that is not a "label: value" line.
+     */
+    fun titleFromText(text: String): String? {
+        val candidates = text.lines().map { it.trim() }.filter { l -> l.length in 2..40 && l.count { it.isLetter() } >= 2 && !labelRe.containsMatchIn(l) }
+        return candidates.firstOrNull { l -> titleWords.any { l.contains(it, ignoreCase = true) } } ?: candidates.firstOrNull()
     }
 
     private fun value(v: String): String? = v.trim().replace(Regex("\\s+"), " ").takeIf { it.isNotEmpty() && it.length <= MAX_VALUE }

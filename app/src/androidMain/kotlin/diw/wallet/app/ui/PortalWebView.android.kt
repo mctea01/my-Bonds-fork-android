@@ -75,7 +75,7 @@ private val BLOB_HOOK = """
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit) {
+actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill?) {
     val scope = rememberCoroutineScope()
     var view by remember { mutableStateOf<WebView?>(null) }
     var canGoBack by remember { mutableStateOf(false) }
@@ -130,6 +130,11 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
 
                     override fun onPageFinished(v: WebView, u: String?) {
                         v.evaluateJavascript(BLOB_HOOK, null)
+                        // Saved MyData details go only to the exact host over https, never to a lookalike or a frame.
+                        val page = u?.let { Uri.parse(it) }
+                        if (autofill != null && page?.scheme == "https" && page.host.equals(autofill.host, ignoreCase = true)) {
+                            v.evaluateJavascript(autofill.script) { result -> result?.toIntOrNull()?.takeIf { it > 0 }?.let(autofill.onFilled) }
+                        }
                     }
                 }
                 // The default chrome client shows alert, confirm and prompt dialogs, which a bare WebView drops.

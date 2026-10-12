@@ -956,12 +956,13 @@ class WalletModelE2eTest {
         }.toByteArray()
         holder.files.import(PickedFile("戶政國民身分證資料20261012102938.zip", zip), FileOrigin.IMPORTED, "其他 App").join()
         assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
-        val all = holder.files.files.value
-        assertEquals(2, all.size)
-        val pdf = all.single { it.name.endsWith(".pdf") }
+        // The ZIP is removed once its files are stored; the files keep its name.
+        val pdf = holder.files.files.value.single()
+        assertEquals("API.idPhotoRev.pdf", pdf.name)
         assertEquals(Screen.NationalIdCreate(pdf.id), holder.screen.value)
-        assertTrue(pdf.source!!.startsWith("MyData（依檔名判斷為「國民身分證資料」"), pdf.source)
-        assertTrue("解自" in pdf.source!!, pdf.source)
+        assertEquals("MyData・國民身分證資料（依檔名判斷）", pdf.source)
+        assertEquals("戶政國民身分證資料20261012102938.zip", pdf.archive)
+        assertEquals(FileOrigin.EXTRACTED, pdf.origin)
 
         val fields = holder.files.deriveFields(pdf)
         assertFalse(fields.locked)
@@ -969,6 +970,44 @@ class WalletModelE2eTest {
         assertEquals("測試人員", byName["姓名"])
         assertEquals("國民身分證資料", byName[diw.wallet.core.document.derived.DerivedCredentials.CLAIM_TITLE])
         assertTrue(fields.claims.any { it.name == diw.wallet.core.document.derived.DerivedCredentials.CLAIM_SOURCE })
+    }
+
+    /**
+     * A MyData download in the app: the ZIP is unpacked and removed, an opaque file name becomes the item's name,
+     * the source is short, and the PDF opens with the ID number saved for MyData (as Bonds asks for it).
+     */
+    @Test
+    fun myDataDownloadIsNamedAndOpensWithSavedIdNumber() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        holder.updateSettings { it.copy(myDataIdNumber = "A123456789", myDataBirthDate = "19940306") }.join()
+        val encrypted = org.apache.pdfbox.Loader.loadPDF(nationalIdPdf()).use { doc ->
+            val policy = org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy("owner", "A123456789", org.apache.pdfbox.pdmodel.encryption.AccessPermission())
+            policy.encryptionKeyLength = 128
+            policy.isPreferAES = true
+            doc.protect(policy)
+            java.io.ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                z.putNextEntry(java.util.zip.ZipEntry("173811510121058224WM.pdf"))
+                z.write(encrypted)
+                z.closeEntry()
+            }
+        }.toByteArray()
+        val site = DocumentSources.byId("mydata-household")!!
+        holder.files.importDownload(PickedFile("現戶全戶戶籍資料20261012105827.zip", zip), site).join()
+        assertNull(holder.files.error.value, "download: ${holder.files.error.value}")
+        val pdf = holder.files.files.value.single()
+        assertEquals("現戶全戶戶籍資料.pdf", pdf.name)
+        assertEquals("MyData・現戶全戶戶籍資料", pdf.source)
+        assertEquals("現戶全戶戶籍資料20261012105827.zip", pdf.archive)
+        assertEquals(Screen.FileDetail(pdf.id), holder.screen.value)
+        val fields = holder.files.deriveFields(pdf)
+        assertFalse(fields.locked, "the saved ID number opens the PDF")
+        val byName = fields.claims.associate { it.name to it.value }
+        assertEquals("測試人員", byName["姓名"])
+        assertEquals("MyData・現戶全戶戶籍資料", byName[diw.wallet.core.document.derived.DerivedCredentials.CLAIM_SOURCE])
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */
