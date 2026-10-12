@@ -938,6 +938,39 @@ class WalletModelE2eTest {
         assertTrue(r.moica!!.nameChecked)
     }
 
+    /**
+     * A MyData ZIP handed to the wallet (shared from another app or picked) is unpacked at once; the national ID PDF
+     * inside goes to the national ID card screen, every file says it came from MyData by its file name, and the
+     * derive screen reads the PDF's fields once the ID number opens it.
+     */
+    @Test
+    fun myDataZipIsUnpackedOnArrival() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                z.putNextEntry(java.util.zip.ZipEntry("API.idPhotoRev.pdf"))
+                z.write(nationalIdPdf())
+                z.closeEntry()
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("戶政國民身分證資料20261012102938.zip", zip), FileOrigin.IMPORTED, "其他 App").join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        val all = holder.files.files.value
+        assertEquals(2, all.size)
+        val pdf = all.single { it.name.endsWith(".pdf") }
+        assertEquals(Screen.NationalIdCreate(pdf.id), holder.screen.value)
+        assertTrue(pdf.source!!.startsWith("MyData（依檔名判斷為「國民身分證資料」"), pdf.source)
+        assertTrue("解自" in pdf.source!!, pdf.source)
+
+        val fields = holder.files.deriveFields(pdf)
+        assertFalse(fields.locked)
+        val byName = fields.claims.associate { it.name to it.value }
+        assertEquals("測試人員", byName["姓名"])
+        assertEquals("國民身分證資料", byName[diw.wallet.core.document.derived.DerivedCredentials.CLAIM_TITLE])
+        assertTrue(fields.claims.any { it.name == diw.wallet.core.document.derived.DerivedCredentials.CLAIM_SOURCE })
+    }
+
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */
     @Test
     fun userAnchorImportAndRemoval() = runBlocking<Unit> {

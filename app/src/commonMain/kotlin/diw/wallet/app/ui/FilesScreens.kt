@@ -32,6 +32,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.produceState
 import diw.wallet.app.FilesModel
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontFamily
+import diw.wallet.app.FilePreview
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -262,6 +273,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
             LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
         }
+        FilePreviewSection(model, f)
         if (report != null) {
             report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) }
             report.envelope?.let { e ->
@@ -308,6 +320,10 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         ActionRow(WalletIcons.Card, if (derived != null) "重新產生衍生憑證" else "產生衍生憑證", "選擇要放進證件的欄位與證據") {
             model.screen.value = Screen.FileDerive(f.id)
         }
+        if (report?.format == DocumentFormat.PDF) {
+            ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "P4 尚未完成：以零知識證明 PDF 內的機關簽章與指定欄位，不必交出整份文件", enabled = false) {}
+        }
+        ActionRow(WalletIcons.Link, "產生 zkTLS 證明", "P4 尚未完成：以 TLSNotary 證明官方查驗頁回覆的內容（如移民署、學信網查驗）", enabled = false) {}
         if (f.moica != null) ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
         if (f.nationalId != null) {
             SectionTitle("身分證卡")
@@ -557,6 +573,74 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp) } }, enabled = choice != null && busy == null) {
             Text("簽署")
         }
+    }
+}
+
+// ---------------------------------------------------------------- preview
+
+/** The content of [f]: PDF pages (with the password field of an encrypted PDF), a picture, or the text. */
+@Composable
+private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
+    val previews by model.files.previews.collectAsState()
+    LaunchedEffect(f.id, f.sha256) { if (previews[f.id] == null) model.files.preview(f) }
+    val p = previews[f.id]
+    var password by remember(f.id) { mutableStateOf("") }
+    var page by remember(f.id) { mutableStateOf(0) }
+    var showText by remember(f.id) { mutableStateOf(false) }
+    SectionTitle("預覽")
+    when (p) {
+        null, FilePreview.Loading -> Text("正在產生預覽", style = MaterialTheme.typography.bodySmall)
+        is FilePreview.Pages -> {
+            if (p.pages.isNotEmpty()) {
+                val i = page.coerceIn(0, p.pages.lastIndex)
+                PreviewImage(p.pages[i], "第 ${i + 1} 頁")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { page = i - 1 }, enabled = i > 0) { Text("上一頁") }
+                    Text("第 ${i + 1} / ${p.total} 頁", style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text("下一頁") }
+                }
+                if (p.total > p.pages.size) Text("預覽前 ${p.pages.size} 頁；完整內容請匯出後以閱讀器開啟。", style = MaterialTheme.typography.bodySmall)
+            } else {
+                Text("這個平台無法繪製頁面，以下是文件的文字。", style = MaterialTheme.typography.bodySmall)
+            }
+            p.text?.let { t ->
+                TextButton(onClick = { showText = !showText }) { Text(if (showText) "隱藏文字層" else "顯示文字層") }
+                if (showText || p.pages.isEmpty()) SelectableText(t)
+            }
+        }
+        is FilePreview.Picture -> PreviewImage(p.image, f.name)
+        is FilePreview.Text -> {
+            SelectableText(p.text)
+            if (p.truncated) Text("只顯示前 ${FilePreview.TEXT_LIMIT} 字。", style = MaterialTheme.typography.bodySmall)
+        }
+        is FilePreview.NeedsPassword -> {
+            Text(if (p.wrong) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼。MyData 的文件通常是身分證統一編號；密碼只用於這次開啟，不會保存。",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text("開啟密碼") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
+                Button(onClick = { model.files.preview(f, password) }, enabled = password.isNotBlank()) { Text("開啟") }
+            }
+        }
+        is FilePreview.Unavailable -> Text(p.reason, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun PreviewImage(image: ImageBitmap, description: String) {
+    Image(
+        image, contentDescription = description, contentScale = ContentScale.FillWidth,
+        modifier = Modifier.fillMaxWidth().aspectRatio(image.width.toFloat() / image.height.coerceAtLeast(1))
+            .clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+    )
+}
+
+@Composable
+private fun SelectableText(text: String) {
+    SelectionContainer {
+        Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())
+                .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(10.dp))
     }
 }
 

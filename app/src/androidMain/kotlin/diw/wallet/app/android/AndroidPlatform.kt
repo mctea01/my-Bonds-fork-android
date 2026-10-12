@@ -1,6 +1,19 @@
 package diw.wallet.app.android
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
+import androidx.compose.ui.graphics.asAndroidBitmap
+import diw.wallet.app.CardArtSpec
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import androidx.compose.ui.graphics.ImageBitmap
@@ -160,6 +173,72 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         }
     }
 
+    override suspend fun renderCardArt(spec: CardArtSpec): ByteArray? = withContext(Dispatchers.Default) {
+        val w = CardArtSpec.WIDTH
+        val h = CardArtSpec.HEIGHT
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val card = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 36f, 36f, Path.Direction.CW) }
+        canvas.clipPath(card)
+        canvas.drawColor(spec.background)
+        val pad = 32f
+        // The picture (a document page or a portrait) fills the right part of the card and fades into the background.
+        val textRight = spec.picture?.asAndroidBitmap()?.let { pic ->
+            val left = w * 0.6f
+            val area = RectF(left, 0f, w.toFloat(), h.toFloat())
+            val scale = maxOf(area.width() / pic.width, area.height() / pic.height)
+            val sw = area.width() / scale
+            val src = Rect(((pic.width - sw) / 2).toInt().coerceAtLeast(0), 0, ((pic.width + sw) / 2).toInt().coerceAtMost(pic.width),
+                (area.height() / scale).toInt().coerceAtMost(pic.height))
+            canvas.drawBitmap(pic, src, area, Paint(Paint.FILTER_BITMAP_FLAG))
+            val fade = Paint().apply {
+                shader = LinearGradient(left, 0f, left + 96f, 0f, spec.background, spec.background and 0x00FFFFFF, Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(left, 0f, left + 96f, h.toFloat(), fade)
+            left - 8f
+        } ?: (w - pad)
+        var top = pad
+        spec.logo?.asAndroidBitmap()?.let { logo ->
+            val size = 72f
+            val scale = size / maxOf(logo.width, logo.height)
+            val dst = RectF(pad, pad, pad + logo.width * scale, pad + logo.height * scale)
+            canvas.save()
+            canvas.clipPath(Path().apply { addRoundRect(dst, 12f, 12f, Path.Direction.CW) })
+            canvas.drawBitmap(logo, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+            canvas.restore()
+            top = pad + size + 20f
+        }
+        val width = (textRight - pad).toInt().coerceAtLeast(120)
+        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = spec.foreground
+            textSize = 44f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val title = StaticLayout.Builder.obtain(spec.title, 0, spec.title.length, titlePaint, width)
+            .setMaxLines(if (top > pad) 2 else 3).setEllipsize(TextUtils.TruncateAt.END).build()
+        canvas.save()
+        canvas.translate(pad, top)
+        title.draw(canvas)
+        canvas.restore()
+        val issuerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = (spec.foreground and 0x00FFFFFF) or (0xD9 shl 24)
+            textSize = 26f
+        }
+        val issuer = TextUtils.ellipsize(spec.issuer, issuerPaint, width.toFloat(), TextUtils.TruncateAt.END).toString()
+        canvas.drawText(issuer, pad, h - pad - 8f, issuerPaint)
+        spec.badge?.let { badge ->
+            val badgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textSize = 24f; typeface = Typeface.DEFAULT_BOLD }
+            val bw = badgePaint.measureText(badge) + 28f
+            val box = RectF(w - pad - bw, pad, w - pad, pad + 40f)
+            canvas.drawRoundRect(box, 20f, 20f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFC2410C.toInt() })
+            canvas.drawText(badge, box.left + 14f, box.bottom - 12f, badgePaint)
+        }
+        java.io.ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        }
+    }
+
     override fun openExternal(url: String): Boolean = try {
         val intent = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(null)
         else Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -307,6 +386,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     private val dcApiLock = Mutex()
 
     override suspend fun registerDigitalCredentials(model: WalletModel, force: Boolean) = dcApiLock.withLock {
+        // The system picker shows each credential with its card art; credentials without one get it first.
+        runCatching { model.ensureCardArt() }.onFailure { if (it is CancellationException) throw it; Logger.w(TAG, "Card art failed", it) }
         val now = Clock.System.now()
         model.dcApiRegistration.value = try {
             val dc = DigitalCredentials.getDefault()

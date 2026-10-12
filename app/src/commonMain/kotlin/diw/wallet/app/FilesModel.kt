@@ -422,6 +422,19 @@ class FilesModel(private val model: WalletModel) {
         return null
     }
 
+    /** The first page of a PDF (opened with the session password) or the image of [f], for card art; null otherwise. */
+    suspend fun firstPage(f: StoredFile): ImageBitmap? = withContext(Dispatchers.Default) {
+        val bytes = data(f.id)
+        when (f.report?.format) {
+            DocumentFormat.PDF -> unlock(f, bytes, null)?.let { pdf ->
+                if (pdf.encryptionProblem != null) null
+                else model.platform.renderPdf(if (pdf.encrypted) PdfPlain.of(pdf) else bytes, 1, CardArtSpec.WIDTH).firstOrNull()
+            }
+            DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)
+            else -> null
+        }
+    }
+
     /** Claims a derived credential of [f] can carry, and whether the PDF's content stays locked without its password. */
     class DeriveFields(val claims: List<DerivedClaim>, val locked: Boolean)
 

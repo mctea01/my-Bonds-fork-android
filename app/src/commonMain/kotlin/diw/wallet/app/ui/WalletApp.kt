@@ -1,5 +1,12 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -254,7 +261,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
     val doc = docs.firstOrNull { it.identifier == id } ?: return
     val record = doc.issuanceRecord
     val settings by model.settingsFlow.collectAsState()
-    var claims by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var claims by remember { mutableStateOf<List<Triple<String, String, ImageBitmap?>>>(emptyList()) }
     var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
@@ -264,7 +271,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
         count = creds.size
         val first = creds.firstOrNull()
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
-            ?.map { model.claimLabel(it.path, it.label, record) to it.value }.orEmpty()
+            ?.map { Triple(model.claimLabel(it.path, it.label, record), it.value, it.picture?.let { b -> model.platform.decodeImage(b) }) }.orEmpty()
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -272,7 +279,13 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
-        claims.forEach { (k, v) -> LabelValue(k, v) }
+        claims.forEach { (k, v, picture) ->
+            if (picture != null) {
+                Text(k, style = MaterialTheme.typography.bodySmall)
+                Image(picture, contentDescription = k, contentScale = ContentScale.Fit,
+                    modifier = Modifier.widthIn(max = 240.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
+            } else LabelValue(k, v)
+        }
         if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
         record?.let {

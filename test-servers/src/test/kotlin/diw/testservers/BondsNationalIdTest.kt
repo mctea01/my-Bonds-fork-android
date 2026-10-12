@@ -5,6 +5,8 @@ import diw.wallet.core.did.DidResolver
 import diw.wallet.core.document.pdf.PdfComposer
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfTextExtractor
+import diw.wallet.core.document.pdf.PdfPlain
+import diw.wallet.core.document.pdf.PdfPasswordException
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
@@ -179,6 +181,27 @@ class BondsNationalIdTest {
             val e = assertFailsWith<BondsNationalIdException> { BondsNationalId.readPdf(enc, "A000000000") }
             assertTrue(e.message!!.contains("身分證統一編號不正確"))
         }
+    }
+
+    @Test
+    fun decryptedCopyForPreviewOpensWithoutPassword() {
+        val plain = identityPdf(documentLines)
+        for ((length, aes) in listOf(40 to false, 128 to false, 128 to true, 256 to true)) {
+            val enc = encrypt(plain, length, aes)
+            assertFailsWith<PdfPasswordException> { PdfPlain.of(enc) }
+            val copy = PdfPlain.of(enc, id)
+            val reopened = PdfFile(copy)
+            assertFalse(reopened.encrypted, "key length $length, AES $aes")
+            assertFields(BondsNationalId.parse(PdfTextExtractor.extract(reopened)))
+            // Other readers (PDFBox here, PdfRenderer on Android) open the copy without a password.
+            Loader.loadPDF(copy).use { doc ->
+                assertFalse(doc.isEncrypted)
+                assertEquals(1, doc.numberOfPages)
+                assertTrue(org.apache.pdfbox.rendering.PDFRenderer(doc).renderImage(0).width > 0)
+            }
+        }
+        // An unencrypted file is handed back as it is.
+        assertTrue(PdfPlain.of(plain).contentEquals(plain))
     }
 
     @Test

@@ -100,6 +100,9 @@ interface PlatformServices {
      */
     suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = emptyList()
 
+    /** Card art (PNG) for [spec], the image a credential carries for the system credential picker; null where not drawn. */
+    suspend fun renderCardArt(spec: CardArtSpec): ByteArray? = null
+
     /** Bonds BLE link, where the platform can act as a GATT peripheral. */
     val bondsLink: BondsLinkPeripheral? get() = null
 
@@ -145,3 +148,23 @@ data class DcApiRegistration(
     val error: String?,
     val at: Instant,
 )
+
+/**
+ * What a credential's card art shows (Multipaz Document.cardArt, which the Android credential picker lists the
+ * credential with): its name, issuer, colours as ARGB, the issuer logo and a picture (a document page or portrait).
+ * [badge] marks test credentials.
+ */
+class CardArtSpec(
+    val title: String,
+    val issuer: String,
+    val background: Int,
+    val foreground: Int,
+    val logo: ImageBitmap?,
+    val picture: ImageBitmap?,
+    val badge: String?,
+) {
+    companion object {
+        const val WIDTH = 640
+        const val HEIGHT = 404
+    }
+}

@@ -68,6 +68,12 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.isSuccess
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import diw.wallet.app.ui.DocumentCategory
+import diw.wallet.app.ui.categoryOf
+import diw.wallet.app.ui.parseColor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -661,6 +667,57 @@ class WalletModel(val platform: PlatformServices) {
             val image = runCatching { fetchArt(uri) }.getOrNull()?.let { platform.decodeImage(it) } ?: return@launch
             cardArt.value = cardArt.value + (uri to image)
         }
+    }
+
+    /**
+     * Gives every stored credential without card art one: its name, issuer, colours, logo and, for a credential
+     * derived from a document, the document's first page or a portrait claim. The system credential picker (Digital
+     * Credentials API) lists credentials with this image.
+     */
+    suspend fun ensureCardArt() {
+        var changed = false
+        for (doc in documentStore.listDocuments()) {
+            if (doc.cardArt != null) continue
+            val png = try {
+                platform.renderCardArt(cardArtSpec(doc))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            doc.edit { cardArt = ByteString(png) }
+            changed = true
+        }
+        if (changed) documents.value = documentStore.listDocuments()
+    }
+
+    private suspend fun cardArtSpec(doc: Document): CardArtSpec {
+        val record = doc.issuanceRecord
+        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier }
+        val background = parseColor(record?.backgroundColor) ?: when {
+            derived != null -> Color(0xFF334155)
+            else -> when (categoryOf(record)) {
+                DocumentCategory.IDENTITY -> Color(0xFF1E3A8A)
+                DocumentCategory.GOVERNMENT -> Color(0xFF0F766E)
+                DocumentCategory.ORGANIZATION -> Color(0xFF6D28D9)
+                DocumentCategory.OTHER -> Color(0xFF4F46E5)
+            }
+        }
+        val foreground = parseColor(record?.textColor)
+            ?: if (0.299 * background.red + 0.587 * background.green + 0.114 * background.blue > 0.6) Color.Black else Color.White
+        val logo = record?.logoUri?.let { uri -> runCatching { fetchArt(uri) }.getOrNull() }?.let { platform.decodeImage(it) }
+        val picture = derived?.let { files.firstPage(it) } ?: runCatching {
+            doc.getCertifiedCredentials().firstOrNull()?.let { c -> ClaimReader.read(c, documentTypes).firstNotNullOfOrNull { it.picture } }
+        }.getOrNull()?.let { platform.decodeImage(it) }
+        return CardArtSpec(
+            title = doc.displayName ?: "證件",
+            issuer = doc.typeDisplayName ?: record?.anchorName ?: record?.credentialIssuer ?: "",
+            background = background.toArgb(),
+            foreground = foreground.toArgb(),
+            logo = logo,
+            picture = picture,
+            badge = if (record?.isTestEnvironment == true) "測試" else null,
+        )
     }
 
     /** Logo bytes from a data: URI or an https URL, cached in storage so cards render offline. */

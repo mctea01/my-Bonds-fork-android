@@ -30,13 +30,13 @@
 | `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect`、`EudiDialect` |
 | `oid4vp/compat` | 出示方言：`TwdiwPresentationDialect`、`MsVerifiedIdPresentationDialect` |
 | `profile/twdiw` | TWDIW 信任清單、Arbitrum 錨定、入口解析、平台服務（卡片目錄、DWVP-05 離線條碼） |
-| `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證、身分證卡（`BondsNationalId`）；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
+| `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證、身分證卡（`BondsNationalId`）、vc+moica 線上出示（`BondsMoicaOnline`）；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
 | `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
-| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`） |
+| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`）、預覽用的解密副本（`PdfPlain`） |
 | `document/sign` | 簽署（`DocumentSigning`：PAdES、CAdES、ASiC-E、XAdES、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`） |
 | `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
-| `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、證據查驗（`DerivedEvidence`） |
+| `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、由文件內容解析欄位（`DocumentFields`）、證據查驗（`DerivedEvidence`） |
 | `document/official` | 電子公文「函」XML（`OfficialLetter`，DTD 104_2_utf8） |
 | `w3c`、`status`、`trust`、`did`、`holder` | W3C VC、狀態清單、信任錨與 DID 信任、DID 解析、錢包層級持有者金鑰 |
 
@@ -46,9 +46,10 @@
 2. **所有方言常駐啟用，不提供開關。** TWDIW 官方實作與 Bonds 必須完整支援；新增方言時加入 `WalletModel` 的方言清單，不新增設定。
 3. **信任分層。** T1 列於官方信任清單且可完整驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 身分已確認但不是完整驗證的官方清單成員（TWDIW 已列名但鏈上註冊無法確認或角色不符、內建 GPKI 證明身分）；T3 可驗證但非官方（系統憑證庫與內建公開根憑證、Linked Domains、使用者匯入的根憑證與信任的 DID、未列名 DID、所有測試錨）；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
    - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA（自然人憑證）用於查驗方與文件簽章，不用於發行端。
-   - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T3（`SYSTEM_ANCHOR`）。同一個環境還包含兩組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
+   - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T3（`SYSTEM_ANCHOR`）。同一個環境還包含三組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
      - 常用服務憑證鏈的根憑證，跟著系統憑證庫的開關；
      - 中國大陸憑證機構，有獨立開關，預設開啟，加上 `MAINLAND_CHINA_CA` 標籤。內容包括 Mozilla 或 Microsoft 根憑證計畫收錄的 CFCA、GDCA、SHECA、BJCA、iTrusChina、TrustAsia，以及持牌 CA 在官網公布的國密 SM2 根憑證。
+     - 時間戳記憑證機構：CCADB 中 Microsoft 根憑證計畫收錄且 EKU 含 Time Stamping 的根憑證，只用於 `TrustRole.TSA`，跟著系統憑證庫的開關。
      - `BuiltInPublicRoots.kt` 由 `tools/trust-roots/update_roots.py` 產生，不手動修改：CCADB 依 `roots.json` 的機構挑選中國大陸 CA；服務主機實際連線取得憑證鏈的根憑證（連不上時沿用 `services.lock.json`）；SM2 根憑證以 `tools/trust-roots/sm2/*.pem` 與 SHA-256 釘選；GPKI 只檢查並回報（以公鑰比對，GRCA 換金鑰的連結憑證不算新憑證）。內容沒有變更時不改檔案與 `UPDATED` 日期。測試檢查指紋、自簽章（SM2 以 BouncyCastle）與 `UPDATED` 當天的有效期；執行時已過期的內建根憑證不再當成錨點。
    - 國密憑證（SM2 金鑰、SM3withSM2 簽章，OID 1.2.156.10197）由 `Pkix` 改用 BouncyCastle 驗證；provider 以實例使用，不註冊為全域。JOSE 與 COSE 沒有定義 SM2，這些錨點目前只用於憑證鏈驗證。
    - Multipaz 的 TrustManager 只支援 EC 金鑰，RSA 憑證鏈在它丟出例外時改用 PKIX（`trust/SystemTrustStore` 的 `Pkix`）驗證。
@@ -80,15 +81,21 @@
 
 - 文件保存在 `FilesModel`（儲存區表格 `DiwFiles` 中繼資料、`DiwFileData` 內容），以 SHA-256 去重，單檔上限 64 MB。每次開啟重新檢查簽章，信任判定用 `TrustRole.DOCUMENT` 與 `TrustRole.TSA`（GPKI、MOICA、系統憑證庫與使用者匯入的根憑證），AIA 補中繼憑證只抓 http(s)、上限 256 KB。
 - 檢查結果是 `DocumentReport`：每個簽章分完整性、憑證鏈信任、時戳與後續變更（`LaterChanges`），判定 `VALID`、`PARTIAL`、`INVALID`、`UNSIGNED`，信任等級沿用 T1 到 T4。自簽憑證只能證明完整性，判定為 `PARTIAL`。
-- 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存。
+- 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存，開啟文件時依目前的信任錨點重新判定。
+- 簽章檢查的寬鬆處理：CMS 只讀第一個 ASN.1 物件（e簽寶等服務在 BER 後多寫結束標記），完整性以憑證公鑰驗證（BouncyCastle 不再以 signingTime 檢查憑證效期）；CMS 沒有 signingTime 時以 PDF 簽章字典的 `/M` 當作宣稱的簽署時間；PKIX 依序嘗試較短的憑證鏈前段，因為附上的憑證可能含交叉簽署的根憑證。簽章卡的信任說明只描述簽署者（`signerTrustLine`）。
 - 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
 - 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。有 TSA 時為 B-T。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
-- 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位（姓名、文件名稱、簽署者、簽署時間、來源）為 disclosure。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
+- 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位為 disclosure：錢包自己的欄位（姓名、文件標題、檔名、簽署者、簽署時間、來源）與 `DocumentFields` 從文件內容解析的欄位（OpenCerts 資料、公文「函」的發文機關、受文者、日期、字號與主旨、PDF 文字層的「標籤：值」，加密 PDF 以這次輸入的密碼開啟），上限 30 個。持有人自填的欄位要另外展開才能加，名稱前綴 `holderStated:`。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
 - vc+moica 與 Bonds 相容：payload 以 JCS 序列化，卡片簽 `"bonds-tw-credential-v1:" + hex(sha256(payload))`（RS256），issuerJWS 為 BONDS_SELF_ISSUED did:key 的 ES256。Bonds 請求 `k=s` 時列出有自然人憑證證據的衍生憑證；MOICA G3 與 GRCA G3 固定在 `MoicaCa.PRODUCTION`，測試以 `MoicaCa(moica, root)` 注入。
 - Bonds 身分證卡（`BondsNationalId`）：MyData `personal/detail/API.idPhotoRev` 的 PDF 以身分證統一編號為使用者密碼（依 Bonds 先試輸入原樣，再試去空白轉大寫）；`PdfTextExtractor` 依 ToUnicode、Identity-H 與 Uni*-UCS2／UTF16 CMap 擷取文字並依基線分行。欄位依標籤（統號、姓名、出生日期、戶籍地址，全形或半形冒號，同一行可有兩個欄位，地址可跨行）解析；出生日期只接受「民國 083年03月06日」形式，`over18AtIssuance` 以臺北時間在生日當天成立，讀不懂日期時不加這個欄位。內容與 Bonds 相同：W3C VC 2.0、`@context` 第二項是 `https://bonds.tw/ns/credentials#` 的受保護詞彙、type `NationalIDCredential`、issuer 與 credentialSubject.id 都是 BONDS_SELF_ISSUED did:key、全部欄位為 disclosure、`_sd` 排序且沒有 `_sd_alg`。以實體自然人憑證卡簽署（Bonds 用行動自然人憑證），簽署前檢查憑證 CN 等於姓名。卡片存在來源檔案的 `StoredFile.nationalId`，列在證件分頁最上方，回應 Bonds `k=s`；`BondsCard` 的 `document` 與 `credential` 因此可為 null。
-- - asdt 只保存原檔（加密給戶政司，錢包無法解開）；OpenCerts 只匯入、檢查 Merkle 完整性並保存；MyData 的 ZIP 可在文件畫面解出，每個檔案各自保存並記錄來自哪個壓縮檔。
-- 取件入口（`DocumentSources`）：MyData、MyDoc、教育部大專校院電子證書、數位證明管理中心、戶政、地政、移民署入出國日期證明書。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載）；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
-- 停用列（寫明原因）：行動自然人憑證簽章（需要內政部 SP 帳號）、CSC 遠端簽章、公文交換收發（需要機關的公文電子交換帳號與憑證）。
+- Bonds 自發卡線上出示：TWDIW 形式的 OpenID4VP 請求，Presentation Exchange 的 descriptor 格式全為 `vc+moica` 時由 `BondsMoicaOnline` 處理（`PreparedMoica`，不會改用政府皮夾卡片）。卡片來自身分證卡與有自然人憑證證據的衍生憑證；回應是 BONDS_SELF_ISSUED 金鑰簽的 jwt_vp（header `jwk`、sub/iss 為 did:key jwk_jcs、30 天），只帶請求的 disclosure（線上不強制揭露姓名，與 Bonds 相同），`path_nested` 格式 `vc+moica`、路徑 `$.vp.verifiableCredential[i]`。
+- asdt 只保存原檔（加密給戶政司，錢包無法解開）；OpenCerts 只匯入、檢查 Merkle 完整性並保存。
+- MyData：檔名依 Bonds 的項目辨識（`MyDataFiles`）。MyData 的 ZIP 不論是 App 內下載、其他 App 分享或手動選取，收到後立即解出，每個檔案各自保存，來源寫明是 App 內下載，或「依檔名判斷、未經 App 內下載確認」，以及解自哪個壓縮檔；含國民身分證資料時直接進入身分證卡畫面。MyData 網頁以 XHR 取得 blob、點 `<a download>` 後立刻 revoke 並離開頁面，`PortalWebView` 在每頁注入腳本保留 blob 並經 `DiwVault` 介面交給錢包。
+- 取件入口（`DocumentSources`）：MyData 各項目（身分證、戶籍、所得、納稅證明、勞保、勞退、健保、地籍，路徑與 Bonds 相同）、MyDoc、教育部大專校院數位證書驗證、數位證明管理中心（dcmc.csie.ncku.edu.tw）、戶政、地政、移民署入出國日期證明書（ncp.immigration.gov.tw/niaweb/entryExitQuery）。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載），顯示網站的對話框；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
+- 預覽：PDF 以平台繪製前 10 頁（Android `PdfRenderer`，桌面 PDFBox），加密 PDF 先以本次輸入的密碼（MyData 為身分證統一編號）在記憶體產生不加密的副本（`PdfPlain`，不保存、不匯出），並可顯示文字層；圖片、XML、JSON、文字與 .p7m 內含的內容也可預覽。密碼只保存在這次執行的記憶體。
+- 圖片欄位：mdoc 的影像位元組與 JSON 憑證裡的 data: URL 或 base64 圖片（`ClaimPictures`）在證件詳情顯示為圖片。
+- 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。
+- 停用列（寫明原因）：行動自然人憑證簽章（需要內政部 SP 帳號）、CSC 遠端簽章、公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。
 

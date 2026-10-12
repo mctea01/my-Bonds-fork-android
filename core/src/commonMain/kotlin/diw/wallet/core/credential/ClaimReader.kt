@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.Tstr
 import org.multipaz.claim.Claim
 import org.multipaz.claim.JsonClaim
@@ -17,8 +18,45 @@ import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.sdjwt.credential.SdJwtVcCredential
 import org.multipaz.util.fromBase64Url
 
-/** One claim for display: claim path, the credential type's name for it (or the path) and the rendered value. */
-data class DisplayClaim(val label: String, val value: String, val path: List<String> = label.split('.'))
+/**
+ * One claim for display: claim path, the credential type's name for it (or the path) and the rendered value;
+ * [picture] holds the image bytes of a portrait or other picture claim (JPEG, PNG, GIF, WebP).
+ */
+data class DisplayClaim(val label: String, val value: String, val path: List<String> = label.split('.'), val picture: ByteArray? = null) {
+    override fun equals(other: Any?) = other is DisplayClaim && other.label == label && other.value == value && other.path == path &&
+        other.picture.contentEquals(picture)
+
+    override fun hashCode() = (label.hashCode() * 31 + value.hashCode()) * 31 + path.hashCode()
+}
+
+/** Image claims: mdoc byte strings and data: URLs or base64 text of an image in JSON credentials. */
+object ClaimPictures {
+    private val dataUrl = Regex("^data:image/(png|jpe?g|gif|webp);base64,(.+)$", RegexOption.IGNORE_CASE)
+
+    /** True when [b] starts like a JPEG, PNG, GIF or WebP file. */
+    fun isImage(b: ByteArray): Boolean = b.size > 12 && (
+        (b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()) ||
+            (b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() && b[2] == 'N'.code.toByte() && b[3] == 'G'.code.toByte()) ||
+            (b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte()) ||
+            (b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() && b[8] == 'W'.code.toByte() && b[9] == 'E'.code.toByte())
+        )
+
+    /** The image in a text value: a data: URL, or base64 / base64url of at least 100 bytes that decodes to an image. */
+    fun fromText(v: String): ByteArray? {
+        val t = v.trim()
+        dataUrl.matchEntire(t)?.let { m -> return decode(m.groupValues[2])?.takeIf { isImage(it) } }
+        if (t.length < 136 || t.any { it.isWhitespace() }) return null
+        if (!(t.startsWith("/9j/") || t.startsWith("_9j_") || t.startsWith("iVBOR") || t.startsWith("R0lGOD") || t.startsWith("UklGR"))) return null
+        return decode(t)?.takeIf { isImage(it) }
+    }
+
+    private fun decode(s: String): ByteArray? = runCatching {
+        s.trimEnd('=').replace('+', '-').replace('/', '_').fromBase64Url()
+    }.getOrNull()
+
+    /** What a picture claim shows as text. */
+    fun describe(b: ByteArray): String = "圖片（${(b.size + 1023) / 1024} KB）"
+}
 
 /**
  * Claims of a stored credential for display. Multipaz only reads SD-JWTs signed with an X.509 chain, so SD-JWTs
@@ -33,7 +71,14 @@ object ClaimReader {
         if (credential is W3cVcCredential) return fromW3c(credential)
         val multipaz = runCatching { credential.getClaims(types) }.getOrNull()
         // Registered JWT claims (iss, iat, cnf, status, ...) are shown in the details view, not as credential data.
-        if (multipaz != null) return multipaz.map { DisplayClaim(it.displayName, valueOf(it), pathOf(it)) }
+        if (multipaz != null) return multipaz.map { c ->
+            val picture = when (c) {
+                is MdocClaim -> (c.value as? Bstr)?.value?.takeIf { ClaimPictures.isImage(it) }
+                is JsonClaim -> (c.value as? JsonPrimitive)?.takeIf { it.isString }?.let { ClaimPictures.fromText(it.content) }
+                else -> null
+            }
+            DisplayClaim(c.displayName, picture?.let { ClaimPictures.describe(it) } ?: valueOf(c), pathOf(c), picture)
+        }
             .filterNot { it.path.size == 1 && it.path[0] in technical }
         if (credential !is SdJwtVcCredential) return emptyList()
         return fromCompact(credential.issuerProvidedData.decodeToString())
@@ -73,7 +118,7 @@ object ClaimReader {
             val arr = runCatching { DiwJson.parseToJsonElement(d.fromBase64Url().decodeToString()) as JsonArray }.getOrNull() ?: continue
             if (arr.size == 3) {
                 val name = (arr[1] as? JsonPrimitive)?.content ?: continue
-                if (name !in technical) out += DisplayClaim(name, render(arr[2]))
+                if (name !in technical) out += display(name, arr[2])
             }
         }
         return out
@@ -97,9 +142,14 @@ object ClaimReader {
             if (k in technical || (prefix == "vc." && k in w3cEnvelope)) continue
             when (v) {
                 is JsonObject -> plain(v, "$prefix$k.", out)
-                else -> out += DisplayClaim((prefix + k).removePrefix("vc.credentialSubject."), render(v))
+                else -> out += display((prefix + k).removePrefix("vc.credentialSubject."), v)
             }
         }
+    }
+
+    private fun display(label: String, v: JsonElement): DisplayClaim {
+        val picture = (v as? JsonPrimitive)?.takeIf { it.isString }?.let { ClaimPictures.fromText(it.content) }
+        return DisplayClaim(label, picture?.let { ClaimPictures.describe(it) } ?: render(v), label.split('.'), picture)
     }
 
     private fun render(v: JsonElement): String = when (v) {
