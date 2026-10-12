@@ -112,7 +112,7 @@ class ExtendedPresenter(
     private val dialects: List<PresentationDialect>,
     private val allowInsecureLoopback: Boolean,
 ) {
-    private fun dialectOf(request: ValidatedAuthorizationRequest) = dialects.firstOrNull { it.id == request.profile }
+    internal fun dialectOf(request: ValidatedAuthorizationRequest) = dialects.firstOrNull { it.id == request.profile }
 
     suspend fun prepare(request: ValidatedAuthorizationRequest): ExtendedPrepared {
         val creds = WalletCredential.load(store)
@@ -461,7 +461,8 @@ class ExtendedPresenter(
 
     // ---------------------------------------------------------------- delivery
 
-    private suspend fun deliver(request: ValidatedAuthorizationRequest, params: JsonObject, mdocNonce: String?, dialect: PresentationDialect?): ExtendedOutcome {
+    /** Sends [params] the way the request asks (form post, redirect or DC API); [dialect] judges a posted answer. */
+    internal suspend fun deliver(request: ValidatedAuthorizationRequest, params: JsonObject, mdocNonce: String?, dialect: PresentationDialect?): ExtendedOutcome {
         fun text(v: JsonElement) = if (v is JsonPrimitive && v.isString) v.content else v.toString()
         return when (request.responseMode) {
             ResponseMode.DC_API, ResponseMode.DC_API_JWT -> ExtendedOutcome.DcApi(

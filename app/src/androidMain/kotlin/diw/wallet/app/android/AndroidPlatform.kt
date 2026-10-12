@@ -1,5 +1,10 @@
 package diw.wallet.app.android
 
+import android.graphics.Bitmap
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import android.Manifest
 import android.app.Activity
 import android.app.KeyguardManager
@@ -127,6 +132,33 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
 
     override val embeddedBrowser: Boolean get() = true
+
+    override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
+        // PdfRenderer reads a seekable file descriptor; the copy lives in the app's cache only while it draws.
+        val file = java.io.File.createTempFile("preview", ".pdf", context.cacheDir)
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                PdfRenderer(fd).use { renderer ->
+                    (0 until minOf(maxPages, renderer.pageCount)).map { i ->
+                        renderer.openPage(i).use { page ->
+                            val height = (widthPx.toLong() * page.height / maxOf(page.width, 1)).toInt().coerceIn(1, widthPx * 4)
+                            val bitmap = Bitmap.createBitmap(widthPx, height, Bitmap.Config.ARGB_8888)
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            bitmap.asImageBitmap()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.w(TAG, "PDF preview failed", e)
+            emptyList()
+        } finally {
+            file.delete()
+        }
+    }
 
     override fun openExternal(url: String): Boolean = try {
         val intent = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(null)

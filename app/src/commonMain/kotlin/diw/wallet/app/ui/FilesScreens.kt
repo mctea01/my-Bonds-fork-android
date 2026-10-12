@@ -29,6 +29,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.produceState
+import diw.wallet.app.FilesModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -171,7 +173,14 @@ fun FilesTab(model: WalletModel) {
             else "在系統瀏覽器開啟來源網站，下載後用「匯入文件」保存。",
             style = MaterialTheme.typography.bodySmall,
         )
-        DocumentSources.all.forEach { src ->
+        Text("MyData", style = MaterialTheme.typography.titleSmall)
+        DocumentSources.myData.forEach { src ->
+            ActionRow(if (src.nationalId) WalletIcons.Person else WalletIcons.Government, src.name, src.detail) {
+                if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(src.id) else model.platform.openBrowser(src.url)
+            }
+        }
+        Text("其他來源", style = MaterialTheme.typography.titleSmall)
+        DocumentSources.others.forEach { src ->
             ActionRow(WalletIcons.Government, src.name, src.detail) {
                 if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(src.id) else model.platform.openBrowser(src.url)
             }
@@ -558,8 +567,12 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     val f = model.files.file(screen.fileId) ?: return
     val busy by model.files.busy.collectAsState()
     val error by model.files.error.collectAsState()
-    val suggested = remember(f) { f.report?.let { DerivedCredentials.suggestedClaims(it, f.name, f.source) }.orEmpty() }
-    var chosen by remember(f) { mutableStateOf(suggested.map { it.name }.toSet()) }
+    var password by remember(f) { mutableStateOf("") }
+    var tried by remember(f) { mutableStateOf<String?>(null) }
+    val fields by produceState<FilesModel.DeriveFields?>(null, f, tried) { value = model.files.deriveFields(f, tried) }
+    val suggested = fields?.claims.orEmpty()
+    var chosen by remember(f, suggested) { mutableStateOf(suggested.map { it.name }.toSet()) }
+    var showNote by remember { mutableStateOf(false) }
     var noteName by remember { mutableStateOf("") }
     var noteValue by remember { mutableStateOf("") }
     var withCard by remember { mutableStateOf(false) }
@@ -570,21 +583,34 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
         Text("把「${f.report?.title ?: f.name}」變成可出示的證件。查驗方只會看到你勾選的欄位，以及文件指紋、格式與大小；原檔不會送出。",
             style = MaterialTheme.typography.bodyMedium)
         f.report?.let { ReportVerdict(it) }
-        SectionTitle("欄位")
+        f.source?.let { LabelValue("文件來源", it) }
+        SectionTitle("欄位（由文件內容解析）")
+        if (fields == null) Text("正在讀取文件內容", style = MaterialTheme.typography.bodySmall)
+        if (fields?.locked == true) {
+            Text(if (tried != null) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼，輸入後才能讀出文件內的欄位（MyData 文件通常是身分證統一編號）。密碼只用於這次讀取，不會保存。",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text("開啟密碼") }, singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
+                Button(onClick = { tried = password }, enabled = password.isNotBlank()) { Text("讀取") }
+            }
+        }
         suggested.forEach { c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = c.name in chosen, onCheckedChange = { chosen = if (it) chosen + c.name else chosen - c.name })
                 Column {
-                    Text(DerivedCredentials.claimLabels[c.name] ?: c.name, style = MaterialTheme.typography.bodyMedium)
+                    Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
                     Text(c.value, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
-        Text("自訂欄位（選填）", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = noteName, onValueChange = { v -> noteName = v.filter { it.isLetterOrDigit() || it == '_' }.take(32) },
-                label = { Text("欄位名稱（英數）") }, singleLine = true, modifier = Modifier.weight(1f))
-            OutlinedTextField(value = noteValue, onValueChange = { noteValue = it.take(200) }, label = { Text("內容") }, singleLine = true, modifier = Modifier.weight(1f))
+        if (fields != null && suggested.isEmpty()) Text("文件內沒有可解析的欄位。", style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { showNote = !showNote }) { Text(if (showNote) "不加入自填欄位" else "加入自填欄位（查驗方會看到這是持有人自填）") }
+        if (showNote) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = noteName, onValueChange = { noteName = it.take(32) }, label = { Text("欄位名稱") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = noteValue, onValueChange = { noteValue = it.take(200) }, label = { Text("內容") }, singleLine = true, modifier = Modifier.weight(1f))
+            }
         }
         SectionTitle("證據")
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -603,8 +629,11 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             }
         }
         BusyLine(busy, error)
-        val claims = suggested.filter { it.name in chosen } +
-            listOfNotNull(if (noteName.isNotBlank() && noteValue.isNotBlank() && suggested.none { it.name == noteName }) DerivedClaim(noteName, noteValue.trim()) else null)
+        val claims = suggested.filter { it.name in chosen } + listOfNotNull(
+            if (showNote && noteName.isNotBlank() && noteValue.isNotBlank()) {
+                DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), "持有人自填：" + noteName.trim())
+            } else null,
+        )
         Button(
             onClick = { model.files.derive(f, claims, if (withCard) card else null, timestamp, validDays) },
             enabled = busy == null && (claims.isNotEmpty() || withCard) && (!withCard || card != null),
@@ -699,13 +728,20 @@ fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(src.name, style = MaterialTheme.typography.titleSmall)
-            Text("下載的文件會直接保存並檢查；網站要求行動自然人憑證時，會轉到官方 App 完成登入後回到這裡。", style = MaterialTheme.typography.bodySmall)
+            Text(
+                when {
+                    src.nationalId -> "1. 在 MyData 頁面選擇驗證方式並同意；2. 行動自然人憑證會轉到官方 App，完成後回到這裡；3. 按下載，ZIP 會自動解出，接著輸入身分證統一編號開啟 PDF。"
+                    src.myData -> "在 MyData 頁面完成驗證後按下載；ZIP 會自動解出，每個檔案各自保存並檢查。需要較久產生的文件，完成後從「MyData 個人文件」下載。"
+                    else -> "下載的文件會直接保存並檢查；網站要求行動自然人憑證時，會轉到官方 App 完成登入後回到這裡。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
             busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         }
         PortalWebView(
             url = src.url,
             modifier = Modifier.fillMaxWidth().weight(1f),
-            onFile = { model.files.import(it, FileOrigin.DOWNLOADED, src.name) },
+            onFile = { model.files.importDownload(it, src) },
             onExternal = { url ->
                 if (!model.platform.openExternal(url)) model.message.value = "這支手機沒有可開啟這個連結的 App（例如行動自然人憑證）"
             },

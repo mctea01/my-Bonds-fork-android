@@ -26,6 +26,7 @@ import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.PreparedMoica
 import diw.wallet.core.oid4vp.PreparedPresentation
 import diw.wallet.core.oid4vp.PreparedRequest
 import diw.wallet.core.oid4vp.PresentationOutcome
@@ -34,7 +35,10 @@ import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
+import diw.wallet.core.profile.bonds.HeldMoicaCard
+import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.profile.bonds.BondsQrTransport
 import diw.wallet.core.profile.msvid.LinkedDomains
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -999,7 +1003,17 @@ class WalletModel(val platform: PlatformServices) {
         holderIdentities = holderIdentities,
         didTrust = didTrust,
         dialects = listOf(twdiwPresentation, msPresentation),
+        moicaCards = { heldMoicaCards() },
+        moicaHolder = { holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
     )
+
+    /** Bonds self-issued cards for an online request: national ID cards first, then cards derived from documents. */
+    private fun heldMoicaCards(): List<HeldMoicaCard> =
+        files.nationalIdCards().map { (f, card) -> HeldMoicaCard(f.id, TaiwanModel.NATIONAL_ID_NAME, card) } +
+            files.moicaCards().map { (f, card) ->
+                val name = documents.value.firstOrNull { it.identifier == f.derivedDocumentId }?.displayName ?: f.name
+                HeldMoicaCard(f.id, name, card)
+            }
 
     fun startPresentation(uri: String, entryHint: String? = null, fields: List<TwdiwCustomField> = emptyList(), offline: TwdiwOfflineSession? = null) {
         presentation.value = PresentationUi.Loading
@@ -1084,6 +1098,16 @@ class WalletModel(val platform: PlatformServices) {
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
             }
+            is PreparedMoica -> {
+                val items = prepared.matches.map { m ->
+                    val paths = m.claims.map { listOf("credentialSubject", it) }
+                    val labels = m.claims.map { BondsNationalId.claimLabels[it] ?: DerivedCredentials.claimLabels[it] ?: it }
+                    val sensitivity = ClaimSensitivity.ofAll(paths)
+                    ConsentItem(m.card.name, labels.ifEmpty { listOf("卡片簽章與自然人憑證（不含欄位）") }, null,
+                        sensitivity = sensitivity, notable = notable(paths, labels, sensitivity))
+                }
+                PresentationUi.Consent(prepared, null, items, fields, offline)
+            }
         }
         val risk = requestRisk(consent.items, consent.request.verifier.trust.tier)
         // A status older than the request's risk allows is queried again while the user reads the request.
@@ -1128,6 +1152,7 @@ class WalletModel(val platform: PlatformServices) {
                 withContext(unlockProvider) {
                     when (val p = consent.prepared) {
                         is PreparedExtended -> holder().respond(p)
+                        is PreparedMoica -> holder().respond(p)
                         is PreparedPresentation -> holder().respond(p, consent.selection ?: p.queryResult.select(emptyList()))
                     }
                 }

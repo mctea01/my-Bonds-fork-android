@@ -10,6 +10,9 @@ import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.official.OfficialLetter
 import diw.wallet.core.document.pdf.PdfComposer
+import diw.wallet.core.document.pdf.PdfFile
+import diw.wallet.core.document.pdf.PdfPlain
+import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
@@ -36,6 +39,7 @@ import diw.wallet.core.util.DiwJson
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,24 +101,93 @@ data class StoredFile(
     val nationalId: String? = null,
 )
 
+/** What the file screen shows of a file's content. */
+sealed class FilePreview {
+    /** Rendered pages (as many as [PREVIEW_PAGES]) of [total], and the text layer when there is one. */
+    class Pages(val pages: List<ImageBitmap>, val total: Int, val text: String?) : FilePreview()
+    class Picture(val image: ImageBitmap) : FilePreview()
+    class Text(val text: String, val truncated: Boolean) : FilePreview()
+    /** The PDF needs its open password; [wrong] after a password that did not open it. */
+    class NeedsPassword(val wrong: Boolean) : FilePreview()
+    class Unavailable(val reason: String) : FilePreview()
+    data object Loading : FilePreview()
+
+    companion object {
+        const val PREVIEW_PAGES = 10
+        const val TEXT_LIMIT = 20_000
+    }
+}
+
 /** The fields read from a national ID PDF, shown for confirmation before the card signs them. */
 data class NationalIdDraft(val fileId: String, val fields: NationalIdFields, val over18: String?)
 
-/** A site where a holder gets an official document (opened in the app on Android, downloads go to the vault). */
-class DocumentSource(val id: String, val name: String, val detail: String, val url: String)
+/**
+ * A site where a holder gets an official document (opened in the app on Android, downloads go to the vault).
+ * [myData] marks MyData pages, whose ZIP downloads are unpacked at once; [nationalId] is the national ID item, whose
+ * PDF goes straight to making the Bonds national ID card.
+ */
+class DocumentSource(
+    val id: String,
+    val name: String,
+    val detail: String,
+    val url: String,
+    val myData: Boolean = false,
+    val nationalId: Boolean = false,
+)
 
 object DocumentSources {
-    val all = listOf(
-        DocumentSource("mydata", "MyData 個人化資料自主運用", "以自然人憑證或行動自然人憑證登入，下載戶籍、地籍、所得等資料（ZIP 會解出逐一保存）", "https://mydata.nat.gov.tw/"),
-        DocumentSource("mydoc", "臺北市 MyDoc 電子文件服務平台", "高中職電子畢業證書等臺北市政府電子文件", "https://mydoc.gov.taipei/"),
-        DocumentSource("moe", "教育部 大專校院數位證書驗證系統", "大專校院數位學位證書的驗證與新版本檢查", "https://dcert.moe.gov.tw/"),
-        DocumentSource("dcert", "數位證明管理中心", "加入的學校可直接產生數位憑證（數位憑證皮夾卡片）", "https://dcert.wallet.gov.tw/"),
-        DocumentSource("ris", "內政部戶政司 全國戶政服務", "電子戶籍謄本（.asdt 只能保存原檔，內容需送戶政司查驗）", "https://www.ris.gov.tw/app/portal/"),
-        DocumentSource("land", "地政電子謄本", "土地與建物登記謄本、地籍圖謄本", "https://ep.land.nat.gov.tw/"),
-        DocumentSource("nia", "內政部移民署 入出國日期證明書", "線上申請入出國日期證明書；查驗頁可確認證明書真偽", "https://ncp.immigration.gov.tw/NIA_OnlineApply_inter/entryexitQuery/entryexitQueryForm.action"),
+    private const val MYDATA = "https://mydata.nat.gov.tw/"
+
+    /** MyData items, by the item paths Bonds uses (personal/detail/API.<code>). */
+    val myData = listOf(
+        DocumentSource("mydata-id", "國民身分證資料（製作身分證卡）", "下載後輸入身分證統一編號開啟 PDF，再以自然人憑證簽成 Bonds 身分證卡", MYDATA + "personal/detail/API.idPhotoRev", myData = true, nationalId = true),
+        DocumentSource("mydata", "MyData 個人文件", "登入後在「個人專區／個人文件」下載已完成的文件，可連續下載多份", MYDATA + "signin", myData = true),
+        DocumentSource("mydata-household", "現戶全戶戶籍資料", "內政部戶政司", MYDATA + "personal/detail/API.UDauDOLyZg", myData = true),
+        DocumentSource("mydata-income", "個人所得資料", "財政部財政資訊中心；MyData 約需兩小時產生，完成後到個人文件下載", MYDATA + "personal/detail/API.syWqjr4flJ", myData = true),
+        DocumentSource("mydata-tax-cert", "綜合所得稅納稅證明書", "財政部財政資訊中心", MYDATA + "personal/detail/API.TeV2Md7SIx", myData = true),
+        DocumentSource("mydata-labor-insurance", "被保險人投保資料（勞保、就保、災保）", "勞動部勞工保險局", MYDATA + "personal/detail/API.UZQkKbsOpz", myData = true),
+        DocumentSource("mydata-labor-pension", "勞工提繳異動資料", "勞動部勞工保險局", MYDATA + "personal/detail/API.yqkllwwTYl", myData = true),
+        DocumentSource("mydata-health-insurance", "個人投退保資料（健保）", "衛生福利部中央健康保險署", MYDATA + "personal/detail/API.zH584wn59r", myData = true),
+        DocumentSource("mydata-nhi-premium", "保費繳納紀錄（健保）", "衛生福利部中央健康保險署", MYDATA + "personal/detail/API.1qIr0nM0BT", myData = true),
+        DocumentSource("mydata-land", "地籍及實價資料", "內政部地政司", MYDATA + "personal/detail/API.KvvyRZSc5K", myData = true),
     )
 
+    val others = listOf(
+        DocumentSource("mydoc", "臺北市 MyDoc 電子文件服務平台", "高中職電子畢業證書等臺北市政府電子文件", "https://mydoc.gov.taipei/"),
+        DocumentSource("moe", "教育部 大專校院數位證書驗證系統", "大專校院數位學位證書的驗證與新版本檢查", "https://dcert.moe.gov.tw/"),
+        DocumentSource("dcert", "數位證明管理中心", "上傳學校核發的數位 PDF 學位證書，產生 QR 碼加入數位憑證皮夾卡片", "https://dcmc.csie.ncku.edu.tw/"),
+        DocumentSource("ris", "內政部戶政司 全國戶政服務", "電子戶籍謄本（.asdt 只能保存原檔，內容需送戶政司查驗）", "https://www.ris.gov.tw/app/portal/"),
+        DocumentSource("land", "地政電子謄本", "土地與建物登記謄本、地籍圖謄本", "https://ep.land.nat.gov.tw/"),
+        DocumentSource("nia", "內政部移民署 入出國日期證明書", "以自然人憑證登入申請入出國日期證明書，下載的 PDF 直接保存", "https://ncp.immigration.gov.tw/niaweb/entryExitQuery"),
+    )
+
+    val all = myData + others
+
     fun byId(id: String) = all.firstOrNull { it.id == id }
+}
+
+/** A MyData item recognised by the official file name of its download. */
+class MyDataItem(val title: String, val nationalId: Boolean = false)
+
+/**
+ * MyData downloads by their official file names (as Bonds matches them): the national ID item, and the vault
+ * documents. A name alone is not proof of origin; files recognised this way are labelled as such.
+ */
+object MyDataFiles {
+    private val items = listOf(
+        listOf("國民身分證資料", "idPhotoRev") to MyDataItem("國民身分證資料", nationalId = true),
+        listOf("現戶全戶戶籍資料", "全戶戶籍", "UDauDOLyZg") to MyDataItem("現戶全戶戶籍資料"),
+        listOf("個人所得資料", "所得資料表", "syWqjr4flJ") to MyDataItem("個人所得資料"),
+        listOf("綜合所得稅納稅證明", "納稅證明", "TeV2Md7SIx") to MyDataItem("綜合所得稅納稅證明書"),
+        listOf("被保險人投保資料", "勞保投保", "就保投保", "災保投保", "UZQkKbsOpz") to MyDataItem("被保險人投保資料"),
+        listOf("勞工提繳異動資料", "勞退提繳", "提繳異動", "yqkllwwTYl") to MyDataItem("勞工提繳異動資料"),
+        listOf("個人投退保資料", "健保投退保", "zH584wn59r") to MyDataItem("個人投退保資料（健保）"),
+        listOf("保費繳納紀錄", "健保保費", "1qIr0nM0BT") to MyDataItem("保費繳納紀錄（健保）"),
+        listOf("地籍及實價資料", "地籍資料", "實價資料", "KvvyRZSc5K") to MyDataItem("地籍及實價資料"),
+        listOf("personal-data.zip", "MyData") to MyDataItem("MyData 個人文件"),
+    )
+
+    fun recognize(name: String): MyDataItem? = items.firstOrNull { (keys, _) -> keys.any { name.contains(it, ignoreCase = true) } }?.second
 }
 
 /** Who signs a document. */
@@ -242,18 +315,61 @@ class FilesModel(private val model: WalletModel) {
     /** A file handed over by another app or downloaded from a source site. */
     fun import(picked: PickedFile, origin: FileOrigin, source: String?) = run("讀取並檢查檔案") { importNow(picked, origin, source) }
 
-    private suspend fun importNow(picked: PickedFile, origin: FileOrigin, source: String?) {
+    private suspend fun importNow(picked: PickedFile, origin: FileOrigin, source: String?) = receive(picked, origin, source, null)
+
+    /**
+     * Stores a file that came in (picked, shared by another app, or downloaded from [site]) and carries on with it:
+     * a MyData ZIP, whether downloaded here or recognised by its file name, is unpacked at once; the national ID PDF
+     * opens the national ID card screen; anything else opens its detail screen. The recorded source says how the
+     * file was identified: downloaded from MyData in the app, or only named like a MyData file.
+     */
+    private suspend fun receive(picked: PickedFile, origin: FileOrigin, source: String?, site: DocumentSource?) {
         val known = files.value.size
-        val f = store(picked.name, picked.bytes, origin, source)
-        model.message.value = if (files.value.size == known) "這份文件已經保存過" else "已保存：${f.name}"
-        model.screen.value = Screen.FileDetail(f.id)
+        val item = MyDataFiles.recognize(picked.name)
+        val myData = site?.myData == true || item != null
+        val label = when {
+            site?.myData == true -> "MyData（App 內下載" + (item?.let { "：${it.title}" } ?: site.takeIf { !it.nationalId && it.id != "mydata" }?.let { "：${it.name}" } ?: "") + "）"
+            site != null -> site.name
+            item != null -> "MyData（依檔名判斷為「${item.title}」，由${source ?: origin.title}取得，未經 App 內下載確認）"
+            else -> source
+        }
+        val f = store(picked.name, picked.bytes, origin, label)
+        val children = if (myData && f.report?.format == DocumentFormat.ZIP) {
+            busy.value = "解出 MyData 壓縮檔"
+            extractNow(f, label).first
+        } else emptyList()
+        val pdfs = children.ifEmpty { listOf(f) }.filter { it.report?.format == DocumentFormat.PDF }
+        val nationalId = site?.nationalId == true || item?.nationalId == true || pdfs.any { MyDataFiles.recognize(it.name)?.nationalId == true }
+        if (nationalId && pdfs.isNotEmpty()) {
+            val pdf = pdfs.firstOrNull { MyDataFiles.recognize(it.name)?.nationalId == true } ?: pdfs.first()
+            model.message.value = "已解出 MyData 檔案，輸入身分證統一編號開啟身分證資料"
+            model.screen.value = Screen.NationalIdCreate(pdf.id)
+            return
+        }
+        val target = when {
+            children.size == 1 -> children.first()
+            pdfs.size == 1 && children.isNotEmpty() -> pdfs.first()
+            else -> f
+        }
+        model.message.value = when {
+            children.isNotEmpty() -> "已解出 ${children.size} 個 MyData 檔案"
+            files.value.size == known -> "這份文件已經保存過"
+            else -> "已保存：${f.name}"
+        }
+        model.screen.value = Screen.FileDetail(target.id)
     }
 
     /** Checks the file again with the current time and trust anchors and stores the new report. */
     suspend fun refreshed(f: StoredFile): StoredFile {
-        val report = DocumentInspector.inspect(data(f.id), f.name, trustSource, f.contentId?.let { data(it) })
-        // Apply the report to the latest copy so changes made meanwhile (a new time stamp) are kept.
-        return (file(f.id) ?: f).copy(report = report).also { save(it) }
+        val data = data(f.id)
+        val report = DocumentInspector.inspect(data, f.name, trustSource, f.contentId?.let { data(it) })
+        // Apply the report to the latest copy so changes made meanwhile (a new time stamp) are kept; the time stamps
+        // are checked again too, since the trusted authorities may have changed.
+        val latest = file(f.id) ?: f
+        val stamps = latest.timestamps.map { t ->
+            runCatching { t.copy(trusted = DocumentInspector.verifyTimestamp(t.token.fromBase64(), data, trustSource).trusted) }.getOrDefault(t)
+        }
+        return latest.copy(report = report, timestamps = stamps).also { save(it) }
     }
 
     /** Re-checks a file when it is opened; the stored report stays if the check cannot run. */
@@ -264,6 +380,105 @@ class FilesModel(private val model: WalletModel) {
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
+        }
+    }
+
+    /** Open passwords of PDFs entered in this session, by file id; never stored. */
+    private val passwords = HashMap<String, String>()
+    val previews = MutableStateFlow<Map<String, FilePreview>>(emptyMap())
+
+    /** The PDF opened with the password entered for it in this session (or none). */
+    fun openPdf(f: StoredFile, bytes: ByteArray): PdfFile = PdfFile(bytes, passwords[f.id] ?: "")
+
+    /**
+     * Makes the preview of [f]: PDF pages (an encrypted PDF is decrypted in memory with [password], also tried
+     * trimmed and in upper case, as MyData's ID number passwords are), images, and the text of text formats.
+     */
+    fun preview(f: StoredFile, password: String? = null) = model.scope.launch {
+        previews.value = previews.value + (f.id to FilePreview.Loading)
+        val result = try {
+            withContext(Dispatchers.Default) { makePreview(f, password) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            FilePreview.Unavailable("無法預覽：" + model.describe(e))
+        }
+        previews.value = previews.value + (f.id to result)
+    }
+
+    /**
+     * [bytes] of the PDF [f] opened with [password] (also trimmed and in upper case), the password entered earlier in
+     * this session, or none; null while it stays locked. A password that opens it is kept for this session.
+     */
+    private fun unlock(f: StoredFile, bytes: ByteArray, password: String?): PdfFile? {
+        val tries = listOfNotNull(password, password?.let { BondsNationalId.normalizePassword(it) }, passwords[f.id], "").distinct()
+        for (pw in tries) {
+            val p = PdfFile(bytes, pw)
+            if (!p.passwordRequired) {
+                if (pw.isNotEmpty()) passwords[f.id] = pw
+                return p
+            }
+        }
+        return null
+    }
+
+    /** Claims a derived credential of [f] can carry, and whether the PDF's content stays locked without its password. */
+    class DeriveFields(val claims: List<DerivedClaim>, val locked: Boolean)
+
+    /**
+     * The claims of a derived credential of [f], read from the document rather than typed: its report, its source,
+     * the text layer of a PDF (opened with [password] when it is encrypted), an official letter or OpenCerts data.
+     */
+    suspend fun deriveFields(f: StoredFile, password: String? = null): DeriveFields = withContext(Dispatchers.Default) {
+        val report = f.report ?: return@withContext DeriveFields(emptyList(), false)
+        val bytes = data(f.id)
+        var locked = false
+        var text: String? = null
+        var xml: String? = null
+        when (report.format) {
+            DocumentFormat.PDF -> {
+                val pdf = unlock(f, bytes, password)
+                if (pdf == null) locked = true
+                else text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.takeIf { it.isNotBlank() }
+            }
+            DocumentFormat.XML -> xml = bytes.decodeToString().takeIf { it.contains("<函") }
+            else -> {}
+        }
+        DeriveFields(DerivedCredentials.suggestedClaims(report, f.name, f.source, text, xml), locked)
+    }
+
+    private suspend fun makePreview(f: StoredFile, password: String?): FilePreview {
+        val bytes = data(f.id)
+        return when (f.report?.format) {
+            DocumentFormat.PDF -> {
+                val pdf = unlock(f, bytes, password) ?: return FilePreview.NeedsPassword(wrong = password != null)
+                pdf.encryptionProblem?.let { return FilePreview.Unavailable("無法解密這份 PDF：$it") }
+                val plain = if (pdf.encrypted) PdfPlain.of(pdf) else bytes
+                val pages = model.platform.renderPdf(plain, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH)
+                val text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.trim()?.ifEmpty { null }
+                val total = runCatching { PdfTextExtractor.pages(pdf).size }.getOrDefault(pages.size)
+                if (pages.isEmpty() && text == null) FilePreview.Unavailable("這個平台無法繪製這份 PDF，也沒有可擷取的文字")
+                else FilePreview.Pages(pages, total, text)
+            }
+            DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
+                ?: FilePreview.Unavailable("無法解碼這張圖片")
+            DocumentFormat.XML, DocumentFormat.JSON, DocumentFormat.TEXT, DocumentFormat.OPENCERTS -> {
+                val text = bytes.decodeToString()
+                FilePreview.Text(text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
+            }
+            DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable("壓縮檔與容器請看下方的內容清單；ZIP 解出後可逐一預覽")
+            DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable("加密給特定對象的檔案，錢包無法開啟內容")
+            else -> {
+                // A signature with its content inside (.p7m) previews the content when it is a known kind.
+                val inner = runCatching { DocumentInspector.encapsulatedContent(bytes) }.getOrNull()
+                when {
+                    inner != null && PdfFile.isPdf(inner) -> model.platform.renderPdf(inner, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH)
+                        .takeIf { it.isNotEmpty() }?.let { FilePreview.Pages(it, it.size, null) } ?: FilePreview.Unavailable("無法繪製包覆的 PDF")
+                    inner != null && runCatching { inner.decodeToString(throwOnInvalidSequence = true) }.isSuccess ->
+                        inner.decodeToString().let { FilePreview.Text(it.take(FilePreview.TEXT_LIMIT), it.length > FilePreview.TEXT_LIMIT) }
+                    else -> FilePreview.Unavailable("這種格式沒有內容預覽")
+                }
+            }
         }
     }
 
@@ -278,15 +493,31 @@ class FilesModel(private val model: WalletModel) {
 
     /** Stores every file of a ZIP archive (a MyData download) as its own entry. */
     fun extract(f: StoredFile) = run("解出壓縮檔") {
+        val added = extractNow(f, f.source).second
+        model.message.value = "已解出 $added 個檔案"
+    }
+
+    /** The files of the archive [f] as stored (new or already there), and how many were new. */
+    private suspend fun extractNow(f: StoredFile, source: String?): Pair<List<StoredFile>, Int> {
         val entries = DocumentSigning.unzip(data(f.id))
+        val stored = ArrayList<StoredFile>()
         var added = 0
         for ((path, bytes) in entries) {
             if (bytes.isEmpty()) continue
             val before = files.value.size
-            store(path.substringAfterLast('/'), bytes, FileOrigin.EXTRACTED, f.name, parentId = f.id)
+            val name = path.substringAfterLast('/')
+            // The source names the archive and, for MyData, the item the file is.
+            val item = MyDataFiles.recognize(name) ?: MyDataFiles.recognize(f.name)
+            val label = (source?.let { "$it；" } ?: "") + "解自 ${f.name}" + (item?.let { "（${it.title}）" } ?: "")
+            stored.add(store(name, bytes, FileOrigin.EXTRACTED, label, parentId = f.id))
             if (files.value.size > before) added++
         }
-        model.message.value = "已解出 $added 個檔案"
+        return stored to added
+    }
+
+    /** A download from a source site in the app. */
+    fun importDownload(picked: PickedFile, src: DocumentSource) = run("保存並檢查下載的文件") {
+        receive(picked, FileOrigin.DOWNLOADED, src.name, src)
     }
 
     fun timestamper(): Timestamper = TsaClient(model.http, TsaServices.byId(model.settings.tsaId).url)
@@ -474,7 +705,7 @@ class FilesModel(private val model: WalletModel) {
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
                 specs = listOfNotNull("IETF SD-JWT VC", if (moica != null) "Bonds vc+moica" else null),
-                claimNames = DerivedCredentials.claimLabels,
+                claimNames = DerivedCredentials.claimLabels + all.filter { it.label != null }.associate { it.name to it.label!! },
                 profile = PROFILE,
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = "文件衍生憑證", appData = record.encode())
@@ -496,7 +727,7 @@ class FilesModel(private val model: WalletModel) {
         }
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
-        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), all.map { DerivedCredentials.claimLabels[it.name] ?: it.name })
+        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), all.map { DerivedCredentials.labelOf(it) })
         model.message.value = "已產生衍生憑證，可在「證件」出示"
         model.screen.value = Screen.FileDetail(f.id)
     }
@@ -522,6 +753,7 @@ class FilesModel(private val model: WalletModel) {
         nationalIdDraft.value = null
         val bytes = data(f.id)
         val text = withContext(Dispatchers.Default) { BondsNationalId.readPdf(bytes, idNumber) }
+        passwords[f.id] = listOf(idNumber, BondsNationalId.normalizePassword(idNumber)).first { !PdfFile(bytes, it).passwordRequired }
         val fields = BondsNationalId.parse(text) ?: throw SigningException("這份 PDF 不是 MyData 的國民身分證資料（找不到統號、姓名或出生日期）")
         if (fields.unifiedNo == null || fields.name == null) throw SigningException("讀不到身分證統一編號或姓名，無法製作身分證卡")
         nationalIdDraft.value = NationalIdDraft(f.id, fields, BondsNationalId.over18(fields.birthdate, Clock.System.now()))
@@ -566,6 +798,8 @@ class FilesModel(private val model: WalletModel) {
         const val PROFILE = "document"
         const val CONFIGURATION = "document-derived"
         const val MAX_FILE_BYTES = 64 * 1024 * 1024
+        /** Width of rendered PDF pages, in pixels. */
+        const val PREVIEW_WIDTH = 1080
         private const val MAX_AIA_BYTES = 256 * 1024
         private val metaTable = StorageTableSpec(name = "DiwFiles", supportPartitions = false, supportExpiration = false)
         private val dataTable = StorageTableSpec(name = "DiwFileData", supportPartitions = false, supportExpiration = false)

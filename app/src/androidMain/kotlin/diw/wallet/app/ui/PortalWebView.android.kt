@@ -6,6 +6,7 @@ import android.util.Base64
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -33,9 +34,44 @@ private const val MAX_DOWNLOAD = 64 * 1024 * 1024
 private const val MAX_DATA_URL = (MAX_DOWNLOAD / 3 + 1) * 4 + 256
 
 /**
+ * Keeps the Blob behind every blob: URL the page creates, so a download survives the page revoking the URL right
+ * after clicking it (MyData fetches the ZIP with XHR, clicks an <a download> and revokes at once, then leaves the
+ * page). Clicks on such links and window.open of a blob (MyData's PDF preview) hand the Blob to the vault instead.
+ */
+private val BLOB_HOOK = """
+(function(){
+  if (window.__diwHooked) return; window.__diwHooked = true;
+  var blobs = {};
+  var create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+  URL.createObjectURL = function(o){ var u = create(o); if (o instanceof Blob) blobs[u] = o; return u; };
+  URL.revokeObjectURL = function(u){ setTimeout(function(){ delete blobs[u]; revoke(u); }, 120000); };
+  function send(b, name){
+    if (b.size > $MAX_DOWNLOAD) { DiwVault.onTooLarge(); return; }
+    var f = new FileReader(); f.onload = function(){ DiwVault.onBlob(name || '', f.result); }; f.readAsDataURL(b);
+  }
+  window.__diwBlob = function(u, name){
+    if (blobs[u]) { send(blobs[u], name); return; }
+    fetch(u).then(function(r){ return r.blob(); }).then(function(b){ send(b, name); })
+      .catch(function(){ DiwVault.onFailed(); });
+  };
+  var click = HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click = function(){
+    if (this.href && this.href.indexOf('blob:') === 0 && blobs[this.href]) { send(blobs[this.href], this.download || ''); return; }
+    return click.apply(this, arguments);
+  };
+  var open = window.open;
+  window.open = function(u){
+    if (typeof u === 'string' && u.indexOf('blob:') === 0 && blobs[u]) { send(blobs[u], ''); return null; }
+    return open.apply(window, arguments);
+  };
+})();
+"""
+
+/**
  * A source site inside the app: https pages load here, other schemes (mobilemoica:, intent:) go to their apps,
  * and downloads are fetched with the page's cookies and handed to the vault. Downloads made from a blob: URL are
- * read by the page itself and passed back through a script interface.
+ * read by the page itself and passed back through a script interface. Script dialogs (alert, confirm) are shown,
+ * since the citizen certificate steps of MyData rely on them.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -62,6 +98,11 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                     }
 
                     @JavascriptInterface
+                    fun onFailed() {
+                        post { onError("無法讀取下載的檔案，請在網站上重新下載") }
+                    }
+
+                    @JavascriptInterface
                     fun onBlob(name: String, dataUrl: String) {
                         // Any page can call this interface, so the size is checked before anything is decoded.
                         if (dataUrl.length > MAX_DATA_URL) {
@@ -72,7 +113,7 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                         if (comma < 0) return
                         val mime = dataUrl.substring(5, comma).substringBefore(';')
                         val bytes = runCatching { Base64.decode(dataUrl.substring(comma + 1), Base64.DEFAULT) }.getOrNull() ?: return
-                        post { onFile(PickedFile(name.ifBlank { "download" }, bytes, mime)) }
+                        post { onFile(PickedFile(name.ifBlank { defaultName(mime) }, bytes, mime)) }
                     }
                 }, "DiwVault")
                 webViewClient = object : WebViewClient() {
@@ -86,14 +127,17 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                     override fun doUpdateVisitedHistory(v: WebView, u: String?, isReload: Boolean) {
                         canGoBack = v.canGoBack()
                     }
+
+                    override fun onPageFinished(v: WebView, u: String?) {
+                        v.evaluateJavascript(BLOB_HOOK, null)
+                    }
                 }
+                // The default chrome client shows alert, confirm and prompt dialogs, which a bare WebView drops.
+                webChromeClient = WebChromeClient()
                 setDownloadListener { link, userAgent, disposition, mime, _ ->
                     val name = URLUtil.guessFileName(link, disposition, mime)
                     if (link.startsWith("blob:")) {
-                        val script = "(function(){fetch(" + quote(link) + ").then(function(r){return r.blob();}).then(function(b){" +
-                            "if(b.size>$MAX_DOWNLOAD){DiwVault.onTooLarge();return;}" +
-                            "var f=new FileReader();f.onload=function(){DiwVault.onBlob(" + quote(name) + ",f.result);};f.readAsDataURL(b);});})();"
-                        evaluateJavascript(script, null)
+                        evaluateJavascript(BLOB_HOOK + "window.__diwBlob(" + quote(link) + "," + quote(name) + ");", null)
                         return@setDownloadListener
                     }
                     scope.launch {
@@ -110,6 +154,12 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
             }
         },
     )
+}
+
+private fun defaultName(mime: String): String = when (mime.lowercase()) {
+    "application/pdf" -> "download.pdf"
+    "application/zip", "application/x-zip-compressed" -> "download.zip"
+    else -> "download"
 }
 
 private fun quote(s: String): String = "'" + s.replace("\\", "\\\\").replace("'", "\\'") + "'"

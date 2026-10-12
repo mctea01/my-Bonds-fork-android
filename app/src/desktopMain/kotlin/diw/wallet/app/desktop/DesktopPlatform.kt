@@ -1,6 +1,8 @@
 package diw.wallet.app.desktop
 
 import com.sun.net.httpserver.HttpServer
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.NfcReaderList
 import diw.wallet.app.PickedFile
@@ -13,6 +15,9 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.pdfbox.Loader
+import org.apache.pdfbox.rendering.ImageType
+import org.apache.pdfbox.rendering.PDFRenderer
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.jdbc.JdbcStorage
@@ -125,6 +130,18 @@ class DesktopPlatform(
         } else {
             ProcessBuilder("xdg-open", url).start()
         }
+    }
+
+    override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
+        runCatching {
+            Loader.loadPDF(bytes).use { doc ->
+                val renderer = PDFRenderer(doc)
+                (0 until minOf(maxPages, doc.numberOfPages)).map { i ->
+                    val widthPt = doc.getPage(i).cropBox.width.coerceAtLeast(1f)
+                    renderer.renderImage(i, widthPx / widthPt, ImageType.RGB).toComposeImageBitmap()
+                }
+            }
+        }.getOrDefault(emptyList())
     }
 
     /** PC/SC readers poll for cards and cannot emulate one, so a computer reads wallets but does not present by NFC. */

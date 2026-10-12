@@ -13,6 +13,9 @@ import kotlin.time.Instant
 /** Decodes PNG, JPEG or WebP bytes with the platform image codec. */
 expect fun decodeImageBytes(bytes: ByteArray): ImageBitmap?
 
+/** PNG encoding of an image (card art for the Digital Credentials picker); null when it fails. */
+expect fun encodePng(image: ImageBitmap): ByteArray?
+
 /** Where credential keys live; listed from strongest to weakest. */
 enum class KeyProtection(val wire: String, val displayName: String, val hardware: Boolean) {
     STRONGBOX("strongbox", "StrongBox 安全晶片", true),
@@ -90,6 +93,12 @@ interface PlatformServices {
 
     /** Decodes a PNG (or another platform image format) for display; null when it is not an image. */
     fun decodeImage(bytes: ByteArray): ImageBitmap? = decodeImageBytes(bytes)
+
+    /**
+     * The first [maxPages] pages of an unencrypted PDF as images [widthPx] wide (encrypted files are handed over
+     * decrypted, see PdfPlain); empty when the platform has no renderer or the file cannot be drawn.
+     */
+    suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = emptyList()
 
     /** Bonds BLE link, where the platform can act as a GATT peripheral. */
     val bondsLink: BondsLinkPeripheral? get() = null

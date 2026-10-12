@@ -394,8 +394,9 @@ class MoicaSignedCredential private constructor(
         }
     })
 
-    fun withDisclosures(names: Set<String>): MoicaSignedCredential {
-        val chosen = names + BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED
+    /** The card with only the disclosures of [names] (and [always], the cardholder name unless asked otherwise). */
+    fun withDisclosures(names: Set<String>, always: Set<String> = BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED): MoicaSignedCredential {
+        val chosen = names + always
         val kept = disclosures.filter { runCatching { SdJwtDisclosures.decode(it).name in chosen }.getOrDefault(false) }
         return MoicaSignedCredential(payload, tbsConstruction, certificate, signature, issuerJws, kept)
     }

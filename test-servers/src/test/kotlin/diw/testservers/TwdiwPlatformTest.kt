@@ -28,6 +28,13 @@ import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
 import diw.wallet.core.profile.twdiw.TwdiwEntry
 import diw.wallet.core.profile.twdiw.TwdiwEntryParser
+import diw.wallet.core.profile.bonds.BondsNationalId
+import diw.wallet.core.profile.bonds.HeldMoicaCard
+import diw.wallet.core.profile.bonds.NationalIdFields
+import diw.wallet.core.oid4vp.PreparedMoica
+import diw.wallet.core.document.sign.DocumentSigner
+import diw.wallet.core.document.sign.SignerKeyType
+import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 import diw.wallet.core.profile.twdiw.TwdiwServices
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
@@ -210,6 +217,52 @@ class TwdiwPlatformTest {
         assertTrue(s.holder.respond(second) is PresentationOutcome.Posted)
         assertEquals(listOf("name", "birthDate"), s.mock.received.last().disclosedNames)
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    /** A citizen certificate card signer under a throwaway MOICA-like chain (the verifier mock does not check it). */
+    private fun citizenCard(name: String): DocumentSigner {
+        val gen = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }
+        val caKey = gen.generateKeyPair()
+        val key = gen.generateKeyPair()
+        val now = System.currentTimeMillis()
+        val holderCert = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+            org.bouncycastle.asn1.x500.X500Name("CN=Test MOICA"), java.math.BigInteger.valueOf(now), java.util.Date(now - 86_400_000),
+            java.util.Date(now + 86_400_000L * 365), org.bouncycastle.asn1.x500.X500Name("CN=$name,C=TW"), key.public,
+        ).build(org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withRSA").build(caKey.private))
+        return object : DocumentSigner {
+            override val certificateChain = listOf(holderCert.encoded)
+            override val keyType = SignerKeyType.RSA
+            override val source = SignerSource.SMART_CARD
+            override suspend fun sign(data: ByteArray): ByteArray =
+                java.security.Signature.getInstance("SHA256withRSA").run { initSign(key.private); update(data); sign() }
+        }
+    }
+
+    @Test
+    fun bondsSelfIssuedCardOnline() = runBlocking<Unit> {
+        val s = setup()
+        val self = s.w.holderIdentities.getOrCreate(HolderIdentities.BONDS_SELF_ISSUED, "did:key", s.w.secureArea, SoftwareCreateKeySettings.Builder().build())
+        val card = BondsNationalId.issue(NationalIdFields("A123456789", "測試人員", "民國 083年03月06日", "臺北市"), self, citizenCard("測試人員"))
+        var held = emptyList<HeldMoicaCard>()
+        val holder = Oid4vpHolder(
+            s.w.httpClient, s.w.trust, s.w.source, s.w.env, holderIdentities = s.w.holderIdentities, didTrust = s.didTrust,
+            dialects = listOf(s.presentation), moicaCards = { held }, moicaHolder = { s.w.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
+        )
+        val request = holder.resolveUri(s.mock.moicaPresentationUri(listOf("name", "birthdate")))
+        assertEquals("twdiw", request.profile)
+        // Without a self-issued card the request is refused; government cards never answer a vc+moica descriptor.
+        s.receive()
+        val e = assertFailsWith<ProtocolException> { holder.prepare(request) }
+        assertTrue(e.message!!.contains("vc+moica"), e.message)
+
+        held = listOf(HeldMoicaCard("f1", "國民身分證", card))
+        val prepared = holder.prepare(holder.resolveUri(s.mock.moicaPresentationUri(listOf("name", "birthdate")))) as PreparedMoica
+        assertEquals(listOf("name", "birthdate"), prepared.matches.single().claims)
+        val outcome = holder.respond(prepared)
+        assertTrue(outcome is PresentationOutcome.Posted, "outcome: $outcome")
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        // Only the requested disclosures travel; the ID number and address stay on the phone.
+        assertEquals(setOf("name", "birthdate"), s.mock.received.single().disclosedNames.toSet())
     }
 
     @Test

@@ -56,6 +56,8 @@ kotlin {
                 implementation(libs.coroutines.swing)
                 implementation(libs.sqlite.jdbc)
                 implementation(libs.bcprov)
+                // Page previews of PDFs (Android uses the platform's PdfRenderer).
+                implementation("org.apache.pdfbox:pdfbox:3.0.8")
             }
         }
         val desktopTest by getting {
@@ -176,7 +178,7 @@ compose.desktop {
             packageVersion = (findProperty("diw.desktopVersion") as String?) ?: "0.1.0"
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
-            modules("java.instrument", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            modules("java.instrument", "java.logging", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
             windows {
                 menuGroup = "DIW MY WALLET"
                 upgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"

@@ -5,6 +5,8 @@ import diw.wallet.core.did.DidResolver
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.jose.signJws
+import diw.wallet.core.profile.bonds.BondsOfflinePresentation
+import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.obj
@@ -124,6 +126,13 @@ class TwdiwPlatformMock private constructor(
     fun presentationUri(fields: List<String> = listOf("name")): String {
         val id = "online-" + (pending.size + 1)
         pending[id] = PendingRequest(id, VP_UID_ONLINE, "nonce-$id", fields)
+        return "openid4vp://?client_id=${verifierDid.encodeURLParameter()}&request_uri=${"$VERIFIER/api/oidvp/request/$id".encodeURLParameter()}"
+    }
+
+    /** A Bonds self-issued card request (vc+moica descriptor for a NationalIDCredential) as a plain openid4vp:// link. */
+    fun moicaPresentationUri(fields: List<String>): String {
+        val id = "moica-" + (pending.size + 1)
+        pending[id] = PendingRequest(id, VP_UID_MOICA, "nonce-$id", fields)
         return "openid4vp://?client_id=${verifierDid.encodeURLParameter()}&request_uri=${"$VERIFIER/api/oidvp/request/$id".encodeURLParameter()}"
     }
 
@@ -465,7 +474,24 @@ class TwdiwPlatformMock private constructor(
                 put("exp", now + 300)
                 putJsonObject("presentation_definition") {
                     put("id", p.definitionId)
-                    if (p.definitionId == VP_UID_PICKUP) {
+                    if (p.definitionId == VP_UID_MOICA) {
+                        // Bonds' self-issued card request: one descriptor in the vc+moica format.
+                        putJsonArray("input_descriptors") {
+                            addJsonObject {
+                                put("id", "credential")
+                                putJsonObject("format") { putJsonObject("vc+moica") { putJsonArray("alg") { add("RS256"); add("ES256") } } }
+                                putJsonObject("constraints") {
+                                    putJsonArray("fields") {
+                                        addJsonObject {
+                                            putJsonArray("path") { add("$.type") }
+                                            putJsonObject("filter") { put("type", "array"); putJsonObject("contains") { put("const", "NationalIDCredential") } }
+                                        }
+                                        for (f in p.fields) addJsonObject { putJsonArray("path") { add("$.credentialSubject.$f") } }
+                                    }
+                                }
+                            }
+                        }
+                    } else if (p.definitionId == VP_UID_PICKUP) {
                         // Shape seen from TWDIW-based services: a descriptor format per input descriptor.
                         putJsonArray("input_descriptors") {
                             addJsonObject {
@@ -529,6 +555,19 @@ class TwdiwPlatformMock private constructor(
         val submission = DiwJson.parseToJsonElement(form["presentation_submission"] ?: fail("presentation_submission missing")) as JsonObject
         expect(submission.str("definition_id") == p.definitionId) { "definition_id ${submission.str("definition_id")}" }
         val map = submission.arr("descriptor_map")?.singleOrNull() as? JsonObject ?: fail("descriptor_map")
+        if (p.definitionId == VP_UID_MOICA) {
+            expect(map.str("id") == "credential" && map.str("format") == "jwt_vp" && map.str("path") == "$") { "descriptor $map" }
+            val nestedMoica = map.obj("path_nested") ?: fail("path_nested missing")
+            expect(nestedMoica.str("id") == "credential" && nestedMoica.str("format") == "vc+moica" && nestedMoica.str("path") == "$.vp.verifiableCredential[0]") { "path_nested $nestedMoica" }
+            val envelope = (vp.payload.obj("vp")?.arr("verifiableCredential")?.singleOrNull() as? JsonPrimitive)?.content ?: fail("no card")
+            val moica = MoicaSignedCredential.parse(envelope)
+            expect(moica.issuerJws != null) { "no issuer JWS" }
+            val subject = moica.credential().obj("credentialSubject")?.str("id") ?: fail("no subject")
+            expect(dids.resolveKey(subject, null).key == VerificationKey.Ec(holder)) { "card subject is not the presenter" }
+            val names = BondsOfflinePresentation.disclosableClaims(moica).map { it.first }
+            received += Received(p.id, vp.payload, submission, names, emptyList())
+            return json(buildJsonObject { put("code", "0"); put("message", "SUCCESS") })
+        }
         val expectedId = if (p.definitionId == VP_UID_PICKUP) CONFIG_ID else "${CONFIG_ID}_2"
         expect(map.str("id") == expectedId) { "descriptor id ${map.str("id")}" }
         expect(map.str("format") == "jwt_vp" && map.str("path") == "$") { "descriptor $map" }
@@ -585,6 +624,7 @@ class TwdiwPlatformMock private constructor(
         const val CONFIG_ID = "00000000_mock_card"
         const val VP_UID_ONLINE = "00000000_mock_vp"
         const val VP_UID_PICKUP = "00000000_mock_pickup"
+        const val VP_UID_MOICA = "00000000_mock_moica"
         const val CLIENT_ID = "moda_dw"
         const val PRE_AUTH_CODE = "pre-auth-0001"
         const val STATUS_BITS = 16 * 1024 * 8

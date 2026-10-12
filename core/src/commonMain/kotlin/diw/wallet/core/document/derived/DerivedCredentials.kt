@@ -31,8 +31,11 @@ import kotlin.time.Instant
 /** The file a derived credential stands for; only its fingerprint, type and size are always visible. */
 data class DerivedDocument(val sha256Hex: String, val mediaType: String, val size: Long)
 
-/** One selectively disclosable claim; values are text so that the vc+moica form can carry them too. */
-data class DerivedClaim(val name: String, val value: String)
+/**
+ * One selectively disclosable claim; values are text so that the vc+moica form can carry them too. [label] is the
+ * readable name of a claim read from the document's content (the wallet's own claims are named in claimLabels).
+ */
+data class DerivedClaim(val name: String, val value: String, val label: String? = null)
 
 /**
  * A credential the wallet derives from a stored document: an IETF SD-JWT VC issued by the wallet's own document
@@ -59,6 +62,8 @@ object DerivedCredentials {
     const val CLAIM_SIGNER = "documentSigner"
     const val CLAIM_SIGNED_AT = "documentSignedAt"
     const val CLAIM_SOURCE = "documentSource"
+    /** Claims the holder typed rather than the wallet read from the document carry this prefix. */
+    const val SELF_ASSERTED_PREFIX = "holderStated:"
 
     /** Readable labels for the claim names above. */
     val claimLabels = mapOf(
@@ -70,9 +75,28 @@ object DerivedCredentials {
         CLAIM_SOURCE to "文件來源",
     )
 
-    /** Claims the wallet can fill from a stored file and its report. */
-    fun suggestedClaims(report: DocumentReport, fileName: String?, source: String?): List<DerivedClaim> = buildList {
-        report.title?.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(CLAIM_TITLE, it.trim())) }
+    /**
+     * Claims the wallet fills from a stored file: its report (title, signer, signing time), where it came from, and
+     * what its content says ([text], the text layer of a PDF; [xml], an official letter; OpenCerts data in the
+     * report). Nothing here is typed by the holder.
+     */
+    fun suggestedClaims(report: DocumentReport, fileName: String?, source: String?, text: String? = null, xml: String? = null): List<DerivedClaim> {
+        val base = baseClaims(report, fileName, source, text)
+        val parsed = buildList {
+            report.openCert?.let { addAll(DocumentFields.fromOpenCert(it)) }
+            xml?.let { addAll(DocumentFields.fromOfficialLetter(it)) }
+            text?.let { addAll(DocumentFields.fromText(it)) }
+        }
+        val names = base.map { it.name }.toMutableSet()
+        return base + parsed.filter { names.add(it.name) }.take(DocumentFields.MAX_FIELDS)
+    }
+
+    /** Readable name of [claim]. */
+    fun labelOf(claim: DerivedClaim): String = claim.label ?: claimLabels[claim.name] ?: claim.name
+
+    private fun baseClaims(report: DocumentReport, fileName: String?, source: String?, text: String?): List<DerivedClaim> = buildList {
+        (report.title?.takeIf { it.isNotBlank() } ?: report.openCert?.name?.takeIf { it.isNotBlank() } ?: text?.let { DocumentFields.titleFromText(it) })
+            ?.let { add(DerivedClaim(CLAIM_TITLE, it.trim())) }
         fileName?.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(CLAIM_FILE_NAME, it)) }
         val sig = mainSignature(report)
         (sig?.signer?.commonName ?: sig?.signerName)?.let { add(DerivedClaim(CLAIM_SIGNER, it)) }
