@@ -3,8 +3,11 @@ package diw.wallet.app
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
+import diw.wallet.core.profile.bonds.MoicaSignedCredential
+import diw.wallet.core.profile.bonds.MoicaVerification
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.status.W3cStatusEntry
+import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
 import diw.wallet.core.util.DiwJson
@@ -392,6 +395,70 @@ object CredentialDetails {
     }
 
     /** X.509 certificate fields, grouped like common certificate viewers. */
+    /**
+     * A Bonds vc+moica card (national ID card, derived document card): the check just made, the credential, the
+     * cardholder's signature with the citizen certificate, the issuer JWS and the disclosures with their digests.
+     * [labels] names the claims.
+     */
+    fun moica(card: MoicaSignedCredential, check: Result<MoicaVerification>?, labels: Map<String, String>): List<DetailSection> {
+        val c = runCatching { card.credential() }.getOrNull() ?: JsonObject(emptyMap())
+        val payload = runCatching { card.payload.fromBase64Url() }.getOrNull() ?: ByteArray(0)
+        val cert = runCatching { X509Cert(ByteString(card.certificate.fromBase64())) }.getOrNull()
+        val committed = (c["_sd"] as? JsonArray)?.size
+        val disclosures = card.disclosures.mapNotNull { runCatching { SdJwtDisclosures.decode(it) }.getOrNull() }
+        fun list(k: String) = (c[k] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.joinToString("、") ?: c.text(k)
+        val subject = c["credentialSubject"] as? JsonObject
+        return listOf(
+            DetailSection("查驗結果", when {
+                check == null -> listOf(DetailRow("狀態", "查驗中"))
+                check.isSuccess -> check.getOrThrow().let { v ->
+                    listOf(
+                        DetailRow("結果", "通過：簽章值、憑證鏈（MOICA G3、GRCA G3）、雜湊承諾" + if (v.nameChecked) "與姓名比對" else ""),
+                        DetailRow("持卡人（憑證 CN）", v.cardholderName),
+                        DetailRow("憑證序號", v.certificateSerialHex),
+                        DetailRow("可揭露欄位", "${v.claims.size}" + if (v.withheldClaims > 0) "（另有 ${v.withheldClaims} 個未附）" else ""),
+                    )
+                }
+                else -> listOf(DetailRow("結果", "未通過：" + (check.exceptionOrNull()?.message ?: "原因不明")))
+            }),
+            DetailSection("憑證內容", listOfNotNull(
+                list("type")?.let { DetailRow("類型", it) },
+                list("@context")?.let { DetailRow("@context", it) },
+                c.text("issuer")?.let { DetailRow("發行者", it) },
+                subject?.text("id")?.let { DetailRow("主體（credentialSubject.id）", it) },
+                c.text("validFrom")?.let { DetailRow("生效時間（validFrom）", it) },
+                DetailRow("到期時間（validUntil）", c.text("validUntil") ?: "未設定"),
+                committed?.let { DetailRow("雜湊承諾（_sd）", "$it 個，SHA-256" + if (c["_sd_alg"] == null) "（未寫 _sd_alg，與 Bonds 相同）" else "") },
+                DetailRow("payload", "${payload.size} 位元組，JCS 正規化 JSON，base64url"),
+                DetailRow("payload SHA-256", hexPlain(PlatformCrypto.sha256(payload))),
+            )),
+            DetailSection("自然人憑證簽章", listOfNotNull(
+                DetailRow("簽章構造", card.tbsConstruction),
+                DetailRow("簽署字串", MoicaSignedCredential.TBS_PREFIX + hexPlain(PlatformCrypto.sha256(payload))),
+                DetailRow("簽章演算法", "RSASSA-PKCS1-v1_5 SHA-256（RS256）"),
+                DetailRow("簽章值", "${runCatching { card.signature.fromBase64().size }.getOrDefault(0)} 位元組"),
+                cert?.let { DetailRow("簽署憑證", it.subject.name, listOf(it)) },
+                cert?.let { DetailRow("憑證簽發者", it.issuer.name) },
+                cert?.let { DetailRow("憑證有效期間", "${time(it.validityNotBefore)} 至 ${time(it.validityNotAfter)}") },
+            )),
+            DetailSection("發行者簽章（issuerJWS）", card.issuerJws?.let { jws ->
+                val header = runCatching { DiwJson.parseToJsonElement(jws.substringBefore('.').fromBase64Url().decodeToString()) as JsonObject }.getOrNull()
+                listOfNotNull(
+                    header?.text("alg")?.let { DetailRow("演算法", it) },
+                    header?.text("typ")?.let { DetailRow("typ", it) },
+                    header?.text("cty")?.let { DetailRow("cty", it) },
+                    header?.text("kid")?.let { DetailRow("金鑰（kid）", it) },
+                    DetailRow("涵蓋內容", "與 payload 相同的位元組"),
+                )
+            } ?: listOf(DetailRow("issuerJWS", "沒有（舊版 Bonds 卡片）"))),
+            DetailSection("揭露欄位（disclosures）", disclosures.map { d ->
+                DetailRow(d.name?.let { labels[it] ?: it } ?: "（無名稱）", "雜湊 " + d.digest)
+            }),
+        ).filter { it.rows.isNotEmpty() }
+    }
+
+    private fun hexPlain(b: ByteArray): String = b.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+
     fun certificate(c: X509Cert): List<DetailSection> {
         val now = Clock.System.now()
         val state = when {

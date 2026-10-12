@@ -30,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.CredentialDetails
 import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
 import diw.wallet.app.SignerChoice
@@ -47,6 +49,7 @@ import diw.wallet.app.WalletModel
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.MoicaSignedCredential
+import diw.wallet.core.profile.bonds.MoicaVerification
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.util.fromBase64
 import kotlin.time.Instant
@@ -189,6 +192,15 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
         Text("出示：查驗方產生「自然人憑證自發卡」的 Bonds 查驗挑戰後，在「使用」掃描它，選這張卡與要揭露的欄位；姓名一定會揭露，並由查驗方與自然人憑證比對。",
             style = MaterialTheme.typography.bodySmall)
         Text("這張卡證明的是「你以自然人憑證聲明了這些內容」，不是戶政機關的背書。", style = MaterialTheme.typography.bodySmall)
+        var showDetails by remember { mutableStateOf(model.settings.showDetails) }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
+        if (showDetails) {
+            // Checked again as a verifier would: signature, MOICA chain, commitments and the name.
+            val check by produceState<Result<MoicaVerification>?>(null, card) {
+                value = runCatching { card.verify(model.didResolver()) }
+            }
+            DetailSections(model, CredentialDetails.moica(card, check, BondsNationalId.claimLabels))
+        }
         SectionTitle("動作")
         ActionRow(WalletIcons.Scan, "出示", "到「使用」掃描查驗方的 QR Code") { model.showTab(HomeTab.USE) }
         ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON，含全部欄位") { model.files.exportNationalId(f) }

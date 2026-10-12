@@ -85,13 +85,12 @@ fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Un
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("加入證件", style = MaterialTheme.typography.titleLarge)
             Text("從清單選擇要申請的證件，或掃描發行端提供的 QR Code。", style = MaterialTheme.typography.bodyMedium)
-            ActionRow(WalletIcons.Document, "從清單選擇", "可申請的政府皮夾卡片，或輸入發行端網址") { onList() }
+            ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { onList() }
             ActionRow(
                 WalletIcons.Scan, "掃描 QR Code",
                 if (onScan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請到「使用」貼上領卡連結",
                 enabled = onScan != null,
             ) { onScan?.invoke() }
-            NfcCardRow(model)
         }
     }
 }
@@ -156,17 +155,6 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
 // ---------------------------------------------------------------- use
 
 /**
- * The citizen digital certificate card: it is not stored as a card in the wallet, it signs. The row leads to the
- * Files tab, where documents are signed with it and turned into credentials (vc+moica).
- */
-@Composable
-fun NfcCardRow(model: WalletModel) {
-    ActionRow(WalletIcons.Nfc, "自然人憑證卡（NFC／讀卡機）", "以卡片簽署文件、把 MyData 身分證資料做成 Bonds 身分證卡，或把文件變成以自然人憑證簽署的衍生憑證（vc+moica）") {
-        model.showTab(HomeTab.FILES)
-    }
-}
-
-/**
  * What the holder does: present (one entry, the scanned code decides the flow), counter services, and adding
  * documents.
  */
@@ -221,7 +209,7 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
             if (scan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請在下方貼上領卡連結",
             enabled = scan != null,
         ) { scan?.invoke() }
-        ActionRow(WalletIcons.Document, "從清單選擇", "可申請的政府皮夾卡片，或輸入發行端網址") { model.screen.value = Screen.AddDocument }
+        ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { model.screen.value = Screen.AddDocument }
         SectionTitle("貼上連結")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(

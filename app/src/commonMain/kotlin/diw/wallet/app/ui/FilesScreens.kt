@@ -66,6 +66,9 @@ import diw.wallet.app.SignForm
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.StoredFile
 import diw.wallet.app.WalletModel
+import diw.wallet.app.CredentialDetails
+import diw.wallet.core.profile.bonds.MoicaVerification
+import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.CertInfo
@@ -329,7 +332,10 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "P4 尚未完成：以零知識證明 PDF 內的機關簽章與指定欄位，不必交出整份文件", enabled = false) {}
         }
         ActionRow(WalletIcons.Link, "產生 zkTLS 證明", "P4 尚未完成：以 TLSNotary 證明官方查驗頁回覆的內容（如移民署、學信網查驗）", enabled = false) {}
-        if (f.moica != null) ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
+        if (f.moica != null) {
+            ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
+            MoicaDetails(model, f.moica)
+        }
         if (f.nationalId != null) {
             SectionTitle("身分證卡")
             ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
@@ -845,4 +851,16 @@ private fun myDataAutofill(model: WalletModel): PortalAutofill? {
     val id = model.settings.myDataIdNumber ?: return null
     val birth = model.settings.myDataBirthDate ?: return null
     return PortalAutofill(MyDataProfile.HOST, MyDataProfile.autofillScript(id, birth)) { n -> model.message.value = "已在 MyData 頁面填入 $n 個已保存的欄位" }
+}
+
+/** The technical details of a vc+moica card, checked again as a verifier would when opened. */
+@Composable
+private fun MoicaDetails(model: WalletModel, serialized: String) {
+    val card = remember(serialized) { runCatching { MoicaSignedCredential.parse(serialized) }.getOrNull() } ?: return
+    var show by remember { mutableStateOf(model.settings.showDetails) }
+    TextButton(onClick = { show = !show }) { Text(if (show) "隱藏 vc+moica 技術細節" else "顯示 vc+moica 技術細節") }
+    if (show) {
+        val check by produceState<Result<MoicaVerification>?>(null, card) { value = runCatching { card.verify(model.didResolver()) } }
+        DetailSections(model, CredentialDetails.moica(card, check, DerivedCredentials.claimLabels))
+    }
 }
