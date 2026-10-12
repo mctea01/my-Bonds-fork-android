@@ -25,7 +25,9 @@ import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.oid4vci.CredentialDomains
 import diw.wallet.core.oid4vci.IssuanceRecord
+import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.MoicaSignedCredential
+import diw.wallet.core.profile.bonds.NationalIdFields
 import diw.wallet.core.profile.bonds.TwPkiAnchors
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
@@ -35,6 +37,7 @@ import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,7 +93,12 @@ data class StoredFile(
     val derivedDocumentId: String? = null,
     /** The vc+moica form of the derived credential, when signed with the citizen certificate card. */
     val moica: String? = null,
+    /** The Bonds national ID card (vc+moica NationalIDCredential) made from this MyData national ID PDF. */
+    val nationalId: String? = null,
 )
+
+/** The fields read from a national ID PDF, shown for confirmation before the card signs them. */
+data class NationalIdDraft(val fileId: String, val fields: NationalIdFields, val over18: String?)
 
 /** A site where a holder gets an official document (opened in the app on Android, downloads go to the vault). */
 class DocumentSource(val id: String, val name: String, val detail: String, val url: String)
@@ -496,6 +504,63 @@ class FilesModel(private val model: WalletModel) {
     /** Vault files whose derived credential can answer a Bonds request for a self-issued card. */
     fun moicaCards(): List<Pair<StoredFile, MoicaSignedCredential>> =
         files.value.mapNotNull { f -> f.moica?.let { m -> runCatching { MoicaSignedCredential.parse(m) }.getOrNull()?.let { f to it } } }
+
+    // ---------------------------------------------------------------- Bonds national ID card
+
+    /** Fields read from a national ID PDF, waiting for the holder to confirm and sign them. */
+    val nationalIdDraft = MutableStateFlow<NationalIdDraft?>(null)
+
+    /** Vault files with a Bonds national ID card; the newest card first. */
+    fun nationalIdCards(): List<Pair<StoredFile, MoicaSignedCredential>> =
+        files.value.mapNotNull { f -> f.nationalId?.let { m -> runCatching { MoicaSignedCredential.parse(m) }.getOrNull()?.let { f to it } } }
+
+    /**
+     * Opens the MyData national ID PDF [f] with the holder's ID number (its user password) and reads the fields, as
+     * Bonds does; [idNumber] is used for this only and never stored.
+     */
+    fun readNationalId(f: StoredFile, idNumber: String) = run("開啟並讀取身分證資料") {
+        nationalIdDraft.value = null
+        val bytes = data(f.id)
+        val text = withContext(Dispatchers.Default) { BondsNationalId.readPdf(bytes, idNumber) }
+        val fields = BondsNationalId.parse(text) ?: throw SigningException("這份 PDF 不是 MyData 的國民身分證資料（找不到統號、姓名或出生日期）")
+        if (fields.unifiedNo == null || fields.name == null) throw SigningException("讀不到身分證統一編號或姓名，無法製作身分證卡")
+        nationalIdDraft.value = NationalIdDraft(f.id, fields, BondsNationalId.over18(fields.birthdate, Clock.System.now()))
+    }
+
+    /** Signs the confirmed fields with the citizen certificate card and stores the card with the file. */
+    fun issueNationalId(draft: NationalIdDraft, card: SignerChoice.Card) =
+        issueNationalId(draft, if (card.reader.external) "簽署中" else "簽署中：依提示再次感應卡片") { cardSigner(card) }
+
+    /** Signs with the RSA certificate [signer] gives (the card, read with its first tap); tests pass their own. */
+    internal fun issueNationalId(draft: NationalIdDraft, signing: String, signer: suspend () -> DocumentSigner) = run("製作身分證卡") {
+        val f = file(draft.fileId) ?: throw SigningException("找不到身分證資料檔案")
+        val cardSigner = signer()
+        val issued = withContext(model.unlockProvider) {
+            val self = identity(HolderIdentities.BONDS_SELF_ISSUED)
+            busy.value = signing
+            BondsNationalId.issue(draft.fields, self, cardSigner)
+        }
+        save((file(f.id) ?: f).copy(nationalId = issued.serialized()))
+        nationalIdDraft.value = null
+        model.record(
+            HistoryKind.ISSUED, "本人（自然人憑證簽署）", null, listOf("國民身分證（Bonds 自發卡）"),
+            BondsNationalId.claims(draft.fields, Clock.System.now()).map { BondsNationalId.claimLabels[it.first] ?: it.first },
+        )
+        model.message.value = "已製作身分證卡，可回應 Bonds 的自然人憑證自發卡查驗"
+        model.screen.value = Screen.NationalId(f.id)
+    }
+
+    /** Exports the national ID card as Bonds vc+moica JSON. */
+    fun exportNationalId(f: StoredFile) = run("匯出身分證卡") {
+        val card = f.nationalId ?: throw SigningException("這份文件沒有身分證卡")
+        if (!model.platform.saveFile("national-id.vc-moica.json", "application/vc+moica", card.encodeToByteArray())) model.message.value = "未匯出"
+    }
+
+    /** Removes the national ID card; the PDF it was made from stays in the vault. */
+    fun deleteNationalId(f: StoredFile) = run("刪除身分證卡") {
+        save((file(f.id) ?: f).copy(nationalId = null))
+        model.showTab(HomeTab.DOCUMENTS)
+    }
 
     companion object {
         const val PROFILE = "document"

@@ -130,7 +130,7 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
             }
         }
         Text("要出示的欄位", style = MaterialTheme.typography.titleSmall)
-        val record = card.document.issuanceRecord
+        val record = card.document?.issuanceRecord
         if (!card.selective) {
             Text("這張證件不支援選擇性揭露，會出示下列全部欄位。", style = MaterialTheme.typography.bodySmall)
         }

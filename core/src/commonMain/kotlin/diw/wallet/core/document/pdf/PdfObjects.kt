@@ -1,7 +1,10 @@
 package diw.wallet.core.document.pdf
 
 /** Thrown when a PDF cannot be read: broken syntax, a missing object, or an unsupported construct. */
-class PdfException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class PdfException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** Thrown when an encrypted PDF needs a user password other than the one given. */
+class PdfPasswordException(message: String) : PdfException(message)
 
 /** PDF objects (ISO 32000-1 section 7.3). Strings keep their raw bytes; text decoding is up to the caller. */
 sealed class PdfObject

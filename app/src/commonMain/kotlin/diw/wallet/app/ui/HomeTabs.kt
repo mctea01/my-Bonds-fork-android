@@ -102,9 +102,11 @@ fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Un
 @Composable
 fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
     val docs by model.documents.collectAsState()
+    val files by model.files.files.collectAsState()
+    val hasNationalId = files.any { it.nationalId != null }
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf<DocumentCategory?>(null) }
-    if (docs.isEmpty()) {
+    if (docs.isEmpty() && !hasNationalId) {
         EmptyState(WalletIcons.Wallet, "還沒有任何證件", "掃描發行端的 QR Code，或從清單選擇要申請的證件。", "加入證件", onAdd)
         return
     }
@@ -132,13 +134,20 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
                 categories.forEach { c -> FilterChip(selected = filter == c, onClick = { filter = if (filter == c) null else c }, label = { Text(c.title) }) }
             }
         }
+        // The Bonds national ID card lives with the MyData PDF it was made from; it is listed here with the cards.
+        if (hasNationalId && filter == null && q.isEmpty()) item(key = "national-id") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (groups.isNotEmpty()) SectionTitle("自然人憑證自發卡")
+                NationalIdCards(model)
+            }
+        }
         groups.forEach { (category, list) ->
-            if (groups.size > 1) item(key = "h-" + category.name) { SectionTitle(category.title) }
+            if (groups.size > 1 || hasNationalId) item(key = "h-" + category.name) { SectionTitle(category.title) }
             items(list, key = { it.identifier }) { doc ->
                 CredentialCard(model, doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) }
             }
         }
-        if (shown.isEmpty()) item(key = "none") {
+        if (shown.isEmpty() && !(hasNationalId && filter == null && q.isEmpty())) item(key = "none") {
             Text("沒有符合搜尋或篩選條件的證件。", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
         }
     }
@@ -152,7 +161,7 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
  */
 @Composable
 fun NfcCardRow(model: WalletModel) {
-    ActionRow(WalletIcons.Nfc, "自然人憑證卡（NFC／讀卡機）", "以卡片簽署文件，或把文件變成以自然人憑證簽署的衍生憑證（vc+moica）") {
+    ActionRow(WalletIcons.Nfc, "自然人憑證卡（NFC／讀卡機）", "以卡片簽署文件、把 MyData 身分證資料做成 Bonds 身分證卡，或把文件變成以自然人憑證簽署的衍生憑證（vc+moica）") {
         model.showTab(HomeTab.FILES)
     }
 }
@@ -256,7 +265,7 @@ fun VerifyTab(model: WalletModel) {
                     }
                 }
                 if (source == BondsCredentialSource.SELF_ISSUED) {
-                    Text("以自然人憑證簽署的 Bonds 自發卡片（vc+moica），包括本錢包由文件衍生的憑證；姓名一定揭露並與自然人憑證比對。",
+                    Text("以自然人憑證簽署的 Bonds 自發卡片（vc+moica），例如 Bonds 身分證卡與本錢包由文件衍生的憑證；姓名一定揭露並與自然人憑證比對。",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 if (source == BondsCredentialSource.ANY) {

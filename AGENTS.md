@@ -30,10 +30,10 @@
 | `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect`、`EudiDialect` |
 | `oid4vp/compat` | 出示方言：`TwdiwPresentationDialect`、`MsVerifiedIdPresentationDialect` |
 | `profile/twdiw` | TWDIW 信任清單、Arbitrum 錨定、入口解析、平台服務（卡片目錄、DWVP-05 離線條碼） |
-| `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
+| `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證、身分證卡（`BondsNationalId`）；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
 | `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
-| `document/pdf` | 純 Kotlin PDF 解析（加密、增量更新、xref stream）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`） |
+| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`） |
 | `document/sign` | 簽署（`DocumentSigning`：PAdES、CAdES、ASiC-E、XAdES、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`） |
 | `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
 | `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、證據查驗（`DerivedEvidence`） |
@@ -85,7 +85,8 @@
 - 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。有 TSA 時為 B-T。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
 - 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位（姓名、文件名稱、簽署者、簽署時間、來源）為 disclosure。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
 - vc+moica 與 Bonds 相容：payload 以 JCS 序列化，卡片簽 `"bonds-tw-credential-v1:" + hex(sha256(payload))`（RS256），issuerJWS 為 BONDS_SELF_ISSUED did:key 的 ES256。Bonds 請求 `k=s` 時列出有自然人憑證證據的衍生憑證；MOICA G3 與 GRCA G3 固定在 `MoicaCa.PRODUCTION`，測試以 `MoicaCa(moica, root)` 注入。
-- asdt 只保存原檔（加密給戶政司，錢包無法解開）；OpenCerts 只匯入、檢查 Merkle 完整性並保存；MyData 的 ZIP 可在文件畫面解出，每個檔案各自保存並記錄來自哪個壓縮檔。
+- Bonds 身分證卡（`BondsNationalId`）：MyData `personal/detail/API.idPhotoRev` 的 PDF 以身分證統一編號為使用者密碼（依 Bonds 先試輸入原樣，再試去空白轉大寫）；`PdfTextExtractor` 依 ToUnicode、Identity-H 與 Uni*-UCS2／UTF16 CMap 擷取文字並依基線分行。欄位依標籤（統號、姓名、出生日期、戶籍地址，全形或半形冒號，同一行可有兩個欄位，地址可跨行）解析；出生日期只接受「民國 083年03月06日」形式，`over18AtIssuance` 以臺北時間在生日當天成立，讀不懂日期時不加這個欄位。內容與 Bonds 相同：W3C VC 2.0、`@context` 第二項是 `https://bonds.tw/ns/credentials#` 的受保護詞彙、type `NationalIDCredential`、issuer 與 credentialSubject.id 都是 BONDS_SELF_ISSUED did:key、全部欄位為 disclosure、`_sd` 排序且沒有 `_sd_alg`。以實體自然人憑證卡簽署（Bonds 用行動自然人憑證），簽署前檢查憑證 CN 等於姓名。卡片存在來源檔案的 `StoredFile.nationalId`，列在證件分頁最上方，回應 Bonds `k=s`；`BondsCard` 的 `document` 與 `credential` 因此可為 null。
+- - asdt 只保存原檔（加密給戶政司，錢包無法解開）；OpenCerts 只匯入、檢查 Merkle 完整性並保存；MyData 的 ZIP 可在文件畫面解出，每個檔案各自保存並記錄來自哪個壓縮檔。
 - 取件入口（`DocumentSources`）：MyData、MyDoc、教育部大專校院電子證書、數位證明管理中心、戶政、地政、移民署入出國日期證明書。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載）；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
 - 停用列（寫明原因）：行動自然人憑證簽章（需要內政部 SP 帳號）、CSC 遠端簽章、公文交換收發（需要機關的公文電子交換帳號與憑證）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。

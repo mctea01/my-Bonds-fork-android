@@ -169,6 +169,10 @@ sealed class Screen {
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
     data class FileDerive(val fileId: String) : Screen()
+    /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
+    data class NationalIdCreate(val fileId: String) : Screen()
+    /** The Bonds national ID card made from the vault file [fileId]. */
+    data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
     /** Writing a PDF ([letter] false) or an official letter. */
     data class FileCompose(val letter: Boolean) : Screen()
     /** A document source site opened inside the app. */
@@ -577,6 +581,8 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.FileDetail -> showTab(HomeTab.FILES)
             is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.FileDerive -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
             is Screen.FileCompose, is Screen.Portal -> showTab(HomeTab.FILES)
         }
         return true

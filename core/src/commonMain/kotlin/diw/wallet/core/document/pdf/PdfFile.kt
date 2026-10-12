@@ -6,11 +6,11 @@ import diw.wallet.core.jose.PlatformCrypto
 
 /**
  * Random access to the objects of a PDF file: cross-reference tables and streams (including hybrid files and
- * incremental updates), object streams, stream filters, and the standard security handler with an empty user
- * password (documents that are only protected against copying or editing). A file whose cross-reference data is
- * broken is read by scanning for "n g obj" headers.
+ * incremental updates), object streams, stream filters, and the standard security handler opened with [password] or
+ * the empty user password (documents that are only protected against copying or editing). A file whose
+ * cross-reference data is broken is read by scanning for "n g obj" headers.
  */
-class PdfFile(val bytes: ByteArray) {
+class PdfFile(val bytes: ByteArray, password: String = "") {
     /** One xref section: where it starts, the objects it defines, and where its revision ends (after %%EOF). */
     class Revision(val xrefOffset: Int, val objects: Set<Int>, val end: Int, val trailer: PdfDict, val usesXrefStream: Boolean)
 
@@ -32,8 +32,11 @@ class PdfFile(val bytes: ByteArray) {
 
     val encrypted: Boolean get() = trailer["Encrypt"] != null
     private var security: StandardSecurity? = null
-    /** Null when the file is not encrypted or an empty user password opens it; otherwise why it cannot be read. */
+    /** Null when the file is not encrypted or the password (or the empty one) opens it; otherwise why it cannot be read. */
     var encryptionProblem: String? = null
+        private set
+    /** True when the file is encrypted with a user password that neither the given password nor the empty one opens. */
+    var passwordRequired: Boolean = false
         private set
 
     init {
@@ -55,9 +58,10 @@ class PdfFile(val bytes: ByteArray) {
         reconstructed = rebuilt
         if (encrypted) {
             try {
-                security = StandardSecurity.open(resolve(trailer["Encrypt"]) as? PdfDict ?: throw PdfException("No encryption dictionary"), firstId())
+                security = StandardSecurity.open(resolve(trailer["Encrypt"]) as? PdfDict ?: throw PdfException("No encryption dictionary"), firstId(), password)
             } catch (e: PdfException) {
                 encryptionProblem = e.message
+                passwordRequired = e is PdfPasswordException
             }
             cache.clear()
             objStmCache.clear()
@@ -481,8 +485,8 @@ class PdfFile(val bytes: ByteArray) {
 }
 
 /**
- * PDF standard security handler (ISO 32000-1 7.6.3, ISO 32000-2 7.6.4) opened with the empty user password:
- * RC4 40 to 128 bits (revisions 2 to 4), AES-128 (V4 AESV2) and AES-256 (revisions 5 and 6).
+ * PDF standard security handler (ISO 32000-1 7.6.3, ISO 32000-2 7.6.4) opened with a user password (tried as given,
+ * then empty): RC4 40 to 128 bits (revisions 2 to 4), AES-128 (V4 AESV2) and AES-256 (revisions 5 and 6).
  */
 internal class StandardSecurity private constructor(
     private val key: ByteArray,
@@ -521,7 +525,7 @@ internal class StandardSecurity private constructor(
             0x2E, 0x2E, 0x00, 0xB6.toByte(), 0xD0.toByte(), 0x68, 0x3E, 0x80.toByte(), 0x2F, 0x0C, 0xA9.toByte(), 0xFE.toByte(), 0x64, 0x53, 0x69, 0x7A,
         )
 
-        fun open(enc: PdfDict, id0: ByteArray): StandardSecurity {
+        fun open(enc: PdfDict, id0: ByteArray, password: String = ""): StandardSecurity {
             val filter = enc.name("Filter")
             if (filter != "Standard") throw PdfException("Encrypted with the $filter handler (certificate or other security); the file cannot be opened without it")
             val v = (enc["V"] as? PdfNumber)?.int ?: 0
@@ -541,32 +545,40 @@ internal class StandardSecurity private constructor(
                 strM = method(enc.name("StrF"))
                 stmM = method(enc.name("StmF"))
             }
-            if (r >= 5) {
-                val ue = (enc["UE"] as? PdfString)?.bytes ?: throw PdfException("No /UE")
-                val check = hashR6(ByteArray(0), u.copyOfRange(32, 40), ByteArray(0), r)
-                if (!check.contentEquals(u.copyOfRange(0, 32))) throw PdfException("A password is needed to open this file")
-                val ik = hashR6(ByteArray(0), u.copyOfRange(40, 48), ByteArray(0), r)
-                val fileKey = DocCrypto.aesCbc(false, ik, ByteArray(16), ue.copyOfRange(0, 32))
-                return StandardSecurity(fileKey, "AESV3", "AESV3", encryptMetadata, r)
+            for (candidate in listOf(password, "").distinct()) {
+                if (r >= 5) {
+                    if (u.size < 48) throw PdfException("Malformed /U")
+                    val ue = (enc["UE"] as? PdfString)?.bytes ?: throw PdfException("No /UE")
+                    // Algorithm 2.A: the password is UTF-8 (SASLprep is the identity for the characters an ID uses), at most 127 bytes.
+                    val pw = candidate.encodeToByteArray().let { if (it.size > 127) it.copyOf(127) else it }
+                    val check = hashR6(pw, u.copyOfRange(32, 40), ByteArray(0), r)
+                    if (!check.contentEquals(u.copyOfRange(0, 32))) continue
+                    val ik = hashR6(pw, u.copyOfRange(40, 48), ByteArray(0), r)
+                    val fileKey = DocCrypto.aesCbc(false, ik, ByteArray(16), ue.copyOfRange(0, 32))
+                    return StandardSecurity(fileKey, "AESV3", "AESV3", encryptMetadata, r)
+                }
+                // Algorithm 2: the password padded or truncated to 32 bytes (PDFDocEncoding, Latin-1 for the characters an ID uses).
+                val pw = ByteArray(candidate.length.coerceAtMost(32)) { i -> candidate[i].code.let { c -> if (c < 256) c.toByte() else '?'.code.toByte() } }
+                val padded = pw + PAD.copyOf(32 - pw.size)
+                val n = if (r == 2) 5 else ((enc["Length"] as? PdfNumber)?.int ?: 40) / 8
+                var h = DocCrypto.digest(
+                    "MD5",
+                    padded + o.copyOf(32) + byteArrayOf(p.toByte(), (p shr 8).toByte(), (p shr 16).toByte(), (p shr 24).toByte()) + id0 +
+                        (if (r >= 4 && !encryptMetadata) byteArrayOf(-1, -1, -1, -1) else ByteArray(0)),
+                )
+                if (r >= 3) repeat(50) { h = DocCrypto.digest("MD5", h.copyOf(n)) }
+                val key = h.copyOf(n)
+                // Algorithm 6: check that the password is the user password.
+                val ok = if (r == 2) {
+                    DocCryptoUtil.rc4(key, PAD).contentEquals(u.copyOf(32))
+                } else {
+                    var x = DocCryptoUtil.rc4(key, DocCrypto.digest("MD5", PAD + id0))
+                    for (i in 1..19) x = DocCryptoUtil.rc4(ByteArray(key.size) { (key[it].toInt() xor i).toByte() }, x)
+                    x.contentEquals(u.copyOf(16))
+                }
+                if (ok) return StandardSecurity(key, strM, stmM, encryptMetadata, r)
             }
-            val n = if (r == 2) 5 else ((enc["Length"] as? PdfNumber)?.int ?: 40) / 8
-            var h = DocCrypto.digest(
-                "MD5",
-                PAD + o.copyOf(32) + byteArrayOf(p.toByte(), (p shr 8).toByte(), (p shr 16).toByte(), (p shr 24).toByte()) + id0 +
-                    (if (r >= 4 && !encryptMetadata) byteArrayOf(-1, -1, -1, -1) else ByteArray(0)),
-            )
-            if (r >= 3) repeat(50) { h = DocCrypto.digest("MD5", h.copyOf(n)) }
-            val key = h.copyOf(n)
-            // Algorithm 6: check that the empty user password is the right one.
-            val ok = if (r == 2) {
-                DocCryptoUtil.rc4(key, PAD).contentEquals(u.copyOf(32))
-            } else {
-                var x = DocCryptoUtil.rc4(key, DocCrypto.digest("MD5", PAD + id0))
-                for (i in 1..19) x = DocCryptoUtil.rc4(ByteArray(key.size) { (key[it].toInt() xor i).toByte() }, x)
-                x.contentEquals(u.copyOf(16))
-            }
-            if (!ok) throw PdfException("A password is needed to open this file")
-            return StandardSecurity(key, strM, stmM, encryptMetadata, r)
+            throw PdfPasswordException(if (password.isEmpty()) "A password is needed to open this file" else "The password does not open this file")
         }
 
         /** Algorithm 2.B (ISO 32000-2) for revision 6; revision 5 is plain SHA-256. */

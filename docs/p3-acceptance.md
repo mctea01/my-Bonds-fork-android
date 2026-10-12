@@ -10,10 +10,12 @@
 | 簽署：PAdES（RSA 加 TSA、第二個 EC 簽章保留第一個、xref stream 的 PDF）、拒絕加密 PDF、CAdES 分離與封裝、ASiC-E、XAdES（RSA 與 EC，另以 JDK 的 XML 簽章驗證）、電子公文「函」XML 加 XAdES、錢包金鑰自簽憑證（只證明完整性，判定為部分） | `:test-servers:test --tests '*DocumentSigningTest'` | 7/7 通過 |
 | 自然人憑證卡：第一代與第二代卡（SCP03 金鑰衍生與安全通道測試向量）簽章、PIN 錯誤時回報剩餘次數 | `:test-servers:test --tests '*GpkiCardTest'` | 4/4 通過 |
 | 衍生憑證：SD-JWT VC 帶時戳與自然人憑證證據經 Bonds 離線出示並驗證（正式 MOICA 鏈判定證據失敗）、vc+moica 以 `k=s` 出示、證據的 `_sd` 與另一張憑證不符時失敗、非 RSA 卡片拒絕產生 vc+moica | `:test-servers:test --tests '*DerivedCredentialTest'` | 4/4 通過 |
+| Bonds 身分證卡：Identity-H 字型加 ToUnicode（含 bfrange、TJ 字距、同一行兩個欄位）與 PdfComposer 的 UniCNS-UCS2-H 字型文字擷取；PDFBox 以 RC4 40、RC4 128、AES-128、AES-256 加密後以身分證統一編號開啟（小寫加空白也可），錯誤編號回報；Bonds 的解析案例；民國日期與臺北時間的 18 歲判定；NationalIDCredential 內容與 Bonds 相同，以 `k=s` 只揭露年齡並驗證；姓名與憑證不符時拒絕簽署 | `:test-servers:test --tests '*BondsNationalIdTest'` | 7/7 通過 |
+| App 流程（身分證卡）：讀取身分證資料、姓名不符的卡片被拒、以 RSA 憑證代替卡片簽署、證件分頁與 Bonds `k=s` 出示（只揭露年齡）並驗證 | `:app:desktopTest --tests '*bondsNationalIdCard'` | 通過 |
 | App 流程：匯入 PDF、相同檔案去重、錢包金鑰 PAdES 簽署、製作公文並 XAdES 簽署、產生衍生憑證、以 Bonds 擴充（`k=a`）出示並由另一個錢包驗證、`k=s` 沒有衍生憑證時的引導訊息 | `:app:desktopTest --tests '*documentVaultSignDeriveAndPresent'` | 通過 |
-| 全部協議與互通 | `:test-servers:test` | 121 項：107 通過、14 項需 `DIW_INTEROP=1` 略過 |
-| 全部 App 流程 | `:app:desktopTest` | 20 項：17 通過、2 項需網路略過、截圖測試需 `DIW_SCREENSHOTS` |
-| 主要畫面離屏截圖（新增文件分頁、文件內容、簽署、衍生憑證） | `DIW_SCREENSHOTS=<資料夾> ./gradlew :app:desktopTest --tests '*uiScreenshots'` | 17 張 PNG |
+| 全部協議與互通 | `:test-servers:test` | 128 項：114 通過、14 項需 `DIW_INTEROP=1` 略過 |
+| 全部 App 流程 | `:app:desktopTest` | 21 項：18 通過、2 項需網路略過、截圖測試需 `DIW_SCREENSHOTS` |
+| 主要畫面離屏截圖（新增文件分頁、文件內容、簽署、衍生憑證、身分證卡） | `DIW_SCREENSHOTS=<資料夾> ./gradlew :app:desktopTest --tests '*uiScreenshots'` | 21 張 PNG |
 
 ## ETSI 報告比對（EU DSS 6.5）
 
@@ -62,6 +64,7 @@
 | 自然人憑證卡 NFC 簽署 PAdES | 文件分頁匯入 PDF，選「簽署」，簽署方式選自然人憑證卡、輸入 PIN，依提示感應兩次 | 簽署完成後文件畫面新增簽章，簽署者為卡片姓名，憑證鏈到 MOICA G3（T2）；匯出的 PDF 以 DSS 或 Adobe 驗證為有效 |
 | USB 讀卡機（OTG）與電腦 PC/SC | 同上，在讀卡機清單選 USB 或 PC/SC 讀卡機 | 卡片放在讀卡機上一次完成 |
 | 真實文件衍生憑證 | 以真實文件（例如在學證明、入出國日期證明書）產生衍生憑證，勾選自然人憑證證據 | 另一台手機在「查驗」分頁產生挑戰，本機出示後顯示通過，證據列出時戳與自然人憑證簽章 |
+| Bonds 身分證卡 | MyData 下載國民身分證資料（ZIP 先解出），開啟 PDF 選「製作 Bonds 身分證卡」，輸入身分證統一編號、確認欄位，以自然人憑證卡簽署；Bonds 查驗方產生 `k=s` 挑戰後出示，只勾選「簽發時年滿 18 歲」 | 欄位與 MyData 內容相同；Bonds 顯示自然人憑證驗證通過，只看到姓名與年齡欄位 |
 | Bonds 自發卡 | Bonds 查驗方產生 `k=s` 挑戰，本 App 選有自然人憑證證據的衍生憑證出示 | Bonds 顯示自然人憑證驗證通過 |
 | 來源網站取件 | 文件分頁「取得文件」開 MyData 或移民署，登入並下載 | 下載的檔案出現在文件分頁並記錄來源；行動自然人憑證登入時跳到官方 App 後可返回 |
 | 分享匯入 | 從其他 App 分享 PDF 或 .p7s 到本 App | 檔案出現在文件分頁並顯示檢查結果 |

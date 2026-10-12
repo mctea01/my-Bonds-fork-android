@@ -287,6 +287,14 @@ class WalletModelE2eTest {
         screen("15-file-sign", Screen.FileSign(stored.id))
         screen("16-file-derive", Screen.FileDerive(stored.id))
         screen("17-compose-letter", Screen.FileCompose(true))
+        m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
+        val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }
+        screen("18-national-id-open", Screen.NationalIdCreate(idFile.id))
+        m.files.readNationalId(idFile, "A123456789").join()
+        screen("19-national-id-confirm", Screen.NationalIdCreate(idFile.id))
+        m.files.issueNationalId(assertNotNull(m.files.nationalIdDraft.value), "簽署中") { rsaSigner("測試人員") }.join()
+        screen("20-national-id", Screen.NationalId(idFile.id))
+        screen("21-documents-with-national-id", Screen.Home, HomeTab.DOCUMENTS)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -751,7 +759,7 @@ class WalletModelE2eTest {
         val choose = withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } }
         assertIs<OfflineUi.BondsChoose>(choose, "choose: $choose")
         val card = choose.cards.first()
-        assertEquals(docId, card.document.identifier)
+        assertEquals(docId, card.document?.identifier)
         assertEquals(BondsCardKind.SD_JWT_VC, card.kind)
         assertEquals(setOf("given_name", "family_name", "birthdate", "nationality"), card.claims.map { it.first }.toSet())
 
@@ -828,7 +836,7 @@ class WalletModelE2eTest {
         holder.handleUri(any.encode())
         val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
         val card = choose.cards.first()
-        assertEquals(derivedId, card.document.identifier)
+        assertEquals(derivedId, card.document?.identifier)
         holder.taiwan.presentBonds(choose.request, card, setOf("documentTitle"))
         val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
         frames.frames.forEach { verifier.handleUri(it) }
@@ -855,6 +863,79 @@ class WalletModelE2eTest {
         assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
         val signedLetter = holder.files.files.value.first { it.origin == FileOrigin.SIGNED && it.parentId == letter.id }
         assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
+    }
+
+    /** A MyData national ID document with made-up data (unencrypted; the encrypted forms are covered in test-servers). */
+    private fun nationalIdPdf(): ByteArray = diw.wallet.core.document.pdf.PdfComposer.compose(
+        "國民身分證資料",
+        listOf(
+            diw.wallet.core.document.pdf.PdfComposer.Block.Heading("國民身分證資料"),
+            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("統號：A123456789 姓名：測試人員"),
+            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("出生日期：民國 083年03月06日"),
+            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("戶籍地址：臺北市中正區重慶南路一段122號"),
+            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("備註"),
+        ),
+    )
+
+    /** An RSA key with a self-issued certificate named [name], standing in for the citizen certificate card. */
+    private suspend fun rsaSigner(name: String): diw.wallet.core.document.sign.DocumentSigner {
+        val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        fun rsaSign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withRSA").run { initSign(rsa.private); update(data); sign() }
+        val cert = diw.wallet.core.document.sign.DocumentSigning.selfIssuedCertificate(
+            rsa.public.encoded, name, { rsaSign(it) }, diw.wallet.core.document.sign.SignerKeyType.RSA, 30,
+        )
+        return object : diw.wallet.core.document.sign.DocumentSigner {
+            override val certificateChain = listOf(cert)
+            override val keyType = diw.wallet.core.document.sign.SignerKeyType.RSA
+            override val source = diw.wallet.core.document.sign.SignerSource.SMART_CARD
+            override suspend fun sign(data: ByteArray): ByteArray = rsaSign(data)
+        }
+    }
+
+    /**
+     * Bonds national ID card: the MyData national ID PDF is read with the ID number, the fields are signed with an
+     * RSA certificate named like the holder (in place of the citizen card), and the card answers a Bonds request for
+     * a self-issued card, disclosing only the age claim and the name.
+     */
+    @Test
+    fun bondsNationalIdCard() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        holder.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
+        val f = holder.files.files.value.single()
+        holder.files.readNationalId(f, "a123456789").join()
+        assertNull(holder.files.error.value, "read: ${holder.files.error.value}")
+        val draft = assertNotNull(holder.files.nationalIdDraft.value)
+        assertEquals("A123456789", draft.fields.unifiedNo)
+        assertEquals("測試人員", draft.fields.name)
+        assertEquals("true", draft.over18)
+
+        // Another person's card is refused before anything is signed.
+        holder.files.issueNationalId(draft, "簽署中") { rsaSigner("王小明") }.join()
+        assertTrue(holder.files.error.value!!.contains("姓名"), "error: ${holder.files.error.value}")
+        assertNull(holder.files.file(f.id)?.nationalId)
+
+        val card = rsaSigner("測試人員")
+        holder.files.issueNationalId(draft, "簽署中") { card }.join()
+        assertNull(holder.files.error.value, "issue: ${holder.files.error.value}")
+        assertEquals(Screen.NationalId(f.id), holder.screen.value)
+        val stored = holder.files.nationalIdCards().single().second
+        assertTrue(diw.wallet.core.profile.bonds.BondsNationalId.isNationalId(stored))
+        withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.ISSUED } } }
+
+        val request = diw.wallet.core.profile.bonds.BondsPresentationRequest.generate("年齡確認", diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+        holder.handleUri(request.encode())
+        val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
+        val offered = choose.cards.single()
+        assertEquals(TaiwanModel.NATIONAL_ID_NAME, offered.name)
+        assertEquals(listOf("nationality", "unifiedNo", "name", "birthdate", "over18AtIssuance", "addressOfHousehold"), offered.claims.map { it.first })
+        holder.taiwan.presentBonds(choose.request, offered, setOf("over18AtIssuance"))
+        val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
+        // The certificate stands in for MOICA G3 here; a production verifier checks the MOICA chain.
+        val ca = diw.wallet.core.profile.bonds.MoicaCa(card.certificateChain.first(), card.certificateChain.first())
+        val r = diw.wallet.core.profile.bonds.BondsOfflineVerifier(holder.didResolver(), moicaCa = ca).verify(frames.presentationJws, request)
+        assertEquals(mapOf("name" to "測試人員", "over18AtIssuance" to "true"), r.claims)
+        assertTrue(r.moica!!.nameChecked)
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */

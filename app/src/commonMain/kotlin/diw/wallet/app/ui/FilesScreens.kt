@@ -188,7 +188,7 @@ fun FilesTab(model: WalletModel) {
 }
 
 @Composable
-private fun BusyLine(busy: String?, error: String?) {
+internal fun BusyLine(busy: String?, error: String?) {
     busy?.let {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CircularProgressIndicator(Modifier.size(18.dp))
@@ -213,6 +213,7 @@ private fun FileRow(f: StoredFile, onClick: () -> Unit) {
                     VerdictPill(verdict, text)
                     if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, "時戳")
                     if (f.derivedDocumentId != null) VerdictPill(Verdict.PASS, "已衍生憑證")
+                    if (f.nationalId != null) VerdictPill(Verdict.PASS, "身分證卡")
                 }
             }
         }
@@ -299,6 +300,17 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             model.screen.value = Screen.FileDerive(f.id)
         }
         if (f.moica != null) ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
+        if (f.nationalId != null) {
+            SectionTitle("身分證卡")
+            ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
+                model.screen.value = Screen.NationalId(f.id, Screen.FileDetail(f.id))
+            }
+        } else if (report?.format == DocumentFormat.PDF) {
+            SectionTitle("身分證卡")
+            ActionRow(WalletIcons.Person, "製作 Bonds 身分證卡", "這是 MyData 下載的國民身分證資料 PDF 時，可做成以自然人憑證簽署的身分證卡") {
+                model.screen.value = Screen.NationalIdCreate(f.id)
+            }
+        }
         SectionTitle("動作")
         ActionRow(WalletIcons.Shield, "簽署", "自然人憑證卡、憑證檔（PKCS#12）或錢包自有金鑰") { model.screen.value = Screen.FileSign(f.id) }
         if (report?.format == DocumentFormat.ZIP) ActionRow(WalletIcons.Document, "解出檔案", "逐一保存並檢查壓縮檔內的檔案（MyData 下載檔）") { model.files.extract(f) }
@@ -428,7 +440,7 @@ private enum class SignerKind(val title: String) { CARD("自然人憑證卡"), P
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
 @Composable
-private fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Unit) {
+internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Unit) {
     var readers by remember { mutableStateOf<NfcReaderList?>(null) }
     var reader by remember { mutableStateOf<NfcReaderOption?>(null) }
     var pin by remember { mutableStateOf("") }

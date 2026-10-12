@@ -9,6 +9,7 @@ import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
+import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.BondsReception
@@ -65,10 +66,13 @@ enum class BondsCardKind {
     MOICA,
 }
 
-/** A card that can answer a Bonds request, with its claims; [selective] when the holder picks which to show. */
+/**
+ * A card that can answer a Bonds request, with its claims; [selective] when the holder picks which to show. A Bonds
+ * national ID card lives in the document vault, not in the documents list, so it has no [document] or [credential].
+ */
 data class BondsCard(
-    val document: Document,
-    val credential: Credential,
+    val document: Document?,
+    val credential: Credential?,
     val kind: BondsCardKind,
     val name: String,
     val claims: List<Pair<String, String>>,
@@ -320,17 +324,21 @@ class TaiwanModel(private val model: WalletModel) {
                 val request = BondsPresentationRequest.parse(text)
                 if (request.source == BondsCredentialSource.SELF_ISSUED) {
                     val docs = model.documents.value
-                    val cards = model.files.moicaCards().mapNotNull { (f, card) ->
+                    val nationalIds = model.files.nationalIdCards().map { (_, card) ->
+                        BondsCard(null, null, BondsCardKind.MOICA, NATIONAL_ID_NAME, nationalIdClaims(card), card)
+                    }
+                    val derived = model.files.moicaCards().mapNotNull { (f, card) ->
                         val doc = docs.firstOrNull { it.identifier == f.derivedDocumentId } ?: return@mapNotNull null
                         val credential = doc.getCertifiedCredentials().firstOrNull() ?: return@mapNotNull null
                         BondsCard(doc, credential, BondsCardKind.MOICA, doc.displayName ?: f.name, BondsOfflinePresentation.disclosableClaims(card), card)
-                    }.sortedBy { if (it.document.identifier == preferred) 0 else 1 }
+                    }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
+                    val cards = nationalIds + derived
                     offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
-                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 卡片（vc+moica）。到「文件」選一份文件產生衍生憑證並勾選「以自然人憑證簽署」，就能出示；姓名一定會揭露。")
+                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 卡片（vc+moica）。到「文件」開啟 MyData 的國民身分證資料 PDF 製作身分證卡，或選一份文件產生衍生憑證並勾選「以自然人憑證簽署」，就能出示；姓名一定會揭露。")
                     return@launch
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value
-                val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document.identifier == preferred) 0 else 1 }
+                val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
                 offline.value = when {
                     cards.isNotEmpty() -> OfflineUi.BondsChoose(request, cards)
                     request.source == BondsCredentialSource.TWDIW -> OfflineUi.Failed("這個查驗方只接受政府皮夾卡片，這支手機沒有可出示的卡片。先到「證件」加入卡片，就能出示給查驗方。")
@@ -374,7 +382,7 @@ class TaiwanModel(private val model: WalletModel) {
                 } finally {
                     model.endOperation()
                 }
-                card.credential.increaseUsageCount()
+                card.credential?.increaseUsageCount()
                 offline.value = OfflineUi.BondsFrames(request, BondsOfflinePresentation.qrFrames(jws), jws, Clock.System.now() + 5.minutes)
                 model.platform.keepScreenOn(true)
                 recordBonds(request, card, shown, null)
@@ -422,7 +430,7 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     private fun recordBonds(request: BondsPresentationRequest, card: BondsCard, disclosing: Set<String>, failure: String?) {
-        val record = card.document.issuanceRecord
+        val record = card.document?.issuanceRecord
         model.record(
             HistoryKind.PRESENTED, request.audience ?: "離線查驗方", null, listOf(card.name),
             disclosing.map { model.claimLabel(it.split('.'), null, record) }, "離線出示，用途：${request.purpose}", failure,
@@ -571,5 +579,13 @@ class TaiwanModel(private val model: WalletModel) {
 
         /** A DID shortened for a list line: method and the last characters of the identifier. */
         fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)
+
+        const val NATIONAL_ID_NAME = "國民身分證（自然人憑證簽署）"
+
+        /** Claims of a national ID card in Bonds' display order. */
+        fun nationalIdClaims(card: MoicaSignedCredential): List<Pair<String, String>> =
+            BondsOfflinePresentation.disclosableClaims(card).sortedBy { (name, _) ->
+                BondsNationalId.claimOrder.indexOf(name).let { if (it < 0) Int.MAX_VALUE else it }
+            }
     }
 }

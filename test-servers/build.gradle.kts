@@ -24,6 +24,8 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.mock)
+    // Encrypts test PDFs with the standard security handler (RC4 and AES revisions).
+    testImplementation("org.apache.pdfbox:pdfbox:3.0.8")
 }
 
 configurations.all {
