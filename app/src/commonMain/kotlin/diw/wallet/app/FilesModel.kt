@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.document.DocumentInspector
@@ -9,6 +10,8 @@ import diw.wallet.core.document.card.GpkiTapSigner
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedDocument
+import diw.wallet.core.document.official.OfficialDocument
+import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OaAttachment
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.opencerts.OpenAttestationOnline
@@ -16,12 +19,8 @@ import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.document.opencerts.OpenCertView
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfPlain
-import diw.wallet.core.document.pdf.PdfTextExtractor
-import diw.wallet.core.profile.bonds.HolderDerivedException
-import diw.wallet.core.profile.bonds.HolderDerivedSource
-import diw.wallet.core.profile.bonds.HolderDerivedTypes
-import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.document.pdf.PdfSignOptions
+import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.sign.SignerKeyType
@@ -37,6 +36,10 @@ import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.oid4vci.CredentialDomains
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.profile.bonds.BondsNationalId
+import diw.wallet.core.profile.bonds.HolderDerivedException
+import diw.wallet.core.profile.bonds.HolderDerivedSource
+import diw.wallet.core.profile.bonds.HolderDerivedTypes
+import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.NationalIdFields
 import diw.wallet.core.profile.bonds.TwPkiAnchors
@@ -47,7 +50,9 @@ import diw.wallet.core.util.DiwJson
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.isSuccess
-import androidx.compose.ui.graphics.ImageBitmap
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,9 +69,6 @@ import org.multipaz.sdjwt.credential.KeyBoundSdJwtVcCredential
 import org.multipaz.storage.StorageTableSpec
 import org.multipaz.util.fromBase64
 import org.multipaz.util.toBase64
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Instant
 
 /** A time stamp the wallet obtained for a stored file (RFC 3161 over its SHA-256). */
 @Serializable
@@ -115,6 +117,8 @@ sealed class FilePreview {
     class Pages(val pages: List<ImageBitmap>, val total: Int, val text: String?) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
+    /** An official document (公文) laid out as a reader sees it; [source] is the XML, shown only on request. */
+    class Official(val document: OfficialDocument, val source: String, val truncated: Boolean) : FilePreview()
     /** The PDF needs its open password; [wrong] after a password that did not open it. */
     class NeedsPassword(val wrong: Boolean) : FilePreview()
     class Unavailable(val reason: String) : FilePreview()
@@ -512,7 +516,7 @@ class FilesModel(private val model: WalletModel) {
                 if (pdf == null) locked = true
                 else text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.takeIf { it.isNotBlank() }
             }
-            DocumentFormat.XML -> xml = bytes.decodeToString().takeIf { it.contains("<函") }
+            DocumentFormat.XML -> xml = bytes.decodeToString().removePrefix("\uFEFF").takeIf { OfficialDocuments.parse(bytes) != null }
             else -> {}
         }
         DeriveFields(DerivedCredentials.suggestedClaims(report, f.name, f.source, text, xml), locked)
@@ -533,7 +537,13 @@ class FilesModel(private val model: WalletModel) {
             }
             DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
                 ?: FilePreview.Unavailable("無法解碼這張圖片")
-            DocumentFormat.XML, DocumentFormat.JSON, DocumentFormat.TEXT, DocumentFormat.OPENCERTS -> {
+            DocumentFormat.XML -> {
+                val text = bytes.decodeToString().removePrefix("\uFEFF")
+                val official = OfficialDocuments.parse(bytes)
+                if (official != null) FilePreview.Official(official, text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
+                else FilePreview.Text(text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
+            }
+            DocumentFormat.JSON, DocumentFormat.TEXT, DocumentFormat.OPENCERTS -> {
                 val text = bytes.decodeToString()
                 FilePreview.Text(text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
             }

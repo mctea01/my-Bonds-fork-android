@@ -1,6 +1,8 @@
 package diw.wallet.core.document.derived
 
 import diw.wallet.core.document.OpenCertInfo
+import diw.wallet.core.document.official.OfficialDocument
+import diw.wallet.core.document.official.OfficialEntry
 
 /**
  * Claims read from a document's content, so that a derived credential carries what the document says instead of
@@ -73,6 +75,29 @@ object DocumentFields {
             value(unescape(word) + "字第" + year + serial + "號")?.let { out.add(DerivedClaim("letterNumber", it, "發文字號")) }
         }
         return out
+    }
+
+    /** Labels [fromOfficialLetter] already gives a letter under its own claim names. */
+    private val letterLabels = setOf("發文機關", "受文者", "發文日期", "主旨", "發文字號")
+
+    /**
+     * The fields of any official document (簽, 令, 便簽, 會勘通知單, forms): the labelled values of its main part, its
+     * subject, and for an online approval file who made the final decision (決行) and when. A letter's sender,
+     * recipient, date, number and subject come from [fromOfficialLetter] instead.
+     */
+    fun fromOfficial(doc: OfficialDocument): List<DerivedClaim> {
+        val out = ArrayList<DerivedClaim>()
+        val letter = doc.kind == "函"
+        out.add(DerivedClaim("officialKind", doc.category?.takeIf { it != doc.kind }?.let { "${doc.kind}（$it）" } ?: doc.kind, "公文類別"))
+        if (!letter) doc.subject?.let { value(it) }?.let { out.add(DerivedClaim("officialSubject", it, "主旨")) }
+        doc.sections.firstOrNull { it.title == null }?.entries?.forEach { e ->
+            if (e is OfficialEntry.Field && !(letter && e.label in letterLabels)) value(e.value)?.let { out.add(DerivedClaim(e.label, it, e.label)) }
+        }
+        doc.steps.lastOrNull { it.action == "決行" }?.let { s ->
+            s.signer?.let { value(it) }?.let { out.add(DerivedClaim("officialDecidedBy", it, "決行者")) }
+            s.time?.let { out.add(DerivedClaim("officialDecidedAt", it, "決行時間")) }
+        }
+        return unique(out)
     }
 
     private const val CJK = "\\u3400-\\u9FFF\\uF900-\\uFAFF"

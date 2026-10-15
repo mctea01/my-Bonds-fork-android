@@ -43,6 +43,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
+import diw.wallet.core.document.official.OfficialDocument
+import diw.wallet.core.document.official.OfficialEntry
+import diw.wallet.core.document.official.OfficialItem
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -619,6 +623,14 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             SelectableText(p.text)
             if (p.truncated) Text("只顯示前 ${FilePreview.TEXT_LIMIT} 字。", style = MaterialTheme.typography.bodySmall)
         }
+        is FilePreview.Official -> {
+            OfficialDocumentView(p.document)
+            TextButton(onClick = { showText = !showText }) { Text(if (showText) "隱藏原始 XML" else "顯示原始 XML") }
+            if (showText) {
+                SelectableText(p.source)
+                if (p.truncated) Text("只顯示前 ${FilePreview.TEXT_LIMIT} 字。", style = MaterialTheme.typography.bodySmall)
+            }
+        }
         is FilePreview.NeedsPassword -> {
             Text(if (p.wrong) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼。MyData 的文件通常是身分證統一編號；密碼只用於這次開啟，不會保存。",
                 style = MaterialTheme.typography.bodySmall)
@@ -630,6 +642,71 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
         }
         is FilePreview.Unavailable -> Text(p.reason, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/**
+ * An official document as it reads on paper: the agency and type on top, then its fields, subject and numbered
+ * paragraphs, nested parts (such as each co-signing agency) and, for an online approval file, the planned flow and
+ * every signing point.
+ */
+@Composable
+private fun OfficialDocumentView(doc: OfficialDocument) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(doc.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        doc.sections.forEach { section ->
+            section.title?.let { Text(it, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp)) }
+            section.entries.forEach { e ->
+                when (e) {
+                    is OfficialEntry.Field -> LabelValue(e.label, e.value)
+                    is OfficialEntry.Paragraph -> OfficialParagraphView(e)
+                }
+            }
+        }
+        if (doc.flow.isNotEmpty()) {
+            Text("簽核流程", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+            doc.flow.forEachIndexed { i, node ->
+                Text("${i + 1}. ${node.name}" + (node.action?.takeIf { it != node.name }?.let { "（$it）" } ?: ""),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = (node.depth * 16).dp))
+            }
+        }
+        doc.steps.forEachIndexed { i, step ->
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text("簽核點 ${i + 1}：" + listOfNotNull(step.action, step.point?.takeIf { it != step.action }).joinToString("・"),
+                    style = MaterialTheme.typography.titleSmall)
+                step.signer?.let { LabelValue("簽核人員", it + (step.role?.let { r -> "（$r）" } ?: "")) }
+                step.time?.let { LabelValue("簽章時間", it, small = true) }
+                step.opinions.forEach { LabelValue("簽核意見", it) }
+                if (step.next.isNotEmpty()) LabelValue("次位簽核人員", step.next.joinToString("、"), small = true)
+                step.certificate?.let { LabelValue("簽章憑證", it, small = true) }
+                if (step.drafts.isNotEmpty()) LabelValue("文稿", step.drafts.joinToString("、"), small = true)
+                if (step.files.isNotEmpty()) LabelValue("檔案", step.files.joinToString("\n"), small = true)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfficialParagraphView(p: OfficialEntry.Paragraph) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        val line = (p.heading?.trim().orEmpty() + p.text.orEmpty()).ifEmpty { null }
+        line?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        p.items.forEach { OfficialItemView(it, 1) }
+    }
+}
+
+@Composable
+private fun OfficialItemView(item: OfficialItem, depth: Int) {
+    Row(Modifier.fillMaxWidth().padding(start = (depth * 14).dp)) {
+        item.number?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        Text(item.text ?: "", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+    }
+    item.items.forEach { OfficialItemView(it, depth + 1) }
 }
 
 @Composable

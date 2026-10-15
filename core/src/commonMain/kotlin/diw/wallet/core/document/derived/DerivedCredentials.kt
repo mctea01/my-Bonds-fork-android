@@ -5,6 +5,7 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.SignatureInfo
 import diw.wallet.core.document.TimestampInfo
+import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.sign.SigningException
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
@@ -69,14 +70,17 @@ object DerivedCredentials {
 
     /**
      * Claims the wallet fills from a stored file: its report (title, signer, signing time), where it came from, and
-     * what its content says ([text], the text layer of a PDF; [xml], an official letter; OpenCerts data in the
+     * what its content says ([text], the text layer of a PDF; [xml], an official document; OpenCerts data in the
      * report). Nothing here is typed by the holder.
      */
     fun suggestedClaims(report: DocumentReport, fileName: String?, source: String?, text: String? = null, xml: String? = null): List<DerivedClaim> {
         val base = baseClaims(report, fileName, source, text)
         val parsed = buildList {
             report.openCert?.let { addAll(DocumentFields.fromOpenCert(it)) }
-            xml?.let { addAll(DocumentFields.fromOfficialLetter(it)) }
+            xml?.let {
+                addAll(DocumentFields.fromOfficialLetter(it))
+                OfficialDocuments.parse(it.encodeToByteArray())?.let { doc -> addAll(DocumentFields.fromOfficial(doc)) }
+            }
             text?.let { addAll(DocumentFields.fromText(it)) }
         }
         val names = base.map { it.name }.toMutableSet()

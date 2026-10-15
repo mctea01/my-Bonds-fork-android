@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.pdf.PdfDates
 import diw.wallet.core.document.pdf.PdfException
@@ -377,14 +378,14 @@ actual object DocumentInspector {
         val doc = runCatching { XmlParsing.parse(bytes) }.getOrElse {
             return base.copy(format = DocumentFormat.XML, problems = listOf("XML 格式錯誤：" + (it.message ?: "")))
         }
-        val root = doc.documentElement
         val notes = ArrayList<String>()
-        val title = when (root?.localName ?: root?.nodeName) {
-            "函", "書函", "公告", "令", "開會通知單", "簽", "稿" -> {
-                notes.add("台灣電子公文（${root.nodeName}）")
-                XmlParsing.descendants(root, null, "主旨").firstOrNull()?.textContent?.trim()?.take(80)
+        val official = if (doc.documentElement != null) OfficialDocuments.parse(bytes) else null
+        val title = official?.let { o ->
+            notes.add("台灣電子公文（${o.category?.takeIf { it != o.kind }?.let { c -> "${o.kind}，$c" } ?: o.kind}）")
+            if (o.kind == "線上簽核") {
+                notes.add("線上簽核檔的各簽核點簽章涵蓋同一案件的公文檔與附件，需要整個案件資料夾才能驗證；預覽列出各簽核點的簽署者與憑證名稱")
             }
-            else -> null
+            (o.subject ?: o.title).take(80)
         }
         val sigs = XmlDsig.verify(bytes, fileName ?: "XML 簽章", checks, now)
         return base.copy(format = DocumentFormat.XML, title = title, signatures = sigs, notes = notes)
