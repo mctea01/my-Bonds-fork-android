@@ -8,12 +8,13 @@ import diw.wallet.core.util.parseJsonObject
 import diw.wallet.core.util.queryParameters
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
-import io.ktor.client.request.accept
+import io.ktor.client.request.header
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.http.parameters
@@ -155,10 +156,12 @@ class RequestResolver(
         if (!isAcceptableEndpoint(requestUri, allowInsecureLoopback)) {
             throw RequestValidationException("invalid_request_uri", "request_uri must use https")
         }
-        val reqObjType = ContentType("application", "oauth-authz-req+jwt")
+        // The request object type first; verifiers that serve the request as plain JSON (walt.id with the
+        // redirect_uri prefix) answer 406 unless JSON is acceptable too.
+        val accept = "application/oauth-authz-req+jwt, application/jwt;q=0.9, application/json;q=0.8, */*;q=0.1"
         var walletNonce: String? = null
         val resp: HttpResponse = when (method) {
-            "get" -> httpClient.get(requestUri) { accept(reqObjType) }
+            "get" -> httpClient.get(requestUri) { header(HttpHeaders.Accept, accept) }
             "post" -> {
                 walletNonce = PlatformCrypto.randomBytes(16).toBase64Url()
                 val nonce = walletNonce
@@ -168,7 +171,7 @@ class RequestResolver(
                         append("wallet_metadata", walletMetadataJson().toString())
                         append("wallet_nonce", nonce)
                     }
-                ) { accept(reqObjType) }
+                ) { header(HttpHeaders.Accept, accept) }
             }
             else -> throw RequestValidationException("invalid_request_uri_method", "Unsupported request_uri_method '$method'")
         }

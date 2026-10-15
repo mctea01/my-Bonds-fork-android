@@ -13,6 +13,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.w3c.DataIntegrity
+import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cInspector
 import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
@@ -926,8 +927,11 @@ class Oid4vciClient(
         var holderDid: String? = null
         for (raw in issued) {
             if (config.format.isW3c) {
-                val sdJwtAllowed = compat.any { it.w3cDeliveredAsSdJwt(config) }
-                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtAllowed, compat)
+                // A dialect that allows SD-JWT delivery is recorded only when the issuer actually sent one: a plain
+                // JWT VC from another issuer must not be labelled with that dialect.
+                val sdJwtDialect = compat.firstWhere { it.w3cDeliveredAsSdJwt(config) }
+                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtDialect != null, compat)
+                if (sdJwtDialect != null && inspected.encoding == W3cEncoding.SD_JWT) compat.record(sdJwtDialect)
                 // A credential bound to nothing this wallet can check (e.g. a did:web subject) is matched to the only key.
                 val target = (byKey.remove(inspected.boundKey) ?: if (inspected.boundKey == null && byKey.size == 1) byKey.remove(byKey.keys.first()) else null)
                     as? W3cVcCredential

@@ -83,7 +83,9 @@ object CredentialDetails {
     /** Specifications the credential was issued under: the protocol and anything recorded during issuance. */
     fun specs(r: IssuanceRecord): List<String> {
         val ownProtocol = r.profile == "msvid" || r.specs.any { it.startsWith("OpenID4VCI") }
-        return listOfNotNull(if (ownProtocol) null else "OpenID4VCI 1.0") + r.specs
+        // Cards issued before the fix recorded TWDIW for any W3C or DID-keyed credential; only TWDIW sessions keep it.
+        val recorded = if (r.profile == "twdiw") r.specs else r.specs.filter { it != "TWDIW" }
+        return listOfNotNull(if (ownProtocol) null else "OpenID4VCI 1.0") + recorded
     }
 
     fun keyStorageName(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.displayName ?: wire

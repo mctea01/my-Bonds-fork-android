@@ -43,6 +43,11 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import kotlin.test.Test
+import diw.wallet.core.compat.Draft11Dialect
+import diw.wallet.core.compat.Draft13Dialect
+import diw.wallet.core.compat.EudiDialect
+import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.oid4vci.issuanceRecord
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Clock
@@ -148,7 +153,11 @@ class SignedMetadataIssuerTest {
     fun jwkSignedMetadataAndDidKidProof() = runBlocking<Unit> {
         val http = HttpClient(MockEngine { request -> handle(request) }) { followRedirects = false }
         val w = WalletFixture(trustVerifierRoot = false, trustIssuer = false, httpClient = http, env = EnvironmentPolicy()).init()
-        val client = Oid4vciClient(http, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore)
+        // Every dialect the app runs is present: none of them may label this walt.id-style session.
+        val client = Oid4vciClient(
+            http, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore,
+            dialects = listOf(TwdiwDialect(http, false), Draft13Dialect(http, false), Draft11Dialect(), EudiDialect()),
+        )
         val offer = buildJsonObject {
             put("credential_issuer", ISSUER)
             putJsonArray("credential_configuration_ids") { add("OpenBadgeCredential_jwt_vc_json") }
@@ -166,6 +175,9 @@ class SignedMetadataIssuerTest {
         val cred = r.credentials.single() as W3cVcCredential
         assertTrue(cred.holderDid?.startsWith("did:jwk:") == true, "holder ${cred.holderDid}")
         assertEquals("Wallet interop", (cred.credentialJson().obj("credentialSubject")?.get("achievement") as JsonPrimitive).content)
+        val record = r.document.issuanceRecord!!
+        assertEquals(emptyList(), record.specs, "specs ${record.specs}")
+        assertEquals(null, record.profile)
     }
 
     companion object {
