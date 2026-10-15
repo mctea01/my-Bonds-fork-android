@@ -49,18 +49,25 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.SYSTEM_ANCHOR -> "系統憑證庫（公開憑證機構）"
     TrustLabel.IDENTITY_VERIFIED -> "身分由政府憑證（GPKI）證明"
     TrustLabel.MAINLAND_CHINA_CA -> "中國大陸憑證機構（公開憑證機構）"
+    TrustLabel.SELF_ISSUED -> "本錢包簽發"
 }
+
+private const val SELF_ISSUED_TEXT =
+    "由這個錢包依你保存的文件產生並簽發（發行端是錢包自己的 DID），只表示內容取自該文件，不代表文件的發行機關背書。文件本身的簽章與時戳見「文件證據」。"
 
 /** One-line advice per tier; official or compliant parties get the short form. */
 fun tierAdvice(t: TrustDecision): String = when {
     t.environment == TrustEnvironment.TEST -> "對方的憑證來自測試錨點，結果不具任何正式效力。"
     t.tier == TrustTier.T1 -> "官方信任清單內的對象。"
+    TrustLabel.SELF_ISSUED in t.labels -> SELF_ISSUED_TEXT
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。證明對方是誰，不代表它列於數位憑證皮夾的發行端或查驗方清單。"
     t.tier == TrustTier.T2 -> "列於官方信任清單，但無法完全驗證（例如鏈上註冊暫時無法確認，或列名的角色不符）。"
     TrustLabel.LINKED_DOMAIN in t.labels -> "已確認對方擁有網域 ${t.anchorName ?: ""}（DIF Well-Known DID Configuration，與 Microsoft Authenticator 相同的驗證方式）。這證明網域擁有權，不代表組織列於官方清單。"
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "憑證鏈連到中國大陸的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱，但不在台灣的官方清單。"
     TrustLabel.SYSTEM_ANCHOR in t.labels -> "憑證鏈連到系統憑證庫的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱，但不在官方清單。"
     t.environment == TrustEnvironment.USER -> "由你自行匯入的根憑證或自行信任的 DID 確認（非官方）。"
+    t.environment == TrustEnvironment.PRODUCTION && t.tier == TrustTier.T3 && t.anchorName != null ->
+        "憑證鏈連到內建的發行端憑證（${t.anchorName}，與 Multipaz Wallet 相同的信任清單），可確認發行者，但不在台灣的官方清單。"
     t.tier == TrustTier.T3 -> "簽章有效，但無法確認對方是誰。請確認你認識這個對象再繼續。"
     else -> "無法驗證對方身分。除非你確定來源，否則不要分享或接受。"
 }
@@ -85,6 +92,7 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
     t == null -> "發行端不在任何信任來源，無法確認這張證件由誰簽發。"
     t.environment == TrustEnvironment.TEST -> "發行端的憑證來自測試錨點，結果不具效力。"
     t.tier == TrustTier.T1 -> "發行端列於官方信任清單。"
+    TrustLabel.SELF_ISSUED in t.labels -> SELF_ISSUED_TEXT
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "發行端身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}，但不代表它列於發行端清單。"
     t.tier == TrustTier.T2 -> "發行端列於官方信任清單，但無法完全驗證（例如鏈上註冊暫時無法確認，或列名的角色不是發行端）。"
     t.tier == TrustTier.T4 -> "發行端驗證失敗，無法確認這張證件由誰簽發。"
@@ -92,6 +100,8 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "發行端憑證連到中國大陸憑證機構（${t.anchorName ?: ""}），只確認網域或組織名稱，不是官方身分。"
     t.environment == TrustEnvironment.SYSTEM -> "發行端憑證連到公開憑證機構（${t.anchorName ?: ""}），只確認網域或組織名稱，不是官方身分。"
     t.environment == TrustEnvironment.USER -> "發行端由你自行匯入的根憑證或自行信任的 DID 確認（非官方）。"
+    t.environment == TrustEnvironment.PRODUCTION && t.tier == TrustTier.T3 && t.anchorName != null ->
+        "發行端憑證連到內建的發行端憑證（${t.anchorName}），可確認發行者，但不是台灣的官方身分。"
     else -> "簽章可驗證，但發行端不在任何信任來源，無法確認這張證件由誰簽發。"
 }
 

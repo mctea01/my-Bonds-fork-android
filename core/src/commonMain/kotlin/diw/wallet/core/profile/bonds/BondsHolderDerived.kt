@@ -325,12 +325,14 @@ object MyDataParsers {
     private val NAME_LABELS = listOf("姓名")
     private val ID_LABELS = listOf("統一編號", "身分證統一編號", "身分證字號", "統號")
     private val ID_NUMBER = Regex("[A-Z][0-9A-Z*＊Xx]{9}")
+    private val FULL_ID_NUMBER = Regex("[A-Z][0-9A-Z][0-9]{8}")
 
     /**
      * The household's city and district (the address is the household's, shared by every member) and the holder's
      * own registration date. A whole-household record lists several people, each with their own 遷入日期; the holder
      * is picked by ID number or name from [holders], so a parent's or child's date never answers for the holder.
-     * With several members and no holder among them the record is refused: it may not be the holder's household.
+     * The record is refused unless the holder is found on it, also when it lists a single person: a record shared by
+     * someone else must not answer for the holder.
      */
     fun household(source: String, holders: List<HolderHint> = emptyList()): ParsedSource {
         val text = MyDataText.withoutPageFurniture(source)
@@ -343,22 +345,28 @@ object MyDataParsers {
         val fields = linkedMapOf(CITY to city, DISTRICT to if (end >= 0) rest.substring(0, end + 1) else "")
         val members = householdMembers(text)
         fields[MEMBER_COUNT] = members.size.toString()
+        if (holders.isEmpty()) throw HolderDerivedException("需要先製作身分證卡或在設定填入身分證統一編號，才能確認這份戶籍資料是持有人本人的")
         val since: String? = when {
             members.isEmpty() -> {
-                // No member could be told apart: a registration date is used only when the page carries exactly one.
+                // No person could be told apart: the holder's full ID number must appear on the record, and a
+                // registration date is used only when the page carries exactly one.
+                val flat = MyDataText.halfWidth(text).uppercase()
+                if (holders.none { h -> h.idNumber?.trim()?.uppercase()?.let { FULL_ID_NUMBER.matches(it) && it in flat } == true }) {
+                    throw HolderDerivedException("戶籍資料中找不到持有人的身分證統一編號，無法確認是持有人本人的戶籍")
+                }
                 val dates = text.lines().flatMap { line -> SINCE_LABELS.mapNotNull { MyDataText.value(it, line)?.let { v -> MyDataText.isoDate(v) } } }.distinct()
                 dates.singleOrNull()
             }
             else -> {
                 val holder = holderOf(members, holders)
                     ?: throw HolderDerivedException(
-                        if (holders.isEmpty()) "戶籍資料有 ${members.size} 位住戶，需要先製作身分證卡或在設定填入身分證統一編號，才能分辨哪一位是持有人"
-                        else "戶籍資料的 ${members.size} 位住戶中找不到持有人（以身分證統一編號與姓名比對）"
+                        if (members.size == 1) "戶籍資料的住戶不是持有人（以身分證卡或設定的身分證統一編號與姓名比對）"
+                        else "戶籍資料的 ${members.size} 位住戶中找不到持有人（以身分證卡或設定的身分證統一編號與姓名比對）"
                     )
-                fields[HOLDER_MATCHED] = "true"
                 holder.since
             }
         }
+        fields[HOLDER_MATCHED] = "true"
         since?.let { fields[REGISTERED_SINCE] = it }
         return ParsedSource(HolderDerivedTypes.HOUSEHOLD, HOUSEHOLD_PARSER, fields)
     }
@@ -431,12 +439,11 @@ object MyDataParsers {
     }
 
     /**
-     * The holder among [members]: the one member [holders] identify; the only member when there are no hints; null
-     * when the hints match none or several, or several members cannot be told apart.
+     * The holder among [members]: the one member [holders] identify; null when there are no hints or they match none
+     * or several. A single-person record still has to match, so another person's record never stands for the holder.
      */
     fun <T> holderOf(members: List<T>, holders: List<HolderHint>, person: (T) -> HouseholdMember): T? =
         members.filter { m -> holders.any { it.matches(person(m)) } }.singleOrNull()
-            ?: members.singleOrNull()?.takeIf { holders.isEmpty() }
 
     fun holderOf(members: List<HouseholdMember>, holders: List<HolderHint>): HouseholdMember? = holderOf(members, holders) { it }
 

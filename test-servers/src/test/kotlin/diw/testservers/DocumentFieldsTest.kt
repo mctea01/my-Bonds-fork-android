@@ -6,10 +6,14 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.OpenCertInfo
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DocumentFields
+import diw.wallet.core.document.derived.EntryExitCertificate
+import kotlinx.datetime.LocalDate
 import diw.testservers.fixtures.OfficialLetter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Claims of derived credentials come from the document's content, not from what the holder types. */
@@ -104,5 +108,71 @@ class DocumentFieldsTest {
         assertFalse(claims.any { it.name.startsWith("\$template") || it.name.startsWith("issuers.") || it.name.startsWith("additionalData") })
         assertEquals(claims.size, claims.map { it.name }.toSet().size, "claim names are unique")
         assertEquals("受領人", DerivedCredentials.labelOf(claims.first { it.name == "recipientName" }))
+    }
+    /**
+     * An entry and exit record (synthetic, in the layout the National Immigration Agency prints): the person, the
+     * certificate and a table whose two halves share each text line. Trips are read by item number, and whether the
+     * person was in Taiwan on a day follows from the movements up to it.
+     */
+    @Test
+    fun entryExitRecord() {
+        val text = """
+            入出國日期證明書
+            CERTIFICATE OF ENTRY AND EXIT DATES
+            發證時間:2030/04/01 本證明書共 1 頁 頁次:1
+            Date of Issue:2030/04/01 09:30:00 This document is composed of:1 page(s)
+            證明書序號(Serial Number):000000000001 Page Number:1
+            姓名: 測試旅客
+            Name: CE SHIH LU KE
+            國籍: 中華民國 性別:男
+            Nationality: R.O.C.(Taiwan) Gender:Male
+            護照號碼或統一證號: A100000001 出生日期<年/月/日>:1990/01/02
+            Passport No. or ID/UI No: A100000001 Date of Birth(Year/Month/Day):1990/01/02
+            茲證明上列人員之 2026/01/01 至 2030/04/01 入出境證明如下:
+            項次 出境日期<年/月/日> 入境日期<年/月/日> 項次 出境日期<年/月/日> 入境日期<年/月/日>
+            Item Exit Dates Entry Dates Item Exit Dates Entry Dates
+            (Year/Month/Day) (Year/Month/Day) (Year/Month/Day) (Year/Month/Day)
+            1 2030/03/01 ---------- 4 2027/01/10 2027/01/20
+            2 2029/05/02 2029/05/09 5 以下空白 Blank Below
+            3 2028/07/03 2028/07/30
+            內政部移民署
+        """.trimIndent()
+        val c = assertNotNull(EntryExitCertificate.parse(text))
+        assertEquals("測試旅客", c.name)
+        assertEquals("CE SHIH LU KE", c.englishName)
+        assertEquals("中華民國", c.nationality)
+        assertEquals("男", c.gender)
+        assertEquals("A100000001", c.idNumber)
+        assertEquals(LocalDate(1990, 1, 2), c.birthDate)
+        assertEquals("000000000001", c.serialNumber)
+        assertEquals("2030/04/01 09:30:00", c.issuedAt)
+        assertEquals(LocalDate(2026, 1, 1), c.periodFrom)
+        assertEquals(LocalDate(2030, 4, 1), c.periodTo)
+        assertEquals(listOf(1, 2, 3, 4), c.trips.map { it.item })
+        assertNull(c.trips.first().entry)
+        assertEquals(LocalDate(2030, 3, 1), c.latestExit)
+        assertEquals(LocalDate(2029, 5, 9), c.latestEntry)
+        assertEquals(false, c.returnedFromLatestTrip)
+        assertEquals(false, c.inTaiwanAtEnd)
+        assertEquals(true, c.inTaiwanOn(LocalDate(2026, 6, 1)), "before the first exit")
+        assertEquals(false, c.inTaiwanOn(LocalDate(2027, 1, 15)))
+        assertEquals(true, c.inTaiwanOn(LocalDate(2027, 1, 20)), "back on the day of entry")
+        assertEquals(false, c.inTaiwanOn(LocalDate(2028, 7, 3)), "left on that day")
+        assertNull(c.inTaiwanOn(LocalDate(2025, 12, 31)), "before the queried period")
+        assertNull(c.inTaiwanOn(LocalDate(2030, 4, 2)), "after the queried period")
+
+        val claims = DocumentFields.fromEntryExit(text).associate { it.name to it.value }
+        assertEquals("2030-03-01", claims["latestExitDate"])
+        assertEquals("2029-05-09", claims["latestEntryDate"])
+        assertEquals("false", claims["returnedFromLatestTrip"])
+        assertEquals("false", claims["inTaiwanAtPeriodEnd"])
+        assertEquals("4", claims["entryExitCount"])
+        assertTrue(claims["entryExitRecords"]!!.startsWith("1. 出境 2030-03-01，入境 無；2. 出境 2029-05-02"))
+        assertEquals("true", DocumentFields.inTaiwanOn(c, LocalDate(2028, 8, 1))?.value)
+        // The suggested claims use the structure only, without the bilingual label pairs of the general reading.
+        val report = DocumentReport(DocumentFormat.PDF, "00", 1, checkedAt = 0)
+        val suggested = DerivedCredentials.suggestedClaims(report, "a.pdf", null, text).map { it.name }
+        assertTrue("Name" !in suggested && "姓名" !in suggested && "name" in suggested, suggested.toString())
+        assertNull(EntryExitCertificate.parse("在學證明\n1 2020/01/01 2020/01/02"))
     }
 }

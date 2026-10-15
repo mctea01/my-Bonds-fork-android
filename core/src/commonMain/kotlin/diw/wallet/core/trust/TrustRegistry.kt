@@ -136,7 +136,8 @@ class TrustRegistry(
 
     /**
      * Adds the [BuiltInAnchors] (Taiwan GPKI) as PRODUCTION identity anchors and the [BuiltInTestAnchors] (Multipaz
-     * issuers and readers) as TEST anchors for their roles; anchors already stored are left as they are. Returns how
+     * issuers and readers) as TEST anchors for their roles, except the production Google and Apple ID pass issuers,
+     * which are PRODUCTION anchors that are not official; anchors already stored are left as they are. Returns how
      * many were added.
      */
     suspend fun seedBuiltInAnchors(): Int {
@@ -145,7 +146,8 @@ class TrustRegistry(
             if (addAnchor(role, TrustEnvironment.PRODUCTION, a.certificate, a.name, official = false, source = BuiltInAnchors.SOURCE, identity = true)) added++
         }
         for (a in BuiltInTestAnchors.all) for (role in a.roles) {
-            if (addAnchor(role, TrustEnvironment.TEST, a.certificate, a.name, official = false, source = BuiltInTestAnchors.SOURCE)) added++
+            val env = if (a.production) TrustEnvironment.PRODUCTION else TrustEnvironment.TEST
+            if (addAnchor(role, env, a.certificate, a.name, official = false, source = a.source)) added++
         }
         return added
     }

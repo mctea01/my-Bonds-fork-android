@@ -6,6 +6,28 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+/**
+ * The DOM interfaces Xerces implements that Android does not ship (DOM events, ranges, traversal, views, HTML, CSS,
+ * ElementTraversal, StAX). Only classes absent from android.jar are taken from xml-apis, so nothing shadows the
+ * platform's own javax.xml and org.w3c.dom classes.
+ */
+val xmlApis: Configuration by configurations.creating { isTransitive = false }
+dependencies { xmlApis(libs.xml.apis) }
+val androidDomExtras by tasks.registering(Jar::class) {
+    archiveFileName.set("android-dom-extras.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("android-dom"))
+    from({ xmlApis.map { zipTree(it) } }) {
+        include(
+            "org/w3c/dom/ElementTraversal.class",
+            "org/w3c/dom/bootstrap/**", "org/w3c/dom/css/**", "org/w3c/dom/events/**", "org/w3c/dom/html/**",
+            "org/w3c/dom/ranges/**", "org/w3c/dom/stylesheets/**", "org/w3c/dom/traversal/**", "org/w3c/dom/views/**",
+            "org/w3c/dom/xpath/**",
+            "org/w3c/dom/ls/LSLoadEvent.class", "org/w3c/dom/ls/LSProgressEvent.class", "org/w3c/dom/ls/LSSerializerFilter.class",
+            "javax/xml/stream/**", "javax/xml/transform/stax/**",
+        )
+    }
+}
+
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     jvm { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
@@ -35,6 +57,7 @@ kotlin {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
             implementation(libs.xerces.get().toString()) { exclude(group = "xml-apis") }
+            implementation(files(androidDomExtras))
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.java)

@@ -151,6 +151,11 @@ data class WalletSettings(
     val myDataIdNumber: String? = null,
     /** Birth date (yyyyMMdd) saved with [myDataIdNumber] for MyData sign-in pages. */
     val myDataBirthDate: String? = null,
+    /**
+     * Developer option: sign with the mobile citizen certificate through an SP account typed in on the signing screen
+     * (kept in memory only) instead of the account built into this build.
+     */
+    val manualMobileMoicaSp: Boolean = false,
 )
 
 /**
@@ -311,13 +316,21 @@ class WalletModel(val platform: PlatformServices) {
             return if (!settings.testEnvironment || url.isEmpty() || url == TwdiwPlatform.PRODUCTION_FRONTEND) TwdiwPlatform.PRODUCTION
             else TwdiwPlatform(frontendUrl = url, test = true)
         }
-    private var twdiwTrustCache: Pair<TwdiwPlatform, TwdiwTrustList>? = null
-    val twdiwTrust: TwdiwTrustList
-        get() {
-            val p = twdiwPlatform
-            twdiwTrustCache?.takeIf { it.first == p }?.let { return it.second }
-            return TwdiwTrustList(http, p, storage = storage).also { twdiwTrustCache = p to it }
-        }
+    private val trustListCache = mutableMapOf<TwdiwPlatform, TwdiwTrustList>()
+
+    /** The trust list served by [platform]; one instance per platform, so its caches are kept. */
+    fun twdiwTrustFor(platform: TwdiwPlatform): TwdiwTrustList =
+        trustListCache.getOrPut(platform) { TwdiwTrustList(http, platform, storage = storage) }
+
+    /** The official TWDIW trust list (production), whatever the test settings. */
+    val twdiwTrust: TwdiwTrustList get() = twdiwTrustFor(TwdiwPlatform.PRODUCTION)
+
+    /**
+     * TWDIW trust lists consulted for every DID: production, the official sandbox (UAT, always on and marked TEST),
+     * and a custom test platform when one is set. Test lists only ever give TEST decisions, so they need no switch.
+     */
+    val twdiwTrustLists: List<TwdiwTrustList>
+        get() = listOf(TwdiwPlatform.PRODUCTION, TwdiwPlatform.UAT, twdiwPlatform).distinctBy { it.frontendUrl }.map { twdiwTrustFor(it) }
     val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
     /** DIDs the user trusts themselves, outside any national list. */
     val userDids: UserDidTrust by lazy { UserDidTrust(storage) }
@@ -326,10 +339,12 @@ class WalletModel(val platform: PlatformServices) {
      * Domains. The user's own decision comes before Linked Domains, so a link that cannot be fetched or verified does
      * not override a DID the user chose to trust.
      */
-    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, userDids, linkedDomains))
-    val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrust, twdiwPlatform)
+    val didTrust: DidTrust get() = DidTrust(twdiwTrustLists + listOf(userDids, linkedDomains))
+    val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrustFor(twdiwPlatform), twdiwPlatform)
     /** One instance, so custom field values attached before a response reach the response. */
-    val twdiwPresentation = TwdiwPresentationDialect { did, host -> twdiwTrust.hostRegistered(did, host) }
+    val twdiwPresentation = TwdiwPresentationDialect { did, host ->
+        twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.hostRegistered(did, host) }.getOrNull() }
+    }
     private val msPresentation = MsVerifiedIdPresentationDialect()
     fun didResolver() = DidResolver(http, environmentPolicy.insecureLoopbackAllowed)
 

@@ -9,6 +9,8 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.util.fromBase64
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
 /** One piece of evidence of a derived credential, as the verifier sees it. */
@@ -20,15 +22,18 @@ data class EvidenceResult(val type: String, val title: String, val check: Check,
  * document cannot repeat.
  */
 object DerivedEvidence {
-    /** [credential] is the issuer-signed SD-JWT VC payload, whose document object and evidence array are read. */
-    suspend fun verify(credential: JsonObject, trust: DocumentTrustSource?): List<EvidenceResult> {
+    /**
+     * [credential] is the issuer-signed SD-JWT VC payload, whose document object and evidence array are read.
+     * [own] words the signature statement for the holder whose wallet made it, instead of for a verifier.
+     */
+    suspend fun verify(credential: JsonObject, trust: DocumentTrustSource?, own: Boolean = false): List<EvidenceResult> {
         val document = credential.obj("document")
         val sha256 = document?.str("sha256")
         val evidence = (credential["evidence"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
         return evidence.map { e ->
             when (e.str("type")) {
                 DerivedCredentials.EVIDENCE_TIMESTAMP -> timestamp(e, sha256, trust)
-                DerivedCredentials.EVIDENCE_SIGNATURE -> signature(e)
+                DerivedCredentials.EVIDENCE_SIGNATURE -> signature(e, own)
                 else -> EvidenceResult(e.str("type") ?: "", "其他證據", Check.NOT_CHECKED, "本錢包不認識這種證據")
             }
         }
@@ -42,7 +47,7 @@ object DerivedEvidence {
             ?: return EvidenceResult(DerivedCredentials.EVIDENCE_TIMESTAMP, title, Check.FAIL, "證件沒有文件指紋")
         if (trust == null) return EvidenceResult(DerivedCredentials.EVIDENCE_TIMESTAMP, title, Check.NOT_CHECKED, "此處無法查驗時戳")
         val info = DocumentInspector.verifyTimestampDigest(token, digest, trust)
-        val time = Instant.fromEpochSeconds(info.time).toString()
+        val time = displayTime(Instant.fromEpochSeconds(info.time))
         return when {
             info.imprint == Check.FAIL -> EvidenceResult(DerivedCredentials.EVIDENCE_TIMESTAMP, title, Check.FAIL, "時戳涵蓋的不是這份文件")
             info.signature != Check.PASS -> EvidenceResult(DerivedCredentials.EVIDENCE_TIMESTAMP, title, Check.FAIL, "時戳簽章無效")
@@ -53,9 +58,16 @@ object DerivedEvidence {
         }
     }
 
+    /** Taipei time, minute precision. */
+    private fun displayTime(t: Instant): String {
+        val local = t.toLocalDateTime(TimeZone.of("Asia/Taipei"))
+        fun two(n: Int) = n.toString().padStart(2, '0')
+        return "${local.year}-${two(local.month.ordinal + 1)}-${two(local.day)} ${two(local.hour)}:${two(local.minute)}（臺北時間）"
+    }
+
     private fun tierNote(tier: String?): String = tier?.let { "（時戳機構 $it）" } ?: ""
 
-    private fun signature(e: JsonObject): EvidenceResult {
+    private fun signature(e: JsonObject, own: Boolean): EvidenceResult {
         val title = "文件簽章檢查"
         val verdict = e.str("verdict")
         val sigs = (e["signatures"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
@@ -67,9 +79,13 @@ object DerivedEvidence {
             "INVALID" -> "簽章無效"
             else -> "文件未簽章"
         }
-        val detail = "出示者的錢包於 ${e.str("checkedAt") ?: "未知時間"} 檢查文件：$text" +
-            (if (tiers.isNotEmpty()) "，簽署者信任等級 ${tiers.joinToString("、")}" else "") + (if (official) "（官方）" else "") +
-            "。這是出示者錢包的聲明，查驗方沒有文件原檔無法重新檢查。"
+        val result = text + (if (tiers.isNotEmpty()) "，簽署者信任等級 ${tiers.joinToString("、")}" else "") + (if (official) "（官方）" else "")
+        val checkedAt = e.str("checkedAt")?.let { runCatching { Instant.parse(it) }.getOrNull() }?.let { displayTime(it) } ?: "未知時間"
+        val detail = if (own) {
+            "產生憑證時（$checkedAt）檢查文件：$result。查驗方會看到這段聲明，但沒有文件原檔無法重新檢查。"
+        } else {
+            "出示者的錢包於 $checkedAt 檢查文件：$result。這是出示者錢包的聲明，查驗方沒有文件原檔無法重新檢查。"
+        }
         return EvidenceResult(DerivedCredentials.EVIDENCE_SIGNATURE, title, Check.NOT_CHECKED, detail)
     }
 

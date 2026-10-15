@@ -9,6 +9,7 @@ import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.card.GpkiTapSigner
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.EntryExitCertificate
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialDocuments
@@ -50,6 +51,7 @@ import diw.wallet.core.profile.bonds.NationalIdFields
 import diw.wallet.core.profile.bonds.TwPkiAnchors
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.DiwJson
 import io.ktor.client.request.get
@@ -118,8 +120,11 @@ data class StoredFile(
 
 /** What the file screen shows of a file's content. */
 sealed class FilePreview {
-    /** Rendered pages (as many as [PREVIEW_PAGES]) of [total], and the text layer when there is one. */
-    class Pages(val pages: List<ImageBitmap>, val total: Int, val text: String?) : FilePreview()
+    /**
+     * Rendered pages (as many as [PREVIEW_PAGES]) of [total], the text layer when there is one, and the record read
+     * from it when the PDF is an entry and exit certificate.
+     */
+    class Pages(val pages: List<ImageBitmap>, val total: Int, val text: String?, val entryExit: EntryExitCertificate? = null) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
     /** An official document (公文) laid out as a reader sees it; [source] is the XML, shown only on request. */
@@ -253,7 +258,7 @@ sealed class SignerChoice {
 }
 
 /** An SP account entered for this run; kept in memory only, never stored. */
-data class MobileMoicaSp(val environment: MobileMoicaEnvironment, val serviceId: String, val aesKeyBase64: String)
+data class MobileMoicaSp(val environment: MobileMoicaEnvironment, val serviceId: String, val aesKeyBase64: String, val builtIn: Boolean = false)
 
 /** The signature a file gets. */
 enum class SignForm(val title: String, val detail: String) {
@@ -512,7 +517,13 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Claims a derived credential of [f] can carry, and whether the PDF's content stays locked without its password. */
-    class DeriveFields(val claims: List<DerivedClaim>, val locked: Boolean, val notice: String? = null)
+    class DeriveFields(
+        val claims: List<DerivedClaim>,
+        val locked: Boolean,
+        val notice: String? = null,
+        /** The entry and exit record the PDF holds, for claims about a day the holder picks. */
+        val entryExit: EntryExitCertificate? = null,
+    )
 
     /**
      * The claims of a derived credential of [f], read from the document rather than typed: its report, its source,
@@ -534,7 +545,7 @@ class FilesModel(private val model: WalletModel) {
             else -> {}
         }
         val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints())
-        DeriveFields(suggested.claims, locked, suggested.notice)
+        DeriveFields(suggested.claims, locked, suggested.notice, text?.let { EntryExitCertificate.parse(it) })
     }
 
     private suspend fun makePreview(f: StoredFile, password: String?): FilePreview {
@@ -548,7 +559,7 @@ class FilesModel(private val model: WalletModel) {
                 val text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.trim()?.ifEmpty { null }
                 val total = runCatching { PdfTextExtractor.pages(pdf).size }.getOrDefault(pages.size)
                 if (pages.isEmpty() && text == null) FilePreview.Unavailable("這個平台無法繪製這份 PDF，也沒有可擷取的文字")
-                else FilePreview.Pages(pages, total, text)
+                else FilePreview.Pages(pages, total, text, text?.let { EntryExitCertificate.parse(it) })
             }
             DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
                 ?: FilePreview.Unavailable("無法解碼這張圖片")
@@ -771,14 +782,21 @@ class FilesModel(private val model: WalletModel) {
         is SignerChoice.MobileMoica -> mobileMoicaSigner(choice, hint)
     }
 
-    /** SP account entered on the signing screen during this run; never written to storage. */
+    /** SP account entered on the signing screen during this run (developer option); never written to storage. */
     var mobileMoicaSp: MobileMoicaSp? = null
+
+    /** The SP account this build was made with, or null when the build has none. */
+    val builtInMobileMoicaSp: MobileMoicaSp? = run {
+        val id = BuiltInSp.serviceId ?: return@run null
+        val key = BuiltInSp.aesKeyBase64 ?: return@run null
+        MobileMoicaSp(MobileMoicaEnvironment.valueOf(BuiltInSp.ENVIRONMENT), id, key, builtIn = true)
+    }
 
     /** Holder certificates already read through the mobile citizen certificate, so later signings need one approval. */
     private val mobileMoicaCerts = mutableMapOf<String, ByteArray>()
 
     private suspend fun mobileMoicaSigner(choice: SignerChoice.MobileMoica, hint: String): MobileMoicaSigner {
-        mobileMoicaSp = choice.sp
+        if (!choice.sp.builtIn) mobileMoicaSp = choice.sp
         val client = TwFidoClient(model.http, choice.sp.environment, MobileMoicaCredentials(choice.sp.serviceId.trim(), choice.sp.aesKeyBase64.trim()))
         val returnUrl = model.platform.mobileMoicaReturnUrl ?: ""
         val cacheKey = choice.sp.environment.name + ":" + choice.sp.serviceId + ":" + choice.idNumber
@@ -875,6 +893,7 @@ class FilesModel(private val model: WalletModel) {
                 environment = TrustEnvironment.USER.id,
                 official = false,
                 anchorName = "本錢包（文件衍生）",
+                labels = listOf(TrustLabel.SELF_ISSUED.name),
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
                 specs = listOf("IETF SD-JWT VC"),

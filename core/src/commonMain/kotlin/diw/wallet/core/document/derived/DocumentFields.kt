@@ -7,6 +7,7 @@ import diw.wallet.core.profile.bonds.HolderDerivedTypes
 import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.profile.bonds.MyDataParsers
 import diw.wallet.core.profile.bonds.MyDataText
+import kotlinx.datetime.LocalDate
 
 /**
  * Claims read from a document's content, so that a derived credential carries what the document says instead of
@@ -163,6 +164,40 @@ object DocumentFields {
         return unique(out)
     }
 
+    /**
+     * The claims of an entry and exit record ([EntryExitCertificate]): the person, the certificate, a summary of the
+     * trips (latest exit and entry, whether the latest trip has returned, whether the person was in Taiwan on the
+     * last day covered) and the trips themselves as one claim, so the summary stays within [MAX_FIELDS]. Empty when
+     * [text] is not such a record.
+     */
+    fun fromEntryExit(text: String): List<DerivedClaim> {
+        val c = EntryExitCertificate.parse(text) ?: return emptyList()
+        fun yesNo(b: Boolean) = if (b) "true" else "false"
+        return buildList {
+            c.name?.let { add(DerivedClaim("name", it, "姓名")) }
+            c.englishName?.let { add(DerivedClaim("englishName", it, "英文姓名")) }
+            c.nationality?.let { add(DerivedClaim("nationality", it, "國籍")) }
+            c.gender?.let { add(DerivedClaim("gender", it, "性別")) }
+            c.idNumber?.let { add(DerivedClaim("idNumber", it, "護照號碼或統一證號")) }
+            c.birthDate?.let { add(DerivedClaim("birthDate", it.toString(), "出生日期")) }
+            c.serialNumber?.let { add(DerivedClaim("serialNumber", it, "證明書序號")) }
+            c.issueDate?.let { add(DerivedClaim("issueDate", it.toString(), "發證日期")) }
+            if (c.periodFrom != null && c.periodTo != null) add(DerivedClaim("period", "${c.periodFrom} 至 ${c.periodTo}", "查詢期間"))
+            add(DerivedClaim("entryExitCount", c.trips.size.toString(), "入出境紀錄筆數"))
+            c.latestExit?.let { add(DerivedClaim("latestExitDate", it.toString(), "最後出境日期")) }
+            c.latestEntry?.let { add(DerivedClaim("latestEntryDate", it.toString(), "最後入境日期")) }
+            c.returnedFromLatestTrip?.let { add(DerivedClaim("returnedFromLatestTrip", yesNo(it), "最近一次出境已入境")) }
+            c.inTaiwanAtEnd?.let { add(DerivedClaim("inTaiwanAtPeriodEnd", yesNo(it), "查詢期間最後一天（${c.coveredUntil}）在境內")) }
+            if (c.trips.isNotEmpty()) {
+                add(DerivedClaim("entryExitRecords", c.trips.joinToString("；") { "${it.item}. 出境 ${it.exit ?: "無"}，入境 ${it.entry ?: "無"}" }, "入出境紀錄"))
+            }
+        }
+    }
+
+    /** The claim answering whether the person of [c] was in Taiwan on [date]; null when the record cannot tell. */
+    fun inTaiwanOn(c: EntryExitCertificate, date: LocalDate): DerivedClaim? =
+        c.inTaiwanOn(date)?.let { DerivedClaim("inTaiwanOn_$date", if (it) "true" else "false", "$date 在境內") }
+
     /** Claims read from a document's content, and a note for the holder when some could not be read. */
     class ContentFields(val claims: List<DerivedClaim>, val notice: String? = null)
 
@@ -183,7 +218,8 @@ object DocumentFields {
         val holder = MyDataParsers.holderOf(layout.blocks, holders) { it.member }
         if (holder == null) {
             val notice = when {
-                holders.isEmpty() -> "這份戶籍資料有 ${layout.blocks.size} 位住戶。先製作身分證卡，或在設定填入身分證統一編號，才能分辨哪一位是你；目前只列出整戶的欄位。"
+                holders.isEmpty() -> "這份戶籍資料有 ${layout.blocks.size} 位住戶。先製作身分證卡，或在設定填入身分證統一編號，才能確認哪一位是你；目前只列出整戶的欄位。"
+                layout.blocks.size == 1 -> "這份戶籍資料的住戶不是你（以身分證卡或設定的身分證統一編號與姓名比對）；目前只列出整戶的欄位。"
                 else -> "這份戶籍資料的 ${layout.blocks.size} 位住戶中找不到你（以身分證卡或設定的身分證統一編號與姓名比對）；目前只列出整戶的欄位。"
             }
             return ContentFields(unique(household + count), notice)

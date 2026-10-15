@@ -41,6 +41,12 @@ enum class TrustLabel {
      * programs, and SM2 roots of licensed CAs): a public CA verified a domain or organisation, as for [SYSTEM_ANCHOR].
      */
     MAINLAND_CHINA_CA,
+
+    /**
+     * Issued by this wallet's own key (a credential derived from a stored document): it vouches that the content was
+     * read from that document, not for whoever issued the document.
+     */
+    SELF_ISSUED,
 }
 
 /**

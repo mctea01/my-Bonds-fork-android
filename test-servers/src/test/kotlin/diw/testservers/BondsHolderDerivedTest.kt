@@ -213,10 +213,11 @@ class BondsHolderDerivedTest {
         // The table layout gives the same rows.
         val table = MyDataParsers.household(HOUSEHOLD_TABLE, listOf(HolderHint("B223456789", null)))
         assertEquals("2026-08-01", table.fields[MyDataParsers.REGISTERED_SINCE])
-        // Without knowing who the holder is, a record of several people is refused.
+        // Without knowing who the holder is, the record is refused.
         val e = assertFailsWith<HolderDerivedException> { MyDataParsers.household(HOUSEHOLD_BLOCKS) }
-        assertTrue("2 位住戶" in e.message!!, e.message)
-        assertFailsWith<HolderDerivedException> { MyDataParsers.household(HOUSEHOLD_BLOCKS, listOf(HolderHint("C123456789", "他人"))) }
+        assertTrue("身分證" in e.message!!, e.message)
+        val other = assertFailsWith<HolderDerivedException> { MyDataParsers.household(HOUSEHOLD_BLOCKS, listOf(HolderHint("C123456789", "他人"))) }
+        assertTrue("2 位住戶" in other.message!!, other.message)
 
         // Over OpenID4VP, the hints come from the wallet; the record is found by its own text when untyped.
         val h = holder(listOf(source("household", null, HOUSEHOLD_BLOCKS)), listOf(HolderHint("B223456789", "測試持有人")))
@@ -224,6 +225,25 @@ class BondsHolderDerivedTest {
         assertTrue(h.respond(p) is PresentationOutcome.Posted)
         assertTrue(errors.isEmpty(), "verifier errors: $errors")
         assertEquals(mapOf("registered_in_city" to "true"), disclosed.single())
+    }
+
+    /** A record of one person answers only when that person is the holder; someone else's record is refused. */
+    @Test
+    fun householdOfOnePersonMustBeTheHolder() = runBlocking<Unit> {
+        val single = HOUSEHOLD_BLOCKS.lines().let { lines ->
+            lines.subList(0, lines.indexOfFirst { it.trim() == "稱謂：子" }).joinToString("\n")
+        }
+        assertEquals(1, MyDataParsers.householdMembers(single).size)
+        val head = MyDataParsers.householdMembers(single).single()
+        assertFailsWith<HolderDerivedException> { MyDataParsers.household(single) }
+        val notHolder = assertFailsWith<HolderDerivedException> { MyDataParsers.household(single, listOf(HolderHint("B223456789", "測試持有人"))) }
+        assertTrue("不是持有人" in notHolder.message!!, notHolder.message)
+        val own = MyDataParsers.household(single, listOf(HolderHint(head.idNumber, head.name)))
+        assertEquals("true", own.fields[MyDataParsers.HOLDER_MATCHED])
+        // The derived credential offers no personal fields of someone else.
+        val fields = assertNotNull(DocumentFields.fromHousehold(single, listOf(HolderHint("B223456789", "測試持有人"))))
+        assertNull(fields.claims.firstOrNull { it.name == "姓名" })
+        assertTrue("不是你" in fields.notice!!, fields.notice)
     }
 
     /**

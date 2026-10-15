@@ -165,6 +165,12 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("使用測試錢包提供者", "向測試伺服器取得錢包證明與金鑰證明", s.useWalletProvider, enabled = s.testEnvironment) { v ->
             model.updateSettings { it.copy(useWalletProvider = v) }
         }
+        Toggle(
+            "手動輸入 SP 帳號（開發者）",
+            "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
+                if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+            s.manualMobileMoicaSp,
+        ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
         OutlinedTextField(
             value = url,
             onValueChange = { url = it.trim() },

@@ -90,6 +90,10 @@ import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.EvidenceResult
+import androidx.compose.material3.HorizontalDivider
+import kotlinx.datetime.LocalDate
+import diw.wallet.core.document.derived.DocumentFields
+import diw.wallet.core.document.derived.EntryExitCertificate
 import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -269,6 +273,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     val files by model.files.files.collectAsState()
     val busy by model.files.busy.collectAsState()
     val error by model.files.error.collectAsState()
+    val previews by model.files.previews.collectAsState()
     val docs by model.documents.collectAsState()
     val f = files.firstOrNull { it.id == screen.fileId }
     // Every open checks the signatures again with the current time and trust anchors.
@@ -313,7 +318,14 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                 if (report.entries.size > 50) Text("另有 ${report.entries.size - 50} 個檔案", style = MaterialTheme.typography.bodySmall)
             }
             report.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-            report.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            // The stored check runs without the open password; once this session's password has opened the PDF, the
+            // locked-PDF problem no longer holds for the holder.
+            val opened = previews[f.id] is FilePreview.Pages
+            report.problems.forEach { p ->
+                if (opened && p.startsWith(ENCRYPTED_PDF_PROBLEM)) {
+                    Text("PDF 已加密，已用這次輸入的密碼開啟（密碼不保存）；簽章檢查不需要密碼。", style = MaterialTheme.typography.bodySmall)
+                } else Text(p, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             Text("檢查時間：${localTime(report.checkedAt)}", style = MaterialTheme.typography.bodySmall)
         }
         SectionTitle("時戳")
@@ -475,6 +487,9 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 }
 
 // ---------------------------------------------------------------- signer choice
+
+/** Start of the inspector's problem for a PDF whose open password is not known. */
+private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
 
 private enum class SignerKind(val title: String) {
     CARD("自然人憑證卡"), MOBILE("行動自然人憑證"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"), PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
@@ -648,34 +663,47 @@ private fun KeyList(list: List<ExternalKeyOption>?, chosen: String?, problem: St
 }
 
 /**
- * The mobile citizen certificate through an SP account. The account belongs to whoever holds the licence from the
- * Ministry of the Interior; it is typed in here for this run only and never stored or built into the app.
+ * The mobile citizen certificate through an SP account of the Ministry of the Interior: the account built into this
+ * build, or, with the developer setting on, one typed in here for this run only (kept in memory, never stored).
  */
 @Composable
 private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    val settings by model.settingsFlow.collectAsState()
+    val manual = settings.manualMobileMoicaSp
+    val builtIn = model.files.builtInMobileMoicaSp
     val last = model.files.mobileMoicaSp
     var env by remember { mutableStateOf(last?.environment ?: MobileMoicaEnvironment.UAT) }
     var serviceId by remember { mutableStateOf(last?.serviceId.orEmpty()) }
     var aesKey by remember { mutableStateOf(last?.aesKeyBase64.orEmpty()) }
-    var idNumber by remember { mutableStateOf("") }
+    var idNumber by remember { mutableStateOf(settings.myDataIdNumber.orEmpty()) }
     val canOpenApp = model.platform.mobileMoicaReturnUrl != null
     var mode by remember { mutableStateOf(if (canOpenApp) MobileMoicaMode.APP_TO_APP else MobileMoicaMode.PUSH) }
     fun update() {
         val id = idNumber.trim().uppercase()
-        val ok = serviceId.isNotBlank() && aesKey.isNotBlank() && MyDataProfile.isValidId(id)
-        onChange(if (ok) SignerChoice.MobileMoica(MobileMoicaSp(env, serviceId.trim(), aesKey.trim()), id, mode) else null)
+        val sp = if (manual) MobileMoicaSp(env, serviceId.trim(), aesKey.trim()).takeIf { serviceId.isNotBlank() && aesKey.isNotBlank() } else builtIn
+        onChange(if (sp != null && MyDataProfile.isValidId(id)) SignerChoice.MobileMoica(sp, id, mode) else null)
     }
-    Text("需要內政部核發的服務提供者（SP）帳號。這裡供持有 SP 授權的共同開發者測試：帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置或 App。",
-        style = MaterialTheme.typography.bodySmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+    LaunchedEffect(manual) { update() }
+    if (!manual && builtIn == null) {
+        Text("這個版本沒有內建行動自然人憑證的服務提供者（SP）帳號，無法使用。持有 SP 授權的開發者可在設定開啟「手動輸入 SP 帳號」。",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        return
     }
-    OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
-        singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(
-        value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
-        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
-    )
+    if (manual) {
+        Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
+            style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+        }
+        OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+        )
+    } else if (builtIn != null) {
+        Text("使用本版內建的 SP 帳號（${builtIn.environment.title}）。", style = MaterialTheme.typography.bodySmall)
+    }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -747,6 +775,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
     when (p) {
         null, FilePreview.Loading -> Text("正在產生預覽", style = MaterialTheme.typography.bodySmall)
         is FilePreview.Pages -> {
+            p.entryExit?.let { EntryExitView(it) }
             if (p.pages.isNotEmpty()) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
                 PreviewImage(p.pages[i], "第 ${i + 1} 頁")
@@ -787,6 +816,52 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             }
         }
         is FilePreview.Unavailable -> Text(p.reason, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/** An entry and exit certificate laid out as its parts: the person, the certificate and the table of trips. */
+@Composable
+private fun EntryExitView(c: EntryExitCertificate) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("入出國日期證明書", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue("姓名", it, small = true) }
+        c.englishName?.let { LabelValue("英文姓名", it, small = true) }
+        c.nationality?.let { LabelValue("國籍", it, small = true) }
+        c.gender?.let { LabelValue("性別", it, small = true) }
+        c.idNumber?.let { LabelValue("護照號碼或統一證號", it, small = true) }
+        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
+        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.issuer?.let { LabelValue("發證機關", it, small = true) }
+        c.serialNumber?.let { LabelValue("證明書序號", it, small = true) }
+        c.issuedAt?.let { LabelValue("發證時間", it, small = true) }
+        if (c.periodFrom != null && c.periodTo != null) LabelValue("查詢期間", "${c.periodFrom} 至 ${c.periodTo}", small = true)
+        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
+        Text("入出境摘要", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue("紀錄筆數", "${c.trips.size} 筆", small = true)
+        c.latestExit?.let { LabelValue("最後出境日期", it.toString(), small = true) }
+        c.latestEntry?.let { LabelValue("最後入境日期", it.toString(), small = true) }
+        c.returnedFromLatestTrip?.let { LabelValue("最近一次出境", if (it) "已入境" else "尚未入境", small = true) }
+        c.inTaiwanAtEnd?.let { LabelValue("${c.coveredUntil} 時", if (it) "在境內" else "在境外", small = true) }
+        if (c.trips.isNotEmpty()) {
+            Text("入出境紀錄", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Text("項次", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
+                Text("出境日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
+                Text("入境日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
+            }
+            HorizontalDivider()
+            c.trips.forEach { t ->
+                Row(Modifier.fillMaxWidth()) {
+                    Text(t.item.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
+                    Text(t.exit?.toString() ?: "無", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
+                    Text(t.entry?.toString() ?: "尚未入境", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
+                }
+            }
+        }
     }
 }
 
@@ -1016,6 +1091,8 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     var noteValue by remember { mutableStateOf("") }
     var timestamp by remember { mutableStateOf(true) }
     var validDays by remember { mutableStateOf<Int?>(null) }
+    var dayText by remember(f) { mutableStateOf("") }
+    var dayClaims by remember(f) { mutableStateOf<List<DerivedClaim>>(emptyList()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("把「${f.report?.title ?: f.name}」變成可出示的證件。查驗方只會看到你勾選的欄位，以及文件指紋、格式與大小；原檔不會送出。",
             style = MaterialTheme.typography.bodyMedium)
@@ -1043,6 +1120,31 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             }
         }
         if (fields != null && suggested.isEmpty()) Text("文件內沒有可解析的欄位。", style = MaterialTheme.typography.bodySmall)
+        val entryExit = fields?.entryExit
+        if (entryExit != null) {
+            Text("指定日期是否在境內（依入出境紀錄計算，可加入多個日期）", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(value = dayText, onValueChange = { dayText = it.take(10) }, label = { Text("日期（2026-01-31）") }, singleLine = true,
+                    modifier = Modifier.weight(1f))
+                val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
+                val answer = day?.let { DocumentFields.inTaiwanOn(entryExit, it) }
+                Button(onClick = { answer?.let { a -> dayClaims = dayClaims.filter { it.name != a.name } + a } }, enabled = answer != null) { Text("加入") }
+            }
+            val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
+            if (dayText.isNotBlank() && (day == null || DocumentFields.inTaiwanOn(entryExit, day) == null)) {
+                Text(if (day == null) "日期格式為 年-月-日。" else "這個日期不在證明書的查詢期間（${entryExit.periodFrom} 至 ${entryExit.coveredUntil}），無法判斷。",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            dayClaims.forEach { c ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = true, onCheckedChange = { dayClaims = dayClaims - c })
+                    Column {
+                        Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
+                        Text(if (c.value == "true") "在境內" else "在境外", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
         TextButton(onClick = { showNote = !showNote }) { Text(if (showNote) "不加入自填欄位" else "加入自填欄位（查驗方會看到這是持有人自填）") }
         if (showNote) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1062,7 +1164,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             }
         }
         BusyLine(busy, error)
-        val claims = suggested.filter { it.name in chosen } + listOfNotNull(
+        val claims = suggested.filter { it.name in chosen } + dayClaims + listOfNotNull(
             if (showNote && noteName.isNotBlank() && noteValue.isNotBlank()) {
                 DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), "持有人自填：" + noteName.trim())
             } else null,

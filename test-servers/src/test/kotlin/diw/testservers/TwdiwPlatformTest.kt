@@ -15,6 +15,7 @@ import diw.wallet.core.profile.bonds.BondsReception
 import diw.wallet.core.util.QrEncoder
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.KeyRequest
@@ -55,6 +56,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The TWDIW official issuance, status, trust list, presentation and offline barcode flows against [TwdiwPlatformMock]. */
@@ -171,6 +173,19 @@ class TwdiwPlatformTest {
      * requires the two to be identical, so the standard client refuses; the TWDIW dialect accepts the slash
      * difference for its own sessions and keeps the offer's form for the token endpoint and the proof aud.
      */
+    /** A sandbox listing is stored apart: offline, the official list never reads it back as an official entry. */
+    @Test
+    fun sandboxSnapshotsStayOutOfTheOfficialList() = runBlocking<Unit> {
+        val s = setup()
+        val did = s.mock.issuerDid
+        assertNotNull(s.trustList.verified(did))
+        assertEquals(TrustEnvironment.TEST, s.trustList.decide(did, TrustRole.ISSUER)?.environment)
+        val offline = HttpClient(io.ktor.client.engine.mock.MockEngine { throw java.io.IOException("offline") })
+        val official = TwdiwTrustList(offline, TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND), storage = s.w.storage)
+        assertNull(official.verified(did))
+        assertNotNull(TwdiwTrustList(offline, s.platform, storage = s.w.storage).verified(did), "the sandbox snapshot is still there")
+    }
+
     @Test
     fun issuerMetadataWithoutTrailingSlash() = runBlocking<Unit> {
         val s = setup()

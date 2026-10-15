@@ -31,8 +31,8 @@ enum class MobileMoicaEnvironment(val baseUrl: String, val title: String) {
 
 /**
  * The service provider account issued by the Ministry of the Interior: the SP service ID and the 32-byte AES key
- * (base64) that authenticates requests and responses. The key is entered by an SP licence holder at run time and is
- * never part of the app or the repository.
+ * (base64) that authenticates requests and responses. The app gets it from its build configuration (never from the
+ * repository) or, as a developer option, typed in by an SP licence holder for one run.
  */
 class MobileMoicaCredentials(val serviceId: String, val aesKeyBase64: String) {
     internal val key: ByteArray by lazy {

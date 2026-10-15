@@ -59,6 +59,15 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.document.derived.EvidenceResult
+import kotlinx.io.bytestring.decodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.multipaz.sdjwt.credential.SdJwtVcCredential
+import org.multipaz.util.fromBase64Url
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
@@ -247,7 +256,9 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
         environment = r.trustEnvironment,
         official = r.official,
         anchorName = r.anchorName,
-        labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet(),
+        // Credentials derived before the label existed are recognised by their type.
+        labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet() +
+            (if (r.vct == DerivedCredentials.VCT) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
         reasons = r.reasons,
     )
 }
@@ -263,6 +274,8 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
     val settings by model.settingsFlow.collectAsState()
     var claims by remember { mutableStateOf<List<Triple<String, String, ImageBitmap?>>>(emptyList()) }
     var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
+    var evidence by remember { mutableStateOf<List<EvidenceResult>>(emptyList()) }
+    var source by remember { mutableStateOf<String?>(null) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -270,9 +283,25 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
         val creds = doc.getCertifiedCredentials()
         count = creds.size
         val first = creds.firstOrNull()
+        // A derived credential's document and evidence objects are shown as checked evidence, not as raw data.
+        val derived = record?.vct == DerivedCredentials.VCT
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
+            ?.filterNot { derived && it.path.firstOrNull() in setOf("document", "evidence") }
             ?.map { Triple(model.claimLabel(it.path, it.label, record), it.value, it.picture?.let { b -> model.platform.decodeImage(b) }) }.orEmpty()
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
+        if (derived && first is SdJwtVcCredential) runCatching {
+            val compact = first.issuerProvidedData.decodeToString()
+            val payload = Json.parseToJsonElement(compact.substringBefore('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject
+            payload["document"]?.jsonObject?.let { d ->
+                val size = d["size"]?.jsonPrimitive?.content?.toLongOrNull()
+                source = listOfNotNull(
+                    d["mediaType"]?.jsonPrimitive?.content,
+                    size?.let { sizeText(it) },
+                    d["sha256"]?.jsonPrimitive?.content?.let { "SHA-256 " + it.take(16) + "..." },
+                ).joinToString("，")
+            }
+            evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true)
+        }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
@@ -286,6 +315,8 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
                     modifier = Modifier.widthIn(max = 240.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
             } else LabelValue(k, v)
         }
+        source?.let { LabelValue("來源文件", it, small = true) }
+        if (evidence.isNotEmpty()) EvidenceRows(evidence)
         if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
         record?.let {

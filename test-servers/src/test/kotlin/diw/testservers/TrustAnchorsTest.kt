@@ -205,22 +205,30 @@ class TrustAnchorsTest {
         assertNull(Pkix.anchorOf(listOf(leaf), BuiltInPublicRoots.services.map { it.certificate }, now))
     }
 
-    /** The Multipaz test app's issuers and readers are built in as TEST anchors: T3, marked as test, never official. */
+    /** The Multipaz apps' issuers and readers are built in: test ones as TEST anchors (T3, marked), none official. */
     @Test
     fun multipazTestAnchorsAreBuiltIn() = runBlocking<Unit> {
         val now = Clock.System.now()
-        assertEquals(9, BuiltInTestAnchors.all.size)
+        assertEquals(18, BuiltInTestAnchors.all.size)
+        assertEquals(BuiltInTestAnchors.all.size, BuiltInTestAnchors.all.map { it.certificate }.toSet().size, "no anchor twice")
         for (a in BuiltInTestAnchors.all) {
             val c = a.certificate
             assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${a.name} is not valid now")
-            assertEquals(c.subject, c.issuer, "${a.name} is a root")
+            // Apple publishes its issuing CA rather than the root.
+            if (!a.name.startsWith("Apple")) assertEquals(c.subject, c.issuer, "${a.name} is a root")
         }
         val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
         registry.seedBuiltInAnchors()
         val test = registry.allAnchors().filter { it.environment == TrustEnvironment.TEST }
         assertEquals(setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER), test.map { it.role }.toSet())
-        assertTrue(BuiltInTestAnchors.all.all { a -> test.any { it.certificate == a.certificate } })
+        assertTrue(BuiltInTestAnchors.all.filter { !it.production }.all { a -> test.any { it.certificate == a.certificate } })
         assertTrue(test.none { it.official })
+        // The production ID pass issuers of Google Wallet and Apple (as Multipaz Wallet lists them) are named, not official.
+        val production = registry.allAnchors().filter { it.environment == TrustEnvironment.PRODUCTION }
+        val passes = BuiltInTestAnchors.all.filter { it.production }
+        assertEquals(3, passes.size)
+        assertTrue(passes.all { a -> production.any { it.certificate == a.certificate && !it.official && it.role == TrustRole.ISSUER } })
+        assertTrue(passes.none { a -> test.any { it.certificate == a.certificate } })
         val reader = BuiltInTestAnchors.all.first { it.name == "Multipaz Identity Reader CA" }.certificate
         assertTrue(test.none { it.role == TrustRole.ISSUER && it.certificate == reader }, "a reader CA never anchors an issuer")
 

@@ -112,6 +112,8 @@ class TwdiwTrustList(
     private data class Cached(val snapshot: TwdiwTrustSnapshot?, val until: Instant)
 
     private val cache = mutableMapOf<String, Cached>()
+    /** Test platforms keep their snapshots apart, so a sandbox entry is never read back as an official one offline. */
+    private val table = if (platform.test) TEST_TABLE else TABLE
     private var allCache: Pair<List<TwdiwTrustEntry>, Instant>? = null
     private val dids = DidResolver(httpClient)
 
@@ -312,7 +314,7 @@ class TwdiwTrustList(
     private suspend fun saveSnapshot(snap: TwdiwTrustSnapshot) {
         val s = storage ?: return
         runCatching {
-            val t = s.getTable(TABLE)
+            val t = s.getTable(table)
             val bytes = DiwJson.encodeToString(TwdiwTrustSnapshot.serializer(), snap).encodeToByteString()
             if (t.get(snap.entry.did) == null) t.insert(snap.entry.did, bytes) else t.update(snap.entry.did, bytes)
         }
@@ -321,14 +323,14 @@ class TwdiwTrustList(
     private suspend fun loadSnapshot(did: String): TwdiwTrustSnapshot? {
         val s = storage ?: return null
         return runCatching {
-            s.getTable(TABLE).get(did)?.let { DiwJson.decodeFromString(TwdiwTrustSnapshot.serializer(), it.decodeToString()) }
+            s.getTable(table).get(did)?.let { DiwJson.decodeFromString(TwdiwTrustSnapshot.serializer(), it.decodeToString()) }
         }.getOrNull()
     }
 
     /** Snapshots stored for offline use. */
     suspend fun snapshots(): List<TwdiwTrustSnapshot> {
         val s = storage ?: return emptyList()
-        val t = s.getTable(TABLE)
+        val t = s.getTable(table)
         return t.enumerate().mapNotNull { k ->
             runCatching { t.get(k)?.let { DiwJson.decodeFromString(TwdiwTrustSnapshot.serializer(), it.decodeToString()) } }.getOrNull()
         }
@@ -340,5 +342,6 @@ class TwdiwTrustList(
         const val ORG_TYPE_VERIFIER = 2
         private const val MAX_PAGES = 50
         private val TABLE = StorageTableSpec("DiwTwdiwTrust", supportPartitions = false, supportExpiration = false)
+        private val TEST_TABLE = StorageTableSpec("DiwTwdiwTrustTest", supportPartitions = false, supportExpiration = false)
     }
 }

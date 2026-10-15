@@ -102,7 +102,11 @@ object DerivedCredentials {
                 if (household != null) {
                     notice = household.notice
                     addAll(household.claims)
-                } else addAll(DocumentFields.fromText(t))
+                } else {
+                    // An entry and exit record is read as a structure; its bilingual labels would repeat as pairs.
+                    val entryExit = DocumentFields.fromEntryExit(t)
+                    addAll(entryExit.ifEmpty { DocumentFields.fromText(t) })
+                }
             }
         }
         val names = base.map { it.name }.toMutableSet()
