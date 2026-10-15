@@ -194,9 +194,36 @@ object DocumentFields {
         }
     }
 
-    /** The claim answering whether the person of [c] was in Taiwan on [date]; null when the record cannot tell. */
-    fun inTaiwanOn(c: EntryExitCertificate, date: LocalDate): DerivedClaim? =
-        c.inTaiwanOn(date)?.let { DerivedClaim("inTaiwanOn_$date", if (it) "true" else "false", "$date 在境內") }
+    /**
+     * The claims of a mainland China entry and exit record ([MainlandEntryExitRecord]): the person, the record, a
+     * summary (latest arrival and departure, whether the person was in mainland China on the last day covered) and
+     * every movement of the queried period as one claim, the oldest included. Empty when [text] is not such a record.
+     */
+    fun fromMainlandEntryExit(text: String): List<DerivedClaim> {
+        val c = MainlandEntryExitRecord.parse(text) ?: return emptyList()
+        return buildList {
+            c.name?.let { add(DerivedClaim("name", it, "姓名")) }
+            c.gender?.let { add(DerivedClaim("gender", it, "性別")) }
+            c.birthDate?.let { add(DerivedClaim("birthDate", it.toString(), "出生日期")) }
+            c.documentNumber?.let { add(DerivedClaim("documentNumber", it, (c.documentLabel ?: "證件") + "號碼")) }
+            c.number?.let { add(DerivedClaim("recordNumber", it, "編號")) }
+            c.queryDate?.let { add(DerivedClaim("queryDate", it.toString(), "查詢日期")) }
+            if (c.periodFrom != null && c.periodTo != null) add(DerivedClaim("period", "${c.periodFrom} 至 ${c.periodTo}", "查詢期間"))
+            add(DerivedClaim("entryExitCount", c.movements.size.toString(), "出入境記錄筆數"))
+            c.latestArrival?.let { add(DerivedClaim("latestMainlandEntryDate", it.toString(), "最後入境中國大陸日期")) }
+            c.latestDeparture?.let { add(DerivedClaim("latestMainlandExitDate", it.toString(), "最後離開中國大陸日期")) }
+            c.insideAtEnd?.let { add(DerivedClaim("inMainlandAtPeriodEnd", if (it) "true" else "false", "查詢期間最後一天（${c.coveredUntil}）在中國大陸境內")) }
+            if (c.movements.isNotEmpty()) {
+                add(DerivedClaim("entryExitRecords", c.movements.joinToString("；") { m ->
+                    "${m.item}. ${if (m.arrival) "入境" else "出境"} ${m.date}" + (m.port?.let { " $it" } ?: "") + (m.flight?.let { " $it" } ?: "")
+                }, "出入境記錄"))
+            }
+        }
+    }
+
+    /** The claim answering whether the person of [record] was inside on [date]; null when the record cannot tell. */
+    fun insideOn(record: MovementRecord, date: LocalDate): DerivedClaim? =
+        record.insideOn(date)?.let { DerivedClaim("${record.dayClaimPrefix}_$date", if (it) "true" else "false", "$date 在${record.inside}") }
 
     /** Claims read from a document's content, and a note for the holder when some could not be read. */
     class ContentFields(val claims: List<DerivedClaim>, val notice: String? = null)

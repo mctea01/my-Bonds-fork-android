@@ -152,6 +152,24 @@ class TrustAnchorsTest {
     }
 
     /**
+     * The National Immigration Administration signs its documents (entry and exit records, permit links) under BJCA
+     * DocSign CA3 and BJCA Global Root CA3, a root outside CCADB that is pinned: such a document is a mainland China
+     * CA document signature (T3) while that group is on.
+     */
+    @Test
+    fun immigrationAdministrationDocumentChain() = runBlocking<Unit> {
+        val at = Instant.parse("2026-10-11T00:00:00Z")
+        val chain = pemChain("nia-document-signer")
+        val ca3 = BuiltInPublicRoots.mainlandChina.first { it.name == "BJCA Global Root CA3" }
+        assertEquals("AAA048773350488832AABDA6954B33EE28BB2773DD851AB3C4F6F1D2F9F3777B", ca3.sha256)
+        assertEquals(ca3.certificate, Pkix.anchorOf(chain, BuiltInPublicRoots.mainlandChina.map { it.certificate }, at))
+        val d = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = true)).decide(TrustRole.DOCUMENT, chain, at)
+        assertEquals(TrustTier.T3, d.tier)
+        assertTrue(TrustLabel.MAINLAND_CHINA_CA in d.labels, "labels: ${d.labels}")
+        assertEquals("中國大陸憑證機構：BJCA Global Root CA3", d.anchorName)
+    }
+
+    /**
      * The certificate chains China's tax administration (invoice verification) and immigration administration served
      * on 2026-10-11 lead to CFCA EV ROOT: trusted as a mainland China CA (T3) while that group is on, not otherwise.
      */

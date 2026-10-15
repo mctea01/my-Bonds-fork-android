@@ -97,6 +97,7 @@ import androidx.compose.material3.HorizontalDivider
 import kotlinx.datetime.LocalDate
 import diw.wallet.core.document.derived.DocumentFields
 import diw.wallet.core.document.derived.EntryExitCertificate
+import diw.wallet.core.document.derived.MainlandEntryExitRecord
 import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -1015,7 +1016,11 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
     when (p) {
         null, FilePreview.Loading -> Text("正在產生預覽", style = MaterialTheme.typography.bodySmall)
         is FilePreview.Pages -> {
-            p.entryExit?.let { EntryExitView(it) }
+            when (val r = p.entryExit) {
+                is EntryExitCertificate -> EntryExitView(r)
+                is MainlandEntryExitRecord -> MainlandEntryExitView(r)
+                null -> {}
+            }
             if (p.pages.isNotEmpty()) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
                 PreviewImage(p.pages[i], "第 ${i + 1} 頁")
@@ -1099,6 +1104,56 @@ private fun EntryExitView(c: EntryExitCertificate) {
                     Text(t.item.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
                     Text(t.exit?.toString() ?: "無", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
                     Text(t.entry?.toString() ?: "尚未入境", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A mainland China entry and exit record laid out as its parts: the person, the record and every movement of the
+ * queried period, latest first (出境 leaves mainland China, 入境 arrives).
+ */
+@Composable
+private fun MainlandEntryExitView(c: MainlandEntryExitRecord) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("出入境記錄查詢結果（中國大陸）", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue("姓名", it, small = true) }
+        c.gender?.let { LabelValue("性別", it, small = true) }
+        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
+        c.documentNumber?.let { LabelValue((c.documentLabel ?: "證件") + "號碼", it, small = true) }
+        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue("發證機關", c.issuer, small = true)
+        c.number?.let { LabelValue("編號", it, small = true) }
+        c.queryDate?.let { LabelValue("查詢日期", it.toString(), small = true) }
+        if (c.periodFrom != null && c.periodTo != null) LabelValue("查詢期間", "${c.periodFrom} 至 ${c.periodTo}", small = true)
+        c.madeAt?.let { LabelValue("製作日期", it, small = true) }
+        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
+        Text("出入境摘要", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue("紀錄筆數", "${c.movements.size} 筆", small = true)
+        c.latestArrival?.let { LabelValue("最後入境中國大陸", it.toString(), small = true) }
+        c.latestDeparture?.let { LabelValue("最後離開中國大陸", it.toString(), small = true) }
+        c.insideAtEnd?.let { LabelValue("${c.coveredUntil} 時", if (it) "在中國大陸境內" else "不在中國大陸境內", small = true) }
+        if (c.movements.isNotEmpty()) {
+            Text("出入境記錄", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Text("序號", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.5f))
+                Text("出入境", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
+                Text("日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.1f))
+                Text("口岸與航班", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.6f))
+            }
+            HorizontalDivider()
+            c.movements.forEach { m ->
+                Row(Modifier.fillMaxWidth()) {
+                    Text(m.item.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.5f))
+                    Text(if (m.arrival) "入境" else "出境", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
+                    Text(m.date.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.1f))
+                    Text(listOfNotNull(m.port, m.flight).joinToString(" ").ifEmpty { "未記載" }, style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1.6f))
                 }
             }
         }
@@ -1362,17 +1417,17 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
         if (fields != null && suggested.isEmpty()) Text("文件內沒有可解析的欄位。", style = MaterialTheme.typography.bodySmall)
         val entryExit = fields?.entryExit
         if (entryExit != null) {
-            Text("指定日期是否在境內（依入出境紀錄計算，可加入多個日期）", style = MaterialTheme.typography.bodyMedium)
+            Text("指定日期是否在${entryExit.inside}（依出入境紀錄計算，可加入多個日期）", style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(value = dayText, onValueChange = { dayText = it.take(10) }, label = { Text("日期（2026-01-31）") }, singleLine = true,
                     modifier = Modifier.weight(1f))
                 val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
-                val answer = day?.let { DocumentFields.inTaiwanOn(entryExit, it) }
+                val answer = day?.let { DocumentFields.insideOn(entryExit, it) }
                 Button(onClick = { answer?.let { a -> dayClaims = dayClaims.filter { it.name != a.name } + a } }, enabled = answer != null) { Text("加入") }
             }
             val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
-            if (dayText.isNotBlank() && (day == null || DocumentFields.inTaiwanOn(entryExit, day) == null)) {
-                Text(if (day == null) "日期格式為 年-月-日。" else "這個日期不在證明書的查詢期間（${entryExit.periodFrom} 至 ${entryExit.coveredUntil}），無法判斷。",
+            if (dayText.isNotBlank() && (day == null || DocumentFields.insideOn(entryExit, day) == null)) {
+                Text(if (day == null) "日期格式為 年-月-日。" else "這個日期不在文件的查詢期間（${entryExit.periodFrom} 至 ${entryExit.coveredUntil}），無法判斷。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             dayClaims.forEach { c ->
@@ -1380,7 +1435,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                     Checkbox(checked = true, onCheckedChange = { dayClaims = dayClaims - c })
                     Column {
                         Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
-                        Text(if (c.value == "true") "在境內" else "在境外", style = MaterialTheme.typography.bodySmall)
+                        Text(if (c.value == "true") "在${entryExit.inside}" else "不在${entryExit.inside}", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

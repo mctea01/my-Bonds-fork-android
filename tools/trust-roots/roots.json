@@ -233,6 +233,18 @@
       "sha256": "D726F197661F182DED707C3BF177288690693D61DCA6969F1E753F340F275150"
     }
   ],
+  "pinned": [
+    {
+      "file": "pinned/bjca-global-root-ca3.pem",
+      "name": "BJCA Global Root CA3",
+      "owner": "北京數字認證 BJCA",
+      "purposes": "文件簽章（國家移民管理局電子文件經 BJCA DocSign CA3 簽發）",
+      "url": "https://crt.sh/?d=2838198003",
+      "page": "https://www.bjca.cn/service/down_198.html",
+      "evidence": "國家移民管理局出入境記錄與通行證關聯查詢結果 PDF 的簽章憑證鏈",
+      "sha256": "AAA048773350488832AABDA6954B33EE28BB2773DD851AB3C4F6F1D2F9F3777B"
+    }
+  ],
   "gpki": {
     "builtIn": [
       "core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInAnchors.kt",

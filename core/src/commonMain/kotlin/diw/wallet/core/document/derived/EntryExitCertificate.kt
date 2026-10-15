@@ -23,11 +23,14 @@ data class EntryExitCertificate(
     val issuedAt: String?,
     val issueDate: LocalDate?,
     val pages: Int?,
-    val periodFrom: LocalDate?,
+    override val periodFrom: LocalDate?,
     val periodTo: LocalDate?,
     val issuer: String?,
     val trips: List<EntryExitTrip>,
-) {
+) : MovementRecord {
+    override val inside: String get() = "境內"
+    override val dayClaimPrefix: String get() = "inTaiwanOn"
+
     val latestExit: LocalDate? get() = trips.mapNotNull { it.exit }.maxOrNull()
     val latestEntry: LocalDate? get() = trips.mapNotNull { it.entry }.maxOrNull()
 
@@ -40,7 +43,7 @@ data class EntryExitCertificate(
         }
 
     /** The last day the record speaks for: the end of the queried period, else the date of issue. */
-    val coveredUntil: LocalDate? get() = periodTo ?: issueDate
+    override val coveredUntil: LocalDate? get() = periodTo ?: issueDate
 
     /**
      * Whether the person was in Taiwan at the end of [date], from the movements up to that day; null when [date] lies
@@ -54,10 +57,10 @@ data class EntryExitCertificate(
         // A departure and a return on the same day: the departure comes first.
         val events = trips.flatMap { t -> listOfNotNull(t.exit?.let { it to false }, t.entry?.let { it to true }) }
             .sortedWith(compareBy({ it.first }, { if (it.second) 1 else 0 }))
-        if (events.isEmpty()) return null
-        events.lastOrNull { it.first <= date }?.let { return it.second }
-        return !events.first().second
+        return MovementRecord.insideOn(events, date)
     }
+
+    override fun insideOn(date: LocalDate): Boolean? = inTaiwanOn(date)
 
     /** Whether the person was in Taiwan on the last day the record covers. */
     val inTaiwanAtEnd: Boolean? get() = coveredUntil?.let { inTaiwanOn(it) }
