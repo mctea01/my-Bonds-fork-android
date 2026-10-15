@@ -87,6 +87,7 @@
 - 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存，開啟文件時依目前的信任錨點重新判定。
 - 簽章檢查的寬鬆處理：CMS 只讀第一個 ASN.1 物件（e簽寶等服務在 BER 後多寫結束標記），完整性以憑證公鑰驗證（BouncyCastle 不再以 signingTime 檢查憑證效期）；CMS 沒有 signingTime 時以 PDF 簽章字典的 `/M` 當作宣稱的簽署時間；PKIX 依序嘗試較短的憑證鏈前段，因為附上的憑證可能含交叉簽署的根憑證。簽章卡的信任說明只描述簽署者（`signerTrustLine`）。
 - 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
+- CSC 遠端簽章（`document/sign/Csc.kt`、App 的 `CscModel`）：CSC API v2，OAuth 授權碼加 PKCE，先以 `scope=service` 登入並讀 `credentials/list`，每次簽章再以 `scope=credential`（`credentialID`、`numSignatures`、base64url `hashes`、`hashAlgorithmOID`）授權，最後 `signatures/signHash`（標準 base64、`signAlgo` 優先 ecdsa-with-SHA256 或 sha256WithRSA，EC 的 r||s 轉 DER）；`implicit`／`explicit` 模式改用 `credentials/authorize` 取得 SAD（PIN、OTP 不保存）。內建 EUDI walletcentric 測試服務（demo 與 dev，`wallet-client`、redirect `rqes://oauth/callback`），使用者可自行加入服務並標示測試或正式，存在設定的 `cscServices`。登入由 `CscModel` 以自己的 cookie 跟隨轉址，遇到 OpenID4VP 連結（含只放一個錢包連結的頁面）就由 `WalletModel.presentForAuthorization` 在一般同意畫面出示 PID，取得驗證端回傳的 redirect_uri 後繼續；EUDI 的授權會帶 CSC `qes-approval` transaction_data（`QesApprovalTransaction`），同意畫面列出要簽的份數。需要網頁登入時改開瀏覽器，Android 接收 `rqes://oauth/callback` 與 `diw-wallet://csc/callback`，電腦版貼上最後網址。登入權杖只存在這次執行。
 - 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。有 TSA 時為 B-T。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
 - 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位為 disclosure：錢包自己的欄位（姓名、文件標題、檔名、簽署者、簽署時間、來源）與 `DocumentFields` 從文件內容解析的欄位（OpenCerts 資料、公文「函」的發文機關、受文者、日期、字號與主旨、PDF 文字層的「標籤：值」，加密 PDF 以這次輸入的密碼開啟），上限 30 個。持有人自填的欄位要另外展開才能加，名稱前綴 `holderStated:`。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
 - vc+moica 與 Bonds 相容：payload 以 JCS 序列化，卡片簽 `"bonds-tw-credential-v1:" + hex(sha256(payload))`（RS256），issuerJWS 為 BONDS_SELF_ISSUED did:key 的 ES256。Bonds 請求 `k=s` 時列出有自然人憑證證據的衍生憑證；MOICA G3 與 GRCA G3 固定在 `MoicaCa.PRODUCTION`，測試以 `MoicaCa(moica, root)` 注入。
@@ -106,7 +107,7 @@
 - 預覽：PDF 以平台繪製前 10 頁（Android `PdfRenderer`，桌面 PDFBox），加密 PDF 先以本次輸入的密碼（MyData 為身分證統一編號）在記憶體產生不加密的副本（`PdfPlain`，不保存、不匯出），並可顯示文字層；圖片、XML、JSON、文字與 .p7m 內含的內容也可預覽。密碼只保存在這次執行的記憶體。
 - 圖片欄位：mdoc 的影像位元組與 JSON 憑證裡的 data: URL 或 base64 圖片（`ClaimPictures`）在證件詳情顯示為圖片。
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。
-- 停用列（寫明原因）：行動自然人憑證簽章（需要內政部 SP 帳號）、CSC 遠端簽章、公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
+- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。
 

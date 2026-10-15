@@ -17,6 +17,8 @@ enum class SignerSource(val title: String) {
     PKCS11("硬體憑證（PKCS#11）"),
     /** The mobile citizen certificate through the TW FidO SP API. */
     MOBILE_MOICA("行動自然人憑證"),
+    /** A remote signing service through the Cloud Signature Consortium API. */
+    CSC("遠端簽章服務（CSC）"),
 }
 
 /**

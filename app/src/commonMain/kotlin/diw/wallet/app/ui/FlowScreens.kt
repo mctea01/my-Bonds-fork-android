@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.oid4vp.QesApprovalTransaction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -216,7 +217,12 @@ fun PresentationScreen(model: WalletModel) {
                 if (showDetails) DetailSections(model, CredentialDetails.request(req))
                 val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s)
                 if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
-                if (req.transactionData.isNotEmpty()) Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
+                if (req.transactionData.isNotEmpty()) {
+                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
+                    req.transactionData.mapNotNull { QesApprovalTransaction.describe(it) }.forEach {
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
                 val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
                 if (s.fields.isNotEmpty()) Text("對方要求填寫：", style = MaterialTheme.typography.titleSmall)
                 s.fields.forEach { f ->

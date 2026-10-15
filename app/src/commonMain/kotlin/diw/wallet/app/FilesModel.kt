@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentFormat
@@ -255,6 +256,8 @@ sealed class SignerChoice {
     class Token(val library: String, val pin: String, val id: String) : SignerChoice()
     /** The mobile citizen certificate, through the SP account of a licence holder entered for this run. */
     class MobileMoica(val sp: MobileMoicaSp, val idNumber: String, val mode: MobileMoicaMode) : SignerChoice()
+    /** A remote signing service (CSC API); the holder signs in and approves each signature with the service. */
+    class Csc(val service: CscService) : SignerChoice()
 }
 
 /** An SP account entered for this run; kept in memory only, never stored. */
@@ -750,6 +753,7 @@ class FilesModel(private val model: WalletModel) {
         busy.value = when (choice) {
             is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
+            is SignerChoice.Csc -> "簽署中：請依畫面授權這次簽章"
             else -> "簽署中"
         }
         val signerName = DocumentSigning.certificateSummary(signer.certificateChain.first())?.first
@@ -780,6 +784,7 @@ class FilesModel(private val model: WalletModel) {
         is SignerChoice.System -> withMoicaChain(model.platform.externalKeys.systemSigner(choice.id))
         is SignerChoice.Token -> withMoicaChain(model.platform.externalKeys.tokenSigner(choice.library, choice.pin, choice.id))
         is SignerChoice.MobileMoica -> mobileMoicaSigner(choice, hint)
+        is SignerChoice.Csc -> model.csc.signer(choice.service, hint.take(60)) { busy.value = it }
     }
 
     /** SP account entered on the signing screen during this run (developer option); never written to storage. */

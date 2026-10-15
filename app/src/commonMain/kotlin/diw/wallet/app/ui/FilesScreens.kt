@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.CscPrompt
+import diw.wallet.core.document.sign.CscEnvironment
+import diw.wallet.core.document.sign.CscServices
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -229,7 +232,8 @@ fun FilesTab(model: WalletModel) {
         SectionTitle("遠端與行動簽章")
         Text("行動自然人憑證簽章已加入文件的「簽署」，需要內政部核發的服務提供者（SP）帳號，供持有 SP 授權者測試。",
             style = MaterialTheme.typography.bodySmall)
-        ActionRow(WalletIcons.Link, "CSC 遠端簽章", "需要遠端簽章服務商的帳號與 CSC API 授權，尚無可用的服務商", enabled = false) {}
+        Text("遠端簽章（CSC API）也在文件的「簽署」：內建 EUDI 測試服務（以 EUDI 測試身分登入），也可以加入你自己的服務商；測試與正式服務分開列出。",
+            style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -492,7 +496,8 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
 
 private enum class SignerKind(val title: String) {
-    CARD("自然人憑證卡"), MOBILE("行動自然人憑證"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"), PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
+    CARD("自然人憑證卡"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"),
+    PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
 }
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
@@ -544,7 +549,7 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             SignerKind.CARD -> card
             SignerKind.PKCS12 -> p12?.takeIf { password.isNotEmpty() }?.let { SignerChoice.Pkcs12(it.bytes, password) }
             SignerKind.WALLET -> SignerChoice.Wallet(walletName)
-            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE -> other
+            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE, SignerKind.CSC -> other
         }
     )
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -554,6 +559,7 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
         SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
         SignerKind.TOKEN -> TokenKeyPicker(model) { other = it; update() }
         SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
+        SignerKind.CSC -> CscPicker(model) { other = it; update() }
         SignerKind.CARD -> CardPicker(model) { update(it) }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
@@ -718,6 +724,117 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     )
 }
 
+/** The remote signing services, test ones apart from production ones, and a form to add one. */
+@Composable
+private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    val settings by model.settingsFlow.collectAsState()
+    val services = remember(settings.cscServices) { model.csc.services }
+    var chosen by remember { mutableStateOf<String?>(null) }
+    var adding by remember { mutableStateOf(false) }
+    LaunchedEffect(services) {
+        if (services.none { it.id == chosen }) {
+            chosen = null
+            onChange(null)
+        }
+    }
+    CscEnvironment.entries.reversed().forEach { env ->
+        Text(env.title, style = MaterialTheme.typography.titleSmall)
+        val list = services.filter { it.environment == env }
+        if (list.isEmpty()) {
+            Text(if (env == CscEnvironment.PRODUCTION) "沒有內建的正式服務。正式服務需要向服務商申請帳號，取得 client_id 後在下方加入。" else "沒有測試服務",
+                style = MaterialTheme.typography.bodySmall)
+        }
+        list.forEach { svc ->
+            Row(Modifier.fillMaxWidth().clickable { chosen = svc.id; onChange(SignerChoice.Csc(svc)) }, verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(selected = svc.id == chosen, onClick = { chosen = svc.id; onChange(SignerChoice.Csc(svc)) })
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(svc.name, style = MaterialTheme.typography.bodyMedium)
+                        if (svc.environment == CscEnvironment.TEST) VerdictPill(Verdict.CAUTION, "測試")
+                    }
+                    Text(svc.baseUrl.substringAfter("://").substringBefore('/') + if (svc.builtIn) "（內建）" else "（自行加入）",
+                        style = MaterialTheme.typography.bodySmall)
+                    svc.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+                if (!svc.builtIn) TextButton(onClick = { model.csc.remove(svc.id) }) { Text("移除") }
+            }
+        }
+    }
+    if (chosen?.let { model.csc.service(it)?.environment } == CscEnvironment.TEST) {
+        Text("測試服務簽出的簽章由測試 CA 簽發，沒有法律效力，查驗時會顯示為無法確認的憑證。", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error)
+    }
+    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。",
+        style = MaterialTheme.typography.bodySmall)
+    if (!adding) {
+        OutlinedButton(onClick = { adding = true }) { Text("加入遠端簽章服務") }
+    } else {
+        CscServiceForm(model) { adding = false }
+    }
+}
+
+@Composable
+private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var baseUrl by remember { mutableStateOf("https://") }
+    var clientId by remember { mutableStateOf("") }
+    var secret by remember { mutableStateOf("") }
+    var redirect by remember { mutableStateOf(CscServices.WALLET_REDIRECT) }
+    var env by remember { mutableStateOf(CscEnvironment.PRODUCTION) }
+    val problem = model.csc.problem(name, baseUrl, clientId, redirect)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CscEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e }, label = { Text(e.title) }) }
+    }
+    OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, label = { Text("服務名稱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it.trim().take(300) }, label = { Text("CSC API 位址（例如 https://host/csc/v2）") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = clientId, onValueChange = { clientId = it.trim().take(200) }, label = { Text("client_id") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = secret, onValueChange = { secret = it.trim().take(200) }, label = { Text("client_secret（選填）") }, singleLine = true,
+        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = redirect, onValueChange = { redirect = it.trim().take(300) }, label = { Text("redirect_uri（向服務商登記的位址）") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    Text("服務商需登記 redirect_uri；Android 會接收 ${CscServices.WALLET_REDIRECT}，電腦版在瀏覽器完成後貼上最後的網址。client_secret 保存在錢包的加密儲存區。",
+        style = MaterialTheme.typography.bodySmall)
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text("加入") }
+        OutlinedButton(onClick = onDone) { Text("取消") }
+    }
+}
+
+/** A PIN or OTP the service asks for, or the address to paste when the browser does not come back by itself. */
+@Composable
+internal fun CscPromptPanel(model: WalletModel) {
+    val p by model.csc.prompt.collectAsState()
+    when (val prompt = p) {
+        null -> {}
+        is CscPrompt.Secret -> {
+            var value by remember(prompt) { mutableStateOf("") }
+            OutlinedTextField(
+                value = value, onValueChange = { value = it.take(64) }, label = { Text(prompt.label) }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = if (prompt.numeric) KeyboardType.NumberPassword else KeyboardType.Password),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { prompt.answer.complete(value) }, enabled = value.isNotEmpty()) { Text("送出") }
+                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text("取消") }
+            }
+        }
+        is CscPrompt.Browser -> {
+            var pasted by remember(prompt) { mutableStateOf("") }
+            Text("已在瀏覽器開啟：${prompt.purpose}。完成後通常會自動回到錢包；沒有回來時，把瀏覽器最後的網址（以 ${prompt.redirectUri} 開頭）貼在這裡。",
+                style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("瀏覽器最後的網址") }, singleLine = true,
+                modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { prompt.answer.complete(pasted) }, enabled = pasted.startsWith(prompt.redirectUri)) { Text("繼續") }
+                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text("取消") }
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------- sign
 
 @Composable
@@ -754,6 +871,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
             Text("加上簽章時戳（${TsaServices.byId(model.settings.tsaId).name}，需要網路）")
         }
         BusyLine(busy, error)
+        CscPromptPanel(model)
         Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp) } }, enabled = choice != null && busy == null) {
             Text("簽署")
         }

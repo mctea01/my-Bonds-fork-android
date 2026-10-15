@@ -97,6 +97,9 @@ import org.multipaz.crypto.X509Cert
 import org.multipaz.asn1.OID
 import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
+import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.document.sign.CscService
+import diw.wallet.core.document.sign.SigningException
 import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.documenttype.knowntypes.DrivingLicense
@@ -156,6 +159,8 @@ data class WalletSettings(
      * (kept in memory only) instead of the account built into this build.
      */
     val manualMobileMoicaSp: Boolean = false,
+    /** Remote signing services (CSC API) the user added; the built-in ones are in CscServices. */
+    val cscServices: List<CscService> = emptyList(),
 )
 
 /**
@@ -298,6 +303,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
+        QesApprovalTransaction.types.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
         private set
@@ -353,6 +359,7 @@ class WalletModel(val platform: PlatformServices) {
     val proximity = ProximityModel(this)
     val reader = ReaderModel(this)
     val files = FilesModel(this)
+    val csc = CscModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -774,6 +781,7 @@ class WalletModel(val platform: PlatformServices) {
             ms.completeLogin(u)
             return
         }
+        if (csc.handleRedirect(u)) return
         if (u.startsWith(platform.oid4vciRedirectUri)) {
             completeAuthorization(u)
             return
@@ -1106,8 +1114,37 @@ class WalletModel(val platform: PlatformServices) {
                 presentation.value = consentFor(h.prepare(request), fields, offline)
             } catch (e: Exception) {
                 presentation.value = PresentationUi.Failed(describe(e))
+                endAuthorizationPresentation(null, "無法處理身分驗證要求：" + describe(e))
             }
         }
+    }
+
+    private var authorizationPresentation: CompletableDeferred<String>? = null
+
+    /**
+     * Answers a presentation request that is a step of another flow (a remote signing service asking for the PID
+     * before it signs) on the usual consent screen, then returns to the screen it came from. Returns the address the
+     * verifier sends the wallet to next; fails when the holder declines or the request cannot be answered.
+     */
+    suspend fun presentForAuthorization(uri: String): String {
+        val back = screen.value
+        val done = CompletableDeferred<String>()
+        authorizationPresentation?.completeExceptionally(SigningException("已有另一個身分驗證進行中"))
+        authorizationPresentation = done
+        startPresentation(uri)
+        try {
+            return done.await()
+        } finally {
+            if (authorizationPresentation === done) authorizationPresentation = null
+            screen.value = back
+        }
+    }
+
+    private fun endAuthorizationPresentation(redirect: String?, failure: String): Boolean {
+        val d = authorizationPresentation ?: return false
+        authorizationPresentation = null
+        if (redirect != null) d.complete(redirect) else d.completeExceptionally(SigningException(failure))
+        return true
     }
 
     /**
@@ -1267,8 +1304,10 @@ class WalletModel(val platform: PlatformServices) {
                     dcApiResult?.complete(outcome.data)
                     dcApiResult = null
                 }
-                is PresentationOutcome.Posted -> outcome.redirectUri?.let { platform.openRedirect(it) }
-                is PresentationOutcome.Redirect -> platform.openRedirect(outcome.url)
+                is PresentationOutcome.Posted -> if (!endAuthorizationPresentation(outcome.redirectUri, "簽章服務沒有提供下一步的位址")) {
+                    outcome.redirectUri?.let { platform.openRedirect(it) }
+                }
+                is PresentationOutcome.Redirect -> if (!endAuthorizationPresentation(outcome.url, "")) platform.openRedirect(outcome.url)
             }
             refreshDocuments()
             recordPresentation(HistoryKind.PRESENTED, consent)
@@ -1282,6 +1321,7 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: Exception) {
             recordPresentation(HistoryKind.PRESENTED, consent, describe(e))
             presentation.value = PresentationUi.Failed(describe(e))
+            endAuthorizationPresentation(null, "身分驗證失敗：" + describe(e))
         }
     }
 
@@ -1298,10 +1338,12 @@ class WalletModel(val platform: PlatformServices) {
         dcApiResult?.complete((outcome as? PresentationOutcome.DcApi)?.data)
         dcApiResult = null
         presentation.value = PresentationUi.Failed("已拒絕分享")
+        endAuthorizationPresentation(null, "已拒絕分享身分資料，簽署已取消")
     }
 
     /** Ends a pending DC API request when the user leaves the presentation: a reportable failure goes to the caller, anything else cancels. */
     fun leaveDcApi() {
+        endAuthorizationPresentation(null, "已離開身分驗證畫面，簽署已取消")
         dcApiResult?.complete(dcApiError)
         dcApiResult = null
         dcApiError = null

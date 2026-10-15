@@ -1188,4 +1188,89 @@ class WalletModelE2eTest {
         assertFailsWith<Exception> { enc.get("k", "p2") }
         assertEquals(secret, EncryptedStorage(inner, PinValueCipher.unlock(dir, pin)!!).getTable(spec).get("k", "p1"))
     }
+
+    /**
+     * A CSC service whose sign-in is a cookie session: the wallet follows the redirects itself, reads the credential
+     * and signs a CAdES file with the remote key. A sign-in that leads to a presentation request the wallet cannot
+     * answer stops with that reason instead of waiting.
+     */
+    @Test
+    fun cscRemoteSigningThroughCookieSession() = runBlocking<Unit> {
+        val key = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        val cert = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+            org.bouncycastle.asn1.x500.X500Name("CN=Remote Signer"), java.math.BigInteger.TEN, java.util.Date(System.currentTimeMillis() - 86_400_000),
+            java.util.Date(System.currentTimeMillis() + 86_400_000), org.bouncycastle.asn1.x500.X500Name("CN=Remote Signer"), key.public,
+        ).build(org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA").build(key.private)).encoded
+        var broken = false
+        val sessions = mutableMapOf<String, String>()
+        val engine = io.ktor.client.engine.mock.MockEngine { req ->
+            fun json(o: JsonObject) = respond(o.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            fun redirect(to: String, cookie: String? = null) = respond("", io.ktor.http.HttpStatusCode.Found, io.ktor.http.Headers.build {
+                append(HttpHeaders.Location, to)
+                cookie?.let { append(HttpHeaders.SetCookie, it) }
+            })
+            val q = req.url.parameters
+            when (req.url.encodedPath) {
+                "/csc/v2/info" -> json(buildJsonObject { put("oauth2", "https://qtsp.example"); putJsonArray("authType") { add("oauth2code") } })
+                "/oauth2/authorize" -> {
+                    if (broken) redirect("openid4vp://?client_id=x&request_uri=https%3A%2F%2Fqtsp.example%2Fmissing")
+                    else {
+                        val sid = "s" + sessions.size
+                        sessions[sid] = "rqes://oauth/callback?code=c-$sid&state=" + q["state"]
+                        redirect("/login/done", "SID=$sid; Path=/")
+                    }
+                }
+                "/login/done" -> {
+                    val sid = req.headers[HttpHeaders.Cookie]?.substringAfter("SID=")?.substringBefore(';')
+                    sessions[sid]?.let { redirect(it) } ?: respond("no session", io.ktor.http.HttpStatusCode.Unauthorized)
+                }
+                "/oauth2/token" -> json(buildJsonObject { put("access_token", "t"); put("expires_in", 600) })
+                "/csc/v2/credentials/list" -> json(buildJsonObject {
+                    putJsonArray("credentialIDs") { add("c1") }
+                    putJsonArray("credentialInfos") {
+                        add(buildJsonObject {
+                            put("credentialID", "c1")
+                            put("key", buildJsonObject { put("status", "enabled"); putJsonArray("algo") { add("1.2.840.10045.4.3.2") } })
+                            put("cert", buildJsonObject { put("status", "valid"); putJsonArray("certificates") { add(java.util.Base64.getEncoder().encodeToString(cert)) } })
+                            put("auth", buildJsonObject { put("mode", "oauth2code") })
+                        })
+                    }
+                })
+                "/csc/v2/signatures/signHash" -> {
+                    val body = DiwJson.parseToJsonElement((req.body as io.ktor.http.content.TextContent).text).jsonObject
+                    val sigs = body["hashes"]!!.jsonArray.map { h ->
+                        val sig = java.security.Signature.getInstance("NONEwithECDSA").apply { initSign(key.private); update(java.util.Base64.getDecoder().decode(h.jsonPrimitive.content)) }.sign()
+                        java.util.Base64.getEncoder().encodeToString(sig)
+                    }
+                    json(buildJsonObject { putJsonArray("signatures") { sigs.forEach { add(it) } } })
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        val service = diw.wallet.core.document.sign.CscService(
+            "mock", "Mock", "https://qtsp.example/csc/v2", "wallet-client", "secret", "rqes://oauth/callback",
+            diw.wallet.core.document.sign.CscEnvironment.TEST,
+        )
+        val statuses = mutableListOf<String>()
+        val signer = withTimeout(30.seconds) { m.csc.signer(service, "test.txt") { statuses += it } }
+        assertEquals("c1", signer.credential?.id)
+        val content = "remote".toByteArray()
+        val cms = withTimeout(30.seconds) { diw.wallet.core.document.sign.DocumentSigning.signCades(content, signer, true, null) }
+        val parsed = org.bouncycastle.cms.CMSSignedData(org.bouncycastle.cms.CMSProcessableByteArray(content), cms)
+        val x509 = java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(cert.inputStream()) as java.security.cert.X509Certificate
+        assertTrue(parsed.signerInfos.signers.first().verify(org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder().build(x509)))
+        assertTrue(statuses.any { "登入" in it }, "statuses: $statuses")
+
+        broken = true
+        val before = m.screen.value
+        val e = assertFailsWith<diw.wallet.core.document.sign.SigningException> {
+            withTimeout(30.seconds) { m.csc.signer(service.copy(id = "other"), "test.txt") {} }
+        }
+        assertTrue("身分驗證" in e.message!!, e.message)
+        assertEquals(before, m.screen.value, "the signing screen comes back")
+    }
 }
