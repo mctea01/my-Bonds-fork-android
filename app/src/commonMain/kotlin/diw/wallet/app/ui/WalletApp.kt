@@ -62,6 +62,8 @@ import org.multipaz.document.Document
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
 import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.trust.TrustRole
+import org.multipaz.crypto.X509Cert
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -394,5 +396,18 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
             }
         }
         DetailSections(model, CredentialDetails.certificate(cert))
+        // The root of a chain that leads to no anchor (a foreign government or company CA) can be trusted from here.
+        if (index == screen.chain.lastIndex && cert.subject == cert.issuer) TrustThisRoot(model, cert)
     }
+}
+
+/** Imports a self-signed root as the user's own anchor (T3, never official) for the roles the holder picks. */
+@Composable
+private fun TrustThisRoot(model: WalletModel, cert: X509Cert) {
+    var roles by remember(cert) { mutableStateOf(setOf(TrustRole.DOCUMENT)) }
+    SectionTitle("信任這張根憑證")
+    Text("如果這張根憑證不在內建清單（例如其他國家或企業的憑證機構），可以自行加入信任錨點。加入後屬於使用者自訂，信任等級為 T3，不會顯示為官方；請確認來源後再加入。",
+        style = MaterialTheme.typography.bodySmall)
+    RoleChips(listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.ISSUER, TrustRole.VERIFIER), roles) { roles = it }
+    OutlinedButton(onClick = { model.importAnchor(cert.toPem(), "", roles) }, enabled = roles.isNotEmpty()) { Text("加入信任錨點") }
 }

@@ -78,7 +78,7 @@ data class EntryExitCertificate(
             if (!recognize(text)) return null
             val t = MyDataText.halfWidth(text)
             fun field(label: String, value: String = "(.+?)"): String? =
-                Regex("(?<![A-Za-z])$label\\s*[:]\\s*$value(?=\\s+[^\\s:]{1,40}[:]|\\s{2,}|\\n|$)").find(t)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                Regex("(?<![A-Za-z])$label\\s*:\\s*$value(?=\\s+[^\\s:]{1,40}:|\\s{2,}|\\n|$)").find(t)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
             val trips = row.findAll(t).mapNotNull { m ->
                 val exit = date(m.groupValues[2])
                 val entry = date(m.groupValues[3])

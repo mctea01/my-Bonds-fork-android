@@ -55,6 +55,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -596,9 +597,18 @@ class Oid4vciClient(
     /** c_nonce from the nonce endpoint; issuers without one get no nonce unless a dialect knows where theirs is. */
     private suspend fun fetchNonce(session: IssuanceSession, token: AccessToken, compat: DialectSet): String? {
         val endpoint = session.issuer.nonceEndpoint ?: return compat.first { it.nonceWithoutEndpoint(token.raw) }
-        val resp = httpClient.post(endpoint)
+        var resp = httpClient.post(endpoint)
+        // A gateway error (502 to 504) is the issuer's front end failing for a moment; the nonce request has no
+        // effect on the issuer, so it is asked once more before giving up.
+        if (resp.status.value in 502..504) {
+            delay(1500)
+            resp = httpClient.post(endpoint)
+        }
         session.dpop?.updateNonce(endpoint, resp.headers["DPoP-Nonce"])
-        if (!resp.status.isSuccess()) throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}")
+        if (!resp.status.isSuccess()) {
+            throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}" +
+                if (resp.status.value in 502..504) "（發行端伺服器暫時無法回應，請稍後再試）" else "")
+        }
         return parseJsonObject(resp.bodyAsText(), "invalid_nonce").str("c_nonce")
             ?: throw ProtocolException("invalid_nonce", "Nonce response without c_nonce")
     }

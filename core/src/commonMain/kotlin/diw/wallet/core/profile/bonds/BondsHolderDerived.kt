@@ -303,7 +303,7 @@ object MyDataParsers {
     }
 
     /** 給付總額(收入)合計： 2,134 in half-width text; the amount stops at the first character that is not a digit or comma. */
-    private val GROSS_TOTAL = Regex("給付總額\\s*(?:\\(\\s*收入\\s*\\))?\\s*合計\\s*[:：]\\s*([0-9][0-9,]*)")
+    private val GROSS_TOTAL = Regex("給付總額\\s*(?:\\(\\s*收入\\s*\\))?\\s*合計\\s*[：:]\\s*([0-9][0-9,]*)")
 
     /** Insured periods, one per row with a date: the first date enrols, a second (or a 退保日期) withdraws. The salary is never read. */
     fun laborInsurance(text: String): ParsedSource {

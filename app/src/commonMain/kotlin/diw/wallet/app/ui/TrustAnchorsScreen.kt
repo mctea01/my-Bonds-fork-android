@@ -217,7 +217,7 @@ private fun BuiltInRootList(model: WalletModel, roots: List<diw.wallet.core.trus
 }
 
 @Composable
-private fun RoleChips(options: List<TrustRole>, selected: Set<TrustRole>, onChange: (Set<TrustRole>) -> Unit) {
+internal fun RoleChips(options: List<TrustRole>, selected: Set<TrustRole>, onChange: (Set<TrustRole>) -> Unit) {
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { r ->
             FilterChip(selected = r in selected, onClick = { onChange(if (r in selected) selected - r else selected + r) }, label = { Text(roleName(r)) })
