@@ -206,9 +206,7 @@ fun FilesTab(model: WalletModel) {
             Text("還沒有文件。匯入 PDF、XML（公文）、OFD、.p7s／.p7m、ASiC-E、ZIP（MyData）、OpenCerts 等檔案，或從下方的來源網站取得。",
                 style = MaterialTheme.typography.bodySmall)
         }
-        files.forEach { f ->
-            FileRow(f) { model.screen.value = Screen.FileDetail(f.id) }
-        }
+        FileList(model, files)
         SectionTitle("取得文件")
         Text(
             if (model.platform.embeddedBrowser) "在 App 內開啟來源網站，下載的文件直接保存到這裡；需要行動自然人憑證登入時會轉到官方 App。"
@@ -248,8 +246,45 @@ internal fun BusyLine(busy: String?, error: String?) {
     error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 }
 
+/** How the files list is laid out: newest first, or grouped by what the files are (MyData item, official documents). */
+private enum class FileOrder(val title: String) { RECENT("依保存時間"), ITEM("依項目") }
+
+/** The files outside containers; a container's own files show on its document's screen. */
 @Composable
-private fun FileRow(f: StoredFile, onClick: () -> Unit) {
+private fun FileList(model: WalletModel, files: List<StoredFile>) {
+    var order by remember { mutableStateOf(FileOrder.RECENT) }
+    val shown = files.filter { it.bundleOf == null }
+    val counts = files.mapNotNull { it.bundleOf }.groupingBy { it }.eachCount()
+    if (shown.size > 1) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FileOrder.entries.forEach { o -> FilterChip(selected = o == order, onClick = { order = o }, label = { Text(o.title) }) }
+        }
+    }
+    when (order) {
+        FileOrder.RECENT -> shown.forEach { f -> FileRow(f, counts[f.id] ?: 0) { model.screen.value = Screen.FileDetail(f.id) } }
+        FileOrder.ITEM -> shown.groupBy { groupOf(it, counts[it.id] ?: 0) }.toSortedMap().forEach { (group, list) ->
+            Text("$group（${list.size}）", style = MaterialTheme.typography.titleSmall)
+            list.sortedWith(compareByDescending<StoredFile> { periodKey(it.period) }.thenByDescending { it.addedAt }).forEach { f ->
+                FileRow(f, counts[f.id] ?: 0) { model.screen.value = Screen.FileDetail(f.id) }
+            }
+        }
+    }
+}
+
+/** The group a file is listed under: its MyData item, official documents, else its format. */
+private fun groupOf(f: StoredFile, members: Int): String {
+    val source = f.source.orEmpty()
+    if (source.startsWith("MyData")) return source.substringAfter("・", "MyData").substringBefore("（").ifBlank { "MyData" }
+    val ext = f.name.substringAfterLast('.', "").lowercase()
+    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co")) return "電子公文"
+    return f.report?.format?.let { formatTitle(it) } ?: "其他檔案"
+}
+
+/** "113 年度" as a number for sorting, newest first; files without a period sort last. */
+private fun periodKey(period: String?): Int = period?.let { Regex("\\d+").find(it)?.value?.toIntOrNull() } ?: -1
+
+@Composable
+private fun FileRow(f: StoredFile, members: Int = 0, onClick: () -> Unit) {
     val (verdict, text) = f.report?.let { verdictOf(it.verdict) } ?: (Verdict.CAUTION to "尚未檢查")
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -257,14 +292,99 @@ private fun FileRow(f: StoredFile, onClick: () -> Unit) {
             Icon(WalletIcons.Document, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(f.report?.title ?: f.name, style = MaterialTheme.typography.titleSmall)
-                Text(listOfNotNull(f.report?.format?.let { formatTitle(it) }, sizeText(f.size), f.origin.title, localTime(f.addedAt)).joinToString("　"),
+                Text(listOfNotNull(f.period, f.report?.format?.let { formatTitle(it) }, sizeText(f.size), f.origin.title, localTime(f.addedAt)).joinToString("　"),
                     style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     VerdictPill(verdict, text)
                     if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, "時戳")
                     if (f.derivedDocumentId != null) VerdictPill(Verdict.PASS, "已衍生憑證")
                     if (f.nationalId != null) VerdictPill(Verdict.PASS, "身分證卡")
+                    if (members > 0) VerdictPill(Verdict.PASS, "容器內 $members 個關連檔")
                 }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- official document containers
+
+/** The container of an official document (its exchange form, approval file, attachments), or the one a file is in. */
+@Composable
+private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: List<StoredFile>) {
+    val owner = f.bundleOf?.let { id -> files.firstOrNull { it.id == id } }
+    if (owner != null) {
+        SectionTitle("公文容器")
+        LabelValue("屬於", owner.name, onClick = { model.screen.value = Screen.FileDetail(owner.id) })
+        OutlinedButton(onClick = { model.files.leaveBundle(f) }) { Text("移出容器") }
+        return
+    }
+    var main by remember(f.id) { mutableStateOf(false) }
+    LaunchedEffect(f.id) { main = model.files.isOfficialMain(f) }
+    if (!main) return
+    val members = files.filter { it.bundleOf == f.id }.sortedBy { it.name }
+    SectionTitle("公文容器")
+    if (members.isEmpty()) {
+        Text("這份公文還沒有關連檔。交換表單（.sw）、簽核檔（.si）與附件可放進同一個容器，一起保存與查看。", style = MaterialTheme.typography.bodySmall)
+    }
+    members.forEach { m ->
+        FileRow(m) { model.screen.value = Screen.FileDetail(m.id) }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text("匯入關連文件") }
+        OutlinedButton(onClick = { model.screen.value = Screen.OfficialBundle(f.id, null) }) { Text("從已保存的文件加入") }
+    }
+}
+
+/** Confirms which files go into an official document's container, showing why each one may belong to it. */
+@Composable
+fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
+    val files by model.files.files.collectAsState()
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    val main = files.firstOrNull { it.id == screen.mainId }
+    if (main == null) {
+        EmptyState(WalletIcons.Document, "找不到這份公文", "公文可能已刪除。", "回到文件") { model.showTab(HomeTab.FILES) }
+        return
+    }
+    var candidates by remember(screen) { mutableStateOf<List<FilesModel.BundleCandidate>?>(null) }
+    val chosen = remember(screen) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(screen) {
+        val list = model.files.bundleCandidates(main, screen.only)
+        list.forEach { chosen[it.file.id] = it.match.suggested }
+        candidates = list
+    }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(main.report?.title ?: main.name, style = MaterialTheme.typography.titleMedium)
+        Text("檔案本身沒有寫明屬於哪一份公文，錢包依檔名、交換表單的發送對象與公文附件欄比對，請確認要放進這份公文容器的檔案。",
+            style = MaterialTheme.typography.bodySmall)
+        BusyLine(busy, error)
+        val list = candidates
+        when {
+            list == null -> CircularProgressIndicator(Modifier.size(20.dp))
+            list.isEmpty() -> Text("沒有可以放入的檔案。", style = MaterialTheme.typography.bodySmall)
+            else -> list.forEach { c ->
+                Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
+                        Checkbox(checked = chosen[c.file.id] == true, onCheckedChange = { chosen[c.file.id] = it })
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(c.file.name, style = MaterialTheme.typography.titleSmall)
+                            Text(listOfNotNull(c.file.report?.title, c.file.report?.format?.let { formatTitle(it) }, localTime(c.file.addedAt)).joinToString("　"),
+                                style = MaterialTheme.typography.bodySmall)
+                            if (c.match.evidence.isEmpty()) Text("沒有找到與這份公文相關的線索", style = MaterialTheme.typography.bodySmall)
+                            c.match.evidence.forEach { e -> VerdictPill(if (e.supports) Verdict.PASS else Verdict.CAUTION, e.text) }
+                        }
+                    }
+                }
+            }
+        }
+        val ids = chosen.filterValues { it }.keys.toList()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { model.files.confirmBundle(main, ids, screen.only, screen.next) }, enabled = ids.isNotEmpty() && busy == null) {
+                Text("放入容器（${ids.size}）")
+            }
+            OutlinedButton(onClick = { model.files.confirmBundle(main, emptyList(), screen.only, screen.next) }, enabled = busy == null) {
+                Text(if (screen.next.isEmpty()) "都不放入" else "略過這份公文")
             }
         }
     }
@@ -305,6 +425,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
             LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
         }
+        f.period?.let { LabelValue("期間", it) }
+        OfficialContainerSection(model, f, files)
         // An OpenCerts certificate is shown field by field below rather than as JSON text.
         if (report?.format != DocumentFormat.OPENCERTS) FilePreviewSection(model, f)
         if (report != null) {

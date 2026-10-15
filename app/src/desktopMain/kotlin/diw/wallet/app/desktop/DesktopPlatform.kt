@@ -156,6 +156,20 @@ class DesktopPlatform(
         PickedFile(chosen.name, chosen.readBytes())
     }
 
+    override suspend fun pickFiles(): List<PickedFile> = withContext(Dispatchers.IO) {
+        var chosen: List<File> = emptyList()
+        EventQueue.invokeAndWait {
+            val d = FileDialog(null as Frame?, "匯入文件（可選多個）", FileDialog.LOAD)
+            d.isMultipleMode = true
+            d.isVisible = true
+            chosen = d.files.toList()
+        }
+        chosen.map { f ->
+            if (f.length() > MAX_FILE_BYTES) throw IllegalStateException("${f.name} 超過 64 MB")
+            PickedFile(f.name, f.readBytes())
+        }
+    }
+
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
         val chosen = dialog("另存文件", FileDialog.SAVE, name) ?: return@withContext false
         chosen.writeBytes(bytes)

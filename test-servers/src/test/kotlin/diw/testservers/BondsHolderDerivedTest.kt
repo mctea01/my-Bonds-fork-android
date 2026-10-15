@@ -195,6 +195,24 @@ class BondsHolderDerivedTest {
         assertFailsWith<ProtocolException> { h.prepare(h.resolveUri(uri("s4", HolderDerivedTypes.INCOME, listOf("income_within_ceiling"), smuggled))) }
     }
 
+    /** Income records of several years stay side by side; the one of the asked year answers. */
+    @Test
+    fun incomeOfTheAskedYearAmongSeveralYears() = runBlocking<Unit> {
+        val older = INCOME.replace("113", "112")
+        assertTrue(older != INCOME)
+        val h = holder(listOf(source("income-2024", HolderDerivedTypes.INCOME, INCOME), source("income-2023", HolderDerivedTypes.INCOME, older)))
+        val r2023 = DerivedRule(DerivedRule.INCOME, mapOf("tax_year" to "2023", "ceiling_twd" to "500000"))
+        val p = h.prepare(h.resolveUri(uri("y1", HolderDerivedTypes.INCOME, listOf("tax_year", "income_within_ceiling"), r2023))) as PreparedDerived
+        assertEquals("income-2023", p.plan.source.id)
+        assertEquals("2023", p.plan.answers["tax_year"])
+        val r2024 = DerivedRule(DerivedRule.INCOME, mapOf("tax_year" to "2024", "ceiling_twd" to "500000"))
+        val p2 = h.prepare(h.resolveUri(uri("y2", HolderDerivedTypes.INCOME, listOf("tax_year"), r2024))) as PreparedDerived
+        assertEquals("income-2024", p2.plan.source.id)
+        val r2020 = DerivedRule(DerivedRule.INCOME, mapOf("tax_year" to "2020", "ceiling_twd" to "500000"))
+        val e = assertFailsWith<ProtocolException> { h.prepare(h.resolveUri(uri("y3", HolderDerivedTypes.INCOME, listOf("tax_year"), r2020))) }
+        assertTrue("2023、2024" in e.message!!, e.message)
+    }
+
     @Test
     fun householdPicksTheHoldersOwnRow() = runBlocking<Unit> {
         val now = Instant.parse("2026-10-15T00:00:00Z")

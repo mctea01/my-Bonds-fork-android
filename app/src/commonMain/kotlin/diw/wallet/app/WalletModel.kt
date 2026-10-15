@@ -206,6 +206,11 @@ sealed class Screen {
     /** Writing a PDF ([letter] false) or an official letter. */
     /** A document source site opened inside the app. */
     data class Portal(val sourceId: String) : Screen()
+    /**
+     * Confirming which files go into the container of the official document [mainId]: [only] the files that just came
+     * in, or null for every file outside a container; [next] are further documents of the same import.
+     */
+    data class OfficialBundle(val mainId: String, val only: List<String>?, val next: List<String> = emptyList()) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -622,6 +627,7 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
             is Screen.Portal -> showTab(HomeTab.FILES)
+            is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
         }
         return true
     }

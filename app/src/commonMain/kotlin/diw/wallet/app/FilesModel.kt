@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.core.document.official.BundleMatch
+import diw.wallet.core.document.official.OfficialBundles
+import diw.wallet.core.profile.bonds.MyDataText
 import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
@@ -117,6 +120,10 @@ data class StoredFile(
     val nationalId: String? = null,
     /** The archive (ZIP) the file was unpacked from, by name; the archive itself may be gone. */
     val archive: String? = null,
+    /** The official document whose container holds this file (an exchange form, approval file or attachment). */
+    val bundleOf: String? = null,
+    /** The period the content covers, read from it ("113 年度"), for telling yearly files apart. */
+    val period: String? = null,
 )
 
 /** What the file screen shows of a file's content. */
@@ -379,8 +386,38 @@ class FilesModel(private val model: WalletModel) {
 
     /** Lets the user pick a file and stores it. */
     fun pickAndImport() = run("讀取並檢查檔案") {
-        val picked = model.platform.pickFile() ?: return@run
-        importNow(picked, FileOrigin.IMPORTED, null)
+        val picked = model.platform.pickFiles()
+        when (picked.size) {
+            0 -> return@run
+            1 -> importNow(picked.single(), FileOrigin.IMPORTED, null)
+            else -> {
+                val before = files.value.size
+                val stored = ArrayList<StoredFile>()
+                picked.forEachIndexed { i, p ->
+                    busy.value = "讀取並檢查檔案（${i + 1}／${picked.size}）"
+                    stored.addAll(ingest(p, FileOrigin.IMPORTED, null))
+                }
+                val added = files.value.size - before
+                model.message.value = "已保存 $added 個檔案" + if (added < stored.size) "，${stored.size - added} 個先前已保存" else ""
+                if (proposeBundles(stored)) return@run
+                model.showTab(HomeTab.FILES)
+            }
+        }
+    }
+
+    /**
+     * Stores one incoming file without opening anything: a MyData ZIP and a ZIP of official document files are
+     * unpacked at once (their files replace the archive). Returns the files that now stand for it.
+     */
+    private suspend fun ingest(picked: PickedFile, origin: FileOrigin, source: String?): List<StoredFile> {
+        val item = MyDataFiles.recognize(picked.name)
+        val f = store(picked.name, picked.bytes, origin, if (item != null) MyDataFiles.label(item, byName = true) else source)
+        return when {
+            f.report?.format != DocumentFormat.ZIP -> listOf(annotatePeriod(f))
+            item != null -> extractNow(f).first
+            hasExchangeFiles(f) -> extractNow(f, unpackOfficial = true).first
+            else -> listOf(f)
+        }
     }
 
     /** A file handed over by another app or downloaded from a source site. */
@@ -406,10 +443,19 @@ class FilesModel(private val model: WalletModel) {
             else -> source
         }
         val f = store(picked.name, picked.bytes, origin, label)
-        val children = if (myData && f.report?.format == DocumentFormat.ZIP) {
-            busy.value = "解出 MyData 壓縮檔"
-            extractNow(f).first
-        } else emptyList()
+        val children = when {
+            f.report?.format != DocumentFormat.ZIP -> emptyList()
+            myData -> {
+                busy.value = "解出 MyData 壓縮檔"
+                extractNow(f).first
+            }
+            hasExchangeFiles(f) -> {
+                busy.value = "解出電子公文壓縮檔"
+                extractNow(f, unpackOfficial = true).first
+            }
+            else -> emptyList()
+        }
+        if (children.isEmpty()) annotatePeriod(f)
         val pdfs = children.ifEmpty { listOf(f) }.filter { it.report?.format == DocumentFormat.PDF }
         val nationalId = site?.nationalId == true || item?.nationalId == true || pdfs.any { MyDataFiles.recognize(it.name)?.nationalId == true }
         if (nationalId && pdfs.isNotEmpty()) {
@@ -418,13 +464,18 @@ class FilesModel(private val model: WalletModel) {
             model.screen.value = Screen.NationalIdCreate(pdf.id)
             return
         }
+        if (proposeBundles(children.ifEmpty { listOf(f) })) {
+            model.message.value = "已解出 ${children.size} 個檔案，確認哪些放進公文容器"
+            return
+        }
         val target = when {
             children.size == 1 -> children.first()
             pdfs.size == 1 && children.isNotEmpty() -> pdfs.first()
             else -> f
         }
         model.message.value = when {
-            children.isNotEmpty() -> "已解出 ${children.size} 個 MyData 檔案"
+            children.isNotEmpty() && myData -> "已解出 ${children.size} 個 MyData 檔案"
+            children.isNotEmpty() -> "已解出 ${children.size} 個檔案"
             files.value.size == known -> "這份文件已經保存過"
             else -> "已保存：${f.name}"
         }
@@ -488,6 +539,7 @@ class FilesModel(private val model: WalletModel) {
             FilePreview.Unavailable("無法預覽：" + model.describe(e))
         }
         previews.value = previews.value + (f.id to result)
+        (result as? FilePreview.Pages)?.text?.let { text -> runCatching { annotatePeriod(file(f.id) ?: f, text) } }
     }
 
     /**
@@ -611,6 +663,109 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
+    // ---------------------------------------------------------------- official document containers
+
+    /** True when the ZIP [f] holds files of the official document exchange (.di, .sw, .si, .dm, .co). */
+    private suspend fun hasExchangeFiles(f: StoredFile): Boolean = runCatching {
+        DocumentSigning.unzip(data(f.id)).keys.any { OfficialBundles.isExchangeFile(OfficialBundles.decodeZipName(it)) }
+    }.getOrDefault(false)
+
+    private val mains = HashMap<String, Boolean>()
+
+    /** True when [f] is an official document that can hold related files. */
+    suspend fun isOfficialMain(f: StoredFile): Boolean = mains[f.id] ?: run {
+        f.report?.format == DocumentFormat.XML && runCatching { OfficialBundles.isMain(f.name, data(f.id)) }.getOrDefault(false)
+    }.also { mains[f.id] = it }
+
+    /** The files in the container of the official document [main]. */
+    fun members(main: StoredFile): List<StoredFile> = files.value.filter { it.bundleOf == main.id }.sortedBy { it.name }
+
+    /**
+     * After files came in together: when an official document is among them, opens the confirmation of which of the
+     * other files go into its container. False when there is nothing to confirm.
+     */
+    private suspend fun proposeBundles(stored: List<StoredFile>): Boolean {
+        val distinct = stored.distinctBy { it.id }
+        val docs = distinct.filter { it.bundleOf == null && isOfficialMain(it) }
+        val others = distinct.filter { it.bundleOf == null && it !in docs }
+        if (docs.isEmpty() || others.isEmpty()) return false
+        model.screen.value = Screen.OfficialBundle(docs.first().id, others.map { it.id }, docs.drop(1).map { it.id })
+        return true
+    }
+
+    /** A file that may go into the container of [main], with the hints for and against it. */
+    class BundleCandidate(val file: StoredFile, val match: BundleMatch)
+
+    /**
+     * Files that may go into the container of [main]: [only] when given (files that just came in), else every file
+     * outside a container that is not an official document itself. Suggested files come first.
+     */
+    suspend fun bundleCandidates(main: StoredFile, only: List<String>?): List<BundleCandidate> = withContext(Dispatchers.Default) {
+        val mainBytes = data(main.id)
+        val pool = (only?.mapNotNull { file(it) } ?: files.value).filter { it.id != main.id && it.bundleOf == null && it.nationalId == null }
+        pool.filter { !isOfficialMain(it) || only != null }.map { f ->
+            val bytes = runCatching { data(f.id) }.getOrDefault(ByteArray(0))
+            val xml = f.report?.format == DocumentFormat.XML
+            BundleCandidate(f, OfficialBundles.match(main.name, mainBytes, f.name, if (xml) bytes else ByteArray(0)))
+        }.sortedWith(compareByDescending<BundleCandidate> { it.match.suggested }.thenByDescending { it.match.supported }.thenBy { it.file.name })
+    }
+
+    /**
+     * Puts [ids] into the container of [main] after the holder confirmed them, then goes on with the next document
+     * of the same import, if any.
+     */
+    fun confirmBundle(main: StoredFile, ids: Collection<String>, only: List<String>?, next: List<String>) = run("放入公文容器") {
+        ids.mapNotNull { file(it) }.forEach { save(it.copy(bundleOf = main.id)) }
+        if (ids.isNotEmpty()) model.message.value = "已把 ${ids.size} 個檔案放入「${main.name}」的容器"
+        val following = next.firstNotNullOfOrNull { file(it) }
+        if (following != null) {
+            val left = only?.filter { it !in ids && it != following.id && file(it)?.bundleOf == null }
+            model.screen.value = Screen.OfficialBundle(following.id, left, next.drop(next.indexOf(following.id) + 1))
+        } else {
+            model.screen.value = Screen.FileDetail(main.id)
+        }
+    }
+
+    /** Takes [member] out of its container; it is listed on its own again. */
+    fun leaveBundle(member: StoredFile) = run("移出公文容器") {
+        save(member.copy(bundleOf = null))
+        model.message.value = "已移出容器：${member.name}"
+    }
+
+    /** Picks related files from the device for the container of [main]; the holder confirms them next. */
+    fun importIntoBundle(main: StoredFile) = run("讀取並檢查檔案") {
+        val picked = model.platform.pickFiles()
+        if (picked.isEmpty()) return@run
+        val stored = ArrayList<StoredFile>()
+        picked.forEachIndexed { i, p ->
+            busy.value = "讀取並檢查檔案（${i + 1}／${picked.size}）"
+            stored.addAll(ingest(p, FileOrigin.IMPORTED, null))
+        }
+        model.screen.value = Screen.OfficialBundle(main.id, stored.filter { it.id != main.id }.map { it.id }.distinct(), emptyList())
+    }
+
+    // ---------------------------------------------------------------- periods
+
+    /**
+     * Reads the period a MyData file covers ("113 年度" for income records) and puts it in the file's name, so files
+     * of several years stand apart; files it cannot read (still locked) are returned as they are.
+     */
+    private suspend fun annotatePeriod(f: StoredFile, known: String? = null): StoredFile {
+        if (f.period != null || !MyDataFiles.isMyData(f.source)) return f
+        val text = known ?: runCatching { sourceText(f) }.getOrNull() ?: return f
+        val period = periodOf(text) ?: return f
+        val dot = f.name.lastIndexOf('.')
+        val name = if (period in f.name) f.name else if (dot > 0) f.name.substring(0, dot) + "（$period）" + f.name.substring(dot) else "${f.name}（$period）"
+        return f.copy(period = period, name = name).also { save(it) }
+    }
+
+    private fun periodOf(text: String): String? {
+        val t = MyDataText.halfWidth(text)
+        Regex("所得年度\\s*:?\\s*(\\d{2,4})").find(t)?.let { return it.groupValues[1] + " 年度" }
+        Regex("(?<!\\d)(\\d{2,3})\\s*年度").find(t)?.let { return it.groupValues[1] + " 年度" }
+        return null
+    }
+
     /** The MyData item a source site downloads, by its name; null for the generic sign-in page. */
     private fun myDataItemOf(site: DocumentSource): MyDataItem? =
         if (site.nationalId) MyDataFiles.recognize("idPhotoRev") else if (site.id == "mydata") null else MyDataFiles.recognize(site.url) ?: MyDataItem(site.name)
@@ -621,16 +776,17 @@ class FilesModel(private val model: WalletModel) {
      * and has the archive's short source; once every file is stored the MyData archive itself is removed, keeping
      * only its name on the files.
      */
-    private suspend fun extractNow(f: StoredFile): Pair<List<StoredFile>, Int> {
-        val entries = DocumentSigning.unzip(data(f.id)).filter { it.value.isNotEmpty() }
+    private suspend fun extractNow(f: StoredFile, unpackOfficial: Boolean = false): Pair<List<StoredFile>, Int> {
+        val entries = DocumentSigning.unzip(data(f.id)).filter { it.value.isNotEmpty() && !it.key.endsWith("/") }
         val myData = MyDataFiles.isMyData(f.source) || MyDataFiles.recognize(f.name) != null
+        val replaces = myData || unpackOfficial
         val byName = f.source?.endsWith(MyDataFiles.BY_NAME) == true
         val stored = ArrayList<StoredFile>()
         val used = HashMap<String, Int>()
         var added = 0
         for ((path, bytes) in entries) {
             val before = files.value.size
-            val original = path.substringAfterLast('/')
+            val original = OfficialBundles.decodeZipName(path.substringAfterLast('/'))
             val own = MyDataFiles.recognize(original)
             val item = own ?: MyDataFiles.recognize(f.name) ?: f.source?.let { MyDataFiles.recognize(it) }
             val name = if (myData && own == null && item != null) {
@@ -640,10 +796,11 @@ class FilesModel(private val model: WalletModel) {
                 item.title + (if (n > 1) "-$n" else "") + ext
             } else original
             val label = if (myData) MyDataFiles.label(item, byName) else f.source
-            stored.add(store(name, bytes, FileOrigin.EXTRACTED, label, parentId = if (myData) null else f.id, archive = f.name))
+            val s = store(name, bytes, FileOrigin.EXTRACTED, label, parentId = if (replaces) null else f.id, archive = f.name)
+            stored.add(if (myData) annotatePeriod(s) else s)
             if (files.value.size > before) added++
         }
-        if (myData && stored.size == entries.size && stored.isNotEmpty()) remove(f)
+        if (replaces && stored.size == entries.size && stored.isNotEmpty()) remove(f)
         return stored to added
     }
 
@@ -727,6 +884,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     fun delete(f: StoredFile) = run("刪除檔案") {
+        files.value.filter { it.bundleOf == f.id }.forEach { save(it.copy(bundleOf = null)) }
         remove(f)
         model.showTab(HomeTab.FILES)
     }
@@ -950,7 +1108,7 @@ class FilesModel(private val model: WalletModel) {
      */
     fun holderDerivedSources(): List<HolderDerivedSource> = files.value.filter { f ->
         f.report?.format == DocumentFormat.PDF || f.mediaType.startsWith("text/")
-    }.map { f ->
+    }.sortedByDescending { it.addedAt }.map { f ->
         val item = MyDataFiles.recognize(f.name) ?: f.source?.let { s -> MyDataFiles.recognize(s.substringAfter("・")) }
         HolderDerivedSource(
             id = f.id,

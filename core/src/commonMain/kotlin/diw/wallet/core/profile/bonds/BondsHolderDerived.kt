@@ -565,31 +565,43 @@ object BondsHolderDerived {
         }.distinct()
         requested.firstOrNull { it !in type.claims }?.let { throw ProtocolException("access_denied", "查驗方要的欄位 $it 不在${type.title}的衍生憑證內") }
 
-        var chosen = sources.firstOrNull { it.documentType == type.documentType }
-        var text: String? = null
-        if (chosen == null) {
-            for (s in sources.filter { it.documentType == null }) {
-                val t = runCatching { s.text() }.getOrNull() ?: continue
-                if (MyDataParsers.recognize(t) == type.documentType) {
-                    chosen = s
-                    text = t
-                    break
-                }
+        // Every original of the type is tried, newest first as the vault lists them, so files of several years (or
+        // several household records) live side by side and the one that answers this rule is used.
+        val typed = sources.filter { it.documentType == type.documentType }
+        val untyped = sources.filter { it.documentType == null }
+        val candidates = typed.map { it to null as String? } + untyped.mapNotNull { s ->
+            val t = runCatching { s.text() }.getOrNull() ?: return@mapNotNull null
+            if (MyDataParsers.recognize(t) == type.documentType) s to t else null
+        }
+        if (candidates.isEmpty()) throw ProtocolException("access_denied", "文件分頁沒有${type.title}，請先從 MyData 下載")
+        val problems = ArrayList<String>()
+        val years = ArrayList<String>()
+        for ((source, text) in candidates) {
+            val parsed = try {
+                MyDataParsers.parse(type.documentType, text ?: source.text(), holders)
+            } catch (e: HolderDerivedException) {
+                problems.add("${source.name}：${e.message}")
+                continue
             }
+            parsed.fields[MyDataParsers.TAX_YEAR]?.let { years.add(it) }
+            val answers = try {
+                derive(type, parsed, rule, now)
+            } catch (e: HolderDerivedException) {
+                problems.add(e.message ?: "文件無法回答這個問題")
+                continue
+            }
+            val missing = requested.firstOrNull { it !in answers }
+            if (missing != null) {
+                problems.add("${source.name}無法回答「${type.claimLabels[missing] ?: missing}」")
+                continue
+            }
+            return HolderDerivedPlan(queryId, type, rule, source, parsed, answers, requested)
         }
-        val source = chosen ?: throw ProtocolException("access_denied", "文件分頁沒有${type.title}，請先從 MyData 下載")
-        val parsed = try {
-            MyDataParsers.parse(type.documentType, text ?: source.text(), holders)
-        } catch (e: HolderDerivedException) {
-            throw ProtocolException("access_denied", "${source.name}：${e.message}")
+        if (rule.id == DerivedRule.INCOME && years.isNotEmpty() && rule.params["tax_year"] !in years) {
+            throw ProtocolException("access_denied",
+                "文件分頁的所得資料是 ${years.distinct().sorted().joinToString("、")} 年，查驗方問的是 ${rule.params["tax_year"]} 年，請先從 MyData 下載該年度的資料")
         }
-        val answers = try {
-            derive(type, parsed, rule, now)
-        } catch (e: HolderDerivedException) {
-            throw ProtocolException("access_denied", e.message ?: "文件無法回答這個問題")
-        }
-        requested.firstOrNull { it !in answers }?.let { throw ProtocolException("access_denied", "${source.name}無法回答「${type.claimLabels[it] ?: it}」") }
-        return HolderDerivedPlan(queryId, type, rule, source, parsed, answers, requested)
+        throw ProtocolException("access_denied", problems.first())
     }
 
     /**

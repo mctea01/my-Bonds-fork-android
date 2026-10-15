@@ -24,6 +24,11 @@ class AndroidFileAccess(private val activity: ComponentActivity) {
     private val open: ActivityResultLauncher<Array<String>> =
         activity.registerForActivityResult(ActivityResultContracts.OpenDocument()) { pendingOpen?.complete(it) }
 
+    private var pendingOpenMany: CompletableDeferred<List<Uri>>? = null
+
+    private val openMany: ActivityResultLauncher<Array<String>> =
+        activity.registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { pendingOpenMany?.complete(it) }
+
     private val create: ActivityResultLauncher<String> =
         activity.registerForActivityResult(object : ActivityResultContracts.CreateDocument("application/octet-stream") {
             override fun createIntent(context: Context, input: String): Intent = super.createIntent(context, input).setType(createType)
@@ -36,6 +41,15 @@ class AndroidFileAccess(private val activity: ComponentActivity) {
         withContext(Dispatchers.Main) { open.launch(arrayOf("*/*")) }
         val uri = d.await() ?: return null
         return read(activity, uri)
+    }
+
+    /** Several files at once; files that cannot be read are left out. */
+    suspend fun pickMany(): List<PickedFile> {
+        val d = CompletableDeferred<List<Uri>>()
+        pendingOpenMany?.complete(emptyList())
+        pendingOpenMany = d
+        withContext(Dispatchers.Main) { openMany.launch(arrayOf("*/*")) }
+        return d.await().mapNotNull { read(activity, it) }
     }
 
     suspend fun save(name: String, mediaType: String, bytes: ByteArray): Boolean {

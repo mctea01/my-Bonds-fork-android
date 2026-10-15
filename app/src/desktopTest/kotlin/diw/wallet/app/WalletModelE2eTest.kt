@@ -869,6 +869,50 @@ class WalletModelE2eTest {
         assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
     }
 
+    /**
+     * A ZIP of official document files (names written as "#U" escapes) is unpacked at once; the holder is asked
+     * which files go into the document's container, the matching exchange form is suggested and the other is not,
+     * and the confirmed file is listed under the document only.
+     */
+    @Test
+    fun officialDocumentZipIsBundledAfterConfirmation() = runBlocking<Unit> {
+        val (holder, _) = newWallet()
+        val letter = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "測試受文機關", subject = "測試獎懲").toXml()
+        fun form(receiver: String) = ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<交換表單><全銜>$receiver</全銜>" +
+            "<機關代碼>○○○○○○○○○○</機關代碼></交換表單>\n").encodeToByteArray()
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                for ((name, bytes) in listOf("#U734e#U61f2#U4ee4.di" to letter, "#U734e#U61f2#U4ee4.sw" to form("測試受文機關"), "other.sw" to form("無關機關"))) {
+                    z.putNextEntry(java.util.zip.ZipEntry(name))
+                    z.write(bytes)
+                    z.closeEntry()
+                }
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("test.zip", zip), FileOrigin.IMPORTED, null).join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        val stored = holder.files.files.value
+        assertEquals(setOf("獎懲令.di", "獎懲令.sw", "other.sw"), stored.map { it.name }.toSet(), "the archive is replaced by its files")
+        val main = stored.first { it.name == "獎懲令.di" }
+        val screen = holder.screen.value as Screen.OfficialBundle
+        assertEquals(main.id, screen.mainId)
+        assertEquals(2, screen.only!!.size)
+
+        val candidates = holder.files.bundleCandidates(main, screen.only)
+        assertEquals(listOf("獎懲令.sw", "other.sw"), candidates.map { it.file.name })
+        assertTrue(candidates[0].match.suggested)
+        assertFalse(candidates[1].match.suggested)
+
+        holder.files.confirmBundle(main, listOf(candidates[0].file.id), screen.only, screen.next).join()
+        assertEquals(Screen.FileDetail(main.id), holder.screen.value)
+        assertEquals(listOf("獎懲令.sw"), holder.files.members(main).map { it.name })
+        assertNull(holder.files.file(candidates[1].file.id)?.bundleOf)
+
+        // Taken out again, the file stands on its own.
+        holder.files.leaveBundle(holder.files.members(main).single()).join()
+        assertTrue(holder.files.members(main).isEmpty())
+    }
+
     /** A MyData national ID document with made-up data (unencrypted; the encrypted forms are covered in test-servers). */
     private fun nationalIdPdf(): ByteArray = diw.testservers.fixtures.PdfComposer.compose(
         "國民身分證資料",

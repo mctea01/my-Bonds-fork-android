@@ -129,6 +129,9 @@ interface PlatformServices {
     /** Lets the user pick a file to store; null when cancelled or not possible. */
     suspend fun pickFile(): PickedFile? = null
 
+    /** Lets the user pick one or more files; the single picker where the platform has no multiple selection. */
+    suspend fun pickFiles(): List<PickedFile> = listOfNotNull(pickFile())
+
     /** Lets the user save [bytes] under a name they choose; false when cancelled or not possible. */
     suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = false
 

@@ -143,6 +143,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override suspend fun pickFile(): PickedFile? = fileAccess?.pick()
 
+    override suspend fun pickFiles(): List<PickedFile> = fileAccess?.pickMany().orEmpty()
+
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
 
     override val embeddedBrowser: Boolean get() = true
