@@ -16,8 +16,11 @@ object DocumentFields {
     /** Well known OpenAttestation paths, with the claim name and label they become. */
     private val openCertNames = linkedMapOf(
         "recipient.name" to ("recipientName" to "受領人"),
+        "credentialSubject.name" to ("recipientName" to "受領人"),
         "id" to ("documentId" to "證書編號"),
         "issuedOn" to ("issuedOn" to "發證日期"),
+        "issuanceDate" to ("issuedOn" to "發證日期"),
+        "expirationDate" to ("expiresOn" to "到期日期"),
         "description" to ("description" to "說明"),
         "admissionDate" to ("admissionDate" to "入學日期"),
         "graduationDate" to ("graduationDate" to "畢業日期"),
@@ -32,7 +35,7 @@ object DocumentFields {
     )
 
     /** Paths that describe the template, the issuer's publication or attachments rather than the holder's document. */
-    private val openCertSkipped = Regex("^(\\\$template|issuers|transcript|attachments|additionalData|logo|signature|qrCode|privacy)(\\.|$)")
+    private val openCertSkipped = Regex("^(\\\$template|issuers|issuer|transcript|attachments|additionalData|logo|signature|qrCode|privacy|openAttestationMetadata|@context|type|version|schema|credentialSubject\\.id)(\\.|$)")
 
     /** OpenCerts data: the well known fields first, then the other scalar fields by their path. */
     fun fromOpenCert(info: OpenCertInfo): List<DerivedClaim> {
@@ -42,10 +45,16 @@ object DocumentFields {
         for ((path, v) in info.fields) {
             if (path in openCertNames || path == "name" || openCertSkipped.containsMatchIn(path)) continue
             val text = value(v) ?: continue
-            out.add(DerivedClaim(path, text, path))
+            out.add(DerivedClaim(path, text, openCertLabel(path)))
         }
         return unique(out)
     }
+
+    /** "recipient.courseCode" reads "Recipient / Course Code"; array indexes are dropped. */
+    private fun openCertLabel(path: String): String =
+        path.split('.').filter { it.toIntOrNull() == null }.takeLast(2).joinToString(" / ") { k ->
+            k.replace(Regex("([a-z0-9])([A-Z])"), "$1 $2").replace('_', ' ').trim().replaceFirstChar { it.uppercase() }
+        }
 
     private val letterFields = listOf(
         Triple("letterSender", "發文機關", Regex("<發文機關>.*?<全銜>(.*?)</全銜>", RegexOption.DOT_MATCHES_ALL)),

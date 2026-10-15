@@ -1,0 +1,82 @@
+{
+  "version": "https://schema.openattestation.com/2.0/schema.json",
+  "data": {
+    "$template": {
+      "name": "d2f5a43d-26ad-4c24-9e48-32ec8ec033c2:string:GOVTECH_DEMO",
+      "type": "3cf46f9a-ba6c-4065-a21e-7cfbe6f53f6b:string:EMBEDDED_RENDERER",
+      "url": "5e59e0b2-61ab-4db2-862c-d7fe7b682369:string:https://demo-renderer.opencerts.io"
+    },
+    "id": "81b6c70d-9a20-4713-a025-0220c777196a:string:TEST-CERT-B",
+    "name": "107c1a95-6039-40b1-8775-a6eb51b17774:string:Bachelor of Testing",
+    "issuedOn": "aba274d8-ffe9-42e8-a43d-f5e14cc44872:string:2026-06-30T00:00:00+08:00",
+    "admissionDate": "fc93447d-e55d-4fd8-bd16-0f4ce5c6897e:string:2022-09-01",
+    "graduationDate": "e9c7fb52-d630-4a8f-a9a7-163bb772af8f:string:2026-06-30",
+    "issuers": [
+      {
+        "name": "854015ea-fc20-4b89-8dae-d359a2a3949b:string:Test University",
+        "url": "17e706ff-a1a6-4c8e-85d4-8cc6c2465f95:string:https://test.example",
+        "documentStore": "add619e4-1ff3-4b4f-9318-be44a1e3b41b:string:0x1111111111111111111111111111111111111111",
+        "identityProof": {
+          "type": "2fd5a9a0-5325-42c0-9c0d-d800a7f81a0e:string:DNS-TXT",
+          "location": "8f32a569-2cac-4c9f-bdb5-4a33dfb0e4ea:string:certs.test.example"
+        }
+      }
+    ],
+    "recipient": {
+      "name": "cc7cbf43-4079-464e-b5e8-9a9155775f5b:string:Test Person",
+      "studentId": "e70e19e0-735a-4b85-8c25-8444c9413242:string:S0001"
+    },
+    "transcript": [
+      {
+        "name": "84e7eddd-8516-4330-8cf1-694182f9b64f:string:Testing 101",
+        "grade": "3cecee3f-fcfc-4e9c-82ff-d1049b19bcda:string:A",
+        "courseCredit": "eafd7e1f-4c25-4631-8475-1c6d98a129b8:string:4",
+        "courseCode": "90e7ce95-5036-4d93-a152-60a0b95ce200:string:T101",
+        "examinationDate": "18193c0f-5ea9-4a33-8cd9-b11c02cd72ac:string:2023-01-15",
+        "semester": "80121a23-adc5-4280-a7fd-14ef9be31c87:string:1"
+      },
+      {
+        "name": "610fe5dc-0e57-4220-811e-3ba5187836ed:string:Testing 102",
+        "courseCredit": "0e734fd8-e4ea-4add-a745-47ec8a5f8a55:string:3",
+        "courseCode": "af90640d-1864-4ed8-beb3-6f960380b148:string:T102",
+        "examinationDate": "85b3b4b3-b7a4-4c42-ae2b-d8c09e190801:string:2023-06-15",
+        "semester": "45590541-ea1f-44fc-b3a3-e3891cd5f1eb:string:2"
+      }
+    ],
+    "additionalData": {
+      "certSignatories": [
+        {
+          "name": "65a82f72-a99e-46d0-a5c9-c8b036af797b:string:Test Dean",
+          "position": "23cf0936-9bf6-418d-91f2-2176551b829d:string:Dean",
+          "organisation": "7a1d1d6a-909b-487e-adc4-f966a1331f23:string:Test University",
+          "signature": "eb978c02-d292-4767-8899-a9f4c7aeda75:string:data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        }
+      ],
+      "merit": "f3994cab-8fe1-475b-83bc-1f0c669838e5:string:Honours",
+      "images": {
+        "logo": "6f5b448d-8ce8-4af6-a819-28f5f2d635a0:string:data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+      }
+    },
+    "attachments": [
+      {
+        "filename": "77714ffe-3855-407c-b853-044b2bc0e8b4:string:note.txt",
+        "type": "b2b1b1f1-3687-47c3-8ae7-2a567da60fc6:string:text/plain",
+        "data": "4e75ed4b-19c3-43e6-93fa-46577bce7e95:string:dGVzdCBhdHRhY2htZW50"
+      }
+    ]
+  },
+  "signature": {
+    "type": "SHA3MerkleProof",
+    "targetHash": "219a0f551cd57fec08c834cdaeeff819d5870c421c363ae6c5aa3ee9452732e2",
+    "proof": [
+      "9216c4a2c0ac7402c80f405d060fc42b907049e453be7f1da021e842e9199e04"
+    ],
+    "merkleRoot": "20b447776721c7458ec9f62050a9376e5124bb770e02cf7048da79f0845ffe37"
+  },
+  "privacy": {
+    "obfuscatedData": [
+      "26f2a84dbe1323da6c3c9959d8f9ba017959807b7dcd9381861a8cf5532d7b78",
+      "24b79b71d37fd08f34a6dc5a225491951252e0b1854ef109254fe76198b99596"
+    ]
+  }
+}

@@ -15,6 +15,15 @@ expect object DocCrypto {
     fun desEdeCbc(encrypt: Boolean, key: ByteArray, iv: ByteArray, data: ByteArray): ByteArray
 
     fun randomBytes(size: Int): ByteArray
+
+    /** Keccak-256 as Ethereum uses it (the original Keccak padding, not SHA3-256). */
+    fun keccak256(data: ByteArray): ByteArray
+
+    /**
+     * The Ethereum address (20 bytes) whose secp256k1 key made [signature] (r, s, v: 65 bytes, v 27/28 or 0/1) over
+     * the 32 byte [hash]; null when no key recovers.
+     */
+    fun ecRecoverAddress(hash: ByteArray, signature: ByteArray): ByteArray?
 }
 
 /** Pure-Kotlin helpers on top of [DocCrypto]. */

@@ -173,6 +173,23 @@ data class OpenCertInfo(
     val fields: Map<String, String>,
     val integrity: Check,
     val issuerVerified: Check,
+    /** The last online check of issuance and issuer identity, kept with the file. */
+    val online: OpenCertOnline? = null,
+)
+
+/**
+ * The online check of an OpenAttestation document: whether the issuer published it (document store, token registry
+ * or DID signature) and has not revoked it, and whether the issuer's identity (DNS record or OpenCerts registry)
+ * holds. [checkedAt] is in epoch seconds.
+ */
+@Serializable
+data class OpenCertOnline(
+    val checkedAt: Long,
+    val issuance: Check,
+    val issuanceDetail: List<String>,
+    val identity: Check,
+    val identityDetail: List<String>,
+    val registryName: String? = null,
 )
 
 /** Everything the inspector found in a file. */
@@ -197,7 +214,9 @@ data class DocumentReport(
         get() = when {
             signatures.isEmpty() && openCert == null -> DocumentVerdict.UNSIGNED
             signatures.any { it.verdict == DocumentVerdict.INVALID } -> DocumentVerdict.INVALID
-            openCert?.integrity == Check.FAIL -> DocumentVerdict.INVALID
+            openCert?.integrity == Check.FAIL || openCert?.online?.issuance == Check.FAIL -> DocumentVerdict.INVALID
+            openCert != null && signatures.isEmpty() && openCert.integrity == Check.PASS &&
+                openCert.online?.issuance == Check.PASS && openCert.online.identity == Check.PASS -> DocumentVerdict.VALID
             signatures.isNotEmpty() && signatures.all { it.verdict == DocumentVerdict.VALID } && openCert == null -> DocumentVerdict.VALID
             else -> DocumentVerdict.PARTIAL
         }

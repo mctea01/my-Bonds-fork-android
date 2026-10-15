@@ -186,6 +186,8 @@ sealed class Screen {
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
     data class FileDerive(val fileId: String) : Screen()
+    /** An OpenCerts certificate [fileId] shown by its issuer's renderer. */
+    data class OpenCertRender(val fileId: String) : Screen()
     /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
     data class NationalIdCreate(val fileId: String) : Screen()
     /** The Bonds national ID card made from the vault file [fileId]. */
@@ -598,6 +600,7 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.FileDetail -> showTab(HomeTab.FILES)
             is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.FileDerive -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.OpenCertRender -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
             is Screen.FileCompose, is Screen.Portal -> showTab(HomeTab.FILES)

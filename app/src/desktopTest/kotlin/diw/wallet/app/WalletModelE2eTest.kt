@@ -973,6 +973,70 @@ class WalletModelE2eTest {
     }
 
     /**
+     * An OpenCerts certificate: stored with its integrity checked, checked online right away (document store on
+     * Ethereum and the issuer's DNS-TXT record, mocked here), shown field by field, kept when the network is gone, and
+     * its attachment stored as a file of its own.
+     */
+    @Test
+    fun openCertsAreCheckedOnlineAndShown() = runBlocking<Unit> {
+        val cert = java.io.File("../test-servers/src/test/resources/documents/opencerts/oa-v2-store.json").readBytes()
+        val doc = assertNotNull(diw.wallet.core.document.opencerts.OpenAttestationDocument.parse(cert))
+        fun selector(sig: String) = "0x" + diw.wallet.core.document.opencerts.OpenAttestationDocument.keccakHex(sig).take(8)
+        var offline = false
+        val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            when {
+                offline -> respond("", io.ktor.http.HttpStatusCode.ServiceUnavailable)
+                request.url.host == "dns.google" -> respond(
+                    """{"Status":0,"Answer":[{"name":"certs.test.example","type":16,"data":"\"openatts net=ethereum netId=1 addr=0x1111111111111111111111111111111111111111\""}]}""",
+                    io.ktor.http.HttpStatusCode.OK, json,
+                )
+                request.url.host == "ethereum-rpc.publicnode.com" -> {
+                    val body = DiwJson.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject
+                    val data = body["params"]!!.jsonArray[0].jsonObject["data"]!!.jsonPrimitive.content
+                    val yes = when (data.take(10)) {
+                        selector("isIssued(bytes32)") -> data.drop(10) == doc.merkleRoot
+                        else -> false
+                    }
+                    respond("""{"jsonrpc":"2.0","id":1,"result":"0x${(if (yes) "1" else "0").padStart(64, '0')}"}""", io.ktor.http.HttpStatusCode.OK, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.files.import(PickedFile("degree.opencert", cert), FileOrigin.IMPORTED, null).join()
+        assertNull(m.files.error.value, "import: ${m.files.error.value}")
+        val stored = m.files.files.value.single()
+        val online = withTimeout(30.seconds) { m.files.files.first { it.single().report?.openCert?.online != null } }.single().report!!.openCert!!.online!!
+        assertEquals(diw.wallet.core.document.Check.PASS, online.issuance, online.issuanceDetail.toString())
+        assertEquals(diw.wallet.core.document.Check.PASS, online.identity, online.identityDetail.toString())
+        assertEquals(diw.wallet.core.document.DocumentVerdict.VALID, m.files.file(stored.id)!!.report!!.verdict)
+
+        val view = assertNotNull(m.files.openCertView(stored))
+        assertTrue(("姓名" to "Test Person") in view.recipient)
+        assertNotNull(m.files.openCertRendererPage(stored))
+
+        // Opening the file again inspects it anew; the online result stays.
+        m.files.refreshed(stored)
+        assertNotNull(m.files.file(stored.id)!!.report!!.openCert!!.online)
+
+        // Offline: the last result stays and the holder is told.
+        offline = true
+        m.files.recheckOpenCert(stored).join()
+        assertEquals("無法連線查驗，保留上一次的結果", m.message.value)
+        assertEquals(online, m.files.file(stored.id)!!.report!!.openCert!!.online)
+
+        m.files.storeOpenCertAttachment(stored, view.attachments.single()).join()
+        val attachment = m.files.files.value.first { it.id != stored.id }
+        assertEquals("note.txt", attachment.name)
+        assertEquals("OpenCerts 附件", attachment.source)
+        assertEquals(stored.id, attachment.parentId)
+    }
+
+    /**
      * A MyData download in the app: the ZIP is unpacked and removed, an opaque file name becomes the item's name,
      * the source is short, and the PDF opens with the ID number saved for MyData (as Bonds asks for it).
      */

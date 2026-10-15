@@ -1,0 +1,40 @@
+{
+  "version": "https://schema.openattestation.com/2.0/schema.json",
+  "data": {
+    "id": "76e8fa80-fc1d-4973-acea-55dfe48ae8c7:string:TEST-DID-1",
+    "name": "8db72e57-3527-488f-9ae4-9f809e144b6b:string:DID Signed Testing Certificate",
+    "issuedOn": "12ecdcfe-66ab-4c2e-ab78-2aa4892900cf:string:2026-06-30",
+    "issuers": [
+      {
+        "id": "8c2bf220-27d9-4214-8a50-e6f7e1131d99:string:did:ethr:0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A",
+        "name": "85007d49-2649-4fc0-b6ca-f4e98ce46c20:string:Test DID Issuer",
+        "revocation": {
+          "type": "1fd458d8-5504-4c20-b73f-79992a3be6d6:string:NONE"
+        },
+        "identityProof": {
+          "type": "92dd1b40-e0a4-48f5-a6c5-8e2ed31bfc05:string:DNS-DID",
+          "location": "f87a9858-c29e-438e-a543-2ea018e6708a:string:did.test.example",
+          "key": "5da9d6ee-9ca4-4672-9cbf-35dc2d24a56c:string:did:ethr:0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A#controller"
+        }
+      }
+    ],
+    "recipient": {
+      "name": "2b1bc2e0-2215-4c72-a79c-7ae9f8e34296:string:Test Person"
+    }
+  },
+  "signature": {
+    "type": "SHA3MerkleProof",
+    "targetHash": "8128cd0c61ac900b17f434ac2490d80236ecb3acb0454cde8b301f9a14a52e03",
+    "proof": [],
+    "merkleRoot": "8128cd0c61ac900b17f434ac2490d80236ecb3acb0454cde8b301f9a14a52e03"
+  },
+  "proof": [
+    {
+      "type": "OpenAttestationSignature2018",
+      "created": "2026-10-15T12:09:39.737Z",
+      "proofPurpose": "assertionMethod",
+      "verificationMethod": "did:ethr:0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A#controller",
+      "signature": "0x5b42e7efdde4727ee710b91fe8fd56e0fcaa6609d362acb74e1c92f2e7b7d99a4dd620099ad946a707474065b548e848b60086339e559dfb6b86e6cd09d8fe521b"
+    }
+  ]
+}

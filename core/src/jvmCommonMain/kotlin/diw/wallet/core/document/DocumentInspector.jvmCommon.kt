@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.pdf.PdfDates
 import diw.wallet.core.document.pdf.PdfException
 import diw.wallet.core.document.pdf.PdfFile
@@ -93,8 +94,7 @@ actual object DocumentInspector {
         return when {
             head.startsWith("<") -> DocumentFormat.XML
             head.startsWith("{") -> {
-                val o = OpenCerts.parse(b)
-                if (o != null && OpenCerts.looksLike(o)) DocumentFormat.OPENCERTS else DocumentFormat.JSON
+                if (OpenAttestationDocument.parse(b) != null) DocumentFormat.OPENCERTS else DocumentFormat.JSON
             }
             b.size > 8 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() -> DocumentFormat.IMAGE
             b.size > 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> DocumentFormat.IMAGE
@@ -404,9 +404,17 @@ actual object DocumentInspector {
     }
 
     private fun openCerts(bytes: ByteArray, base: DocumentReport): DocumentReport {
-        val o = OpenCerts.parse(bytes) ?: return base.copy(format = DocumentFormat.JSON)
-        val info = OpenCerts.inspect(o)
-        val notes = listOf("OpenCerts 只匯入保存：已檢查內容與 Merkle 證明是否一致，發行端是否確實發行需在 opencerts.io 查驗")
+        val doc = OpenAttestationDocument.parse(bytes) ?: return base.copy(format = DocumentFormat.JSON)
+        val info = OpenCertInfo(
+            version = doc.version,
+            name = doc.name,
+            issuers = doc.issuers.mapNotNull { it.name },
+            identityProofs = doc.issuers.mapNotNull { i -> i.identityType?.let { t -> t + (i.identityLocation?.let { "：$it" } ?: "") } },
+            fields = doc.fields(),
+            integrity = doc.integrity,
+            issuerVerified = Check.NOT_CHECKED,
+        )
+        val notes = listOf("已檢查內容與 Merkle 證明是否一致；發行者是否確實發行與發行者身分以網路查詢以太坊與 DNS 紀錄")
         return base.copy(format = DocumentFormat.OPENCERTS, title = info.name, openCert = info, notes = notes)
     }
 

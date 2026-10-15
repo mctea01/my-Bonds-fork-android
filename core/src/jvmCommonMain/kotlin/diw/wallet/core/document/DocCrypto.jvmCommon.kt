@@ -1,6 +1,10 @@
 package diw.wallet.core.document
 
+import org.bouncycastle.crypto.digests.KeccakDigest
 import org.bouncycastle.crypto.digests.SM3Digest
+import org.bouncycastle.crypto.ec.CustomNamedCurves
+import org.bouncycastle.math.ec.ECAlgorithms
+import java.math.BigInteger
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
@@ -40,4 +44,38 @@ actual object DocCrypto {
     }
 
     actual fun randomBytes(size: Int): ByteArray = ByteArray(size).also { random.nextBytes(it) }
+
+    actual fun keccak256(data: ByteArray): ByteArray {
+        val d = KeccakDigest(256)
+        d.update(data, 0, data.size)
+        return ByteArray(32).also { d.doFinal(it, 0) }
+    }
+
+    private val secp256k1 by lazy { CustomNamedCurves.getByName("secp256k1") }
+
+    actual fun ecRecoverAddress(hash: ByteArray, signature: ByteArray): ByteArray? {
+        if (hash.size != 32 || signature.size != 65) return null
+        val v = signature[64].toInt() and 0xFF
+        val recId = when (v) {
+            27, 28 -> v - 27
+            0, 1 -> v
+            else -> return null
+        }
+        val n = secp256k1.n
+        val r = BigInteger(1, signature.copyOfRange(0, 32))
+        val s = BigInteger(1, signature.copyOfRange(32, 64))
+        if (r.signum() == 0 || r >= n || s.signum() == 0 || s >= n) return null
+        return runCatching {
+            // R is the point with x = r and the parity recId names; Q = r^-1 (sR - eG).
+            val x = org.bouncycastle.util.BigIntegers.asUnsignedByteArray(32, r)
+            val point = secp256k1.curve.decodePoint(byteArrayOf((0x02 + (recId and 1)).toByte()) + x)
+            if (!point.multiply(n).isInfinity) return null
+            val e = BigInteger(1, hash)
+            val rInv = r.modInverse(n)
+            val q = ECAlgorithms.sumOfTwoMultiplies(secp256k1.g, e.negate().mod(n).multiply(rInv).mod(n), point, s.multiply(rInv).mod(n)).normalize()
+            if (q.isInfinity) return null
+            val pub = q.getEncoded(false).copyOfRange(1, 65)
+            keccak256(pub).copyOfRange(12, 32)
+        }.getOrNull()
+    }
 }

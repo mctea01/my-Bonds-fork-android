@@ -87,17 +87,27 @@ import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import diw.wallet.core.document.OpenCertInfo
+import diw.wallet.core.document.opencerts.OaMethod
+import diw.wallet.core.document.opencerts.OpenCertView
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.X509Cert
 import org.multipaz.util.fromBase64
 import kotlin.time.Instant
 
-/** A site page shown inside the app; downloads come back as [onFile], links for other apps go to [onExternal]. */
 /** A script the source site runs on its pages at [host] only (MyData sign-in values), and what to do when it fills inputs. */
 class PortalAutofill(val host: String, val script: String, val onFilled: (Int) -> Unit)
 
+/** A site page shown inside the app; downloads come back as [onFile], links for other apps go to [onExternal]. */
 @Composable
 expect fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill? = null)
+
+/**
+ * The host page of an OpenCerts renderer ([html], see OpenCertRenderer): inside the app where a web view exists,
+ * otherwise opened in the system browser on request. Links the renderer opens go to [onExternal].
+ */
+@Composable
+expect fun OpenCertRendererView(html: String, modifier: Modifier, onExternal: (String) -> Unit)
 
 internal fun localTime(epochSeconds: Long): String {
     val t = Instant.fromEpochSeconds(epochSeconds).toLocalDateTime(TimeZone.currentSystemDefault())
@@ -281,7 +291,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
             LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
         }
-        FilePreviewSection(model, f)
+        // An OpenCerts certificate is shown field by field below rather than as JSON text.
+        if (report?.format != DocumentFormat.OPENCERTS) FilePreviewSection(model, f)
         if (report != null) {
             report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) }
             report.envelope?.let { e ->
@@ -290,15 +301,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                 e.recipients.forEach { LabelValue("收件者", it, small = true) }
                 e.contentEncryption?.let { LabelValue("內容加密", it, small = true) }
             }
-            report.openCert?.let { oc ->
-                SectionTitle("OpenCerts 證書")
-                oc.name?.let { LabelValue("名稱", it) }
-                LabelValue("內容完整性", checkText(oc.integrity))
-                LabelValue("發行者驗證", checkText(oc.issuerVerified))
-                oc.issuers.forEach { LabelValue("發行者", it, small = true) }
-                oc.fields.forEach { (k, v) -> LabelValue(k, v, small = true) }
-                Text("OpenCerts 只匯入保存；發行者以 DNS 或以太坊合約證明身分，需在官方網站查驗。", style = MaterialTheme.typography.bodySmall)
-            }
+            report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             if (report.entries.isNotEmpty()) {
                 SectionTitle("容器內的檔案")
                 report.entries.take(50).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -652,6 +655,132 @@ private fun SelectableText(text: String) {
         Text(text, style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
             modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(10.dp))
+    }
+}
+
+// ---------------------------------------------------------------- OpenCerts
+
+private fun methodText(m: OaMethod): String = when (m) {
+    OaMethod.DOCUMENT_STORE -> "以太坊文件庫"
+    OaMethod.TOKEN_REGISTRY -> "以太坊權杖登錄（可轉讓文件）"
+    OaMethod.DID -> "DID 簽章"
+    OaMethod.NONE -> "未提供"
+}
+
+/**
+ * An OpenCerts certificate: integrity, the online check of issuance and issuer identity (checked again when opened
+ * after a while, or on request), and what the certificate shows: recipient, main fields, issuers, signatories,
+ * transcript, images, attachments and the remaining fields with readable labels.
+ */
+@Composable
+private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo, busy: String?) {
+    val view by produceState<OpenCertView?>(null, f.id, f.sha256) { value = model.files.openCertView(f) }
+    val v = view
+    SectionTitle("OpenCerts 證書")
+    (v?.title ?: oc.name)?.let { LabelValue("名稱", it) }
+    LabelValue("版本", oc.version, small = true)
+    VerdictPill(checkVerdict(oc.integrity), "內容完整性：" + checkText(oc.integrity))
+    if (oc.integrity == Check.FAIL) Text("內容與 Merkle 證明不一致，檔案在發行後被改過。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    val online = oc.online
+    if (online == null) {
+        Text("尚未在網路上查驗：發行者是否在以太坊發行且未撤銷，以及網域的 DNS 紀錄是否證明發行者身分。", style = MaterialTheme.typography.bodySmall)
+    } else {
+        VerdictPill(checkVerdict(online.issuance), "發行狀態：" + checkText(online.issuance))
+        online.issuanceDetail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        VerdictPill(checkVerdict(online.identity), "發行者身分：" + checkText(online.identity))
+        online.identityDetail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        online.registryName?.let { LabelValue("OpenCerts 登錄名稱", it, small = true) }
+        Text("查驗時間：${localTime(online.checkedAt)}", style = MaterialTheme.typography.bodySmall)
+    }
+    OutlinedButton(onClick = { model.files.recheckOpenCert(f) }, enabled = busy == null) { Text(if (online == null) "查驗發行狀態" else "重新查驗") }
+    if (v == null) return
+    v.templateUrl?.let { url ->
+        val origin = Regex("^https://[^/]+").find(url.trim())?.value
+        if (origin != null) {
+            ActionRow(WalletIcons.Document, "以發證機構樣式顯示", "證書內容會傳給發證機構指定的顯示程式（$origin）") {
+                model.screen.value = Screen.OpenCertRender(f.id)
+            }
+        } else {
+            ActionRow(WalletIcons.Document, "以發證機構樣式顯示", "顯示程式不是 https 網址，無法安全載入", enabled = false) {}
+        }
+    }
+    if (v.recipient.isNotEmpty()) {
+        SectionTitle("受領人")
+        v.recipient.forEach { (k, value) -> LabelValue(k, value) }
+    }
+    if (v.main.isNotEmpty()) {
+        SectionTitle("證書內容")
+        v.main.forEach { (k, value) -> LabelValue(k, value) }
+    }
+    v.issuers.forEachIndexed { i, issuer ->
+        SectionTitle(if (v.issuers.size > 1) "發行者 ${i + 1}" else "發行者")
+        issuer.name?.let { LabelValue("名稱", it) }
+        issuer.url?.let { LabelValue("網址", it, small = true) }
+        LabelValue("發行方式", methodText(issuer.method), small = true)
+        issuer.value?.let { LabelValue(if (issuer.method == OaMethod.DID) "DID" else "合約地址", it, small = true) }
+        issuer.identityType?.let { t -> LabelValue("身分證明", t + (issuer.identityLocation?.let { "：$it" } ?: ""), small = true) }
+        issuer.revocationType?.let { t -> LabelValue("撤銷機制", t + (issuer.revocationLocation?.let { "：$it" } ?: ""), small = true) }
+    }
+    if (v.signatories.isNotEmpty()) {
+        SectionTitle("簽署人")
+        v.signatories.forEach { s ->
+            listOfNotNull(s.name, s.position, s.organisation).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("，"), style = MaterialTheme.typography.bodyMedium) }
+            s.image?.let { model.platform.decodeImage(it) }?.let { img ->
+                Image(img, contentDescription = "簽名", contentScale = ContentScale.Fit, modifier = Modifier.height(64.dp))
+            }
+        }
+    }
+    if (v.transcript.isNotEmpty()) {
+        SectionTitle("成績單")
+        Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Row {
+                v.transcriptColumns.forEach { c -> Text(c, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(120.dp).padding(4.dp)) }
+            }
+            v.transcript.forEach { row ->
+                Row { row.forEach { cell -> Text(cell, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(120.dp).padding(4.dp)) } }
+            }
+        }
+    }
+    if (v.images.isNotEmpty()) {
+        SectionTitle("圖片")
+        v.images.forEach { (name, bytes) ->
+            model.platform.decodeImage(bytes)?.let { img ->
+                Text(name, style = MaterialTheme.typography.bodySmall)
+                Image(img, contentDescription = name, contentScale = ContentScale.Fit, modifier = Modifier.heightIn(max = 160.dp))
+            }
+        }
+    }
+    if (v.attachments.isNotEmpty()) {
+        SectionTitle("附件")
+        v.attachments.forEach { a ->
+            Text("${a.name}（${sizeText(a.bytes.size.toLong())}）", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { model.files.storeOpenCertAttachment(f, a) }, enabled = busy == null) { Text("存入文件") }
+                OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a) }, enabled = busy == null) { Text("匯出") }
+            }
+        }
+    }
+    if (v.other.isNotEmpty()) {
+        SectionTitle("其他欄位")
+        v.other.forEach { (k, value) -> LabelValue(k, value, small = true) }
+    }
+}
+
+/** The certificate shown by the renderer its issuer chose; the content goes to that site only when this opens. */
+@Composable
+fun OpenCertRenderScreen(model: WalletModel, screen: Screen.OpenCertRender) {
+    val f = model.files.file(screen.fileId) ?: return
+    val page by produceState<String?>(null, f.id) { value = model.files.openCertRendererPage(f) ?: "" }
+    Column(Modifier.fillMaxSize()) {
+        Text("由發證機構指定的顯示程式繪製；內容與上一頁的檢查結果相同，查驗結果以上一頁為準。", style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        when (val html = page) {
+            null -> Text("正在準備", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+            "" -> Text("這份證書沒有可用的 https 顯示程式。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+            else -> OpenCertRendererView(html, Modifier.fillMaxWidth().weight(1f)) { url ->
+                model.platform.openBrowser(url)
+            }
+        }
     }
 }
 

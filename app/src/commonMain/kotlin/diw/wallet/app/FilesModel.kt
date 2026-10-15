@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentReport
@@ -9,6 +10,11 @@ import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.official.OfficialLetter
+import diw.wallet.core.document.opencerts.OaAttachment
+import diw.wallet.core.document.opencerts.OpenAttestationDocument
+import diw.wallet.core.document.opencerts.OpenAttestationOnline
+import diw.wallet.core.document.opencerts.OpenCertRenderer
+import diw.wallet.core.document.opencerts.OpenCertView
 import diw.wallet.core.document.pdf.PdfComposer
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfPlain
@@ -318,6 +324,7 @@ class FilesModel(private val model: WalletModel) {
         model.storage.getTable(dataTable).insert(f.id, ByteString(bytes))
         save(f)
         if (model.settings.timestampOnSave) runCatching { addTimestampNow(f) }
+        if (report.openCert != null) model.scope.launch { runCatching { verifyOpenCertNow(f, force = false) } }
         return file(f.id) ?: f
     }
 
@@ -400,14 +407,18 @@ class FilesModel(private val model: WalletModel) {
         val stamps = latest.timestamps.map { t ->
             runCatching { t.copy(trusted = DocumentInspector.verifyTimestamp(t.token.fromBase64(), data, trustSource).trusted) }.getOrDefault(t)
         }
-        return latest.copy(report = report, timestamps = stamps).also { save(it) }
+        // The online check of an OpenCerts certificate is not part of the inspection; it stays until checked again.
+        val online = latest.report?.openCert?.online
+        val kept = report.openCert?.takeIf { online != null }?.let { report.copy(openCert = it.copy(online = online)) } ?: report
+        return latest.copy(report = kept, timestamps = stamps).also { save(it) }
     }
 
     /** Re-checks a file when it is opened; the stored report stays if the check cannot run. */
     fun refresh(id: String) = model.scope.launch {
         val f = file(id) ?: return@launch
         try {
-            refreshed(f)
+            val r = refreshed(f)
+            if (r.report?.openCert != null) verifyOpenCertNow(r, force = false)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -613,6 +624,55 @@ class FilesModel(private val model: WalletModel) {
         val stamp = StoredTimestamp(token.toBase64(), info.time, info.tsa, info.trusted)
         save((file(f.id) ?: f).let { it.copy(timestamps = it.timestamps + stamp) })
         model.message.value = if (info.trusted) "已加上時戳（${info.tsa ?: "時戳機構"}）" else "已加上時戳，但時戳機構不在信任錨點"
+    }
+
+    // ---------------------------------------------------------------- OpenCerts
+
+    /** What the OpenCerts certificate [f] shows; null when the file is not one. */
+    suspend fun openCertView(f: StoredFile): OpenCertView? = withContext(Dispatchers.Default) {
+        runCatching { OpenAttestationDocument.parse(data(f.id))?.view() }.getOrNull()
+    }
+
+    /** The page that shows [f] with the issuer's own renderer; null when the certificate has no https renderer. */
+    suspend fun openCertRendererPage(f: StoredFile): String? = withContext(Dispatchers.Default) {
+        runCatching { OpenAttestationDocument.parse(data(f.id))?.let { OpenCertRenderer.hostPage(it) } }.getOrNull()
+    }
+
+    /**
+     * Checks online whether the issuer published the certificate [f] and has not revoked it, and whether the issuer's
+     * identity holds. Without [force] a result younger than [OPENCERT_RECHECK_SECONDS] is kept. When nothing can be
+     * queried (offline), the last meaningful result stays; the return value is false then.
+     */
+    suspend fun verifyOpenCertNow(f: StoredFile, force: Boolean): Boolean {
+        val previous = (file(f.id) ?: f).report?.openCert?.online
+        val now = Clock.System.now().epochSeconds
+        if (!force && previous != null && now - previous.checkedAt < OPENCERT_RECHECK_SECONDS) return true
+        val doc = OpenAttestationDocument.parse(data(f.id)) ?: return false
+        val result = OpenAttestationOnline(model.http).verify(doc)
+        val unreachable = result.issuance == Check.NOT_CHECKED && result.identity == Check.NOT_CHECKED
+        val meaningful = previous != null && (previous.issuance != Check.NOT_CHECKED || previous.identity != Check.NOT_CHECKED)
+        if (unreachable && meaningful) return false
+        val current = file(f.id) ?: return false
+        val report = current.report ?: return false
+        val info = report.openCert ?: return false
+        save(current.copy(report = report.copy(openCert = info.copy(online = result))))
+        return !unreachable
+    }
+
+    fun recheckOpenCert(f: StoredFile) = run("查驗發行狀態與發行者身分") {
+        if (!verifyOpenCertNow(f, force = true)) model.message.value = "無法連線查驗，保留上一次的結果"
+    }
+
+    /** Stores an attachment of the certificate [f] as its own file in the vault. */
+    fun storeOpenCertAttachment(f: StoredFile, a: OaAttachment) = run("保存附件") {
+        val known = files.value.size
+        val stored = store(a.name, a.bytes, FileOrigin.EXTRACTED, source = "OpenCerts 附件", parentId = f.id, archive = f.name)
+        model.message.value = if (files.value.size == known) "這個附件已經保存過" else "已保存：${stored.name}"
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    fun exportOpenCertAttachment(a: OaAttachment) = run("匯出附件") {
+        if (!model.platform.saveFile(a.name, a.type ?: "application/octet-stream", a.bytes)) model.message.value = "未匯出"
     }
 
     fun export(f: StoredFile) = run("匯出檔案") {
@@ -889,6 +949,9 @@ class FilesModel(private val model: WalletModel) {
         /** Width of rendered PDF pages, in pixels. */
         const val PREVIEW_WIDTH = 1080
         private const val MAX_AIA_BYTES = 256 * 1024
+
+        /** An OpenCerts certificate is checked online again when opened after this long. */
+        const val OPENCERT_RECHECK_SECONDS = 12 * 3600L
         private val metaTable = StorageTableSpec(name = "DiwFiles", supportPartitions = false, supportExpiration = false)
         private val dataTable = StorageTableSpec(name = "DiwFileData", supportPartitions = false, supportExpiration = false)
 
