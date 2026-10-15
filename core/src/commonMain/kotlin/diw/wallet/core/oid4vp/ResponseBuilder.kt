@@ -7,6 +7,7 @@ import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
 import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -232,6 +233,7 @@ class ResponseBuilder(private val source: PresentmentSource) {
             return filtered.compactSerialization
         }
         val transactionResponse = OpenID4VP.processTransactions(credential, match.transactionData, match.transactionUserInput)
+            .let { withHashAlgorithm(it) }
         val audience = if (request.responseMode.dcApi) "origin:${request.origin}" else request.verifier.effectiveClientId
         return filtered.present(
             signingKey = AsymmetricKey.anonymous(
@@ -246,6 +248,15 @@ class ResponseBuilder(private val source: PresentmentSource) {
             for ((k, v) in transactionResponse) put(k, v)
         }.compactSerialization
     }
+
+    /**
+     * OpenID4VP 1.0 lets transaction_data_hashes_alg be left out when it is sha-256; Multipaz does so, but verifiers
+     * such as the EUDI reference verifier reject a KB-JWT without it, so the default is written out.
+     */
+    private fun withHashAlgorithm(response: Map<String, JsonElement>): Map<String, JsonElement> =
+        if ("transaction_data_hashes" in response && "transaction_data_hashes_alg" !in response) {
+            response + ("transaction_data_hashes_alg" to JsonPrimitive("sha-256"))
+        } else response
 
     private fun requiresHolderBinding(request: ValidatedAuthorizationRequest, queryId: String): Boolean {
         val q = request.dcqlQuery.arr("credentials")?.mapNotNull { it as? JsonObject }?.firstOrNull { it.str("id") == queryId }

@@ -14,9 +14,13 @@ import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import org.multipaz.documenttype.knowntypes.EUPersonalID
+import org.multipaz.util.fromBase64Url
+import org.multipaz.util.toBase64Url
 import java.net.ServerSocket
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -242,6 +246,36 @@ class Oid4vpE2eTest {
         assertNull(Oid4vpHolder.dcApiError(data, e))
         // Declining such a request cancels the flow instead of answering access_denied.
         assertNull(w.holder.decline(w.holder.resolveDcApi("openid4vp-v1-signed", data, "https://rp.example")))
+    }
+
+    /**
+     * CSC qes-approval transaction data (as the EUDI remote signing service sends it): the KB-JWT carries the hash of
+     * the encoded entry and names sha-256 explicitly, which the EUDI verifier requires although OpenID4VP 1.0 makes
+     * it the default.
+     */
+    @Test
+    fun transactionDataHashesNameTheirAlgorithm() = runBlocking<Unit> {
+        val w = wallet()
+        diw.wallet.core.oid4vp.QesApprovalTransaction.types.forEach { w.documentTypes.addTransactionType(it) }
+        val entry = buildJsonObject {
+            put("type", diw.wallet.core.oid4vp.QesApprovalTransaction.CSC_2025)
+            put("credential_ids", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("pid")) })
+            put("numSignatures", 1)
+        }.toString().encodeToByteArray().toBase64Url()
+        val data = DiwJson.parseToJsonElement(
+            """{"response_type":"vp_token","response_mode":"dc_api","nonce":"tx-nonce",
+              "dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["${EUPersonalID.EUPID_VCT}"]},
+                "claims":[{"path":["given_name"]}]}]},
+              "transaction_data":["$entry"]}"""
+        ).jsonObject
+        val req = w.holder.resolveDcApi("openid4vp-v1-unsigned", data, "https://rp.example")
+        val outcome = w.holder.respondDefault(w.holder.prepare(req)) as PresentationOutcome.DcApi
+        val presentation = outcome.data["vp_token"]!!.jsonObject["pid"]!!.jsonArray[0].jsonPrimitive.content
+        val kb = presentation.substringAfterLast('~').split('.')[1].fromBase64Url().decodeToString()
+        val claims = DiwJson.parseToJsonElement(kb).jsonObject
+        assertEquals("sha-256", claims["transaction_data_hashes_alg"]!!.jsonPrimitive.content)
+        val expected = java.security.MessageDigest.getInstance("SHA-256").digest(entry.encodeToByteArray()).toBase64Url()
+        assertEquals(listOf(expected), claims["transaction_data_hashes"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
 
     @Test
