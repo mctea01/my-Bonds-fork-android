@@ -48,6 +48,14 @@ internal object Bc {
 
     fun holder(der: ByteArray): X509CertificateHolder? = runCatching { X509CertificateHolder(der) }.getOrNull()
 
+    /** The http(s) caIssuers URLs of [h]'s Authority Information Access extension. */
+    fun caIssuers(h: X509CertificateHolder): List<String> = runCatching {
+        val aia = AuthorityInformationAccess.fromExtensions(h.extensions) ?: return emptyList()
+        aia.accessDescriptions.filter { it.accessMethod == AccessDescription.id_ad_caIssuers }
+            .mapNotNull { d -> d.accessLocation.takeIf { it.tagNo == GeneralName.uniformResourceIdentifier }?.name?.toString() }
+            .filter { it.startsWith("http://") || it.startsWith("https://") }
+    }.getOrDefault(emptyList())
+
     /** DER certificates of a certificate, a PKCS#7 certs-only bundle, or PEM text. */
     fun certificates(data: ByteArray): List<ByteArray> {
         val text = runCatching { data.decodeToString() }.getOrNull()
@@ -132,12 +140,7 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
         return chain
     }
 
-    fun caIssuers(h: X509CertificateHolder): List<String> = runCatching {
-        val aia = AuthorityInformationAccess.fromExtensions(h.extensions) ?: return emptyList()
-        aia.accessDescriptions.filter { it.accessMethod == AccessDescription.id_ad_caIssuers }
-            .mapNotNull { d -> d.accessLocation.takeIf { it.tagNo == GeneralName.uniformResourceIdentifier }?.name?.toString() }
-            .filter { it.startsWith("http://") || it.startsWith("https://") }
-    }.getOrDefault(emptyList())
+    fun caIssuers(h: X509CertificateHolder): List<String> = Bc.caIssuers(h)
 
     suspend fun decide(role: TrustRole, chain: List<X509CertificateHolder>, at: Instant): TrustDecision =
         trust.decide(role, chain.map { X509Cert(ByteString(it.encoded)) }, at)

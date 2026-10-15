@@ -34,7 +34,7 @@ fun tierColor(t: TrustTier): Color = when (t) {
 }
 
 fun labelText(l: TrustLabel): String = when (l) {
-    TrustLabel.TEST_ANCHOR -> "測試環境錨點"
+    TrustLabel.TEST_ANCHOR -> "測試錨點"
     TrustLabel.USER_ANCHOR -> "使用者自行匯入的錨點"
     TrustLabel.UNKNOWN_ANCHOR -> "憑證鏈不在信任清單"
     TrustLabel.UNSIGNED_REQUEST -> "請求未簽章"
@@ -53,7 +53,7 @@ fun labelText(l: TrustLabel): String = when (l) {
 
 /** One-line advice per tier; official or compliant parties get the short form. */
 fun tierAdvice(t: TrustDecision): String = when {
-    t.environment == TrustEnvironment.TEST -> "這是測試環境，結果不具任何正式效力。"
+    t.environment == TrustEnvironment.TEST -> "對方的憑證來自測試錨點，結果不具任何正式效力。"
     t.tier == TrustTier.T1 -> "官方信任清單內的對象。"
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。證明對方是誰，不代表它列於數位憑證皮夾的發行端或查驗方清單。"
     t.tier == TrustTier.T2 -> "列於官方信任清單，但無法完全驗證（例如鏈上註冊暫時無法確認，或列名的角色不符）。"
@@ -70,7 +70,7 @@ fun tierAdvice(t: TrustDecision): String = when {
  * signature itself, whose integrity and validity are shown beside it (an invalid signature must not read as valid).
  */
 fun signerTrustLine(t: TrustDecision): String = when {
-    t.environment == TrustEnvironment.TEST -> "簽署者只在測試環境受信任，不具正式效力。"
+    t.environment == TrustEnvironment.TEST -> "簽署者的憑證來自測試錨點，不具正式效力。"
     t.tier == TrustTier.T1 -> "簽署者列於官方信任清單。"
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "簽署者身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。"
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "簽署者憑證連到中國大陸的公開憑證機構（${t.anchorName ?: ""}），可確認組織名稱，但不在台灣的官方清單。"
@@ -83,7 +83,7 @@ fun signerTrustLine(t: TrustDecision): String = when {
 /** What the trust says about the issuer of a document being verified, one sentence for a verdict card. */
 fun issuerTrustLine(t: TrustDecision?): String = when {
     t == null -> "發行端不在任何信任來源，無法確認這張證件由誰簽發。"
-    t.environment == TrustEnvironment.TEST -> "發行端只在測試環境受信任，結果不具效力。"
+    t.environment == TrustEnvironment.TEST -> "發行端的憑證來自測試錨點，結果不具效力。"
     t.tier == TrustTier.T1 -> "發行端列於官方信任清單。"
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "發行端身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}，但不代表它列於發行端清單。"
     t.tier == TrustTier.T2 -> "發行端列於官方信任清單，但無法完全驗證（例如鏈上註冊暫時無法確認，或列名的角色不是發行端）。"
@@ -116,7 +116,7 @@ fun TierLegend() {
                 Text(text, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Text("測試環境的錨點最高為 T3，結果永遠不是官方。", style = MaterialTheme.typography.bodySmall)
+        Text("測試錨點最高為 T3 並標示為測試，結果永遠不是官方。", style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -153,14 +153,14 @@ fun TrustCard(title: String, subject: String, trust: TrustDecision, extra: List<
     }
 }
 
-/** Banner shown on every screen while the TEST environment is enabled. */
+/** Banner shown on every screen while a custom test server is in use. */
 @Composable
 fun TestEnvironmentBanner() {
     Box(
         Modifier.fillMaxWidth().background(Color(0xFFB3261E)).padding(vertical = 4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text("測試環境已開啟：測試憑證與驗證結果不具效力", color = Color.White, fontSize = 12.sp)
+        Text("正在使用自訂測試伺服器：測試憑證與驗證結果不具效力", color = Color.White, fontSize = 12.sp)
     }
 }
 

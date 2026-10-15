@@ -2,6 +2,7 @@ package diw.testservers
 
 import diw.wallet.core.did.DidKeys
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.derived.DocumentFields
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
@@ -55,6 +56,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -224,6 +226,46 @@ class BondsHolderDerivedTest {
         assertEquals(mapOf("registered_in_city" to "true"), disclosed.single())
     }
 
+    /**
+     * A whole-household transcript as MyData prints it: every person has the same labels (姓名, 姓名羅馬拼音,
+     * 父姓名, 個人註記, 原住民族別...), empty fields end their line, a print-time footer closes each page and the
+     * household header is printed again on the next page. The derived credential and the Bonds answer must both use
+     * the holder's own block.
+     */
+    @Test
+    fun householdTranscriptIsReadPerPerson() = runBlocking<Unit> {
+        val members = MyDataParsers.householdMembers(TRANSCRIPT)
+        assertEquals(listOf("測試戶長", "測試配偶", "測試持有人"), members.map { it.name }, "姓名羅馬拼音 and 父姓名 do not start a person")
+        assertEquals(listOf("A123456789", "B200000001", "B223456789"), members.map { it.idNumber })
+        assertEquals(listOf("2001-05-01", "2010-03-03", "2026-08-01"), members.map { it.since })
+
+        val hint = listOf(HolderHint("B223456789", "測試持有人"))
+        val parsed = MyDataParsers.household(TRANSCRIPT, hint)
+        assertEquals("3", parsed.fields[MyDataParsers.MEMBER_COUNT])
+        assertEquals("2026-08-01", parsed.fields[MyDataParsers.REGISTERED_SINCE])
+
+        val own = assertNotNull(DocumentFields.fromHousehold(TRANSCRIPT, hint))
+        val c = own.claims.associate { it.name to it.value }
+        assertEquals("測試持有人", c["姓名"])
+        assertEquals("B223456789", c["統一編號"])
+        assertEquals("CE-SHIH CHIH-YU-JEN", c["姓名羅馬拼音"])
+        assertEquals("測試戶長", c["父姓名"])
+        assertEquals("現住人口", c["個人註記"])
+        assertNull(c["原住民族別"], "an empty field never takes the page footer")
+        assertTrue(own.claims.none { "第" in it.value && "頁" in it.value }, "no footer value: ${own.claims}")
+        assertEquals("A0000001", c["戶號"])
+        assertEquals("3", c["householdMemberCount"])
+        assertTrue("第 3 位" in own.notice!!, own.notice)
+
+        // Without knowing who the holder is, only the household's own fields are offered.
+        val unknown = assertNotNull(DocumentFields.fromHousehold(TRANSCRIPT, emptyList()))
+        assertNull(unknown.claims.firstOrNull { it.name == "姓名" })
+        assertEquals("A0000001", unknown.claims.associate { it.name to it.value }["戶號"])
+        assertTrue("3 位住戶" in unknown.notice!!)
+        // Any other PDF keeps the general reading.
+        assertNull(DocumentFields.fromHousehold("在學證明\n姓名：甲", hint))
+    }
+
     @Test
     fun laborInsuranceOnADate() = runBlocking<Unit> {
         val parsed = MyDataParsers.laborInsurance(LABOR)
@@ -282,6 +324,52 @@ class BondsHolderDerivedTest {
             姓名：測試持有人
             統一編號：B223456789
             遷入日期：民國115年08月01日
+        """.trimIndent()
+
+        val TRANSCRIPT = """
+            現戶全戶戶籍資料
+            戶號：A0000001
+            戶長姓名：測試戶長
+            戶籍地址：臺北市中正區測試里測試路1號
+            稱謂：戶長
+            姓名：測試戶長
+            姓名羅馬拼音：CE-SHIH HU-CHANG
+            統一編號：A123456789
+            出生日期：民國060年01月01日
+            父姓名：測試祖父
+            遷入日期：民國090年05月01日
+            個人註記：現住人口
+            原住民身分：無
+            原住民族別：
+            個人記事：1.出生地臺灣省臺北市
+            2026-10-15 21:23:08 第 1/3頁
+            現戶全戶戶籍資料
+            戶號：A0000001
+            稱謂：配偶
+            姓名：測試配偶
+            姓名羅馬拼音：CE-SHIH PEI-OU
+            統一編號：B200000001
+            出生日期：民國062年02月02日
+            父姓名：測試外祖父
+            遷入日期：民國099年03月03日
+            個人註記：現住人口
+            原住民身分：無
+            原住民族別：
+            2026-10-15 21:23:08 第 2/3頁
+            現戶全戶戶籍資料
+            戶號：A0000001
+            稱謂：子
+            姓名：測試持有人
+            統一編號：B223456789
+            出生日期：民國090年02月02日
+            父姓名：測試戶長
+            遷入日期：民國115年08月01日
+            個人註記：現住人口
+            原住民身分：無
+            原住民族別：
+            個人記事：1.出生地臺灣省屏東縣
+            姓名羅馬拼音：CE-SHIH CHIH-YU-JEN
+            2026-10-15 21:23:08 第 3/3頁
         """.trimIndent()
 
         val HOUSEHOLD_TABLE = """

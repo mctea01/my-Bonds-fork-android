@@ -371,7 +371,10 @@ class WalletModel(val platform: PlatformServices) {
         documentStore = buildDocumentStore(storage, repo) { addDiwCredentialImplementations(repo) }
         holderIdentities = HolderIdentities(storage, repo)
         trust = TrustRegistry(storage, environmentPolicy)
-        // The Taiwan GPKI anchors in operation are trusted without an import (identity, T2).
+        // Chains that leave out an intermediate certificate are completed from their AIA caIssuers links.
+        trust.issuerFetcher = { url -> files.trustSource.fetchIssuerCertificates(url).firstOrNull() }
+        // The Taiwan GPKI anchors in operation (identity, T2) and the Multipaz test issuers and readers (TEST, T3) are
+        // trusted without an import.
         runCatching { trust.seedBuiltInAnchors() }
         source = SimplePresentmentSource(
             documentStore = documentStore,
@@ -429,7 +432,7 @@ class WalletModel(val platform: PlatformServices) {
     /** Imports the TEST anchors published by the DIW test servers (issuer IACA, verifier root, wallet provider root). */
     fun importTestAnchors() = scope.launch {
         if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
+            message.value = "請先開啟「使用自訂測試伺服器」並設定網址"
             return@launch
         }
         try {
@@ -447,7 +450,7 @@ class WalletModel(val platform: PlatformServices) {
             // A Multipaz OpenID4VCI server has no /pki; its IACA is served per credential configuration.
             if (!http.get("$base/pki/iaca.pem").status.isSuccess()) {
                 val n = addMultipazIssuerAnchors(base)
-                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（僅測試環境有效）"
+                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（結果標示為測試）"
                 return@launch
             }
             var added = 0
@@ -457,7 +460,7 @@ class WalletModel(val platform: PlatformServices) {
                 val cert = X509Cert.fromPem(resp.bodyAsText())
                 if (trust.addAnchor(role, TrustEnvironment.TEST, cert, name, official = false, source = base)) added++
             }
-            message.value = "已匯入 $added 個測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $added 個測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
@@ -468,10 +471,6 @@ class WalletModel(val platform: PlatformServices) {
      * verifier.eudiw.dev request certificates) as TEST anchors.
      */
     fun importEudiTestAnchors() = scope.launch {
-        if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
-            return@launch
-        }
         try {
             var added = 0
             for (name in listOf("pidissuerca02_eu", "pidissuerca02_ut")) {
@@ -482,7 +481,7 @@ class WalletModel(val platform: PlatformServices) {
                     if (trust.addAnchor(role, TrustEnvironment.TEST, cert, "EUDI 參考實作 $name", official = false, source = EUDI_ANCHORS)) added++
                 }
             }
-            message.value = "已匯入 $added 個 EUDI 測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $added 個 EUDI 測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
@@ -490,13 +489,9 @@ class WalletModel(val platform: PlatformServices) {
 
     /** Imports the IACA certificates of the public Multipaz test issuer as TEST anchors. */
     fun importMultipazTestAnchors() = scope.launch {
-        if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
-            return@launch
-        }
         try {
             val n = addMultipazIssuerAnchors(MULTIPAZ_ISSUER)
-            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }

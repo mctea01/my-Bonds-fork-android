@@ -1,7 +1,9 @@
 package diw.wallet.core.trust
 
+import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
+import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.X509Cert
 import org.multipaz.storage.Storage
 import org.multipaz.trustmanagement.TrustManager
@@ -76,8 +78,8 @@ data class StoredAnchor(
 }
 
 /**
- * Holds one Multipaz [TrustManager] per (role, environment). Lookups only consult the environments
- * enabled by the current [EnvironmentPolicy], in the order PRODUCTION, USER, TEST.
+ * Holds one Multipaz [TrustManager] per (role, environment). Lookups consult the environments enabled by the
+ * current [EnvironmentPolicy] (TEST always, marked as test), in the order PRODUCTION, USER, SYSTEM, TEST.
  */
 class TrustRegistry(
     private val storage: Storage,
@@ -92,9 +94,22 @@ class TrustRegistry(
 
         /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
         val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
+
+        const val MAX_FETCHES = 3
+        const val MAX_CHAIN = 8
     }
 
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
+
+    /**
+     * Downloads what an AIA caIssuers URL publishes (a DER or PEM certificate, or PKCS#7 certs-only); null leaves
+     * chains as presented. Used by [decide] when a chain stops short of every anchor because the sender left out an
+     * intermediate certificate.
+     */
+    var issuerFetcher: (suspend (String) -> ByteArray?)? = null
+
+    /** Certificates fetched per URL in this run, so one missing intermediate is downloaded once. */
+    private val fetched = mutableMapOf<String, List<X509Cert>>()
 
     fun manager(role: TrustRole, environment: TrustEnvironment): TrustManager =
         managers.getOrPut(role to environment) {
@@ -120,13 +135,17 @@ class TrustRegistry(
     }
 
     /**
-     * Adds the [BuiltInAnchors] (Taiwan GPKI) as PRODUCTION identity anchors for their roles; anchors already stored
-     * are left as they are. Returns how many were added.
+     * Adds the [BuiltInAnchors] (Taiwan GPKI) as PRODUCTION identity anchors and the [BuiltInTestAnchors] (Multipaz
+     * issuers and readers) as TEST anchors for their roles; anchors already stored are left as they are. Returns how
+     * many were added.
      */
     suspend fun seedBuiltInAnchors(): Int {
         var added = 0
         for (a in BuiltInAnchors.all) for (role in a.roles) {
             if (addAnchor(role, TrustEnvironment.PRODUCTION, a.certificate, a.name, official = false, source = BuiltInAnchors.SOURCE, identity = true)) added++
+        }
+        for (a in BuiltInTestAnchors.all) for (role in a.roles) {
+            if (addAnchor(role, TrustEnvironment.TEST, a.certificate, a.name, official = false, source = BuiltInTestAnchors.SOURCE)) added++
         }
         return added
     }
@@ -189,9 +208,60 @@ class TrustRegistry(
         return null
     }
 
-    /** Evaluates a chain whose signature binding has already been verified by the caller. */
+    /**
+     * [chain] extended towards a root with the issuers its last certificate names in AIA caIssuers links (at most
+     * [MAX_FETCHES] downloads); the chain itself when nothing was added. An added certificate must carry the issuer
+     * name of the certificate below it, and its key identifier must match when both certificates state one; the
+     * signatures are checked when the longer chain is evaluated.
+     */
+    suspend fun complete(chain: List<X509Cert>): List<X509Cert> {
+        val fetcher = issuerFetcher ?: return chain
+        if (chain.isEmpty()) return chain
+        val out = chain.toMutableList()
+        var downloads = 0
+        while (out.size < MAX_CHAIN && downloads < MAX_FETCHES) {
+            val last = out.last()
+            if (last.subject == last.issuer) break
+            val urls = runCatching { DocCrypto.caIssuerUrls(last.encoded.toByteArray()) }.getOrDefault(emptyList())
+            var next: X509Cert? = null
+            for (url in urls) {
+                if (downloads >= MAX_FETCHES) break
+                val known = fetched[url]
+                val certs = known ?: run {
+                    downloads++
+                    val bytes = runCatching { fetcher(url) }.getOrNull()
+                    val list = bytes?.let { b -> DocCrypto.certificatesIn(b).mapNotNull { runCatching { X509Cert(ByteString(it)) }.getOrNull() } }.orEmpty()
+                    list.also { fetched[url] = it }
+                }
+                next = certs.firstOrNull { c -> c !in out && issues(c, last) }
+                if (next != null) break
+            }
+            out.add(next ?: break)
+        }
+        return out
+    }
+
+    private fun issues(issuer: X509Cert, child: X509Cert): Boolean {
+        if (issuer.subject != child.issuer) return false
+        val aki = runCatching { child.authorityKeyIdentifier }.getOrNull()
+        val ski = runCatching { issuer.subjectKeyIdentifier }.getOrNull()
+        return aki == null || ski == null || aki.contentEquals(ski)
+    }
+
+    /**
+     * Evaluates a chain whose signature binding has already been verified by the caller. A chain that leads to no
+     * anchor is completed from AIA caIssuers links ([complete]) and evaluated once more.
+     */
     suspend fun decide(role: TrustRole, chain: List<X509Cert>, atTime: Instant = Clock.System.now()): TrustDecision {
-        val m = match(role, chain, atTime)
+        var m = match(role, chain, atTime)
+        var completed = false
+        if (m == null && issuerFetcher != null) {
+            val longer = complete(chain)
+            if (longer.size > chain.size) {
+                m = match(role, longer, atTime)
+                completed = m != null
+            }
+        }
         if (m == null) {
             return TrustDecision(
                 tier = TrustTier.T3,
@@ -216,6 +286,7 @@ class TrustRegistry(
             official = m.official,
             anchorName = m.metadata.displayName,
             labels = labels,
+            reasons = if (completed) listOf("Intermediate certificates were fetched from the AIA caIssuers link") else emptyList(),
         )
     }
 }

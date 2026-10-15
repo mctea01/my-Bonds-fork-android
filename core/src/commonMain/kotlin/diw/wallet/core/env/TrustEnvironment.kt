@@ -22,9 +22,10 @@ enum class TrustEnvironment(val id: String) {
 }
 
 /**
- * Runtime environment policy. Test anchors are only consulted when [testEnvironmentEnabled] is set
- * (developer settings). [allowInsecureLoopbackHttp] permits http://localhost style endpoints and is only
- * honoured together with the test environment.
+ * Runtime environment policy. Test anchors are always consulted: a match is marked TEST (T3, never official), so
+ * trusting them needs no switch. [testEnvironmentEnabled] only enables the custom test server addresses (the DIW
+ * test server, a TWDIW front end other than production, a remote wallet provider); [allowInsecureLoopbackHttp]
+ * permits http://localhost style endpoints and is only honoured together with it.
  */
 data class EnvironmentPolicy(
     val testEnvironmentEnabled: Boolean = false,
@@ -41,6 +42,6 @@ data class EnvironmentPolicy(
         add(TrustEnvironment.PRODUCTION)
         if (userAnchorsEnabled) add(TrustEnvironment.USER)
         if (systemStoreEnabled || mainlandChinaRootsEnabled) add(TrustEnvironment.SYSTEM)
-        if (testEnvironmentEnabled) add(TrustEnvironment.TEST)
+        add(TrustEnvironment.TEST)
     }
 }

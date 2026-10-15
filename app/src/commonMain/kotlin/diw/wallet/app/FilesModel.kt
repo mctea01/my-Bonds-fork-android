@@ -498,7 +498,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Claims a derived credential of [f] can carry, and whether the PDF's content stays locked without its password. */
-    class DeriveFields(val claims: List<DerivedClaim>, val locked: Boolean)
+    class DeriveFields(val claims: List<DerivedClaim>, val locked: Boolean, val notice: String? = null)
 
     /**
      * The claims of a derived credential of [f], read from the document rather than typed: its report, its source,
@@ -519,7 +519,8 @@ class FilesModel(private val model: WalletModel) {
             DocumentFormat.XML -> xml = bytes.decodeToString().removePrefix("\uFEFF").takeIf { OfficialDocuments.parse(bytes) != null }
             else -> {}
         }
-        DeriveFields(DerivedCredentials.suggestedClaims(report, f.name, f.source, text, xml), locked)
+        val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints())
+        DeriveFields(suggested.claims, locked, suggested.notice)
     }
 
     private suspend fun makePreview(f: StoredFile, password: String?): FilePreview {

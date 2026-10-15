@@ -129,7 +129,7 @@ fun SettingsScreen(model: WalletModel) {
         OutlinedTextField(
             value = twdiwFrontend,
             onValueChange = { twdiwFrontend = it.trim() },
-            label = { Text("數位憑證皮夾平台位址（僅測試環境）") },
+            label = { Text("數位憑證皮夾平台位址（需使用自訂測試伺服器）") },
             supportingText = { Text("正式環境固定使用 ${TwdiwPlatform.PRODUCTION_FRONTEND}；UAT 為 ${TwdiwPlatform.UAT_FRONTEND}") },
             singleLine = true,
             enabled = s.testEnvironment,
@@ -153,8 +153,10 @@ fun SettingsScreen(model: WalletModel) {
             }) { Text("還原預設") }
         }
         HorizontalDivider()
-        SectionTitle("測試環境")
-        Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->
+        SectionTitle("自訂測試伺服器")
+        Text("測試用的信任錨點（Multipaz 內建發行端與查驗端、EUDI 參考實作、匯入的測試錨點）一律可用，驗證結果標示為測試且不具效力；這個開關只管理下方自訂的測試伺服器位址。",
+            style = MaterialTheme.typography.bodySmall)
+        Toggle("使用自訂測試伺服器", "啟用測試伺服器網址、測試錢包提供者與非正式的數位憑證皮夾平台位址", s.testEnvironment) { v ->
             model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }
         }
         Toggle("允許本機與區網 HTTP", "僅限 localhost、模擬器主機與私有網段（10.x、172.16 至 172.31、192.168.x），用於本地測試伺服器；正式版 APK 只允許前兩者", s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
@@ -175,10 +177,10 @@ fun SettingsScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.updateSettings { it.copy(testServerUrl = url) } }, enabled = s.testEnvironment && url != s.testServerUrl) {
                 Text("儲存網址")
             }
-            OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("匯入測試信任錨點") }
+            OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("從測試伺服器匯入錨點") }
         }
-        OutlinedButton(onClick = { model.importEudiTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 EUDI 參考實作測試錨點") }
-        OutlinedButton(onClick = { model.importMultipazTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 Multipaz 測試發行端錨點") }
+        OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text("匯入 EUDI 參考實作測試錨點") }
+        OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
         HorizontalDivider()
         SectionTitle("關於")
         Text("平台：${model.platform.platformName}", style = MaterialTheme.typography.bodySmall)

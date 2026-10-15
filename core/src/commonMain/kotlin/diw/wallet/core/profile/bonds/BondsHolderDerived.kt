@@ -156,6 +156,44 @@ object MyDataText {
         return null
     }
 
+    private fun isIdeograph(c: Char) = c in '\u3400'..'\u9FFF' || c in '\uF900'..'\uFAFF'
+
+    /**
+     * The value of the field named exactly [label] on [line]: the label must start the line or follow a character
+     * that is not a CJK ideograph, and only spaces may stand between it and the colon. "姓名" therefore never reads
+     * "姓名羅馬拼音：" or "父姓名：". Null when the line has no such field or its value is empty.
+     */
+    fun labelled(label: String, line: String): String? {
+        var from = 0
+        while (true) {
+            val at = line.indexOf(label, from)
+            if (at < 0) return null
+            from = at + 1
+            if (at > 0 && isIdeograph(line[at - 1])) continue
+            val rest = line.substring(at + label.length)
+            val colon = rest.indexOfFirst { isColon(it) }
+            if (colon < 0 || rest.substring(0, colon).isNotBlank()) continue
+            return value(label, line.substring(at))
+        }
+    }
+
+    private val PAGE_NUMBER = Regex("第\\s*\\d+\\s*(/\\s*\\d+\\s*)?頁|共\\s*\\d+\\s*頁|(?i)page\\s*\\d+\\s*(of|/)\\s*\\d+")
+    private val CLOCK = Regex("\\d{1,4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}:\\d{2}(:\\d{2})?")
+
+    /**
+     * A running header or footer line: a page number ("第 1/4頁", "共 4 頁"), alone or with the print time
+     * ("2026-10-15 21:23:08 第 1/4頁"), and no field of its own.
+     */
+    fun isPageFurniture(line: String): Boolean {
+        val t = halfWidth(line).trim()
+        if (t.isEmpty() || t.length > 60 || !PAGE_NUMBER.containsMatchIn(t)) return false
+        val rest = PAGE_NUMBER.replace(CLOCK.replace(t, ""), "")
+        return rest.none { isColon(it) }
+    }
+
+    /** [text] without its running headers and footers. */
+    fun withoutPageFurniture(text: String): String = text.lines().filterNot { isPageFurniture(it) }.joinToString("\n")
+
     /** "1,234,567" / "NT$1,234" / "1234567 元" to "1234567"; null without a digit. */
     fun digits(raw: String): String? {
         val d = raw.filter { it in '0'..'9' }
@@ -292,7 +330,8 @@ object MyDataParsers {
      * is picked by ID number or name from [holders], so a parent's or child's date never answers for the holder.
      * With several members and no holder among them the record is refused: it may not be the holder's household.
      */
-    fun household(text: String, holders: List<HolderHint> = emptyList()): ParsedSource {
+    fun household(source: String, holders: List<HolderHint> = emptyList()): ParsedSource {
+        val text = MyDataText.withoutPageFurniture(source)
         if (listOf("戶籍", "戶長", "戶號").none { it in text }) throw HolderDerivedException("這份文件不是戶籍資料")
         val raw = MyDataText.value("戶籍地址", text) ?: MyDataText.value("住址", text) ?: throw HolderDerivedException("戶籍資料讀不到戶籍地址")
         val address = MyDataText.normalised(raw)
@@ -309,8 +348,7 @@ object MyDataParsers {
                 dates.singleOrNull()
             }
             else -> {
-                val holder = members.filter { m -> holders.any { it.matches(m) } }.singleOrNull()
-                    ?: members.singleOrNull()?.takeIf { holders.isEmpty() }
+                val holder = holderOf(members, holders)
                     ?: throw HolderDerivedException(
                         if (holders.isEmpty()) "戶籍資料有 ${members.size} 位住戶，需要先製作身分證卡或在設定填入身分證統一編號，才能分辨哪一位是持有人"
                         else "戶籍資料的 ${members.size} 位住戶中找不到持有人（以身分證統一編號與姓名比對）"
@@ -326,35 +364,73 @@ object MyDataParsers {
     /** One person on a household record. */
     data class HouseholdMember(val name: String?, val idNumber: String?, val since: String?)
 
+    /** One person's block of a household record in the labelled layout: the person and the lines of the block. */
+    data class HouseholdBlock(val member: HouseholdMember, val lines: List<String>)
+
+    /** A household record split into the household's own lines (before the first person) and one block per person. */
+    data class HouseholdLayout(val header: List<String>, val blocks: List<HouseholdBlock>)
+
+    /** Labels that open a person's block when they stand on the line just before its 姓名 field. */
+    private val BLOCK_LEADS = listOf("稱謂", "與戶長關係", "序號")
+
     /**
-     * The people on a household record, in either layout: labelled blocks (each starting at its 姓名 line, with
-     * 統一編號 and 遷入日期 below), or a table whose header names the columns and whose rows carry an ID number.
+     * The labelled layout: each person's block starts at its own 姓名 field (exactly that label, so 姓名羅馬拼音
+     * and 父姓名 do not start one), or at the 稱謂 line right above it, and runs to the next block. Running headers
+     * and footers are dropped first, and a line repeating the household part (the header printed again on each page)
+     * is left out of the blocks.
      */
-    fun householdMembers(text: String): List<HouseholdMember> {
-        val lines = text.lines().map { MyDataText.halfWidth(it) }
-        tableMembers(lines).takeIf { it.isNotEmpty() }?.let { return it }
-        val members = ArrayList<HouseholdMember>()
+    fun householdLayout(source: String): HouseholdLayout {
+        val lines = MyDataText.withoutPageFurniture(source).lines()
+        val starts = ArrayList<Int>()
+        lines.forEachIndexed { i, line ->
+            if (NAME_LABELS.none { MyDataText.labelled(it, MyDataText.halfWidth(line)) != null }) return@forEachIndexed
+            val lead = i > 0 && BLOCK_LEADS.any { MyDataText.labelled(it, MyDataText.halfWidth(lines[i - 1])) != null } &&
+                NAME_LABELS.none { MyDataText.labelled(it, MyDataText.halfWidth(lines[i - 1])) != null }
+            val start = if (lead) i - 1 else i
+            if (starts.lastOrNull() != start) starts += start
+        }
+        if (starts.isEmpty()) return HouseholdLayout(lines, emptyList())
+        val header = lines.subList(0, starts.first())
+        val repeated = header.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        val blocks = starts.mapIndexed { n, start ->
+            val end = starts.getOrNull(n + 1) ?: lines.size
+            val block = lines.subList(start, end).filter { it.trim() !in repeated }
+            HouseholdBlock(member(block), block)
+        }.filter { it.member.name != null || it.member.idNumber != null }
+        return HouseholdLayout(header, blocks)
+    }
+
+    private fun member(block: List<String>): HouseholdMember {
         var name: String? = null
         var id: String? = null
         var since: String? = null
-        var open = false
-        fun close() {
-            if (open && (name != null || id != null)) members += HouseholdMember(name, id, since)
-            name = null; id = null; since = null; open = false
+        for (raw in block) {
+            val line = MyDataText.halfWidth(raw)
+            if (name == null) name = NAME_LABELS.firstNotNullOfOrNull { MyDataText.labelled(it, line) }?.trim()
+            if (id == null) id = ID_LABELS.firstNotNullOfOrNull { MyDataText.labelled(it, line) }?.let { ID_NUMBER.find(it.uppercase())?.value }
+            if (since == null) since = SINCE_LABELS.firstNotNullOfOrNull { MyDataText.labelled(it, line)?.let { v -> MyDataText.isoDate(v) } }
         }
-        for (line in lines) {
-            val n = NAME_LABELS.firstNotNullOfOrNull { MyDataText.value(it, line) }
-            if (n != null) {
-                close()
-                open = true
-                name = n.trim()
-            }
-            if (!open) continue
-            if (id == null) id = ID_LABELS.firstNotNullOfOrNull { MyDataText.value(it, line) }?.let { ID_NUMBER.find(it.uppercase())?.value }
-            if (since == null) since = SINCE_LABELS.firstNotNullOfOrNull { MyDataText.value(it, line)?.let { v -> MyDataText.isoDate(v) } }
-        }
-        close()
-        return members
+        return HouseholdMember(name, id, since)
+    }
+
+    /**
+     * The holder among [members]: the one member [holders] identify; the only member when there are no hints; null
+     * when the hints match none or several, or several members cannot be told apart.
+     */
+    fun <T> holderOf(members: List<T>, holders: List<HolderHint>, person: (T) -> HouseholdMember): T? =
+        members.filter { m -> holders.any { it.matches(person(m)) } }.singleOrNull()
+            ?: members.singleOrNull()?.takeIf { holders.isEmpty() }
+
+    fun holderOf(members: List<HouseholdMember>, holders: List<HolderHint>): HouseholdMember? = holderOf(members, holders) { it }
+
+    /**
+     * The people on a household record, in either layout: labelled blocks ([householdLayout]), or a table whose
+     * header names the columns and whose rows carry an ID number.
+     */
+    fun householdMembers(text: String): List<HouseholdMember> {
+        val lines = MyDataText.withoutPageFurniture(text).lines().map { MyDataText.halfWidth(it) }
+        tableMembers(lines).takeIf { it.isNotEmpty() }?.let { return it }
+        return householdLayout(text).blocks.map { it.member }
     }
 
     private fun tableMembers(lines: List<String>): List<HouseholdMember> {

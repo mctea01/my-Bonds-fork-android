@@ -3,6 +3,10 @@ package diw.wallet.core.document.derived
 import diw.wallet.core.document.OpenCertInfo
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
+import diw.wallet.core.profile.bonds.HolderDerivedTypes
+import diw.wallet.core.profile.bonds.HolderHint
+import diw.wallet.core.profile.bonds.MyDataParsers
+import diw.wallet.core.profile.bonds.MyDataText
 
 /**
  * Claims read from a document's content, so that a derived credential carries what the document says instead of
@@ -138,7 +142,8 @@ object DocumentFields {
      */
     fun fromText(text: String): List<DerivedClaim> {
         val out = ArrayList<DerivedClaim>()
-        val lines = text.lines()
+        // Running headers and footers ("2026-10-15 21:23:08 第 1/4頁") are no field's value.
+        val lines = text.lines().filterNot { MyDataText.isPageFurniture(it) }
         lines.forEachIndexed { n, line ->
             numberLine.matchEntire(line.trim())?.let { m -> out.add(DerivedClaim("documentNumber", m.groupValues[1], "文件編號")) }
             val matches = labels(line)
@@ -156,6 +161,37 @@ object DocumentFields {
         val joined = lines.joinToString("") { it.trim() }
         for ((name, re) in prose) re.find(joined)?.let { m -> value(m.groupValues[1])?.let { out.add(DerivedClaim(name, it, name)) } }
         return unique(out)
+    }
+
+    /** Claims read from a document's content, and a note for the holder when some could not be read. */
+    class ContentFields(val claims: List<DerivedClaim>, val notice: String? = null)
+
+    /**
+     * A household registration record (戶籍資料, 戶籍謄本) lists every person of the household in turn, each with the
+     * same labels, so reading it as one list of "label: value" pairs would give the first person's values. Here the
+     * record is split per person ([MyDataParsers.householdLayout]) and the holder's own block is read, picked by
+     * [holders] (the national ID card, the ID number saved for MyData); the household's part (戶號, 戶長, address)
+     * is read from the lines before the first person. Null when [text] is not a household record in the labelled
+     * layout.
+     */
+    fun fromHousehold(text: String, holders: List<HolderHint>): ContentFields? {
+        if (MyDataParsers.recognize(text) != HolderDerivedTypes.HOUSEHOLD) return null
+        val layout = MyDataParsers.householdLayout(text)
+        if (layout.blocks.isEmpty()) return null
+        val household = fromText(layout.header.joinToString("\n"))
+        val count = DerivedClaim("householdMemberCount", layout.blocks.size.toString(), "戶內人數")
+        val holder = MyDataParsers.holderOf(layout.blocks, holders) { it.member }
+        if (holder == null) {
+            val notice = when {
+                holders.isEmpty() -> "這份戶籍資料有 ${layout.blocks.size} 位住戶。先製作身分證卡，或在設定填入身分證統一編號，才能分辨哪一位是你；目前只列出整戶的欄位。"
+                else -> "這份戶籍資料的 ${layout.blocks.size} 位住戶中找不到你（以身分證卡或設定的身分證統一編號與姓名比對）；目前只列出整戶的欄位。"
+            }
+            return ContentFields(unique(household + count), notice)
+        }
+        val own = fromText(holder.lines.joinToString("\n"))
+        val position = layout.blocks.indexOf(holder) + 1
+        val note = if (layout.blocks.size > 1) "這份戶籍資料有 ${layout.blocks.size} 位住戶，以下是第 $position 位（依身分證卡或設定的身分證統一編號比對出的你）的欄位。" else null
+        return ContentFields(unique(own + household + count), note)
     }
 
     private const val DATE = "(\\d{4}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日|民國\\s*\\d{2,3}\\s*年\\s*\\d{1,2}\\s*月\\s*\\d{1,2}\\s*日)"

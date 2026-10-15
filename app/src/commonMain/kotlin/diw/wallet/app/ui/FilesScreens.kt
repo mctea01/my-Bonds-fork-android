@@ -886,6 +886,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 Button(onClick = { tried = password }, enabled = password.isNotBlank()) { Text("讀取") }
             }
         }
+        fields?.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         suggested.forEach { c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = c.name in chosen, onCheckedChange = { chosen = if (it) chosen + c.name else chosen - c.name })

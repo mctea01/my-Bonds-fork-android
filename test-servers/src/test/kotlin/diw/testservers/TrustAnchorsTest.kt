@@ -5,6 +5,7 @@ import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.profile.bonds.TwPkiAnchors
 import diw.wallet.core.trust.BuiltInAnchors
 import diw.wallet.core.trust.BuiltInPublicRoots
+import diw.wallet.core.trust.BuiltInTestAnchors
 import diw.wallet.core.trust.Pkix
 import diw.wallet.core.trust.SystemTrustStore
 import diw.wallet.core.trust.TrustLabel
@@ -14,9 +15,13 @@ import diw.wallet.core.trust.TrustTier
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.AccessDescription
+import org.bouncycastle.asn1.x509.AuthorityInformationAccess
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
 import org.bouncycastle.asn1.x509.KeyUsage
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
@@ -198,5 +203,80 @@ class TrustAnchorsTest {
         assertNull(Pkix.anchorOf(listOf(leaf), listOf(impostor), now))
         // Not an anchor of an RSA or ECC store either.
         assertNull(Pkix.anchorOf(listOf(leaf), BuiltInPublicRoots.services.map { it.certificate }, now))
+    }
+
+    /** The Multipaz test app's issuers and readers are built in as TEST anchors: T3, marked as test, never official. */
+    @Test
+    fun multipazTestAnchorsAreBuiltIn() = runBlocking<Unit> {
+        val now = Clock.System.now()
+        assertEquals(9, BuiltInTestAnchors.all.size)
+        for (a in BuiltInTestAnchors.all) {
+            val c = a.certificate
+            assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${a.name} is not valid now")
+            assertEquals(c.subject, c.issuer, "${a.name} is a root")
+        }
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.seedBuiltInAnchors()
+        val test = registry.allAnchors().filter { it.environment == TrustEnvironment.TEST }
+        assertEquals(setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER), test.map { it.role }.toSet())
+        assertTrue(BuiltInTestAnchors.all.all { a -> test.any { it.certificate == a.certificate } })
+        assertTrue(test.none { it.official })
+        val reader = BuiltInTestAnchors.all.first { it.name == "Multipaz Identity Reader CA" }.certificate
+        assertTrue(test.none { it.role == TrustRole.ISSUER && it.certificate == reader }, "a reader CA never anchors an issuer")
+
+        // No switch is needed: the default policy consults test anchors and marks the result.
+        val pki = TestPki.create()
+        registry.addAnchor(TrustRole.VERIFIER, TrustEnvironment.TEST, pki.readerRootCert, "Test Reader Root", official = false, source = "test")
+        val d = registry.decide(TrustRole.VERIFIER, pki.readerKey("verifier.example").certChain.certificates)
+        assertEquals(TrustTier.T3, d.tier)
+        assertEquals(TrustEnvironment.TEST, d.environment)
+        assertTrue(TrustLabel.TEST_ANCHOR in d.labels && !d.official)
+    }
+
+    private fun ecCert(subject: String, issuer: String, key: KeyPair, signer: PrivateKey, ca: Boolean, aia: String? = null): X509Cert {
+        val now = System.currentTimeMillis()
+        val b = JcaX509v3CertificateBuilder(
+            X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now - 86_400_000L), Date(now + 365L * 86_400_000L), X500Name(subject), key.public,
+        )
+            .addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
+            .addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature))
+            .addExtension(Extension.subjectKeyIdentifier, false, JcaX509ExtensionUtils().createSubjectKeyIdentifier(key.public))
+        if (aia != null) {
+            b.addExtension(Extension.authorityInfoAccess, false, AuthorityInformationAccess(
+                AccessDescription(AccessDescription.id_ad_caIssuers, GeneralName(GeneralName.uniformResourceIdentifier, aia)),
+            ))
+        }
+        return X509Cert(ByteString(b.build(JcaContentSignerBuilder("SHA256withECDSA").build(signer)).encoded))
+    }
+
+    /** A chain sent without its intermediate certificate is completed from the leaf's AIA caIssuers link. */
+    @Test
+    fun aiaCompletesMissingIntermediate() = runBlocking<Unit> {
+        val gen = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+        val rootKey = gen.generateKeyPair()
+        val midKey = gen.generateKeyPair()
+        val leafKey = gen.generateKeyPair()
+        val root = ecCert("CN=AIA Test Root,C=TW", "CN=AIA Test Root,C=TW", rootKey, rootKey.private, ca = true)
+        val mid = ecCert("CN=AIA Test CA,C=TW", "CN=AIA Test Root,C=TW", midKey, rootKey.private, ca = true)
+        val leaf = ecCert("CN=signer.example,C=TW", "CN=AIA Test CA,C=TW", leafKey, midKey.private, ca = false, aia = "http://aia.example/ca.cer")
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, root, "AIA Test Root", official = false, source = "test")
+        assertNull(registry.match(TrustRole.DOCUMENT, listOf(leaf)), "the leaf alone does not reach the root")
+        assertEquals(TrustLabel.UNKNOWN_ANCHOR, registry.decide(TrustRole.DOCUMENT, listOf(leaf)).labels.single(), "no fetcher, no completion")
+
+        val asked = ArrayList<String>()
+        registry.issuerFetcher = { url -> asked.add(url); if (url == "http://aia.example/ca.cer") mid.encoded.toByteArray() else null }
+        assertEquals(listOf(leaf, mid), registry.complete(listOf(leaf)))
+        val d = registry.decide(TrustRole.DOCUMENT, listOf(leaf))
+        assertEquals(TrustEnvironment.USER, d.environment)
+        assertEquals("AIA Test Root", d.anchorName)
+        assertTrue(d.reasons.any { "AIA" in it })
+        assertEquals(listOf("http://aia.example/ca.cer"), asked, "a URL is downloaded once")
+
+        // A certificate from the link that did not issue the leaf is not added.
+        val other = ecCert("CN=Other CA,C=TW", "CN=AIA Test Root,C=TW", gen.generateKeyPair(), rootKey.private, ca = true)
+        val fresh = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        fresh.issuerFetcher = { other.encoded.toByteArray() }
+        assertEquals(listOf(leaf), fresh.complete(listOf(leaf)))
     }
 }

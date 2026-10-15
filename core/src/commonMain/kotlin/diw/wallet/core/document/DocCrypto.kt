@@ -24,6 +24,12 @@ expect object DocCrypto {
      * the 32 byte [hash]; null when no key recovers.
      */
     fun ecRecoverAddress(hash: ByteArray, signature: ByteArray): ByteArray?
+
+    /** The DER certificates in [data]: one DER or PEM certificate, several PEM certificates, or PKCS#7 certs-only. */
+    fun certificatesIn(data: ByteArray): List<ByteArray>
+
+    /** The http(s) caIssuers URLs of the Authority Information Access extension of the DER certificate [der]. */
+    fun caIssuerUrls(der: ByteArray): List<String>
 }
 
 /** Pure-Kotlin helpers on top of [DocCrypto]. */

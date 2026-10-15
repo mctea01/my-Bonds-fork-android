@@ -8,6 +8,7 @@ import diw.wallet.core.document.TimestampInfo
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.sign.SigningException
 import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.w3c.SdJwtDisclosures
 import kotlinx.serialization.json.JsonArray
@@ -73,18 +74,39 @@ object DerivedCredentials {
      * what its content says ([text], the text layer of a PDF; [xml], an official document; OpenCerts data in the
      * report). Nothing here is typed by the holder.
      */
-    fun suggestedClaims(report: DocumentReport, fileName: String?, source: String?, text: String? = null, xml: String? = null): List<DerivedClaim> {
+    fun suggestedClaims(report: DocumentReport, fileName: String?, source: String?, text: String? = null, xml: String? = null): List<DerivedClaim> =
+        suggested(report, fileName, source, text, xml).claims
+
+    /**
+     * [suggestedClaims] with a note for the holder. A household record is read per person and only the holder's
+     * own block (picked by [holders]) gives personal claims.
+     */
+    fun suggested(
+        report: DocumentReport,
+        fileName: String?,
+        source: String?,
+        text: String? = null,
+        xml: String? = null,
+        holders: List<HolderHint> = emptyList(),
+    ): DocumentFields.ContentFields {
         val base = baseClaims(report, fileName, source, text)
+        var notice: String? = null
         val parsed = buildList {
             report.openCert?.let { addAll(DocumentFields.fromOpenCert(it)) }
             xml?.let {
                 addAll(DocumentFields.fromOfficialLetter(it))
                 OfficialDocuments.parse(it.encodeToByteArray())?.let { doc -> addAll(DocumentFields.fromOfficial(doc)) }
             }
-            text?.let { addAll(DocumentFields.fromText(it)) }
+            text?.let { t ->
+                val household = DocumentFields.fromHousehold(t, holders)
+                if (household != null) {
+                    notice = household.notice
+                    addAll(household.claims)
+                } else addAll(DocumentFields.fromText(t))
+            }
         }
         val names = base.map { it.name }.toMutableSet()
-        return base + parsed.filter { names.add(it.name) }.take(DocumentFields.MAX_FIELDS)
+        return DocumentFields.ContentFields(base + parsed.filter { names.add(it.name) }.take(DocumentFields.MAX_FIELDS), notice)
     }
 
     /** Readable name of [claim]. */

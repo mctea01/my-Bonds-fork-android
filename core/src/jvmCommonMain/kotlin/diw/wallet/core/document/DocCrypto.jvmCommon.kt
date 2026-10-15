@@ -78,4 +78,8 @@ actual object DocCrypto {
             keccak256(pub).copyOfRange(12, 32)
         }.getOrNull()
     }
+
+    actual fun certificatesIn(data: ByteArray): List<ByteArray> = Bc.certificates(data)
+
+    actual fun caIssuerUrls(der: ByteArray): List<String> = Bc.holder(der)?.let { Bc.caIssuers(it) }.orEmpty()
 }

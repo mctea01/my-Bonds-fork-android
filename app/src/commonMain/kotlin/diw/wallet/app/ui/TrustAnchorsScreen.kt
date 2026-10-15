@@ -55,7 +55,7 @@ private fun roleName(r: TrustRole): String = when (r) {
 private fun environmentTitle(e: TrustEnvironment): String = when (e) {
     TrustEnvironment.PRODUCTION -> "正式錨點（官方 T1、政府憑證 T2）"
     TrustEnvironment.USER -> "使用者匯入（T3，非官方）"
-    TrustEnvironment.TEST -> "測試錨點（T3，只在測試環境）"
+    TrustEnvironment.TEST -> "測試錨點（T3，結果標示為測試）"
     TrustEnvironment.SYSTEM -> "系統憑證庫（T3，非官方）"
 }
 
@@ -103,16 +103,13 @@ fun TrustAnchorsScreen(model: WalletModel) {
             val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }
             TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.forEach { env ->
                 val inEnv = groups.filter { it.environment == env }
-                if (env == TrustEnvironment.TEST && !settings.testEnvironment && inEnv.isNotEmpty()) {
-                    Text("測試環境未開啟，測試錨點目前不使用。", style = MaterialTheme.typography.bodySmall)
-                }
                 // Long lists start folded; the user's own imports stay open so a new import is seen at once.
                 CollapsibleSection(environmentTitle(env), inEnv.size, initiallyExpanded = env == TrustEnvironment.USER || inEnv.size <= 3, key = "anchors-$env") {
                     if (inEnv.isEmpty()) Text(
                         when (env) {
                             TrustEnvironment.PRODUCTION -> "尚未載入內建錨點。"
                             TrustEnvironment.USER -> "尚未匯入。可在下方貼上其他國家、組織或企業的根憑證。"
-                            TrustEnvironment.TEST -> "尚未匯入。測試錨點在「設定 > 測試環境」匯入。"
+                            TrustEnvironment.TEST -> "尚未載入。Multipaz 內建的測試發行端與查驗端在啟動時載入，其他測試錨點在「設定 > 自訂測試伺服器」匯入。"
                             TrustEnvironment.SYSTEM -> ""
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -235,7 +232,7 @@ private fun ImportAnchorSection(model: WalletModel) {
     var roles by remember { mutableStateOf(setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST)) }
     HorizontalDivider()
     SectionTitle("匯入根憑證")
-    Text("貼上 PEM 格式的憑證（可一次多張），或提供 PEM 的 https 網址。匯入的錨點屬於使用者自訂，不需開啟測試環境。", style = MaterialTheme.typography.bodySmall)
+    Text("貼上 PEM 格式的憑證（可一次多張），或提供 PEM 的 https 網址。匯入的錨點屬於使用者自訂。", style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(
         value = pem,
         onValueChange = { pem = it },
