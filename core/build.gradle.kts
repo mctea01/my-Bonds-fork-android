@@ -34,6 +34,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
+            implementation(libs.xerces.get().toString()) { exclude(group = "xml-apis") }
         }
         jvmMain.dependencies {
             implementation(libs.ktor.client.java)

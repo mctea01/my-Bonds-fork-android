@@ -5,6 +5,12 @@
 -keep class org.bouncycastle.** { *; }
 -dontwarn org.bouncycastle.**
 
+# Xerces DOM for XML with non-ASCII names; the factory is created by reflection and loads its parts by name.
+-keep class org.apache.xerces.** { *; }
+-dontwarn org.apache.xerces.**
+-dontwarn org.w3c.dom.**
+-dontwarn javax.xml.**
+
 # Multipaz: CBOR/COSE types, secure areas and Android Keystore glue.
 -keep class org.multipaz.** { *; }
 -dontwarn org.multipaz.**

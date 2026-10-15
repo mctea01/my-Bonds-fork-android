@@ -10,8 +10,20 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /** Namespace-aware XML parsing that never loads external DTDs or entities (also on Android). */
 internal object XmlParsing {
+    /**
+     * Android's bundled DOM only accepts ASCII names, so a document whose root element or DOCTYPE is Chinese (every
+     * official document "函" or exchange form) fails there; Android uses the Xerces factory shipped with the app instead.
+     */
+    private fun factory(): DocumentBuilderFactory {
+        val android = runCatching { Class.forName("android.os.Build") }.isSuccess
+        if (android) runCatching {
+            return Class.forName("org.apache.xerces.jaxp.DocumentBuilderFactoryImpl").getDeclaredConstructor().newInstance() as DocumentBuilderFactory
+        }
+        return DocumentBuilderFactory.newInstance()
+    }
+
     fun parse(bytes: ByteArray): Document {
-        val f = DocumentBuilderFactory.newInstance()
+        val f = factory()
         f.isNamespaceAware = true
         f.isExpandEntityReferences = true
         f.isCoalescing = false

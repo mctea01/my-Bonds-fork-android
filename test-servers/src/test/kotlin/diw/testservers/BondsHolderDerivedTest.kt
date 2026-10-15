@@ -280,6 +280,41 @@ class BondsHolderDerivedTest {
         assertTrue("被保險人投保資料" in e.message!!, e.message)
     }
 
+    /** The tax office summary puts 給付總額, 扣繳稅額 and 所得額 totals on shared lines; only 給付總額 answers the ceiling. */
+    @Test
+    fun incomeSummaryLineUsesTheGrossTotal() {
+        for (text in listOf(INCOME_SUMMARY, INCOME_SUMMARY.replace("(收入)", "（收入）").replace("2,134", "２，１３４"))) {
+            val parsed = MyDataParsers.income(text)
+            assertEquals("2134", parsed.fields[MyDataParsers.INCOME_TOTAL], text)
+            assertEquals("2025", parsed.fields[MyDataParsers.TAX_YEAR])
+            val answers = BondsHolderDerived.derive(
+                HolderDerivedTypes.income, parsed, DerivedRule(DerivedRule.INCOME, mapOf("tax_year" to "2025", "ceiling_twd" to "1000")),
+            )
+            assertEquals("false", answers["income_within_ceiling"])
+            val higher = BondsHolderDerived.derive(
+                HolderDerivedTypes.income, parsed, DerivedRule(DerivedRule.INCOME, mapOf("tax_year" to "2025", "ceiling_twd" to "3000")),
+            )
+            assertEquals("true", higher["income_within_ceiling"])
+        }
+    }
+
+    /** Without a 遷入日期 field the latest move-in in the person's 記事 is the registration date; none at all refuses. */
+    @Test
+    fun householdDateFromNotes() {
+        assertEquals("2023-03-05", MyDataParsers.sinceFromNotes("記事：民國100年01月02日出生登記。民國112年03月05日由新北市板橋區\n遷入登記。"))
+        assertEquals("2011-01-02", MyDataParsers.sinceFromNotes("記事：民國100年01月02日出生登記。"))
+        val now = Instant.parse("2026-10-15T00:00:00Z")
+        val rule = DerivedRule(DerivedRule.HOUSEHOLD, mapOf("city" to "臺北市", "min_months" to "6"))
+        val parsed = MyDataParsers.household(HOUSEHOLD_NOTES, listOf(HolderHint("B223456789", null)))
+        assertEquals("2026-08-01", parsed.fields[MyDataParsers.REGISTERED_SINCE])
+        assertEquals("false", BondsHolderDerived.derive(HolderDerivedTypes.household, parsed, rule, now)["registered_at_least_months"])
+        val undated = MyDataParsers.household(
+            HOUSEHOLD_NOTES.lines().filterNot { "民國95年" in it || "遷入登記" in it }.joinToString("\n"), listOf(HolderHint("B223456789", null)),
+        )
+        val e = assertFailsWith<HolderDerivedException> { BondsHolderDerived.derive(HolderDerivedTypes.household, undated, rule, now) }
+        assertTrue("遷入日期" in e.message!!, e.message)
+    }
+
     @Test
     fun textHelpers() {
         assertEquals("2024-02-01", MyDataText.isoDate("113/02/01"))
@@ -303,6 +338,31 @@ class BondsHolderDerivedTest {
             扣繳單位：測試公司甲  給付總額：300,000
             扣繳單位：測試公司乙  給付總額：150,000
             合計　　450,000
+        """.trimIndent()
+
+        val INCOME_SUMMARY = """
+            個人所得資料
+            所得年度：114
+            扣繳單位名稱： 測試銀行股份有限公司
+            所得筆數： 共 1 筆 給付總額(收入)合計： 2,134 扣繳稅額合計： 0
+            所得額合計： 2,134稽可扣抵稅額合計： 0
+            不含分離課稅資料 給付總額(收入)合計： 2,134 扣繳稅額合計： 0
+            以下空白
+        """.trimIndent()
+
+        val HOUSEHOLD_NOTES = """
+            現戶全戶戶籍資料
+            戶號：A0000001
+            戶籍地址：台北市中正區測試里測試路1號
+            稱謂：戶長
+            姓名：測試戶長
+            統一編號：A123456789
+            記事：民國90年05月01日出生登記。
+            稱謂：子
+            姓名：測試持有人
+            統一編號：B223456789
+            記事：民國95年02月03日出生登記。民國115年08月01日由新北市板橋區
+            遷入登記。
         """.trimIndent()
 
         val LABOR = """

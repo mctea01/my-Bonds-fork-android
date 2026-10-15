@@ -288,10 +288,12 @@ object MyDataParsers {
             ?: Regex("(\\d{2,4})\\s*年度").find(text)?.let { MyDataText.gregorianYear(it.groupValues[1]) }
             ?: throw HolderDerivedException("所得資料讀不到所得年度")
         val lines = text.lines()
-        val totalLine = lines.firstOrNull { "合計" in it }
-        val total = totalLine?.let { trailingAmount(it) } ?: lines.filter { "給付總額" in it }
-            .mapNotNull { MyDataText.value("給付總額", it)?.let { v -> MyDataText.digits(v)?.toLongOrNull() } }
-            .takeIf { it.isNotEmpty() }?.sum()
+        // The summary puts several totals on one line (給付總額合計, 扣繳稅額合計, 所得額合計); only the amount right after
+        // 給付總額(收入)合計 counts. The first such total includes separately taxed income, as the list prints it first.
+        val total = GROSS_TOTAL.find(MyDataText.halfWidth(text))?.let { MyDataText.digits(it.groupValues[1])?.toLongOrNull() }
+            ?: lines.filter { "給付總額" in it && "合計" !in it }
+                .mapNotNull { MyDataText.value("給付總額", it)?.let { v -> MyDataText.digits(v)?.toLongOrNull() } }
+                .takeIf { it.isNotEmpty() }?.sum()
             ?: throw HolderDerivedException("所得資料讀不到給付總額")
         val payers = lines.count { l ->
             val label = if ("扣繳單位" in l) "扣繳單位" else if ("給付單位" in l) "給付單位" else null
@@ -300,8 +302,8 @@ object MyDataParsers {
         return ParsedSource(HolderDerivedTypes.INCOME, INCOME_PARSER, mapOf(TAX_YEAR to year, INCOME_TOTAL to total.toString(), PAYER_COUNT to payers.toString()))
     }
 
-    private fun trailingAmount(line: String): Long? =
-        Regex("([0-9][0-9,]*)\\s*(元)?\\s*$").find(MyDataText.halfWidth(line))?.let { MyDataText.digits(it.groupValues[1])?.toLongOrNull() }
+    /** 給付總額(收入)合計： 2,134 in half-width text; the amount stops at the first character that is not a digit or comma. */
+    private val GROSS_TOTAL = Regex("給付總額\\s*(?:\\(\\s*收入\\s*\\))?\\s*合計\\s*[:：]\\s*([0-9][0-9,]*)")
 
     /** Insured periods, one per row with a date: the first date enrols, a second (or a 退保日期) withdraws. The salary is never read. */
     fun laborInsurance(text: String): ParsedSource {
@@ -410,7 +412,22 @@ object MyDataParsers {
             if (id == null) id = ID_LABELS.firstNotNullOfOrNull { MyDataText.labelled(it, line) }?.let { ID_NUMBER.find(it.uppercase())?.value }
             if (since == null) since = SINCE_LABELS.firstNotNullOfOrNull { MyDataText.labelled(it, line)?.let { v -> MyDataText.isoDate(v) } }
         }
-        return HouseholdMember(name, id, since)
+        return HouseholdMember(name, id, since ?: sinceFromNotes(block.joinToString("")))
+    }
+
+    /** "民國100年05月02日 ... 遷入登記" in a person's 記事 (the text may wrap, so the lines are joined first). */
+    private val NOTE_EVENT = Regex("(?:民國)?\\s*(\\d{2,3})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日[^年。；]{0,40}?(遷入|初設戶籍|出生登記)")
+
+    /**
+     * The registration date from a person's 記事 when the record has no 遷入日期 field: the latest move-in, else the
+     * first registration (birth or first household registration) when the person never moved in from elsewhere.
+     */
+    fun sinceFromNotes(text: String): String? {
+        val events = NOTE_EVENT.findAll(MyDataText.halfWidth(text).replace(" ", "")).mapNotNull { m ->
+            val date = MyDataText.isoDate(m.groupValues[1] + "年" + m.groupValues[2] + "月" + m.groupValues[3] + "日") ?: return@mapNotNull null
+            date to m.groupValues[4]
+        }.toList()
+        return events.filter { it.second == "遷入" }.maxOfOrNull { it.first } ?: events.minOfOrNull { it.first }
     }
 
     /**
@@ -595,7 +612,11 @@ object BondsHolderDerived {
                 val claims = linkedMapOf("registered_in_city" to (city == asked).toString())
                 val months = rule.params["min_months"]?.toIntOrNull()
                 val since = parsed.fields[MyDataParsers.REGISTERED_SINCE]
-                if (months != null && since != null) claims["registered_at_least_months"] = (monthsBetween(since, now) >= months && city == asked).toString()
+                if (months != null) {
+                    // Asked but unreadable is refused: leaving the answer out would read as if the question was not asked.
+                    if (since == null) throw HolderDerivedException("戶籍資料讀不到持有人的遷入日期，無法回答是否設籍滿 $months 個月")
+                    claims["registered_at_least_months"] = (monthsBetween(since, now) >= months && city == asked).toString()
+                }
                 claims
             }
             else -> throw HolderDerivedException("本錢包不會回答這種問題（${rule.id}）")
