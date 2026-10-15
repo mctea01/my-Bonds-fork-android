@@ -2,7 +2,7 @@ package diw.testservers
 
 import diw.wallet.core.did.DidKeys
 import diw.wallet.core.did.DidResolver
-import diw.wallet.core.document.pdf.PdfComposer
+import diw.testservers.fixtures.PdfComposer
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.pdf.PdfPlain

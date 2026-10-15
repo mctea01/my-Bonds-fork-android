@@ -26,6 +26,7 @@ import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.PreparedDerived
 import diw.wallet.core.oid4vp.PreparedMoica
 import diw.wallet.core.oid4vp.PreparedPresentation
 import diw.wallet.core.oid4vp.PreparedRequest
@@ -193,7 +194,6 @@ sealed class Screen {
     /** The Bonds national ID card made from the vault file [fileId]. */
     data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
     /** Writing a PDF ([letter] false) or an official letter. */
-    data class FileCompose(val letter: Boolean) : Screen()
     /** A document source site opened inside the app. */
     data class Portal(val sourceId: String) : Screen()
 }
@@ -385,6 +385,7 @@ class WalletModel(val platform: PlatformServices) {
         status.load()
         files.load()
         documents.value = documentStore.listDocuments()
+        files.reconcileDerived(documents.value.map { it.identifier }.toSet())
         ready.value = true
         status.refreshDue()
     }
@@ -603,7 +604,7 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.OpenCertRender -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
-            is Screen.FileCompose, is Screen.Portal -> showTab(HomeTab.FILES)
+            is Screen.Portal -> showTab(HomeTab.FILES)
         }
         return true
     }
@@ -618,6 +619,8 @@ class WalletModel(val platform: PlatformServices) {
     fun deleteDocument(doc: Document) = scope.launch {
         documentStore.deleteDocument(doc.identifier)
         status.forget(doc.identifier)
+        // A file whose derived credential this was no longer shows it as derived.
+        files.forgetDerived(doc.identifier)
         refreshDocuments()
         platform.registerDigitalCredentials(this@WalletModel)
         showTab(HomeTab.DOCUMENTS)
@@ -1072,15 +1075,13 @@ class WalletModel(val platform: PlatformServices) {
         dialects = listOf(twdiwPresentation, msPresentation),
         moicaCards = { heldMoicaCards() },
         moicaHolder = { holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
+        derivedSources = { files.holderDerivedSources() },
+        derivedHolders = { files.holderHints() },
     )
 
-    /** Bonds self-issued cards for an online request: national ID cards first, then cards derived from documents. */
+    /** Bonds self-issued cards (vc+moica) for an online request: the national ID cards only. */
     private fun heldMoicaCards(): List<HeldMoicaCard> =
-        files.nationalIdCards().map { (f, card) -> HeldMoicaCard(f.id, TaiwanModel.NATIONAL_ID_NAME, card) } +
-            files.moicaCards().map { (f, card) ->
-                val name = documents.value.firstOrNull { it.identifier == f.derivedDocumentId }?.displayName ?: f.name
-                HeldMoicaCard(f.id, name, card)
-            }
+        files.nationalIdCards().map { (f, card) -> HeldMoicaCard(f.id, TaiwanModel.NATIONAL_ID_NAME, card) }
 
     fun startPresentation(uri: String, entryHint: String? = null, fields: List<TwdiwCustomField> = emptyList(), offline: TwdiwOfflineSession? = null) {
         presentation.value = PresentationUi.Loading
@@ -1175,6 +1176,20 @@ class WalletModel(val platform: PlatformServices) {
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
             }
+            is PreparedDerived -> {
+                val plan = prepared.plan
+                val paths = plan.requested.map { listOf(it) }
+                val labels = plan.requested.map { c -> (plan.type.claimLabels[c] ?: c) + "：" + answerText(plan.answers[c]) }
+                val sensitivity = ClaimSensitivity.ofAll(paths)
+                val item = ConsentItem(
+                    "${plan.type.title}（出示時由 ${plan.source.name} 產生，持有人從文件衍生）",
+                    listOf("查驗方的問題：" + plan.rule.question) + labels,
+                    null,
+                    sensitivity = sensitivity,
+                    notable = notable(paths, labels, sensitivity),
+                )
+                PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
+            }
         }
         val risk = requestRisk(consent.items, consent.request.verifier.trust.tier)
         // A status older than the request's risk allows is queried again while the user reads the request.
@@ -1202,6 +1217,14 @@ class WalletModel(val platform: PlatformServices) {
         return LineDisclosure(labels.ifEmpty { listOf("整張證件") }, sensitivity, notable(paths, labels, fields), whole)
     }
 
+    /** A derived answer as the holder reads it: predicates as yes or no. */
+    private fun answerText(v: String?): String = when (v) {
+        "true" -> "是"
+        "false" -> "否"
+        null -> "無"
+        else -> v
+    }
+
     /** Labels of the fields as sensitive as [top], when that is medium or high. */
     private fun notable(paths: List<List<String>>, labels: List<String>, top: RiskLevel): List<String> {
         if (top == RiskLevel.LOW) return emptyList()
@@ -1220,6 +1243,7 @@ class WalletModel(val platform: PlatformServices) {
                     when (val p = consent.prepared) {
                         is PreparedExtended -> holder().respond(p)
                         is PreparedMoica -> holder().respond(p)
+                        is PreparedDerived -> holder().respond(p)
                         is PreparedPresentation -> holder().respond(p, consent.selection ?: p.queryResult.select(emptyList()))
                     }
                 }

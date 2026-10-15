@@ -4,6 +4,9 @@ import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
+import diw.wallet.core.document.sign.SignerKeyType
+import diw.wallet.core.did.DidKeys
+import diw.wallet.core.util.Jcs
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.w3c.SdJwtDisclosures
@@ -19,6 +22,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import org.multipaz.util.toBase64
 import org.multipaz.util.toBase64Url
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -195,7 +199,39 @@ object BondsNationalId {
             ?: throw BondsNationalIdException("讀不到卡片憑證上的姓名")
         if (cn != name.trim()) throw BondsNationalIdException("自然人憑證上的姓名（$cn）與身分證資料的姓名（$name）不同，查驗方會拒絕這張卡")
         val disclosures = disclosures(claims(fields, at))
-        return DerivedCredentials.signMoica(payload(did, disclosures, at), disclosures, holder, card)
+        return signMoica(payload(did, disclosures, at), disclosures, holder, card)
+    }
+
+    /**
+     * Signs [payload] with the citizen certificate [card] (RSASSA-PKCS1-v1_5 SHA-256 over the Bonds TBS string) and
+     * with the holder key (issuerJWS), and returns the vc+moica card with all [disclosures].
+     */
+    internal suspend fun signMoica(payload: JsonObject, disclosures: List<String>, holder: HolderKey, card: DocumentSigner): MoicaSignedCredential {
+        if (card.keyType != SignerKeyType.RSA) throw BondsNationalIdException("vc+moica 需要以自然人憑證（RSA 2048）簽署")
+        val holderDid = holder.did ?: throw BondsNationalIdException("持有者金鑰沒有 DID")
+        val bytes = Jcs.canonicalize(payload).encodeToByteArray()
+        val tbs = MoicaSignedCredential.TBS_PREFIX + PlatformCrypto.sha256(bytes).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+        val signature = card.sign(tbs.encodeToByteArray())
+        if (signature.size != MoicaSignedCredential.SIGNATURE_BYTES) throw BondsNationalIdException("自然人憑證簽章長度不是 2048 位元")
+        val header = buildJsonObject {
+            put("alg", "ES256")
+            put("cty", "vc")
+            put("kid", DidKeys.verificationMethod(holderDid))
+            put("typ", "vc+jwt")
+        }
+        val input = header.toString().encodeToByteArray().toBase64Url() + "." + bytes.toBase64Url()
+        val issuerJws = input + "." + holder.signingKey("ES256").sign(input.encodeToByteArray()).toCoseEncoded().toBase64Url()
+        val serialized = Jcs.canonicalize(buildJsonObject {
+            putJsonArray("disclosures") { disclosures.forEach { add(JsonPrimitive(it)) } }
+            put("issuerJWS", issuerJws)
+            put("payload", bytes.toBase64Url())
+            putJsonObject("proof") {
+                put("certificate", card.certificateChain.first().toBase64())
+                put("signature", signature.toBase64())
+                put("tbsConstruction", MoicaSignedCredential.TBS_CONSTRUCTION)
+            }
+        })
+        return MoicaSignedCredential.parse(serialized)
     }
 
     /** True when a vc+moica card is a national ID card. */

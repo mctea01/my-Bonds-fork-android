@@ -6,7 +6,7 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.OpenCertInfo
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DocumentFields
-import diw.wallet.core.document.official.OfficialLetter
+import diw.testservers.fixtures.OfficialLetter
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

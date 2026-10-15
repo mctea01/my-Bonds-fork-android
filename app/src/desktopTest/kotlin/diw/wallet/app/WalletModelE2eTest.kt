@@ -280,13 +280,12 @@ class WalletModelE2eTest {
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("13-trust-anchors", Screen.TrustAnchors)
-        val pdf = diw.wallet.core.document.pdf.PdfComposer.compose("在學證明", listOf(diw.wallet.core.document.pdf.PdfComposer.Block.Heading("在學證明")))
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
         val stored = m.files.files.value.first()
         screen("14-file-detail", Screen.FileDetail(stored.id))
         screen("15-file-sign", Screen.FileSign(stored.id))
         screen("16-file-derive", Screen.FileDerive(stored.id))
-        screen("17-compose-letter", Screen.FileCompose(true))
         m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
         val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }
         screen("18-national-id-open", Screen.NationalIdCreate(idFile.id))
@@ -793,8 +792,8 @@ class WalletModelE2eTest {
     fun documentVaultSignDeriveAndPresent() = runBlocking<Unit> {
         start()
         val (holder, _) = newWallet()
-        val pdf = diw.wallet.core.document.pdf.PdfComposer.compose(
-            "在學證明", listOf(diw.wallet.core.document.pdf.PdfComposer.Block.Heading("在學證明"), diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("測試")),
+        val pdf = diw.testservers.fixtures.PdfComposer.compose(
+            "在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明"), diw.testservers.fixtures.PdfComposer.Block.Paragraph("測試")),
         )
         holder.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
         val original = holder.files.files.value.single()
@@ -823,7 +822,7 @@ class WalletModelE2eTest {
         assertEquals(diw.wallet.core.document.DocumentVerdict.VALID, rechecked?.verdict, "${holder.message.value} ${rechecked?.trust}")
 
         val claims = diw.wallet.core.document.derived.DerivedCredentials.suggestedClaims(original.report!!, original.name, null)
-        holder.files.derive(original, claims, null, timestamp = false, validDays = 365).join()
+        holder.files.derive(original, claims, timestamp = false, validDays = 365).join()
         assertNull(holder.files.error.value, "derive: ${holder.files.error.value}")
         val derivedId = assertNotNull(holder.files.file(original.id)?.derivedDocumentId)
         val doc = holder.documents.value.single { it.identifier == derivedId }
@@ -847,17 +846,22 @@ class WalletModelE2eTest {
         assertEquals(original.sha256, r.claims["document.sha256"])
         assertEquals(diw.wallet.core.document.Check.NOT_CHECKED, r.evidence.single().check)
 
-        // No vc+moica card yet: a request for a self-issued card says how to make one.
+        // The derived credential is not a vc+moica card: a request for a self-issued card asks for the national ID card.
         verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
         val self = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
         holder.taiwan.offline.value = OfflineUi.Working("")
         holder.handleUri(self.encode())
         val failed = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
-        assertTrue("自然人憑證" in failed.message)
+        assertTrue("身分證卡" in failed.message)
 
-        // An official letter is written and signed with XAdES.
-        holder.files.composeLetter(diw.wallet.core.document.official.OfficialLetter(sender = "測試機關", recipient = "王小明", subject = "測試公文")).join()
-        val letter = holder.files.files.value.first { it.origin == FileOrigin.LETTER }
+        // Deleting the derived credential clears the file's link to it.
+        holder.deleteDocument(holder.documents.value.first { it.identifier == derivedId }).join()
+        assertNull(holder.files.file(original.id)?.derivedDocumentId)
+
+        // An official letter made elsewhere is imported and signed with XAdES.
+        val letterXml = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "王小明", subject = "測試公文").toXml()
+        holder.files.import(PickedFile("letter.di", letterXml), FileOrigin.IMPORTED, null).join()
+        val letter = holder.files.files.value.first { it.name == "letter.di" }
         assertEquals("測試公文", letter.report?.title)
         holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false).join()
         assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
@@ -866,14 +870,14 @@ class WalletModelE2eTest {
     }
 
     /** A MyData national ID document with made-up data (unencrypted; the encrypted forms are covered in test-servers). */
-    private fun nationalIdPdf(): ByteArray = diw.wallet.core.document.pdf.PdfComposer.compose(
+    private fun nationalIdPdf(): ByteArray = diw.testservers.fixtures.PdfComposer.compose(
         "國民身分證資料",
         listOf(
-            diw.wallet.core.document.pdf.PdfComposer.Block.Heading("國民身分證資料"),
-            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("統號：A123456789 姓名：測試人員"),
-            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("出生日期：民國 083年03月06日"),
-            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("戶籍地址：臺北市中正區重慶南路一段122號"),
-            diw.wallet.core.document.pdf.PdfComposer.Block.Paragraph("備註"),
+            diw.testservers.fixtures.PdfComposer.Block.Heading("國民身分證資料"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("統號：A123456789 姓名：測試人員"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("出生日期：民國 083年03月06日"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("戶籍地址：臺北市中正區重慶南路一段122號"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("備註"),
         ),
     )
 

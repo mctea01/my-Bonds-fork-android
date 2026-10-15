@@ -8,7 +8,7 @@ import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedDocument
-import diw.wallet.core.document.pdf.PdfComposer
+import diw.testservers.fixtures.PdfComposer
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
@@ -22,7 +22,9 @@ import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.MoicaCa
-import diw.wallet.core.profile.bonds.MoicaSignedCredential
+import diw.wallet.core.profile.bonds.BondsNationalId
+import diw.wallet.core.profile.bonds.BondsNationalIdException
+import diw.wallet.core.profile.bonds.NationalIdFields
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
@@ -67,10 +69,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 /**
- * Credentials derived from a document: the SD-JWT VC and its vc+moica form share disclosures, the citizen card
- * signature and an RFC 3161 time stamp travel as evidence, and a verifier checks them over the Bonds offline
- * presentation (source "a" for the SD-JWT VC, "s" for vc+moica). The citizen certificate comes from a local CA in
- * place of MOICA G3; the production CA must refuse it.
+ * Credentials derived from a document: an IETF SD-JWT VC issued by the wallet's document key, with the document check
+ * and an RFC 3161 time stamp as evidence, verified over the Bonds offline presentation (source "a"). The Bonds
+ * vc+moica structure belongs to the national ID card alone: a derived credential carries no citizen certificate
+ * signature, and the card form refuses anything but an RSA citizen certificate.
  */
 class DerivedCredentialTest {
     private val bc = BouncyCastleProvider()
@@ -132,13 +134,13 @@ class DerivedCredentialTest {
         return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.publicKey))
     }
 
-    private class Issued(val compact: String, val moica: MoicaSignedCredential, val credentialKey: org.multipaz.crypto.EcPrivateKey, val selfHolder: HolderKey)
+    private class Issued(val compact: String, val credentialKey: org.multipaz.crypto.EcPrivateKey)
 
     private suspend fun issue(): Issued {
         registry.addAnchor(TrustRole.TSA, TrustEnvironment.USER, X509Cert(ByteString(root.encoded)), "Test GRCA", official = false, source = "test")
         val pdf = PdfComposer.compose("在學證明", listOf(PdfComposer.Block.Heading("在學證明"), PdfComposer.Block.Paragraph("測試用文件")))
         val report = DocumentInspector.inspect(pdf, "proof.pdf", trust)
-        val claims = DerivedCredentials.suggestedClaims(report, "proof.pdf", "測試來源") + DerivedClaim(DerivedCredentials.CLAIM_NAME, "測試人員")
+        val claims = DerivedCredentials.suggestedClaims(report, "proof.pdf", "測試來源")
         assertTrue(claims.any { it.name == DerivedCredentials.CLAIM_TITLE && it.value == "在學證明" })
         val disclosures = DerivedCredentials.disclosures(claims)
         val token = timestamper.timestamp(pdf)
@@ -146,13 +148,10 @@ class DerivedCredentialTest {
         assertTrue(tsInfo.trusted)
         val document = DerivedDocument(report.sha256, report.format.mediaType, report.size)
         val evidence = listOf(DerivedCredentials.signatureEvidence(report), DerivedCredentials.timestampEvidence(token, tsInfo))
-        val self = key()
-        val payload = DerivedCredentials.moicaPayload(self.did!!, document, evidence, disclosures)
-        val moica = DerivedCredentials.signMoica(payload, disclosures, self, card)
         val issuer = key()
         val credentialKey = Crypto.createEcPrivateKey(EcCurve.P256)
-        val compact = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, evidence, disclosures, moica)
-        return Issued(compact, moica, credentialKey, self)
+        val compact = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, evidence, disclosures)
+        return Issued(compact, credentialKey)
     }
 
     @Test
@@ -161,71 +160,47 @@ class DerivedCredentialTest {
         val req = BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.ANY)
         val jws = BondsOfflinePresentation.presentSdJwtVc(
             req, issued.compact, AsymmetricKey.anonymous(issued.credentialKey, Algorithm.ES256), issued.credentialKey.publicKey,
-            setOf(DerivedCredentials.CLAIM_TITLE, DerivedCredentials.CLAIM_NAME),
+            setOf(DerivedCredentials.CLAIM_TITLE),
         )
         val r = BondsOfflineVerifier(resolver, documentTrust = trust, moicaCa = testCa).verify(jws, req)
         assertEquals(DerivedCredentials.VCT, r.credentialType)
         assertEquals("在學證明", r.claims[DerivedCredentials.CLAIM_TITLE])
-        assertEquals("測試人員", r.claims[DerivedCredentials.CLAIM_NAME])
         assertTrue(DerivedCredentials.CLAIM_FILE_NAME !in r.claims)
         assertEquals("application/pdf", r.claims["document.mediaType"])
+        assertEquals(null, r.moica)
         val byType = r.evidence.associateBy { it.type }
+        assertEquals(setOf(DerivedCredentials.EVIDENCE_SIGNATURE, DerivedCredentials.EVIDENCE_TIMESTAMP), byType.keys)
         assertEquals(Check.PASS, byType.getValue(DerivedCredentials.EVIDENCE_TIMESTAMP).check)
-        assertEquals(Check.PASS, byType.getValue(DerivedCredentials.EVIDENCE_CITIZEN).check, byType.getValue(DerivedCredentials.EVIDENCE_CITIZEN).detail)
         assertEquals(Check.NOT_CHECKED, byType.getValue(DerivedCredentials.EVIDENCE_SIGNATURE).check)
-
-        // The production CA does not know the test card: the citizen evidence fails, the credential itself still verifies.
-        val production = BondsOfflineVerifier(resolver, documentTrust = trust).verify(jws, req)
-        assertEquals(Check.FAIL, production.evidence.first { it.type == DerivedCredentials.EVIDENCE_CITIZEN }.check)
     }
 
     @Test
-    fun vcMoicaFormVerifiesWithSelfIssuedRequest() = runBlocking<Unit> {
+    fun derivedCredentialIsSdJwtVcOnly() = runBlocking<Unit> {
         val issued = issue()
-        val req = BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.SELF_ISSUED)
-        val jws = BondsOfflinePresentation.presentMoica(req, issued.moica, issued.selfHolder, setOf(DerivedCredentials.CLAIM_SIGNER))
-        val r = BondsOfflineVerifier(resolver, documentTrust = trust, moicaCa = testCa).verify(jws, req)
-        assertEquals("測試人員", r.moica!!.cardholderName)
-        assertTrue(r.moica!!.nameChecked)
-        assertEquals(setOf(DerivedCredentials.CLAIM_NAME), r.claims.keys, "the composed PDF is unsigned, so only the name is shown")
-        assertEquals(Check.PASS, r.evidence.first { it.type == DerivedCredentials.EVIDENCE_TIMESTAMP }.check)
-
-        // Another holder key cannot present the card.
-        val other = key()
-        val e = assertFailsWith<ProtocolException> { BondsOfflinePresentation.presentMoica(req, issued.moica, other) }
-        assertEquals("invalid_key", e.code)
-        // A request for any card does not take vc+moica.
-        assertFailsWith<ProtocolException> {
-            BondsOfflinePresentation.presentMoica(BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.ANY), issued.moica, issued.selfHolder)
+        val jwt = issued.compact.substringBefore('~')
+        val header = String(java.util.Base64.getUrlDecoder().decode(jwt.substringBefore('.')))
+        val payload = String(java.util.Base64.getUrlDecoder().decode(jwt.split('.')[1]))
+        assertTrue("\"typ\":\"dc+sd-jwt\"" in header, header)
+        assertTrue("CitizenCertificateSignature" !in payload && "vc+moica" !in payload, payload)
+        // A self-issued (vc+moica) request is not answered with a derived credential.
+        val e = assertFailsWith<ProtocolException> {
+            BondsOfflinePresentation.presentSdJwtVc(
+                BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.SELF_ISSUED),
+                issued.compact, AsymmetricKey.anonymous(issued.credentialKey, Algorithm.ES256), issued.credentialKey.publicKey,
+            )
         }
+        assertTrue(e.message!!.isNotEmpty())
     }
 
     @Test
-    fun citizenEvidenceOverOtherClaimsFails() = runBlocking<Unit> {
-        val issued = issue()
-        val issuer = key()
-        val credentialKey = Crypto.createEcPrivateKey(EcCurve.P256)
-        val payload = issued.moica.credential()
-        val document = payload["document"]!!.let { d ->
-            val o = d as kotlinx.serialization.json.JsonObject
-            DerivedDocument(o["sha256"]!!.toString().trim('"'), o["mediaType"]!!.toString().trim('"'), o["size"]!!.toString().toLong())
-        }
-        // A new credential with other claims reusing the card signature: the signed commitments differ.
-        val disclosures = DerivedCredentials.disclosures(listOf(DerivedClaim(DerivedCredentials.CLAIM_NAME, "測試人員"), DerivedClaim("degree", "博士")))
-        val forged = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, emptyList(), disclosures, issued.moica)
-        val req = BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.ANY)
-        val jws = BondsOfflinePresentation.presentSdJwtVc(req, forged, AsymmetricKey.anonymous(credentialKey, Algorithm.ES256), credentialKey.publicKey)
-        val r = BondsOfflineVerifier(resolver, documentTrust = trust, moicaCa = testCa).verify(jws, req)
-        assertEquals(Check.FAIL, r.evidence.single { it.type == DerivedCredentials.EVIDENCE_CITIZEN }.check)
-    }
-
-    @Test
-    fun moicaNeedsAnRsaCard() = runBlocking<Unit> {
+    fun nationalIdCardNeedsAnRsaCard() = runBlocking<Unit> {
         val self = key()
         val ec = object : DocumentSigner by card {
             override val keyType = SignerKeyType.EC_P256
         }
-        val payload = DerivedCredentials.moicaPayload(self.did!!, DerivedDocument("00".repeat(32), "application/pdf", 1), emptyList(), emptyList())
-        assertFailsWith<SigningException> { DerivedCredentials.signMoica(payload, emptyList(), self, ec) }
+        val fields = NationalIdFields("A123456789", "測試人員", "民國 083年03月06日", "臺北市")
+        assertFailsWith<BondsNationalIdException> { BondsNationalId.issue(fields, self, ec) }
+        val card = BondsNationalId.issue(fields, self, card)
+        assertTrue(BondsNationalId.isNationalId(card))
     }
 }

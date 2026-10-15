@@ -1,4 +1,15 @@
-package diw.wallet.core.document.pdf
+package diw.testservers.fixtures
+
+import diw.wallet.core.document.pdf.PdfArray
+import diw.wallet.core.document.pdf.PdfDates
+import diw.wallet.core.document.pdf.PdfNumber
+import diw.wallet.core.document.pdf.PdfObject
+import diw.wallet.core.document.pdf.PdfOutput
+import diw.wallet.core.document.pdf.PdfRef
+import diw.wallet.core.document.pdf.PdfString
+import diw.wallet.core.document.pdf.PdfWriter
+import diw.wallet.core.document.pdf.PdfDict
+import diw.wallet.core.document.pdf.PdfName
 
 import diw.wallet.core.document.DocCrypto
 import kotlin.time.Clock

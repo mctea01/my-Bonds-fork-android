@@ -82,7 +82,6 @@ import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.EvidenceResult
-import diw.wallet.core.document.official.OfficialLetter
 import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -213,11 +212,8 @@ fun FilesTab(model: WalletModel) {
                 if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(src.id) else model.platform.openBrowser(src.url)
             }
         }
-        SectionTitle("製作文件")
-        ActionRow(WalletIcons.Document, "製作 PDF 文件", "輸入標題與內容產生 PDF，之後可用自然人憑證簽署（PAdES）") { model.screen.value = Screen.FileCompose(false) }
-        ActionRow(WalletIcons.Government, "製作電子公文（函）", "依文書處理手冊的公文 XML（.di）格式產生，之後可加 XAdES 簽章") { model.screen.value = Screen.FileCompose(true) }
         SectionTitle("電子公文收發")
-        ActionRow(WalletIcons.Send, "公文交換（收發）", "需要機關的公文電子交換帳號與憑證，個人錢包目前無法收發；製作的公文可保存或匯出", enabled = false) {}
+        ActionRow(WalletIcons.Send, "公文交換（收發）", "需要機關的公文電子交換帳號與憑證，個人錢包目前無法收發；收到的公文檔案可匯入保存與檢查", enabled = false) {}
         SectionTitle("遠端與行動簽章")
         ActionRow(WalletIcons.Phone, "行動自然人憑證簽章", "需要內政部核發的服務提供者（SP）帳號才能發出簽章請求；目前只支援在來源網站登入時轉到官方 App", enabled = false) {}
         ActionRow(WalletIcons.Link, "CSC 遠端簽章", "需要遠端簽章服務商的帳號與 CSC API 授權，尚無可用的服務商", enabled = false) {}
@@ -322,11 +318,11 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         SectionTitle("衍生憑證")
         val derived = f.derivedDocumentId?.let { id -> docs.firstOrNull { it.identifier == id } }
         if (derived != null) {
-            ActionRow(WalletIcons.Card, derived.displayName ?: "文件衍生憑證", "在「證件」出示：SD-JWT VC" + if (f.moica != null) "；另有自然人憑證簽署的 vc+moica" else "") {
+            ActionRow(WalletIcons.Card, derived.displayName ?: "文件衍生憑證", "在「證件」出示：IETF SD-JWT VC，由本錢包的文件發行金鑰簽發") {
                 model.screen.value = Screen.DocumentDetail(derived.identifier, Screen.FileDetail(f.id))
             }
         } else {
-            Text("把文件變成可出示的證件（SD-JWT VC），附上簽章檢查與時戳；用自然人憑證簽署時也能匯出 Bonds 的 vc+moica 卡片。", style = MaterialTheme.typography.bodySmall)
+            Text("把文件變成可出示的證件（IETF SD-JWT VC），附上簽章檢查與時戳。要以自然人憑證或其他憑證簽署文件，請用上方的「簽署」，簽章會成為文件檢查的一部分。", style = MaterialTheme.typography.bodySmall)
         }
         ActionRow(WalletIcons.Card, if (derived != null) "重新產生衍生憑證" else "產生衍生憑證", "選擇要放進證件的欄位與證據") {
             model.screen.value = Screen.FileDerive(f.id)
@@ -335,10 +331,6 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "P4 尚未完成：以零知識證明 PDF 內的機關簽章與指定欄位，不必交出整份文件", enabled = false) {}
         }
         ActionRow(WalletIcons.Link, "產生 zkTLS 證明", "P4 尚未完成：以 TLSNotary 證明官方查驗頁回覆的內容（如移民署、學信網查驗）", enabled = false) {}
-        if (f.moica != null) {
-            ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON") { model.files.exportMoica(f) }
-            MoicaDetails(model, f.moica)
-        }
         if (f.nationalId != null) {
             SectionTitle("身分證卡")
             ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
@@ -799,8 +791,6 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     var showNote by remember { mutableStateOf(false) }
     var noteName by remember { mutableStateOf("") }
     var noteValue by remember { mutableStateOf("") }
-    var withCard by remember { mutableStateOf(false) }
-    var card by remember { mutableStateOf<SignerChoice.Card?>(null) }
     var timestamp by remember { mutableStateOf(true) }
     var validDays by remember { mutableStateOf<Int?>(null) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -841,11 +831,6 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
             Text(if (f.timestamps.any { it.trusted }) "附上已保存的時戳" else "取得並附上文件時戳（只送出 SHA-256）")
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = withCard, onCheckedChange = { withCard = it })
-            Text("以自然人憑證簽署（加入姓名，可匯出 vc+moica）")
-        }
-        if (withCard) CardPicker(model) { card = it }
         SectionTitle("有效期間")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf<Pair<Int?, String>>(null to "不限", 365 to "一年", 1825 to "五年").forEach { (d, t) ->
@@ -859,91 +844,13 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             } else null,
         )
         Button(
-            onClick = { model.files.derive(f, claims, if (withCard) card else null, timestamp, validDays) },
-            enabled = busy == null && (claims.isNotEmpty() || withCard) && (!withCard || card != null),
+            onClick = { model.files.derive(f, claims, timestamp, validDays) },
+            enabled = busy == null && claims.isNotEmpty(),
         ) { Text("產生衍生憑證") }
-        Text("衍生憑證由這支錢包的文件發行金鑰（did:key）簽發，信任等級為 T3：它證明你在何時、以哪些證據保存了這份文件，不代表原發文機關另行背書。",
+        Text("衍生憑證由這支錢包的文件發行金鑰（did:key）簽發，結構是 IETF SD-JWT VC，信任等級為 T3：它證明你在何時、以哪些證據保存了這份文件，不代表原發文機關另行背書。Bonds 的 vc+moica 結構只用於身分證卡；Bonds 查驗方要的 MyData 衍生答案（所得、勞保、戶籍）在出示當下才由原檔產生，不需先在這裡製作。",
             style = MaterialTheme.typography.bodySmall)
     }
 }
-
-// ---------------------------------------------------------------- compose
-
-@Composable
-fun FileComposeScreen(model: WalletModel, screen: Screen.FileCompose) {
-    val busy by model.files.busy.collectAsState()
-    val error by model.files.error.collectAsState()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (screen.letter) LetterForm(model, busy == null) else PdfForm(model, busy == null)
-        BusyLine(busy, error)
-    }
-}
-
-@Composable
-private fun PdfForm(model: WalletModel, enabled: Boolean) {
-    var title by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
-    var author by remember { mutableStateOf("") }
-    OutlinedTextField(value = title, onValueChange = { title = it.take(80) }, label = { Text("標題") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = body, onValueChange = { body = it.take(20000) }, label = { Text("內容（空一行分段）") }, minLines = 8, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = author, onValueChange = { author = it.take(64) }, label = { Text("作者（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    Text("PDF 使用閱讀器內建的繁體中文字型（MSung-Light），不嵌入字型檔。", style = MaterialTheme.typography.bodySmall)
-    Button(onClick = { model.files.composePdf(title.trim(), body, author.trim()) }, enabled = enabled && title.isNotBlank()) { Text("製作 PDF") }
-}
-
-@Composable
-private fun LetterForm(model: WalletModel, enabled: Boolean) {
-    var sender by remember { mutableStateOf("") }
-    var senderCode by remember { mutableStateOf("") }
-    var address by remember { mutableStateOf("") }
-    var contact by remember { mutableStateOf("") }
-    var recipient by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var explanations by remember { mutableStateOf("") }
-    var word by remember { mutableStateOf("") }
-    var serial by remember { mutableStateOf("") }
-    var speed by remember { mutableStateOf("普通件") }
-    var attachments by remember { mutableStateOf("") }
-    var copies by remember { mutableStateOf("") }
-    @Composable
-    fun field(label: String, value: String, lines: Int = 1, onChange: (String) -> Unit) = OutlinedTextField(
-        value = value, onValueChange = { onChange(it.take(if (lines > 1) 5000 else 200)) }, label = { Text(label) },
-        singleLine = lines == 1, minLines = lines, modifier = Modifier.fillMaxWidth(),
-    )
-    field("發文機關（全銜）", sender) { sender = it }
-    field("機關代碼（選填）", senderCode) { senderCode = it }
-    field("地址（選填）", address) { address = it }
-    field("聯絡方式（選填）", contact) { contact = it }
-    field("受文者", recipient) { recipient = it }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedTextField(value = word, onValueChange = { word = it.take(20) }, label = { Text("發文字") }, singleLine = true, modifier = Modifier.weight(1f))
-        OutlinedTextField(value = serial, onValueChange = { v -> serial = v.filter { it.isLetterOrDigit() }.take(20) }, label = { Text("流水號") }, singleLine = true, modifier = Modifier.weight(1f))
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OfficialLetter.SPEEDS.forEach { s -> FilterChip(selected = speed == s, onClick = { speed = s }, label = { Text(s) }) }
-    }
-    field("主旨", subject, 2) { subject = it }
-    field("說明（一行一項，自動編號）", explanations, 5) { explanations = it }
-    field("附件（選填）", attachments) { attachments = it }
-    field("副本（選填，以頓號分隔）", copies) { copies = it }
-    Text("產生的 .di 檔可保存、匯出，或在文件畫面加上 XAdES 簽章；送出需透過機關的公文交換系統。", style = MaterialTheme.typography.bodySmall)
-    Button(
-        onClick = {
-            model.files.composeLetter(
-                OfficialLetter(
-                    sender = sender.trim(), senderCode = senderCode.trim(), address = address.trim(), contact = contact.trim(),
-                    recipient = recipient.trim(), subject = subject.trim(),
-                    explanations = explanations.lines().map { it.trim() }.filter { it.isNotEmpty() }.take(99),
-                    wordPrefix = word.trim(), serial = serial, speed = speed, attachments = attachments.trim(),
-                    copies = copies.split('、', ',', '，').map { it.trim() }.filter { it.isNotEmpty() },
-                )
-            )
-        },
-        enabled = enabled && sender.isNotBlank() && recipient.isNotBlank() && subject.isNotBlank(),
-    ) { Text("製作公文") }
-}
-
-// ---------------------------------------------------------------- source sites
 
 @Composable
 fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
@@ -982,14 +889,3 @@ private fun myDataAutofill(model: WalletModel): PortalAutofill? {
     return PortalAutofill(MyDataProfile.HOST, MyDataProfile.autofillScript(id, birth)) { n -> model.message.value = "已在 MyData 頁面填入 $n 個已保存的欄位" }
 }
 
-/** The technical details of a vc+moica card, checked again as a verifier would when opened. */
-@Composable
-private fun MoicaDetails(model: WalletModel, serialized: String) {
-    val card = remember(serialized) { runCatching { MoicaSignedCredential.parse(serialized) }.getOrNull() } ?: return
-    var show by remember { mutableStateOf(model.settings.showDetails) }
-    TextButton(onClick = { show = !show }) { Text(if (show) "隱藏 vc+moica 技術細節" else "顯示 vc+moica 技術細節") }
-    if (show) {
-        val check by produceState<Result<MoicaVerification>?>(null, card) { value = runCatching { card.verify(model.didResolver()) } }
-        DetailSections(model, CredentialDetails.moica(card, check, DerivedCredentials.claimLabels))
-    }
-}

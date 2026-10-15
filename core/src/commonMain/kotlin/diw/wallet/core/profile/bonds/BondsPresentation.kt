@@ -593,12 +593,9 @@ class BondsOfflineVerifier(
                 val card = MoicaSignedCredential.parse(serialized)
                 val result = card.verify(didResolver, now, moicaCa)
                 if (result.credential.obj("credentialSubject")?.str("id") != holder) throw ProtocolException("invalid_credential", "Card subject is not the presenter")
-                val evidence = if (DerivedCredentials.TYPE in result.credential.strList("type")) {
-                    DerivedEvidence.verify(result.credential, result.claims, didResolver, documentTrust, now, moicaCa)
-                } else emptyList()
                 BondsVerifiedPresentation(
                     holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result, result.credential,
-                    credentialType = result.credential.strList("type").lastOrNull(), evidence = evidence,
+                    credentialType = result.credential.strList("type").lastOrNull(),
                 )
             }
             else -> throw ProtocolException("invalid_presentation", "Unsupported credential envelope")
@@ -641,7 +638,7 @@ class BondsOfflineVerifier(
         val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL && !(derived && it == "evidence") }))
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(compact).issuerJwt).payload
-            DerivedEvidence.verify(signed, claims, didResolver, documentTrust, now, moicaCa)
+            DerivedEvidence.verify(signed, documentTrust)
         } else emptyList()
         return BondsVerifiedPresentation(
             holder, BondsCredentialSource.ANY, claims, iss, created, bound, null,

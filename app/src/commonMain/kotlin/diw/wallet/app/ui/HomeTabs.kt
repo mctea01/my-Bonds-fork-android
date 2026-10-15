@@ -253,7 +253,7 @@ fun VerifyTab(model: WalletModel) {
                     }
                 }
                 if (source == BondsCredentialSource.SELF_ISSUED) {
-                    Text("以自然人憑證簽署的 Bonds 自發卡片（vc+moica），例如 Bonds 身分證卡與本錢包由文件衍生的憑證；姓名一定揭露並與自然人憑證比對。",
+                    Text("以自然人憑證簽署的 Bonds 身分證卡（vc+moica）；姓名一定揭露並與自然人憑證比對。文件衍生憑證是 SD-JWT VC，回應「本錢包擴充」請求。",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 if (source == BondsCredentialSource.ANY) {

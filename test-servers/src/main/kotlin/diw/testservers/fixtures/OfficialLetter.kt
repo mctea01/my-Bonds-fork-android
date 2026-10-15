@@ -1,4 +1,4 @@
-package diw.wallet.core.document.official
+package diw.testservers.fixtures
 
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime

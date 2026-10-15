@@ -5,14 +5,9 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.SignatureInfo
 import diw.wallet.core.document.TimestampInfo
-import diw.wallet.core.document.sign.DocumentSigner
-import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SigningException
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
-import diw.wallet.core.profile.bonds.BondsOfflinePresentation
-import diw.wallet.core.profile.bonds.MoicaSignedCredential
-import diw.wallet.core.util.Jcs
 import diw.wallet.core.w3c.SdJwtDisclosures
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -32,20 +27,20 @@ import kotlin.time.Instant
 data class DerivedDocument(val sha256Hex: String, val mediaType: String, val size: Long)
 
 /**
- * One selectively disclosable claim; values are text so that the vc+moica form can carry them too. [label] is the
- * readable name of a claim read from the document's content (the wallet's own claims are named in claimLabels).
+ * One selectively disclosable claim, as text. [label] is the readable name of a claim read from the document's
+ * content (the wallet's own claims are named in claimLabels).
  */
 data class DerivedClaim(val name: String, val value: String, val label: String? = null)
 
 /**
  * A credential the wallet derives from a stored document: an IETF SD-JWT VC issued by the wallet's own document
- * issuer DID (did:key) and bound by cnf to a credential key, so it is presented like any SD-JWT VC; and, when the
- * holder signs it with the citizen digital certificate card, the same claims as a Bonds vc+moica card.
+ * issuer DID (did:key) and bound by cnf to a credential key, so it is presented like any SD-JWT VC. It is a
+ * credential structure only: signing the document itself (PAdES, CAdES, XAdES with the citizen certificate card or
+ * another key) is a separate step whose result the evidence then reports. The Bonds vc+moica structure is kept for
+ * the national ID card alone.
  *
- * Both forms share one set of disclosures (same salts), so the citizen card signature over the vc+moica payload
- * also commits to the SD-JWT VC claims; the SD-JWT VC carries that signature as evidence. The evidence array
- * records what the wallet checked: the document signatures (as the wallet's statement), an RFC 3161 time stamp over
- * the document hash (verifiable by anyone) and the citizen certificate signature (verifiable by anyone).
+ * The evidence array records what the wallet checked: the document signatures (as the wallet's statement) and an
+ * RFC 3161 time stamp over the document hash (verifiable by anyone).
  */
 object DerivedCredentials {
     const val VCT = "urn:diw-wallet:vct:document-derived:1"
@@ -53,10 +48,8 @@ object DerivedCredentials {
 
     const val EVIDENCE_SIGNATURE = "DocumentSignatureCheck"
     const val EVIDENCE_TIMESTAMP = "DocumentTimeStamp"
-    const val EVIDENCE_CITIZEN = "CitizenCertificateSignature"
 
     /** Claim names the wallet suggests; the holder chooses which to include. */
-    const val CLAIM_NAME = "name"
     const val CLAIM_TITLE = "documentTitle"
     const val CLAIM_FILE_NAME = "fileName"
     const val CLAIM_SIGNER = "documentSigner"
@@ -67,7 +60,6 @@ object DerivedCredentials {
 
     /** Readable labels for the claim names above. */
     val claimLabels = mapOf(
-        CLAIM_NAME to "持有人姓名",
         CLAIM_TITLE to "文件標題",
         CLAIM_FILE_NAME to "檔名",
         CLAIM_SIGNER to "文件簽署者",
@@ -151,86 +143,17 @@ object DerivedCredentials {
 
     private fun sdDigests(disclosures: List<String>): List<String> = disclosures.map { SdJwtDisclosures.digest(it) }.sorted()
 
-    /**
-     * The W3C credential of the vc+moica form: issued by and about [holderDid] (the Bonds self-issued holder), with
-     * the document, evidence and the digests of [disclosures].
-     */
-    fun moicaPayload(
-        holderDid: String,
-        document: DerivedDocument,
-        evidence: List<JsonObject>,
-        disclosures: List<String>,
-        now: Instant = Clock.System.now(),
-        validUntil: Instant? = null,
-    ): JsonObject = buildJsonObject {
-        putJsonArray("@context") { add(JsonPrimitive(BondsOfflinePresentation.CREDENTIALS_V2)) }
-        putJsonArray("type") { add(JsonPrimitive("VerifiableCredential")); add(JsonPrimitive(TYPE)) }
-        put("issuer", holderDid)
-        put("validFrom", Instant.fromEpochSeconds(now.epochSeconds).toString())
-        validUntil?.let { put("validUntil", Instant.fromEpochSeconds(it.epochSeconds).toString()) }
-        putJsonObject("credentialSubject") { put("id", holderDid) }
-        put("document", documentObject(document))
-        if (evidence.isNotEmpty()) put("evidence", JsonArray(evidence))
-        putJsonArray("_sd") { sdDigests(disclosures).forEach { add(JsonPrimitive(it)) } }
-        put("_sd_alg", "sha-256")
-    }
-
-    /**
-     * Signs [payload] with the citizen certificate [card] (RSASSA-PKCS1-v1_5 SHA-256 over the Bonds TBS string) and
-     * with the holder key (issuerJWS), and returns the vc+moica card with all [disclosures].
-     */
-    suspend fun signMoica(payload: JsonObject, disclosures: List<String>, holder: HolderKey, card: DocumentSigner): MoicaSignedCredential {
-        if (card.keyType != SignerKeyType.RSA) throw SigningException("vc+moica 需要以自然人憑證（RSA 2048）簽署")
-        val holderDid = holder.did ?: throw SigningException("持有者金鑰沒有 DID")
-        val bytes = Jcs.canonicalize(payload).encodeToByteArray()
-        val tbs = MoicaSignedCredential.TBS_PREFIX + hex(PlatformCrypto.sha256(bytes))
-        val signature = card.sign(tbs.encodeToByteArray())
-        if (signature.size != MoicaSignedCredential.SIGNATURE_BYTES) throw SigningException("自然人憑證簽章長度不是 2048 位元")
-        val header = buildJsonObject {
-            put("alg", "ES256")
-            put("cty", "vc")
-            put("kid", DidKeys.verificationMethod(holderDid))
-            put("typ", "vc+jwt")
-        }
-        val issuerJws = compactJws(header, bytes, holder.signingKey("ES256"))
-        val serialized = Jcs.canonicalize(buildJsonObject {
-            putJsonArray("disclosures") { disclosures.forEach { add(JsonPrimitive(it)) } }
-            put("issuerJWS", issuerJws)
-            put("payload", bytes.toBase64Url())
-            putJsonObject("proof") {
-                put("certificate", card.certificateChain.first().toBase64())
-                put("signature", signature.toBase64())
-                put("tbsConstruction", MoicaSignedCredential.TBS_CONSTRUCTION)
-            }
-        })
-        return MoicaSignedCredential.parse(serialized)
-    }
-
-    /** The citizen certificate signature of a vc+moica card, as evidence inside the SD-JWT VC. */
-    fun citizenEvidence(card: MoicaSignedCredential): JsonObject = buildJsonObject {
-        put("type", EVIDENCE_CITIZEN)
-        put("payload", card.payload)
-        put("certificate", card.certificate)
-        put("signature", card.signature)
-        put("tbsConstruction", card.tbsConstruction)
-    }
-
-    /**
-     * The IETF SD-JWT VC (compact, ending in '~'), signed by [issuer] (its DID must be set) and bound to
-     * [holderKey]. [citizen] adds the vc+moica signature made over the same disclosures.
-     */
+    /** The IETF SD-JWT VC (compact, ending in '~'), signed by [issuer] (its DID must be set) and bound to [holderKey]. */
     suspend fun sdJwtVc(
         issuer: HolderKey,
         holderKey: EcPublicKey,
         document: DerivedDocument,
         evidence: List<JsonObject>,
         disclosures: List<String>,
-        citizen: MoicaSignedCredential? = null,
         now: Instant = Clock.System.now(),
         validUntil: Instant? = null,
     ): String {
         val iss = issuer.did ?: throw SigningException("文件發行金鑰沒有 DID")
-        val allEvidence = evidence + listOfNotNull(citizen?.let { citizenEvidence(it) })
         val jwk = holderKey.toJwk()
         val payload = buildJsonObject {
             put("iss", iss)
@@ -240,7 +163,7 @@ object DerivedCredentials {
             put("vct", VCT)
             putJsonObject("cnf") { put("jwk", jwk) }
             put("document", documentObject(document))
-            if (allEvidence.isNotEmpty()) put("evidence", JsonArray(allEvidence))
+            if (evidence.isNotEmpty()) put("evidence", JsonArray(evidence))
             putJsonArray("_sd") { sdDigests(disclosures).forEach { add(JsonPrimitive(it)) } }
             put("_sd_alg", "sha-256")
         }

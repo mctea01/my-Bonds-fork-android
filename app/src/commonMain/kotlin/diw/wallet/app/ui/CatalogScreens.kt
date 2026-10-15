@@ -92,7 +92,7 @@ fun AddDocumentScreen(model: WalletModel) {
         }
         ActionRow(
             WalletIcons.Card, "文件衍生憑證",
-            "在「文件」選一份文件（MyData、在學證明、公文、OpenCerts 等），由內容產生可出示的 SD-JWT VC；可加自然人憑證簽署（vc+moica）",
+            "在「文件」選一份文件（MyData、在學證明、公文、OpenCerts 等），由內容產生可出示的 SD-JWT VC（本錢包簽發，與 Bonds 身分證卡的 vc+moica 結構不同）",
         ) { model.showTab(HomeTab.FILES) }
         ActionRow(
             WalletIcons.Shield, "年齡證明（零知識）",

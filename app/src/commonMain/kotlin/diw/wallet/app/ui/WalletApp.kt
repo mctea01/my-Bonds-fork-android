@@ -144,7 +144,6 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
                     is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                     is Screen.NationalId -> NationalIdScreen(model, s)
-                    is Screen.FileCompose -> FileComposeScreen(model, s)
                     is Screen.Portal -> PortalScreen(model, s)
                 }
             }
@@ -187,7 +186,6 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.OpenCertRender -> "發證機構樣式"
     is Screen.NationalIdCreate -> "製作身分證卡"
     is Screen.NationalId -> "身分證卡"
-    is Screen.FileCompose -> if (s.letter) "製作電子公文" else "製作 PDF 文件"
     is Screen.Portal -> "取得文件"
 }
 

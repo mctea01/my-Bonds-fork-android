@@ -9,16 +9,18 @@ import diw.wallet.core.document.card.GpkiTapSigner
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedDocument
-import diw.wallet.core.document.official.OfficialLetter
 import diw.wallet.core.document.opencerts.OaAttachment
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.opencerts.OpenAttestationOnline
 import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.document.opencerts.OpenCertView
-import diw.wallet.core.document.pdf.PdfComposer
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfPlain
 import diw.wallet.core.document.pdf.PdfTextExtractor
+import diw.wallet.core.profile.bonds.HolderDerivedException
+import diw.wallet.core.profile.bonds.HolderDerivedSource
+import diw.wallet.core.profile.bonds.HolderDerivedTypes
+import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
@@ -99,10 +101,8 @@ data class StoredFile(
     /** The file a detached signature (.p7s) signs. */
     val contentId: String? = null,
     val parentId: String? = null,
-    /** The derived SD-JWT VC (a document in the documents list). */
+    /** The derived SD-JWT VC (a document in the documents list); cleared when that credential is deleted. */
     val derivedDocumentId: String? = null,
-    /** The vc+moica form of the derived credential, when signed with the citizen certificate card. */
-    val moica: String? = null,
     /** The Bonds national ID card (vc+moica NationalIDCredential) made from this MyData national ID PDF. */
     val nationalId: String? = null,
     /** The archive (ZIP) the file was unpacked from, by name; the archive itself may be gone. */
@@ -205,6 +205,14 @@ object MyDataFiles {
         "MyData" + (item?.title?.takeIf { it != "MyData 個人文件" }?.let { "・$it" } ?: "") + if (byName) BY_NAME else ""
 
     fun isMyData(source: String?): Boolean = source?.startsWith("MyData") == true
+
+    /** The Bonds holder-derived document type of a MyData item, when one is defined for it. */
+    fun holderDerivedType(item: MyDataItem): String? = when (item.title) {
+        "個人所得資料" -> HolderDerivedTypes.INCOME
+        "被保險人投保資料" -> HolderDerivedTypes.LABOR_INSURANCE
+        "現戶全戶戶籍資料" -> HolderDerivedTypes.HOUSEHOLD
+        else -> null
+    }
 
     /**
      * The source of a file stored before labels were shortened ("MyData（App 內下載：X）；解自 Y.zip（X）"), in the
@@ -679,13 +687,6 @@ class FilesModel(private val model: WalletModel) {
         if (!model.platform.saveFile(f.name, f.mediaType, data(f.id))) model.message.value = "未匯出"
     }
 
-    /** Exports the vc+moica form of the derived credential (Bonds self-issued card). */
-    fun exportMoica(f: StoredFile) = run("匯出 vc+moica") {
-        val moica = f.moica ?: throw SigningException("這份文件沒有以自然人憑證簽署的衍生憑證")
-        val name = f.name.substringBeforeLast('.') + ".vc-moica.json"
-        if (!model.platform.saveFile(name, "application/vc+moica", moica.encodeToByteArray())) model.message.value = "未匯出"
-    }
-
     fun delete(f: StoredFile) = run("刪除檔案") {
         remove(f)
         model.showTab(HomeTab.FILES)
@@ -771,36 +772,14 @@ class FilesModel(private val model: WalletModel) {
         return model.holderIdentities.getOrCreate(profile, "did:key", backend.secureArea, backend.settings(ByteString(PlatformCrypto.randomBytes(16)), userAuth))
     }
 
-    // ---------------------------------------------------------------- composing
-
-    /** Writes a PDF with [title] and [body] (paragraphs separated by blank lines) and stores it. */
-    fun composePdf(title: String, body: String, author: String) = run("製作 PDF") {
-        val blocks = buildList {
-            add(PdfComposer.Block.Heading(title))
-            add(PdfComposer.Block.Spacer())
-            body.split(Regex("\\n\\s*\\n")).filter { it.isNotBlank() }.forEach { add(PdfComposer.Block.Paragraph(it.trim())); add(PdfComposer.Block.Spacer(6.0)) }
-        }
-        val pdf = PdfComposer.compose(title, blocks, author = author.ifBlank { null })
-        val f = store(safeName(title) + ".pdf", pdf, FileOrigin.COMPOSED)
-        model.message.value = "已製作：${f.name}"
-        model.screen.value = Screen.FileDetail(f.id)
-    }
-
-    /** Writes an official letter (.di) and stores it; it can then be signed with XAdES. */
-    fun composeLetter(letter: OfficialLetter) = run("製作公文") {
-        val f = store(safeName(letter.subject.take(30)) + ".di", letter.toXml(), FileOrigin.LETTER)
-        model.message.value = "已製作公文：${f.name}"
-        model.screen.value = Screen.FileDetail(f.id)
-    }
-
     // ---------------------------------------------------------------- derived credentials
 
     /**
-     * Derives a credential from [f]: an SD-JWT VC with [claims] in the documents list, with the document check and
-     * a time stamp as evidence; with [card], the citizen certificate signs the same claims (vc+moica, cardholder
-     * name added from the certificate).
+     * Derives a credential from [f]: an SD-JWT VC with [claims] in the documents list, issued by the wallet's
+     * document issuer key, with the document check and a time stamp as evidence. Signing the document itself is a
+     * separate step (PAdES, CAdES, XAdES); a signature made before deriving is part of the document check.
      */
-    fun derive(f: StoredFile, claims: List<DerivedClaim>, card: SignerChoice.Card?, timestamp: Boolean, validDays: Int?) = run("產生衍生憑證") {
+    fun derive(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?) = run("產生衍生憑證") {
         val data = data(f.id)
         // The evidence states the result as of now, never a report cached from an earlier check.
         val report = refreshed(f).report ?: DocumentInspector.inspect(data, f.name, trustSource)
@@ -813,25 +792,13 @@ class FilesModel(private val model: WalletModel) {
                 ?: if (timestamp) { busy.value = "向時戳機構取得時戳"; timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
         }
-        val cardSigner = card?.let { cardSigner(it) }
-        val all = if (cardSigner != null) {
-            val cn = DocumentSigning.certificateSummary(cardSigner.certificateChain.first())?.first
-                ?: throw SigningException("讀不到卡片憑證上的姓名")
-            claims.filter { it.name != DerivedCredentials.CLAIM_NAME } + DerivedClaim(DerivedCredentials.CLAIM_NAME, cn)
-        } else claims
-        if (all.isEmpty()) throw SigningException("請至少選擇一個欄位")
-        val disclosures = DerivedCredentials.disclosures(all)
+        if (claims.isEmpty()) throw SigningException("請至少選擇一個欄位")
+        val disclosures = DerivedCredentials.disclosures(claims)
         val doc = withContext(model.unlockProvider) {
-            val moica = cardSigner?.let { signer ->
-                val self = identity(HolderIdentities.BONDS_SELF_ISSUED)
-                val payload = DerivedCredentials.moicaPayload(self.did!!, document, evidence, disclosures, now, validUntil)
-                busy.value = "簽署中：依提示再次感應卡片"
-                DerivedCredentials.signMoica(payload, disclosures, self, signer)
-            }
             busy.value = "產生衍生憑證"
             val issuer = identity(HolderIdentities.DOCUMENT_ISSUER)
             val keys = model.keyRequest()
-            val title = all.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: f.name
+            val title = claims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: f.name
             val record = IssuanceRecord(
                 credentialIssuer = issuer.did!!,
                 configurationId = CONFIGURATION,
@@ -843,8 +810,8 @@ class FilesModel(private val model: WalletModel) {
                 anchorName = "本錢包（文件衍生）",
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
-                specs = listOfNotNull("IETF SD-JWT VC", if (moica != null) "Bonds vc+moica" else null),
-                claimNames = DerivedCredentials.claimLabels + all.filter { it.label != null }.associate { it.name to it.label!! },
+                specs = listOf("IETF SD-JWT VC"),
+                claimNames = DerivedCredentials.claimLabels + claims.filter { it.label != null }.associate { it.name to it.label!! },
                 profile = PROFILE,
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = "文件衍生憑證", appData = record.encode())
@@ -854,26 +821,68 @@ class FilesModel(private val model: WalletModel) {
                     keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
                 )
                 val holderKey = credential.secureArea.getKeyInfo(credential.alias).publicKey
-                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, moica, now, validUntil)
+                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil)
                 credential.certify(compact.encodeToByteString())
                 created.edit { provisioned = true }
             } catch (e: Exception) {
                 model.documentStore.deleteDocument(created.identifier)
                 throw e
             }
-            save(f.copy(derivedDocumentId = created.identifier, moica = moica?.serialized() ?: f.moica))
+            // A credential derived earlier from the same file is replaced.
+            (file(f.id) ?: f).derivedDocumentId?.let { old -> runCatching { model.documentStore.deleteDocument(old) } }
+            save((file(f.id) ?: f).copy(derivedDocumentId = created.identifier))
             created
         }
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
-        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), all.map { DerivedCredentials.labelOf(it) })
+        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), claims.map { DerivedCredentials.labelOf(it) })
         model.message.value = "已產生衍生憑證，可在「證件」出示"
         model.screen.value = Screen.FileDetail(f.id)
     }
 
-    /** Vault files whose derived credential can answer a Bonds request for a self-issued card. */
-    fun moicaCards(): List<Pair<StoredFile, MoicaSignedCredential>> =
-        files.value.mapNotNull { f -> f.moica?.let { m -> runCatching { MoicaSignedCredential.parse(m) }.getOrNull()?.let { f to it } } }
+    /** Clears the link of every file to the derived credential [documentId], after that credential was deleted. */
+    suspend fun forgetDerived(documentId: String) {
+        files.value.filter { it.derivedDocumentId == documentId }.forEach { save(it.copy(derivedDocumentId = null)) }
+    }
+
+    /** Clears links to derived credentials that no longer exist (deleted while the link was not updated). */
+    suspend fun reconcileDerived(existing: Set<String>) {
+        files.value.filter { it.derivedDocumentId != null && it.derivedDocumentId !in existing }.forEach { save(it.copy(derivedDocumentId = null)) }
+    }
+
+    // ---------------------------------------------------------------- Bonds holder-derived credentials
+
+    /**
+     * Vault documents a Bonds holder-derived credential can be computed from at presentation time: MyData PDFs and
+     * text exports, typed by their MyData item when the vault knows it. The text is read only for the document the
+     * request selects; encrypted MyData PDFs open with the holder's ID number as for the preview.
+     */
+    fun holderDerivedSources(): List<HolderDerivedSource> = files.value.filter { f ->
+        f.report?.format == DocumentFormat.PDF || f.mediaType.startsWith("text/")
+    }.map { f ->
+        val item = MyDataFiles.recognize(f.name) ?: f.source?.let { s -> MyDataFiles.recognize(s.substringAfter("・")) }
+        HolderDerivedSource(
+            id = f.id,
+            name = f.name,
+            documentType = item?.let { MyDataFiles.holderDerivedType(it) },
+            sha256Hex = f.sha256,
+            text = { sourceText(f) },
+        )
+    }
+
+    /** The holder's ID number and name from the national ID cards, and the ID number saved for MyData. */
+    fun holderHints(): List<HolderHint> =
+        nationalIdCards().mapNotNull { (_, c) ->
+            runCatching { TaiwanModel.nationalIdClaims(c).toMap() }.getOrNull()?.let { HolderHint(it["unifiedNo"], it["name"]) }
+        } + listOfNotNull(model.settings.myDataIdNumber?.let { HolderHint(it, null) })
+
+    private suspend fun sourceText(f: StoredFile): String = withContext(Dispatchers.Default) {
+        val bytes = data(f.id)
+        if (f.report?.format == DocumentFormat.PDF) {
+            val pdf = unlock(f, bytes, null) ?: throw HolderDerivedException("${f.name} 有密碼，請先在文件分頁輸入身分證統一編號開啟")
+            PdfTextExtractor.extract(pdf, 50).takeIf { it.isNotBlank() } ?: throw HolderDerivedException("${f.name} 沒有文字層")
+        } else bytes.decodeToString()
+    }
 
     // ---------------------------------------------------------------- Bonds national ID card
 

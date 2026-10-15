@@ -4,7 +4,7 @@ import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.DocumentVerdict
-import diw.wallet.core.document.pdf.PdfComposer
+import diw.testservers.fixtures.PdfComposer
 import diw.wallet.core.document.pdf.PdfIncrementalSigner
 import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.env.EnvironmentPolicy

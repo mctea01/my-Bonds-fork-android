@@ -53,7 +53,7 @@ object PdfWriter {
 }
 
 /** Builds a file by appending bytes and records object offsets for the cross-reference data. */
-internal class PdfOutput(initial: ByteArray = ByteArray(0)) {
+class PdfOutput(initial: ByteArray = ByteArray(0)) {
     private var buf = initial.copyOf(maxOf(initial.size * 2, 4096))
     var size = initial.size
         private set

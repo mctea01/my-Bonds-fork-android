@@ -62,7 +62,7 @@ enum class BondsCardKind {
     SD_JWT_VC,
     /** W3C JWT VC, shown whole. */
     JWT_VC,
-    /** vc+moica: the citizen certificate form of a credential derived from a document. */
+    /** vc+moica: the Bonds national ID card signed with the citizen certificate. */
     MOICA,
 }
 
@@ -323,18 +323,12 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 val request = BondsPresentationRequest.parse(text)
                 if (request.source == BondsCredentialSource.SELF_ISSUED) {
-                    val docs = model.documents.value
-                    val nationalIds = model.files.nationalIdCards().map { (_, card) ->
+                    // vc+moica is the national ID card's structure only; document-derived credentials are SD-JWT VC.
+                    val cards = model.files.nationalIdCards().map { (_, card) ->
                         BondsCard(null, null, BondsCardKind.MOICA, NATIONAL_ID_NAME, nationalIdClaims(card), card)
                     }
-                    val derived = model.files.moicaCards().mapNotNull { (f, card) ->
-                        val doc = docs.firstOrNull { it.identifier == f.derivedDocumentId } ?: return@mapNotNull null
-                        val credential = doc.getCertifiedCredentials().firstOrNull() ?: return@mapNotNull null
-                        BondsCard(doc, credential, BondsCardKind.MOICA, doc.displayName ?: f.name, BondsOfflinePresentation.disclosableClaims(card), card)
-                    }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
-                    val cards = nationalIds + derived
                     offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
-                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 卡片（vc+moica）。到「文件」開啟 MyData 的國民身分證資料 PDF 製作身分證卡，或選一份文件產生衍生憑證並勾選「以自然人憑證簽署」，就能出示；姓名一定會揭露。")
+                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 身分證卡（vc+moica）。到「文件」開啟 MyData 的國民身分證資料 PDF 製作身分證卡後就能出示；姓名一定會揭露。")
                     return@launch
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value

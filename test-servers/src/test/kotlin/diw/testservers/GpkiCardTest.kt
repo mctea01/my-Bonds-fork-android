@@ -8,7 +8,7 @@ import diw.wallet.core.document.card.CardChannel
 import diw.wallet.core.document.card.CardResponse
 import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.card.GpkiCardSigner
-import diw.wallet.core.document.pdf.PdfComposer
+import diw.testservers.fixtures.PdfComposer
 import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.sign.SigningException
