@@ -627,7 +627,7 @@ class Oid4vciClient(
                 return listOf(W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, hk.secureArea, hk.alias, true, hk.did))
             }
             val style = compat.owned { it.proofStyle(session.issuer, config) }
-            val needsDid = config.didBindingOnly || (style != null && style.kid != ProofKid.JWK)
+            val needsDid = config.prefersDidKid || (style != null && style.kid != ProofKid.JWK)
             return List(count) {
                 val info = keys.secureArea.createKey(null, settings)
                 val did = if (needsDid) HolderKey.didFor(info.publicKey, didMethodFor(config)) else null
@@ -685,7 +685,7 @@ class Oid4vciClient(
         val cwtInfo = config.proofTypes["cwt"]
         val attestations by lazy { holderKeys.mapNotNull { it.keyInfo.attestation } }
         val style = session.compat.owned { it.proofStyle(session.issuer, config) }
-            ?: ProofStyle(if (config.didBindingOnly) ProofKid.DID_URL else ProofKid.JWK, null)
+            ?: ProofStyle(if (config.prefersDidKid) ProofKid.DID_URL else ProofKid.JWK, null)
         return when {
             jwtInfo != null || (attInfo == null && diInfo == null && cwtInfo == null && config.bindingMethods.isNotEmpty()) -> {
                 val algs = jwtInfo?.signingAlgorithms.orEmpty()

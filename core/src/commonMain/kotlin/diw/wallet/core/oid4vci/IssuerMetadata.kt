@@ -1,5 +1,7 @@
 package diw.wallet.core.oid4vci
 
+import diw.wallet.core.did.DidResolver
+
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.TrustDecision
@@ -128,6 +130,14 @@ data class CredentialConfiguration(
 
     /** True when the issuer binds only to DIDs, so proofs must carry a DID URL kid rather than a jwk. */
     val didBindingOnly: Boolean get() = bindingMethods.isNotEmpty() && didMethods.size == bindingMethods.size
+
+    /**
+     * True when proofs should carry a DID URL kid: the issuer binds only to DIDs, or it issues a W3C credential and
+     * lists a DID method the wallet has (W3C issuers such as walt.id take credentialSubject.id from the proof kid even
+     * when they also list jwk).
+     */
+    val prefersDidKid: Boolean get() = didBindingOnly ||
+        (format.isW3c && didMethods.any { it == "did" || it == "did:jwk" || it == "did:key" })
 
     companion object {
         fun parse(id: String, json: JsonObject): CredentialConfiguration {
@@ -311,19 +321,19 @@ class MetadataFetcher(
         val body = resp.bodyAsText()
         val isJwt = resp.contentType()?.match(ContentType("application", "jwt")) == true ||
             (!body.trimStart().startsWith("{") && body.count { it == '.' } == 2)
-        val (json, trust) = if (isJwt) verifySigned(body.trim(), credentialIssuer) else {
-            val obj = parseJsonObject(body, "invalid_issuer_metadata")
-            val signed = obj.str("signed_metadata")
-            if (signed != null) {
-                val (signedClaims, t) = verifySigned(signed, credentialIssuer)
-                JsonObject(obj + signedClaims) to t
-            } else {
-                obj to TrustDecision(
-                    tier = TrustTier.T3, environment = null, official = false, anchorName = null,
-                    labels = setOf(TrustLabel.UNSIGNED_METADATA),
-                    reasons = listOf("Issuer metadata is not signed; issuer identity rests on TLS only"),
-                )
+        val unsigned = { obj: JsonObject -> obj to selfAsserted("Issuer metadata is not signed; issuer identity rests on TLS only") }
+        val (json, trust) = if (isJwt) {
+            verifySigned(body.trim(), credentialIssuer) ?: run {
+                // No key to check the signed form with: the same metadata as JSON, as an unsigned document.
+                val plain = getFirst(listOf(resp.call.request.url.toString()), accept = "application/json").response
+                    ?.bodyAsText()?.takeIf { it.trimStart().startsWith("{") }
+                    ?: throw ProtocolException("invalid_issuer_metadata", "Signed metadata names no key (x5c, DID or jwk) and no JSON form is served")
+                unsigned(parseJsonObject(plain, "invalid_issuer_metadata"))
             }
+        } else {
+            val obj = parseJsonObject(body, "invalid_issuer_metadata")
+            val signed = obj.str("signed_metadata")?.let { verifySigned(it, credentialIssuer) }
+            if (signed != null) JsonObject(obj + signed.first) to signed.second else unsigned(obj)
         }
         val shaped = if (json.obj("credential_configurations_supported") == null) {
             compat?.first { it.normalizeIssuerMetadata(json) } ?: json
@@ -372,16 +382,36 @@ class MetadataFetcher(
         return meta
     }
 
-    private suspend fun verifySigned(jwt: String, credentialIssuer: String): Pair<JsonObject, TrustDecision> {
+    /**
+     * Verifies signed metadata. The key comes from x5c (anchored in ISSUER trust), from a DID in iss or kid, or from
+     * the jwk in the header (walt.id): a key the issuer names itself proves only that the metadata is intact, so the
+     * decision is the same as for unsigned metadata. Signed metadata whose key cannot be found at all is not used;
+     * the plain JSON is asked for instead (null).
+     */
+    private suspend fun verifySigned(jwt: String, credentialIssuer: String): Pair<JsonObject, TrustDecision>? {
         val jws = Jws.parse(jwt)
         if (jws.typ != "openidvci-issuer-metadata+jwt") {
             throw ProtocolException("invalid_issuer_metadata", "Signed metadata has typ '${jws.typ}'")
         }
-        val chain = jws.x5c?.certificates
-            ?: throw ProtocolException("invalid_issuer_metadata", "Signed metadata without x5c is not supported")
-        X509CertChainCheck.validate(chain)
-        jws.verify(VerificationKey.fromCertificate(chain.first()))
         val claims = jws.payload
+        val chain = jws.x5c?.certificates
+        val did = listOfNotNull(jws.kid, claims.str("iss")).firstOrNull { it.startsWith("did:") }?.substringBefore('#')
+        val trust: TrustDecision = when {
+            chain != null -> {
+                X509CertChainCheck.validate(chain)
+                jws.verify(VerificationKey.fromCertificate(chain.first()))
+                trustRegistry.decide(TrustRole.ISSUER, chain)
+            }
+            did != null -> {
+                jws.verify(DidResolver(httpClient, allowInsecureLoopback).resolveKey(did, jws.kid?.takeIf { it.contains('#') }).key)
+                selfAsserted("Issuer metadata is signed by $did, which no trust anchor names")
+            }
+            jws.jwk != null -> {
+                jws.verify(VerificationKey.fromJwk(jws.jwk!!))
+                selfAsserted("Issuer metadata is signed with a key in its own header; issuer identity rests on TLS only")
+            }
+            else -> return null
+        }
         val sub = claims.str("sub")
         if (sub != null && sub != credentialIssuer) {
             throw ProtocolException("invalid_issuer_metadata", "Signed metadata sub does not match credential_issuer")
@@ -389,8 +419,14 @@ class MetadataFetcher(
         claims.long("exp")?.let {
             if (it < Clock.System.now().epochSeconds) throw ProtocolException("invalid_issuer_metadata", "Signed metadata expired")
         }
-        return claims to trustRegistry.decide(TrustRole.ISSUER, chain)
+        return claims to trust
     }
+
+    private fun selfAsserted(reason: String) = TrustDecision(
+        tier = TrustTier.T3, environment = null, official = false, anchorName = null,
+        labels = setOf(TrustLabel.UNSIGNED_METADATA),
+        reasons = listOf(reason),
+    )
 
     private class Lookup(val response: HttpResponse?, val failure: String)
 
