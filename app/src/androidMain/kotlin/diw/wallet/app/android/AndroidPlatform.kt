@@ -38,6 +38,7 @@ import com.google.android.gms.identitycredentials.RegistrationRequest
 import com.google.android.gms.tasks.Task
 import diw.wallet.app.DcApiRegistration
 import diw.wallet.app.BondsLinkPeripheral
+import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
 import diw.wallet.app.NfcReaderList
@@ -238,6 +239,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             out.toByteArray()
         }
     }
+
+    override val externalKeys: ExternalKeys by lazy { AndroidKeys(context) { activity } }
+
+    override val mobileMoicaReturnUrl = "diw-wallet://moica/return"
 
     override fun openExternal(url: String): Boolean = try {
         val intent = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(null)

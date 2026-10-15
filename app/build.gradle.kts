@@ -179,6 +179,10 @@ compose.desktop {
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
             modules("java.instrument", "java.logging", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            // Signing with PKCS#11 tokens (SunPKCS11), and on Windows with keys in the certificate store (SunMSCAPI),
+            // which only the Windows JDK has.
+            modules("jdk.crypto.cryptoki")
+            if (System.getProperty("os.name").startsWith("Windows")) modules("jdk.crypto.mscapi")
             windows {
                 menuGroup = "DIW MY WALLET"
                 upgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"

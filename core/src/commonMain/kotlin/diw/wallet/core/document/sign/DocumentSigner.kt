@@ -11,11 +11,18 @@ enum class SignerSource(val title: String) {
     PKCS12("憑證檔（PKCS#12）"),
     /** The wallet's own document key with a self-issued certificate. */
     WALLET("錢包自有金鑰"),
+    /** A key the operating system keeps (Android KeyChain, Windows certificate store, macOS keychain). */
+    SYSTEM_KEYSTORE("系統金鑰"),
+    /** A hardware token reached through PKCS#11 (USB token, card reader with the vendor's module). */
+    PKCS11("硬體憑證（PKCS#11）"),
+    /** The mobile citizen certificate through the TW FidO SP API. */
+    MOBILE_MOICA("行動自然人憑證"),
 }
 
 /**
- * A signing key with its certificate: a smart card, an imported PKCS#12 key, or the wallet's own key. Every
- * document format (PAdES, CAdES, ASiC-E, XAdES, the self-made certificate) signs through this interface.
+ * A signing key with its certificate: a smart card, an imported PKCS#12 key, a system or PKCS#11 key, the mobile
+ * citizen certificate, or the wallet's own key. Every document format (PAdES, CAdES, ASiC-E, XAdES, the self-made
+ * certificate) signs through this interface.
  */
 interface DocumentSigner {
     /** Signer certificate first, then any intermediate certificates (DER). */

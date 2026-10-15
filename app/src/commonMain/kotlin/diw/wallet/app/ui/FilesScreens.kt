@@ -68,6 +68,10 @@ import diw.wallet.app.PickedFile
 import diw.wallet.app.Screen
 import diw.wallet.app.SignForm
 import diw.wallet.app.SignerChoice
+import diw.wallet.app.ExternalKeyOption
+import diw.wallet.app.MobileMoicaSp
+import diw.wallet.core.document.sign.MobileMoicaEnvironment
+import diw.wallet.core.document.sign.MobileMoicaMode
 import diw.wallet.app.StoredFile
 import diw.wallet.app.WalletModel
 import diw.wallet.app.CredentialDetails
@@ -219,7 +223,8 @@ fun FilesTab(model: WalletModel) {
         SectionTitle("電子公文收發")
         ActionRow(WalletIcons.Send, "公文交換（收發）", "需要機關的公文電子交換帳號與憑證，個人錢包目前無法收發；收到的公文檔案可匯入保存與檢查", enabled = false) {}
         SectionTitle("遠端與行動簽章")
-        ActionRow(WalletIcons.Phone, "行動自然人憑證簽章", "需要內政部核發的服務提供者（SP）帳號才能發出簽章請求；目前只支援在來源網站登入時轉到官方 App", enabled = false) {}
+        Text("行動自然人憑證簽章已加入文件的「簽署」，需要內政部核發的服務提供者（SP）帳號，供持有 SP 授權者測試。",
+            style = MaterialTheme.typography.bodySmall)
         ActionRow(WalletIcons.Link, "CSC 遠端簽章", "需要遠端簽章服務商的帳號與 CSC API 授權，尚無可用的服務商", enabled = false) {}
     }
 }
@@ -471,7 +476,9 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 
 // ---------------------------------------------------------------- signer choice
 
-private enum class SignerKind(val title: String) { CARD("自然人憑證卡"), PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰") }
+private enum class SignerKind(val title: String) {
+    CARD("自然人憑證卡"), MOBILE("行動自然人憑證"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"), PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
+}
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
 @Composable
@@ -516,17 +523,22 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
     var password by remember { mutableStateOf("") }
     var walletName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    var other by remember { mutableStateOf<SignerChoice?>(null) }
     fun update(card: SignerChoice.Card? = null) = onChange(
         when (kind) {
             SignerKind.CARD -> card
             SignerKind.PKCS12 -> p12?.takeIf { password.isNotEmpty() }?.let { SignerChoice.Pkcs12(it.bytes, password) }
             SignerKind.WALLET -> SignerChoice.Wallet(walletName)
+            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE -> other
         }
     )
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; update() }, label = { Text(k.title) }) }
+        SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(k.title) }) }
     }
     when (kind) {
+        SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
+        SignerKind.TOKEN -> TokenKeyPicker(model) { other = it; update() }
+        SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
         SignerKind.CARD -> CardPicker(model) { update(it) }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
@@ -542,6 +554,140 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             Text("以錢包的金鑰與自簽憑證簽署：可證明文件沒有被修改，但無法證明你是誰（查驗方會看到 T3 或無法確認）。", style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+/** A key in the operating system's store: Android shows its own picker, desktops list the store here. */
+@Composable
+private fun SystemKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    val keys = model.platform.externalKeys
+    val reason = keys.systemUnavailableReason
+    if (reason != null) {
+        Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        return
+    }
+    if (keys.systemPicker) {
+        LaunchedEffect(Unit) { onChange(SignerChoice.System(null)) }
+        Text("按下「簽署」後由系統列出已安裝的憑證（設定中的「加密與憑證」），由你選擇要讓錢包使用哪一把。金鑰留在系統內，錢包只取得簽章結果。",
+            style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    var list by remember { mutableStateOf<List<ExternalKeyOption>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var chosen by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    fun load() = scope.launch {
+        problem = null
+        list = runCatching { keys.systemKeys() }.getOrElse { problem = model.describe(it); emptyList() }
+    }
+    LaunchedEffect(Unit) { load() }
+    KeyList(list, chosen, problem, "系統金鑰庫中沒有可簽章的憑證") { chosen = it; onChange(SignerChoice.System(it)) }
+    OutlinedButton(onClick = { load() }) { Text("重新讀取") }
+    Text("Windows 列出「個人」憑證存放區（含 HiCOS 等驅動程式登錄的自然人憑證卡），macOS 列出鑰匙圈；使用卡片時系統可能另外要求 PIN 碼。",
+        style = MaterialTheme.typography.bodySmall)
+}
+
+/** A PKCS#11 module and PIN, then a key on the token. */
+@Composable
+private fun TokenKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    val keys = model.platform.externalKeys
+    keys.tokenUnavailableReason?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        return
+    }
+    val found = remember { keys.tokenLibraries() }
+    var library by remember { mutableStateOf(found.firstOrNull().orEmpty()) }
+    var pin by remember { mutableStateOf("") }
+    var list by remember { mutableStateOf<List<ExternalKeyOption>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var chosen by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    if (found.isNotEmpty()) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            found.forEach { path -> FilterChip(selected = path == library, onClick = { library = path; list = null; onChange(null) },
+                label = { Text(path.substringAfterLast('/').substringAfterLast('\\')) }) }
+        }
+    }
+    OutlinedTextField(value = library, onValueChange = { library = it.trim(); list = null; onChange(null) }, label = { Text("PKCS#11 模組路徑") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value = pin, onValueChange = { pin = it.take(32); list = null; onChange(null) }, label = { Text("PIN 碼") }, singleLine = true,
+        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedButton(onClick = {
+        busy = true
+        scope.launch {
+            problem = null
+            list = runCatching { keys.tokenKeys(library, pin) }.getOrElse { problem = model.describe(it); emptyList() }
+            busy = false
+        }
+    }, enabled = library.isNotBlank() && pin.isNotEmpty() && !busy) { Text(if (busy) "讀取中" else "讀取金鑰") }
+    if (list != null || problem != null) {
+        KeyList(list, chosen, problem, "這個硬體憑證沒有可簽章的金鑰") { chosen = it; onChange(SignerChoice.Token(library, pin, it)) }
+    }
+    Text("例如 HiCOS 的 PKCS#11 模組可直接使用自然人憑證卡，其他 USB 憑證請填入廠商提供的模組。PIN 碼只用於這次簽署，不會保存；輸入錯誤次數過多會鎖卡。",
+        style = MaterialTheme.typography.bodySmall)
+}
+
+@Composable
+private fun KeyList(list: List<ExternalKeyOption>?, chosen: String?, problem: String?, empty: String, onPick: (String) -> Unit) {
+    when {
+        problem != null -> Text(problem, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        list == null -> CircularProgressIndicator(Modifier.size(20.dp))
+        list.isEmpty() -> Text(empty, style = MaterialTheme.typography.bodySmall)
+        else -> list.forEach { k ->
+            Row(Modifier.fillMaxWidth().clickable { onPick(k.id) }, verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(selected = k.id == chosen, onClick = { onPick(k.id) })
+                Column {
+                    Text(k.label, style = MaterialTheme.typography.bodyMedium)
+                    Text(k.detail, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The mobile citizen certificate through an SP account. The account belongs to whoever holds the licence from the
+ * Ministry of the Interior; it is typed in here for this run only and never stored or built into the app.
+ */
+@Composable
+private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    val last = model.files.mobileMoicaSp
+    var env by remember { mutableStateOf(last?.environment ?: MobileMoicaEnvironment.UAT) }
+    var serviceId by remember { mutableStateOf(last?.serviceId.orEmpty()) }
+    var aesKey by remember { mutableStateOf(last?.aesKeyBase64.orEmpty()) }
+    var idNumber by remember { mutableStateOf("") }
+    val canOpenApp = model.platform.mobileMoicaReturnUrl != null
+    var mode by remember { mutableStateOf(if (canOpenApp) MobileMoicaMode.APP_TO_APP else MobileMoicaMode.PUSH) }
+    fun update() {
+        val id = idNumber.trim().uppercase()
+        val ok = serviceId.isNotBlank() && aesKey.isNotBlank() && MyDataProfile.isValidId(id)
+        onChange(if (ok) SignerChoice.MobileMoica(MobileMoicaSp(env, serviceId.trim(), aesKey.trim()), id, mode) else null)
+    }
+    Text("需要內政部核發的服務提供者（SP）帳號。這裡供持有 SP 授權的共同開發者測試：帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置或 App。",
+        style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+    }
+    OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(
+        value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
+        visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MobileMoicaMode.entries.forEach { m ->
+            FilterChip(selected = m == mode, enabled = m != MobileMoicaMode.APP_TO_APP || canOpenApp, onClick = { mode = m; update() }, label = { Text(m.title) })
+        }
+    }
+    Text(
+        "第一次簽署需在 App 確認兩次：先取得你的憑證，再簽署文件；之後這次執行內只需確認一次。" +
+            if (canOpenApp) "" else "電腦無法開啟行動自然人憑證 App，請用推播。",
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 // ---------------------------------------------------------------- sign

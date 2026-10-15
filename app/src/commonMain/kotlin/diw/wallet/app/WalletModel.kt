@@ -763,6 +763,8 @@ class WalletModel(val platform: PlatformServices) {
             completeAuthorization(u)
             return
         }
+        // The mobile citizen certificate app returns here after signing; the signing screen is polling already.
+        platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
         if (BondsPresentationRequest.looksLike(u)) {
             taiwan.startBonds(u)
             return

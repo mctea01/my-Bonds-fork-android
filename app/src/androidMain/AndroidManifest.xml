@@ -98,6 +98,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="diw-wallet" android:host="oid4vci" android:path="/callback" />
             </intent-filter>
+            <intent-filter>
+                <!-- Return from the mobile citizen certificate app after an app-to-app signature. -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-wallet" android:host="moica" android:path="/return" />
+            </intent-filter>
         </activity>
 
         <service

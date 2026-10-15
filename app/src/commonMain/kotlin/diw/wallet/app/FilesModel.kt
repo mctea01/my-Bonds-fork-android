@@ -23,6 +23,11 @@ import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.MobileMoicaCredentials
+import diw.wallet.core.document.sign.MobileMoicaEnvironment
+import diw.wallet.core.document.sign.MobileMoicaMode
+import diw.wallet.core.document.sign.MobileMoicaSigner
+import diw.wallet.core.document.sign.TwFidoClient
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.document.sign.SigningException
@@ -239,7 +244,16 @@ sealed class SignerChoice {
     class Pkcs12(val file: ByteArray, val password: String) : SignerChoice()
     /** The wallet's own key with a self-issued certificate in [name]. */
     class Wallet(val name: String) : SignerChoice()
+    /** A key in the system store; [id] null opens the platform's own picker (Android KeyChain). */
+    class System(val id: String?) : SignerChoice()
+    /** A key on a PKCS#11 token loaded from [library]; the PIN is used for this signing only. */
+    class Token(val library: String, val pin: String, val id: String) : SignerChoice()
+    /** The mobile citizen certificate, through the SP account of a licence holder entered for this run. */
+    class MobileMoica(val sp: MobileMoicaSp, val idNumber: String, val mode: MobileMoicaMode) : SignerChoice()
 }
+
+/** An SP account entered for this run; kept in memory only, never stored. */
+data class MobileMoicaSp(val environment: MobileMoicaEnvironment, val serviceId: String, val aesKeyBase64: String)
 
 /** The signature a file gets. */
 enum class SignForm(val title: String, val detail: String) {
@@ -720,9 +734,13 @@ class FilesModel(private val model: WalletModel) {
     /** Signs [f] as [form]; the signed result is stored as a new file. */
     fun sign(f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean) = run("準備簽署") {
         val data = data(f.id)
-        val signer = withContext(model.unlockProvider) { signer(choice) }
+        val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
         val ts = if (timestamp) timestamper() else null
-        busy.value = if (choice is SignerChoice.Card) "簽署中：依提示再次感應卡片" else "簽署中"
+        busy.value = when (choice) {
+            is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
+            is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
+            else -> "簽署中"
+        }
         val signerName = DocumentSigning.certificateSummary(signer.certificateChain.first())?.first
         val base = f.name.substringBeforeLast('.')
         val (bytes, name) = withContext(model.unlockProvider) {
@@ -744,10 +762,48 @@ class FilesModel(private val model: WalletModel) {
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
-    private suspend fun signer(choice: SignerChoice): DocumentSigner = when (choice) {
+    private suspend fun signer(choice: SignerChoice, hint: String = "DIW MY WALLET 文件簽署"): DocumentSigner = when (choice) {
         is SignerChoice.Card -> cardSigner(choice)
         is SignerChoice.Pkcs12 -> DocumentSigning.pkcs12Signer(choice.file, choice.password)
         is SignerChoice.Wallet -> walletSigner(choice.name)
+        is SignerChoice.System -> withMoicaChain(model.platform.externalKeys.systemSigner(choice.id))
+        is SignerChoice.Token -> withMoicaChain(model.platform.externalKeys.tokenSigner(choice.library, choice.pin, choice.id))
+        is SignerChoice.MobileMoica -> mobileMoicaSigner(choice, hint)
+    }
+
+    /** SP account entered on the signing screen during this run; never written to storage. */
+    var mobileMoicaSp: MobileMoicaSp? = null
+
+    /** Holder certificates already read through the mobile citizen certificate, so later signings need one approval. */
+    private val mobileMoicaCerts = mutableMapOf<String, ByteArray>()
+
+    private suspend fun mobileMoicaSigner(choice: SignerChoice.MobileMoica, hint: String): MobileMoicaSigner {
+        mobileMoicaSp = choice.sp
+        val client = TwFidoClient(model.http, choice.sp.environment, MobileMoicaCredentials(choice.sp.serviceId.trim(), choice.sp.aesKeyBase64.trim()))
+        val returnUrl = model.platform.mobileMoicaReturnUrl ?: ""
+        val cacheKey = choice.sp.environment.name + ":" + choice.sp.serviceId + ":" + choice.idNumber
+        val signer = MobileMoicaSigner(
+            client, choice.idNumber, choice.mode, hint.take(60),
+            openApp = { model.platform.openExternal(it) }, returnUrl = returnUrl,
+            onStatus = { busy.value = it }, certificate = mobileMoicaCerts[cacheKey],
+        )
+        val cert = mobileMoicaCerts[cacheKey] ?: run {
+            busy.value = "第一次使用：先在行動自然人憑證 App 確認一次以取得憑證，接著再確認簽署"
+            signer.load().also { mobileMoicaCerts[cacheKey] = it }
+        }
+        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
+        return if (PlatformCrypto.certificateSignedBy(cert, moica)) signer.withIntermediates(listOf(moica)) else signer
+    }
+
+    /** Adds MOICA G3 after a citizen certificate that a store or token returned without its issuer. */
+    private fun withMoicaChain(signer: DocumentSigner): DocumentSigner {
+        val chain = signer.certificateChain
+        if (chain.size != 1) return signer
+        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
+        if (!PlatformCrypto.certificateSignedBy(chain.first(), moica)) return signer
+        return object : DocumentSigner by signer {
+            override val certificateChain = chain + listOf(moica)
+        }
     }
 
     /** A card signer with its certificate read (first tap); MOICA G3 is added to the chain when it issued the card. */

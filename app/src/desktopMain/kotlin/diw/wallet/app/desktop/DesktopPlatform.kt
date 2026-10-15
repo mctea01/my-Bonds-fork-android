@@ -3,6 +3,7 @@ package diw.wallet.app.desktop
 import com.sun.net.httpserver.HttpServer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.NfcReaderList
 import diw.wallet.app.PickedFile
@@ -162,6 +163,8 @@ class DesktopPlatform(
     }
 
     override fun openExternal(url: String): Boolean = runCatching { openBrowser(url) }.isSuccess
+
+    override val externalKeys: ExternalKeys get() = DesktopKeys
 
     /** A native file dialog on the AWT event thread; null when cancelled. */
     private fun dialog(title: String, mode: Int, name: String?): File? {

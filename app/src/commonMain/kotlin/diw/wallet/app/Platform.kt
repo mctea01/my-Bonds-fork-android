@@ -1,6 +1,8 @@
 package diw.wallet.app
 
 import androidx.compose.ui.graphics.ImageBitmap
+import diw.wallet.core.document.sign.DocumentSigner
+import diw.wallet.core.document.sign.SigningException
 import io.ktor.client.HttpClient
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.nfc.NfcTagReader
@@ -135,6 +137,43 @@ interface PlatformServices {
 
     /** Hands a link of another app (such as mobilemoica: for the mobile citizen certificate) to the system; false when no app takes it. */
     fun openExternal(url: String): Boolean = false
+
+    /** Signing keys kept by the operating system or on a PKCS#11 token. */
+    val externalKeys: ExternalKeys get() = NoExternalKeys
+
+    /** Where the mobile citizen certificate app returns after an app-to-app signature; null when it cannot be opened here. */
+    val mobileMoicaReturnUrl: String? get() = null
+}
+
+/** A key in the system store or on a token, as listed for the user to pick. */
+class ExternalKeyOption(val id: String, val label: String, val detail: String)
+
+/**
+ * Signing keys outside the wallet: the operating system's key store (Android KeyChain, Windows certificate store,
+ * macOS keychain) and PKCS#11 hardware tokens. Each unavailable source says why, so the signing screen can show it
+ * as a disabled choice.
+ */
+interface ExternalKeys {
+    val systemUnavailableReason: String?
+    val tokenUnavailableReason: String?
+
+    /** True when the platform shows its own key picker ([systemSigner] with a null id); otherwise [systemKeys] lists them. */
+    val systemPicker: Boolean get() = false
+
+    /** Module paths of common PKCS#11 drivers that exist on this computer. */
+    fun tokenLibraries(): List<String> = emptyList()
+
+    suspend fun systemKeys(): List<ExternalKeyOption> = emptyList()
+    suspend fun systemSigner(id: String?): DocumentSigner
+    suspend fun tokenKeys(library: String, pin: String): List<ExternalKeyOption> = emptyList()
+    suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner
+}
+
+object NoExternalKeys : ExternalKeys {
+    override val systemUnavailableReason = "此平台沒有可用的系統金鑰庫"
+    override val tokenUnavailableReason = "此平台不支援 PKCS#11 硬體憑證"
+    override suspend fun systemSigner(id: String?): DocumentSigner = throw SigningException(systemUnavailableReason)
+    override suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner = throw SigningException(tokenUnavailableReason)
 }
 
 /** Outcome of the last registration with the platform Digital Credentials API, shown in settings. */
