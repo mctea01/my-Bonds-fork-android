@@ -4,3 +4,5 @@ local.properties
 *.iml
 .idea/
 .kotlin/
+# Local probes against real documents (personal data); never commit
+test-servers/src/test/kotlin/diw/testservers/local/

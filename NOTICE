@@ -1,0 +1,38 @@
+DIW MY WALLET
+Copyright 2026 LIN, CHE-CHUAN
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes or links the following third-party software, each under
+its own license:
+
+- Multipaz (org.multipaz:multipaz, multipaz-doctypes, multipaz-compose,
+  multipaz-dcapi) - Apache License 2.0
+- Kotlin standard library, kotlinx.coroutines, kotlinx.serialization,
+  kotlinx-io, kotlinx-datetime - Apache License 2.0
+- Ktor - Apache License 2.0
+- Compose Multiplatform and AndroidX (activity, fragment, browser,
+  credentials, credentials registry) - Apache License 2.0
+- Google Play services identity credentials - Android Software Development
+  Kit License
+- Bouncy Castle (bcprov, bcpkix) - MIT-style Bouncy Castle License
+- Apache Xerces2 (xercesImpl 2.12.2) and xml-apis - Apache License 2.0
+  (xml-apis also carries the W3C and SAX public domain notices)
+- Apache PDFBox (desktop preview only) - Apache License 2.0
+- SQLite JDBC (org.xerial:sqlite-jdbc, desktop) - Apache License 2.0;
+  SQLite itself is in the public domain
+
+Development and test tools that are not shipped in the application:
+
+- EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
+- open-attestation (used once to generate the fictional OpenCerts samples in
+  test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
+
+Built-in trust anchors (core/.../trust/BuiltInAnchors.kt,
+BuiltInPublicRoots.kt, BuiltInTestAnchors.kt) are public certificates
+published by their certification authorities and by the Multipaz project; they
+are reproduced for certificate path validation only.
+
+No source code was copied from the Bonds (bonds.tw) applications or from
+open-gpki-pkcs11; compatibility with them was implemented from their
+observable formats and public documentation.

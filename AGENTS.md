@@ -1,6 +1,6 @@
 # AGENTS.md
 
-給在此 repo 工作的程式代理（與新進開發者）的說明。使用者文件見 [README.md](README.md)。
+給在此 repo 工作的程式代理（與新進開發者）的說明。使用者文件見 [README.md](README.md)，設計、研究與驗收文件的索引見 [docs/README.md](docs/README.md)。
 
 ## 溝通與輸出
 
@@ -51,7 +51,7 @@
      - 常用服務憑證鏈的根憑證，跟著系統憑證庫的開關；
      - 中國大陸憑證機構，有獨立開關，預設開啟，加上 `MAINLAND_CHINA_CA` 標籤。內容包括 Mozilla 或 Microsoft 根憑證計畫收錄的 CFCA、GDCA、SHECA、BJCA、iTrusChina、TrustAsia，以及持牌 CA 在官網公布的國密 SM2 根憑證。
      - 時間戳記憑證機構：CCADB 中 Microsoft 根憑證計畫收錄且 EKU 含 Time Stamping 的根憑證，只用於 `TrustRole.TSA`，跟著系統憑證庫的開關。
-     - `BuiltInPublicRoots.kt` 由 `tools/trust-roots/update_roots.py` 產生，不手動修改：CCADB 依 `roots.json` 的機構挑選中國大陸 CA；服務主機實際連線取得憑證鏈的根憑證（連不上時沿用 `services.lock.json`）；SM2 根憑證以 `tools/trust-roots/sm2/*.pem` 與 SHA-256 釘選；GPKI 只檢查並回報（以公鑰比對，GRCA 換金鑰的連結憑證不算新憑證）。內容沒有變更時不改檔案與 `UPDATED` 日期。測試檢查指紋、自簽章（SM2 以 BouncyCastle）與 `UPDATED` 當天的有效期；執行時已過期的內建根憑證不再當成錨點。
+     - `BuiltInPublicRoots.kt` 由 `tools/trust-roots/update_roots.py` 產生，不手動修改：CCADB 依 `roots.json` 的機構挑選中國大陸 CA；服務主機實際連線取得憑證鏈的根憑證（連不上時沿用 `services.lock.json`）；SM2 根憑證以 `tools/trust-roots/sm2/*.pem` 與 SHA-256 釘選；不在 CCADB 的其他根憑證列在 `roots.json` 的 `pinned`（`tools/trust-roots/pinned/*.pem`，SHA-256 釘選、須自簽且為 CA，歸入中國大陸憑證機構），目前為 BJCA Global Root CA3（國家移民管理局電子文件經 BJCA DocSign CA3 簽發）；GPKI 只檢查並回報（以公鑰比對，GRCA 換金鑰的連結憑證不算新憑證）。內容沒有變更時不改檔案與 `UPDATED` 日期。測試檢查指紋、自簽章（SM2 以 BouncyCastle）與 `UPDATED` 當天的有效期；執行時已過期的內建根憑證不再當成錨點。
    - 國密憑證（SM2 金鑰、SM3withSM2 簽章，OID 1.2.156.10197）由 `Pkix` 改用 BouncyCastle 驗證；provider 以實例使用，不註冊為全域。JOSE 與 COSE 沒有定義 SM2，這些錨點目前只用於憑證鏈驗證。
    - Multipaz 的 TrustManager 只支援 EC 金鑰，RSA 憑證鏈在它丟出例外時改用 PKIX（`trust/SystemTrustStore` 的 `Pkix`）驗證。
    - Microsoft Verified ID 依 Microsoft 錢包程式庫的規則：Linked Domains 驗證成功為 T3（`LINKED_DOMAIN`），與 Authenticator 一樣不需要額外勾選警示；驗證失敗為 T4。使用者自行信任的 DID 排在 Linked Domains 之前，連結暫時失效不會蓋過使用者的決定。
@@ -87,7 +87,7 @@
 - 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存，開啟文件時依目前的信任錨點重新判定。
 - 簽章檢查的寬鬆處理：CMS 只讀第一個 ASN.1 物件（e簽寶等服務在 BER 後多寫結束標記），完整性以憑證公鑰驗證（BouncyCastle 不再以 signingTime 檢查憑證效期）；CMS 沒有 signingTime 時以 PDF 簽章字典的 `/M` 當作宣稱的簽署時間；PKIX 依序嘗試較短的憑證鏈前段，因為附上的憑證可能含交叉簽署的根憑證。簽章卡的信任說明只描述簽署者（`signerTrustLine`）。
 - 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
-- CSC 遠端簽章（`document/sign/Csc.kt`、App 的 `CscModel`）：CSC API v2，OAuth 授權碼加 PKCE，先以 `scope=service` 登入並讀 `credentials/list`，每次簽章再以 `scope=credential`（`credentialID`、`numSignatures`、base64url `hashes`、`hashAlgorithmOID`）授權，最後 `signatures/signHash`（標準 base64、`signAlgo` 優先 ecdsa-with-SHA256 或 sha256WithRSA，EC 的 r||s 轉 DER）；`implicit`／`explicit` 模式改用 `credentials/authorize` 取得 SAD（PIN、OTP 不保存）。內建 EUDI walletcentric 測試服務（demo 與 dev，`wallet-client`、redirect `rqes://oauth/callback`），使用者可自行加入服務並標示測試或正式，存在設定的 `cscServices`。登入由 `CscModel` 以自己的 cookie 跟隨轉址，遇到 OpenID4VP 連結（含只放一個錢包連結的頁面）就由 `WalletModel.presentForAuthorization` 在一般同意畫面出示 PID，取得驗證端回傳的 redirect_uri 後繼續；EUDI 的授權會帶 CSC `qes-approval` transaction_data（`QesApprovalTransaction`），同意畫面列出要簽的份數。需要網頁登入時改開瀏覽器，Android 接收 `rqes://oauth/callback` 與 `diw-wallet://csc/callback`，電腦版貼上最後網址。登入權杖只存在這次執行。
+- CSC 遠端簽章（`document/sign/Csc.kt`、App 的 `CscModel`）：CSC API v2，OAuth 授權碼加 PKCE，先以 `scope=service` 登入並讀 `credentials/list`，每次簽章再以 `scope=credential`（`credentialID`、`numSignatures`、base64url `hashes`、`hashAlgorithmOID`）授權，最後 `signatures/signHash`（標準 base64、`signAlgo` 優先 ecdsa-with-SHA256 或 sha256WithRSA，EC 的 r||s 轉 DER）；`implicit`／`explicit` 模式改用 `credentials/authorize` 取得 SAD（PIN、OTP 不保存）。內建 EUDI walletcentric 測試服務（demo 與 dev，`wallet-client`、redirect `rqes://oauth/callback`），使用者可自行加入服務並標示測試或正式，存在設定的 `cscServices`。登入由 `CscModel` 以自己的 cookie 跟隨轉址，遇到 OpenID4VP 連結（含只放一個錢包連結的頁面）就由 `WalletModel.presentForAuthorization` 在一般同意畫面出示 PID，取得驗證端回傳的 redirect_uri 後繼續；EUDI 的授權會帶 CSC `qes-approval` transaction_data（`QesApprovalTransaction`），同意畫面列出要簽的份數。有 transaction_data 時 KB-JWT 必須寫出 `transaction_data_hashes_alg`（Multipaz 在 sha-256 時省略，EUDI 驗證端回「must be sha-256」），由 `ResponseBuilder` 補上。需要網頁登入時改開瀏覽器，Android 接收 `rqes://oauth/callback` 與 `diw-wallet://csc/callback`，電腦版貼上最後網址。登入權杖只存在這次執行。
 - 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。有 TSA 時為 B-T。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
 - 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位為 disclosure：錢包自己的欄位（姓名、文件標題、檔名、簽署者、簽署時間、來源）與 `DocumentFields` 從文件內容解析的欄位（OpenCerts 資料、公文「函」的發文機關、受文者、日期、字號與主旨、PDF 文字層的「標籤：值」，加密 PDF 以這次輸入的密碼開啟），上限 30 個。持有人自填的欄位要另外展開才能加，名稱前綴 `holderStated:`。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
 - vc+moica 與 Bonds 相容：payload 以 JCS 序列化，卡片簽 `"bonds-tw-credential-v1:" + hex(sha256(payload))`（RS256），issuerJWS 為 BONDS_SELF_ISSUED did:key 的 ES256。Bonds 請求 `k=s` 時列出有自然人憑證證據的衍生憑證；MOICA G3 與 GRCA G3 固定在 `MoicaCa.PRODUCTION`，測試以 `MoicaCa(moica, root)` 注入。
@@ -99,6 +99,7 @@
 - 分年度的文件：MyData 檔案讀得出期間（所得年度、「113 年度」）時記在 `StoredFile.period` 並加進檔名（「綜合所得稅各類所得資料（113 年度）.pdf」），內容不同的檔案以 SHA-256 區分，不會互相覆蓋。文件分頁可「依保存時間」或「依項目」排列，依項目時同類檔案依期間由新到舊。Bonds 持有人衍生查驗依序試所有候選文件，查驗方問的年度不在已保存的資料時，錯誤訊息列出已有的年度。
 - XML 解析（`XmlParsing`）：Android 內建 DOM 只接受 ASCII 名稱，中文元素或 DOCTYPE 的公文會失敗，所以 Android 改用 Xerces 2.12.2；Xerces 需要的 DOM events、ranges、traversal、ElementTraversal、StAX 等介面 Android 沒有，`core` 的 `androidDomExtras` 只從 xml-apis 取出 android.jar 沒有的類別打包，不覆蓋平台類別。
 - 入出國日期證明書（`EntryExitCertificate`）：表格左右兩半印在同一行，依項次讀出出境與入境日期；衍生欄位為個人與證明書欄位、最後出入境日期、最近一次出境是否已入境、查詢期間最後一天是否在境內與整份紀錄（一個欄位）；產生衍生憑證時可指定日期加入「該日是否在境內」（`inTaiwanOn_<日期>`，查詢期間外不提供）。預覽以結構化畫面呈現。
+- 中國大陸出入境記錄（`MainlandEntryExitRecord`，國家移民管理局「出入境记录查询结果（电子文件）」，BJCA 簽章）：每列為「序號 出境|入境 日期 證件號碼 口岸 [航班號]」，證件名稱折行印在該列前後（「台湾居民来往大陆」在前、「通行证」在後），陸路與水路沒有航班號，跨頁時有頁尾；序號 1 為最新，同一天以序號排序。衍生欄位為個人與記錄欄位、查詢期間、筆數、最後入境與出境日期、查詢期間最後一天是否在中國大陸境內與整份紀錄；指定日期為 `inMainlandOn_<日期>`。兩種記錄共用 `MovementRecord`（`MovementRecord.parse` 先試台灣證明書），「該日是否在境內」以該日或之前最後一筆移動判斷，之前沒有移動時以之後第一筆反推。比對漢字用 `[\u4e00-\u9fff]`，不用 `\p{IsHan}`（Android 的 regex 不支援）。
 - 戶籍衍生答案與欄位只用比對出的持有人本人（身分證卡或設定的身分證統一編號），單人戶也要比對；沒有持有人資料或比對不到時拒答。
 - 行動自然人憑證 SP：編譯時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（UAT 或 PRODUCTION）環境變數或 Gradle 屬性產生 `BuiltInSp`（build 目錄，不提交）；設定的「手動輸入 SP 帳號（開發者）」改用簽署畫面輸入、只存在記憶體的帳號。
 - OpenCerts（`document/opencerts`）：`OpenAttestationDocument` 檢查 v2（salted 值、flatley 路徑）與 v3（proof.salts、`a.b[0]` 路徑、葉數須等於 salt 數）的 Merkle 完整性，並整理出受領人、主要欄位、發行者、簽署人與簽名圖、成績單、圖片、附件與其他欄位（`view()`，不顯示原始路徑）。`OpenAttestationOnline` 依 oa-verify 線上查驗：文件庫 `isIssued`／`isRevoked`（支援 batch 介面 0xdcfd0745）、token registry `ownerOf`、DID 簽章（EIP-191 對 Merkle root，secp256k1 還原成 did:ethr 位址）與撤銷（NONE、REVOCATION_STORE、OCSP_RESPONDER）；發行者身分看 DNS-TXT（`openatts net=ethereum netId addr`）、DNS-DID 與 OpenCerts 官方登錄，任一成立即通過。DNS 走 DoH（dns.google、cloudflare-dns.com），鏈依 DNS 紀錄的 netId，RPC 用不需金鑰的公開節點；查不到時為 `NOT_CHECKED`，不判失敗。結果存在 `OpenCertInfo.online`，開啟時超過 12 小時重新查驗，離線時保留上一次有意義的結果；完整性、發行與身分都通過才是 `VALID`，完整性或發行失敗為 `INVALID`。`OpenCertRenderer` 產生 decentralized renderer 的宿主頁（自寫 penpal v5／v4 握手、`RENDER_DOCUMENT`、`UPDATE_HEIGHT`、`UPDATE_TEMPLATES`、`SELECT_TEMPLATE`），只接受 https 的 template URL；Android 以 WebView `loadDataWithBaseURL` 開啟，桌面寫入暫存檔後用系統瀏覽器開啟。內容只在使用者點「以發證機構樣式顯示」時送到發證機構的顯示程式。測試樣本是以 open-attestation 6.9.7 包裝的虛構資料（`test-servers/src/test/resources/documents/opencerts/generate.js`）。
@@ -112,7 +113,7 @@
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。
 - 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
-- 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。
+- 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
 ## TWDIW 與 Bonds 要點
 
@@ -152,8 +153,11 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 - 測試方法用 `runBlocking<Unit> { ... }`。最後一行若回傳值（例如 `assertFailsWith`），JUnit 會因方法不是 void 而**靜默略過**該測試。
 - 修 bug 先寫出能重現的測試。
 
-## 分支、PR 與 CI
+## 文件、分支、PR 與 CI
 
+- README 面向使用者（功能、畫面、下載、建置），開發規則與實作要點寫在本檔。功能或畫面有明顯變更時一併更新 README；截圖以 `uiScreenshots` 產生，縮成 412 像素寬、128 色後放在 `docs/images`。
+- 設計與研究文件在 `docs/design`、`docs/research`，驗收紀錄在 `docs/acceptance`，新增文件時加入 `docs/README.md` 的索引；文件內不放個資（實機記錄的卡號、UID、憑證效期等先遮蔽）。
+- 授權為 Apache-2.0（`LICENSE` 為官方全文），新增第三方元件或內建第三方資料時更新 `NOTICE`。
 - 每個階段（P1、P2…）在各自的 `claude/...` 分支開發並開新 PR，PR 合併後不再沿用同一個 PR。
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
 - CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly）需要三者都成功。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
