@@ -242,16 +242,16 @@ class TwdiwPlatformTest {
     }
 
     /**
-     * Newer TWDIW issuers publish a nonce_endpoint, yet the official wallet proves over the token's c_nonce and a
-     * proof over an endpoint nonce fails with HTTP 500. The TWDIW session keeps the token's c_nonce.
+     * Newer TWDIW issuers publish a nonce_endpoint and, like the official wallet 1.0.14, take only proofs over its
+     * nonce: a proof over the token's c_nonce is refused with HTTP 400 (resp_code 11016, invalid_proof).
      */
     @Test
-    fun nonceEndpointDoesNotReplaceTokenNonce() = runBlocking<Unit> {
+    fun proofUsesNonceEndpoint() = runBlocking<Unit> {
         val s = setup()
         s.mock.nonceEndpointPublished = true
         val r = s.receive()
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
-        assertEquals(0, s.mock.endpointNonces)
+        assertEquals(1, s.mock.endpointNonces)
         assertEquals(1, r.credentials.size)
     }
 

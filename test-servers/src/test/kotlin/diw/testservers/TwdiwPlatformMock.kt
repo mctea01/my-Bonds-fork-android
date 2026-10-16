@@ -351,12 +351,14 @@ class TwdiwPlatformMock private constructor(
         jws.verify(VerificationKey.Ec(holderKey))
         expect(jws.payload.str("iss") == CLIENT_ID) { "proof iss ${jws.payload.str("iss")}" }
         expect(jws.payload.str("aud") == ISSUER) { "proof aud ${jws.payload.str("aud")}" }
-        // As moda.wallet.gov.tw behaves: a proof over a nonce from its nonce endpoint passes the proof checks, and the
-        // credential service then fails.
-        if (nonceEndpointPublished && jws.payload.str("nonce")?.startsWith("endpoint-nonce-") == true) {
-            return json(buildJsonObject { put("resp_code", 11500); put("resp_message", "Interal server error") }, HttpStatusCode.InternalServerError)
+        // As moda.wallet.gov.tw (2026-10-16) and the official wallet 1.0.14: an issuer with a nonce_endpoint only takes
+        // proofs over a nonce from it and refuses the token's c_nonce as an invalid proof.
+        val expected = if (nonceEndpointPublished) "endpoint-nonce-$endpointNonces" else cNonce
+        if (jws.payload.str("nonce") != expected) {
+            return json(buildJsonObject {
+                put("error", "invalid_proof"); put("resp_code", 11016); put("resp_message", "Invalid proof")
+            }, HttpStatusCode.BadRequest)
         }
-        expect(jws.payload.str("nonce") == cNonce) { "proof nonce ${jws.payload.str("nonce")}" }
         // The official handler answers 500 with its own body once token and proof passed but the credential service failed.
         credentialServiceFailure?.let { (code, message) ->
             return json(buildJsonObject { put("resp_code", code); put("resp_message", message) }, HttpStatusCode.InternalServerError)

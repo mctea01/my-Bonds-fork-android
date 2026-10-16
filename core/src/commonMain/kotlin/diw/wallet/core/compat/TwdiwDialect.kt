@@ -88,13 +88,6 @@ class TwdiwDialect(
 
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
 
-    /**
-     * Newer TWDIW issuers (moda.wallet.gov.tw, seen 2026-10-16) also publish a nonce_endpoint. The official wallet
-     * signs its proof over the token response's c_nonce; with a nonce from the endpoint the same card failed with
-     * HTTP 500 while the official wallet received it.
-     */
-    override fun tokenNonce(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
-
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
 
     /**
