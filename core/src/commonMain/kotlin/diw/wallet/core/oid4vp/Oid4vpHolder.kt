@@ -152,10 +152,10 @@ class Oid4vpHolder(
                 lastError = e
             }
         }
-        return best?.copy(warnings = best.warnings +
+        return best?.copy(warnings = best.warnings + (
             "Multi-signed DC API: authenticated " + best.verifier.clientId.raw +
-            " among " + request.multiSignedCandidates.size + " signatures"
-        ) ?: throw RequestValidationException(
+                " among " + request.multiSignedCandidates.size + " signatures"
+        )) ?: throw RequestValidationException(
             "invalid_request_object",
             "No multi-signed verifier identity could be authenticated",
             cause = lastError,
