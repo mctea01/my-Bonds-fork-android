@@ -139,6 +139,9 @@ interface PlatformServices {
     /** Lets the user pick a file to store; null when cancelled or not possible. */
     suspend fun pickFile(): PickedFile? = null
 
+    /** Lets the user pick a picture (for reading a QR Code from it); any file where the picker cannot filter. */
+    suspend fun pickImage(): PickedFile? = pickFile()
+
     /** Lets the user pick one or more files; the single picker where the platform has no multiple selection. */
     suspend fun pickFiles(): List<PickedFile> = listOfNotNull(pickFile())
 
@@ -203,6 +206,8 @@ data class DcApiRegistration(
     val issuance: Boolean = false,
     /** Why the system refused that registration; null when it was accepted or not attempted. */
     val issuanceError: String? = null,
+    /** Each registered credential as the system matcher sees it: title, format with doctype or vct, and claim count. */
+    val entries: List<String> = emptyList(),
 )
 
 /**
@@ -217,6 +222,8 @@ class CardArtSpec(
     val foreground: Int,
     val logo: ImageBitmap?,
     val picture: ImageBitmap?,
+    /** Issuer card face (display background_image), drawn over the whole card when present. */
+    val face: ImageBitmap? = null,
     val badge: String?,
 ) {
     companion object {

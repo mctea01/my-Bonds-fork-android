@@ -156,6 +156,12 @@ class DesktopPlatform(
         PickedFile(chosen.name, chosen.readBytes())
     }
 
+    override suspend fun pickImage(): PickedFile? = withContext(Dispatchers.IO) {
+        val chosen = dialog("選擇含 QR Code 的圖片", FileDialog.LOAD, null) ?: return@withContext null
+        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException("檔案超過 64 MB")
+        PickedFile(chosen.name, chosen.readBytes())
+    }
+
     override suspend fun pickFiles(): List<PickedFile> = withContext(Dispatchers.IO) {
         var chosen: List<File> = emptyList()
         EventQueue.invokeAndWait {

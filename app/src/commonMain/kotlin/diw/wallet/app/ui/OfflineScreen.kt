@@ -67,9 +67,12 @@ private fun secondsLeft(until: Instant): Long {
 
 private fun mmss(s: Long) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 
-/** Codes shown at a counter or to a verifier, and the Bonds verifier flow. */
+/**
+ * Codes shown at a counter or to a verifier, and the Bonds verifier flow. [readQr] reads one code with the camera,
+ * or from a picture where [hasCamera] is false.
+ */
 @Composable
-fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
+fun OfflineScreen(model: WalletModel, readQr: suspend () -> String?, hasCamera: Boolean) {
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
         is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
@@ -88,7 +91,7 @@ fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
         is OfflineUi.Barcode -> BarcodeView(model, s)
         is OfflineUi.BondsChoose -> BondsChooseView(model, s)
         is OfflineUi.BondsFrames -> BondsFramesView(model, s)
-        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, scanQr)
+        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera)
         is OfflineUi.VerifierResult -> VerifierResultView(model, s)
     }
 }
@@ -210,16 +213,17 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
 }
 
 @Composable
-private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChallenge, scanQr: (suspend () -> String?)?) {
+private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChallenge, readQr: suspend () -> String?, hasCamera: Boolean) {
     var scanning by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
     LaunchedEffect(scanning) {
-        if (scanning && scanQr != null) {
-            // One scan per frame until the presentation is complete or the user closes the scanner.
-            while (model.taiwan.verifying) {
-                val text = scanQr() ?: break
+        if (scanning) {
+            // With the camera, one scan per frame until the presentation is complete or the user closes the scanner;
+            // a picture holds one frame per pick.
+            do {
+                val text = readQr() ?: break
                 model.handleUri(text)
-            }
+            } while (hasCamera && model.taiwan.verifying)
             scanning = false
         }
     }
@@ -237,12 +241,11 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
             LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
             Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
         }
-        if (scanQr != null) {
-            Button(onClick = { scanning = true }) {
-                Icon(WalletIcons.Scan, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(" 掃描對方畫面")
-            }
-        } else {
+        Button(onClick = { scanning = true }, enabled = !scanning) {
+            Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(if (hasCamera) " 掃描對方畫面" else " 從圖片讀取對方畫面")
+        }
+        if (!hasCamera) {
             OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("貼上對方畫面的內容（BTWVP1:...）") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedButton(onClick = { model.handleUri(pasted); pasted = "" }, enabled = pasted.isNotEmpty()) { Text("加入") }
