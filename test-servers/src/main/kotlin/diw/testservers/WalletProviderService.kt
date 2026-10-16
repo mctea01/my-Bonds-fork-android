@@ -6,6 +6,7 @@ import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.bool
+import diw.wallet.core.util.long
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import kotlinx.serialization.json.JsonArray
@@ -25,6 +26,7 @@ import org.multipaz.util.toBase64Url
 import org.multipaz.webtoken.buildJwt
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Clock
 
 /**
  * Test wallet provider (TEST environment). Vouches for wallet instances and their keys.
@@ -86,7 +88,9 @@ class WalletProviderService(
         if (proof.typ != "wallet-provider-client-proof+jwt" ||
             proof.payload.str("iss") != id || proof.payload.str("sub") != id ||
             proof.payload.str("aud") != "$baseUrl/wallet-provider/client-assertion" ||
-            proof.payload.str("authorization_server") != aud
+            proof.payload.str("authorization_server") != aud ||
+            (proof.payload.long("exp") ?: 0L) <= Clock.System.now().epochSeconds ||
+            (proof.payload.long("exp") ?: 0L) > Clock.System.now().epochSeconds + 600
         ) throw ProtocolException("invalid_client", "Wallet instance proof claims invalid")
         val proofId = proof.payload.str("jti")
             ?: throw ProtocolException("invalid_client", "Wallet instance proof jti missing")
