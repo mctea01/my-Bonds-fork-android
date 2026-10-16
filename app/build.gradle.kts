@@ -14,7 +14,7 @@ plugins {
 
 /**
  * The mobile citizen certificate SP account built into this build, from the environment or Gradle properties
- * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI passes them as secrets).
+ * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI can pass them as secrets, see docs/release.md).
  * The generated source stays in the build directory and is never committed; without the values the app has no
  * built-in account and only the developer setting can supply one.
  */

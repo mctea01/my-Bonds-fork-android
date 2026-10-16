@@ -81,14 +81,46 @@ data class ChosenCredential(
 /** One line of the consent screen: a credential and the claims it discloses (claim paths joined with '.'). */
 data class ConsentLine(val document: Document, val documentName: String, val claims: List<String>)
 
-/** An extended request matched against the wallet, ready for consent. */
-class ExtendedPrepared(
+/**
+ * An extended request matched against the wallet, ready for consent. [chosen] and [lines] are index aligned; the
+ * holder may swap the credential of a line for one of its [alternatives] through [ExtendedPresenter.replace].
+ */
+class ExtendedPrepared internal constructor(
     val request: ValidatedAuthorizationRequest,
     val chosen: List<ChosenCredential>,
     val lines: List<ConsentLine>,
     val definition: PresentationDefinition?,
     val dcql: DcqlQueryModel?,
-)
+    internal val peMatches: List<DescriptorMatch> = emptyList(),
+    internal val peCandidates: Map<String, List<DescriptorMatch>> = emptyMap(),
+    internal val dcqlMatches: List<DcqlMatch> = emptyList(),
+    internal val dcqlCandidates: Map<String, List<DcqlMatch>> = emptyMap(),
+) {
+    /**
+     * Other held credentials that can answer line [index] while the submission still meets the request: candidates of
+     * the same input descriptor or DCQL query, or, under a Presentation Exchange pick rule, of another descriptor of the
+     * same group. Credentials already presented on another line are left out.
+     */
+    fun alternatives(index: Int): List<WalletCredential> = replacements(index).map { it.second }
+
+    internal fun replacements(index: Int): List<Pair<Any, WalletCredential>> {
+        val current = chosen.getOrNull(index) ?: return emptyList()
+        val others = chosen.filterIndexed { i, _ -> i != index }.map { it.credential.document.identifier }.toSet()
+        fun usable(c: WalletCredential) = c.document.identifier != current.credential.document.identifier && c.document.identifier !in others
+        val def = definition
+        if (def != null) {
+            val match = peMatches.getOrNull(index) ?: return emptyList()
+            val rest = peMatches.filterIndexed { i, _ -> i != index }.associateBy { it.descriptor.id }
+            return def.descriptors.filter { it.id == match.descriptor.id || it.id !in rest }.flatMap { d ->
+                peCandidates[d.id].orEmpty().filter { usable(it.credential) && PresentationExchange.satisfies(def, rest + (d.id to it)) }
+            }.distinctBy { it.credential.document.identifier }.map { it to it.credential }
+        }
+        val match = dcqlMatches.getOrNull(index) ?: return emptyList()
+        if (match.query.multiple) return emptyList()
+        return dcqlCandidates[match.query.id].orEmpty().filter { usable(it.credential) }
+            .distinctBy { it.credential.document.identifier }.map { it to it.credential }
+    }
+}
 
 /** How an extended response was delivered. */
 sealed class ExtendedOutcome {
@@ -116,34 +148,56 @@ class ExtendedPresenter(
 
     suspend fun prepare(request: ValidatedAuthorizationRequest): ExtendedPrepared {
         val creds = WalletCredential.load(store)
-        val chosen: List<ChosenCredential>
-        var definition: PresentationDefinition? = null
-        var dcql: DcqlQueryModel? = null
-        when {
+        return when {
             request.presentationDefinition != null -> {
                 val def = PresentationDefinition.parse(request.presentationDefinition)
-                definition = def
                 // ISO 18013-7: an mdoc input descriptor's id is the docType.
                 val candidates = PresentationExchange.match(def, creds).mapValues { (id, list) ->
                     list.filter { it.credential.family != CredentialFamily.MDOC || it.credential.docType == id }
                 }
-                chosen = PresentationExchange.select(def, candidates).map { it.toChosen() }
+                pe(request, def, candidates, PresentationExchange.select(def, candidates))
             }
             request.dcqlQuery.isNotEmpty() -> {
                 val model = DcqlQueryModel.parse(request.dcqlQuery)
-                dcql = model
-                chosen = OwnDcql.select(model, OwnDcql.match(model, creds)).map {
-                    ChosenCredential(it.credential, it.memberPaths, null, it.query.id, it.claims.any { c -> c.intentToRetain })
-                }
+                val candidates = OwnDcql.match(model, creds)
+                dcql(request, model, candidates, OwnDcql.select(model, candidates))
             }
-            else -> chosen = emptyList()
+            else -> ExtendedPrepared(request, emptyList(), emptyList(), null, null)
         }
-        val lines = chosen.map { c ->
-            // Structural members a filter matches on (the card type, schema, status) carry no personal data; they are not listed.
-            val shown = c.memberPaths.filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
-            ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct())
+    }
+
+    /**
+     * The same request with line [index] answered by [credential], one of [ExtendedPrepared.alternatives]; the other
+     * lines keep their credentials. Throws when [credential] is not an alternative of that line.
+     */
+    fun replace(prepared: ExtendedPrepared, index: Int, credential: WalletCredential): ExtendedPrepared {
+        val (match, _) = prepared.replacements(index).firstOrNull { it.second.document.identifier == credential.document.identifier }
+            ?: throw ProtocolException("access_denied", "The credential cannot answer this part of the request")
+        val def = prepared.definition
+        if (def != null) {
+            val picked = prepared.peMatches.toMutableList().also { it[index] = match as DescriptorMatch }
+            // Keep the definition's descriptor order, as the first selection has it.
+            val order = def.descriptors.map { it.id }
+            return pe(prepared.request, def, prepared.peCandidates, picked.sortedBy { order.indexOf(it.descriptor.id) })
         }
-        return ExtendedPrepared(request, chosen, lines, definition, dcql)
+        val picked = prepared.dcqlMatches.toMutableList().also { it[index] = match as DcqlMatch }
+        return dcql(prepared.request, prepared.dcql!!, prepared.dcqlCandidates, picked)
+    }
+
+    private fun pe(request: ValidatedAuthorizationRequest, def: PresentationDefinition, candidates: Map<String, List<DescriptorMatch>>, picked: List<DescriptorMatch>): ExtendedPrepared {
+        val chosen = picked.map { it.toChosen() }
+        return ExtendedPrepared(request, chosen, lines(chosen), def, null, peMatches = picked, peCandidates = candidates)
+    }
+
+    private fun dcql(request: ValidatedAuthorizationRequest, model: DcqlQueryModel, candidates: Map<String, List<DcqlMatch>>, picked: List<DcqlMatch>): ExtendedPrepared {
+        val chosen = picked.map { ChosenCredential(it.credential, it.memberPaths, null, it.query.id, it.claims.any { c -> c.intentToRetain }) }
+        return ExtendedPrepared(request, chosen, lines(chosen), null, model, dcqlMatches = picked, dcqlCandidates = candidates)
+    }
+
+    private fun lines(chosen: List<ChosenCredential>) = chosen.map { c ->
+        // Structural members a filter matches on (the card type, schema, status) carry no personal data; they are not listed.
+        val shown = c.memberPaths.filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
+        ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct())
     }
 
     private fun DescriptorMatch.toChosen() = ChosenCredential(

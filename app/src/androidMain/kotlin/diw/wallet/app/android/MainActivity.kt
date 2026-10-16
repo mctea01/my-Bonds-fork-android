@@ -61,7 +61,7 @@ class MainActivity : FragmentActivity() {
                 try { d.await() } finally { scanRequest.value = null }
             })
             val scan by scanRequest.collectAsState()
-            scan?.let { QrScanDialog(it) }
+            scan?.let { QrScanDialog(it) { app.model.qrFromImage() } }
         }
         handle(intent)
     }
@@ -132,7 +132,7 @@ class MainActivity : FragmentActivity() {
 }
 
 @Composable
-private fun QrScanDialog(result: CompletableDeferred<String?>) {
+private fun QrScanDialog(result: CompletableDeferred<String?>, readImage: suspend () -> String?) {
     val permission = rememberCameraPermissionState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(permission.isGranted) {
@@ -152,6 +152,10 @@ private fun QrScanDialog(result: CompletableDeferred<String?>) {
                 } else {
                     Text("需要相機權限才能掃描 QR Code")
                     Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text("允許相機") }
+                }
+                // A code on this phone's own screen (an issuer page, a screenshot) cannot be scanned with its camera.
+                OutlinedButton(onClick = { scope.launch { readImage()?.let { result.complete(it) } } }, modifier = Modifier.fillMaxWidth()) {
+                    Text("從圖片讀取 QR Code")
                 }
                 OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) { Text("取消") }
             }
