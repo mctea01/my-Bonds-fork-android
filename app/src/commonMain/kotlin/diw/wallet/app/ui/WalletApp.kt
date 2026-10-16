@@ -138,6 +138,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                         HomeTab.HISTORY -> HistoryTab(model)
                     }
                     Screen.Settings -> SettingsScreen(model)
+                    is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
                     is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
@@ -181,6 +182,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
         HomeTab.HISTORY -> "紀錄"
     }
     Screen.Settings -> "設定"
+    is Screen.SettingsPage -> s.section.title
     Screen.Issuance -> "加入證件"
     Screen.Presentation -> "出示證件"
     is Screen.DocumentDetail -> "證件內容"

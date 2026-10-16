@@ -183,10 +183,23 @@ data class WalletSettings(
  */
 enum class HomeTab { DOCUMENTS, FILES, USE, VERIFY, HISTORY }
 
+/** The groups of the settings screen, each on its own page. */
+enum class SettingsSection(val title: String) {
+    SECURITY("安全與隱私"),
+    CREDENTIALS("證件與出示"),
+    DOCUMENTS("文件與簽章"),
+    TRUST("信任"),
+    INTEROP("互通"),
+    DEVELOPER("開發者與測試"),
+    GENERAL("一般與關於"),
+}
+
 sealed class Screen {
     /** The tabbed home screen; [WalletModel.tab] is the selected tab. */
     data object Home : Screen()
     data object Settings : Screen()
+    /** One group of the settings, opened from the settings list. */
+    data class SettingsPage(val section: SettingsSection) : Screen()
     data object Issuance : Screen()
     data object Presentation : Screen()
     /** [from] is where the Back button returns to. */
@@ -629,9 +642,10 @@ class WalletModel(val platform: PlatformServices) {
                 screen.value = Screen.Home
             }
             Screen.Settings -> screen.value = Screen.Home
+            is Screen.SettingsPage -> screen.value = Screen.Settings
             Screen.AddDocument -> screen.value = Screen.Home
-            Screen.TrustList -> screen.value = Screen.Settings
-            Screen.TrustAnchors -> screen.value = Screen.Settings
+            Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.Offline -> {
                 taiwan.closeOffline()
                 screen.value = Screen.Home
