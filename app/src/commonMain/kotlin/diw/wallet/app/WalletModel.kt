@@ -123,6 +123,8 @@ data class WalletSettings(
     val testServerUrl: String = "http://10.0.2.2:8080",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
+    /** Registered HTTPS wallet backend, separate from the local test provider. */
+    val walletProviderUrl: String? = null,
     val requireUserAuth: Boolean = true,
     val instanceKeyAlias: String? = null,
     /**
@@ -904,23 +906,34 @@ class WalletModel(val platform: PlatformServices) {
         listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect())
     }
 
-    private var cachedProvider: WalletProvider? = null
-
     private fun walletProvider(): WalletProvider {
         val s = settings
-        if (!(s.testEnvironment && s.useWalletProvider)) return PublicClientWalletProvider(s.clientId)
-        cachedProvider?.let { return it }
+        val configuredUrl = s.walletProviderUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+        val localTestProvider = configuredUrl == null && s.testEnvironment && s.useWalletProvider
+        if (configuredUrl == null && !localTestProvider) return PublicClientWalletProvider(s.clientId)
+
+        val baseUrl = configuredUrl ?: (s.testServerUrl.trimEnd('/') + "/wallet-provider")
+        if (configuredUrl != null && !baseUrl.startsWith("https://")) {
+            throw ProtocolException("wallet_provider_error", "A registered wallet backend must use HTTPS")
+        }
         return object : WalletProvider {
             override val clientId: String = s.clientId
             private var remote: RemoteWalletProvider? = null
             private suspend fun get(): RemoteWalletProvider = remote ?: run {
-                val (key, att) = instanceKey()
-                RemoteWalletProvider(http, s.testServerUrl.trimEnd('/') + "/wallet-provider", s.clientId, key, att, environmentPolicy.insecureLoopbackAllowed)
+                val (key, attestation) = instanceKey()
+                RemoteWalletProvider(
+                    http, baseUrl, s.clientId, key, attestation,
+                    allowInsecureLoopback = localTestProvider && environmentPolicy.insecureLoopbackAllowed,
+                )
             }.also { remote = it }
             override suspend fun walletAttestation() = get().walletAttestation()
-            override suspend fun keyAttestation(keys: List<org.multipaz.securearea.KeyAttestation>, nonce: String?, userAuthentication: Boolean) =
-                get().keyAttestation(keys, nonce, userAuthentication)
-        }.also { cachedProvider = it }
+            override suspend fun clientAssertion(audience: String) = get().clientAssertion(audience)
+            override suspend fun keyAttestation(
+                keys: List<org.multipaz.securearea.KeyAttestation>,
+                nonce: String?,
+                userAuthentication: Boolean,
+            ) = get().keyAttestation(keys, nonce, userAuthentication)
+        }
     }
 
     /** Wallet instance key: no user authentication, attested by the platform where possible. */
