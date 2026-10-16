@@ -28,6 +28,8 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.multipaz.util.toBase64Url
+import org.multipaz.crypto.AsymmetricKey
+import org.multipaz.crypto.JsonWebEncryption
 
 /** Entry hint of Microsoft Verified ID requests (openid-vc), matching MsVerifiedIdPresentationDialect.ENTRY_HINT. */
 private const val MS_VERIFIED_ID_ENTRY = "msvid"
@@ -40,6 +42,8 @@ class RequestResolver(
     private val httpClient: HttpClient,
     private val policy: PresentationPolicy,
     private val allowInsecureLoopback: Boolean,
+    /** Wallet-controlled, locally held ECDH-ES request-object keys (never verifier-supplied JWKs). */
+    private val decryptionKeys: suspend () -> List<AsymmetricKey> = { emptyList() },
 ) {
     /** Schemes the wallet registers for OpenID4VP invocation. */
     val supportedSchemes = setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "https", "openid-vc", "openid", "siopv2")
@@ -79,14 +83,14 @@ class RequestResolver(
                 if (jwt.startsWith("{")) {
                     RawAuthorizationRequest(RequestChannel.URI, outer, null, parseJsonObject(jwt, "invalid_request_uri"), null, walletNonce, entryHint = entryHint)
                 } else {
-                    val jws = parseRequestObject(jwt)
-                    RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, walletNonce, entryHint = entryHint)
+                    val (jws, claims) = parseRequestObjectOrDecrypt(jwt)
+                    RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, walletNonce, entryHint = entryHint)
                 }
             }
             requestValue != null -> {
                 if (clientId == null) throw RequestValidationException("invalid_request", "client_id is required with request")
-                val jws = parseRequestObject(requestValue)
-                RawAuthorizationRequest(RequestChannel.URI, outer, jws, jws.payload, null, null, entryHint = entryHint)
+                val (jws, claims) = parseRequestObjectOrDecrypt(requestValue)
+                RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, null, entryHint = entryHint)
             }
             else -> {
                 val params = buildJsonObject {
@@ -118,7 +122,7 @@ class RequestResolver(
      * @param data the request data member
      * @param callerOrigin the caller origin provided by the platform; a trailing slash is dropped (an origin has no path)
      */
-    fun fromDcApi(protocol: String, data: JsonObject, callerOrigin: String): RawAuthorizationRequest {
+    suspend fun fromDcApi(protocol: String, data: JsonObject, callerOrigin: String): RawAuthorizationRequest {
         if (protocol !in setOf("openid4vp-v1-unsigned", "openid4vp-v1-signed", "openid4vp-v1-multisigned")) {
             throw RequestValidationException("invalid_request", "Unsupported DC API protocol '$protocol'")
         }
@@ -177,6 +181,34 @@ class RequestResolver(
                 alternatives.first().copy(multiSignedCandidates = alternatives)
             }
         }
+    }
+
+    /**
+     * ECDH-ES decryption proves confidentiality to this wallet key, not the Verifier's identity.
+     * Signed client prefixes must still authenticate with a JWS after request resolution.
+     */
+    private suspend fun parseRequestObjectOrDecrypt(input: String): Pair<Jws?, JsonObject> {
+        if (input.count { it == '.' } != 4) {
+            val jws = parseRequestObject(input)
+            return jws to jws.payload
+        }
+        if (input.length > policy.maxRequestObjectBytes * 4) {
+            throw RequestValidationException("invalid_request_object", "Encrypted request object is too large")
+        }
+        val keys = decryptionKeys()
+        if (keys.isEmpty()) throw RequestValidationException(
+            "invalid_request_object", "Encrypted Request Object requires a wallet-controlled registered decryption key"
+        )
+        for (key in keys.take(4)) {
+            try {
+                return null to JsonWebEncryption.decrypt(input, key)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Try another locally owned key. Never use a decryption key provided by the request.
+            }
+        }
+        throw RequestValidationException("invalid_request_object", "Unable to decrypt request with registered wallet keys")
     }
 
     private fun parseRequestObject(jwt: String): Jws {
