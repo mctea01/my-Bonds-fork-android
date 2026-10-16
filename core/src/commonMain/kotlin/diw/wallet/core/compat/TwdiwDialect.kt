@@ -27,7 +27,7 @@ import kotlinx.serialization.json.put
  * - the metadata may name the issuer without the offer's trailing slash (the live telecom card issuer does); the
  *   identifier keeps the slash, so the token endpoint and the proof aud are what the issuer expects;
  * - the token request carries client_id (moda_dw), authorization_details and an empty tx_code when none is asked;
- * - c_nonce comes in the token response;
+ * - c_nonce comes in the token response and is the one proofs use, even where the issuer has a nonce endpoint;
  * - the proof JWT has kid set to the holder did:key (jwk_jcs-pub) without a fragment, no jwk, and iss = client_id;
  * - the credential request is credential_identifier + proofs, the response a single credential;
  * - credentials announced as jwt_vc_json are SD-JWTs (typ vc+sd-jwt) with the W3C credential under vc and no vct;
@@ -89,6 +89,17 @@ class TwdiwDialect(
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
 
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
+
+    /**
+     * TWDIW answers with {resp_code, resp_message} instead of an OAuth error_description. On the credential endpoint
+     * HTTP 500 comes only after the token and proof were accepted: resp_code 11500 is the handler's own failure, any
+     * other code is passed through from the issuer's credential service.
+     */
+    override fun errorDetail(error: JsonObject): String? {
+        val code = (error["resp_code"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return null
+        val message = error.str("resp_message")?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        return "TWDIW resp_code $code" + (message?.let { " ($it)" } ?: "")
+    }
 
     override fun proofStyle(issuer: IssuerMetadata, config: CredentialConfiguration): ProofStyle = ProofStyle(ProofKid.BARE_DID, clientId())
 

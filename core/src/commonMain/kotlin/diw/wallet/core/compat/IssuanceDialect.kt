@@ -109,6 +109,9 @@ interface IssuanceDialect {
     /** Fresh c_nonce carried in a credential error response. */
     fun nonceFromError(error: JsonObject): String? = null
 
+    /** Readable detail of an error response without an OAuth error_description, e.g. a platform's own error code. */
+    fun errorDetail(error: JsonObject): String? = null
+
     /** A different request body after the issuer rejected the 1.0 credential request with [status] and [error]. */
     fun alternativeCredentialRequest(
         issuer: IssuerMetadata,

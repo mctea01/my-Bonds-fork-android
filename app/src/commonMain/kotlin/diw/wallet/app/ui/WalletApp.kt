@@ -73,7 +73,7 @@ import org.multipaz.util.fromBase64Url
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
- * scanner; it returns the scanned text or null.
+ * scanner; it returns the scanned text or null. Reading a QR Code from a picture is offered everywhere.
  *
  * The home screen has five tabs: the documents list and the history log as in the EUDI wallet, Use as in Bonds
  * (present, counter services, add), Files for signed files and official documents, and Verify for the wallet
@@ -90,19 +90,23 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val pin by model.pinRequest.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
-    var scanning by remember { mutableStateOf(false) }
+    var scanning by remember { mutableStateOf<Boolean?>(null) }
 
     LaunchedEffect(msg) {
         msg?.let { snackbar.showSnackbar(it); model.message.value = null }
     }
+    // true: the camera, false: a picture. One reader for every entry: the code decides the flow (offer, request,
+    // Bonds challenge, static code).
     LaunchedEffect(scanning) {
-        if (scanning && scanQr != null) {
-            scanQr()?.let { model.handleUri(it) }
-            scanning = false
+        val camera = scanning ?: return@LaunchedEffect
+        try {
+            (if (camera) scanQr?.invoke() else model.qrFromImage())?.let { model.handleUri(it) }
+        } finally {
+            scanning = null
         }
     }
-    // One scanner for every entry: the scanned code decides the flow (offer, request, Bonds challenge, static code).
-    val scan: (() -> Unit)? = if (scanQr != null) ({ scanning = true }) else null
+    val scan = ScanActions(camera = scanQr?.let { { scanning = true } }, image = { scanning = false })
+    val readQr: suspend () -> String? = scanQr ?: { model.qrFromImage() }
 
     WalletTheme {
         Scaffold(
@@ -147,7 +151,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.TrustList -> TrustListScreen(model)
                     Screen.TrustAnchors -> TrustAnchorsScreen(model)
                     Screen.CustomTrust -> CustomTrustScreen(model)
-                    Screen.Offline -> OfflineScreen(model, scanQr)
+                    Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
                     Screen.Reader -> ReaderScreen(model)
@@ -168,7 +172,10 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                 model = model,
                 onDismiss = { addSheet = false },
                 onList = { addSheet = false; model.screen.value = Screen.AddDocument },
-                onScan = scan?.let { start -> { addSheet = false; start() } },
+                scan = ScanActions(
+                    camera = scan.camera?.let { start -> { addSheet = false; start() } },
+                    image = { addSheet = false; scan.image() },
+                ),
             )
         }
         pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
@@ -275,7 +282,7 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
 
 /** One document: its card, trust, status, data and details, and how to present it. [scan] opens the camera. */
 @Composable
-fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() -> Unit)? = null) {
+fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: ScanActions? = null) {
     val id = screen.documentId
     val docs by model.documents.collectAsState()
     val statuses by model.statuses.collectAsState()
@@ -315,6 +322,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
+        assuranceText(record)?.let { LabelValue("身分保證等級（IAL）", it) }
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
@@ -366,7 +374,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
  * other document to the verifier whose QR code is scanned next, listed first when it is an offline challenge.
  */
 @Composable
-private fun PresentThisDocument(model: WalletModel, doc: Document, scan: (() -> Unit)?) {
+private fun PresentThisDocument(model: WalletModel, doc: Document, scan: ScanActions?) {
     val record = doc.issuanceRecord
     var pasted by remember(doc.identifier) { mutableStateOf("") }
     SectionTitle("出示這張證件")
@@ -374,12 +382,20 @@ private fun PresentThisDocument(model: WalletModel, doc: Document, scan: (() -> 
         ActionRow(WalletIcons.Nfc, "感應出示", "手機靠近查驗設備，或讓對方掃描 QR Code（ISO/IEC 18013-5）") { model.proximity.open() }
     }
     if (scan != null) {
-        ActionRow(WalletIcons.Scan, "掃描查驗方的 QR Code", "線上請求（OpenID4VP）或離線查驗挑戰；離線出示時這張證件排在最前面") {
-            model.taiwan.preferredDocument = doc.identifier
-            scan()
+        val detail = "線上請求（OpenID4VP）或離線查驗挑戰；離線出示時這張證件排在最前面"
+        scan.camera?.let { camera ->
+            ActionRow(WalletIcons.Scan, "掃描查驗方的 QR Code", detail) {
+                model.taiwan.preferredDocument = doc.identifier
+                camera()
+            }
         }
-    } else {
-        Text("這個裝置沒有相機，請貼上查驗方給的連結或查驗挑戰。", style = MaterialTheme.typography.bodySmall)
+        ActionRow(WalletIcons.Image, "從圖片讀取查驗方的 QR Code", if (scan.camera == null) detail else "查驗方的 QR Code 在截圖或圖片裡時使用") {
+            model.taiwan.preferredDocument = doc.identifier
+            scan.image()
+        }
+    }
+    if (scan?.camera == null) {
+        Text("也可以貼上查驗方給的連結或查驗挑戰。", style = MaterialTheme.typography.bodySmall)
         OutlinedTextField(value = pasted, onValueChange = { pasted = it }, label = { Text("查驗方的連結或挑戰") }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = {

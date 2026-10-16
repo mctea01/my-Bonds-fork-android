@@ -17,6 +17,7 @@ import diw.wallet.core.oid4vp.ext.ExtendedOutcome
 import diw.wallet.core.oid4vp.ext.ExtendedPrepared
 import diw.wallet.core.oid4vp.ext.ExtendedPresenter
 import diw.wallet.core.oid4vp.ext.LegacyRequestValidator
+import diw.wallet.core.oid4vp.ext.WalletCredential
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.jose.Jws
@@ -210,6 +211,20 @@ class Oid4vpHolder(
             is ExtendedOutcome.Redirect -> PresentationOutcome.Redirect(o.url)
             is ExtendedOutcome.DcApi -> PresentationOutcome.DcApi(o.data)
         }
+    }
+
+    /** [prepared] with line [index] answered by [credential], one of the line's alternatives (the holder changed the credential). */
+    fun replace(prepared: PreparedExtended, index: Int, credential: WalletCredential): PreparedExtended =
+        PreparedExtended(extended.replace(prepared.prepared, index, credential))
+
+    /**
+     * Recipient, occasion, purpose and terms page of [request] for the consent screen: from the owning profile, or the
+     * Presentation Exchange purpose; null when the request says nothing about them.
+     */
+    fun consentTerms(request: ValidatedAuthorizationRequest): ConsentTerms? {
+        extended.dialectOf(request)?.consentTerms(request)?.let { return it }
+        val purpose = request.presentationDefinition?.str("purpose")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return ConsentTerms(purpose = purpose)
     }
 
     suspend fun respond(prepared: PreparedExtended): PresentationOutcome = when (val o = extended.respond(prepared.prepared)) {

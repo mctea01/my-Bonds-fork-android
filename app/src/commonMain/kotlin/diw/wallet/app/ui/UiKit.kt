@@ -147,7 +147,15 @@ fun CollapsibleSection(
  * stays visible, greyed, and its detail says why.
  */
 @Composable
-fun ActionRow(icon: ImageVector, title: String, detail: String, enabled: Boolean = true, onClick: () -> Unit) {
+fun ActionRow(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    enabled: Boolean = true,
+    /** Drawn in place of [icon], e.g. an issuer logo. */
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Card(
         Modifier.fillMaxWidth().then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(Tokens.CardRadius),
@@ -156,7 +164,8 @@ fun ActionRow(icon: ImageVector, title: String, detail: String, enabled: Boolean
         ),
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            if (leading != null) leading()
+            else Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(28.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium,

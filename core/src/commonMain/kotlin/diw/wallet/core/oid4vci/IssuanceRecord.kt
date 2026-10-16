@@ -56,6 +56,12 @@ data class IssuanceRecord(
     val logoUri: String? = null,
     val backgroundColor: String? = null,
     val textColor: String? = null,
+    /** Card face image URI from the credential display (background_image), shown as the card when it decodes. */
+    val backgroundImageUri: String? = null,
+    /** When the display metadata was last read for a credential stored before card faces were kept (epoch seconds). */
+    val displayCheckedAt: Long? = null,
+    /** The credential display description as the issuer wrote it (TWDIW puts {"ial": ...} there). */
+    val displayDescription: String? = null,
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)

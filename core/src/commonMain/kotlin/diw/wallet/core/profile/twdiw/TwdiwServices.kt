@@ -33,7 +33,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /** A card that can be applied for through the platform (apply/vcList, e.g. the telecom phone number cards). */
-data class TwdiwCardService(val vcUid: String, val name: String, val type: Int?, val issuerServiceUrl: String?) {
+data class TwdiwCardService(val vcUid: String, val name: String, val type: Int?, val issuerServiceUrl: String?, val logoUrl: String? = null) {
     /** type 1 opens the issuer's own site or app; others are shown in an embedded page that returns an offer. */
     val opensExternally: Boolean get() = type == 1
 }
@@ -72,7 +72,7 @@ class TwdiwServices(
     suspend fun cardServices(name: String = ""): List<TwdiwCardService> {
         val body = getJson("${platform.frontendUrl}/api/moda/dwapp/apply/vcList?name=${name.encodeURLPathPart()}&page=0&size=50")
         return items(body, "vcItems").mapNotNull { o ->
-            TwdiwCardService(o.str("vcUid") ?: return@mapNotNull null, o.str("name") ?: "", intOf(o["type"]), o.str("issuerServiceUrl"))
+            TwdiwCardService(o.str("vcUid") ?: return@mapNotNull null, o.str("name") ?: "", intOf(o["type"]), o.str("issuerServiceUrl"), o.str("logoUrl"))
         }
     }
 

@@ -342,7 +342,7 @@ class WalletModelE2eTest {
         shot("10-add-sheet") {
             diw.wallet.app.ui.WalletTheme {
                 androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, onScan = {})
+                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, scan = diw.wallet.app.ui.ScanActions(camera = {}, image = {}))
                 }
             }
         }

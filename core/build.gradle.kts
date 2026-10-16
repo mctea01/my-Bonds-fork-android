@@ -52,6 +52,7 @@ kotlin {
         jvmCommonMain.dependencies {
             implementation(libs.bcprov)
             implementation(libs.bcpkix)
+            implementation(libs.zxing.core)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)

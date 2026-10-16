@@ -4,6 +4,7 @@ import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.signJws
+import diw.wallet.core.oid4vp.ConsentTerms
 import diw.wallet.core.oid4vp.RawAuthorizationRequest
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.ext.CredentialFamily
@@ -34,6 +35,8 @@ data class TwdiwCustomField(val cname: String, val ename: String, val descriptio
  *   nbf, exp, nonce, jti and vp.context / type / verifiableCredential (each card an SD-JWT with the chosen disclosures);
  * - presentation_submission with format jwt_vp, path $, path_nested jwt_vc at $.vp.verifiableCredential[i];
  * - custom_data for static verifiers with custom fields, signed like the VP;
+ * - presentation_definition.purpose is a JSON string {client, scenario, purpose, terms_uri}: the recipient, the
+ *   occasion, the purpose and the 知情同意書 page the official wallet links before sending;
  * - success is a JSON body with code 0.
  */
 class TwdiwPresentationDialect(
@@ -112,6 +115,8 @@ class TwdiwPresentationDialect(
         return mapOf("custom_data" to jwt)
     }
 
+    override fun consentTerms(request: ValidatedAuthorizationRequest): ConsentTerms? = terms(request.presentationDefinition?.str("purpose"))
+
     override fun accepted(status: Int, body: String): Boolean? {
         val json = runCatching { DiwJson.parseToJsonElement(body) as JsonObject }.getOrNull() ?: return null
         val code = (json["code"] as? JsonPrimitive)?.content ?: return null
@@ -129,6 +134,19 @@ class TwdiwPresentationDialect(
 
     companion object {
         const val ID = "twdiw"
+
+        /** Parses the official verifier's purpose JSON; a plain text purpose is kept as it is. */
+        fun terms(purpose: String?): ConsentTerms? {
+            val text = purpose?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+            val json = runCatching { DiwJson.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return ConsentTerms(purpose = text)
+            fun field(name: String) = (json[name] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+            return ConsentTerms(
+                recipient = field("client"),
+                scenario = field("scenario"),
+                purpose = field("purpose"),
+                termsUri = ConsentTerms.httpsOnly(field("terms_uri")),
+            ).takeIf { !it.isEmpty }
+        }
         /** The official wallet and Bonds give the VP a 30 day lifetime. */
         const val VP_LIFETIME_SECONDS = 60L * 60 * 24 * 30
         private val DESCRIPTOR_FORMATS = setOf("vc+sd-jwt", "vc+moica")
