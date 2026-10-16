@@ -46,7 +46,7 @@
 
 - **領取**：OpenID4VCI 1.0 與 draft 11 至 13。支援：
   - pre-authorized code（含交易碼）與 authorization code（PKCE、PAR）；
-  - DPoP、錢包證明、批次與延遲發證、回應加密。
+  - DPoP、錢包證明、批次與延遲發證、回應加密，及依伺服器中繼資料協商 `private_key_jwt`、`attest_jwt_client_auth`、公開用戶端。
 - **格式**：ISO mdoc、IETF SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、包在 SD-JWT 中的 W3C VC）。
 - **Digital Credentials API**：瀏覽器與其他 App 可經系統選擇器要求出示，也可要求存入證件（OpenID4VCI）。
 - **出示**：OpenID4VP 1.0（DCQL、transaction data、DC API）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
@@ -99,6 +99,10 @@
 - **EUDI**：參考實作的發證、PID 出示，以及 CSC 遠端簽章的 `qes-approval` 授權。
 
 各方言只在對方使用該方言時介入，程式碼與標準路徑隔離。
+
+### OpenID4VCI 用戶端驗證
+
+Client Authentication 依授權伺服器發布的 `token_endpoint_auth_methods_supported` 自動協商。當發證端要求受信任的簽章而錢包未配置相符的 Wallet Provider 時，會回報 `client_authentication_unavailable`，不會冒充已註冊用戶端。測試用 Wallet Provider 可產生 `private_key_jwt` 與 Wallet Attestation，但僅限信任該測試 PKI 的發證端；連接其他正式發證端仍須取得該端認可的金鑰或簽署服務。
 
 ## 下載
 
