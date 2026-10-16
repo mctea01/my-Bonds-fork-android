@@ -57,6 +57,10 @@ import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import io.ktor.client.request.get
+import io.ktor.client.statement.readRawBytes
+import diw.wallet.core.credential.CardImages
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -203,6 +207,47 @@ class TwdiwPlatformTest {
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
         assertEquals(TwdiwPlatformMock.ISSUER, r.document.issuanceRecord!!.credentialIssuer)
         assertEquals("twdiw", r.document.issuanceRecord!!.profile)
+    }
+
+    /**
+     * Card faces as the official wallet shows them: background_image is kept on the record (an empty uri is none), a
+     * card stored before reads the display again, and the platform's text/plain data URI bodies decode to the image,
+     * for card faces and catalog logos alike.
+     */
+    @Test
+    fun cardFaceAndCatalogLogo() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.cardFaceInMetadata = false
+        val plain = s.receive().document.issuanceRecord!!
+        assertNull(plain.backgroundImageUri)
+        assertNotNull(plain.displayCheckedAt)
+
+        s.mock.cardFaceInMetadata = true
+        val display = assertNotNull(s.client().credentialDisplay(TwdiwPlatformMock.ISSUER, TwdiwPlatformMock.CONFIG_ID, plain.profile))
+        assertEquals(TwdiwPlatformMock.COVER_URL, display.backgroundImageUri)
+        assertEquals(TwdiwPlatformMock.COVER_URL, s.receive().document.issuanceRecord!!.backgroundImageUri)
+
+        val face = s.w.httpClient.get(TwdiwPlatformMock.COVER_URL).readRawBytes()
+        assertTrue(!CardImages.isImage(face), "the platform sends text, not the image")
+        assertContentEquals(s.mock.png(), CardImages.fromBody(face))
+        val card = s.services.cardServices().single()
+        assertEquals(TwdiwPlatformMock.LOGO_URL, card.logoUrl)
+        assertContentEquals(s.mock.png(), CardImages.fromBody(s.w.httpClient.get(card.logoUrl!!).readRawBytes()))
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    /**
+     * Newer TWDIW issuers publish a nonce_endpoint, yet the official wallet proves over the token's c_nonce and a
+     * proof over an endpoint nonce fails with HTTP 500. The TWDIW session keeps the token's c_nonce.
+     */
+    @Test
+    fun nonceEndpointDoesNotReplaceTokenNonce() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(0, s.mock.endpointNonces)
+        assertEquals(1, r.credentials.size)
     }
 
     /**

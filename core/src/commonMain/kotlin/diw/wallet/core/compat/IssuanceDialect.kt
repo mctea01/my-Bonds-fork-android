@@ -106,6 +106,12 @@ interface IssuanceDialect {
     /** c_nonce for proofs when the issuer has no nonce endpoint; [tokenResponse] is the raw token response. */
     fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = null
 
+    /**
+     * c_nonce an owned session takes from the token response for its first proofs even when the issuer also has a
+     * nonce endpoint, because the profile's issuers tie the token's c_nonce to the issuance.
+     */
+    fun tokenNonce(tokenResponse: JsonObject): String? = null
+
     /** Fresh c_nonce carried in a credential error response. */
     fun nonceFromError(error: JsonObject): String? = null
 

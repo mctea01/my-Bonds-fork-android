@@ -139,6 +139,9 @@ interface PlatformServices {
     /** Lets the user pick a file to store; null when cancelled or not possible. */
     suspend fun pickFile(): PickedFile? = null
 
+    /** Lets the user pick a picture (for reading a QR Code from it); any file where the picker cannot filter. */
+    suspend fun pickImage(): PickedFile? = pickFile()
+
     /** Lets the user pick one or more files; the single picker where the platform has no multiple selection. */
     suspend fun pickFiles(): List<PickedFile> = listOfNotNull(pickFile())
 
@@ -217,6 +220,8 @@ class CardArtSpec(
     val foreground: Int,
     val logo: ImageBitmap?,
     val picture: ImageBitmap?,
+    /** Issuer card face (display background_image), drawn over the whole card when present. */
+    val face: ImageBitmap? = null,
     val badge: String?,
 ) {
     companion object {

@@ -9,6 +9,11 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.credential.CardImages
+import diw.wallet.core.util.QrDecoder
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.unit.IntSize
 import diw.wallet.core.credential.ClaimLabels
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.credential.ClaimSensitivity
@@ -750,7 +755,10 @@ class WalletModel(val platform: PlatformServices) {
 
     // ---------------------------------------------------------------- card art
 
-    /** Decoded card logos by URI; SVG and unreachable logos stay absent and the card shows its category icon. */
+    /**
+     * Decoded card logos and card faces by URI; SVG and unreachable images stay absent and the card shows its colours
+     * and category icon.
+     */
     val cardArt = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
     private val artRequested = mutableSetOf<String>()
 
@@ -768,6 +776,7 @@ class WalletModel(val platform: PlatformServices) {
      * Credentials API) lists credentials with this image.
      */
     suspend fun ensureCardArt() {
+        refreshCardFaces()
         var changed = false
         for (doc in documentStore.listDocuments()) {
             if (doc.cardArt != null) continue
@@ -784,6 +793,44 @@ class WalletModel(val platform: PlatformServices) {
         if (changed) documents.value = documentStore.listDocuments()
     }
 
+    /**
+     * Reads the display metadata once for OpenID4VCI credentials stored before card faces were kept, so cards such as
+     * TWDIW ones get the card face (background_image) their issuer publishes. A credential whose card face changes
+     * loses its generated card art, which [ensureCardArt] then draws again.
+     */
+    suspend fun refreshCardFaces() = cardFaceLock.withLock {
+        var changed = false
+        for (doc in documentStore.listDocuments()) {
+            val record = doc.issuanceRecord ?: continue
+            if (record.displayCheckedAt != null || record.pendingTransactionId != null) continue
+            if (!record.credentialIssuer.startsWith("https://") || record.profile == TaiwanModel.MSVID) continue
+            val display = try {
+                oid4vci().credentialDisplay(record.credentialIssuer, record.configurationId, record.profile)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Offline or the issuer is gone: try again on a later start.
+                continue
+            }
+            val updated = record.copy(
+                backgroundImageUri = display?.backgroundImageUri ?: record.backgroundImageUri,
+                logoUri = record.logoUri ?: display?.logoUri,
+                backgroundColor = record.backgroundColor ?: display?.backgroundColor,
+                textColor = record.textColor ?: display?.textColor,
+                displayCheckedAt = kotlin.time.Clock.System.now().epochSeconds,
+            )
+            val faceChanged = updated.backgroundImageUri != record.backgroundImageUri
+            doc.edit {
+                appData = updated.encode()
+                if (faceChanged) cardArt = null
+            }
+            changed = true
+        }
+        if (changed) documents.value = documentStore.listDocuments()
+    }
+
+    private val cardFaceLock = Mutex()
+
     private suspend fun cardArtSpec(doc: Document): CardArtSpec {
         val record = doc.issuanceRecord
         val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier }
@@ -799,6 +846,7 @@ class WalletModel(val platform: PlatformServices) {
         val foreground = parseColor(record?.textColor)
             ?: if (0.299 * background.red + 0.587 * background.green + 0.114 * background.blue > 0.6) Color.Black else Color.White
         val logo = record?.logoUri?.let { uri -> runCatching { fetchArt(uri) }.getOrNull() }?.let { platform.decodeImage(it) }
+        val face = record?.backgroundImageUri?.let { uri -> runCatching { fetchArt(uri) }.getOrNull() }?.let { platform.decodeImage(it) }
         val picture = derived?.let { files.firstPage(it) } ?: runCatching {
             doc.getCertifiedCredentials().firstOrNull()?.let { c -> ClaimReader.read(c, documentTypes).firstNotNullOfOrNull { it.picture } }
         }.getOrNull()?.let { platform.decodeImage(it) }
@@ -809,21 +857,26 @@ class WalletModel(val platform: PlatformServices) {
             foreground = foreground.toArgb(),
             logo = logo,
             picture = picture,
+            face = face,
             badge = if (record?.isTestEnvironment == true) "測試" else null,
         )
     }
 
-    /** Logo bytes from a data: URI or an https URL, cached in storage so cards render offline. */
+    /**
+     * Logo or card face bytes from a data: URI or an https URL, cached in storage so cards render offline. A body that
+     * carries a data URI as text (TWDIW card faces) is decoded to the image.
+     */
     private suspend fun fetchArt(uri: String): ByteArray? {
-        if (uri.startsWith("data:image/")) return uri.substringAfter("base64,", "").ifEmpty { null }?.fromBase64()
+        if (uri.startsWith("data:", ignoreCase = true)) return CardImages.fromDataUri(uri)
         if (!isAcceptableEndpoint(uri, environmentPolicy.insecureLoopbackAllowed)) return null
         val key = PlatformCrypto.sha256(uri.encodeToByteArray()).toBase64Url()
         val t = storage.getTable(artTable)
         t.get(key)?.let { return it.toByteArray() }
         val resp = http.get(uri)
         if (!resp.status.isSuccess()) return null
-        val bytes = resp.readRawBytes()
-        if (bytes.size > MAX_ART_BYTES || platform.decodeImage(bytes) == null) return null
+        val body = resp.readRawBytes()
+        val bytes = (if (body.size <= CardImages.MAX_IMAGE_BYTES && platform.decodeImage(body) != null) body else CardImages.fromBody(body))
+            ?.takeIf { platform.decodeImage(it) != null } ?: return null
         t.insert(key, ByteString(bytes))
         return bytes
     }
@@ -837,6 +890,43 @@ class WalletModel(val platform: PlatformServices) {
      * Dispatches any wallet URI: credential offers, presentation requests, the OID4VCI redirect, TWDIW entry
      * points (deep links, relay pages, static codes), Bonds challenges and Microsoft Verified ID requests.
      */
+    /**
+     * Reads a QR Code from a picture the user picks, such as a screenshot of an issuer page or a saved code. With
+     * several codes the most central one is taken; when there is none a message says so and the result is null.
+     */
+    suspend fun qrFromImage(): String? {
+        val picked = try {
+            platform.pickImage()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            message.value = "無法讀取圖片：" + describe(e)
+            return null
+        } ?: return null
+        val text = withContext(Dispatchers.Default) { qrTextsIn(picked.bytes) }.firstOrNull()
+        if (text == null) message.value = "「${picked.name}」中找不到 QR Code，請選擇清楚、完整含有 QR Code 的圖片"
+        return text
+    }
+
+    /** QR Code texts in an image file, the most central first; empty when it is not a picture or holds no code. */
+    fun qrTextsIn(bytes: ByteArray): List<String> {
+        val decoded = platform.decodeImage(bytes) ?: return emptyList()
+        // Camera photos are scaled down: a code stays readable and the pixel buffer stays small on phones.
+        val scale = minOf(1f, MAX_QR_IMAGE_SIDE.toFloat() / maxOf(decoded.width, decoded.height))
+        val image = if (scale >= 1f) decoded else {
+            val w = (decoded.width * scale).toInt().coerceAtLeast(1)
+            val h = (decoded.height * scale).toInt().coerceAtLeast(1)
+            ImageBitmap(w, h).also { target ->
+                androidx.compose.ui.graphics.Canvas(target).drawImageRect(
+                    decoded, dstSize = IntSize(w, h), paint = Paint().apply { filterQuality = FilterQuality.Medium },
+                )
+            }
+        }
+        val pixels = IntArray(image.width * image.height)
+        image.readPixels(pixels)
+        return QrDecoder.decode(image.width, image.height, pixels)
+    }
+
     fun handleUri(uri: String) {
         val u = uri.trim()
         val scheme = u.substringBefore(':').lowercase()
@@ -1659,7 +1749,8 @@ class WalletModel(val platform: PlatformServices) {
         /** One spec per table name and process: storage rejects a second spec object for the same table. */
         private val settingsTable = StorageTableSpec(name = "DiwSettings", supportPartitions = false, supportExpiration = false)
         private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
-        const val MAX_ART_BYTES = 1024 * 1024
+        /** Longest side, in pixels, of a picture searched for a QR Code; larger pictures are scaled down. */
+        const val MAX_QR_IMAGE_SIDE = 2400
         val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"

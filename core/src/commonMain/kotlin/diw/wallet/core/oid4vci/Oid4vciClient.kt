@@ -237,6 +237,18 @@ class Oid4vciClient(
         }
     }
 
+    /**
+     * The display the issuer currently publishes for [configurationId] (name, logo, colours, card face), read through
+     * the same dialects as issuance; [profile] is the profile that owned the original session (twdiw for TWDIW).
+     * Null when the configuration is no longer listed.
+     */
+    suspend fun credentialDisplay(credentialIssuer: String, configurationId: String, profile: String? = null): DisplayInfo? {
+        val compat = DialectSet(dialects)
+        compat.claimFor(credentialIssuer, profile)
+        val issuer = metadata.issuer(credentialIssuer, compat)
+        return issuer.configurations[configurationId]?.display?.pick(locales)
+    }
+
     /** Authorization server metadata, or what a dialect knows for issuers that publish none (draft 11, TWDIW). */
     private suspend fun authorizationServer(issuer: IssuerMetadata, hint: String?, compat: DialectSet): AuthServerMetadata {
         val identifier = issuer.authorizationServerFor(hint)
@@ -530,7 +542,7 @@ class Oid4vciClient(
         val profile = if (config.format.isW3c) compat.owned { it.holderProfile(session.issuer) } else null
         // A shared holder identity has one key, so one credential is requested.
         val count = if (profile != null) 1 else keys.count.coerceIn(1, session.issuer.batchSize)
-        var nonce = fetchNonce(session, token, compat)
+        var nonce = compat.owned { it.tokenNonce(token.raw) } ?: fetchNonce(session, token, compat)
         var pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
         var attempt = 0
         // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
@@ -1066,6 +1078,8 @@ class Oid4vciClient(
             logoUri = display?.logoUri ?: issuerDisplay?.logoUri,
             backgroundColor = display?.backgroundColor,
             textColor = display?.textColor,
+            backgroundImageUri = display?.backgroundImageUri,
+            displayCheckedAt = Clock.System.now().epochSeconds,
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,
