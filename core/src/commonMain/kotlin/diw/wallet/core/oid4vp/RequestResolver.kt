@@ -123,20 +123,59 @@ class RequestResolver(
             throw RequestValidationException("invalid_request", "Unsupported DC API protocol '$protocol'")
         }
         val origin = callerOrigin.removeSuffix("/")
-        val signed = data["request"]
-        return if (signed != null) {
-            val jwt = (signed as? JsonPrimitive)?.content
-                ?: throw RequestValidationException("invalid_request", "DC API request member is not a string")
-            val jws = parseRequestObject(jwt)
-            RawAuthorizationRequest(RequestChannel.DC_API, emptyMap(), jws, jws.payload, origin, null, protocol)
-        } else {
-            if (protocol == "openid4vp-v1-signed") {
-                throw RequestValidationException("invalid_request", "Signed DC API protocol without request object")
+        val request = data["request"]
+        return when (protocol) {
+            "openid4vp-v1-unsigned" -> {
+                if (request != null || "payload" in data || "signatures" in data) {
+                    throw RequestValidationException("invalid_request", "Unsigned DC API protocol cannot carry a signed request")
+                }
+                RawAuthorizationRequest(RequestChannel.DC_API, emptyMap(), null, data, origin, null, protocol)
             }
-            if (protocol == "openid4vp-v1-multisigned") {
-                throw RequestValidationException("invalid_request", "Multi-signed DC API requests are not supported")
+            "openid4vp-v1-signed" -> {
+                val compact = (request as? JsonPrimitive)?.content
+                    ?: throw RequestValidationException("invalid_request", "Signed DC API requires a compact JWS request")
+                val jws = parseRequestObject(compact)
+                RawAuthorizationRequest(RequestChannel.DC_API, emptyMap(), jws, jws.payload, origin, null, protocol)
             }
-            RawAuthorizationRequest(RequestChannel.DC_API, emptyMap(), null, data, origin, null, protocol)
+            else -> {
+                val envelope = (request ?: data) as? JsonObject
+                    ?: throw RequestValidationException("invalid_request", "Multi-signed request must use JWS JSON Serialization")
+                if (envelope.keys.any { it !in setOf("payload", "signatures") }) {
+                    throw RequestValidationException("invalid_request_object", "Unexpected members in a multi-signed request")
+                }
+                val payload = (envelope["payload"] as? JsonPrimitive)?.content
+                    ?: throw RequestValidationException("invalid_request_object", "Missing JWS JSON payload")
+                val signatures = envelope["signatures"] as? JsonArray
+                    ?: throw RequestValidationException("invalid_request_object", "Missing JWS JSON signatures")
+                if (signatures.isEmpty() || signatures.size > 8 ||
+                    payload.length > policy.maxRequestObjectBytes
+                ) throw RequestValidationException("invalid_request_object", "Multi-signed request exceeds supported bounds")
+                val alternatives = signatures.map { entry ->
+                    val signature = entry as? JsonObject
+                        ?: throw RequestValidationException("invalid_request_object", "Invalid multi-signed signature")
+                    if (signature.keys.any { it !in setOf("protected", "signature") }) {
+                        throw RequestValidationException("invalid_request_object", "Unprotected JWS headers are not accepted")
+                    }
+                    val protected = (signature["protected"] as? JsonPrimitive)?.content
+                        ?: throw RequestValidationException("invalid_request_object", "Missing protected JWS header")
+                    val signatureValue = (signature["signature"] as? JsonPrimitive)?.content
+                        ?: throw RequestValidationException("invalid_request_object", "Missing JWS signature")
+                    val jws = parseRequestObject("$protected.$payload.$signatureValue")
+                    val clientId = jws.header.str("client_id")
+                        ?: throw RequestValidationException("invalid_request_object", "Each signature requires a protected client_id")
+                    if ("client_id" in jws.payload || "verifier_info" in jws.payload) {
+                        throw RequestValidationException("invalid_request_object", "Verifier identity must be in protected headers")
+                    }
+                    val claims = buildJsonObject {
+                        jws.payload.forEach { (name, value) -> put(name, value) }
+                        put("client_id", clientId)
+                        jws.header["verifier_info"]?.let { put("verifier_info", it) }
+                    }
+                    RawAuthorizationRequest(RequestChannel.DC_API, emptyMap(), jws, claims, origin, null, protocol)
+                }
+                // Validator authenticates every candidate separately. Never treat the envelope as unsigned.
+                alternatives.first().copy(multiSignedCandidates = alternatives)
+            }
         }
     }
 
