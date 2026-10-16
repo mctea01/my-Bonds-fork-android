@@ -97,7 +97,7 @@ class SignedMdocTrustListsTest {
         registry.addAnchor(TrustRole.TRUST_LIST_PROVIDER, TrustEnvironment.USER,
             pki.walletProviderRootCert, "Signed list publisher", false, "manual")
         registry.importSignedMdocTrustList("rical", rical(pki, 1), "Reader list", "https://example.test/rical")
-        assertNotNull(registry.match(TrustRole.VERIFIER, listOf(pki.readerRootCert)))
+        assertNotNull(registry.match(TrustRole.VERIFIER, pki.readerKey("localhost").certChain.certificates))
         assertNull(registry.match(TrustRole.ISSUER, listOf(pki.readerRootCert)))
     }
 }

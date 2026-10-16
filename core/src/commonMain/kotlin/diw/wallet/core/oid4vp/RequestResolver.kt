@@ -201,16 +201,21 @@ class RequestResolver(
         if (keys.isEmpty()) throw RequestValidationException(
             "invalid_request_object", "Encrypted Request Object requires a wallet-controlled registered decryption key"
         )
+        var lastFailure: Exception? = null
         for (key in keys.take(4)) {
             try {
                 return null to JsonWebEncryption.decrypt(input, key)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // Try another locally owned key. Never use a decryption key provided by the request.
+                lastFailure = e
             }
         }
-        throw RequestValidationException("invalid_request_object", "Unable to decrypt request with registered wallet keys")
+        throw RequestValidationException(
+            "invalid_request_object", "Unable to decrypt request with registered wallet keys",
+            cause = lastFailure
+        )
     }
 
     private fun parseRequestObject(jwt: String): Jws {

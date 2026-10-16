@@ -390,7 +390,6 @@ class Oid4vpE2eTest {
     @Test
     fun transactionDataHashesNameTheirAlgorithm() = runBlocking<Unit> {
         val w = wallet()
-        diw.wallet.core.oid4vp.QesApprovalTransaction.types.forEach { w.documentTypes.addTransactionType(it) }
         val entry = buildJsonObject {
             put("type", diw.wallet.core.oid4vp.QesApprovalTransaction.CSC_2025)
             put("credential_ids", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("pid")) })
