@@ -149,7 +149,7 @@
 ## TWDIW 與 Bonds 要點
 
 - TWDIW 發證：`credential_issuer` 結尾有 `/`，中繼資料以附加方式取得，沒有 AS metadata，token 端點為 `{issuer}token`，表單帶 `client_id=moda_dw`、`authorization_details`、空的 `tx_code`；proof 的 `kid` 是不帶 fragment 的 did:key（jwk_jcs），`iss` 為 client_id；回應 `{credential}`。中繼資料寫 `jwt_vc_json`，實際送 SD-JWT（`typ vc+sd-jwt`，無 `vct`，W3C 內容在 `vc`）。
-- TWDIW 的錯誤回應是 `{resp_code, resp_message}`，沒有 OAuth `error_description`，由 `TwdiwDialect.errorDetail` 併入錯誤訊息。領卡端點的 HTTP 500 只會在權杖與 proof 都通過之後出現：`resp_code` 11500 是發證端程式本身的例外，其他代碼來自發證機關的憑證服務（例如取不到持有人資料），不是錢包請求的問題。
+- TWDIW 的錯誤回應是 `{resp_code, resp_message}`，沒有 OAuth `error_description`，由 `TwdiwDialect.errorDetail` 併入錯誤訊息。領卡端點的 HTTP 500 只會在權杖與 proof 都通過之後出現：`resp_code` 11500 是發證端程式本身的例外，其他代碼來自發證機關的憑證服務（例如 11021 是憑證服務回 5xx、取不到持有人資料），不是錢包請求的問題；請求內容（`credential_identifier` + `proofs`、did:key 內的 JWK）與官方 App 等效，App 的錯誤訊息提示重新產生 QR Code 或向發證機關回報。
 - 較新的 TWDIW 發證端（例如 moda.wallet.gov.tw）在中繼資料加了 `nonce_endpoint`，但官方 App 的 proof 仍簽權杖回應的 `c_nonce`；改用 nonce 端點取得的值時，同一張卡回 HTTP 500。TWDIW session 一律用權杖回應的 `c_nonce`（`IssuanceDialect.tokenNonce`），nonce 端點只在發證端以錯誤回應要求新 nonce 時才用。
 - TWDIW 卡片 display 的 `description` 是 JSON 字串（`{"ial":"IAL 2"}`），`TwdiwAssurance` 讀出身分保證等級，存在 `IssuanceRecord.displayDescription`；證件詳情與出示畫面顯示「身分保證等級（IAL）」，空值顯示「發行端未選擇」，更改憑證的清單依等級由高到低排列。
 - 每張 TWDIW 卡片綁定同一把錢包層級金鑰（`HolderIdentities.TWDIW`），才能一起出示。
