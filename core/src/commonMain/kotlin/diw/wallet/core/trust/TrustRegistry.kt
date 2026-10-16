@@ -194,15 +194,16 @@ class TrustRegistry(
                 nextUpdate = signed.rical.nextUpdate
                 provider = signed.rical.provider
                 signer = signed.ricalProviderCertificateChain.certificates
-                if (signed.rical.certificateInfos.isEmpty())
-                    throw ProtocolException("invalid_trust_list", "RICAL contains no reader CAs")
+                if (signed.rical.certificateInfos.isEmpty() || signed.rical.certificateInfos.any { !it.isTrustAnchor })
+                    throw ProtocolException("invalid_trust_list", "RICAL requires explicit trust anchors; non-anchor entries cannot be installed as roots")
             }
             else -> throw ProtocolException("invalid_trust_list", "Unsupported signed trust list format")
         }
         if (expiry != null && expiry <= now)
             throw ProtocolException("expired_trust_list", "Signed trust list has expired")
-        if (signer.isEmpty() || match(TrustRole.TRUST_LIST_PROVIDER, signer) == null)
-            throw ProtocolException("untrusted_trust_list", "Signed trust list provider does not have a pinned trust root")
+        val publisherAnchor = if (signer.isEmpty()) null else match(TrustRole.TRUST_LIST_PROVIDER, signer)
+        if (publisherAnchor == null || publisherAnchor.environment != environment)
+            throw ProtocolException("untrusted_trust_list", "Signed trust list requires a publisher root in the same trust environment")
         val manager = manager(role, environment)
         val old = manager.getEntries().firstOrNull {
             it.metadata.extensions[TrustMetadataKeys.SOURCE] == sourceUrl &&
