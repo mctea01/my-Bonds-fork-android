@@ -150,6 +150,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override suspend fun pickFile(): PickedFile? = fileAccess?.pick()
 
+    override suspend fun pickImage(): PickedFile? = fileAccess?.pick(arrayOf("image/*"))
+
     override suspend fun pickFiles(): List<PickedFile> = fileAccess?.pickMany().orEmpty()
 
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
@@ -192,8 +194,26 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         canvas.clipPath(card)
         canvas.drawColor(spec.background)
         val pad = 32f
+        // An issuer card face covers the card (centre crop) as in the official TWDIW wallet; shades at the top and the
+        // bottom keep the title and the issuer readable on any image, so the text is always white.
+        val face = spec.face?.asAndroidBitmap()
+        if (face != null) {
+            val scale = maxOf(w.toFloat() / face.width, h.toFloat() / face.height)
+            val sw = (w / scale).toInt().coerceAtMost(face.width)
+            val sh = (h / scale).toInt().coerceAtMost(face.height)
+            val src = Rect((face.width - sw) / 2, (face.height - sh) / 2, (face.width + sw) / 2, (face.height + sh) / 2)
+            canvas.drawBitmap(face, src, RectF(0f, 0f, w.toFloat(), h.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+            val shade = 0x8C000000.toInt()
+            canvas.drawRect(0f, 0f, w.toFloat(), h * 0.45f, Paint().apply {
+                shader = LinearGradient(0f, 0f, 0f, h * 0.45f, shade, 0, Shader.TileMode.CLAMP)
+            })
+            canvas.drawRect(0f, h * 0.7f, w.toFloat(), h.toFloat(), Paint().apply {
+                shader = LinearGradient(0f, h * 0.7f, 0f, h.toFloat(), 0, shade, Shader.TileMode.CLAMP)
+            })
+        }
+        val foreground = if (face != null) android.graphics.Color.WHITE else spec.foreground
         // The picture (a document page or a portrait) fills the right part of the card and fades into the background.
-        val textRight = spec.picture?.asAndroidBitmap()?.let { pic ->
+        val textRight = spec.picture?.takeIf { face == null }?.asAndroidBitmap()?.let { pic ->
             val left = w * 0.6f
             val area = RectF(left, 0f, w.toFloat(), h.toFloat())
             val scale = maxOf(area.width() / pic.width, area.height() / pic.height)
@@ -208,7 +228,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             left - 8f
         } ?: (w - pad)
         var top = pad
-        spec.logo?.asAndroidBitmap()?.let { logo ->
+        spec.logo?.takeIf { face == null }?.asAndroidBitmap()?.let { logo ->
             val size = 72f
             val scale = size / maxOf(logo.width, logo.height)
             val dst = RectF(pad, pad, pad + logo.width * scale, pad + logo.height * scale)
@@ -220,7 +240,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         }
         val width = (textRight - pad).toInt().coerceAtLeast(120)
         val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = spec.foreground
+            color = foreground
             textSize = 44f
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -231,7 +251,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         title.draw(canvas)
         canvas.restore()
         val issuerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = (spec.foreground and 0x00FFFFFF) or (0xD9 shl 24)
+            color = (foreground and 0x00FFFFFF) or (0xD9 shl 24)
             textSize = 26f
         }
         val issuer = TextUtils.ellipsize(spec.issuer, issuerPaint, width.toFloat(), TextUtils.TruncateAt.END).toString()

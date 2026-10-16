@@ -215,7 +215,10 @@ class TwdiwPlatformMock private constructor(
                 put("code", "0")
                 putJsonObject("data") {
                     putJsonArray("vcItems") {
-                        addJsonObject { put("vcUid", CONFIG_ID); put("name", "模擬會員卡"); put("type", 2); put("issuerServiceUrl", "$ISSUER_ORIGIN/apply") }
+                        addJsonObject {
+                            put("vcUid", CONFIG_ID); put("name", "模擬會員卡"); put("type", 2); put("issuerServiceUrl", "$ISSUER_ORIGIN/apply")
+                            put("logoUrl", LOGO_URL)
+                        }
                     }
                 }
             })
@@ -259,7 +262,14 @@ class TwdiwPlatformMock private constructor(
             url == ISSUER + ".well-known/openid-credential-issuer" -> json(metadata())
             url == ISSUER + "token" && request.method == HttpMethod.Post -> token(request)
             url == ISSUER + "credential" && request.method == HttpMethod.Post -> credential(request)
+            url == ISSUER + "nonce" && request.method == HttpMethod.Post && nonceEndpointPublished -> {
+                endpointNonces++
+                json(buildJsonObject { put("c_nonce", "endpoint-nonce-$endpointNonces") })
+            }
             url == "$ISSUER_ORIGIN/api/keys" -> json(keySet())
+            // Like the platform, card faces and catalog logos come back as a data URI in a text/plain body.
+            url == COVER_URL || url == LOGO_URL -> respond("data:image/png;base64," + png().toBase64(), HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "text/plain;charset=UTF-8"))
             url.startsWith("$ISSUER_ORIGIN/api/status-list/$CONFIG_ID/") -> {
                 val group = url.substringAfterLast('/')
                 val purpose = when {
@@ -276,6 +286,7 @@ class TwdiwPlatformMock private constructor(
     private fun metadata() = buildJsonObject {
         put("credential_issuer", if (metadataIssuerWithoutSlash) ISSUER.trimEnd('/') else ISSUER)
         put("credential_endpoint", ISSUER + "credential")
+        if (nonceEndpointPublished) put("nonce_endpoint", ISSUER + "nonce")
         putJsonArray("display") { addJsonObject { put("name", "模擬發證機關"); put("locale", "zh-TW") } }
         putJsonObject("credential_configurations_supported") {
             putJsonObject(CONFIG_ID) {
@@ -299,6 +310,7 @@ class TwdiwPlatformMock private constructor(
                         put("name", "模擬會員卡"); put("locale", "zh-TW")
                         putJsonObject("logo") { put("uri", "$ISSUER_ORIGIN/logo.png") }
                         put("background_color", "#1A4C8B"); put("text_color", "#FFFFFF")
+                        putJsonObject("background_image") { put("uri", if (cardFaceInMetadata) COVER_URL else "") }
                     }
                 }
             }
@@ -336,6 +348,11 @@ class TwdiwPlatformMock private constructor(
         jws.verify(VerificationKey.Ec(holderKey))
         expect(jws.payload.str("iss") == CLIENT_ID) { "proof iss ${jws.payload.str("iss")}" }
         expect(jws.payload.str("aud") == ISSUER) { "proof aud ${jws.payload.str("aud")}" }
+        // As moda.wallet.gov.tw behaves: a proof over a nonce from its nonce endpoint passes the proof checks, and the
+        // credential service then fails.
+        if (nonceEndpointPublished && jws.payload.str("nonce")?.startsWith("endpoint-nonce-") == true) {
+            return json(buildJsonObject { put("resp_code", 11500); put("resp_message", "Interal server error") }, HttpStatusCode.InternalServerError)
+        }
         expect(jws.payload.str("nonce") == cNonce) { "proof nonce ${jws.payload.str("nonce")}" }
         // The official handler answers 500 with its own body once token and proof passed but the credential service failed.
         credentialServiceFailure?.let { (code, message) ->
@@ -391,6 +408,13 @@ class TwdiwPlatformMock private constructor(
 
     /** TWDIW signs status lists with key-2, published only at /api/keys (jku), not in the issuer DID. */
     var statusListSignedByIssuerDid = false
+
+    /** Whether the issuer metadata names a nonce_endpoint, as newer TWDIW issuers do; [endpointNonces] counts its use. */
+    var nonceEndpointPublished = false
+    var endpointNonces = 0
+
+    /** Whether the configuration display names a card face; the platform writes an empty uri when there is none. */
+    var cardFaceInMetadata = true
 
     /** resp_code and resp_message the credential endpoint fails with after accepting the proof; null issues the card. */
     var credentialServiceFailure: Pair<Int, String>? = null
@@ -621,7 +645,7 @@ class TwdiwPlatformMock private constructor(
         })
     }
 
-    private fun png(): ByteArray {
+    fun png(): ByteArray {
         val image = BufferedImage(21, 21, BufferedImage.TYPE_BYTE_BINARY)
         return ByteArrayOutputStream().also { ImageIO.write(image, "png", it) }.toByteArray()
     }
@@ -635,6 +659,8 @@ class TwdiwPlatformMock private constructor(
         const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/00000000/"
         const val VERIFIER = "https://$VERIFIER_HOST"
         const val CONFIG_ID = "00000000_mock_card"
+        const val COVER_URL = "$ISSUER_ORIGIN/api/images/cover/00000000/mock_card"
+        const val LOGO_URL = "$ISSUER_ORIGIN/vc/api/logo/square/00000000"
         const val VP_UID_ONLINE = "00000000_mock_vp"
         const val VP_UID_PICKUP = "00000000_mock_pickup"
         const val VP_UID_MOICA = "00000000_mock_moica"

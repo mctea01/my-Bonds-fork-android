@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,8 +28,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
 import diw.wallet.app.TaiwanModel
@@ -84,35 +90,75 @@ fun CardLogo(model: WalletModel, logoUri: String?, fallback: ImageVector, tint: 
     }
 }
 
-/** A stored credential as a card: issuer colours and logo, name, issuer, trust and format. */
+/**
+ * A stored credential as a card: the issuer's card face (display background_image) as in the official TWDIW wallet
+ * when there is one, otherwise issuer colours and logo; name, issuer, trust and format.
+ */
 @Composable
 fun CredentialCard(model: WalletModel, doc: Document, onClick: () -> Unit) {
     val record = doc.issuanceRecord
+    val art by model.cardArt.collectAsState()
+    val faceUri = record?.backgroundImageUri
+    LaunchedEffect(faceUri) { faceUri?.let { model.loadCardArt(it) } }
+    val face = faceUri?.let { art[it] }
+    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(20.dp)) {
+        if (face != null) FaceCard(model, doc, record, face) else ColourCard(model, doc, record)
+    }
+}
+
+/** The issuer's image fills a 1.6:1 card; shades keep the white title, issuer and badges readable on any image. */
+@Composable
+private fun FaceCard(model: WalletModel, doc: Document, record: IssuanceRecord, face: ImageBitmap) {
+    Box(Modifier.fillMaxWidth().aspectRatio(1.6f)) {
+        Image(face, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.5f).align(Alignment.TopStart)
+            .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))))
+        Box(Modifier.fillMaxWidth().fillMaxHeight(0.4f).align(Alignment.BottomStart)
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)))))
+        Column(Modifier.align(Alignment.TopStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(doc.typeDisplayName ?: record.credentialIssuer, style = MaterialTheme.typography.bodySmall, color = Color.White,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = Color.White,
+                maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (record.pendingTransactionId != null) {
+                Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = Color.White)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                storedTrust(doc)?.let { TierBadge(it) }
+                if (record.pendingTransactionId == null) StatusChip(model, doc)
+            }
+        }
+        if (record.isTestEnvironment) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
+    }
+}
+
+@Composable
+private fun ColourCard(model: WalletModel, doc: Document, record: IssuanceRecord?) {
     val background = parseColor(record?.backgroundColor)
     val text = parseColor(record?.textColor) ?: if (background != null) contrastOn(background) else MaterialTheme.colorScheme.onSurface
-    Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(20.dp)) {
-        Box {
-            Column(Modifier.fillMaxWidth().then(if (background != null) Modifier.background(background) else Modifier).padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    CardLogo(model, record?.logoUri, categoryIcon(record), if (background != null) text else MaterialTheme.colorScheme.primary)
-                    Column(Modifier.weight(1f)) {
-                        Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = text)
-                        Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall, color = text)
-                    }
+    Box {
+        Column(Modifier.fillMaxWidth().then(if (background != null) Modifier.background(background) else Modifier).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CardLogo(model, record?.logoUri, categoryIcon(record), if (background != null) text else MaterialTheme.colorScheme.primary)
+                Column(Modifier.weight(1f)) {
+                    Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = text)
+                    Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall, color = text)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    storedTrust(doc)?.let { TierBadge(it) }
-                    if (record?.pendingTransactionId == null) StatusChip(model, doc)
-                }
-                record?.let {
-                    Text((listOf(CredentialDetails.formatLabel(it)) + CredentialDetails.specs(it)).joinToString("、"),
-                        style = MaterialTheme.typography.bodySmall, color = text)
-                }
-                if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = text)
             }
-            if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                storedTrust(doc)?.let { TierBadge(it) }
+                if (record?.pendingTransactionId == null) StatusChip(model, doc)
+            }
+            record?.let {
+                Text((listOf(CredentialDetails.formatLabel(it)) + CredentialDetails.specs(it)).joinToString("、"),
+                    style = MaterialTheme.typography.bodySmall, color = text)
+            }
+            if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = text)
         }
+        if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
     }
 }
 

@@ -71,6 +71,7 @@ fun AddDocumentScreen(model: WalletModel) {
                         else -> "在發行端頁面完成申請後自動加入"
                     },
                     enabled = c.issuerServiceUrl != null,
+                    leading = c.logoUrl?.let { logo -> { CardLogo(model, logo, WalletIcons.Government, MaterialTheme.colorScheme.primary, size = 28) } },
                 ) { model.taiwan.applyFor(c) }
             }
         }
