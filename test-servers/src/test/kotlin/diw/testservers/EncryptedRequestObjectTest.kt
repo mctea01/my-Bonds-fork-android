@@ -49,7 +49,7 @@ class EncryptedRequestObjectTest {
             put("dcql_query", buildJsonObject { put("credentials", kotlinx.serialization.json.buildJsonArray { }) })
         }
         val encoded = JsonWebEncryption.encrypt(json, privateKey.publicKey, Algorithm.A256GCM, null, null)
-        val valid = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(privateKey)) }
+        val valid = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(privateKey, privateKey.curve.defaultKeyAgreementAlgorithm)) }
         val raw = valid.fromUri(invocation(redirectId, encoded))
         assertEquals(redirectId, raw.params["client_id"]?.toString()?.trim('"'))
         assertNull(raw.requestObject, "JWE encryption must not be mistaken for a verifier signature")
@@ -58,7 +58,7 @@ class EncryptedRequestObjectTest {
         assertFailsWith<RequestValidationException> { valid.fromUri(invocation("redirect_uri:https://attacker.example", encoded)) }
 
         val differentKey = Crypto.createEcPrivateKey(EcCurve.P256)
-        val wrong = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(differentKey)) }
+        val wrong = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(differentKey, differentKey.curve.defaultKeyAgreementAlgorithm)) }
         assertFailsWith<RequestValidationException> { wrong.fromUri(invocation(redirectId, encoded)) }
 
         val validator = RequestValidator(
@@ -80,7 +80,7 @@ class EncryptedRequestObjectTest {
             put("dcql_query", buildJsonObject { put("credentials", kotlinx.serialization.json.buildJsonArray { }) })
         }
         val encrypted = JsonWebEncryption.encrypt(json, key.publicKey, Algorithm.A128GCM, null, null)
-        val raw = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(key)) }
+        val raw = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(key, key.curve.defaultKeyAgreementAlgorithm)) }
             .fromUri(invocation("x509_san_dns:verifier.example", encrypted))
         val validator = RequestValidator(
             TrustRegistry(EphemeralStorage(), EnvironmentPolicy()),
