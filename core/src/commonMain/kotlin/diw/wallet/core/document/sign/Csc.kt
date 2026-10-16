@@ -209,6 +209,9 @@ class CscClient(private val http: HttpClient, val service: CscService) {
 
     /** The authorization code in the address the service redirected to, after checking state and errors. */
     fun code(redirected: String, request: CscAuthorizationRequest): String {
+        if (redirected.substringBefore('?').substringBefore('#') != service.redirectUri) {
+            throw CscException("遠端簽章授權回呼網址與已登記的 redirect_uri 不符")
+        }
         val query = redirected.substringAfter('?', "").substringBefore('#')
         val params = query.split('&').filter { '=' in it }.associate {
             it.substringBefore('=').decodeURLQueryComponent() to it.substringAfter('=').decodeURLQueryComponent(plusIsSpace = true)
@@ -470,8 +473,10 @@ class CscSigner(
         fun signAlgorithm(c: CscCredential): String {
             val algos = c.keyAlgorithms
             return when (keyTypeOf(c.certificates.first())) {
-                SignerKeyType.EC_P256 -> if (algos.isEmpty() || CscClient.ECDSA_SHA256 in algos) CscClient.ECDSA_SHA256 else algos.first()
-                SignerKeyType.RSA -> if (algos.isEmpty() || CscClient.RSA_SHA256 in algos) CscClient.RSA_SHA256 else algos.first()
+                SignerKeyType.EC_P256 -> if (algos.isEmpty() || CscClient.ECDSA_SHA256 in algos) CscClient.ECDSA_SHA256
+                    else throw SigningException("遠端簽章憑證未宣告 SHA-256 ECDSA 演算法")
+                SignerKeyType.RSA -> if (algos.isEmpty() || CscClient.RSA_SHA256 in algos) CscClient.RSA_SHA256
+                    else throw SigningException("遠端簽章憑證未宣告 SHA-256 RSA 演算法")
             }
         }
     }
