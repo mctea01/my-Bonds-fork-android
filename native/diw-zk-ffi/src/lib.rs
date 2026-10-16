@@ -1,10 +1,29 @@
 //! Shared runtime only. Proof backends are supplied by their own work packages.
 
 use sha2::{Digest, Sha256};
+use std::cell::Cell;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Once,
 };
+
+thread_local! {
+    static PRIVATE_WORKER: Cell<bool> = const { Cell::new(false) };
+}
+
+fn protect_worker_panics() {
+    static INSTALLED: Once = Once::new();
+    INSTALLED.call_once(|| {
+        let previous = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            // A backend panic may embed its witness. Preserve the host's hook
+            // for every other thread, but never print a proof worker's payload.
+            if !PRIVATE_WORKER.try_with(Cell::get).unwrap_or(false) {
+                previous(info);
+            }
+        }));
+    });
+}
 
 uniffi::setup_scaffolding!("diw_zk");
 
@@ -73,11 +92,15 @@ pub fn run_worker<T: Send + 'static>(
             reason: "stack_size".into(),
         });
     }
+    protect_worker_panics();
     let worker_cancel = Arc::clone(&cancel);
     let worker = std::thread::Builder::new()
         .name("diw-zk-worker".into())
         .stack_size(stack_bytes)
-        .spawn(move || work(worker_cancel))
+        .spawn(move || {
+            PRIVATE_WORKER.set(true);
+            work(worker_cancel)
+        })
         .map_err(|_| ZkError::ResourceExhausted {
             reason: "worker_start".into(),
         })?;
@@ -149,5 +172,13 @@ mod tests {
             reason: "synthetic-private-input".into(),
         };
         assert_eq!(error.to_string(), "Invalid input");
+    }
+
+    #[test]
+    fn worker_panic_is_a_fixed_error() {
+        let result: Result<(), ZkError> = run_worker(1024 * 1024, ZkCancelToken::new(), |_| {
+            panic!("synthetic-private-witness");
+        });
+        assert!(matches!(result, Err(ZkError::Internal { code: 1 })));
     }
 }
