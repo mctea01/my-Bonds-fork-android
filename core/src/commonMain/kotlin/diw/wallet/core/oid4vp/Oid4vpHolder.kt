@@ -131,8 +131,36 @@ class Oid4vpHolder(
         return clientId.startsWith("did:") || clientId.startsWith("x509_san_uri:")
     }
 
-    suspend fun resolveDcApi(protocol: String, data: JsonObject, origin: String): ValidatedAuthorizationRequest =
-        validator.validate(resolver.fromDcApi(protocol, data, origin))
+    suspend fun resolveDcApi(protocol: String, data: JsonObject, origin: String): ValidatedAuthorizationRequest {
+        val request = resolver.fromDcApi(protocol, data, origin)
+        if (request.multiSignedCandidates.isEmpty()) return validator.validate(request)
+        var best: ValidatedAuthorizationRequest? = null
+        var lastError: Throwable? = null
+        val priority = listOf(
+            diw.wallet.core.trust.TrustTier.T1,
+            diw.wallet.core.trust.TrustTier.T2,
+            diw.wallet.core.trust.TrustTier.T3,
+            diw.wallet.core.trust.TrustTier.T4,
+        )
+        for (candidate in request.multiSignedCandidates) {
+            try {
+                val validated = validator.validate(candidate)
+                if (best == null || priority.indexOf(validated.verifier.trust.tier) <
+                    priority.indexOf(best.verifier.trust.tier)
+                ) best = validated
+            } catch (e: ProtocolException) {
+                lastError = e
+            }
+        }
+        return best?.copy(warnings = best.warnings +
+            "Multi-signed DC API: authenticated " + best.verifier.clientId.raw +
+            " among " + request.multiSignedCandidates.size + " signatures"
+        ) ?: throw RequestValidationException(
+            "invalid_request_object",
+            "No multi-signed verifier identity could be authenticated",
+            cause = lastError,
+        )
+    }
 
     /**
      * Matches the request against stored credentials. Throws [ProtocolException] (access_denied) when nothing matches.
