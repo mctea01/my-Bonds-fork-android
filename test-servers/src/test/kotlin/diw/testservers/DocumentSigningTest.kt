@@ -290,7 +290,7 @@ class DocumentSigningTest {
         ).toXml()
         val attachment = "附件內容".repeat(50).toByteArray()
         val files = listOf("稿1150000002v1.di" to letter, "附件 1+2.doc" to attachment)
-        val point1 = diw.wallet.core.document.official.ApprovalPoint("呈核", "陳核 <測試>", unit = "測試科", title = "科員", role = "承辦人員",
+        val point1 = diw.wallet.core.document.official.ApprovalPoint("呈核", "陳核 <測試>", unit = "測試科", title = "科員", role = "承辦人員", organization = "測試機關",
             time = kotlin.time.Instant.parse("2026-10-16T02:30:00Z"))
         val first = DocumentSigning.signApproval(null, files, signer(false), point1)
         val text = String(first)
@@ -298,7 +298,7 @@ class DocumentSigningTest {
         assertTrue("xmlns" !in text && "xades" !in text.lowercase(), "no namespaces, not XAdES")
         assertTrue("<簽章時間>11510161030</簽章時間>" in text, "ROC time in Taipei")
         // 簽核人員 follows (機關?, 單位, 職稱, 姓名, 帳號, 角色?): 帳號 is required and written empty when not given.
-        assertTrue(Regex("<簽核人員>\\s*<單位>測試科</單位>\\s*<職稱>科員</職稱>\\s*<姓名>[^<]+</姓名>\\s*<帳號></帳號>\\s*<角色>承辦人員</角色>").containsMatchIn(text), text)
+        assertTrue(Regex("<簽核人員>\\s*<機關><全銜>測試機關</全銜></機關>\\s*<單位>測試科</單位>\\s*<職稱>科員</職稱>\\s*<姓名>[^<]+</姓名>\\s*<帳號></帳號>\\s*<角色>承辦人員</角色>").containsMatchIn(text), text)
         // 簽核文件夾 holds the required 簽核文稿清單: the .di is the draft and the other file its attachment, both
         // pointing into 檔案清單 by 原始檔序號.
         assertTrue(Regex("<簽核文稿清單 文稿數=\"1\">\\s*<文稿 原始檔序號=\"1\" 序號=\"1\" 產生時間=\"11510161030\">\\s*<名稱>稿1150000002v1</名稱>\\s*<文稿類型>函</文稿類型>").containsMatchIn(text), text)

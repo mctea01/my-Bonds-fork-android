@@ -197,7 +197,7 @@ internal object ApprovalSignatures {
             append(p).append("  <Object Id=\"$infoId\">\n")
             append(p).append("    <異動資訊" + (if (point.returned) " 退文=\"Y\"" else "") + ">\n")
             append(p).append("      <簽核人員>\n")
-            point.organization?.ifBlank { null }?.let { append(p).append("        <機關>${esc(it)}</機關>\n") }
+            point.organization?.ifBlank { null }?.let { append(p).append("        <機關><全銜>${esc(it)}</全銜></機關>\n") }
             append(p).append("        <單位>${esc(point.unit.orEmpty())}</單位>\n")
             append(p).append("        <職稱>${esc(point.title.orEmpty())}</職稱>\n")
             append(p).append("        <姓名>${esc(signerName)}</姓名>\n")
