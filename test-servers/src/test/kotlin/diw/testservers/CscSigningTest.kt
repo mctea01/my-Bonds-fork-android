@@ -261,6 +261,20 @@ class CscSigningTest {
     }
 
     @Test
+    fun insecureOAuthEndpointsAreRejected() = runBlocking<Unit> {
+        val http = HttpClient(MockEngine {
+            respond(
+                """{"name":"Insecure QTSP","oauth2":"http://insecure.example"}""",
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        })
+        val production = service.copy(environment = CscEnvironment.PRODUCTION)
+        val error = assertFailsWith<CscException> { CscClient(http, production).authorizationRequest("service") }
+        assertTrue(error.message.orEmpty().contains("HTTPS"))
+    }
+
+    @Test
     fun wrongOAuthCallbackUriIsRejected() = runBlocking<Unit> {
         val qtsp = Qtsp(ec = true)
         val client = CscClient(client(qtsp), service)
