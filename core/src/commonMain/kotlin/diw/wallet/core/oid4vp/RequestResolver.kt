@@ -84,12 +84,14 @@ class RequestResolver(
                     RawAuthorizationRequest(RequestChannel.URI, outer, null, parseJsonObject(jwt, "invalid_request_uri"), null, walletNonce, entryHint = entryHint)
                 } else {
                     val (jws, claims) = parseRequestObjectOrDecrypt(jwt)
+                    if (clientId != null && claims.str("client_id") != clientId) throw RequestValidationException("invalid_request_object", "Encrypted request client_id differs from invocation")
                     RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, walletNonce, entryHint = entryHint)
                 }
             }
             requestValue != null -> {
                 if (clientId == null) throw RequestValidationException("invalid_request", "client_id is required with request")
                 val (jws, claims) = parseRequestObjectOrDecrypt(requestValue)
+                if (claims.str("client_id") != clientId) throw RequestValidationException("invalid_request_object", "Request object client_id differs from invocation")
                 RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, null, entryHint = entryHint)
             }
             else -> {
