@@ -82,7 +82,7 @@ class RemoteWalletProvider(
     override suspend fun walletAttestation(): WalletAttestation {
         cached?.let { c ->
             val exp = c.expiresAt
-            if (exp == null || exp - 60 > Clock.System.now().epochSeconds) return c
+            if (exp != null && exp - 60 > Clock.System.now().epochSeconds) return c
         }
         val jwk = instanceKey.publicKey.toJwk()
         val body = buildJsonObject {
