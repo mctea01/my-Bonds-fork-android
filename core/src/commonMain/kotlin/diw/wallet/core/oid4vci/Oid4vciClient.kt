@@ -383,7 +383,12 @@ class Oid4vciClient(
         val methods = meta.tokenEndpointAuthMethods
         val selected = session.clientAuthMethod
         if (selected == "attest_jwt_client_auth" || (selected == null && "attest_jwt_client_auth" in methods)) {
-            val attestation = walletProvider.walletAttestation()
+            val attestation = try {
+                walletProvider.walletAttestation()
+            } catch (e: ProtocolException) {
+                if (e.code == "wallet_provider_unsupported" && "private_key_jwt" in methods) null
+                else throw e
+            }
             if (attestation != null) {
                 if (meta.challengeEndpoint != null && session.attestationChallenge == null) {
                     val response = httpClient.post(meta.challengeEndpoint)
@@ -396,7 +401,12 @@ class Oid4vciClient(
             }
         }
         if (selected == "private_key_jwt" || (selected == null && "private_key_jwt" in methods)) {
-            val assertion = walletProvider.clientAssertion(meta.issuer)
+            val assertion = try {
+                walletProvider.clientAssertion(meta.issuer)
+            } catch (e: ProtocolException) {
+                if (e.code == "wallet_provider_unsupported" && "none" in methods) null
+                else throw e
+            }
             if (assertion != null) {
                 session.clientAuthMethod = "private_key_jwt"
                 return ClientAuthentication("private_key_jwt", assertion = assertion)
