@@ -1779,7 +1779,10 @@ class WalletModel(val platform: PlatformServices) {
         return when {
             "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
             "1010" in m || ("403" in m && "wallet.gov.tw" in m) -> "\n數位憑證皮夾的伺服器拒絕了連線，可在設定調整送往 wallet.gov.tw 的 User-Agent 後再試。"
-            e.code == "untrusted_verifier" -> "\n對方不在數位憑證皮夾的信任清單或未在區塊鏈上註冊，為保護資料已停止。"
+            // The TWDIW handler answers 5xx only after the token and proof passed; the code comes from the issuer's service.
+            "Credential request failed (5" in m && "TWDIW resp_code" in m ->
+                "\n錢包的領卡請求已通過發證端檢查，是發證機關的憑證服務沒有發出卡片（伺服器端錯誤）。請到發證網站重新產生 QR Code 再試；仍失敗時請稍後再試或向發證機關回報。"
+            e.code == "untrusted_verifier" ->"\n對方不在數位憑證皮夾的信任清單或未在區塊鏈上註冊，為保護資料已停止。"
             else -> ""
         }
     }
