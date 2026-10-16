@@ -1,6 +1,8 @@
 package diw.testservers
 
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.jose.Jws
+import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.bool
@@ -37,6 +39,7 @@ class WalletProviderService(
     private val requireGoogleRoot: Boolean = false,
 ) {
     val issuerId: String get() = "$baseUrl/wallet-provider"
+    private val usedClientProofs = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     enum class KeyStorage(val wire: String) {
         SOFTWARE("iso_18045_basic"),
@@ -71,6 +74,24 @@ class WalletProviderService(
         val id = body.str("client_id") ?: throw ProtocolException("invalid_request", "client_id required")
         val aud = body.str("audience") ?: throw ProtocolException("invalid_request", "audience required")
         if (aud != "$baseUrl/issuer") throw ProtocolException("invalid_request", "Unregistered authorization server")
+        val rawProof = body.str("client_proof")
+            ?: throw ProtocolException("invalid_client", "Wallet instance proof is required")
+        val proof = try { Jws.parse(rawProof) } catch (e: Exception) {
+            throw ProtocolException("invalid_client", "Malformed wallet instance proof", e)
+        }
+        val jwk = proof.jwk ?: throw ProtocolException("invalid_client", "Wallet proof must contain a public JWK")
+        try { proof.verify(VerificationKey.fromJwk(jwk)) } catch (e: Exception) {
+            throw ProtocolException("invalid_client", "Wallet instance proof signature invalid", e)
+        }
+        if (proof.typ != "wallet-provider-client-proof+jwt" ||
+            proof.payload.str("iss") != id || proof.payload.str("sub") != id ||
+            proof.payload.str("aud") != "$baseUrl/wallet-provider/client-assertion" ||
+            proof.payload.str("authorization_server") != aud
+        ) throw ProtocolException("invalid_client", "Wallet instance proof claims invalid")
+        val proofId = proof.payload.str("jti")
+            ?: throw ProtocolException("invalid_client", "Wallet instance proof jti missing")
+        if (!usedClientProofs.add(proofId)) throw ProtocolException("invalid_client", "Wallet instance proof replay")
+        checkKey(EcPublicKey.fromJwk(jwk), body.arr("x5c"))
         val jwt = buildJwt(type = "JWT", key = pki.walletProviderSigner, expiresIn = 5.minutes) {
             put("iss", id)
             put("sub", id)
