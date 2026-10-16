@@ -42,6 +42,9 @@ interface WalletProvider {
     /** Returns a fresh-enough wallet attestation, or null when this wallet has none (public client). */
     suspend fun walletAttestation(): WalletAttestation?
 
+    /** A fresh RFC 7523 private_key_jwt signed by a registered client, or null if unavailable. */
+    suspend fun clientAssertion(audience: String): String? = null
+
     /**
      * Returns a key-attestation+jwt covering [keys], or null when unavailable.
      * [nonce] is the issuer c_nonce; [userAuthentication] states whether the keys require user verification.
@@ -90,6 +93,14 @@ class RemoteWalletProvider(
         }
         val resp = postJson("$baseUrl/wallet-attestation", body)
         return WalletAttestation(resp.reqStr("wallet_attestation"), instanceKey).also { cached = it }
+    }
+
+    override suspend fun clientAssertion(audience: String): String? {
+        val request = buildJsonObject {
+            put("client_id", clientId)
+            put("audience", audience)
+        }
+        return postJson("$baseUrl/client-assertion", request).reqStr("client_assertion")
     }
 
     override suspend fun keyAttestation(keys: List<KeyAttestation>, nonce: String?, userAuthentication: Boolean): String {
