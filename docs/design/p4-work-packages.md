@@ -189,7 +189,7 @@ data class PdfTextRun(val op: Int, val font: String, val raw: ByteArray, val lit
 驗收：
 
 - `Sha256StateTest`：NIST 測試向量；隨機長度訊息逐塊壓縮的結果等於 JCA `MessageDigest`；`digestWithWindows` 在視窗的 midOut 正確時等於整體摘要。
-- `PdfZkSupportTest`：以既有 `PdfComposer` 或測試產生器做出一頁含 Type0 與 WinAnsi 字型、有增量更新與 RC4（空白使用者密碼）的 PDF，驗證 `signedRevision` 不讀到之後的修訂、`streamExtent` 與實際位元組一致、`rc4KeyStream` XOR 後是合法 zlib、`fontDecoders` 能還原文字與數字編碼；`runs` 組成的文字等於 `extract`（含既有 P3 測試用的合成文件）。
+- `PdfZkSupportTest`：以 `test-servers` 的 `fixtures/PdfComposer` 或其他測試產生器做出一頁含 Type0 與 WinAnsi 字型、有增量更新與 RC4（空白使用者密碼）的 PDF，驗證 `signedRevision` 不讀到之後的修訂、`streamExtent` 與實際位元組一致、`rc4KeyStream` XOR 後是合法 zlib、`fontDecoders` 能還原文字與數字編碼；`runs` 組成的文字等於 `extract`（含既有 P3 測試用的合成文件）。
 
 ### WP3a zkPDF Noir 電路（Claude 主導）
 

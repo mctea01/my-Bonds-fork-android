@@ -33,7 +33,7 @@
 | `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證、身分證卡（`BondsNationalId`）、vc+moica 線上出示（`BondsMoicaOnline`）；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
 | `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
-| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`）、預覽用的解密副本（`PdfPlain`） |
+| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、預覽用的解密副本（`PdfPlain`）；測試用的 PDF 產生器在 `test-servers` 的 `fixtures/PdfComposer`，App 不製作 PDF 或公文 |
 | `document/sign` | 簽署（`DocumentSigning`：PAdES B-B 到 B-LTA、CAdES、ASiC-E、XAdES、公文線上簽核點、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`）、長期驗證資料（`ValidationCollector`、`ValidationData`） |
 | `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
 | `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、由文件內容解析欄位（`DocumentFields`）、證據查驗（`DerivedEvidence`） |
