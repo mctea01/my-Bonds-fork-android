@@ -4,7 +4,7 @@
 
 以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並完整相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫，目前提供 Android 與 Windows、Linux 桌面版。
 
-> 狀態：開發中（P3 文件、簽章與衍生憑證）。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
+> 狀態：開發中（P4 零知識證明設計中）。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
 
 ## 畫面
 
@@ -46,18 +46,20 @@
 
 - **領取**：OpenID4VCI 1.0 與 draft 11 至 13。支援：
   - pre-authorized code（含交易碼）與 authorization code（PKCE、PAR）；
-  - DPoP、錢包證明、批次與延遲發證、回應加密。
+  - DPoP、錢包證明、批次與延遲發證、回應加密；
+  - 用戶端驗證依授權伺服器中繼資料選擇錢包證明（`attest_jwt_client_auth`）、`private_key_jwt` 或公開用戶端；正式錢包後端（Wallet Provider）可在「設定 > 互通」設定，須先向發證端註冊。
 - **格式**：ISO mdoc、IETF SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、包在 SD-JWT 中的 W3C VC）。
 - **Digital Credentials API**：瀏覽器與其他 App 可經系統選擇器要求出示，也可要求存入證件（OpenID4VCI）。
-- **出示**：OpenID4VP 1.0（DCQL、transaction data、DC API）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
+- **出示**：OpenID4VP 1.0（DCQL、transaction data 含 mdoc、DC API 的未簽章、簽章與多重簽章請求）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
 - **查驗**：以 NFC、USB 讀卡機或電腦 PC/SC 讀卡機讀取 mdoc；離線挑戰查驗 Bonds 相容證件與文件衍生憑證。
 - **狀態**：支援 IETF Token Status List、W3C Bitstring Status List、Status List 2021 與 Revocation List 2020，顯示規格原文的狀態。背景自動更新，依用途風險決定是否接受。
 - **信任**：
   - X.509 信任錨點：政府憑證 GPKI、系統憑證庫、內建公開根憑證含中國大陸 CA 與國密 SM2（含 e簽寶公布的合作 CA，每月自動更新）、使用者匯入；中繼憑證（內建或匯入）只補足憑證鏈；
   - 文件簽章與時戳另可依 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL），清單在 App 內驗證後離線保存並每週更新；
+  - mdoc 簽署清單：VICAL（發行端）與 RICAL（查驗方），須由使用者指定的清單發行者根憑證簽署，過期不再採用；
   - DID：did:key、did:jwk、did:web、did:ion；
   - DIF Linked Domains、TWDIW 信任清單與 Arbitrum 鏈上錨定、使用者自行信任的 DID。
-  - 自己匯入的根憑證、中繼憑證與信任的 DID 集中在「設定 > 信任 > 自訂信任」，可隨時加入或移除。
+  - 自己匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 信任 > 自訂信任」，可隨時加入或移除。
 
 ### 文件與簽章
 

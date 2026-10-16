@@ -137,6 +137,7 @@ class IssuanceSession internal constructor(
     internal var requestedConfigurations: List<String> = emptyList()
     internal var anonymous: Boolean = false
     internal var attestationChallenge: String? = null
+    internal var clientAuthMethod: String? = null
     /** Response encryption key of each deferred transaction; issuers may encrypt the deferred response with it. */
     internal val responseKeys = mutableMapOf<String, EcPrivateKey>()
 
@@ -267,11 +268,11 @@ class Oid4vciClient(
         grant.txCode?.length?.let { len ->
             if (txCode!!.length != len) throw ProtocolException("invalid_tx_code", "Transaction code must have $len characters")
         }
-        val attestation = clientAttestationFor(session)
+        val auth = clientAuthenticationFor(session)
         val extra = session.compat.owned {
             it.tokenParameters(TokenContext(session.offer, session.issuer, session.selectedConfigurations.map { c -> c.id }, txCode?.takeIf { grant.txCode != null }))
         }.orEmpty()
-        session.anonymous = attestation == null && session.authServer.preAuthorizedAnonymousAccess && "client_id" !in extra
+        session.anonymous = auth.method == "none" && session.authServer.preAuthorizedAnonymousAccess && "client_id" !in extra
         val form = Parameters.build {
             append("grant_type", GRANT_PRE_AUTHORIZED_CODE)
             append("pre-authorized_code", grant.preAuthorizedCode)
@@ -279,7 +280,7 @@ class Oid4vciClient(
             if (!session.anonymous) append("client_id", walletProvider.clientId)
             for ((k, v) in extra) set(k, v)
         }
-        session.accessToken = tokenRequest(session, form, attestation)
+        session.accessToken = tokenRequest(session, form, auth)
     }
 
     /**
@@ -327,10 +328,10 @@ class Oid4vciClient(
         val par = asMeta.parEndpoint
         if (par == null && asMeta.requirePar) throw ProtocolException("invalid_as_metadata", "PAR required but no endpoint")
         return if (par != null) {
-            val attestation = clientAttestationFor(session)
-            val resp = postFormWithDpop(session, par, params, attestation, null)
+            val auth = clientAuthenticationFor(session)
+            val resp = postFormWithDpop(session, par, params, auth, null)
             val json = parseJsonObject(resp.bodyAsText(), "invalid_par_response")
-            if (!resp.status.isSuccess()) throw oauthError(json, "PAR failed (${resp.status.value})")
+            if (!resp.status.isSuccess()) throw authError(session, auth, json, "PAR failed (${resp.status.value})")
             val requestUri = json.str("request_uri") ?: throw ProtocolException("invalid_par_response", "PAR response without request_uri")
             URLBuilder(endpoint).apply {
                 parameters.append("client_id", walletProvider.clientId)
@@ -368,28 +369,76 @@ class Oid4vciClient(
             append("client_id", walletProvider.clientId)
         }
         session.state = null
-        session.accessToken = tokenRequest(session, form, clientAttestationFor(session))
+        session.accessToken = tokenRequest(session, form, clientAuthenticationFor(session))
     }
 
-    private suspend fun clientAttestationFor(session: IssuanceSession): WalletAttestation? {
-        val asMeta = session.authServer
-        if (!asMeta.usesClientAttestation && asMeta.tokenEndpointAuthMethods.isNotEmpty()) return null
-        val att = walletProvider.walletAttestation() ?: return null
-        val challengeEndpoint = asMeta.challengeEndpoint
-        if (challengeEndpoint != null && session.attestationChallenge == null) {
-            val r = httpClient.post(challengeEndpoint)
-            if (r.status.isSuccess()) {
-                session.attestationChallenge = parseJsonObject(r.bodyAsText()).str("attestation_challenge")
+    private data class ClientAuthentication(
+        val method: String,
+        val attestation: WalletAttestation? = null,
+        val assertion: String? = null,
+    )
+
+    private suspend fun clientAuthenticationFor(session: IssuanceSession): ClientAuthentication {
+        val meta = session.authServer
+        val methods = meta.tokenEndpointAuthMethods
+        val selected = session.clientAuthMethod
+        if (selected == "attest_jwt_client_auth" || (selected == null && "attest_jwt_client_auth" in methods)) {
+            val attestation = try {
+                walletProvider.walletAttestation()
+            } catch (e: ProtocolException) {
+                if (e.code == "wallet_provider_unsupported") null
+                else throw e
+            }
+            if (attestation != null) {
+                if (meta.challengeEndpoint != null && session.attestationChallenge == null) {
+                    val response = httpClient.post(meta.challengeEndpoint)
+                    if (response.status.isSuccess()) {
+                        session.attestationChallenge = parseJsonObject(response.bodyAsText()).str("attestation_challenge")
+                    }
+                }
+                session.clientAuthMethod = "attest_jwt_client_auth"
+                return ClientAuthentication("attest_jwt_client_auth", attestation = attestation)
             }
         }
-        return att
+        if (selected == "private_key_jwt" || (selected == null && "private_key_jwt" in methods)) {
+            val assertion = try {
+                walletProvider.clientAssertion(meta.issuer)
+            } catch (e: ProtocolException) {
+                if (e.code == "wallet_provider_unsupported") null
+                else throw e
+            }
+            if (assertion != null) {
+                session.clientAuthMethod = "private_key_jwt"
+                return ClientAuthentication("private_key_jwt", assertion = assertion)
+            }
+        }
+        // Public client: the wallet sends only client_id and the server decides. Many servers (Keycloak, the EUDI
+        // issuer) accept public clients with PKCE without listing "none"; a refusal is reported by authError.
+        session.clientAuthMethod = "none"
+        return ClientAuthentication("none")
     }
 
-    private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, attestation: WalletAttestation?): AccessToken {
-        val resp = postFormWithDpop(session, session.authServer.tokenEndpoint, form, attestation, null)
+    /**
+     * An OAuth error response; a refused public client becomes client_authentication_unavailable when the
+     * server only lists methods this wallet could not provide.
+     */
+    private fun authError(session: IssuanceSession, auth: ClientAuthentication, json: JsonObject, fallback: String): ProtocolException {
+        val methods = session.authServer.tokenEndpointAuthMethods
+        if (auth.method == "none" && json.str("error") == "invalid_client" && methods.isNotEmpty() && "none" !in methods) {
+            return ProtocolException(
+                "client_authentication_unavailable",
+                "Authorization server requires registered client authentication (" + methods.joinToString(", ") + "): " +
+                    (json.str("error_description") ?: fallback),
+            )
+        }
+        return oauthError(json, fallback)
+    }
+
+    private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, auth: ClientAuthentication): AccessToken {
+        val resp = postFormWithDpop(session, session.authServer.tokenEndpoint, form, auth, null)
         val text = resp.bodyAsText()
         val json = runCatching { parseJsonObject(text) }.getOrElse { JsonObject(emptyMap()) }
-        if (!resp.status.isSuccess()) throw oauthError(json, "Token request failed (${resp.status.value})")
+        if (!resp.status.isSuccess()) throw authError(session, auth, json, "Token request failed (${resp.status.value})")
         val token = json.str("access_token") ?: throw ProtocolException("invalid_token_response", "No access_token")
         val type = json.str("token_type") ?: "Bearer"
         if (type.equals("DPoP", true) && session.dpop == null) {
@@ -414,13 +463,20 @@ class Oid4vciClient(
         session: IssuanceSession,
         url: String,
         form: Parameters,
-        attestation: WalletAttestation?,
+        auth: ClientAuthentication,
         accessToken: String?,
     ): HttpResponse {
         var retried = false
         while (true) {
+            val current = if (retried) clientAuthenticationFor(session) else auth
+            val requestForm = if (current.assertion != null) Parameters.build {
+                appendAll(form)
+                append("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+                append("client_assertion", current.assertion)
+            } else form
             val resp = httpClient.post(url) {
                 applyDpop(session, "POST", url, accessToken)
+                val attestation = current.attestation
                 if (attestation != null) {
                     header("OAuth-Client-Attestation", attestation.jwt)
                     header(
@@ -428,11 +484,11 @@ class Oid4vciClient(
                         clientAttestationPop(attestation, walletProvider.clientId, session.authServer.issuer, session.attestationChallenge)
                     )
                 }
-                setBody(FormDataContent(form))
+                setBody(FormDataContent(requestForm))
             }
             session.dpop?.updateNonce(url, resp.headers["DPoP-Nonce"])
             resp.headers["OAuth-Client-Attestation-Challenge"]?.let { session.attestationChallenge = it }
-            if (!retried && resp.status == HttpStatusCode.BadRequest) {
+            if (!retried && (resp.status == HttpStatusCode.BadRequest || resp.status == HttpStatusCode.Unauthorized)) {
                 val err = runCatching { parseJsonObject(resp.bodyAsText()).str("error") }.getOrNull()
                 if ((err == "use_dpop_nonce" && resp.headers["DPoP-Nonce"] != null) || err == "use_attestation_challenge") {
                     retried = true

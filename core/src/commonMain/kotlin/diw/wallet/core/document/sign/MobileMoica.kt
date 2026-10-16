@@ -9,6 +9,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -152,6 +153,8 @@ class TwFidoClient(
                 accept(ContentType.Application.Json)
                 setBody(body.toString())
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw MobileMoicaException(null, "無法連線到行動自然人憑證服務（${environment.title}）")
         }

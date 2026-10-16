@@ -91,3 +91,19 @@ Invoke-RestMethod http://localhost:8080/verifier/sessions/$($s.id)
 - `credential_issuer in metadata does not match`：伺服器啟動時的網址和錢包用的不同，依第 2 節重開。
 - 匯入錨點失敗或連不上：確認伺服器視窗仍在執行；實機每次重新插線後要再跑一次 `adb reverse`。
 - 只想跑自動測試：`.\gradlew.bat :test-servers:test :app:desktopTest`。
+
+## 錢包身分與用戶端驗證
+
+「設定 > 互通 > OpenID4VCI 錢包身分」可填錢包的 `client_id` 與受信任錢包後端的 HTTPS 網址。錢包依發證端中繼資料的 `token_endpoint_auth_methods_supported` 選擇：
+
+1. 列出 `attest_jwt_client_auth` 且後端能發 Wallet Attestation 時用它；
+2. 列出 `private_key_jwt` 且後端能簽 Client Assertion 時用它；
+3. 其餘情況以公開用戶端（只送 `client_id` 與 PKCE）嘗試。Keycloak 與 EUDI 發證端不會列出 `none` 但接受公開用戶端；發證端回 `invalid_client` 時，錯誤會寫明它要求哪些驗證方式。
+
+本機測試伺服器的 Wallet Provider 在「設定 > 開發者與測試」設定，不要把發證端網址填成錢包後端。把 `client_id` 改成其他錢包的識別碼不會讓正式發證端信任這個錢包。
+
+## mdoc 簽署清單（VICAL、RICAL）
+
+1. 在「設定 > 信任 > 自訂信任」匯入簽署清單的根憑證，用途勾「VICAL／RICAL 清單發行者」。這只代表信任清單的簽署者，不是把清單內的憑證都當成根憑證。
+2. 同一頁的「mdoc 簽署清單」選 VICAL（mdoc 發行端）或 RICAL（查驗方），填 HTTPS 網址後按「驗證簽章後匯入」。清單發行者的根憑證與清單要在同一個環境，測試根憑證簽的清單不會變成正式信任。
+3. 匯入同一發行者的清單時版本必須遞增；RICAL 的項目必須標為信任錨點。過期的清單立即停止提供信任，但仍列在清單中，可按「更新到期的清單」重新下載或移除；其中一份下載失敗不影響其他清單。

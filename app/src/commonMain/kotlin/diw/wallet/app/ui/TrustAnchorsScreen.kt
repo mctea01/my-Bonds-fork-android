@@ -48,6 +48,7 @@ private fun roleName(r: TrustRole): String = when (r) {
     TrustRole.VERIFIER -> "查驗方"
     TrustRole.STATUS_LIST -> "狀態清單"
     TrustRole.WALLET_PROVIDER -> "錢包提供者"
+    TrustRole.TRUST_LIST_PROVIDER -> "VICAL／RICAL 清單發行者"
     TrustRole.TSA -> "時間戳記"
     TrustRole.DOCUMENT -> "文件簽章"
 }
@@ -132,9 +133,11 @@ internal fun CustomTrustRow(model: WalletModel) {
     val anchors by model.anchors.collectAsState()
     val dids by model.trustedDids.collectAsState()
     val intermediates by model.intermediates.collectAsState()
+    val lists by model.mdocLists.collectAsState()
     val roots = anchors?.filter { it.environment == TrustEnvironment.USER }?.map { it.certificate }?.distinct()?.size ?: 0
     ActionRow(WalletIcons.Shield, "自訂信任",
-        "匯入的根憑證 $roots 張、中繼憑證 ${intermediates.size} 張、自行信任的 DID ${dids.size} 個；可匯入其他國家、組織或企業的根憑證，或信任清單以外的 DID") {
+        "匯入的根憑證 $roots 張、中繼憑證 ${intermediates.size} 張、自行信任的 DID ${dids.size} 個、mdoc 簽署清單 ${lists.size} 份；" +
+            "可匯入其他國家、組織或企業的根憑證，或信任清單以外的 DID") {
         model.screen.value = Screen.CustomTrust
     }
 }
@@ -182,9 +185,68 @@ fun CustomTrustScreen(model: WalletModel) {
         SectionTitle("自行信任的 DID")
         TrustedDidSection(model, dids)
 
+        HorizontalDivider()
+        SignedListSection(model)
+
         ImportAnchorSection(model)
     }
     removing?.let { g -> RemoveAnchorDialog(model, g) { removing = null } }
+}
+
+/**
+ * mdoc VICAL (issuer CAs) and RICAL (reader CAs) downloaded from an HTTPS address. A list counts only when it is
+ * signed under a root imported for the list-publisher role; its CAs are then the user's own trust (T2).
+ */
+@Composable
+private fun SignedListSection(model: WalletModel) {
+    val lists by model.mdocLists.collectAsState()
+    var url by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf("vical") }
+    SectionTitle("mdoc 簽署清單（VICAL、RICAL）")
+    Text("VICAL 列出 mdoc 發行端的根憑證，RICAL 列出查驗方的根憑證。清單須由下方以「VICAL／RICAL 清單發行者」用途匯入的根憑證簽署，" +
+        "清單內的根憑證判定為 T2（使用者自訂，不顯示為官方）；清單過期後不再採用，可重新取得新版。",
+        style = MaterialTheme.typography.bodySmall)
+    if (lists.isEmpty()) Text("尚未匯入。", style = MaterialTheme.typography.bodySmall)
+    lists.forEach { l ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(l.name, style = MaterialTheme.typography.titleSmall)
+                Text((if (l.kind == "vical") "VICAL・發行端" else "RICAL・查驗方") + "・${l.certificates} 張根憑證・版本 ${l.issue ?: "未標示"}",
+                    style = MaterialTheme.typography.bodySmall)
+                Text(
+                    if (l.expired) "已過期，不再採用" + (l.notAfter?.let { "（" + localTime(it) + "）" } ?: "")
+                    else "有效至 " + (l.notAfter?.let { localTime(it) } ?: "未標示") + (l.nextUpdate?.let { "・下次更新 " + localTime(it) } ?: ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (l.expired) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                l.source?.let { Text("來源：$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+            }
+            TextButton(onClick = { model.removeMdocTrustList(l) }) { Text("移除") }
+        }
+    }
+    if (lists.isNotEmpty()) TextButton(onClick = { model.refreshMdocTrustLists() }) { Text("更新到期的清單") }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = kind == "vical", onClick = { kind = "vical" }, label = { Text("VICAL・發行端") })
+        FilterChip(selected = kind == "rical", onClick = { kind = "rical" }, label = { Text("RICAL・查驗方") })
+    }
+    OutlinedTextField(
+        value = url,
+        onValueChange = { url = it.trim().take(1024) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("清單的 HTTPS 網址") },
+        singleLine = true,
+    )
+    OutlinedTextField(
+        value = name,
+        onValueChange = { name = it.take(80) },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("顯示名稱（選填）") },
+        singleLine = true,
+    )
+    Button(onClick = { model.importMdocTrustList(kind, url, name); url = ""; name = "" }, enabled = url.startsWith("https://")) {
+        Text("驗證簽章後匯入")
+    }
 }
 
 @Composable
@@ -370,7 +432,7 @@ private fun ImportAnchorSection(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Text("用途（根憑證）", style = MaterialTheme.typography.labelLarge)
-    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.WALLET_PROVIDER), roles) { roles = it }
+    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
         Text("匯入")
     }

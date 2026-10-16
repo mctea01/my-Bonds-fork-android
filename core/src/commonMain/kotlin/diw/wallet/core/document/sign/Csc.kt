@@ -5,6 +5,7 @@ import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.int
 import diw.wallet.core.util.long
+import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
@@ -175,8 +176,13 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             }.getOrNull()
         }
         val oauth = (i.oauth2 ?: issuer)?.trimEnd('/')
-        (fromMetadata ?: oauth?.let { "$it/oauth2/authorize" to "$it/oauth2/token" }
-            ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")).also { endpoints = it }
+        val pair = fromMetadata ?: oauth?.let { "$it/oauth2/authorize" to "$it/oauth2/token" }
+            ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")
+        val allowTestLocalhost = service.environment == CscEnvironment.TEST
+        if (!isAcceptableEndpoint(pair.first, allowTestLocalhost) ||
+            !isAcceptableEndpoint(pair.second, allowTestLocalhost)
+        ) throw CscException("遠端簽章 OAuth 授權與 Token 端點必須使用 HTTPS（本機測試環境除外）")
+        pair.also { endpoints = it }
     }
 
     /**
@@ -209,6 +215,9 @@ class CscClient(private val http: HttpClient, val service: CscService) {
 
     /** The authorization code in the address the service redirected to, after checking state and errors. */
     fun code(redirected: String, request: CscAuthorizationRequest): String {
+        if (redirected.substringBefore('?').substringBefore('#') != service.redirectUri) {
+            throw CscException("遠端簽章授權回呼網址與已登記的 redirect_uri 不符")
+        }
         val query = redirected.substringAfter('?', "").substringBefore('#')
         val params = query.split('&').filter { '=' in it }.associate {
             it.substringBefore('=').decodeURLQueryComponent() to it.substringAfter('=').decodeURLQueryComponent(plusIsSpace = true)
@@ -236,6 +245,9 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         }
         val o = parse(r, "取得存取權杖")
         val access = o.str("access_token") ?: throw CscException("遠端簽章服務沒有回傳存取權杖")
+        if (!o.str("token_type").equals("Bearer", true)) {
+            throw CscException("遠端簽章服務未回傳 Bearer 型別的存取權杖")
+        }
         return CscToken(access, o.long("expires_in")?.let { Clock.System.now() + it.seconds })
     }
 
@@ -470,8 +482,10 @@ class CscSigner(
         fun signAlgorithm(c: CscCredential): String {
             val algos = c.keyAlgorithms
             return when (keyTypeOf(c.certificates.first())) {
-                SignerKeyType.EC_P256 -> if (algos.isEmpty() || CscClient.ECDSA_SHA256 in algos) CscClient.ECDSA_SHA256 else algos.first()
-                SignerKeyType.RSA -> if (algos.isEmpty() || CscClient.RSA_SHA256 in algos) CscClient.RSA_SHA256 else algos.first()
+                SignerKeyType.EC_P256 -> if (algos.isEmpty() || CscClient.ECDSA_SHA256 in algos) CscClient.ECDSA_SHA256
+                    else throw SigningException("遠端簽章憑證未宣告 SHA-256 ECDSA 演算法")
+                SignerKeyType.RSA -> if (algos.isEmpty() || CscClient.RSA_SHA256 in algos) CscClient.RSA_SHA256
+                    else throw SigningException("遠端簽章憑證未宣告 SHA-256 RSA 演算法")
             }
         }
     }

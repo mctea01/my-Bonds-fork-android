@@ -63,6 +63,10 @@ import kotlin.time.Duration.Companion.minutes
 data class IssuerOptions(
     val dpopNonce: Boolean = true,
     val requireClientAttestation: Boolean = false,
+    val requireClientAssertion: Boolean = false,
+    val supportClientAssertion: Boolean = false,
+    /** Overrides token_endpoint_auth_methods_supported, e.g. a Keycloak list without "none" that still accepts public clients. */
+    val advertisedAuthMethods: List<String>? = null,
     val encryption: Boolean = true,
     val encryptionRequired: Boolean = false,
     val signedMetadata: Boolean = false,
@@ -248,10 +252,14 @@ class IssuerService(
         putJsonArray("response_types_supported") { add("code") }
         putJsonArray("grant_types_supported") { add("authorization_code"); add("urn:ietf:params:oauth:grant-type:pre-authorized_code") }
         putJsonArray("token_endpoint_auth_methods_supported") {
-            add("attest_jwt_client_auth")
-            if (!options.requireClientAttestation) add("none")
+            if (options.advertisedAuthMethods != null) options.advertisedAuthMethods.forEach { add(it) }
+            else if (options.requireClientAssertion) add("private_key_jwt") else {
+                add("attest_jwt_client_auth")
+                if (options.supportClientAssertion) add("private_key_jwt")
+                if (!options.requireClientAttestation) add("none")
+            }
         }
-        put("pre-authorized_grant_anonymous_access_supported", !options.requireClientAttestation)
+        put("pre-authorized_grant_anonymous_access_supported", !options.requireClientAttestation && !options.requireClientAssertion)
         put("authorization_response_iss_parameter_supported", true)
     }
 
@@ -350,9 +358,39 @@ class IssuerService(
         return sub
     }
 
+    private suspend fun verifyClientAssertion(form: Parameters): String? {
+        val assertion = form["client_assertion"]
+        if (assertion == null) {
+            if (options.requireClientAssertion) throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Client assertion required")
+            return null
+        }
+        if (form["client_assertion_type"] != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+            throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Invalid assertion type")
+        val jwt = try { Jws.parse(assertion) } catch (e: Exception) {
+            throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Invalid assertion JWT")
+        }
+        val chain = jwt.x5c?.certificates ?: throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Certificate required")
+        trust.match(TrustRole.WALLET_PROVIDER, chain)
+            ?: throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Untrusted assertion signer")
+        try { jwt.verify(VerificationKey.fromCertificate(chain.first())) } catch (e: Exception) {
+            throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Invalid assertion signature")
+        }
+        val claims = jwt.payload
+        val id = form["client_id"]
+        if (id == null || claims.str("iss") != id || claims.str("sub") != id ||
+            claims.str("aud") != issuerId || (claims.long("exp") ?: 0) <= Clock.System.now().epochSeconds)
+            throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Invalid assertion claims")
+        val jti = claims.str("jti")
+            ?: throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Missing assertion jti")
+        if (!usedJti.add("assertion:$jti"))
+            throw IssuerError(HttpStatusCode.Unauthorized, "invalid_client", "Replayed assertion")
+        return id
+    }
+
     suspend fun pushedAuthorization(form: Parameters, headers: Map<String, String?>): IssuerReply {
         headers["DPoP"]?.let { verifyDpop(it, "POST", "$issuerId/par", null, resource = false) }
         verifyClientAttestation(headers["OAuth-Client-Attestation"], headers["OAuth-Client-Attestation-PoP"], form["client_id"])
+        verifyClientAssertion(form)
         if (form["response_type"] != "code") throw IssuerError(HttpStatusCode.BadRequest, "invalid_request", "response_type")
         if (form["code_challenge_method"] != "S256" || form["code_challenge"] == null) {
             throw IssuerError(HttpStatusCode.BadRequest, "invalid_request", "PKCE S256 required")
@@ -394,7 +432,7 @@ class IssuerService(
 
     suspend fun token(form: Parameters, headers: Map<String, String?>): IssuerReply {
         val jkt = headers["DPoP"]?.let { verifyDpop(it, "POST", "$issuerId/token", null, resource = false) }
-        val authClient = verifyClientAttestation(headers["OAuth-Client-Attestation"], headers["OAuth-Client-Attestation-PoP"], form["client_id"])
+        val authClient = verifyClientAssertion(form) ?: verifyClientAttestation(headers["OAuth-Client-Attestation"], headers["OAuth-Client-Attestation-PoP"], form["client_id"])
         val (configIds, identifiers) = when (form["grant_type"]) {
             "urn:ietf:params:oauth:grant-type:pre-authorized_code" -> {
                 val code = form["pre-authorized_code"] ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_request", "pre-authorized_code")

@@ -1382,7 +1382,7 @@ class WalletModelE2eTest {
                     val sid = req.headers[HttpHeaders.Cookie]?.substringAfter("SID=")?.substringBefore(';')
                     sessions[sid]?.let { redirect(it) } ?: respond("no session", io.ktor.http.HttpStatusCode.Unauthorized)
                 }
-                "/oauth2/token" -> json(buildJsonObject { put("access_token", "t"); put("expires_in", 600) })
+                "/oauth2/token" -> json(buildJsonObject { put("access_token", "t"); put("token_type", "Bearer"); put("expires_in", 600) })
                 "/csc/v2/credentials/list" -> json(buildJsonObject {
                     putJsonArray("credentialIDs") { add("c1") }
                     putJsonArray("credentialInfos") {

@@ -32,6 +32,7 @@
 | [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 OpenID4VC 全組合與相容 Profile |
 | [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 後續：狀態、風險與信任錨點 |
 | [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
+| [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：OpenID4VCI 用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
 
 ## 使用與發佈
 

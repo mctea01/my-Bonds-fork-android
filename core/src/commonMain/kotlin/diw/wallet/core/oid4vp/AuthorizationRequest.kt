@@ -51,6 +51,8 @@ data class RawAuthorizationRequest(
     val dcApiProtocol: String? = null,
     /** Profile whose entry point delivered the request (twdiw for the modadigitalwallet scheme). */
     val entryHint: String? = null,
+    /** Verified separately: JWS JSON Serialization offers alternative verifier identities. */
+    val multiSignedCandidates: List<RawAuthorizationRequest> = emptyList(),
 )
 
 /** Identity of the Verifier as established by the request validation layer. */

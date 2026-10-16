@@ -103,8 +103,10 @@ class Oid4vpHolder(
     private val derivedSources: suspend () -> List<HolderDerivedSource> = { emptyList() },
     /** Who the holder is (ID number, name), to pick the holder's own row on a household record. */
     private val derivedHolders: suspend () -> List<HolderHint> = { emptyList() },
+    /** Decryption keys registered for encrypted request objects (not keys received from the verifier). */
+    private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
 ) {
-    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed)
+    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
     private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed)
     private val legacy = LegacyRequestValidator(httpClient, trustRegistry, didResolver, didTrust, policy, environment.insecureLoopbackAllowed, dialects)
@@ -131,8 +133,29 @@ class Oid4vpHolder(
         return clientId.startsWith("did:") || clientId.startsWith("x509_san_uri:")
     }
 
-    suspend fun resolveDcApi(protocol: String, data: JsonObject, origin: String): ValidatedAuthorizationRequest =
-        validator.validate(resolver.fromDcApi(protocol, data, origin))
+    suspend fun resolveDcApi(protocol: String, data: JsonObject, origin: String): ValidatedAuthorizationRequest {
+        val request = resolver.fromDcApi(protocol, data, origin)
+        if (request.multiSignedCandidates.isEmpty()) return validator.validate(request)
+        var best: ValidatedAuthorizationRequest? = null
+        var lastError: Throwable? = null
+        for (candidate in request.multiSignedCandidates) {
+            try {
+                val validated = validator.validate(candidate)
+                // TrustTier is declared from T1 (strongest) to T4; the first of equally strong signatures wins.
+                if (best == null || validated.verifier.trust.tier < best.verifier.trust.tier) best = validated
+            } catch (e: ProtocolException) {
+                lastError = e
+            }
+        }
+        return best?.copy(warnings = best.warnings + (
+            "Multi-signed DC API: authenticated " + best.verifier.clientId.raw +
+                " among " + request.multiSignedCandidates.size + " signatures"
+        )) ?: throw RequestValidationException(
+            "invalid_request_object",
+            "No multi-signed verifier identity could be authenticated",
+            cause = lastError,
+        )
+    }
 
     /**
      * Matches the request against stored credentials. Throws [ProtocolException] (access_denied) when nothing matches.

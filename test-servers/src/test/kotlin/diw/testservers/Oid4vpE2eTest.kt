@@ -1,5 +1,7 @@
 package diw.testservers
 
+import diw.wallet.core.jose.Jws
+import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.RequestValidationException
@@ -12,7 +14,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -199,6 +203,111 @@ class Oid4vpE2eTest {
         return DiwJson.parseToJsonElement(res).jsonObject
     }
 
+    private suspend fun multiSignedData(origin: String): JsonObject {
+        val original = dcApiSession(origin, signed = true)["data"]!!.jsonObject
+        val parsed = Jws.parse(original["request"]!!.jsonPrimitive.content)
+        val clientId = parsed.payload["client_id"]!!.jsonPrimitive.content
+        val payload = JsonObject(parsed.payload.filterKeys { it != "client_id" && it != "verifier_info" })
+        val header = JsonObject(parsed.header + ("client_id" to JsonPrimitive(clientId)))
+        val compact = signJws(header, payload, servers.pki.readerKey("localhost"))
+        val parts = compact.split('.')
+        return buildJsonObject {
+            put("request", buildJsonObject {
+                put("payload", parts[1])
+                put("signatures", JsonArray(listOf(
+                    buildJsonObject { put("protected", parts[0]); put("signature", parts[2]) },
+                    buildJsonObject { put("protected", parts[0]); put("signature", "AAAA") },
+                )))
+            })
+        }
+    }
+
+    @Test
+    fun dcApiMultiSignedChoosesAnAuthenticatedVerifier() = runBlocking<Unit> {
+        val data = multiSignedData("https://rp.example")
+        val w = wallet()
+        val request = w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://rp.example")
+        assertEquals("x509_san_dns:localhost", request.verifier.clientId.raw)
+        assertTrue(request.raw.requestObject != null)
+        assertTrue(request.warnings.any { it.contains("Multi-signed DC API") })
+        assertTrue(w.holder.respondDefault(w.holder.prepare(request)) is PresentationOutcome.DcApi)
+    }
+
+    @Test
+    fun dcApiMultiSignedRejectsForgedSignaturesAndOrigins() = runBlocking<Unit> {
+        val data = multiSignedData("https://rp.example")
+        val w = wallet()
+        val mismatch = assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://attacker.example")
+        }
+        assertEquals("invalid_request_object", mismatch.code)
+        val envelope = data["request"]!!.jsonObject
+        val forged = buildJsonObject {
+            put("request", buildJsonObject {
+                put("payload", envelope["payload"]!!)
+                put("signatures", JsonArray((envelope["signatures"] as JsonArray).map {
+                    JsonObject(it.jsonObject + ("signature" to JsonPrimitive("AAAA")))
+                }))
+            })
+        }
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", forged, "https://rp.example")
+        }
+    }
+
+    @Test
+    fun dcApiSignedProtocolCannotDowngradeToUnsigned() = runBlocking<Unit> {
+        val w = wallet()
+        val data = dcApiSession("https://rp.example", signed = false)["data"]!!.jsonObject
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-signed", data, "https://rp.example")
+        }
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://rp.example")
+        }
+    }
+
+    private fun mdocQesRequest(): JsonObject {
+        val item = """{"type":"qes_authorization","credential_ids":["mdl"],"numSignatures":1}"""
+        val encoded = item.encodeToByteArray().toBase64Url()
+        return buildJsonObject {
+            put("response_type", "vp_token")
+            put("response_mode", "dc_api")
+            put("nonce", "a-transaction-nonce-with-adequate-length")
+            put("dcql_query", DiwJson.parseToJsonElement(
+                """{"credentials":[{"id":"mdl","format":"mso_mdoc","meta":{"doctype_value":"org.iso.18013.5.1.mDL"},"claims":[{"path":["org.iso.18013.5.1","given_name"]}]}]}"""
+            ))
+            put("transaction_data", JsonArray(listOf(JsonPrimitive(encoded))))
+        }
+    }
+
+    @Test
+    fun mdocTransactionDataIsBoundToAuthorizedDeviceNamespace() = runBlocking<Unit> {
+        val w = WalletFixture().init(servers.pki)
+        w.issueMdl(servers.pki, listOf("qes_authorization"))
+        val request = w.holder.resolveDcApi("openid4vp-v1-unsigned", mdocQesRequest(), "https://rp.example")
+        val outcome = w.holder.respondDefault(w.holder.prepare(request)) as PresentationOutcome.DcApi
+        val token = outcome.data["vp_token"]!!.jsonObject["mdl"]!!.jsonArray.first().jsonPrimitive.content
+        val encodedResponse = org.multipaz.cbor.Cbor.decode(token.fromBase64Url())
+        // Examine serialized DeviceSigned claims; DeviceResponse.documents requires a separate
+        // signature verification with the exact session transcript.
+        val document = org.multipaz.mdoc.response.MdocDocument.fromDataItem(
+            encodedResponse["documents"].asArray.first()
+        )
+        val payload = document.deviceNamespaces.data["qes_authorization"]
+        assertTrue(payload?.containsKey("transactionDataHash") == true)
+    }
+
+    @Test
+    fun mdocTransactionWithoutIssuerKeyAuthorizationIsRejected() = runBlocking<Unit> {
+        val w = WalletFixture().init(servers.pki)
+        w.issueMdl(servers.pki)
+        val request = w.holder.resolveDcApi("openid4vp-v1-unsigned", mdocQesRequest(), "https://rp.example")
+        assertFailsWith<diw.wallet.core.util.ProtocolException> {
+            w.holder.respondDefault(w.holder.prepare(request))
+        }
+    }
+
     @Test
     fun dcApiSignedMatchingOrigin() = runBlocking {
         val r = dcApi("https://rp.example", "https://rp.example", signed = true)
@@ -281,7 +390,6 @@ class Oid4vpE2eTest {
     @Test
     fun transactionDataHashesNameTheirAlgorithm() = runBlocking<Unit> {
         val w = wallet()
-        diw.wallet.core.oid4vp.QesApprovalTransaction.types.forEach { w.documentTypes.addTransactionType(it) }
         val entry = buildJsonObject {
             put("type", diw.wallet.core.oid4vp.QesApprovalTransaction.CSC_2025)
             put("credential_ids", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("pid")) })

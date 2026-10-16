@@ -81,7 +81,7 @@ fun tierAdvice(t: TrustDecision): String = when {
     TrustLabel.AATL in t.labels -> "憑證鏈連到 Adobe 核可信任清單（AATL）的憑證機構（${t.anchorName ?: ""}），可確認簽署者的組織或姓名。"
     TrustLabel.EUTL in t.labels -> "憑證鏈連到歐盟信任清單（EUTL）的憑證機構（${t.anchorName ?: ""}）${qualified(t)}，可確認簽署者的組織或姓名。"
     TrustLabel.SYSTEM_ANCHOR in t.labels -> "憑證鏈連到系統憑證庫的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
-    t.environment == TrustEnvironment.USER -> "由你自行匯入的根憑證或自行信任的 DID 確認。"
+    t.environment == TrustEnvironment.USER -> "由你自行匯入的根憑證、mdoc 簽署清單或自行信任的 DID 確認。"
     t.anchorName != null -> "憑證鏈連到內建的發行端憑證（${t.anchorName}，與 Multipaz Wallet 相同的信任清單），可確認發行者。"
     else -> "連到信任根，可確認對方身分。"
 }
@@ -117,7 +117,7 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
     TrustLabel.LINKED_DOMAIN in t.labels -> "發行端的 DID 已連結網域 ${t.anchorName ?: ""}。"
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "發行端憑證連到中國大陸憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
     t.environment == TrustEnvironment.SYSTEM -> "發行端憑證連到公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
-    t.environment == TrustEnvironment.USER -> "發行端由你自行匯入的根憑證或自行信任的 DID 確認。"
+    t.environment == TrustEnvironment.USER -> "發行端由你自行匯入的根憑證、mdoc 簽署清單（VICAL）或自行信任的 DID 確認。"
     else -> "發行端憑證連到內建的發行端憑證（${t.anchorName ?: ""}），可確認發行者。"
 }
 
@@ -126,7 +126,7 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
 fun TierLegend() {
     val rows = listOf(
         TrustTier.T1 to "官方清單並經額外驗證：數位憑證皮夾（TWDIW）信任清單內、DID 文件自簽有效且與 Arbitrum One 註冊相符的組織，以及標為官方的正式信任錨點。",
-        TrustTier.T2 to "連到信任根，視為高可信：政府憑證（GPKI：GCA、XCA、MOEACA，查驗方與文件簽章另含 MOICA 自然人憑證）、系統憑證庫與內建公開憑證機構（含中國大陸與國密 SM2 憑證機構）、文件簽章與時戳的 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL）、內建的發行端憑證（如 Google、Apple 的身分證件）、Microsoft Verified ID 的 Linked Domains、你匯入的根憑證與自行信任的 DID，以及列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符的組織。",
+        TrustTier.T2 to "連到信任根，視為高可信：政府憑證（GPKI：GCA、XCA、MOEACA，查驗方與文件簽章另含 MOICA 自然人憑證）、系統憑證庫與內建公開憑證機構（含中國大陸與國密 SM2 憑證機構）、文件簽章與時戳的 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL）、內建的發行端憑證（如 Google、Apple 的身分證件）、Microsoft Verified ID 的 Linked Domains、你匯入的根憑證、mdoc 簽署清單（VICAL、RICAL）與自行信任的 DID，以及列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符的組織。",
         TrustTier.T3 to "簽章可驗證，但沒有連到任何信任根：不在任何清單的 DID 或憑證鏈，以及測試環境的所有錨點。出示或領卡前需要勾選確認。",
         TrustTier.T4 to "驗證失敗：簽章或憑證鏈不成立、要求未簽章、信任清單內容與鏈上註冊不符，或網域連結失效。仍可在警告確認後繼續，風險由你自行承擔。",
     )

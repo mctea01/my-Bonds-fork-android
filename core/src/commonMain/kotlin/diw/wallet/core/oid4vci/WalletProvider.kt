@@ -26,6 +26,7 @@ import org.multipaz.util.toBase64
 import org.multipaz.util.toBase64Url
 import org.multipaz.webtoken.buildJwt
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
 
 /** A wallet instance attestation (oauth-client-attestation+jwt) and the key it is bound to (cnf). */
 data class WalletAttestation(val jwt: String, val instanceKey: AsymmetricKey) {
@@ -41,6 +42,9 @@ interface WalletProvider {
 
     /** Returns a fresh-enough wallet attestation, or null when this wallet has none (public client). */
     suspend fun walletAttestation(): WalletAttestation?
+
+    /** A fresh RFC 7523 private_key_jwt signed by a registered client, or null if unavailable. */
+    suspend fun clientAssertion(audience: String): String? = null
 
     /**
      * Returns a key-attestation+jwt covering [keys], or null when unavailable.
@@ -78,7 +82,7 @@ class RemoteWalletProvider(
     override suspend fun walletAttestation(): WalletAttestation {
         cached?.let { c ->
             val exp = c.expiresAt
-            if (exp == null || exp - 60 > Clock.System.now().epochSeconds) return c
+            if (exp != null && exp - 60 > Clock.System.now().epochSeconds) return c
         }
         val jwk = instanceKey.publicKey.toJwk()
         val body = buildJsonObject {
@@ -90,6 +94,30 @@ class RemoteWalletProvider(
         }
         val resp = postJson("$baseUrl/wallet-attestation", body)
         return WalletAttestation(resp.reqStr("wallet_attestation"), instanceKey).also { cached = it }
+    }
+
+    override suspend fun clientAssertion(audience: String): String? {
+        val proof = buildJwt(
+            type = "wallet-provider-client-proof+jwt",
+            key = instanceKey,
+            expiresIn = 5.minutes,
+            header = { put("jwk", instanceKey.publicKey.toJwk()) },
+        ) {
+            put("iss", clientId)
+            put("sub", clientId)
+            put("aud", "$baseUrl/client-assertion")
+            put("authorization_server", audience)
+            put("jti", PlatformCrypto.randomBytes(16).toBase64Url())
+        }
+        val request = buildJsonObject {
+            put("client_id", clientId)
+            put("audience", audience)
+            put("client_proof", proof)
+            instanceKeyAttestation?.certChain?.let { chain ->
+                putJsonArray("x5c") { chain.certificates.forEach { add(it.encoded.toByteArray().toBase64()) } }
+            }
+        }
+        return postJson("$baseUrl/client-assertion", request).reqStr("client_assertion")
     }
 
     override suspend fun keyAttestation(keys: List<KeyAttestation>, nonce: String?, userAuthentication: Boolean): String {
@@ -116,7 +144,10 @@ class RemoteWalletProvider(
         }
         val text = resp.bodyAsText()
         if (!resp.status.isSuccess()) {
-            throw ProtocolException("wallet_provider_error", "Wallet provider returned ${resp.status.value}: $text")
+            throw ProtocolException(
+                if (resp.status.value == 404) "wallet_provider_unsupported" else "wallet_provider_error",
+                "Wallet provider returned HTTP ${resp.status.value}: ${text.take(240)}",
+            )
         }
         return parseJsonObject(text, "wallet_provider_error")
     }

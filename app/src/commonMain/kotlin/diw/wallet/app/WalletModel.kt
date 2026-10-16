@@ -123,6 +123,8 @@ data class WalletSettings(
     val testServerUrl: String = "http://10.0.2.2:8080",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
+    /** Registered HTTPS wallet backend, separate from the local test provider. */
+    val walletProviderUrl: String? = null,
     val requireUserAuth: Boolean = true,
     val instanceKeyAlias: String? = null,
     /**
@@ -462,6 +464,7 @@ class WalletModel(val platform: PlatformServices) {
         ready.value = true
         status.refreshDue()
         trustLists.refreshDue()
+        refreshMdocTrustLists(quiet = true)
     }
 
     // ---------------------------------------------------------------- settings
@@ -904,23 +907,38 @@ class WalletModel(val platform: PlatformServices) {
         listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect())
     }
 
-    private var cachedProvider: WalletProvider? = null
+    private var cachedProvider: Pair<String, WalletProvider>? = null
 
     private fun walletProvider(): WalletProvider {
         val s = settings
-        if (!(s.testEnvironment && s.useWalletProvider)) return PublicClientWalletProvider(s.clientId)
-        cachedProvider?.let { return it }
+        val configuredUrl = s.walletProviderUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+        val localTestProvider = configuredUrl == null && s.testEnvironment && s.useWalletProvider
+        if (configuredUrl == null && !localTestProvider) return PublicClientWalletProvider(s.clientId)
+
+        val baseUrl = configuredUrl ?: (s.testServerUrl.trimEnd('/') + "/wallet-provider")
+        if (configuredUrl != null && !baseUrl.startsWith("https://")) {
+            throw ProtocolException("wallet_provider_error", "A registered wallet backend must use HTTPS")
+        }
+        val cacheKey = "$baseUrl|${s.clientId}|$localTestProvider"
+        cachedProvider?.takeIf { it.first == cacheKey }?.let { return it.second }
         return object : WalletProvider {
             override val clientId: String = s.clientId
             private var remote: RemoteWalletProvider? = null
             private suspend fun get(): RemoteWalletProvider = remote ?: run {
-                val (key, att) = instanceKey()
-                RemoteWalletProvider(http, s.testServerUrl.trimEnd('/') + "/wallet-provider", s.clientId, key, att, environmentPolicy.insecureLoopbackAllowed)
+                val (key, attestation) = instanceKey()
+                RemoteWalletProvider(
+                    http, baseUrl, s.clientId, key, attestation,
+                    allowInsecureLoopback = localTestProvider && environmentPolicy.insecureLoopbackAllowed,
+                )
             }.also { remote = it }
             override suspend fun walletAttestation() = get().walletAttestation()
-            override suspend fun keyAttestation(keys: List<org.multipaz.securearea.KeyAttestation>, nonce: String?, userAuthentication: Boolean) =
-                get().keyAttestation(keys, nonce, userAuthentication)
-        }.also { cachedProvider = it }
+            override suspend fun clientAssertion(audience: String) = get().clientAssertion(audience)
+            override suspend fun keyAttestation(
+                keys: List<org.multipaz.securearea.KeyAttestation>,
+                nonce: String?,
+                userAuthentication: Boolean,
+            ) = get().keyAttestation(keys, nonce, userAuthentication)
+        }.also { cachedProvider = cacheKey to it }
     }
 
     /** Wallet instance key: no user authentication, attested by the platform where possible. */
@@ -1422,12 +1440,68 @@ class WalletModel(val platform: PlatformServices) {
         dcApiError = null
     }
 
+    /** Imported mdoc VICAL (issuers) and RICAL (readers), expired ones included. */
+    val mdocLists = MutableStateFlow<List<diw.wallet.core.trust.StoredSignedList>>(emptyList())
+
+    private suspend fun fetchSignedList(url: String): ByteArray {
+        if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "簽署清單只接受 HTTPS 來源")
+        val reply = http.get(url)
+        if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "下載失敗：HTTP ${reply.status.value}")
+        return reply.readRawBytes()
+    }
+
+    /**
+     * Imports an issuer VICAL or reader RICAL from [url]. The list must be signed under a root the user imported
+     * for the list-publisher role; its CAs then count as the user's own trust (T2, never official).
+     */
+    fun importMdocTrustList(kind: String, url: String, name: String) = scope.launch {
+        try {
+            val summary = trust.importSignedMdocTrustList(kind, fetchSignedList(url), name, url)
+            message.value = "已驗證並匯入簽署清單：$summary（使用者信任，T2，不標示官方）"
+            loadAnchors()
+            status.reevaluateIssuers("匯入 mdoc 簽署清單", affected = { true }, accept = { true })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            message.value = "簽署清單匯入失敗：" + describe(e)
+        }
+    }
+
+    /**
+     * Fetches the lists whose announced next update or expiry has passed. [quiet] (at start) reports only changes
+     * and failures, not that nothing was due.
+     */
+    fun refreshMdocTrustLists(quiet: Boolean = false) = scope.launch {
+        try {
+            if (quiet && mdocLists.value.isEmpty() && trust.mdocTrustLists().isEmpty()) return@launch
+            val result = trust.refreshDueMdocTrustLists { url -> fetchSignedList(url) }
+            loadAnchors()
+            if (result.refreshed > 0) status.reevaluateIssuers("更新 mdoc 簽署清單", affected = { true }, accept = { true })
+            if (result.failures.isNotEmpty()) {
+                message.value = "部分簽署清單更新失敗：" + result.failures.joinToString("；")
+            } else if (!quiet || result.refreshed > 0) {
+                message.value = "簽署清單更新完成：${result.refreshed} 份新版本"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            message.value = "簽署清單更新失敗：" + describe(e)
+        }
+    }
+
+    fun removeMdocTrustList(list: diw.wallet.core.trust.StoredSignedList) = scope.launch {
+        trust.removeMdocTrustList(list)
+        loadAnchors()
+        status.reevaluateIssuers("移除 mdoc 簽署清單「${list.name}」", affected = { true })
+    }
+
     // ---------------------------------------------------------------- trust anchors
 
     fun loadAnchors() = scope.launch {
         anchors.value = trust.allAnchors().sortedWith(compareBy({ it.environment.ordinal }, { it.metadata.displayName }))
         trustedDids.value = userDids.all().sortedBy { it.name }
         intermediates.value = trust.intermediates().sortedBy { it.name }
+        mdocLists.value = trust.mdocTrustLists().sortedBy { it.name }
     }
 
     /**

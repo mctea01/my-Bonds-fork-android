@@ -111,6 +111,9 @@ fun Route.walletProviderRoutes(provider: WalletProviderService) {
     post("/wallet-provider/wallet-attestation") {
         call.guard { call.respondJson(provider.walletAttestation(call.receiveJsonObject())) }
     }
+    post("/wallet-provider/client-assertion") {
+        call.guard { call.respondJson(provider.clientAssertion(call.receiveJsonObject())) }
+    }
     post("/wallet-provider/key-attestation") {
         call.guard { call.respondJson(provider.keyAttestation(call.receiveJsonObject())) }
     }
