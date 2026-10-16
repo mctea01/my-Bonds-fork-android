@@ -1,6 +1,11 @@
 package diw.wallet.core.trust
 
 import diw.wallet.core.document.DocCrypto
+import diw.wallet.core.util.ProtocolException
+import org.multipaz.mdoc.vical.SignedVical
+import org.multipaz.mdoc.rical.SignedRical
+import org.multipaz.trustmanagement.TrustEntryVical
+import org.multipaz.trustmanagement.TrustEntryRical
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import kotlinx.io.bytestring.ByteString
@@ -19,6 +24,8 @@ enum class TrustRole(val id: String) {
     ISSUER("issuer"),
     VERIFIER("verifier"),
     WALLET_PROVIDER("wallet-provider"),
+    /** Only roots explicitly authorized to sign lists of other issuer/reader roots. */
+    TRUST_LIST_PROVIDER("trust-list-provider"),
     STATUS_LIST("status-list"),
     TSA("tsa"),
     /** Signers of documents (PDF, CMS, XML, OFD signatures and seals). */
@@ -150,6 +157,110 @@ class TrustRegistry(
             TrustManager(storage, identifier = "${role.id}-${environment.id}")
         }
 
+    /** Installs a signed issuer/reader CA list only after verifying the provider's separately pinned trust root. */
+    suspend fun importSignedMdocTrustList(
+        kind: String,
+        bytes: ByteArray,
+        name: String,
+        sourceUrl: String,
+        environment: TrustEnvironment = TrustEnvironment.USER,
+    ): String {
+        if (bytes.isEmpty() || bytes.size > 4 * 1024 * 1024)
+            throw ProtocolException("invalid_trust_list", "Signed trust list must be at most 4 MiB")
+        val now = Clock.System.now()
+        val role: TrustRole
+        val issue: Long?
+        val expiry: Instant?
+        val provider: String
+        val signer: List<X509Cert>
+        val nextUpdate: Instant?
+        when (kind) {
+            "vical" -> {
+                val signed = SignedVical.parse(bytes)
+                role = TrustRole.ISSUER
+                issue = signed.vical.vicalIssueID
+                expiry = signed.vical.notAfter
+                nextUpdate = signed.vical.nextUpdate
+                provider = signed.vical.vicalProvider
+                signer = signed.vicalProviderCertificateChain.certificates
+                if (signed.vical.certificateInfos.isEmpty())
+                    throw ProtocolException("invalid_trust_list", "VICAL contains no issuer CAs")
+            }
+            "rical" -> {
+                val signed = SignedRical.parse(bytes)
+                role = TrustRole.VERIFIER
+                issue = signed.rical.id
+                expiry = signed.rical.notAfter
+                nextUpdate = signed.rical.nextUpdate
+                provider = signed.rical.provider
+                signer = signed.ricalProviderCertificateChain.certificates
+                if (signed.rical.certificateInfos.isEmpty())
+                    throw ProtocolException("invalid_trust_list", "RICAL contains no reader CAs")
+            }
+            else -> throw ProtocolException("invalid_trust_list", "Unsupported signed trust list format")
+        }
+        if (expiry != null && expiry <= now)
+            throw ProtocolException("expired_trust_list", "Signed trust list has expired")
+        if (nextUpdate != null && nextUpdate < now)
+            throw ProtocolException("expired_trust_list", "Signed trust list is past its next-update deadline")
+        if (signer.isEmpty() || match(TrustRole.TRUST_LIST_PROVIDER, signer) == null)
+            throw ProtocolException("untrusted_trust_list", "Signed trust list provider does not have a pinned trust root")
+        val manager = manager(role, environment)
+        val old = manager.getEntries().firstOrNull {
+            it.metadata.extensions[TrustMetadataKeys.SOURCE] == sourceUrl &&
+                (if (kind == "vical") it is TrustEntryVical else it is TrustEntryRical)
+        }
+        if (old != null) {
+            val previous = when (old) {
+                is TrustEntryVical -> SignedVical.parse(old.encodedSignedVical.toByteArray()).let {
+                    Triple(it.vical.vicalIssueID, it.vical.vicalProvider, it.vicalProviderCertificateChain.certificates.first())
+                }
+                is TrustEntryRical -> SignedRical.parse(old.encodedSignedRical.toByteArray()).let {
+                    Triple(it.rical.id, it.rical.provider, it.ricalProviderCertificateChain.certificates.first())
+                }
+                else -> error("unreachable")
+            }
+            if (previous.second != provider || previous.third != signer.first()) {
+                throw ProtocolException("untrusted_trust_list", "Signed trust list publisher identity changed")
+            }
+            if (previous.first != null && (issue == null || issue <= previous.first!!))
+                throw ProtocolException("stale_trust_list", "Signed trust list issue did not increase")
+        }
+        val label = name.ifBlank { provider }
+        val metadata = trustMetadata(label, environment, official = false, source = sourceUrl)
+        when {
+            kind == "vical" && old is TrustEntryVical -> manager.updateVical(old, ByteString(bytes))
+            kind == "rical" && old is TrustEntryRical -> manager.updateRical(old, ByteString(bytes))
+            kind == "vical" -> manager.addVical(ByteString(bytes), metadata)
+            else -> manager.addRical(ByteString(bytes), metadata)
+        }
+        return "$kind: $provider (issue ${issue ?: "unversioned"})"
+    }
+
+    /**
+     * Multipaz does not enforce signed list expiry while verifying certificates. Fail closed
+     * by removing expired entries before checking whether a certificate is listed.
+     */
+    private suspend fun discardExpiredMdocTrustLists(role: TrustRole, atTime: Instant) {
+        if (role != TrustRole.ISSUER && role != TrustRole.VERIFIER) return
+        for (env in policy.enabledEnvironments()) {
+            if (env == TrustEnvironment.SYSTEM) continue
+            val manager = manager(role, env)
+            for (entry in manager.getEntries()) {
+                val expiration = when (entry) {
+                    is TrustEntryVical -> runCatching {
+                        SignedVical.parse(entry.encodedSignedVical.toByteArray()).vical.let { it.notAfter ?: it.nextUpdate }
+                    }.getOrNull()
+                    is TrustEntryRical -> runCatching {
+                        SignedRical.parse(entry.encodedSignedRical.toByteArray()).rical.let { it.notAfter ?: it.nextUpdate }
+                    }.getOrNull()
+                    else -> null
+                }
+                if (expiration != null && atTime >= expiration) manager.deleteEntry(entry)
+            }
+        }
+    }
+
     suspend fun addAnchor(
         role: TrustRole,
         environment: TrustEnvironment,
@@ -266,6 +377,7 @@ class TrustRegistry(
         docType: String? = null,
     ): AnchorMatch? {
         if (chain.isEmpty()) return null
+        discardExpiredMdocTrustLists(role, atTime)
         matchChain(role, chain, atTime, docType)?.let { return it }
         val longer = extendFromPool(chain)
         return if (longer.size > chain.size) matchChain(role, longer, atTime, docType) else null
