@@ -46,9 +46,6 @@ ARF 原文下載於 `scratchpad/dl/`，包含 `arf6.md` 與 `annex2.md`，來源
 - 已知問題 **[確認]**：#1946 `SdJwtVcCredential.getClaimsImpl` 會把 JWT envelope 的 claims 當成文件 claims；#1945 `CredentialMetadata` 會丟失 `credential_metadata.claims[]`。
 
 ### A5. OpenID4VCI（持有端客戶端）
-
-**2026-10-16 程式補強：** 原本一般模式會用 `PublicClientWalletProvider`，無法滿足 Multipaz 發證端要求的註冊用戶端身分；PR #11 已新增依授權伺服器的 `token_endpoint_auth_methods_supported` 協商 `attest_jwt_client_auth`／`private_key_jwt`／`none`，Client Assertion 使用 RFC 7523 JWT；PAR、Token 與挑戰重試維持相同的用戶端驗證方式。可在 App「設定 > 互通」填寫被發證端認可的 HTTPS Wallet Provider 與 `client_id`。本機測試 CA 並不會自動取得 Multipaz 官方發證的信任，`clientId must be authenticated` 與 T3 提示來源不同。
-
 - **[確認]** 位於 `MPZ/multipaz/src/commonMain/kotlin/org/multipaz/provisioning/openid4vci/`，支援以下功能：
   - PAR（**metadata 中的 `pushed_authorization_request_endpoint` 為必填**，見 `AuthorizationConfiguration.kt:42` 使用 `metadata.string(...)` 而非 `stringOrNull`）
   - DPoP、pre-authorized_code + tx_code
@@ -65,9 +62,6 @@ ARF 原文下載於 `scratchpad/dl/`，包含 `arf6.md` 與 `annex2.md`，來源
 - 和 EUDI 程式庫相比：EUDI 支援 deferred、notification、signed metadata 政策（見 B4）。**[推論]** 若要對接 EU 發行者，Multipaz 的 VCI 客戶端可能不夠完整。
 
 ### A6. OpenID4VP（持有端）
-
-**2026-10-16 補強：** OpenID4VP 多重簽章 DC API 現使用 JWS JSON Serialization，逐一檢驗受保護 `client_id`、簽章、查驗端憑證及 Browser Origin，且拒絕 signed／multisigned 要求回退為未簽章資料。另於本輪補足 mdoc `transaction_data` 的 DeviceSigned 生成與 MSO KeyAuthorizations 授權判斷，並加入 JWE Request Object 使用錢包自身金鑰 ECDH-ES 解密的核心 API。尚需獨立實作 OpenID Federation Trust Chain（由信任錨／Policy 導出查驗方身分，不能相信 `client_metadata.jwks`）、JWE 解密接收端金鑰的 App 註冊／發布及巢狀簽章流程。
-
 - **[確認]** `OpenID4VP.Version` 只有 `DRAFT_24` 與 `DRAFT_29` 兩個值，`DRAFT_29` 用於 1.0（DC API protocol `openid4vp-v1-*`）。證據：`MPZ/multipaz/src/commonMain/kotlin/org/multipaz/openid/OpenID4VP.kt:79-82` 與 `presentment/digitalCredentialsPresentment.kt`（`"openid4vp"` 對應 DRAFT_24，`"openid4vp-v1-unsigned|signed|multisigned"` 對應 DRAFT_29）。
 - **[確認]** response_mode 支援 `dc_api`、`dc_api.jwt`、`direct_post`、`direct_post.jwt`。回應加密只支援 `ECDH-ES` 搭配 A128GCM/A192GCM/A256GCM。證據：`OpenID4VP.kt:357-432`。
 - **[確認]** DCQL 支援以下 format：`mso_mdoc`、`mso_mdoc_zk`、`dc+sd-jwt`。證據：`MPZ/multipaz/src/commonMain/kotlin/org/multipaz/openid/dcql/DcqlQuery.kt:142-170`。
@@ -150,9 +144,6 @@ ARF 原文下載於 `scratchpad/dl/`，包含 `arf6.md` 與 `annex2.md`，來源
 - **[確認]** QR engagement 有 `MdocProximityQrPresentment` 與 `MdocProximityQrSettings` composable；另支援 Observe Mode（0.95）。
 
 ### A10. W3C Digital Credentials API
-
-**2026-10-16 驗收策略：** 已有 Android DC API 收卡與出示、Browser Origin 綁定，以及本輪多重簽章驗證。Android HTTPS App Links 暫不規劃；沿用既有 URI Scheme 回呼與 DC API 機制，必要時再因網域部署需求評估。
-
 - **[確認]** Android：
   - `multipaz-dcapi` 使用 GMS 的 `IdentityCredentialManager.registerCredentials`，搭配 `identitycredentialmatcher.wasm` matcher
   - 呈現端是 `CredentialManagerPresentmentActivity`（androidx.credentials provider `PendingIntentHandler`）
@@ -163,9 +154,6 @@ ARF 原文下載於 `scratchpad/dl/`，包含 `arf6.md` 與 `annex2.md`，來源
 - 已知問題 **[確認]**：#1996 matcher 無法回報選中的條目對應哪個 request 或 DCQL query。
 
 ### A11. ZKP（multipaz-longfellow）
-
-**2026-10-16 信任清單：** Multipaz 的 `SignedVical.parse` 與 `SignedRical.parse` 可以驗 COSE 簽名，`TrustManager.addVical/addRical` 只建立信任點，**不會自動驗證清單發行者根憑證**，也不會自動因 `notAfter` 淘汰舊清單。PR #11 在 `TrustRegistry` 增加獨立的 `TRUST_LIST_PROVIDER` 錨點、版本防回退、同來源更新、過期移除，以及 RICAL `isTrustAnchor` 的嚴格處理（採保守拒絕非錨點清單）。VICAL 僅支援發行端；RICAL 僅支援查驗方。
-
 - **[確認]** 整合 Google longfellow-zk（Rust FFI），提供 `run_mdoc_prover`/`run_mdoc_verifier`，**僅支援 mdoc**，依循 18013-5 Second Edition 草案。整合方式：Android/JVM 用 JNA，iOS 用 cinterop 靜態庫，另有 web 的 webMain 實作。證據：`MPZ/multipaz-longfellow/README.md`。
 - **[確認]** 預建二進位：Android **只有 `arm64-v8a` 與 `x86_64`**（沒有 armeabi-v7a），JVM 有 macOS arm64/x86_64 與 linux-x86_64，iOS 有裝置 arm64 與模擬器 arm64/x86_64。證據：同上 README 的「Prebuilt Binaries」一節。
 - **[確認]** 持有端與驗證端都支援：

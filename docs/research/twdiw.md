@@ -10,10 +10,6 @@
 
 ---
 
-## 2026-10-16 TWDIW 方言隔離校正
-
-TWDIW 與 Bonds 相容能力在 `WalletModel` 中常駐啟用，只對自身辨識的工作階段介入；標準 OpenID4VCI Client Authentication（PAR、Token、`private_key_jwt`）和 OpenID4VP 多重簽章留在標準核心，不改變 TWDIW 的 `moda_dw`、StatusList2021 與 did:key 規則。原 TWDIW 測試與 P1／P2 預授權協定不混同為 Multipaz 正式 Wallet Provider 註冊。
-
 ## 0. 結論先講
 
 1. **TWDIW 不是標準的 OID4VCI 1.0、OID4VP 1.0 或 SD-JWT VC 實作。** 它是「OID4VCI draft-13 風格 + W3C JWT-VC 包 SD-JWT 揭露 + OID4VP draft（PE v2、jwt_vp）」，再加上多項私有約束。第三方皮夾必須做一個「TWDIW 相容 profile」，不能只靠標準函式庫。

@@ -65,6 +65,8 @@ data class IssuerOptions(
     val requireClientAttestation: Boolean = false,
     val requireClientAssertion: Boolean = false,
     val supportClientAssertion: Boolean = false,
+    /** Overrides token_endpoint_auth_methods_supported, e.g. a Keycloak list without "none" that still accepts public clients. */
+    val advertisedAuthMethods: List<String>? = null,
     val encryption: Boolean = true,
     val encryptionRequired: Boolean = false,
     val signedMetadata: Boolean = false,
@@ -250,7 +252,8 @@ class IssuerService(
         putJsonArray("response_types_supported") { add("code") }
         putJsonArray("grant_types_supported") { add("authorization_code"); add("urn:ietf:params:oauth:grant-type:pre-authorized_code") }
         putJsonArray("token_endpoint_auth_methods_supported") {
-            if (options.requireClientAssertion) add("private_key_jwt") else {
+            if (options.advertisedAuthMethods != null) options.advertisedAuthMethods.forEach { add(it) }
+            else if (options.requireClientAssertion) add("private_key_jwt") else {
                 add("attest_jwt_client_auth")
                 if (options.supportClientAssertion) add("private_key_jwt")
                 if (!options.requireClientAttestation) add("none")

@@ -6,10 +6,6 @@
 
 ---
 
-## 2026-10-16 查驗者信任前置條件
-
-Zero-Knowledge Proof 並不能替代查驗者身份、同意用途與 Key Authorization 的驗證。PR #11 的 DC API 多重簽章已逐一驗簽；使用者匯入的 RICAL 只對明確標示 `isTrustAnchor` 的讀者 CA 建立信任，需另驗證清單發行者簽章。OpenID Federation 尚需真正的信任鏈與 Policy 驗證；此缺口不可藉由展示 ZKP 通過或 `client_metadata` 宣稱已解決。
-
 ## 0. 一頁重點
 
 1. **短期最可行的 ZKP 是 Longfellow（Google）**：發行端不需改變（直接證明既有 mdoc 的 ECDSA P-256 + SHA-256 簽章），不需 trusted setup，只依賴雜湊（有後量子的潛力）。Multipaz 已有 `multipaz-longfellow` 模組（Android arm64/x86_64 JNI、iOS、JVM、Web），Google Wallet 已透過 DC API 支援 `mso_mdoc_zk`。【確認】

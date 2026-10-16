@@ -464,6 +464,7 @@ class WalletModel(val platform: PlatformServices) {
         ready.value = true
         status.refreshDue()
         trustLists.refreshDue()
+        refreshMdocTrustLists(quiet = true)
     }
 
     // ---------------------------------------------------------------- settings
@@ -918,7 +919,7 @@ class WalletModel(val platform: PlatformServices) {
         if (configuredUrl != null && !baseUrl.startsWith("https://")) {
             throw ProtocolException("wallet_provider_error", "A registered wallet backend must use HTTPS")
         }
-        val cacheKey = "$baseUrl|undefined|$localTestProvider"
+        val cacheKey = "$baseUrl|${s.clientId}|$localTestProvider"
         cachedProvider?.takeIf { it.first == cacheKey }?.let { return it.second }
         return object : WalletProvider {
             override val clientId: String = s.clientId
@@ -1439,35 +1440,59 @@ class WalletModel(val platform: PlatformServices) {
         dcApiError = null
     }
 
-    /** Import an issuer VICAL or reader RICAL whose signing CA was explicitly trusted for list issuance. */
+    /** Imported mdoc VICAL (issuers) and RICAL (readers), expired ones included. */
+    val mdocLists = MutableStateFlow<List<diw.wallet.core.trust.StoredSignedList>>(emptyList())
+
+    private suspend fun fetchSignedList(url: String): ByteArray {
+        if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "簽署清單只接受 HTTPS 來源")
+        val reply = http.get(url)
+        if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "下載失敗：HTTP ${reply.status.value}")
+        return reply.readRawBytes()
+    }
+
+    /**
+     * Imports an issuer VICAL or reader RICAL from [url]. The list must be signed under a root the user imported
+     * for the list-publisher role; its CAs then count as the user's own trust (T2, never official).
+     */
     fun importMdocTrustList(kind: String, url: String, name: String) = scope.launch {
         try {
-            if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "信任清單只接受 HTTPS 來源")
-            val reply = http.get(url)
-            if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "下載失敗：HTTP ${reply.status.value}")
-            val raw = reply.readRawBytes()
-            val summary = trust.importSignedMdocTrustList(kind, raw, name, url)
-            message.value = "已驗證並匯入信任清單：$summary（使用者信任，不標示官方）"
+            val summary = trust.importSignedMdocTrustList(kind, fetchSignedList(url), name, url)
+            message.value = "已驗證並匯入簽署清單：$summary（使用者信任，T2，不標示官方）"
             loadAnchors()
-            status.reevaluateIssuers("匯入 mdoc 信任清單", affected = { true }, accept = { true })
+            status.reevaluateIssuers("匯入 mdoc 簽署清單", affected = { true }, accept = { true })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            message.value = "信任清單匯入失敗：" + describe(e)
+            message.value = "簽署清單匯入失敗：" + describe(e)
         }
     }
 
-    fun refreshMdocTrustLists() = scope.launch {
+    /**
+     * Fetches the lists whose announced next update or expiry has passed. [quiet] (at start) reports only changes
+     * and failures, not that nothing was due.
+     */
+    fun refreshMdocTrustLists(quiet: Boolean = false) = scope.launch {
         try {
-            val count = trust.refreshDueMdocTrustLists { url ->
-                if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "清單更新來源必須使用 HTTPS")
-                val reply = http.get(url)
-                if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "HTTP ${reply.status.value}")
-                reply.readRawBytes()
+            if (quiet && mdocLists.value.isEmpty() && trust.mdocTrustLists().isEmpty()) return@launch
+            val result = trust.refreshDueMdocTrustLists { url -> fetchSignedList(url) }
+            loadAnchors()
+            if (result.refreshed > 0) status.reevaluateIssuers("更新 mdoc 簽署清單", affected = { true }, accept = { true })
+            if (result.failures.isNotEmpty()) {
+                message.value = "部分簽署清單更新失敗：" + result.failures.joinToString("；")
+            } else if (!quiet || result.refreshed > 0) {
+                message.value = "簽署清單更新完成：${result.refreshed} 份新版本"
             }
-            message.value = "mdoc 信任清單更新完成：$count 份新版本"
-            if (count > 0) status.reevaluateIssuers("已更新 mdoc 信任清單", affected = { true }, accept = { true })
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            message.value = "mdoc 信任清單更新失敗：" + describe(e)
+            message.value = "簽署清單更新失敗：" + describe(e)
         }
+    }
+
+    fun removeMdocTrustList(list: diw.wallet.core.trust.StoredSignedList) = scope.launch {
+        trust.removeMdocTrustList(list)
+        loadAnchors()
+        status.reevaluateIssuers("移除 mdoc 簽署清單「${list.name}」", affected = { true })
     }
 
     // ---------------------------------------------------------------- trust anchors
@@ -1476,6 +1501,7 @@ class WalletModel(val platform: PlatformServices) {
         anchors.value = trust.allAnchors().sortedWith(compareBy({ it.environment.ordinal }, { it.metadata.displayName }))
         trustedDids.value = userDids.all().sortedBy { it.name }
         intermediates.value = trust.intermediates().sortedBy { it.name }
+        mdocLists.value = trust.mdocTrustLists().sortedBy { it.name }
     }
 
     /**

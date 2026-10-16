@@ -12,6 +12,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.http.URLBuilder
 import kotlinx.coroutines.runBlocking
+import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.multipaz.crypto.Algorithm
@@ -31,6 +32,9 @@ class EncryptedRequestObjectTest {
     private val policy = PresentationPolicy()
     private val redirectId = "redirect_uri:https://verifier.example/callback"
 
+    // Multipaz decrypt always length-prefixes apu and apv in the Concat KDF, so the sender must set both.
+    private fun partyInfo(value: String) = ByteString(value.encodeToByteArray())
+
     private fun invocation(clientId: String, request: String): String =
         URLBuilder("openid4vp://").apply {
             parameters.append("client_id", clientId)
@@ -48,7 +52,7 @@ class EncryptedRequestObjectTest {
             put("nonce", PlatformCrypto.randomBytes(24).joinToString("") { "%02x".format(it) })
             put("dcql_query", buildJsonObject { put("credentials", kotlinx.serialization.json.buildJsonArray { }) })
         }
-        val encoded = JsonWebEncryption.encrypt(json, privateKey.publicKey, Algorithm.A256GCM, null, null)
+        val encoded = JsonWebEncryption.encrypt(json, privateKey.publicKey, Algorithm.A256GCM, partyInfo("verifier"), partyInfo("wallet"))
         val valid = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(privateKey, privateKey.curve.defaultKeyAgreementAlgorithm)) }
         val raw = valid.fromUri(invocation(redirectId, encoded))
         assertEquals(redirectId, raw.params["client_id"]?.toString()?.trim('"'))
@@ -79,7 +83,7 @@ class EncryptedRequestObjectTest {
             put("nonce", "an-encrypted-nonce-that-is-long-enough")
             put("dcql_query", buildJsonObject { put("credentials", kotlinx.serialization.json.buildJsonArray { }) })
         }
-        val encrypted = JsonWebEncryption.encrypt(json, key.publicKey, Algorithm.A128GCM, null, null)
+        val encrypted = JsonWebEncryption.encrypt(json, key.publicKey, Algorithm.A128GCM, partyInfo("verifier"), partyInfo("wallet"))
         val raw = RequestResolver(client, policy, false) { listOf(AsymmetricKey.anonymous(key, key.curve.defaultKeyAgreementAlgorithm)) }
             .fromUri(invocation("x509_san_dns:verifier.example", encrypted))
         val validator = RequestValidator(

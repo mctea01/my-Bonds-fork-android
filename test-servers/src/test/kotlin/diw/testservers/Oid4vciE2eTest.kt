@@ -184,6 +184,21 @@ class Oid4vciE2eTest {
         assertEquals("client_authentication_unavailable", e.code)
     }
 
+    /** Keycloak (and the EUDI issuer) list registered methods but no "none", yet accept public clients with PKCE. */
+    @Test
+    fun publicClientIsTriedWhenMetadataOmitsNone() = runBlocking<Unit> {
+        start(IssuerOptions(advertisedAuthMethods = listOf("private_key_jwt", "client_secret_basic", "attest_jwt_client_auth")))
+        val w = wallet()
+        val c = client(w)
+        val pre = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        c.authorizePreAuthorized(pre, null)
+        assertTrue(c.issue(pre, "pid_sd_jwt", keys(w)) is IssuanceResult.Issued)
+        val code = c.startFromOffer(offer(listOf("mdl_mdoc"), grant = "authorization_code"))
+        val url = c.beginAuthorizationCode(code, "diw-wallet://oid4vci/callback")
+        c.completeAuthorizationCode(code, w.httpClient.get(url).headers["Location"]!!)
+        assertTrue(c.issue(code, "mdl_mdoc", keys(w)) is IssuanceResult.Issued)
+    }
+
     @Test
     fun clientAssertionPreAuthorized() = runBlocking<Unit> {
         start(IssuerOptions(requireClientAssertion = true))

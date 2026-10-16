@@ -28,10 +28,11 @@
 
 | 文件 | 內容 |
 |---|---|
-| [acceptance/p1-acceptance.md](acceptance/p1-acceptance.md) | P1 標準核心，含 2026-10-16 Client Authentication 補強 |
-| [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 標準／方言互通，含 DC API 多重簽章與 VICAL／RICAL |
-| [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 狀態、風險、信任錨點與獨立簽署清單發行者信任 |
-| [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證，含 2026-10-16 TW FidO、CSC、電子公文公開規格驗收 |
+| [acceptance/p1-acceptance.md](acceptance/p1-acceptance.md) | P1 標準核心 |
+| [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 OpenID4VC 全組合與相容 Profile |
+| [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 後續：狀態、風險與信任錨點 |
+| [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
+| [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：OpenID4VCI 用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
 
 ## 使用與發佈
 

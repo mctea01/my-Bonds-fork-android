@@ -5,11 +5,12 @@
 
 建議以 Kotlin Multiplatform（KMP）加 Compose Multiplatform（Android 與 iOS 共用介面）為主體，Multipaz 0.101.0 為憑證與金鑰底層，Android 先行。第二輪調研確認三件事：TWDIW 是自有方言而非標準 OID4VC、Multipaz 沒有「以驗證者憑證為證據」的能力、以及沒有任何開源庫能在 commonMain 完整驗證 PAdES 或 OFD，這三層都要自建。
 
-- 標準必備、非標準可選：OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、ISO 18013-5、W3C DC API 為核心；TWDIW 方言、Bonds 風格的 G2C 功能與 Microsoft JWT-VC 皆以**常駐啟用、僅對所屬 session 生效**的方言外掛處理，不提供開關。
+- 標準必備、非標準可選：OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、ISO 18013-5、W3C DC API 為核心；TWDIW 方言、Bonds 風格的 G2C 功能、Microsoft JWT-VC 皆以可關閉的 Profile 外掛。
 - 驗證者透明：請求先走標準認證（x509\_hash 等），再以 verifier\_info 攜帶驗證者自己的憑證（法人、代理、員工憑證）證明身分、代表關係與目的，皮夾依 T1 至 T4 四級提示。
 - ZKP：短期用 Longfellow（mdoc，發行端不必改），並以 OpenAC 補 SD-JWT（已有 TWDIW 年齡證明 PoC），BBS 列為中長期。驗證端同樣支援。
 - 文件：驗證核心先放 Android／JVM（BouncyCastle、EU DSS 部分模組、ofdrw），iOS 後續以 GmSSL、OpenSSL、PDFium 接上。
-- 2026-10-16 進度：P0–P3 主體已落地，PR #11 補 OpenID4VCI Client Authentication、DC API 多重簽章、VICAL／RICAL 和 P3 簽署安全性。mdoc `transaction_data` 已加入 DeviceSigned＋MSO 授權處理，JWE Request Object 核心新增 ECDH-ES 解密；OpenID Federation 與 App 端 JWE 密鑰配置仍需完成；P4 長證明與 P6 iOS 為後續階段。Android HTTPS App Links 暫不規劃。
+- 下一步：P0 本地與網路驗證已完成（見 P0 驗證結果），實機 D1 已確認台灣網路不被擋、生物辨識綁定正常、root 機會偽造金鑰證明；接著完成 NFC 與低階機 ZK 驗證；P1 已於 2026-10-11 完成，P2 進行 OpenID4VC 全組合與 TWDIW、Bonds、Microsoft 相容 Profile。
+
 ## 參考來源盤點
 
 五個來源各有分工：Multipaz 是唯一的 KMP 底層，TWDIW 定義台灣生態系的實際方言，Bonds 示範第三方皮夾如何接上 G2C 服務，EUDI 提供標準與驗證者透明的規則，Microsoft 是企業端互通對象。
@@ -344,13 +345,6 @@ TWDIW 發證端要求 client\_id 為 moda\_dw，代表本錢包會以官方 App 
 UI：新增「台灣數位憑證」頁面，展示 TWDIW 憑證（卡面、發行機關、信任清單與鏈上錨定結果、狀態）與 Bonds 自訂內容（超商取貨條碼、電信卡申請目錄、離線出示）及各自圖示；Bonds 文件類支援排在 P3（2026-10-11 階段調整，見「文件憑證方案比較」）。P2 一併更新 AGENTS.md 與 README.md。
 
 P2 驗收：自建測試端涵蓋各方言的本地測試全數通過；TWDIW 正式領卡與出示、Entra 租戶互通、BLE 等列入實機清單。
-
-## P1–P3 當前可驗收邊界（2026-10-16）
-
-- P1：OpenID4VCI 已支援公開用戶端、Wallet Attestation 與 JWT Client Assertion 協商；正式發證需要簽章者被發證端登記或信任，不能由測試 PKI 自行聲稱。App Links 暫不規劃。
-- P2：Digital Credentials API 支援多重 JWS JSON 請求與完整驗簽、防降級；新增 VICAL／RICAL 的獨立清單發行者信任角色、到期與版本防回退。mdoc `transaction_data` 已依 MSO 授權產生 DeviceSigned；JWE Request Object 僅在錢包提供真正解密密鑰時才可解密，尚未完成 App 端金鑰發佈與簽章巢狀支持；OpenID Federation 未有信任鏈與政策時必須拒絕。
-- P3：TW FidO、CSC v2、電子公文 SI／DI／XML 的公開規格可用於個人錢包；正式政府 SP、QTSP、機關公文交換權限屬外部帳號／法定授權，**不列為本專案未完成的軟體功能**。
-- 自動測試通過與外部正式互通為不同驗收項；R8 Android Release、Windows／Linux 封裝、協定測試及實機驗證分別列示。
 
 ## 分階段路線圖
 

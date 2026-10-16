@@ -4,10 +4,6 @@
 > 調研日期：2026-10-10。標記：**【確認】** = 在 repo 原始碼／文件中讀到的事實（附路徑）；**【推論】** = 本筆記作者的推斷，需實測。
 > 路徑前綴 `B/` = `scratchpad/src/Bonds-iOS`（commit `e22de5f`, 2026-09-13）；`VP/` = `twdiw-vp-verifier-lite`（`5742a5f`）；`VC/` = `twdiw-vc-issuer-lite`（`eed4316`）；`GH/` = `bonds-tw.github.io`（`295433e`）。
 
-## 2026-10-16 與標準協定的界線
-
-Bonds QR／BLE、`vc+moica` 及 MyData 規則沿用自有 Profile；OpenID4VCI 的標準 OAuth Client Authentication 與 OpenID4VP 1.0 多重簽章處理由共用核心完成，不能為了相容 Bonds 而略過標準查驗者簽名或更改其信任等級。TW FidO SP 實際營運需外部許可，但公開規格與本地簽章檢查是個人錢包的交付範圍。
-
 ## 0. 資料來源狀態
 
 | 來源 | 狀態 |

@@ -12,10 +12,6 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 
 版本號為 `0.1.<CI 執行次數>`，Android versionCode 為 CI 執行次數，新版可直接覆蓋安裝舊版。
 
-## PR #11 2026-10-16 發佈門檻
-
-OpenID4VCI、OpenID4VP 多重簽章及 VICAL／RICAL 的 PR #11 修改不能沿用先前 commit 的 CI 結果；只採用最新 HEAD 的 `test`、Android `build`（含 R8）以及 Windows／Linux Desktop 封裝。公有 Multipaz 發證端註冊、TW FidO SP、QTSP 商業帳號與機關電子公文交換身份均屬外部資格，**不是**下載／發佈 APK 前的必要條件。Android HTTPS App Links 暫不部署，不阻擋現有版的憑證領取與 DC API。
-
 ## Android 簽章
 
 release APK 以 repo secrets 的金鑰簽章；沒有設定時改用 debug 金鑰，仍可安裝測試，但每次 CI 的 debug 金鑰不同，需先解除安裝舊版。

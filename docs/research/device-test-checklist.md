@@ -244,16 +244,11 @@
 - Play Integrity 與錢包提供者 key attestation（EUDI 發行端要求 iso_18045_high）。
 - iOS（Compose Multiplatform iOS 目標、Secure Enclave、App Attest）。
 
-## PR #11 新增回歸項目（2026-10-16）
+## 用戶端驗證、DC API 多重簽章與 mdoc 簽署清單（2026-10-16）
 
-- [ ] 使用可信任的 Wallet Provider 與註冊用戶端在公開 OpenID4VCI 發證端成功取得憑證；檢查 PAR、Token、DPoP nonce 與 Attestation Challenge。
-- [ ] DC API `openid4vp-v1-multisigned`：有效與偽造簽章混合、Origin 綁定、多受信任身分選擇、重放與簽章降級拒絕。
-- [ ] CSC OAuth：`redirect_uri` 替換、HTTPS／Bearer Token、SAD 與 RSA／ECDSA SHA-256 簽章在不同測試服務端互通。
-- [ ] TW FidO：持 SP 測試資格時測試 Push／App-to-App、逾時、取消、checksum、簽署憑證與原文驗證。
-- [ ] 個人錢包不必取得正式機關公文交換帳號；僅驗證 SI／DI、公文封裝、CAdES／XAdES、匯入／匯出可互通。
-
-### VICAL／RICAL 實機與更新檢查
-
-- [ ] 匯入僅用於「清單發行者」的受信任根憑證，再由 HTTPS 匯入實際簽章 VICAL／RICAL；確認未信任根與過期清單被拒絕。
-- [ ] 驗證 vical `docType`、rical `isTrustAnchor` 限制、簽發者換鑰、清單單調遞增版本與線下緩存的安全行為。
-- [ ] Android App Links 本輪不規劃，維持現有 URI Scheme 與 DC API 路由回歸測試。
+- [ ] 公開 OpenID4VCI 發證端（例如 EUDI issuer）在沒有設定錢包後端時以公開用戶端領卡成功；設定受信任的錢包後端時改用 Wallet Attestation 或 Client Assertion，PAR、Token、DPoP nonce 都正常。
+- [ ] DC API `openid4vp-v1-multisigned`：有效與偽造簽章混合時取信任等級最高且驗證成功的簽章；Origin 綁定與 `expected_origins` 不符時拒絕。
+- [ ] mdoc 出示帶 transaction_data 時，同意畫面列出交易內容，DeviceSigned 只放在 MSO KeyAuthorizations 允許的命名空間。
+- [ ] CSC OAuth：`redirect_uri` 被替換時拒絕；只接受 HTTPS 端點與 Bearer token；RSA 與 ECDSA SHA-256 簽章在 EUDI 測試服務可用。
+- [ ] 行動自然人憑證（持 SP 測試資格時）：推播與 App 間切換、逾時、取消、checksum 與簽署憑證檢查。
+- [ ] 自訂信任匯入「VICAL／RICAL 清單發行者」根憑證後，以 HTTPS 匯入 VICAL 與 RICAL；未信任的簽署者、版本倒退、過期清單都被拒絕或停止信任；「更新到期的清單」與移除可用。

@@ -1,7 +1,5 @@
 # 實機結果：D1 Xiaomi 25010PN30G（2026-10-10）
 
-本報告記錄 2026-10-10 當次測試的實際結果，測試環境、原始錯誤與當時版本均保留。2026-10-16 PR #11 的 OpenID4VCI Client Authentication、多重簽章及簽署信任清單，另按新 commit 執行自動測試；**此歷史結果不代表新的程式碼或外部實機驗收已通過**。
-
 原始記錄：`專案共用資料夾 validation/device-results/D1-xiaomi-25010PN30G/`（debug 自動、release 自動、手動 M1/M2 各一份）。
 
 裝置：Xiaomi 25010PN30G（xuanyuan），Android 16（SDK 36），HyperOS 3.0.301.0.WOATWXM，安全性修補 2026-05-01，僅 arm64-v8a。使用者說明此機已 root 並使用 Play Integrity Fix（PIF）。

@@ -208,9 +208,6 @@ private fun DocumentsPage(model: WalletModel) {
 @Composable
 private fun TrustPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    var signedListUrl by remember { mutableStateOf("") }
-    var signedListName by remember { mutableStateOf("") }
-    var signedListKind by remember { mutableStateOf("rical") }
     Text("信任等級：T1 官方清單並經額外驗證，T2 連到信任根，兩者都視為高可信；T3 可驗證但沒有連到信任根；T4 驗證失敗。測試環境的結果永遠不是官方。",
         style = MaterialTheme.typography.bodySmall)
     CustomTrustRow(model)
@@ -224,35 +221,6 @@ private fun TrustPage(model: WalletModel) {
     }
     Toggle("Adobe AATL", "只用於文件簽章與時戳，T2", s.aatlTrustList) { v -> model.updateSettings { it.copy(aatlTrustList = v) } }
     Toggle("歐盟 EUTL", "只用於文件簽章與時戳，依各國監管期間判定，T2", s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
-    HorizontalDivider()
-    SectionTitle("mdoc VICAL／RICAL 簽署信任清單")
-    Text("請先到「信任 > 自訂信任」匯入清單發行者的根憑證，並只選用途「VICAL／RICAL 清單發行者」。清單須由該根憑證授權簽署，才可加入發行端／查驗方信任。",
-        style = MaterialTheme.typography.bodySmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = signedListKind == "rical", onClick = { signedListKind = "rical" }, label = { Text("RICAL・查驗方") })
-        FilterChip(selected = signedListKind == "vical", onClick = { signedListKind = "vical" }, label = { Text("VICAL・發行端") })
-    }
-    OutlinedTextField(
-        value = signedListUrl,
-        onValueChange = { signedListUrl = it.trim().take(1024) },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("簽署清單 HTTPS 下載網址") }, singleLine = true,
-    )
-    OutlinedTextField(
-        value = signedListName,
-        onValueChange = { signedListName = it.take(80) },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text("顯示名稱（選填）") }, singleLine = true,
-    )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(
-            onClick = { model.importMdocTrustList(signedListKind, signedListUrl, signedListName) },
-            enabled = signedListUrl.startsWith("https://"),
-        ) { Text("驗簽後匯入") }
-        OutlinedButton(onClick = { model.refreshMdocTrustLists() }) { Text("更新已匯入清單") }
-    }
-    Text("清單需有有效簽章與受信任的清單發行者憑證；到期不再授權。不符合條件的清單不會被當成信任根。",
-        style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     SectionTitle("清單與錨點")
     ActionRow(WalletIcons.Shield, "數位憑證皮夾信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {

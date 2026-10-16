@@ -4,7 +4,7 @@
 
 以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並完整相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫，目前提供 Android 與 Windows、Linux 桌面版。
 
-> 狀態（2026-10-16）：P1–P3 主流程已實作，PR #11 正補強 OpenID4VCI Client Authentication、OpenID4VP 多重簽章及 VICAL／RICAL 簽署清單。每次新增功能以該次 CI 確認；未經正式服務核准者維持公開規格與模擬環境測試。正式與測試結果嚴格區分。
+> 狀態：開發中（P4 零知識證明設計中）。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
 
 ## 畫面
 
@@ -46,18 +46,20 @@
 
 - **領取**：OpenID4VCI 1.0 與 draft 11 至 13。支援：
   - pre-authorized code（含交易碼）與 authorization code（PKCE、PAR）；
-  - DPoP、錢包證明、批次與延遲發證、回應加密；依伺服器中繼資料協商 `private_key_jwt`、`attest_jwt_client_auth` 或公開用戶端，正式 HTTPS Wallet Provider 需已註冊且獲得發證端信任。
+  - DPoP、錢包證明、批次與延遲發證、回應加密；
+  - 用戶端驗證依授權伺服器中繼資料選擇錢包證明（`attest_jwt_client_auth`）、`private_key_jwt` 或公開用戶端；正式錢包後端（Wallet Provider）可在「設定 > 互通」設定，須先向發證端註冊。
 - **格式**：ISO mdoc、IETF SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、包在 SD-JWT 中的 W3C VC）。
 - **Digital Credentials API**：瀏覽器與其他 App 可經系統選擇器要求出示，也可要求存入證件（OpenID4VCI）。
-- **出示**：OpenID4VP 1.0（DCQL、transaction data、DC API）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
+- **出示**：OpenID4VP 1.0（DCQL、transaction data 含 mdoc、DC API 的未簽章、簽章與多重簽章請求）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
 - **查驗**：以 NFC、USB 讀卡機或電腦 PC/SC 讀卡機讀取 mdoc；離線挑戰查驗 Bonds 相容證件與文件衍生憑證。
 - **狀態**：支援 IETF Token Status List、W3C Bitstring Status List、Status List 2021 與 Revocation List 2020，顯示規格原文的狀態。背景自動更新，依用途風險決定是否接受。
 - **信任**：
   - X.509 信任錨點：政府憑證 GPKI、系統憑證庫、內建公開根憑證含中國大陸 CA 與國密 SM2（含 e簽寶公布的合作 CA，每月自動更新）、使用者匯入；中繼憑證（內建或匯入）只補足憑證鏈；
   - 文件簽章與時戳另可依 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL），清單在 App 內驗證後離線保存並每週更新；
+  - mdoc 簽署清單：VICAL（發行端）與 RICAL（查驗方），須由使用者指定的清單發行者根憑證簽署，過期不再採用；
   - DID：did:key、did:jwk、did:web、did:ion；
   - DIF Linked Domains、TWDIW 信任清單與 Arbitrum 鏈上錨定、使用者自行信任的 DID。
-  - 自己匯入的根憑證、中繼憑證與信任的 DID 集中在「設定 > 信任 > 自訂信任」，可隨時加入或移除。
+  - 自己匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 信任 > 自訂信任」，可隨時加入或移除。
 
 ### 文件與簽章
 
@@ -99,19 +101,6 @@
 - **EUDI**：參考實作的發證、PID 出示，以及 CSC 遠端簽章的 `qes-approval` 授權。
 
 各方言只在對方使用該方言時介入，程式碼與標準路徑隔離。
-
-### OpenID4VP、mdoc 與信任清單（PR #11）
-
-- 支援 Digital Credentials API `openid4vp-v1-multisigned`：解析 JWS JSON Serialization、檢查簽署者、受保護的 `client_id`、`expected_origins` 並拒絕降級為未簽章請求。
-- 支援使用者匯入 VICAL（發證端）及 RICAL（查驗方）：下載 COSE 簽署清單，驗證簽章及獨立指定的「清單發行者」信任根、更新版本並拒絕過期或不被授權的清單。清單不會被視為官方 T1。
-- mdoc 的 `transaction_data` 以 Multipaz 的交易型別產生 `DeviceSigned.nameSpaces`，遵循 MSO `KeyAuthorizations`，非授權的交易資料拒絕簽署。支援的交易型別仍需在 `DocumentTypeRepository` 登記。
-- JWE 加密 Request Object 已提供 ECDH-ES 解密及外層身分比對的核心能力，但 **App 尚未提供可發佈的接收端解密金鑰註冊**，因此不宣稱端到端完整支援；加密本身也不能取代驗證者簽章。
-- OpenID Federation Trust Chain 尚未實作；沒有完整聯邦信任鏈和政策驗證時明確拒絕，不信任請求自行聲明的公鑰。
-- Android HTTPS App Links **目前不規劃**；保留既有 App 回呼與 DC API 整合，不是當前 P1–P3 驗收阻擋項目。
-
-### OpenID4VCI 用戶端驗證
-
-Client Authentication 依授權伺服器發布的 `token_endpoint_auth_methods_supported` 自動協商。當發證端要求受信任的簽章而錢包未配置相符的 Wallet Provider 時，會回報 `client_authentication_unavailable`，不會冒充已註冊用戶端。測試用 Wallet Provider 可產生 `private_key_jwt` 與 Wallet Attestation，但僅限信任該測試 PKI 的發證端；連接其他正式發證端仍須取得該端認可的金鑰或簽署服務。
 
 ## 下載
 
@@ -170,10 +159,6 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 - [文件憑證方案](docs/design/document-credentials.md)：衍生憑證、zkPDF、zkTLS、Bonds 與 OpenCerts 的比較與決定。
 - [研究筆記](docs/research/)：TWDIW、Bonds、Multipaz／EUDI／Microsoft、簽章文件、ZKP 與實機驗證。
 - [AGENTS.md](AGENTS.md)：開發規則、模組職責與實作要點。貢獻前請先閱讀。
-
-### 外部簽章與公文交換的交付邊界
-
-個人使用者可依公開規格使用 TW FidO（行動自然人憑證）、CSC v2 遠端簽章，以及公文 XML／SI／DI 檔案的匯入、檢查、簽章、封裝與匯出。內政部 SP 核准、QTSP 帳號與正式機關公文交換系統資格需由相應機構授權；未持有這些資格是**預期限制，不是公開規格實作缺陷**。測試資料與金鑰不應當成正式身分材料。
 
 ## 隱私
 

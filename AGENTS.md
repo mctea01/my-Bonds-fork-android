@@ -24,7 +24,7 @@
 
 | 套件 | 職責 |
 |---|---|
-| `oid4vci` | OpenID4VCI 1.0 用戶端（`Oid4vciClient`），中繼資料、offer、DPoP、wallet attestation、private_key_jwt／wallet provider |
+| `oid4vci` | OpenID4VCI 1.0 用戶端（`Oid4vciClient`），中繼資料、offer、DPoP、用戶端驗證（wallet attestation、private_key_jwt、公開用戶端）、錢包後端（`RemoteWalletProvider`） |
 | `oid4vp` | OpenID4VP 1.0（`Oid4vpHolder`、`RequestValidator`、`ResponseBuilder`） |
 | `oid4vp/ext` | 1.0 以外的出示：Presentation Exchange、自有 DCQL、舊版要求、SIOPv2、W3C 出示 |
 | `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect`、`EudiDialect` |
@@ -45,7 +45,7 @@
 
 1. **標準優先，方言隔離。** 標準路徑（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、mdoc）不含任何方言邏輯。方言只在標準會停下的位置透過 hook 介入（`IssuanceDialect`、`PresentationDialect` 的介面註解列出每個 hook），而且只對它擁有的 session 生效。
 2. **所有方言常駐啟用，不提供開關。** TWDIW 官方實作與 Bonds 必須完整支援；新增方言時加入 `WalletModel` 的方言清單，不新增設定。
-3. **信任分層。** T1 官方清單並經額外驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 連到信任根（內建 GPKI、系統憑證庫與內建公開根憑證、AATL 與 EUTL、內建的正式發行端、Linked Domains、使用者匯入的根憑證與信任的 DID，以及 TWDIW 已列名但鏈上註冊無法確認或角色不符）；T1 與 T2 視為高可信（`TrustTier.highlyTrusted`）；T3 可驗證但沒有連到信任根（未列名 DID、不在任何清單的憑證鏈）與所有測試錨；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。中繼憑證（`BuiltInPublicRoots.intermediates`，含 e簽寶等線上簽核平台，或使用者匯入）只補足憑證鏈，等級由最後連到的根憑證決定；`importableRoots` 是不在任何計畫內的根憑證，只用來補鏈，使用者匯入後才信任。低信任的操作不禁止：`ui/RiskConfirm.kt` 的 `RiskConfirmDialog` 列出風險，勾選承擔後才可繼續（使用者可能有自己的特殊環境）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
+3. **信任分層。** T1 官方清單並經額外驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 連到信任根（內建 GPKI、系統憑證庫與內建公開根憑證、AATL 與 EUTL、內建的正式發行端、Linked Domains、使用者匯入的根憑證、mdoc 簽署清單（VICAL、RICAL）與信任的 DID，以及 TWDIW 已列名但鏈上註冊無法確認或角色不符）；T1 與 T2 視為高可信（`TrustTier.highlyTrusted`）；T3 可驗證但沒有連到信任根（未列名 DID、不在任何清單的憑證鏈）與所有測試錨；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。中繼憑證（`BuiltInPublicRoots.intermediates`，含 e簽寶等線上簽核平台，或使用者匯入）只補足憑證鏈，等級由最後連到的根憑證決定；`importableRoots` 是不在任何計畫內的根憑證，只用來補鏈，使用者匯入後才信任。低信任的操作不禁止：`ui/RiskConfirm.kt` 的 `RiskConfirmDialog` 列出風險，勾選承擔後才可繼續（使用者可能有自己的特殊環境）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
    - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA（自然人憑證）用於查驗方與文件簽章，不用於發行端。
    - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T2（`SYSTEM_ANCHOR`）。同一個環境還包含三組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
      - 常用服務憑證鏈的根憑證，跟著系統憑證庫的開關；
@@ -72,7 +72,7 @@
 9. **CI release 產物必須經 R8 / ProGuard 最佳化**，不可只是 debug 建置。
 10. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（上方「匯入文件」與「從網站取得」，下方文件清單；取件入口在 `Screen.DocumentSources`；文件內容頁依序為標題與判定、常用動作（簽署、時戳、衍生憑證、匯出）、公文容器、預覽、簽章、時戳、證件與證明，檔案資訊收合在下方）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪，依用途分為八組（`SettingsSection`：安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、關於；關於頁的版本與 commit 由建置產生的 `AppBuild` 提供，第三方元件與 `NOTICE` 一致），清單每列顯示目前的設定，點選進入該組的頁面（`Screen.SettingsPage`）；新增設定時放進對應的組並更新清單的摘要。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
 11. **設計 token 沿用 Bonds**（`ui/UiKit.kt`）：互動主色為靛色，綠、橙、紅只用於判定（判定卡為 0.14 透明度色底、符號與文字三者並用，「部分」不可看起來像「通過」）；空狀態附直達動作；尚未實作的功能顯示為停用列並寫明原因，不隱藏；結果用畫面或判定卡呈現，警示對話框只用於確認有後果的動作。
-12. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T2，不會顯示為官方；匯入的根憑證、中繼憑證與信任的 DID 集中在「設定 > 信任 > 自訂信任」（`Screen.CustomTrust`），信任錨點頁只列出全部錨點。
+12. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T2，不會顯示為官方；匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 信任 > 自訂信任」（`Screen.CustomTrust`），信任錨點頁只列出全部錨點。
 
 13. **近距離與 NFC。** mdoc 近距離出示與查驗都走 ISO/IEC 18013-5，同意畫面與一般出示共用（`requestedDocuments`、`riskAcknowledgement`）。只有「感應出示」畫面開著時，NFC 感應才會回應查驗設備。PC/SC 讀卡機只能讀取，電腦不提供 NFC 出示。
 
@@ -153,14 +153,15 @@
 - Digital Credentials API：multipaz-dcapi 只把 mdoc 與 SD-JWT VC 註冊給系統選擇器，只有 W3C 格式的卡片（如 TWDIW）不會出現在選擇器，需以 QR 碼或連結出示。Multipaz 會以快取雜湊略過「資料未變」的註冊，系統拒絕時也只寫 log，所以 App 每次啟動強制註冊，並等待系統回覆，結果與「重新向系統註冊」顯示在設定。
 - App 圖示：Android 為 `res/mipmap-anydpi-v26` 自適應圖示（含主題圖示）；桌面圖示由 `python3 app/icons/generate_icons.py` 依同一幾何產生，修改圖示時兩者一起更新。
 
-## P1–P3 2026-10-16 實作與驗收界線
+## 用戶端驗證、請求物件與 mdoc 簽署清單
 
-- OpenID4VCI：`core/oid4vci` 依授權伺服器中繼資料選擇公開用戶端、Wallet Attestation 或 `private_key_jwt`；PAR 與 Token 共用協商結果。正式 HTTPS Wallet Provider 是可配置但不會自動獲得發證端信任。錯誤 `clientId must be authenticated` 屬於發證端驗證錢包，與錢包畫面的發證端 T3 信任提醒是兩回事。
-- OpenID4VP：`RequestResolver`、`RequestValidator`、`Oid4vpHolder` 的多重簽章須逐一驗證；不能把 JWS JSON 退化成未簽章 DC API。OpenID Federation 在未取得可驗證的信任鏈／政策時必須拒絕；JWE Request Object 只能由錢包本地註冊的 ECDH-ES 私鑰解密，且解密成功不等同查驗者已驗證，目前 App 尚未提供解密公鑰註冊／發布流程。mdoc `transaction_data` 已由 `ResponseBuilder` 用 Multipaz TransactionType 生成 DeviceSigned，逐一檢查 MSO KeyAuthorizations；未支援的型別仍拒絕。
-- VICAL／RICAL：清單簽章不能自證可信。只能以獨立 `TrustRole.TRUST_LIST_PROVIDER` 的使用者／正式根憑證認證清單發行者；不可把 TEST 簽署者匯成 USER／正式清單。下載或更新須 HTTPS、限制大小、比對發行者與單調遞增版本、拒絕超過 `notAfter` 的清單；RICAL 的非信任錨點不可當成信任根。
-- TW FidO、CSC 與電子公文：公開規格的簽章、驗證、匯入／匯出與公文容器才是個人錢包交付範圍；**不要求個人取得正式 MOI SP、QTSP 或機關公文交換中心帳號**。不能捏造政府收發 API 或冒用測試憑證。
-- Android HTTPS App Links：本階段明確暫緩，沿用既有回呼方式，不當成 PR #11 驗收缺陷；若日後有正式自有網域與部署需求再評估。
-- CI：最新 HEAD 通過 `:test-servers:test`、`:app:desktopTest`、`:app:assembleRelease` 及 Windows／Linux 封裝才可宣布自動測試通過；舊 commit 綠燈不能沿用，互通／實機測試另外標示。
+- OpenID4VCI 用戶端驗證（`Oid4vciClient.clientAuthenticationFor`）依授權伺服器的 `token_endpoint_auth_methods_supported` 依序選擇 `attest_jwt_client_auth`（錢包後端有提供時）、`private_key_jwt`（錢包後端的 `client-assertion`，以錢包實例金鑰的短效 PoP 申請），都取不到時以公開用戶端送出 `client_id`，由伺服器決定。Keycloak（含 EUDI 發行端）不會列出 `none` 但接受公開用戶端加 PKCE，所以不可因為清單沒有 `none` 就不送請求；伺服器以 `invalid_client` 拒絕公開用戶端時才回報 `client_authentication_unavailable`。PAR 與 Token 使用同一個方法。中繼資料沒有列出方法時（TWDIW、draft 11）為公開用戶端。
+- 錢包後端：設定的「互通 > OpenID4VCI 錢包身分」填正式後端（只接受 https）與 `client_id`，沒有填時，測試環境開啟「使用測試錢包提供者」才用測試伺服器的後端；後端回 404 視為不支援該方法。發證端回「clientId must be authenticated」是發證端要求註冊的用戶端，與發行端信任等級無關。
+- DC API `openid4vp-v1-multisigned`：JWS JSON Serialization，每個簽章的受保護標頭必須帶 `client_id`（payload 不可有 `client_id` 與 `verifier_info`），不接受未受保護的標頭；每個簽章分別驗證，取信任等級最高者，全部失敗時拒絕，不會退回未簽章處理。`openid4vp-v1-unsigned` 帶 `request` 時拒絕。
+- 加密的 request object（JWE，5 段）只用錢包自己登錄的 ECDH-ES 金鑰解密（`Oid4vpHolder` 的 `requestObjectDecryptionKeys`），不使用請求附帶的金鑰；解密不代表查驗方已驗證，需要簽章的 client_id 前綴仍要求 JWS。App 目前沒有登錄或公布解密金鑰，所以實際上會拒絕加密的 request object。Multipaz 的 JWE 解密一定以長度前綴帶入 apu 與 apv，送方必須設定兩者。解密後的 `client_id` 必須等於外層；已簽章的 request object 由驗證器比對（舊版草案可省略內層 `client_id`）。
+- mdoc `transaction_data`：`ResponseBuilder` 以 Multipaz 的 `TransactionType` 產生 DeviceSigned 命名空間，每個元素都要在 MSO 的 `KeyAuthorizations` 內，否則拒絕；零知識出示不支援 transaction_data。
+- mdoc 簽署清單（`TrustRegistry.importSignedMdocTrustList`）：VICAL 加入發行端信任、RICAL 加入查驗方信任，環境為 USER（T2，不顯示官方）。清單的 COSE 簽署憑證鏈必須連到同一環境中以 `TrustRole.TRUST_LIST_PROVIDER` 匯入的根憑證，不可由測試錨點升級成 USER 或正式；RICAL 每一項都必須是 trust anchor；只接受 https、4 MB 以內，同一來源的新版須同一發行者、同一簽署憑證且版本遞增。Multipaz 驗證憑證時不檢查清單的 `notAfter`，所以 `retireExpiredMdocTrustLists` 在比對前把過期清單移出驗證用的 TrustManager；匯入的原檔另存在 `signed-lists-<角色>-<環境>`，過期後仍可更新或移除。開啟 App 時與「更新到期的清單」更新已過 `nextUpdate` 或已過期的清單，一份失敗不影響其他清單。
+- 行動自然人憑證、CSC 與電子公文以公開規格為交付範圍；沒有內政部 SP、QTSP 或機關公文交換帳號是外部條件，不是程式缺陷，也不可捏造政府收發 API 或以測試憑證冒充。尚未實作：OpenID Federation（遇到時拒絕，不信任請求自稱的金鑰）、App 端的 request object 解密金鑰登錄；Android HTTPS App Links 不規劃。
 
 ## 建置與測試
 

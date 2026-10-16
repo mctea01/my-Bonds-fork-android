@@ -75,11 +75,3 @@ PR 審查後再修正（`PresentationSafetyTest`）：
 | 網頁完成後自動關閉 | 「從清單選擇」申請卡片、授權碼流程登入、Verified ID 登入 | 發行端頁面導回錢包後，網頁分頁自動關閉，返回鍵不會再回到該頁 |
 | Microsoft Entra Verified ID | 以 Entra 租戶的發行 QR（`openid-vc://`）領卡，含 PIN 或登入 | 顯示網域與 T3；領卡後到 Verified ID 驗證端出示成功 |
 | UAT 平台 | 設定開啟測試環境並把 TWDIW 前端改為 UAT | 頁面標示「測試平台（結果不具效力）」，信任等級為測試環境 |
-
-## 2026-10-16 OpenID4VP 與 mdoc 信任清單補強（PR #11）
-
-Digital Credentials API 新增 `openid4vp-v1-multisigned` 的 JWS JSON Serialization 解析、各簽名的受保護 `client_id`、獨立簽章／查驗者信任判定、`expected_origins` 檢查和簽章降級拒絕；測試增加有效、偽造、來源不符、缺少簽章等情境。
-
-VICAL／RICAL 下載與匯入使用 COSE 驗簽和**分離的清單發行者信任根**，限 HTTPS，限制資料大小、禁止版本回退與跨環境信任升級，並管理 `nextUpdate`、`notAfter` 與使用者主動更新；RICAL 非信任錨點不作根憑證。需新增 `SignedMdocTrustListsTest` 驗證發行者不受信任、正常簽署清單、版本回退及到期。
-
-本輪已增加 mdoc `transaction_data` 透過 Multipaz `TransactionType` 回應到 `DeviceSigned.nameSpaces`，於裝置簽署前檢查 MSO KeyAuthorizations；已加入允許／未授權兩種回歸測試。JWE Request Object 已建立以錢包自身 ECDH-ES 金鑰解密的核心路徑和身分綁定，但 App 尚缺解密金鑰註冊、發布與完整的簽章加密巢狀回應驗收。OpenID Federation Trust Chain 的信任錨與 Policy 驗證尚未實作；所有未完成路徑**保持明確拒絕**。Android HTTPS App Links 暫不規劃，不作本階段阻擋。

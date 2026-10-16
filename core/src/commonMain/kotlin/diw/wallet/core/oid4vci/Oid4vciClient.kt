@@ -331,7 +331,7 @@ class Oid4vciClient(
             val auth = clientAuthenticationFor(session)
             val resp = postFormWithDpop(session, par, params, auth, null)
             val json = parseJsonObject(resp.bodyAsText(), "invalid_par_response")
-            if (!resp.status.isSuccess()) throw oauthError(json, "PAR failed (${resp.status.value})")
+            if (!resp.status.isSuccess()) throw authError(session, auth, json, "PAR failed (${resp.status.value})")
             val requestUri = json.str("request_uri") ?: throw ProtocolException("invalid_par_response", "PAR response without request_uri")
             URLBuilder(endpoint).apply {
                 parameters.append("client_id", walletProvider.clientId)
@@ -386,7 +386,7 @@ class Oid4vciClient(
             val attestation = try {
                 walletProvider.walletAttestation()
             } catch (e: ProtocolException) {
-                if (e.code == "wallet_provider_unsupported" && "private_key_jwt" in methods) null
+                if (e.code == "wallet_provider_unsupported") null
                 else throw e
             }
             if (attestation != null) {
@@ -404,7 +404,7 @@ class Oid4vciClient(
             val assertion = try {
                 walletProvider.clientAssertion(meta.issuer)
             } catch (e: ProtocolException) {
-                if (e.code == "wallet_provider_unsupported" && "none" in methods) null
+                if (e.code == "wallet_provider_unsupported") null
                 else throw e
             }
             if (assertion != null) {
@@ -412,19 +412,33 @@ class Oid4vciClient(
                 return ClientAuthentication("private_key_jwt", assertion = assertion)
             }
         }
-        if (selected == "none" || (selected == null && ("none" in methods || methods.isEmpty()))) {
-            session.clientAuthMethod = "none"
-            return ClientAuthentication("none")
+        // Public client: the wallet sends only client_id and the server decides. Many servers (Keycloak, the EUDI
+        // issuer) accept public clients with PKCE without listing "none"; a refusal is reported by authError.
+        session.clientAuthMethod = "none"
+        return ClientAuthentication("none")
+    }
+
+    /**
+     * An OAuth error response; a refused public client becomes client_authentication_unavailable when the
+     * server only lists methods this wallet could not provide.
+     */
+    private fun authError(session: IssuanceSession, auth: ClientAuthentication, json: JsonObject, fallback: String): ProtocolException {
+        val methods = session.authServer.tokenEndpointAuthMethods
+        if (auth.method == "none" && json.str("error") == "invalid_client" && methods.isNotEmpty() && "none" !in methods) {
+            return ProtocolException(
+                "client_authentication_unavailable",
+                "Authorization server requires registered client authentication (" + methods.joinToString(", ") + "): " +
+                    (json.str("error_description") ?: fallback),
+            )
         }
-        throw ProtocolException("client_authentication_unavailable",
-            "Authorization server requires registered client authentication: " + methods.joinToString(", "))
+        return oauthError(json, fallback)
     }
 
     private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, auth: ClientAuthentication): AccessToken {
         val resp = postFormWithDpop(session, session.authServer.tokenEndpoint, form, auth, null)
         val text = resp.bodyAsText()
         val json = runCatching { parseJsonObject(text) }.getOrElse { JsonObject(emptyMap()) }
-        if (!resp.status.isSuccess()) throw oauthError(json, "Token request failed (${resp.status.value})")
+        if (!resp.status.isSuccess()) throw authError(session, auth, json, "Token request failed (${resp.status.value})")
         val token = json.str("access_token") ?: throw ProtocolException("invalid_token_response", "No access_token")
         val type = json.str("token_type") ?: "Bearer"
         if (type.equals("DPoP", true) && session.dpop == null) {

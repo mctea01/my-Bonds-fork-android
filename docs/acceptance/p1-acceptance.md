@@ -65,9 +65,3 @@ P1 以本地測試可驗證的範圍完成後暫停（2026-10-11），之後遇�
 - Android 實機驗收：StrongBox/TEE 金鑰與生物辨識提示（含第 21 項長 c_nonce 的金鑰建立）、Credential Manager（DC API）選取與回傳、QR 掃描、深層連結。
 - CI：由使用者維護於 `.github/workflows/github-actions-ci.yml`，只在 push 到 main 與 pull_request 時執行。release 檔案由 `:app:assembleRelease`、`:app:packageReleaseMsi`（Windows）、`:app:packageReleaseDeb`（Linux）與 `:app:packageReleaseUberJarForCurrentOS`（需 Java 21）產生，版本可用 `-Pdiw.versionCode`、`-Pdiw.versionName`、`-Pdiw.desktopVersion` 指定。
 - Android release APK 的 R8 結果尚未在實機執行驗證。
-
-## 2026-10-16 OpenID4VCI 客戶端身分補強（PR #11）
-
-此前僅保證公開用戶端與本地 Wallet Attestation；當 Multipaz 發證端要求 `clientId must be authenticated`，這是發證端對錢包客戶端身分的檢查，不是發行者信任 T3 的問題。PR #11 加入 `private_key_jwt`、`attest_jwt_client_auth` 的中繼資料協商、PAR／Token 的同一驗證方式、JWT／DPoP nonce 重試，以及正式 HTTPS Wallet Provider 位址與 `client_id` 設定。遠端 Client Assertion 要求短效錢包實例 PoP、有效期限與防重放；本地測試發證端新增受信任簽章測試。
-
-可由 `:test-servers:test --tests '*Oid4vciE2eTest'` 及 `:app:desktopTest` 回歸。**正式 issuer.multipaz.org 是否接受簽章者，仍取決於該伺服器實際登記的信任根／客戶端金鑰，不是協定測試可以代替的驗收。** Android HTTPS App Links 此階段暫不規劃，不影響既有回呼與 DC API 測試。

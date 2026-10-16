@@ -138,18 +138,11 @@ class Oid4vpHolder(
         if (request.multiSignedCandidates.isEmpty()) return validator.validate(request)
         var best: ValidatedAuthorizationRequest? = null
         var lastError: Throwable? = null
-        val priority = listOf(
-            diw.wallet.core.trust.TrustTier.T1,
-            diw.wallet.core.trust.TrustTier.T2,
-            diw.wallet.core.trust.TrustTier.T3,
-            diw.wallet.core.trust.TrustTier.T4,
-        )
         for (candidate in request.multiSignedCandidates) {
             try {
                 val validated = validator.validate(candidate)
-                if (best == null || priority.indexOf(validated.verifier.trust.tier) <
-                    priority.indexOf(best.verifier.trust.tier)
-                ) best = validated
+                // TrustTier is declared from T1 (strongest) to T4; the first of equally strong signatures wins.
+                if (best == null || validated.verifier.trust.tier < best.verifier.trust.tier) best = validated
             } catch (e: ProtocolException) {
                 lastError = e
             }

@@ -5,12 +5,6 @@
 
 ---
 
-## CSC、TW FidO 與個人錢包簽章（2026-10-16）
-
-- CSC v2：已具備 OAuth PKCE、Credential 探查、SAD 與 `signHash`；新補 `redirect_uri` 精確比對、Token 類型 Bearer、HTTPS 端點及 SHA-256 簽章演算法一致性。通過模擬器測試不代表任何特定 QTSP 商業營運帳號可登入。
-- 行動自然人憑證：TW FidO SP checksum、Ticket 及結果簽章驗證已實作，本輪新增錯誤、竄改與取消狀態測試。只有核發的 SP 才能在 UAT 或正式環境進行線上簽章。
-- 個人錢包的完成門檻為**依公開規格正確產生、驗證與儲存文件簽章及證據**；正式政府／商業帳號是外部授權條件，不視為未完成的程式功能。
-
 ## 0. 總結（先看這段）
 
 1. **驗證核心建議放在 JVM/Android（Kotlin/Java），iOS 之後再補**。目前沒有任何一套開源函式庫能在 KMP 的 commonMain 完成 PAdES/CAdES/XAdES/OFD 的完整驗證。commonMain 只放資料模型、驗證結果模型、ASN.1/X.509 解析，以及「信任錨與政策」的抽象。
