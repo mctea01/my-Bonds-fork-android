@@ -542,7 +542,7 @@ class Oid4vciClient(
         val profile = if (config.format.isW3c) compat.owned { it.holderProfile(session.issuer) } else null
         // A shared holder identity has one key, so one credential is requested.
         val count = if (profile != null) 1 else keys.count.coerceIn(1, session.issuer.batchSize)
-        var nonce = compat.owned { it.tokenNonce(token.raw) } ?: fetchNonce(session, token, compat)
+        var nonce = fetchNonce(session, token, compat)
         var pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
         var attempt = 0
         // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
