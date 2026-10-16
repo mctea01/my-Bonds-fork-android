@@ -4,6 +4,7 @@ import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.oid4vp.Oid4vpHolder
+import diw.wallet.core.oid4vp.QesApprovalTransaction
 import diw.wallet.core.oid4vp.PresentationPolicy
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
@@ -57,6 +58,7 @@ class WalletFixture(
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
+        QesApprovalTransaction.types.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
     lateinit var holder: Oid4vpHolder
@@ -99,7 +101,7 @@ class WalletFixture(
         cred.certify(sdJwt.compactSerialization.encodeToByteString())
     }
 
-    suspend fun issueMdl(pki: TestPki) {
+    suspend fun issueMdl(pki: TestPki, authorizedTransactionNamespaces: List<String> = emptyList()) {
         val nsData = buildIssuerNamespaces {
             addNamespace(DrivingLicense.MDL_NAMESPACE) {
                 addDataElement("given_name", Tstr("Che-Chuan"))
@@ -115,6 +117,7 @@ class WalletFixture(
             signedAt = pki.validFrom, validFrom = pki.validFrom, validUntil = pki.validUntil, expectedUpdate = null,
             digestAlgorithm = Algorithm.SHA256, valueDigests = nsData.getValueDigests(Algorithm.SHA256),
             deviceKey = cred.getAttestation().publicKey,
+            deviceKeyAuthorizedNamespaces = authorizedTransactionNamespaces,
         )
         val tagged = Cbor.encode(Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(mso.toDataItem()))))
         val prot = mapOf<CoseLabel, DataItem>(CoseNumberLabel(Cose.COSE_LABEL_ALG) to Algorithm.ES256.coseAlgorithmIdentifier!!.toDataItem())
