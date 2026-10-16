@@ -288,10 +288,12 @@ class Oid4vpE2eTest {
         val request = w.holder.resolveDcApi("openid4vp-v1-unsigned", mdocQesRequest(), "https://rp.example")
         val outcome = w.holder.respondDefault(w.holder.prepare(request)) as PresentationOutcome.DcApi
         val token = outcome.data["vp_token"]!!.jsonObject["mdl"]!!.jsonArray.first().jsonPrimitive.content
-        val response = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(
-            org.multipaz.cbor.Cbor.decode(token.fromBase64Url())
+        val encodedResponse = org.multipaz.cbor.Cbor.decode(token.fromBase64Url())
+        // Examine serialized DeviceSigned claims; DeviceResponse.documents requires a separate
+        // signature verification with the exact session transcript.
+        val document = org.multipaz.mdoc.response.MdocDocument.fromDataItem(
+            encodedResponse["documents"].asArray.first()
         )
-        val document = response.documents.first()
         val payload = document.deviceNamespaces.data["qes_authorization"]
         assertTrue(payload?.containsKey("transactionDataHash") == true)
     }
