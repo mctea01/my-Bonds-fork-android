@@ -13,8 +13,9 @@
 | Bonds 身分證卡：Identity-H 字型加 ToUnicode（含 bfrange、TJ 字距、同一行兩個欄位）與 PdfComposer 的 UniCNS-UCS2-H 字型文字擷取；PDFBox 以 RC4 40、RC4 128、AES-128、AES-256 加密後以身分證統一編號開啟（小寫加空白也可），錯誤編號回報；Bonds 的解析案例；民國日期與臺北時間的 18 歲判定；NationalIDCredential 內容與 Bonds 相同，以 `k=s` 只揭露年齡並驗證；姓名與憑證不符時拒絕簽署 | `:test-servers:test --tests '*BondsNationalIdTest'` | 7/7 通過 |
 | App 流程（身分證卡）：讀取身分證資料、姓名不符的卡片被拒、以 RSA 憑證代替卡片簽署、證件分頁與 Bonds `k=s` 出示（只揭露年齡）並驗證 | `:app:desktopTest --tests '*bondsNationalIdCard'` | 通過 |
 | App 流程：匯入 PDF、相同檔案去重、錢包金鑰 PAdES 簽署、製作公文並 XAdES 簽署、產生衍生憑證、以 Bonds 擴充（`k=a`）出示並由另一個錢包驗證、`k=s` 沒有衍生憑證時的引導訊息 | `:app:desktopTest --tests '*documentVaultSignDeriveAndPresent'` | 通過 |
-| 全部協議與互通 | `:test-servers:test` | 128 項：114 通過、14 項需 `DIW_INTEROP=1` 略過 |
-| 全部 App 流程 | `:app:desktopTest` | 21 項：18 通過、2 項需網路略過、截圖測試需 `DIW_SCREENSHOTS` |
+| App 流程（公文容器）：含 .si 的公文壓縮檔依簽核檔自動建立容器、只有未列出的檔案要確認、依兩個簽核點分層、取得容器撤銷資訊、移除時戳、匯出容器 ZIP 與說明、連同成員刪除 | `:app:desktopTest --tests '*officialZipIsBundledByItsApproval'` | 通過 |
+| 全部協議與互通 | `:test-servers:test` | 228 項：214 通過、14 項需 `DIW_INTEROP=1` 略過（2026-10-16） |
+| 全部 App 流程 | `:app:desktopTest` | 29 項：26 通過、2 項需網路略過、截圖測試需 `DIW_SCREENSHOTS`（2026-10-16） |
 | 主要畫面離屏截圖（新增文件分頁、文件內容、簽署、衍生憑證、身分證卡） | `DIW_SCREENSHOTS=<資料夾> ./gradlew :app:desktopTest --tests '*uiScreenshots'` | 21 張 PNG |
 
 ## ETSI 報告比對（EU DSS 6.5）
@@ -56,7 +57,7 @@
 - 來源網站以表單 POST 觸發的下載，Android WebView 的下載事件只提供網址，錢包以 GET 重抓可能失敗；這時請在網站內改用「另存」或從系統分享到本 App。
 - 桌面版沒有內嵌瀏覽器，來源網站以外部瀏覽器開啟，下載後再匯入。
 - 行動自然人憑證簽章、CSC 遠端簽章、公文交換收發、zkPDF 與 zkTLS 證明顯示為停用列並寫明原因。
-- 簽署憑證鏈的中繼憑證或根憑證不在內建清單時（例如國富安 GFA、BJCA Global Root CA3、Apple 與 e簽寶的時戳機構），判定為「部分」，使用者可在設定匯入根憑證（T3）。
+- 簽署憑證鏈的中繼憑證或根憑證不在內建清單時，判定為「部分」，使用者可在設定匯入根憑證。國富安 GFA（含 e簽寶平台用的 OPERATION CA04）、BJCA Global Root CA3、e簽寶時戳機構與 e簽寶公布的其他合作 CA 已內建（2026-10-16），這類文件現在連到內建根憑證，判定為 T2。
 - 卡片影像只在證件沒有影像時產生；發行端之後才補上標誌的證件不會自動更新影像。
 
 ## 需要實機驗證
@@ -78,3 +79,5 @@
 | 來源網站取件 | 文件分頁「取得文件」開 MyData 或移民署，登入並下載 | 下載的檔案出現在文件分頁並記錄來源；行動自然人憑證登入時跳到官方 App 後可返回 |
 | 分享匯入 | 從其他 App 分享 PDF 或 .p7s 到本 App | 檔案出現在文件分頁並顯示檢查結果 |
 | 時戳服務 | 設定「文件與時戳」選不同 TSA，替文件加時戳 | 時戳通過，簽發者顯示該服務 |
+| 公文壓縮檔與容器 | 匯入機關公文系統匯出的壓縮檔（含 .di、.si、附件與頁面影像） | 依簽核檔建立容器，檔案列在各簽核點下，健檢顯示檔案齊全與簽核點簽章；「取得容器內簽章的撤銷資訊」後顯示 OCSP 或 CRL 份數 |
+| 匯出 | 公文詳情「匯出公文容器」、有時戳的文件「匯出文件與證據」 | 系統儲存對話框出現中文檔名的 ZIP；解開後檔名正確，可用檔案管理局電子封裝檔工具箱或其他工具檢查原檔 |

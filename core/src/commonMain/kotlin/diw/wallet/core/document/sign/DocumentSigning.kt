@@ -36,6 +36,9 @@ expect object DocumentSigning {
     /** Files of a ZIP archive (such as a MyData download), directories omitted. */
     fun unzip(bytes: ByteArray): Map<String, ByteArray>
 
+    /** A ZIP archive of [files] in order, names written as UTF-8 (for exports). */
+    fun zip(files: List<Pair<String, ByteArray>>): ByteArray
+
     /** A PKCS#12 (.p12, .pfx) key and certificate opened with [password], as a signer. */
     fun pkcs12Signer(p12: ByteArray, password: String): DocumentSigner
 

@@ -36,6 +36,22 @@ class ApprovalFile(val name: String, val references: List<ApprovalReference>) {
     }
 }
 
+/**
+ * One signing point (簽核點定義) of an online approval: who signed, the action and time it states, and the files its
+ * own signature covers ([references], in SignedInfo order).
+ */
+class ApprovalPointFiles(
+    val index: Int,
+    val signer: String?,
+    val action: String?,
+    val time: String?,
+    val references: List<ApprovalReference>,
+    /** The point holds an XMLDSig Signature (a point approved without a certificate has none). */
+    val signed: Boolean = true,
+) {
+    val names: List<String> get() = references.map { it.uri }.distinct()
+}
+
 /** How well a file fits the container of an official document. */
 data class BundleMatch(val evidence: List<BundleEvidence>) {
     val supported: Boolean get() = evidence.any { it.supports }
@@ -73,15 +89,37 @@ object OfficialBundles {
     fun approvalReferences(bytes: ByteArray): List<ApprovalReference> {
         val root = XmlTree.parse(bytes)?.root ?: return emptyList()
         if (root.name != "線上簽核") return emptyList()
-        val out = LinkedHashSet<ApprovalReference>()
-        for (ref in root.descendants("Reference")) {
-            val uri = ref.attributes["URI"]?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") } ?: continue
-            val algorithm = digestAlgorithm(ref.descendants("DigestMethod").firstOrNull()?.attributes?.get("Algorithm")) ?: continue
-            val digest = ref.descendants("DigestValue").firstOrNull()?.text?.replace(Regex("\\s+"), "")
-                ?.let { runCatching { it.fromBase64() }.getOrNull() } ?: continue
-            out.add(ApprovalReference(uri, algorithm, digest))
+        return fileReferences(root).distinct()
+    }
+
+    /**
+     * The signing points of the online approval in [bytes], in document order, each with the files its own signature
+     * covers. A file signed again unchanged at a later point is listed there too. Empty for any other file.
+     */
+    fun approvalPoints(bytes: ByteArray): List<ApprovalPointFiles> {
+        val root = XmlTree.parse(bytes)?.root ?: return emptyList()
+        if (root.name != "線上簽核") return emptyList()
+        return root.descendants("簽核點定義").mapIndexed { i, point ->
+            val info = point.descendants("異動資訊").firstOrNull()
+            val signature = point.children.firstOrNull { it.name == "Signature" }
+            ApprovalPointFiles(
+                index = i,
+                signer = info?.child("簽核人員")?.child("姓名")?.deepText()?.ifBlank { null },
+                action = info?.child("異動別")?.deepText()?.ifBlank { null },
+                time = info?.child("簽章時間")?.deepText()?.ifBlank { null },
+                references = signature?.let { fileReferences(it).distinct() }.orEmpty(),
+                signed = signature != null,
+            )
         }
-        return out.toList()
+    }
+
+    /** XMLDSig References under [e] that point to a file (not to an element), with their digests. */
+    private fun fileReferences(e: XmlElement): List<ApprovalReference> = e.descendants("Reference").mapNotNull { ref ->
+        val uri = ref.attributes["URI"]?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") } ?: return@mapNotNull null
+        val algorithm = digestAlgorithm(ref.descendants("DigestMethod").firstOrNull()?.attributes?.get("Algorithm")) ?: return@mapNotNull null
+        val digest = ref.descendants("DigestValue").firstOrNull()?.text?.replace(Regex("\\s+"), "")
+            ?.let { runCatching { it.fromBase64() }.getOrNull() } ?: return@mapNotNull null
+        ApprovalReference(uri, algorithm, digest)
     }
 
     private fun digestAlgorithm(uri: String?): String? = when (uri?.substringAfterLast('#')) {

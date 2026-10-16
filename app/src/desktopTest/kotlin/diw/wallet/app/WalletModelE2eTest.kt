@@ -91,6 +91,10 @@ class WalletModelE2eTest {
             }
         }
         override fun openRedirect(url: String) {}
+
+        /** Files the wallet exported, by the name it suggested. */
+        val saved = ArrayList<Pair<String, ByteArray>>()
+        override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
     }
 
     private suspend fun newWallet(storage: Storage = EphemeralStorage()): Pair<WalletModel, TestPlatform> {
@@ -943,6 +947,77 @@ class WalletModelE2eTest {
         // Taken out again, the file stands on its own.
         holder.files.leaveBundle(holder.files.members(main).single()).join()
         assertTrue(holder.files.members(main).isEmpty())
+    }
+
+    /**
+     * A ZIP with an online approval (.si) of two signing points: the container is built from the approval without
+     * asking (the letter it lists first holds it, the files it signed join it), only the file it does not list is
+     * left to confirm, and the container is laid out by signing point. Revocation data is kept for the approval's
+     * signatures, a time stamp can be removed, the container exports with its evidence, and deleting the letter can
+     * take its files with it.
+     */
+    @Test
+    fun officialZipIsBundledByItsApproval() = runBlocking<Unit> {
+        val (holder, platform) = newWallet()
+        val letter = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "測試受文機關", subject = "測試簽核").toXml()
+        val att1 = "附件一內容".encodeToByteArray()
+        val att2 = "附件二內容".encodeToByteArray()
+        val signer = rsaSigner("測試承辦人")
+        val first = diw.wallet.core.document.sign.DocumentSigning.signApproval(
+            null, listOf("簽核函.di" to letter, "附件一.txt" to att1), signer, diw.wallet.core.document.official.ApprovalPoint(action = "呈核"),
+        )
+        val si = diw.wallet.core.document.sign.DocumentSigning.signApproval(
+            first, listOf("簽核函.di" to letter, "附件一.txt" to att1, "附件二.txt" to att2), signer, diw.wallet.core.document.official.ApprovalPoint(action = "決行"),
+        )
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                for ((name, bytes) in listOf("簽核函.di" to letter, "附件一.txt" to att1, "附件二.txt" to att2, "簽核函.si" to si, "說明.txt" to "其他".encodeToByteArray())) {
+                    z.putNextEntry(java.util.zip.ZipEntry(name))
+                    z.write(bytes)
+                    z.closeEntry()
+                }
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("case.zip", zip), FileOrigin.IMPORTED, null).join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        val main = holder.files.files.value.first { it.name == "簽核函.di" }
+        assertEquals(setOf("附件一.txt", "附件二.txt", "簽核函.si"), holder.files.members(main).map { it.name }.toSet())
+        val screen = assertIs<Screen.OfficialBundle>(holder.screen.value)
+        assertEquals(main.id, screen.mainId)
+        assertEquals(listOf("說明.txt"), screen.only!!.mapNotNull { holder.files.file(it)?.name })
+
+        val layout = assertNotNull(holder.files.containerLayout(main))
+        assertEquals("簽核函.si", layout.approval.name)
+        assertEquals(2, layout.points.size)
+        assertEquals(listOf("簽核函.di", "附件一.txt"), layout.points[0].files.map { it.name })
+        assertEquals("決行", layout.points[1].action)
+        assertEquals(listOf("附件二.txt"), layout.points[1].files.map { it.name })
+        assertEquals(2, layout.points[1].repeated.size)
+        assertEquals(0, layout.missing)
+        assertTrue(layout.others.isEmpty())
+        assertEquals(diw.wallet.core.document.Check.PASS, layout.points[1].signature!!.integrity)
+
+        // Revocation data of the approval's signatures (the test certificate has no AIA, so none can be fetched).
+        val approval = layout.approval
+        holder.files.collectContainerValidation(main).join()
+        assertNull(holder.files.error.value, "revocation: ${holder.files.error.value}")
+        assertNotNull(holder.files.file(approval.id)!!.signatureValidation)
+
+        // A time stamp made by hand can be removed again.
+        val stamped = holder.files.file(main.id)!!.copy(timestamps = listOf(StoredTimestamp(token = "AA==", time = 0)))
+        holder.files.save(stamped)
+        holder.files.removeTimestamp(stamped, 0).join()
+        assertTrue(holder.files.file(main.id)!!.timestamps.isEmpty())
+
+        holder.files.exportContainer(main).join()
+        val (exportName, exported) = platform.saved.last()
+        assertEquals("簽核函（公文容器）.zip", exportName)
+        val entries = diw.wallet.core.document.sign.DocumentSigning.unzip(exported)
+        assertTrue(entries.keys.containsAll(listOf("簽核函.di", "附件一.txt", "附件二.txt", "簽核函.si", "說明.txt")), "entries: ${entries.keys}")
+        assertTrue(entries.getValue("說明.txt").decodeToString().contains("簽核點 2"))
+
+        holder.files.delete(main, withMembers = true).join()
+        assertEquals(listOf("說明.txt"), holder.files.files.value.map { it.name })
     }
 
     /** A MyData national ID document with made-up data (unencrypted; the encrypted forms are covered in test-servers). */

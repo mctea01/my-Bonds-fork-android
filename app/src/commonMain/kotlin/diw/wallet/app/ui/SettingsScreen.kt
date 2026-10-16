@@ -91,7 +91,7 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
             model.updateSettings { it.copy(timestampOnSave = v) }
         }
-        Toggle("時戳一併保存撤銷資訊", "取得時戳時，同時取得時戳機構憑證鏈的 OCSP 回應（取不到才用 CRL）與時戳一起保存，時戳機構憑證過期後仍可驗證", s.timestampRevocation) { v ->
+        Toggle("時戳與簽章一併保存撤銷資訊", "取得時戳時，同時取得時戳機構憑證鏈的 OCSP 回應（取不到才用 CRL）與時戳一起保存；保存含簽章的文件時，也取得簽署者與其時戳機構的撤銷資訊。憑證過期後仍可驗證", s.timestampRevocation) { v ->
             model.updateSettings { it.copy(timestampRevocation = v) }
         }
         HorizontalDivider()

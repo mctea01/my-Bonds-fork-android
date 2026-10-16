@@ -204,6 +204,8 @@ actual object DocumentSigning {
 
     actual fun unzip(bytes: ByteArray): Map<String, ByteArray> = Zip.read(bytes)
 
+    actual fun zip(files: List<Pair<String, ByteArray>>): ByteArray = Zip.write(files)
+
     actual fun pkcs12Signer(p12: ByteArray, password: String): DocumentSigner {
         val ks = try {
             KeyStore.getInstance("PKCS12", Bc.provider).apply { load(ByteArrayInputStream(p12), password.toCharArray()) }

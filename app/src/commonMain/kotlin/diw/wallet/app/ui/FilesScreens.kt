@@ -334,20 +334,82 @@ private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: L
     val own = files.filter { it.bundleOf == f.id }.sortedBy { it.name }
     val inherited = remember(f.id, files) { model.files.inherited(f) }.sortedBy { it.name }
     val members = own + inherited
+    // With an online approval in the container, its files are shown under the signing point that signed them.
+    val layout by produceState<FilesModel.ContainerLayout?>(null, f.id, files) { value = model.files.containerLayout(f) }
     SectionTitle("公文容器")
     if (members.isEmpty()) {
         Text("這份公文還沒有關連檔。交換表單（.sw）、簽核檔（.si）與附件可放進同一個容器，一起保存與查看。", style = MaterialTheme.typography.bodySmall)
     }
-    own.forEach { m ->
-        FileRow(m) { model.screen.value = Screen.FileDetail(m.id) }
+    val open = { m: StoredFile -> model.screen.value = Screen.FileDetail(m.id) }
+    val l = layout
+    if (l != null) {
+        ContainerHealth(l, listOf(f) + members)
+        Text("依線上簽核檔的簽核點排列：每個檔案列在第一個簽署它的簽核點下。", style = MaterialTheme.typography.bodySmall)
+        FileRow(l.approval) { open(l.approval) }
+        l.points.forEach { p -> ContainerPointView(p, f, open) }
+        if (l.others.isNotEmpty()) {
+            Text("簽核檔未列出的檔案", style = MaterialTheme.typography.titleSmall)
+            l.others.forEach { m -> FileRow(m) { open(m) } }
+        }
+    } else {
+        own.forEach { m -> FileRow(m) { open(m) } }
+        if (inherited.isNotEmpty()) {
+            Text("沿用簽署前公文的關連檔（未另外簽署）：", style = MaterialTheme.typography.bodySmall)
+            inherited.forEach { m -> FileRow(m) { open(m) } }
+        }
     }
-    if (inherited.isNotEmpty()) {
-        Text("沿用簽署前公文的關連檔（未另外簽署）：", style = MaterialTheme.typography.bodySmall)
-        inherited.forEach { m -> FileRow(m) { model.screen.value = Screen.FileDetail(m.id) } }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text("匯入關連文件") }
         OutlinedButton(onClick = { model.screen.value = Screen.OfficialBundle(f.id, null) }) { Text("從已保存的文件加入") }
+    }
+    if (members.isNotEmpty()) {
+        ActionRow(WalletIcons.Shield, "取得容器內簽章的撤銷資訊", "為容器內每個含簽章的檔案與尚未保存撤銷資訊的時戳取得 OCSP（取不到才用 CRL）") {
+            model.files.collectContainerValidation(f)
+        }
+        ActionRow(WalletIcons.Send, "匯出公文容器", "壓縮檔內含全部檔案（原檔名）、時戳與撤銷資訊，以及依簽核點整理的說明") { model.files.exportContainer(f) }
+    }
+}
+
+/**
+ * The health of a container in the categories the archives' check uses: files missing or changed since they were
+ * signed, the signatures of the signing points, and the revocation data kept for signed files.
+ */
+@Composable
+private fun ContainerHealth(l: FilesModel.ContainerLayout, all: List<StoredFile>) {
+    val signatures = l.points.mapNotNull { it.signature }
+    val failed = signatures.count { it.verdict == DocumentVerdict.INVALID }
+    val unsigned = l.points.size - signatures.size
+    val signed = all.filter { it.report?.signatures?.isNotEmpty() == true }
+    val withRevocation = signed.count { it.signatureValidation != null }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        VerdictPill(if (l.missing == 0) Verdict.PASS else Verdict.CAUTION, if (l.missing == 0) "檔案齊全" else "缺 ${l.missing} 個檔案")
+        if (l.changed > 0) VerdictPill(Verdict.CAUTION, "${l.changed} 個檔案與簽核時不同")
+        VerdictPill(
+            when { failed > 0 -> Verdict.FAIL; unsigned == 0 && signatures.all { it.verdict == DocumentVerdict.VALID } -> Verdict.PASS; else -> Verdict.CAUTION },
+            "簽核點 ${l.points.size} 個" + (if (failed > 0) "，$failed 個簽章不成立" else "") + (if (unsigned > 0) "，$unsigned 個沒有憑證簽章" else ""),
+        )
+        if (signed.isNotEmpty()) VerdictPill(if (withRevocation == signed.size) Verdict.PASS else Verdict.CAUTION, "撤銷資訊 $withRevocation／${signed.size}")
+    }
+}
+
+/** One signing point: who signed and when, its signature check, and the files it signed first. */
+@Composable
+private fun ContainerPointView(p: FilesModel.ContainerPoint, main: StoredFile, open: (StoredFile) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(p.title, style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            p.signature?.let { s -> val (v, t) = verdictOf(s.verdict); VerdictPill(v, t) } ?: VerdictPill(Verdict.CAUTION, "沒有憑證簽章")
+            p.time?.let { Text(localTime(it), style = MaterialTheme.typography.bodySmall) }
+        }
+        Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            p.files.forEach { m ->
+                if (m.id == main.id) Text("本公文：${m.name}", style = MaterialTheme.typography.bodySmall)
+                else FileRow(m) { open(m) }
+            }
+            if (p.repeated.isNotEmpty()) Text("另簽核前面簽核點已列出的 ${p.repeated.size} 個檔案（內容未變）", style = MaterialTheme.typography.bodySmall)
+            p.changed.forEach { VerdictPill(Verdict.CAUTION, "$it：內容與這個簽核點簽署時不同") }
+            p.missing.forEach { VerdictPill(Verdict.CAUTION, "$it：不在容器內") }
+        }
     }
 }
 
@@ -424,6 +486,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     }
     val report = f.report
     var confirmDelete by remember { mutableStateOf(false) }
+    var withMembers by remember { mutableStateOf(false) }
+    var removeStamp by remember { mutableStateOf<Int?>(null) }
     var pickContent by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         BusyLine(busy, error)
@@ -447,6 +511,15 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         if (report?.format != DocumentFormat.OPENCERTS) FilePreviewSection(model, f)
         if (report != null) {
             report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) { model.files.reinspect(f) } }
+            if (report.signatures.isNotEmpty()) {
+                val v = f.signatureValidation
+                if (v != null) {
+                    LabelValue("簽章撤銷資訊", v.summary() + "，取得於 ${localTime(v.collectedAt)}", small = true)
+                }
+                TextButton(onClick = { model.files.collectSignatureValidation(f) }, enabled = busy == null) {
+                    Text(if (v == null) "取得並保存簽署者的撤銷資訊（OCSP 優先）" else "重新取得簽署者的撤銷資訊")
+                }
+            }
             report.envelope?.let { e ->
                 SectionTitle("加密信封")
                 Text("這是加密給特定對象的檔案（CMS EnvelopedData），錢包無法開啟內容，只能保存原檔。", style = MaterialTheme.typography.bodySmall)
@@ -484,8 +557,10 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             val v = t.validation
             if (v != null) {
                 Text(v.summary() + "，取得於 ${localTime(v.collectedAt)}", style = MaterialTheme.typography.bodySmall)
-            } else {
-                TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text("取得並保存時戳機構的撤銷資訊（OCSP 優先）") }
+            }
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                if (v == null) TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text("取得並保存時戳機構的撤銷資訊（OCSP 優先）") }
+                TextButton(onClick = { removeStamp = i }, enabled = busy == null) { Text("移除這個時戳", color = MaterialTheme.colorScheme.error) }
             }
         }
         OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) {
@@ -526,6 +601,9 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         }
         ActionRow(WalletIcons.History, "重新檢查", "以目前的信任錨點再檢查一次") { model.files.reinspect(f) }
         ActionRow(WalletIcons.Send, "匯出", "另存原檔") { model.files.export(f) }
+        if (model.files.hasEvidence(f)) {
+            ActionRow(WalletIcons.Send, "匯出文件與證據", "壓縮檔內含原檔、時戳（.tsr）、憑證、OCSP 與 CRL，可在其他工具查驗") { model.files.exportWithEvidence(f) }
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -534,12 +612,32 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         }
     }
     if (confirmDelete) {
+        val own = files.count { it.bundleOf == f.id }
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("刪除這份文件？") },
-            text = { Text("檔案與它的時戳會從這支裝置刪除，無法復原。已產生的衍生憑證保留在「證件」。") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.delete(f) }) { Text("刪除", color = MaterialTheme.colorScheme.error) } },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("檔案與它的時戳會從這支裝置刪除，無法復原。已產生的衍生憑證保留在「證件」。")
+                    if (own > 0) {
+                        Row(Modifier.clickable { withMembers = !withMembers }, verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = withMembers, onCheckedChange = { withMembers = it })
+                            Text("一併刪除容器內的 $own 個檔案（不勾選時改回獨立檔案）")
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.delete(f, withMembers && own > 0) }) { Text("刪除", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+        )
+    }
+    removeStamp?.let { index ->
+        AlertDialog(
+            onDismissRequest = { removeStamp = null },
+            title = { Text("移除這個時戳？") },
+            text = { Text("時戳與一起保存的撤銷資訊會刪除，無法復原；之後可以再向時戳機構取得新的時戳。") },
+            confirmButton = { TextButton(onClick = { removeStamp = null; model.files.removeTimestamp(f, index) }) { Text("移除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { removeStamp = null }) { Text("取消") } },
         )
     }
     if (pickContent) {

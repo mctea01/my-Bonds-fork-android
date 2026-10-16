@@ -84,6 +84,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString
@@ -147,6 +149,11 @@ data class StoredFile(
     val bundleOf: String? = null,
     /** The period the content covers, read from it ("113 年度"), for telling yearly files apart. */
     val period: String? = null,
+    /**
+     * Chains and revocation data (OCSP first, else CRL) of the signers in the file and of their signature time-stamp
+     * authorities, collected by the wallet so the signatures can be checked after the certificates expire.
+     */
+    val signatureValidation: ValidationData? = null,
 )
 
 /** What the file screen shows of a file's content. */
@@ -359,11 +366,22 @@ class FilesModel(private val model: WalletModel) {
     suspend fun data(id: String): ByteArray =
         Blobs.get(model.storage.getTable(dataTable), id) ?: throw IllegalStateException("找不到檔案內容")
 
-    private suspend fun save(f: StoredFile) {
+    /** Serializes writes of file records, so [patch] never writes back a record older than one saved meanwhile. */
+    private val saving = Mutex()
+
+    internal suspend fun save(f: StoredFile) = saving.withLock { write(f) }
+
+    private suspend fun write(f: StoredFile) {
         val t = model.storage.getTable(metaTable)
         val bytes = DiwJson.encodeToString(StoredFile.serializer(), f).encodeToByteString()
         if (t.get(f.id) == null) t.insert(f.id, bytes) else t.update(f.id, bytes)
         files.value = (files.value.filter { it.id != f.id } + f).sortedByDescending { it.addedAt }
+    }
+
+    /** Changes the current record of [id] (for work that finishes in the background); null when it is gone. */
+    private suspend fun patch(id: String, change: (StoredFile) -> StoredFile): StoredFile? = saving.withLock {
+        val current = file(id) ?: return@withLock null
+        change(current).also { write(it) }
     }
 
     /** Inspects [bytes] and stores them; the same content stored before is returned instead. */
@@ -400,6 +418,9 @@ class FilesModel(private val model: WalletModel) {
         Blobs.put(model.storage.getTable(dataTable), f.id, bytes)
         save(f)
         if (model.settings.timestampOnSave) runCatching { addTimestampNow(f) }
+        if (model.settings.timestampRevocation && report.signatures.isNotEmpty()) {
+            model.scope.launch { runCatching { storeSignatureValidation(f.id) } }
+        }
         if (report.openCert != null) model.scope.launch { runCatching { verifyOpenCertNow(f, force = false) } }
         return file(f.id) ?: f
     }
@@ -499,8 +520,9 @@ class FilesModel(private val model: WalletModel) {
             model.screen.value = Screen.NationalIdCreate(pdf.id)
             return
         }
+        model.message.value = null
         if (proposeBundles(children.ifEmpty { listOf(f) })) {
-            model.message.value = "已解出 ${children.size} 個檔案，確認哪些放進公文容器"
+            if (children.isNotEmpty()) model.message.value = "已解出 ${children.size} 個檔案。" + (model.message.value ?: "確認哪些放進公文容器")
             return
         }
         val target = when {
@@ -806,6 +828,76 @@ class FilesModel(private val model: WalletModel) {
         return ApprovalCase(null, f, found, refs.filter { r -> found.none { it.name == r } })
     }
 
+    /**
+     * One signing point of a container's online approval: the files it signed first ([files]), the ones an earlier
+     * point already signed and this one signed again unchanged ([repeated]), names whose stored content differs
+     * from what it signed ([changed]) and names not in the container ([missing]).
+     */
+    class ContainerPoint(
+        val index: Int,
+        val signer: String?,
+        val action: String?,
+        val time: Long?,
+        val signature: diw.wallet.core.document.SignatureInfo?,
+        val files: List<StoredFile>,
+        val repeated: List<StoredFile>,
+        val changed: List<String>,
+        val missing: List<String>,
+    ) {
+        val title: String get() = "簽核點 ${index + 1}" + (signer?.let { "：$it" } ?: "") + (action?.let { "（$it）" } ?: "")
+    }
+
+    /** A container laid out by the signing points of its online approval [approval]; [others] are files it does not list. */
+    class ContainerLayout(val approval: StoredFile, val points: List<ContainerPoint>, val others: List<StoredFile>) {
+        val missing: Int get() = points.flatMap { it.missing }.distinct().size
+        val changed: Int get() = points.flatMap { it.changed }.distinct().size
+    }
+
+    /**
+     * The container of [main] in two levels, by the signing points of the approval file in it with the most points:
+     * each file goes under the first point whose signature covers its content. Null when the container holds no
+     * online approval listing files.
+     */
+    suspend fun containerLayout(main: StoredFile): ContainerLayout? = withContext(Dispatchers.Default) {
+        val all = (listOf(main) + members(main)).distinctBy { it.id }
+        val approvals = all.filter { isApproval(it) }
+        val parsed = approvals.mapNotNull { a ->
+            runCatching { OfficialBundles.approvalPoints(data(a.id)) }.getOrNull()?.takeIf { p -> p.any { it.references.isNotEmpty() } }?.let { a to it }
+        }
+        val (approval, points) = parsed.maxWithOrNull(compareBy({ it.second.size }, { it.first.addedAt })) ?: return@withContext null
+        val content = all.filter { !isApproval(it) }
+        val cache = HashMap<String, ByteArray>()
+        suspend fun covers(f: StoredFile, refs: List<diw.wallet.core.document.official.ApprovalReference>): Boolean = refs.any { r ->
+            if (r.algorithm == "SHA-256") DocCryptoUtil.hex(r.digest) == f.sha256
+            else r.matches(cache.getOrPut(f.id) { runCatching { data(f.id) }.getOrDefault(ByteArray(0)) })
+        }
+        val placed = HashSet<String>()
+        // The approval's check lists one signature per signed point, in order.
+        var signedBefore = 0
+        val out = points.map { p ->
+            val first = ArrayList<StoredFile>()
+            val again = ArrayList<StoredFile>()
+            val changed = ArrayList<String>()
+            val missing = ArrayList<String>()
+            for (name in p.names) {
+                val refs = p.references.filter { it.uri == name }
+                val match = content.filter { covers(it, refs) }.let { m -> m.firstOrNull { it.name == name } ?: m.firstOrNull() }
+                when {
+                    match != null -> if (placed.add(match.id)) first.add(match) else again.add(match)
+                    content.any { it.name == name } -> changed.add(name)
+                    else -> missing.add(name)
+                }
+            }
+            ContainerPoint(
+                index = p.index, signer = p.signer, action = p.action,
+                time = ApprovalPoint.parseRocTime(p.time)?.epochSeconds,
+                signature = if (p.signed) approval.report?.signatures?.getOrNull(signedBefore++) else null,
+                files = first, repeated = again, changed = changed, missing = missing,
+            )
+        }
+        ContainerLayout(approval, out, content.filter { it.id !in placed } + approvals.filter { it.id != approval.id })
+    }
+
     /** Re-checks the approval files in the container of [main] (after files joined it). */
     private suspend fun recheckApprovals(main: StoredFile) {
         members(main).filter { isApproval(it) }.forEach { runCatching { refreshed(it) } }
@@ -817,6 +909,19 @@ class FilesModel(private val model: WalletModel) {
      */
     private suspend fun proposeBundles(stored: List<StoredFile>): Boolean {
         val incoming = stored.distinctBy { it.id }
+        // An online approval that came in decides the container first: the files it signed join it at once.
+        placeByApproval(incoming)?.let { (main, placed) ->
+            val left = incoming.filter { it.id != main.id && it.id !in placed && file(it.id)?.bundleOf == null && it.nationalId == null }
+            recheckApprovals(main)
+            if (left.isEmpty()) {
+                model.message.value = "已依簽核檔建立公文容器，放入 ${placed.size} 個檔案"
+                model.screen.value = Screen.FileDetail(main.id)
+            } else {
+                model.message.value = "已依簽核檔放入 ${placed.size} 個檔案，請確認其餘 ${left.size} 個檔案"
+                model.screen.value = Screen.OfficialBundle(main.id, left.map { it.id }, emptyList())
+            }
+            return true
+        }
         // Files saved earlier that an online approval ties to these: an approval that came in brings the files it
         // names, and an approval saved earlier that names a file that came in joins with its files.
         val pool = files.value.filter { it.bundleOf == null && it.nationalId == null && incoming.none { s -> s.id == it.id } }
@@ -852,6 +957,42 @@ class FilesModel(private val model: WalletModel) {
         val rest = docs.filter { it != main && it !in grouped }
         model.screen.value = Screen.OfficialBundle(main.id, (grouped + others).map { it.id }, rest.map { it.id })
         return true
+    }
+
+    /**
+     * Builds a container from the online approval among [incoming] that lists the most files: the official document
+     * it lists first (with the content it signed) holds the container, and the approval and every other file it signed
+     * (by name and digest, among the files that came in and those saved outside a container) join it without asking,
+     * since the approval's signatures name them. Returns the document and the ids placed; null when no approval lists
+     * an official document that is here.
+     */
+    private suspend fun placeByApproval(incoming: List<StoredFile>): Pair<StoredFile, Set<String>>? {
+        val approvals = incoming.filter { isApproval(it) && it.bundleOf == null }.mapNotNull { f ->
+            runCatching { ApprovalFile.of(f.name, data(f.id)) }.getOrNull()?.let { f to it }
+        }
+        if (approvals.isEmpty()) return null
+        val (siFile, si) = approvals.maxBy { it.second.references.size }
+        val pool = (incoming + files.value.filter { it.bundleOf == null && it.nationalId == null }).distinctBy { it.id }.filter { it.id != siFile.id }
+        val found = LinkedHashMap<String, StoredFile>()
+        for (name in si.names) {
+            val refs = si.references.filter { it.uri == name }
+            val hit = pool.filter { c ->
+                refs.any { r -> if (r.algorithm == "SHA-256") DocCryptoUtil.hex(r.digest) == c.sha256 else r.matches(data(c.id)) }
+            }.let { m -> m.firstOrNull { it.name == name && it in incoming } ?: m.firstOrNull { it.name == name } ?: m.firstOrNull() }
+            if (hit != null && found.values.none { it.id == hit.id }) found[name] = hit
+        }
+        // A document already holding a container keeps it; otherwise the first official document the approval lists.
+        val docs = found.values.filter { isOfficialMain(it) }
+        val main = docs.firstOrNull { d -> files.value.any { it.bundleOf == d.id } } ?: docs.firstOrNull() ?: return null
+        val placed = LinkedHashSet<String>()
+        for (f in found.values + siFile) {
+            if (f.id == main.id) continue
+            val latest = file(f.id) ?: continue
+            if (latest.bundleOf != null) continue
+            save(latest.copy(bundleOf = main.id))
+            placed.add(f.id)
+        }
+        return main to placed
     }
 
     /** The online approval files (.si) among [files], with the files their signatures cover. */
@@ -1018,6 +1159,68 @@ class FilesModel(private val model: WalletModel) {
         model.message.value = v.summary()
     }
 
+    /** Removes the time stamp at [index] of [f] (a stamp made without revocation data can be replaced by a new one). */
+    fun removeTimestamp(f: StoredFile, index: Int) = run("移除時戳") {
+        val latest = file(f.id) ?: return@run
+        if (index !in latest.timestamps.indices) return@run
+        save(latest.copy(timestamps = latest.timestamps.filterIndexed { i, _ -> i != index }))
+        model.message.value = "已移除時戳"
+    }
+
+    /**
+     * Chains and revocation data of every signature in [f] (the signer's chain and its signature time stamp's), OCSP
+     * first; null when the file has no signature with a certificate.
+     */
+    private suspend fun signatureValidationOf(f: StoredFile): ValidationData? {
+        val sigs = f.report?.signatures.orEmpty()
+        val known = trustSource.knownCertificates()
+        var out: ValidationData? = null
+        for (s in sigs) {
+            val chains = listOf(s.chain, s.timestamp?.chain.orEmpty())
+            for (c in chains) {
+                val der = c.mapNotNull { runCatching { it.der.fromBase64() }.getOrNull() }
+                if (der.isEmpty()) continue
+                val v = DocumentSigning.collectValidation(der, revocationFetch, known)
+                out = out?.plus(v) ?: v
+            }
+        }
+        return out
+    }
+
+    /** Collects and stores the revocation data of the signatures in the file [id]; null when it has none. */
+    private suspend fun storeSignatureValidation(id: String): ValidationData? {
+        val f = file(id) ?: return null
+        val v = signatureValidationOf(f) ?: return null
+        patch(id) { it.copy(signatureValidation = v) } ?: return null
+        return v
+    }
+
+    /** Fetches and keeps the revocation data of the signatures in [f] (OCSP first, else CRL). */
+    fun collectSignatureValidation(f: StoredFile) = run("取得簽章的撤銷資訊") {
+        val v = storeSignatureValidation(f.id) ?: throw SigningException("這份文件沒有可取得撤銷資訊的簽章")
+        model.message.value = v.summary()
+    }
+
+    /**
+     * Fetches and keeps revocation data for every file in the container of [main] that has signatures, and for their
+     * time stamps that were made without it.
+     */
+    fun collectContainerValidation(main: StoredFile) = run("取得容器內簽章的撤銷資訊") {
+        val all = (listOf(main) + members(main)).distinctBy { it.id }
+        var done = 0
+        var bad = 0
+        all.forEachIndexed { i, m ->
+            busy.value = "取得容器內簽章的撤銷資訊（${i + 1}／${all.size}）"
+            storeSignatureValidation(m.id)?.let { done++; if (!it.allGood) bad++ }
+            val latest = file(m.id) ?: return@forEachIndexed
+            if (latest.timestamps.any { it.validation == null }) {
+                val stamps = latest.timestamps.map { t -> if (t.validation != null) t else t.copy(validation = timestampValidation(t.token.fromBase64())) }
+                save(latest.copy(timestamps = stamps))
+            }
+        }
+        model.message.value = if (done == 0) "容器內沒有含簽章的檔案" else "已為 $done 個含簽章的檔案保存撤銷資訊" + if (bad > 0) "，其中 $bad 個有無法確認的憑證" else ""
+    }
+
     // ---------------------------------------------------------------- OpenCerts
 
     /** What the OpenCerts certificate [f] shows; null when the file is not one. */
@@ -1076,9 +1279,100 @@ class FilesModel(private val model: WalletModel) {
         if (!model.platform.saveFile(f.name, f.mediaType, data(f.id))) model.message.value = "未匯出"
     }
 
-    fun delete(f: StoredFile) = run("刪除檔案") {
-        files.value.filter { it.bundleOf == f.id }.forEach { save(it.copy(bundleOf = null)) }
+    /** True when [f] has something to export besides the file: time stamps or collected revocation data. */
+    fun hasEvidence(f: StoredFile): Boolean = f.timestamps.isNotEmpty() || f.signatureValidation != null
+
+    /** Exports [f] with its time stamps and revocation data as a ZIP, for checking elsewhere. */
+    fun exportWithEvidence(f: StoredFile) = run("匯出文件與證據") {
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        entries.add(f.name to data(f.id))
+        entries.addAll(evidenceEntries(f, ""))
+        entries.add("說明.txt" to evidenceReadme(listOf(f), null).encodeToByteArray())
+        val name = f.name.substringBeforeLast('.').ifBlank { f.name } + "（含證據）.zip"
+        if (!model.platform.saveFile(name, "application/zip", DocumentSigning.zip(entries))) model.message.value = "未匯出"
+    }
+
+    /**
+     * Exports the container of [main] as a ZIP: every file under its own name at the top (as the online approval
+     * names them, so other systems can check it), their evidence under 證據/, and a list of the files by signing
+     * point with what the wallet found.
+     */
+    fun exportContainer(main: StoredFile) = run("匯出公文容器") {
+        val all = (listOf(main) + members(main)).distinctBy { it.id }
+        val entries = ArrayList<Pair<String, ByteArray>>()
+        val used = HashSet<String>()
+        for (f in all) {
+            // Two versions of one name (a file changed between signing points) cannot share it; the later one is kept
+            // under the name and the other gets its digest added.
+            val name = if (used.add(f.name)) f.name else f.name.substringBeforeLast('.') + "-" + f.sha256.take(8) +
+                (f.name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" })
+            used.add(name)
+            entries.add(name to data(f.id))
+            entries.addAll(evidenceEntries(f, "證據/$name/"))
+        }
+        entries.add("說明.txt" to evidenceReadme(all, containerLayout(main)).encodeToByteArray())
+        val name = main.name.substringBeforeLast('.').ifBlank { main.name } + "（公文容器）.zip"
+        if (!model.platform.saveFile(name, "application/zip", DocumentSigning.zip(entries))) model.message.value = "未匯出"
+        else model.message.value = "已匯出 ${all.size} 個檔案與它們的證據"
+    }
+
+    /** Time stamps (.tsr) and validation data (certificates, OCSP responses, CRLs) of [f], under [dir]. */
+    private fun evidenceEntries(f: StoredFile, dir: String): List<Pair<String, ByteArray>> = buildList {
+        val prefix = dir.ifEmpty { f.name.substringBeforeLast('.').ifBlank { f.name } + "." }
+        f.timestamps.forEachIndexed { i, t ->
+            add("${prefix}時戳${i + 1}.tsr" to t.token.fromBase64())
+            t.validation?.let { addAll(validationEntries(it, "${prefix}時戳${i + 1}-")) }
+        }
+        f.signatureValidation?.let { addAll(validationEntries(it, "${prefix}簽章-")) }
+    }
+
+    private fun validationEntries(v: ValidationData, prefix: String): List<Pair<String, ByteArray>> = buildList {
+        v.certificates.forEachIndexed { i, c -> add("${prefix}憑證${i + 1}.cer" to c.fromBase64()) }
+        v.ocsps.forEachIndexed { i, o -> add("${prefix}OCSP${i + 1}.der" to o.fromBase64()) }
+        v.crls.forEachIndexed { i, c -> add("${prefix}CRL${i + 1}.crl" to c.fromBase64()) }
+    }
+
+    /** The text that goes with an export: each file's digest and check, its evidence and, for a container, the points. */
+    private fun evidenceReadme(list: List<StoredFile>, layout: ContainerLayout?): String = buildString {
+        append("本壓縮檔由 DIW Wallet 匯出，匯出時間 ").append(Instant.fromEpochSeconds(Clock.System.now().epochSeconds)).append("（UTC）。\n")
+        append("時戳（.tsr）為 RFC 3161 時戳回應，涵蓋檔案的 SHA-256；憑證為 DER（.cer），OCSP 回應與 CRL 為 DER。\n\n")
+        for (f in list) {
+            append("檔案：").append(f.name).append("\n")
+            append("  SHA-256：").append(f.sha256).append("\n")
+            f.report?.let { r ->
+                append("  檢查結果：").append(r.verdict.name).append("（").append(Instant.fromEpochSeconds(r.checkedAt)).append("）\n")
+                r.signatures.forEach { sig -> append("  簽章：").append(sig.label).append("　").append(sig.verdict.name).append("\n") }
+            }
+            f.timestamps.forEachIndexed { i, t ->
+                append("  時戳").append(i + 1).append("：").append(t.tsa ?: "時戳機構").append("　").append(Instant.fromEpochSeconds(t.time)).append("\n")
+                t.validation?.let { append("    ").append(it.summary()).append("\n") }
+            }
+            f.signatureValidation?.let { append("  簽章撤銷資訊：").append(it.summary()).append("\n") }
+        }
+        if (layout != null) {
+            append("\n線上簽核檔：").append(layout.approval.name).append("\n")
+            layout.points.forEach { p ->
+                append(p.title).append(p.signature?.let { "　" + it.verdict.name } ?: "").append("\n")
+                p.files.forEach { append("  ").append(it.name).append("\n") }
+                p.changed.forEach { append("  ").append(it).append("（內容與簽核時不同）\n") }
+                p.missing.forEach { append("  ").append(it).append("（不在容器內）\n") }
+            }
+            if (layout.others.isNotEmpty()) {
+                append("簽核檔未列出的檔案\n")
+                layout.others.forEach { append("  ").append(it.name).append("\n") }
+            }
+        }
+    }
+
+    /**
+     * Deletes [f]. The files in its container go back to being files of their own, or are deleted with it when
+     * [withMembers] (files inherited from the document it was signed from stay with that document).
+     */
+    fun delete(f: StoredFile, withMembers: Boolean = false) = run("刪除檔案") {
+        val members = files.value.filter { it.bundleOf == f.id }
+        if (withMembers) members.forEach { remove(it) } else members.forEach { save(it.copy(bundleOf = null)) }
         remove(f)
+        if (withMembers && members.isNotEmpty()) model.message.value = "已刪除公文與容器內 ${members.size} 個檔案"
         model.showTab(HomeTab.FILES)
     }
 
