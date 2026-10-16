@@ -128,7 +128,8 @@
 - 取件入口（`DocumentSources`）：MyData 各項目（身分證、戶籍、所得、納稅證明、勞保、勞退、健保、地籍，路徑與 Bonds 相同）、MyDoc、教育部大專校院數位證書驗證、數位證明管理中心（dcmc.csie.ncku.edu.tw）、戶政、地政、移民署入出國日期證明書（ncp.immigration.gov.tw/niaweb/entryExitQuery）、財政部稅務入口網（www.etax.nat.gov.tw/etwmain）。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載），顯示網站的對話框；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
 - 預覽：PDF 以平台繪製前 10 頁（Android `PdfRenderer`，桌面 PDFBox），加密 PDF 先以本次輸入的密碼（MyData 為身分證統一編號）在記憶體產生不加密的副本（`PdfPlain`，不保存、不匯出），並可顯示文字層；圖片、XML、JSON、文字與 .p7m 內含的內容也可預覽。密碼只保存在這次執行的記憶體。
 - 圖片欄位：mdoc 的影像位元組與 JSON 憑證裡的 data: URL 或 base64 圖片（`ClaimPictures`）在證件詳情顯示為圖片。
-- 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。
+- 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
+- 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
 - 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
@@ -151,8 +152,10 @@
 - TWDIW 發證：`credential_issuer` 結尾有 `/`，中繼資料以附加方式取得，沒有 AS metadata，token 端點為 `{issuer}token`，表單帶 `client_id=moda_dw`、`authorization_details`、空的 `tx_code`；proof 的 `kid` 是不帶 fragment 的 did:key（jwk_jcs），`iss` 為 client_id；回應 `{credential}`。中繼資料寫 `jwt_vc_json`，實際送 SD-JWT（`typ vc+sd-jwt`，無 `vct`，W3C 內容在 `vc`）。
 - TWDIW 的錯誤回應是 `{resp_code, resp_message}`，沒有 OAuth `error_description`，由 `TwdiwDialect.errorDetail` 併入錯誤訊息。領卡端點的 HTTP 500 只會在權杖與 proof 都通過之後出現：`resp_code` 11500 是發證端程式本身的例外，其他代碼來自發證機關的憑證服務（例如取不到持有人資料），不是錢包請求的問題。
 - 較新的 TWDIW 發證端（例如 moda.wallet.gov.tw）在中繼資料加了 `nonce_endpoint`，但官方 App 的 proof 仍簽權杖回應的 `c_nonce`；改用 nonce 端點取得的值時，同一張卡回 HTTP 500。TWDIW session 一律用權杖回應的 `c_nonce`（`IssuanceDialect.tokenNonce`），nonce 端點只在發證端以錯誤回應要求新 nonce 時才用。
+- TWDIW 卡片 display 的 `description` 是 JSON 字串（`{"ial":"IAL 2"}`），`TwdiwAssurance` 讀出身分保證等級，存在 `IssuanceRecord.displayDescription`；證件詳情與出示畫面顯示「身分保證等級（IAL）」，空值顯示「發行端未選擇」，更改憑證的清單依等級由高到低排列。
 - 每張 TWDIW 卡片綁定同一把錢包層級金鑰（`HolderIdentities.TWDIW`），才能一起出示。
-- TWDIW 出示：client_id 為 did:key，要求物件由該 DID 簽章；回應是一個 jwt_vp（header 帶 `jwk`，有效 30 天），`presentation_submission` 用 `jwt_vp` + `path_nested jwt_vc`，成功判斷為 `code == "0"`。
+- TWDIW 出示：client_id 為 did:key，要求物件由該 DID 簽章；回應是一個 jwt_vp（header 帶 `jwk`，有效 30 天），`presentation_submission` 用 `jwt_vp` + `path_nested jwt_vc`，成功判斷為 `code == "0"`。官方查驗端的 `presentation_definition.purpose` 是 JSON 字串 `{client, scenario, purpose, terms_uri}`，由 `TwdiwPresentationDialect.consentTerms` 解析成 `ConsentTerms`，同意畫面顯示提供資料的對象、使用情境、用途與「「情境」知情同意書」連結（只接受 https，以瀏覽器開啟）；其他 Presentation Exchange 請求只顯示 `purpose` 原文。
+- 更改憑證：多張證件都能回答同一項時，同意畫面的「更改憑證」列出其他證件（`ExtendedPrepared.alternatives`，由 `ExtendedPresenter.replace` 換掉該項；OpenID4VP 1.0 走 Multipaz 時以 `CredentialQueryResult.select` 指定文件）。Presentation Exchange 的 `submission_requirements`（如官方的 pick max 1）可換到同一群組的其他 descriptor，替換後仍須通過 `PresentationExchange.satisfies`；已在其他項出示的證件不列入，DCQL `multiple` 的查詢不提供更換。
 - TWDIW 主機的 gate 只接受 https 443 埠，測試時以 ktor `MockEngine` 模擬 `*.wallet.gov.tw`（見 `TwdiwPlatformMock`）。
 - wallet.gov.tw 的 Cloudflare 會擋 HTTP 函式庫預設 User-Agent，`TwdiwUserAgent` 只對 TWDIW 主機改寫 UA。
 - TWDIW 狀態清單（StatusList2021）由 key-2 簽章，金鑰只公布在 jku `https://issuer-vc.wallet.gov.tw/api/keys`；該端點各次回應的 key-2 不一致（上游問題），驗簽失敗時重抓金鑰集，最多 4 次。發行端已列名時 jku 主機屬於平台，綁定成立；未列名（如 demo 發行端）為 `TLS_ONLY`。

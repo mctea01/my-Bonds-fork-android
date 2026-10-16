@@ -40,6 +40,7 @@ import diw.wallet.app.TaiwanModel
 import diw.wallet.app.WalletModel
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.twdiw.TwdiwAssurance
 import diw.wallet.core.util.QrEncoder
 import org.multipaz.document.Document
 
@@ -72,6 +73,16 @@ fun categoryOf(record: IssuanceRecord?): DocumentCategory = when {
     record.profile == TaiwanModel.TWDIW -> DocumentCategory.GOVERNMENT
     record.profile == TaiwanModel.MSVID -> DocumentCategory.ORGANIZATION
     else -> DocumentCategory.OTHER
+}
+
+/**
+ * Identity assurance level of a TWDIW card (from its display description), as the official wallet shows it; null
+ * for other credentials and cards whose issuer wrote none.
+ */
+fun assuranceText(record: IssuanceRecord?): String? {
+    if (record?.profile != TaiwanModel.TWDIW) return null
+    val level = TwdiwAssurance.level(record.displayDescription) ?: return null
+    return if (level.isEmpty()) "發行端未選擇" else "IAL $level"
 }
 
 /** Category icon of a credential when the issuer gives no logo. */
