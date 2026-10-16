@@ -32,6 +32,7 @@
 | [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 OpenID4VC 全組合與相容 Profile |
 | [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 後續：狀態、風險與信任錨點 |
 | [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
+| [acceptance/p1-p3-interoperability-followup.md](acceptance/p1-p3-interoperability-followup.md) | P1–P3 互通、錢包後端、簽章安全性補強與尚待正式服務驗收的條件（PR #11） |
 
 ## 使用與發佈
 
