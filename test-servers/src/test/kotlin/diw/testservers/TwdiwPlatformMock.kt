@@ -95,6 +95,12 @@ class TwdiwPlatformMock private constructor(
      */
     var metadataIssuerWithoutSlash = false
 
+    /**
+     * Request object kid; null uses the did:key verification method id. Verifiers set up on the live platform
+     * sign with "<did>#0", the did:jwk convention.
+     */
+    var requestKid: String? = null
+
     private val pending = mutableMapOf<String, PendingRequest>()
     private var accessToken: String? = null
     private var cNonce: String? = null
@@ -462,7 +468,7 @@ class TwdiwPlatformMock private constructor(
     private suspend fun requestObject(p: PendingRequest): String {
         val now = Clock.System.now().epochSeconds
         return signJws(
-            buildJsonObject { put("alg", "ES256"); put("typ", "oauth-authz-req+jwt"); put("kid", DidKeys.verificationMethod(verifierDid)) },
+            buildJsonObject { put("alg", "ES256"); put("typ", "oauth-authz-req+jwt"); put("kid", requestKid ?: DidKeys.verificationMethod(verifierDid)) },
             buildJsonObject {
                 put("client_id", verifierDid)
                 put("response_type", "vp_token")
