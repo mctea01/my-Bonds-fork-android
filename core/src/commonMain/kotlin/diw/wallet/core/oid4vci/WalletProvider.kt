@@ -96,9 +96,24 @@ class RemoteWalletProvider(
     }
 
     override suspend fun clientAssertion(audience: String): String? {
+        val proof = buildJwt(
+            type = "wallet-provider-client-proof+jwt",
+            key = instanceKey,
+            header = { put("jwk", instanceKey.publicKey.toJwk()) },
+        ) {
+            put("iss", clientId)
+            put("sub", clientId)
+            put("aud", "$baseUrl/client-assertion")
+            put("authorization_server", audience)
+            put("jti", PlatformCrypto.randomBytes(16).toBase64Url())
+        }
         val request = buildJsonObject {
             put("client_id", clientId)
             put("audience", audience)
+            put("client_proof", proof)
+            instanceKeyAttestation?.certChain?.let { chain ->
+                putJsonArray("x5c") { chain.certificates.forEach { add(it.encoded.toByteArray().toBase64()) } }
+            }
         }
         return postJson("$baseUrl/client-assertion", request).reqStr("client_assertion")
     }
