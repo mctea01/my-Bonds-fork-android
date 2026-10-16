@@ -13,6 +13,9 @@ Sources (tools/trust-roots/roots.json):
     importable root;
   - importable roots: pinned roots outside every program (eSign Root CA), built in untrusted so that a chain can be
     completed up to them and the user can import them from a document;
+  - every pinned file above is compared with the certificate its source URL publishes on each run: a root re-issued
+    with the same key and an intermediate a built-in root signed replace the file and its pin automatically; a new
+    key, or the first certificate of a new entry, is written with a warning so that a person checks it;
   - GPKI: the Taiwan government CA repositories, compared with the built-in GPKI anchors (report only).
 
 Writes core/.../trust/BuiltInPublicRoots.kt only when the set of roots changes, and keeps its UPDATED date
@@ -40,6 +43,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -152,6 +156,126 @@ def signed_by(cert, root):
         open(r, "w").write(to_pem(root.der))
         res = subprocess.run(["openssl", "verify", "-partial_chain", "-no_check_time", "-CAfile", r, c], capture_output=True)
         return res.returncode == 0
+
+
+# ---- Pinned files kept up to date from their sources -------------------------------------------------------------
+
+WRITE = True
+config_changed = False
+
+
+def certs_in(data, depth=0):
+    """Every certificate in a download: a DER or PEM certificate, a PKCS#7 bundle, or a ZIP of those."""
+    if depth > 2:
+        return []
+    if data[:2] == b"PK":
+        out = []
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as z:
+                for i in z.infolist():
+                    if not i.is_dir() and i.file_size <= 1 << 20:
+                        out += certs_in(z.read(i), depth + 1)
+        except zipfile.BadZipFile:
+            pass
+        return out
+    text = data.decode("utf-8", "replace")
+    if "-----BEGIN CERTIFICATE-----" in text:
+        return pem_blocks(text)
+    if "-----BEGIN PKCS7-----" in text or data[:1] == b"\x30":
+        for form in ("DER", "PEM"):
+            r = subprocess.run(["openssl", "pkcs7", "-inform", form, "-print_certs"], input=data, capture_output=True)
+            if r.returncode == 0 and b"BEGIN CERTIFICATE" in r.stdout:
+                return pem_blocks(r.stdout.decode("utf-8", "replace"))
+        r = subprocess.run(["openssl", "x509", "-inform", "DER", "-outform", "DER"], input=data, capture_output=True)
+        if r.returncode == 0:
+            return [r.stdout]
+        return []
+    # A certificate in base64 without the PEM lines.
+    compact = re.sub(r"\s", "", text)
+    if compact and re.fullmatch(r"[A-Za-z0-9+/=]+", compact):
+        try:
+            return certs_in(base64.b64decode(compact), depth + 1)
+        except Exception:
+            return []
+    return []
+
+
+def common_name(subject):
+    m = re.search(r"(?:^|, )CN=([^,]+)", subject)
+    return m.group(1).strip() if m else None
+
+
+def refresh(s, kind, issued_by=None):
+    """
+    Brings the pinned file of entry [s] up to date with the certificate its source (s["url"]) publishes, and returns
+    the state for the report, or None when the entry has no certificate yet and none could be fetched.
+
+    The pin moves automatically only when it stays as strong as it was: a root re-issued with the same key (newer
+    validity), or an intermediate with the same subject that a built-in or importable root signed ([issued_by]).
+    A root with a new key, or the first certificate of a new entry, is written and pinned too, but with a warning, so
+    that a person compares the fingerprint with the CA's site before the pull request is merged.
+    """
+    global config_changed
+    path = os.path.join(HERE, s["file"])
+    old = Cert(pem_blocks(open(path, encoding="utf-8").read())[0]) if os.path.exists(path) else None
+    if old is not None and s.get("sha256") and old.sha256 != s["sha256"]:
+        raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
+    if s.get("autoUpdate") is False or not s.get("url"):
+        return "只檢查（來源不是下載檔）" if old else None
+    try:
+        data = fetch(s["url"])
+    except Exception as e:
+        if old is None:
+            warn(f"{s['name']} 尚未取得，且無法從 {s['url']} 下載：{e}")
+            return None
+        notes.append(f"{s['name']} 的來源無法連線，沿用釘選的檔案")
+        return "來源無法連線，沿用釘選檔"
+    found = []
+    for der in certs_in(data):
+        try:
+            found.append(Cert(der))
+        except Exception:
+            continue
+    if old is not None and any(c.sha256 == old.sha256 for c in found):
+        return "與來源相符"
+    # A new entry names the certificate by its common name, or "*" for a download that holds only that root.
+    want = common_name(old.subject) if old else s.get("subject", s["name"])
+    same = [c for c in found if (c.subject == old.subject if old else want == "*" or common_name(c.subject) == want)]
+    if kind == "root":
+        same = [c for c in same if c.self_issued and c.ca]
+    else:
+        same = [c for c in same if not c.self_issued and c.ca]
+    same = [c for c in same if c.valid_at(TODAY) and (old is None or c.not_after > old.not_after)]
+    if not same:
+        if old is None:
+            warn(f"{s['name']} 尚未取得：{s['url']} 沒有這張憑證")
+            return None
+        notes.append(f"{s['name']} 不在來源 {s['url']} 中，或來源的版本沒有比較新，沿用釘選的檔案")
+        return "來源沒有較新的版本，沿用釘選檔"
+    new = max(same, key=lambda c: c.not_after)
+    if kind == "root":
+        if old is not None and new.spki != old.spki:
+            warn(f"{s['name']} 的來源有不同金鑰的新根憑證（SHA-256 {new.sha256}），沒有自動替換，需要人工確認")
+            return "來源有不同金鑰的新版，需要人工確認"
+        if old is None:
+            warn(f"首次取得根憑證 {s['name']}（SHA-256 {new.sha256}），請與 {s.get('page', s['url'])} 核對後再合併")
+    elif issued_by is not None and not issued_by(new):
+        if old is None:
+            warn(f"{s['name']} 尚未取得：來源的版本不是由內建或可匯入的根憑證簽發")
+            return None
+        warn(f"{s['name']} 的來源新版不是由內建或可匯入的根憑證簽發，沒有自動替換")
+        return "來源新版無法連到根憑證，沿用釘選檔"
+    if WRITE:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(to_pem(new.der))
+    if old is None and s.get("subject") == "*":
+        s["name"] = common_name(new.subject) or s["name"]
+        s.pop("subject")
+    s["sha256"] = new.sha256
+    config_changed = True
+    what = "首次取得" if old is None else f"已自動更新（原 SHA-256 {old.sha256}）"
+    notes.append(f"{s['name']} {what}，有效至 {new.not_after.date()}")
+    return "首次取得" if old is None else "已自動更新"
 
 
 # ---- CCADB ------------------------------------------------------------------------------------------------------
@@ -433,6 +557,8 @@ def main():
     ap.add_argument("--check", action="store_true", help="exit 1 when the Kotlin file would change; write nothing")
     ap.add_argument("--strict", action="store_true", help="exit 2 when there are warnings")
     args = ap.parse_args()
+    global WRITE
+    WRITE = not args.check
 
     cfg = json.load(open(CONFIG, encoding="utf-8"))
     warn_until = TODAY + datetime.timedelta(days=cfg.get("warnDays", 540))
@@ -507,8 +633,11 @@ def main():
     report.append("")
 
     # SM2: pinned, checked.
-    report += ["## 國密 SM2 根憑證（釘選）", "", "| 根憑證 | 機構 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    report += ["## 國密 SM2 根憑證（釘選）", "", "| 根憑證 | 機構 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     for s in cfg["sm2"]:
+        fetched = refresh(s, "root")
+        if fetched is None:
+            continue
         der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
         if sha256(der) != s["sha256"]:
             raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
@@ -522,7 +651,7 @@ def main():
         elif c.not_after < warn_until:
             state = "即將到期"
             warn(f"SM2 根憑證 {s['name']} 將於 {c.not_after.date()} 到期，需要從 {s['page']} 確認新版")
-        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} |")
+        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} | {fetched} |")
         if not c.valid_at(TODAY):
             continue
         source = "官網下載 " + s["url"] + ("（指紋與官網公布相符）" if s.get("fingerprintPublished") else "")
@@ -532,8 +661,11 @@ def main():
 
     # Other pinned roots: outside CCADB, pinned by the SHA-256 of the chain an official document carries.
     pinned_certs = {}
-    report += ["## 其他釘選的根憑證（不在 CCADB）", "", "| 根憑證 | 機構 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    report += ["## 其他釘選的根憑證（不在 CCADB）", "", "| 根憑證 | 機構 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     for s in cfg.get("pinned", []):
+        fetched = refresh(s, "root")
+        if fetched is None:
+            continue
         der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
         if sha256(der) != s["sha256"]:
             raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
@@ -549,7 +681,7 @@ def main():
         elif c.not_after < warn_until:
             state = "即將到期"
             warn(f"根憑證 {s['name']} 將於 {c.not_after.date()} 到期，需要從 {s['page']} 確認新版")
-        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} |")
+        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} | {fetched} |")
         if not c.valid_at(TODAY) or s["sha256"] in entries:
             continue
         pinned_certs[s["sha256"]] = c
@@ -583,8 +715,11 @@ def main():
 
     # Importable roots: pinned, self-issued, untrusted until the user imports one.
     importable = []
-    report += ["## 可匯入的根憑證（釘選，內建但不信任）", "", "| 根憑證 | 機構 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    report += ["## 可匯入的根憑證（釘選，內建但不信任）", "", "| 根憑證 | 機構 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     for s in cfg.get("importableRoots", []):
+        fetched = refresh(s, "root")
+        if fetched is None:
+            continue
         der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
         if sha256(der) != s["sha256"]:
             raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
@@ -595,7 +730,7 @@ def main():
         if not c.valid_at(TODAY):
             state = "已過期，不內建"
             warn(f"可匯入的根憑證 {s['name']} 已過期（{c.not_after.date()}），需要從 {s['page']} 取得新版")
-        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} |")
+        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} | {fetched} |")
         if c.valid_at(TODAY):
             importable.append({"name": s["name"], "owner": s["owner"], "issuer": s["name"], "purposes": s["purposes"],
                                "source": "釘選 SHA-256，取自 " + s["url"], "sha256": s["sha256"], "der": der, "cert": c})
@@ -603,11 +738,15 @@ def main():
 
     # Intermediates: pinned, each signed by a built-in or importable root; they only complete chains.
     intermediates = []
-    report += ["## 內建中繼憑證（釘選，只用於補足憑證鏈）", "", "| 中繼憑證 | 簽發的根憑證 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    report += ["## 內建中繼憑證（釘選，只用於補足憑證鏈）", "", "| 中繼憑證 | 簽發的根憑證 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     roots_by_fp = {e["sha256"]: Cert(e["der"]) for e in ordered}
     roots_by_fp.update({e["sha256"]: e["cert"] for e in importable})
     candidates = ordered + importable
     for s in cfg.get("intermediates", []):
+        fetched = refresh(s, "intermediate", lambda c: any(
+            roots_by_fp[e["sha256"]].subject_hash == c.issuer_hash and signed_by(c, roots_by_fp[e["sha256"]]) for e in candidates))
+        if fetched is None:
+            continue
         der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
         if sha256(der) != s["sha256"]:
             raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
@@ -625,7 +764,7 @@ def main():
         elif c.not_after < warn_until:
             state = "即將到期"
             warn(f"中繼憑證 {s['name']} 將於 {c.not_after.date()} 到期，需要從 {s['page']} 確認新版")
-        report.append(f"| {s['name']} | {issuer['name'] if issuer else '-'} | {c.not_after.date()} | {state} |")
+        report.append(f"| {s['name']} | {issuer['name'] if issuer else '-'} | {c.not_after.date()} | {state} | {fetched} |")
         if issuer is None or not c.valid_at(TODAY):
             continue
         intermediates.append({"name": s["name"], "owner": s["owner"], "issuer": issuer["name"], "purposes": s["purposes"],
@@ -658,6 +797,10 @@ def main():
         return 1 if changed else 0
     if changed:
         open(KOTLIN, "w", encoding="utf-8").write(text)
+    if config_changed:
+        with open(CONFIG, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            f.write("\n")
     with open(SERVICES_LOCK, "w", encoding="utf-8") as f:
         json.dump(new_lock, f, ensure_ascii=False, indent=2)
         f.write("\n")

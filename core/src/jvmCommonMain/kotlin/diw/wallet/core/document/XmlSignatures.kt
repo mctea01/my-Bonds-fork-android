@@ -30,7 +30,8 @@ internal object XmlDsig {
     fun digestName(uri: String?): String? = when (uri) {
         "http://www.w3.org/2000/09/xmldsig#sha1" -> "SHA-1"
         "http://www.w3.org/2001/04/xmldsig-more#sha224" -> "SHA-224"
-        SHA256 -> "SHA-256"
+        // The online approval files (.si) of Taiwan's official documents write SHA-256 under the xmldsig-more namespace.
+        SHA256, "http://www.w3.org/2001/04/xmldsig-more#sha256" -> "SHA-256"
         "http://www.w3.org/2001/04/xmldsig-more#sha384" -> "SHA-384"
         "http://www.w3.org/2001/04/xmlenc#sha512" -> "SHA-512"
         "http://www.w3.org/2007/05/xmldsig-more#sm3", "http://www.w3.org/2001/04/xmldsig-more#sm3" -> "SM3"
@@ -175,15 +176,15 @@ internal object XmlDsig {
      * Checks [sig] of [doc] for integrity only: each reference digest (detached references through [resolve]) and the
      * signature value over the canonical SignedInfo with the first certificate in KeyInfo.
      */
-    fun integrity(doc: Document, sig: Element, resolve: (String) -> ByteArray? = { null }): Integrity {
+    fun integrity(doc: Document, sig: Element, resolve: (String) -> ByteArray? = { null }, ns: String? = DS): Integrity {
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
-        val signedInfo = XmlParsing.child(sig, DS, "SignedInfo")!!
-        val c14nEl = XmlParsing.child(signedInfo, DS, "CanonicalizationMethod")
+        val signedInfo = XmlParsing.child(sig, ns, "SignedInfo")!!
+        val c14nEl = XmlParsing.child(signedInfo, ns, "CanonicalizationMethod")
         val c14n = c14nEl?.getAttribute("Algorithm").orEmpty()
-        val method = XmlParsing.child(signedInfo, DS, "SignatureMethod")?.getAttribute("Algorithm")
+        val method = XmlParsing.child(signedInfo, ns, "SignatureMethod")?.getAttribute("Algorithm")
         val qp = XmlParsing.descendants(sig, null, "QualifyingProperties").firstOrNull { it.namespaceURI == XADES || it.namespaceURI == XADES141 || it.namespaceURI?.startsWith("http://uri.etsi.org/01903") == true }
-        val certs = XmlParsing.descendants(sig, DS, "X509Certificate").mapNotNull { e ->
+        val certs = XmlParsing.descendants(sig, ns, "X509Certificate").mapNotNull { e ->
             runCatching { Base64.getMimeDecoder().decode(e.textContent.trim()) }.getOrNull()?.let { Bc.holder(it) }
         }
         val signer = certs.firstOrNull()
@@ -193,11 +194,11 @@ internal object XmlDsig {
         var coversWhole = false
         var signedPropsCovered = false
         val signedProps = qp?.let { XmlParsing.descendants(it, null, "SignedProperties").firstOrNull() }
-        for (ref in XmlParsing.childrenNamed(signedInfo, DS, "Reference")) {
+        for (ref in XmlParsing.childrenNamed(signedInfo, ns, "Reference")) {
             val uri = if (ref.hasAttribute("URI")) ref.getAttribute("URI") else null
-            val transforms = XmlParsing.child(ref, DS, "Transforms")?.let { XmlParsing.childrenNamed(it, DS, "Transform") }.orEmpty()
-            val digestAlg = digestName(XmlParsing.child(ref, DS, "DigestMethod")?.getAttribute("Algorithm"))
-            val expected = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(ref, DS, "DigestValue")).orEmpty()) }.getOrNull()
+            val transforms = XmlParsing.child(ref, ns, "Transforms")?.let { XmlParsing.childrenNamed(it, ns, "Transform") }.orEmpty()
+            val digestAlg = digestName(XmlParsing.child(ref, ns, "DigestMethod")?.getAttribute("Algorithm"))
+            val expected = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(ref, ns, "DigestValue")).orEmpty()) }.getOrNull()
             if (digestAlg == null || expected == null) { problems.add("參照 ${uri ?: ""} 的摘要演算法不支援"); integrity = worst(integrity, Check.NOT_CHECKED); continue }
             val data: ByteArray? = try {
                 referenceData(doc, sig, uri, transforms, resolve)
@@ -224,7 +225,7 @@ internal object XmlDsig {
 
         // Signature value over the canonical SignedInfo.
         val alg = signatureName(method)
-        val value = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(sig, DS, "SignatureValue")).orEmpty()) }.getOrNull()
+        val value = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(sig, ns, "SignatureValue")).orEmpty()) }.getOrNull()
         when {
             signer == null -> { problems.add("簽章沒有附上簽署者憑證"); integrity = worst(integrity, Check.NOT_CHECKED) }
             alg == null || value == null -> { problems.add("不支援的簽章演算法 $method"); integrity = worst(integrity, Check.NOT_CHECKED) }
@@ -281,7 +282,8 @@ internal object XmlDsig {
             uri.startsWith("#xpointer(id(") -> nodeSet = XmlParsing.byId(doc, uri.substringAfter("id(").trim('\'', '"', ')', ' ').substringBefore("'").substringBefore("\"")) ?: return null
             uri == "#xpointer(/)" -> nodeSet = doc
             uri.startsWith("#") -> nodeSet = XmlParsing.byId(doc, uri.removePrefix("#")) ?: return null
-            else -> octets = resolve(java.net.URLDecoder.decode(uri, "UTF-8")) ?: return null
+            // A file name as written first (official document names may hold "+" or "%"), then URI-decoded.
+            else -> octets = resolve(uri) ?: runCatching { resolve(java.net.URLDecoder.decode(uri, "UTF-8")) }.getOrNull() ?: return null
         }
         val exclude = ArrayList<org.w3c.dom.Node>()
         for (t in transforms) {
@@ -329,6 +331,8 @@ internal object XmlDsig {
         signer: DocumentSigner,
         now: Instant = Clock.System.now(),
         timestamper: (suspend (ByteArray) -> ByteArray)? = null,
+        /** Validation data for the signer and the time-stamp authority of the token (baseline LT), when wanted. */
+        validation: (suspend (ByteArray?) -> diw.wallet.core.document.sign.ValidationData)? = null,
     ): ByteArray {
         val text = xml.decodeToString().removePrefix("﻿")
         val declared = Regex("<\\?xml[^>]*encoding=[\"']([^\"']+)[\"']").find(text.take(200))?.groupValues?.get(1)
@@ -379,15 +383,43 @@ internal object XmlDsig {
             .let { XmlParsing.child(it, DS, "SignedInfo")!! }
         val raw = signer.sign(XmlC14n.canonicalize(si, XmlC14n.EXC))
         val value = b64.encodeToString(if (signer.keyType == SignerKeyType.EC_P256) derToRaw(raw) else raw)
-        if (timestamper == null) return assemble(signature(docDigest, propDigest, value, ""))
+        if (timestamper == null && validation == null) return assemble(signature(docDigest, propDigest, value, ""))
 
         // XAdES-T: a time stamp over the canonical SignatureValue element.
-        val signed = XmlParsing.parse(assemble(signature(docDigest, propDigest, value, "")))
-        val sv = XmlParsing.byId(signed, "value-$id")!!
-        val token = timestamper(XmlC14n.canonicalize(sv, XmlC14n.EXC))
-        val unsigned = "<xades:UnsignedProperties><xades:UnsignedSignatureProperties><xades:SignatureTimeStamp>" +
-            "<ds:CanonicalizationMethod Algorithm=\"${XmlC14n.EXC}\"/><xades:EncapsulatedTimeStamp>" + b64.encodeToString(token) +
-            "</xades:EncapsulatedTimeStamp></xades:SignatureTimeStamp></xades:UnsignedSignatureProperties></xades:UnsignedProperties>"
-        return assemble(signature(docDigest, propDigest, value, unsigned))
+        val token = timestamper?.let { ts ->
+            val signed = XmlParsing.parse(assemble(signature(docDigest, propDigest, value, "")))
+            ts(XmlC14n.canonicalize(XmlParsing.byId(signed, "value-$id")!!, XmlC14n.EXC))
+        }
+        val unsigned = StringBuilder("<xades:UnsignedProperties><xades:UnsignedSignatureProperties>")
+        token?.let {
+            unsigned.append("<xades:SignatureTimeStamp><ds:CanonicalizationMethod Algorithm=\"${XmlC14n.EXC}\"/><xades:EncapsulatedTimeStamp>")
+                .append(b64.encodeToString(it)).append("</xades:EncapsulatedTimeStamp></xades:SignatureTimeStamp>")
+        }
+        // XAdES baseline LT: the certificates and revocation values of the signer and the time-stamp authority.
+        validation?.invoke(token)?.let { v ->
+            if (v.certificates.isNotEmpty()) {
+                unsigned.append("<xades:CertificateValues>")
+                v.certificates.forEach { unsigned.append("<xades:EncapsulatedX509Certificate>").append(it).append("</xades:EncapsulatedX509Certificate>") }
+                unsigned.append("</xades:CertificateValues>")
+            }
+            if (!v.empty) {
+                unsigned.append("<xades:RevocationValues>")
+                if (v.crls.isNotEmpty()) {
+                    unsigned.append("<xades:CRLValues>")
+                    v.crls.forEach { unsigned.append("<xades:EncapsulatedCRLValue>").append(it).append("</xades:EncapsulatedCRLValue>") }
+                    unsigned.append("</xades:CRLValues>")
+                }
+                if (v.ocsps.isNotEmpty()) {
+                    unsigned.append("<xades:OCSPValues>")
+                    v.ocsps.forEach { unsigned.append("<xades:EncapsulatedOCSPValue>").append(it).append("</xades:EncapsulatedOCSPValue>") }
+                    unsigned.append("</xades:OCSPValues>")
+                }
+                unsigned.append("</xades:RevocationValues>")
+            }
+        }
+        // An empty UnsignedSignatureProperties is not allowed; without a token or data nothing is added.
+        if (unsigned.endsWith("<xades:UnsignedSignatureProperties>")) return assemble(signature(docDigest, propDigest, value, ""))
+        unsigned.append("</xades:UnsignedSignatureProperties></xades:UnsignedProperties>")
+        return assemble(signature(docDigest, propDigest, value, unsigned.toString()))
     }
 }

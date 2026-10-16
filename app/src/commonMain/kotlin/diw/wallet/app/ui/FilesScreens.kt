@@ -70,6 +70,8 @@ import diw.wallet.app.NfcReaderOption
 import diw.wallet.app.PickedFile
 import diw.wallet.app.Screen
 import diw.wallet.app.SignForm
+import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.MobileMoicaSp
@@ -100,6 +102,8 @@ import kotlinx.datetime.LocalDate
 import diw.wallet.core.document.derived.DocumentFields
 import diw.wallet.core.document.derived.EntryExitCertificate
 import diw.wallet.core.document.derived.MainlandEntryExitRecord
+import diw.wallet.core.document.derived.MainlandPermitLink
+import diw.wallet.core.document.derived.StudentStatusProof
 import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -475,8 +479,14 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         }
         SectionTitle("時戳")
         if (f.timestamps.isEmpty()) Text("還沒有時戳。時戳由時戳機構證明這份檔案在某個時間已存在，只會送出檔案的 SHA-256。", style = MaterialTheme.typography.bodySmall)
-        f.timestamps.forEach { t ->
+        f.timestamps.forEachIndexed { i, t ->
             VerdictPill(if (t.trusted) Verdict.PASS else Verdict.CAUTION, "${t.tsa ?: "時戳機構"}　${localTime(t.time)}" + if (t.trusted) "" else "（機構不在信任錨點）")
+            val v = t.validation
+            if (v != null) {
+                Text(v.summary() + "，取得於 ${localTime(v.collectedAt)}", style = MaterialTheme.typography.bodySmall)
+            } else {
+                TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text("取得並保存時戳機構的撤銷資訊（OCSP 優先）") }
+            }
         }
         OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) {
             Text("加上時戳（${TsaServices.byId(model.settings.tsaId).name}）")
@@ -1023,26 +1033,72 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         }
         SectionTitle("簽署者")
         SignerPicker(model) { choice = it }
-        if (form == SignForm.PADES) {
-            OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
-            Text("加上簽章時戳（${TsaServices.byId(model.settings.tsaId).name}，需要網路）")
-        }
-        val toSign = remember(f.id) { model.files.membersToSign(f) }
-        var withMembers by remember(f.id) { mutableStateOf(true) }
-        if (form == SignForm.XADES && toSign.isNotEmpty()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = withMembers, onCheckedChange = { withMembers = it })
-                Column {
-                    Text("一併簽署公文容器內的 ${toSign.size} 個檔案", style = MaterialTheme.typography.bodyMedium)
-                    Text(toSign.joinToString("、") { it.name } + "。XML 以 XAdES、PDF 以 PAdES 簽署，簽好的檔案放進簽署後公文的容器；" +
-                        "自然人憑證卡與遠端簽章每個檔案各需一次感應或授權。", style = MaterialTheme.typography.bodySmall)
+        val tsaName = TsaServices.byId(model.settings.tsaId).name
+        var level by remember { mutableStateOf(PadesLevel.entries.firstOrNull { it.name == model.settings.padesLevel } ?: PadesLevel.B_T) }
+        var revocation by remember { mutableStateOf(false) }
+        var action by remember { mutableStateOf(ApprovalPoint.ACTIONS.first()) }
+        var unit by remember { mutableStateOf("") }
+        var jobTitle by remember { mutableStateOf("") }
+        var role by remember { mutableStateOf("") }
+        when (form) {
+            SignForm.PADES -> {
+                OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                SectionTitle("保證層級")
+                PadesLevel.entries.forEach { l ->
+                    Row(Modifier.fillMaxWidth().clickable { level = l }, verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.RadioButton(selected = l == level, onClick = { level = l })
+                        Column {
+                            Text(l.title, style = MaterialTheme.typography.bodyMedium)
+                            Text(l.detail, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
+                if (level.revocation) Text("撤銷資訊取不到時不會寫入，請改選較低的等級或稍後再試。", style = MaterialTheme.typography.bodySmall)
+                else Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = revocation, onCheckedChange = { revocation = it })
+                    Text("附加憑證鏈與撤銷資訊（OCSP 優先，放在簽章內，需要網路）")
+                }
+            }
+            SignForm.APPROVAL -> {
+                val case by produceState<FilesModel.ApprovalCase?>(null, f.id) { value = runCatching { model.files.approvalCase(f) }.getOrNull() }
+                case?.let { c ->
+                    InfoCard("簽核範圍", buildList {
+                        add(if (c.approval != null) "加在簽核檔「${c.approval.name}」之後，涵蓋前一個簽核點" else "建立新的簽核檔")
+                        add("涵蓋 ${c.files.size} 個檔案：" + c.files.joinToString("、") { it.name })
+                        if (c.missing.isNotEmpty()) add("不在錢包內，無法簽核：" + c.missing.joinToString("、"))
+                        add("公文與附件本身不改動，簽核點以檔名與 SHA-256 摘要列出每個檔案。")
+                    })
+                }
+                SectionTitle("異動別")
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ApprovalPoint.ACTIONS.forEach { a -> FilterChip(selected = a == action, onClick = { action = a }, label = { Text(a) }) }
+                }
+                OutlinedTextField(value = reason, onValueChange = { reason = it.take(500) }, label = { Text("簽核意見（選填）") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = unit, onValueChange = { unit = it.take(60) }, label = { Text("單位（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = jobTitle, onValueChange = { jobTitle = it.take(60) }, label = { Text("職稱（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = role, onValueChange = { role = it.take(60) }, label = { Text("角色（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("姓名取自簽署憑證。", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
+                    Text("為新的簽核檔加上文件時戳（$tsaName，需要網路）")
+                }
+            }
+            else -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
+                    Text("加上簽章時戳（$tsaName，需要網路）")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = revocation, onCheckedChange = { revocation = it })
+                    Text("附加憑證鏈與撤銷資訊（OCSP 優先，baseline LT，需要網路）")
                 }
             }
         }
+        var details by remember { mutableStateOf(false) }
+        TextButton(onClick = { details = !details }) { Text(if (details) "隱藏技術細節" else "技術細節") }
+        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, revocation))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
             VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
@@ -1053,10 +1109,52 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         } else true
         BusyLine(busy, error)
         CscPromptPanel(model)
-        Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp, allowBreakingCertification = locked, withMembers = withMembers && form == SignForm.XADES) } }, enabled = choice != null && busy == null && breakOk) {
+        Button(onClick = { choice?.let { model.files.sign(
+                    f, it, form, reason, location, timestamp, allowBreakingCertification = locked,
+                    point = ApprovalPoint(action, reason.ifBlank { null }, unit.ifBlank { null }, jobTitle.ifBlank { null }, role.ifBlank { null }),
+                    level = level, revocation = revocation,
+                ) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")
         }
     }
+}
+
+/** A plain card with a title and lines (no verdict colours). */
+@Composable
+private fun InfoCard(title: String, lines: List<String>) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+        }
+    }
+}
+
+/** What the chosen form and options put in the signature, for the expandable technical details. */
+private fun signDetails(form: SignForm, level: PadesLevel, timestamp: Boolean, revocation: Boolean): List<String> = when (form) {
+    SignForm.PADES -> buildList {
+        add("SubFilter ETSI.CAdES.detached，摘要 SHA-256，簽署屬性含 signing-certificate-v2，不寫 signingTime（以 PDF 的 /M 宣稱時間）")
+        add("增量更新：原有內容與既有簽章不變，簽章涵蓋整份 PDF 到簽章值之前")
+        if (level.timestamp) add("signature-time-stamp：時戳機構對簽章值的 RFC 3161 時戳，放在未簽署屬性")
+        if (level.revocation || revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
+        if (level == PadesLevel.B_LTA) add("文件時戳：另一個 /Type /DocTimeStamp 欄位（SubFilter ETSI.RFC3161），涵蓋 DSS，之後可再加時戳延長")
+        add("簽完以憑證公鑰重新檢查簽章值，不符就不寫入")
+    }
+    SignForm.APPROVAL -> listOf(
+        "文書處理手冊的線上簽核格式（104_sign DTD）：在 <線上簽核資訊> 加一個 <簽核點定義>，內含不帶命名空間的 XMLDSig <Signature>",
+        "Reference：每個公文與附件以檔名指向檔案本身（SHA-256 摘要）、自己的 <Object>（異動資訊與簽核檔案清單）、前一個簽核點",
+        "SignedInfo 以 C14N 20010315 正規化，簽章演算法依憑證（rsa-sha256 或 ecdsa-sha256），KeyInfo 放簽署憑證",
+        "簽章時間以民國年月日時分（臺北時間）寫在異動資訊",
+    ) + (if (timestamp) listOf("文件時戳：對新的簽核檔 SHA-256 取 RFC 3161 時戳，與檔案分開保存") else emptyList())
+    SignForm.XADES -> listOf(
+        "XAdES enveloped（baseline B）：SignedProperties 含 SigningTime、SigningCertificateV2 與 DataObjectFormat，摘要 SHA-256",
+    ) + (if (timestamp) listOf("SignatureTimeStamp：對 SignatureValue 的 RFC 3161 時戳（B-T）") else emptyList()) +
+        (if (revocation) listOf("CertificateValues 與 RevocationValues（OCSP 優先，取不到才用 CRL）（baseline LT）") else emptyList())
+    else -> listOf(
+        "CMS SignedData，摘要 SHA-256，簽署屬性含 signing-certificate-v2 與 signingTime",
+    ) + (if (timestamp) listOf("signature-time-stamp：對簽章值的 RFC 3161 時戳（B-T）") else emptyList()) +
+        (if (revocation) listOf("SignedData 的 certificates 加上完整憑證鏈，crls 加上 CRL 與 OCSP 回應（RFC 5940 otherRevInfo）（baseline LT）") else emptyList()) +
+        (if (form == SignForm.ASIC) listOf("ASiC-E：mimetype、原檔與 META-INF/signature.p7s，ASiCManifest 列出原檔摘要") else emptyList())
 }
 
 // ---------------------------------------------------------------- preview
@@ -1080,6 +1178,11 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
                 null -> {}
             }
             p.household?.let { HouseholdView(it) }
+            when (val c = p.certificate) {
+                is StudentStatusProof -> StudentStatusView(c)
+                is MainlandPermitLink -> PermitLinkView(c)
+                null -> {}
+            }
             if (p.pages.isNotEmpty()) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
                 PreviewImage(p.pages[i], "第 ${i + 1} 頁")
@@ -1204,6 +1307,78 @@ private fun EntryExitView(c: EntryExitCertificate) {
                 }
             }
         }
+    }
+}
+
+/** A proof of student status laid out as its parts: the student, the study, the issuing office and verification. */
+@Composable
+private fun StudentStatusView(c: StudentStatusProof) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(c.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        c.number?.let { Text("NO. $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
+        Text("學生", style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue("姓名", it, small = true) }
+        c.englishName?.let { LabelValue("英文姓名", it, small = true) }
+        c.gender?.let { LabelValue("性別", it, small = true) }
+        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
+        c.studentId?.let { LabelValue("學號", it, small = true) }
+        c.idNumber?.let { LabelValue("證件號碼", it, small = true) }
+        Text("學籍", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.school?.let { LabelValue("學校", it, small = true) }
+        LabelValue("狀態", "在學（證明列印時）", small = true)
+        c.enrolled?.let { LabelValue("入學年月", it, small = true) }
+        c.college?.let { LabelValue("學院", it + (c.collegeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.major?.let { LabelValue("專業", it + (c.majorEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.programme?.let { LabelValue("學制", it + (c.programmeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        Text("出具單位", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.office?.let { LabelValue("單位", it + (c.officeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.printDate?.let { LabelValue("列印日期", it.toString(), small = true) }
+        c.address?.let { LabelValue("地址", it + (c.zipCode?.let { z -> "（郵遞區號 $z）" } ?: ""), small = true) }
+        c.phone?.let { LabelValue("電話", it, small = true) }
+        c.contactPhone?.let { LabelValue("諮詢電話", it, small = true) }
+        c.email?.let { LabelValue("電子郵件", it, small = true) }
+        c.website?.let { LabelValue("網站", it, small = true) }
+        if (c.verificationCode != null || c.verificationUrl != null) {
+            Text("驗證", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            c.verificationCode?.let { LabelValue("驗證密鑰", it, small = true) }
+            c.verificationUrl?.let { LabelValue("驗證網址", it, small = true) }
+            Text("學校的驗證網頁以驗證密鑰查詢這份證明；網址若是 http，連線沒有加密，查詢結果只能當作輔助比對。",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+        }
+    }
+}
+
+/**
+ * A mainland China permit association laid out as its parts: the person, the documents linked to them (travel
+ * permit with its expiry, residence permit) and the record with the last day it is valid.
+ */
+@Composable
+private fun PermitLinkView(c: MainlandPermitLink) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text("通行證與居住證關聯查詢結果", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue("姓名", it, small = true) }
+        c.gender?.let { LabelValue("性別", it, small = true) }
+        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
+        c.residentOf?.let { LabelValue("身分", "${it}居民", small = true) }
+        Text("同時持用或曾持用的證件", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        if (c.permits.isEmpty()) Text("讀不出證件清單，請看下方頁面。", style = MaterialTheme.typography.bodySmall)
+        c.permits.forEach { p -> LabelValue(p.name, p.number + (p.validUntil?.let { "\n有效期至 $it" } ?: ""), small = true) }
+        if (c.travelPermit != null && c.residencePermit != null) {
+            Text("文件記載通行證與居住證屬於同一人。", style = MaterialTheme.typography.bodySmall)
+        }
+        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue("發證機關", c.issuer, small = true)
+        c.number?.let { LabelValue("編號", it, small = true) }
+        c.queryDate?.let { LabelValue("查詢日期", it.toString(), small = true) }
+        c.validUntil?.let { LabelValue("有效期至", "$it（自查詢日期起 ${c.validDays} 天）", small = true) }
+        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
     }
 }
 

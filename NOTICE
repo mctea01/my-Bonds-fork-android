@@ -44,7 +44,10 @@ from it.
 Built-in trust anchors (core/.../trust/BuiltInAnchors.kt,
 BuiltInPublicRoots.kt, BuiltInTestAnchors.kt) are public certificates
 published by their certification authorities and by the Multipaz project; they
-are reproduced for certificate path validation only.
+are reproduced for certificate path validation only. The same holds for the
+certificates tools/trust-roots keeps in its pinned files (downloaded from each
+CA's own site) and for the public service certificates in
+test-servers/src/test/resources/chains.
 
 No source code was copied from the Bonds (bonds.tw) applications or from
 open-gpki-pkcs11; compatibility with them was implemented from their

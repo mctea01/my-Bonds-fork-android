@@ -260,4 +260,118 @@ class DocumentFieldsTest {
         val suggested = DerivedCredentials.suggestedClaims(report, "a.pdf", null, text).map { it.name }
         assertTrue("entryExitRecords" in suggested && "查询人姓名" !in suggested, suggested.toString())
     }
+
+    @Test
+    fun studentStatusProof() {
+        // The layout of a mainland university proof (e签宝), with fictitious values; lines wrap inside words.
+        val text = """
+                        中华人民共和国
+                          浙江  杭州
+
+            地址：浙江省杭州市测试区测试路1号              邮编(Zip Code)：310000
+            Address:1 Test Road,Test District,Hangzhou,Zhejiang Province,P.R.CHINA
+            电话(telephone)：+86-0591-00000000                    https://www.example.edu.cn
+
+            学籍（在学）证明
+            NO.200000000001
+            学生：测试生，性别：女，出生于 2006 年 03 月 04 日，学号：
+            100000001，证件号码:00000001。于 2024 年 09 月入学，现在计算
+            机与大数据学院,软件工程专业四年普通全日制本科学习。
+
+            PROOF OF STUDENT STATUS
+            The Academic Affairs Office of Example University hereby certifies
+            that TEST, STUDENT,female,born on March 4, 2006,Student ID No.
+            100000001,ID No. 00000001,has been studying in College of
+            Computer and Data Science since September 2024 ,majoring in the
+            Regular four-year full-time undergraduate program of Software
+            Engineering.
+                                                         示例大学教务处
+                                  Academic Affairs Office of Example University
+                                                         打印日期/Date: 2030-10-12
+
+            示例大学教务处 Academic Affairs Office of Example University
+            咨询电话:+860591 00000000 电子邮箱：office@example.edu.cn
+            Telephone:+ 860591 00000000 E-mail：office@example.edu.cn
+            验证密钥(Verification Code)：0123456789ABCDEF
+            验证官网(Verification URL)：http://verify.example.edu.cn/pc/anti-counterfeit
+        """.trimIndent()
+        assertNull(diw.wallet.core.document.derived.MainlandPermitLink.parse(text))
+        val c = assertNotNull(diw.wallet.core.document.derived.StudentStatusProof.parse(text))
+        assertEquals("学籍（在学）证明", c.title)
+        assertEquals("200000000001", c.number)
+        assertEquals("测试生", c.name)
+        assertEquals("TEST, STUDENT", c.englishName)
+        assertEquals("女", c.gender)
+        assertEquals(LocalDate(2006, 3, 4), c.birthDate)
+        assertEquals("100000001", c.studentId)
+        assertEquals("00000001", c.idNumber)
+        assertEquals("2024-09", c.enrolled)
+        assertEquals("计算机与大数据学院", c.college)
+        assertEquals("软件工程", c.major)
+        assertEquals("四年普通全日制本科", c.programme)
+        assertEquals("College of Computer and Data Science", c.collegeEnglish)
+        assertEquals("Software Engineering", c.majorEnglish)
+        assertEquals("Regular four-year full-time undergraduate program", c.programmeEnglish)
+        assertEquals("示例大学", c.school)
+        assertEquals("示例大学教务处", c.office)
+        assertEquals("Academic Affairs Office of Example University", c.officeEnglish)
+        assertEquals(LocalDate(2030, 10, 12), c.printDate)
+        assertEquals("浙江省杭州市测试区测试路1号", c.address)
+        assertEquals("310000", c.zipCode)
+        assertEquals("+86-0591-00000000", c.phone)
+        assertEquals("+860591 00000000", c.contactPhone)
+        assertEquals("office@example.edu.cn", c.email)
+        assertEquals("https://www.example.edu.cn", c.website)
+        assertEquals("0123456789ABCDEF", c.verificationCode)
+        assertEquals("http://verify.example.edu.cn/pc/anti-counterfeit", c.verificationUrl)
+        val report = DocumentReport(DocumentFormat.PDF, "00", 1, checkedAt = 0)
+        val suggested = DerivedCredentials.suggestedClaims(report, "a.pdf", null, text).associate { it.name to it.value }
+        assertEquals("软件工程", suggested["major"])
+        assertEquals("在學", suggested["studentStatus"])
+        assertTrue("学生" !in suggested && "Telephone" !in suggested, suggested.keys.toString())
+    }
+
+    @Test
+    fun mainlandPermitLink() {
+        // The layout of the National Immigration Administration's permit association, with fictitious values.
+        val text = """
+            中华人民共和国出入境管理局
+            台湾居民来往大陆通行证与居住证关联查询结果
+            编号：J000000000001
+                经系统核验，      台湾      居民，姓名:   测试人   ，性别:    女    ，出
+            生日期: 1990年01月02日 ，同时持用或曾持用下列证件：
+                台湾居民来往大陆通行证号码：   00000001   ，有效期至： 2035年05月06日 ；
+                台湾居民居住证号码：  830000199001020000  ；
+                请为该凭证持有人办理相关事务依法提供服务便利。
+            1.本电子文件原件为PDF格式的数据电文，左上角图标处载有电子签名认证数据。通过电子签名认证的为有
+              效数据电文，否则为无效数据电文。
+            5.本电子文件从查询日期起，30天内有效。
+
+            2030年07月16日
+            第 1 页 / 共  1 页
+        """.trimIndent()
+        assertNull(diw.wallet.core.document.derived.MainlandEntryExitRecord.parse(text))
+        assertNull(diw.wallet.core.document.derived.StudentStatusProof.parse(text))
+        val c = assertNotNull(diw.wallet.core.document.derived.MainlandPermitLink.parse(text))
+        assertEquals("J000000000001", c.number)
+        assertEquals("测试人", c.name)
+        assertEquals("女", c.gender)
+        assertEquals(LocalDate(1990, 1, 2), c.birthDate)
+        assertEquals("台湾", c.residentOf)
+        assertEquals(2, c.permits.size)
+        assertEquals("台湾居民来往大陆通行证", c.travelPermit?.name)
+        assertEquals("00000001", c.travelPermit?.number)
+        assertEquals(LocalDate(2035, 5, 6), c.travelPermit?.validUntil)
+        assertEquals("830000199001020000", c.residencePermit?.number)
+        assertNull(c.residencePermit?.validUntil)
+        assertEquals(LocalDate(2030, 7, 16), c.queryDate)
+        assertEquals(30, c.validDays)
+        assertEquals(LocalDate(2030, 8, 14), c.validUntil)
+        assertEquals(1, c.pages)
+        val report = DocumentReport(DocumentFormat.PDF, "00", 1, checkedAt = 0)
+        val suggested = DerivedCredentials.suggestedClaims(report, "a.pdf", null, text).associate { it.name to it.value }
+        assertEquals("true", suggested["permitsLinked"])
+        assertEquals("2030-08-14", suggested["recordValidUntil"])
+        assertTrue("生日期" !in suggested, suggested.keys.toString())
+    }
 }

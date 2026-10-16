@@ -281,6 +281,52 @@ class DocumentSigningTest {
     }
 
     @Test
+    fun officialCaseSignedWithApprovalPoints() = runBlocking<Unit> {
+        trustRoot()
+        val letter = diw.testservers.fixtures.OfficialLetter(
+            sender = "測試機關", senderCode = "A00000000", recipient = "王小明", subject = "線上簽核測試",
+            explanations = listOf("說明"), wordPrefix = "測字", serial = "1150000002",
+            date = kotlin.time.Instant.parse("2026-10-11T04:00:00Z"),
+        ).toXml()
+        val attachment = "附件內容".repeat(50).toByteArray()
+        val files = listOf("稿1150000002v1.di" to letter, "附件 1+2.doc" to attachment)
+        val point1 = diw.wallet.core.document.official.ApprovalPoint("呈核", "陳核 <測試>", unit = "測試科", title = "科員", role = "承辦人員",
+            time = kotlin.time.Instant.parse("2026-10-16T02:30:00Z"))
+        val first = DocumentSigning.signApproval(null, files, signer(false), point1)
+        val text = String(first)
+        assertTrue(text.startsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE 線上簽核"), text.take(120))
+        assertTrue("xmlns" !in text && "xades" !in text.lowercase(), "no namespaces, not XAdES")
+        assertTrue("<簽章時間>11510161030</簽章時間>" in text, "ROC time in Taipei")
+        // The case files stay as they were; a second signer adds a point that also covers the first one.
+        val second = DocumentSigning.signApproval(first, files, signer(true), diw.wallet.core.document.official.ApprovalPoint("決行", "可"))
+        save("approval.si", second)
+        val related = files.toMap()
+        val r = DocumentInspector.inspect(second, "approval.si", trust, related = related)
+        assertEquals(2, r.signatures.size, r.signatures.toString())
+        r.signatures.forEach { sig ->
+            assertEquals(SignatureFormat.OFFICIAL_APPROVAL, sig.format)
+            assertEquals(DocumentVerdict.VALID, sig.verdict, sig.problems.toString() + sig.notes)
+        }
+        assertTrue(r.signatures[0].label.contains("Test Signer RSA") && r.signatures[0].label.contains("呈核"), r.signatures[0].label)
+        assertTrue(r.signatures[1].notes.first().contains("與前一個簽核點"), r.signatures[1].notes.toString())
+        assertEquals("呈核：陳核 <測試>", r.signatures[0].reason)
+        val doc = diw.wallet.core.document.official.OfficialDocuments.parse(second)!!
+        assertEquals(listOf("呈核", "決行"), doc.steps.map { it.action })
+        assertEquals(listOf("稿1150000002v1.di", "附件 1+2.doc"), diw.wallet.core.document.official.ApprovalFile.of("a.si", second)!!.names)
+
+        // Without the case files the points cannot be compared; with a changed attachment they fail.
+        val alone = DocumentInspector.inspect(second, "approval.si", trust)
+        assertTrue(alone.signatures.all { it.integrity == Check.NOT_CHECKED }, alone.signatures.map { it.integrity }.toString())
+        assertTrue(alone.signatures[0].notes.any { it.contains("不在錢包內") })
+        val changed = DocumentInspector.inspect(second, "approval.si", trust, related = related + ("附件 1+2.doc" to "改過".toByteArray()))
+        assertTrue(changed.signatures.all { it.integrity == Check.FAIL })
+        // Changing an earlier point's opinion breaks that point and the later one that covers it.
+        val edited = String(second).replace("陳核 &lt;測試&gt;", "陳核（改）").toByteArray()
+        val e = DocumentInspector.inspect(edited, "approval.si", trust, related = related)
+        assertEquals(listOf(Check.FAIL, Check.FAIL), e.signatures.map { it.integrity })
+    }
+
+    @Test
     fun selfIssuedCertificate() = runBlocking<Unit> {
         val k = keys(true)
         val der = DocumentSigning.selfIssuedCertificate(k.public.encoded, "王小明", { data ->

@@ -155,6 +155,10 @@ data class WalletSettings(
     val tsaId: String = "digicert",
     /** Time-stamp every file when it is stored (only its SHA-256 is sent). */
     val timestampOnSave: Boolean = false,
+    /** Keep the time-stamp authority's revocation data (OCSP first, else CRL) with every time stamp. */
+    val timestampRevocation: Boolean = true,
+    /** PAdES level the signing screen starts with (PadesLevel name). */
+    val padesLevel: String = "B_T",
     /**
      * National ID number the holder saved for MyData (Bonds MyDataAutofillProfile): filled into MyData sign-in pages
      * and tried on MyData PDFs. Saved only when the holder asks.

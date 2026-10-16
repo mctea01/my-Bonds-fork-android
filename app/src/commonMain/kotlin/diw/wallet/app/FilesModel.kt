@@ -6,6 +6,11 @@ import diw.wallet.core.util.TextEncodings
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.official.ApprovalFile
+import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.sign.HttpFetch
+import diw.wallet.core.document.sign.KtorFetch
+import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.ValidationData
 import diw.wallet.core.profile.bonds.HouseholdTranscript
 import diw.wallet.core.profile.bonds.HouseholdTranscripts
 import diw.wallet.core.document.official.OfficialBundles
@@ -13,6 +18,8 @@ import diw.wallet.core.profile.bonds.MyDataText
 import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
+import diw.wallet.core.document.DocCrypto
+import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentReport
@@ -21,6 +28,7 @@ import diw.wallet.core.document.card.GpkiTapSigner
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
+import diw.wallet.core.document.derived.ParsedCertificate
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialDocuments
@@ -91,7 +99,14 @@ import org.multipaz.util.toBase64
 
 /** A time stamp the wallet obtained for a stored file (RFC 3161 over its SHA-256). */
 @Serializable
-data class StoredTimestamp(val token: String, val time: Long, val tsa: String? = null, val trusted: Boolean = false)
+data class StoredTimestamp(
+    val token: String,
+    val time: Long,
+    val tsa: String? = null,
+    val trusted: Boolean = false,
+    /** The time-stamp authority's chain and revocation data (OCSP first), fetched when the stamp was made. */
+    val validation: ValidationData? = null,
+)
 
 /** How a file came into the vault. */
 @Serializable
@@ -144,6 +159,8 @@ sealed class FilePreview {
         val pages: List<ImageBitmap>, val total: Int, val text: String?, val entryExit: MovementRecord? = null,
         /** A household transcript read person by person, the holder first. */
         val household: HouseholdTranscript? = null,
+        /** A certificate laid out as its parts (a proof of student status, a mainland permit association). */
+        val certificate: ParsedCertificate? = null,
     ) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
@@ -286,7 +303,8 @@ data class MobileMoicaSp(val environment: MobileMoicaEnvironment, val serviceId:
 /** The signature a file gets. */
 enum class SignForm(val title: String, val detail: String) {
     PADES("PDF 簽章（PAdES）", "簽章寫在 PDF 內，Adobe Reader 與 DSS 可驗證；已有的簽章保持有效"),
-    XADES("XML 簽章（XAdES）", "包覆在 XML 內的簽章，適用電子公文（.di）等 XML 文件"),
+    XADES("XML 簽章（XAdES）", "包覆在 XML 內的簽章，適用一般 XML 文件"),
+    APPROVAL("電子公文簽核（線上簽核 .si）", "依文書處理手冊的簽核電子檔：在 .si 加一個簽核點，涵蓋公文、附件與前一個簽核點；公文與附件本身不改動"),
     CADES_DETACHED("分離式簽章檔（.p7s）", "原檔不變，另存一個簽章檔"),
     CADES_ENVELOPING("包覆式簽章檔（.p7m）", "原檔包在簽章檔內"),
     ASIC("ASiC-E 容器（.asice）", "原檔與 CAdES 簽章放在同一個容器"),
@@ -363,7 +381,7 @@ class FilesModel(private val model: WalletModel) {
         if (bytes.isEmpty()) throw SigningException("檔案是空的")
         if (bytes.size > MAX_FILE_BYTES) throw SigningException("檔案超過 ${MAX_FILE_BYTES / 1024 / 1024} MB，無法保存")
         val detached = contentId?.let { data(it) }
-        val report = DocumentInspector.inspect(bytes, name, trustSource, detached)
+        val report = DocumentInspector.inspect(bytes, name, trustSource, detached, related = relatedFor(bytes))
         files.value.firstOrNull { it.sha256 == report.sha256 }?.let { return it }
         val f = StoredFile(
             id = WalletModel.randomId(),
@@ -502,7 +520,7 @@ class FilesModel(private val model: WalletModel) {
     /** Checks the file again with the current time and trust anchors and stores the new report. */
     suspend fun refreshed(f: StoredFile): StoredFile {
         val data = data(f.id)
-        val report = DocumentInspector.inspect(data, f.name, trustSource, f.contentId?.let { data(it) })
+        val report = DocumentInspector.inspect(data, f.name, trustSource, f.contentId?.let { data(it) }, related = relatedFor(data))
         // Apply the report to the latest copy so changes made meanwhile (a new time stamp) are kept; the time stamps
         // are checked again too, since the trusted authorities may have changed.
         val latest = file(f.id) ?: f
@@ -634,6 +652,7 @@ class FilesModel(private val model: WalletModel) {
                 else FilePreview.Pages(
                     pages, total, text, text?.let { MovementRecord.parse(it) },
                     text?.let { runCatching { HouseholdTranscripts.parse(it, holderHints()) }.getOrNull() },
+                    text?.let { runCatching { ParsedCertificate.parse(it) }.getOrNull() },
                 )
             }
             DocumentFormat.IMAGE -> when (val kind = ImageKind.of(bytes)) {
@@ -734,33 +753,102 @@ class FilesModel(private val model: WalletModel) {
             .filter { m -> own.none { it.parentId == m.id } }
     }
 
-    /** A member that is signed together with its official document: XML forms and attachments, unencrypted PDFs. */
-    private fun signableMember(m: StoredFile): Boolean = when (m.report?.format) {
-        DocumentFormat.XML -> true
-        DocumentFormat.PDF -> m.report.encrypted != true && m.report.signatures.none { it.docMdp == 1 }
-        else -> false
+    /**
+     * The files an online approval file (.si) in [bytes] signed, found in the vault by name or by content (its
+     * SHA-256): for each name, the stored file with a digest the approval lists, else the latest one of that name.
+     * Empty for any other file.
+     */
+    suspend fun relatedFor(bytes: ByteArray): Map<String, ByteArray> {
+        val refs = runCatching { OfficialBundles.approvalReferences(bytes) }.getOrDefault(emptyList())
+        if (refs.isEmpty()) return emptyMap()
+        val out = HashMap<String, ByteArray>()
+        for ((uri, group) in refs.groupBy { it.uri }) {
+            val hashes = group.filter { it.algorithm == "SHA-256" }.map { DocCryptoUtil.hex(it.digest) }.toSet()
+            val candidates = files.value.filter { it.name == uri || it.sha256 in hashes }.sortedByDescending { it.sha256 in hashes }
+            var chosen: ByteArray? = null
+            for (c in candidates) {
+                val d = runCatching { data(c.id) }.getOrNull() ?: continue
+                if (group.any { it.matches(d) }) { chosen = d; break }
+                if (chosen == null && c.name == uri) chosen = d
+            }
+            chosen?.let { out[uri] = it }
+        }
+        return out
     }
 
-    /** The members of [main] signed along with it when the holder asks for it. */
-    fun membersToSign(main: StoredFile): List<StoredFile> = members(main).filter { signableMember(it) }
+    /** True when [f] is an online approval file (線上簽核, .si). */
+    fun isApproval(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
+        (f.name.endsWith(".si", ignoreCase = true) || f.report.notes.any { it.contains("（線上簽核）") })
+
+    /** True when [f] is a file of the official document exchange (公文, .sw, .si...), signed with an approval point. */
+    fun isOfficialFile(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
+        (OfficialBundles.isExchangeFile(f.name) || f.report.notes.any { it.startsWith("台灣電子公文") })
+
+    /** What an approval point on [f] covers: the approval it is added to (null for a new one) and the case files. */
+    class ApprovalCase(val main: StoredFile?, val approval: StoredFile?, val files: List<StoredFile>, val missing: List<String>)
+
+    /**
+     * The case of [f]: an official document (or a file in its container) takes the document and every file of its
+     * container except the approval files, and the latest approval file in it; an approval file on its own takes
+     * the files it names, found in the vault.
+     */
+    suspend fun approvalCase(f: StoredFile): ApprovalCase {
+        val main = f.bundleOf?.let { file(it) } ?: f.takeIf { !isApproval(it) }
+        if (main != null) {
+            val members = members(main)
+            val approvals = members.filter { isApproval(it) } + listOfNotNull(f.takeIf { isApproval(it) && it.bundleOf == main.id })
+            val approval = approvals.distinctBy { it.id }.maxByOrNull { it.addedAt }
+            return ApprovalCase(main, approval, listOf(main) + members.filter { !isApproval(it) }, emptyList())
+        }
+        val refs = OfficialBundles.approvalReferences(data(f.id)).map { it.uri }.distinct()
+        val related = relatedFor(data(f.id))
+        val found = refs.mapNotNull { uri -> files.value.firstOrNull { it.name == uri && related[uri]?.let { b -> DocCryptoUtil.hex(DocCrypto.digest("SHA-256", b)) } == it.sha256 } ?: files.value.firstOrNull { it.name == uri } }
+        return ApprovalCase(null, f, found, refs.filter { r -> found.none { it.name == r } })
+    }
+
+    /** Re-checks the approval files in the container of [main] (after files joined it). */
+    private suspend fun recheckApprovals(main: StoredFile) {
+        members(main).filter { isApproval(it) }.forEach { runCatching { refreshed(it) } }
+    }
 
     /**
      * After files came in together: when an official document is among them, opens the confirmation of which of the
      * other files go into its container. False when there is nothing to confirm.
      */
     private suspend fun proposeBundles(stored: List<StoredFile>): Boolean {
-        val distinct = stored.distinctBy { it.id }
+        val incoming = stored.distinctBy { it.id }
+        // Files saved earlier that an online approval ties to these: an approval that came in brings the files it
+        // names, and an approval saved earlier that names a file that came in joins with its files.
+        val pool = files.value.filter { it.bundleOf == null && it.nationalId == null && incoming.none { s -> s.id == it.id } }
+        val incomingApprovals = approvalsAmong(incoming)
+        val savedApprovals = approvalsAmong(pool.filter { isApproval(it) }).filter { a -> incoming.any { a.lists(it.name, data(it.id)) == true } }
+        val linked = (incomingApprovals + savedApprovals).let { approvals ->
+            val names = approvals.flatMap { it.names }.toSet()
+            pool.filter { p ->
+                (isApproval(p) && savedApprovals.any { it.name == p.name }) ||
+                    (p.name in names && approvals.any { it.lists(p.name, data(p.id)) == true })
+            }
+        }
+        val distinct = incoming + linked
         val docs = distinct.filter { it.bundleOf == null && isOfficialMain(it) }
         val others = distinct.filter { it.bundleOf == null && it !in docs }
+        if (docs.isEmpty() && others.isNotEmpty()) {
+            // The approval names files already in a container: offer the new files to that container.
+            val home = incomingApprovals.firstNotNullOfOrNull { a ->
+                files.value.firstOrNull { m -> m.bundleOf != null && m.name in a.names && a.lists(m.name, data(m.id)) == true }?.bundleOf?.let { file(it) }
+            } ?: return false
+            model.screen.value = Screen.OfficialBundle(home.id, others.map { it.id }, emptyList())
+            return true
+        }
         if (docs.isEmpty() || others.isEmpty()) return false
         // An online approval that signed several documents (a case's incoming letter, drafts and their versions) puts
         // them in one container: the first document it lists holds it, the others are offered as its members.
-        val approvals = approvalsAmong(distinct)
+        val approvals = incomingApprovals + savedApprovals
         val approved = approvals.flatMap { a ->
             a.names.mapNotNull { n -> docs.firstOrNull { it.name == n && a.lists(it.name, data(it.id)) == true } }
         }.distinctBy { it.id }
-        val main = approved.firstOrNull() ?: docs.first()
-        val grouped = approved.drop(1)
+        val main = approved.firstOrNull { d -> files.value.any { it.bundleOf == d.id } } ?: approved.firstOrNull() ?: docs.first()
+        val grouped = approved.filter { it != main }
         val rest = docs.filter { it != main && it !in grouped }
         model.screen.value = Screen.OfficialBundle(main.id, (grouped + others).map { it.id }, rest.map { it.id })
         return true
@@ -796,6 +884,7 @@ class FilesModel(private val model: WalletModel) {
     fun confirmBundle(main: StoredFile, ids: Collection<String>, only: List<String>?, next: List<String>) = run("放入公文容器") {
         ids.mapNotNull { file(it) }.forEach { save(it.copy(bundleOf = main.id)) }
         if (ids.isNotEmpty()) model.message.value = "已把 ${ids.size} 個檔案放入「${main.name}」的容器"
+        recheckApprovals(main)
         val following = next.firstNotNullOfOrNull { file(it) }
         if (following != null) {
             val left = only?.filter { it !in ids && it != following.id && file(it)?.bundleOf == null }
@@ -904,9 +993,29 @@ class FilesModel(private val model: WalletModel) {
         val data = data(f.id)
         val token = timestamper().timestamp(data)
         val info = DocumentInspector.verifyTimestamp(token, data, trustSource)
-        val stamp = StoredTimestamp(token.toBase64(), info.time, info.tsa, info.trusted)
+        // The authority's revocation data is kept with the stamp, so it can be checked after its certificate expires.
+        val validation = if (model.settings.timestampRevocation) timestampValidation(token) else null
+        val stamp = StoredTimestamp(token.toBase64(), info.time, info.tsa, info.trusted, validation)
         save((file(f.id) ?: f).let { it.copy(timestamps = it.timestamps + stamp) })
-        model.message.value = if (info.trusted) "已加上時戳（${info.tsa ?: "時戳機構"}）" else "已加上時戳，但時戳機構不在信任錨點"
+        model.message.value = (if (info.trusted) "已加上時戳（${info.tsa ?: "時戳機構"}）" else "已加上時戳，但時戳機構不在信任錨點") +
+            (validation?.let { "；" + it.summary() } ?: "")
+    }
+
+    /** Revocation data of the authority of [token]; null when nothing could be fetched at all. */
+    private suspend fun timestampValidation(token: ByteArray): ValidationData? = runCatching {
+        DocumentSigning.timestampValidation(token, revocationFetch, trustSource.knownCertificates())
+    }.getOrNull()
+
+    /** Fetches OCSP responses, CRLs and issuer certificates for long-term signatures and time stamps. */
+    val revocationFetch: HttpFetch by lazy { KtorFetch(model.http.config { followRedirects = true }) }
+
+    /** Fetches the authority's revocation data for a stamp made before it was kept, or again. */
+    fun refreshTimestampValidation(f: StoredFile, index: Int) = run("取得時戳機構的撤銷資訊") {
+        val t = f.timestamps.getOrNull(index) ?: return@run
+        val v = timestampValidation(t.token.fromBase64()) ?: throw SigningException("無法取得撤銷資訊")
+        val latest = file(f.id) ?: f
+        save(latest.copy(timestamps = latest.timestamps.mapIndexed { i, s -> if (i == index) s.copy(validation = v) else s }))
+        model.message.value = v.summary()
     }
 
     // ---------------------------------------------------------------- OpenCerts
@@ -979,23 +1088,42 @@ class FilesModel(private val model: WalletModel) {
     fun formsFor(f: StoredFile): List<SignForm> = buildList {
         when (f.report?.format) {
             DocumentFormat.PDF -> if (f.report.encrypted != true) add(SignForm.PADES)
-            DocumentFormat.XML -> add(SignForm.XADES)
-            else -> {}
+            // Official documents are signed with an approval point (線上簽核); XAdES would change the files the
+            // approval names by their digests.
+            DocumentFormat.XML -> add(if (isOfficialFile(f)) SignForm.APPROVAL else SignForm.XADES)
+            else -> if (f.bundleOf != null) add(SignForm.APPROVAL)
         }
         add(SignForm.CADES_DETACHED)
         add(SignForm.CADES_ENVELOPING)
         add(SignForm.ASIC)
     }
 
-    /** Signs [f] as [form]; the signed result is stored as a new file. */
+    /**
+     * Signs [f] as [form]; the signed result is stored as a new file. An official document is signed with an
+     * approval point ([point]) in its case's online approval file, which becomes a new version in the container.
+     */
     fun sign(
         f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean,
         allowBreakingCertification: Boolean = false,
-        withMembers: Boolean = false,
+        point: ApprovalPoint? = null,
+        /** The PAdES level of a PDF signature; [timestamp] applies to the other forms. */
+        level: PadesLevel = PadesLevel.B_T,
+        /** Add the chains and revocation data (OCSP first) of the signer and the time-stamp authority (baseline LT). */
+        revocation: Boolean = false,
     ) = run("準備簽署") {
+        val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
+            if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
+            if (c.files.isEmpty()) throw SigningException("沒有要簽核的公文檔案")
+        } else null
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
-        val ts = if (timestamp) timestamper() else null
+        val ts = when (form) {
+            SignForm.PADES -> if (level.timestamp) timestamper() else null
+            SignForm.APPROVAL -> null
+            else -> if (timestamp) timestamper() else null
+        }
+        val validation = if ((form == SignForm.PADES && level.revocation) || (revocation && form != SignForm.APPROVAL)) revocationFetch else null
+        if (form == SignForm.PADES) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
             is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
@@ -1003,6 +1131,10 @@ class FilesModel(private val model: WalletModel) {
             else -> "簽署中"
         }
         val signerName = DocumentSigning.certificateSummary(signer.certificateChain.first())?.first
+        if (case != null) {
+            signApprovalPoint(f, case, signer, (point ?: ApprovalPoint()).copy(time = Clock.System.now()), timestamp, signerName)
+            return@run
+        }
         val base = f.name.substringBeforeLast('.')
         val (bytes, name) = withContext(model.unlockProvider) {
             when (form) {
@@ -1011,41 +1143,45 @@ class FilesModel(private val model: WalletModel) {
                     PdfSignOptions(
                         reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
                         allowBreakingCertification = allowBreakingCertification,
+                        validation = validation, requireValidation = level.revocation, documentTimestamp = level == PadesLevel.B_LTA,
                     ), ts,
                 ) to "$base-signed.pdf"
-                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
-                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts) to "${f.name}.p7s"
-                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts) to "${f.name}.p7m"
-                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts) to "$base.asice"
+                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
+                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation) to "${f.name}.p7s"
+                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation) to "${f.name}.p7m"
+                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation) to "$base.asice"
+                SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
             }
         }
         busy.value = "檢查並保存簽署結果"
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
-        // An official document's forms and attachments are signed the same way and go into the signed copy's container.
-        val members = if (withMembers && form == SignForm.XADES) membersToSign(f) else emptyList()
-        val signedMembers = ArrayList<String>()
-        val failed = ArrayList<String>()
-        for ((i, m) in members.withIndex()) {
-            busy.value = "簽署關連檔案（${i + 1}／${members.size}）：${m.name}" + if (choice is SignerChoice.Card) "，依提示感應卡片" else ""
-            try {
-                val mBase = m.name.substringBeforeLast('.')
-                val (mBytes, mName) = withContext(model.unlockProvider) {
-                    when (m.report?.format) {
-                        DocumentFormat.PDF -> DocumentSigning.signPdf(data(m.id), signer, PdfSignOptions(reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName), ts) to "$mBase-signed.pdf"
-                        else -> DocumentSigning.signXml(data(m.id), signer, ts) to (mBase + "-signed." + m.name.substringAfterLast('.', "xml"))
-                    }
-                }
-                val sm = store(mName, mBytes, FileOrigin.SIGNED, m.name, parentId = m.id)
-                save((file(sm.id) ?: sm).copy(bundleOf = stored.id))
-                signedMembers.add(m.name)
-            } catch (e: Exception) {
-                failed.add(m.name + "：" + (e.message ?: e::class.simpleName))
-            }
+        val levelNote = if (form == SignForm.PADES) "，${level.title}" else if (ts != null || validation != null) "，" + listOfNotNull(ts?.let { "時戳" }, validation?.let { "撤銷資訊" }).joinToString("與") else ""
+        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = "${form.title}$levelNote，以${signer.source.title}簽署")
+        model.message.value = "已簽署並保存：${stored.name}"
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /**
+     * Adds an approval point to the case of [f] and stores the new approval file: in the official document's
+     * container, replacing the earlier version there (which stays in the vault), with a file time stamp when
+     * [timestamp] is set (the approval format has no place for one).
+     */
+    private suspend fun signApprovalPoint(f: StoredFile, case: ApprovalCase, signer: DocumentSigner, point: ApprovalPoint, timestamp: Boolean, signerName: String?) {
+        val previous = case.approval
+        val bytes = withContext(model.unlockProvider) {
+            DocumentSigning.signApproval(previous?.let { data(it.id) }, case.files.map { it.name to data(it.id) }, signer, point)
         }
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name) + signedMembers, note = "${form.title}，以${signer.source.title}簽署")
-        model.message.value = "已簽署並保存：${stored.name}" +
-            (if (signedMembers.isNotEmpty()) "，並簽署 ${signedMembers.size} 個關連檔" else "") +
-            (if (failed.isNotEmpty()) "；未能簽署：" + failed.joinToString("；") else "")
+        busy.value = "檢查並保存簽核檔"
+        val owner = case.main ?: f
+        val name = previous?.name ?: (owner.name.substringBeforeLast('.') + "-簽核.si")
+        var stored = store(name, bytes, FileOrigin.SIGNED, previous?.name ?: owner.name, parentId = previous?.id ?: owner.id)
+        case.main?.let { main ->
+            stored = (file(stored.id) ?: stored).copy(bundleOf = main.id).also { save(it) }
+            previous?.takeIf { it.bundleOf == main.id }?.let { old -> save((file(old.id) ?: old).copy(bundleOf = null)) }
+        }
+        if (timestamp) runCatching { addTimestampNow(file(stored.id) ?: stored) }
+        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, case.files.map { it.name }, note = "${SignForm.APPROVAL.title}（${point.action}），以${signer.source.title}簽署")
+        model.message.value = "已加上簽核點：${stored.name}，涵蓋 ${case.files.size} 個檔案" + if (previous != null && case.main != null) "；前一版簽核檔移出容器，仍保存在文件分頁" else ""
         model.screen.value = Screen.FileDetail(stored.id)
     }
 

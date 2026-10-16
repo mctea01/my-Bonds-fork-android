@@ -1,6 +1,7 @@
 package diw.wallet.core.document.pdf
 
 import diw.wallet.core.document.DocCrypto
+import diw.wallet.core.document.sign.HttpFetch
 import diw.wallet.core.document.sign.SigningException
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -152,6 +153,12 @@ class PdfSignOptions(
      * certification; only for a user who confirmed the consequence.
      */
     val allowBreakingCertification: Boolean = false,
+    /** B-LT: fetch the validation data of the signer and the time-stamp authority and add it to the DSS. */
+    val validation: HttpFetch? = null,
+    /** Fail instead of signing without any revocation data when [validation] is set. */
+    val requireValidation: Boolean = false,
+    /** B-LTA: a document time stamp after the DSS (needs the time-stamp authority). */
+    val documentTimestamp: Boolean = false,
 )
 
 /**
@@ -193,7 +200,8 @@ object PdfIncrementalSigner {
 
         // AcroForm with the new field.
         val existingNames = sigs.fields().mapNotNull { it.fieldName }.toSet()
-        val name = fieldName ?: generateSequence(1) { it + 1 }.map { "Signature$it" }.first { it !in existingNames }
+        val prefix = if (options.subFilter == "ETSI.RFC3161") "DocTimeStamp" else "Signature"
+        val name = fieldName ?: generateSequence(1) { it + 1 }.map { "$prefix$it" }.first { it !in existingNames }
         fun withField(acro: PdfDict): PdfDict {
             val fieldsObj = acro["Fields"]
             val fields = if (fieldsObj is PdfRef) {
@@ -226,10 +234,12 @@ object PdfIncrementalSigner {
         val out = PdfOutput(original)
         if (original.isNotEmpty() && original.last() != '\n'.code.toByte()) out.append("\n")
         // Signature dictionary with placeholders.
-        val sb = StringBuilder("<</Type /Sig /Filter /Adobe.PPKLite /SubFilter ")
+        // A document time stamp (ETSI.RFC3161) is a /DocTimeStamp; its time is in the token, not in /M.
+        val docTimeStamp = options.subFilter == "ETSI.RFC3161"
+        val sb = StringBuilder(if (docTimeStamp) "<</Type /DocTimeStamp /Filter /Adobe.PPKLite /SubFilter " else "<</Type /Sig /Filter /Adobe.PPKLite /SubFilter ")
         PdfWriter.name(options.subFilter, sb)
-        sb.append(" /M "); PdfWriter.write(PdfWriter.text(PdfDates.format(options.time)), sb)
-        options.signerName?.let { sb.append(" /Name "); PdfWriter.write(PdfWriter.text(it), sb) }
+        if (!docTimeStamp) sb.append(" /M ").also { PdfWriter.write(PdfWriter.text(PdfDates.format(options.time)), sb) }
+        options.signerName?.takeIf { !docTimeStamp }?.let { sb.append(" /Name "); PdfWriter.write(PdfWriter.text(it), sb) }
         options.reason?.let { sb.append(" /Reason "); PdfWriter.write(PdfWriter.text(it), sb) }
         options.location?.let { sb.append(" /Location "); PdfWriter.write(PdfWriter.text(it), sb) }
         options.contactInfo?.let { sb.append(" /ContactInfo "); PdfWriter.write(PdfWriter.text(it), sb) }
@@ -265,6 +275,66 @@ object PdfIncrementalSigner {
         if (range.length > brPlaceholder.length) throw SigningException("檔案太大，無法加簽")
         (range.dropLast(1) + " ".repeat(brPlaceholder.length - range.length) + "]").encodeToByteArray().copyInto(bytes, brStart)
         return Prepared(bytes, contentsStart, contentsEnd)
+    }
+
+    /**
+     * Adds validation data to the document security store (/DSS, ETSI EN 319 142-1 5.4) by incremental update:
+     * certificates, OCSP responses and CRLs not stored yet, and a VRI entry for each signature in [vriKeys]
+     * (upper-case hex SHA-1 of the signature's CMS). Earlier DSS content is kept; signatures stay valid because only
+     * the catalog's /DSS changes.
+     */
+    fun addValidationData(original: ByteArray, certs: List<ByteArray>, ocsps: List<ByteArray>, crls: List<ByteArray>, vriKeys: List<String>): ByteArray {
+        val pdf = try { PdfFile(original) } catch (e: PdfException) { throw SigningException("PDF 結構無法讀取：" + e.message, e) }
+        if (pdf.encrypted) throw SigningException("加密的 PDF 無法加入長期驗證資料")
+        val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException("PDF 沒有文件目錄")
+        val catalog = pdf.catalog
+        val stored = PdfSignatures(pdf).dss()
+        val dssObj = catalog["DSS"]
+        val dss = pdf.dict(dssObj) ?: PdfDict.of()
+        var next = pdf.size
+        val out = PdfOutput(original)
+        if (original.isNotEmpty() && original.last() != '\n'.code.toByte()) out.append("\n")
+        fun streams(items: List<ByteArray>, have: List<ByteArray>): List<PdfRef> = items
+            .filter { item -> have.none { it.contentEquals(item) } }
+            .distinctBy { it.contentHashCode() }
+            .map { data -> val num = next++; out.stream(num, 0, PdfDict.of(), data); PdfRef(num, 0) }
+        val newCerts = streams(certs, stored?.certificates.orEmpty())
+        val newOcsps = streams(ocsps, stored?.ocsps.orEmpty())
+        val newCrls = streams(crls, stored?.crls.orEmpty())
+        fun merged(key: String, added: List<PdfRef>): PdfArray? {
+            val have = pdf.array(dss[key]).orEmpty()
+            return if (have.isEmpty() && added.isEmpty()) null else PdfArray(have + added)
+        }
+        val vri = LinkedHashMap((pdf.dict(dss["VRI"]) ?: PdfDict.of()).entries)
+        for (key in vriKeys) {
+            val entry = LinkedHashMap<String, PdfObject>()
+            if (newCerts.isNotEmpty()) entry["Cert"] = PdfArray(newCerts)
+            if (newOcsps.isNotEmpty()) entry["OCSP"] = PdfArray(newOcsps)
+            if (newCrls.isNotEmpty()) entry["CRL"] = PdfArray(newCrls)
+            if (entry.isNotEmpty()) vri[key.uppercase()] = PdfDict(entry)
+        }
+        var updated = dss.with("Type", PdfName("DSS"))
+        merged("Certs", newCerts)?.let { updated = updated.with("Certs", it) }
+        merged("OCSPs", newOcsps)?.let { updated = updated.with("OCSPs", it) }
+        merged("CRLs", newCrls)?.let { updated = updated.with("CRLs", it) }
+        if (vri.isNotEmpty()) updated = updated.with("VRI", PdfDict(vri))
+        if (dssObj is PdfRef) {
+            out.obj(dssObj.num, pdf.generation(dssObj.num), PdfWriter.serialize(updated))
+        } else {
+            val dssNum = next++
+            out.obj(dssNum, 0, PdfWriter.serialize(updated))
+            out.obj(catalogRef.num, pdf.generation(catalogRef.num), PdfWriter.serialize(catalog.with("DSS", PdfRef(dssNum, 0))))
+        }
+        val trailer = LinkedHashMap<String, PdfObject>()
+        trailer["Size"] = PdfNumber.of(next + if (pdf.revisions.first().usesXrefStream) 1 else 0)
+        trailer["Root"] = catalogRef
+        pdf.trailer["Info"]?.let { trailer["Info"] = it }
+        val id0 = (pdf.trailer["ID"] as? PdfArray)?.firstOrNull() as? PdfString ?: PdfString(DocCrypto.randomBytes(16), true)
+        trailer["ID"] = PdfArray(listOf(PdfString(id0.bytes, true), PdfString(DocCrypto.randomBytes(16), true)))
+        trailer["Prev"] = PdfNumber.of(pdf.revisions.first().xrefOffset)
+        if (pdf.revisions.first().usesXrefStream) out.xrefStream(next, PdfDict(trailer))
+        else out.xrefTable(PdfDict(trailer), includeFreeHead = false)
+        return out.bytes()
     }
 
     private fun firstPage(pdf: PdfFile): Pair<PdfRef, PdfDict>? {

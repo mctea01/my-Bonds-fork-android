@@ -170,6 +170,25 @@ class TrustAnchorsTest {
     }
 
     /**
+     * The e-sign platform's time-stamp authority (timestamp.esign.cn) sends only its own certificate; the built-in
+     * ZJCA OCA3 completes the chain up to the pinned ZJCARoot, so its time stamps are trusted while the mainland
+     * China group is on.
+     */
+    @Test
+    fun esignTimestampAuthorityChain() = runBlocking<Unit> {
+        val at = Instant.parse("2026-10-16T00:00:00Z")
+        val leaf = pemChain("esign-timestamp")
+        assertEquals(1, leaf.size)
+        val on = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = true))
+        val d = on.decide(TrustRole.TSA, leaf, at)
+        assertEquals(TrustTier.T2, d.tier)
+        assertTrue(TrustLabel.MAINLAND_CHINA_CA in d.labels, "labels: ${d.labels}")
+        assertEquals("中國大陸憑證機構：ZJCARoot", d.anchorName)
+        val off = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = false))
+        assertNull(off.match(TrustRole.TSA, leaf, at))
+    }
+
+    /**
      * The certificate chains China's tax administration (invoice verification) and immigration administration served
      * on 2026-10-11 lead to CFCA EV ROOT: trusted as a mainland China CA (T3) while that group is on, not otherwise.
      */

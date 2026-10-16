@@ -43,6 +43,7 @@ enum class SignatureFormat(val title: String) {
     CADES("CAdES / PKCS#7"),
     XADES("XAdES"),
     XMLDSIG("XML 數位簽章（XMLDSig）"),
+    OFFICIAL_APPROVAL("電子公文線上簽核（簽核點）"),
     OFD_SEAL("OFD 電子印章（GB/T 38540）"),
     OFD_SIGN("OFD 數位簽章（GB/T 35275）"),
     ASIC_CADES("ASiC-E（CAdES）"),

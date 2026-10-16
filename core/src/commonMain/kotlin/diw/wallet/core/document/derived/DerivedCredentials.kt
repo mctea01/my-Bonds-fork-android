@@ -103,9 +103,9 @@ object DerivedCredentials {
                     notice = household.notice
                     addAll(household.claims)
                 } else {
-                    // An entry and exit record is read as a structure; its bilingual labels would repeat as pairs.
+                    // Entry and exit records and the certificates read as a structure; their bilingual labels would repeat as pairs.
                     val entryExit = DocumentFields.fromEntryExit(t).ifEmpty { DocumentFields.fromMainlandEntryExit(t) }
-                    addAll(entryExit.ifEmpty { DocumentFields.fromText(t) })
+                    addAll(entryExit.ifEmpty { ParsedCertificate.parse(t)?.claims() ?: DocumentFields.fromText(t) })
                 }
             }
         }

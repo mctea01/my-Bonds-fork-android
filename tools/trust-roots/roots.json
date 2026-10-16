@@ -1,5 +1,5 @@
 {
-  "comment": "Inputs of update_roots.py. CCADB roots of the listed owners are taken as they are in the Mozilla and Microsoft root programs; the service hosts are connected to and the roots of the chains they serve are added; SM2 roots are pinned (not in CCADB) and only checked; intermediates are pinned CA certificates that complete chains whose senders leave them out (never anchors); importableRoots are roots outside every program that intermediates lead to, built in untrusted so that the user can import them from a document; GPKI anchors are only checked.",
+  "comment": "Inputs of update_roots.py. CCADB roots of the listed owners are taken as they are in the Mozilla and Microsoft root programs; the service hosts are connected to and the roots of the chains they serve are added; SM2 roots are pinned (not in CCADB) and only checked; intermediates are pinned CA certificates that complete chains whose senders leave them out (never anchors); importableRoots are roots outside every program that intermediates lead to, built in untrusted so that the user can import them from a document; GPKI anchors are only checked; every pinned file is compared with its source URL on each run (see update_roots.py): entries without a sha256 are fetched for the first time and need a person to check them.",
   "ccadb": {
     "mozilla": "https://ccadb.my.salesforce-sites.com/mozilla/IncludedCACertificateReportPEMCSV",
     "microsoft": "https://ccadb.my.salesforce-sites.com/microsoft/IncludedCACertificateReportForMSFTCSVPEM",
@@ -231,6 +231,16 @@
       "page": "https://www.zjca.com.cn/web/webs/service/download.html",
       "fingerprintPublished": false,
       "sha256": "D726F197661F182DED707C3BF177288690693D61DCA6969F1E753F340F275150"
+    },
+    {
+      "file": "sm2/gfa-sm2-root.pem",
+      "name": "GFA SM2 根憑證",
+      "subject": "*",
+      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
+      "purposes": "SM2 文件簽章與身分憑證",
+      "url": "https://www.cacenter.com.cn/gfafil/guofuan/file/gfa_SM2_root.cer",
+      "page": "https://www.cacenter.com.cn/fwyzc/szzsfw/xgxz/2020/5/63353fe938f045059003d8b647501c86343.html",
+      "fingerprintPublished": false
     }
   ],
   "pinned": [
@@ -243,6 +253,26 @@
       "page": "https://www.bjca.cn/service/down_198.html",
       "evidence": "國家移民管理局出入境記錄與通行證關聯查詢結果 PDF 的簽章憑證鏈",
       "sha256": "AAA048773350488832AABDA6954B33EE28BB2773DD851AB3C4F6F1D2F9F3777B"
+    },
+    {
+      "file": "pinned/zjca-root.pem",
+      "name": "ZJCARoot",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章與時戳（e簽寶的時戳服務 timestamp.esign.cn 經 ZJCA OCA3 簽發）",
+      "url": "https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
+      "page": "https://www.zjca.com.cn/web/webs/service/download.html",
+      "evidence": "e簽寶簽署文件的時戳憑證鏈",
+      "sha256": "5B8A358D261E2E8DEEBDD953FF0276A7280BC318F1FD01D4EB75B4CF38839399"
+    },
+    {
+      "file": "pinned/gfa-root-rsa.pem",
+      "name": "ROOT CERTIFICATE FOR GFA TRUST NETWORK",
+      "subject": "*",
+      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
+      "purposes": "文件簽章（e簽寶平台上的機構簽章憑證經 OPERATION CA04 FOR GFA TRUST NETWORK 簽發）",
+      "url": "https://www.cacenter.com.cn/gfafil/guofuan/file/gfa_RSA_root.cer",
+      "page": "https://www.cacenter.com.cn/fwyzc/szzsfw/xgxz/2020/5/63353fe938f045059003d8b647501c86343.html",
+      "evidence": "e簽寶平台簽署的學校證明文件的簽章憑證鏈"
     }
   ],
   "intermediates": [
@@ -290,6 +320,15 @@
       "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
       "page": "https://www.esign.cn/",
       "sha256": "79C0B3824565A5611F31D0A6C606E54C747401B8CFAE427B4BB8B60B89F96385"
+    },
+    {
+      "file": "intermediates/zjca-oca3.pem",
+      "name": "ZJCA OCA3",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "e簽寶時戳服務（timestamp.esign.cn）的中繼憑證",
+      "url": "https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
+      "page": "https://www.zjca.com.cn/web/webs/service/download.html",
+      "sha256": "931066ED8DE694B6B45851F528C5A06BC7394DA81196A4F06EC954865D0BFA60"
     }
   ],
   "importableRoots": [

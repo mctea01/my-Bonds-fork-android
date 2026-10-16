@@ -36,6 +36,7 @@ actual object DocumentInspector {
         trust: DocumentTrustSource,
         detachedContent: ByteArray?,
         now: Instant,
+        related: Map<String, ByteArray>,
     ): DocumentReport {
         val checks = CmsChecks(PkiSupport(trust))
         val base = DocumentReport(DocumentFormat.OTHER, DocCryptoUtil.hex(DocCrypto.digest("SHA-256", bytes)), bytes.size.toLong(), checkedAt = now.epochSeconds)
@@ -46,7 +47,7 @@ actual object DocumentInspector {
                 DocumentFormat.CMS_SIGNED -> cms(data, detachedContent, fileName, base, checks, now)
                 DocumentFormat.CMS_ENVELOPED -> enveloped(data, fileName, base)
                 DocumentFormat.TIMESTAMP -> timestampFile(data, detachedContent, base, checks)
-                DocumentFormat.XML -> xml(data, fileName, base, checks, now)
+                DocumentFormat.XML -> xml(data, fileName, base, checks, now, related)
                 DocumentFormat.OFD, DocumentFormat.ASIC_E, DocumentFormat.ZIP -> container(data, base, checks, now)
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
@@ -434,7 +435,7 @@ actual object DocumentInspector {
 
     // ---- XML, containers, OpenCerts ----
 
-    private suspend fun xml(bytes: ByteArray, fileName: String?, base: DocumentReport, checks: CmsChecks, now: Instant): DocumentReport {
+    private suspend fun xml(bytes: ByteArray, fileName: String?, base: DocumentReport, checks: CmsChecks, now: Instant, related: Map<String, ByteArray>): DocumentReport {
         val doc = runCatching { XmlParsing.parse(bytes) }.getOrElse {
             return base.copy(format = DocumentFormat.XML, problems = listOf("XML 格式錯誤：" + (it.message ?: "")))
         }
@@ -443,11 +444,12 @@ actual object DocumentInspector {
         val title = official?.let { o ->
             notes.add("台灣電子公文（${o.category?.takeIf { it != o.kind }?.let { c -> "${o.kind}，$c" } ?: o.kind}）")
             if (o.kind == "線上簽核") {
-                notes.add("線上簽核檔的各簽核點簽章涵蓋同一案件的公文檔與附件，需要整個案件資料夾才能驗證；預覽列出各簽核點的簽署者與憑證名稱")
+                notes.add("線上簽核檔不是 XAdES：每個簽核點以 XML 簽章涵蓋同一案件的公文檔、附件、自己的異動資訊與前一個簽核點；案件檔案都在錢包內才能逐一比對")
             }
             (o.subject ?: o.title).take(80)
         }
-        val sigs = XmlDsig.verify(bytes, fileName ?: "XML 簽章", checks, now)
+        val sigs = XmlDsig.verify(bytes, fileName ?: "XML 簽章", checks, now) +
+            if (ApprovalSignatures.isApproval(doc)) ApprovalSignatures.verify(bytes, checks, now, related) else emptyList()
         return base.copy(format = DocumentFormat.XML, title = title, signatures = sigs, notes = notes)
     }
 

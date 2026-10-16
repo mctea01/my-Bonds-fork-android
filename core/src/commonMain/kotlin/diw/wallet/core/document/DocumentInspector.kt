@@ -39,6 +39,8 @@ expect object DocumentInspector {
         /** Content of a detached signature (.p7s) when the user picked it. */
         detachedContent: ByteArray? = null,
         now: Instant = Clock.System.now(),
+        /** Files of the same case by name, for the signing points of an online approval file (.si). */
+        related: Map<String, ByteArray> = emptyMap(),
     ): DocumentReport
 
     /** Verifies an RFC 3161 token (or a response holding one) over [data] (the stored file). */

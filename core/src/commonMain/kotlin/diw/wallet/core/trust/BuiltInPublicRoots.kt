@@ -57,7 +57,7 @@ object BuiltInPublicRoots {
     }
 
     /** The date the set of roots last changed (UTC). */
-    const val UPDATED = "2026-10-15"
+    const val UPDATED = "2026-10-16"
 
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
@@ -460,6 +460,27 @@ object BuiltInPublicRoots {
             "2c9Si1vIY9RCPqAzekYu9wogRlR+ak8x8YF+QnQ4ZXMn7sZ8uI7XpTrXmKGcjBBV09tL7ECQ8s1uV9JiDnxXk7Gnbc2dg7sq5+W2" +
             "O3FYrf3RRbxake5TFW/TRQl1brqQXR4EzzffHqhmsYzmIGrv/EhOdJhCrylvLmrH+33RZjEizIYAfmaDDEL0vTSSwxrqT8p+ck0L" +
             "cIymSLumoRT2+1hEmRSuqguTaaApJUqlyyvdimYHFngVV3Eb7PVHhPOeMTd61X8kreS8/f3MboPoDKi3QWwH3b08hpcv0g==",
+        ),
+        Root(
+            name = "ZJCARoot",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章與時戳（e簽寶的時戳服務 timestamp.esign.cn 經 ZJCA OCA3 簽發）",
+            source = "釘選 SHA-256（e簽寶簽署文件的時戳憑證鏈），取自 https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
+            sha256 = "5B8A358D261E2E8DEEBDD953FF0276A7280BC318F1FD01D4EB75B4CF38839399",
+            b64 = "MIIDYDCCAkigAwIBAgIIKPv/WCB0YrAwDQYJKoZIhvcNAQELBQAwUTELMAkGA1UEBhMCQ04xLzAtBgNVBAoMJlpoZWppYW5nIERp" +
+            "Z2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5MREwDwYDVQQDDAhaSkNBUm9vdDAeFw0xNjExMzAwOTM3NTFaFw00NjExMjMwOTM3" +
+            "NTFaMFExCzAJBgNVBAYTAkNOMS8wLQYDVQQKDCZaaGVqaWFuZyBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTERMA8GA1UE" +
+            "AwwIWkpDQVJvb3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDQH2XGhUG0HulFkGW2Tu1T5pZpEzPrGn6W/nd+Q8VP" +
+            "kfKNABcd3/7DUjjy8QNmj22iseGK4rNguOeSqr+phLcf1894GZK+Y7/x5g7BYXyAJ4UFoUBTyADafUePzVvG57auc8zSCZpzQWJI" +
+            "JCvRQO1oAn3Us/OGPUMYgkSbKNVsDKtrgXWuYRH/xO7aYeBnfnugYwp+A6dJWm45kFWORAephT+fPS9/qCQHS7bT7IiokiJruVny" +
+            "hed/yCQDgomXs0syf4enSMlhyQCIB+6YS+uhXvRxFXo1IWa4oGSZjxr5kxFtHmP7iIVaudROkdAs2clKhboQR96rBRmdOu6iN00n" +
+            "AgMBAAGjPDA6MAsGA1UdDwQEAwIAhjAMBgNVHRMEBTADAQH/MB0GA1UdDgQWBBTeYuyyMtlJuiZkNahiZH/1Ne/A3TANBgkqhkiG" +
+            "9w0BAQsFAAOCAQEAEBU7oQWQr6+yI6Lbwe4iOo8aje3A8WFCzh4+LzHYLI2uMy3S4aEvC0UcodVaMD1mBBfFMtwLrjLPDSsxwFwX" +
+            "qi9kx5OyOh2g7PsBw2sZF71KLILfVfW5poM53ZNBx2khvcFQUagbN+PT/0sI/olc7rupzsTjK70qGI8mth/+HykpyUwS8wQmaaML" +
+            "AWCIjwYMp8iwGjDx9mUPo9y+s0W+VnwL0QaHKBIHl6fYN1Gc1o3wRbd45q1qnVeqTMsUp9ut1d3z1c+1BDi1eObR2BQqhPz5gAL4" +
+            "jWDa9nhkl1pHAW/N1AwWJWjQu3/YQCvrbVx0/ckJn6vLDoxwsZn+jLwt/g==",
         ),
         Root(
             name = "UCA Rapid SM2 Root",
@@ -4534,6 +4555,31 @@ object BuiltInPublicRoots {
             "L3Errlt+QuK+mIOxQKFuz5WuRhWwKZdBErqitkybmenbdftp54u8b07oo1fBhKCQeaqRTyqfNen2FesZ/x4taOgaIUpzEASwELMm" +
             "nB47xUNMhuSTBfmNS1ehAsbP456a5fLq0jdhH/ItaDLvHI01AzH6o4RH/sUEUwMiVMF3brKiiKTDSOv1P4p54oFElNklwLKlYtwU" +
             "TKNpA8g9PnE3d3wf5X7TinRADfsQ22wVQ0H8ArCAEDcIi299ODAylznZpqy0/4Wg5v8=",
+        ),
+        Intermediate(
+            name = "ZJCA OCA3",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCARoot",
+            purposes = "e簽寶時戳服務（timestamp.esign.cn）的中繼憑證",
+            source = "釘選 SHA-256，取自 https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
+            sha256 = "931066ED8DE694B6B45851F528C5A06BC7394DA81196A4F06EC954865D0BFA60",
+            b64 = "MIIEsDCCA5igAwIBAgIIKPz/YGD6x88wDQYJKoZIhvcNAQELBQAwUTELMAkGA1UEBhMCQ04xLzAtBgNVBAoMJlpoZWppYW5nIERp" +
+            "Z2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5MREwDwYDVQQDDAhaSkNBUm9vdDAeFw0xNjExMzAwOTUyMDNaFw00NjExMjMwOTUy" +
+            "MDNaMFIxCzAJBgNVBAYTAkNOMS8wLQYDVQQKDCZaaGVqaWFuZyBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTESMBAGA1UE" +
+            "AwwJWkpDQSBPQ0EzMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAycqaJIJihgh42ESVE9PNIs1cBKi/x4dneAijX8uB" +
+            "82ougNgIWldINg++0ANuIel6whckoC9yxnZI6B5WGf3ag+7pKYbS8xcdaoCe4raqnAQsnAdx9LejwlWyaLRPlf3WEENGTQAsNHEc" +
+            "FTF1gNnm5JVtKauYYzqarKme1n+uuvaFnub9F9UbmV3buH45+p/kxhBVk80hRMkuJfMUzGt5ezk/jIwDl799LUAW4QkULZKPXhfQ" +
+            "JJTfAW0FQ2FCHXZyhYfredyKmQ+MV0tL/skH8toBghihrg+C8RuA3XLWYd1czntxFyo/ELgZT1yFMqX2Q9nW3rAAhnSb+JmwTbRv" +
+            "PwIDAQABo4IBiTCCAYUwCwYDVR0PBAQDAgCGMAwGA1UdEwQFMAMBAf8wQQYDVR0fBDowODA2oDSgMoYwaHR0cDovLzYwLjE5MC4y" +
+            "NTQuMTM6Mjg4ODAvZG93bmxvYWQvWkpDQVJvb3QuY3JsMB8GA1UdIwQYMBaAFN5i7LIy2Um6JmQ1qGJkf/U178DdMIHkBggrBgEF" +
+            "BQcBAQSB1zCB1DCBjgYIKwYBBQUHMAKGgYFsZGFwOi8vbGRhcC5zZXJ2ZXI6Mzg5L0NOPVpKQ0FSb290LENOPVpKQ0FSb290LCBP" +
+            "VT1jQUNlcnRpZmljYXRlcywgbz10ZXN0Y2E/Y0FDZXJ0aWZpY2F0ZT9iYXNlP29iamVjdENsYXNzPWNlcnRpZmljYXRpb25BdXRo" +
+            "b3JpdHkwQQYIKwYBBQUHMAKGNWh0dHA6Ly9jZXJ0LnB1Ymxpc2guc2VydmVyOjg4ODAvZG93bmxvYWQvWkpDQVJvb3QuY2VyMB0G" +
+            "A1UdDgQWBBT06XRnYavJU1WP8iDJoPRUEplXiDANBgkqhkiG9w0BAQsFAAOCAQEAz227JQYC2kQO2x85t7ZR20EfcdVZq5tOWyWJ" +
+            "2/42Zl+Q0GT/EYErdi0/VW67cQu8RuQmr3bxpOAXEjOQYuSuM3MKQaw0AgE++Boto5fc3LlV4nyweBaGgi5ep1KaKj2r+Hj2PG8j" +
+            "mdIPiPw5Fb2WClunvtoH2vckFHS+TggTnwEexsDjMbsX1xUmmdiDwImbZz1CeYAU3umqNAizkhS/TVXdBRImQeDnf1C2IwN5IIGB" +
+            "/9vQWbAXSbmp2UAL76Famsc0yST9uTRfoPDLFDgkIi5fuDfNbn+ZyaQEcF4fOFkzBNDgwU/BIdzHc4QIkX62+8kiy6QSZM4fbVg0" +
+            "IWzz0g==",
         ),
         )
     }
