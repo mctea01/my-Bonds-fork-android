@@ -64,6 +64,7 @@ data class IssuerOptions(
     val dpopNonce: Boolean = true,
     val requireClientAttestation: Boolean = false,
     val requireClientAssertion: Boolean = false,
+    val supportClientAssertion: Boolean = false,
     val encryption: Boolean = true,
     val encryptionRequired: Boolean = false,
     val signedMetadata: Boolean = false,
@@ -251,6 +252,7 @@ class IssuerService(
         putJsonArray("token_endpoint_auth_methods_supported") {
             if (options.requireClientAssertion) add("private_key_jwt") else {
                 add("attest_jwt_client_auth")
+                if (options.supportClientAssertion) add("private_key_jwt")
                 if (!options.requireClientAttestation) add("none")
             }
         }
