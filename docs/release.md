@@ -1,7 +1,5 @@
 # 發佈建置
 
-> **發佈與驗收現況：** PR #11 新增 P1–P3 協定與簽署強化；尚未合併主分支或宣告正式實機認證。請以 [2026-10-16 最新功能矩陣](status-2026-10-16.md)及 [PR #11 Checks](https://github.com/mctea01/my-Bonds-fork-android/pull/11/checks)判定最新 CI。
-
 CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮：
 
 | 檔案 | 說明 |
@@ -13,6 +11,10 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行 |
 
 版本號為 `0.1.<CI 執行次數>`，Android versionCode 為 CI 執行次數，新版可直接覆蓋安裝舊版。
+
+## PR #11 2026-10-16 發佈門檻
+
+OpenID4VCI、OpenID4VP 多重簽章及 VICAL／RICAL 的 PR #11 修改不能沿用先前 commit 的 CI 結果；只採用最新 HEAD 的 `test`、Android `build`（含 R8）以及 Windows／Linux Desktop 封裝。公有 Multipaz 發證端註冊、TW FidO SP、QTSP 商業帳號與機關電子公文交換身份均屬外部資格，**不是**下載／發佈 APK 前的必要條件。Android HTTPS App Links 暫不部署，不阻擋現有版的憑證領取與 DC API。
 
 ## Android 簽章
 

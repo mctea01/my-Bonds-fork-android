@@ -1,12 +1,14 @@
 # ZKP 全景、驗證者身分／意圖揭露、信任分級 UI：研究筆記
 
-> **研究資料，非功能交付聲明。** 原始 ZKP 方案與比較保留；P4／P5 最新實作、裝置支援與完成度見 [2026-10-16 專案狀態](../status-2026-10-16.md)。
-
 > 撰寫日期：2026-10-10。對象：KMP + Compose Multiplatform（Android 先行）、以 Multipaz 為底層的數位身分皮夾。
 > 標記：**【確認】** 表示已讀過原始規格、repo 或官方頁面；**【推論】** 表示依據已知資料推論，或憑記憶整理、尚未在本次研究中逐字核對。
 > 原始檔（本次下載，供複查）：`/tmp/claude-0/-home-claude/1d918b7c-45c0-59bb-9eeb-d2fad55d6a21/scratchpad/dl/`（EUDI TS4/TS5/TS6/TS13/TS14、ARF Annex 2、Topic I/J、OpenID4VP 1.0 原始 md），以及 `.../scratchpad/repos/`（multipaz、zkID、eudi-app-android-wallet-ui、longfellow-zk 的淺層 clone）。
 
 ---
+
+## 2026-10-16 查驗者信任前置條件
+
+Zero-Knowledge Proof 並不能替代查驗者身份、同意用途與 Key Authorization 的驗證。PR #11 的 DC API 多重簽章已逐一驗簽；使用者匯入的 RICAL 只對明確標示 `isTrustAnchor` 的讀者 CA 建立信任，需另驗證清單發行者簽章。OpenID Federation 尚需真正的信任鏈與 Policy 驗證；此缺口不可藉由展示 ZKP 通過或 `client_metadata` 宣稱已解決。
 
 ## 0. 一頁重點
 

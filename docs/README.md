@@ -1,14 +1,6 @@
 # 文件索引
 
-> **現行最新進度：** [2026-10-16 專案功能、CI 與驗收矩陣](status-2026-10-16.md)。本目錄下的舊驗收與研究報告均為其撰寫當時快照，外部 SP／QTSP／機關交換授權不列為個人錢包的程式缺陷。
-
 設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
-
-## 最新狀態
-
-| 文件 | 內容 |
-| --- | --- |
-| [status-2026-10-16.md](status-2026-10-16.md) | 現行功能、已實作與部分支援、最新 CI、對外授權邊界及 PR #11 變更 |
 
 ## 設計
 
@@ -36,11 +28,10 @@
 
 | 文件 | 內容 |
 |---|---|
-| [acceptance/p1-acceptance.md](acceptance/p1-acceptance.md) | P1 標準核心 |
-| [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 OpenID4VC 全組合與相容 Profile |
-| [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 後續：狀態、風險與信任錨點 |
-| [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
-| [acceptance/p1-p3-interoperability-followup.md](acceptance/p1-p3-interoperability-followup.md) | P1–P3 互通、錢包後端、簽章安全性補強與尚待正式服務驗收的條件（PR #11） |
+| [acceptance/p1-acceptance.md](acceptance/p1-acceptance.md) | P1 標準核心，含 2026-10-16 Client Authentication 補強 |
+| [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 標準／方言互通，含 DC API 多重簽章與 VICAL／RICAL |
+| [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 狀態、風險、信任錨點與獨立簽署清單發行者信任 |
+| [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證，含 2026-10-16 TW FidO、CSC、電子公文公開規格驗收 |
 
 ## 使用與發佈
 

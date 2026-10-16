@@ -1,10 +1,12 @@
 # bonds tw 系列（有備而來 / Bonds）深度調研筆記
 
-> **研究資料的時間點說明：** 本文保留編寫時的技術比較與來源，不代表現在的功能完成度或最新規格版本。請以 [2026-10-16 專案狀態矩陣](../status-2026-10-16.md)確認 PR #11 的新實作及剩餘缺口。個人錢包依公開規格支援行動自然人憑證、CSC 及公文檔案，正式服務帳號／機關交換資格不屬必須完成的程式功能。
-
 > 目的：為 KMP + Compose Multiplatform（底層 Multipaz）的台灣第三方數位身分皮夾（Android 先行）萃取 bonds tw 系列的非標準實作細節、已知問題與可重用程度。
 > 調研日期：2026-10-10。標記：**【確認】** = 在 repo 原始碼／文件中讀到的事實（附路徑）；**【推論】** = 本筆記作者的推斷，需實測。
 > 路徑前綴 `B/` = `scratchpad/src/Bonds-iOS`（commit `e22de5f`, 2026-09-13）；`VP/` = `twdiw-vp-verifier-lite`（`5742a5f`）；`VC/` = `twdiw-vc-issuer-lite`（`eed4316`）；`GH/` = `bonds-tw.github.io`（`295433e`）。
+
+## 2026-10-16 與標準協定的界線
+
+Bonds QR／BLE、`vc+moica` 及 MyData 規則沿用自有 Profile；OpenID4VCI 的標準 OAuth Client Authentication 與 OpenID4VP 1.0 多重簽章處理由共用核心完成，不能為了相容 Bonds 而略過標準查驗者簽名或更改其信任等級。TW FidO SP 實際營運需外部許可，但公開規格與本地簽章檢查是個人錢包的交付範圍。
 
 ## 0. 資料來源狀態
 
