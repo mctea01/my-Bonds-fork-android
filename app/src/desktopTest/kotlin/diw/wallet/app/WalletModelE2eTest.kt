@@ -282,8 +282,8 @@ class WalletModelE2eTest {
         m.handleUri(DiwJson.parseToJsonElement(text).jsonObject["uri"]!!.jsonPrimitive.content)
         val consent = withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Consent || it is PresentationUi.Failed } }
 
-        fun shot(name: String, content: @androidx.compose.runtime.Composable () -> Unit) {
-            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, 892 * 2, androidx.compose.ui.unit.Density(2f), content = content)
+        fun shot(name: String, height: Int = 892, content: @androidx.compose.runtime.Composable () -> Unit) {
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f), content = content)
             try {
                 var image = scene.render(0)
                 // Let effects, flows and card art settle.
@@ -297,10 +297,10 @@ class WalletModelE2eTest {
             }
         }
 
-        fun screen(name: String, s: Screen, tab: HomeTab = HomeTab.DOCUMENTS) {
+        fun screen(name: String, s: Screen, tab: HomeTab = HomeTab.DOCUMENTS, height: Int = 892) {
             m.tab.value = tab
             m.screen.value = s
-            shot(name) { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+            shot(name, height) { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
         }
 
         screen("05-presentation-consent", Screen.Presentation)
@@ -317,13 +317,15 @@ class WalletModelE2eTest {
         screen("08c-settings-trust", Screen.SettingsPage(diw.wallet.app.SettingsSection.TRUST))
         screen("08d-settings-interop", Screen.SettingsPage(diw.wallet.app.SettingsSection.INTEROP))
         screen("08e-custom-trust", Screen.CustomTrust)
+        screen("08f-settings-about", Screen.SettingsPage(diw.wallet.app.SettingsSection.ABOUT))
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
+        screen("12b-document-sources", Screen.DocumentSources)
         screen("13-trust-anchors", Screen.TrustAnchors)
         val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
         val stored = m.files.files.value.first()
-        screen("14-file-detail", Screen.FileDetail(stored.id))
+        screen("14-file-detail", Screen.FileDetail(stored.id), height = 1900)
         screen("15-file-sign", Screen.FileSign(stored.id))
         screen("16-file-derive", Screen.FileDerive(stored.id))
         m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
@@ -334,6 +336,7 @@ class WalletModelE2eTest {
         m.files.issueNationalId(assertNotNull(m.files.nationalIdDraft.value), "簽署中") { rsaSigner("測試人員") }.join()
         screen("20-national-id", Screen.NationalId(idFile.id))
         screen("21-documents-with-national-id", Screen.Home, HomeTab.DOCUMENTS)
+        screen("22-files-with-documents", Screen.Home, HomeTab.FILES)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {

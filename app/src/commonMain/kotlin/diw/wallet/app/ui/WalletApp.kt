@@ -157,6 +157,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
                     is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                     is Screen.NationalId -> NationalIdScreen(model, s)
+                    Screen.DocumentSources -> DocumentSourcesScreen(model)
                     is Screen.Portal -> PortalScreen(model, s)
                     is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                 }
@@ -202,6 +203,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.OpenCertRender -> if (s.offline) "離線顯示證書" else "發證機構樣式"
     is Screen.NationalIdCreate -> "製作身分證卡"
     is Screen.NationalId -> "身分證卡"
+    Screen.DocumentSources -> "取得文件"
     is Screen.Portal -> "取得文件"
     is Screen.OfficialBundle -> "公文容器"
 }

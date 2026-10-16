@@ -191,7 +191,8 @@ enum class SettingsSection(val title: String) {
     TRUST("信任"),
     INTEROP("互通"),
     DEVELOPER("開發者與測試"),
-    GENERAL("一般與關於"),
+    GENERAL("顯示"),
+    ABOUT("關於"),
 }
 
 sealed class Screen {
@@ -224,14 +225,14 @@ sealed class Screen {
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
     data class FileDerive(val fileId: String) : Screen()
-    /** An OpenCerts certificate [fileId] shown by its issuer's renderer. */
     /** The certificate laid out by its issuer's renderer, or offline by the wallet ([offline]). */
     data class OpenCertRender(val fileId: String, val offline: Boolean = false) : Screen()
     /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
     data class NationalIdCreate(val fileId: String) : Screen()
     /** The Bonds national ID card made from the vault file [fileId]. */
     data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
-    /** Writing a PDF ([letter] false) or an official letter. */
+    /** The sites that issue documents (MyData and others), opened from the files tab. */
+    data object DocumentSources : Screen()
     /** A document source site opened inside the app. */
     data class Portal(val sourceId: String) : Screen()
     /**
@@ -671,7 +672,8 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.OpenCertRender -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
-            is Screen.Portal -> showTab(HomeTab.FILES)
+            Screen.DocumentSources -> showTab(HomeTab.FILES)
+            is Screen.Portal -> screen.value = Screen.DocumentSources
             is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
         }
         return true

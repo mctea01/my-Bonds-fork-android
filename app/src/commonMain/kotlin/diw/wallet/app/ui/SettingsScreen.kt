@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.AppBuild
 import diw.wallet.app.Screen
 import diw.wallet.app.SettingsSection
 import diw.wallet.app.WalletModel
@@ -66,6 +67,7 @@ private val SettingsSection.icon: ImageVector
         SettingsSection.INTEROP -> WalletIcons.Link
         SettingsSection.DEVELOPER -> WalletIcons.Phone
         SettingsSection.GENERAL -> WalletIcons.Settings
+        SettingsSection.ABOUT -> WalletIcons.Info
     }
 
 /** The settings list: one row per group, each saying what it holds and how it is set now. */
@@ -99,7 +101,8 @@ fun SettingsScreen(model: WalletModel) {
                 ).joinToString("・")
                 SettingsSection.INTEROP -> "數位憑證皮夾、Bonds、EUDI 與 Verified ID 的相容處理常駐啟用"
                 SettingsSection.DEVELOPER -> "自訂測試伺服器：" + onOff(s.testEnvironment) + if (s.manualMobileMoicaSp) "・手動 SP 帳號" else ""
-                SettingsSection.GENERAL -> "預設展開技術細節：" + onOff(s.showDetails) + "・" + model.platform.platformName
+                SettingsSection.GENERAL -> "預設展開技術細節：" + onOff(s.showDetails)
+                SettingsSection.ABOUT -> "版本 " + appVersion() + "・授權、第三方元件與原始碼"
             }
             ActionRow(section.icon, section.title, summary) { model.screen.value = Screen.SettingsPage(section) }
         }
@@ -118,6 +121,7 @@ fun SettingsPageScreen(model: WalletModel, section: SettingsSection) {
             SettingsSection.INTEROP -> InteropPage(model)
             SettingsSection.DEVELOPER -> DeveloperPage(model)
             SettingsSection.GENERAL -> GeneralPage(model)
+            SettingsSection.ABOUT -> AboutPage(model)
         }
     }
 }
@@ -327,15 +331,57 @@ private fun DeveloperPage(model: WalletModel) {
 @Composable
 private fun GeneralPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    SectionTitle("顯示")
     Toggle("預設展開技術細節", "證件與出示請求的規格、簽章、憑證鏈、有效期間、金鑰與信任判斷", s.showDetails) { v ->
         model.updateSettings { it.copy(showDetails = v) }
     }
-    HorizontalDivider()
-    SectionTitle("關於")
+}
+
+private const val SOURCE_URL = "https://github.com/mctea01/my-Bonds-fork-android"
+
+private fun appVersion(): String = AppBuild.version ?: "開發版"
+
+/** Third-party software shipped in the app, as NOTICE lists it. */
+private val THIRD_PARTY = listOf(
+    "Multipaz" to "Apache License 2.0",
+    "Kotlin、kotlinx.coroutines、kotlinx.serialization、kotlinx-io、kotlinx-datetime" to "Apache License 2.0",
+    "Ktor" to "Apache License 2.0",
+    "Compose Multiplatform、AndroidX" to "Apache License 2.0",
+    "Google Play services identity credentials" to "Android Software Development Kit License",
+    "Bouncy Castle" to "Bouncy Castle License（MIT 類）",
+    "Apache Xerces2、xml-apis" to "Apache License 2.0",
+    "Apache PDFBox（電腦版預覽）" to "Apache License 2.0",
+    "SQLite JDBC（電腦版）" to "Apache License 2.0；SQLite 為公眾領域",
+    "CMWallet 收卡比對程式（Android）" to "Apache License 2.0",
+)
+
+@Composable
+private fun AboutPage(model: WalletModel) {
+    val s by model.settingsFlow.collectAsState()
+    Text("DIW MY WALLET", style = MaterialTheme.typography.titleLarge)
+    Text("跨平台的數位憑證錢包：保存與出示數位證件、查驗他人證件，並保存、檢查與簽署電子文件。依 OpenID4VCI 1.0、OpenID4VP 1.0、ISO/IEC 18013-5 與 18013-7、" +
+        "SD-JWT VC、W3C VC 等標準實作，並相容數位憑證皮夾、Bonds、EUDI Wallet 與 Microsoft Verified ID。",
+        style = MaterialTheme.typography.bodySmall)
+    SectionTitle("版本")
+    LabelValue("版本", appVersion())
+    AppBuild.commit?.let { LabelValue("建置來源", it) }
     LabelValue("平台", model.platform.platformName)
-    LabelValue("Client ID", s.clientId)
-    LabelValue("數位憑證皮夾 client_id", s.twdiwClientId)
+    HorizontalDivider()
+    SectionTitle("識別碼")
+    LabelValue("Client ID", s.clientId, small = true)
+    LabelValue("數位憑證皮夾 client_id", s.twdiwClientId, small = true)
+    HorizontalDivider()
+    SectionTitle("授權")
+    Text("Copyright 2026 LIN, CHE-CHUAN。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
+    Text("內建的信任錨點是各憑證機構與 Multipaz 專案公開的憑證，只用於驗證憑證鏈；Adobe AATL 與歐盟 EUTL 在 App 內下載並驗證，只內建簽署憑證的指紋。" +
+        "沒有複製 Bonds 的程式碼，相容性依公開的格式與文件實作。",
+        style = MaterialTheme.typography.bodySmall)
+    SectionTitle("第三方元件")
+    THIRD_PARTY.forEach { (name, license) -> LabelValue(name, license, small = true) }
+    HorizontalDivider()
+    SectionTitle("原始碼")
+    LabelValue("GitHub", SOURCE_URL, small = true) { model.platform.openBrowser(SOURCE_URL) }
+    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/LICENSE") }) { Text("授權全文") }
+    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/NOTICE") }) { Text("第三方授權聲明（NOTICE）") }
 }
 
 /** Registration with the system credential picker (Android Digital Credentials API); hidden where there is none. */
