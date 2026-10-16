@@ -103,8 +103,10 @@ class Oid4vpHolder(
     private val derivedSources: suspend () -> List<HolderDerivedSource> = { emptyList() },
     /** Who the holder is (ID number, name), to pick the holder's own row on a household record. */
     private val derivedHolders: suspend () -> List<HolderHint> = { emptyList() },
+    /** Decryption keys registered for encrypted request objects (not keys received from the verifier). */
+    private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
 ) {
-    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed)
+    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
     private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed)
     private val legacy = LegacyRequestValidator(httpClient, trustRegistry, didResolver, didTrust, policy, environment.insecureLoopbackAllowed, dialects)
