@@ -6,6 +6,26 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+val buildZkDesktop by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine("bash", "native/build.sh", "host")
+    inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/resources"))
+}
+val zkAssetResources by tasks.registering {
+    val source = rootProject.file("native/assets.json")
+    val destination = layout.buildDirectory.dir("generated/zkAssets")
+    inputs.file(source)
+    outputs.dir(destination)
+    doLast {
+        // Keep the pinned bytes identical on Windows checkouts with CRLF conversion.
+        destination.get().file("zk/assets.json").asFile.apply {
+            parentFile.mkdirs()
+            writeText(source.readText().replace("\r\n", "\n"))
+        }
+    }
+}
+
 /**
  * The DOM interfaces Xerces implements that Android does not ship (DOM events, ranges, traversal, views, HTML, CSS,
  * ElementTraversal, StAX). Only classes absent from android.jar are taken from xml-apis, so nothing shadows the
@@ -40,6 +60,8 @@ kotlin {
         val jvmCommonMain by creating { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(jvmCommonMain)
         jvmMain.get().dependsOn(jvmCommonMain)
+        commonMain.get().resources.srcDir(zkAssetResources)
+        jvmMain.get().resources.srcDir(buildZkDesktop.map { rootProject.file("native/dist/resources") })
 
         commonMain.dependencies {
             api(libs.multipaz)
@@ -54,12 +76,14 @@ kotlin {
             implementation(libs.bcpkix)
         }
         androidMain.dependencies {
+            api("${libs.jna.get()}@aar")
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
             implementation(libs.xerces.get().toString()) { exclude(group = "xml-apis") }
             implementation(files(androidDomExtras))
         }
         jvmMain.dependencies {
+            api(libs.jna)
             implementation(libs.ktor.client.java)
             implementation(libs.sqlite.jdbc)
         }

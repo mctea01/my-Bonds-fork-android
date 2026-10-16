@@ -1,0 +1,22 @@
+package diw.testservers.zk
+
+import diw.wallet.core.zk.ZkResult
+import diw.wallet.core.zk.native.ZkNative
+import diw.wallet.core.zk.native.bindings.*
+import kotlinx.coroutines.runBlocking
+import java.nio.file.Files
+import kotlin.test.*
+
+class ZkNativeTest {
+    @Test fun loadsPackagedRuntime() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("diw-zk-native").toFile()
+        try {
+            assertIs<ZkResult.Ok<*>>(ZkNative.load(directory))
+            assertEquals("0.1.0", nativeInfo().crateVersion)
+            assertEquals(listOf("runtime"), nativeInfo().features)
+            assertTrue(selfTest())
+            ZkCancelToken().use { it.cancel() }
+            assertNull(nativeInfo().zkid)
+        } finally { directory.deleteRecursively() }
+    }
+}

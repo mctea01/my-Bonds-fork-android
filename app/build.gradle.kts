@@ -12,6 +12,13 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+val buildZkAndroid by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine("bash", "native/build.sh", "android")
+    inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
+}
+
 /**
  * The mobile citizen certificate SP account built into this build, from the environment or Gradle properties
  * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI can pass them as secrets, see docs/release.md).
@@ -188,6 +195,8 @@ val releaseKey: Result<ReleaseKey?> = runCatching {
 android {
     namespace = "diw.wallet.app"
     compileSdk = 36
+    ndkVersion = "28.2.13676358"
+    sourceSets.getByName("main").jniLibs.srcDir(rootProject.file("native/dist/android"))
     defaultConfig {
         applicationId = "diw.wallet.app"
         minSdk = 29
@@ -229,10 +238,15 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(rootProject.file("native/zk.pro"))
             // Without a release key the optimized APK is signed with the debug key, so it still installs for testing.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(buildZkAndroid)
 }
 
 // A release key that is set but does not open stops release builds at once; debug builds and tests still run.
@@ -277,6 +291,7 @@ compose.desktop {
             }
         }
         buildTypes.release.proguard {
+            configurationFiles.from(rootProject.file("native/zk.pro"))
             configurationFiles.from(project.file("compose-desktop.pro"))
             obfuscate.set(false)
         }
