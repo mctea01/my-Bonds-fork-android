@@ -9,6 +9,7 @@ import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.EcPublicKey
 
 /** An issuer key found by a dialect, with the reason shown to the user and the specification it follows. */
+/** [spec] is recorded for the session; null records the dialect's own spec, an empty string records nothing. */
 data class DialectIssuerKey(val key: EcPublicKey, val reason: String, val spec: String? = null)
 
 /** What a dialect sees when the standard SD-JWT VC key lookup (x5c, JWT VC issuer metadata) does not apply. */
@@ -157,7 +158,7 @@ class DialectSet(private val dialects: List<IssuanceDialect>) {
 
     fun record(d: IssuanceDialect, spec: String = d.spec) {
         used += d.id
-        specs += spec
+        if (spec.isNotEmpty()) specs += spec
     }
 
     fun claim(d: IssuanceDialect) {
@@ -178,6 +179,9 @@ class DialectSet(private val dialects: List<IssuanceDialect>) {
         }
         return null
     }
+
+    /** The first dialect answering yes, without recording it; the caller records it once the answer was actually used. */
+    fun firstWhere(hook: (IssuanceDialect) -> Boolean): IssuanceDialect? = ordered().firstOrNull(hook)
 
     /** Like [first] for yes/no hooks. */
     fun any(hook: (IssuanceDialect) -> Boolean): Boolean = first { if (hook(it)) true else null } == true

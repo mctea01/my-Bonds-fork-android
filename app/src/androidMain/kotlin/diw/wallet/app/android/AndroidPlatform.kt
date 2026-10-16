@@ -1,5 +1,23 @@
 package diw.wallet.app.android
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.TextUtils
+import androidx.compose.ui.graphics.asAndroidBitmap
+import diw.wallet.app.CardArtSpec
+import android.graphics.pdf.PdfRenderer
+import android.os.ParcelFileDescriptor
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import android.Manifest
 import android.app.Activity
 import android.app.KeyguardManager
@@ -16,13 +34,18 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.browser.customtabs.CustomTabsIntent
 import com.google.android.gms.identitycredentials.IdentityCredentialManager
+import com.google.android.gms.identitycredentials.RegisterCreationOptionsRequest
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import com.google.android.gms.identitycredentials.RegistrationRequest
 import com.google.android.gms.tasks.Task
 import diw.wallet.app.DcApiRegistration
 import diw.wallet.app.BondsLinkPeripheral
+import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.KeyProtection
 import diw.wallet.app.NfcReaderList
+import diw.wallet.app.PickedFile
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.WalletModel
@@ -117,6 +140,125 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     @Volatile var activity: Activity? = null
 
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
+    @Volatile var fileAccess: AndroidFileAccess? = null
+
+    override suspend fun pickFile(): PickedFile? = fileAccess?.pick()
+
+    override suspend fun pickFiles(): List<PickedFile> = fileAccess?.pickMany().orEmpty()
+
+    override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
+
+    override val embeddedBrowser: Boolean get() = true
+
+    override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
+        // PdfRenderer reads a seekable file descriptor; the copy lives in the app's cache only while it draws.
+        val file = java.io.File.createTempFile("preview", ".pdf", context.cacheDir)
+        try {
+            file.writeBytes(bytes)
+            ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                PdfRenderer(fd).use { renderer ->
+                    (0 until minOf(maxPages, renderer.pageCount)).map { i ->
+                        renderer.openPage(i).use { page ->
+                            val height = (widthPx.toLong() * page.height / maxOf(page.width, 1)).toInt().coerceIn(1, widthPx * 4)
+                            val bitmap = Bitmap.createBitmap(widthPx, height, Bitmap.Config.ARGB_8888)
+                            bitmap.eraseColor(android.graphics.Color.WHITE)
+                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                            bitmap.asImageBitmap()
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Logger.w(TAG, "PDF preview failed", e)
+            emptyList()
+        } finally {
+            file.delete()
+        }
+    }
+
+    override suspend fun renderCardArt(spec: CardArtSpec): ByteArray? = withContext(Dispatchers.Default) {
+        val w = CardArtSpec.WIDTH
+        val h = CardArtSpec.HEIGHT
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val card = Path().apply { addRoundRect(RectF(0f, 0f, w.toFloat(), h.toFloat()), 36f, 36f, Path.Direction.CW) }
+        canvas.clipPath(card)
+        canvas.drawColor(spec.background)
+        val pad = 32f
+        // The picture (a document page or a portrait) fills the right part of the card and fades into the background.
+        val textRight = spec.picture?.asAndroidBitmap()?.let { pic ->
+            val left = w * 0.6f
+            val area = RectF(left, 0f, w.toFloat(), h.toFloat())
+            val scale = maxOf(area.width() / pic.width, area.height() / pic.height)
+            val sw = area.width() / scale
+            val src = Rect(((pic.width - sw) / 2).toInt().coerceAtLeast(0), 0, ((pic.width + sw) / 2).toInt().coerceAtMost(pic.width),
+                (area.height() / scale).toInt().coerceAtMost(pic.height))
+            canvas.drawBitmap(pic, src, area, Paint(Paint.FILTER_BITMAP_FLAG))
+            val fade = Paint().apply {
+                shader = LinearGradient(left, 0f, left + 96f, 0f, spec.background, spec.background and 0x00FFFFFF, Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(left, 0f, left + 96f, h.toFloat(), fade)
+            left - 8f
+        } ?: (w - pad)
+        var top = pad
+        spec.logo?.asAndroidBitmap()?.let { logo ->
+            val size = 72f
+            val scale = size / maxOf(logo.width, logo.height)
+            val dst = RectF(pad, pad, pad + logo.width * scale, pad + logo.height * scale)
+            canvas.save()
+            canvas.clipPath(Path().apply { addRoundRect(dst, 12f, 12f, Path.Direction.CW) })
+            canvas.drawBitmap(logo, null, dst, Paint(Paint.FILTER_BITMAP_FLAG))
+            canvas.restore()
+            top = pad + size + 20f
+        }
+        val width = (textRight - pad).toInt().coerceAtLeast(120)
+        val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = spec.foreground
+            textSize = 44f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val title = StaticLayout.Builder.obtain(spec.title, 0, spec.title.length, titlePaint, width)
+            .setMaxLines(if (top > pad) 2 else 3).setEllipsize(TextUtils.TruncateAt.END).build()
+        canvas.save()
+        canvas.translate(pad, top)
+        title.draw(canvas)
+        canvas.restore()
+        val issuerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = (spec.foreground and 0x00FFFFFF) or (0xD9 shl 24)
+            textSize = 26f
+        }
+        val issuer = TextUtils.ellipsize(spec.issuer, issuerPaint, width.toFloat(), TextUtils.TruncateAt.END).toString()
+        canvas.drawText(issuer, pad, h - pad - 8f, issuerPaint)
+        spec.badge?.let { badge ->
+            val badgePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textSize = 24f; typeface = Typeface.DEFAULT_BOLD }
+            val bw = badgePaint.measureText(badge) + 28f
+            val box = RectF(w - pad - bw, pad, w - pad, pad + 40f)
+            canvas.drawRoundRect(box, 20f, 20f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFC2410C.toInt() })
+            canvas.drawText(badge, box.left + 14f, box.bottom - 12f, badgePaint)
+        }
+        java.io.ByteArrayOutputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            out.toByteArray()
+        }
+    }
+
+    override val externalKeys: ExternalKeys by lazy { AndroidKeys(context) { activity } }
+
+    override val mobileMoicaReturnUrl = "diw-wallet://moica/return"
+
+    override fun openExternal(url: String): Boolean = try {
+        val intent = if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME).addCategory(Intent.CATEGORY_BROWSABLE).setComponent(null)
+        else Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+    } catch (_: android.content.ActivityNotFoundException) {
+        false
+    } catch (_: java.net.URISyntaxException) {
+        false
+    }
 
     @Volatile private var nfcPresentationActive = false
 
@@ -254,6 +396,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     private val dcApiLock = Mutex()
 
     override suspend fun registerDigitalCredentials(model: WalletModel, force: Boolean) = dcApiLock.withLock {
+        // The system picker shows each credential with its card art; credentials without one get it first.
+        runCatching { model.ensureCardArt() }.onFailure { if (it is CancellationException) throw it; Logger.w(TAG, "Card art failed", it) }
         val now = Clock.System.now()
         model.dcApiRegistration.value = try {
             val dc = DigitalCredentials.getDefault()
@@ -272,13 +416,54 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 IdentityCredentialManager.getClient(context)
                     .registerCredentials(RegistrationRequest(Cbor.encode(database), matcher, DIGITAL_CREDENTIAL_TYPE, "", emptyList()))
                     .awaitResult()
-                DcApiRegistration(database["credentials"].asArray.size, notListable(model), protocols, null, now)
+                val issuance = runCatching { registerIssuance(appName) }
+                    .onFailure { if (it is CancellationException) throw it; Logger.e(TAG, "Digital Credentials issuance registration failed", it) }
+                DcApiRegistration(
+                    database["credentials"].asArray.size, notListable(model), protocols, null, now,
+                    issuance = issuance.isSuccess, issuanceError = issuance.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+                )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Logger.e(TAG, "Digital Credentials registration failed", e)
             DcApiRegistration(0, runCatching { notListable(model) }.getOrDefault(0), emptySet(), e.message ?: e::class.simpleName, now)
         }
+    }
+
+    /**
+     * Lets web pages and apps save credentials into the wallet (navigator.credentials.create with OpenID4VCI): the
+     * creation entry the system lists, and the CMWallet issuance matcher that shows it for openid4vci-v1 and
+     * openid4vci1.0 requests. Requests arrive at DcApiActivity with the CREATE_CREDENTIAL action.
+     */
+    private suspend fun registerIssuance(appName: String) {
+        val matcher = withContext(Dispatchers.IO) { context.assets.open(ISSUANCE_MATCHER_ASSET).use { it.readBytes() } }
+        val options = creationOptions(appName, "存入 $appName", launcherIconPng())
+        IdentityCredentialManager.getClient(context)
+            .registerCreationOptions(RegisterCreationOptionsRequest(options, matcher, DIGITAL_CREDENTIAL_TYPE, ISSUANCE_ID, ""))
+            .awaitResult()
+    }
+
+    /** The issuance matcher's data: a little-endian offset to the JSON, the icon, then the JSON naming the entry and its icon. */
+    private fun creationOptions(title: String, subtitle: String, icon: ByteArray): ByteArray {
+        val json = buildJsonObject {
+            put("display", buildJsonObject {
+                put("title", JsonPrimitive(title))
+                put("subtitle", JsonPrimitive(subtitle))
+                put("icon", buildJsonObject { put("start", JsonPrimitive(4)); put("length", JsonPrimitive(icon.size)) })
+            })
+        }.toString().encodeToByteArray()
+        val offset = 4 + icon.size
+        val head = byteArrayOf(offset.toByte(), (offset shr 8).toByte(), (offset shr 16).toByte(), (offset shr 24).toByte())
+        return head + icon + json
+    }
+
+    /** The launcher icon as a 96 x 96 PNG for the system's entry. */
+    private fun launcherIconPng(): ByteArray {
+        val drawable = context.packageManager.getApplicationIcon(context.applicationInfo)
+        val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, 96, 96)
+        drawable.draw(Canvas(bitmap))
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     }
 
     /**
@@ -314,6 +499,9 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         /** Matcher shipped in multipaz-dcapi; the system runs it against each request to list matching credentials. */
         const val MATCHER_ASSET = "identitycredentialmatcher.wasm"
         const val DIGITAL_CREDENTIAL_TYPE = "androidx.credentials.TYPE_DIGITAL_CREDENTIAL"
+        /** Issuance matcher from the CMWallet sample (Apache-2.0, matcher/issuance/provision.c). */
+        const val ISSUANCE_MATCHER_ASSET = "openid4vci_provision.wasm"
+        const val ISSUANCE_ID = "openid4vci"
         const val MAX_ATTESTATION_CHALLENGE = 128
         const val PROXIMITY_PERMISSION_REQUEST = 7302
     }

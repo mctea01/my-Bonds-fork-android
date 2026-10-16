@@ -26,6 +26,8 @@ import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.PreparedDerived
+import diw.wallet.core.oid4vp.PreparedMoica
 import diw.wallet.core.oid4vp.PreparedPresentation
 import diw.wallet.core.oid4vp.PreparedRequest
 import diw.wallet.core.oid4vp.PresentationOutcome
@@ -34,7 +36,10 @@ import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
+import diw.wallet.core.profile.bonds.HeldMoicaCard
+import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.profile.bonds.BondsQrTransport
 import diw.wallet.core.profile.msvid.LinkedDomains
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -45,9 +50,11 @@ import diw.wallet.core.profile.twdiw.TwdiwServices
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
 import diw.wallet.core.profile.twdiw.TwdiwUserAgent
 import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.trust.BuiltInPublicRoots
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.StoredAnchor
 import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustListKind
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
@@ -62,14 +69,22 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import diw.wallet.app.ui.DocumentCategory
+import diw.wallet.app.ui.categoryOf
+import diw.wallet.app.ui.parseColor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,6 +101,9 @@ import org.multipaz.crypto.X509Cert
 import org.multipaz.asn1.OID
 import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
+import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.document.sign.CscService
+import diw.wallet.core.document.sign.SigningException
 import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.documenttype.knowntypes.DrivingLicense
@@ -129,6 +147,32 @@ data class WalletSettings(
     val systemTrustStore: Boolean = true,
     /** Trust chains to the built-in mainland China CAs (Mozilla and Microsoft program roots, SM2 roots) as T3. */
     val mainlandChinaRoots: Boolean = true,
+    /** Trust document signers and time-stamp authorities on the Adobe Approved Trust List (T2). */
+    val aatlTrustList: Boolean = true,
+    /** Trust qualified CAs and time-stamp services on the EU trusted lists (T2). */
+    val eutlTrustList: Boolean = true,
+    /** Time-stamp authority for signatures and stored files (see TsaServices). */
+    val tsaId: String = "digicert",
+    /** Time-stamp every file when it is stored (only its SHA-256 is sent). */
+    val timestampOnSave: Boolean = false,
+    /** Keep the time-stamp authority's revocation data (OCSP first, else CRL) with every time stamp. */
+    val timestampRevocation: Boolean = true,
+    /** PAdES level the signing screen starts with (PadesLevel name). */
+    val padesLevel: String = "B_T",
+    /**
+     * National ID number the holder saved for MyData (Bonds MyDataAutofillProfile): filled into MyData sign-in pages
+     * and tried on MyData PDFs. Saved only when the holder asks.
+     */
+    val myDataIdNumber: String? = null,
+    /** Birth date (yyyyMMdd) saved with [myDataIdNumber] for MyData sign-in pages. */
+    val myDataBirthDate: String? = null,
+    /**
+     * Developer option: sign with the mobile citizen certificate through an SP account typed in on the signing screen
+     * (kept in memory only) instead of the account built into this build.
+     */
+    val manualMobileMoicaSp: Boolean = false,
+    /** Remote signing services (CSC API) the user added; the built-in ones are in CscServices. */
+    val cscServices: List<CscService> = emptyList(),
 )
 
 /**
@@ -161,6 +205,25 @@ sealed class Screen {
     data object Proximity : Screen()
     /** In-person verification: the wallet reads another wallet's mdoc by NFC (ISO/IEC 18013-5 reader). */
     data object Reader : Screen()
+    /** A stored file with its signature report. */
+    data class FileDetail(val fileId: String) : Screen()
+    data class FileSign(val fileId: String) : Screen()
+    data class FileDerive(val fileId: String) : Screen()
+    /** An OpenCerts certificate [fileId] shown by its issuer's renderer. */
+    /** The certificate laid out by its issuer's renderer, or offline by the wallet ([offline]). */
+    data class OpenCertRender(val fileId: String, val offline: Boolean = false) : Screen()
+    /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
+    data class NationalIdCreate(val fileId: String) : Screen()
+    /** The Bonds national ID card made from the vault file [fileId]. */
+    data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
+    /** Writing a PDF ([letter] false) or an official letter. */
+    /** A document source site opened inside the app. */
+    data class Portal(val sourceId: String) : Screen()
+    /**
+     * Confirming which files go into the container of the official document [mainId]: [only] the files that just came
+     * in, or null for every file outside a container; [next] are further documents of the same import.
+     */
+    data class OfficialBundle(val mainId: String, val only: List<String>?, val next: List<String> = emptyList()) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -175,6 +238,8 @@ sealed class IssuanceUi {
         val unsupported: List<Pair<String, String>> = emptyList(),
         /** Wallet-initiated: the user picks from everything the issuer lists. */
         val walletInitiated: Boolean = false,
+        /** The web page or app that asked to save the credential through the Digital Credentials API. */
+        val requestedBy: String? = null,
     ) : IssuanceUi()
     data class WaitingForBrowser(val session: IssuanceSession) : IssuanceUi()
     data class Working(val message: String) : IssuanceUi()
@@ -209,6 +274,8 @@ sealed class PresentationUi {
         val offline: TwdiwOfflineSession? = null,
         /** Risk of the request: the most sensitive field asked for, raised for a verifier that is not on an official list. */
         val risk: RiskLevel = RiskLevel.LOW,
+        /** The verifier_info entries (registration certificates and other attestations) as checked before asking. */
+        val attestations: List<diw.wallet.core.oid4vp.VerifierAttestation> = emptyList(),
     ) : PresentationUi() {
         val request: ValidatedAuthorizationRequest get() = prepared.request
     }
@@ -246,6 +313,8 @@ class WalletModel(val platform: PlatformServices) {
     /** Stored X.509 anchors (null until loaded) and the DIDs the user trusts, for the trust anchors screen. */
     val anchors = MutableStateFlow<List<StoredAnchor>?>(null)
     val trustedDids = MutableStateFlow<List<UserTrustedDid>>(emptyList())
+    /** Intermediate certificates the user imported; the built-in ones are listed from BuiltInPublicRoots. */
+    val intermediates = MutableStateFlow<List<diw.wallet.core.trust.StoredIntermediate>>(emptyList())
 
     lateinit var storage: Storage
         private set
@@ -258,6 +327,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
+        QesApprovalTransaction.types.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
         private set
@@ -276,13 +346,21 @@ class WalletModel(val platform: PlatformServices) {
             return if (!settings.testEnvironment || url.isEmpty() || url == TwdiwPlatform.PRODUCTION_FRONTEND) TwdiwPlatform.PRODUCTION
             else TwdiwPlatform(frontendUrl = url, test = true)
         }
-    private var twdiwTrustCache: Pair<TwdiwPlatform, TwdiwTrustList>? = null
-    val twdiwTrust: TwdiwTrustList
-        get() {
-            val p = twdiwPlatform
-            twdiwTrustCache?.takeIf { it.first == p }?.let { return it.second }
-            return TwdiwTrustList(http, p, storage = storage).also { twdiwTrustCache = p to it }
-        }
+    private val trustListCache = mutableMapOf<TwdiwPlatform, TwdiwTrustList>()
+
+    /** The trust list served by [platform]; one instance per platform, so its caches are kept. */
+    fun twdiwTrustFor(platform: TwdiwPlatform): TwdiwTrustList =
+        trustListCache.getOrPut(platform) { TwdiwTrustList(http, platform, storage = storage) }
+
+    /** The official TWDIW trust list (production), whatever the test settings. */
+    val twdiwTrust: TwdiwTrustList get() = twdiwTrustFor(TwdiwPlatform.PRODUCTION)
+
+    /**
+     * TWDIW trust lists consulted for every DID: production, the official sandbox (UAT, always on and marked TEST),
+     * and a custom test platform when one is set. Test lists only ever give TEST decisions, so they need no switch.
+     */
+    val twdiwTrustLists: List<TwdiwTrustList>
+        get() = listOf(TwdiwPlatform.PRODUCTION, TwdiwPlatform.UAT, twdiwPlatform).distinctBy { it.frontendUrl }.map { twdiwTrustFor(it) }
     val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
     /** DIDs the user trusts themselves, outside any national list. */
     val userDids: UserDidTrust by lazy { UserDidTrust(storage) }
@@ -291,10 +369,12 @@ class WalletModel(val platform: PlatformServices) {
      * Domains. The user's own decision comes before Linked Domains, so a link that cannot be fetched or verified does
      * not override a DID the user chose to trust.
      */
-    val didTrust: DidTrust get() = DidTrust(listOf(twdiwTrust, userDids, linkedDomains))
-    val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrust, twdiwPlatform)
+    val didTrust: DidTrust get() = DidTrust(twdiwTrustLists + listOf(userDids, linkedDomains))
+    val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrustFor(twdiwPlatform), twdiwPlatform)
     /** One instance, so custom field values attached before a response reach the response. */
-    val twdiwPresentation = TwdiwPresentationDialect { did, host -> twdiwTrust.hostRegistered(did, host) }
+    val twdiwPresentation = TwdiwPresentationDialect { did, host ->
+        twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.hostRegistered(did, host) }.getOrNull() }
+    }
     private val msPresentation = MsVerifiedIdPresentationDialect()
     fun didResolver() = DidResolver(http, environmentPolicy.insecureLoopbackAllowed)
 
@@ -302,6 +382,9 @@ class WalletModel(val platform: PlatformServices) {
     val ms = MsIssuanceModel(this)
     val proximity = ProximityModel(this)
     val reader = ReaderModel(this)
+    val files = FilesModel(this)
+    val csc = CscModel(this)
+    val trustLists = TrustListsModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -322,6 +405,10 @@ class WalletModel(val platform: PlatformServices) {
             allowInsecureLoopbackHttp = settings.allowLoopbackHttp,
             systemStoreEnabled = settings.systemTrustStore,
             mainlandChinaRootsEnabled = settings.mainlandChinaRoots,
+            trustLists = buildSet {
+                if (settings.aatlTrustList) add(TrustListKind.AATL)
+                if (settings.eutlTrustList) add(TrustListKind.EUTL)
+            },
         )
 
     val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }
@@ -335,8 +422,12 @@ class WalletModel(val platform: PlatformServices) {
         documentStore = buildDocumentStore(storage, repo) { addDiwCredentialImplementations(repo) }
         holderIdentities = HolderIdentities(storage, repo)
         trust = TrustRegistry(storage, environmentPolicy)
-        // The Taiwan GPKI anchors in operation are trusted without an import (identity, T2).
+        // Chains that leave out an intermediate certificate are completed from their AIA caIssuers links.
+        trust.issuerFetcher = { url -> files.trustSource.fetchIssuerCertificates(url).firstOrNull() }
+        // The Taiwan GPKI anchors in operation (identity, T2) and the Multipaz test issuers and readers (TEST, T3) are
+        // trusted without an import.
         runCatching { trust.seedBuiltInAnchors() }
+        trustLists.load()
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
@@ -347,9 +438,12 @@ class WalletModel(val platform: PlatformServices) {
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
         status.load()
+        files.load()
         documents.value = documentStore.listDocuments()
+        files.reconcileDerived(documents.value.map { it.identifier }.toSet())
         ready.value = true
         status.refreshDue()
+        trustLists.refreshDue()
     }
 
     // ---------------------------------------------------------------- settings
@@ -380,9 +474,11 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     fun updateSettings(transform: (WalletSettings) -> WalletSettings) = scope.launch {
-        val s = transform(settings)
+        val old = settings
+        val s = transform(old)
         settingsFlow.value = s
         trust.policy = environmentPolicy
+        if (s.aatlTrustList != old.aatlTrustList || s.eutlTrustList != old.eutlTrustList) trustLists.refreshDue()
         val t = storage.getTable(settingsTable)
         val bytes = DiwJson.encodeToString(WalletSettings.serializer(), s).encodeToByteString()
         if (t.get("settings") == null) t.insert("settings", bytes) else t.update("settings", bytes)
@@ -391,7 +487,7 @@ class WalletModel(val platform: PlatformServices) {
     /** Imports the TEST anchors published by the DIW test servers (issuer IACA, verifier root, wallet provider root). */
     fun importTestAnchors() = scope.launch {
         if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
+            message.value = "請先開啟「使用自訂測試伺服器」並設定網址"
             return@launch
         }
         try {
@@ -409,7 +505,7 @@ class WalletModel(val platform: PlatformServices) {
             // A Multipaz OpenID4VCI server has no /pki; its IACA is served per credential configuration.
             if (!http.get("$base/pki/iaca.pem").status.isSuccess()) {
                 val n = addMultipazIssuerAnchors(base)
-                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（僅測試環境有效）"
+                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（結果標示為測試）"
                 return@launch
             }
             var added = 0
@@ -419,7 +515,7 @@ class WalletModel(val platform: PlatformServices) {
                 val cert = X509Cert.fromPem(resp.bodyAsText())
                 if (trust.addAnchor(role, TrustEnvironment.TEST, cert, name, official = false, source = base)) added++
             }
-            message.value = "已匯入 $added 個測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $added 個測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
@@ -430,10 +526,6 @@ class WalletModel(val platform: PlatformServices) {
      * verifier.eudiw.dev request certificates) as TEST anchors.
      */
     fun importEudiTestAnchors() = scope.launch {
-        if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
-            return@launch
-        }
         try {
             var added = 0
             for (name in listOf("pidissuerca02_eu", "pidissuerca02_ut")) {
@@ -444,7 +536,7 @@ class WalletModel(val platform: PlatformServices) {
                     if (trust.addAnchor(role, TrustEnvironment.TEST, cert, "EUDI 參考實作 $name", official = false, source = EUDI_ANCHORS)) added++
                 }
             }
-            message.value = "已匯入 $added 個 EUDI 測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $added 個 EUDI 測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
@@ -452,13 +544,9 @@ class WalletModel(val platform: PlatformServices) {
 
     /** Imports the IACA certificates of the public Multipaz test issuer as TEST anchors. */
     fun importMultipazTestAnchors() = scope.launch {
-        if (!settings.testEnvironment) {
-            message.value = "請先開啟測試環境"
-            return@launch
-        }
         try {
             val n = addMultipazIssuerAnchors(MULTIPAZ_ISSUER)
-            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（僅測試環境有效）"
+            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（結果標示為測試）"
         } catch (e: Exception) {
             message.value = "匯入失敗：${e.message}"
         }
@@ -560,6 +648,14 @@ class WalletModel(val platform: PlatformServices) {
                 reader.close()
                 showTab(HomeTab.VERIFY)
             }
+            is Screen.FileDetail -> showTab(HomeTab.FILES)
+            is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.FileDerive -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.OpenCertRender -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
+            is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
+            is Screen.Portal -> showTab(HomeTab.FILES)
+            is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
         }
         return true
     }
@@ -574,6 +670,8 @@ class WalletModel(val platform: PlatformServices) {
     fun deleteDocument(doc: Document) = scope.launch {
         documentStore.deleteDocument(doc.identifier)
         status.forget(doc.identifier)
+        // A file whose derived credential this was no longer shows it as derived.
+        files.forgetDerived(doc.identifier)
         refreshDocuments()
         platform.registerDigitalCredentials(this@WalletModel)
         showTab(HomeTab.DOCUMENTS)
@@ -635,6 +733,57 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /**
+     * Gives every stored credential without card art one: its name, issuer, colours, logo and, for a credential
+     * derived from a document, the document's first page or a portrait claim. The system credential picker (Digital
+     * Credentials API) lists credentials with this image.
+     */
+    suspend fun ensureCardArt() {
+        var changed = false
+        for (doc in documentStore.listDocuments()) {
+            if (doc.cardArt != null) continue
+            val png = try {
+                platform.renderCardArt(cardArtSpec(doc))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: continue
+            doc.edit { cardArt = ByteString(png) }
+            changed = true
+        }
+        if (changed) documents.value = documentStore.listDocuments()
+    }
+
+    private suspend fun cardArtSpec(doc: Document): CardArtSpec {
+        val record = doc.issuanceRecord
+        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier }
+        val background = parseColor(record?.backgroundColor) ?: when {
+            derived != null -> Color(0xFF334155)
+            else -> when (categoryOf(record)) {
+                DocumentCategory.IDENTITY -> Color(0xFF1E3A8A)
+                DocumentCategory.GOVERNMENT -> Color(0xFF0F766E)
+                DocumentCategory.ORGANIZATION -> Color(0xFF6D28D9)
+                DocumentCategory.OTHER -> Color(0xFF4F46E5)
+            }
+        }
+        val foreground = parseColor(record?.textColor)
+            ?: if (0.299 * background.red + 0.587 * background.green + 0.114 * background.blue > 0.6) Color.Black else Color.White
+        val logo = record?.logoUri?.let { uri -> runCatching { fetchArt(uri) }.getOrNull() }?.let { platform.decodeImage(it) }
+        val picture = derived?.let { files.firstPage(it) } ?: runCatching {
+            doc.getCertifiedCredentials().firstOrNull()?.let { c -> ClaimReader.read(c, documentTypes).firstNotNullOfOrNull { it.picture } }
+        }.getOrNull()?.let { platform.decodeImage(it) }
+        return CardArtSpec(
+            title = doc.displayName ?: "證件",
+            issuer = doc.typeDisplayName ?: record?.anchorName ?: record?.credentialIssuer ?: "",
+            background = background.toArgb(),
+            foreground = foreground.toArgb(),
+            logo = logo,
+            picture = picture,
+            badge = if (record?.isTestEnvironment == true) "測試" else null,
+        )
+    }
+
     /** Logo bytes from a data: URI or an https URL, cached in storage so cards render offline. */
     private suspend fun fetchArt(uri: String): ByteArray? {
         if (uri.startsWith("data:image/")) return uri.substringAfter("base64,", "").ifEmpty { null }?.fromBase64()
@@ -666,10 +815,13 @@ class WalletModel(val platform: PlatformServices) {
             ms.completeLogin(u)
             return
         }
+        if (csc.handleRedirect(u)) return
         if (u.startsWith(platform.oid4vciRedirectUri)) {
             completeAuthorization(u)
             return
         }
+        // The mobile citizen certificate app returns here after signing; the signing screen is polling already.
+        platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
         if (BondsPresentationRequest.looksLike(u)) {
             taiwan.startBonds(u)
             return
@@ -763,7 +915,7 @@ class WalletModel(val platform: PlatformServices) {
         return AsymmetricKey.AnonymousSecureAreaBased(keyInfo.alias, backend.secureArea, keyInfo, algorithm = org.multipaz.crypto.Algorithm.ES256) to keyInfo.attestation
     }
 
-    fun startIssuance(uri: String, entryHint: String? = null) {
+    fun startIssuance(uri: String, entryHint: String? = null, requestedBy: String? = null) {
         issuance.value = IssuanceUi.Loading
         screen.value = Screen.Issuance
         scope.launch {
@@ -782,6 +934,7 @@ class WalletModel(val platform: PlatformServices) {
                     unsupported = session.offer?.credentialConfigurationIds.orEmpty()
                         .filter { it !in session.issuer.configurations }
                         .map { it to (session.issuer.unsupported[it] ?: "發行端資訊未列出此設定") },
+                    requestedBy = requestedBy,
                 )
             } catch (e: Exception) {
                 issuance.value = IssuanceUi.Failed(describe(e))
@@ -975,7 +1128,15 @@ class WalletModel(val platform: PlatformServices) {
         holderIdentities = holderIdentities,
         didTrust = didTrust,
         dialects = listOf(twdiwPresentation, msPresentation),
+        moicaCards = { heldMoicaCards() },
+        moicaHolder = { holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
+        derivedSources = { files.holderDerivedSources() },
+        derivedHolders = { files.holderHints() },
     )
+
+    /** Bonds self-issued cards (vc+moica) for an online request: the national ID cards only. */
+    private fun heldMoicaCards(): List<HeldMoicaCard> =
+        files.nationalIdCards().map { (f, card) -> HeldMoicaCard(f.id, TaiwanModel.NATIONAL_ID_NAME, card) }
 
     fun startPresentation(uri: String, entryHint: String? = null, fields: List<TwdiwCustomField> = emptyList(), offline: TwdiwOfflineSession? = null) {
         presentation.value = PresentationUi.Loading
@@ -988,8 +1149,37 @@ class WalletModel(val platform: PlatformServices) {
                 presentation.value = consentFor(h.prepare(request), fields, offline)
             } catch (e: Exception) {
                 presentation.value = PresentationUi.Failed(describe(e))
+                endAuthorizationPresentation(null, "無法處理身分驗證要求：" + describe(e))
             }
         }
+    }
+
+    private var authorizationPresentation: CompletableDeferred<String>? = null
+
+    /**
+     * Answers a presentation request that is a step of another flow (a remote signing service asking for the PID
+     * before it signs) on the usual consent screen, then returns to the screen it came from. Returns the address the
+     * verifier sends the wallet to next; fails when the holder declines or the request cannot be answered.
+     */
+    suspend fun presentForAuthorization(uri: String): String {
+        val back = screen.value
+        val done = CompletableDeferred<String>()
+        authorizationPresentation?.completeExceptionally(SigningException("已有另一個身分驗證進行中"))
+        authorizationPresentation = done
+        startPresentation(uri)
+        try {
+            return done.await()
+        } finally {
+            if (authorizationPresentation === done) authorizationPresentation = null
+            screen.value = back
+        }
+    }
+
+    private fun endAuthorizationPresentation(redirect: String?, failure: String): Boolean {
+        val d = authorizationPresentation ?: return false
+        authorizationPresentation = null
+        if (redirect != null) d.complete(redirect) else d.completeExceptionally(SigningException(failure))
+        return true
     }
 
     /**
@@ -1007,6 +1197,17 @@ class WalletModel(val platform: PlatformServices) {
             presentation.value = PresentationUi.Failed(describe(e))
         }
         return done.await()
+    }
+
+    /**
+     * Digital Credentials API issuance (navigator.credentials.create, protocol openid4vci-v1 or openid4vci1.0): [data]
+     * is the credential offer, or an object carrying credential_offer or credential_offer_uri. The offer goes through
+     * the usual review and issuance screens; returns true when the user leaves them with a credential saved.
+     */
+    suspend fun receiveDcApi(data: JsonObject, origin: String): Boolean {
+        startIssuance(dcApiOfferUri(data), requestedBy = origin)
+        screen.first { it != Screen.Issuance }
+        return (issuance.value as? IssuanceUi.Done)?.results?.isNotEmpty() == true
     }
 
     /** Shows why a DC API request cannot be handled at all; completes with null (cancel) when the user leaves. */
@@ -1060,11 +1261,41 @@ class WalletModel(val platform: PlatformServices) {
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
             }
+            is PreparedMoica -> {
+                val items = prepared.matches.map { m ->
+                    val paths = m.claims.map { listOf("credentialSubject", it) }
+                    val labels = m.claims.map { BondsNationalId.claimLabels[it] ?: DerivedCredentials.claimLabels[it] ?: it }
+                    val sensitivity = ClaimSensitivity.ofAll(paths)
+                    ConsentItem(m.card.name, labels.ifEmpty { listOf("卡片簽章與自然人憑證（不含欄位）") }, null,
+                        sensitivity = sensitivity, notable = notable(paths, labels, sensitivity))
+                }
+                PresentationUi.Consent(prepared, null, items, fields, offline)
+            }
+            is PreparedDerived -> {
+                val plan = prepared.plan
+                val paths = plan.requested.map { listOf(it) }
+                val labels = plan.requested.map { c -> (plan.type.claimLabels[c] ?: c) + "：" + answerText(plan.answers[c]) }
+                val sensitivity = ClaimSensitivity.ofAll(paths)
+                val item = ConsentItem(
+                    "${plan.type.title}（出示時由 ${plan.source.name} 產生，持有人從文件衍生）",
+                    listOf("查驗方的問題：" + plan.rule.question) + labels,
+                    null,
+                    sensitivity = sensitivity,
+                    notable = notable(paths, labels, sensitivity),
+                )
+                PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
+            }
         }
-        val risk = requestRisk(consent.items, consent.request.verifier.trust.tier)
+        val attestations = if (consent.request.verifierInfo.isEmpty()) emptyList() else {
+            diw.wallet.core.oid4vp.VerifierInfoChecker(trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust))
+                .check(consent.request)
+        }
+        // A failed attestation (wrong party, revoked, beyond its registration) makes the request high risk.
+        val attestationRisk = if (attestations.any { it.verdict == diw.wallet.core.oid4vp.AttestationVerdict.INVALID || !it.outsideRegistration.isNullOrEmpty() }) RiskLevel.HIGH else RiskLevel.LOW
+        val risk = RiskLevel.max(requestRisk(consent.items, consent.request.verifier.trust.tier), attestationRisk)
         // A status older than the request's risk allows is queried again while the user reads the request.
         status.refreshFor(consent.items.mapNotNull { it.documentId }, risk)
-        return consent.copy(risk = risk)
+        return consent.copy(risk = risk, attestations = attestations)
     }
 
     /** What a presentation line discloses: field labels, their sensitivity, and whether it is the whole credential. */
@@ -1087,6 +1318,14 @@ class WalletModel(val platform: PlatformServices) {
         return LineDisclosure(labels.ifEmpty { listOf("整張證件") }, sensitivity, notable(paths, labels, fields), whole)
     }
 
+    /** A derived answer as the holder reads it: predicates as yes or no. */
+    private fun answerText(v: String?): String = when (v) {
+        "true" -> "是"
+        "false" -> "否"
+        null -> "無"
+        else -> v
+    }
+
     /** Labels of the fields as sensitive as [top], when that is medium or high. */
     private fun notable(paths: List<List<String>>, labels: List<String>, top: RiskLevel): List<String> {
         if (top == RiskLevel.LOW) return emptyList()
@@ -1104,6 +1343,8 @@ class WalletModel(val platform: PlatformServices) {
                 withContext(unlockProvider) {
                     when (val p = consent.prepared) {
                         is PreparedExtended -> holder().respond(p)
+                        is PreparedMoica -> holder().respond(p)
+                        is PreparedDerived -> holder().respond(p)
                         is PreparedPresentation -> holder().respond(p, consent.selection ?: p.queryResult.select(emptyList()))
                     }
                 }
@@ -1115,8 +1356,10 @@ class WalletModel(val platform: PlatformServices) {
                     dcApiResult?.complete(outcome.data)
                     dcApiResult = null
                 }
-                is PresentationOutcome.Posted -> outcome.redirectUri?.let { platform.openRedirect(it) }
-                is PresentationOutcome.Redirect -> platform.openRedirect(outcome.url)
+                is PresentationOutcome.Posted -> if (!endAuthorizationPresentation(outcome.redirectUri, "簽章服務沒有提供下一步的位址")) {
+                    outcome.redirectUri?.let { platform.openRedirect(it) }
+                }
+                is PresentationOutcome.Redirect -> if (!endAuthorizationPresentation(outcome.url, "")) platform.openRedirect(outcome.url)
             }
             refreshDocuments()
             recordPresentation(HistoryKind.PRESENTED, consent)
@@ -1130,6 +1373,7 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: Exception) {
             recordPresentation(HistoryKind.PRESENTED, consent, describe(e))
             presentation.value = PresentationUi.Failed(describe(e))
+            endAuthorizationPresentation(null, "身分驗證失敗：" + describe(e))
         }
     }
 
@@ -1146,10 +1390,12 @@ class WalletModel(val platform: PlatformServices) {
         dcApiResult?.complete((outcome as? PresentationOutcome.DcApi)?.data)
         dcApiResult = null
         presentation.value = PresentationUi.Failed("已拒絕分享")
+        endAuthorizationPresentation(null, "已拒絕分享身分資料，簽署已取消")
     }
 
     /** Ends a pending DC API request when the user leaves the presentation: a reportable failure goes to the caller, anything else cancels. */
     fun leaveDcApi() {
+        endAuthorizationPresentation(null, "已離開身分驗證畫面，簽署已取消")
         dcApiResult?.complete(dcApiError)
         dcApiResult = null
         dcApiError = null
@@ -1160,15 +1406,16 @@ class WalletModel(val platform: PlatformServices) {
     fun loadAnchors() = scope.launch {
         anchors.value = trust.allAnchors().sortedWith(compareBy({ it.environment.ordinal }, { it.metadata.displayName }))
         trustedDids.value = userDids.all().sortedBy { it.name }
+        intermediates.value = trust.intermediates().sortedBy { it.name }
     }
 
     /**
-     * Imports the certificates in [input] (PEM text, or an https address serving PEM) as the user's own anchors for
-     * [roles]. They are trusted in production use, marked as the user's (T3, never official).
+     * Imports the certificates in [input] (PEM text, or an https address serving PEM): a self-issued root becomes the
+     * user's own anchor for [roles] (T2, never official); an intermediate CA certificate joins the intermediates that
+     * complete chains (it never sets a tier); an end-entity certificate is refused.
      */
     fun importAnchor(input: String, name: String, roles: Set<TrustRole>) = scope.launch {
         try {
-            if (roles.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種用途")
             val text = input.trim()
             val source = if (text.startsWith("https://") || text.startsWith("http://")) text else "pasted"
             val pem = if (source != "pasted") {
@@ -1180,21 +1427,65 @@ class WalletModel(val platform: PlatformServices) {
             val certs = PEM_CERT.findAll(pem).map { X509Cert.fromPem(it.value) }.toList()
             if (certs.isEmpty()) throw ProtocolException("invalid_request", "找不到 PEM 格式的憑證（-----BEGIN CERTIFICATE-----）")
             val now = kotlin.time.Clock.System.now()
-            var added = 0
-            for (cert in certs) {
-                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "憑證已於 ${cert.validityNotAfter} 過期")
-                val cn = cert.subject.components[OID.COMMON_NAME.oid]?.value ?: cert.displaySubject()
-                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
-                for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) added++
+            certs.firstOrNull { !TrustRegistry.isRoot(it) && !TrustRegistry.isIntermediate(it) }?.let {
+                throw ProtocolException("invalid_request", "「${commonName(it)}」不是憑證機構的憑證，不能當作根憑證或中繼憑證")
             }
-            message.value = if (added == 0) "這些憑證已經是信任錨點" else "已加入 $added 個信任錨點（使用者自訂，信任等級 T3）"
+            if (certs.any { TrustRegistry.isRoot(it) } && roles.isEmpty()) throw ProtocolException("invalid_request", "根憑證請至少選擇一種用途")
+            var roots = 0
+            var middle = 0
+            for (cert in certs) {
+                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "「${commonName(cert)}」已於 ${cert.validityNotAfter} 過期")
+                val cn = commonName(cert)
+                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
+                if (TrustRegistry.isRoot(cert)) {
+                    for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
+                } else if (trust.addIntermediate(cert, label, source)) middle++
+            }
+            message.value = when {
+                roots == 0 && middle == 0 -> "這些憑證已經匯入過"
+                else -> listOfNotNull(
+                    if (roots > 0) "已加入 $roots 個信任錨點（使用者匯入，信任等級 T2）" else null,
+                    if (middle > 0) "已加入 $middle 張中繼憑證（只用來補足憑證鏈）" else null,
+                ).joinToString("；")
+            }
             loadAnchors()
-            // Documents whose issuer had no anchor may chain to the new one.
-            if (added > 0) status.reevaluateIssuers("加入信任錨點", affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
+            // Documents whose issuer had no anchor may chain to the new root, or through the new intermediate.
+            if (roots > 0 || middle > 0) status.reevaluateIssuers("加入信任錨點或中繼憑證", affected = { it.anchorName == null }, accept = { it.environment != null })
         } catch (e: Exception) {
             message.value = "匯入失敗：" + describe(e)
         }
     }
+
+    /**
+     * Trusts [der], a self-issued root shown in a document's chain, as the user's own anchor for document signatures
+     * and time stamps, after the user confirmed it. The document is checked again with the new anchor.
+     */
+    fun trustRootCertificate(der: ByteArray, onDone: () -> Unit = {}) = scope.launch {
+        try {
+            val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
+            if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", "這張憑證不是根憑證")
+            if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", "根憑證已過期")
+            val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
+            var added = 0
+            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA)) {
+                if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
+            }
+            message.value = if (added == 0) "「$name」已經是信任錨點" else "已信任「$name」（文件簽章與時間戳記，信任等級 T2）"
+            loadAnchors()
+            status.reevaluateIssuers("信任根憑證「$name」", affected = { it.anchorName == null }, accept = { it.environment != null })
+            onDone()
+        } catch (e: Exception) {
+            message.value = "無法信任：" + describe(e)
+        }
+    }
+
+    fun removeIntermediate(i: diw.wallet.core.trust.StoredIntermediate) = scope.launch {
+        trust.removeIntermediate(i)
+        loadAnchors()
+        status.reevaluateIssuers("移除中繼憑證「${i.name}」", affected = { it.anchorName != null && it.trustEnvironment != TrustEnvironment.TEST })
+    }
+
+    private fun commonName(c: X509Cert): String = c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject()
 
     fun removeAnchor(anchor: StoredAnchor) = scope.launch {
         if (anchor.environment == TrustEnvironment.PRODUCTION) return@launch
@@ -1252,6 +1543,19 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        /** The credential offer of a DC API create request as an offer URI the OpenID4VCI client reads. */
+        internal fun dcApiOfferUri(data: JsonObject): String {
+            val uri = (data["credential_offer_uri"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (uri != null) return "openid-credential-offer://?credential_offer_uri=" + uri.encodeURLParameter()
+            val offer = when (val o = data["credential_offer"]) {
+                is JsonObject -> o
+                is JsonPrimitive -> if (o.isString) DiwJson.parseToJsonElement(o.content) as? JsonObject else null
+                else -> null
+            } ?: data.takeIf { "credential_issuer" in it }?.let { JsonObject(it - "credential_issuer_metadata" - "authorization_server_metadata") }
+                ?: throw ProtocolException("invalid_request", "Digital Credentials API 請求沒有領卡資訊（credential offer）")
+            return "openid-credential-offer://?credential_offer=" + DiwJson.encodeToString(JsonObject.serializer(), offer).encodeURLParameter()
+        }
+
         /** One spec per table name and process: storage rejects a second spec object for the same table. */
         private val settingsTable = StorageTableSpec(name = "DiwSettings", supportPartitions = false, supportExpiration = false)
         private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
@@ -1262,8 +1566,8 @@ class WalletModel(val platform: PlatformServices) {
 
         fun tierTitle(t: TrustTier): String = when (t) {
             TrustTier.T1 -> "T1 官方已驗證"
-            TrustTier.T2 -> "T2 已驗證身分"
-            TrustTier.T3 -> "T3 可驗證但非官方"
+            TrustTier.T2 -> "T2 連到信任根"
+            TrustTier.T3 -> "T3 未連到信任根"
             TrustTier.T4 -> "T4 無法驗證"
         }
 
@@ -1271,10 +1575,10 @@ class WalletModel(val platform: PlatformServices) {
 
         private val PEM_CERT = Regex("-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\\s]+-----END CERTIFICATE-----")
 
-        /** Risk a verifier adds to a request: none when officially listed, high when its identity cannot be verified. */
+        /** Risk a verifier adds to a request: none when led to a trust root (T1, T2), high when its identity cannot be verified. */
         fun verifierRisk(tier: TrustTier): RiskLevel = when (tier) {
-            TrustTier.T1 -> RiskLevel.LOW
-            TrustTier.T2, TrustTier.T3 -> RiskLevel.MEDIUM
+            TrustTier.T1, TrustTier.T2 -> RiskLevel.LOW
+            TrustTier.T3 -> RiskLevel.MEDIUM
             TrustTier.T4 -> RiskLevel.HIGH
         }
 

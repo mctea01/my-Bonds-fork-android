@@ -2,6 +2,10 @@ package diw.wallet.core.profile.bonds
 
 import diw.wallet.core.did.DidKeys
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.DocumentTrustSource
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.document.derived.EvidenceResult
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
@@ -31,6 +35,7 @@ import org.multipaz.revocation.RevocationStatus
 import org.multipaz.sdjwt.SdJwt
 import org.multipaz.util.fromBase64
 import org.multipaz.util.fromBase64Url
+import org.multipaz.util.toBase64
 import org.multipaz.util.toBase64Url
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -259,6 +264,37 @@ object BondsOfflinePresentation {
         return sign(VC_JWT_PREFIX + jwt.trim(), request, signingKey, did, now)
     }
 
+    /**
+     * Answers a [BondsCredentialSource.SELF_ISSUED] request with a vc+moica card whose subject is [holder]'s DID,
+     * disclosing [disclosing] (all disclosures when null) and always the cardholder name.
+     */
+    suspend fun presentMoica(
+        request: BondsPresentationRequest,
+        card: MoicaSignedCredential,
+        holder: HolderKey,
+        disclosing: Set<String>? = null,
+        now: Instant = Clock.System.now(),
+    ): String {
+        if (request.source != BondsCredentialSource.SELF_ISSUED) {
+            throw ProtocolException("credential_unavailable", "This verifier does not accept self-issued citizen certificate cards")
+        }
+        val holderDid = holder.did ?: throw ProtocolException("invalid_key", "The holder key has no DID")
+        if (card.credential().obj("credentialSubject")?.str("id") != holderDid) {
+            throw ProtocolException("invalid_key", "The card is about another holder")
+        }
+        val shown = if (disclosing == null) card else card.withDisclosures(disclosing)
+        val envelope = MOICA_PREFIX + shown.serialized().encodeToByteArray().toBase64()
+        return sign(envelope, request, holder.signingKey("ES256"), holderDid, now)
+    }
+
+    /** Name and value of each disclosure of a vc+moica card. */
+    fun disclosableClaims(card: MoicaSignedCredential): List<Pair<String, String>> =
+        card.disclosures.mapNotNull { enc ->
+            val d = runCatching { SdJwtDisclosures.decode(enc) }.getOrNull() ?: return@mapNotNull null
+            val name = d.name ?: return@mapNotNull null
+            name to ((d.value as? JsonPrimitive)?.content ?: d.value.toString())
+        }
+
     private fun requireAny(request: BondsPresentationRequest) {
         if (request.source != BondsCredentialSource.ANY) {
             throw ProtocolException("credential_unavailable", "This verifier accepts government wallet cards only")
@@ -310,6 +346,16 @@ object BondsOfflinePresentation {
         BondsLinkTransport.frames(presentationJws.encodeToByteArray(), maxFrameBytes)
 }
 
+/**
+ * The CA a vc+moica certificate must be issued by ([moica], DER) and that CA's issuer ([root], DER). Production is
+ * MOICA G3 under GRCA G3; tests use their own pair.
+ */
+class MoicaCa(val moica: ByteArray, val root: ByteArray) {
+    companion object {
+        val PRODUCTION: MoicaCa by lazy { MoicaCa(TwPkiAnchors.moicaG3.encoded.toByteArray(), TwPkiAnchors.grcaG3.encoded.toByteArray()) }
+    }
+}
+
 /** A verified vc+moica card: who signed it with their citizen certificate and what they disclosed. */
 data class MoicaVerification(
     val credential: JsonObject,
@@ -348,13 +394,14 @@ class MoicaSignedCredential private constructor(
         }
     })
 
-    fun withDisclosures(names: Set<String>): MoicaSignedCredential {
-        val chosen = names + BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED
+    /** The card with only the disclosures of [names] (and [always], the cardholder name unless asked otherwise). */
+    fun withDisclosures(names: Set<String>, always: Set<String> = BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED): MoicaSignedCredential {
+        val chosen = names + always
         val kept = disclosures.filter { runCatching { SdJwtDisclosures.decode(it).name in chosen }.getOrDefault(false) }
         return MoicaSignedCredential(payload, tbsConstruction, certificate, signature, issuerJws, kept)
     }
 
-    suspend fun verify(didResolver: DidResolver, now: Instant = Clock.System.now()): MoicaVerification {
+    suspend fun verify(didResolver: DidResolver, now: Instant = Clock.System.now(), ca: MoicaCa = MoicaCa.PRODUCTION): MoicaVerification {
         val bytes = payload.fromBase64Url()
         val credential = credential()
         issuerJws?.let { verifyIssuerJws(it, bytes, credential.str("issuer") ?: throw ProtocolException("invalid_credential", "No issuer"), didResolver) }
@@ -362,7 +409,7 @@ class MoicaSignedCredential private constructor(
         val certDer = runCatching { certificate.fromBase64() }.getOrNull() ?: throw ProtocolException("invalid_credential", "Malformed certificate")
         val sig = runCatching { signature.fromBase64() }.getOrNull()?.takeIf { it.size == SIGNATURE_BYTES }
             ?: throw ProtocolException("invalid_credential", "Malformed signature")
-        validateHolderCertificate(certDer, now)
+        validateHolderCertificate(certDer, now, ca)
         val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(certDer) ?: throw ProtocolException("invalid_credential", "Certificate key is not RSA")
         val tbs = TBS_PREFIX + hex(PlatformCrypto.sha256(bytes))
         if (!PlatformCrypto.verifyRsa("RS256", rsa, tbs.encodeToByteArray(), sig)) {
@@ -433,9 +480,9 @@ class MoicaSignedCredential private constructor(
         }
 
         /** The holder certificate must be within its validity, issued by MOICA G3, which is issued by the pinned GRCA G3. */
-        fun validateHolderCertificate(der: ByteArray, now: Instant) {
-            val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
-            val grca = TwPkiAnchors.grcaG3.encoded.toByteArray()
+        fun validateHolderCertificate(der: ByteArray, now: Instant, ca: MoicaCa = MoicaCa.PRODUCTION) {
+            val moica = ca.moica
+            val grca = ca.root
             if (!PlatformCrypto.certificateSignedBy(moica, grca)) throw ProtocolException("invalid_certificate_chain", "MOICA G3 is not issued by GRCA G3")
             if (!PlatformCrypto.certificateSignedBy(der, moica)) throw ProtocolException("invalid_certificate_chain", "Certificate is not issued by MOICA G3")
             val cert = org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(der))
@@ -470,6 +517,8 @@ data class BondsVerifiedPresentation(
     val revocationStatus: RevocationStatus? = null,
     /** vct of an SD-JWT VC, or the most specific W3C type. */
     val credentialType: String? = null,
+    /** Checked evidence of a credential derived from a document (time stamp, citizen certificate signature). */
+    val evidence: List<EvidenceResult> = emptyList(),
 )
 
 /**
@@ -482,6 +531,9 @@ data class BondsVerifiedPresentation(
 class BondsOfflineVerifier(
     private val didResolver: DidResolver,
     private val issuerMetadataKey: (suspend (issuer: String, kid: String?) -> EcPublicKey)? = null,
+    /** Trust for the time stamps carried as evidence by derived credentials; null leaves them unchecked. */
+    private val documentTrust: DocumentTrustSource? = null,
+    private val moicaCa: MoicaCa = MoicaCa.PRODUCTION,
 ) {
     suspend fun verify(presentationJws: String, request: BondsPresentationRequest, now: Instant = Clock.System.now()): BondsVerifiedPresentation {
         val jws = Jws.parse(presentationJws.trim())
@@ -539,9 +591,12 @@ class BondsOfflineVerifier(
                 if (request.source != BondsCredentialSource.SELF_ISSUED) throw ProtocolException("invalid_presentation", "Credential source mismatch")
                 val serialized = id.removePrefix(BondsOfflinePresentation.MOICA_PREFIX).fromBase64().decodeToString()
                 val card = MoicaSignedCredential.parse(serialized)
-                val result = card.verify(didResolver, now)
+                val result = card.verify(didResolver, now, moicaCa)
                 if (result.credential.obj("credentialSubject")?.str("id") != holder) throw ProtocolException("invalid_credential", "Card subject is not the presenter")
-                BondsVerifiedPresentation(holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result, result.credential)
+                BondsVerifiedPresentation(
+                    holder, BondsCredentialSource.SELF_ISSUED, result.claims, result.credential.str("issuer"), created, bound, result, result.credential,
+                    credentialType = result.credential.strList("type").lastOrNull(),
+                )
             }
             else -> throw ProtocolException("invalid_presentation", "Unsupported credential envelope")
         }
@@ -579,10 +634,15 @@ class BondsOfflineVerifier(
         if ((holderKey as? VerificationKey.Ec)?.key != cnf) throw ProtocolException("invalid_credential", "Card not bound to the presenter")
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Card expired") }
         sdJwt.validFrom?.let { if (it > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid") }
-        val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL }))
+        val derived = sdJwt.credentialType == DerivedCredentials.VCT
+        val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL && !(derived && it == "evidence") }))
+        val evidence = if (derived) {
+            val signed = Jws.parse(SdJwtDisclosures.parse(compact).issuerJwt).payload
+            DerivedEvidence.verify(signed, documentTrust)
+        } else emptyList()
         return BondsVerifiedPresentation(
             holder, BondsCredentialSource.ANY, claims, iss, created, bound, null,
-            issuerChain = chain, revocationStatus = sdJwt.revocationStatus, credentialType = sdJwt.credentialType,
+            issuerChain = chain, revocationStatus = sdJwt.revocationStatus, credentialType = sdJwt.credentialType, evidence = evidence,
         )
     }
 

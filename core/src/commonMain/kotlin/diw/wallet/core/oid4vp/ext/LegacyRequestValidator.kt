@@ -230,7 +230,7 @@ class LegacyRequestValidator(
                         throw RequestValidationException("invalid_request_object", "Request object not signed by a registered key")
                     }
                     VerifierIdentityInfo(ClientId.parse(rawClientId), rawClientId, reg.displayName, null, emptyList(), null,
-                        TrustDecision(if (reg.official) TrustTier.T1 else TrustTier.T3, null, reg.official, reg.displayName, emptySet()))
+                        TrustDecision(if (reg.official) TrustTier.T1 else TrustTier.T2, null, reg.official, reg.displayName, emptySet()))
                 } else {
                     // An unregistered client_id without a scheme cannot be authenticated; the consent screen says so.
                     warnings += "client_id '$rawClientId' is not authenticated"

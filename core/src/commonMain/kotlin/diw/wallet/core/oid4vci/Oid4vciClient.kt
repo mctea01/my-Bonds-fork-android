@@ -13,6 +13,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.w3c.DataIntegrity
+import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cInspector
 import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
@@ -54,6 +55,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -595,9 +597,18 @@ class Oid4vciClient(
     /** c_nonce from the nonce endpoint; issuers without one get no nonce unless a dialect knows where theirs is. */
     private suspend fun fetchNonce(session: IssuanceSession, token: AccessToken, compat: DialectSet): String? {
         val endpoint = session.issuer.nonceEndpoint ?: return compat.first { it.nonceWithoutEndpoint(token.raw) }
-        val resp = httpClient.post(endpoint)
+        var resp = httpClient.post(endpoint)
+        // A gateway error (502 to 504) is the issuer's front end failing for a moment; the nonce request has no
+        // effect on the issuer, so it is asked once more before giving up.
+        if (resp.status.value in 502..504) {
+            delay(1500)
+            resp = httpClient.post(endpoint)
+        }
         session.dpop?.updateNonce(endpoint, resp.headers["DPoP-Nonce"])
-        if (!resp.status.isSuccess()) throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}")
+        if (!resp.status.isSuccess()) {
+            throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}" +
+                if (resp.status.value in 502..504) "（發行端伺服器暫時無法回應，請稍後再試）" else "")
+        }
         return parseJsonObject(resp.bodyAsText(), "invalid_nonce").str("c_nonce")
             ?: throw ProtocolException("invalid_nonce", "Nonce response without c_nonce")
     }
@@ -627,7 +638,7 @@ class Oid4vciClient(
                 return listOf(W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, hk.secureArea, hk.alias, true, hk.did))
             }
             val style = compat.owned { it.proofStyle(session.issuer, config) }
-            val needsDid = config.didBindingOnly || (style != null && style.kid != ProofKid.JWK)
+            val needsDid = config.prefersDidKid || (style != null && style.kid != ProofKid.JWK)
             return List(count) {
                 val info = keys.secureArea.createKey(null, settings)
                 val did = if (needsDid) HolderKey.didFor(info.publicKey, didMethodFor(config)) else null
@@ -685,7 +696,7 @@ class Oid4vciClient(
         val cwtInfo = config.proofTypes["cwt"]
         val attestations by lazy { holderKeys.mapNotNull { it.keyInfo.attestation } }
         val style = session.compat.owned { it.proofStyle(session.issuer, config) }
-            ?: ProofStyle(if (config.didBindingOnly) ProofKid.DID_URL else ProofKid.JWK, null)
+            ?: ProofStyle(if (config.prefersDidKid) ProofKid.DID_URL else ProofKid.JWK, null)
         return when {
             jwtInfo != null || (attInfo == null && diInfo == null && cwtInfo == null && config.bindingMethods.isNotEmpty()) -> {
                 val algs = jwtInfo?.signingAlgorithms.orEmpty()
@@ -926,8 +937,11 @@ class Oid4vciClient(
         var holderDid: String? = null
         for (raw in issued) {
             if (config.format.isW3c) {
-                val sdJwtAllowed = compat.any { it.w3cDeliveredAsSdJwt(config) }
-                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtAllowed, compat)
+                // A dialect that allows SD-JWT delivery is recorded only when the issuer actually sent one: a plain
+                // JWT VC from another issuer must not be labelled with that dialect.
+                val sdJwtDialect = compat.firstWhere { it.w3cDeliveredAsSdJwt(config) }
+                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtDialect != null, compat)
+                if (sdJwtDialect != null && inspected.encoding == W3cEncoding.SD_JWT) compat.record(sdJwtDialect)
                 // A credential bound to nothing this wallet can check (e.g. a did:web subject) is matched to the only key.
                 val target = (byKey.remove(inspected.boundKey) ?: if (inspected.boundKey == null && byKey.size == 1) byKey.remove(byKey.keys.first()) else null)
                     as? W3cVcCredential

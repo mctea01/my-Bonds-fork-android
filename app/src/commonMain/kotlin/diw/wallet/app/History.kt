@@ -25,6 +25,9 @@ enum class HistoryKind {
 
     /** A held document's status, or its issuer's trust, changed on a background check. */
     STATUS,
+
+    /** The user signed a file (citizen certificate card, PKCS#12 or the wallet's own key). */
+    SIGNED,
 }
 
 /**

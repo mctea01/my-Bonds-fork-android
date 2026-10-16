@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -28,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.document.sign.TsaServices
+import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
 @Composable
@@ -74,6 +78,25 @@ fun SettingsScreen(model: WalletModel) {
         issuerCheck?.let { (done, total) -> Text("正在重新查驗發行端：$done / $total", style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = { model.status.refreshDue(force = true) }) { Text("立即更新所有證件狀態") }
         HorizontalDivider()
+        SectionTitle("文件與時戳")
+        Text("簽署文件、保存檔案與產生衍生憑證時使用的時戳機構（RFC 3161）。只會送出檔案的 SHA-256。", style = MaterialTheme.typography.bodySmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TsaServices.all.forEach { t ->
+                FilterChip(selected = s.tsaId == t.id, onClick = { model.updateSettings { it.copy(tsaId = t.id) } }, label = { Text(t.name) })
+            }
+        }
+        val tsa = TsaServices.byId(s.tsaId)
+        Text(tsa.url + if (tsa.publicRoot) "（根憑證在常見憑證庫，信任等級 T2）" else "（根憑證不在內建清單，需在信任錨點匯入，用途選時間戳記）",
+            style = MaterialTheme.typography.bodySmall)
+        Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
+            model.updateSettings { it.copy(timestampOnSave = v) }
+        }
+        Toggle("時戳與簽章一併保存撤銷資訊", "取得時戳時，同時取得時戳機構憑證鏈的 OCSP 回應（取不到才用 CRL）與時戳一起保存；保存含簽章的文件時，也取得簽署者與其時戳機構的撤銷資訊。憑證過期後仍可驗證", s.timestampRevocation) { v ->
+            model.updateSettings { it.copy(timestampRevocation = v) }
+        }
+        HorizontalDivider()
+        MyDataProfileSection(model)
+        HorizontalDivider()
         SectionTitle("信任")
         ActionRow(WalletIcons.Shield, "信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
             model.screen.value = Screen.TrustList
@@ -109,7 +132,7 @@ fun SettingsScreen(model: WalletModel) {
         OutlinedTextField(
             value = twdiwFrontend,
             onValueChange = { twdiwFrontend = it.trim() },
-            label = { Text("數位憑證皮夾平台位址（僅測試環境）") },
+            label = { Text("數位憑證皮夾平台位址（需使用自訂測試伺服器）") },
             supportingText = { Text("正式環境固定使用 ${TwdiwPlatform.PRODUCTION_FRONTEND}；UAT 為 ${TwdiwPlatform.UAT_FRONTEND}") },
             singleLine = true,
             enabled = s.testEnvironment,
@@ -133,8 +156,10 @@ fun SettingsScreen(model: WalletModel) {
             }) { Text("還原預設") }
         }
         HorizontalDivider()
-        SectionTitle("測試環境")
-        Toggle("開啟測試環境", "接受測試信任錨點；測試結果一律標示且不具效力，正式錨點不受影響", s.testEnvironment) { v ->
+        SectionTitle("自訂測試伺服器")
+        Text("測試用的信任錨點（Multipaz 內建發行端與查驗端、EUDI 參考實作、匯入的測試錨點）一律可用，驗證結果標示為測試且不具效力；這個開關只管理下方自訂的測試伺服器位址。",
+            style = MaterialTheme.typography.bodySmall)
+        Toggle("使用自訂測試伺服器", "啟用測試伺服器網址、測試錢包提供者與非正式的數位憑證皮夾平台位址", s.testEnvironment) { v ->
             model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }
         }
         Toggle("允許本機與區網 HTTP", "僅限 localhost、模擬器主機與私有網段（10.x、172.16 至 172.31、192.168.x），用於本地測試伺服器；正式版 APK 只允許前兩者", s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
@@ -143,6 +168,12 @@ fun SettingsScreen(model: WalletModel) {
         Toggle("使用測試錢包提供者", "向測試伺服器取得錢包證明與金鑰證明", s.useWalletProvider, enabled = s.testEnvironment) { v ->
             model.updateSettings { it.copy(useWalletProvider = v) }
         }
+        Toggle(
+            "手動輸入 SP 帳號（開發者）",
+            "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
+                if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+            s.manualMobileMoicaSp,
+        ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
         OutlinedTextField(
             value = url,
             onValueChange = { url = it.trim() },
@@ -155,10 +186,10 @@ fun SettingsScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.updateSettings { it.copy(testServerUrl = url) } }, enabled = s.testEnvironment && url != s.testServerUrl) {
                 Text("儲存網址")
             }
-            OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("匯入測試信任錨點") }
+            OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("從測試伺服器匯入錨點") }
         }
-        OutlinedButton(onClick = { model.importEudiTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 EUDI 參考實作測試錨點") }
-        OutlinedButton(onClick = { model.importMultipazTestAnchors() }, enabled = s.testEnvironment) { Text("匯入 Multipaz 測試發行端錨點") }
+        OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text("匯入 EUDI 參考實作測試錨點") }
+        OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
         HorizontalDivider()
         SectionTitle("關於")
         Text("平台：${model.platform.platformName}", style = MaterialTheme.typography.bodySmall)
@@ -183,7 +214,7 @@ fun SettingsScreen(model: WalletModel) {
 private fun DigitalCredentialsSection(model: WalletModel) {
     val reg by model.dcApiRegistration.collectAsState()
     val r = reg ?: return
-    SectionTitle("瀏覽器與 App 出示")
+    SectionTitle("瀏覽器與 App 出示、收卡")
     val summary = when {
         r.error != null -> "最近一次向系統註冊失敗：${r.error}"
         r.registered == 0 -> "目前沒有可由系統選擇器出示的證件。系統選擇器只支援 mdoc 與 SD-JWT VC 證件。"
@@ -195,6 +226,58 @@ private fun DigitalCredentialsSection(model: WalletModel) {
         Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
             style = MaterialTheme.typography.bodySmall)
     }
+    when {
+        r.issuance -> Text("網頁或 App 以 Digital Credentials API 發卡（OpenID4VCI）時，系統會列出本 App 作為存放位置。", style = MaterialTheme.typography.bodySmall)
+        r.issuanceError != null -> Text("Digital Credentials API 收卡註冊失敗：${r.issuanceError}", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error)
+    }
     OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text("重新向系統註冊") }
     HorizontalDivider()
+}
+
+/**
+ * The MyData details the holder may save (Bonds MyDataAutofillProfile): filled into MyData's own sign-in pages in the
+ * app and tried as the open password of MyData PDFs. Nothing is learned from pages; the holder types and removes them.
+ */
+@Composable
+private fun MyDataProfileSection(model: WalletModel) {
+    val s by model.settingsFlow.collectAsState()
+    var id by remember { mutableStateOf("") }
+    var birth by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    SectionTitle("MyData 自動填入")
+    Text("保存身分證統一編號與出生日期後，App 內開啟 MyData 時自動填入登入欄位，下載的 PDF 也會自動用統一編號開啟。只存在這支裝置，不會送到 MyData 以外的網站；不保存也可以，每次自行輸入。",
+        style = MaterialTheme.typography.bodySmall)
+    val saved = s.myDataIdNumber
+    if (saved != null) {
+        LabelValue("身分證統一編號", saved.take(1) + "*".repeat(6) + saved.takeLast(3))
+        s.myDataBirthDate?.let { LabelValue("出生日期", it.take(4) + "-" + it.substring(4, 6) + "-" + it.substring(6)) }
+        OutlinedButton(onClick = { model.updateSettings { it.copy(myDataIdNumber = null, myDataBirthDate = null) } }) { Text("移除已保存的資料") }
+        return
+    }
+    OutlinedTextField(
+        value = id, onValueChange = { v -> id = v.filter { it.isLetterOrDigit() }.take(10); problem = null },
+        label = { Text("身分證統一編號") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = birth, onValueChange = { v -> birth = v.filter { it.isDigit() }.take(8); problem = null },
+        label = { Text("出生日期（西元 19880101 或民國 0770101）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+    )
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    OutlinedButton(
+        onClick = {
+            val today = kotlin.time.Clock.System.now().toString().take(10).replace("-", "")
+            val date = MyDataProfile.normalizeBirthDate(birth, today)
+            when {
+                !MyDataProfile.isValidId(id) -> problem = "身分證統一編號不正確"
+                date == null -> problem = "出生日期不正確"
+                else -> {
+                    model.updateSettings { it.copy(myDataIdNumber = MyDataProfile.normalizeId(id), myDataBirthDate = date) }
+                    id = ""
+                    birth = ""
+                }
+            }
+        },
+        enabled = id.isNotBlank() && birth.isNotBlank(),
+    ) { Text("保存") }
 }

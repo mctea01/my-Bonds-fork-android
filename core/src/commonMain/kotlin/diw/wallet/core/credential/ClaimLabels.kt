@@ -125,6 +125,7 @@ class ClaimLabels(locales: List<String>, val learned: MutableMap<String, String>
                 "hair_colour" to "頭髮顏色", "portrait_capture_date" to "照片拍攝日期", "signature_usual_mark" to "簽名",
                 "id" to "識別碼", "cardNumber" to "卡號", "idNumber" to "身分證字號", "birthDate" to "出生日期",
                 "givenName" to "名字", "familyName" to "姓氏", "phone" to "電話", "title" to "職稱", "organization" to "組織",
+                "unifiedNo" to "身分證統一編號", "addressOfHousehold" to "戶籍地址", "over18AtIssuance" to "簽發時年滿 18 歲",
             ),
         )
     }

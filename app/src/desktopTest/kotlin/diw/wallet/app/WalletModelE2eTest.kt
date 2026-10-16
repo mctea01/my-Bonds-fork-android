@@ -74,6 +74,7 @@ class WalletModelE2eTest {
         lateinit var model: WalletModel
         var pinPrompts = 0
         override val platformName = "test"
+        override val refreshTrustListsInBackground = false
         override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
         override suspend fun openStorage() = storage
         override suspend fun keyBackends(storage: Storage, pinPrompt: suspend (String) -> String?) = listOf(softwareBackend(storage, pinPrompt))
@@ -90,6 +91,10 @@ class WalletModelE2eTest {
             }
         }
         override fun openRedirect(url: String) {}
+
+        /** Files the wallet exported, by the name it suggested. */
+        val saved = ArrayList<Pair<String, ByteArray>>()
+        override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
     }
 
     private suspend fun newWallet(storage: Storage = EphemeralStorage()): Pair<WalletModel, TestPlatform> {
@@ -226,6 +231,37 @@ class WalletModelE2eTest {
     }
 
     /**
+     * Digital Credentials API issuance (navigator.credentials.create with openid4vci-v1): the request data is the
+     * credential offer enriched with the issuer's metadata, as walt.id's portal sends it. The offer runs through the
+     * review and issuance screens, and the request succeeds once the user leaves them with a credential saved.
+     */
+    @Test
+    fun dcApiIssuanceRunsTheOffer() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        val uri = offer(listOf("pid_sd_jwt"))
+        val offer = DiwJson.parseToJsonElement(io.ktor.http.Url(uri).parameters["credential_offer"]!!).jsonObject
+        val data = JsonObject(offer + mapOf(
+            "credential_issuer_metadata" to buildJsonObject { put("credential_issuer", "https://ignored.example") },
+            "authorization_server_metadata" to buildJsonObject { put("issuer", "https://ignored.example") },
+        ))
+        assertFalse("credential_issuer_metadata" in WalletModel.dcApiOfferUri(data))
+        assertEquals(offer, DiwJson.parseToJsonElement(io.ktor.http.Url(WalletModel.dcApiOfferUri(buildJsonObject { put("credential_offer", offer) })).parameters["credential_offer"]!!).jsonObject)
+        assertFailsWith<diw.wallet.core.util.ProtocolException> { WalletModel.dcApiOfferUri(buildJsonObject { put("nonce", "x") }) }
+        withTimeout(60.seconds) {
+            val saved = async { m.receiveDcApi(data, "https://portal.example") }
+            val review = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
+            assertIs<IssuanceUi.Review>(review, "review: $review")
+            assertEquals("https://portal.example", review.requestedBy)
+            m.acceptOffer(review, null)
+            assertIs<IssuanceUi.Done>(m.issuance.first { it is IssuanceUi.Done || it is IssuanceUi.Failed })
+            assertFalse(saved.isCompleted)
+            m.screen.value = Screen.Home
+            assertTrue(saved.await())
+        }
+    }
+
+    /**
      * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
      * The wallet holds a PID and an mDL from the test issuer and has presented once.
      */
@@ -280,12 +316,26 @@ class WalletModelE2eTest {
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("13-trust-anchors", Screen.TrustAnchors)
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.first()
+        screen("14-file-detail", Screen.FileDetail(stored.id))
+        screen("15-file-sign", Screen.FileSign(stored.id))
+        screen("16-file-derive", Screen.FileDerive(stored.id))
+        m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
+        val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }
+        screen("18-national-id-open", Screen.NationalIdCreate(idFile.id))
+        m.files.readNationalId(idFile, "A123456789").join()
+        screen("19-national-id-confirm", Screen.NationalIdCreate(idFile.id))
+        m.files.issueNationalId(assertNotNull(m.files.nationalIdDraft.value), "簽署中") { rsaSigner("測試人員") }.join()
+        screen("20-national-id", Screen.NationalId(idFile.id))
+        screen("21-documents-with-national-id", Screen.Home, HomeTab.DOCUMENTS)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
             diw.wallet.app.ui.WalletTheme {
                 androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-                    diw.wallet.app.ui.AddDocumentSheet(onDismiss = {}, onList = {}, onScan = {})
+                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, onScan = {})
                 }
             }
         }
@@ -710,7 +760,7 @@ class WalletModelE2eTest {
         assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
         m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
         val after = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
-        assertEquals(TrustTier.T3, after.tier)
+        assertEquals(TrustTier.T2, after.tier)
         assertEquals(TrustEnvironment.USER, after.environment)
         assertEquals("Partner", after.anchorName)
     }
@@ -744,7 +794,7 @@ class WalletModelE2eTest {
         val choose = withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } }
         assertIs<OfflineUi.BondsChoose>(choose, "choose: $choose")
         val card = choose.cards.first()
-        assertEquals(docId, card.document.identifier)
+        assertEquals(docId, card.document?.identifier)
         assertEquals(BondsCardKind.SD_JWT_VC, card.kind)
         assertEquals(setOf("given_name", "family_name", "birthdate", "nationality"), card.claims.map { it.first }.toSet())
 
@@ -767,6 +817,416 @@ class WalletModelE2eTest {
         val presented = withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
         assertEquals(1, presented.claims.size)
         assertNull(presented.failure)
+    }
+
+    /**
+     * The document vault: a PDF is stored and checked, signed with the wallet's own key (PAdES, a new file whose
+     * signature verifies but whose signer is not anchored), turned into a derived SD-JWT VC, and that credential is
+     * presented offline to another wallet, which sees the chosen claims and the evidence.
+     */
+    @Test
+    fun documentVaultSignDeriveAndPresent() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        val pdf = diw.testservers.fixtures.PdfComposer.compose(
+            "在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明"), diw.testservers.fixtures.PdfComposer.Block.Paragraph("測試")),
+        )
+        holder.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val original = holder.files.files.value.single()
+        assertEquals(diw.wallet.core.document.DocumentVerdict.UNSIGNED, original.report?.verdict)
+        assertEquals(Screen.FileDetail(original.id), holder.screen.value)
+        // The same content is not stored twice.
+        holder.files.import(PickedFile("copy.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        assertEquals(1, holder.files.files.value.size)
+
+        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false).join()
+        assertNull(holder.files.error.value, "sign: ${holder.files.error.value}")
+        val signed = holder.files.files.value.first { it.origin == FileOrigin.SIGNED }
+        val sig = signed.report!!.signatures.single()
+        assertEquals(diw.wallet.core.document.Check.PASS, sig.integrity)
+        assertEquals("測試使用者", sig.signer?.commonName)
+        assertEquals(original.id, signed.parentId)
+        // History is written asynchronously, so wait for the entry instead of reading it right away.
+        withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.SIGNED } } }
+
+        // Opening a document checks it again: once the signer's certificate is trusted, the stored result changes.
+        assertEquals(diw.wallet.core.document.DocumentVerdict.PARTIAL, sig.verdict)
+        val pem = "-----BEGIN CERTIFICATE-----\n" + sig.signer!!.der.chunked(64).joinToString("\n") + "\n-----END CERTIFICATE-----\n"
+        holder.importAnchor(pem, "測試使用者", setOf(diw.wallet.core.trust.TrustRole.DOCUMENT)).join()
+        holder.files.refresh(signed.id).join()
+        val rechecked = holder.files.file(signed.id)?.report?.signatures?.single()
+        assertEquals(diw.wallet.core.document.DocumentVerdict.VALID, rechecked?.verdict, "${holder.message.value} ${rechecked?.trust}")
+
+        val claims = diw.wallet.core.document.derived.DerivedCredentials.suggestedClaims(original.report!!, original.name, null)
+        holder.files.derive(original, claims, timestamp = false, validDays = 365).join()
+        assertNull(holder.files.error.value, "derive: ${holder.files.error.value}")
+        val derivedId = assertNotNull(holder.files.file(original.id)?.derivedDocumentId)
+        val doc = holder.documents.value.single { it.identifier == derivedId }
+        assertEquals(diw.wallet.core.document.derived.DerivedCredentials.VCT, doc.issuanceRecord?.vct)
+
+        val (verifier, _) = newWallet()
+        verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
+        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.taiwan.preferredDocument = derivedId
+        holder.handleUri(any.encode())
+        val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
+        val card = choose.cards.first()
+        assertEquals(derivedId, card.document?.identifier)
+        holder.taiwan.presentBonds(choose.request, card, setOf("documentTitle"))
+        val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
+        frames.frames.forEach { verifier.handleUri(it) }
+        val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+        assertNull(result.error, "error: ${result.error}")
+        val r = assertNotNull(result.result)
+        assertEquals("在學證明", r.claims["documentTitle"])
+        assertEquals(original.sha256, r.claims["document.sha256"])
+        assertEquals(diw.wallet.core.document.Check.NOT_CHECKED, r.evidence.single().check)
+
+        // The derived credential is not a vc+moica card: a request for a self-issued card asks for the national ID card.
+        verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+        val self = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        holder.taiwan.offline.value = OfflineUi.Working("")
+        holder.handleUri(self.encode())
+        val failed = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
+        assertTrue("身分證卡" in failed.message)
+
+        // Deleting the derived credential clears the file's link to it.
+        holder.deleteDocument(holder.documents.value.first { it.identifier == derivedId }).join()
+        assertNull(holder.files.file(original.id)?.derivedDocumentId)
+
+        // An official letter made elsewhere is imported and signed with XAdES.
+        val letterXml = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "王小明", subject = "測試公文").toXml()
+        holder.files.import(PickedFile("letter.di", letterXml), FileOrigin.IMPORTED, null).join()
+        val letter = holder.files.files.value.first { it.name == "letter.di" }
+        assertEquals("測試公文", letter.report?.title)
+        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false).join()
+        assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
+        val signedLetter = holder.files.files.value.first { it.origin == FileOrigin.SIGNED && it.parentId == letter.id }
+        assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
+    }
+
+    /**
+     * A ZIP of official document files (names written as "#U" escapes) is unpacked at once; the holder is asked
+     * which files go into the document's container, the matching exchange form is suggested and the other is not,
+     * and the confirmed file is listed under the document only.
+     */
+    @Test
+    fun officialDocumentZipIsBundledAfterConfirmation() = runBlocking<Unit> {
+        val (holder, _) = newWallet()
+        val letter = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "測試受文機關", subject = "測試獎懲").toXml()
+        fun form(receiver: String) = ("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<交換表單><全銜>$receiver</全銜>" +
+            "<機關代碼>○○○○○○○○○○</機關代碼></交換表單>\n").encodeToByteArray()
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                for ((name, bytes) in listOf("#U734e#U61f2#U4ee4.di" to letter, "#U734e#U61f2#U4ee4.sw" to form("測試受文機關"), "other.sw" to form("無關機關"))) {
+                    z.putNextEntry(java.util.zip.ZipEntry(name))
+                    z.write(bytes)
+                    z.closeEntry()
+                }
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("test.zip", zip), FileOrigin.IMPORTED, null).join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        val stored = holder.files.files.value
+        assertEquals(setOf("獎懲令.di", "獎懲令.sw", "other.sw"), stored.map { it.name }.toSet(), "the archive is replaced by its files")
+        val main = stored.first { it.name == "獎懲令.di" }
+        val screen = holder.screen.value as Screen.OfficialBundle
+        assertEquals(main.id, screen.mainId)
+        assertEquals(2, screen.only!!.size)
+
+        val candidates = holder.files.bundleCandidates(main, screen.only)
+        assertEquals(listOf("獎懲令.sw", "other.sw"), candidates.map { it.file.name })
+        assertTrue(candidates[0].match.suggested)
+        assertFalse(candidates[1].match.suggested)
+
+        holder.files.confirmBundle(main, listOf(candidates[0].file.id), screen.only, screen.next).join()
+        assertEquals(Screen.FileDetail(main.id), holder.screen.value)
+        assertEquals(listOf("獎懲令.sw"), holder.files.members(main).map { it.name })
+        assertNull(holder.files.file(candidates[1].file.id)?.bundleOf)
+
+        // Taken out again, the file stands on its own.
+        holder.files.leaveBundle(holder.files.members(main).single()).join()
+        assertTrue(holder.files.members(main).isEmpty())
+    }
+
+    /**
+     * A ZIP with an online approval (.si) of two signing points: the container is built from the approval without
+     * asking (the letter it lists first holds it, the files it signed join it), only the file it does not list is
+     * left to confirm, and the container is laid out by signing point. Revocation data is kept for the approval's
+     * signatures, a time stamp can be removed, the container exports with its evidence, and deleting the letter can
+     * take its files with it.
+     */
+    @Test
+    fun officialZipIsBundledByItsApproval() = runBlocking<Unit> {
+        val (holder, platform) = newWallet()
+        val letter = diw.testservers.fixtures.OfficialLetter(sender = "測試機關", recipient = "測試受文機關", subject = "測試簽核").toXml()
+        val att1 = "附件一內容".encodeToByteArray()
+        val att2 = "附件二內容".encodeToByteArray()
+        val signer = rsaSigner("測試承辦人")
+        val first = diw.wallet.core.document.sign.DocumentSigning.signApproval(
+            null, listOf("簽核函.di" to letter, "附件一.txt" to att1), signer, diw.wallet.core.document.official.ApprovalPoint(action = "呈核"),
+        )
+        val si = diw.wallet.core.document.sign.DocumentSigning.signApproval(
+            first, listOf("簽核函.di" to letter, "附件一.txt" to att1, "附件二.txt" to att2), signer, diw.wallet.core.document.official.ApprovalPoint(action = "決行"),
+        )
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                for ((name, bytes) in listOf("簽核函.di" to letter, "附件一.txt" to att1, "附件二.txt" to att2, "簽核函.si" to si, "說明.txt" to "其他".encodeToByteArray())) {
+                    z.putNextEntry(java.util.zip.ZipEntry(name))
+                    z.write(bytes)
+                    z.closeEntry()
+                }
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("case.zip", zip), FileOrigin.IMPORTED, null).join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        val main = holder.files.files.value.first { it.name == "簽核函.di" }
+        assertEquals(setOf("附件一.txt", "附件二.txt", "簽核函.si"), holder.files.members(main).map { it.name }.toSet())
+        val screen = assertIs<Screen.OfficialBundle>(holder.screen.value)
+        assertEquals(main.id, screen.mainId)
+        assertEquals(listOf("說明.txt"), screen.only!!.mapNotNull { holder.files.file(it)?.name })
+
+        val layout = assertNotNull(holder.files.containerLayout(main))
+        assertEquals("簽核函.si", layout.approval.name)
+        assertEquals(2, layout.points.size)
+        assertEquals(listOf("簽核函.di", "附件一.txt"), layout.points[0].files.map { it.name })
+        assertEquals("決行", layout.points[1].action)
+        assertEquals(listOf("附件二.txt"), layout.points[1].files.map { it.name })
+        assertEquals(2, layout.points[1].repeated.size)
+        assertEquals(0, layout.missing)
+        assertTrue(layout.others.isEmpty())
+        assertEquals(diw.wallet.core.document.Check.PASS, layout.points[1].signature!!.integrity)
+
+        // Revocation data of the approval's signatures (the test certificate has no AIA, so none can be fetched).
+        val approval = layout.approval
+        holder.files.collectContainerValidation(main).join()
+        assertNull(holder.files.error.value, "revocation: ${holder.files.error.value}")
+        assertNotNull(holder.files.file(approval.id)!!.signatureValidation)
+
+        // A time stamp made by hand can be removed again.
+        val stamped = holder.files.file(main.id)!!.copy(timestamps = listOf(StoredTimestamp(token = "AA==", time = 0)))
+        holder.files.save(stamped)
+        holder.files.removeTimestamp(stamped, 0).join()
+        assertTrue(holder.files.file(main.id)!!.timestamps.isEmpty())
+
+        holder.files.exportContainer(main).join()
+        val (exportName, exported) = platform.saved.last()
+        assertEquals("簽核函（公文容器）.zip", exportName)
+        val entries = diw.wallet.core.document.sign.DocumentSigning.unzip(exported)
+        assertTrue(entries.keys.containsAll(listOf("簽核函.di", "附件一.txt", "附件二.txt", "簽核函.si", "說明.txt")), "entries: ${entries.keys}")
+        assertTrue(entries.getValue("說明.txt").decodeToString().contains("簽核點 2"))
+
+        holder.files.delete(main, withMembers = true).join()
+        assertEquals(listOf("說明.txt"), holder.files.files.value.map { it.name })
+    }
+
+    /** A MyData national ID document with made-up data (unencrypted; the encrypted forms are covered in test-servers). */
+    private fun nationalIdPdf(): ByteArray = diw.testservers.fixtures.PdfComposer.compose(
+        "國民身分證資料",
+        listOf(
+            diw.testservers.fixtures.PdfComposer.Block.Heading("國民身分證資料"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("統號：A123456789 姓名：測試人員"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("出生日期：民國 083年03月06日"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("戶籍地址：臺北市中正區重慶南路一段122號"),
+            diw.testservers.fixtures.PdfComposer.Block.Paragraph("備註"),
+        ),
+    )
+
+    /** An RSA key with a self-issued certificate named [name], standing in for the citizen certificate card. */
+    private suspend fun rsaSigner(name: String): diw.wallet.core.document.sign.DocumentSigner {
+        val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        fun rsaSign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withRSA").run { initSign(rsa.private); update(data); sign() }
+        val cert = diw.wallet.core.document.sign.DocumentSigning.selfIssuedCertificate(
+            rsa.public.encoded, name, { rsaSign(it) }, diw.wallet.core.document.sign.SignerKeyType.RSA, 30,
+        )
+        return object : diw.wallet.core.document.sign.DocumentSigner {
+            override val certificateChain = listOf(cert)
+            override val keyType = diw.wallet.core.document.sign.SignerKeyType.RSA
+            override val source = diw.wallet.core.document.sign.SignerSource.SMART_CARD
+            override suspend fun sign(data: ByteArray): ByteArray = rsaSign(data)
+        }
+    }
+
+    /**
+     * Bonds national ID card: the MyData national ID PDF is read with the ID number, the fields are signed with an
+     * RSA certificate named like the holder (in place of the citizen card), and the card answers a Bonds request for
+     * a self-issued card, disclosing only the age claim and the name.
+     */
+    @Test
+    fun bondsNationalIdCard() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        holder.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
+        val f = holder.files.files.value.single()
+        holder.files.readNationalId(f, "a123456789").join()
+        assertNull(holder.files.error.value, "read: ${holder.files.error.value}")
+        val draft = assertNotNull(holder.files.nationalIdDraft.value)
+        assertEquals("A123456789", draft.fields.unifiedNo)
+        assertEquals("測試人員", draft.fields.name)
+        assertEquals("true", draft.over18)
+
+        // Another person's card is refused before anything is signed.
+        holder.files.issueNationalId(draft, "簽署中") { rsaSigner("王小明") }.join()
+        assertTrue(holder.files.error.value!!.contains("姓名"), "error: ${holder.files.error.value}")
+        assertNull(holder.files.file(f.id)?.nationalId)
+
+        val card = rsaSigner("測試人員")
+        holder.files.issueNationalId(draft, "簽署中") { card }.join()
+        assertNull(holder.files.error.value, "issue: ${holder.files.error.value}")
+        assertEquals(Screen.NationalId(f.id), holder.screen.value)
+        val stored = holder.files.nationalIdCards().single().second
+        assertTrue(diw.wallet.core.profile.bonds.BondsNationalId.isNationalId(stored))
+        withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.ISSUED } } }
+
+        val request = diw.wallet.core.profile.bonds.BondsPresentationRequest.generate("年齡確認", diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+        holder.handleUri(request.encode())
+        val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
+        val offered = choose.cards.single()
+        assertEquals(TaiwanModel.NATIONAL_ID_NAME, offered.name)
+        assertEquals(listOf("nationality", "unifiedNo", "name", "birthdate", "over18AtIssuance", "addressOfHousehold"), offered.claims.map { it.first })
+        holder.taiwan.presentBonds(choose.request, offered, setOf("over18AtIssuance"))
+        val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
+        // The certificate stands in for MOICA G3 here; a production verifier checks the MOICA chain.
+        val ca = diw.wallet.core.profile.bonds.MoicaCa(card.certificateChain.first(), card.certificateChain.first())
+        val r = diw.wallet.core.profile.bonds.BondsOfflineVerifier(holder.didResolver(), moicaCa = ca).verify(frames.presentationJws, request)
+        assertEquals(mapOf("name" to "測試人員", "over18AtIssuance" to "true"), r.claims)
+        assertTrue(r.moica!!.nameChecked)
+    }
+
+    /**
+     * A MyData ZIP handed to the wallet (shared from another app or picked) is unpacked at once; the national ID PDF
+     * inside goes to the national ID card screen, every file says it came from MyData by its file name, and the
+     * derive screen reads the PDF's fields once the ID number opens it.
+     */
+    @Test
+    fun myDataZipIsUnpackedOnArrival() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                z.putNextEntry(java.util.zip.ZipEntry("API.idPhotoRev.pdf"))
+                z.write(nationalIdPdf())
+                z.closeEntry()
+            }
+        }.toByteArray()
+        holder.files.import(PickedFile("戶政國民身分證資料20261012102938.zip", zip), FileOrigin.IMPORTED, "其他 App").join()
+        assertNull(holder.files.error.value, "import: ${holder.files.error.value}")
+        // The ZIP is removed once its files are stored; the files keep its name.
+        val pdf = holder.files.files.value.single()
+        assertEquals("API.idPhotoRev.pdf", pdf.name)
+        assertEquals(Screen.NationalIdCreate(pdf.id), holder.screen.value)
+        assertEquals("MyData・國民身分證資料（依檔名判斷）", pdf.source)
+        assertEquals("戶政國民身分證資料20261012102938.zip", pdf.archive)
+        assertEquals(FileOrigin.EXTRACTED, pdf.origin)
+
+        val fields = holder.files.deriveFields(pdf)
+        assertFalse(fields.locked)
+        val byName = fields.claims.associate { it.name to it.value }
+        assertEquals("測試人員", byName["姓名"])
+        assertEquals("國民身分證資料", byName[diw.wallet.core.document.derived.DerivedCredentials.CLAIM_TITLE])
+        assertTrue(fields.claims.any { it.name == diw.wallet.core.document.derived.DerivedCredentials.CLAIM_SOURCE })
+    }
+
+    /**
+     * An OpenCerts certificate: stored with its integrity checked, checked online right away (document store on
+     * Ethereum and the issuer's DNS-TXT record, mocked here), shown field by field, kept when the network is gone, and
+     * its attachment stored as a file of its own.
+     */
+    @Test
+    fun openCertsAreCheckedOnlineAndShown() = runBlocking<Unit> {
+        val cert = java.io.File("../test-servers/src/test/resources/documents/opencerts/oa-v2-store.json").readBytes()
+        val doc = assertNotNull(diw.wallet.core.document.opencerts.OpenAttestationDocument.parse(cert))
+        fun selector(sig: String) = "0x" + diw.wallet.core.document.opencerts.OpenAttestationDocument.keccakHex(sig).take(8)
+        var offline = false
+        val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            when {
+                offline -> respond("", io.ktor.http.HttpStatusCode.ServiceUnavailable)
+                request.url.host == "dns.google" -> respond(
+                    """{"Status":0,"Answer":[{"name":"certs.test.example","type":16,"data":"\"openatts net=ethereum netId=1 addr=0x1111111111111111111111111111111111111111\""}]}""",
+                    io.ktor.http.HttpStatusCode.OK, json,
+                )
+                request.url.host == "ethereum-rpc.publicnode.com" -> {
+                    val body = DiwJson.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject
+                    val data = body["params"]!!.jsonArray[0].jsonObject["data"]!!.jsonPrimitive.content
+                    val yes = when (data.take(10)) {
+                        selector("isIssued(bytes32)") -> data.drop(10) == doc.merkleRoot
+                        else -> false
+                    }
+                    respond("""{"jsonrpc":"2.0","id":1,"result":"0x${(if (yes) "1" else "0").padStart(64, '0')}"}""", io.ktor.http.HttpStatusCode.OK, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.files.import(PickedFile("degree.opencert", cert), FileOrigin.IMPORTED, null).join()
+        assertNull(m.files.error.value, "import: ${m.files.error.value}")
+        val stored = m.files.files.value.single()
+        val online = withTimeout(30.seconds) { m.files.files.first { it.single().report?.openCert?.online != null } }.single().report!!.openCert!!.online!!
+        assertEquals(diw.wallet.core.document.Check.PASS, online.issuance, online.issuanceDetail.toString())
+        assertEquals(diw.wallet.core.document.Check.PASS, online.identity, online.identityDetail.toString())
+        assertEquals(diw.wallet.core.document.DocumentVerdict.VALID, m.files.file(stored.id)!!.report!!.verdict)
+
+        val view = assertNotNull(m.files.openCertView(stored))
+        assertTrue(("姓名" to "Test Person") in view.recipient)
+        assertNotNull(m.files.openCertRendererPage(stored))
+
+        // Opening the file again inspects it anew; the online result stays.
+        m.files.refreshed(stored)
+        assertNotNull(m.files.file(stored.id)!!.report!!.openCert!!.online)
+
+        // Offline: the last result stays and the holder is told.
+        offline = true
+        m.files.recheckOpenCert(stored).join()
+        assertEquals("無法連線查驗，保留上一次的結果", m.message.value)
+        assertEquals(online, m.files.file(stored.id)!!.report!!.openCert!!.online)
+
+        m.files.storeOpenCertAttachment(stored, view.attachments.single()).join()
+        val attachment = m.files.files.value.first { it.id != stored.id }
+        assertEquals("note.txt", attachment.name)
+        assertEquals("OpenCerts 附件", attachment.source)
+        assertEquals(stored.id, attachment.parentId)
+    }
+
+    /**
+     * A MyData download in the app: the ZIP is unpacked and removed, an opaque file name becomes the item's name,
+     * the source is short, and the PDF opens with the ID number saved for MyData (as Bonds asks for it).
+     */
+    @Test
+    fun myDataDownloadIsNamedAndOpensWithSavedIdNumber() = runBlocking<Unit> {
+        start()
+        val (holder, _) = newWallet()
+        holder.updateSettings { it.copy(myDataIdNumber = "A123456789", myDataBirthDate = "19940306") }.join()
+        val encrypted = org.apache.pdfbox.Loader.loadPDF(nationalIdPdf()).use { doc ->
+            val policy = org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy("owner", "A123456789", org.apache.pdfbox.pdmodel.encryption.AccessPermission())
+            policy.encryptionKeyLength = 128
+            policy.isPreferAES = true
+            doc.protect(policy)
+            java.io.ByteArrayOutputStream().also { doc.save(it) }.toByteArray()
+        }
+        val zip = java.io.ByteArrayOutputStream().also { out ->
+            java.util.zip.ZipOutputStream(out).use { z ->
+                z.putNextEntry(java.util.zip.ZipEntry("173811510121058224WM.pdf"))
+                z.write(encrypted)
+                z.closeEntry()
+            }
+        }.toByteArray()
+        val site = DocumentSources.byId("mydata-household")!!
+        holder.files.importDownload(PickedFile("現戶全戶戶籍資料20261012105827.zip", zip), site).join()
+        assertNull(holder.files.error.value, "download: ${holder.files.error.value}")
+        val pdf = holder.files.files.value.single()
+        assertEquals("現戶全戶戶籍資料.pdf", pdf.name)
+        assertEquals("MyData・現戶全戶戶籍資料", pdf.source)
+        assertEquals("現戶全戶戶籍資料20261012105827.zip", pdf.archive)
+        assertEquals(Screen.FileDetail(pdf.id), holder.screen.value)
+        val fields = holder.files.deriveFields(pdf)
+        assertFalse(fields.locked, "the saved ID number opens the PDF")
+        val byName = fields.claims.associate { it.name to it.value }
+        assertEquals("測試人員", byName["姓名"])
+        assertEquals("MyData・現戶全戶戶籍資料", byName[diw.wallet.core.document.derived.DerivedCredentials.CLAIM_SOURCE])
     }
 
     /** Anchors are not limited to TWDIW: a PEM root imported by the user is a USER anchor (T3) until removed. */
@@ -878,5 +1338,90 @@ class WalletModelE2eTest {
         inner.getTable(spec).insert("k", raw, partitionId = "p2")
         assertFailsWith<Exception> { enc.get("k", "p2") }
         assertEquals(secret, EncryptedStorage(inner, PinValueCipher.unlock(dir, pin)!!).getTable(spec).get("k", "p1"))
+    }
+
+    /**
+     * A CSC service whose sign-in is a cookie session: the wallet follows the redirects itself, reads the credential
+     * and signs a CAdES file with the remote key. A sign-in that leads to a presentation request the wallet cannot
+     * answer stops with that reason instead of waiting.
+     */
+    @Test
+    fun cscRemoteSigningThroughCookieSession() = runBlocking<Unit> {
+        val key = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }.generateKeyPair()
+        val cert = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+            org.bouncycastle.asn1.x500.X500Name("CN=Remote Signer"), java.math.BigInteger.TEN, java.util.Date(System.currentTimeMillis() - 86_400_000),
+            java.util.Date(System.currentTimeMillis() + 86_400_000), org.bouncycastle.asn1.x500.X500Name("CN=Remote Signer"), key.public,
+        ).build(org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA").build(key.private)).encoded
+        var broken = false
+        val sessions = mutableMapOf<String, String>()
+        val engine = io.ktor.client.engine.mock.MockEngine { req ->
+            fun json(o: JsonObject) = respond(o.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            fun redirect(to: String, cookie: String? = null) = respond("", io.ktor.http.HttpStatusCode.Found, io.ktor.http.Headers.build {
+                append(HttpHeaders.Location, to)
+                cookie?.let { append(HttpHeaders.SetCookie, it) }
+            })
+            val q = req.url.parameters
+            when (req.url.encodedPath) {
+                "/csc/v2/info" -> json(buildJsonObject { put("oauth2", "https://qtsp.example"); putJsonArray("authType") { add("oauth2code") } })
+                "/oauth2/authorize" -> {
+                    if (broken) redirect("openid4vp://?client_id=x&request_uri=https%3A%2F%2Fqtsp.example%2Fmissing")
+                    else {
+                        val sid = "s" + sessions.size
+                        sessions[sid] = "rqes://oauth/callback?code=c-$sid&state=" + q["state"]
+                        redirect("/login/done", "SID=$sid; Path=/")
+                    }
+                }
+                "/login/done" -> {
+                    val sid = req.headers[HttpHeaders.Cookie]?.substringAfter("SID=")?.substringBefore(';')
+                    sessions[sid]?.let { redirect(it) } ?: respond("no session", io.ktor.http.HttpStatusCode.Unauthorized)
+                }
+                "/oauth2/token" -> json(buildJsonObject { put("access_token", "t"); put("expires_in", 600) })
+                "/csc/v2/credentials/list" -> json(buildJsonObject {
+                    putJsonArray("credentialIDs") { add("c1") }
+                    putJsonArray("credentialInfos") {
+                        add(buildJsonObject {
+                            put("credentialID", "c1")
+                            put("key", buildJsonObject { put("status", "enabled"); putJsonArray("algo") { add("1.2.840.10045.4.3.2") } })
+                            put("cert", buildJsonObject { put("status", "valid"); putJsonArray("certificates") { add(java.util.Base64.getEncoder().encodeToString(cert)) } })
+                            put("auth", buildJsonObject { put("mode", "oauth2code") })
+                        })
+                    }
+                })
+                "/csc/v2/signatures/signHash" -> {
+                    val body = DiwJson.parseToJsonElement((req.body as io.ktor.http.content.TextContent).text).jsonObject
+                    val sigs = body["hashes"]!!.jsonArray.map { h ->
+                        val sig = java.security.Signature.getInstance("NONEwithECDSA").apply { initSign(key.private); update(java.util.Base64.getDecoder().decode(h.jsonPrimitive.content)) }.sign()
+                        java.util.Base64.getEncoder().encodeToString(sig)
+                    }
+                    json(buildJsonObject { putJsonArray("signatures") { sigs.forEach { add(it) } } })
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        val service = diw.wallet.core.document.sign.CscService(
+            "mock", "Mock", "https://qtsp.example/csc/v2", "wallet-client", "secret", "rqes://oauth/callback",
+            diw.wallet.core.document.sign.CscEnvironment.TEST,
+        )
+        val statuses = mutableListOf<String>()
+        val signer = withTimeout(30.seconds) { m.csc.signer(service, "test.txt") { statuses += it } }
+        assertEquals("c1", signer.credential?.id)
+        val content = "remote".toByteArray()
+        val cms = withTimeout(30.seconds) { diw.wallet.core.document.sign.DocumentSigning.signCades(content, signer, true, null) }
+        val parsed = org.bouncycastle.cms.CMSSignedData(org.bouncycastle.cms.CMSProcessableByteArray(content), cms)
+        val x509 = java.security.cert.CertificateFactory.getInstance("X.509").generateCertificate(cert.inputStream()) as java.security.cert.X509Certificate
+        assertTrue(parsed.signerInfos.signers.first().verify(org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder().build(x509)))
+        assertTrue(statuses.any { "登入" in it }, "statuses: $statuses")
+
+        broken = true
+        val before = m.screen.value
+        val e = assertFailsWith<diw.wallet.core.document.sign.SigningException> {
+            withTimeout(30.seconds) { m.csc.signer(service.copy(id = "other"), "test.txt") {} }
+        }
+        assertTrue("身分驗證" in e.message!!, e.message)
+        assertEquals(before, m.screen.value, "the signing screen comes back")
     }
 }

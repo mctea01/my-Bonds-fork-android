@@ -113,7 +113,11 @@ class TwdiwDialect(
         val method = DidResolver(httpClient, allowInsecureLoopback).resolve(iss).methods.singleOrNull()
             ?: throw ProtocolException("invalid_credential", "Issuer DID $iss has no single key")
         val key = (method.key as? VerificationKey.Ec)?.key ?: throw ProtocolException("invalid_credential", "Issuer DID key is not an EC key")
-        return DialectIssuerKey(key, "Issuer key comes from the issuer DID $iss (TWDIW)", "TWDIW")
+        // Only the TWDIW shape (W3C credential under vc, no vct) is labelled TWDIW; an IETF SD-JWT VC whose iss is a
+        // DID (walt.id and others) uses the same key lookup but follows no TWDIW specification.
+        val twdiwShape = context.payload["vc"] != null && context.payload["vct"] == null
+        return if (twdiwShape) DialectIssuerKey(key, "Issuer key comes from the issuer DID $iss (TWDIW)", "TWDIW")
+        else DialectIssuerKey(key, "Issuer key comes from the issuer DID $iss", "")
     }
 
     companion object {

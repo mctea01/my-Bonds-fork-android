@@ -2,6 +2,15 @@ package diw.wallet.core.oid4vp
 
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.holder.HolderIdentities
+import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsHolderDerived
+import diw.wallet.core.profile.bonds.BondsMoicaOnline
+import diw.wallet.core.profile.bonds.HolderDerivedPlan
+import diw.wallet.core.profile.bonds.HolderDerivedSource
+import diw.wallet.core.profile.bonds.HolderHint
+import diw.wallet.core.profile.bonds.HeldMoicaCard
+import diw.wallet.core.profile.bonds.MoicaMatch
 import diw.wallet.core.oid4vp.compat.PresentationDialect
 import diw.wallet.core.oid4vp.ext.ConsentLine
 import diw.wallet.core.oid4vp.ext.ExtendedOutcome
@@ -50,6 +59,18 @@ data class PreparedExtended(val prepared: ExtendedPrepared) : PreparedRequest {
     val lines: List<ConsentLine> get() = prepared.lines
 }
 
+/**
+ * A Bonds self-issued card request (Presentation Exchange with the vc+moica format), answered from the cards the
+ * wallet keeps outside the document store.
+ */
+data class PreparedMoica(override val request: ValidatedAuthorizationRequest, val matches: List<MoicaMatch>) : PreparedRequest
+
+/**
+ * A Bonds holder-derived request (DCQL dc+sd-jwt with bonds_rule): answered by a credential minted at presentation
+ * time from a vault document, never by a held card. [plan] holds the computed answer shown before consent.
+ */
+data class PreparedDerived(override val request: ValidatedAuthorizationRequest, val plan: HolderDerivedPlan) : PreparedRequest
+
 /** Result of a completed presentation. */
 sealed class PresentationOutcome {
     /** direct_post(.jwt): the Verifier accepted; [redirectUri] should be opened if present. */
@@ -75,6 +96,13 @@ class Oid4vpHolder(
     didTrust: DidTrust = DidTrust.NONE,
     /** Profile behaviour outside OpenID4VP 1.0; always on, used only for requests a profile owns. */
     private val dialects: List<PresentationDialect> = emptyList(),
+    /** Bonds self-issued cards (vc+moica) for requests that name that format, and the key their subject DID names. */
+    private val moicaCards: suspend () -> List<HeldMoicaCard> = { emptyList() },
+    private val moicaHolder: suspend () -> HolderKey? = { null },
+    /** Vault documents a Bonds holder-derived credential can be computed from. */
+    private val derivedSources: suspend () -> List<HolderDerivedSource> = { emptyList() },
+    /** Who the holder is (ID number, name), to pick the holder's own row on a household record. */
+    private val derivedHolders: suspend () -> List<HolderHint> = { emptyList() },
 ) {
     private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
@@ -111,6 +139,10 @@ class Oid4vpHolder(
      * OpenID4VP 1.0 requests for mdoc and SD-JWT VC go through Multipaz; everything else through the wallet's own engine.
      */
     suspend fun prepare(request: ValidatedAuthorizationRequest): PreparedRequest {
+        if (BondsHolderDerived.wants(request)) return PreparedDerived(request, BondsHolderDerived.prepare(request, derivedSources(), derivedHolders()))
+        if (request.profile == TwdiwPresentationDialect.ID && BondsMoicaOnline.wants(request)) {
+            return PreparedMoica(request, BondsMoicaOnline.match(request, moicaCards()))
+        }
         if (request.isLegacy || needsOwnDcql(request)) return PreparedExtended(extended.prepare(request))
         return prepareStandard(request)
     }
@@ -133,7 +165,28 @@ class Oid4vpHolder(
     /** Responds with the default choice: the first match of each standard query, or the engine's choice for extended requests. */
     suspend fun respondDefault(prepared: PreparedRequest): PresentationOutcome = when (prepared) {
         is PreparedExtended -> respond(prepared)
+        is PreparedMoica -> respond(prepared)
+        is PreparedDerived -> respond(prepared)
         is PreparedPresentation -> respond(prepared, prepared.queryResult.select(emptyList()))
+    }
+
+    suspend fun respond(prepared: PreparedMoica): PresentationOutcome {
+        val holder = moicaHolder() ?: throw ProtocolException("credential_unavailable", "No holder key for self-issued cards")
+        val params = BondsMoicaOnline.response(prepared.request, prepared.matches, holder)
+        return when (val o = extended.deliver(prepared.request, params, null, extended.dialectOf(prepared.request))) {
+            is ExtendedOutcome.Posted -> PresentationOutcome.Posted(o.redirectUri, o.status)
+            is ExtendedOutcome.Redirect -> PresentationOutcome.Redirect(o.url)
+            is ExtendedOutcome.DcApi -> PresentationOutcome.DcApi(o.data)
+        }
+    }
+
+    suspend fun respond(prepared: PreparedDerived): PresentationOutcome {
+        val params = BondsHolderDerived.response(prepared.request, prepared.plan)
+        return when (val o = extended.deliver(prepared.request, params, null, extended.dialectOf(prepared.request))) {
+            is ExtendedOutcome.Posted -> PresentationOutcome.Posted(o.redirectUri, o.status)
+            is ExtendedOutcome.Redirect -> PresentationOutcome.Redirect(o.url)
+            is ExtendedOutcome.DcApi -> PresentationOutcome.DcApi(o.data)
+        }
     }
 
     suspend fun respond(prepared: PreparedExtended): PresentationOutcome = when (val o = extended.respond(prepared.prepared)) {

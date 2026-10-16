@@ -21,7 +21,7 @@ data class UserTrustedDid(
 
 /**
  * DIDs the user trusts themselves, beside the national list and domain linkage: an organisation outside TWDIW,
- * a company's own issuer, a test partner. A listed DID is the user's own anchor (USER environment, T3), never
+ * a company's own issuer, a test partner. A listed DID is the user's own anchor (USER environment, T2), never
  * official.
  */
 class UserDidTrust(private val storage: Storage) : DidTrustSource {
@@ -53,7 +53,7 @@ class UserDidTrust(private val storage: Storage) : DidTrustSource {
     override suspend fun decide(did: String, role: TrustRole): TrustDecision? {
         val entry = all().firstOrNull { it.did == did && role.id in it.roles } ?: return null
         return TrustDecision(
-            tier = TrustTier.T3,
+            tier = TrustTier.T2,
             environment = TrustEnvironment.USER,
             official = false,
             anchorName = entry.name,

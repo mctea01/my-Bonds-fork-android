@@ -5,6 +5,7 @@ import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.profile.bonds.TwPkiAnchors
 import diw.wallet.core.trust.BuiltInAnchors
 import diw.wallet.core.trust.BuiltInPublicRoots
+import diw.wallet.core.trust.BuiltInTestAnchors
 import diw.wallet.core.trust.Pkix
 import diw.wallet.core.trust.SystemTrustStore
 import diw.wallet.core.trust.TrustLabel
@@ -14,9 +15,13 @@ import diw.wallet.core.trust.TrustTier
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.AccessDescription
+import org.bouncycastle.asn1.x509.AuthorityInformationAccess
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
 import org.bouncycastle.asn1.x509.KeyUsage
+import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
@@ -47,10 +52,10 @@ class TrustAnchorsTest {
             val c = a.certificate
             assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${a.name} is not valid now")
         }
-        // Citizen certificates identify persons: never an issuer anchor.
+        // Citizen certificates identify persons (verifiers and document signers): never an issuer anchor.
         val moica = BuiltInAnchors.all.filter { "MOICA" in it.name }
         assertEquals(2, moica.size)
-        assertTrue(moica.all { it.roles == setOf(TrustRole.VERIFIER) })
+        assertTrue(moica.all { it.roles == setOf(TrustRole.VERIFIER, TrustRole.DOCUMENT) })
     }
 
     @Test
@@ -80,7 +85,7 @@ class TrustAnchorsTest {
         assertNull(off.match(TrustRole.VERIFIER, listOf(root)))
         val on = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(systemStoreEnabled = true))
         val d = on.decide(TrustRole.VERIFIER, listOf(root))
-        assertEquals(TrustTier.T3, d.tier)
+        assertEquals(TrustTier.T2, d.tier)
         assertEquals(TrustEnvironment.SYSTEM, d.environment)
         assertTrue(TrustLabel.SYSTEM_ANCHOR in d.labels)
         assertNotNull(d.anchorName)
@@ -147,6 +152,43 @@ class TrustAnchorsTest {
     }
 
     /**
+     * The National Immigration Administration signs its documents (entry and exit records, permit links) under BJCA
+     * DocSign CA3 and BJCA Global Root CA3, a root outside CCADB that is pinned: such a document is a mainland China
+     * CA document signature (T3) while that group is on.
+     */
+    @Test
+    fun immigrationAdministrationDocumentChain() = runBlocking<Unit> {
+        val at = Instant.parse("2026-10-11T00:00:00Z")
+        val chain = pemChain("nia-document-signer")
+        val ca3 = BuiltInPublicRoots.mainlandChina.first { it.name == "BJCA Global Root CA3" }
+        assertEquals("AAA048773350488832AABDA6954B33EE28BB2773DD851AB3C4F6F1D2F9F3777B", ca3.sha256)
+        assertEquals(ca3.certificate, Pkix.anchorOf(chain, BuiltInPublicRoots.mainlandChina.map { it.certificate }, at))
+        val d = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = true)).decide(TrustRole.DOCUMENT, chain, at)
+        assertEquals(TrustTier.T2, d.tier)
+        assertTrue(TrustLabel.MAINLAND_CHINA_CA in d.labels, "labels: ${d.labels}")
+        assertEquals("中國大陸憑證機構：BJCA Global Root CA3", d.anchorName)
+    }
+
+    /**
+     * The e-sign platform's time-stamp authority (timestamp.esign.cn) sends only its own certificate; the built-in
+     * ZJCA OCA3 completes the chain up to the pinned ZJCARoot, so its time stamps are trusted while the mainland
+     * China group is on.
+     */
+    @Test
+    fun esignTimestampAuthorityChain() = runBlocking<Unit> {
+        val at = Instant.parse("2026-10-16T00:00:00Z")
+        val leaf = pemChain("esign-timestamp")
+        assertEquals(1, leaf.size)
+        val on = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = true))
+        val d = on.decide(TrustRole.TSA, leaf, at)
+        assertEquals(TrustTier.T2, d.tier)
+        assertTrue(TrustLabel.MAINLAND_CHINA_CA in d.labels, "labels: ${d.labels}")
+        assertEquals("中國大陸憑證機構：ZJCARoot", d.anchorName)
+        val off = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = false))
+        assertNull(off.match(TrustRole.TSA, leaf, at))
+    }
+
+    /**
      * The certificate chains China's tax administration (invoice verification) and immigration administration served
      * on 2026-10-11 lead to CFCA EV ROOT: trusted as a mainland China CA (T3) while that group is on, not otherwise.
      */
@@ -159,7 +201,7 @@ class TrustAnchorsTest {
             assertEquals(cfca, Pkix.anchorOf(chain, BuiltInPublicRoots.mainlandChina.map { it.certificate }, at), service)
             val on = TrustRegistry(EphemeralStorage(), EnvironmentPolicy(mainlandChinaRootsEnabled = true))
             val d = on.decide(TrustRole.VERIFIER, chain, at)
-            assertEquals(TrustTier.T3, d.tier, service)
+            assertEquals(TrustTier.T2, d.tier, service)
             assertEquals(TrustEnvironment.SYSTEM, d.environment)
             assertTrue(TrustLabel.MAINLAND_CHINA_CA in d.labels && TrustLabel.SYSTEM_ANCHOR in d.labels, "labels: ${d.labels}")
             assertEquals("中國大陸憑證機構：CFCA EV ROOT", d.anchorName)
@@ -198,5 +240,88 @@ class TrustAnchorsTest {
         assertNull(Pkix.anchorOf(listOf(leaf), listOf(impostor), now))
         // Not an anchor of an RSA or ECC store either.
         assertNull(Pkix.anchorOf(listOf(leaf), BuiltInPublicRoots.services.map { it.certificate }, now))
+    }
+
+    /** The Multipaz apps' issuers and readers are built in: test ones as TEST anchors (T3, marked), none official. */
+    @Test
+    fun multipazTestAnchorsAreBuiltIn() = runBlocking<Unit> {
+        val now = Clock.System.now()
+        assertEquals(18, BuiltInTestAnchors.all.size)
+        assertEquals(BuiltInTestAnchors.all.size, BuiltInTestAnchors.all.map { it.certificate }.toSet().size, "no anchor twice")
+        for (a in BuiltInTestAnchors.all) {
+            val c = a.certificate
+            assertTrue(c.validityNotBefore < now && now < c.validityNotAfter, "${a.name} is not valid now")
+            // Apple publishes its issuing CA rather than the root.
+            if (!a.name.startsWith("Apple")) assertEquals(c.subject, c.issuer, "${a.name} is a root")
+        }
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.seedBuiltInAnchors()
+        val test = registry.allAnchors().filter { it.environment == TrustEnvironment.TEST }
+        assertEquals(setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER), test.map { it.role }.toSet())
+        assertTrue(BuiltInTestAnchors.all.filter { !it.production }.all { a -> test.any { it.certificate == a.certificate } })
+        assertTrue(test.none { it.official })
+        // The production ID pass issuers of Google Wallet and Apple (as Multipaz Wallet lists them) are named, not official.
+        val production = registry.allAnchors().filter { it.environment == TrustEnvironment.PRODUCTION }
+        val passes = BuiltInTestAnchors.all.filter { it.production }
+        assertEquals(3, passes.size)
+        assertTrue(passes.all { a -> production.any { it.certificate == a.certificate && !it.official && it.role == TrustRole.ISSUER } })
+        assertTrue(passes.none { a -> test.any { it.certificate == a.certificate } })
+        val reader = BuiltInTestAnchors.all.first { it.name == "Multipaz Identity Reader CA" }.certificate
+        assertTrue(test.none { it.role == TrustRole.ISSUER && it.certificate == reader }, "a reader CA never anchors an issuer")
+
+        // No switch is needed: the default policy consults test anchors and marks the result.
+        val pki = TestPki.create()
+        registry.addAnchor(TrustRole.VERIFIER, TrustEnvironment.TEST, pki.readerRootCert, "Test Reader Root", official = false, source = "test")
+        val d = registry.decide(TrustRole.VERIFIER, pki.readerKey("verifier.example").certChain.certificates)
+        assertEquals(TrustTier.T3, d.tier)
+        assertEquals(TrustEnvironment.TEST, d.environment)
+        assertTrue(TrustLabel.TEST_ANCHOR in d.labels && !d.official)
+    }
+
+    private fun ecCert(subject: String, issuer: String, key: KeyPair, signer: PrivateKey, ca: Boolean, aia: String? = null): X509Cert {
+        val now = System.currentTimeMillis()
+        val b = JcaX509v3CertificateBuilder(
+            X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now - 86_400_000L), Date(now + 365L * 86_400_000L), X500Name(subject), key.public,
+        )
+            .addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
+            .addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature))
+            .addExtension(Extension.subjectKeyIdentifier, false, JcaX509ExtensionUtils().createSubjectKeyIdentifier(key.public))
+        if (aia != null) {
+            b.addExtension(Extension.authorityInfoAccess, false, AuthorityInformationAccess(
+                AccessDescription(AccessDescription.id_ad_caIssuers, GeneralName(GeneralName.uniformResourceIdentifier, aia)),
+            ))
+        }
+        return X509Cert(ByteString(b.build(JcaContentSignerBuilder("SHA256withECDSA").build(signer)).encoded))
+    }
+
+    /** A chain sent without its intermediate certificate is completed from the leaf's AIA caIssuers link. */
+    @Test
+    fun aiaCompletesMissingIntermediate() = runBlocking<Unit> {
+        val gen = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+        val rootKey = gen.generateKeyPair()
+        val midKey = gen.generateKeyPair()
+        val leafKey = gen.generateKeyPair()
+        val root = ecCert("CN=AIA Test Root,C=TW", "CN=AIA Test Root,C=TW", rootKey, rootKey.private, ca = true)
+        val mid = ecCert("CN=AIA Test CA,C=TW", "CN=AIA Test Root,C=TW", midKey, rootKey.private, ca = true)
+        val leaf = ecCert("CN=signer.example,C=TW", "CN=AIA Test CA,C=TW", leafKey, midKey.private, ca = false, aia = "http://aia.example/ca.cer")
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, root, "AIA Test Root", official = false, source = "test")
+        assertNull(registry.match(TrustRole.DOCUMENT, listOf(leaf)), "the leaf alone does not reach the root")
+        assertEquals(TrustLabel.UNKNOWN_ANCHOR, registry.decide(TrustRole.DOCUMENT, listOf(leaf)).labels.single(), "no fetcher, no completion")
+
+        val asked = ArrayList<String>()
+        registry.issuerFetcher = { url -> asked.add(url); if (url == "http://aia.example/ca.cer") mid.encoded.toByteArray() else null }
+        assertEquals(listOf(leaf, mid), registry.complete(listOf(leaf)))
+        val d = registry.decide(TrustRole.DOCUMENT, listOf(leaf))
+        assertEquals(TrustEnvironment.USER, d.environment)
+        assertEquals("AIA Test Root", d.anchorName)
+        assertTrue(d.reasons.any { "AIA" in it })
+        assertEquals(listOf("http://aia.example/ca.cer"), asked, "a URL is downloaded once")
+
+        // A certificate from the link that did not issue the leaf is not added.
+        val other = ecCert("CN=Other CA,C=TW", "CN=AIA Test Root,C=TW", gen.generateKeyPair(), rootKey.private, ca = true)
+        val fresh = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        fresh.issuerFetcher = { other.encoded.toByteArray() }
+        assertEquals(listOf(leaf), fresh.complete(listOf(leaf)))
     }
 }

@@ -15,6 +15,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Opening the mobile citizen certificate app (mobilemoica:) from a source site. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="mobilemoica" />
+        </intent>
+    </queries>
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
     <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
@@ -68,10 +75,48 @@
                 <data android:scheme="vcclient" />
             </intent-filter>
             <intent-filter>
+                <!-- Documents opened with or shared to the wallet are stored in the document vault. -->
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+                <data android:mimeType="application/xml" />
+                <data android:mimeType="text/xml" />
+                <data android:mimeType="application/pkcs7-signature" />
+                <data android:mimeType="application/pkcs7-mime" />
+                <data android:mimeType="application/x-pkcs7-signature" />
+                <data android:mimeType="application/x-pkcs7-mime" />
+                <data android:mimeType="application/timestamp-reply" />
+                <data android:mimeType="application/vnd.etsi.asic-e+zip" />
+                <data android:mimeType="application/zip" />
+                <data android:mimeType="application/ofd" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="diw-wallet" android:host="oid4vci" android:path="/callback" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Return from the mobile citizen certificate app after an app-to-app signature. -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-wallet" android:host="moica" android:path="/return" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Authorization code from a remote signing service (CSC API): the EUDI QTSP's registered address and the wallet's own. -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="rqes" android:host="oauth" android:path="/callback" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-wallet" android:host="csc" android:path="/callback" />
             </intent-filter>
         </activity>
 
@@ -95,6 +140,11 @@
             <intent-filter>
                 <action android:name="androidx.credentials.registry.provider.action.GET_CREDENTIAL" />
                 <action android:name="androidx.identitycredentials.action.GET_CREDENTIALS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <!-- Saving a credential from a web page or app (navigator.credentials.create with OpenID4VCI). -->
+                <action android:name="androidx.credentials.registry.provider.action.CREATE_CREDENTIAL" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>

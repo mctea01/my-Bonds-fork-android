@@ -80,18 +80,17 @@ fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
 
 /** Add a document: from the list of documents that can be requested, or by scanning the issuer's code. */
 @Composable
-fun AddDocumentSheet(onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> Unit)?) {
+fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> Unit)?) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("加入證件", style = MaterialTheme.typography.titleLarge)
             Text("從清單選擇要申請的證件，或掃描發行端提供的 QR Code。", style = MaterialTheme.typography.bodyMedium)
-            ActionRow(WalletIcons.Document, "從清單選擇", "可申請的政府皮夾卡片，或輸入發行端網址") { onList() }
+            ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { onList() }
             ActionRow(
                 WalletIcons.Scan, "掃描 QR Code",
                 if (onScan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請到「使用」貼上領卡連結",
                 enabled = onScan != null,
             ) { onScan?.invoke() }
-            NfcCardRow()
         }
     }
 }
@@ -102,9 +101,11 @@ fun AddDocumentSheet(onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> U
 @Composable
 fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
     val docs by model.documents.collectAsState()
+    val files by model.files.files.collectAsState()
+    val hasNationalId = files.any { it.nationalId != null }
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf<DocumentCategory?>(null) }
-    if (docs.isEmpty()) {
+    if (docs.isEmpty() && !hasNationalId) {
         EmptyState(WalletIcons.Wallet, "還沒有任何證件", "掃描發行端的 QR Code，或從清單選擇要申請的證件。", "加入證件", onAdd)
         return
     }
@@ -132,25 +133,26 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
                 categories.forEach { c -> FilterChip(selected = filter == c, onClick = { filter = if (filter == c) null else c }, label = { Text(c.title) }) }
             }
         }
+        // The Bonds national ID card lives with the MyData PDF it was made from; it is listed here with the cards.
+        if (hasNationalId && filter == null && q.isEmpty()) item(key = "national-id") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (groups.isNotEmpty()) SectionTitle("自然人憑證自發卡")
+                NationalIdCards(model)
+            }
+        }
         groups.forEach { (category, list) ->
-            if (groups.size > 1) item(key = "h-" + category.name) { SectionTitle(category.title) }
+            if (groups.size > 1 || hasNationalId) item(key = "h-" + category.name) { SectionTitle(category.title) }
             items(list, key = { it.identifier }) { doc ->
                 CredentialCard(model, doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) }
             }
         }
-        if (shown.isEmpty()) item(key = "none") {
+        if (shown.isEmpty() && !(hasNationalId && filter == null && q.isEmpty())) item(key = "none") {
             Text("沒有符合搜尋或篩選條件的證件。", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 16.dp))
         }
     }
 }
 
 // ---------------------------------------------------------------- use
-
-/** Reading the citizen digital certificate card over NFC: shown, disabled, until it is implemented. */
-@Composable
-fun NfcCardRow() {
-    ActionRow(WalletIcons.Nfc, "感應自然人憑證卡（NFC）", "以 NFC 讀取自然人憑證實體卡內的 X.509 憑證，將於後續版本支援", enabled = false) {}
-}
 
 /**
  * What the holder does: present (one entry, the scanned code decides the flow), counter services, and adding
@@ -207,7 +209,7 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
             if (scan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請在下方貼上領卡連結",
             enabled = scan != null,
         ) { scan?.invoke() }
-        ActionRow(WalletIcons.Document, "從清單選擇", "可申請的政府皮夾卡片，或輸入發行端網址") { model.screen.value = Screen.AddDocument }
+        ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { model.screen.value = Screen.AddDocument }
         SectionTitle("貼上連結")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -219,36 +221,6 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
             )
             Button(onClick = { model.handleUri(input); input = "" }, enabled = input.isNotBlank()) { Text("開啟") }
         }
-    }
-}
-
-// ---------------------------------------------------------------- files
-
-/**
- * Files and official documents, as Bonds keeps its MyData vault and official document inbox beside the cards.
- * The area is laid out now; its rows say what each part will hold and stay disabled until it is implemented.
- */
-@Composable
-fun FilesTab() {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(Tokens.ContainerRadius),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-        ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(WalletIcons.Document, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Text("文件與公文", style = MaterialTheme.typography.titleLarge)
-                Text("簽章文件、檔案與電子公文會保存在這裡，連同簽章、時間戳與憑證鏈的檢查結果。這個區域將於後續版本啟用。",
-                    style = MaterialTheme.typography.bodyMedium)
-            }
-        }
-        SectionTitle("簽章文件與檔案")
-        ActionRow(WalletIcons.Document, "匯入文件", "PDF（PAdES）、XML 等簽章文件，檢查簽章、時間戳與憑證鏈後保存，將於後續版本支援", enabled = false) {}
-        SectionTitle("電子公文")
-        ActionRow(WalletIcons.Government, "個人公文接收站", "接收並保存機關寄送的電子公文，將於後續版本支援", enabled = false) {}
-        SectionTitle("MyData")
-        ActionRow(WalletIcons.Person, "MyData 資料保險箱", "保存從 MyData 下載的個人資料原檔與指紋，將於後續版本支援", enabled = false) {}
     }
 }
 
@@ -276,9 +248,13 @@ fun VerifyTab(model: WalletModel) {
                     style = MaterialTheme.typography.bodyMedium)
                 Text("接受的證件", style = MaterialTheme.typography.titleSmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.ANY).forEach { s ->
+                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED, BondsCredentialSource.ANY).forEach { s ->
                         FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
                     }
+                }
+                if (source == BondsCredentialSource.SELF_ISSUED) {
+                    Text("以自然人憑證簽署的 Bonds 身分證卡（vc+moica）；姓名一定揭露並與自然人憑證比對。文件衍生憑證是 SD-JWT VC，回應「本錢包擴充」請求。",
+                        style = MaterialTheme.typography.bodySmall)
                 }
                 if (source == BondsCredentialSource.ANY) {
                     Text("任何綁定金鑰的 SD-JWT VC 或 W3C 證件，由出示者以本錢包出示；發行端由信任錨點或 DID 判定。Bonds App 只能出示政府皮夾卡片。",
@@ -316,6 +292,7 @@ private enum class HistoryFilter(val title: String, val kinds: Set<HistoryKind>)
     ISSUED("領取", setOf(HistoryKind.ISSUED)),
     VERIFIED("查驗", setOf(HistoryKind.VERIFIED)),
     STATUS("狀態", setOf(HistoryKind.STATUS)),
+    SIGNED("簽署", setOf(HistoryKind.SIGNED)),
 }
 
 /** Who received what and when, newest first; tapping an entry shows the documents and claim names. */
@@ -371,6 +348,7 @@ private fun historyTitle(e: HistoryEntry): String = when (e.kind) {
     HistoryKind.DECLINED -> "拒絕 ${e.party} 的要求"
     HistoryKind.VERIFIED -> "查驗 ${e.party}"
     HistoryKind.STATUS -> (e.documents.firstOrNull() ?: "證件") + if (e.status == StatusMonitor.TRUST_CHANGE) " 發行端信任變更" else " 狀態變更"
+    HistoryKind.SIGNED -> "以 ${e.party} 簽署"
 }
 
 private fun hhmm(t: LocalDateTime) = t.hour.toString().padStart(2, '0') + ":" + t.minute.toString().padStart(2, '0')
@@ -386,7 +364,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
             RevocationCheckState.SUSPENDED.name -> Verdict.CAUTION to "暫停"
             else -> when (e.tier?.let { runCatching { TrustTier.valueOf(it) }.getOrNull() }) {
                 TrustTier.T1 -> Verdict.PASS to "T1"
-                TrustTier.T2 -> Verdict.CAUTION to "T2"
+                TrustTier.T2 -> Verdict.PASS to "T2"
                 TrustTier.T3 -> Verdict.CAUTION to "T3"
                 else -> Verdict.FAIL to "T4"
             }
@@ -399,6 +377,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
         HistoryKind.DECLINED -> WalletIcons.Fail
         HistoryKind.VERIFIED -> WalletIcons.Shield
         HistoryKind.STATUS -> WalletIcons.Caution
+        HistoryKind.SIGNED -> WalletIcons.Document
     }
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {

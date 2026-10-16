@@ -123,7 +123,7 @@ class StatusPolicyTest {
         assertNull(trust.decide(did, TrustRole.ISSUER))
         trust.put(did, "Example Corp", setOf(TrustRole.ISSUER), 1_700_000_000)
         val d = trust.decide(did, TrustRole.ISSUER)!!
-        assertEquals(TrustTier.T3, d.tier)
+        assertEquals(TrustTier.T2, d.tier)
         assertEquals(TrustEnvironment.USER, d.environment)
         assertEquals(false, d.official)
         assertEquals(setOf(TrustLabel.USER_ANCHOR), d.labels)

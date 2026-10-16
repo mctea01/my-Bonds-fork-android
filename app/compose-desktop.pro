@@ -6,6 +6,10 @@
 -keep class io.ktor.client.engine.java.** { *; }
 -keep class kotlinx.coroutines.swing.** { *; }
 -keep class org.slf4j.** { *; }
+# PDFBox (page previews) loads fonts, CMaps and its logging through resources and reflection.
+-keep class org.apache.pdfbox.** { *; }
+-keep class org.apache.fontbox.** { *; }
+-keep class org.apache.commons.logging.** { *; }
 -keep class diw.wallet.core.oid4vci.IssuanceRecord { *; }
 -keepclassmembers class diw.wallet.** {
     *** Companion;
@@ -18,6 +22,9 @@
 -dontwarn io.ktor.**
 -dontwarn kotlinx.**
 -dontwarn org.slf4j.**
+-dontwarn org.apache.pdfbox.**
+-dontwarn org.apache.fontbox.**
+-dontwarn org.apache.commons.logging.**
 -dontwarn org.sqlite.**
 -dontwarn okio.**
 -dontwarn android.**

@@ -64,10 +64,16 @@ actual object Pkix {
         if (first in anchors) return first.takeIf { at in it.validityNotBefore..it.validityNotAfter }
         // The path ends below its anchor: certificates of the chain that are anchors themselves are left out.
         val path = chain.takeWhile { it !in anchors }
-        // The platform providers first; SM2 chains, or anchors that are SM2 roots, need BouncyCastle.
-        validate(path, anchors, at, null)?.let { return it }
+        // Shorter paths too: a bundle may carry a cross-signed copy of a root (DigiCert Trusted Root G4 signed by
+        // Assured ID Root CA), whose own issuer is not an anchor while the self-signed root with the same key is.
         val national = (path + anchors).any { isNational(it) }
-        return if (national) validate(path, anchors, at, bc) else null
+        for (n in path.size downTo 1) {
+            val p = path.subList(0, n)
+            // The platform providers first; SM2 chains, or anchors that are SM2 roots, need BouncyCastle.
+            validate(p, anchors, at, null)?.let { return it }
+            if (national) validate(p, anchors, at, bc)?.let { return it }
+        }
+        return null
     }
 
     private fun validate(path: List<X509Cert>, anchors: List<X509Cert>, at: Instant, provider: Provider?): X509Cert? {

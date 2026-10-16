@@ -1,8 +1,12 @@
 package diw.wallet.app.desktop
 
 import com.sun.net.httpserver.HttpServer
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
 import diw.wallet.app.NfcReaderList
+import diw.wallet.app.PickedFile
 import diw.wallet.app.PinOrPlatformUnlock
 import diw.wallet.app.PlatformServices
 import diw.wallet.app.softwareBackend
@@ -12,10 +16,16 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.pdfbox.Loader
+import org.apache.pdfbox.rendering.ImageType
+import org.apache.pdfbox.rendering.PDFRenderer
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.jdbc.JdbcStorage
 import java.awt.Desktop
+import java.awt.EventQueue
+import java.awt.FileDialog
+import java.awt.Frame
 import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -123,10 +133,68 @@ class DesktopPlatform(
         }
     }
 
+    override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
+        runCatching {
+            Loader.loadPDF(bytes).use { doc ->
+                val renderer = PDFRenderer(doc)
+                (0 until minOf(maxPages, doc.numberOfPages)).map { i ->
+                    val widthPt = doc.getPage(i).cropBox.width.coerceAtLeast(1f)
+                    renderer.renderImage(i, widthPx / widthPt, ImageType.RGB).toComposeImageBitmap()
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     /** PC/SC readers poll for cards and cannot emulate one, so a computer reads wallets but does not present by NFC. */
     override fun nfcPresentationUnavailableReason(): String = "電腦的 PC/SC 讀卡機只能讀取，不能模擬卡片；感應出示請使用手機"
 
     override suspend fun nfcReaders(): NfcReaderList = withContext(Dispatchers.IO) { PcscReaders.list() }
 
+    override suspend fun pickFile(): PickedFile? = withContext(Dispatchers.IO) {
+        val chosen = dialog("匯入文件", FileDialog.LOAD, null) ?: return@withContext null
+        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException("檔案超過 64 MB")
+        PickedFile(chosen.name, chosen.readBytes())
+    }
+
+    override suspend fun pickFiles(): List<PickedFile> = withContext(Dispatchers.IO) {
+        var chosen: List<File> = emptyList()
+        EventQueue.invokeAndWait {
+            val d = FileDialog(null as Frame?, "匯入文件（可選多個）", FileDialog.LOAD)
+            d.isMultipleMode = true
+            d.isVisible = true
+            chosen = d.files.toList()
+        }
+        chosen.map { f ->
+            if (f.length() > MAX_FILE_BYTES) throw IllegalStateException("${f.name} 超過 64 MB")
+            PickedFile(f.name, f.readBytes())
+        }
+    }
+
+    override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
+        val chosen = dialog("另存文件", FileDialog.SAVE, name) ?: return@withContext false
+        chosen.writeBytes(bytes)
+        true
+    }
+
+    override fun openExternal(url: String): Boolean = runCatching { openBrowser(url) }.isSuccess
+
+    override val externalKeys: ExternalKeys get() = DesktopKeys
+
+    /** A native file dialog on the AWT event thread; null when cancelled. */
+    private fun dialog(title: String, mode: Int, name: String?): File? {
+        var result: File? = null
+        EventQueue.invokeAndWait {
+            val d = FileDialog(null as Frame?, title, mode)
+            name?.let { d.file = it }
+            d.isVisible = true
+            if (d.file != null) result = File(d.directory, d.file)
+        }
+        return result
+    }
+
     fun close() = server.stop(0)
+
+    private companion object {
+        const val MAX_FILE_BYTES = 64L * 1024 * 1024
+    }
 }

@@ -1,6 +1,8 @@
 package diw.wallet.app
 
 import androidx.compose.ui.graphics.ImageBitmap
+import diw.wallet.core.document.sign.DocumentSigner
+import diw.wallet.core.document.sign.SigningException
 import io.ktor.client.HttpClient
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.nfc.NfcTagReader
@@ -12,6 +14,9 @@ import kotlin.time.Instant
 
 /** Decodes PNG, JPEG or WebP bytes with the platform image codec. */
 expect fun decodeImageBytes(bytes: ByteArray): ImageBitmap?
+
+/** PNG encoding of an image (card art for the Digital Credentials picker); null when it fails. */
+expect fun encodePng(image: ImageBitmap): ByteArray?
 
 /** Where credential keys live; listed from strongest to weakest. */
 enum class KeyProtection(val wire: String, val displayName: String, val hardware: Boolean) {
@@ -55,6 +60,9 @@ class NfcReaderOption(
 /** The NFC readers found now; [problem] says why there are none, or why some may be missing. */
 data class NfcReaderList(val readers: List<NfcReaderOption>, val problem: String? = null)
 
+/** A file the user picked or another app handed over. */
+class PickedFile(val name: String, val bytes: ByteArray, val mediaType: String? = null)
+
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
     val platformName: String
@@ -69,6 +77,9 @@ interface PlatformServices {
     fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider
 
     fun httpClient(): HttpClient
+
+    /** Downloads the public trust lists (AATL, EUTL) in the background when they are due; tests turn it off. */
+    val refreshTrustListsInBackground: Boolean get() = true
 
     /** Opens an authorization page (OpenID4VCI authorization code flow) in the system browser. */
     fun openBrowser(url: String)
@@ -88,6 +99,15 @@ interface PlatformServices {
     /** Decodes a PNG (or another platform image format) for display; null when it is not an image. */
     fun decodeImage(bytes: ByteArray): ImageBitmap? = decodeImageBytes(bytes)
 
+    /**
+     * The first [maxPages] pages of an unencrypted PDF as images [widthPx] wide (encrypted files are handed over
+     * decrypted, see PdfPlain); empty when the platform has no renderer or the file cannot be drawn.
+     */
+    suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = emptyList()
+
+    /** Card art (PNG) for [spec], the image a credential carries for the system credential picker; null where not drawn. */
+    suspend fun renderCardArt(spec: CardArtSpec): ByteArray? = null
+
     /** Bonds BLE link, where the platform can act as a GATT peripheral. */
     val bondsLink: BondsLinkPeripheral? get() = null
 
@@ -106,8 +126,60 @@ interface PlatformServices {
     /** While true, NFC taps go to the wallet rather than another wallet app (Android card emulation preference). */
     fun setNfcPresentationActive(active: Boolean) {}
 
-    /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader). */
+    /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader) or a citizen certificate card. */
     suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
+
+    /** Lets the user pick a file to store; null when cancelled or not possible. */
+    suspend fun pickFile(): PickedFile? = null
+
+    /** Lets the user pick one or more files; the single picker where the platform has no multiple selection. */
+    suspend fun pickFiles(): List<PickedFile> = listOfNotNull(pickFile())
+
+    /** Lets the user save [bytes] under a name they choose; false when cancelled or not possible. */
+    suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = false
+
+    /** Document source pages open inside the app (downloads go straight to the vault) rather than in a browser. */
+    val embeddedBrowser: Boolean get() = false
+
+    /** Hands a link of another app (such as mobilemoica: for the mobile citizen certificate) to the system; false when no app takes it. */
+    fun openExternal(url: String): Boolean = false
+
+    /** Signing keys kept by the operating system or on a PKCS#11 token. */
+    val externalKeys: ExternalKeys get() = NoExternalKeys
+
+    /** Where the mobile citizen certificate app returns after an app-to-app signature; null when it cannot be opened here. */
+    val mobileMoicaReturnUrl: String? get() = null
+}
+
+/** A key in the system store or on a token, as listed for the user to pick. */
+class ExternalKeyOption(val id: String, val label: String, val detail: String)
+
+/**
+ * Signing keys outside the wallet: the operating system's key store (Android KeyChain, Windows certificate store,
+ * macOS keychain) and PKCS#11 hardware tokens. Each unavailable source says why, so the signing screen can show it
+ * as a disabled choice.
+ */
+interface ExternalKeys {
+    val systemUnavailableReason: String?
+    val tokenUnavailableReason: String?
+
+    /** True when the platform shows its own key picker ([systemSigner] with a null id); otherwise [systemKeys] lists them. */
+    val systemPicker: Boolean get() = false
+
+    /** Module paths of common PKCS#11 drivers that exist on this computer. */
+    fun tokenLibraries(): List<String> = emptyList()
+
+    suspend fun systemKeys(): List<ExternalKeyOption> = emptyList()
+    suspend fun systemSigner(id: String?): DocumentSigner
+    suspend fun tokenKeys(library: String, pin: String): List<ExternalKeyOption> = emptyList()
+    suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner
+}
+
+object NoExternalKeys : ExternalKeys {
+    override val systemUnavailableReason = "此平台沒有可用的系統金鑰庫"
+    override val tokenUnavailableReason = "此平台不支援 PKCS#11 硬體憑證"
+    override suspend fun systemSigner(id: String?): DocumentSigner = throw SigningException(systemUnavailableReason)
+    override suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner = throw SigningException(tokenUnavailableReason)
 }
 
 /** Outcome of the last registration with the platform Digital Credentials API, shown in settings. */
@@ -120,4 +192,28 @@ data class DcApiRegistration(
     /** Why the system refused the registration; null when it was accepted. */
     val error: String?,
     val at: Instant,
+    /** Whether web pages and apps can save credentials into the wallet (OpenID4VCI over the Digital Credentials API). */
+    val issuance: Boolean = false,
+    /** Why the system refused that registration; null when it was accepted or not attempted. */
+    val issuanceError: String? = null,
 )
+
+/**
+ * What a credential's card art shows (Multipaz Document.cardArt, which the Android credential picker lists the
+ * credential with): its name, issuer, colours as ARGB, the issuer logo and a picture (a document page or portrait).
+ * [badge] marks test credentials.
+ */
+class CardArtSpec(
+    val title: String,
+    val issuer: String,
+    val background: Int,
+    val foreground: Int,
+    val logo: ImageBitmap?,
+    val picture: ImageBitmap?,
+    val badge: String?,
+) {
+    companion object {
+        const val WIDTH = 640
+        const val HEIGHT = 404
+    }
+}

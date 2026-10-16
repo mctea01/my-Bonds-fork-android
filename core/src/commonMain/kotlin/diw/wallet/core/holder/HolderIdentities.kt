@@ -96,6 +96,10 @@ class HolderIdentities(
         const val TWDIW = "twdiw"
         const val MS_VERIFIED_ID = "msvid"
         const val BONDS_SELF_ISSUED = "bonds-self"
+        /** Issuer DID (did:key) of the credentials the wallet derives from stored documents. */
+        const val DOCUMENT_ISSUER = "document-issuer"
+        /** The wallet's own document signing key, certified by a self-issued certificate. */
+        const val DOCUMENT_SIGNER = "document-signer"
         /** Self-issued OpenID Provider identity for id_token-only (sign in) requests. */
         const val SIOP = "siop"
 

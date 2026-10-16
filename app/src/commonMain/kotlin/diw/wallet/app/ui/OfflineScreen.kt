@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,6 +40,7 @@ import diw.wallet.app.OfflineUi
 import diw.wallet.app.StatusTexts
 import diw.wallet.app.WalletModel
 import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.status.StatusVerdict
@@ -74,6 +76,14 @@ fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
         is OfflineUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             VerdictCard(Verdict.FAIL, "無法完成", listOf(s.message))
             Button(onClick = { model.back() }) { Text("返回") }
+        }
+        is OfflineUi.Unlisted -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            VerdictCard(Verdict.FAIL, "查驗模組不在信任清單", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
+            if (riskOverride(s.service.vpUid, "仍要繼續（自行承擔風險）", "向未列名的查驗模組出示",
+                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，或未在區塊鏈上註冊。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
+                Button(onClick = { model.taiwan.startPickup(s.service, allowUnlisted = true) }) { Text("繼續建立交易") }
+            }
+            TextButton(onClick = { model.back() }) { Text("返回") }
         }
         is OfflineUi.Barcode -> BarcodeView(model, s)
         is OfflineUi.BondsChoose -> BondsChooseView(model, s)
@@ -129,13 +139,14 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
             }
         }
         Text("要出示的欄位", style = MaterialTheme.typography.titleSmall)
-        val record = card.document.issuanceRecord
+        val record = card.document?.issuanceRecord
         if (!card.selective) {
             Text("這張證件不支援選擇性揭露，會出示下列全部欄位。", style = MaterialTheme.typography.bodySmall)
         }
         card.claims.forEach { (name, value) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (card.selective) Checkbox(checked = name in chosen, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
+                val locked = card.kind == BondsCardKind.MOICA && name in BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED
+                if (card.selective) Checkbox(checked = locked || name in chosen, enabled = !locked, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
                 Column(if (card.selective) Modifier else Modifier.padding(start = 12.dp)) {
                     Text(model.claimLabel(name.split('.'), null, record), style = MaterialTheme.typography.bodyMedium)
                     Text(value, style = MaterialTheme.typography.bodySmall)
@@ -153,6 +164,7 @@ private fun bondsKindLabel(kind: BondsCardKind): String = when (kind) {
     BondsCardKind.W3C_SD_JWT -> "W3C VC（SD-JWT），可選擇欄位"
     BondsCardKind.SD_JWT_VC -> "SD-JWT VC，可選擇欄位"
     BondsCardKind.JWT_VC -> "W3C VC（JWT），出示全部欄位"
+    BondsCardKind.MOICA -> "自然人憑證簽署（vc+moica），姓名一定揭露"
 }
 
 /** What a verifier's challenge accepts, in the holder's and the verifier's words. */
@@ -286,6 +298,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             r.claims.forEach { (k, v) -> LabelValue(model.claimLabel(k.split('.'), null, null), v) }
             if (r.claims.isEmpty()) Text("對方沒有揭露任何欄位", style = MaterialTheme.typography.bodySmall)
             r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
+            EvidenceRows(r.evidence)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk, s.request.source) }) { Text("再次查驗") }

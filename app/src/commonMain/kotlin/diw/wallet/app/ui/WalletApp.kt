@@ -1,5 +1,12 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +59,17 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.trust.TrustRole
+import org.multipaz.crypto.X509Cert
+import kotlinx.io.bytestring.decodeToString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.multipaz.sdjwt.credential.SdJwtVcCredential
+import org.multipaz.util.fromBase64Url
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
@@ -114,7 +132,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                 } else when (val s = screen) {
                     Screen.Home -> when (tab) {
                         HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
-                        HomeTab.FILES -> FilesTab()
+                        HomeTab.FILES -> FilesTab(model)
                         HomeTab.USE -> UseTab(model, scan)
                         HomeTab.VERIFY -> VerifyTab(model)
                         HomeTab.HISTORY -> HistoryTab(model)
@@ -131,11 +149,20 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
                     Screen.Reader -> ReaderScreen(model)
+                    is Screen.FileDetail -> FileDetailScreen(model, s)
+                    is Screen.FileSign -> FileSignScreen(model, s)
+                    is Screen.FileDerive -> FileDeriveScreen(model, s)
+                    is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
+                    is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
+                    is Screen.NationalId -> NationalIdScreen(model, s)
+                    is Screen.Portal -> PortalScreen(model, s)
+                    is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                 }
             }
         }
         if (addSheet) {
             AddDocumentSheet(
+                model = model,
                 onDismiss = { addSheet = false },
                 onList = { addSheet = false; model.screen.value = Screen.AddDocument },
                 onScan = scan?.let { start -> { addSheet = false; start() } },
@@ -165,6 +192,14 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"
     Screen.Reader -> "感應查驗"
+    is Screen.FileDetail -> "文件內容"
+    is Screen.FileSign -> "簽署文件"
+    is Screen.FileDerive -> "產生衍生憑證"
+    is Screen.OpenCertRender -> if (s.offline) "離線顯示證書" else "發證機構樣式"
+    is Screen.NationalIdCreate -> "製作身分證卡"
+    is Screen.NationalId -> "身分證卡"
+    is Screen.Portal -> "取得文件"
+    is Screen.OfficialBundle -> "公文容器"
 }
 
 @Composable
@@ -225,7 +260,9 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
         environment = r.trustEnvironment,
         official = r.official,
         anchorName = r.anchorName,
-        labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet(),
+        // Credentials derived before the label existed are recognised by their type.
+        labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet() +
+            (if (r.vct == DerivedCredentials.VCT) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
         reasons = r.reasons,
     )
 }
@@ -239,8 +276,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
     val doc = docs.firstOrNull { it.identifier == id } ?: return
     val record = doc.issuanceRecord
     val settings by model.settingsFlow.collectAsState()
-    var claims by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var claims by remember { mutableStateOf<List<Triple<String, String, ImageBitmap?>>>(emptyList()) }
     var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
+    var evidence by remember { mutableStateOf<List<EvidenceResult>>(emptyList()) }
+    var source by remember { mutableStateOf<String?>(null) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -248,16 +287,40 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: (() 
         val creds = doc.getCertifiedCredentials()
         count = creds.size
         val first = creds.firstOrNull()
+        // A derived credential's document and evidence objects are shown as checked evidence, not as raw data.
+        val derived = record?.vct == DerivedCredentials.VCT
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
-            ?.map { model.claimLabel(it.path, it.label, record) to it.value }.orEmpty()
+            ?.filterNot { derived && it.path.firstOrNull() in setOf("document", "evidence") }
+            ?.map { Triple(model.claimLabel(it.path, it.label, record), it.value, it.picture?.let { b -> model.platform.decodeImage(b) }) }.orEmpty()
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
+        if (derived && first is SdJwtVcCredential) runCatching {
+            val compact = first.issuerProvidedData.decodeToString()
+            val payload = Json.parseToJsonElement(compact.substringBefore('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject
+            payload["document"]?.jsonObject?.let { d ->
+                val size = d["size"]?.jsonPrimitive?.content?.toLongOrNull()
+                source = listOfNotNull(
+                    d["mediaType"]?.jsonPrimitive?.content,
+                    size?.let { sizeText(it) },
+                    d["sha256"]?.jsonPrimitive?.content?.let { "SHA-256 " + it.take(16) + "..." },
+                ).joinToString("，")
+            }
+            evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true)
+        }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
         storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.pendingTransactionId == null) StatusPanel(model, doc)
         if (claims.isNotEmpty()) SectionTitle("證件資料")
-        claims.forEach { (k, v) -> LabelValue(k, v) }
+        claims.forEach { (k, v, picture) ->
+            if (picture != null) {
+                Text(k, style = MaterialTheme.typography.bodySmall)
+                Image(picture, contentDescription = k, contentScale = ContentScale.Fit,
+                    modifier = Modifier.widthIn(max = 240.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
+            } else LabelValue(k, v)
+        }
+        source?.let { LabelValue("來源文件", it, small = true) }
+        if (evidence.isNotEmpty()) EvidenceRows(evidence)
         if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
         record?.let {
@@ -335,5 +398,18 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
             }
         }
         DetailSections(model, CredentialDetails.certificate(cert))
+        // The root of a chain that leads to no anchor (a foreign government or company CA) can be trusted from here.
+        if (index == screen.chain.lastIndex && cert.subject == cert.issuer) TrustThisRoot(model, cert)
     }
+}
+
+/** Imports a self-signed root as the user's own anchor (T3, never official) for the roles the holder picks. */
+@Composable
+private fun TrustThisRoot(model: WalletModel, cert: X509Cert) {
+    var roles by remember(cert) { mutableStateOf(setOf(TrustRole.DOCUMENT)) }
+    SectionTitle("信任這張根憑證")
+    Text("如果這張根憑證不在內建清單（例如其他國家或企業的憑證機構），可以自行加入信任錨點。加入後屬於使用者自訂，信任等級為 T3，不會顯示為官方；請確認來源後再加入。",
+        style = MaterialTheme.typography.bodySmall)
+    RoleChips(listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.ISSUER, TrustRole.VERIFIER), roles) { roles = it }
+    OutlinedButton(onClick = { model.importAnchor(cert.toPem(), "", roles) }, enabled = roles.isNotEmpty()) { Text("加入信任錨點") }
 }

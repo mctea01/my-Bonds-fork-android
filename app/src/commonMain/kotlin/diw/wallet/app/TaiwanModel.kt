@@ -9,6 +9,8 @@ import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
+import diw.wallet.core.profile.bonds.BondsNationalId
+import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.BondsReception
 import diw.wallet.core.profile.bonds.BondsVerifiedPresentation
@@ -60,15 +62,22 @@ enum class BondsCardKind {
     SD_JWT_VC,
     /** W3C JWT VC, shown whole. */
     JWT_VC,
+    /** vc+moica: the Bonds national ID card signed with the citizen certificate. */
+    MOICA,
 }
 
-/** A card that can answer a Bonds request, with its claims; [selective] when the holder picks which to show. */
+/**
+ * A card that can answer a Bonds request, with its claims; [selective] when the holder picks which to show. A Bonds
+ * national ID card lives in the document vault, not in the documents list, so it has no [document] or [credential].
+ */
 data class BondsCard(
-    val document: Document,
-    val credential: Credential,
+    val document: Document?,
+    val credential: Credential?,
     val kind: BondsCardKind,
     val name: String,
     val claims: List<Pair<String, String>>,
+    /** The vc+moica card for [BondsCardKind.MOICA]. */
+    val moica: MoicaSignedCredential? = null,
 ) {
     val selective: Boolean get() = kind != BondsCardKind.JWT_VC
 }
@@ -86,6 +95,9 @@ data class TwdiwTrustRow(
 sealed class OfflineUi {
     data class Working(val message: String) : OfflineUi()
     data class Failed(val message: String) : OfflineUi()
+
+    /** The counter service's verifier module is not an anchored organisation: the user may still go on after confirming. */
+    data class Unlisted(val service: TwdiwOfflineService, val message: String) : OfflineUi()
 
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
@@ -194,13 +206,16 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     /** Counter pickup (e.g. 7-ELEVEN): present the card, then show the barcode the verifier module returns. */
-    fun startPickup(service: TwdiwOfflineService) {
+    fun startPickup(service: TwdiwOfflineService, allowUnlisted: Boolean = false) {
         offline.value = OfflineUi.Working("向 ${service.name} 建立取貨交易")
         model.screen.value = Screen.Offline
         model.scope.launch {
             try {
-                val session = model.twdiwServices.startOffline(service)
+                val session = model.twdiwServices.startOffline(service, allowUnlisted)
                 model.startPresentation(session.entry.uri, TwdiwEntry.ENTRY_HINT, session.fields, session)
+            } catch (e: ProtocolException) {
+                offline.value = if (e.code == "untrusted_verifier" && !allowUnlisted) OfflineUi.Unlisted(service, model.describe(e))
+                else OfflineUi.Failed(model.describe(e))
             } catch (e: Exception) {
                 offline.value = OfflineUi.Failed(model.describe(e))
             }
@@ -314,11 +329,16 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 val request = BondsPresentationRequest.parse(text)
                 if (request.source == BondsCredentialSource.SELF_ISSUED) {
-                    offline.value = OfflineUi.Failed("對方要求以自然人憑證自發的 Bonds 卡片（vc+moica），本錢包將在後續版本（P5 文件與自發卡）支援。")
+                    // vc+moica is the national ID card's structure only; document-derived credentials are SD-JWT VC.
+                    val cards = model.files.nationalIdCards().map { (_, card) ->
+                        BondsCard(null, null, BondsCardKind.MOICA, NATIONAL_ID_NAME, nationalIdClaims(card), card)
+                    }
+                    offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
+                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 身分證卡（vc+moica）。到「文件」開啟 MyData 的國民身分證資料 PDF 製作身分證卡後就能出示；姓名一定會揭露。")
                     return@launch
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value
-                val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document.identifier == preferred) 0 else 1 }
+                val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
                 offline.value = when {
                     cards.isNotEmpty() -> OfflineUi.BondsChoose(request, cards)
                     request.source == BondsCredentialSource.TWDIW -> OfflineUi.Failed("這個查驗方只接受政府皮夾卡片，這支手機沒有可出示的卡片。先到「證件」加入卡片，就能出示給查驗方。")
@@ -362,7 +382,7 @@ class TaiwanModel(private val model: WalletModel) {
                 } finally {
                     model.endOperation()
                 }
-                card.credential.increaseUsageCount()
+                card.credential?.increaseUsageCount()
                 offline.value = OfflineUi.BondsFrames(request, BondsOfflinePresentation.qrFrames(jws), jws, Clock.System.now() + 5.minutes)
                 model.platform.keepScreenOn(true)
                 recordBonds(request, card, shown, null)
@@ -390,6 +410,11 @@ class TaiwanModel(private val model: WalletModel) {
                 AsymmetricKey.AnonymousSecureAreaBased(alias = cred.alias, secureArea = cred.secureArea, keyInfo = info, algorithm = Algorithm.ES256), info.publicKey, disclosing,
             )
         }
+        BondsCardKind.MOICA -> {
+            val holder = model.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED)
+                ?: throw ProtocolException("credential_unavailable", "找不到自然人憑證卡片的持有者金鑰")
+            BondsOfflinePresentation.presentMoica(request, card.moica!!, holder, disclosing)
+        }
         BondsCardKind.JWT_VC -> {
             val cred = card.credential as W3cVcCredential
             val key = cred.holderKey() ?: throw ProtocolException("credential_unavailable", "找不到此憑證的持有者金鑰")
@@ -405,7 +430,7 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     private fun recordBonds(request: BondsPresentationRequest, card: BondsCard, disclosing: Set<String>, failure: String?) {
-        val record = card.document.issuanceRecord
+        val record = card.document?.issuanceRecord
         model.record(
             HistoryKind.PRESENTED, request.audience ?: "離線查驗方", null, listOf(card.name),
             disclosing.map { model.claimLabel(it.split('.'), null, record) }, "離線出示，用途：${request.purpose}", failure,
@@ -482,10 +507,14 @@ class TaiwanModel(private val model: WalletModel) {
         model.scope.launch {
             offline.value = try {
                 val metadata = JwtVcIssuerKeys(model.http, model.environmentPolicy.insecureLoopbackAllowed)
-                val result = BondsOfflineVerifier(model.didResolver()) { iss, kid ->
-                    withTimeoutOrNull(STATUS_TIMEOUT) { metadata.resolve(iss, kid) }
-                        ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
-                }.verify(jws, request)
+                val result = BondsOfflineVerifier(
+                    model.didResolver(),
+                    { iss, kid ->
+                        withTimeoutOrNull(STATUS_TIMEOUT) { metadata.resolve(iss, kid) }
+                            ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
+                    },
+                    documentTrust = model.files.trustSource,
+                ).verify(jws, request)
                 val trust = issuerTrust(result)
                 offline.value = OfflineUi.Working("查詢證件狀態")
                 val status = cardStatus(result)
@@ -550,5 +579,13 @@ class TaiwanModel(private val model: WalletModel) {
 
         /** A DID shortened for a list line: method and the last characters of the identifier. */
         fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)
+
+        const val NATIONAL_ID_NAME = "國民身分證（自然人憑證簽署）"
+
+        /** Claims of a national ID card in Bonds' display order. */
+        fun nationalIdClaims(card: MoicaSignedCredential): List<Pair<String, String>> =
+            BondsOfflinePresentation.disclosableClaims(card).sortedBy { (name, _) ->
+                BondsNationalId.claimOrder.indexOf(name).let { if (it < 0) Int.MAX_VALUE else it }
+            }
     }
 }

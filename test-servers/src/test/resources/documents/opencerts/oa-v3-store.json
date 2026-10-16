@@ -1,0 +1,62 @@
+{
+  "version": "https://schema.openattestation.com/3.0/schema.json",
+  "@context": [
+    "https://www.w3.org/2018/credentials/v1",
+    "https://schemata.openattestation.com/com/openattestation/1.0/OpenAttestation.v3.json"
+  ],
+  "type": [
+    "VerifiableCredential",
+    "OpenAttestationCredential"
+  ],
+  "issuanceDate": "2026-06-30T00:00:00Z",
+  "name": "Version Three Testing Certificate A",
+  "openAttestationMetadata": {
+    "template": {
+      "name": "GOVTECH_DEMO",
+      "type": "EMBEDDED_RENDERER",
+      "url": "https://demo-renderer.opencerts.io"
+    },
+    "proof": {
+      "type": "OpenAttestationProofMethod",
+      "method": "DOCUMENT_STORE",
+      "value": "0x2222222222222222222222222222222222222222"
+    },
+    "identityProof": {
+      "type": "DNS-TXT",
+      "identifier": "v3.test.example"
+    }
+  },
+  "credentialSubject": {
+    "id": "urn:test:subject",
+    "name": "Test Person",
+    "courses": [
+      {
+        "code": "T101",
+        "score": 90
+      },
+      {
+        "code": "T102",
+        "score": 85.5
+      }
+    ],
+    "graduated": true
+  },
+  "issuer": {
+    "id": "https://test.example",
+    "name": "Test University V3",
+    "type": "OpenAttestationIssuer"
+  },
+  "proof": {
+    "type": "OpenAttestationMerkleProofSignature2018",
+    "proofPurpose": "assertionMethod",
+    "targetHash": "a8ecd75a120474aeeb6d44ad6cd6c91f609d3b4409d657c39a7defc695c498bc",
+    "proofs": [
+      "b948bcab6cd58d1eb30e808f543f3318c585e3c5140640218a77a374da1d49d6"
+    ],
+    "merkleRoot": "2eabd78621bfe4c97b0bb4aedb84a519d2df7edb1e028c1c7952d0f245f9d18b",
+    "salts": "W3sidmFsdWUiOiIzZjE0MWEyYTE5OWExNmVkZWQzZWQwY2EyYjVlNTU3ZDc3OWVkZmIxNDA1ZDA5YjgzNjMyNWE3NzM4ODY2ZTM1IiwicGF0aCI6InZlcnNpb24ifSx7InZhbHVlIjoiMDBlYTIyMjY0NzU1YTY1ZmE4OGZiY2YwNTNjNDM2ZjA2ZWZkMGYyYTA0N2M5NjFlMGY2NzY3ZTA2MzdiMmQyZSIsInBhdGgiOiJAY29udGV4dFswXSJ9LHsidmFsdWUiOiIxZjExYTAwOWZkNzJmZDY5ZjExNGViMGUxNDRmODFkMmYzZjdkOGI4YmE3ZmFhOTEwZDEzYWU2ZjhhZWM0MTM0IiwicGF0aCI6IkBjb250ZXh0WzFdIn0seyJ2YWx1ZSI6IjE3YTNlMTEzNDY1NWMwZjk0OTkzYTY5ODQzOWU3Njk5YWIzMWRiZDQwYTVkMzU5Yjc2OTQ1ZGFhNTA5OTdmNDEiLCJwYXRoIjoidHlwZVswXSJ9LHsidmFsdWUiOiJjNjUwMjNkMWQ1YTc0MGY3YTc1ODAyYzdiZWU1NjZjNzQzM2YzMTNiODhmZjJmYzQ2MDQxYjU4YmI2M2ZkZjUzIiwicGF0aCI6InR5cGVbMV0ifSx7InZhbHVlIjoiZDZjZjgzOGUwMmQyMjUyZjgzYTI0YWRlZGM2MzE4YmQyMjYzN2VmYWJhNTI1NjBiMGIxMDdjNWFkNWFhM2FkMiIsInBhdGgiOiJpc3N1YW5jZURhdGUifSx7InZhbHVlIjoiNjk5NmNhNWZlYzVhNmMzNjUxYWM1ZGU5ZjI4ZGZhZTU3ZDBhZDFmNmYyZWVkMGM1MWY1NTNmMDQyZDc4ODg1MSIsInBhdGgiOiJuYW1lIn0seyJ2YWx1ZSI6ImQxZmI3ZDgxYjhhNmRiZTIzYjIzYTM2M2MwZWJmMWJjNGFiOTNmOGY4OTVlNDQyYzVjOTVhNTcxM2NiNjRkODgiLCJwYXRoIjoib3BlbkF0dGVzdGF0aW9uTWV0YWRhdGEudGVtcGxhdGUubmFtZSJ9LHsidmFsdWUiOiI2YTA5NGNiZmI2Y2RhYWY4MTg2NzYwNmJkMzUwMmViM2I1YmFlZjJhM2IzNmNiODg3OTI2MzY0NTEwODEwMDBmIiwicGF0aCI6Im9wZW5BdHRlc3RhdGlvbk1ldGFkYXRhLnRlbXBsYXRlLnR5cGUifSx7InZhbHVlIjoiY2E3MjUzYzE4YmQyYzIxN2ZhZjQ3MDA3ZTUwMWJlMTg3NzNjYzBiZmFkOTI2Yjk3OGE5OTI3YmUzMjAyYjU1MCIsInBhdGgiOiJvcGVuQXR0ZXN0YXRpb25NZXRhZGF0YS50ZW1wbGF0ZS51cmwifSx7InZhbHVlIjoiZjEwYWJhNmNkZmNlNmRkM2UwZGViMGUyM2I1ZTMwYjU3ZDBlNTNlMTNiY2VlNjVlMWY1OTM4OGQzNGJmYzVjNCIsInBhdGgiOiJvcGVuQXR0ZXN0YXRpb25NZXRhZGF0YS5wcm9vZi50eXBlIn0seyJ2YWx1ZSI6IjkzN2ZiNjA4OWJhMmI0MGEzYzE2NzY1ZGNhYWRiY2Q3YThlMjMxYzEzNTk5Njg1MWMxNjEwOTFjZTljNTA4ZDkiLCJwYXRoIjoib3BlbkF0dGVzdGF0aW9uTWV0YWRhdGEucHJvb2YubWV0aG9kIn0seyJ2YWx1ZSI6IjdkMzdhZjY1OGRmZWE1N2QxZTAxNjE5M2M1NGNjZjcyZGQyMmY4OTdiNzcyYjc3NjUwNmVkZDkxMmE5ZDYxMTgiLCJwYXRoIjoib3BlbkF0dGVzdGF0aW9uTWV0YWRhdGEucHJvb2YudmFsdWUifSx7InZhbHVlIjoiNzUwOGI4YzA1NmY1ZDY3NDlhYzI3MDBhYzBmZTJkMDQxZTViYzYyMGI0MjcxOGFlN2QxMzEyODI0MDg3NDZjZiIsInBhdGgiOiJvcGVuQXR0ZXN0YXRpb25NZXRhZGF0YS5pZGVudGl0eVByb29mLnR5cGUifSx7InZhbHVlIjoiOWQwOTE3ZTRkY2IxMjBlNTVjZDM3Yjc2NmMzYTZkNThkZDZiODcwZDU0ZjA3MDI5ZDVhNzU3ZWEzN2EyZWRmYiIsInBhdGgiOiJvcGVuQXR0ZXN0YXRpb25NZXRhZGF0YS5pZGVudGl0eVByb29mLmlkZW50aWZpZXIifSx7InZhbHVlIjoiY2I2YjA0YzM2MzQ0MmYzNmVkNjNhMWE2MzA1ZWQwNDZmZjc5MTFhNjYxNjdjZjMyZTljOGZkZjU3NmU5MzA2OCIsInBhdGgiOiJjcmVkZW50aWFsU3ViamVjdC5pZCJ9LHsidmFsdWUiOiIxYzhhZGUzMjFiODU0OGI3ZTU5MWM3ZTg4ZTcxNjFjYTk1ZTA5YWM1MTY2ZWI0YWRhMjM1OWQ5NWU3OWU0NjQ1IiwicGF0aCI6ImNyZWRlbnRpYWxTdWJqZWN0Lm5hbWUifSx7InZhbHVlIjoiY2MxZGFkOTJjNGM0OGVkNGE1ZjI2MTk3ZmRlNmNlYTM2YWQ0Y2RjY2Y3NWRmZDRjNDQ4NGZlZjQ0ZjA5NTYxMSIsInBhdGgiOiJjcmVkZW50aWFsU3ViamVjdC5jb3Vyc2VzWzBdLmNvZGUifSx7InZhbHVlIjoiODYyMzY0MmQ4YzQxY2M3MWMxY2E5OTFhZWI2NjdjMDJkOTk5MWEwY2NhZWNhNDI1NGU4YTA0ZGFhNDZmNjdmMyIsInBhdGgiOiJjcmVkZW50aWFsU3ViamVjdC5jb3Vyc2VzWzBdLnNjb3JlIn0seyJ2YWx1ZSI6IjRjZjY2ZjNiYTVmZTE5YzE2YWFjYzhjYzM4NzlmZWQ4OGUwODgyMWVhNTdmYWVlYzA0MzkzNzc5YTBmMmQ3M2YiLCJwYXRoIjoiY3JlZGVudGlhbFN1YmplY3QuY291cnNlc1sxXS5jb2RlIn0seyJ2YWx1ZSI6ImJlMTI2OGQxMzRiNjY4YWE1OGQ3MzE1Y2Q4NDgwMjJkMDAyZmUzMDNiZjYzNzg5OWM4MzBjNDU0NDkxNjgwYzUiLCJwYXRoIjoiY3JlZGVudGlhbFN1YmplY3QuY291cnNlc1sxXS5zY29yZSJ9LHsidmFsdWUiOiI2NTk5ZDcwMWIxMTkxNDUxZWFlMjVhMjIzZjk0OWM0ZjVlYTMzNTk1MDIzZjYxZjYzMmJkNmU3MDc4ZGI2ZjEzIiwicGF0aCI6ImNyZWRlbnRpYWxTdWJqZWN0LmdyYWR1YXRlZCJ9LHsidmFsdWUiOiIxMmQ0ODA2NTZhZTFiNDVhNDRhYWY0ODhlNDY4ZjI5ZDM4ZjliMjljMzI0Yjk1MWYzYTE1YzJmZWNhZjE3NzA5IiwicGF0aCI6Imlzc3Vlci5pZCJ9LHsidmFsdWUiOiJlYzVlM2FlMzgyNjk1ODgzYzU1N2UzODgyNjJjZWQyYjE0ZDJmMjE5MDU4MzU3M2EwM2U3Mzg2ZDVhNGJkMWQ2IiwicGF0aCI6Imlzc3Vlci5uYW1lIn0seyJ2YWx1ZSI6IjQwNjdhNTVmMTk3MzYwY2E5ZDI2ZDNiYWQ1OTM1MjBlYzgzNTY3NGI0YjZkMDM4YmFhNGEzZTgwMWMxNmQxYTYiLCJwYXRoIjoiaXNzdWVyLnR5cGUifV0=",
+    "privacy": {
+      "obfuscated": []
+    }
+  }
+}

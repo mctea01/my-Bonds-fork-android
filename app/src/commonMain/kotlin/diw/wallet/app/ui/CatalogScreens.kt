@@ -30,24 +30,34 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.DocumentSources
+import diw.wallet.app.HomeTab
+import diw.wallet.app.MyDataFiles
+import diw.wallet.app.Screen
 import diw.wallet.app.TwdiwTrustRow
 import diw.wallet.app.WalletModel
+import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.profile.twdiw.AnchorState
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
-/** Documents that can be requested: the government wallet catalogue, any OpenID4VCI issuer, and what comes later. */
+/**
+ * Adding a document: cards the government wallet issuers offer, cards the holder makes from their own documents with
+ * the citizen certificate (as Bonds does), and any other OpenID4VCI issuer by its address.
+ */
 @Composable
 fun AddDocumentScreen(model: WalletModel) {
     val cards by model.taiwan.cardServices.collectAsState()
     val error by model.taiwan.servicesError.collectAsState()
+    val files by model.files.files.collectAsState()
     var issuer by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if (cards == null && error == null) model.taiwan.loadServices() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("選擇要申請的證件。在發行端完成申請後，證件會自動加入這支手機。", style = MaterialTheme.typography.bodyMedium)
+        Text("向發行端申請證件，或用自己的文件與自然人憑證製作。發行端的 QR Code 請在「使用」掃描。", style = MaterialTheme.typography.bodyMedium)
         if (model.twdiwPlatform != TwdiwPlatform.PRODUCTION) {
             Text("測試平台：${model.twdiwPlatform.frontendUrl}（結果不具效力）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
         SectionTitle("政府皮夾卡片")
+        Text("在發行端網站完成申請後，卡片自動加入這支手機。", style = MaterialTheme.typography.bodySmall)
         when {
             error != null -> InlineError(error!!) { model.taiwan.loadServices() }
             cards == null -> CircularProgressIndicator(Modifier.size(24.dp))
@@ -64,6 +74,31 @@ fun AddDocumentScreen(model: WalletModel) {
                 ) { model.taiwan.applyFor(c) }
             }
         }
+        SectionTitle("自己製作")
+        Text("內容來自你下載的官方文件，由你的自然人憑證簽署，表示你本人聲明；不是發證機關核發。", style = MaterialTheme.typography.bodySmall)
+        val idSource = DocumentSources.byId("mydata-id")!!
+        val idPdf = files.firstOrNull { f ->
+            f.nationalId == null && f.report?.format == DocumentFormat.PDF && (MyDataFiles.recognize(f.name)?.nationalId == true || f.source?.contains("國民身分證資料") == true)
+        }
+        val hasCard = files.any { it.nationalId != null }
+        ActionRow(
+            WalletIcons.Person, "國民身分證卡（Bonds 自發卡）",
+            if (hasCard) "已有身分證卡；從 MyData 重新下載可再製作" else "從 MyData 下載國民身分證資料，以自然人憑證簽成卡片，可回應 Bonds 的自然人憑證自發卡查驗",
+        ) {
+            if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(idSource.id) else model.platform.openBrowser(idSource.url)
+        }
+        idPdf?.let { f ->
+            ActionRow(WalletIcons.Document, "用已保存的身分證資料製作", f.name) { model.screen.value = Screen.NationalIdCreate(f.id) }
+        }
+        ActionRow(
+            WalletIcons.Card, "文件衍生憑證",
+            "在「文件」選一份文件（MyData、在學證明、公文、OpenCerts 等），由內容產生可出示的 SD-JWT VC（本錢包簽發，與 Bonds 身分證卡的 vc+moica 結構不同）",
+        ) { model.showTab(HomeTab.FILES) }
+        ActionRow(
+            WalletIcons.Shield, "年齡證明（零知識）",
+            "P4 尚未完成：Bonds 以 OpenAC 電路證明年滿 18 歲而不揭露生日；目前可只揭露身分證卡的「年滿 18 歲」欄位",
+            enabled = false,
+        ) {}
         SectionTitle("其他發行端")
         Text("輸入支援 OpenID4VCI 的發行端網址，列出它提供的證件後再選擇。", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -76,9 +111,6 @@ fun AddDocumentScreen(model: WalletModel) {
             )
             Button(onClick = { model.handleUri(issuer) }, enabled = issuer.isNotEmpty()) { Text("查詢") }
         }
-        SectionTitle("後續版本")
-        NfcCardRow()
-        ActionRow(WalletIcons.Document, "以自然人憑證建立身分證卡", "Bonds 的自發身分證卡（vc+moica）與簽章文件將於後續版本支援", enabled = false) {}
     }
 }
 
