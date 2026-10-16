@@ -26,6 +26,7 @@ import org.multipaz.util.toBase64
 import org.multipaz.util.toBase64Url
 import org.multipaz.webtoken.buildJwt
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.minutes
 
 /** A wallet instance attestation (oauth-client-attestation+jwt) and the key it is bound to (cnf). */
 data class WalletAttestation(val jwt: String, val instanceKey: AsymmetricKey) {
@@ -99,6 +100,7 @@ class RemoteWalletProvider(
         val proof = buildJwt(
             type = "wallet-provider-client-proof+jwt",
             key = instanceKey,
+            expiresIn = 5.minutes,
             header = { put("jwk", instanceKey.publicKey.toJwk()) },
         ) {
             put("iss", clientId)
@@ -142,7 +144,10 @@ class RemoteWalletProvider(
         }
         val text = resp.bodyAsText()
         if (!resp.status.isSuccess()) {
-            throw ProtocolException("wallet_provider_error", "Wallet provider returned ${resp.status.value}: $text")
+            throw ProtocolException(
+                if (resp.status.value == 404) "wallet_provider_unsupported" else "wallet_provider_error",
+                "Wallet provider returned HTTP ${resp.status.value}: ${text.take(240)}",
+            )
         }
         return parseJsonObject(text, "wallet_provider_error")
     }
