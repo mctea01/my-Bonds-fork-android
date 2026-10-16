@@ -261,6 +261,17 @@ class CscSigningTest {
     }
 
     @Test
+    fun wrongOAuthCallbackUriIsRejected() = runBlocking<Unit> {
+        val qtsp = Qtsp(ec = true)
+        val client = CscClient(client(qtsp), service)
+        val request = client.authorizationRequest("service")
+        val result = qtsp.authorizeRedirect(request.url)
+        val changed = result.replace("rqes://oauth/callback", "https://attacker.example/oauth/callback")
+        val error = assertFailsWith<CscException> { client.code(changed, request) }
+        assertTrue(error.message.orEmpty().contains("redirect_uri"))
+    }
+
+    @Test
     fun authorizationErrorIsReported() = runBlocking<Unit> {
         val qtsp = Qtsp(ec = true)
         val agent = object : CscUserAgent {
