@@ -181,7 +181,40 @@ class Oid4vciE2eTest {
         val c = client(w)
         val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
         val e = assertFailsWith<ProtocolException> { c.authorizePreAuthorized(session, null) }
-        assertEquals("invalid_client", e.code)
+        assertEquals("client_authentication_unavailable", e.code)
+    }
+
+    @Test
+    fun clientAssertionPreAuthorized() = runBlocking<Unit> {
+        start(IssuerOptions(requireClientAssertion = true))
+        val w = wallet()
+        val c = client(w, remoteProvider(w))
+        val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        c.authorizePreAuthorized(session, null)
+        assertTrue(c.issue(session, "pid_sd_jwt", keys(w)) is IssuanceResult.Issued)
+    }
+
+    @Test
+    fun clientAssertionWithParAndPkce() = runBlocking<Unit> {
+        start(IssuerOptions(requireClientAssertion = true))
+        val w = wallet()
+        val c = client(w, remoteProvider(w))
+        val session = c.startFromOffer(offer(listOf("mdl_mdoc"), grant = "authorization_code"))
+        val url = c.beginAuthorizationCode(session, "diw-wallet://oid4vci/callback")
+        assertTrue(url.contains("request_uri="))
+        val redirect = w.httpClient.get(url).headers["Location"]!!
+        c.completeAuthorizationCode(session, redirect)
+        assertTrue(c.issue(session, "mdl_mdoc", keys(w)) is IssuanceResult.Issued)
+    }
+
+    @Test
+    fun clientAssertionRequiredRejectsPublicClient() = runBlocking<Unit> {
+        start(IssuerOptions(requireClientAssertion = true))
+        val w = wallet()
+        val c = client(w)
+        val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        val error = assertFailsWith<ProtocolException> { c.authorizePreAuthorized(session, null) }
+        assertEquals("client_authentication_unavailable", error.code)
     }
 
     @Test
