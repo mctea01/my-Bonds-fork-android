@@ -1134,10 +1134,13 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         val tsaName = TsaServices.byId(model.settings.tsaId).name
         var level by remember { mutableStateOf(PadesLevel.entries.firstOrNull { it.name == model.settings.padesLevel } ?: PadesLevel.B_T) }
         var revocation by remember { mutableStateOf(false) }
-        var action by remember { mutableStateOf(ApprovalPoint.ACTIONS.first()) }
+        var action by remember { mutableStateOf(ApprovalPoint().action) }
+        var organization by remember { mutableStateOf("") }
         var unit by remember { mutableStateOf("") }
         var jobTitle by remember { mutableStateOf("") }
+        var account by remember { mutableStateOf("") }
         var role by remember { mutableStateOf("") }
+        var returned by remember { mutableStateOf(false) }
         when (form) {
             SignForm.PADES -> {
                 OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1169,15 +1172,30 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         add("公文與附件本身不改動，簽核點以檔名與 SHA-256 摘要列出每個檔案。")
                     })
                 }
+                if (choice is SignerChoice.Wallet) {
+                    VerdictCard(Verdict.CAUTION, "錢包金鑰不符合線上簽核規範", listOf(
+                        "規範要求簽核點以經核定憑證機構簽發的憑證（自然人憑證、公務人員電子識別證等）簽章，演算法為 RSA-SHA256。",
+                        "錢包金鑰是自簽的 ECDSA 憑證，只能證明檔案沒有被改過，機關的公文系統不會接受。",
+                    ))
+                }
                 SectionTitle("異動別")
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ApprovalPoint.ACTIONS.forEach { a -> FilterChip(selected = a == action, onClick = { action = a }, label = { Text(a) }) }
                 }
+                OutlinedTextField(value = action, onValueChange = { action = it.trim().take(ApprovalPoint.ACTION_MAX) }, label = { Text("異動別（最多 10 字，可自行輸入）") },
+                    singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = returned, onCheckedChange = { returned = it })
+                    Text("退文（退回前一個簽核點或承辦人）")
+                }
                 OutlinedTextField(value = reason, onValueChange = { reason = it.take(500) }, label = { Text("簽核意見（選填）") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = unit, onValueChange = { unit = it.take(60) }, label = { Text("單位（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = jobTitle, onValueChange = { jobTitle = it.take(60) }, label = { Text("職稱（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = role, onValueChange = { role = it.take(60) }, label = { Text("角色（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("姓名取自簽署憑證。", style = MaterialTheme.typography.bodySmall)
+                SectionTitle("簽核人員")
+                OutlinedTextField(value = organization, onValueChange = { organization = it.take(60) }, label = { Text("機關（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = unit, onValueChange = { unit = it.take(60) }, label = { Text("單位") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = jobTitle, onValueChange = { jobTitle = it.take(60) }, label = { Text("職稱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = account, onValueChange = { account = it.take(60) }, label = { Text("公文系統帳號") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = role, onValueChange = { role = it.take(60) }, label = { Text("角色（選填，例如承辦人員、會辦人員）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("姓名取自簽署憑證。單位、職稱與帳號是規範的必要欄位，沒有填寫時寫入空白。", style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
                     Text("為新的簽核檔加上文件時戳（$tsaName，需要網路）")
@@ -1209,7 +1227,10 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         CscPromptPanel(model)
         Button(onClick = { choice?.let { model.files.sign(
                     f, it, form, reason, location, timestamp, allowBreakingCertification = locked,
-                    point = ApprovalPoint(action, reason.ifBlank { null }, unit.ifBlank { null }, jobTitle.ifBlank { null }, role.ifBlank { null }),
+                    point = ApprovalPoint(
+                        action.ifBlank { ApprovalPoint().action }, reason.ifBlank { null }, unit.ifBlank { null }, jobTitle.ifBlank { null }, role.ifBlank { null },
+                        account.ifBlank { null }, organization.ifBlank { null }, returned,
+                    ),
                     level = level, revocation = revocation,
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")

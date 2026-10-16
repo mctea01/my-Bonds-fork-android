@@ -1,6 +1,7 @@
 package diw.wallet.core.document
 
 import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SignerKeyType
 import org.w3c.dom.Document
@@ -9,7 +10,8 @@ import java.util.Base64
 import kotlin.time.Instant
 
 /**
- * Signatures of Taiwan's online approval files (線上簽核, .si, DTD 104_sign_utf8). These are not XAdES: each signing
+ * Signatures of Taiwan's online approval files (線上簽核, .si, DTD 104_sign_utf8 of the 文書及檔案管理電腦化作業規範,
+ * appendix 3 table 3-5 and appendix 4; see docs/research/official-document-files.md). These are not XAdES: each signing
  * point (簽核點定義) holds an XMLDSig Signature written without the XMLDSig namespace, followed by an Object with the
  * signer, action and opinion (異動資訊) and the files of the case (簽核資訊). The SignedInfo (Canonical XML 1.0,
  * RSA-SHA256) refers to every file of the case by its file name (detached, digest of the file bytes, written with
@@ -59,6 +61,7 @@ internal object ApprovalSignatures {
             val previous = list.getOrNull(i - 1)?.first?.getAttribute("Id")
             if (previous != null && previous.isNotEmpty() && "#$previous" !in refs) notes.add("這個簽核點沒有涵蓋前一個簽核點")
             notes.add(0, "涵蓋 ${fileRefs.size} 個檔案" + (if (previous != null && "#$previous" in refs) "與前一個簽核點" else ""))
+            notes.addAll(conformance(doc, point, sig, checked.method))
             val alg = XmlDsig.signatureName(checked.method)
             val claimed = info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽章時間")) }?.let { ApprovalPoint.parseRocTime(it)?.epochSeconds }
             checks.evaluate(
@@ -76,8 +79,33 @@ internal object ApprovalSignatures {
                 problems = problems,
                 notes = notes,
                 coversWhole = null,
-            ).copy(signerName = name, reason = listOfNotNull(action, info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽核意見")) }?.ifBlank { null }).joinToString("：").ifEmpty { null })
+            ).copy(signerName = name, reason = listOfNotNull(action?.let { if (info?.getAttribute("退文") == "Y") "$it（退文）" else it }, info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽核意見")) }?.ifBlank { null }).joinToString("：").ifEmpty { null })
         }
+    }
+
+    /**
+     * Where a signing point departs from the specification (文書及檔案管理電腦化作業規範 第十點、附錄 3 表 3-5、附錄 4):
+     * RSA-SHA256 over Canonical XML 1.0, a 簽核流程 the point names, and a temporary card (借卡) confirmed by a
+     * later signature with the person's own certificate (補簽追認) before filing.
+     */
+    private fun conformance(doc: Document, point: Element, sig: Element, method: String?): List<String> {
+        val out = ArrayList<String>()
+        if (method != null && method != XmlDsig.RSA_SHA256) {
+            out.add("規範指定的簽章演算法是 RSA-SHA256，這個簽核點使用 ${XmlDsig.signatureName(method)?.first ?: method}，機關的公文系統可能不接受")
+        }
+        val c14n = XmlParsing.child(sig, null, "SignedInfo")?.let { XmlParsing.child(it, null, "CanonicalizationMethod") }?.getAttribute("Algorithm")
+        if (!c14n.isNullOrEmpty() && c14n != XmlC14n.C14N) out.add("規範指定 Canonical XML 1.0，這個簽核點使用 $c14n")
+        val flowIds = XmlParsing.descendants(doc, null, "簽核流程").mapNotNull { it.getAttribute("Id").ifEmpty { null } }.toSet()
+        val flow = point.getAttribute("URI").removePrefix("#")
+        if (flow.isNotEmpty() && flowIds.isNotEmpty() && flow !in flowIds) out.add("簽核點指向的簽核流程「$flow」不在線上簽核流程內")
+        val info = XmlParsing.child(point, null, "Object")?.let { XmlParsing.descendants(it, null, "異動資訊").firstOrNull() }
+        val borrowed = info?.getAttribute("借卡") == "Y" || (info?.let { XmlParsing.child(it, null, "借卡") } != null)
+        if (borrowed) {
+            val id = point.getAttribute("Id")
+            val confirmed = XmlParsing.descendants(doc, null, "補簽人員").any { it.getAttribute("URI").removePrefix("#") == id }
+            out.add(if (confirmed) "以臨時憑證（借卡）簽核，已有補簽追認" else "以臨時憑證（借卡）簽核，尚未補簽追認；規範要求歸檔前以本人的正式憑證補簽")
+        }
+        return out
     }
 
     /**
@@ -107,7 +135,7 @@ internal object ApprovalSignatures {
         val previous = existing.lastOrNull()?.first?.getAttribute("Id")?.takeIf { it.isNotEmpty() }
 
         // The flow gets a node for this point; the flow is not covered by any signature.
-        val text = insertBefore(text0, "</線上簽核流程>") { indent -> "$indent  <簽核流程 Id=\"FLOW_P$n\" 異動別=\"${esc(point.action)}\" />\n" }
+        val text = insertBefore(text0, "</線上簽核流程>") { indent -> "$indent  <簽核流程 Id=\"FLOW_P$n\" 異動別=\"${esc(point.action.take(ApprovalPoint.ACTION_MAX))}\" />\n" }
         val infoEnd = text.indexOf("</線上簽核資訊>")
         if (infoEnd < 0) throw IllegalArgumentException("線上簽核檔沒有簽核資訊（線上簽核資訊）")
         val pad = lineIndent(text, infoEnd) + "  "
@@ -116,6 +144,15 @@ internal object ApprovalSignatures {
         val b64 = Base64.getEncoder()
         val signerName = runCatching { Bc.cn(Bc.holder(chain.first())!!) }.getOrNull()?.ifBlank { null } ?: "簽核人員"
         val time = ApprovalPoint.rocTime(point.time)
+        // 簽核文稿清單: the .di files are the drafts (the first file when there is none); other case files except the
+        // exchange forms are attachments of the first draft. 原始檔序號 is the file's place in 檔案清單, from 1.
+        val entries = files.mapIndexed { i, (name, bytes) -> CaseFile(i + 1, name, bytes) }
+        val drafts = entries.filter { it.ext == "di" }.ifEmpty { entries.take(1) }.map { f ->
+            val official = runCatching { OfficialDocuments.parse(f.bytes) }.getOrNull()
+            Draft(f.serial, f.name.substringBeforeLast('.'), official?.kind ?: ApprovalPoint.fileFormat(f.name))
+        }
+        val attachments = entries.filter { e -> drafts.none { it.serial == e.serial } && e.ext !in FORMS }
+            .map { Attachment(it.serial, it.name, ApprovalPoint.fileFormat(it.name)) }
         val fileDigests = files.map { (name, bytes) -> name to b64.encodeToString(DocCrypto.digest("SHA-256", bytes)) }
 
         fun pointXml(infoDigest: String, previousDigest: String, value: String) = buildString {
@@ -143,23 +180,50 @@ internal object ApprovalSignatures {
             append(p).append("    </KeyInfo>\n")
             append(p).append("  </Signature>\n")
             append(p).append("  <Object Id=\"$infoId\">\n")
-            append(p).append("    <異動資訊>\n")
+            append(p).append("    <異動資訊" + (if (point.returned) " 退文=\"Y\"" else "") + ">\n")
             append(p).append("      <簽核人員>\n")
-            point.unit?.ifBlank { null }?.let { append(p).append("        <單位>${esc(it)}</單位>\n") }
-            point.title?.ifBlank { null }?.let { append(p).append("        <職稱>${esc(it)}</職稱>\n") }
+            point.organization?.ifBlank { null }?.let { append(p).append("        <機關>${esc(it)}</機關>\n") }
+            append(p).append("        <單位>${esc(point.unit.orEmpty())}</單位>\n")
+            append(p).append("        <職稱>${esc(point.title.orEmpty())}</職稱>\n")
             append(p).append("        <姓名>${esc(signerName)}</姓名>\n")
-            point.account?.ifBlank { null }?.let { append(p).append("        <帳號>${esc(it)}</帳號>\n") }
+            append(p).append("        <帳號>${esc(point.account.orEmpty())}</帳號>\n")
             point.role?.ifBlank { null }?.let { append(p).append("        <角色>${esc(it)}</角色>\n") }
             append(p).append("      </簽核人員>\n")
-            append(p).append("      <異動別>${esc(point.action)}</異動別>\n")
+            append(p).append("      <異動別>${esc(point.action.take(ApprovalPoint.ACTION_MAX))}</異動別>\n")
             point.opinion?.ifBlank { null }?.let { append(p).append("      <簽核意見>${esc(it)}</簽核意見>\n") }
             append(p).append("      <簽章時間>$time</簽章時間>\n")
             append(p).append("    </異動資訊>\n")
             append(p).append("    <簽核資訊>\n")
             append(p).append("      <簽核文件夾 Id=\"DOC_P$n\" 產生時間=\"$time\">\n")
+            append(p).append("        <簽核文稿清單 文稿數=\"${drafts.size}\">\n")
+            drafts.forEachIndexed { j, d ->
+                append(p).append("          <文稿 原始檔序號=\"${d.serial}\" 序號=\"${j + 1}\" 產生時間=\"$time\">\n")
+                append(p).append("            <名稱>${esc(d.name)}</名稱>\n")
+                append(p).append("            <文稿類型>${esc(d.kind)}</文稿類型>\n")
+                if (j == 0 && attachments.isNotEmpty()) {
+                    append(p).append("            <附件清單 附件數=\"${attachments.size}\">\n")
+                    attachments.forEachIndexed { k, a ->
+                        val pages = a.kind == "TIFF"
+                        append(p).append("              <附件 格式=\"${if (pages) "一般頁面檔格式附件" else "電子檔格式附件"}\" 序號=\"${k + 1}\" 產生時間=\"$time\">\n")
+                        append(p).append("                <名稱>${esc(a.name)}</名稱>\n")
+                        append(p).append("                <附件類型>${a.kind}</附件類型>\n")
+                        if (pages) {
+                            append(p).append("                <一般頁面檔格式附件 頁面數=\"1\">\n")
+                            append(p).append("                  <頁面 原始檔序號=\"${a.serial}\" 序號=\"1\" 產生時間=\"$time\" />\n")
+                            append(p).append("                </一般頁面檔格式附件>\n")
+                        } else {
+                            append(p).append("                <電子檔格式附件 原始檔序號=\"${a.serial}\" />\n")
+                        }
+                        append(p).append("              </附件>\n")
+                    }
+                    append(p).append("            </附件清單>\n")
+                }
+                append(p).append("          </文稿>\n")
+            }
+            append(p).append("        </簽核文稿清單>\n")
             append(p).append("        <檔案清單 檔案數=\"${files.size}\">\n")
             files.forEachIndexed { i, (name, bytes) ->
-                append(p).append("          <電子檔案資訊 序號=\"$i\" 產生時間=\"$time\">\n")
+                append(p).append("          <電子檔案資訊 原始檔序號=\"${i + 1}\" 序號=\"${i + 1}\" 產生時間=\"$time\">\n")
                 append(p).append("            <檔案名稱>${esc(name)}</檔案名稱>\n")
                 append(p).append("            <檔案大小>${bytes.size}</檔案大小>\n")
                 append(p).append("            <檔案格式>${ApprovalPoint.fileFormat(name)}</檔案格式>\n")
@@ -226,6 +290,17 @@ internal object ApprovalSignatures {
         val start = text.lastIndexOf('\n', index - 1) + 1
         return text.substring(start, index).takeWhile { it == ' ' || it == '\t' }
     }
+
+    /** Exchange forms (交換表單, 文書訊息, 會稿交換表單, 信封) travel with a case but are not drafts or attachments. */
+    private val FORMS = setOf("sw", "esw", "dm", "co", "en", "si")
+
+    private class CaseFile(val serial: Int, val name: String, val bytes: ByteArray) {
+        val ext = name.substringAfterLast('.', "").lowercase()
+    }
+
+    private class Draft(val serial: Int, val name: String, val kind: String)
+
+    private class Attachment(val serial: Int, val name: String, val kind: String)
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 }

@@ -286,8 +286,8 @@ object OfficialDocuments {
         root.attributes["Id"]?.let { entries.add(OfficialEntry.Field("簽核編號", it.removePrefix("sign_"))) }
         entries.add(OfficialEntry.Field("簽核點", steps.size.toString()))
         if (files.isNotEmpty()) entries.add(OfficialEntry.Field("簽核檔案", files.joinToString("\n")))
-        val subject = steps.firstNotNullOfOrNull { s -> s.opinions.firstOrNull() }
-        return OfficialDocument(root.name, null, "線上簽核", subject, listOf(OfficialSection(null, entries)), flow, steps)
+        // An approval file has no subject; the opinions belong to their signing points.
+        return OfficialDocument(root.name, null, "線上簽核", null, listOf(OfficialSection(null, entries)), flow, steps)
     }
 
     private fun flowName(id: String?): String = id?.replace(Regex("^(FLOW_)+"), "")?.ifBlank { null } ?: "簽核點"
