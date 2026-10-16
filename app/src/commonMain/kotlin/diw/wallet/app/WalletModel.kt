@@ -1439,6 +1439,37 @@ class WalletModel(val platform: PlatformServices) {
         dcApiError = null
     }
 
+    /** Import an issuer VICAL or reader RICAL whose signing CA was explicitly trusted for list issuance. */
+    fun importMdocTrustList(kind: String, url: String, name: String) = scope.launch {
+        try {
+            if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "信任清單只接受 HTTPS 來源")
+            val reply = http.get(url)
+            if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "下載失敗：HTTP ${reply.status.value}")
+            val raw = reply.readRawBytes()
+            val summary = trust.importSignedMdocTrustList(kind, raw, name, url)
+            message.value = "已驗證並匯入信任清單：$summary（使用者信任，不標示官方）"
+            loadAnchors()
+            status.reevaluateIssuers("匯入 mdoc 信任清單", affected = { true }, accept = { true })
+        } catch (e: Exception) {
+            message.value = "信任清單匯入失敗：" + describe(e)
+        }
+    }
+
+    fun refreshMdocTrustLists() = scope.launch {
+        try {
+            val count = trust.refreshDueMdocTrustLists { url ->
+                if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "清單更新來源必須使用 HTTPS")
+                val reply = http.get(url)
+                if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "HTTP ${reply.status.value}")
+                reply.readRawBytes()
+            }
+            message.value = "mdoc 信任清單更新完成：$count 份新版本"
+            if (count > 0) status.reevaluateIssuers("已更新 mdoc 信任清單", affected = { true }, accept = { true })
+        } catch (e: Exception) {
+            message.value = "mdoc 信任清單更新失敗：" + describe(e)
+        }
+    }
+
     // ---------------------------------------------------------------- trust anchors
 
     fun loadAnchors() = scope.launch {
