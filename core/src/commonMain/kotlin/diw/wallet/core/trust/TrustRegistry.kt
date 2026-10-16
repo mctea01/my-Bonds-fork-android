@@ -255,7 +255,7 @@ class TrustRegistry(
                     }
                     if (next != null && next > now) continue
                     try {
-                        importSignedMdocTrustList(kind, fetch(source), entry.metadata.displayName, source, env)
+                        importSignedMdocTrustList(kind, fetch(source), entry.metadata.displayName.orEmpty(), source, env)
                         refreshed++
                     } catch (e: ProtocolException) {
                         if (e.code != "stale_trust_list") throw e
