@@ -1,5 +1,7 @@
 # 發佈建置
 
+> **發佈與驗收現況：** PR #11 新增 P1–P3 協定與簽署強化；尚未合併主分支或宣告正式實機認證。請以 [2026-10-16 最新功能矩陣](status-2026-10-16.md)及 [PR #11 Checks](https://github.com/mctea01/my-Bonds-fork-android/pull/11/checks)判定最新 CI。
+
 CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮：
 
 | 檔案 | 說明 |

@@ -1,5 +1,7 @@
 # 在 Windows 測試本地發行端
 
+> **2026-10-16 補充：** 本地 TEST Wallet Provider／測試 PKI 不會取得 Multipaz 正式發證端的信任。使用公有發證端需另登記正式 HTTPS Wallet Provider；完整功能與測試矩陣見 [現行狀態](../status-2026-10-16.md)。
+
 需要 JDK 21（Temurin）；用手機或模擬器測試時另需 Android SDK 的 `adb`。
 
 ## 1. PowerShell 統一 UTF-8
@@ -91,3 +93,9 @@ Invoke-RestMethod http://localhost:8080/verifier/sessions/$($s.id)
 - `credential_issuer in metadata does not match`：伺服器啟動時的網址和錢包用的不同，依第 2 節重開。
 - 匯入錨點失敗或連不上：確認伺服器視窗仍在執行；實機每次重新插線後要再跑一次 `adb reverse`。
 - 只想跑自動測試：`.\gradlew.bat :test-servers:test :app:desktopTest`。
+
+## 已註冊錢包後端與正式發證端（2026-10-16）
+
+進入「設定 > 互通 > OpenID4VCI 錢包身分」，填寫由簽章服務提供的 HTTPS Wallet Provider 位址及服務商核准的 `client_id`；未登記則保留公開用戶端模式。本地測試環境仍在「開發者與測試」設定測試伺服器、匯入對應測試錨點。
+
+正式發證端必須信任簽章者的根憑證或註冊金鑰；**錢包自行設定 HTTPS 網址或把 `client_id` 改成他人的識別碼，不會獲得正式信任。** 若發證端回覆 `clientId must be authenticated`，請先檢查發證端的客戶端驗證中繼資料、錢包後端是否能產生 Assertion／Attestation，以及是否完成註冊。

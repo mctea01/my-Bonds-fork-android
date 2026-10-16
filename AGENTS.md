@@ -1,5 +1,7 @@
 # AGENTS.md
 
+> **現行工作狀態：** [2026-10-16 功能矩陣](docs/status-2026-10-16.md)與 [PR #11](https://github.com/mctea01/my-Bonds-fork-android/pull/11)。個人錢包對 TW FidO、CSC、電子公文依公開規格實作；無正式機關／服務商授權屬預期，不能當作程式未實作。研究與驗收文檔保留當時快照；現行進度由功能矩陣統一維護。
+
 給在此 repo 工作的程式代理（與新進開發者）的說明。使用者文件見 [README.md](README.md)，設計、研究與驗收文件的索引見 [docs/README.md](docs/README.md)。
 
 ## 溝通與輸出
@@ -24,7 +26,7 @@
 
 | 套件 | 職責 |
 |---|---|
-| `oid4vci` | OpenID4VCI 1.0 用戶端（`Oid4vciClient`），中繼資料、offer、DPoP、wallet attestation |
+| `oid4vci` | OpenID4VCI 1.0 用戶端（`Oid4vciClient`），中繼資料、offer、DPoP、wallet attestation、private_key_jwt／wallet provider |
 | `oid4vp` | OpenID4VP 1.0（`Oid4vpHolder`、`RequestValidator`、`ResponseBuilder`） |
 | `oid4vp/ext` | 1.0 以外的出示：Presentation Exchange、自有 DCQL、舊版要求、SIOPv2、W3C 出示 |
 | `compat` | 發證方言：`Draft11Dialect`、`Draft13Dialect`、`TwdiwDialect`、`EudiDialect` |

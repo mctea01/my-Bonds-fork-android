@@ -1,5 +1,7 @@
 # DIW MY WALLET
 
+> **最新狀態（2026-10-16）：** [完整功能矩陣與驗收範圍](docs/status-2026-10-16.md)。個人錢包以公開規格的行動自然人憑證、CSC 與電子公文處理為本階段交付目標；正式 SP／QTSP／機關交換帳號屬外部授權，不是預設功能。PR #11 的新增協定功能仍以最新 CI 與實機驗收為準。
+
 跨平台的整合數位皮夾：在同一個 App 內持有與出示數位憑證、查驗他人的證件、保存並檢查簽章文件、以自然人憑證或遠端簽章服務簽署，並把文件轉成可出示的衍生憑證。
 
 以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並完整相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫，目前提供 Android 與 Windows、Linux 桌面版。

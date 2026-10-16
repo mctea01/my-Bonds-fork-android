@@ -1,5 +1,7 @@
 # P2 驗收結果（2026-10-11）
 
+> **歷史驗收快照，非當前完成度宣告。** 原始測試結果與日期保留。請以 [最新專案狀態（2026-10-16）](../status-2026-10-16.md) 對照 PR #11 新增的 OpenID4VCI Client Authentication、DC API 多重簽章及 P3 簽署安全性補強；新提交需重新通過 CI。個人錢包沒有正式 SP／QTSP／機關交換資格屬預期，不判定為程式缺陷。
+
 分支 `claude/p2-oid4vc-twdiw-k9xocz`。P2 完成後所有 OpenID4VCI / OpenID4VP 組合皆可使用，TWDIW、Bonds、OpenID4VCI 草案 11/13 與 Microsoft Verified ID 的處理常駐啟用、沒有開關，程式碼與標準路徑隔離。
 
 ## 本地自動測試

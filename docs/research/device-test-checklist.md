@@ -1,5 +1,7 @@
 # 實機測試清單（2026-10-10）
 
+> **持續維護的測試清單。** 檢查項目以 [2026-10-16 最新功能矩陣](../status-2026-10-16.md)為準，並針對 PR #11 新增 Client Authentication、DC API 多重簽章、CSC OAuth 與 TW FidO 完整性測試。沒有正式 SP／QTSP／機關交換帳號屬預期的外部授權限制。
+
 雲端容器無法驗證的項目都在這裡。每項列出前置條件、步驟、預期結果與判定標準，可由人手動執行，也可交給 Codex 執行（標「需人工」的步驟必須有人操作手機）。
 測試工具為 `validation/android-smoke/apk/` 的 diw-smoke APK（說明見 `validation/android-smoke/README.md`），以及公開的參考 App。
 
@@ -243,3 +245,11 @@
 - 自然人憑證 APDU 簽章流程與 PIN 錯誤次數保護。
 - Play Integrity 與錢包提供者 key attestation（EUDI 發行端要求 iso_18045_high）。
 - iOS（Compose Multiplatform iOS 目標、Secure Enclave、App Attest）。
+
+## PR #11 新增回歸項目（2026-10-16）
+
+- [ ] 使用可信任的 Wallet Provider 與註冊用戶端在公開 OpenID4VCI 發證端成功取得憑證；檢查 PAR、Token、DPoP nonce 與 Attestation Challenge。
+- [ ] DC API `openid4vp-v1-multisigned`：有效與偽造簽章混合、Origin 綁定、多受信任身分選擇與簽章降級拒絕。
+- [ ] CSC OAuth：`redirect_uri` 替換、HTTPS／Bearer Token、SAD 與 RSA／ECDSA SHA-256 簽章在不同測試服務端互通。
+- [ ] TW FidO：持 SP 測試資格時測試 Push／App-to-App、逾時、取消、checksum、簽署憑證與原文驗證。
+- [ ] 個人錢包不必取得正式機關公文交換帳號；僅驗證 SI／DI、公文封裝、CAdES／XAdES、匯入／匯出可互通。

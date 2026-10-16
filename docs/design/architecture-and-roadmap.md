@@ -1,5 +1,7 @@
 # DIW MY WALLET 技術背景與跨平台轉換規劃
 
+> **設計基準與階段規劃，並非已完成功能清單。** 最新實作進度、PR #11 與 P1–P3 驗收範圍見 [現行功能矩陣（2026-10-16）](../status-2026-10-16.md)。個人錢包以公開規格支援行動自然人憑證、CSC 和公文檔案；正式機關收發文／服務商帳號屬外部授權，不是程式缺陷。
+
 撰寫日期：2026-10-10
 ## 結論
 
@@ -11,6 +13,7 @@
 - 文件：驗證核心先放 Android／JVM（BouncyCastle、EU DSS 部分模組、ofdrw），iOS 後續以 GmSSL、OpenSSL、PDFium 接上。
 - 下一步：P0 本地與網路驗證已完成（見 P0 驗證結果），實機 D1 已確認台灣網路不被擋、生物辨識綁定正常、root 機會偽造金鑰證明；接著完成 NFC 與低階機 ZK 驗證；P1 已於 2026-10-11 完成，P2 進行 OpenID4VC 全組合與 TWDIW、Bonds、Microsoft 相容 Profile。
 
+> **2026-10-16 校正：** 這一行是早期路線圖的下一步，不能取代最新 P1–P3 功能矩陣。PR #11 已加入多種 Client Authentication 與 DC API 多重簽章驗證，並仍有 OpenID Federation、JWE Request Object、mdoc transaction_data、VICAL／RICAL 待補。
 ## 參考來源盤點
 
 五個來源各有分工：Multipaz 是唯一的 KMP 底層，TWDIW 定義台灣生態系的實際方言，Bonds 示範第三方皮夾如何接上 G2C 服務，EUDI 提供標準與驗證者透明的規則，Microsoft 是企業端互通對象。

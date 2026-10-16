@@ -1,5 +1,7 @@
 # TWDIW 官方 App 與 core-system 互通性調研筆記
 
+> **研究資料的時間點說明：** 本文保留編寫時的技術比較與來源，不代表現在的功能完成度或最新規格版本。請以 [2026-10-16 專案狀態矩陣](../status-2026-10-16.md)確認 PR #11 的新實作及剩餘缺口。個人錢包依公開規格支援行動自然人憑證、CSC 及公文檔案，正式服務帳號／機關交換資格不屬必須完成的程式功能。
+
 - 調研對象：moda-gov-tw/TWDIW-official-app，本地 commit 99e9deb（2026-07-27）
 - 本地路徑：scratchpad/src/TWDIW-official-app。下文路徑都以 repo 根目錄為準。
 - 目的：用 KMP + Compose Multiplatform 撰寫第三方皮夾（Android 先行），並與 TWDIW 互通。
