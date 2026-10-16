@@ -6,7 +6,7 @@
 
 ## 1. 閱讀順序
 
-1. [AGENTS.md](../../AGENTS.md)：模組、已定的設計規則 1 到 12、各領域要點。審查以它為規格；程式與 AGENTS.md 不符時，先判斷是哪一邊過時。
+1. [AGENTS.md](../../AGENTS.md)：模組、已定的設計規則 1 到 13、各領域要點。審查以它為規格；程式與 AGENTS.md 不符時，先判斷是哪一邊過時。
 2. [design/architecture-and-roadmap.md](../design/architecture-and-roadmap.md)：目標架構與協定支援矩陣。
 3. 依審查範圍讀研究文件：[twdiw.md](../research/twdiw.md)、[bonds.md](../research/bonds.md)、[multipaz-eudi-ms.md](../research/multipaz-eudi-ms.md)、[documents-signatures.md](../research/documents-signatures.md)、[official-document-files.md](../research/official-document-files.md)。
 4. 驗收紀錄：[p1](../acceptance/p1-acceptance.md)、[p2](../acceptance/p2-acceptance.md)、[p2 後續](../acceptance/p2-followup.md)、[p3](../acceptance/p3-acceptance.md)。每份最後的「需要實機驗證」表是目前沒有被自動測試覆蓋的部分。
@@ -37,14 +37,15 @@
 | 2 方言常駐 | `app/WalletModel.kt` 的方言清單 | 沒有方言開關；新增方言只改清單 |
 | 3 信任分層 | `core/trust/TrustTier.kt`、`TrustRegistry.kt`、`SystemTrustStore.kt`、`PublicRoots.kt`、`TrustLists.kt`、`UserDidTrust.kt`；`app/ui/TrustViews.kt`、`app/ui/RiskConfirm.kt` | 每條判定路徑的結果等級與 AGENTS.md 一致；中繼憑證不提高等級；測試錨永遠不是官方；T3、T4 的操作都經過 `RiskConfirmDialog`；畫面說明與分層同步 |
 | 3 verifier_info | `core/oid4vp/VerifierInfoCheck.kt` | 註冊憑證的簽署者信任、綁定請求方、欄位超出註冊範圍時的提示 |
-| 4 jku | `core/trust/JkuKeys.kt`、`core/status/` | 憑證簽章金鑰不會從 jku 來；狀態清單的 jku 只接受 https 並依序綁定；綁不上時保證為 `TLS_ONLY` 且畫面不顯示為已驗證 |
-| 5 狀態 | `core/status/StatusPolicy.kt`、`core/credential/ClaimSensitivity.kt` | 撤銷一律拒絕且不可勾選覆寫；用途風險的計算（整張揭露時以實際欄位計算）；測試環境的通過降為需留意 |
-| 6 兜底 | `core/holder/`、QR 編碼、平台金鑰 | 硬體金鑰不可用時改用軟體金鑰，模擬器與桌面可完成主要流程 |
-| 7 金鑰證明 | 發證的 wallet attestation 與 key attestation | 不檢查 RKP |
-| 8 R8 | `app/build.gradle.kts`、`app/proguard-rules.pro` | release 經 R8；keep 規則涵蓋反射與序列化（Xerces、BouncyCastle、kotlinx.serialization、JNA 與 P4 的 uniffi） |
-| 9、10 介面 | `app/ui/` | 五個分頁；方言功能併入共同位置；停用列寫明原因；判定色只用於判定 |
-| 11 狀態主動更新 | `app/StatusMonitor.kt` | 同時最多 3 張；失敗保留前一次有意義的結果；信任來源改變時 `reevaluateIssuers` |
-| 12 近距離 | `app/ProximityModel.kt`、`app/ReaderModel.kt`、Android `WalletNfcService` | 只有感應出示畫面開著時 HCE 才回應；PC/SC 只能讀取 |
+| 4 did:key fragment | `core/did/`（`DidResolver.resolveKey`） | 任何 fragment 都只解析到 DID 自身的金鑰；kid 指向其他 DID 時拒絕 |
+| 5 jku | `core/trust/JkuKeys.kt`、`core/status/` | 憑證簽章金鑰不會從 jku 來；狀態清單的 jku 只接受 https 並依序綁定；綁不上時保證為 `TLS_ONLY` 且畫面不顯示為已驗證 |
+| 6 狀態 | `core/status/StatusPolicy.kt`、`core/credential/ClaimSensitivity.kt` | 撤銷一律拒絕且不可勾選覆寫；用途風險的計算（整張揭露時以實際欄位計算）；測試環境的通過降為需留意 |
+| 7 兜底 | `core/holder/`、QR 編碼、平台金鑰 | 硬體金鑰不可用時改用軟體金鑰，模擬器與桌面可完成主要流程 |
+| 8 金鑰證明 | 發證的 wallet attestation 與 key attestation | 不檢查 RKP |
+| 9 R8 | `app/build.gradle.kts`、`app/proguard-rules.pro` | release 經 R8；keep 規則涵蓋反射與序列化（Xerces、BouncyCastle、kotlinx.serialization、JNA 與 P4 的 uniffi） |
+| 10、11 介面 | `app/ui/` | 五個分頁；設定分組（`SettingsSection`）與新設定的摘要；方言功能併入共同位置；停用列寫明原因；判定色只用於判定 |
+| 12 狀態主動更新 | `app/StatusMonitor.kt` | 同時最多 3 張；失敗保留前一次有意義的結果；信任來源改變時 `reevaluateIssuers` |
+| 13 近距離 | `app/ProximityModel.kt`、`app/ReaderModel.kt`、Android `WalletNfcService` | 只有感應出示畫面開著時 HCE 才回應；PC/SC 只能讀取 |
 
 ## 4. 安全審查重點
 
