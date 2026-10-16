@@ -201,8 +201,6 @@ class TrustRegistry(
         }
         if (expiry != null && expiry <= now)
             throw ProtocolException("expired_trust_list", "Signed trust list has expired")
-        if (nextUpdate != null && nextUpdate < now)
-            throw ProtocolException("expired_trust_list", "Signed trust list is past its next-update deadline")
         if (signer.isEmpty() || match(TrustRole.TRUST_LIST_PROVIDER, signer) == null)
             throw ProtocolException("untrusted_trust_list", "Signed trust list provider does not have a pinned trust root")
         val manager = manager(role, environment)
@@ -237,6 +235,36 @@ class TrustRegistry(
         return "$kind: $provider (issue ${issue ?: "unversioned"})"
     }
 
+    /** Refresh lists from the same manually approved HTTPS location when the announced next-update passes. */
+    suspend fun refreshDueMdocTrustLists(fetch: suspend (String) -> ByteArray): Int {
+        var refreshed = 0
+        val now = Clock.System.now()
+        for (env in listOf(TrustEnvironment.USER, TrustEnvironment.PRODUCTION)) {
+            for (kind in listOf("vical", "rical")) {
+                val role = if (kind == "vical") TrustRole.ISSUER else TrustRole.VERIFIER
+                val manager = manager(role, env)
+                val entries = manager.getEntries()
+                for (entry in entries) {
+                    val source = entry.metadata.extensions[TrustMetadataKeys.SOURCE] ?: continue
+                    if (!source.startsWith("https://")) continue
+                    val next = when (entry) {
+                        is TrustEntryVical -> SignedVical.parse(entry.encodedSignedVical.toByteArray()).vical.nextUpdate
+                        is TrustEntryRical -> SignedRical.parse(entry.encodedSignedRical.toByteArray()).rical.nextUpdate
+                        else -> continue
+                    }
+                    if (next != null && next > now) continue
+                    try {
+                        importSignedMdocTrustList(kind, fetch(source), entry.metadata.displayName, source, env)
+                        refreshed++
+                    } catch (e: ProtocolException) {
+                        if (e.code != "stale_trust_list") throw e
+                    }
+                }
+            }
+        }
+        return refreshed
+    }
+
     /**
      * Multipaz does not enforce signed list expiry while verifying certificates. Fail closed
      * by removing expired entries before checking whether a certificate is listed.
@@ -249,10 +277,10 @@ class TrustRegistry(
             for (entry in manager.getEntries()) {
                 val expiration = when (entry) {
                     is TrustEntryVical -> runCatching {
-                        SignedVical.parse(entry.encodedSignedVical.toByteArray()).vical.let { it.notAfter ?: it.nextUpdate }
+                        SignedVical.parse(entry.encodedSignedVical.toByteArray()).vical.notAfter
                     }.getOrNull()
                     is TrustEntryRical -> runCatching {
-                        SignedRical.parse(entry.encodedSignedRical.toByteArray()).rical.let { it.notAfter ?: it.nextUpdate }
+                        SignedRical.parse(entry.encodedSignedRical.toByteArray()).rical.notAfter
                     }.getOrNull()
                     else -> null
                 }
