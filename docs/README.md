@@ -8,7 +8,7 @@
 |---|---|
 | [design/architecture-and-roadmap.md](design/architecture-and-roadmap.md) | 技術背景與跨平台轉換規劃：參考來源、TWDIW 官方 App 現況、目標架構、協定支援矩陣、驗證者身分與目的、ZKP 策略、電子文件、軟體兜底、PKI 分區、判定模型、P2 實作規劃、分階段路線圖、P0 驗證與風險 |
 | [design/document-credentials.md](design/document-credentials.md) | 文件憑證方案：每份文件產生衍生憑證再疊加證據；zkPDF、zkTLS、Bonds、OpenCerts 的比較，各類台灣與中國大陸文件的樣本分析與查驗方式，主動簽署、自然人憑證卡與行動自然人憑證 |
-| [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、待決事項與建議、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
+| [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、D1 到 D6 的決定、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
 | [design/p4-circuits.md](design/p4-circuits.md) | P4 電路規格：樣本結構量測、zkPDF 電路（SHA-256 中間狀態窗口、inflate、lexer、錨點、欄位承諾、日期述詞）、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
 | [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
 

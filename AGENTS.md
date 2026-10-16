@@ -141,6 +141,8 @@
 - 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 決定能否在本機產生證明，C 級只能驗證。
 - 證明資產以 `core/src/commonMain/resources/zk/assets.json` 釘選 SHA-256 與大小，下載後比對才載入。私密輸入不可出現在 log、例外訊息與測試輸出。
 - 分工：Codex 依 `p4-work-packages.md` 在 `codex/p4-wpN-<簡稱>` 分支開發，PR 目標為整合分支 `claude/p4-zkp-design-fmkasd`；介面由 Claude 維護，需要變更時在 PR 提出「介面變更提案」，不自行改動其他工作包的介面。
+- 電路（`native/circuits/**`、OpenAC 的 `predicate.rs` 與 zkID patch、zkTLS 揭露規則）由 Claude 撰寫或審查，Codex 只做證明器、建置與綁定，需要時提出「電路變更提案」。zkPDF 版型的欄位與錨點由 P3 的文件解析器產生，零知識欄位與一般衍生欄位同名。
+- 算力不足不禁止產生證明：顯示估計後由使用者選擇在本機產生、在電腦版產生後匯入、送到自架主機（`RiskConfirmDialog`）或不加零知識證據。zkTLS 的查驗方以手機為目標，電腦版與測試伺服器只是過渡；持有端與查驗端之間是綁定請求的 Noise 通道（區域網路或只轉送密文的中繼）。
 - P4 完成後的全專案審查從 `docs/review/project-review.md` 開始。
 
 ## TWDIW 與 Bonds 要點

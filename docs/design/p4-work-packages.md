@@ -6,8 +6,8 @@
 
 ### 1.1 原則
 
-- Claude 負責：跨模組整合、信任判定、證據與持有者的綁定邏輯、需要真實樣本的版型與查驗頁描述檔、UI、驗收文件，以及審查 Codex 的 PR。
-- Codex 負責：介面已凍結、可用合成資料驗收的工作，例如建置、原生綁定、電路、純函式與 Multipaz 整合。
+- Claude 負責：電路（Noir 原始碼、OpenAC 電路修補、zkTLS 揭露規則，見 p4-circuits.md 第 1.3 節）、跨模組整合、信任判定、證據與持有者的綁定邏輯、版型與查驗頁描述檔（由 P3 的文件解析產生，見 p4-circuits.md 第 3.11 節）、UI、驗收文件，以及審查 Codex 的 PR。
+- Codex 負責：介面已凍結、可用合成資料驗收的工作，例如建置、原生綁定、證明器與見證資料搬運、純函式與 Multipaz 整合。Codex 的 PR 不修改 `native/circuits/**` 與 OpenAC 的 `predicate.rs`、zkID patch；需要時在 PR 提出「電路變更提案」。
 - 介面（本文的 Kotlin 與 Rust 簽名、p4-zkp.md 第 5 節的資料格式、p4-circuits.md 第 3.6 節的公開輸入順序）由 Claude 維護。接手者發現介面不夠用時，在 PR 說明「介面變更提案」並等 Claude 更新文件，不自行改動其他工作包的介面。
 
 ### 1.2 分支與 PR
@@ -38,7 +38,7 @@
 | Rust | 以 `native/rust-toolchain.toml` 釘選的 stable | WP0 建立 |
 | Android NDK、cargo-ndk | WP0 釘選 | 目標 `aarch64-linux-android`、`x86_64-linux-android` |
 | uniffi | WP0 釘選 | Kotlin 綁定使用 JNA |
-| nargo、bb | WP3 釘選在 `native/circuits/VERSIONS` | bb 使用零知識版本 |
+| nargo、bb | WP3a 釘選在 `native/circuits/VERSIONS` | bb 使用零知識版本 |
 | tlsn | `v0.1.0-alpha.15` 的 commit | WP5 釘選 |
 | zkID、Mopro、witnesscalc\_adapter | `b395e09c225ff45b003f0087c28e2e208e22f944`、0.3.5、`e5a82bc` | 與 Bonds `openac-age-v1` 相同（WP7） |
 
@@ -47,18 +47,19 @@
 | WP | 名稱 | 負責 | 依賴 | 產出 |
 |---|---|---|---|---|
 | WP0 | 原生建置與 ZK 共用層 | Codex | — | `native/` 工作區、uniffi 綁定、`core/zk`、資產下載、裝置分級 |
-| WP1 | 效能量測與門檻 | Codex（實機由使用者執行） | WP0；WP3 的 M3a、WP5、WP7 | `docs/research/p4-benchmarks.md`、等級門檻 |
-| WP2 | zkPDF 公開側基礎函式 | Codex | — | `Sha256State`、PDF 結構與加密輔助、字型解碼匯出 |
-| WP3 | zkPDF Noir 電路與證明器 | Codex | WP0、WP2 | `native/circuits/pdf_text_v1`、`native/zkpdf-prover`、合成測試文件產生器 |
-| WP4 | zkPDF 版型、遮蔽與查驗整合 | Claude | WP2、WP3 | `core/document/zkpdf`、版型描述檔、衍生憑證證據 |
-| WP5 | TLSNotary 原生綁定 | Codex | WP0 | `native/zktls`、prover 與 verifier 的 uniffi API |
-| WP6 | zkTLS 查驗頁、即時模式與存證 | Claude | WP5 | `core/zktls`、描述檔、測試伺服器查驗端、網頁證明與裝置證明紀錄 |
-| WP7 | OpenAC 年齡證明（引用 Bonds） | Codex（原生與包裝）、Claude（流程） | WP0 | `native/openac-age`、`profile/bonds/BondsAgeProof*` |
+| WP1 | 效能量測與門檻 | Codex（實機由使用者執行） | WP0；WP3a 的 M3a、WP5、WP7 | `docs/research/p4-benchmarks.md`、等級門檻 |
+| WP2 | zkPDF 公開側基礎函式 | Codex | — | `Sha256State`、PDF 結構與加密輔助、字型解碼匯出、`PdfTextExtractor.runs` |
+| WP3a | zkPDF Noir 電路 | Claude | WP2 | `native/circuits/pdf_text_v1`（子電路、完整電路、Noir 測試、`VERSIONS`） |
+| WP3b | zkPDF 證明器與合成測試文件 | Codex | WP0、WP3a | `native/zkpdf-prover`、uniffi 匯出、合成測試文件產生器 |
+| WP4 | zkPDF 版型、遮蔽與查驗整合 | Claude | WP2、WP3b | `core/document/zkpdf`、P3 解析器的欄位位置、版型描述檔、衍生憑證證據、自架主機產生 |
+| WP5 | TLSNotary 原生綁定 | Codex | WP0 | `native/zktls`、prover 與 verifier 的 uniffi API、Noise 通道 |
+| WP6 | zkTLS 查驗頁、即時模式與存證 | Claude | WP5 | `core/zktls`、描述檔、傳輸路徑（wss、區域網路、中繼）、手機與電腦查驗端、網頁證明與裝置證明紀錄 |
+| WP7 | OpenAC 年齡證明（引用 Bonds，第一個端對端測試） | Codex（原生與包裝）、Claude（流程與電路審查） | WP0 | `native/openac-age`、`profile/bonds/BondsAgeProof*` |
 | WP8 | Longfellow mdoc ZK | Codex | — | Multipaz ZkSystem 註冊、近距離與 DC API、測試 |
 | WP9 | App 整合與 UI | Claude | WP4、WP6、WP7、WP8 | 啟用停用列、證據卡、設定頁、紀錄 |
 | WP10 | 驗收與文件 | Claude | 全部 | `docs/acceptance/p4-acceptance.md`、README、AGENTS.md、Review 指引的 P4 節 |
 
-建議順序：WP0、WP2、WP8 平行開始；WP3 先做 M3a（SHA-256 與 inflate 子電路）供 WP1 量測，再完成全電路；WP5 與 WP7 在 WP0 後平行；WP4、WP6 接在後面；WP9、WP10 收尾。
+建議順序：WP0、WP2、WP8 平行開始，Claude 同時寫 WP3a 的 M3a（SHA-256 與 inflate 子電路）供 WP1 量測；WP0 完成後先做 WP7 的原生部分，當作整條管線（建置、資產下載、Android 打包、自驗）的第一個端對端測試（D5）；接著 WP3b、WP5 平行；WP4、WP6 接在後面；WP9、WP10 收尾。
 
 ## 3. 工作包細節
 
@@ -125,13 +126,13 @@ interface ZkAssetStore {
 
 量測項目（每項記錄裝置型號、RAM、冷啟與熱啟時間、峰值原生記憶體、證明大小、驗證時間）：
 
-1. Noir：SHA-256 壓縮 65、130、260 個區塊；inflate 子電路 16 KB、32 KB、40 KB 輸出（WP3 的 M3a）；完整 `pdf_text_v1_1p`（WP3 完成後重跑）。
+1. Noir：SHA-256 壓縮 65、130、260 個區塊；inflate 子電路 16 KB、32 KB、40 KB 輸出（WP3a 的 M3a）；完整 `pdf_text_v1_1p`（WP3b 完成後重跑）。
 2. bb 的零知識設定：記錄確認方式（CLI 說明、原始碼位置）與證明大小差異。
-3. tlsn Proxy 與 MPC：回應 1 KB、16 KB、200 KB，持有端 Android，查驗端桌面。
+3. tlsn Proxy 與 MPC：回應 1 KB、16 KB、200 KB，持有端 Android，查驗端分別為桌面與另一支 Android（區域網路、中繼），記錄雙方傳輸量。
 4. OpenAC：Prepare、Show、reblind、verify\_linked。
 5. Longfellow：1 個屬性的 mDL 年齡證明產生與驗證。
 
-驗收：至少一台中階機（使用者的 D1）與一台桌面的完整數據；文件最後一節寫出等級門檻建議與 zkPDF 是否在手機開放的判斷（p4-circuits.md 第 3.7 節的門檻）。
+驗收：至少一台中階機（使用者的 D1）與一台桌面的完整數據；文件最後一節寫出等級門檻建議，以及每種證明的記憶體與時間估計公式，供 `ZkCapability` 在選擇畫面顯示（p4-zkp.md 第 8 節）。
 
 ### WP2 zkPDF 公開側基礎函式（Codex）
 
@@ -175,27 +176,44 @@ interface ZkFontDecoder {
     fun decode(raw: ByteArray, literal: Boolean): String // handles literal escapes when literal is true
     fun digitCodes(): IntArray?                          // codes of '0'..'9', or null when a digit has no unique code
 }
+
+/** One text-showing operator of a page content stream, in stream order (added to PdfTextExtractor). */
+data class PdfTextRun(val op: Int, val font: String, val raw: ByteArray, val literal: Boolean, val text: String, val x: Double, val y: Double)
+// PdfTextExtractor.runs(pdf: PdfFile, page: Int): List<PdfTextRun>
 ```
 
 - 盡量重用既有的 `PdfFile`（修訂版、物件位移）、`StandardSecurity`（RC4 物件金鑰）、`PdfFont`（ToUnicode、編碼空間）；只把需要的部分開成 `internal` 以外的 API 或加包裝，不複製實作。
 - 字型解碼要處理 WinAnsi（含 `/Differences`）、Type0 Identity-H 加 ToUnicode（bfchar、bfrange 兩種）。
+- `PdfTextExtractor.runs` 與既有 `extract` 共用同一套解碼與分行邏輯；以 `runs` 依既有規則組成的文字必須與 `extract` 完全相同。
 
 驗收：
 
 - `Sha256StateTest`：NIST 測試向量；隨機長度訊息逐塊壓縮的結果等於 JCA `MessageDigest`；`digestWithWindows` 在視窗的 midOut 正確時等於整體摘要。
-- `PdfZkSupportTest`：以既有 `PdfComposer` 或測試產生器做出一頁含 Type0 與 WinAnsi 字型、有增量更新與 RC4（空白使用者密碼）的 PDF，驗證 `signedRevision` 不讀到之後的修訂、`streamExtent` 與實際位元組一致、`rc4KeyStream` XOR 後是合法 zlib、`fontDecoders` 能還原文字與數字編碼。
+- `PdfZkSupportTest`：以既有 `PdfComposer` 或測試產生器做出一頁含 Type0 與 WinAnsi 字型、有增量更新與 RC4（空白使用者密碼）的 PDF，驗證 `signedRevision` 不讀到之後的修訂、`streamExtent` 與實際位元組一致、`rc4KeyStream` XOR 後是合法 zlib、`fontDecoders` 能還原文字與數字編碼；`runs` 組成的文字等於 `extract`（含既有 P3 測試用的合成文件）。
 
-### WP3 zkPDF Noir 電路與證明器（Codex）
+### WP3a zkPDF Noir 電路（Claude）
 
-目標：實作 p4-circuits.md 第 3 節的 `pdf_text_v1_1p`，以及 Rust 端的見證產生、證明與驗證。
+目標：實作 p4-circuits.md 第 3 節的 `pdf_text_v1_1p`。
 
-可修改：`native/circuits/**`、`native/zkpdf-prover/**`、`native/diw-zk-ffi/src/zkpdf.rs`、`tools/zkpdf-testdocs/**`（新，合成測試文件產生器）、`test-servers/src/test/resources/zkpdf/**`、`test-servers/src/test/kotlin/diw/testservers/zkpdf/**`。
+範圍：`native/circuits/**`。
 
 里程碑：
 
 - M3a：`sha256_window` 與 `inflate` 子電路及其 Noir 測試；交給 WP1 量測。
-- M3b：詞法掃描、運算子表完整性、錨點、承諾、述詞；完整電路；公開輸入順序與第 3.6 節一致。
+- M3b：詞法掃描、運算子表完整性、錨點、承諾、述詞；完整電路；公開輸入順序與第 3.6 節一致；凍結 `ZkPdfPublicSpec` 與見證輸入格式，交給 WP3b。
+
+驗收：`nargo test` 全過（子電路的正確與錯誤案例，含 Z8、Z9、Z13 的電路層案例）；`VERSIONS` 記錄 nargo、bb 版本與 ACIR、驗證金鑰的 SHA-256。
+
+### WP3b zkPDF 證明器與合成測試文件（Codex）
+
+目標：Rust 端的見證產生、證明與驗證，以及合成測試文件。電路由 WP3a 提供，這個工作包不修改 `native/circuits/**`。
+
+可修改：`native/zkpdf-prover/**`、`native/diw-zk-ffi/src/zkpdf.rs`、`tools/zkpdf-testdocs/**`（新，合成測試文件產生器）、`test-servers/src/test/resources/zkpdf/**`、`test-servers/src/test/kotlin/diw/testservers/zkpdf/**`。
+
+里程碑：
+
 - M3c：Rust 見證產生（由下列輸入算出所有提示）、證明、自驗、驗證，uniffi 匯出。
+- M3d：合成測試文件產生器（可在 M3a 期間先做）。
 
 uniffi 介面：
 
@@ -215,24 +233,25 @@ pub struct ZkPdfProof { pub proof: Vec<u8>, pub public_inputs: Vec<u8>, pub mid_
 #[uniffi::export] pub fn zkpdf_public_inputs(spec: ZkPdfPublicSpec) -> Result<Vec<u8>, ZkError>;  // 查驗端以自己的資料組出公開輸入
 ```
 
-- `ZkPdfPublicSpec` 欄位與第 3.6 節一一對應（由 Claude 在 WP4 開始前補上 Rust 結構定義；M3b 時一起凍結）。
+- `ZkPdfPublicSpec` 欄位與第 3.6 節一一對應（由 Claude 在 WP3a 的 M3b 凍結）。
 - 合成測試文件產生器（Python 或 Kotlin 皆可，以 `-I` 執行 Python）：輸出「仿在學證明」（WinAnsi 數字、Type0 中文、QR 影像）與「仿出入境記錄」（RC4、數字為 CID）兩種，以 test-servers 的測試 PKI 簽章；字型使用授權允許再散布的字型子集（例如 Noto Sans CJK，OFL），在 NOTICE 記錄。
 
 驗收：
 
-- Noir 測試：子電路的正確與錯誤案例；`nargo test` 全過。
 - `ZkPdfCircuitTest`（test-servers）：p4-circuits.md 第 3.10 節 Z1、Z4、Z5、Z8、Z9、Z12、Z13、Z14 在 Rust 或 Kotlin 層重現（Z2、Z3、Z6、Z7、Z10、Z11 在 WP4 驗收）。
 - 證明大小、證明與驗證時間寫進 WP1 的文件。
-- `ACIR` 與驗證金鑰的 SHA-256、nargo 與 bb 版本寫進 `native/circuits/VERSIONS`。
+- 以 WP3a 的 `VERSIONS` 核對建置出的 ACIR 與驗證金鑰 SHA-256，不符時建置失敗。
 
 ### WP4 zkPDF 版型、遮蔽與查驗整合（Claude）
 
 目標：從保存的文件產生 zkPDF 證據並放進衍生憑證，以及查驗端完整的 V1–V10。
 
-範圍：`core/document/zkpdf/`（`ZkPdfProfile`、`ZkPdfProfiles`（釘選清單）、`ZkPdfPlanner`（選擇視窗、錨點、欄位）、`ZkPdfEvidence`（p4-zkp.md 第 5.1 節）、`ZkPdfVerifier`）、`DerivedCredentials` 與 `DerivedEvidence` 的擴充、福州大學與移民管理局兩份文件的版型描述檔（以真實樣本在本機核對，描述檔只含版型文字）。
+範圍：`core/document/zkpdf/`（`ZkPdfProfile`、`ZkPdfProfiles`（釘選清單）、`ZkPdfPlanner`（選擇視窗，並依 p4-circuits.md 第 3.11 節由 P3 解析器的欄位位置選出錨點與欄位）、`ZkPdfEvidence`（p4-zkp.md 第 5.1 節）、`ZkPdfVerifier`）、P3 解析器（`StudentStatusProof`、`MainlandPermitLink`、`MainlandEntryExitRecord`、`DocumentFields`）的 `FieldSpan` 與依版本的 `normalize`、`DerivedCredentials` 與 `DerivedEvidence` 的擴充、福州大學與移民管理局兩份文件的版型描述檔（以真實樣本在本機核對，描述檔只含版型標籤）。
+
+里程碑：M4a 合成文件的產生與查驗；M4b 兩份真實版型；M4c 電腦版匯出與手機匯入 `.zkpdf`，以及自架主機產生（主機端是同一套原生程式庫的無頭程式，放在 `tools/zk-prover-server`，只接受設定裡加入的主機，結果在手機先驗證；p4-zkp.md 第 8 節）。
 
 ```kotlin
-interface ZkPdfProofEngine {   // WP3 的 uniffi 函式包裝
+interface ZkPdfProofEngine {   // WP3b 的 uniffi 函式包裝
     suspend fun check(input: ZkPdfProveRequest): ZkResult<Unit>
     suspend fun prove(input: ZkPdfProveRequest, cancel: ZkCancel): ZkResult<ZkPdfProofOutput>
     suspend fun verify(circuit: String, proof: ByteArray, publicInputs: ByteArray): ZkResult<Boolean>
@@ -245,7 +264,7 @@ object ZkPdf {
 }
 ```
 
-驗收：Z2、Z3、Z6、Z7、Z10、Z11 測試；以合成文件完成「產生衍生憑證、出示、查驗」；真實樣本在本機核對（不提交）。
+驗收：Z2、Z3、Z6、Z7、Z10、Z11 測試；P3 既有解析測試的輸出不變；以合成文件完成「產生衍生憑證、出示、查驗」；`.zkpdf` 匯出匯入與自架主機產生各一次；真實樣本在本機核對（不提交）。
 
 ### WP5 TLSNotary 原生綁定（Codex）
 
@@ -269,20 +288,30 @@ pub struct ZkTlsVerified { pub server_name: String, pub cert_chain_der: Vec<Vec<
 
 - `ZkTlsRevealChooser` 在 prover 端拿到完整明文後回傳揭露範圍（由 WP6 依描述檔計算）；未揭露的位元組在 `ZkTlsVerified` 中以 0 填滿並由遮罩標示。
 - 伺服器憑證以 tlsn 的根憑證庫驗證；另回傳憑證鏈，由 Kotlin 端用既有信任判定再算一次等級。
+- 端對端加密通道（p4-zkp.md 第 5.2 節）在 Rust 端實作：`zktls_prove` 另收 `request_hash`（請求 JWS 的 SHA-256）與 `verifier_static_public`，`zktls_verify` 另收 `request_hash` 與 `verifier_static_private`，以 Noise `NK_25519_ChaChaPoly_SHA256`（例如 `snow` crate）包住 `ZkTlsChannel`；Kotlin 端的 `ZkTlsChannel` 只搬運密文。
 
 驗收：
 
 - `ZkTlsLoopbackTest`：test-servers 啟動本機 HTTPS 目標（測試 CA，tlsn 設定為信任該 CA）與查驗端，桌面 prover 以 Proxy 與 MPC 各完成一次，揭露 1 個片段、隱藏查詢參數；查驗端收到的明文中隱藏的部分為 0。
 - 回應使用 chunked 時仍正確。
 - Android 模擬器以 Proxy 模式對桌面查驗端完成一次（附上 log 摘要，不含明文）。
+- Android 當查驗端：兩個模擬器（或模擬器與桌面持有端）以 Proxy 模式完成一次。
+- Noise：prologue 不同或回應方金鑰不同時握手失敗；通道中途竄改一個位元組時中止。
 
 ### WP6 zkTLS 查驗頁、即時模式與存證（Claude）
 
-範圍：`core/zktls/`（`ZkTlsProfile`、描述檔清單、`ZkTlsSession`（p4-zkp.md 第 5.2 節的請求 JWS、同意資料、揭露規劃）、`WebProofCredentials`（vct `web-proof:1` 與 `web-record:1`））；test-servers 與桌面的查驗端、可部署到使用者主機的 notary 服務；學信網與移民署查驗頁描述檔（以真實回應在本機核對，描述檔只含版型）。
+範圍：`core/zktls/`（`ZkTlsProfile`、描述檔清單、`ZkTlsSession`（p4-zkp.md 第 5.2 節的請求 JWS、同意資料、揭露規劃）、`ZkTlsTransports`（wss、區域網路、中繼）、`WebProofCredentials`（vct `web-proof:1` 與 `web-record:1`））；查驗端（test-servers、桌面、Android）、可部署到使用者主機的中繼與 notary 服務；學信網與移民署查驗頁描述檔（欄位名稱沿用 P3，以真實回應在本機核對，描述檔只含版型）。
 
-驗收：學信網即時出示（手機為持有者、電腦版為查驗方）；notary 簽發網頁證明憑證並以一般 SD-JWT VC 出示與驗證；裝置證明紀錄在 Android 產生並由桌面查驗顯示 T3 與「不是零知識證明」。
+里程碑：
+
+- M6a（過渡方案）：電腦版與測試伺服器當查驗方，wss 路徑。
+- M6b（目標）：Android 當查驗方。查驗方在同一個區域網路開啟 WebSocket 伺服器（只綁私有位址），或連到中繼；中繼（`test-servers` 內的可部署實作）以 `room` 配對、只轉送位元組、每個房間有大小與時間上限。
+
+驗收：學信網即時出示三次（手機為持有者；查驗方分別是電腦版、同網路的另一支手機、經中繼的另一支手機）；notary 簽發網頁證明憑證並以一般 SD-JWT VC 出示與驗證；裝置證明紀錄在 Android 產生並由桌面查驗顯示 T3 與「不是零知識證明」。
 
 ### WP7 OpenAC 年齡證明（引用 Bonds）
+
+OpenAC 是可替換的後端之一（p4-zkp.md 第 2 節 D5），先引入是因為電路與資產現成。它也是 WP0 完成後第一個端對端測試：從資產下載、SHA-256 比對、uniffi 呼叫、Android 打包到自驗，整條管線先用它跑通，WP3b、WP5 再沿用。對 `predicate.rs` 或 zkID patch 的任何修改由 Claude 審查（p4-circuits.md 第 1.3 節）。
 
 原生部分（Codex）：`native/openac-age/**`、`native/diw-zk-ffi/src/openac.rs`。
 
@@ -323,7 +352,7 @@ Kotlin 部分（Codex 寫包裝與測試，Claude 寫流程）：`core/profile/b
 
 ### WP9 App 整合與 UI（Claude）
 
-依 p4-zkp.md 第 11 節：文件詳情、加入證件、使用、查驗、設定的「零知識證明」頁、同意畫面的洩漏說明、證據卡、紀錄；新增 `ZkModel` 管理背景證明與進度；截圖以 `uiScreenshots` 更新。
+依 p4-zkp.md 第 11 節：文件詳情、加入證件、使用、查驗（Android 與電腦版的官方網站即時查驗）、設定的「零知識證明」頁（含自架主機）、算力不足時的選擇畫面（p4-zkp.md 第 8 節）、同意畫面的洩漏說明、證據卡、紀錄；新增 `ZkModel` 管理背景證明與進度；截圖以 `uiScreenshots` 更新。
 
 ### WP10 驗收與文件（Claude）
 

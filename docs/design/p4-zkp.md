@@ -1,6 +1,6 @@
 # P4 零知識證明：總體設計與約定
 
-撰寫日期：2026-10-16。狀態：設計定稿前的提案，實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
+撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
 
 標記：**【確認】** 已讀過原始碼、規格或實測；**【推論】** 依已知資料推論，尚待工作包實測。
 
@@ -12,23 +12,21 @@ P4 要讓錢包與查驗端都能產生與驗證四種零知識證據，全部�
 |---|---|---|---|---|
 | zkPDF | 某機關簽章的 PDF，第 1 頁在指定標籤之間寫著這些值（或值滿足述詞），不交出整份文件 | Noir 電路，Barretenberg UltraHonk（零知識版本） | 福州大學學籍（在學）證明；大陸國家移民管理局出入境記錄、通行證與居住證關聯證明 | 產生衍生憑證時做一次，之後每次出示重用 |
 | zkTLS | 官方查驗頁在一次真實的 TLS 連線中回了這些內容 | TLSNotary（alpha.15，Proxy 模式為預設） | 學信網學籍在線驗證報告；台灣移民署入出國日期證明書查驗頁 | 出示當下由查驗方一起執行（即時模式） |
-| 年齡證明（OpenAC） | 隱藏的出生日期不晚於查驗方給的日期 | 直接引用 Bonds 的 OpenAC 年齡述詞（zkID `jwt_2k` 與 `show`，Spartan2） | TWDIW 有生日欄位的卡片、Bonds 身分證卡 | 出示當下 |
+| 年齡證明（OpenAC） | 隱藏的出生日期不晚於查驗方給的日期 | 引用 Bonds 的 OpenAC 年齡述詞（zkID `jwt_2k` 與 `show`，Spartan2）；是可替換的後端之一，也是第一個端對端測試 | TWDIW 有生日欄位的卡片、Bonds 身分證卡 | 出示當下 |
 | mdoc ZK（Longfellow） | ISO mdoc 的指定欄位（如 age\_over\_18）由發行端簽過，隱藏 MSO 與簽章 | Multipaz `multipaz-longfellow` | 測試發行端的 mDL、PID | 出示當下 |
 
 離線時，zkTLS 無法即時執行，改用兩種非即時證據（已於 2026-10-11 決定）：裝置證明的 TLS 紀錄（T3，畫面寫明「不是 zkTLS」），以及使用者自架 notary 簽發的網頁證明憑證（T3，持有人控制的 notary 對第三方等同自我聲明）。
 
-## 2. 需要你決定的事
+## 2. 決定（2026-10-16）
 
-未回覆前，各工作包依「建議」進行；這些選擇都可以之後改變而不必重做電路以外的部分。
-
-| # | 問題 | 選項 | 建議與理由 |
+| # | 問題 | 決定 | 落實方式 |
 |---|---|---|---|
-| D1 | zkPDF 第一版要隱藏到什麼程度 | A. 隱藏頁面內容串流與 QR 影像，字型與 ToUnicode 對照表公開（查驗方可推得頁面用到哪些字，但不知道順序與欄位）；B. 連字型一起隱藏 | A。B 需要在電路內多算約 100 KB 的 SHA-256，手機做不到【推論】；B 留給桌面版的「高隱私模式」 |
-| D2 | zkPDF 證明系統 | A. Noir＋UltraHonk；B. circom＋Spartan2（與 OpenAC 同一套） | A。解壓縮需要動態讀寫陣列，Noir 支援得較好；UltraHonk 的驗證金鑰只有數 KB，手機查驗可行，Spartan2 的年齡驗證金鑰解壓後 432 MB |
-| D3 | 手機做不出 zkPDF 時 | A. 在電腦版產生 `.zkpdf` 證明檔後匯入手機；B. 送到你的低配置主機產生 | A。證明只在產生衍生憑證時做一次，電腦版產生後由文件指紋對上手機的同一份文件；B 會讓主機看到整份文件，只在你明確選擇時開放 |
-| D4 | zkTLS 即時模式的查驗方在哪裡跑 | A. 先做電腦版與測試伺服器（也可部署到你的主機）當查驗方，手機當持有者；B. 同時做手機當查驗方（需要中繼） | A。手機對手機需要雙方都能連網且要中繼伺服器轉送 TLS 封包，列為後續 |
-| D5 | OpenAC 年齡證明的電路與金鑰 | A. 直接使用 Bonds `openac-age-v1` 發布的檔案（SHA-256 釘選）；B. 自己重新產生並託管 | A（你在 2026-10-16 指示先引用 Bonds）。之後若 Bonds 撤下檔案，再以同一個 zkID commit 重建並比對 SHA-256 |
-| D6 | 交給 Codex 的工作包 | 見 [p4-work-packages.md](p4-work-packages.md) 第 2 節 | 建置、原生綁定、電路與 Multipaz 整合交給 Codex；信任判定、證據綁定、版型描述檔（需要真實樣本）與 UI 由 Claude 負責 |
+| D1 | zkPDF 第一版要隱藏到什麼程度 | 接受建議：隱藏頁面內容串流與 QR 影像，字型與 ToUnicode 對照表公開 | 洩漏分析見 p4-circuits.md 第 3.9 節；連字型一起隱藏留給之後的「高隱私模式」 |
+| D2 | zkPDF 證明系統 | 接受建議：Noir＋UltraHonk（零知識版本） | p4-circuits.md 第 1.1 節 |
+| D3 | 裝置算力不足時 | 不擋下，提示後由使用者決定 | 第 8 節：算力檢查只給估計與建議，畫面列出「仍在這台裝置產生」「在電腦版產生後匯入」「送到自架主機產生」「不加零知識證據」，各寫明代價 |
+| D4 | zkTLS 即時模式的查驗方 | 電腦版與測試伺服器當查驗方只是過渡；目標是手機也能當查驗方 | 第 5.2 節：持有端與查驗端之間改用端對端加密通道，可走同一個區域網路或只轉送密文的中繼；WP6 分成 M6a（過渡）與 M6b（手機查驗方），兩者都在 P4 完成 |
+| D5 | OpenAC 年齡證明 | Bonds 的 OpenAC 只是其中一種電路；因為有現成電路與資產，先引入並當作第一個端對端測試 | 第 4 節：證明後端以 `ZkProofEngine` 抽象，不綁定 OpenAC；WP7 是原生建置管線（WP0）完成後第一個端對端測試 |
+| D6 | 分工 | 大致接受；電路細節仍由 Claude 管控；部分解析參考 P3 已支援的文件解析 | Noir 電路與 OpenAC 的電路修補由 Claude 撰寫或審查，Codex 只做證明器、建置與綁定（p4-work-packages.md 第 1.1 節）；zkPDF 版型的欄位與錨點由 P3 解析器產生（p4-circuits.md 第 3.11 節） |
 
 ## 3. 範圍
 
@@ -36,7 +34,7 @@ P4 要讓錢包與查驗端都能產生與驗證四種零知識證據，全部�
 
 - 共用的 ZK 原生執行環境（Rust 工作區、uniffi 綁定、Android 與桌面）、電路與金鑰的下載與釘選、裝置分級與退回。
 - zkPDF：版型描述檔、遮蔽套件、Noir 電路、持有端產生與查驗端驗證、衍生憑證的證據與揭露。
-- zkTLS：TLSNotary 持有端（Android、桌面）與查驗端（桌面、測試伺服器），查驗頁描述檔，即時模式；裝置證明紀錄與自架 notary 的網頁證明憑證。
+- zkTLS：TLSNotary 持有端（Android、桌面）與查驗端（Android、桌面、測試伺服器），端對端加密通道（區域網路、中繼），查驗頁描述檔，即時模式；裝置證明紀錄與自架 notary 的網頁證明憑證。
 - OpenAC 年齡證明：引用 Bonds，含 Bonds 請求 QR、證明包與 BLE、HTTPS 傳送；查驗端同樣支援。
 - Longfellow：`mso_mdoc_zk` 的出示（OpenID4VP、ISO 18013-5 近距離、DC API）與查驗。
 
@@ -71,6 +69,7 @@ native/ (Rust workspace，新)
   circuits/pdf_text_v1   Noir 原始碼（電路本身）
 ```
 
+- 證明後端不綁定特定電路：`ZkProofEngine` 以後端名稱（`noir-ultrahonk`、`openac-spartan2`、`tlsn`、`longfellow`）與電路識別碼區分，之後新增或替換電路（例如以 Noir 自建的年齡述詞）不改呼叫端。OpenAC 先引入是因為已有可用的電路與資產，可以最早驗證原生建置、資產下載與 Android 打包整條管線（D5）。
 - uniffi 產生的 Kotlin 綁定使用 JNA，同一份程式碼在 Android 與桌面 JVM 都能用，所以綁定放在 `core/src/jvmCommonMain`，不必寫兩份 expect／actual。原生函式庫：Android 打包 `arm64-v8a` 與 `x86_64`（模擬器）；桌面打包 linux-x86\_64、windows-x86\_64、macos-aarch64。【推論：Windows 的 barretenberg 與 tlsn 交叉編譯需在 WP0 確認】
 - Longfellow 由 Multipaz 提供，不經過 `native/`。Multipaz 的 Longfellow 只有 Android arm64-v8a、x86\_64 與 JVM（macOS、linux-x86\_64），Windows 桌面版顯示為停用列。【確認：Maven 上有 `org.multipaz:multipaz-longfellow:0.101.0` 的 android 與 jvm 版本】
 - 標準路徑既有的 `ResponseBuilder.findZkSystem` 與 `PresentationVerifier(zkSystemRepository)` 已能處理 `mso_mdoc_zk`，只是沒有註冊任何 ZkSystem；P4 補上註冊，不改標準流程。【確認：`core/.../oid4vp/ResponseBuilder.kt` 第 188–215 行】
@@ -82,7 +81,7 @@ native/ (Rust workspace，新)
 | `core/zk` | 能力偵測、資產清單與下載驗證、`ZkProofEngine` 介面、執行緒與記憶體檢查 | 不含任何文件、網站或卡片的業務邏輯 |
 | `core/zk/native`（jvmCommonMain） | uniffi 產生的綁定與薄包裝 | 不手改產生的檔案；包裝只做型別轉換與錯誤對應 |
 | `core/document/zkpdf` | 版型描述檔、遮蔽規劃、SHA-256 中間狀態、遮蔽套件、查驗端的結構檢查與輸出解碼 | 不在這裡驗 CMS 或信任，改呼叫既有 `DocumentInspector` 與 `TrustRegistry` |
-| `core/zktls` | 查驗頁描述檔、即時模式訊息、揭露規劃、網頁證明憑證與裝置證明紀錄 | 不放 TWDIW、Bonds 方言 |
+| `core/zktls` | 查驗頁描述檔、即時模式訊息、端對端加密通道（Noise）與傳輸路徑、揭露規劃、網頁證明憑證與裝置證明紀錄 | 不放 TWDIW、Bonds 方言 |
 | `core/profile/bonds/BondsAgeProof*` | Bonds 年齡證明的請求 QR、證明包、驗證 | 方言只在 Bonds 擁有的 session 生效 |
 | `native/` | 證明與驗證的密碼學、電路 | 不做 I/O 決策（下載、存檔、網路連線目標由 Kotlin 決定，tlsn 的網路連線除外） |
 
@@ -125,11 +124,21 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 
 即時模式（查驗方自己參與 TLS 連線）：
 
-1. 查驗方顯示 QR 或連結 `diw-zktls://v1?request=<JWS>`。JWS 的 header `typ` 為 `zktls-req+jwt`，以查驗方金鑰簽章（`x5c` 或 `kid` 指向 DID），信任判定沿用 OpenID4VP 的查驗方規則。payload：`sid`、`endpoint`（`wss://`，只接受 https 對應的 wss）、`profile`（查驗頁描述檔識別碼）、`fields`（要揭露的欄位名）、`nonce`（至少 16 bytes 隨機）、`purpose`、`mode`（`proxy`、`mpc`）、`iat`、`exp`（最長 10 分鐘）。
+1. 查驗方顯示 QR 或連結 `diw-zktls://v1?request=<JWS>`。JWS 的 header `typ` 為 `zktls-req+jwt`，以查驗方金鑰簽章（`x5c` 或 `kid` 指向 DID），信任判定沿用 OpenID4VP 的查驗方規則。payload：`sid`、`transport`（見下）、`ck`（查驗方這次的 X25519 公鑰，base64url）、`profile`（查驗頁描述檔識別碼）、`fields`（要揭露的欄位名）、`nonce`（至少 16 bytes 隨機）、`purpose`、`mode`（`proxy`、`mpc`）、`iat`、`exp`（最長 10 分鐘）。
 2. 錢包顯示同意畫面：查驗方身分、目標網站、會揭露與不會揭露的內容、需要使用者輸入的項目（例如圖形驗證碼）。
 3. 需要準備步驟時（圖形驗證碼、cookie），錢包以內嵌頁面取得，內容只存在記憶體。
 4. 錢包連到 `endpoint`，以 tlsn 執行 Proxy（預設）或 MPC 模式；請求內的證號、驗證碼、cookie 一律不揭露。
 5. 錢包依描述檔計算揭露範圍並送出；查驗方驗證後顯示結果。查驗方在 Proxy 模式下自己連線到目標網站，所以目標網站看到的是查驗方的 IP。
+
+持有端與查驗端之間的通道（D4，手機也能當查驗方）：
+
+- 通道一律端對端加密：Noise `NK_25519_ChaChaPoly_SHA256`，回應方靜態公鑰為請求內的 `ck`，prologue 為請求 JWS 的 SHA-256，所以通道綁定到這一次已簽章的請求。傳輸層只負責搬運密文，不參與信任判定。
+- `transport` 是陣列，列出查驗方可用的路徑，錢包依序嘗試：
+  - `{"type":"wss","url":"wss://…"}`：查驗方是伺服器或電腦版（M6a，過渡方案）。
+  - `{"type":"lan","host":"<IPv4 或 IPv6>","port":<埠>}`：查驗方手機在同一個區域網路開啟 WebSocket 伺服器（明文 ws，安全性來自 Noise）。只接受私有位址。
+  - `{"type":"relay","url":"wss://…","room":"<隨機 16 bytes base64url>"}`：雙方都連到中繼，中繼以 `room` 配對後只轉送位元組，看不到內容。中繼可由使用者的主機或測試伺服器提供（`test-servers` 內附可部署的實作），不需要信任。
+- Proxy 模式下查驗方手機要能連到目標網站；MPC 模式的傳輸量大（數十 MB【推論】），手機查驗方預設 Proxy。BLE 頻寬不足，P4 不採用；WP1 量測後再評估 Proxy 模式小頁面是否可行。
+- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。
 
 離線與存證：
 
@@ -177,17 +186,22 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 
 zkPDF 的完整洩漏分析見 p4-circuits.md 第 3.9 節。同意畫面要以一句話列出主要洩漏，例如「查驗方可得知文件使用了哪些字元，但不知道排列與欄位」。
 
-## 8. 裝置分級與退回
+## 8. 裝置分級與使用者選擇
 
-| 等級 | 條件（初始值，WP1 實測後調整） | 可在本機做 |
+| 等級 | 條件（初始值，WP1 實測後調整） | 預設建議 |
 |---|---|---|
-| A | arm64-v8a 且實體記憶體至少 8 GB | 全部 |
-| B | arm64-v8a 或 x86\_64，記憶體至少 6 GB | Longfellow、zkTLS、OpenAC Show 與 Prepare（記憶體峰值 2.27 GiB）、zkPDF（若 WP1 證明 6 GB 可行） |
-| C | 其他（含 32 位元 ARM、記憶體不足、原生函式庫載入失敗） | 只做驗證（zkPDF、Longfellow 的驗證金鑰小）；產生證明改到電腦版，或改用一般選擇性揭露並告知隱私較低 |
+| A | arm64-v8a 且實體記憶體至少 8 GB | 在這台裝置產生 |
+| B | arm64-v8a 或 x86\_64，記憶體至少 6 GB | Longfellow、zkTLS、OpenAC（記憶體峰值 2.27 GiB）在這台裝置產生；zkPDF 依 WP1 的量測結果建議 |
+| C | 其他（含 32 位元 ARM、記憶體不足） | 建議在電腦版產生 |
 
-- 開始證明前檢查可用記憶體與磁碟；證明在背景執行，可取消，逾時（預設 zkPDF 10 分鐘、OpenAC 3 分鐘、zkTLS 2 分鐘）就停止並保留可重試狀態。
+- 等級只決定「建議」，不禁止（D3）。開始證明前，`ZkCapability` 依電路的量測資料估計記憶體峰值、時間與下載大小，與裝置可用的記憶體、磁碟比較，算力不足時顯示選擇畫面：
+  - 仍在這台裝置產生：寫明預估時間與記憶體、可能被系統中止、可隨時取消；
+  - 在電腦版產生後匯入：電腦版匯出 `.zkpdf`（或其他證據檔），手機以文件 SHA-256 對上同一份文件後匯入；
+  - 送到自架主機產生（只有 zkPDF；設定裡加入主機後才出現）：主機會看到整份文件，以 `RiskConfirmDialog` 列出風險，勾選後才送出；主機以與電腦版相同的原生程式庫在無頭模式執行，回傳的證明在手機上先驗證再使用；
+  - 不加零知識證據：衍生憑證照一般方式產生，並寫明隱私較低。
+- 只有原生函式庫無法載入或架構不支援（沒有對應 ABI）時才無法在本機產生；畫面寫明原因，其他選項照常提供。驗證不受等級限制。
+- 證明在背景執行，可取消，逾時（預設 zkPDF 10 分鐘、OpenAC 3 分鐘、zkTLS 2 分鐘，使用者選擇「仍在這台裝置產生」時改為 30 分鐘）就停止並保留可重試狀態。
 - Android 以前景服務執行長時間證明，避免被系統終止【推論】；原生記憶體不受 `largeHeap` 影響。
-- 桌面版是所有證明的退回位置：zkPDF 證明產生後匯出 `.zkpdf`，手機以文件 SHA-256 對上同一份文件後匯入。
 
 ## 9. 電路與金鑰資產
 
@@ -218,9 +232,9 @@ Kotlin 介面以 p4-work-packages.md 為準，這裡只列共同規則：
 
 依 AGENTS.md 規則 9、10，不另開專區：
 
-- 文件分頁：文件詳情的「產生 zkPDF 證明」在有對應版型時啟用，否則維持停用列並寫明原因（沒有對應版型、文件已被修改、裝置不支援時改寫「請在電腦版產生」）。產生衍生憑證時多一個選項「加入 zkPDF 證據」。「產生 zkTLS 證明」在文件有對應查驗頁時啟用。
+- 文件分頁：文件詳情的「產生 zkPDF 證明」在有對應版型時啟用，否則維持停用列並寫明原因（沒有對應版型、文件已被修改）。算力不足時不停用，改顯示第 8 節的選擇畫面。產生衍生憑證時多一個選項「加入 zkPDF 證據」。「產生 zkTLS 證明」在文件有對應查驗頁時啟用。
 - 使用分頁：「年齡證明（零知識）」掃描 Bonds 年齡請求 QR；「以官方網站證明（zkTLS）」掃描查驗方 QR。
-- 查驗分頁：查驗結果的證據卡新增 zkPDF、zkTLS、裝置證明紀錄、OpenAC、Longfellow；電腦版新增「官方網站即時查驗」；年齡查驗產生 Bonds 相容 QR。
+- 查驗分頁：查驗結果的證據卡新增 zkPDF、zkTLS、裝置證明紀錄、OpenAC、Longfellow；Android 與電腦版都有「官方網站即時查驗」；年齡查驗產生 Bonds 相容 QR。
 - 加入證件畫面的「年齡證明（零知識）」與文件畫面的兩個停用列，在功能完成後改為啟用。
 - 設定：新增「零知識證明」頁，顯示裝置等級、已下載的資產與大小、刪除、各後端版本。
 - 證據卡沿用判定卡設計，「部分」不可看起來像「通過」；ZK 證據另以文字標示「零知識證明」，不用新顏色。
@@ -228,7 +242,7 @@ Kotlin 介面以 p4-work-packages.md 為準，這裡只列共同規則：
 
 ## 12. 驗收（P4 整體）
 
-- 中階 Android 機（等級 B）完成：一次 zkTLS 即時出示（學信網，電腦版當查驗方）、一次 OpenAC 年齡證明出示並由本 App 與 Bonds 查驗通過、一次 Longfellow mDL 年齡出示並驗證。
+- 中階 Android 機（等級 B）完成：zkTLS 即時出示（學信網）兩次，一次電腦版當查驗方、一次另一支手機當查驗方（區域網路與中繼各一次）；一次 OpenAC 年齡證明出示並由本 App 與 Bonds 查驗通過、一次 Longfellow mDL 年齡出示並驗證。
 - zkPDF：福州大學在學證明產生證據（手機或電腦版，畫面標明在哪裡產生），另一台裝置查驗通過，只揭露選定欄位；竄改遮蔽套件的任一位元組、換用他人的 `cnf`、改錨點序數都會被拒絕。
 - 所有負向測試列在 p4-circuits.md 的測試清單，並在 `test-servers` 以合成文件與測試 PKI 執行。
 - 驗收紀錄寫在 `docs/acceptance/p4-acceptance.md`。
@@ -237,7 +251,8 @@ Kotlin 介面以 p4-work-packages.md 為準，這裡只列共同規則：
 
 | 風險 | 影響 | 對策 |
 |---|---|---|
-| zkPDF 在手機的記憶體與時間 | 等級 B 以下做不出來 | WP1 先量測；證明只做一次；電腦版退回 |
+| zkPDF 在手機的記憶體與時間 | 等級 B 以下可能做不出來 | WP1 先量測；證明只做一次；由使用者選擇本機、電腦版或自架主機（第 8 節） |
+| 手機查驗方的連線 | 兩支手機不在同一網路、電信商 NAT | 區域網路與中繼兩條路徑；中繼只轉送密文，可自架 |
 | TLSNotary 仍是 alpha，行動 SDK 未發布，TLS 1.3 暫停 | 目標網站改 TLS 1.3 就不能用；API 變動 | 釘選 commit；描述檔記錄 TLS 版本；網站升級時顯示停用原因 |
 | Barretenberg 預設的 UltraHonk 不是零知識版本【推論】 | 證明可能洩漏私密輸入 | WP1 確認 bb 的零知識設定，驗收時以版本與參數記錄 |
 | OpenAC 資產大（安裝後約 1.25 GB），峰值 2.27 GiB | 低階機無法使用 | 下載前同意、可刪除、裝置分級 |
