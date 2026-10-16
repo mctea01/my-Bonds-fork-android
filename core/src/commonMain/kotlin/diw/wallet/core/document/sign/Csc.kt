@@ -5,6 +5,7 @@ import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.int
 import diw.wallet.core.util.long
+import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
@@ -175,8 +176,13 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             }.getOrNull()
         }
         val oauth = (i.oauth2 ?: issuer)?.trimEnd('/')
-        (fromMetadata ?: oauth?.let { "$it/oauth2/authorize" to "$it/oauth2/token" }
-            ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")).also { endpoints = it }
+        val pair = fromMetadata ?: oauth?.let { "$it/oauth2/authorize" to "$it/oauth2/token" }
+            ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")
+        val allowTestLocalhost = service.environment == CscEnvironment.TEST
+        if (!isAcceptableEndpoint(pair.first, allowTestLocalhost) ||
+            !isAcceptableEndpoint(pair.second, allowTestLocalhost)
+        ) throw CscException("遠端簽章 OAuth 授權與 Token 端點必須使用 HTTPS（本機測試環境除外）")
+        pair.also { endpoints = it }
     }
 
     /**
@@ -239,6 +245,9 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         }
         val o = parse(r, "取得存取權杖")
         val access = o.str("access_token") ?: throw CscException("遠端簽章服務沒有回傳存取權杖")
+        if (!o.str("token_type").equals("Bearer", true)) {
+            throw CscException("遠端簽章服務未回傳 Bearer 型別的存取權杖")
+        }
         return CscToken(access, o.long("expires_in")?.let { Clock.System.now() + it.seconds })
     }
 
