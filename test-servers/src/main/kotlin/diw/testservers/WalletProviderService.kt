@@ -22,6 +22,7 @@ import org.multipaz.util.fromBase64
 import org.multipaz.util.toBase64Url
 import org.multipaz.webtoken.buildJwt
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * Test wallet provider (TEST environment). Vouches for wallet instances and their keys.
@@ -63,6 +64,20 @@ class WalletProviderService(
             put("wallet_attestation", jwt)
             put("client_id", clientId)
         }
+    }
+
+    /** Test-only signing endpoint; the target issuer must trust this signing certificate. */
+    suspend fun clientAssertion(body: JsonObject): JsonObject {
+        val id = body.str("client_id") ?: throw ProtocolException("invalid_request", "client_id required")
+        val aud = body.str("audience") ?: throw ProtocolException("invalid_request", "audience required")
+        if (aud != "$baseUrl/issuer") throw ProtocolException("invalid_request", "Unregistered authorization server")
+        val jwt = buildJwt(type = "JWT", key = pki.walletProviderSigner, expiresIn = 5.minutes) {
+            put("iss", id)
+            put("sub", id)
+            put("aud", aud)
+            put("jti", PlatformCrypto.randomBytes(16).toBase64Url())
+        }
+        return kotlinx.serialization.json.buildJsonObject { put("client_assertion", jwt) }
     }
 
     suspend fun keyAttestation(body: JsonObject): JsonObject {
