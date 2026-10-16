@@ -66,6 +66,50 @@ object BuiltInPublicRoots {
     val all: List<Root> by lazy {
         listOf(
         Root(
+            name = "SmartCA RSA CA1",
+            owner = "SmartCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "8F5CFC86EF425D1DA9931AF41D76411F2748135F96F7792CCDE731F1998A109C",
+            b64 = "MIIDljCCAn6gAwIBAgINAOeH+lBfkpD7WqhbKTANBgkqhkiG9w0BAQsFADBXMQswCQYDVQQGEwJDTjENMAsGA1UECB4EbF+CzzEN" +
+            "MAsGA1UEBx4EU1dOrDEQMA4GA1UEChMHU21hcnRDQTEYMBYGA1UEAxMPU21hcnRDQSBSU0EgQ0ExMCIYDzIwMTkwMTAzMTYwMDAw" +
+            "WhgPMjAyODEyMzExNjAwMDBaMFcxCzAJBgNVBAYTAkNOMQ0wCwYDVQQIHgRsX4LPMQ0wCwYDVQQHHgRTV06sMRAwDgYDVQQKEwdT" +
+            "bWFydENBMRgwFgYDVQQDEw9TbWFydENBIFJTQSBDQTEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDWI+FAg68msExn" +
+            "Rj653wwRkrv/4AN4qvITlZ8+wi4ydn1wIqSvtfIyKX2fCpx75Ue0hrXK9meRBNAnLKP+OL0P+aCVypB/UZ5WRqDO9YThx+KOHoot" +
+            "8Jl8LsLvzvZA4nFalUZd9J//3xp4qA6hkV1RxzbpQ1k/HUTq3J9IdT0Qe2R+wrD1xvcPvhZZvz57GZ0zSsiYlq2Q0FR6c6UCo91/" +
+            "28amfgUq3ku/qikYV2LLO1C3JpNg9riwReR7WtAm+9AhABsjKyNNCieaEmdCKihg8xkInx9izfFaU/VnQeNs0KTcJF1NCQ2y9OJs" +
+            "Op0+PbVmdwB5uMpCETk/VgVuMuAPAgMBAAGjXTBbMAwGA1UdEwQFMAMBAf8wHQYDVR0OBBYEFJ6kT4fRf+ZRcjOsxHvrOhUoeeXu" +
+            "MB8GA1UdIwQYMBaAFJ6kT4fRf+ZRcjOsxHvrOhUoeeXuMAsGA1UdDwQEAwIBhjANBgkqhkiG9w0BAQsFAAOCAQEAAe24Z8rGNHGh" +
+            "6hXMLmvYMv/DTr6d5A4mb7JK/SDa5ITFrsMLnhK57vG1NAondWI2CrrQEoiJqS4Q1j4HERN7M0U/x3mn3Tu0HLmfSMbOcE3jhqV3" +
+            "0RgnAyIzSIN7YKndVDJSfMNZnDSU0Rpn0Tgp6TytIIfKHESSeeTP7JGFZRHR4oA9zt4lHDRVs04JkWuAjpR6+oR3lP8y5WzNsgES" +
+            "5ubuHsYcrcKJXGKp63P1WImyVpChl7U5Mps5EGEoa94GEABi7crnsSF4UhiWJYu+LQT1MNQK91mFQdU7u1g2oErYX0T+Fkrib3hX" +
+            "Po4R8Kws6DXN5AEnL63peiVd0KITlg==",
+        ),
+        Root(
+            name = "eSign Root CA",
+            owner = "e簽寶 eSign",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06",
+            b64 = "MIIDrzCCApegAwIBAgIJAf3QQVXbkXkeMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAgFw0yNDEy" +
+            "MjcwMTQ0MDVaGA8yMDU0MTIyNzAxNDQwNVowZTELMAkGA1UEBhMCQ04xLDAqBgNVBAoMI2VTaWduIERpZ2l0YWwgQ2VydGlmaWNh" +
+            "dGUgQXV0aG9yaXR5MRAwDgYDVQQLDAdlU2lnbkNBMRYwFAYDVQQDDA1lU2lnbiBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOC" +
+            "AQ8AMIIBCgKCAQEAo3qYQPcNFaEv91D+ML8kQMzeQgZU5kuj22TP4hoRTXCe065LP8NU4ZrwwgB/PITo3tvJCSNbRLkRO8KALaew" +
+            "lt1yOQE9JhjQEDQtiYyoj1GPVVBOP+/WCUSGj0fw01cqaB3SL+IK/YdzXmxjg+HtO5ymqrMfv83crl09Tr5FLDCVpXYhMEOk8uZi" +
+            "GlriPLzEuB/QL4pA7BPxxs/b6bn8f7UakI0SaqhgwMnT0hogDm5xAkPdY88qxW1kjEc6afv51UzLZwwGwQ+a0ALZ+5cxFiaqbwxT" +
+            "IggzW2b1cRMgzqkyObri9gTPTtvMCw7FN9fcLSKk40qQ+1vNo53YMaoTPQIDAQABo2AwXjAdBgNVHQ4EFgQUbHUGroYs//nCFK+e" +
+            "z4NcKJ1TwfgwDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAUbHUGroYs//nCFK+ez4NcKJ1TwfgwDQYJ" +
+            "KoZIhvcNAQELBQADggEBAClkfwrzGB3NCcFmEAvx5a5QVpcoM2T2gXL7YGhgIB0bCA6BDtW9CHIg3irNG5Z3DmaJ4T3wPgSn1fmB" +
+            "hRA8RZTwDuM0BktZLc9jirE8Jm3KmGWL/DxiARDFbi66jQZrXf0xaLlrnp8QbVwVjzJpb/QLU281jl9mUhEEMhXVEHt0GWIzz/J2" +
+            "SWOv3PorihOt+3X8JrZmlXCe4AGQK0rVnpn8N+qxlM5mNHeAI7qhwkwtKt0n7r7WRobm2dhf0/4DseQYfcgqaeS2bFE72MSXh3AT" +
+            "pikyZjmvovml2Ws1us9NFxxgMtj2Vf5kv7dQr3OGdQPq3utddv311Zn+MzFL1ZM=",
+        ),
+        Root(
             name = "UCA Extended Validation Root",
             owner = "上海數字證書認證中心 SHECA",
             group = Group.MAINLAND_CHINA,
@@ -120,6 +164,35 @@ object BuiltInPublicRoots {
             "DMUIYs6Ao9Dz7GjevjPHF1t/gMRMTLGmhIrDO7gJzRSBuhjjVFc2/tsvfEehOjPI+Vg7RE+xygKJBJYoaMVLuCaJu9YzL1DV/pqJ" +
             "uhgyklTGW+Cd+V7lDSKb9triyCGyYiGqhkCyLmTTX8jjfhFnRR8F/uOi77Oos/N9j/gMHyIfLXC0uAE0djAA5SN4p1bXUB+K+wb1" +
             "whnw0A==",
+        ),
+        Root(
+            name = "CFCA ACS CA",
+            owner = "中國金融認證中心 CFCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 4096",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "602AC25AE09457EF83BE0A7A0572F03C47522B40CF2887AE5112DCAA92315DE7",
+            b64 = "MIIFlzCCA3+gAwIBAgIQQa7zz75EZFRPZPial/I5FzANBgkqhkiG9w0BAQsFADBVMQswCQYDVQQGEwJDTjEwMC4GA1UECgwnQ2hp" +
+            "bmEgRmluYW5jaWFsIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRQwEgYDVQQDDAtDRkNBIEFDUyBDQTAeFw0xNTA5MjMwMzI0MDha" +
+            "Fw0zNTA5MjgwMzI0MDhaMFUxCzAJBgNVBAYTAkNOMTAwLgYDVQQKDCdDaGluYSBGaW5hbmNpYWwgQ2VydGlmaWNhdGlvbiBBdXRo" +
+            "b3JpdHkxFDASBgNVBAMMC0NGQ0EgQUNTIENBMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA2FvCdOW7TF1MjdaKZmyk" +
+            "+H98ySeklKrumik09l1j6X3n15ii+K2FI7R9YauQw344sOH9wkE+ow8O+gj3L7QwqrZFtORTsufXRZtsWl3P9PpXFSKu2RLS7HUL" +
+            "MNk93R1lDuVUudwZt12AUZZa1Wxg47bXq415Z6Ws/CuEuKQodsrXpzGiqpPqcLkIRx7sE6y99AfyVS5A0e/8LpC5jTGep2ZlskgZ" +
+            "xU5nA/rEM42sUBh/nT4lFFXkq7y+mQ1JLSEDRVXOzxXQIAEIxsmB5hALMe4TterMHvPMoJUPYsSbF5Zr2npGZI3MEomYqDbbZqT+" +
+            "kbOeraUQ/l1IYMXEwviPL5RBY2xbNyZzKlepsC5fHukAgf1PJUhJ/OEjUVz+2ysOyjeLT5p+Lk+u3WDmavrQNmLaFLGzG0tl86FV" +
+            "P6RZ+kzjUiZAMu3Cx0FgAmqf72mjMk4V7YsfhhZk42zBwTiN1zpnrSBeU7ZfTxsws9GTIta55AM0sqHrCN32vVOoEzy+hWHfzJ58" +
+            "aE9/2kK8eiEpFIhIUEYuU6q4LZOGqNNWccMtrC/ZwmblyU8+ZrFaXGKGzBxH1K+o6iL9vTYfsC4SsCfKbiMHoujj5ru1fcpRrppQ" +
+            "UWPt9Nuxrlo3OwXpH1dAGc8/UEDtBPD/ONM57SVpCeHUJLZR7WpCPUG2d+R2AnMCAwEAAaNjMGEwHwYDVR0jBBgwFoAUEeF40zgg" +
+            "+u3r1iOWMKh9uZnbX/cwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFBHheNM4IPrt69YjljCofbmZ" +
+            "21/3MA0GCSqGSIb3DQEBCwUAA4ICAQDECZu0YlzbcAXr9JWTEbEP0C65XskOYSNBFodAjjqGunUyxhyyQc/BUAen0ClEf1OeuWj9" +
+            "YivQXMg2TGg6qr91Pp+bLH51M/rVNAgPIevnqCGFDbF8GqlrNJnevZHNilJYXmCDA6eJY7nkzf/ECcMdtMLTxoa+BRgh/x9d9YEL" +
+            "U1sIjUVg/V9t6KXACv1E4wMrhV30savEgKWqjtt2eJwz1tkN0qXIjah3Ey8zbtrqyI0tV/uRQWRGRIK1h4VunWEODOGb3HrQa2D4" +
+            "nraKXumCXWJtuO2g0U0ktxy4+s95zq/y53MsTG+cYtUyDoCwMA0QBAVztVnee4qzTbSfzoiXAu57lQWcPNkFVl8DIPDyImpa0v4c" +
+            "UoJLV4wedYFKDNQvt7yaqqbuF15D2MJq7lsEe3yybUGp2GPbwqEuNrS56D8mqYhE51QZusdoP/bTYnz9kUI4HKAziLqwmdNyg8g3" +
+            "dQwU3AAx6tsz6ZoncqU0Jhwcx/TGQ+3uDTP50De44FfGsTCZXGBLnwuog9cT64TGkB5Upp7DHyeErzHghh4I+Yb1bzSXfGgRsAGU" +
+            "HDdi6zZZA4I/Cmmpz4yBNGwLclyvOrD9xR0BfoiTAFk2DxGeebU17pK/xFi1ldh2uDvTKMQxh3CWusRG5wBkNjA9jmajHHDY9OEI" +
+            "FhALNbPmAu8D0Q==",
         ),
         Root(
             name = "CFCA EV ROOT",
@@ -389,6 +462,53 @@ object BuiltInPublicRoots {
             "FBZxhqHWWaRv8tZy3N34Qh8y7Cx0jxjVG+afkyB21rPyGM1eij40Qva4wsw9Uu+UuCQ=",
         ),
         Root(
+            name = "ROOT CERTIFICATE FOR GFA TRUST NETWORK",
+            owner = "國富安 GFA（中國國際電子商務中心 CIECC）",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "EC41B8C756092F7DB38CC83A99228945173B7B138DFBB8B3BE3714A2CED2F8AC",
+            b64 = "MIIEkzCCA3ugAwIBAgIQJ4bt0ckXPhlzA+YJIW+YmDANBgkqhkiG9w0BAQsFADCBjDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB0JF" +
+            "SUpJTkcxDjAMBgNVBAcMBUJFVERBMQ4wDAYDVQQKDAVDSUVDQzEaMBgGA1UECwwRR0ZBIFRSVVNUIE5FVFdPUksxLzAtBgNVBAMM" +
+            "JlJPT1QgQ0VSVElGSUNBVEUgRk9SIEdGQSBUUlVTVCBORVRXT1JLMB4XDTE2MDUyNDA3MzgzN1oXDTM2MDUyNDA3MzgzN1owgYwx" +
+            "CzAJBgNVBAYTAkNOMRAwDgYDVQQIDAdCRUlKSU5HMQ4wDAYDVQQHDAVCRVREQTEOMAwGA1UECgwFQ0lFQ0MxGjAYBgNVBAsMEUdG" +
+            "QSBUUlVTVCBORVRXT1JLMS8wLQYDVQQDDCZST09UIENFUlRJRklDQVRFIEZPUiBHRkEgVFJVU1QgTkVUV09SSzCCASEwDQYJKoZI" +
+            "hvcNAQEBBQADggEOADCCAQkCggEA8wqClOUc7IhdoRYlOueJEyh37E8/uqi1YUsKb1UKh2HybFAoI0J9MtvnFIKJATRHA4Qct1F0" +
+            "7lXgYr7zxMyysYqhbAh+UeVa9EfFWfZSpMXGiz7lNmES9BTevsiNLCud3ulCoT5abJpra4CK15xnsLNn5xHkIl6ZpuBQrjVFMW/N" +
+            "COj+KiUf/U/nkMVxOyUSFLSV7zGZYpFhrCnC/mzFFJPNID/CVOhfNx6UWlFiy54bGO5qsx4llu8zcJMhtR/8Ple4fujyzMJyEFlR" +
+            "gAuzvYnah8bT0WYqt3W6ZL7qiOzKDPBv5Hl1Xc0U7SqgIxoBn28LMbG9wMaHiSl+XJ5ABQIDAQABo4HvMIHsMDsGA1UdHwQ0MDIw" +
+            "MKAuoCyGKmh0dHA6Ly93d3cuZ2ZhcGtpLmNvbS5jbi9nZmEvY3JsL2dmYUNBLmNybDBPBgNVHSAESDBGMEQGBFUdIAAwPDA6Bggr" +
+            "BgEFBQcCARYuaHR0cDovL3d3dy5nZmFwa2kuY29tLmNuL2dmYS9wb2xpY3kvcG9saWN5LnBkZjAMBgNVHRMEBTADAQH/MB8GA1Ud" +
+            "IwQYMBaAFJinRRwpAa8KCfiSHFueC7R83XlOMB0GA1UdDgQWBBSYp0UcKQGvCgn4khxbngu0fN15TjAOBgNVHQ8BAf8EBAMCAYYw" +
+            "DQYJKoZIhvcNAQELBQADggEBADo0WH4SKrVu8NtcjfmFFvnAYxQuFO/2UIKNNM03jSG+BoN3I5eB87dAfjtPEbimwUVJ2Uz5/RD7" +
+            "/FT5IeuUjV4yBXCuvfxjPPH8bRRvmTZ/4vGOGl1EKztFpAE4KfrpwyI9TO8PpSeT5ws6i2zayV6X1W3ce7cOUm1tcQRoZI5hdNSr" +
+            "tjF/i3OPxNUu7EF6ynVJ8qhqwKPLBw45jrRH1b/uB12LHqAiSxCUJPwbzIxvJSOtDkb9VIWU9F3Rk7tNlSVgS4F3RAr0ZGyQDwXa" +
+            "p7TxyTFLoZuSEmP73FFxa6Fx6NQnf/oqb0roknRWNnXpfXgxWO730B0O5mTs2nxytFU=",
+        ),
+        Root(
+            name = "iTrusChina Class 2 Root CA - G3",
+            owner = "天威誠信 iTrusChina",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "E4319AF9A99C8772AEE3B940ADCBBA10DCF494FBCD3365152A62DAE7A8B1D4CE",
+            b64 = "MIIDxTCCAq2gAwIBAgIUPHAxfYunVGdrznimBG03KzlaMMEwDQYJKoZIhvcNAQELBQAwajELMAkGA1UEBhMCQ04xEzARBgNVBAoM" +
+            "CmlUcnVzQ2hpbmExHDAaBgNVBAsME0NoaW5hIFRydXN0IE5ldHdvcmsxKDAmBgNVBAMMH2lUcnVzQ2hpbmEgQ2xhc3MgMiBSb290" +
+            "IENBIC0gRzMwHhcNMjMwNDE4MDMxMjIwWhcNNDMwNDE3MDMxMjIwWjBqMQswCQYDVQQGEwJDTjETMBEGA1UECgwKaVRydXNDaGlu" +
+            "YTEcMBoGA1UECwwTQ2hpbmEgVHJ1c3QgTmV0d29yazEoMCYGA1UEAwwfaVRydXNDaGluYSBDbGFzcyAyIFJvb3QgQ0EgLSBHMzCC" +
+            "ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOPPShpVnJbMqqCw6Bz1kehnoPst9pkr0V9idOwU2oyS47/HjJXk9Rd5a9xf" +
+            "wkPO88trUpz54GmmwspDXjVFu9L0eFaRuH3KMha1Ak01citbF7cQLJlS7XI+tpkTGHEY5pt3EsQgwykfZl/A1jrnSkspMS997r2G" +
+            "im54cwz+mTMgDRhZsKK/lbOeBPpWtcFizjXYCqhwWktvQfZBYi6o4sHCshnOswi4yV1p+LuFcQ2ciYdWvULh1eZhLxHbGXyznYHi" +
+            "0dGNz+I9H8aXxqAQfHVhbdHNzi77hCxFjOy+hHrGsyzjrd2swVQ2iUWP8BfEQqGLqM1gKgWKYfcTGdbPB1MCAwEAAaNjMGEwHQYD" +
+            "VR0OBBYEFG/oAMxTVe7y0+408CTAK8hAuTyRMB8GA1UdIwQYMBaAFG/oAMxTVe7y0+408CTAK8hAuTyRMA8GA1UdEwEB/wQFMAMB" +
+            "Af8wDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3DQEBCwUAA4IBAQAbwg04rcDTbNtR7ndRsewNLu25/F9gUz6DihrM8r9OT3zPj8+a" +
+            "bZNIypo5eI7zl88RE0rFnPvPobCDEd/9G8ivt5O+m1OWMdCA2gHoH/+wnSao8EdO/ZUOCfBhezgVM0BcPn8oSsyfAAj/aLgY9YCS" +
+            "P5qYHNGFrOAdxXUzfF1OGkHI/7tYCzxNf3fufUul5d5d9H2uhtlTeTwBmQZWfiLdvDwfZ7oO6BzdAcbB9MtL2bmGStUPfAxn1Dc7" +
+            "HDprFsWZwwjl3dwwfr40QkKf0Jw1o0VWPC/qTeFPhCf4uML8su9W9u/TnuC4f4mpoKboizNKYrrtRXozCVE78s8VqePr",
+        ),
+        Root(
             name = "vTrus ECC Root CA",
             owner = "天威誠信 iTrusChina",
             group = Group.MAINLAND_CHINA,
@@ -434,6 +554,44 @@ object BuiltInPublicRoots {
             "6K2ir40zSbofitzmdHxghm+Hl3s=",
         ),
         Root(
+            name = "ZHCA RSA CA",
+            owner = "天津 CA（中環）ZHCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "B08CEC38DBD778D775824EAADEC928E3EBEF6D41CE0F55B50249305CD6F39CBA",
+            b64 = "MIIDPTCCAiWgAwIBAgIEAgzC3DANBgkqhkiG9w0BAQsFADAyMRQwEgYDVQQDDAtaSENBIFJTQSBDQTENMAsGA1UECgwEWkhDQTEL" +
+            "MAkGA1UEBhMCQ04wHhcNMjIwNDExMDkwOTIyWhcNNDIwNDExMDkwOTIyWjAyMRQwEgYDVQQDDAtaSENBIFJTQSBDQTENMAsGA1UE" +
+            "CgwEWkhDQTELMAkGA1UEBhMCQ04wggEgMA0GCSqGSIb3DQEBAQUAA4IBDQAwggEIAoIBAQCWlw2uzVNcEE6RR8I2dHMAuNx8KkKp" +
+            "AuG/msrDWRkskc0gCGOMoJQ9yLEp41kVQbczRVue+LQkVb5XNuYK0WJoU+lmLVH31MPiYqGBVZ+XmWwQ0puVebU2SS0L1meiQz+q" +
+            "tF8/RcdkhHrZgRywVHyPeoC9RREYUZ7WOVz1KLT0pXzcdXi2F01kpVthMAaNBMsq479GaHD4V30uc28yfdkIaYcmLtBLkW9uIfPR" +
+            "fBrwBaPd9z0ceuL9YUhhvSL/b4AJtkiXhfpPQGt4Z3+nwJWX0+KCD9ciwU5apnGVl2sHznNUNQPmtGTBvIdgcO3ISCynzljgZxDX" +
+            "3TFQFd0akgYbAgEDo10wWzAMBgNVHRMEBTADAQH/MAsGA1UdDwQEAwIBBjAfBgNVHSMEGDAWgBT9ceR01PuRKbfoAbTo32DeuqYs" +
+            "GjAdBgNVHQ4EFgQU/XHkdNT7kSm36AG06N9g3rqmLBowDQYJKoZIhvcNAQELBQADggEBAGRm4oOlc7yezBDgpzCGVEo2bbcNU7Vj" +
+            "f5e5dxbmrwbPd02TMA6kdQ3GKQlngSd1l/hlljRHPiWCPPaWy3QlTJ9IzFKbKKVHOJUkE3If9PzJUrWTNAfDFYRRzaqV157+EHXU" +
+            "C/JTV3Gd0lo+F4YO7afR2TQ51Su1LpnbaGJToBPtAcZdSlycIeSb5TVcNujutstSG+fw93ZIGAa8fuBYcrnGK4gLNBjqFmvcZ5Ny" +
+            "00qV4T3wesKgPTw9sPIVZp+YAtJPWce6bFNXUdrL2J/rM5LPBJZYzJhawzUJgPyWId8bfasrrWfanBm5cFeffU81KC+NFd+RqXU+" +
+            "VKSpC4/eKno=",
+        ),
+        Root(
+            name = "ROOTCA",
+            owner = "安徽 CA AHCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 1024",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "F9051BAADA2327B4CB033DB19694F6F2E0533BF4D888DD9F289F9D6EA67D5F0D",
+            b64 = "MIICFTCCAX6gAwIBAgIIaKv/xx62/QIwDQYJKoZIhvcNAQEFBQAwLjELMAkGA1UEBhMCQ04xDjAMBgNVBAoMBU9TQ0NBMQ8wDQYD" +
+            "VQQDDAZST09UQ0EwHhcNMTMwNjI0MTYwNDI0WhcNNDMwNjE3MTYwNDI0WjAuMQswCQYDVQQGEwJDTjEOMAwGA1UECgwFT1NDQ0Ex" +
+            "DzANBgNVBAMMBlJPT1RDQTCBnzANBgkqhkiG9w0BAQEFAAOBjQAwgYkCgYEAgpseQIvmJ9LxwsRZRlrVdCjguBIoeetLGf1mqSni" +
+            "X2JDRGXelqc8n9TXfg8ZKwQZ7oP9uXG6iqXQdK7rOkj+O3OX6tTJkhWWu/plroHPfrctu610GNOw3C8UH+8iccQ/wW0XJ0rFADCQ" +
+            "OEBb4O+yEJoHOFSh/0mr832vPtwfa00CAwEAAaM8MDowCwYDVR0PBAQDAgCGMAwGA1UdEwQFMAMBAf8wHQYDVR0OBBYEFBa1Xfcx" +
+            "P+I7anyK8UT4CcJ7cw/VMA0GCSqGSIb3DQEBBQUAA4GBAC56h+KGRdxnvabNuBzktHTQMz71/NNcb3jz41q6myeE8rZy1TKpcgzj" +
+            "HGx/LJjh8jyZE/U7E5wpa43m8rvZ/qjS1ATN7nGZ7dYlWjbCIY8nPPgv0avPdxPVyCwdwk8JaTkAORCXR822PiZcD9bGSvVI/3nT" +
+            "snvjYKbwMQMSk92e",
+        ),
+        Root(
             name = "GDCA TrustAUTH R5 ROOT",
             owner = "數安時代 GDCA",
             group = Group.MAINLAND_CHINA,
@@ -462,6 +620,59 @@ object BuiltInPublicRoots {
             "cIymSLumoRT2+1hEmRSuqguTaaApJUqlyyvdimYHFngVV3Eb7PVHhPOeMTd61X8kreS8/f3MboPoDKi3QWwH3b08hpcv0g==",
         ),
         Root(
+            name = "HBCA",
+            owner = "河北省電子認證 HBCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "8829892DF457F4F0C132BE59366B9A4FCF0BE7D51CBC389BE8E286704121DA36",
+            b64 = "MIID2TCCAsGgAwIBAgIQFJNNFGZoP9miR0E/JfnMjDANBgkqhkiG9w0BAQsFADB5MQswCQYDVQQGEwJDTjEOMAwGA1UECAwFSHVi" +
+            "ZWkxDjAMBgNVBAcMBVd1aGFuMTswOQYDVQQKDDJIdWJlaSBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDZW50ZXIgQ08g" +
+            "THRkLjENMAsGA1UEAwwESEJDQTAeFw0xNjEyMTYwOTM3NTJaFw0yNjEyMTQwOTM3NTJaMHkxCzAJBgNVBAYTAkNOMQ4wDAYDVQQI" +
+            "DAVIdWJlaTEOMAwGA1UEBwwFV3VoYW4xOzA5BgNVBAoMMkh1YmVpIERpZ2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5IENlbnRl" +
+            "ciBDTyBMdGQuMQ0wCwYDVQQDDARIQkNBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6oaa6bSqwboLurHmjj5NMIul" +
+            "BlLE+sFCHqg9N7Zm5xJGHaDbKwpe0ejIZZZmXml1OZ98vVoSrWK3GdavSKl+W2I9rrLq9F0i9sA7ZkLpAruQ4i271F1yWuo21Xgr" +
+            "x6HKph9aGUMFy8LB9KJBouzqvFNIp+J5BYhI5p4l62aZQAJg32Qm0TqtgqdGiBjoYd6ZpC7XOoviTKdzOpYpkRwiuki2ShMNC9iK" +
+            "pNuTPgHmEPDrpPxHKZax6zYwcONARGgWSY1nyVYBDiL6FKjN1EPXYRhnKRKRzCX7kMxs8gXESbPN41XHk6WRYP3d+B9qVuSWT9h/" +
+            "4ALY2NeVJsUidTyguQIDAQABo10wWzAfBgNVHSMEGDAWgBTJijdaz7ITFsbP7Bb6EDSv/PRoXTAMBgNVHRMEBTADAQH/MAsGA1Ud" +
+            "DwQEAwIBBjAdBgNVHQ4EFgQUyYo3Ws+yExbGz+wW+hA0r/z0aF0wDQYJKoZIhvcNAQELBQADggEBAKo4rq3zQ/u9J/iGzLUYslQa" +
+            "ReNbMbYqSyacVHDIlgGQ76/ab+bvmcvogDC7ll44F2ywMVICFonecwHTGdQNzdjGzuD/bHyskQyTMmaznCFrUJWIoyIKLObHPDpn" +
+            "XQ5XsjF700r8dOcWpGLMbQI3awqiIlmJmagZpC/CpwdIBezR4e8Sqv9oEE/WMlu+KCQnf6JwdzfhhdVMWzvjZxgBvRG2xLygUEjv" +
+            "muO12HST5rwoxoW+iA0GqJrujWmBx9IpKOwE/TAMXP0eff22t05nFjJy3IVDcar/cAY5pg+WjQpRCcHNXPmrNn6ftML0CZ3Lwc+Y" +
+            "KI3TwVG5hQeqedwn/es=",
+        ),
+        Root(
+            name = "ZJCA RSA InstantTrust Root CA G1",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "32FDE243370E439424CCD531861EDE1F0E1731C23A20E9AA325266E85E10C2CE",
+            b64 = "MIIGATCCBOmgAwIBAgIGBRacqLQwMA0GCSqGSIb3DQEBCwUAMIGCMQswCQYDVQQGEwJDTjE5MDcGA1UECgwwWmhlSmlhbmcgRGln" +
+            "aXRhbCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgQ28uLCBMdGQuMQ0wCwYDVQQLDARaSkNBMSkwJwYDVQQDDCBaSkNBIFJTQSBJbnN0" +
+            "YW50VHJ1c3QgUm9vdCBDQSBHMTAgFw0yNTA2MjAwOTIwNDlaGA8yMDU1MDYxOTA5MjA0OVowgYIxCzAJBgNVBAYTAkNOMTkwNwYD" +
+            "VQQKDDBaaGVKaWFuZyBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDby4sIEx0ZC4xDTALBgNVBAsMBFpKQ0ExKTAnBgNV" +
+            "BAMMIFpKQ0EgUlNBIEluc3RhbnRUcnVzdCBSb290IENBIEcxMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtJ+fUPfR" +
+            "1KBcl7veR6mSC1UfZb3VT8UDxELDuwFyJHnU45hd32767qrJE2wTp0LIJW3xYrB6CUIMwSA1GgDbTg4b4TYIk5/QjD5VEGclS5dM" +
+            "j5skWIAp24lKosSsRKvL1Jqj+wkk/iC2nr4cg4GCPzTvPHinExcb+s2val3ljWnxHxforsTm+uC3kIJSLpwV8uZGJqokL4hCJIly" +
+            "TAh4iR2Wv+IMjk8LdenEsmgxgsfo/PoLool+BT8IVKo7voGWeEouopQYGopvwxXAsijN63PWUM9ZSntXOgU2T/wI1s/fnFQ3H1fW" +
+            "uwDvw3wyjAYXwy7+91AFqQfqKoXmJwqC6QIDAQABo4ICdzCCAnMwDAYDVR0TBAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0O" +
+            "BBYEFM7UApCgAxUMM1aqNh/tO+4SbH7jMB8GA1UdIwQYMBaAFM7UApCgAxUMM1aqNh/tO+4SbH7jMIIBagYIKwYBBQUHAQEEggFc" +
+            "MIIBWDCBqQYIKwYBBQUHMAKGgZxsZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1aSkNBIFJTQSBJbnN0YW50VHJ1c3Qg" +
+            "Um9vdCBDQSBHMSxvdT1jQUNlcnRpZmljYXRlcyxvPXpqY2EsYz1jbj9jQUNlcnRpZmljYXRlO2JpbmFyeT9iYXNlP29iamVjdENs" +
+            "YXNzPWNlcnRpZmljYXRpb25BdXRob3JpdHkwgakGCCsGAQUFBzAFhoGcbGRhcDovL2NhbGRhcC56amNhLmNvbS5jbjozODkvY249" +
+            "WkpDQSBSU0EgSW5zdGFudFRydXN0IFJvb3QgQ0EgRzEsb3U9Y0FDZXJ0aWZpY2F0ZXMsbz16amNhLGM9Y24/Y0FDZXJ0aWZpY2F0" +
+            "ZTtiaW5hcnk/YmFzZT9vYmplY3RDbGFzcz1jZXJ0aWZpY2F0aW9uQXV0aG9yaXR5MIGkBgNVHR8EgZwwgZkwgZaggZOggZCGgY1s" +
+            "ZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1hcmwxLG91PUFSTERpc3RyaWJ1dGVQb2ludHMsbz16amNhLGM9Y24/YXV0" +
+            "aG9yaXR5UmV2b2NhdGlvbkxpc3Q7YmluYXJ5P2Jhc2U/b2JqZWN0Q2xhc3M9Y1JMRGlzdHJpYnV0aW9uUG9pbnQwDQYJKoZIhvcN" +
+            "AQELBQADggEBAJeuguY7erNe/cTXwzBlWfYAGpuTbhNKJmeX0MS9ixlABVSDVDmYAF2SjdtKCXnodxpfXT2cvZ7DjjcugejMm/Tv" +
+            "Vrwwz2SX+Cds09W/21lDEiphc+R488dvK+3YdsQ7lDX4ACLdtQcRbTYf1kMtV5hpLr8Z7bcpxxtCxZCUFmflTv7KGLOAFh456jOI" +
+            "Al9Dg0DQZplWjsfsoyPd+Rif/hw7jDO2YY4J5K2ZOLWbKyU9hz/ogwiFg0aYLfVtwHcsx8kOr8JthYfsnTRNJEu4PcReYMC4Yu1m" +
+            "frlzbQAP9KoyfK8+Rp3sggCjNaaYeBLAMGJ7g1QFpcBrzxS+49Y78bE=",
+        ),
+        Root(
             name = "ZJCARoot",
             owner = "浙江省數字安全證書管理中心 ZJCA",
             group = Group.MAINLAND_CHINA,
@@ -481,6 +692,51 @@ object BuiltInPublicRoots {
             "qi9kx5OyOh2g7PsBw2sZF71KLILfVfW5poM53ZNBx2khvcFQUagbN+PT/0sI/olc7rupzsTjK70qGI8mth/+HykpyUwS8wQmaaML" +
             "AWCIjwYMp8iwGjDx9mUPo9y+s0W+VnwL0QaHKBIHl6fYN1Gc1o3wRbd45q1qnVeqTMsUp9ut1d3z1c+1BDi1eObR2BQqhPz5gAL4" +
             "jWDa9nhkl1pHAW/N1AwWJWjQu3/YQCvrbVx0/ckJn6vLDoxwsZn+jLwt/g==",
+        ),
+        Root(
+            name = "CWCA",
+            owner = "西部 CA CWCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "B89EB33AC7A918157F0C81271656174621791A33D3421EA75C812A0EDA65765E",
+            b64 = "MIIDpzCCAo+gAwIBAgIIf69bjQ05/9AwDQYJKoZIhvcNAQEFBQAwUDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB05pbmdYaWExETAP" +
+            "BgNVBAcMCFlpbkNodWFuMQ0wCwYDVQQKDARDV0NBMQ0wCwYDVQQDDARDV0NBMB4XDTEzMDExODA2NDMyOFoXDTMzMDExMzA2NDMy" +
+            "OFowUDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB05pbmdYaWExETAPBgNVBAcMCFlpbkNodWFuMQ0wCwYDVQQKDARDV0NBMQ0wCwYD" +
+            "VQQDDARDV0NBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmGPlsnyWa50Swlgh4y3rC67s/XHJayiWGMxx2d02yc6f" +
+            "5JAUe522l7F29n2yGHACckIyh3MGKcRDDfE4ahOnBKSjPGV772QdjEnPzTJJ8GuGQfN7dRVv0qWWgpCj91dM6zedKaI33GG2Kwao" +
+            "Adqnt2Nre9fYJYw4dEfDo1EGgas1qMpyP6Vy6bZbgqe4wXPRbZTy2zfrGFQU1kz5DjRHnqsam8dJnI0cRiAxS7dx0OdFA+o5Uask" +
+            "jsNup6YjTDzYviTsEn9tA1ifE+s9psX+IO/CpIFCPYGi2AxOfqs6TQExQ/dEzNXyorOKUHMwQYrTV49dYs7VmQZ/sVpfp8E3IwID" +
+            "AQABo4GEMIGBMB0GA1UdDgQWBBTS6XwSm+1ZvczjlyDZut4wOJIhajAfBgNVHSMEGDAWgBTS6XwSm+1ZvczjlyDZut4wOJIhajAP" +
+            "BgNVHQ8BAf8EBQMDB/+AMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEB" +
+            "BQUAA4IBAQCFVgqalpFSAoogms/ZXwgc6tjdeJTN8pcVVvrzNcb25kYDlCh9slaSKEiWNoswXVgzZg3bXf0vVpaD7jHfeMuA5ZCK" +
+            "WsWu1G1+M4woQPo0XLvX9VABkfmXGGKJBmMpal4bhP420D4HWHgw/Lx9yMxg7kEM/xZTxWv/D9YQXiSeXZqoSzKikwn95xYwGl+D" +
+            "fRWgWQi7pPAOg4PjYfW/FYZQPeDHwBXdvWsAIehN537Zj5F0eQdtoXk6r+iKeqCU9DaQEdDNxMdIF/wkhqxjAZteVCZ0CoMVmsXG" +
+            "/KBQwNs1yL5VeJ3S7wOhAHqajwL34GUW+OqlZUPAYHcrn76XBFst",
+        ),
+        Root(
+            name = "HLJCA_RSA",
+            owner = "黑龍江 CA（中安）HLJCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "RSA 2048",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256（e簽寶說明頁公布的合作 CA 憑證包），取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "560081690CD3600CD10E436503FB974DD9B9CD59C305ECB6C15EA5DC88064C52",
+            b64 = "MIIEDTCCAvWgAwIBAgIJASCGZrSMdK0hMA0GCSqGSIb3DQEBCwUAMIGUMQswCQYDVQQGEwJDTjEVMBMGA1UECAwM6buR6b6Z5rGf" +
+            "55yBMRUwEwYDVQQHDAzlk4jlsJTmu6jluIIxMzAxBgNVBAoMKum7kem+meaxn+ecgeaVsOWtl+ivgeS5puiupOivgeaciemZkOWF" +
+            "rOWPuDEOMAwGA1UECwwFSExKQ0ExEjAQBgNVBAMMCUhMSkNBX1JTQTAeFw0yMjA0MDYwNDA5NDhaFw00MjA0MDYwNDA5NDhaMIGU" +
+            "MQswCQYDVQQGEwJDTjEVMBMGA1UECAwM6buR6b6Z5rGf55yBMRUwEwYDVQQHDAzlk4jlsJTmu6jluIIxMzAxBgNVBAoMKum7kem+" +
+            "meaxn+ecgeaVsOWtl+ivgeS5puiupOivgeaciemZkOWFrOWPuDEOMAwGA1UECwwFSExKQ0ExEjAQBgNVBAMMCUhMSkNBX1JTQTCC" +
+            "ASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALlExJdykclOgycKb7aYG1XfteTLvPBBbvQKfCR8dnAvuFTYQYYPrU+7ZDWV" +
+            "en2MyW4zNGor+Ql1JL7ZS9UOpmW041t64nsqpZRMJiTh9s1NWJNdb5iS8J0Lij/7V0r1z3fwHH3pqKlrGQXGtQj7KytOZ/qNj+JH" +
+            "eKVQqZqIzkkbJeqGZXyXY+RT5GJy2VnV2pw8TmRxSlu0afgPQqg9J3jTFkJ8GT8YPB5CVU35Ld4byevhVfl7exgKgh8kTvBXuQIx" +
+            "8tLNuXqQ6qB8T/StdebydXh6ZJsc+OfGuA41bMaVAkI0KnjnfV8BIqGMoGgiXextf22/aObeggpMYlR8fDkCAwEAAaNgMF4wHQYD" +
+            "VR0OBBYEFJyA4Vcb8++1qZtZ96+DeehuzfdnMAsGA1UdDwQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB8GA1UdIwQYMBaAFJyA4Vcb" +
+            "8++1qZtZ96+DeehuzfdnMA0GCSqGSIb3DQEBCwUAA4IBAQBO2Ii0lIr9iCgnj7X3FSSq2qUmRPW77W4LnHmYOy+3uiHwx2OUY9JJ" +
+            "5TCgiB89YdA9ttwk9UHHpdxLU6G7ldXtKVTrtkqd51yOjyXLcOTxepzJSArnkQRpGWt0WZUM4YWOciVFNlReKz1o5F8d9pjqxGmk" +
+            "/q6OR1d+uDoRrxBv9u5VMSydGSo2doOkLArmpQUrBIAXoktKq9TcBm/eXseSO9HGiroEFy8xQtQMxfA0nBSy0E8QGe0/yq7vuCTi" +
+            "PmxMCTUg0kztPVZR1hjkLS1L/n94z1ajNDvnoFDx6A3kBks2p8SjQ76dvvx+3ML9tgWBcSUII0EVHUlDhxDtWKWC",
         ),
         Root(
             name = "UCA Rapid SM2 Root",
@@ -708,6 +964,21 @@ object BuiltInPublicRoots {
             "+/AMmoWcFaNCMEAwHQYDVR0OBBYEFOKlFGJGvcbkff/95hv1Trd+MUV9MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEG" +
             "MAwGCCqBHM9VAYN1BQADSAAwRQIgRaVE4ZgIPjgCPkfcNQ3HUSt7cdoE9G2au3W8S0RudJQCIQCFUY/QnAleTfmySbXY820/wbm0" +
             "EdV/gKokP2JhetWGTQ==",
+        ),
+        Root(
+            name = "ZHCA SM2 CA",
+            owner = "天津 CA（中環）ZHCA",
+            group = Group.MAINLAND_CHINA,
+            algorithm = "SM2",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "官網下載 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "EBC85878813DED4BD8598E3BA4C5A95F13435C757E5B5B0C56F48DEE2BA98C45",
+            b64 = "MIIBtzCCAVugAwIBAgIEBKsSbTAMBggqgRzPVQGDdQUAMDIxFDASBgNVBAMMC1pIQ0EgU00yIENBMQ0wCwYDVQQKDARaSENBMQsw" +
+            "CQYDVQQGEwJDTjAeFw0yMjA0MTEwOTM3NDVaFw00MjA0MTEwOTM3NDVaMDIxFDASBgNVBAMMC1pIQ0EgU00yIENBMQ0wCwYDVQQK" +
+            "DARaSENBMQswCQYDVQQGEwJDTjBZMBMGByqGSM49AgEGCCqBHM9VAYItA0IABNbOCsBXlmxhxTgfcHnfau6trbM3H5cX3ELAokuw" +
+            "rDLYYZhVkOqZNF/1qgLaMq7TfrYheTs5gktQ+FRxkkQ0CIyjXTBbMAwGA1UdEwQFMAMBAf8wCwYDVR0PBAQDAgEGMB8GA1UdIwQY" +
+            "MBaAFJR5Q22ZaA/FWsypkn58HUCZKRdaMB0GA1UdDgQWBBSUeUNtmWgPxVrMqZJ+fB1AmSkXWjAMBggqgRzPVQGDdQUAA0gAMEUC" +
+            "IQDkaqnMRM/eu5NKi620A/FhwnqH3nBKudGUY7DT9YkXgQIgdLdZqn/WJY7WjHWHxQ803uRE3hG1GeKogSe0uVvvn28=",
         ),
         Root(
             name = "GDCA GM SM2 ROOT",
@@ -4581,32 +4852,622 @@ object BuiltInPublicRoots {
             "/9vQWbAXSbmp2UAL76Famsc0yST9uTRfoPDLFDgkIi5fuDfNbn+ZyaQEcF4fOFkzBNDgwU/BIdzHc4QIkX62+8kiy6QSZM4fbVg0" +
             "IWzz0g==",
         ),
+        Intermediate(
+            name = "CWCA（西部 CA CWCA）",
+            owner = "西部 CA CWCA",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "78B757EF7DE39EF1420CBF398D796EE17F44304EC0D6F52C12BA4C73593159EE",
+            b64 = "MIICozCCAkigAwIBAgIQToT2tKR7mfgXKqMHEScibTAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTEzMDQwMjAzNTUzMFoXDTMzMDMyODAzNTUzMFowUDELMAkGA1UEBhMCQ04xEDAOBgNVBAgM" +
+            "B05pbmdYaWExETAPBgNVBAcMCFlpbkNodWFuMQ0wCwYDVQQKDARDV0NBMQ0wCwYDVQQDDARDV0NBMFkwEwYHKoZIzj0CAQYIKoEc" +
+            "z1UBgi0DQgAE8cumD0VN5fKCoHD+aUC9urOYo0bvrrvXXCT/KwdxK9k0elGg+uoG1XP8JzCdMw+U9rm2ZOtYNYwqO2NXULObT6OC" +
+            "ASIwggEeMB8GA1UdIwQYMBaAFEwysZfZMxvEpgXBxuWLYlvwl3ZYMA8GA1UdEwEB/wQFMAMBAf8wgboGA1UdHwSBsjCBrzBBoD+g" +
+            "PaQ7MDkxCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNBQzEMMAoGA1UECwwDQVJMMQwwCgYDVQQDDANhcmwwKqAooCaGJGh0dHA6" +
+            "Ly93d3cucm9vdGNhLmdvdi5jbi9hcmwvYXJsLmNybDA+oDygOoY4bGRhcDovL2xkYXAucm9vdGNhLmdvdi5jbjozODkvQ049YXJs" +
+            "LE9VPUFSTCxPPU5SQ0FDLEM9Q04wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBSwldcHfyAFGJlO01/SKFR99hEcQzAMBggqgRzP" +
+            "VQGDdQUAA0cAMEQCICZIqliiQwC8gCJWx4CbEIvnOEOW7JPFec88RLtkx1DjAiBwDQB8SJGK7+1EDP1YzXI6PT0FgmnCyL7R5pxi" +
+            "32wDBA==",
+        ),
+        Intermediate(
+            name = "NXCA",
+            owner = "西部 CA CWCA",
+            issuer = "CWCA（西部 CA CWCA）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "8674033490852A87BD7AD3F325A6E6342B788822C79EA77B71FC6C3E66111477",
+            b64 = "MIICrTCCAlGgAwIBAgIIEAAAAAAAAA4wDAYIKoEcz1UBg3UFADBQMQswCQYDVQQGEwJDTjEQMA4GA1UECAwHTmluZ1hpYTERMA8G" +
+            "A1UEBwwIWWluQ2h1YW4xDTALBgNVBAoMBENXQ0ExDTALBgNVBAMMBENXQ0EwHhcNMTMwNDAyMDQyMjUwWhcNMzMwMzI3MDQyMjUw" +
+            "WjBQMQswCQYDVQQGEwJDTjEQMA4GA1UECAwHTmluZ3hpYTERMA8GA1UEBwwIWWluY2h1YW4xDTALBgNVBAoMBENXQ0ExDTALBgNV" +
+            "BAMMBE5YQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAAS2FNQTzOM3gL3NbCR+UJ+jO1ssoSsyDaGJZFycxg+flqfCeReWtZa6" +
+            "5CnN96Bnn8TYKBNBmFFV4mbZVf5hEZZEo4IBETCCAQ0wHQYDVR0OBBYEFBpRRhAuPif9jQkLoeJh3TChP0itMB8GA1UdIwQYMBaA" +
+            "FLCV1wd/IAUYmU7TX9IoVH32ERxDMAwGA1UdDwQFAwMH/4AwgY8GA1UdHwSBhzCBhDCBgaApoCeGJWh0dHA6Ly8yMDIuMTAwLjEw" +
+            "OC42OjgwODAvY3JsL2FybC5jcmyiVKRSMFAxDTALBgNVBAMMBENXQ0ExDTALBgNVBAoMBENXQ0ExETAPBgNVBAcMCFlpbkNodWFu" +
+            "MRAwDgYDVQQIDAdOaW5nWGlhMQswCQYDVQQGEwJDTjAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDAYDVR0TBAUwAwEB" +
+            "/zAMBggqgRzPVQGDdQUAA0gAMEUCIQD37ngVdBPQGBo37eakfOEPulD7j28We7zDSoHZr4go/gIgfx90MKMpgmbkslmUavCEHp5D" +
+            "Eu8INodrFkb69fihJJU=",
+        ),
+        Intermediate(
+            name = "天威诚信数字认证中心根CA",
+            owner = "天威誠信 iTrusChina",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "2A3CAC9C7DE4019C43546C73FB5B00B7FDA1B92ADC8D85BA43E6A34898EB00D6",
+            b64 = "MIIC5jCCAomgAwIBAgIQOB7mOohUh6MluJlp1JFNSjAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTEzMDUwOTA4NDMxM1oXDTMzMDUwNDA4NDMxM1owgZAxCzAJBgNVBAYTAkNOMTkwNwYDVQQK" +
+            "DDDljJfkuqzlpKnlqIHor5rkv6HnlLXlrZDllYbliqHmnI3liqHmnInpmZDlhazlj7gxGDAWBgNVBAsMD1NNMuivgeS5puezu+e7" +
+            "nzEsMCoGA1UEAwwj5aSp5aiB6K+a5L+h5pWw5a2X6K6k6K+B5Lit5b+D5qC5Q0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAARi" +
+            "hMg3w0TTmRL9Odw8qJ43uk+7QjR/X6jFpzFgd+tD5eLdFwlzS4JWr+Y4J5bHjaOqw+s/8n6GaTG08wpVVKnGo4IBIjCCAR4wHwYD" +
+            "VR0jBBgwFoAUTDKxl9kzG8SmBcHG5YtiW/CXdlgwDwYDVR0TAQH/BAUwAwEB/zCBugYDVR0fBIGyMIGvMEGgP6A9pDswOTELMAkG" +
+            "A1UEBhMCQ04xDjAMBgNVBAoMBU5SQ0FDMQwwCgYDVQQLDANBUkwxDDAKBgNVBAMMA2FybDAqoCigJoYkaHR0cDovL3d3dy5yb290" +
+            "Y2EuZ292LmNuL2FybC9hcmwuY3JsMD6gPKA6hjhsZGFwOi8vbGRhcC5yb290Y2EuZ292LmNuOjM4OS9DTj1hcmwsT1U9QVJMLE89" +
+            "TlJDQUMsQz1DTjAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFOJOjUAZ3zkPbMacQof+bozSZmvNMAwGCCqBHM9VAYN1BQADSQAw" +
+            "RgIhANyJTI7TlO6Sxo6vH6IiNAoHLuoq6TXJasu2ElQTWcO4AiEA/krjIp5/g49425D5kxsuom/AsbHEwhcOtMH/mo9x98A=",
+        ),
+        Intermediate(
+            name = "ROOT CERTIFICATE FOR GFA TRUST NETWORK（國富安 GFA（中國國際電子商務中心 CIECC））",
+            owner = "國富安 GFA（中國國際電子商務中心 CIECC）",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "680E044E97ACD77560CB25D7012B945665CC9EE94A06E1A64F8F0ED3E583E5A4",
+            b64 = "MIIC4jCCAoWgAwIBAgIQV8wOuwSBkP1WajAyU5sOljAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTEzMDcxNzA4NTY0NVoXDTMzMDcxMjA4NTY0NVowgYwxCzAJBgNVBAYTAkNOMRAwDgYDVQQI" +
+            "DAdCRUlKSU5HMQ4wDAYDVQQHDAVCRVREQTEOMAwGA1UECgwFQ0lFQ0MxGjAYBgNVBAsMEUdGQSBUUlVTVCBORVRXT1JLMS8wLQYD" +
+            "VQQDDCZST09UIENFUlRJRklDQVRFIEZPUiBHRkEgVFJVU1QgTkVUV09SSzBZMBMGByqGSM49AgEGCCqBHM9VAYItA0IABFI5zTNE" +
+            "Ioc2eP1AgMrhqPqx4fZeHsjAbfw5H9E92cGSHXPgS6X90Bwd9Dqf4i2xFl5+goLfhw95NJirRn7eZXqjggEiMIIBHjAfBgNVHSME" +
+            "GDAWgBRMMrGX2TMbxKYFwcbli2Jb8Jd2WDAPBgNVHRMBAf8EBTADAQH/MIG6BgNVHR8EgbIwga8wQaA/oD2kOzA5MQswCQYDVQQG" +
+            "EwJDTjEOMAwGA1UECgwFTlJDQUMxDDAKBgNVBAsMA0FSTDEMMAoGA1UEAwwDYXJsMCqgKKAmhiRodHRwOi8vd3d3LnJvb3RjYS5n" +
+            "b3YuY24vYXJsL2FybC5jcmwwPqA8oDqGOGxkYXA6Ly9sZGFwLnJvb3RjYS5nb3YuY246Mzg5L0NOPWFybCxPVT1BUkwsTz1OUkNB" +
+            "QyxDPUNOMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUa4zCNOCMDOhQU2MEbURnHYkgCQowDAYIKoEcz1UBg3UFAANJADBGAiEA" +
+            "t2r85Q3gsJGrIEE0x4OyKmyPe7YcnoY4qwEzHp4rTXECIQCc4M3V5eGHOskp0xoNTN0CWixXBY4A6Hsyx6mFBNXlCg==",
+        ),
+        Intermediate(
+            name = "AHCASM2",
+            owner = "安徽 CA AHCA",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "1D86B0D32C87ED0BE4FF2C95135DA6A14B7BCF703282BFA60A30DD96790E30D4",
+            b64 = "MIICyzCCAm6gAwIBAgIQStCKN75h1Y0BppWgpG0Q2zAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTEzMTEyOTAyNDgyOFoXDTMzMTEyNDAyNDgyOFowdjELMAkGA1UEBhMCQ04xDjAMBgNVBAgM" +
+            "BUFuSHVpMQ4wDAYDVQQHDAVIZUZlaTEmMCQGA1UECgwdQW5IdWkgQ2VydGlmaWNhdGlvbiBBdXRob3JpdHkxDTALBgNVBAsMBEFI" +
+            "Q0ExEDAOBgNVBAMMB0FIQ0FTTTIwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAAS33y4cH6OOpxUaGDXJ5zFS0Zx41nn52zQKMheZ" +
+            "I79+j8Wn9Rxvync1L+VuFUGgSc3e+fbSmFN7gO75KTQsyaeXo4IBIjCCAR4wHwYDVR0jBBgwFoAUTDKxl9kzG8SmBcHG5YtiW/CX" +
+            "dlgwDwYDVR0TAQH/BAUwAwEB/zCBugYDVR0fBIGyMIGvMEGgP6A9pDswOTELMAkGA1UEBhMCQ04xDjAMBgNVBAoMBU5SQ0FDMQww" +
+            "CgYDVQQLDANBUkwxDDAKBgNVBAMMA2FybDAqoCigJoYkaHR0cDovL3d3dy5yb290Y2EuZ292LmNuL2FybC9hcmwuY3JsMD6gPKA6" +
+            "hjhsZGFwOi8vbGRhcC5yb290Y2EuZ292LmNuOjM4OS9DTj1hcmwsT1U9QVJMLE89TlJDQUMsQz1DTjAOBgNVHQ8BAf8EBAMCAQYw" +
+            "HQYDVR0OBBYEFEaZvGFi4rpTqQyI0s1dlsDIMLrPMAwGCCqBHM9VAYN1BQADSQAwRgIhANiyWlTzG8nhlYxqf2HU5X9k7A/zmWcd" +
+            "D35NC1dSy5XHAiEAvbOknoy5GCgrCJx2nz5esilKC8L1fgG50JQNKgRXiEM=",
+        ),
+        Intermediate(
+            name = "NXCA（西部 CA CWCA）",
+            owner = "西部 CA CWCA",
+            issuer = "CWCA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "B31EF511AB3823C1EA6C42EFD92C28E58CF8577F48A4B5529C69C82A8BF8DB7E",
+            b64 = "MIIEEzCCAvugAwIBAgIIEAAAAAAAAAowDQYJKoZIhvcNAQEFBQAwUDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB05pbmdYaWExETAP" +
+            "BgNVBAcMCFlpbkNodWFuMQ0wCwYDVQQKDARDV0NBMQ0wCwYDVQQDDARDV0NBMB4XDTE0MDEyMDAzMjQxMVoXDTMyMDYyMDAzMjQx" +
+            "MVowUDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB05pbmd4aWExETAPBgNVBAcMCFlpbmNodWFuMQ0wCwYDVQQKDARDV0NBMQ0wCwYD" +
+            "VQQDDAROWENBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz8PDUT++/tWlLlqJ/B4a47qFdZalWRxjr7zXf7SJI6+o" +
+            "zko4gSSkrKDnwSBUT4DbnwvKUOa6+6G/8x4weR8MQFVa+doM+4xz5dTtGonPDDB9TvVCesQzreywrpaorOXDsNSWpK1ZCGUqP8VH" +
+            "Cnls4ZXpCIR/VPB9uIrFFh68queG01c4oR6wpdMrHq6ZDeUZIj41uHAZAiQQ/wW8i/hkQ/2xMVZ+bcWdPpgl11h8mU/KXNlsEdJu" +
+            "RaFcFUzpUOjxzDerls5Ow47+xtjDnmYY9SiBsoxLsdtlU7AtOATToKt+V8tPN87eAgfkv9WFg+w41aX/tY7vLsj/sYVaHfNuIQID" +
+            "AQABo4HwMIHtMB8GA1UdIwQYMBaAFNLpfBKb7Vm9zOOXINm63jA4kiFqMAwGA1UdEwQFMAMBAf8wCwYDVR0PBAQDAgH+MIGPBgNV" +
+            "HR8EgYcwgYQwgYGgKaAnhiVodHRwOi8vMjAyLjEwMC4xMDguNjo4MDgwL2NybC9hcmwuY3JsolSkUjBQMQswCQYDVQQGEwJDTjEQ" +
+            "MA4GA1UECAwHTmluZ1hpYTERMA8GA1UEBwwIWWluQ2h1YW4xDTALBgNVBAoMBENXQ0ExDTALBgNVBAMMBENXQ0EwHQYDVR0OBBYE" +
+            "FEh/3VpjS/n1fpDe/ZsPQZZkZQcRMA0GCSqGSIb3DQEBBQUAA4IBAQA0Ljl/qDxCTmfScqjQBEeBXNbPHR0ToKKncFmiJE38iTMp" +
+            "7INeQ4LXHRqwHD2TMW2Mh0NV2IwU/3q6yx8lw15NV05u0g9Q5mu8HXw5yBJflm84bNgV6Hcw+p0lymTv94UAAiUWn3fuohngGmD5" +
+            "iVAbfi22qOPhuk+Zxvg8CJo0H8Z8SU6khMgxxK4J9WtozKfbkp4Jfhl0J9MvkSvEoHCgCZPAVrYPXMmg4DLnCaM0/Rm/AKG1Bk3a" +
+            "7/f0Mokl/CQJKg/TW5MTSDkOkhHaa/vkQ87ko39YKkenbdyaNZKkYdu/DSpq1gDbuwR3CAOqohmCZ3WoSirq5nIoImfgR8BK",
+        ),
+        Intermediate(
+            name = "天威诚信数字认证中心CA",
+            owner = "天威誠信 iTrusChina",
+            issuer = "天威诚信数字认证中心根CA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "8A6A44E8C1348021DE8B1D310E1B949020BA0515882363BBB00B7949420D1B99",
+            b64 = "MIIC+jCCAp6gAwIBAgIUKgl8LTxtCnYFr/VNki+YzQSQoyswDAYIKoEcz1UBg3UFADCBkDELMAkGA1UEBhMCQ04xOTA3BgNVBAoM" +
+            "MOWMl+S6rOWkqeWogeivmuS/oeeUteWtkOWVhuWKoeacjeWKoeaciemZkOWFrOWPuDEYMBYGA1UECwwPU00y6K+B5Lmm57O757uf" +
+            "MSwwKgYDVQQDDCPlpKnlqIHor5rkv6HmlbDlrZforqTor4HkuK3lv4PmoLlDQTAeFw0xNTAyMjYwMjI3MjdaFw0zMDAyMjYwMjI3" +
+            "MjdaMIGNMQswCQYDVQQGEwJDTjE5MDcGA1UECgww5YyX5Lqs5aSp5aiB6K+a5L+h55S15a2Q5ZWG5Yqh5pyN5Yqh5pyJ6ZmQ5YWs" +
+            "5Y+4MRgwFgYDVQQLDA9TTTLor4Hkuabns7vnu58xKTAnBgNVBAMMIOWkqeWogeivmuS/oeaVsOWtl+iupOivgeS4reW/g0NBMFkw" +
+            "EwYHKoZIzj0CAQYIKoEcz1UBgi0DQgAE22NGF159VpkTJatAdh8sf5KwPi6Qz4WdVp8vsMGq9c1igvaD7qnwAJToIqJcKXuZ74cW" +
+            "tI8GI3tyMBLeNDxo/KOB1DCB0TAdBgNVHQ4EFgQUPcWWlyRA35D/Kte2IBHK6h9TXqEwHwYDVR0jBBgwFoAU4k6NQBnfOQ9sxpxC" +
+            "h/5ujNJma80wEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAQYwHgYDVR0RBBcwFaQTMBExDzANBgNVBAMMBnN3c2Ut" +
+            "NDBLBgNVHR8ERDBCMECgPqA8hjpodHRwOi8vaWNhLXB1YmxpYy5pdHJ1cy5jb20uY24vY3JsL2l0cnVzTmF0aW9uYWxjYS1zbTIu" +
+            "Y3JsMAwGCCqBHM9VAYN1BQADSAAwRQIgIUe5DJr+sVoMBK3GqBDlpQVgsLi7KNQn+vRgTpAeEKgCIQCwyEoZZL6lQUr6u8KbgUpl" +
+            "s/TsZXRunIhGAZ54AV3c7w==",
+        ),
+        Intermediate(
+            name = "CFCA ACS OCA31",
+            owner = "中國金融認證中心 CFCA",
+            issuer = "CFCA ACS CA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "7C5D630F072D1FA2E729B369814AC21309D57A4FBFD944D96FA0426489409BA4",
+            b64 = "MIIE2TCCAsGgAwIBAgIQNKxHTPjyFWmPZvSg97mGvDANBgkqhkiG9w0BAQsFADBVMQswCQYDVQQGEwJDTjEwMC4GA1UECgwnQ2hp" +
+            "bmEgRmluYW5jaWFsIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRQwEgYDVQQDDAtDRkNBIEFDUyBDQTAeFw0xNTA5MjcwMjExMjNa" +
+            "Fw0zNTA5MjIwMjExMjNaMFgxCzAJBgNVBAYTAkNOMTAwLgYDVQQKDCdDaGluYSBGaW5hbmNpYWwgQ2VydGlmaWNhdGlvbiBBdXRo" +
+            "b3JpdHkxFzAVBgNVBAMMDkNGQ0EgQUNTIE9DQTMxMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7mY3rHQfCJCRB0HV" +
+            "K9taITB8ZEGtOVElUH4ou3kB0dOWbACf5pCI9MSMndqOZAlj/djcAfwJ8gtW0j8STzsIDe+uoFnyxXEIwu0wb5JoumYSdFVWssa6" +
+            "Fu8UnoUFLBXRy7lbYmxcQlBVAoXjoVZuVldNJz/pV7pvDtFDCmnCyzo1OmH09yrsSz4lSQrNAJOLyGD0OmGI/lJX36grEYKteey8" +
+            "mspVcnTFF7/rDXeVXCNvTy774iW70ByalW2xfR3eTr7XkXLTU9GE3JsbHxo5kf+jsfuPJM0qZFAEWHstFMDcSdGBy1VCyLWnH8xR" +
+            "PCmdM4EuyTfB3U30BI/ts46t1wIDAQABo4GhMIGeMB8GA1UdIwQYMBaAFBHheNM4IPrt69YjljCofbmZ21/3MA8GA1UdEwEB/wQF" +
+            "MAMBAf8wOwYDVR0fBDQwMjAwoC6gLIYqaHR0cDovL2NybC5jZmNhLmNvbS5jbi9hY3NyY2EvUlNBL2NybDEuY3JsMA4GA1UdDwEB" +
+            "/wQEAwIBBjAdBgNVHQ4EFgQU4rQJy81hoXNKeX/xioML3bR+jB0wDQYJKoZIhvcNAQELBQADggIBAD+MkwGqVdv4x49yWoZ/CuII" +
+            "GMRmhs3zvCG9XezkiFQDBw2u/bVvkJB2nAg2ECYFbUUU+lDNK6xuooRD0fKDuRT37aH2Ydvwy8B1aus2VJA+FKAtyrgX/T103LC3" +
+            "K0CJW7z72op8P5H0lyob8QQfRXuhYvz8K3DENwej4LO9H6lAfZUK/QMqeB3fnz+YZCc84quRtY/lbNdlz9Qh5Lf73zq/oWOUIXAz" +
+            "Yktmx/cS3KeL9t+cQ3EW/qiHaxouNo0ioS6bRby17OW4h+5M0v/WnVddl17EbFySVh0ffcjQfuznjYVrwwR1JARC5QSs6cmxF4fH" +
+            "ByZftTGqjIiN5ZlD0xHVTx2y1WHGmInUDa562sSMIVCcUWminQb4kBLCHBLm4j7mVrNG0GukjMkdmhh+K5YjZkAfET07tgtr13u2" +
+            "/Dgi0BQwh5VDZom2CVbzodXSfcQbsFRJEKrmeaAzmuksc6nHCbdxvcgeFLKfo3L5gFjttbLndJswtPmjQCTMheQBSbHN8TpeN+Fp" +
+            "zuf9Y9oV+vOwfnCmhejakoNOuOt1Pl66phTgX/EgW+c/iNiIRcNlEY7ujJUEiXeP1W3VQLcvI24mSQB/n4C3NJhik84AHaz4WIPQ" +
+            "WZJktegihU6LSsnpop7scR519fmNysRprjdmnmBSrXc5s2E6HF6FdpPVErcE",
+        ),
+        Intermediate(
+            name = "HLJCA_SM2",
+            owner = "黑龍江 CA（中安）HLJCA",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "B51DDA40BEA2075A97E6B35079FB2A7EB8F872F9261CDC2DBCE9FBC0A49A6D80",
+            b64 = "MIIC6DCCAo2gAwIBAgIQJmXTTpsibUMRfGoAW+92ITAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTE2MDMzMTA4MTc0NFoXDTM2MDMyNjA4MTc0NFowgZQxCzAJBgNVBAYTAkNOMRUwEwYDVQQI" +
+            "DAzpu5HpvpnmsZ/nnIExFTATBgNVBAcMDOWTiOWwlOa7qOW4gjEzMDEGA1UECgwq6buR6b6Z5rGf55yB5pWw5a2X6K+B5Lmm6K6k" +
+            "6K+B5pyJ6ZmQ5YWs5Y+4MQ4wDAYDVQQLDAVITEpDQTESMBAGA1UEAwwJSExKQ0FfU00yMFkwEwYHKoZIzj0CAQYIKoEcz1UBgi0D" +
+            "QgAEYqTprVnG0Ub0s6gB25fg8Dvh/WndxAnPIbT4HERcyuiwcCOSbKZUSfK2eKi5dho/xIBTr8ey3Tvkky6hImKIBKOCASIwggEe" +
+            "MB8GA1UdIwQYMBaAFEwysZfZMxvEpgXBxuWLYlvwl3ZYMA8GA1UdEwEB/wQFMAMBAf8wgboGA1UdHwSBsjCBrzBBoD+gPaQ7MDkx" +
+            "CzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNBQzEMMAoGA1UECwwDQVJMMQwwCgYDVQQDDANhcmwwKqAooCaGJGh0dHA6Ly93d3cu" +
+            "cm9vdGNhLmdvdi5jbi9hcmwvYXJsLmNybDA+oDygOoY4bGRhcDovL2xkYXAucm9vdGNhLmdvdi5jbjozODkvQ049YXJsLE9VPUFS" +
+            "TCxPPU5SQ0FDLEM9Q04wDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBQBoeXizB6aa48NYWjXbblUzN+FNjAMBggqgRzPVQGDdQUA" +
+            "A0cAMEQCIBHsbZs6v2rjgsXsDIPzRreDO9u+TF3FBjg5zFrnUaM9AiA4D/Ql+Vafvi15ChCBbMP9gaZjV2/GQOrCq+r5Y3Ja2A==",
+        ),
+        Intermediate(
+            name = "CFCA ACS OCA33",
+            owner = "中國金融認證中心 CFCA",
+            issuer = "CFCA ACS CA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "2C6DAEBE63781BEA9AFD78341A54A19E49E69C5EE19DA705A7C973DA05D39198",
+            b64 = "MIIE2TCCAsGgAwIBAgIQJlxcOvVY8IP20MWUP/TEqjANBgkqhkiG9w0BAQsFADBVMQswCQYDVQQGEwJDTjEwMC4GA1UECgwnQ2hp" +
+            "bmEgRmluYW5jaWFsIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRQwEgYDVQQDDAtDRkNBIEFDUyBDQTAeFw0xNzA5MDQwNjI3MTFa" +
+            "Fw0zNTA5MDUwNjI3MTFaMFgxCzAJBgNVBAYTAkNOMTAwLgYDVQQKDCdDaGluYSBGaW5hbmNpYWwgQ2VydGlmaWNhdGlvbiBBdXRo" +
+            "b3JpdHkxFzAVBgNVBAMMDkNGQ0EgQUNTIE9DQTMzMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwKUUFvBL0KIH7U/+" +
+            "OIANsCofFBptOzu60HzPvLufMlE3tus5IzLx/bE2qMW+3HrtzRYgjJ8VHRu/ElVMxjEJxYcP4c4zu8fV2325TrH65WwyWdr4Qkcj" +
+            "FxE08qar3sBWh3ReYQX7pttqvKOFG+ilicrjugAv+rSXu5t3JK3EjgJTzTVR438K1oM9GRrbOTK9S3IF3A1ESWKo+YcdstZwTkGF" +
+            "3YtRUGo/Wv9zMjeUzZn9M4vAga51MtuuM1A6Q7pJPBcuX3XikgGqandNlxCmF+qpdxAc3rdJIkGLcE5W2y58m1uX2BoGPqcJtOJY" +
+            "9gpDtIDFK8wY93IvxMk1RhOMUwIDAQABo4GhMIGeMB8GA1UdIwQYMBaAFBHheNM4IPrt69YjljCofbmZ21/3MA8GA1UdEwEB/wQF" +
+            "MAMBAf8wOwYDVR0fBDQwMjAwoC6gLIYqaHR0cDovL2NybC5jZmNhLmNvbS5jbi9hY3NyY2EvUlNBL2NybDEuY3JsMA4GA1UdDwEB" +
+            "/wQEAwIBBjAdBgNVHQ4EFgQUTalX/d9sqS2aRiEOGD+tae7nvugwDQYJKoZIhvcNAQELBQADggIBACk07chmc+f3sQy3bS58IyzI" +
+            "9nx0zpkvoV2UXRiFLn8v9Zdr1DR6PadfrvtcGjGTK+GmYQJkmd/24JMDRePAvUCehByg9uR/FaUFaxb87z4dMaFH6CT7jinS0C7q" +
+            "CCQ0OPI3Uk8vOD94DmRQADMM4BsGJP7itqDFDGhkAcEY+1liNDTblL1/kPIuYg+JyQp5pJiGUSXSu3YxMXfA30oILY3mpgR7xZDO" +
+            "4EcXnq6dzLqq8uuSK4wBYAJfX7dFK8tlEFGhTj3mylGzBTtkLs27iobCLpRJpNAb93k0O85l04ESU85Pkcd6M7emUsfoPuLklhed" +
+            "kHOw3tmVM3a8gDFx5UEXImYZJeTZESsT4pu/AvzTD5Udj5xzLmoltPfHeKkQkTXAU6FThy9i210k2/DwfRbPBVk2LectRE4Z2Oni" +
+            "Fr7VrYelElLW4LCyo4hIVmrzj7CKn14cZ8GdPvpQE4I8D40+b3D8NNqSuKZ+/uwzqNcgK5tYSWXiRhGafb8LuBGmwXy5ubwLNsc8" +
+            "L4zjyosb0dgSTt3kgTRsYa8LjrVn1JkA6M0Z6T/ZbXxRuDPqcDDms1rBOqlozeUWumpnmTo4l6Mza/6YjBY2w1avy2PlVkBdomP5" +
+            "OAcs/k9O9EtumJ7Qcxku1yXxNCpU4AVdduxgunQ2xbOknVLizujXIp+Sbr0f",
+        ),
+        Intermediate(
+            name = "CFCA ACS OCA34",
+            owner = "中國金融認證中心 CFCA",
+            issuer = "CFCA ACS CA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "51F7C3D2EAB81609F0DC4EF72069914FDD62E93BD430C0E0E202E3DC92E5C3BC",
+            b64 = "MIIE2TCCAsGgAwIBAgIQdaOKg+4I6DBdLdF3ZSZboTANBgkqhkiG9w0BAQsFADBVMQswCQYDVQQGEwJDTjEwMC4GA1UECgwnQ2hp" +
+            "bmEgRmluYW5jaWFsIENlcnRpZmljYXRpb24gQXV0aG9yaXR5MRQwEgYDVQQDDAtDRkNBIEFDUyBDQTAeFw0xNzA5MDQwNzQwNTJa" +
+            "Fw0zNTA5MDQwNzQwNTJaMFgxCzAJBgNVBAYTAkNOMTAwLgYDVQQKDCdDaGluYSBGaW5hbmNpYWwgQ2VydGlmaWNhdGlvbiBBdXRo" +
+            "b3JpdHkxFzAVBgNVBAMMDkNGQ0EgQUNTIE9DQTM0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvksJyluZgGTXC6NG" +
+            "Y33oGxcpJoyiZ8yEIPm+86kZetz//qjFluMYNuzJR9TjAxw6SHYnFBits4QfjoB1/rEQ/1VGJ/mEsmJIN1x/wEArByohDA8g7AwQ" +
+            "NxtYvgAHo5OntJg7Rs1P+KyZ68t/44R5awXwa3HARQZDfNSWaXImGUdiff8gMb6m7hkl/Gg6YCghp/5ao3plCPf0XDWbO5U/9OtW" +
+            "xWO2IhWFQn0H+cIvqP9J2ZRpZhvmNMOYbIpRXtT2cvCwi6p7vhZs3Ayk8t+MktC6uLC7242sx680f6Dzgxz/jmFXFMNkmZo0YMKd" +
+            "24dEqJm/9YjEGBxEUZfE1o1z/QIDAQABo4GhMIGeMB8GA1UdIwQYMBaAFBHheNM4IPrt69YjljCofbmZ21/3MA8GA1UdEwEB/wQF" +
+            "MAMBAf8wOwYDVR0fBDQwMjAwoC6gLIYqaHR0cDovL2NybC5jZmNhLmNvbS5jbi9hY3NyY2EvUlNBL2NybDEuY3JsMA4GA1UdDwEB" +
+            "/wQEAwIBBjAdBgNVHQ4EFgQUewL7i2u2G9nrk3kqLyjgRza34UcwDQYJKoZIhvcNAQELBQADggIBAGoYNCDeUCThhHTxMwS98saI" +
+            "4H19uqp8EZzwxjODswhRVkf0NZzOzm0HRubBKhS3GUcLAiW5VE/goDiQa+7bqEK0LUXwxuZoi3GvcrI+5DSVlv3nnBfZO3dnymOv" +
+            "7gEJnwLm8YhpGz2dsxERu3s1u+vltEqebl/U161MI/xAOwYR0aCl76Af+Vd22gnZAnDV06GT1cJwivFU9jIDukDyqf7BrfbLsBrJ" +
+            "5KyrokDw3xk/ZK9Nb6HuDViWCU73UzmVc7ram8I4FwXHuSzK7gD6BdVg3/DMrmVsjf155gnVJwTo70LZevxlZ9lyaUgw6/45JDXq" +
+            "szVPXWP2+L0fCv996HlmPvZ0c7TSWBJjDpsten/KPlPswL+wbW+mBUEK67PiX1SIcXjrtG3obx4XOANErS2cA/azw7vuZO0w7TIf" +
+            "CTMerakN/mqe9tOH9VeAO+LKXh1ehn1YVzjg/7/paWh3lZ426sdtxvHMZawCiRaxWAGgG9h75is3ft/featJ/Gn+73Z8hudNUVpn" +
+            "5aklFiouTm2OXqpfUOrjn3faLC9vEFuytPZh0bI6/syqQEICTGU/Q0xR5m3ceDVW2INOPc4Qrbpq3BvpcfbiGEoA4uLGTCQup9Al" +
+            "j5SQ+cz8a7hdCZqthR21kMEYtgUSif1TfI6zydECtgF+0zy3Kf8yt4Kbw4Z5",
+        ),
+        Intermediate(
+            name = "ZJCA OCA5",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCARoot",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "551D71401B3872D67DE8D24AE2F50B8619F6C9ACD4A07F9AC7AEF41456DCD4FA",
+            b64 = "MIIEtzCCA5+gAwIBAgIIKPz/0z2pCrIwDQYJKoZIhvcNAQELBQAwUTELMAkGA1UEBhMCQ04xLzAtBgNVBAoMJlpoZWppYW5nIERp" +
+            "Z2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5MREwDwYDVQQDDAhaSkNBUm9vdDAeFw0xODA5MDYwNDM4MDNaFw0zODA5MDEwNDM4" +
+            "MDNaMFkxCzAJBgNVBAYTAkNOMRIwEAYDVQQIDAnmtZnmsZ/nnIExEjAQBgNVBAcMCeadreW3nuW4gjEOMAwGA1UECgwFT1NDQ0Ex" +
+            "EjAQBgNVBAMMCVpKQ0EgT0NBNTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAOLK42mwcAQ6gKyoDO0PMnsarVeqg0lD" +
+            "Ihg/FZ1Ur73opSY6tYON4ouvC58WfTang5kHx4DbsbaxofH4jbLLVO2FSEvRqC0rQOWWfec/u7PmObhd1PGrHJmxBJrtek/UXvWY" +
+            "iY1tLbv2BMRMMQFmHAL+2xORJV+mXEIBeM8xhq1wG4zxUEdtTpH/gbQ1lPnHw6FP2XC0ebVnh1VwhY0Dx+ebqNXpdEtMw0vlYNst" +
+            "ilpBldreJ9D7hcsLA/HLtleUBGJkEK837LH7fuQAweFCn4A+ZA+SlQm1/96+chl4PVxiE5AykMgc7yjxdk9FKuzuHsdKspCbxpgh" +
+            "/rF80AaGmGMCAwEAAaOCAYkwggGFMAsGA1UdDwQEAwIAhjAMBgNVHRMEBTADAQH/MEEGA1UdHwQ6MDgwNqA0oDKGMGh0dHA6Ly82" +
+            "MC4xOTAuMjU0LjEzOjI4ODgwL2Rvd25sb2FkL1pKQ0FSb290LmNybDAfBgNVHSMEGDAWgBTeYuyyMtlJuiZkNahiZH/1Ne/A3TCB" +
+            "5AYIKwYBBQUHAQEEgdcwgdQwgY4GCCsGAQUFBzAChoGBbGRhcDovL2xkYXAuc2VydmVyOjM4OS9DTj1aSkNBUm9vdCxDTj1aSkNB" +
+            "Um9vdCwgT1U9Y0FDZXJ0aWZpY2F0ZXMsIG89dGVzdGNhP2NBQ2VydGlmaWNhdGU/YmFzZT9vYmplY3RDbGFzcz1jZXJ0aWZpY2F0" +
+            "aW9uQXV0aG9yaXR5MEEGCCsGAQUFBzAChjVodHRwOi8vY2VydC5wdWJsaXNoLnNlcnZlcjo4ODgwL2Rvd25sb2FkL1pKQ0FSb290" +
+            "LmNlcjAdBgNVHQ4EFgQUAbdl2MIxdtbWnv02EhzggGToa6cwDQYJKoZIhvcNAQELBQADggEBAAlEfBKSLD4Bn5yoQei28MSW7fPy" +
+            "s22MFTBlEYu0Br6uMaXpk8nC9jZSlEJPhNaP4wqb85iQYQI8JwzM/O7RukKXpEVwydvUELmE0+gb9dkgdQCRp7YMlWDR2+jlTgGz" +
+            "m9ZZZaTVbXKlRLUm4dojbAhVm6i/wBm2B020uiItJRpiko/xBXmbawh8eHBj9YKbwaU3SoWYMZ30G1IBPT4PUO3weJ1HHzuOQw6h" +
+            "tVP8wCgRKGiNMN16N501xvrmDfLMRCpp2RDAfQzkQDVPUkx0qKqRlqCvOAfPWHlvjovRNSMd2Wq9JY+6n6bj9cDxNVWdJ0u97Pih" +
+            "A3Myx+4/tPO4aWg=",
+        ),
+        Intermediate(
+            name = "SmartCA RSA CA1_SUBCA1",
+            owner = "SmartCA",
+            issuer = "SmartCA RSA CA1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "C3A49ACEFF0C68F9D138235EC6756CE7CA216B2892CF85B3264409C2183356C3",
+            b64 = "MIIDyTCCArGgAwIBAgINAOiqV85b9Kfet5M9TjANBgkqhkiG9w0BAQsFADBXMQswCQYDVQQGEwJDTjENMAsGA1UECB4EbF+CzzEN" +
+            "MAsGA1UEBx4EU1dOrDEQMA4GA1UEChMHU21hcnRDQTEYMBYGA1UEAxMPU21hcnRDQSBSU0EgQ0ExMCIYDzIwMTkwMzI4MDY1MDEx" +
+            "WhgPMjAyOTAzMjgwNjUwMTFaMHUxCzAJBgNVBAYTAkNOMQ8wDQYDVQQIHgZTV06sXgIxDzANBgNVBAceBmxfgs93ATEQMA4GA1UE" +
+            "ChMHU21hcnRDQTERMA8GA1UECx4IZnphZwBDAEExHzAdBgNVBAMUFlNtYXJ0Q0EgUlNBIENBMV9TVUJDQTEwggEiMA0GCSqGSIb3" +
+            "DQEBAQUAA4IBDwAwggEKAoIBAQDPrsYlk/njFxHuM4fq24G6haKyLEuikxyE1wv132lbb14Bjihx+3mNBhsgB+Scnff5/AxTLYC9" +
+            "OZEepK2K+jCQdE/BXk/cqslMU9HjzDpXO0x5ukouIxgEcO4i8yWIGYjdK8rYtbZ+v3BRxLy3iRbPhtm4zP7SOa6vG7tl3vags0IT" +
+            "GsQ1OhEwdo9Vn3xmVOWVPS2flCJ+8w160gXUgJeBZrjpoMhqQggbn+pauxaJD+HGBNB9NDcmrwMe+bRVRjHCOE2NLWq4ppBUDzjI" +
+            "/gzCO3hVU+BuoTpJvDqGw+1DWZRNNXldnQ/hRWZBpq//MKGq2E/NnRqfAH83vBz+AkVXAgMBAAGjcjBwMAwGA1UdEwQFMAMBAf8w" +
+            "HQYDVR0OBBYEFGBuhTd+v4vMwpWRDNgJn+ZPGd1JMBMGA1UdJQQMMAoGCCsGAQUFBwMJMB8GA1UdIwQYMBaAFJ6kT4fRf+ZRcjOs" +
+            "xHvrOhUoeeXuMAsGA1UdDwQEAwIBhjANBgkqhkiG9w0BAQsFAAOCAQEAuICrPmsEBGLXjTzvOE1fSKBR9nx4/Kiw8Sg2rxVZBZJq" +
+            "xRhn8D9QypZsb8HfSVqBkUGyTrf4kGqcoinlSuMm+Koegbt9P5mZ7xLciu2u87aVlKDkdc4OOFwuhBvZwL/0NyC2e191NGk39tCd" +
+            "MFT3pHEDOvN5KF4Cx0EGMXsTDMUMEF7vlF3GNEmCwT6T1VSnRfkjD0kDNgnHhrsm1yjNcm6R+JDvVCKjBBlzMj+xYdDoEKAKZsgt" +
+            "0skHZ1D72dSLP2v3PRoP2yRvrka0tNxMIPJossQtxJ2rSNWwUs2nAHAJbGmt/EZ5xCCcgW/5NPrYrIMviwV2nXURkwuHIb6K6Q==",
+        ),
+        Intermediate(
+            name = "AHCARSA",
+            owner = "安徽 CA AHCA",
+            issuer = "ROOTCA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "D8A2570A1168B563452DEEFA3B848EEEDF9BA65188C807E9A87A7FC2CF1FE653",
+            b64 = "MIIC7jCCAlegAwIBAgIIaLH/XGjxgVwwDQYJKoZIhvcNAQEFBQAwLjELMAkGA1UEBhMCQ04xDjAMBgNVBAoMBU9TQ0NBMQ8wDQYD" +
+            "VQQDDAZST09UQ0EwHhcNMjAwNDI4MTQ0ODQ4WhcNMzAwNDI2MTQ0ODQ4WjBiMQswCQYDVQQGEwJDTjEPMA0GA1UECAwG5a6J5b69" +
+            "MRIwEAYDVQQHDAnlkIjogqXluIIxDTALBgNVBAoMBEFIQ0ExDTALBgNVBAsMBEFIQ0ExEDAOBgNVBAMMB0FIQ0FSU0EwggEiMA0G" +
+            "CSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC3tnPypNy20irBS+YC1AaqQO+TJT7TIrXFaL+BhulrBbSrlnTJO0XT+U/mSm6dwEDA" +
+            "DoHi6rz0/y1BkShwXA6xArHb+bPmA4zZKKN2Oqx2uGkCjvEvn5R8d6vcLrILohnqBQQBrWa+9T1uS/mip07CiQVEu8zO1U2bEJbd" +
+            "SK1Bxwa/YRr3XfRZ5H3OZtk3KGhUcSkcLJSzgpZT8x5iPyhYgtLqiVZZJigEYcy9mmuy3QdqHbLmTo+LP2r24GuGrgEWd0HHgZM2" +
+            "hzRS4tbi7w+Z2riXVCe2miY65B0xtxmwyZbKsmT9z8COfz86+ZGFZadSU/RMNnHjddAq1VGI4RmfAgMBAAGjXTBbMAsGA1UdDwQE" +
+            "AwIAhjAMBgNVHRMEBTADAQH/MB8GA1UdIwQYMBaAFBa1XfcxP+I7anyK8UT4CcJ7cw/VMB0GA1UdDgQWBBT95DKn9QjIISSTM58u" +
+            "Sju7WvFn2zANBgkqhkiG9w0BAQUFAAOBgQBa3WI4ecFOyNj1d1sCEa/NsLqRTKUh6t35GhlYdr93YSGIc4R9yyteJqKHaD0GBu6O" +
+            "ZtJAGgrodbmvdDIaEYrwMkbW0dGyJdGcC7Aoxt+CMZ4uqEyXFxkZCVafFEqqFhY/7F/ahXtC9wjjagKY8u/4AXx+4x6LQ52BQ3t7" +
+            "AaCpxg==",
+        ),
+        Intermediate(
+            name = "SmartCA RSA CA1_SUBCA4",
+            owner = "SmartCA",
+            issuer = "SmartCA RSA CA1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "2E9A2CD1DBD8A7BFC0C16AA9AC39319E72A01A3F3C8BC7A6E815A5DBF273FBD7",
+            b64 = "MIIDyTCCArGgAwIBAgINAKBhLcNcBYcfPwY8fTANBgkqhkiG9w0BAQsFADBXMQswCQYDVQQGEwJDTjENMAsGA1UECB4EbF+CzzEN" +
+            "MAsGA1UEBx4EU1dOrDEQMA4GA1UEChMHU21hcnRDQTEYMBYGA1UEAxMPU21hcnRDQSBSU0EgQ0ExMCIYDzIwMjAwNjA1MDc1NzUz" +
+            "WhgPMjAzMDA2MDUwNzU3NTNaMHUxCzAJBgNVBAYTAkNOMQ8wDQYDVQQIHgZTV06sXgIxDzANBgNVBAceBmxfgs93ATEQMA4GA1UE" +
+            "ChMHU21hcnRDQTERMA8GA1UECx4IZnphZwBDAEExHzAdBgNVBAMUFlNtYXJ0Q0EgUlNBIENBMV9TVUJDQTQwggEiMA0GCSqGSIb3" +
+            "DQEBAQUAA4IBDwAwggEKAoIBAQDTHib7kQ/1nlPePe0yXkhYzqGcvk+1pby2P7wTfF79wfkCZsXXrWclQfQ05292KjAnyCkJn+I+" +
+            "BXXGH1czd/+iZyUMGneCzxksfzT78BIxc8PS/R5WIadfnyMElvDF0dJk8MykdQI+J0wsZyNFlD7ot3hIUZMwTIRNXtnF3rQfvG8n" +
+            "gbysCj5mRkwka+b7CLbyApXlge2FJd5Ec8x/UAqRKGE0mWMTC+f2nT5OfwBxO2yh2M/HLaFg3h9U79+DY/ON4nfCOdKh5zTEMHHY" +
+            "mluUXu4CQDguE49z90agHL9zSkYNUK6V3peHGOBDo9s0EK0TxxzKcF5/jrP7D/4eYRErAgMBAAGjcjBwMAwGA1UdEwQFMAMBAf8w" +
+            "HQYDVR0OBBYEFCGPX1GNfvvXMuaBwbPRTZ/R7tFsMBMGA1UdJQQMMAoGCCsGAQUFBwMJMB8GA1UdIwQYMBaAFJ6kT4fRf+ZRcjOs" +
+            "xHvrOhUoeeXuMAsGA1UdDwQEAwIBhjANBgkqhkiG9w0BAQsFAAOCAQEAdk3HaUH7wSMi++IMowKTQbODfgNedGTnz3/MEsDAcXzE" +
+            "/+Bh67XRN1GcWCWHnCwmeZe63LTUCmoElfzbv8tYV6W4JgAOjFVm3P0HsIYxun4ng/bIZkt2OvPSmyZoIeZgYSLjZiYxzyujvQtd" +
+            "CCqD/4FE4Jen1pF+DN9iBcvRjDLE2UbaKqSeoQYBeSV9U+9lex6WRlzSsxAm+loBGuSs86YT+JsaIyPO0nKFwAD04AdwvYTKq0jS" +
+            "z0rVy46K2zspPo9bYqiuwVH8YfBZcwcGf+wM8YrPy7xP6TQSAN6T9pJeP6wFaBteot846HqB67d3N9CQXDdlhj0n5W8O5aUICA==",
+        ),
+        Intermediate(
+            name = "ESIGN SM2 OCA",
+            owner = "e簽寶 eSign",
+            issuer = "ROOTCA（國家 SM2 根，2042 年版）",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "B0AB97DBEB73A736AF207E274A02BD4A6976D641A850E0F59071C021E8418DA9",
+            b64 = "MIICtjCCAlugAwIBAgIQSXSYlYmn4afK1WdfZGHc7DAMBggqgRzPVQGDdQUAMC4xCzAJBgNVBAYTAkNOMQ4wDAYDVQQKDAVOUkNB" +
+            "QzEPMA0GA1UEAwwGUk9PVENBMB4XDTIxMDYwOTEwNTEzNFoXDTQxMDYwNDEwNTEzNFowYzELMAkGA1UEBhMCQ04xLDAqBgNVBAoM" +
+            "I0VzaWduIERpZ2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5MQ4wDAYDVQQLDAVFU0lHTjEWMBQGA1UEAwwNRVNJR04gU00yIE9D" +
+            "QTBZMBMGByqGSM49AgEGCCqBHM9VAYItA0IABENRXBjQVV76zZlks6HdEOPD4GUHYBsn4JUV12Sdc4/V/iFqLlbJ2hQmkX5cC1cl" +
+            "Flq+9xWCgV57l1rXYFaWNmijggEiMIIBHjAfBgNVHSMEGDAWgBRMMrGX2TMbxKYFwcbli2Jb8Jd2WDAPBgNVHRMBAf8EBTADAQH/" +
+            "MIG6BgNVHR8EgbIwga8wQaA/oD2kOzA5MQswCQYDVQQGEwJDTjEOMAwGA1UECgwFTlJDQUMxDDAKBgNVBAsMA0FSTDEMMAoGA1UE" +
+            "AwwDYXJsMCqgKKAmhiRodHRwOi8vd3d3LnJvb3RjYS5nb3YuY24vYXJsL2FybC5jcmwwPqA8oDqGOGxkYXA6Ly9sZGFwLnJvb3Rj" +
+            "YS5nb3YuY246Mzg5L0NOPWFybCxPVT1BUkwsTz1OUkNBQyxDPUNOMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUK82en8aFOPbF" +
+            "9u2JiezzfqPbkI0wDAYIKoEcz1UBg3UFAANHADBEAiAgNrXBeO7J75KaHh3/wgOoBq+GDVGD0UnfuRhdvsdgUAIgIYqGWmk6Kd3m" +
+            "L1sJpUpyC8fQMc4V9CFiXaIK03TVXl4=",
+        ),
+        Intermediate(
+            name = "HLJCA_SM2_SUB",
+            owner = "黑龍江 CA（中安）HLJCA",
+            issuer = "HLJCA_SM2",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "8F8AEEE427E53134B1DC831A1C1AD9F5F0FFDE516268F2DC0F41626F06A5B9F5",
+            b64 = "MIIDCDCCAq6gAwIBAgIIICIEAgEHIIIwCgYIKoEcz1UBg3UwgZQxCzAJBgNVBAYTAkNOMRUwEwYDVQQIDAzpu5HpvpnmsZ/nnIEx" +
+            "FTATBgNVBAcMDOWTiOWwlOa7qOW4gjEzMDEGA1UECgwq6buR6b6Z5rGf55yB5pWw5a2X6K+B5Lmm6K6k6K+B5pyJ6ZmQ5YWs5Y+4" +
+            "MQ4wDAYDVQQLDAVITEpDQTESMBAGA1UEAwwJSExKQ0FfU00yMB4XDTIyMDQwMjA3NTUyOVoXDTI3MDQwMjA3NTUyOVowgZgxFjAU" +
+            "BgNVBAMMDUhMSkNBX1NNMl9TVUIxDjAMBgNVBAsMBUhMSkNBMTMwMQYDVQQKDCrpu5HpvpnmsZ/nnIHmlbDlrZfor4HkuaborqTo" +
+            "r4HmnInpmZDlhazlj7gxFTATBgNVBAcMDOWTiOWwlOa7qOW4gjEVMBMGA1UECAwM6buR6b6Z5rGf55yBMQswCQYDVQQGDAJDTjBZ" +
+            "MBMGByqGSM49AgEGCCqBHM9VAYItA0IABHFhKb++XIFb+vsDY6YEqaueSWqlld79GRo3yQit7r/Jeowk6WjbBLek96sakeV23gNb" +
+            "xEn1JbJ2MTvrA19mIlWjgeMwgeAwHwYDVR0jBBgwFoAUAaHl4swemmuPDWFo1225VMzfhTYwHQYDVR0OBBYEFDCobJqyMgdHQ0XU" +
+            "i4XEOw2VPn3/MAwGA1UdEwQFMAMBAf8wCwYDVR0PBAQDAgEGMIGCBgNVHR8EezB5MHegdaBzhnFsZGFwOi8vMjE4LjcuNzEuMjE6" +
+            "Mzg5L2NuPUNBMjAxNjAyMjQwMDAwMDAyOSxjPWNuP2NlcnRpZmljYXRlUmV2b2NhdGlvbkxpc3Q/YmFzZT9vYmplY3RjbGFzcz1j" +
+            "UkxEaXN0cmlidXRpb25Qb2ludDAKBggqgRzPVQGDdQNIADBFAiEA4PKBK2H6Dm4tWQ4UU9W99V8+kyQdFU9UYMn1XXIwndECIA3m" +
+            "oV5LTLkG92JZc+mgaBWXNJ+VhaJMZ4UecE7psqGw",
+        ),
+        Intermediate(
+            name = "iTrusChina Class 2 Enterprise Subscriber CA - G3",
+            owner = "天威誠信 iTrusChina",
+            issuer = "iTrusChina Class 2 Root CA - G3",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "75A588E354BBCB37383F2604AE7C02CB0919FDA8CB7673C1F58FB24B7414AE3E",
+            b64 = "MIIEizCCA3OgAwIBAgIUS2vWuQCWwcI+UzPKrKqvPDkLJcQwDQYJKoZIhvcNAQELBQAwajELMAkGA1UEBhMCQ04xEzARBgNVBAoM" +
+            "CmlUcnVzQ2hpbmExHDAaBgNVBAsME0NoaW5hIFRydXN0IE5ldHdvcmsxKDAmBgNVBAMMH2lUcnVzQ2hpbmEgQ2xhc3MgMiBSb290" +
+            "IENBIC0gRzMwHhcNMjMwNDE4MDMyNTU5WhcNMzgwNDE3MDMyNTU5WjB7MQswCQYDVQQGEwJDTjETMBEGA1UECgwKaVRydXNDaGlu" +
+            "YTEcMBoGA1UECwwTQ2hpbmEgVHJ1c3QgTmV0d29yazE5MDcGA1UEAwwwaVRydXNDaGluYSBDbGFzcyAyIEVudGVycHJpc2UgU3Vi" +
+            "c2NyaWJlciBDQSAtIEczMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2Bta43f293EIHWb0rUFUelMwx1jgDufOwNFX" +
+            "w5alVxqslmlJWVd29dSVLi2FhRNO1hx49TNQ11NraoOKjuLBrfvqHarP+IXouzU0wONEYxr32hurWDSxhRLC8rkSV2OJkzHqb/Co" +
+            "RDYoxY3J7ABVFrbSo/WUzg074X3qer3RED8xHtaW8D38DfVjxHzYGFtM3saaZ5GUI2f8fRhSWlcLoW3fmj1lC6a5X5Q5Opvugua3" +
+            "p4enanl8TScfFyzlymfbW+qX6gZrwrcVxgwBOu6XztynYijcqd+yyhvupetZTywBGaUh4MSJUAa1c3gKkj6v2BqiEB8PmsMSwsku" +
+            "TOIG3QIDAQABo4IBFjCCARIwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAQYwHgYDVR0RBBcwFaQTMBExDzANBgNV" +
+            "BAMMBnN3c3MtMjAdBgNVHQ4EFgQUVlUVqaXkvtyVXbCt8/ZCNKmgSagwHwYDVR0jBBgwFoAUb+gAzFNV7vLT7jTwJMAryEC5PJEw" +
+            "RgYDVR0gBD8wPTA7BgoqgRyG7xcBAQECMC0wKwYIKwYBBQUHAgEWH2h0dHBzOi8vd3d3Lml0cnVzLmNvbS5jbi9jdG5jcHMwRAYD" +
+            "VR0fBD0wOzA5oDegNYYzaHR0cDovL2ljYS1wdWJsaWMuaXRydXMuY29tLmNuL2NybC9pdHJ1c2MycmNhZzMuY3JsMA0GCSqGSIb3" +
+            "DQEBCwUAA4IBAQBJTxD7KHFaLo8n2945Jh4/hWcLiO0gpGtwfsjZuNXkdb6wj2o/noXrTMy4wVAUFOT9drWvLrxnzbjmwZ27aLFA" +
+            "iml70Ph7bt35YDVg8e4ZT9XBDUkQRyogjVjEYW2N3vFu9pm3mY3dlbTTgqWZcRTxbRrNAzbZI7S0gXLfj4qxxyaV8blhjN4Ztvi/" +
+            "LUUUJ3gYjiD0EfaHMkkvTGPHXTCfJ0NQAqrp4V2U9J7GtDATHftiAinGrNlgxzPNZcFp6vKd8SH4PaILuzaThpFBWMDvOTkZnazN" +
+            "kLMrEPIyjaebmJyIUZMMczu+q64G2FEBBuqdio3A6sySXr9Ilee5ShGx",
+        ),
+        Intermediate(
+            name = "AHCA_SM2_E1_CA",
+            owner = "安徽 CA AHCA",
+            issuer = "AHCASM2",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "50CA5DC5A6B82B343D5D4F1D5FED630519A74BBF7728B91CC6323454BC65877E",
+            b64 = "MIIDuzCCA1+gAwIBAgIIaej/jzFcnbIwDAYIKoEcz1UBg3UFADB2MQswCQYDVQQGEwJDTjEOMAwGA1UECAwFQW5IdWkxDjAMBgNV" +
+            "BAcMBUhlRmVpMSYwJAYDVQQKDB1Bbkh1aSBDZXJ0aWZpY2F0aW9uIEF1dGhvcml0eTENMAsGA1UECwwEQUhDQTEQMA4GA1UEAwwH" +
+            "QUhDQVNNMjAeFw0yNDAxMzAwOTQ0NTdaFw0yOTAyMDIwOTQ0NTdaMEgxCzAJBgNVBAYTAkNOMQ8wDQYDVQQIDAblronlvr0xDzAN" +
+            "BgNVBAcMBuWQiOiCpTEXMBUGA1UEAwwOQUhDQV9TTTJfRTFfQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAAQp6OSlNPgFG1jL" +
+            "8wWsqfQQWtB83MS3xaXz4V6Ix8sfYCa07cTRiK/OTmSQJSTZ0aWTBKiwfgQTU6+1mun2V+56o4ICATCCAf0wCwYDVR0PBAQDAgDA" +
+            "MAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAURpm8YWLiulOpDIjSzV2WwMgwus8wgcoGA1UdHwSBwjCBvzCBvKCBuaCBtoaBjmxk" +
+            "YXA6Ly9sZGFwLmFoZWNhLmNuOjM4OS9DTj1BSENBU00yLENOPUFIQ0FTTTIsIE9VPUNSTERpc3RyaWJ1dGVQb2ludHMsIG89YWhj" +
+            "YT9jZXJ0aWZpY2F0ZVJldm9jYXRpb25MaXN0P2Jhc2U/b2JqZWN0Y2xhc3M9Y1JMRGlzdHJpYnV0aW9uUG9pbnSGI2h0dHA6Ly93" +
+            "d3cuYWhlY2EuY24vY3JsL0FIQ0FTTTIuY3JsMIHSBggrBgEFBQcBAQSBxTCBwjCBiwYIKwYBBQUHMAKGf2xkYXA6Ly9sZGFwLmFo" +
+            "ZWNhLmNuOjM4OS9DTj1BSENBU00yLENOPUFIQ0FTTTIsIE9VPWNBQ2VydGlmaWNhdGVzLCBvPWFoY2E/Y0FDZXJ0aWZpY2F0ZT9i" +
+            "YXNlP29iamVjdENsYXNzPWNlcnRpZmljYXRpb25BdXRob3JpdHkwMgYIKwYBBQUHMAKGJmh0dHA6Ly93d3cuYWhlY2EuY24vY2Fj" +
+            "ZXJ0L0FIQ0FTTTIuY2VyMB0GA1UdDgQWBBTata5a/rbiRo0VNMsRUsjsG5JJ6zAMBggqgRzPVQGDdQUAA0gAMEUCIQDvqFOOqjhj" +
+            "HApFPu6yinJVZtU3elLo7lvhG2TGyGaLUAIga1iMMZQL84T6L+qhdE/+btVQPObcwSNoSGlTuizAtps=",
+        ),
+        Intermediate(
+            name = "AHCA_RSA_E1_CA",
+            owner = "安徽 CA AHCA",
+            issuer = "AHCARSA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "402D9D10C50D4C867593E50617C5B41C77034499F2DE960307A0DB8C8712F033",
+            b64 = "MIIDiTCCAnGgAwIBAgIIaMb/phcj2oIwDQYJKoZIhvcNAQELBQAwYjELMAkGA1UEBhMCQ04xDzANBgNVBAgMBuWuieW+vTESMBAG" +
+            "A1UEBwwJ5ZCI6IKl5biCMQ0wCwYDVQQKDARBSENBMQ0wCwYDVQQLDARBSENBMRAwDgYDVQQDDAdBSENBUlNBMB4XDTI0MDEzMDEw" +
+            "MjA0NVoXDTI5MDIwMjEwMjA0NVowSDELMAkGA1UEBhMCQ04xDzANBgNVBAgMBuWuieW+vTEPMA0GA1UEBwwG5ZCI6IKlMRcwFQYD" +
+            "VQQDDA5BSENBX1JTQV9FMV9DQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAIdtIBS+7PmfAI/R9CPcS1o2ugdeBay5" +
+            "Jy8xJNF/phYUb4f8jaMV+HIO/mVLSyYceY4oFpHuRISVNarJhMV1B4JzQEgUv0mvLV6n6zb5VFLJWtN9aEr+qNiYfJb8lm8kl5OV" +
+            "bSvpYwNv2lRICowodPbfrD3epdmB5nG9I3dPsMP+xqfzSlONWOoZacnSXu25geI4xSGgNzolrnDEPYqrLgab4KaXRpt84fGDTJqe" +
+            "BP174+2jifWDTXxGZlPVWKlB+Pvn3IUJ1rsYxjHBfc1zyns45PKHJAlEAX7xFr9py0LvRT1koiJ08cLkwlNyJhcvUWmofXpZ6kvP" +
+            "l1Gd9QmToM0CAwEAAaNdMFswCwYDVR0PBAQDAgDAMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAU/eQyp/UIyCEkkzOfLko7u1rx" +
+            "Z9swHQYDVR0OBBYEFEWss9kdrLHEaB8tKIwkZjSC3YotMA0GCSqGSIb3DQEBCwUAA4IBAQBHdhF2JsgIUea/kiQRsdawxup22R6R" +
+            "8uNpstUQOF9G2B1POEGgJPESX58sJ/CYN9R+yvgvMBsiF11YmVdao1NIhHejg5APoVepZUjX2AgSjAWUZZsbOGkspzvPO71oJjX1" +
+            "+kdDEaS2OdvLC587YWH0C8J/c0on3z/mHa2aThIgZa/Nro99Ib8tPdaJPlx7cqUVZM41FdvzgN6zMN71kstr8gMF62wug+iwpPTv" +
+            "W5wuKjGjf2gh5Fc5GidpLVKA2XKB9gjF9D3rlEgQC43oiA04zXOIYDx0i3lsecsTAQ6QkRDRQdonQvWFV926K+kZyXoKDflFMUE+" +
+            "ZFIa8vBpqBeI",
+        ),
+        Intermediate(
+            name = "eSign Generic SM2 CA",
+            owner = "e簽寶 eSign",
+            issuer = "ESIGN SM2 OCA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "19B490A8BF03245B716F41B5B11A2EFAA9CD081C660CE8B02FA6091F76A91285",
+            b64 = "MIICUTCCAfegAwIBAgIJAbGI7cMVIw/OMAoGCCqBHM9VAYN1MGMxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNFc2lnbiBEaWdpdGFs" +
+            "IENlcnRpZmljYXRlIEF1dGhvcml0eTEOMAwGA1UECwwFRVNJR04xFjAUBgNVBAMMDUVTSUdOIFNNMiBPQ0EwHhcNMjQxMjAzMDYw" +
+            "OTE4WhcNNDEwNjAzMDYwOTE4WjBsMQswCQYDVQQGEwJDTjEsMCoGA1UECgwjZVNpZ24gRGlnaXRhbCBDZXJ0aWZpY2F0ZSBBdXRo" +
+            "b3JpdHkxEDAOBgNVBAsMB2VTaWduQ0ExHTAbBgNVBAMMFGVTaWduIEdlbmVyaWMgU00yIENBMFkwEwYHKoZIzj0CAQYIKoEcz1UB" +
+            "gi0DQgAECvo6BU+xg7EfW+KZaZgxagSCeP25ibB9uvC4rXNMk7Cn8qWvAqcYJlRgPuxXI8HBHk6PzCzh0Mj0CwPRUoClEaOBijCB" +
+            "hzAdBgNVHQ4EFgQUlhr8elSVAjWCE2U6MW34TkeFi1swDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAU" +
+            "K82en8aFOPbF9u2JiezzfqPbkI0wJwYDVR0lAQH/BB0wGwYIKwYBBQUHAwEGCCsGAQUFBwMCBgUqVhUBBDAKBggqgRzPVQGDdQNI" +
+            "ADBFAiA+X4U08Qs+LjbLQWVVrgMwA4b88OxMRjTa5t8VS3rFjwIhAKZvgip4q4GpyQihfqZGXMe37ajL25c86n8DdbK1LG15",
+        ),
+        Intermediate(
+            name = "OPERATION CA04 FOR GFA TRUST NETWORK",
+            owner = "國富安 GFA（中國國際電子商務中心 CIECC）",
+            issuer = "ROOT CERTIFICATE FOR GFA TRUST NETWORK（國富安 GFA（中國國際電子商務中心 CIECC））",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "0B1C9CD07D9288B87F8CB664E48D069DE4538C6470193952C39B241FAC715B31",
+            b64 = "MIICxzCCAmygAwIBAgIQU2uOMLiyIGpNQAW4bd+/FjAMBggqgRzPVQGDdQUAMIGMMQswCQYDVQQGEwJDTjEQMA4GA1UECAwHQkVJ" +
+            "SklORzEOMAwGA1UEBwwFQkVUREExDjAMBgNVBAoMBUNJRUNDMRowGAYDVQQLDBFHRkEgVFJVU1QgTkVUV09SSzEvMC0GA1UEAwwm" +
+            "Uk9PVCBDRVJUSUZJQ0FURSBGT1IgR0ZBIFRSVVNUIE5FVFdPUkswHhcNMjUwNDI4MDgyMDQ4WhcNMzIwMzAyMDgyMDQ4WjCBijEL" +
+            "MAkGA1UEBhMCQ04xEDAOBgNVBAgMB0JFSUpJTkcxDjAMBgNVBAcMBUJFVERBMQ4wDAYDVQQKDAVDSUVDQzEaMBgGA1UECwwRR0ZB" +
+            "IFRSVVNUIE5FVFdPUksxLTArBgNVBAMMJE9QRVJBVElPTiBDQTA0IEZPUiBHRkEgVFJVU1QgTkVUV09SSzBZMBMGByqGSM49AgEG" +
+            "CCqBHM9VAYItA0IABFfF35rNVAmDqdDIZe+kgXDbv+EW3e7+6gOnyaV4dQkQp3vGwHWn9Y2YjCrLVw+DIXZz57E6zoW+7vqNcoAJ" +
+            "9kajga0wgaowDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBTxaGz1HHu/Zpz37MpV+F3au5uuhTBlBgNVHSMEXjBcgBRrjMI04IwM" +
+            "6FBTYwRtRGcdiSAJCqEypDAwLjELMAkGA1UEBhMCQ04xDjAMBgNVBAoMBU5SQ0FDMQ8wDQYDVQQDDAZST09UQ0GCEFfMDrsEgZD9" +
+            "VmowMlObDpYwEgYDVR0TAQH/BAgwBgEB/wIBAjAMBggqgRzPVQGDdQUAA0cAMEQCIE5Y9R5t3lOB2kfeNQfW5D3id9bGyp8AuO7c" +
+            "cUmFjALyAiBblf2BonGYOKU4M/GUoOaaPc7QZiP101piO5rxfBDQng==",
+        ),
+        Intermediate(
+            name = "OPERATION CA04 FOR GFA TRUST NETWORK（國富安 GFA（中國國際電子商務中心 CIECC））",
+            owner = "國富安 GFA（中國國際電子商務中心 CIECC）",
+            issuer = "ROOT CERTIFICATE FOR GFA TRUST NETWORK",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "C97E042E9F9017440A29F6DC92AE26C98D44B93C440C541E78F52846925DA5DA",
+            b64 = "MIIEtjCCA56gAwIBAgIQJSui59N3aT2pkTLYVwKMrjANBgkqhkiG9w0BAQsFADCBjDELMAkGA1UEBhMCQ04xEDAOBgNVBAgMB0JF" +
+            "SUpJTkcxDjAMBgNVBAcMBUJFVERBMQ4wDAYDVQQKDAVDSUVDQzEaMBgGA1UECwwRR0ZBIFRSVVNUIE5FVFdPUksxLzAtBgNVBAMM" +
+            "JlJPT1QgQ0VSVElGSUNBVEUgRk9SIEdGQSBUUlVTVCBORVRXT1JLMB4XDTI1MDQyODA4MjEyNVoXDTM1MDQyNjA4MjEyNVowgYox" +
+            "CzAJBgNVBAYTAkNOMRAwDgYDVQQIDAdCRUlKSU5HMQ4wDAYDVQQHDAVCRVREQTEOMAwGA1UECgwFQ0lFQ0MxGjAYBgNVBAsMEUdG" +
+            "QSBUUlVTVCBORVRXT1JLMS0wKwYDVQQDDCRPUEVSQVRJT04gQ0EwNCBGT1IgR0ZBIFRSVVNUIE5FVFdPUkswggEiMA0GCSqGSIb3" +
+            "DQEBAQUAA4IBDwAwggEKAoIBAQDDhKKprlmNIWJD1QOywlMecz5vCn9JlEmMuUssyu5oYM+gvffXXD2QjhtLUHh/3f/xPnTjYTPN" +
+            "Ps9LYZZoGzE8RLSe9OiVbukNmv5XzI851TSUwXag1SkKu5ikxlu1fqyPgsHFSZCpZLO8RxekMfeIt8LGgP+2kkS1a1+ZEhy/trAM" +
+            "xtB+pC+bppfRbFpMiXzADbJKd3mO85klK4PA4znjImNItoib3I4s1/EjN6qzoLlZpdXBJWdkW2oqzgwRBVG5R8M5Y3DxHHNDuksq" +
+            "3umPTTLfmStK4hz9zGmRmZg2eVi5befC+f5UL4B9kVcsXom9AZbGuUQK7yVoeQW+hdMNAgMBAAGjggESMIIBDjAOBgNVHQ8BAf8E" +
+            "BAMCAQYwHQYDVR0OBBYEFGL372nP4zyLGV9zhTG3kE+7RhG+MIHIBgNVHSMEgcAwgb2AFJinRRwpAa8KCfiSHFueC7R83XlOoYGS" +
+            "pIGPMIGMMQswCQYDVQQGEwJDTjEQMA4GA1UECAwHQkVJSklORzEOMAwGA1UEBwwFQkVUREExDjAMBgNVBAoMBUNJRUNDMRowGAYD" +
+            "VQQLDBFHRkEgVFJVU1QgTkVUV09SSzEvMC0GA1UEAwwmUk9PVCBDRVJUSUZJQ0FURSBGT1IgR0ZBIFRSVVNUIE5FVFdPUkuCECeG" +
+            "7dHJFz4ZcwPmCSFvmJgwEgYDVR0TAQH/BAgwBgEB/wIBAjANBgkqhkiG9w0BAQsFAAOCAQEA4NwwCSu0cEdFCY0uG2RxZqzy5kxQ" +
+            "8xh+qtPraYizW4+ayClIj5HulmPQfV/an1irn/u9gOxm4/XfUOmCoDr2OG9UweG9/dBpNcHsfwVb6fMM85KgqXodmAPr0d+3UNgs" +
+            "TTSbpPGdjye2utZSGkLuj10q01QWahBN9wSVOumSjQ0ISuTtfYwaVtYqO0NQO0Si3D3VYEwJfB7vXpYr4MzcHep/+z7rOeOYKOKV" +
+            "rKU+7zqJcglzH0N4qoQZOpO/8pQ0GRJusLUKlFdDJ7+XIVnnagcJiMeGm0ToZo68FyWUaMA8x1qYxjyNiX+xxfZyFB8otDDwIp3e" +
+            "SI7zammuguzDsA==",
+        ),
+        Intermediate(
+            name = "ZJCA RSA InstantTrust Personal OCA G1",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCA RSA InstantTrust Root CA G1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "F174241FDAF196B9533978C204E4ED8ED3D8891529D3B6CDDCB1C747E76181EC",
+            b64 = "MIIGDjCCBPagAwIBAgIGBWQFbdwwMA0GCSqGSIb3DQEBCwUAMIGCMQswCQYDVQQGEwJDTjE5MDcGA1UECgwwWmhlSmlhbmcgRGln" +
+            "aXRhbCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgQ28uLCBMdGQuMQ0wCwYDVQQLDARaSkNBMSkwJwYDVQQDDCBaSkNBIFJTQSBJbnN0" +
+            "YW50VHJ1c3QgUm9vdCBDQSBHMTAgFw0yNTA2MjAwOTIyMDNaGA8yMDUwMDYxOTA5MjIwM1owgYcxCzAJBgNVBAYTAkNOMTkwNwYD" +
+            "VQQKDDBaaGVKaWFuZyBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDby4sIEx0ZC4xDTALBgNVBAsMBFpKQ0ExLjAsBgNV" +
+            "BAMMJVpKQ0EgUlNBIEluc3RhbnRUcnVzdCBQZXJzb25hbCBPQ0EgRzEwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCt" +
+            "QqTGMiNPS/2xY7bQP0zhfWfRrStb/TBPYvkH3M9f4QZ7QnziVjQwIKxHpJ+fcaKnM5fF5ITGX6iXCZrhQxwt9Hqqk0d6G4z8eWlg" +
+            "RRbIki7KMkM9QhrBeJHJ9FGi967i3UVe+tRDsVyYGkPhYgQLScZM9v4u8zwBSZE5JelkIHbWy+ZLevghjuWRFF/qgyGZyohOK083" +
+            "CW2dc56D6uQMr6XCYVyi111DMdjLufFYKmG89hVwb49mqTAncNM0riuyNCk5zYmofqd0xO32/Rgaj/WDUoM9bWY+R+cIItI1ekE7" +
+            "T+vQfJ+/Pix8i0+oRzxnOkqsfF33XoTo/u3YvebTAgMBAAGjggJ/MIICezAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIB" +
+            "hjAdBgNVHQ4EFgQUv5KZUPzYKz4WdL4rVdONJTQSsrwwHwYDVR0jBBgwFoAUztQCkKADFQwzVqo2H+077hJsfuMwggFvBggrBgEF" +
+            "BQcBAQSCAWEwggFdMIGpBggrBgEFBQcwAoaBnGxkYXA6Ly9jYWxkYXAuempjYS5jb20uY246Mzg5L2NuPVpKQ0EgUlNBIEluc3Rh" +
+            "bnRUcnVzdCBSb290IENBIEcxLG91PWNBQ2VydGlmaWNhdGVzLG89empjYSxjPWNuP2NBQ2VydGlmaWNhdGU7YmluYXJ5P2Jhc2U/" +
+            "b2JqZWN0Q2xhc3M9Y2VydGlmaWNhdGlvbkF1dGhvcml0eTCBrgYIKwYBBQUHMAWGgaFsZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNu" +
+            "OjM4OS9jbj1aSkNBIFJTQSBJbnN0YW50VHJ1c3QgUGVyc29uYWwgT0NBIEcxLG91PWNBQ2VydGlmaWNhdGVzLG89empjYSxjPWNu" +
+            "P2NBQ2VydGlmaWNhdGU7YmluYXJ5P2Jhc2U/b2JqZWN0Q2xhc3M9Y2VydGlmaWNhdGlvbkF1dGhvcml0eTCBpAYDVR0fBIGcMIGZ" +
+            "MIGWoIGToIGQhoGNbGRhcDovL2NhbGRhcC56amNhLmNvbS5jbjozODkvY249YXJsMSxvdT1BUkxEaXN0cmlidXRlUG9pbnRzLG89" +
+            "empjYSxjPWNuP2F1dGhvcml0eVJldm9jYXRpb25MaXN0O2JpbmFyeT9iYXNlP29iamVjdENsYXNzPWNSTERpc3RyaWJ1dGlvblBv" +
+            "aW50MA0GCSqGSIb3DQEBCwUAA4IBAQAsh0SCRMwFWRiwFKQqzquAbg1/4vrZLm2RFSkGzG6+nWIXwidI52dnvhX+gT651tU/iWuf" +
+            "Dwo5+YH0LVlr5KOPbJPfObiNKL0kom8jMllQ+UD5XhUFia1pvkI0vSzsqWwim/FAyc88eCGCBPZBs+hGResyNqEegYUOiB/H5syL" +
+            "Hi5Z39cY1nx9vUzDt2P7mhOwVsrTfSSzmwG6e3GpqflOnSTEzxiEsxucLaBxK2md+x4rfgOSeQkfg4oDCtL7LpSJTLBShbNIUHRk" +
+            "kc4yls/VpZ17ziL28TD3WNgHGiMNrqb6kNMQllaEQHZaZi3wjcY0GYxQKKd7dejbACSzpmfW",
+        ),
+        Intermediate(
+            name = "ZJCA RSA InstantTrust Organization OCA G1",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCA RSA InstantTrust Root CA G1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "35B657A2D8AFE9C1F3F9E74C5DB1ED71538663CCF2D5AFE037F043122B308887",
+            b64 = "MIIGFjCCBP6gAwIBAgIGBWQEf4AwMA0GCSqGSIb3DQEBCwUAMIGCMQswCQYDVQQGEwJDTjE5MDcGA1UECgwwWmhlSmlhbmcgRGln" +
+            "aXRhbCBDZXJ0aWZpY2F0ZSBBdXRob3JpdHkgQ28uLCBMdGQuMQ0wCwYDVQQLDARaSkNBMSkwJwYDVQQDDCBaSkNBIFJTQSBJbnN0" +
+            "YW50VHJ1c3QgUm9vdCBDQSBHMTAgFw0yNTA2MjAwOTIzMTFaGA8yMDUwMDYxOTA5MjMxMVowgYsxCzAJBgNVBAYTAkNOMTkwNwYD" +
+            "VQQKDDBaaGVKaWFuZyBEaWdpdGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDby4sIEx0ZC4xDTALBgNVBAsMBFpKQ0ExMjAwBgNV" +
+            "BAMMKVpKQ0EgUlNBIEluc3RhbnRUcnVzdCBPcmdhbml6YXRpb24gT0NBIEcxMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKC" +
+            "AQEA4+tRi8XgJwmx3oPmisa7G3rxCwkK4NHxVUUFum8iBX78lrrIcjyvTpwCRL0lZh/zPbv/WPKb+IGyT9MWHoUjle/2d00F+GmR" +
+            "qoBx4R0tNU30uwlAiCWF6lB3r3iJn2tYzBLXCeLRmw1oEN6kwM+7B+4hHA+Em0icKPwUTW4+PufnThoFX/Z9rdbmGhDL54gwERWK" +
+            "RNPrPh/JoKiE8vW7V/uAm6d5BaMD5VGEvYM7qjwnhgcMfn3scUyoP9V14BRRTNpXvSUBJ/Q+P7VC28yBoJgaL/7zfuBUFnEryemr" +
+            "wxhdceOckhpCpbdlC3YN/RHmfCnxi9qge/U2vlwbU/uczQIDAQABo4ICgzCCAn8wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8E" +
+            "BAMCAYYwHQYDVR0OBBYEFOInzBbpyBYyN69nleue5f7KzcC8MB8GA1UdIwQYMBaAFM7UApCgAxUMM1aqNh/tO+4SbH7jMIIBcwYI" +
+            "KwYBBQUHAQEEggFlMIIBYTCBqQYIKwYBBQUHMAKGgZxsZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1aSkNBIFJTQSBJ" +
+            "bnN0YW50VHJ1c3QgUm9vdCBDQSBHMSxvdT1jQUNlcnRpZmljYXRlcyxvPXpqY2EsYz1jbj9jQUNlcnRpZmljYXRlO2JpbmFyeT9i" +
+            "YXNlP29iamVjdENsYXNzPWNlcnRpZmljYXRpb25BdXRob3JpdHkwgbIGCCsGAQUFBzAFhoGlbGRhcDovL2NhbGRhcC56amNhLmNv" +
+            "bS5jbjozODkvY249WkpDQSBSU0EgSW5zdGFudFRydXN0IE9yZ2FuaXphdGlvbiBPQ0EgRzEsb3U9Y0FDZXJ0aWZpY2F0ZXMsbz16" +
+            "amNhLGM9Y24/Y0FDZXJ0aWZpY2F0ZTtiaW5hcnk/YmFzZT9vYmplY3RDbGFzcz1jZXJ0aWZpY2F0aW9uQXV0aG9yaXR5MIGkBgNV" +
+            "HR8EgZwwgZkwgZaggZOggZCGgY1sZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1hcmwxLG91PUFSTERpc3RyaWJ1dGVQ" +
+            "b2ludHMsbz16amNhLGM9Y24/YXV0aG9yaXR5UmV2b2NhdGlvbkxpc3Q7YmluYXJ5P2Jhc2U/b2JqZWN0Q2xhc3M9Y1JMRGlzdHJp" +
+            "YnV0aW9uUG9pbnQwDQYJKoZIhvcNAQELBQADggEBACr6BxSh1tfACaz9U4wlK/bdkW6MZjaTpikjO4LaF4vWDwLFdRLMn92VG0Ma" +
+            "gJ+70BPOpnZerIvNdKem2iN+9cDki6t9fzkAGAB9DiPdmy8ZK0gPEzRQ7/Cw0kw++mYdYgqY4n/oSQNGn8m++4aNTsJGiaXVgyUf" +
+            "Kt28bbr44dvWaTCvzC9ePeZNXBMtXqrv4qp4ryZWS/mD2bjsGfHDU7xIeL3IqvNo+awFUxdPfQFTGFfUXkef/LWDHAoSRBs+lt1P" +
+            "pWgoN7KQ+H31hOE8mayfg1v98HlsDILIG9fFFslfyjse9FsFklcpoIR+7mru4RqvAohE+AVtpPvOjatbEKg=",
+        ),
+        Intermediate(
+            name = "ZJCA SM2 InstantTrust Personal OCA G1",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCA SM2 InstantTrust Root CA G1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "413E78F1C08459D067A2AE05922AE24673FC5DD9AFC6D4AF10BBE504F8B83723",
+            b64 = "MIIEhzCCBCqgAwIBAgIGBWQAyvQwMAwGCCqBHM9VAYN1BQAwgYIxCzAJBgNVBAYTAkNOMTkwNwYDVQQKDDBaaGVKaWFuZyBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDby4sIEx0ZC4xDTALBgNVBAsMBFpKQ0ExKTAnBgNVBAMMIFpKQ0EgU00yIEluc3Rh" +
+            "bnRUcnVzdCBSb290IENBIEcxMCAXDTI1MDYyMDA5MjY0M1oYDzIwNTAwNjE5MDkyNjQzWjCBhzELMAkGA1UEBhMCQ04xOTA3BgNV" +
+            "BAoMMFpoZUppYW5nIERpZ2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5IENvLiwgTHRkLjENMAsGA1UECwwEWkpDQTEuMCwGA1UE" +
+            "AwwlWkpDQSBTTTIgSW5zdGFudFRydXN0IFBlcnNvbmFsIE9DQSBHMTBZMBMGByqGSM49AgEGCCqBHM9VAYItA0IABNQs74g/quv7" +
+            "Q93V5dq5/BW9aFgQ/EK3DWr99mEpbRloRxN/qzFo9Lk8uUFoIcQvZ4BeY8HI+V1jeNaqAlPPXs+jggJ/MIICezAPBgNVHRMBAf8E" +
+            "BTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUMcwOuhguSMkJpdZPFDCsOkHuMa4wHwYDVR0jBBgwFoAU6XVdjC0Li2CG" +
+            "1n+mj2jyVS6mK98wggFvBggrBgEFBQcBAQSCAWEwggFdMIGpBggrBgEFBQcwAoaBnGxkYXA6Ly9jYWxkYXAuempjYS5jb20uY246" +
+            "Mzg5L2NuPVpKQ0EgU00yIEluc3RhbnRUcnVzdCBSb290IENBIEcxLG91PWNBQ2VydGlmaWNhdGVzLG89empjYSxjPWNuP2NBQ2Vy" +
+            "dGlmaWNhdGU7YmluYXJ5P2Jhc2U/b2JqZWN0Q2xhc3M9Y2VydGlmaWNhdGlvbkF1dGhvcml0eTCBrgYIKwYBBQUHMAWGgaFsZGFw" +
+            "Oi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1aSkNBIFNNMiBJbnN0YW50VHJ1c3QgUGVyc29uYWwgT0NBIEcxLG91PWNBQ2Vy" +
+            "dGlmaWNhdGVzLG89empjYSxjPWNuP2NBQ2VydGlmaWNhdGU7YmluYXJ5P2Jhc2U/b2JqZWN0Q2xhc3M9Y2VydGlmaWNhdGlvbkF1" +
+            "dGhvcml0eTCBpAYDVR0fBIGcMIGZMIGWoIGToIGQhoGNbGRhcDovL2NhbGRhcC56amNhLmNvbS5jbjozODkvY249YXJsMixvdT1B" +
+            "UkxEaXN0cmlidXRlUG9pbnRzLG89empjYSxjPWNuP2F1dGhvcml0eVJldm9jYXRpb25MaXN0O2JpbmFyeT9iYXNlP29iamVjdENs" +
+            "YXNzPWNSTERpc3RyaWJ1dGlvblBvaW50MAwGCCqBHM9VAYN1BQADSQAwRgIhALIBaeve4ny3nlxSfIamQjlReRRiYnf3D8yFu4fO" +
+            "6ko/AiEAqp9JplH9boGF0mackiHCk9yOwE/aTVQxxMA280i+BUI=",
+        ),
+        Intermediate(
+            name = "ZJCA SM2 InstantTrust Organization OCA G1",
+            owner = "浙江省數字安全證書管理中心 ZJCA",
+            issuer = "ZJCA SM2 InstantTrust Root CA G1",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "45D21CFD81E0D6D08A0D5DD6A3CDB487A9291B4AC2F86EC2DB7F7BD525158438",
+            b64 = "MIIEjjCCBDKgAwIBAgIGBWP/GRQwMAwGCCqBHM9VAYN1BQAwgYIxCzAJBgNVBAYTAkNOMTkwNwYDVQQKDDBaaGVKaWFuZyBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eSBDby4sIEx0ZC4xDTALBgNVBAsMBFpKQ0ExKTAnBgNVBAMMIFpKQ0EgU00yIEluc3Rh" +
+            "bnRUcnVzdCBSb290IENBIEcxMCAXDTI1MDYyMDA5Mjc0NloYDzIwNTAwNjE5MDkyNzQ2WjCBizELMAkGA1UEBhMCQ04xOTA3BgNV" +
+            "BAoMMFpoZUppYW5nIERpZ2l0YWwgQ2VydGlmaWNhdGUgQXV0aG9yaXR5IENvLiwgTHRkLjENMAsGA1UECwwEWkpDQTEyMDAGA1UE" +
+            "AwwpWkpDQSBTTTIgSW5zdGFudFRydXN0IE9yZ2FuaXphdGlvbiBPQ0EgRzEwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNCAASxF7Bh" +
+            "N3ZGT/3LlU7FahqZGmHlQiGXa14MdXKJ9qoPb7DBD7QJMOj1Y5vOoHJjwQU0q9gZk5cJCG5PpM3gMHxDo4ICgzCCAn8wDwYDVR0T" +
+            "AQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwHQYDVR0OBBYEFNSABRRn9ZxEQbvm5vwJuDBrksQ/MB8GA1UdIwQYMBaAFOl1XYwt" +
+            "C4tghtZ/po9o8lUupivfMIIBcwYIKwYBBQUHAQEEggFlMIIBYTCBqQYIKwYBBQUHMAKGgZxsZGFwOi8vY2FsZGFwLnpqY2EuY29t" +
+            "LmNuOjM4OS9jbj1aSkNBIFNNMiBJbnN0YW50VHJ1c3QgUm9vdCBDQSBHMSxvdT1jQUNlcnRpZmljYXRlcyxvPXpqY2EsYz1jbj9j" +
+            "QUNlcnRpZmljYXRlO2JpbmFyeT9iYXNlP29iamVjdENsYXNzPWNlcnRpZmljYXRpb25BdXRob3JpdHkwgbIGCCsGAQUFBzAFhoGl" +
+            "bGRhcDovL2NhbGRhcC56amNhLmNvbS5jbjozODkvY249WkpDQSBTTTIgSW5zdGFudFRydXN0IE9yZ2FuaXphdGlvbiBPQ0EgRzEs" +
+            "b3U9Y0FDZXJ0aWZpY2F0ZXMsbz16amNhLGM9Y24/Y0FDZXJ0aWZpY2F0ZTtiaW5hcnk/YmFzZT9vYmplY3RDbGFzcz1jZXJ0aWZp" +
+            "Y2F0aW9uQXV0aG9yaXR5MIGkBgNVHR8EgZwwgZkwgZaggZOggZCGgY1sZGFwOi8vY2FsZGFwLnpqY2EuY29tLmNuOjM4OS9jbj1h" +
+            "cmwyLG91PUFSTERpc3RyaWJ1dGVQb2ludHMsbz16amNhLGM9Y24/YXV0aG9yaXR5UmV2b2NhdGlvbkxpc3Q7YmluYXJ5P2Jhc2U/" +
+            "b2JqZWN0Q2xhc3M9Y1JMRGlzdHJpYnV0aW9uUG9pbnQwDAYIKoEcz1UBg3UFAANIADBFAiEAxs8FeumMAx976Sm2g0tbl0keBqhb" +
+            "SZgkJKjvMVnknRICIEa70bLaxn8MfGK19hj8nsDpm0hXJZw2pyKR1M2aLG2E",
+        ),
+        Intermediate(
+            name = "eSign Gov SM2 CA",
+            owner = "e簽寶 eSign",
+            issuer = "ESIGN SM2 OCA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "9B0F9E3A00A74834C3ABBDA64820F49F5D703731445350B6215222C5CE10BBE5",
+            b64 = "MIICTTCCAfOgAwIBAgIJAQXMjUEm3CjyMAoGCCqBHM9VAYN1MGMxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNFc2lnbiBEaWdpdGFs" +
+            "IENlcnRpZmljYXRlIEF1dGhvcml0eTEOMAwGA1UECwwFRVNJR04xFjAUBgNVBAMMDUVTSUdOIFNNMiBPQ0EwHhcNMjYwNDI5MDcw" +
+            "NTA5WhcNNDEwNDI5MDcwNTA5WjBoMQswCQYDVQQGEwJDTjEsMCoGA1UECgwjZVNpZ24gRGlnaXRhbCBDZXJ0aWZpY2F0ZSBBdXRo" +
+            "b3JpdHkxEDAOBgNVBAsMB2VTaWduQ0ExGTAXBgNVBAMMEGVTaWduIEdvdiBTTTIgQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNC" +
+            "AATckjNRbxlIIYOhWBxzUhXLcLJ13k0LSrZwgeekLEdh+sdBQ/ZlB4iXZP7LUSP7UKiKPuTn18EimaBoWufhRlW4o4GKMIGHMB0G" +
+            "A1UdDgQWBBQREj43+PRgnhCbgVfdXgkLOkOJujAOBgNVHQ8BAf8EBAMCAQYwDAYDVR0TBAUwAwEB/zAfBgNVHSMEGDAWgBQrzZ6f" +
+            "xoU49sX27YmJ7PN+o9uQjTAnBgNVHSUBAf8EHTAbBggrBgEFBQcDAQYIKwYBBQUHAwIGBSpWFQEEMAoGCCqBHM9VAYN1A0gAMEUC" +
+            "IHvFvTVEN8wW0uTCLkAgq9+/c6HjfMHL6MKAXNBjRfmMAiEA3Ca/BGvd6v0fSbaz57pN405TYd9uF3URX9iyZANZJkY=",
+        ),
+        Intermediate(
+            name = "eSign Sub SM2 CA",
+            owner = "e簽寶 eSign",
+            issuer = "ESIGN SM2 OCA",
+            purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+            source = "釘選 SHA-256，取自 https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+            sha256 = "C9BAB62BF9AC5E34DB8B690B6DD397E50B36B4A0050C6CF353C1BE3B79E99EBC",
+            b64 = "MIICTTCCAfOgAwIBAgIJAREp1NsMjRQ8MAoGCCqBHM9VAYN1MGMxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNFc2lnbiBEaWdpdGFs" +
+            "IENlcnRpZmljYXRlIEF1dGhvcml0eTEOMAwGA1UECwwFRVNJR04xFjAUBgNVBAMMDUVTSUdOIFNNMiBPQ0EwHhcNMjYwNTE0MDU0" +
+            "NDQ5WhcNNDEwNTE0MDU0NDQ5WjBoMQswCQYDVQQGEwJDTjEsMCoGA1UECgwjZVNpZ24gRGlnaXRhbCBDZXJ0aWZpY2F0ZSBBdXRo" +
+            "b3JpdHkxEDAOBgNVBAsMB2VTaWduQ0ExGTAXBgNVBAMMEGVTaWduIFN1YiBTTTIgQ0EwWTATBgcqhkjOPQIBBggqgRzPVQGCLQNC" +
+            "AAS2GbEeKb7E7/dDpGxLu6L2zPRzIbo9RG6mIL1YlW3A4UG2mPWzs+4FjWQKc1T1dGuR0TfbRYVol6OeE2bgwLDVo4GKMIGHMB0G" +
+            "A1UdDgQWBBTDgSRLShj0DxyEy2iy0m7RM5Sq7zAOBgNVHQ8BAf8EBAMCAQYwDAYDVR0TBAUwAwEB/zAfBgNVHSMEGDAWgBQrzZ6f" +
+            "xoU49sX27YmJ7PN+o9uQjTAnBgNVHSUBAf8EHTAbBggrBgEFBQcDAQYIKwYBBQUHAwIGBSpWFQEEMAoGCCqBHM9VAYN1A0gAMEUC" +
+            "IGRKEjqO+Fp9qTFMB5NWg7mgYtw2qyrzloXpv1Xjib1xAiEApTjiPEZPprfvx3k5zuk72xfRkMApK6qqc2xhRUx2At8=",
+        ),
         )
     }
 
     val importableRoots: List<Intermediate> by lazy {
         listOf(
-        Intermediate(
-            name = "eSign Root CA",
-            owner = "e簽寶 eSign",
-            issuer = "eSign Root CA",
-            purposes = "e簽寶自有憑證機構的根憑證；不在任何根憑證計畫，內建只為補足憑證鏈，需由使用者確認後匯入才會信任",
-            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
-            sha256 = "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06",
-            b64 = "MIIDrzCCApegAwIBAgIJAf3QQVXbkXkeMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
-            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAgFw0yNDEy" +
-            "MjcwMTQ0MDVaGA8yMDU0MTIyNzAxNDQwNVowZTELMAkGA1UEBhMCQ04xLDAqBgNVBAoMI2VTaWduIERpZ2l0YWwgQ2VydGlmaWNh" +
-            "dGUgQXV0aG9yaXR5MRAwDgYDVQQLDAdlU2lnbkNBMRYwFAYDVQQDDA1lU2lnbiBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOC" +
-            "AQ8AMIIBCgKCAQEAo3qYQPcNFaEv91D+ML8kQMzeQgZU5kuj22TP4hoRTXCe065LP8NU4ZrwwgB/PITo3tvJCSNbRLkRO8KALaew" +
-            "lt1yOQE9JhjQEDQtiYyoj1GPVVBOP+/WCUSGj0fw01cqaB3SL+IK/YdzXmxjg+HtO5ymqrMfv83crl09Tr5FLDCVpXYhMEOk8uZi" +
-            "GlriPLzEuB/QL4pA7BPxxs/b6bn8f7UakI0SaqhgwMnT0hogDm5xAkPdY88qxW1kjEc6afv51UzLZwwGwQ+a0ALZ+5cxFiaqbwxT" +
-            "IggzW2b1cRMgzqkyObri9gTPTtvMCw7FN9fcLSKk40qQ+1vNo53YMaoTPQIDAQABo2AwXjAdBgNVHQ4EFgQUbHUGroYs//nCFK+e" +
-            "z4NcKJ1TwfgwDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAUbHUGroYs//nCFK+ez4NcKJ1TwfgwDQYJ" +
-            "KoZIhvcNAQELBQADggEBAClkfwrzGB3NCcFmEAvx5a5QVpcoM2T2gXL7YGhgIB0bCA6BDtW9CHIg3irNG5Z3DmaJ4T3wPgSn1fmB" +
-            "hRA8RZTwDuM0BktZLc9jirE8Jm3KmGWL/DxiARDFbi66jQZrXf0xaLlrnp8QbVwVjzJpb/QLU281jl9mUhEEMhXVEHt0GWIzz/J2" +
-            "SWOv3PorihOt+3X8JrZmlXCe4AGQK0rVnpn8N+qxlM5mNHeAI7qhwkwtKt0n7r7WRobm2dhf0/4DseQYfcgqaeS2bFE72MSXh3AT" +
-            "pikyZjmvovml2Ws1us9NFxxgMtj2Vf5kv7dQr3OGdQPq3utddv311Zn+MzFL1ZM=",
-        ),
+
         )
     }
 }

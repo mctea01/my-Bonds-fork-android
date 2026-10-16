@@ -233,13 +233,14 @@
       "sha256": "D726F197661F182DED707C3BF177288690693D61DCA6969F1E753F340F275150"
     },
     {
-      "file": "sm2/gfa-sm2-root.pem",
-      "name": "GFA SM2 根憑證",
-      "subject": "*",
-      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
-      "purposes": "SM2 文件簽章與身分憑證",
-      "url": "https://www.cacenter.com.cn/gfafil/guofuan/file/gfa_SM2_root.cer",
-      "page": "https://www.cacenter.com.cn/fwyzc/szzsfw/xgxz/2020/5/63353fe938f045059003d8b647501c86343.html",
+      "file": "esign-partners/zhca-sm2-ca-ebc85878.pem",
+      "name": "ZHCA SM2 CA",
+      "subjectDN": "CN=ZHCA SM2 CA, O=ZHCA, C=CN",
+      "owner": "天津 CA（中環）ZHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "EBC85878813DED4BD8598E3BA4C5A95F13435C757E5B5B0C56F48DEE2BA98C45",
       "fingerprintPublished": false
     }
   ],
@@ -265,14 +266,125 @@
       "sha256": "5B8A358D261E2E8DEEBDD953FF0276A7280BC318F1FD01D4EB75B4CF38839399"
     },
     {
-      "file": "pinned/gfa-root-rsa.pem",
+      "file": "esign-partners/cwca-b89eb33a.pem",
+      "name": "CWCA",
+      "subjectDN": "C=CN, ST=NingXia, L=YinChuan, O=CWCA, CN=CWCA",
+      "owner": "西部 CA CWCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "B89EB33AC7A918157F0C81271656174621791A33D3421EA75C812A0EDA65765E",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/rootca-f9051baa.pem",
+      "name": "ROOTCA",
+      "subjectDN": "C=CN, O=OSCCA, CN=ROOTCA",
+      "owner": "安徽 CA AHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "F9051BAADA2327B4CB033DB19694F6F2E0533BF4D888DD9F289F9D6EA67D5F0D",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/cfca-acs-ca-602ac25a.pem",
+      "name": "CFCA ACS CA",
+      "subjectDN": "C=CN, O=China Financial Certification Authority, CN=CFCA ACS CA",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "602AC25AE09457EF83BE0A7A0572F03C47522B40CF2887AE5112DCAA92315DE7",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/root-certificate-for-gfa-trust-network-ec41b8c7.pem",
       "name": "ROOT CERTIFICATE FOR GFA TRUST NETWORK",
-      "subject": "*",
+      "subjectDN": "C=CN, ST=BEIJING, L=BETDA, O=CIECC, OU=GFA TRUST NETWORK, CN=ROOT CERTIFICATE FOR GFA TRUST NETWORK",
       "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
-      "purposes": "文件簽章（e簽寶平台上的機構簽章憑證經 OPERATION CA04 FOR GFA TRUST NETWORK 簽發）",
-      "url": "https://www.cacenter.com.cn/gfafil/guofuan/file/gfa_RSA_root.cer",
-      "page": "https://www.cacenter.com.cn/fwyzc/szzsfw/xgxz/2020/5/63353fe938f045059003d8b647501c86343.html",
-      "evidence": "e簽寶平台簽署的學校證明文件的簽章憑證鏈"
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "EC41B8C756092F7DB38CC83A99228945173B7B138DFBB8B3BE3714A2CED2F8AC",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/hbca-8829892d.pem",
+      "name": "HBCA",
+      "subjectDN": "C=CN, ST=Hubei, L=Wuhan, O=Hubei Digital Certificate Authority Center CO Ltd., CN=HBCA",
+      "owner": "河北省電子認證 HBCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "8829892DF457F4F0C132BE59366B9A4FCF0BE7D51CBC389BE8E286704121DA36",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/smartca-rsa-ca1-8f5cfc86.pem",
+      "name": "SmartCA RSA CA1",
+      "subjectDN": "C=CN, ST=江苏, L=南京, O=SmartCA, CN=SmartCA RSA CA1",
+      "owner": "SmartCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "8F5CFC86EF425D1DA9931AF41D76411F2748135F96F7792CCDE731F1998A109C",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/hljca-rsa-56008169.pem",
+      "name": "HLJCA_RSA",
+      "subjectDN": "C=CN, ST=黑龙江省, L=哈尔滨市, O=黑龙江省数字证书认证有限公司, OU=HLJCA, CN=HLJCA_RSA",
+      "owner": "黑龍江 CA（中安）HLJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "560081690CD3600CD10E436503FB974DD9B9CD59C305ECB6C15EA5DC88064C52",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/zhca-rsa-ca-b08cec38.pem",
+      "name": "ZHCA RSA CA",
+      "subjectDN": "CN=ZHCA RSA CA, O=ZHCA, C=CN",
+      "owner": "天津 CA（中環）ZHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "B08CEC38DBD778D775824EAADEC928E3EBEF6D41CE0F55B50249305CD6F39CBA",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/itruschina-class-2-root-ca-g3-e4319af9.pem",
+      "name": "iTrusChina Class 2 Root CA - G3",
+      "subjectDN": "C=CN, O=iTrusChina, OU=China Trust Network, CN=iTrusChina Class 2 Root CA - G3",
+      "owner": "天威誠信 iTrusChina",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "E4319AF9A99C8772AEE3B940ADCBBA10DCF494FBCD3365152A62DAE7A8B1D4CE",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/esign-root-ca-f6648d42.pem",
+      "name": "eSign Root CA",
+      "subjectDN": "C=CN, O=eSign Digital Certificate Authority, OU=eSignCA, CN=eSign Root CA",
+      "owner": "e簽寶 eSign",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
+    },
+    {
+      "file": "esign-partners/zjca-rsa-instanttrust-root-ca-g1-32fde243.pem",
+      "name": "ZJCA RSA InstantTrust Root CA G1",
+      "subjectDN": "C=CN, O=ZheJiang Digital Certificate Authority Co., Ltd., OU=ZJCA, CN=ZJCA RSA InstantTrust Root CA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "32FDE243370E439424CCD531861EDE1F0E1731C23A20E9AA325266E85E10C2CE",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包"
     }
   ],
   "intermediates": [
@@ -329,19 +441,299 @@
       "url": "https://www.zjca.com.cn/web/webs/downloads/other/ZJCARootCertificate.zip",
       "page": "https://www.zjca.com.cn/web/webs/service/download.html",
       "sha256": "931066ED8DE694B6B45851F528C5A06BC7394DA81196A4F06EC954865D0BFA60"
-    }
-  ],
-  "importableRoots": [
+    },
     {
-      "file": "importable/esign-root-ca.pem",
-      "name": "eSign Root CA",
+      "file": "esign-partners/cwca-78b757ef.pem",
+      "name": "CWCA（西部 CA CWCA）",
+      "subjectDN": "C=CN, ST=NingXia, L=YinChuan, O=CWCA, CN=CWCA",
+      "owner": "西部 CA CWCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "78B757EF7DE39EF1420CBF398D796EE17F44304EC0D6F52C12BA4C73593159EE"
+    },
+    {
+      "file": "esign-partners/nxca-86740334.pem",
+      "name": "NXCA",
+      "subjectDN": "C=CN, ST=Ningxia, L=Yinchuan, O=CWCA, CN=NXCA",
+      "owner": "西部 CA CWCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "8674033490852A87BD7AD3F325A6E6342B788822C79EA77B71FC6C3E66111477"
+    },
+    {
+      "file": "esign-partners/ca-2a3cac9c.pem",
+      "name": "天威诚信数字认证中心根CA",
+      "subjectDN": "C=CN, O=北京天威诚信电子商务服务有限公司, OU=SM2证书系统, CN=天威诚信数字认证中心根CA",
+      "owner": "天威誠信 iTrusChina",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "2A3CAC9C7DE4019C43546C73FB5B00B7FDA1B92ADC8D85BA43E6A34898EB00D6"
+    },
+    {
+      "file": "esign-partners/root-certificate-for-gfa-trust-network-680e044e.pem",
+      "name": "ROOT CERTIFICATE FOR GFA TRUST NETWORK（國富安 GFA（中國國際電子商務中心 CIECC））",
+      "subjectDN": "C=CN, ST=BEIJING, L=BETDA, O=CIECC, OU=GFA TRUST NETWORK, CN=ROOT CERTIFICATE FOR GFA TRUST NETWORK",
+      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "680E044E97ACD77560CB25D7012B945665CC9EE94A06E1A64F8F0ED3E583E5A4"
+    },
+    {
+      "file": "esign-partners/ahcasm2-1d86b0d3.pem",
+      "name": "AHCASM2",
+      "subjectDN": "C=CN, ST=AnHui, L=HeFei, O=AnHui Certification Authority, OU=AHCA, CN=AHCASM2",
+      "owner": "安徽 CA AHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "1D86B0D32C87ED0BE4FF2C95135DA6A14B7BCF703282BFA60A30DD96790E30D4"
+    },
+    {
+      "file": "esign-partners/nxca-b31ef511.pem",
+      "name": "NXCA（西部 CA CWCA）",
+      "subjectDN": "C=CN, ST=Ningxia, L=Yinchuan, O=CWCA, CN=NXCA",
+      "owner": "西部 CA CWCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "B31EF511AB3823C1EA6C42EFD92C28E58CF8577F48A4B5529C69C82A8BF8DB7E"
+    },
+    {
+      "file": "esign-partners/ca-8a6a44e8.pem",
+      "name": "天威诚信数字认证中心CA",
+      "subjectDN": "C=CN, O=北京天威诚信电子商务服务有限公司, OU=SM2证书系统, CN=天威诚信数字认证中心CA",
+      "owner": "天威誠信 iTrusChina",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "8A6A44E8C1348021DE8B1D310E1B949020BA0515882363BBB00B7949420D1B99"
+    },
+    {
+      "file": "esign-partners/cfca-acs-oca31-7c5d630f.pem",
+      "name": "CFCA ACS OCA31",
+      "subjectDN": "C=CN, O=China Financial Certification Authority, CN=CFCA ACS OCA31",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "7C5D630F072D1FA2E729B369814AC21309D57A4FBFD944D96FA0426489409BA4"
+    },
+    {
+      "file": "esign-partners/hljca-sm2-b51dda40.pem",
+      "name": "HLJCA_SM2",
+      "subjectDN": "C=CN, ST=黑龙江省, L=哈尔滨市, O=黑龙江省数字证书认证有限公司, OU=HLJCA, CN=HLJCA_SM2",
+      "owner": "黑龍江 CA（中安）HLJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "B51DDA40BEA2075A97E6B35079FB2A7EB8F872F9261CDC2DBCE9FBC0A49A6D80"
+    },
+    {
+      "file": "esign-partners/cfca-acs-oca33-2c6daebe.pem",
+      "name": "CFCA ACS OCA33",
+      "subjectDN": "C=CN, O=China Financial Certification Authority, CN=CFCA ACS OCA33",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "2C6DAEBE63781BEA9AFD78341A54A19E49E69C5EE19DA705A7C973DA05D39198"
+    },
+    {
+      "file": "esign-partners/cfca-acs-oca34-51f7c3d2.pem",
+      "name": "CFCA ACS OCA34",
+      "subjectDN": "C=CN, O=China Financial Certification Authority, CN=CFCA ACS OCA34",
+      "owner": "中國金融認證中心 CFCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "51F7C3D2EAB81609F0DC4EF72069914FDD62E93BD430C0E0E202E3DC92E5C3BC"
+    },
+    {
+      "file": "esign-partners/zjca-oca5-551d7140.pem",
+      "name": "ZJCA OCA5",
+      "subjectDN": "C=CN, ST=浙江省, L=杭州市, O=OSCCA, CN=ZJCA OCA5",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "551D71401B3872D67DE8D24AE2F50B8619F6C9ACD4A07F9AC7AEF41456DCD4FA"
+    },
+    {
+      "file": "esign-partners/smartca-rsa-ca1-subca1-c3a49ace.pem",
+      "name": "SmartCA RSA CA1_SUBCA1",
+      "subjectDN": "C=CN, ST=南京市, L=江苏省, O=SmartCA, OU=智慧CA, CN=SmartCA RSA CA1_SUBCA1",
+      "owner": "SmartCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "C3A49ACEFF0C68F9D138235EC6756CE7CA216B2892CF85B3264409C2183356C3"
+    },
+    {
+      "file": "esign-partners/ahcarsa-d8a2570a.pem",
+      "name": "AHCARSA",
+      "subjectDN": "C=CN, ST=安徽, L=合肥市, O=AHCA, OU=AHCA, CN=AHCARSA",
+      "owner": "安徽 CA AHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "D8A2570A1168B563452DEEFA3B848EEEDF9BA65188C807E9A87A7FC2CF1FE653"
+    },
+    {
+      "file": "esign-partners/smartca-rsa-ca1-subca4-2e9a2cd1.pem",
+      "name": "SmartCA RSA CA1_SUBCA4",
+      "subjectDN": "C=CN, ST=南京市, L=江苏省, O=SmartCA, OU=智慧CA, CN=SmartCA RSA CA1_SUBCA4",
+      "owner": "SmartCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "2E9A2CD1DBD8A7BFC0C16AA9AC39319E72A01A3F3C8BC7A6E815A5DBF273FBD7"
+    },
+    {
+      "file": "esign-partners/esign-sm2-oca-b0ab97db.pem",
+      "name": "ESIGN SM2 OCA",
+      "subjectDN": "C=CN, O=Esign Digital Certificate Authority, OU=ESIGN, CN=ESIGN SM2 OCA",
       "owner": "e簽寶 eSign",
-      "purposes": "e簽寶自有憑證機構的根憑證；不在任何根憑證計畫，內建只為補足憑證鏈，需由使用者確認後匯入才會信任",
-      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
-      "page": "https://www.esign.cn/",
-      "sha256": "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06"
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "B0AB97DBEB73A736AF207E274A02BD4A6976D641A850E0F59071C021E8418DA9"
+    },
+    {
+      "file": "esign-partners/hljca-sm2-sub-8f8aeee4.pem",
+      "name": "HLJCA_SM2_SUB",
+      "subjectDN": "CN=HLJCA_SM2_SUB, OU=HLJCA, O=黑龙江省数字证书认证有限公司, L=哈尔滨市, ST=黑龙江省, C=CN",
+      "owner": "黑龍江 CA（中安）HLJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "8F8AEEE427E53134B1DC831A1C1AD9F5F0FFDE516268F2DC0F41626F06A5B9F5"
+    },
+    {
+      "file": "esign-partners/itruschina-class-2-enterprise-subscriber-ca-g3-75a588e3.pem",
+      "name": "iTrusChina Class 2 Enterprise Subscriber CA - G3",
+      "subjectDN": "C=CN, O=iTrusChina, OU=China Trust Network, CN=iTrusChina Class 2 Enterprise Subscriber CA - G3",
+      "owner": "天威誠信 iTrusChina",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "75A588E354BBCB37383F2604AE7C02CB0919FDA8CB7673C1F58FB24B7414AE3E"
+    },
+    {
+      "file": "esign-partners/ahca-sm2-e1-ca-50ca5dc5.pem",
+      "name": "AHCA_SM2_E1_CA",
+      "subjectDN": "C=CN, ST=安徽, L=合肥, CN=AHCA_SM2_E1_CA",
+      "owner": "安徽 CA AHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "50CA5DC5A6B82B343D5D4F1D5FED630519A74BBF7728B91CC6323454BC65877E"
+    },
+    {
+      "file": "esign-partners/ahca-rsa-e1-ca-402d9d10.pem",
+      "name": "AHCA_RSA_E1_CA",
+      "subjectDN": "C=CN, ST=安徽, L=合肥, CN=AHCA_RSA_E1_CA",
+      "owner": "安徽 CA AHCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "402D9D10C50D4C867593E50617C5B41C77034499F2DE960307A0DB8C8712F033"
+    },
+    {
+      "file": "esign-partners/esign-generic-sm2-ca-19b490a8.pem",
+      "name": "eSign Generic SM2 CA",
+      "subjectDN": "C=CN, O=eSign Digital Certificate Authority, OU=eSignCA, CN=eSign Generic SM2 CA",
+      "owner": "e簽寶 eSign",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "19B490A8BF03245B716F41B5B11A2EFAA9CD081C660CE8B02FA6091F76A91285"
+    },
+    {
+      "file": "esign-partners/operation-ca04-for-gfa-trust-network-0b1c9cd0.pem",
+      "name": "OPERATION CA04 FOR GFA TRUST NETWORK",
+      "subjectDN": "C=CN, ST=BEIJING, L=BETDA, O=CIECC, OU=GFA TRUST NETWORK, CN=OPERATION CA04 FOR GFA TRUST NETWORK",
+      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "0B1C9CD07D9288B87F8CB664E48D069DE4538C6470193952C39B241FAC715B31"
+    },
+    {
+      "file": "esign-partners/operation-ca04-for-gfa-trust-network-c97e042e.pem",
+      "name": "OPERATION CA04 FOR GFA TRUST NETWORK（國富安 GFA（中國國際電子商務中心 CIECC））",
+      "subjectDN": "C=CN, ST=BEIJING, L=BETDA, O=CIECC, OU=GFA TRUST NETWORK, CN=OPERATION CA04 FOR GFA TRUST NETWORK",
+      "owner": "國富安 GFA（中國國際電子商務中心 CIECC）",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "C97E042E9F9017440A29F6DC92AE26C98D44B93C440C541E78F52846925DA5DA"
+    },
+    {
+      "file": "esign-partners/zjca-rsa-instanttrust-personal-oca-g1-f174241f.pem",
+      "name": "ZJCA RSA InstantTrust Personal OCA G1",
+      "subjectDN": "C=CN, O=ZheJiang Digital Certificate Authority Co., Ltd., OU=ZJCA, CN=ZJCA RSA InstantTrust Personal OCA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "F174241FDAF196B9533978C204E4ED8ED3D8891529D3B6CDDCB1C747E76181EC"
+    },
+    {
+      "file": "esign-partners/zjca-rsa-instanttrust-organization-oca-g1-35b657a2.pem",
+      "name": "ZJCA RSA InstantTrust Organization OCA G1",
+      "subjectDN": "C=CN, O=ZheJiang Digital Certificate Authority Co., Ltd., OU=ZJCA, CN=ZJCA RSA InstantTrust Organization OCA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "35B657A2D8AFE9C1F3F9E74C5DB1ED71538663CCF2D5AFE037F043122B308887"
+    },
+    {
+      "file": "esign-partners/zjca-sm2-instanttrust-personal-oca-g1-413e78f1.pem",
+      "name": "ZJCA SM2 InstantTrust Personal OCA G1",
+      "subjectDN": "C=CN, O=ZheJiang Digital Certificate Authority Co., Ltd., OU=ZJCA, CN=ZJCA SM2 InstantTrust Personal OCA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "413E78F1C08459D067A2AE05922AE24673FC5DD9AFC6D4AF10BBE504F8B83723"
+    },
+    {
+      "file": "esign-partners/zjca-sm2-instanttrust-organization-oca-g1-45d21cfd.pem",
+      "name": "ZJCA SM2 InstantTrust Organization OCA G1",
+      "subjectDN": "C=CN, O=ZheJiang Digital Certificate Authority Co., Ltd., OU=ZJCA, CN=ZJCA SM2 InstantTrust Organization OCA G1",
+      "owner": "浙江省數字安全證書管理中心 ZJCA",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "45D21CFD81E0D6D08A0D5DD6A3CDB487A9291B4AC2F86EC2DB7F7BD525158438"
+    },
+    {
+      "file": "esign-partners/esign-gov-sm2-ca-9b0f9e3a.pem",
+      "name": "eSign Gov SM2 CA",
+      "subjectDN": "C=CN, O=eSign Digital Certificate Authority, OU=eSignCA, CN=eSign Gov SM2 CA",
+      "owner": "e簽寶 eSign",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "9B0F9E3A00A74834C3ABBDA64820F49F5D703731445350B6215222C5CE10BBE5"
+    },
+    {
+      "file": "esign-partners/esign-sub-sm2-ca-c9bab62b.pem",
+      "name": "eSign Sub SM2 CA",
+      "subjectDN": "C=CN, O=eSign Digital Certificate Authority, OU=eSignCA, CN=eSign Sub SM2 CA",
+      "owner": "e簽寶 eSign",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "sha256": "C9BAB62BF9AC5E34DB8B690B6DD397E50B36B4A0050C6CF353C1BE3B79E99EBC"
     }
   ],
+  "importableRoots": [],
   "gpki": {
     "builtIn": [
       "core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInAnchors.kt",
@@ -370,5 +762,31 @@
       }
     ]
   },
-  "warnDays": 540
+  "warnDays": 540,
+  "bundles": [
+    {
+      "name": "e簽寶合作 CA 憑證包",
+      "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
+      "linkPattern": "https://etreaty\\.oss-cn-hangzhou\\.aliyuncs\\.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-\\d+\\.zip",
+      "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
+      "dir": "esign-partners",
+      "exclude": "模拟|模擬|沙箱|测试|測試|test|demo",
+      "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
+      "evidence": "e簽寶說明頁公布的合作 CA 憑證包",
+      "defaultOwner": "e簽寶合作 CA",
+      "owners": {
+        "CFCA根证书": "中國金融認證中心 CFCA",
+        "HBCA根证书": "河北省電子認證 HBCA",
+        "SmartCA根证书": "SmartCA",
+        "ZJCA根证书": "浙江省數字安全證書管理中心 ZJCA",
+        "eSignCA根证书": "e簽寶 eSign",
+        "国富安CA根证书": "國富安 GFA（中國國際電子商務中心 CIECC）",
+        "天威诚信根证书": "天威誠信 iTrusChina",
+        "天津CA（中环）根证书": "天津 CA（中環）ZHCA",
+        "安徽CA根证书": "安徽 CA AHCA",
+        "西部CA根证书": "西部 CA CWCA",
+        "黑龙江CA（中安）根证书": "黑龍江 CA（中安）HLJCA"
+      }
+    }
+  ]
 }

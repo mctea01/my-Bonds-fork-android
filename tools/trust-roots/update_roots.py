@@ -154,7 +154,9 @@ def signed_by(cert, root):
         c, r = os.path.join(d, "c.pem"), os.path.join(d, "r.pem")
         open(c, "w").write(to_pem(cert.der))
         open(r, "w").write(to_pem(root.der))
-        res = subprocess.run(["openssl", "verify", "-partial_chain", "-no_check_time", "-CAfile", r, c], capture_output=True)
+        # SM2 signatures need the signer ID; certificates use the default one (GM/T 0009).
+        sm2 = ["-vfyopt", "distid:1234567812345678"] if root.algorithm == "SM2" else []
+        res = subprocess.run(["openssl", "verify", "-partial_chain", "-no_check_time"] + sm2 + ["-CAfile", r, c], capture_output=True)
         return res.returncode == 0
 
 
@@ -205,6 +207,126 @@ def common_name(subject):
     return m.group(1).strip() if m else None
 
 
+_fetched = {}
+
+
+def fetch_cached(url):
+    """[fetch], once per run for each URL (a bundle is the source of many entries)."""
+    if url not in _fetched:
+        try:
+            _fetched[url] = fetch(url)
+        except Exception as e:
+            _fetched[url] = e
+    if isinstance(_fetched[url], Exception):
+        raise _fetched[url]
+    return _fetched[url]
+
+
+def zip_name(info):
+    """A ZIP member name: UTF-8 when flagged, else GBK (the bundles are made on Chinese Windows)."""
+    if info.flag_bits & 0x800:
+        return info.filename
+    raw = info.filename.encode("cp437")
+    for enc in ("utf-8", "gbk", "gb18030"):
+        try:
+            return raw.decode(enc)
+        except UnicodeDecodeError:
+            continue
+    return info.filename
+
+
+def bundle_url(b):
+    """The newest bundle the CA's page links to (the file name carries its date), else the configured one."""
+    try:
+        page = fetch_cached(b["page"]).decode("utf-8", "replace").replace("\\u002F", "/")
+        links = sorted(set(re.findall(b["linkPattern"], page)))
+        if links:
+            return links[-1]
+        notes.append(f"{b['name']} 的頁面沒有找到憑證包連結，沿用 {b['url']}")
+    except Exception as e:
+        notes.append(f"{b['name']} 的頁面無法連線（{e}），沿用 {b['url']}")
+    return b["url"]
+
+
+def sync_bundles(cfg, cc):
+    """
+    Adds the production CA certificates a published bundle holds (the e-sign platform eSign publishes the roots and
+    intermediates of every CA it works with) as pinned entries, so that a CA the platform adds later is picked up by
+    the next run. Test and sandbox certificates, expired ones and certificates already built in are left out; a
+    re-issued certificate of an entry already listed is handled by [refresh]. A new root is written with a warning
+    so that a person checks it before the pull request is merged; a new intermediate is kept only when a built-in
+    root or intermediate signed it.
+    """
+    global config_changed
+    for b in cfg.get("bundles", []):
+        url = bundle_url(b)
+        if url != b["url"]:
+            notes.append(f"{b['name']} 有新版：{url}")
+            if WRITE:
+                b["url"] = url
+                config_changed = True
+        try:
+            data = fetch_cached(url)
+            z = zipfile.ZipFile(io.BytesIO(data))
+        except Exception as e:
+            notes.append(f"{b['name']} 無法下載或讀取（{e}），沿用已釘選的憑證")
+            continue
+        sections = ("pinned", "sm2", "intermediates", "importableRoots")
+        listed = [e for sec in sections for e in cfg.get(sec, [])]
+        known = set(cc) | {e.get("sha256") for e in listed}
+        keys = set()
+        names = {e["name"] for e in listed}
+        for e in listed:
+            path = os.path.join(HERE, e["file"])
+            if os.path.exists(path):
+                c = Cert(pem_blocks(open(path, encoding="utf-8").read())[0])
+                keys.add((c.subject, c.spki))
+        found = []
+        for info in z.infolist():
+            if info.is_dir() or info.file_size > 1 << 20:
+                continue
+            path = zip_name(info)
+            for der in certs_in(z.read(info)):
+                try:
+                    c = Cert(der)
+                except Exception:
+                    continue
+                if re.search(b["exclude"], path + " " + c.subject, re.I) or not c.ca or not c.valid_at(TODAY):
+                    continue
+                if c.sha256 in known or (c.subject, c.spki) in keys:
+                    continue
+                known.add(c.sha256)
+                parts = path.split("/")
+                folder = next((p for p in parts if p in b["owners"]), None)
+                found.append((c, b["owners"].get(folder, b["defaultOwner"])))
+        # Roots first, then intermediates nearest the roots, so that each is checked against what came before.
+        found.sort(key=lambda t: (not t[0].self_issued, t[0].not_before))
+        for c, owner in found:
+            cn = common_name(c.subject) or c.subject
+            name = cn if cn not in names else f"{cn}（{owner}）"
+            names.add(name)
+            slug = re.sub(r"[^A-Za-z0-9]+", "-", cn).strip("-").lower() or "ca"
+            entry = {"file": f"{b['dir']}/{slug}-{c.sha256[:8].lower()}.pem", "name": name, "subjectDN": c.subject,
+                     "owner": owner, "purposes": b["purposes"], "url": url, "page": b["page"], "sha256": c.sha256}
+            if c.self_issued:
+                if c.algorithm == "SM2":
+                    entry["fingerprintPublished"] = False
+                    section = "sm2"
+                else:
+                    entry["evidence"] = b["evidence"]
+                    section = "pinned"
+                warn(f"新增{b['name']}的根憑證 {name}（{owner}，SHA-256 {c.sha256}），請核對後再合併")
+            else:
+                section = "intermediates"
+                notes.append(f"新增{b['name']}的中繼憑證 {name}（{owner}）")
+            if WRITE:
+                os.makedirs(os.path.dirname(os.path.join(HERE, entry["file"])), exist_ok=True)
+                with open(os.path.join(HERE, entry["file"]), "w", encoding="utf-8") as f:
+                    f.write(to_pem(c.der))
+                cfg.setdefault(section, []).append(entry)
+                config_changed = True
+
+
 def refresh(s, kind, issued_by=None):
     """
     Brings the pinned file of entry [s] up to date with the certificate its source (s["url"]) publishes, and returns
@@ -223,7 +345,7 @@ def refresh(s, kind, issued_by=None):
     if s.get("autoUpdate") is False or not s.get("url"):
         return "只檢查（來源不是下載檔）" if old else None
     try:
-        data = fetch(s["url"])
+        data = fetch_cached(s["url"])
     except Exception as e:
         if old is None:
             warn(f"{s['name']} 尚未取得，且無法從 {s['url']} 下載：{e}")
@@ -240,7 +362,12 @@ def refresh(s, kind, issued_by=None):
         return "與來源相符"
     # A new entry names the certificate by its common name, or "*" for a download that holds only that root.
     want = common_name(old.subject) if old else s.get("subject", s["name"])
-    same = [c for c in found if (c.subject == old.subject if old else want == "*" or common_name(c.subject) == want)]
+    if old is not None:
+        same = [c for c in found if c.subject == old.subject]
+    elif s.get("subjectDN"):
+        same = [c for c in found if c.subject == s["subjectDN"]]
+    else:
+        same = [c for c in found if want == "*" or common_name(c.subject) == want]
     if kind == "root":
         same = [c for c in same if c.self_issued and c.ca]
     else:
@@ -632,6 +759,9 @@ def main():
         report.append(f"| {s['name']} | {host} | " + "、".join(cc[fp]["name"] for fp in roots) + f" | {how} |")
     report.append("")
 
+    # Bundles: new CA certificates a platform publishes become pinned entries below.
+    sync_bundles(cfg, cc)
+
     # SM2: pinned, checked.
     report += ["## 國密 SM2 根憑證（釘選）", "", "| 根憑證 | 機構 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     for s in cfg["sm2"]:
@@ -736,15 +866,26 @@ def main():
                                "source": "釘選 SHA-256，取自 " + s["url"], "sha256": s["sha256"], "der": der, "cert": c})
     report.append("")
 
-    # Intermediates: pinned, each signed by a built-in or importable root; they only complete chains.
+    # Intermediates: pinned, each signed by a built-in or importable root, or by an intermediate that is; they only
+    # complete chains.
     intermediates = []
-    report += ["## 內建中繼憑證（釘選，只用於補足憑證鏈）", "", "| 中繼憑證 | 簽發的根憑證 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
+    report += ["## 內建中繼憑證（釘選，只用於補足憑證鏈）", "", "| 中繼憑證 | 簽發者 | 有效至 | 狀態 | 來源核對 |", "|---|---|---|---|---|"]
     roots_by_fp = {e["sha256"]: Cert(e["der"]) for e in ordered}
     roots_by_fp.update({e["sha256"]: e["cert"] for e in importable})
-    candidates = ordered + importable
+    signers = [(e, roots_by_fp[e["sha256"]]) for e in ordered + importable]
+    listed = []
     for s in cfg.get("intermediates", []):
-        fetched = refresh(s, "intermediate", lambda c: any(
-            roots_by_fp[e["sha256"]].subject_hash == c.issuer_hash and signed_by(c, roots_by_fp[e["sha256"]]) for e in candidates))
+        path = os.path.join(HERE, s["file"])
+        if os.path.exists(path):
+            listed.append(Cert(pem_blocks(open(path, encoding="utf-8").read())[0]))
+
+    def issuer_of(c):
+        return next((e for e, ec in signers if ec.subject_hash == c.issuer_hash and signed_by(c, ec)), None)
+
+    pending = []
+    for s in cfg.get("intermediates", []):
+        fetched = refresh(s, "intermediate", lambda c: issuer_of(c) is not None or any(
+            o.subject_hash == c.issuer_hash and signed_by(c, o) for o in listed))
         if fetched is None:
             continue
         der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
@@ -753,14 +894,26 @@ def main():
         c = Cert(der)
         if c.self_issued or not c.ca:
             raise RuntimeError(f"{s['file']} is not an intermediate CA certificate")
-        issuer = next((e for e in candidates if roots_by_fp[e["sha256"]].subject_hash == c.issuer_hash and signed_by(c, roots_by_fp[e["sha256"]])), None)
+        pending.append([s, fetched, der, c, None])
+    # An intermediate may be issued by another one: accept in passes until nothing more links up.
+    progress = True
+    while progress:
+        progress = False
+        for item in pending:
+            if item[4] is None and item[3].valid_at(TODAY):
+                issuer = issuer_of(item[3])
+                if issuer is not None:
+                    item[4] = issuer
+                    signers.append(({"name": item[0]["name"], "sha256": item[0]["sha256"], **({"cert": True} if "cert" in issuer else {})}, item[3]))
+                    progress = True
+    for s, fetched, der, c, issuer in pending:
         state = "有效" if issuer is None or "cert" not in issuer else "有效（根憑證需使用者匯入）"
-        if issuer is None:
-            state = "不連到內建或可匯入的根憑證，不內建"
-            warn(f"中繼憑證 {s['name']} 不是由任何內建或可匯入的根憑證簽發")
-        elif not c.valid_at(TODAY):
+        if not c.valid_at(TODAY):
             state = "已過期，不內建"
             warn(f"中繼憑證 {s['name']} 已過期（{c.not_after.date()}），需要從 {s['page']} 取得新版")
+        elif issuer is None:
+            state = "不連到內建或可匯入的根憑證，不內建"
+            warn(f"中繼憑證 {s['name']} 不是由任何內建或可匯入的根憑證簽發")
         elif c.not_after < warn_until:
             state = "即將到期"
             warn(f"中繼憑證 {s['name']} 將於 {c.not_after.date()} 到期，需要從 {s['page']} 確認新版")
