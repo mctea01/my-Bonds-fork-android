@@ -267,6 +267,45 @@ class Oid4vpE2eTest {
         }
     }
 
+    private fun mdocQesRequest(): JsonObject {
+        val item = """{"type":"qes_authorization","credential_ids":["mdl"],"numSignatures":1}"""
+        val encoded = item.encodeToByteArray().toBase64Url()
+        return buildJsonObject {
+            put("response_type", "vp_token")
+            put("response_mode", "dc_api")
+            put("nonce", "a-transaction-nonce-with-adequate-length")
+            put("dcql_query", DiwJson.parseToJsonElement(
+                """{"credentials":[{"id":"mdl","format":"mso_mdoc","meta":{"doctype_value":"org.iso.18013.5.1.mDL"},"claims":[{"path":["org.iso.18013.5.1","given_name"]}]}]}"""
+            ))
+            put("transaction_data", JsonArray(listOf(JsonPrimitive(encoded))))
+        }
+    }
+
+    @Test
+    fun mdocTransactionDataIsBoundToAuthorizedDeviceNamespace() = runBlocking<Unit> {
+        val w = WalletFixture().init(servers.pki)
+        w.issueMdl(servers.pki, listOf("qes_authorization"))
+        val request = w.holder.resolveDcApi("openid4vp-v1-unsigned", mdocQesRequest(), "https://rp.example")
+        val outcome = w.holder.respondDefault(w.holder.prepare(request)) as PresentationOutcome.DcApi
+        val token = outcome.data["vp_token"]!!.jsonObject["mdl"]!!.jsonArray.first().jsonPrimitive.content
+        val response = org.multipaz.mdoc.response.DeviceResponse.fromDataItem(
+            org.multipaz.cbor.Cbor.decode(token.fromBase64Url())
+        )
+        val document = response.documents.first()
+        val payload = document.deviceNamespaces.data["qes_authorization"]
+        assertTrue(payload?.containsKey("transactionDataHash") == true)
+    }
+
+    @Test
+    fun mdocTransactionWithoutIssuerKeyAuthorizationIsRejected() = runBlocking<Unit> {
+        val w = WalletFixture().init(servers.pki)
+        w.issueMdl(servers.pki)
+        val request = w.holder.resolveDcApi("openid4vp-v1-unsigned", mdocQesRequest(), "https://rp.example")
+        assertFailsWith<diw.wallet.core.util.ProtocolException> {
+            w.holder.respondDefault(w.holder.prepare(request))
+        }
+    }
+
     @Test
     fun dcApiSignedMatchingOrigin() = runBlocking {
         val r = dcApi("https://rp.example", "https://rp.example", signed = true)
