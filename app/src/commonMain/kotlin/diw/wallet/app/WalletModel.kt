@@ -350,6 +350,8 @@ class WalletModel(val platform: PlatformServices) {
     val http: HttpClient by lazy {
         platform.httpClient().config { install(TwdiwUserAgent) { userAgent = { settings.twdiwUserAgent } } }
     }
+    /** Time stamps, OCSP, CRLs and issuer certificates, over http where their publishers use it. */
+    val signedDataHttp: diw.wallet.core.document.sign.SignedDataHttp by lazy { platform.signedDataHttp(http) }
     lateinit var holderIdentities: HolderIdentities
         private set
     private lateinit var historyLog: HistoryLog

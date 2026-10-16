@@ -8,7 +8,7 @@ import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.official.ApprovalFile
 import diw.wallet.core.document.official.ApprovalPoint
 import diw.wallet.core.document.sign.HttpFetch
-import diw.wallet.core.document.sign.KtorFetch
+import diw.wallet.core.document.sign.SignedDataFetch
 import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.core.document.sign.ValidationData
 import diw.wallet.core.profile.bonds.HouseholdTranscript
@@ -74,9 +74,6 @@ import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.DiwJson
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.isSuccess
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -338,8 +335,8 @@ class FilesModel(private val model: WalletModel) {
         override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) emptyList()
             else {
-                val r = model.http.get(url)
-                val bytes = if (r.status.isSuccess()) r.bodyAsBytes() else ByteArray(0)
+                val r = model.signedDataHttp.exchange(url, null, null, null)
+                val bytes = if (r.success) r.body else ByteArray(0)
                 if (bytes.isEmpty() || bytes.size > MAX_AIA_BYTES) emptyList() else listOf(bytes)
             }
         } catch (e: CancellationException) {
@@ -1125,7 +1122,7 @@ class FilesModel(private val model: WalletModel) {
         receive(picked, FileOrigin.DOWNLOADED, src.name, src)
     }
 
-    fun timestamper(): Timestamper = TsaClient(model.http, TsaServices.byId(model.settings.tsaId).url)
+    fun timestamper(): Timestamper = TsaClient(model.signedDataHttp, TsaServices.byId(model.settings.tsaId).url)
 
     /** Gets an RFC 3161 time stamp over the file from the chosen authority (only the hash is sent). */
     fun addTimestamp(f: StoredFile) = run("向時戳機構取得時戳") { addTimestampNow(f) }
@@ -1148,7 +1145,7 @@ class FilesModel(private val model: WalletModel) {
     }.getOrNull()
 
     /** Fetches OCSP responses, CRLs and issuer certificates for long-term signatures and time stamps. */
-    val revocationFetch: HttpFetch by lazy { KtorFetch(model.http.config { followRedirects = true }) }
+    val revocationFetch: HttpFetch by lazy { SignedDataFetch(model.signedDataHttp) }
 
     /** Fetches the authority's revocation data for a stamp made before it was kept, or again. */
     fun refreshTimestampValidation(f: StoredFile, index: Int) = run("取得時戳機構的撤銷資訊") {

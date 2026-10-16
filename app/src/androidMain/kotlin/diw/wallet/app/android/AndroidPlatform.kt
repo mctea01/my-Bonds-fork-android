@@ -96,6 +96,10 @@ import kotlin.coroutines.intrinsics.suspendCoroutineUninterceptedOrReturn
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Clock
+import diw.wallet.core.document.sign.CleartextHttp
+import diw.wallet.core.document.sign.KtorSignedDataHttp
+import diw.wallet.core.document.sign.SignedDataHttp
+import diw.wallet.core.document.sign.SignedDataRoutes
 import kotlin.time.Duration
 
 /** AES-256-GCM with a non-exportable Android Keystore key; output is iv(12) || ciphertext || tag. */
@@ -370,6 +374,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         })
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
+
+    // The release network security configuration refuses clear text; http time stamps, OCSP, CRLs and AIA
+    // certificates go through a plain socket instead, since each reply is checked by its signature.
+    override fun signedDataHttp(http: HttpClient): SignedDataHttp = SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp())
 
     /**
      * Opens an issuer, sign-in or application page in a Custom Tab inside the wallet's own task, above MainActivity.

@@ -93,6 +93,7 @@
 - 檢查結果是 `DocumentReport`：每個簽章分完整性、憑證鏈信任、時戳與後續變更（`LaterChanges`），判定 `VALID`、`PARTIAL`、`INVALID`、`UNSIGNED`，信任等級沿用 T1 到 T4。自簽憑證只能證明完整性，判定為 `PARTIAL`。
 - 時戳：使用者在設定選 TSA（預設 DigiCert），可開啟「保存時自動加時戳」；時戳是對文件 SHA-256 的 RFC 3161 token，與文件分開保存，開啟文件時依目前的信任錨點重新判定。設定「時戳與簽章一併保存撤銷資訊」（`timestampRevocation`，預設開）會在取得時戳時以 `DocumentSigning.timestampValidation` 收集時戳機構的憑證鏈與撤銷資訊，存在 `StoredTimestamp.validation`，舊時戳可在文件詳情補取；時戳可由使用者移除（`removeTimestamp`，例如舊版沒有保存撤銷資訊的時戳）後重新取得。
 - 文件內簽章的撤銷資訊：保存含簽章的檔案時（設定開啟時在背景）以每個簽章的憑證鏈與簽章時戳的憑證鏈呼叫 `collectValidation`，合併存在 `StoredFile.signatureValidation`；文件詳情可重新取得，公文容器可一次取得容器內全部含簽章檔案與尚未保存撤銷資訊的時戳（`collectContainerValidation`）。背景工作完成時以 `FilesModel.patch` 在鎖內更新最新的紀錄，`save` 也走同一把鎖，避免覆蓋同時寫入的欄位（例如加入容器）。
+- 時戳、OCSP、CRL 與 AIA 憑證多半以 http 公布，回應本身有簽章：一律經 `SignedDataHttp`（`PlatformServices.signedDataHttp`，`SignedDataRoutes` 處理轉址）。Android release 的網路安全設定禁止明文，OkHttp 會拒絕，所以 Android 把 http 網址交給 `CleartextHttp`（socket 上的最小 HTTP/1.1）；其他流量仍走 OkHttp 並受網路安全設定限制。
 - 長期驗證資料（`ValidationCollector`）：以 AIA caIssuers（與內建中繼憑證）補齊憑證鏈，每張非根憑證先問 OCSP（POST，回應須由發行者或其授權的回應者簽署），取不到才用 CRL 分發點（簽章須由發行者簽署）；狀態為 GOOD、REVOKED、UNKNOWN、UNAVAILABLE。
 - 簽章檢查的寬鬆處理：CMS 只讀第一個 ASN.1 物件（e簽寶等服務在 BER 後多寫結束標記），完整性以憑證公鑰驗證（BouncyCastle 不再以 signingTime 檢查憑證效期）；CMS 沒有 signingTime 時以 PDF 簽章字典的 `/M` 當作宣稱的簽署時間；PKIX 依序嘗試較短的憑證鏈前段，因為附上的憑證可能含交叉簽署的根憑證。簽章卡的信任說明只描述簽署者（`signerTrustLine`）。
 - 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
