@@ -66,7 +66,7 @@ ARF 原文下載於 `scratchpad/dl/`，包含 `arf6.md` 與 `annex2.md`，來源
 
 ### A6. OpenID4VP（持有端）
 
-**2026-10-16 補強：** OpenID4VP 多重簽章 DC API 現使用 JWS JSON Serialization，逐一檢驗受保護 `client_id`、簽章、查驗端憑證及 Browser Origin，且拒絕 signed／multisigned 要求回退為未簽章資料。仍需獨立實作 OpenID Federation Trust Chain（應由錨點與聯邦政策導出查驗方身分，不能相信 `client_metadata.jwks`）、JWE 加密 Request Object 的錢包解密金鑰／內層簽章驗證，以及 mdoc 交易資料依特定 docType 的 KeyAuthorizations。
+**2026-10-16 補強：** OpenID4VP 多重簽章 DC API 現使用 JWS JSON Serialization，逐一檢驗受保護 `client_id`、簽章、查驗端憑證及 Browser Origin，且拒絕 signed／multisigned 要求回退為未簽章資料。另於本輪補足 mdoc `transaction_data` 的 DeviceSigned 生成與 MSO KeyAuthorizations 授權判斷，並加入 JWE Request Object 使用錢包自身金鑰 ECDH-ES 解密的核心 API。尚需獨立實作 OpenID Federation Trust Chain（由信任錨／Policy 導出查驗方身分，不能相信 `client_metadata.jwks`）、JWE 解密接收端金鑰的 App 註冊／發布及巢狀簽章流程。
 
 - **[確認]** `OpenID4VP.Version` 只有 `DRAFT_24` 與 `DRAFT_29` 兩個值，`DRAFT_29` 用於 1.0（DC API protocol `openid4vp-v1-*`）。證據：`MPZ/multipaz/src/commonMain/kotlin/org/multipaz/openid/OpenID4VP.kt:79-82` 與 `presentment/digitalCredentialsPresentment.kt`（`"openid4vp"` 對應 DRAFT_24，`"openid4vp-v1-unsigned|signed|multisigned"` 對應 DRAFT_29）。
 - **[確認]** response_mode 支援 `dc_api`、`dc_api.jwt`、`direct_post`、`direct_post.jwt`。回應加密只支援 `ECDH-ES` 搭配 A128GCM/A192GCM/A256GCM。證據：`OpenID4VP.kt:357-432`。

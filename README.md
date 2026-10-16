@@ -104,7 +104,9 @@
 
 - 支援 Digital Credentials API `openid4vp-v1-multisigned`：解析 JWS JSON Serialization、檢查簽署者、受保護的 `client_id`、`expected_origins` 並拒絕降級為未簽章請求。
 - 支援使用者匯入 VICAL（發證端）及 RICAL（查驗方）：下載 COSE 簽署清單，驗證簽章及獨立指定的「清單發行者」信任根、更新版本並拒絕過期或不被授權的清單。清單不會被視為官方 T1。
-- OpenID Federation Trust Chain、JWE 加密 Request Object 與特定 mdoc 文件類型的 `transaction_data` **尚未完整實作**；缺少信任或金鑰時會明確拒絕，不使用未驗證的替代資料。
+- mdoc 的 `transaction_data` 以 Multipaz 的交易型別產生 `DeviceSigned.nameSpaces`，遵循 MSO `KeyAuthorizations`，非授權的交易資料拒絕簽署。支援的交易型別仍需在 `DocumentTypeRepository` 登記。
+- JWE 加密 Request Object 已提供 ECDH-ES 解密及外層身分比對的核心能力，但 **App 尚未提供可發佈的接收端解密金鑰註冊**，因此不宣稱端到端完整支援；加密本身也不能取代驗證者簽章。
+- OpenID Federation Trust Chain 尚未實作；沒有完整聯邦信任鏈和政策驗證時明確拒絕，不信任請求自行聲明的公鑰。
 - Android HTTPS App Links **目前不規劃**；保留既有 App 回呼與 DC API 整合，不是當前 P1–P3 驗收阻擋項目。
 
 ### OpenID4VCI 用戶端驗證

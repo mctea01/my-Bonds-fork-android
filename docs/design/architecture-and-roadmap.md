@@ -9,7 +9,7 @@
 - 驗證者透明：請求先走標準認證（x509\_hash 等），再以 verifier\_info 攜帶驗證者自己的憑證（法人、代理、員工憑證）證明身分、代表關係與目的，皮夾依 T1 至 T4 四級提示。
 - ZKP：短期用 Longfellow（mdoc，發行端不必改），並以 OpenAC 補 SD-JWT（已有 TWDIW 年齡證明 PoC），BBS 列為中長期。驗證端同樣支援。
 - 文件：驗證核心先放 Android／JVM（BouncyCastle、EU DSS 部分模組、ofdrw），iOS 後續以 GmSSL、OpenSSL、PDFium 接上。
-- 2026-10-16 進度：P0–P3 主體已落地，PR #11 補 OpenID4VCI Client Authentication、DC API 多重簽章、VICAL／RICAL 和 P3 簽署安全性。OpenID Federation、JWE Request Object、mdoc transaction_data 的標準約束與測試仍需完成；P4 長證明與 P6 iOS 為後續階段。Android HTTPS App Links 暫不規劃。
+- 2026-10-16 進度：P0–P3 主體已落地，PR #11 補 OpenID4VCI Client Authentication、DC API 多重簽章、VICAL／RICAL 和 P3 簽署安全性。mdoc `transaction_data` 已加入 DeviceSigned＋MSO 授權處理，JWE Request Object 核心新增 ECDH-ES 解密；OpenID Federation 與 App 端 JWE 密鑰配置仍需完成；P4 長證明與 P6 iOS 為後續階段。Android HTTPS App Links 暫不規劃。
 ## 參考來源盤點
 
 五個來源各有分工：Multipaz 是唯一的 KMP 底層，TWDIW 定義台灣生態系的實際方言，Bonds 示範第三方皮夾如何接上 G2C 服務，EUDI 提供標準與驗證者透明的規則，Microsoft 是企業端互通對象。
@@ -348,7 +348,7 @@ P2 驗收：自建測試端涵蓋各方言的本地測試全數通過；TWDIW �
 ## P1–P3 當前可驗收邊界（2026-10-16）
 
 - P1：OpenID4VCI 已支援公開用戶端、Wallet Attestation 與 JWT Client Assertion 協商；正式發證需要簽章者被發證端登記或信任，不能由測試 PKI 自行聲稱。App Links 暫不規劃。
-- P2：Digital Credentials API 支援多重 JWS JSON 請求與完整驗簽、防降級；新增 VICAL／RICAL 的獨立清單發行者信任角色、到期與版本防回退。未支援 OpenID Federation、JWE 加密 Request Object、mdoc transaction_data 時應安全拒絕。
+- P2：Digital Credentials API 支援多重 JWS JSON 請求與完整驗簽、防降級；新增 VICAL／RICAL 的獨立清單發行者信任角色、到期與版本防回退。mdoc `transaction_data` 已依 MSO 授權產生 DeviceSigned；JWE Request Object 僅在錢包提供真正解密密鑰時才可解密，尚未完成 App 端金鑰發佈與簽章巢狀支持；OpenID Federation 未有信任鏈與政策時必須拒絕。
 - P3：TW FidO、CSC v2、電子公文 SI／DI／XML 的公開規格可用於個人錢包；正式政府 SP、QTSP、機關公文交換權限屬外部帳號／法定授權，**不列為本專案未完成的軟體功能**。
 - 自動測試通過與外部正式互通為不同驗收項；R8 Android Release、Windows／Linux 封裝、協定測試及實機驗證分別列示。
 

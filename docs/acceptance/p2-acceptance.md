@@ -82,4 +82,4 @@ Digital Credentials API 新增 `openid4vp-v1-multisigned` 的 JWS JSON Serializa
 
 VICAL／RICAL 下載與匯入使用 COSE 驗簽和**分離的清單發行者信任根**，限 HTTPS，限制資料大小、禁止版本回退與跨環境信任升級，並管理 `nextUpdate`、`notAfter` 與使用者主動更新；RICAL 非信任錨點不作根憑證。需新增 `SignedMdocTrustListsTest` 驗證發行者不受信任、正常簽署清單、版本回退及到期。
 
-仍需完成：OpenID Federation Trust Chain 的實際錨點與 Policy 驗證；JWE Request Object 所需解密金鑰及內層查驗者認證；特定 mdoc docType 的 `transaction_data` DeviceSigned 與 MSO KeyAuthorizations。這些未完成型別**保持明確拒絕**而非無條件接受。Android HTTPS App Links 暫不規劃，不作本階段阻擋。
+本輪已增加 mdoc `transaction_data` 透過 Multipaz `TransactionType` 回應到 `DeviceSigned.nameSpaces`，於裝置簽署前檢查 MSO KeyAuthorizations；已加入允許／未授權兩種回歸測試。JWE Request Object 已建立以錢包自身 ECDH-ES 金鑰解密的核心路徑和身分綁定，但 App 尚缺解密金鑰註冊、發布與完整的簽章加密巢狀回應驗收。OpenID Federation Trust Chain 的信任錨與 Policy 驗證尚未實作；所有未完成路徑**保持明確拒絕**。Android HTTPS App Links 暫不規劃，不作本階段阻擋。

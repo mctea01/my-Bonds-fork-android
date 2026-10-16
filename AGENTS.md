@@ -156,7 +156,7 @@
 ## P1–P3 2026-10-16 實作與驗收界線
 
 - OpenID4VCI：`core/oid4vci` 依授權伺服器中繼資料選擇公開用戶端、Wallet Attestation 或 `private_key_jwt`；PAR 與 Token 共用協商結果。正式 HTTPS Wallet Provider 是可配置但不會自動獲得發證端信任。錯誤 `clientId must be authenticated` 屬於發證端驗證錢包，與錢包畫面的發證端 T3 信任提醒是兩回事。
-- OpenID4VP：`RequestResolver`、`RequestValidator`、`Oid4vpHolder` 的多重簽章須逐一驗證；不能把 JWS JSON 退化成未簽章 DC API。聯邦信任鏈（OpenID Federation）與加密 Request Object 在未取得安全的信任鏈／解密金鑰前必須拒絕。mdoc `transaction_data` 需依特定 docType 將交易資料綁定 DeviceSigned，檢查 MSO KeyAuthorizations；尚不支援的型別應拒絕。
+- OpenID4VP：`RequestResolver`、`RequestValidator`、`Oid4vpHolder` 的多重簽章須逐一驗證；不能把 JWS JSON 退化成未簽章 DC API。OpenID Federation 在未取得可驗證的信任鏈／政策時必須拒絕；JWE Request Object 只能由錢包本地註冊的 ECDH-ES 私鑰解密，且解密成功不等同查驗者已驗證，目前 App 尚未提供解密公鑰註冊／發布流程。mdoc `transaction_data` 已由 `ResponseBuilder` 用 Multipaz TransactionType 生成 DeviceSigned，逐一檢查 MSO KeyAuthorizations；未支援的型別仍拒絕。
 - VICAL／RICAL：清單簽章不能自證可信。只能以獨立 `TrustRole.TRUST_LIST_PROVIDER` 的使用者／正式根憑證認證清單發行者；不可把 TEST 簽署者匯成 USER／正式清單。下載或更新須 HTTPS、限制大小、比對發行者與單調遞增版本、拒絕超過 `notAfter` 的清單；RICAL 的非信任錨點不可當成信任根。
 - TW FidO、CSC 與電子公文：公開規格的簽章、驗證、匯入／匯出與公文容器才是個人錢包交付範圍；**不要求個人取得正式 MOI SP、QTSP 或機關公文交換中心帳號**。不能捏造政府收發 API 或冒用測試憑證。
 - Android HTTPS App Links：本階段明確暫緩，沿用既有回呼方式，不當成 PR #11 驗收缺陷；若日後有正式自有網域與部署需求再評估。
