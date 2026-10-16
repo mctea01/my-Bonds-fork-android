@@ -70,7 +70,7 @@
 | WebView 外部連結 | 同上的 `shouldOverrideUrlLoading` | http、https 以外的連結都交給系統，包括 `openid4vp:`、`openid-credential-offer:` 等本 App 自己處理的 scheme。確認網頁不能在使用者不知情下啟動出示或領卡（同意畫面仍會出現，但來源要能辨識） |
 | Deep link | `app/src/androidMain/AndroidManifest.xml` | OpenID4VP、OpenID4VCI、`diw-wallet://oid4vci/callback`、`diw-wallet://moica/return`、`rqes://oauth/callback`、`diw-wallet://csc/callback`：state 與 PKCE 是否檢查、callback 在沒有進行中的流程時是否忽略 |
 | 匯出元件 | 同上，`android:exported="true"` 的元件 | HCE 服務與 DC API Activity 的權限；`DcApiActivity` 只回應系統呼叫 |
-| 明文 HTTP（疑似問題） | `app/src/androidMain/res/xml/network_security_config.xml`、`AndroidPlatform.httpClient()`（OkHttp）、`core/document/sign/Timestamps.kt`、`ValidationCollector.kt` | release 的網路設定除了 localhost 一律禁止明文，而 OkHttp 會遵守這個設定；內建 TSA（預設 DigiCert `http://timestamp.digicert.com`）、OCSP、CRL 與 AIA 幾乎都是 http。推論 release 版取得時戳與撤銷資訊會失敗，debug 版（允許明文）不會。需以 release APK 實機確認；若成立，修正方向是只對這些用途允許明文（時戳與 OCSP、CRL 本身有簽章保護） |
+| 明文 HTTP（已修正，PR #9） | `core/src/jvmCommonMain/kotlin/diw/wallet/core/document/sign/CleartextHttp.kt`、`core/document/sign/Validation.kt`（`SignedDataHttp`、`SignedDataRoutes`）、`AndroidPlatform.signedDataHttp` | 原問題：release 的網路設定禁止明文，OkHttp 因此拒絕 http 的時戳、OCSP、CRL 與 AIA。修正後只有這幾類回應本身有簽章的 http 網址改走 `CleartextHttp`（socket 上的最小 HTTP/1.1），其他流量仍受網路設定限制。審查時確認：只有 `SignedDataHttp` 的呼叫端能走這條路；回應大小上限、chunked 與標頭解析對惡意回應的處理；轉址只在 http 與 https 之間且不會讓一般流量繞過網路設定；以 release APK 實機取得一次時戳 |
 
 ### 4.3 協定與金鑰
 
