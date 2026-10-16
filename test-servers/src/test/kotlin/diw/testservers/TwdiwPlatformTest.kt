@@ -205,6 +205,20 @@ class TwdiwPlatformTest {
         assertEquals("twdiw", r.document.issuanceRecord!!.profile)
     }
 
+    /**
+     * The official handler reports a failed credential service as HTTP 500 with {resp_code, resp_message} and no OAuth
+     * error. The wallet's message keeps the platform's code so the failing step can be told apart.
+     */
+    @Test
+    fun credentialServiceFailureShowsPlatformCode() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.credentialServiceFailure = 61010 to "fail to get holder's data"
+        val e = assertFailsWith<ProtocolException> { s.receive() }
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals("server_error", e.code)
+        assertEquals("Credential request failed (500): TWDIW resp_code 61010 (fail to get holder's data)", e.message)
+    }
+
     @Test
     fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking<Unit> {
         val s = setup()

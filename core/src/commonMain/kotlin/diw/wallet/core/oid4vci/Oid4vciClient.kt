@@ -431,7 +431,7 @@ class Oid4vciClient(
                     (json.str("error_description") ?: fallback),
             )
         }
-        return oauthError(json, fallback)
+        return oauthError(json, failure(session.compat, json, fallback))
     }
 
     private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, auth: ClientAuthentication): AccessToken {
@@ -581,7 +581,7 @@ class Oid4vciClient(
                 return deferred(document, tx, json, config, false)
             }
             if (!status.isSuccess()) {
-                val e = oauthError(json, "Credential request failed (${status.value})")
+                val e = oauthError(json, failure(compat, json, "Credential request failed (${status.value})"))
                 if (built?.missingKeyAttestation != true) throw e
                 throw ProtocolException(e.code, "${e.message} (the issuer requires key attestation; no wallet provider gave one)")
             }
@@ -618,7 +618,7 @@ class Oid4vciClient(
         session.responseKeys.remove(deferred.transactionId)
         if (!status.isSuccess()) {
             documentStore.deleteDocument(deferred.document.identifier)
-            throw oauthError(json, "Deferred credential request failed (${status.value})")
+            throw oauthError(json, failure(session.compat, json, "Deferred credential request failed (${status.value})"))
         }
         val pending = deferred.document.getPendingCredentials()
         val record = deferred.document.issuanceRecord!!.copy(pendingTransactionId = null)
@@ -1076,6 +1076,13 @@ class Oid4vciClient(
 
     private fun oauthError(json: JsonObject, fallback: String): ProtocolException =
         ProtocolException(json.str("error") ?: "server_error", json.str("error_description") ?: fallback)
+
+    /** [base] followed by the owning dialect's reading of an error body that carries no error_description. */
+    private fun failure(compat: DialectSet, json: JsonObject, base: String): String {
+        if (json.str("error_description") != null) return base
+        val detail = compat.owned { it.errorDetail(json) } ?: return base
+        return "$base: $detail"
+    }
 
     companion object {
         /** Checks a URL before the wallet opens it as an authorization page. */

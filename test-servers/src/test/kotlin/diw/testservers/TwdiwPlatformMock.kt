@@ -337,6 +337,10 @@ class TwdiwPlatformMock private constructor(
         expect(jws.payload.str("iss") == CLIENT_ID) { "proof iss ${jws.payload.str("iss")}" }
         expect(jws.payload.str("aud") == ISSUER) { "proof aud ${jws.payload.str("aud")}" }
         expect(jws.payload.str("nonce") == cNonce) { "proof nonce ${jws.payload.str("nonce")}" }
+        // The official handler answers 500 with its own body once token and proof passed but the credential service failed.
+        credentialServiceFailure?.let { (code, message) ->
+            return json(buildJsonObject { put("resp_code", code); put("resp_message", message) }, HttpStatusCode.InternalServerError)
+        }
         issuedIndex++
         return json(buildJsonObject { put("credential", mintCard(holderKey, kid, issuedIndex)) })
     }
@@ -387,6 +391,9 @@ class TwdiwPlatformMock private constructor(
 
     /** TWDIW signs status lists with key-2, published only at /api/keys (jku), not in the issuer DID. */
     var statusListSignedByIssuerDid = false
+
+    /** resp_code and resp_message the credential endpoint fails with after accepting the proof; null issues the card. */
+    var credentialServiceFailure: Pair<Int, String>? = null
 
     /** Host of the status lists' jku; the platform's issuer host unless a test moves it. */
     var statusJkuHost = ISSUER_HOST
