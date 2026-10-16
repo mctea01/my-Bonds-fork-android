@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.util.TextEncodings
 import android.annotation.SuppressLint
 import android.net.Uri
 import android.util.Base64
@@ -140,7 +141,8 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                 // The default chrome client shows alert, confirm and prompt dialogs, which a bare WebView drops.
                 webChromeClient = WebChromeClient()
                 setDownloadListener { link, userAgent, disposition, mime, _ ->
-                    val name = URLUtil.guessFileName(link, disposition, mime)
+                    // guessFileName reads the header as ISO-8859-1 and ignores filename*, so Chinese names are read here first.
+                    val name = TextEncodings.contentDispositionName(disposition) ?: TextEncodings.repairName(URLUtil.guessFileName(link, disposition, mime))
                     if (link.startsWith("blob:")) {
                         evaluateJavascript(BLOB_HOOK + "window.__diwBlob(" + quote(link) + "," + quote(name) + ");", null)
                         return@setDownloadListener

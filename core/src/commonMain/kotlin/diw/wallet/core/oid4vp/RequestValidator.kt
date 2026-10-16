@@ -227,7 +227,7 @@ class RequestValidator(
                 }
                 VerifierIdentityInfo(
                     clientId, rawClientId, reg.displayName, null, emptyList(), null,
-                    TrustDecision(if (reg.official) TrustTier.T1 else TrustTier.T3, null, reg.official, reg.displayName, emptySet())
+                    TrustDecision(if (reg.official) TrustTier.T1 else TrustTier.T2, null, reg.official, reg.displayName, emptySet())
                 )
             }
         }

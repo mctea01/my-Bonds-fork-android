@@ -1,5 +1,6 @@
 package diw.wallet.core.credential
 
+import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
@@ -9,6 +10,8 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.CborArray
+import org.multipaz.cbor.DataItem
 import org.multipaz.cbor.Tstr
 import org.multipaz.claim.Claim
 import org.multipaz.claim.JsonClaim
@@ -31,22 +34,20 @@ data class DisplayClaim(val label: String, val value: String, val path: List<Str
 
 /** Image claims: mdoc byte strings and data: URLs or base64 text of an image in JSON credentials. */
 object ClaimPictures {
-    private val dataUrl = Regex("^data:image/(png|jpe?g|gif|webp);base64,(.+)$", RegexOption.IGNORE_CASE)
+    private val dataUrl = Regex("^data:image/[a-z0-9.+-]+;base64,(.+)$", RegexOption.IGNORE_CASE)
+    private val base64Text = Regex("^[A-Za-z0-9+/_-]{16,}={0,2}$")
 
-    /** True when [b] starts like a JPEG, PNG, GIF or WebP file. */
-    fun isImage(b: ByteArray): Boolean = b.size > 12 && (
-        (b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() && b[2] == 0xFF.toByte()) ||
-            (b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() && b[2] == 'N'.code.toByte() && b[3] == 'G'.code.toByte()) ||
-            (b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte()) ||
-            (b[0] == 'R'.code.toByte() && b[1] == 'I'.code.toByte() && b[8] == 'W'.code.toByte() && b[9] == 'E'.code.toByte())
-        )
+    /** True when [b] starts like an image file of a kind the wallet knows (JPEG, PNG, GIF, WebP, TIFF, HEIF, JPEG 2000...). */
+    fun isImage(b: ByteArray): Boolean = ImageKind.of(b) != null
 
-    /** The image in a text value: a data: URL, or base64 / base64url of at least 100 bytes that decodes to an image. */
+    /**
+     * The image in a text value: a data: URL, or base64 / base64url text that decodes to an image. Short values count
+     * too (a test PID carries a 1 x 1 PNG); the decoded bytes must start like an image, so other text is never taken.
+     */
     fun fromText(v: String): ByteArray? {
         val t = v.trim()
-        dataUrl.matchEntire(t)?.let { m -> return decode(m.groupValues[2])?.takeIf { isImage(it) } }
-        if (t.length < 136 || t.any { it.isWhitespace() }) return null
-        if (!(t.startsWith("/9j/") || t.startsWith("_9j_") || t.startsWith("iVBOR") || t.startsWith("R0lGOD") || t.startsWith("UklGR"))) return null
+        dataUrl.matchEntire(t)?.let { m -> return decode(m.groupValues[1].filterNot { it.isWhitespace() })?.takeIf { isImage(it) } }
+        if (!base64Text.matches(t)) return null
         return decode(t)?.takeIf { isImage(it) }
     }
 
@@ -55,7 +56,7 @@ object ClaimPictures {
     }.getOrNull()
 
     /** What a picture claim shows as text. */
-    fun describe(b: ByteArray): String = "圖片（${(b.size + 1023) / 1024} KB）"
+    fun describe(b: ByteArray): String = "圖片（" + (ImageKind.of(b)?.title?.let { "$it，" } ?: "") + "${(b.size + 1023) / 1024} KB）"
 }
 
 /**
@@ -92,12 +93,30 @@ object ClaimReader {
         val name = pathOf(claim).lastOrNull().orEmpty()
         if ("country" in name || "nationalit" in name) {
             when (claim) {
-                is MdocClaim -> (claim.value as? Tstr)?.let { return it.value }
+                is MdocClaim -> plainCbor(claim.value)?.let { return it }
                 is JsonClaim -> return render(claim.value)
                 else -> {}
             }
         }
+        if (claim is JsonClaim) sexCode(name, claim.value)?.let { return it }
+        // Elements the document type does not describe are rendered by Multipaz as CBOR diagnostics ("\"PID\"", [..]).
+        if (claim is MdocClaim && claim.attribute == null) plainCbor(claim.value)?.let { return it }
         return claim.render()
+    }
+
+    /** Text and lists of text as they read, without CBOR quoting; null for other values. */
+    private fun plainCbor(v: DataItem): String? = when (v) {
+        is Tstr -> v.value
+        is CborArray -> v.items.takeIf { items -> items.all { it is Tstr } }?.joinToString(", ") { (it as Tstr).value }
+        else -> null
+    }
+
+    /** ISO/IEC 5218 sex codes (the PID's sex claim) as words. */
+    private fun sexCode(name: String, v: JsonElement): String? {
+        if (name != "sex" && name != "gender") return null
+        val code = (v as? JsonPrimitive)?.content?.toIntOrNull() ?: return null
+        val word = when (code) { 0 -> "未知"; 1 -> "男"; 2 -> "女"; 9 -> "不適用"; else -> return null }
+        return "$word（$code）"
     }
 
     /** Claim path: namespace and element for mdoc, the JSON path for SD-JWT VC. */
@@ -149,7 +168,8 @@ object ClaimReader {
 
     private fun display(label: String, v: JsonElement): DisplayClaim {
         val picture = (v as? JsonPrimitive)?.takeIf { it.isString }?.let { ClaimPictures.fromText(it.content) }
-        return DisplayClaim(label, picture?.let { ClaimPictures.describe(it) } ?: render(v), label.split('.'), picture)
+        val text = picture?.let { ClaimPictures.describe(it) } ?: sexCode(label.substringAfterLast('.'), v) ?: render(v)
+        return DisplayClaim(label, text, label.split('.'), picture)
     }
 
     private fun render(v: JsonElement): String = when (v) {

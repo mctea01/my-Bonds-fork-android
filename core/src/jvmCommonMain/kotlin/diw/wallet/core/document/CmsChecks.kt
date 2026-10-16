@@ -188,7 +188,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val decision = pki.decide(TrustRole.DOCUMENT, chain, at)
         if (PkiSupport.unknownAnchor(decision)) {
             val root = chain.last()
-            notes.add(if (pki.selfSigned(root)) "憑證鏈的根憑證「${pki.cn(root.subject) ?: root.subject}」不在信任錨點；確認來源後可匯入為文件簽章錨點（T3）"
+            notes.add(if (pki.selfSigned(root)) "憑證鏈的根憑證「${pki.cn(root.subject) ?: root.subject}」不在信任錨點；確認來源後可信任這個根憑證（T2）"
             else "找不到完整的憑證鏈（缺少「${pki.cn(root.issuer) ?: root.issuer}」的憑證），連線時會依憑證的 AIA 自動下載")
         }
         // Embedded revocation data only: a revocation before the trusted time (or now) invalidates the signature.

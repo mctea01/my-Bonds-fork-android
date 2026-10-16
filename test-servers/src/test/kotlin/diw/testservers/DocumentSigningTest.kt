@@ -150,7 +150,7 @@ class DocumentSigningTest {
         assertEquals(true, s.coversWholeDocument)
         assertEquals("測試簽署", s.reason)
         assertTrue(s.timestamp?.trusted == true, s.timestamp.toString())
-        assertEquals(TrustTier.T3, s.trust?.decision()?.tier)
+        assertEquals(TrustTier.T2, s.trust?.decision()?.tier)
         assertEquals(DocumentVerdict.VALID, r.verdict, s.problems.toString() + s.notes)
 
         // A second signature (EC) keeps the first one valid.

@@ -364,7 +364,7 @@ private fun HistoryRow(e: HistoryEntry, expanded: Boolean, zone: TimeZone, onCli
             RevocationCheckState.SUSPENDED.name -> Verdict.CAUTION to "暫停"
             else -> when (e.tier?.let { runCatching { TrustTier.valueOf(it) }.getOrNull() }) {
                 TrustTier.T1 -> Verdict.PASS to "T1"
-                TrustTier.T2 -> Verdict.CAUTION to "T2"
+                TrustTier.T2 -> Verdict.PASS to "T2"
                 TrustTier.T3 -> Verdict.CAUTION to "T3"
                 else -> Verdict.FAIL to "T4"
             }

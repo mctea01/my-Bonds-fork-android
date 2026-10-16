@@ -34,6 +34,9 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.browser.customtabs.CustomTabsIntent
 import com.google.android.gms.identitycredentials.IdentityCredentialManager
+import com.google.android.gms.identitycredentials.RegisterCreationOptionsRequest
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import com.google.android.gms.identitycredentials.RegistrationRequest
 import com.google.android.gms.tasks.Task
 import diw.wallet.app.DcApiRegistration
@@ -413,13 +416,54 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 IdentityCredentialManager.getClient(context)
                     .registerCredentials(RegistrationRequest(Cbor.encode(database), matcher, DIGITAL_CREDENTIAL_TYPE, "", emptyList()))
                     .awaitResult()
-                DcApiRegistration(database["credentials"].asArray.size, notListable(model), protocols, null, now)
+                val issuance = runCatching { registerIssuance(appName) }
+                    .onFailure { if (it is CancellationException) throw it; Logger.e(TAG, "Digital Credentials issuance registration failed", it) }
+                DcApiRegistration(
+                    database["credentials"].asArray.size, notListable(model), protocols, null, now,
+                    issuance = issuance.isSuccess, issuanceError = issuance.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+                )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             Logger.e(TAG, "Digital Credentials registration failed", e)
             DcApiRegistration(0, runCatching { notListable(model) }.getOrDefault(0), emptySet(), e.message ?: e::class.simpleName, now)
         }
+    }
+
+    /**
+     * Lets web pages and apps save credentials into the wallet (navigator.credentials.create with OpenID4VCI): the
+     * creation entry the system lists, and the CMWallet issuance matcher that shows it for openid4vci-v1 and
+     * openid4vci1.0 requests. Requests arrive at DcApiActivity with the CREATE_CREDENTIAL action.
+     */
+    private suspend fun registerIssuance(appName: String) {
+        val matcher = withContext(Dispatchers.IO) { context.assets.open(ISSUANCE_MATCHER_ASSET).use { it.readBytes() } }
+        val options = creationOptions(appName, "存入 $appName", launcherIconPng())
+        IdentityCredentialManager.getClient(context)
+            .registerCreationOptions(RegisterCreationOptionsRequest(options, matcher, DIGITAL_CREDENTIAL_TYPE, ISSUANCE_ID, ""))
+            .awaitResult()
+    }
+
+    /** The issuance matcher's data: a little-endian offset to the JSON, the icon, then the JSON naming the entry and its icon. */
+    private fun creationOptions(title: String, subtitle: String, icon: ByteArray): ByteArray {
+        val json = buildJsonObject {
+            put("display", buildJsonObject {
+                put("title", JsonPrimitive(title))
+                put("subtitle", JsonPrimitive(subtitle))
+                put("icon", buildJsonObject { put("start", JsonPrimitive(4)); put("length", JsonPrimitive(icon.size)) })
+            })
+        }.toString().encodeToByteArray()
+        val offset = 4 + icon.size
+        val head = byteArrayOf(offset.toByte(), (offset shr 8).toByte(), (offset shr 16).toByte(), (offset shr 24).toByte())
+        return head + icon + json
+    }
+
+    /** The launcher icon as a 96 x 96 PNG for the system's entry. */
+    private fun launcherIconPng(): ByteArray {
+        val drawable = context.packageManager.getApplicationIcon(context.applicationInfo)
+        val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, 96, 96)
+        drawable.draw(Canvas(bitmap))
+        return java.io.ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     }
 
     /**
@@ -455,6 +499,9 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         /** Matcher shipped in multipaz-dcapi; the system runs it against each request to list matching credentials. */
         const val MATCHER_ASSET = "identitycredentialmatcher.wasm"
         const val DIGITAL_CREDENTIAL_TYPE = "androidx.credentials.TYPE_DIGITAL_CREDENTIAL"
+        /** Issuance matcher from the CMWallet sample (Apache-2.0, matcher/issuance/provision.c). */
+        const val ISSUANCE_MATCHER_ASSET = "openid4vci_provision.wasm"
+        const val ISSUANCE_ID = "openid4vci"
         const val MAX_ATTESTATION_CHALLENGE = 128
         const val PROXIMITY_PERMISSION_REQUEST = 7302
     }

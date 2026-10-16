@@ -7,10 +7,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.credentials.CreateDigitalCredentialRequest
+import androidx.credentials.CreateDigitalCredentialResponse
 import androidx.credentials.DigitalCredential
 import androidx.credentials.ExperimentalDigitalCredentialApi
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.GetDigitalCredentialOption
+import androidx.credentials.exceptions.CreateCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.credentials.provider.ProviderGetCredentialRequest
@@ -82,6 +85,7 @@ class DcApiActivity : FragmentActivity() {
     @OptIn(ExperimentalDigitalCredentialApi::class)
     private suspend fun run() {
         app.awaitReady()
+        if (intent.action == ACTION_CREATE) return create()
         var protocol: String? = null
         val data = try {
             val request = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent)
@@ -122,6 +126,43 @@ class DcApiActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * A web page or app saves a credential (navigator.credentials.create): the request names OpenID4VCI and carries the
+     * credential offer, which runs through the wallet's issuance screens. The answer is the bare acknowledgement the
+     * protocol defines; the credential itself comes from the issuer.
+     */
+    @OptIn(ExperimentalDigitalCredentialApi::class)
+    private suspend fun create() {
+        val result = Intent()
+        val protocol = try {
+            val request = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
+                ?: throw IllegalStateException("沒有 Credential Manager 請求")
+            val caller = request.callingAppInfo
+            val origin = runCatching { caller.getOrigin(privilegedUserAgents) }.getOrNull()
+                ?: getAppOrigin(caller.signingInfoCompat.signingCertificateHistory[0].toByteArray())
+            val requestJson = (request.callingRequest as? CreateDigitalCredentialRequest)?.requestJson
+                ?: request.callingRequest.credentialData.getString("androidx.credentials.BUNDLE_KEY_REQUEST_JSON")
+                ?: throw IllegalStateException("不是數位憑證請求")
+            val entry = Json.parseToJsonElement(requestJson).jsonObject["requests"]?.jsonArray?.map { it.jsonObject }
+                ?.firstOrNull { it["protocol"]?.jsonPrimitive?.content in ISSUANCE_PROTOCOLS }
+                ?: throw IllegalStateException("請求中沒有 OpenID4VCI 發卡協定")
+            val p = entry["protocol"]!!.jsonPrimitive.content
+            if (app.model.receiveDcApi(entry["data"]!!.jsonObject, origin)) p else null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            app.model.failDcApi(app.model.describe(e))
+            null
+        }
+        if (protocol == null) {
+            PendingIntentHandler.setCreateCredentialException(result, CreateCredentialCancellationException("使用者取消或沒有存入證件"))
+        } else {
+            val ack = buildJsonObject { put("protocol", JsonPrimitive(protocol)); put("data", JsonObject(emptyMap())) }
+            PendingIntentHandler.setCreateCredentialResponse(result, CreateDigitalCredentialResponse(Json.encodeToString(JsonObject.serializer(), ack)))
+        }
+        done(result)
+    }
+
     @OptIn(ExperimentalDigitalCredentialApi::class)
     private fun succeed(response: JsonObject) {
         val result = Intent()
@@ -147,5 +188,11 @@ class DcApiActivity : FragmentActivity() {
         val setId = request.sourceBundle?.getString("androidx.credentials.registry.provider.extra.CREDENTIAL_SET_ID")
         if (setId != null) return setId.split(" ").getOrNull(1)
         return runCatching { request.selectedEntryId }.getOrNull()?.split(" ")?.getOrNull(1)
+    }
+
+    private companion object {
+        const val ACTION_CREATE = "androidx.credentials.registry.provider.action.CREATE_CREDENTIAL"
+        /** OpenID4VCI over the Digital Credentials API: the final name and the earlier draft name. */
+        val ISSUANCE_PROTOCOLS = setOf("openid4vci-v1", "openid4vci1.0", "openid4vci")
     }
 }

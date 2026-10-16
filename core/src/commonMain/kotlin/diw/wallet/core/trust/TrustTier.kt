@@ -3,10 +3,13 @@ package diw.wallet.core.trust
 import diw.wallet.core.env.TrustEnvironment
 
 /**
- * Prompt levels shown to the user for verifiers and issuers.
- * T1: official or meets security requirements; T2: identity verified but purpose not registered or request
- * exceeds registration; T3: cryptographically verifiable but not anchored in an official list; T4: unknown,
- * unsigned or anonymous.
+ * Prompt levels shown to the user for verifiers, issuers and document signers.
+ * T1: verified beyond the trust root, in an official list (TWDIW listed and matching its on-chain registration, or an
+ * anchor flagged official); T2: the chain or key leads to a trust root (built-in GPKI, platform store and built-in
+ * public roots, user-imported roots, user-trusted DIDs, verified Linked Domains) or a listed party could not be fully
+ * checked; T1 and T2 count as highly trusted. T3: cryptographically verifiable but not led to any trust root, and every
+ * test anchor; T4: verification failed, unsigned or anonymous. Intermediate certificates never set the tier: only the
+ * root a chain leads to does.
  */
 enum class TrustTier { T1, T2, T3, T4 }
 
@@ -79,9 +82,16 @@ data class TrustDecision(
     }
 }
 
-/** Applies the environment rules: test anchors can never reach T1 or T2. */
+/**
+ * Applies the environment rules: an official production anchor is T1, any other production, user or platform trust
+ * root is T2, and test anchors never rise above T3.
+ */
 fun tierFor(environment: TrustEnvironment?, official: Boolean, cryptographicallyVerified: Boolean): TrustTier = when {
     !cryptographicallyVerified -> TrustTier.T4
     environment == TrustEnvironment.PRODUCTION && official -> TrustTier.T1
-    else -> TrustTier.T3
+    environment == null || environment == TrustEnvironment.TEST -> TrustTier.T3
+    else -> TrustTier.T2
 }
+
+/** T1 and T2: led to a trust root, or verified beyond one; the wallet treats these parties as highly trusted. */
+val TrustTier.highlyTrusted: Boolean get() = this == TrustTier.T1 || this == TrustTier.T2

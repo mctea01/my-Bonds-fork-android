@@ -1,6 +1,13 @@
 package diw.wallet.app
 
 import diw.wallet.core.document.official.BundleMatch
+import diw.wallet.core.document.image.ImageConversion
+import diw.wallet.core.util.TextEncodings
+import diw.wallet.core.document.image.ImageKind
+import diw.wallet.core.document.image.TiffDecoder
+import diw.wallet.core.document.official.ApprovalFile
+import diw.wallet.core.profile.bonds.HouseholdTranscript
+import diw.wallet.core.profile.bonds.HouseholdTranscripts
 import diw.wallet.core.document.official.OfficialBundles
 import diw.wallet.core.profile.bonds.MyDataText
 import diw.wallet.core.document.sign.CscService
@@ -132,7 +139,11 @@ sealed class FilePreview {
      * Rendered pages (as many as [PREVIEW_PAGES]) of [total], the text layer when there is one, and the record read
      * from it when the PDF is an entry and exit certificate.
      */
-    class Pages(val pages: List<ImageBitmap>, val total: Int, val text: String?, val entryExit: MovementRecord? = null) : FilePreview()
+    class Pages(
+        val pages: List<ImageBitmap>, val total: Int, val text: String?, val entryExit: MovementRecord? = null,
+        /** A household transcript read person by person, the holder first. */
+        val household: HouseholdTranscript? = null,
+    ) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
     /** An official document (公文) laid out as a reader sees it; [source] is the XML, shown only on request. */
@@ -188,6 +199,7 @@ object DocumentSources {
         DocumentSource("dcert", "數位證明管理中心", "上傳學校核發的數位 PDF 學位證書，產生 QR 碼加入數位憑證皮夾卡片", "https://dcmc.csie.ncku.edu.tw/"),
         DocumentSource("ris", "內政部戶政司 全國戶政服務", "電子戶籍謄本（.asdt 只能保存原檔，內容需送戶政司查驗）", "https://www.ris.gov.tw/app/portal/"),
         DocumentSource("land", "地政電子謄本", "土地與建物登記謄本、地籍圖謄本", "https://ep.land.nat.gov.tw/"),
+        DocumentSource("etax", "財政部 稅務入口網", "綜合所得稅、各類所得與納稅證明等申報與查詢；以自然人憑證或行動自然人憑證登入，下載的文件直接保存", "https://www.etax.nat.gov.tw/etwmain"),
         DocumentSource("nia", "內政部移民署 入出國日期證明書", "以自然人憑證登入申請入出國日期證明書，下載的 PDF 直接保存", "https://ncp.immigration.gov.tw/niaweb/entryExitQuery"),
     )
 
@@ -295,6 +307,8 @@ class FilesModel(private val model: WalletModel) {
     val trustSource = object : DocumentTrustSource {
         override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: Instant): TrustDecision = model.trust.decide(role, chain, at)
 
+        override suspend fun knownCertificates(): List<ByteArray> = model.trust.chainCertificates().map { it.encoded.toByteArray() }
+
         override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) emptyList()
             else {
@@ -335,7 +349,7 @@ class FilesModel(private val model: WalletModel) {
 
     /** Inspects [bytes] and stores them; the same content stored before is returned instead. */
     suspend fun store(
-        name: String,
+        givenName: String,
         bytes: ByteArray,
         origin: FileOrigin,
         source: String? = null,
@@ -343,6 +357,8 @@ class FilesModel(private val model: WalletModel) {
         contentId: String? = null,
         archive: String? = null,
     ): StoredFile {
+        // Names that went through the wrong decoder on the way (a server's raw header, a percent-encoded link) are repaired.
+        val name = TextEncodings.repairName(givenName)
         if (bytes.isEmpty()) throw SigningException("檔案是空的")
         if (bytes.size > MAX_FILE_BYTES) throw SigningException("檔案超過 ${MAX_FILE_BYTES / 1024 / 1024} MB，無法保存")
         val detached = contentId?.let { data(it) }
@@ -614,10 +630,21 @@ class FilesModel(private val model: WalletModel) {
                 val text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.trim()?.ifEmpty { null }
                 val total = runCatching { PdfTextExtractor.pages(pdf).size }.getOrDefault(pages.size)
                 if (pages.isEmpty() && text == null) FilePreview.Unavailable("這個平台無法繪製這份 PDF，也沒有可擷取的文字")
-                else FilePreview.Pages(pages, total, text, text?.let { MovementRecord.parse(it) })
+                else FilePreview.Pages(
+                    pages, total, text, text?.let { MovementRecord.parse(it) },
+                    text?.let { runCatching { HouseholdTranscripts.parse(it, holderHints()) }.getOrNull() },
+                )
             }
-            DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
-                ?: FilePreview.Unavailable("無法解碼這張圖片")
+            DocumentFormat.IMAGE -> when (val kind = ImageKind.of(bytes)) {
+                // A TIFF can hold several pages (official document page images); each is shown like a PDF page.
+                ImageKind.TIFF -> {
+                    val pages = ImageConversion.tiffPages(bytes, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH).mapNotNull { model.platform.decodeImage(it) }
+                    if (pages.isEmpty()) FilePreview.Unavailable("無法讀取這個 TIFF 檔（可能是不支援的壓縮方式），請匯出後以其他軟體開啟")
+                    else FilePreview.Pages(pages, TiffDecoder.pageCount(bytes), null)
+                }
+                else -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
+                    ?: FilePreview.Unavailable("這個平台無法顯示${kind?.title?.let { " $it " } ?: ""}圖片，請匯出後以其他軟體開啟")
+            }
             DocumentFormat.XML -> {
                 val text = bytes.decodeToString().removePrefix("\uFEFF")
                 val official = OfficialDocuments.parse(bytes)
@@ -629,6 +656,7 @@ class FilesModel(private val model: WalletModel) {
                 FilePreview.Text(text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
             }
             DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable("壓縮檔與容器請看下方的內容清單；ZIP 解出後可逐一預覽")
+            DocumentFormat.OFFICE -> FilePreview.Unavailable("Office 文件無法在錢包內預覽，請匯出後以 Office 等軟體開啟")
             DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable("加密給特定對象的檔案，錢包無法開啟內容")
             else -> {
                 // A signature with its content inside (.p7m) previews the content when it is a known kind.
@@ -663,6 +691,19 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
+    /**
+     * Opens one file of a container (ASiC-E, OFD or ZIP) on its own: it is stored as a file taken from [f], which
+     * keeps the container and its signatures as they are, and its detail screen opens.
+     */
+    fun openEntry(f: StoredFile, entry: String) = run("開啟容器內的檔案") {
+        val files = DocumentSigning.unzip(data(f.id))
+        val bytes = files[entry] ?: files.entries.firstOrNull { it.key.endsWith("/$entry") }?.value
+            ?: throw SigningException("容器內找不到「$entry」")
+        val name = OfficialBundles.decodeZipName(entry.substringAfterLast('/'))
+        val stored = store(name, bytes, FileOrigin.EXTRACTED, f.source ?: f.name, parentId = f.id, archive = f.name)
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
     // ---------------------------------------------------------------- official document containers
 
     /** True when the ZIP [f] holds files of the official document exchange (.di, .sw, .si, .dm, .co). */
@@ -677,8 +718,30 @@ class FilesModel(private val model: WalletModel) {
         f.report?.format == DocumentFormat.XML && runCatching { OfficialBundles.isMain(f.name, data(f.id)) }.getOrDefault(false)
     }.also { mains[f.id] = it }
 
-    /** The files in the container of the official document [main]. */
-    fun members(main: StoredFile): List<StoredFile> = files.value.filter { it.bundleOf == main.id }.sortedBy { it.name }
+    /** The files in the container of the official document [main], its own and those [inherited] from what it was signed from. */
+    fun members(main: StoredFile): List<StoredFile> = (files.value.filter { it.bundleOf == main.id } + inherited(main)).sortedBy { it.name }
+
+    /**
+     * A signed official document keeps the container of the document it was signed from: those members still count,
+     * except the ones it holds a signed copy of. The original keeps its own container unchanged.
+     */
+    fun inherited(main: StoredFile, depth: Int = 0): List<StoredFile> {
+        if (main.origin != FileOrigin.SIGNED || depth > 8) return emptyList()
+        val parent = main.parentId?.let { file(it) }?.takeIf { it.id != main.id } ?: return emptyList()
+        val own = files.value.filter { it.bundleOf == main.id }
+        return (files.value.filter { it.bundleOf == parent.id } + inherited(parent, depth + 1))
+            .filter { m -> own.none { it.parentId == m.id } }
+    }
+
+    /** A member that is signed together with its official document: XML forms and attachments, unencrypted PDFs. */
+    private fun signableMember(m: StoredFile): Boolean = when (m.report?.format) {
+        DocumentFormat.XML -> true
+        DocumentFormat.PDF -> m.report.encrypted != true && m.report.signatures.none { it.docMdp == 1 }
+        else -> false
+    }
+
+    /** The members of [main] signed along with it when the holder asks for it. */
+    fun membersToSign(main: StoredFile): List<StoredFile> = members(main).filter { signableMember(it) }
 
     /**
      * After files came in together: when an official document is among them, opens the confirmation of which of the
@@ -689,8 +752,22 @@ class FilesModel(private val model: WalletModel) {
         val docs = distinct.filter { it.bundleOf == null && isOfficialMain(it) }
         val others = distinct.filter { it.bundleOf == null && it !in docs }
         if (docs.isEmpty() || others.isEmpty()) return false
-        model.screen.value = Screen.OfficialBundle(docs.first().id, others.map { it.id }, docs.drop(1).map { it.id })
+        // An online approval that signed several documents (a case's incoming letter, drafts and their versions) puts
+        // them in one container: the first document it lists holds it, the others are offered as its members.
+        val approvals = approvalsAmong(distinct)
+        val approved = approvals.flatMap { a ->
+            a.names.mapNotNull { n -> docs.firstOrNull { it.name == n && a.lists(it.name, data(it.id)) == true } }
+        }.distinctBy { it.id }
+        val main = approved.firstOrNull() ?: docs.first()
+        val grouped = approved.drop(1)
+        val rest = docs.filter { it != main && it !in grouped }
+        model.screen.value = Screen.OfficialBundle(main.id, (grouped + others).map { it.id }, rest.map { it.id })
         return true
+    }
+
+    /** The online approval files (.si) among [files], with the files their signatures cover. */
+    private suspend fun approvalsAmong(files: List<StoredFile>): List<ApprovalFile> = files.mapNotNull { f ->
+        if (f.report?.format != DocumentFormat.XML) null else runCatching { ApprovalFile.of(f.name, data(f.id)) }.getOrNull()
     }
 
     /** A file that may go into the container of [main], with the hints for and against it. */
@@ -703,10 +780,11 @@ class FilesModel(private val model: WalletModel) {
     suspend fun bundleCandidates(main: StoredFile, only: List<String>?): List<BundleCandidate> = withContext(Dispatchers.Default) {
         val mainBytes = data(main.id)
         val pool = (only?.mapNotNull { file(it) } ?: files.value).filter { it.id != main.id && it.bundleOf == null && it.nationalId == null }
+        // Approvals that came with the files or are already in the container.
+        val approvals = approvalsAmong(pool + members(main))
         pool.filter { !isOfficialMain(it) || only != null }.map { f ->
             val bytes = runCatching { data(f.id) }.getOrDefault(ByteArray(0))
-            val xml = f.report?.format == DocumentFormat.XML
-            BundleCandidate(f, OfficialBundles.match(main.name, mainBytes, f.name, if (xml) bytes else ByteArray(0)))
+            BundleCandidate(f, OfficialBundles.match(main.name, mainBytes, f.name, bytes, approvals))
         }.sortedWith(compareByDescending<BundleCandidate> { it.match.suggested }.thenByDescending { it.match.supported }.thenBy { it.file.name })
     }
 
@@ -904,7 +982,11 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Signs [f] as [form]; the signed result is stored as a new file. */
-    fun sign(f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean) = run("準備簽署") {
+    fun sign(
+        f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean,
+        allowBreakingCertification: Boolean = false,
+        withMembers: Boolean = false,
+    ) = run("準備簽署") {
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
         val ts = if (timestamp) timestamper() else null
@@ -920,7 +1002,10 @@ class FilesModel(private val model: WalletModel) {
             when (form) {
                 SignForm.PADES -> DocumentSigning.signPdf(
                     data, signer,
-                    PdfSignOptions(reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName), ts,
+                    PdfSignOptions(
+                        reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
+                        allowBreakingCertification = allowBreakingCertification,
+                    ), ts,
                 ) to "$base-signed.pdf"
                 SignForm.XADES -> DocumentSigning.signXml(data, signer, ts) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
                 SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts) to "${f.name}.p7s"
@@ -930,8 +1015,31 @@ class FilesModel(private val model: WalletModel) {
         }
         busy.value = "檢查並保存簽署結果"
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = "${form.title}，以${signer.source.title}簽署")
-        model.message.value = "已簽署並保存：${stored.name}"
+        // An official document's forms and attachments are signed the same way and go into the signed copy's container.
+        val members = if (withMembers && form == SignForm.XADES) membersToSign(f) else emptyList()
+        val signedMembers = ArrayList<String>()
+        val failed = ArrayList<String>()
+        for ((i, m) in members.withIndex()) {
+            busy.value = "簽署關連檔案（${i + 1}／${members.size}）：${m.name}" + if (choice is SignerChoice.Card) "，依提示感應卡片" else ""
+            try {
+                val mBase = m.name.substringBeforeLast('.')
+                val (mBytes, mName) = withContext(model.unlockProvider) {
+                    when (m.report?.format) {
+                        DocumentFormat.PDF -> DocumentSigning.signPdf(data(m.id), signer, PdfSignOptions(reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName), ts) to "$mBase-signed.pdf"
+                        else -> DocumentSigning.signXml(data(m.id), signer, ts) to (mBase + "-signed." + m.name.substringAfterLast('.', "xml"))
+                    }
+                }
+                val sm = store(mName, mBytes, FileOrigin.SIGNED, m.name, parentId = m.id)
+                save((file(sm.id) ?: sm).copy(bundleOf = stored.id))
+                signedMembers.add(m.name)
+            } catch (e: Exception) {
+                failed.add(m.name + "：" + (e.message ?: e::class.simpleName))
+            }
+        }
+        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name) + signedMembers, note = "${form.title}，以${signer.source.title}簽署")
+        model.message.value = "已簽署並保存：${stored.name}" +
+            (if (signedMembers.isNotEmpty()) "，並簽署 ${signedMembers.size} 個關連檔" else "") +
+            (if (failed.isNotEmpty()) "；未能簽署：" + failed.joinToString("；") else "")
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1214,12 +1322,18 @@ class FilesModel(private val model: WalletModel) {
         private val dataTable = StorageTableSpec(name = "DiwFileData", supportPartitions = false, supportExpiration = false)
 
         fun mediaTypeOf(report: DocumentReport, name: String): String = when (report.format) {
-            DocumentFormat.IMAGE -> when (name.substringAfterLast('.', "").lowercase()) {
-                "png" -> "image/png"
-                "jpg", "jpeg" -> "image/jpeg"
-                "webp" -> "image/webp"
-                "gif" -> "image/gif"
-                else -> "image/*"
+            DocumentFormat.IMAGE -> ImageKind.ofExtension(name)?.mediaType ?: "image/*"
+            DocumentFormat.OFFICE -> when (name.substringAfterLast('.', "").lowercase()) {
+                "doc" -> "application/msword"
+                "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                "xls" -> "application/vnd.ms-excel"
+                "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                "ppt" -> "application/vnd.ms-powerpoint"
+                "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                "odt" -> "application/vnd.oasis.opendocument.text"
+                "ods" -> "application/vnd.oasis.opendocument.spreadsheet"
+                "odp" -> "application/vnd.oasis.opendocument.presentation"
+                else -> report.format.mediaType
             }
             else -> report.format.mediaType
         }

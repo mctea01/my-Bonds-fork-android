@@ -65,6 +65,14 @@ data class AnchorMatch(
     val anchor: X509Cert,
 )
 
+/** An intermediate CA certificate the user imported: it only links chains to anchors and never sets a tier. */
+data class StoredIntermediate(
+    val certificate: X509Cert,
+    val name: String,
+    val source: String?,
+    val identifier: String,
+)
+
 /** An X.509 anchor as stored: the role and environment it applies to, and its metadata. */
 data class StoredAnchor(
     val role: TrustRole,
@@ -80,26 +88,44 @@ data class StoredAnchor(
 /**
  * Holds one Multipaz [TrustManager] per (role, environment). Lookups consult the environments enabled by the
  * current [EnvironmentPolicy] (TEST always, marked as test), in the order PRODUCTION, USER, SYSTEM, TEST.
+ *
+ * Intermediate CA certificates (built in, [BuiltInPublicRoots.intermediates], and imported by the user) fill the gap
+ * when a chain leaves its issuers out. They are not anchors: a chain they complete is trusted only when it reaches an
+ * anchor, and the tier is the anchor's.
  */
 class TrustRegistry(
     private val storage: Storage,
     var policy: EnvironmentPolicy,
 ) {
-    private companion object {
+    companion object {
+        /** A CA certificate that is not self-issued: what [addIntermediate] accepts. */
+        fun isIntermediate(c: X509Cert): Boolean =
+            c.subject != c.issuer && runCatching { c.basicConstraints?.first == true }.getOrDefault(false)
+
+        /** A self-issued CA certificate (or a self-issued one without basic constraints, as older roots are). */
+        fun isRoot(c: X509Cert): Boolean =
+            c.subject == c.issuer && runCatching { c.basicConstraints?.first != false }.getOrDefault(true)
+
         /**
          * The system store holds web PKI CAs: they may identify issuers, verifiers, status list signers, document
          * signers and time-stamp authorities, nothing else (never a wallet provider).
          */
-        val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA)
+        private val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA)
 
         /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
-        val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
+        private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
 
-        const val MAX_FETCHES = 3
-        const val MAX_CHAIN = 8
+        private const val MAX_FETCHES = 3
+        private const val MAX_CHAIN = 8
     }
 
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
+
+    /** The user's intermediate certificates, kept in a store of their own that no lookup treats as anchors. */
+    private val intermediateStore by lazy { TrustManager(storage, identifier = "intermediates") }
+
+    /** Built-in and user intermediates, loaded once and reset when the user adds or removes one. */
+    private var pool: List<X509Cert>? = null
 
     /**
      * Downloads what an AIA caIssuers URL publishes (a DER or PEM certificate, or PKCS#7 certs-only); null leaves
@@ -152,6 +178,57 @@ class TrustRegistry(
         return added
     }
 
+    /**
+     * Stores [certificate] as an intermediate: it must be a CA certificate that is not self-issued (a self-issued
+     * certificate is a root and is imported as an anchor). False when it is already stored.
+     */
+    suspend fun addIntermediate(certificate: X509Cert, name: String, source: String): Boolean {
+        require(isIntermediate(certificate)) { "Not an intermediate CA certificate" }
+        if (BuiltInPublicRoots.intermediates.any { it.certificate == certificate }) return false
+        return try {
+            intermediateStore.addX509Cert(certificate, TrustMetadata(displayName = name, extensions = mapOf(TrustMetadataKeys.SOURCE to source)))
+            pool = null
+            true
+        } catch (_: TrustEntryAlreadyExistsException) {
+            false
+        }
+    }
+
+    suspend fun intermediates(): List<StoredIntermediate> = intermediateStore.getEntries().filterIsInstance<TrustEntryX509Cert>()
+        .map { StoredIntermediate(it.certificate, it.metadata.displayName ?: it.certificate.displaySubject(), it.metadata.extensions[TrustMetadataKeys.SOURCE], it.identifier) }
+
+    suspend fun removeIntermediate(intermediate: StoredIntermediate): Boolean {
+        val entry = intermediateStore.getEntries().firstOrNull { it.identifier == intermediate.identifier } ?: return false
+        return intermediateStore.deleteEntry(entry).also { pool = null }
+    }
+
+    private suspend fun pool(): List<X509Cert> = pool ?: (BuiltInPublicRoots.intermediates.map { it.certificate } +
+        intermediateStore.getEntries().filterIsInstance<TrustEntryX509Cert>().map { it.certificate } +
+        BuiltInPublicRoots.importableRoots.map { it.certificate }).also { pool = it }
+
+    /**
+     * The certificates that complete chains: built-in and user intermediates, and the built-in roots that are offered
+     * for import (untrusted until the user imports one as an anchor).
+     */
+    suspend fun chainCertificates(): List<X509Cert> = pool()
+
+    /**
+     * [chain] extended towards a root with the built-in and user intermediates that issued its last certificate; the
+     * chain itself when none did. Validity and signatures are checked when the longer chain is evaluated.
+     */
+    suspend fun extendFromPool(chain: List<X509Cert>): List<X509Cert> {
+        if (chain.isEmpty()) return chain
+        val candidates = pool()
+        if (candidates.isEmpty()) return chain
+        val out = chain.toMutableList()
+        while (out.size < MAX_CHAIN) {
+            val last = out.last()
+            if (last.subject == last.issuer) break
+            out.add(candidates.firstOrNull { c -> c !in out && issues(c, last) } ?: break)
+        }
+        return out
+    }
+
     suspend fun anchors(role: TrustRole, environment: TrustEnvironment): List<Pair<X509Cert, TrustMetadata>> =
         manager(role, environment).getTrustPoints().map { it.certificate to it.metadata }
 
@@ -171,8 +248,8 @@ class TrustRegistry(
     }
 
     /**
-     * Finds a trusted anchor for [chain] (leaf first, root may be omitted).
-     * Returns null when no enabled environment trusts the chain.
+     * Finds a trusted anchor for [chain] (leaf first, root may be omitted), completed from the built-in and user
+     * intermediates when it stops short of every anchor. Returns null when no enabled environment trusts the chain.
      */
     suspend fun match(
         role: TrustRole,
@@ -181,6 +258,12 @@ class TrustRegistry(
         docType: String? = null,
     ): AnchorMatch? {
         if (chain.isEmpty()) return null
+        matchChain(role, chain, atTime, docType)?.let { return it }
+        val longer = extendFromPool(chain)
+        return if (longer.size > chain.size) matchChain(role, longer, atTime, docType) else null
+    }
+
+    private suspend fun matchChain(role: TrustRole, chain: List<X509Cert>, atTime: Instant, docType: String?): AnchorMatch? {
         for (env in policy.enabledEnvironments()) {
             if (env == TrustEnvironment.SYSTEM) {
                 if (role !in SYSTEM_ROLES) continue
@@ -258,7 +341,7 @@ class TrustRegistry(
         var m = match(role, chain, atTime)
         var completed = false
         if (m == null && issuerFetcher != null) {
-            val longer = complete(chain)
+            val longer = complete(extendFromPool(chain))
             if (longer.size > chain.size) {
                 m = match(role, longer, atTime)
                 completed = m != null
@@ -274,6 +357,7 @@ class TrustRegistry(
                 reasons = listOf("Certificate chain does not lead to an enabled trust anchor")
             )
         }
+        // GPKI anchors are identity anchors: the tier is T2 as for any trust root, labelled as identity verified.
         val identity = m.environment == TrustEnvironment.PRODUCTION && m.metadata.extensions[TrustMetadataKeys.IDENTITY] == "true"
         val labels = buildSet {
             if (m.environment == TrustEnvironment.TEST) add(TrustLabel.TEST_ANCHOR)
@@ -283,7 +367,7 @@ class TrustRegistry(
             if (identity && !m.official) add(TrustLabel.IDENTITY_VERIFIED)
         }
         return TrustDecision(
-            tier = if (identity && !m.official) TrustTier.T2 else tierFor(m.environment, m.official, cryptographicallyVerified = true),
+            tier = tierFor(m.environment, m.official, cryptographicallyVerified = true),
             environment = m.environment,
             official = m.official,
             anchorName = m.metadata.displayName,

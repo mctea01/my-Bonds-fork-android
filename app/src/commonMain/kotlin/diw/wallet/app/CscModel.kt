@@ -126,7 +126,13 @@ class CscModel(private val model: WalletModel) {
                         r.status.value in 300..399 && location != null -> next = resolve(next, location)
                         // A page that only offers the wallet link (the EUDI signer's same-device page) is followed too.
                         r.status.value in 200..299 -> next = presentationLink(r.bodyAsText()) ?: return null
-                        else -> throw SigningException("遠端簽章服務拒絕授權要求（HTTP ${r.status.value}）")
+                        else -> {
+                            // The service's own words help more than the status alone (Spring answers with a JSON message).
+                            val body = runCatching { r.bodyAsText() }.getOrDefault("")
+                            val said = Regex("\"(?:message|error_description|error)\"\\s*:\\s*\"([^\"]{1,200})\"").find(body)?.groupValues?.get(1)
+                                ?: body.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim().take(160).ifEmpty { null }
+                            throw SigningException("遠端簽章服務拒絕授權要求（HTTP ${r.status.value}，${next.substringBefore('?')}）" + (said?.let { "：$it" } ?: ""))
+                        }
                     }
                 }
                 else -> return null

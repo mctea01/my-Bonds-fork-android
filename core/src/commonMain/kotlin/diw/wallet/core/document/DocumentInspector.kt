@@ -16,6 +16,12 @@ interface DocumentTrustSource {
 
     /** Certificates published at an AIA caIssuers URL (DER or PKCS#7 certs-only); empty when offline or not allowed. */
     suspend fun fetchIssuerCertificates(url: String): List<ByteArray>
+
+    /**
+     * Intermediate certificates (built in and imported) and built-in roots that are offered for import, in DER: they
+     * complete chains whose signatures leave issuers out. They never make a chain trusted by themselves.
+     */
+    suspend fun knownCertificates(): List<ByteArray> = emptyList()
 }
 
 /**

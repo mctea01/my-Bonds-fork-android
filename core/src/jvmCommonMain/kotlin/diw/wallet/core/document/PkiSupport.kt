@@ -75,6 +75,10 @@ internal object Bc {
 /** Where a certificate came from, the chain built from it, and the evaluation the inspector shows. */
 internal class PkiSupport(private val trust: DocumentTrustSource) {
     private val fetched = HashMap<String, List<ByteArray>>()
+    private var known: List<X509CertificateHolder>? = null
+
+    private suspend fun known(): List<X509CertificateHolder> = known
+        ?: runCatching { trust.knownCertificates() }.getOrDefault(emptyList()).mapNotNull { Bc.holder(it) }.also { known = it }
 
     fun certInfo(h: X509CertificateHolder): CertInfo = CertInfo(
         subject = h.subject.toString(),
@@ -116,16 +120,18 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
     fun selfSigned(h: X509CertificateHolder) = h.subject == h.issuer && issued(h, h)
 
     /**
-     * The chain from [leaf] towards a root: issuers from [pool] first, then from AIA caIssuers links (at most
-     * three downloads per chain).
+     * The chain from [leaf] towards a root: issuers from [pool] first, then the known intermediates and importable
+     * roots of the trust source, then AIA caIssuers links (at most three downloads per chain).
      */
     suspend fun buildChain(leaf: X509CertificateHolder, pool: List<X509CertificateHolder>): List<X509CertificateHolder> {
+        val known = known()
         val chain = arrayListOf(leaf)
         var downloads = 0
         while (chain.size < 10) {
             val cur = chain.last()
             if (selfSigned(cur)) break
             var next = pool.firstOrNull { it != cur && it !in chain && issued(cur, it) }
+                ?: known.firstOrNull { it != cur && it !in chain && issued(cur, it) }
             if (next == null && downloads < 3) {
                 for (url in caIssuers(cur)) {
                     downloads++

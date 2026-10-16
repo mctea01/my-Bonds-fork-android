@@ -8,6 +8,11 @@ Sources (tools/trust-roots/roots.json):
   - SM2 roots: pinned PEM files (not in CCADB), checked against their SHA-256 and validity;
   - other pinned roots: roots outside CCADB that official documents chain to (BJCA Global Root CA3 for the
     National Immigration Administration's documents), pinned by SHA-256 and checked the same way;
+  - intermediates: pinned CA certificates that complete chains whose senders leave them out (BJCA DocSign CA3, the
+    e-sign platform eSign's CAs); they are never anchors, and each must be signed by a built-in root or by an
+    importable root;
+  - importable roots: pinned roots outside every program (eSign Root CA), built in untrusted so that a chain can be
+    completed up to them and the user can import them from a document;
   - GPKI: the Taiwan government CA repositories, compared with the built-in GPKI anchors (report only).
 
 Writes core/.../trust/BuiltInPublicRoots.kt only when the set of roots changes, and keeps its UPDATED date
@@ -289,11 +294,15 @@ def kstr(s):
     return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
 
 
-def kotlin(entries, updated):
+def kotlin_b64(der):
+    b = base64.b64encode(der).decode()
+    return " +\n            ".join("\"" + b[j:j + 100] + "\"" for j in range(0, len(b), 100))
+
+
+def kotlin(entries, intermediates, importable, updated):
     blocks = []
     for e in entries:
-        b = base64.b64encode(e["der"]).decode()
-        body = " +\n            ".join("\"" + b[j:j + 100] + "\"" for j in range(0, len(b), 100))
+        body = kotlin_b64(e["der"])
         blocks.append(f"""        Root(
             name = "{kstr(e['name'])}",
             owner = "{kstr(e['owner'])}",
@@ -304,6 +313,18 @@ def kotlin(entries, updated):
             sha256 = "{e['sha256']}",
             b64 = {body},
         ),""")
+    def chain_blocks(items):
+        return [f"""        Intermediate(
+            name = "{kstr(e['name'])}",
+            owner = "{kstr(e['owner'])}",
+            issuer = "{kstr(e['issuer'])}",
+            purposes = "{kstr(e['purposes'])}",
+            source = "{kstr(e['source'])}",
+            sha256 = "{e['sha256']}",
+            b64 = {kotlin_b64(e['der'])},
+        ),""" for e in items]
+    iblocks = chain_blocks(intermediates)
+    rblocks = chain_blocks(importable)
     return """package diw.wallet.core.trust
 
 import kotlinx.io.bytestring.ByteString
@@ -321,9 +342,14 @@ import org.multipaz.util.fromBase64
  * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
  *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
  *
- * A chain to any of them is T3, like the platform store: a public CA verified a domain or organisation. The mainland
+ * A chain to any of them is T2, like the platform store: a trust root verified a domain or organisation. The mainland
  * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
  * while it is valid.
+ *
+ * [intermediates] are CA certificates that complete chains whose senders leave them out. They are never anchors: a
+ * chain they complete is trusted only through the root it reaches. [importableRoots] are roots outside every program
+ * that intermediates lead to: chains are completed up to them so that the user can import one from a document, and
+ * they are trusted only once imported.
  */
 object BuiltInPublicRoots {
     enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
@@ -344,6 +370,19 @@ object BuiltInPublicRoots {
         val national: Boolean get() = algorithm == "SM2"
     }
 
+    class Intermediate(
+        val name: String,
+        val owner: String,
+        /** The root that signed it (itself for an importable root). */
+        val issuer: String,
+        val purposes: String,
+        val source: String,
+        val sha256: String,
+        private val b64: String,
+    ) {
+        val certificate: X509Cert by lazy { X509Cert(ByteString(b64.fromBase64())) }
+    }
+
     /** The date the set of roots last changed (UTC). */
     const val UPDATED = \"""" + updated + """\"
 
@@ -360,6 +399,18 @@ object BuiltInPublicRoots {
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
     val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
+
+    val intermediates: List<Intermediate> by lazy {
+        listOf(
+""" + "\n".join(iblocks) + """
+        )
+    }
+
+    val importableRoots: List<Intermediate> by lazy {
+        listOf(
+""" + "\n".join(rblocks) + """
+        )
+    }
 }
 """
 
@@ -370,7 +421,7 @@ def previous():
         return None, {}, ""
     text = open(KOTLIN, encoding="utf-8").read()
     m = re.search(r'const val UPDATED = "([0-9-]+)"', text)
-    roots = dict((fp, name) for name, fp in re.findall(r'name = "([^"]*)",(?:.|\n)*?sha256 = "([0-9A-F]{64})"', text))
+    roots = dict((fp, name) for name, fp in re.findall(r'Root\(\s*name = "([^"]*)",(?:.|\n)*?sha256 = "([0-9A-F]{64})"', text))
     return (m.group(1) if m else None), roots, text
 
 
@@ -530,21 +581,72 @@ def main():
     order = {"MAINLAND_CHINA": 0, "SERVICE": 1, "TIMESTAMPING": 2}
     ordered = sorted(entries.values(), key=lambda e: (order[e["group"]], e["algorithm"] == "SM2", e["owner"], e["name"], e["sha256"]))
 
+    # Importable roots: pinned, self-issued, untrusted until the user imports one.
+    importable = []
+    report += ["## 可匯入的根憑證（釘選，內建但不信任）", "", "| 根憑證 | 機構 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    for s in cfg.get("importableRoots", []):
+        der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
+        if sha256(der) != s["sha256"]:
+            raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
+        c = Cert(der)
+        if not c.self_issued or not c.ca:
+            raise RuntimeError(f"{s['file']} is not a self-issued CA certificate")
+        state = "有效"
+        if not c.valid_at(TODAY):
+            state = "已過期，不內建"
+            warn(f"可匯入的根憑證 {s['name']} 已過期（{c.not_after.date()}），需要從 {s['page']} 取得新版")
+        report.append(f"| {s['name']} | {s['owner']} | {c.not_after.date()} | {state} |")
+        if c.valid_at(TODAY):
+            importable.append({"name": s["name"], "owner": s["owner"], "issuer": s["name"], "purposes": s["purposes"],
+                               "source": "釘選 SHA-256，取自 " + s["url"], "sha256": s["sha256"], "der": der, "cert": c})
+    report.append("")
+
+    # Intermediates: pinned, each signed by a built-in or importable root; they only complete chains.
+    intermediates = []
+    report += ["## 內建中繼憑證（釘選，只用於補足憑證鏈）", "", "| 中繼憑證 | 簽發的根憑證 | 有效至 | 狀態 |", "|---|---|---|---|"]
+    roots_by_fp = {e["sha256"]: Cert(e["der"]) for e in ordered}
+    roots_by_fp.update({e["sha256"]: e["cert"] for e in importable})
+    candidates = ordered + importable
+    for s in cfg.get("intermediates", []):
+        der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
+        if sha256(der) != s["sha256"]:
+            raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
+        c = Cert(der)
+        if c.self_issued or not c.ca:
+            raise RuntimeError(f"{s['file']} is not an intermediate CA certificate")
+        issuer = next((e for e in candidates if roots_by_fp[e["sha256"]].subject_hash == c.issuer_hash and signed_by(c, roots_by_fp[e["sha256"]])), None)
+        state = "有效" if issuer is None or "cert" not in issuer else "有效（根憑證需使用者匯入）"
+        if issuer is None:
+            state = "不連到內建或可匯入的根憑證，不內建"
+            warn(f"中繼憑證 {s['name']} 不是由任何內建或可匯入的根憑證簽發")
+        elif not c.valid_at(TODAY):
+            state = "已過期，不內建"
+            warn(f"中繼憑證 {s['name']} 已過期（{c.not_after.date()}），需要從 {s['page']} 取得新版")
+        elif c.not_after < warn_until:
+            state = "即將到期"
+            warn(f"中繼憑證 {s['name']} 將於 {c.not_after.date()} 到期，需要從 {s['page']} 確認新版")
+        report.append(f"| {s['name']} | {issuer['name'] if issuer else '-'} | {c.not_after.date()} | {state} |")
+        if issuer is None or not c.valid_at(TODAY):
+            continue
+        intermediates.append({"name": s["name"], "owner": s["owner"], "issuer": issuer["name"], "purposes": s["purposes"],
+                              "source": "釘選 SHA-256，取自 " + s["url"], "sha256": s["sha256"], "der": der})
+    report.append("")
+
     # GPKI: report only.
     report += ["## 政府憑證（GPKI，只檢查）", ""] + check_gpki(cfg["gpki"], warn_until) + [""]
 
     old_date, old_roots, old_text = previous()
-    text = kotlin(ordered, old_date or TODAY.strftime("%Y-%m-%d"))
+    text = kotlin(ordered, intermediates, importable, old_date or TODAY.strftime("%Y-%m-%d"))
     changed = text != old_text
     if changed:
-        text = kotlin(ordered, TODAY.strftime("%Y-%m-%d"))
+        text = kotlin(ordered, intermediates, importable, TODAY.strftime("%Y-%m-%d"))
     added = [e for e in ordered if e["sha256"] not in old_roots]
     removed = [(fp, n) for fp, n in old_roots.items() if fp not in entries]
 
     report[4:4] = ["## 摘要", "",
                    f"- 內建根憑證 {len(ordered)} 個：中國大陸 {sum(1 for e in ordered if e['group'] == 'MAINLAND_CHINA')} 個"
                    f"（SM2 {sum(1 for e in ordered if e['algorithm'] == 'SM2')} 個），常用服務 {sum(1 for e in ordered if e['group'] == 'SERVICE')} 個"
-                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個",
+                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個；中繼憑證 {len(intermediates)} 個，可匯入的根憑證 {len(importable)} 個",
                    "- 檔案" + ("有變更" if changed else "沒有變更"),
                    *[f"- 新增：{e['name']}（{e['owner']}，SHA-256 {e['sha256']}）" for e in added],
                    *[f"- 移除：{n}（SHA-256 {fp}）" for fp, n in removed],

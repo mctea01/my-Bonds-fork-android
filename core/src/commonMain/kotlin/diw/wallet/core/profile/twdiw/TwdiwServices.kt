@@ -112,16 +112,17 @@ class TwdiwServices(
 
     /**
      * Starts an offline presentation: the verifier module must be a listed host whose organisation is anchored,
-     * and its deep link must fetch the request from the same host.
+     * and its deep link must fetch the request from the same host. [allowUnlisted] skips the trust list check for a
+     * user who confirmed the risk (their own environment); the request must still come from the module's host.
      */
-    suspend fun startOffline(service: TwdiwOfflineService): TwdiwOfflineSession {
+    suspend fun startOffline(service: TwdiwOfflineService, allowUnlisted: Boolean = false): TwdiwOfflineSession {
         val moduleHost = TwdiwHosts.canonicalHost(service.verifierModuleUrl)
             ?: throw ProtocolException("untrusted_verifier", "Verifier module URL is not an acceptable https URL")
         val anchored = trustList.entriesForHost(moduleHost).any { e ->
             val snap = trustList.verified(e.did)
             snap != null && snap.documentVerified && (snap.anchor == AnchorState.VERIFIED.name || platform.test)
         }
-        if (!anchored) throw ProtocolException("untrusted_verifier", "$moduleHost is not an anchored organisation in the TWDIW trust list")
+        if (!anchored && !allowUnlisted) throw ProtocolException("untrusted_verifier", "$moduleHost is not an anchored organisation in the TWDIW trust list")
         val body = getJson(service.verifierModuleUrl.trimEnd('/') + "/api/ext/offline/qrcode/" + service.vpUid.encodeURLPathPart())
         checkCode(body)
         val data = body.obj("data") ?: body

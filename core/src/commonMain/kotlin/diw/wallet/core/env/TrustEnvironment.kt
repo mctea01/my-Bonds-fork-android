@@ -31,9 +31,9 @@ data class EnvironmentPolicy(
     val testEnvironmentEnabled: Boolean = false,
     val allowInsecureLoopbackHttp: Boolean = false,
     val userAnchorsEnabled: Boolean = true,
-    /** Accept chains to the platform's certificate store, as T3 (the public CA verified a domain, not an official list). */
+    /** Accept chains to the platform's certificate store, as T2 (a trust root: the public CA verified a domain, not an official list). */
     val systemStoreEnabled: Boolean = false,
-    /** Accept chains to the built-in mainland China CAs (including SM2 roots), as T3 like the platform store. */
+    /** Accept chains to the built-in mainland China CAs (including SM2 roots), as T2 like the platform store. */
     val mainlandChinaRootsEnabled: Boolean = false,
 ) {
     val insecureLoopbackAllowed: Boolean get() = testEnvironmentEnabled && allowInsecureLoopbackHttp

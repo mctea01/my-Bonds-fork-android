@@ -54,9 +54,9 @@ private fun roleName(r: TrustRole): String = when (r) {
 
 private fun environmentTitle(e: TrustEnvironment): String = when (e) {
     TrustEnvironment.PRODUCTION -> "正式錨點（官方 T1、政府憑證 T2）"
-    TrustEnvironment.USER -> "使用者匯入（T3，非官方）"
+    TrustEnvironment.USER -> "使用者匯入（T2，非官方）"
     TrustEnvironment.TEST -> "測試錨點（T3，結果標示為測試）"
-    TrustEnvironment.SYSTEM -> "系統憑證庫（T3，非官方）"
+    TrustEnvironment.SYSTEM -> "系統憑證庫（T2，非官方）"
 }
 
 /** One certificate in one environment with every role it is an anchor for. */
@@ -67,7 +67,7 @@ private data class AnchorGroup(val environment: TrustEnvironment, val anchors: L
 /**
  * Trust anchors of every kind, not only TWDIW: X.509 roots by environment and role, the DID trust sources (the
  * TWDIW list anchored on Arbitrum, Linked Domains) and DIDs the user trusts. Imported anchors and trusted DIDs are
- * the user's own (T3): accepted, never shown as official.
+ * the user's own (T2): accepted, never shown as official. Intermediates only complete chains.
  */
 @Composable
 fun TrustAnchorsScreen(model: WalletModel) {
@@ -119,6 +119,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
             }
         }
         SystemStoreSection(model)
+        IntermediateSection(model)
         ImportAnchorSection(model)
     }
     removing?.let { g ->
@@ -172,7 +173,7 @@ private fun SystemStoreSection(model: WalletModel) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("信任系統憑證庫", style = MaterialTheme.typography.titleSmall)
-            Text("憑證鏈連到這台裝置的系統根憑證（公開憑證機構），或下列常用服務的根憑證時，接受為發行端、查驗方或狀態清單簽署者，信任等級 T3，不顯示為官方。" +
+            Text("憑證鏈連到這台裝置的系統根憑證（公開憑證機構），或下列常用服務的根憑證時，接受為發行端、查驗方或狀態清單簽署者，信任等級 T2，不顯示為官方。" +
                 (count?.let { "目前系統憑證庫有 $it 個根憑證。" } ?: ""), style = MaterialTheme.typography.bodySmall)
         }
         androidx.compose.material3.Switch(checked = settings.systemTrustStore, onCheckedChange = { v -> model.updateSettings { it.copy(systemTrustStore = v) } })
@@ -181,14 +182,14 @@ private fun SystemStoreSection(model: WalletModel) {
     CollapsibleSection("常用服務的根憑證", services.size, key = "roots-services") { BuiltInRootList(model, services) }
 
     HorizontalDivider()
-    SectionTitle("中國大陸憑證機構（T3，非官方）")
+    SectionTitle("中國大陸憑證機構（T2，非官方）")
     val mainland = diw.wallet.core.trust.BuiltInPublicRoots.mainlandChina
     val national = mainland.count { it.national }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("信任中國大陸的憑證機構", style = MaterialTheme.typography.titleSmall)
             Text("內建 ${mainland.size} 個根憑證" + (if (national > 0) "，其中 $national 個為國密 SM2 根憑證" else "") +
-                "：列於 Mozilla 或 Microsoft 根憑證計畫的中國大陸 CA，以及持牌 CA 與國家根 CA 公布的 SM2 根憑證。國家稅務總局的發票查驗與數電票平台、國家移民管理局的網站，以及電子發票的電子文件驗簽，都連到其中的根憑證。信任等級 T3，不顯示為官方。",
+                "：列於 Mozilla 或 Microsoft 根憑證計畫的中國大陸 CA，以及持牌 CA 與國家根 CA 公布的 SM2 根憑證。國家稅務總局的發票查驗與數電票平台、國家移民管理局的網站，以及電子發票的電子文件驗簽，都連到其中的根憑證。信任等級 T2，不顯示為官方。",
                 style = MaterialTheme.typography.bodySmall)
         }
         androidx.compose.material3.Switch(checked = settings.mainlandChinaRoots, onCheckedChange = { v -> model.updateSettings { it.copy(mainlandChinaRoots = v) } })
@@ -231,8 +232,9 @@ private fun ImportAnchorSection(model: WalletModel) {
     var name by remember { mutableStateOf("") }
     var roles by remember { mutableStateOf(setOf(TrustRole.ISSUER, TrustRole.STATUS_LIST)) }
     HorizontalDivider()
-    SectionTitle("匯入根憑證")
-    Text("貼上 PEM 格式的憑證（可一次多張），或提供 PEM 的 https 網址。匯入的錨點屬於使用者自訂。", style = MaterialTheme.typography.bodySmall)
+    SectionTitle("匯入根憑證或中繼憑證")
+    Text("貼上 PEM 格式的憑證（可一次多張），或提供 PEM 的 https 網址。根憑證成為使用者自訂的信任錨點（T2）；中繼憑證只用來補足憑證鏈，不需選擇用途。",
+        style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(
         value = pem,
         onValueChange = { pem = it },
@@ -248,10 +250,73 @@ private fun ImportAnchorSection(model: WalletModel) {
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
-    Text("用途", style = MaterialTheme.typography.labelLarge)
+    Text("用途（根憑證）", style = MaterialTheme.typography.labelLarge)
     RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.WALLET_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
-        Text("匯入為信任錨點")
+        Text("匯入")
+    }
+}
+
+/**
+ * Intermediates never set a tier: built-in ones (document signing services such as BJCA DocSign and e簽寶) and the
+ * user's own fill the gap between a signer and its root. Importable roots are built in but not trusted until the
+ * user chooses to trust one.
+ */
+@Composable
+private fun IntermediateSection(model: WalletModel) {
+    val user by model.intermediates.collectAsState()
+    val anchors by model.anchors.collectAsState()
+    var trusting by remember { mutableStateOf<diw.wallet.core.trust.BuiltInPublicRoots.Intermediate?>(null) }
+    HorizontalDivider()
+    SectionTitle("中繼憑證（只用來補足憑證鏈）")
+    Text("簽署者沒有附上中繼憑證時，錢包以這些憑證接到根憑證。中繼憑證本身不決定信任等級，等級由最後連到的根憑證決定。",
+        style = MaterialTheme.typography.bodySmall)
+    val builtIn = diw.wallet.core.trust.BuiltInPublicRoots.intermediates
+    CollapsibleSection("內建中繼憑證", builtIn.size, key = "intermediates-builtin") {
+        builtIn.forEach { i -> IntermediateRow(model, i.name, "${i.owner}・由 ${i.issuer} 簽發・${i.purposes}", i.certificate, i.source) }
+    }
+    val importable = diw.wallet.core.trust.BuiltInPublicRoots.importableRoots
+    if (importable.isNotEmpty()) CollapsibleSection("可信任的線上簽核平台根憑證", importable.size, key = "intermediates-importable") {
+        Text("這些根憑證不在任何根憑證計畫內，預設不信任；文件簽章連到它們時顯示為 T3。確認來源後可在這裡或文件的簽章卡信任，成為使用者匯入的錨點（T2）。",
+            style = MaterialTheme.typography.bodySmall)
+        importable.forEach { r ->
+            val trusted = anchors?.any { it.certificate == r.certificate } == true
+            IntermediateRow(model, r.name, "${r.owner}・${r.purposes}", r.certificate, r.source)
+            if (trusted) Text("已信任（使用者匯入，T2）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            else TextButton(onClick = { trusting = r }) { Text("信任這個根憑證") }
+        }
+    }
+    CollapsibleSection("使用者匯入的中繼憑證", user.size, initiallyExpanded = true, key = "intermediates-user") {
+        if (user.isEmpty()) Text("尚未匯入。可在下方貼上中繼憑證。", style = MaterialTheme.typography.bodySmall)
+        user.forEach { i ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) { IntermediateRow(model, i.name, i.certificate.displaySubject(), i.certificate, i.source ?: "使用者匯入") }
+                TextButton(onClick = { model.removeIntermediate(i) }) { Text("移除") }
+            }
+        }
+    }
+    trusting?.let { r ->
+        RiskConfirmDialog(
+            title = "信任「${r.name}」",
+            lines = listOf(
+                "${r.owner} 的根憑證不在 Mozilla、Microsoft 等根憑證計畫內，錢包無法確認它的管理方式。",
+                "信任後，連到它的文件簽章與時間戳記會判定為 T2（使用者匯入，非官方）。",
+                "可隨時在「使用者匯入」移除。",
+            ),
+            confirm = "信任",
+            onConfirm = { model.trustRootCertificate(r.certificate.encoded.toByteArray()); trusting = null },
+            onDismiss = { trusting = null },
+        )
+    }
+}
+
+@Composable
+private fun IntermediateRow(model: WalletModel, name: String, detail: String, cert: org.multipaz.crypto.X509Cert, source: String?) {
+    Column(Modifier.fillMaxWidth().clickable { model.screen.value = Screen.Certificate(listOf(cert), 0, Screen.TrustAnchors) }.padding(vertical = 4.dp)) {
+        Text(name, style = MaterialTheme.typography.bodyMedium)
+        Text(detail, style = MaterialTheme.typography.bodySmall)
+        Text("有效至 " + localTime(cert.validityNotAfter) + (source?.let { "・來源：$it" } ?: ""), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.outline)
     }
 }
 

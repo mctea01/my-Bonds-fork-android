@@ -226,6 +226,37 @@ class WalletModelE2eTest {
     }
 
     /**
+     * Digital Credentials API issuance (navigator.credentials.create with openid4vci-v1): the request data is the
+     * credential offer enriched with the issuer's metadata, as walt.id's portal sends it. The offer runs through the
+     * review and issuance screens, and the request succeeds once the user leaves them with a credential saved.
+     */
+    @Test
+    fun dcApiIssuanceRunsTheOffer() = runBlocking<Unit> {
+        start()
+        val (m, _) = newWallet()
+        val uri = offer(listOf("pid_sd_jwt"))
+        val offer = DiwJson.parseToJsonElement(io.ktor.http.Url(uri).parameters["credential_offer"]!!).jsonObject
+        val data = JsonObject(offer + mapOf(
+            "credential_issuer_metadata" to buildJsonObject { put("credential_issuer", "https://ignored.example") },
+            "authorization_server_metadata" to buildJsonObject { put("issuer", "https://ignored.example") },
+        ))
+        assertFalse("credential_issuer_metadata" in WalletModel.dcApiOfferUri(data))
+        assertEquals(offer, DiwJson.parseToJsonElement(io.ktor.http.Url(WalletModel.dcApiOfferUri(buildJsonObject { put("credential_offer", offer) })).parameters["credential_offer"]!!).jsonObject)
+        assertFailsWith<diw.wallet.core.util.ProtocolException> { WalletModel.dcApiOfferUri(buildJsonObject { put("nonce", "x") }) }
+        withTimeout(60.seconds) {
+            val saved = async { m.receiveDcApi(data, "https://portal.example") }
+            val review = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
+            assertIs<IssuanceUi.Review>(review, "review: $review")
+            assertEquals("https://portal.example", review.requestedBy)
+            m.acceptOffer(review, null)
+            assertIs<IssuanceUi.Done>(m.issuance.first { it is IssuanceUi.Done || it is IssuanceUi.Failed })
+            assertFalse(saved.isCompleted)
+            m.screen.value = Screen.Home
+            assertTrue(saved.await())
+        }
+    }
+
+    /**
      * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
      * The wallet holds a PID and an mDL from the test issuer and has presented once.
      */
@@ -724,7 +755,7 @@ class WalletModelE2eTest {
         assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
         m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
         val after = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
-        assertEquals(TrustTier.T3, after.tier)
+        assertEquals(TrustTier.T2, after.tier)
         assertEquals(TrustEnvironment.USER, after.environment)
         assertEquals("Partner", after.anchorName)
     }

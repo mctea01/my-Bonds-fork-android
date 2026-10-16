@@ -1,5 +1,5 @@
 {
-  "comment": "Inputs of update_roots.py. CCADB roots of the listed owners are taken as they are in the Mozilla and Microsoft root programs; the service hosts are connected to and the roots of the chains they serve are added; SM2 roots are pinned (not in CCADB) and only checked; GPKI anchors are only checked.",
+  "comment": "Inputs of update_roots.py. CCADB roots of the listed owners are taken as they are in the Mozilla and Microsoft root programs; the service hosts are connected to and the roots of the chains they serve are added; SM2 roots are pinned (not in CCADB) and only checked; intermediates are pinned CA certificates that complete chains whose senders leave them out (never anchors); importableRoots are roots outside every program that intermediates lead to, built in untrusted so that the user can import them from a document; GPKI anchors are only checked.",
   "ccadb": {
     "mozilla": "https://ccadb.my.salesforce-sites.com/mozilla/IncludedCACertificateReportPEMCSV",
     "microsoft": "https://ccadb.my.salesforce-sites.com/microsoft/IncludedCACertificateReportForMSFTCSVPEM",
@@ -243,6 +243,64 @@
       "page": "https://www.bjca.cn/service/down_198.html",
       "evidence": "國家移民管理局出入境記錄與通行證關聯查詢結果 PDF 的簽章憑證鏈",
       "sha256": "AAA048773350488832AABDA6954B33EE28BB2773DD851AB3C4F6F1D2F9F3777B"
+    }
+  ],
+  "intermediates": [
+    {
+      "file": "intermediates/bjca-docsign-ca3.pem",
+      "name": "BJCA DocSign CA3",
+      "owner": "北京數字認證 BJCA",
+      "purposes": "文件簽章中繼憑證（國家移民管理局電子文件的簽署憑證由此簽發）",
+      "url": "http://repo.bjca.cn/global/cert/BJCA_DocSign_CA3.crt",
+      "page": "https://www.bjca.cn/service/down_198.html",
+      "sha256": "20F06D387FB129121713B4EF93A82A436FD9E615233A3C444891CDACB95D5EC7"
+    },
+    {
+      "file": "intermediates/esign-oca.pem",
+      "name": "eSign OCA",
+      "owner": "e簽寶 eSign",
+      "purposes": "e簽寶線上簽署平台的簽章與時戳中繼憑證（timestamp.esign.cn）",
+      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+      "page": "https://www.esign.cn/",
+      "sha256": "F2351CF5DB4E08243E2DCE6A3CDC810A67D40D06BC9A1867D1ABDCB1A84CA3A2"
+    },
+    {
+      "file": "intermediates/esign-gov-oca.pem",
+      "name": "eSign Gov OCA",
+      "owner": "e簽寶 eSign",
+      "purposes": "e簽寶政務簽章中繼憑證",
+      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+      "page": "https://www.esign.cn/",
+      "sha256": "03095A1C266F3FDFBF21EEAB047C4139915CAD58550C18C5117CFA62081F7794"
+    },
+    {
+      "file": "intermediates/esign-sub-oca.pem",
+      "name": "eSign Sub OCA",
+      "owner": "e簽寶 eSign",
+      "purposes": "e簽寶簽章中繼憑證",
+      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+      "page": "https://www.esign.cn/",
+      "sha256": "37F14EED3922ED7466F6C34A48FFF949DD0F74798BAEDE191D0284D6AD673651"
+    },
+    {
+      "file": "intermediates/esign-advanced-oca.pem",
+      "name": "eSign Advanced OCA",
+      "owner": "e簽寶 eSign",
+      "purposes": "e簽寶進階簽章中繼憑證",
+      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+      "page": "https://www.esign.cn/",
+      "sha256": "79C0B3824565A5611F31D0A6C606E54C747401B8CFAE427B4BB8B60B89F96385"
+    }
+  ],
+  "importableRoots": [
+    {
+      "file": "importable/esign-root-ca.pem",
+      "name": "eSign Root CA",
+      "owner": "e簽寶 eSign",
+      "purposes": "e簽寶自有憑證機構的根憑證；不在任何根憑證計畫，內建只為補足憑證鏈，需由使用者確認後匯入才會信任",
+      "url": "https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+      "page": "https://www.esign.cn/",
+      "sha256": "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06"
     }
   ],
   "gpki": {

@@ -26,6 +26,8 @@ import io.ktor.http.parameters
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -123,7 +125,13 @@ class CscToken(val accessToken: String, val expiresAt: Instant?) {
 }
 
 /** An authorization request in flight: the address to open and what the answer must match. */
-class CscAuthorizationRequest(val url: String, val state: String, val codeVerifier: String)
+class CscAuthorizationRequest(
+    val url: String,
+    val state: String,
+    val codeVerifier: String,
+    /** RFC 9396 authorization_details sent with the request, repeated in the token request. */
+    val authorizationDetails: String? = null,
+)
 
 /**
  * How the wallet lets the holder take part: [authorize] opens an authorization address (a sign-in page, or a
@@ -175,7 +183,11 @@ class CscClient(private val http: HttpClient, val service: CscService) {
      * Authorization request for [scope] ("service" to list credentials, "credential" to approve signatures) with
      * [extra] parameters such as credentialID, numSignatures, hashes and hashAlgorithmOID.
      */
-    suspend fun authorizationRequest(scope: String, extra: Map<String, String> = emptyMap()): CscAuthorizationRequest {
+    suspend fun authorizationRequest(
+        scope: String,
+        extra: Map<String, String> = emptyMap(),
+        authorizationDetails: String? = null,
+    ): CscAuthorizationRequest {
         val (authorize, _) = endpoints()
         val verifier = PlatformCrypto.randomBytes(32).toBase64Url()
         val challenge = PlatformCrypto.sha256(verifier.encodeToByteArray()).toBase64Url()
@@ -190,8 +202,9 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             parameters.append("state", state)
             parameters.append("lang", "zh-TW")
             extra.forEach { (k, v) -> parameters.append(k, v) }
+            authorizationDetails?.let { parameters.append("authorization_details", it) }
         }.buildString()
-        return CscAuthorizationRequest(url, state, verifier)
+        return CscAuthorizationRequest(url, state, verifier, authorizationDetails)
     }
 
     /** The authorization code in the address the service redirected to, after checking state and errors. */
@@ -215,6 +228,7 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             append("redirect_uri", service.redirectUri)
             append("code_verifier", request.codeVerifier)
             append("client_id", service.clientId)
+            request.authorizationDetails?.let { append("authorization_details", it) }
         }) {
             service.clientSecret?.takeIf { it.isNotEmpty() }?.let { secret ->
                 header(HttpHeaders.Authorization, "Basic " + Base64.Default.encode("${service.clientId}:$secret".encodeToByteArray()))
@@ -392,18 +406,34 @@ class CscSigner(
                 val pin = if (c.pinNeeded) agent.askSecret("遠端簽章 PIN 碼", false) ?: throw SigningException("已取消簽署") else null
                 val otp = if (c.otpNeeded) agent.askSecret("一次性密碼（OTP）", true) ?: throw SigningException("已取消簽署") else null
                 onStatus("遠端簽章服務簽署中")
-                val sad = client.authorizeCredential(token, c.id, listOf(hash), pin, otp, hint)
+                val sad = client.authorizeCredential(token, c.id, listOf(hash), pin, otp, asciiDescription(hint))
                 client.signHash(token, c.id, listOf(hash), algorithm, sad)
             }
             else -> {
                 onStatus("授權這次簽章")
+                // CSC v2 lists the credential parameters; services built on the EUDI signer read only the RFC 9396
+                // authorization_details form (the demo answers 400 without it), so both are sent.
+                val details = buildJsonArray {
+                    addJsonObject {
+                        put("type", "credential")
+                        put("credentialID", c.id)
+                        put("numSignatures", 1)
+                        putJsonArray("documentDigests") {
+                            addJsonObject {
+                                put("hash", Base64.Default.encode(hash))
+                                put("label", asciiDescription(hint))
+                            }
+                        }
+                        put("hashAlgorithmOID", CscClient.SHA256_OID)
+                    }
+                }.toString()
                 val request = client.authorizationRequest("credential", mapOf(
                     "credentialID" to c.id,
                     "numSignatures" to "1",
                     "hashes" to hash.toBase64Url(),
                     "hashAlgorithmOID" to CscClient.SHA256_OID,
-                    "description" to hint,
-                ))
+                    "description" to asciiDescription(hint),
+                ), details)
                 val back = agent.authorize(request.url, client.service.redirectUri, "授權「${client.service.name}」簽署：$hint")
                 val token = client.token(client.code(back, request), request)
                 onStatus("遠端簽章服務簽署中")
@@ -416,6 +446,17 @@ class CscSigner(
     }
 
     companion object {
+        /**
+         * The description sent to the signing service. Services have turned Chinese text into "?" on the way back
+         * (EUDI's approval screen), so non-ASCII text is replaced by a plain English line naming the file type; the
+         * wallet's own screens keep the full Chinese description.
+         */
+        fun asciiDescription(hint: String): String {
+            if (hint.all { it.code in 0x20..0x7E }) return hint
+            val ext = Regex("\\.([A-Za-z0-9]{1,8})$").find(hint.trim())?.groupValues?.get(1)?.lowercase()
+            return "DIW MY WALLET document signing" + (ext?.let { " (.$it file)" } ?: "")
+        }
+
         /** RSA or EC P-256 from the certificate; other keys are refused because the document formats cannot use them. */
         fun keyTypeOf(certificate: ByteArray): SignerKeyType {
             if (PlatformCrypto.rsaPublicKeyFromCertificate(certificate) != null) return SignerKeyType.RSA

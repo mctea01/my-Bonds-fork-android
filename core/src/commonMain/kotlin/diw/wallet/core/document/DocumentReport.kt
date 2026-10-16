@@ -25,6 +25,8 @@ enum class DocumentFormat(val mediaType: String) {
     /** OpenAttestation (OpenCerts) document. */
     OPENCERTS("application/vnd.opencerts+json"),
     JSON("application/json"),
+    /** Office document: OOXML or ODF (a ZIP package) or the older OLE compound file (.doc, .xls, .ppt). */
+    OFFICE("application/octet-stream"),
     IMAGE("image/*"),
     TEXT("text/plain"),
     OTHER("application/octet-stream"),
@@ -140,6 +142,8 @@ data class SignatureInfo(
     val reason: String? = null,
     val location: String? = null,
     val signerName: String? = null,
+    /** DocMDP permission of a PDF certification signature (1: no changes, 2: form filling and signing, 3: annotations too). */
+    val docMdp: Int? = null,
     val problems: List<String> = emptyList(),
     val notes: List<String> = emptyList(),
 ) {

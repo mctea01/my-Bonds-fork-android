@@ -16,6 +16,7 @@ import diw.wallet.core.profile.bonds.HolderDerivedException
 import diw.wallet.core.profile.bonds.HolderDerivedSource
 import diw.wallet.core.profile.bonds.HolderDerivedTypes
 import diw.wallet.core.profile.bonds.HolderHint
+import diw.wallet.core.profile.bonds.HouseholdTranscripts
 import diw.wallet.core.profile.bonds.MyDataParsers
 import diw.wallet.core.profile.bonds.MyDataText
 import diw.wallet.core.util.DiwJson
@@ -337,6 +338,35 @@ class BondsHolderDerivedTest {
     }
 
     /** Without a 遷入日期 field the latest move-in in the person's 記事 is the registration date; none at all refuses. */
+    /** The structured preview of a transcript: household fields, each person's fields, the holder first. */
+    @Test
+    fun householdTranscriptPreview() {
+        val hint = listOf(HolderHint("B223456789", "測試持有人"))
+        val t = HouseholdTranscripts.parse(TRANSCRIPT, hint)!!
+        assertEquals("現戶全戶戶籍資料", t.title)
+        assertEquals(listOf("戶號" to "A0000001", "戶長姓名" to "測試戶長", "戶籍地址" to "臺北市中正區測試里測試路1號"), t.household)
+        assertEquals(listOf("測試持有人", "測試戶長", "測試配偶"), t.people.map { it.member.name })
+        assertTrue(t.people.first().holder)
+        val own = t.people.first().fields.toMap()
+        assertEquals("子", own["稱謂"])
+        assertEquals("民國115年08月01日", own["遷入日期"])
+        assertEquals("CE-SHIH CHIH-YU-JEN", own["姓名羅馬拼音"])
+        assertTrue(t.people[1].fields.none { it.second.contains("第 1/3頁") }, "page footers are dropped")
+
+        val unknown = HouseholdTranscripts.parse(TRANSCRIPT)!!
+        assertEquals("測試戶長", unknown.people.first().member.name, "without a holder the print order stays")
+        assertTrue(!unknown.holderFound)
+
+        val notes = HouseholdTranscripts.parse(HOUSEHOLD_NOTES, hint)!!
+        assertEquals("民國95年02月03日出生登記。民國115年08月01日由新北市板橋區\n遷入登記。", notes.people.first().fields.toMap()["記事"], "a wrapped note stays one field")
+
+        val table = HouseholdTranscripts.parse(HOUSEHOLD_TABLE, hint)!!
+        assertEquals("測試持有人", table.people.first().member.name)
+        assertEquals("115/08/01", table.people.first().fields.toMap()["遷入日期"])
+
+        assertEquals(null, HouseholdTranscripts.parse(INCOME_SUMMARY))
+    }
+
     @Test
     fun householdDateFromNotes() {
         assertEquals("2023-03-05", MyDataParsers.sinceFromNotes("記事：民國100年01月02日出生登記。民國112年03月05日由新北市板橋區\n遷入登記。"))

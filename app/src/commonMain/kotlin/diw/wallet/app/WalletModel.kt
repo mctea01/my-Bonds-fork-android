@@ -50,6 +50,7 @@ import diw.wallet.core.profile.twdiw.TwdiwServices
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
 import diw.wallet.core.profile.twdiw.TwdiwUserAgent
 import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.trust.BuiltInPublicRoots
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.StoredAnchor
 import diw.wallet.core.trust.TrustDecision
@@ -67,6 +68,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.client.statement.readRawBytes
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Color
@@ -81,6 +83,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -225,6 +228,8 @@ sealed class IssuanceUi {
         val unsupported: List<Pair<String, String>> = emptyList(),
         /** Wallet-initiated: the user picks from everything the issuer lists. */
         val walletInitiated: Boolean = false,
+        /** The web page or app that asked to save the credential through the Digital Credentials API. */
+        val requestedBy: String? = null,
     ) : IssuanceUi()
     data class WaitingForBrowser(val session: IssuanceSession) : IssuanceUi()
     data class Working(val message: String) : IssuanceUi()
@@ -259,6 +264,8 @@ sealed class PresentationUi {
         val offline: TwdiwOfflineSession? = null,
         /** Risk of the request: the most sensitive field asked for, raised for a verifier that is not on an official list. */
         val risk: RiskLevel = RiskLevel.LOW,
+        /** The verifier_info entries (registration certificates and other attestations) as checked before asking. */
+        val attestations: List<diw.wallet.core.oid4vp.VerifierAttestation> = emptyList(),
     ) : PresentationUi() {
         val request: ValidatedAuthorizationRequest get() = prepared.request
     }
@@ -296,6 +303,8 @@ class WalletModel(val platform: PlatformServices) {
     /** Stored X.509 anchors (null until loaded) and the DIDs the user trusts, for the trust anchors screen. */
     val anchors = MutableStateFlow<List<StoredAnchor>?>(null)
     val trustedDids = MutableStateFlow<List<UserTrustedDid>>(emptyList())
+    /** Intermediate certificates the user imported; the built-in ones are listed from BuiltInPublicRoots. */
+    val intermediates = MutableStateFlow<List<diw.wallet.core.trust.StoredIntermediate>>(emptyList())
 
     lateinit var storage: Storage
         private set
@@ -887,7 +896,7 @@ class WalletModel(val platform: PlatformServices) {
         return AsymmetricKey.AnonymousSecureAreaBased(keyInfo.alias, backend.secureArea, keyInfo, algorithm = org.multipaz.crypto.Algorithm.ES256) to keyInfo.attestation
     }
 
-    fun startIssuance(uri: String, entryHint: String? = null) {
+    fun startIssuance(uri: String, entryHint: String? = null, requestedBy: String? = null) {
         issuance.value = IssuanceUi.Loading
         screen.value = Screen.Issuance
         scope.launch {
@@ -906,6 +915,7 @@ class WalletModel(val platform: PlatformServices) {
                     unsupported = session.offer?.credentialConfigurationIds.orEmpty()
                         .filter { it !in session.issuer.configurations }
                         .map { it to (session.issuer.unsupported[it] ?: "發行端資訊未列出此設定") },
+                    requestedBy = requestedBy,
                 )
             } catch (e: Exception) {
                 issuance.value = IssuanceUi.Failed(describe(e))
@@ -1170,6 +1180,17 @@ class WalletModel(val platform: PlatformServices) {
         return done.await()
     }
 
+    /**
+     * Digital Credentials API issuance (navigator.credentials.create, protocol openid4vci-v1 or openid4vci1.0): [data]
+     * is the credential offer, or an object carrying credential_offer or credential_offer_uri. The offer goes through
+     * the usual review and issuance screens; returns true when the user leaves them with a credential saved.
+     */
+    suspend fun receiveDcApi(data: JsonObject, origin: String): Boolean {
+        startIssuance(dcApiOfferUri(data), requestedBy = origin)
+        screen.first { it != Screen.Issuance }
+        return (issuance.value as? IssuanceUi.Done)?.results?.isNotEmpty() == true
+    }
+
     /** Shows why a DC API request cannot be handled at all; completes with null (cancel) when the user leaves. */
     suspend fun failDcApi(reason: String): JsonObject? {
         val done = startDcApi()
@@ -1246,10 +1267,16 @@ class WalletModel(val platform: PlatformServices) {
                 PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
             }
         }
-        val risk = requestRisk(consent.items, consent.request.verifier.trust.tier)
+        val attestations = if (consent.request.verifierInfo.isEmpty()) emptyList() else {
+            diw.wallet.core.oid4vp.VerifierInfoChecker(trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust))
+                .check(consent.request)
+        }
+        // A failed attestation (wrong party, revoked, beyond its registration) makes the request high risk.
+        val attestationRisk = if (attestations.any { it.verdict == diw.wallet.core.oid4vp.AttestationVerdict.INVALID || !it.outsideRegistration.isNullOrEmpty() }) RiskLevel.HIGH else RiskLevel.LOW
+        val risk = RiskLevel.max(requestRisk(consent.items, consent.request.verifier.trust.tier), attestationRisk)
         // A status older than the request's risk allows is queried again while the user reads the request.
         status.refreshFor(consent.items.mapNotNull { it.documentId }, risk)
-        return consent.copy(risk = risk)
+        return consent.copy(risk = risk, attestations = attestations)
     }
 
     /** What a presentation line discloses: field labels, their sensitivity, and whether it is the whole credential. */
@@ -1360,15 +1387,16 @@ class WalletModel(val platform: PlatformServices) {
     fun loadAnchors() = scope.launch {
         anchors.value = trust.allAnchors().sortedWith(compareBy({ it.environment.ordinal }, { it.metadata.displayName }))
         trustedDids.value = userDids.all().sortedBy { it.name }
+        intermediates.value = trust.intermediates().sortedBy { it.name }
     }
 
     /**
-     * Imports the certificates in [input] (PEM text, or an https address serving PEM) as the user's own anchors for
-     * [roles]. They are trusted in production use, marked as the user's (T3, never official).
+     * Imports the certificates in [input] (PEM text, or an https address serving PEM): a self-issued root becomes the
+     * user's own anchor for [roles] (T2, never official); an intermediate CA certificate joins the intermediates that
+     * complete chains (it never sets a tier); an end-entity certificate is refused.
      */
     fun importAnchor(input: String, name: String, roles: Set<TrustRole>) = scope.launch {
         try {
-            if (roles.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種用途")
             val text = input.trim()
             val source = if (text.startsWith("https://") || text.startsWith("http://")) text else "pasted"
             val pem = if (source != "pasted") {
@@ -1380,21 +1408,65 @@ class WalletModel(val platform: PlatformServices) {
             val certs = PEM_CERT.findAll(pem).map { X509Cert.fromPem(it.value) }.toList()
             if (certs.isEmpty()) throw ProtocolException("invalid_request", "找不到 PEM 格式的憑證（-----BEGIN CERTIFICATE-----）")
             val now = kotlin.time.Clock.System.now()
-            var added = 0
-            for (cert in certs) {
-                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "憑證已於 ${cert.validityNotAfter} 過期")
-                val cn = cert.subject.components[OID.COMMON_NAME.oid]?.value ?: cert.displaySubject()
-                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
-                for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) added++
+            certs.firstOrNull { !TrustRegistry.isRoot(it) && !TrustRegistry.isIntermediate(it) }?.let {
+                throw ProtocolException("invalid_request", "「${commonName(it)}」不是憑證機構的憑證，不能當作根憑證或中繼憑證")
             }
-            message.value = if (added == 0) "這些憑證已經是信任錨點" else "已加入 $added 個信任錨點（使用者自訂，信任等級 T3）"
+            if (certs.any { TrustRegistry.isRoot(it) } && roles.isEmpty()) throw ProtocolException("invalid_request", "根憑證請至少選擇一種用途")
+            var roots = 0
+            var middle = 0
+            for (cert in certs) {
+                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "「${commonName(cert)}」已於 ${cert.validityNotAfter} 過期")
+                val cn = commonName(cert)
+                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
+                if (TrustRegistry.isRoot(cert)) {
+                    for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
+                } else if (trust.addIntermediate(cert, label, source)) middle++
+            }
+            message.value = when {
+                roots == 0 && middle == 0 -> "這些憑證已經匯入過"
+                else -> listOfNotNull(
+                    if (roots > 0) "已加入 $roots 個信任錨點（使用者匯入，信任等級 T2）" else null,
+                    if (middle > 0) "已加入 $middle 張中繼憑證（只用來補足憑證鏈）" else null,
+                ).joinToString("；")
+            }
             loadAnchors()
-            // Documents whose issuer had no anchor may chain to the new one.
-            if (added > 0) status.reevaluateIssuers("加入信任錨點", affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
+            // Documents whose issuer had no anchor may chain to the new root, or through the new intermediate.
+            if (roots > 0 || middle > 0) status.reevaluateIssuers("加入信任錨點或中繼憑證", affected = { it.anchorName == null }, accept = { it.environment != null })
         } catch (e: Exception) {
             message.value = "匯入失敗：" + describe(e)
         }
     }
+
+    /**
+     * Trusts [der], a self-issued root shown in a document's chain, as the user's own anchor for document signatures
+     * and time stamps, after the user confirmed it. The document is checked again with the new anchor.
+     */
+    fun trustRootCertificate(der: ByteArray, onDone: () -> Unit = {}) = scope.launch {
+        try {
+            val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
+            if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", "這張憑證不是根憑證")
+            if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", "根憑證已過期")
+            val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
+            var added = 0
+            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA)) {
+                if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
+            }
+            message.value = if (added == 0) "「$name」已經是信任錨點" else "已信任「$name」（文件簽章與時間戳記，信任等級 T2）"
+            loadAnchors()
+            status.reevaluateIssuers("信任根憑證「$name」", affected = { it.anchorName == null }, accept = { it.environment != null })
+            onDone()
+        } catch (e: Exception) {
+            message.value = "無法信任：" + describe(e)
+        }
+    }
+
+    fun removeIntermediate(i: diw.wallet.core.trust.StoredIntermediate) = scope.launch {
+        trust.removeIntermediate(i)
+        loadAnchors()
+        status.reevaluateIssuers("移除中繼憑證「${i.name}」", affected = { it.anchorName != null && it.trustEnvironment != TrustEnvironment.TEST })
+    }
+
+    private fun commonName(c: X509Cert): String = c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject()
 
     fun removeAnchor(anchor: StoredAnchor) = scope.launch {
         if (anchor.environment == TrustEnvironment.PRODUCTION) return@launch
@@ -1452,6 +1524,19 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        /** The credential offer of a DC API create request as an offer URI the OpenID4VCI client reads. */
+        internal fun dcApiOfferUri(data: JsonObject): String {
+            val uri = (data["credential_offer_uri"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            if (uri != null) return "openid-credential-offer://?credential_offer_uri=" + uri.encodeURLParameter()
+            val offer = when (val o = data["credential_offer"]) {
+                is JsonObject -> o
+                is JsonPrimitive -> if (o.isString) DiwJson.parseToJsonElement(o.content) as? JsonObject else null
+                else -> null
+            } ?: data.takeIf { "credential_issuer" in it }?.let { JsonObject(it - "credential_issuer_metadata" - "authorization_server_metadata") }
+                ?: throw ProtocolException("invalid_request", "Digital Credentials API 請求沒有領卡資訊（credential offer）")
+            return "openid-credential-offer://?credential_offer=" + DiwJson.encodeToString(JsonObject.serializer(), offer).encodeURLParameter()
+        }
+
         /** One spec per table name and process: storage rejects a second spec object for the same table. */
         private val settingsTable = StorageTableSpec(name = "DiwSettings", supportPartitions = false, supportExpiration = false)
         private val artTable = StorageTableSpec(name = "DiwCardArt", supportPartitions = false, supportExpiration = false)
@@ -1462,8 +1547,8 @@ class WalletModel(val platform: PlatformServices) {
 
         fun tierTitle(t: TrustTier): String = when (t) {
             TrustTier.T1 -> "T1 官方已驗證"
-            TrustTier.T2 -> "T2 已驗證身分"
-            TrustTier.T3 -> "T3 可驗證但非官方"
+            TrustTier.T2 -> "T2 連到信任根"
+            TrustTier.T3 -> "T3 未連到信任根"
             TrustTier.T4 -> "T4 無法驗證"
         }
 
@@ -1471,10 +1556,10 @@ class WalletModel(val platform: PlatformServices) {
 
         private val PEM_CERT = Regex("-----BEGIN CERTIFICATE-----[A-Za-z0-9+/=\\s]+-----END CERTIFICATE-----")
 
-        /** Risk a verifier adds to a request: none when officially listed, high when its identity cannot be verified. */
+        /** Risk a verifier adds to a request: none when led to a trust root (T1, T2), high when its identity cannot be verified. */
         fun verifierRisk(tier: TrustTier): RiskLevel = when (tier) {
-            TrustTier.T1 -> RiskLevel.LOW
-            TrustTier.T2, TrustTier.T3 -> RiskLevel.MEDIUM
+            TrustTier.T1, TrustTier.T2 -> RiskLevel.LOW
+            TrustTier.T3 -> RiskLevel.MEDIUM
             TrustTier.T4 -> RiskLevel.HIGH
         }
 

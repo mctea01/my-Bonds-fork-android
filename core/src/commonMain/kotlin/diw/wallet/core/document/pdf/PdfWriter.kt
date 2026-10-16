@@ -147,6 +147,11 @@ class PdfSignOptions(
     /** Bytes reserved for the CMS signature (hex doubles it in the file). */
     val reserve: Int = 32 * 1024,
     val time: Instant = Clock.System.now(),
+    /**
+     * Sign even though a certification signature allows no changes (DocMDP P=1). The new revision then breaks that
+     * certification; only for a user who confirmed the consequence.
+     */
+    val allowBreakingCertification: Boolean = false,
 )
 
 /**
@@ -175,7 +180,7 @@ object PdfIncrementalSigner {
         if (pdf.encrypted) throw SigningException("加密的 PDF 無法加簽；請先另存為未加密的檔案")
         if (pdf.reconstructed) throw SigningException("PDF 的交互參照表損壞，無法以增量方式加簽")
         val sigs = PdfSignatures(pdf)
-        if (sigs.fields().any { it.docMdpPermission == 1 }) throw SigningException("此文件有不允許任何修改的認證簽章，無法再加簽")
+        if (!options.allowBreakingCertification && sigs.fields().any { it.docMdpPermission == 1 }) throw SigningException("此文件有不允許任何修改的認證簽章，無法再加簽")
 
         val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException("PDF 沒有文件目錄")
         val catalog = pdf.catalog

@@ -89,7 +89,8 @@ object OfficialDocuments {
         val subject = (root.child("主旨") ?: root.children.firstOrNull { it.name.endsWith("事由") })?.let { paragraphText(it) }
         val sections = ArrayList<OfficialSection>()
         val main = ArrayList<OfficialEntry>()
-        readInto(root, main, sections, skip = { it.name.endsWith("類別") })
+        // An XAdES or XMLDSig signature added to the document is checked and shown as a signature, not as content.
+        readInto(root, main, sections, skip = { it.name.endsWith("類別") || it.name == "Signature" })
         sections.add(0, OfficialSection(null, main))
         return OfficialDocument(root.name, category, title, subject, sections.filter { it.entries.isNotEmpty() })
     }

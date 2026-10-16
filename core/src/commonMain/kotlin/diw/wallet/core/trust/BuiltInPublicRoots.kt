@@ -15,9 +15,14 @@ import org.multipaz.util.fromBase64
  * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
  *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
  *
- * A chain to any of them is T3, like the platform store: a public CA verified a domain or organisation. The mainland
+ * A chain to any of them is T2, like the platform store: a trust root verified a domain or organisation. The mainland
  * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
  * while it is valid.
+ *
+ * [intermediates] are CA certificates that complete chains whose senders leave them out. They are never anchors: a
+ * chain they complete is trusted only through the root it reaches. [importableRoots] are roots outside every program
+ * that intermediates lead to: chains are completed up to them so that the user can import one from a document, and
+ * they are trusted only once imported.
  */
 object BuiltInPublicRoots {
     enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
@@ -36,6 +41,19 @@ object BuiltInPublicRoots {
     ) {
         val certificate: X509Cert by lazy { X509Cert(ByteString(b64.fromBase64())) }
         val national: Boolean get() = algorithm == "SM2"
+    }
+
+    class Intermediate(
+        val name: String,
+        val owner: String,
+        /** The root that signed it (itself for an importable root). */
+        val issuer: String,
+        val purposes: String,
+        val source: String,
+        val sha256: String,
+        private val b64: String,
+    ) {
+        val certificate: X509Cert by lazy { X509Cert(ByteString(b64.fromBase64())) }
     }
 
     /** The date the set of roots last changed (UTC). */
@@ -4402,4 +4420,147 @@ object BuiltInPublicRoots {
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
     val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
+
+    val intermediates: List<Intermediate> by lazy {
+        listOf(
+        Intermediate(
+            name = "BJCA DocSign CA3",
+            owner = "北京數字認證 BJCA",
+            issuer = "BJCA Global Root CA3",
+            purposes = "文件簽章中繼憑證（國家移民管理局電子文件的簽署憑證由此簽發）",
+            source = "釘選 SHA-256，取自 http://repo.bjca.cn/global/cert/BJCA_DocSign_CA3.crt",
+            sha256 = "20F06D387FB129121713B4EF93A82A436FD9E615233A3C444891CDACB95D5EC7",
+            b64 = "MIIFkzCCA3ugAwIBAgIQCqJxjHAIILJTumGnY5boCzANBgkqhkiG9w0BAQsFADBUMQswCQYDVQQGEwJDTjEmMCQGA1UECgwdQkVJ" +
+            "SklORyBDRVJUSUZJQ0FURSBBVVRIT1JJVFkxHTAbBgNVBAMMFEJKQ0EgR2xvYmFsIFJvb3QgQ0EzMB4XDTE5MTIxOTA2MjYwNVoX" +
+            "DTM0MTIxNTA2MjYwNVowUDELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHUJFSUpJTkcgQ0VSVElGSUNBVEUgQVVUSE9SSVRZMRkwFwYD" +
+            "VQQDDBBCSkNBIERvY1NpZ24gQ0EzMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsAlXtsfnW1yvWJaJ7BXWnjUY5Vn7" +
+            "7RAfK/NKhHaEoT6BWD2dQMPh9/O5RGo+yB4v2MiQ8kOkGWa4efqmGcf5idqEFYP5mH9S+QrxmygiEorv7Nx/P/L7y+e07+a1b9vN" +
+            "ubB+vbDhWGUwzsEw03TFjytka86jrMC08NhrZ0+90WOYQWMODypqANvzjlQdIkyNJCLJDTTxyqqKOk5IYHFouadlHeWpcOlVJ+9Z" +
+            "Ygbq2ZdwWHfLdTXNUWlql2V05QPuF1dAJaemox0YNsWk1ywPnBxHlScQ9rJvRuJnZ8oVvzRKOk01OtXCcedBokyKAoGm7n+Jmqxe" +
+            "s4PGu2vwGShlHQIDAQABo4IBYzCCAV8wdQYIKwYBBQUHAQEEaTBnMEQGCCsGAQUFBzAChjhodHRwOi8vcmVwby5iamNhLmNuL2ds" +
+            "b2JhbC9jZXJ0L0JKQ0FfR2xvYmFsX1Jvb3RfQ0EzLmNydDAfBggrBgEFBQcwAYYTaHR0cDovL29jc3AuYmpjYS5jbjAdBgNVHQ4E" +
+            "FgQUw4jA+XmF1Ig/n5nFzlQTcaidX9AwEgYDVR0TAQH/BAgwBgEB/wIBADAfBgNVHSMEGDAWgBR0b7pCQIAI6l0mbpaK3b+EBYPS" +
+            "3zA4BgNVHSAEMTAvMC0GBFUdIAAwJTAjBggrBgEFBQcCARYXaHR0cHM6Ly93d3cuYmpjYS5jbi9DUFMwSAYDVR0fBEEwPzA9oDug" +
+            "OYY3aHR0cDovL3JlcG8uYmpjYS5jbi9nbG9iYWwvY3JsL0JKQ0FfR2xvYmFsX1Jvb3RfQ0EzLmNybDAOBgNVHQ8BAf8EBAMCAQYw" +
+            "DQYJKoZIhvcNAQELBQADggIBAGUewNnpa0TbkKUwTTlzN4TyVOQR+NmyBjK0/yutcf2Aa08+xRrg4dmckuuora+jK4/+uSCM2RZB" +
+            "txkwGRJjUvidE3yce6mf7x7wfit6h/Dl/lROauZTzAuNGyjZA8I/jEbxcV3Qj3DzXIV2n8rXO3B764qCVbIXXpzMWS+qsa6mRKLv" +
+            "YhWTJaR9lKND6RlKFZsb/V3ncFmjt2eT3VNT4UNz09Cp9AQ1NWDfC/fMmyQgCuJc0UyF8CCnxXUPkGqUAUzkC/QCyh3sg53YeJxS" +
+            "+MvzODfmqm6Rz/6lETOBzIX2qxWKQJb+JVGdvEqLgRUWUwtaEGBsU9F3K1kTJA3QxKsWoYU/tU4rcgw9xC8y7s9poUfuMc/eXRne" +
+            "fqKywipr4FNNab5OTCy29JAHG2FX7VaY8Ei5uIo0DqUOXZeu0HJLX/LRaaCTQui2GLkHOQlNK/tLCmQET2CLwwaaneZLP5EG6cVO" +
+            "ohNzUVUxzSPSL0Flb5uncestQ36BOshiLG0LyjjF3TXbWYqFrunzZAAArqAa1LZzsalt91Fx1Os7hgUSs4VKdyf+COMHk3XI9QRU" +
+            "qElPKnJ1TNtYhAiFri2gz/PUotzCi+M0+c9D6b+j0eKcEr1ZwZgx5nvCecH0tup1oCTL/vPTLeoYBb0w57e3zIhbiQWYEgDp7z0r" +
+            "/04X3Q1M",
+        ),
+        Intermediate(
+            name = "eSign OCA",
+            owner = "e簽寶 eSign",
+            issuer = "eSign Root CA",
+            purposes = "e簽寶線上簽署平台的簽章與時戳中繼憑證（timestamp.esign.cn）",
+            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+            sha256 = "F2351CF5DB4E08243E2DCE6A3CDC810A67D40D06BC9A1867D1ABDCB1A84CA3A2",
+            b64 = "MIIDqTCCApGgAwIBAgIJAd/JtU4bIt4ZMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAeFw0yNDEy" +
+            "MjcwMTQ1NDJaFw00NDEyMjcwMTQ1NDJaMGExCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdpdGFsIENlcnRpZmljYXRl" +
+            "IEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTESMBAGA1UEAwwJZVNpZ24gT0NBMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB" +
+            "CgKCAQEAlnJzDPQm0xdoKRK68jC/FgwbX/P/8JnyuCK/yf37rA/5ORJFNAGBeUNxhjSsC9QF/G1zfDXEE8jsJYL/Ie3F81UyJqU4" +
+            "GXXJGDjh1h7z26BbHHzoEi1znKBM4xs4ccX7lfjSMFOgLGZSZ/PElO66J+F31HQBpQvnX6FaCX4QXuVyLlIYJUPp0fy8a3RTYak9" +
+            "2uF3SRSOcjCe7LbIZ7KDh7L0MTfJVdAA7VIjGOLvjaczxi613mJMzE+2ovORHJriwhcCNJqxcv0o4C1l4uKzjQVU+2DklYpxKKqJ" +
+            "4TX74KBHXsvjQ1kEBxqLlTQ9O4pH4HCxXNRVbPuoO6hRei7KoQIDAQABo2AwXjAdBgNVHQ4EFgQUgHubfIy+Fl2f3sr2bepVzSHp" +
+            "jjwwDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAUbHUGroYs//nCFK+ez4NcKJ1TwfgwDQYJKoZIhvcN" +
+            "AQELBQADggEBAH293U6aJlhOr7Cc9j1XpPXiemewtDhih113PNEaputEyNEmBCoR5BVbw/UYdjR+sSVLQGWkTWZZ+ppWXrLS/X3W" +
+            "CBr77fKX2e7oSawwJ9od8wXM/z9nbXJvxY8Z+BKNfET5GasYZLC3OtaQu133Ir+F9WFQLsmekg9WlJNG04Otr6p9mnQU2Sny4mZx" +
+            "CaF9L5KNyY5QpIz7bHfni0WOHNGDXzH8oCH1r7D0E7RLu4Yt8rQvgg497a1xkNKCHA0W4yvuq2g/nI0B9WMQp14aEz5YA8Kpcd1+" +
+            "fSqrfG++KpwQL+l4bfetuAXbpied8QVQ1pFuHqv7SwPTZM4q6V2MuOQ=",
+        ),
+        Intermediate(
+            name = "eSign Gov OCA",
+            owner = "e簽寶 eSign",
+            issuer = "eSign Root CA",
+            purposes = "e簽寶政務簽章中繼憑證",
+            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+            sha256 = "03095A1C266F3FDFBF21EEAB047C4139915CAD58550C18C5117CFA62081F7794",
+            b64 = "MIIDrTCCApWgAwIBAgIJASMTBVlvuhryMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAeFw0yNjA0" +
+            "MjkwNzAxMDNaFw00NjA0MjkwNzAxMDNaMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdpdGFsIENlcnRpZmljYXRl" +
+            "IEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gR292IE9DQTCCASIwDQYJKoZIhvcNAQEBBQADggEP" +
+            "ADCCAQoCggEBAMPSTq0bBjiLN2aUpGcNmXe2eDtyI9MqqRRMUwgoeixTg2S/gyqQax7xRNbnIvQqu7o5gn3FjXoKRtLS3zTNLI44" +
+            "ooGfq3iveuzVgKKxtPt2KAEgdfnMQcFrrnydNZXjlpFxLn1qlOymhO007yMXVAG5dJ/F5PWd87F1zYCb4pTLMM4zVe+175/Zkx93" +
+            "EDhneH+b06R+9STXmlKYlMyOkyO55GY9Yd5PZUXCMnRSenAlI76nDhVQ/k4V+0Ywffz0QURmJjSAPOCauxXg3eTsCdEDq93QNInT" +
+            "GwerzbG9sd5xJ6zE/FO8/pO4BfRH4yAl7W7S3XK+trhgGYh5W/IxH/8CAwEAAaNgMF4wHQYDVR0OBBYEFPl0LgniedXedmd3G3cc" +
+            "nDKqse1XMA4GA1UdDwEB/wQEAwIBBjAMBgNVHRMEBTADAQH/MB8GA1UdIwQYMBaAFGx1Bq6GLP/5whSvns+DXCidU8H4MA0GCSqG" +
+            "SIb3DQEBCwUAA4IBAQCXyNxYN01PEyAegNEdpRuSA61UVwKW8IHE5pPyV8tsH4Y+DLDWHuLPQURzkcZu0Zn99xhXn7+bDWmdLq1q" +
+            "ITw9ga5BKE0rTznVg1YGWWV61uBZ4lzX92X24y0NFJcy+IjhZFSCkNZEjx84jE9L/eZhs6xFKkIrgScX6kofkHNVkXly0skHm0wG" +
+            "EsHk/CRVsFl9Kk3QBz7QU+k+/ILxSNYYjTHu10U2oPkw6tfc0GV/gLjdKV82C+OPT1OjMulLv8ytMZE/F9ld1U9uQ6I6PgOoYvG2" +
+            "+ItajoHW7MwOpjq37X1FGh8Pw90mmGeZGHJsQDPqWvTgPZ5a0WunAoCtdzG2",
+        ),
+        Intermediate(
+            name = "eSign Sub OCA",
+            owner = "e簽寶 eSign",
+            issuer = "eSign Root CA",
+            purposes = "e簽寶簽章中繼憑證",
+            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+            sha256 = "37F14EED3922ED7466F6C34A48FFF949DD0F74798BAEDE191D0284D6AD673651",
+            b64 = "MIIDrTCCApWgAwIBAgIJAXo76tFVD+HGMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAeFw0yNjA1" +
+            "MTQwNTQyMjZaFw00NjA1MTQwNTQyMjZaMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdpdGFsIENlcnRpZmljYXRl" +
+            "IEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gU3ViIE9DQTCCASIwDQYJKoZIhvcNAQEBBQADggEP" +
+            "ADCCAQoCggEBANTOvwRNMO3MYcUyRAEkoo9kOoGEYm4LGGVRwweztswhGtqqtNvZ7lZI8I3qgYlT9lm0pCsxed0SoVwmCDdqcJ8H" +
+            "KpKUrfrW7cD63EIUh03nCp5JTcWg4PFtl+38UN1Agd2Dm5gFTnKDpIArkT6PvRk2VoNT9pFSm5E5CLzC0A8Z+IHVPjkvvTThlxg1" +
+            "dF34gomrjNo8mw3zvrJ2LHjKyg6bPKi0SXSHFOAHrWz434WsTYUpjXyhRhIbcnKePA/yPNaB013Cotzfz1BERH8av7XcVZmWu6JJ" +
+            "BGbB5/WqQGKODnX7Cp0T425AC8AfTMP8BPKXwMFkHR/sQUaUDo3DcvkCAwEAAaNgMF4wHQYDVR0OBBYEFKmpF04adNIjX+/2GL12" +
+            "AvaBpINlMA4GA1UdDwEB/wQEAwIBBjAMBgNVHRMEBTADAQH/MB8GA1UdIwQYMBaAFGx1Bq6GLP/5whSvns+DXCidU8H4MA0GCSqG" +
+            "SIb3DQEBCwUAA4IBAQCNAhPIksyhj9DBNTiatHf6rOUFWIxIx9TooufpCgthB+PNG6BUisYxDbpL52JlHKo19BaFOBrBg14DwbN/" +
+            "vLrDe3xtZrbjf3vML8htu28+7x1oQMahFzRbh6dEp8lLLhV8NmDSG+Pqb93JjIze9qrIEOZA0JYxCKvyPiuYKHJgquHzhzKwYzeu" +
+            "0iKDYaWUIv/K31LemdSLHSZPT2tUMTUXkWnNM9wUzk4RY/f0ttsavVvDKz5TwufYwL4Ax2Hhjqotf7JJF1dOWEFmQGFcmRbJQqQb" +
+            "d1qZP81ZIe8IjfV2339Nc7YGj0SxU9iSAkhUJixl2KJrg7fZb988SVBbBKMs",
+        ),
+        Intermediate(
+            name = "eSign Advanced OCA",
+            owner = "e簽寶 eSign",
+            issuer = "eSign Root CA",
+            purposes = "e簽寶進階簽章中繼憑證",
+            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+            sha256 = "79C0B3824565A5611F31D0A6C606E54C747401B8CFAE427B4BB8B60B89F96385",
+            b64 = "MIIDsjCCApqgAwIBAgIJAYo+eck8HAl+MA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAeFw0yNjA2" +
+            "MTYxMjQzMzRaFw00NjA2MTYxMjQzMzRaMGoxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdpdGFsIENlcnRpZmljYXRl" +
+            "IEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEbMBkGA1UEAwwSZVNpZ24gQWR2YW5jZWQgT0NBMIIBIjANBgkqhkiG9w0BAQEF" +
+            "AAOCAQ8AMIIBCgKCAQEAuXUamzuV09HHz/J7YodNysxWtt/LHOWaTQ3qW5xwURqPrM9xbSC0sCknbYK8ZcwSUxAFfDyathwemB6N" +
+            "Tl3AfE/ym9CdpC2YwXGKTAuq0cnocXWO3wjOMecFriytms93xvraN7YXPel4RJS96PDI6iHmzxnFMr9WWOdbtZr4Q6anjnfbxGc8" +
+            "2X0B65bPu0Y8AJiGXQxE3FwYwA20MVnMojYVgdCgpztDybZkhm4GxIabohCa9giHs4AuSzFsIINNlAcG1ByDSBFAEkLuviO+mDIF" +
+            "lLDgt5XTm9DllBHeB4dz2AdS6NooHADaMEdftrSIxvPJIagpoaTssiPyujCXUQIDAQABo2AwXjAdBgNVHQ4EFgQU0KnM/kL+VAtH" +
+            "T9L3hYRInUdcnScwDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAUbHUGroYs//nCFK+ez4NcKJ1Twfgw" +
+            "DQYJKoZIhvcNAQELBQADggEBAJraVVZ7YMftEsyJGxGickzB1MNe9r6+w9OkDCT8Zye8AxYyaltuOS00LJpYuQ6Nwe4wtJc6D61Z" +
+            "L3Errlt+QuK+mIOxQKFuz5WuRhWwKZdBErqitkybmenbdftp54u8b07oo1fBhKCQeaqRTyqfNen2FesZ/x4taOgaIUpzEASwELMm" +
+            "nB47xUNMhuSTBfmNS1ehAsbP456a5fLq0jdhH/ItaDLvHI01AzH6o4RH/sUEUwMiVMF3brKiiKTDSOv1P4p54oFElNklwLKlYtwU" +
+            "TKNpA8g9PnE3d3wf5X7TinRADfsQ22wVQ0H8ArCAEDcIi299ODAylznZpqy0/4Wg5v8=",
+        ),
+        )
+    }
+
+    val importableRoots: List<Intermediate> by lazy {
+        listOf(
+        Intermediate(
+            name = "eSign Root CA",
+            owner = "e簽寶 eSign",
+            issuer = "eSign Root CA",
+            purposes = "e簽寶自有憑證機構的根憑證；不在任何根憑證計畫，內建只為補足憑證鏈，需由使用者確認後匯入才會信任",
+            source = "釘選 SHA-256，取自 https://asset.esign.cn/apps/esign/ca-esign/credentials/eSignCA_RSA.p7b",
+            sha256 = "F6648D429000A9110B8C35BA30C8698E65A9E20F1195C489690ED065CAA7CE06",
+            b64 = "MIIDrzCCApegAwIBAgIJAf3QQVXbkXkeMA0GCSqGSIb3DQEBCwUAMGUxCzAJBgNVBAYTAkNOMSwwKgYDVQQKDCNlU2lnbiBEaWdp" +
+            "dGFsIENlcnRpZmljYXRlIEF1dGhvcml0eTEQMA4GA1UECwwHZVNpZ25DQTEWMBQGA1UEAwwNZVNpZ24gUm9vdCBDQTAgFw0yNDEy" +
+            "MjcwMTQ0MDVaGA8yMDU0MTIyNzAxNDQwNVowZTELMAkGA1UEBhMCQ04xLDAqBgNVBAoMI2VTaWduIERpZ2l0YWwgQ2VydGlmaWNh" +
+            "dGUgQXV0aG9yaXR5MRAwDgYDVQQLDAdlU2lnbkNBMRYwFAYDVQQDDA1lU2lnbiBSb290IENBMIIBIjANBgkqhkiG9w0BAQEFAAOC" +
+            "AQ8AMIIBCgKCAQEAo3qYQPcNFaEv91D+ML8kQMzeQgZU5kuj22TP4hoRTXCe065LP8NU4ZrwwgB/PITo3tvJCSNbRLkRO8KALaew" +
+            "lt1yOQE9JhjQEDQtiYyoj1GPVVBOP+/WCUSGj0fw01cqaB3SL+IK/YdzXmxjg+HtO5ymqrMfv83crl09Tr5FLDCVpXYhMEOk8uZi" +
+            "GlriPLzEuB/QL4pA7BPxxs/b6bn8f7UakI0SaqhgwMnT0hogDm5xAkPdY88qxW1kjEc6afv51UzLZwwGwQ+a0ALZ+5cxFiaqbwxT" +
+            "IggzW2b1cRMgzqkyObri9gTPTtvMCw7FN9fcLSKk40qQ+1vNo53YMaoTPQIDAQABo2AwXjAdBgNVHQ4EFgQUbHUGroYs//nCFK+e" +
+            "z4NcKJ1TwfgwDgYDVR0PAQH/BAQDAgEGMAwGA1UdEwQFMAMBAf8wHwYDVR0jBBgwFoAUbHUGroYs//nCFK+ez4NcKJ1TwfgwDQYJ" +
+            "KoZIhvcNAQELBQADggEBAClkfwrzGB3NCcFmEAvx5a5QVpcoM2T2gXL7YGhgIB0bCA6BDtW9CHIg3irNG5Z3DmaJ4T3wPgSn1fmB" +
+            "hRA8RZTwDuM0BktZLc9jirE8Jm3KmGWL/DxiARDFbi66jQZrXf0xaLlrnp8QbVwVjzJpb/QLU281jl9mUhEEMhXVEHt0GWIzz/J2" +
+            "SWOv3PorihOt+3X8JrZmlXCe4AGQK0rVnpn8N+qxlM5mNHeAI7qhwkwtKt0n7r7WRobm2dhf0/4DseQYfcgqaeS2bFE72MSXh3AT" +
+            "pikyZjmvovml2Ws1us9NFxxgMtj2Vf5kv7dQr3OGdQPq3utddv311Zn+MzFL1ZM=",
+        ),
+        )
+    }
 }

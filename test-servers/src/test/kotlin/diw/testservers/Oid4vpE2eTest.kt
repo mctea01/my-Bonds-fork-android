@@ -253,6 +253,31 @@ class Oid4vpE2eTest {
      * the encoded entry and names sha-256 explicitly, which the EUDI verifier requires although OpenID4VP 1.0 makes
      * it the default.
      */
+    /**
+     * A request without transaction data gets a KB-JWT without transaction claims: Multipaz writes an empty
+     * transaction_data_hashes, which the walt.id verifier rejects (dc+sd-jwt/transaction-data-hash-check). The request
+     * is the one walt.id's verifier serves for the Digital Credentials API (unsigned, with expected_origins).
+     */
+    @Test
+    fun noTransactionClaimsWithoutTransactionData() = runBlocking<Unit> {
+        val w = wallet()
+        val data = DiwJson.parseToJsonElement(
+            """{"response_type":"vp_token","response_mode":"dc_api","nonce":"waltid-nonce",
+              "dcql_query":{"credentials":[{"id":"pid","format":"dc+sd-jwt","meta":{"vct_values":["${EUPersonalID.EUPID_VCT}"]},
+                "claims":[{"path":["family_name"]}]}]},
+              "client_metadata":{"vp_formats_supported":{"dc+sd-jwt":{"sd-jwt_alg_values":["ES256"],"kb-jwt_alg_values":["ES256"]}},
+                "client_name":"Verifier2"},
+              "expected_origins":["https://portal2.demo.walt.id"]}"""
+        ).jsonObject
+        val req = w.holder.resolveDcApi("openid4vp-v1-unsigned", data, "https://portal2.demo.walt.id")
+        val outcome = w.holder.respondDefault(w.holder.prepare(req)) as PresentationOutcome.DcApi
+        val presentation = outcome.data["vp_token"]!!.jsonObject["pid"]!!.jsonArray[0].jsonPrimitive.content
+        val kb = DiwJson.parseToJsonElement(presentation.substringAfterLast('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject
+        assertEquals("origin:https://portal2.demo.walt.id", kb["aud"]!!.jsonPrimitive.content)
+        assertNull(kb["transaction_data_hashes"], kb.toString())
+        assertNull(kb["transaction_data_hashes_alg"], kb.toString())
+    }
+
     @Test
     fun transactionDataHashesNameTheirAlgorithm() = runBlocking<Unit> {
         val w = wallet()

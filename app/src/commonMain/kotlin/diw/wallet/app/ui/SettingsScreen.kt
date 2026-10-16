@@ -86,7 +86,7 @@ fun SettingsScreen(model: WalletModel) {
             }
         }
         val tsa = TsaServices.byId(s.tsaId)
-        Text(tsa.url + if (tsa.publicRoot) "（根憑證在常見憑證庫，信任等級 T3）" else "（根憑證不在內建清單，需在信任錨點匯入，用途選時間戳記）",
+        Text(tsa.url + if (tsa.publicRoot) "（根憑證在常見憑證庫，信任等級 T2）" else "（根憑證不在內建清單，需在信任錨點匯入，用途選時間戳記）",
             style = MaterialTheme.typography.bodySmall)
         Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
             model.updateSettings { it.copy(timestampOnSave = v) }
@@ -211,7 +211,7 @@ fun SettingsScreen(model: WalletModel) {
 private fun DigitalCredentialsSection(model: WalletModel) {
     val reg by model.dcApiRegistration.collectAsState()
     val r = reg ?: return
-    SectionTitle("瀏覽器與 App 出示")
+    SectionTitle("瀏覽器與 App 出示、收卡")
     val summary = when {
         r.error != null -> "最近一次向系統註冊失敗：${r.error}"
         r.registered == 0 -> "目前沒有可由系統選擇器出示的證件。系統選擇器只支援 mdoc 與 SD-JWT VC 證件。"
@@ -222,6 +222,11 @@ private fun DigitalCredentialsSection(model: WalletModel) {
     if (r.notListable > 0) {
         Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
             style = MaterialTheme.typography.bodySmall)
+    }
+    when {
+        r.issuance -> Text("網頁或 App 以 Digital Credentials API 發卡（OpenID4VCI）時，系統會列出本 App 作為存放位置。", style = MaterialTheme.typography.bodySmall)
+        r.issuanceError != null -> Text("Digital Credentials API 收卡註冊失敗：${r.issuanceError}", style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error)
     }
     OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text("重新向系統註冊") }
     HorizontalDivider()

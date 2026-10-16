@@ -1,10 +1,40 @@
 package diw.wallet.core.document.official
 
+import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.XmlElement
 import diw.wallet.core.document.XmlTree
+import org.multipaz.util.fromBase64
 
 /** One reason for or against putting a file in an official document's container, as the holder reads it. */
 data class BundleEvidence(val text: String, val supports: Boolean)
+
+/** A file an online approval (.si) signed: its name (the XMLDSig Reference URI) and digest. */
+data class ApprovalReference(val uri: String, val algorithm: String, val digest: ByteArray) {
+    /** True when [bytes] have this digest. */
+    fun matches(bytes: ByteArray): Boolean = runCatching { DocCrypto.digest(algorithm, bytes).contentEquals(digest) }.getOrDefault(false)
+
+    override fun equals(other: Any?) = other is ApprovalReference && other.uri == uri && other.algorithm == algorithm && other.digest.contentEquals(digest)
+    override fun hashCode() = uri.hashCode() * 31 + digest.contentHashCode()
+}
+
+/** An online approval file (.si) and the files its signatures cover. */
+class ApprovalFile(val name: String, val references: List<ApprovalReference>) {
+    /** True: [fileName] is listed with the digest of [bytes]; false: listed with other content; null: not listed. */
+    fun lists(fileName: String, bytes: ByteArray): Boolean? {
+        val refs = references.filter { it.uri == fileName }
+        if (refs.isEmpty()) return null
+        return refs.any { it.matches(bytes) }
+    }
+
+    /** Names of the files listed, in the order they first appear. */
+    val names: List<String> get() = references.map { it.uri }.distinct()
+
+    companion object {
+        /** The approval in [bytes] named [name], or null when it is not an online approval listing files. */
+        fun of(name: String, bytes: ByteArray): ApprovalFile? =
+            OfficialBundles.approvalReferences(bytes).takeIf { it.isNotEmpty() }?.let { ApprovalFile(name, it) }
+    }
+}
 
 /** How well a file fits the container of an official document. */
 data class BundleMatch(val evidence: List<BundleEvidence>) {
@@ -36,26 +66,79 @@ object OfficialBundles {
     /** True when [name] is a file of the official document exchange (.di, .sw, .si, .dm, .co). */
     fun isExchangeFile(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in OfficialDocuments.EXTENSIONS
 
-    /** Evidence that [candidate] (named [candidateName]) belongs with the document [main] (named [mainName]). */
-    fun match(mainName: String, main: ByteArray, candidateName: String, candidate: ByteArray): BundleMatch {
+    /**
+     * The files the signatures of an online approval (.si, root 線上簽核) cover: each XMLDSig Reference to a file
+     * (not to an element of the approval itself) with its digest. Empty when [bytes] is not such an approval.
+     */
+    fun approvalReferences(bytes: ByteArray): List<ApprovalReference> {
+        val root = XmlTree.parse(bytes)?.root ?: return emptyList()
+        if (root.name != "線上簽核") return emptyList()
+        val out = LinkedHashSet<ApprovalReference>()
+        for (ref in root.descendants("Reference")) {
+            val uri = ref.attributes["URI"]?.trim()?.takeIf { it.isNotEmpty() && !it.startsWith("#") } ?: continue
+            val algorithm = digestAlgorithm(ref.descendants("DigestMethod").firstOrNull()?.attributes?.get("Algorithm")) ?: continue
+            val digest = ref.descendants("DigestValue").firstOrNull()?.text?.replace(Regex("\\s+"), "")
+                ?.let { runCatching { it.fromBase64() }.getOrNull() } ?: continue
+            out.add(ApprovalReference(uri, algorithm, digest))
+        }
+        return out.toList()
+    }
+
+    private fun digestAlgorithm(uri: String?): String? = when (uri?.substringAfterLast('#')) {
+        "sha1" -> "SHA-1"
+        "sha256" -> "SHA-256"
+        "sha384" -> "SHA-384"
+        "sha512" -> "SHA-512"
+        else -> null
+    }
+
+    /**
+     * Evidence that [candidate] (named [candidateName]) belongs with the document [main] (named [mainName]).
+     * [approvals] are the online approval files that came with them: one that signed both files with their current
+     * content is the strongest hint, since the approval names each file and its digest.
+     */
+    fun match(
+        mainName: String, main: ByteArray, candidateName: String, candidate: ByteArray,
+        approvals: List<ApprovalFile> = emptyList(),
+    ): BundleMatch {
         val evidence = ArrayList<BundleEvidence>()
         val base = mainName.substringBeforeLast('.')
         val otherBase = candidateName.substringBeforeLast('.')
         if (base.isNotBlank() && base == otherBase) evidence.add(BundleEvidence("檔名相同（$base）", true))
+        var approved = false
+        for (a in approvals) {
+            if (a.name == candidateName || a.name == mainName) continue
+            val mainListed = a.lists(mainName, main)
+            val listed = a.lists(candidateName, candidate)
+            when {
+                mainListed == true && listed == true -> {
+                    evidence.add(BundleEvidence("簽核檔「${a.name}」列出公文與這個檔案，內容雜湊相符", true)); approved = true
+                }
+                mainListed == true && listed == false ->
+                    evidence.add(BundleEvidence("簽核檔「${a.name}」列出同名檔案，但內容不同", false))
+            }
+        }
         val doc = XmlTree.parse(main)?.root
-        val other = XmlTree.parse(candidate)?.root
+        val other = if (candidateName.substringAfterLast('.', "").lowercase() in BINARY_EXTENSIONS) null else XmlTree.parse(candidate)?.root
         if (doc != null && other != null) {
             when (other.name) {
                 "交換表單" -> receivers(doc, other)?.let { evidence.add(it) }
                 "線上簽核" -> {
-                    val listed = other.descendants("檔案").map { it.text.trim() } + other.descendants("文稿").map { it.text.trim() } +
-                        other.descendants("附件").map { it.deepText() }
-                    if (listed.any { it.isNotBlank() && (it.contains(mainName) || (base.isNotBlank() && it.contains(base))) }) {
-                        evidence.add(BundleEvidence("簽核檔列出這份公文", true))
+                    when (ApprovalFile.of(candidateName, candidate)?.lists(mainName, main)) {
+                        true -> { evidence.add(BundleEvidence("簽核檔列出這份公文，內容雜湊相符", true)); approved = true }
+                        false -> evidence.add(BundleEvidence("簽核檔列出同名的公文，但內容不同（可能是另一個版本）", false))
+                        null -> {
+                            val listed = other.descendants("檔案").map { it.text.trim() } + other.descendants("文稿").map { it.text.trim() } +
+                                other.descendants("附件").map { it.deepText() }
+                            if (listed.any { it.isNotBlank() && (it.contains(mainName) || (base.isNotBlank() && it.contains(base))) }) {
+                                evidence.add(BundleEvidence("簽核檔列出這份公文", true))
+                            }
+                        }
                     }
                 }
             }
-            if (other.name == doc.name && other != doc && other.name !in FORMS) {
+            // Drafts and versions of one case are all documents; an approval that signed both settles it.
+            if (!approved && other.name == doc.name && other != doc && other.name !in FORMS) {
                 evidence.add(BundleEvidence("這也是一份「${other.name}」，通常是另一份公文", false))
             }
         }
@@ -89,6 +172,9 @@ object OfficialBundles {
         return if (hits > 0) BundleEvidence("交換表單的 ${listed.size} 個發送對象中，有 $hits 個與公文的受文者、正本或副本相符", true)
         else BundleEvidence("交換表單的發送對象與公文的受文者、正本、副本都不相同", false)
     }
+
+    /** Extensions of files that are never XML (attachments and page images), so they are not parsed as such. */
+    private val BINARY_EXTENSIONS = setOf("doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "pdf", "tif", "tiff", "png", "jpg", "jpeg", "gif", "zip")
 
     private fun norm(s: String): String = s.replace(Regex("\\s+"), "").replace('（', '(').replace('）', ')')
 

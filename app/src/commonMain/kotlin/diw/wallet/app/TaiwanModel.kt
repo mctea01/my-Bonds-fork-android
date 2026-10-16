@@ -96,6 +96,9 @@ sealed class OfflineUi {
     data class Working(val message: String) : OfflineUi()
     data class Failed(val message: String) : OfflineUi()
 
+    /** The counter service's verifier module is not an anchored organisation: the user may still go on after confirming. */
+    data class Unlisted(val service: TwdiwOfflineService, val message: String) : OfflineUi()
+
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
 
@@ -203,13 +206,16 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     /** Counter pickup (e.g. 7-ELEVEN): present the card, then show the barcode the verifier module returns. */
-    fun startPickup(service: TwdiwOfflineService) {
+    fun startPickup(service: TwdiwOfflineService, allowUnlisted: Boolean = false) {
         offline.value = OfflineUi.Working("向 ${service.name} 建立取貨交易")
         model.screen.value = Screen.Offline
         model.scope.launch {
             try {
-                val session = model.twdiwServices.startOffline(service)
+                val session = model.twdiwServices.startOffline(service, allowUnlisted)
                 model.startPresentation(session.entry.uri, TwdiwEntry.ENTRY_HINT, session.fields, session)
+            } catch (e: ProtocolException) {
+                offline.value = if (e.code == "untrusted_verifier" && !allowUnlisted) OfflineUi.Unlisted(service, model.describe(e))
+                else OfflineUi.Failed(model.describe(e))
             } catch (e: Exception) {
                 offline.value = OfflineUi.Failed(model.describe(e))
             }

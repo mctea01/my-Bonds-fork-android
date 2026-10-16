@@ -1,5 +1,7 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.image.ImageKind
+import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.pdf.PdfDates
@@ -47,6 +49,8 @@ actual object DocumentInspector {
                 DocumentFormat.XML -> xml(data, fileName, base, checks, now)
                 DocumentFormat.OFD, DocumentFormat.ASIC_E, DocumentFormat.ZIP -> container(data, base, checks, now)
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
+                DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
+                DocumentFormat.IMAGE -> base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data)))
                 else -> base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
@@ -78,9 +82,12 @@ actual object DocumentInspector {
             return when {
                 "OFD.xml" in files -> DocumentFormat.OFD
                 Asic.isAsic(files) -> DocumentFormat.ASIC_E
+                officePackage(files) != null -> DocumentFormat.OFFICE
                 else -> DocumentFormat.ZIP
             }
         }
+        if (b.size > 8 && b.copyOfRange(0, 8).contentEquals(CFB_MAGIC)) return DocumentFormat.OFFICE
+        ImageKind.of(b)?.let { kind -> if (kind != ImageKind.BMP && kind != ImageKind.ICO || ImageKind.ofExtension(name ?: "") == kind) return DocumentFormat.IMAGE }
         if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
             val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
             when (oid) {
@@ -97,11 +104,63 @@ actual object DocumentInspector {
             head.startsWith("{") -> {
                 if (OpenAttestationDocument.parse(b) != null) DocumentFormat.OPENCERTS else DocumentFormat.JSON
             }
-            b.size > 8 && b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte() -> DocumentFormat.IMAGE
-            b.size > 3 && b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte() -> DocumentFormat.IMAGE
             ext in setOf("txt", "csv", "md") -> DocumentFormat.TEXT
             else -> DocumentFormat.OTHER
         }
+    }
+
+    /** The OLE compound file signature (MS-CFB 2.2): Word 97-2003 and other older Office files. */
+    private val CFB_MAGIC = byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte())
+
+    /** The kind of Office package [files] are (OOXML with [Content_Types].xml, or ODF by its mimetype), or null. */
+    private fun officePackage(files: Map<String, ByteArray>): String? {
+        files["[Content_Types].xml"]?.decodeToString()?.let { types ->
+            return when {
+                "wordprocessingml" in types -> "Word 文件（OOXML）"
+                "spreadsheetml" in types -> "Excel 試算表（OOXML）"
+                "presentationml" in types -> "PowerPoint 簡報（OOXML）"
+                else -> "Office Open XML 文件"
+            }
+        }
+        val mime = files["mimetype"]?.decodeToString()?.trim() ?: return null
+        if (!mime.startsWith("application/vnd.oasis.opendocument")) return null
+        return when {
+            mime.endsWith(".text") -> "ODF 文字文件"
+            mime.endsWith(".spreadsheet") -> "ODF 試算表"
+            mime.endsWith(".presentation") -> "ODF 簡報"
+            else -> "ODF 文件"
+        }
+    }
+
+    /** What an Office file is, and whether it carries Office's own signatures (kept with the file, not verified). */
+    private fun officeNotes(b: ByteArray, name: String?): List<String> {
+        val ext = name?.substringAfterLast('.', "")?.lowercase()
+        if (!Zip.isZip(b)) {
+            val kind = when (ext) {
+                "xls" -> "Excel 97-2003 試算表"
+                "ppt" -> "PowerPoint 97-2003 簡報"
+                else -> "Word 97-2003 文件"
+            }
+            return listOf("$kind（OLE 複合文件）。錢包保存原檔，不解析內容；請以 Office 等軟體開啟。")
+        }
+        val files = runCatching { Zip.read(b) }.getOrNull() ?: return listOf("Office 文件")
+        val kind = officePackage(files) ?: "Office 文件"
+        val notes = mutableListOf("$kind。錢包保存原檔，不解析內容；請以 Office 等軟體開啟。")
+        if ((ext == "doc" || ext == "xls" || ext == "ppt") && files.containsKey("[Content_Types].xml")) {
+            notes.add("副檔名是 .$ext，但內容是新版 OOXML 格式")
+        }
+        if (files.keys.any { it.startsWith("_xmlsignatures/") } || files.containsKey("META-INF/documentsignatures.xml")) {
+            notes.add("檔案內含 Office 數位簽章，錢包目前不驗證這種簽章；可另以 CAdES 或 ASiC-E 簽署整個檔案")
+        }
+        return notes
+    }
+
+    /** The kind of picture, and for a TIFF its pages and coding (page images of official documents are CCITT G4 scans). */
+    private fun imageNote(b: ByteArray): String? {
+        val kind = ImageKind.of(b) ?: return null
+        if (kind != ImageKind.TIFF) return "${kind.title} 圖片"
+        val pages = runCatching { TiffDecoder.directories(b) }.getOrNull() ?: return "TIFF 圖片（無法讀取頁面資訊）"
+        return "TIFF 圖片，共 ${pages.size} 頁；第 1 頁 ${pages.first().describe()}"
     }
 
     private fun certificateNote(b: ByteArray): String? =
@@ -146,6 +205,7 @@ actual object DocumentInspector {
                 reason = f.reason,
                 location = f.location,
                 signerName = f.name?.takeIf { it.isNotBlank() } ?: info.signerName,
+                docMdp = f.docMdpPermission,
                 problems = p,
                 notes = n,
             ))

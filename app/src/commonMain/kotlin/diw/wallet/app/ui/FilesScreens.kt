@@ -78,6 +78,8 @@ import diw.wallet.core.document.sign.MobileMoicaMode
 import diw.wallet.app.StoredFile
 import diw.wallet.app.WalletModel
 import diw.wallet.app.CredentialDetails
+import diw.wallet.core.document.official.OfficialBundles
+import diw.wallet.core.profile.bonds.HouseholdTranscript
 import diw.wallet.core.profile.bonds.MoicaVerification
 import diw.wallet.core.profile.bonds.MoicaSignedCredential
 import diw.wallet.core.profile.bonds.MyDataProfile
@@ -167,6 +169,7 @@ private fun formatTitle(f: DocumentFormat): String = when (f) {
     DocumentFormat.ZIP -> "ZIP 壓縮檔"
     DocumentFormat.OPENCERTS -> "OpenCerts（OpenAttestation）"
     DocumentFormat.JSON -> "JSON"
+    DocumentFormat.OFFICE -> "Office 文件"
     DocumentFormat.IMAGE -> "圖片"
     DocumentFormat.TEXT -> "文字檔"
     DocumentFormat.OTHER -> "其他檔案"
@@ -322,13 +325,19 @@ private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: L
     var main by remember(f.id) { mutableStateOf(false) }
     LaunchedEffect(f.id) { main = model.files.isOfficialMain(f) }
     if (!main) return
-    val members = files.filter { it.bundleOf == f.id }.sortedBy { it.name }
+    val own = files.filter { it.bundleOf == f.id }.sortedBy { it.name }
+    val inherited = remember(f.id, files) { model.files.inherited(f) }.sortedBy { it.name }
+    val members = own + inherited
     SectionTitle("公文容器")
     if (members.isEmpty()) {
         Text("這份公文還沒有關連檔。交換表單（.sw）、簽核檔（.si）與附件可放進同一個容器，一起保存與查看。", style = MaterialTheme.typography.bodySmall)
     }
-    members.forEach { m ->
+    own.forEach { m ->
         FileRow(m) { model.screen.value = Screen.FileDetail(m.id) }
+    }
+    if (inherited.isNotEmpty()) {
+        Text("沿用簽署前公文的關連檔（未另外簽署）：", style = MaterialTheme.typography.bodySmall)
+        inherited.forEach { m -> FileRow(m) { model.screen.value = Screen.FileDetail(m.id) } }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text("匯入關連文件") }
@@ -431,7 +440,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         // An OpenCerts certificate is shown field by field below rather than as JSON text.
         if (report?.format != DocumentFormat.OPENCERTS) FilePreviewSection(model, f)
         if (report != null) {
-            report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) }
+            report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) { model.files.reinspect(f) } }
             report.envelope?.let { e ->
                 SectionTitle("加密信封")
                 Text("這是加密給特定對象的檔案（CMS EnvelopedData），錢包無法開啟內容，只能保存原檔。", style = MaterialTheme.typography.bodySmall)
@@ -441,7 +450,14 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             if (report.entries.isNotEmpty()) {
                 SectionTitle("容器內的檔案")
-                report.entries.take(50).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                if (report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP) {
+                    Text("點選檔案可開啟與檢查；容器與它的簽章保持不變。", style = MaterialTheme.typography.bodySmall)
+                }
+                report.entries.take(50).forEach { entry ->
+                    if (report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP) {
+                        LabelValue("檔案", OfficialBundles.decodeZipName(entry), small = true, onClick = { model.files.openEntry(f, entry) })
+                    } else Text(entry, style = MaterialTheme.typography.bodySmall)
+                }
                 if (report.entries.size > 50) Text("另有 ${report.entries.size - 50} 個檔案", style = MaterialTheme.typography.bodySmall)
             }
             report.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -551,8 +567,14 @@ private fun ReportVerdict(report: DocumentReport) {
 private fun certOf(c: CertInfo): X509Cert? = runCatching { X509Cert(ByteString(c.der.fromBase64())) }.getOrNull()
 
 @Composable
-private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int) {
+private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int, onTrusted: () -> Unit) {
     val (verdict, text) = verdictOf(s.verdict)
+    var trusting by remember(s) { mutableStateOf(false) }
+    // The chain ends in a self-issued root that no enabled anchor holds: the user may trust it after confirming.
+    val untrustedRoot = s.chain.lastOrNull()?.takeIf { root ->
+        s.integrity == Check.PASS && s.chain.size > 1 && root.subject == root.issuer &&
+            s.trust.let { t -> t == null || t.anchorName == null || "UNKNOWN_ANCHOR" in t.labels }
+    }
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -574,6 +596,20 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                     d.anchorName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
                 Text(signerTrustLine(d), style = MaterialTheme.typography.bodySmall)
+            }
+            untrustedRoot?.let { root ->
+                TextButton(onClick = { trusting = true }) { Text("信任根憑證「${root.commonName ?: root.subject}」") }
+                if (trusting) RiskConfirmDialog(
+                    title = "信任「${root.commonName ?: root.subject}」",
+                    lines = listOf(
+                        "這個根憑證不在錢包的信任錨點內，錢包無法確認它的管理方式與簽發對象。",
+                        "請先由官方網站等可靠來源確認它的指紋，再決定是否信任。",
+                        "信任後，連到它的文件簽章與時間戳記判定為 T2（使用者匯入，非官方），可隨時在信任錨點移除。",
+                    ),
+                    confirm = "信任",
+                    onConfirm = { trusting = false; model.trustRootCertificate(root.der.fromBase64(), onTrusted) },
+                    onDismiss = { trusting = false },
+                )
             }
             LabelValue("內容完整", checkText(s.integrity), small = true)
             LabelValue("憑證效期", checkText(s.certificateValidity), small = true)
@@ -993,9 +1029,29 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
             Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
             Text("加上簽章時戳（${TsaServices.byId(model.settings.tsaId).name}，需要網路）")
         }
+        val toSign = remember(f.id) { model.files.membersToSign(f) }
+        var withMembers by remember(f.id) { mutableStateOf(true) }
+        if (form == SignForm.XADES && toSign.isNotEmpty()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = withMembers, onCheckedChange = { withMembers = it })
+                Column {
+                    Text("一併簽署公文容器內的 ${toSign.size} 個檔案", style = MaterialTheme.typography.bodyMedium)
+                    Text(toSign.joinToString("、") { it.name } + "。XML 以 XAdES、PDF 以 PAdES 簽署，簽好的檔案放進簽署後公文的容器；" +
+                        "自然人憑證卡與遠端簽章每個檔案各需一次感應或授權。", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
+        val breakOk = if (locked) {
+            VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
+            riskOverride(
+                f.id, "仍要以 PAdES 加簽", "破壞原有的認證簽章",
+                listOf("原認證者宣告這份文件不允許任何修改。", "加簽後，查驗方會看到原認證簽章之後仍有更新，可能拒絕這份文件。", "原始檔案仍保留在文件分頁。"),
+            )
+        } else true
         BusyLine(busy, error)
         CscPromptPanel(model)
-        Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp) } }, enabled = choice != null && busy == null) {
+        Button(onClick = { choice?.let { model.files.sign(f, it, form, reason, location, timestamp, allowBreakingCertification = locked, withMembers = withMembers && form == SignForm.XADES) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")
         }
     }
@@ -1021,6 +1077,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
                 is MainlandEntryExitRecord -> MainlandEntryExitView(r)
                 null -> {}
             }
+            p.household?.let { HouseholdView(it) }
             if (p.pages.isNotEmpty()) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
                 PreviewImage(p.pages[i], "第 ${i + 1} 頁")
@@ -1061,6 +1118,44 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             }
         }
         is FilePreview.Unavailable -> Text(p.reason, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+/**
+ * A household transcript: the household's fields, then one person at a time with a switch between people; the
+ * holder (matched by the national ID card or the saved ID number) comes first and is marked.
+ */
+@Composable
+private fun HouseholdView(h: HouseholdTranscript) {
+    var selected by remember(h) { mutableStateOf(0) }
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(h.title ?: "戶籍資料", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        if (h.household.isNotEmpty()) {
+            Text("戶籍", style = MaterialTheme.typography.titleSmall)
+            h.household.forEach { (k, v) -> if (k.isEmpty()) Text(v, style = MaterialTheme.typography.bodySmall) else LabelValue(k, v, small = true) }
+        }
+        Text("住戶（${h.people.size} 位）", style = MaterialTheme.typography.titleSmall)
+        if (!h.holderFound) {
+            Text("沒有比對到持有人本人（以身分證卡或設定的身分證統一編號比對），依文件順序列出。", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline)
+        }
+        if (h.people.size > 1) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                h.people.forEachIndexed { i, person ->
+                    FilterChip(
+                        selected = i == selected,
+                        onClick = { selected = i },
+                        label = { Text((person.member.name ?: "住戶 ${i + 1}") + if (person.holder) "（本人）" else "") },
+                    )
+                }
+            }
+        }
+        val person = h.people[selected.coerceIn(0, h.people.lastIndex)]
+        if (person.holder) Text("持有人本人", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        person.fields.forEach { (k, v) -> if (k.isEmpty()) Text(v, style = MaterialTheme.typography.bodySmall) else LabelValue(k, v, small = true) }
     }
 }
 

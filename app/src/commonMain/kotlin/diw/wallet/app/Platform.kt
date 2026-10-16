@@ -189,6 +189,10 @@ data class DcApiRegistration(
     /** Why the system refused the registration; null when it was accepted. */
     val error: String?,
     val at: Instant,
+    /** Whether web pages and apps can save credentials into the wallet (OpenID4VCI over the Digital Credentials API). */
+    val issuance: Boolean = false,
+    /** Why the system refused that registration; null when it was accepted or not attempted. */
+    val issuanceError: String? = null,
 )
 
 /**
