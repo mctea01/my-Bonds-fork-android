@@ -133,6 +133,16 @@
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
+## 零知識證明要點（P4，設計中）
+
+- 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`；尚未實作的部分以這三份文件為準，實作完成後把要點移到本節。
+- 四種證據：zkPDF（Noir 電路，證明已簽署 PDF 的文字欄位）、zkTLS（TLSNotary，查驗方當 notary 的即時模式；離線時為 T3 的網頁證明或裝置證明紀錄）、年齡證明（直接引用 Bonds 的 OpenAC `openac-age-v1` 資產與格式）、mdoc ZK（Multipaz Longfellow）。
+- 證據都疊加在既有的文件衍生憑證上（`evidence` 陣列），以持有者 `cnf.jwk` 的 RFC 7638 thumbprint 綁定；信任等級取原始簽署者、發行端或連線的等級，零知識證明本身不提高等級；zkPDF 與 zkTLS 永遠不是 T1。
+- 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 決定能否在本機產生證明，C 級只能驗證。
+- 證明資產以 `core/src/commonMain/resources/zk/assets.json` 釘選 SHA-256 與大小，下載後比對才載入。私密輸入不可出現在 log、例外訊息與測試輸出。
+- 分工：Codex 依 `p4-work-packages.md` 在 `codex/p4-wpN-<簡稱>` 分支開發，PR 目標為整合分支 `claude/p4-zkp-design-fmkasd`；介面由 Claude 維護，需要變更時在 PR 提出「介面變更提案」，不自行改動其他工作包的介面。
+- P4 完成後的全專案審查從 `docs/review/project-review.md` 開始。
+
 ## TWDIW 與 Bonds 要點
 
 - TWDIW 發證：`credential_issuer` 結尾有 `/`，中繼資料以附加方式取得，沒有 AS metadata，token 端點為 `{issuer}token`，表單帶 `client_id=moda_dw`、`authorization_details`、空的 `tx_code`；proof 的 `kid` 是不帶 fragment 的 did:key（jwk_jcs），`iss` 為 client_id；回應 `{credential}`。中繼資料寫 `jwt_vc_json`，實際送 SD-JWT（`typ vc+sd-jwt`，無 `vct`，W3C 內容在 `vc`）。
