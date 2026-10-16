@@ -26,6 +26,11 @@ import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.pe.DescriptorMatch
+import diw.wallet.core.oid4vp.pe.PresentationExchange
+import diw.wallet.core.jose.Jws
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -295,6 +300,47 @@ class TwdiwPlatformTest {
         assertTrue(s.holder.respond(second) is PresentationOutcome.Posted)
         assertEquals(listOf("name", "birthDate"), s.mock.received.last().disclosedNames)
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    @Test
+    fun presentationChangesCredentialAndShowsConsentTerms() = runBlocking<Unit> {
+        val s = setup()
+        s.receive()
+        s.receive()
+        val request = s.holder.resolveUri(s.mock.presentationUri(listOf("name")))
+
+        // The official verifier packs the recipient, occasion, purpose and terms page into presentation_definition.purpose.
+        val terms = assertNotNull(s.holder.consentTerms(request))
+        assertEquals("模擬驗證機關", terms.recipient)
+        assertEquals("皮夾夥伴卡驗證", terms.scenario)
+        assertEquals("確認會員身分", terms.purpose)
+        assertEquals(TwdiwPlatformMock.TERMS_URL, terms.termsUri)
+        assertEquals("一般用途", TwdiwPresentationDialect.terms("一般用途")?.purpose)
+        assertNull(TwdiwPresentationDialect.terms("{\"terms_uri\":\"http://plain.example/terms\"}"))
+
+        // Two cards answer the request: the holder swaps the first choice for the other one.
+        val prepared = s.holder.prepare(request) as PreparedExtended
+        val first = prepared.prepared.chosen.single().credential
+        val other = prepared.prepared.alternatives(0).single()
+        assertNotEquals(first.document.identifier, other.document.identifier)
+        val changed = s.holder.replace(prepared, 0, other)
+        assertEquals(other.document.identifier, changed.prepared.chosen.single().credential.document.identifier)
+        assertEquals(listOf("name"), changed.lines.single().claims)
+        assertEquals(first.document.identifier, changed.prepared.alternatives(0).single().document.identifier)
+        assertFails { s.holder.replace(changed, 0, other) }
+        assertTrue(s.holder.respond(changed) is PresentationOutcome.Posted)
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(Jws.parse(other.raw.substringBefore('~')).payload, s.mock.received.single().card)
+
+        // "pick, max 1" over a group: one card of either descriptor meets the request, two or none do not.
+        val def = changed.prepared.definition!!
+        val mine = def.descriptors.single { it.id == TwdiwPlatformMock.CONFIG_ID + "_2" }
+        val another = def.descriptors.single { it.id != mine.id }
+        assertTrue(PresentationExchange.satisfies(def, mapOf(mine.id to DescriptorMatch(mine, other, emptyList()))))
+        assertTrue(PresentationExchange.satisfies(def, mapOf(another.id to DescriptorMatch(another, other, emptyList()))))
+        assertFalse(PresentationExchange.satisfies(def, mapOf(mine.id to DescriptorMatch(mine, other, emptyList()), another.id to DescriptorMatch(another, first, emptyList()))))
+        assertFalse(PresentationExchange.satisfies(def, emptyMap()))
+        assertFalse(PresentationExchange.satisfies(def, mapOf(another.id to DescriptorMatch(mine, other, emptyList()))))
     }
 
     @Test

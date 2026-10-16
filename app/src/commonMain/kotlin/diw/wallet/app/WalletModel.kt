@@ -29,6 +29,7 @@ import diw.wallet.core.oid4vci.PublicClientWalletProvider
 import diw.wallet.core.oid4vci.RemoteWalletProvider
 import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
+import diw.wallet.core.oid4vp.ConsentTerms
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PreparedExtended
 import diw.wallet.core.oid4vp.PreparedDerived
@@ -113,6 +114,7 @@ import org.multipaz.document.buildDocumentStore
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.documenttype.knowntypes.DrivingLicense
 import org.multipaz.documenttype.knowntypes.EUPersonalID
+import org.multipaz.presentment.CredentialQueryResult
 import org.multipaz.presentment.CredentialSelection
 import org.multipaz.presentment.SimplePresentmentSource
 import org.multipaz.securearea.SecureAreaRepository
@@ -282,6 +284,8 @@ data class ConsentItem(
     val whole: Boolean = false,
     /** The claims that set [sensitivity] when it is medium or high, to say why a request is sensitive. */
     val notable: List<String> = emptyList(),
+    /** Other held documents that can answer this part of the request instead (the holder may change the credential). */
+    val alternatives: List<String> = emptyList(),
 )
 
 sealed class PresentationUi {
@@ -299,6 +303,8 @@ sealed class PresentationUi {
         val risk: RiskLevel = RiskLevel.LOW,
         /** The verifier_info entries (registration certificates and other attestations) as checked before asking. */
         val attestations: List<diw.wallet.core.oid4vp.VerifierAttestation> = emptyList(),
+        /** Recipient, occasion, purpose and terms page the request states (TWDIW 知情同意書). */
+        val terms: ConsentTerms? = null,
     ) : PresentationUi() {
         val request: ValidatedAuthorizationRequest get() = prepared.request
     }
@@ -812,6 +818,7 @@ class WalletModel(val platform: PlatformServices) {
                 logoUri = record.logoUri ?: display?.logoUri,
                 backgroundColor = record.backgroundColor ?: display?.backgroundColor,
                 textColor = record.textColor ?: display?.textColor,
+                displayDescription = record.displayDescription ?: display?.description,
                 displayCheckedAt = kotlin.time.Clock.System.now().epochSeconds,
             )
             val faceChanged = updated.backgroundImageUri != record.backgroundImageUri
@@ -1357,11 +1364,14 @@ class WalletModel(val platform: PlatformServices) {
         prepared: PreparedRequest,
         fields: List<TwdiwCustomField> = emptyList(),
         offline: TwdiwOfflineSession? = null,
+        chosen: CredentialSelection? = null,
+        checkedAttestations: List<diw.wallet.core.oid4vp.VerifierAttestation>? = null,
     ): PresentationUi.Consent {
         val consent = when (prepared) {
             is PreparedPresentation -> {
-                val selection = prepared.queryResult.select(emptyList())
-                val items = selection.matches.map { m ->
+                val selection = chosen ?: prepared.queryResult.select(emptyList())
+                val alternatives = standardAlternatives(prepared.queryResult, selection)
+                val items = selection.matches.mapIndexed { i, m ->
                     val doc = m.credential.document
                     val paths = m.claims.values.map { ClaimReader.pathOf(it) }
                     val labels = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) }
@@ -1373,12 +1383,13 @@ class WalletModel(val platform: PlatformServices) {
                         documentId = doc.identifier,
                         sensitivity = sensitivity,
                         notable = notable(paths, labels, sensitivity),
+                        alternatives = alternatives[i].map { it.identifier },
                     )
                 }
                 PresentationUi.Consent(prepared, selection, items, fields, offline)
             }
             is PreparedExtended -> {
-                val items = prepared.lines.map { line ->
+                val items = prepared.lines.mapIndexed { i, line ->
                     val d = lineDisclosure(line.document, line.claims)
                     ConsentItem(
                         line.documentName, d.labels, null,
@@ -1386,6 +1397,7 @@ class WalletModel(val platform: PlatformServices) {
                         sensitivity = d.sensitivity,
                         whole = d.whole,
                         notable = d.notable,
+                        alternatives = prepared.prepared.alternatives(i).map { it.document.identifier },
                     )
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
@@ -1415,7 +1427,7 @@ class WalletModel(val platform: PlatformServices) {
                 PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
             }
         }
-        val attestations = if (consent.request.verifierInfo.isEmpty()) emptyList() else {
+        val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
             diw.wallet.core.oid4vp.VerifierInfoChecker(trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust))
                 .check(consent.request)
         }
@@ -1424,7 +1436,47 @@ class WalletModel(val platform: PlatformServices) {
         val risk = RiskLevel.max(requestRisk(consent.items, consent.request.verifier.trust.tier), attestationRisk)
         // A status older than the request's risk allows is queried again while the user reads the request.
         status.refreshFor(consent.items.mapNotNull { it.documentId }, risk)
-        return consent.copy(risk = risk, attestations = attestations)
+        return consent.copy(risk = risk, attestations = attestations, terms = holder().consentTerms(consent.request))
+    }
+
+    /**
+     * Other documents each selected match of an OpenID4VP 1.0 request could come from: the matches of the same credential
+     * set member, less documents already presented on another line.
+     */
+    private fun standardAlternatives(result: CredentialQueryResult, selection: CredentialSelection): List<List<Document>> {
+        val members = result.credentialSets.flatMap { it.options }.flatMap { it.members }
+        return selection.matches.mapIndexed { i, m ->
+            val others = selection.matches.filterIndexed { j, _ -> j != i }.map { it.credential.document.identifier }.toSet()
+            val member = members.firstOrNull { mem -> mem.matches.any { it.credential.identifier == m.credential.identifier } }
+            member?.matches.orEmpty().map { it.credential.document }
+                .filter { it.identifier != m.credential.document.identifier && it.identifier !in others }
+                .distinctBy { it.identifier }
+        }
+    }
+
+    /**
+     * The holder changes the credential that answers line [index] of [consent] to the held document [documentId], one
+     * of the line's alternatives. The verifier checks already made are kept; the claims and risk are recomputed.
+     */
+    fun changeCredential(consent: PresentationUi.Consent, index: Int, documentId: String) = scope.launch {
+        try {
+            val next = when (val p = consent.prepared) {
+                is PreparedExtended -> {
+                    val alternative = p.prepared.alternatives(index).firstOrNull { it.document.identifier == documentId } ?: return@launch
+                    consentFor(holder().replace(p, index, alternative), consent.fields, consent.offline, checkedAttestations = consent.attestations)
+                }
+                is PreparedPresentation -> {
+                    val current = consent.selection ?: p.queryResult.select(emptyList())
+                    val doc = standardAlternatives(p.queryResult, current).getOrNull(index)?.firstOrNull { it.identifier == documentId } ?: return@launch
+                    val docs = current.matches.map { it.credential.document }.toMutableList().also { it[index] = doc }
+                    consentFor(p, consent.fields, consent.offline, p.queryResult.select(docs), consent.attestations)
+                }
+                else -> return@launch
+            }
+            if (presentation.value === consent) presentation.value = next
+        } catch (e: Exception) {
+            message.value = "無法更改憑證：" + describe(e)
+        }
     }
 
     /** What a presentation line discloses: field labels, their sensitivity, and whether it is the whole credential. */

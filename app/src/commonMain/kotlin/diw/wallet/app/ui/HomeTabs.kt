@@ -78,19 +78,18 @@ fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     }
 }
 
-/** Add a document: from the list of documents that can be requested, or by scanning the issuer's code. */
+/** Add a document: from the list of documents that can be requested, or by reading the issuer's QR Code. */
 @Composable
-fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Unit, onScan: (() -> Unit)?) {
+fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Unit, scan: ScanActions) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("加入證件", style = MaterialTheme.typography.titleLarge)
-            Text("從清單選擇要申請的證件，或掃描發行端提供的 QR Code。", style = MaterialTheme.typography.bodyMedium)
+            Text("從清單選擇要申請的證件，或讀取發行端提供的 QR Code。", style = MaterialTheme.typography.bodyMedium)
             ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { onList() }
-            ActionRow(
-                WalletIcons.Scan, "掃描 QR Code",
-                if (onScan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請到「使用」貼上領卡連結",
-                enabled = onScan != null,
-            ) { onScan?.invoke() }
+            scan.camera?.let { camera ->
+                ActionRow(WalletIcons.Scan, "掃描 QR Code", "發行端網頁或櫃台提供的領卡 QR Code") { camera() }
+            }
+            ActionRow(WalletIcons.Image, "從圖片讀取 QR Code", "領卡 QR Code 的截圖或照片，例如在同一支手機上開啟的發行端網頁") { scan.image() }
         }
     }
 }
@@ -155,11 +154,11 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
 // ---------------------------------------------------------------- use
 
 /**
- * What the holder does: present (one entry, the scanned code decides the flow), counter services, and adding
- * documents.
+ * What the holder does: read a QR Code (one entry, the code decides the flow: a presentation request, a credential
+ * offer or a Bonds challenge), present by NFC, counter services, and adding documents.
  */
 @Composable
-fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
+fun UseTab(model: WalletModel, scan: ScanActions) {
     val docs by model.documents.collectAsState()
     val services by model.taiwan.offlineServices.collectAsState()
     val error by model.taiwan.servicesError.collectAsState()
@@ -173,17 +172,12 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Icon(WalletIcons.Qr, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Text("出示我的證件", style = MaterialTheme.typography.titleLarge)
-                Text("掃描查驗方的 QR Code，面對面或線上都可以，出示哪些欄位由你決定。", style = MaterialTheme.typography.bodyMedium)
-                when {
-                    docs.isEmpty() -> Text("先加入證件，就能出示給查驗方。", style = MaterialTheme.typography.bodySmall)
-                    scan == null -> Text("這個裝置沒有相機，請在下方貼上查驗方給的連結。", style = MaterialTheme.typography.bodySmall)
-                }
-                Button(onClick = { scan?.invoke() }, enabled = scan != null && docs.isNotEmpty()) {
-                    Icon(WalletIcons.Scan, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text("掃描 QR Code")
-                }
+                Text("讀取 QR Code", style = MaterialTheme.typography.titleLarge)
+                Text("查驗方的出示請求、發行端的領卡 QR Code 或 Bonds 查驗挑戰都從這裡讀取，錢包依內容自動判斷；出示哪些欄位由你決定。",
+                    style = MaterialTheme.typography.bodyMedium)
+                if (docs.isEmpty()) Text("還沒有證件時只能領卡，加入證件後才能出示。", style = MaterialTheme.typography.bodySmall)
+                if (scan.camera == null) Text("這個裝置沒有相機，可以讀取 QR Code 的截圖或照片，或在下方貼上連結。", style = MaterialTheme.typography.bodySmall)
+                ScanButtons(scan)
             }
         }
         ActionRow(
@@ -204,11 +198,6 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
             }
         }
         SectionTitle("加入證件")
-        ActionRow(
-            WalletIcons.Scan, "掃描領取卡片",
-            if (scan != null) "發行端網頁或櫃台提供的領卡 QR Code" else "這個裝置沒有相機，請在下方貼上領卡連結",
-            enabled = scan != null,
-        ) { scan?.invoke() }
         ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { model.screen.value = Screen.AddDocument }
         SectionTitle("貼上連結")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

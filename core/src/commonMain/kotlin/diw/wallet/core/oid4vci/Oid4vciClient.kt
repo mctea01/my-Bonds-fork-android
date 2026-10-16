@@ -1080,6 +1080,7 @@ class Oid4vciClient(
             textColor = display?.textColor,
             backgroundImageUri = display?.backgroundImageUri,
             displayCheckedAt = Clock.System.now().epochSeconds,
+            displayDescription = display?.description,
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,

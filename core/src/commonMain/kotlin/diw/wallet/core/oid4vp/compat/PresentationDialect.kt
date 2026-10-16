@@ -1,6 +1,7 @@
 package diw.wallet.core.oid4vp.compat
 
 import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.oid4vp.ConsentTerms
 import diw.wallet.core.oid4vp.RawAuthorizationRequest
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.ext.WalletCredential
@@ -56,4 +57,7 @@ interface PresentationDialect {
 
     /** Whether the verifier accepted the response, for verifiers that answer HTTP 200 with an error body; null uses the HTTP status. */
     fun accepted(status: Int, body: String): Boolean? = null
+
+    /** Recipient, occasion, purpose and terms of an owned request; null keeps the Presentation Exchange purpose. */
+    fun consentTerms(request: ValidatedAuthorizationRequest): ConsentTerms? = null
 }

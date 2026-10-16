@@ -75,6 +75,8 @@ class TwdiwPlatformMock private constructor(
         val submission: JsonObject,
         val disclosedNames: List<String>,
         val customData: List<JsonObject>,
+        /** Payload of the presented card (issuer-signed part). */
+        val card: JsonObject? = null,
     )
 
     private class PendingRequest(val id: String, val definitionId: String, val nonce: String, val fields: List<String>)
@@ -542,7 +544,11 @@ class TwdiwPlatformMock private constructor(
                             }
                         }
                     } else {
-                        // The official verifier's shape: no descriptor format, the card type as a $.type filter, groups.
+                        // The official verifier's shape: no descriptor format, the card type as a $.type filter, groups,
+                        // and the consent terms as a JSON string in purpose.
+                        put("purpose", DiwJson.encodeToString(JsonObject.serializer(), buildJsonObject {
+                            put("client", "模擬驗證機關"); put("terms_uri", TERMS_URL); put("scenario", "皮夾夥伴卡驗證"); put("purpose", "確認會員身分")
+                        }))
                         putJsonArray("submission_requirements") {
                             addJsonObject { put("name", "姓名"); put("rule", "pick"); put("max", 1); put("from", "Group_1") }
                         }
@@ -625,7 +631,7 @@ class TwdiwPlatformMock private constructor(
             j.verify(VerificationKey.Ec(EcPublicKey.fromJwk(j.header.obj("jwk") ?: fail("custom_data without jwk"))))
             j.payload.arr("customData").orEmpty().filterIsInstance<JsonObject>()
         }.orEmpty()
-        received += Received(p.id, vp.payload, submission, names, custom)
+        received += Received(p.id, vp.payload, submission, names, custom, cardJws.payload)
         return json(buildJsonObject { put("code", "0"); put("message", "SUCCESS") })
     }
 
@@ -659,6 +665,7 @@ class TwdiwPlatformMock private constructor(
         const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/00000000/"
         const val VERIFIER = "https://$VERIFIER_HOST"
         const val CONFIG_ID = "00000000_mock_card"
+        const val TERMS_URL = "https://verifier.example.com/terms/wallet_partner"
         const val COVER_URL = "$ISSUER_ORIGIN/api/images/cover/00000000/mock_card"
         const val LOGO_URL = "$ISSUER_ORIGIN/vc/api/logo/square/00000000"
         const val VP_UID_ONLINE = "00000000_mock_vp"
