@@ -99,7 +99,7 @@ fun SettingsScreen(model: WalletModel) {
                     "AATL：" + onOff(s.aatlTrustList),
                     "EUTL：" + onOff(s.eutlTrustList),
                 ).joinToString("・")
-                SettingsSection.INTEROP -> "數位憑證皮夾、Bonds、EUDI 與 Verified ID 的相容處理常駐啟用"
+                SettingsSection.INTEROP -> "相容處理常駐啟用・錢包後端：" + if (s.walletProviderUrl.isNullOrBlank()) "未設定" else "已設定"
                 SettingsSection.DEVELOPER -> "自訂測試伺服器：" + onOff(s.testEnvironment) + if (s.manualMobileMoicaSp) "・手動 SP 帳號" else ""
                 SettingsSection.GENERAL -> "預設展開技術細節：" + onOff(s.showDetails)
                 SettingsSection.ABOUT -> "版本 " + appVersion() + "・授權、第三方元件與原始碼"
@@ -235,10 +235,40 @@ private fun TrustPage(model: WalletModel) {
 private fun InteropPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     var twdiwClientId by remember(s.twdiwClientId) { mutableStateOf(s.twdiwClientId) }
+    var walletClientId by remember(s.clientId) { mutableStateOf(s.clientId) }
+    var providerUrl by remember(s.walletProviderUrl) { mutableStateOf(s.walletProviderUrl.orEmpty()) }
     var twdiwUserAgent by remember(s.twdiwUserAgent) { mutableStateOf(s.twdiwUserAgent) }
     var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
     Text("數位憑證皮夾（TWDIW）、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
         style = MaterialTheme.typography.bodySmall)
+    SectionTitle("OpenID4VCI 錢包身分")
+    Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
+        style = MaterialTheme.typography.bodySmall)
+    OutlinedTextField(
+        value = walletClientId,
+        onValueChange = { walletClientId = it.trim().take(256) },
+        label = { Text("錢包 client_id") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    OutlinedTextField(
+        value = providerUrl,
+        onValueChange = { providerUrl = it.trim().take(500) },
+        label = { Text("受信任的錢包後端 HTTPS 網址") },
+        supportingText = { Text("留空時使用公開用戶端；測試後端另於開發者設定。請勿填寫發證端網址。") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    val validProvider = providerUrl.isBlank() ||
+        (providerUrl.startsWith("https://") && !providerUrl.contains('#') && !providerUrl.contains('?') &&
+            providerUrl.substringAfter("https://").substringBefore('/').isNotBlank())
+    val walletChanged = walletClientId != s.clientId || providerUrl.ifBlank { null } != s.walletProviderUrl
+    OutlinedButton(
+        enabled = validProvider && walletClientId.isNotBlank() && walletChanged,
+        onClick = { model.updateSettings { it.copy(clientId = walletClientId, walletProviderUrl = providerUrl.ifBlank { null }) } },
+    ) { Text("儲存錢包身分") }
+    if (!validProvider) Text("錢包後端必須使用 HTTPS 網址，且不得包含查詢參數或片段。", color = MaterialTheme.colorScheme.error)
+    HorizontalDivider()
     SectionTitle("數位憑證皮夾")
     OutlinedTextField(
         value = twdiwClientId,
