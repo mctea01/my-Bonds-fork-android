@@ -146,6 +146,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.AddDocument -> AddDocumentScreen(model)
                     Screen.TrustList -> TrustListScreen(model)
                     Screen.TrustAnchors -> TrustAnchorsScreen(model)
+                    Screen.CustomTrust -> CustomTrustScreen(model)
                     Screen.Offline -> OfflineScreen(model, scanQr)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
@@ -190,6 +191,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.AddDocument -> "從清單選擇"
     Screen.TrustList -> "信任清單"
     Screen.TrustAnchors -> "信任錨點"
+    Screen.CustomTrust -> "自訂信任"
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"

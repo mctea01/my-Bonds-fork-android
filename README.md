@@ -57,6 +57,7 @@
   - 文件簽章與時戳另可依 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL），清單在 App 內驗證後離線保存並每週更新；
   - DID：did:key、did:jwk、did:web、did:ion；
   - DIF Linked Domains、TWDIW 信任清單與 Arbitrum 鏈上錨定、使用者自行信任的 DID。
+  - 自己匯入的根憑證、中繼憑證與信任的 DID 集中在「設定 > 信任 > 自訂信任」，可隨時加入或移除。
 
 ### 文件與簽章
 

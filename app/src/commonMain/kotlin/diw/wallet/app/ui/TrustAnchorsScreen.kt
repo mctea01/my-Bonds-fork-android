@@ -80,6 +80,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
         Text("信任錨點決定哪些發行端、查驗方與狀態清單可以信任，以及信任到什麼程度。只有 T1 會顯示為官方。",
             style = MaterialTheme.typography.bodyMedium)
         CollapsibleSection("信任等級說明（T1 至 T4）", initiallyExpanded = true, key = "tier-legend") { TierLegend() }
+        CustomTrustRow(model)
 
         SectionTitle("DID 信任來源")
         ActionRow(WalletIcons.Government, "數位憑證皮夾信任清單", "數位發展部公布的組織，DID 文件自簽並在 Arbitrum One 註冊") {
@@ -93,7 +94,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
                     style = MaterialTheme.typography.bodySmall)
             }
         }
-        TrustedDidSection(model, dids)
+        Text("自行信任的 DID（${dids.size}）在「自訂信任」加入或移除。", style = MaterialTheme.typography.bodySmall)
 
         HorizontalDivider()
         SectionTitle("X.509 根憑證")
@@ -108,7 +109,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
                     if (inEnv.isEmpty()) Text(
                         when (env) {
                             TrustEnvironment.PRODUCTION -> "尚未載入內建錨點。"
-                            TrustEnvironment.USER -> "尚未匯入。可在下方貼上其他國家、組織或企業的根憑證。"
+                            TrustEnvironment.USER -> "尚未匯入。可在「自訂信任」貼上其他國家、組織或企業的根憑證。"
                             TrustEnvironment.TEST -> "尚未載入。Multipaz 內建的測試發行端與查驗端在啟動時載入，其他測試錨點在「設定 > 自訂測試伺服器」匯入。"
                             TrustEnvironment.SYSTEM -> ""
                         },
@@ -121,21 +122,84 @@ fun TrustAnchorsScreen(model: WalletModel) {
         SystemStoreSection(model)
         TrustListsSection(model)
         IntermediateSection(model)
+    }
+    removing?.let { g -> RemoveAnchorDialog(model, g) { removing = null } }
+}
+
+/** Entry to the user's own trust, with what it holds now. */
+@Composable
+internal fun CustomTrustRow(model: WalletModel) {
+    val anchors by model.anchors.collectAsState()
+    val dids by model.trustedDids.collectAsState()
+    val intermediates by model.intermediates.collectAsState()
+    val roots = anchors?.filter { it.environment == TrustEnvironment.USER }?.map { it.certificate }?.distinct()?.size ?: 0
+    ActionRow(WalletIcons.Shield, "自訂信任",
+        "匯入的根憑證 $roots 張、中繼憑證 ${intermediates.size} 張、自行信任的 DID ${dids.size} 個；可匯入其他國家、組織或企業的根憑證，或信任清單以外的 DID") {
+        model.screen.value = Screen.CustomTrust
+    }
+}
+
+/**
+ * Everything the user added to trust in one place: imported roots (T2, never official), imported intermediates
+ * (chain completion only) and trusted DIDs, with the forms that add them.
+ */
+@Composable
+fun CustomTrustScreen(model: WalletModel) {
+    val anchors by model.anchors.collectAsState()
+    val dids by model.trustedDids.collectAsState()
+    val intermediates by model.intermediates.collectAsState()
+    var removing by remember { mutableStateOf<AnchorGroup?>(null) }
+    LaunchedEffect(Unit) { model.loadAnchors() }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("這裡是你自己加入的信任：匯入的根憑證與自行信任的 DID 判定為 T2（使用者自訂，高可信但不顯示為官方）；中繼憑證只用來補足憑證鏈。" +
+            "信任來源改變時，已持有證件的發行端會重新判定並記入紀錄。",
+            style = MaterialTheme.typography.bodyMedium)
+
+        SectionTitle("匯入的根憑證")
+        val list = anchors
+        if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
+        else {
+            val groups = list.filter { it.environment == TrustEnvironment.USER }
+                .groupBy { it.certificate }.map { (_, v) -> AnchorGroup(TrustEnvironment.USER, v) }
+            if (groups.isEmpty()) Text("尚未匯入。可在下方貼上根憑證；文件簽章卡與信任錨點頁也可以信任線上簽核平台的根憑證。",
+                style = MaterialTheme.typography.bodySmall)
+            groups.forEach { g -> AnchorCard(g) { removing = g } }
+        }
+
+        HorizontalDivider()
+        SectionTitle("匯入的中繼憑證")
+        if (intermediates.isEmpty()) Text("尚未匯入。簽署者沒有附上中繼憑證、內建也沒有時，可在下方貼上。", style = MaterialTheme.typography.bodySmall)
+        intermediates.forEach { i ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    IntermediateRow(model, i.name, i.certificate.displaySubject(), i.certificate, i.source ?: "使用者匯入", Screen.CustomTrust)
+                }
+                TextButton(onClick = { model.removeIntermediate(i) }) { Text("移除") }
+            }
+        }
+
+        HorizontalDivider()
+        SectionTitle("自行信任的 DID")
+        TrustedDidSection(model, dids)
+
         ImportAnchorSection(model)
     }
-    removing?.let { g ->
-        AlertDialog(
-            onDismissRequest = { removing = null },
-            title = { Text("移除這個信任錨點？") },
-            text = { Text("「${g.first.metadata.displayName}」移除後，由它簽發的證件與請求不再被這個錨點信任。已加入的證件不會刪除。") },
-            confirmButton = {
-                TextButton(onClick = { g.anchors.forEach { model.removeAnchor(it) }; removing = null }) {
-                    Text("移除", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = { TextButton(onClick = { removing = null }) { Text("取消") } },
-        )
-    }
+    removing?.let { g -> RemoveAnchorDialog(model, g) { removing = null } }
+}
+
+@Composable
+private fun RemoveAnchorDialog(model: WalletModel, g: AnchorGroup, onDone: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("移除這個信任錨點？") },
+        text = { Text("「${g.first.metadata.displayName ?: g.first.certificate.displaySubject()}」移除後，由它簽發的證件與請求不再被這個錨點信任。已加入的證件不會刪除。") },
+        confirmButton = {
+            TextButton(onClick = { g.anchors.forEach { model.removeAnchor(it) }; onDone() }) {
+                Text("移除", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDone) { Text("取消") } },
+    )
 }
 
 @Composable
@@ -328,7 +392,7 @@ private fun IntermediateSection(model: WalletModel) {
         style = MaterialTheme.typography.bodySmall)
     val builtIn = diw.wallet.core.trust.BuiltInPublicRoots.intermediates
     CollapsibleSection("內建中繼憑證", builtIn.size, key = "intermediates-builtin") {
-        builtIn.forEach { i -> IntermediateRow(model, i.name, "${i.owner}・由 ${i.issuer} 簽發・${i.purposes}", i.certificate, i.source) }
+        builtIn.forEach { i -> IntermediateRow(model, i.name, "${i.owner}・由 ${i.issuer} 簽發・${i.purposes}", i.certificate, i.source, Screen.TrustAnchors) }
     }
     val importable = diw.wallet.core.trust.BuiltInPublicRoots.importableRoots
     if (importable.isNotEmpty()) CollapsibleSection("可信任的線上簽核平台根憑證", importable.size, key = "intermediates-importable") {
@@ -336,27 +400,19 @@ private fun IntermediateSection(model: WalletModel) {
             style = MaterialTheme.typography.bodySmall)
         importable.forEach { r ->
             val trusted = anchors?.any { it.certificate == r.certificate } == true
-            IntermediateRow(model, r.name, "${r.owner}・${r.purposes}", r.certificate, r.source)
+            IntermediateRow(model, r.name, "${r.owner}・${r.purposes}", r.certificate, r.source, Screen.TrustAnchors)
             if (trusted) Text("已信任（使用者匯入，T2）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             else TextButton(onClick = { trusting = r }) { Text("信任這個根憑證") }
         }
     }
-    CollapsibleSection("使用者匯入的中繼憑證", user.size, initiallyExpanded = true, key = "intermediates-user") {
-        if (user.isEmpty()) Text("尚未匯入。可在下方貼上中繼憑證。", style = MaterialTheme.typography.bodySmall)
-        user.forEach { i ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { IntermediateRow(model, i.name, i.certificate.displaySubject(), i.certificate, i.source ?: "使用者匯入") }
-                TextButton(onClick = { model.removeIntermediate(i) }) { Text("移除") }
-            }
-        }
-    }
+    Text("使用者匯入的中繼憑證 ${user.size} 張，在「自訂信任」匯入或移除。", style = MaterialTheme.typography.bodySmall)
     trusting?.let { r ->
         RiskConfirmDialog(
             title = "信任「${r.name}」",
             lines = listOf(
                 "${r.owner} 的根憑證不在 Mozilla、Microsoft 等根憑證計畫內，錢包無法確認它的管理方式。",
                 "信任後，連到它的文件簽章與時間戳記會判定為 T2（使用者匯入，非官方）。",
-                "可隨時在「使用者匯入」移除。",
+                "可隨時在「設定 > 信任 > 自訂信任」移除。",
             ),
             confirm = "信任",
             onConfirm = { model.trustRootCertificate(r.certificate.encoded.toByteArray()); trusting = null },
@@ -366,8 +422,8 @@ private fun IntermediateSection(model: WalletModel) {
 }
 
 @Composable
-private fun IntermediateRow(model: WalletModel, name: String, detail: String, cert: org.multipaz.crypto.X509Cert, source: String?) {
-    Column(Modifier.fillMaxWidth().clickable { model.screen.value = Screen.Certificate(listOf(cert), 0, Screen.TrustAnchors) }.padding(vertical = 4.dp)) {
+private fun IntermediateRow(model: WalletModel, name: String, detail: String, cert: org.multipaz.crypto.X509Cert, source: String?, from: Screen) {
+    Column(Modifier.fillMaxWidth().clickable { model.screen.value = Screen.Certificate(listOf(cert), 0, from) }.padding(vertical = 4.dp)) {
         Text(name, style = MaterialTheme.typography.bodyMedium)
         Text(detail, style = MaterialTheme.typography.bodySmall)
         Text("有效至 " + localTime(cert.validityNotAfter) + (source?.let { "・來源：$it" } ?: ""), style = MaterialTheme.typography.bodySmall,
@@ -380,7 +436,6 @@ private fun TrustedDidSection(model: WalletModel, dids: List<UserTrustedDid>) {
     var did by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var roles by remember { mutableStateOf(setOf(TrustRole.ISSUER)) }
-    Text("自行信任的 DID（${dids.size}）", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 4.dp))
     if (dids.isEmpty()) Text("尚未加入。信任清單以外的組織（例如企業自建發行端）可在這裡加入。", style = MaterialTheme.typography.bodySmall)
     dids.forEach { d ->
         Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),

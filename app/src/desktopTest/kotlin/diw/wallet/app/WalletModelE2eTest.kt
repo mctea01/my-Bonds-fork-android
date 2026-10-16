@@ -315,6 +315,8 @@ class WalletModelE2eTest {
         screen("08-settings", Screen.Settings)
         screen("08b-settings-documents", Screen.SettingsPage(diw.wallet.app.SettingsSection.DOCUMENTS))
         screen("08c-settings-trust", Screen.SettingsPage(diw.wallet.app.SettingsSection.TRUST))
+        screen("08d-settings-interop", Screen.SettingsPage(diw.wallet.app.SettingsSection.INTEROP))
+        screen("08e-custom-trust", Screen.CustomTrust)
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("13-trust-anchors", Screen.TrustAnchors)
