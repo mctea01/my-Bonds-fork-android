@@ -446,7 +446,7 @@ actual object DocumentInspector {
             if (o.kind == "線上簽核") {
                 notes.add("線上簽核檔不是 XAdES：每個簽核點以 XML 簽章涵蓋同一案件的公文檔、附件、自己的異動資訊與前一個簽核點；案件檔案都在錢包內才能逐一比對")
             }
-            (o.subject ?: o.title).take(80)
+            if (o.kind == "線上簽核") "線上簽核檔（${o.steps.size} 個簽核點）" else (o.subject ?: o.title).take(80)
         }
         val sigs = XmlDsig.verify(bytes, fileName ?: "XML 簽章", checks, now) +
             if (ApprovalSignatures.isApproval(doc)) ApprovalSignatures.verify(bytes, checks, now, related) else emptyList()

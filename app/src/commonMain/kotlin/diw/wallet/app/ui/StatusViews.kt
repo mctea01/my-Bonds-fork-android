@@ -63,6 +63,17 @@ fun VerdictPill(verdict: Verdict, text: String, modifier: Modifier = Modifier) {
     }
 }
 
+/** A fact about an item that is not a judgment (what it holds, what was made from it): no verdict colour. */
+@Composable
+fun InfoPill(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        modifier.background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+    )
+}
+
 /** The document's status judged at its own risk, for its card in the documents list. */
 @Composable
 fun StatusChip(model: WalletModel, doc: Document) {

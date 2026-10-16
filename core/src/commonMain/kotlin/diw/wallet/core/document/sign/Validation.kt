@@ -8,7 +8,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
-import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 
 /** Fetches revocation data and issuer certificates: a GET, or a POST of [body] as [contentType]; null on failure. */
@@ -16,18 +16,77 @@ fun interface HttpFetch {
     suspend fun fetch(url: String, body: ByteArray?, contentType: String?): ByteArray?
 }
 
-/** [HttpFetch] over ktor; only http and https, at most [maxBytes] (large CRLs are refused, OCSP comes first). */
-class KtorFetch(private val http: HttpClient, private val maxBytes: Int = 16 * 1024 * 1024) : HttpFetch {
-    override suspend fun fetch(url: String, body: ByteArray?, contentType: String?): ByteArray? = runCatching {
-        if (!url.startsWith("http://") && !url.startsWith("https://")) return null
+/** One HTTP exchange: the status, the body and, for a redirect, where it points. */
+class FetchReply(val status: Int, val body: ByteArray, val location: String? = null) {
+    val success: Boolean get() = status in 200..299
+}
+
+/**
+ * HTTP for data that carries its own signature: RFC 3161 time stamps, OCSP responses, CRLs and issuer certificates.
+ * Certification and time-stamp authorities publish these over plain http, and every reply is verified by its
+ * signature, so a platform that refuses clear text for the rest of the app can give this one route its own client.
+ */
+fun interface SignedDataHttp {
+    /** A GET, or a POST of [body] as [contentType]; throws when the server cannot be reached. Does not follow redirects. */
+    suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?): FetchReply
+}
+
+/** [SignedDataHttp] over a ktor client that does not follow redirects itself. */
+class KtorSignedDataHttp(private val http: HttpClient) : SignedDataHttp {
+    override suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?): FetchReply {
         val response = if (body != null) http.post(url) {
             contentType?.let { contentType(ContentType.parse(it)) }
-            header("Accept", "*/*")
+            header("Accept", accept ?: "*/*")
             setBody(body)
-        } else http.get(url)
-        if (!response.status.isSuccess()) return null
-        response.bodyAsBytes().takeIf { it.isNotEmpty() && it.size <= maxBytes }
-    }.getOrNull()
+        } else http.get(url) { header("Accept", accept ?: "*/*") }
+        return FetchReply(response.status.value, response.bodyAsBytes(), response.headers["Location"])
+    }
+}
+
+/**
+ * Sends https to [secure] and http to [cleartext] (or [secure] when there is none) and follows up to [maxRedirects]
+ * redirects across both: 307 and 308 repeat the request, the others turn it into a GET.
+ */
+class SignedDataRoutes(
+    private val secure: SignedDataHttp,
+    private val cleartext: SignedDataHttp? = null,
+    private val maxRedirects: Int = 4,
+) : SignedDataHttp {
+    override suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?): FetchReply {
+        var current = url
+        var payload = body
+        repeat(maxRedirects + 1) {
+            val client = when {
+                current.startsWith("https://") -> secure
+                current.startsWith("http://") -> cleartext ?: secure
+                else -> throw IllegalArgumentException("Only http and https are fetched: $current")
+            }
+            val reply = client.exchange(current, payload, contentType, accept)
+            val next = reply.location?.takeIf { reply.status in 300..399 } ?: return reply
+            current = resolve(current, next)
+            if (reply.status != 307 && reply.status != 308) payload = null
+        }
+        throw IllegalStateException("Too many redirects from $url")
+    }
+
+    private fun resolve(base: String, location: String): String = when {
+        location.startsWith("http://") || location.startsWith("https://") -> location
+        location.startsWith("//") -> base.substringBefore("//") + location
+        location.startsWith("/") -> base.substringBefore("//") + "//" + base.substringAfter("//").substringBefore('/') + location
+        else -> base.substringBeforeLast('/') + "/" + location
+    }
+}
+
+/** [HttpFetch] over [SignedDataHttp]; only http and https, at most [maxBytes] (large CRLs are refused, OCSP comes first). */
+class SignedDataFetch(private val http: SignedDataHttp, private val maxBytes: Int = 16 * 1024 * 1024) : HttpFetch {
+    override suspend fun fetch(url: String, body: ByteArray?, contentType: String?): ByteArray? = try {
+        if (!url.startsWith("http://") && !url.startsWith("https://")) null
+        else http.exchange(url, body, contentType, null).takeIf { it.success }?.body?.takeIf { it.isNotEmpty() && it.size <= maxBytes }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        null
+    }
 }
 
 /** What the revocation check of one certificate found when the data was collected. */

@@ -290,13 +290,21 @@ class DocumentSigningTest {
         ).toXml()
         val attachment = "附件內容".repeat(50).toByteArray()
         val files = listOf("稿1150000002v1.di" to letter, "附件 1+2.doc" to attachment)
-        val point1 = diw.wallet.core.document.official.ApprovalPoint("呈核", "陳核 <測試>", unit = "測試科", title = "科員", role = "承辦人員",
+        val point1 = diw.wallet.core.document.official.ApprovalPoint("呈核", "陳核 <測試>", unit = "測試科", title = "科員", role = "承辦人員", organization = "測試機關",
             time = kotlin.time.Instant.parse("2026-10-16T02:30:00Z"))
         val first = DocumentSigning.signApproval(null, files, signer(false), point1)
         val text = String(first)
         assertTrue(text.startsWith("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE 線上簽核"), text.take(120))
         assertTrue("xmlns" !in text && "xades" !in text.lowercase(), "no namespaces, not XAdES")
         assertTrue("<簽章時間>11510161030</簽章時間>" in text, "ROC time in Taipei")
+        // 簽核人員 follows (機關?, 單位, 職稱, 姓名, 帳號, 角色?): 帳號 is required and written empty when not given.
+        assertTrue(Regex("<簽核人員>\\s*<機關><全銜>測試機關</全銜></機關>\\s*<單位>測試科</單位>\\s*<職稱>科員</職稱>\\s*<姓名>[^<]+</姓名>\\s*<帳號></帳號>\\s*<角色>承辦人員</角色>").containsMatchIn(text), text)
+        // 簽核文件夾 holds the required 簽核文稿清單: the .di is the draft and the other file its attachment, both
+        // pointing into 檔案清單 by 原始檔序號.
+        assertTrue(Regex("<簽核文稿清單 文稿數=\"1\">\\s*<文稿 原始檔序號=\"1\" 序號=\"1\" 產生時間=\"11510161030\">\\s*<名稱>稿1150000002v1</名稱>\\s*<文稿類型>函</文稿類型>").containsMatchIn(text), text)
+        assertTrue(Regex("<附件 格式=\"電子檔格式附件\" 序號=\"1\" 產生時間=\"11510161030\">\\s*<名稱>附件 1\\+2.doc</名稱>\\s*<附件類型>WORD</附件類型>\\s*<電子檔格式附件 原始檔序號=\"2\" />").containsMatchIn(text), text)
+        assertTrue("<電子檔案資訊 原始檔序號=\"2\" 序號=\"2\"" in text, text)
+        assertEquals("線上簽核檔（1 個簽核點）", DocumentInspector.inspect(first, "approval.si", trust, related = files.toMap()).title)
         // The case files stay as they were; a second signer adds a point that also covers the first one.
         val second = DocumentSigning.signApproval(first, files, signer(true), diw.wallet.core.document.official.ApprovalPoint("決行", "可"))
         save("approval.si", second)
@@ -309,6 +317,9 @@ class DocumentSigningTest {
         }
         assertTrue(r.signatures[0].label.contains("Test Signer RSA") && r.signatures[0].label.contains("呈核"), r.signatures[0].label)
         assertTrue(r.signatures[1].notes.first().contains("與前一個簽核點"), r.signatures[1].notes.toString())
+        // The specification names RSA-SHA256; an ECDSA point still verifies but says so.
+        assertTrue(r.signatures[0].notes.none { "RSA-SHA256" in it }, r.signatures[0].notes.toString())
+        assertTrue(r.signatures[1].notes.any { "規範指定的簽章演算法是 RSA-SHA256" in it }, r.signatures[1].notes.toString())
         assertEquals("呈核：陳核 <測試>", r.signatures[0].reason)
         val doc = diw.wallet.core.document.official.OfficialDocuments.parse(second)!!
         assertEquals(listOf("呈核", "決行"), doc.steps.map { it.action })
@@ -324,6 +335,27 @@ class DocumentSigningTest {
         val edited = String(second).replace("陳核 &lt;測試&gt;", "陳核（改）").toByteArray()
         val e = DocumentInspector.inspect(edited, "approval.si", trust, related = related)
         assertEquals(listOf(Check.FAIL, Check.FAIL), e.signatures.map { it.integrity })
+        // A point signed with a temporary card (借卡) must be confirmed (補簽追認) before filing.
+        val borrowed = String(second).replaceFirst("<異動資訊>", "<異動資訊 借卡=\"Y\">").toByteArray()
+        val b = DocumentInspector.inspect(borrowed, "approval.si", trust, related = related)
+        assertTrue(b.signatures[0].notes.any { "尚未補簽追認" in it }, b.signatures[0].notes.toString())
+        // An unsigned 補簽人員 appended later is not a confirmation.
+        val unsigned = String(borrowed).replace("</線上簽核資訊>", "<補簽追認 補簽人員數=\"1\"><補簽人員 URI=\"#Sign_P0\" 補簽註記=\"本人補簽\" 產生時間=\"11510170900\"/></補簽追認></線上簽核資訊>").toByteArray()
+        assertTrue(DocumentInspector.inspect(unsigned, "approval.si", trust, related = related).signatures[0].notes.any { "不算完成追認" in it })
+        // A confirmation whose signature holds counts. The second point is marked as signed with a temporary card and
+        // the first point's signature (it covers the files and the first point's Object, which stay unchanged) is
+        // reused as the confirmation signature.
+        val firstSig = Regex("<Signature Id=\"ds_user_0\">[\\s\\S]*?</Signature>").find(String(second))!!.value.replace(" Id=\"ds_user_0\"", "")
+        val text2 = String(second)
+        val at = text2.indexOf("<異動資訊>", text2.indexOf("Sign_P1"))
+        val signedConfirm = (text2.substring(0, at) + "<異動資訊 借卡=\"Y\">" + text2.substring(at + "<異動資訊>".length)).replace("</線上簽核資訊>",
+            "<補簽追認 補簽人員數=\"1\"><補簽人員 URI=\"#Sign_P1\" 補簽註記=\"本人補簽\" 產生時間=\"11510170900\"><簽章資料><簽核人員><單位/><職稱/><姓名>補簽者</姓名><帳號/></簽核人員>$firstSig</簽章資料></補簽人員></補簽追認></線上簽核資訊>")
+            .toByteArray()
+        val confirmedNotes = DocumentInspector.inspect(signedConfirm, "approval.si", trust, related = related).signatures[1].notes
+        assertTrue(confirmedNotes.any { "已有補簽追認" in it }, confirmedNotes.toString())
+        // Every point names its flow node; one without URI is noted.
+        val noUri = String(second).replaceFirst(" URI=\"#FLOW_P0\"", "").toByteArray()
+        assertTrue(DocumentInspector.inspect(noUri, "approval.si", trust, related = related).signatures[0].notes.any { "沒有以 URI 指向" in it })
     }
 
     @Test

@@ -128,6 +128,8 @@ object WalletIcons {
     }
 
     /** Triangle with an exclamation mark: verdict caution. */
+    val Info by lazy { icon("Info", "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2V7h2v2z") }
+
     val Caution by lazy { icon("Caution", "M1,21h22L12,2 1,21zM13,18h-2v-2h2v2zM13,14h-2v-4h2v4z") }
 
     /** Filled circle with a cross: verdict fail, declined. */

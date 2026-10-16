@@ -138,6 +138,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                         HomeTab.HISTORY -> HistoryTab(model)
                     }
                     Screen.Settings -> SettingsScreen(model)
+                    is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
                     Screen.Issuance -> IssuanceScreen(model)
                     Screen.Presentation -> PresentationScreen(model)
                     is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
@@ -145,6 +146,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.AddDocument -> AddDocumentScreen(model)
                     Screen.TrustList -> TrustListScreen(model)
                     Screen.TrustAnchors -> TrustAnchorsScreen(model)
+                    Screen.CustomTrust -> CustomTrustScreen(model)
                     Screen.Offline -> OfflineScreen(model, scanQr)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
@@ -155,6 +157,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
                     is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                     is Screen.NationalId -> NationalIdScreen(model, s)
+                    Screen.DocumentSources -> DocumentSourcesScreen(model)
                     is Screen.Portal -> PortalScreen(model, s)
                     is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                 }
@@ -181,6 +184,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
         HomeTab.HISTORY -> "紀錄"
     }
     Screen.Settings -> "設定"
+    is Screen.SettingsPage -> s.section.title
     Screen.Issuance -> "加入證件"
     Screen.Presentation -> "出示證件"
     is Screen.DocumentDetail -> "證件內容"
@@ -188,6 +192,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.AddDocument -> "從清單選擇"
     Screen.TrustList -> "信任清單"
     Screen.TrustAnchors -> "信任錨點"
+    Screen.CustomTrust -> "自訂信任"
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"
@@ -198,6 +203,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.OpenCertRender -> if (s.offline) "離線顯示證書" else "發證機構樣式"
     is Screen.NationalIdCreate -> "製作身分證卡"
     is Screen.NationalId -> "身分證卡"
+    Screen.DocumentSources -> "取得文件"
     is Screen.Portal -> "取得文件"
     is Screen.OfficialBundle -> "公文容器"
 }

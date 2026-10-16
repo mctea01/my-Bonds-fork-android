@@ -78,6 +78,13 @@ interface PlatformServices {
 
     fun httpClient(): HttpClient
 
+    /**
+     * HTTP for time stamps, OCSP, CRLs and issuer certificates (replies verified by signature), following redirects.
+     * Android release builds refuse clear text in OkHttp, so Android sends http URLs through its own socket client.
+     */
+    fun signedDataHttp(http: HttpClient): diw.wallet.core.document.sign.SignedDataHttp =
+        diw.wallet.core.document.sign.SignedDataRoutes(diw.wallet.core.document.sign.KtorSignedDataHttp(http))
+
     /** Downloads the public trust lists (AATL, EUTL) in the background when they are due; tests turn it off. */
     val refreshTrustListsInBackground: Boolean get() = true
 

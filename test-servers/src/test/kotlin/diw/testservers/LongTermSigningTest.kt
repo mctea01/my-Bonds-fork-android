@@ -1,6 +1,7 @@
 package diw.testservers
 
 import diw.testservers.fixtures.PdfComposer
+import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.DocumentVerdict
@@ -9,7 +10,12 @@ import diw.wallet.core.document.pdf.PdfSignOptions
 import diw.wallet.core.document.pdf.PdfSignatures
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.CleartextHttp
 import diw.wallet.core.document.sign.HttpFetch
+import diw.wallet.core.document.sign.SignedDataFetch
+import diw.wallet.core.document.sign.SignedDataHttp
+import diw.wallet.core.document.sign.SignedDataRoutes
+import diw.wallet.core.document.sign.TsaClient
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.document.sign.Timestamper
@@ -54,11 +60,15 @@ import org.bouncycastle.cms.jcajce.JcaSignerInfoGeneratorBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.bouncycastle.operator.jcajce.JcaDigestCalculatorProviderBuilder
+import org.bouncycastle.tsp.TSPAlgorithms
 import org.bouncycastle.tsp.TimeStampRequest
+import org.bouncycastle.tsp.TimeStampResponseGenerator
 import org.bouncycastle.tsp.TimeStampTokenGenerator
 import org.multipaz.crypto.X509Cert
 import org.multipaz.storage.ephemeral.EphemeralStorage
+import com.sun.net.httpserver.HttpServer
 import java.math.BigInteger
+import java.net.InetSocketAddress
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.Signature
@@ -146,6 +156,17 @@ class LongTermSigningTest {
         }
     }
 
+    private fun tokenGenerator() = TimeStampTokenGenerator(
+        JcaSignerInfoGeneratorBuilder(JcaDigestCalculatorProviderBuilder().setProvider(bc).build())
+            .build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(tsaKey.private), tsaCert),
+        JcaDigestCalculatorProviderBuilder().setProvider(bc).build().get(AlgorithmIdentifier(OIWObjectIdentifiers.idSHA1)),
+        ASN1ObjectIdentifier("1.2.3.4.2"),
+    ).apply { addCertificates(JcaCertStore(listOf(tsaCert))) }
+
+    /** What an RFC 3161 server answers to [request]: a TimeStampResp with a granted token. */
+    private fun tsaResponse(request: ByteArray): ByteArray =
+        TimeStampResponseGenerator(tokenGenerator(), TSPAlgorithms.ALLOWED).generate(TimeStampRequest(request), BigInteger.valueOf(System.nanoTime()), Date()).encoded
+
     private val timestamper = Timestamper { data ->
         val req = TimeStampRequest(DocumentInspector.timestampRequest(data))
         val gen = TimeStampTokenGenerator(
@@ -229,5 +250,56 @@ class LongTermSigningTest {
         assertTrue(v.summary().startsWith("已保存撤銷資訊：1 份 CRL"), v.summary())
         val s = DocumentSigning.collectValidation(listOf(revokedCert.encoded), fetch)
         assertEquals(listOf("OCSP" to "REVOKED"), s.statuses.map { it.source to it.status })
+    }
+
+    /**
+     * Android release builds refuse clear text in OkHttp, so time stamps, OCSP, CRLs and AIA certificates on http go
+     * through CleartextHttp: a chunked RFC 3161 reply, an OCSP POST, a CRL behind a redirect and a 404 over a socket.
+     */
+    @Test
+    fun cleartextRouteForTimeStampsAndRevocationData() = runBlocking<Unit> {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { ex ->
+            val body = ex.requestBody.readBytes()
+            val path = ex.requestURI.path
+            val reply = when (path) {
+                "/tsa" -> tsaResponse(body)
+                "/ocsp/" -> runBlocking { fetch.fetch(OCSP, body, null) }
+                "/root.crl" -> runBlocking { fetch.fetch(CRL, null, null) }
+                "/root.cer" -> runBlocking { fetch.fetch(ROOT_URL, null, null) }
+                else -> null
+            }
+            when {
+                path == "/old.crl" -> {
+                    ex.responseHeaders.add("Location", "/root.crl")
+                    ex.sendResponseHeaders(302, -1)
+                }
+                reply == null -> ex.sendResponseHeaders(404, -1)
+                // A length of 0 makes the JDK server send the reply chunked.
+                path == "/tsa" -> ex.sendResponseHeaders(200, 0).also { ex.responseBody.write(reply) }
+                else -> ex.sendResponseHeaders(200, reply.size.toLong()).also { ex.responseBody.write(reply) }
+            }
+            ex.close()
+        }
+        server.start()
+        try {
+            val base = "http://127.0.0.1:${server.address.port}"
+            val http = SignedDataRoutes(SignedDataHttp { url, _, _, _ -> error("Only http is expected here: $url") }, CleartextHttp())
+            val token = TsaClient(http, "$base/tsa").timestamp("文件".toByteArray())
+            val info = DocumentInspector.verifyTimestamp(token, "文件".toByteArray(), trust)
+            assertEquals(Check.PASS, info.imprint)
+            assertEquals(Check.PASS, info.signature)
+            val local = SignedDataFetch(http)
+            val routed = HttpFetch { url, body, contentType ->
+                local.fetch(when (url) { OCSP -> "$base/ocsp/"; CRL -> "$base/old.crl"; ROOT_URL -> "$base/root.cer"; else -> url }, body, contentType)
+            }
+            val v = DocumentSigning.timestampValidation(token, routed)
+            assertEquals(listOf("CRL" to "GOOD"), v.statuses.map { it.source to it.status })
+            val s = DocumentSigning.collectValidation(listOf(revokedCert.encoded), routed)
+            assertEquals(listOf("OCSP" to "REVOKED"), s.statuses.map { it.source to it.status })
+            assertEquals(404, http.exchange("$base/missing", null, null, null).status)
+        } finally {
+            server.stop(0)
+        }
     }
 }

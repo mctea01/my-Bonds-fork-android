@@ -4,6 +4,7 @@ import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.Draft13Dialect
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.did.DidKeys
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
@@ -50,10 +51,13 @@ import diw.wallet.core.w3c.W3cVcCredential
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.crypto.Crypto
+import org.multipaz.crypto.EcCurve
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -232,6 +236,23 @@ class TwdiwPlatformTest {
         assertTrue(s.holder.respond(second) is PresentationOutcome.Posted)
         assertEquals(listOf("name", "birthDate"), s.mock.received.last().disclosedNames)
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    @Test
+    fun verifierSigningWithFragmentZero() = runBlocking<Unit> {
+        val s = setup()
+        s.receive()
+        s.mock.requestKid = s.mock.verifierDid + "#0"
+        val request = s.holder.resolveUri(s.mock.presentationUri(listOf("name")))
+        assertEquals("twdiw", request.profile)
+        assertEquals(s.mock.verifierDid, request.verifier.did)
+        val prepared = s.holder.prepare(request) as PreparedExtended
+        assertTrue(s.holder.respond(prepared) is PresentationOutcome.Posted)
+        assertEquals(listOf("name"), s.mock.received.single().disclosedNames)
+
+        // A kid naming another DID is still refused.
+        s.mock.requestKid = DidKeys.didKeyJwkJcs(Crypto.createEcPrivateKey(EcCurve.P256).publicKey) + "#0"
+        assertFails { s.holder.resolveUri(s.mock.presentationUri(listOf("name"))) }
     }
 
     /** A citizen certificate card signer under a throwaway MOICA-like chain (the verifier mock does not check it). */

@@ -1,14 +1,7 @@
 package diw.wallet.core.document.sign
 
 import diw.wallet.core.document.DocumentInspector
-import io.ktor.client.HttpClient
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.bodyAsBytes
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 
 /** Gets an RFC 3161 time-stamp token over SHA-256 of some data. */
 fun interface Timestamper {
@@ -34,20 +27,18 @@ object TsaServices {
 }
 
 /** RFC 3161 over HTTP (application/timestamp-query). */
-class TsaClient(private val http: HttpClient, private val url: String) : Timestamper {
+class TsaClient(private val http: SignedDataHttp, private val url: String) : Timestamper {
     override suspend fun timestamp(data: ByteArray): ByteArray {
-        val response = try {
-            http.post(url) {
-                contentType(ContentType("application", "timestamp-query"))
-                header("Accept", "application/timestamp-reply")
-                setBody(DocumentInspector.timestampRequest(data))
-            }
+        val reply = try {
+            http.exchange(url, DocumentInspector.timestampRequest(data), "application/timestamp-query", "application/timestamp-reply")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             throw SigningException("無法連線到時戳機構（$url）：" + (e.message ?: e::class.simpleName), e)
         }
-        if (!response.status.isSuccess()) throw SigningException("時戳機構回應 HTTP ${response.status.value}")
+        if (!reply.success) throw SigningException("時戳機構回應 HTTP ${reply.status}")
         return try {
-            DocumentInspector.timestampToken(response.bodyAsBytes())
+            DocumentInspector.timestampToken(reply.body)
         } catch (e: Exception) {
             throw SigningException(e.message ?: "時戳機構的回應無法解析", e)
         }

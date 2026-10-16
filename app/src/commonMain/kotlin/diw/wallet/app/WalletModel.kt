@@ -183,10 +183,24 @@ data class WalletSettings(
  */
 enum class HomeTab { DOCUMENTS, FILES, USE, VERIFY, HISTORY }
 
+/** The groups of the settings screen, each on its own page. */
+enum class SettingsSection(val title: String) {
+    SECURITY("安全與隱私"),
+    CREDENTIALS("證件與出示"),
+    DOCUMENTS("文件與簽章"),
+    TRUST("信任"),
+    INTEROP("互通"),
+    DEVELOPER("開發者與測試"),
+    GENERAL("顯示"),
+    ABOUT("關於"),
+}
+
 sealed class Screen {
     /** The tabbed home screen; [WalletModel.tab] is the selected tab. */
     data object Home : Screen()
     data object Settings : Screen()
+    /** One group of the settings, opened from the settings list. */
+    data class SettingsPage(val section: SettingsSection) : Screen()
     data object Issuance : Screen()
     data object Presentation : Screen()
     /** [from] is where the Back button returns to. */
@@ -198,6 +212,8 @@ sealed class Screen {
     data object TrustList : Screen()
     /** X.509 trust anchors of every environment and the DIDs the user trusts, opened from the settings. */
     data object TrustAnchors : Screen()
+    /** The user's own trust: imported roots and intermediates and trusted DIDs, opened from the trust settings. */
+    data object CustomTrust : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -209,14 +225,14 @@ sealed class Screen {
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
     data class FileDerive(val fileId: String) : Screen()
-    /** An OpenCerts certificate [fileId] shown by its issuer's renderer. */
     /** The certificate laid out by its issuer's renderer, or offline by the wallet ([offline]). */
     data class OpenCertRender(val fileId: String, val offline: Boolean = false) : Screen()
     /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
     data class NationalIdCreate(val fileId: String) : Screen()
     /** The Bonds national ID card made from the vault file [fileId]. */
     data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
-    /** Writing a PDF ([letter] false) or an official letter. */
+    /** The sites that issue documents (MyData and others), opened from the files tab. */
+    data object DocumentSources : Screen()
     /** A document source site opened inside the app. */
     data class Portal(val sourceId: String) : Screen()
     /**
@@ -334,6 +350,8 @@ class WalletModel(val platform: PlatformServices) {
     val http: HttpClient by lazy {
         platform.httpClient().config { install(TwdiwUserAgent) { userAgent = { settings.twdiwUserAgent } } }
     }
+    /** Time stamps, OCSP, CRLs and issuer certificates, over http where their publishers use it. */
+    val signedDataHttp: diw.wallet.core.document.sign.SignedDataHttp by lazy { platform.signedDataHttp(http) }
     lateinit var holderIdentities: HolderIdentities
         private set
     private lateinit var historyLog: HistoryLog
@@ -629,9 +647,11 @@ class WalletModel(val platform: PlatformServices) {
                 screen.value = Screen.Home
             }
             Screen.Settings -> screen.value = Screen.Home
+            is Screen.SettingsPage -> screen.value = Screen.Settings
             Screen.AddDocument -> screen.value = Screen.Home
-            Screen.TrustList -> screen.value = Screen.Settings
-            Screen.TrustAnchors -> screen.value = Screen.Settings
+            Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.Offline -> {
                 taiwan.closeOffline()
                 screen.value = Screen.Home
@@ -654,7 +674,8 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.OpenCertRender -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
-            is Screen.Portal -> showTab(HomeTab.FILES)
+            Screen.DocumentSources -> showTab(HomeTab.FILES)
+            is Screen.Portal -> screen.value = Screen.DocumentSources
             is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
         }
         return true

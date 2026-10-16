@@ -64,7 +64,18 @@ class DidResolver(
         if (kid != null && kid.contains('#') && !kid.startsWith("#") && kid.substringBefore('#') != doc.id) {
             throw ProtocolException("invalid_request", "kid '$kid' does not belong to $did")
         }
-        return doc.find(ref) ?: throw ProtocolException("invalid_request", "Verification method '$ref' not found in $did")
+        return doc.find(ref) ?: selfCertifyingKey(doc, ref)
+            ?: throw ProtocolException("invalid_request", "Verification method '$ref' not found in $did")
+    }
+
+    /**
+     * did:key and did:jwk encode their only key in the DID itself, so any fragment of that DID names the same key.
+     * Signers often use "#0" (the did:jwk form) for a did:key, as the TWDIW verifier platform does.
+     */
+    private fun selfCertifyingKey(doc: DidDocument, ref: String): DidVerificationMethod? {
+        if (!doc.id.startsWith("did:key:") && !doc.id.startsWith("did:jwk:")) return null
+        if (!ref.startsWith("#") && ref.substringBefore('#') != doc.id) return null
+        return doc.methods.singleOrNull()
     }
 
     private fun resolveJwk(did: String): DidDocument {
