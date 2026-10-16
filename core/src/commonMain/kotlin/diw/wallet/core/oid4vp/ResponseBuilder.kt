@@ -31,6 +31,7 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcPublicKey
 import org.multipaz.crypto.JsonWebEncryption
 import org.multipaz.mdoc.credential.MdocCredential
+import org.multipaz.mdoc.devicesigned.buildDeviceNamespaces
 import org.multipaz.mdoc.response.DeviceResponse
 import org.multipaz.mdoc.response.MdocDocument
 import org.multipaz.mdoc.response.buildDeviceResponse
@@ -44,6 +45,7 @@ import org.multipaz.presentment.CredentialSelection
 import org.multipaz.presentment.PresentmentSource
 import org.multipaz.presentment.PresentmentUnlockReason
 import org.multipaz.presentment.TransactionData
+import org.multipaz.presentment.TransactionProtocol
 import org.multipaz.request.JsonRequestedClaim
 import org.multipaz.request.MdocRequestedClaim
 import org.multipaz.sdjwt.SdJwt
@@ -152,8 +154,8 @@ class ResponseBuilder(private val source: PresentmentSource) {
         encryption: ResponseEncryption?,
         zk: Boolean,
     ): String {
-        if (match.transactionData.isNotEmpty()) {
-            throw ProtocolException("invalid_transaction_data", "transaction_data for mso_mdoc is not supported")
+        if (zk && match.transactionData.isNotEmpty()) {
+            throw ProtocolException("invalid_transaction_data", "ZK mdoc transaction authorizations are not supported")
         }
         val src = match.source as CredentialMatchSourceOpenID4VP
         val thumbprint = encryption?.key?.toJwkThumbprint(Algorithm.SHA256)?.toByteArray()
@@ -179,11 +181,50 @@ class ResponseBuilder(private val source: PresentmentSource) {
             }
         }
         val credential = match.credential as MdocCredential
+        val transactionElements = mutableMapOf<String, MutableMap<String, org.multipaz.cbor.DataItem>>()
+        for (transaction in match.transactionData) {
+            if (!transaction.isApplicable(credential)) {
+                throw ProtocolException("invalid_transaction_data", "Transaction type is not authorized for this credential")
+            }
+            val namespace = transaction.type.getMdocResponseNamespace(TransactionProtocol.OPENID4VP)
+            val elements = try {
+                transaction.generateMdocResponseElements(
+                    credential,
+                    match.transactionUserInput[transaction.type.identifier],
+                    docRequestId = null,
+                )
+            } catch (e: Exception) {
+                throw ProtocolException("invalid_transaction_data", "Could not generate mdoc transaction data", e)
+            }
+            if (elements.isEmpty()) {
+                throw ProtocolException("invalid_transaction_data", "Transaction generated no device-signed data")
+            }
+            val result = transactionElements.getOrPut(namespace) { mutableMapOf() }
+            for ((element, value) in elements) {
+                val authorized = namespace in credential.mso.deviceKeyAuthorizedNamespaces ||
+                    element in credential.mso.deviceKeyAuthorizedDataElements[namespace].orEmpty()
+                if (!authorized) {
+                    throw ProtocolException("invalid_transaction_data",
+                        "MSO does not authorize transaction data element $namespace/$element")
+                }
+                if (result.put(element, value) != null) {
+                    throw ProtocolException("invalid_transaction_data", "Conflicting transaction data in $namespace/$element")
+                }
+            }
+        }
+        val deviceNamespaces = buildDeviceNamespaces {
+            for ((namespace, elements) in transactionElements) {
+                addNamespace(namespace) {
+                    for ((element, value) in elements) addDataElement(element, value)
+                }
+            }
+        }
         @Suppress("UNCHECKED_CAST")
         val document = MdocDocument.fromPresentment(
             sessionTranscript = sessionTranscript,
             credential = credential,
             requestedClaims = src.credentialQuery.claims as List<MdocRequestedClaim>,
+            deviceNamespaces = deviceNamespaces,
         )
         val zkSystem: Pair<ZkSystem, ZkSystemSpec>? = if (zk) findZkSystem(match) else null
         val deviceResponse = buildDeviceResponse(sessionTranscript = sessionTranscript, status = DeviceResponse.STATUS_OK) {
