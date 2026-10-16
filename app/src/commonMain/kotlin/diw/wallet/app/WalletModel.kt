@@ -906,6 +906,8 @@ class WalletModel(val platform: PlatformServices) {
         listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect())
     }
 
+    private var cachedProvider: Pair<String, WalletProvider>? = null
+
     private fun walletProvider(): WalletProvider {
         val s = settings
         val configuredUrl = s.walletProviderUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
@@ -916,6 +918,8 @@ class WalletModel(val platform: PlatformServices) {
         if (configuredUrl != null && !baseUrl.startsWith("https://")) {
             throw ProtocolException("wallet_provider_error", "A registered wallet backend must use HTTPS")
         }
+        val cacheKey = "$baseUrl|undefined|$localTestProvider"
+        cachedProvider?.takeIf { it.first == cacheKey }?.let { return it.second }
         return object : WalletProvider {
             override val clientId: String = s.clientId
             private var remote: RemoteWalletProvider? = null
@@ -933,7 +937,7 @@ class WalletModel(val platform: PlatformServices) {
                 nonce: String?,
                 userAuthentication: Boolean,
             ) = get().keyAttestation(keys, nonce, userAuthentication)
-        }
+        }.also { cachedProvider = cacheKey to it }
     }
 
     /** Wallet instance key: no user authentication, attested by the platform where possible. */
