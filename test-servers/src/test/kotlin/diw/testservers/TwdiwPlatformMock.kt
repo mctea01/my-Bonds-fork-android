@@ -294,7 +294,8 @@ class TwdiwPlatformMock private constructor(
             putJsonObject(CONFIG_ID) {
                 put("format", "jwt_vc_json")
                 put("scope", CONFIG_ID)
-                putJsonArray("cryptographic_binding_methods_supported") { add("did:key") }
+                // The platform writes jwk for every card although its credential endpoint only accepts a did:key kid.
+                putJsonArray("cryptographic_binding_methods_supported") { add("jwk") }
                 putJsonArray("credential_signing_alg_values_supported") { add("ES256") }
                 putJsonObject("proof_types_supported") {
                     putJsonObject("jwt") { putJsonArray("proof_signing_alg_values_supported") { add("ES256") } }
