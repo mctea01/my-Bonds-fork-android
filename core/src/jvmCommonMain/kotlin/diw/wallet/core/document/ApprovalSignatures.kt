@@ -61,7 +61,7 @@ internal object ApprovalSignatures {
             val previous = list.getOrNull(i - 1)?.first?.getAttribute("Id")
             if (previous != null && previous.isNotEmpty() && "#$previous" !in refs) notes.add("這個簽核點沒有涵蓋前一個簽核點")
             notes.add(0, "涵蓋 ${fileRefs.size} 個檔案" + (if (previous != null && "#$previous" in refs) "與前一個簽核點" else ""))
-            notes.addAll(conformance(doc, point, sig, checked.method))
+            notes.addAll(conformance(doc, point, sig, checked.method, related))
             val alg = XmlDsig.signatureName(checked.method)
             val claimed = info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽章時間")) }?.let { ApprovalPoint.parseRocTime(it)?.epochSeconds }
             checks.evaluate(
@@ -88,7 +88,7 @@ internal object ApprovalSignatures {
      * RSA-SHA256 over Canonical XML 1.0, a 簽核流程 the point names, and a temporary card (借卡) confirmed by a
      * later signature with the person's own certificate (補簽追認) before filing.
      */
-    private fun conformance(doc: Document, point: Element, sig: Element, method: String?): List<String> {
+    private fun conformance(doc: Document, point: Element, sig: Element, method: String?, related: Map<String, ByteArray>): List<String> {
         val out = ArrayList<String>()
         if (method != null && method != XmlDsig.RSA_SHA256) {
             out.add("規範指定的簽章演算法是 RSA-SHA256，這個簽核點使用 ${XmlDsig.signatureName(method)?.first ?: method}，機關的公文系統可能不接受")
@@ -97,13 +97,28 @@ internal object ApprovalSignatures {
         if (!c14n.isNullOrEmpty() && c14n != XmlC14n.C14N) out.add("規範指定 Canonical XML 1.0，這個簽核點使用 $c14n")
         val flowIds = XmlParsing.descendants(doc, null, "簽核流程").mapNotNull { it.getAttribute("Id").ifEmpty { null } }.toSet()
         val flow = point.getAttribute("URI").removePrefix("#")
-        if (flow.isNotEmpty() && flowIds.isNotEmpty() && flow !in flowIds) out.add("簽核點指向的簽核流程「$flow」不在線上簽核流程內")
+        when {
+            flow.isEmpty() -> out.add("簽核點沒有以 URI 指向線上簽核流程的簽核流程")
+            flow !in flowIds -> out.add("簽核點指向的簽核流程「$flow」不在線上簽核流程內")
+        }
         val info = XmlParsing.child(point, null, "Object")?.let { XmlParsing.descendants(it, null, "異動資訊").firstOrNull() }
         val borrowed = info?.getAttribute("借卡") == "Y" || (info?.let { XmlParsing.child(it, null, "借卡") } != null)
         if (borrowed) {
             val id = point.getAttribute("Id")
-            val confirmed = XmlParsing.descendants(doc, null, "補簽人員").any { it.getAttribute("URI").removePrefix("#") == id }
-            out.add(if (confirmed) "以臨時憑證（借卡）簽核，已有補簽追認" else "以臨時憑證（借卡）簽核，尚未補簽追認；規範要求歸檔前以本人的正式憑證補簽")
+            // A confirmation counts only when its own signature holds; an unsigned 補簽人員 added later proves nothing.
+            val checks = XmlParsing.descendants(doc, null, "補簽人員").filter { it.getAttribute("URI").removePrefix("#") == id }.map { c ->
+                val sig2 = XmlParsing.child(c, null, "簽章資料")?.let { d -> XmlParsing.children(d).firstOrNull { it.localName == "Signature" && it.namespaceURI == null } }
+                sig2?.let { XmlDsig.integrity(doc, it, { name -> related[name] }, ns = null) }
+            }
+            out.add(when {
+                checks.isEmpty() -> "以臨時憑證（借卡）簽核，尚未補簽追認；規範要求歸檔前以本人的正式憑證補簽"
+                checks.any { it?.integrity == Check.PASS } -> {
+                    val who = checks.first { it?.integrity == Check.PASS }!!.signer?.let { runCatching { Bc.cn(it) }.getOrNull() }
+                    "以臨時憑證（借卡）簽核，已有補簽追認" + (who?.let { "（補簽者 $it）" } ?: "")
+                }
+                checks.any { it?.integrity == Check.NOT_CHECKED } -> "以臨時憑證（借卡）簽核，補簽追認的簽章涵蓋不在錢包內的檔案，無法確認"
+                else -> "以臨時憑證（借卡）簽核，補簽追認沒有簽章或簽章不成立，不算完成追認"
+            })
         }
         return out
     }

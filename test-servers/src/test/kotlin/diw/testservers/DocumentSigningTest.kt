@@ -339,8 +339,23 @@ class DocumentSigningTest {
         val borrowed = String(second).replaceFirst("<異動資訊>", "<異動資訊 借卡=\"Y\">").toByteArray()
         val b = DocumentInspector.inspect(borrowed, "approval.si", trust, related = related)
         assertTrue(b.signatures[0].notes.any { "尚未補簽追認" in it }, b.signatures[0].notes.toString())
-        val confirmed = String(borrowed).replace("</線上簽核資訊>", "<補簽追認 補簽人員數=\"1\"><補簽人員 URI=\"#Sign_P0\" 補簽註記=\"本人補簽\" 產生時間=\"11510170900\"/></補簽追認></線上簽核資訊>").toByteArray()
-        assertTrue(DocumentInspector.inspect(confirmed, "approval.si", trust, related = related).signatures[0].notes.any { "已有補簽追認" in it })
+        // An unsigned 補簽人員 appended later is not a confirmation.
+        val unsigned = String(borrowed).replace("</線上簽核資訊>", "<補簽追認 補簽人員數=\"1\"><補簽人員 URI=\"#Sign_P0\" 補簽註記=\"本人補簽\" 產生時間=\"11510170900\"/></補簽追認></線上簽核資訊>").toByteArray()
+        assertTrue(DocumentInspector.inspect(unsigned, "approval.si", trust, related = related).signatures[0].notes.any { "不算完成追認" in it })
+        // A confirmation whose signature holds counts. The second point is marked as signed with a temporary card and
+        // the first point's signature (it covers the files and the first point's Object, which stay unchanged) is
+        // reused as the confirmation signature.
+        val firstSig = Regex("<Signature Id=\"ds_user_0\">[\\s\\S]*?</Signature>").find(String(second))!!.value.replace(" Id=\"ds_user_0\"", "")
+        val text2 = String(second)
+        val at = text2.indexOf("<異動資訊>", text2.indexOf("Sign_P1"))
+        val signedConfirm = (text2.substring(0, at) + "<異動資訊 借卡=\"Y\">" + text2.substring(at + "<異動資訊>".length)).replace("</線上簽核資訊>",
+            "<補簽追認 補簽人員數=\"1\"><補簽人員 URI=\"#Sign_P1\" 補簽註記=\"本人補簽\" 產生時間=\"11510170900\"><簽章資料><簽核人員><單位/><職稱/><姓名>補簽者</姓名><帳號/></簽核人員>$firstSig</簽章資料></補簽人員></補簽追認></線上簽核資訊>")
+            .toByteArray()
+        val confirmedNotes = DocumentInspector.inspect(signedConfirm, "approval.si", trust, related = related).signatures[1].notes
+        assertTrue(confirmedNotes.any { "已有補簽追認" in it }, confirmedNotes.toString())
+        // Every point names its flow node; one without URI is noted.
+        val noUri = String(second).replaceFirst(" URI=\"#FLOW_P0\"", "").toByteArray()
+        assertTrue(DocumentInspector.inspect(noUri, "approval.si", trust, related = related).signatures[0].notes.any { "沒有以 URI 指向" in it })
     }
 
     @Test
