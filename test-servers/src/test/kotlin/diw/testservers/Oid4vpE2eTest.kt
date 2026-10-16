@@ -1,5 +1,7 @@
 package diw.testservers
 
+import diw.wallet.core.jose.Jws
+import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.RequestValidationException
@@ -12,7 +14,9 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -197,6 +201,70 @@ class Oid4vpE2eTest {
             setBody(buildJsonObject { put("origin", origin); put("data", outcome.data) }.toString())
         }.bodyAsText()
         return DiwJson.parseToJsonElement(res).jsonObject
+    }
+
+    private suspend fun multiSignedData(origin: String): JsonObject {
+        val original = dcApiSession(origin, signed = true)["data"]!!.jsonObject
+        val parsed = Jws.parse(original["request"]!!.jsonPrimitive.content)
+        val clientId = parsed.payload["client_id"]!!.jsonPrimitive.content
+        val payload = JsonObject(parsed.payload.filterKeys { it != "client_id" && it != "verifier_info" })
+        val header = JsonObject(parsed.header + ("client_id" to JsonPrimitive(clientId)))
+        val compact = signJws(header, payload, servers.pki.readerKey("localhost"))
+        val parts = compact.split('.')
+        return buildJsonObject {
+            put("request", buildJsonObject {
+                put("payload", parts[1])
+                put("signatures", JsonArray(listOf(
+                    buildJsonObject { put("protected", parts[0]); put("signature", parts[2]) },
+                    buildJsonObject { put("protected", parts[0]); put("signature", "AAAA") },
+                )))
+            })
+        }
+    }
+
+    @Test
+    fun dcApiMultiSignedChoosesAnAuthenticatedVerifier() = runBlocking<Unit> {
+        val data = multiSignedData("https://rp.example")
+        val w = wallet()
+        val request = w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://rp.example")
+        assertEquals("x509_san_dns:localhost", request.verifier.clientId.raw)
+        assertTrue(request.raw.requestObject != null)
+        assertTrue(request.warnings.any { it.contains("Multi-signed DC API") })
+        assertTrue(w.holder.respondDefault(w.holder.prepare(request)) is PresentationOutcome.DcApi)
+    }
+
+    @Test
+    fun dcApiMultiSignedRejectsForgedSignaturesAndOrigins() = runBlocking<Unit> {
+        val data = multiSignedData("https://rp.example")
+        val w = wallet()
+        val mismatch = assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://attacker.example")
+        }
+        assertEquals("invalid_request_object", mismatch.code)
+        val envelope = data["request"]!!.jsonObject
+        val forged = buildJsonObject {
+            put("request", buildJsonObject {
+                put("payload", envelope["payload"]!!)
+                put("signatures", JsonArray((envelope["signatures"] as JsonArray).map {
+                    JsonObject(it.jsonObject + ("signature" to JsonPrimitive("AAAA")))
+                }))
+            })
+        }
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", forged, "https://rp.example")
+        }
+    }
+
+    @Test
+    fun dcApiSignedProtocolCannotDowngradeToUnsigned() = runBlocking<Unit> {
+        val w = wallet()
+        val data = dcApiSession("https://rp.example", signed = false)["data"]!!.jsonObject
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-signed", data, "https://rp.example")
+        }
+        assertFailsWith<RequestValidationException> {
+            w.holder.resolveDcApi("openid4vp-v1-multisigned", data, "https://rp.example")
+        }
     }
 
     @Test
