@@ -208,6 +208,20 @@ class Oid4vciE2eTest {
     }
 
     @Test
+    fun clientAssertionIsUsedWhenAttestationNotAvailable() = runBlocking<Unit> {
+        start(IssuerOptions(supportClientAssertion = true))
+        val w = wallet()
+        val remote = remoteProvider(w)
+        val provider = object : WalletProvider by remote {
+            override suspend fun walletAttestation(): diw.wallet.core.oid4vci.WalletAttestation? = null
+        }
+        val c = client(w, provider)
+        val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        c.authorizePreAuthorized(session, null)
+        assertTrue(c.issue(session, "pid_sd_jwt", keys(w)) is IssuanceResult.Issued)
+    }
+
+    @Test
     fun clientAssertionRequiredRejectsPublicClient() = runBlocking<Unit> {
         start(IssuerOptions(requireClientAssertion = true))
         val w = wallet()
