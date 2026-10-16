@@ -78,6 +78,9 @@ interface PlatformServices {
 
     fun httpClient(): HttpClient
 
+    /** Downloads the public trust lists (AATL, EUTL) in the background when they are due; tests turn it off. */
+    val refreshTrustListsInBackground: Boolean get() = true
+
     /** Opens an authorization page (OpenID4VCI authorization code flow) in the system browser. */
     fun openBrowser(url: String)
 

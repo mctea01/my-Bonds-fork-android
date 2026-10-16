@@ -34,6 +34,10 @@ object TrustMetadataKeys {
     const val IDENTITY = "diw.identity"
     /** Region of a built-in public CA ("CN" for mainland China). */
     const val REGION = "diw.region"
+    /** The [TrustListKind.id] of the trust list that names the anchor. */
+    const val LIST = "diw.list"
+    /** "true": the trust list names the service as qualified (eIDAS). */
+    const val QUALIFIED = "diw.qualified"
 }
 
 fun trustMetadata(
@@ -87,7 +91,8 @@ data class StoredAnchor(
 
 /**
  * Holds one Multipaz [TrustManager] per (role, environment). Lookups consult the environments enabled by the
- * current [EnvironmentPolicy] (TEST always, marked as test), in the order PRODUCTION, USER, SYSTEM, TEST.
+ * current [EnvironmentPolicy] (TEST always, marked as test), in the order PRODUCTION, USER, the trust lists
+ * ([trustLists], document signers and time-stamp authorities only), SYSTEM, TEST.
  *
  * Intermediate CA certificates (built in, [BuiltInPublicRoots.intermediates], and imported by the user) fill the gap
  * when a chain leaves its issuers out. They are not anchors: a chain they complete is trusted only when it reaches an
@@ -120,6 +125,9 @@ class TrustRegistry(
     }
 
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
+
+    /** The verified AATL and EUTL snapshots in use; consulted for the lists [EnvironmentPolicy.trustLists] enables. */
+    val trustLists = TrustLists()
 
     /** The user's intermediate certificates, kept in a store of their own that no lookup treats as anchors. */
     private val intermediateStore by lazy { TrustManager(storage, identifier = "intermediates") }
@@ -264,7 +272,12 @@ class TrustRegistry(
     }
 
     private suspend fun matchChain(role: TrustRole, chain: List<X509Cert>, atTime: Instant, docType: String?): AnchorMatch? {
+        var listsChecked = false
         for (env in policy.enabledEnvironments()) {
+            if (!listsChecked && (env == TrustEnvironment.SYSTEM || env == TrustEnvironment.TEST)) {
+                listsChecked = true
+                listMatch(role, chain, atTime)?.let { return it }
+            }
             if (env == TrustEnvironment.SYSTEM) {
                 if (role !in SYSTEM_ROLES) continue
                 val found = runCatching {
@@ -291,6 +304,25 @@ class TrustRegistry(
             }
         }
         return null
+    }
+
+    /** A match through an enabled trust list: a PRODUCTION anchor that is not official (T2), tagged with the list. */
+    private fun listMatch(role: TrustRole, chain: List<X509Cert>, atTime: Instant): AnchorMatch? {
+        if (role !in PKIX_ROLES || policy.trustLists.isEmpty()) return null
+        val found = trustLists.anchorOf(role, chain, atTime, policy.trustLists) ?: return null
+        val s = found.service
+        val name = listOfNotNull(s.name, s.provider?.takeIf { it != s.name }, s.country).joinToString("・")
+        val metadata = TrustMetadata(
+            displayName = name,
+            extensions = buildMap {
+                put(TrustMetadataKeys.ENVIRONMENT, TrustEnvironment.PRODUCTION.id)
+                put(TrustMetadataKeys.OFFICIAL, "false")
+                put(TrustMetadataKeys.SOURCE, found.kind.title)
+                put(TrustMetadataKeys.LIST, found.kind.id)
+                if (s.qualified) put(TrustMetadataKeys.QUALIFIED, "true")
+            }
+        )
+        return AnchorMatch(TrustEnvironment.PRODUCTION, metadata, false, found.certificate)
     }
 
     /**
@@ -365,6 +397,11 @@ class TrustRegistry(
             if (m.environment == TrustEnvironment.SYSTEM) add(TrustLabel.SYSTEM_ANCHOR)
             if (m.metadata.extensions[TrustMetadataKeys.REGION] == "CN") add(TrustLabel.MAINLAND_CHINA_CA)
             if (identity && !m.official) add(TrustLabel.IDENTITY_VERIFIED)
+            when (m.metadata.extensions[TrustMetadataKeys.LIST]) {
+                TrustListKind.AATL.id -> add(TrustLabel.AATL)
+                TrustListKind.EUTL.id -> add(TrustLabel.EUTL)
+            }
+            if (m.metadata.extensions[TrustMetadataKeys.QUALIFIED] == "true") add(TrustLabel.EU_QUALIFIED)
         }
         return TrustDecision(
             tier = tierFor(m.environment, m.official, cryptographicallyVerified = true),

@@ -53,7 +53,13 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.IDENTITY_VERIFIED -> "身分由政府憑證（GPKI）證明"
     TrustLabel.MAINLAND_CHINA_CA -> "中國大陸憑證機構（公開憑證機構）"
     TrustLabel.SELF_ISSUED -> "本錢包簽發"
+    TrustLabel.AATL -> "Adobe 核可信任清單（AATL）"
+    TrustLabel.EUTL -> "歐盟信任清單（EUTL）"
+    TrustLabel.EU_QUALIFIED -> "歐盟合格信任服務"
 }
+
+/** The clause added for an EU trusted list service the list names as qualified. */
+private fun qualified(t: TrustDecision): String = if (TrustLabel.EU_QUALIFIED in t.labels) "，為合格信任服務" else ""
 
 private const val SELF_ISSUED_TEXT =
     "由這個錢包依你保存的文件產生並簽發（發行端是錢包自己的 DID），只表示內容取自該文件，不代表文件的發行機關背書。文件本身的簽章與時戳見「文件證據」。"
@@ -72,6 +78,8 @@ fun tierAdvice(t: TrustDecision): String = when {
     twdiwListed(t) -> "列於數位憑證皮夾信任清單，但鏈上註冊暫時無法確認，或列名的角色不符。"
     TrustLabel.LINKED_DOMAIN in t.labels -> "已確認對方擁有網域 ${t.anchorName ?: ""}（DIF Well-Known DID Configuration，與 Microsoft Authenticator 相同的驗證方式）。"
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "憑證鏈連到中國大陸的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
+    TrustLabel.AATL in t.labels -> "憑證鏈連到 Adobe 核可信任清單（AATL）的憑證機構（${t.anchorName ?: ""}），可確認簽署者的組織或姓名。"
+    TrustLabel.EUTL in t.labels -> "憑證鏈連到歐盟信任清單（EUTL）的憑證機構（${t.anchorName ?: ""}）${qualified(t)}，可確認簽署者的組織或姓名。"
     TrustLabel.SYSTEM_ANCHOR in t.labels -> "憑證鏈連到系統憑證庫的公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
     t.environment == TrustEnvironment.USER -> "由你自行匯入的根憑證或自行信任的 DID 確認。"
     t.anchorName != null -> "憑證鏈連到內建的發行端憑證（${t.anchorName}，與 Multipaz Wallet 相同的信任清單），可確認發行者。"
@@ -89,6 +97,8 @@ fun signerTrustLine(t: TrustDecision): String = when {
     t.tier == TrustTier.T3 -> "憑證鏈沒有連到任何信任根，無法確認簽署者是誰。"
     TrustLabel.IDENTITY_VERIFIED in t.labels -> "簽署者身分由政府憑證（GPKI）證明：${t.anchorName ?: ""}。"
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> "簽署者憑證連到中國大陸的公開憑證機構（${t.anchorName ?: ""}），可確認組織名稱。"
+    TrustLabel.AATL in t.labels -> "簽署者憑證連到 Adobe 核可信任清單（AATL）：${t.anchorName ?: ""}。"
+    TrustLabel.EUTL in t.labels -> "簽署者憑證連到歐盟信任清單（EUTL）：${t.anchorName ?: ""}${qualified(t)}。"
     TrustLabel.SYSTEM_ANCHOR in t.labels -> "簽署者憑證連到公開憑證機構（${t.anchorName ?: ""}），可確認網域或組織名稱。"
     t.environment == TrustEnvironment.USER -> "簽署者由你自行匯入的根憑證確認（${t.anchorName ?: ""}）。"
     else -> "簽署者憑證連到信任根（${t.anchorName ?: ""}）。"
@@ -116,7 +126,7 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
 fun TierLegend() {
     val rows = listOf(
         TrustTier.T1 to "官方清單並經額外驗證：數位憑證皮夾（TWDIW）信任清單內、DID 文件自簽有效且與 Arbitrum One 註冊相符的組織，以及標為官方的正式信任錨點。",
-        TrustTier.T2 to "連到信任根，視為高可信：政府憑證（GPKI：GCA、XCA、MOEACA，查驗方與文件簽章另含 MOICA 自然人憑證）、系統憑證庫與內建公開憑證機構（含中國大陸與國密 SM2 憑證機構）、內建的發行端憑證（如 Google、Apple 的身分證件）、Microsoft Verified ID 的 Linked Domains、你匯入的根憑證與自行信任的 DID，以及列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符的組織。",
+        TrustTier.T2 to "連到信任根，視為高可信：政府憑證（GPKI：GCA、XCA、MOEACA，查驗方與文件簽章另含 MOICA 自然人憑證）、系統憑證庫與內建公開憑證機構（含中國大陸與國密 SM2 憑證機構）、文件簽章與時戳的 Adobe 核可信任清單（AATL）與歐盟信任清單（EUTL）、內建的發行端憑證（如 Google、Apple 的身分證件）、Microsoft Verified ID 的 Linked Domains、你匯入的根憑證與自行信任的 DID，以及列於 TWDIW 信任清單但鏈上註冊暫時無法確認或角色不符的組織。",
         TrustTier.T3 to "簽章可驗證，但沒有連到任何信任根：不在任何清單的 DID 或憑證鏈，以及測試環境的所有錨點。出示或領卡前需要勾選確認。",
         TrustTier.T4 to "驗證失敗：簽章或憑證鏈不成立、要求未簽章、信任清單內容與鏈上註冊不符，或網域連結失效。仍可在警告確認後繼續，風險由你自行承擔。",
     )

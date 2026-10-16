@@ -82,4 +82,9 @@ actual object DocCrypto {
     actual fun certificatesIn(data: ByteArray): List<ByteArray> = Bc.certificates(data)
 
     actual fun caIssuerUrls(der: ByteArray): List<String> = Bc.holder(der)?.let { Bc.caIssuers(it) }.orEmpty()
+
+    actual fun certificatePolicies(der: ByteArray): List<String> = runCatching {
+        val ext = Bc.holder(der)?.extensions ?: return emptyList()
+        org.bouncycastle.asn1.x509.CertificatePolicies.fromExtensions(ext)?.policyInformation?.map { it.policyIdentifier.id }.orEmpty()
+    }.getOrDefault(emptyList())
 }

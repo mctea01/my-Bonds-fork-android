@@ -27,6 +27,7 @@ import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OaAttachment
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.opencerts.OpenAttestationOnline
+import diw.wallet.core.document.opencerts.OpenCertOffline
 import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.document.opencerts.OpenCertView
 import diw.wallet.core.document.pdf.PdfFile
@@ -338,7 +339,7 @@ class FilesModel(private val model: WalletModel) {
     fun file(id: String): StoredFile? = files.value.firstOrNull { it.id == id }
 
     suspend fun data(id: String): ByteArray =
-        model.storage.getTable(dataTable).get(id)?.toByteArray() ?: throw IllegalStateException("找不到檔案內容")
+        Blobs.get(model.storage.getTable(dataTable), id) ?: throw IllegalStateException("找不到檔案內容")
 
     private suspend fun save(f: StoredFile) {
         val t = model.storage.getTable(metaTable)
@@ -378,7 +379,7 @@ class FilesModel(private val model: WalletModel) {
             parentId = parentId,
             archive = archive,
         )
-        model.storage.getTable(dataTable).insert(f.id, ByteString(bytes))
+        Blobs.put(model.storage.getTable(dataTable), f.id, bytes)
         save(f)
         if (model.settings.timestampOnSave) runCatching { addTimestampNow(f) }
         if (report.openCert != null) model.scope.launch { runCatching { verifyOpenCertNow(f, force = false) } }
@@ -883,7 +884,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     private suspend fun remove(f: StoredFile) {
-        model.storage.getTable(dataTable).delete(f.id)
+        Blobs.delete(model.storage.getTable(dataTable), f.id)
         model.storage.getTable(metaTable).delete(f.id)
         files.value = files.value.filter { it.id != f.id }
         previews.value = previews.value - f.id
@@ -918,6 +919,11 @@ class FilesModel(private val model: WalletModel) {
     /** The page that shows [f] with the issuer's own renderer; null when the certificate has no https renderer. */
     suspend fun openCertRendererPage(f: StoredFile): String? = withContext(Dispatchers.Default) {
         runCatching { OpenAttestationDocument.parse(data(f.id))?.let { OpenCertRenderer.hostPage(it) } }.getOrNull()
+    }
+
+    /** The page that shows [f] without the network (built-in demo templates, or the wallet's own layout). */
+    suspend fun openCertOfflinePage(f: StoredFile): OpenCertOffline.Page? = withContext(Dispatchers.Default) {
+        runCatching { OpenAttestationDocument.parse(data(f.id))?.let { OpenCertOffline.page(it) } }.getOrNull()
     }
 
     /**

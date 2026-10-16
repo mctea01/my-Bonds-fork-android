@@ -54,6 +54,7 @@ import diw.wallet.core.trust.BuiltInPublicRoots
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.StoredAnchor
 import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustListKind
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
@@ -146,6 +147,10 @@ data class WalletSettings(
     val systemTrustStore: Boolean = true,
     /** Trust chains to the built-in mainland China CAs (Mozilla and Microsoft program roots, SM2 roots) as T3. */
     val mainlandChinaRoots: Boolean = true,
+    /** Trust document signers and time-stamp authorities on the Adobe Approved Trust List (T2). */
+    val aatlTrustList: Boolean = true,
+    /** Trust qualified CAs and time-stamp services on the EU trusted lists (T2). */
+    val eutlTrustList: Boolean = true,
     /** Time-stamp authority for signatures and stored files (see TsaServices). */
     val tsaId: String = "digicert",
     /** Time-stamp every file when it is stored (only its SHA-256 is sent). */
@@ -201,7 +206,8 @@ sealed class Screen {
     data class FileSign(val fileId: String) : Screen()
     data class FileDerive(val fileId: String) : Screen()
     /** An OpenCerts certificate [fileId] shown by its issuer's renderer. */
-    data class OpenCertRender(val fileId: String) : Screen()
+    /** The certificate laid out by its issuer's renderer, or offline by the wallet ([offline]). */
+    data class OpenCertRender(val fileId: String, val offline: Boolean = false) : Screen()
     /** Making a Bonds national ID card from the MyData national ID PDF [fileId]. */
     data class NationalIdCreate(val fileId: String) : Screen()
     /** The Bonds national ID card made from the vault file [fileId]. */
@@ -374,6 +380,7 @@ class WalletModel(val platform: PlatformServices) {
     val reader = ReaderModel(this)
     val files = FilesModel(this)
     val csc = CscModel(this)
+    val trustLists = TrustListsModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -394,6 +401,10 @@ class WalletModel(val platform: PlatformServices) {
             allowInsecureLoopbackHttp = settings.allowLoopbackHttp,
             systemStoreEnabled = settings.systemTrustStore,
             mainlandChinaRootsEnabled = settings.mainlandChinaRoots,
+            trustLists = buildSet {
+                if (settings.aatlTrustList) add(TrustListKind.AATL)
+                if (settings.eutlTrustList) add(TrustListKind.EUTL)
+            },
         )
 
     val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }
@@ -412,6 +423,7 @@ class WalletModel(val platform: PlatformServices) {
         // The Taiwan GPKI anchors in operation (identity, T2) and the Multipaz test issuers and readers (TEST, T3) are
         // trusted without an import.
         runCatching { trust.seedBuiltInAnchors() }
+        trustLists.load()
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
@@ -427,6 +439,7 @@ class WalletModel(val platform: PlatformServices) {
         files.reconcileDerived(documents.value.map { it.identifier }.toSet())
         ready.value = true
         status.refreshDue()
+        trustLists.refreshDue()
     }
 
     // ---------------------------------------------------------------- settings
@@ -457,9 +470,11 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     fun updateSettings(transform: (WalletSettings) -> WalletSettings) = scope.launch {
-        val s = transform(settings)
+        val old = settings
+        val s = transform(old)
         settingsFlow.value = s
         trust.policy = environmentPolicy
+        if (s.aatlTrustList != old.aatlTrustList || s.eutlTrustList != old.eutlTrustList) trustLists.refreshDue()
         val t = storage.getTable(settingsTable)
         val bytes = DiwJson.encodeToString(WalletSettings.serializer(), s).encodeToByteString()
         if (t.get("settings") == null) t.insert("settings", bytes) else t.update("settings", bytes)

@@ -195,7 +195,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.FileDetail -> "文件內容"
     is Screen.FileSign -> "簽署文件"
     is Screen.FileDerive -> "產生衍生憑證"
-    is Screen.OpenCertRender -> "發證機構樣式"
+    is Screen.OpenCertRender -> if (s.offline) "離線顯示證書" else "發證機構樣式"
     is Screen.NationalIdCreate -> "製作身分證卡"
     is Screen.NationalId -> "身分證卡"
     is Screen.Portal -> "取得文件"

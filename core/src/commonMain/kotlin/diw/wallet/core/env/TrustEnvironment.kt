@@ -1,5 +1,7 @@
 package diw.wallet.core.env
 
+import diw.wallet.core.trust.TrustListKind
+
 /**
  * PKI environment partition. Every trust anchor, credential and verification result carries one of these.
  * PRODUCTION anchors are official lists and production roots; TEST anchors are sandboxes, conformance suites
@@ -35,6 +37,11 @@ data class EnvironmentPolicy(
     val systemStoreEnabled: Boolean = false,
     /** Accept chains to the built-in mainland China CAs (including SM2 roots), as T2 like the platform store. */
     val mainlandChinaRootsEnabled: Boolean = false,
+    /**
+     * The public trust lists (AATL, EUTL) whose services anchor document signers and time-stamp authorities, as T2
+     * PRODUCTION anchors that are not official (the lists are outside Taiwan's own trust framework).
+     */
+    val trustLists: Set<TrustListKind> = emptySet(),
 ) {
     val insecureLoopbackAllowed: Boolean get() = testEnvironmentEnabled && allowInsecureLoopbackHttp
 

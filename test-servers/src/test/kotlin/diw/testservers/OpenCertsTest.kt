@@ -9,6 +9,7 @@ import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.opencerts.OaMethod
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.opencerts.OpenAttestationOnline
+import diw.wallet.core.document.opencerts.OpenCertOffline
 import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.trust.TrustDecision
@@ -262,5 +263,88 @@ class OpenCertsTest {
         // Only https templates are loaded.
         val http = d.raw.toString().replace("https://demo-renderer.opencerts.io", "http://renderer.test")
         assertNull(OpenCertRenderer.hostPage(OpenAttestationDocument.parse(http.encodeToByteArray())!!))
+    }
+
+    /** A version 2 document with [data] salted as "salt:type:value" (integrity is not checked by the layouts). */
+    private fun v2(data: JsonObject): OpenAttestationDocument {
+        fun salt(e: kotlinx.serialization.json.JsonElement): kotlinx.serialization.json.JsonElement = when (e) {
+            is JsonObject -> JsonObject(e.mapValues { salt(it.value) })
+            is JsonArray -> JsonArray(e.map { salt(it) })
+            is JsonPrimitive -> JsonPrimitive("00000000-0000-4000-8000-000000000000:" + (if (e.isString) "string" else "number") + ":" + e.content)
+            else -> e
+        }
+        val raw = JsonObject(mapOf("version" to JsonPrimitive("https://schema.openattestation.com/2.0/schema.json"), "data" to salt(data),
+            "signature" to JsonObject(mapOf("type" to JsonPrimitive("SHA3MerkleProof"), "targetHash" to JsonPrimitive("00"), "merkleRoot" to JsonPrimitive("00"), "proof" to JsonArray(emptyList())))))
+        return assertNotNull(OpenAttestationDocument.parse(raw.toString().encodeToByteArray()))
+    }
+
+    private fun json(text: String) = DiwJson.parseToJsonElement(text) as JsonObject
+
+    /** No script, no remote load: only inline styles and data: images. */
+    private fun assertInert(html: String) {
+        assertTrue("default-src 'none'; img-src data:; style-src 'unsafe-inline'" in html)
+        assertFalse(Regex("<script|<iframe|<[a-z][^>]*\\son[a-z]+=|=\"javascript:", RegexOption.IGNORE_CASE).containsMatchIn(html), html)
+        assertFalse(Regex("src=\"https?:", RegexOption.IGNORE_CASE).containsMatchIn(html), html)
+    }
+
+    @Test
+    fun offlineDemoRendererTemplates() {
+        val page = OpenCertOffline.page(doc("oa-v2-store.json"))
+        assertTrue(page.builtIn)
+        assertEquals(listOf("Certificate", "Transcript", "Media"), page.tabs)
+        val html = page.html
+        assertInert(html)
+        assertTrue("Test Person" in html && "OpenCerts Demo" in html && "GovTech Singapore" in html)
+        assertTrue("Dated 30/06/2026" in html, html)
+        // The transcript shows dates as the demo renderer does: month and year in Singapore time.
+        assertTrue(":&nbsp; JUN 2026" in html && ":&nbsp; SEP 2022" in html)
+        assertTrue("<td>T101</td><td>Testing 101</td><td>A</td><td>4</td><td>1</td>" in html)
+        assertTrue("Test Dean" in html && "src=\"data:image/png;base64," in html)
+
+        // Version 3: the subject is the credential subject, the date its issuance date.
+        val v3 = OpenCertOffline.page(doc("oa-v3-store.json"))
+        assertTrue(v3.builtIn)
+        assertTrue("<b>Test Person</b>" in v3.html && "Dated 30/06/2026" in v3.html)
+
+        // An unknown name on the demo renderer falls back to its default templates, as that renderer does.
+        val other = v2(json("""{"${'$'}template":{"name":"SOMETHING_ELSE","url":"https://demo-renderer.opencerts.io"},"name":"X","recipient":{"name":"Someone"}}"""))
+        assertEquals(listOf("Certificate", "Transcript", "Media"), OpenCertOffline.page(other).tabs)
+    }
+
+    @Test
+    fun offlineTestimonialKeepsIssuerHtmlInert() {
+        val content = "<p onclick=\"steal()\">Good <b>student</b></p><script>alert(1)</script><img src=\"https://evil.test/x.png\"><a href=\"javascript:x()\">x</a><a href=\"https://school.test\">school</a><iframe src=\"https://evil.test\"></iframe>"
+        val d = v2(JsonObject(mapOf(
+            "\$template" to json("""{"name":"TESTIMONIALS","url":"https://demo-renderer.opencerts.io"}"""),
+            "recipient" to json("""{"name":"Test Student","studentId":"S1"}"""),
+            "testimonial" to json("""{"instituteName":"Test School","achievementDate":"2025-11-30"}"""),
+            "referee" to json("""{"designation":"Principal"}"""),
+            "content" to JsonPrimitive(content),
+        )))
+        val page = OpenCertOffline.page(d)
+        assertTrue(page.builtIn)
+        assertInert(page.html)
+        assertTrue("Good <b>student</b>" in page.html && "Year of Graduation: 2025" in page.html && "Test School" in page.html)
+        assertTrue("href=\"https://school.test\"" in OpenCertOffline.safeHtml(content))
+        assertFalse("evil.test" in page.html || "alert(1)" in page.html)
+    }
+
+    @Test
+    fun offlineLayoutForOtherRenderers() {
+        val raw = sample("oa-v2-store.json").decodeToString().replace("https://demo-renderer.opencerts.io", "https://renderer.example.edu")
+        val page = OpenCertOffline.page(OpenAttestationDocument.parse(raw.encodeToByteArray())!!)
+        assertFalse(page.builtIn)
+        assertInert(page.html)
+        val html = page.html
+        assertTrue("<h1>Bachelor of Testing</h1>" in html && "Test University" in html && "Test Person" in html)
+        assertTrue("Testing 102" in html && "Honours" in html && "note.txt" in html && "Test Dean" in html)
+        // A certificate of award without the fields that template requires is laid out by the wallet.
+        val award = v2(json("""{"${'$'}template":{"name":"CERTIFICATE_OF_AWARD","url":"https://demo-renderer.opencerts.io"},"name":"Award","recipient":{"name":"A"}}"""))
+        assertFalse(OpenCertOffline.page(award).builtIn)
+        // HTML in values is shown as text.
+        val tricky = v2(json("""{"name":"<img src=x onerror=alert(1)>","recipient":{"name":"<b>N</b>"}}"""))
+        val t = OpenCertOffline.page(tricky).html
+        assertInert(t)
+        assertTrue("&lt;b&gt;N&lt;/b&gt;" in t)
     }
 }

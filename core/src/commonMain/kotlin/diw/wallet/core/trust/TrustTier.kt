@@ -45,6 +45,15 @@ enum class TrustLabel {
      */
     MAINLAND_CHINA_CA,
 
+    /** The chain leads to a root on the Adobe Approved Trust List (document signatures and time stamps). */
+    AATL,
+
+    /** The chain leads to a trust service of an EU member state's trusted list (eIDAS), granted at the time checked. */
+    EUTL,
+
+    /** The EU trusted list names the service as qualified (a qualified certificate or a qualified time stamp). */
+    EU_QUALIFIED,
+
     /**
      * Issued by this wallet's own key (a credential derived from a stored document): it vouches that the content was
      * read from that document, not for whoever issued the document.

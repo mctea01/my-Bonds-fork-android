@@ -106,6 +106,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import diw.wallet.core.document.OpenCertInfo
 import diw.wallet.core.document.opencerts.OaMethod
+import diw.wallet.core.document.opencerts.OpenCertOffline
 import diw.wallet.core.document.opencerts.OpenCertView
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.X509Cert
@@ -120,11 +121,12 @@ class PortalAutofill(val host: String, val script: String, val onFilled: (Int) -
 expect fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill? = null)
 
 /**
- * The host page of an OpenCerts renderer ([html], see OpenCertRenderer): inside the app where a web view exists,
- * otherwise opened in the system browser on request. Links the renderer opens go to [onExternal].
+ * The host page of an OpenCerts renderer ([html], see OpenCertRenderer), or an [offline] page (OpenCertOffline:
+ * no scripts, nothing loaded from the network): inside the app where a web view exists, otherwise opened in the
+ * system browser on request. Links the renderer opens go to [onExternal].
  */
 @Composable
-expect fun OpenCertRendererView(html: String, modifier: Modifier, onExternal: (String) -> Unit)
+expect fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boolean = false, onExternal: (String) -> Unit)
 
 internal fun localTime(epochSeconds: Long): String {
     val t = Instant.fromEpochSeconds(epochSeconds).toLocalDateTime(TimeZone.currentSystemDefault())
@@ -1374,6 +1376,11 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
     }
     OutlinedButton(onClick = { model.files.recheckOpenCert(f) }, enabled = busy == null) { Text(if (online == null) "查驗發行狀態" else "重新查驗") }
     if (v == null) return
+    val builtIn = v.templateUrl?.let { url -> Regex("^https://([^/:]+)").find(url.trim())?.groupValues?.get(1)?.lowercase() in OpenCertOffline.BUILT_IN_HOSTS } == true
+    ActionRow(WalletIcons.Document, "離線顯示證書",
+        if (builtIn) "依發證機構使用的 OpenCerts 範例樣式排版，不需要網路，內容不離開手機" else "由錢包依證書內容排版，不需要網路，內容不離開手機") {
+        model.screen.value = Screen.OpenCertRender(f.id, offline = true)
+    }
     v.templateUrl?.let { url ->
         val origin = Regex("^https://[^/]+").find(url.trim())?.value
         if (origin != null) {
@@ -1450,14 +1457,18 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
 @Composable
 fun OpenCertRenderScreen(model: WalletModel, screen: Screen.OpenCertRender) {
     val f = model.files.file(screen.fileId) ?: return
-    val page by produceState<String?>(null, f.id) { value = model.files.openCertRendererPage(f) ?: "" }
+    val page by produceState<String?>(null, f.id, screen.offline) {
+        value = (if (screen.offline) model.files.openCertOfflinePage(f)?.html else model.files.openCertRendererPage(f)) ?: ""
+    }
     Column(Modifier.fillMaxSize()) {
-        Text("由發證機構指定的顯示程式繪製；內容與上一頁的檢查結果相同，查驗結果以上一頁為準。", style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        if (!screen.offline) {
+            Text("由發證機構指定的顯示程式繪製；內容與上一頁的檢查結果相同，查驗結果以上一頁為準。", style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        }
         when (val html = page) {
             null -> Text("正在準備", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-            "" -> Text("這份證書沒有可用的 https 顯示程式。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-            else -> OpenCertRendererView(html, Modifier.fillMaxWidth().weight(1f)) { url ->
+            "" -> Text(if (screen.offline) "無法讀取這份證書。" else "這份證書沒有可用的 https 顯示程式。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+            else -> OpenCertRendererView(html, Modifier.fillMaxWidth().weight(1f), offline = screen.offline) { url ->
                 model.platform.openBrowser(url)
             }
         }

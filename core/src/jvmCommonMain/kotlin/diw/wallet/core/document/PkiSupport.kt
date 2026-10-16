@@ -56,6 +56,13 @@ internal object Bc {
             .filter { it.startsWith("http://") || it.startsWith("https://") }
     }.getOrDefault(emptyList())
 
+    private fun rdn(h: X509CertificateHolder, oid: ASN1ObjectIdentifier): String? =
+        h.subject.getRDNs(oid).firstOrNull()?.first?.value?.toString()
+
+    fun cn(h: X509CertificateHolder): String? = rdn(h, BCStyle.CN)
+    fun org(h: X509CertificateHolder): String? = rdn(h, BCStyle.O)
+    fun country(h: X509CertificateHolder): String? = rdn(h, BCStyle.C)
+
     /** DER certificates of a certificate, a PKCS#7 certs-only bundle, or PEM text. */
     fun certificates(data: ByteArray): List<ByteArray> {
         val text = runCatching { data.decodeToString() }.getOrNull()

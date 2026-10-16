@@ -17,19 +17,23 @@ import diw.wallet.core.document.opencerts.OpenCertRenderer
 /**
  * The renderer host page in a web view, loaded under a base URL that never resolves so the page has an https origin
  * of its own. Only the renderer's frame loads from the network; the top page never navigates away, links open in
- * the browser.
+ * the browser. An offline page is shown with scripts and network loads off.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-actual fun OpenCertRendererView(html: String, modifier: Modifier, onExternal: (String) -> Unit) {
+actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boolean, onExternal: (String) -> Unit) {
     var view by remember { mutableStateOf<WebView?>(null) }
     DisposableEffect(Unit) { onDispose { view?.destroy() } }
     AndroidView(
         modifier = modifier,
         factory = { context ->
             WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
+                // An offline page runs no scripts and may not load anything.
+                settings.javaScriptEnabled = !offline
+                settings.domStorageEnabled = !offline
+                settings.blockNetworkLoads = offline
+                settings.builtInZoomControls = offline
+                settings.displayZoomControls = false
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
                 webViewClient = object : WebViewClient() {

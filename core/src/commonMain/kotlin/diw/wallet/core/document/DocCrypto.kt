@@ -30,6 +30,9 @@ expect object DocCrypto {
 
     /** The http(s) caIssuers URLs of the Authority Information Access extension of the DER certificate [der]. */
     fun caIssuerUrls(der: ByteArray): List<String>
+
+    /** The policy OIDs of the certificate policies extension of the DER certificate [der]. */
+    fun certificatePolicies(der: ByteArray): List<String>
 }
 
 /** Pure-Kotlin helpers on top of [DocCrypto]. */

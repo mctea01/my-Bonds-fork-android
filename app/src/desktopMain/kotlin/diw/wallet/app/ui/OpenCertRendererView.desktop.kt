@@ -21,10 +21,10 @@ import java.io.File
  * and opened in the system browser.
  */
 @Composable
-actual fun OpenCertRendererView(html: String, modifier: Modifier, onExternal: (String) -> Unit) {
+actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boolean, onExternal: (String) -> Unit) {
     var failure by remember { mutableStateOf<String?>(null) }
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("電腦版以系統瀏覽器顯示。頁面暫存在電腦上，關閉 App 時刪除。", style = MaterialTheme.typography.bodySmall)
+        Text("電腦版以系統瀏覽器顯示。頁面暫存在電腦上，關閉 App 時刪除。" + if (offline) "頁面不含程式，也不會連線。" else "", style = MaterialTheme.typography.bodySmall)
         Button(onClick = {
             failure = runCatching {
                 val file = File.createTempFile("opencert-", ".html").apply {

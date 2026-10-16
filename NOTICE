@@ -21,12 +21,25 @@ its own license:
 - Apache PDFBox (desktop preview only) - Apache License 2.0
 - SQLite JDBC (org.xerial:sqlite-jdbc, desktop) - Apache License 2.0;
   SQLite itself is in the public domain
+- CMWallet credential provisioning matcher (Google digital-credentials
+  sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
+  License 2.0
 
 Development and test tools that are not shipped in the application:
 
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
 - open-attestation (used once to generate the fictional OpenCerts samples in
   test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
+
+Public trust lists: the Adobe Approved Trust List and the EU trusted lists
+(ETSI TS 119 612, published by the European Commission and the member states)
+are downloaded and verified by the application at run time; only SHA-256
+fingerprints of their signing certificates are built in.
+
+The offline OpenCerts layouts (core/.../opencerts/OpenCertOffline.kt) follow
+the templates of the OpenCerts demo renderer (demo-renderer.opencerts.io,
+GovTech Singapore); they were written anew and contain no logos or pictures
+from it.
 
 Built-in trust anchors (core/.../trust/BuiltInAnchors.kt,
 BuiltInPublicRoots.kt, BuiltInTestAnchors.kt) are public certificates

@@ -119,6 +119,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
             }
         }
         SystemStoreSection(model)
+        TrustListsSection(model)
         IntermediateSection(model)
         ImportAnchorSection(model)
     }
@@ -200,6 +201,60 @@ private fun SystemStoreSection(model: WalletModel) {
     if (sm2.isNotEmpty()) CollapsibleSection("國密 SM2 根憑證", sm2.size, key = "roots-sm2") { BuiltInRootList(model, sm2) }
     Text("內建清單更新於 ${diw.wallet.core.trust.BuiltInPublicRoots.UPDATED}。清單隨 App 更新，到期的根憑證自動停用。",
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+}
+
+/** The public trust lists for document signers and time-stamp authorities: on or off, what is stored, and updates. */
+@Composable
+private fun TrustListsSection(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    val states by model.trustLists.states.collectAsState()
+    HorizontalDivider()
+    SectionTitle("文件簽章信任清單（T2，非官方）")
+    Text("憑證鏈連到清單列出的憑證機構時，接受為文件簽署者或時戳機構，信任等級 T2，不顯示為官方。清單在 App 內驗證簽章後保存，可離線使用，每週以條件下載更新。",
+        style = MaterialTheme.typography.bodySmall)
+    for (kind in diw.wallet.core.trust.TrustListKind.entries) {
+        val st = states[kind] ?: continue
+        val on = when (kind) {
+            diw.wallet.core.trust.TrustListKind.AATL -> settings.aatlTrustList
+            diw.wallet.core.trust.TrustListKind.EUTL -> settings.eutlTrustList
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(kind.title, style = MaterialTheme.typography.titleSmall)
+                Text(when (kind) {
+                    diw.wallet.core.trust.TrustListKind.AATL -> "Adobe Acrobat 信任的文件簽章與時戳根憑證。清單是 Adobe 簽署的 PDF，簽章須連到 Adobe Root CA G2。"
+                    diw.wallet.core.trust.TrustListKind.EUTL -> "歐盟各會員國依 eIDAS 監管的合格憑證機構與合格時戳服務，只在核准期間內有效。歐盟清單的簽署憑證已釘選，各國清單由歐盟清單公告的憑證簽署。首次下載約 27 MB。"
+                }, style = MaterialTheme.typography.bodySmall)
+            }
+            androidx.compose.material3.Switch(checked = on, onCheckedChange = { v ->
+                model.updateSettings {
+                    when (kind) {
+                        diw.wallet.core.trust.TrustListKind.AATL -> it.copy(aatlTrustList = v)
+                        diw.wallet.core.trust.TrustListKind.EUTL -> it.copy(eutlTrustList = v)
+                    }
+                }
+            })
+        }
+        val lines = buildList {
+            if (st.fetchedAt != null) add("${st.services} 個服務・更新於 ${localTime(st.fetchedAt)}")
+            else add(if (st.running) "下載中" else "尚未下載")
+            st.issued?.let { add("清單發布於 ${localTime(it)}") }
+            st.nextUpdate?.let { add("下次發布預定 ${localTime(it)}") }
+            st.signer?.let { add("簽署者：$it") }
+            st.error?.let { add("最近一次更新失敗：$it（仍使用上一次保存的清單）") }
+        }
+        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+        if (st.partErrors.isNotEmpty()) {
+            CollapsibleSection("無法更新的國家清單", st.partErrors.size, key = "list-errors-${kind.id}") {
+                st.partErrors.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(enabled = on && !st.running, onClick = { model.trustLists.refresh(kind) }) { Text("立即更新") }
+            if (st.fetchedAt != null) TextButton(enabled = !st.running, onClick = { model.trustLists.clear(kind) }) { Text("刪除保存的清單") }
+            if (st.running) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+        }
+    }
 }
 
 /** Built-in public roots: name, owner, algorithm and purpose; a tap opens the certificate. */

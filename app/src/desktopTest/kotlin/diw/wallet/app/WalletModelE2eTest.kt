@@ -74,6 +74,7 @@ class WalletModelE2eTest {
         lateinit var model: WalletModel
         var pinPrompts = 0
         override val platformName = "test"
+        override val refreshTrustListsInBackground = false
         override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
         override suspend fun openStorage() = storage
         override suspend fun keyBackends(storage: Storage, pinPrompt: suspend (String) -> String?) = listOf(softwareBackend(storage, pinPrompt))
