@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
-"""Fetch pinned build sources and reproduce the Bonds age circuit artifacts."""
+"""Check pinned sources and reproduce the Bonds R1CS/wasm build artifacts."""
 import argparse
 import hashlib
+import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
-import tarfile
-import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / ".cache"
-ZKID = "b395e09c225ff45b003f0087c28e2e208e22f944"
-WITNESSCALC = "707dc54877ad3226042d959d7ec956ae540a9a3e"
-GMP_SHA256 = "fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2"
-CIRCUITS = {
-    "jwt_2k": "d4f8b34dfd454234872a34f47ea486545cb4d989c41ed75f856268718251dc6a",
-    "show": "3809e70502fa90f2038760da5f1399a1e3eb17923e5af872edf3dfa0b7d37a9a",
-}
+VERSIONS = json.loads((ROOT / "VERSIONS.json").read_text())
+CIRCUITS = {name: VERSIONS[name + "_r1cs_sha256"] for name in ("jwt_2k", "show")}
 
 
 def run(*args, cwd=None, env=None):
@@ -40,31 +33,34 @@ def checkout(name, url, revision):
     return path
 
 
+def apply_patch(source, patch):
+    applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
+                             cwd=source, capture_output=True).returncode == 0
+    if not applied:
+        run("git", "apply", "--check", patch, cwd=source)
+        run("git", "apply", patch, cwd=source)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--sources-only", action="store_true")
-    parser.add_argument("--force", action="store_true", help="Recompile cached circuits")
+    parser.add_argument("--force", action="store_true", help="Recompile cached R1CS/wasm")
     args = parser.parse_args()
     CACHE.mkdir(exist_ok=True)
-    zkid = checkout("zkid", "https://github.com/privacy-ethereum/zkID.git", ZKID)
-    patch = ROOT / "patches/zkid-mobile.patch"
-    applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
-                             cwd=zkid, capture_output=True).returncode == 0
-    if not applied:
-        run("git", "apply", "--check", patch, cwd=zkid)
-        run("git", "apply", patch, cwd=zkid)
-    witness = checkout("witnesscalc", "https://github.com/zkmopro/witnesscalc.git", WITNESSCALC)
-    run("git", "submodule", "update", "--init", "--recursive", cwd=witness)
-    archive = CACHE / "gmp-6.2.1.tar.xz"
-    if not archive.exists():
-        temporary = archive.with_suffix(".part")
-        urllib.request.urlretrieve("https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.xz", temporary)
-        temporary.replace(archive)
-    if digest(archive) != GMP_SHA256:
-        raise SystemExit("GMP archive checksum mismatch")
-    if not (CACHE / "gmp-6.2.1/configure").is_file():
-        with tarfile.open(archive) as source:
-            source.extractall(CACHE, filter="data")
+    zkid = checkout("zkid", "https://github.com/privacy-ethereum/zkID.git", VERSIONS["zkid"])
+    apply_patch(zkid, ROOT / "patches/zkid-mobile.patch")
+    runtime = checkout("circom-witnesscalc", "https://github.com/iden3/circom-witnesscalc.git", VERSIONS["circom_witnesscalc"])
+    patch = ROOT / "patches/circom-witnesscalc-secq256r1.patch"
+    if digest(patch) != VERSIONS["circom_witnesscalc_patch_sha256"]:
+        raise SystemExit("Witness runtime patch checksum mismatch")
+    apply_patch(runtime, patch)
+    changed = subprocess.check_output(["git", "diff", "--name-only"], cwd=runtime, text=True).splitlines()
+    expected = VERSIONS["patched_source_sha256"]
+    if set(changed) != set(expected) or any(digest(runtime / name) != value for name, value in expected.items()):
+        raise SystemExit("Witness runtime source differs from the pinned patch")
+    for name, expected in VERSIONS["runtime_bundle_sha256"].items():
+        if digest(ROOT / "vendor/circom-witnesscalc" / name) != expected:
+            raise SystemExit("Vendored witness runtime checksum mismatch")
     if args.sources_only:
         return
     version = subprocess.check_output(["circom", "--version"], text=True).strip()
@@ -74,18 +70,17 @@ def main():
     env = os.environ.copy()
     env["YARN_NODE_LINKER"] = "node-modules"
     run("corepack", "yarn", "install", "--immutable", cwd=circom, env=env)
-    destination = ROOT / "vendor/circom/build/cpp"
-    destination.mkdir(parents=True, exist_ok=True)
     for name, expected in CIRCUITS.items():
-        r1cs = circom / f"build/{name}/{name}.r1cs"
-        generated = [circom / f"build/cpp/{name}.{extension}" for extension in ("cpp", "dat")]
-        if args.force or not r1cs.is_file() or not all(path.is_file() for path in generated):
-            run("bash", "scripts/compile.sh", name, cwd=circom, env=env)
+        output = circom / "build" / name
+        output.mkdir(parents=True, exist_ok=True)
+        r1cs = output / f"{name}.r1cs"
+        wasm = output / f"{name}_js/{name}.wasm"
+        if args.force or not r1cs.is_file() or not wasm.is_file():
+            run("circom", f"circuits/main/{name}.circom", "--r1cs", "--wasm", "--sym",
+                "--prime", "secq256r1", "--O2", "-l", "node_modules", "-o", output, cwd=circom)
         if digest(r1cs) != expected:
             raise SystemExit(f"{name} does not match the pinned Bonds circuit")
-        for extension in ("cpp", "dat"):
-            shutil.copy2(circom / f"build/cpp/{name}.{extension}", destination)
-    print("Pinned age circuits reproduced successfully")
+    print("Pinned age R1CS and wasm artifacts verified")
 
 
 if __name__ == "__main__":

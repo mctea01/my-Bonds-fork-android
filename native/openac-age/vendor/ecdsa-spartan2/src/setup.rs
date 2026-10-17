@@ -180,12 +180,14 @@ pub fn load_proof(
 ) -> Result<R1CSSNARK<E>, Box<dyn std::error::Error>> {
     let proof_path = proof_path.as_ref();
     let proof_file = File::open(proof_path)?;
-    const MAX_PROOF_BYTES: u64 = 32 * 1024 * 1024;
+    const MAX_PROOF_BYTES: u64 = 2_000_000;
     if proof_file.metadata()?.len() > MAX_PROOF_BYTES {
         return Err("Proof size limit".into());
     }
     let proof: R1CSSNARK<E> = bincode::DefaultOptions::new()
-        .with_fixint_encoding().reject_trailing_bytes().with_limit(MAX_PROOF_BYTES)
+        .with_fixint_encoding()
+        .reject_trailing_bytes()
+        .with_limit(MAX_PROOF_BYTES)
         .deserialize_from(&mut BufReader::new(proof_file))?;
     ();
     Ok(proof)

@@ -23,6 +23,7 @@ use std::{
 };
 
 mod predicate;
+mod witness;
 pub use predicate::AgePrepareInput;
 
 pub const ZKID_REVISION: &str = "b395e09c225ff45b003f0087c28e2e208e22f944";
@@ -30,23 +31,18 @@ pub const PROVER_STACK_BYTES: usize = 64 * 1024 * 1024;
 
 /// A small native known-answer/negative-input check without downloading assets.
 pub fn self_test() -> bool {
-    #[cfg(feature = "native-witness")]
-    {
-        worker(|| {
-            let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-            if format!("{:x}", Sha256::digest(b"abc")) != expected {
-                return Ok(false);
-            }
-            // The native calculator must reject an incomplete public test vector
-            // through its checked C ABI, without aborting or exposing diagnostics.
-            Ok(ecdsa_spartan2::circuits::show_circuit::show_witness("{}").is_err())
-        })
-        .unwrap_or(false)
-    }
-    #[cfg(not(feature = "native-witness"))]
-    {
-        false
-    }
+    worker(|| {
+        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        Ok(format!("{:x}", Sha256::digest(b"abc")) == expected
+            && circom_witnesscalc::calc_witness("{}", b"not-a-witness-graph").is_err())
+    })
+    .unwrap_or(false)
+}
+
+/// Calculate a private witness on the same protected worker as the proof engine.
+/// The returned bytes are private and must never be logged or packaged.
+pub fn calculate_witness(documents_path: String, prepare: bool) -> Result<Vec<u8>, ZkProofError> {
+    worker(move || witness::calculate(&documents_path, prepare))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -325,8 +321,8 @@ fn prove<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
     config: &PathConfig,
     circuit: C,
     names: [&str; 5],
+    started: Instant,
 ) -> Result<ProofResult, ZkProofError> {
-    let started = Instant::now();
     let [key, verifying_key, instance_name, witness_name, proof_name] = names;
     pinned_proving_assets(config, key == PREPARE_PROVING_KEY)?;
     let pk = load_proving_key(config.key_path(key)).map_err(|_| storage_error())?;
@@ -350,23 +346,27 @@ fn prove<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
 
 pub fn prove_jwt(documents_path: String) -> Result<ProofResult, ZkProofError> {
     worker(move || {
+        let started = Instant::now();
         let config = make_config(&documents_path);
-        let circuit = PrepareCircuit::new(
-            config.clone(),
-            Some(Path::new(&documents_path).join("jwt_input.json")),
-        );
-        prove(&config, circuit, PREPARE)
+        let bytes = witness::calculate(&documents_path, true)?;
+        let values =
+            ecdsa_spartan2::utils::parse_witness(&bytes).map_err(|_| ZkProofError::Proof)?;
+        drop(bytes);
+        let circuit = PrepareCircuit::with_witness_at(values, config.clone());
+        prove(&config, circuit, PREPARE, started)
     })
 }
 
 pub fn prove_show(documents_path: String) -> Result<ProofResult, ZkProofError> {
     worker(move || {
+        let started = Instant::now();
         let config = make_config(&documents_path);
-        let circuit = ShowCircuit::new(
-            config.clone(),
-            Some(Path::new(&documents_path).join("show_input.json")),
-        );
-        prove(&config, circuit, SHOW)
+        let bytes = witness::calculate(&documents_path, false)?;
+        let values =
+            ecdsa_spartan2::utils::parse_witness(&bytes).map_err(|_| ZkProofError::Proof)?;
+        drop(bytes);
+        let circuit = ShowCircuit::with_witness_at(values, config.clone());
+        prove(&config, circuit, SHOW, started)
     })
 }
 
@@ -496,7 +496,7 @@ mod hosting_tests {
         fs::write(file.path(), b"synthetic-public-asset").unwrap();
         let result = pinned_asset(file.path(), 22, "wrong-public-hash");
         assert!(matches!(result, Err(ZkProofError::InvalidInput { .. })));
-        file.as_file().set_len(32 * 1024 * 1024 + 1).unwrap();
+        file.as_file().set_len(2_000_001).unwrap();
         assert!(load_proof(file.path()).is_err());
     }
 }

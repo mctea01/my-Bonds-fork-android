@@ -116,6 +116,8 @@ fn cancellation_is_scoped_and_never_publishes_work() {
 
 fn link_public_assets(source: &Path, documents: &Path) {
     for (from, to) in [
+        ("graphs/jwt_2k.graph", "graphs/jwt_2k.graph"),
+        ("graphs/show.graph", "graphs/show.graph"),
         ("build/jwt/jwt_js/jwt.r1cs", "build/jwt/jwt_js/jwt.r1cs"),
         (
             "build/show/show_js/show.r1cs",

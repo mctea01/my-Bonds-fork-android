@@ -2,11 +2,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 host=$(rustc -vV | sed -n 's/^host: //p')
-if [[ "$host" == *windows* ]]; then host=x86_64-pc-windows-gnu; fi
 targets=${1:-host}
 targets=${targets//host/$host}
 [[ "$(rustc --version)" == 'rustc 1.90.0 '* ]] || { echo 'Rust 1.90.0 is required' >&2; exit 1; }
-python3 -I openac-age/prepare.py
+python3 -I openac-age/prepare.py --sources-only
 IFS=',' read -ra selected <<< "$targets"
 for target in "${selected[@]}"; do
     if [[ "$target" == android ]]; then
@@ -21,7 +20,7 @@ for target in "${selected[@]}"; do
     else
         case "$target" in
             x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
-            x86_64-pc-windows-gnu) platform=windows-x86_64; library=diw_zk.dll ;;
+            x86_64-pc-windows-msvc|x86_64-pc-windows-gnu) platform=windows-x86_64; library=diw_zk.dll ;;
             aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib ;;
             *) echo 'Unsupported OpenAC desktop target' >&2; exit 1 ;;
         esac

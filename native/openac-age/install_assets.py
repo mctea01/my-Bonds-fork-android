@@ -4,6 +4,8 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
+import shutil
 from pathlib import Path
 import urllib.request
 
@@ -17,6 +19,25 @@ def digest(path):
 
 def install(destination):
     destination = destination.resolve()
+    versions = json.loads((ROOT / "VERSIONS.json").read_text())
+    for name, pin in versions["graphs"].items():
+        target = destination / "graphs" / (name + ".graph")
+        if target.exists() and target.stat().st_size == pin["bytes"] and digest(target) == pin["sha256"]:
+            continue
+        source = ROOT / "build/graphs" / (name + ".graph")
+        if not source.exists() or source.stat().st_size != pin["bytes"] or digest(source) != pin["sha256"]:
+            raise SystemExit("Run build-graphs.sh to prepare the verified graph assets")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(".graph.part")
+        temporary.unlink(missing_ok=True)
+        try:
+            try:
+                os.link(source, temporary)
+            except OSError:
+                shutil.copyfile(source, temporary)
+            temporary.replace(target)
+        finally:
+            temporary.unlink(missing_ok=True)
     manifest = json.loads((ROOT.parent / "assets.json").read_text())
     for asset in manifest:
         if asset["backend"] != "OPENAC_SPARTAN2":

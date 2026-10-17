@@ -111,6 +111,11 @@ impl PrepareCircuit {
 
     /// Create with pre-computed witness (for WASM usage where witness is generated externally).
     /// This bypasses filesystem I/O entirely.
+    pub fn with_witness_at(witness: Vec<Scalar>, path_config: PathConfig) -> Self {
+        Self { path_config, input_path: None,
+            cached_witness: Arc::new(Mutex::new(Some(witness))) }
+    }
+
     pub fn with_witness(witness: Vec<Scalar>) -> Self {
         Self::with_witness_for_size(witness, CircuitSize::default())
     }

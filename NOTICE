@@ -36,13 +36,10 @@ its own license:
 - Spartan2, revision d687dbb639eccbdd21e62fecec97c5826bc4dbbf - MIT License
 - circom-scotia, revision bd39c019dba20d32ce5727e2408632dbca269e82 -
   MIT or Apache License 2.0
-- witnesscalc-adapter 0.1.7, revision
-  e5a82bcb7d54a4694fc0662c51b01d99134e686c - MIT or Apache License 2.0
-- witnesscalc, revision 707dc54877ad3226042d959d7ec956ae540a9a3e -
-  GNU GPL 3.0. OpenAC-enabled native binaries include this component;
-  their redistribution must comply with its GPL obligations.
-- GMP 6.2.1 - GNU LGPL 3.0 or later, or GNU GPL 2.0 or later
-- nlohmann/json, revision 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 - MIT
+- circom-witnesscalc 0.3.0, revision
+  d48eb7c97857d46b8a75c94ab96f769207263245, with the secq256r1 patch - MIT
+- arkworks ark-ff, ark-bn254 and ark-serialize, halo2curves, ruint,
+  prost, wtns-file, winnow and their runtime dependencies - MIT or Apache 2.0
 - RustCrypto p256 0.13, ff 0.13, rand_core 0.6, num-bigint 0.4,
   num-traits 0.2, rayon, chrono, serde_json and tempfile -
   MIT or Apache License 2.0
@@ -56,9 +53,22 @@ Development and test tools that are not shipped in the application:
 - Rust 1.90.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT
 - Circom 2.2.3 - GNU GPL 3.0
-- GNU m4 1.4.19 (GMP build prerequisite) - GNU GPL 3.0 or later
+- circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0
+- Protocol Buffers protoc 30.2 - BSD 3-Clause
+- libclang / bindgen - Apache 2.0 with LLVM exceptions / BSD 3-Clause
 - open-attestation (used once to generate the fictional OpenCerts samples in
   test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
+
+Downloaded proof assets (not embedded in the application):
+
+- openac-age-v1 (Bonds R1CS and proving/verifying keys) and
+  openac-age-graph-v1 (witness graphs) compile zkID circuits (MIT) and
+  circomlib 2.0.5 templates (GPL-3.0-or-later). These assets are distributed
+  separately under GPL-3.0, not linked into the wallet native library.
+  Corresponding source: https://github.com/privacy-ethereum/zkID/tree/b395e09c225ff45b003f0087c28e2e208e22f944/wallet-unit-poc/circom and
+  https://github.com/iden3/circomlib/tree/v2.0.5 ; @zk-email/circuits 6.3.4.
+  Rebuild with native/openac-age/build-graphs.sh; source revisions, the
+  secq256r1 patch and asset hashes are pinned in that package's VERSIONS.json.
 
 Public trust lists: the Adobe Approved Trust List and the EU trusted lists
 (ETSI TS 119 612, published by the European Commission and the member states)
