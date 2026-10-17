@@ -47,6 +47,8 @@ def install(destination):
             target = destination / "build/jwt/jwt_js/jwt.r1cs"
         elif name == "show.r1cs":
             target = destination / "build/show/show_js/show.r1cs"
+        elif name.endswith(".graph"):
+            target = destination / "graphs" / name
         else:
             target = destination / "keys" / name
         if target.exists() and target.stat().st_size == asset["installedBytes"] and digest(target) == asset["installedSha256"]:

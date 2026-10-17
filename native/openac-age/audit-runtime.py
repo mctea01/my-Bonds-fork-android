@@ -43,7 +43,8 @@ def main():
                 if revision not in (package.get("source") or "") or not license_path:
                     raise SystemExit("Unpinned Spartan2 license source")
                 evidence = (Path(package["manifest_path"]).parent / license_path).read_bytes()
-                if evidence != (ROOT / "licenses/Spartan2-MIT.txt").read_bytes():
+                evidence = evidence.replace(b"\r\n", b"\n")
+                if evidence != (ROOT / "licenses/Spartan2-MIT.txt").read_bytes().replace(b"\r\n", b"\n"):
                     raise SystemExit("Spartan2 license differs from the reviewed MIT copy")
                 license_id = "MIT"
                 license_evidence = hashlib.sha256(evidence).hexdigest()

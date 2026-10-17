@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parent
 CACHE = ROOT / ".cache"
@@ -22,10 +23,16 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def source_digest(path):
+    # Git for Windows may check out text with CRLF; artifact hashes stay binary.
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def checkout(name, url, revision):
     path = CACHE / name
     if not path.exists():
         run("git", "clone", "--filter=blob:none", "--no-checkout", url, path)
+        run("git", "config", "core.autocrlf", "false", cwd=path)
         run("git", "checkout", "--detach", revision, cwd=path)
     actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=path, text=True).strip()
     if actual != revision:
@@ -34,11 +41,17 @@ def checkout(name, url, revision):
 
 
 def apply_patch(source, patch):
-    applied = subprocess.run(["git", "apply", "--reverse", "--check", str(patch)],
-                             cwd=source, capture_output=True).returncode == 0
-    if not applied:
-        run("git", "apply", "--check", patch, cwd=source)
-        run("git", "apply", patch, cwd=source)
+    with tempfile.NamedTemporaryFile(dir=CACHE, suffix=".patch", delete=False) as temporary:
+        temporary.write(patch.read_bytes().replace(b"\r\n", b"\n"))
+        normalized = Path(temporary.name)
+    try:
+        applied = subprocess.run(["git", "apply", "--reverse", "--check", str(normalized)],
+                                 cwd=source, capture_output=True).returncode == 0
+        if not applied:
+            run("git", "apply", "--check", normalized, cwd=source)
+            run("git", "apply", normalized, cwd=source)
+    finally:
+        normalized.unlink(missing_ok=True)
 
 
 def main():
@@ -51,15 +64,15 @@ def main():
     apply_patch(zkid, ROOT / "patches/zkid-mobile.patch")
     runtime = checkout("circom-witnesscalc", "https://github.com/iden3/circom-witnesscalc.git", VERSIONS["circom_witnesscalc"])
     patch = ROOT / "patches/circom-witnesscalc-secq256r1.patch"
-    if digest(patch) != VERSIONS["circom_witnesscalc_patch_sha256"]:
+    if source_digest(patch) != VERSIONS["circom_witnesscalc_patch_sha256"]:
         raise SystemExit("Witness runtime patch checksum mismatch")
     apply_patch(runtime, patch)
     changed = subprocess.check_output(["git", "diff", "--name-only"], cwd=runtime, text=True).splitlines()
     expected = VERSIONS["patched_source_sha256"]
-    if set(changed) != set(expected) or any(digest(runtime / name) != value for name, value in expected.items()):
+    if set(changed) != set(expected) or any(source_digest(runtime / name) != value for name, value in expected.items()):
         raise SystemExit("Witness runtime source differs from the pinned patch")
     for name, expected in VERSIONS["runtime_bundle_sha256"].items():
-        if digest(ROOT / "vendor/circom-witnesscalc" / name) != expected:
+        if source_digest(ROOT / "vendor/circom-witnesscalc" / name) != expected:
             raise SystemExit("Vendored witness runtime checksum mismatch")
     if args.sources_only:
         return
