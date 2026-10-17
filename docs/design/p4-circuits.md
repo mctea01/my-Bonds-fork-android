@@ -200,6 +200,7 @@ content:
 - 保證：揭露或述詞所用的值，確實出現在某把金鑰簽章的 PDF 第 1 頁內容串流中，位於兩個指定錨點文字之間；簽章者是誰、是否可信由電路外的 CMS 檢查決定。
 - 不保證：版面上的視覺位置（電路以串流順序為準）；欄位意義（由描述檔與錨點定義）；文件仍然有效（看列印日期與查驗方政策）；出示者就是文件上的人（持有人綁定靠自然人憑證證據，姓名須等於 MOICA 憑證 CN，見 p4-zkp.md 第 6 節）。
 - 證明只綁定衍生憑證的持有者金鑰（β）；他人拿到證據包也無法放進自己的憑證。新鮮度由出示時的 KB-JWT 提供。
+- Form XObject 內的文字不在 v1 範圍：它來自另一個串流，字型取自該 Form 自己的資源（可能與頁面同名），所以 `PdfTextExtractor.runs` 只列出頁面內容串流的文字，Form 內的文字不列入、也不能當錨點或欄位。三份樣本中，移民管理局兩份各有一個 Form（`Xf1`）帶一個文字運算子，其餘文字都在頁面串流，欄位不受影響。日後要證明 Form 內的文字，需在 V5 加上「頁面資源 → `/XObject` → Form 串流」的視窗與 V7 的 Form 字型，電路多一個內容視窗。
 
 ### 3.9 洩漏分析（D1-A）
 
@@ -312,6 +313,7 @@ GovBind 的做法：證明者對回應的某個範圍做 SHA-256 承諾（tlsn �
 - 持有端：`ResponseBuilder` 的 `mso_mdoc_zk` 路徑已存在，註冊 `ZkSystemRepository` 後即可用；ISO 18013-5 近距離要在 `ProximityModel` 處理 `ZkRequest`；DC API 的 `org-iso-mdoc` 同樣支援。
 - 查驗端：`PresentationVerifier` 傳入同一個 repository；查驗方必須事先有發行端的 IACA 或 DS 公鑰（ZK 證明隱藏了 MSO）。
 - 發行端限制：MSO 不得超過 2,533 bytes，測試發行端要產生 ZK 友善的 mdoc【確認：P0 驗證】。
+- 實作（WP8，2026-10-17）：`core/zk/LongfellowZk` 只接受內建電路且參數完全相同的 spec，產生後先自驗；查驗時拒絕帶 deviceSigned 的證明，證明時間與現在相差不得超過 5 分鐘。明確要求 ZK（`zkRequired`）的近距離請求，在同意前確認有相容電路，不退回一般 mdoc。原生函式庫只有 Android arm64-v8a、x86_64 與桌面 Linux x86_64、macOS arm64；其他平台（含 Windows）`repository` 為 null 並提供不支援原因。
 
 ## 7. 安全審查重點（給 Review）
 
