@@ -116,4 +116,14 @@ class LongfellowZkTest {
         assertTrue(zk.specs(1).isEmpty())
         assertFailsWith<IllegalStateException> { zk.ageOver18Query() }
     }
+
+    @Test
+    fun missingNativeLibraryDisablesLongfellow() = runBlocking<Unit> {
+        // multipaz-longfellow has no library for, e.g., macOS x86_64 or Linux arm64; loading fails with an Error.
+        val zk = LongfellowZk("Linux 6.0 (JVM 21)") { "no native library" }
+        assertEquals("no native library", zk.unavailableReason)
+        assertNull(zk.repository)
+        assertTrue(zk.specs(1).isEmpty())
+        assertFailsWith<IllegalStateException> { zk.ageOver18Query() }
+    }
 }

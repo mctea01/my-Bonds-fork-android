@@ -11,11 +11,19 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** Longfellow registration shared by the holder, proximity reader and verifier. */
-class LongfellowZk(platformName: String) {
-    val unavailableReason: String? = when {
-        platformName.startsWith("Windows", ignoreCase = true) -> "Windows 尚無 Longfellow 原生函式庫"
-        else -> null
+/** Loads the Longfellow native library; the reason it cannot be used here, or null. */
+internal expect object LongfellowNative {
+    fun unavailableReason(): String?
+}
+
+/**
+ * Longfellow registration shared by the holder, proximity reader and verifier. [nativeCheck] loads the native
+ * library once: multipaz-longfellow ships it only for some platforms, and a failed load is an Error that would
+ * otherwise escape every proof operation.
+ */
+class LongfellowZk(platformName: String, nativeCheck: () -> String? = LongfellowNative::unavailableReason) {
+    val unavailableReason: String? by lazy {
+        if (platformName.startsWith("Windows", ignoreCase = true)) "Windows 尚無 Longfellow 原生函式庫" else nativeCheck()
     }
     val repository: ZkSystemRepository? by lazy {
         if (unavailableReason != null) null else ZkSystemRepository().apply { add(CheckedSystem()) }
