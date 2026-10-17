@@ -49,6 +49,7 @@ class WalletFixture(
     val policy: PresentationPolicy = PresentationPolicy(),
     val trustIssuer: Boolean = true,
     val httpClient: HttpClient = HttpClient(Java) { followRedirects = false },
+    val zkSystemRepository: org.multipaz.mdoc.zkp.ZkSystemRepository? = null,
     val env: EnvironmentPolicy = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true),
 ) {
     val storage = EphemeralStorage()
@@ -73,6 +74,7 @@ class WalletFixture(
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
+            zkSystemRepository = zkSystemRepository,
             domainsMdocSignature = listOf("mdoc"),
             domainsKeyBoundSdJwt = listOf("sdjwt"),
         )
