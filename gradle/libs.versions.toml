@@ -10,6 +10,7 @@ jna = "5.17.0"
 [libraries]
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 multipaz = { module = "org.multipaz:multipaz", version.ref = "multipaz" }
+multipaz-longfellow = { module = "org.multipaz:multipaz-longfellow", version.ref = "multipaz" }
 multipaz-doctypes = { module = "org.multipaz:multipaz-doctypes", version.ref = "multipaz" }
 multipaz-compose = { module = "org.multipaz:multipaz-compose", version.ref = "multipaz" }
 multipaz-dcapi = { module = "org.multipaz:multipaz-dcapi", version.ref = "multipaz" }

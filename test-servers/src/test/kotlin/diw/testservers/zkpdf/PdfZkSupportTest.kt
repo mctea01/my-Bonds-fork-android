@@ -126,6 +126,21 @@ class PdfZkSupportTest {
         assertEquals("Unsupported or malformed zkPDF input", error.message)
     }
 
+    @Test fun formTextIsOutsideTheV1PageStreamAndFontScope() = runBlocking<Unit> {
+        val pdf = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "BT /F1 12 Tf 60 700 Td <2000> Tj ET"))
+        // Form-local F1 is Type0, while the page's F1 is WinAnsi; P3 must still use the form's resources.
+        assertTrue(PdfTextExtractor.extract(pdf) == "測")
+        // The runs cover only the page stream, so the form's text is not attributed to the page's fonts.
+        assertTrue(PdfTextExtractor.runs(pdf, 0).isEmpty())
+        val mixed = PdfFile(ZkPdfFixture.pdf("BT /F1 12 Tf 60 780 Td (A) Tj ET /Fm1 Do", formText = "BT /F1 12 Tf 60 700 Td <2000> Tj ET"))
+        assertTrue(PdfTextExtractor.extract(mixed).let { "A" in it && "測" in it })
+        val run = PdfTextExtractor.runs(mixed, 0).single()
+        assertEquals("F1", run.font)
+        assertEquals("A", run.text)
+        val graphic = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "0 0 20 20 re f"))
+        assertTrue(PdfTextExtractor.runs(graphic, 0).isEmpty())
+    }
+
     @Test fun p3ComposerLayoutRemainsIdenticalAcrossPages() = runBlocking<Unit> {
         val bytes = PdfComposer.compose("合成證明", listOf(PdfComposer.Block.Heading("合成文件"),
             PdfComposer.Block.Field("測試欄位", "2026"), PdfComposer.Block.Paragraph("合成段落 abc 123。".repeat(300))))
