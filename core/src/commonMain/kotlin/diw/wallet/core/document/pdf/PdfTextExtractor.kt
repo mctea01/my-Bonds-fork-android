@@ -55,7 +55,7 @@ object PdfTextExtractor {
         result
     }
 
-    /** Layout of records returned by [runs], including kerning, simulated bold and form placement. */
+    /** Layout of records returned by [runs], including kerning and simulated bold. */
     fun layoutRuns(runs: List<PdfTextRun>): String = zkPdfInput {
         layout(runs.flatMap { it.glyphs ?: error("Run geometry unavailable") })
     }
@@ -238,6 +238,9 @@ object PdfTextExtractor {
                 val glyphStart = out.size
                 textStart = null
                 val operator = (t as Keyword).word
+                if (runs != null && depth > 0 && operator in setOf("Tj", "TJ", "'", "\"")) {
+                    throw PdfException("Text in Form XObjects is unsupported by zkPDF v1")
+                }
                 when (operator) {
                     "q" -> stack.add(gs.copy())
                     "Q" -> if (stack.isNotEmpty()) gs = stack.removeAt(stack.size - 1)
