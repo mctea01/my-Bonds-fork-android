@@ -1,5 +1,7 @@
 package diw.wallet.core.document.pdf
 
+import diw.wallet.core.document.zkpdf.decodeZkString
+import diw.wallet.core.document.zkpdf.zkPdfInput
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -40,19 +42,36 @@ object PdfTextExtractor {
 
     /** Text of one page dictionary (as returned by [pages]). */
     fun pageText(pdf: PdfFile, page: PdfDict): String {
+        val glyphs = ArrayList<Glyph>()
+        Interpreter(pdf, glyphs).run(pageContent(pdf, page), pdf.dict(page["Resources"]), Matrix.IDENTITY, 0)
+        return layout(glyphs)
+    }
+
+    /** Raw spellings and text of each text-showing operator, without changing P3 extraction. */
+    fun runs(pdf: PdfFile, page: Int): List<PdfTextRun> = zkPdfInput {
+        val dictionary = pages(pdf).getOrNull(page) ?: error("Page unavailable")
+        val result = ArrayList<PdfTextRun>()
+        Interpreter(pdf, ArrayList(), result).run(pageContent(pdf, dictionary), pdf.dict(dictionary["Resources"]), Matrix.IDENTITY, 0)
+        result
+    }
+
+    /** Layout of records returned by [runs], including kerning, simulated bold and form placement. */
+    fun layoutRuns(runs: List<PdfTextRun>): String = zkPdfInput {
+        layout(runs.flatMap { it.glyphs ?: error("Run geometry unavailable") })
+    }
+
+    private fun pageContent(pdf: PdfFile, page: PdfDict): ByteArray {
         val content = when (val c = pdf.resolve(page["Contents"])) {
             is PdfStream -> pdf.decode(c)
             is PdfArray -> c.mapNotNull { pdf.resolve(it) as? PdfStream }.fold(ByteArray(0)) { acc, s -> acc + pdf.decode(s) + byteArrayOf(10) }
             else -> ByteArray(0)
         }
-        val glyphs = ArrayList<Glyph>()
-        Interpreter(pdf, glyphs).run(content, pdf.dict(page["Resources"]), Matrix.IDENTITY, 0)
-        return layout(glyphs)
+        return content
     }
 
     // ---------------------------------------------------------------- layout
 
-    private class Glyph(val x: Double, val y: Double, val width: Double, val size: Double, val text: String)
+    internal class Glyph(val x: Double, val y: Double, val width: Double, val size: Double, val text: String)
 
     private fun layout(glyphs: List<Glyph>): String {
         if (glyphs.isEmpty()) return ""
@@ -109,16 +128,17 @@ object PdfTextExtractor {
         var scale: Double = 1.0,
         var leading: Double = 0.0,
         var rise: Double = 0.0,
+        var fontName: String = "",
     ) {
-        fun copy() = State(ctm, font, size, charSpacing, wordSpacing, scale, leading, rise)
+        fun copy() = State(ctm, font, size, charSpacing, wordSpacing, scale, leading, rise, fontName)
     }
 
     /** A keyword in a content stream or CMap (an operator, or a CMap keyword such as beginbfchar). */
     internal class Keyword(val word: String)
 
     /** Operands and operators of a content stream or CMap, in order; malformed bytes are skipped. */
-    internal fun tokens(data: ByteArray, onInlineImage: (PdfParser) -> Unit = ::skipInlineImage): Sequence<Any> = sequence {
-        val p = PdfParser(data)
+    internal fun tokens(data: ByteArray, retainSource: Boolean = false, onInlineImage: (PdfParser) -> Unit = ::skipInlineImage): Sequence<Any> = sequence {
+        val p = PdfParser(data).apply { retainStringSource = retainSource }
         while (true) {
             p.skipWhitespace()
             if (p.pos >= data.size) break
@@ -134,9 +154,15 @@ object PdfTextExtractor {
                 }
                 continue
             }
-            if (c == ']'.code || c == ')'.code || c == '{'.code || c == '}'.code || c == '>'.code) { p.pos++; continue }
+            if (c == ']'.code || c == ')'.code || c == '{'.code || c == '}'.code || c == '>'.code) {
+                if (retainSource) throw PdfException("Malformed content delimiter")
+                p.pos++; continue
+            }
             val start = p.pos
-            val o = try { p.parseObject() } catch (e: PdfException) { null }
+            val o = try { p.parseObject() } catch (e: PdfException) {
+                if (retainSource) throw PdfException("Malformed content operand")
+                null
+            }
             if (o == null || p.pos <= start) { p.pos = start + 1; continue }
             yield(o)
         }
@@ -160,7 +186,7 @@ object PdfTextExtractor {
         p.pos = b.size
     }
 
-    private class Interpreter(val pdf: PdfFile, val out: MutableList<Glyph>) {
+    private class Interpreter(val pdf: PdfFile, val out: MutableList<Glyph>, val runs: MutableList<PdfTextRun>? = null) {
         private val fonts = HashMap<PdfObject, PdfFont>()
         private var operations = 0
 
@@ -170,6 +196,7 @@ object PdfTextExtractor {
             var tm = Matrix.IDENTITY
             var tlm = Matrix.IDENTITY
             val operands = ArrayList<PdfObject>()
+            var textStart: Pair<Double, Double>? = null
             fun num(i: Int) = (operands.getOrNull(i) as? PdfNumber)?.let { runCatching { it.double }.getOrNull() } ?: 0.0
             fun nums() = operands.map { (it as? PdfNumber)?.let { n -> runCatching { n.double }.getOrNull() } ?: 0.0 }
             fun nextLine(tx: Double, ty: Double) {
@@ -177,6 +204,13 @@ object PdfTextExtractor {
                 tm = tlm
             }
             fun show(bytes: ByteArray) {
+                if (runs != null) {
+                    require(gs.font != null) { "Font unavailable" }
+                    if (textStart == null) {
+                        val start = Matrix(gs.size * gs.scale, 0.0, 0.0, gs.size, 0.0, gs.rise).times(tm).times(gs.ctm)
+                        textStart = start.e to start.f
+                    }
+                }
                 val font = gs.font ?: return
                 for ((code, length) in font.codes(bytes)) {
                     val trm = Matrix(gs.size * gs.scale, 0.0, 0.0, gs.size, 0.0, gs.rise).times(tm).times(gs.ctm)
@@ -192,18 +226,25 @@ object PdfTextExtractor {
                     tm = Matrix.translate(tx, 0.0).times(tm)
                 }
             }
-            for (t in tokens(content)) {
+            for (t in tokens(content, retainSource = runs != null)) {
                 if (t is PdfObject) {
                     operands.add(t)
                     continue
                 }
-                if (++operations > MAX_OPERATIONS) return
-                when ((t as Keyword).word) {
+                if (++operations > MAX_OPERATIONS) {
+                    if (runs != null) throw PdfException("Content operation limit exceeded")
+                    return
+                }
+                val glyphStart = out.size
+                textStart = null
+                val operator = (t as Keyword).word
+                when (operator) {
                     "q" -> stack.add(gs.copy())
                     "Q" -> if (stack.isNotEmpty()) gs = stack.removeAt(stack.size - 1)
                     "cm" -> gs.ctm = Matrix.of(nums()).times(gs.ctm)
                     "BT" -> { tm = Matrix.IDENTITY; tlm = Matrix.IDENTITY }
                     "Tf" -> {
+                        gs.fontName = (operands.getOrNull(0) as? PdfName)?.name.orEmpty()
                         gs.font = (operands.getOrNull(0) as? PdfName)?.let { font(resources, it.name) }
                         gs.size = num(1)
                     }
@@ -233,17 +274,38 @@ object PdfTextExtractor {
                     }
                     "Do" -> (operands.lastOrNull() as? PdfName)?.let { form(resources, it.name, gs.ctm, depth) }
                 }
+                if (runs != null && operator in setOf("Tj", "TJ", "'", "\"")) {
+                    val strings = if (operator == "TJ") {
+                        val array = operands.lastOrNull() as? PdfArray ?: error("Invalid text array")
+                        require(array.all { it is PdfString || it is PdfNumber })
+                        array.filterIsInstance<PdfString>()
+                    } else listOf(operands.lastOrNull() as? PdfString ?: error("Invalid text operand"))
+                    // A single literal flag cannot describe mixed TJ forms, and
+                    // concatenation must not change escape or odd-nibble boundaries.
+                    val literal = strings.firstOrNull()?.let { !it.hex } ?: true
+                    require(strings.all { !it.hex == literal }) { "Mixed text string forms" }
+                    val raw = strings.flatMap { (it.sourceBytes ?: error("String source unavailable")).asIterable() }.toByteArray()
+                    val decoded = strings.flatMap { it.bytes.asIterable() }.toByteArray()
+                    require(decodeZkString(raw, literal).contentEquals(decoded)) { "Ambiguous text concatenation" }
+                    val glyphs = out.subList(glyphStart, out.size).toList()
+                    val position = textStart ?: (tm.times(gs.ctm).e to tm.times(gs.ctm).f)
+                    runs.add(PdfTextRun(runs.size, gs.fontName, raw, literal,
+                        glyphs.joinToString("") { it.text }, position.first, position.second).also { it.glyphs = glyphs })
+                }
                 operands.clear()
             }
         }
 
         private fun form(resources: PdfDict?, name: String, ctm: Matrix, depth: Int) {
-            if (depth >= MAX_FORM_DEPTH) return
+            if (depth >= MAX_FORM_DEPTH) {
+                if (runs != null) throw PdfException("Form nesting limit exceeded")
+                return
+            }
             val xobjects = pdf.dict(resources?.get("XObject")) ?: return
             val s = pdf.resolve(xobjects[name]) as? PdfStream ?: return
             if (s.dict.name("Subtype") != "Form") return
             val matrix = pdf.array(s.dict["Matrix"])?.map { (pdf.resolve(it) as? PdfNumber)?.double ?: 0.0 }?.let { Matrix.of(it) } ?: Matrix.IDENTITY
-            val data = runCatching { pdf.decode(s) }.getOrNull() ?: return
+            val data = if (runs != null) pdf.decode(s) else runCatching { pdf.decode(s) }.getOrNull() ?: return
             run(data, pdf.dict(s.dict["Resources"]) ?: resources, matrix.times(ctm), depth + 1)
         }
 
