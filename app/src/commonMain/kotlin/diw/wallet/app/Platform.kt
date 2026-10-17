@@ -206,6 +206,8 @@ data class DcApiRegistration(
     val issuance: Boolean = false,
     /** Why the system refused that registration; null when it was accepted or not attempted. */
     val issuanceError: String? = null,
+    /** Each registered credential as the system matcher sees it: title, format with doctype or vct, and claim count. */
+    val entries: List<String> = emptyList(),
 )
 
 /**
