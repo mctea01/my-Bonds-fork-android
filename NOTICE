@@ -27,6 +27,23 @@ its own license:
 - JNA 5.17.0 - Apache License 2.0 or LGPL 2.1 or later
 - RustCrypto sha2 0.10.9 - Apache License 2.0 or MIT
 - thiserror 2.0.17 - Apache License 2.0 or MIT
+- Bonds-iOS OpenACAge overlay (predicate.rs and zkid-mobile.patch), revision
+  e22de5f114a593e90f28b0525f6e4f230154c641 - Apache License 2.0
+- zkID OpenAC wallet-unit-poc, revision
+  b395e09c225ff45b003f0087c28e2e208e22f944 - MIT License
+- Spartan2, revision d687dbb639eccbdd21e62fecec97c5826bc4dbbf - MIT License
+- circom-scotia, revision bd39c019dba20d32ce5727e2408632dbca269e82 -
+  MIT or Apache License 2.0
+- witnesscalc-adapter 0.1.7, revision
+  e5a82bcb7d54a4694fc0662c51b01d99134e686c - MIT or Apache License 2.0
+- witnesscalc, revision 707dc54877ad3226042d959d7ec956ae540a9a3e -
+  GNU GPL 3.0. OpenAC-enabled native binaries include this component;
+  their redistribution must comply with its GPL obligations.
+- GMP 6.2.1 - GNU LGPL 3.0 or later, or GNU GPL 2.0 or later
+- nlohmann/json, revision 9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03 - MIT
+- RustCrypto p256 0.13, ff 0.13, rand_core 0.6, num-bigint 0.4,
+  num-traits 0.2, rayon, chrono, serde_json and tempfile -
+  MIT or Apache License 2.0
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
@@ -36,6 +53,8 @@ Development and test tools that are not shipped in the application:
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
 - Rust 1.90.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT
+- Circom 2.2.3 - GNU GPL 3.0
+- GNU m4 1.4.19 (GMP build prerequisite) - GNU GPL 3.0 or later
 - open-attestation (used once to generate the fictional OpenCerts samples in
   test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
 
@@ -59,6 +78,7 @@ tools/trust-roots/esign-partners (taken from the certificate bundle the e-sign
 platform esign.cn publishes for its partner CAs), and for the public service
 certificates in test-servers/src/test/resources/chains.
 
-No source code was copied from the Bonds (bonds.tw) applications or from
-open-gpki-pkcs11; compatibility with them was implemented from their
-observable formats and public documentation.
+Except for the explicitly attributed P4 OpenACAge overlay above, compatibility
+with Bonds (bonds.tw) and open-gpki-pkcs11 was implemented from their observable
+formats and public documentation. OpenAC source licenses and pinned build
+sources are documented under native/openac-age.

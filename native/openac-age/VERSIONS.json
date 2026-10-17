@@ -1,0 +1,21 @@
+{
+  "profile": "openac-age-v1",
+  "zkid": "b395e09c225ff45b003f0087c28e2e208e22f944",
+  "bonds_ios": "e22de5f114a593e90f28b0525f6e4f230154c641",
+  "upstream_mopro": "0.3.5",
+  "host_bindings": "WP0 UniFFI 0.29.4",
+  "witnesscalc_adapter": "e5a82bcb7d54a4694fc0662c51b01d99134e686c",
+  "witnesscalc": "707dc54877ad3226042d959d7ec956ae540a9a3e",
+  "spartan2": "d687dbb639eccbdd21e62fecec97c5826bc4dbbf",
+  "circom_scotia": "bd39c019dba20d32ce5727e2408632dbca269e82",
+  "circom": "2.2.3",
+  "field": "secq256r1",
+  "optimization": 2,
+  "gmp": "6.2.1",
+  "gmp_archive_sha256": "fd4829912cddd12f84181c3451cc752be224643e87fac497b69edddadc49b4f2",
+  "jwt_2k_r1cs_sha256": "d4f8b34dfd454234872a34f47ea486545cb4d989c41ed75f856268718251dc6a",
+  "show_r1cs_sha256": "3809e70502fa90f2038760da5f1399a1e3eb17923e5af872edf3dfa0b7d37a9a",
+  "prepare_verifying_key_sha256": "9b45cc7462a236b1056d21c19e1e4dfc2cf52fd20538d43fbe072d9ed106e9d6",
+  "show_verifying_key_sha256": "f0c447a9757d182e8aa23083bc3dba5a9a22f3e0fcbb344724568cc3c83352d8",
+  "noir_acir_bb": "not applicable to this Circom/Spartan2 profile"
+}
