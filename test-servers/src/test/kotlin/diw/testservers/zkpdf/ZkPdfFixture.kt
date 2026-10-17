@@ -26,11 +26,12 @@ object ZkPdfFixture {
     """.trimIndent()
 
     fun pdf(text: String = content, cmapText: String = cmap, differences: String = "225 /uni00C1",
-        arrayContents: Boolean = false, wrongLength: Boolean = false): ByteArray {
+        arrayContents: Boolean = false, wrongLength: Boolean = false, formText: String? = null): ByteArray {
         val out = PdfOutput()
         out.append("%PDF-1.7\n")
         out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R >>")
-        out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>")
+        val xobjects = if (formText != null) "/XObject << /Fm1 9 0 R >>" else ""
+        out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Font << /F1 5 0 R /F2 6 0 R >> $xobjects >> >>")
         val contents = if (arrayContents) "[4 0 R]" else "4 0 R"
         out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents $contents >>")
         val compressed = ByteArrayOutputStream().also { sink ->
@@ -46,7 +47,10 @@ object ZkPdfFixture {
         out.obj(6, 0, "<< /Type /Font /Subtype /Type0 /BaseFont /Synthetic /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 8 0 R >>")
         out.obj(7, 0, "<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Synthetic /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /DW 1000 /W [4096 4105 500] >>")
         out.stream(8, 0, PdfDict.of(), cmapText.toByteArray())
-        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(9), "Root" to PdfRef(1, 0),
+        if (formText != null) out.stream(9, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"),
+            "BBox" to PdfArray(listOf(0, 0, 595, 842).map { PdfNumber.of(it) }),
+            "Resources" to PdfDict.of("Font" to PdfDict.of("F1" to PdfRef(6, 0)))), formText.toByteArray())
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(if (formText != null) 10 else 9), "Root" to PdfRef(1, 0),
             "ID" to PdfArray(List(2) { PdfString(ByteArray(16) { i -> i.toByte() }, true) })), true)
         return out.bytes()
     }
