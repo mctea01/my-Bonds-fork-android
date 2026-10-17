@@ -7,7 +7,9 @@ This product includes or links the following third-party software, each under
 its own license:
 
 - Multipaz (org.multipaz:multipaz, multipaz-doctypes, multipaz-compose,
-  multipaz-dcapi) - Apache License 2.0
+  multipaz-dcapi, multipaz-longfellow 0.101.0) - Apache License 2.0
+- Longfellow ZK (Google, native libraries and default circuits distributed
+  by multipaz-longfellow) - Apache License 2.0
 - Kotlin standard library, kotlinx.coroutines, kotlinx.serialization,
   kotlinx-io, kotlinx-datetime - Apache License 2.0
 - Ktor - Apache License 2.0

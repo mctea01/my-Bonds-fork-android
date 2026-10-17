@@ -8,6 +8,7 @@ bouncycastle = "1.85"
 
 [libraries]
 multipaz = { module = "org.multipaz:multipaz", version.ref = "multipaz" }
+multipaz-longfellow = { module = "org.multipaz:multipaz-longfellow", version.ref = "multipaz" }
 multipaz-doctypes = { module = "org.multipaz:multipaz-doctypes", version.ref = "multipaz" }
 multipaz-compose = { module = "org.multipaz:multipaz-compose", version.ref = "multipaz" }
 multipaz-dcapi = { module = "org.multipaz:multipaz-dcapi", version.ref = "multipaz" }
