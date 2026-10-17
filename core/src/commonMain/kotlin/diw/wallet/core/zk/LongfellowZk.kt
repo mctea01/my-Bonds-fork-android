@@ -84,6 +84,8 @@ class LongfellowZk(platformName: String) {
         }
     }
 
+    class ProofException : IllegalArgumentException("Longfellow proof operation failed")
+
     companion object {
         private fun copySpec(spec: ZkSystemSpec) = ZkSystemSpec(spec.id, spec.system).also { copy ->
             spec.params.forEach { (name, value) -> copy.addParam(name, value.toDataItem()) }
@@ -94,7 +96,7 @@ class LongfellowZk(platformName: String) {
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            throw IllegalArgumentException("Longfellow proof operation failed")
+            throw ProofException()
         }
     }
 }
