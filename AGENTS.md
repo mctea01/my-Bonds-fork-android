@@ -140,8 +140,9 @@
 - 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`；尚未實作的部分以這三份文件為準，實作完成後把要點移到本節。
 - 四種證據：zkPDF（Noir 電路，證明已簽署 PDF 的文字欄位）、zkTLS（TLSNotary，查驗方當 notary 的即時模式；離線時為 T3 的網頁證明或裝置證明紀錄）、年齡證明（直接引用 Bonds 的 OpenAC `openac-age-v1` 資產與格式）、mdoc ZK（Multipaz Longfellow）。
 - 證據都疊加在既有的文件衍生憑證上（`evidence` 陣列），以持有者 `cnf.jwk` 的 RFC 7638 thumbprint 綁定；信任等級取原始簽署者、發行端或連線的等級，零知識證明本身不提高等級；zkPDF 與 zkTLS 永遠不是 T1。
-- 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 決定能否在本機產生證明，C 級只能驗證。
-- 證明資產以 `core/src/commonMain/resources/zk/assets.json` 釘選 SHA-256 與大小，下載後比對才載入。私密輸入不可出現在 log、例外訊息與測試輸出。
+- 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 只是建議，用來顯示估計與預設選項，不禁止在本機產生證明（D3）；處理器架構不支援或缺少引擎時該後端才不可用。
+- 原生建置：`core` 的 `buildZkDesktop` 與 `app` 的 `buildZkAndroid` 執行 `native/build.sh`（Rust 1.90.0、cargo-ndk 4.1.2、NDK 28.2.13676358）。`-Pdiw.zkNative`（或 `DIW_ZK_NATIVE`）：`auto`（預設）有工具鏈才建置，沒有時不打包原生函式庫、App 顯示零知識證明不可用；`require` 一定建置，缺工具就失敗（CI 用）；`skip` 不建置。Windows 用 Git for Windows 的 bash（直接呼叫 `bash` 會啟動 WSL）。`ZkNativeTest` 在沒有函式庫且不是 `require` 時略過。
+- 證明資產清單的原始檔是 `native/assets.json`，建置時複製成資源 `zk/assets.json`（Android 函式庫不打包 commonMain 的資源，所以 `core` 另外把它加進 Android 的 Java 資源），SHA-256 釘選在 `ZkAssetManifest`；下載後比對大小與兩層 SHA-256 才載入。私密輸入不可出現在 log、例外訊息與測試輸出。
 - 分工：Codex 依 `p4-work-packages.md` 在 `codex/p4-wpN-<簡稱>` 分支開發，PR 目標為整合分支 `claude/p4-zkp-design-fmkasd`；介面由 Claude 維護，需要變更時在 PR 提出「介面變更提案」，不自行改動其他工作包的介面。
 - 電路（`native/circuits/**`、OpenAC 的 `predicate.rs` 與 zkID patch、zkTLS 揭露規則）的規格與審查由 Claude 管控，里程碑可逐步交給 Codex；修改電路的 PR 附上電路實作報告（`p4-work-packages.md` 第 4 節），Claude 檢查後才合併。zkPDF 描述檔自己定義欄位與錨點，標籤參考 P3 的文件解析。
 - 算力不足不禁止產生證明：顯示估計後由使用者選擇在本機產生、在電腦版產生後匯入、送到自架主機（`RiskConfirmDialog`）或不加零知識證據。zkTLS 的查驗方以手機為目標，電腦版與測試伺服器只是過渡；持有端與查驗端之間是綁定請求的 Noise 通道（區域網路或只轉送密文的中繼）。
