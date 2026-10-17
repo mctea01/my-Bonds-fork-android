@@ -299,12 +299,13 @@ GovBind 的做法：證明者對回應的某個範圍做 SHA-256 承諾（tlsn �
 
 ## 5. C3：OpenAC 年齡述詞（引用 Bonds）
 
-- 來源：Bonds-iOS `Native/OpenACAge`（Apache-2.0）基於 zkID commit `b395e09c225ff45b003f0087c28e2e208e22f944`、Mopro 0.3.5、witnesscalc\_adapter `e5a82bc`【確認】。
+- 來源：Bonds-iOS `Native/OpenACAge`（Apache-2.0）基於 zkID commit `b395e09c225ff45b003f0087c28e2e208e22f944`、Mopro 0.3.5、witnesscalc\_adapter `e5a82bc`【確認】。本專案不沿用後兩者：witnesscalc\_adapter 會靜態連結 GPL-3.0 的 witnesscalc，見證改由 circom-witnesscalc（MIT，加 256 位元質數 patch）以見證計算圖計算，結果與 circom 原生見證逐值相同（p4-work-packages.md WP7「見證計算與授權」）。電路本身不變，r1cs 與 Bonds 釘選的雜湊相同。
+- 授權：電路引用 circomlib 2.0.5（GPL-3.0-or-later），r1cs、金鑰與見證計算圖都含編譯後的 circomlib 內容，作為與 App 分開下載的資產依 GPL-3.0 散布（同上，屬推論）。
 - 電路：`jwt_2k`（Prepare：驗證 ES256 SD-JWT 的發行端簽章與出生日期 disclosure 的承諾，訊息上限 2,048 bytes、base64 payload 上限 2,000）與 `show`（以 `cnf.jwk` 對查驗方 nonce 簽章，述詞為出生日期不晚於 cutoff）；兩個證明以共享承諾連結並重新隨機化。
 - 公開值：Prepare 為發行端公鑰 x、y 與格式等 6 個值；Show 為 nonce 雜湊、述詞程式、cutoff、claim 名稱等。查驗端以 `verify_age_presentation(nonce, claim_name, claim_format, cutoff, expected_issuer_key)` 自行組出期望值比對，不信任證明包內的值【確認：predicate.rs】。
 - 支援的 claim 名稱：`roc_birthday`、`birthdate`、`birthday`、`date_of_birth`、`birth_date`、`出生日期`；格式 2（ISO）與 3（民國 YYYMMDD）。nonce 至少 16 bytes。
 - 資產：`openac-age-v1` 的 6 個檔案，下載位址 `https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/`，壓縮與安裝後兩層 SHA-256 照 Bonds 的清單釘選（p4-work-packages.md WP7 列出全部雜湊）。
-- Android：以 Bonds 的 `predicate.rs` 與 `zkid-mobile.patch` 為基礎，改用 cargo-ndk 輸出 `arm64-v8a`、`x86_64`；證明執行緒需 64 MB 堆疊。公開訊號由我們自己的 uniffi 匯出，可避開 Bonds 在 iOS 上無法取得公開訊號的限制。
+- Android：以 Bonds 的 `predicate.rs` 與 `zkid-mobile.patch` 為基礎，改用 cargo-ndk 輸出 `arm64-v8a`、`x86_64`；證明執行緒需 64 MB 堆疊。持有端另需下載 `jwt_2k` 與 `show` 的見證計算圖（安裝後約 94 MB）。公開訊號由我們自己的 uniffi 匯出，可避開 Bonds 在 iOS 上無法取得公開訊號的限制。
 - Bonds 已知限制沿用並在畫面寫明：自發卡的發行端 DID 是穩定假名；憑證效期不在電路內；公路局駕照電子卡沒有生日欄位，不能做。
 
 ## 6. C4：Longfellow（mdoc）
