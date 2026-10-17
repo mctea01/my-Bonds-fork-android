@@ -106,7 +106,7 @@ interface ZkAssetStore {
 }
 ```
 
-- 資產清單 `core/src/commonMain/resources/zk/assets.json`，其 SHA-256 以 Kotlin 常數釘選；下載以 ktor，續傳、兩層 SHA-256 檢查、失敗刪除。
+- 資產清單原始檔 `native/assets.json`，建置時成為資源 `zk/assets.json`，其 SHA-256 以 Kotlin 常數釘選；下載以 ktor，續傳、兩層 SHA-256 檢查、失敗刪除。
 - 裝置等級規則見 p4-zkp.md 第 8 節，門檻放在一個常數物件，WP1 後更新。
 - 平台取得 `ZkPlatformInfo`：Android 以 `ActivityManager.MemoryInfo` 與 `Build.SUPPORTED_ABIS`；桌面以 `OperatingSystemMXBean`。由 app 的 `PlatformServices` 提供，core 不直接碰平台 API。
 - 原生函式庫打包：Android 放進 APK 的 `lib/arm64-v8a`、`lib/x86_64`；桌面放進 jar 的資源並在首次使用解壓到 App 資料目錄，依 OS 與架構選擇。`native/build.sh` 一次建出全部目標；CI 需要的步驟另寫成完整 workflow 草稿。

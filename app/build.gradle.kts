@@ -12,6 +12,43 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+/** The pinned NDK, also used by native/build.sh. */
+val zkNdkVersion = "28.2.13676358"
+
+/** Same modes as core's buildZkDesktop: auto (build when the tools are installed), require, skip. */
+val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
+    .getOrElse("auto").also { require(it in setOf("auto", "require", "skip")) { "diw.zkNative must be auto, require or skip" } }
+
+/** Git for Windows' bash: a plain "bash" on Windows starts WSL, which usually has no distribution installed. */
+val zkBash: String? = if (!System.getProperty("os.name").startsWith("Windows")) "bash" else
+    listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramW6432"))
+        .map { File(it, "Git/bin/bash.exe") }.firstOrNull { it.isFile }?.path
+
+fun zkCommandOutput(vararg command: String): String? = runCatching {
+    val process = ProcessBuilder(*command).directory(rootDir).redirectErrorStream(true).start()
+    val output = process.inputStream.readBytes().decodeToString().trim()
+    output.takeIf { process.waitFor() == 0 }
+}.getOrNull()
+
+val buildZkAndroid by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine(zkBash ?: "bash", "native/build.sh", "android")
+    inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
+    onlyIf("the Rust toolchain, cargo-ndk and the pinned NDK are installed, or diw.zkNative=require") {
+        when (zkNativeMode) {
+            "require" -> true
+            "skip" -> false
+            else -> {
+                val ndk = System.getenv("ANDROID_HOME")?.let { File(it, "ndk/$zkNdkVersion/source.properties") }
+                (zkBash != null && ndk?.isFile == true && zkCommandOutput("cargo", "ndk", "--version") == "cargo-ndk 4.1.2").also {
+                    if (!it) logger.warn("ZK native library not packaged: cargo-ndk 4.1.2 or NDK $zkNdkVersion under ANDROID_HOME not found (-Pdiw.zkNative=require fails instead)")
+                }
+            }
+        }
+    }
+}
+
 /**
  * The mobile citizen certificate SP account built into this build, from the environment or Gradle properties
  * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI can pass them as secrets, see docs/release.md).
@@ -188,6 +225,8 @@ val releaseKey: Result<ReleaseKey?> = runCatching {
 android {
     namespace = "diw.wallet.app"
     compileSdk = 36
+    ndkVersion = zkNdkVersion
+    sourceSets.getByName("main").jniLibs.srcDir(rootProject.file("native/dist/android"))
     defaultConfig {
         applicationId = "diw.wallet.app"
         minSdk = 29
@@ -211,6 +250,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
+        // JNA's AAR also carries ABIs that Android no longer supports.
+        jniLibs.excludes += setOf("lib/armeabi/**", "lib/mips/**", "lib/mips64/**")
         resources {
             excludes += setOf(
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
@@ -229,10 +270,15 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(rootProject.file("native/zk.pro"))
             // Without a release key the optimized APK is signed with the debug key, so it still installs for testing.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(buildZkAndroid)
 }
 
 // A release key that is set but does not open stops release builds at once; debug builds and tests still run.
@@ -277,6 +323,7 @@ compose.desktop {
             }
         }
         buildTypes.release.proguard {
+            configurationFiles.from(rootProject.file("native/zk.pro"))
             configurationFiles.from(project.file("compose-desktop.pro"))
             obfuscate.set(false)
         }

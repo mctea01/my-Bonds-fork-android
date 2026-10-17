@@ -205,7 +205,7 @@ zkPDF 的完整洩漏分析見 p4-circuits.md 第 3.9 節。同意畫面要以�
 
 ## 9. 電路與金鑰資產
 
-- 清單 `core/src/commonMain/resources/zk/assets.json`（由程式碼常數釘選它的 SHA-256）：每個項目有 `id`、`backend`、`role`（prover、verifier）、`urls`、壓縮檔 SHA-256 與大小、安裝後 SHA-256 與大小、授權。
+- 清單原始檔 `native/assets.json`，建置時成為資源 `zk/assets.json`（由程式碼常數 `ZkAssetManifest` 釘選它的 SHA-256）：每個項目有 `id`、`backend`、`role`（prover、verifier）、`urls`、壓縮檔 SHA-256 與大小、安裝後 SHA-256 與大小、授權。
 - 下載前顯示大小並取得同意；可續傳；壓縮檔與安裝後檔案兩層都比對 SHA-256，不符就刪除；設定頁可查看與刪除。不從清單以外的位置載入任何電路或金鑰。
 - 預估大小：
 
