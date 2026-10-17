@@ -100,7 +100,7 @@ def main():
 project(diw_openac_witness LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG")
-include_directories("{gmp}/include" "{work}/src" "{work}/build" "{source}/depends/json/single_include")
+include_directories("{gmp.as_posix()}/include" "{work.as_posix()}/src" "{work.as_posix()}/build" "{source.as_posix()}/depends/json/single_include")
 add_library(fr STATIC build/fr.cpp build/fr_generic.cpp build/fr_raw_generic.cpp)
 '''
     for name in ("jwt_2k", "show"):
