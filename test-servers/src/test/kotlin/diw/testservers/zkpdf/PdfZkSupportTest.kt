@@ -126,6 +126,17 @@ class PdfZkSupportTest {
         assertEquals("Unsupported or malformed zkPDF input", error.message)
     }
 
+    @Test fun formTextIsOutsideTheV1PageStreamAndFontScope() = runBlocking<Unit> {
+        val pdf = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "BT /F1 12 Tf 60 700 Td <2000> Tj ET"))
+        // Form-local F1 is Type0, while the page's F1 is WinAnsi; P3 must still use the form's resources.
+        assertTrue(PdfTextExtractor.extract(pdf) == "測")
+        val failure = assertFailsWith<PdfException> { PdfTextExtractor.runs(pdf, 0) }
+        assertEquals("Unsupported or malformed zkPDF input", failure.message)
+        assertNull(failure.cause)
+        val graphic = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "0 0 20 20 re f"))
+        assertTrue(PdfTextExtractor.runs(graphic, 0).isEmpty())
+    }
+
     @Test fun p3ComposerLayoutRemainsIdenticalAcrossPages() = runBlocking<Unit> {
         val bytes = PdfComposer.compose("合成證明", listOf(PdfComposer.Block.Heading("合成文件"),
             PdfComposer.Block.Field("測試欄位", "2026"), PdfComposer.Block.Paragraph("合成段落 abc 123。".repeat(300))))
