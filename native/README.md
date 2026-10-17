@@ -18,7 +18,12 @@ native/generate-bindings.sh
 ```
 
 The Gradle JVM resource task builds the host library; the Android JNI merge
-task builds arm64-v8a and x86_64. Both use release Rust libraries. The Android
+task builds arm64-v8a and x86_64. `-Pdiw.zkNative` (or `DIW_ZK_NATIVE`) picks
+how: `auto` (default) builds only when bash and cargo (and, for Android,
+cargo-ndk 4.1.2 and the pinned NDK under ANDROID_HOME) are installed and
+otherwise packages no library, so the app reports ZK as unavailable; `require`
+always builds and fails without the tools (use it in CI); `skip` never builds.
+On Windows the tasks run Git for Windows' bash, because `bash` there starts WSL. Both use release Rust libraries. The Android
 application uses its existing R8 release build plus native/zk.pro. Do not edit
 the generated Kotlin binding. It uses the JNA cleaner on both platforms,
 including Android versions without java.lang.ref.Cleaner.

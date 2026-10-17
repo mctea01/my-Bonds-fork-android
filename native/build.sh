@@ -33,10 +33,9 @@ for target in "${selected[@]}"; do
         cargo build --release --locked -p diw-zk-ffi --target "$target"
         mkdir -p "dist/resources/zk/native/$platform"
         cp "target/$target/release/$library" "dist/resources/zk/native/$platform/$library"
-        python3 - "$platform" "$library" <<'PY'
-import hashlib, pathlib, sys
-path = pathlib.Path('dist/resources/zk/native') / sys.argv[1] / sys.argv[2]
-path.with_name(path.name + '.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest() + '\n')
-PY
+        # sha256sum on Linux and Git for Windows, shasum on macOS.
+        path="dist/resources/zk/native/$platform/$library"
+        if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
+        printf '%s\n' "${digest%% *}" > "$path.sha256"
     fi
 done
