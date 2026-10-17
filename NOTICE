@@ -23,6 +23,10 @@ its own license:
 - Apache PDFBox (desktop preview only) - Apache License 2.0
 - SQLite JDBC (org.xerial:sqlite-jdbc, desktop) - Apache License 2.0;
   SQLite itself is in the public domain
+- UniFFI 0.29.4 (Rust/Kotlin bindings) - Mozilla Public License 2.0
+- JNA 5.17.0 - Apache License 2.0 or LGPL 2.1 or later
+- RustCrypto sha2 0.10.9 - Apache License 2.0 or MIT
+- thiserror 2.0.17 - Apache License 2.0 or MIT
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
@@ -30,6 +34,8 @@ its own license:
 Development and test tools that are not shipped in the application:
 
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
+- Rust 1.90.0 - Apache License 2.0 or MIT
+- cargo-ndk 4.1.2 - Apache License 2.0 or MIT
 - open-attestation (used once to generate the fictional OpenCerts samples in
   test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
 
