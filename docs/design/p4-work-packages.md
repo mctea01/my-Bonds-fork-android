@@ -40,7 +40,9 @@
 | uniffi | WP0 釘選 | Kotlin 綁定使用 JNA |
 | nargo、bb | WP3a 釘選在 `native/circuits/VERSIONS` | bb 使用零知識版本 |
 | tlsn | `v0.1.0-alpha.15` 的 commit | WP5 釘選 |
-| zkID、Mopro、witnesscalc\_adapter | `b395e09c225ff45b003f0087c28e2e208e22f944`、0.3.5、`e5a82bc` | 與 Bonds `openac-age-v1` 相同（WP7） |
+| zkID | `b395e09c225ff45b003f0087c28e2e208e22f944` | 與 Bonds `openac-age-v1` 相同（WP7） |
+| circom、circomlib、@zk-email/circuits | 2.2.3、2.0.5、6.3.4 | 只在建置見證計算圖時使用（WP7） |
+| circom-witnesscalc | `d48eb7c97857d46b8a75c94ab96f769207263245` 加 `native/openac-age/patches/circom-witnesscalc-secq256r1.patch` | 取代 witnesscalc\_adapter（WP7 授權） |
 
 ## 2. 工作包一覽
 
@@ -315,9 +317,27 @@ OpenAC 是可替換的後端之一（p4-zkp.md 第 2 節 D5），先引入是因
 
 原生部分（Codex）：`native/openac-age/**`、`native/diw-zk-ffi/src/openac.rs`。
 
-- 以 zkID `b395e09c225ff45b003f0087c28e2e208e22f944` 的 `wallet-unit-poc`、Mopro 0.3.5、witnesscalc\_adapter `e5a82bc` 為基礎，套用 Bonds-iOS `Native/OpenACAge` 的 `predicate.rs`、`zkid-mobile.patch`（Apache-2.0，保留著作權聲明並在 NOTICE 記錄），改為 cargo-ndk 輸出 Android 兩個 ABI 與桌面三個平台；建置腳本同樣拒絕其他 zkID revision。
+- 以 zkID `b395e09c225ff45b003f0087c28e2e208e22f944` 的 `wallet-unit-poc/ecdsa-spartan2` 為基礎，套用 Bonds-iOS `Native/OpenACAge` 的 `predicate.rs` 與 `zkid-mobile.patch` 的證明流程部分（Apache-2.0，保留著作權聲明並在 NOTICE 記錄），以 cargo-ndk 輸出 Android 兩個 ABI 與桌面三個平台；建置腳本同樣拒絕其他 zkID revision。
+- 不使用 Mopro 與 witnesscalc\_adapter：匯出走既有的 `diw-zk-ffi`（uniffi），見證計算改用 circom-witnesscalc 的圖形計算（見下方「見證計算與授權」）。`ecdsa-spartan2` 以 `default-features = false` 引入（關掉 `native-witness`），見證由 `openac-age` 計算後以 `with_witness`（或同等的建構子）交給電路；zkID 的 `parse_witness` 讀 `.wtns`，circom-witnesscalc 的 `calc_witness` 正好輸出 `.wtns`，不需要轉換。
 - 匯出的函式與 Bonds 相同：`create_age_prepare_input`、`create_age_show_input`、`prove_jwt`、`prove_show`、`reblind_jwt`、`reblind_show`、`generate_shared_blinds`、`verify_age_presentation`；另外匯出公開訊號讀取函式（Bonds 在 iOS 缺的部分）。
 - 證明在 64 MB 堆疊的專用執行緒執行。
+
+見證計算與授權（2026-10-17 決定，取代原本的 witnesscalc\_adapter）：
+
+- 原因：witnesscalc\_adapter（MIT／Apache）在建置時 clone 並靜態連結 iden3 witnesscalc（GPL-3.0）與 GMP，App 的原生函式庫會變成 GPL-3.0。Bonds 的 README 沒有寫到這點。
+- 改用 [circom-witnesscalc](https://github.com/iden3/circom-witnesscalc)（MIT）：執行期只有 `calc_witness(inputs_json, graph_bytes)`，依賴全為 MIT、Apache 或同等寬鬆授權（2026-10-17 以 `cargo tree -e normal --target aarch64-linux-android` 確認）。上游只支援 64 與 254 位元的質數，`native/openac-age/patches/circom-witnesscalc-secq256r1.patch` 加上 256 位元（secq256r1）的 `FieldOps`、圖形讀取與 `build-circuit -p secq256r1`；建置腳本 clone 上述 commit、套用 patch，其他 commit 或 patch 不符時失敗。建置需要 `protoc` 與 libclang（bindgen）；CI workflow 要加裝 `protobuf-compiler`，代理無法推送 workflow，完整檔案交給使用者貼上。
+- 見證計算圖由 `native/openac-age/build-graphs.sh` 產生：zkID 的 `wallet-unit-poc/circom` 以 `yarn install`（circomlib 2.0.5、@zk-email/circuits 6.3.4）取得電路函式庫，`build-circuit circuits/main/<name>.circom <name>.graph -l node_modules -p secq256r1`。`build-circuit` 連結 circom 編譯器（GPL-3.0），只在建置時執行，不打包進 App。同一個 commit 重建兩次的圖形雜湊相同，`-i` 輸入檔不影響輸出。
+- 2026-10-17 在雲端驗證（Linux x86\_64）：
+
+  | 電路 | r1cs SHA-256（與 Bonds 釘選相同） | 圖形 bytes | 圖形 SHA-256 | gzip -9 約 | 見證計算 |
+  |---|---|---:|---|---:|---|
+  | `show` | `3809e705…a37a9a` | 551,178 | `352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3` | 198 KB | 8 ms |
+  | `jwt_2k` | `d4f8b34d…51dc6a` | 93,459,128 | `cc49cb201e406a03089d72217718b38941c893a970d5d809996605148a2ed63c` | 29.7 MB | 0.7 秒（circom wasm 3.2 秒） |
+
+  zkID 附的輸入與 `generate-inputs.ts --size 2k` 重新產生的合成輸入（新的發行端與裝置金鑰）各一組，圖形算出的見證與 circom 產生的 wasm 見證計算器逐值相同（`show` 18,890 個、`jwt_2k` 1,523,033 個），代入 r1cs 後約束全部成立（`show` 19,084 條、`jwt_2k` 1,567,388 條）；改動一個見證值時有約束不成立，確認檢查有效。`show` 另以 1k、4k、8k 的輸入檔比對也相同。circom-witnesscalc 加 patch 後以 cargo-ndk 編出 Android arm64-v8a 的函式庫（約 1 MB），實機執行在 WP1 量測。
+- 圖形是新的資產：`openac-age-graph-v1` 的 `jwt_2k.graph.gz` 與 `show.graph.gz`，由使用者上傳到本 repo 的 Release（代理不建立 Release）；`assets.json` 以安裝後的雜湊（上表）與上傳檔案的壓縮雜湊釘選，角色為持有端。查驗端不需要圖形。
+- 電路資產的授權：zkID 電路是 MIT，但電路引用的 circomlib 2.0.5（`bitify`、`comparators`、`gates`、`multiplexer`、`mux1`、`poseidon`、`sign`、`sha256` 等）是 GPL-3.0-or-later，所以 r1cs、證明金鑰與圖形都含有編譯後的 circomlib 內容。【推論，非法律意見】這些資產與 App 分開下載，由 App 中 MIT／Apache 的程式讀取執行，類似直譯器執行 GPL 程式，App 本身仍為 Apache-2.0；資產本身依 GPL-3.0 散布，NOTICE 寫明 zkID commit、circomlib 版本與重建方法（`build-graphs.sh`）作為對應原始碼。Bonds 的 `openac-age-v1` 資產也是同樣情況。若之後要避免任何 GPL 資產，只能以其他授權重寫這些範本，電路與金鑰會改變而不再與 Bonds 相容，不在 P4 範圍。
+- NOTICE（WP7 合併時更新）：在隨 App 散布的元件加入 circom-witnesscalc（MIT，含本 repo 的 patch）、zkID `ecdsa-spartan2` 與其依賴（Spartan2、circom-scotia、halo2curves 等，依 `cargo tree` 列出授權）、Bonds `predicate.rs`（Apache-2.0）；另立一段「下載的證明資產」，列出 `openac-age-v1` 與 `openac-age-graph-v1`、MIT（zkID）與 GPL-3.0-or-later（circomlib 2.0.5）以及原始碼位置；在不隨 App 散布的建置工具加入 circom 2.2.3 與 `build-circuit`（GPL-3.0）、protoc。同時刪除 NOTICE 末段「沒有複製 Bonds 原始碼」的說法或改為只描述 P3 以前的部分。
 
 資產（`assets.json`，全部來自 `https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/`）：
 
@@ -338,6 +358,8 @@ Kotlin 部分（Codex 寫包裝與測試，Claude 寫流程）：`core/profile/b
 
 - `BondsAgeProofTest`：Bonds 請求 QR 與證明包的編碼、解碼與欄位驗證（以 Bonds 原始碼的規則：版本 1、nonce 長度、claim 名稱、格式 2 或 3、證明大小上限、`issuerDID` 為 did:key）。
 - `OpenAcAgeTest`（桌面）：以測試發行端的 ES256 SD-JWT 完成 Prepare、Show、reblind、驗證；cutoff 晚一天時驗證失敗；換一把發行端公鑰時驗證失敗。
+- `OpenAcWitnessTest`（桌面）：以 zkID 附的 `inputs/jwt/2k`、`inputs/show/2k` 輸入，圖形算出的見證雜湊等於固定值（由 circom wasm 見證計算器取得並寫在測試內）；圖形檔雜湊不符時拒絕載入。
+- 建置檢查：`cargo tree -e normal` 對 Android 與桌面目標都沒有 GPL、LGPL 或 AGPL 授權的 crate，也沒有連結 GMP；CI 在 `require` 模式執行。
 - 與 Bonds 互通：使用者以 Bonds iPad 查驗方掃描本 App 的證明（BLE），以及本 App 查驗 Bonds 的證明，結果記在驗收文件。
 
 ### WP8 Longfellow mdoc ZK（Codex）

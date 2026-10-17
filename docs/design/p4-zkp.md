@@ -212,6 +212,7 @@ zkPDF 的完整洩漏分析見 p4-circuits.md 第 3.9 節。同意畫面要以�
 | 資產 | 角色 | 下載 | 安裝後 | 來源 |
 |---|---|---|---|---|
 | OpenAC `jwt_2k.r1cs`、`show.r1cs`、prepare／show proving key | 持有端 | 約 53 MB | 約 815 MB | Bonds `openac-age-v1`【確認】 |
+| OpenAC `jwt_2k`、`show` 見證計算圖 | 持有端 | 約 30 MB | 約 94 MB | 本專案 `openac-age-graph-v1`（WP7） |
 | OpenAC prepare／show verifying key | 兩端（持有端自驗） | 約 24 MB | 約 437 MB | 同上【確認】 |
 | zkPDF ACIR 與驗證金鑰 | 兩端 | 數 MB【推論】 | 數 MB | 本專案建置，隨 App 或 release 發布 |
 | UltraHonk 的 BN254 SRS（Aztec 公開儀式） | 持有端 | 依電路大小，2^22 點約 256 MB【推論】 | 同左 | Aztec 公開檔案，SHA-256 釘選 |
@@ -255,7 +256,7 @@ Kotlin 介面以 p4-work-packages.md 為準，這裡只列共同規則：
 | 手機查驗方的連線 | 兩支手機不在同一網路、電信商 NAT | 區域網路與中繼兩條路徑；中繼只轉送密文，可自架 |
 | TLSNotary 仍是 alpha，行動 SDK 未發布，TLS 1.3 暫停 | 目標網站改 TLS 1.3 就不能用；API 變動 | 釘選 commit；描述檔記錄 TLS 版本；網站升級時顯示停用原因 |
 | Barretenberg 預設的 UltraHonk 不是零知識版本【推論】 | 證明可能洩漏私密輸入 | WP1 確認 bb 的零知識設定，驗收時以版本與參數記錄 |
-| OpenAC 資產大（安裝後約 1.25 GB），峰值 2.27 GiB | 低階機無法使用 | 下載前同意、可刪除、裝置分級 |
+| OpenAC 資產大（安裝後約 1.35 GB，含見證計算圖），峰值 2.27 GiB | 低階機無法使用 | 下載前同意、可刪除、裝置分級 |
 | 查驗頁或版型改版 | 描述檔失效 | 描述檔有版本，失效時停用並寫明原因；測試用合成樣本 |
 | zkTLS 結果無法定效力 | 使用者誤解 | 畫面寫明「技術證據，不等於官方證明書」 |
 | 原生函式庫讓 APK 變大 | 下載與安裝負擔 | 依 ABI 分包；CI 變更以完整檔交給你貼上 |
