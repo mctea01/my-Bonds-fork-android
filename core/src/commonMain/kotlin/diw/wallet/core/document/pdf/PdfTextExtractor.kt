@@ -47,7 +47,7 @@ object PdfTextExtractor {
         return layout(glyphs)
     }
 
-    /** Raw spellings and text of each text-showing operator, without changing P3 extraction. */
+    /** Raw spellings and text of each text-showing operator of the page content stream, without changing P3 extraction; text drawn by Form XObjects is left out. */
     fun runs(pdf: PdfFile, page: Int): List<PdfTextRun> = zkPdfInput {
         val dictionary = pages(pdf).getOrNull(page) ?: error("Page unavailable")
         val result = ArrayList<PdfTextRun>()
@@ -204,7 +204,7 @@ object PdfTextExtractor {
                 tm = tlm
             }
             fun show(bytes: ByteArray) {
-                if (runs != null) {
+                if (runs != null && depth == 0) {
                     require(gs.font != null) { "Font unavailable" }
                     if (textStart == null) {
                         val start = Matrix(gs.size * gs.scale, 0.0, 0.0, gs.size, 0.0, gs.rise).times(tm).times(gs.ctm)
@@ -238,9 +238,6 @@ object PdfTextExtractor {
                 val glyphStart = out.size
                 textStart = null
                 val operator = (t as Keyword).word
-                if (runs != null && depth > 0 && operator in setOf("Tj", "TJ", "'", "\"")) {
-                    throw PdfException("Text in Form XObjects is unsupported by zkPDF v1")
-                }
                 when (operator) {
                     "q" -> stack.add(gs.copy())
                     "Q" -> if (stack.isNotEmpty()) gs = stack.removeAt(stack.size - 1)
@@ -277,7 +274,9 @@ object PdfTextExtractor {
                     }
                     "Do" -> (operands.lastOrNull() as? PdfName)?.let { form(resources, it.name, gs.ctm, depth) }
                 }
-                if (runs != null && operator in setOf("Tj", "TJ", "'", "\"")) {
+                // zkPDF v1 proves the page content stream with the page fonts only: text drawn by a Form XObject
+                // comes from another stream and its own resources, so it is left out of the runs.
+                if (runs != null && depth == 0 && operator in setOf("Tj", "TJ", "'", "\"")) {
                     val strings = if (operator == "TJ") {
                         val array = operands.lastOrNull() as? PdfArray ?: error("Invalid text array")
                         require(array.all { it is PdfString || it is PdfNumber })

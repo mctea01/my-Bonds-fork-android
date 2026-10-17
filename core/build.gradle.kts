@@ -94,6 +94,7 @@ kotlin {
         commonMain.dependencies {
             api(libs.multipaz)
             api(libs.multipaz.doctypes)
+            api(libs.multipaz.longfellow)
             api(libs.coroutines.core)
             api(libs.serialization.json)
             api(libs.kotlinx.io)

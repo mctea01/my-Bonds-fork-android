@@ -130,9 +130,13 @@ class PdfZkSupportTest {
         val pdf = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "BT /F1 12 Tf 60 700 Td <2000> Tj ET"))
         // Form-local F1 is Type0, while the page's F1 is WinAnsi; P3 must still use the form's resources.
         assertTrue(PdfTextExtractor.extract(pdf) == "測")
-        val failure = assertFailsWith<PdfException> { PdfTextExtractor.runs(pdf, 0) }
-        assertEquals("Unsupported or malformed zkPDF input", failure.message)
-        assertNull(failure.cause)
+        // The runs cover only the page stream, so the form's text is not attributed to the page's fonts.
+        assertTrue(PdfTextExtractor.runs(pdf, 0).isEmpty())
+        val mixed = PdfFile(ZkPdfFixture.pdf("BT /F1 12 Tf 60 780 Td (A) Tj ET /Fm1 Do", formText = "BT /F1 12 Tf 60 700 Td <2000> Tj ET"))
+        assertTrue(PdfTextExtractor.extract(mixed).let { "A" in it && "測" in it })
+        val run = PdfTextExtractor.runs(mixed, 0).single()
+        assertEquals("F1", run.font)
+        assertEquals("A", run.text)
         val graphic = PdfFile(ZkPdfFixture.pdf("/Fm1 Do", formText = "0 0 20 20 re f"))
         assertTrue(PdfTextExtractor.runs(graphic, 0).isEmpty())
     }

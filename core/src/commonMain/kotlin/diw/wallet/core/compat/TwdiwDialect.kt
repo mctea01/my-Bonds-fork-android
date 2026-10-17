@@ -27,7 +27,7 @@ import kotlinx.serialization.json.put
  * - the metadata may name the issuer without the offer's trailing slash (the live telecom card issuer does); the
  *   identifier keeps the slash, so the token endpoint and the proof aud are what the issuer expects;
  * - the token request carries client_id (moda_dw), authorization_details and an empty tx_code when none is asked;
- * - c_nonce comes in the token response and is the one proofs use, even where the issuer has a nonce endpoint;
+ * - c_nonce comes in the token response; an issuer that publishes a nonce_endpoint (moda) wants the endpoint's value;
  * - the proof JWT has kid set to the holder did:key (jwk_jcs-pub) without a fragment, no jwk, and iss = client_id;
  * - the credential request is credential_identifier + proofs, the response a single credential;
  * - credentials announced as jwt_vc_json are SD-JWTs (typ vc+sd-jwt) with the W3C credential under vc and no vct;

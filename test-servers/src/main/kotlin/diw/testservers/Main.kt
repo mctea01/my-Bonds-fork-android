@@ -31,7 +31,8 @@ class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOp
         addDocumentType(EUPersonalID.getDocumentType())
     }
     val httpClient = HttpClient(Java)
-    val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient), acceptUnsecuredJwtResponse = true)
+    val longfellow = diw.wallet.core.zk.LongfellowZk(System.getProperty("os.name"))
+    val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient), zkSystemRepository = longfellow.repository, acceptUnsecuredJwtResponse = true)
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
     val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
     val walletProvider = WalletProviderService(baseUrl, pki)
