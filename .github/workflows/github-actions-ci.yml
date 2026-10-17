@@ -19,6 +19,8 @@ env:
   LANG: C.UTF-8
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
   APP_VERSION: 0.1.${{ github.run_number }}
+  # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
+  DIW_ZK_NATIVE: require
 
 jobs:
   # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
@@ -76,6 +78,12 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
+      - name: ZK native tools (cargo-ndk and the pinned NDK)
+        run: |
+          cargo install cargo-ndk --version 4.1.2 --locked
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+
       - name: Signing keys
         run: |
           # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.

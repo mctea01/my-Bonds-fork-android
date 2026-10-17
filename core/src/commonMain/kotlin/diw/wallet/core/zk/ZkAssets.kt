@@ -1,0 +1,25 @@
+package diw.wallet.core.zk
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class ZkAsset(
+    val id: String,
+    val backend: ZkBackend,
+    val role: Set<String>,
+    val urls: List<String>,
+    val gzipSha256: String,
+    val gzipBytes: Long,
+    val installedSha256: String,
+    val installedBytes: Long,
+    val license: String,
+)
+
+enum class ZkAssetStatus { MISSING, PARTIAL, READY, CORRUPT }
+
+interface ZkAssetStore {
+    suspend fun status(id: String): ZkAssetStatus
+    suspend fun download(id: String, onProgress: (Long, Long) -> Unit): ZkResult<Unit>
+    fun path(id: String): String?
+    suspend fun delete(id: String)
+}

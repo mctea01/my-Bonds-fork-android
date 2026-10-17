@@ -1,0 +1,19 @@
+[workspace]
+members = ["diw-zk-ffi", "zkpdf-prover", "zktls", "openac-age"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.90"
+
+[workspace.dependencies]
+uniffi = "=0.29.4"
+sha2 = "=0.10.9"
+thiserror = "=2.0.17"
+
+[profile.release]
+lto = "thin"
+strip = "debuginfo"
+panic = "unwind"

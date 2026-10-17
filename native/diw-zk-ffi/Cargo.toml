@@ -1,0 +1,30 @@
+[package]
+name = "diw-zk-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "diw_zk"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+bindgen = ["uniffi/cli"]
+zkpdf = ["dep:zkpdf-prover"]
+tlsn = ["dep:zktls"]
+openac = ["dep:openac-age"]
+
+[dependencies]
+uniffi.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+zkpdf-prover = { path = "../zkpdf-prover", optional = true }
+zktls = { path = "../zktls", optional = true }
+openac-age = { path = "../openac-age", optional = true }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bindgen.rs"
+required-features = ["bindgen"]
