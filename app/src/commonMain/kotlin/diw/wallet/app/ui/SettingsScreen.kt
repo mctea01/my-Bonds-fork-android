@@ -428,6 +428,8 @@ private fun DigitalCredentialsSection(model: WalletModel) {
     }
     Text(summary, style = MaterialTheme.typography.bodySmall,
         color = if (r.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    // What the system matcher compares a request against: the doctype or vct and the claims of each credential.
+    for (entry in r.entries) Text(entry, style = MaterialTheme.typography.bodySmall)
     if (r.notListable > 0) {
         Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
             style = MaterialTheme.typography.bodySmall)

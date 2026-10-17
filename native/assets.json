@@ -1,0 +1,94 @@
+[
+  {
+    "id": "jwt_2k.r1cs",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/jwt_2k.r1cs.gz"
+    ],
+    "gzipSha256": "efb45ed790e81fb6e1e3947f3749ee6ee1b3f03c069fff0227bd7ccb94d974a6",
+    "gzipBytes": 28202219,
+    "installedSha256": "d4f8b34dfd454234872a34f47ea486545cb4d989c41ed75f856268718251dc6a",
+    "installedBytes": 374342852,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "show.r1cs",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/show.r1cs.gz"
+    ],
+    "gzipSha256": "20d785277560fa96309832926bd7efc927e3976c0385b3e2bcae455ad4ad8c7d",
+    "gzipBytes": 590365,
+    "installedSha256": "3809e70502fa90f2038760da5f1399a1e3eb17923e5af872edf3dfa0b7d37a9a",
+    "installedBytes": 4017428,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "prepare_proving.key",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/prepare_proving.key.gz"
+    ],
+    "gzipSha256": "3b45f8b1c24e5e82fc2462ed819a73fab0167dcce303e15e272fc6f99e44a277",
+    "gzipBytes": 23609142,
+    "installedSha256": "853657d2e701215a65c5d97ab3cf5640e9aa8379ac6d106b7c82dc9b9d078e79",
+    "installedBytes": 431866474,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "prepare_verifying.key",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/prepare_verifying.key.gz"
+    ],
+    "gzipSha256": "d84ef20b28f0dd26b836022fc023424592d476a80b54d9ab80d51e43f698ee6a",
+    "gzipBytes": 23609093,
+    "installedSha256": "9b45cc7462a236b1056d21c19e1e4dfc2cf52fd20538d43fbe072d9ed106e9d6",
+    "installedBytes": 431866442,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "show_proving.key",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/show_proving.key.gz"
+    ],
+    "gzipSha256": "fa34e2cefe8da70476843f0a7037e249c7b1cf13c5c26a3f09a268393de61223",
+    "gzipBytes": 575666,
+    "installedSha256": "809f24ca6ee003b684e2282b77f5a47279528edee7654a3801770a2ffca67831",
+    "installedBytes": 4862778,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "show_verifying.key",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [
+      "https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/show_verifying.key.gz"
+    ],
+    "gzipSha256": "b6daa9cefd23d27ce80bd182ced987caa1a4eeb91083fc6ceafbeb1210dfbad0",
+    "gzipBytes": 575630,
+    "installedSha256": "f0c447a9757d182e8aa23083bc3dba5a9a22f3e0fcbb344724568cc3c83352d8",
+    "installedBytes": 4862746,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  }
+]

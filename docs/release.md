@@ -60,6 +60,10 @@ Get-FileHash diw-release.jks -Algorithm SHA256
 
 本機建置 release：設定環境變數 `DIW_KEYSTORE_FILE`、`DIW_KEYSTORE_PASSWORD`、`DIW_KEY_ALIAS`（金鑰密碼不同時再設 `DIW_KEY_PASSWORD`）後執行 `./gradlew :app:assembleRelease`。
 
+## 行動自然人憑證 SP 帳號
+
+SP 帳號在建置時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（`UAT` 或 `PRODUCTION`）產生 `BuiltInSp`，不提交進 repo。目前的 CI workflow 沒有傳入這三個值，所以 nightly 沒有內建 SP 帳號，只能在「設定 > 開發者與測試」手動輸入（只存在記憶體）。持有 SP 許可的開發者可在本機設定環境變數後建置；要讓 CI 內建，需新增同名 secrets 並在 workflow 的 build 與 desktop job 的 `env` 加入這三行（workflow 由使用者手動修改）。
+
 ## 縮減規則
 
 - Android：`app/proguard-rules.pro`。Bouncy Castle 與 Multipaz 以類別名稱載入演算法與格式，整包保留。

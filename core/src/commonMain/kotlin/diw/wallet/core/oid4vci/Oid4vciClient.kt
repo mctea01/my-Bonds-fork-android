@@ -237,6 +237,18 @@ class Oid4vciClient(
         }
     }
 
+    /**
+     * The display the issuer currently publishes for [configurationId] (name, logo, colours, card face), read through
+     * the same dialects as issuance; [profile] is the profile that owned the original session (twdiw for TWDIW).
+     * Null when the configuration is no longer listed.
+     */
+    suspend fun credentialDisplay(credentialIssuer: String, configurationId: String, profile: String? = null): DisplayInfo? {
+        val compat = DialectSet(dialects)
+        compat.claimFor(credentialIssuer, profile)
+        val issuer = metadata.issuer(credentialIssuer, compat)
+        return issuer.configurations[configurationId]?.display?.pick(locales)
+    }
+
     /** Authorization server metadata, or what a dialect knows for issuers that publish none (draft 11, TWDIW). */
     private suspend fun authorizationServer(issuer: IssuerMetadata, hint: String?, compat: DialectSet): AuthServerMetadata {
         val identifier = issuer.authorizationServerFor(hint)
@@ -431,7 +443,7 @@ class Oid4vciClient(
                     (json.str("error_description") ?: fallback),
             )
         }
-        return oauthError(json, fallback)
+        return oauthError(json, failure(session.compat, json, fallback))
     }
 
     private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, auth: ClientAuthentication): AccessToken {
@@ -581,7 +593,7 @@ class Oid4vciClient(
                 return deferred(document, tx, json, config, false)
             }
             if (!status.isSuccess()) {
-                val e = oauthError(json, "Credential request failed (${status.value})")
+                val e = oauthError(json, failure(compat, json, "Credential request failed (${status.value})"))
                 if (built?.missingKeyAttestation != true) throw e
                 throw ProtocolException(e.code, "${e.message} (the issuer requires key attestation; no wallet provider gave one)")
             }
@@ -618,7 +630,7 @@ class Oid4vciClient(
         session.responseKeys.remove(deferred.transactionId)
         if (!status.isSuccess()) {
             documentStore.deleteDocument(deferred.document.identifier)
-            throw oauthError(json, "Deferred credential request failed (${status.value})")
+            throw oauthError(json, failure(session.compat, json, "Deferred credential request failed (${status.value})"))
         }
         val pending = deferred.document.getPendingCredentials()
         val record = deferred.document.issuanceRecord!!.copy(pendingTransactionId = null)
@@ -1066,6 +1078,9 @@ class Oid4vciClient(
             logoUri = display?.logoUri ?: issuerDisplay?.logoUri,
             backgroundColor = display?.backgroundColor,
             textColor = display?.textColor,
+            backgroundImageUri = display?.backgroundImageUri,
+            displayCheckedAt = Clock.System.now().epochSeconds,
+            displayDescription = display?.description,
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,
@@ -1076,6 +1091,13 @@ class Oid4vciClient(
 
     private fun oauthError(json: JsonObject, fallback: String): ProtocolException =
         ProtocolException(json.str("error") ?: "server_error", json.str("error_description") ?: fallback)
+
+    /** [base] followed by the owning dialect's reading of an error body that carries no error_description. */
+    private fun failure(compat: DialectSet, json: JsonObject, base: String): String {
+        if (json.str("error_description") != null) return base
+        val detail = compat.owned { it.errorDetail(json) } ?: return base
+        return "$base: $detail"
+    }
 
     companion object {
         /** Checks a URL before the wallet opens it as an authorization page. */

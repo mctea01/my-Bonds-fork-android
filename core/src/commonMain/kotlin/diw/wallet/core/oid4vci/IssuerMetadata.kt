@@ -45,6 +45,8 @@ data class DisplayInfo(
     val description: String?,
     val backgroundColor: String?,
     val textColor: String?,
+    /** Card face image (credential display background_image); TWDIW serves it as a data URI in a text body. */
+    val backgroundImageUri: String? = null,
 ) {
     companion object {
         fun list(arr: JsonArray?): List<DisplayInfo> = arr.orEmpty().mapNotNull { e ->
@@ -52,10 +54,11 @@ data class DisplayInfo(
                 DisplayInfo(
                     name = it.str("name"),
                     locale = it.str("locale"),
-                    logoUri = it.obj("logo")?.str("uri"),
+                    logoUri = it.obj("logo")?.str("uri")?.takeIf { u -> u.isNotBlank() },
                     description = it.str("description"),
                     backgroundColor = it.str("background_color"),
                     textColor = it.str("text_color"),
+                    backgroundImageUri = it.obj("background_image")?.str("uri")?.takeIf { u -> u.isNotBlank() },
                 )
             }
         }

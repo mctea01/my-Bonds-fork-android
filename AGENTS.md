@@ -33,7 +33,7 @@
 | `profile/bonds` | Bonds 離線出示、BTWVP1 QR 與 BLE 分幀、vc+moica 驗證、身分證卡（`BondsNationalId`）、vc+moica 線上出示（`BondsMoicaOnline`）；來源 `a`（本錢包擴充：IETF SD-JWT VC、W3C SD-JWT 與 JWT VC） |
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
 | `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
-| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、產生 PDF（`PdfComposer`）、預覽用的解密副本（`PdfPlain`） |
+| `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、預覽用的解密副本（`PdfPlain`）；測試用的 PDF 產生器在 `test-servers` 的 `fixtures/PdfComposer`，App 不製作 PDF 或公文 |
 | `document/sign` | 簽署（`DocumentSigning`：PAdES B-B 到 B-LTA、CAdES、ASiC-E、XAdES、公文線上簽核點、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`）、長期驗證資料（`ValidationCollector`、`ValidationData`） |
 | `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
 | `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、由文件內容解析欄位（`DocumentFields`）、證據查驗（`DerivedEvidence`） |
@@ -127,17 +127,38 @@
 - 取件入口（`DocumentSources`）：MyData 各項目（身分證、戶籍、所得、納稅證明、勞保、勞退、健保、地籍，路徑與 Bonds 相同）、MyDoc、教育部大專校院數位證書驗證、數位證明管理中心（dcmc.csie.ncku.edu.tw）、戶政、地政、移民署入出國日期證明書（ncp.immigration.gov.tw/niaweb/entryExitQuery）、財政部稅務入口網（www.etax.nat.gov.tw/etwmain）。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載），顯示網站的對話框；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
 - 預覽：PDF 以平台繪製前 10 頁（Android `PdfRenderer`，桌面 PDFBox），加密 PDF 先以本次輸入的密碼（MyData 為身分證統一編號）在記憶體產生不加密的副本（`PdfPlain`，不保存、不匯出），並可顯示文字層；圖片、XML、JSON、文字與 .p7m 內含的內容也可預覽。密碼只保存在這次執行的記憶體。
 - 圖片欄位：mdoc 的影像位元組與 JSON 憑證裡的 data: URL 或 base64 圖片（`ClaimPictures`）在證件詳情顯示為圖片。
-- 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。
+- 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
+- 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
 - 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
+## 零知識證明要點（P4，設計中）
+
+- 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`；尚未實作的部分以這三份文件為準，實作完成後把要點移到本節。
+- 四種證據：zkPDF（Noir 電路，證明已簽署 PDF 的文字欄位）、zkTLS（TLSNotary，查驗方當 notary 的即時模式；離線時為 T3 的網頁證明或裝置證明紀錄）、年齡證明（直接引用 Bonds 的 OpenAC `openac-age-v1` 資產與格式）、mdoc ZK（Multipaz Longfellow）。
+- 證據都疊加在既有的文件衍生憑證上（`evidence` 陣列），以持有者 `cnf.jwk` 的 RFC 7638 thumbprint 綁定；信任等級取原始簽署者、發行端或連線的等級，零知識證明本身不提高等級；zkPDF 與 zkTLS 永遠不是 T1。
+- 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 只是建議，用來顯示估計與預設選項，不禁止在本機產生證明（D3）；處理器架構不支援或缺少引擎時該後端才不可用。
+- 原生建置：`core` 的 `buildZkDesktop` 與 `app` 的 `buildZkAndroid` 執行 `native/build.sh`（Rust 1.90.0、cargo-ndk 4.1.2、NDK 28.2.13676358）。`-Pdiw.zkNative`（或 `DIW_ZK_NATIVE`）：`auto`（預設）有工具鏈才建置，沒有時不打包原生函式庫、App 顯示零知識證明不可用；`require` 一定建置，缺工具就失敗（CI 用）；`skip` 不建置。Windows 用 Git for Windows 的 bash（直接呼叫 `bash` 會啟動 WSL）。`ZkNativeTest` 在沒有函式庫且不是 `require` 時略過。
+- 證明資產清單的原始檔是 `native/assets.json`，建置時複製成資源 `zk/assets.json`（Android 函式庫不打包 commonMain 的資源，所以 `core` 另外把它加進 Android 的 Java 資源），SHA-256 釘選在 `ZkAssetManifest`；下載後比對大小與兩層 SHA-256 才載入。私密輸入不可出現在 log、例外訊息與測試輸出。
+- zkPDF 的公開側（WP2）：`PdfTextExtractor.runs` 只列出第 1 頁內容串流的文字運算子，Form XObject 內的文字不列入（字型取自 Form 自己的資源，不在 v1 證明範圍）；`PdfZkSupport` 提供簽章涵蓋的版本、內容物件與串流位置、RC4 金鑰流與字型解碼器，`Sha256Chain` 計算視窗前後的 SHA-256 中間狀態。
+- Longfellow（WP8）：`core/zk/LongfellowZk` 註冊內建電路，只接受參數完全相同的 spec，產生後先自驗，查驗時拒絕 deviceSigned 並要求證明時間在 5 分鐘內；明確要求 ZK 的近距離請求不退回一般 mdoc。原生函式庫只有 Android arm64-v8a、x86_64 與桌面 Linux x86_64、macOS arm64，載入失敗是 Error，所以 `LongfellowNative` 先載入一次，不支援的平台 `repository` 為 null 並給出原因。ZK 證明不揭露 MSO 日期與狀態參照。
+- 分工：Codex 依 `p4-work-packages.md` 在 `codex/p4-wpN-<簡稱>` 分支開發，PR 目標為整合分支 `claude/p4-zkp-design-fmkasd`；介面由 Claude 維護，需要變更時在 PR 提出「介面變更提案」，不自行改動其他工作包的介面。
+- 電路（`native/circuits/**`、OpenAC 的 `predicate.rs` 與 zkID patch、zkTLS 揭露規則）的規格與審查由 Claude 管控，里程碑可逐步交給 Codex；修改電路的 PR 附上電路實作報告（`p4-work-packages.md` 第 4 節），Claude 檢查後才合併。zkPDF 描述檔自己定義欄位與錨點，標籤參考 P3 的文件解析。
+- 算力不足不禁止產生證明：顯示估計後由使用者選擇在本機產生、在電腦版產生後匯入、送到自架主機（`RiskConfirmDialog`）或不加零知識證據。zkTLS 的查驗方以手機為目標，電腦版與測試伺服器只是過渡；持有端與查驗端之間是綁定請求的 Noise 通道（區域網路或只轉送密文的中繼）。
+- 隨 App 散布的原生程式碼不可含 GPL、LGPL、AGPL 元件：OpenAC 不用 witnesscalc\_adapter（會靜態連結 GPL-3.0 的 witnesscalc 與 GMP），改用 circom-witnesscalc 加 `native/openac-age/patches/circom-witnesscalc-secq256r1.patch` 的見證計算圖；circom 與 `build-circuit`（GPL-3.0）只在建置圖形時使用。OpenAC 的 r1cs、金鑰與圖形含 circomlib 2.0.5（GPL-3.0-or-later），只能作為分開下載的資產並在 NOTICE 寫明原始碼位置（WP7「見證計算與授權」）。
+- P4 完成後的全專案審查從 `docs/review/project-review.md` 開始。
+
 ## TWDIW 與 Bonds 要點
 
-- TWDIW 發證：`credential_issuer` 結尾有 `/`，中繼資料以附加方式取得，沒有 AS metadata，token 端點為 `{issuer}token`，表單帶 `client_id=moda_dw`、`authorization_details`、空的 `tx_code`；proof 的 `kid` 是不帶 fragment 的 did:key（jwk_jcs），`iss` 為 client_id；回應 `{credential}`。中繼資料寫 `jwt_vc_json`，實際送 SD-JWT（`typ vc+sd-jwt`，無 `vct`，W3C 內容在 `vc`）。
+- TWDIW 發證：`credential_issuer` 結尾有 `/`，中繼資料以附加方式取得，沒有 AS metadata，token 端點為 `{issuer}token`，表單帶 `client_id=moda_dw`、`authorization_details`、空的 `tx_code`；proof 的 `kid` 是不帶 fragment 的 did:key（jwk_jcs），`iss` 為 client_id；回應 `{credential}`。中繼資料寫 `jwt_vc_json`，實際送 SD-JWT（`typ vc+sd-jwt`，無 `vct`，W3C 內容在 `vc`）。官方實作有許多寫死的值，錢包照官方 App 送出而不依中繼資料：管理後台替每張卡寫入 `cryptographic_binding_methods_supported: ["jwk"]`（`SandBoxUtil`），領卡端點卻只接受 did:key 的 kid；官方 App 的 `client_id`、proof `iss` 固定為 `moda_dw`、alg 固定 ES256、`authorization_details` 只放 offer 的第一個 configuration id。
+- TWDIW 的錯誤回應是 `{resp_code, resp_message}`，沒有 OAuth `error_description`，由 `TwdiwDialect.errorDetail` 併入錯誤訊息。領卡端點的 HTTP 500 只會在權杖與 proof 都通過之後出現：`resp_code` 11500 是發證端程式本身的例外，其他代碼來自發證機關的憑證服務（例如 11021 是憑證服務回 5xx、取不到持有人資料），不是錢包請求的問題；請求內容（`credential_identifier` + `proofs`、did:key 內的 JWK）與官方 App 等效，App 的錯誤訊息提示重新產生 QR Code 或向發證機關回報。
+- 較新的 TWDIW 發證端（例如 moda.wallet.gov.tw）在中繼資料加了 `nonce_endpoint`，proof 必須簽 nonce 端點取得的值（官方 App 1.0.14 也是如此）；簽權杖回應的 `c_nonce` 會回 HTTP 400、`resp_code` 11016（invalid_proof）。沒有 nonce 端點的舊版發證端（例如遠傳）才用權杖回應的 `c_nonce`（`nonceWithoutEndpoint`）。實測 2026-10-16：nonce 正確時，jwk_jcs 欄位順序、官方順序（kty、crv、x、y）、標準 P-256 did:key 與 kid 加 jwk 標頭都通過 proof；只放 jwk 不放 kid 為 invalid_proof。
+- TWDIW 卡片 display 的 `description` 是 JSON 字串（`{"ial":"IAL 2"}`），`TwdiwAssurance` 讀出身分保證等級，存在 `IssuanceRecord.displayDescription`；證件詳情與出示畫面顯示「身分保證等級（IAL）」，空值顯示「發行端未選擇」，更改憑證的清單依等級由高到低排列。
 - 每張 TWDIW 卡片綁定同一把錢包層級金鑰（`HolderIdentities.TWDIW`），才能一起出示。
-- TWDIW 出示：client_id 為 did:key，要求物件由該 DID 簽章；回應是一個 jwt_vp（header 帶 `jwk`，有效 30 天），`presentation_submission` 用 `jwt_vp` + `path_nested jwt_vc`，成功判斷為 `code == "0"`。
+- TWDIW 出示：client_id 為 did:key，要求物件由該 DID 簽章；回應是一個 jwt_vp（header 帶 `jwk`，有效 30 天），`presentation_submission` 用 `jwt_vp` + `path_nested jwt_vc`，成功判斷為 `code == "0"`。官方查驗端的 `presentation_definition.purpose` 是 JSON 字串 `{client, scenario, purpose, terms_uri}`，由 `TwdiwPresentationDialect.consentTerms` 解析成 `ConsentTerms`，同意畫面顯示提供資料的對象、使用情境、用途與「「情境」知情同意書」連結（只接受 https，以瀏覽器開啟）；其他 Presentation Exchange 請求只顯示 `purpose` 原文。
+- 更改憑證：多張證件都能回答同一項時，同意畫面的「更改憑證」列出其他證件（`ExtendedPrepared.alternatives`，由 `ExtendedPresenter.replace` 換掉該項；OpenID4VP 1.0 走 Multipaz 時以 `CredentialQueryResult.select` 指定文件）。Presentation Exchange 的 `submission_requirements`（如官方的 pick max 1）可換到同一群組的其他 descriptor，替換後仍須通過 `PresentationExchange.satisfies`；已在其他項出示的證件不列入，DCQL `multiple` 的查詢不提供更換。
 - TWDIW 主機的 gate 只接受 https 443 埠，測試時以 ktor `MockEngine` 模擬 `*.wallet.gov.tw`（見 `TwdiwPlatformMock`）。
 - wallet.gov.tw 的 Cloudflare 會擋 HTTP 函式庫預設 User-Agent，`TwdiwUserAgent` 只對 TWDIW 主機改寫 UA。
 - TWDIW 狀態清單（StatusList2021）由 key-2 簽章，金鑰只公布在 jku `https://issuer-vc.wallet.gov.tw/api/keys`；該端點各次回應的 key-2 不一致（上游問題），驗簽失敗時重抓金鑰集，最多 4 次。發行端已列名時 jku 主機屬於平台，綁定成立；未列名（如 demo 發行端）為 `TLS_ONLY`。

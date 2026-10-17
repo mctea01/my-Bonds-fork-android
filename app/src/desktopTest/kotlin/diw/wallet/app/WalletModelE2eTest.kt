@@ -70,10 +70,10 @@ class WalletModelE2eTest {
         val proxied: Boolean = false,
         /** Replaces the network, for hosts the local test servers cannot stand in for (https did:web). */
         val client: (() -> HttpClient)? = null,
+        override val platformName: String = "test",
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
-        override val platformName = "test"
         override val refreshTrustListsInBackground = false
         override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
         override suspend fun openStorage() = storage
@@ -97,8 +97,8 @@ class WalletModelE2eTest {
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
     }
 
-    private suspend fun newWallet(storage: Storage = EphemeralStorage()): Pair<WalletModel, TestPlatform> {
-        val p = TestPlatform(storage)
+    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test"): Pair<WalletModel, TestPlatform> {
+        val p = TestPlatform(storage, platformName = platformName)
         val m = WalletModel(p)
         p.model = m
         // Answers every App PIN request like a user would.
@@ -342,7 +342,7 @@ class WalletModelE2eTest {
         shot("10-add-sheet") {
             diw.wallet.app.ui.WalletTheme {
                 androidx.compose.material3.Surface(androidx.compose.ui.Modifier.fillMaxSize()) {
-                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, onScan = {})
+                    diw.wallet.app.ui.AddDocumentSheet(m, onDismiss = {}, onList = {}, scan = diw.wallet.app.ui.ScanActions(camera = {}, image = {}))
                 }
             }
         }
@@ -623,6 +623,75 @@ class WalletModelE2eTest {
         assertTrue(verifier.back())
         assertEquals(HomeTab.VERIFY, verifier.tab.value)
         return result
+    }
+
+    @Test
+    fun proximityZkAgeOver18() = runBlocking<Unit> {
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").startsWith("Windows", ignoreCase = true))
+        start()
+        val (holder, _) = newWallet()
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)), 65536)
+        val (reader, _) = newWallet()
+        try {
+            reader.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)),
+                ReaderRequest.AGE_OVER_18, diw.wallet.core.status.RiskLevel.MEDIUM, requireZk = true)
+            val consent = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+            assertTrue(consent is ProximityUi.Consent)
+            holder.proximity.approve(consent)
+            val result = withTimeout(180.seconds) { reader.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } }
+            assertTrue(result is ReaderUi.Result)
+            assertNull(result.integrityError)
+            assertTrue(result.documents.isEmpty())
+            val proof = result.zkDocuments.single()
+            assertEquals(listOf("是"), proof.claims.map { it.value })
+            assertEquals(TrustEnvironment.TEST, proof.issuerTrust.environment)
+            val record = withTimeout(10.seconds) { reader.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }
+                .first { it.kind == HistoryKind.VERIFIED }
+            assertEquals(proof.claims.map { it.label }, record.claims)
+            assertNull(record.failure)
+            withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+        } finally {
+            tag.close(); reader.reader.close(); holder.proximity.close()
+        }
+    }
+
+    @Test
+    fun proximityZkRequiredCannotFallBackOnWindows() = runBlocking<Unit> {
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").startsWith("Windows", ignoreCase = true))
+        start()
+        val (holder, _) = newWallet(platformName = "Windows 11")
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)), 65536)
+        val (reader, _) = newWallet()
+        try {
+            reader.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)),
+                ReaderRequest.AGE_OVER_18, diw.wallet.core.status.RiskLevel.MEDIUM, requireZk = true)
+            val state = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+            assertTrue(state is ProximityUi.Failed)
+            assertTrue(state.message.contains("Windows"))
+            assertFalse(reader.reader.state.value is ReaderUi.Result)
+        } finally {
+            tag.close(); reader.reader.close(); holder.proximity.close()
+        }
     }
 
     @Test
