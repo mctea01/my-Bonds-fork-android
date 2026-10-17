@@ -148,6 +148,7 @@
 - 分工：Codex 依 `p4-work-packages.md` 在 `codex/p4-wpN-<簡稱>` 分支開發，PR 目標為整合分支 `claude/p4-zkp-design-fmkasd`；介面由 Claude 維護，需要變更時在 PR 提出「介面變更提案」，不自行改動其他工作包的介面。
 - 電路（`native/circuits/**`、OpenAC 的 `predicate.rs` 與 zkID patch、zkTLS 揭露規則）的規格與審查由 Claude 管控，里程碑可逐步交給 Codex；修改電路的 PR 附上電路實作報告（`p4-work-packages.md` 第 4 節），Claude 檢查後才合併。zkPDF 描述檔自己定義欄位與錨點，標籤參考 P3 的文件解析。
 - 算力不足不禁止產生證明：顯示估計後由使用者選擇在本機產生、在電腦版產生後匯入、送到自架主機（`RiskConfirmDialog`）或不加零知識證據。zkTLS 的查驗方以手機為目標，電腦版與測試伺服器只是過渡；持有端與查驗端之間是綁定請求的 Noise 通道（區域網路或只轉送密文的中繼）。
+- 隨 App 散布的原生程式碼不可含 GPL、LGPL、AGPL 元件：OpenAC 不用 witnesscalc\_adapter（會靜態連結 GPL-3.0 的 witnesscalc 與 GMP），改用 circom-witnesscalc 加 `native/openac-age/patches/circom-witnesscalc-secq256r1.patch` 的見證計算圖；circom 與 `build-circuit`（GPL-3.0）只在建置圖形時使用。OpenAC 的 r1cs、金鑰與圖形含 circomlib 2.0.5（GPL-3.0-or-later），只能作為分開下載的資產並在 NOTICE 寫明原始碼位置（WP7「見證計算與授權」）。
 - P4 完成後的全專案審查從 `docs/review/project-review.md` 開始。
 
 ## TWDIW 與 Bonds 要點
