@@ -306,17 +306,18 @@ fn result(
     config: &PathConfig,
     names: [&str; 5],
     started: Instant,
+    prep_ms: u64,
 ) -> Result<ProofResult, ZkProofError> {
     let total_ms = started.elapsed().as_millis() as u64;
-    let instance = load_instance(config.artifact_path(names[2])).map_err(|_| storage_error())?;
+    let proof = load_proof(config.artifact_path(names[4])).map_err(|_| storage_error())?;
     Ok(ProofResult {
-        prep_ms: 0,
-        prove_ms: total_ms,
+        prep_ms,
+        prove_ms: total_ms.saturating_sub(prep_ms),
         total_ms,
         proof_size_bytes: fs::metadata(config.artifact_path(names[4]))
             .map_err(|_| storage_error())?
             .len(),
-        comm_w_shared: format!("{:?}", instance.comm_W_shared),
+        comm_w_shared: format!("{:?}", proof.comm_W_shared()),
     })
 }
 
@@ -329,6 +330,7 @@ fn prove<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
     let [key, verifying_key, instance_name, witness_name, proof_name] = names;
     pinned_proving_assets(config, key == PREPARE_PROVING_KEY)?;
     let pk = load_proving_key(config.key_path(key)).map_err(|_| storage_error())?;
+    let prep_ms = started.elapsed().as_millis() as u64;
     let (proof, instance, witness) =
         prove_circuit_in_memory(circuit, &pk).map_err(|_| ZkProofError::Proof)?;
     drop(pk);
@@ -343,7 +345,7 @@ fn prove<C: SpartanCircuit<E> + Clone + std::fmt::Debug>(
     save_instance(config.artifact_path(instance_name), &instance).map_err(|_| storage_error())?;
     save_witness(config.artifact_path(witness_name), &witness).map_err(|_| storage_error())?;
     save_proof(config.artifact_path(proof_name), &proof).map_err(|_| storage_error())?;
-    result(config, names, started)
+    result(config, names, started, prep_ms)
 }
 
 pub fn prove_jwt(documents_path: String) -> Result<ProofResult, ZkProofError> {
@@ -389,17 +391,20 @@ fn reblind_proof(config: PathConfig, names: [&str; 5]) -> Result<ProofResult, Zk
     let witness = load_witness(config.artifact_path(witness_name)).map_err(|_| storage_error())?;
     let blinds = load_shared_blinds::<E>(config.artifact_path(SHARED_BLINDS))
         .map_err(|_| storage_error())?;
-    let (proof, instance, witness) =
+    let prep_ms = started.elapsed().as_millis() as u64;
+    let (proof, _instance, _witness) =
         reblind_in_memory(&pk, instance, witness, &blinds).map_err(|_| ZkProofError::Proof)?;
     drop(pk);
     check_cancelled()?;
     let vk = load_verifying_key(config.key_path(verifying_key)).map_err(|_| storage_error())?;
     proof.verify(&vk).map_err(|_| ZkProofError::Proof)?;
     check_cancelled()?;
-    save_instance(config.artifact_path(instance_name), &instance).map_err(|_| storage_error())?;
-    save_witness(config.artifact_path(witness_name), &witness).map_err(|_| storage_error())?;
+    // Keep the original private cache reusable. The pinned Spartan reblinder
+    // updates witness blinds without updating the instance's blind-variable
+    // metadata, so feeding its returned cache into another reblind is invalid.
+    // Only the freshly verified proof is published for this presentation.
     save_proof(config.artifact_path(proof_name), &proof).map_err(|_| storage_error())?;
-    result(&config, names, started)
+    result(&config, names, started, prep_ms)
 }
 
 pub fn reblind_jwt(documents_path: String) -> Result<ProofResult, ZkProofError> {

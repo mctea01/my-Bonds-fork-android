@@ -160,9 +160,22 @@ fn synthetic_prepare_show_reblind_and_independent_policy() {
     .unwrap();
     let show = prove_show(docs.clone()).unwrap();
     let original = fs::read(documents.join("keys/prepare_proof.bin")).unwrap();
+    let cache_identity = || {
+        [
+            "prepare_instance.bin",
+            "prepare_witness.bin",
+            "show_instance.bin",
+            "show_witness.bin",
+        ]
+        .map(|name| Sha256::digest(fs::read(documents.join("keys").join(name)).unwrap()))
+    };
+    let original_cache = cache_identity();
+    let reblind_started = std::time::Instant::now();
     generate_shared_blinds(docs.clone()).unwrap();
     reblind_jwt(docs.clone()).unwrap();
     reblind_show(docs.clone()).unwrap();
+    let reblind_ms = reblind_started.elapsed().as_millis();
+    assert!(cache_identity() == original_cache);
     assert!(fs::read(documents.join("keys/prepare_proof.bin")).unwrap() != original);
     let accepted = |nonce: String, cutoff, x: String, y: String| {
         verify_age_presentation(
@@ -176,12 +189,14 @@ fn synthetic_prepare_show_reblind_and_independent_policy() {
         )
         .unwrap()
     };
+    let verify_started = std::time::Instant::now();
     assert!(accepted(
         nonce.clone(),
         20080901,
         issuer_x.clone(),
         issuer_y.clone()
     ));
+    let verify_ms = verify_started.elapsed().as_millis();
     assert!(!accepted(
         nonce.clone(),
         20080902,
@@ -221,13 +236,16 @@ fn synthetic_prepare_show_reblind_and_independent_policy() {
             }
             let source = documents.join("keys").join(name);
             if name.ends_with(".key") {
-                fs::hard_link(source, target).unwrap();
+                if fs::hard_link(&source, &target).is_err() {
+                    fs::copy(source, target).unwrap();
+                }
             } else {
                 fs::copy(source, target).unwrap();
             }
         }
         let (sd_jwt, _, _, _) = fixture();
         let data = serde_json::to_vec(&json!({"sd_jwt":sd_jwt, "nonce":nonce,
+            "device_signature":b64(signature.to_bytes()),
             "claim_name":prepared.claim_name, "claim_format":prepared.claim_format,
             "cutoff":20080901, "issuer_x":issuer_x, "issuer_y":issuer_y}))
         .unwrap();
@@ -244,7 +262,7 @@ fn synthetic_prepare_show_reblind_and_independent_policy() {
     assert!(read_public_signals(docs).is_err());
     // Publish only timing/size measurements, never credential or proof contents.
     println!(
-        "OpenAC synthetic proof accepted: prepare_ms={} show_ms={} prepare_bytes={} show_bytes={}",
-        prepare.total_ms, show.total_ms, prepare.proof_size_bytes, show.proof_size_bytes
+        "OpenAC synthetic proof accepted: prepare_ms={} show_ms={} reblind_ms={} verify_ms={} prepare_bytes={} show_bytes={}",
+        prepare.total_ms, show.total_ms, reblind_ms, verify_ms, prepare.proof_size_bytes, show.proof_size_bytes
     );
 }

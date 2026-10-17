@@ -7,6 +7,9 @@ fn invoke<T>(
     cancel: Arc<ZkCancelToken>,
     operation: impl FnOnce() -> Result<T, openac_age::ZkProofError>,
 ) -> Result<T, ZkError> {
+    // Install the shared hook first. Racing independent take_hook/set_hook
+    // pairs could otherwise lose a private worker's redaction hook.
+    crate::protect_worker_panics();
     cancel.check()?;
     let token = Arc::clone(&cancel);
     let result = openac_age::with_cancellation(Arc::new(move || token.check().is_err()), operation);
@@ -67,6 +70,7 @@ pub fn create_age_prepare_input(
     issuer_key_x: String,
     issuer_key_y: String,
 ) -> Result<AgePrepareInput, ZkError> {
+    crate::protect_worker_panics();
     let input =
         openac_age::create_age_prepare_input(documents_path, sd_jwt, issuer_key_x, issuer_key_y)
             .map_err(error)?;
@@ -85,6 +89,7 @@ pub fn create_age_show_input(
     claim_format: u8,
     cutoff: u64,
 ) -> Result<(), ZkError> {
+    crate::protect_worker_panics();
     openac_age::create_age_show_input(
         documents_path,
         nonce,

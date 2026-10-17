@@ -43,8 +43,12 @@ to Claude. Existing runtime function signatures remain compatible.
 python3 -I native/openac-age/install_assets.py native/openac-age/build/assets/circom
 cargo test --manifest-path native/Cargo.toml -p openac-age --no-default-features
 OPENAC_TEST_ASSETS="$PWD/native/openac-age/build/assets/circom" \
+OPENAC_FFI_OUTPUT="$PWD/native/openac-age/build/ffi-proof/circom" \
   cargo test --release --locked --manifest-path native/Cargo.toml -p openac-age \
   synthetic_prepare_show_reblind_and_independent_policy -- --ignored --nocapture
+python3 -I native/openac-age/tests/verify_ffi.py \
+  native/openac-age/build/python native/openac-age/build/ffi-proof/circom \
+  --assets native/openac-age/build/assets/circom
 ```
 
 The asset installer uses the WP0 manifest, checks compressed and expanded
@@ -59,6 +63,17 @@ Tests generate ES256 issuer and holder keys, an SD-JWT and birth-date disclosure
 No real credentials are stored. The full test proves Prepare and Show, reblinds
 both with shared randomness, verifies the independently supplied statement and
 rejects a changed cutoff, issuer key and nonce.
+The generated Python bindings exercise the same C ABI as Kotlin: the optional
+`--assets` mode also proves and reblinds a fresh synthetic presentation through
+all native exports, rather than only verifying a retained Rust proof.
+
+After building Android and starting an x86_64 emulator with at least 4 GB RAM,
+run `./native/openac-age/test-android.sh` to execute that complete synthetic test
+on Android. It builds the native test executable, installs verified public
+assets, and removes its remote test directory on exit. This is separate from
+`./native/test-android.sh`, which checks the shared runtime through the actual
+R8 release APK. Software-emulated devices are useful for correctness checks;
+use a physical device for performance measurements.
 
 ## Private inputs and cancellation
 
@@ -73,6 +88,9 @@ Long UniFFI operations take WP0's cancellation token. Cancellation is checked
 while hashing assets, between proof phases and before publishing results. The
 upstream Spartan call is synchronous; an in-progress call is joined before
 returning cancellation, rather than leaving a worker processing private input.
+Reblinding publishes only the verified presentation proof and retains the
+original private instance and witness. The pinned upstream reblinder's returned
+cache has stale blind-variable metadata and cannot be used for another reblind.
 The application must allocate one private documents directory per operation
 and remove its witness/input artifacts when it no longer needs them.
 

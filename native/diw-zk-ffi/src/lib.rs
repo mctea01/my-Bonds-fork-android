@@ -1,4 +1,4 @@
-//! Shared runtime only. Proof backends are supplied by their own work packages.
+//! Shared native runtime and feature-gated proof backend exports.
 
 use sha2::{Digest, Sha256};
 use std::cell::Cell;
