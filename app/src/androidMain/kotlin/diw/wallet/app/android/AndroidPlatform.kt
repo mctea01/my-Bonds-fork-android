@@ -446,9 +446,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                     .awaitResult()
                 val issuance = runCatching { registerIssuance(appName) }
                     .onFailure { if (it is CancellationException) throw it; Logger.e(TAG, "Digital Credentials issuance registration failed", it) }
+                val entries = database["credentials"].asArray
                 DcApiRegistration(
-                    database["credentials"].asArray.size, notListable(model), protocols, null, now,
+                    entries.size, notListable(model), protocols, null, now,
                     issuance = issuance.isSuccess, issuanceError = issuance.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+                    entries = entries.map { describeEntry(it) },
                 )
             }
         } catch (e: Exception) {
@@ -510,6 +512,23 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 throw e.targetException
             }
         } as DataItem
+    }
+
+    /**
+     * One registered credential as the matcher reads it, so the holder can see why a request finds nothing (a
+     * different doctype or vct, or no claims when the wallet could not read them).
+     */
+    private fun describeEntry(item: DataItem): String {
+        val title = item.getOrNull("title")?.asTstr ?: "證件"
+        item.getOrNull("mdoc")?.let { mdoc ->
+            val claims = mdoc.getOrNull("namespaces")?.asMap?.values?.sumOf { it.asMap.size } ?: 0
+            return "$title：mdoc ${mdoc.getOrNull("docType")?.asTstr.orEmpty()}，$claims 個欄位"
+        }
+        item.getOrNull("sdjwt")?.let { sdJwt ->
+            val claims = sdJwt.getOrNull("claims")?.asMap?.size ?: 0
+            return "$title：SD-JWT VC ${sdJwt.getOrNull("vct")?.asTstr.orEmpty()}，$claims 個欄位"
+        }
+        return title
     }
 
     /** Documents held only as W3C VCs: the platform matcher offers mdoc and SD-JWT VC credentials only. */
