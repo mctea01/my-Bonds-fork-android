@@ -15,6 +15,12 @@ rlib; the mathematical changes are exactly the checked-in patch.
 `prepare.py` checks the upstream revision, patch, patched source files and the
 vendored runtime hashes. It rejects unexpected changes instead of updating pins.
 
+The startup self-test embeds a 161-byte graph generated from this package's
+Apache-2.0 `tests/fixtures/self_test.circom` (no circomlib). It evaluates `2 + 1`
+in the secq256r1 field and checks the complete witness `[1, 3, 2]`. The production
+OpenAC graphs remain separate downloads. `tests/generate_self_test.py` reproduces
+the embedded vector using the already built graph compiler.
+
 ## Build the native library
 
 Install Rust 1.90.0, Python 3.11.8 or newer, Git, protoc and libclang. The native

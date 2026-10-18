@@ -50,5 +50,11 @@
     "src/vm2.rs": "b4e26bb177a0aa546544d2fe42847f0b93e7a93fa296c97e2aacf8066f0a3cd0",
     "src/vm2_setup.rs": "101fafbddf0babbc6bbef22535f566bd8f71fbe82dd6e6fa3b2ed778247355c0",
     "src/vm2_setup_tests.rs": "e7fa84b474149256dfe8524e59e126dbc7d86f498d4f07e21130aebb0c56544d"
+  },
+  "startup_graph": {
+    "bytes": 161,
+    "sha256": "12ff5a6b46868654f6c0f94d6c119da1a78f789e2b7fee658b3c4eefb1cde1f3",
+    "source": "tests/fixtures/self_test.circom",
+    "license": "Apache-2.0; no circomlib"
   }
 }

@@ -29,12 +29,22 @@ pub use predicate::AgePrepareInput;
 pub const ZKID_REVISION: &str = "b395e09c225ff45b003f0087c28e2e208e22f944";
 pub const PROVER_STACK_BYTES: usize = 64 * 1024 * 1024;
 
-/// A small native known-answer/negative-input check without downloading assets.
+/// A small positive native known-answer check without downloading assets.
 pub fn self_test() -> bool {
     worker(|| {
         let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        Ok(format!("{:x}", Sha256::digest(b"abc")) == expected
-            && circom_witnesscalc::calc_witness("{}", b"not-a-witness-graph").is_err())
+        let bytes = circom_witnesscalc::calc_witness(
+            r#"{"a":"2"}"#,
+            include_bytes!("../tests/fixtures/self_test.graph"),
+        )
+        .map_err(|_| ZkProofError::Proof)?;
+        let witness =
+            ecdsa_spartan2::utils::parse_witness(&bytes).map_err(|_| ZkProofError::Proof)?;
+        let expected_witness: Vec<<E as Engine>::Scalar> = [1u64, 3, 2]
+            .into_iter()
+            .map(<E as Engine>::Scalar::from)
+            .collect();
+        Ok(format!("{:x}", Sha256::digest(b"abc")) == expected && witness == expected_witness)
     })
     .unwrap_or(false)
 }
