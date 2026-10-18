@@ -42,6 +42,9 @@ does not overwrite them.
 Expanded Kotlin and Python bindings are generated in this package's `build`
 directory. This package does not overwrite WP0's checked-in Kotlin source;
 Claude owns that integration. Existing runtime API signatures remain compatible.
+Python is used only on the development host for builds and test orchestration.
+Android calls Rust through Kotlin/UniFFI; no Python interpreter or Python
+bindings are packaged or executed on the device.
 
 ## Build and package separate graph assets
 
