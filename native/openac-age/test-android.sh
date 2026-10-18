@@ -9,13 +9,28 @@ export ANDROID_NDK="$ANDROID_NDK_HOME"
     echo 'An x86_64 Android emulator is required' >&2; exit 1;
 }
 mkdir -p openac-age/build
-cargo ndk -t x86_64 --platform 29 test --release --locked -p openac-age \
-    --test openac_age --no-run --message-format=json > openac-age/build/android-tests.json
 binary=$(python3 -I - <<'PY'
 import json
+import os
 from pathlib import Path
+import subprocess
+
+# cargo-ndk 4.1.2 consumes Cargo's artifact messages. Obtain its NDK
+# configuration, then capture Cargo's original JSON stream on the host.
+environment = os.environ.copy()
+environment.update(json.loads(subprocess.check_output([
+    'cargo', 'ndk-env', '-t', 'x86_64', '--platform', '29', '--json'
+])))
+# ndk-env excludes the pinned linker's private routing variables.
+environment['_CARGO_NDK_LINK_CLANG'] = environment['CLANG_PATH']
+environment['_CARGO_NDK_LINK_TARGET'] = '--target=x86_64-linux-android29'
+messages = Path('openac-age/build/android-tests.json')
+with messages.open('w') as output:
+    subprocess.run(['cargo', 'test', '--target', 'x86_64-linux-android',
+        '--release', '--locked', '-p', 'openac-age', '--test', 'openac_age',
+        '--no-run', '--message-format=json'], env=environment, stdout=output, check=True)
 artifacts = []
-for line in Path('openac-age/build/android-tests.json').read_text().splitlines():
+for line in messages.read_text().splitlines():
     value = json.loads(line)
     if (value.get('reason') == 'compiler-artifact'
             and value['target']['name'] == 'openac_age'
