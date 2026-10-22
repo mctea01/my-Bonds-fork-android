@@ -12,6 +12,12 @@ if [[ "$targets" == all ]]; then
     targets=x86_64-unknown-linux-gnu,x86_64-pc-windows-gnu,aarch64-apple-darwin,android
 fi
 targets=${targets//host/$host}
+# Optional proof backends (DIW_ZK_FEATURES, set by Gradle's diw.zkFeatures). The exports exist in every build;
+# a backend left out reports Unsupported. OpenAC needs protoc and libclang to build its witness runtime.
+features=${DIW_ZK_FEATURES:-}
+[[ -z "$features" || "$features" == openac ]] || { echo "Unsupported DIW_ZK_FEATURES: $features" >&2; exit 1; }
+feature_args=()
+[[ -z "$features" ]] || feature_args=(--features "$features")
 IFS=',' read -ra selected <<< "$targets"
 for target in "${selected[@]}"; do
     if [[ "$target" == android ]]; then
@@ -21,7 +27,7 @@ for target in "${selected[@]}"; do
         grep -Eq "Pkg.Revision *= *$NDK_VERSION$" "$ANDROID_NDK_HOME/source.properties" || exit 1
         [[ "$(cargo ndk --version)" == "cargo-ndk $CARGO_NDK_VERSION" ]] || { echo "Pinned cargo-ndk is required" >&2; exit 1; }
         rustup target add aarch64-linux-android x86_64-linux-android
-        cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi
+        cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
     else
         case "$target" in
             x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
@@ -30,7 +36,7 @@ for target in "${selected[@]}"; do
             *) echo "Unsupported desktop target" >&2; exit 1 ;;
         esac
         rustup target add "$target"
-        cargo build --release --locked -p diw-zk-ffi --target "$target"
+        cargo build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"} --target "$target"
         mkdir -p "dist/resources/zk/native/$platform"
         cp "target/$target/release/$library" "dist/resources/zk/native/$platform/$library"
         # sha256sum on Linux and Git for Windows, shasum on macOS.

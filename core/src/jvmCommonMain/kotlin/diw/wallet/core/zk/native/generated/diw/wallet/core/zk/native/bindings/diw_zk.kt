@@ -722,6 +722,24 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -737,9 +755,27 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_diw_zk_checksum_func_native_info(
+    fun uniffi_diw_zk_checksum_func_create_age_prepare_input(
+): Short
+fun uniffi_diw_zk_checksum_func_create_age_show_input(
+): Short
+fun uniffi_diw_zk_checksum_func_generate_shared_blinds(
+): Short
+fun uniffi_diw_zk_checksum_func_native_info(
+): Short
+fun uniffi_diw_zk_checksum_func_prove_jwt(
+): Short
+fun uniffi_diw_zk_checksum_func_prove_show(
+): Short
+fun uniffi_diw_zk_checksum_func_read_public_signals(
+): Short
+fun uniffi_diw_zk_checksum_func_reblind_jwt(
+): Short
+fun uniffi_diw_zk_checksum_func_reblind_show(
 ): Short
 fun uniffi_diw_zk_checksum_func_self_test(
+): Short
+fun uniffi_diw_zk_checksum_func_verify_age_presentation(
 ): Short
 fun uniffi_diw_zk_checksum_method_zkcanceltoken_cancel(
 ): Short
@@ -802,9 +838,27 @@ fun uniffi_diw_zk_fn_constructor_zkcanceltoken_new(uniffi_out_err: UniffiRustCal
 ): Pointer
 fun uniffi_diw_zk_fn_method_zkcanceltoken_cancel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_diw_zk_fn_func_create_age_prepare_input(`documentsPath`: RustBuffer.ByValue,`sdJwt`: RustBuffer.ByValue,`issuerKeyX`: RustBuffer.ByValue,`issuerKeyY`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_create_age_show_input(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`deviceSignature`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_diw_zk_fn_func_generate_shared_blinds(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_native_info(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_prove_jwt(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_prove_show(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_read_public_signals(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_reblind_jwt(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_reblind_show(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_self_test(uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,`expectedIssuerKeyX`: RustBuffer.ByValue,`expectedIssuerKeyY`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun ffi_diw_zk_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -932,10 +986,37 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_diw_zk_checksum_func_create_age_prepare_input() != 2782.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_create_age_show_input() != 60068.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_generate_shared_blinds() != 56882.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_diw_zk_checksum_func_native_info() != 9623.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_diw_zk_checksum_func_prove_jwt() != 60252.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_prove_show() != 10639.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_read_public_signals() != 7764.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_reblind_jwt() != 57695.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_reblind_show() != 11433.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_diw_zk_checksum_func_self_test() != 49179.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_verify_age_presentation() != 383.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_method_zkcanceltoken_cancel() != 34608.toShort()) {
@@ -1063,6 +1144,29 @@ private fun UniffiCleaner.Companion.create(): UniffiCleaner = UniffiJnaCleaner()
 /**
  * @suppress
  */
+public object FfiConverterUByte: FfiConverter<UByte, Byte> {
+    override fun lift(value: Byte): UByte {
+        return value.toUByte()
+    }
+
+    override fun read(buf: ByteBuffer): UByte {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: UByte): Byte {
+        return value.toByte()
+    }
+
+    override fun allocationSize(value: UByte) = 1UL
+
+    override fun write(value: UByte, buf: ByteBuffer) {
+        buf.put(value.toByte())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterUInt: FfiConverter<UInt, Int> {
     override fun lift(value: Int): UInt {
         return value.toUInt()
@@ -1080,6 +1184,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 
     override fun write(value: UInt, buf: ByteBuffer) {
         buf.putInt(value.toInt())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
     }
 }
 
@@ -1407,6 +1534,114 @@ public object FfiConverterTypeZkCancelToken: FfiConverter<ZkCancelToken, Pointer
 
 
 
+data class AgePrepareInput (
+    var `claimName`: kotlin.String, 
+    var `claimFormat`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAgePrepareInput: FfiConverterRustBuffer<AgePrepareInput> {
+    override fun read(buf: ByteBuffer): AgePrepareInput {
+        return AgePrepareInput(
+            FfiConverterString.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AgePrepareInput) = (
+            FfiConverterString.allocationSize(value.`claimName`) +
+            FfiConverterUByte.allocationSize(value.`claimFormat`)
+    )
+
+    override fun write(value: AgePrepareInput, buf: ByteBuffer) {
+            FfiConverterString.write(value.`claimName`, buf)
+            FfiConverterUByte.write(value.`claimFormat`, buf)
+    }
+}
+
+
+
+data class OpenAcProofResult (
+    var `prepMs`: kotlin.ULong, 
+    var `proveMs`: kotlin.ULong, 
+    var `totalMs`: kotlin.ULong, 
+    var `proofSizeBytes`: kotlin.ULong, 
+    var `commWShared`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOpenAcProofResult: FfiConverterRustBuffer<OpenAcProofResult> {
+    override fun read(buf: ByteBuffer): OpenAcProofResult {
+        return OpenAcProofResult(
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OpenAcProofResult) = (
+            FfiConverterULong.allocationSize(value.`prepMs`) +
+            FfiConverterULong.allocationSize(value.`proveMs`) +
+            FfiConverterULong.allocationSize(value.`totalMs`) +
+            FfiConverterULong.allocationSize(value.`proofSizeBytes`) +
+            FfiConverterString.allocationSize(value.`commWShared`)
+    )
+
+    override fun write(value: OpenAcProofResult, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`prepMs`, buf)
+            FfiConverterULong.write(value.`proveMs`, buf)
+            FfiConverterULong.write(value.`totalMs`, buf)
+            FfiConverterULong.write(value.`proofSizeBytes`, buf)
+            FfiConverterString.write(value.`commWShared`, buf)
+    }
+}
+
+
+
+data class OpenAcPublicSignals (
+    var `prepare`: List<kotlin.String>, 
+    var `show`: List<kotlin.String>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOpenAcPublicSignals: FfiConverterRustBuffer<OpenAcPublicSignals> {
+    override fun read(buf: ByteBuffer): OpenAcPublicSignals {
+        return OpenAcPublicSignals(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OpenAcPublicSignals) = (
+            FfiConverterSequenceString.allocationSize(value.`prepare`) +
+            FfiConverterSequenceString.allocationSize(value.`show`)
+    )
+
+    override fun write(value: OpenAcPublicSignals, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`prepare`, buf)
+            FfiConverterSequenceString.write(value.`show`, buf)
+    }
+}
+
+
+
 data class ZkNativeInfo (
     var `crateVersion`: kotlin.String, 
     var `features`: List<kotlin.String>, 
@@ -1648,11 +1883,90 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
             FfiConverterString.write(it, buf)
         }
     }
-} fun `nativeInfo`(): ZkNativeInfo {
+}
+    @Throws(ZkException::class) fun `createAgePrepareInput`(`documentsPath`: kotlin.String, `sdJwt`: kotlin.String, `issuerKeyX`: kotlin.String, `issuerKeyY`: kotlin.String): AgePrepareInput {
+            return FfiConverterTypeAgePrepareInput.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_create_age_prepare_input(
+        FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`sdJwt`),FfiConverterString.lower(`issuerKeyX`),FfiConverterString.lower(`issuerKeyY`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `createAgeShowInput`(`documentsPath`: kotlin.String, `nonce`: kotlin.String, `deviceSignature`: kotlin.String, `claimName`: kotlin.String, `claimFormat`: kotlin.UByte, `cutoff`: kotlin.ULong)
+        = 
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_create_age_show_input(
+        FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`nonce`),FfiConverterString.lower(`deviceSignature`),FfiConverterString.lower(`claimName`),FfiConverterUByte.lower(`claimFormat`),FfiConverterULong.lower(`cutoff`),_status)
+}
+    
+    
+
+    @Throws(ZkException::class) fun `generateSharedBlinds`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_generate_shared_blinds(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+ fun `nativeInfo`(): ZkNativeInfo {
             return FfiConverterTypeZkNativeInfo.lift(
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_native_info(
         _status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `proveJwt`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): OpenAcProofResult {
+            return FfiConverterTypeOpenAcProofResult.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_prove_jwt(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `proveShow`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): OpenAcProofResult {
+            return FfiConverterTypeOpenAcProofResult.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_prove_show(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `readPublicSignals`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): OpenAcPublicSignals {
+            return FfiConverterTypeOpenAcPublicSignals.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_read_public_signals(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `reblindJwt`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): OpenAcProofResult {
+            return FfiConverterTypeOpenAcProofResult.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_reblind_jwt(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `reblindShow`(`documentsPath`: kotlin.String, `cancel`: ZkCancelToken): OpenAcProofResult {
+            return FfiConverterTypeOpenAcProofResult.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_reblind_show(
+        FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
 }
     )
     }
@@ -1662,6 +1976,16 @@ public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.Str
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_self_test(
         _status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `verifyAgePresentation`(`documentsPath`: kotlin.String, `nonce`: kotlin.String, `claimName`: kotlin.String, `claimFormat`: kotlin.UByte, `cutoff`: kotlin.ULong, `expectedIssuerKeyX`: kotlin.String, `expectedIssuerKeyY`: kotlin.String, `cancel`: ZkCancelToken): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_verify_age_presentation(
+        FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`nonce`),FfiConverterString.lower(`claimName`),FfiConverterUByte.lower(`claimFormat`),FfiConverterULong.lower(`cutoff`),FfiConverterString.lower(`expectedIssuerKeyX`),FfiConverterString.lower(`expectedIssuerKeyY`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
 }
     )
     }
