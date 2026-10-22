@@ -200,9 +200,9 @@ class Oid4vciClient(
     private val didTrust: DidTrust = DidTrust.NONE,
 ) {
     private val loopback = environment.insecureLoopbackAllowed
-    private val metadata = MetadataFetcher(httpClient, trustRegistry, loopback)
+    private val metadata = MetadataFetcher(httpClient, trustRegistry, loopback, didTrust)
     private val offers = CredentialOfferResolver(httpClient, loopback)
-    private val inspector = CredentialInspector(httpClient, trustRegistry, loopback)
+    private val inspector = CredentialInspector(httpClient, trustRegistry, loopback, didTrust)
     private val w3cInspector = W3cInspector(httpClient, trustRegistry, loopback, didTrust)
 
     // ---------------------------------------------------------------- session start

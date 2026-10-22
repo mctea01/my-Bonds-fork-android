@@ -108,7 +108,7 @@ class Oid4vpHolder(
 ) {
     private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
-    private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed)
+    private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust)
     private val legacy = LegacyRequestValidator(httpClient, trustRegistry, didResolver, didTrust, policy, environment.insecureLoopbackAllowed, dialects)
     private val builder = ResponseBuilder(source)
     private val extended = ExtendedPresenter(httpClient, source.documentStore, holderIdentities, dialects, environment.insecureLoopbackAllowed)

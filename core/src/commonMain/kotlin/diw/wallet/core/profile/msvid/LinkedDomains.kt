@@ -1,6 +1,7 @@
 package diw.wallet.core.profile.msvid
 
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.trust.DidTrustSource
 import diw.wallet.core.trust.TrustDecision
@@ -52,7 +53,9 @@ class LinkedDomains(
 
     override suspend fun decide(did: String, role: TrustRole): TrustDecision? = when (val r = verify(did)) {
         // Microsoft Entra Verified ID's root of trust: a verified domain is a trust root (T2), shown without a warning.
-        is LinkedDomainResult.Verified -> TrustDecision(TrustTier.T2, null, false, Url(r.origin).host, setOf(TrustLabel.LINKED_DOMAIN),
+        // The link rests on the domain's web PKI certificate, so it is in the SYSTEM environment like any other
+        // domain-validated anchor: callers that ask whether a decision is anchored (environment set) see it as one.
+        is LinkedDomainResult.Verified -> TrustDecision(TrustTier.T2, TrustEnvironment.SYSTEM, false, Url(r.origin).host, setOf(TrustLabel.LINKED_DOMAIN),
             listOf("Domain ${r.origin} is linked to $did (DIF Well Known DID Configuration, the Microsoft Entra Verified ID root of trust); the organisation itself is not on an official list"))
         is LinkedDomainResult.Unverified -> TrustDecision(TrustTier.T4, null, false, null, setOf(TrustLabel.UNKNOWN_ANCHOR),
             listOf("Linked domain ${r.origin} could not be verified: ${r.reason}"))

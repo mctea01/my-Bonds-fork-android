@@ -3,11 +3,8 @@ package diw.wallet.core.verifier
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.trust.TrustDecision
-import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
-import diw.wallet.core.trust.TrustTier
-import diw.wallet.core.trust.tierFor
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.long
 import diw.wallet.core.util.str
@@ -216,13 +213,8 @@ class PresentationVerifier(
         } else {
             val docType = (vp as? MdocVerifiedPresentation)?.docType
             val m = trustRegistry.match(TrustRole.ISSUER, chain.certificates, now, docType)
-            if (m == null) TrustDecision(TrustTier.T3, null, false, null, setOf(TrustLabel.UNKNOWN_ANCHOR), listOf("issuer not anchored"))
-            else TrustDecision(
-                tierFor(m.environment, m.official, true), m.environment, m.official, m.metadata.displayName,
-                if (m.environment == TrustEnvironment.TEST) setOf(TrustLabel.TEST_ANCHOR) else emptySet()
-            ).also { _ ->
-                checks += revocation(vp, m.anchor)
-            }
+            m?.let { checks += revocation(vp, it.anchor) }
+            trustRegistry.decision(m)
         }
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, "${trust.anchorName} (${trust.environment.id})")
         else Check("issuer trust", CheckStatus.FAIL, "issuer chain not anchored in an enabled environment")

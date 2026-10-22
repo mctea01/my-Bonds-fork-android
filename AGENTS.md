@@ -59,10 +59,11 @@
      - EUTL：LOTL（ETSI TS 119 612）的 XAdES 簽署憑證須是釘選的 6 張之一，或上一份已驗證的 LOTL 公告的簽署憑證；各國清單須由 LOTL 指向該國的憑證簽署，且國別相符（德國清單用 RSASSA-PSS，`XmlDsig` 支援 `sha*-rsa-MGF1`）。CA/QC 只供文件簽章，只服務網站憑證的 CA 排除；TSA/QTST 只供時戳。依 ServiceStatus 與 ServiceHistory 中 granted、undersupervision、accredited、supervisionincessation 的期間判定簽署當時是否核准。
      - 快照（`TrustListSnapshot`）存在儲存區 `DiwTrustLists`，開啟 App 時載入；每週（或過了清單公告的下次更新）以 ETag／Last-Modified 條件下載，LOTL 未變時各國清單以上次記錄的簽署憑證指紋更新。失敗時保留上一份並在設定顯示原因。EUTL 首次下載約 27 MB、快照約 8 MB、約 3500 個服務。
      - LOTL 簽署憑證含歐盟職員姓名，repo 只放 SHA-256；AATL 檔案不放進 repo。`TrustListsTest` 以測試 PKI 產生清單。
-   - Microsoft Verified ID 依 Microsoft 錢包程式庫的規則：Linked Domains 驗證成功為 T2（`LINKED_DOMAIN`），與 Authenticator 一樣不需要額外勾選警示；驗證失敗為 T4。使用者自行信任的 DID 排在 Linked Domains 之前，連結暫時失效不會蓋過使用者的決定。
+   - Microsoft Verified ID 依 Microsoft 錢包程式庫的規則：Linked Domains 驗證成功為 T2（`LINKED_DOMAIN`，環境 SYSTEM，因為連結建立在網域的公開憑證上），與 Authenticator 一樣不需要額外勾選警示；驗證失敗為 T4。使用者自行信任的 DID 排在 Linked Domains 之前，連結暫時失效不會蓋過使用者的決定；領卡審閱畫面（`MsVerifiedIdIssuance`）也用同一組 `DidTrust`，沒有任何來源認得的 DID 為 T3。
    - 內建 Multipaz 錨點（`trust/BuiltInTestAnchors`）包含 Multipaz 測試 App、Identity Reader 與 Multipaz Wallet 預設信任的發行端與查驗端；測試錨點存在 TEST 環境，Google Wallet ID pass（美國、美國以外）與 Apple Digital ID 為 PRODUCTION 非官方錨點（T2，顯示發行者名稱）。
    - TWDIW 信任清單同時查正式、官方 sandbox（UAT，一律啟用並標示測試）與自訂測試平台；測試清單的離線快照存在另一個表格，不會被當成正式清單讀回。
-   - 信任來源改變（匯入、移除錨點或 DID）時，`StatusMonitor.reevaluateIssuers` 重新判定已持有證件的發行端並記錄。
+   - 信任來源改變（匯入、移除錨點或 DID，開關系統憑證庫或中國大陸憑證機構）時，`StatusMonitor.reevaluateIssuers` 重新判定已持有證件的發行端並記錄；mdoc 以 MSO 的 docType 判定，金鑰來自 DID 的 SD-JWT VC 以 DID 判定。
+   - 所有組件共用同一套判定：X.509 一律經 `TrustRegistry.decide`（需要錨點本身時用 `match` 再以 `decision` 產生相同的結果），DID 一律經 `DidTrust`（TWDIW 信任清單、使用者信任的 DID、Linked Domains）。涵蓋收卡（`CredentialInspector`、`W3cInspector`、簽章的發行端中繼資料、Verified ID 領卡）、出示（OpenID4VP 1.0 與舊版要求的 x509 與 DID 查驗方、verifier_info、ISO 18013-5 reader auth）、查驗（`ReaderModel`、`PresentationVerifier`、Bonds 離線出示）、狀態清單與 jku、文件簽章與時戳（`DocumentTrustSource`）。mdoc 的發行端判定都帶 docType，VICAL 只授權清單列出的證件類型。例外是 Bonds vc+moica 的持卡人憑證，規格限定 MOICA，以 `TwPkiAnchors` 固定檢查。
    - 出示同意畫面先檢查請求的 verifier_info（`oid4vp/VerifierInfoCheck`，OpenID4VP 1.0 第 5.11 節，例如 ETSI TS 119 475 的 `rc-wrp+jwt` 註冊憑證）：簽署者信任、是否綁定送出請求的查驗方、請求的欄位是否超出註冊範圍。
 4. **did:key 與 did:jwk 的任何 fragment 都指向 DID 自身的唯一金鑰**（`DidResolver.resolveKey`），因為金鑰就編碼在 DID 內；TWDIW 平台的查驗方以 `<did:key>#0` 簽要求物件。kid 指向其他 DID 時仍拒絕。
 5. **憑證不跟隨 jku；狀態清單可用 jku，但要先綁定發行端。** 憑證的簽章金鑰只能來自 x5c、DID、Data Integrity proof 或 JWT VC issuer metadata。狀態清單沒有其他金鑰來源時才用 jku（`trust/JkuKeys`），只接受 https，並依序綁定：JWK 的 x5c 連到任一啟用中的信任錨（不限 TWDIW）、jku 主機就是簽署者自己的主機（did:web 或 https 識別碼）、信任來源把主機綁到該 DID（TWDIW 已列名組織的主機與 wallet.gov.tw 平台、Linked Domains）。都綁不上時仍可驗證，但保證降為 `TLS_ONLY`，不可當成已驗證。

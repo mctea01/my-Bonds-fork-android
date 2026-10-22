@@ -3,6 +3,7 @@ package diw.wallet.core.oid4vci
 import diw.wallet.core.compat.DialectSet
 import diw.wallet.core.compat.SdJwtKeyContext
 import diw.wallet.core.jose.Jws
+import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
@@ -45,6 +46,8 @@ class CredentialInspector(
     private val httpClient: HttpClient,
     private val trustRegistry: TrustRegistry,
     private val allowInsecureLoopback: Boolean,
+    /** Trust for an issuer DID whose key a dialect resolved (TWDIW trust list, DIDs the user trusts, Linked Domains). */
+    private val didTrust: DidTrust = DidTrust.NONE,
 ) {
     suspend fun inspectSdJwt(
         compact: String,
@@ -64,6 +67,7 @@ class CredentialInspector(
         // SD-JWT VC key resolution: x5c, else JWT VC issuer metadata for an https iss. Anything else (DID, jku) is
         // only possible through an enabled dialect.
         var dialectReason: String? = null
+        var issuerDid: String? = null
         val issuerKey: EcPublicKey = if (chain != null) {
             X509CertChainCheck.validate(chain)
             chain.first().ecPublicKey
@@ -76,6 +80,7 @@ class CredentialInspector(
                 val found = compat?.firstSuspend { it.sdJwtIssuerKey(SdJwtKeyContext(header, jws.payload, expectedIssuer)) }
                     ?: throw standard.exceptionOrNull()!!
                 dialectReason = found.reason
+                issuerDid = sdJwt.issuer?.takeIf { it.startsWith("did:") }
                 found.key
             }
         }
@@ -92,11 +97,16 @@ class CredentialInspector(
         }
         val now = Clock.System.now()
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Credential already expired") }
-        val trust = if (chain != null) trustRegistry.decide(TrustRole.ISSUER, chain) else TrustDecision(
-            tier = TrustTier.T3, environment = null, official = false, anchorName = null,
-            labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
-            reasons = listOf(dialectReason ?: "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"),
-        )
+        // An issuer DID is judged by the same DID trust sources as W3C credentials and DID-identified verifiers.
+        val trust = when {
+            chain != null -> trustRegistry.decide(TrustRole.ISSUER, chain)
+            issuerDid != null -> didTrust.decideOrDefault(issuerDid, TrustRole.ISSUER, dialectReason!!)
+            else -> TrustDecision(
+                tier = TrustTier.T3, environment = null, official = false, anchorName = null,
+                labels = setOf(TrustLabel.UNKNOWN_ANCHOR),
+                reasons = listOf(dialectReason ?: "Issuer key comes from JWT VC issuer metadata, not from an X.509 anchor"),
+            )
+        }
         return InspectedCredential(chain, trust, sdJwt.validFrom, sdJwt.validUntil, sdJwt.revocationStatus, sdJwt.kbKey)
     }
 
@@ -136,7 +146,8 @@ class CredentialInspector(
                 if (signed[id] != d) throw ProtocolException("invalid_credential", "Digest mismatch for $ns/$id")
             }
         }
-        return InspectedCredential(chain, trustRegistry.decide(TrustRole.ISSUER, chain), mso.validFrom, mso.validUntil, mso.revocationStatus, mso.deviceKey)
+        // The MSO's docType limits an issuer CA that a VICAL authorises for some document types only.
+        return InspectedCredential(chain, trustRegistry.decide(TrustRole.ISSUER, chain, docType = mso.docType), mso.validFrom, mso.validUntil, mso.revocationStatus, mso.deviceKey)
     }
 
     /** SD-JWT VC issuer metadata (/.well-known/jwt-vc-issuer) key lookup. */

@@ -13,6 +13,7 @@ import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vci.KeyRequest
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
+import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
@@ -137,6 +138,11 @@ class MsVerifiedIdIssuance(
     private val holderIdentities: HolderIdentities,
     private val documentStore: DocumentStore,
     private val allowInsecureLoopback: Boolean = false,
+    /**
+     * Trust for the contract's issuer DID. The wallet passes all its DID trust sources (TWDIW trust list, DIDs the
+     * user trusts, then Linked Domains), the same as for the issued credential; Linked Domains alone by default.
+     */
+    private val didTrust: DidTrust = DidTrust(listOf(linkedDomains)),
 ) {
     /** Fetches and verifies the request behind an openid-vc URI; null when it is not an issuance request. */
     suspend fun resolve(uri: String): MsIssuanceRequest? {
@@ -164,8 +170,9 @@ class MsVerifiedIdIssuance(
         val issuerDid = input.str("issuer") ?: throw ProtocolException("invalid_contract", "Contract without issuer")
         val credentialIssuer = input.str("credentialIssuer") ?: throw ProtocolException("invalid_contract", "Contract without credentialIssuer")
         if (!isAcceptableEndpoint(credentialIssuer, allowInsecureLoopback)) throw ProtocolException("invalid_contract", "credentialIssuer is not https")
-        val trust = linkedDomains.decide(issuerDid, TrustRole.ISSUER)
-            ?: TrustDecision.unknown("Issuer $issuerDid declares no linked domain")
+        // A DID no source knows is verifiable (the request is signed by the client DID) but unanchored: T3, as for the
+        // issued credential. A declared link that fails stays T4 from Linked Domains.
+        val trust = didTrust.decideOrDefault(issuerDid, TrustRole.ISSUER, "Issuer $issuerDid declares no linked domain and is in no trust list")
         val att = input.obj("attestations") ?: JsonObject(emptyMap())
         val selfIssued = att.obj("selfIssued")?.arr("claims").orEmpty().filterIsInstance<JsonObject>().mapNotNull {
             MsSelfIssuedClaim(it.str("claim") ?: return@mapNotNull null, (it["required"] as? JsonPrimitive)?.content == "true")

@@ -553,7 +553,7 @@ class TaiwanModel(private val model: WalletModel) {
     private suspend fun issuerTrust(result: BondsVerifiedPresentation): TrustDecision? {
         result.issuerChain?.let { return model.trust.decide(TrustRole.ISSUER, it) }
         val iss = result.issuer ?: return null
-        if (iss.startsWith("did:")) return runCatching { model.didTrust.decide(iss, TrustRole.ISSUER) }.getOrNull()
+        if (iss.startsWith("did:")) return runCatching { model.didTrust.decideOrDefault(iss, TrustRole.ISSUER, "Issuer $iss is in no trust list") }.getOrNull()
         return TrustDecision(
             tier = TrustTier.T3, environment = null, official = false, anchorName = null,
             labels = setOf(TrustLabel.UNKNOWN_ANCHOR),

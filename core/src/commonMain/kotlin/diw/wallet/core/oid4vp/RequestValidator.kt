@@ -3,6 +3,7 @@ package diw.wallet.core.oid4vp
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
+import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
@@ -33,6 +34,11 @@ class RequestValidator(
     private val didResolver: DidResolver,
     private val policy: PresentationPolicy,
     private val allowInsecureLoopback: Boolean,
+    /**
+     * Trust for a Verifier identified by a DID: the same sources as for DID issuers and pre-1.0 DID clients (TWDIW
+     * trust list, DIDs the user trusts, Linked Domains). A DID none of them knows stays T3.
+     */
+    private val didTrust: DidTrust = DidTrust.NONE,
 ) {
     suspend fun validate(raw: RawAuthorizationRequest): ValidatedAuthorizationRequest {
         val p = raw.params
@@ -200,11 +206,9 @@ class RequestValidator(
                     throw RequestValidationException("invalid_client", "DID resolution failed: ${e.message}", cause = e)
                 }
                 req.verify(vm.key)
-                VerifierIdentityInfo(
-                    clientId, rawClientId, did, null, emptyList(), did,
-                    TrustDecision(TrustTier.T3, null, false, null, setOf(TrustLabel.UNKNOWN_ANCHOR),
-                        listOf("Request signed by a key of $did; no official anchor for DIDs in the standard profile"))
-                ).also { checkSignedResponseTarget(it, responseMode, raw) }
+                val trust = didTrust.decideOrDefault(did, TrustRole.VERIFIER, "Request signed by a key of $did; the DID is not in a trust list")
+                VerifierIdentityInfo(clientId, rawClientId, trust.anchorName ?: did, null, emptyList(), did, trust)
+                    .also { checkSignedResponseTarget(it, responseMode, raw) }
             }
 
             ClientIdPrefix.VERIFIER_ATTESTATION -> authenticateVerifierAttestation(raw, jws, clientId, responseUri)
@@ -335,7 +339,9 @@ class RequestValidator(
         if (raw.channel == RequestChannel.DC_API && !mode.dcApi) {
             throw RequestValidationException("invalid_request", "DC API request with non DC API response mode")
         }
-        if (info.trust.tier == TrustTier.T4 && raw.requestObject != null) {
+        // A DID client already proved its key by the request signature; a T4 from a DID trust source (a declared
+        // linked domain that cannot be verified now) is a risk for the user to confirm, not an unauthenticated request.
+        if (info.trust.tier == TrustTier.T4 && raw.requestObject != null && info.did == null) {
             throw RequestValidationException("invalid_request_object", "Signed request without an authenticated Verifier")
         }
     }
