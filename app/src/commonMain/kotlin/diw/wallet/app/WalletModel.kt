@@ -416,6 +416,7 @@ class WalletModel(val platform: PlatformServices) {
     val files = FilesModel(this)
     val csc = CscModel(this)
     val trustLists = TrustListsModel(this)
+    val zk = ZkModel(scope, platform.zk)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null

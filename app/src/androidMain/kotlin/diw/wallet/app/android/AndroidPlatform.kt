@@ -395,6 +395,21 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
+    override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
+        diw.wallet.core.zk.native.JvmZkEnvironment(context.noBackupFilesDir, httpClient()) {
+            val memory = android.app.ActivityManager.MemoryInfo()
+            context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(memory)
+            val mib = 1024L * 1024L
+            diw.wallet.core.zk.ZkPlatformInfo(
+                abi = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown",
+                totalRamMb = memory.totalMem / mib,
+                availableRamMb = memory.availMem / mib,
+                freeDiskMb = context.noBackupFilesDir.usableSpace / mib,
+                isDesktop = false,
+            )
+        }
+    }
+
     // The release network security configuration refuses clear text; http time stamps, OCSP, CRLs and AIA
     // certificates go through a plain socket instead, since each reply is checked by its signature.
     override fun signedDataHttp(http: HttpClient): SignedDataHttp = SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp())

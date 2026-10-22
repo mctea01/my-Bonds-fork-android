@@ -159,6 +159,9 @@ interface PlatformServices {
 
     /** Where the mobile citizen certificate app returns after an app-to-app signature; null when it cannot be opened here. */
     val mobileMoicaReturnUrl: String? get() = null
+
+    /** Device resources, the native proof library and the verified circuit assets; null where proofs cannot run. */
+    val zk: diw.wallet.core.zk.ZkEnvironment? get() = null
 }
 
 /** A key in the system store or on a token, as listed for the user to pick. */

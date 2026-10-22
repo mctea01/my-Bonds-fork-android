@@ -22,7 +22,7 @@ import java.util.zip.GZIPInputStream
 class FileZkAssetStore(
     private val directory: File,
     client: HttpClient,
-    assets: List<ZkAsset>,
+    val assets: List<ZkAsset>,
 ) : ZkAssetStore, AutoCloseable {
     private val http = client.config { followRedirects = false; expectSuccess = false }
     private val catalog = assets.associateBy { it.id }

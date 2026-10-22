@@ -12,6 +12,9 @@ import diw.wallet.app.PlatformServices
 import diw.wallet.app.softwareBackend
 import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.storage.ValueCipher
+import diw.wallet.core.zk.ZkEnvironment
+import diw.wallet.core.zk.ZkPlatformInfo
+import diw.wallet.core.zk.native.JvmZkEnvironment
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +128,8 @@ class DesktopPlatform(
 
     override fun httpClient(): HttpClient = HttpClient(Java) { followRedirects = false }
 
+    override val zk: ZkEnvironment by lazy { JvmZkEnvironment(dataDir, httpClient()) { desktopZkInfo(dataDir) } }
+
     override fun openBrowser(url: String) {
         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
             Desktop.getDesktop().browse(URI(url))
@@ -203,4 +208,26 @@ class DesktopPlatform(
     private companion object {
         const val MAX_FILE_BYTES = 64L * 1024 * 1024
     }
+}
+
+/** Platform names match the native library folders; memory comes from the JDK's operating system bean. */
+internal fun desktopZkInfo(dataDir: File): ZkPlatformInfo {
+    val os = System.getProperty("os.name").orEmpty().lowercase()
+    val arch = System.getProperty("os.arch").orEmpty().lowercase()
+    val x64 = arch == "amd64" || arch == "x86_64"
+    val abi = when {
+        os.contains("linux") && x64 -> "linux-x86_64"
+        os.contains("windows") && x64 -> "windows-x86_64"
+        os.contains("mac") && (arch == "aarch64" || arch == "arm64") -> "macos-aarch64"
+        else -> "$os-$arch"
+    }
+    val bean = java.lang.management.ManagementFactory.getOperatingSystemMXBean() as? com.sun.management.OperatingSystemMXBean
+    val mib = 1024L * 1024L
+    return ZkPlatformInfo(
+        abi = abi,
+        totalRamMb = (bean?.totalMemorySize ?: 0L) / mib,
+        availableRamMb = (bean?.freeMemorySize ?: 0L) / mib,
+        freeDiskMb = dataDir.usableSpace / mib,
+        isDesktop = true,
+    )
 }

@@ -23,3 +23,17 @@ interface ZkAssetStore {
     fun path(id: String): String?
     suspend fun delete(id: String)
 }
+
+/** What a platform supplies for zero-knowledge proofs: its resources, the native engines and the verified assets. */
+interface ZkEnvironment {
+    suspend fun platformInfo(): ZkPlatformInfo
+
+    /** Loads the native library once; later calls return the same result. */
+    suspend fun loadNative(): ZkResult<ZkNativeStatus>
+
+    /** The hash-pinned asset catalog; empty when the manifest is not bundled. */
+    val catalog: List<ZkAsset>
+
+    /** Null when the manifest is not bundled. */
+    val assets: ZkAssetStore?
+}
