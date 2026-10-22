@@ -11,6 +11,7 @@ import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.profile.bonds.BondsAgeCredential
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsNationalIdException
@@ -28,6 +29,18 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.w3c.SdJwtDisclosures
+import org.multipaz.crypto.Algorithm
+import org.multipaz.crypto.Crypto
+import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
+import org.multipaz.crypto.EcSignature
+import org.multipaz.util.fromBase64Url
+import org.multipaz.util.toBase64Url
 import org.apache.pdfbox.Loader
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
@@ -302,6 +315,35 @@ class BondsNationalIdTest {
         val area = SoftwareSecureArea.create(EphemeralStorage())
         val info = area.createKey(null, SoftwareCreateKeySettings.Builder().build())
         return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.ecPublicKey))
+    }
+
+    @Test
+    fun ageProofCredentialIsSelfIssuedOverTheBirthdateOnly() = runBlocking<Unit> {
+        val self = holder()
+        val issued = BondsNationalId.issue(NationalIdFields(id, "測試人員", "民國 083年03月06日", "臺北市"), self, card("測試人員"))
+        val now = kotlin.time.Instant.fromEpochSeconds(1790000000)
+        val m = BondsAgeCredential.selfIssued(issued, self, now)
+        val key = self.publicKey as EcPublicKeyDoubleCoordinate
+        assertEquals(DidKeys.didKeyJwkJcs(key), m.issuerDid)
+        assertEquals(key.x.toBase64Url() to key.y.toBase64Url(), m.issuerKeyX to m.issuerKeyY)
+        assertTrue(m.sdJwt.endsWith("~"))
+        val parts = SdJwtDisclosures.parse(m.sdJwt)
+        assertEquals(listOf("birthdate" to JsonPrimitive("0830306")), parts.disclosures.map { it.name to it.value })
+        val (h, p, sig) = parts.issuerJwt.split('.')
+        val header = Json.parseToJsonElement(h.fromBase64Url().decodeToString()).jsonObject
+        assertEquals("vc+sd-jwt", header["typ"]!!.jsonPrimitive.content)
+        val payload = Json.parseToJsonElement(p.fromBase64Url().decodeToString()).jsonObject
+        assertEquals(m.issuerDid, payload["iss"]!!.jsonPrimitive.content)
+        assertEquals(1790000300, payload["exp"]!!.jsonPrimitive.long)
+        val subject = payload["vc"]!!.jsonObject["credentialSubject"]!!.jsonObject
+        assertEquals(listOf(parts.disclosures.single().digest), (subject["_sd"] as JsonArray).map { it.jsonPrimitive.content })
+        assertEquals(key.x.toBase64Url(), payload["cnf"]!!.jsonObject["jwk"]!!.jsonObject["x"]!!.jsonPrimitive.content)
+        Crypto.checkSignature(key, "$h.$p".encodeToByteArray(), Algorithm.ES256, EcSignature.fromCoseEncoded(sig.fromBase64Url()))
+        val nonceSig = BondsAgeCredential.deviceSignature("nonce-value", self).fromBase64Url()
+        assertEquals(64, nonceSig.size)
+        Crypto.checkSignature(key, "nonce-value".encodeToByteArray(), Algorithm.ES256, EcSignature.fromCoseEncoded(nonceSig))
+        val other = holder()
+        assertFailsWith<ProtocolException> { BondsAgeCredential.selfIssued(issued, other, now) }
     }
 
     @Test

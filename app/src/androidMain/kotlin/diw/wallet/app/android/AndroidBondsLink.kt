@@ -20,8 +20,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.ParcelUuid
 import diw.wallet.app.BondsLinkPeripheral
+import diw.wallet.core.profile.bonds.BondsLinkCollector
 import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
+import diw.wallet.core.profile.bonds.BondsReception
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
@@ -31,7 +33,8 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * Bonds BLE link on Android: a GATT server with the verifier's one-time service, advertised as connectable.
  * When the verifier subscribes to the frames characteristic, the frames (sized to the negotiated MTU) are
- * notified one after another; the verifier writes 0x01 to the state characteristic when it has the payload.
+ * notified one after another; the verifier writes 0x01 to the state characteristic when it has the payload and, for a
+ * nearby age proof, its framed verdict to the reply characteristic.
  */
 class AndroidBondsLink(private val context: Context, private val activity: () -> Activity?) : BondsLinkPeripheral {
     private val manager get() = context.getSystemService(BluetoothManager::class.java)
@@ -58,15 +61,34 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         data class Mtu(val mtu: Int) : Event
         data object Sent : Event
         data object Received : Event
+        data object Hello : Event
+        class Reply(val frame: ByteArray) : Event
         data class Disconnected(val device: BluetoothDevice) : Event
         data class Failed(val reason: String) : Event
     }
 
+    override suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean =
+        serve(serviceUuid, { BondsOfflinePresentation.linkFrames(presentationJws, it) }, awaitReply = false, onProgress) != null
+
+    // Bonds' limits, so a Bonds verifier can take the frames too.
+    override suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray? =
+        serve(serviceUuid, { BondsLinkTransport.frames(payload, it) }, awaitReply = true, onProgress)
+
+    /**
+     * Advertises [serviceUuid] until a verifier subscribes, notifies the frames [chunks] cuts for its MTU and returns
+     * once it wrote "received" (an empty array) or, with [awaitReply] and a verifier that announced one, its framed
+     * reply. Null when the link failed before "received".
+     */
     @SuppressLint("MissingPermission")
-    override suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean {
-        val m = manager ?: return false
-        val adapter = m.adapter ?: return false
-        val advertiser = adapter.bluetoothLeAdvertiser ?: return false
+    private suspend fun serve(
+        serviceUuid: String,
+        chunks: (Int) -> List<ByteArray>,
+        awaitReply: Boolean,
+        onProgress: (String) -> Unit,
+    ): ByteArray? {
+        val m = manager ?: return null
+        val adapter = m.adapter ?: return null
+        val advertiser = adapter.bluetoothLeAdvertiser ?: return null
         val events = Channel<Event>(Channel.UNLIMITED)
         val serviceId = UUID.fromString(serviceUuid)
         val frames = BluetoothGattCharacteristic(
@@ -81,6 +103,13 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
             BluetoothGattCharacteristic.PERMISSION_WRITE,
         )
+        val replyChar = BluetoothGattCharacteristic(
+            UUID.fromString(BondsLinkTransport.REPLY_CHARACTERISTIC),
+            BluetoothGattCharacteristic.PROPERTY_WRITE,
+            BluetoothGattCharacteristic.PERMISSION_WRITE,
+        )
+        // A write longer than the MTU arrives as prepared parts, applied on execute.
+        val prepared = java.io.ByteArrayOutputStream()
         var server: BluetoothGattServer? = null
         val callback = object : BluetoothGattServerCallback() {
             override fun onServiceAdded(status: Int, service: BluetoothGattService) {
@@ -113,10 +142,22 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 device: BluetoothDevice, requestId: Int, characteristic: BluetoothGattCharacteristic,
                 preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?,
             ) {
-                if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
-                if (characteristic.uuid == stateChar.uuid && value != null && value.isNotEmpty() && value[0] == BondsLinkTransport.RECEIVED) {
-                    events.trySend(Event.Received)
+                if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
+                if (value == null || value.isEmpty()) return
+                when (characteristic.uuid) {
+                    stateChar.uuid -> if (value[0] == BondsLinkTransport.RECEIVED) events.trySend(Event.Received)
+                    replyChar.uuid -> when {
+                        preparedWrite -> if (prepared.size() + value.size <= BondsLinkTransport.REPLY_MAX_PAYLOAD) prepared.write(value)
+                        value.size == 1 && value[0] == BondsLinkTransport.REPLY_HELLO -> events.trySend(Event.Hello)
+                        else -> events.trySend(Event.Reply(value.copyOf()))
+                    }
                 }
+            }
+
+            override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
+                server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
+                if (execute && prepared.size() > 0) events.trySend(Event.Reply(prepared.toByteArray()))
+                prepared.reset()
             }
 
             override fun onNotificationSent(device: BluetoothDevice, status: Int) {
@@ -129,15 +170,16 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             }
         }
         try {
-            server = m.openGattServer(context, callback) ?: return false
+            server = m.openGattServer(context, callback) ?: return null
             val service = BluetoothGattService(serviceId, BluetoothGattService.SERVICE_TYPE_PRIMARY).apply {
                 addCharacteristic(frames)
                 addCharacteristic(stateChar)
+                addCharacteristic(replyChar)
             }
             // addService completes asynchronously; advertising before onServiceAdded lets a fast verifier discover an empty server.
             if (!server.addService(service)) {
                 onProgress("無法建立藍牙服務")
-                return false
+                return null
             }
             val added = withTimeoutOrNull(SERVICE_TIMEOUT) {
                 var status: Int? = null
@@ -146,7 +188,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             }
             if (added != BluetoothGatt.GATT_SUCCESS) {
                 onProgress(if (added == null) "建立藍牙服務逾時" else "無法建立藍牙服務（$added）")
-                return false
+                return null
             }
             advertiser.startAdvertising(
                 AdvertiseSettings.Builder()
@@ -157,7 +199,9 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 AdvertiseData.Builder().addServiceUuid(ParcelUuid(serviceId)).setIncludeDeviceName(false).build(),
                 advertising,
             )
-            return withTimeoutOrNull(2.minutes) { drive(server, frames, events, presentationJws, onProgress) } ?: false
+            return withTimeoutOrNull(if (awaitReply) EXCHANGE_TIMEOUT else SEND_TIMEOUT) {
+                drive(server, frames, events, chunks, awaitReply, onProgress)
+            }
         } finally {
             runCatching { advertiser.stopAdvertising(advertising) }
             runCatching { server?.close() }
@@ -170,16 +214,20 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         server: BluetoothGattServer,
         frames: BluetoothGattCharacteristic,
         events: Channel<Event>,
-        jws: String,
+        chunksFor: (Int) -> List<ByteArray>,
+        awaitReply: Boolean,
         onProgress: (String) -> Unit,
-    ): Boolean {
+    ): ByteArray? {
         var mtu = DEFAULT_MTU
         var device: BluetoothDevice? = null
+        // Our verifier announces its verdict before it subscribes.
+        var hello = false
         while (device == null) {
             when (val e = events.receive()) {
+                Event.Hello -> hello = true
                 is Event.Mtu -> mtu = e.mtu
                 is Event.Subscribed -> device = e.device
-                is Event.Failed -> { onProgress(e.reason); return false }
+                is Event.Failed -> { onProgress(e.reason); return null }
                 else -> {}
             }
         }
@@ -187,32 +235,50 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         withTimeoutOrNull(MTU_GRACE) {
             while (true) {
                 val e = events.receive()
+                if (e is Event.Hello) hello = true
                 if (e is Event.Mtu) { mtu = e.mtu; break }
             }
         }
-        val chunks = BondsOfflinePresentation.linkFrames(jws, (mtu - 3).coerceAtMost(MAX_NOTIFICATION))
-        chunks.forEachIndexed { i, chunk ->
-            onProgress("藍牙傳送中 ${i + 1} / ${chunks.size}")
-            if (!notify(server, device, frames, chunk)) { onProgress("藍牙傳送失敗"); return false }
-            while (true) {
-                when (val e = events.receive()) {
-                    Event.Sent -> break
-                    Event.Received -> return true
-                    is Event.Failed -> { onProgress(e.reason); return false }
-                    is Event.Disconnected -> if (e.device == device) { onProgress("查驗方已中斷連線"); return false }
-                    else -> {}
+        val replies = BondsLinkCollector(BondsLinkTransport.REPLY_MAX_PAYLOAD)
+        var received = false
+        var done = false
+        var result: ByteArray? = null
+        // Settles the transfer on the verifier's state and reply writes, a failure or the verifier leaving. Once it has
+        // the payload, leaving without a verdict still counts as received.
+        fun settle(e: Event) {
+            when (e) {
+                Event.Hello -> hello = true
+                Event.Received -> {
+                    received = true
+                    if (awaitReply && hello) onProgress("查驗方已收到，正在驗證") else { done = true; result = ByteArray(0) }
                 }
-            }
-        }
-        onProgress("等待查驗方確認")
-        while (true) {
-            when (val e = events.receive()) {
-                Event.Received -> return true
-                is Event.Disconnected -> if (e.device == device) return false
-                is Event.Failed -> return false
+                is Event.Reply -> if (awaitReply) {
+                    val r = runCatching { replies.accept(e.frame) }.getOrNull()
+                    if (r is BondsReception.Completed) { done = true; result = r.payload }
+                }
+                is Event.Failed -> { onProgress(e.reason); done = true; if (received) result = ByteArray(0) }
+                is Event.Disconnected -> if (e.device == device) {
+                    if (!received) onProgress("查驗方已中斷連線")
+                    done = true
+                    if (received) result = ByteArray(0)
+                }
                 else -> {}
             }
         }
+        val chunks = chunksFor((mtu - 3).coerceAtMost(MAX_NOTIFICATION))
+        for ((i, chunk) in chunks.withIndex()) {
+            onProgress("藍牙傳送中 ${i + 1} / ${chunks.size}")
+            if (!notify(server, device, frames, chunk)) { onProgress("藍牙傳送失敗"); return null }
+            while (!done) {
+                val e = events.receive()
+                if (e == Event.Sent) break
+                settle(e)
+            }
+            if (done) return result
+        }
+        onProgress(if (awaitReply) "等待查驗方的結果" else "等待查驗方確認")
+        while (!done) settle(events.receive())
+        return result
     }
 
     @SuppressLint("MissingPermission")
@@ -231,6 +297,10 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         private const val MAX_NOTIFICATION = 512
         private val MTU_GRACE = 1.seconds
         private val SERVICE_TIMEOUT = 5.seconds
+        private val SEND_TIMEOUT = 2.minutes
+
+        /** The verifier also checks the proofs before it replies. */
+        private val EXCHANGE_TIMEOUT = 4.minutes
         const val PERMISSION_REQUEST = 4102
     }
 }

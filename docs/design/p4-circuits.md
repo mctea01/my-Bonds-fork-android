@@ -307,6 +307,9 @@ GovBind 的做法：證明者對回應的某個範圍做 SHA-256 承諾（tlsn �
 - 資產：`openac-age-v1` 的 6 個檔案，下載位址 `https://github.com/bonds-tw/backupTW-iOS/releases/download/openac-age-v1/`，壓縮與安裝後兩層 SHA-256 照 Bonds 的清單釘選（p4-work-packages.md WP7 列出全部雜湊）。
 - Android：以 Bonds 的 `predicate.rs` 與 `zkid-mobile.patch` 為基礎，改用 cargo-ndk 輸出 `arm64-v8a`、`x86_64`；證明執行緒需 64 MB 堆疊。持有端另需下載 `jwt_2k` 與 `show` 的見證計算圖（安裝後約 94 MB）。公開訊號由我們自己的 uniffi 匯出，可避開 Bonds 在 iOS 上無法取得公開訊號的限制。
 - Bonds 已知限制沿用並在畫面寫明：自發卡的發行端 DID 是穩定假名；憑證效期不在電路內；公路局駕照電子卡沒有生日欄位，不能做。
+- 查驗結果的語意（2026-10-22 審查 PR #17 決定）：`verify_age_presentation` 為 true 只表示「指定發行端公鑰簽過的憑證，其出生日期不晚於 cutoff，且綁定這次的 nonce 與裝置金鑰」。Prepare 與 Show 的公開值沒有憑證效期與查驗時間，持有端只在建立 Prepare 輸入時以本機時間檢查 `exp`、`nbf`，查驗端無法得知憑證目前是否有效或已撤銷，結果型別與查驗畫面都不得宣稱已驗證效期或狀態。要證明目前有效需新版電路，不在 openac-age-v1 範圍。
+- 憑證容器（同日決定）：openac-age-v1 只支援 Bonds／TWDIW 的 `vc.credentialSubject._sd` 容器（`typ` 可為 `vc+sd-jwt`、`dc+sd-jwt` 或 `JWT`）。根層 `_sd` 的標準 IETF SD-JWT VC 一律以固定錯誤拒絕，Kotlin 端不對這類憑證提供 OpenAC 選項；標準 mdoc 的年齡證明走 C4 Longfellow。
+- 原生匯出（同日整合）：OpenAC 的 UniFFI 函式在每個建置都存在（綁定載入時會核對每個函式的 checksum），`-Pdiw.zkFeatures=openac`（或 `DIW_ZK_FEATURES`）才連結後端，未連結時一律回 `Unsupported`。建置 OpenAC 需要 protoc 與 libclang。
 
 ## 6. C4：Longfellow（mdoc）
 

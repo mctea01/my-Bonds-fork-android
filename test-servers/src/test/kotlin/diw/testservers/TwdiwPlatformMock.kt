@@ -106,6 +106,10 @@ class TwdiwPlatformMock private constructor(
     private val pending = mutableMapOf<String, PendingRequest>()
     private var accessToken: String? = null
     private var cNonce: String? = null
+    /** Current partner-card tokens omit c_nonce when metadata publishes a nonce endpoint. */
+    var tokenNonceIncluded = true
+    var credentialRequests = 0
+        private set
     private val transactions = mutableMapOf<String, String>()
     private val dids = DidResolver(HttpClient(MockEngine { respond("", HttpStatusCode.NotFound) }))
 
@@ -228,7 +232,7 @@ class TwdiwPlatformMock private constructor(
         }
     }
 
-    private suspend fun org(key: EcPrivateKey, did: String, name: String, orgType: Int, base: String): JsonObject {
+    private suspend fun org(key: EcPrivateKey, did: String, name: String, orgType: Int, base: String, taxId: String): JsonObject {
         val jwk = key.publicKey.toJwk()
         val document = signJws(
             buildJsonObject { put("alg", "ES256"); put("typ", "JWT"); put("kid", DidKeys.verificationMethod(did)) },
@@ -245,16 +249,16 @@ class TwdiwPlatformMock private constructor(
             put("did", document)
             put("orgType", orgType)
             putJsonObject("org") {
-                put("name", name); put("name_en", "Mock $orgType"); put("taxId", "0000000$orgType")
+                put("name", name); put("name_en", "Mock $orgType"); put("taxId", taxId)
                 put("issuerMetadataBaseURL", base); put("serviceBaseURL", base)
             }
             putJsonArray("onChainHistory") {}
         }
     }
 
-    private suspend fun issuerOrg() = org(issuerKey, issuerDid, "模擬發證機關", 1, ISSUER_ORIGIN)
+    private suspend fun issuerOrg() = org(issuerKey, issuerDid, "模擬發證機關", 1, ISSUER_ORIGIN, ISSUER_ORG_ID)
 
-    private suspend fun verifierOrg() = org(verifierKey, verifierDid, "模擬驗證機關", 2, VERIFIER)
+    private suspend fun verifierOrg() = org(verifierKey, verifierDid, "模擬驗證機關", 2, VERIFIER, "00000002")
 
     // ------------------------------------------------------------------ issuer
 
@@ -332,11 +336,14 @@ class TwdiwPlatformMock private constructor(
         cNonce = "cn-" + Clock.System.now().toEpochMilliseconds()
         return json(buildJsonObject {
             put("access_token", accessToken); put("token_type", "Bearer"); put("expires_in", 600)
-            put("c_nonce", cNonce); put("c_nonce_expires_in", 600)
+            if (tokenNonceIncluded) {
+                put("c_nonce", cNonce); put("c_nonce_expires_in", 600)
+            }
         })
     }
 
     private suspend fun MockRequestHandleScope.credential(request: HttpRequestData): HttpResponseData {
+        credentialRequests++
         expect(request.headers[HttpHeaders.Authorization] == "Bearer $accessToken") { "Authorization ${request.headers[HttpHeaders.Authorization]}" }
         val body = DiwJson.parseToJsonElement(bodyText(request)) as JsonObject
         expect(body.str("credential_identifier") == CONFIG_ID) { "credential_identifier ${body.str("credential_identifier")}" }
@@ -351,15 +358,15 @@ class TwdiwPlatformMock private constructor(
         jws.verify(VerificationKey.Ec(holderKey))
         expect(jws.payload.str("iss") == CLIENT_ID) { "proof iss ${jws.payload.str("iss")}" }
         expect(jws.payload.str("aud") == ISSUER) { "proof aud ${jws.payload.str("aud")}" }
-        // As moda.wallet.gov.tw (2026-10-16) and the official wallet 1.0.14: an issuer with a nonce_endpoint only takes
-        // proofs over a nonce from it and refuses the token's c_nonce as an invalid proof.
+        // The 2026-10-16 issuer probe rejected token nonces when a nonce endpoint was published.
+        // Keep that compatibility requirement; current partner-card tokens can omit c_nonce entirely.
         val expected = if (nonceEndpointPublished) "endpoint-nonce-$endpointNonces" else cNonce
         if (jws.payload.str("nonce") != expected) {
             return json(buildJsonObject {
                 put("error", "invalid_proof"); put("resp_code", 11016); put("resp_message", "Invalid proof")
             }, HttpStatusCode.BadRequest)
         }
-        // The official handler answers 500 with its own body once token and proof passed but the credential service failed.
+        // Simulate a downstream error after this mock's proof checks. A real 5xx does not establish which checks passed.
         credentialServiceFailure?.let { (code, message) ->
             return json(buildJsonObject { put("resp_code", code); put("resp_message", message) }, HttpStatusCode.InternalServerError)
         }
@@ -665,7 +672,9 @@ class TwdiwPlatformMock private constructor(
         const val VERIFIER_HOST = "verifier.mock.wallet.gov.tw"
         const val FRONTEND = "https://$FRONTEND_HOST"
         const val ISSUER_ORIGIN = "https://$ISSUER_HOST"
-        const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/00000000/"
+        /** The issuer organisation's ID, as in the platform issuer path and the trust list taxId field. */
+        const val ISSUER_ORG_ID = "00000000"
+        const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/$ISSUER_ORG_ID/"
         const val VERIFIER = "https://$VERIFIER_HOST"
         const val CONFIG_ID = "00000000_mock_card"
         const val TERMS_URL = "https://verifier.example.com/terms/wallet_partner"

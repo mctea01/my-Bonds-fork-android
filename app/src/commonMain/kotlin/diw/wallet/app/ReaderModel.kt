@@ -380,7 +380,8 @@ class ReaderModel(private val model: WalletModel) {
     private suspend fun zkDocument(proof: ZkDocument): ReadZkDocument {
         val data = proof.documentData
         val chain = data.msoX5chain?.certificates ?: emptyList()
-        val trust = model.trust.decide(TrustRole.ISSUER, chain)
+        // The proof binds the docType, so a VICAL that authorises the issuer for other document types still limits it.
+        val trust = model.trust.decide(TrustRole.ISSUER, chain, docType = data.docType)
         val value = data.issuerSigned.getValue(MDL_NS).getValue("age_over_18").asBoolean
         return ReadZkDocument(data.docType, trust, chain, data.timestamp,
             listOf(ReadClaim(model.claimLabel(listOf(MDL_NS, "age_over_18"), null, null), if (value) "是" else "否")))

@@ -23,7 +23,13 @@ import org.multipaz.storage.ephemeral.EphemeralStorage
 import java.io.File
 
 /** All test servers in one process: verifier, issuer (with status lists) and wallet provider. */
-class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOptions = IssuerOptions()) {
+class TestServers(
+    val baseUrl: String,
+    val pki: TestPki,
+    issuerOptions: IssuerOptions = IssuerOptions(),
+    /** Checks Bonds age proofs on the server; without it the age verifier only relays. */
+    ageVerifier: diw.wallet.core.zk.OpenAcAgeVerifier? = null,
+) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true))
     val documentTypes = DocumentTypeRepository().apply {
@@ -36,6 +42,7 @@ class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOp
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
     val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
     val walletProvider = WalletProviderService(baseUrl, pki)
+    val bondsAge = BondsAgeService(baseUrl, ageVerifier, diw.wallet.core.did.DidResolver(httpClient))
 
     suspend fun init(): TestServers {
         trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", official = false, source = "diw-test-servers")
@@ -60,6 +67,7 @@ class TestServers(val baseUrl: String, val pki: TestPki, issuerOptions: IssuerOp
                 verifierRoutes(verifier)
                 issuerRoutes(issuer)
                 walletProviderRoutes(walletProvider)
+                bondsAgeRoutes(bondsAge)
             }
         }.start(wait = wait)
 }
@@ -68,8 +76,13 @@ fun main(args: Array<String>) = runBlocking {
     val port = args.getOrNull(0)?.toInt() ?: 8080
     val baseUrl = args.getOrNull(1) ?: "http://localhost:$port"
     val pkiDir = File(args.getOrNull(2) ?: "build/test-pki")
-    val servers = TestServers(baseUrl, TestPki.create(pkiDir)).init()
-    println("DIW test servers on $baseUrl (PKI in ${pkiDir.absolutePath})")
+    // DIW_OPENAC_DATA holds a verified zk-assets folder (see OpenAcAgeProofTest): Bonds age proofs are then checked here.
+    val zk = System.getenv("DIW_OPENAC_DATA")?.let { File(it) }?.takeIf { File(it, "zk-assets").isDirectory }?.let { data ->
+        diw.wallet.core.zk.native.JvmZkEnvironment(data, HttpClient(Java)) { diw.wallet.core.zk.ZkPlatformInfo("server", 0, 0, 0, true) }
+            .takeIf { it.loadNative() is diw.wallet.core.zk.ZkResult.Ok }
+    }
+    val servers = TestServers(baseUrl, TestPki.create(pkiDir), ageVerifier = zk?.ageVerifier).init()
+    println("DIW test servers on $baseUrl (PKI in ${pkiDir.absolutePath}); Bonds age proofs ${if (zk != null) "verified here" else "relayed only"}")
     servers.start(port, wait = true)
     Unit
 }

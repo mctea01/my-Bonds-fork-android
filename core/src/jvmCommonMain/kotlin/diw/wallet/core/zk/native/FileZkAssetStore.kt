@@ -22,7 +22,7 @@ import java.util.zip.GZIPInputStream
 class FileZkAssetStore(
     private val directory: File,
     client: HttpClient,
-    assets: List<ZkAsset>,
+    val assets: List<ZkAsset>,
 ) : ZkAssetStore, AutoCloseable {
     private val http = client.config { followRedirects = false; expectSuccess = false }
     private val catalog = assets.associateBy { it.id }
@@ -99,6 +99,10 @@ class FileZkAssetStore(
         val asset = asset(id)
         return installed(asset).takeIf { matches(it, asset.installedBytes, asset.installedSha256) }?.absolutePath
     }
+
+    /** The installed file when its size is right, without hashing it: for callers whose native code pins the hash itself. */
+    internal fun installedFile(id: String): File? = assets.firstOrNull { it.id == id }
+        ?.let { a -> installed(a).takeIf { it.isFile && it.length() == a.installedBytes } }
 
     override suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         val asset = asset(id)

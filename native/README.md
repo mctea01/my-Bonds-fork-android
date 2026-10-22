@@ -1,6 +1,6 @@
 # ZK native runtime
 
-The WP0 runtime uses Rust 1.90.0, UniFFI 0.29.4, cargo-ndk 4.1.2,
+The native runtime uses Rust 1.95.0 (TLSNotary alpha.15 needs it), UniFFI 0.29.4, cargo-ndk 4.1.2,
 and Android NDK 28.2.13676358. Dependencies are locked in Cargo.lock.
 Install the toolchain through rustup, install cargo-ndk with
 `cargo install cargo-ndk --version 4.1.2 --locked`, and install the pinned

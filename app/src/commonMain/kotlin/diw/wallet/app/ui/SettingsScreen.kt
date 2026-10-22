@@ -20,6 +20,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -76,12 +77,15 @@ fun SettingsScreen(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     val history by model.history.collectAsState()
     val reg by model.dcApiRegistration.collectAsState()
+    val zkCapability by model.zk.capability.collectAsState()
+    LaunchedEffect(Unit) { model.zk.probe() }
     SettingsColumn {
         SettingsSection.entries.forEach { section ->
             val summary = when (section) {
                 SettingsSection.SECURITY -> listOfNotNull(
                     model.backends.firstOrNull()?.let { "金鑰保護：" + it.protection.displayName },
                     "每次使用需驗證：" + onOff(s.requireUserAuth),
+                    zkSummary(zkCapability),
                     "紀錄 ${history.size} 筆",
                 ).joinToString("・")
                 SettingsSection.CREDENTIALS -> listOfNotNull(
@@ -140,6 +144,9 @@ private fun SecurityPage(model: WalletModel) {
     Toggle("每次使用需驗證", "使用證件金鑰前要求生物辨識或裝置 PIN（軟體金鑰一律需 App PIN）", s.requireUserAuth) { v ->
         model.updateSettings { it.copy(requireUserAuth = v) }
     }
+    HorizontalDivider()
+    SectionTitle("隱私")
+    ZkSettingsRow(model) { model.screen.value = Screen.ZkSettings }
     HorizontalDivider()
     SectionTitle("紀錄")
     Text("紀錄只保存對象、時間、證件與欄位名稱，不保存欄位內容。目前共 ${history.size} 筆。", style = MaterialTheme.typography.bodySmall)

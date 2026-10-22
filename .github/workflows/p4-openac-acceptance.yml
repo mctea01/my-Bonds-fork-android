@@ -1,0 +1,65 @@
+name: P4 OpenAC native acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-and-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.90.0
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Install native and graph build tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang libclang-dev protobuf-compiler
+          corepack enable
+          mkdir -p "$RUNNER_TEMP/circom-bin"
+          curl -fsSL https://github.com/iden3/circom/releases/download/v2.2.3/circom-linux-amd64 -o "$RUNNER_TEMP/circom-bin/circom"
+          chmod +x "$RUNNER_TEMP/circom-bin/circom"
+          echo "$RUNNER_TEMP/circom-bin" >> "$GITHUB_PATH"
+          cargo install cargo-ndk --version 4.1.2 --locked
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - name: Build and verify separate GPL graph assets
+        run: ./native/openac-age/build-graphs.sh
+      - name: Check wasm reference vectors and normal runtime licenses
+        shell: bash
+        run: |
+          python3 -I native/openac-age/tests/generate_self_test.py
+          python3 -I native/openac-age/tests/generate_wasm_vectors.py
+          python3 -I native/openac-age/audit-runtime.py
+          python3 -I native/openac-age/install_assets.py native/openac-age/build/assets/circom
+      - name: Build the graph runtime and both Android ABIs
+        run: ./native/openac-age/build.sh host,android
+      - name: Run native and synthetic witness/proof tests
+        shell: bash
+        env:
+          OPENAC_TEST_ASSETS: ${{ github.workspace }}/native/openac-age/build/assets/circom
+          OPENAC_FFI_OUTPUT: ${{ github.workspace }}/native/openac-age/build/ffi-proof/circom
+        run: |
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p diw-zk-ffi --features openac
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p openac-age
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p openac-age -- --ignored --nocapture
+          python3 -I native/openac-age/tests/verify_ffi.py native/openac-age/build/python "$OPENAC_FFI_OUTPUT" --assets "$OPENAC_TEST_ASSETS"
