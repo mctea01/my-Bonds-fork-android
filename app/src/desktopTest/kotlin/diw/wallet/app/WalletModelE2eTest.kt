@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
@@ -352,6 +354,20 @@ class WalletModelE2eTest {
         screen("08f-settings-about", Screen.SettingsPage(diw.wallet.app.SettingsSection.ABOUT))
         screen("08g-settings-security", Screen.SettingsPage(diw.wallet.app.SettingsSection.SECURITY))
         screen("08h-zk-settings", Screen.ZkSettings, height = 1900)
+        shot("08i-zk-choice") {
+            val readiness = ZkReadiness(
+                ZkProofKind.AGE, true, "可用記憶體偏低，仍可嘗試產生，或改用電腦版",
+                m.zk.catalog.filter { it.backend == diw.wallet.core.zk.ZkBackend.OPENAC_SPARTAN2 && "prover" in it.role },
+                diw.wallet.core.zk.ZkPlatformInfo("arm64-v8a", 6144, 1500, 20000, false),
+            )
+            androidx.compose.material3.MaterialTheme {
+                androidx.compose.material3.Surface {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp)) {
+                        diw.wallet.app.ui.ZkChoicePanel(readiness, zkChoiceOptions(readiness, ZkChoiceContext(withoutZk = "只揭露身分證卡的「年滿 18 歲」欄位"))) {}
+                    }
+                }
+            }
+        }
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)
