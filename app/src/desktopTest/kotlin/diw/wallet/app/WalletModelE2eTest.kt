@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
@@ -38,6 +40,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import org.multipaz.util.toBase64Url
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.ephemeral.EphemeralStorage
@@ -95,6 +98,11 @@ class WalletModelE2eTest {
         /** Files the wallet exported, by the name it suggested. */
         val saved = ArrayList<Pair<String, ByteArray>>()
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
+
+        override val zk by lazy {
+            val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
+            diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+        }
     }
 
     private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test"): Pair<WalletModel, TestPlatform> {
@@ -156,6 +164,33 @@ class WalletModelE2eTest {
     @AfterTest
     fun stop() {
         server?.stop(100, 500)
+    }
+
+    @Test
+    fun twdiwCredentialServerErrorsDoNotAssertSuccessfulValidation() = runBlocking<Unit> {
+        val model = WalletModel(TestPlatform(EphemeralStorage()))
+        for (status in listOf(500, 502, 503)) {
+            for (code in listOf(11021, 61010)) {
+                val detail = "Credential request failed ($status): TWDIW resp_code $code (VC Server error)"
+                val text = model.describe(diw.wallet.core.util.ProtocolException("server_error", detail))
+                assertTrue(detail in text)
+                assertTrue("服務異常或領卡流程不相容" in text)
+                assertTrue("官方 App 可正常領卡" in text)
+                assertFalse("已通過發證端檢查" in text)
+            }
+        }
+        val otherIssuer = "Credential request failed (500): server_error"
+        assertEquals("協定錯誤（server_error）：$otherIssuer",
+            model.describe(diw.wallet.core.util.ProtocolException("server_error", otherIssuer)))
+        val invalidProof = "Credential request failed (400): TWDIW resp_code 11016 (Invalid proof)"
+        assertEquals("協定錯誤（invalid_proof）：$invalidProof",
+            model.describe(diw.wallet.core.util.ProtocolException("invalid_proof", invalidProof)))
+        val otherPlatformCode = "Token request failed (400): TWDIW resp_code 11010"
+        assertEquals("協定錯誤（invalid_request）：$otherPlatformCode",
+            model.describe(diw.wallet.core.util.ProtocolException("invalid_request", otherPlatformCode)))
+        for (blocked in listOf("HTTP 403: Cloudflare error 1010", "HTTP 403 from https://moda.wallet.gov.tw")) {
+            assertTrue("User-Agent" in model.describe(diw.wallet.core.util.ProtocolException("server_error", blocked)))
+        }
     }
 
     private suspend fun offer(configs: List<String>, grant: String = "pre-authorized", txCode: String? = null): String {
@@ -318,6 +353,22 @@ class WalletModelE2eTest {
         screen("08d-settings-interop", Screen.SettingsPage(diw.wallet.app.SettingsSection.INTEROP))
         screen("08e-custom-trust", Screen.CustomTrust)
         screen("08f-settings-about", Screen.SettingsPage(diw.wallet.app.SettingsSection.ABOUT))
+        screen("08g-settings-security", Screen.SettingsPage(diw.wallet.app.SettingsSection.SECURITY))
+        screen("08h-zk-settings", Screen.ZkSettings, height = 1900)
+        shot("08i-zk-choice") {
+            val readiness = ZkReadiness(
+                ZkProofKind.AGE, true, "可用記憶體偏低，仍可嘗試產生，或改用電腦版",
+                m.zk.catalog.filter { it.backend == diw.wallet.core.zk.ZkBackend.OPENAC_SPARTAN2 && "prover" in it.role },
+                diw.wallet.core.zk.ZkPlatformInfo("arm64-v8a", 6144, 1500, 20000, false),
+            )
+            androidx.compose.material3.MaterialTheme {
+                androidx.compose.material3.Surface {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.padding(16.dp)) {
+                        diw.wallet.app.ui.ZkChoicePanel(readiness, zkChoiceOptions(readiness, ZkChoiceContext(withoutZk = "只揭露身分證卡的「年滿 18 歲」欄位"))) {}
+                    }
+                }
+            }
+        }
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)
@@ -337,6 +388,12 @@ class WalletModelE2eTest {
         screen("20-national-id", Screen.NationalId(idFile.id))
         screen("21-documents-with-national-id", Screen.Home, HomeTab.DOCUMENTS)
         screen("22-files-with-documents", Screen.Home, HomeTab.FILES)
+        m.handleUri(ageRequest("s"))
+        val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { m.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
+        screen("23-age-choose", Screen.Offline)
+        m.taiwan.offline.value = OfflineUi.AgeResult(age.request, age.cards.single(), true, "verifier.mashbean.net 已接受證明",
+            listOf("查驗方確認你年滿 18 歲，沒有收到出生日期或其他欄位。", "產生證明 38.4 秒"), retry = false)
+        screen("24-age-result", Screen.Offline)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -1167,7 +1224,22 @@ class WalletModelE2eTest {
         val r = diw.wallet.core.profile.bonds.BondsOfflineVerifier(holder.didResolver(), moicaCa = ca).verify(frames.presentationJws, request)
         assertEquals(mapOf("name" to "測試人員", "over18AtIssuance" to "true"), r.claims)
         assertTrue(r.moica!!.nameChecked)
+
+        // A Bonds web age request offers the national ID card for a self-issued proof and never opens the offline frames.
+        holder.handleUri(ageRequest("s"))
+        val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
+        assertEquals(listOf(TaiwanModel.NATIONAL_ID_NAME to "birthdate"), age.cards.map { it.name to it.claim })
+        holder.handleUri(ageRequest("g"))
+        val none = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed } })
+        assertTrue("政府皮夾" in none.message)
+        holder.handleUri(ageRequest("s", kotlin.time.Clock.System.now().epochSeconds - 600))
+        assertEquals(BondsAgeFlow.EXPIRED, assertIs<OfflineUi.Failed>(withTimeout(10.seconds) {
+            holder.taiwan.offline.first { it is OfflineUi.Failed && it.message == BondsAgeFlow.EXPIRED }
+        }).message)
     }
+
+    private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =
+        """{"a":18,"b":"6F9619FF-8B86-D011-B42D-00C04FC964FF","c":"${ByteArray(32) { 3 }.toBase64Url()}","d":"2008-10-23","p":"年齡確認","s":"$source","t":$created,"u":"https://verifier.mashbean.net/api/zkp/response/abc","v":1}"""
 
     /**
      * A MyData ZIP handed to the wallet (shared from another app or picked) is unpacked at once; the national ID PDF

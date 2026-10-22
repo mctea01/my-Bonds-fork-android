@@ -90,5 +90,35 @@
     "installedSha256": "f0c447a9757d182e8aa23083bc3dba5a9a22f3e0fcbb344724568cc3c83352d8",
     "installedBytes": 4862746,
     "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "jwt_2k.graph",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/openac-age-graph-v1/jwt_2k.graph.gz"
+    ],
+    "gzipSha256": "245734ace2b95c595d94b7ca920bdebc0a2b78be6f61ec1c9628e958be2cca55",
+    "gzipBytes": 29623857,
+    "installedSha256": "cc49cb201e406a03089d72217718b38941c893a970d5d809996605148a2ed63c",
+    "installedBytes": 93459128,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "show.graph",
+    "backend": "OPENAC_SPARTAN2",
+    "role": [
+      "prover"
+    ],
+    "urls": [
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/openac-age-graph-v1/show.graph.gz"
+    ],
+    "gzipSha256": "062a85829dcac8d255ed17b5929c0cafd5f5573497daad1fa76bafba8f67e5b7",
+    "gzipBytes": 197657,
+    "installedSha256": "352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3",
+    "installedBytes": 551178,
+    "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
   }
 ]

@@ -6,6 +6,7 @@ import diw.wallet.core.oid4vci.CredentialOffer
 import diw.wallet.core.oid4vci.IssuerMetadata
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
+import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.EcPublicKey
 
 /** An issuer key found by a dialect, with the reason shown to the user and the specification it follows. */
@@ -32,6 +33,20 @@ enum class ProofKid {
 
 /** Proof JWT shape a dialect requires instead of the OpenID4VCI 1.0 default. */
 data class ProofStyle(val kid: ProofKid, val iss: String?)
+
+/**
+ * The exact outgoing bytes of an owned session's credential POST, for a dialect that signs an extra request
+ * header over them (TWDIW's ecosystem signature). [requestBytes] are the serialized and, when the issuer asks,
+ * encrypted body as sent. [signingKey] and [keyId] are the wallet's own holder key; the signature is produced
+ * with the wallet's key, never any other application's.
+ */
+class OutboundCredentialContext(
+    val issuer: IssuerMetadata,
+    val requestBytes: ByteArray,
+    val keyId: String,
+    val publicKey: EcPublicKey,
+    val signingKey: AsymmetricKey,
+)
 
 /**
  * A wallet-level holder identity shared by every credential of one profile, as the profile's own wallet does it.
@@ -91,6 +106,13 @@ interface IssuanceDialect {
 
     /** Credential request body for an owned session. */
     fun credentialRequest(issuer: IssuerMetadata, config: CredentialConfiguration, credentialIdentifier: String?, proofs: JsonObject?): JsonObject? = null
+
+    /**
+     * Extra request headers for an owned session's credential POST, signed over the exact outgoing bytes
+     * ([OutboundCredentialContext.requestBytes]) after body adaptation and encryption and before the HTTP attempt;
+     * null adds none. Must not set Authorization, DPoP or Content-Type.
+     */
+    suspend fun outboundCredentialHeaders(context: OutboundCredentialContext): Map<String, String>? = null
 
     // ------------------------------------------------------------ older message shapes
 

@@ -90,6 +90,9 @@ fun OfflineScreen(model: WalletModel, readQr: suspend () -> String?, hasCamera: 
         }
         is OfflineUi.Barcode -> BarcodeView(model, s)
         is OfflineUi.BondsChoose -> BondsChooseView(model, s)
+        is OfflineUi.AgeChoose -> BondsAgeChooseView(model, s)
+        is OfflineUi.AgeWorking -> BondsAgeWorkingView(model, s)
+        is OfflineUi.AgeResult -> BondsAgeResultView(model, s)
         is OfflineUi.BondsFrames -> BondsFramesView(model, s)
         is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera)
         is OfflineUi.VerifierResult -> VerifierResultView(model, s)
