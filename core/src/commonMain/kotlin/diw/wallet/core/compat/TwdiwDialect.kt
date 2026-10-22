@@ -91,9 +91,9 @@ class TwdiwDialect(
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
 
     /**
-     * TWDIW answers with {resp_code, resp_message} instead of an OAuth error_description. On the credential endpoint
-     * HTTP 500 comes only after the token and proof were accepted: resp_code 11500 is the handler's own failure, any
-     * other code is passed through from the issuer's credential service.
+     * TWDIW answers with {resp_code, resp_message} instead of an OAuth error_description. Keep these details without
+     * inferring which validation checks passed: the deployed handler and downstream service can differ from the
+     * older public implementation, including application authentication separate from the holder's proof.
      */
     override fun errorDetail(error: JsonObject): String? {
         val code = (error["resp_code"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return null

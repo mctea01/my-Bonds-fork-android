@@ -158,6 +158,33 @@ class WalletModelE2eTest {
         server?.stop(100, 500)
     }
 
+    @Test
+    fun twdiwCredentialServerErrorsDoNotAssertSuccessfulValidation() = runBlocking<Unit> {
+        val model = WalletModel(TestPlatform(EphemeralStorage()))
+        for (status in listOf(500, 502, 503)) {
+            for (code in listOf(11021, 61010)) {
+                val detail = "Credential request failed ($status): TWDIW resp_code $code (VC Server error)"
+                val text = model.describe(diw.wallet.core.util.ProtocolException("server_error", detail))
+                assertTrue(detail in text)
+                assertTrue("服務異常或領卡流程不相容" in text)
+                assertTrue("官方 App 可正常領卡" in text)
+                assertFalse("已通過發證端檢查" in text)
+            }
+        }
+        val otherIssuer = "Credential request failed (500): server_error"
+        assertEquals("協定錯誤（server_error）：$otherIssuer",
+            model.describe(diw.wallet.core.util.ProtocolException("server_error", otherIssuer)))
+        val invalidProof = "Credential request failed (400): TWDIW resp_code 11016 (Invalid proof)"
+        assertEquals("協定錯誤（invalid_proof）：$invalidProof",
+            model.describe(diw.wallet.core.util.ProtocolException("invalid_proof", invalidProof)))
+        val otherPlatformCode = "Token request failed (400): TWDIW resp_code 11010"
+        assertEquals("協定錯誤（invalid_request）：$otherPlatformCode",
+            model.describe(diw.wallet.core.util.ProtocolException("invalid_request", otherPlatformCode)))
+        for (blocked in listOf("HTTP 403: Cloudflare error 1010", "HTTP 403 from https://moda.wallet.gov.tw")) {
+            assertTrue("User-Agent" in model.describe(diw.wallet.core.util.ProtocolException("server_error", blocked)))
+        }
+    }
+
     private suspend fun offer(configs: List<String>, grant: String = "pre-authorized", txCode: String? = null): String {
         val text = http.post("$base/issuer/offers") {
             contentType(ContentType.Application.Json)
