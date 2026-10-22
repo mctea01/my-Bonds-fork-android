@@ -1,4 +1,4 @@
-//! Shared runtime only. Proof backends are supplied by their own work packages.
+//! Shared native runtime and feature-gated proof backend exports.
 
 use sha2::{Digest, Sha256};
 use std::cell::Cell;
@@ -26,6 +26,9 @@ fn protect_worker_panics() {
 }
 
 uniffi::setup_scaffolding!("diw_zk");
+
+#[cfg(feature = "openac")]
+mod openac;
 
 #[derive(uniffi::Record)]
 pub struct ZkNativeInfo {
@@ -114,11 +117,24 @@ pub fn native_info() -> ZkNativeInfo {
     // Empty backend crates must never be advertised as usable proof engines.
     ZkNativeInfo {
         crate_version: env!("CARGO_PKG_VERSION").into(),
-        features: vec!["runtime".into()],
+        features: if cfg!(feature = "openac") {
+            vec!["runtime".into(), "openac".into()]
+        } else {
+            vec!["runtime".into()]
+        },
         tlsn: None,
         noir: None,
         bb: None,
-        zkid: None,
+        zkid: {
+            #[cfg(feature = "openac")]
+            {
+                Some(openac_age::ZKID_REVISION.into())
+            }
+            #[cfg(not(feature = "openac"))]
+            {
+                None
+            }
+        },
     }
 }
 
@@ -130,7 +146,15 @@ pub fn self_test() -> bool {
             0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
             0xf2, 0x00, 0x15, 0xad,
         ];
-        Ok(Sha256::digest(b"abc")[..] == expected)
+        let runtime_ok = Sha256::digest(b"abc")[..] == expected;
+        #[cfg(feature = "openac")]
+        {
+            Ok(runtime_ok && openac_age::self_test())
+        }
+        #[cfg(not(feature = "openac"))]
+        {
+            Ok(runtime_ok)
+        }
     })
     .unwrap_or(false)
 }
@@ -142,7 +166,11 @@ mod tests {
     #[test]
     fn runtime_vector_and_info() {
         assert!(self_test());
-        assert_eq!(native_info().features, vec!["runtime"]);
+        assert!(native_info().features.contains(&"runtime".into()));
+        assert_eq!(
+            native_info().features.contains(&"openac".into()),
+            cfg!(feature = "openac")
+        );
     }
 
     #[test]

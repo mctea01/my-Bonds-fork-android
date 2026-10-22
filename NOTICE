@@ -29,6 +29,20 @@ its own license:
 - JNA 5.17.0 - Apache License 2.0 or LGPL 2.1 or later
 - RustCrypto sha2 0.10.9 - Apache License 2.0 or MIT
 - thiserror 2.0.17 - Apache License 2.0 or MIT
+- Bonds-iOS OpenACAge overlay (predicate.rs and zkid-mobile.patch), revision
+  e22de5f114a593e90f28b0525f6e4f230154c641 - Apache License 2.0
+- zkID OpenAC wallet-unit-poc, revision
+  b395e09c225ff45b003f0087c28e2e208e22f944 - MIT License
+- Spartan2, revision d687dbb639eccbdd21e62fecec97c5826bc4dbbf - MIT License
+- circom-scotia, revision bd39c019dba20d32ce5727e2408632dbca269e82 -
+  MIT or Apache License 2.0
+- circom-witnesscalc 0.3.0, revision
+  d48eb7c97857d46b8a75c94ab96f769207263245, with the secq256r1 patch - MIT
+- arkworks ark-ff, ark-bn254 and ark-serialize, halo2curves, ruint,
+  prost, wtns-file, winnow and their runtime dependencies - MIT or Apache 2.0
+- RustCrypto p256 0.13, ff 0.13, rand_core 0.6, num-bigint 0.4,
+  num-traits 0.2, rayon, chrono, serde_json and tempfile -
+  MIT or Apache License 2.0
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
@@ -38,8 +52,23 @@ Development and test tools that are not shipped in the application:
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
 - Rust 1.90.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT
+- Circom 2.2.3 - GNU GPL 3.0
+- circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0
+- Protocol Buffers protoc 30.2 - BSD 3-Clause
+- libclang / bindgen - Apache 2.0 with LLVM exceptions / BSD 3-Clause
 - open-attestation (used once to generate the fictional OpenCerts samples in
   test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
+
+Downloaded proof assets (not embedded in the application):
+
+- openac-age-v1 (Bonds R1CS and proving/verifying keys) and
+  openac-age-graph-v1 (witness graphs) compile zkID circuits (MIT) and
+  circomlib 2.0.5 templates (GPL-3.0-or-later). These assets are distributed
+  separately under GPL-3.0, not linked into the wallet native library.
+  Corresponding source: https://github.com/privacy-ethereum/zkID/tree/b395e09c225ff45b003f0087c28e2e208e22f944/wallet-unit-poc/circom and
+  https://github.com/iden3/circomlib/tree/v2.0.5 ; @zk-email/circuits 6.3.4.
+  Rebuild with native/openac-age/build-graphs.sh; source revisions, the
+  secq256r1 patch and asset hashes are pinned in that package's VERSIONS.json.
 
 Public trust lists: the Adobe Approved Trust List and the EU trusted lists
 (ETSI TS 119 612, published by the European Commission and the member states)
@@ -61,6 +90,7 @@ tools/trust-roots/esign-partners (taken from the certificate bundle the e-sign
 platform esign.cn publishes for its partner CAs), and for the public service
 certificates in test-servers/src/test/resources/chains.
 
-No source code was copied from the Bonds (bonds.tw) applications or from
-open-gpki-pkcs11; compatibility with them was implemented from their
-observable formats and public documentation.
+Except for the explicitly attributed P4 OpenACAge overlay above, compatibility
+with Bonds (bonds.tw) and open-gpki-pkcs11 was implemented from their observable
+formats and public documentation. OpenAC source licenses and pinned build
+sources are documented under native/openac-age.
