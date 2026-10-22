@@ -4,6 +4,7 @@ import diw.wallet.core.compat.DialectSet
 import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.HolderProfile
 import diw.wallet.core.compat.IssuanceDialect
+import diw.wallet.core.compat.OutboundCredentialContext
 import diw.wallet.core.compat.ProofKid
 import diw.wallet.core.compat.ProofStyle
 import diw.wallet.core.compat.TokenContext
@@ -567,7 +568,7 @@ class Oid4vciClient(
                         if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
                         proofs?.let { put("proofs", it) }
                     }
-                credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
+                credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token, signingHolder = holderKeys.firstOrNull())
             }
             if (!status.isSuccess() && alternative == null && json.str("error") != "invalid_nonce") {
                 val d = dialects.firstOrNull { it.alternativeCredentialRequest(session.issuer, config, identifier, proofs, status, json) != null }
@@ -887,6 +888,7 @@ class Oid4vciClient(
         plainBody: JsonObject,
         token: AccessToken,
         reuseKey: EcPrivateKey? = null,
+        signingHolder: HolderKey? = null,
     ): Pair<HttpStatusCode, JsonObject> {
         val issuer = session.issuer
         val respEnc = issuer.responseEncryption
@@ -922,8 +924,20 @@ class Oid4vciClient(
             ContentType("application", "jwt") to jwe
         } else ContentType.Application.Json to body.toString()
 
+        // A dialect may sign an extra header over the exact outgoing bytes (TWDIW ecosystem signature), with the
+        // session's own holder key, after any body adaptation and encryption; it must not set a protected header.
+        val owner = session.compat.owner
+        val dialectHeaders = if (signingHolder != null && owner != null) {
+            val keyId = signingHolder.did ?: HolderKey.didFor(signingHolder.publicKey, HolderKey.DID_KEY_JWK_JCS)
+            owner.outboundCredentialHeaders(
+                OutboundCredentialContext(issuer, payload.encodeToByteArray(), keyId, signingHolder.publicKey, signingHolder.signingKey("ES256"))
+            )?.also { session.compat.record(owner) }
+        } else null
         val resp = withDpopRetry(session, url, token) {
             contentType(contentType)
+            dialectHeaders?.forEach { (name, value) ->
+                if (!name.equals("Authorization", true) && !name.equals("Content-Type", true) && !name.startsWith("DPoP", true)) header(name, value)
+            }
             setBody(payload)
         }
         val text = resp.bodyAsText()
