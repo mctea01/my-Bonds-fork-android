@@ -1,230 +1,65 @@
-name: CI
+name: P4 OpenAC native acceptance
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-
-# A newer push to the same PR cancels the older run.
-concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 permissions:
   contents: read
-  checks: write
-  pull-requests: write
-
-env:
-  LANG: C.UTF-8
-  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-  APP_VERSION: 0.1.${{ github.run_number }}
-  # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
-  DIW_ZK_NATIVE: require
-  # Link the OpenAC age-proof backend (needs protoc and libclang). The Windows desktop job overrides this below.
-  DIW_ZK_FEATURES: openac
 
 jobs:
-  # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
-  # and a broken build does not hide the test results. The nightly release still waits for both.
-  test:
+  linux-and-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      CARGO_BUILD_JOBS: 2
+      JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      - name: ZK native build tools (protoc and libclang for OpenAC)
-        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
-      - name: Core and protocol tests
-        run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
-      - name: App flow tests (desktop)
-        if: success() || failure()
-        run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
-      # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
-      - name: Test report
-        uses: mikepenz/action-junit-report@v5
-        if: always()
+          java-version: '21'
+      - uses: actions/setup-node@v4
         with:
-          report_paths: "**/build/test-results/**/*.xml"
-          include_passed: false
-          detailed_summary: true
-          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-      - name: Upload test results and reports
-        uses: actions/upload-artifact@v4
-        if: failure()
+          node-version: '22'
+      - uses: actions/setup-python@v5
         with:
-          name: test-logs
-          path: |
-            **/build/test-results/**/*.xml
-            **/build/reports/tests/
-            build/reports/problems/
-          retention-days: 14
-
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      # Release signing (docs/release.md). Without it the release APK is signed with the debug key.
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      DIW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      DIW_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      DIW_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      # Optional: base64 of a debug.keystore so every debug APK has the same signature.
-      DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+          python-version: '3.12'
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@master
         with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
-      - name: ZK native tools (cargo-ndk and the pinned NDK)
-        run: |
-          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
-          cargo install cargo-ndk --version 4.1.2 --locked
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
-      - name: Signing keys
-        run: |
-          # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
-          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p ~/.android
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > ~/.android/debug.keystore
-            echo "Using the debug keystore from secrets"
-          fi
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::warning::No ANDROID_KEYSTORE_BASE64: the release APK is signed with the debug key"
-            exit 0
-          fi
-          jks="$RUNNER_TEMP/release.jks"
-          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$jks"; then
-            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64 (docs/release.md)"
-            exit 1
-          fi
-          if [ -z "$DIW_KEYSTORE_PASSWORD" ] || [ -z "$DIW_KEY_ALIAS" ]; then
-            echo "::error::ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS are required with ANDROID_KEYSTORE_BASE64"
-            exit 1
-          fi
-          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD > "$RUNNER_TEMP/keys.txt" 2>&1; then
-            grep -v JAVA_TOOL_OPTIONS "$RUNNER_TEMP/keys.txt" | tail -n 2
-            echo "::error::ANDROID_KEYSTORE_PASSWORD does not open the keystore, or ANDROID_KEYSTORE_BASE64 is not the whole .jks file"
-            exit 1
-          fi
-          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" > /dev/null 2>&1; then
-            echo "Keys in the keystore: $(grep -i PrivateKeyEntry "$RUNNER_TEMP/keys.txt" | cut -d, -f1 | paste -sd' ')"
-            echo "::error::ANDROID_KEY_ALIAS is not a key in the keystore"
-            exit 1
-          fi
-          # Compare with keytool -list -v on your own .jks; the key password itself is checked by the Gradle build.
-          keytool -list -v -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" 2>/dev/null | grep -m1 'SHA256:' || true
-          rm -f "$RUNNER_TEMP/keys.txt"
-          echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
-          echo "Using the release keystore from secrets"
-      - name: Android APKs (debug)
-        run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
-          mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
-      - name: Android APKs (release)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
-          mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: android
-          path: dist/*.apk
-          retention-days: 14
-
-  desktop:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            name: windows
-            tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
-            # OpenAC is not yet built or tested on Windows; the runtime-only library reports it as unsupported.
-            zk_features: ""
-          - os: ubuntu-latest
-            name: linux
-            tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
-            zk_features: openac
-    runs-on: ${{ matrix.os }}
-    env:
-      DIW_ZK_FEATURES: ${{ matrix.zk_features }}
-    timeout-minutes: 60
-    defaults:
-      run:
+          toolchain: 1.90.0
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Install native and graph build tools
         shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Install deb tools
-        if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev
-      - name: Package ${{ matrix.name }}
-        run: ./gradlew --no-daemon --stacktrace "-Pdiw.desktopVersion=$APP_VERSION" ${{ matrix.tasks }}
-      # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
-      - name: Start the release build
-        if: runner.os == 'Linux'
         run: |
-          set +e
-          DIW_WALLET_HOME="$RUNNER_TEMP/wallet" timeout 20 xvfb-run -a java -jar app/build/compose/jars/*-release.jar > start.log 2>&1
-          code=$?
-          cat start.log
-          if [ $code -ne 124 ]; then echo "The release build exited early (code $code)"; exit 1; fi
-      - name: Collect files
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang libclang-dev protobuf-compiler
+          corepack enable
+          mkdir -p "$RUNNER_TEMP/circom-bin"
+          curl -fsSL https://github.com/iden3/circom/releases/download/v2.2.3/circom-linux-amd64 -o "$RUNNER_TEMP/circom-bin/circom"
+          chmod +x "$RUNNER_TEMP/circom-bin/circom"
+          echo "$RUNNER_TEMP/circom-bin" >> "$GITHUB_PATH"
+          cargo install cargo-ndk --version 4.1.2 --locked
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+      - name: Build and verify separate GPL graph assets
+        run: ./native/openac-age/build-graphs.sh
+      - name: Check wasm reference vectors and normal runtime licenses
+        shell: bash
         run: |
-          mkdir -p dist
-          find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \;
-          cp app/build/compose/jars/*.jar dist/
-          ls -l dist
-      - name: Upload ${{ matrix.name }} files
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: dist/*
-          retention-days: 14
-
-  # Every push to main replaces the "nightly" pre-release; release files are downloaded as-is, not zipped.
-  # Published only when the tests passed too; drop "test" from needs to publish regardless.
-  release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, build, desktop]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Publish nightly
+          python3 -I native/openac-age/tests/generate_self_test.py
+          python3 -I native/openac-age/tests/generate_wasm_vectors.py
+          python3 -I native/openac-age/audit-runtime.py
+          python3 -I native/openac-age/install_assets.py native/openac-age/build/assets/circom
+      - name: Build the graph runtime and both Android ABIs
+        run: ./native/openac-age/build.sh host,android
+      - name: Run native and synthetic witness/proof tests
+        shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          OPENAC_TEST_ASSETS: ${{ github.workspace }}/native/openac-age/build/assets/circom
+          OPENAC_FFI_OUTPUT: ${{ github.workspace }}/native/openac-age/build/ffi-proof/circom
         run: |
-          ls -l dist
-          cat > notes.md <<EOF
-          Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
-
-          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized). The -debug.apk also allows HTTP test servers on the local network.
-          - Windows: .msi installer, no admin rights needed
-          - Linux: .deb package (Debian, Ubuntu)
-          - Any OS with Java 21: DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
-          EOF
-          gh release delete nightly --cleanup-tag --yes || true
-          gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p diw-zk-ffi --features openac
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p openac-age
+          cargo test --release --locked --manifest-path native/Cargo.toml --target x86_64-unknown-linux-gnu -p openac-age -- --ignored --nocapture
+          python3 -I native/openac-age/tests/verify_ffi.py native/openac-age/build/python "$OPENAC_FFI_OUTPUT" --assets "$OPENAC_TEST_ASSETS"
