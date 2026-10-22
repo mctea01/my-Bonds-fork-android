@@ -339,7 +339,9 @@ class RequestValidator(
         if (raw.channel == RequestChannel.DC_API && !mode.dcApi) {
             throw RequestValidationException("invalid_request", "DC API request with non DC API response mode")
         }
-        if (info.trust.tier == TrustTier.T4 && raw.requestObject != null) {
+        // A DID client already proved its key by the request signature; a T4 from a DID trust source (a declared
+        // linked domain that cannot be verified now) is a risk for the user to confirm, not an unauthenticated request.
+        if (info.trust.tier == TrustTier.T4 && raw.requestObject != null && info.did == null) {
             throw RequestValidationException("invalid_request_object", "Signed request without an authenticated Verifier")
         }
     }

@@ -14,6 +14,8 @@ import diw.wallet.core.oid4vp.RawAuthorizationRequest
 import diw.wallet.core.oid4vp.RequestChannel
 import diw.wallet.core.oid4vp.RequestValidator
 import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.DidTrustSource
+import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
@@ -96,6 +98,15 @@ class TrustIntegrationTest {
         assertEquals(TrustTier.T2, trusted.verifier.trust.tier)
         assertEquals(TrustEnvironment.USER, trusted.verifier.trust.environment)
         assertEquals("Example Party", trusted.verifier.displayName)
+
+        // A failed DID trust source (a declared linked domain that cannot be verified now) leaves a signed request to
+        // the user's risk confirmation instead of rejecting it.
+        val failing = DidTrust(listOf(object : DidTrustSource {
+            override suspend fun decide(did: String, role: TrustRole): TrustDecision? =
+                TrustDecision(TrustTier.T4, null, false, null, setOf(TrustLabel.UNKNOWN_ANCHOR), listOf("Linked domain could not be verified"))
+        }))
+        val t4 = RequestValidator(registry, DidResolver(offline), PresentationPolicy(), false, failing).validate(didRequest())
+        assertEquals(TrustTier.T4, t4.verifier.trust.tier)
 
         // Trusting the DID as an issuer does not make it a trusted verifier.
         val otherRole = RequestValidator(registry, DidResolver(offline), PresentationPolicy(), false, userTrust(TrustRole.ISSUER))
