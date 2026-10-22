@@ -95,6 +95,11 @@ class WalletModelE2eTest {
         /** Files the wallet exported, by the name it suggested. */
         val saved = ArrayList<Pair<String, ByteArray>>()
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
+
+        override val zk by lazy {
+            val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
+            diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+        }
     }
 
     private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test"): Pair<WalletModel, TestPlatform> {
@@ -345,6 +350,8 @@ class WalletModelE2eTest {
         screen("08d-settings-interop", Screen.SettingsPage(diw.wallet.app.SettingsSection.INTEROP))
         screen("08e-custom-trust", Screen.CustomTrust)
         screen("08f-settings-about", Screen.SettingsPage(diw.wallet.app.SettingsSection.ABOUT))
+        screen("08g-settings-security", Screen.SettingsPage(diw.wallet.app.SettingsSection.SECURITY))
+        screen("08h-zk-settings", Screen.ZkSettings, height = 1900)
         screen("09-verify", Screen.Home, HomeTab.VERIFY)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)

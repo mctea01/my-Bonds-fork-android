@@ -223,6 +223,8 @@ sealed class Screen {
     data object TrustAnchors : Screen()
     /** The user's own trust: imported roots and intermediates and trusted DIDs, opened from the trust settings. */
     data object CustomTrust : Screen()
+    /** Zero-knowledge proofs: device tier, engines and circuit assets, opened from the security settings. */
+    data object ZkSettings : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -672,6 +674,7 @@ class WalletModel(val platform: PlatformServices) {
             Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             Screen.Offline -> {
                 taiwan.closeOffline()
                 screen.value = Screen.Home

@@ -107,6 +107,9 @@ class ZkModel(
 
     val catalog: List<ZkAsset> get() = environment?.catalog.orEmpty()
 
+    /** Evaluates the device and loads the library if needed, without checking assets; cheap enough for a summary. */
+    fun probe(): Job = scope.launch(dispatcher) { evaluate() }
+
     /** Re-reads resources, loads the library if it has not been, and re-checks every installed asset. */
     fun refresh(): Job = scope.launch(dispatcher) {
         refreshing.value = true
