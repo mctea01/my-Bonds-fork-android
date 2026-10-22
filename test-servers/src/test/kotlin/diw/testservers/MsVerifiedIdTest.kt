@@ -277,6 +277,8 @@ class MsVerifiedIdTest {
         assertEquals(TrustTier.T2, request.trust.tier)
         assertTrue(diw.wallet.core.trust.TrustLabel.LINKED_DOMAIN in request.trust.labels, "labels: ${request.trust.labels}")
         assertEquals(HOST, request.trust.anchorName)
+        // A verified link rests on the domain's web PKI: anchored (SYSTEM), so checks that ask for an anchor accept it.
+        assertEquals(diw.wallet.core.env.TrustEnvironment.SYSTEM, request.trust.environment)
         assertEquals(listOf("displayName"), request.selfIssuedClaims.map { it.claim })
         assertTrue(request.tokenRequirements.single().injected)
         assertEquals(4, request.pinRequirement?.length)
@@ -361,6 +363,23 @@ class MsVerifiedIdTest {
         val other = holder.resolveUri(presentUri, MsVerifiedIdPresentationDialect.ENTRY_HINT)
         val none = assertFailsWith<ProtocolException> { holder.prepare(other) }
         assertEquals("access_denied", none.code)
+    }
+
+    /** The contract's issuer DID is judged by every DID trust source, as the issued card is: the user's choice first. */
+    @Test
+    fun userTrustedIssuerDidIsJudgedLikeTheCard() = runBlocking<Unit> {
+        val http = HttpClient(MockEngine { request -> handle(request) }) { followRedirects = false }
+        val w = WalletFixture(trustVerifierRoot = false, trustIssuer = false, httpClient = http, env = EnvironmentPolicy(testEnvironmentEnabled = true)).init()
+        val resolver = DidResolver(http)
+        val linked = LinkedDomains(http, resolver)
+        val users = diw.wallet.core.trust.UserDidTrust(org.multipaz.storage.ephemeral.EphemeralStorage())
+        users.put(DID, "Example HR", setOf(diw.wallet.core.trust.TrustRole.ISSUER), 0)
+        val didTrust = DidTrust(listOf(users, linked))
+        val issuance = MsVerifiedIdIssuance(http, resolver, linked, W3cInspector(http, w.trust, false, didTrust), w.holderIdentities, w.documentStore, didTrust = didTrust)
+        val request = assertNotNull(issuance.resolve(uri))
+        assertEquals(TrustTier.T2, request.trust.tier)
+        assertEquals(diw.wallet.core.env.TrustEnvironment.USER, request.trust.environment)
+        assertEquals("Example HR", request.trust.anchorName)
     }
 
     @Test

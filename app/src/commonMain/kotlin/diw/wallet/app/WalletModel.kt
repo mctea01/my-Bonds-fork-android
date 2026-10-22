@@ -503,6 +503,11 @@ class WalletModel(val platform: PlatformServices) {
         val t = storage.getTable(settingsTable)
         val bytes = DiwJson.encodeToString(WalletSettings.serializer(), s).encodeToByteString()
         if (t.get("settings") == null) t.insert("settings", bytes) else t.update("settings", bytes)
+        // Held credentials keep the trust judged at issuance: with the public CAs switched on or off, those that had no
+        // anchor or that rest on a public CA are judged again, as after importing or removing an anchor.
+        if (s.systemTrustStore != old.systemTrustStore || s.mainlandChinaRoots != old.mainlandChinaRoots) {
+            status.reevaluateIssuers("變更公開憑證機構設定", affected = { it.anchorName == null || it.trustEnvironment == TrustEnvironment.SYSTEM })
+        }
     }
 
     /** Imports the TEST anchors published by the DIW test servers (issuer IACA, verifier root, wallet provider root). */

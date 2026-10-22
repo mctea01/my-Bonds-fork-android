@@ -308,6 +308,8 @@ class MetadataFetcher(
     private val httpClient: HttpClient,
     private val trustRegistry: TrustRegistry,
     private val allowInsecureLoopback: Boolean,
+    /** Trust for a DID that signs the metadata (TWDIW trust list, DIDs the user trusts, Linked Domains). */
+    private val didTrust: diw.wallet.core.trust.DidTrust = diw.wallet.core.trust.DidTrust.NONE,
 ) {
     /** Fetches issuer metadata; metadata in an older shape is normalized by [compat] (draft 11/12 credentials_supported). */
     suspend fun issuer(credentialIssuer: String, compat: diw.wallet.core.compat.DialectSet? = null): IssuerMetadata {
@@ -404,7 +406,7 @@ class MetadataFetcher(
             }
             did != null -> {
                 jws.verify(DidResolver(httpClient, allowInsecureLoopback).resolveKey(did, jws.kid?.takeIf { it.contains('#') }).key)
-                selfAsserted("Issuer metadata is signed by $did, which no trust anchor names")
+                didTrust.decide(did, TrustRole.ISSUER) ?: selfAsserted("Issuer metadata is signed by $did, which no trust anchor names")
             }
             jws.jwk != null -> {
                 jws.verify(VerificationKey.fromJwk(jws.jwk!!))

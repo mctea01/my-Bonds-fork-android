@@ -335,7 +335,8 @@ class ReaderModel(private val model: WalletModel) {
 
     private suspend fun document(doc: MdocDocument, request: ReaderRequest, risk: RiskLevel): ReadDocument {
         val chain = doc.issuerCertChain.certificates
-        val trust = model.trust.decide(TrustRole.ISSUER, chain)
+        // The docType limits an issuer CA that a VICAL authorises for some document types only.
+        val trust = model.trust.decide(TrustRole.ISSUER, chain, docType = doc.docType)
         val mso = doc.mso
         val type = model.documentTypes.getDocumentTypeForMdoc(doc.docType)
         val claims = doc.issuerNamespaces.data.flatMap { (ns, items) ->

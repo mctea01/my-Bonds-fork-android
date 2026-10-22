@@ -38,6 +38,7 @@ class MsIssuanceModel(private val model: WalletModel) {
             model.holderIdentities,
             model.documentStore,
             loopback,
+            model.didTrust,
         )
     }
 

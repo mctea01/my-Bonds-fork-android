@@ -520,18 +520,32 @@ class TrustRegistry(
 
     /**
      * Evaluates a chain whose signature binding has already been verified by the caller. A chain that leads to no
-     * anchor is completed from AIA caIssuers links ([complete]) and evaluated once more.
+     * anchor is completed from AIA caIssuers links ([complete]) and evaluated once more. [docType] is the mdoc
+     * document type the chain signs: an issuer CA from a VICAL is accepted only for the document types it lists.
      */
-    suspend fun decide(role: TrustRole, chain: List<X509Cert>, atTime: Instant = Clock.System.now()): TrustDecision {
-        var m = match(role, chain, atTime)
+    suspend fun decide(
+        role: TrustRole,
+        chain: List<X509Cert>,
+        atTime: Instant = Clock.System.now(),
+        docType: String? = null,
+    ): TrustDecision {
+        var m = match(role, chain, atTime, docType)
         var completed = false
         if (m == null && issuerFetcher != null) {
             val longer = complete(extendFromPool(chain))
             if (longer.size > chain.size) {
-                m = match(role, longer, atTime)
+                m = match(role, longer, atTime, docType)
                 completed = m != null
             }
         }
+        return decision(m, completed)
+    }
+
+    /**
+     * The decision for a [match] result: what every component shows for a chain, so that a caller that needs the
+     * anchor itself (to check a status list signed by it) still reports the same tier and labels as [decide].
+     */
+    fun decision(m: AnchorMatch?, completed: Boolean = false): TrustDecision {
         if (m == null) {
             return TrustDecision(
                 tier = TrustTier.T3,

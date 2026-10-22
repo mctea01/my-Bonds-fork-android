@@ -270,19 +270,29 @@ class StatusMonitor(private val model: WalletModel) {
         if (changed) model.refreshDocuments()
     }
 
-    /** The issuer's trust by the sources as they are now: its DID, or its certificate chain (mdoc, SD-JWT VC x5c). */
+    /**
+     * The issuer's trust by the sources as they are now, judged as at issuance: its certificate chain (mdoc with its
+     * docType, SD-JWT VC x5c), or its DID (W3C credentials, and SD-JWT VCs whose key came from the issuer DID).
+     */
     private suspend fun currentIssuerTrust(doc: Document): TrustDecision? {
         issuerDid(doc)?.let { return model.didTrust.decideOrDefault(it, TrustRole.ISSUER, "Not listed by any trust source") }
-        val chain = when (val cred = doc.getCertifiedCredentials().firstOrNull()) {
+        return when (val cred = doc.getCertifiedCredentials().firstOrNull()) {
             is MdocCredential -> cred.issuerAuth.unprotectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_X5CHAIN)]?.asX509CertChain?.certificates
+                ?.let { model.trust.decide(TrustRole.ISSUER, it, docType = cred.docType) }
             is SdJwtVcCredential -> SdJwt.fromCompactSerialization(cred.issuerProvidedData.decodeToString()).x5c?.certificates
+                ?.let { model.trust.decide(TrustRole.ISSUER, it) }
             else -> null
-        } ?: return null
-        return model.trust.decide(TrustRole.ISSUER, chain)
+        }
     }
 
+    /** The issuer DID of a W3C credential, or of an SD-JWT VC that has no x5c (its key came from the DID). */
     private suspend fun issuerDid(doc: Document): String? {
-        val cred = doc.getCertifiedCredentials().filterIsInstance<W3cVcCredential>().firstOrNull() ?: return null
+        val creds = doc.getCertifiedCredentials()
+        creds.filterIsInstance<SdJwtVcCredential>().firstOrNull()?.let { cred ->
+            val sdJwt = runCatching { SdJwt.fromCompactSerialization(cred.issuerProvidedData.decodeToString()) }.getOrNull() ?: return null
+            return sdJwt.issuer?.takeIf { sdJwt.x5c == null && it.startsWith("did:") }
+        }
+        val cred = creds.filterIsInstance<W3cVcCredential>().firstOrNull() ?: return null
         val vc = runCatching { cred.credentialJson() }.getOrNull() ?: return null
         return W3cVc.issuer(vc, W3cVc.jwtPayloadOrNull(cred.raw, cred.encoding))?.takeIf { it.startsWith("did:") }
     }
