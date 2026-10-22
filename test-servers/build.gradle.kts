@@ -45,6 +45,8 @@ tasks.test {
     // ZkNativeTest needs the library unless core's buildZkDesktop may leave it out (see core/build.gradle.kts).
     systemProperty("diw.zkNative", providers.gradleProperty("diw.zkNative")
         .orElse(providers.environmentVariable("DIW_ZK_NATIVE")).getOrElse("auto"))
+    systemProperty("diw.zkFeatures", providers.gradleProperty("diw.zkFeatures")
+        .orElse(providers.environmentVariable("DIW_ZK_FEATURES")).getOrElse(""))
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

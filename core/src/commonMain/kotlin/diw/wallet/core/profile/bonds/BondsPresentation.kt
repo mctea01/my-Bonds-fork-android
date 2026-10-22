@@ -90,10 +90,13 @@ data class BondsPresentationRequest(
         private const val B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
         private val UUID_RE = Regex("^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 
-        /** True when [text] looks like a Bonds request (a JSON object with the version and challenge keys). */
+        /**
+         * True when [text] looks like a Bonds offline challenge (a JSON object with the version and challenge keys).
+         * A response address marks a [BondsAgeRequest] instead, which shares the keys but is answered online.
+         */
         fun looksLike(text: String): Boolean {
             val t = text.trim()
-            return t.startsWith("{") && "\"c\"" in t && "\"v\"" in t
+            return t.startsWith("{") && "\"c\"" in t && "\"v\"" in t && !BondsAgeRequest.looksLike(t)
         }
 
         fun parse(text: String): BondsPresentationRequest {

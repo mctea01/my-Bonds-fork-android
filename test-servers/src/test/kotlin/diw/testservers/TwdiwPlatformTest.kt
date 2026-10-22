@@ -242,7 +242,7 @@ class TwdiwPlatformTest {
     }
 
     /**
-     * Newer TWDIW issuers publish a nonce_endpoint and, like the official wallet 1.0.14, take only proofs over its
+     * Newer TWDIW issuers publish a nonce_endpoint and, in the 2026-10-16 issuer probe, take only proofs over its
      * nonce: a proof over the token's c_nonce is refused with HTTP 400 (resp_code 11016, invalid_proof).
      */
     @Test
@@ -253,6 +253,36 @@ class TwdiwPlatformTest {
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
         assertEquals(1, s.mock.endpointNonces)
         assertEquals(1, r.credentials.size)
+    }
+
+    @Test
+    fun proofUsesNonceEndpointWithoutTokenNonce() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        s.mock.tokenNonceIncluded = false
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(1, s.mock.endpointNonces)
+        assertEquals(1, s.mock.credentialRequests)
+        assertEquals(1, r.credentials.size)
+    }
+
+    /** Reproduces the partner card's response shape without replaying a credential POST or discarding its code. */
+    @Test
+    fun credential11021IsPreservedWithoutRetrying() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        s.mock.tokenNonceIncluded = false
+        s.mock.credentialServiceFailure = 11021 to "VC Server error"
+        val initialIndex = s.mock.issuedIndex
+        val e = assertFailsWith<ProtocolException> { s.receive() }
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals("server_error", e.code)
+        assertEquals("Credential request failed (500): TWDIW resp_code 11021 (VC Server error)", e.message)
+        assertEquals(1, s.mock.endpointNonces)
+        assertEquals(1, s.mock.credentialRequests)
+        assertEquals(initialIndex, s.mock.issuedIndex)
+        assertTrue(s.w.documentStore.listDocuments().isEmpty())
     }
 
     /**

@@ -42,6 +42,7 @@ import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.HeldMoicaCard
@@ -223,6 +224,8 @@ sealed class Screen {
     data object TrustAnchors : Screen()
     /** The user's own trust: imported roots and intermediates and trusted DIDs, opened from the trust settings. */
     data object CustomTrust : Screen()
+    /** Zero-knowledge proofs: device tier, engines and circuit assets, opened from the security settings. */
+    data object ZkSettings : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -416,6 +419,7 @@ class WalletModel(val platform: PlatformServices) {
     val files = FilesModel(this)
     val csc = CscModel(this)
     val trustLists = TrustListsModel(this)
+    val zk = ZkModel(scope, platform.zk)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -671,6 +675,7 @@ class WalletModel(val platform: PlatformServices) {
             Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             Screen.Offline -> {
                 taiwan.closeOffline()
                 screen.value = Screen.Home
@@ -948,6 +953,10 @@ class WalletModel(val platform: PlatformServices) {
         }
         // The mobile citizen certificate app returns here after signing; the signing screen is polling already.
         platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
+        if (BondsAgeRequest.looksLike(u)) {
+            taiwan.startBondsAge(u)
+            return
+        }
         if (BondsPresentationRequest.looksLike(u)) {
             taiwan.startBonds(u)
             return
@@ -1778,10 +1787,10 @@ class WalletModel(val platform: PlatformServices) {
         val m = e.message ?: return ""
         return when {
             "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
-            "1010" in m || ("403" in m && "wallet.gov.tw" in m) -> "\n數位憑證皮夾的伺服器拒絕了連線，可在設定調整送往 wallet.gov.tw 的 User-Agent 後再試。"
-            // The TWDIW handler answers 5xx only after the token and proof passed; the code comes from the issuer's service.
+            Regex("\\b1010\\b").containsMatchIn(m) || ("403" in m && "wallet.gov.tw" in m) -> "\n數位憑證皮夾的伺服器拒絕了連線，可在設定調整送往 wallet.gov.tw 的 User-Agent 後再試。"
+            // A credential 5xx does not establish that every issuer-side compatibility check passed.
             "Credential request failed (5" in m && "TWDIW resp_code" in m ->
-                "\n錢包的領卡請求已通過發證端檢查，是發證機關的憑證服務沒有發出卡片（伺服器端錯誤）。請到發證網站重新產生 QR Code 再試；仍失敗時請稍後再試或向發證機關回報。"
+                "\n發證端回報錯誤，可能是服務異常或領卡流程不相容。請到發證網站重新產生 QR Code 再試；若官方 App 可正常領卡，請回報 DIW 版本與此錯誤碼。"
             e.code == "untrusted_verifier" ->"\n對方不在數位憑證皮夾的信任清單或未在區塊鏈上註冊，為保護資料已停止。"
             else -> ""
         }

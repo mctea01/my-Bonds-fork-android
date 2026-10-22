@@ -19,6 +19,10 @@ val zkNdkVersion = "28.2.13676358"
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
     .getOrElse("auto").also { require(it in setOf("auto", "require", "skip")) { "diw.zkNative must be auto, require or skip" } }
 
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or "openac". Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
+    .getOrElse("").also { require(it in setOf("", "openac")) { "diw.zkFeatures must be empty or openac" } }
+
 /** Git for Windows' bash: a plain "bash" on Windows starts WSL, which usually has no distribution installed. */
 val zkBash: String? = if (!System.getProperty("os.name").startsWith("Windows")) "bash" else
     listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramW6432"))
@@ -33,6 +37,8 @@ fun zkCommandOutput(vararg command: String): String? = runCatching {
 val buildZkAndroid by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine(zkBash ?: "bash", "native/build.sh", "android")
+    environment("DIW_ZK_FEATURES", zkFeatures)
+    inputs.property("zkFeatures", zkFeatures)
     inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
     outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
     onlyIf("the Rust toolchain, cargo-ndk and the pinned NDK are installed, or diw.zkNative=require") {

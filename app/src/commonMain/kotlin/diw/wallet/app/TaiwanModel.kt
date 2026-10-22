@@ -5,6 +5,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
@@ -102,6 +103,22 @@ sealed class OfflineUi {
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
 
+    /** Bonds web age request scanned: pick the card to prove from. */
+    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>) : OfflineUi()
+
+    /** The age proof [jobId] is being produced, or with [sending] posted to the verifier. */
+    data class AgeWorking(val request: BondsAgeRequest, val card: AgeCard, val jobId: String, val sending: Boolean = false) : OfflineUi()
+
+    /** The verifier's verdict, or why no proof was sent. */
+    data class AgeResult(
+        val request: BondsAgeRequest,
+        val card: AgeCard,
+        val accepted: Boolean,
+        val title: String,
+        val lines: List<String>,
+        val retry: Boolean,
+    ) : OfflineUi()
+
     /** Bonds request scanned: pick a card and what to disclose. */
     data class BondsChoose(val request: BondsPresentationRequest, val cards: List<BondsCard>) : OfflineUi()
 
@@ -157,6 +174,7 @@ class TaiwanModel(private val model: WalletModel) {
     /** A document the holder chose to present before scanning the verifier's challenge; listed first. */
     var preferredDocument: String? = null
     private var linkJob: Job? = null
+    val age = BondsAgeFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -321,6 +339,13 @@ class TaiwanModel(private val model: WalletModel) {
      * A Bonds challenge was scanned: list the cards that can answer it. A Bonds verifier asks for TWDIW cards; this
      * wallet's own verifier may accept any key-bound card. The document chosen beforehand, if any, comes first.
      */
+    /**
+     * A Bonds web age request is answered online with an OpenAC proof posted to its response address. It shares the
+     * offline challenge's keys but must never open the offline screen or advertise over Bluetooth for it.
+     */
+    /** A Bonds web age request: answered online with an OpenAC proof, never over the offline frames. */
+    fun startBondsAge(text: String) = age.start(text)
+
     fun startBonds(text: String) {
         model.screen.value = Screen.Offline
         val preferred = preferredDocument
@@ -565,6 +590,7 @@ class TaiwanModel(private val model: WalletModel) {
         "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
 
     fun closeOffline() {
+        age.stop()
         linkJob?.cancel()
         linkJob = null
         verifierCollector = null
