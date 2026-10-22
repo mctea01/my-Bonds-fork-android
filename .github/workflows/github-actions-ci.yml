@@ -21,6 +21,8 @@ env:
   APP_VERSION: 0.1.${{ github.run_number }}
   # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
   DIW_ZK_NATIVE: require
+  # Link the OpenAC age-proof backend (needs protoc and libclang). The Windows desktop job overrides this below.
+  DIW_ZK_FEATURES: openac
 
 jobs:
   # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
@@ -35,6 +37,8 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: ZK native build tools (protoc and libclang for OpenAC)
+        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
       - name: Core and protocol tests
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
@@ -81,6 +85,7 @@ jobs:
       # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
       - name: ZK native tools (cargo-ndk and the pinned NDK)
         run: |
+          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
           cargo install cargo-ndk --version 4.1.2 --locked
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
       - name: Signing keys
@@ -146,10 +151,15 @@ jobs:
           - os: windows-latest
             name: windows
             tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
+            # OpenAC is not yet built or tested on Windows; the runtime-only library reports it as unsupported.
+            zk_features: ""
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+            zk_features: openac
     runs-on: ${{ matrix.os }}
+    env:
+      DIW_ZK_FEATURES: ${{ matrix.zk_features }}
     timeout-minutes: 60
     defaults:
       run:
@@ -163,7 +173,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Install deb tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb
+        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev
       - name: Package ${{ matrix.name }}
         run: ./gradlew --no-daemon --stacktrace "-Pdiw.desktopVersion=$APP_VERSION" ${{ matrix.tasks }}
       # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
