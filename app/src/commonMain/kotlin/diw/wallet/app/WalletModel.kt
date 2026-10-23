@@ -42,6 +42,7 @@ import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
+import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.HeldMoicaCard
@@ -952,6 +953,10 @@ class WalletModel(val platform: PlatformServices) {
         }
         // The mobile citizen certificate app returns here after signing; the signing screen is polling already.
         platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
+        if (BondsAgeRequest.looksLike(u)) {
+            taiwan.startBondsAge(u)
+            return
+        }
         if (BondsPresentationRequest.looksLike(u)) {
             taiwan.startBonds(u)
             return

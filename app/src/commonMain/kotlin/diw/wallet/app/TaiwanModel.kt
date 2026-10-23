@@ -5,6 +5,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
@@ -321,6 +322,21 @@ class TaiwanModel(private val model: WalletModel) {
      * A Bonds challenge was scanned: list the cards that can answer it. A Bonds verifier asks for TWDIW cards; this
      * wallet's own verifier may accept any key-bound card. The document chosen beforehand, if any, comes first.
      */
+    /**
+     * A Bonds web age request is answered online with an OpenAC proof posted to its response address. It shares the
+     * offline challenge's keys but must never open the offline screen or advertise over Bluetooth for it.
+     */
+    fun startBondsAge(text: String) {
+        model.message.value = try {
+            val r = BondsAgeRequest.parse(text)
+            val host = r.responseHost + if (r.knownHost) "" else "（不在 Bonds 的查驗方清單）"
+            "這是 Bonds 年齡零知識證明的線上請求：$host 要求證明年滿 ${r.minimumAge} 歲，需要以零知識證明線上回應，" +
+                "不能用離線出示。本錢包的年齡零知識證明尚未完成，暫時無法回應。"
+        } catch (e: Exception) {
+            "無法讀取 Bonds 年齡證明請求：" + model.describe(e)
+        }
+    }
+
     fun startBonds(text: String) {
         model.screen.value = Screen.Offline
         val preferred = preferredDocument
