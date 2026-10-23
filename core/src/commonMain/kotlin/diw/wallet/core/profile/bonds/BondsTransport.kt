@@ -182,8 +182,9 @@ class BondsFrameCollector {
  * [FRAMES_CHARACTERISTIC] and the verifier writes [RECEIVED] to [STATE_CHARACTERISTIC]. No session encryption:
  * authenticity comes from the signed presentation and the verifier's challenge.
  *
- * A nearby age proof (this wallet's extension) uses the same service with the larger [AGE_MAX_PAYLOAD] and
- * [AGE_MAX_CHUNKS]; after [RECEIVED] the verifier writes its verdict, framed the same way, to [REPLY_CHARACTERISTIC].
+ * Bonds sends a nearby age proof package the same way and stops at [RECEIVED]. This wallet adds a verdict: a verifier
+ * that finds [REPLY_CHARACTERISTIC] writes [REPLY_HELLO] there before subscribing, and after [RECEIVED] its verdict,
+ * framed the same way; a holder that saw the hello waits for it. Either side can be Bonds, which has neither step.
  */
 object BondsLinkTransport {
     const val VERSION: Byte = 1
@@ -196,7 +197,10 @@ object BondsLinkTransport {
     const val REPLY_CHARACTERISTIC = "2B1D0003-6B4E-4C3A-9E2F-4A7C51E0D9A1"
     const val RECEIVED: Byte = 0x01
 
-    /** An age package holds two proofs of up to [BondsAgePackage.MAX_PROOF] bytes each, base64 in JSON. */
+    /** One byte, never a frame (frames start with [VERSION]): the verifier will answer with a verdict. */
+    const val REPLY_HELLO: Byte = 0x00
+
+    /** What a receiver accepts for an age package: two proofs of up to [BondsAgePackage.MAX_PROOF] bytes, base64 in JSON. Senders keep Bonds' limits. */
     const val AGE_MAX_PAYLOAD = 3 * BondsAgePackage.MAX_PROOF
     const val AGE_MAX_CHUNKS = 0xffff
 

@@ -61,6 +61,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         data class Mtu(val mtu: Int) : Event
         data object Sent : Event
         data object Received : Event
+        data object Hello : Event
         class Reply(val frame: ByteArray) : Event
         data class Disconnected(val device: BluetoothDevice) : Event
         data class Failed(val reason: String) : Event
@@ -69,15 +70,14 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
     override suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean =
         serve(serviceUuid, { BondsOfflinePresentation.linkFrames(presentationJws, it) }, awaitReply = false, onProgress) != null
 
-    override suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray? = serve(
-        serviceUuid,
-        { BondsLinkTransport.frames(payload, it, BondsLinkTransport.AGE_MAX_PAYLOAD, BondsLinkTransport.AGE_MAX_CHUNKS) },
-        awaitReply = true, onProgress,
-    )
+    // Bonds' limits, so a Bonds verifier can take the frames too.
+    override suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray? =
+        serve(serviceUuid, { BondsLinkTransport.frames(payload, it) }, awaitReply = true, onProgress)
 
     /**
      * Advertises [serviceUuid] until a verifier subscribes, notifies the frames [chunks] cuts for its MTU and returns
-     * once it wrote "received" (an empty array) or, with [awaitReply], its framed reply. Null when the link failed.
+     * once it wrote "received" (an empty array) or, with [awaitReply] and a verifier that announced one, its framed
+     * reply. Null when the link failed before "received".
      */
     @SuppressLint("MissingPermission")
     private suspend fun serve(
@@ -146,9 +146,11 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 if (value == null || value.isEmpty()) return
                 when (characteristic.uuid) {
                     stateChar.uuid -> if (value[0] == BondsLinkTransport.RECEIVED) events.trySend(Event.Received)
-                    replyChar.uuid -> if (preparedWrite) {
-                        if (prepared.size() + value.size <= BondsLinkTransport.REPLY_MAX_PAYLOAD) prepared.write(value)
-                    } else events.trySend(Event.Reply(value.copyOf()))
+                    replyChar.uuid -> when {
+                        preparedWrite -> if (prepared.size() + value.size <= BondsLinkTransport.REPLY_MAX_PAYLOAD) prepared.write(value)
+                        value.size == 1 && value[0] == BondsLinkTransport.REPLY_HELLO -> events.trySend(Event.Hello)
+                        else -> events.trySend(Event.Reply(value.copyOf()))
+                    }
                 }
             }
 
@@ -218,8 +220,11 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
     ): ByteArray? {
         var mtu = DEFAULT_MTU
         var device: BluetoothDevice? = null
+        // Our verifier announces its verdict before it subscribes.
+        var hello = false
         while (device == null) {
             when (val e = events.receive()) {
+                Event.Hello -> hello = true
                 is Event.Mtu -> mtu = e.mtu
                 is Event.Subscribed -> device = e.device
                 is Event.Failed -> { onProgress(e.reason); return null }
@@ -230,22 +235,33 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         withTimeoutOrNull(MTU_GRACE) {
             while (true) {
                 val e = events.receive()
+                if (e is Event.Hello) hello = true
                 if (e is Event.Mtu) { mtu = e.mtu; break }
             }
         }
         val replies = BondsLinkCollector(BondsLinkTransport.REPLY_MAX_PAYLOAD)
+        var received = false
         var done = false
         var result: ByteArray? = null
-        // Settles the transfer on the verifier's state and reply writes, a failure or the verifier leaving.
+        // Settles the transfer on the verifier's state and reply writes, a failure or the verifier leaving. Once it has
+        // the payload, leaving without a verdict still counts as received.
         fun settle(e: Event) {
             when (e) {
-                Event.Received -> if (awaitReply) onProgress("查驗方已收到，正在驗證") else { done = true; result = ByteArray(0) }
+                Event.Hello -> hello = true
+                Event.Received -> {
+                    received = true
+                    if (awaitReply && hello) onProgress("查驗方已收到，正在驗證") else { done = true; result = ByteArray(0) }
+                }
                 is Event.Reply -> if (awaitReply) {
                     val r = runCatching { replies.accept(e.frame) }.getOrNull()
                     if (r is BondsReception.Completed) { done = true; result = r.payload }
                 }
-                is Event.Failed -> { onProgress(e.reason); done = true }
-                is Event.Disconnected -> if (e.device == device) { onProgress("查驗方已中斷連線"); done = true }
+                is Event.Failed -> { onProgress(e.reason); done = true; if (received) result = ByteArray(0) }
+                is Event.Disconnected -> if (e.device == device) {
+                    if (!received) onProgress("查驗方已中斷連線")
+                    done = true
+                    if (received) result = ByteArray(0)
+                }
                 else -> {}
             }
         }

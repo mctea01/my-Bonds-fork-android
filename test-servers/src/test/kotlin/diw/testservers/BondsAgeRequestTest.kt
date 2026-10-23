@@ -59,13 +59,14 @@ class BondsAgeRequestTest {
     }
 
     @Test
-    fun nearbyRequestCarriesALinkServiceInsteadOfAnAddress() {
+    fun nearbyRequestIsBondsTwoDeviceRequest() {
         val created = BondsAgeRequest.create(20, BondsCredentialSource.SELF_ISSUED, "年齡確認", null)
         assertTrue(created.nearby)
+        assertEquals(created.requestId, created.linkServiceId, "Bonds advertises under the request id")
         assertNull(created.responseHost)
         assertFalse(created.knownHost)
         val text = created.encode()
-        assertTrue("\"l\":\"${created.linkServiceId}\"" in text && "\"u\"" !in text, text)
+        assertTrue("\"u\"" !in text && "\"b\":\"${created.requestId}\"" in text, text)
         assertTrue(BondsAgeRequest.looksLike(text))
         assertFalse(BondsPresentationRequest.looksLike(text))
         val parsed = BondsAgeRequest.parse(text)
@@ -73,11 +74,11 @@ class BondsAgeRequestTest {
         assertEquals(text, parsed.encode())
         assertNull(BondsAgeRequest.create(20, BondsCredentialSource.TWDIW, "x", "https://verifier.mashbean.net/r").linkServiceId)
 
-        val both = request().replace("\"t\":", "\"l\":\"$id\",\"t\":")
-        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(both) }
-        val malformed = """{"a":18,"b":"$id","c":"$nonce","d":"2008-09-04","l":"not-a-uuid","p":"","s":"s","t":1790000000,"v":1}"""
-        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(malformed) }
-        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(malformed.replace(",\"l\":\"not-a-uuid\"", "")) }
+        // As Bonds' verifier encodes it (sorted keys, no response URL).
+        val bonds = BondsAgeRequest.parse("""{"a":18,"b":"$id","c":"$nonce","d":"2008-09-04","p":"購買酒類","s":"g","t":1790000000,"v":1}""")
+        assertTrue(bonds.nearby)
+        assertEquals(id, bonds.linkServiceId)
+        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(request(url = "")) }
     }
 
     @Test

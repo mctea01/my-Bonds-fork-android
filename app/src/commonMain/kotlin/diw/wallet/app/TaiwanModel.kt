@@ -10,6 +10,7 @@ import diw.wallet.core.profile.bonds.BondsAgeVerdict
 import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
+import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
 import diw.wallet.core.profile.bonds.BondsNationalId
@@ -36,6 +37,7 @@ import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -163,12 +165,13 @@ sealed class OfflineUi {
         val link: String? = null,
     ) : OfflineUi()
 
-    /** Verifier side: the challenge is shown; frames are scanned until complete. */
+    /** Verifier side: the challenge is shown; frames are scanned until complete, or arrive over Bluetooth ([link]). */
     data class VerifierChallenge(
         val request: BondsPresentationRequest,
         val received: Int,
         val total: Int,
         val risk: RiskLevel = RiskLevel.MEDIUM,
+        val link: String? = null,
     ) : OfflineUi()
 
     data class VerifierResult(
@@ -205,6 +208,7 @@ class TaiwanModel(private val model: WalletModel) {
     /** A document the holder chose to present before scanning the verifier's challenge; listed first. */
     var preferredDocument: String? = null
     private var linkJob: Job? = null
+    private var verifierLinkJob: Job? = null
     val age = BondsAgeFlow(model, offline)
     val ageVerifier = BondsAgeVerifierFlow(model, offline)
     private var verifyAllJob: Job? = null
@@ -530,8 +534,37 @@ class TaiwanModel(private val model: WalletModel) {
             offline.value = OfflineUi.VerifierChallenge(request, 0, 0, risk)
             model.screen.value = Screen.Offline
             model.platform.keepScreenOn(true)
+            listenOnLink(request)
         } catch (e: Exception) {
             model.message.value = model.describe(e)
+        }
+    }
+
+    /**
+     * Receives the presentation over the challenge's one-time BLE service too, as a Bonds verifier does: a holder (the
+     * Bonds App or this wallet) that scanned the challenge advertises it and sends the frames, so no QR has to be scanned back.
+     */
+    private fun listenOnLink(request: BondsPresentationRequest) {
+        val central = model.platform.bondsLinkCentral ?: return
+        val uuid = request.linkServiceId ?: return
+        verifierLinkJob?.cancel()
+        verifierLinkJob = model.scope.launch {
+            fun update(text: String) {
+                (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == request }?.let { offline.value = it.copy(link = text) }
+            }
+            try {
+                central.unavailableReason()?.let { update("藍牙無法使用（$it），請改掃描對方畫面"); return@launch }
+                update("也可由對方以藍牙直接傳送")
+                val jws = central.receive(uuid, BondsLinkTransport.MAX_PAYLOAD, ::update, null).decodeToString()
+                if ((offline.value as? OfflineUi.VerifierChallenge)?.request == request) {
+                    verifierCollector = null
+                    verify(request, jws)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                update("藍牙接收失敗（${model.describe(e)}），請改掃描對方畫面")
+            }
         }
     }
 
@@ -549,7 +582,10 @@ class TaiwanModel(private val model: WalletModel) {
             when (val r = collector.accept(text)) {
                 is BondsReception.Accepted -> offline.value = state.copy(received = r.received, total = r.total)
                 is BondsReception.Duplicate -> offline.value = state.copy(received = r.received, total = r.total)
-                is BondsReception.Completed -> verify(state.request, r.payload.decodeToString())
+                is BondsReception.Completed -> {
+                    verifierLinkJob?.cancel()
+                    verify(state.request, r.payload.decodeToString())
+                }
             }
         } catch (e: Exception) {
             verifierCollector = BondsFrameCollector()
@@ -626,6 +662,8 @@ class TaiwanModel(private val model: WalletModel) {
         ageVerifier.stop()
         linkJob?.cancel()
         linkJob = null
+        verifierLinkJob?.cancel()
+        verifierLinkJob = null
         verifierCollector = null
         model.platform.keepScreenOn(false)
     }

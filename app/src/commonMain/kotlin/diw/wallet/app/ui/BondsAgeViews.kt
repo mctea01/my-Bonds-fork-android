@@ -171,7 +171,7 @@ internal fun BondsAgeVerifierWaitingView(model: WalletModel, s: OfflineUi.AgeVer
     val left = requestSecondsLeft(s.request)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("請出示者用本錢包掃描", style = MaterialTheme.typography.titleMedium)
+        Text(if (s.request.nearby) "請出示者用本錢包或 Bonds App 掃描" else "請出示者用本錢包掃描", style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
         Text("證明年滿 ${s.request.minimumAge} 歲（出生日期不晚於 ${s.request.cutoff}）", style = MaterialTheme.typography.bodyLarge)
         Text("接受：" + bondsSourceLabel(s.request.source) + "・用途：" + s.request.purpose.ifEmpty { "未說明" }, style = MaterialTheme.typography.bodySmall)
@@ -184,7 +184,7 @@ internal fun BondsAgeVerifierWaitingView(model: WalletModel, s: OfflineUi.AgeVer
             style = MaterialTheme.typography.bodySmall,
         )
         s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-        Text("Bonds App 只會把證明送到 Bonds 的查驗網站，出示者需使用本錢包。", style = MaterialTheme.typography.bodySmall)
+        if (!s.request.nearby) Text("Bonds App 只會把證明送到 Bonds 的查驗網站，出示者需使用本錢包。", style = MaterialTheme.typography.bodySmall)
         if (s.checking) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(if (s.relay) "已收到證明，正在這支手機驗證" else "已收到證明，等待 ${s.host} 的結果", style = MaterialTheme.typography.titleSmall)
@@ -257,7 +257,8 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
             OutlinedTextField(value = purpose, onValueChange = { purpose = it.take(100) }, label = { Text("查驗用途（會顯示給出示者）") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             if (nearby) {
-                Text("出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者需使用本錢包。", style = MaterialTheme.typography.bodySmall)
+                Text("出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）。",
+                    style = MaterialTheme.typography.bodySmall)
             } else {
                 Text(host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" }
                     ?: "尚未設定年齡查驗主機：到設定的「零知識證明」頁填入（測試環境會使用測試伺服器）。",
@@ -268,7 +269,8 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
                     if (nearby) model.taiwan.ageVerifier.startNearby(age!!, source, purpose.trim())
                     else model.taiwan.ageVerifier.start(age!!, source, purpose.trim())
                 },
-                enabled = age != null && (if (nearby) bluetooth else host != null),
+                // Bonds refuses a request without a purpose.
+                enabled = age != null && purpose.isNotBlank() && (if (nearby) bluetooth else host != null),
             ) {
                 Text("產生年齡查驗 QR Code")
             }

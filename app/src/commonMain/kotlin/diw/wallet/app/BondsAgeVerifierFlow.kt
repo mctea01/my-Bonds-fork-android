@@ -118,14 +118,14 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 ui.value = waiting
                 var result: OfflineUi.AgeVerifierResult? = null
                 withTimeoutOrNull(request.expiresAt + GRACE - Clock.System.now()) {
-                    link.receive(request.linkServiceId!!, BondsLinkTransport.AGE_MAX_PAYLOAD, { text ->
+                    link.receive(request.linkServiceId!!, BondsLinkTransport.AGE_MAX_PAYLOAD, onProgress = { text ->
                         (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == request }?.let { ui.value = it.copy(link = text) }
-                    }) { bytes ->
+                    }, answer = { bytes ->
                         ui.value = waiting.copy(checking = true)
                         val (shown, verdict) = check(request, BLUETOOTH, engine, bytes.decodeToString())
                         result = shown
                         verdict.encode().encodeToByteArray()
-                    }
+                    })
                 }
                 show(result ?: OfflineUi.AgeVerifierResult(request, BLUETOOTH, null, null, EXPIRED))
             } catch (e: CancellationException) {

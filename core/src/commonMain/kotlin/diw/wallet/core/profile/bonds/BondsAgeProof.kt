@@ -41,10 +41,10 @@ import kotlin.time.Instant
 
 /**
  * A Bonds age proof request: the JSON QR a Bonds web verifier shows,
- * {v:1, a:age, b:request id, c:nonce, d:cutoff date, p:purpose, s:g|s, t:seconds, u:response URL}. The holder answers
- * online by posting an OpenAC proof to [responseUrl]. This wallet's own extension replaces u with l, a one-time BLE
- * service UUID: a verifier phone nearby receives the same package over the Bonds link and answers with its verdict,
- * with no server in between. Everything in it is untrusted text from the verifier.
+ * {v:1, a:age, b:request id, c:nonce, d:cutoff date, p:purpose, s:g|s, t:seconds, u:response URL}. With u the holder
+ * posts an OpenAC proof to [responseUrl]; without it (Bonds' two-device flow) b is the one-time BLE service the
+ * holder advertises, and the package goes to the verifier's phone over the Bonds link with no server in between.
+ * Everything in it is untrusted text from the verifier.
  */
 data class BondsAgeRequest(
     val minimumAge: Int,
@@ -56,16 +56,13 @@ data class BondsAgeRequest(
     val purpose: String,
     val source: BondsCredentialSource,
     val createdAt: Instant,
-    /** Where the package is posted; null for a nearby request. */
+    /** Where the package is posted; null for a nearby request answered over Bluetooth. */
     val responseUrl: String?,
-    /** The one-time BLE service UUID of a nearby request, which the holder advertises under; null online. */
-    val linkServiceId: String? = null,
 ) {
-    init {
-        require((responseUrl == null) != (linkServiceId == null)) { "An age request is answered at a URL or over the link" }
-    }
+    val nearby: Boolean get() = responseUrl == null
 
-    val nearby: Boolean get() = linkServiceId != null
+    /** The one-time BLE service UUID of a nearby request (Bonds uses the request id), which the holder advertises. */
+    val linkServiceId: String? get() = requestId.takeIf { nearby }
 
     val responseHost: String? get() = responseUrl?.let { Url(it).host }
 
@@ -92,7 +89,6 @@ data class BondsAgeRequest(
         put("b", requestId)
         put("c", nonce)
         put("d", cutoff.toString())
-        linkServiceId?.let { put("l", it) }
         put("p", purpose)
         put("s", source.wire)
         put("t", createdAt.epochSeconds)
@@ -114,9 +110,9 @@ data class BondsAgeRequest(
         private val TAIPEI = TimeZone.of("Asia/Taipei")
 
         /**
-         * A fresh request answered at [responseUrl], or over the link when it is null: a random id and nonce (and a
-         * random service UUID), and the cutoff [minimumAge] years before today in Taiwan, as Bonds computes it
-         * (29 February falls back to 28 February).
+         * A fresh request answered at [responseUrl], or over the link when it is null: a random id (the BLE service)
+         * and nonce, and the cutoff [minimumAge] years before today in Taiwan, as Bonds computes it (29 February falls
+         * back to 28 February).
          */
         fun create(minimumAge: Int, source: BondsCredentialSource, purpose: String, responseUrl: String?, now: Instant = Clock.System.now()): BondsAgeRequest {
             if (minimumAge !in 1..120) throw ProtocolException("invalid_request", "Minimum age out of range")
@@ -126,15 +122,14 @@ data class BondsAgeRequest(
                 minimumAge, BondsPresentationRequest.randomUuid(), PlatformCrypto.randomBytes(NONCE_BYTES).toBase64Url(),
                 today.minus(DatePeriod(years = minimumAge)), purpose.filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE),
                 source, Instant.fromEpochSeconds(now.epochSeconds), responseUrl,
-                if (responseUrl == null) BondsPresentationRequest.randomUuid() else null,
             )
         }
 
         private fun json(text: String): JsonObject? = text.trim().takeIf { it.startsWith("{") }
             ?.let { runCatching { DiwJson.parseToJsonElement(it) as? JsonObject }.getOrNull() }
 
-        /** True for a JSON object with a response URL or link service and a nonce: an age request, never a presentation challenge. */
-        fun looksLike(text: String): Boolean = json(text)?.let { ("u" in it || "l" in it) && "c" in it && "v" in it } == true
+        /** True for a JSON object with a nonce, a minimum age and a cutoff: an age request, never a presentation challenge. */
+        fun looksLike(text: String): Boolean = json(text)?.let { "c" in it && "v" in it && "a" in it && "d" in it } == true
 
         /**
          * Safe to post to: https, a host, no credentials or fragment, as Bonds requires. Plain http only for a host
@@ -161,15 +156,10 @@ data class BondsAgeRequest(
             val source = BondsCredentialSource.fromWire(o.str("s"))?.takeIf { it != BondsCredentialSource.ANY }
                 ?: throw ProtocolException("invalid_request", "Unknown credential source")
             val created = (o["t"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toLong() ?: throw ProtocolException("invalid_request", "No request time")
-            val link = o.str("l")?.let { it.takeIf { UUID_RE.matches(it) }?.uppercase() ?: throw ProtocolException("invalid_request", "Malformed link service id") }
-            val url = if (link != null) {
-                if ("u" in o) throw ProtocolException("invalid_request", "A request is answered online or nearby, not both")
-                null
-            } else {
-                o.str("u")?.takeIf { acceptableUrl(it, insecureHosts) } ?: throw ProtocolException("invalid_request", "The response address must be https")
-            }
+            val url = if ("u" !in o) null
+            else o.str("u")?.takeIf { acceptableUrl(it, insecureHosts) } ?: throw ProtocolException("invalid_request", "The response address must be https")
             val purpose = o.str("p").orEmpty().filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE)
-            return BondsAgeRequest(age, id, nonce, cutoff, purpose, source, Instant.fromEpochSeconds(created), url, link)
+            return BondsAgeRequest(age, id, nonce, cutoff, purpose, source, Instant.fromEpochSeconds(created), url)
         }
     }
 }

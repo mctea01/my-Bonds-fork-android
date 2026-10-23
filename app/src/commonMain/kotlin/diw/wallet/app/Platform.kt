@@ -44,22 +44,26 @@ interface BondsLinkPeripheral {
     suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean
 
     /**
-     * Nearby age proof: notifies [payload] with the age package limits, then waits for the verifier's framed reply on
-     * the reply characteristic. Null when the link failed or the verifier left without a reply.
+     * Nearby age proof: notifies [payload] and, when the verifier announced a verdict, waits for its framed reply. An
+     * empty array when the verifier only confirmed receipt (Bonds), null when the link failed before that.
      */
     suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray?
 }
 
 /**
  * The verifier side of the Bonds link: a GATT central that finds the holder by the request's one-time service UUID,
- * subscribes to the frames, writes "received" and then the framed reply [answer] computes from the payload.
+ * subscribes to the frames, writes "received" and then the framed reply [answer] computes from the payload, when the
+ * holder can take one (a Bonds holder only waits for "received").
  */
 interface BondsLinkCentral {
     /** Null when the link can be used now, otherwise why not (Bluetooth off, permission missing, which is then asked for). */
     suspend fun unavailableReason(): String?
 
-    /** Runs until a holder delivered a payload of at most [maxPayload] bytes and the reply went out; cancel to stop waiting. */
-    suspend fun receive(serviceUuid: String, maxPayload: Int, onProgress: (String) -> Unit, answer: suspend (ByteArray) -> ByteArray): ByteArray
+    /**
+     * Runs until a holder delivered a payload of at most [maxPayload] bytes and, with [answer], the reply went out;
+     * without one (a Bonds presentation) "received" ends it. Cancel to stop waiting.
+     */
+    suspend fun receive(serviceUuid: String, maxPayload: Int, onProgress: (String) -> Unit, answer: (suspend (ByteArray) -> ByteArray)?): ByteArray
 }
 
 /**

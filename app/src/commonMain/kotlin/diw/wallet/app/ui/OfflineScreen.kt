@@ -246,6 +246,7 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
             LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
             Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
         }
+        s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Button(onClick = { scanning = true }, enabled = !scanning) {
             Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(if (hasCamera) " 掃描對方畫面" else " 從圖片讀取對方畫面")

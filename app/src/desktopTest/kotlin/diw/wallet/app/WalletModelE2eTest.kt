@@ -1250,6 +1250,21 @@ class WalletModelE2eTest {
         assertEquals(mapOf("name" to "測試人員", "over18AtIssuance" to "true"), r.claims)
         assertTrue(r.moica!!.nameChecked)
 
+        // A Bonds verifier's challenge carries a one-time BLE service: this wallet as verifier also listens on it, so the
+        // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back.
+        val (checker, _) = newWallet()
+        checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+        val challenge = assertIs<OfflineUi.VerifierChallenge>(checker.taiwan.offline.value)
+        assertNotNull(challenge.request.linkServiceId)
+        holder.handleUri(challenge.request.encode())
+        val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == challenge.request } })
+        holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
+        val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == challenge.request } })
+        holder.taiwan.sendOverLink(shown)
+        val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+        assertEquals(challenge.request, checked.request)
+        withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.link == "查驗方已收到" } }
+
         // A Bonds web age request offers the national ID card for a self-issued proof and never opens the offline frames.
         holder.handleUri(ageRequest("s"))
         val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
@@ -1303,7 +1318,8 @@ class WalletModelE2eTest {
     /**
      * The serverless age check: the verifier's QR carries a Bluetooth service instead of an address, the holder sends
      * the package over the link (framed at a small MTU), the verifier checks it on its own device and the verdict
-     * goes back over the same link. Neither wallet talks to a server.
+     * goes back over the same link. Neither wallet talks to a server. Then either side is the Bonds App: a Bonds
+     * verifier only confirms receipt, and a Bonds holder takes no verdict but is still verified.
      */
     @Test
     fun ageCheckOverBluetooth() = runBlocking<Unit> {
@@ -1321,7 +1337,7 @@ class WalletModelE2eTest {
         })
         val request = waiting.request
         assertTrue(request.nearby && request.responseUrl == null)
-        assertTrue("\"l\"" in request.encode() && "\"u\"" !in request.encode())
+        assertTrue("\"u\"" !in request.encode() && request.linkServiceId == request.requestId, "Bonds' two-device request")
 
         // The holder reads the QR as an age request, not as a Bonds presentation challenge; it has no card yet.
         holder.handleUri(request.encode())
@@ -1347,6 +1363,29 @@ class WalletModelE2eTest {
         assertEquals(request.cutoffValue(3), checks.single().cutoff)
         val seen = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
         assertTrue("藍牙直接收到" in seen.note!!, seen.note)
+
+        suspend fun round(): Pair<OfflineUi.AgeResult, OfflineUi.AgeVerifierResult> {
+            verifier.taiwan.ageVerifier.startNearby(20, BondsCredentialSource.SELF_ISSUED, "年齡確認")
+            val r = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting && it.request != request }
+            }).request
+            assertNull(withTimeout(60.seconds) { holder.taiwan.age.send(r, card, material, proof) })
+            val there = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierResult && it.request == r }
+            })
+            return assertIs<OfflineUi.AgeResult>(holder.taiwan.offline.value) to there
+        }
+        link.bondsVerifier = true
+        val (toBonds, bondsSide) = round()
+        assertEquals("證明已送達對方手機", toBonds.title)
+        assertTrue(toBonds.accepted && "Bonds App" in toBonds.lines.first())
+        assertTrue(bondsSide.verification!!.accepted)
+        link.bondsVerifier = false
+        link.bondsHolder = true
+        val (fromBonds, ours) = round()
+        assertEquals("證明已送達對方手機", fromBonds.title, "a Bonds holder gets no verdict")
+        assertTrue(ours.verification!!.accepted, "the verifier still checks a Bonds holder's proof")
+        assertEquals(3, checks.size)
     }
 
     private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =

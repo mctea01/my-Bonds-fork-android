@@ -33,7 +33,8 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * The verifier side of the Bonds BLE link on Android: scans for the holder advertising the request's one-time service,
- * connects, subscribes to the frames, writes "received" and then the framed reply. Up to [ATTEMPTS] connections are
+ * connects, subscribes to the frames, writes "received" and then, to a holder that can take it (not Bonds), the framed
+ * reply. The holder may be this wallet or the Bonds App. Up to [ATTEMPTS] connections are
  * tried, since a phone that is still proving or a dropped link is common in person.
  */
 class AndroidBondsLinkCentral(private val context: Context, private val activity: () -> Activity?) : BondsLinkCentral {
@@ -74,7 +75,7 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         serviceUuid: String,
         maxPayload: Int,
         onProgress: (String) -> Unit,
-        answer: suspend (ByteArray) -> ByteArray,
+        answer: (suspend (ByteArray) -> ByteArray)?,
     ): ByteArray {
         val adapter = manager?.adapter ?: throw BondsTransportException("此裝置沒有藍牙")
         val scanner = adapter.bluetoothLeScanner ?: throw BondsTransportException("此裝置不支援藍牙掃描")
@@ -93,7 +94,7 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
             }
             var gatt: BluetoothGatt? = null
             try {
-                onProgress(if (last == null) "等待出示者的手機出現（對方產生證明需要數秒到數十秒）" else "重新尋找出示者：$last")
+                onProgress(if (last == null) "等待出示者的手機以藍牙連線" else "重新尋找出示者：$last")
                 scanner.startScan(
                     listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()),
                     ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
@@ -162,7 +163,7 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         service: UUID,
         maxPayload: Int,
         onProgress: (String) -> Unit,
-        answer: suspend (ByteArray) -> ByteArray,
+        answer: (suspend (ByteArray) -> ByteArray)?,
     ): ByteArray {
         await(events, STEP_TIMEOUT) { (it as? Event.Connection)?.let { c -> if (c.connected) true else throw Dropped("連線失敗（${c.status}）") } }
         gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
@@ -174,9 +175,11 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         val s = gatt.getService(service) ?: throw Dropped("對方沒有這次查驗的藍牙服務")
         val frames = s.getCharacteristic(UUID.fromString(BondsLinkTransport.FRAMES_CHARACTERISTIC))
         val state = s.getCharacteristic(UUID.fromString(BondsLinkTransport.STATE_CHARACTERISTIC))
-        val reply = s.getCharacteristic(UUID.fromString(BondsLinkTransport.REPLY_CHARACTERISTIC))
-        if (frames == null || state == null || reply == null) throw BondsTransportException("對方的藍牙服務不支援年齡證明")
+        val reply = answer?.let { s.getCharacteristic(UUID.fromString(BondsLinkTransport.REPLY_CHARACTERISTIC)) }
+        if (frames == null || state == null) throw BondsTransportException("對方的藍牙服務不支援 Bonds 傳輸")
         val cccd = frames.getDescriptor(CCCD) ?: throw BondsTransportException("對方的藍牙服務不支援通知")
+        // A holder with the reply characteristic (this wallet) is told a verdict follows; Bonds has none and only waits for "received".
+        reply?.let { write(gatt, events, it, byteArrayOf(BondsLinkTransport.REPLY_HELLO)) }
         if (!gatt.setCharacteristicNotification(frames, true) || !writeDescriptor(gatt, cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
             throw Dropped("無法訂閱對方的資料")
         }
@@ -193,11 +196,18 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
             }
         }
         write(gatt, events, state, byteArrayOf(BondsLinkTransport.RECEIVED))
+        if (answer == null) return payload
         onProgress("已收到證明，正在驗證")
         val verdict = answer(payload)
-        for (frame in BondsLinkTransport.frames(verdict, mtu - 3, BondsLinkTransport.REPLY_MAX_PAYLOAD)) write(gatt, events, reply, frame)
-        // Let the last write response reach the holder before the link goes down.
-        delay(300.milliseconds)
+        if (reply != null) {
+            // The verdict is a courtesy to the holder: this device already has the result, so a lost link is not a failure.
+            try {
+                for (frame in BondsLinkTransport.frames(verdict, mtu - 3, BondsLinkTransport.REPLY_MAX_PAYLOAD)) write(gatt, events, reply, frame)
+                delay(300.milliseconds)
+            } catch (_: Dropped) {
+            } catch (_: BondsTransportException) {
+            }
+        }
         return payload
     }
 

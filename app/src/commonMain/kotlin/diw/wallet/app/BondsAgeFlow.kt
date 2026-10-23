@@ -189,6 +189,13 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             ui.value = OfflineUi.AgeResult(request, card, false, "沒有送出", listOf(reason), retry = true)
             return reason
         }
+        if (request.nearby && body.isEmpty()) {
+            ui.value = OfflineUi.AgeResult(request, card, true, "證明已送達對方手機", listOf(
+                "對方只確認收到，沒有回傳查驗結果（Bonds App 就是如此），結果以對方手機的畫面為準。",
+                "對方沒有收到出生日期或其他欄位。", timing,
+            ), retry = false)
+            return null
+        }
         val verdict = BondsAgeVerdict.parse(body)
         return when {
             verdict?.accepted == true -> {
@@ -220,7 +227,8 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
 
     /**
      * Sends the package over the verifier's one-time BLE service and waits for its verdict, which the verifier's phone
-     * reaches by checking the proofs itself. The reply is answered as an HTTP 200 body would be.
+     * reaches by checking the proofs itself; the reply is read as an HTTP 200 body would be. An empty body: the
+     * verifier (Bonds) only confirmed receipt.
      */
     private suspend fun nearby(request: BondsAgeRequest, card: AgeCard, pkg: BondsAgePackage): Pair<HttpStatusCode, String> {
         val link = model.platform.bondsLink ?: throw ProtocolException("unsupported", NO_LINK)
