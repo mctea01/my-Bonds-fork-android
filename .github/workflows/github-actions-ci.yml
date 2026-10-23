@@ -43,6 +43,23 @@ jobs:
       - name: App flow tests (desktop)
         if: success() || failure()
         run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
+      # zkTLS and zkPDF page templates (templates/README.md), signed for the nightly release. Skipped without the key.
+      - name: Template pack
+        if: success() && github.event_name == 'push'
+        env:
+          ZK_TEMPLATES_KEY: ${{ secrets.ZK_TEMPLATES_KEY }}
+        run: |
+          if [ -z "$ZK_TEMPLATES_KEY" ]; then echo "::warning::No ZK_TEMPLATES_KEY: the release carries no template pack"; exit 0; fi
+          ./gradlew --no-daemon --stacktrace :test-servers:templatePack
+          mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
+      - name: Upload template pack
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zk-templates
+          path: dist/zk-templates.jwt
+          if-no-files-found: ignore
+          retention-days: 14
       # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
       - name: Test report
         uses: mikepenz/action-junit-report@v5
@@ -270,6 +287,7 @@ jobs:
           - Windows: .msi installer, no admin rights needed
           - Linux: .deb package (Debian, Ubuntu)
           - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          - zk-templates.jwt: signed zkTLS and zkPDF page templates, downloaded by the app (when the release key is set)
           EOF
           gh release delete nightly --cleanup-tag --yes || true
           gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md
