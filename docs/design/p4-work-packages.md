@@ -359,7 +359,7 @@ OpenAC 是可替換的後端之一（p4-zkp.md 第 2 節 D5），先引入是因
 | `jwt_2k.graph.gz` | 29,623,857 | `245734ace2b95c595d94b7ca920bdebc0a2b78be6f61ec1c9628e958be2cca55` | 93,459,128 | `cc49cb201e406a03089d72217718b38941c893a970d5d809996605148a2ed63c` | 持有端 |
 | `show.graph.gz` | 197,657 | `062a85829dcac8d255ed17b5929c0cafd5f5573497daad1fa76bafba8f67e5b7` | 551,178 | `352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3` | 持有端 |
 
-PR #17 審查決定（2026-10-22）：查驗結果不含憑證效期與撤銷狀態；只支援 `vc.credentialSubject._sd` 容器，`BondsAgeCredential` 派生的自發年齡憑證也放在這個容器（細節見 p4-circuits.md 第 5 節）。Kotlin 流程每次操作使用私有目錄（輸入、instance、witness、shared blinds），Prepare 到 Show 與 reblind 之間不可刪除，完成或取消後整個刪除；reblind 保留原始 cache，只發布自驗過的新 proof。
+PR #17 審查決定（2026-10-22）：查驗結果不含憑證效期與撤銷狀態；只支援 `vc.credentialSubject._sd` 容器，`BondsAgeCredential` 派生的自發年齡憑證也放在這個容器（細節見 p4-circuits.md 第 5 節）。Kotlin 流程每次操作使用私有目錄（輸入、instance、witness、shared blinds），Prepare 到 Show 與 reblind 之間不可刪除，完成或取消後整個刪除；reblind 保留原始 cache；reblind 本身不重複驗證，新 proof 一律經過之後必跑的 `verify_age_presentation`（兩個證明與連結）通過才讀取送出。原生端用核心數決定執行緒（2 到 8），釘選檔案的雜湊在同一個行程內只算一次（以實際路徑、大小與修改時間辨識）。
 
 Kotlin 部分（Codex 寫包裝與測試，Claude 寫流程）：`core/profile/bonds/BondsAgeProof.kt`（請求解析與產生、證明包編碼與驗證、允許的回應主機）、`BondsAgeCredential.kt`（從 TWDIW 卡片取 SD-JWT 與生日欄位；從 `BondsNationalId` 派生只含 `birthdate` 的自發 SD-JWT）。
 
