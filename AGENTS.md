@@ -124,7 +124,7 @@
 - MyData：檔名依 Bonds 的項目辨識（`MyDataFiles`），伺服器的不透明檔名改為項目名稱。MyData 的 ZIP 不論是 App 內下載、其他 App 分享或手動選取，收到後立即解出並刪除 ZIP，每個檔案各自保存；來源只寫「MyData・項目名稱」（未經 App 內下載時加「（依檔名判斷）」），取得方式另記「App 內下載」或「從壓縮檔解出」與壓縮檔名；舊資料載入時改成短來源。含國民身分證資料時直接進入身分證卡畫面。MyData 網頁以 XHR 取得 blob、點 `<a download>` 後立刻 revoke 並離開頁面，`PortalWebView` 在每頁注入腳本保留 blob 並經 `DiwVault` 介面交給錢包。
 - MyData 自動填入（Bonds `MyDataAutofillProfile`，`profile/bonds/MyDataProfile`）：設定可存身分證統一編號（檢查碼）與出生日期（民國 7 碼或西元 8 碼），只在 https 且主機正好是 mydata.nat.gov.tw 的頁面執行填入腳本。MyData 的加密 PDF 依序以身分證卡的統號與這個編號自動開啟。
 - PDF 文字欄位（`DocumentFields.fromText`）：標籤為中文字（可帶括號或斜線）或最多四個英文字，可接括號內的翻譯與「/English」；值在全形逗號、句號、分號或四個以上空白處結束；標籤在行尾時取下一行開頭。「NO.xxxx」為文件編號；「出生于 2007 年 02 月 16 日」「于 2025 年 09 月入学」等句子另外解析。標題優先取含證明、證書、謄本、資料、通知、執照或 Certificate、Proof、Transcript 的行。
-- 加入證件畫面（「從清單選擇」）：政府皮夾卡片、自己製作（國民身分證卡、用已保存的身分證資料製作、文件衍生憑證、停用的「年齡證明（零知識）」P4）與其他發行端網址。身分證卡與 vc+moica 衍生憑證可展開技術細節（查驗結果、憑證內容、自然人憑證簽章、issuerJWS、disclosures 與摘要）。
+- 加入證件畫面（「從清單選擇」）：政府皮夾卡片、自己製作（國民身分證卡、用已保存的身分證資料製作、文件衍生憑證、「年齡證明（零知識）」說明列，點選後到「使用」掃描）與其他發行端網址。身分證卡與 vc+moica 衍生憑證可展開技術細節（查驗結果、憑證內容、自然人憑證簽章、issuerJWS、disclosures 與摘要）。
 - 取件入口（`DocumentSources`）：MyData 各項目（身分證、戶籍、所得、納稅證明、勞保、勞退、健保、地籍，路徑與 Bonds 相同）、MyDoc、教育部大專校院數位證書驗證、數位證明管理中心（dcmc.csie.ncku.edu.tw）、戶政、地政、移民署入出國日期證明書（ncp.immigration.gov.tw/niaweb/entryExitQuery）、財政部稅務入口網（www.etax.nat.gov.tw/etwmain）。Android 以 App 內 WebView 開啟並把下載直接存入文件分頁（含 blob 下載），顯示網站的對話框；`mobilemoica:` 等非 http 連結交給系統（行動自然人憑證 App 登入）。桌面以外部瀏覽器開啟，下載後再匯入。
 - 預覽：PDF 以平台繪製前 10 頁（Android `PdfRenderer`，桌面 PDFBox），加密 PDF 先以本次輸入的密碼（MyData 為身分證統一編號）在記憶體產生不加密的副本（`PdfPlain`，不保存、不匯出），並可顯示文字層；圖片、XML、JSON、文字與 .p7m 內含的內容也可預覽。密碼只保存在這次執行的記憶體。
 - 圖片欄位：mdoc 的影像位元組與 JSON 憑證裡的 data: URL 或 base64 圖片（`ClaimPictures`）在證件詳情顯示為圖片。
@@ -149,6 +149,7 @@
 - 電路（`native/circuits/**`、OpenAC 的 `predicate.rs` 與 zkID patch、zkTLS 揭露規則）的規格與審查由 Claude 管控，里程碑可逐步交給 Codex；修改電路的 PR 附上電路實作報告（`p4-work-packages.md` 第 4 節），Claude 檢查後才合併。zkPDF 描述檔自己定義欄位與錨點，標籤參考 P3 的文件解析。
 - 算力不足不禁止產生證明：顯示估計後由使用者選擇在本機產生、在電腦版產生後匯入、送到自架主機（`RiskConfirmDialog`）或不加零知識證據。zkTLS 的查驗方以手機為目標，電腦版與測試伺服器只是過渡；持有端與查驗端之間是綁定請求的 Noise 通道（區域網路或只轉送密文的中繼）。
 - 隨 App 散布的原生程式碼不可含 GPL、LGPL、AGPL 元件：OpenAC 不用 witnesscalc\_adapter（會靜態連結 GPL-3.0 的 witnesscalc 與 GMP），改用 circom-witnesscalc 加 `native/openac-age/patches/circom-witnesscalc-secq256r1.patch` 的見證計算圖；circom 與 `build-circuit`（GPL-3.0）只在建置圖形時使用。OpenAC 的 r1cs、金鑰與圖形含 circomlib 2.0.5（GPL-3.0-or-later），只能作為分開下載的資產並在 NOTICE 寫明原始碼位置（WP7「見證計算與授權」）。
+- 年齡證明（OpenAC，WP7 與 WP9）：持有端 `BondsAgeFlow` 回應 Bonds 網頁年齡請求（`BondsAgeRequest`，回應網址只接受 https；測試環境的測試伺服器可為 http），每張卡的 Prepare 證明快取在 `zk-cache`（含出生日期，刪除資產時清除）。查驗端 `BondsAgeVerifierFlow` 透過「年齡查驗主機」（設定的零知識證明頁 `zkVerifierUrl`，測試環境留空用測試伺服器）建立 Bonds 相容請求：本機可驗證（引擎與兩把驗證金鑰都在）時主機只轉送（relay），由手機以 `OpenAcAgeNativeVerifier` 驗證並回覆判定；否則由主機驗證，畫面標明結果來自主機。政府卡的發卡者需為 T2 以上才接受，自發卡標示為非政府背書。測試伺服器的 `/api/zkp/*`（`BondsAgeService`）與 Bonds 網站相同，設 `DIW_OPENAC_DATA` 時可在伺服器驗證。
 - P4 完成後的全專案審查從 `docs/review/project-review.md` 開始。
 
 ## TWDIW 與 Bonds 要點

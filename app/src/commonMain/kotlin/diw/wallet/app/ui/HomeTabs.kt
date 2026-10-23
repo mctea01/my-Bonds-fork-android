@@ -185,6 +185,10 @@ fun UseTab(model: WalletModel, scan: ScanActions) {
             "手機靠近查驗設備，或讓對方掃描 QR Code；適用行動駕照等 mdoc 證件（ISO/IEC 18013-5）",
             enabled = docs.isNotEmpty(),
         ) { model.proximity.open() }
+        ActionRow(
+            WalletIcons.Shield, "年齡證明（零知識）",
+            "掃描查驗方的年齡查驗 QR Code（Bonds 網頁查驗或本錢包），只證明年滿指定年齡，不交出生日",
+        ) { scan.primary() }
         SectionTitle("臨櫃出示")
         Text("出示證件後，由服務方系統產生條碼，給店員或機台掃描。", style = MaterialTheme.typography.bodySmall)
         when {
@@ -265,12 +269,12 @@ fun VerifyTab(model: WalletModel) {
                 }
             }
         }
+        BondsAgeVerifierSetup(model)
         SectionTitle("查驗方身分")
         ActionRow(WalletIcons.Person, "以誰的身分查驗", "個人、法人或組織中的個人，以查驗方的認證憑證為證據，將於後續版本支援", enabled = false) {}
         SectionTitle("其他查驗方式")
         ActionRow(WalletIcons.Link, "線上查驗（OpenID4VP）", "產生出示請求並驗證回應，將於後續版本支援", enabled = false) {}
         ActionRow(WalletIcons.Nfc, "感應查驗（NFC）", "以手機的 NFC 或電腦的 PC/SC 讀卡機，讀取對方的行動駕照等 ISO 18013-5 證件") { model.reader.open() }
-        ActionRow(WalletIcons.Shield, "查驗零知識證明", "只確認年齡等條件、不看原始資料，將於後續版本支援", enabled = false) {}
     }
 }
 

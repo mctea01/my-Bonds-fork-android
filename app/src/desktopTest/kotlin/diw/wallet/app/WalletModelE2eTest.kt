@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
+import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vp.PresentationOutcome
@@ -369,7 +370,7 @@ class WalletModelE2eTest {
                 }
             }
         }
-        screen("09-verify", Screen.Home, HomeTab.VERIFY)
+        screen("09-verify", Screen.Home, HomeTab.VERIFY, height = 1900)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)
         screen("13-trust-anchors", Screen.TrustAnchors)
@@ -394,6 +395,18 @@ class WalletModelE2eTest {
         m.taiwan.offline.value = OfflineUi.AgeResult(age.request, age.cards.single(), true, "verifier.mashbean.net 已接受證明",
             listOf("查驗方確認你年滿 18 歲，沒有收到出生日期或其他欄位。", "產生證明 38.4 秒"), retry = false)
         screen("24-age-result", Screen.Offline)
+        val verifyRequest = diw.wallet.core.profile.bonds.BondsAgeRequest.create(18, BondsCredentialSource.TWDIW, "年齡確認", "https://age.example.org/api/zkp/response/abc")
+        m.taiwan.offline.value = OfflineUi.AgeVerifierWaiting(verifyRequest, "age.example.org", relay = true, note = null)
+        screen("25-age-verify-waiting", Screen.Offline)
+        m.taiwan.offline.value = OfflineUi.AgeVerifierResult(verifyRequest, "age.example.org", diw.wallet.core.profile.bonds.BondsAgeVerification(
+            verifyRequest, proofValid = true, accepted = true, reason = null,
+            issuerDid = "did:key:z2dmzD81cgPx8Vki7JbuuMmFYrWPgYoytykUZ3eyqht1j9KbsUFb1nqpyUsAnGttjF2cH64DeUfT7TumrADEm36HG3HGW3uCZMK2zThk7yn93R5WeMALAuUfyfgHg6gtyUrVHTwJs7ecSwoMjiAMu8pfxsooJdVWEfgcW1eau5fx42LimS",
+            claimName = "roc_birthday",
+            issuerTrust = diw.wallet.core.trust.TrustDecision(diw.wallet.core.trust.TrustTier.T1, diw.wallet.core.env.TrustEnvironment.PRODUCTION, true,
+                "數位憑證皮夾信任清單", emptySet()),
+            verifyMs = 5126, prepareMs = 5642, showMs = 662,
+        ), null, null)
+        screen("26-age-verify-result", Screen.Offline, height = 1100)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -1236,6 +1249,43 @@ class WalletModelE2eTest {
         assertEquals(BondsAgeFlow.EXPIRED, assertIs<OfflineUi.Failed>(withTimeout(10.seconds) {
             holder.taiwan.offline.first { it is OfflineUi.Failed && it.message == BondsAgeFlow.EXPIRED }
         }).message)
+    }
+
+    /**
+     * The Verify tab's age check against the test server's Bonds-compatible endpoint. This wallet has no verifying keys
+     * installed, so the server checks the proofs (a stand-in engine here) and the wallet shows the server's verdict as such.
+     */
+    @Test
+    fun ageCheckThroughTheTestServer() = runBlocking<Unit> {
+        val checks = mutableListOf<diw.wallet.core.zk.OpenAcAgeCheck>()
+        val engine = object : diw.wallet.core.zk.OpenAcAgeVerifier {
+            override suspend fun verify(check: diw.wallet.core.zk.OpenAcAgeCheck) =
+                diw.wallet.core.zk.ZkResult.Ok(true).also { checks += check }
+        }
+        servers = TestServers(base, TestPki.create(), ageVerifier = engine).init()
+        server = servers.start(port, wait = false)
+        val (m, _) = newWallet()
+        assertEquals(base, m.taiwan.ageVerifier.host())
+        m.taiwan.ageVerifier.start(20, BondsCredentialSource.SELF_ISSUED, "年齡確認")
+        val waiting = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting || it is OfflineUi.Failed }
+        })
+        assertFalse(waiting.relay)
+        assertNotNull(waiting.note, "the reason this device does not verify is shown")
+        val request = waiting.request
+        assertEquals(20, request.minimumAge)
+        assertTrue(request.responseUrl.startsWith("$base/api/zkp/response/"))
+        val issuer = diw.wallet.core.did.DidKeys.didKeyJwkJcs(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey)
+        val pkg = diw.wallet.core.profile.bonds.BondsAgePackage(request, "birthdate", 3, issuer, byteArrayOf(1), byteArrayOf(2), 5000, 600, kotlin.time.Clock.System.now())
+        val posted = http.post(request.responseUrl) { contentType(ContentType.Application.Json); setBody(pkg.encode()) }
+        assertTrue(diw.wallet.core.profile.bonds.BondsAgeVerdict.parse(posted.bodyAsText())!!.accepted)
+        val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { m.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
+        assertNull(result.verification)
+        assertTrue(result.remote!!.accepted)
+        assertEquals(request.nonce, checks.single().nonce)
+        val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
+        assertEquals(listOf("年滿 20 歲"), entry.claims)
+        assertTrue("由 localhost 驗證" in entry.note!!, entry.note)
     }
 
     private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =

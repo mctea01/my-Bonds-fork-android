@@ -8,6 +8,8 @@ import diw.wallet.core.zk.ZkCapability
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkErrors
 import diw.wallet.core.zk.ZkNativeStatus
+import diw.wallet.core.zk.OpenAcAgeCheck
+import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
 import kotlinx.coroutines.CancellationException
@@ -170,6 +172,35 @@ class ZkModel(
         ZkReadiness(kind, canRun, advice, missing, info)
     }
 
+    /** Verifying assets for [backend] that are not installed. */
+    suspend fun missingVerifierAssets(backend: ZkBackend): List<ZkAsset> = withContext(dispatcher) {
+        val store = environment?.assets
+        catalog.filter { it.backend == backend && "verifier" in it.role }.filter { asset ->
+            val status = assetStatus.value[asset.id] ?: store?.status(asset.id)?.also { s -> assetStatus.update { it + (asset.id to s) } }
+            status != ZkAssetStatus.READY
+        }
+    }
+
+    /**
+     * The OpenAC age verifier, or why this device cannot check age proofs. Each check waits for any running proof and
+     * stops after [VERIFY_TIMEOUT], since both load hundreds of megabytes of keys.
+     */
+    suspend fun ageVerifier(): ZkResult<OpenAcAgeVerifier> {
+        val capable = withContext(dispatcher) { capability.value ?: evaluate() }
+        if (ZkBackend.OPENAC_SPARTAN2 !in capable.backends) {
+            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.OPENAC_SPARTAN2] ?: "此版本沒有年齡零知識證明引擎", false)
+        }
+        if (missingVerifierAssets(ZkBackend.OPENAC_SPARTAN2).isNotEmpty()) {
+            return ZkResult.Failed("需先在設定的「零知識證明」頁下載年齡證明的電路檔", false)
+        }
+        val engine = environment?.ageVerifier ?: return ZkErrors.unsupported
+        return ZkResult.Ok(object : OpenAcAgeVerifier {
+            override suspend fun verify(check: OpenAcAgeCheck): ZkResult<Boolean> = withContext(dispatcher) {
+                proving.withLock { withTimeoutOrNull(VERIFY_TIMEOUT) { engine.verify(check) } ?: ZkResult.Failed(TIMED_OUT, true) }
+            }
+        })
+    }
+
     /** Downloads [ids] one after another with progress; stops at the first failure, which stays in [downloads]. */
     fun download(ids: List<String>): Job {
         downloadJob?.cancel()
@@ -277,6 +308,7 @@ class ZkModel(
 
     companion object {
         val EXTENDED_TIMEOUT = 30.minutes
+        val VERIFY_TIMEOUT = 2.minutes
         const val TIMED_OUT = "證明逾時，已停止，可重試"
         const val NO_RUNTIME = "此平台沒有零知識執行環境"
         private const val MIB = 1024L * 1024L

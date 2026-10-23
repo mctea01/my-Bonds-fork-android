@@ -129,6 +129,8 @@ data class WalletSettings(
     val testEnvironment: Boolean = false,
     val allowLoopbackHttp: Boolean = false,
     val testServerUrl: String = "http://10.0.2.2:8080",
+    /** Bonds-compatible age host for the Verify tab's zero-knowledge age check (the test server API); empty uses the test server in the test environment. */
+    val zkVerifierUrl: String = "",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */

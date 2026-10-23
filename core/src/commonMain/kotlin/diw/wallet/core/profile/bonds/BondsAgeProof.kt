@@ -12,13 +12,18 @@ import diw.wallet.core.util.str
 import diw.wallet.core.w3c.SdJwtDisclosures
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.minus
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -30,6 +35,7 @@ import org.multipaz.util.toBase64Url
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
@@ -70,6 +76,19 @@ data class BondsAgeRequest(
         else -> throw ProtocolException("invalid_request", "Unsupported birth date format $claimFormat")
     }
 
+    /** The QR text, in Bonds' key order. */
+    fun encode(): String = buildJsonObject {
+        put("a", minimumAge)
+        put("b", requestId)
+        put("c", nonce)
+        put("d", cutoff.toString())
+        put("p", purpose)
+        put("s", source.wire)
+        put("t", createdAt.epochSeconds)
+        put("u", responseUrl)
+        put("v", VERSION)
+    }.toString()
+
     companion object {
         const val VERSION = 1
         const val NONCE_BYTES = 32
@@ -81,6 +100,22 @@ data class BondsAgeRequest(
         val KNOWN_HOSTS = setOf("verifier.mashbean.net")
         private val UUID_RE = Regex("^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
         private val DATE_RE = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        private val TAIPEI = TimeZone.of("Asia/Taipei")
+
+        /**
+         * A fresh request answered at [responseUrl]: a random id and nonce, and the cutoff [minimumAge] years before
+         * today in Taiwan, as Bonds computes it (29 February falls back to 28 February).
+         */
+        fun create(minimumAge: Int, source: BondsCredentialSource, purpose: String, responseUrl: String, now: Instant = Clock.System.now()): BondsAgeRequest {
+            if (minimumAge !in 1..120) throw ProtocolException("invalid_request", "Minimum age out of range")
+            if (source == BondsCredentialSource.ANY) throw ProtocolException("invalid_request", "Age requests name g or s")
+            val today = now.toLocalDateTime(TAIPEI).date
+            return BondsAgeRequest(
+                minimumAge, BondsPresentationRequest.randomUuid(), PlatformCrypto.randomBytes(NONCE_BYTES).toBase64Url(),
+                today.minus(DatePeriod(years = minimumAge)), purpose.filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE),
+                source, Instant.fromEpochSeconds(now.epochSeconds), responseUrl,
+            )
+        }
 
         private fun json(text: String): JsonObject? = text.trim().takeIf { it.startsWith("{") }
             ?.let { runCatching { DiwJson.parseToJsonElement(it) as? JsonObject }.getOrNull() }
@@ -88,12 +123,18 @@ data class BondsAgeRequest(
         /** True for a JSON object with a response URL and a nonce: an online age request, never an offline challenge. */
         fun looksLike(text: String): Boolean = json(text)?.let { "u" in it && "c" in it && "v" in it } == true
 
-        /** Safe to post to: https, a host, no credentials or fragment, as Bonds requires. */
-        fun acceptableUrl(u: String): Boolean = u.length <= MAX_URL && '#' !in u && runCatching {
-            Url(u).let { it.protocol == URLProtocol.HTTPS && it.host.isNotEmpty() && it.user == null && it.password == null }
+        /**
+         * Safe to post to: https, a host, no credentials or fragment, as Bonds requires. Plain http only for a host
+         * and port in [insecureHosts] (the wallet's own test server in the test environment).
+         */
+        fun acceptableUrl(u: String, insecureHosts: Set<String> = emptySet()): Boolean = u.length <= MAX_URL && '#' !in u && runCatching {
+            Url(u).let {
+                (it.protocol == URLProtocol.HTTPS || it.protocol == URLProtocol.HTTP && "${it.host}:${it.port}" in insecureHosts) &&
+                    it.host.isNotEmpty() && it.user == null && it.password == null
+            }
         }.getOrDefault(false)
 
-        fun parse(text: String): BondsAgeRequest {
+        fun parse(text: String, insecureHosts: Set<String> = emptySet()): BondsAgeRequest {
             val o = json(text) ?: throw ProtocolException("invalid_request", "This request could not be read")
             val version = (o["v"] as? JsonPrimitive)?.content?.toIntOrNull()
             if (version != VERSION) throw ProtocolException("invalid_request", "Unsupported age request version $version")
@@ -107,7 +148,7 @@ data class BondsAgeRequest(
             val source = BondsCredentialSource.fromWire(o.str("s"))?.takeIf { it != BondsCredentialSource.ANY }
                 ?: throw ProtocolException("invalid_request", "Unknown credential source")
             val created = (o["t"] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toLong() ?: throw ProtocolException("invalid_request", "No request time")
-            val url = o.str("u")?.takeIf { acceptableUrl(it) } ?: throw ProtocolException("invalid_request", "The response address must be https")
+            val url = o.str("u")?.takeIf { acceptableUrl(it, insecureHosts) } ?: throw ProtocolException("invalid_request", "The response address must be https")
             val purpose = o.str("p").orEmpty().filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE)
             return BondsAgeRequest(age, id, nonce, cutoff, purpose, source, Instant.fromEpochSeconds(created), url)
         }
@@ -164,6 +205,36 @@ class BondsAgePackage(
     companion object {
         const val VERSION = 1
         const val MAX_PROOF = 2_000_000
+
+        /**
+         * A posted package, accepted only when its statement is exactly [request]'s: nonce, cutoff, minimum age and
+         * source. The proofs themselves are checked by the OpenAC verifier.
+         */
+        @OptIn(ExperimentalEncodingApi::class)
+        fun parse(text: String, request: BondsAgeRequest): BondsAgePackage {
+            if (text.length > 3 * MAX_PROOF) throw ProtocolException("invalid_request", "Proof package too large")
+            val o = runCatching { DiwJson.parseToJsonElement(text) as? JsonObject }.getOrNull()
+                ?: throw ProtocolException("invalid_request", "The proof package could not be read")
+            fun int(name: String) = (o[name] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
+            fun long(name: String) = (o[name] as? JsonPrimitive)?.takeIf { !it.isString }?.longOrNull
+            fun bytes(name: String) = o.str(name)?.let { runCatching { Base64.Default.decode(it) }.getOrNull() }
+                ?: throw ProtocolException("invalid_request", "Malformed $name")
+            if (int("version") != VERSION) throw ProtocolException("invalid_request", "Unsupported package version")
+            if (o.str("requestNonce") != request.nonce || o.str("cutoffDate") != request.cutoff.toString() ||
+                int("minimumAge") != request.minimumAge || o.str("credentialSource") != request.source.wire
+            ) throw ProtocolException("invalid_request", "The proof answers a different request")
+            return BondsAgePackage(
+                request,
+                o.str("claimName") ?: throw ProtocolException("invalid_request", "No claim name"),
+                int("claimFormat") ?: throw ProtocolException("invalid_request", "No claim format"),
+                o.str("issuerDID") ?: throw ProtocolException("invalid_request", "No issuer DID"),
+                bytes("prepareProof"),
+                bytes("showProof"),
+                long("prepareMilliseconds")?.coerceAtLeast(0) ?: 0,
+                long("showMilliseconds")?.coerceAtLeast(0) ?: 0,
+                long("createdAt")?.let { Instant.fromEpochMilliseconds(it) } ?: throw ProtocolException("invalid_request", "No creation time"),
+            )
+        }
     }
 }
 
@@ -176,6 +247,15 @@ data class BondsAgeVerdict(
     /** The verifier's own verification time, when it reports one. */
     val verifyMs: Long?,
 ) {
+    /** The verdict body Bonds' web verifier answers with. */
+    fun encode(): String = buildJsonObject {
+        put("status", status)
+        put("accepted", accepted)
+        reason?.let { put("reason", it) }
+        minimumAge?.let { put("minimumAge", it) }
+        verifyMs?.let { ms -> putJsonObject("timingMs") { put("verify", ms) } }
+    }.toString()
+
     companion object {
         /** Null unless the body is a JSON object with a status and a boolean accepted. */
         fun parse(text: String): BondsAgeVerdict? {

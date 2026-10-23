@@ -39,4 +39,7 @@ interface ZkEnvironment {
 
     /** The OpenAC age prover over [assets]; null where the platform has none. */
     val ageProver: OpenAcAgeProver? get() = null
+
+    /** Checks posted OpenAC age presentations with the verifying keys in [assets]; null where the platform has none. */
+    val ageVerifier: OpenAcAgeVerifier? get() = null
 }

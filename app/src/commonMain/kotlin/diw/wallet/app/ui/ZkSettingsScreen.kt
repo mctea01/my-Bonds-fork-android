@@ -13,6 +13,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -162,6 +163,9 @@ fun ZkSettingsScreen(model: WalletModel) {
         OutlinedButton(onClick = { zk.refresh() }, enabled = !refreshing) { Text(if (refreshing) "檢查中…" else "重新檢查") }
 
         HorizontalDivider()
+        SectionTitle("年齡查驗主機")
+        AgeVerifierHost(model)
+        HorizontalDivider()
         SectionTitle("自架主機")
         ActionRow(WalletIcons.Link, "加入自架主機", "zkPDF 完成後開放：手機算力不足時可把文件送到自己的主機產生證明，手機先驗證再使用", enabled = false) {}
     }
@@ -201,4 +205,24 @@ fun ZkSettingsScreen(model: WalletModel) {
 internal fun ZkSettingsRow(model: WalletModel, onOpen: () -> Unit) {
     val capability by model.zk.capability.collectAsState()
     ActionRow(WalletIcons.Shield, "零知識證明", zkSummary(capability).removePrefix("零知識：") + "・電路檔下載與刪除", onClick = onOpen)
+}
+
+/** The Bonds-compatible host the Verify tab's age check uses (the test server, or the user's deployment of it). */
+@Composable
+private fun AgeVerifierHost(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    var url by remember(settings.zkVerifierUrl) { mutableStateOf(settings.zkVerifierUrl) }
+    val valid = url.isEmpty() || url.startsWith("https://") || settings.testEnvironment && url.startsWith("http://")
+    Text(
+        "查驗他人年齡時，對方的證明送到這台主機，再轉給這支手機驗證；主機只轉送，看不到出生日期。可部署專案的測試伺服器（test-servers）作為主機。" +
+            "留空時在測試環境使用測試伺服器。",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedTextField(
+        value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text("主機網址（https）") }, isError = !valid,
+    )
+    OutlinedButton(onClick = { model.updateSettings { it.copy(zkVerifierUrl = url.trimEnd('/')) } }, enabled = valid && url != settings.zkVerifierUrl) {
+        Text("儲存")
+    }
 }

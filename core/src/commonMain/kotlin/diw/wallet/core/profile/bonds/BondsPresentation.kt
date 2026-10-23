@@ -145,7 +145,7 @@ data class BondsPresentationRequest(
         fun generate(purpose: String, source: BondsCredentialSource, audience: String? = null, now: Instant = Clock.System.now()): BondsPresentationRequest =
             create(PlatformCrypto.randomBytes(16).toBase64Url(), purpose, now, audience, randomUuid(), source)
 
-        private fun randomUuid(): String {
+        internal fun randomUuid(): String {
             val b = PlatformCrypto.randomBytes(16)
             b[6] = ((b[6].toInt() and 0x0f) or 0x40).toByte()
             b[8] = ((b[8].toInt() and 0x3f) or 0x80).toByte()

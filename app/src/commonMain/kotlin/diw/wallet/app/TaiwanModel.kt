@@ -6,6 +6,8 @@ import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.profile.bonds.BondsAgeRequest
+import diw.wallet.core.profile.bonds.BondsAgeVerdict
+import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
@@ -104,7 +106,7 @@ sealed class OfflineUi {
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
 
     /** Bonds web age request scanned: pick the card to prove from. */
-    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>) : OfflineUi()
+    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>, val known: Boolean = request.knownHost) : OfflineUi()
 
     /** The age proof [jobId] is being produced, or with [sending] posted to the verifier. */
     data class AgeWorking(val request: BondsAgeRequest, val card: AgeCard, val jobId: String, val sending: Boolean = false) : OfflineUi()
@@ -117,6 +119,27 @@ sealed class OfflineUi {
         val title: String,
         val lines: List<String>,
         val retry: Boolean,
+    ) : OfflineUi()
+
+    /**
+     * Verifier side of a Bonds age check: the request QR is shown while [host] waits for the proof. [relay]: the proof
+     * is verified on this device; [note] says why not. [checking]: the proof has arrived and is being verified.
+     */
+    data class AgeVerifierWaiting(
+        val request: BondsAgeRequest,
+        val host: String,
+        val relay: Boolean,
+        val note: String?,
+        val checking: Boolean = false,
+    ) : OfflineUi()
+
+    /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */
+    data class AgeVerifierResult(
+        val request: BondsAgeRequest,
+        val host: String,
+        val verification: BondsAgeVerification?,
+        val remote: BondsAgeVerdict?,
+        val error: String?,
     ) : OfflineUi()
 
     /** Bonds request scanned: pick a card and what to disclose. */
@@ -175,6 +198,7 @@ class TaiwanModel(private val model: WalletModel) {
     var preferredDocument: String? = null
     private var linkJob: Job? = null
     val age = BondsAgeFlow(model, offline)
+    val ageVerifier = BondsAgeVerifierFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -591,6 +615,7 @@ class TaiwanModel(private val model: WalletModel) {
 
     fun closeOffline() {
         age.stop()
+        ageVerifier.stop()
         linkJob?.cancel()
         linkJob = null
         verifierCollector = null

@@ -20,6 +20,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
@@ -57,12 +58,13 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
         ui.value = OfflineUi.Working("讀取年齡證明請求")
         model.scope.launch {
             ui.value = try {
-                val request = BondsAgeRequest.parse(text)
+                val verifier = model.taiwan.ageVerifier
+                val request = BondsAgeRequest.parse(text, verifier.insecureHosts())
                 val cards = cards(request.source)
                 when {
                     !request.isFresh(Clock.System.now()) -> OfflineUi.Failed(EXPIRED)
                     cards.isEmpty() -> OfflineUi.Failed(noCard(request.source))
-                    else -> OfflineUi.AgeChoose(request, cards)
+                    else -> OfflineUi.AgeChoose(request, cards, known(request))
                 }
             } catch (e: Exception) {
                 OfflineUi.Failed("無法讀取年齡證明請求：" + model.describe(e))
@@ -83,6 +85,10 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     }
 
     private fun jobId(request: BondsAgeRequest) = "bonds-age-" + request.requestId
+
+    /** Bonds' own list, or the user's age host, which is as known. */
+    private fun known(request: BondsAgeRequest): Boolean = request.knownHost ||
+        model.taiwan.ageVerifier.host()?.let { runCatching { Url(it).host }.getOrNull() } == request.responseHost
 
     /** Produces and sends the proof; [extended] is the user's choice to produce it here against the advice. */
     fun prove(request: BondsAgeRequest, card: AgeCard, extended: Boolean) {
@@ -116,7 +122,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                         r.reason
                     }
                     ZkResult.Cancelled -> {
-                        ui.value = OfflineUi.AgeChoose(request, cards(request.source))
+                        ui.value = OfflineUi.AgeChoose(request, cards(request.source), known(request))
                         return@launch
                     }
                 }
@@ -134,7 +140,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     /** Stops the running proof and returns to the card choice. */
     fun cancel(state: OfflineUi.AgeWorking) {
         stop()
-        model.scope.launch { ui.value = OfflineUi.AgeChoose(state.request, cards(state.request.source)) }
+        model.scope.launch { ui.value = OfflineUi.AgeChoose(state.request, cards(state.request.source), known(state.request)) }
     }
 
     /** Stops whatever runs, when the screen is left. */
