@@ -5,6 +5,7 @@ import diw.wallet.core.zk.ZkAssetStore
 import diw.wallet.core.zk.ZkBackend
 import diw.wallet.core.zk.LongfellowNative
 import diw.wallet.core.zk.OpenAcAgeProver
+import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkNativeStatus
 import diw.wallet.core.zk.ZkPlatformInfo
@@ -43,6 +44,8 @@ class JvmZkEnvironment(
     override val assets: ZkAssetStore? get() = store
 
     override val ageProver: OpenAcAgeProver? by lazy { store?.let { OpenAcAgeNativeProver(it, File(dataDirectory, "zk-work"), File(dataDirectory, "zk-cache")) } }
+
+    override val ageVerifier: OpenAcAgeVerifier? by lazy { store?.let { OpenAcAgeNativeVerifier(it, File(dataDirectory, "zk-verify")) } }
 
     override fun close() {
         if (opened.isInitialized()) store?.close()

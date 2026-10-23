@@ -1,0 +1,4 @@
+/target/
+/bench/**/Prover.toml
+__pycache__/
+*.log

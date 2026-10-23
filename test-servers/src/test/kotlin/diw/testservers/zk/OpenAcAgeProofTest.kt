@@ -6,12 +6,16 @@ import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.profile.bonds.BondsAgeCredential
 import diw.wallet.core.profile.bonds.BondsAgePackage
 import diw.wallet.core.profile.bonds.BondsAgeRequest
+import diw.wallet.core.profile.bonds.BondsAgeVerifier
+import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.Jcs
 import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.zk.OpenAcAgeInput
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.zk.native.JvmZkEnvironment
 import diw.wallet.core.zk.native.OpenAcAgeNativeProver
+import diw.wallet.core.zk.native.OpenAcAgeNativeVerifier
 import diw.wallet.core.zk.native.bindings.ZkCancelToken
 import diw.wallet.core.zk.native.bindings.verifyAgePresentation
 import diw.wallet.core.zk.ZkPlatformInfo
@@ -118,6 +122,18 @@ class OpenAcAgeProofTest {
             val pkg = BondsAgePackage(request, proof.claimName, proof.claimFormat, material.issuerDid, proof.prepareProof, proof.showProof,
                 proof.prepareMs, proof.showMs, now)
             assertTrue(pkg.encode().contains(Base64.Default.encode(proof.showProof)))
+
+            // The wallet's own verifier, as the Verify tab and the test server's Bonds endpoint use it.
+            val resolver = DidResolver(HttpClient(MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }))
+            val verifier = assertIs<OpenAcAgeNativeVerifier>(env.ageVerifier)
+            val checked = BondsAgeVerifier.verify(BondsAgePackage.parse(pkg.encode(), request), verifier, resolver, DidTrust.NONE, TrustTier.T3)
+            assertTrue(checked.proofValid && checked.accepted, checked.toString())
+            assertEquals(TrustTier.T3, checked.issuerTrust?.tier)
+            assertFalse(BondsAgeVerifier.verify(pkg, verifier, resolver, DidTrust.NONE).accepted, "an unanchored government issuer is not accepted by default")
+            val replay = request.copy(nonce = ByteArray(32) { 3 }.toBase64Url())
+            val replayed = BondsAgePackage(replay, proof.claimName, proof.claimFormat, material.issuerDid, proof.prepareProof, proof.showProof, 1, 1, now)
+            assertFalse(BondsAgeVerifier.verify(replayed, verifier, resolver, DidTrust.NONE, TrustTier.T3).proofValid, "a proof for another nonce")
+            assertTrue(File(data, "zk-verify").listFiles().orEmpty().isEmpty(), "the verify scratch tree is removed")
 
             // A verifier with only the verifying keys and the posted proofs.
             val keys = File(work, "circom/keys").apply { mkdirs() }

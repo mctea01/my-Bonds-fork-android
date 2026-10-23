@@ -23,7 +23,7 @@ the embedded vector using the already built graph compiler.
 
 ## Build the native library
 
-Install Rust 1.90.0, Python 3.11.8 or newer, Git, protoc and libclang. The native
+Install Rust 1.95.0, Python 3.11.8 or newer, Git, protoc and libclang. The native
 library does not require a Circom compiler, GMP or a C++ runtime. Android uses
 cargo-ndk 4.1.2 and NDK 28.2.13676358.
 

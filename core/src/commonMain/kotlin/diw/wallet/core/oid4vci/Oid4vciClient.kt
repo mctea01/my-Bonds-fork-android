@@ -217,8 +217,7 @@ class Oid4vciClient(
         val compat = DialectSet(dialects)
         val offer = offers.resolve(uri, compat)
         compat.claimFor(offer.credentialIssuer, entryHint)
-        val issuer = metadata.issuer(offer.credentialIssuer, compat)
-        compat.claimFor(issuer)
+        val issuer = withDialectTrust(metadata.issuer(offer.credentialIssuer, compat), compat)
         val unknown = offer.credentialConfigurationIds.filter { it !in issuer.configurations }
         if (unknown.isNotEmpty()) {
             throw ProtocolException("invalid_credential_offer", "Offer references unknown configurations $unknown")
@@ -231,8 +230,7 @@ class Oid4vciClient(
     suspend fun startWalletInitiated(credentialIssuer: String, configurationIds: List<String>, entryHint: String? = null): IssuanceSession {
         val compat = DialectSet(dialects)
         compat.claimFor(credentialIssuer, entryHint)
-        val issuer = metadata.issuer(credentialIssuer, compat)
-        compat.claimFor(issuer)
+        val issuer = withDialectTrust(metadata.issuer(credentialIssuer, compat), compat)
         val asMeta = authorizationServer(issuer, null, compat)
         return IssuanceSession(null, issuer, asMeta, newDpop(asMeta), null, compat).also {
             it.requestedConfigurations = configurationIds.filter { id -> id in issuer.configurations }
@@ -249,6 +247,18 @@ class Oid4vciClient(
         compat.claimFor(credentialIssuer, profile)
         val issuer = metadata.issuer(credentialIssuer, compat)
         return issuer.configurations[configurationId]?.display?.pick(locales)
+    }
+
+    /**
+     * Claims the session from the metadata, then lets the owning dialect place an issuer the metadata leads to no
+     * trust root (unsigned metadata) through its own registry; a registry failure keeps the metadata decision.
+     */
+    private suspend fun withDialectTrust(issuer: IssuerMetadata, compat: DialectSet): IssuerMetadata {
+        compat.claimFor(issuer)
+        val d = compat.owner ?: return issuer
+        val trust = runCatching { d.issuerTrust(issuer) }.getOrNull() ?: return issuer
+        compat.record(d)
+        return issuer.copy(trust = trust)
     }
 
     /** Authorization server metadata, or what a dialect knows for issuers that publish none (draft 11, TWDIW). */

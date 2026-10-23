@@ -43,6 +43,19 @@ its own license:
 - RustCrypto p256 0.13, ff 0.13, rand_core 0.6, num-bigint 0.4,
   num-traits 0.2, rayon, chrono, serde_json and tempfile -
   MIT or Apache License 2.0
+- TLSNotary 0.1.0-alpha.15, revision
+  47aee45b53e06648c1b2ad3689b367b8c923fdec - MIT or Apache License 2.0
+- mpz 0.1.0-alpha.6 (TLSNotary MPC dependencies), tlsn-utils / futures-plex -
+  MIT or Apache License 2.0 (repository README license declarations)
+- snow 0.9.6 (Noise), futures 0.3, serde 1.0 and zeroize 1.9 -
+  MIT or Apache License 2.0
+- Tokio 1.54, tokio-util 0.7, tracing 0.1 and bincode 1.3.3 - MIT License
+- rustls and TLSNotary TLS forks - Apache License 2.0, MIT or ISC;
+  rustls-webpki and untrusted - ISC; ring - Apache License 2.0 AND ISC
+- Mozilla root certificate data (webpki-root-certs / webpki-roots) -
+  Community Data License Agreement - Permissive 2.0
+- curve25519-dalek and subtle - BSD 3-Clause; blake3 and constant_time_eq -
+  Apache License 2.0 option; tiny-keccak - CC0 1.0
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
@@ -50,7 +63,7 @@ its own license:
 Development and test tools that are not shipped in the application:
 
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
-- Rust 1.90.0 - Apache License 2.0 or MIT
+- Rust 1.95.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT
 - Circom 2.2.3 - GNU GPL 3.0
 - circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0

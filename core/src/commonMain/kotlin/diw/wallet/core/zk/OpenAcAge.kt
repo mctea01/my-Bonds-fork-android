@@ -37,3 +37,20 @@ interface OpenAcAgeProver {
     /** Drops every reused Prepare state (they hold birth dates), as when the circuit assets are deleted. */
     fun clearCache()
 }
+
+/** A posted OpenAC presentation and the statement it must prove: the verifier's nonce and cutoff, the issuer key. */
+class OpenAcAgeCheck(
+    val prepareProof: ByteArray,
+    val showProof: ByteArray,
+    val nonce: String,
+    val claimName: String,
+    val claimFormat: Int,
+    val cutoff: Long,
+    val issuerKeyX: String,
+    val issuerKeyY: String,
+)
+
+interface OpenAcAgeVerifier {
+    /** True when both proofs verify, are linked, and prove [OpenAcAgeCheck]'s statement; false for any other proof. */
+    suspend fun verify(check: OpenAcAgeCheck): ZkResult<Boolean>
+}

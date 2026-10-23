@@ -1,9 +1,15 @@
 package diw.wallet.core.profile.twdiw
 
+import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
+import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.trust.highlyTrusted
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.arr
@@ -111,18 +117,38 @@ class TwdiwServices(
     }
 
     /**
-     * Starts an offline presentation: the verifier module must be a listed host whose organisation is anchored,
-     * and its deep link must fetch the request from the same host. [allowUnlisted] skips the trust list check for a
-     * user who confirmed the risk (their own environment); the request must still come from the module's host.
+     * The trust of an offline verifier module host. A host listed for organisations is judged as their best listing
+     * (T1 anchored on Arbitrum, T2 listed but not fully checked, T3 the test list, T4 contradicted). An unlisted host
+     * on the TWDIW platform domain (wallet.gov.tw, where the platform hosts listed organisations' modules) offered by
+     * the official counter service list is T2, as for the platform's key hosts; any other unlisted host is T4.
+     */
+    suspend fun offlineModuleDecision(moduleHost: String): TrustDecision {
+        val listed = trustList.entriesForHost(moduleHost).mapNotNull { e ->
+            trustList.verified(e.did)?.let { trustList.decisionFor(it, TrustRole.VERIFIER) }
+        }
+        listed.minByOrNull { it.tier.ordinal }?.let { return it }
+        if (TwdiwHosts.isPlatformHost(moduleHost)) {
+            val reason = "Verifier module hosted on the TWDIW platform ($moduleHost), offered by the official counter service list"
+            return if (platform.test) TrustDecision(TrustTier.T3, TrustEnvironment.TEST, false, moduleHost, setOf(TrustLabel.TEST_ANCHOR), listOf(reason))
+            else TrustDecision(TrustTier.T2, TrustEnvironment.PRODUCTION, false, moduleHost, emptySet(), listOf(reason))
+        }
+        return TrustDecision.unknown("$moduleHost is not listed in the TWDIW trust list", labels = setOf(TrustLabel.UNKNOWN_ANCHOR))
+    }
+
+    /**
+     * Starts an offline presentation: the verifier module must be highly trusted ([offlineModuleDecision] T1 or T2,
+     * or T3 on the test platform), and its deep link must fetch the request from the same host. [allowUnlisted] lets a
+     * user who confirmed the risk go on with a T4 module (their own environment); the request must still come from
+     * the module's host.
      */
     suspend fun startOffline(service: TwdiwOfflineService, allowUnlisted: Boolean = false): TwdiwOfflineSession {
         val moduleHost = TwdiwHosts.canonicalHost(service.verifierModuleUrl)
             ?: throw ProtocolException("untrusted_verifier", "Verifier module URL is not an acceptable https URL")
-        val anchored = trustList.entriesForHost(moduleHost).any { e ->
-            val snap = trustList.verified(e.did)
-            snap != null && snap.documentVerified && (snap.anchor == AnchorState.VERIFIED.name || platform.test)
+        val decision = offlineModuleDecision(moduleHost)
+        val accepted = decision.tier.highlyTrusted || (platform.test && decision.tier == TrustTier.T3)
+        if (!accepted && !allowUnlisted) {
+            throw ProtocolException("untrusted_verifier", decision.reasons.lastOrNull() ?: "$moduleHost is not trusted in the TWDIW trust list")
         }
-        if (!anchored && !allowUnlisted) throw ProtocolException("untrusted_verifier", "$moduleHost is not an anchored organisation in the TWDIW trust list")
         val body = getJson(service.verifierModuleUrl.trimEnd('/') + "/api/ext/offline/qrcode/" + service.vpUid.encodeURLPathPart())
         checkCode(body)
         val data = body.obj("data") ?: body

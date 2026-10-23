@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import diw.wallet.app.CredentialDetails
 import diw.wallet.app.DetailSection
 import diw.wallet.app.HomeTab
+import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
 import diw.wallet.core.credential.ClaimReader
@@ -73,14 +74,19 @@ import org.multipaz.util.fromBase64Url
 
 /**
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
- * scanner; it returns the scanned text or null. Reading a QR Code from a picture is offered everywhere.
+ * scanner; it returns the scanned text or null. [scanQrStream] keeps that camera open for an animated code, handing
+ * each new code to its callback until the callback says done. Reading a QR Code from a picture is offered everywhere.
  *
  * The home screen has five tabs: the documents list and the history log as in the EUDI wallet, Use as in Bonds
  * (present, counter services, add), Files for signed files and official documents, and Verify for the wallet
  * acting as a verifier. Settings sit behind the gear at the top right.
  */
 @Composable
-fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
+fun WalletApp(
+    model: WalletModel,
+    scanQr: (suspend () -> String?)? = null,
+    scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
+) {
     val ready by model.ready.collectAsState()
     val screen by model.screen.collectAsState()
     val tab by model.tab.collectAsState()
@@ -138,7 +144,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                         HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
                         HomeTab.FILES -> FilesTab(model)
                         HomeTab.USE -> UseTab(model, scan)
-                        HomeTab.VERIFY -> VerifyTab(model)
+                        HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
                         HomeTab.HISTORY -> HistoryTab(model)
                     }
                     Screen.Settings -> SettingsScreen(model)
@@ -152,7 +158,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.TrustAnchors -> TrustAnchorsScreen(model)
                     Screen.CustomTrust -> CustomTrustScreen(model)
                     Screen.ZkSettings -> ZkSettingsScreen(model)
-                    Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null)
+                    Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
                     Screen.Reader -> ReaderScreen(model)

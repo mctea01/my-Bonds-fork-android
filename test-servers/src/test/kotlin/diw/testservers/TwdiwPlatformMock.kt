@@ -232,7 +232,7 @@ class TwdiwPlatformMock private constructor(
         }
     }
 
-    private suspend fun org(key: EcPrivateKey, did: String, name: String, orgType: Int, base: String): JsonObject {
+    private suspend fun org(key: EcPrivateKey, did: String, name: String, orgType: Int, base: String, taxId: String): JsonObject {
         val jwk = key.publicKey.toJwk()
         val document = signJws(
             buildJsonObject { put("alg", "ES256"); put("typ", "JWT"); put("kid", DidKeys.verificationMethod(did)) },
@@ -249,16 +249,16 @@ class TwdiwPlatformMock private constructor(
             put("did", document)
             put("orgType", orgType)
             putJsonObject("org") {
-                put("name", name); put("name_en", "Mock $orgType"); put("taxId", "0000000$orgType")
+                put("name", name); put("name_en", "Mock $orgType"); put("taxId", taxId)
                 put("issuerMetadataBaseURL", base); put("serviceBaseURL", base)
             }
             putJsonArray("onChainHistory") {}
         }
     }
 
-    private suspend fun issuerOrg() = org(issuerKey, issuerDid, "模擬發證機關", 1, ISSUER_ORIGIN)
+    private suspend fun issuerOrg() = org(issuerKey, issuerDid, "模擬發證機關", 1, ISSUER_ORIGIN, ISSUER_ORG_ID)
 
-    private suspend fun verifierOrg() = org(verifierKey, verifierDid, "模擬驗證機關", 2, VERIFIER)
+    private suspend fun verifierOrg() = org(verifierKey, verifierDid, "模擬驗證機關", 2, VERIFIER, "00000002")
 
     // ------------------------------------------------------------------ issuer
 
@@ -672,7 +672,9 @@ class TwdiwPlatformMock private constructor(
         const val VERIFIER_HOST = "verifier.mock.wallet.gov.tw"
         const val FRONTEND = "https://$FRONTEND_HOST"
         const val ISSUER_ORIGIN = "https://$ISSUER_HOST"
-        const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/00000000/"
+        /** The issuer organisation's ID, as in the platform issuer path and the trust list taxId field. */
+        const val ISSUER_ORG_ID = "00000000"
+        const val ISSUER = "$ISSUER_ORIGIN/oid4vci/api/issuer/$ISSUER_ORG_ID/"
         const val VERIFIER = "https://$VERIFIER_HOST"
         const val CONFIG_ID = "00000000_mock_card"
         const val TERMS_URL = "https://verifier.example.com/terms/wallet_partner"

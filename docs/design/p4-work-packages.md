@@ -291,6 +291,7 @@ pub struct ZkTlsVerified { pub server_name: String, pub cert_chain_der: Vec<Vec<
 - `ZkTlsRevealChooser` 在 prover 端拿到完整明文後回傳揭露範圍（由 WP6 依描述檔計算）；未揭露的位元組在 `ZkTlsVerified` 中以 0 填滿並由遮罩標示。
 - 伺服器憑證以 tlsn 的根憑證庫驗證；另回傳憑證鏈，由 Kotlin 端用既有信任判定再算一次等級。
 - 端對端加密通道（p4-zkp.md 第 5.2 節）在 Rust 端實作：`zktls_prove` 另收 `request_hash`（請求 JWS 的 SHA-256）與 `verifier_static_public`，`zktls_verify` 另收 `request_hash` 與 `verifier_static_private`，以 Noise `NK_25519_ChaChaPoly_SHA256`（例如 `snow` crate）包住 `ZkTlsChannel`；Kotlin 端的 `ZkTlsChannel` 只搬運密文。
+- 整合後的實際簽名（2026-10-23）：兩個函式最後另收 `extra_roots_der: Vec<Vec<u8>>`，加在 tlsn 的 Mozilla 根憑證之後，只放呼叫端自己選的根（測試 CA、使用者匯入的根），不接受對方提供；`ZkTlsCommitment` 為 `range: ZkRange, alg: String（"SHA256"）, digest: Vec<u8>`，是 tlsn 加鹽的 transcript commitment，不是明文的 SHA-256。Rust 工具鏈因 tlsn 的 mpz 依賴升到 1.95.0。
 
 驗收：
 
@@ -359,7 +360,7 @@ OpenAC 是可替換的後端之一（p4-zkp.md 第 2 節 D5），先引入是因
 | `jwt_2k.graph.gz` | 29,623,857 | `245734ace2b95c595d94b7ca920bdebc0a2b78be6f61ec1c9628e958be2cca55` | 93,459,128 | `cc49cb201e406a03089d72217718b38941c893a970d5d809996605148a2ed63c` | 持有端 |
 | `show.graph.gz` | 197,657 | `062a85829dcac8d255ed17b5929c0cafd5f5573497daad1fa76bafba8f67e5b7` | 551,178 | `352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3` | 持有端 |
 
-PR #17 審查決定（2026-10-22）：查驗結果不含憑證效期與撤銷狀態；只支援 `vc.credentialSubject._sd` 容器，`BondsAgeCredential` 派生的自發年齡憑證也放在這個容器（細節見 p4-circuits.md 第 5 節）。Kotlin 流程每次操作使用私有目錄（輸入、instance、witness、shared blinds），Prepare 到 Show 與 reblind 之間不可刪除，完成或取消後整個刪除；reblind 保留原始 cache，只發布自驗過的新 proof。
+PR #17 審查決定（2026-10-22）：查驗結果不含憑證效期與撤銷狀態；只支援 `vc.credentialSubject._sd` 容器，`BondsAgeCredential` 派生的自發年齡憑證也放在這個容器（細節見 p4-circuits.md 第 5 節）。Kotlin 流程每次操作使用私有目錄（輸入、instance、witness、shared blinds），Prepare 到 Show 與 reblind 之間不可刪除，完成或取消後整個刪除；reblind 保留原始 cache；reblind 本身不重複驗證，新 proof 一律經過之後必跑的 `verify_age_presentation`（兩個證明與連結）通過才讀取送出。原生端用核心數決定執行緒（2 到 8），釘選檔案的雜湊在同一個行程內只算一次（以實際路徑、大小與修改時間辨識）。
 
 Kotlin 部分（Codex 寫包裝與測試，Claude 寫流程）：`core/profile/bonds/BondsAgeProof.kt`（請求解析與產生、證明包編碼與驗證、允許的回應主機）、`BondsAgeCredential.kt`（從 TWDIW 卡片取 SD-JWT 與生日欄位；從 `BondsNationalId` 派生只含 `birthdate` 的自發 SD-JWT）。
 
