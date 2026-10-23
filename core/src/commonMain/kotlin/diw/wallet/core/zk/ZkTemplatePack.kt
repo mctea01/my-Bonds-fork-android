@@ -50,10 +50,18 @@ data class ZkTemplatePack(
         const val RELEASE_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/nightly/$FILE"
 
         /**
-         * PEM public keys (P-256) allowed to sign packs. The private key is a GitHub Actions secret of the
-         * repository; until its public key is added here no downloaded pack is accepted.
+         * PEM public keys (P-256) allowed to sign packs. The private key is the repository's GitHub Actions secret
+         * ZK_TEMPLATES_KEY; a key is replaced by adding the new one here first and removing the old one later.
          */
-        val TRUSTED_KEYS: List<String> = emptyList()
+        val TRUSTED_KEYS: List<String> = listOf(
+            // Release key added 2026-10-23, SHA-256 of the DER SubjectPublicKeyInfo 3191665f25525309b0658b742639852d233014cf6a5c84612cf0a2518613285f.
+            """
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/NAlkL/o7vVQIR7TNiKnk+hA+ssI
+            nEDL2Z8g3pnWuoVi1WL/5r9ymib+sTI5wt1zWpzqiP3xdOIN7PXnQBsoqg==
+            -----END PUBLIC KEY-----
+            """.trimIndent(),
+        )
 
         fun trustedKeys(): List<EcPublicKey> = TRUSTED_KEYS.map { EcPublicKey.fromPem(it) }
 

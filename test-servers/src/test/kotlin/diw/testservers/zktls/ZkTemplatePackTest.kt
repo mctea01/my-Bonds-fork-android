@@ -52,6 +52,13 @@ class ZkTemplatePackTest {
     }
 
     @Test
+    fun releaseKeyIsPinned() {
+        val keys = ZkTemplatePack.trustedKeys()
+        assertTrue(keys.isNotEmpty())
+        assertTrue(keys.all { it.curve == org.multipaz.crypto.EcCurve.P256 })
+    }
+
+    @Test
     fun malformedTemplateStopsTheBuild() {
         val dir = folder()
         File(dir, "zktls/bad.json").writeText("""{"id":"Bad Id","title":"x","host":"x","request":{"path":"/"},"status":{"reveal":"a","success":"a"},"fields":[]}""")
