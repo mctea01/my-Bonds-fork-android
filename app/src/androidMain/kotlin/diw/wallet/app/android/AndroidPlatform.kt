@@ -150,7 +150,27 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
 
-    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink() }
+    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory } }
+
+    /**
+     * The connected network whose own subnet holds [host]: the Wi-Fi or hotspot both phones share. A socket left
+     * unbound goes over the default network, which is mobile data while that Wi-Fi has no Internet access.
+     */
+    @Suppress("DEPRECATION")
+    private fun localNetworkFor(host: String): android.net.Network? {
+        val target = runCatching { java.net.InetAddress.getByName(host) }.getOrNull() as? java.net.Inet4Address ?: return null
+        if (!target.isSiteLocalAddress && !target.isLinkLocalAddress) return null
+        val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+        fun bits(a: java.net.InetAddress) = a.address.fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xff) }
+        return connectivity.allNetworks.firstOrNull { network ->
+            connectivity.getLinkProperties(network)?.linkAddresses.orEmpty().any { link ->
+                val own = link.address as? java.net.Inet4Address ?: return@any false
+                val prefix = link.prefixLength.coerceIn(0, 32)
+                val mask = if (prefix == 0) 0L else (0xffffffffL shl (32 - prefix)) and 0xffffffffL
+                (bits(own) and mask) == (bits(target) and mask)
+            }
+        }
+    }
 
     /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
     @Volatile var fileAccess: AndroidFileAccess? = null

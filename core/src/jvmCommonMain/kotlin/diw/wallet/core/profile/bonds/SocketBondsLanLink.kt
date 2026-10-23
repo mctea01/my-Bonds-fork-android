@@ -14,23 +14,35 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URI
+import javax.net.SocketFactory
 import kotlin.time.Duration
 
 /**
  * [BondsLanLink] over plain sockets, so it works the same in Android release builds (whose HTTP stacks refuse clear
  * text) and on desktops. The server reads one request per connection with a bounded body and closes it.
+ * [socketFactoryFor] gives the sockets for a local address their network: Android sends an unbound socket over the
+ * default network, which is mobile data while the shared Wi-Fi or hotspot has no Internet, so the post would never
+ * reach the other phone. Null uses the default route (desktops).
  */
-class SocketBondsLanLink : BondsLanLink {
+class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketFactory? = { null }) : BondsLanLink {
     override fun localAddresses(): List<String> = runCatching {
         NetworkInterface.getNetworkInterfaces().toList()
             .filter { it.isUp && !it.isLoopback && !it.isVirtual }
             .flatMap { nic -> nic.inetAddresses.toList().filterIsInstance<Inet4Address>().map { nic.name to it } }
             .filter { (_, a) -> a.isSiteLocalAddress }
-            // Wi-Fi and hotspot interfaces first; mobile data rarely has a private address another phone can reach.
-            .sortedBy { (name, _) -> if (name.startsWith("wlan") || name.startsWith("ap") || name.startsWith("swlan") || name.startsWith("en")) 0 else 1 }
+            // Wi-Fi and hotspot interfaces first; mobile data and VPN tunnels last, since another phone on the same
+            // Wi-Fi cannot reach their private addresses.
+            .sortedBy { (name, _) -> rank(name) }
             .map { it.second.hostAddress!! }
             .distinct()
     }.getOrDefault(emptyList())
+
+    private fun rank(name: String): Int = when {
+        LOCAL.any { name.startsWith(it) } -> 0
+        REMOTE.any { name.startsWith(it) } -> 2
+        else -> 1
+    }
 
     override suspend fun serve(
         address: String,
@@ -130,7 +142,9 @@ class SocketBondsLanLink : BondsLanLink {
     }
 
     override suspend fun post(url: String, body: ByteArray, timeout: Duration): Pair<Int, String> {
-        val reply = CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = REPLY_MAX)
+        val host = URI(url).host?.removePrefix("[")?.removeSuffix("]")
+        val factory = host?.let { socketFactoryFor(it) } ?: SocketFactory.getDefault()
+        val reply = CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = REPLY_MAX, socketFactory = factory)
             .exchange(url, body, "application/json", "application/json")
         return reply.status to reply.body.decodeToString()
     }
@@ -139,6 +153,8 @@ class SocketBondsLanLink : BondsLanLink {
         const val READ_TIMEOUT_MS = 30_000
         const val MAX_LINE = 8192
         const val REPLY_MAX = 64 * 1024
+        val LOCAL = listOf("wlan", "swlan", "ap", "en", "eth", "wifi", "softap")
+        val REMOTE = listOf("rmnet", "ccmni", "tun", "ppp", "ipsec", "wg", "utun", "clat", "v4-")
         val ERROR = """{"status":"failed","accepted":false,"reason":"查驗請求不存在或格式不符"}""".encodeToByteArray()
     }
 }

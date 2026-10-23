@@ -198,7 +198,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             throw e
         } catch (e: Exception) {
             val reason = if (request.nearby) "藍牙傳送沒有完成（${model.describe(e)}），請靠近對方的手機後重試。"
-            else if (request.lan) "無法把證明送到 $who，請確認兩支手機連在同一個 Wi-Fi（或熱點）後重試。"
+            else if (request.lan) "無法把證明送到 $who（${model.describe(e)}），請確認兩支手機連在同一個 Wi-Fi（或熱點）後重試。"
             else "無法把證明送到 $who，請檢查網路後重試。"
             ui.value = OfflineUi.AgeResult(request, card, false, "沒有送出", listOf(reason), retry = true)
             return reason
