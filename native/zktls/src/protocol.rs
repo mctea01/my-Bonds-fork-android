@@ -100,7 +100,9 @@ fn permitted_request(request: &Request) -> Result<Vec<Range<usize>>> {
     {
         return Err(Error::Input);
     }
-    let path_end = pieces[0].len() + 1 + pieces[1].find('?').unwrap_or(pieces[1].len());
+    // The method, the path and the byte after it ('?' or the space before the version): without that byte a verifier
+    // could not tell "/check" from a longer hidden path such as "/check2".
+    let path_end = pieces[0].len() + 1 + pieces[1].find('?').unwrap_or(pieces[1].len()) + 1;
     let mut permitted = vec![0..path_end];
     let (mut host, mut identity, mut close) = (false, false, false);
     let mut offset = line.len() + 2;
@@ -665,8 +667,10 @@ mod tests {
     fn request_reveal_excludes_query_and_credentials() {
         let r = request();
         let allowed = permitted_request(&r).unwrap();
-        assert!(allowed[0] == (0..10));
-        let query = r.request.iter().position(|&b| b == b'?').unwrap();
+        assert!(allowed[0] == (0..11));
+        assert_eq!(&r.request[allowed[0].clone()], b"GET /check?");
+        // The '?' itself is revealed as the end of the path; the query after it is not.
+        let query = r.request.iter().position(|&b| b == b'?').unwrap() + 1;
         assert!(!allowed.iter().any(|r| r.contains(&query)));
         assert!(limits("example.com", 443, 4097, 1024, "proxy").is_err());
         assert!(limits("example.com", 443, 4096, 262145, "proxy").is_err());

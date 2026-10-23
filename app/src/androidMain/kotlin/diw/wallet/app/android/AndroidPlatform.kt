@@ -423,7 +423,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
     override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
-        diw.wallet.core.zk.native.JvmZkEnvironment(context.noBackupFilesDir, httpClient()) {
+        diw.wallet.core.zk.native.JvmZkEnvironment(
+            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },
+            { host -> localNetworkFor(host)?.socketFactory },
+        ) {
             val memory = android.app.ActivityManager.MemoryInfo()
             context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(memory)
             val mib = 1024L * 1024L
