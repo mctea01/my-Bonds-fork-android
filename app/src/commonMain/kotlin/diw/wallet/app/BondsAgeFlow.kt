@@ -105,9 +105,10 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                 } finally {
                     model.endOperation()
                 }
-                val input = OpenAcAgeInput(material.sdJwt, material.issuerKeyX, material.issuerKeyY, request.nonce, signature) {
-                    request.cutoffValue(it)
-                }
+                // Keyed by the stored card, not the per-request derivative, so a self-issued card reuses its Prepare too.
+                val stored = card.moica?.serialized() ?: card.credential!!.raw
+                val input = OpenAcAgeInput(material.sdJwt, material.issuerKeyX, material.issuerKeyY, request.nonce, signature,
+                    cacheKey = card.source.wire + ":" + stored) { request.cutoffValue(it) }
                 when (val r = model.zk.prove(id, ZkProofKind.AGE, extended) { step -> prover.prove(input, step) }.await()) {
                     is ZkResult.Ok -> send(request, card, material, r.value)
                     is ZkResult.Failed -> {
@@ -180,7 +181,10 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             }
             verdict != null -> {
                 val reason = verdict.reason?.takeIf { it.isNotBlank() } ?: verdict.status
-                ui.value = OfflineUi.AgeResult(request, card, false, "${request.responseHost} 沒有接受證明", listOf("對方的說明：$reason", timing), retry = false)
+                // A 5xx verdict is the verifier's own failure (its backend down), not a judgement of the proof.
+                ui.value = if (status.value >= 500) OfflineUi.AgeResult(request, card, false, "${request.responseHost} 暫時無法驗證",
+                    listOf("對方的說明：$reason", "證明已送達，是查驗方網站的問題；請對方稍後重新產生 QR Code 再試。", timing), retry = false)
+                else OfflineUi.AgeResult(request, card, false, "${request.responseHost} 沒有接受證明", listOf("對方的說明：$reason", timing), retry = false)
                 reason
             }
             status.isSuccess() -> {

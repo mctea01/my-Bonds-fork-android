@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -30,10 +31,15 @@ import java.util.UUID
  * shared blinds and both reblinds, then a mandatory check against the expected issuer key before anything is
  * returned. Each proof runs in its own scratch tree under [workDirectory] that links the installed assets into the
  * layout the native code reads, and is deleted afterwards.
+ *
+ * With a cache key the Prepare proof, instance and witness are kept in [cacheDirectory] before any reblind, so a later
+ * proof of the same card only reblinds and runs Show; every presentation still carries fresh blinds. The witness holds
+ * the birth date, so the cache stays in private app storage and unused entries are dropped after [CACHE_DAYS] days.
  */
 class OpenAcAgeNativeProver(
     private val store: FileZkAssetStore,
     private val workDirectory: File,
+    private val cacheDirectory: File,
 ) : OpenAcAgeProver {
     override suspend fun prove(input: OpenAcAgeInput, step: (String) -> Unit): ZkResult<OpenAcAgeProof> = withContext(Dispatchers.IO) {
         val sources = LAYOUT.mapValues { (id, _) -> store.installedFile(id) ?: return@withContext MISSING_ASSETS }
@@ -48,7 +54,7 @@ class OpenAcAgeNativeProver(
                     // Cancelling this coroutine (the user, or the time limit) stops the native call through the token.
                     val watcher = launch { try { awaitCancellation() } finally { token.cancel() } }
                     try {
-                        run(documents.absolutePath, input, token, step)
+                        proveIn(documents.absolutePath, input, token, step)
                     } finally {
                         watcher.cancel()
                     }
@@ -63,18 +69,25 @@ class OpenAcAgeNativeProver(
         }
     }
 
-    private fun run(path: String, input: OpenAcAgeInput, token: ZkCancelToken, step: (String) -> Unit): ZkResult<OpenAcAgeProof> {
+    private fun proveIn(path: String, input: OpenAcAgeInput, token: ZkCancelToken, step: (String) -> Unit): ZkResult<OpenAcAgeProof> {
+        val keys = File(path, "keys")
+        val entry = input.cacheKey?.let { File(cacheDirectory, sha256(it)) }
+        val cached = entry?.let { restore(it, keys) }
         step("準備憑證")
         var started = System.nanoTime()
-        val prepared = createAgePrepareInput(path, input.sdJwt, input.issuerKeyX, input.issuerKeyY)
-        proveJwt(path, token)
+        val (claimName, format) = cached ?: run {
+            val prepared = createAgePrepareInput(path, input.sdJwt, input.issuerKeyX, input.issuerKeyY)
+            proveJwt(path, token)
+            val claim = prepared.claimName to prepared.claimFormat.toInt()
+            entry?.let { save(it, keys, claim) }
+            claim
+        }
         var prepareMs = elapsed(started)
-        val format = prepared.claimFormat.toInt()
         val cutoff = input.cutoff(format).toULong()
 
         step("產生年齡證明")
         started = System.nanoTime()
-        createAgeShowInput(path, input.nonce, input.deviceSignature, prepared.claimName, prepared.claimFormat, cutoff)
+        createAgeShowInput(path, input.nonce, input.deviceSignature, claimName, format.toUByte(), cutoff)
         proveShow(path, token)
         var showMs = elapsed(started)
 
@@ -88,14 +101,45 @@ class OpenAcAgeNativeProver(
         showMs += elapsed(started)
 
         step("在這台裝置驗證證明")
-        val accepted = verifyAgePresentation(path, input.nonce, prepared.claimName, prepared.claimFormat, cutoff,
+        val accepted = verifyAgePresentation(path, input.nonce, claimName, format.toUByte(), cutoff,
             input.issuerKeyX, input.issuerKeyY, token)
-        if (!accepted) return SELF_CHECK_FAILED
-        val keys = File(path, "keys")
+        if (!accepted) {
+            // A proof built on a cached base that this device rejects means the base is stale: rebuild it once.
+            if (cached == null) return SELF_CHECK_FAILED
+            entry?.deleteRecursively()
+            return proveIn(path, input, token, step)
+        }
         return ZkResult.Ok(
-            OpenAcAgeProof(prepared.claimName, format, File(keys, "prepare_proof.bin").readBytes(),
+            OpenAcAgeProof(claimName, format, File(keys, "prepare_proof.bin").readBytes(),
                 File(keys, "show_proof.bin").readBytes(), prepareMs, showMs),
         )
+    }
+
+    /** The cached claim name and format after copying the Prepare state into [keys], or null when there is none. */
+    private fun restore(entry: File, keys: File): Pair<String, Int>? = runCatching {
+        val (name, format) = File(entry, CLAIM).readText().lines()
+        CACHED.forEach { File(entry, it).copyTo(File(keys, it), overwrite = true) }
+        entry.setLastModified(System.currentTimeMillis())
+        name to format.toInt()
+    }.getOrNull()
+
+    private fun save(entry: File, keys: File, claim: Pair<String, Int>) {
+        runCatching {
+            cacheDirectory.listFiles()?.filter { System.currentTimeMillis() - it.lastModified() > CACHE_DAYS * DAY_MS }
+                ?.forEach { it.deleteRecursively() }
+            val staging = File(cacheDirectory, entry.name + ".part").apply { deleteRecursively(); mkdirs() }
+            CACHED.forEach { File(keys, it).copyTo(File(staging, it)) }
+            File(staging, CLAIM).writeText("${claim.first}\n${claim.second}")
+            entry.deleteRecursively()
+            if (!staging.renameTo(entry)) staging.deleteRecursively()
+        }
+    }
+
+    private fun sha256(text: String) =
+        MessageDigest.getInstance("SHA-256").digest(text.encodeToByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+
+    override fun clearCache() {
+        cacheDirectory.deleteRecursively()
     }
 
     private fun elapsed(since: Long) = (System.nanoTime() - since) / 1_000_000
@@ -120,6 +164,10 @@ class OpenAcAgeNativeProver(
             "jwt_2k.graph" to "graphs/jwt_2k.graph",
             "show.graph" to "graphs/show.graph",
         )
+        private val CACHED = listOf("prepare_proof.bin", "prepare_instance.bin", "prepare_witness.bin")
+        private const val CLAIM = "claim.txt"
+        const val CACHE_DAYS = 30L
+        private const val DAY_MS = 86_400_000L
         val MISSING_ASSETS = ZkResult.Failed("年齡證明的電路檔尚未下載完成", false)
         val SELF_CHECK_FAILED = ZkResult.Failed("產生的證明沒有通過這台裝置的驗證，未送出", true)
     }

@@ -96,13 +96,25 @@ class OpenAcAgeProofTest {
             val steps = mutableListOf<String>()
             val result = prover.prove(
                 OpenAcAgeInput(material.sdJwt, material.issuerKeyX, material.issuerKeyY, request.nonce,
-                    BondsAgeCredential.deviceSignature(request.nonce, holder)) { request.cutoffValue(it) },
+                    BondsAgeCredential.deviceSignature(request.nonce, holder), cacheKey = "g:card") { request.cutoffValue(it) },
             ) { steps += it }
             val proof = assertIs<ZkResult.Ok<diw.wallet.core.zk.OpenAcAgeProof>>(result, "$result after $steps").value
             assertEquals("birthdate", proof.claimName)
             assertEquals(BondsAgeRequest.FORMAT_ROC, proof.claimFormat)
             assertEquals(4, steps.size)
             assertTrue(File(data, "zk-work").listFiles().orEmpty().isEmpty(), "the scratch tree is removed")
+
+            // The same card again: Prepare comes from the cache, only the reblinds and Show run, the proof is fresh.
+            val again = ByteArray(32) { 1 }.toBase64Url()
+            val second = assertIs<ZkResult.Ok<diw.wallet.core.zk.OpenAcAgeProof>>(prover.prove(
+                OpenAcAgeInput(material.sdJwt, material.issuerKeyX, material.issuerKeyY, again,
+                    BondsAgeCredential.deviceSignature(again, holder), cacheKey = "g:card") { request.cutoffValue(it) },
+            ) {}).value
+            println("OpenAC first: prepare ${proof.prepareMs} ms, show ${proof.showMs} ms; cached: prepare ${second.prepareMs} ms, show ${second.showMs} ms")
+            assertTrue(second.prepareMs < proof.prepareMs, "cached Prepare: ${second.prepareMs} ms against ${proof.prepareMs} ms")
+            assertFalse(second.prepareProof.contentEquals(proof.prepareProof), "each presentation is reblinded")
+            prover.clearCache()
+            assertFalse(File(data, "zk-cache").exists())
             val pkg = BondsAgePackage(request, proof.claimName, proof.claimFormat, material.issuerDid, proof.prepareProof, proof.showProof,
                 proof.prepareMs, proof.showMs, now)
             assertTrue(pkg.encode().contains(Base64.Default.encode(proof.showProof)))

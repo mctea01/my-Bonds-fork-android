@@ -204,6 +204,7 @@ class ZkModel(
     suspend fun delete(id: String) = withContext(dispatcher) {
         val store = environment?.assets ?: return@withContext
         store.delete(id)
+        if (catalog.firstOrNull { it.id == id }?.backend == ZkBackend.OPENAC_SPARTAN2) environment?.ageProver?.clearCache()
         assetStatus.update { it + (id to ZkAssetStatus.MISSING) }
     }
 

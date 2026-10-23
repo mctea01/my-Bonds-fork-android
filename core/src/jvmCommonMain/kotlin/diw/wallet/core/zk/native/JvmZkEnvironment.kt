@@ -42,7 +42,7 @@ class JvmZkEnvironment(
 
     override val assets: ZkAssetStore? get() = store
 
-    override val ageProver: OpenAcAgeProver? by lazy { store?.let { OpenAcAgeNativeProver(it, File(dataDirectory, "zk-work")) } }
+    override val ageProver: OpenAcAgeProver? by lazy { store?.let { OpenAcAgeNativeProver(it, File(dataDirectory, "zk-work"), File(dataDirectory, "zk-cache")) } }
 
     override fun close() {
         if (opened.isInitialized()) store?.close()
