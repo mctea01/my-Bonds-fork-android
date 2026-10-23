@@ -22,7 +22,7 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | pull request | `0.4.<CI 執行次數>-pr<PR 編號>` | CI 執行次數 |
 | 本機 | `0.4.0-dev` | 1 |
 
-CI 執行次數在 PR 與 main 之間共用且只會增加，所以新建置一定能覆蓋安裝舊版（同一把簽章金鑰時）。進入新階段或正式發佈時只改 `version.properties`。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫，CI 的 `APP_VERSION` 與 Gradle 算出的版本不同時建置會停止。關於頁顯示版本與 commit。
+CI 執行次數在 PR 與 main 之間共用且只會增加，所以新建置一定能覆蓋安裝舊版（同一把簽章金鑰時）。進入新階段或正式發佈時只改 `version.properties`。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以同一規則算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
 
 ## Android 簽章
 

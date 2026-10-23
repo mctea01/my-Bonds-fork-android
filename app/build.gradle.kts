@@ -119,11 +119,6 @@ val appVersionName: String = (findProperty("diw.versionName") as String?)
     ?: ("$releaseLine.${ciRun ?: 0}" + when { ciRun == null -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
 val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt() ?: ciRun ?: 1
 
-// The workflow names its files with APP_VERSION; a mismatch would label the outputs with a version they do not carry.
-providers.environmentVariable("APP_VERSION").orNull?.let {
-    if (it != appVersionName) throw GradleException("APP_VERSION $it differs from the build's version $appVersionName (version.properties)")
-}
-
 tasks.register("printVersion") {
     val name = appVersionName
     doLast { println(name) }
