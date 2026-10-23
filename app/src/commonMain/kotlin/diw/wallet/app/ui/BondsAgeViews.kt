@@ -61,10 +61,18 @@ private fun clock(s: Long) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 private fun AgeRequestCard(request: BondsAgeRequest, known: Boolean = request.knownHost) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("${request.responseHost ?: BondsAgeFlow.NEARBY} 要求證明你年滿 ${request.minimumAge} 歲", style = MaterialTheme.typography.titleMedium)
+            Text("${if (request.lan) "區網查驗方 " + request.responseHost else request.responseHost ?: BondsAgeFlow.NEARBY} 要求證明你年滿 ${request.minimumAge} 歲",
+                style = MaterialTheme.typography.titleMedium)
             if (request.purpose.isNotEmpty()) Text("用途：${request.purpose}")
-            Text(request.responseUrl?.let { "送出位置：$it" } ?: "送出方式：藍牙，直接傳到對方的手機，不經任何伺服器", style = MaterialTheme.typography.bodySmall)
-            if (!known && !request.nearby) {
+            Text(
+                when {
+                    request.nearby -> "送出方式：藍牙，直接傳到對方的手機，不經任何伺服器"
+                    request.lan -> "送出方式：區網（同一個 Wi-Fi 或熱點），直接傳到對方的手機。未加密，同一網路上的裝置可看到證明，但其中沒有出生日期。"
+                    else -> "送出位置：${request.responseUrl}"
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (!known && !request.nearby && !request.lan) {
                 Text("這個網站不在 Bonds 的查驗方清單，無法確認對方是誰。", style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error)
             }
@@ -178,6 +186,7 @@ internal fun BondsAgeVerifierWaitingView(model: WalletModel, s: OfflineUi.AgeVer
         Text(
             when {
                 s.request.nearby -> "出示者的手機產生證明後，以藍牙直接傳到這支手機驗證，不經任何伺服器。請讓兩支手機保持靠近並開著藍牙。"
+                s.request.lan -> "出示者的手機產生證明後，經 ${s.host} 直接傳到這支手機驗證，不經網際網路。出示者的手機需連在同一個 Wi-Fi 或這支手機的熱點。"
                 s.relay -> "證明送到 ${s.host} 後轉給這支手機驗證，主機只轉送。"
                 else -> "證明由 ${s.host} 驗證，這支手機只顯示主機的結果。"
             },
@@ -229,6 +238,13 @@ internal fun BondsAgeVerifierResultView(model: WalletModel, s: OfflineUi.AgeVeri
     }
 }
 
+/** How the holder's proof reaches the verifying phone. */
+private enum class AgeRoute(val label: String) {
+    BLUETOOTH("藍牙"),
+    LAN("區網"),
+    HOST("查驗主機"),
+}
+
 /** The Verify tab's age check: how the proof arrives, minimum age, accepted cards and purpose, then the request QR. */
 @Composable
 internal fun BondsAgeVerifierSetup(model: WalletModel) {
@@ -236,17 +252,33 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
     var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
     var purpose by remember { mutableStateOf("年齡確認") }
     val host = model.taiwan.ageVerifier.host()
-    val bluetooth = model.platform.bondsLinkCentral != null
-    var nearby by remember { mutableStateOf(bluetooth) }
+    val available = mapOf(
+        AgeRoute.BLUETOOTH to (model.platform.bondsLinkCentral != null),
+        AgeRoute.LAN to (model.platform.bondsLan != null),
+        AgeRoute.HOST to (host != null),
+    )
+    var route by remember { mutableStateOf(AgeRoute.entries.firstOrNull { available[it] == true } ?: AgeRoute.HOST) }
     val age = ageText.toIntOrNull()?.takeIf { it in 1..120 }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("年齡查驗（零知識）", style = MaterialTheme.typography.titleMedium)
             Text("只確認對方年滿指定年齡，看不到出生日期與其他欄位。證明在這支手機驗證。", style = MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = nearby, onClick = { nearby = true }, enabled = bluetooth, label = { Text("藍牙（不經伺服器）") })
-                FilterChip(selected = !nearby, onClick = { nearby = false }, label = { Text("查驗主機") })
+                AgeRoute.entries.forEach { r ->
+                    FilterChip(selected = route == r, onClick = { route = r }, enabled = r == AgeRoute.HOST || available[r] == true,
+                        label = { Text(r.label) })
+                }
             }
+            Text(
+                when (route) {
+                    AgeRoute.BLUETOOTH -> "出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）。"
+                    AgeRoute.LAN -> "兩支手機連在同一個 Wi-Fi（或一支開熱點讓另一支連上），證明直接傳到這支手機，不經網際網路。出示者需使用本錢包。"
+                    AgeRoute.HOST -> host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" }
+                        ?: "尚未設定年齡查驗主機：到設定的「零知識證明」頁填入（測試環境會使用測試伺服器）。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (route == AgeRoute.HOST && host == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             OutlinedTextField(value = ageText, onValueChange = { t -> ageText = t.filter { it.isDigit() }.take(3) },
                 label = { Text("年滿幾歲") }, singleLine = true, modifier = Modifier.width(140.dp), isError = age == null)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -256,21 +288,17 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
             }
             OutlinedTextField(value = purpose, onValueChange = { purpose = it.take(100) }, label = { Text("查驗用途（會顯示給出示者）") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
-            if (nearby) {
-                Text("出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）。",
-                    style = MaterialTheme.typography.bodySmall)
-            } else {
-                Text(host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" }
-                    ?: "尚未設定年齡查驗主機：到設定的「零知識證明」頁填入（測試環境會使用測試伺服器）。",
-                    style = MaterialTheme.typography.bodySmall, color = if (host == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-            }
             Button(
                 onClick = {
-                    if (nearby) model.taiwan.ageVerifier.startNearby(age!!, source, purpose.trim())
-                    else model.taiwan.ageVerifier.start(age!!, source, purpose.trim())
+                    val flow = model.taiwan.ageVerifier
+                    when (route) {
+                        AgeRoute.BLUETOOTH -> flow.startNearby(age!!, source, purpose.trim())
+                        AgeRoute.LAN -> flow.startLan(age!!, source, purpose.trim())
+                        AgeRoute.HOST -> flow.start(age!!, source, purpose.trim())
+                    }
                 },
                 // Bonds refuses a request without a purpose.
-                enabled = age != null && purpose.isNotBlank() && (if (nearby) bluetooth else host != null),
+                enabled = age != null && purpose.isNotBlank() && available[route] == true,
             ) {
                 Text("產生年齡查驗 QR Code")
             }

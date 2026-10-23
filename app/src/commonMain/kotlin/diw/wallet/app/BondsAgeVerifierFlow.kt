@@ -7,6 +7,7 @@ import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsAgeVerifier
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsLinkTransport
+import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
@@ -31,6 +32,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import org.multipaz.util.toBase64Url
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
@@ -104,14 +106,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                     ui.value = OfflineUi.Failed("藍牙無法使用：$it")
                     return@launch
                 }
-                val engine = when (val r = engines()) {
-                    is ZkResult.Ok -> r.value
-                    is ZkResult.Failed -> {
-                        ui.value = OfflineUi.Failed("這支手機無法驗證年齡證明（${r.reason}）。藍牙查驗要在這支手機驗證，可改用查驗主機。")
-                        return@launch
-                    }
-                    ZkResult.Cancelled -> return@launch
-                }
+                val engine = localEngine("藍牙") ?: return@launch
                 val request = BondsAgeRequest.create(minimumAge, source, purpose, null)
                 val waiting = OfflineUi.AgeVerifierWaiting(request, BLUETOOTH, relay = true, note = null)
                 model.platform.keepScreenOn(true)
@@ -136,6 +131,65 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 model.platform.keepScreenOn(false)
             }
         }
+    }
+
+    /**
+     * A check over the local network: this device listens on its Wi-Fi or hotspot address, the QR names that address,
+     * and the holder's phone on the same network posts the package here. No server, no Internet; the verdict is the
+     * reply to the holder's post.
+     */
+    fun startLan(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
+        val lan = model.platform.bondsLan ?: run {
+            model.message.value = "這個平台無法在區網接收證明，請改用藍牙或查驗主機。"
+            return
+        }
+        stop()
+        model.screen.value = Screen.Offline
+        ui.value = OfflineUi.Working("準備區網年齡查驗")
+        job = model.scope.launch {
+            try {
+                val address = lan.localAddresses().firstOrNull() ?: run {
+                    ui.value = OfflineUi.Failed(NO_LAN)
+                    return@launch
+                }
+                val engine = localEngine("區網") ?: return@launch
+                val host = "區網 $address"
+                var request: BondsAgeRequest? = null
+                var result: OfflineUi.AgeVerifierResult? = null
+                model.platform.keepScreenOn(true)
+                withTimeoutOrNull(BondsAgeRequest.LIFETIME + GRACE) {
+                    lan.serve(address, "/age/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLinkTransport.AGE_MAX_PAYLOAD, onListening = { url ->
+                        request = BondsAgeRequest.create(minimumAge, source, purpose, url)
+                            .also { ui.value = OfflineUi.AgeVerifierWaiting(it, host, relay = true, note = null) }
+                    }) { body ->
+                        val r = request!!
+                        ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = null, checking = true)
+                        val (shown, verdict) = check(r, host, engine, body.decodeToString())
+                        // A body that is not a package for this request (another device on the network) does not end the check.
+                        if (shown.verification != null) result = shown
+                        else ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = shown.error)
+                        verdict.encode().encodeToByteArray() to (shown.verification != null)
+                    }
+                }
+                show(result ?: OfflineUi.AgeVerifierResult(request ?: return@launch, host, null, null, EXPIRED))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ui.value = OfflineUi.Failed("區網年齡查驗沒有完成：" + model.describe(e))
+            } finally {
+                model.platform.keepScreenOn(false)
+            }
+        }
+    }
+
+    /** This device's verifier for a serverless check over [how], or null after showing why there is none. */
+    private suspend fun localEngine(how: String): OpenAcAgeVerifier? = when (val r = engines()) {
+        is ZkResult.Ok -> r.value
+        is ZkResult.Failed -> {
+            ui.value = OfflineUi.Failed("這支手機無法驗證年齡證明（${r.reason}）。${how}查驗要在這支手機驗證，可改用查驗主機。")
+            null
+        }
+        ZkResult.Cancelled -> null
     }
 
     fun stop() {
@@ -230,7 +284,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             HistoryKind.VERIFIED, "年齡零知識證明", v?.issuerTrust,
             listOfNotNull(v?.let { if (it.selfIssued) "自發卡（持有者自己的金鑰）" else "發卡者 ${shortDid(it.issuerDid)}" }),
             listOf("年滿 ${result.request.minimumAge} 歲"),
-            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) "，藍牙直接收到、不經伺服器" else "") +
+            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) "，藍牙直接收到、不經伺服器" else if (result.request.lan) "，區網直接收到、不經伺服器" else "") +
                 (if (v != null) "，在這支手機驗證" else "，由 ${result.host} 驗證") +
                 "，用途：${result.request.purpose.ifEmpty { "未說明" }}",
             failure,
@@ -245,6 +299,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         val GRACE = 30.seconds
         const val EXPIRED = "對方沒有在時限內出示，請重新產生查驗請求。"
         const val BLUETOOTH = "藍牙"
+        const val NO_LAN = "這支手機沒有連上 Wi-Fi 或開啟熱點，無法用區網查驗。請兩支手機連上同一個 Wi-Fi，或由其中一支開熱點讓另一支連上。"
         const val NO_CENTRAL = "這個平台無法以藍牙接收證明，請改用查驗主機。"
 
         fun summary(v: BondsAgeVerification): List<String> = listOfNotNull(

@@ -97,7 +97,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     private fun jobId(request: BondsAgeRequest) = "bonds-age-" + request.requestId
 
     /** Bonds' own list, or the user's age host, which is as known; a nearby verifier is the person in front of the holder. */
-    private fun known(request: BondsAgeRequest): Boolean = request.nearby || request.knownHost ||
+    private fun known(request: BondsAgeRequest): Boolean = request.nearby || request.lan || request.knownHost ||
         model.taiwan.ageVerifier.host()?.let { runCatching { Url(it).host }.getOrNull() } == request.responseHost
 
     /** Produces and sends the proof; [extended] is the user's choice to produce it here against the advice. */
@@ -173,7 +173,11 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
         val timing = "產生證明 ${seconds(proof.prepareMs + proof.showMs)} 秒"
         val who = who(request)
         val (status, body) = try {
-            if (request.nearby) nearby(request, card, pkg) else withTimeout(SEND_TIMEOUT) {
+            val lan = model.platform.bondsLan?.takeIf { request.lan }
+            if (request.nearby) nearby(request, card, pkg)
+            // A socket of its own: Android release builds refuse clear text in their HTTP stacks.
+            else if (lan != null) lan.post(request.responseUrl!!, pkg.encode().encodeToByteArray(), SEND_TIMEOUT).let { (code, text) -> HttpStatusCode.fromValue(code) to text }
+            else withTimeout(SEND_TIMEOUT) {
                 val response = client.post(request.responseUrl!!) {
                     contentType(ContentType.Application.Json)
                     accept(ContentType.Application.Json)
@@ -185,6 +189,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             throw e
         } catch (e: Exception) {
             val reason = if (request.nearby) "藍牙傳送沒有完成（${model.describe(e)}），請靠近對方的手機後重試。"
+            else if (request.lan) "無法把證明送到 $who，請確認兩支手機連在同一個 Wi-Fi（或熱點）後重試。"
             else "無法把證明送到 $who，請檢查網路後重試。"
             ui.value = OfflineUi.AgeResult(request, card, false, "沒有送出", listOf(reason), retry = true)
             return reason
@@ -240,7 +245,11 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     }
 
     /** Who the proof goes to, for the screens and the history. */
-    private fun who(request: BondsAgeRequest): String = request.responseHost ?: NEARBY
+    private fun who(request: BondsAgeRequest): String = when {
+        request.nearby -> NEARBY
+        request.lan -> "區網查驗方 ${request.responseHost}"
+        else -> request.responseHost!!
+    }
 
     private suspend fun holderKey(card: AgeCard): HolderKey = when (card.source) {
         BondsCredentialSource.SELF_ISSUED -> model.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED)
@@ -260,7 +269,11 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     private fun record(request: BondsAgeRequest, card: AgeCard, failure: String?) {
         model.record(
             HistoryKind.PRESENTED, who(request), null, listOf(card.name), listOf("年滿 ${request.minimumAge} 歲"),
-            "年齡零知識證明（" + (if (request.nearby) "藍牙直接傳給對方手機，不經伺服器" else "Bonds 線上查驗") +
+            "年齡零知識證明（" + (when {
+                request.nearby -> "藍牙直接傳給對方手機，不經伺服器"
+                request.lan -> "區網直接傳給對方手機，不經伺服器"
+                else -> "Bonds 線上查驗"
+            }) +
                 "），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
         )
     }

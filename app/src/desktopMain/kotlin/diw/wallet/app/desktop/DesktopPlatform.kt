@@ -128,6 +128,8 @@ class DesktopPlatform(
 
     override fun httpClient(): HttpClient = HttpClient(Java) { followRedirects = false }
 
+    override val bondsLan: diw.wallet.core.profile.bonds.BondsLanLink by lazy { diw.wallet.core.profile.bonds.SocketBondsLanLink() }
+
     override val zk: ZkEnvironment by lazy { JvmZkEnvironment(dataDir, httpClient()) { desktopZkInfo(dataDir) } }
 
     override fun openBrowser(url: String) {

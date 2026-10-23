@@ -106,6 +106,11 @@ class WalletModelE2eTest {
         override val bondsLink: BondsLinkPeripheral get() = link.peripheral
         override val bondsLinkCentral: BondsLinkCentral get() = link.central
 
+        /** The real sockets, on loopback: the test machine may have no Wi-Fi. */
+        override val bondsLan = object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
+            override fun localAddresses() = listOf("127.0.0.1")
+        }
+
         override val zk by lazy {
             val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
             diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
@@ -1386,6 +1391,40 @@ class WalletModelE2eTest {
         assertEquals("證明已送達對方手機", fromBonds.title, "a Bonds holder gets no verdict")
         assertTrue(ours.verification!!.accepted, "the verifier still checks a Bonds holder's proof")
         assertEquals(3, checks.size)
+    }
+
+    /** The local network check: the verifier listens on its own address and the holder's post gets the verdict back. */
+    @Test
+    fun ageCheckOverTheLocalNetwork() = runBlocking<Unit> {
+        val engine = object : diw.wallet.core.zk.OpenAcAgeVerifier {
+            override suspend fun verify(check: diw.wallet.core.zk.OpenAcAgeCheck) = diw.wallet.core.zk.ZkResult.Ok(check.prepareProof.size == 1000)
+        }
+        val (verifier, _) = newWallet()
+        val (holder, _) = newWallet()
+        verifier.taiwan.ageVerifier.engines = { diw.wallet.core.zk.ZkResult.Ok(engine) }
+        verifier.taiwan.ageVerifier.startLan(18, BondsCredentialSource.TWDIW, "年齡確認")
+        val waiting = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting || it is OfflineUi.Failed }
+        })
+        val request = waiting.request
+        assertTrue(request.lan && request.responseUrl!!.startsWith("http://127.0.0.1:"), request.responseUrl)
+        // A stranger's post to the address is answered but does not end the check.
+        val stray = holder.platform.bondsLan!!.post(request.responseUrl!!, "{}".encodeToByteArray(), 10.seconds)
+        assertFalse(diw.wallet.core.profile.bonds.BondsAgeVerdict.parse(stray.second)!!.accepted)
+        assertIs<OfflineUi.AgeVerifierWaiting>(verifier.taiwan.offline.value)
+
+        val issuerKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey as org.multipaz.crypto.EcPublicKeyDoubleCoordinate
+        val material = diw.wallet.core.profile.bonds.BondsAgeMaterial("unused", diw.wallet.core.did.DidKeys.didKeyJwkJcs(issuerKey),
+            issuerKey.x.toBase64Url(), issuerKey.y.toBase64Url())
+        val proof = diw.wallet.core.zk.OpenAcAgeProof("birthdate", 3, ByteArray(1000) { 1 }, ByteArray(500) { 2 }, 5000, 700)
+        val card = AgeCard("數位憑證", BondsCredentialSource.TWDIW, "birthdate")
+        val failure = withTimeout(60.seconds) { holder.taiwan.age.send(request, card, material, proof) }
+        assertTrue(failure!!.startsWith(diw.wallet.core.profile.bonds.BondsAgeVerifier.UNTRUSTED_ISSUER), failure)
+        val shown = assertIs<OfflineUi.AgeResult>(holder.taiwan.offline.value)
+        assertFalse(shown.accepted, "an unanchored government issuer is refused, and the holder hears why")
+        assertEquals("區網查驗方 127.0.0.1 沒有接受證明", shown.title)
+        val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
+        assertTrue(result.verification!!.proofValid && !result.verification!!.accepted)
     }
 
     private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =

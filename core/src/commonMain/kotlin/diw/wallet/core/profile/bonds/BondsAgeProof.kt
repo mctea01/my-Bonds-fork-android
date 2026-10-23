@@ -44,7 +44,8 @@ import kotlin.time.Instant
  * {v:1, a:age, b:request id, c:nonce, d:cutoff date, p:purpose, s:g|s, t:seconds, u:response URL}. With u the holder
  * posts an OpenAC proof to [responseUrl]; without it (Bonds' two-device flow) b is the one-time BLE service the
  * holder advertises, and the package goes to the verifier's phone over the Bonds link with no server in between.
- * Everything in it is untrusted text from the verifier.
+ * This wallet also accepts a plain http u on a local network address ([lan]): the verifier's phone listens there
+ * (BondsLanLink). Everything in it is untrusted text from the verifier.
  */
 data class BondsAgeRequest(
     val minimumAge: Int,
@@ -65,6 +66,9 @@ data class BondsAgeRequest(
     val linkServiceId: String? get() = requestId.takeIf { nearby }
 
     val responseHost: String? get() = responseUrl?.let { Url(it).host }
+
+    /** Answered over the local network: plain http to a private or loopback IPv4 address (this wallet's extension). */
+    val lan: Boolean get() = responseUrl?.let { runCatching { Url(it) }.getOrNull() }?.let { it.protocol == URLProtocol.HTTP && lanHost(it.host) } == true
 
     /** Response hosts Bonds itself allows; another host is shown to the user as unknown, not refused. */
     val knownHost: Boolean get() = responseHost in KNOWN_HOSTS
@@ -137,10 +141,17 @@ data class BondsAgeRequest(
          */
         fun acceptableUrl(u: String, insecureHosts: Set<String> = emptySet()): Boolean = u.length <= MAX_URL && '#' !in u && runCatching {
             Url(u).let {
-                (it.protocol == URLProtocol.HTTPS || it.protocol == URLProtocol.HTTP && "${it.host}:${it.port}" in insecureHosts) &&
+                (it.protocol == URLProtocol.HTTPS || it.protocol == URLProtocol.HTTP && ("${it.host}:${it.port}" in insecureHosts || lanHost(it.host))) &&
                     it.host.isNotEmpty() && it.user == null && it.password == null
             }
         }.getOrDefault(false)
+
+        /** A dotted IPv4 literal in 10/8, 172.16/12, 192.168/16 or 127/8: a phone on the same Wi-Fi or hotspot, never a name. */
+        fun lanHost(host: String): Boolean {
+            val o = host.split('.').takeIf { it.size == 4 }?.map { p -> p.takeIf { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) }?.toInt() ?: return false }
+                ?.takeIf { parts -> parts.all { it in 0..255 } } ?: return false
+            return o[0] == 10 || o[0] == 127 || o[0] == 172 && o[1] in 16..31 || o[0] == 192 && o[1] == 168
+        }
 
         fun parse(text: String, insecureHosts: Set<String> = emptySet()): BondsAgeRequest {
             val o = json(text) ?: throw ProtocolException("invalid_request", "This request could not be read")

@@ -98,6 +98,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Clock
 import diw.wallet.core.document.sign.CleartextHttp
+import diw.wallet.core.profile.bonds.BondsLanLink
+import diw.wallet.core.profile.bonds.SocketBondsLanLink
 import diw.wallet.core.document.sign.KtorSignedDataHttp
 import diw.wallet.core.document.sign.SignedDataHttp
 import diw.wallet.core.document.sign.SignedDataRoutes
@@ -147,6 +149,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
 
     override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
+
+    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink() }
 
     /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
     @Volatile var fileAccess: AndroidFileAccess? = null

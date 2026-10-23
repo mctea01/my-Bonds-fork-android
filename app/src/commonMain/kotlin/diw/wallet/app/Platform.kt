@@ -143,6 +143,9 @@ interface PlatformServices {
     /** The verifier side of the Bonds BLE link, where the platform can act as a GATT central. */
     val bondsLinkCentral: BondsLinkCentral? get() = null
 
+    /** Age proofs over the local network (Wi-Fi or hotspot), where the platform has sockets. */
+    val bondsLan: diw.wallet.core.profile.bonds.BondsLanLink? get() = null
+
     /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
     fun keepScreenOn(on: Boolean) {}
 
