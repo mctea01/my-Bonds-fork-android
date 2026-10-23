@@ -87,9 +87,9 @@ fun OfflineScreen(
             Button(onClick = { model.back() }) { Text("返回") }
         }
         is OfflineUi.Unlisted -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.FAIL, "查驗模組不在信任清單", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
+            VerdictCard(Verdict.FAIL, "查驗模組無法確認（T4）", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
             if (riskOverride(s.service.vpUid, "仍要繼續（自行承擔風險）", "向未列名的查驗模組出示",
-                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，或未在區塊鏈上註冊。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
+                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，也不在皮夾平台網域，或與區塊鏈上的註冊不符。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
                 Button(onClick = { model.taiwan.startPickup(s.service, allowUnlisted = true) }) { Text("繼續建立交易") }
             }
             TextButton(onClick = { model.back() }) { Text("返回") }

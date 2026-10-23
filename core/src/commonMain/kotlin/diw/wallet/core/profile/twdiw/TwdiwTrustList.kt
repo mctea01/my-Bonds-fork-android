@@ -193,11 +193,14 @@ class TwdiwTrustList(
         return snap
     }
 
-    /** Whether [host] is registered for [did] (response_uri / request_uri gates); null when the DID is unknown. */
+    /**
+     * Whether [host] serves [did] (response_uri / request_uri gates): one of its registered hosts, or the platform
+     * itself (wallet.gov.tw), which hosts listed organisations' verifier modules. Null when the DID is unknown.
+     */
     suspend fun hostRegistered(did: String, host: String): Boolean? {
         val snap = verified(did) ?: return null
         val h = host.lowercase()
-        return h in snap.entry.hosts || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
+        return h in snap.entry.hosts || TwdiwHosts.isPlatformHost(h) || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
     }
 
     /**

@@ -102,7 +102,7 @@ sealed class OfflineUi {
     data class Working(val message: String) : OfflineUi()
     data class Failed(val message: String) : OfflineUi()
 
-    /** The counter service's verifier module is not an anchored organisation: the user may still go on after confirming. */
+    /** The counter service's verifier module is T4 (unlisted, off the platform, or contradicted): the user may still go on after confirming. */
     data class Unlisted(val service: TwdiwOfflineService, val message: String) : OfflineUi()
 
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */

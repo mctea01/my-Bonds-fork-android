@@ -510,8 +510,27 @@ class TwdiwPlatformTest {
     @Test
     fun offlineModuleOutsideTrustListIsRefused() = runBlocking<Unit> {
         val s = setup()
-        val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://other.mock.wallet.gov.tw", null)
+        val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://counter.example.org", null)
         val e = assertFailsWith<ProtocolException> { s.services.startOffline(stranger) }
         assertEquals("untrusted_verifier", e.code)
+        assertEquals(TrustTier.T4, s.services.offlineModuleDecision("counter.example.org").tier)
+    }
+
+    /**
+     * On the production platform a listed module whose Arbitrum anchor cannot be confirmed is T2, and a module the
+     * platform hosts for an organisation (a tax ID subdomain of wallet.gov.tw) is T2 too: both are highly trusted
+     * and open without the risk confirmation that a T4 host needs.
+     */
+    @Test
+    fun offlineModuleT2IsNotTreatedAsUnknown() = runBlocking<Unit> {
+        val s = setup()
+        val production = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = false)
+        val services = TwdiwServices(s.w.httpClient, TwdiwTrustList(s.w.httpClient, production, storage = s.w.storage), production)
+        val listed = services.offlineModuleDecision(TwdiwPlatformMock.VERIFIER_HOST)
+        assertEquals(TrustTier.T2, listed.tier, "reasons: ${listed.reasons}")
+        val hosted = services.offlineModuleDecision("52005408.wallet.gov.tw")
+        assertEquals(TrustTier.T2, hosted.tier)
+        assertEquals(TrustTier.T4, services.offlineModuleDecision("52005408.wallet.gov.tw.example.org").tier)
+        services.startOffline(services.offlineServices().single())
     }
 }
