@@ -33,12 +33,15 @@ import androidx.compose.ui.unit.dp
 import diw.wallet.app.BondsAgeFlow
 import diw.wallet.app.BondsAgeVerifierFlow
 import diw.wallet.app.OfflineUi
+import diw.wallet.app.QrScanStep
 import diw.wallet.app.WalletModel
 import diw.wallet.app.ZkChoiceKind
 import diw.wallet.app.ZkJobPhase
 import diw.wallet.app.ZkProofKind
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.util.QrEncoder
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
 
@@ -66,6 +69,7 @@ private fun AgeRequestCard(request: BondsAgeRequest, known: Boolean = request.kn
             if (request.purpose.isNotEmpty()) Text("用途：${request.purpose}")
             Text(
                 when {
+                    request.nearby && request.qr -> "送出方式：藍牙或動態 QR Code，直接傳到對方的手機，不經任何伺服器"
                     request.nearby -> "送出方式：藍牙，直接傳到對方的手機，不經任何伺服器"
                     request.lan -> "送出方式：區網（同一個 Wi-Fi 或熱點），直接傳到對方的手機。未加密，同一網路上的裝置可看到證明，但其中沒有出生日期。"
                     else -> "送出位置：${request.responseUrl}"
@@ -141,6 +145,21 @@ internal fun BondsAgeWorkingView(model: WalletModel, s: OfflineUi.AgeWorking) {
     val jobs by model.zk.jobs.collectAsState()
     val job = jobs[s.jobId]
     val left = requestSecondsLeft(s.request)
+    val qr = s.qr
+    if (qr != null) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("請對方用本錢包掃描這個動態 QR Code", style = MaterialTheme.typography.titleMedium)
+            AnimatedQr(qr, Modifier.fillMaxWidth().widthIn(max = 420.dp))
+            Text("畫面會持續變換，對方漏掉幾張也沒關係，掃到足夠的畫面就會完成。對方的手機靠近時也會改用藍牙直接傳送。",
+                style = MaterialTheme.typography.bodySmall)
+            s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Text("只含年齡證明，沒有出生日期或其他欄位。請求剩餘 ${clock(left)}", style = MaterialTheme.typography.bodySmall,
+                color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+            Button(onClick = { model.taiwan.age.qrDone() }) { Text("對方已掃描完成") }
+        }
+        return
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AgeRequestCard(s.request)
         Text(
@@ -161,6 +180,23 @@ internal fun BondsAgeWorkingView(model: WalletModel, s: OfflineUi.AgeWorking) {
     }
 }
 
+/** Cycles through the fountain frames; any [AnimatedQrTransport.Encoder.count] plus a few of them rebuild the payload. */
+@Composable
+private fun AnimatedQr(encoder: AnimatedQrTransport.Encoder, modifier: Modifier) {
+    var seed by remember(encoder) { mutableStateOf(0) }
+    LaunchedEffect(encoder) {
+        while (true) {
+            delay(QR_FRAME_MS)
+            seed++
+        }
+    }
+    val frame = remember(encoder, seed) { encoder.frame(seed) }
+    // Low error correction keeps each frame small enough to scan quickly; a missed frame costs nothing.
+    QrImage(frame, modifier, QrEncoder.Ecc.L)
+}
+
+private const val QR_FRAME_MS = 150L
+
 @Composable
 internal fun BondsAgeResultView(model: WalletModel, s: OfflineUi.AgeResult) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -175,17 +211,30 @@ internal fun BondsAgeResultView(model: WalletModel, s: OfflineUi.AgeResult) {
 }
 
 @Composable
-internal fun BondsAgeVerifierWaitingView(model: WalletModel, s: OfflineUi.AgeVerifierWaiting) {
+internal fun BondsAgeVerifierWaitingView(
+    model: WalletModel,
+    s: OfflineUi.AgeVerifierWaiting,
+    streamQr: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+) {
     val left = requestSecondsLeft(s.request)
+    var scanning by remember { mutableStateOf(false) }
+    LaunchedEffect(scanning) {
+        if (scanning && streamQr != null) {
+            streamQr { model.taiwan.ageVerifier.acceptFrame(it) }
+            scanning = false
+        }
+    }
+    val qrOnly = s.host == BondsAgeVerifierFlow.ANIMATED_QR
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(if (s.request.nearby) "請出示者用本錢包或 Bonds App 掃描" else "請出示者用本錢包掃描", style = MaterialTheme.typography.titleMedium)
+        Text(if (s.request.nearby && !qrOnly) "請出示者用本錢包或 Bonds App 掃描" else "請出示者用本錢包掃描", style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
         Text("證明年滿 ${s.request.minimumAge} 歲（出生日期不晚於 ${s.request.cutoff}）", style = MaterialTheme.typography.bodyLarge)
         Text("接受：" + bondsSourceLabel(s.request.source) + "・用途：" + s.request.purpose.ifEmpty { "未說明" }, style = MaterialTheme.typography.bodySmall)
         Text(
             when {
-                s.request.nearby -> "出示者的手機產生證明後，以藍牙直接傳到這支手機驗證，不經任何伺服器。請讓兩支手機保持靠近並開著藍牙。"
+                qrOnly -> "出示者的手機產生證明後會顯示動態 QR Code，按下方按鈕持續掃描到完成，在這支手機驗證，不需要網路或藍牙。"
+                s.request.nearby -> "出示者的手機產生證明後，以藍牙直接傳到這支手機驗證，不經任何伺服器。請讓兩支手機保持靠近並開著藍牙；藍牙連不上時，可改掃描出示者的動態 QR Code。"
                 s.request.lan -> "出示者的手機產生證明後，經 ${s.host} 直接傳到這支手機驗證，不經網際網路。出示者的手機需連在同一個 Wi-Fi 或這支手機的熱點。"
                 s.relay -> "證明送到 ${s.host} 後轉給這支手機驗證，主機只轉送。"
                 else -> "證明由 ${s.host} 驗證，這支手機只顯示主機的結果。"
@@ -202,6 +251,11 @@ internal fun BondsAgeVerifierWaitingView(model: WalletModel, s: OfflineUi.AgeVer
                 color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        s.scanned?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        if (s.request.qr && !s.checking) {
+            if (streamQr != null) Button(onClick = { scanning = true }, enabled = !scanning) { Text("掃描出示者的動態 QR Code") }
+            else Text("這個裝置沒有相機，無法掃描動態 QR Code。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
         OutlinedButton(onClick = { model.back() }) { Text("取消") }
     }
 }
@@ -241,6 +295,7 @@ internal fun BondsAgeVerifierResultView(model: WalletModel, s: OfflineUi.AgeVeri
 /** How the holder's proof reaches the verifying phone. */
 private enum class AgeRoute(val label: String) {
     BLUETOOTH("藍牙"),
+    QR("動態 QR"),
     LAN("區網"),
     HOST("查驗主機"),
 }
@@ -254,6 +309,7 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
     val host = model.taiwan.ageVerifier.host()
     val available = mapOf(
         AgeRoute.BLUETOOTH to (model.platform.bondsLinkCentral != null),
+        AgeRoute.QR to true,
         AgeRoute.LAN to (model.platform.bondsLan != null),
         AgeRoute.HOST to (host != null),
     )
@@ -271,7 +327,8 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
             }
             Text(
                 when (route) {
-                    AgeRoute.BLUETOOTH -> "出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）。"
+                    AgeRoute.BLUETOOTH -> "出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）；本錢包同時會顯示動態 QR Code 備用。"
+                    AgeRoute.QR -> "不用網路也不用藍牙：出示者的錢包把證明顯示成連續變換的動態 QR Code，用這支手機的相機掃描到完成（約數十秒）。出示者需使用本錢包。"
                     AgeRoute.LAN -> "兩支手機連在同一個 Wi-Fi（或一支開熱點讓另一支連上），證明直接傳到這支手機，不經網際網路。出示者需使用本錢包。"
                     AgeRoute.HOST -> host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" }
                         ?: "尚未設定年齡查驗主機：到設定的「零知識證明」頁填入（測試環境會使用測試伺服器）。"
@@ -293,6 +350,7 @@ internal fun BondsAgeVerifierSetup(model: WalletModel) {
                     val flow = model.taiwan.ageVerifier
                     when (route) {
                         AgeRoute.BLUETOOTH -> flow.startNearby(age!!, source, purpose.trim())
+                        AgeRoute.QR -> flow.startNearby(age!!, source, purpose.trim(), bluetooth = false)
                         AgeRoute.LAN -> flow.startLan(age!!, source, purpose.trim())
                         AgeRoute.HOST -> flow.start(age!!, source, purpose.trim())
                     }

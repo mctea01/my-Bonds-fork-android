@@ -347,7 +347,7 @@ class WalletModelE2eTest {
         fun screen(name: String, s: Screen, tab: HomeTab = HomeTab.DOCUMENTS, height: Int = 892) {
             m.tab.value = tab
             m.screen.value = s
-            shot(name, height) { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+            shot(name, height) { diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {}) }
         }
 
         screen("05-presentation-consent", Screen.Presentation)
@@ -424,6 +424,13 @@ class WalletModelE2eTest {
         screen("27-age-verify-nearby", Screen.Offline, height = 1000)
         m.taiwan.offline.value = OfflineUi.AgeWorking(nearbyRequest, age.cards.single(), "screens", sending = true, link = "藍牙傳送中 182 / 307")
         screen("28-age-sending-nearby", Screen.Offline)
+        val qrRequest = diw.wallet.core.profile.bonds.BondsAgeRequest.create(18, BondsCredentialSource.TWDIW, "年齡確認", null, qr = true)
+        m.taiwan.offline.value = OfflineUi.AgeWorking(qrRequest, age.cards.single(), "screens", sending = true, link = "等待查驗方以藍牙連線",
+            qr = diw.wallet.core.profile.bonds.AnimatedQrTransport.Encoder(kotlin.random.Random(7).nextBytes(160_000)))
+        screen("29-age-sending-qr", Screen.Offline, height = 1000)
+        m.taiwan.offline.value = OfflineUi.AgeVerifierWaiting(qrRequest, BondsAgeVerifierFlow.ANIMATED_QR, relay = true, note = null,
+            scanned = "動態 QR Code 已收到 41%（127 / 309）")
+        screen("30-age-verify-qr", Screen.Offline, height = 1000)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -1391,6 +1398,70 @@ class WalletModelE2eTest {
         assertEquals("證明已送達對方手機", fromBonds.title, "a Bonds holder gets no verdict")
         assertTrue(ours.verification!!.accepted, "the verifier still checks a Bonds holder's proof")
         assertEquals(3, checks.size)
+    }
+
+    /**
+     * The animated QR check: the verifier only scans, the holder shows fountain frames (its Bluetooth advertising
+     * finds nobody), and frames seen out of order with many missed still rebuild the package.
+     */
+    @Test
+    fun ageCheckOverAnimatedQr() = runBlocking<Unit> {
+        val engine = object : diw.wallet.core.zk.OpenAcAgeVerifier {
+            override suspend fun verify(check: diw.wallet.core.zk.OpenAcAgeCheck) =
+                diw.wallet.core.zk.ZkResult.Ok(check.prepareProof.size == 120_000 && check.showProof.size == 47_000)
+        }
+        val (verifier, _) = newWallet()
+        val (holder, _) = newWallet()
+        verifier.taiwan.ageVerifier.engines = { diw.wallet.core.zk.ZkResult.Ok(engine) }
+        verifier.taiwan.ageVerifier.startNearby(20, BondsCredentialSource.SELF_ISSUED, "年齡確認", bluetooth = false)
+        val waiting = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting || it is OfflineUi.Failed }
+        })
+        val request = waiting.request
+        assertTrue(request.nearby && request.qr && "\"q\":1" in request.encode())
+        assertTrue(diw.wallet.core.profile.bonds.BondsAgeRequest.parse(request.encode()).qr)
+
+        val issuerKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey as org.multipaz.crypto.EcPublicKeyDoubleCoordinate
+        val material = diw.wallet.core.profile.bonds.BondsAgeMaterial("unused", diw.wallet.core.did.DidKeys.didKeyJwkJcs(issuerKey),
+            issuerKey.x.toBase64Url(), issuerKey.y.toBase64Url())
+        val proof = diw.wallet.core.zk.OpenAcAgeProof("birthdate", 3, kotlin.random.Random(1).nextBytes(120_000), kotlin.random.Random(2).nextBytes(47_000), 5000, 700)
+        val card = AgeCard(TaiwanModel.NATIONAL_ID_NAME, BondsCredentialSource.SELF_ISSUED, "birthdate")
+        val sent = async(Dispatchers.Default) { holder.taiwan.age.send(request, card, material, proof) }
+        val shown = assertIs<OfflineUi.AgeWorking>(withTimeout(30.seconds) {
+            holder.taiwan.offline.first { it is OfflineUi.AgeWorking && it.qr != null }
+        })
+        val encoder = shown.qr!!
+        assertTrue(encoder.count in 250..400, "${encoder.count} frames of ${diw.wallet.core.profile.bonds.AnimatedQrTransport.BLOCK_BYTES} bytes")
+
+        // Another app's animated code read whole is refused without ending the check; garbage is skipped.
+        verifier.handleUri(diw.wallet.core.profile.bonds.AnimatedQrTransport.Encoder("other".encodeToByteArray()).frame(0))
+        val refused = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting && it.note != null && !it.checking }
+        })
+        assertTrue("無法讀取" in refused.note!!, refused.note)
+        assertFalse(verifier.taiwan.ageVerifier.acceptFrame("DIWQ1:Z:00:1").done)
+        // The camera joins late and misses about a third of the loop.
+        val misses = kotlin.random.Random(9)
+        var seed = encoder.count / 3
+        var frames = 0
+        while (true) {
+            seed++
+            if (misses.nextInt(3) == 0) continue
+            frames++
+            if (verifier.taiwan.ageVerifier.acceptFrame(encoder.frame(seed)).done) break
+            assertTrue(frames < encoder.count + 40, "needed more than $frames frames for ${encoder.count} blocks")
+        }
+        val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
+        assertTrue(result.verification!!.proofValid && result.verification!!.accepted, result.toString())
+        assertEquals(BondsAgeVerifierFlow.ANIMATED_QR, result.host)
+        assertTrue(verifier.taiwan.ageVerifier.acceptFrame(encoder.frame(0)).done, "frames after the check close the camera")
+
+        holder.taiwan.age.qrDone()
+        assertNull(withTimeout(30.seconds) { sent.await() })
+        val done = assertIs<OfflineUi.AgeResult>(holder.taiwan.offline.value)
+        assertEquals("已出示動態 QR Code", done.title)
+        val seen = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
+        assertTrue("掃描動態 QR Code 收到" in seen.note!!, seen.note)
     }
 
     /** The local network check: the verifier listens on its own address and the holder's post gets the verdict back. */

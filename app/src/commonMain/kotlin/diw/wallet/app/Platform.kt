@@ -50,6 +50,9 @@ interface BondsLinkPeripheral {
     suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray?
 }
 
+/** One code of a continuous camera scan was handled: [done] closes the camera, [progress] is shown under the preview. */
+data class QrScanStep(val done: Boolean, val progress: String? = null)
+
 /**
  * The verifier side of the Bonds link: a GATT central that finds the holder by the request's one-time service UUID,
  * subscribes to the frames, writes "received" and then the framed reply [answer] computes from the payload, when the

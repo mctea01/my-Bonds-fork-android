@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.BondsCardKind
 import diw.wallet.app.HomeTab
+import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.OfflineUi
 import diw.wallet.app.StatusTexts
@@ -69,10 +70,15 @@ private fun mmss(s: Long) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 
 /**
  * Codes shown at a counter or to a verifier, and the Bonds verifier flow. [readQr] reads one code with the camera,
- * or from a picture where [hasCamera] is false.
+ * or from a picture where [hasCamera] is false; [streamQr] keeps the camera open for frame after frame.
  */
 @Composable
-fun OfflineScreen(model: WalletModel, readQr: suspend () -> String?, hasCamera: Boolean) {
+fun OfflineScreen(
+    model: WalletModel,
+    readQr: suspend () -> String?,
+    hasCamera: Boolean,
+    streamQr: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
+) {
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
         is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
@@ -93,10 +99,10 @@ fun OfflineScreen(model: WalletModel, readQr: suspend () -> String?, hasCamera: 
         is OfflineUi.AgeChoose -> BondsAgeChooseView(model, s)
         is OfflineUi.AgeWorking -> BondsAgeWorkingView(model, s)
         is OfflineUi.AgeResult -> BondsAgeResultView(model, s)
-        is OfflineUi.AgeVerifierWaiting -> BondsAgeVerifierWaitingView(model, s)
+        is OfflineUi.AgeVerifierWaiting -> BondsAgeVerifierWaitingView(model, s, streamQr)
         is OfflineUi.AgeVerifierResult -> BondsAgeVerifierResultView(model, s)
         is OfflineUi.BondsFrames -> BondsFramesView(model, s)
-        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera)
+        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera, streamQr)
         is OfflineUi.VerifierResult -> VerifierResultView(model, s)
     }
 }
@@ -218,17 +224,32 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
 }
 
 @Composable
-private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChallenge, readQr: suspend () -> String?, hasCamera: Boolean) {
+private fun VerifierChallengeView(
+    model: WalletModel,
+    s: OfflineUi.VerifierChallenge,
+    readQr: suspend () -> String?,
+    hasCamera: Boolean,
+    streamQr: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+) {
     var scanning by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
     LaunchedEffect(scanning) {
         if (scanning) {
-            // With the camera, one scan per frame until the presentation is complete or the user closes the scanner;
-            // a picture holds one frame per pick.
-            do {
-                val text = readQr() ?: break
-                model.handleUri(text)
-            } while (hasCamera && model.taiwan.verifying)
+            if (streamQr != null) {
+                // The camera stays open across the rotating frames until the presentation is complete.
+                streamQr { code ->
+                    model.handleUri(code)
+                    val now = model.taiwan.offline.value as? OfflineUi.VerifierChallenge
+                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { "已收到 ${it.received} / ${it.total} 張畫面" })
+                }
+            } else {
+                // One scan per frame until the presentation is complete or the user closes the scanner; a picture
+                // holds one frame per pick.
+                do {
+                    val text = readQr() ?: break
+                    model.handleUri(text)
+                } while (hasCamera && model.taiwan.verifying)
+            }
             scanning = false
         }
     }

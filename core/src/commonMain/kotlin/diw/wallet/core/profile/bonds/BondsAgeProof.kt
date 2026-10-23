@@ -45,7 +45,8 @@ import kotlin.time.Instant
  * posts an OpenAC proof to [responseUrl]; without it (Bonds' two-device flow) b is the one-time BLE service the
  * holder advertises, and the package goes to the verifier's phone over the Bonds link with no server in between.
  * This wallet also accepts a plain http u on a local network address ([lan]): the verifier's phone listens there
- * (BondsLanLink). Everything in it is untrusted text from the verifier.
+ * (BondsLanLink); and q:1 on a nearby request ([qr]), which says the verifier can also scan the package as an animated
+ * QR (AnimatedQrTransport) when Bluetooth fails. Bonds ignores q. Everything in it is untrusted text from the verifier.
  */
 data class BondsAgeRequest(
     val minimumAge: Int,
@@ -59,6 +60,8 @@ data class BondsAgeRequest(
     val createdAt: Instant,
     /** Where the package is posted; null for a nearby request answered over Bluetooth. */
     val responseUrl: String?,
+    /** A nearby verifier that can also scan an animated QR. */
+    val qr: Boolean = false,
 ) {
     val nearby: Boolean get() = responseUrl == null
 
@@ -94,6 +97,7 @@ data class BondsAgeRequest(
         put("c", nonce)
         put("d", cutoff.toString())
         put("p", purpose)
+        if (qr) put("q", 1)
         put("s", source.wire)
         put("t", createdAt.epochSeconds)
         responseUrl?.let { put("u", it) }
@@ -118,14 +122,21 @@ data class BondsAgeRequest(
          * and nonce, and the cutoff [minimumAge] years before today in Taiwan, as Bonds computes it (29 February falls
          * back to 28 February).
          */
-        fun create(minimumAge: Int, source: BondsCredentialSource, purpose: String, responseUrl: String?, now: Instant = Clock.System.now()): BondsAgeRequest {
+        fun create(
+            minimumAge: Int,
+            source: BondsCredentialSource,
+            purpose: String,
+            responseUrl: String?,
+            now: Instant = Clock.System.now(),
+            qr: Boolean = false,
+        ): BondsAgeRequest {
             if (minimumAge !in 1..120) throw ProtocolException("invalid_request", "Minimum age out of range")
             if (source == BondsCredentialSource.ANY) throw ProtocolException("invalid_request", "Age requests name g or s")
             val today = now.toLocalDateTime(TAIPEI).date
             return BondsAgeRequest(
                 minimumAge, BondsPresentationRequest.randomUuid(), PlatformCrypto.randomBytes(NONCE_BYTES).toBase64Url(),
                 today.minus(DatePeriod(years = minimumAge)), purpose.filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE),
-                source, Instant.fromEpochSeconds(now.epochSeconds), responseUrl,
+                source, Instant.fromEpochSeconds(now.epochSeconds), responseUrl, qr && responseUrl == null,
             )
         }
 
@@ -170,7 +181,8 @@ data class BondsAgeRequest(
             val url = if ("u" !in o) null
             else o.str("u")?.takeIf { acceptableUrl(it, insecureHosts) } ?: throw ProtocolException("invalid_request", "The response address must be https")
             val purpose = o.str("p").orEmpty().filter { !it.isISOControl() }.take(BondsPresentationRequest.MAX_PURPOSE)
-            return BondsAgeRequest(age, id, nonce, cutoff, purpose, source, Instant.fromEpochSeconds(created), url)
+            val qr = url == null && (o["q"] as? JsonPrimitive)?.content == "1"
+            return BondsAgeRequest(age, id, nonce, cutoff, purpose, source, Instant.fromEpochSeconds(created), url, qr)
         }
     }
 }

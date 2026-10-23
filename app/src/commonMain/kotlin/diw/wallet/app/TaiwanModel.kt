@@ -5,6 +5,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsAgeVerdict
 import diw.wallet.core.profile.bonds.BondsAgeVerification
@@ -110,13 +111,17 @@ sealed class OfflineUi {
     /** Bonds web age request scanned: pick the card to prove from. */
     data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>, val known: Boolean = request.knownHost) : OfflineUi()
 
-    /** The age proof [jobId] is being produced, or with [sending] sent to the verifier; [link] is the Bluetooth progress. */
+    /**
+     * The age proof [jobId] is being produced, or with [sending] sent to the verifier; [link] is the Bluetooth progress
+     * and [qr] the animated QR shown alongside it when the verifier can scan one.
+     */
     data class AgeWorking(
         val request: BondsAgeRequest,
         val card: AgeCard,
         val jobId: String,
         val sending: Boolean = false,
         val link: String? = null,
+        val qr: AnimatedQrTransport.Encoder? = null,
     ) : OfflineUi()
 
     /** The verifier's verdict, or why no proof was sent. */
@@ -131,8 +136,9 @@ sealed class OfflineUi {
 
     /**
      * Verifier side of a Bonds age check: the request QR is shown while [host] waits for the proof, or for a nearby
-     * request this device listens over Bluetooth ([link] is its progress). [relay]: the proof is verified on this
-     * device; [note] says why not. [checking]: the proof has arrived and is being verified.
+     * request this device listens over Bluetooth ([link] is its progress) and reads the holder's animated QR
+     * ([scanned]). [relay]: the proof is verified on this device; [note] says why not. [checking]: the proof has
+     * arrived and is being verified.
      */
     data class AgeVerifierWaiting(
         val request: BondsAgeRequest,
@@ -141,6 +147,8 @@ sealed class OfflineUi {
         val note: String?,
         val checking: Boolean = false,
         val link: String? = null,
+        /** Progress of the holder's animated QR, when scanned. */
+        val scanned: String? = null,
     ) : OfflineUi()
 
     /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */

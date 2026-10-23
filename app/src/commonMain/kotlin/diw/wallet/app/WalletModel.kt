@@ -47,6 +47,7 @@ import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.HeldMoicaCard
 import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsQrTransport
 import diw.wallet.core.profile.msvid.LinkedDomains
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -967,6 +968,10 @@ class WalletModel(val platform: PlatformServices) {
         taiwan.preferredDocument = null
         if (BondsQrTransport.isFrame(u)) {
             taiwan.acceptVerifierFrame(u)
+            return
+        }
+        if (AnimatedQrTransport.isFrame(u)) {
+            taiwan.ageVerifier.acceptFrame(u).progress?.let { message.value = it }
             return
         }
         when (val entry = TwdiwEntryParser.parse(u)) {

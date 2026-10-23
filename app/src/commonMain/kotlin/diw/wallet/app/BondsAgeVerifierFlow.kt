@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import diw.wallet.core.profile.bonds.AnimatedQrCollector
 import diw.wallet.core.profile.bonds.BondsAgePackage
 import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsAgeVerdict
@@ -7,6 +8,8 @@ import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsAgeVerifier
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsLinkTransport
+import diw.wallet.core.profile.bonds.BondsReception
+import diw.wallet.core.profile.bonds.BondsTransportException
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
@@ -24,6 +27,10 @@ import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,10 +48,15 @@ import kotlin.time.Duration.Companion.seconds
  * issues a Bonds-compatible request QR and receives the holder's proof: when this device can check OpenAC proofs the
  * host only relays the package here and returns this device's verdict to the holder; otherwise the host verifies and
  * this device shows its verdict, labelled as such. Nearby ([startNearby]) there is no server at all: the holder's
- * phone sends the package over Bluetooth and this device verifies it and answers over the same link.
+ * phone sends the package over Bluetooth, or shows it as an animated QR, and this device verifies it.
  */
 class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
+
+    /** The animated QR being collected for a nearby check. */
+    private class PendingFrames(val request: BondsAgeRequest, val collector: AnimatedQrCollector, val scanned: Channel<ByteArray>)
+
+    private var frames: PendingFrames? = null
 
     /** This device's OpenAC verifier, or why there is none; replaced in tests. */
     internal var engines: suspend () -> ZkResult<OpenAcAgeVerifier> = { model.zk.ageVerifier() }
@@ -89,48 +101,102 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     }
 
     /**
-     * A nearby check over the Bonds BLE link: the QR carries a one-time service UUID instead of a response address,
-     * this device scans for the holder advertising it, verifies the package here and writes the verdict back.
+     * A nearby check with no server: the QR carries a one-time service UUID instead of a response address. With
+     * [bluetooth] this device scans for the holder advertising it over the Bonds BLE link, verifies the package here
+     * and writes the verdict back; at the same time (or only, without Bluetooth) the holder's animated QR can be
+     * scanned ([acceptFrame]). Whichever completes first is verified, the other is stopped.
      */
-    fun startNearby(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
-        val link = model.platform.bondsLinkCentral ?: run {
+    fun startNearby(minimumAge: Int, source: BondsCredentialSource, purpose: String, bluetooth: Boolean = true) {
+        val link = if (bluetooth) model.platform.bondsLinkCentral ?: run {
             model.message.value = NO_CENTRAL
             return
-        }
+        } else null
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("準備藍牙年齡查驗")
+        ui.value = OfflineUi.Working(if (bluetooth) "準備藍牙年齡查驗" else "準備動態 QR 年齡查驗")
         job = model.scope.launch {
             try {
-                link.unavailableReason()?.let {
-                    ui.value = OfflineUi.Failed("藍牙無法使用：$it")
-                    return@launch
-                }
-                val engine = localEngine("藍牙") ?: return@launch
-                val request = BondsAgeRequest.create(minimumAge, source, purpose, null)
-                val waiting = OfflineUi.AgeVerifierWaiting(request, BLUETOOTH, relay = true, note = null)
+                val engine = localEngine(if (bluetooth) BLUETOOTH else ANIMATED_QR) ?: return@launch
+                // Without Bluetooth the holder's animated QR still works, so a radio problem is a note, not a failure.
+                val note = link?.unavailableReason()?.let { "藍牙無法使用（$it），請改掃描出示者的動態 QR Code。" }
+                val request = BondsAgeRequest.create(minimumAge, source, purpose, null, qr = true)
+                val host = if (bluetooth) BLUETOOTH else ANIMATED_QR
+                val waiting = OfflineUi.AgeVerifierWaiting(request, host, relay = true, note = note)
+                val scanned = Channel<ByteArray>(Channel.CONFLATED)
+                frames = PendingFrames(request, AnimatedQrCollector(BondsLinkTransport.AGE_MAX_PAYLOAD), scanned)
                 model.platform.keepScreenOn(true)
                 ui.value = waiting
-                var result: OfflineUi.AgeVerifierResult? = null
-                withTimeoutOrNull(request.expiresAt + GRACE - Clock.System.now()) {
-                    link.receive(request.linkServiceId!!, BondsLinkTransport.AGE_MAX_PAYLOAD, onProgress = { text ->
-                        (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == request }?.let { ui.value = it.copy(link = text) }
-                    }, answer = { bytes ->
-                        ui.value = waiting.copy(checking = true)
-                        val (shown, verdict) = check(request, BLUETOOTH, engine, bytes.decodeToString())
-                        result = shown
-                        verdict.encode().encodeToByteArray()
-                    })
+                fun update(change: (OfflineUi.AgeVerifierWaiting) -> OfflineUi.AgeVerifierWaiting) {
+                    (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == request }?.let { ui.value = change(it) }
                 }
-                show(result ?: OfflineUi.AgeVerifierResult(request, BLUETOOTH, null, null, EXPIRED))
+                val result = withTimeoutOrNull(request.expiresAt + GRACE - Clock.System.now()) {
+                    coroutineScope {
+                        val done = CompletableDeferred<OfflineUi.AgeVerifierResult>()
+                        if (link != null && note == null) launch {
+                            var shown: OfflineUi.AgeVerifierResult? = null
+                            try {
+                                link.receive(request.linkServiceId!!, BondsLinkTransport.AGE_MAX_PAYLOAD, onProgress = { text ->
+                                    update { it.copy(link = text) }
+                                }, answer = { bytes ->
+                                    update { it.copy(checking = true) }
+                                    val (r, verdict) = check(request, BLUETOOTH, engine, bytes.decodeToString())
+                                    shown = r
+                                    verdict.encode().encodeToByteArray()
+                                })
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                update { it.copy(link = "藍牙沒有完成（${model.describe(e)}），仍可掃描出示者的動態 QR Code。") }
+                            }
+                            shown?.let { done.complete(it) }
+                        }
+                        launch {
+                            // Something else read whole (another app's animated code) does not end the check.
+                            for (bytes in scanned) {
+                                update { it.copy(checking = true) }
+                                val r = check(request, ANIMATED_QR, engine, bytes.decodeToString()).first
+                                if (r.verification != null) {
+                                    done.complete(r)
+                                    break
+                                }
+                                update { it.copy(checking = false, scanned = null, note = r.error) }
+                            }
+                        }
+                        done.await().also { coroutineContext.cancelChildren() }
+                    }
+                }
+                show(result ?: OfflineUi.AgeVerifierResult(request, host, null, null, EXPIRED))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.value = OfflineUi.Failed("藍牙年齡查驗沒有完成：" + model.describe(e))
+                ui.value = OfflineUi.Failed("年齡查驗沒有完成：" + model.describe(e))
             } finally {
+                frames = null
                 model.platform.keepScreenOn(false)
             }
         }
+    }
+
+    /** A frame of the holder's animated QR for the running nearby check; the camera closes once the package is whole. */
+    fun acceptFrame(text: String): QrScanStep {
+        val pending = frames ?: return QrScanStep(true, "目前沒有等待動態 QR Code 的年齡查驗")
+        val reception = try {
+            pending.collector.accept(text)
+        } catch (e: BondsTransportException) {
+            return QrScanStep(false, "這張畫面無法讀取，請繼續對準")
+        }
+        val (got, total) = when (reception) {
+            is BondsReception.Completed -> {
+                pending.collector.reset()
+                pending.scanned.trySend(reception.payload)
+                return QrScanStep(true)
+            }
+            is BondsReception.Accepted -> reception.received to reception.total
+            is BondsReception.Duplicate -> reception.received to reception.total
+        }
+        val progress = "動態 QR Code 已收到 ${got * 100 / total}%（$got / $total）"
+        (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == pending.request }?.let { ui.value = it.copy(scanned = progress) }
+        return QrScanStep(false, progress)
     }
 
     /**
@@ -195,6 +261,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     fun stop() {
         job?.cancel()
         job = null
+        frames = null
     }
 
     private suspend fun createSession(host: String, minimumAge: Int, source: BondsCredentialSource, purpose: String, relay: Boolean): JsonObject {
@@ -284,7 +351,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             HistoryKind.VERIFIED, "年齡零知識證明", v?.issuerTrust,
             listOfNotNull(v?.let { if (it.selfIssued) "自發卡（持有者自己的金鑰）" else "發卡者 ${shortDid(it.issuerDid)}" }),
             listOf("年滿 ${result.request.minimumAge} 歲"),
-            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) "，藍牙直接收到、不經伺服器" else if (result.request.lan) "，區網直接收到、不經伺服器" else "") +
+            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) (if (result.host == ANIMATED_QR) "，掃描動態 QR Code 收到、不經伺服器" else "，藍牙直接收到、不經伺服器") else if (result.request.lan) "，區網直接收到、不經伺服器" else "") +
                 (if (v != null) "，在這支手機驗證" else "，由 ${result.host} 驗證") +
                 "，用途：${result.request.purpose.ifEmpty { "未說明" }}",
             failure,
@@ -299,6 +366,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         val GRACE = 30.seconds
         const val EXPIRED = "對方沒有在時限內出示，請重新產生查驗請求。"
         const val BLUETOOTH = "藍牙"
+        const val ANIMATED_QR = "動態 QR Code"
         const val NO_LAN = "這支手機沒有連上 Wi-Fi 或開啟熱點，無法用區網查驗。請兩支手機連上同一個 Wi-Fi，或由其中一支開熱點讓另一支連上。"
         const val NO_CENTRAL = "這個平台無法以藍牙接收證明，請改用查驗主機。"
 

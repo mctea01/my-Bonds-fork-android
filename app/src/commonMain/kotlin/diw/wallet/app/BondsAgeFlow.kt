@@ -2,6 +2,7 @@ package diw.wallet.app
 
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsAgeCredential
 import diw.wallet.core.profile.bonds.BondsAgeMaterial
 import diw.wallet.core.profile.bonds.BondsAgePackage
@@ -25,6 +26,8 @@ import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -48,11 +51,12 @@ data class AgeCard(
 /**
  * Answers a Bonds age request (BondsAgeRequest) with an OpenAC proof: the holder picks a card, the proof is produced
  * and checked on this device, then posted to the response address, or for a nearby request sent over the Bonds BLE
- * link to the verifier's phone, with the verdict shown. Only the two proofs, the statement and the issuer DID leave
+ * link (or shown as an animated QR) to the verifier's phone, with the verdict shown. Only the two proofs, the statement and the issuer DID leave
  * the device; the history records the statement, never a value.
  */
 class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
+    private var scanned: CompletableDeferred<String?>? = null
     private val client by lazy { model.http.config { followRedirects = false } }
 
     fun start(text: String) {
@@ -69,7 +73,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                     !request.nearby || cards.isEmpty() -> null
                     link == null -> NO_LINK
                     else -> link.unavailableReason()?.let { "藍牙無法使用：$it。處理後請再掃描一次。" }
-                }
+                }?.takeUnless { request.qr } // the animated QR does not need the radio
                 when {
                     !request.isFresh(Clock.System.now()) -> OfflineUi.Failed(EXPIRED)
                     cards.isEmpty() -> OfflineUi.Failed(noCard(request.source))
@@ -174,7 +178,12 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
         val who = who(request)
         val (status, body) = try {
             val lan = model.platform.bondsLan?.takeIf { request.lan }
-            if (request.nearby) nearby(request, card, pkg)
+            if (request.nearby) HttpStatusCode.OK to (nearby(request, card, pkg) ?: run {
+                ui.value = OfflineUi.AgeResult(request, card, true, "已出示動態 QR Code", listOf(
+                    "對方掃描後在自己的手機驗證，結果以對方手機的畫面為準。", "對方沒有收到出生日期或其他欄位。", timing,
+                ), retry = false)
+                return null
+            })
             // A socket of its own: Android release builds refuse clear text in their HTTP stacks.
             else if (lan != null) lan.post(request.responseUrl!!, pkg.encode().encodeToByteArray(), SEND_TIMEOUT).let { (code, text) -> HttpStatusCode.fromValue(code) to text }
             else withTimeout(SEND_TIMEOUT) {
@@ -233,15 +242,55 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     /**
      * Sends the package over the verifier's one-time BLE service and waits for its verdict, which the verifier's phone
      * reaches by checking the proofs itself; the reply is read as an HTTP 200 body would be. An empty body: the
-     * verifier (Bonds) only confirmed receipt.
+     * verifier (Bonds) only confirmed receipt. When the verifier can also scan an animated QR, it is shown at the same
+     * time and stays up if Bluetooth fails; null when the holder said the verifier finished scanning it ([qrDone]).
      */
-    private suspend fun nearby(request: BondsAgeRequest, card: AgeCard, pkg: BondsAgePackage): Pair<HttpStatusCode, String> {
-        val link = model.platform.bondsLink ?: throw ProtocolException("unsupported", NO_LINK)
+    private suspend fun nearby(request: BondsAgeRequest, card: AgeCard, pkg: BondsAgePackage): String? {
+        val link = model.platform.bondsLink
+        val bytes = pkg.encode().encodeToByteArray()
         val id = jobId(request)
-        val reply = link.exchange(request.linkServiceId!!, pkg.encode().encodeToByteArray()) { text ->
-            (ui.value as? OfflineUi.AgeWorking)?.takeIf { it.jobId == id }?.let { ui.value = it.copy(link = text) }
-        } ?: throw ProtocolException("link_failed", "對方沒有回覆結果")
-        return HttpStatusCode.OK to reply.decodeToString()
+        fun update(change: (OfflineUi.AgeWorking) -> OfflineUi.AgeWorking) {
+            (ui.value as? OfflineUi.AgeWorking)?.takeIf { it.jobId == id }?.let { ui.value = change(it) }
+        }
+        if (!request.qr) {
+            if (link == null) throw ProtocolException("unsupported", NO_LINK)
+            val reply = link.exchange(request.linkServiceId!!, bytes) { text -> update { it.copy(link = text) } }
+                ?: throw ProtocolException("link_failed", "對方沒有回覆結果")
+            return reply.decodeToString()
+        }
+        val done = CompletableDeferred<String?>()
+        scanned = done
+        update { it.copy(qr = AnimatedQrTransport.Encoder(bytes)) }
+        model.platform.keepScreenOn(true)
+        return try {
+            coroutineScope {
+                val viaLink = launch {
+                    val problem = if (link == null) "這支手機無法以藍牙周邊模式傳送" else link.unavailableReason()
+                    if (link == null || problem != null) {
+                        update { it.copy(link = "藍牙無法使用（$problem），請讓對方掃描動態 QR Code。") }
+                        return@launch
+                    }
+                    val reply = try {
+                        link.exchange(request.linkServiceId!!, bytes) { text -> update { it.copy(link = text) } }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (reply != null) done.complete(reply.decodeToString())
+                    else update { it.copy(link = "藍牙沒有連上，請讓對方掃描動態 QR Code。") }
+                }
+                done.await().also { viaLink.cancel() }
+            }
+        } finally {
+            scanned = null
+            model.platform.keepScreenOn(false)
+        }
+    }
+
+    /** The verifier finished scanning the animated QR: stop showing it and Bluetooth. */
+    fun qrDone() {
+        scanned?.complete(null)
     }
 
     /** Who the proof goes to, for the screens and the history. */
@@ -270,6 +319,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
         model.record(
             HistoryKind.PRESENTED, who(request), null, listOf(card.name), listOf("年滿 ${request.minimumAge} 歲"),
             "年齡零知識證明（" + (when {
+                request.nearby && request.qr -> "藍牙或動態 QR Code 直接傳給對方手機，不經伺服器"
                 request.nearby -> "藍牙直接傳給對方手機，不經伺服器"
                 request.lan -> "區網直接傳給對方手機，不經伺服器"
                 else -> "Bonds 線上查驗"
