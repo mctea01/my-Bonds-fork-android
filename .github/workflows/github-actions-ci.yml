@@ -21,7 +21,7 @@ env:
   # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
   DIW_ZK_NATIVE: require
   # Link the OpenAC age-proof backend (needs protoc and libclang) on every platform.
-  DIW_ZK_FEATURES: openac
+  DIW_ZK_FEATURES: openac,tlsn
 
 jobs:
   # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
