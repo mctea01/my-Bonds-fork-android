@@ -7,9 +7,17 @@
 
 ## 發布方式
 
-Release workflow 執行 `./gradlew :test-servers:templatePack`，把 `build/zk-templates.jwt` 附加到 Release。
-這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256）簽章的 JWS，版本為建置時間。
+每次推送到 main，CI 的 test 工作會執行 `./gradlew :test-servers:templatePack`，release 工作再把 `zk-templates.jwt`
+附加到 nightly Release（App 從 `releases/download/nightly/zk-templates.jwt` 下載）。
+這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256 私鑰 PEM）簽章的 JWS，版本為建置時間；沒有設定 Secret 時略過。
 App 只接受 `ZkTemplatePack.TRUSTED_KEYS` 中公鑰簽的版型包，也不會安裝比已安裝版本舊的版型包。
+
+產生金鑰（私鑰只放進 Secret，公鑰加入 `TRUSTED_KEYS`）：
+
+```
+openssl ecparam -name prime256v1 -genkey -noout -out zk-templates.key
+openssl ec -in zk-templates.key -pubout -out zk-templates.pub
+```
 
 ## 規則
 

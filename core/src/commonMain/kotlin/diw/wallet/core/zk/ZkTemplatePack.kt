@@ -42,9 +42,12 @@ data class ZkTemplatePack(
     companion object {
         const val TYP = "zk-templates+jwt"
 
-        /** The release asset name; the latest release's copy is at [RELEASE_URL]. */
+        /**
+         * The release asset name. Every push to main replaces the "nightly" pre-release, which carries the pack;
+         * GitHub's releases/latest skips pre-releases, so the tag is named.
+         */
         const val FILE = "zk-templates.jwt"
-        const val RELEASE_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/latest/download/$FILE"
+        const val RELEASE_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/nightly/$FILE"
 
         /**
          * PEM public keys (P-256) allowed to sign packs. The private key is a GitHub Actions secret of the
