@@ -36,7 +36,12 @@ import kotlin.concurrent.thread
  * and answers every request with a synthetic body that starts with status=OK, with a Content-Length or, when
  * [chunked], in 127-byte chunks. Requests received are kept in [requests] so a test can check what was really sent.
  */
-class ZkTlsTarget(private val bodySize: Int = 24, private val chunked: Boolean = false) : AutoCloseable {
+class ZkTlsTarget(
+    private val bodySize: Int = 24,
+    private val chunked: Boolean = false,
+    /** Answers a request head with a body instead of the status=OK filler (a synthetic record page). */
+    private val responder: ((String) -> ByteArray)? = null,
+) : AutoCloseable {
     private val caKeys = ecKeys()
     private val leafKeys = ecKeys()
     private val ca: X509Certificate = certificate("CN=DIW zkTLS Test CA", caKeys.public, "CN=DIW zkTLS Test CA", caKeys, authority = true)
@@ -84,9 +89,9 @@ class ZkTlsTarget(private val bodySize: Int = 24, private val chunked: Boolean =
             head.write(b)
             require(head.size() <= 4096) { "Request head too long" }
         }
-        requests += head.toByteArray().decodeToString()
-        val body = ByteArray(bodySize) { 'x'.code.toByte() }
-        "status=OK".encodeToByteArray().copyInto(body)
+        val text = head.toByteArray().decodeToString()
+        requests += text
+        val body = responder?.invoke(text) ?: ByteArray(bodySize) { 'x'.code.toByte() }.also { "status=OK".encodeToByteArray().copyInto(it) }
         val response = ByteArrayOutputStream()
         if (chunked) {
             response.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".encodeToByteArray())
@@ -98,7 +103,8 @@ class ZkTlsTarget(private val bodySize: Int = 24, private val chunked: Boolean =
             }
             response.write("0\r\n\r\n".encodeToByteArray())
         } else {
-            response.write("HTTP/1.1 200 OK\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".encodeToByteArray())
+            val type = if (responder != null) "Content-Type: text/html; charset=utf-8\r\n" else ""
+            response.write("HTTP/1.1 200 OK\r\n${type}Content-Length: ${body.size}\r\nConnection: close\r\n\r\n".encodeToByteArray())
             response.write(body)
         }
         s.outputStream.write(response.toByteArray())

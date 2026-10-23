@@ -11,6 +11,7 @@ import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.profile.bonds.BondsReception
 import diw.wallet.core.profile.bonds.BondsTransportException
 import diw.wallet.core.profile.bonds.MAX_LAN_URLS
+import diw.wallet.core.profile.bonds.networks
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
@@ -89,7 +90,8 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 val token = created.str("token") ?: throw ProtocolException("server_error", "No token")
                 val note = (local as? ZkResult.Failed)?.let { "這支手機無法驗證（${it.reason}），改由查驗主機驗證。" }
                 model.platform.keepScreenOn(true)
-                ui.value = OfflineUi.AgeVerifierWaiting(request, Url(host).host, engine != null, note)
+                ui.value = OfflineUi.AgeVerifierWaiting(request, Url(host).host, engine != null, note,
+                    details = LanDetails.age(request) + "回應網址：${request.responseUrl}")
                 follow(host, session, token, request, engine, note)
             } catch (e: CancellationException) {
                 throw e
@@ -122,7 +124,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 val note = link?.unavailableReason()?.let { "藍牙無法使用（$it），請改掃描出示者的動態 QR Code。" }
                 val request = BondsAgeRequest.create(minimumAge, source, purpose, null, qr = true)
                 val host = if (bluetooth) BLUETOOTH else ANIMATED_QR
-                val waiting = OfflineUi.AgeVerifierWaiting(request, host, relay = true, note = note)
+                val waiting = OfflineUi.AgeVerifierWaiting(request, host, relay = true, note = note, details = LanDetails.age(request))
                 val scanned = Channel<ByteArray>(Channel.CONFLATED)
                 frames = PendingFrames(request, AnimatedQrCollector(BondsLinkTransport.AGE_MAX_PAYLOAD), scanned)
                 model.platform.keepScreenOn(true)
@@ -216,26 +218,32 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         ui.value = OfflineUi.Working("準備區網年齡查驗")
         job = model.scope.launch {
             try {
-                val addresses = lan.localAddresses().take(MAX_LAN_URLS).ifEmpty {
+                val interfaces = lan.localInterfaces().take(MAX_LAN_URLS).ifEmpty {
                     ui.value = OfflineUi.Failed(NO_LAN)
                     return@launch
                 }
+                val addresses = interfaces.map { it.address }
                 val engine = localEngine("區網") ?: return@launch
-                val host = "區網 " + addresses.joinToString("、")
+                // People see the network; the addresses are in the technical details.
+                val host = "區網（${interfaces.networks()}）"
+                var details = emptyList<String>()
                 var request: BondsAgeRequest? = null
                 var result: OfflineUi.AgeVerifierResult? = null
                 model.platform.keepScreenOn(true)
                 withTimeoutOrNull(BondsAgeRequest.LIFETIME + GRACE) {
                     lan.serve(addresses, "/age/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLinkTransport.AGE_MAX_PAYLOAD, onListening = { urls ->
                         request = BondsAgeRequest.create(minimumAge, source, purpose, urls.first(), otherLanUrls = urls.drop(1))
-                            .also { ui.value = OfflineUi.AgeVerifierWaiting(it, host, relay = true, note = null) }
+                            .also {
+                                details = LanDetails.age(it, LanDetails.listening(urls, interfaces))
+                                ui.value = OfflineUi.AgeVerifierWaiting(it, host, relay = true, note = null, details = details)
+                            }
                     }) { body ->
                         val r = request!!
-                        ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = null, checking = true)
+                        ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = null, checking = true, details = details)
                         val (shown, verdict) = check(r, host, engine, body.decodeToString())
                         // A body that is not a package for this request (another device on the network) does not end the check.
                         if (shown.verification != null) result = shown
-                        else ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = shown.error)
+                        else ui.value = OfflineUi.AgeVerifierWaiting(r, host, relay = true, note = shown.error, details = details)
                         verdict.encode().encodeToByteArray() to (shown.verification != null)
                     }
                 }

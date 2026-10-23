@@ -4,6 +4,7 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.postFirst
+import diw.wallet.core.profile.bonds.postFirstFrom
 import diw.wallet.core.profile.bonds.BondsAgeCredential
 import diw.wallet.core.profile.bonds.BondsAgeMaterial
 import diw.wallet.core.profile.bonds.BondsAgePackage
@@ -177,6 +178,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
         ui.value = OfflineUi.AgeWorking(request, card, jobId(request), sending = true)
         val timing = "產生證明 ${seconds(proof.prepareMs + proof.showMs)} 秒"
         val who = who(request)
+        var reached: String? = null
         val (status, body) = try {
             val lan = model.platform.bondsLan?.takeIf { request.lan }
             if (request.nearby) HttpStatusCode.OK to (nearby(request, card, pkg) ?: run {
@@ -186,7 +188,8 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                 return null
             })
             // A socket of its own: Android release builds refuse clear text in their HTTP stacks.
-            else if (lan != null) lan.postFirst(request.lanUrls.ifEmpty { listOf(request.responseUrl!!) }, pkg.encode().encodeToByteArray(), SEND_TIMEOUT).let { (code, text) -> HttpStatusCode.fromValue(code) to text }
+            else if (lan != null) lan.postFirstFrom(request.lanUrls.ifEmpty { listOf(request.responseUrl!!) }, pkg.encode().encodeToByteArray(), SEND_TIMEOUT)
+                .let { (code, text, url) -> reached = url; HttpStatusCode.fromValue(code) to text }
             else withTimeout(SEND_TIMEOUT) {
                 val response = client.post(request.responseUrl!!) {
                     contentType(ContentType.Application.Json)
@@ -216,7 +219,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             verdict?.accepted == true -> {
                 ui.value = OfflineUi.AgeResult(request, card, true, "$who 已接受證明",
                     listOfNotNull("查驗方確認你年滿 ${verdict.minimumAge ?: request.minimumAge} 歲，沒有收到出生日期或其他欄位。", timing,
-                        verdict.verifyMs?.let { "查驗方驗證 ${seconds(it)} 秒" }), retry = false)
+                        verdict.verifyMs?.let { "查驗方驗證 ${seconds(it)} 秒" }, reached?.let { "經區網送達 " + LanDetails.hostPort(it) }), retry = false)
                 null
             }
             verdict != null -> {
@@ -297,7 +300,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     /** Who the proof goes to, for the screens and the history. */
     private fun who(request: BondsAgeRequest): String = when {
         request.nearby -> NEARBY
-        request.lan -> "區網查驗方 ${request.responseHost}"
+        request.lan -> "區網查驗方"
         else -> request.responseHost!!
     }
 

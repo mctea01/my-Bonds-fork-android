@@ -42,4 +42,7 @@ interface ZkEnvironment {
 
     /** Checks posted OpenAC age presentations with the verifying keys in [assets]; null where the platform has none. */
     val ageVerifier: OpenAcAgeVerifier? get() = null
+
+    /** TLSNotary proofs (zkTLS); null where the platform has none. Calls report Unsupported when the library lacks tlsn. */
+    val tls: diw.wallet.core.zktls.ZkTlsEngine? get() = null
 }

@@ -185,3 +185,16 @@ fun InlineError(text: String, onRetry: () -> Unit) {
         OutlinedButton(onClick = onRetry) { Text("重試") }
     }
 }
+
+/** Technical details under a folded header; nothing when there are none. */
+@Composable
+fun TechDetails(lines: List<String>, key: String) {
+    if (lines.isEmpty()) return
+    Column(Modifier.fillMaxWidth()) {
+        CollapsibleSection("技術細節", key = key) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+    }
+}

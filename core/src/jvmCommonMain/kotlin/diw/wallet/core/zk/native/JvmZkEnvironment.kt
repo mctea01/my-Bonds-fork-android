@@ -10,10 +10,14 @@ import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkNativeStatus
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
+import diw.wallet.core.profile.bonds.SocketBondsLanLink
+import diw.wallet.core.zktls.NativeZkTlsEngine
+import diw.wallet.core.zktls.ZkTlsEngine
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import javax.net.SocketFactory
 
 /**
  * Android and desktop share this: the library is unpacked under [dataDirectory], assets are kept in its
@@ -23,6 +27,9 @@ import java.io.File
 class JvmZkEnvironment(
     private val dataDirectory: File,
     private val http: HttpClient,
+    /** The local network for zkTLS between devices: listening addresses, subnet order and per-address sockets. */
+    private val lan: SocketBondsLanLink = SocketBondsLanLink(),
+    private val socketFactoryFor: (String) -> SocketFactory? = { null },
     private val info: () -> ZkPlatformInfo,
 ) : ZkEnvironment, AutoCloseable {
     private val opened = lazy { runCatching { FileZkAssetStore.bundled(File(dataDirectory, "zk-assets"), http) }.getOrNull() }
@@ -46,6 +53,12 @@ class JvmZkEnvironment(
     override val ageProver: OpenAcAgeProver? by lazy { store?.let { OpenAcAgeNativeProver(it, File(dataDirectory, "zk-work"), File(dataDirectory, "zk-cache")) } }
 
     override val ageVerifier: OpenAcAgeVerifier? by lazy { store?.let { OpenAcAgeNativeVerifier(it, File(dataDirectory, "zk-verify")) } }
+
+    override val tls: ZkTlsEngine by lazy {
+        NativeZkTlsEngine(http, lan::localAddresses, lan::preferred, socketFactoryFor) {
+            (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.TLSN) == true
+        }
+    }
 
     override fun close() {
         if (opened.isInitialized()) store?.close()

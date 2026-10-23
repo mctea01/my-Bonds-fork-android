@@ -201,10 +201,13 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("請讓查驗方掃描", style = MaterialTheme.typography.titleMedium)
+        Text(if (s.showQr) "請讓查驗方掃描" else "正在送給查驗方", style = MaterialTheme.typography.titleMedium)
         Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
         s.lan?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
-        if (left > 0 && s.fountain != null) {
+        if (left > 0 && !s.showQr) {
+            Text("出示內容經區網或藍牙直接送給查驗方，不需要掃描。剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { model.taiwan.showFramesQr() }) { Text("改顯示 QR Code") }
+        } else if (left > 0 && s.fountain != null) {
             AnimatedQr(s.fountain, Modifier.fillMaxWidth().widthIn(max = 420.dp))
             Text("動態 QR Code，漏掉幾張也能收齊　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
         } else if (left > 0) {
@@ -223,6 +226,7 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
         }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Text("出示內容以本機的持有者金鑰簽章，綁定查驗方的挑戰與用途，無法轉用於其他查驗。", style = MaterialTheme.typography.bodySmall)
+        TechDetails(s.details, "frames-${s.request.challenge}")
         Button(onClick = { model.back() }) { Text("完成") }
     }
 }
@@ -273,6 +277,7 @@ private fun VerifierChallengeView(
         }
         s.lan?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        TechDetails(s.details, "challenge-${s.request.challenge}")
         Button(onClick = { scanning = true }, enabled = !scanning) {
             Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(if (hasCamera) " 掃描對方畫面" else " 從圖片讀取對方畫面")

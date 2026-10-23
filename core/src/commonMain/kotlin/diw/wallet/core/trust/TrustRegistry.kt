@@ -127,6 +127,8 @@ class TrustRegistry(
         /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
         private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
 
+        private fun isEc(c: X509Cert): Boolean = runCatching { c.ecPublicKey }.isSuccess
+
         private const val MAX_FETCHES = 3
         private const val MAX_CHAIN = 8
     }
@@ -441,10 +443,12 @@ class TrustRegistry(
                 return AnchorMatch(env, metadata, false, found.certificate)
             }
             val m = manager(role, env)
-            // Multipaz handles EC chains; an RSA chain (GPKI, web PKI) makes it throw and is validated with PKIX.
-            // Document signers and time-stamp authorities are plain PKIX chains: Multipaz's mdoc profile checks
-            // (signing key usage of the leaf) do not apply to them.
-            val result = if (role in PKIX_ROLES) null else runCatching { m.verify(chain, atTime, validateCaValidity = true, docType = docType) }.getOrNull()
+            // Multipaz handles EC chains; an RSA chain (GPKI, web PKI) is validated with PKIX. On Android Multipaz
+            // throws on RSA keys, on the desktop JVM it reports the chain untrusted, so a chain holding a key that is
+            // not EC goes to PKIX either way. Document signers and time-stamp authorities are plain PKIX chains:
+            // Multipaz's mdoc profile checks (signing key usage of the leaf) do not apply to them.
+            val result = if (role in PKIX_ROLES || chain.any { !isEc(it) }) null
+                else runCatching { m.verify(chain, atTime, validateCaValidity = true, docType = docType) }.getOrNull()
             // Only when Multipaz could not evaluate the chain: an EC chain it found untrusted stays untrusted.
             val point = if (result != null) result.trustPoints.firstOrNull()?.takeIf { result.isTrusted } else {
                 val points = m.getTrustPoints()
