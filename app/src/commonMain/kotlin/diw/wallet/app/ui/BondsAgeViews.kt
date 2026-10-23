@@ -252,6 +252,7 @@ internal fun BondsAgeVerifierWaitingView(
         }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         s.scanned?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        TechDetails(s.details, "age-${s.request.requestId}")
         if (s.request.qr && !s.checking) {
             if (streamQr != null) Button(onClick = { scanning = true }, enabled = !scanning) { Text("掃描出示者的動態 QR Code") }
             else Text("這個裝置沒有相機，無法掃描動態 QR Code。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)

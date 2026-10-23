@@ -109,6 +109,7 @@ class WalletModelE2eTest {
         /** The real sockets, on loopback: the test machine may have no Wi-Fi. */
         override val bondsLan = object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
             override fun localAddresses() = listOf("127.0.0.1")
+            override fun localInterfaces() = listOf(diw.wallet.core.profile.bonds.LanInterface("127.0.0.1", "lo", "loopback", diw.wallet.core.profile.bonds.LanInterface.Kind.OTHER))
         }
 
         override val zk by lazy {
@@ -1514,7 +1515,7 @@ class WalletModelE2eTest {
         assertTrue(failure!!.startsWith(diw.wallet.core.profile.bonds.BondsAgeVerifier.UNTRUSTED_ISSUER), failure)
         val shown = assertIs<OfflineUi.AgeResult>(holder.taiwan.offline.value)
         assertFalse(shown.accepted, "an unanchored government issuer is refused, and the holder hears why")
-        assertEquals("區網查驗方 127.0.0.1 沒有接受證明", shown.title)
+        assertEquals("區網查驗方 沒有接受證明", shown.title)
         val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
         assertTrue(result.verification!!.proofValid && !result.verification!!.accepted)
     }

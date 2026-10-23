@@ -61,6 +61,13 @@
                 <data android:scheme="siopv2" />
             </intent-filter>
             <intent-filter>
+                <!-- zkTLS live check requests (diw-zktls://v1?request=...). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-zktls" />
+            </intent-filter>
+            <intent-filter>
                 <!-- TWDIW deep links (credential_offer, authorize, staticqrcode). -->
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

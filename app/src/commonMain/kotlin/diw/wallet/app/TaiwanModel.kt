@@ -8,6 +8,9 @@ import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.profile.bonds.AnimatedQrCollector
 import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsLanLink
+import diw.wallet.core.profile.bonds.LanInterface
+import diw.wallet.core.profile.bonds.networks
+import diw.wallet.core.profile.bonds.postFirstFrom
 import diw.wallet.core.profile.bonds.BondsLanPresentation
 import diw.wallet.core.profile.bonds.MAX_LAN_URLS
 import diw.wallet.core.profile.bonds.postFirst
@@ -156,6 +159,8 @@ sealed class OfflineUi {
         val link: String? = null,
         /** Progress of the holder's animated QR, when scanned. */
         val scanned: String? = null,
+        /** Technical details, shown folded. */
+        val details: List<String> = emptyList(),
     ) : OfflineUi()
 
     /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */
@@ -184,6 +189,13 @@ sealed class OfflineUi {
         val fountain: AnimatedQrTransport.Encoder? = null,
         /** Local network state for the user, null when the challenge has no address. */
         val lan: String? = null,
+        /** Technical details, shown folded. */
+        val details: List<String> = emptyList(),
+        /**
+         * Whether the QR code is on screen: hidden while the presentation goes over the local network or Bluetooth
+         * and after it arrived there, shown again when that route fails or the user asks for it.
+         */
+        val showQr: Boolean = true,
     ) : OfflineUi()
 
     /**
@@ -197,6 +209,8 @@ sealed class OfflineUi {
         val risk: RiskLevel = RiskLevel.MEDIUM,
         val link: String? = null,
         val lan: String? = null,
+        /** Technical details, shown folded. */
+        val details: List<String> = emptyList(),
     ) : OfflineUi()
 
     data class VerifierResult(
@@ -475,7 +489,10 @@ class TaiwanModel(private val model: WalletModel) {
                 // A verifier that reads the fountain QR (this wallet) gets it instead of the BTWVP1 frames Bonds reads.
                 val fountain = if (request.qr) AnimatedQrTransport.Encoder(jws.encodeToByteArray()) else null
                 val frames = if (fountain == null) BondsOfflinePresentation.qrFrames(jws) else emptyList()
-                val state = OfflineUi.BondsFrames(request, frames, jws, Clock.System.now() + 5.minutes, fountain = fountain)
+                // Over the local network the QR stays hidden unless that route fails or the user asks for it.
+                val viaLan = request.lanUrls.isNotEmpty() && model.platform.bondsLan != null
+                val state = OfflineUi.BondsFrames(request, frames, jws, Clock.System.now() + 5.minutes, fountain = fountain, showQr = !viaLan,
+                    details = LanDetails.presentation(request) + request.lanUrls.map { "查驗方接收位址：" + LanDetails.hostPort(it) })
                 offline.value = state
                 model.platform.keepScreenOn(true)
                 recordBonds(request, card, shown, null)
@@ -531,23 +548,31 @@ class TaiwanModel(private val model: WalletModel) {
         )
     }
 
+    /** Puts the presentation's QR code on screen, for a verifier that scans instead. */
+    fun showFramesQr() {
+        val cur = offline.value as? OfflineUi.BondsFrames ?: return
+        offline.value = cur.copy(showQr = true)
+    }
+
     /** Sends the shown presentation over the verifier's one-time BLE service as well. */
     fun sendOverLink(state: OfflineUi.BondsFrames) {
         val link = model.platform.bondsLink ?: return
         val uuid = state.request.linkServiceId ?: return
         linkJob?.cancel()
         linkJob = model.scope.launch {
-            fun update(text: String) {
+            fun update(text: String, showQr: Boolean? = null) {
                 val cur = offline.value as? OfflineUi.BondsFrames ?: return
-                if (cur.presentationJws == state.presentationJws) offline.value = cur.copy(link = text)
+                if (cur.presentationJws == state.presentationJws) offline.value = cur.copy(link = text, showQr = showQr ?: cur.showQr)
             }
             try {
-                link.unavailableReason()?.let { update("藍牙無法使用：$it"); return@launch }
-                update("等待查驗方以藍牙連線")
+                link.unavailableReason()?.let { update("藍牙無法使用：$it", showQr = true); return@launch }
+                update("等待查驗方以藍牙連線", showQr = false)
                 val ok = link.send(uuid, state.presentationJws) { update(it) }
-                update(if (ok) "查驗方已收到" else "藍牙傳送未完成，請改用 QR Code")
+                update(if (ok) "查驗方已收到" else "藍牙傳送未完成，請改用 QR Code", showQr = !ok)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                update("藍牙傳送失敗：" + (e.message ?: ""))
+                update("藍牙傳送失敗：" + (e.message ?: ""), showQr = true)
             }
         }
     }
@@ -558,19 +583,20 @@ class TaiwanModel(private val model: WalletModel) {
         val urls = state.request.lanUrls.takeIf { it.isNotEmpty() } ?: return
         lanJob?.cancel()
         lanJob = model.scope.launch {
-            fun update(text: String) {
+            fun update(text: String, showQr: Boolean, reached: String? = null) {
                 val cur = offline.value as? OfflineUi.BondsFrames ?: return
-                if (cur.presentationJws == state.presentationJws) offline.value = cur.copy(lan = text)
+                if (cur.presentationJws != state.presentationJws) return
+                offline.value = cur.copy(lan = text, showQr = showQr, details = cur.details + listOfNotNull(reached?.let { "送達位址：" + LanDetails.hostPort(it) }))
             }
             try {
-                update("正在經區網送給查驗方")
-                val (status, text) = lan.postFirst(urls, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
+                update("正在經區網送給查驗方", showQr = false)
+                val (status, text, reached) = lan.postFirstFrom(urls, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
                 val refusal = BondsLanPresentation.refusal(status, text)
-                update(if (refusal == null) "已經區網送達查驗方，結果以對方畫面為準" else "查驗方沒有接受（$refusal），請讓對方掃描 QR Code")
+                update(if (refusal == null) "已經區網送達查驗方，結果以對方畫面為準" else "查驗方沒有接受（$refusal），請讓對方掃描 QR Code", showQr = refusal != null, reached)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                update("區網沒有送達（${model.describe(e)}），請讓對方掃描 QR Code 或改用藍牙")
+                update("區網沒有送達（${model.describe(e)}），請讓對方掃描 QR Code 或改用藍牙", showQr = true)
             }
         }
     }
@@ -590,22 +616,22 @@ class TaiwanModel(private val model: WalletModel) {
             model.screen.value = Screen.Offline
             model.platform.keepScreenOn(true)
             val lan = model.platform.bondsLan
-            val addresses = lan?.localAddresses()?.take(MAX_LAN_URLS).orEmpty()
-            if (lan == null || addresses.isEmpty()) {
+            val interfaces = lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
+            if (lan == null || interfaces.isEmpty()) {
                 showChallenge(plain, lan?.let { "這支手機沒有連上 Wi-Fi 或開啟熱點，不能經區網接收" })
                 return
             }
             offline.value = OfflineUi.Working("準備查驗挑戰")
-            listenOnLan(lan, addresses, purpose, source, plain)
+            listenOnLan(lan, interfaces, purpose, source, plain)
         } catch (e: Exception) {
             model.message.value = model.describe(e)
         }
     }
 
-    private fun showChallenge(request: BondsPresentationRequest, lan: String?) {
+    private fun showChallenge(request: BondsPresentationRequest, lan: String?, details: List<String> = LanDetails.presentation(request)) {
         verifierCollector = BondsFrameCollector()
         verifierFountain = AnimatedQrCollector(BondsLinkTransport.MAX_PAYLOAD)
-        offline.value = OfflineUi.VerifierChallenge(request, 0, 0, verifierRisk, lan = lan)
+        offline.value = OfflineUi.VerifierChallenge(request, 0, 0, verifierRisk, lan = lan, details = details)
         listenOnLink(request)
     }
 
@@ -615,7 +641,8 @@ class TaiwanModel(private val model: WalletModel) {
      * device on the network) is refused without ending the check. Without a listening socket the challenge is
      * shown without an address ([fallback]).
      */
-    private fun listenOnLan(lan: BondsLanLink, addresses: List<String>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
+    private fun listenOnLan(lan: BondsLanLink, interfaces: List<LanInterface>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
+        val addresses = interfaces.map { it.address }
         verifierLanJob = model.scope.launch {
             var request: BondsPresentationRequest? = null
             var presentation: String? = null
@@ -628,7 +655,7 @@ class TaiwanModel(private val model: WalletModel) {
                             purpose, source, lanUrls = urls, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
                         )
                         request = r
-                        showChallenge(r, "對方也可經區網（同一個 Wi-Fi 或熱點）直接送出")
+                        showChallenge(r, "對方也可經區網（這台裝置的${interfaces.networks()}）直接送出", LanDetails.presentation(r, LanDetails.listening(urls, interfaces)))
                     }) { body ->
                         val r = request!!
                         if (!active(r)) return@serve BondsLanPresentation.refused("查驗已結束") to true
