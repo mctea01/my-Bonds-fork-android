@@ -30,7 +30,6 @@ import diw.wallet.app.WalletModel
 import diw.wallet.app.ZkChoiceKind
 import diw.wallet.app.ZkJobPhase
 import diw.wallet.app.ZkProofKind
-import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import kotlinx.coroutines.delay
@@ -89,7 +88,7 @@ internal fun BondsAgeChooseView(model: WalletModel, s: OfflineUi.AgeChoose) {
                 RadioButton(selected = i == index, onClick = { index = i })
                 Column {
                     Text(c.name)
-                    Text("出生日期欄位：${model.claimLabel(listOf(c.claim), null, c.document?.issuanceRecord)}", style = MaterialTheme.typography.bodySmall)
+                    Text("以出生日期欄位（${c.claim}）證明", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
