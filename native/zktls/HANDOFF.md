@@ -46,6 +46,9 @@ Claude 整合時需要：
 - TLSn verifier 未直接輸出完整 MPC 憑證鏈，因此在 segment 後傳送最多
   64 KiB 的 bincode 1.3 HandshakeData，再驗證鏈、主機名、時間、ephemeral
   key 及雙方 random 與已認證 TLS session 一致；不信任單純附帶的憑證。
+- 憑證鏈之後持有端送出 `[u32 BE 長度][綁定]`（最多 4096，0 表示不要回執）；
+  非 0 時查驗方在所有檢查通過後呼叫 `ZkTlsReceiptIssuer`，回 `[u32 BE 長度][回執]`
+  （最多 65536，0 表示不給），持有端放在 `ZkTlsTranscript.receipt`（2026-10-23）。
 - 未揭露明文歸零，mask 保留認證範圍。SHA-256 commitments 使用 TLSn
   原生 salted transcript commitments；它們不是 `SHA256(plaintext)`。
 - FFI callback bridge 有界緩衝，寫入有完成確認；取消每 20 ms 檢查，整個

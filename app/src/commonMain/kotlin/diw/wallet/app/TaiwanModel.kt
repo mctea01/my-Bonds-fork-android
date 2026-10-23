@@ -213,6 +213,71 @@ sealed class OfflineUi {
         val details: List<String> = emptyList(),
     ) : OfflineUi()
 
+    /**
+     * zkTLS request scanned: who asks ([verifier], [trust]), which page and fields; the user types the page's inputs.
+     * [inline]: the page came with the request (test environment only). [error] is an input problem. For a page with
+     * a picture code, [captcha] is the session this device opened on the site (fetching while [preparing]).
+     */
+    data class ZkTlsConsent(
+        val session: diw.wallet.core.zktls.ZkTlsSessionRequest.Verified,
+        val profile: diw.wallet.core.zktls.ZkTlsProfile,
+        val verifier: String,
+        val trust: TrustDecision,
+        val inline: Boolean,
+        val error: String? = null,
+        val captcha: diw.wallet.core.zktls.ZkTlsPrepare.Session? = null,
+        val preparing: Boolean = false,
+    ) : OfflineUi()
+
+    /** The zkTLS proof [jobId] is running. */
+    data class ZkTlsProving(val consent: ZkTlsConsent, val jobId: String) : OfflineUi()
+
+    /** What the verifier received ([proved], read with its rules), or why nothing was sent. */
+    data class ZkTlsHolderResult(
+        val consent: ZkTlsConsent,
+        val proved: diw.wallet.core.zktls.ZkTlsProved?,
+        val serverTrust: TrustDecision?,
+        val error: String?,
+        val retry: Boolean,
+        /** The result kept in the documents list, when the holder chose to keep it. */
+        val kept: ZkTlsKeep.Kept? = null,
+        /** Why keeping failed; the proof itself stands. */
+        val keepError: String? = null,
+    ) : OfflineUi()
+
+    /** Verifier setup: the pages this device can ask for; [testPages] came from the test server. */
+    data class ZkTlsVerifierSetup(
+        val pages: List<diw.wallet.core.zktls.ZkTlsProfile>,
+        val testPages: Set<String>,
+        val note: String?,
+    ) : OfflineUi()
+
+    /** The request QR, waiting for the holder; [local]: the proof is checked here, else by [where]. */
+    data class ZkTlsVerifierWaiting(
+        val request: diw.wallet.core.zktls.ZkTlsSessionRequest,
+        val link: String,
+        val profile: diw.wallet.core.zktls.ZkTlsProfile,
+        val where: String,
+        val local: Boolean,
+        val note: String? = null,
+        val step: String? = null,
+        /** Technical details, shown folded. */
+        val details: List<String> = emptyList(),
+    ) : OfflineUi()
+
+    /** The zkTLS check's outcome; [serverTrust] only when the transcript was checked here. */
+    data class ZkTlsVerifierResult(
+        val profile: diw.wallet.core.zktls.ZkTlsProfile,
+        val request: diw.wallet.core.zktls.ZkTlsSessionRequest,
+        val outcome: diw.wallet.core.zktls.ZkTlsOutcome?,
+        val serverTrust: TrustDecision?,
+        val local: Boolean,
+        val where: String,
+        val error: String?,
+        /** The holder asked for, and was given, a signed receipt (a web-proof credential). */
+        val receipt: Boolean = false,
+    ) : OfflineUi()
+
     data class VerifierResult(
         val request: BondsPresentationRequest,
         val result: BondsVerifiedPresentation?,
@@ -253,6 +318,7 @@ class TaiwanModel(private val model: WalletModel) {
     private var verifierLanJob: Job? = null
     val age = BondsAgeFlow(model, offline)
     val ageVerifier = BondsAgeVerifierFlow(model, offline)
+    val zkTls = ZkTlsFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -820,6 +886,7 @@ class TaiwanModel(private val model: WalletModel) {
     fun closeOffline() {
         age.stop()
         ageVerifier.stop()
+        zkTls.stop()
         linkJob?.cancel()
         linkJob = null
         lanJob?.cancel()

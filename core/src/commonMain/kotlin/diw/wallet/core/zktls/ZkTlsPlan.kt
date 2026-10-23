@@ -26,8 +26,11 @@ data class ZkTlsRange(val start: Int, val end: Int) {
  * revealed, so the verifier can read the value back with the same rule and nothing around it.
  */
 object ZkTlsPlanner {
-    /** The request bytes for [inputs]; throws when an input is missing or does not match its pattern. */
-    fun request(profile: ZkTlsProfile, inputs: Map<String, String>): ByteArray {
+    /**
+     * The request bytes for [inputs]; throws when an input is missing or does not match its pattern. [cookies] are the
+     * session cookies of a prepared page (ZkTlsPrepare); only the names the profile lists are sent.
+     */
+    fun request(profile: ZkTlsProfile, inputs: Map<String, String>, cookies: Map<String, String> = emptyMap()): ByteArray {
         val r = profile.request
         for (input in r.inputs) {
             val value = inputs[input.name] ?: throw ProtocolException("invalid_input", "${input.label}未填寫")
@@ -40,6 +43,7 @@ object ZkTlsPlanner {
             append(r.method).append(' ').append(target).append(" HTTP/1.1\r\n")
             append(hostLine(profile))
             r.headers.forEach { (k, v) -> append(k).append(": ").append(v).append("\r\n") }
+            cookieHeader(profile, cookies)?.let { append("Cookie: ").append(it).append("\r\n") }
             append("Accept-Encoding: identity\r\nConnection: close\r\n")
             if (body != null) append("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: ${body.size}\r\n")
             append("\r\n")
@@ -48,6 +52,18 @@ object ZkTlsPlanner {
         if (bytes.size > profile.limits.maxSent) throw ProtocolException("invalid_input", "請求超過 ${profile.limits.maxSent} 位元組")
         return bytes
     }
+
+    /** The Cookie header value for a prepared session, or null when the profile takes none. */
+    fun cookieHeader(profile: ZkTlsProfile, cookies: Map<String, String>): String? {
+        if (profile.prepare.cookies.isEmpty()) return null
+        val sent = profile.prepare.cookies.mapNotNull { name -> cookies[name]?.let { name to it } }
+        if (sent.size != profile.prepare.cookies.size) throw ProtocolException("invalid_input", "網頁工作階段已失效，請重新取得驗證碼")
+        sent.forEach { (_, v) -> if (!COOKIE_VALUE_RE.matches(v)) throw ProtocolException("invalid_input", "網站給的 Cookie 格式不符") }
+        return sent.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    /** RFC 6265 cookie-octets, optionally quoted. */
+    private val COOKIE_VALUE_RE = Regex("^\"?[\\x21\\x23-\\x2B\\x2D-\\x3A\\x3C-\\x5B\\x5D-\\x7E]{0,4096}\"?$")
 
     /** "Host: name[:port]" with its line end, as the planner writes it and the verifier expects it. */
     fun hostLine(profile: ZkTlsProfile): String = "Host: " + profile.host + (if (profile.port == 443) "" else ":${profile.port}") + "\r\n"
@@ -70,10 +86,20 @@ object ZkTlsPlanner {
     /** What the holder will reveal of the response, and which requested fields the page does not have. */
     data class Plan(val received: List<ZkTlsRange>, val status: ZkTlsRange?, val fields: Map<String, ZkTlsRange>, val missing: List<String>)
 
+    /**
+     * Rules are matched on the response with its chunk framing taken out (ChunkedBody), so a value the server's
+     * chunking happens to split still matches; its revealed range then includes the chunk-size line in between.
+     */
     fun receivedReveal(profile: ZkTlsProfile, fields: List<String>, received: ByteArray): Plan {
-        val text = Utf8Text(received)
-        fun find(rule: String): ZkTlsRange? = Regex(rule).find(text.string)?.let { m ->
-            text.byteRange(m.range.first, m.range.last + 1).takeIf { it.end > it.start }
+        val body = ChunkedBody.of(received)
+        val text = Utf8Text(body.bytes)
+        fun find(rule: String): ZkTlsRange? {
+            val regex = Regex(rule)
+            val m = regex.find(text.string) ?: return null
+            val range = text.byteRange(m.range.first, m.range.last + 1).takeIf { it.end > it.start }?.let(body::raw) ?: return null
+            // Only a range the verifier reads back the same way is worth revealing.
+            val seen = Utf8Text(ChunkedBody.strip(received.copyOfRange(range.start, range.end))).string
+            return range.takeIf { regex.find(seen)?.value == m.value }
         }
         val status = find(profile.status.reveal)
         val found = linkedMapOf<String, ZkTlsRange>()
@@ -157,7 +183,7 @@ data class ZkTlsOutcome(
  * line and Host line are the profile's, and the rules are applied within each revealed response segment. Values are
  * read only from revealed segments, so hidden bytes (zeros) never become part of a value. The holder chooses where a
  * segment ends, so a rule must close on a delimiter after its value (a tag, a line end): a rule that could match a
- * cut-short value would accept one.
+ * cut-short value would accept one. Chunk-size lines inside a segment are taken out first (ChunkedBody.strip).
  */
 object ZkTlsCheck {
     fun check(request: ZkTlsSessionRequest, profile: ZkTlsProfile, seen: ZkTlsSeen): ZkTlsOutcome {
@@ -170,7 +196,7 @@ object ZkTlsCheck {
             problems += "請求的網址不是查驗頁描述檔指定的頁面"
         }
         if (sentParts.none { it.first == ZkTlsPlanner.hostLine(profile) }) problems += "請求沒有揭露指定網站的 Host 標頭"
-        val segments = seen.receivedMask.map { Utf8Text(seen.received.copyOfRange(it.start, it.end)).string }
+        val segments = seen.receivedMask.map { Utf8Text(ChunkedBody.strip(seen.received.copyOfRange(it.start, it.end))).string }
         val statusText = segments.firstNotNullOfOrNull { Regex(profile.status.reveal).find(it)?.value }
         val found = statusText != null && Regex(profile.status.success).containsMatchIn(statusText)
         val fields = linkedMapOf<String, String>()
@@ -182,6 +208,109 @@ object ZkTlsCheck {
         }
         if (statusText == null) problems += "回應沒有揭露查詢狀態"
         return ZkTlsOutcome(profile, seen.serverName, seen.time, statusText, found, fields, missing, problems)
+    }
+}
+
+/**
+ * The chunk framing of an HTTP/1.1 response (RFC 9112 section 7.1). Pages that need no Content-Length up front are
+ * sent in chunks, and a chunk may end in the middle of a value, even inside a character.
+ *
+ * The holder matches rules on the response without the framing ([of]) and maps each match back to transcript bytes
+ * ([raw]); a match that crosses a chunk boundary then reveals the framing in between: the CRLF that ends a chunk's
+ * data and the next chunk-size line. The verifier takes those out of each revealed segment ([strip]). A server line
+ * of only hex digits inside a revealed segment would be taken out too; it is the server's own text either way, so a
+ * holder cannot make a value from bytes the server did not send.
+ */
+internal class ChunkedBody private constructor(val bytes: ByteArray, private val positions: IntArray?) {
+    /** The transcript bytes of a range of [bytes], including any framing between its first and last byte. */
+    fun raw(r: ZkTlsRange): ZkTlsRange = if (positions == null) r else ZkTlsRange(positions[r.start], positions[r.end - 1] + 1)
+
+    companion object {
+        private const val CR = '\r'.code.toByte()
+        private const val LF = '\n'.code.toByte()
+        private const val MAX_SIZE_DIGITS = 8
+
+        /** [received] without its chunk framing when the response is chunked, else as it is. */
+        fun of(received: ByteArray): ChunkedBody {
+            val headEnd = indexOf(received, byteArrayOf(CR, LF, CR, LF), 0)
+            if (headEnd < 0) return ChunkedBody(received, null)
+            val chunked = received.decodeToString(0, headEnd).split("\r\n").drop(1).any { line ->
+                line.substringBefore(':').trim().equals("Transfer-Encoding", ignoreCase = true) &&
+                    line.substringAfter(':').split(',').any { it.trim().equals("chunked", ignoreCase = true) }
+            }
+            if (!chunked) return ChunkedBody(received, null)
+            val out = ByteArray(received.size)
+            val positions = IntArray(received.size)
+            var n = 0
+            fun copy(from: Int, to: Int) {
+                for (i in from until to) { out[n] = received[i]; positions[n] = i; n++ }
+            }
+            var i = headEnd + 4
+            copy(0, i)
+            while (i < received.size) {
+                val lineEnd = indexOf(received, byteArrayOf(CR, LF), i)
+                val size = if (lineEnd < 0) null else chunkSize(received, i, lineEnd)
+                if (size == null) {
+                    // Not framing as expected (a cut-off transcript): the rest is matched as it is.
+                    copy(i, received.size)
+                    break
+                }
+                if (size == 0L) break
+                val start = lineEnd + 2
+                val end = minOf(received.size.toLong(), start + size).toInt()
+                copy(start, end)
+                i = end
+                if (i + 2 <= received.size && received[i] == CR && received[i + 1] == LF) i += 2 else break
+            }
+            return ChunkedBody(out.copyOf(n), positions.copyOf(n))
+        }
+
+        /** [segment] without the chunk boundaries it contains: CRLF, a chunk-size line, CRLF. */
+        fun strip(segment: ByteArray): ByteArray {
+            val out = ArrayList<Byte>(segment.size)
+            var i = 0
+            while (i < segment.size) {
+                if (segment[i] == CR && i + 1 < segment.size && segment[i + 1] == LF) {
+                    val lineEnd = indexOf(segment, byteArrayOf(CR, LF), i + 2)
+                    if (lineEnd > i + 2 && chunkSize(segment, i + 2, lineEnd) != null) {
+                        i = lineEnd + 2
+                        continue
+                    }
+                }
+                out.add(segment[i])
+                i++
+            }
+            return out.toByteArray()
+        }
+
+        /** The size of a chunk-size line [from, to) (hex digits, optionally followed by extensions), or null. */
+        private fun chunkSize(bytes: ByteArray, from: Int, to: Int): Long? {
+            var size = 0L
+            var digits = 0
+            var i = from
+            while (i < to) {
+                val d = Char(bytes[i].toInt() and 0xff).digitToIntOrNull(16) ?: break
+                if (++digits > MAX_SIZE_DIGITS) return null
+                size = size * 16 + d
+                i++
+            }
+            if (digits == 0) return null
+            while (i < to && (bytes[i] == ' '.code.toByte() || bytes[i] == '\t'.code.toByte())) i++
+            if (i < to && bytes[i] != ';'.code.toByte()) return null
+            for (k in i until to) if (bytes[k] == CR || bytes[k] == LF) return null
+            return size
+        }
+
+        private fun indexOf(bytes: ByteArray, pattern: ByteArray, from: Int): Int {
+            var i = from
+            while (i <= bytes.size - pattern.size) {
+                var k = 0
+                while (k < pattern.size && bytes[i + k] == pattern[k]) k++
+                if (k == pattern.size) return i
+                i++
+            }
+            return -1
+        }
     }
 }
 

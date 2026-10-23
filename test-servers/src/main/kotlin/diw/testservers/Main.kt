@@ -41,6 +41,12 @@ class TestServers(
     ageVerifier: diw.wallet.core.zk.OpenAcAgeVerifier? = null,
     /** Whether the native library here has TLSNotary; without it zkTLS sessions are refused (the relay still works). */
     zkTls: suspend () -> Boolean = { false },
+    /**
+     * The DNS name of the synthetic record page and its port (0: any). A phone can prove the page only under a name
+     * that resolves to this machine; TLSNotary does not connect to IP addresses.
+     */
+    zkTlsHost: String = "localhost",
+    zkTlsPort: Int = 0,
 ) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true))
@@ -56,10 +62,10 @@ class TestServers(
     val walletProvider = WalletProviderService(baseUrl, pki)
     val bondsAge = BondsAgeService(baseUrl, ageVerifier, diw.wallet.core.did.DidResolver(httpClient))
 
-    /** The synthetic record page zkTLS sessions prove, started on first use (localhost, its own test CA). */
-    val recordPage: ZkTlsTarget by lazy { ZkTlsTarget(responder = ZkTlsRecordPage::respond) }
+    /** The synthetic record page zkTLS sessions prove, started on first use (its own test CA). */
+    val recordPage: ZkTlsTarget by lazy { ZkTlsTarget(responder = ZkTlsRecordPage::respond, host = zkTlsHost, fixedPort = zkTlsPort) }
     val zkTlsRelay = ZkTlsRelay()
-    val zkTlsVerifier = ZkTlsVerifierService(baseUrl, pki, { listOf(ZkTlsRecordPage.profile(recordPage.port)) }, { listOf(recordPage.caDer) }, zkTls)
+    val zkTlsVerifier = ZkTlsVerifierService(baseUrl, pki, { listOf(ZkTlsRecordPage.profile(recordPage.port, recordPage.host)) }, { listOf(recordPage.caDer) }, zkTls)
 
     suspend fun init(): TestServers {
         trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", official = false, source = "diw-test-servers")
@@ -106,9 +112,14 @@ fun main(args: Array<String>) = runBlocking {
     val native = (System.getenv("DIW_ZK_DATA") ?: System.getenv("DIW_OPENAC_DATA"))?.let { File(it) }
     val tls = native?.let { diw.wallet.core.zk.native.ZkNative.load(it) as? diw.wallet.core.zk.ZkResult.Ok }
         ?.value?.backends?.contains(diw.wallet.core.zk.ZkBackend.TLSN) == true
-    val servers = TestServers(baseUrl, TestPki.create(pkiDir), ageVerifier = zk?.ageVerifier, zkTls = { tls }).init()
+    // DIW_ZKTLS_HOST names this machine for the record page (the base address's host when it is a name, not an IP).
+    val baseHost = io.ktor.http.Url(baseUrl).host
+    val zkTlsHost = System.getenv("DIW_ZKTLS_HOST")?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+        ?: baseHost.takeIf { h -> h.any { it.isLetter() } && ':' !in h } ?: "localhost"
+    val zkTlsPort = System.getenv("DIW_ZKTLS_PORT")?.toIntOrNull() ?: 0
+    val servers = TestServers(baseUrl, TestPki.create(pkiDir), ageVerifier = zk?.ageVerifier, zkTls = { tls }, zkTlsHost = zkTlsHost, zkTlsPort = zkTlsPort).init()
     println("DIW test servers on $baseUrl (PKI in ${pkiDir.absolutePath}); Bonds age proofs ${if (zk != null) "verified here" else "relayed only"}; " +
-        "zkTLS ${if (tls) "verified here" else "relay only"}")
+        "zkTLS ${if (tls) "verified here" else "relay only"} (record page https://$zkTlsHost)")
     servers.start(port, wait = true)
     Unit
 }

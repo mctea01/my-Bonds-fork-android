@@ -27,10 +27,19 @@ data class ZkTlsProfile(
     val status: Status,
     val fields: List<Field>,
 ) {
+    /**
+     * What the holder fetches before the query, outside zkTLS (ZkTlsPrepare). With "captcha" the wallet opens [page]
+     * for a session, shows the picture at [image] in that session, and the user types it into the input [input]; the
+     * named [cookies] of that session go in the query's Cookie header, which stays hidden like the inputs.
+     */
     @Serializable
     data class Prepare(
-        /** none, or webview: the holder opens the page first (a picture code, a cookie). */
+        /** none, or captcha. */
         val type: String = "none",
+        val page: String? = null,
+        val image: String? = null,
+        val input: String? = null,
+        val cookies: List<String> = emptyList(),
     )
 
     @Serializable
@@ -87,6 +96,18 @@ data class ZkTlsProfile(
         request.headers.forEach { (k, v) ->
             if (!TOKEN_RE.matches(k) || v.any { it < ' ' } || k.lowercase() in RESERVED_HEADERS) bad("header $k is not allowed")
         }
+        when (prepare.type) {
+            "none" -> if (prepare.page != null || prepare.image != null || prepare.input != null || prepare.cookies.isNotEmpty()) bad("prepare has no steps")
+            "captcha" -> {
+                listOfNotNull(prepare.page, prepare.image ?: bad("captcha without image")).forEach { path ->
+                    if (!path.startsWith("/") || path.any { it <= ' ' || it == '#' }) bad("malformed prepare path")
+                }
+                if (prepare.input == null || prepare.input !in names) bad("captcha input is not one of the inputs")
+                if (prepare.cookies.isEmpty() || prepare.cookies.any { !COOKIE_RE.matches(it) }) bad("captcha needs session cookie names")
+                if (request.headers.keys.any { it.equals("Cookie", ignoreCase = true) }) bad("the session supplies the Cookie header")
+            }
+            else -> bad("unsupported prepare type")
+        }
         (request.inputs.map { it.pattern } + status.reveal + status.success + fields.map { it.reveal }).forEach {
             runCatching { Regex(it) }.getOrElse { bad("rule does not compile") }
         }
@@ -103,6 +124,7 @@ data class ZkTlsProfile(
         private val HOST_RE = Regex("^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
         private val NAME_RE = Regex("^[A-Za-z][A-Za-z0-9_]{0,31}$")
         private val TOKEN_RE = Regex("^[A-Za-z0-9-]{1,64}$")
+        internal val COOKIE_RE = Regex("^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$")
         /** Set by the planner itself: the request line, the target, the body framing and the compression rule. */
         private val RESERVED_HEADERS = setOf("host", "content-length", "transfer-encoding", "accept-encoding", "connection")
 

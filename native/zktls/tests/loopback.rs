@@ -68,7 +68,7 @@ async fn loopback(mode: &str, chunked: bool, body_size: usize) -> (u128, usize, 
     let a = Counted(a, prover_bytes.clone());
     let b = Counted(b, verifier_bytes.clone());
     let max_recv = (body_size + 1024) as u32;
-    let request=Request {host:"localhost".into(),port,request:format!("GET /check?secret=synthetic HTTP/1.1\r\nHost: localhost:{port}\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n").into_bytes(),max_sent:4096,max_recv,mode:mode.into()};
+    let request=Request {host:"localhost".into(),port,request:format!("GET /check?secret=synthetic HTTP/1.1\r\nHost: localhost:{port}\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n").into_bytes(),max_sent:4096,max_recv,mode:mode.into(),binding:b"holder-key".to_vec()};
     let prover = protocol::prove(
         a,
         request,
@@ -109,6 +109,10 @@ async fn loopback(mode: &str, chunked: bool, body_size: usize) -> (u128, usize, 
         [7; 32],
         noise.private.try_into().unwrap(),
         roots,
+        |verified, binding| {
+            assert!(binding == b"holder-key");
+            [b"receipt:".as_slice(), verified.server_name.as_bytes()].concat()
+        },
     );
     let (prover, verifier) = tokio::time::timeout(Duration::from_secs(180), async {
         tokio::try_join!(prover, verifier)
@@ -131,6 +135,7 @@ async fn loopback(mode: &str, chunked: bool, body_size: usize) -> (u128, usize, 
     assert!(verifier.received[..r.start].iter().all(|&b| b == 0));
     assert!(verifier.received[r.end..].iter().all(|&b| b == 0));
     assert!(!verifier.cert_chain_der.is_empty());
+    assert!(prover.receipt == b"receipt:localhost");
     server.await.unwrap();
     (
         start_time.elapsed().as_millis(),

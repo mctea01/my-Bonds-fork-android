@@ -26,6 +26,8 @@ pub struct Request {
     pub max_sent: u32,
     pub max_recv: u32,
     pub mode: String,
+    /// What the holder asks the verifier to bind a receipt to (its public key); empty asks for none.
+    pub binding: Vec<u8>,
 }
 #[derive(Clone)]
 pub struct Transcript {
@@ -35,16 +37,20 @@ pub struct Transcript {
     pub cert_chain_der: Vec<Vec<u8>>,
     pub time: u64,
     pub cipher_suite: String,
+    /// The verifier's receipt for `Request::binding`; empty when none was asked for or the verifier gave none.
+    pub receipt: Vec<u8>,
 }
 pub struct Reveal {
     pub sent: Vec<Range<usize>>,
     pub received: Vec<Range<usize>>,
     pub commit_sha256: Vec<Range<usize>>,
 }
+#[derive(Clone)]
 pub struct Commitment {
     pub range: Range<usize>,
     pub digest: Vec<u8>,
 }
+#[derive(Clone)]
 pub struct Verified {
     /// Interactive verification and supplemental certificate check, excluding TLS setup.
     pub verify_ms: u64,
@@ -57,6 +63,10 @@ pub struct Verified {
     pub received_mask: Vec<Range<usize>>,
     pub commitments: Vec<Commitment>,
 }
+
+/// Largest holder binding and verifier receipt exchanged after the proof.
+pub const MAX_BINDING: usize = 4096;
+pub const MAX_RECEIPT: usize = 65536;
 
 fn checked<T, E>(r: std::result::Result<T, E>) -> Result<T> {
     r.map_err(|_| Error::Protocol)
@@ -203,6 +213,10 @@ where
         &request.mode,
     )?;
     let permitted = permitted_request(&request)?;
+    if request.binding.len() > MAX_BINDING {
+        return Err(Error::Limit);
+    }
+    let binding = request.binding;
     let mut secure = crate::noise::connect(wire, hash, public, true).await?;
     let stream = std::mem::replace(&mut secure.io, tokio::io::duplex(1).0);
     let (stream, frames) = session_frames(stream);
@@ -269,6 +283,7 @@ where
                 _ => "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
             }
             .into(),
+            receipt: Vec::new(),
         };
         let reveal = choose(&output)?;
         ranges(&reveal.sent, output.sent.len())?;
@@ -332,13 +347,40 @@ where
             .await,
     )?;
     checked(stream.write_all(&metadata).await)?;
+    // After the proof: the holder's key for a receipt, and the receipt the verifier signed over what it verified.
+    checked(stream.write_all(&(binding.len() as u32).to_be_bytes()).await)?;
+    checked(stream.write_all(&binding).await)?;
     checked(stream.flush().await)?;
+    let mut output = output;
+    if !binding.is_empty() {
+        output.receipt = read_frame(&mut stream, MAX_RECEIPT, true).await?;
+    }
     secure.io = stream.into_inner();
     secure.finish().await?;
     Ok(output)
 }
 
-pub async fn verify<S>(
+/// Reads `[u32 BE length][bytes]`; a length over `max`, or 0 when not `allow_empty`, is refused.
+async fn read_frame<R: futures::AsyncRead + Unpin>(
+    stream: &mut R,
+    max: usize,
+    allow_empty: bool,
+) -> Result<Vec<u8>> {
+    let mut length = [0; 4];
+    checked(stream.read_exact(&mut length).await)?;
+    let length = u32::from_be_bytes(length) as usize;
+    if length > max || (length == 0 && !allow_empty) {
+        return Err(Error::Limit);
+    }
+    let mut bytes = vec![0; length];
+    checked(stream.read_exact(&mut bytes).await)?;
+    Ok(bytes)
+}
+
+/// Verifies the holder's proof. When the holder asks for a receipt, `issue` gets what was verified and the holder's
+/// binding and returns the receipt to send back (empty to give none); it runs after every check has passed.
+#[allow(clippy::too_many_arguments)]
+pub async fn verify<S, I>(
     wire: S,
     host: String,
     port: u16,
@@ -348,9 +390,11 @@ pub async fn verify<S>(
     hash: [u8; 32],
     private: [u8; 32],
     roots: RootCertStore,
+    issue: I,
 ) -> Result<Verified>
 where
     S: AsyncRead + AsyncWrite + Send + Unpin + 'static,
+    I: FnOnce(&Verified, &[u8]) -> Vec<u8>,
 {
     use bincode::Options;
     limits(&host, port, max_sent, max_recv, &mode)?;
@@ -461,14 +505,7 @@ where
     // The upstream verifier does not return the certificate chain in MPC mode.
     // Bind this supplemental chain to the authenticated session's ephemeral key,
     // hostname, time and trust roots instead of trusting peer-supplied metadata.
-    let mut length = [0; 4];
-    checked(stream.read_exact(&mut length).await)?;
-    let length = u32::from_be_bytes(length) as usize;
-    if length == 0 || length > 65536 {
-        return Err(Error::Limit);
-    }
-    let mut metadata = vec![0; length];
-    checked(stream.read_exact(&mut metadata).await)?;
+    let metadata = read_frame(&mut stream, 65536, false).await?;
     let metadata: HandshakeData = checked(
         bincode::DefaultOptions::new()
             .with_fixint_encoding()
@@ -496,6 +533,20 @@ where
     ))?;
     output.verify_ms += metadata_started.elapsed().as_millis() as u64;
     output.cert_chain_der = metadata.certs.into_iter().map(|c| c.0).collect();
+    let binding = read_frame(&mut stream, MAX_BINDING, true).await?;
+    if !binding.is_empty() {
+        let mut receipt = issue(&output, &binding);
+        if receipt.len() > MAX_RECEIPT {
+            receipt.clear();
+        }
+        checked(
+            stream
+                .write_all(&(receipt.len() as u32).to_be_bytes())
+                .await,
+        )?;
+        checked(stream.write_all(&receipt).await)?;
+        checked(stream.flush().await)?;
+    }
     secure.io = stream.into_inner();
     secure.finish().await?;
     Ok(output)
@@ -660,7 +711,7 @@ pub fn roots_with(extra: Vec<Vec<u8>>) -> RootCertStore {
 mod tests {
     use super::*;
     fn request() -> Request {
-        Request { host:"example.com".into(),port:443,max_sent:4096,max_recv:1024,mode:"proxy".into(),
+        Request { host:"example.com".into(),port:443,max_sent:4096,max_recv:1024,mode:"proxy".into(),binding:Vec::new(),
         request:b"GET /check?private=x HTTP/1.1\r\nHost: example.com\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n".to_vec() }
     }
     #[test]

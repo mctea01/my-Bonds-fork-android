@@ -1,0 +1,95 @@
+{
+  "id": "cn.chsi.xjbg/1",
+  "title": "學信網學籍在線驗證報告",
+  "host": "www.chsi.com.cn",
+  "official": false,
+  "prepare": {
+    "type": "none"
+  },
+  "request": {
+    "method": "GET",
+    "path": "/xlcx/bg.do",
+    "query": "vcode={vcode}&srcid=bgcx",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "inputs": [
+      {
+        "name": "vcode",
+        "label": "在線驗證碼",
+        "pattern": "^[0-9A-Z]{12,16}$",
+        "private": true
+      }
+    ]
+  },
+  "limits": {
+    "maxSent": 1024,
+    "maxRecv": 65536
+  },
+  "status": {
+    "reveal": "<title>[^<]{1,80}</title>",
+    "success": "^<title>教育部学籍在线验证报告_中国高等教育学生信息网（学信网）</title>$"
+  },
+  "fields": [
+    {
+      "name": "name",
+      "label": "姓名",
+      "reveal": "<div class=\"label\">\\s*姓名\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "birthDate",
+      "label": "出生日期",
+      "reveal": "<div class=\"label\">\\s*出生日期\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "school",
+      "label": "學校名稱",
+      "reveal": "<div class=\"label\">\\s*学校名称\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,80})</div>"
+    },
+    {
+      "name": "level",
+      "label": "層次",
+      "reveal": "<div class=\"label\">\\s*层次\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "major",
+      "label": "專業",
+      "reveal": "<div class=\"label\">\\s*专业\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,80})</div>"
+    },
+    {
+      "name": "duration",
+      "label": "學制",
+      "reveal": "<div class=\"label\">\\s*学制\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "category",
+      "label": "學歷類別",
+      "reveal": "<div class=\"label\">\\s*学历类别\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "studyMode",
+      "label": "學習形式",
+      "reveal": "<div class=\"label\">\\s*学习形式\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "enrolled",
+      "label": "入學日期",
+      "reveal": "<div class=\"label\">\\s*入学日期\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "studentStatus",
+      "label": "學籍狀態",
+      "reveal": "<div class=\"label\">\\s*学籍状态\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "expectedGraduation",
+      "label": "預計畢業日期",
+      "reveal": "<div class=\"label\">\\s*预计毕业日期\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "updated",
+      "label": "報告更新日期",
+      "reveal": "<div class=\"update-time\">更新日期：([^<]{1,40})</div>"
+    }
+  ]
+}
