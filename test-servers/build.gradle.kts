@@ -60,3 +60,13 @@ tasks.test {
         showStandardStreams = true
     }
 }
+
+// The signed zk template pack for a release (templates/ in the repository); the key comes from ZK_TEMPLATES_KEY.
+tasks.register<JavaExec>("templatePack") {
+    group = "distribution"
+    description = "Builds build/zk-templates.jwt from templates/, signed with ZK_TEMPLATES_KEY"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("diw.testservers.tools.TemplatePackTool")
+    args(rootProject.file("templates").absolutePath, layout.buildDirectory.file("zk-templates.jwt").get().asFile.absolutePath)
+    jvmArgs("-Dfile.encoding=UTF-8")
+}

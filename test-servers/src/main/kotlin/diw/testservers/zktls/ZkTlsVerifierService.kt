@@ -31,6 +31,7 @@ import io.ktor.websocket.close
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.multipaz.util.toBase64Url
@@ -63,6 +64,9 @@ class ZkTlsVerifierService(
     private val random = SecureRandom()
 
     fun profile(id: String): ZkTlsProfile? = ZkTlsProfiles.find(id) ?: profiles().firstOrNull { it.id == id }
+
+    /** The pages sessions can be created for. */
+    fun offered(): List<ZkTlsProfile> = ZkTlsProfiles.installed + profiles()
 
     suspend fun create(profileId: String, fields: List<String>, purpose: String, mode: String): Session {
         if (!available()) throw ProtocolException("unsupported", "這台查驗主機沒有 zkTLS（TLSNotary）原生程式庫")
@@ -127,6 +131,10 @@ class ZkTlsVerifierService(
 }
 
 fun Route.zkTlsVerifierRoutes(service: ZkTlsVerifierService) {
+    get("/zktls/profiles") {
+        val list = buildJsonArray { service.offered().forEach { add(DiwJson.encodeToJsonElement(ZkTlsProfile.serializer(), it)) } }
+        call.respondText(buildJsonObject { put("profiles", list) }.toString(), ContentType.Application.Json)
+    }
     post("/zktls/sessions") {
         val o = runCatching { DiwJson.parseToJsonElement(call.receiveText()) as JsonObject }.getOrNull()
         if (o == null) {
