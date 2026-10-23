@@ -300,16 +300,19 @@ private enum class AgeRoute(val label: String) {
     HOST("查驗主機"),
 }
 
-/** The Verify tab's age check: how the proof arrives, minimum age, accepted cards and purpose, then the request QR. */
+/**
+ * The Verify tab's age check: how the proof arrives, minimum age, accepted cards and purpose, then the request QR.
+ * The animated QR route needs a camera that keeps scanning ([canScanFrames]).
+ */
 @Composable
-internal fun BondsAgeVerifierSetup(model: WalletModel) {
+internal fun BondsAgeVerifierSetup(model: WalletModel, canScanFrames: Boolean) {
     var ageText by remember { mutableStateOf("18") }
     var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
     var purpose by remember { mutableStateOf("年齡確認") }
     val host = model.taiwan.ageVerifier.host()
     val available = mapOf(
         AgeRoute.BLUETOOTH to (model.platform.bondsLinkCentral != null),
-        AgeRoute.QR to true,
+        AgeRoute.QR to canScanFrames,
         AgeRoute.LAN to (model.platform.bondsLan != null),
         AgeRoute.HOST to (host != null),
     )

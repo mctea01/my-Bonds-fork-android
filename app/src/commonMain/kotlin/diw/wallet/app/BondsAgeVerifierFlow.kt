@@ -252,7 +252,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     private suspend fun localEngine(how: String): OpenAcAgeVerifier? = when (val r = engines()) {
         is ZkResult.Ok -> r.value
         is ZkResult.Failed -> {
-            ui.value = OfflineUi.Failed("這支手機無法驗證年齡證明（${r.reason}）。${how}查驗要在這支手機驗證，可改用查驗主機。")
+            ui.value = OfflineUi.Failed("這台裝置無法驗證年齡證明（${r.reason}）。$how 查驗要在這台裝置上驗證，可改用查驗主機。")
             null
         }
         ZkResult.Cancelled -> null

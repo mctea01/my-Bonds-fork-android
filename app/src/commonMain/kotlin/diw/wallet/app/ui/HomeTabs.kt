@@ -224,7 +224,7 @@ fun UseTab(model: WalletModel, scan: ScanActions) {
  * by NFC. The rest of the verifier is laid out and stays disabled until its design is implemented.
  */
 @Composable
-fun VerifyTab(model: WalletModel) {
+fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
     var purpose by remember { mutableStateOf("身分確認") }
     var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
     var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
@@ -269,7 +269,7 @@ fun VerifyTab(model: WalletModel) {
                 }
             }
         }
-        BondsAgeVerifierSetup(model)
+        BondsAgeVerifierSetup(model, canScanFrames)
         SectionTitle("查驗方身分")
         ActionRow(WalletIcons.Person, "以誰的身分查驗", "個人、法人或組織中的個人，以查驗方的認證憑證為證據，將於後續版本支援", enabled = false) {}
         SectionTitle("其他查驗方式")

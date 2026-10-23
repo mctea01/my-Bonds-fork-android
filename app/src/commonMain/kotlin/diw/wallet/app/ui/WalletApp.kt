@@ -144,7 +144,7 @@ fun WalletApp(
                         HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
                         HomeTab.FILES -> FilesTab(model)
                         HomeTab.USE -> UseTab(model, scan)
-                        HomeTab.VERIFY -> VerifyTab(model)
+                        HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
                         HomeTab.HISTORY -> HistoryTab(model)
                     }
                     Screen.Settings -> SettingsScreen(model)

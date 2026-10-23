@@ -223,7 +223,8 @@ internal fun desktopZkInfo(dataDir: File): ZkPlatformInfo {
         os.contains("mac") && (arch == "aarch64" || arch == "arm64") -> "macos-aarch64"
         else -> "$os-$arch"
     }
-    val bean = java.lang.management.ManagementFactory.getOperatingSystemMXBean() as? com.sun.management.OperatingSystemMXBean
+    // A runtime without jdk.management has no memory figures; the architecture alone still decides what can run.
+    val bean = runCatching { java.lang.management.ManagementFactory.getOperatingSystemMXBean() as? com.sun.management.OperatingSystemMXBean }.getOrNull()
     val mib = 1024L * 1024L
     return ZkPlatformInfo(
         abi = abi,

@@ -374,6 +374,8 @@ compose.desktop {
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
             modules("java.instrument", "java.logging", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            // Memory figures for the zero-knowledge capability check (com.sun.management).
+            modules("jdk.management")
             // Signing with PKCS#11 tokens (SunPKCS11), and on Windows with keys in the certificate store (SunMSCAPI),
             // which only the Windows JDK has.
             modules("jdk.crypto.cryptoki")
