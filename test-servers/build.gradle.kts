@@ -70,3 +70,25 @@ tasks.register<JavaExec>("templatePack") {
     args(rootProject.file("templates").absolutePath, layout.buildDirectory.file("zk-templates.jwt").get().asFile.absolutePath)
     jvmArgs("-Dfile.encoding=UTF-8")
 }
+
+// Checks a zkTLS page profile against the real site on this machine (templates/README.md): -Pprofile=<file>, and
+// -Pshow to print the values read, -Psave=<file> to keep the response (it holds the query result), -Pfrom=<file> to
+// check the rules against a kept response without contacting the site.
+tasks.register<JavaExec>("checkProfile") {
+    group = "verification"
+    description = "Checks a zkTLS verification page profile against the real site"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("diw.testservers.tools.ProfileCheckTool")
+    standardInput = System.`in`
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+    val profile = providers.gradleProperty("profile")
+    val show = providers.gradleProperty("show")
+    val save = providers.gradleProperty("save")
+    val from = providers.gradleProperty("from")
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOfNotNull(profile.orNull?.let { rootProject.file(it).absolutePath }) +
+            (if (show.isPresent) listOf("--show") else emptyList()) +
+            (save.orNull?.let { listOf("--save", rootProject.file(it).absolutePath) } ?: emptyList()) +
+            (from.orNull?.let { listOf("--from", rootProject.file(it).absolutePath) } ?: emptyList())
+    })
+}

@@ -65,6 +65,7 @@ class NativeZkTlsEngine(
         profile: ZkTlsProfile,
         request: ByteArray,
         extraRoots: List<ByteArray>,
+        binding: kotlinx.serialization.json.JsonObject?,
         step: (String) -> Unit,
     ): ZkResult<ZkTlsProved> = withContext(Dispatchers.IO) {
         if (!ready()) return@withContext UNSUPPORTED
@@ -88,13 +89,17 @@ class NativeZkTlsEngine(
             val t = cancellable(channel) { token ->
                 zktlsProve(
                     channel,
-                    ZkTlsRequest(profile.host, profile.port.toUShort(), request, profile.limits.maxSent.toUInt(), profile.limits.maxRecv.toUInt(), r.mode),
+                    ZkTlsRequest(
+                        profile.host, profile.port.toUShort(), request, profile.limits.maxSent.toUInt(), profile.limits.maxRecv.toUInt(), r.mode,
+                        binding?.let { WebProofCredentials.publicJwk(it).toString().encodeToByteArray() } ?: ByteArray(0),
+                    ),
                     chooser, token, session.hash, r.verifierStatic, extraRoots,
                 )
             }
             val p = plan ?: return@withContext ZkErrors.internal
             val seen = ZkTlsHolder.masked(t.serverName, t.certChainDer, t.time.toLong(), t.sent, t.received, sentReveal, p.received)
-            ZkResult.Ok(ZkTlsProved(t.serverName, t.certChainDer, t.time.toLong(), t.cipherSuite, p, ZkTlsCheck.check(r, profile, seen), transport))
+            val receipt = t.receipt.takeIf { it.isNotEmpty() }?.decodeToString()
+            ZkResult.Ok(ZkTlsProved(t.serverName, t.certChainDer, t.time.toLong(), t.cipherSuite, p, ZkTlsCheck.check(r, profile, seen), transport, receipt))
         } catch (e: ZkException) {
             failure(e)
         }
@@ -164,6 +169,7 @@ class NativeZkTlsEngine(
             request: ZkTlsSessionRequest,
             profile: ZkTlsProfile,
             extraRoots: List<ByteArray>,
+            receipts: ZkTlsReceipts?,
             waiting: (String) -> Unit,
         ): ZkResult<ZkTlsSeen> = withContext(Dispatchers.IO) {
             try {
@@ -171,7 +177,7 @@ class NativeZkTlsEngine(
                 val channel = withTimeoutOrNull(left) { firstHolder() } ?: return@withContext EXPIRED
                 waiting("出示者已連線，正在查驗")
                 try {
-                    ZkTlsVerification.verify(channel, jws, request, profile, key, extraRoots)
+                    ZkTlsVerification.verify(channel, jws, request, profile, key, extraRoots, receipts)
                 } catch (e: ZkException) {
                     failure(e)
                 }

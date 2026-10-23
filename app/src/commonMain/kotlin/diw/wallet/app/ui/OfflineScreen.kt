@@ -104,6 +104,12 @@ fun OfflineScreen(
         is OfflineUi.BondsFrames -> BondsFramesView(model, s)
         is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera, streamQr)
         is OfflineUi.VerifierResult -> VerifierResultView(model, s)
+        is OfflineUi.ZkTlsConsent -> ZkTlsConsentView(model, s)
+        is OfflineUi.ZkTlsProving -> ZkTlsProvingView(model, s)
+        is OfflineUi.ZkTlsHolderResult -> ZkTlsHolderResultView(model, s)
+        is OfflineUi.ZkTlsVerifierSetup -> ZkTlsVerifierSetupView(model, s)
+        is OfflineUi.ZkTlsVerifierWaiting -> ZkTlsVerifierWaitingView(model, s)
+        is OfflineUi.ZkTlsVerifierResult -> ZkTlsVerifierResultView(model, s)
     }
 }
 

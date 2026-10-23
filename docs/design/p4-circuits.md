@@ -255,8 +255,8 @@ content:
 
 - tlsn `v0.1.0-alpha.15`（以 commit 釘選）。Proxy 模式為預設：查驗方自己連到目標網站並轉送加密封包，證明者在 ZK 中證明 TLS 1.2 PRF、Finished 與記錄的正確性【確認：TLSNotary Proxy mode 文章】。MPC 模式為選項，查驗方想避免「查驗方到網站之間的網路被劫持」的假設時使用，代價是頻寬與時間。
 - 只支援 TLS 1.2；描述檔記錄目標網站的 TLS 版本與加密套件（學信網、移民署查驗頁都支援 TLS 1.2 ECDHE-RSA-AES128-GCM-SHA256【確認：2026-10-11 openssl 測試】）。
-- 請求一律帶 `Accept-Encoding: identity` 與 `Connection: close`，避免壓縮的回應無法部分揭露；支援 chunked 回應（alpha.15）。
-- 上限：送出 4 KB、接收 256 KB（描述檔可降低）。學信網的報告頁含照片，WP6 要先量實際大小。
+- 請求一律帶 `Accept-Encoding: identity` 與 `Connection: close`，避免壓縮的回應無法部分揭露。chunked 回應的規則對的是去掉分塊標頭後的內容，欄位跨越分塊時揭露範圍包含中間的分塊標頭（CRLF、分塊大小列），查驗方讀取前去掉；持有端只揭露查驗方能以同一規則讀回同一片段的範圍（`ChunkedBody`）。
+- 上限：送出 4 KB、接收 256 KB（描述檔可降低）。學信網新版中文報告（桌面版面）實測約 32 KB，未含照片圖檔。
 
 ### 4.2 查驗頁描述檔
 
@@ -268,22 +268,24 @@ content:
   "official": false,
   "prepare": { "type": "none" },
   "request": {
-    "method": "POST",
+    "method": "GET",
     "path": "/xlcx/bg.do",
     "query": "vcode={vcode}&srcid=bgcx",
-    "headers": { "Accept-Encoding": "identity", "Connection": "close" },
+    "headers": { "User-Agent": "Mozilla/5.0" },
     "inputs": [ { "name": "vcode", "label": "在線驗證碼", "pattern": "^[0-9A-Z]{12,16}$", "private": true } ]
   },
-  "limits": { "maxSent": 4096, "maxRecv": 262144 },
-  "status": { "reveal": "…", "success": "…" },
-  "fields": [ { "name": "name", "label": "姓名", "reveal": "…" } ]
+  "limits": { "maxSent": 1024, "maxRecv": 65536 },
+  "status": { "reveal": "<title>[^<]{1,80}</title>", "success": "^<title>教育部学籍在线验证报告_…</title>$" },
+  "fields": [ { "name": "name", "label": "姓名", "reveal": "<div class=\"label\">\\s*姓名\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>" } ]
 }
 ```
 
-- `prepare.type` 可為 `none` 或 `webview`（在內嵌頁面讓使用者輸入圖形驗證碼，取得 cookie；移民署查驗頁屬於後者，送出欄位為證號、序號與圖形驗證碼）。
+完整描述檔在 `templates/zktls/cn.chsi.xjbg.json`（2026-10-24 以真實報告核對）。學信網沒有 User-Agent 會回 403，且依 User-Agent 回傳桌面或手機版面，所以描述檔固定 `Mozilla/5.0`；`Accept-Encoding` 與 `Connection` 由規劃器加上。
+
+- `prepare.type` 可為 `none` 或 `captcha`（`ZkTlsPrepare`）：持有端在 zkTLS 之外以一般 HTTPS 開 `page` 取得工作階段，在同一工作階段取得 `image` 的驗證碼圖片給使用者看，使用者輸入到 `input`；`cookies` 列出的工作階段 Cookie 放進查詢請求的 Cookie 標頭，與輸入一樣不揭露。每次查詢用掉一張圖，重試或取消時在同一工作階段換新。移民署查驗頁屬於後者（`templates/zktls/tw.gov.immigration.entryexit.json`，送出證號、序號與驗證碼；表單原為 multipart，實測接受一般表單編碼；2026-10-24 以真實證明書核對：結果頁的列表只有日期、證號與序號，資料在隱藏的明細區塊，出入境列表新到舊排列，第 1 列為最近一次出境與其後的入境）。
 - `reveal` 是對回應主體的規則：以描述檔的正規表示式找出「標籤加值」的完整片段，揭露整個片段，查驗方再用同一個正規表示式取出值。揭露片段的位置與長度公開。
 - `official` 只表示網站屬於政府，不改變信任等級（p4-zkp.md 第 6 節）。
-- `…` 的部分由 WP6 以實際回應填寫；描述檔不得含任何真實查詢結果。
+- 描述檔不得含任何真實查詢結果；查詢輸入所在的列（例如報告上的在線驗證碼）不可作為欄位。
 
 ### 4.3 證明者在請求中隱藏的內容
 

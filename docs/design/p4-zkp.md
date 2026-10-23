@@ -135,19 +135,26 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 - 通道一律端對端加密：Noise `NK_25519_ChaChaPoly_SHA256`，回應方靜態公鑰為請求內的 `ck`，prologue 為請求 JWS 的 SHA-256，所以通道綁定到這一次已簽章的請求。傳輸層只負責搬運密文，不參與信任判定。
 - `transport` 是陣列，列出查驗方可用的路徑，錢包依序嘗試：
   - `{"type":"wss","url":"wss://…"}`：查驗方是伺服器或電腦版（M6a，過渡方案）。
-  - `{"type":"lan","host":"<IPv4 或 IPv6>","port":<埠>}`：查驗方手機在同一個區域網路開啟 WebSocket 伺服器（明文 ws，安全性來自 Noise）。只接受私有位址。
+  - `{"type":"lan","host":"<私有 IPv4>","port":<埠>}`：查驗方手機在同一個區域網路（Wi-Fi 或熱點）的每個位址開啟 TCP 伺服器，直接傳 Noise 位元組，不加 WebSocket 框架（Noise 自己有長度欄位；2026-10-23 實作時由 ws 改為 TCP，Android release 不需要明文 HTTP 堆疊）。只接受 `BondsAgeRequest.lanHost` 允許的私有位址。查驗方先讀第一段資料確認是 Noise 握手再開始驗證。
   - `{"type":"relay","url":"wss://…","room":"<隨機 16 bytes base64url>"}`：雙方都連到中繼，中繼以 `room` 配對後只轉送位元組，看不到內容。中繼可由使用者的主機或測試伺服器提供（`test-servers` 內附可部署的實作），不需要信任。
 - Proxy 模式下查驗方手機要能連到目標網站；MPC 模式的傳輸量大（數十 MB【推論】），手機查驗方預設 Proxy。BLE 頻寬不足，P4 不採用；WP1 量測後再評估 Proxy 模式小頁面是否可行。
-- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。
+- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。裝置沒有 tlsn 引擎時改由查驗主機（年齡查驗主機的設定，測試環境為測試伺服器）建立請求並驗證，畫面標明結果來自主機。
+- 查驗頁描述檔隨 GitHub Release 發布（2026-10-23 使用者決定）：`templates/` 的檔案由 CI 打包成 `zk-templates.jwt`（`typ` 為 `zk-templates+jwt` 的 ES256 JWS，簽章金鑰為 repo Secret `ZK_TEMPLATES_KEY`，公鑰釘選在 `ZkTemplatePack.TRUSTED_KEYS`），附在 nightly 預先發布版。App 每天檢查一次，只安裝比已安裝版本新的版型包。版型只描述版面與揭露範圍，電路仍釘選在 App 內。不在版型包內的查驗頁只能隨請求附上（`profile_def`），只在測試環境接受。
 
 離線與存證：
 
 | 憑證 | vct | 簽發者 | 信任 |
 |---|---|---|---|
-| 網頁證明（自架 notary） | `urn:diw-wallet:vct:web-proof:1` | notary 服務的 DID（使用者的主機）。notary 先以即時模式當查驗方，再把揭露的欄位簽成 SD-JWT VC，經同一條 WebSocket 交給錢包，`cnf` 是錢包提供的持有者金鑰 | T3；查驗方把該 DID 加入信任後為 T2 |
-| 裝置證明的網頁紀錄 | `urn:diw-wallet:vct:web-record:1` | 錢包本身，以 Android Keystore 硬體金鑰簽章，`x5c` 為金鑰證明憑證鏈 | T3，標示「裝置證明，不是零知識證明」；D1 實測 root 機可偽造金鑰證明 |
+| 網頁證明（查驗方回執） | `urn:diw-wallet:vct:web-proof:1` | 簽這次請求的同一把金鑰：查驗方錢包的 did:key（`kid`），或查驗主機的讀取端憑證（`x5c`）。查驗方驗證通過後把揭露的欄位簽成 SD-JWT VC，在同一條 Noise 通道交給持有端，`cnf` 是持有端提供的金鑰 | 查驗方為 T1、T2 時為 T2，否則 T3；永遠不是 T1 |
+| 裝置證明的網頁紀錄 | `urn:diw-wallet:vct:web-record:1` | 錢包本身（文件發行 did:key），金鑰證明憑證鏈放在明文 `device.keyAttestation` | T3，標示「裝置證明，不是零知識證明」；D1 實測 root 機可偽造金鑰證明 |
 
-兩種憑證的明文 claim：`source`（`host`、`profile`、`retrievedAt`、伺服器憑證鏈 SHA-256、TLS 版本與加密套件）與 `method`（`zktls-proxy`、`zktls-mpc`、`device-attested`），欄位值放 disclosure。
+兩種憑證的明文 claim：`source`（`host`、`port`（非 443 時）、`profile`、`profileTitle`、`retrievedAt`、`serverCertSha256`、`tlsVersion`，紀錄另有 `cipherSuite`）、`method`（`zktls-proxy`、`zktls-mpc`、`device-attested`）與回執的 `session`（請求的 `nonce` 與 `purpose`）。欄位值與查詢狀態（`queryStatus`）放 disclosure；查詢輸入（證號、圖形驗證碼）從不進入憑證。欄位名稱不得與上述明文 claim 或 JWT 保留名稱相同。
+
+實作（2026-10-23）：
+
+- 原生協定在證明結束、補充的憑證鏈之後交換 `[u32 長度][持有端 JWK]`（長度 0 表示不要回執，上限 4096）；要回執時查驗方回 `[u32 長度][回執]`（0 表示不給，上限 65536）。查驗方只在所有檢查通過後才呼叫簽發回呼，回執的簽發失敗只代表沒有回執，不影響查驗結果。
+- 持有端在出示前勾選「保存查詢結果」：先在待定文件中建立憑證金鑰，把公鑰當作綁定；證明通過後檢查回執（簽章者就是請求的簽章者、`vct`、`cnf`、網站與查驗頁、`nonce`、`method`、每個欄位與自己的解讀完全一致、沒有多餘的 disclosure），通過就存為網頁證明，否則（沒有回執或回執不符）存為本機紀錄；證明失敗或取消時刪除待定文件。
+- 程式：`core/.../zktls/WebProofCredentials.kt`（格式、簽發、回執檢查）、`app/.../ZkTlsKeep.kt`（存入證件）、測試伺服器以讀取端憑證簽發回執並在狀態回應加 `receipt: true`。
 
 ### 5.3 OpenAC 年齡證明（Bonds 相容）
 

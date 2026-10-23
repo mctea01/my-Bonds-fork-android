@@ -208,11 +208,12 @@ fun ZkSettingsScreen(model: WalletModel) {
 @Composable
 private fun ZkTemplatesSection(model: WalletModel) {
     val st by model.zkTemplates.state.collectAsState()
+    val settings by model.settingsFlow.collectAsState()
     Text("zkTLS 查驗頁與 zkPDF 文件版型隨每次發布更新，不需要更新 App。版型只描述要揭露的欄位，電路仍以 App 內的版本為準；" +
         "版型包須有本專案發布金鑰的簽章，也不會被較舊的版本取代。", style = MaterialTheme.typography.bodySmall)
     val lines = buildList {
         if (!st.keyConfigured) add("此版本尚未設定版型簽章金鑰，暫時只能使用查驗方在測試環境附上的查驗頁。")
-        if (st.version != null) add("已安裝：${st.pages} 個查驗頁、${st.documents} 個文件版型・發布於 ${localTime(st.issuedAt!!)}")
+        if (st.version != null) add("已安裝：${st.pages} 個查驗頁、${st.documents} 個文件版型・發布於 ${localTime(st.issuedAt!!)}" + (st.source?.let { "・來源：$it" } ?: ""))
         else if (st.keyConfigured) add(if (st.running) "下載中" else "尚未下載")
         st.checkedAt?.let { add("上次檢查：${localTime(it)}") }
         st.error?.let { add("最近一次更新失敗：$it" + if (st.version != null) "（仍使用已安裝的版型）" else "") }
@@ -220,6 +221,20 @@ private fun ZkTemplatesSection(model: WalletModel) {
     lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text("立即更新") }
+        OutlinedButton(enabled = !st.running, onClick = { model.zkTemplates.importFiles() }) { Text("從檔案匯入") }
+    }
+    Text(
+        "可匯入發布的 zk-templates.jwt，或 CI 產物的 ZIP 檔，簽章與版本檢查和線上更新相同。" +
+            if (settings.testEnvironment) "測試環境另可匯入未簽章的查驗頁描述檔（.json），只在測試環境使用，查驗時會附在請求中，對方也須開啟測試環境。" else "",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    st.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+    if (st.testPages.isNotEmpty()) {
+        Text("測試查驗頁" + if (settings.testEnvironment) "" else "（測試環境關閉中，不會使用）", style = MaterialTheme.typography.titleSmall)
+        st.testPages.forEach { p ->
+            Text("${p.title}（${p.id}）・${p.host}" + if (p.port != 443) ":${p.port}" else "", style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(onClick = { model.zkTemplates.clearTestPages() }) { Text("清除測試查驗頁") }
     }
 }
 

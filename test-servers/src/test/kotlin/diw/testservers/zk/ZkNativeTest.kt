@@ -39,7 +39,8 @@ class ZkNativeTest {
                 assertNull(info.tlsn)
                 ZkCancelToken().use { token ->
                     assertFailsWith<ZkException.Unsupported> {
-                        zktlsVerify(ClosedChannel, "example.com", 443u, 4096u, 1024u, "proxy", token, ByteArray(32), ByteArray(32), emptyList())
+                        zktlsVerify(ClosedChannel, "example.com", 443u, 4096u, 1024u, "proxy", token, ByteArray(32), ByteArray(32), emptyList(),
+                            object : diw.wallet.core.zk.native.bindings.ZkTlsReceiptIssuer { override fun issue(verified: diw.wallet.core.zk.native.bindings.ZkTlsVerified, binding: ByteArray) = ByteArray(0) })
                     }
                 }
             }
