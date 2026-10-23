@@ -114,29 +114,40 @@ class ZkTemplatesModel(private val model: WalletModel) {
 
     /** Imports the files the user picks: signed packs, and in the test environment unsigned page descriptions. */
     fun importFiles() {
-        if (job?.isActive == true) return
+        // Marked before the picker opens, so a second tap (or a call right after the last import ended) is decided
+        // by the state alone, not by whether the previous job has finished completing.
+        if (state.value.running) return
+        state.value = state.value.copy(running = true, error = null, notice = null)
         job = model.scope.launch {
-            val picked = model.platform.pickFiles()
-            if (picked.isEmpty()) return@launch
-            state.value = state.value.copy(running = true, error = null, notice = null)
-            val notes = mutableListOf<String>()
-            val pages = mutableListOf<ZkTlsProfile>()
-            for (f in picked) {
-                try {
-                    for ((name, bytes) in entries(f.name, f.bytes)) {
-                        val text = bytes.decodeToString().trim().removePrefix("\uFEFF")
-                        if (text.startsWith("ey")) notes += importPack(text)
-                        else pages += pagesOf(name, text)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    notes += "${f.name}：" + (e.message ?: e::class.simpleName)
-                }
+            var notice: String? = null
+            try {
+                notice = importPicked(model.platform.pickFiles())
+            } finally {
+                state.value = state.value.copy(running = false, notice = notice)
             }
-            if (pages.isNotEmpty()) notes += addTestPages(pages)
-            state.value = state.value.copy(running = false, notice = notes.joinToString("\n").ifEmpty { "檔案中沒有版型" })
         }
+    }
+
+    /** What importing [picked] did, for the settings page; null when nothing was picked. */
+    private suspend fun importPicked(picked: List<PickedFile>): String? {
+        if (picked.isEmpty()) return null
+        val notes = mutableListOf<String>()
+        val pages = mutableListOf<ZkTlsProfile>()
+        for (f in picked) {
+            try {
+                for ((name, bytes) in entries(f.name, f.bytes)) {
+                    val text = bytes.decodeToString().trim().removePrefix("\uFEFF")
+                    if (text.startsWith("ey")) notes += importPack(text)
+                    else pages += pagesOf(name, text)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                notes += "${f.name}：" + (e.message ?: e::class.simpleName)
+            }
+        }
+        if (pages.isNotEmpty()) notes += addTestPages(pages)
+        return notes.joinToString("\n").ifEmpty { "檔案中沒有版型" }
     }
 
     /** Removes the pages imported for testing. */

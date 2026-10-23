@@ -81,6 +81,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
     val request = s.session.request
     val inputs = remember(s.session.jws) { mutableStateMapOf<String, String>() }
     var confirm by remember(s) { mutableStateOf(false) }
+    var keep by remember(s.session.jws) { mutableStateOf(false) }
     val left = secondsLeft(request)
     val complete = s.profile.request.inputs.all { !inputs[it.name].isNullOrEmpty() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -97,12 +98,20 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = keep, onCheckedChange = { keep = it })
+            Column {
+                Text("保存查詢結果到證件", style = MaterialTheme.typography.bodyMedium)
+                Text("通過後把揭露的欄位存成憑證，之後可離線出示。查驗方簽發回執時存為網站查驗證明，否則存為本機紀錄（裝置證明，不是零知識證明）。",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
         s.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         Text(if (left > 0) "請求剩餘 ${clock(left)}" else "請求已過期，請對方重新產生 QR Code", style = MaterialTheme.typography.bodySmall,
             color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { if (s.trust.tier == TrustTier.T4) confirm = true else model.taiwan.zkTls.prove(s, inputs.toMap()) },
+                onClick = { if (s.trust.tier == TrustTier.T4) confirm = true else model.taiwan.zkTls.prove(s, inputs.toMap(), keep) },
                 enabled = left > 0 && complete,
             ) { Text("查詢並產生證明") }
             OutlinedButton(onClick = { model.back() }) { Text("取消") }
@@ -113,7 +122,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
             title = "對無法驗證的查驗方出示？",
             lines = listOf("查驗方的簽章或身分驗證失敗，無法確認對方是誰。", "對方會看到網站上的查詢狀態與上面列出的欄位。"),
             confirm = "仍要出示",
-            onConfirm = { confirm = false; model.taiwan.zkTls.prove(s, inputs.toMap()) },
+            onConfirm = { confirm = false; model.taiwan.zkTls.prove(s, inputs.toMap(), keep) },
             onDismiss = { confirm = false },
         )
     }
@@ -175,6 +184,20 @@ internal fun ZkTlsHolderResultView(model: WalletModel, s: OfflineUi.ZkTlsHolderR
                     serverLines(proved.serverName, proved.time, s.serverTrust).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
+            s.kept?.let { k ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(if (k.receipt) "已保存網站查驗證明" else "已保存本機紀錄", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            if (k.receipt) "由 ${s.consent.verifier} 簽發，只含上面揭露的欄位，可在「證件」出示。"
+                            else "由這個錢包簽署，說明這台裝置讀到的內容；這是裝置證明，不是零知識證明。可在「證件」出示。",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        k.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+                    }
+                }
+            }
+            s.keepError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             TechDetails(listOf(
                 "傳輸：" + when (val t = proved.transport) {
                     is ZkTlsTransport.Lan -> "區網 ${t.host}:${t.port}"
@@ -282,6 +305,7 @@ internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerif
                     outcomeLines(o, s.request.fields).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     serverLines(o.serverName, o.time, s.serverTrust).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
                     Text("數值由出示者選擇揭露，查驗方以查驗頁的規則從網站回應中讀出。", style = MaterialTheme.typography.bodySmall)
+                    if (s.receipt) Text("出示者要求保存結果，已簽發回執（網站查驗證明）給對方。", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

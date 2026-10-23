@@ -1,6 +1,7 @@
 package diw.wallet.core.zktls
 
 import diw.wallet.core.zk.ZkResult
+import kotlinx.serialization.json.JsonObject
 
 /**
  * TLSNotary between a holder and a verifier (p4-zkp.md section 5.2). Both run on Android and desktops; the channel
@@ -9,13 +10,15 @@ import diw.wallet.core.zk.ZkResult
 interface ZkTlsEngine {
     /**
      * Holder: makes [request] (the planner's bytes for the profile) to the profile's site through the verifier of
-     * [session], over the first transport that answers, and reveals only what the planner allows.
+     * [session], over the first transport that answers, and reveals only what the planner allows. With [binding] (the
+     * holder's public JWK) it asks the verifier for a receipt ([ZkTlsProved.receipt]).
      */
     suspend fun prove(
         session: ZkTlsSessionRequest.Verified,
         profile: ZkTlsProfile,
         request: ByteArray,
         extraRoots: List<ByteArray>,
+        binding: JsonObject? = null,
         step: (String) -> Unit,
     ): ZkResult<ZkTlsProved>
 
@@ -36,17 +39,27 @@ interface ZkTlsVerifierSession {
 
     /**
      * Waits for the holder of the signed request [jws] ([request] is its payload) and verifies the proof: the
-     * transcript with only the revealed bytes. [waiting] reports progress. The session is closed afterwards.
+     * transcript with only the revealed bytes. [waiting] reports progress. A holder that asks for a receipt gets what
+     * [receipts] signs, none without it. The session is closed afterwards.
      */
     suspend fun verify(
         jws: String,
         request: ZkTlsSessionRequest,
         profile: ZkTlsProfile,
         extraRoots: List<ByteArray>,
+        receipts: ZkTlsReceipts? = null,
         waiting: (String) -> Unit,
     ): ZkResult<ZkTlsSeen>
 
     fun close()
+}
+
+/**
+ * The verifier's answer to a holder that asks for a receipt: called after the proof was verified, with what was
+ * verified and the holder's key; returns the credential to send back (WebProofCredentials), or null for none.
+ */
+fun interface ZkTlsReceipts {
+    suspend fun issue(seen: ZkTlsSeen, holderJwk: JsonObject): String?
 }
 
 /**
@@ -61,6 +74,8 @@ data class ZkTlsProved(
     val plan: ZkTlsPlanner.Plan,
     val outcome: ZkTlsOutcome,
     val transport: ZkTlsTransport,
+    /** The verifier's receipt (a web-proof SD-JWT VC, unchecked); null when none was asked for or given. */
+    val receipt: String? = null,
 )
 
 /** Holder-side helpers shared by every engine. */

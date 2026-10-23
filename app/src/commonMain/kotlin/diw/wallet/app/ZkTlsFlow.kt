@@ -11,12 +11,14 @@ import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.zk.ZkResult
+import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.zktls.ZkTlsCheck
 import diw.wallet.core.zktls.ZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsOutcome
 import diw.wallet.core.zktls.ZkTlsPlanner
 import diw.wallet.core.zktls.ZkTlsProfile
 import diw.wallet.core.zktls.ZkTlsProfiles
+import diw.wallet.core.zktls.ZkTlsReceipts
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.zktls.ZkTlsTransport
 import diw.wallet.core.zktls.ZkTlsVerifierSession
@@ -32,6 +34,7 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -59,9 +62,13 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     private var job: Job? = null
     private var session: ZkTlsVerifierSession? = null
     private val client by lazy { model.http.config { followRedirects = false } }
+    private val keeper = ZkTlsKeep(model)
 
     /** This device's zkTLS engine, or why there is none; replaced in tests. */
     internal var engines: suspend () -> ZkResult<ZkTlsEngine> = { model.zk.tls() }
+
+    /** Whether this device signs receipts as verifier; turned off in tests to reach the holder's own record. */
+    internal var receiptsEnabled = true
 
     /** The verifier host: the age host setting, else the test server in the test environment. */
     fun host(): String? = model.taiwan.ageVerifier.host()
@@ -122,9 +129,11 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
 
     /**
      * Queries the page with [inputs] through the verifier and reveals the planned parts. The inputs live only in the
-     * request bytes handed to the engine; they are never stored, logged or shown again.
+     * request bytes handed to the engine; they are never stored, logged or shown again. With [keep] a passed result
+     * is also kept in the documents list (ZkTlsKeep): the verifier's receipt when it gives one, else this wallet's
+     * own record.
      */
-    fun prove(consent: OfflineUi.ZkTlsConsent, inputs: Map<String, String>) {
+    fun prove(consent: OfflineUi.ZkTlsConsent, inputs: Map<String, String>, keep: Boolean = false) {
         val request = consent.session.request
         if (!request.isFresh(Clock.System.now())) {
             ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, EXPIRED, retry = false)
@@ -141,6 +150,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         ui.value = OfflineUi.ZkTlsProving(consent, id)
         job?.cancel()
         job = model.scope.launch {
+            var pending: ZkTlsKeep.Pending? = null
             val failure = try {
                 when (val engine = engines()) {
                     is ZkResult.Failed -> {
@@ -150,13 +160,28 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                     ZkResult.Cancelled -> return@launch
                     is ZkResult.Ok -> {
                         val roots = extraRoots()
+                        pending = if (keep) keeper.prepare() else null
+                        val binding = pending?.jwk
                         val result = model.zk.prove(id, ZkProofKind.TLS) { step ->
-                            engine.value.prove(consent.session, consent.profile, bytes, roots, step)
+                            engine.value.prove(consent.session, consent.profile, bytes, roots, binding, step)
                         }.await()
                         when (result) {
                             is ZkResult.Ok -> {
                                 val proved = result.value
-                                ui.value = OfflineUi.ZkTlsHolderResult(consent, proved, serverTrust(proved.certChainDer), null, retry = false)
+                                val trust = serverTrust(proved.certChainDer)
+                                var shown = OfflineUi.ZkTlsHolderResult(consent, proved, trust, null, retry = false)
+                                val p = pending
+                                if (p != null && proved.outcome.passed) {
+                                    pending = null
+                                    shown = try {
+                                        shown.copy(kept = keeper.keep(p, consent.session, proved, consent.verifier, consent.trust))
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        shown.copy(keepError = "無法保存查詢結果：" + model.describe(e))
+                                    }
+                                }
+                                ui.value = shown
                                 if (proved.outcome.passed) null else proved.outcome.problems.firstOrNull() ?: "查驗頁沒有找到資料"
                             }
                             is ZkResult.Failed -> {
@@ -177,6 +202,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                 val reason = model.describe(e)
                 ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, reason, retry = request.isFresh(Clock.System.now()))
                 reason
+            } finally {
+                // Nothing to keep: a failed or cancelled proof leaves no pending document behind.
+                pending?.let { p -> withContext(NonCancellable) { keeper.discard(p) } }
             }
             model.record(
                 HistoryKind.PRESENTED, consent.verifier, consent.trust, listOf(consent.profile.title),
@@ -277,14 +305,24 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         val where = opened.transports.joinToString("、") { routeName(it) }
         val details = transportDetails(request) + listOf("查驗方 DID：${key.did}", "請求 id：${request.sessionId}")
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, ZkTlsSessionRequest.link(jws), profile, where, local = true, details = details)
-        val result = opened.verify(jws, request, profile, extraRoots()) { step ->
+        // A holder that keeps the result gets a receipt signed with the key that signed the request.
+        val signer = WebProofCredentials.receipts(request, profile, key.did!!, key.signingKey("ES256"))
+        var issued = false
+        val receipts = ZkTlsReceipts { seen, jwk ->
+            try {
+                withContext(model.unlockProvider) { signer.issue(seen, jwk) }?.also { issued = true }
+            } finally {
+                model.endOperation()
+            }
+        }
+        val result = opened.verify(jws, request, profile, extraRoots(), receipts.takeIf { receiptsEnabled }) { step ->
             (ui.value as? OfflineUi.ZkTlsVerifierWaiting)?.takeIf { it.request == request }?.let { ui.value = it.copy(step = step) }
         }
         val shown = when (result) {
             is ZkResult.Ok -> {
                 val seen = result.value
                 OfflineUi.ZkTlsVerifierResult(profile, request, ZkTlsCheck.check(request, profile, seen), serverTrust(seen.certChainDer),
-                    local = true, where = where, error = null)
+                    local = true, where = where, error = null, receipt = issued)
             }
             is ZkResult.Failed -> OfflineUi.ZkTlsVerifierResult(profile, request, null, null, local = true, where = where, error = result.reason)
             ZkResult.Cancelled -> return
@@ -335,7 +373,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         val shown = when {
             v == null -> OfflineUi.ZkTlsVerifierResult(profile, request, null, null, local = false, where = where, error = EXPIRED_VERIFIER)
             v.str("status") == "done" -> OfflineUi.ZkTlsVerifierResult(profile, request,
-                (v["outcome"] as? JsonObject)?.let { ZkTlsOutcome.fromJson(it, profile) }, null, local = false, where = where, error = null)
+                (v["outcome"] as? JsonObject)?.let { ZkTlsOutcome.fromJson(it, profile) }, null, local = false, where = where, error = null,
+                receipt = (v["receipt"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true")
             else -> OfflineUi.ZkTlsVerifierResult(profile, request, null, null, local = false, where = where, error = v.str("reason") ?: "查驗失敗")
         }
         ui.value = shown

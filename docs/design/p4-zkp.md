@@ -145,10 +145,16 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 
 | 憑證 | vct | 簽發者 | 信任 |
 |---|---|---|---|
-| 網頁證明（自架 notary） | `urn:diw-wallet:vct:web-proof:1` | notary 服務的 DID（使用者的主機）。notary 先以即時模式當查驗方，再把揭露的欄位簽成 SD-JWT VC，經同一條 WebSocket 交給錢包，`cnf` 是錢包提供的持有者金鑰 | T3；查驗方把該 DID 加入信任後為 T2 |
-| 裝置證明的網頁紀錄 | `urn:diw-wallet:vct:web-record:1` | 錢包本身，以 Android Keystore 硬體金鑰簽章，`x5c` 為金鑰證明憑證鏈 | T3，標示「裝置證明，不是零知識證明」；D1 實測 root 機可偽造金鑰證明 |
+| 網頁證明（查驗方回執） | `urn:diw-wallet:vct:web-proof:1` | 簽這次請求的同一把金鑰：查驗方錢包的 did:key（`kid`），或查驗主機的讀取端憑證（`x5c`）。查驗方驗證通過後把揭露的欄位簽成 SD-JWT VC，在同一條 Noise 通道交給持有端，`cnf` 是持有端提供的金鑰 | 查驗方為 T1、T2 時為 T2，否則 T3；永遠不是 T1 |
+| 裝置證明的網頁紀錄 | `urn:diw-wallet:vct:web-record:1` | 錢包本身（文件發行 did:key），金鑰證明憑證鏈放在明文 `device.keyAttestation` | T3，標示「裝置證明，不是零知識證明」；D1 實測 root 機可偽造金鑰證明 |
 
-兩種憑證的明文 claim：`source`（`host`、`profile`、`retrievedAt`、伺服器憑證鏈 SHA-256、TLS 版本與加密套件）與 `method`（`zktls-proxy`、`zktls-mpc`、`device-attested`），欄位值放 disclosure。
+兩種憑證的明文 claim：`source`（`host`、`port`（非 443 時）、`profile`、`profileTitle`、`retrievedAt`、`serverCertSha256`、`tlsVersion`，紀錄另有 `cipherSuite`）、`method`（`zktls-proxy`、`zktls-mpc`、`device-attested`）與回執的 `session`（請求的 `nonce` 與 `purpose`）。欄位值與查詢狀態（`queryStatus`）放 disclosure；查詢輸入（證號、圖形驗證碼）從不進入憑證。欄位名稱不得與上述明文 claim 或 JWT 保留名稱相同。
+
+實作（2026-10-23）：
+
+- 原生協定在證明結束、補充的憑證鏈之後交換 `[u32 長度][持有端 JWK]`（長度 0 表示不要回執，上限 4096）；要回執時查驗方回 `[u32 長度][回執]`（0 表示不給，上限 65536）。查驗方只在所有檢查通過後才呼叫簽發回呼，回執的簽發失敗只代表沒有回執，不影響查驗結果。
+- 持有端在出示前勾選「保存查詢結果」：先在待定文件中建立憑證金鑰，把公鑰當作綁定；證明通過後檢查回執（簽章者就是請求的簽章者、`vct`、`cnf`、網站與查驗頁、`nonce`、`method`、每個欄位與自己的解讀完全一致、沒有多餘的 disclosure），通過就存為網頁證明，否則（沒有回執或回執不符）存為本機紀錄；證明失敗或取消時刪除待定文件。
+- 程式：`core/.../zktls/WebProofCredentials.kt`（格式、簽發、回執檢查）、`app/.../ZkTlsKeep.kt`（存入證件）、測試伺服器以讀取端憑證簽發回執並在狀態回應加 `receipt: true`。
 
 ### 5.3 OpenAC 年齡證明（Bonds 相容）
 

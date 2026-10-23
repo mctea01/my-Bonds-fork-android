@@ -236,6 +236,10 @@ sealed class OfflineUi {
         val serverTrust: TrustDecision?,
         val error: String?,
         val retry: Boolean,
+        /** The result kept in the documents list, when the holder chose to keep it. */
+        val kept: ZkTlsKeep.Kept? = null,
+        /** Why keeping failed; the proof itself stands. */
+        val keepError: String? = null,
     ) : OfflineUi()
 
     /** Verifier setup: the pages this device can ask for; [testPages] came from the test server. */
@@ -267,6 +271,8 @@ sealed class OfflineUi {
         val local: Boolean,
         val where: String,
         val error: String?,
+        /** The holder asked for, and was given, a signed receipt (a web-proof credential). */
+        val receipt: Boolean = false,
     ) : OfflineUi()
 
     data class VerifierResult(

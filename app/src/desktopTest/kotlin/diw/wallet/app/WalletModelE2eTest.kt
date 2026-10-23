@@ -8,6 +8,8 @@ import diw.wallet.app.desktop.PinValueCipher
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.util.str
+import kotlinx.io.bytestring.decodeToString
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.trust.TrustTier
@@ -1872,7 +1874,15 @@ class WalletModelE2eTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(verifier.zk.tls() is diw.wallet.core.zk.ZkResult.Ok, "native library without tlsn")
         val record = diw.testservers.zktls.ZkTlsRecordPage
 
-        suspend fun round(expectLocal: Boolean) {
+        /** The kept credential's vct and resolved claims, and the record's tier. */
+        suspend fun kept(id: String): Triple<String?, kotlinx.serialization.json.JsonObject, String> {
+            val doc = holder.documentStore.lookupDocument(id)!!
+            val compact = doc.getCertifiedCredentials().single().issuerProvidedData.decodeToString()
+            val claims = diw.wallet.core.zktls.WebProofCredentials.read(compact)
+            return Triple(doc.issuanceRecord!!.vct, claims, doc.issuanceRecord!!.tier)
+        }
+
+        suspend fun round(expectLocal: Boolean, expectReceipt: Boolean) {
             verifier.taiwan.zkTls.openSetup()
             val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
                 verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
@@ -1893,12 +1903,26 @@ class WalletModelE2eTest {
             // A malformed input stays on the consent screen.
             holder.taiwan.zkTls.prove(consent, mapOf("serial" to "bad", "code" to record.CODE))
             assertEquals("證號格式不符", assertIs<OfflineUi.ZkTlsConsent>(holder.taiwan.offline.value).error)
-            holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+            val before = holder.documents.value.size
+            holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE), keep = true)
             val proved = assertIs<OfflineUi.ZkTlsHolderResult>(withTimeout(180.seconds) {
                 holder.taiwan.offline.first { it is OfflineUi.ZkTlsHolderResult }
             })
             assertNull(proved.error, proved.error)
             assertTrue(proved.proved!!.outcome.passed, proved.proved.outcome.toString())
+            assertNull(proved.keepError, proved.keepError)
+            val keptResult = assertNotNull(proved.kept)
+            assertEquals(expectReceipt, keptResult.receipt, keptResult.note)
+            assertEquals(before + 1, holder.documents.value.size)
+            val (vct, claims, tier) = kept(keptResult.documentId)
+            val web = diw.wallet.core.zktls.WebProofCredentials
+            assertEquals(if (expectReceipt) web.VCT_PROOF else web.VCT_RECORD, vct)
+            assertEquals("T3", tier)
+            assertEquals(record.NAME, claims.str("name"))
+            assertEquals(record.DATE, claims.str("date"))
+            val method = claims.str("method")
+            assertEquals(if (expectReceipt) web.METHOD_PROXY else web.METHOD_DEVICE, method)
+            assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
 
             val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
                 verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
@@ -1907,18 +1931,23 @@ class WalletModelE2eTest {
             assertTrue(outcome.passed && outcome.found)
             assertEquals(mapOf("name" to record.NAME, "date" to record.DATE), outcome.fields)
             assertEquals(expectLocal, result.local)
+            assertEquals(expectReceipt, result.receipt)
             assertTrue(record.HIDDEN !in outcome.toString() && record.SERIAL !in outcome.toString())
         }
-        round(expectLocal = true)
-        // Without the engine here the test server checks the proof.
+        round(expectLocal = true, expectReceipt = true)
+        // A verifier that signs no receipt: the holder keeps its own record.
+        verifier.taiwan.zkTls.receiptsEnabled = false
+        round(expectLocal = true, expectReceipt = false)
+        // Without the engine here the test server checks the proof and signs the receipt with its reader key.
         verifier.taiwan.zkTls.engines = { diw.wallet.core.zk.ZkResult.Failed("no engine", false) }
-        round(expectLocal = false)
+        round(expectLocal = false, expectReceipt = true)
 
         val presented = holder.history.value.filter { it.kind == HistoryKind.PRESENTED }
-        assertEquals(2, presented.size)
+        assertEquals(3, presented.size)
         assertTrue(presented.all { it.failure == null && "zkTLS" in it.note!! })
         assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
-        assertEquals(2, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
+        assertEquals(3, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
+        assertEquals(3, holder.history.value.count { it.kind == HistoryKind.ISSUED })
     }
 
     /** Templates imported from files: a signed pack must carry the release key, unsigned pages only serve testing. */
