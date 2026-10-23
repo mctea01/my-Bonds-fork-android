@@ -423,6 +423,7 @@ class WalletModel(val platform: PlatformServices) {
     val csc = CscModel(this)
     val trustLists = TrustListsModel(this)
     val zk = ZkModel(scope, platform.zk)
+    val zkTemplates = ZkTemplatesModel(this)
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null
@@ -466,6 +467,7 @@ class WalletModel(val platform: PlatformServices) {
         // trusted without an import.
         runCatching { trust.seedBuiltInAnchors() }
         trustLists.load()
+        zkTemplates.load()
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
@@ -482,6 +484,7 @@ class WalletModel(val platform: PlatformServices) {
         ready.value = true
         status.refreshDue()
         trustLists.refreshDue()
+        zkTemplates.refreshDue()
         refreshMdocTrustLists(quiet = true)
     }
 
