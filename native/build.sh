@@ -15,7 +15,16 @@ targets=${targets//host/$host}
 # Optional proof backends (DIW_ZK_FEATURES, set by Gradle's diw.zkFeatures). The exports exist in every build;
 # a backend left out reports Unsupported. OpenAC needs protoc and libclang to build its witness runtime.
 features=${DIW_ZK_FEATURES:-}
-[[ -z "$features" || "$features" == openac ]] || { echo "Unsupported DIW_ZK_FEATURES: $features" >&2; exit 1; }
+if [[ -n "$features" ]]; then
+    [[ "$features" != ,* && "$features" != *, && "$features" != *,,* ]] || { echo "Invalid DIW_ZK_FEATURES list" >&2; exit 1; }
+    IFS=',' read -ra backends <<< "$features"
+    for backend in "${backends[@]}"; do
+        case "$backend" in
+            openac|tlsn) ;;
+            *) echo "Unsupported DIW_ZK_FEATURES entry" >&2; exit 1 ;;
+        esac
+    done
+fi
 feature_args=()
 [[ -z "$features" ]] || feature_args=(--features "$features")
 IFS=',' read -ra selected <<< "$targets"
