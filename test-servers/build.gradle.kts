@@ -41,6 +41,12 @@ application {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("diw.bench", providers.gradleProperty("bench").getOrElse("false"))
+    systemProperty("diw.bench.output", layout.buildDirectory.dir("reports/zk-bench").get().asFile.absolutePath)
+    if (providers.gradleProperty("bench").getOrElse("false") == "true") {
+        outputs.upToDateWhen { false }
+        maxParallelForks = 1
+    }
     jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g")
     // ZkNativeTest needs the library unless core's buildZkDesktop may leave it out (see core/build.gradle.kts).
     systemProperty("diw.zkNative", providers.gradleProperty("diw.zkNative")
