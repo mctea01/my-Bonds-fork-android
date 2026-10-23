@@ -182,7 +182,7 @@ internal fun BondsAgeWorkingView(model: WalletModel, s: OfflineUi.AgeWorking) {
 
 /** Cycles through the fountain frames; any [AnimatedQrTransport.Encoder.count] plus a few of them rebuild the payload. */
 @Composable
-private fun AnimatedQr(encoder: AnimatedQrTransport.Encoder, modifier: Modifier) {
+internal fun AnimatedQr(encoder: AnimatedQrTransport.Encoder, modifier: Modifier) {
     var seed by remember(encoder) { mutableStateOf(0) }
     LaunchedEffect(encoder) {
         while (true) {

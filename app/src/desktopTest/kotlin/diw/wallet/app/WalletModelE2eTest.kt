@@ -432,6 +432,7 @@ class WalletModelE2eTest {
             scanned = "動態 QR Code 已收到 41%（127 / 309）")
         screen("30-age-verify-qr", Screen.Offline, height = 1000)
         m.taiwan.startVerifier("年齡確認")
+        m.challenge()
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
             diw.wallet.app.ui.WalletTheme {
@@ -951,12 +952,15 @@ class WalletModelE2eTest {
         val medium = diw.wallet.core.status.RiskLevel.MEDIUM
 
         verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.TWDIW)
-        val bonds = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val bonds = verifier.challenge().request
         holder.handleUri(bonds.encode())
         assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
 
         verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
-        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val any = verifier.challenge().request
+        // This wallet's verifier listens on its local address too and reads the fountain QR.
+        assertNotNull(any.lanUrl)
+        assertTrue(any.qr)
         val docId = holder.documents.value.single().identifier
         holder.taiwan.preferredDocument = docId
         holder.taiwan.offline.value = OfflineUi.Working("")
@@ -972,7 +976,9 @@ class WalletModelE2eTest {
         val frames = withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } }
         assertIs<OfflineUi.BondsFrames>(frames, "frames: $frames")
         assertTrue(frames.presentationJws.isNotEmpty())
-        frames.frames.forEach { verifier.handleUri(it) }
+        // The holder shows the fountain QR and, without being asked, posts the sealed presentation to the address.
+        assertNotNull(frames.fountain)
+        assertTrue(frames.frames.isEmpty())
 
         val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
         assertNull(result.error, "error: ${result.error}")
@@ -987,7 +993,15 @@ class WalletModelE2eTest {
         val presented = withTimeout(10.seconds) { holder.history.first { h -> h.any { it.kind == HistoryKind.PRESENTED } } }.first { it.kind == HistoryKind.PRESENTED }
         assertEquals(1, presented.claims.size)
         assertNull(presented.failure)
+        withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.lan == "已經區網送達查驗方，結果以對方畫面為準" } }
     }
+
+    /** The verifier challenge, once this wallet listens on its local address (or knows it cannot). */
+    private suspend fun WalletModel.challenge(): OfflineUi.VerifierChallenge =
+        assertIs(withTimeout(10.seconds) { taiwan.offline.first { it is OfflineUi.VerifierChallenge } })
+
+    /** [request] as a holder reads it when the verifier is on another network: no address, so the QR is the way. */
+    private fun cameraOnly(request: diw.wallet.core.profile.bonds.BondsPresentationRequest) = request.copy(lanUrl = null, lanKey = null)
 
     /**
      * The document vault: a PDF is stored and checked, signed with the wallet's own key (PAdES, a new file whose
@@ -1036,15 +1050,21 @@ class WalletModelE2eTest {
 
         val (verifier, _) = newWallet()
         verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
-        val any = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val any = verifier.challenge().request
         holder.taiwan.preferredDocument = derivedId
-        holder.handleUri(any.encode())
+        holder.handleUri(cameraOnly(any).encode())
         val choose = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose || it is OfflineUi.Failed } })
         val card = choose.cards.first()
         assertEquals(derivedId, card.document?.identifier)
         holder.taiwan.presentBonds(choose.request, card, setOf("documentTitle"))
         val frames = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames || it is OfflineUi.Failed } })
-        frames.frames.forEach { verifier.handleUri(it) }
+        assertNull(frames.lan)
+        // The verifier scans the fountain QR, missing every third picture.
+        val fountain = assertNotNull(frames.fountain)
+        for (seed in 0 until fountain.count * 4 + 20) {
+            if (verifier.taiwan.offline.value !is OfflineUi.VerifierChallenge) break
+            if (seed % 3 != 0) verifier.handleUri(fountain.frame(seed))
+        }
         val result = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.VerifierResult } })
         assertNull(result.error, "error: ${result.error}")
         val r = assertNotNull(result.result)
@@ -1054,7 +1074,7 @@ class WalletModelE2eTest {
 
         // The derived credential is not a vc+moica card: a request for a self-issued card asks for the national ID card.
         verifier.taiwan.startVerifier("文件查驗", diw.wallet.core.status.RiskLevel.LOW, diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
-        val self = assertIs<OfflineUi.VerifierChallenge>(verifier.taiwan.offline.value).request
+        val self = verifier.challenge().request
         holder.taiwan.offline.value = OfflineUi.Working("")
         holder.handleUri(self.encode())
         val failed = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed || it is OfflineUi.BondsChoose } })
@@ -1266,12 +1286,13 @@ class WalletModelE2eTest {
         // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back.
         val (checker, _) = newWallet()
         checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
-        val challenge = assertIs<OfflineUi.VerifierChallenge>(checker.taiwan.offline.value)
+        val challenge = checker.challenge()
         assertNotNull(challenge.request.linkServiceId)
-        holder.handleUri(challenge.request.encode())
-        val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == challenge.request } })
+        val read = cameraOnly(challenge.request)
+        holder.handleUri(read.encode())
+        val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == read } })
         holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
-        val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == challenge.request } })
+        val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == read } })
         holder.taiwan.sendOverLink(shown)
         val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
         assertEquals(challenge.request, checked.request)

@@ -203,7 +203,11 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text("請讓查驗方掃描", style = MaterialTheme.typography.titleMedium)
         Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
-        if (left > 0) {
+        s.lan?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
+        if (left > 0 && s.fountain != null) {
+            AnimatedQr(s.fountain, Modifier.fillMaxWidth().widthIn(max = 420.dp))
+            Text("動態 QR Code，漏掉幾張也能收齊　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+        } else if (left > 0) {
             QrImage(s.frames[index], Modifier.fillMaxWidth().widthIn(max = 420.dp), QrEncoder.Ecc.Q)
             Text("第 ${index + 1} / ${s.frames.size} 張　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
             if (s.frames.size > 1) OutlinedButton(onClick = { paused = !paused }) { Text(if (paused) "繼續輪播" else "暫停輪播") }
@@ -240,7 +244,7 @@ private fun VerifierChallengeView(
                 streamQr { code ->
                     model.handleUri(code)
                     val now = model.taiwan.offline.value as? OfflineUi.VerifierChallenge
-                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { "已收到 ${it.received} / ${it.total} 張畫面" })
+                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { progressText(it) })
                 }
             } else {
                 // One scan per frame until the presentation is complete or the user closes the scanner; a picture
@@ -264,9 +268,10 @@ private fun VerifierChallengeView(
         }
         s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
-            LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
-            Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(progress = { (s.received.toFloat() / s.total).coerceAtMost(1f) }, modifier = Modifier.fillMaxWidth())
+            Text(progressText(s), style = MaterialTheme.typography.bodySmall)
         }
+        s.lan?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Button(onClick = { scanning = true }, enabled = !scanning) {
             Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -280,6 +285,9 @@ private fun VerifierChallengeView(
         OutlinedButton(onClick = { model.back() }) { Text("取消") }
     }
 }
+
+/** Pictures for BTWVP1 frames, blocks for a fountain QR (the holder picks which), so the unit is left out. */
+private fun progressText(s: OfflineUi.VerifierChallenge): String = "對方畫面已收到 ${s.received} / ${s.total}"
 
 @Composable
 private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) {

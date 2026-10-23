@@ -169,6 +169,7 @@
 - Microsoft Verified ID 出示：`openid-vc://?request_uri=...` 沒有外層 client_id，client_id 在已簽章的要求物件內；`claims.vp_token.presentation_definition` 表示回應要帶 vp_token；PE v1 的 `schema[].uri` 是憑證類型。`path_nested` 為 `jwt_vc` 且路徑是 `$.verifiableCredential[i]`（相對於 vp claim，見 `PresentationDialect.nestedPath`），寫成 `$.vp.verifiableCredential[i]` 時驗證端回 401「presentation does not include any verifiable credentials」。
 - Bonds：持有者是 BLE GATT 周邊，以要求中的一次性 UUID 廣播；frames characteristic `2B1D0001-…` notify，查驗方寫 `0x01` 到 `2B1D0002-…` 表示收齊。QR 分幀前綴 `BTWVP1`，以 ECC Q 顯示。
 - Bonds 請求的 `k`：`g` 政府皮夾卡片、`s` 自然人憑證自發卡、`a` 本錢包擴充（任何綁定金鑰的證件）。回應 `g` 時只列 TWDIW 卡片，保持與 Bonds 相容。`a` 的封裝：`data:application/dc+sd-jwt,`（IETF SD-JWT VC 以 `vct` 辨識，持有者 DID 為 cnf 金鑰的 did:jwk；W3C SD-JWT 沿用 TWDIW 檢查）與 `data:application/vc+jwt,`（W3C JWT VC，`sub` 或 credentialSubject.id 為持有者 DID）。SD-JWT VC 的發行端金鑰依序來自 x5c、DID iss、JWT VC issuer metadata（需要網路）。
+- Bonds 非 ZKP 出示的本錢包延伸（Bonds 忽略未知鍵）：本錢包產生的查驗挑戰一律加 `q:1`，出示端改顯示 `DIWQ1:` 噴泉碼動態 QR（沒有 `q` 時仍是 BTWVP1，與 Bonds 相容），查驗端的 `acceptVerifierFrame` 兩種畫面都收。查驗端有區網位址時另加 `l`（私有 IPv4 的 http 網址，`BondsLanPresentation.acceptableUrl`）與 `e`（一次性 P-256 公鑰，base64url 未壓縮點），出示端按下出示後自動以 `BondsLanPresentation.seal` 把出示 JWS 以 JWE（ECDH-ES、A256GCM）封裝成 `{"jwe":...}` POST 過去；與年齡證明不同，出示內容含欄位值，所以區網上不可明文。查驗端只接受解得開且挑戰相符的資料，其餘回錯誤並繼續等待；藍牙、區網、相機先完成者驗證，其他停止（`stopVerifierTransports`）。Android 的區網 socket 綁在子網包含對方位址的網路（`AndroidPlatform.localNetworkFor`），否則 Wi-Fi 沒有網際網路時會走行動數據。
 
 ## Android 平台要點
 

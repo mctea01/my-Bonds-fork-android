@@ -971,7 +971,9 @@ class WalletModel(val platform: PlatformServices) {
             return
         }
         if (AnimatedQrTransport.isFrame(u)) {
-            taiwan.ageVerifier.acceptFrame(u).progress?.let { message.value = it }
+            // The same fountain frames answer a presentation challenge or a nearby age check, whichever is on screen.
+            if (taiwan.offline.value is OfflineUi.VerifierChallenge) taiwan.acceptVerifierFrame(u)
+            else taiwan.ageVerifier.acceptFrame(u).progress?.let { message.value = it }
             return
         }
         when (val entry = TwdiwEntryParser.parse(u)) {
