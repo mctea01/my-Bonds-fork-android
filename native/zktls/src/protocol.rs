@@ -205,7 +205,8 @@ where
     let stream = std::mem::replace(&mut secure.io, tokio::io::duplex(1).0);
     let (stream, frames) = session_frames(stream);
     let (driver, mut handle) = Session::new(stream.compat()).split();
-    let driver = tokio::spawn(driver);
+    let mut driver = tokio::spawn(driver);
+    let mut driver_ended = false;
     let run = async {
         let config = checked(
             TlsClientConfig::builder()
@@ -302,16 +303,18 @@ where
         checked(prover.prove(&checked(builder.build())?).await)?;
         checked(prover.close().await)?;
         Ok((output, metadata))
-    }
-    .await;
+    };
+    let run = while_session_runs(run, &mut driver, &mut driver_ended).await;
     if run.is_ok() {
         checked(frames.ready.send(()))?;
         checked(frames.peer_ready.await)??;
     }
     handle.close();
     if run.is_err() {
-        driver.abort();
-        let _ = driver.await;
+        if !driver_ended {
+            driver.abort();
+            let _ = driver.await;
+        }
         return run.map(|x| x.0);
     }
     let (output, metadata) = run?;
@@ -353,7 +356,8 @@ where
     let stream = std::mem::replace(&mut secure.io, tokio::io::duplex(1).0);
     let (stream, frames) = session_frames(stream);
     let (driver, mut handle) = Session::new(stream.compat()).split();
-    let driver = tokio::spawn(driver);
+    let mut driver = tokio::spawn(driver);
+    let mut driver_ended = false;
     let run = async {
         let verifier = checked(handle.new_verifier(checked(
             VerifierConfig::builder().root_store(roots.clone()).build(),
@@ -435,16 +439,18 @@ where
             name,
             binding,
         ))
-    }
-    .await;
+    };
+    let run = while_session_runs(run, &mut driver, &mut driver_ended).await;
     if run.is_ok() {
         checked(frames.ready.send(()))?;
         checked(frames.peer_ready.await)??;
     }
     handle.close();
     if run.is_err() {
-        driver.abort();
-        let _ = driver.await;
+        if !driver_ended {
+            driver.abort();
+            let _ = driver.await;
+        }
         return run.map(|x| x.0);
     }
     let (mut output, name, binding) = run?;
@@ -615,9 +621,37 @@ fn session_frames(stream: tokio::io::DuplexStream) -> (tokio::io::DuplexStream, 
     )
 }
 
+/// Runs a session operation while the session driver lives. When the peer fails it closes the connection, which
+/// ends the driver; an operation still waiting on the session would otherwise wait forever, so it fails instead.
+async fn while_session_runs<T, O>(
+    run: impl std::future::Future<Output = Result<T>>,
+    driver: &mut tokio::task::JoinHandle<O>,
+    ended: &mut bool,
+) -> Result<T> {
+    tokio::pin!(run);
+    tokio::select! {
+        biased;
+        result = &mut run => result,
+        _ = &mut *driver => {
+            *ended = true;
+            Err(Error::Channel)
+        }
+    }
+}
+
 /// Production roots; test callers supply their own explicit root store.
 pub fn mozilla_roots() -> RootCertStore {
     RootCertStore::mozilla()
+}
+
+/// The production roots plus roots the caller itself chose (a test CA or a root the user imported). The peer never
+/// supplies roots: each side passes its own.
+pub fn roots_with(extra: Vec<Vec<u8>>) -> RootCertStore {
+    let mut roots = mozilla_roots();
+    roots
+        .roots
+        .extend(extra.into_iter().map(tlsn::webpki::CertificateDer));
+    roots
 }
 
 #[cfg(test)]

@@ -1,4 +1,6 @@
-//! TLSNotary exports. Register this module unconditionally in the shared runtime.
+//! TLSNotary exports, present in every build; without the tlsn feature they report Unsupported.
+//! `extra_roots_der` adds roots the caller chose itself (a test CA, a user-imported root) to TLSNotary's Mozilla
+//! roots; the Kotlin side rates the returned chain again with the wallet's own trust registry.
 use crate::{ZkCancelToken, ZkError};
 use std::sync::Arc;
 
@@ -70,6 +72,7 @@ pub fn zktls_prove(
     cancel: Arc<ZkCancelToken>,
     request_hash: Vec<u8>,
     verifier_static_public: Vec<u8>,
+    extra_roots_der: Vec<Vec<u8>>,
 ) -> Result<ZkTlsTranscript, ZkError> {
     #[cfg(not(feature = "tlsn"))]
     {
@@ -99,7 +102,7 @@ pub fn zktls_prove(
                         request,
                         hash,
                         key,
-                        zktls::protocol::mozilla_roots(),
+                        zktls::protocol::roots_with(extra_roots_der),
                         |input| {
                             let reveal = choose.choose(transcript(input.clone()));
                             Ok(zktls::protocol::Reveal {
@@ -130,6 +133,7 @@ pub fn zktls_verify(
     cancel: Arc<ZkCancelToken>,
     request_hash: Vec<u8>,
     verifier_static_private: Vec<u8>,
+    extra_roots_der: Vec<Vec<u8>>,
 ) -> Result<ZkTlsVerified, ZkError> {
     #[cfg(not(feature = "tlsn"))]
     {
@@ -155,7 +159,7 @@ pub fn zktls_verify(
                         mode,
                         hash,
                         key,
-                        zktls::protocol::mozilla_roots(),
+                        zktls::protocol::roots_with(extra_roots_der),
                     )
                 },
             )
@@ -268,6 +272,7 @@ mod tests {
             ZkCancelToken::new(),
             vec![0; 31],
             vec![0; 32],
+            Vec::new(),
         );
         #[cfg(feature = "tlsn")]
         assert!(matches!(result, Err(ZkError::InvalidInput { .. })));

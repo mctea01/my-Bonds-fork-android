@@ -8,8 +8,7 @@ D1 實機與 App 量測頁由使用者／Claude 接續。所有輸入都是合�
 Linux x86_64 managed cloud container，cgroup 配額 **2 vCPU、8 GiB RAM**。
 不是獨占實體桌面，也不能拿這些數字替代 D1 手機數據。工具為 Rust
 1.95.0、TLSn alpha.15 commit `47aee45b53e06648c1b2ad3689b367b8c923fdec`、
-Noir 1.0.0-beta.15、bb 2.1.9。TLSn 測量來源為 WP5 `b474f43`。原倉庫 Rust 1.90／鎖檔整合尚待 Claude，
-WP5 使用隔離副本測試；沒有更新被排除的整合檔案。
+Noir 1.0.0-beta.15、bb 2.1.9。TLSn 測量來源為 WP5 `b474f43`，當時以隔離副本測試；之後整合分支已改用 Rust 1.95.0 並更新鎖檔。
 
 每個 case 執行 first 與 warm 各一次，**不是統計中位數**。first 是該程序
 第一次呼叫，不代表清空 OS page cache 的真正冷機；SRS 已下載。Noir 的

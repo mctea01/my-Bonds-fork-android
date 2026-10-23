@@ -114,3 +114,19 @@ rcgen、rustls 0.23、tokio-rustls 只供本地 HTTPS 測試使用。
 
 因原提示詞要求 PR 前通過原倉庫 locked build 與工作包驗收，本分支在
 上述整合完成前不得標記為可合併。Android／Kotlin acceptance 尚未完成。
+
+## Claude 整合結果（2026-10-23）
+
+- Rust 工具鏈升到 1.95.0（`native/rust-toolchain.toml`、工作區 `rust-version`、
+  `openac-age/build.sh` 的版本檢查）；`Cargo.lock` 只新增套件，既有版本未變。
+- `diw-zk-ffi` 無條件註冊 `mod zktls;`；`native_info()` 在 tlsn 建置時列出
+  `tlsn` 並回報 revision。Gradle 的 `diw.zkFeatures` 接受 `openac`、`tlsn`
+  的逗號清單。
+- 測試 CA：兩個匯出函式最後另收 `extra_roots_der`，加在 Mozilla 根憑證後，
+  只放呼叫端自己選的根，不接受對方提供。
+- 修正：一方失敗（例如查驗方不信任伺服器憑證，或持有端拒絕揭露範圍）時，
+  另一方原本會一直等待 session。現在 session driver 結束就讓等待中的操作失敗
+  （`while_session_runs`），`tests/failures.rs` 兩個案例在修正前逾時、修正後通過。
+- Kotlin `ZkTlsLoopbackTest`（`test-servers`，以 `ZkTlsTarget` 為本機 HTTPS 目標）：
+  Proxy、chunked、MPC、Noise 金鑰錯誤、request hash 不符、伺服器憑證不受信任。
+- Android 的 Proxy 雙角色測試仍待實機或模擬器環境。

@@ -20,9 +20,13 @@ val zkNdkVersion = "28.2.13676358"
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
     .getOrElse("auto").also { require(it in setOf("auto", "require", "skip")) { "diw.zkNative must be auto, require or skip" } }
 
-/** Optional native proof backends passed to native/build.sh: empty (runtime only) or "openac". Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac and tlsn. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
 val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
-    .getOrElse("").also { require(it in setOf("", "openac")) { "diw.zkFeatures must be empty or openac" } }
+    .getOrElse("").also { f ->
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac and tlsn"
+        }
+    }
 
 /** Git for Windows' bash: a plain "bash" on Windows starts WSL, which usually has no distribution installed. */
 val zkBash: String? = if (!System.getProperty("os.name").startsWith("Windows")) "bash" else

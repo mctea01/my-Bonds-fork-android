@@ -291,6 +291,7 @@ pub struct ZkTlsVerified { pub server_name: String, pub cert_chain_der: Vec<Vec<
 - `ZkTlsRevealChooser` 在 prover 端拿到完整明文後回傳揭露範圍（由 WP6 依描述檔計算）；未揭露的位元組在 `ZkTlsVerified` 中以 0 填滿並由遮罩標示。
 - 伺服器憑證以 tlsn 的根憑證庫驗證；另回傳憑證鏈，由 Kotlin 端用既有信任判定再算一次等級。
 - 端對端加密通道（p4-zkp.md 第 5.2 節）在 Rust 端實作：`zktls_prove` 另收 `request_hash`（請求 JWS 的 SHA-256）與 `verifier_static_public`，`zktls_verify` 另收 `request_hash` 與 `verifier_static_private`，以 Noise `NK_25519_ChaChaPoly_SHA256`（例如 `snow` crate）包住 `ZkTlsChannel`；Kotlin 端的 `ZkTlsChannel` 只搬運密文。
+- 整合後的實際簽名（2026-10-23）：兩個函式最後另收 `extra_roots_der: Vec<Vec<u8>>`，加在 tlsn 的 Mozilla 根憑證之後，只放呼叫端自己選的根（測試 CA、使用者匯入的根），不接受對方提供；`ZkTlsCommitment` 為 `range: ZkRange, alg: String（"SHA256"）, digest: Vec<u8>`，是 tlsn 加鹽的 transcript commitment，不是明文的 SHA-256。Rust 工具鏈因 tlsn 的 mpz 依賴升到 1.95.0。
 
 驗收：
 

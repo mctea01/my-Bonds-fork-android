@@ -63,8 +63,7 @@ its own license:
 Development and test tools that are not shipped in the application:
 
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
-- Rust 1.90.0 (existing builds), 1.95.0 (isolated TLSNotary validation) -
-  Apache License 2.0 or MIT
+- Rust 1.95.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT
 - Circom 2.2.3 - GNU GPL 3.0
 - circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0
