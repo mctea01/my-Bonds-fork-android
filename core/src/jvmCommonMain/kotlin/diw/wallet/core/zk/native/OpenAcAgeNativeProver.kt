@@ -144,14 +144,6 @@ class OpenAcAgeNativeProver(
 
     private fun elapsed(since: Long) = (System.nanoTime() - since) / 1_000_000
 
-    /** A symbolic link where the platform allows one, else a hard link, else a copy. */
-    private fun link(source: File, target: File) {
-        target.parentFile.mkdirs()
-        runCatching { Files.createSymbolicLink(target.toPath(), source.toPath()) }
-            .recoverCatching { Files.createLink(target.toPath(), source.toPath()) }
-            .getOrElse { source.copyTo(target) }
-    }
-
     companion object {
         /** Asset id to the path the native code reads under its documents directory. */
         val LAYOUT = mapOf(
@@ -171,4 +163,12 @@ class OpenAcAgeNativeProver(
         val MISSING_ASSETS = ZkResult.Failed("年齡證明的電路檔尚未下載完成", false)
         val SELF_CHECK_FAILED = ZkResult.Failed("產生的證明沒有通過這台裝置的驗證，未送出", true)
     }
+}
+
+/** A symbolic link where the platform allows one, else a hard link, else a copy. */
+internal fun link(source: File, target: File) {
+    target.parentFile.mkdirs()
+    runCatching { Files.createSymbolicLink(target.toPath(), source.toPath()) }
+        .recoverCatching { Files.createLink(target.toPath(), source.toPath()) }
+        .getOrElse { source.copyTo(target) }
 }

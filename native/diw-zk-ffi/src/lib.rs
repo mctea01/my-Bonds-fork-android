@@ -28,6 +28,7 @@ fn protect_worker_panics() {
 uniffi::setup_scaffolding!("diw_zk");
 
 mod openac;
+mod zktls;
 
 #[derive(uniffi::Record)]
 pub struct ZkNativeInfo {
@@ -116,12 +117,26 @@ pub fn native_info() -> ZkNativeInfo {
     // Empty backend crates must never be advertised as usable proof engines.
     ZkNativeInfo {
         crate_version: env!("CARGO_PKG_VERSION").into(),
-        features: if cfg!(feature = "openac") {
-            vec!["runtime".into(), "openac".into()]
-        } else {
-            vec!["runtime".into()]
+        features: {
+            let mut features = vec!["runtime".to_string()];
+            if cfg!(feature = "openac") {
+                features.push("openac".into());
+            }
+            if cfg!(feature = "tlsn") {
+                features.push("tlsn".into());
+            }
+            features
         },
-        tlsn: None,
+        tlsn: {
+            #[cfg(feature = "tlsn")]
+            {
+                Some(::zktls::TLSN_REVISION.into())
+            }
+            #[cfg(not(feature = "tlsn"))]
+            {
+                None
+            }
+        },
         noir: None,
         bb: None,
         zkid: {
@@ -170,6 +185,11 @@ mod tests {
             native_info().features.contains(&"openac".into()),
             cfg!(feature = "openac")
         );
+        assert_eq!(
+            native_info().features.contains(&"tlsn".into()),
+            cfg!(feature = "tlsn")
+        );
+        assert_eq!(native_info().tlsn.is_some(), cfg!(feature = "tlsn"));
     }
 
     #[test]

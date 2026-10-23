@@ -47,6 +47,7 @@ import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.HeldMoicaCard
 import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsQrTransport
 import diw.wallet.core.profile.msvid.LinkedDomains
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -129,6 +130,8 @@ data class WalletSettings(
     val testEnvironment: Boolean = false,
     val allowLoopbackHttp: Boolean = false,
     val testServerUrl: String = "http://10.0.2.2:8080",
+    /** Bonds-compatible age host for the Verify tab's zero-knowledge age check (the test server API); empty uses the test server in the test environment. */
+    val zkVerifierUrl: String = "",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */
@@ -967,6 +970,12 @@ class WalletModel(val platform: PlatformServices) {
             taiwan.acceptVerifierFrame(u)
             return
         }
+        if (AnimatedQrTransport.isFrame(u)) {
+            // The same fountain frames answer a presentation challenge or a nearby age check, whichever is on screen.
+            if (taiwan.offline.value is OfflineUi.VerifierChallenge) taiwan.acceptVerifierFrame(u)
+            else taiwan.ageVerifier.acceptFrame(u).progress?.let { message.value = it }
+            return
+        }
         when (val entry = TwdiwEntryParser.parse(u)) {
             is TwdiwEntry.Offer -> return startIssuance(entry.uri, TwdiwEntry.ENTRY_HINT)
             is TwdiwEntry.Presentation -> return startPresentation(entry.uri, TwdiwEntry.ENTRY_HINT)
@@ -1015,7 +1024,12 @@ class WalletModel(val platform: PlatformServices) {
      * dialect only answers an authorization response iss below the authorization server's own issuer.
      */
     private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
-        listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect())
+        listOf(
+            TwdiwDialect(http, loopback, clientId = { settings.twdiwClientId }, registeredIssuerTrust = { url ->
+                twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.issuerDecision(url) }.getOrNull() }
+            }),
+            Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect(),
+        )
     }
 
     private var cachedProvider: Pair<String, WalletProvider>? = null

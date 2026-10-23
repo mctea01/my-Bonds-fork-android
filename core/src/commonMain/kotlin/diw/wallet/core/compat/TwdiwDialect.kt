@@ -10,6 +10,9 @@ import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.IssuerMetadata
+import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.highlyTrusted
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.hostOf
@@ -65,6 +68,11 @@ class TwdiwDialect(
     private val appIdentity: () -> TwdiwAppIdentity = { TwdiwAppIdentity.DEFAULT },
     /** Base URL of the ecosystem nonce endpoint for an issuer; the issuer's own origin by default. */
     private val ecosystemBase: (IssuerMetadata) -> String = { defaultEcosystemBase(it.credentialIssuer) },
+    /**
+     * The TWDIW trust list's decision for an organisation registered for a credential issuer URL (its host and the
+     * organisation ID in the path); null when no listed organisation is registered for it.
+     */
+    private val registeredIssuerTrust: suspend (credentialIssuer: String) -> TrustDecision? = { null },
 ) : IssuanceDialect {
     override val id = ID
     override val spec = "TWDIW"
@@ -110,6 +118,18 @@ class TwdiwDialect(
     }
 
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
+
+    /**
+     * TWDIW issuers publish unsigned metadata, so before issuance the issuer would rest on TLS alone (T3). The trust
+     * list registers the platform issuer URL for each organisation, so its decision for that organisation applies;
+     * the unsigned metadata label stays. The credential's own issuer DID is checked again after issuance.
+     */
+    override suspend fun issuerTrust(issuer: IssuerMetadata): TrustDecision? {
+        if (issuer.trust.tier.highlyTrusted) return null
+        val listed = registeredIssuerTrust(issuer.credentialIssuer) ?: return null
+        val unsigned = issuer.trust.labels.filter { it == TrustLabel.UNSIGNED_METADATA }
+        return listed.copy(labels = listed.labels + unsigned)
+    }
 
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
 

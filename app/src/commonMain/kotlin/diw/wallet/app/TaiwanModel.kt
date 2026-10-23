@@ -5,9 +5,20 @@ import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.bonds.AnimatedQrCollector
+import diw.wallet.core.profile.bonds.AnimatedQrTransport
+import diw.wallet.core.profile.bonds.BondsLanLink
+import diw.wallet.core.profile.bonds.BondsLanPresentation
+import diw.wallet.core.profile.bonds.MAX_LAN_URLS
+import diw.wallet.core.profile.bonds.postFirst
+import diw.wallet.core.jose.PlatformCrypto
+import org.multipaz.util.toBase64Url
 import diw.wallet.core.profile.bonds.BondsAgeRequest
+import diw.wallet.core.profile.bonds.BondsAgeVerdict
+import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsFrameCollector
+import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.profile.bonds.BondsOfflineVerifier
 import diw.wallet.core.profile.bonds.BondsNationalId
@@ -34,6 +45,7 @@ import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,17 +109,27 @@ sealed class OfflineUi {
     data class Working(val message: String) : OfflineUi()
     data class Failed(val message: String) : OfflineUi()
 
-    /** The counter service's verifier module is not an anchored organisation: the user may still go on after confirming. */
+    /** The counter service's verifier module is T4 (unlisted, off the platform, or contradicted): the user may still go on after confirming. */
     data class Unlisted(val service: TwdiwOfflineService, val message: String) : OfflineUi()
 
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
 
     /** Bonds web age request scanned: pick the card to prove from. */
-    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>) : OfflineUi()
+    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>, val known: Boolean = request.knownHost) : OfflineUi()
 
-    /** The age proof [jobId] is being produced, or with [sending] posted to the verifier. */
-    data class AgeWorking(val request: BondsAgeRequest, val card: AgeCard, val jobId: String, val sending: Boolean = false) : OfflineUi()
+    /**
+     * The age proof [jobId] is being produced, or with [sending] sent to the verifier; [link] is the Bluetooth progress
+     * and [qr] the animated QR shown alongside it when the verifier can scan one.
+     */
+    data class AgeWorking(
+        val request: BondsAgeRequest,
+        val card: AgeCard,
+        val jobId: String,
+        val sending: Boolean = false,
+        val link: String? = null,
+        val qr: AnimatedQrTransport.Encoder? = null,
+    ) : OfflineUi()
 
     /** The verifier's verdict, or why no proof was sent. */
     data class AgeResult(
@@ -119,10 +141,39 @@ sealed class OfflineUi {
         val retry: Boolean,
     ) : OfflineUi()
 
+    /**
+     * Verifier side of a Bonds age check: the request QR is shown while [host] waits for the proof, or for a nearby
+     * request this device listens over Bluetooth ([link] is its progress) and reads the holder's animated QR
+     * ([scanned]). [relay]: the proof is verified on this device; [note] says why not. [checking]: the proof has
+     * arrived and is being verified.
+     */
+    data class AgeVerifierWaiting(
+        val request: BondsAgeRequest,
+        val host: String,
+        val relay: Boolean,
+        val note: String?,
+        val checking: Boolean = false,
+        val link: String? = null,
+        /** Progress of the holder's animated QR, when scanned. */
+        val scanned: String? = null,
+    ) : OfflineUi()
+
+    /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */
+    data class AgeVerifierResult(
+        val request: BondsAgeRequest,
+        val host: String,
+        val verification: BondsAgeVerification?,
+        val remote: BondsAgeVerdict?,
+        val error: String?,
+    ) : OfflineUi()
+
     /** Bonds request scanned: pick a card and what to disclose. */
     data class BondsChoose(val request: BondsPresentationRequest, val cards: List<BondsCard>) : OfflineUi()
 
-    /** Bonds presentation shown as rotating BTWVP1 frames, optionally sent over BLE. */
+    /**
+     * Bonds presentation shown as rotating BTWVP1 frames, or as an animated fountain QR ([fountain]) when the
+     * challenge asks for it; optionally sent over BLE, and sent over the local network when the challenge has an address.
+     */
     data class BondsFrames(
         val request: BondsPresentationRequest,
         val frames: List<String>,
@@ -130,14 +181,22 @@ sealed class OfflineUi {
         val expiresAt: Instant,
         /** BLE state for the user, null when the link was not used. */
         val link: String? = null,
+        val fountain: AnimatedQrTransport.Encoder? = null,
+        /** Local network state for the user, null when the challenge has no address. */
+        val lan: String? = null,
     ) : OfflineUi()
 
-    /** Verifier side: the challenge is shown; frames are scanned until complete. */
+    /**
+     * Verifier side: the challenge is shown; frames (BTWVP1 or fountain) are scanned until complete, or the
+     * presentation arrives over Bluetooth ([link]) or the local network ([lan]).
+     */
     data class VerifierChallenge(
         val request: BondsPresentationRequest,
         val received: Int,
         val total: Int,
         val risk: RiskLevel = RiskLevel.MEDIUM,
+        val link: String? = null,
+        val lan: String? = null,
     ) : OfflineUi()
 
     data class VerifierResult(
@@ -168,13 +227,18 @@ class TaiwanModel(private val model: WalletModel) {
     val trustProgress = MutableStateFlow<Pair<Int, Int>?>(null)
 
     private var verifierCollector: BondsFrameCollector? = null
+    private var verifierFountain: AnimatedQrCollector? = null
     private var verifierRisk = RiskLevel.MEDIUM
     private var verifierSource = BondsCredentialSource.TWDIW
 
     /** A document the holder chose to present before scanning the verifier's challenge; listed first. */
     var preferredDocument: String? = null
     private var linkJob: Job? = null
+    private var lanJob: Job? = null
+    private var verifierLinkJob: Job? = null
+    private var verifierLanJob: Job? = null
     val age = BondsAgeFlow(model, offline)
+    val ageVerifier = BondsAgeVerifierFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -408,9 +472,14 @@ class TaiwanModel(private val model: WalletModel) {
                     model.endOperation()
                 }
                 card.credential?.increaseUsageCount()
-                offline.value = OfflineUi.BondsFrames(request, BondsOfflinePresentation.qrFrames(jws), jws, Clock.System.now() + 5.minutes)
+                // A verifier that reads the fountain QR (this wallet) gets it instead of the BTWVP1 frames Bonds reads.
+                val fountain = if (request.qr) AnimatedQrTransport.Encoder(jws.encodeToByteArray()) else null
+                val frames = if (fountain == null) BondsOfflinePresentation.qrFrames(jws) else emptyList()
+                val state = OfflineUi.BondsFrames(request, frames, jws, Clock.System.now() + 5.minutes, fountain = fountain)
+                offline.value = state
                 model.platform.keepScreenOn(true)
                 recordBonds(request, card, shown, null)
+                sendOverLan(state)
             } catch (e: Exception) {
                 recordBonds(request, card, shown, model.describe(e))
                 offline.value = OfflineUi.Failed(model.describe(e))
@@ -483,6 +552,29 @@ class TaiwanModel(private val model: WalletModel) {
         }
     }
 
+    /** Posts the shown presentation, sealed to the verifier's key, to the challenge's address on this phone's network. */
+    private fun sendOverLan(state: OfflineUi.BondsFrames) {
+        val lan = model.platform.bondsLan ?: return
+        val urls = state.request.lanUrls.takeIf { it.isNotEmpty() } ?: return
+        lanJob?.cancel()
+        lanJob = model.scope.launch {
+            fun update(text: String) {
+                val cur = offline.value as? OfflineUi.BondsFrames ?: return
+                if (cur.presentationJws == state.presentationJws) offline.value = cur.copy(lan = text)
+            }
+            try {
+                update("正在經區網送給查驗方")
+                val (status, text) = lan.postFirst(urls, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
+                val refusal = BondsLanPresentation.refusal(status, text)
+                update(if (refusal == null) "已經區網送達查驗方，結果以對方畫面為準" else "查驗方沒有接受（$refusal），請讓對方掃描 QR Code")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                update("區網沒有送達（${model.describe(e)}），請讓對方掃描 QR Code 或改用藍牙")
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- Bonds verifier
 
     /**
@@ -491,42 +583,152 @@ class TaiwanModel(private val model: WalletModel) {
      */
     fun startVerifier(purpose: String, risk: RiskLevel = verifierRisk, source: BondsCredentialSource = verifierSource) {
         try {
-            val request = BondsPresentationRequest.generate(purpose, source)
+            stopVerifierTransports()
+            val plain = BondsPresentationRequest.generate(purpose, source, qr = true)
             verifierSource = source
-            verifierCollector = BondsFrameCollector()
             verifierRisk = risk
-            offline.value = OfflineUi.VerifierChallenge(request, 0, 0, risk)
             model.screen.value = Screen.Offline
             model.platform.keepScreenOn(true)
+            val lan = model.platform.bondsLan
+            val addresses = lan?.localAddresses()?.take(MAX_LAN_URLS).orEmpty()
+            if (lan == null || addresses.isEmpty()) {
+                showChallenge(plain, lan?.let { "這支手機沒有連上 Wi-Fi 或開啟熱點，不能經區網接收" })
+                return
+            }
+            offline.value = OfflineUi.Working("準備查驗挑戰")
+            listenOnLan(lan, addresses, purpose, source, plain)
         } catch (e: Exception) {
             model.message.value = model.describe(e)
         }
     }
 
+    private fun showChallenge(request: BondsPresentationRequest, lan: String?) {
+        verifierCollector = BondsFrameCollector()
+        verifierFountain = AnimatedQrCollector(BondsLinkTransport.MAX_PAYLOAD)
+        offline.value = OfflineUi.VerifierChallenge(request, 0, 0, verifierRisk, lan = lan)
+        listenOnLink(request)
+    }
+
+    /**
+     * Listens on this device's Wi-Fi and hotspot [addresses] and shows a challenge naming them with a one-time key; the
+     * holder posts the sealed presentation there. Something that is not a presentation for this challenge (another
+     * device on the network) is refused without ending the check. Without a listening socket the challenge is
+     * shown without an address ([fallback]).
+     */
+    private fun listenOnLan(lan: BondsLanLink, addresses: List<String>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
+        verifierLanJob = model.scope.launch {
+            var request: BondsPresentationRequest? = null
+            var presentation: String? = null
+            fun active(r: BondsPresentationRequest) = (offline.value as? OfflineUi.VerifierChallenge)?.request == r
+            try {
+                val key = BondsLanPresentation.newKey()
+                withTimeoutOrNull(LAN_LISTEN) {
+                    lan.serve(addresses, "/vp/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLanPresentation.MAX_BODY, onListening = { urls ->
+                        val r = BondsPresentationRequest.generate(
+                            purpose, source, lanUrls = urls, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
+                        )
+                        request = r
+                        showChallenge(r, "對方也可經區網（同一個 Wi-Fi 或熱點）直接送出")
+                    }) { body ->
+                        val r = request!!
+                        if (!active(r)) return@serve BondsLanPresentation.refused("查驗已結束") to true
+                        try {
+                            presentation = BondsLanPresentation.open(body, key, r)
+                            BondsLanPresentation.received() to true
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == r }?.let {
+                                offline.value = it.copy(lan = "收到一份無法使用的區網資料（${model.describe(e)}），繼續等待")
+                            }
+                            BondsLanPresentation.refused("不是這次查驗挑戰的出示資料") to false
+                        }
+                    }
+                }
+                val r = request ?: return@launch
+                val jws = presentation
+                if (jws != null && active(r)) verify(r, jws)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val r = request
+                if (r == null) {
+                    // The socket could not be opened: the camera and Bluetooth still work.
+                    if (offline.value is OfflineUi.Working) showChallenge(fallback, "無法在區網接收（${model.describe(e)}）")
+                } else {
+                    (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == r }?.let {
+                        offline.value = it.copy(lan = "區網接收中斷（${model.describe(e)}），請改掃描對方畫面")
+                    }
+                }
+            }
+        }
+    }
+
+    /** Stops every way a verifier challenge is being answered. */
+    private fun stopVerifierTransports() {
+        verifierLinkJob?.cancel()
+        verifierLinkJob = null
+        verifierLanJob?.cancel()
+        verifierLanJob = null
+        verifierCollector = null
+        verifierFountain = null
+    }
+
+    /**
+     * Receives the presentation over the challenge's one-time BLE service too, as a Bonds verifier does: a holder (the
+     * Bonds App or this wallet) that scanned the challenge advertises it and sends the frames, so no QR has to be scanned back.
+     */
+    private fun listenOnLink(request: BondsPresentationRequest) {
+        val central = model.platform.bondsLinkCentral ?: return
+        val uuid = request.linkServiceId ?: return
+        verifierLinkJob?.cancel()
+        verifierLinkJob = model.scope.launch {
+            fun update(text: String) {
+                (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == request }?.let { offline.value = it.copy(link = text) }
+            }
+            try {
+                central.unavailableReason()?.let { update("藍牙無法使用（$it），請改掃描對方畫面"); return@launch }
+                update("也可由對方以藍牙直接傳送")
+                val jws = central.receive(uuid, BondsLinkTransport.MAX_PAYLOAD, ::update, null).decodeToString()
+                if ((offline.value as? OfflineUi.VerifierChallenge)?.request == request) {
+                    verifierCollector = null
+                    verify(request, jws)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                update("藍牙接收失敗（${model.describe(e)}），請改掃描對方畫面")
+            }
+        }
+    }
+
     val verifying: Boolean get() = offline.value is OfflineUi.VerifierChallenge && model.screen.value == Screen.Offline
 
-    /** A scanned BTWVP1 frame; verifies the presentation once all frames are in. */
+    /** A scanned BTWVP1 or fountain (DIWQ1) frame; verifies the presentation once all frames are in. */
     fun acceptVerifierFrame(text: String) {
         val state = offline.value as? OfflineUi.VerifierChallenge
-        val collector = verifierCollector
+        val fountain = AnimatedQrTransport.isFrame(text)
+        val collector: ((String) -> BondsReception)? = if (fountain) verifierFountain?.let { it::accept } else verifierCollector?.let { it::accept }
         if (state == null || collector == null) {
             model.message.value = "這是出示給查驗方的畫面；要查驗對方，請先到「查驗」產生查驗挑戰"
             return
         }
         try {
-            when (val r = collector.accept(text)) {
+            when (val r = collector(text)) {
                 is BondsReception.Accepted -> offline.value = state.copy(received = r.received, total = r.total)
                 is BondsReception.Duplicate -> offline.value = state.copy(received = r.received, total = r.total)
                 is BondsReception.Completed -> verify(state.request, r.payload.decodeToString())
             }
         } catch (e: Exception) {
-            verifierCollector = BondsFrameCollector()
+            if (fountain) verifierFountain = AnimatedQrCollector(BondsLinkTransport.MAX_PAYLOAD) else verifierCollector = BondsFrameCollector()
             model.message.value = "畫面讀取失敗，請重新掃描：" + (e.message ?: "")
             offline.value = state.copy(received = 0, total = 0)
         }
     }
 
     private fun verify(request: BondsPresentationRequest, jws: String) {
+        // Whichever transport delivered first wins; the others stop (this may be called from one of their jobs).
+        stopVerifierTransports()
         offline.value = OfflineUi.Working("驗證出示資料")
         val risk = verifierRisk
         model.scope.launch {
@@ -555,7 +757,6 @@ class TaiwanModel(private val model: WalletModel) {
                 model.record(HistoryKind.VERIFIED, "出示者", null, note = verifierNote(request), failure = model.describe(e))
                 OfflineUi.VerifierResult(request, null, null, model.describe(e), risk)
             }
-            verifierCollector = null
         }
     }
 
@@ -591,9 +792,12 @@ class TaiwanModel(private val model: WalletModel) {
 
     fun closeOffline() {
         age.stop()
+        ageVerifier.stop()
         linkJob?.cancel()
         linkJob = null
-        verifierCollector = null
+        lanJob?.cancel()
+        lanJob = null
+        stopVerifierTransports()
         model.platform.keepScreenOn(false)
     }
 
@@ -602,6 +806,9 @@ class TaiwanModel(private val model: WalletModel) {
         const val MSVID = "msvid"
         private val TRUST_RECHECK = 1.days
         private val STATUS_TIMEOUT = 8.seconds
+        private val LAN_SEND_TIMEOUT = 30.seconds
+        /** A challenge left on screen stops listening on the network after this. */
+        private val LAN_LISTEN = 15.minutes
 
         /** A DID shortened for a list line: method and the last characters of the identifier. */
         fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)

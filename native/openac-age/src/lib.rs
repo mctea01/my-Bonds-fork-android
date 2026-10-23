@@ -18,8 +18,8 @@ use std::{
     fs,
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Once},
-    time::Instant,
+    sync::{Arc, Mutex, Once},
+    time::{Instant, SystemTime},
 };
 
 mod predicate;
@@ -28,6 +28,8 @@ pub use predicate::AgePrepareInput;
 
 pub const ZKID_REVISION: &str = "b395e09c225ff45b003f0087c28e2e208e22f944";
 pub const PROVER_STACK_BYTES: usize = 64 * 1024 * 1024;
+/// Upper bound on prover threads; Spartan scales with cores and phones have up to eight.
+const MAX_PROVER_THREADS: usize = 8;
 
 /// A small positive native known-answer check without downloading assets.
 pub fn self_test() -> bool {
@@ -134,7 +136,7 @@ fn worker<T: Send + 'static>(
             CANCEL_CHECK.with(|slot| *slot.borrow_mut() = cancellation.clone());
             // Upstream assertions can contain witnesses, including on Rayon threads.
             let pool = rayon::ThreadPoolBuilder::new()
-                .num_threads(2)
+                .num_threads(prover_threads())
                 .stack_size(PROVER_STACK_BYTES)
                 .start_handler(move |_| {
                     PRIVATE_WORKER.set(true);
@@ -154,6 +156,17 @@ fn worker<T: Send + 'static>(
         .map_err(|_| ZkProofError::Proof)?
 }
 
+fn prover_threads() -> usize {
+    std::thread::available_parallelism()
+        .map_or(2, |count| count.get())
+        .clamp(2, MAX_PROVER_THREADS)
+}
+
+/// Assets already hashed in this process, by resolved path, size and modification time.
+/// Each presentation reads the same 1.3 GB of pinned files several times; hashing them
+/// once per process keeps the pin without repeating gigabytes of reads on every step.
+static VERIFIED_ASSETS: Mutex<Vec<(PathBuf, u64, SystemTime)>> = Mutex::new(Vec::new());
+
 fn make_config(documents_path: &str) -> PathConfig {
     PathConfig {
         base_dir: documents_path.into(),
@@ -169,12 +182,23 @@ fn storage_error() -> ZkProofError {
 }
 
 fn pinned_asset(path: impl AsRef<Path>, size: u64, hash: &str) -> Result<(), ZkProofError> {
-    let mut file = fs::File::open(path).map_err(|_| storage_error())?;
-    if file.metadata().map_err(|_| storage_error())?.len() != size {
+    let resolved = fs::canonicalize(path).map_err(|_| storage_error())?;
+    let mut file = fs::File::open(&resolved).map_err(|_| storage_error())?;
+    let metadata = file.metadata().map_err(|_| storage_error())?;
+    if metadata.len() != size {
         return Err(ZkProofError::InvalidInput {
             message: "asset_identity".into(),
         });
     }
+    let identity = metadata
+        .modified()
+        .ok()
+        .map(|modified| (resolved, size, modified));
+    let verified = VERIFIED_ASSETS.lock().unwrap_or_else(|e| e.into_inner());
+    if identity.as_ref().is_some_and(|id| verified.contains(id)) {
+        return Ok(());
+    }
+    drop(verified);
     let mut digest = Sha256::new();
     let mut buffer = [0u8; 65536];
     loop {
@@ -189,6 +213,12 @@ fn pinned_asset(path: impl AsRef<Path>, size: u64, hash: &str) -> Result<(), ZkP
         return Err(ZkProofError::InvalidInput {
             message: "asset_identity".into(),
         });
+    }
+    if let Some(id) = identity {
+        VERIFIED_ASSETS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(id);
     }
     Ok(())
 }
@@ -393,7 +423,7 @@ pub fn generate_shared_blinds(documents_path: String) -> Result<String, ZkProofE
 
 fn reblind_proof(config: PathConfig, names: [&str; 5]) -> Result<ProofResult, ZkProofError> {
     let started = Instant::now();
-    let [key, verifying_key, instance_name, witness_name, proof_name] = names;
+    let [key, _, instance_name, witness_name, proof_name] = names;
     pinned_proving_assets(&config, key == PREPARE_PROVING_KEY)?;
     let pk = load_proving_key(config.key_path(key)).map_err(|_| storage_error())?;
     let instance =
@@ -406,9 +436,9 @@ fn reblind_proof(config: PathConfig, names: [&str; 5]) -> Result<ProofResult, Zk
         reblind_in_memory(&pk, instance, witness, &blinds).map_err(|_| ZkProofError::Proof)?;
     drop(pk);
     check_cancelled()?;
-    let vk = load_verifying_key(config.key_path(verifying_key)).map_err(|_| storage_error())?;
-    proof.verify(&vk).map_err(|_| ZkProofError::Proof)?;
-    check_cancelled()?;
+    // Not verified here: the base proof was verified when it was proved, and the
+    // reblinded pair is only usable after verify_age_presentation, which checks both
+    // proofs and their link. Verifying the 432 MB Prepare proof twice cost seconds.
     // Keep the original private cache reusable. The pinned Spartan reblinder
     // updates witness blinds without updating the instance's blind-variable
     // metadata, so feeding its returned cache into another reblind is invalid.
