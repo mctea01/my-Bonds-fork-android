@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     kotlin("multiplatform")
@@ -101,7 +102,34 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
     outputDir.set(layout.buildDirectory.dir("generated/builtInSp/kotlin"))
 }
 
-/** Version and commit shown on the About page; CI passes the version and GitHub sets GITHUB_SHA. */
+/**
+ * One version for every output, from version.properties (major.minor) and the GitHub Actions run number (patch, and
+ * the Android versionCode, which grows across pull request and main builds alike). A pull request build is marked
+ * -pr<N>, a build outside CI -dev. -Pdiw.versionName, -Pdiw.versionCode and -Pdiw.desktopVersion still override.
+ */
+val releaseLine: String = rootProject.file("version.properties").readLines()
+    .firstNotNullOfOrNull { Regex("""\s*version\s*=\s*(\d+\.\d+)\s*""").matchEntire(it)?.groupValues?.get(1) }
+    ?: throw GradleException("version.properties needs a line version=<major>.<minor>")
+val ciRun: Int? = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull()
+val pullRequest: String? = providers.environmentVariable("GITHUB_REF").orNull
+    ?.let { Regex("refs/pull/(\\d+)/.*").matchEntire(it)?.groupValues?.get(1) }
+/** Numeric, as MSI and deb require. */
+val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: "$releaseLine.${ciRun ?: 0}"
+val appVersionName: String = (findProperty("diw.versionName") as String?)
+    ?: ("$releaseLine.${ciRun ?: 0}" + when { ciRun == null -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
+val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt() ?: ciRun ?: 1
+
+// The workflow names its files with APP_VERSION; a mismatch would label the outputs with a version they do not carry.
+providers.environmentVariable("APP_VERSION").orNull?.let {
+    if (it != appVersionName) throw GradleException("APP_VERSION $it differs from the build's version $appVersionName (version.properties)")
+}
+
+tasks.register("printVersion") {
+    val name = appVersionName
+    doLast { println(name) }
+}
+
+/** Version and commit shown on the About page; GitHub sets GITHUB_SHA. */
 abstract class GenerateAppBuild : DefaultTask() {
     @get:Input @get:Optional abstract val version: Property<String>
     @get:Input @get:Optional abstract val commit: Property<String>
@@ -128,7 +156,7 @@ abstract class GenerateAppBuild : DefaultTask() {
 }
 
 val generateAppBuild by tasks.registering(GenerateAppBuild::class) {
-    version.set(providers.gradleProperty("diw.versionName").orElse(providers.gradleProperty("diw.desktopVersion")))
+    version.set(appVersionName)
     commit.set(providers.environmentVariable("GITHUB_SHA"))
     outputDir.set(layout.buildDirectory.dir("generated/appBuild/kotlin"))
 }
@@ -201,6 +229,10 @@ kotlin {
 // message instead of a padding error at packaging time.
 class ReleaseKey(val file: File, val storePassword: String, val alias: String, val keyPassword: String)
 
+/** SHA-256 of the signing certificate, as keytool -list -v prints it, to compare builds in the CI log. */
+fun KeyStore.fingerprint(alias: String): String =
+    MessageDigest.getInstance("SHA-256").digest(getCertificate(alias).encoded).joinToString(":") { "%02X".format(it) }
+
 val releaseKey: Result<ReleaseKey?> = runCatching {
     fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
     val path = env("DIW_KEYSTORE_FILE") ?: return@runCatching null
@@ -224,7 +256,32 @@ val releaseKey: Result<ReleaseKey?> = runCatching {
     val keyPassword = passwords.firstOrNull { runCatching { keyStore.getKey(alias, it.toCharArray()) }.isSuccess }
         ?: throw GradleException("Key \"$alias\" opens with neither ANDROID_KEY_PASSWORD nor ANDROID_KEYSTORE_PASSWORD")
     if (keyPassword != passwords.first()) logger.warn("ANDROID_KEY_PASSWORD does not open the release key; using the keystore password")
-    logger.lifecycle("Release APK signed with key \"$alias\" from $path")
+    logger.lifecycle("Release APK signed with key \"$alias\" from $path, SHA-256 ${keyStore.fingerprint(alias)}")
+    ReleaseKey(store, storePassword, alias, keyPassword)
+}
+
+/**
+ * Debug key from DIW_DEBUG_KEYSTORE_FILE (CI writes the DEBUG_KEYSTORE_BASE64 secret there), so every debug APK has
+ * the same signature instead of the build machine's own debug key. The Android Studio defaults (password android,
+ * alias androiddebugkey) are tried unless DIW_DEBUG_KEYSTORE_PASSWORD or DIW_DEBUG_KEY_ALIAS say otherwise; a
+ * keystore with a single key uses that key.
+ */
+val debugKey: Result<ReleaseKey?> = runCatching {
+    fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
+    val path = env("DIW_DEBUG_KEYSTORE_FILE") ?: return@runCatching null
+    val store = file(path)
+    if (!store.isFile || store.length() == 0L) throw GradleException("Debug keystore $path is missing or empty: check DEBUG_KEYSTORE_BASE64")
+    val storePasswords = listOfNotNull(env("DIW_DEBUG_KEYSTORE_PASSWORD"), "android").distinct()
+    val (keyStore, storePassword) = storePasswords.firstNotNullOfOrNull { p ->
+        runCatching { KeyStore.getInstance(store, p.toCharArray()) to p }.getOrNull()
+    } ?: throw GradleException("Cannot open the debug keystore with password \"android\": set the secret DEBUG_KEYSTORE_PASSWORD")
+    val keys = keyStore.aliases().toList().filter { keyStore.isKeyEntry(it) }
+    val alias = env("DIW_DEBUG_KEY_ALIAS") ?: keys.singleOrNull() ?: keys.firstOrNull { it.equals("androiddebugkey", ignoreCase = true) }
+        ?: throw GradleException("The debug keystore has several keys $keys: set the secret DEBUG_KEY_ALIAS")
+    if (alias !in keys) throw GradleException("No key \"$alias\" in the debug keystore; its keys: $keys")
+    val keyPassword = listOf(storePassword, "android").distinct().firstOrNull { runCatching { keyStore.getKey(alias, it.toCharArray()) }.isSuccess }
+        ?: throw GradleException("The debug key \"$alias\" does not open with the keystore password")
+    logger.lifecycle("Debug APK signed with key \"$alias\" from $path, SHA-256 ${keyStore.fingerprint(alias)}")
     ReleaseKey(store, storePassword, alias, keyPassword)
 }
 
@@ -237,11 +294,18 @@ android {
         applicationId = "diw.wallet.app"
         minSdk = 29
         targetSdk = 36
-        // CI passes -Pdiw.versionCode=<run> and -Pdiw.versionName so each build installs over the previous one.
-        versionCode = (findProperty("diw.versionCode") as String?)?.toInt() ?: 1
-        versionName = (findProperty("diw.versionName") as String?) ?: "0.1.0-p1"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
     signingConfigs {
+        debugKey.getOrNull()?.let { key ->
+            getByName("debug") {
+                storeFile = key.file
+                storePassword = key.storePassword
+                keyAlias = key.alias
+                keyPassword = key.keyPassword
+            }
+        }
         releaseKey.getOrNull()?.let { key ->
             create("release") {
                 storeFile = key.file
@@ -287,9 +351,12 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders"
     dependsOn(buildZkAndroid)
 }
 
-// A release key that is set but does not open stops release builds at once; debug builds and tests still run.
+// A key that is set but does not open stops the builds it signs at once; the other builds and tests still run.
 releaseKey.exceptionOrNull()?.message?.let { problem ->
     tasks.matching { it.name == "preReleaseBuild" }.configureEach { doFirst { throw GradleException(problem) } }
+}
+debugKey.exceptionOrNull()?.message?.let { problem ->
+    tasks.matching { it.name == "preDebugBuild" }.configureEach { doFirst { throw GradleException(problem) } }
 }
 
 configurations.all {
@@ -307,8 +374,8 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "DIW-MY-WALLET"
-            // CI passes -Pdiw.desktopVersion=0.1.<run> so each installer upgrades the previous one.
-            packageVersion = (findProperty("diw.desktopVersion") as String?) ?: "0.1.0"
+            // Each installer upgrades the previous one, as the patch number grows.
+            packageVersion = desktopVersion
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
             modules("java.instrument", "java.logging", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")

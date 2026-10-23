@@ -215,4 +215,4 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 - 每個階段（P1、P2…）在各自的 `claude/...` 分支開發並開新 PR，PR 合併後不再沿用同一個 PR。
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
 - CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly）需要三者都成功。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
-- 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。
+- 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。版本只記在 `version.properties`（主版號.次版號），修訂號與 Android versionCode 由 `app/build.gradle.kts` 取 `GITHUB_RUN_NUMBER`，PR 建置加 `-pr<N>`，本機為 `-dev`；debug 簽章金鑰由 `DIW_DEBUG_KEYSTORE_FILE` 指定。
