@@ -20,7 +20,9 @@ import org.multipaz.storage.StorageTableSpec
 import kotlin.time.Clock
 
 /**
- * The zkTLS and zkPDF page templates published with each release ([ZkTemplatePack]). The last verified pack is kept
+ * The zkTLS and zkPDF page templates published with each release ([ZkTemplatePack]), read from every source in
+ * [ZkTemplatePack.SOURCES] (the nightly release, and a release the maintainer fills by hand for when nightly is
+ * missing or broken); the newest pack that verifies wins. The last verified pack is kept
  * in storage and installed at start, so templates work offline; a new one is downloaded when the stored one is older
  * than [REFRESH_SECONDS]. The highest version ever installed is kept apart, so neither an older download nor a
  * restored copy of storage can bring back a template that was withdrawn.
@@ -36,6 +38,8 @@ class ZkTemplatesModel(private val model: WalletModel) {
         val pages: Int = 0,
         val documents: Int = 0,
         val checkedAt: Long? = null,
+        /** The source the installed pack came from (a [ZkTemplatePack.SOURCES] name, or a file). */
+        val source: String? = null,
         val error: String? = null,
         val running: Boolean = false,
         /** Outcome of the last file import. */
@@ -58,7 +62,8 @@ class ZkTemplatesModel(private val model: WalletModel) {
         val t = model.storage.getTable(table)
         val checked = runCatching { Blobs.get(t, CHECKED)?.decodeToString()?.toLong() }.getOrNull()
         val local = runCatching { Blobs.get(t, TEST_PAGES)?.decodeToString()?.let(::profiles) }.getOrNull().orEmpty()
-        state.value = state.value.copy(checkedAt = checked, testPages = local)
+        val source = runCatching { Blobs.get(t, SOURCE)?.decodeToString() }.getOrNull()
+        state.value = state.value.copy(checkedAt = checked, testPages = local, source = source)
         val jws = runCatching { Blobs.get(t, PACK) }.getOrNull()?.decodeToString() ?: return
         val pack = runCatching { ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), highest()) }.getOrNull() ?: return
         install(pack)
@@ -77,16 +82,25 @@ class ZkTemplatesModel(private val model: WalletModel) {
         job = model.scope.launch {
             state.value = state.value.copy(running = true, error = null)
             try {
-                val response = client.get(ZkTemplatePack.RELEASE_URL)
-                if (!response.status.isSuccess()) throw IllegalStateException("下載失敗（HTTP ${response.status.value}）")
-                val jws = response.bodyAsText()
-                val pack = ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), highest())
-                val t = model.storage.getTable(table)
-                if (pack.version > (state.value.version ?: 0)) {
-                    Blobs.put(t, PACK, jws.encodeToByteArray())
-                    Blobs.put(t, HIGHEST, pack.version.toString().encodeToByteArray())
-                    install(pack)
+                val minimum = highest()
+                val problems = mutableListOf<String>()
+                var best: Triple<String, String, ZkTemplatePack>? = null
+                for ((name, url) in ZkTemplatePack.SOURCES) {
+                    try {
+                        val response = client.get(url)
+                        if (!response.status.isSuccess()) throw IllegalStateException("HTTP ${response.status.value}")
+                        val jws = response.bodyAsText()
+                        val pack = ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), minimum)
+                        if (best == null || pack.version > best.third.version) best = Triple(name, jws, pack)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        problems += "$name：" + (e.message ?: e::class.simpleName)
+                    }
                 }
+                val found = best ?: throw IllegalStateException("下載失敗（${problems.joinToString("；")}）")
+                val t = model.storage.getTable(table)
+                if (found.third.version > (state.value.version ?: 0)) store(found.second, found.third, found.first)
                 val now = Clock.System.now().epochSeconds
                 Blobs.put(t, CHECKED, now.toString().encodeToByteArray())
                 state.value = state.value.copy(checkedAt = now, running = false)
@@ -145,10 +159,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
         val pack = ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), highest())
         val current = state.value.version ?: 0
         if (pack.version <= current) return "版型包 ${pack.version} 不比已安裝的版本新，未變更"
-        val t = model.storage.getTable(table)
-        Blobs.put(t, PACK, jws.encodeToByteArray())
-        Blobs.put(t, HIGHEST, pack.version.toString().encodeToByteArray())
-        install(pack)
+        store(jws, pack, "檔案")
         return "已安裝版型包：${pack.zktls.size} 個查驗頁、${pack.zkpdf.size} 個文件版型"
     }
 
@@ -178,6 +189,15 @@ class ZkTemplatesModel(private val model: WalletModel) {
     private fun profiles(text: String): List<ZkTlsProfile> =
         (DiwJson.parseToJsonElement(text) as JsonArray).mapNotNull { (it as? JsonObject)?.let { o -> runCatching { ZkTlsProfile.parse(o) }.getOrNull() } }
 
+    private suspend fun store(jws: String, pack: ZkTemplatePack, source: String) {
+        val t = model.storage.getTable(table)
+        Blobs.put(t, PACK, jws.encodeToByteArray())
+        Blobs.put(t, HIGHEST, pack.version.toString().encodeToByteArray())
+        Blobs.put(t, SOURCE, source.encodeToByteArray())
+        install(pack)
+        state.value = state.value.copy(source = source)
+    }
+
     private suspend fun highest(): Long = runCatching {
         Blobs.get(model.storage.getTable(table), HIGHEST)?.decodeToString()?.toLong()
     }.getOrNull() ?: 0
@@ -199,6 +219,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
         private const val HIGHEST = "highest"
         private const val CHECKED = "checked"
         private const val TEST_PAGES = "testPages"
+        private const val SOURCE = "source"
         private const val MAX_FILE = 1 shl 20
         private val table = StorageTableSpec(name = "DiwZkTemplates", supportPartitions = false, supportExpiration = false)
     }

@@ -12,10 +12,21 @@
 這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256 私鑰 PEM）簽章的 JWS，版本為建置時間；沒有設定 Secret 時略過。
 App 只接受 `ZkTemplatePack.TRUSTED_KEYS` 中公鑰簽的版型包，也不會安裝比已安裝版本舊的版型包。
 
-## 手動匯入
+## 手動發布（替代來源）
+
+nightly 沒有版型包或版型包有問題時，可在本機以同一把金鑰簽章，上傳到另一個 Release 作為替代來源。
+App 每次更新都會讀 nightly 與 `zk-templates` 兩個 Release，安裝其中簽章有效且版本最新的一份（設定頁會顯示來源）。
+
+1. 在 repo 根目錄產生並簽章（版本為當下時間，所以會比先前任何一份新）：
+   - Linux／macOS：`ZK_TEMPLATES_KEY="$(cat zk-templates.key)" ./gradlew :test-servers:templatePack`
+   - Windows PowerShell：`$env:ZK_TEMPLATES_KEY = Get-Content -Raw .\zk-templates.key; .\gradlew.bat :test-servers:templatePack; Remove-Item Env:ZK_TEMPLATES_KEY`
+2. 輸出在 `test-servers/build/zk-templates.jwt`。
+3. 在 GitHub 建立（或編輯）tag 為 `zk-templates` 的 Release（可標為 pre-release），上傳這個檔案，檔名維持 `zk-templates.jwt`；更新時刪除舊檔再上傳。
+   App 下載位址為 `releases/download/zk-templates/zk-templates.jwt`。
+
+## 從檔案匯入
 
 App 設定「零知識證明」頁的「從檔案匯入」可匯入 `zk-templates.jwt` 或含有它的 ZIP（例如 CI 產物），簽章與版本檢查和線上更新相同。
-本機也可以自行產生：`ZK_TEMPLATES_KEY="$(cat zk-templates.key)" ./gradlew :test-servers:templatePack`，輸出在 `test-servers/build/zk-templates.jwt`。
 
 測試環境另可匯入未簽章的查驗頁描述檔（單一查驗頁 JSON、測試伺服器 `/zktls/profiles` 的回應，或未簽章的版型包內容），
 只在測試環境提供，查驗時附在請求中；持有端也須開啟測試環境才會接受，並標示為測試查驗頁。與已簽章查驗頁同名的不會匯入。

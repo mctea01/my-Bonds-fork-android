@@ -50,6 +50,15 @@ data class ZkTemplatePack(
         const val RELEASE_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/nightly/$FILE"
 
         /**
+         * A release the maintainer fills by hand: a pack signed locally with the same key and uploaded to the
+         * "zk-templates" release, for when the nightly one is missing or broken (templates/README.md).
+         */
+        const val MANUAL_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zk-templates/$FILE"
+
+        /** Where the wallet looks, with the name it shows; the newest valid pack of all of them is installed. */
+        val SOURCES: List<Pair<String, String>> = listOf("nightly" to RELEASE_URL, "手動發布" to MANUAL_URL)
+
+        /**
          * PEM public keys (P-256) allowed to sign packs. The private key is the repository's GitHub Actions secret
          * ZK_TEMPLATES_KEY; a key is replaced by adding the new one here first and removing the old one later.
          */
