@@ -163,6 +163,10 @@ fun ZkSettingsScreen(model: WalletModel) {
         OutlinedButton(onClick = { zk.refresh() }, enabled = !refreshing) { Text(if (refreshing) "檢查中…" else "重新檢查") }
 
         HorizontalDivider()
+        SectionTitle("查驗頁與文件版型")
+        ZkTemplatesSection(model)
+
+        HorizontalDivider()
         SectionTitle("年齡查驗主機")
         AgeVerifierHost(model)
         HorizontalDivider()
@@ -197,6 +201,25 @@ fun ZkSettingsScreen(model: WalletModel) {
             },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("取消") } },
         )
+    }
+}
+
+/** The signed page templates from the release: what is installed, when it was checked, and a manual update. */
+@Composable
+private fun ZkTemplatesSection(model: WalletModel) {
+    val st by model.zkTemplates.state.collectAsState()
+    Text("zkTLS 查驗頁與 zkPDF 文件版型隨每次發布更新，不需要更新 App。版型只描述要揭露的欄位，電路仍以 App 內的版本為準；" +
+        "版型包須有本專案發布金鑰的簽章，也不會被較舊的版本取代。", style = MaterialTheme.typography.bodySmall)
+    val lines = buildList {
+        if (!st.keyConfigured) add("此版本尚未設定版型簽章金鑰，暫時只能使用查驗方在測試環境附上的查驗頁。")
+        if (st.version != null) add("已安裝：${st.pages} 個查驗頁、${st.documents} 個文件版型・發布於 ${localTime(st.issuedAt!!)}")
+        else if (st.keyConfigured) add(if (st.running) "下載中" else "尚未下載")
+        st.checkedAt?.let { add("上次檢查：${localTime(it)}") }
+        st.error?.let { add("最近一次更新失敗：$it" + if (st.version != null) "（仍使用已安裝的版型）" else "") }
+    }
+    lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text("立即更新") }
     }
 }
 
