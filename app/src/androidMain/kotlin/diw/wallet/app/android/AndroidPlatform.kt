@@ -40,6 +40,7 @@ import kotlinx.serialization.json.buildJsonObject
 import com.google.android.gms.identitycredentials.RegistrationRequest
 import com.google.android.gms.tasks.Task
 import diw.wallet.app.DcApiRegistration
+import diw.wallet.app.BondsLinkCentral
 import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
@@ -144,6 +145,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     @Volatile var activity: Activity? = null
 
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
+
+    override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
 
     /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
     @Volatile var fileAccess: AndroidFileAccess? = null

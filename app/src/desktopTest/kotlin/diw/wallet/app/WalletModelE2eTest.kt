@@ -68,6 +68,9 @@ class WalletModelE2eTest {
     private val http = HttpClient(Java) { followRedirects = false }
     private val pin = "246810"
 
+    /** Every wallet in a test shares one in-memory Bluetooth link, so a holder and a verifier can meet on it. */
+    private val link = LoopbackBondsLink()
+
     /** Software-only platform; the browser step follows the issuer's auto-approve redirect and feeds it back like a deep link. */
     private inner class TestPlatform(
         val storage: Storage,
@@ -99,6 +102,9 @@ class WalletModelE2eTest {
         /** Files the wallet exported, by the name it suggested. */
         val saved = ArrayList<Pair<String, ByteArray>>()
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
+
+        override val bondsLink: BondsLinkPeripheral get() = link.peripheral
+        override val bondsLinkCentral: BondsLinkCentral get() = link.central
 
         override val zk by lazy {
             val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
@@ -407,6 +413,12 @@ class WalletModelE2eTest {
             verifyMs = 5126, prepareMs = 5642, showMs = 662,
         ), null, null)
         screen("26-age-verify-result", Screen.Offline, height = 1100)
+        val nearbyRequest = diw.wallet.core.profile.bonds.BondsAgeRequest.create(18, BondsCredentialSource.TWDIW, "年齡確認", null)
+        m.taiwan.offline.value = OfflineUi.AgeVerifierWaiting(nearbyRequest, BondsAgeVerifierFlow.BLUETOOTH, relay = true, note = null,
+            link = "等待出示者的手機出現（對方產生證明需要數秒到數十秒）")
+        screen("27-age-verify-nearby", Screen.Offline, height = 1000)
+        m.taiwan.offline.value = OfflineUi.AgeWorking(nearbyRequest, age.cards.single(), "screens", sending = true, link = "藍牙傳送中 182 / 307")
+        screen("28-age-sending-nearby", Screen.Offline)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -1274,10 +1286,10 @@ class WalletModelE2eTest {
         assertNotNull(waiting.note, "the reason this device does not verify is shown")
         val request = waiting.request
         assertEquals(20, request.minimumAge)
-        assertTrue(request.responseUrl.startsWith("$base/api/zkp/response/"))
+        assertTrue(request.responseUrl!!.startsWith("$base/api/zkp/response/"))
         val issuer = diw.wallet.core.did.DidKeys.didKeyJwkJcs(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey)
         val pkg = diw.wallet.core.profile.bonds.BondsAgePackage(request, "birthdate", 3, issuer, byteArrayOf(1), byteArrayOf(2), 5000, 600, kotlin.time.Clock.System.now())
-        val posted = http.post(request.responseUrl) { contentType(ContentType.Application.Json); setBody(pkg.encode()) }
+        val posted = http.post(request.responseUrl!!) { contentType(ContentType.Application.Json); setBody(pkg.encode()) }
         assertTrue(diw.wallet.core.profile.bonds.BondsAgeVerdict.parse(posted.bodyAsText())!!.accepted)
         val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { m.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
         assertNull(result.verification)
@@ -1286,6 +1298,55 @@ class WalletModelE2eTest {
         val entry = withTimeout(10.seconds) { m.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
         assertEquals(listOf("年滿 20 歲"), entry.claims)
         assertTrue("由 localhost 驗證" in entry.note!!, entry.note)
+    }
+
+    /**
+     * The serverless age check: the verifier's QR carries a Bluetooth service instead of an address, the holder sends
+     * the package over the link (framed at a small MTU), the verifier checks it on its own device and the verdict
+     * goes back over the same link. Neither wallet talks to a server.
+     */
+    @Test
+    fun ageCheckOverBluetooth() = runBlocking<Unit> {
+        val checks = mutableListOf<diw.wallet.core.zk.OpenAcAgeCheck>()
+        val engine = object : diw.wallet.core.zk.OpenAcAgeVerifier {
+            override suspend fun verify(check: diw.wallet.core.zk.OpenAcAgeCheck) =
+                diw.wallet.core.zk.ZkResult.Ok(check.prepareProof.size == 120_000).also { checks += check }
+        }
+        val (verifier, _) = newWallet()
+        val (holder, _) = newWallet()
+        verifier.taiwan.ageVerifier.engines = { diw.wallet.core.zk.ZkResult.Ok(engine) }
+        verifier.taiwan.ageVerifier.startNearby(20, BondsCredentialSource.SELF_ISSUED, "年齡確認")
+        val waiting = assertIs<OfflineUi.AgeVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierWaiting || it is OfflineUi.Failed }
+        })
+        val request = waiting.request
+        assertTrue(request.nearby && request.responseUrl == null)
+        assertTrue("\"l\"" in request.encode() && "\"u\"" !in request.encode())
+
+        // The holder reads the QR as an age request, not as a Bonds presentation challenge; it has no card yet.
+        holder.handleUri(request.encode())
+        val none = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed } })
+        assertEquals(BondsAgeFlow.noCard(BondsCredentialSource.SELF_ISSUED), none.message)
+
+        // A proof the size of a real Prepare proof, as the prover would hand it over.
+        val issuerKey = org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey as org.multipaz.crypto.EcPublicKeyDoubleCoordinate
+        val material = diw.wallet.core.profile.bonds.BondsAgeMaterial("unused", diw.wallet.core.did.DidKeys.didKeyJwkJcs(issuerKey),
+            issuerKey.x.toBase64Url(), issuerKey.y.toBase64Url())
+        val proof = diw.wallet.core.zk.OpenAcAgeProof("birthdate", 3, kotlin.random.Random(1).nextBytes(120_000), kotlin.random.Random(2).nextBytes(47_000), 5000, 700)
+        val card = AgeCard(TaiwanModel.NATIONAL_ID_NAME, BondsCredentialSource.SELF_ISSUED, "birthdate")
+        assertNull(withTimeout(60.seconds) { holder.taiwan.age.send(request, card, material, proof) })
+        val shown = assertIs<OfflineUi.AgeResult>(holder.taiwan.offline.value)
+        assertTrue(shown.accepted, shown.toString())
+        assertEquals("${BondsAgeFlow.NEARBY} 已接受證明", shown.title)
+        assertTrue(link.lastFrames > 900, "the package went out in ${link.lastFrames} frames of at most 182 bytes")
+
+        val result = assertIs<OfflineUi.AgeVerifierResult>(withTimeout(30.seconds) { verifier.taiwan.offline.first { it is OfflineUi.AgeVerifierResult } })
+        val v = assertNotNull(result.verification)
+        assertTrue(v.proofValid && v.accepted && v.selfIssued)
+        assertEquals(request.nonce, checks.single().nonce)
+        assertEquals(request.cutoffValue(3), checks.single().cutoff)
+        val seen = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
+        assertTrue("藍牙直接收到" in seen.note!!, seen.note)
     }
 
     private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =

@@ -108,8 +108,14 @@ sealed class OfflineUi {
     /** Bonds web age request scanned: pick the card to prove from. */
     data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>, val known: Boolean = request.knownHost) : OfflineUi()
 
-    /** The age proof [jobId] is being produced, or with [sending] posted to the verifier. */
-    data class AgeWorking(val request: BondsAgeRequest, val card: AgeCard, val jobId: String, val sending: Boolean = false) : OfflineUi()
+    /** The age proof [jobId] is being produced, or with [sending] sent to the verifier; [link] is the Bluetooth progress. */
+    data class AgeWorking(
+        val request: BondsAgeRequest,
+        val card: AgeCard,
+        val jobId: String,
+        val sending: Boolean = false,
+        val link: String? = null,
+    ) : OfflineUi()
 
     /** The verifier's verdict, or why no proof was sent. */
     data class AgeResult(
@@ -122,8 +128,9 @@ sealed class OfflineUi {
     ) : OfflineUi()
 
     /**
-     * Verifier side of a Bonds age check: the request QR is shown while [host] waits for the proof. [relay]: the proof
-     * is verified on this device; [note] says why not. [checking]: the proof has arrived and is being verified.
+     * Verifier side of a Bonds age check: the request QR is shown while [host] waits for the proof, or for a nearby
+     * request this device listens over Bluetooth ([link] is its progress). [relay]: the proof is verified on this
+     * device; [note] says why not. [checking]: the proof has arrived and is being verified.
      */
     data class AgeVerifierWaiting(
         val request: BondsAgeRequest,
@@ -131,6 +138,7 @@ sealed class OfflineUi {
         val relay: Boolean,
         val note: String?,
         val checking: Boolean = false,
+        val link: String? = null,
     ) : OfflineUi()
 
     /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */

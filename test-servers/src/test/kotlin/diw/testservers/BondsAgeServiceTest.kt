@@ -70,7 +70,7 @@ class BondsAgeServiceTest {
 
     private suspend fun issuerDid() = DidKeys.didKeyJwkJcs(Crypto.createEcPrivateKey(EcCurve.P256).publicKey)
 
-    private suspend fun post(request: BondsAgeRequest, body: String): HttpResponse = servers.httpClient.post(request.responseUrl) {
+    private suspend fun post(request: BondsAgeRequest, body: String): HttpResponse = servers.httpClient.post(request.responseUrl!!) {
         contentType(ContentType.Application.Json); setBody(body)
     }
 

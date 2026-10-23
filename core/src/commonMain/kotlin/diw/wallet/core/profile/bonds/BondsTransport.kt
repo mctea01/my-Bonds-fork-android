@@ -181,6 +181,9 @@ class BondsFrameCollector {
  * The holder is the GATT peripheral advertising the request's one-time service UUID; frames are notified on
  * [FRAMES_CHARACTERISTIC] and the verifier writes [RECEIVED] to [STATE_CHARACTERISTIC]. No session encryption:
  * authenticity comes from the signed presentation and the verifier's challenge.
+ *
+ * A nearby age proof (this wallet's extension) uses the same service with the larger [AGE_MAX_PAYLOAD] and
+ * [AGE_MAX_CHUNKS]; after [RECEIVED] the verifier writes its verdict, framed the same way, to [REPLY_CHARACTERISTIC].
  */
 object BondsLinkTransport {
     const val VERSION: Byte = 1
@@ -190,11 +193,19 @@ object BondsLinkTransport {
     const val MAX_CHUNKS = 4096
     const val FRAMES_CHARACTERISTIC = "2B1D0001-6B4E-4C3A-9E2F-4A7C51E0D9A1"
     const val STATE_CHARACTERISTIC = "2B1D0002-6B4E-4C3A-9E2F-4A7C51E0D9A1"
+    const val REPLY_CHARACTERISTIC = "2B1D0003-6B4E-4C3A-9E2F-4A7C51E0D9A1"
     const val RECEIVED: Byte = 0x01
 
-    fun frames(payload: ByteArray, maxFrameBytes: Int): List<ByteArray> {
+    /** An age package holds two proofs of up to [BondsAgePackage.MAX_PROOF] bytes each, base64 in JSON. */
+    const val AGE_MAX_PAYLOAD = 3 * BondsAgePackage.MAX_PROOF
+    const val AGE_MAX_CHUNKS = 0xffff
+
+    /** A verdict is a short JSON object. */
+    const val REPLY_MAX_PAYLOAD = 4096
+
+    fun frames(payload: ByteArray, maxFrameBytes: Int, maxPayload: Int = MAX_PAYLOAD, maxChunks: Int = MAX_CHUNKS): List<ByteArray> {
         if (payload.isEmpty()) throw BondsTransportException("Empty payload")
-        if (payload.size > MAX_PAYLOAD) throw BondsTransportException("Payload over $MAX_PAYLOAD bytes")
+        if (payload.size > maxPayload) throw BondsTransportException("Payload over $maxPayload bytes")
         val budget = maxFrameBytes - HEADER_BYTES
         if (budget <= 0) throw BondsTransportException("Frame size too small")
         val id = identifier(payload)
@@ -202,7 +213,7 @@ object BondsLinkTransport {
         val body = deflated ?: payload
         val flags = if (deflated == null) 0 else DEFLATED
         val chunks = (body.indices step budget).map { body.copyOfRange(it, minOf(it + budget, body.size)) }
-        if (chunks.size > MAX_CHUNKS) throw BondsTransportException("Payload needs more than $MAX_CHUNKS frames")
+        if (chunks.size > maxChunks) throw BondsTransportException("Payload needs more than $maxChunks frames")
         return chunks.mapIndexed { i, chunk ->
             byteArrayOf(
                 VERSION, flags.toByte(),
@@ -218,7 +229,7 @@ object BondsLinkTransport {
         val deflated: Boolean get() = flags and DEFLATED != 0
     }
 
-    internal fun parse(frame: ByteArray): Pair<Header, ByteArray> {
+    internal fun parse(frame: ByteArray, maxChunks: Int = MAX_CHUNKS): Pair<Header, ByteArray> {
         if (frame.size <= HEADER_BYTES) throw BondsTransportException("Frame too short")
         if (frame[0] != VERSION) throw BondsTransportException("Unsupported link version ${frame[0]}")
         val flags = frame[1].toInt() and 0xff
@@ -226,14 +237,17 @@ object BondsLinkTransport {
         val total = ((frame[2].toInt() and 0xff) shl 8) or (frame[3].toInt() and 0xff)
         val index = ((frame[4].toInt() and 0xff) shl 8) or (frame[5].toInt() and 0xff)
         if (total == 0) throw BondsTransportException("Empty transfer")
-        if (total > MAX_CHUNKS) throw BondsTransportException("Too many chunks")
+        if (total > maxChunks) throw BondsTransportException("Too many chunks")
         if (index >= total) throw BondsTransportException("Index out of range")
         return Header(flags, total, index, frame.copyOfRange(6, 10)) to frame.copyOfRange(HEADER_BYTES, frame.size)
     }
 }
 
 /** Collects link frames; verifies the transfer id after reassembly and resets on failure. */
-class BondsLinkCollector {
+class BondsLinkCollector(
+    private val maxPayload: Int = BondsLinkTransport.MAX_PAYLOAD,
+    private val maxChunks: Int = BondsLinkTransport.MAX_CHUNKS,
+) {
     private var id: ByteArray? = null
     private var deflated = false
     private var total = 0
@@ -245,13 +259,13 @@ class BondsLinkCollector {
     }
 
     fun accept(frame: ByteArray): BondsReception {
-        val (header, body) = BondsLinkTransport.parse(frame)
+        val (header, body) = BondsLinkTransport.parse(frame, maxChunks)
         val current = id
         if (current != null) {
             if (!header.id.contentEquals(current)) throw BondsTransportException("Frame from another transfer")
             if (header.total != total || header.deflated != deflated) throw BondsTransportException("Inconsistent header")
         }
-        if (held + body.size > BondsLinkTransport.MAX_PAYLOAD) throw BondsTransportException("Payload too large")
+        if (held + body.size > maxPayload) throw BondsTransportException("Payload too large")
         if (current == null) {
             id = header.id; deflated = header.deflated; total = header.total
         }
@@ -260,8 +274,10 @@ class BondsLinkCollector {
         held += body.size
         if (chunks.size < total) return BondsReception.Accepted(chunks.size, total)
         return try {
-            val assembled = (0 until total).fold(ByteArray(0)) { acc, i -> acc + (chunks[i] ?: ByteArray(0)) }
-            val payload = if (deflated) BondsDeflate.inflate(assembled, BondsLinkTransport.MAX_PAYLOAD) else assembled
+            val assembled = ByteArray(held)
+            var at = 0
+            for (i in 0 until total) chunks.getValue(i).let { it.copyInto(assembled, at); at += it.size }
+            val payload = if (deflated) BondsDeflate.inflate(assembled, maxPayload) else assembled
             if (!BondsLinkTransport.identifier(payload).contentEquals(id)) throw BondsTransportException("Reassembly digest mismatch")
             BondsReception.Completed(payload)
         } catch (e: Exception) {

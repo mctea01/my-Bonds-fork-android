@@ -20,6 +20,7 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
@@ -45,9 +46,10 @@ data class AgeCard(
 )
 
 /**
- * Answers a Bonds web age request (BondsAgeRequest) with an OpenAC proof: the holder picks a card, the proof is
- * produced and checked on this device, then posted to the response address with the verdict shown. Only the two
- * proofs, the statement and the issuer DID leave the device; the history records the statement, never a value.
+ * Answers a Bonds age request (BondsAgeRequest) with an OpenAC proof: the holder picks a card, the proof is produced
+ * and checked on this device, then posted to the response address, or for a nearby request sent over the Bonds BLE
+ * link to the verifier's phone, with the verdict shown. Only the two proofs, the statement and the issuer DID leave
+ * the device; the history records the statement, never a value.
  */
 class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
@@ -61,9 +63,17 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                 val verifier = model.taiwan.ageVerifier
                 val request = BondsAgeRequest.parse(text, verifier.insecureHosts())
                 val cards = cards(request.source)
+                // Asked before proving, so a permission prompt does not come after the wait.
+                val link = model.platform.bondsLink
+                val linkProblem = when {
+                    !request.nearby || cards.isEmpty() -> null
+                    link == null -> NO_LINK
+                    else -> link.unavailableReason()?.let { "藍牙無法使用：$it。處理後請再掃描一次。" }
+                }
                 when {
                     !request.isFresh(Clock.System.now()) -> OfflineUi.Failed(EXPIRED)
                     cards.isEmpty() -> OfflineUi.Failed(noCard(request.source))
+                    linkProblem != null -> OfflineUi.Failed(linkProblem)
                     else -> OfflineUi.AgeChoose(request, cards, known(request))
                 }
             } catch (e: Exception) {
@@ -86,8 +96,8 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
 
     private fun jobId(request: BondsAgeRequest) = "bonds-age-" + request.requestId
 
-    /** Bonds' own list, or the user's age host, which is as known. */
-    private fun known(request: BondsAgeRequest): Boolean = request.knownHost ||
+    /** Bonds' own list, or the user's age host, which is as known; a nearby verifier is the person in front of the holder. */
+    private fun known(request: BondsAgeRequest): Boolean = request.nearby || request.knownHost ||
         model.taiwan.ageVerifier.host()?.let { runCatching { Url(it).host }.getOrNull() } == request.responseHost
 
     /** Produces and sends the proof; [extended] is the user's choice to produce it here against the advice. */
@@ -151,7 +161,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     }
 
     /** Posts the proof and shows the verdict; returns the failure for the history, or null when accepted. */
-    private suspend fun send(request: BondsAgeRequest, card: AgeCard, material: BondsAgeMaterial, proof: diw.wallet.core.zk.OpenAcAgeProof): String? {
+    internal suspend fun send(request: BondsAgeRequest, card: AgeCard, material: BondsAgeMaterial, proof: diw.wallet.core.zk.OpenAcAgeProof): String? {
         val now = Clock.System.now()
         if (!request.isFresh(now)) {
             ui.value = OfflineUi.AgeResult(request, card, false, "請求已過期", listOf(EXPIRED, "證明已產生但沒有送出。"), retry = false)
@@ -161,9 +171,10 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             proof.prepareMs, proof.showMs, now)
         ui.value = OfflineUi.AgeWorking(request, card, jobId(request), sending = true)
         val timing = "產生證明 ${seconds(proof.prepareMs + proof.showMs)} 秒"
+        val who = who(request)
         val (status, body) = try {
-            withTimeout(SEND_TIMEOUT) {
-                val response = client.post(request.responseUrl) {
+            if (request.nearby) nearby(request, card, pkg) else withTimeout(SEND_TIMEOUT) {
+                val response = client.post(request.responseUrl!!) {
                     contentType(ContentType.Application.Json)
                     accept(ContentType.Application.Json)
                     setBody(pkg.encode())
@@ -172,15 +183,16 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             }
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            val reason = "無法把證明送到 ${request.responseHost}，請檢查網路後重試。"
+        } catch (e: Exception) {
+            val reason = if (request.nearby) "藍牙傳送沒有完成（${model.describe(e)}），請靠近對方的手機後重試。"
+            else "無法把證明送到 $who，請檢查網路後重試。"
             ui.value = OfflineUi.AgeResult(request, card, false, "沒有送出", listOf(reason), retry = true)
             return reason
         }
         val verdict = BondsAgeVerdict.parse(body)
         return when {
             verdict?.accepted == true -> {
-                ui.value = OfflineUi.AgeResult(request, card, true, "${request.responseHost} 已接受證明",
+                ui.value = OfflineUi.AgeResult(request, card, true, "$who 已接受證明",
                     listOfNotNull("查驗方確認你年滿 ${verdict.minimumAge ?: request.minimumAge} 歲，沒有收到出生日期或其他欄位。", timing,
                         verdict.verifyMs?.let { "查驗方驗證 ${seconds(it)} 秒" }), retry = false)
                 null
@@ -188,23 +200,39 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
             verdict != null -> {
                 val reason = verdict.reason?.takeIf { it.isNotBlank() } ?: verdict.status
                 // A 5xx verdict is the verifier's own failure (its backend down), not a judgement of the proof.
-                ui.value = if (status.value >= 500) OfflineUi.AgeResult(request, card, false, "${request.responseHost} 暫時無法驗證",
+                ui.value = if (status.value >= 500) OfflineUi.AgeResult(request, card, false, "$who 暫時無法驗證",
                     listOf("對方的說明：$reason", "證明已送達，是查驗方網站的問題；請對方稍後重新產生 QR Code 再試。", timing), retry = false)
-                else OfflineUi.AgeResult(request, card, false, "${request.responseHost} 沒有接受證明", listOf("對方的說明：$reason", timing), retry = false)
+                else OfflineUi.AgeResult(request, card, false, "$who 沒有接受證明", listOf("對方的說明：$reason", timing), retry = false)
                 reason
             }
             status.isSuccess() -> {
-                val reason = "${request.responseHost} 的回應無法讀取。"
+                val reason = "$who 的回應無法讀取。"
                 ui.value = OfflineUi.AgeResult(request, card, false, "結果不明", listOf(reason), retry = false)
                 reason
             }
             else -> {
                 val text = body.filter { !it.isISOControl() }.take(200).ifBlank { "HTTP ${status.value}" }
-                ui.value = OfflineUi.AgeResult(request, card, false, "${request.responseHost} 沒有接受證明", listOf("對方的說明：$text"), retry = false)
+                ui.value = OfflineUi.AgeResult(request, card, false, "$who 沒有接受證明", listOf("對方的說明：$text"), retry = false)
                 text
             }
         }
     }
+
+    /**
+     * Sends the package over the verifier's one-time BLE service and waits for its verdict, which the verifier's phone
+     * reaches by checking the proofs itself. The reply is answered as an HTTP 200 body would be.
+     */
+    private suspend fun nearby(request: BondsAgeRequest, card: AgeCard, pkg: BondsAgePackage): Pair<HttpStatusCode, String> {
+        val link = model.platform.bondsLink ?: throw ProtocolException("unsupported", NO_LINK)
+        val id = jobId(request)
+        val reply = link.exchange(request.linkServiceId!!, pkg.encode().encodeToByteArray()) { text ->
+            (ui.value as? OfflineUi.AgeWorking)?.takeIf { it.jobId == id }?.let { ui.value = it.copy(link = text) }
+        } ?: throw ProtocolException("link_failed", "對方沒有回覆結果")
+        return HttpStatusCode.OK to reply.decodeToString()
+    }
+
+    /** Who the proof goes to, for the screens and the history. */
+    private fun who(request: BondsAgeRequest): String = request.responseHost ?: NEARBY
 
     private suspend fun holderKey(card: AgeCard): HolderKey = when (card.source) {
         BondsCredentialSource.SELF_ISSUED -> model.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED)
@@ -223,8 +251,9 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
 
     private fun record(request: BondsAgeRequest, card: AgeCard, failure: String?) {
         model.record(
-            HistoryKind.PRESENTED, request.responseHost, null, listOf(card.name), listOf("年滿 ${request.minimumAge} 歲"),
-            "年齡零知識證明（Bonds 線上查驗），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
+            HistoryKind.PRESENTED, who(request), null, listOf(card.name), listOf("年滿 ${request.minimumAge} 歲"),
+            "年齡零知識證明（" + (if (request.nearby) "藍牙直接傳給對方手機，不經伺服器" else "Bonds 線上查驗") +
+                "），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
         )
     }
 
@@ -233,6 +262,8 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
     companion object {
         val SEND_TIMEOUT = 90.seconds
         const val EXPIRED = "這個請求已過期（Bonds 的請求 5 分鐘內有效），請對方重新產生 QR Code。"
+        const val NEARBY = "附近的查驗方"
+        const val NO_LINK = "這支手機無法以藍牙周邊模式傳送，不能回應附近的年齡查驗；請對方改用查驗主機。"
 
         fun noCard(source: BondsCredentialSource): String = when (source) {
             BondsCredentialSource.SELF_ISSUED ->

@@ -6,6 +6,7 @@ import diw.wallet.core.profile.bonds.BondsAgeVerdict
 import diw.wallet.core.profile.bonds.BondsAgeVerification
 import diw.wallet.core.profile.bonds.BondsAgeVerifier
 import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
@@ -26,6 +27,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -33,13 +35,17 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * The wallet as a Bonds web age verifier: an age host (the test server, or the user's own deployment of it) issues a
- * Bonds-compatible request QR and receives the holder's proof. When this device can check OpenAC proofs the host only
- * relays the package here and returns this device's verdict to the holder; otherwise the host verifies and this device
- * shows its verdict, labelled as such.
+ * The wallet as a Bonds age verifier. Through an age host (the test server, or the user's own deployment of it) it
+ * issues a Bonds-compatible request QR and receives the holder's proof: when this device can check OpenAC proofs the
+ * host only relays the package here and returns this device's verdict to the holder; otherwise the host verifies and
+ * this device shows its verdict, labelled as such. Nearby ([startNearby]) there is no server at all: the holder's
+ * phone sends the package over Bluetooth and this device verifies it and answers over the same link.
  */
 class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
+
+    /** This device's OpenAC verifier, or why there is none; replaced in tests. */
+    internal var engines: suspend () -> ZkResult<OpenAcAgeVerifier> = { model.zk.ageVerifier() }
 
     /** The configured age host: the user's setting, else the test server in the test environment. */
     fun host(): String? = model.settings.zkVerifierUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
@@ -60,7 +66,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         ui.value = OfflineUi.Working("建立年齡查驗請求")
         job = model.scope.launch {
             try {
-                val local = model.zk.ageVerifier()
+                val local = engines()
                 val engine = (local as? ZkResult.Ok)?.value
                 val created = createSession(host, minimumAge, source, purpose, relay = engine != null)
                 val request = BondsAgeRequest.parse(created.str("request") ?: throw ProtocolException("server_error", "No request"), insecureHosts())
@@ -74,6 +80,58 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 throw e
             } catch (e: Exception) {
                 ui.value = OfflineUi.Failed("無法建立年齡查驗：" + model.describe(e))
+            } finally {
+                model.platform.keepScreenOn(false)
+            }
+        }
+    }
+
+    /**
+     * A nearby check over the Bonds BLE link: the QR carries a one-time service UUID instead of a response address,
+     * this device scans for the holder advertising it, verifies the package here and writes the verdict back.
+     */
+    fun startNearby(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
+        val link = model.platform.bondsLinkCentral ?: run {
+            model.message.value = NO_CENTRAL
+            return
+        }
+        stop()
+        model.screen.value = Screen.Offline
+        ui.value = OfflineUi.Working("準備藍牙年齡查驗")
+        job = model.scope.launch {
+            try {
+                link.unavailableReason()?.let {
+                    ui.value = OfflineUi.Failed("藍牙無法使用：$it")
+                    return@launch
+                }
+                val engine = when (val r = engines()) {
+                    is ZkResult.Ok -> r.value
+                    is ZkResult.Failed -> {
+                        ui.value = OfflineUi.Failed("這支手機無法驗證年齡證明（${r.reason}）。藍牙查驗要在這支手機驗證，可改用查驗主機。")
+                        return@launch
+                    }
+                    ZkResult.Cancelled -> return@launch
+                }
+                val request = BondsAgeRequest.create(minimumAge, source, purpose, null)
+                val waiting = OfflineUi.AgeVerifierWaiting(request, BLUETOOTH, relay = true, note = null)
+                model.platform.keepScreenOn(true)
+                ui.value = waiting
+                var result: OfflineUi.AgeVerifierResult? = null
+                withTimeoutOrNull(request.expiresAt + GRACE - Clock.System.now()) {
+                    link.receive(request.linkServiceId!!, BondsLinkTransport.AGE_MAX_PAYLOAD, { text ->
+                        (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == request }?.let { ui.value = it.copy(link = text) }
+                    }) { bytes ->
+                        ui.value = waiting.copy(checking = true)
+                        val (shown, verdict) = check(request, BLUETOOTH, engine, bytes.decodeToString())
+                        result = shown
+                        verdict.encode().encodeToByteArray()
+                    }
+                }
+                show(result ?: OfflineUi.AgeVerifierResult(request, BLUETOOTH, null, null, EXPIRED))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ui.value = OfflineUi.Failed("藍牙年齡查驗沒有完成：" + model.describe(e))
             } finally {
                 model.platform.keepScreenOn(false)
             }
@@ -130,22 +188,24 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     }
 
     private suspend fun finishHere(host: String, session: String, token: String, request: BondsAgeRequest, engine: OpenAcAgeVerifier, posted: String) {
-        val hostName = Url(host).host
-        val result: OfflineUi.AgeVerifierResult = try {
-            val pkg = BondsAgePackage.parse(posted, request)
-            val verification = BondsAgeVerifier.verify(pkg, engine, model.didResolver(), model.didTrust)
-            answer(host, session, token, verification.verdict())
-            OfflineUi.AgeVerifierResult(request, hostName, verification, null, null)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ProtocolException) {
-            answer(host, session, token, BondsAgeVerdict("failed", false, "證明回應缺少必要欄位", request.minimumAge, null))
-            OfflineUi.AgeVerifierResult(request, hostName, null, null, "收到的證明無法讀取：" + model.describe(e))
-        } catch (e: Exception) {
-            answer(host, session, token, BondsAgeVerdict("failed", false, "查驗方無法完成驗證", request.minimumAge, null))
-            OfflineUi.AgeVerifierResult(request, hostName, null, null, "這支手機無法完成驗證：" + model.describe(e))
-        }
+        val (result, verdict) = check(request, Url(host).host, engine, posted)
+        answer(host, session, token, verdict)
         show(result)
+    }
+
+    /** Verifies a received package on this device: what to show here and the verdict to return to the holder. */
+    private suspend fun check(request: BondsAgeRequest, host: String, engine: OpenAcAgeVerifier, posted: String): Pair<OfflineUi.AgeVerifierResult, BondsAgeVerdict> = try {
+        val pkg = BondsAgePackage.parse(posted, request)
+        val verification = BondsAgeVerifier.verify(pkg, engine, model.didResolver(), model.didTrust)
+        OfflineUi.AgeVerifierResult(request, host, verification, null, null) to verification.verdict()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ProtocolException) {
+        OfflineUi.AgeVerifierResult(request, host, null, null, "收到的證明無法讀取：" + model.describe(e)) to
+            BondsAgeVerdict("failed", false, "證明回應缺少必要欄位", request.minimumAge, null)
+    } catch (e: Exception) {
+        OfflineUi.AgeVerifierResult(request, host, null, null, "這支手機無法完成驗證：" + model.describe(e)) to
+            BondsAgeVerdict("failed", false, "查驗方無法完成驗證", request.minimumAge, null)
     }
 
     private suspend fun answer(host: String, session: String, token: String, verdict: BondsAgeVerdict) {
@@ -170,7 +230,8 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             HistoryKind.VERIFIED, "年齡零知識證明", v?.issuerTrust,
             listOfNotNull(v?.let { if (it.selfIssued) "自發卡（持有者自己的金鑰）" else "發卡者 ${shortDid(it.issuerDid)}" }),
             listOf("年滿 ${result.request.minimumAge} 歲"),
-            "OpenAC 零知識年齡查驗（Bonds 相容），" + (if (v != null) "在這支手機驗證" else "由 ${result.host} 驗證") +
+            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) "，藍牙直接收到、不經伺服器" else "") +
+                (if (v != null) "，在這支手機驗證" else "，由 ${result.host} 驗證") +
                 "，用途：${result.request.purpose.ifEmpty { "未說明" }}",
             failure,
         )
@@ -183,6 +244,8 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         val POLL = 1.seconds
         val GRACE = 30.seconds
         const val EXPIRED = "對方沒有在時限內出示，請重新產生查驗請求。"
+        const val BLUETOOTH = "藍牙"
+        const val NO_CENTRAL = "這個平台無法以藍牙接收證明，請改用查驗主機。"
 
         fun summary(v: BondsAgeVerification): List<String> = listOfNotNull(
             "出示者證明自己年滿 ${v.request.minimumAge} 歲（出生日期不晚於 ${v.request.cutoff}），沒有交出出生日期或其他欄位。",

@@ -5,6 +5,10 @@ import diw.wallet.core.profile.bonds.BondsAgePackage
 import diw.wallet.core.profile.bonds.BondsAgeRequest
 import diw.wallet.core.profile.bonds.BondsAgeVerdict
 import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.profile.bonds.BondsLinkCollector
+import diw.wallet.core.profile.bonds.BondsLinkTransport
+import diw.wallet.core.profile.bonds.BondsReception
+import diw.wallet.core.profile.bonds.BondsTransportException
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.util.ProtocolException
 import kotlinx.datetime.LocalDate
@@ -52,6 +56,49 @@ class BondsAgeRequestTest {
         assertEquals("verifier.mashbean.net", r.responseHost)
         assertTrue(r.knownHost)
         assertFalse(BondsAgeRequest.parse(request(url = "https://other.example/r")).knownHost)
+    }
+
+    @Test
+    fun nearbyRequestCarriesALinkServiceInsteadOfAnAddress() {
+        val created = BondsAgeRequest.create(20, BondsCredentialSource.SELF_ISSUED, "年齡確認", null)
+        assertTrue(created.nearby)
+        assertNull(created.responseHost)
+        assertFalse(created.knownHost)
+        val text = created.encode()
+        assertTrue("\"l\":\"${created.linkServiceId}\"" in text && "\"u\"" !in text, text)
+        assertTrue(BondsAgeRequest.looksLike(text))
+        assertFalse(BondsPresentationRequest.looksLike(text))
+        val parsed = BondsAgeRequest.parse(text)
+        assertEquals(created, parsed)
+        assertEquals(text, parsed.encode())
+        assertNull(BondsAgeRequest.create(20, BondsCredentialSource.TWDIW, "x", "https://verifier.mashbean.net/r").linkServiceId)
+
+        val both = request().replace("\"t\":", "\"l\":\"$id\",\"t\":")
+        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(both) }
+        val malformed = """{"a":18,"b":"$id","c":"$nonce","d":"2008-09-04","l":"not-a-uuid","p":"","s":"s","t":1790000000,"v":1}"""
+        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(malformed) }
+        assertFailsWith<ProtocolException> { BondsAgeRequest.parse(malformed.replace(",\"l\":\"not-a-uuid\"", "")) }
+    }
+
+    @Test
+    fun ageLinkFramingCarriesAFullPackageAndTheVerdict() {
+        val pkg = kotlin.random.Random(7).nextBytes(213_000)
+        assertFailsWith<BondsTransportException> { BondsLinkTransport.frames(pkg, 20) }
+        for (mtu in listOf(23, 185, 517)) {
+            val frames = BondsLinkTransport.frames(pkg, mtu - 3, BondsLinkTransport.AGE_MAX_PAYLOAD, BondsLinkTransport.AGE_MAX_CHUNKS)
+            assertTrue(frames.all { it.size <= mtu - 3 })
+            val collector = BondsLinkCollector(BondsLinkTransport.AGE_MAX_PAYLOAD, BondsLinkTransport.AGE_MAX_CHUNKS)
+            val done = frames.shuffled(kotlin.random.Random(mtu)).firstNotNullOf { (collector.accept(it) as? BondsReception.Completed)?.payload }
+            assertTrue(done.contentEquals(pkg), "MTU $mtu")
+            // The presentation limits still refuse a transfer this long.
+            if (frames.size > BondsLinkTransport.MAX_CHUNKS) assertFailsWith<BondsTransportException> { BondsLinkCollector().accept(frames.first()) }
+        }
+        val verdict = BondsAgeVerdict("accepted", true, null, 20, 812)
+        val replies = BondsLinkTransport.frames(verdict.encode().encodeToByteArray(), 20, BondsLinkTransport.REPLY_MAX_PAYLOAD)
+        val collector = BondsLinkCollector(BondsLinkTransport.REPLY_MAX_PAYLOAD)
+        val back = replies.firstNotNullOf { (collector.accept(it) as? BondsReception.Completed)?.payload }
+        assertEquals(verdict, BondsAgeVerdict.parse(back.decodeToString()))
+        assertFailsWith<BondsTransportException> { BondsLinkTransport.frames(ByteArray(5000), 200, BondsLinkTransport.REPLY_MAX_PAYLOAD) }
     }
 
     @Test

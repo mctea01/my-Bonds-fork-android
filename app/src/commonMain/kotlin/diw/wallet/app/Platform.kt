@@ -42,6 +42,24 @@ interface BondsLinkPeripheral {
     suspend fun unavailableReason(): String?
 
     suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean
+
+    /**
+     * Nearby age proof: notifies [payload] with the age package limits, then waits for the verifier's framed reply on
+     * the reply characteristic. Null when the link failed or the verifier left without a reply.
+     */
+    suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray?
+}
+
+/**
+ * The verifier side of the Bonds link: a GATT central that finds the holder by the request's one-time service UUID,
+ * subscribes to the frames, writes "received" and then the framed reply [answer] computes from the payload.
+ */
+interface BondsLinkCentral {
+    /** Null when the link can be used now, otherwise why not (Bluetooth off, permission missing, which is then asked for). */
+    suspend fun unavailableReason(): String?
+
+    /** Runs until a holder delivered a payload of at most [maxPayload] bytes and the reply went out; cancel to stop waiting. */
+    suspend fun receive(serviceUuid: String, maxPayload: Int, onProgress: (String) -> Unit, answer: suspend (ByteArray) -> ByteArray): ByteArray
 }
 
 /**
@@ -117,6 +135,9 @@ interface PlatformServices {
 
     /** Bonds BLE link, where the platform can act as a GATT peripheral. */
     val bondsLink: BondsLinkPeripheral? get() = null
+
+    /** The verifier side of the Bonds BLE link, where the platform can act as a GATT central. */
+    val bondsLinkCentral: BondsLinkCentral? get() = null
 
     /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
     fun keepScreenOn(on: Boolean) {}
