@@ -9,6 +9,8 @@ import diw.wallet.core.profile.bonds.AnimatedQrCollector
 import diw.wallet.core.profile.bonds.AnimatedQrTransport
 import diw.wallet.core.profile.bonds.BondsLanLink
 import diw.wallet.core.profile.bonds.BondsLanPresentation
+import diw.wallet.core.profile.bonds.MAX_LAN_URLS
+import diw.wallet.core.profile.bonds.postFirst
 import diw.wallet.core.jose.PlatformCrypto
 import org.multipaz.util.toBase64Url
 import diw.wallet.core.profile.bonds.BondsAgeRequest
@@ -550,10 +552,10 @@ class TaiwanModel(private val model: WalletModel) {
         }
     }
 
-    /** Posts the shown presentation, sealed to the verifier's key, to the address in its challenge. */
+    /** Posts the shown presentation, sealed to the verifier's key, to the challenge's address on this phone's network. */
     private fun sendOverLan(state: OfflineUi.BondsFrames) {
         val lan = model.platform.bondsLan ?: return
-        val url = state.request.lanUrl ?: return
+        val urls = state.request.lanUrls.takeIf { it.isNotEmpty() } ?: return
         lanJob?.cancel()
         lanJob = model.scope.launch {
             fun update(text: String) {
@@ -562,7 +564,7 @@ class TaiwanModel(private val model: WalletModel) {
             }
             try {
                 update("正在經區網送給查驗方")
-                val (status, text) = lan.post(url, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
+                val (status, text) = lan.postFirst(urls, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
                 val refusal = BondsLanPresentation.refusal(status, text)
                 update(if (refusal == null) "已經區網送達查驗方，結果以對方畫面為準" else "查驗方沒有接受（$refusal），請讓對方掃描 QR Code")
             } catch (e: CancellationException) {
@@ -588,13 +590,13 @@ class TaiwanModel(private val model: WalletModel) {
             model.screen.value = Screen.Offline
             model.platform.keepScreenOn(true)
             val lan = model.platform.bondsLan
-            val address = lan?.localAddresses()?.firstOrNull()
-            if (lan == null || address == null) {
+            val addresses = lan?.localAddresses()?.take(MAX_LAN_URLS).orEmpty()
+            if (lan == null || addresses.isEmpty()) {
                 showChallenge(plain, lan?.let { "這支手機沒有連上 Wi-Fi 或開啟熱點，不能經區網接收" })
                 return
             }
             offline.value = OfflineUi.Working("準備查驗挑戰")
-            listenOnLan(lan, address, purpose, source, plain)
+            listenOnLan(lan, addresses, purpose, source, plain)
         } catch (e: Exception) {
             model.message.value = model.describe(e)
         }
@@ -608,12 +610,12 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     /**
-     * Listens on this device's Wi-Fi or hotspot [address] and shows a challenge naming it with a one-time key; the
+     * Listens on this device's Wi-Fi and hotspot [addresses] and shows a challenge naming them with a one-time key; the
      * holder posts the sealed presentation there. Something that is not a presentation for this challenge (another
      * device on the network) is refused without ending the check. Without a listening socket the challenge is
      * shown without an address ([fallback]).
      */
-    private fun listenOnLan(lan: BondsLanLink, address: String, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
+    private fun listenOnLan(lan: BondsLanLink, addresses: List<String>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
         verifierLanJob = model.scope.launch {
             var request: BondsPresentationRequest? = null
             var presentation: String? = null
@@ -621,9 +623,9 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 val key = BondsLanPresentation.newKey()
                 withTimeoutOrNull(LAN_LISTEN) {
-                    lan.serve(address, "/vp/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLanPresentation.MAX_BODY, onListening = { url ->
+                    lan.serve(addresses, "/vp/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLanPresentation.MAX_BODY, onListening = { urls ->
                         val r = BondsPresentationRequest.generate(
-                            purpose, source, lanUrl = url, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
+                            purpose, source, lanUrls = urls, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
                         )
                         request = r
                         showChallenge(r, "對方也可經區網（同一個 Wi-Fi 或熱點）直接送出")

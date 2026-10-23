@@ -61,7 +61,7 @@ enum class BondsCredentialSource(val wire: String) {
 /**
  * The challenge a Bonds verifier shows as a plain JSON QR: {v, c, p, t, a?, b?, k}. Everything in it is untrusted
  * text from the person in front of the holder; it does not authenticate the verifier. This wallet's verifier adds
- * keys Bonds ignores: l and e, a local network address and a one-time P-256 key ([BondsLanPresentation]), and q:1,
+ * keys Bonds ignores: l and e, the local network addresses and a one-time P-256 key ([BondsLanPresentation]), and q:1,
  * which says the presentation can also be shown as an animated fountain QR ([AnimatedQrTransport]).
  */
 data class BondsPresentationRequest(
@@ -72,9 +72,12 @@ data class BondsPresentationRequest(
     /** One-time BLE service UUID the holder advertises under; null when the verifier only offers the camera. */
     val linkServiceId: String?,
     val source: BondsCredentialSource,
-    /** Plain http URL on the verifier's private IPv4 address where the sealed presentation can be posted. */
-    val lanUrl: String? = null,
-    /** The verifier's one-time P-256 key (base64url uncompressed point) the presentation is sealed to; set with [lanUrl]. */
+    /**
+     * Plain http URLs on the verifier's private IPv4 addresses (one per network card it listens on, best first) where
+     * the sealed presentation can be posted; empty when it is not listening.
+     */
+    val lanUrls: List<String> = emptyList(),
+    /** The verifier's one-time P-256 key (base64url uncompressed point) the presentation is sealed to; set with [lanUrls]. */
     val lanKey: String? = null,
     /** The verifier also scans an animated fountain QR (DIWQ1), which survives missed frames. */
     val qr: Boolean = false,
@@ -87,7 +90,7 @@ data class BondsPresentationRequest(
         linkServiceId?.let { put("b", it) }
         put("k", source.wire)
         put("t", createdAt.epochSeconds)
-        lanUrl?.let { put("l", it) }
+        if (lanUrls.isNotEmpty()) put("l", JsonArray(lanUrls.map { JsonPrimitive(it) }))
         lanKey?.let { put("e", it) }
         if (qr) put("q", 1)
     })
@@ -120,7 +123,8 @@ data class BondsPresentationRequest(
             else BondsCredentialSource.fromWire(o.str("k")) ?: throw ProtocolException("invalid_request", "Unknown credential source")
             val link = o.str("b")?.also { if (!UUID_RE.matches(it)) throw ProtocolException("invalid_request", "Malformed link service id") }
             val qr = (o["q"] as? JsonPrimitive)?.content == "1"
-            return create(o.str("c") ?: "", o.str("p") ?: "", Instant.fromEpochSeconds(createdAt), o.str("a"), link, source, o.str("l"), o.str("e"), qr)
+            val lan = BondsLanPresentation.urlList(o["l"]) ?: throw ProtocolException("invalid_request", "Malformed local network address")
+            return create(o.str("c") ?: "", o.str("p") ?: "", Instant.fromEpochSeconds(createdAt), o.str("a"), link, source, lan, o.str("e"), qr)
         }
 
         /** The validating constructor: a request that fails these checks cannot exist. */
@@ -131,7 +135,7 @@ data class BondsPresentationRequest(
             audience: String? = null,
             linkServiceId: String? = null,
             source: BondsCredentialSource = BondsCredentialSource.TWDIW,
-            lanUrl: String? = null,
+            lanUrls: List<String> = emptyList(),
             lanKey: String? = null,
             qr: Boolean = false,
         ): BondsPresentationRequest {
@@ -145,11 +149,14 @@ data class BondsPresentationRequest(
             val a = audience?.trim()?.ifEmpty { null }?.also {
                 if (it.codePointCount() > MAX_AUDIENCE || it.any { c -> displayUnsafe(c) }) throw ProtocolException("invalid_request", "Malformed audience")
             }
-            if ((lanUrl == null) != (lanKey == null)) throw ProtocolException("invalid_request", "A local network address needs its key")
-            if (lanUrl != null && !BondsLanPresentation.acceptableUrl(lanUrl)) throw ProtocolException("invalid_request", "Malformed local network address")
+            val lan = lanUrls.distinct()
+            if (lan.isEmpty() != (lanKey == null)) throw ProtocolException("invalid_request", "A local network address needs its key")
+            if (lan.size > MAX_LAN_URLS || !lan.all { BondsLanPresentation.acceptableUrl(it) }) {
+                throw ProtocolException("invalid_request", "Malformed local network address")
+            }
             if (lanKey != null && !BondsLanPresentation.acceptableKey(lanKey)) throw ProtocolException("invalid_request", "Malformed local network key")
             return BondsPresentationRequest(
-                challenge, p, Instant.fromEpochSeconds(createdAt.epochSeconds), a, linkServiceId?.uppercase(), source, lanUrl, lanKey, qr,
+                challenge, p, Instant.fromEpochSeconds(createdAt.epochSeconds), a, linkServiceId?.uppercase(), source, lan, lanKey, qr,
             )
         }
 
@@ -167,11 +174,11 @@ data class BondsPresentationRequest(
             source: BondsCredentialSource,
             audience: String? = null,
             now: Instant = Clock.System.now(),
-            lanUrl: String? = null,
+            lanUrls: List<String> = emptyList(),
             lanKey: String? = null,
             qr: Boolean = false,
         ): BondsPresentationRequest =
-            create(PlatformCrypto.randomBytes(16).toBase64Url(), purpose, now, audience, randomUuid(), source, lanUrl, lanKey, qr)
+            create(PlatformCrypto.randomBytes(16).toBase64Url(), purpose, now, audience, randomUuid(), source, lanUrls, lanKey, qr)
 
         internal fun randomUuid(): String {
             val b = PlatformCrypto.randomBytes(16)

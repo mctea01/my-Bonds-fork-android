@@ -8,7 +8,10 @@ import diw.wallet.core.util.str
 import io.ktor.http.URLProtocol
 import io.ktor.http.Url
 import kotlinx.io.bytestring.ByteString
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.multipaz.crypto.Algorithm
@@ -24,7 +27,7 @@ import org.multipaz.util.toBase64Url
 
 /**
  * Bonds offline presentations over the local network, this wallet's extension (Bonds ignores the keys): the verifier
- * listens on its Wi-Fi or hotspot address ([BondsLanLink]) and its challenge carries that http URL (l) and a one-time
+ * listens on its Wi-Fi or hotspot addresses ([BondsLanLink]) and its challenge carries those http URLs (l) and a one-time
  * P-256 key (e). The holder posts {"jwe": ...}, the presentation JWS sealed to that key (ECDH-ES, A256GCM), because
  * unlike an age proof a presentation carries claim values and anyone on the same network can read clear text. The
  * reply only says whether the verifier took it; the verdict is on the verifier's screen.
@@ -38,6 +41,18 @@ object BondsLanPresentation {
     fun acceptableUrl(url: String): Boolean = url.length <= MAX_URL && '#' !in url && runCatching {
         Url(url).let { it.protocol == URLProtocol.HTTP && BondsAgeRequest.lanHost(it.host) && it.user == null && it.password == null }
     }.getOrDefault(false)
+
+    /**
+     * The URLs of an l key: absent gives an empty list, one URL or an array of up to [MAX_LAN_URLS]; null when
+     * malformed. Each URL is checked by the request that carries them.
+     */
+    fun urlList(element: JsonElement?): List<String>? = when (element) {
+        null -> emptyList()
+        is JsonPrimitive -> element.takeIf { it.isString }?.let { listOf(it.content) }
+        is JsonArray -> element.takeIf { it.size in 1..MAX_LAN_URLS }
+            ?.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null }
+        else -> null
+    }
 
     fun acceptableKey(text: String): Boolean = runCatching { publicKey(text) }.isSuccess
 

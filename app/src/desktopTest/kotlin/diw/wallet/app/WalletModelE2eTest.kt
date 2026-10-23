@@ -959,7 +959,7 @@ class WalletModelE2eTest {
         verifier.taiwan.startVerifier("年齡確認", medium, diw.wallet.core.profile.bonds.BondsCredentialSource.ANY)
         val any = verifier.challenge().request
         // This wallet's verifier listens on its local address too and reads the fountain QR.
-        assertNotNull(any.lanUrl)
+        assertEquals(listOf("127.0.0.1"), any.lanUrls.map { io.ktor.http.Url(it).host })
         assertTrue(any.qr)
         val docId = holder.documents.value.single().identifier
         holder.taiwan.preferredDocument = docId
@@ -1001,7 +1001,7 @@ class WalletModelE2eTest {
         assertIs(withTimeout(10.seconds) { taiwan.offline.first { it is OfflineUi.VerifierChallenge } })
 
     /** [request] as a holder reads it when the verifier is on another network: no address, so the QR is the way. */
-    private fun cameraOnly(request: diw.wallet.core.profile.bonds.BondsPresentationRequest) = request.copy(lanUrl = null, lanKey = null)
+    private fun cameraOnly(request: diw.wallet.core.profile.bonds.BondsPresentationRequest) = request.copy(lanUrls = emptyList(), lanKey = null)
 
     /**
      * The document vault: a PDF is stored and checked, signed with the wallet's own key (PAdES, a new file whose

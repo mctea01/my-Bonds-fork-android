@@ -10,6 +10,7 @@ import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsLinkTransport
 import diw.wallet.core.profile.bonds.BondsReception
 import diw.wallet.core.profile.bonds.BondsTransportException
+import diw.wallet.core.profile.bonds.MAX_LAN_URLS
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
@@ -200,8 +201,9 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     }
 
     /**
-     * A check over the local network: this device listens on its Wi-Fi or hotspot address, the QR names that address,
-     * and the holder's phone on the same network posts the package here. No server, no Internet; the verdict is the
+     * A check over the local network: this device listens on its Wi-Fi and hotspot addresses (every network card, since
+     * it cannot know which one the holder shares), the QR names them, and the holder's phone posts the package to the
+     * one on its own network. No server, no Internet; the verdict is the
      * reply to the holder's post.
      */
     fun startLan(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
@@ -214,18 +216,18 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         ui.value = OfflineUi.Working("準備區網年齡查驗")
         job = model.scope.launch {
             try {
-                val address = lan.localAddresses().firstOrNull() ?: run {
+                val addresses = lan.localAddresses().take(MAX_LAN_URLS).ifEmpty {
                     ui.value = OfflineUi.Failed(NO_LAN)
                     return@launch
                 }
                 val engine = localEngine("區網") ?: return@launch
-                val host = "區網 $address"
+                val host = "區網 " + addresses.joinToString("、")
                 var request: BondsAgeRequest? = null
                 var result: OfflineUi.AgeVerifierResult? = null
                 model.platform.keepScreenOn(true)
                 withTimeoutOrNull(BondsAgeRequest.LIFETIME + GRACE) {
-                    lan.serve(address, "/age/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLinkTransport.AGE_MAX_PAYLOAD, onListening = { url ->
-                        request = BondsAgeRequest.create(minimumAge, source, purpose, url)
+                    lan.serve(addresses, "/age/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLinkTransport.AGE_MAX_PAYLOAD, onListening = { urls ->
+                        request = BondsAgeRequest.create(minimumAge, source, purpose, urls.first(), otherLanUrls = urls.drop(1))
                             .also { ui.value = OfflineUi.AgeVerifierWaiting(it, host, relay = true, note = null) }
                     }) { body ->
                         val r = request!!
@@ -339,6 +341,8 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     }
 
     private fun show(result: OfflineUi.AgeVerifierResult) {
+        // No frame is awaited once a result is on screen, so a camera still open closes on the next one.
+        frames = null
         ui.value = result
         val v = result.verification
         val accepted = v?.accepted ?: result.remote?.accepted ?: false

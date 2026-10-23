@@ -68,24 +68,32 @@ class BondsLanPresentationTest {
         val key = BondsLanPresentation.newKey()
         val keyText = BondsLanPresentation.keyText(key.publicKey)
         val request = BondsPresentationRequest.generate(
-            "年齡確認", BondsCredentialSource.ANY, lanUrl = "http://192.168.43.1:41234/vp/abc", lanKey = keyText, qr = true,
+            "年齡確認", BondsCredentialSource.ANY, lanUrls = listOf("http://192.168.43.1:41234/vp/abc", "http://10.20.0.1:41235/vp/abc"),
+            lanKey = keyText, qr = true,
         )
         val text = request.encode()
         assertTrue(BondsPresentationRequest.looksLike(text))
         assertFalse(BondsAgeRequest.looksLike(text))
         val parsed = BondsPresentationRequest.parse(text)
         assertEquals(request, parsed)
-        assertEquals("http://192.168.43.1:41234/vp/abc", parsed.lanUrl)
+        assertEquals(listOf("http://192.168.43.1:41234/vp/abc", "http://10.20.0.1:41235/vp/abc"), parsed.lanUrls)
         assertTrue(parsed.qr)
+        // A single address may also be written as a plain string.
+        val single = text.replace("[\"http://192.168.43.1:41234/vp/abc\",\"http://10.20.0.1:41235/vp/abc\"]", "\"http://192.168.43.1:41234/vp/abc\"")
+        assertTrue(single != text)
+        assertEquals(listOf("http://192.168.43.1:41234/vp/abc"), BondsPresentationRequest.parse(single).lanUrls)
 
         // A Bonds challenge without the extension keys reads as before.
         val plain = BondsPresentationRequest.parse(BondsPresentationRequest.generate("年齡確認", BondsCredentialSource.TWDIW).encode())
-        assertNull(plain.lanUrl)
+        assertTrue(plain.lanUrls.isEmpty())
         assertFalse(plain.qr)
 
         val now = Clock.System.now()
         fun refused(url: String?, k: String?) = assertFailsWith<ProtocolException> {
-            BondsPresentationRequest.create("abc", "年齡確認", now, lanUrl = url, lanKey = k)
+            BondsPresentationRequest.create("abc", "年齡確認", now, lanUrls = listOfNotNull(url), lanKey = k)
+        }
+        assertFailsWith<ProtocolException> {
+            BondsPresentationRequest.create("abc", "年齡確認", now, lanUrls = (1..5).map { "http://10.0.0.$it/vp" }, lanKey = keyText)
         }
         refused("http://192.168.43.1:41234/vp", null)
         refused(null, keyText)
@@ -103,9 +111,10 @@ class BondsLanPresentationTest {
         var request: BondsPresentationRequest? = null
         var opened: String? = null
         val served = async {
-            link.serve("127.0.0.1", "/vp/secret", BondsLanPresentation.MAX_BODY, { at ->
+            link.serve(listOf("127.0.0.1"), "/vp/secret", BondsLanPresentation.MAX_BODY, { urls ->
+                val at = urls.single()
                 request = BondsPresentationRequest.generate(
-                    "年齡確認", BondsCredentialSource.ANY, lanUrl = at, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
+                    "年齡確認", BondsCredentialSource.ANY, lanUrls = urls, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
                 )
                 url.complete(at)
             }) { body ->
@@ -122,12 +131,12 @@ class BondsLanPresentationTest {
 
         // Another challenge's presentation, or one sealed to another key, is refused without ending the check.
         val other = BondsPresentationRequest.generate(
-            "年齡確認", BondsCredentialSource.ANY, lanUrl = at, lanKey = BondsLanPresentation.keyText(key.publicKey),
+            "年齡確認", BondsCredentialSource.ANY, lanUrls = listOf(at), lanKey = BondsLanPresentation.keyText(key.publicKey),
         )
         val wrongChallenge = link.post(at, BondsLanPresentation.seal(presentation(other), other), 10.seconds)
         assertEquals("不是這次查驗挑戰的出示資料", BondsLanPresentation.refusal(wrongChallenge.first, wrongChallenge.second))
         val stranger = BondsPresentationRequest.generate(
-            "年齡確認", BondsCredentialSource.ANY, lanUrl = at,
+            "年齡確認", BondsCredentialSource.ANY, lanUrls = listOf(at),
             lanKey = BondsLanPresentation.keyText(BondsLanPresentation.newKey().publicKey),
         )
         val wrongKey = link.post(at, BondsLanPresentation.seal(presentation(holderView), stranger), 10.seconds)

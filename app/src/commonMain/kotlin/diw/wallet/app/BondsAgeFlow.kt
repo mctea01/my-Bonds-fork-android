@@ -3,6 +3,7 @@ package diw.wallet.app
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.profile.bonds.AnimatedQrTransport
+import diw.wallet.core.profile.bonds.postFirst
 import diw.wallet.core.profile.bonds.BondsAgeCredential
 import diw.wallet.core.profile.bonds.BondsAgeMaterial
 import diw.wallet.core.profile.bonds.BondsAgePackage
@@ -185,7 +186,7 @@ class BondsAgeFlow(private val model: WalletModel, private val ui: MutableStateF
                 return null
             })
             // A socket of its own: Android release builds refuse clear text in their HTTP stacks.
-            else if (lan != null) lan.post(request.responseUrl!!, pkg.encode().encodeToByteArray(), SEND_TIMEOUT).let { (code, text) -> HttpStatusCode.fromValue(code) to text }
+            else if (lan != null) lan.postFirst(request.lanUrls.ifEmpty { listOf(request.responseUrl!!) }, pkg.encode().encodeToByteArray(), SEND_TIMEOUT).let { (code, text) -> HttpStatusCode.fromValue(code) to text }
             else withTimeout(SEND_TIMEOUT) {
                 val response = client.post(request.responseUrl!!) {
                     contentType(ContentType.Application.Json)
