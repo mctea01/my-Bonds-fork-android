@@ -36,4 +36,7 @@ interface ZkEnvironment {
 
     /** Null when the manifest is not bundled. */
     val assets: ZkAssetStore?
+
+    /** The OpenAC age prover over [assets]; null where the platform has none. */
+    val ageProver: OpenAcAgeProver? get() = null
 }

@@ -35,9 +35,12 @@ import kotlin.time.Instant
 /** The proofs the wallet produces, with the engine each needs, its default time limit and its measured memory peak. */
 enum class ZkProofKind(val backend: ZkBackend, val label: String, val timeout: Duration, val peakMemoryMb: Long?) {
     PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, null),
-    AGE(ZkBackend.OPENAC_SPARTAN2, "年齡零知識證明", 3.minutes, 2325),
+    AGE(ZkBackend.OPENAC_SPARTAN2, "年齡零知識證明", 5.minutes, 2325),
     TLS(ZkBackend.TLSN, "網站查驗證明", 2.minutes, null),
-    MDOC_AGE(ZkBackend.LONGFELLOW, "mdoc 年齡零知識證明", 3.minutes, null),
+    MDOC_AGE(ZkBackend.LONGFELLOW, "mdoc 年齡零知識證明", 3.minutes, null);
+
+    /** Answers a verifier's request, so it cannot be produced elsewhere and imported later. */
+    val answersVerifier: Boolean get() = this == AGE || this == MDOC_AGE
 }
 
 /** Whether a proof can be produced here and what it still needs; the low-compute choice screen is built from it. */

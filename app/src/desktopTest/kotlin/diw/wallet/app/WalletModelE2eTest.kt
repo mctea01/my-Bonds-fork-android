@@ -40,6 +40,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import org.multipaz.util.toBase64Url
 import org.multipaz.securearea.KeyUnlockDataProvider
 import org.multipaz.storage.Storage
 import org.multipaz.storage.ephemeral.EphemeralStorage
@@ -387,6 +388,12 @@ class WalletModelE2eTest {
         screen("20-national-id", Screen.NationalId(idFile.id))
         screen("21-documents-with-national-id", Screen.Home, HomeTab.DOCUMENTS)
         screen("22-files-with-documents", Screen.Home, HomeTab.FILES)
+        m.handleUri(ageRequest("s"))
+        val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { m.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
+        screen("23-age-choose", Screen.Offline)
+        m.taiwan.offline.value = OfflineUi.AgeResult(age.request, age.cards.single(), true, "verifier.mashbean.net 已接受證明",
+            listOf("查驗方確認你年滿 18 歲，沒有收到出生日期或其他欄位。", "產生證明 38.4 秒"), retry = false)
+        screen("24-age-result", Screen.Offline)
         m.taiwan.startVerifier("年齡確認")
         screen("11-verifier-challenge", Screen.Offline)
         shot("10-add-sheet") {
@@ -1217,7 +1224,22 @@ class WalletModelE2eTest {
         val r = diw.wallet.core.profile.bonds.BondsOfflineVerifier(holder.didResolver(), moicaCa = ca).verify(frames.presentationJws, request)
         assertEquals(mapOf("name" to "測試人員", "over18AtIssuance" to "true"), r.claims)
         assertTrue(r.moica!!.nameChecked)
+
+        // A Bonds web age request offers the national ID card for a self-issued proof and never opens the offline frames.
+        holder.handleUri(ageRequest("s"))
+        val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
+        assertEquals(listOf(TaiwanModel.NATIONAL_ID_NAME to "birthdate"), age.cards.map { it.name to it.claim })
+        holder.handleUri(ageRequest("g"))
+        val none = assertIs<OfflineUi.Failed>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.Failed } })
+        assertTrue("政府皮夾" in none.message)
+        holder.handleUri(ageRequest("s", kotlin.time.Clock.System.now().epochSeconds - 600))
+        assertEquals(BondsAgeFlow.EXPIRED, assertIs<OfflineUi.Failed>(withTimeout(10.seconds) {
+            holder.taiwan.offline.first { it is OfflineUi.Failed && it.message == BondsAgeFlow.EXPIRED }
+        }).message)
     }
+
+    private fun ageRequest(source: String, created: Long = kotlin.time.Clock.System.now().epochSeconds) =
+        """{"a":18,"b":"6F9619FF-8B86-D011-B42D-00C04FC964FF","c":"${ByteArray(32) { 3 }.toBase64Url()}","d":"2008-10-23","p":"年齡確認","s":"$source","t":$created,"u":"https://verifier.mashbean.net/api/zkp/response/abc","v":1}"""
 
     /**
      * A MyData ZIP handed to the wallet (shared from another app or picked) is unpacked at once; the national ID PDF

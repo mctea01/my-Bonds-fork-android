@@ -103,6 +103,22 @@ sealed class OfflineUi {
     /** TWDIW counter barcode (DWVP-05), valid until [expiresAt]. */
     data class Barcode(val serviceName: String, val image: ImageBitmap?, val expiresAt: Instant) : OfflineUi()
 
+    /** Bonds web age request scanned: pick the card to prove from. */
+    data class AgeChoose(val request: BondsAgeRequest, val cards: List<AgeCard>) : OfflineUi()
+
+    /** The age proof [jobId] is being produced, or with [sending] posted to the verifier. */
+    data class AgeWorking(val request: BondsAgeRequest, val card: AgeCard, val jobId: String, val sending: Boolean = false) : OfflineUi()
+
+    /** The verifier's verdict, or why no proof was sent. */
+    data class AgeResult(
+        val request: BondsAgeRequest,
+        val card: AgeCard,
+        val accepted: Boolean,
+        val title: String,
+        val lines: List<String>,
+        val retry: Boolean,
+    ) : OfflineUi()
+
     /** Bonds request scanned: pick a card and what to disclose. */
     data class BondsChoose(val request: BondsPresentationRequest, val cards: List<BondsCard>) : OfflineUi()
 
@@ -158,6 +174,7 @@ class TaiwanModel(private val model: WalletModel) {
     /** A document the holder chose to present before scanning the verifier's challenge; listed first. */
     var preferredDocument: String? = null
     private var linkJob: Job? = null
+    val age = BondsAgeFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -326,16 +343,8 @@ class TaiwanModel(private val model: WalletModel) {
      * A Bonds web age request is answered online with an OpenAC proof posted to its response address. It shares the
      * offline challenge's keys but must never open the offline screen or advertise over Bluetooth for it.
      */
-    fun startBondsAge(text: String) {
-        model.message.value = try {
-            val r = BondsAgeRequest.parse(text)
-            val host = r.responseHost + if (r.knownHost) "" else "（不在 Bonds 的查驗方清單）"
-            "這是 Bonds 年齡零知識證明的線上請求：$host 要求證明年滿 ${r.minimumAge} 歲，需要以零知識證明線上回應，" +
-                "不能用離線出示。本錢包的年齡零知識證明尚未完成，暫時無法回應。"
-        } catch (e: Exception) {
-            "無法讀取 Bonds 年齡證明請求：" + model.describe(e)
-        }
-    }
+    /** A Bonds web age request: answered online with an OpenAC proof, never over the offline frames. */
+    fun startBondsAge(text: String) = age.start(text)
 
     fun startBonds(text: String) {
         model.screen.value = Screen.Offline
@@ -581,6 +590,7 @@ class TaiwanModel(private val model: WalletModel) {
         "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
 
     fun closeOffline() {
+        age.stop()
         linkJob?.cancel()
         linkJob = null
         verifierCollector = null

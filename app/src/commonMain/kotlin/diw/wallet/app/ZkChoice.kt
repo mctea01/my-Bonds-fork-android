@@ -48,8 +48,9 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
         if (!desktop) add(
             ZkChoiceOption(
                 ZkChoiceKind.DESKTOP,
-                "在電腦版產生後匯入",
-                "在電腦版開啟同一份文件產生證據檔，再匯入這台裝置；以文件的 SHA-256 確認是同一份",
+                if (readiness.kind.answersVerifier) "改用電腦版回應" else "在電腦版產生後匯入",
+                if (readiness.kind.answersVerifier) "在電腦版錢包加入同一張卡片後，掃描查驗方的 QR Code 回應"
+                else "在電腦版開啟同一份文件產生證據檔，再匯入這台裝置；以文件的 SHA-256 確認是同一份",
                 enabled = true,
                 recommended = !readiness.recommended,
             ),

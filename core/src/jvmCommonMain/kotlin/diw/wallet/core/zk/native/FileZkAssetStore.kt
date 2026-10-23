@@ -100,6 +100,10 @@ class FileZkAssetStore(
         return installed(asset).takeIf { matches(it, asset.installedBytes, asset.installedSha256) }?.absolutePath
     }
 
+    /** The installed file when its size is right, without hashing it: for callers whose native code pins the hash itself. */
+    internal fun installedFile(id: String): File? = assets.firstOrNull { it.id == id }
+        ?.let { a -> installed(a).takeIf { it.isFile && it.length() == a.installedBytes } }
+
     override suspend fun delete(id: String) = withContext(Dispatchers.IO) {
         val asset = asset(id)
         locks.getValue(id).withLock { erase(asset) }
