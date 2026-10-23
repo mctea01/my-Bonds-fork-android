@@ -208,6 +208,7 @@ fun ZkSettingsScreen(model: WalletModel) {
 @Composable
 private fun ZkTemplatesSection(model: WalletModel) {
     val st by model.zkTemplates.state.collectAsState()
+    val settings by model.settingsFlow.collectAsState()
     Text("zkTLS 查驗頁與 zkPDF 文件版型隨每次發布更新，不需要更新 App。版型只描述要揭露的欄位，電路仍以 App 內的版本為準；" +
         "版型包須有本專案發布金鑰的簽章，也不會被較舊的版本取代。", style = MaterialTheme.typography.bodySmall)
     val lines = buildList {
@@ -220,6 +221,20 @@ private fun ZkTemplatesSection(model: WalletModel) {
     lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text("立即更新") }
+        OutlinedButton(enabled = !st.running, onClick = { model.zkTemplates.importFiles() }) { Text("從檔案匯入") }
+    }
+    Text(
+        "可匯入發布的 zk-templates.jwt，或 CI 產物的 ZIP 檔，簽章與版本檢查和線上更新相同。" +
+            if (settings.testEnvironment) "測試環境另可匯入未簽章的查驗頁描述檔（.json），只在測試環境使用，查驗時會附在請求中，對方也須開啟測試環境。" else "",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    st.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+    if (st.testPages.isNotEmpty()) {
+        Text("測試查驗頁" + if (settings.testEnvironment) "" else "（測試環境關閉中，不會使用）", style = MaterialTheme.typography.titleSmall)
+        st.testPages.forEach { p ->
+            Text("${p.title}（${p.id}）・${p.host}" + if (p.port != 443) ":${p.port}" else "", style = MaterialTheme.typography.bodySmall)
+        }
+        OutlinedButton(onClick = { model.zkTemplates.clearTestPages() }) { Text("清除測試查驗頁") }
     }
 }
 

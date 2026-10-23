@@ -99,6 +99,10 @@ class WalletModelE2eTest {
         }
         override fun openRedirect(url: String) {}
 
+        /** What the file picker returns. */
+        var picks: List<PickedFile> = emptyList()
+        override suspend fun pickFiles(): List<PickedFile> = picks
+
         /** Files the wallet exported, by the name it suggested. */
         val saved = ArrayList<Pair<String, ByteArray>>()
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
@@ -1915,5 +1919,64 @@ class WalletModelE2eTest {
         assertTrue(presented.all { it.failure == null && "zkTLS" in it.note!! })
         assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
         assertEquals(2, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
+    }
+
+    /** Templates imported from files: a signed pack must carry the release key, unsigned pages only serve testing. */
+    @Test
+    fun zkTemplateImportFromFiles() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (m, p) = newWallet()
+        val templates = m.zkTemplates
+        suspend fun import(vararg files: PickedFile): ZkTemplatesModel.State {
+            p.picks = files.toList()
+            templates.importFiles()
+            return withTimeout(30.seconds) { templates.state.first { !it.running && it.notice != null } }.also {
+                templates.state.value = it.copy(notice = null)
+            }
+        }
+        val served = http.get("$base/zktls/profiles").bodyAsText()
+        val page = (diw.wallet.core.util.DiwJson.parseToJsonElement(served) as kotlinx.serialization.json.JsonObject)["profiles"]!!
+            .let { it as kotlinx.serialization.json.JsonArray }.single().toString()
+
+        // A pack signed with another key is refused.
+        val foreign = diw.wallet.core.zk.ZkTemplatePack.sign(
+            diw.wallet.core.zk.ZkTemplatePack(1, kotlin.time.Clock.System.now(), emptyList(), emptyList()),
+            org.multipaz.crypto.AsymmetricKey.AnonymousExplicit(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256), org.multipaz.crypto.Algorithm.ES256),
+        )
+        var st = import(PickedFile("zk-templates.jwt", foreign.encodeToByteArray()))
+        assertTrue("發布金鑰" in st.notice!!, st.notice)
+        assertNull(st.version)
+
+        // One page, then the same page in a ZIP (as GitHub hands out CI artifacts): kept once.
+        st = import(PickedFile("page.json", page.encodeToByteArray()))
+        assertEquals(listOf(diw.testservers.zktls.ZkTlsRecordPage.PROFILE_ID), st.testPages.map { it.id })
+        val zip = diw.wallet.core.document.sign.DocumentSigning.zip(listOf("templates/page.json" to page.encodeToByteArray(), "notes.txt" to "x".encodeToByteArray()))
+        st = import(PickedFile("zk-templates.zip", zip))
+        assertEquals(1, st.testPages.size)
+        assertTrue("1 個測試查驗頁" in st.notice!!, st.notice)
+
+        // Imported pages survive a restart and are offered to the verifier as test pages, even without the server.
+        val (other, _) = newWallet(m.storage)
+        assertEquals(1, other.zkTemplates.state.value.testPages.size)
+        other.updateSettings { it.copy(testServerUrl = "http://localhost:1") }.join()
+        other.taiwan.zkTls.openSetup()
+        val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            other.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        assertEquals(setOf(diw.testservers.zktls.ZkTlsRecordPage.PROFILE_ID), setup.testPages)
+
+        // Outside the test environment unsigned pages are refused and not offered.
+        m.updateSettings { it.copy(testEnvironment = false) }.join()
+        st = import(PickedFile("page.json", page.encodeToByteArray()))
+        assertTrue("測試環境" in st.notice!!, st.notice)
+        m.taiwan.zkTls.openSetup()
+        val plain = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        assertTrue(plain.pages.isEmpty())
+
+        templates.clearTestPages()
+        withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
     }
 }

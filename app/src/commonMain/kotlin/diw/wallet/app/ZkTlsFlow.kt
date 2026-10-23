@@ -203,8 +203,11 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         ui.value = OfflineUi.Working("讀取可查驗的網站")
         job = model.scope.launch {
             val installed = ZkTlsProfiles.installed
+            val test = model.settings.testEnvironment
             var note: String? = null
-            val offered = if (!model.settings.testEnvironment) emptyList() else host()?.let { base ->
+            // Pages imported for testing come first among the test pages; the test server's follow.
+            val imported = if (test) model.zkTemplates.state.value.testPages else emptyList()
+            val served = if (!test) emptyList() else host()?.let { base ->
                 try {
                     hostPages(base)
                 } catch (e: CancellationException) {
@@ -214,9 +217,11 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                     emptyList()
                 }
             }.orEmpty()
+            val offered = imported + served.filter { p -> imported.none { it.id == p.id } }
             val pages = installed + offered.filter { p -> installed.none { it.id == p.id } }
-            if (pages.isEmpty() && note == null) {
-                note = if (model.zkTemplates.state.value.version == null) "尚未安裝查驗頁版型，請到設定的「零知識證明」頁更新版型。" else "已安裝的版型沒有查驗頁。"
+            if (pages.isEmpty()) {
+                val why = if (model.zkTemplates.state.value.version == null) "尚未安裝查驗頁版型，請到設定的「零知識證明」頁更新或匯入版型。" else "已安裝的版型沒有查驗頁。"
+                note = listOfNotNull(note, why, if (test) null else "測試用的查驗頁只在測試環境提供。").joinToString("\n")
             }
             ui.value = OfflineUi.ZkTlsVerifierSetup(pages, offered.map { it.id }.toSet() - installed.map { it.id }.toSet(), note)
         }

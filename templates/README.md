@@ -12,6 +12,14 @@
 這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256 私鑰 PEM）簽章的 JWS，版本為建置時間；沒有設定 Secret 時略過。
 App 只接受 `ZkTemplatePack.TRUSTED_KEYS` 中公鑰簽的版型包，也不會安裝比已安裝版本舊的版型包。
 
+## 手動匯入
+
+App 設定「零知識證明」頁的「從檔案匯入」可匯入 `zk-templates.jwt` 或含有它的 ZIP（例如 CI 產物），簽章與版本檢查和線上更新相同。
+本機也可以自行產生：`ZK_TEMPLATES_KEY="$(cat zk-templates.key)" ./gradlew :test-servers:templatePack`，輸出在 `test-servers/build/zk-templates.jwt`。
+
+測試環境另可匯入未簽章的查驗頁描述檔（單一查驗頁 JSON、測試伺服器 `/zktls/profiles` 的回應，或未簽章的版型包內容），
+只在測試環境提供，查驗時附在請求中；持有端也須開啟測試環境才會接受，並標示為測試查驗頁。與已簽章查驗頁同名的不會匯入。
+
 產生金鑰（私鑰只放進 Secret，公鑰加入 `TRUSTED_KEYS`）：
 
 ```
