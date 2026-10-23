@@ -1022,7 +1022,12 @@ class WalletModel(val platform: PlatformServices) {
      * dialect only answers an authorization response iss below the authorization server's own issuer.
      */
     private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
-        listOf(TwdiwDialect(http, loopback) { settings.twdiwClientId }, Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect())
+        listOf(
+            TwdiwDialect(http, loopback, clientId = { settings.twdiwClientId }, registeredIssuerTrust = { url ->
+                twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.issuerDecision(url) }.getOrNull() }
+            }),
+            Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect(),
+        )
     }
 
     private var cachedProvider: Pair<String, WalletProvider>? = null

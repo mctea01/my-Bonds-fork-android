@@ -88,7 +88,7 @@ class TwdiwPlatformTest {
         fun client() = Oid4vciClient(
             w.httpClient, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore,
             dialects = listOf(
-                TwdiwDialect(w.httpClient, false),
+                TwdiwDialect(w.httpClient, false, registeredIssuerTrust = { trustList.issuerDecision(it) }),
                 Draft13Dialect(w.httpClient, false),
                 Draft11Dialect(),
             ),
@@ -505,6 +505,30 @@ class TwdiwPlatformTest {
         // Self-issued (vc+moica) cards are P5; the wallet says so instead of answering with another card.
         val selfIssued = BondsPresentationRequest.generate("會員身分查驗", BondsCredentialSource.SELF_ISSUED)
         assertFailsWith<ProtocolException> { BondsOfflinePresentation.present(selfIssued, cred, holderKey, resolver) }
+    }
+
+    /**
+     * TWDIW metadata is unsigned, so before issuance the issuer would rest on TLS alone. The trust list registers the
+     * issuer host and organisation ID, so the consent screen shows the listed organisation (T3 here, the test list;
+     * T2 on production while the Arbitrum anchor is unconfirmed), still labelled as unsigned metadata.
+     */
+    @Test
+    fun issuerBeforeIssuanceTakesTheTrustListDecision() = runBlocking<Unit> {
+        val s = setup()
+        val entry = TwdiwEntryParser.parse(s.mock.offerDeepLink()) as TwdiwEntry.Offer
+        val session = s.client().startFromOffer(entry.uri, TwdiwDialect.ENTRY_HINT)
+        assertEquals("模擬發證機關", session.issuer.trust.anchorName)
+        assertEquals(TrustEnvironment.TEST, session.issuer.trust.environment)
+        assertTrue(TrustLabel.UNSIGNED_METADATA in session.issuer.trust.labels)
+
+        val production = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = false)
+        val list = TwdiwTrustList(s.w.httpClient, production, storage = s.w.storage)
+        val listed = assertNotNull(list.issuerDecision(TwdiwPlatformMock.ISSUER))
+        assertEquals(TrustTier.T2, listed.tier, "reasons: ${listed.reasons}")
+        assertEquals("模擬發證機關", listed.anchorName)
+        // Another organisation's path on the same host, or the same path on another platform host, is not this listing.
+        assertNull(list.issuerDecision("${TwdiwPlatformMock.ISSUER_ORIGIN}/oid4vci/api/issuer/99999999/"))
+        assertNull(list.issuerDecision("https://other.wallet.gov.tw/oid4vci/api/issuer/${TwdiwPlatformMock.ISSUER_ORG_ID}/"))
     }
 
     @Test

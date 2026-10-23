@@ -4,6 +4,7 @@ import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.CredentialOffer
 import diw.wallet.core.oid4vci.IssuerMetadata
+import diw.wallet.core.trust.TrustDecision
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.AsymmetricKey
@@ -170,6 +171,13 @@ interface IssuanceDialect {
 
     /** Whether an authorization response [iss] that differs from [authServer]'s issuer (RFC 9207) still names that server. */
     fun acceptsAuthorizationResponseIssuer(authServer: AuthServerMetadata, iss: String): Boolean = false
+
+    /**
+     * Trust for an issuer whose metadata leads to no trust root, from a list the profile knows that registers the
+     * credential issuer URL for an organisation (the TWDIW trust list). Asked of the owning dialect only; null keeps
+     * the metadata decision.
+     */
+    suspend fun issuerTrust(issuer: IssuerMetadata): TrustDecision? = null
 }
 
 /** Runs dialect hooks in order and remembers which dialects, and which specifications, one session used. */
