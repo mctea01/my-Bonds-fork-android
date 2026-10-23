@@ -1,0 +1,44 @@
+{
+  "package": "inflate_probe",
+  "nargo": "1.0.0-beta.15",
+  "bb": "2.1.9",
+  "zk": true,
+  "oracle_hash": "poseidon2",
+  "compile": {
+    "seconds": 0.4658870049970574,
+    "peak_rss_kib": 169732,
+    "exit_code": 0
+  },
+  "witness": {
+    "seconds": 1.4101753790018847,
+    "peak_rss_kib": 225480,
+    "exit_code": 0
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 234992,
+        "circuit_size": 571668
+      }
+    ]
+  },
+  "first": {
+    "seconds": 26.647377531997336,
+    "peak_rss_kib": 1745944,
+    "exit_code": 0
+  },
+  "warm": {
+    "seconds": 22.325633314001607,
+    "peak_rss_kib": 1744828,
+    "exit_code": 0
+  },
+  "verify": {
+    "seconds": 0.019483074996969663,
+    "peak_rss_kib": 14072,
+    "exit_code": 0
+  },
+  "acir_sha256": "e49f232a90c980e2a3cbd6d732f967edb3b66a2c0f21fc32220b9162e8de52c8",
+  "vk_sha256": "141acf0129424fef58223bac8689fd06876146ce276855c7ae6b30cecd11a39c",
+  "proof_bytes": 16256,
+  "public_input_bytes": 0
+}

@@ -1,0 +1,47 @@
+[
+  {
+    "case": "lex_0",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "lex_1",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "lex_2",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "lex_3",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "lex_4",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "predicate_control",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "false_cutoff",
+    "passed": true,
+    "expected": "reject"
+  },
+  {
+    "case": "disabled_predicates_and_fonts",
+    "passed": true,
+    "expected": "accept"
+  },
+  {
+    "case": "unused_position",
+    "passed": true,
+    "expected": "reject"
+  }
+]

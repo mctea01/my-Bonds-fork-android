@@ -10,22 +10,26 @@
 2. [design/architecture-and-roadmap.md](../design/architecture-and-roadmap.md)：目標架構與協定支援矩陣。
 3. 依審查範圍讀研究文件：[twdiw.md](../research/twdiw.md)、[bonds.md](../research/bonds.md)、[multipaz-eudi-ms.md](../research/multipaz-eudi-ms.md)、[documents-signatures.md](../research/documents-signatures.md)、[official-document-files.md](../research/official-document-files.md)。
 4. 驗收紀錄：[p1](../acceptance/p1-acceptance.md)、[p2](../acceptance/p2-acceptance.md)、[p2 後續](../acceptance/p2-followup.md)、[p3](../acceptance/p3-acceptance.md)、[P1 到 P3 補強](../acceptance/p1-p3-followup-2026-10-16.md)。每份最後的「需要實機驗證」表是目前沒有被自動測試覆蓋的部分。
-5. P4：[design/p4-zkp.md](../design/p4-zkp.md)、[design/p4-circuits.md](../design/p4-circuits.md)（第 7 節是電路的審查重點）、[design/p4-work-packages.md](../design/p4-work-packages.md)。
+5. P4：[design/p4-zkp.md](../design/p4-zkp.md)、[design/p4-circuits.md](../design/p4-circuits.md)（第 7 節是電路的審查重點）、[design/p4-work-packages.md](../design/p4-work-packages.md)（第 2.1 節是各工作包的實作狀態）、[templates/README.md](../../templates/README.md)（版型包）。
+6. 正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)（網頁查驗、年齡查驗主機、zkTLS 中繼，Cloud Run 部署），審查時另依該 repo 的 README 與 AGENTS.md。
 
 ## 2. 規模與熱點檔案
 
-撰寫時（P4 開始前）約 6 萬行 Kotlin、234 個檔案。最大的檔案也是變更最頻繁、最需要細看的地方：
+2026-10-25 約 8.1 萬行 Kotlin、332 個檔案（P4 開始前約 6 萬行、234 個檔案）。最大的檔案也是變更最頻繁、最需要細看的地方：
 
 | 檔案 | 行數 | 內容 |
 |---|---|---|
-| `app/src/commonMain/kotlin/diw/wallet/app/ui/FilesScreens.kt` | 約 1900 | 文件分頁全部畫面 |
-| `app/src/commonMain/kotlin/diw/wallet/app/FilesModel.kt` | 約 1800 | 文件保存、容器、時戳、簽署、衍生憑證 |
-| `app/src/commonMain/kotlin/diw/wallet/app/WalletModel.kt` | 約 1600 | 證件、流程、方言清單、紀錄 |
-| `core/src/commonMain/kotlin/diw/wallet/core/oid4vci/Oid4vciClient.kt` | 約 1000 | 發證用戶端 |
+| `app/src/commonMain/kotlin/diw/wallet/app/ui/FilesScreens.kt` | 約 2000 | 文件分頁全部畫面，含簽署的保證層級與認證簽章選擇 |
+| `app/src/commonMain/kotlin/diw/wallet/app/FilesModel.kt` | 約 1800 | 文件保存、容器、時戳、簽署、延長保存、衍生憑證 |
+| `app/src/commonMain/kotlin/diw/wallet/app/WalletModel.kt` | 約 1900 | 證件、流程、方言清單、紀錄 |
+| `core/src/commonMain/kotlin/diw/wallet/core/oid4vci/Oid4vciClient.kt` | 約 1100 | 發證用戶端 |
+| `app/src/commonMain/kotlin/diw/wallet/app/TaiwanModel.kt` | 約 950 | TWDIW 流程 |
+| `app/src/commonMain/kotlin/diw/wallet/app/ZkTlsFlow.kt`、`BondsAgeVerifierFlow.kt` | 約 700、400 | zkTLS 與年齡證明的持有端、查驗端流程與傳輸 |
+| `core/src/jvmCommonMain/kotlin/diw/wallet/core/document/sign/DocumentSigning.jvmCommon.kt`、`CadesArchive.kt`、`XmlSignatures.kt`、`CmsChecks.kt`、`core/document/pdf/PdfWriter.kt` | 共約 1600 | 簽署與保證層級（B-B 到 B-LTA）、CAdES 與 XAdES 保存時戳、PDF 認證簽章與延長保存 |
 | `core/src/commonMain/kotlin/diw/wallet/core/profile/bonds/BondsHolderDerived.kt`、`BondsPresentation.kt` | 約 700 | Bonds 出示與持有人衍生查驗 |
 | `core/src/commonMain/kotlin/diw/wallet/core/document/pdf/PdfFile.kt` | 約 600 | PDF 解析與解密 |
 
-`core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInPublicRoots.kt`（約 5500 行）由 `tools/trust-roots/update_roots.py` 產生，審查產生程式與 `roots.json`，不逐行看產物。
+`core/src/commonMain/kotlin/diw/wallet/core/trust/BuiltInPublicRoots.kt`（約 5500 行）由 `tools/trust-roots/update_roots.py` 產生，審查產生程式與 `roots.json`，不逐行看產物。`core/src/jvmCommonMain/kotlin/diw/wallet/core/zk/native/generated/` 是 uniffi 產生的綁定（約 2800 行），審查 `native/` 的 Rust 介面即可。
 
 ## 3. 設計規則對照表
 
@@ -87,7 +91,29 @@
 | PIN 與密碼 | 自然人憑證卡、PKCS#12、PDF 密碼 | 不寫入儲存區與紀錄；錯誤訊息不含 PIN |
 | 紀錄 | `app/History.kt` | 只存欄位名稱，不存欄位值與文件內容 |
 
-### 4.4 信任判定
+### 4.4 簽章層級與長期驗證
+
+| 項目 | 位置 | 要檢查 |
+|---|---|---|
+| 達到的層級 | `app/FilesModel.kt` 的 `sign`、`reachedLevel` | 簽完回報的是檢查報告實際讀出的層級，不是選擇的層級；取不到撤銷資訊時 B-LT 以上不寫入（PAdES）或明確顯示「低於所選」 |
+| CAdES archive-time-stamp-v3 | `core/document/CadesArchive.kt` | ats-hash-index-v3 一律寫出演算法（EU DSS 以此重算）；檢查時只要求索引列出的項目仍存在，新增的驗證資料不影響；移除或修改任何列出的項目判為問題 |
+| XAdES ArchiveTimeStamp | `core/document/XmlSignatures.kt` 的 `archiveInput` | 輸入依 EN 319 132-1 5.5.2.2 的順序，全程 Exclusive C14N；ATS 之後的 UnsignedSignatureProperties 不列入 |
+| PDF 認證簽章 | `core/document/pdf/PdfWriter.kt`、`DocumentInspector.jvmCommon.kt` | 只能是第一個簽章；`/Perms /DocMDP` 與簽章字典的 `/Reference` 一致；P=1 之後只允許 DSS 與文件時戳（ISO 32000-2），其他變更或後續一般簽章判為違反 |
+| 延長保存 | `DocumentSigning.extendPdf` | 為每個簽章（含文件時戳）收集憑證鏈與撤銷資訊，VRI 鍵為修剪後 CMS 的 SHA-1；沒有任何可補的資料時不寫入 |
+
+以 EU DSS 6.5 交叉驗證：`DIW_SIGNED_OUT=build/signed ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest'`，長期驗證的樣本在 `build/signed/lt`，再各自執行 `tools/dss-check`。2026-10-25 的結果全部 TOTAL_PASSED，保存時戳皆為完整。
+
+### 4.5 零知識證明（已實作的部分）
+
+| 項目 | 位置 | 要檢查 |
+|---|---|---|
+| 年齡證明的傳輸 | `app/BondsAgeVerifierFlow.kt`、`core/profile/bonds/BondsAgeRequest.kt`、`SocketBondsLanLink`、`AnimatedQrCollector` | 區網只接受私有位址；格式不符的請求只回錯誤；動態 QR 收齊後核對雜湊；判定以本機驗證或標明來自主機 |
+| zkTLS 請求與通道 | `core/zktls/`、`app/ZkTlsFlow.kt` | 請求 JWS 的簽署者與畫面顯示的查驗方一致；Noise 通道綁定請求；證號與圖形驗證碼只進入引擎的請求位元組，不進紀錄、例外與保存的憑證；`extra_roots_der` 只來自錢包自己的信任設定 |
+| 網頁證明回執 | `core/zktls/WebProofCredentials.kt`、`app/ZkTlsKeep.kt` | 回執以簽請求的同一把金鑰簽署、`checkReceipt` 核對 nonce 與欄位；不符時只存本機紀錄並標示不是零知識證明 |
+| 版型包 | `templates/`、設定的「零知識證明」頁 | 正式環境只接受以釘選金鑰簽章的版型包；測試環境匯入的未簽章查驗頁標示為測試 |
+| Longfellow | `core/zk/LongfellowZk.kt` | 只接受參數完全相同的電路；拒絕 deviceSigned；證明時間在 5 分鐘內 |
+
+### 4.6 信任判定
 
 - 等級只能由錨點決定：檢查每個 `TrustTier.T1` 的產生點，確認只來自 TWDIW 已列名且 Arbitrum 相符或標為官方的正式錨點。
 - 使用者匯入的根憑證與 DID 是 T2，不會顯示為官方。
@@ -102,7 +128,8 @@
 - TWDIW 正式平台與 Microsoft Verified ID 的互通只在當時的網路狀況下驗過一次（見 [validation-network-2026-10-10.md](../research/validation-network-2026-10-10.md)），平台改版後要重測。
 - 公文線上簽核的公開範例檔簽章值是佔位，驗證結果顯示「簽章值不符」是預期行為。
 - P1 到 P3 補強的實機項目（公開發證端領卡、正式錢包後端、DC API 多重簽章、mdoc transaction_data、VICAL 與 RICAL），見 [device-test-checklist.md](../research/device-test-checklist.md)。
-- P4 的所有項目（見 [p4-work-packages.md](../design/p4-work-packages.md) 的驗收條件）。
+- P4 已實作部分的實機項目：Android 兩機的年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離出示、release APK 的原生函式庫載入；zkPDF 尚未實作（見 [p4-work-packages.md](../design/p4-work-packages.md) 第 2.1 節）。
+- 簽章層級的實機項目：以自然人憑證卡與 CSC 遠端簽章各簽一次 PAdES B-LTA、CAdES 與 XAdES B-LTA，以及對已簽 PDF「延長保存」（見 [p3-acceptance.md](../acceptance/p3-acceptance.md) 的後續補充）。
 
 ## 6. 指令
 
@@ -111,8 +138,9 @@
 ./gradlew :test-servers:test
 ./gradlew :app:desktopTest
 ./gradlew :app:assembleRelease
-DIW_SIGNED_OUT=build/signed ./gradlew :test-servers:test --tests '*DocumentSigningTest'
+DIW_SIGNED_OUT=build/signed ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest'
 ./gradlew -p tools/dss-check run --args=build/signed
+./gradlew -p tools/dss-check run --args=build/signed/lt
 python3 -I tools/trust-roots/update_roots.py --check
 ```
 
@@ -120,7 +148,7 @@ python3 -I tools/trust-roots/update_roots.py --check
 
 ## 7. P4 審查
 
-P4 完成時補上本節。審查依據：
+zkPDF 完成時補齊本節；年齡證明、zkTLS 與 Longfellow 已實作，審查重點見第 4.5 節。審查依據：
 
 - 電路：[p4-circuits.md](../design/p4-circuits.md) 第 7 節列出的安全性問題，逐項對照 Noir 程式與測試 Z1 到 Z14。
 - 公開輸入：Kotlin 端（`core/document/zkpdf`）重算的公開輸入與電路宣告的順序完全一致；驗證端不採用證明附帶的任何未經重算的值。

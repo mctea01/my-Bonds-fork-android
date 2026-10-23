@@ -663,6 +663,9 @@ internal interface UniffiCallbackInterfaceZkTlsChannelMethod1 : com.sun.jna.Call
 internal interface UniffiCallbackInterfaceZkTlsChannelMethod2 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceZkTlsReceiptIssuerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`verified`: RustBuffer.ByValue,`binding`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceZkTlsRevealChooserMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`transcript`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -688,6 +691,22 @@ internal open class UniffiVTableCallbackInterfaceZkTlsChannel(
     }
 
 }
+@Structure.FieldOrder("issue", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceZkTlsReceiptIssuer(
+    @JvmField internal var `issue`: UniffiCallbackInterfaceZkTlsReceiptIssuerMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `issue`: UniffiCallbackInterfaceZkTlsReceiptIssuerMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceZkTlsReceiptIssuer(`issue`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceZkTlsReceiptIssuer) {
+        `issue` = other.`issue`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
 @Structure.FieldOrder("choose", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
     @JvmField internal var `choose`: UniffiCallbackInterfaceZkTlsRevealChooserMethod0? = null,
@@ -704,6 +723,8 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
     }
 
 }
+
+
 
 
 
@@ -851,6 +872,8 @@ fun uniffi_diw_zk_checksum_method_zktlschannel_receive(
 ): Short
 fun uniffi_diw_zk_checksum_method_zktlschannel_close(
 ): Short
+fun uniffi_diw_zk_checksum_method_zktlsreceiptissuer_issue(
+): Short
 fun uniffi_diw_zk_checksum_method_zktlsrevealchooser_choose(
 ): Short
 fun ffi_diw_zk_uniffi_contract_version(
@@ -892,6 +915,7 @@ internal interface UniffiLib : Library {
             // No need to check the contract version and checksums, since 
             // we already did that with `IntegrityCheckingUniffiLib` above.
             uniffiCallbackInterfaceZkTlsChannel.register(lib)
+            uniffiCallbackInterfaceZkTlsReceiptIssuer.register(lib)
             uniffiCallbackInterfaceZkTlsRevealChooser.register(lib)
             // Loading of library with integrity check done.
             lib
@@ -913,6 +937,8 @@ fun uniffi_diw_zk_fn_constructor_zkcanceltoken_new(uniffi_out_err: UniffiRustCal
 fun uniffi_diw_zk_fn_method_zkcanceltoken_cancel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_diw_zk_fn_init_callback_vtable_zktlschannel(`vtable`: UniffiVTableCallbackInterfaceZkTlsChannel,
+): Unit
+fun uniffi_diw_zk_fn_init_callback_vtable_zktlsreceiptissuer(`vtable`: UniffiVTableCallbackInterfaceZkTlsReceiptIssuer,
 ): Unit
 fun uniffi_diw_zk_fn_init_callback_vtable_zktlsrevealchooser(`vtable`: UniffiVTableCallbackInterfaceZkTlsRevealChooser,
 ): Unit
@@ -940,7 +966,7 @@ fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.By
 ): Byte
 fun uniffi_diw_zk_fn_func_zktls_prove(`channel`: Long,`request`: RustBuffer.ByValue,`choose`: Long,`cancel`: Pointer,`requestHash`: RustBuffer.ByValue,`verifierStaticPublic`: RustBuffer.ByValue,`extraRootsDer`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_diw_zk_fn_func_zktls_verify(`channel`: Long,`expectedHost`: RustBuffer.ByValue,`port`: Short,`maxSent`: Int,`maxRecv`: Int,`mode`: RustBuffer.ByValue,`cancel`: Pointer,`requestHash`: RustBuffer.ByValue,`verifierStaticPrivate`: RustBuffer.ByValue,`extraRootsDer`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_diw_zk_fn_func_zktls_verify(`channel`: Long,`expectedHost`: RustBuffer.ByValue,`port`: Short,`maxSent`: Int,`maxRecv`: Int,`mode`: RustBuffer.ByValue,`cancel`: Pointer,`requestHash`: RustBuffer.ByValue,`verifierStaticPrivate`: RustBuffer.ByValue,`extraRootsDer`: RustBuffer.ByValue,`issuer`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun ffi_diw_zk_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1104,7 +1130,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_diw_zk_checksum_func_zktls_prove() != 25121.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_diw_zk_checksum_func_zktls_verify() != 20119.toShort()) {
+    if (lib.uniffi_diw_zk_checksum_func_zktls_verify() != 53425.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_method_zkcanceltoken_cancel() != 34608.toShort()) {
@@ -1120,6 +1146,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_method_zktlschannel_close() != 35952.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_method_zktlsreceiptissuer_issue() != 57595.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_method_zktlsrevealchooser_choose() != 42530.toShort()) {
@@ -1940,7 +1969,11 @@ data class ZkTlsRequest (
     var `request`: kotlin.ByteArray, 
     var `maxSent`: kotlin.UInt, 
     var `maxRecv`: kotlin.UInt, 
-    var `mode`: kotlin.String
+    var `mode`: kotlin.String, 
+    /**
+     * The holder's key for a receipt from the verifier; empty asks for none.
+     */
+    var `binding`: kotlin.ByteArray
 ) {
     
     companion object
@@ -1958,6 +1991,7 @@ public object FfiConverterTypeZkTlsRequest: FfiConverterRustBuffer<ZkTlsRequest>
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
         )
     }
 
@@ -1967,7 +2001,8 @@ public object FfiConverterTypeZkTlsRequest: FfiConverterRustBuffer<ZkTlsRequest>
             FfiConverterByteArray.allocationSize(value.`request`) +
             FfiConverterUInt.allocationSize(value.`maxSent`) +
             FfiConverterUInt.allocationSize(value.`maxRecv`) +
-            FfiConverterString.allocationSize(value.`mode`)
+            FfiConverterString.allocationSize(value.`mode`) +
+            FfiConverterByteArray.allocationSize(value.`binding`)
     )
 
     override fun write(value: ZkTlsRequest, buf: ByteBuffer) {
@@ -1977,6 +2012,7 @@ public object FfiConverterTypeZkTlsRequest: FfiConverterRustBuffer<ZkTlsRequest>
             FfiConverterUInt.write(value.`maxSent`, buf)
             FfiConverterUInt.write(value.`maxRecv`, buf)
             FfiConverterString.write(value.`mode`, buf)
+            FfiConverterByteArray.write(value.`binding`, buf)
     }
 }
 
@@ -2024,7 +2060,11 @@ data class ZkTlsTranscript (
     var `serverName`: kotlin.String, 
     var `certChainDer`: List<kotlin.ByteArray>, 
     var `time`: kotlin.ULong, 
-    var `cipherSuite`: kotlin.String
+    var `cipherSuite`: kotlin.String, 
+    /**
+     * The verifier's receipt; empty when none was asked for or given. Empty while the reveal is chosen.
+     */
+    var `receipt`: kotlin.ByteArray
 ) {
     
     companion object
@@ -2042,6 +2082,7 @@ public object FfiConverterTypeZkTlsTranscript: FfiConverterRustBuffer<ZkTlsTrans
             FfiConverterSequenceByteArray.read(buf),
             FfiConverterULong.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
         )
     }
 
@@ -2051,7 +2092,8 @@ public object FfiConverterTypeZkTlsTranscript: FfiConverterRustBuffer<ZkTlsTrans
             FfiConverterString.allocationSize(value.`serverName`) +
             FfiConverterSequenceByteArray.allocationSize(value.`certChainDer`) +
             FfiConverterULong.allocationSize(value.`time`) +
-            FfiConverterString.allocationSize(value.`cipherSuite`)
+            FfiConverterString.allocationSize(value.`cipherSuite`) +
+            FfiConverterByteArray.allocationSize(value.`receipt`)
     )
 
     override fun write(value: ZkTlsTranscript, buf: ByteBuffer) {
@@ -2061,6 +2103,7 @@ public object FfiConverterTypeZkTlsTranscript: FfiConverterRustBuffer<ZkTlsTrans
             FfiConverterSequenceByteArray.write(value.`certChainDer`, buf)
             FfiConverterULong.write(value.`time`, buf)
             FfiConverterString.write(value.`cipherSuite`, buf)
+            FfiConverterByteArray.write(value.`receipt`, buf)
     }
 }
 
@@ -2350,6 +2393,64 @@ internal object uniffiCallbackInterfaceZkTlsChannel {
  * @suppress
  */
 public object FfiConverterTypeZkTlsChannel: FfiConverterCallbackInterface<ZkTlsChannel>()
+
+
+
+
+
+/**
+ * Signs the receipt a holder asked for, over what was verified and the holder's binding (its public key). Returns
+ * the receipt bytes, or empty to give none. Called only after every check has passed.
+ */
+public interface ZkTlsReceiptIssuer {
+    
+    fun `issue`(`verified`: ZkTlsVerified, `binding`: kotlin.ByteArray): kotlin.ByteArray
+    
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceZkTlsReceiptIssuer {
+    internal object `issue`: UniffiCallbackInterfaceZkTlsReceiptIssuerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`verified`: RustBuffer.ByValue,`binding`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeZkTlsReceiptIssuer.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`issue`(
+                    FfiConverterTypeZkTlsVerified.lift(`verified`),
+                    FfiConverterByteArray.lift(`binding`),
+                )
+            }
+            val writeReturn = { value: kotlin.ByteArray -> uniffiOutReturn.setValue(FfiConverterByteArray.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeZkTlsReceiptIssuer.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceZkTlsReceiptIssuer.UniffiByValue(
+        `issue`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_diw_zk_fn_init_callback_vtable_zktlsreceiptissuer(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypeZkTlsReceiptIssuer: FfiConverterCallbackInterface<ZkTlsReceiptIssuer>()
 
 
 
@@ -2664,11 +2765,11 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     }
     
 
-    @Throws(ZkException::class) fun `zktlsVerify`(`channel`: ZkTlsChannel, `expectedHost`: kotlin.String, `port`: kotlin.UShort, `maxSent`: kotlin.UInt, `maxRecv`: kotlin.UInt, `mode`: kotlin.String, `cancel`: ZkCancelToken, `requestHash`: kotlin.ByteArray, `verifierStaticPrivate`: kotlin.ByteArray, `extraRootsDer`: List<kotlin.ByteArray>): ZkTlsVerified {
+    @Throws(ZkException::class) fun `zktlsVerify`(`channel`: ZkTlsChannel, `expectedHost`: kotlin.String, `port`: kotlin.UShort, `maxSent`: kotlin.UInt, `maxRecv`: kotlin.UInt, `mode`: kotlin.String, `cancel`: ZkCancelToken, `requestHash`: kotlin.ByteArray, `verifierStaticPrivate`: kotlin.ByteArray, `extraRootsDer`: List<kotlin.ByteArray>, `issuer`: ZkTlsReceiptIssuer): ZkTlsVerified {
             return FfiConverterTypeZkTlsVerified.lift(
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zktls_verify(
-        FfiConverterTypeZkTlsChannel.lower(`channel`),FfiConverterString.lower(`expectedHost`),FfiConverterUShort.lower(`port`),FfiConverterUInt.lower(`maxSent`),FfiConverterUInt.lower(`maxRecv`),FfiConverterString.lower(`mode`),FfiConverterTypeZkCancelToken.lower(`cancel`),FfiConverterByteArray.lower(`requestHash`),FfiConverterByteArray.lower(`verifierStaticPrivate`),FfiConverterSequenceByteArray.lower(`extraRootsDer`),_status)
+        FfiConverterTypeZkTlsChannel.lower(`channel`),FfiConverterString.lower(`expectedHost`),FfiConverterUShort.lower(`port`),FfiConverterUInt.lower(`maxSent`),FfiConverterUInt.lower(`maxRecv`),FfiConverterString.lower(`mode`),FfiConverterTypeZkCancelToken.lower(`cancel`),FfiConverterByteArray.lower(`requestHash`),FfiConverterByteArray.lower(`verifierStaticPrivate`),FfiConverterSequenceByteArray.lower(`extraRootsDer`),FfiConverterTypeZkTlsReceiptIssuer.lower(`issuer`),_status)
 }
     )
     }

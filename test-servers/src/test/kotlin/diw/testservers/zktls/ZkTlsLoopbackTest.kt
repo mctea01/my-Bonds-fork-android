@@ -7,6 +7,7 @@ import diw.wallet.core.zk.native.bindings.ZkCancelToken
 import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zk.native.bindings.ZkRange
 import diw.wallet.core.zk.native.bindings.ZkTlsChannel
+import diw.wallet.core.zk.native.bindings.ZkTlsReceiptIssuer
 import diw.wallet.core.zk.native.bindings.ZkTlsRequest
 import diw.wallet.core.zk.native.bindings.ZkTlsReveal
 import diw.wallet.core.zk.native.bindings.ZkTlsRevealChooser
@@ -64,7 +65,7 @@ class ZkTlsLoopbackTest {
             val hash = sha256("synthetic request JWS")
             val (proved, verified) = runBoth(
                 { zktlsProve(prover, request(target, "proxy", 1024u), Chooser, ZkCancelToken(), hash, otherKey.generatePublicKey().encoded, listOf(target.caDer)) },
-                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), hash, verifierKey.encoded, listOf(target.caDer)) },
+                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), hash, verifierKey.encoded, listOf(target.caDer), Receipt) },
             )
             assertTrue(proved.isFailure && verified.isFailure)
             assertTrue(target.requests.isEmpty(), "the target is never contacted")
@@ -80,7 +81,7 @@ class ZkTlsLoopbackTest {
             val key = X25519PrivateKeyParameters(SecureRandom())
             val (proved, verified) = runBoth(
                 { zktlsProve(prover, request(target, "proxy", 1024u), Chooser, ZkCancelToken(), sha256("request A"), key.generatePublicKey().encoded, listOf(target.caDer)) },
-                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), sha256("request B"), key.encoded, listOf(target.caDer)) },
+                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), sha256("request B"), key.encoded, listOf(target.caDer), Receipt) },
             )
             assertTrue(proved.isFailure && verified.isFailure)
         }
@@ -96,7 +97,7 @@ class ZkTlsLoopbackTest {
             val hash = sha256("synthetic request JWS")
             val (proved, verified) = runBoth(
                 { zktlsProve(prover, request(target, "proxy", 1024u), Chooser, ZkCancelToken(), hash, key.generatePublicKey().encoded, listOf(target.caDer)) },
-                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), hash, key.encoded, emptyList()) },
+                { zktlsVerify(verifier, "localhost", target.port.toUShort(), 4096u, 1024u, "proxy", ZkCancelToken(), hash, key.encoded, emptyList(), Receipt) },
             )
             assertTrue(proved.isFailure && verified.isFailure)
         }
@@ -111,7 +112,7 @@ class ZkTlsLoopbackTest {
             val maxRecv = (bodySize + 1024).toUInt()
             val (proved, verified) = runBoth(
                 { zktlsProve(proverChannel, request(target, mode, maxRecv), Chooser, ZkCancelToken(), hash, key.generatePublicKey().encoded, listOf(target.caDer)) },
-                { zktlsVerify(verifierChannel, "localhost", target.port.toUShort(), 4096u, maxRecv, mode, ZkCancelToken(), hash, key.encoded, listOf(target.caDer)) },
+                { zktlsVerify(verifierChannel, "localhost", target.port.toUShort(), 4096u, maxRecv, mode, ZkCancelToken(), hash, key.encoded, listOf(target.caDer), Receipt) },
             )
             val transcript = proved.getOrThrow()
             val result = verified.getOrThrow()
@@ -121,6 +122,7 @@ class ZkTlsLoopbackTest {
             assertTrue(transcript.received.decodeToString().contains("status=OK"))
             assertEquals("localhost", result.serverName)
             assertContentEquals(target.leafDer, result.certChainDer.first())
+            assertEquals("holder-key@localhost", transcript.receipt.decodeToString())
 
             val query = transcript.sent.indexOf('?'.code.toByte())
             assertTrue(query > 0)
@@ -152,7 +154,14 @@ class ZkTlsLoopbackTest {
         maxSent = 4096u,
         maxRecv = maxRecv,
         mode = mode,
+        binding = "holder-key".encodeToByteArray(),
     )
+
+    /** Answers a receipt request with the binding and the verified server name, after the proof passed. */
+    private object Receipt : ZkTlsReceiptIssuer {
+        override fun issue(verified: ZkTlsVerified, binding: ByteArray): ByteArray =
+            (binding.decodeToString() + "@" + verified.serverName).encodeToByteArray()
+    }
 
     /** Reveals "GET /check", the Host line and status=OK, and commits to status=OK. */
     private object Chooser : ZkTlsRevealChooser {

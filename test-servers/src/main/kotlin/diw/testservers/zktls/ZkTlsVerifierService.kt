@@ -16,6 +16,8 @@ import diw.wallet.core.zktls.ZkTlsProfile
 import diw.wallet.core.zktls.ZkTlsProfiles
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.zktls.ZkTlsTransport
+import diw.wallet.core.zktls.WebProofCredentials
+import diw.wallet.core.zktls.ZkTlsReceipts
 import diw.wallet.core.zktls.ZkTlsVerification
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -54,8 +56,18 @@ class ZkTlsVerifierService(
     private val roots: () -> List<ByteArray>,
     private val available: suspend () -> Boolean,
 ) {
-    class Session(val id: String, val token: String, val request: ZkTlsSessionRequest, val jws: String, val profile: ZkTlsProfile, val key: ZkTlsKey) {
+    class Session(
+        val id: String,
+        val token: String,
+        val request: ZkTlsSessionRequest,
+        val jws: String,
+        val profile: ZkTlsProfile,
+        val key: ZkTlsKey,
+        val receipts: ZkTlsReceipts,
+    ) {
         @Volatile var status: String = "waiting"
+        /** Whether the holder asked for, and got, a web-proof receipt. */
+        @Volatile var receiptIssued: Boolean = false
         @Volatile var reason: String? = null
         @Volatile var outcome: ZkTlsOutcome? = null
     }
@@ -85,7 +97,9 @@ class ZkTlsVerifierService(
         )
         val signer = pki.readerKey(base.host)
         val jws = ZkTlsSessionRequest.sign(request, signer, chain = signer.certChain.certificates)
-        return Session(id, ByteArray(32).also(random::nextBytes).toBase64Url(), request, jws, profile, key).also { sessions[id] = it }
+        // Receipts are signed with the key that signed the request, so the holder can tie one to the other.
+        val receipts = WebProofCredentials.receipts(request, profile, baseUrl.trimEnd('/'), signer, signer.certChain.certificates)
+        return Session(id, ByteArray(32).also(random::nextBytes).toBase64Url(), request, jws, profile, key, receipts).also { sessions[id] = it }
     }
 
     fun session(id: String, token: String?): Session? = sessions[id]?.takeIf {
@@ -101,7 +115,9 @@ class ZkTlsVerifierService(
         }
         val result = withContext(Dispatchers.IO) {
             try {
-                ZkTlsVerification.verify(channel, s.jws, s.request, s.profile, s.key, roots())
+                ZkTlsVerification.verify(channel, s.jws, s.request, s.profile, s.key, roots()) { seen, jwk ->
+                    s.receipts.issue(seen, jwk)?.also { s.receiptIssued = true }
+                }
             } catch (e: ZkException) {
                 NativeZkTlsEngine.failure(e)
             }
@@ -127,6 +143,7 @@ class ZkTlsVerifierService(
         put("status", s.status)
         s.reason?.let { put("reason", it) }
         s.outcome?.let { put("outcome", it.toJson()) }
+        if (s.receiptIssued) put("receipt", true)
     }
 }
 

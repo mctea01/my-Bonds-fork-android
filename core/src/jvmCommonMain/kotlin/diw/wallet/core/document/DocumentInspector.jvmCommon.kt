@@ -195,7 +195,11 @@ actual object DocumentInspector {
             var integrity = info.integrity
             if (!f.gapIsContentsOnly) { p.add("簽章範圍（ByteRange）沒有涵蓋簽章值以外的全部內容"); integrity = Check.FAIL }
             p.addAll(changeProblems)
-            if (f.docMdpPermission == 1 && changes != LaterChanges.NONE) p.add("此認證簽章不允許任何修改，但之後仍有更新")
+            // ISO 32000-2 12.8.2.2: a DSS and document time stamps may follow any certification, P=1 included.
+            val laterSignature = fields.any { it.signedLength > f.signedLength && it.subFilter != "ETSI.RFC3161" }
+            if (f.docMdpPermission == 1 && changes != LaterChanges.NONE && (changes != LaterChanges.SIGNATURES_ONLY || laterSignature)) {
+                p.add("此認證簽章不允許任何修改，但之後仍有更新")
+            }
             if (f.docMdpPermission != null) n.add("認證簽章（DocMDP P=${f.docMdpPermission}）")
             if (!whole && changes == LaterChanges.SIGNATURES_ONLY) n.add("簽署後只加入簽章、時戳或驗證資料")
             results.add(f to info.copy(
@@ -291,7 +295,7 @@ actual object DocumentInspector {
     }
 
     /** The DER object at the start of a zero-padded /Contents (BER with indefinite lengths is kept whole). */
-    private fun trimDer(b: ByteArray): ByteArray {
+    internal fun trimDer(b: ByteArray): ByteArray {
         if (b.size < 2 || b[0] != 0x30.toByte()) return b
         val l0 = b[1].toInt() and 0xFF
         if (l0 == 0x80) return b

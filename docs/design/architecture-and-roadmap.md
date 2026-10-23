@@ -10,6 +10,7 @@
 > - TWDIW 卡片共用一把錢包層級持有者金鑰（`HolderIdentities.TWDIW`），才能一起出示。
 > - 實體自然人憑證卡在 Android 以 NFC 使用（D1 實機與 P3），也支援 USB CCID 與桌面 PC/SC。
 > - ZKP 的設計由 P4 文件取代：[p4-zkp.md](p4-zkp.md)、[p4-circuits.md](p4-circuits.md)、[p4-work-packages.md](p4-work-packages.md)。
+> - 正式服務端（網頁查驗、年齡查驗主機、zkTLS 中繼）獨立在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server) repo，以 Cloud Run 或使用者的主機部署（2026-10-25）；Cloudflare Workers 版中繼能力不足，不做。
 > - 各階段進度見「分階段路線圖」的狀態欄。
 
 ## 結論
@@ -20,7 +21,7 @@
 - 驗證者透明：請求先走標準認證（x509\_hash 等），再以 verifier\_info 攜帶驗證者自己的憑證（法人、代理、員工憑證）證明身分、代表關係與目的，皮夾依 T1 至 T4 四級提示。
 - ZKP：P4 做 zkPDF、zkTLS、OpenAC 年齡證明（引用 Bonds）與 Longfellow，持有端與驗證端都支援，設計見 [p4-zkp.md](p4-zkp.md)；BBS 列為中長期。
 - 文件：驗證與簽署在 `core` 以純 Kotlin 與 BouncyCastle 實作（P3 完成），iOS 後續再接上原生密碼學程式庫。
-- 進度（2026-10-16）：P0 驗證完成；P1、P2、P3 已合併進 main；P4 設計完成，依工作包實作中。
+- 進度（2026-10-25）：P0 驗證完成；P1、P2、P3 已合併進 main；P4 的年齡證明、zkTLS 與 mdoc ZK 已實作，zkPDF 開發中。
 
 ## 參考來源盤點
 
@@ -371,7 +372,7 @@ P2 驗收：自建測試端涵蓋各方言的本地測試全數通過；TWDIW �
 | P1 標準核心（Android） | PIN／生物辨識綁定金鑰、OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、DC API、Token Status List、補 expected\_origins 與 client\_id 檢查 | 通過 Multipaz 與 EUDI 測試發行端／驗證端 | 完成（PR #1 至 #4） |
 | P2 OpenID4VC 全組合與相容 Profile | OpenID4VCI／OpenID4VP 各版本、格式、grant、proof、response\_mode 全組合；draft13、draft11、TWDIW 官方、Bonds、Microsoft Verified ID 常駐啟用；狀態清單、TWDIW 信任清單與鏈上錨定、超商取貨、離線 QR／BLE、Linked Domains；ISO 18013-5 近距離出示與查驗（含 NFC、PC/SC）；中國大陸與國密根憑證 | 自建各方言測試端本地測試全數通過；實機 TWDIW 領卡與出示、Entra 互通 | 完成（PR #5 至 #7），部分實機項目待驗 |
 | P3 文件、簽章與衍生憑證 | PAdES／CAdES／XAdES／ASiC／OFD＋SES 驗證、AATL 與 EUTL、保存、時戳與長期驗證資料；自然人憑證卡（NFC、USB CCID、PC/SC）、PKCS#12、錢包金鑰與 CSC 遠端簽章；電子公文容器與線上簽核點；文件衍生憑證（SD-JWT VC、vc+moica）與 Bonds 身分證卡；OpenCerts 完整查驗；MyData 與各取件入口；verifier\_info 檢查 | ETSI 報告比對（DSS）；TP07 卡 NFC 簽 PAdES；真實文件產生衍生憑證並被另一台手機查驗 | 完成（PR #8、#9），實機項目見 [p3-acceptance.md](../acceptance/p3-acceptance.md) |
-| P4 ZKP（文件與憑證） | zkPDF、zkTLS（即時模式，手機與電腦都可當查驗方）、OpenAC 年齡證明、Longfellow；裝置分級與使用者選擇 | 見 [p4-zkp.md](p4-zkp.md) 第 12 節 | 設計完成，依 [p4-work-packages.md](p4-work-packages.md) 實作中 |
+| P4 ZKP（文件與憑證） | zkPDF、zkTLS（即時模式，手機與電腦都可當查驗方）、OpenAC 年齡證明、Longfellow；裝置分級與使用者選擇 | 見 [p4-zkp.md](p4-zkp.md) 第 12 節 | 年齡證明、zkTLS、Longfellow 已實作；zkPDF 開發中（[p4-work-packages.md](p4-work-packages.md) 第 2.1 節） |
 | P5 驗證者透明與主動驗證 | 驗證者聲明、WRPRC、驗證者模式（含自己的聲明與證據）；衍生憑證與 ZK 證明的查驗政策 | 兩台手機互為持有者與驗證者，顯示身分、代表關係與目的 | 未開始（verifier\_info 檢查已在 P3 先做） |
 | P6 iOS | iosMain：Secure Enclave、原生密碼學與 ZK 程式庫；另以軟體兜底層驗收 AOSP、Linux 手機與 PC（JVM） | P1 至 P5 在 iOS 實機通過 | 未開始 |
 

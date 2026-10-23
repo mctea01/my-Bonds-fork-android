@@ -1,0 +1,100 @@
+{
+  "id": "cn.chsi.xjbg-en/1",
+  "title": "學信網學籍在線驗證報告（英文版）",
+  "host": "www.chsi.com.cn",
+  "official": false,
+  "prepare": {
+    "type": "none"
+  },
+  "request": {
+    "method": "GET",
+    "path": "/xlcx/bg.do",
+    "query": "vcode={vcode}&srcid=bgcx&ln=en",
+    "headers": {
+      "User-Agent": "Mozilla/5.0"
+    },
+    "inputs": [
+      {
+        "name": "vcode",
+        "label": "在線驗證碼（英文版報告）",
+        "pattern": "^[0-9A-Z]{12,16}$",
+        "private": true
+      }
+    ]
+  },
+  "limits": {
+    "maxSent": 1024,
+    "maxRecv": 65536
+  },
+  "status": {
+    "reveal": "<h4 class=\"marT8\">[^<]{1,80}</h4>",
+    "success": "^<h4 class=\"marT8\">Online Verification Report of Student Record</h4>$"
+  },
+  "fields": [
+    {
+      "name": "name",
+      "label": "姓名",
+      "reveal": "<div class=\"label\">\\s*Name\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,80})</div>"
+    },
+    {
+      "name": "birthDate",
+      "label": "出生日期",
+      "reveal": "<div class=\"label\">\\s*Date of Birth\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "school",
+      "label": "學校名稱",
+      "reveal": "<div class=\"label\">\\s*Higher Education Institution\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,120})</div>"
+    },
+    {
+      "name": "level",
+      "label": "層次",
+      "reveal": "<div class=\"label\">\\s*Education Level\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,60})</div>"
+    },
+    {
+      "name": "major",
+      "label": "專業",
+      "reveal": "<div class=\"label\">\\s*Major\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,120})</div>"
+    },
+    {
+      "name": "duration",
+      "label": "學制",
+      "reveal": "<div class=\"label\">\\s*Length of Program\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "category",
+      "label": "學歷類別",
+      "reveal": "<div class=\"label\">\\s*Type of Education\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,80})</div>"
+    },
+    {
+      "name": "studyMode",
+      "label": "學習形式",
+      "reveal": "<div class=\"label\">\\s*Form of Learning\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,60})</div>"
+    },
+    {
+      "name": "enrolled",
+      "label": "入學日期",
+      "reveal": "<div class=\"label\">\\s*Start Date\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "studentStatus",
+      "label": "學籍狀態",
+      "reveal": "<div class=\"label\">\\s*Status of Student Record\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,80})</div>"
+    },
+    {
+      "name": "expectedGraduation",
+      "label": "預計畢業日期",
+      "reveal": "<div class=\"label\">\\s*Anticipated Graduation Date\\s*</div>\\s*<div class=\"value[^\"]*\">([^<]{1,40})</div>"
+    },
+    {
+      "name": "updated",
+      "label": "報告更新日期",
+      "reveal": "Date of Renewal: ([A-Z][a-z]{2,3}\\.? [0-9]{1,2}, [0-9]{4})&ensp;"
+    },
+    {
+      "name": "expires",
+      "label": "線上驗證到期日",
+      "reveal": "Date of Expiry: ([A-Z][a-z]{2,3}\\.? [0-9]{1,2}, [0-9]{4})\\s*</div>"
+    }
+  ]
+}

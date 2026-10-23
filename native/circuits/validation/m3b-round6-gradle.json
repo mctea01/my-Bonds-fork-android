@@ -1,0 +1,38 @@
+{
+  "status": "BUILD SUCCESSFUL",
+  "elapsed": "1m 9s",
+  "command": "./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test --rerun --no-daemon --console=plain --max-workers=2 -Dorg.gradle.jvmargs='-Xmx3g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process",
+  "test_execution": "test-servers:test forced to rerun; unchanged Kotlin compilation tasks up-to-date",
+  "totals": {
+    "tests": 362,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 29
+  },
+  "test_suites": 62,
+  "selected_tests": [
+    {
+      "name": "deviceVerifierBehindTheRelay()",
+      "classname": "diw.testservers.zktls.ZkTlsSessionTest",
+      "skipped": true,
+      "failed": false
+    },
+    {
+      "name": "signedRequestRoundTrip()",
+      "classname": "diw.testservers.zktls.ZkTlsPlanTest",
+      "skipped": false,
+      "failed": false
+    },
+    {
+      "name": "signedPackRoundTrip()",
+      "classname": "diw.testservers.zktls.ZkTemplatePackTest",
+      "skipped": false,
+      "failed": false
+    }
+  ],
+  "limitations": [
+    "cargo unavailable; existing native auto build skipped",
+    "Skipped tests are not validated execution paths"
+  ],
+  "rust_changes": false
+}

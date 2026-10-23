@@ -1,0 +1,42 @@
+{
+  "scope": "inflate only; not the complete pdf_text_v1_1p circuit",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "compiled",
+  "exit_code": 0,
+  "seconds": 95.16508607499782,
+  "peak_rss_kib": 2559160,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 6.0,
+  "compressed_capacity": 8192,
+  "plain_capacity": 1024,
+  "token_capacity": 512,
+  "block_capacity": 4,
+  "main_sha256": "af052de3d06e663038fb583b1ff42bf1857ec7eb134776b7e4bc0cfcc2b8a228",
+  "inflate_source_sha256": "ce33d69d75d3c2b723580d2277e3accc7c134f840222d04e5c4b102a31091e11",
+  "acir_sha256": "8086a64a0f91a172cbfd3a131ccbb882e4c1640c267ffc33ac860ec039ab7e39",
+  "acir_opcodes": 1408180,
+  "vk_sha256": null,
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 1408180,
+        "circuit_size": 5265212
+      }
+    ]
+  },
+  "prove": null,
+  "verify": null,
+  "proof_bytes": null,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 51057\noom 7\noom_kill 5\noom_group_kill 0"
+  },
+  "gate_measurement": {
+    "exit_code": 0,
+    "status": "compiled",
+    "seconds": 13.587608101999649
+  }
+}

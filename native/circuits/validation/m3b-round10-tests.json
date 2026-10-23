@@ -1,0 +1,169 @@
+{
+  "nargo": "1.0.0-beta.15",
+  "bb": "2.1.9",
+  "noir_tests": 88,
+  "scope": "Constrained execution; negative cases require Cannot satisfy constraint; no real documents",
+  "suites": {
+    "standard": {
+      "cases": 44,
+      "accepts": 5,
+      "constraint_rejections": 39,
+      "reference_rejections": 0
+    },
+    "multiblock": {
+      "cases": 4,
+      "accepts": 2,
+      "constraint_rejections": 2,
+      "reference_rejections": 0
+    },
+    "lex": {
+      "cases": 119,
+      "accepts": 85,
+      "constraint_rejections": 32,
+      "reference_rejections": 2
+    },
+    "sha": {
+      "cases": 40,
+      "accepts": 9,
+      "constraint_rejections": 31,
+      "reference_rejections": 0
+    },
+    "segments": {
+      "cases": 54,
+      "accepts": 36,
+      "constraint_rejections": 17,
+      "reference_rejections": 1
+    }
+  },
+  "source_sha256": {
+    "pdf_text_v1/src/claim.nr": "9cd00f3a342e292f8ccc17acc155cc1ec35b9384d0d0bd0889d62a4783c6cc77",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "94472ec03ad257451b10d30df09c4c41abecc4caa82e25b72634bbe9587f5bf1",
+    "pdf_text_v1/src/lib.nr": "ce06bf1bc37498e346937439130647db5e1a119847ad494e64101e009a877c6d",
+    "pdf_text_v1/src/sha256_window.nr": "e8c30d7a83b90ca8d4a45f318568f52642dcc8ff07c3fd1e065e49b27033b121",
+    "pdf_text_v1/src/sha_segment.nr": "ebcd3d4c9dea2694909676d8434755a6a2a6a60cd84b8f74794ae7ba305e9229",
+    "pdf_text_v1/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f",
+    "tools/bench_fixtures.py": "1d362733e5c0f5f58687353c8a049b24e92b730ad4e85968f3ee82d1914159f7",
+    "tools/compile_profile.py": "708219bcf0c619cc379b29366608cafc96bd9aa085afd62317b394ebe3939878",
+    "tools/fixtures.py": "320560298ab5c83cb67ffca1e55fe99513d49c80422c8b30b1a4b2d178431e9e",
+    "tools/formal_profile.py": "9048d52df5c6224f39f1ce59238e7e53a51f7501c420eb82516a792420b0c38d",
+    "tools/formal_profiles.py": "0a4901ed834f1a6628e24122a23efd5961329228b2071aca7730c49b92020dd7",
+    "tools/lex_reference.py": "241b649349b95d45eff14702766d7e8284d103d2f9f981e88649f01a01c67711",
+    "tools/lex_regressions.py": "461e01801f20350d35cd1651dd9aa7a6c85a2cc5907087cba45cfdb3a90e5f03",
+    "tools/measure.py": "b549cc6326b2d8741f5f090d673b7781bd2c60b20ff583ae70f25251f1e1625d",
+    "tools/pdf_fixture_chain.py": "399aa6d387b610e11d80ee079c9c280436b9aeb77d004dabfde2f04f377e9417",
+    "tools/poseidon_reference.py": "42b03263ccded6e16d828b18d7b102c401060c23a450494ff400216e381ff2a1",
+    "tools/probe_fixture.py": "6c6f9599717248559f6c2e1b285dac7189e9530091a2f9f03280aba534d56129",
+    "tools/record_boundary_analysis.py": "6d47c22c8f966144cf55a47ab07068ad794c2c9b6f114fa92247653ad6890819",
+    "tools/recursion_profile.py": "3b057567c894c5511b9d68e81907bb5dead408a0ad535c60d66804db4dacedf6",
+    "tools/regressions.py": "1a99c2005fc2cf4835bea7f17f4978527689b51d12240d5f648b47253a2b5f00",
+    "tools/segment_reference.py": "249506636a7fa214385d6beefb1f274decb85cf2fb3f5279dd65f56e13e05b1e",
+    "tools/segment_regressions.py": "5ea0e57297ddf13271ff1a964237b40a2a5a89880de12d9aefce0965921ffbd5",
+    "tools/serial_profiles.py": "c74eae2044e475138d9a723966f9e955274a5e08ccdb287638e58de94c197700",
+    "tools/sha_fixture.py": "b38aee0e017101974a13d445d59bdc8b6699cd0eb73e5829aeb4d4f13fc25d33",
+    "tools/sha_regressions.py": "f03d7d2fd7ba82784872ad3c3f40ab040c70bdb113a63d45eb45a23ad31adfa4",
+    "tools/text_profile.py": "25b098814eb5b6af46bf1b037a42a6fed71a1b9567fe7c8b866437923d545a7a"
+  },
+  "gradle": {
+    "command": "./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test",
+    "status": "BUILD SUCCESSFUL",
+    "test_servers": {
+      "tests": 370,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 31
+    },
+    "jdk": 21,
+    "workers": 2,
+    "heap": "2g",
+    "native": "Existing auto policy; no Rust changes"
+  },
+  "fixtures": {
+    "scope": "Synthetic fixtures; nargo constrained execution, not ZK proofs or production CMS trust verification",
+    "results": [
+      {
+        "fixture": "student.pdf",
+        "outcome": "accepted",
+        "sha_segments": 2,
+        "inflate_segments": 1,
+        "lex_segments": 1,
+        "claim_segments": 1,
+        "predicate_segments": 1,
+        "public_join_rejections": [
+          "cz",
+          "cp",
+          "beta",
+          "missing_lex",
+          "missing_sha",
+          "sha_midstate"
+        ],
+        "date_digit_width": 1,
+        "joins": "SHA digest, boundaries, C_z, S, history C_p, Lambda, coverage, anchors, C_g, beta, claim opening and date checked"
+      },
+      {
+        "fixture": "travel-rc4.pdf",
+        "outcome": "accepted",
+        "sha_segments": 1,
+        "inflate_segments": 1,
+        "lex_segments": 1,
+        "claim_segments": 1,
+        "predicate_segments": 1,
+        "public_join_rejections": [
+          "cz",
+          "cp",
+          "beta",
+          "missing_lex",
+          "missing_sha",
+          "sha_midstate"
+        ],
+        "date_digit_width": 2,
+        "joins": "SHA digest, boundaries, C_z, S, history C_p, Lambda, coverage, anchors, C_g, beta, claim opening and date checked"
+      },
+      {
+        "fixture": "student-inline-image.pdf",
+        "case": "student-inline-image.pdf/lex",
+        "outcome": "constraint_rejection"
+      },
+      {
+        "fixture": "student-actual-text.pdf",
+        "case": "student-actual-text.pdf/lex",
+        "outcome": "constraint_rejection"
+      },
+      {
+        "fixture": "student-oversized.pdf",
+        "outcome": "parameter_rejection",
+        "reason": "Plaintext length 40966 exceeds MAX_PLAIN=40960 before witness generation"
+      }
+    ]
+  },
+  "reference_checks": {
+    "poseidon2_vs_bb_js_2_1_9_lengths": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      16,
+      55,
+      90,
+      184,
+      266,
+      640
+    ],
+    "profile_parameter_mismatch_rejections": 8
+  },
+  "formal_artifacts": {
+    "distinct_circuits": 10,
+    "profile_kind_mappings": 14,
+    "verified": 10,
+    "public_abi_counts_checked": true,
+    "source_acir_vk_hashes_checked": true,
+    "text_compile_flags": [
+      "--bounded-codegen"
+    ]
+  }
+}

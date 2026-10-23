@@ -1,0 +1,577 @@
+[
+  {
+    "case": "word_inflate_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_inflate_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_inflate_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_inflate_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_inflate_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_lex_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_lex_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_lex_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_lex_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_lex_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "word_pred",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_5",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_inflate_6",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_5",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_lex_6",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "table_pred",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "two_predicates_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_second_predicate_cutoff",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "k2_padding_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "k2_padding_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "k2_padding_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_name_5",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_string_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_string_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_string_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_string_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_string_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_operator_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_operator_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_operator_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_operator_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_operator_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cross_field_pred",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_BI",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dictionary_string",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_TJ_outside_array",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_show_without_Tf",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_mixed_string_kinds",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_wrong_anchor_operator",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_anchor_ordinal",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_anchor_total",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_plain_commitment",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_overlapping_ranges",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_final_inside_string",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_claim_byte",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_changed_plan_anchor",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_date_cutoff",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_sha_commitment",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "date_ge_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_date_ge",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "cid_literal_lex_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cid_literal_lex_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cid_literal_lex_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cid_literal_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "cid_literal_date",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "split_claim_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "split_claim_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "reference_rejects_claim_coverage",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "operator_slots_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_omitted_end_position",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_non_end_position",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_duplicate_end_position",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_decreasing_end_positions",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_nonzero_unused_position",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_public_slot_start",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_public_slot_count",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_predicate_result_commitment",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "multi_string_anchor_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "multi_string_anchor_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "multi_string_anchor_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "multi_string_anchor_pred",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "v2_octal_boundary_lex_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "v2_octal_boundary_lex_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "v2_octal_boundary_claim",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "v2_octal_boundary_date_ge",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_cross_string_octal",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "v2_odd_hex_lex_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "v2_per_string_odd_hex_date",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_odd_identity_string",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "literal_continuations",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "literal_line_endings",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "hex_whitespace",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_0",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_1",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_2",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_3",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_4",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_5",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_6",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_7",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "string_count_255_8",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_more_than_255_strings",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "reference_rejects_lex_join",
+    "expected": "reject",
+    "passed": true
+  }
+]

@@ -1,0 +1,28 @@
+{
+  "nargo_tests": 69,
+  "nargo_test_status": "passed",
+  "regressions": {
+    "m3b-round6-inflate_adler_probe-regressions.json": {
+      "passed": 3,
+      "accept": 1,
+      "constraint_reject": 2
+    },
+    "m3b-round6-inflate_probe-regressions.json": {
+      "passed": 41,
+      "accept": 4,
+      "constraint_reject": 37
+    },
+    "m3b-round6-inflate_multiblock_probe-regressions.json": {
+      "passed": 4,
+      "accept": 2,
+      "constraint_reject": 2
+    }
+  },
+  "fixture_regeneration": "identical SHA-256",
+  "fixture_source_sha256": "9c61d8af92544038ebfc486da8d5dc1ebe768204f770767e71cf5eaef220a3d8",
+  "inflate_source_sha256": "ad38b8dc6d7c90c979ec173a983dba7d68fc91ec931e83b4c77266763505a4a3",
+  "compiler_checks_disabled": false,
+  "negative_success_criterion": "exit code 1 and Cannot satisfy constraint; parser/compiler errors never count",
+  "rust_changes": false,
+  "third_party_additions": []
+}

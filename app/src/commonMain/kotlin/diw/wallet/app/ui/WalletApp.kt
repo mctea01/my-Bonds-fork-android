@@ -54,6 +54,7 @@ import diw.wallet.app.HomeTab
 import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
+import diw.wallet.core.credential.ClaimPictures
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.trust.TrustDecision
@@ -63,9 +64,14 @@ import org.multipaz.document.Document
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
 import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.trust.TrustRole
 import org.multipaz.crypto.X509Cert
 import kotlinx.io.bytestring.decodeToString
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlin.time.Instant
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -260,6 +266,27 @@ fun LabelValue(label: String, value: String, small: Boolean = false, onClick: ((
     }
 }
 
+/** A claim's value as shown: the picture when the value is an encoded image (base64, base64url, data: URL), else the text. */
+@Composable
+fun ClaimValueView(model: WalletModel, label: String, value: String, modifier: Modifier = Modifier, small: Boolean = true) {
+    val picture = remember(value) { ClaimPictures.fromText(value)?.let { model.platform.decodeImage(it) } }
+    if (picture != null) {
+        Image(picture, contentDescription = label, contentScale = ContentScale.Fit,
+            modifier = modifier.widthIn(max = 160.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
+    } else {
+        Text(value, modifier, style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** A labelled claim; an encoded image shows as the picture. */
+@Composable
+fun ClaimRow(model: WalletModel, label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, Modifier.weight(0.4f), style = MaterialTheme.typography.bodyMedium)
+        Box(Modifier.weight(0.6f)) { ClaimValueView(model, label, value, small = false) }
+    }
+}
+
 /** Grouped details; rows holding certificates open the certificate view. */
 @Composable
 fun DetailSections(model: WalletModel, sections: List<DetailSection>) {
@@ -301,6 +328,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
     var details by remember { mutableStateOf<List<DetailSection>>(emptyList()) }
     var evidence by remember { mutableStateOf<List<EvidenceResult>>(emptyList()) }
     var source by remember { mutableStateOf<String?>(null) }
+    var webSource by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
     var count by remember { mutableStateOf(0) }
     var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -310,9 +338,19 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
         val first = creds.firstOrNull()
         // A derived credential's document and evidence objects are shown as checked evidence, not as raw data.
         val derived = record?.vct == DerivedCredentials.VCT
+        // A web query result's source, method and session are shown as where the values came from.
+        val web = WebProofCredentials.isWebCredential(record?.vct)
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
             ?.filterNot { derived && it.path.firstOrNull() in setOf("document", "evidence") }
-            ?.map { Triple(model.claimLabel(it.path, it.label, record), it.value, it.picture?.let { b -> model.platform.decodeImage(b) }) }.orEmpty()
+            ?.filterNot { web && it.path.firstOrNull() in WebProofCredentials.SOURCE_CLAIMS }
+            ?.map {
+                val value = if (web && it.path == listOf(WebProofCredentials.CLAIM_STATUS)) WebProofCredentials.plainStatus(it.value) else it.value
+                Triple(model.claimLabel(it.path, it.label, record), value, it.picture?.let { b -> model.platform.decodeImage(b) })
+            }.orEmpty()
+        if (web && first is SdJwtVcCredential) runCatching {
+            val compact = first.issuerProvidedData.decodeToString()
+            webSource = webSourceLines(Json.parseToJsonElement(compact.substringBefore('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject)
+        }
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
         if (derived && first is SdJwtVcCredential) runCatching {
             val compact = first.issuerProvidedData.decodeToString()
@@ -342,6 +380,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
             } else LabelValue(k, v)
         }
         source?.let { LabelValue("來源文件", it, small = true) }
+        if (webSource.isNotEmpty()) {
+            SectionTitle("查詢來源")
+            webSource.forEach { (k, v) -> LabelValue(k, v) }
+        }
         if (evidence.isNotEmpty()) EvidenceRows(evidence)
         if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
         SectionTitle("證件資訊")
@@ -374,6 +416,31 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
             },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
         )
+    }
+}
+
+/** Where and how a web query result was read, from its payload's source, method and session. */
+private fun webSourceLines(payload: JsonObject): List<Pair<String, String>> {
+    fun JsonObject.text(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
+    val source = payload["source"] as? JsonObject
+    val session = payload["session"] as? JsonObject
+    return buildList {
+        source?.text("profileTitle")?.let { add("查驗頁" to it) }
+        source?.text("host")?.let { h ->
+            add("網站" to h + (source.text("port")?.let { ":$it" } ?: "") + if (source.text("official") == "true") "（政府網站）" else "")
+        }
+        source?.text("retrievedAt")?.let { t -> runCatching { Instant.parse(t) }.getOrNull()?.let { add("查詢時間" to localTime(it.epochSeconds)) } }
+        payload.text("method")?.let { m ->
+            add("證明方式" to when (m) {
+                WebProofCredentials.METHOD_PROXY -> "zkTLS（查驗方以代理模式驗證後簽發）"
+                WebProofCredentials.METHOD_MPC -> "zkTLS（查驗方以 MPC 模式驗證後簽發）"
+                WebProofCredentials.METHOD_DEVICE -> "裝置證明（本錢包簽署，不是零知識證明）"
+                else -> m
+            })
+        }
+        session?.text("purpose")?.let { add("查驗用途" to it) }
+        source?.let { s -> listOfNotNull(s.text("tlsVersion")?.let { "TLS $it" }, s.text("cipherSuite")) }
+            ?.takeIf { it.isNotEmpty() }?.let { add("連線" to it.joinToString("，")) }
     }
 }
 

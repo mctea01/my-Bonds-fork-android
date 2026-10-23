@@ -19,7 +19,8 @@ import java.util.List;
 /**
  * Validates the wallet's signed samples with EU DSS and prints the ETSI indications and integrity checks.
  * Usage: DIW_SIGNED_OUT=dir ./gradlew :test-servers:test --tests '*DocumentSigningTest', then
- * ./gradlew -p tools/dss-check run --args=dir
+ * ./gradlew -p tools/dss-check run --args=dir. The long-term samples of LongTermSigningTest go to dir/lt, checked
+ * with --args=dir/lt: that test PKI serves OCSP and CRLs, so they are validated with the revocation data they carry.
  */
 public class Main {
     public static void main(String[] args) throws Exception {
@@ -32,7 +33,8 @@ public class Main {
         CommonTrustedCertificateSource trusted = new CommonTrustedCertificateSource();
         CertificateToken root = DSSUtils.loadCertificate(new File(dir, "root.cer"));
         trusted.addCertificate(root);
-        String[] files = {"pades-rsa.pdf", "pades-twice.pdf", "pades-xrefstream.pdf", "detached.p7s", "enveloping.p7m", "container.asice", "xades-rsa.xml", "xades-ec.xml", "letter.di"};
+        String[] files = {"pades-rsa.pdf", "pades-twice.pdf", "pades-xrefstream.pdf", "detached.p7s", "enveloping.p7m", "container.asice", "xades-rsa.xml", "xades-ec.xml", "letter.di",
+            "cades-lta.p7s", "asic-lta.asice", "xades-lta.xml", "pades-certified.pdf", "pades-certified-p1-lta.pdf", "pades-extended.pdf"};
         for (String name : files) {
             if (!new File(dir, name).exists()) continue;
             CommonCertificateVerifier verifier = new CommonCertificateVerifier();
@@ -48,7 +50,8 @@ public class Main {
                 continue;
             }
             validator.setCertificateVerifier(verifier);
-            if (name.endsWith(".p7s")) validator.setDetachedContents(List.<DSSDocument>of(new FileDocument(new File(dir, "detached.bin"))));
+            File own = new File(dir, name.replace(".p7s", ".bin"));
+            if (name.endsWith(".p7s")) validator.setDetachedContents(List.<DSSDocument>of(new FileDocument(own.exists() ? own : new File(dir, "detached.bin"))));
             Reports reports;
             try {
                 reports = validator.validateDocument(new java.io.ByteArrayInputStream(policy));

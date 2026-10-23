@@ -1,0 +1,22 @@
+[
+  {
+    "case": "different_huffman_tables",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "empty_middle_block",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_wrong_block_table",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_skipped_empty_block",
+    "expected": "reject",
+    "passed": true
+  }
+]

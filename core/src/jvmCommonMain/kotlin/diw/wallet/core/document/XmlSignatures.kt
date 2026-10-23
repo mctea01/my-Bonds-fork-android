@@ -115,6 +115,7 @@ internal object XmlDsig {
         val ocsps = ArrayList<ByteArray>()
         val crls = ArrayList<ByteArray>()
         val extra = ArrayList<X509CertificateHolder>()
+        val archives = ArrayList<TimestampInfo>()
         if (qp != null) {
             XmlParsing.descendants(qp, null, "SigningTime").firstOrNull()?.let { claimed = runCatching { Instant.parse(it.textContent.trim()).epochSeconds }.getOrNull() }
             val certDigests = XmlParsing.descendants(qp, null, "CertDigest")
@@ -135,6 +136,15 @@ internal object XmlDsig {
                     timestamp = checks.timestamp(token, XmlC14n.canonicalize(sv, alg2))
                 }
             }
+            // Archive time stamps (B-LTA), each over the signature and the unsigned properties before it.
+            XmlParsing.descendants(qp, null, "ArchiveTimeStamp").forEach { ats ->
+                val token = XmlParsing.descendants(ats, null, "EncapsulatedTimeStamp").firstOrNull()?.textContent?.trim()
+                    ?.let { runCatching { Base64.getMimeDecoder().decode(it) }.getOrNull() } ?: return@forEach
+                val alg2 = XmlParsing.child(ats, DS, "CanonicalizationMethod")?.getAttribute("Algorithm")?.takeIf { it in XmlC14n.supported } ?: XmlC14n.C14N
+                val input = archiveInput(doc, sig, ats, alg2, resolve)
+                if (input == null) notes.add("保存時戳涵蓋的檔案不在檔案內，無法檢查")
+                else archives.add(checks.timestamp(token, input))
+            }
             XmlParsing.descendants(qp, null, "EncapsulatedOCSPValue").forEach { e -> runCatching { ocsps.add(Base64.getMimeDecoder().decode(e.textContent.trim())) } }
             XmlParsing.descendants(qp, null, "EncapsulatedCRLValue").forEach { e -> runCatching { crls.add(Base64.getMimeDecoder().decode(e.textContent.trim())) } }
             XmlParsing.descendants(qp, null, "EncapsulatedX509Certificate").forEach { e ->
@@ -142,6 +152,11 @@ internal object XmlDsig {
             }
         }
         if (method == "http://www.w3.org/2000/09/xmldsig#rsa-sha1") notes.add("使用較弱的簽章演算法 RSA SHA-1")
+        if (qp != null) {
+            notes.add("XAdES 等級：" + baselineLevel(timestamp != null, ocsps.isNotEmpty() || crls.isNotEmpty(), archives.isNotEmpty()))
+            archives.forEach { notes.add(archiveNote(it)) }
+            archives.filter { it.imprint == Check.FAIL || it.signature == Check.FAIL }.forEach { problems.add("保存時戳無效：" + it.problems.joinToString("；")) }
+        }
         return checks.evaluate(
             format = format,
             label = label,
@@ -158,6 +173,21 @@ internal object XmlDsig {
             notes = notes,
             coversWhole = coversWhole,
         )
+    }
+
+    /** The baseline level a signature reaches: B-B, B-T (signature time stamp), B-LT (revocation data), B-LTA (archive time stamp). */
+    fun baselineLevel(timestamp: Boolean, revocation: Boolean, archive: Boolean): String = when {
+        timestamp && revocation && archive -> "B-LTA"
+        timestamp && revocation -> "B-LT"
+        timestamp -> "B-T"
+        else -> "B-B"
+    }
+
+    /** One line on an archive time stamp for the report. */
+    fun archiveNote(ts: TimestampInfo): String {
+        val ok = ts.imprint == Check.PASS && ts.signature == Check.PASS
+        val time = kotlin.time.Instant.fromEpochSeconds(ts.time).toString().replace('T', ' ').removeSuffix("Z") + " UTC"
+        return "保存時戳（${ts.tsa ?: "時戳機構"}，$time）" + if (ok) "涵蓋簽章與長期驗證資料，檢查通過" else "檢查未通過"
     }
 
     /** What the integrity check of one signature found; [integrity] covers every reference and the signature value. */
@@ -322,6 +352,35 @@ internal object XmlDsig {
     }
 
     /**
+     * The data an xadesv141:ArchiveTimeStamp covers (ETSI EN 319 132-1 5.5.2.2): the processed data of each reference
+     * in order, then SignedInfo, SignatureValue and KeyInfo, the unsigned signature properties before [ats] (all of
+     * them when it is null), and any ds:Object other than the one with the qualifying properties, each canonicalized
+     * with [c14n]. Null when a reference cannot be read.
+     */
+    fun archiveInput(doc: Document, sig: Element, ats: Element?, c14n: String, resolve: (String) -> ByteArray? = { null }): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val signedInfo = XmlParsing.child(sig, DS, "SignedInfo") ?: return null
+        for (ref in XmlParsing.childrenNamed(signedInfo, DS, "Reference")) {
+            val uri = if (ref.hasAttribute("URI")) ref.getAttribute("URI") else null
+            val transforms = XmlParsing.child(ref, DS, "Transforms")?.let { XmlParsing.childrenNamed(it, DS, "Transform") }.orEmpty()
+            out.write(runCatching { referenceData(doc, sig, uri, transforms, resolve) }.getOrNull() ?: return null)
+        }
+        out.write(XmlC14n.canonicalize(signedInfo, c14n))
+        XmlParsing.child(sig, DS, "SignatureValue")?.let { out.write(XmlC14n.canonicalize(it, c14n)) }
+        XmlParsing.child(sig, DS, "KeyInfo")?.let { out.write(XmlC14n.canonicalize(it, c14n)) }
+        XmlParsing.descendants(sig, null, "UnsignedSignatureProperties").firstOrNull()?.let { usp ->
+            for (c in XmlParsing.children(usp)) {
+                if (c === ats) break
+                out.write(XmlC14n.canonicalize(c, c14n))
+            }
+        }
+        for (o in XmlParsing.childrenNamed(sig, DS, "Object")) {
+            if (XmlParsing.descendants(o, null, "QualifyingProperties").isEmpty()) out.write(XmlC14n.canonicalize(o, c14n))
+        }
+        return out.toByteArray()
+    }
+
+    /**
      * Signs [xml] with an enveloped XAdES baseline signature (B-B, or B-T when [timestamper] is given): exclusive
      * canonicalization, SHA-256, the signer certificate chain in KeyInfo, SigningTime and SigningCertificateV2.
      * The signature is inserted as the last child of the root element, without touching the rest of the file.
@@ -333,7 +392,10 @@ internal object XmlDsig {
         timestamper: (suspend (ByteArray) -> ByteArray)? = null,
         /** Validation data for the signer and the time-stamp authority of the token (baseline LT), when wanted. */
         validation: (suspend (ByteArray?) -> diw.wallet.core.document.sign.ValidationData)? = null,
+        /** Add an ArchiveTimeStamp over the signature and its validation data (B-LTA); needs [timestamper]. */
+        archive: Boolean = false,
     ): ByteArray {
+        if (archive && timestamper == null) throw IllegalArgumentException("B-LTA 需要時戳機構")
         val text = xml.decodeToString().removePrefix("﻿")
         val declared = Regex("<\\?xml[^>]*encoding=[\"']([^\"']+)[\"']").find(text.take(200))?.groupValues?.get(1)
         if (declared != null && !declared.equals("UTF-8", true) && !declared.equals("UTF8", true)) throw IllegalArgumentException("只能簽署 UTF-8 編碼的 XML（此檔案為 $declared）")
@@ -419,7 +481,16 @@ internal object XmlDsig {
         }
         // An empty UnsignedSignatureProperties is not allowed; without a token or data nothing is added.
         if (unsigned.endsWith("<xades:UnsignedSignatureProperties>")) return assemble(signature(docDigest, propDigest, value, ""))
-        unsigned.append("</xades:UnsignedSignatureProperties></xades:UnsignedProperties>")
+        val close = "</xades:UnsignedSignatureProperties></xades:UnsignedProperties>"
+        // XAdES baseline LTA: an archive time stamp over the signature and everything before it.
+        if (archive) {
+            val draftLt = XmlParsing.parse(assemble(signature(docDigest, propDigest, value, unsigned.toString() + close)))
+            val sigLt = XmlParsing.descendants(draftLt, DS, "Signature").first { it.getAttribute("Id") == "sig-$id" }
+            val input = archiveInput(draftLt, sigLt, null, XmlC14n.EXC) ?: throw IllegalStateException("無法計算保存時戳涵蓋的資料")
+            unsigned.append("<xadesv141:ArchiveTimeStamp xmlns:xadesv141=\"$XADES141\"><ds:CanonicalizationMethod Algorithm=\"${XmlC14n.EXC}\"/><xades:EncapsulatedTimeStamp>")
+                .append(b64.encodeToString(timestamper!!(input))).append("</xades:EncapsulatedTimeStamp></xadesv141:ArchiveTimeStamp>")
+        }
+        unsigned.append(close)
         return assemble(signature(docDigest, propDigest, value, unsigned.toString()))
     }
 }

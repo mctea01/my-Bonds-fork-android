@@ -36,7 +36,7 @@ class ZkTemplatePackTest {
     }
 
     @Test
-    fun signedPackRoundTrip() = runBlocking {
+    fun signedPackRoundTrip() = runBlocking<Unit> {
         val pair = keys()
         val pack = TemplatePackTool.build(folder(), version = 1_800_000_000)
         val jws = TemplatePackTool.sign(pack, TemplatePackTool.privateKey(pem(pair.private)))

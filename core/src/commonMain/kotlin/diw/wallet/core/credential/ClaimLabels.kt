@@ -8,8 +8,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
- * Claim names in the user's language. Order: names the credential's issuer gave, names learned from other
- * issuers' metadata, built-in names for common claims, an issuer name without a language, the credential type's
+ * Claim names in the user's language. Order: names the credential's issuer gave, names this wallet gave its own
+ * credentials (keyed by the bare claim path, no locale), names learned from other issuers' metadata, built-in names for common claims, an issuer name without a language, the credential type's
  * own name, then the claim name made readable. Issuer and learned names are keyed "locale|claim" for every
  * language the issuer gave, so a later change of the device language still finds them; [learned] is persisted
  * by the caller.
@@ -22,6 +22,7 @@ class ClaimLabels(locales: List<String>, val learned: MutableMap<String, String>
         val key = path.joinToString(".")
         val name = path.lastOrNull() ?: return key
         find(issuerNames, key)?.let { return it }
+        issuerNames[key]?.let { return it }
         find(learned, key)?.let { return it }
         find(learned, name)?.let { return it }
         BUILT_IN[language]?.get(name)?.let { return withParent(path, it) }

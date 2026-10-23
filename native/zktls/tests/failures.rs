@@ -51,6 +51,7 @@ fn request(port: u16) -> Request {
         max_sent: 4096,
         max_recv: 2048,
         mode: "proxy".into(),
+        binding: b"holder-key".to_vec(),
     }
 }
 
@@ -90,6 +91,7 @@ async fn both_fail(
         [7; 32],
         noise.private.try_into().unwrap(),
         verifier_roots,
+        |_, _| panic!("a failed proof gets no receipt"),
     );
     let (p, v) = tokio::time::timeout(Duration::from_secs(60), async {
         tokio::join!(prover, verifier)

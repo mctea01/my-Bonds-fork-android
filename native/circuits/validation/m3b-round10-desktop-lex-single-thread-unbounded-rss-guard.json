@@ -1,0 +1,56 @@
+{
+  "scope": "Candidate formal package; synthetic witness; serial isolated measurement",
+  "tier": "desktop",
+  "kind": "lex",
+  "package": "pdf_lex_seg_v1_desktop",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "bb": "2.1.9",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "prove": {},
+  "environment": {
+    "cpu.max": "200000 100000",
+    "memory.max": "8589934592",
+    "hardware_concurrency": "2",
+    "rayon_num_threads": "2",
+    "compile_threads": 1,
+    "cpu_affinity": [
+      0,
+      1,
+      2
+    ]
+  },
+  "parameters": {
+    "P": 4096,
+    "T0": 1536,
+    "T": 576,
+    "W": 8,
+    "O": 128
+  },
+  "source_sha256": {
+    "pdf_text_v1/src/claim.nr": "9cd00f3a342e292f8ccc17acc155cc1ec35b9384d0d0bd0889d62a4783c6cc77",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "94472ec03ad257451b10d30df09c4c41abecc4caa82e25b72634bbe9587f5bf1",
+    "pdf_text_v1/src/lib.nr": "ce06bf1bc37498e346937439130647db5e1a119847ad494e64101e009a877c6d",
+    "pdf_text_v1/src/sha256_window.nr": "e8c30d7a83b90ca8d4a45f318568f52642dcc8ff07c3fd1e065e49b27033b121",
+    "pdf_text_v1/src/sha_segment.nr": "ebcd3d4c9dea2694909676d8434755a6a2a6a60cd84b8f74794ae7ba305e9229",
+    "pdf_text_v1/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f",
+    "profiles/desktop/pdf_lex_seg_v1/src/main.nr": "ccfc482319ad9220bca0551274bfdb50bfc56891a42bad9e7661602553d61cf8"
+  },
+  "crs_before": {
+    "bn254_g2.dat": 128,
+    "bn254_g1.dat": 134217792
+  },
+  "compile": {
+    "seconds": 93.78083086100014,
+    "exit_code": -9,
+    "status": "rss_guard",
+    "peak_rss_kib": 6294176
+  },
+  "status": "rss_guard",
+  "compile_flags": [],
+  "retry": "Restored --bounded-codegen for all text profiles; this unbounded one-thread attempt produced no gates or proof."
+}

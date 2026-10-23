@@ -270,6 +270,10 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
             }
         }
         BondsAgeVerifierSetup(model, canScanFrames)
+        ActionRow(
+            WalletIcons.Link, "官方網站即時查驗（zkTLS）",
+            "對方用手機連到官方查詢頁，你只看到查詢結果與指定欄位，看不到對方輸入的證號；查驗頁隨版型更新",
+        ) { model.taiwan.zkTls.openSetup() }
         SectionTitle("查驗方身分")
         ActionRow(WalletIcons.Person, "以誰的身分查驗", "個人、法人或組織中的個人，以查驗方的認證憑證為證據，將於後續版本支援", enabled = false) {}
         SectionTitle("其他查驗方式")

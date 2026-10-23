@@ -44,7 +44,10 @@ data class IssuanceRecord(
     val specs: List<String> = emptyList(),
     /** Why the issuer got its trust tier, for the details view. */
     val reasons: List<String> = emptyList(),
-    /** Claim names the issuer gave for the user's language, keyed by claim path joined with '.'. */
+    /**
+     * Claim names, keyed "locale|path" (path joined with '.') as an issuer gave them, or by the bare path for the
+     * names this wallet gives its own credentials (derived documents, web query results).
+     */
     val claimNames: Map<String, String> = emptyMap(),
     /** W3C credential types from the issuer configuration. */
     val w3cTypes: List<String> = emptyList(),

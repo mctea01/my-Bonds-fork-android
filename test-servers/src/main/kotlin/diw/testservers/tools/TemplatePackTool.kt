@@ -72,7 +72,11 @@ object TemplatePackTool {
     fun privateKey(pem: String): PrivateKey {
         val converter = JcaPEMKeyConverter()
         return when (val o = PEMParser(StringReader(pem)).readObject()) {
-            is PEMKeyPair -> converter.getKeyPair(o).private
+            // A SEC1 key may omit its public key and curve, so read only the private part, as P-256 when unnamed.
+            is PEMKeyPair -> o.privateKeyInfo.let { info ->
+                if (info.privateKeyAlgorithm.parameters != null) converter.getPrivateKey(info)
+                else converter.getPrivateKey(PrivateKeyInfo(AlgorithmIdentifier(X9ObjectIdentifiers.id_ecPublicKey, X9ObjectIdentifiers.prime256v1), info.parsePrivateKey()))
+            }
             is PrivateKeyInfo -> converter.getPrivateKey(o)
             is ECPrivateKey -> converter.getPrivateKey(PrivateKeyInfo(AlgorithmIdentifier(X9ObjectIdentifiers.id_ecPublicKey, X9ObjectIdentifiers.prime256v1), o))
             else -> throw IllegalArgumentException("ZK_TEMPLATES_KEY is not a P-256 private key")

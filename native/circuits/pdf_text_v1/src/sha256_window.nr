@@ -61,3 +61,47 @@ fn tail_mismatch() { boundary_case(false,true); }
 fn rejects_empty_window() {
     sha256_window([0;64],0,[0;8],[0;8],[0;63],0,[0;63],0,0);
 }
+
+// The enclosing SHA circuit exposes keystream and C_z as public inputs. The
+// encrypted private window remains bound to the SHA compression above.
+pub fn sha256_content_window<let B:u32,let N:u32>(
+    bytes:[u8;B*64], blocks:u32, mid_in:[u32;8], mid_out:[u32;8],
+    head:[u8;63], head_len:u32, tail:[u8;63], tail_len:u32,
+    private_len:u32, keystream:[u8;N], salt:Field,
+) -> Field {
+    sha256_window(bytes,blocks,mid_in,mid_out,head,head_len,tail,tail_len,private_len);
+    assert(private_len<=N);
+    let mut z=[0u8;N];
+    // Every read uses one immutable two-block window. Its 64 indices are
+    // shared across all output blocks instead of indexing the full SHA input.
+    for b in 0..((N+63)/64) {
+        let mut window=[0u8;128];
+        for j in 0..128 { if b*64+j<B*64 {window[j]=bytes[b*64+j];} }
+        for j in 0..64 {
+            if b*64+j<N {
+                let i=b*64+j;
+                let decoded=window[head_len+j]^keystream[i];
+                z[i]=if i<private_len {decoded} else {0};
+                if i>=private_len {assert_eq(keystream[i],0);}
+            }
+        }
+    }
+    crate::commitment::commit_bytes(1,salt,z,private_len)
+}
+
+fn content_binding_case(wrong:bool) {
+    let mut bytes=[0u8;64]; bytes[0]=97; bytes[1]=98; bytes[2]=99; bytes[3]=128; bytes[63]=24;
+    let mut key=[0u8;64]; key[0]=0x55; key[2]=0xaa;
+    let actual=sha256_content_window(bytes,1,
+        [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19],
+        [0xba7816bf,0x8f01cfea,0x414140de,0x5dae2223,0xb00361a3,0x96177a9c,0xb410ff61,0xf20015ad],
+        [0;63],0,[0;63],0,64,key,42);
+    let mut expected=bytes;
+    for i in 0..64 { expected[i]=bytes[i]^key[i]; }
+    if wrong { expected[1]=expected[1]^1; }
+    assert_eq(actual,crate::commitment::commit_bytes(1,42,expected,64));
+}
+#[test]
+fn content_xor_commitment() { content_binding_case(false); }
+#[test(should_fail)]
+fn rejects_wrong_content_commitment() { content_binding_case(true); }

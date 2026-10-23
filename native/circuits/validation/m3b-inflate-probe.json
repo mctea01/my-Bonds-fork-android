@@ -1,0 +1,58 @@
+{
+  "package": "inflate_probe",
+  "nargo": "1.0.0-beta.15",
+  "bb": "2.1.9",
+  "zk": true,
+  "oracle_hash": "poseidon2",
+  "compile": {
+    "seconds": 0.5616038570005912,
+    "peak_rss_kib": 192812,
+    "exit_code": 0
+  },
+  "witness": {
+    "seconds": 1.5286444989978918,
+    "peak_rss_kib": 242472,
+    "exit_code": 0
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 296094,
+        "circuit_size": 680210
+      }
+    ]
+  },
+  "first": {
+    "seconds": 22.28959245200167,
+    "peak_rss_kib": 1795500,
+    "exit_code": 0
+  },
+  "warm": {
+    "seconds": 17.330706265998742,
+    "peak_rss_kib": 1782852,
+    "exit_code": 0
+  },
+  "verify": {
+    "seconds": 0.01714760100003332,
+    "peak_rss_kib": 14132,
+    "exit_code": 0
+  },
+  "acir_sha256": "8b32a5ba0b466a7a240cdc0ee753dbd2182d1e4bbd5a450b5afa426943f5787d",
+  "vk_sha256": "15e9bba341c77fa694552adecfb8f9ac881b88ec58c91f644b83a7912cebf7b5",
+  "proof_bytes": 16256,
+  "public_input_bytes": 0,
+  "scope": "M3b preparation: small inflate component probe, not pdf_text_v1_1p",
+  "environment": {
+    "cpu": "AMD EPYC 9V74",
+    "cpu_quota": 4,
+    "memory_limit_gib": 32,
+    "concurrent_full_profile_compile": true
+  },
+  "capacities": {
+    "compressed": 128,
+    "plain": 128,
+    "tokens": 32,
+    "blocks": 1
+  },
+  "first_run_includes_crs_download": true
+}

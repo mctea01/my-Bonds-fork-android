@@ -131,7 +131,7 @@ class ZkTlsPlanTest {
     }
 
     @Test
-    fun signedRequestRoundTrip() = runBlocking {
+    fun signedRequestRoundTrip() = runBlocking<Unit> {
         val key = Crypto.createEcPrivateKey(EcCurve.P256)
         val did = DidKeys.didJwk(key.publicKey)
         val request = ZkTlsSessionRequest.create(
@@ -162,6 +162,33 @@ class ZkTlsPlanTest {
         assertNull(ZkTlsTransport.parse(buildJsonObject { put("type", "wss"); put("url", "ws://verifier.example/x") }))
         assertEquals(ZkTlsTransport.Wss("ws://localhost:8080/x"), ZkTlsTransport.parse(buildJsonObject { put("type", "wss"); put("url", "ws://localhost:8080/x") }, setOf("localhost:8080")))
         assertNull(ZkTlsTransport.parse(buildJsonObject { put("type", "relay"); put("url", "wss://r.example"); put("room", "short") }))
+    }
+
+    /** Chunk framing that splits a value, even inside a character, is revealed with it and taken out again. */
+    @Test
+    fun chunkedResponseSplittingAValue() {
+        val (sent, plain) = transcript()
+        fun ByteArray.find(what: String) = what.encodeToByteArray().let { w -> (0..size - w.size).first { i -> w.indices.all { this[i + it] == w[it] } } }
+        val headEnd = plain.find("\r\n\r\n") + 4
+        val body = plain.copyOfRange(headEnd, plain.size)
+        val cut = body.find(ZkTlsRecordPage.NAME) + 4
+        fun hex(n: Int) = n.toString(16).encodeToByteArray()
+        val crlf = "\r\n".encodeToByteArray()
+        val received = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n".encodeToByteArray() +
+            hex(cut) + crlf + body.copyOfRange(0, cut) + crlf +
+            hex(body.size - cut) + ";ext=1".encodeToByteArray() + crlf + body.copyOfRange(cut, body.size) + crlf +
+            "0\r\n\r\n".encodeToByteArray()
+        // The cut is inside the name's second character, so neither chunk alone decodes it.
+        assertFalse(ZkTlsRecordPage.NAME in received.decodeToString())
+        val plan = ZkTlsPlanner.receivedReveal(profile, listOf("name", "date"), received)
+        assertTrue(plan.missing.isEmpty(), plan.missing.toString())
+        val name = plan.fields.getValue("name")
+        assertTrue(";ext=1" in String(received.copyOfRange(name.start, name.end), Charsets.ISO_8859_1))
+        val seen = ZkTlsHolder.masked("localhost", emptyList(), 0, sent, received, ZkTlsPlanner.sentReveal(profile, sent), plan.received)
+        val outcome = ZkTlsCheck.check(request(), profile, seen)
+        assertTrue(outcome.passed, outcome.problems.toString())
+        assertEquals(mapOf("name" to ZkTlsRecordPage.NAME, "date" to ZkTlsRecordPage.DATE), outcome.fields)
+        assertFalse(ZkTlsRecordPage.HIDDEN.encodeToByteArray().let { h -> seen.received.toList().windowed(h.size).any { it == h.toList() } })
     }
 
     @Test

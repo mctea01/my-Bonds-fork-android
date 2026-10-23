@@ -1,0 +1,17 @@
+[
+  {
+    "case": "adler_wrap_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_wrapped_checksum",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_late_plain_copy",
+    "expected": "reject",
+    "passed": true
+  }
+]

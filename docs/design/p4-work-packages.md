@@ -63,6 +63,23 @@
 
 建議順序：WP0、WP2、WP8 平行開始，同時做 WP3a 的 M3a（SHA-256 與 inflate 子電路）供 WP1 量測；WP0 完成後先做 WP7 的原生部分，當作整條管線（建置、資產下載、Android 打包、自驗）的第一個端對端測試（D5）；接著 WP3b、WP5 平行；WP4、WP6 接在後面；WP9、WP10 收尾。
 
+### 2.1 實作狀態（2026-10-25）
+
+| WP | 狀態 |
+|---|---|
+| WP0 | 完成：`native/` 工作區、uniffi 綁定、`core/zk`、資產清單與下載、裝置分級 |
+| WP1 | 電腦版量測完成（`docs/research/p4-benchmarks.md`）；實機量測與等級門檻待使用者執行 |
+| WP2 | 完成 |
+| WP3a | M3a、M3b 完成（PR #21 於 2026-10-29 合併進整合分支）：分段證明（p4-circuits.md 第 3.12 節），公開輸入 `native/circuits/PUBLIC_SPEC.md` 已凍結，`VERSIONS` 為候選釘選值 |
+| WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3b 凍結公開輸入後，M3c 證明器於 2026-10-29 開始 |
+| WP4 | 未開始（等 WP3b）；文件詳情的「產生 zkPDF 證明」與自架主機仍是停用列 |
+| WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
+| WP6 | 完成：M6a 與 M6b；區域網路改為直接 TCP（第 5.2 節）；簽章版型包；學信網中英文報告頁與移民署入出國日期證明書查驗頁；網頁證明與本機紀錄存入證件 |
+| WP7 | 完成：Bonds 網頁年齡請求、主機或本機驗證，以及本錢包延伸的藍牙、區域網路、動態 QR 查驗 |
+| WP8 | 完成：Longfellow 近距離與 DC API |
+| WP9 | 年齡證明、zkTLS、mdoc ZK 的畫面與設定的「零知識證明」頁完成；zkPDF 的畫面等 WP4 |
+| WP10 | 未開始；P4 驗收文件在 zkPDF 完成後撰寫 |
+
 ## 3. 工作包細節
 
 ### WP0 原生建置與 ZK 共用層（Codex）
@@ -217,25 +234,35 @@ data class PdfTextRun(val op: Int, val font: String, val raw: ByteArray, val lit
 - M3c：Rust 見證產生（由下列輸入算出所有提示）、證明、自驗、驗證，uniffi 匯出。
 - M3d：合成測試文件產生器（可在 M3a 期間先做）。
 
-uniffi 介面：
+uniffi 介面（2026-10-29 依分段證明改寫，取代原本的單一電路介面）：
 
 ```rust
-pub struct ZkPdfWindowInput { pub role: String, pub mid_in: Vec<u8>, pub first_block_bytes_before: Vec<u8>, pub private_data: Vec<u8>, pub bytes_after: Vec<u8>, pub key_stream: Option<Vec<u8>> }
-pub struct ZkPdfAnchorInput { pub font: String, pub literal: bool, pub raw: Vec<u8>, pub ordinal: u32 }
-pub struct ZkPdfClaimInput { pub slot: u32, pub before_anchor: u32, pub after_anchor: u32, pub salt: Vec<u8> }
-pub struct ZkPdfPredicateInput { pub kind: String, pub claim_slot: u32, pub date_format: u32, pub cutoff: u32 }
-pub struct ZkPdfDigitTable { pub font: String, pub codes: Vec<u32> }
-pub struct ZkPdfProveInput { pub circuit: String, pub binding: Vec<u8>, pub windows: Vec<ZkPdfWindowInput>, pub anchors: Vec<ZkPdfAnchorInput>,
-    pub claims: Vec<ZkPdfClaimInput>, pub digit_tables: Vec<ZkPdfDigitTable>, pub predicates: Vec<ZkPdfPredicateInput>, pub assets_dir: String }
-pub struct ZkPdfProof { pub proof: Vec<u8>, pub public_inputs: Vec<u8>, pub mid_outs: Vec<Vec<u8>>, pub anchor_outputs: Vec<ZkPdfAnchorInput>,
-    pub commitments: Vec<Vec<u8>>, pub anchor_totals: Vec<u32>, pub claim_sources: Vec<Vec<u8>>, pub prove_ms: u64 }
-#[uniffi::export] pub fn zkpdf_check(input: ZkPdfProveInput) -> Result<(), ZkError>;            // 不做證明，只檢查大小限制與 Word 類規則
-#[uniffi::export] pub fn zkpdf_prove(input: ZkPdfProveInput, cancel: Arc<ZkCancelToken>) -> Result<ZkPdfProof, ZkError>;  // 內含自驗
-#[uniffi::export] pub fn zkpdf_verify(circuit: String, proof: Vec<u8>, public_inputs: Vec<u8>, assets_dir: String) -> Result<bool, ZkError>;
-#[uniffi::export] pub fn zkpdf_public_inputs(spec: ZkPdfPublicSpec) -> Result<Vec<u8>, ZkError>;  // 查驗端以自己的資料組出公開輸入
+pub struct ZkPdfWindowInput { pub role: String /* "content" | "opaque" */, pub mid_in: Vec<u8> /* 32 */, pub head: Vec<u8>, pub private_data: Vec<u8>, pub tail: Vec<u8>, pub key_stream: Option<Vec<u8>> }
+pub struct ZkPdfRecord { pub font: Vec<u8>, pub kind: u8 /* 0 literal, 1 hex */, pub strings: Vec<Vec<u8>> }  // v2 紀錄（p4-circuits.md 3.4.4）
+pub struct ZkPdfAnchorInput { pub record: ZkPdfRecord }
+pub struct ZkPdfSlotInput { pub slot: u32, pub before_anchor: u32, pub after_anchor: u32, pub salt: Vec<u8> /* 16 */ }
+pub struct ZkPdfDigitTable { pub font: Vec<u8>, pub width: u8, pub codes: Vec<u32> /* 10 */ }
+pub struct ZkPdfPredicateInput { pub kind: u8 /* 0 DATE_LE, 1 DATE_GE */, pub slot: u32, pub format: u8, pub cutoff: u32 }
+pub struct ZkPdfProveInput { pub composition: String /* zkpdf-v1-phone | zkpdf-v1-desktop */, pub binding: Vec<u8> /* β, 32 */,
+    pub windows: Vec<ZkPdfWindowInput>, pub anchors: Vec<ZkPdfAnchorInput>, pub slots: Vec<ZkPdfSlotInput>,
+    pub digit_tables: Vec<ZkPdfDigitTable>, pub predicates: Vec<ZkPdfPredicateInput>, pub assets_dir: String }
+pub struct ZkPdfSegmentProof { pub kind: String /* sha_content | sha_opaque | inflate0 | inflate | lex | claim | pred */, pub index: u32, pub proof: Vec<u8>, pub public_inputs: Vec<u8> }
+pub struct ZkPdfBundle { pub composition: String, pub segments: Vec<ZkPdfSegmentProof> }
+pub struct ZkPdfProveOutput { pub bundle: ZkPdfBundle, pub mid_outs: Vec<Vec<u8>>, pub anchor_ordinals: Vec<u32>, pub anchor_totals: Vec<u32>,
+    pub claim_records: Vec<Vec<u8>> /* 每個 slot 的 v2 紀錄串接，供 zkOpen */, pub claim_digests: Vec<Vec<u8>>, pub prove_ms: u64 }
+pub struct ZkPdfVerifierSpec { pub composition: String, pub binding: Vec<u8>, pub windows: Vec<ZkPdfWindowPublic> /* role、mid_in、區塊數、head、tail、key_stream（查驗端自己算） */,
+    pub anchors: Vec<ZkPdfAnchorPublic> /* record、ordinal、total（描述檔與 V7） */, pub slots: Vec<ZkPdfSlotPublic> /* slot、前後錨點 */,
+    pub digit_tables: Vec<ZkPdfDigitTable>, pub predicates: Vec<ZkPdfPredicateInput> }
+pub struct ZkPdfVerified { pub mid_outs: Vec<Vec<u8>>, pub claim_digests: Vec<Vec<u8>> }
+#[uniffi::export] pub fn zkpdf_check(input: ZkPdfProveInput) -> Result<ZkPdfPlan, ZkError>;   // 不做證明：解壓、Word 類規則、各段上限，回報段數與預估
+#[uniffi::export] pub fn zkpdf_prove(input: ZkPdfProveInput, cancel: Arc<ZkCancelToken>, progress: Box<dyn ZkProgress>) -> Result<ZkPdfProveOutput, ZkError>;  // 每段產生後自驗
+#[uniffi::export] pub fn zkpdf_verify(spec: ZkPdfVerifierSpec, bundle: ZkPdfBundle, assets_dir: String) -> Result<ZkPdfVerified, ZkError>;
 ```
 
-- `ZkPdfPublicSpec` 欄位與第 3.6 節一一對應（由 Claude 在 WP3a 的 M3b 凍結）。
+- `zkpdf_verify` 以 `spec` 組出每一段由查驗端決定的公開輸入，與證明附帶的公開輸入逐欄比對；承諾（`C_z`、`S`、`C_p`、`Λ`、`C_g`）取自證明，依 `native/circuits/PUBLIC_SPEC.md` 的查驗端清單檢查串接；再以釘選的驗證金鑰驗證每一段。H_e 由回傳值交給 Kotlin 接續 SHA-256（V3），CMS、信任、V5–V7 與 V10 留在 Kotlin（WP4）。
+- 段的順序、數量、旗標與參數只依組合識別碼決定，證明者不能選擇其他切法。
+- 資產（每個電路的 ACIR、驗證金鑰、CRS 片段）由既有的資產機制提供並在使用前核對 SHA-256，執行時不得自行從網路下載 CRS。
+- 進度回報至少包含目前段的種類、序號與總段數，取消在段與段之間及 bb 允許的位置檢查。
 - 合成測試文件產生器（Python 或 Kotlin 皆可，以 `-I` 執行 Python）：輸出「仿在學證明」（WinAnsi 數字、Type0 中文、QR 影像）與「仿出入境記錄」（RC4、數字為 CID）兩種，以 test-servers 的測試 PKI 簽章；字型使用授權允許再散布的字型子集（例如 Noto Sans CJK，OFL），在 NOTICE 記錄。
 
 驗收：

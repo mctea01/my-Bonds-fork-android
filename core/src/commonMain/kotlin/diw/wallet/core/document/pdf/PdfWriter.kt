@@ -159,6 +159,11 @@ class PdfSignOptions(
     val requireValidation: Boolean = false,
     /** B-LTA: a document time stamp after the DSS (needs the time-stamp authority). */
     val documentTimestamp: Boolean = false,
+    /**
+     * Make this a certification signature (ISO 32000-1 12.8.2.2, DocMDP) allowing the changes of P: 1 none, 2 form
+     * filling and signing, 3 also annotations. Only the first signature of a document can certify it.
+     */
+    val certification: Int? = null,
 )
 
 /**
@@ -188,6 +193,10 @@ object PdfIncrementalSigner {
         if (pdf.reconstructed) throw SigningException("PDF 的交互參照表損壞，無法以增量方式加簽")
         val sigs = PdfSignatures(pdf)
         if (!options.allowBreakingCertification && sigs.fields().any { it.docMdpPermission == 1 }) throw SigningException("此文件有不允許任何修改的認證簽章，無法再加簽")
+        options.certification?.let { p ->
+            if (p !in 1..3) throw SigningException("認證簽章的允許修改等級只能是 1、2 或 3")
+            if (sigs.fields().isNotEmpty()) throw SigningException("文件已有簽章；認證簽章只能是第一個簽章")
+        }
 
         val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException("PDF 沒有文件目錄")
         val catalog = pdf.catalog
@@ -225,6 +234,12 @@ object PdfIncrementalSigner {
             is PdfRef -> updates[annots.num] = PdfArray(pdf.array(annots).orEmpty() + fieldRef)
             else -> updates[pageRef.num] = page.with("Annots", PdfArray((annots as? PdfArray).orEmpty() + fieldRef))
         }
+        // A certification signature is named in the catalog's /Perms (ISO 32000-1 12.8.4).
+        if (options.certification != null) {
+            val current = updates[catalogRef.num] as? PdfDict ?: catalog
+            val perms = pdf.dict(catalog["Perms"]) ?: PdfDict.of()
+            updates[catalogRef.num] = current.with("Perms", perms.with("DocMDP", PdfRef(sigNum, 0)))
+        }
         val field = PdfDict.of(
             "Type" to PdfName("Annot"), "Subtype" to PdfName("Widget"), "FT" to PdfName("Sig"),
             "T" to PdfWriter.text(name), "V" to PdfRef(sigNum, 0), "F" to PdfNumber.of(132),
@@ -243,6 +258,7 @@ object PdfIncrementalSigner {
         options.reason?.let { sb.append(" /Reason "); PdfWriter.write(PdfWriter.text(it), sb) }
         options.location?.let { sb.append(" /Location "); PdfWriter.write(PdfWriter.text(it), sb) }
         options.contactInfo?.let { sb.append(" /ContactInfo "); PdfWriter.write(PdfWriter.text(it), sb) }
+        options.certification?.let { sb.append(" /Reference [<</Type /SigRef /TransformMethod /DocMDP /TransformParams <</Type /TransformParams /P $it /V /1.2>>>>]") }
         sb.append(" /ByteRange ")
         val brPlaceholder = "[0 0000000000 0000000000 0000000000]"
         val brAt = sb.length

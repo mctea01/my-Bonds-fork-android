@@ -3,6 +3,8 @@
 分支 `claude/p3-documents-signing-8bjk64`。P3 加入文件分頁：保存與檢查簽章文件、時戳、以自然人憑證卡或其他憑證簽署、製作 PDF 與電子公文，以及把文件轉成衍生憑證（SD-JWT VC，可匯出 vc+moica）。零知識證明（zkTLS、zkPDF）屬於 P4，不在本階段。
 
 > **現況（2026-10-16）：** 本文是 P3 驗收當時的紀錄，P3 已合併（PR #8、#9）。之後的變更：App 內製作 PDF 與電子公文已移除（2026-10-15，改由外部產生，PdfComposer 只留在測試）；行動自然人憑證 SP 改為編譯時設定、CSC 遠端簽章已實作；PR #9 加入 did:key `#0` 出示修正、依 DTD 的線上簽核點、設定分八組與關於頁、自訂信任頁、文件分頁重整，以及 Android release 以 `CleartextHttp` 取得 http 公布的時戳、OCSP、CRL 與 AIA。之後的 P1 到 P3 補強（用戶端驗證、DC API 多重簽章、mdoc 簽署清單、CSC 強化）見 [p1-p3-followup-2026-10-16.md](p1-p3-followup-2026-10-16.md)。現行規則見 AGENTS.md 的 P3 要點。
+>
+> **後續（2026-10-25）：** 保證層級 B-B 到 B-LTA 擴及 CAdES、XAdES 與 ASiC-E（CAdES 為 archive-time-stamp-v3，XAdES 為 `xadesv141:ArchiveTimeStamp`），PDF 可選認證簽章（DocMDP P=1 到 3），已簽署的 PDF 可「延長保存」（為全部簽章補上長期驗證資料與文件時戳）；簽完顯示實際達到的層級。EU DSS 比對結果加在下方「錢包簽出、DSS 驗證」的表格。公文交換收發與 zkPDF 仍是停用列，zkTLS 已在 P4 實作。
 
 ## 本地自動測試
 
@@ -33,7 +35,7 @@
 | CAdES-BASELINE-T 封裝、XAdES-BASELINE-T | TOTAL_PASSED | 完整性與時戳通過 |
 | OFD SES v4 電子印章與竄改版本（ofdrw 產生，DSS 不支援 OFD） | 不適用 | 通過；竄改版本失敗 |
 
-**錢包簽出、DSS 驗證**（`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'`，再 `./gradlew -p tools/dss-check run --args=<資料夾>`；測試 PKI 沒有 CRL 或 OCSP，政策只把「缺撤銷資料」由 FAIL 改為 WARN，其餘為 DSS 預設政策）：
+**錢包簽出、DSS 驗證**（`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun`，再 `./gradlew -p tools/dss-check run --args=<資料夾>`，長期驗證的樣本在 `<資料夾>/lt`，另外執行一次；測試 PKI 沒有 CRL 或 OCSP，政策只把「缺撤銷資料」由 FAIL 改為 WARN，其餘為 DSS 預設政策）：
 
 | 檔案 | DSS 判定的格式 | 結果 |
 |---|---|---|
@@ -43,6 +45,12 @@
 | CAdES 分離式 .p7s（含時戳）、封裝式 .p7m | CAdES-BASELINE-T、CAdES-BASELINE-B | TOTAL_PASSED |
 | ASiC-E 容器 | CAdES-BASELINE-T | TOTAL_PASSED |
 | XAdES enveloped（RSA 含時戳、EC） | XAdES-BASELINE-T、XAdES-BASELINE-B | TOTAL_PASSED |
+| CAdES 分離式 B-LTA（2026-10-25） | CAdES-BASELINE-LTA | TOTAL_PASSED，簽章時戳與保存時戳完整 |
+| ASiC-E B-LTA（2026-10-25） | CAdES-BASELINE-LTA | TOTAL_PASSED，簽章時戳與保存時戳完整 |
+| XAdES enveloped B-LTA（2026-10-25） | XAdES-BASELINE-LTA | TOTAL_PASSED，簽章時戳與保存時戳完整 |
+| PDF 認證簽章 P=2（2026-10-25） | PAdES-BASELINE-T | TOTAL_PASSED |
+| PDF 認證簽章 P=1 加 B-LTA（2026-10-25） | PAdES-BASELINE-LTA | TOTAL_PASSED，DSS 與文件時戳不違反 P=1 |
+| B-B 簽章延長保存兩次（2026-10-25） | PAdES-BASELINE-LTA | TOTAL_PASSED，兩個文件時戳完整 |
 | 電子公文「函」.di | 無法讀取 | DSS 拒絕含 DOCTYPE 的 XML（安全設定），公文格式本身需要 DTD 宣告；改由 JDK 與錢包驗證 |
 
 比對中發現並已修正：錢包的 XAdES 原本缺少 `DataObjectFormat`，DSS 判定為 XAdES-T / XAdES-BES 而不是 baseline（EN 319 132-1 baseline B 要求 k）。補上後為 XAdES-BASELINE-B / T。
@@ -58,7 +66,7 @@
 - 製作 PDF 時中文使用 PDF 閱讀器內建的 CJK 字型（MSung-Light），沒有嵌入字型；閱讀器沒有該字型時會以其他字型替代。（2026-10-15 已移除 App 內製作 PDF，這項只影響測試產生的 PDF。）
 - 來源網站以表單 POST 觸發的下載，Android WebView 的下載事件只提供網址，錢包以 GET 重抓可能失敗；這時請在網站內改用「另存」或從系統分享到本 App。
 - 桌面版沒有內嵌瀏覽器，來源網站以外部瀏覽器開啟，下載後再匯入。
-- 公文交換收發、zkPDF 與 zkTLS 證明顯示為停用列並寫明原因。行動自然人憑證簽章需要編譯時設定 SP 帳號（或在開發者設定手動輸入），CSC 遠端簽章已實作（內建 EUDI 測試服務）。
+- 公文交換收發與 zkPDF 證明顯示為停用列並寫明原因（zkTLS 已在 P4 實作）。行動自然人憑證簽章需要編譯時設定 SP 帳號（或在開發者設定手動輸入），CSC 遠端簽章已實作（內建 EUDI 測試服務）。
 - 簽署憑證鏈的中繼憑證或根憑證不在內建清單時，判定為「部分」，使用者可在設定匯入根憑證。國富安 GFA（含 e簽寶平台用的 OPERATION CA04）、BJCA Global Root CA3、e簽寶時戳機構與 e簽寶公布的其他合作 CA 已內建（2026-10-16），這類文件現在連到內建根憑證，判定為 T2。
 - 卡片影像只在證件沒有影像時產生；發行端之後才補上標誌的證件不會自動更新影像。
 
@@ -81,5 +89,8 @@
 | 來源網站取件 | 文件分頁「取得文件」開 MyData 或移民署，登入並下載 | 下載的檔案出現在文件分頁並記錄來源；行動自然人憑證登入時跳到官方 App 後可返回 |
 | 分享匯入 | 從其他 App 分享 PDF 或 .p7s 到本 App | 檔案出現在文件分頁並顯示檢查結果 |
 | 時戳服務 | 設定「文件與時戳」選不同 TSA，替文件加時戳 | 時戳通過，簽發者顯示該服務 |
+| 保證層級（2026-10-25） | 以自然人憑證卡或 CSC 遠端簽章，分別簽 PDF（B-LTA）、一般檔案（CAdES B-LTA）、XML（XAdES B-LTA），連線到真實的 TSA、OCSP | 簽完訊息顯示達到 B-LTA；文件畫面的等級與保存時戳檢查通過；匯出後以 DSS 或 Adobe 驗證為 LTA |
+| 認證簽章（2026-10-25） | 對沒有簽章的 PDF 選「認證簽章」P=1、P=2 各簽一次，再嘗試加簽 | P=1 之後加簽被判為違反；P=2 之後加簽通過；Adobe 顯示為認證文件 |
+| 延長保存（2026-10-25） | 對外部簽署、只有 B-B 或 B-T 的 PDF 點「延長保存」 | 產生「原檔名-ltv.pdf」，等級變為 B-LTA；原檔保留 |
 | 公文壓縮檔與容器 | 匯入機關公文系統匯出的壓縮檔（含 .di、.si、附件與頁面影像） | 依簽核檔建立容器，檔案列在各簽核點下，健檢顯示檔案齊全與簽核點簽章；「取得容器內簽章的撤銷資訊」後顯示 OCSP 或 CRL 份數 |
 | 匯出 | 公文詳情「匯出公文容器」、有時戳的文件「匯出文件與證據」 | 系統儲存對話框出現中文檔名的 ZIP；解開後檔名正確，可用檔案管理局電子封裝檔工具箱或其他工具檢查原檔 |

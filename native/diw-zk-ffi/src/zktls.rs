@@ -15,6 +15,12 @@ pub trait ZkTlsChannel: Send + Sync {
 pub trait ZkTlsRevealChooser: Send + Sync {
     fn choose(&self, transcript: ZkTlsTranscript) -> ZkTlsReveal;
 }
+/// Signs the receipt a holder asked for, over what was verified and the holder's binding (its public key). Returns
+/// the receipt bytes, or empty to give none. Called only after every check has passed.
+#[uniffi::export(callback_interface)]
+pub trait ZkTlsReceiptIssuer: Send + Sync {
+    fn issue(&self, verified: ZkTlsVerified, binding: Vec<u8>) -> Vec<u8>;
+}
 #[derive(uniffi::Record)]
 pub struct ZkTlsRequest {
     pub host: String,
@@ -23,6 +29,8 @@ pub struct ZkTlsRequest {
     pub max_sent: u32,
     pub max_recv: u32,
     pub mode: String,
+    /// The holder's key for a receipt from the verifier; empty asks for none.
+    pub binding: Vec<u8>,
 }
 #[derive(uniffi::Record)]
 pub struct ZkTlsTranscript {
@@ -32,6 +40,8 @@ pub struct ZkTlsTranscript {
     pub cert_chain_der: Vec<Vec<u8>>,
     pub time: u64,
     pub cipher_suite: String,
+    /// The verifier's receipt; empty when none was asked for or given. Empty while the reveal is chosen.
+    pub receipt: Vec<u8>,
 }
 #[derive(uniffi::Record)]
 pub struct ZkRange {
@@ -92,6 +102,7 @@ pub fn zktls_prove(
                 max_sent: request.max_sent,
                 max_recv: request.max_recv,
                 mode: request.mode,
+                binding: request.binding,
             };
             zktls::channel::run(
                 Arc::new(Channel(channel)),
@@ -134,6 +145,7 @@ pub fn zktls_verify(
     request_hash: Vec<u8>,
     verifier_static_private: Vec<u8>,
     extra_roots_der: Vec<Vec<u8>>,
+    issuer: Box<dyn ZkTlsReceiptIssuer>,
 ) -> Result<ZkTlsVerified, ZkError> {
     #[cfg(not(feature = "tlsn"))]
     {
@@ -160,27 +172,11 @@ pub fn zktls_verify(
                         hash,
                         key,
                         zktls::protocol::roots_with(extra_roots_der),
+                        move |v, binding| issuer.issue(verified(v.clone()), binding.to_vec()),
                     )
                 },
             )
-            .map(|v| ZkTlsVerified {
-                server_name: v.server_name,
-                cert_chain_der: v.cert_chain_der,
-                time: v.time,
-                sent: v.sent,
-                received: v.received,
-                sent_mask: v.sent_mask.into_iter().map(range).collect(),
-                received_mask: v.received_mask.into_iter().map(range).collect(),
-                commitments: v
-                    .commitments
-                    .into_iter()
-                    .map(|c| ZkTlsCommitment {
-                        range: range(c.range),
-                        alg: "SHA256".into(),
-                        digest: c.digest,
-                    })
-                    .collect(),
-            })
+            .map(verified)
             .map_err(error)
         })
     }
@@ -207,6 +203,27 @@ fn range(r: std::ops::Range<usize>) -> ZkRange {
     }
 }
 #[cfg(feature = "tlsn")]
+fn verified(v: zktls::protocol::Verified) -> ZkTlsVerified {
+    ZkTlsVerified {
+        server_name: v.server_name,
+        cert_chain_der: v.cert_chain_der,
+        time: v.time,
+        sent: v.sent,
+        received: v.received,
+        sent_mask: v.sent_mask.into_iter().map(range).collect(),
+        received_mask: v.received_mask.into_iter().map(range).collect(),
+        commitments: v
+            .commitments
+            .into_iter()
+            .map(|c| ZkTlsCommitment {
+                range: range(c.range),
+                alg: "SHA256".into(),
+                digest: c.digest,
+            })
+            .collect(),
+    }
+}
+#[cfg(feature = "tlsn")]
 fn transcript(t: zktls::protocol::Transcript) -> ZkTlsTranscript {
     ZkTlsTranscript {
         sent: t.sent,
@@ -215,6 +232,7 @@ fn transcript(t: zktls::protocol::Transcript) -> ZkTlsTranscript {
         cert_chain_der: t.cert_chain_der,
         time: t.time,
         cipher_suite: t.cipher_suite,
+        receipt: t.receipt,
     }
 }
 #[cfg(feature = "tlsn")]
@@ -260,6 +278,12 @@ mod tests {
         }
         fn close(&self) {}
     }
+    struct NoReceipt;
+    impl ZkTlsReceiptIssuer for NoReceipt {
+        fn issue(&self, _: ZkTlsVerified, _: Vec<u8>) -> Vec<u8> {
+            Vec::new()
+        }
+    }
     #[test]
     fn availability_and_key_lengths() {
         let result = zktls_verify(
@@ -273,6 +297,7 @@ mod tests {
             vec![0; 31],
             vec![0; 32],
             Vec::new(),
+            Box::new(NoReceipt),
         );
         #[cfg(feature = "tlsn")]
         assert!(matches!(result, Err(ZkError::InvalidInput { .. })));

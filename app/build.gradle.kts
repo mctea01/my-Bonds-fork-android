@@ -370,6 +370,9 @@ compose.desktop {
         // PC/SC: the module is not resolved by default from the class path, and the reader list re-establishes the
         // smart card context after Windows restarts the service.
         jvmArgs += listOf("--add-modules=java.smartcardio", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
+        // The JVM caps its heap at a quarter of RAM by default; document parsing and large imports get half. Proving
+        // runs in the native library, whose memory is outside the heap and not limited by this.
+        jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8")
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "DIW-MY-WALLET"

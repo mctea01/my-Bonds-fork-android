@@ -5,9 +5,12 @@ import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.util.str
+import kotlinx.io.bytestring.decodeToString
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.storage.EncryptedStorage
 import diw.wallet.core.trust.TrustTier
@@ -57,6 +60,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 
 /** Drives the shared WalletModel (the code behind both the Android and desktop UI) against the DIW test servers. */
@@ -98,6 +102,10 @@ class WalletModelE2eTest {
             }
         }
         override fun openRedirect(url: String) {}
+
+        /** What the file picker returns. */
+        var picks: List<PickedFile> = emptyList()
+        override suspend fun pickFiles(): List<PickedFile> = picks
 
         /** Files the wallet exported, by the name it suggested. */
         val saved = ArrayList<Pair<String, ByteArray>>()
@@ -390,7 +398,9 @@ class WalletModelE2eTest {
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
         val stored = m.files.files.value.first()
         screen("14-file-detail", Screen.FileDetail(stored.id), height = 1900)
-        screen("15-file-sign", Screen.FileSign(stored.id))
+        screen("15-file-sign", Screen.FileSign(stored.id), height = 2600)
+        m.files.sign(stored, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
+        screen("17-signed-file", Screen.FileDetail(m.files.files.value.first { it.parentId == stored.id }.id), height = 1900)
         screen("16-file-derive", Screen.FileDerive(stored.id))
         m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
         val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }
@@ -938,6 +948,207 @@ class WalletModelE2eTest {
     }
 
     /**
+     * The production server: the access token goes only to that server, its signing root is trusted only after the
+     * fingerprint the wallet computes matches the one the server states, and a changed root is flagged, not accepted.
+     */
+    /**
+     * Signing through the production server's SP: the server is used only when its /info lists twfido with an
+     * environment, the ID number is not sent otherwise, and in the production environment the certificate the first
+     * answer carries must be issued by MOICA G3; a UAT certificate is only marked.
+     */
+    @Test
+    fun theServersMobileMoicaSpIsCheckedBeforeAndAfterUse() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        var features = listOf("relay")
+        var environment: String? = null
+        val posted = java.util.Collections.synchronizedList(ArrayList<String>())
+        val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        fun rsaSign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withRSA").run { initSign(rsa.private); update(data); sign() }
+        val cert = diw.wallet.core.document.sign.DocumentSigning.selfIssuedCertificate(
+            rsa.public.encoded, "測試持有人", { rsaSign(it) }, diw.wallet.core.document.sign.SignerKeyType.RSA, 30,
+        )
+        val data = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        val b64 = java.util.Base64.getEncoder()
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+            val path = request.url.encodedPath
+            when {
+                request.url.host == host && path == "/info" -> respond(buildJsonObject {
+                    put("name", "diw-wallet-server")
+                    putJsonArray("features") { features.forEach { add(it) } }
+                    environment?.let { put("twfido", buildJsonObject { put("environment", it) }) }
+                }.toString(), io.ktor.http.HttpStatusCode.OK, json)
+                request.url.host == host && path == "/twfido/sign" -> {
+                    val o = DiwJson.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject
+                    posted += o["idNumber"]!!.jsonPrimitive.content
+                    val n = posted.size
+                    data["s$n"] = java.util.Base64.getDecoder().decode(o["data"]!!.jsonPrimitive.content)
+                    val ticket = java.util.Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString("""{"transaction_id":"txn-$n","sp_ticket_id":"t-$n"}""".toByteArray()) + ".digest"
+                    respond("""{"sessionId":"s$n","token":"r$n","spTicket":"$ticket","environment":"$environment"}""", io.ktor.http.HttpStatusCode.OK, json)
+                }
+                request.url.host == host && path.startsWith("/twfido/sign/") -> {
+                    val signed = data[path.substringAfterLast('/')]!!
+                    respond("""{"status":"done","signature":"${b64.encodeToString(rsaSign(signed))}","certificate":"${b64.encodeToString(cert)}","hashedIdNumber":"h"}""",
+                        io.ktor.http.HttpStatusCode.OK, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = "token-for-the-host-0123") }.join()
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.single()
+        val choice = SignerChoice.MobileMoica(null, "A123456789", diw.wallet.core.document.sign.MobileMoicaMode.PUSH, server = "https://$host")
+        suspend fun sign(): String? {
+            m.files.sign(stored, choice, SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
+            return m.files.error.value
+        }
+
+        // No twfido in /info: not offered, and the ID number never leaves the phone.
+        assertNull(m.server.mobileMoica("https://$host"))
+        assertTrue("沒有提供行動自然人憑證簽署" in sign()!!)
+        assertTrue(posted.isEmpty())
+
+        // twfido without a known environment is not accepted either.
+        features = listOf("relay", "twfido")
+        environment = "SOMEWHERE"
+        assertFailsWith<diw.wallet.core.util.ProtocolException> { m.server.mobileMoica("https://$host") }
+        assertTrue("無法確認" in sign()!!)
+        assertTrue(posted.isEmpty())
+
+        // Production: a certificate MOICA G3 did not issue is refused after the first answer.
+        environment = "PRODUCTION"
+        assertEquals(diw.wallet.core.document.sign.MobileMoicaEnvironment.PRODUCTION, m.server.mobileMoica("https://$host"))
+        assertTrue("MOICA G3" in sign()!!)
+        assertEquals(1, posted.size)
+
+        // UAT: the test CA is not carried, so the signature goes ahead.
+        environment = "UAT"
+        assertNull(sign())
+        assertEquals(3, posted.size)
+        assertTrue(m.files.files.value.any { it.parentId == stored.id })
+    }
+
+    @Test
+    fun productionServerTokenAndTrust() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        val token = "token-for-the-host-0123"
+        suspend fun root(cn: String) = org.multipaz.mdoc.util.MdocUtil.generateReaderRootCertificate(
+            readerRootKey = org.multipaz.crypto.AsymmetricKey.anonymous(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)),
+            subject = org.multipaz.crypto.X500Name.fromName("CN=$cn"),
+            serial = org.multipaz.asn1.ASN1Integer.fromRandom(128),
+            validFrom = kotlin.time.Clock.System.now() - 1.days, validUntil = kotlin.time.Clock.System.now() + 365.days,
+            crlUrl = "https://$host/pki/crl",
+        )
+        fun sha(c: org.multipaz.crypto.X509Cert) = java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02x".format(it) }
+        var served = root("$host Signing Root")
+        var stated: String? = null
+        suspend fun newDid() = diw.wallet.core.did.DidKeys.didKeyJwkJcs(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey)
+        var verifierDid = newDid()
+        var publicUrl = "https://$host"
+        val seen = java.util.Collections.synchronizedList(ArrayList<String?>())
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+            when {
+                request.url.host == host && request.url.encodedPath == "/info" -> respond(buildJsonObject {
+                    put("name", "diw-wallet-server")
+                    putJsonArray("features") { add("relay"); add("zktls") }
+                    put("publicUrl", publicUrl)
+                    put("verifierDid", verifierDid)
+                    put("signing", buildJsonObject {
+                        put("subject", "CN=$host Signing Root")
+                        put("rootSha256", stated ?: sha(served))
+                        put("root", served.toPem())
+                    })
+                }.toString(), io.ktor.http.HttpStatusCode.OK, json)
+                request.url.encodedPath == "/zktls/sessions" -> {
+                    seen.add(request.headers[HttpHeaders.Authorization])
+                    respond("""{"error":"unauthorized","error_description":"這台查驗主機需要存取權杖"}""", io.ktor.http.HttpStatusCode.Unauthorized, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = token) }.join()
+        assertEquals(token, m.server.tokenFor("https://$host/"))
+        assertNull(m.server.tokenFor("https://other.example.org"))
+
+        // A host that wants a token it is not given, and one that refuses the token, point to the setting.
+        val page = diw.testservers.zktls.ZkTlsRecordPage.profile(443, host)
+        suspend fun selfFailure(): String {
+            m.taiwan.zkTls.selfThroughHost(OfflineUi.ZkTlsSelfPick(null, listOf(page), emptySet(), host, null), page)
+            return assertIs<OfflineUi.Failed>(withTimeout(30.seconds) { m.taiwan.offline.first { it is OfflineUi.Failed } }).message
+        }
+        assertTrue("不接受這個存取權杖" in selfFailure())
+        assertEquals("Bearer $token", seen.last())
+        m.updateSettings { it.copy(serverToken = "") }.join()
+        assertTrue("需要存取權杖" in selfFailure())
+        assertNull(seen.last())
+
+        // A stated fingerprint that is not the certificate's is refused.
+        stated = "00".repeat(32)
+        m.server.check(confirm = true)
+        var st = withTimeout(30.seconds) { m.server.state.first { !it.checking && (it.error != null || it.pending != null) } }
+        assertTrue("指紋與憑證不符" in st.error!!, st.error)
+        stated = null
+
+        m.server.check(confirm = true)
+        st = withTimeout(30.seconds) { m.server.state.first { it.pending != null } }
+        val info = st.pending!!
+        assertEquals(sha(served), info.sha256)
+        assertEquals(listOf("relay", "zktls"), info.features)
+        assertNull(info.addressWarning)
+        m.server.confirm(info)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == info.sha256 } }
+        suspend fun trusted() = m.trust.allAnchors().filter { it.source == ServerModel.SOURCE_PREFIX + host }
+        withTimeout(30.seconds) { while (trusted().size < 2) delay(50) }
+        assertEquals(setOf(diw.wallet.core.trust.TrustRole.VERIFIER, diw.wallet.core.trust.TrustRole.ISSUER), trusted().map { it.role }.toSet())
+        assertTrue(trusted().all { it.environment == TrustEnvironment.USER && it.certificate == served })
+        // The web verifier's did:key is trusted with it, as the user's own verifier DID.
+        assertEquals(verifierDid, info.verifierDid)
+        assertEquals(verifierDid, m.settings.serverVerifierDid)
+        assertEquals(diw.wallet.core.trust.TrustTier.T2, m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER)?.tier)
+        assertNull(m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.ISSUER))
+
+        // The server changes its key: only a warning until the user confirms again, which replaces the old root.
+        served = root("$host Signing Root 2")
+        m.server.check(confirm = false)
+        st = withTimeout(30.seconds) { m.server.state.first { !it.checking && it.changed } }
+        assertNull(st.pending)
+        assertTrue(trusted().all { it.certificate != served })
+        m.server.check(confirm = true)
+        m.server.confirm(withTimeout(30.seconds) { m.server.state.first { it.pending != null } }.pending!!)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == sha(served) } }
+        withTimeout(30.seconds) { while (trusted().any { it.certificate != served } || trusted().size < 2) delay(50) }
+        assertFalse(m.server.state.value.changed)
+
+        // A new verifier DID with the same root is also only a warning until confirmed; the old DID is then dropped.
+        val oldDid = verifierDid
+        verifierDid = newDid()
+        m.server.check(confirm = false)
+        assertTrue(withTimeout(30.seconds) { m.server.state.first { !it.checking && it.changed } }.changed)
+        assertNull(m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER))
+        // A server that sends wallets to another name is flagged: its links would point there.
+        publicUrl = "https://other.example.org"
+        m.server.check(confirm = false)
+        assertTrue("other.example.org" in withTimeout(30.seconds) { m.server.state.first { !it.checking && it.addressWarning != null } }.addressWarning!!)
+        publicUrl = "https://$host"
+        m.server.check(confirm = true)
+        m.server.confirm(withTimeout(30.seconds) { m.server.state.first { it.pending != null } }.pending!!)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverVerifierDid == verifierDid } }
+        assertEquals(diw.wallet.core.trust.TrustTier.T2, m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER)?.tier)
+        assertNull(m.didTrust.decide(oldDid, diw.wallet.core.trust.TrustRole.VERIFIER))
+    }
+
+    /**
      * Offline presentation is not limited to TWDIW cards: a Bonds-compatible challenge asks for government wallet
      * cards only, while this wallet's own challenge (source "a") takes any key-bound card. Here an IETF SD-JWT VC with
      * an x5c issuer, chosen on its document page, answers with one disclosed claim; the verifier checks the holder's
@@ -1024,7 +1235,7 @@ class WalletModelE2eTest {
         holder.files.import(PickedFile("copy.pdf", pdf), FileOrigin.IMPORTED, null).join()
         assertEquals(1, holder.files.files.value.size)
 
-        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false).join()
+        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false, level = SignatureLevel.B_B).join()
         assertNull(holder.files.error.value, "sign: ${holder.files.error.value}")
         val signed = holder.files.files.value.first { it.origin == FileOrigin.SIGNED }
         val sig = signed.report!!.signatures.single()
@@ -1090,7 +1301,7 @@ class WalletModelE2eTest {
         holder.files.import(PickedFile("letter.di", letterXml), FileOrigin.IMPORTED, null).join()
         val letter = holder.files.files.value.first { it.name == "letter.di" }
         assertEquals("測試公文", letter.report?.title)
-        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false).join()
+        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
         assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
         val signedLetter = holder.files.files.value.first { it.origin == FileOrigin.SIGNED && it.parentId == letter.id }
         assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
@@ -1853,5 +2064,215 @@ class WalletModelE2eTest {
         }
         assertTrue("身分驗證" in e.message!!, e.message)
         assertEquals(before, m.screen.value, "the signing screen comes back")
+    }
+
+    /**
+     * zkTLS between two wallets on the test server's synthetic record page: the verifier checks the proof itself
+     * (local network or relay), then lets the host check one. Only the status and the chosen fields are revealed.
+     */
+    @Test
+    fun zkTlsCheckBetweenTwoWallets() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (verifier, _) = newWallet()
+        val (holder, _) = newWallet()
+        org.junit.jupiter.api.Assumptions.assumeTrue(verifier.zk.tls() is diw.wallet.core.zk.ZkResult.Ok, "native library without tlsn")
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+
+        /** The kept credential's vct and resolved claims, and the record's tier. */
+        suspend fun kept(id: String): Triple<String?, kotlinx.serialization.json.JsonObject, String> {
+            val doc = holder.documentStore.lookupDocument(id)!!
+            val compact = doc.getCertifiedCredentials().single().issuerProvidedData.decodeToString()
+            val claims = diw.wallet.core.zktls.WebProofCredentials.read(compact)
+            return Triple(doc.issuanceRecord!!.vct, claims, doc.issuanceRecord!!.tier)
+        }
+
+        suspend fun round(expectLocal: Boolean, expectReceipt: Boolean) {
+            verifier.taiwan.zkTls.openSetup()
+            val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+            })
+            val page = setup.pages.single { it.id == record.PROFILE_ID }
+            assertTrue(page.id in setup.testPages)
+            verifier.taiwan.zkTls.startVerifier(page, listOf("name", "date"), "資格確認")
+            val waiting = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting || it is OfflineUi.Failed }
+            })
+            assertEquals(expectLocal, waiting.local)
+
+            holder.handleUri(waiting.link)
+            val consent = assertIs<OfflineUi.ZkTlsConsent>(withTimeout(30.seconds) {
+                holder.taiwan.offline.first { (it is OfflineUi.ZkTlsConsent && it.session.request == waiting.request) || it is OfflineUi.Failed }
+            })
+            assertTrue(consent.inline)
+            // A malformed input stays on the consent screen.
+            holder.taiwan.zkTls.prove(consent, mapOf("serial" to "bad", "code" to record.CODE))
+            assertEquals("證號格式不符", assertIs<OfflineUi.ZkTlsConsent>(holder.taiwan.offline.value).error)
+            val before = holder.documents.value.size
+            holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE), keep = true)
+            val proved = assertIs<OfflineUi.ZkTlsHolderResult>(withTimeout(180.seconds) {
+                holder.taiwan.offline.first { it is OfflineUi.ZkTlsHolderResult }
+            })
+            assertNull(proved.error, proved.error)
+            assertTrue(proved.proved!!.outcome.passed, proved.proved.outcome.toString())
+            assertNull(proved.keepError, proved.keepError)
+            val keptResult = assertNotNull(proved.kept)
+            assertEquals(expectReceipt, keptResult.receipt, keptResult.note)
+            assertEquals(before + 1, holder.documents.value.size)
+            val (vct, claims, tier) = kept(keptResult.documentId)
+            val web = diw.wallet.core.zktls.WebProofCredentials
+            assertEquals(if (expectReceipt) web.VCT_PROOF else web.VCT_RECORD, vct)
+            assertEquals("T3", tier)
+            assertEquals(record.NAME, claims.str("name"))
+            assertEquals(record.DATE, claims.str("date"))
+            val method = claims.str("method")
+            assertEquals(if (expectReceipt) web.METHOD_PROXY else web.METHOD_DEVICE, method)
+            assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+
+            val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
+            })
+            val outcome = assertNotNull(result.outcome, result.error)
+            assertTrue(outcome.passed && outcome.found)
+            assertEquals(mapOf("name" to record.NAME, "date" to record.DATE), outcome.fields)
+            assertEquals(expectLocal, result.local)
+            assertEquals(expectReceipt, result.receipt)
+            assertTrue(record.HIDDEN !in outcome.toString() && record.SERIAL !in outcome.toString())
+        }
+        round(expectLocal = true, expectReceipt = true)
+        // A verifier that signs no receipt: the holder keeps its own record.
+        verifier.taiwan.zkTls.receiptsEnabled = false
+        round(expectLocal = true, expectReceipt = false)
+        // Without the engine here the test server checks the proof and signs the receipt with its reader key.
+        verifier.taiwan.zkTls.engines = { diw.wallet.core.zk.ZkResult.Failed("no engine", false) }
+        round(expectLocal = false, expectReceipt = true)
+
+        val presented = holder.history.value.filter { it.kind == HistoryKind.PRESENTED }
+        assertEquals(3, presented.size)
+        assertTrue(presented.all { it.failure == null && "zkTLS" in it.note!! })
+        assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
+        assertEquals(3, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
+        assertEquals(3, holder.history.value.count { it.kind == HistoryKind.ISSUED })
+    }
+
+    /**
+     * The holder's own query started from a file, on this device alone: the record is kept as the wallet's statement
+     * (a web-record, not a zero-knowledge proof), linked to the file, and leaving returns to the file.
+     */
+    @Test
+    fun zkTlsHolderQueryForFile() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (m, _) = newWallet()
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+        m.files.import(PickedFile("note.txt", "紀錄查詢單\n證號：${record.SERIAL}\n".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
+        val file = m.files.files.value.single()
+
+        m.taiwan.zkTls.openSelf(file.id)
+        val pick = assertIs<OfflineUi.ZkTlsSelfPick>(withTimeout(30.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfPick || it is OfflineUi.Failed }
+        })
+        assertEquals(file.id, pick.fileId)
+        val page = pick.pages.single { it.id == record.PROFILE_ID }
+        assertTrue(page.id in pick.testPages)
+        m.taiwan.zkTls.selfDirect(pick, page)
+        val state = assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value)
+        // The file the query was started from prints the serial, so it is offered for that input.
+        val offered = withTimeout(30.seconds) { m.taiwan.zkTls.documentValues.first { it.isNotEmpty() } }
+        assertEquals(listOf(ZkTlsFlow.DocumentValue(file.id, "note.txt", "serial", record.SERIAL)), offered)
+
+        // A malformed input stays on the query screen.
+        m.taiwan.zkTls.queryDirect(state, mapOf("serial" to "bad", "code" to record.CODE))
+        assertEquals("證號格式不符", assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value).error)
+        // No record: nothing is kept.
+        m.taiwan.zkTls.queryDirect(state, mapOf("serial" to "A123456789", "code" to record.CODE))
+        val missing = assertIs<OfflineUi.ZkTlsSelfResult>(withTimeout(60.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfResult } })
+        assertNull(missing.error, missing.error)
+        assertFalse(missing.outcome!!.found)
+        assertNull(missing.kept)
+        m.taiwan.zkTls.retrySelf(missing)
+        val again = assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value)
+
+        val before = m.documents.value.size
+        m.taiwan.zkTls.queryDirect(again, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+        val result = assertIs<OfflineUi.ZkTlsSelfResult>(withTimeout(60.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfResult }
+        })
+        assertNull(result.error, result.error)
+        assertTrue(result.outcome!!.passed, result.outcome.toString())
+        val kept = assertNotNull(result.kept)
+        assertFalse(kept.receipt)
+        assertEquals(before + 1, m.documents.value.size)
+        val doc = m.documentStore.lookupDocument(kept.documentId)!!
+        val claims = diw.wallet.core.zktls.WebProofCredentials.read(doc.getCertifiedCredentials().single().issuerProvidedData.decodeToString())
+        assertEquals(diw.wallet.core.zktls.WebProofCredentials.VCT_RECORD, doc.issuanceRecord!!.vct)
+        assertEquals(diw.wallet.core.zktls.WebProofCredentials.METHOD_DEVICE, claims.str("method"))
+        assertEquals(record.NAME, claims.str("name"))
+        assertEquals(record.DATE, claims.str("date"))
+        assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+        assertEquals(listOf(kept.documentId), m.files.files.value.single().webProofIds)
+        assertTrue(m.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
+
+        m.taiwan.zkTls.leave(file.id)
+        assertEquals(Screen.FileDetail(file.id), m.screen.value)
+    }
+
+    /** Templates imported from files: a signed pack must carry the release key, unsigned pages only serve testing. */
+    @Test
+    fun zkTemplateImportFromFiles() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (m, p) = newWallet()
+        val templates = m.zkTemplates
+        suspend fun import(vararg files: PickedFile): ZkTemplatesModel.State {
+            p.picks = files.toList()
+            templates.importFiles()
+            return withTimeout(30.seconds) { templates.state.first { !it.running && it.notice != null } }.also {
+                templates.state.value = it.copy(notice = null)
+            }
+        }
+        val served = http.get("$base/zktls/profiles").bodyAsText()
+        val page = (diw.wallet.core.util.DiwJson.parseToJsonElement(served) as kotlinx.serialization.json.JsonObject)["profiles"]!!
+            .let { it as kotlinx.serialization.json.JsonArray }.single().toString()
+
+        // A pack signed with another key is refused.
+        val foreign = diw.wallet.core.zk.ZkTemplatePack.sign(
+            diw.wallet.core.zk.ZkTemplatePack(1, kotlin.time.Clock.System.now(), emptyList(), emptyList()),
+            org.multipaz.crypto.AsymmetricKey.AnonymousExplicit(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256), org.multipaz.crypto.Algorithm.ES256),
+        )
+        var st = import(PickedFile("zk-templates.jwt", foreign.encodeToByteArray()))
+        assertTrue("發布金鑰" in st.notice!!, st.notice)
+        assertNull(st.version)
+
+        // One page, then the same page in a ZIP (as GitHub hands out CI artifacts): kept once.
+        st = import(PickedFile("page.json", page.encodeToByteArray()))
+        assertEquals(listOf(diw.testservers.zktls.ZkTlsRecordPage.PROFILE_ID), st.testPages.map { it.id })
+        val zip = diw.wallet.core.document.sign.DocumentSigning.zip(listOf("templates/page.json" to page.encodeToByteArray(), "notes.txt" to "x".encodeToByteArray()))
+        st = import(PickedFile("zk-templates.zip", zip))
+        assertEquals(1, st.testPages.size)
+        assertTrue("1 個測試查驗頁" in st.notice!!, st.notice)
+
+        // Imported pages survive a restart and are offered to the verifier as test pages, even without the server.
+        val (other, _) = newWallet(m.storage)
+        assertEquals(1, other.zkTemplates.state.value.testPages.size)
+        other.updateSettings { it.copy(testServerUrl = "http://localhost:1") }.join()
+        other.taiwan.zkTls.openSetup()
+        val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            other.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        assertEquals(setOf(diw.testservers.zktls.ZkTlsRecordPage.PROFILE_ID), setup.testPages)
+
+        // Outside the test environment unsigned pages are refused and not offered.
+        m.updateSettings { it.copy(testEnvironment = false) }.join()
+        st = import(PickedFile("page.json", page.encodeToByteArray()))
+        assertTrue("測試環境" in st.notice!!, st.notice)
+        m.taiwan.zkTls.openSetup()
+        val plain = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        assertTrue(plain.pages.isEmpty())
+
+        templates.clearTestPages()
+        withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
     }
 }

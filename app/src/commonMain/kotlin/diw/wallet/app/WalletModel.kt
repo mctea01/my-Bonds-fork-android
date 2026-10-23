@@ -43,6 +43,7 @@ import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
 import diw.wallet.core.profile.bonds.BondsAgeRequest
+import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
 import diw.wallet.core.profile.bonds.HeldMoicaCard
@@ -130,8 +131,17 @@ data class WalletSettings(
     val testEnvironment: Boolean = false,
     val allowLoopbackHttp: Boolean = false,
     val testServerUrl: String = "http://10.0.2.2:8080",
-    /** Bonds-compatible age host for the Verify tab's zero-knowledge age check (the test server API); empty uses the test server in the test environment. */
+    /**
+     * Production server (diw-wallet-server) for the relay, the zkTLS verifier host and the Bonds-compatible age host;
+     * empty uses the test server in the test environment.
+     */
     val zkVerifierUrl: String = "",
+    /** Access token for [zkVerifierUrl]'s zkTLS host, sent only to that address (settings are stored encrypted). */
+    val serverToken: String = "",
+    /** SHA-256 of the signing root the user trusted for [zkVerifierUrl]; a different root needs a new confirmation. */
+    val serverRootSha256: String = "",
+    /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
+    val serverVerifierDid: String = "",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */
@@ -170,7 +180,7 @@ data class WalletSettings(
     val timestampOnSave: Boolean = false,
     /** Keep the time-stamp authority's revocation data (OCSP first, else CRL) with every time stamp. */
     val timestampRevocation: Boolean = true,
-    /** PAdES level the signing screen starts with (PadesLevel name). */
+    /** Baseline level the signing screen starts with for every form (SignatureLevel name; the key predates CAdES and XAdES levels). */
     val padesLevel: String = "B_T",
     /**
      * National ID number the holder saved for MyData (Bonds MyDataAutofillProfile): filled into MyData sign-in pages
@@ -345,6 +355,8 @@ class WalletModel(val platform: PlatformServices) {
     /** Document statuses, kept current in the background. */
     val status = StatusMonitor(this)
     val statuses get() = status.statuses
+    /** The production server and the trust in its signing root. */
+    val server = ServerModel(this)
     /** Stored X.509 anchors (null until loaded) and the DIDs the user trusts, for the trust anchors screen. */
     val anchors = MutableStateFlow<List<StoredAnchor>?>(null)
     val trustedDids = MutableStateFlow<List<UserTrustedDid>>(emptyList())
@@ -683,8 +695,9 @@ class WalletModel(val platform: PlatformServices) {
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             Screen.Offline -> {
+                val file = taiwan.zkTls.queryFile
                 taiwan.closeOffline()
-                screen.value = Screen.Home
+                screen.value = file?.let { Screen.FileDetail(it) } ?: Screen.Home
             }
             Screen.MsIssuance -> {
                 ms.cancel()
@@ -959,6 +972,10 @@ class WalletModel(val platform: PlatformServices) {
         }
         // The mobile citizen certificate app returns here after signing; the signing screen is polling already.
         platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
+        if (ZkTlsSessionRequest.looksLike(u)) {
+            taiwan.zkTls.start(u)
+            return
+        }
         if (BondsAgeRequest.looksLike(u)) {
             taiwan.startBondsAge(u)
             return
