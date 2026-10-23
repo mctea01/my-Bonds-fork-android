@@ -12,6 +12,7 @@ import diw.wallet.core.zk.OpenAcAgeCheck
 import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
+import diw.wallet.core.zktls.ZkTlsEngine
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -199,6 +200,15 @@ class ZkModel(
                 proving.withLock { withTimeoutOrNull(VERIFY_TIMEOUT) { engine.verify(check) } ?: ZkResult.Failed(TIMED_OUT, true) }
             }
         })
+    }
+
+    /** The zkTLS engine, or why this device has none. It needs the native library only (no circuit assets). */
+    suspend fun tls(): ZkResult<ZkTlsEngine> {
+        val capable = withContext(dispatcher) { capability.value ?: evaluate() }
+        if (ZkBackend.TLSN !in capable.backends) {
+            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.TLSN] ?: "此版本沒有網站查驗證明引擎（zkTLS）", false)
+        }
+        return environment?.tls?.let { ZkResult.Ok(it) } ?: ZkErrors.unsupported
     }
 
     /** Downloads [ids] one after another with progress; stops at the first failure, which stays in [downloads]. */

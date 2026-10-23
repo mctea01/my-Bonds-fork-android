@@ -1854,4 +1854,66 @@ class WalletModelE2eTest {
         assertTrue("身分驗證" in e.message!!, e.message)
         assertEquals(before, m.screen.value, "the signing screen comes back")
     }
+
+    /**
+     * zkTLS between two wallets on the test server's synthetic record page: the verifier checks the proof itself
+     * (local network or relay), then lets the host check one. Only the status and the chosen fields are revealed.
+     */
+    @Test
+    fun zkTlsCheckBetweenTwoWallets() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (verifier, _) = newWallet()
+        val (holder, _) = newWallet()
+        org.junit.jupiter.api.Assumptions.assumeTrue(verifier.zk.tls() is diw.wallet.core.zk.ZkResult.Ok, "native library without tlsn")
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+
+        suspend fun round(expectLocal: Boolean) {
+            verifier.taiwan.zkTls.openSetup()
+            val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+            })
+            val page = setup.pages.single { it.id == record.PROFILE_ID }
+            assertTrue(page.id in setup.testPages)
+            verifier.taiwan.zkTls.startVerifier(page, listOf("name", "date"), "資格確認")
+            val waiting = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting || it is OfflineUi.Failed }
+            })
+            assertEquals(expectLocal, waiting.local)
+
+            holder.handleUri(waiting.link)
+            val consent = assertIs<OfflineUi.ZkTlsConsent>(withTimeout(30.seconds) {
+                holder.taiwan.offline.first { (it is OfflineUi.ZkTlsConsent && it.session.request == waiting.request) || it is OfflineUi.Failed }
+            })
+            assertTrue(consent.inline)
+            // A malformed input stays on the consent screen.
+            holder.taiwan.zkTls.prove(consent, mapOf("serial" to "bad", "code" to record.CODE))
+            assertEquals("證號格式不符", assertIs<OfflineUi.ZkTlsConsent>(holder.taiwan.offline.value).error)
+            holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+            val proved = assertIs<OfflineUi.ZkTlsHolderResult>(withTimeout(180.seconds) {
+                holder.taiwan.offline.first { it is OfflineUi.ZkTlsHolderResult }
+            })
+            assertNull(proved.error, proved.error)
+            assertTrue(proved.proved!!.outcome.passed, proved.proved.outcome.toString())
+
+            val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
+                verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
+            })
+            val outcome = assertNotNull(result.outcome, result.error)
+            assertTrue(outcome.passed && outcome.found)
+            assertEquals(mapOf("name" to record.NAME, "date" to record.DATE), outcome.fields)
+            assertEquals(expectLocal, result.local)
+            assertTrue(record.HIDDEN !in outcome.toString() && record.SERIAL !in outcome.toString())
+        }
+        round(expectLocal = true)
+        // Without the engine here the test server checks the proof.
+        verifier.taiwan.zkTls.engines = { diw.wallet.core.zk.ZkResult.Failed("no engine", false) }
+        round(expectLocal = false)
+
+        val presented = holder.history.value.filter { it.kind == HistoryKind.PRESENTED }
+        assertEquals(2, presented.size)
+        assertTrue(presented.all { it.failure == null && "zkTLS" in it.note!! })
+        assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
+        assertEquals(2, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
+    }
 }

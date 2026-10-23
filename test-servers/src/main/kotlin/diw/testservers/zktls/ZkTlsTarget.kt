@@ -32,20 +32,26 @@ import kotlin.concurrent.thread
 
 /**
  * Local HTTPS target for TLSNotary tests. TLSNotary alpha.15 speaks TLS 1.2 only, so the server offers TLS 1.2 with
- * ECDHE-ECDSA AES-128-GCM. Each instance makes a fresh test CA and a localhost certificate (nothing is persisted)
+ * ECDHE-ECDSA AES-128-GCM. Each instance makes a fresh test CA and a certificate for [host] (nothing is persisted)
  * and answers every request with a synthetic body that starts with status=OK, with a Content-Length or, when
  * [chunked], in 127-byte chunks. Requests received are kept in [requests] so a test can check what was really sent.
+ * For localhost it listens on the loopback address only; for another name (a phone on the local network proving the
+ * page) on every address, at [fixedPort] when one is given so a firewall rule can name it.
  */
 class ZkTlsTarget(
     private val bodySize: Int = 24,
     private val chunked: Boolean = false,
     /** Answers a request head with a body instead of the status=OK filler (a synthetic record page). */
     private val responder: ((String) -> ByteArray)? = null,
+    /** The DNS name in the certificate; TLSNotary only connects to names, never to an IP address. */
+    val host: String = "localhost",
+    fixedPort: Int = 0,
 ) : AutoCloseable {
     private val caKeys = ecKeys()
     private val leafKeys = ecKeys()
     private val ca: X509Certificate = certificate("CN=DIW zkTLS Test CA", caKeys.public, "CN=DIW zkTLS Test CA", caKeys, authority = true)
-    private val leaf: X509Certificate = certificate("CN=localhost", leafKeys.public, "CN=DIW zkTLS Test CA", caKeys, authority = false)
+    private val leaf: X509Certificate = certificate("CN=$host", leafKeys.public, "CN=DIW zkTLS Test CA", caKeys, authority = false,
+        names = listOf(host, "localhost").distinct())
     private val server: SSLServerSocket
     private val acceptor: Thread
 
@@ -67,7 +73,8 @@ class ZkTlsTarget(
         }
         val keys = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, PASSWORD) }
         val context = SSLContext.getInstance("TLSv1.2").apply { init(keys.keyManagers, null, SecureRandom()) }
-        server = (context.serverSocketFactory.createServerSocket(0, 8, InetAddress.getByName("127.0.0.1")) as SSLServerSocket).apply {
+        val bind = if (host == "localhost") InetAddress.getByName("127.0.0.1") else null
+        server = (context.serverSocketFactory.createServerSocket(fixedPort, 8, bind) as SSLServerSocket).apply {
             enabledProtocols = arrayOf("TLSv1.2")
             enabledCipherSuites = arrayOf("TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256")
         }
@@ -125,7 +132,14 @@ class ZkTlsTarget(
 
         fun ecKeys(): KeyPair = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
 
-        fun certificate(subject: String, publicKey: java.security.PublicKey, issuer: String, issuerKeys: KeyPair, authority: Boolean): X509Certificate {
+        fun certificate(
+            subject: String,
+            publicKey: java.security.PublicKey,
+            issuer: String,
+            issuerKeys: KeyPair,
+            authority: Boolean,
+            names: List<String> = emptyList(),
+        ): X509Certificate {
             val now = System.currentTimeMillis()
             val utils = JcaX509ExtensionUtils()
             val builder = JcaX509v3CertificateBuilder(
@@ -139,7 +153,7 @@ class ZkTlsTarget(
             } else {
                 builder.addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature))
                     .addExtension(Extension.extendedKeyUsage, false, ExtendedKeyUsage(KeyPurposeId.id_kp_serverAuth))
-                    .addExtension(Extension.subjectAlternativeName, false, GeneralNames(GeneralName(GeneralName.dNSName, "localhost")))
+                    .addExtension(Extension.subjectAlternativeName, false, GeneralNames(names.map { GeneralName(GeneralName.dNSName, it) }.toTypedArray()))
             }
             val signer = JcaContentSignerBuilder("SHA256withECDSA").build(issuerKeys.private)
             return JcaX509CertificateConverter().getCertificate(builder.build(signer))

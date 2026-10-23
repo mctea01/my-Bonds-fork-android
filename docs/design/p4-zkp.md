@@ -135,10 +135,11 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 - 通道一律端對端加密：Noise `NK_25519_ChaChaPoly_SHA256`，回應方靜態公鑰為請求內的 `ck`，prologue 為請求 JWS 的 SHA-256，所以通道綁定到這一次已簽章的請求。傳輸層只負責搬運密文，不參與信任判定。
 - `transport` 是陣列，列出查驗方可用的路徑，錢包依序嘗試：
   - `{"type":"wss","url":"wss://…"}`：查驗方是伺服器或電腦版（M6a，過渡方案）。
-  - `{"type":"lan","host":"<IPv4 或 IPv6>","port":<埠>}`：查驗方手機在同一個區域網路開啟 WebSocket 伺服器（明文 ws，安全性來自 Noise）。只接受私有位址。
+  - `{"type":"lan","host":"<私有 IPv4>","port":<埠>}`：查驗方手機在同一個區域網路（Wi-Fi 或熱點）的每個位址開啟 TCP 伺服器，直接傳 Noise 位元組，不加 WebSocket 框架（Noise 自己有長度欄位；2026-10-23 實作時由 ws 改為 TCP，Android release 不需要明文 HTTP 堆疊）。只接受 `BondsAgeRequest.lanHost` 允許的私有位址。查驗方先讀第一段資料確認是 Noise 握手再開始驗證。
   - `{"type":"relay","url":"wss://…","room":"<隨機 16 bytes base64url>"}`：雙方都連到中繼，中繼以 `room` 配對後只轉送位元組，看不到內容。中繼可由使用者的主機或測試伺服器提供（`test-servers` 內附可部署的實作），不需要信任。
 - Proxy 模式下查驗方手機要能連到目標網站；MPC 模式的傳輸量大（數十 MB【推論】），手機查驗方預設 Proxy。BLE 頻寬不足，P4 不採用；WP1 量測後再評估 Proxy 模式小頁面是否可行。
-- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。
+- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。裝置沒有 tlsn 引擎時改由查驗主機（年齡查驗主機的設定，測試環境為測試伺服器）建立請求並驗證，畫面標明結果來自主機。
+- 查驗頁描述檔隨 GitHub Release 發布（2026-10-23 使用者決定）：`templates/` 的檔案由 CI 打包成 `zk-templates.jwt`（`typ` 為 `zk-templates+jwt` 的 ES256 JWS，簽章金鑰為 repo Secret `ZK_TEMPLATES_KEY`，公鑰釘選在 `ZkTemplatePack.TRUSTED_KEYS`），附在 nightly 預先發布版。App 每天檢查一次，只安裝比已安裝版本新的版型包。版型只描述版面與揭露範圍，電路仍釘選在 App 內。不在版型包內的查驗頁只能隨請求附上（`profile_def`），只在測試環境接受。
 
 離線與存證：
 
