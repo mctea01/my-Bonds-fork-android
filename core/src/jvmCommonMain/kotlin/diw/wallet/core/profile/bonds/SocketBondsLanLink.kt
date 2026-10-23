@@ -33,13 +33,39 @@ import kotlin.time.Duration
  * reach the other phone. Null uses the default route (desktops).
  */
 class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketFactory? = { null }) : BondsLanLink {
-    override fun localAddresses(): List<String> = interfaceAddresses()
-        .filter { (name, a) -> a.address.isSiteLocalAddress && rank(name) < REMOTE_RANK }
+    override fun localInterfaces(): List<LanInterface> = interfaceAddresses()
+        .filter { (nic, a) -> a.address.isSiteLocalAddress && rank(nic.name) < REMOTE_RANK && !virtual(nic) }
         // Wi-Fi and hotspot interfaces first. Mobile data and VPN tunnels are left out: another phone on the same
         // Wi-Fi cannot reach their private addresses, and listening there would only expose the socket to the carrier.
-        .sortedBy { (name, _) -> rank(name) }
-        .map { it.second.address.hostAddress!! }
-        .distinct()
+        .sortedBy { (nic, _) -> rank(nic.name) * 10 + kind(nic).ordinal }
+        .map { (nic, a) -> LanInterface(a.address.hostAddress!!, nic.name, nic.displayName?.takeIf { it.isNotBlank() } ?: nic.name, kind(nic)) }
+        .distinctBy { it.address }
+
+    /**
+     * Adapters no phone can reach: virtual machine, container and tunnel adapters (Hyper-V, WSL, VirtualBox, VMware,
+     * Docker, bridges). Windows names every card ethN, so the display name decides there.
+     */
+    private fun virtual(nic: NetworkInterface): Boolean {
+        val name = nic.name.lowercase()
+        val display = nic.displayName.orEmpty().lowercase()
+        // Windows' mobile hotspot runs on the Wi-Fi Direct virtual adapter: another phone does reach that one.
+        if ("wi-fi direct" in display) return false
+        return VIRTUAL_NAMES.any { name.startsWith(it) } || VIRTUAL_WORDS.any { it in display }
+    }
+
+    private fun kind(nic: NetworkInterface): LanInterface.Kind {
+        val name = nic.name.lowercase()
+        val display = nic.displayName.orEmpty().lowercase()
+        return when {
+            HOTSPOT.any { name.startsWith(it) } || "wi-fi direct" in display -> LanInterface.Kind.HOTSPOT
+            name.startsWith("wlan") || name.startsWith("wifi") || name.startsWith("wl") ||
+                listOf("wi-fi", "wireless", "802.11", "wlan").any { it in display } -> LanInterface.Kind.WIFI
+            listOf("ethernet", "gbe", "gigabit", "realtek", "intel(r) ethernet").any { it in display } -> LanInterface.Kind.ETHERNET
+            // Linux and Android name wired cards ethN; macOS en0 is often Wi-Fi, so it stays unnamed.
+            name.startsWith("eth") && (display.isEmpty() || display == name) -> LanInterface.Kind.ETHERNET
+            else -> LanInterface.Kind.OTHER
+        }
+    }
 
     override fun preferred(urls: List<String>): List<String> {
         val own = interfaceAddresses().map { it.second }
@@ -50,10 +76,10 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
     }
 
     /** IPv4 addresses of the interfaces that are up, with their interface names. */
-    private fun interfaceAddresses(): List<Pair<String, InterfaceAddress>> = runCatching {
+    private fun interfaceAddresses(): List<Pair<NetworkInterface, InterfaceAddress>> = runCatching {
         NetworkInterface.getNetworkInterfaces().toList()
             .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-            .flatMap { nic -> nic.interfaceAddresses.filter { it.address is Inet4Address }.map { nic.name to it } }
+            .flatMap { nic -> nic.interfaceAddresses.filter { it.address is Inet4Address }.map { nic to it } }
     }.getOrDefault(emptyList())
 
     private fun sameSubnet(own: InterfaceAddress, other: Inet4Address): Boolean {
@@ -199,6 +225,10 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         const val MAX_LINE = 8192
         const val REPLY_MAX = 64 * 1024
         val LOCAL = listOf("wlan", "swlan", "ap", "en", "eth", "wifi", "softap")
+        val HOTSPOT = listOf("swlan", "ap", "softap")
+        val VIRTUAL_NAMES = listOf("docker", "br-", "veth", "virbr", "vmnet", "vboxnet", "zt", "tailscale", "lxc", "lxd", "cni", "flannel", "podman")
+        val VIRTUAL_WORDS = listOf("hyper-v", "virtual", "vmware", "virtualbox", "wsl", "vethernet", "loopback", "tap-", "tunnel",
+            "bluetooth", "zerotier", "tailscale", "wireguard", "openvpn", "docker")
         val REMOTE = listOf("rmnet", "ccmni", "tun", "ppp", "ipsec", "wg", "utun", "clat", "v4-")
         val ERROR = """{"status":"failed","accepted":false,"reason":"查驗請求不存在或格式不符"}""".encodeToByteArray()
     }

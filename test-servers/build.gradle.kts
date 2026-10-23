@@ -16,6 +16,7 @@ dependencies {
     implementation(project(":core"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
+    implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.client.java)
     implementation(libs.bcprov)
     implementation(libs.bcpkix)

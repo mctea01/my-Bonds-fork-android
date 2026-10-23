@@ -5,6 +5,16 @@ import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.verifier.PresentationVerifier
+import diw.testservers.zktls.ZkTlsRecordPage
+import diw.testservers.zktls.ZkTlsRelay
+import diw.testservers.zktls.ZkTlsTarget
+import diw.testservers.zktls.ZkTlsVerifierService
+import diw.testservers.zktls.zkTlsRelayRoutes
+import diw.testservers.zktls.zkTlsVerifierRoutes
+import io.ktor.server.application.install
+import io.ktor.server.websocket.WebSockets
+import kotlinx.io.bytestring.ByteString
+import org.multipaz.crypto.X509Cert
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.java.Java
 import io.ktor.server.engine.EmbeddedServer
@@ -29,6 +39,8 @@ class TestServers(
     issuerOptions: IssuerOptions = IssuerOptions(),
     /** Checks Bonds age proofs on the server; without it the age verifier only relays. */
     ageVerifier: diw.wallet.core.zk.OpenAcAgeVerifier? = null,
+    /** Whether the native library here has TLSNotary; without it zkTLS sessions are refused (the relay still works). */
+    zkTls: suspend () -> Boolean = { false },
 ) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true))
@@ -44,6 +56,11 @@ class TestServers(
     val walletProvider = WalletProviderService(baseUrl, pki)
     val bondsAge = BondsAgeService(baseUrl, ageVerifier, diw.wallet.core.did.DidResolver(httpClient))
 
+    /** The synthetic record page zkTLS sessions prove, started on first use (localhost, its own test CA). */
+    val recordPage: ZkTlsTarget by lazy { ZkTlsTarget(responder = ZkTlsRecordPage::respond) }
+    val zkTlsRelay = ZkTlsRelay()
+    val zkTlsVerifier = ZkTlsVerifierService(baseUrl, pki, { listOf(ZkTlsRecordPage.profile(recordPage.port)) }, { listOf(recordPage.caDer) }, zkTls)
+
     suspend fun init(): TestServers {
         trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", official = false, source = "diw-test-servers")
         trust.addAnchor(TrustRole.WALLET_PROVIDER, TrustEnvironment.TEST, pki.walletProviderRootCert, "DIW TEST Wallet Provider", official = false, source = "diw-test-servers")
@@ -52,6 +69,7 @@ class TestServers(
 
     fun start(port: Int, wait: Boolean): EmbeddedServer<NettyApplicationEngine, NettyApplicationEngine.Configuration> =
         embeddedServer(Netty, port = port, host = "0.0.0.0") {
+            install(WebSockets) { maxFrameSize = 1L shl 20 }
             routing {
                 get("/") { call.respondText("DIW MY WALLET test servers (TEST environment only)\nVerifier test page: $baseUrl/verifier") }
                 get("/pki/{name}") {
@@ -59,6 +77,7 @@ class TestServers(
                         "iaca.pem" -> pki.iacaCert.toPem()
                         "verifier-root.pem" -> pki.readerRootCert.toPem()
                         "wallet-provider-root.pem" -> pki.walletProviderRootCert.toPem()
+                        "zktls-ca.pem" -> X509Cert(ByteString(recordPage.caDer)).toPem()
                         else -> null
                     }
                     if (pem == null) call.respondText("not found", status = io.ktor.http.HttpStatusCode.NotFound)
@@ -68,6 +87,8 @@ class TestServers(
                 issuerRoutes(issuer)
                 walletProviderRoutes(walletProvider)
                 bondsAgeRoutes(bondsAge)
+                zkTlsRelayRoutes(zkTlsRelay)
+                zkTlsVerifierRoutes(zkTlsVerifier)
             }
         }.start(wait = wait)
 }
@@ -81,8 +102,13 @@ fun main(args: Array<String>) = runBlocking {
         diw.wallet.core.zk.native.JvmZkEnvironment(data, HttpClient(Java)) { diw.wallet.core.zk.ZkPlatformInfo("server", 0, 0, 0, true) }
             .takeIf { it.loadNative() is diw.wallet.core.zk.ZkResult.Ok }
     }
-    val servers = TestServers(baseUrl, TestPki.create(pkiDir), ageVerifier = zk?.ageVerifier).init()
-    println("DIW test servers on $baseUrl (PKI in ${pkiDir.absolutePath}); Bonds age proofs ${if (zk != null) "verified here" else "relayed only"}")
+    // zkTLS needs only the native library (no assets): DIW_ZK_DATA is where it is unpacked.
+    val native = (System.getenv("DIW_ZK_DATA") ?: System.getenv("DIW_OPENAC_DATA"))?.let { File(it) }
+    val tls = native?.let { diw.wallet.core.zk.native.ZkNative.load(it) as? diw.wallet.core.zk.ZkResult.Ok }
+        ?.value?.backends?.contains(diw.wallet.core.zk.ZkBackend.TLSN) == true
+    val servers = TestServers(baseUrl, TestPki.create(pkiDir), ageVerifier = zk?.ageVerifier, zkTls = { tls }).init()
+    println("DIW test servers on $baseUrl (PKI in ${pkiDir.absolutePath}); Bonds age proofs ${if (zk != null) "verified here" else "relayed only"}; " +
+        "zkTLS ${if (tls) "verified here" else "relay only"}")
     servers.start(port, wait = true)
     Unit
 }
