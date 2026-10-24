@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -37,6 +38,7 @@ import diw.wallet.app.WalletModel
 import diw.wallet.app.ZkJobPhase
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.zktls.ZkTlsOutcome
 import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
@@ -80,17 +82,65 @@ private fun PageCard(profile: ZkTlsProfile, fields: List<String>, test: Boolean)
     }
 }
 
+/** Every input filled, and the picture fetched where the page uses one. */
+private fun inputsComplete(profile: ZkTlsProfile, inputs: Map<String, String>, captcha: ZkTlsPrepare.Session?): Boolean =
+    profile.request.inputs.all { !inputs[it.name].isNullOrEmpty() } && (!ZkTlsPrepare.needed(profile) || captcha != null)
+
+/** The page's inputs, with the picture code above its answer where the page uses one. */
+@Composable
+private fun QueryInputs(
+    model: WalletModel,
+    profile: ZkTlsProfile,
+    inputs: MutableMap<String, String>,
+    captcha: ZkTlsPrepare.Session?,
+    preparing: Boolean,
+    forFile: String?,
+    onRefresh: () -> Unit,
+) {
+    val captchaInput = profile.prepare.input.takeIf { ZkTlsPrepare.needed(profile) }
+    val fromFiles by model.taiwan.zkTls.documentValues.collectAsState()
+    // Each picture takes its own answer.
+    LaunchedEffect(captcha) { captchaInput?.let { inputs.remove(it) } }
+    // A query started from a file takes that file's values; other files' values are offered below their input.
+    LaunchedEffect(fromFiles, forFile) {
+        fromFiles.filter { it.fileId == forFile }.forEach { v -> if (inputs[v.input].isNullOrEmpty()) inputs[v.input] = v.value }
+    }
+    profile.request.inputs.forEach { input ->
+        if (input.name == captchaInput) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val picture = remember(captcha) { captcha?.let { model.platform.decodeImage(it.image) } }
+                when {
+                    picture != null -> Image(picture, contentDescription = "驗證碼圖片", contentScale = ContentScale.Fit,
+                        modifier = Modifier.height(64.dp).widthIn(max = 200.dp))
+                    preparing -> Text("正在取得驗證碼", style = MaterialTheme.typography.bodySmall)
+                    else -> Text("沒有驗證碼圖片", style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedButton(onClick = onRefresh, enabled = !preparing) { Text("換一張") }
+            }
+        }
+        OutlinedTextField(
+            value = inputs[input.name].orEmpty(),
+            onValueChange = { inputs[input.name] = it.trim().take(200) },
+            label = { Text(input.label + if (input.isPrivate) "（不揭露）" else "") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        fromFiles.filter { it.input == input.name && it.value != inputs[input.name] }.forEach { v ->
+            TextButton(onClick = { inputs[input.name] = v.value }) { Text("帶入「${v.fileName}」的${input.label}") }
+        }
+    }
+}
+
 @Composable
 internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
     val request = s.session.request
     val inputs = remember(s.session.jws) { mutableStateMapOf<String, String>() }
     var confirm by remember(s) { mutableStateOf(false) }
-    var keep by remember(s.session.jws) { mutableStateOf(false) }
+    // A query started from a file keeps its result by default, as that file's evidence.
+    var keep by remember(s.session.jws) { mutableStateOf(s.forFile != null) }
     val left = secondsLeft(request)
     val captchaInput = s.profile.prepare.input.takeIf { ZkTlsPrepare.needed(s.profile) }
-    // Each picture takes its own answer.
-    LaunchedEffect(s.captcha) { captchaInput?.let { inputs.remove(it) } }
-    val complete = s.profile.request.inputs.all { !inputs[it.name].isNullOrEmpty() } && (captchaInput == null || s.captcha != null)
+    val complete = inputsComplete(s.profile, inputs, s.captcha)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TrustCard("查驗方", s.verifier, s.trust, listOf("用途：" + request.purpose.ifEmpty { "未說明" }))
         PageCard(s.profile, request.fields, s.inline)
@@ -99,27 +149,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
         if (captchaInput != null) {
             Text("驗證碼圖片由這支手機直接向網站取得，查驗方看不到圖片、驗證碼與網站的 Cookie。", style = MaterialTheme.typography.bodySmall)
         }
-        s.profile.request.inputs.forEach { input ->
-            if (input.name == captchaInput) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val picture = remember(s.captcha) { s.captcha?.let { model.platform.decodeImage(it.image) } }
-                    when {
-                        picture != null -> Image(picture, contentDescription = "驗證碼圖片", contentScale = ContentScale.Fit,
-                            modifier = Modifier.height(64.dp).widthIn(max = 200.dp))
-                        s.preparing -> Text("正在取得驗證碼", style = MaterialTheme.typography.bodySmall)
-                        else -> Text("沒有驗證碼圖片", style = MaterialTheme.typography.bodySmall)
-                    }
-                    OutlinedButton(onClick = { model.taiwan.zkTls.refreshCaptcha(s) }, enabled = !s.preparing) { Text("換一張") }
-                }
-            }
-            OutlinedTextField(
-                value = inputs[input.name].orEmpty(),
-                onValueChange = { inputs[input.name] = it.trim().take(200) },
-                label = { Text(input.label + if (input.isPrivate) "（不揭露）" else "") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing, s.forFile) { model.taiwan.zkTls.refreshCaptcha(s) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = keep, onCheckedChange = { keep = it })
             Column {
@@ -136,7 +166,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
                 onClick = { if (s.trust.tier == TrustTier.T4) confirm = true else model.taiwan.zkTls.prove(s, inputs.toMap(), keep) },
                 enabled = left > 0 && complete,
             ) { Text("查詢並產生證明") }
-            OutlinedButton(onClick = { model.back() }) { Text("取消") }
+            OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.forFile) }) { Text("取消") }
         }
     }
     if (confirm) {
@@ -175,7 +205,7 @@ internal fun ZkTlsProvingView(model: WalletModel, s: OfflineUi.ZkTlsProving) {
 
 /** The values the verifier reads back, under the page's labels. */
 private fun outcomeLines(o: ZkTlsOutcome, fields: List<String>): List<String> = buildList {
-    add("查詢狀態：" + (o.statusText ?: "未揭露") + if (o.found) "（找到資料）" else "")
+    add("查詢狀態：" + (o.statusText?.let { WebProofCredentials.plainStatus(it) } ?: "未揭露") + if (o.found) "（找到資料）" else "")
     fields.forEach { name ->
         val label = o.profile.field(name)?.label ?: name
         add("$label：" + (o.fields[name] ?: "頁面沒有此欄位"))
@@ -233,7 +263,7 @@ internal fun ZkTlsHolderResultView(model: WalletModel, s: OfflineUi.ZkTlsHolderR
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (s.retry) Button(onClick = { model.taiwan.zkTls.retry(s.consent) }) { Text("重試") }
-            OutlinedButton(onClick = { model.back() }) { Text("完成") }
+            OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.consent.forFile) }) { Text(if (s.consent.forFile != null) "回到文件" else "完成") }
         }
     }
 }
@@ -318,7 +348,7 @@ internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerif
             o.passed && s.local -> VerdictCard(Verdict.PASS, "查驗通過：${s.profile.title}", listOf("連線與揭露的內容已在這支手機驗證。"))
             o.passed -> VerdictCard(Verdict.CAUTION, "${s.where} 回報：查驗通過", listOf("這支手機沒有驗證證明本身，結果取決於 ${s.where}。"))
             else -> VerdictCard(Verdict.FAIL, "查驗未通過", o.problems + o.missing.map { "沒有揭露 " + (s.profile.field(it)?.label ?: it) } +
-                listOfNotNull("網站回應的查詢狀態是「${o.statusText}」".takeIf { o.statusText != null && !o.found }))
+                listOfNotNull("網站回應的查詢狀態是「${o.statusText?.let { WebProofCredentials.plainStatus(it) }}」".takeIf { o.statusText != null && !o.found }))
         }
         if (o != null) {
             Card(Modifier.fillMaxWidth()) {
@@ -333,5 +363,117 @@ internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerif
         }
         Text("用途：${s.request.purpose.ifEmpty { "未說明" }}", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { model.back() }) { Text("完成") }
+    }
+}
+
+@Composable
+internal fun ZkTlsSelfPickView(model: WalletModel, s: OfflineUi.ZkTlsSelfPick) {
+    var index by remember(s) { mutableStateOf(0) }
+    val page = s.pages.getOrNull(index)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("到官方查驗頁查詢" + if (s.fileId != null) "，把結果存成這份文件的證據。" else "並保存結果。", style = MaterialTheme.typography.bodyMedium)
+        s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        if (s.pages.isEmpty()) {
+            OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.fileId) }) { Text("返回") }
+            return@Column
+        }
+        Text("查驗頁", style = MaterialTheme.typography.titleSmall)
+        s.pages.forEachIndexed { i, p ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(selected = i == index, onClick = { index = i })
+                Column {
+                    Text(p.title + if (p.id in s.testPages) "（測試）" else "")
+                    Text(site(p), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        if (page != null) {
+            Text("保存的欄位：查詢狀態、" + page.fields.joinToString("、") { it.label }, style = MaterialTheme.typography.bodySmall)
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("透過查驗主機（zkTLS）", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        s.host?.let { "查驗主機 $it 與這支手機協同查詢並驗證連線，簽發回執後存為網站查驗證明，他人可驗證。主機看不到你填的資料。" }
+                            ?: "尚未設定查驗主機，可到設定的「零知識證明」頁設定。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("只用這支手機", style = MaterialTheme.typography.titleSmall)
+                    Text("這支手機自己連到網站查詢，結果由這個錢包簽署存為本機紀錄。這是裝置證明，不是零知識證明，信任程度較低。",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        Button(onClick = { model.taiwan.zkTls.selfThroughHost(s, page!!) }, enabled = page != null && s.host != null) { Text("透過查驗主機產生 zkTLS 證明") }
+        OutlinedButton(onClick = { model.taiwan.zkTls.selfDirect(s, page!!) }, enabled = page != null) { Text("只用這支手機查詢並保存") }
+        OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.fileId) }) { Text("取消") }
+    }
+}
+
+@Composable
+internal fun ZkTlsSelfView(model: WalletModel, s: OfflineUi.ZkTlsSelf) {
+    val inputs = remember(s.profile.id) { mutableStateMapOf<String, String>() }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PageCard(s.profile, s.profile.fields.map { it.name }, false)
+        Text("這支手機直接連到網站查詢，沒有其他人參與；你填的資料只送到網站。", style = MaterialTheme.typography.bodySmall)
+        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing, s.fileId) { model.taiwan.zkTls.refreshSelfCaptcha(s) }
+        s.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        if (s.working) {
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Text("正在查詢 ${s.profile.host}", style = MaterialTheme.typography.bodySmall)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { model.taiwan.zkTls.queryDirect(s, inputs.toMap()) }, enabled = !s.working && inputsComplete(s.profile, inputs, s.captcha)) {
+                Text("查詢並保存")
+            }
+            OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.fileId) }) { Text("取消") }
+        }
+    }
+}
+
+@Composable
+internal fun ZkTlsSelfResultView(model: WalletModel, s: OfflineUi.ZkTlsSelfResult) {
+    val o = s.outcome
+    val fields = s.state.profile.fields.map { it.name }
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when {
+            o == null -> VerdictCard(Verdict.FAIL, "沒有完成網站查詢", listOfNotNull(s.error))
+            o.passed -> VerdictCard(Verdict.PASS, "已查到資料：${s.state.profile.title}", listOf("下面是這支手機從網站讀到的內容。"))
+            else -> VerdictCard(Verdict.FAIL, "沒有查到資料", o.problems + o.missing.map { "頁面沒有 " + (s.state.profile.field(it)?.label ?: it) } +
+                listOfNotNull("網站回應的查詢狀態是「${o.statusText?.let { WebProofCredentials.plainStatus(it) }}」".takeIf { o.statusText != null && !o.found }))
+        }
+        if (o != null) {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("讀到的內容", style = MaterialTheme.typography.titleSmall)
+                    outcomeLines(o, fields).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    serverLines(o.serverName, o.time, s.serverTrust).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
+        s.kept?.let { k ->
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("已保存本機紀錄", style = MaterialTheme.typography.titleSmall)
+                    Text("由這個錢包簽署，說明這台裝置讀到的內容；這是裝置證明，不是零知識證明。可在「證件」出示" +
+                        if (s.state.fileId != null) "，也列在這份文件的證據中。" else "。", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+        s.fetched?.let { f ->
+            TechDetails(listOf(
+                "TLS 版本：${f.protocol}",
+                "TLS 加密套件：${f.cipherSuite}",
+                "網站憑證鏈：${f.certChainDer.size} 張",
+                "回應大小：${f.received.size} 位元組",
+            ), "zktls-self-${s.state.profile.id}")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (s.kept == null) Button(onClick = { model.taiwan.zkTls.retrySelf(s) }) { Text("重試") }
+            OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.state.fileId) }) { Text(if (s.state.fileId != null) "回到文件" else "完成") }
+        }
     }
 }

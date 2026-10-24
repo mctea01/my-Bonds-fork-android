@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
+import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.issuanceRecord
@@ -1030,7 +1031,7 @@ class WalletModelE2eTest {
         holder.files.import(PickedFile("copy.pdf", pdf), FileOrigin.IMPORTED, null).join()
         assertEquals(1, holder.files.files.value.size)
 
-        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false).join()
+        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false, level = PadesLevel.B_B).join()
         assertNull(holder.files.error.value, "sign: ${holder.files.error.value}")
         val signed = holder.files.files.value.first { it.origin == FileOrigin.SIGNED }
         val sig = signed.report!!.signatures.single()
@@ -1948,6 +1949,68 @@ class WalletModelE2eTest {
         assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
         assertEquals(3, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
         assertEquals(3, holder.history.value.count { it.kind == HistoryKind.ISSUED })
+    }
+
+    /**
+     * The holder's own query started from a file, on this device alone: the record is kept as the wallet's statement
+     * (a web-record, not a zero-knowledge proof), linked to the file, and leaving returns to the file.
+     */
+    @Test
+    fun zkTlsHolderQueryForFile() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (m, _) = newWallet()
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+        m.files.import(PickedFile("note.txt", "紀錄查詢單\n證號：${record.SERIAL}\n".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
+        val file = m.files.files.value.single()
+
+        m.taiwan.zkTls.openSelf(file.id)
+        val pick = assertIs<OfflineUi.ZkTlsSelfPick>(withTimeout(30.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfPick || it is OfflineUi.Failed }
+        })
+        assertEquals(file.id, pick.fileId)
+        val page = pick.pages.single { it.id == record.PROFILE_ID }
+        assertTrue(page.id in pick.testPages)
+        m.taiwan.zkTls.selfDirect(pick, page)
+        val state = assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value)
+        // The file the query was started from prints the serial, so it is offered for that input.
+        val offered = withTimeout(30.seconds) { m.taiwan.zkTls.documentValues.first { it.isNotEmpty() } }
+        assertEquals(listOf(ZkTlsFlow.DocumentValue(file.id, "note.txt", "serial", record.SERIAL)), offered)
+
+        // A malformed input stays on the query screen.
+        m.taiwan.zkTls.queryDirect(state, mapOf("serial" to "bad", "code" to record.CODE))
+        assertEquals("證號格式不符", assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value).error)
+        // No record: nothing is kept.
+        m.taiwan.zkTls.queryDirect(state, mapOf("serial" to "A123456789", "code" to record.CODE))
+        val missing = assertIs<OfflineUi.ZkTlsSelfResult>(withTimeout(60.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfResult } })
+        assertNull(missing.error, missing.error)
+        assertFalse(missing.outcome!!.found)
+        assertNull(missing.kept)
+        m.taiwan.zkTls.retrySelf(missing)
+        val again = assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value)
+
+        val before = m.documents.value.size
+        m.taiwan.zkTls.queryDirect(again, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+        val result = assertIs<OfflineUi.ZkTlsSelfResult>(withTimeout(60.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkTlsSelfResult }
+        })
+        assertNull(result.error, result.error)
+        assertTrue(result.outcome!!.passed, result.outcome.toString())
+        val kept = assertNotNull(result.kept)
+        assertFalse(kept.receipt)
+        assertEquals(before + 1, m.documents.value.size)
+        val doc = m.documentStore.lookupDocument(kept.documentId)!!
+        val claims = diw.wallet.core.zktls.WebProofCredentials.read(doc.getCertifiedCredentials().single().issuerProvidedData.decodeToString())
+        assertEquals(diw.wallet.core.zktls.WebProofCredentials.VCT_RECORD, doc.issuanceRecord!!.vct)
+        assertEquals(diw.wallet.core.zktls.WebProofCredentials.METHOD_DEVICE, claims.str("method"))
+        assertEquals(record.NAME, claims.str("name"))
+        assertEquals(record.DATE, claims.str("date"))
+        assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+        assertEquals(listOf(kept.documentId), m.files.files.value.single().webProofIds)
+        assertTrue(m.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
+
+        m.taiwan.zkTls.leave(file.id)
+        assertEquals(Screen.FileDetail(file.id), m.screen.value)
     }
 
     /** Templates imported from files: a signed pack must carry the release key, unsigned pages only serve testing. */

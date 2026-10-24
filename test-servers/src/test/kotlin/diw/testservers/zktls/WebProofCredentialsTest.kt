@@ -103,4 +103,15 @@ class WebProofCredentialsTest {
         val e = assertFailsWith<ProtocolException> { receipt(verifier, verifier.did, s, holderJwk(), o) }
         assertTrue("reserved" in e.message!!)
     }
+
+    /** The status segment is shown as text; the signed value is left as read. */
+    @Test
+    fun statusShownAsText() {
+        assertEquals("Online Verification Report of Student Record",
+            WebProofCredentials.plainStatus("<h4 class=\"marT8\">Online Verification Report of Student Record</h4>"))
+        assertEquals("入出國日期證明書驗證結果", WebProofCredentials.plainStatus("<h2>\n  入出國日期證明書驗證結果\n</h2>"))
+        assertEquals("A & B <C> \u00e9", WebProofCredentials.plainStatus("<p>A &amp; B &lt;C&gt;&nbsp;&#233;</p>"))
+        assertEquals("&#1; x", WebProofCredentials.plainStatus("&#1; x"))
+        assertEquals("<br>", WebProofCredentials.plainStatus("<br>"))
+    }
 }

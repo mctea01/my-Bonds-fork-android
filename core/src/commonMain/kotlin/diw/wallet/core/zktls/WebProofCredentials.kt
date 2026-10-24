@@ -77,6 +77,42 @@ object WebProofCredentials {
 
     fun method(mode: String): String = if (mode == "mpc") METHOD_MPC else METHOD_PROXY
 
+    /** Payload claims that say where and how the values were read: shown as the source, not as the credential's data. */
+    val SOURCE_CLAIMS = setOf("source", "method", "session", "device")
+
+    fun isWebCredential(vct: String?): Boolean = vct == VCT_PROOF || vct == VCT_RECORD
+
+    private val TAG = Regex("<[^>]*>")
+    private val SPACE = Regex("\\s+")
+    private val ENTITY = Regex("&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|amp|lt|gt|quot|apos|nbsp);")
+
+    /**
+     * The revealed status segment as text: tags dropped, common entities decoded, white space collapsed. The signed
+     * value stays the segment as read from the page; this is only how it is shown.
+     */
+    fun plainStatus(text: String): String {
+        val decoded = ENTITY.replace(TAG.replace(text, " ")) { m ->
+            when (val e = m.groupValues[1]) {
+                "amp" -> "&"
+                "lt" -> "<"
+                "gt" -> ">"
+                "quot" -> "\""
+                "apos" -> "'"
+                "nbsp" -> " "
+                else -> {
+                    val code = if (e[1] == 'x' || e[1] == 'X') e.drop(2).toIntOrNull(16) else e.drop(1).toIntOrNull()
+                    code?.takeIf { it in 0x20..0x10FFFF && it !in 0xD800..0xDFFF }?.let { codePoint(it) } ?: m.value
+                }
+            }
+        }
+        return SPACE.replace(decoded, " ").trim().ifEmpty { text.trim() }
+    }
+
+    private fun codePoint(c: Int): String = if (c < 0x10000) c.toChar().toString() else {
+        val v = c - 0x10000
+        charArrayOf((0xD800 + (v shr 10)).toChar(), (0xDC00 + (v and 0x3FF)).toChar()).concatToString()
+    }
+
     /** The selectively disclosable claims of a passed check: each field read, then the status text. */
     fun claims(outcome: ZkTlsOutcome): List<DerivedClaim> =
         outcome.fields.map { (name, value) -> DerivedClaim(name, value, outcome.profile.field(name)?.label) } +

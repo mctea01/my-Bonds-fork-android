@@ -54,4 +54,16 @@ class ClaimLabelsTest {
         assertEquals("Card number", ClaimLabels(listOf("en")).label(listOf("cardNumber"), emptyMap()))
         assertEquals("Family Name", ClaimLabels(listOf("en")).label(listOf("family_name"), emptyMap(), "Family Name"))
     }
+
+    /** The wallet's own credentials name their claims by the bare path; those names win over built-in and learned ones. */
+    @Test
+    fun walletOwnNames() {
+        val labels = ClaimLabels(listOf("zh-TW"))
+        labels.learn(listOf(draft13))
+        val own = mapOf("level" to "層次", "studyMode" to "學習形式", "name" to "姓名（護照）")
+        assertEquals("層次", labels.label(listOf("level"), own))
+        assertEquals("學習形式", labels.label(listOf("studyMode"), own))
+        assertEquals("姓名（護照）", labels.label(listOf("name"), own))
+        assertEquals("等級", labels.label(listOf("level"), emptyMap()))
+    }
 }

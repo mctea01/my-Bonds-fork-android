@@ -8,6 +8,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import io.ktor.http.parseServerSetCookieHeader
 
@@ -19,9 +20,12 @@ import io.ktor.http.parseServerSetCookieHeader
 object ZkTlsPrepare {
     const val MAX_IMAGE = 262_144
 
-    /** A prepared session: its cookies, and the picture the user reads. Kept in memory only. */
-    class Session(val cookies: Map<String, String>, val image: ByteArray) {
-        override fun toString() = "ZkTlsPrepare.Session(${cookies.keys}, ${image.size} bytes)"
+    /** Most of a prepared page read for its values. */
+    const val MAX_PAGE = 524_288
+
+    /** A prepared session: its cookies, the values read from its page, and the picture the user reads. Kept in memory only. */
+    class Session(val cookies: Map<String, String>, val image: ByteArray, val values: Map<String, String> = emptyMap()) {
+        override fun toString() = "ZkTlsPrepare.Session(${cookies.keys}, ${values.keys}, ${image.size} bytes)"
     }
 
     /** Whether [profile] needs a prepared session before the query. */
@@ -50,17 +54,32 @@ object ZkTlsPrepare {
             }
             return response
         }
+        val values = linkedMapOf<String, String>()
+        previous?.values?.let { values.putAll(it) }
         if (previous == null) prepare.page?.let { path ->
             val page = fetch(path)
             if (!page.status.isSuccess()) throw ProtocolException("prepare_failed", "網站回應 ${page.status.value}，無法開始查詢")
+            if (prepare.values.isNotEmpty()) {
+                val bytes = page.readRawBytes()
+                if (bytes.size > MAX_PAGE) throw ProtocolException("prepare_failed", "網站頁面過大")
+                val text = bytes.decodeToString()
+                prepare.values.forEach { v ->
+                    val value = Regex(v.pattern).find(text)?.groupValues?.getOrNull(1)
+                    if (value == null || !ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("prepare_failed", "網站頁面沒有查詢需要的欄位，頁面可能已改版")
+                    values[v.name] = value
+                }
+            }
         }
-        val picture = fetch(prepare.image!!)
+        val image = ZkTlsProfile.PLACEHOLDER.replace(prepare.image!!) { m ->
+            (values[m.groupValues[1]] ?: throw ProtocolException("prepare_failed", "網頁工作階段已失效")).encodeURLParameter()
+        }
+        val picture = fetch(image)
         if (!picture.status.isSuccess()) throw ProtocolException("prepare_failed", "網站回應 ${picture.status.value}，無法取得驗證碼圖片")
         if (picture.contentType()?.contentType != "image") throw ProtocolException("prepare_failed", "網站沒有回傳驗證碼圖片")
         val bytes = picture.readRawBytes()
         if (bytes.isEmpty() || bytes.size > MAX_IMAGE) throw ProtocolException("prepare_failed", "驗證碼圖片大小不符")
         val missing = prepare.cookies.filter { it !in cookies }
         if (missing.isNotEmpty()) throw ProtocolException("prepare_failed", "網站沒有建立查詢工作階段")
-        return Session(cookies.filterKeys { it in prepare.cookies }, bytes)
+        return Session(cookies.filterKeys { it in prepare.cookies }, bytes, values)
     }
 }

@@ -113,6 +113,93 @@ class ZkTlsPrepareTest {
         assertFailsWith<ProtocolException> { ZkTlsPlanner.request(p, mapOf("serial" to "123456", "code" to "Ab12"), mapOf("SID" to "a;b")) }
     }
 
+    /** A form page whose CSRF token and picture key are read from the page, sent back in a multipart body. */
+    private fun formProfile(
+        values: List<ZkTlsProfile.PageValue> = listOf(
+            ZkTlsProfile.PageValue("csrf", "name=\"_csrf\" value=\"([0-9a-f-]{8,64})\""),
+            ZkTlsProfile.PageValue("key", "id=\"captchaKey\" value=\"([0-9a-f]{8,64})\""),
+        ),
+        image: String = "/captcha/image?CAPTCHA_KEY={key}",
+        encoding: String = "multipart",
+        files: List<String> = listOf("uploadFile"),
+    ) = profile().let { p ->
+        p.copy(
+            prepare = captcha().copy(image = image, values = values),
+            request = p.request.copy(body = "_csrf={csrf}&serial={serial}&code={code}&captchaKey={key}", encoding = encoding, files = files),
+        )
+    }
+
+    private fun formSite(seen: MutableList<String>) = HttpClient(MockEngine { request ->
+        seen += request.url.encodedPath + "?" + request.url.encodedQuery
+        when (request.url.encodedPath) {
+            "/form" -> respond("<input name=\"_csrf\" value=\"0a1b2c3d-0000\"/><input id=\"captchaKey\" value=\"feedbeef01\"/>", HttpStatusCode.OK,
+                headersOf(HttpHeaders.SetCookie, "SID=s1; Path=/"))
+            "/captcha/image" -> if (request.url.parameters["CAPTCHA_KEY"] == "feedbeef01") {
+                respond(picture, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "image/jpeg"))
+            } else respond("no key", HttpStatusCode.NotFound)
+            else -> respond("", HttpStatusCode.NotFound)
+        }
+    }) { followRedirects = false }
+
+    @Test
+    fun pageValuesFillThePictureAndTheForm() = runBlocking<Unit> {
+        val p = formProfile().validated()
+        val seen = mutableListOf<String>()
+        formSite(seen).use { client ->
+            val session = ZkTlsPrepare.start(client, p)
+            assertEquals(mapOf("csrf" to "0a1b2c3d-0000", "key" to "feedbeef01"), session.values)
+            assertEquals("/captcha/image?CAPTCHA_KEY=feedbeef01", seen.last())
+            assertFalse("feedbeef01" in session.toString())
+            // A new picture keeps the page's values without opening the page again.
+            val again = ZkTlsPrepare.start(client, p, session)
+            assertEquals(session.values, again.values)
+            assertEquals(3, seen.size)
+
+            val bytes = ZkTlsPlanner.request(p, mapOf("serial" to "123456", "code" to "Ab12"), session.cookies, session.values)
+            val text = bytes.decodeToString()
+            val b = ZkTlsPlanner.BOUNDARY
+            assertTrue("\r\nContent-Type: multipart/form-data; boundary=$b\r\n" in text)
+            assertTrue("--$b\r\nContent-Disposition: form-data; name=\"_csrf\"\r\n\r\n0a1b2c3d-0000\r\n" in text)
+            assertTrue("--$b\r\nContent-Disposition: form-data; name=\"serial\"\r\n\r\n123456\r\n" in text)
+            assertTrue("--$b\r\nContent-Disposition: form-data; name=\"uploadFile\"; filename=\"\"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n--$b--\r\n" in text)
+            val length = text.substringAfter("Content-Length: ").substringBefore("\r\n").toInt()
+            assertEquals(length, bytes.size - text.indexOf("\r\n\r\n") - 4)
+            val shown = ZkTlsPlanner.sentReveal(p, bytes).joinToString("|") { bytes.copyOfRange(it.start, it.end).decodeToString() }
+            assertEquals("POST /result |Host: site.example\r\n", shown)
+            // Without the page's values the session has to be prepared again.
+            assertFailsWith<ProtocolException> { ZkTlsPlanner.request(p, mapOf("serial" to "123456", "code" to "Ab12"), session.cookies) }
+        }
+        // A page that no longer carries a value is refused before any picture is shown.
+        val changed = formProfile(values = listOf(ZkTlsProfile.PageValue("csrf", "name=\"token\" value=\"([0-9a-f]+)\""),
+            ZkTlsProfile.PageValue("key", "id=\"captchaKey\" value=\"([0-9a-f]{8,64})\"")))
+        formSite(mutableListOf()).use { client -> assertFailsWith<ProtocolException> { ZkTlsPrepare.start(client, changed) } }
+    }
+
+    @Test
+    fun pageValuesAreChecked() {
+        fun bad(p: ZkTlsProfile) = assertFailsWith<ProtocolException> { p.validated() }
+        bad(formProfile(image = "/captcha/image?CAPTCHA_KEY={other}"))
+        bad(formProfile(values = listOf(ZkTlsProfile.PageValue("serial", "v=\"([0-9]+)\""))))
+        bad(formProfile(values = listOf(ZkTlsProfile.PageValue("csrf", "no group"), ZkTlsProfile.PageValue("key", "k=([0-9]+)"))))
+        bad(formProfile(encoding = "form"))
+        bad(formProfile(encoding = "json"))
+        bad(profile().copy(prepare = ZkTlsProfile.Prepare(values = listOf(ZkTlsProfile.PageValue("csrf", "v=([0-9]+)")))))
+        formProfile(encoding = "form", files = emptyList()).validated()
+    }
+
+    /** An input's value as a stored document prints it, also when the text breaks it with white space. */
+    @Test
+    fun inputValueFromDocument() {
+        val input = ZkTlsProfile.Input("ccode", "謄本檢查號", "^[A-Za-z0-9]{12}$", document = "檢查號[：:]?([A-Za-z0-9]{12})")
+        assertEquals("AB12CD34EF56", input.fromDocument("戶籍謄本\n謄本檢查號：AB12CD34EF56\n"))
+        assertEquals("AB12CD34EF56", input.fromDocument("謄本檢查號： AB12CD 34EF56"))
+        assertEquals(null, input.fromDocument("謄本檢查號：AB12"))
+        assertEquals(null, input.copy(document = null).fromDocument("檢查號：AB12CD34EF56"))
+        assertFailsWith<ProtocolException> {
+            profile().let { p -> p.copy(request = p.request.copy(inputs = p.request.inputs.map { it.copy(document = "no group") })) }.validated()
+        }
+    }
+
     /** Every page profile in the repository, drafts included, parses and validates. */
     @Test
     fun repositoryProfilesValidate() {

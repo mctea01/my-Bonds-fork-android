@@ -227,6 +227,40 @@ sealed class OfflineUi {
         val error: String? = null,
         val captcha: diw.wallet.core.zktls.ZkTlsPrepare.Session? = null,
         val preparing: Boolean = false,
+        /** The file a kept result becomes evidence of, when this query was started from that file. */
+        val forFile: String? = null,
+    ) : OfflineUi()
+
+    /**
+     * The holder starts a web query: which page, and whether a verifier host takes part ([host], a zkTLS proof with
+     * its receipt) or this device reads the page alone (a device record). [fileId] is the file it is evidence of.
+     */
+    data class ZkTlsSelfPick(
+        val fileId: String?,
+        val pages: List<diw.wallet.core.zktls.ZkTlsProfile>,
+        val testPages: Set<String>,
+        val host: String?,
+        val note: String?,
+    ) : OfflineUi()
+
+    /** Querying [profile] on this device alone: the inputs, and the picture code where the page has one. */
+    data class ZkTlsSelf(
+        val profile: diw.wallet.core.zktls.ZkTlsProfile,
+        val fileId: String?,
+        val error: String? = null,
+        val captcha: diw.wallet.core.zktls.ZkTlsPrepare.Session? = null,
+        val preparing: Boolean = false,
+        val working: Boolean = false,
+    ) : OfflineUi()
+
+    /** What this device read alone ([outcome]) and the record kept from it, or why there is none. */
+    data class ZkTlsSelfResult(
+        val state: ZkTlsSelf,
+        val outcome: diw.wallet.core.zktls.ZkTlsOutcome?,
+        val serverTrust: TrustDecision?,
+        val fetched: diw.wallet.core.zktls.ZkTlsFetched?,
+        val kept: ZkTlsKeep.Kept?,
+        val error: String?,
     ) : OfflineUi()
 
     /** The zkTLS proof [jobId] is running. */
