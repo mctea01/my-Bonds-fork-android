@@ -4,8 +4,10 @@ import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.CredentialOffer
 import diw.wallet.core.oid4vci.IssuerMetadata
+import diw.wallet.core.trust.TrustDecision
 import io.ktor.http.HttpStatusCode
 import kotlinx.serialization.json.JsonObject
+import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.EcPublicKey
 
 /** An issuer key found by a dialect, with the reason shown to the user and the specification it follows. */
@@ -32,6 +34,20 @@ enum class ProofKid {
 
 /** Proof JWT shape a dialect requires instead of the OpenID4VCI 1.0 default. */
 data class ProofStyle(val kid: ProofKid, val iss: String?)
+
+/**
+ * The exact outgoing bytes of an owned session's credential POST, for a dialect that signs an extra request
+ * header over them (TWDIW's ecosystem signature). [requestBytes] are the serialized and, when the issuer asks,
+ * encrypted body as sent. [signingKey] and [keyId] are the wallet's own holder key; the signature is produced
+ * with the wallet's key, never any other application's.
+ */
+class OutboundCredentialContext(
+    val issuer: IssuerMetadata,
+    val requestBytes: ByteArray,
+    val keyId: String,
+    val publicKey: EcPublicKey,
+    val signingKey: AsymmetricKey,
+)
 
 /**
  * A wallet-level holder identity shared by every credential of one profile, as the profile's own wallet does it.
@@ -92,6 +108,13 @@ interface IssuanceDialect {
     /** Credential request body for an owned session. */
     fun credentialRequest(issuer: IssuerMetadata, config: CredentialConfiguration, credentialIdentifier: String?, proofs: JsonObject?): JsonObject? = null
 
+    /**
+     * Extra request headers for an owned session's credential POST, signed over the exact outgoing bytes
+     * ([OutboundCredentialContext.requestBytes]) after body adaptation and encryption and before the HTTP attempt;
+     * null adds none. Must not set Authorization, DPoP or Content-Type.
+     */
+    suspend fun outboundCredentialHeaders(context: OutboundCredentialContext): Map<String, String>? = null
+
     // ------------------------------------------------------------ older message shapes
 
     /** A 1.0 shaped credential offer for an offer in an older shape. */
@@ -108,6 +131,9 @@ interface IssuanceDialect {
 
     /** Fresh c_nonce carried in a credential error response. */
     fun nonceFromError(error: JsonObject): String? = null
+
+    /** Readable detail of an error response without an OAuth error_description, e.g. a platform's own error code. */
+    fun errorDetail(error: JsonObject): String? = null
 
     /** A different request body after the issuer rejected the 1.0 credential request with [status] and [error]. */
     fun alternativeCredentialRequest(
@@ -145,6 +171,13 @@ interface IssuanceDialect {
 
     /** Whether an authorization response [iss] that differs from [authServer]'s issuer (RFC 9207) still names that server. */
     fun acceptsAuthorizationResponseIssuer(authServer: AuthServerMetadata, iss: String): Boolean = false
+
+    /**
+     * Trust for an issuer whose metadata leads to no trust root, from a list the profile knows that registers the
+     * credential issuer URL for an organisation (the TWDIW trust list). Asked of the owning dialect only; null keeps
+     * the metadata decision.
+     */
+    suspend fun issuerTrust(issuer: IssuerMetadata): TrustDecision? = null
 }
 
 /** Runs dialect hooks in order and remembers which dialects, and which specifications, one session used. */

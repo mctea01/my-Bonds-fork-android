@@ -4,6 +4,7 @@ import diw.wallet.core.compat.DialectSet
 import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.HolderProfile
 import diw.wallet.core.compat.IssuanceDialect
+import diw.wallet.core.compat.OutboundCredentialContext
 import diw.wallet.core.compat.ProofKid
 import diw.wallet.core.compat.ProofStyle
 import diw.wallet.core.compat.TokenContext
@@ -215,8 +216,7 @@ class Oid4vciClient(
         val compat = DialectSet(dialects)
         val offer = offers.resolve(uri, compat)
         compat.claimFor(offer.credentialIssuer, entryHint)
-        val issuer = metadata.issuer(offer.credentialIssuer, compat)
-        compat.claimFor(issuer)
+        val issuer = withDialectTrust(metadata.issuer(offer.credentialIssuer, compat), compat)
         val unknown = offer.credentialConfigurationIds.filter { it !in issuer.configurations }
         if (unknown.isNotEmpty()) {
             throw ProtocolException("invalid_credential_offer", "Offer references unknown configurations $unknown")
@@ -229,12 +229,35 @@ class Oid4vciClient(
     suspend fun startWalletInitiated(credentialIssuer: String, configurationIds: List<String>, entryHint: String? = null): IssuanceSession {
         val compat = DialectSet(dialects)
         compat.claimFor(credentialIssuer, entryHint)
-        val issuer = metadata.issuer(credentialIssuer, compat)
-        compat.claimFor(issuer)
+        val issuer = withDialectTrust(metadata.issuer(credentialIssuer, compat), compat)
         val asMeta = authorizationServer(issuer, null, compat)
         return IssuanceSession(null, issuer, asMeta, newDpop(asMeta), null, compat).also {
             it.requestedConfigurations = configurationIds.filter { id -> id in issuer.configurations }
         }
+    }
+
+    /**
+     * The display the issuer currently publishes for [configurationId] (name, logo, colours, card face), read through
+     * the same dialects as issuance; [profile] is the profile that owned the original session (twdiw for TWDIW).
+     * Null when the configuration is no longer listed.
+     */
+    suspend fun credentialDisplay(credentialIssuer: String, configurationId: String, profile: String? = null): DisplayInfo? {
+        val compat = DialectSet(dialects)
+        compat.claimFor(credentialIssuer, profile)
+        val issuer = metadata.issuer(credentialIssuer, compat)
+        return issuer.configurations[configurationId]?.display?.pick(locales)
+    }
+
+    /**
+     * Claims the session from the metadata, then lets the owning dialect place an issuer the metadata leads to no
+     * trust root (unsigned metadata) through its own registry; a registry failure keeps the metadata decision.
+     */
+    private suspend fun withDialectTrust(issuer: IssuerMetadata, compat: DialectSet): IssuerMetadata {
+        compat.claimFor(issuer)
+        val d = compat.owner ?: return issuer
+        val trust = runCatching { d.issuerTrust(issuer) }.getOrNull() ?: return issuer
+        compat.record(d)
+        return issuer.copy(trust = trust)
     }
 
     /** Authorization server metadata, or what a dialect knows for issuers that publish none (draft 11, TWDIW). */
@@ -431,7 +454,7 @@ class Oid4vciClient(
                     (json.str("error_description") ?: fallback),
             )
         }
-        return oauthError(json, fallback)
+        return oauthError(json, failure(session.compat, json, fallback))
     }
 
     private suspend fun tokenRequest(session: IssuanceSession, form: Parameters, auth: ClientAuthentication): AccessToken {
@@ -555,7 +578,7 @@ class Oid4vciClient(
                         if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
                         proofs?.let { put("proofs", it) }
                     }
-                credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token)
+                credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token, signingHolder = holderKeys.firstOrNull())
             }
             if (!status.isSuccess() && alternative == null && json.str("error") != "invalid_nonce") {
                 val d = dialects.firstOrNull { it.alternativeCredentialRequest(session.issuer, config, identifier, proofs, status, json) != null }
@@ -581,7 +604,7 @@ class Oid4vciClient(
                 return deferred(document, tx, json, config, false)
             }
             if (!status.isSuccess()) {
-                val e = oauthError(json, "Credential request failed (${status.value})")
+                val e = oauthError(json, failure(compat, json, "Credential request failed (${status.value})"))
                 if (built?.missingKeyAttestation != true) throw e
                 throw ProtocolException(e.code, "${e.message} (the issuer requires key attestation; no wallet provider gave one)")
             }
@@ -618,7 +641,7 @@ class Oid4vciClient(
         session.responseKeys.remove(deferred.transactionId)
         if (!status.isSuccess()) {
             documentStore.deleteDocument(deferred.document.identifier)
-            throw oauthError(json, "Deferred credential request failed (${status.value})")
+            throw oauthError(json, failure(session.compat, json, "Deferred credential request failed (${status.value})"))
         }
         val pending = deferred.document.getPendingCredentials()
         val record = deferred.document.issuanceRecord!!.copy(pendingTransactionId = null)
@@ -875,6 +898,7 @@ class Oid4vciClient(
         plainBody: JsonObject,
         token: AccessToken,
         reuseKey: EcPrivateKey? = null,
+        signingHolder: HolderKey? = null,
     ): Pair<HttpStatusCode, JsonObject> {
         val issuer = session.issuer
         val respEnc = issuer.responseEncryption
@@ -910,8 +934,20 @@ class Oid4vciClient(
             ContentType("application", "jwt") to jwe
         } else ContentType.Application.Json to body.toString()
 
+        // A dialect may sign an extra header over the exact outgoing bytes (TWDIW ecosystem signature), with the
+        // session's own holder key, after any body adaptation and encryption; it must not set a protected header.
+        val owner = session.compat.owner
+        val dialectHeaders = if (signingHolder != null && owner != null) {
+            val keyId = signingHolder.did ?: HolderKey.didFor(signingHolder.publicKey, HolderKey.DID_KEY_JWK_JCS)
+            owner.outboundCredentialHeaders(
+                OutboundCredentialContext(issuer, payload.encodeToByteArray(), keyId, signingHolder.publicKey, signingHolder.signingKey("ES256"))
+            )?.also { session.compat.record(owner) }
+        } else null
         val resp = withDpopRetry(session, url, token) {
             contentType(contentType)
+            dialectHeaders?.forEach { (name, value) ->
+                if (!name.equals("Authorization", true) && !name.equals("Content-Type", true) && !name.startsWith("DPoP", true)) header(name, value)
+            }
             setBody(payload)
         }
         val text = resp.bodyAsText()
@@ -1066,6 +1102,9 @@ class Oid4vciClient(
             logoUri = display?.logoUri ?: issuerDisplay?.logoUri,
             backgroundColor = display?.backgroundColor,
             textColor = display?.textColor,
+            backgroundImageUri = display?.backgroundImageUri,
+            displayCheckedAt = Clock.System.now().epochSeconds,
+            displayDescription = display?.description,
         )
         return documentStore.createDocument(
             displayName = display?.name ?: config.docType ?: config.vct ?: W3cVc.displayType(config.types) ?: config.id,
@@ -1076,6 +1115,13 @@ class Oid4vciClient(
 
     private fun oauthError(json: JsonObject, fallback: String): ProtocolException =
         ProtocolException(json.str("error") ?: "server_error", json.str("error_description") ?: fallback)
+
+    /** [base] followed by the owning dialect's reading of an error body that carries no error_description. */
+    private fun failure(compat: DialectSet, json: JsonObject, base: String): String {
+        if (json.str("error_description") != null) return base
+        val detail = compat.owned { it.errorDetail(json) } ?: return base
+        return "$base: $detail"
+    }
 
     companion object {
         /** Checks a URL before the wallet opens it as an authorization page. */

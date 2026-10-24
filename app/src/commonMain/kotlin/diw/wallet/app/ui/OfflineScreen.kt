@@ -35,6 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.BondsCardKind
 import diw.wallet.app.HomeTab
+import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.OfflineUi
 import diw.wallet.app.StatusTexts
@@ -67,9 +68,17 @@ private fun secondsLeft(until: Instant): Long {
 
 private fun mmss(s: Long) = "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 
-/** Codes shown at a counter or to a verifier, and the Bonds verifier flow. */
+/**
+ * Codes shown at a counter or to a verifier, and the Bonds verifier flow. [readQr] reads one code with the camera,
+ * or from a picture where [hasCamera] is false; [streamQr] keeps the camera open for frame after frame.
+ */
 @Composable
-fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
+fun OfflineScreen(
+    model: WalletModel,
+    readQr: suspend () -> String?,
+    hasCamera: Boolean,
+    streamQr: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
+) {
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
         is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
@@ -78,18 +87,29 @@ fun OfflineScreen(model: WalletModel, scanQr: (suspend () -> String?)?) {
             Button(onClick = { model.back() }) { Text("返回") }
         }
         is OfflineUi.Unlisted -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.FAIL, "查驗模組不在信任清單", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
+            VerdictCard(Verdict.FAIL, "查驗模組無法確認（T4）", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
             if (riskOverride(s.service.vpUid, "仍要繼續（自行承擔風險）", "向未列名的查驗模組出示",
-                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，或未在區塊鏈上註冊。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
+                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，也不在皮夾平台網域，或與區塊鏈上的註冊不符。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
                 Button(onClick = { model.taiwan.startPickup(s.service, allowUnlisted = true) }) { Text("繼續建立交易") }
             }
             TextButton(onClick = { model.back() }) { Text("返回") }
         }
         is OfflineUi.Barcode -> BarcodeView(model, s)
         is OfflineUi.BondsChoose -> BondsChooseView(model, s)
+        is OfflineUi.AgeChoose -> BondsAgeChooseView(model, s)
+        is OfflineUi.AgeWorking -> BondsAgeWorkingView(model, s)
+        is OfflineUi.AgeResult -> BondsAgeResultView(model, s)
+        is OfflineUi.AgeVerifierWaiting -> BondsAgeVerifierWaitingView(model, s, streamQr)
+        is OfflineUi.AgeVerifierResult -> BondsAgeVerifierResultView(model, s)
         is OfflineUi.BondsFrames -> BondsFramesView(model, s)
-        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, scanQr)
+        is OfflineUi.VerifierChallenge -> VerifierChallengeView(model, s, readQr, hasCamera, streamQr)
         is OfflineUi.VerifierResult -> VerifierResultView(model, s)
+        is OfflineUi.ZkTlsConsent -> ZkTlsConsentView(model, s)
+        is OfflineUi.ZkTlsProving -> ZkTlsProvingView(model, s)
+        is OfflineUi.ZkTlsHolderResult -> ZkTlsHolderResultView(model, s)
+        is OfflineUi.ZkTlsVerifierSetup -> ZkTlsVerifierSetupView(model, s)
+        is OfflineUi.ZkTlsVerifierWaiting -> ZkTlsVerifierWaitingView(model, s)
+        is OfflineUi.ZkTlsVerifierResult -> ZkTlsVerifierResultView(model, s)
     }
 }
 
@@ -187,9 +207,16 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("請讓查驗方掃描", style = MaterialTheme.typography.titleMedium)
+        Text(if (s.showQr) "請讓查驗方掃描" else "正在送給查驗方", style = MaterialTheme.typography.titleMedium)
         Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
-        if (left > 0) {
+        s.lan?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
+        if (left > 0 && !s.showQr) {
+            Text("出示內容經區網或藍牙直接送給查驗方，不需要掃描。剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { model.taiwan.showFramesQr() }) { Text("改顯示 QR Code") }
+        } else if (left > 0 && s.fountain != null) {
+            AnimatedQr(s.fountain, Modifier.fillMaxWidth().widthIn(max = 420.dp))
+            Text("動態 QR Code，漏掉幾張也能收齊　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+        } else if (left > 0) {
             QrImage(s.frames[index], Modifier.fillMaxWidth().widthIn(max = 420.dp), QrEncoder.Ecc.Q)
             Text("第 ${index + 1} / ${s.frames.size} 張　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
             if (s.frames.size > 1) OutlinedButton(onClick = { paused = !paused }) { Text(if (paused) "繼續輪播" else "暫停輪播") }
@@ -205,20 +232,37 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
         }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         Text("出示內容以本機的持有者金鑰簽章，綁定查驗方的挑戰與用途，無法轉用於其他查驗。", style = MaterialTheme.typography.bodySmall)
+        TechDetails(s.details, "frames-${s.request.challenge}")
         Button(onClick = { model.back() }) { Text("完成") }
     }
 }
 
 @Composable
-private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChallenge, scanQr: (suspend () -> String?)?) {
+private fun VerifierChallengeView(
+    model: WalletModel,
+    s: OfflineUi.VerifierChallenge,
+    readQr: suspend () -> String?,
+    hasCamera: Boolean,
+    streamQr: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+) {
     var scanning by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
     LaunchedEffect(scanning) {
-        if (scanning && scanQr != null) {
-            // One scan per frame until the presentation is complete or the user closes the scanner.
-            while (model.taiwan.verifying) {
-                val text = scanQr() ?: break
-                model.handleUri(text)
+        if (scanning) {
+            if (streamQr != null) {
+                // The camera stays open across the rotating frames until the presentation is complete.
+                streamQr { code ->
+                    model.handleUri(code)
+                    val now = model.taiwan.offline.value as? OfflineUi.VerifierChallenge
+                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { progressText(it) })
+                }
+            } else {
+                // One scan per frame until the presentation is complete or the user closes the scanner; a picture
+                // holds one frame per pick.
+                do {
+                    val text = readQr() ?: break
+                    model.handleUri(text)
+                } while (hasCamera && model.taiwan.verifying)
             }
             scanning = false
         }
@@ -234,15 +278,17 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
         }
         s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
-            LinearProgressIndicator(progress = { s.received.toFloat() / s.total }, modifier = Modifier.fillMaxWidth())
-            Text("已收到 ${s.received} / ${s.total} 張畫面", style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(progress = { (s.received.toFloat() / s.total).coerceAtMost(1f) }, modifier = Modifier.fillMaxWidth())
+            Text(progressText(s), style = MaterialTheme.typography.bodySmall)
         }
-        if (scanQr != null) {
-            Button(onClick = { scanning = true }) {
-                Icon(WalletIcons.Scan, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(" 掃描對方畫面")
-            }
-        } else {
+        s.lan?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        TechDetails(s.details, "challenge-${s.request.challenge}")
+        Button(onClick = { scanning = true }, enabled = !scanning) {
+            Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(if (hasCamera) " 掃描對方畫面" else " 從圖片讀取對方畫面")
+        }
+        if (!hasCamera) {
             OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("貼上對方畫面的內容（BTWVP1:...）") },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedButton(onClick = { model.handleUri(pasted); pasted = "" }, enabled = pasted.isNotEmpty()) { Text("加入") }
@@ -250,6 +296,9 @@ private fun VerifierChallengeView(model: WalletModel, s: OfflineUi.VerifierChall
         OutlinedButton(onClick = { model.back() }) { Text("取消") }
     }
 }
+
+/** Pictures for BTWVP1 frames, blocks for a fountain QR (the holder picks which), so the unit is left out. */
+private fun progressText(s: OfflineUi.VerifierChallenge): String = "對方畫面已收到 ${s.received} / ${s.total}"
 
 @Composable
 private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) {

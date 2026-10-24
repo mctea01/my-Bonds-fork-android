@@ -594,7 +594,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         if (report?.format == DocumentFormat.PDF) {
             ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "P4 尚未完成：以零知識證明 PDF 內的機關簽章與指定欄位，不必交出整份文件", enabled = false) {}
         }
-        ActionRow(WalletIcons.Link, "產生 zkTLS 證明", "P4 尚未完成：以 TLSNotary 證明官方查驗頁回覆的內容（如移民署、學信網查驗）", enabled = false) {}
+        ActionRow(WalletIcons.Link, "產生 zkTLS 證明", "現在由查驗方發起：掃描對方的網站查驗 QR Code 後在官方查驗頁查詢。把查驗結果存成這份文件的證據將於後續版本支援", enabled = false) {}
 
         CollapsibleSection("檔案資訊", key = "file-info-${f.id}") {
             LabelValue("檔名", f.name)

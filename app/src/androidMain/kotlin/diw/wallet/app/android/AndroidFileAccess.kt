@@ -34,11 +34,11 @@ class AndroidFileAccess(private val activity: ComponentActivity) {
             override fun createIntent(context: Context, input: String): Intent = super.createIntent(context, input).setType(createType)
         }) { pendingCreate?.complete(it) }
 
-    suspend fun pick(): PickedFile? {
+    suspend fun pick(types: Array<String> = arrayOf("*/*")): PickedFile? {
         val d = CompletableDeferred<Uri?>()
         pendingOpen?.complete(null)
         pendingOpen = d
-        withContext(Dispatchers.Main) { open.launch(arrayOf("*/*")) }
+        withContext(Dispatchers.Main) { open.launch(types) }
         val uri = d.await() ?: return null
         return read(activity, uri)
     }

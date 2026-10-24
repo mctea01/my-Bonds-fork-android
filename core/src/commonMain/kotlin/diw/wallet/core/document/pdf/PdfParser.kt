@@ -7,6 +7,13 @@ package diw.wallet.core.document.pdf
  */
 class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength: (PdfDict) -> Int? = { (it["Length"] as? PdfNumber)?.int }) {
 
+    /** Optional source capture; normal document parsing does not copy source strings. */
+    var retainStringSource: Boolean = false
+
+    /** Raw encoded extent of the last parsed stream, before any decryption or filters. */
+    var lastStreamExtent: IntRange? = null
+        private set
+
     fun skipWhitespace() {
         while (pos < bytes.size) {
             val c = bytes[pos].toInt() and 0xFF
@@ -108,6 +115,7 @@ class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength
 
     private fun parseLiteralString(): PdfString {
         pos++ // '('
+        val sourceStart = pos
         val out = ByteBuilder()
         var depth = 1
         while (pos < bytes.size) {
@@ -117,7 +125,9 @@ class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength
                 '('.code -> { depth++; out.add(c) }
                 ')'.code -> {
                     depth--
-                    if (depth == 0) return PdfString(out.toByteArray())
+                    if (depth == 0) return PdfString(out.toByteArray()).also {
+                        if (retainStringSource) it.sourceBytes = bytes.copyOfRange(sourceStart, pos - 1)
+                    }
                     out.add(c)
                 }
                 '\\'.code -> {
@@ -158,6 +168,7 @@ class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength
 
     private fun parseHexString(): PdfString {
         pos++ // '<'
+        val sourceStart = pos
         val out = ByteBuilder()
         var hi = -1
         while (pos < bytes.size) {
@@ -165,7 +176,9 @@ class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength
             pos++
             if (c == '>'.code) {
                 if (hi >= 0) out.add(hi shl 4)
-                return PdfString(out.toByteArray(), hex = true)
+                return PdfString(out.toByteArray(), hex = true).also {
+                    if (retainStringSource) it.sourceBytes = bytes.copyOfRange(sourceStart, pos - 1)
+                }
             }
             if (isWhite(c)) continue
             val v = hexVal(c)
@@ -222,6 +235,7 @@ class PdfParser(val bytes: ByteArray, var pos: Int = 0, private val streamLength
             pos = end
             skipWhitespace()
             if (startsWith("endstream")) pos += 9
+            lastStreamExtent = start until end
             return PdfStream(dict, bytes.copyOfRange(start, end))
         }
         pos = save

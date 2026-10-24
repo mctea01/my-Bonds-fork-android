@@ -193,11 +193,14 @@ class TwdiwTrustList(
         return snap
     }
 
-    /** Whether [host] is registered for [did] (response_uri / request_uri gates); null when the DID is unknown. */
+    /**
+     * Whether [host] serves [did] (response_uri / request_uri gates): one of its registered hosts, or the platform
+     * itself (wallet.gov.tw), which hosts listed organisations' verifier modules. Null when the DID is unknown.
+     */
     suspend fun hostRegistered(did: String, host: String): Boolean? {
         val snap = verified(did) ?: return null
         val h = host.lowercase()
-        return h in snap.entry.hosts || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
+        return h in snap.entry.hosts || TwdiwHosts.isPlatformHost(h) || (platform.test && h in TwdiwPlatform.SANDBOX_HOSTS)
     }
 
     /**
@@ -217,6 +220,22 @@ class TwdiwTrustList(
         val host = TwdiwHosts.canonicalHost(url) ?: return false
         if (platform.test && host in TwdiwPlatform.SANDBOX_HOSTS) return true
         return all().any { host in it.hosts }
+    }
+
+    /**
+     * The decision for the organisation registered for a TWDIW credential issuer URL, https://{host}/.../issuer/{id}/:
+     * listed on the issuer side with that host registered and, when the path has one, that organisation ID ({id}, the
+     * taxId field, an OID arc for agencies). Another platform host is not enough: the test platform shares the domain.
+     * Several DIDs of one organisation give the best of their decisions; null when none is listed.
+     */
+    suspend fun issuerDecision(credentialIssuer: String): TrustDecision? {
+        val host = TwdiwHosts.canonicalHost(credentialIssuer) ?: return null
+        val segments = runCatching { Url(credentialIssuer).segments }.getOrDefault(emptyList()).filter { it.isNotEmpty() }
+        val orgId = segments.indexOf("issuer").takeIf { it >= 0 }?.let { segments.getOrNull(it + 1) }
+        val candidates = all().filter { e ->
+            ORG_TYPE_ISSUER in e.orgTypes && host in e.hosts && (orgId == null || e.taxId == orgId)
+        }
+        return candidates.mapNotNull { e -> verified(e.did)?.let { decisionFor(it, TrustRole.ISSUER) } }.minByOrNull { it.tier.ordinal }
     }
 
     /** Organisations listed for [host]; one host may serve several organisations. */

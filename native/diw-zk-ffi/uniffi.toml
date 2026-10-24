@@ -1,0 +1,5 @@
+[bindings.kotlin]
+package_name = "diw.wallet.core.zk.native.bindings"
+cdylib_name = "diw_zk"
+android = false
+disable_java_cleaner = true
