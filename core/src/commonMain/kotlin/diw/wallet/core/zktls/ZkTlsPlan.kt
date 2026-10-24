@@ -26,8 +26,11 @@ data class ZkTlsRange(val start: Int, val end: Int) {
  * revealed, so the verifier can read the value back with the same rule and nothing around it.
  */
 object ZkTlsPlanner {
-    /** The request bytes for [inputs]; throws when an input is missing or does not match its pattern. */
-    fun request(profile: ZkTlsProfile, inputs: Map<String, String>): ByteArray {
+    /**
+     * The request bytes for [inputs]; throws when an input is missing or does not match its pattern. [cookies] are the
+     * session cookies of a prepared page (ZkTlsPrepare); only the names the profile lists are sent.
+     */
+    fun request(profile: ZkTlsProfile, inputs: Map<String, String>, cookies: Map<String, String> = emptyMap()): ByteArray {
         val r = profile.request
         for (input in r.inputs) {
             val value = inputs[input.name] ?: throw ProtocolException("invalid_input", "${input.label}未填寫")
@@ -40,6 +43,7 @@ object ZkTlsPlanner {
             append(r.method).append(' ').append(target).append(" HTTP/1.1\r\n")
             append(hostLine(profile))
             r.headers.forEach { (k, v) -> append(k).append(": ").append(v).append("\r\n") }
+            cookieHeader(profile, cookies)?.let { append("Cookie: ").append(it).append("\r\n") }
             append("Accept-Encoding: identity\r\nConnection: close\r\n")
             if (body != null) append("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: ${body.size}\r\n")
             append("\r\n")
@@ -48,6 +52,18 @@ object ZkTlsPlanner {
         if (bytes.size > profile.limits.maxSent) throw ProtocolException("invalid_input", "請求超過 ${profile.limits.maxSent} 位元組")
         return bytes
     }
+
+    /** The Cookie header value for a prepared session, or null when the profile takes none. */
+    fun cookieHeader(profile: ZkTlsProfile, cookies: Map<String, String>): String? {
+        if (profile.prepare.cookies.isEmpty()) return null
+        val sent = profile.prepare.cookies.mapNotNull { name -> cookies[name]?.let { name to it } }
+        if (sent.size != profile.prepare.cookies.size) throw ProtocolException("invalid_input", "網頁工作階段已失效，請重新取得驗證碼")
+        sent.forEach { (_, v) -> if (!COOKIE_VALUE_RE.matches(v)) throw ProtocolException("invalid_input", "網站給的 Cookie 格式不符") }
+        return sent.joinToString("; ") { (k, v) -> "$k=$v" }
+    }
+
+    /** RFC 6265 cookie-octets, optionally quoted. */
+    private val COOKIE_VALUE_RE = Regex("^\"?[\\x21\\x23-\\x2B\\x2D-\\x3A\\x3C-\\x5B\\x5D-\\x7E]{0,4096}\"?$")
 
     /** "Host: name[:port]" with its line end, as the planner writes it and the verifier expects it. */
     fun hostLine(profile: ZkTlsProfile): String = "Host: " + profile.host + (if (profile.port == 443) "" else ":${profile.port}") + "\r\n"

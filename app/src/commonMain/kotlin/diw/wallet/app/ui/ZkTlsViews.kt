@@ -1,10 +1,12 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.OfflineUi
 import diw.wallet.app.WalletModel
@@ -35,6 +38,7 @@ import diw.wallet.app.ZkJobPhase
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.zktls.ZkTlsOutcome
+import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.zktls.ZkTlsTransport
@@ -83,13 +87,31 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
     var confirm by remember(s) { mutableStateOf(false) }
     var keep by remember(s.session.jws) { mutableStateOf(false) }
     val left = secondsLeft(request)
-    val complete = s.profile.request.inputs.all { !inputs[it.name].isNullOrEmpty() }
+    val captchaInput = s.profile.prepare.input.takeIf { ZkTlsPrepare.needed(s.profile) }
+    // Each picture takes its own answer.
+    LaunchedEffect(s.captcha) { captchaInput?.let { inputs.remove(it) } }
+    val complete = s.profile.request.inputs.all { !inputs[it.name].isNullOrEmpty() } && (captchaInput == null || s.captcha != null)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         TrustCard("查驗方", s.verifier, s.trust, listOf("用途：" + request.purpose.ifEmpty { "未說明" }))
         PageCard(s.profile, request.fields, s.inline)
         Text("這支手機會直接連到網站查詢，對方在查詢過程中協同驗證連線，只看得到上面列出的部分；你填的資料留在這支手機。",
             style = MaterialTheme.typography.bodySmall)
+        if (captchaInput != null) {
+            Text("驗證碼圖片由這支手機直接向網站取得，查驗方看不到圖片、驗證碼與網站的 Cookie。", style = MaterialTheme.typography.bodySmall)
+        }
         s.profile.request.inputs.forEach { input ->
+            if (input.name == captchaInput) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val picture = remember(s.captcha) { s.captcha?.let { model.platform.decodeImage(it.image) } }
+                    when {
+                        picture != null -> Image(picture, contentDescription = "驗證碼圖片", contentScale = ContentScale.Fit,
+                            modifier = Modifier.height(64.dp).widthIn(max = 200.dp))
+                        s.preparing -> Text("正在取得驗證碼", style = MaterialTheme.typography.bodySmall)
+                        else -> Text("沒有驗證碼圖片", style = MaterialTheme.typography.bodySmall)
+                    }
+                    OutlinedButton(onClick = { model.taiwan.zkTls.refreshCaptcha(s) }, enabled = !s.preparing) { Text("換一張") }
+                }
+            }
             OutlinedTextField(
                 value = inputs[input.name].orEmpty(),
                 onValueChange = { inputs[input.name] = it.trim().take(200) },
@@ -210,7 +232,7 @@ internal fun ZkTlsHolderResultView(model: WalletModel, s: OfflineUi.ZkTlsHolderR
             ), "zktls-holder-${s.consent.session.request.sessionId}")
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (s.retry) Button(onClick = { model.taiwan.offline.value = s.consent }) { Text("重試") }
+            if (s.retry) Button(onClick = { model.taiwan.zkTls.retry(s.consent) }) { Text("重試") }
             OutlinedButton(onClick = { model.back() }) { Text("完成") }
         }
     }

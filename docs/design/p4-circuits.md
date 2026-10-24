@@ -282,7 +282,7 @@ content:
 
 完整描述檔在 `templates/zktls/cn.chsi.xjbg.json`（2026-10-24 以真實報告核對）。學信網沒有 User-Agent 會回 403，且依 User-Agent 回傳桌面或手機版面，所以描述檔固定 `Mozilla/5.0`；`Accept-Encoding` 與 `Connection` 由規劃器加上。
 
-- `prepare.type` 可為 `none` 或 `webview`（在內嵌頁面讓使用者輸入圖形驗證碼，取得 cookie；移民署查驗頁屬於後者，送出欄位為證號、序號與圖形驗證碼）。
+- `prepare.type` 可為 `none` 或 `captcha`（`ZkTlsPrepare`）：持有端在 zkTLS 之外以一般 HTTPS 開 `page` 取得工作階段，在同一工作階段取得 `image` 的驗證碼圖片給使用者看，使用者輸入到 `input`；`cookies` 列出的工作階段 Cookie 放進查詢請求的 Cookie 標頭，與輸入一樣不揭露。每次查詢用掉一張圖，重試或取消時在同一工作階段換新。移民署查驗頁屬於後者（`templates/drafts/zktls/tw.gov.immigration.entryexit.json`，送出證號、序號與驗證碼；表單原為 multipart，實測接受一般表單編碼；結果頁規則待以有效證明書核對）。
 - `reveal` 是對回應主體的規則：以描述檔的正規表示式找出「標籤加值」的完整片段，揭露整個片段，查驗方再用同一個正規表示式取出值。揭露片段的位置與長度公開。
 - `official` 只表示網站屬於政府，不改變信任等級（p4-zkp.md 第 6 節）。
 - 描述檔不得含任何真實查詢結果；查詢輸入所在的列（例如報告上的在線驗證碼）不可作為欄位。

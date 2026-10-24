@@ -215,7 +215,8 @@ sealed class OfflineUi {
 
     /**
      * zkTLS request scanned: who asks ([verifier], [trust]), which page and fields; the user types the page's inputs.
-     * [inline]: the page came with the request (test environment only). [error] is an input problem.
+     * [inline]: the page came with the request (test environment only). [error] is an input problem. For a page with
+     * a picture code, [captcha] is the session this device opened on the site (fetching while [preparing]).
      */
     data class ZkTlsConsent(
         val session: diw.wallet.core.zktls.ZkTlsSessionRequest.Verified,
@@ -224,6 +225,8 @@ sealed class OfflineUi {
         val trust: TrustDecision,
         val inline: Boolean,
         val error: String? = null,
+        val captcha: diw.wallet.core.zktls.ZkTlsPrepare.Session? = null,
+        val preparing: Boolean = false,
     ) : OfflineUi()
 
     /** The zkTLS proof [jobId] is running. */

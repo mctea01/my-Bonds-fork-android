@@ -4,9 +4,13 @@ import diw.wallet.core.util.DiwJson
 import diw.wallet.core.zktls.ZkTlsCheck
 import diw.wallet.core.zktls.ZkTlsHolder
 import diw.wallet.core.zktls.ZkTlsPlanner
+import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.zktls.ZkTlsTransport
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.java.Java
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -22,7 +26,8 @@ import kotlin.system.exitProcess
  * into templates/zktls. It sends exactly the request the wallet would send (ZkTlsPlanner) over TLS 1.2 limited to the
  * cipher suites TLSNotary handles, then applies the holder's reveal plan and the verifier's check to the response.
  *
- * The inputs are read from the console (private ones without echo) and never written anywhere. Field values and the
+ * The inputs are read from the console (private ones without echo) and never written anywhere. For a page with a
+ * picture code the tool opens the site session first and shows the picture (a temporary file) before asking for it. Field values and the
  * status text are shown only with --show; the response is written only with --save, to a file the developer keeps
  * out of the repository (it holds the query result).
  *
@@ -45,11 +50,16 @@ object ProfileCheckTool {
             fail("描述檔無法讀取：${e.message}")
         }
         println("查驗頁：${profile.title}（${profile.id}）・${profile.host}:${profile.port}")
-        if (profile.prepare.type != "none") {
-            println("注意：這個查驗頁需要先開網頁（${profile.prepare.type}），工具無法代為取得 cookie 或圖形驗證碼，結果可能是錯誤頁。")
-        }
-
+        var prepared: ZkTlsPrepare.Session? = null
         val inputs = profile.request.inputs.associate { input ->
+            if (input.name == profile.prepare.input && ZkTlsPrepare.needed(profile)) {
+                prepared = try {
+                    runBlocking { HttpClient(Java) { followRedirects = false }.use { ZkTlsPrepare.start(it, profile) } }
+                } catch (e: Exception) {
+                    fail("無法取得驗證碼：${e.message}")
+                }
+                showCaptcha(prepared!!.image)
+            }
             val prompt = input.label + (if (input.isPrivate) "（不顯示）" else "") + "："
             val console = System.console()
             val value = when {
@@ -60,7 +70,7 @@ object ProfileCheckTool {
             input.name to value
         }
         val request = try {
-            ZkTlsPlanner.request(profile, inputs)
+            ZkTlsPlanner.request(profile, inputs, prepared?.cookies.orEmpty())
         } catch (e: Exception) {
             fail("輸入不符合描述檔：${e.message}")
         }
@@ -127,6 +137,21 @@ object ProfileCheckTool {
             (problems + outcome.missing.map { "沒有讀出欄位 $it" }).distinct().forEach { println("- $it") }
             exitProcess(1)
         }
+    }
+
+    /** Writes the picture code to a temporary file and opens it where the desktop allows; deleted on exit. */
+    private fun showCaptcha(image: ByteArray) {
+        val ext = when {
+            image.size > 3 && image[0] == 0x89.toByte() && image[1] == 'P'.code.toByte() -> ".png"
+            image.size > 3 && image[0] == 'G'.code.toByte() && image[1] == 'I'.code.toByte() -> ".gif"
+            else -> ".jpg"
+        }
+        val file = File.createTempFile("zktls-captcha", ext).apply { deleteOnExit(); writeBytes(image) }
+        val opened = runCatching {
+            val desktop = java.awt.Desktop.getDesktop()
+            desktop.isSupported(java.awt.Desktop.Action.OPEN).also { if (it) desktop.open(file) }
+        }.getOrDefault(false)
+        println("驗證碼圖片：${file.absolutePath}" + if (opened) "（已開啟）" else "（請自行開啟）")
     }
 
     private class Tls(val protocol: String, val cipherSuite: String, val chain: List<X509Certificate>)

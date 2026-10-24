@@ -1,0 +1,33 @@
+{
+  "id": "tw.gov.immigration.entryexit/1",
+  "title": "移民署入出國日期證明書驗證",
+  "host": "ncp.immigration.gov.tw",
+  "official": true,
+  "prepare": {
+    "type": "captcha",
+    "page": "/NIA_OnlineApply_inter/entryexitQueryNew/entryexitQueryForm.action",
+    "image": "/NIA_OnlineApply_inter/jcaptcha",
+    "input": "captcha",
+    "cookies": [ "JSESSIONID" ]
+  },
+  "request": {
+    "method": "POST",
+    "path": "/NIA_OnlineApply_inter/entryexitQueryNew/entryexitQueryResult.action",
+    "body": "entryExitQueryNewDTO.checkNo={checkNo}&entryExitQueryNewDTO.serialNo={serialNo}&jcaptchaResponse={captcha}",
+    "headers": { "User-Agent": "Mozilla/5.0" },
+    "inputs": [
+      { "name": "checkNo", "label": "身分證字號／統一證號／護照號碼", "pattern": "^[A-Za-z0-9]{6,20}$", "private": true },
+      { "name": "serialNo", "label": "證明書序號", "pattern": "^[0-9]{8,20}$", "private": true },
+      { "name": "captcha", "label": "驗證碼（不分大小寫）", "pattern": "^[A-Za-z0-9]{4,8}$", "private": true }
+    ]
+  },
+  "limits": { "maxSent": 2048, "maxRecv": 65536 },
+  "status": { "reveal": "<h2>[^<]{1,80}</h2>", "success": "^<h2>[^<]*驗證結果[^<]*</h2>$" },
+  "fields": [
+    { "name": "name", "label": "姓名", "reveal": "<th[^>]*>\\s*姓名[^<]{0,20}</th>\\s*<td[^>]*>([^<]{1,60})</td>" },
+    { "name": "nationality", "label": "國籍", "reveal": "<th[^>]*>\\s*國籍[^<]{0,20}</th>\\s*<td[^>]*>([^<]{1,60})</td>" },
+    { "name": "birthDate", "label": "出生日期", "reveal": "<th[^>]*>\\s*出生日期[^<]{0,20}</th>\\s*<td[^>]*>([^<]{1,40})</td>" },
+    { "name": "issued", "label": "發證時間", "reveal": "<th[^>]*>\\s*發證時間[^<]{0,20}</th>\\s*<td[^>]*>([^<]{1,40})</td>" },
+    { "name": "period", "label": "查詢區間", "reveal": "<th[^>]*>\\s*查詢區間[^<]{0,20}</th>\\s*<td[^>]*>([^<]{1,80})</td>" }
+  ]
+}

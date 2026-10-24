@@ -16,6 +16,7 @@ import diw.wallet.core.zktls.ZkTlsCheck
 import diw.wallet.core.zktls.ZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsOutcome
 import diw.wallet.core.zktls.ZkTlsPlanner
+import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
 import diw.wallet.core.zktls.ZkTlsProfiles
 import diw.wallet.core.zktls.ZkTlsReceipts
@@ -60,6 +61,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
+    private var prepareJob: Job? = null
     private var session: ZkTlsVerifierSession? = null
     private val client by lazy { model.http.config { followRedirects = false } }
     private val keeper = ZkTlsKeep(model)
@@ -124,7 +126,35 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: Exception) {
                 OfflineUi.Failed("無法讀取網站查驗請求：" + model.describe(e))
             }
+            (ui.value as? OfflineUi.ZkTlsConsent)?.let { if (ZkTlsPrepare.needed(it.profile)) refreshCaptcha(it) }
         }
+    }
+
+    /**
+     * Fetches a new picture code for [consent]: in the same site session when it has one (the site may expect the
+     * session that served the form), else in a new one. Each query uses up its picture, so this also runs on retry.
+     */
+    fun refreshCaptcha(consent: OfflineUi.ZkTlsConsent) {
+        if (!ZkTlsPrepare.needed(consent.profile)) return
+        prepareJob?.cancel()
+        ui.value = consent.copy(preparing = true, error = null)
+        prepareJob = model.scope.launch {
+            val next = try {
+                consent.copy(captcha = ZkTlsPrepare.start(model.http, consent.profile, consent.captcha), preparing = false, error = null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                consent.copy(captcha = null, preparing = false, error = "無法取得驗證碼：" + model.describe(e))
+            }
+            val now = ui.value
+            if (now is OfflineUi.ZkTlsConsent && now.session.jws == consent.session.jws) ui.value = next
+        }
+    }
+
+    /** Back to [consent] after a failed or cancelled query, with a new picture code where the page uses one. */
+    fun retry(consent: OfflineUi.ZkTlsConsent) {
+        ui.value = consent.copy(error = null)
+        refreshCaptcha(consent)
     }
 
     /**
@@ -139,8 +169,12 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, EXPIRED, retry = false)
             return
         }
+        if (ZkTlsPrepare.needed(consent.profile) && consent.captcha == null) {
+            ui.value = consent.copy(error = "請先取得驗證碼")
+            return
+        }
         val bytes = try {
-            ZkTlsPlanner.request(consent.profile, inputs)
+            ZkTlsPlanner.request(consent.profile, inputs, consent.captcha?.cookies.orEmpty())
         } catch (e: ProtocolException) {
             ui.value = consent.copy(error = e.message)
             return
@@ -190,7 +224,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                                 result.reason
                             }
                             ZkResult.Cancelled -> {
-                                ui.value = consent
+                                retry(consent)
                                 return@launch
                             }
                         }
@@ -217,7 +251,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     /** Stops the running proof and returns to the consent screen. */
     fun cancel(state: OfflineUi.ZkTlsProving) {
         stop()
-        ui.value = state.consent
+        retry(state.consent)
     }
 
     private fun jobId(request: ZkTlsSessionRequest) = "zktls-" + request.sessionId
@@ -422,6 +456,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         (ui.value as? OfflineUi.ZkTlsProving)?.let { model.zk.cancel(it.jobId) }
         job?.cancel()
         job = null
+        prepareJob?.cancel()
+        prepareJob = null
         session?.close()
         session = null
     }
