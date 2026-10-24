@@ -3,6 +3,7 @@
 這裡是隨 GitHub Release 發布的版型資料。新增或修改版型只要改這個資料夾，不需要更新 App。
 
 - `zktls/`：zkTLS 查驗頁描述檔，一個檔案一個查驗頁（格式見 `core/src/commonMain/kotlin/diw/wallet/core/zktls/ZkTlsProfile.kt` 與 `docs/design/p4-circuits.md` 第 4.2 節）。
+  目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告；輸入在線驗證碼）。
 - `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式在 WP3b 凍結公開輸入後定義）。
 
 ## 發布方式
@@ -43,7 +44,7 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 `drafts/zktls/` 放尚未核對的描述檔草稿，不會打包。用自己的資料在本機核對：
 
 ```
-./gradlew -q :test-servers:checkProfile -Pprofile=templates/drafts/zktls/cn.chsi.xjbg.json
+./gradlew -q :test-servers:checkProfile -Pprofile=templates/zktls/cn.chsi.xjbg.json
 ```
 
 工具會照描述檔送出與錢包完全相同的請求（只用 TLSNotary 支援的 TLS 1.2 ECDHE AES-128-GCM），再以持有端的揭露規劃與查驗方的判定檢查回應，
@@ -55,4 +56,7 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 
 - 查驗頁的揭露規則要以真實回應在本機核對後才能加入；真實回應與查詢結果不進 repo。
 - 揭露規則必須在值之後以分隔字元結束（例如結束標籤或換行），第一個群組是查驗方讀回的值。
+- 網站依 User-Agent 回傳不同版面時，描述檔要在 `headers` 固定 User-Agent，規則對應那個版面（學信網固定 `Mozilla/5.0`，回傳桌面版）。
+- 以分塊傳輸（chunked）回應時，規則對的是去掉分塊標頭後的內容；欄位被分塊切開時，揭露範圍會包含中間的分塊標頭，查驗方讀取前會去掉。
+- 查詢輸入（驗證碼、序號等）所在的列不可作為欄位。
 - 版型只描述版面與揭露範圍，不會改變電路；電路仍以 App 內釘選的版本為準。
