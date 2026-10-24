@@ -138,6 +138,8 @@ data class StoredFile(
     val parentId: String? = null,
     /** The derived SD-JWT VC (a document in the documents list); cleared when that credential is deleted. */
     val derivedDocumentId: String? = null,
+    /** Web query results kept as evidence of this file (web-proof or web-record credentials in the documents list). */
+    val webProofIds: List<String> = emptyList(),
     /** The Bonds national ID card (vc+moica NationalIDCredential) made from this MyData national ID PDF. */
     val nationalId: String? = null,
     /** The archive (ZIP) the file was unpacked from, by name; the archive itself may be gone. */
@@ -1633,11 +1635,19 @@ class FilesModel(private val model: WalletModel) {
     /** Clears the link of every file to the derived credential [documentId], after that credential was deleted. */
     suspend fun forgetDerived(documentId: String) {
         files.value.filter { it.derivedDocumentId == documentId }.forEach { save(it.copy(derivedDocumentId = null)) }
+        files.value.filter { documentId in it.webProofIds }.forEach { save(it.copy(webProofIds = it.webProofIds - documentId)) }
     }
 
-    /** Clears links to derived credentials that no longer exist (deleted while the link was not updated). */
+    /** Clears links to derived credentials and web query results that no longer exist (deleted while the link was not updated). */
     suspend fun reconcileDerived(existing: Set<String>) {
         files.value.filter { it.derivedDocumentId != null && it.derivedDocumentId !in existing }.forEach { save(it.copy(derivedDocumentId = null)) }
+        files.value.filter { f -> f.webProofIds.any { it !in existing } }.forEach { f -> save(f.copy(webProofIds = f.webProofIds.filter { it in existing })) }
+    }
+
+    /** Links the kept web query result [documentId] (ZkTlsKeep) to the file [fileId] as its evidence. */
+    suspend fun attachWebProof(fileId: String, documentId: String) {
+        val f = file(fileId) ?: return
+        save(f.copy(webProofIds = (f.webProofIds + documentId).distinct()))
     }
 
     // ---------------------------------------------------------------- Bonds holder-derived credentials

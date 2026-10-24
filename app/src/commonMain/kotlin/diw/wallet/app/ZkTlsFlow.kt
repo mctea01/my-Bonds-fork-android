@@ -3,6 +3,7 @@ package diw.wallet.app
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.profile.bonds.networks
 import diw.wallet.core.trust.BuiltInAnchors
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
@@ -15,6 +16,8 @@ import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.zktls.ZkTlsCheck
 import diw.wallet.core.zktls.ZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsOutcome
+import diw.wallet.core.zktls.ZkTlsDirect
+import diw.wallet.core.zktls.ZkTlsDirectRead
 import diw.wallet.core.zktls.ZkTlsPlanner
 import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
@@ -109,18 +112,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         ui.value = OfflineUi.Working("讀取網站查驗請求")
         job = model.scope.launch {
             ui.value = try {
-                val verified = ZkTlsSessionRequest.verify(ZkTlsSessionRequest.jwsOf(link), model.didResolver(), insecureHosts = insecureHosts())
-                val profile = ZkTlsProfiles.resolve(verified.request, allowInline = model.settings.testEnvironment)
-                val unknown = verified.request.fields.filter { profile.field(it) == null }
-                if (unknown.isNotEmpty()) throw ProtocolException("invalid_request", "查驗頁沒有欄位 ${unknown.joinToString("、")}")
-                val chain = verified.chain
-                val (name, trust) = if (chain != null) {
-                    chain.first().displaySubject() to model.trust.decide(TrustRole.VERIFIER, chain)
-                } else {
-                    val did = verified.did!!
-                    TaiwanModel.shortDid(did) to model.didTrust.decideOrDefault(did, TrustRole.VERIFIER, "The verifier's DID is in no trust source")
-                }
-                OfflineUi.ZkTlsConsent(verified, profile, name, trust, inline = ZkTlsProfiles.find(profile.id) == null)
+                consentFor(link, null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -128,6 +120,22 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             }
             (ui.value as? OfflineUi.ZkTlsConsent)?.let { if (ZkTlsPrepare.needed(it.profile)) refreshCaptcha(it) }
         }
+    }
+
+    /** Checks a request link's signature and page, and who signed it, for the consent screen. */
+    private suspend fun consentFor(link: String, forFile: String?): OfflineUi.ZkTlsConsent {
+        val verified = ZkTlsSessionRequest.verify(ZkTlsSessionRequest.jwsOf(link), model.didResolver(), insecureHosts = insecureHosts())
+        val profile = ZkTlsProfiles.resolve(verified.request, allowInline = model.settings.testEnvironment)
+        val unknown = verified.request.fields.filter { profile.field(it) == null }
+        if (unknown.isNotEmpty()) throw ProtocolException("invalid_request", "查驗頁沒有欄位 ${unknown.joinToString("、")}")
+        val chain = verified.chain
+        val (name, trust) = if (chain != null) {
+            chain.first().displaySubject() to model.trust.decide(TrustRole.VERIFIER, chain)
+        } else {
+            val did = verified.did!!
+            TaiwanModel.shortDid(did) to model.didTrust.decideOrDefault(did, TrustRole.VERIFIER, "The verifier's DID is in no trust source")
+        }
+        return OfflineUi.ZkTlsConsent(verified, profile, name, trust, inline = ZkTlsProfiles.find(profile.id) == null, forFile = forFile)
     }
 
     /**
@@ -208,7 +216,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                                 if (p != null && proved.outcome.passed) {
                                     pending = null
                                     shown = try {
-                                        shown.copy(kept = keeper.keep(p, consent.session, proved, consent.verifier, consent.trust))
+                                        val kept = keeper.keep(p, consent.session, proved, consent.verifier, consent.trust)
+                                        consent.forFile?.let { model.files.attachWebProof(it, kept.documentId) }
+                                        shown.copy(kept = kept)
                                     } catch (e: CancellationException) {
                                         throw e
                                     } catch (e: Exception) {
@@ -264,29 +274,184 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.Working("讀取可查驗的網站")
         job = model.scope.launch {
-            val installed = ZkTlsProfiles.installed
-            val test = model.settings.testEnvironment
-            var note: String? = null
-            // Pages imported for testing come first among the test pages; the test server's follow.
-            val imported = if (test) model.zkTemplates.state.value.testPages else emptyList()
-            val served = if (!test) emptyList() else host()?.let { base ->
-                try {
-                    hostPages(base)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    note = "無法從 ${Url(base).host} 取得測試查驗頁：" + model.describe(e)
-                    emptyList()
-                }
-            }.orEmpty()
-            val offered = imported + served.filter { p -> imported.none { it.id == p.id } }
-            val pages = installed + offered.filter { p -> installed.none { it.id == p.id } }
-            if (pages.isEmpty()) {
-                val why = if (model.zkTemplates.state.value.version == null) "尚未安裝查驗頁版型，請到設定的「零知識證明」頁更新或匯入版型。" else "已安裝的版型沒有查驗頁。"
-                note = listOfNotNull(note, why, if (test) null else "測試用的查驗頁只在測試環境提供。").joinToString("\n")
-            }
-            ui.value = OfflineUi.ZkTlsVerifierSetup(pages, offered.map { it.id }.toSet() - installed.map { it.id }.toSet(), note)
+            val (pages, testPages, note) = availablePages()
+            ui.value = OfflineUi.ZkTlsVerifierSetup(pages, testPages, note)
         }
+    }
+
+    /**
+     * The pages this device can query or ask for: the installed template pack, and in the test environment imported
+     * test pages and the test server's. Returns them, the ids of the test pages, and a note when something is missing.
+     */
+    private suspend fun availablePages(): Triple<List<ZkTlsProfile>, Set<String>, String?> {
+        val installed = ZkTlsProfiles.installed
+        val test = model.settings.testEnvironment
+        var note: String? = null
+        // Pages imported for testing come first among the test pages; the test server's follow.
+        val imported = if (test) model.zkTemplates.state.value.testPages else emptyList()
+        val served = if (!test) emptyList() else host()?.let { base ->
+            try {
+                hostPages(base)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                note = "無法從 ${Url(base).host} 取得測試查驗頁：" + model.describe(e)
+                emptyList()
+            }
+        }.orEmpty()
+        val offered = imported + served.filter { p -> imported.none { it.id == p.id } }
+        val pages = installed + offered.filter { p -> installed.none { it.id == p.id } }
+        if (pages.isEmpty()) {
+            val why = if (model.zkTemplates.state.value.version == null) "尚未安裝查驗頁版型，請到設定的「零知識證明」頁更新或匯入版型。" else "已安裝的版型沒有查驗頁。"
+            note = listOfNotNull(note, why, if (test) null else "測試用的查驗頁只在測試環境提供。").joinToString("\n")
+        }
+        return Triple(pages, offered.map { it.id }.toSet() - installed.map { it.id }.toSet(), note)
+    }
+
+    // ---------------------------------------------------------------- holder-initiated
+
+    /** The holder's own web query, as evidence of the file [fileId] when given: first which page and how. */
+    fun openSelf(fileId: String?) {
+        stop()
+        model.screen.value = Screen.Offline
+        ui.value = OfflineUi.Working("讀取可查詢的網站")
+        job = model.scope.launch {
+            val (pages, testPages, note) = availablePages()
+            ui.value = OfflineUi.ZkTlsSelfPick(fileId, pages, testPages, host(), note)
+        }
+    }
+
+    /**
+     * A zkTLS proof of [profile] through the verifier host: the host opens a session for every field, and this device
+     * proves to it as to any verifier. The host's receipt is kept (a web-proof) and linked to the file.
+     */
+    fun selfThroughHost(pick: OfflineUi.ZkTlsSelfPick, profile: ZkTlsProfile) {
+        stop()
+        ui.value = OfflineUi.Working("向查驗主機建立網站查驗")
+        job = model.scope.launch {
+            ui.value = try {
+                val base = host() ?: throw ProtocolException("unavailable", "尚未設定查驗主機（設定的「零知識證明」頁）")
+                val body = buildJsonObject {
+                    put("profile", profile.id)
+                    putJsonArray("fields") { profile.fields.forEach { add(it.name) } }
+                    put("purpose", SELF_PURPOSE)
+                }
+                val response = client.post("$base/zktls/sessions") {
+                    contentType(ContentType.Application.Json)
+                    accept(ContentType.Application.Json)
+                    setBody(body.toString())
+                }
+                val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
+                    ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
+                if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+                val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
+                consentFor(link, pick.fileId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                OfflineUi.Failed("無法透過查驗主機查詢：" + model.describe(e))
+            }
+            (ui.value as? OfflineUi.ZkTlsConsent)?.let { if (ZkTlsPrepare.needed(it.profile)) refreshCaptcha(it) }
+        }
+    }
+
+    /** [profile] queried by this device alone; the result can only be kept as a device record. */
+    fun selfDirect(pick: OfflineUi.ZkTlsSelfPick, profile: ZkTlsProfile) {
+        stop()
+        val state = OfflineUi.ZkTlsSelf(profile, pick.fileId)
+        ui.value = state
+        refreshSelfCaptcha(state)
+    }
+
+    /** A new picture code for a query on this device, in the same site session when there is one. */
+    fun refreshSelfCaptcha(state: OfflineUi.ZkTlsSelf) {
+        if (!ZkTlsPrepare.needed(state.profile)) return
+        prepareJob?.cancel()
+        ui.value = state.copy(preparing = true, error = null)
+        prepareJob = model.scope.launch {
+            val next = try {
+                state.copy(captcha = ZkTlsPrepare.start(model.http, state.profile, state.captcha), preparing = false, error = null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                state.copy(captcha = null, preparing = false, error = "無法取得驗證碼：" + model.describe(e))
+            }
+            val now = ui.value
+            if (now is OfflineUi.ZkTlsSelf && now.profile.id == state.profile.id) ui.value = next
+        }
+    }
+
+    /**
+     * Queries the page of [state] with [inputs] over this device's own TLS connection and reads it with the profile's
+     * rules. A found record is kept as this wallet's statement (a web-record, not a zero-knowledge proof) and linked
+     * to the file. The inputs live only in the request bytes.
+     */
+    fun queryDirect(state: OfflineUi.ZkTlsSelf, inputs: Map<String, String>) {
+        if (ZkTlsPrepare.needed(state.profile) && state.captcha == null) {
+            ui.value = state.copy(error = "請先取得驗證碼")
+            return
+        }
+        val bytes = try {
+            ZkTlsPlanner.request(state.profile, inputs, state.captcha?.cookies.orEmpty())
+        } catch (e: ProtocolException) {
+            ui.value = state.copy(error = e.message)
+            return
+        }
+        job?.cancel()
+        ui.value = state.copy(working = true, error = null)
+        job = model.scope.launch {
+            var pending: ZkTlsKeep.Pending? = null
+            val result = try {
+                val fetched = ZkTlsDirect.fetch(state.profile, bytes, extraRoots())
+                val outcome = ZkTlsDirectRead.outcome(state.profile, bytes, fetched, SELF_PURPOSE)
+                val trust = serverTrust(fetched.certChainDer)
+                if (!outcome.passed) {
+                    OfflineUi.ZkTlsSelfResult(state, outcome, trust, fetched, null, null)
+                } else {
+                    val p = keeper.prepare().also { pending = it }
+                    val kept = keeper.record(p, outcome, fetched.time, fetched.certChainDer, fetched.cipherSuite)
+                    pending = null
+                    state.fileId?.let { model.files.attachWebProof(it, kept.documentId) }
+                    OfflineUi.ZkTlsSelfResult(state, outcome, trust, fetched, kept, null)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                OfflineUi.ZkTlsSelfResult(state, null, null, null, null, model.describe(e))
+            } finally {
+                pending?.let { p -> withContext(NonCancellable) { keeper.discard(p) } }
+            }
+            ui.value = result
+        }
+    }
+
+    /** The file the holder query on screen was started from, which leaving it returns to. */
+    val queryFile: String?
+        get() = when (val s = ui.value) {
+            is OfflineUi.ZkTlsSelfPick -> s.fileId
+            is OfflineUi.ZkTlsSelf -> s.fileId
+            is OfflineUi.ZkTlsSelfResult -> s.state.fileId
+            is OfflineUi.ZkTlsConsent -> s.forFile
+            is OfflineUi.ZkTlsProving -> s.consent.forFile
+            is OfflineUi.ZkTlsHolderResult -> s.consent.forFile
+            else -> null
+        }
+
+    /** Leaves a holder query: back to the file [fileId] it was started from, else as the back key does. */
+    fun leave(fileId: String?) {
+        if (fileId == null) {
+            model.back()
+            return
+        }
+        model.taiwan.closeOffline()
+        model.screen.value = Screen.FileDetail(fileId)
+    }
+
+    /** Back to the query of [result] with a new picture code where the page uses one. */
+    fun retrySelf(result: OfflineUi.ZkTlsSelfResult) {
+        val state = result.state.copy(working = false, error = null)
+        ui.value = state
+        refreshSelfCaptcha(state)
     }
 
     private suspend fun hostPages(base: String): List<ZkTlsProfile> {
@@ -326,7 +491,12 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
 
     private suspend fun verifyHere(engine: ZkTlsEngine, profile: ZkTlsProfile, fields: List<String>, purpose: String) {
         val relay = host()
-        val opened = engine.open(lan = model.platform.bondsLan != null, relayUrl = relay)
+        val opened = try {
+            engine.open(lan = model.platform.bondsLan != null, relayUrl = relay)
+        } catch (e: ProtocolException) {
+            if (e.code != "unavailable") throw e
+            throw IllegalStateException(noRoute(relay))
+        }
         session = opened
         val request = ZkTlsSessionRequest.create(opened.transports, opened.publicKey, profile, fields, purpose,
             inlineProfile = ZkTlsProfiles.find(profile.id) == null)
@@ -416,6 +586,19 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     }
 
     /** The key that signs this device's requests: a did:key of its own, used without unlocking. */
+    /**
+     * Why no holder could reach this verifier, and what to change: a phone on mobile data alone has no address another
+     * phone can reach (the carrier's addresses are left out on purpose), so it needs a shared Wi-Fi or hotspot, or a
+     * verifier host whose relay both phones reach.
+     */
+    private fun noRoute(relay: String?): String {
+        val lan = model.platform.bondsLan?.localInterfaces().orEmpty()
+        val network = if (lan.isEmpty()) "這支手機沒有連上 Wi-Fi 或開啟熱點（只用行動數據時，對方的手機連不到這支手機）" else "無法在 ${lan.networks()} 上開啟連線"
+        val host = if (relay == null) "也沒有設定查驗主機，所以沒有中繼可用" else "也連不到查驗主機 $relay 的中繼（/zktls/relay）"
+        return "$network，$host。請讓兩支手機連同一個 Wi-Fi，或由其中一支開熱點讓另一支連上；" +
+            "兩支手機不在同一個網路時，請在設定「零知識證明」頁填入有提供中繼的查驗主機。"
+    }
+
     private suspend fun verifierKey(): HolderKey {
         val backend = model.backends.first()
         return model.holderIdentities.getOrCreate(VERIFIER_PROFILE, "did:key", backend.secureArea,
@@ -463,6 +646,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     }
 
     companion object {
+        /** The purpose of a query the holder starts to keep the result. */
+        const val SELF_PURPOSE = "保存網站查驗結果"
+
         const val VERIFIER_PROFILE = "zktls-verifier"
         const val EXPIRED = "這個請求已過期（10 分鐘內有效），請對方重新產生 QR Code。"
         const val EXPIRED_VERIFIER = "請求已過期，沒有收到出示。"
