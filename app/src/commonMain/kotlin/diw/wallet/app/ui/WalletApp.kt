@@ -54,6 +54,7 @@ import diw.wallet.app.HomeTab
 import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.WalletModel
+import diw.wallet.core.credential.ClaimPictures
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.trust.TrustDecision
@@ -262,6 +263,27 @@ fun LabelValue(label: String, value: String, small: Boolean = false, onClick: ((
             style = style,
             color = if (onClick != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
         )
+    }
+}
+
+/** A claim's value as shown: the picture when the value is an encoded image (base64, base64url, data: URL), else the text. */
+@Composable
+fun ClaimValueView(model: WalletModel, label: String, value: String, modifier: Modifier = Modifier, small: Boolean = true) {
+    val picture = remember(value) { ClaimPictures.fromText(value)?.let { model.platform.decodeImage(it) } }
+    if (picture != null) {
+        Image(picture, contentDescription = label, contentScale = ContentScale.Fit,
+            modifier = modifier.widthIn(max = 160.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
+    } else {
+        Text(value, modifier, style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium)
+    }
+}
+
+/** A labelled claim; an encoded image shows as the picture. */
+@Composable
+fun ClaimRow(model: WalletModel, label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, Modifier.weight(0.4f), style = MaterialTheme.typography.bodyMedium)
+        Box(Modifier.weight(0.6f)) { ClaimValueView(model, label, value, small = false) }
     }
 }
 

@@ -171,8 +171,9 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
                 val locked = card.kind == BondsCardKind.MOICA && name in BondsOfflinePresentation.CLAIMS_ALWAYS_DISCLOSED
                 if (card.selective) Checkbox(checked = locked || name in chosen, enabled = !locked, onCheckedChange = { on -> chosen = if (on) chosen + name else chosen - name })
                 Column(if (card.selective) Modifier else Modifier.padding(start = 12.dp)) {
-                    Text(model.claimLabel(name.split('.'), null, record), style = MaterialTheme.typography.bodyMedium)
-                    Text(value, style = MaterialTheme.typography.bodySmall)
+                    val label = model.claimLabel(name.split('.'), null, record)
+                    Text(label, style = MaterialTheme.typography.bodyMedium)
+                    ClaimValueView(model, label, value)
                 }
             }
         }
@@ -347,7 +348,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
                     model.screen.value = Screen.Certificate(chain, 0, Screen.Offline)
                 }
             }
-            r.claims.forEach { (k, v) -> LabelValue(model.claimLabel(k.split('.'), null, null), v) }
+            r.claims.forEach { (k, v) -> ClaimRow(model, model.claimLabel(k.split('.'), null, null), v) }
             if (r.claims.isEmpty()) Text("對方沒有揭露任何欄位", style = MaterialTheme.typography.bodySmall)
             r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
             EvidenceRows(r.evidence)
