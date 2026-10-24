@@ -4,6 +4,7 @@ name: ZK templates
 # which the app reads beside nightly (ZkTemplatePack.SOURCES) and installs when it is newer.
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [main]
     paths:
