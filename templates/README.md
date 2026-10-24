@@ -4,7 +4,8 @@
 
 - `zktls/`：zkTLS 查驗頁描述檔，一個檔案一個查驗頁（格式見 `core/src/commonMain/kotlin/diw/wallet/core/zktls/ZkTlsProfile.kt` 與 `docs/design/p4-circuits.md` 第 4.2 節）。
   目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告）與 `cn.chsi.xjbg-en.json`（同一報告的英文版，
-  需先在學信網申請英文版；另揭露線上驗證到期日），都只輸入在線驗證碼。
+  需先在學信網申請英文版；另揭露線上驗證到期日），都只輸入在線驗證碼；`tw.gov.immigration.entryexit.json`（移民署入出國日期證明書驗證，
+  輸入證號、序號與圖形驗證碼；揭露發證日期、姓名、國籍、性別、出生日期與最近一次出入境日期，不揭露證號與序號）。
 - `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式在 WP3b 凍結公開輸入後定義）。
 
 ## 發布方式
@@ -51,11 +52,11 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 工具會照描述檔送出與錢包完全相同的請求（只用 TLSNotary 支援的 TLS 1.2 ECDHE AES-128-GCM），再以持有端的揭露規劃與查驗方的判定檢查回應，
 列出 TLS 版本與加密套件、網站憑證、回應大小、狀態規則與每個欄位是否對到。輸入從主控台讀取，不會寫入任何地方（經 Gradle 執行時輸入會顯示在畫面上）。
 欄位值預設不顯示，加 `-Pshow` 才顯示；加 `-Psave=build/page.html` 會把完整回應存在本機以便調整規則，檔案含查詢結果，不可放進 repo。
+調整規則時加 `-Pfrom=build/page.html` 可用存下的回應離線核對，不再連網站（需要驗證碼的查驗頁只要實際查詢一次）。
 結果為「通過」後再把描述檔移到 `zktls/`。
 
 需要圖形驗證碼的查驗頁（`prepare.type` 為 `captcha`）：工具會先開網頁取得工作階段，把驗證碼圖片存成暫存檔並嘗試開啟，再請你輸入。
-`drafts/zktls/tw.gov.immigration.entryexit.json`（移民署入出國日期證明書驗證）的狀態與欄位規則還沒有以成功的結果頁核對，
-請用有效的證明書（發證 3 個月內）加 `-Psave=build/nia.html` 執行一次，依存下的結果頁調整規則。
+查一次後加 `-Psave` 存下結果頁，之後以 `-Pfrom` 離線調整規則，不必每次重填驗證碼。
 
 ## 規則
 
@@ -63,7 +64,7 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 - 揭露規則必須在值之後以分隔字元結束（例如結束標籤或換行），第一個群組是查驗方讀回的值。
 - 網站依 User-Agent 回傳不同版面時，描述檔要在 `headers` 固定 User-Agent，規則對應那個版面（學信網固定 `Mozilla/5.0`，回傳桌面版）。
 - 以分塊傳輸（chunked）回應時，規則對的是去掉分塊標頭後的內容；欄位被分塊切開時，揭露範圍會包含中間的分塊標頭，查驗方讀取前會去掉。
-- 查詢輸入（驗證碼、序號等）所在的列不可作為欄位；結果頁常把輸入值帶回表單欄位，規則不可對到那裡。
+- 查詢輸入（驗證碼、序號等）所在的列不可作為欄位；結果頁常把輸入值帶回表單欄位或結果列表（移民署結果頁的列表與明細都有證號與序號），規則不可對到那裡。
 - `prepare.type` 為 `captcha` 時，`page` 是先開的表單頁，`image` 是驗證碼圖片，`input` 是填驗證碼的輸入，`cookies` 是工作階段 Cookie 名稱。
   圖片由持有端直接向網站取得，Cookie 放在不揭露的請求標頭，查驗方都看不到。
 - 版型只描述版面與揭露範圍，不會改變電路；電路仍以 App 內釘選的版本為準。

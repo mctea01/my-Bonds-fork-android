@@ -31,7 +31,10 @@ import kotlin.system.exitProcess
  * status text are shown only with --show; the response is written only with --save, to a file the developer keeps
  * out of the repository (it holds the query result).
  *
- * Usage: ProfileCheckTool <profile.json> [--show] [--save <file>]
+ * With --from the rules are checked against a response saved earlier with --save, without contacting the site, so a
+ * page that takes a picture code is queried only once while its rules are written.
+ *
+ * Usage: ProfileCheckTool <profile.json> [--show] [--save <file>] [--from <file>]
  */
 object ProfileCheckTool {
     /** The suites TLSNotary's TLS 1.2 client offers. */
@@ -39,10 +42,12 @@ object ProfileCheckTool {
 
     @JvmStatic
     fun main(args: Array<String>) {
-        val path = args.firstOrNull { !it.startsWith("--") && args.indexOf(it).let { i -> i == 0 || args[i - 1] != "--save" } }
+        val path = args.firstOrNull { !it.startsWith("--") && args.indexOf(it).let { i -> i == 0 || args[i - 1] !in setOf("--save", "--from") } }
             ?: usage()
         val show = "--show" in args
-        val save = args.indexOf("--save").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) ?: usage() }?.let(::File)
+        fun option(name: String) = args.indexOf(name).takeIf { it >= 0 }?.let { args.getOrNull(it + 1) ?: usage() }?.let(::File)
+        val save = option("--save")
+        val from = option("--from")
 
         val profile = try {
             ZkTlsProfile.parse(DiwJson.parseToJsonElement(File(path).readText(Charsets.UTF_8)) as JsonObject)
@@ -50,43 +55,13 @@ object ProfileCheckTool {
             fail("描述檔無法讀取：${e.message}")
         }
         println("查驗頁：${profile.title}（${profile.id}）・${profile.host}:${profile.port}")
-        var prepared: ZkTlsPrepare.Session? = null
-        val inputs = profile.request.inputs.associate { input ->
-            if (input.name == profile.prepare.input && ZkTlsPrepare.needed(profile)) {
-                prepared = try {
-                    runBlocking { HttpClient(Java) { followRedirects = false }.use { ZkTlsPrepare.start(it, profile) } }
-                } catch (e: Exception) {
-                    fail("無法取得驗證碼：${e.message}")
-                }
-                showCaptcha(prepared!!.image)
-            }
-            val prompt = input.label + (if (input.isPrivate) "（不顯示）" else "") + "："
-            val console = System.console()
-            val value = when {
-                console != null && input.isPrivate -> console.readPassword(prompt)?.let { String(it) }
-                console != null -> console.readLine(prompt)
-                else -> { print(prompt); readlnOrNull() }
-            }?.trim().orEmpty()
-            input.name to value
+        val (request, received) = if (from != null) {
+            println("離線核對：${from.absolutePath}")
+            stubRequest(profile) to from.readBytes()
+        } else {
+            live(profile)
         }
-        val request = try {
-            ZkTlsPlanner.request(profile, inputs, prepared?.cookies.orEmpty())
-        } catch (e: Exception) {
-            fail("輸入不符合描述檔：${e.message}")
-        }
-        println("請求：${request.size} / ${profile.limits.maxSent} 位元組")
 
-        val (received, tls) = try {
-            fetch(profile, request)
-        } catch (e: javax.net.ssl.SSLHandshakeException) {
-            fail("TLS 交握失敗（網站可能不支援 TLS 1.2 的 ECDHE AES-128-GCM，或憑證不受這台電腦信任）：${e.message}")
-        } catch (e: Exception) {
-            fail("連線失敗：${e.message}")
-        }
-        println("TLS：${tls.protocol}・${tls.cipherSuite}")
-        tls.chain.forEachIndexed { i, c ->
-            println("  憑證 $i：${c.subjectX500Principal.name}・SHA-256 ${sha256(c.encoded)}")
-        }
         val head = received.decodeToString(0, minOf(received.size, headEnd(received))).lines()
         println("回應：${head.firstOrNull().orEmpty()}・${received.size} / ${profile.limits.maxRecv} 位元組")
         head.drop(1).filter { it.contains(':') }.map { it.substringBefore(':').trim() to it.substringAfter(':').trim() }
@@ -98,7 +73,7 @@ object ProfileCheckTool {
             problems += "回應經過壓縮，無法部分揭露"
         }
 
-        save?.let {
+        save?.takeIf { from == null }?.let {
             it.writeBytes(received)
             println("已把完整回應存到 ${it.absolutePath}（含查詢結果，請勿放進 repo）")
         }
@@ -106,7 +81,7 @@ object ProfileCheckTool {
         val fields = profile.fields.map { it.name }
         val plan = ZkTlsPlanner.receivedReveal(profile, fields, received)
         val sent = ZkTlsPlanner.sentReveal(profile, request)
-        val seen = ZkTlsHolder.masked(profile.host, tls.chain.map { it.encoded }, System.currentTimeMillis() / 1000, request, received, sent, plan.received)
+        val seen = ZkTlsHolder.masked(profile.host, emptyList(), System.currentTimeMillis() / 1000, request, received, sent, plan.received)
         val session = ZkTlsSessionRequest.create(listOf(ZkTlsTransport.Lan("192.168.0.1", 1)), ByteArray(32), profile, fields, "profile check")
         val outcome = ZkTlsCheck.check(session, profile, seen)
 
@@ -138,6 +113,59 @@ object ProfileCheckTool {
             exitProcess(1)
         }
     }
+
+    /** Asks for the inputs, queries the site and prints its TLS details. */
+    private fun live(profile: ZkTlsProfile): Pair<ByteArray, ByteArray> {
+        var prepared: ZkTlsPrepare.Session? = null
+        val inputs = profile.request.inputs.associate { input ->
+            if (input.name == profile.prepare.input && ZkTlsPrepare.needed(profile)) {
+                val session = try {
+                    runBlocking { HttpClient(Java) { followRedirects = false }.use { ZkTlsPrepare.start(it, profile) } }
+                } catch (e: Exception) {
+                    fail("無法取得驗證碼：${e.message}")
+                }
+                prepared = session
+                showCaptcha(session.image)
+            }
+            val prompt = input.label + (if (input.isPrivate) "（不顯示）" else "") + "："
+            val console = System.console()
+            val value = when {
+                console != null && input.isPrivate -> console.readPassword(prompt)?.let { String(it) }
+                console != null -> console.readLine(prompt)
+                else -> { print(prompt); readlnOrNull() }
+            }?.trim().orEmpty()
+            input.name to value
+        }
+        val request = try {
+            ZkTlsPlanner.request(profile, inputs, prepared?.cookies.orEmpty())
+        } catch (e: Exception) {
+            fail("輸入不符合描述檔：${e.message}")
+        }
+        println("請求：${request.size} / ${profile.limits.maxSent} 位元組")
+        val (received, tls) = try {
+            fetch(profile, request)
+        } catch (e: javax.net.ssl.SSLHandshakeException) {
+            fail("TLS 交握失敗（網站可能不支援 TLS 1.2 的 ECDHE AES-128-GCM，或憑證不受這台電腦信任）：${e.message}")
+        } catch (e: Exception) {
+            fail("連線失敗：${e.message}")
+        }
+        println("TLS：${tls.protocol}・${tls.cipherSuite}")
+        tls.chain.forEachIndexed { i, c ->
+            println("  憑證 $i：${c.subjectX500Principal.name}・SHA-256 ${sha256(c.encoded)}")
+        }
+        return request to received
+    }
+
+    /**
+     * A request line and Host line as the planner writes them, for checking a saved response: the verifier reads only
+     * those parts of the request, and the inputs are not needed.
+     */
+    private fun stubRequest(profile: ZkTlsProfile): ByteArray {
+        val r = profile.request
+        val line = r.method + " " + r.path + (if (r.query != null) "?" else "") + " HTTP/1.1\r\n"
+        return (line + ZkTlsPlanner.hostLine(profile) + "\r\n").encodeToByteArray()
+    }
+
 
     /** Writes the picture code to a temporary file and opens it where the desktop allows; deleted on exit. */
     private fun showCaptcha(image: ByteArray) {
@@ -194,7 +222,7 @@ object ProfileCheckTool {
     private fun sha256(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
 
     private fun usage(): Nothing {
-        System.err.println("Usage: ProfileCheckTool <profile.json> [--show] [--save <file>]")
+        System.err.println("Usage: ProfileCheckTool <profile.json> [--show] [--save <file>] [--from <file>]")
         exitProcess(2)
     }
 

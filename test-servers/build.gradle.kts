@@ -72,7 +72,8 @@ tasks.register<JavaExec>("templatePack") {
 }
 
 // Checks a zkTLS page profile against the real site on this machine (templates/README.md): -Pprofile=<file>, and
-// -Pshow to print the values read, -Psave=<file> to keep the response (it holds the query result).
+// -Pshow to print the values read, -Psave=<file> to keep the response (it holds the query result), -Pfrom=<file> to
+// check the rules against a kept response without contacting the site.
 tasks.register<JavaExec>("checkProfile") {
     group = "verification"
     description = "Checks a zkTLS verification page profile against the real site"
@@ -83,9 +84,11 @@ tasks.register<JavaExec>("checkProfile") {
     val profile = providers.gradleProperty("profile")
     val show = providers.gradleProperty("show")
     val save = providers.gradleProperty("save")
+    val from = providers.gradleProperty("from")
     argumentProviders.add(CommandLineArgumentProvider {
         listOfNotNull(profile.orNull?.let { rootProject.file(it).absolutePath }) +
             (if (show.isPresent) listOf("--show") else emptyList()) +
-            (save.orNull?.let { listOf("--save", rootProject.file(it).absolutePath) } ?: emptyList())
+            (save.orNull?.let { listOf("--save", rootProject.file(it).absolutePath) } ?: emptyList()) +
+            (from.orNull?.let { listOf("--from", rootProject.file(it).absolutePath) } ?: emptyList())
     })
 }
