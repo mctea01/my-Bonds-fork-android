@@ -3,7 +3,8 @@
 這裡是隨 GitHub Release 發布的版型資料。新增或修改版型只要改這個資料夾，不需要更新 App。
 
 - `zktls/`：zkTLS 查驗頁描述檔，一個檔案一個查驗頁（格式見 `core/src/commonMain/kotlin/diw/wallet/core/zktls/ZkTlsProfile.kt` 與 `docs/design/p4-circuits.md` 第 4.2 節）。
-  目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告；輸入在線驗證碼）。
+  目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告）與 `cn.chsi.xjbg-en.json`（同一報告的英文版，
+  需先在學信網申請英文版；另揭露線上驗證到期日），都只輸入在線驗證碼。
 - `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式在 WP3b 凍結公開輸入後定義）。
 
 ## 發布方式
