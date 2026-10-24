@@ -3,7 +3,7 @@
 import argparse
 import zlib
 from pathlib import Path
-from fixtures import witness, compressed
+from fixtures import witness, compressed, mutate
 
 def small_dynamic():
     bits=[]
@@ -27,6 +27,7 @@ def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=N
     blocks,tokens,owners,plain=witness(data)
     assert len(blocks)==1 and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
     data=list(data)
+    if isinstance(mutation, tuple): mutate(data, blocks, tokens, owners, mutation)
     if mutation=='checksum': data[-1]^=1
     if mutation=='gap': tokens[1][1]+=1
     if mutation=='owner': owners[0]=1
