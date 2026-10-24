@@ -1,0 +1,23 @@
+{
+  "id": "cn.chsi.xjbg/1",
+  "title": "學信網學籍在線驗證報告",
+  "host": "www.chsi.com.cn",
+  "official": false,
+  "prepare": { "type": "none" },
+  "request": {
+    "method": "GET",
+    "path": "/xlcx/bg.do",
+    "query": "vcode={vcode}&srcid=bgcx",
+    "inputs": [ { "name": "vcode", "label": "在線驗證碼", "pattern": "^[0-9A-Z]{12,16}$", "private": true } ]
+  },
+  "limits": { "maxSent": 4096, "maxRecv": 262144 },
+  "status": { "reveal": "<title>[^<]{1,80}</title>", "success": "在线验证报告" },
+  "fields": [
+    { "name": "name", "label": "姓名", "reveal": "姓名\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,40}?)\\s*</" },
+    { "name": "school", "label": "學校名稱", "reveal": "(?:学校名称|院校)\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,80}?)\\s*</" },
+    { "name": "level", "label": "層次", "reveal": "层次\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,40}?)\\s*</" },
+    { "name": "major", "label": "專業", "reveal": "专业\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,80}?)\\s*</" },
+    { "name": "enrolled", "label": "入學日期", "reveal": "入学日期\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,40}?)\\s*</" },
+    { "name": "studentStatus", "label": "學籍狀態", "reveal": "学籍状态\\s*(?:[:：]\\s*)?</[a-z0-9]+>\\s*<[a-z0-9]+[^>]*>\\s*([^<]{1,40}?)\\s*</" }
+  ]
+}

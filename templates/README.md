@@ -38,6 +38,19 @@ openssl ecparam -name prime256v1 -genkey -noout -out zk-templates.key
 openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 ```
 
+## 在本機核對查驗頁
+
+`drafts/zktls/` 放尚未核對的描述檔草稿，不會打包。用自己的資料在本機核對：
+
+```
+./gradlew -q :test-servers:checkProfile -Pprofile=templates/drafts/zktls/cn.chsi.xjbg.json
+```
+
+工具會照描述檔送出與錢包完全相同的請求（只用 TLSNotary 支援的 TLS 1.2 ECDHE AES-128-GCM），再以持有端的揭露規劃與查驗方的判定檢查回應，
+列出 TLS 版本與加密套件、網站憑證、回應大小、狀態規則與每個欄位是否對到。輸入從主控台讀取，不會寫入任何地方（經 Gradle 執行時輸入會顯示在畫面上）。
+欄位值預設不顯示，加 `-Pshow` 才顯示；加 `-Psave=build/page.html` 會把完整回應存在本機以便調整規則，檔案含查詢結果，不可放進 repo。
+結果為「通過」後再把描述檔移到 `zktls/`。
+
 ## 規則
 
 - 查驗頁的揭露規則要以真實回應在本機核對後才能加入；真實回應與查詢結果不進 repo。
