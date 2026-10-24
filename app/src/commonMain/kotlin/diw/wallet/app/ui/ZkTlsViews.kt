@@ -37,6 +37,7 @@ import diw.wallet.app.WalletModel
 import diw.wallet.app.ZkJobPhase
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.zktls.ZkTlsOutcome
 import diw.wallet.core.zktls.ZkTlsPrepare
 import diw.wallet.core.zktls.ZkTlsProfile
@@ -194,7 +195,7 @@ internal fun ZkTlsProvingView(model: WalletModel, s: OfflineUi.ZkTlsProving) {
 
 /** The values the verifier reads back, under the page's labels. */
 private fun outcomeLines(o: ZkTlsOutcome, fields: List<String>): List<String> = buildList {
-    add("查詢狀態：" + (o.statusText ?: "未揭露") + if (o.found) "（找到資料）" else "")
+    add("查詢狀態：" + (o.statusText?.let { WebProofCredentials.plainStatus(it) } ?: "未揭露") + if (o.found) "（找到資料）" else "")
     fields.forEach { name ->
         val label = o.profile.field(name)?.label ?: name
         add("$label：" + (o.fields[name] ?: "頁面沒有此欄位"))
@@ -337,7 +338,7 @@ internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerif
             o.passed && s.local -> VerdictCard(Verdict.PASS, "查驗通過：${s.profile.title}", listOf("連線與揭露的內容已在這支手機驗證。"))
             o.passed -> VerdictCard(Verdict.CAUTION, "${s.where} 回報：查驗通過", listOf("這支手機沒有驗證證明本身，結果取決於 ${s.where}。"))
             else -> VerdictCard(Verdict.FAIL, "查驗未通過", o.problems + o.missing.map { "沒有揭露 " + (s.profile.field(it)?.label ?: it) } +
-                listOfNotNull("網站回應的查詢狀態是「${o.statusText}」".takeIf { o.statusText != null && !o.found }))
+                listOfNotNull("網站回應的查詢狀態是「${o.statusText?.let { WebProofCredentials.plainStatus(it) }}」".takeIf { o.statusText != null && !o.found }))
         }
         if (o != null) {
             Card(Modifier.fillMaxWidth()) {
@@ -432,7 +433,7 @@ internal fun ZkTlsSelfResultView(model: WalletModel, s: OfflineUi.ZkTlsSelfResul
             o == null -> VerdictCard(Verdict.FAIL, "沒有完成網站查詢", listOfNotNull(s.error))
             o.passed -> VerdictCard(Verdict.PASS, "已查到資料：${s.state.profile.title}", listOf("下面是這支手機從網站讀到的內容。"))
             else -> VerdictCard(Verdict.FAIL, "沒有查到資料", o.problems + o.missing.map { "頁面沒有 " + (s.state.profile.field(it)?.label ?: it) } +
-                listOfNotNull("網站回應的查詢狀態是「${o.statusText}」".takeIf { o.statusText != null && !o.found }))
+                listOfNotNull("網站回應的查詢狀態是「${o.statusText?.let { WebProofCredentials.plainStatus(it) }}」".takeIf { o.statusText != null && !o.found }))
         }
         if (o != null) {
             Card(Modifier.fillMaxWidth()) {
