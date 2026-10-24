@@ -15,10 +15,17 @@
 這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256 私鑰 PEM）簽章的 JWS，版本為建置時間；沒有設定 Secret 時略過。
 App 只接受 `ZkTemplatePack.TRUSTED_KEYS` 中公鑰簽的版型包，也不會安裝比已安裝版本舊的版型包。
 
+## 版型專用 Release（`zk-templates`）
+
+App 每次更新都會讀 nightly 與 `zk-templates` 兩個 Release，安裝其中簽章有效且版本最新的一份（設定頁會顯示來源）。
+
+`.github/workflows/zk-templates.yml` 只發布版型包：main 上 `templates/` 有變更時自動執行，也可在 Actions 頁手動執行
+（可選分支，例如先發布尚未合併的版型）。它會檢查所有描述檔、以 `ZK_TEMPLATES_KEY` 簽章，把 `zk-templates.jwt` 與其 SHA-256
+附加到 `zk-templates` Release（不存在時建立為 pre-release，存在時覆蓋檔案並更新說明）。不需要等整個 App 建置完成。
+
 ## 手動發布（替代來源）
 
-nightly 沒有版型包或版型包有問題時，可在本機以同一把金鑰簽章，上傳到另一個 Release 作為替代來源。
-App 每次更新都會讀 nightly 與 `zk-templates` 兩個 Release，安裝其中簽章有效且版本最新的一份（設定頁會顯示來源）。
+也可在本機以同一把金鑰簽章，自行上傳到 `zk-templates` Release。
 
 1. 在 repo 根目錄產生並簽章（版本為當下時間，所以會比先前任何一份新）：
    - Linux／macOS：`ZK_TEMPLATES_KEY="$(cat zk-templates.key)" ./gradlew :test-servers:templatePack`
