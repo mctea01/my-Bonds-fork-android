@@ -1960,7 +1960,7 @@ class WalletModelE2eTest {
         server = servers.start(port, wait = false)
         val (m, _) = newWallet()
         val record = diw.testservers.zktls.ZkTlsRecordPage
-        m.files.import(PickedFile("note.txt", "在學證明".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
+        m.files.import(PickedFile("note.txt", "紀錄查詢單\n證號：${record.SERIAL}\n".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
         val file = m.files.files.value.single()
 
         m.taiwan.zkTls.openSelf(file.id)
@@ -1972,6 +1972,9 @@ class WalletModelE2eTest {
         assertTrue(page.id in pick.testPages)
         m.taiwan.zkTls.selfDirect(pick, page)
         val state = assertIs<OfflineUi.ZkTlsSelf>(m.taiwan.offline.value)
+        // The file the query was started from prints the serial, so it is offered for that input.
+        val offered = withTimeout(30.seconds) { m.taiwan.zkTls.documentValues.first { it.isNotEmpty() } }
+        assertEquals(listOf(ZkTlsFlow.DocumentValue(file.id, "note.txt", "serial", record.SERIAL)), offered)
 
         // A malformed input stays on the query screen.
         m.taiwan.zkTls.queryDirect(state, mapOf("serial" to "bad", "code" to record.CODE))

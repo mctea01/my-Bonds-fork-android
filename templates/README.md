@@ -74,4 +74,8 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 - 查詢輸入（驗證碼、序號等）所在的列不可作為欄位；結果頁常把輸入值帶回表單欄位或結果列表（移民署結果頁的列表與明細都有證號與序號），規則不可對到那裡。
 - `prepare.type` 為 `captcha` 時，`page` 是先開的表單頁，`image` 是驗證碼圖片，`input` 是填驗證碼的輸入，`cookies` 是工作階段 Cookie 名稱。
   圖片由持有端直接向網站取得，Cookie 放在不揭露的請求標頭，查驗方都看不到。
+- 表單頁帶有每次不同的隱藏欄位（CSRF token、驗證碼金鑰）時，用 `prepare.values` 列出名稱與規則（第一個群組是值，只能是英數與 `._~-`），
+  開頁時讀出，可在 `image` 與請求的 `query`、`body` 以 `{名稱}` 使用，和輸入一樣不揭露。
+- 表單以 multipart/form-data 送出時，`request.encoding` 設為 `multipart`；`body` 仍寫成 `名稱=值&...`，`files` 列出要送空檔的檔案欄位。
+- 輸入的 `document` 是在已保存文件文字中找這個值的規則（例如謄本上的檢查號）；從文件發起時自動帶入，其他文件的值列在輸入下方供選用。
 - 版型只描述版面與揭露範圍，不會改變電路；電路仍以 App 內釘選的版本為準。

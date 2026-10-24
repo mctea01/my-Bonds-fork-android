@@ -41,6 +41,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import diw.wallet.core.document.DocumentFormat
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
@@ -65,6 +66,33 @@ import kotlin.time.Duration.Companion.seconds
 class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
     private var prepareJob: Job? = null
+    private var documentJob: Job? = null
+
+    /** A value a stored file prints for an input of the page on screen (a transcript's check number). */
+    data class DocumentValue(val fileId: String, val fileName: String, val input: String, val value: String)
+
+    /** Values the holder's stored files offer for the page on screen; kept in memory while the query is open. */
+    val documentValues = MutableStateFlow<List<DocumentValue>>(emptyList())
+
+    /**
+     * Reads the values [profile]'s inputs can take from the holder's files ([ZkTlsProfile.Input.document]): the file
+     * [fileId] the query was started from first, then the others. Nothing is read when no input names a rule.
+     */
+    private fun findDocumentValues(profile: ZkTlsProfile, fileId: String?) {
+        documentJob?.cancel()
+        documentValues.value = emptyList()
+        val inputs = profile.request.inputs.filter { it.document != null }
+        if (inputs.isEmpty()) return
+        documentJob = model.scope.launch {
+            val files = model.files.files.value.filter { it.report?.format in DOCUMENT_FORMATS }.sortedByDescending { it.id == fileId }
+            for (f in files) {
+                val text = runCatching { model.files.documentText(f) }.getOrNull() ?: continue
+                val found = inputs.mapNotNull { i -> i.fromDocument(text)?.let { DocumentValue(f.id, f.name, i.name, it) } }
+                    .filter { v -> documentValues.value.none { it.input == v.input && it.value == v.value } }
+                if (found.isNotEmpty()) documentValues.value = documentValues.value + found
+            }
+        }
+    }
     private var session: ZkTlsVerifierSession? = null
     private val client by lazy { model.http.config { followRedirects = false } }
     private val keeper = ZkTlsKeep(model)
@@ -135,6 +163,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             val did = verified.did!!
             TaiwanModel.shortDid(did) to model.didTrust.decideOrDefault(did, TrustRole.VERIFIER, "The verifier's DID is in no trust source")
         }
+        findDocumentValues(profile, forFile)
         return OfflineUi.ZkTlsConsent(verified, profile, name, trust, inline = ZkTlsProfiles.find(profile.id) == null, forFile = forFile)
     }
 
@@ -182,7 +211,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             return
         }
         val bytes = try {
-            ZkTlsPlanner.request(consent.profile, inputs, consent.captcha?.cookies.orEmpty())
+            ZkTlsPlanner.request(consent.profile, inputs, consent.captcha?.cookies.orEmpty(), consent.captcha?.values.orEmpty())
         } catch (e: ProtocolException) {
             ui.value = consent.copy(error = e.message)
             return
@@ -260,7 +289,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
 
     /** Stops the running proof and returns to the consent screen. */
     fun cancel(state: OfflineUi.ZkTlsProving) {
+        val found = documentValues.value
         stop()
+        documentValues.value = found
         retry(state.consent)
     }
 
@@ -360,6 +391,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         stop()
         val state = OfflineUi.ZkTlsSelf(profile, pick.fileId)
         ui.value = state
+        findDocumentValues(profile, pick.fileId)
         refreshSelfCaptcha(state)
     }
 
@@ -392,7 +424,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             return
         }
         val bytes = try {
-            ZkTlsPlanner.request(state.profile, inputs, state.captcha?.cookies.orEmpty())
+            ZkTlsPlanner.request(state.profile, inputs, state.captcha?.cookies.orEmpty(), state.captcha?.values.orEmpty())
         } catch (e: ProtocolException) {
             ui.value = state.copy(error = e.message)
             return
@@ -641,6 +673,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         job = null
         prepareJob?.cancel()
         prepareJob = null
+        documentJob?.cancel()
+        documentJob = null
+        documentValues.value = emptyList()
         session?.close()
         session = null
     }
@@ -648,6 +683,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     companion object {
         /** The purpose of a query the holder starts to keep the result. */
         const val SELF_PURPOSE = "保存網站查驗結果"
+        private val DOCUMENT_FORMATS = setOf(DocumentFormat.PDF, DocumentFormat.TEXT, DocumentFormat.XML)
 
         const val VERIFIER_PROFILE = "zktls-verifier"
         const val EXPIRED = "這個請求已過期（10 分鐘內有效），請對方重新產生 QR Code。"

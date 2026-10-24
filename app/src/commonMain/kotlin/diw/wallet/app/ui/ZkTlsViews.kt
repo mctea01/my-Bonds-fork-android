@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -93,11 +94,17 @@ private fun QueryInputs(
     inputs: MutableMap<String, String>,
     captcha: ZkTlsPrepare.Session?,
     preparing: Boolean,
+    forFile: String?,
     onRefresh: () -> Unit,
 ) {
     val captchaInput = profile.prepare.input.takeIf { ZkTlsPrepare.needed(profile) }
+    val fromFiles by model.taiwan.zkTls.documentValues.collectAsState()
     // Each picture takes its own answer.
     LaunchedEffect(captcha) { captchaInput?.let { inputs.remove(it) } }
+    // A query started from a file takes that file's values; other files' values are offered below their input.
+    LaunchedEffect(fromFiles, forFile) {
+        fromFiles.filter { it.fileId == forFile }.forEach { v -> if (inputs[v.input].isNullOrEmpty()) inputs[v.input] = v.value }
+    }
     profile.request.inputs.forEach { input ->
         if (input.name == captchaInput) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -118,6 +125,9 @@ private fun QueryInputs(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+        fromFiles.filter { it.input == input.name && it.value != inputs[input.name] }.forEach { v ->
+            TextButton(onClick = { inputs[input.name] = v.value }) { Text("帶入「${v.fileName}」的${input.label}") }
+        }
     }
 }
 
@@ -139,7 +149,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
         if (captchaInput != null) {
             Text("驗證碼圖片由這支手機直接向網站取得，查驗方看不到圖片、驗證碼與網站的 Cookie。", style = MaterialTheme.typography.bodySmall)
         }
-        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing) { model.taiwan.zkTls.refreshCaptcha(s) }
+        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing, s.forFile) { model.taiwan.zkTls.refreshCaptcha(s) }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = keep, onCheckedChange = { keep = it })
             Column {
@@ -409,7 +419,7 @@ internal fun ZkTlsSelfView(model: WalletModel, s: OfflineUi.ZkTlsSelf) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         PageCard(s.profile, s.profile.fields.map { it.name }, false)
         Text("這支手機直接連到網站查詢，沒有其他人參與；你填的資料只送到網站。", style = MaterialTheme.typography.bodySmall)
-        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing) { model.taiwan.zkTls.refreshSelfCaptcha(s) }
+        QueryInputs(model, s.profile, inputs, s.captcha, s.preparing, s.fileId) { model.taiwan.zkTls.refreshSelfCaptcha(s) }
         s.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         if (s.working) {
             LinearProgressIndicator(Modifier.fillMaxWidth())

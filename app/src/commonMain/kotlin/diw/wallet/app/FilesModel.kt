@@ -614,6 +614,20 @@ class FilesModel(private val model: WalletModel) {
         return null
     }
 
+    /**
+     * The text of [f] for reading values out of it (a check number to fill in): a PDF's text layer when it opens
+     * without asking (no password, or one already known), or a text or XML file. Null for anything else.
+     */
+    suspend fun documentText(f: StoredFile): String? = withContext(Dispatchers.Default) {
+        when (f.report?.format) {
+            DocumentFormat.PDF -> unlock(f, data(f.id), null)?.takeIf { it.encryptionProblem == null }?.let { pdf ->
+                runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()
+            }
+            DocumentFormat.TEXT, DocumentFormat.XML -> data(f.id).takeIf { it.size <= FilePreview.TEXT_LIMIT * 4 }?.decodeToString()
+            else -> null
+        }?.takeIf { it.isNotBlank() }
+    }
+
     /** The first page of a PDF (opened with the session password) or the image of [f], for card art; null otherwise. */
     suspend fun firstPage(f: StoredFile): ImageBitmap? = withContext(Dispatchers.Default) {
         val bytes = data(f.id)
