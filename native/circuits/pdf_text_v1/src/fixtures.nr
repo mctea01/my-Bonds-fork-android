@@ -1433,3 +1433,234 @@ unconstrained fn rejects_fdict() {
     let result = inflate(data,23,blocks,1,tokens,owners,plain_len);
     assert_eq(result,[65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32,65,66,82,65,67,65,68,65,66,82,65,32]);
 }
+
+#[test]
+unconstrained fn empty_stored() {
+    let mut data = [120,1,1,0,0,255,255,0,0,0,1];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 56;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 0;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };1];
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 0;
+
+    let result = inflate(data,11,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[0]);
+}
+
+#[test]
+unconstrained fn repeat_dynamic() {
+    let mut data = [120,1,5,192,5,9,0,0,0,0,160,109,254,63,37,2,0,66,0,66];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 122;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 2;
+    blocks[0].code_symbols[0] = 18;
+    blocks[0].code_symbols[65] = 1;
+    blocks[0].code_symbols[66] = 18;
+    blocks[0].code_symbols[204] = 18;
+    blocks[0].code_symbols[256] = 1;
+    blocks[0].code_widths[0] = 2;
+    blocks[0].code_widths[65] = 2;
+    blocks[0].code_widths[66] = 2;
+    blocks[0].code_widths[204] = 2;
+    blocks[0].code_widths[256] = 2;
+    blocks[0].code_widths[257] = 2;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };2];
+    tokens[0] = TokenHint { block:0,start:120,symbol:65,width:1,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:121,symbol:256,width:1,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 1;
+
+    let result = inflate(data,20,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_empty_stored_endpoint() {
+    let mut data = [120,1,1,0,0,255,255,0,0,0,1];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 56;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 0;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };1];
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 0;
+    blocks[0].end = 57;
+    let result = inflate(data,11,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[0]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_empty_huffman_without_eob() {
+    let mut data = [120,156,3,0,0,0,0,1];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 26;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 1;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };1];
+    tokens[0] = TokenHint { block:0,start:19,symbol:256,width:7,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 0;
+    blocks[0].tokens = 0;
+    let result = inflate(data,8,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[0]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_overlap_owner() {
+    let mut data = [120,1,115,116,114,164,42,4,0,61,101,20,121];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 66;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 5;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };5];
+    tokens[0] = TokenHint { block:0,start:19,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:27,symbol:66,width:8,distance_symbol:0,distance_width:0 };
+    tokens[2] = TokenHint { block:0,start:35,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[3] = TokenHint { block:0,start:43,symbol:277,width:7,distance_symbol:1,distance_width:5 };
+    tokens[4] = TokenHint { block:0,start:59,symbol:256,width:7,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;80] = [0,1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3];
+    let mut plain_len = 80;
+    owners[3] = 2;
+    let result = inflate(data,13,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_overlap_distance() {
+    let mut data = [120,1,115,116,114,164,42,4,0,61,101,20,121];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 66;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 5;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };5];
+    tokens[0] = TokenHint { block:0,start:19,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:27,symbol:66,width:8,distance_symbol:0,distance_width:0 };
+    tokens[2] = TokenHint { block:0,start:35,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[3] = TokenHint { block:0,start:43,symbol:277,width:7,distance_symbol:1,distance_width:5 };
+    tokens[4] = TokenHint { block:0,start:59,symbol:256,width:7,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;80] = [0,1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3];
+    let mut plain_len = 80;
+    tokens[3].distance_symbol = 0;
+    let result = inflate(data,13,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_dynamic_repeat_without_previous() {
+    let mut data = [120,1,5,192,5,9,0,0,0,0,160,109,254,63,37,2,0,66,0,66];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 122;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 2;
+    blocks[0].code_symbols[0] = 18;
+    blocks[0].code_symbols[65] = 1;
+    blocks[0].code_symbols[66] = 18;
+    blocks[0].code_symbols[204] = 18;
+    blocks[0].code_symbols[256] = 1;
+    blocks[0].code_widths[0] = 2;
+    blocks[0].code_widths[65] = 2;
+    blocks[0].code_widths[66] = 2;
+    blocks[0].code_widths[204] = 2;
+    blocks[0].code_widths[256] = 2;
+    blocks[0].code_widths[257] = 2;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };2];
+    tokens[0] = TokenHint { block:0,start:120,symbol:65,width:1,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:121,symbol:256,width:1,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 1;
+    data[11] = 108;
+    blocks[0].code_symbols[0] = 16;
+    let result = inflate(data,20,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_dynamic_repeat_overrun() {
+    let mut data = [120,1,5,192,5,9,0,0,0,0,160,109,254,63,37,2,0,66,0,66];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 122;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 2;
+    blocks[0].code_symbols[0] = 18;
+    blocks[0].code_symbols[65] = 1;
+    blocks[0].code_symbols[66] = 18;
+    blocks[0].code_symbols[204] = 18;
+    blocks[0].code_symbols[256] = 1;
+    blocks[0].code_widths[0] = 2;
+    blocks[0].code_widths[65] = 2;
+    blocks[0].code_widths[66] = 2;
+    blocks[0].code_widths[204] = 2;
+    blocks[0].code_widths[256] = 2;
+    blocks[0].code_widths[257] = 2;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };2];
+    tokens[0] = TokenHint { block:0,start:120,symbol:65,width:1,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:121,symbol:256,width:1,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 1;
+    data[13] = 255;
+    data[14] = 47;
+    let result = inflate(data,20,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_dynamic_missing_eob() {
+    let mut data = [120,1,5,192,5,9,0,0,0,0,160,109,254,63,37,2,0,66,0,66];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 122;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 2;
+    blocks[0].code_symbols[0] = 18;
+    blocks[0].code_symbols[65] = 1;
+    blocks[0].code_symbols[66] = 18;
+    blocks[0].code_symbols[204] = 18;
+    blocks[0].code_symbols[256] = 1;
+    blocks[0].code_widths[0] = 2;
+    blocks[0].code_widths[65] = 2;
+    blocks[0].code_widths[66] = 2;
+    blocks[0].code_widths[204] = 2;
+    blocks[0].code_widths[256] = 2;
+    blocks[0].code_widths[257] = 2;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };2];
+    tokens[0] = TokenHint { block:0,start:120,symbol:65,width:1,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:121,symbol:256,width:1,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;1] = [0];
+    let mut plain_len = 1;
+    data[14] = 5;
+    blocks[0].code_symbols[256] = 0;
+    let result = inflate(data,20,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65]);
+}
+
+#[test(should_fail)]
+unconstrained fn rejects_eob_endpoint() {
+    let mut data = [120,1,115,116,114,164,42,4,0,61,101,20,121];
+    let mut blocks = [BlockHint { start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] };1];
+    blocks[0].start = 16;
+    blocks[0].end = 66;
+    blocks[0].first_token = 0;
+    blocks[0].tokens = 5;
+    let mut tokens = [TokenHint { block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 };5];
+    tokens[0] = TokenHint { block:0,start:19,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[1] = TokenHint { block:0,start:27,symbol:66,width:8,distance_symbol:0,distance_width:0 };
+    tokens[2] = TokenHint { block:0,start:35,symbol:65,width:8,distance_symbol:0,distance_width:0 };
+    tokens[3] = TokenHint { block:0,start:43,symbol:277,width:7,distance_symbol:1,distance_width:5 };
+    tokens[4] = TokenHint { block:0,start:59,symbol:256,width:7,distance_symbol:0,distance_width:0 };
+    let mut owners: [u32;80] = [0,1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3];
+    let mut plain_len = 80;
+    blocks[0].end = 67;
+    let result = inflate(data,13,blocks,1,tokens,owners,plain_len);
+    assert_eq(result,[65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66]);
+}

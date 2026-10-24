@@ -119,6 +119,97 @@ def compressed(plain, strategy=zlib.Z_DEFAULT_STRATEGY, level=6):
     c=zlib.compressobj(level,zlib.DEFLATED,15,8,strategy)
     return c.compress(plain)+c.flush()
 
+def repeat_dynamic():
+    """One literal, with explicit repeat positions for targeted malformed inputs."""
+    bits, positions = [], {}
+    def put(value, width): bits.extend((value >> i) & 1 for i in range(width))
+    def code(value, width): bits.extend((value >> i) & 1 for i in reversed(range(width)))
+    put(1, 1); put(2, 2); put(0, 5); put(0, 5); put(14, 4)
+    # Four two-bit canonical codes: 0 -> 00, 1 -> 01, 16 -> 10, 18 -> 11.
+    for symbol in ORDER[:18]: put(2 if symbol in (0, 1, 16, 18) else 0, 3)
+    positions['first_repeat'] = 16 + len(bits)
+    code(3, 2); put(65 - 11, 7)
+    code(1, 2)
+    code(3, 2); put(138 - 11, 7)
+    code(3, 2)
+    positions['last_repeat_extra'] = 16 + len(bits)
+    put(52 - 11, 7)
+    positions['eob_length'] = 16 + len(bits)
+    code(1, 2); code(0, 2)
+    code(0, 1); code(1, 1)
+    payload = bytes(sum(b << j for j, b in enumerate(bits[i:i+8])) for i in range(0, len(bits), 8))
+    data = b'\x78\x01' + payload + zlib.adler32(b'A').to_bytes(4, 'big')
+    assert zlib.decompress(data) == b'A'
+    return data, positions
+
+def set_bits(data, pos, width, value):
+    for i in range(width):
+        index, bit = divmod(pos + i, 8)
+        data[index] = (data[index] & ~(1 << bit)) | (((value >> i) & 1) << bit)
+
+def regression_cases():
+    """Return valid witnesses plus one targeted attack per negative case."""
+    dynamic, positions = repeat_dynamic()
+    overlap = compressed(b'AB' * 40, zlib.Z_FIXED)
+    match = next(i for i, token in enumerate(witness(overlap)[1]) if token[2] > 256)
+    copied_byte = witness(overlap)[2].index(match)
+    return [
+        ('empty_stored', compressed(b'', level=0), None),
+        ('repeat_dynamic', dynamic, None),
+        ('rejects_empty_stored_endpoint', compressed(b'', level=0), ('block', 0, 'end', 1)),
+        ('rejects_empty_huffman_without_eob', compressed(b''), ('block', 0, 'tokens', -1)),
+        ('rejects_overlap_owner', overlap, ('owner', copied_byte, match - 1)),
+        ('rejects_overlap_distance', overlap, ('token', match, 4, 0)),
+        ('rejects_dynamic_repeat_without_previous', dynamic,
+         ('bits_hint', positions['first_repeat'], 2, 1, 0, 16)),
+        ('rejects_dynamic_repeat_overrun', dynamic,
+         ('bits', positions['last_repeat_extra'], 7, 127)),
+        ('rejects_dynamic_missing_eob', dynamic,
+         ('bits_hint', positions['eob_length'], 2, 0, 256, 0)),
+        ('rejects_eob_endpoint', overlap, ('block', 0, 'end', 1)),
+    ]
+
+def mutate(data, blocks, tokens, owners, mutation):
+    """Apply the same attack to Noir tests and the compiled ACIR harness."""
+    if mutation is None: return
+    kind, *args = mutation
+    if kind == 'block':
+        index, key, delta = args
+        blocks[index][key] += delta
+    elif kind == 'token':
+        index, field, value = args
+        tokens[index][field] = value
+    elif kind == 'owner':
+        index, value = args
+        owners[index] = value
+    elif kind in ('bits', 'bits_hint'):
+        set_bits(data, *args[:3])
+        if kind == 'bits_hint': blocks[0]['code_symbols'][args[3]] = args[4]
+    else: raise ValueError('Unknown synthetic mutation')
+
+def regression_nr(name, data, mutation):
+    blocks, tokens, owners, _ = witness(data)
+    changed = list(data)
+    mutate(changed, blocks, tokens, owners, mutation)
+    before_blocks, before_tokens, before_owners, _ = witness(data)
+    lines = []
+    for i, value in enumerate(changed):
+        if value != data[i]: lines.append(f'    data[{i}] = {value};')
+    for i, block in enumerate(blocks):
+        for key, value in block.items():
+            original = before_blocks[i][key]
+            if isinstance(value, list):
+                for j, item in enumerate(value):
+                    if item != original[j]: lines.append(f'    blocks[{i}].{key}[{j}] = {item};')
+            elif value != original: lines.append(f'    blocks[{i}].{key} = {value};')
+    keys = ['block', 'start', 'symbol', 'width', 'distance_symbol', 'distance_width']
+    for i, token in enumerate(tokens):
+        for j, value in enumerate(token):
+            if value != before_tokens[i][j]: lines.append(f'    tokens[{i}].{keys[j]} = {value};')
+    for i, value in enumerate(owners):
+        if value != before_owners[i]: lines.append(f'    owners[{i}] = {value};')
+    return nr_fixture(name, data, '\n'.join(lines), mutation is not None)
+
 def main():
     plain=b'ABRACADABRA '*30
     fixed=compressed(plain,zlib.Z_FIXED)
@@ -139,6 +230,7 @@ def main():
         nr_fixture('rejects_dynamic_hint',dynamic,'    blocks[0].code_widths[0] = 0;',True),
         nr_fixture('rejects_stored_length',stored,'    data[5] = data[5] ^ 1;',True),
         nr_fixture('rejects_fdict',fixed,'    data[1] = data[1] | 32;',True)]
+    tests += [regression_nr(*case) for case in regression_cases()]
     target=Path(__file__).resolve().parents[1]/'pdf_text_v1/src/fixtures.nr'
     target.write_text('// Generated by tools/fixtures.py from synthetic data.\nuse crate::inflate::{inflate,BlockHint,TokenHint};\n\n'+'\n\n'.join(tests)+'\n')
 
