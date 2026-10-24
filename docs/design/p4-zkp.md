@@ -35,6 +35,7 @@ P4 要讓錢包與查驗端都能產生與驗證四種零知識證據，全部�
 - 共用的 ZK 原生執行環境（Rust 工作區、uniffi 綁定、Android 與桌面）、電路與金鑰的下載與釘選、裝置分級與退回。
 - zkPDF：版型描述檔、遮蔽套件、Noir 電路、持有端產生與查驗端驗證、衍生憑證的證據與揭露。
 - zkTLS：TLSNotary 持有端（Android、桌面）與查驗端（Android、桌面、測試伺服器），端對端加密通道（區域網路、中繼），查驗頁描述檔，即時模式；裝置證明紀錄與自架 notary 的網頁證明憑證。
+  - 持有人主動查詢（2026-10-24）：文件頁「產生網站查驗證明」選查驗頁後，有查驗主機時由主機建立工作階段並以一般 zkTLS 流程產生、保存主機回執（web-proof）；沒有主機時這支手機以自己的 TLS 連線查詢，依查驗頁規則讀出欄位存為裝置證明紀錄（web-record）。結果都連結到該文件（`StoredFile.webProofIds`），刪除證件時一併移除連結。
 - OpenAC 年齡證明：引用 Bonds，含 Bonds 請求 QR、證明包與 BLE、HTTPS 傳送；查驗端同樣支援。
 - Longfellow：`mso_mdoc_zk` 的出示（OpenID4VP、ISO 18013-5 近距離、DC API）與查驗。
 

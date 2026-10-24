@@ -684,8 +684,9 @@ class WalletModel(val platform: PlatformServices) {
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             Screen.Offline -> {
+                val file = taiwan.zkTls.queryFile
                 taiwan.closeOffline()
-                screen.value = Screen.Home
+                screen.value = file?.let { Screen.FileDetail(it) } ?: Screen.Home
             }
             Screen.MsIssuance -> {
                 ms.cancel()

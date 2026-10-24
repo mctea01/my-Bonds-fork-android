@@ -137,7 +137,7 @@ object ProfileCheckTool {
             input.name to value
         }
         val request = try {
-            ZkTlsPlanner.request(profile, inputs, prepared?.cookies.orEmpty())
+            ZkTlsPlanner.request(profile, inputs, prepared?.cookies.orEmpty(), prepared?.values.orEmpty())
         } catch (e: Exception) {
             fail("輸入不符合描述檔：${e.message}")
         }

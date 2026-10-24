@@ -30,7 +30,9 @@ data class ZkTlsProfile(
     /**
      * What the holder fetches before the query, outside zkTLS (ZkTlsPrepare). With "captcha" the wallet opens [page]
      * for a session, shows the picture at [image] in that session, and the user types it into the input [input]; the
-     * named [cookies] of that session go in the query's Cookie header, which stays hidden like the inputs.
+     * named [cookies] of that session go in the query's Cookie header, which stays hidden like the inputs. [values]
+     * are read from [page] (a form's CSRF token, the picture's key) and fill {name} placeholders of [image] and of
+     * the query, hidden too.
      */
     @Serializable
     data class Prepare(
@@ -40,7 +42,12 @@ data class ZkTlsProfile(
         val image: String? = null,
         val input: String? = null,
         val cookies: List<String> = emptyList(),
+        val values: List<PageValue> = emptyList(),
     )
+
+    /** A value of the prepared page: the first group of [pattern] over the page, a token of [VALUE_RE]. */
+    @Serializable
+    data class PageValue(val name: String, val pattern: String)
 
     @Serializable
     data class Request(
@@ -48,10 +55,14 @@ data class ZkTlsProfile(
         val path: String,
         /** Query template with {input} placeholders; the whole query stays hidden from the verifier. */
         val query: String? = null,
-        /** Form body template (application/x-www-form-urlencoded) with {input} placeholders; hidden too. */
+        /** Form body template ("name=value&...") with {input} placeholders; hidden too. */
         val body: String? = null,
         val headers: Map<String, String> = emptyMap(),
         val inputs: List<Input> = emptyList(),
+        /** How the body is sent: "form" (application/x-www-form-urlencoded) or "multipart" (multipart/form-data). */
+        val encoding: String = "form",
+        /** File fields of a multipart form sent empty, as a browser sends a file input left unused. */
+        val files: List<String> = emptyList(),
     )
 
     @Serializable
@@ -60,7 +71,21 @@ data class ZkTlsProfile(
         val label: String,
         val pattern: String,
         @SerialName("private") val isPrivate: Boolean = true,
-    )
+        /**
+         * Where a stored document prints this value: the first group over the document's text (a transcript's check
+         * number), so the wallet can fill it in. Matched on the text as it is, then with all white space taken out.
+         */
+        val document: String? = null,
+    ) {
+        /** This input's value as [text] prints it, when it has a [document] rule and the value fits [pattern]. */
+        fun fromDocument(text: String): String? {
+            val rule = Regex(document ?: return null)
+            val fits = Regex(pattern)
+            return sequenceOf(text, text.filterNot { it.isWhitespace() })
+                .flatMap { t -> rule.findAll(t).mapNotNull { it.groupValues.getOrNull(1) } }
+                .firstOrNull { fits.matches(it) }
+        }
+    }
 
     @Serializable
     data class Limits(val maxSent: Int = 4096, val maxRecv: Int = 262_144)
@@ -91,24 +116,43 @@ data class ZkTlsProfile(
         if (fields.isEmpty() || fields.map { it.name }.toSet().size != fields.size) bad("fields missing or repeated")
         val names = request.inputs.map { it.name }
         if (names.toSet().size != names.size || names.any { !NAME_RE.matches(it) }) bad("malformed inputs")
+        val values = prepare.values.map { it.name }
+        if (values.toSet().size != values.size || values.any { !NAME_RE.matches(it) || it in names }) bad("malformed page values")
+        prepare.values.forEach { v ->
+            if (runCatching { capturingGroups(v.pattern) }.getOrDefault(0) < 1 || runCatching { Regex(v.pattern) }.isFailure) bad("page value ${v.name} has no value group")
+        }
         val placeholders = PLACEHOLDER.findAll((request.query ?: "") + (request.body ?: "")).map { it.groupValues[1] }.toSet()
-        if (!names.toSet().containsAll(placeholders)) bad("a placeholder names no input")
+        if (!(names + values).toSet().containsAll(placeholders)) bad("a placeholder names no input")
+        when (request.encoding) {
+            "form" -> if (request.files.isNotEmpty()) bad("file fields need a multipart body")
+            "multipart" -> {
+                if (request.method != "POST" || request.body == null) bad("a multipart request is a POST with a body")
+                val parts = request.body.split('&').map { it.substringBefore('=') } + request.files
+                if (parts.any { !FIELD_RE.matches(it) } || request.body.split('&').any { '=' !in it }) bad("malformed multipart fields")
+            }
+            else -> bad("unsupported body encoding")
+        }
         request.headers.forEach { (k, v) ->
             if (!TOKEN_RE.matches(k) || v.any { it < ' ' } || k.lowercase() in RESERVED_HEADERS) bad("header $k is not allowed")
         }
         when (prepare.type) {
-            "none" -> if (prepare.page != null || prepare.image != null || prepare.input != null || prepare.cookies.isNotEmpty()) bad("prepare has no steps")
+            "none" -> if (prepare.page != null || prepare.image != null || prepare.input != null || prepare.cookies.isNotEmpty() || prepare.values.isNotEmpty()) {
+                bad("prepare has no steps")
+            }
             "captcha" -> {
                 listOfNotNull(prepare.page, prepare.image ?: bad("captcha without image")).forEach { path ->
                     if (!path.startsWith("/") || path.any { it <= ' ' || it == '#' }) bad("malformed prepare path")
                 }
                 if (prepare.input == null || prepare.input !in names) bad("captcha input is not one of the inputs")
                 if (prepare.cookies.isEmpty() || prepare.cookies.any { !COOKIE_RE.matches(it) }) bad("captcha needs session cookie names")
+                if (prepare.values.isNotEmpty() && prepare.page == null) bad("page values need the page")
+                if (!values.toSet().containsAll(PLACEHOLDER.findAll(prepare.image!!).map { it.groupValues[1] }.toList())) bad("an image placeholder names no page value")
                 if (request.headers.keys.any { it.equals("Cookie", ignoreCase = true) }) bad("the session supplies the Cookie header")
             }
             else -> bad("unsupported prepare type")
         }
-        (request.inputs.map { it.pattern } + status.reveal + status.success + fields.map { it.reveal }).forEach {
+        request.inputs.forEach { i -> i.document?.let { if (runCatching { capturingGroups(it) }.getOrDefault(0) < 1) bad("document rule of ${i.name} has no value group") } }
+        (request.inputs.map { it.pattern } + request.inputs.mapNotNull { it.document } + status.reveal + status.success + fields.map { it.reveal }).forEach {
             runCatching { Regex(it) }.getOrElse { bad("rule does not compile") }
         }
         fields.forEach { if (capturingGroups(it.reveal) < 1) bad("rule of ${it.name} has no value group") }
@@ -124,7 +168,10 @@ data class ZkTlsProfile(
         private val HOST_RE = Regex("^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
         private val NAME_RE = Regex("^[A-Za-z][A-Za-z0-9_]{0,31}$")
         private val TOKEN_RE = Regex("^[A-Za-z0-9-]{1,64}$")
+        private val FIELD_RE = Regex("^[A-Za-z0-9_.-]{1,64}$")
         internal val COOKIE_RE = Regex("^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}$")
+        /** What a page value may hold: a token, so it can go in a URL, a form or a multipart field as it is. */
+        val VALUE_RE = Regex("^[A-Za-z0-9._~-]{1,256}$")
         /** Set by the planner itself: the request line, the target, the body framing and the compression rule. */
         private val RESERVED_HEADERS = setOf("host", "content-length", "transfer-encoding", "accept-encoding", "connection")
 

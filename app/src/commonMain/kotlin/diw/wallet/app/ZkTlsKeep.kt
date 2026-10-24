@@ -10,6 +10,7 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.zktls.WebProofCredentials
+import diw.wallet.core.zktls.ZkTlsOutcome
 import diw.wallet.core.zktls.ZkTlsProved
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import kotlinx.coroutines.withContext
@@ -77,43 +78,58 @@ class ZkTlsKeep(private val model: WalletModel) {
                 .getOrNull()
         }
         if (proved.receipt == null) note = "查驗方沒有簽發回執，改存為本機紀錄"
-        val now = Clock.System.now()
-        val record: IssuanceRecord
-        val compact: String
-        if (receipt != null) {
-            val tier = when (verifierTrust?.tier) {
-                TrustTier.T1, TrustTier.T2 -> TrustTier.T2
-                else -> TrustTier.T3
-            }
-            compact = receipt
-            record = IssuanceRecord(
-                credentialIssuer = session.did ?: verifierName, configurationId = CONFIGURATION, format = "dc+sd-jwt",
-                vct = WebProofCredentials.VCT_PROOF, tier = tier.name,
-                environment = (verifierTrust?.environment ?: TrustEnvironment.USER).id, official = false,
-                anchorName = verifierName, labels = verifierTrust?.labels.orEmpty().map { it.name },
-                issuedAt = now.epochSeconds, keyStorage = p.keyStorage,
-                specs = listOf("IETF SD-JWT VC", "TLSNotary"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
-                profile = PROFILE, displayDescription = "zkTLS 網站查驗證明：${outcome.profile.host}，由查驗方簽發",
-            )
-        } else {
-            val issuer = issuerKey()
-            compact = WebProofCredentials.issue(
-                WebProofCredentials.VCT_RECORD, issuer.did!!, issuer.signingKey("ES256"), p.jwk,
-                WebProofCredentials.source(outcome.profile, proved.time, proved.certChainDer, proved.cipherSuite),
-                WebProofCredentials.METHOD_DEVICE, WebProofCredentials.claims(outcome),
-                attestation = issuer.keyInfo.attestation.certChain?.certificates?.map { it.encoded.toByteArray() },
-                now = now,
-            )
-            record = IssuanceRecord(
-                credentialIssuer = issuer.did!!, configurationId = CONFIGURATION, format = "dc+sd-jwt",
-                vct = WebProofCredentials.VCT_RECORD, tier = TrustTier.T3.name, environment = TrustEnvironment.USER.id,
-                official = false, anchorName = "本錢包（網站紀錄）",
-                labels = listOf(TrustLabel.SELF_ISSUED.name) + if (issuer.keyInfo.attestation.certChain == null) listOf(TrustLabel.KEY_NOT_ATTESTED.name) else emptyList(),
-                issuedAt = now.epochSeconds, keyStorage = p.keyStorage,
-                specs = listOf("IETF SD-JWT VC"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
-                profile = PROFILE, displayDescription = "裝置證明，不是零知識證明：本機讀取 ${outcome.profile.host} 的紀錄",
-            )
+        if (receipt == null) return@unlocked writeRecord(p, outcome, proved.time, proved.certChainDer, proved.cipherSuite, note)
+        val tier = when (verifierTrust?.tier) {
+            TrustTier.T1, TrustTier.T2 -> TrustTier.T2
+            else -> TrustTier.T3
         }
+        val record = IssuanceRecord(
+            credentialIssuer = session.did ?: verifierName, configurationId = CONFIGURATION, format = "dc+sd-jwt",
+            vct = WebProofCredentials.VCT_PROOF, tier = tier.name,
+            environment = (verifierTrust?.environment ?: TrustEnvironment.USER).id, official = false,
+            anchorName = verifierName, labels = verifierTrust?.labels.orEmpty().map { it.name },
+            issuedAt = Clock.System.now().epochSeconds, keyStorage = p.keyStorage,
+            specs = listOf("IETF SD-JWT VC", "TLSNotary"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
+            profile = PROFILE, displayDescription = "zkTLS 網站查驗證明：${outcome.profile.host}，由查驗方簽發",
+        )
+        certify(p, receipt, record, title)
+        model.record(HistoryKind.ISSUED, verifierName, verifierTrust, listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name })
+        Kept(p.document.identifier, true, note)
+    }
+
+    /**
+     * Certifies [p] with this wallet's own statement of what it read ([outcome], from a connection at [time] to a site
+     * presenting [chain]): a web-record, a device record and not a zero-knowledge proof.
+     */
+    suspend fun record(p: Pending, outcome: ZkTlsOutcome, time: Long, chain: List<ByteArray>, cipherSuite: String?, note: String? = null): Kept =
+        unlocked { writeRecord(p, outcome, time, chain, cipherSuite, note) }
+
+    private suspend fun writeRecord(p: Pending, outcome: ZkTlsOutcome, time: Long, chain: List<ByteArray>, cipherSuite: String?, note: String?): Kept {
+        val title = outcome.profile.title
+        val now = Clock.System.now()
+        val issuer = issuerKey()
+        val compact = WebProofCredentials.issue(
+            WebProofCredentials.VCT_RECORD, issuer.did!!, issuer.signingKey("ES256"), p.jwk,
+            WebProofCredentials.source(outcome.profile, time, chain, cipherSuite),
+            WebProofCredentials.METHOD_DEVICE, WebProofCredentials.claims(outcome),
+            attestation = issuer.keyInfo.attestation.certChain?.certificates?.map { it.encoded.toByteArray() },
+            now = now,
+        )
+        val record = IssuanceRecord(
+            credentialIssuer = issuer.did!!, configurationId = CONFIGURATION, format = "dc+sd-jwt",
+            vct = WebProofCredentials.VCT_RECORD, tier = TrustTier.T3.name, environment = TrustEnvironment.USER.id,
+            official = false, anchorName = "本錢包（網站紀錄）",
+            labels = listOf(TrustLabel.SELF_ISSUED.name) + if (issuer.keyInfo.attestation.certChain == null) listOf(TrustLabel.KEY_NOT_ATTESTED.name) else emptyList(),
+            issuedAt = now.epochSeconds, keyStorage = p.keyStorage,
+            specs = listOf("IETF SD-JWT VC"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
+            profile = PROFILE, displayDescription = "裝置證明，不是零知識證明：本機讀取 ${outcome.profile.host} 的紀錄",
+        )
+        certify(p, compact, record, title)
+        model.record(HistoryKind.ISSUED, "本錢包（網站紀錄）", null, listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name })
+        return Kept(p.document.identifier, false, note)
+    }
+
+    private suspend fun certify(p: Pending, compact: String, record: IssuanceRecord, title: String) {
         try {
             p.credential.certify(compact.encodeToByteString())
             p.document.edit {
@@ -127,11 +143,6 @@ class ZkTlsKeep(private val model: WalletModel) {
         }
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
-        model.record(
-            HistoryKind.ISSUED, if (receipt != null) verifierName else "本錢包（網站紀錄）", if (receipt != null) verifierTrust else null,
-            listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name },
-        )
-        Kept(p.document.identifier, receipt != null, note)
     }
 
     private suspend fun issuerKey(): HolderKey {

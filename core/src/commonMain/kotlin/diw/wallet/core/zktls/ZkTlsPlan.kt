@@ -30,27 +30,64 @@ object ZkTlsPlanner {
      * The request bytes for [inputs]; throws when an input is missing or does not match its pattern. [cookies] are the
      * session cookies of a prepared page (ZkTlsPrepare); only the names the profile lists are sent.
      */
-    fun request(profile: ZkTlsProfile, inputs: Map<String, String>, cookies: Map<String, String> = emptyMap()): ByteArray {
+    fun request(
+        profile: ZkTlsProfile,
+        inputs: Map<String, String>,
+        cookies: Map<String, String> = emptyMap(),
+        values: Map<String, String> = emptyMap(),
+    ): ByteArray {
         val r = profile.request
         for (input in r.inputs) {
             val value = inputs[input.name] ?: throw ProtocolException("invalid_input", "${input.label}未填寫")
             if (!Regex(input.pattern).matches(value)) throw ProtocolException("invalid_input", "${input.label}格式不符")
         }
-        fun fill(template: String) = ZkTlsProfile.PLACEHOLDER.replace(template) { inputs.getValue(it.groupValues[1]).encodeURLParameter() }
+        val page = pageValues(profile, values)
+        fun raw(name: String) = inputs[name] ?: page.getValue(name)
+        fun fill(template: String) = ZkTlsProfile.PLACEHOLDER.replace(template) { raw(it.groupValues[1]).encodeURLParameter() }
         val target = r.path + (r.query?.let { "?" + fill(it) } ?: "")
-        val body = r.body?.let { fill(it).encodeToByteArray() }
+        var contentType = "application/x-www-form-urlencoded"
+        val body = r.body?.let { template ->
+            if (r.encoding != "multipart") return@let fill(template).encodeToByteArray()
+            contentType = "multipart/form-data; boundary=$BOUNDARY"
+            buildString {
+                template.split('&').forEach { pair ->
+                    val value = ZkTlsProfile.PLACEHOLDER.replace(pair.substringAfter('=')) { raw(it.groupValues[1]) }
+                    // A value can never end its part: no line breaks, no boundary.
+                    if ('\r' in value || '\n' in value || BOUNDARY in value) throw ProtocolException("invalid_input", "輸入的內容含有不允許的字元")
+                    append("--").append(BOUNDARY).append("\r\n")
+                    append("Content-Disposition: form-data; name=\"").append(pair.substringBefore('=')).append("\"\r\n\r\n")
+                    append(value).append("\r\n")
+                }
+                r.files.forEach { name ->
+                    append("--").append(BOUNDARY).append("\r\n")
+                    append("Content-Disposition: form-data; name=\"").append(name).append("\"; filename=\"\"\r\n")
+                    append("Content-Type: application/octet-stream\r\n\r\n\r\n")
+                }
+                append("--").append(BOUNDARY).append("--\r\n")
+            }.encodeToByteArray()
+        }
         val head = buildString {
             append(r.method).append(' ').append(target).append(" HTTP/1.1\r\n")
             append(hostLine(profile))
             r.headers.forEach { (k, v) -> append(k).append(": ").append(v).append("\r\n") }
             cookieHeader(profile, cookies)?.let { append("Cookie: ").append(it).append("\r\n") }
             append("Accept-Encoding: identity\r\nConnection: close\r\n")
-            if (body != null) append("Content-Type: application/x-www-form-urlencoded\r\nContent-Length: ${body.size}\r\n")
+            if (body != null) append("Content-Type: ").append(contentType).append("\r\nContent-Length: ${body.size}\r\n")
             append("\r\n")
         }.encodeToByteArray()
         val bytes = if (body == null) head else head + body
         if (bytes.size > profile.limits.maxSent) throw ProtocolException("invalid_input", "請求超過 ${profile.limits.maxSent} 位元組")
         return bytes
+    }
+
+    /** The multipart boundary; fixed, so the same inputs make the same request. */
+    const val BOUNDARY = "----DiwWalletFormBoundary7MA4YWxkTrZu0gW"
+
+    /** The page values a profile names, each present and a token; a missing one means the session must be prepared again. */
+    fun pageValues(profile: ZkTlsProfile, values: Map<String, String>): Map<String, String> = profile.prepare.values.associate { v ->
+        val value = values[v.name] ?: throw ProtocolException("invalid_input", "網頁工作階段已失效，請重新取得驗證碼")
+        if (!ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("invalid_input", "網站頁面的欄位格式不符")
+        v.name to value
     }
 
     /** The Cookie header value for a prepared session, or null when the profile takes none. */

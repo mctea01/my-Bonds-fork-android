@@ -15,10 +15,17 @@
 這個檔案是以本專案發布金鑰（GitHub Secret `ZK_TEMPLATES_KEY`，P-256 私鑰 PEM）簽章的 JWS，版本為建置時間；沒有設定 Secret 時略過。
 App 只接受 `ZkTemplatePack.TRUSTED_KEYS` 中公鑰簽的版型包，也不會安裝比已安裝版本舊的版型包。
 
+## 版型專用 Release（`zk-templates`）
+
+App 每次更新都會讀 nightly 與 `zk-templates` 兩個 Release，安裝其中簽章有效且版本最新的一份（設定頁會顯示來源）。
+
+`.github/workflows/zk-templates.yml` 只發布版型包：main 上 `templates/` 有變更時自動執行，也可在 Actions 頁手動執行
+（可選分支，例如先發布尚未合併的版型）。它會檢查所有描述檔、以 `ZK_TEMPLATES_KEY` 簽章，把 `zk-templates.jwt` 與其 SHA-256
+附加到 `zk-templates` Release（不存在時建立為 pre-release，存在時覆蓋檔案並更新說明）。不需要等整個 App 建置完成。
+
 ## 手動發布（替代來源）
 
-nightly 沒有版型包或版型包有問題時，可在本機以同一把金鑰簽章，上傳到另一個 Release 作為替代來源。
-App 每次更新都會讀 nightly 與 `zk-templates` 兩個 Release，安裝其中簽章有效且版本最新的一份（設定頁會顯示來源）。
+也可在本機以同一把金鑰簽章，自行上傳到 `zk-templates` Release。
 
 1. 在 repo 根目錄產生並簽章（版本為當下時間，所以會比先前任何一份新）：
    - Linux／macOS：`ZK_TEMPLATES_KEY="$(cat zk-templates.key)" ./gradlew :test-servers:templatePack`
@@ -67,4 +74,8 @@ openssl ec -in zk-templates.key -pubout -out zk-templates.pub
 - 查詢輸入（驗證碼、序號等）所在的列不可作為欄位；結果頁常把輸入值帶回表單欄位或結果列表（移民署結果頁的列表與明細都有證號與序號），規則不可對到那裡。
 - `prepare.type` 為 `captcha` 時，`page` 是先開的表單頁，`image` 是驗證碼圖片，`input` 是填驗證碼的輸入，`cookies` 是工作階段 Cookie 名稱。
   圖片由持有端直接向網站取得，Cookie 放在不揭露的請求標頭，查驗方都看不到。
+- 表單頁帶有每次不同的隱藏欄位（CSRF token、驗證碼金鑰）時，用 `prepare.values` 列出名稱與規則（第一個群組是值，只能是英數與 `._~-`），
+  開頁時讀出，可在 `image` 與請求的 `query`、`body` 以 `{名稱}` 使用，和輸入一樣不揭露。
+- 表單以 multipart/form-data 送出時，`request.encoding` 設為 `multipart`；`body` 仍寫成 `名稱=值&...`，`files` 列出要送空檔的檔案欄位。
+- 輸入的 `document` 是在已保存文件文字中找這個值的規則（例如謄本上的檢查號）；從文件發起時自動帶入，其他文件的值列在輸入下方供選用。
 - 版型只描述版面與揭露範圍，不會改變電路；電路仍以 App 內釘選的版本為準。

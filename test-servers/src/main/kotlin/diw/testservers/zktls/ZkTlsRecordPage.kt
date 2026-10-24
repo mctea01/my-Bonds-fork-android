@@ -25,7 +25,7 @@ object ZkTlsRecordPage {
             path = "/record",
             query = "serial={serial}&code={code}",
             inputs = listOf(
-                ZkTlsProfile.Input("serial", "證號", "^[A-Z][0-9]{9}$"),
+                ZkTlsProfile.Input("serial", "證號", "^[A-Z][0-9]{9}$", document = "證號[：:]\\s*([A-Z][0-9]{9})"),
                 ZkTlsProfile.Input("code", "驗證碼", "^[0-9]{4}$"),
             ),
         ),
