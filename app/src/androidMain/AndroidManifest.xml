@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.NFC" />
@@ -58,6 +59,13 @@
                 <data android:scheme="haip-vci" />
                 <data android:scheme="openid" />
                 <data android:scheme="siopv2" />
+            </intent-filter>
+            <intent-filter>
+                <!-- zkTLS live check requests (diw-zktls://v1?request=...). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-zktls" />
             </intent-filter>
             <intent-filter>
                 <!-- TWDIW deep links (credential_offer, authorize, staticqrcode). -->

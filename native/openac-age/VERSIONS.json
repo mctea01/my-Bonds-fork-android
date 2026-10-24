@@ -1,0 +1,60 @@
+{
+  "profile": "openac-age-v1",
+  "zkid": "b395e09c225ff45b003f0087c28e2e208e22f944",
+  "bonds_ios": "e22de5f114a593e90f28b0525f6e4f230154c641",
+  "host_bindings": "WP0 UniFFI 0.29.4",
+  "spartan2": "d687dbb639eccbdd21e62fecec97c5826bc4dbbf",
+  "circom_scotia": "bd39c019dba20d32ce5727e2408632dbca269e82",
+  "circom": "2.2.3",
+  "field": "secq256r1",
+  "optimization": 2,
+  "jwt_2k_r1cs_sha256": "d4f8b34dfd454234872a34f47ea486545cb4d989c41ed75f856268718251dc6a",
+  "show_r1cs_sha256": "3809e70502fa90f2038760da5f1399a1e3eb17923e5af872edf3dfa0b7d37a9a",
+  "prepare_verifying_key_sha256": "9b45cc7462a236b1056d21c19e1e4dfc2cf52fd20538d43fbe072d9ed106e9d6",
+  "show_verifying_key_sha256": "f0c447a9757d182e8aa23083bc3dba5a9a22f3e0fcbb344724568cc3c83352d8",
+  "noir_acir_bb": "not applicable to this Circom/Spartan2 profile",
+  "circom_witnesscalc": "d48eb7c97857d46b8a75c94ab96f769207263245",
+  "circom_witnesscalc_patch_sha256": "4df808ab5e31c9669d4df51155e951c2357909fb830bd2bbcb09c7de09f0cd56",
+  "build_circuit_compiler": "ad44e915a12bb047b05745c2884aad9cc8326bc6",
+  "graphs": {
+    "jwt_2k": {
+      "bytes": 93459128,
+      "sha256": "cc49cb201e406a03089d72217718b38941c893a970d5d809996605148a2ed63c"
+    },
+    "show": {
+      "bytes": 551178,
+      "sha256": "352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3"
+    }
+  },
+  "patched_source_sha256": {
+    "extensions/build-circuit/src/main.rs": "4bf5c7a123a830775d19de255729f00e3d44ffe7fd64084746b4eeb2c7c74c4d",
+    "src/field.rs": "4748943fa72118de81eadb0f6318ca5d4ba732ebd49ad3c3d5627341d3ad8f07",
+    "src/lib.rs": "e95fe009f2616eb826643dbf856a8cc70074a2e67e51789220fea742e4307f04",
+    "src/storage/proto_deserializer.rs": "fd4e4ed822ab537773700a57e47104088b21cc4809b5c25090ce00ea1e5a406e"
+  },
+  "runtime_bundle_sha256": {
+    "Cargo.toml": "684c091833b70018a5f5a97730a0ac4859c249e55a9ae411f52018417bb4108a",
+    "LICENSE": "1f2a80459a263e363f977e0135cfe427b26acb06b07f95c150792be6a54a2952",
+    "build.rs": "3ee9c7e0444c3e51d441eeae3521a4f452a7cc31668560aac90bb0be4c896fbd",
+    "include/graph_witness.h": "7b3c8e86c6606a0e62f9fab7a73b065236af569c682cf753efdfb5e33904f9ea",
+    "protos/messages.proto": "308ff064f8c60dc4413fb0662e2ff2b9168815f488eb999134acc25d5895d98e",
+    "protos/vm.proto": "e31c779fc0e4c92c79504ec9cc7b9716e82eac954889575bb26dc21109d9530a",
+    "src/ast.rs": "328939bf3350a6bb5818874b7ebb049cbc717758d7b25205bc266f1e351d8755",
+    "src/field.rs": "4748943fa72118de81eadb0f6318ca5d4ba732ebd49ad3c3d5627341d3ad8f07",
+    "src/graph.rs": "41bf030f8328ef1ac15ceb28f085b158384817235bc660be1558ecd1677af112",
+    "src/lib.rs": "8ea0a3c6a2555e69cbfa49f7ff82432d2dfe2464db094ee3b8759d603391e730",
+    "src/parser/mod.rs": "a45955c09ecba44d2857db22ac0b25b60e1179798dbbfe1b5e90d016cebd4f14",
+    "src/storage/proto_deserializer.rs": "fd4e4ed822ab537773700a57e47104088b21cc4809b5c25090ce00ea1e5a406e",
+    "src/storage.rs": "448864c51aab04b217dfc31b1e23eba45d8f786fa1040d7ff9d3e93ee40b928b",
+    "src/vm.rs": "d0f811edb34fcec19b6b0e66302787a8fd3adc51313717fd821817b0c2bd0bad",
+    "src/vm2.rs": "b4e26bb177a0aa546544d2fe42847f0b93e7a93fa296c97e2aacf8066f0a3cd0",
+    "src/vm2_setup.rs": "101fafbddf0babbc6bbef22535f566bd8f71fbe82dd6e6fa3b2ed778247355c0",
+    "src/vm2_setup_tests.rs": "e7fa84b474149256dfe8524e59e126dbc7d86f498d4f07e21130aebb0c56544d"
+  },
+  "startup_graph": {
+    "bytes": 161,
+    "sha256": "12ff5a6b46868654f6c0f94d6c119da1a78f789e2b7fee658b3c4eefb1cde1f3",
+    "source": "tests/fixtures/self_test.circom",
+    "license": "Apache-2.0; no circomlib"
+  }
+}

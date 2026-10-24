@@ -263,6 +263,7 @@ class ProximityModel(private val model: WalletModel) {
     }
 
     private fun failure(e: Exception): String = when (e) {
+        is diw.wallet.core.zk.LongfellowZk.ProofException -> "零知識證明產生或自驗失敗，未送出證件資料"
         is Unavailable -> e.message.orEmpty()
         is kotlinx.coroutines.TimeoutCancellationException -> "查驗設備沒有連線。請確認藍牙已開啟，再感應或掃描一次。"
         is MdocTransportClosedException -> "連線中斷。請再感應或掃描一次。"
@@ -311,7 +312,7 @@ class ProximityModel(private val model: WalletModel) {
         } catch (e: PresentmentCannotSatisfyRequestException) {
             failAndWait("這支手機沒有對方要求的證件。")
         } catch (e: Exception) {
-            failAndWait("請求無法處理：" + model.describe(e))
+            failAndWait(if (e is diw.wallet.core.zk.LongfellowZk.ProofException) failure(e) else "請求無法處理：" + model.describe(e))
         } finally {
             model.endOperation()
         }
@@ -324,10 +325,13 @@ class ProximityModel(private val model: WalletModel) {
         return null
     }
 
+    val longfellow by lazy { diw.wallet.core.zk.LongfellowZk(model.platform.platformName) }
+
     /** The presentment source: the wallet's documents, with the wallet's consent screen in place of Multipaz's prompt. */
     private fun source(channel: ProximityChannel, onShared: (Shared) -> Unit, onRefused: (Shared) -> Unit) = SimplePresentmentSource(
         documentStore = model.documentStore,
         documentTypeRepository = model.documentTypes,
+        zkSystemRepository = longfellow.repository,
         showConsentPromptFn = { requester, _, consentData, preselected, onDocumentsInFocus ->
             consent(channel, requester, consentData, preselected, onDocumentsInFocus, onShared, onRefused)
         },
@@ -347,6 +351,19 @@ class ProximityModel(private val model: WalletModel) {
         onRefused: (Shared) -> Unit,
     ): CredentialSelection? {
         val selection = consentData.credentialQueryResult.select(preselected)
+        // Multipaz 0.101 can otherwise fall back to ordinary mdoc when no ZK circuit matches.
+        // Enforce zkRequired before consent and before any private document is constructed.
+        selection.matches.forEach { match ->
+            val request = (match.source as? org.multipaz.presentment.CredentialMatchSourceIso18013)
+                ?.docRequest?.docRequestInfo?.zkRequest
+            if (request?.zkRequired == true) {
+                val supported = request.systemSpecs.any { spec ->
+                    longfellow.repository?.lookup(spec.system)
+                        ?.getMatchingSystemSpec(request.systemSpecs, match.claims.keys.toList()) != null
+                }
+                check(supported) { longfellow.unavailableReason ?: "無法使用要求的零知識證明電路" }
+            }
+        }
         onDocumentsInFocus(selection.matches.map { it.credential.document })
         val items = selection.matches.map { m ->
             val doc = m.credential.document

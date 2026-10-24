@@ -71,6 +71,7 @@ fun AddDocumentScreen(model: WalletModel) {
                         else -> "在發行端頁面完成申請後自動加入"
                     },
                     enabled = c.issuerServiceUrl != null,
+                    leading = c.logoUrl?.let { logo -> { CardLogo(model, logo, WalletIcons.Government, MaterialTheme.colorScheme.primary, size = 28) } },
                 ) { model.taiwan.applyFor(c) }
             }
         }
@@ -96,9 +97,8 @@ fun AddDocumentScreen(model: WalletModel) {
         ) { model.showTab(HomeTab.FILES) }
         ActionRow(
             WalletIcons.Shield, "年齡證明（零知識）",
-            "P4 尚未完成：Bonds 以 OpenAC 電路證明年滿 18 歲而不揭露生日；目前可只揭露身分證卡的「年滿 18 歲」欄位",
-            enabled = false,
-        ) {}
+            "不用另外加卡：政府皮夾卡片（含出生日期）或身分證卡就能以 OpenAC 證明年滿指定年齡而不交出生日；到「使用」掃描查驗方的 QR Code",
+        ) { model.showTab(HomeTab.USE) }
         SectionTitle("其他發行端")
         Text("輸入支援 OpenID4VCI 的發行端網址，列出它提供的證件後再選擇。", style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {

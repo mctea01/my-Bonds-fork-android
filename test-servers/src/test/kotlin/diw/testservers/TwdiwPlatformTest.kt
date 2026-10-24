@@ -26,6 +26,11 @@ import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.oid4vp.Oid4vpHolder
 import diw.wallet.core.oid4vp.PresentationOutcome
 import diw.wallet.core.oid4vp.PreparedExtended
+import diw.wallet.core.oid4vp.pe.DescriptorMatch
+import diw.wallet.core.oid4vp.pe.PresentationExchange
+import diw.wallet.core.jose.Jws
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
 import diw.wallet.core.profile.twdiw.TwdiwEntry
@@ -57,6 +62,10 @@ import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.securearea.software.SoftwareCreateKeySettings
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import io.ktor.client.request.get
+import io.ktor.client.statement.readRawBytes
+import diw.wallet.core.credential.CardImages
+import kotlin.test.assertContentEquals
 import kotlin.test.assertFails
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -79,7 +88,7 @@ class TwdiwPlatformTest {
         fun client() = Oid4vciClient(
             w.httpClient, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore,
             dialects = listOf(
-                TwdiwDialect(w.httpClient, false),
+                TwdiwDialect(w.httpClient, false, registeredIssuerTrust = { trustList.issuerDecision(it) }),
                 Draft13Dialect(w.httpClient, false),
                 Draft11Dialect(),
             ),
@@ -205,6 +214,91 @@ class TwdiwPlatformTest {
         assertEquals("twdiw", r.document.issuanceRecord!!.profile)
     }
 
+    /**
+     * Card faces as the official wallet shows them: background_image is kept on the record (an empty uri is none), a
+     * card stored before reads the display again, and the platform's text/plain data URI bodies decode to the image,
+     * for card faces and catalog logos alike.
+     */
+    @Test
+    fun cardFaceAndCatalogLogo() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.cardFaceInMetadata = false
+        val plain = s.receive().document.issuanceRecord!!
+        assertNull(plain.backgroundImageUri)
+        assertNotNull(plain.displayCheckedAt)
+
+        s.mock.cardFaceInMetadata = true
+        val display = assertNotNull(s.client().credentialDisplay(TwdiwPlatformMock.ISSUER, TwdiwPlatformMock.CONFIG_ID, plain.profile))
+        assertEquals(TwdiwPlatformMock.COVER_URL, display.backgroundImageUri)
+        assertEquals(TwdiwPlatformMock.COVER_URL, s.receive().document.issuanceRecord!!.backgroundImageUri)
+
+        val face = s.w.httpClient.get(TwdiwPlatformMock.COVER_URL).readRawBytes()
+        assertTrue(!CardImages.isImage(face), "the platform sends text, not the image")
+        assertContentEquals(s.mock.png(), CardImages.fromBody(face))
+        val card = s.services.cardServices().single()
+        assertEquals(TwdiwPlatformMock.LOGO_URL, card.logoUrl)
+        assertContentEquals(s.mock.png(), CardImages.fromBody(s.w.httpClient.get(card.logoUrl!!).readRawBytes()))
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    /**
+     * Newer TWDIW issuers publish a nonce_endpoint and, in the 2026-10-16 issuer probe, take only proofs over its
+     * nonce: a proof over the token's c_nonce is refused with HTTP 400 (resp_code 11016, invalid_proof).
+     */
+    @Test
+    fun proofUsesNonceEndpoint() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(1, s.mock.endpointNonces)
+        assertEquals(1, r.credentials.size)
+    }
+
+    @Test
+    fun proofUsesNonceEndpointWithoutTokenNonce() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        s.mock.tokenNonceIncluded = false
+        val r = s.receive()
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(1, s.mock.endpointNonces)
+        assertEquals(1, s.mock.credentialRequests)
+        assertEquals(1, r.credentials.size)
+    }
+
+    /** Reproduces the partner card's response shape without replaying a credential POST or discarding its code. */
+    @Test
+    fun credential11021IsPreservedWithoutRetrying() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.nonceEndpointPublished = true
+        s.mock.tokenNonceIncluded = false
+        s.mock.credentialServiceFailure = 11021 to "VC Server error"
+        val initialIndex = s.mock.issuedIndex
+        val e = assertFailsWith<ProtocolException> { s.receive() }
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals("server_error", e.code)
+        assertEquals("Credential request failed (500): TWDIW resp_code 11021 (VC Server error)", e.message)
+        assertEquals(1, s.mock.endpointNonces)
+        assertEquals(1, s.mock.credentialRequests)
+        assertEquals(initialIndex, s.mock.issuedIndex)
+        assertTrue(s.w.documentStore.listDocuments().isEmpty())
+    }
+
+    /**
+     * The official handler reports a failed credential service as HTTP 500 with {resp_code, resp_message} and no OAuth
+     * error. The wallet's message keeps the platform's code so the failing step can be told apart.
+     */
+    @Test
+    fun credentialServiceFailureShowsPlatformCode() = runBlocking<Unit> {
+        val s = setup()
+        s.mock.credentialServiceFailure = 61010 to "fail to get holder's data"
+        val e = assertFailsWith<ProtocolException> { s.receive() }
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals("server_error", e.code)
+        assertEquals("Credential request failed (500): TWDIW resp_code 61010 (fail to get holder's data)", e.message)
+    }
+
     @Test
     fun officialPresentationDisclosesOnlyRequestedClaims() = runBlocking<Unit> {
         val s = setup()
@@ -236,6 +330,47 @@ class TwdiwPlatformTest {
         assertTrue(s.holder.respond(second) is PresentationOutcome.Posted)
         assertEquals(listOf("name", "birthDate"), s.mock.received.last().disclosedNames)
         assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+    }
+
+    @Test
+    fun presentationChangesCredentialAndShowsConsentTerms() = runBlocking<Unit> {
+        val s = setup()
+        s.receive()
+        s.receive()
+        val request = s.holder.resolveUri(s.mock.presentationUri(listOf("name")))
+
+        // The official verifier packs the recipient, occasion, purpose and terms page into presentation_definition.purpose.
+        val terms = assertNotNull(s.holder.consentTerms(request))
+        assertEquals("模擬驗證機關", terms.recipient)
+        assertEquals("皮夾夥伴卡驗證", terms.scenario)
+        assertEquals("確認會員身分", terms.purpose)
+        assertEquals(TwdiwPlatformMock.TERMS_URL, terms.termsUri)
+        assertEquals("一般用途", TwdiwPresentationDialect.terms("一般用途")?.purpose)
+        assertNull(TwdiwPresentationDialect.terms("{\"terms_uri\":\"http://plain.example/terms\"}"))
+
+        // Two cards answer the request: the holder swaps the first choice for the other one.
+        val prepared = s.holder.prepare(request) as PreparedExtended
+        val first = prepared.prepared.chosen.single().credential
+        val other = prepared.prepared.alternatives(0).single()
+        assertNotEquals(first.document.identifier, other.document.identifier)
+        val changed = s.holder.replace(prepared, 0, other)
+        assertEquals(other.document.identifier, changed.prepared.chosen.single().credential.document.identifier)
+        assertEquals(listOf("name"), changed.lines.single().claims)
+        assertEquals(first.document.identifier, changed.prepared.alternatives(0).single().document.identifier)
+        assertFails { s.holder.replace(changed, 0, other) }
+        assertTrue(s.holder.respond(changed) is PresentationOutcome.Posted)
+        assertTrue(s.mock.errors.isEmpty(), "mock errors: ${s.mock.errors}")
+        assertEquals(Jws.parse(other.raw.substringBefore('~')).payload, s.mock.received.single().card)
+
+        // "pick, max 1" over a group: one card of either descriptor meets the request, two or none do not.
+        val def = changed.prepared.definition!!
+        val mine = def.descriptors.single { it.id == TwdiwPlatformMock.CONFIG_ID + "_2" }
+        val another = def.descriptors.single { it.id != mine.id }
+        assertTrue(PresentationExchange.satisfies(def, mapOf(mine.id to DescriptorMatch(mine, other, emptyList()))))
+        assertTrue(PresentationExchange.satisfies(def, mapOf(another.id to DescriptorMatch(another, other, emptyList()))))
+        assertFalse(PresentationExchange.satisfies(def, mapOf(mine.id to DescriptorMatch(mine, other, emptyList()), another.id to DescriptorMatch(another, first, emptyList()))))
+        assertFalse(PresentationExchange.satisfies(def, emptyMap()))
+        assertFalse(PresentationExchange.satisfies(def, mapOf(another.id to DescriptorMatch(mine, other, emptyList()))))
     }
 
     @Test
@@ -372,11 +507,54 @@ class TwdiwPlatformTest {
         assertFailsWith<ProtocolException> { BondsOfflinePresentation.present(selfIssued, cred, holderKey, resolver) }
     }
 
+    /**
+     * TWDIW metadata is unsigned, so before issuance the issuer would rest on TLS alone. The trust list registers the
+     * issuer host and organisation ID, so the consent screen shows the listed organisation (T3 here, the test list;
+     * T2 on production while the Arbitrum anchor is unconfirmed), still labelled as unsigned metadata.
+     */
+    @Test
+    fun issuerBeforeIssuanceTakesTheTrustListDecision() = runBlocking<Unit> {
+        val s = setup()
+        val entry = TwdiwEntryParser.parse(s.mock.offerDeepLink()) as TwdiwEntry.Offer
+        val session = s.client().startFromOffer(entry.uri, TwdiwDialect.ENTRY_HINT)
+        assertEquals("模擬發證機關", session.issuer.trust.anchorName)
+        assertEquals(TrustEnvironment.TEST, session.issuer.trust.environment)
+        assertTrue(TrustLabel.UNSIGNED_METADATA in session.issuer.trust.labels)
+
+        val production = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = false)
+        val list = TwdiwTrustList(s.w.httpClient, production, storage = s.w.storage)
+        val listed = assertNotNull(list.issuerDecision(TwdiwPlatformMock.ISSUER))
+        assertEquals(TrustTier.T2, listed.tier, "reasons: ${listed.reasons}")
+        assertEquals("模擬發證機關", listed.anchorName)
+        // Another organisation's path on the same host, or the same path on another platform host, is not this listing.
+        assertNull(list.issuerDecision("${TwdiwPlatformMock.ISSUER_ORIGIN}/oid4vci/api/issuer/99999999/"))
+        assertNull(list.issuerDecision("https://other.wallet.gov.tw/oid4vci/api/issuer/${TwdiwPlatformMock.ISSUER_ORG_ID}/"))
+    }
+
     @Test
     fun offlineModuleOutsideTrustListIsRefused() = runBlocking<Unit> {
         val s = setup()
-        val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://other.mock.wallet.gov.tw", null)
+        val stranger = diw.wallet.core.profile.twdiw.TwdiwOfflineService("x", "x", "https://counter.example.org", null)
         val e = assertFailsWith<ProtocolException> { s.services.startOffline(stranger) }
         assertEquals("untrusted_verifier", e.code)
+        assertEquals(TrustTier.T4, s.services.offlineModuleDecision("counter.example.org").tier)
+    }
+
+    /**
+     * On the production platform a listed module whose Arbitrum anchor cannot be confirmed is T2, and a module the
+     * platform hosts for an organisation (a tax ID subdomain of wallet.gov.tw) is T2 too: both are highly trusted
+     * and open without the risk confirmation that a T4 host needs.
+     */
+    @Test
+    fun offlineModuleT2IsNotTreatedAsUnknown() = runBlocking<Unit> {
+        val s = setup()
+        val production = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = false)
+        val services = TwdiwServices(s.w.httpClient, TwdiwTrustList(s.w.httpClient, production, storage = s.w.storage), production)
+        val listed = services.offlineModuleDecision(TwdiwPlatformMock.VERIFIER_HOST)
+        assertEquals(TrustTier.T2, listed.tier, "reasons: ${listed.reasons}")
+        val hosted = services.offlineModuleDecision("52005408.wallet.gov.tw")
+        assertEquals(TrustTier.T2, hosted.tier)
+        assertEquals(TrustTier.T4, services.offlineModuleDecision("52005408.wallet.gov.tw.example.org").tier)
+        services.startOffline(services.offlineServices().single())
     }
 }

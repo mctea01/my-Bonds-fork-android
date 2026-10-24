@@ -42,6 +42,31 @@ interface BondsLinkPeripheral {
     suspend fun unavailableReason(): String?
 
     suspend fun send(serviceUuid: String, presentationJws: String, onProgress: (String) -> Unit): Boolean
+
+    /**
+     * Nearby age proof: notifies [payload] and, when the verifier announced a verdict, waits for its framed reply. An
+     * empty array when the verifier only confirmed receipt (Bonds), null when the link failed before that.
+     */
+    suspend fun exchange(serviceUuid: String, payload: ByteArray, onProgress: (String) -> Unit): ByteArray?
+}
+
+/** One code of a continuous camera scan was handled: [done] closes the camera, [progress] is shown under the preview. */
+data class QrScanStep(val done: Boolean, val progress: String? = null)
+
+/**
+ * The verifier side of the Bonds link: a GATT central that finds the holder by the request's one-time service UUID,
+ * subscribes to the frames, writes "received" and then the framed reply [answer] computes from the payload, when the
+ * holder can take one (a Bonds holder only waits for "received").
+ */
+interface BondsLinkCentral {
+    /** Null when the link can be used now, otherwise why not (Bluetooth off, permission missing, which is then asked for). */
+    suspend fun unavailableReason(): String?
+
+    /**
+     * Runs until a holder delivered a payload of at most [maxPayload] bytes and, with [answer], the reply went out;
+     * without one (a Bonds presentation) "received" ends it. Cancel to stop waiting.
+     */
+    suspend fun receive(serviceUuid: String, maxPayload: Int, onProgress: (String) -> Unit, answer: (suspend (ByteArray) -> ByteArray)?): ByteArray
 }
 
 /**
@@ -118,6 +143,12 @@ interface PlatformServices {
     /** Bonds BLE link, where the platform can act as a GATT peripheral. */
     val bondsLink: BondsLinkPeripheral? get() = null
 
+    /** The verifier side of the Bonds BLE link, where the platform can act as a GATT central. */
+    val bondsLinkCentral: BondsLinkCentral? get() = null
+
+    /** Age proofs over the local network (Wi-Fi or hotspot), where the platform has sockets. */
+    val bondsLan: diw.wallet.core.profile.bonds.BondsLanLink? get() = null
+
     /** Keeps the screen on and bright while a code is shown at a counter or to a verifier. */
     fun keepScreenOn(on: Boolean) {}
 
@@ -139,6 +170,9 @@ interface PlatformServices {
     /** Lets the user pick a file to store; null when cancelled or not possible. */
     suspend fun pickFile(): PickedFile? = null
 
+    /** Lets the user pick a picture (for reading a QR Code from it); any file where the picker cannot filter. */
+    suspend fun pickImage(): PickedFile? = pickFile()
+
     /** Lets the user pick one or more files; the single picker where the platform has no multiple selection. */
     suspend fun pickFiles(): List<PickedFile> = listOfNotNull(pickFile())
 
@@ -156,6 +190,9 @@ interface PlatformServices {
 
     /** Where the mobile citizen certificate app returns after an app-to-app signature; null when it cannot be opened here. */
     val mobileMoicaReturnUrl: String? get() = null
+
+    /** Device resources, the native proof library and the verified circuit assets; null where proofs cannot run. */
+    val zk: diw.wallet.core.zk.ZkEnvironment? get() = null
 }
 
 /** A key in the system store or on a token, as listed for the user to pick. */
@@ -203,6 +240,8 @@ data class DcApiRegistration(
     val issuance: Boolean = false,
     /** Why the system refused that registration; null when it was accepted or not attempted. */
     val issuanceError: String? = null,
+    /** Each registered credential as the system matcher sees it: title, format with doctype or vct, and claim count. */
+    val entries: List<String> = emptyList(),
 )
 
 /**
@@ -217,6 +256,8 @@ class CardArtSpec(
     val foreground: Int,
     val logo: ImageBitmap?,
     val picture: ImageBitmap?,
+    /** Issuer card face (display background_image), drawn over the whole card when present. */
+    val face: ImageBitmap? = null,
     val badge: String?,
 ) {
     companion object {

@@ -18,7 +18,10 @@ permissions:
 env:
   LANG: C.UTF-8
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-  APP_VERSION: 0.1.${{ github.run_number }}
+  # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
+  DIW_ZK_NATIVE: require
+  # Link the OpenAC age-proof backend (needs protoc and libclang) on every platform.
+  DIW_ZK_FEATURES: openac,tlsn
 
 jobs:
   # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
@@ -33,11 +36,30 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: ZK native build tools (protoc and libclang for OpenAC)
+        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
       - name: Core and protocol tests
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
         if: success() || failure()
         run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
+      # zkTLS and zkPDF page templates (templates/README.md), signed for the nightly release. Skipped without the key.
+      - name: Template pack
+        if: success() && github.event_name == 'push'
+        env:
+          ZK_TEMPLATES_KEY: ${{ secrets.ZK_TEMPLATES_KEY }}
+        run: |
+          if [ -z "$ZK_TEMPLATES_KEY" ]; then echo "::warning::No ZK_TEMPLATES_KEY: the release carries no template pack"; exit 0; fi
+          ./gradlew --no-daemon --stacktrace :test-servers:templatePack
+          mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
+      - name: Upload template pack
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: zk-templates
+          path: dist/zk-templates.jwt
+          if-no-files-found: ignore
+          retention-days: 14
       # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
       - name: Test report
         uses: mikepenz/action-junit-report@v5
@@ -67,8 +89,10 @@ jobs:
       DIW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       DIW_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       DIW_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      # Optional: base64 of a debug.keystore so every debug APK has the same signature.
+      # Base64 of a keystore that signs every debug APK, so each installs over the previous one (docs/release.md).
       DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+      DIW_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+      DIW_DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -76,13 +100,34 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: |
+          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
+          suffix=""
+          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
+          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
+      # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
+      - name: ZK native tools (cargo-ndk and the pinned NDK)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
+          cargo install cargo-ndk --version 4.1.2 --locked
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
       - name: Signing keys
         run: |
           # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
+          # Gradle reads the debug key from DIW_DEBUG_KEYSTORE_FILE and prints its SHA-256 fingerprint.
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p ~/.android
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > ~/.android/debug.keystore
+            debug="$RUNNER_TEMP/debug.keystore"
+            if ! printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$debug"; then
+              echo "::error::DEBUG_KEYSTORE_BASE64 is not valid base64 (docs/release.md)"
+              exit 1
+            fi
+            echo "DIW_DEBUG_KEYSTORE_FILE=$debug" >> "$GITHUB_ENV"
             echo "Using the debug keystore from secrets"
+          else
+            echo "::warning::No DEBUG_KEYSTORE_BASE64: each debug APK is signed with a new key and cannot update the last one"
           fi
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "::warning::No ANDROID_KEYSTORE_BASE64: the release APK is signed with the debug key"
@@ -114,13 +159,13 @@ jobs:
           echo "Using the release keystore from secrets"
       - name: Android APKs (debug)
         run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
       - name: Android APKs (release)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
       - name: Upload APK
@@ -142,6 +187,10 @@ jobs:
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+          # Apple silicon; only the jar, since an unsigned app bundle is refused by Gatekeeper.
+          - os: macos-latest
+            name: macos
+            tasks: ":app:packageReleaseUberJarForCurrentOS"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     defaults:
@@ -154,11 +203,29 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: |
+          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
+          suffix=""
+          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
+          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
+      # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
       - name: Install deb tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb
+        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev
+      - name: Install Windows build tools
+        if: runner.os == 'Windows'
+        run: |
+          choco install protoc -y --no-progress
+          if [ ! -f "/c/Program Files/LLVM/bin/libclang.dll" ]; then choco install llvm -y --no-progress; fi
+          echo 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
+        run: brew install protobuf
       - name: Package ${{ matrix.name }}
-        run: ./gradlew --no-daemon --stacktrace "-Pdiw.desktopVersion=$APP_VERSION" ${{ matrix.tasks }}
+        run: ./gradlew --no-daemon --stacktrace ${{ matrix.tasks }}
       # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
       - name: Start the release build
         if: runner.os == 'Linux'
@@ -171,7 +238,7 @@ jobs:
       - name: Collect files
         run: |
           mkdir -p dist
-          find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \;
+          if [ -d app/build/compose/binaries ]; then find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \; ; fi
           cp app/build/compose/jars/*.jar dist/
           ls -l dist
       - name: Upload ${{ matrix.name }} files
@@ -191,6 +258,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: version.properties
+          sparse-checkout-cone-mode: false
+      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: |
+          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
+          suffix=""
+          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
+          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -207,7 +286,8 @@ jobs:
           - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized). The -debug.apk also allows HTTP test servers on the local network.
           - Windows: .msi installer, no admin rights needed
           - Linux: .deb package (Debian, Ubuntu)
-          - Any OS with Java 21: DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          - zk-templates.jwt: signed zkTLS and zkPDF page templates, downloaded by the app (when the release key is set)
           EOF
           gh release delete nightly --cleanup-tag --yes || true
           gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md

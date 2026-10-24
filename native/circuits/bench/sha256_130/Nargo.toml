@@ -1,0 +1,7 @@
+[package]
+name = "sha256_130"
+type = "bin"
+authors = ["DIW MY WALLET contributors"]
+compiler_version = ">=0.36.0"
+[dependencies]
+pdf_text_v1 = { path = "../../pdf_text_v1" }
