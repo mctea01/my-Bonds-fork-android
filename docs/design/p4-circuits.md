@@ -282,7 +282,7 @@ content:
 
 完整描述檔在 `templates/zktls/cn.chsi.xjbg.json`（2026-10-24 以真實報告核對）。學信網沒有 User-Agent 會回 403，且依 User-Agent 回傳桌面或手機版面，所以描述檔固定 `Mozilla/5.0`；`Accept-Encoding` 與 `Connection` 由規劃器加上。
 
-- `prepare.type` 可為 `none` 或 `captcha`（`ZkTlsPrepare`）：持有端在 zkTLS 之外以一般 HTTPS 開 `page` 取得工作階段，在同一工作階段取得 `image` 的驗證碼圖片給使用者看，使用者輸入到 `input`；`cookies` 列出的工作階段 Cookie 放進查詢請求的 Cookie 標頭，與輸入一樣不揭露。每次查詢用掉一張圖，重試或取消時在同一工作階段換新。移民署查驗頁屬於後者（`templates/zktls/tw.gov.immigration.entryexit.json`，送出證號、序號與驗證碼；表單原為 multipart，實測接受一般表單編碼；2026-10-24 以真實證明書核對：結果頁的列表只有日期、證號與序號，資料在隱藏的明細區塊，出入境列表新到舊排列，第 1 列為最近一次出境與其後的入境）。
+- `prepare.type` 可為 `none` 或 `captcha`（`ZkTlsPrepare`）：持有端在 zkTLS 之外以一般 HTTPS 開 `page` 取得工作階段，在同一工作階段取得 `image` 的驗證碼圖片給使用者看，使用者輸入到 `input`；`cookies` 列出的工作階段 Cookie 放進查詢請求的 Cookie 標頭，與輸入一樣不揭露。每次查詢用掉一張圖，重試或取消時在同一工作階段換新。移民署查驗頁屬於後者（`templates/zktls/tw.gov.immigration.entryexit.json`，送出證號、序號與驗證碼；表單原為 multipart，實測接受一般表單編碼；2026-10-24 以真實證明書核對：結果頁的列表只有日期、證號與序號，資料在隱藏的明細區塊，出入境列表新到舊排列，第 1 列為最近一次出境與其後的入境）。戶政司電子戶籍謄本驗證頁（2026-10-24 以真實檢查號核對，不實作）表單帶每次不同的 `_csrf` 與 `captchaKey`，以 `prepare.values` 從表單頁讀出；驗證碼圖片網址含 `captchaKey`；以 multipart 送出（含空的 `uploadFile` 檔案欄位）。驗證碼錯誤時回到表單並換新的 `captchaKey`；成功頁只有「檢查號經驗證無誤」、驗證時間與帶回的檢查號，謄本明文需自然人憑證或行動自然人憑證登入下載，zkTLS 無法揭露謄本內容，只能證明「某張謄本有效」，使用者決定不做這個查驗頁（取代方式：文件本身的簽章與衍生憑證）。查到的表單機制（`prepare.values`、multipart、輸入的 `document` 規則）保留為通用功能。檢查號開頭 8 碼為產製日期，中段推測含申請人身分證字號（格式相符，未經官方說明確認），應視為個資，只作為不揭露的輸入；網站的 TLS 1.2 加密套件尚未在雲端環境以外確認（雲端出口經代理）。
 - `reveal` 是對回應主體的規則：以描述檔的正規表示式找出「標籤加值」的完整片段，揭露整個片段，查驗方再用同一個正規表示式取出值。揭露片段的位置與長度公開。
 - `official` 只表示網站屬於政府，不改變信任等級（p4-zkp.md 第 6 節）。
 - 描述檔不得含任何真實查詢結果；查詢輸入所在的列（例如報告上的在線驗證碼）不可作為欄位。
