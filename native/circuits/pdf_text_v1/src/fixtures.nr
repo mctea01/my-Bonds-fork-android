@@ -15173,6 +15173,7 @@ unconstrained fn rejects_dynamic_repeat_without_previous() {
     let mut plain_len = 1;
     data[11] = 108;
     blocks[0].code_symbols[0] = 16;
+    blocks[0].header_suffixes[0] = 8141;
     let result = inflate(data,20,blocks,1,tokens,owners,plain_len,plain,hints);
     assert_eq(result,[65]);
 }
@@ -15498,6 +15499,11 @@ unconstrained fn rejects_dynamic_repeat_overrun() {
     let mut plain_len = 1;
     data[13] = 255;
     data[14] = 47;
+    blocks[0].header_repeats[204] = 138;
+    blocks[0].header_prefixes[256] = 15;
+    blocks[0].header_prefixes[257] = 47;
+    blocks[0].header_suffixes[65] = 786431;
+    blocks[0].header_suffixes[66] = 1535;
     let result = inflate(data,20,blocks,1,tokens,owners,plain_len,plain,hints);
     assert_eq(result,[65]);
 }
@@ -15823,6 +15829,10 @@ unconstrained fn rejects_dynamic_missing_eob() {
     let mut plain_len = 1;
     data[14] = 5;
     blocks[0].code_symbols[256] = 0;
+    blocks[0].header_prefixes[257] = 5;
+    blocks[0].header_suffixes[65] = 86015;
+    blocks[0].header_suffixes[66] = 167;
+    blocks[0].header_suffixes[204] = 32;
     let result = inflate(data,20,blocks,1,tokens,owners,plain_len,plain,hints);
     assert_eq(result,[65]);
 }
@@ -19417,6 +19427,7 @@ unconstrained fn rejects_wrong_block_table() {
     let mut owners: [u32;41] = [0,1,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,5];
     let mut plain_len = 41;
     tokens[5].width = 8;
+    tokens[5].suffix = 1057305966;
     let result = inflate(data,26,blocks,2,tokens,owners,plain_len,plain,hints);
     assert_eq(result,[65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65,66,65]);
 }

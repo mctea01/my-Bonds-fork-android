@@ -251,7 +251,7 @@ def regression_cases():
         ('rejects_dynamic_repeat_without_previous', dynamic,
          ('bits_hint', positions['first_repeat'], 2, 1, 0, 16)),
         ('rejects_dynamic_repeat_overrun', dynamic,
-         ('bits', positions['last_repeat_extra'], 7, 127)),
+         ('bits_repeat', positions['last_repeat_extra'], 7, 127, 204, 138)),
         ('rejects_dynamic_missing_eob', dynamic,
          ('bits_hint', positions['eob_length'], 2, 0, 256, 0)),
         ('rejects_eob_endpoint', overlap, ('block', 0, 'end', 1)),
@@ -304,10 +304,39 @@ def multiblock_cases():
         ('rejects_skipped_empty_block', empty_middle, ('block', 2, 'start', -8)),
     ]
 
+def refresh_window_advice(original, changed, blocks, tokens):
+    """Keep unconsumed lookahead honest so attacks exercise semantic constraints."""
+    original_blocks, _, _, _ = witness(original)
+    def extras(symbol): return 2 if symbol == 16 else 3 if symbol == 17 else 7 if symbol == 18 else 0
+    def split(pos,width,size):
+        offset,shift = divmod(pos,8)
+        raw = int.from_bytes(bytes(changed[offset:offset+size]),'little')
+        return raw % (1<<shift), raw >> (shift+width)
+    for index, block in enumerate(original_blocks):
+        if block['kind'] != 2: continue
+        reader = Reader(original); reader.pos = block['start']+3
+        reader.bits(5); reader.bits(5)
+        hclen = reader.bits(4)+4
+        pos = reader.pos+3*hclen
+        target = blocks[index]
+        for i,count in enumerate(block['header_repeats']):
+            if not count: continue
+            width = target['code_widths'][i]+extras(target['code_symbols'][i])
+            target['header_prefixes'][i],target['header_suffixes'][i] = split(pos,width,3)
+            pos += block['code_widths'][i]+extras(block['code_symbols'][i])
+    for token in tokens:
+        if blocks[token[0]]['kind'] == 0: width = 8
+        else:
+            width = token[3]
+            if token[2] > 256:
+                width += LEXTRA[token[2]-257]+token[5]+DEXTRA[token[4]]
+        token[6],token[7] = split(token[1],width,7)
+
 def mutate(data, blocks, tokens, owners, mutation):
     """Apply the same attack to Noir tests and the compiled ACIR harness."""
     if mutation is None: return
     kind, *args = mutation
+    original = bytes(data)
     if kind == 'block':
         index, key, delta = args
         blocks[index][key] += delta
@@ -320,11 +349,14 @@ def mutate(data, blocks, tokens, owners, mutation):
     elif kind == 'owner':
         index, value = args
         owners[index] = value
-    elif kind in ('bits', 'bits_hint'):
+    elif kind in ('bits', 'bits_hint', 'bits_repeat'):
         set_bits(data, *args[:3])
         if kind == 'bits_hint': blocks[0]['code_symbols'][args[3]] = args[4]
+        if kind == 'bits_repeat': blocks[0]['header_repeats'][args[3]] = args[4]
     elif kind in ('hint', 'plain', 'plain_collision'): pass
     else: raise ValueError('Unknown synthetic mutation')
+    if kind in ('bits', 'bits_hint', 'bits_repeat') or (kind == 'token' and args[1] in (1,3,4,5)):
+        refresh_window_advice(original,data,blocks,tokens)
 
 def regression_nr(name, data, mutation):
     blocks, tokens, owners, _ = witness(data)
