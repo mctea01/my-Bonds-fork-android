@@ -370,10 +370,13 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         )
     }
 
-    private fun shortDid(did: String) = if (did.length > 28) did.take(18) + "…" + did.takeLast(6) else did
-
     /** What the result screen says about a local verification. */
     companion object {
+        /** A long DID cut to its start and end for display. */
+        fun shortDid(did: String) = if (did.length > 28) did.take(18) + "…" + did.takeLast(6) else did
+
+        private fun seconds(ms: Long) = ((ms + 50) / 100).let { "${it / 10}.${it % 10} 秒" }
+
         val POLL = 1.seconds
         val GRACE = 30.seconds
         const val EXPIRED = "對方沒有在時限內出示，請重新產生查驗請求。"
@@ -384,7 +387,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
 
         fun summary(v: BondsAgeVerification): List<String> = listOfNotNull(
             "出示者證明自己年滿 ${v.request.minimumAge} 歲（出生日期不晚於 ${v.request.cutoff}），沒有交出出生日期或其他欄位。",
-            "零知識證明（OpenAC）：在這支手機驗證，耗時 ${v.verifyMs} ms；出示者產生證明 ${v.prepareMs + v.showMs} ms。",
+            "零知識證明（OpenAC）：在這支手機驗證，耗時 ${seconds(v.verifyMs)}；出示者產生證明 ${seconds(v.prepareMs + v.showMs)}。",
             "出生日期欄位：${v.claimName}",
             if (v.selfIssued) "這是自發卡：由出示者自己的卡片金鑰簽署，不是政府背書。" else null,
             v.reason,

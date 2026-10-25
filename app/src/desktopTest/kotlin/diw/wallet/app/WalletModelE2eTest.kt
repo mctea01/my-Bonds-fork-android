@@ -397,7 +397,9 @@ class WalletModelE2eTest {
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
         val stored = m.files.files.value.first()
         screen("14-file-detail", Screen.FileDetail(stored.id), height = 1900)
-        screen("15-file-sign", Screen.FileSign(stored.id))
+        screen("15-file-sign", Screen.FileSign(stored.id), height = 2600)
+        m.files.sign(stored, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
+        screen("17-signed-file", Screen.FileDetail(m.files.files.value.first { it.parentId == stored.id }.id), height = 1900)
         screen("16-file-derive", Screen.FileDerive(stored.id))
         m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
         val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }

@@ -240,12 +240,12 @@ fun TestEnvironmentBanner() {
 
 /** Diagonal watermark text for documents issued in the TEST environment. */
 @Composable
-fun TestWatermark(modifier: Modifier = Modifier) {
+fun TestWatermark(modifier: Modifier = Modifier, fontSize: Int = 28) {
     Text(
         "TEST 測試",
         modifier = modifier,
         color = Color(0x55B3261E),
-        fontSize = 28.sp,
+        fontSize = fontSize.sp,
         fontWeight = FontWeight.Bold,
     )
 }
