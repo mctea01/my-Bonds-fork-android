@@ -153,7 +153,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     data: [u8;N], data_len: u32, blocks: [BlockHint;B], block_count: u32,
     tokens: [TokenHint;T], owners: [u32;P], plain_len: u32,
 ) -> [u8;P] {
-    assert(N <= 8192 & P <= 40960 & T <= 20480 & B <= 8);
+    assert(N <= 8192 & P <= 40960 & T <= 6144 & B <= 4);
     assert(data_len >= 6 & data_len <= N);
     assert(block_count > 0 & block_count <= B & plain_len <= P);
     assert_eq(data[0] & 15,8);

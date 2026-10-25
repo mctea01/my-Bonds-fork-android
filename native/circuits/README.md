@@ -44,15 +44,32 @@ temporary inputs. Synthetic fixture source generation remains reproducible with
 The large inflate benchmark instances use one block, 128 compressed bytes and
 192 token slots, with 16/32/40 KiB output capacity. Their repetitive synthetic
 input isolates output reconstruction cost. They do not measure the full profile
-ceiling of 8 blocks, 8192 compressed bytes and 20480 tokens. All these capacities
+ceiling of 4 blocks, 8192 compressed bytes and 6144 tokens. All these capacities
 are explicit compile-time parameters of the library and bounded in `inflate`.
 
-Measure compilation at the unchanged full inflate capacities separately:
+Measure compilation at the Round 5 full inflate capacities separately:
 
 ```sh
 python3 -I tools/compile_profile.py --nargo /path/to/nargo \
-  --seconds 600 --address-space-gib 24 --output target/full-profile.json
+  --bb /path/to/bb --seconds 1800 --address-space-gib 24 \
+  --output target/full-profile.json
 ```
+
+The defaults are 8192 compressed bytes, 40960 output bytes, 6144 tokens and
+4 blocks. Use `--blocks`, `--tokens`, `--plain` and `--compressed` to isolate
+individual dimensions within those ceilings. Round 5 compares these tuples
+`(blocks, tokens, plain)` at the same compressed capacity:
+
+- `(4, 6144, 40960)` and `(1, 6144, 40960)`;
+- `(4, 512, 1024)`;
+- `(1, 6144, 1024)` and `(1, 512, 40960)`.
+
+Run each case in a separate process, sequentially, with the same resource
+budgets. `nargo info` performs the fresh compilation and reports ACIR opcodes;
+`--bb` additionally runs `bb gates` for completed compilations. Records include
+the container's actual CPU and memory ceilings, which may be lower than the
+requested address-space budget. Successful compilation is saved before gates
+are attempted, so a backend failure cannot erase the compiler result.
 
 The runner uses a fresh temporary package outside this workspace to avoid a
 compiler cache hit, and records timeout/failure as well as successful builds.
