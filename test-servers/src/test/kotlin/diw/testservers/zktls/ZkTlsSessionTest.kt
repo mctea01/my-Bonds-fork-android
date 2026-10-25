@@ -112,7 +112,8 @@ class ZkTlsSessionTest {
     fun deviceVerifierBehindTheRelay() = runBlocking {
         assumeTrue(tlsn(), "Native library built without tlsn")
         deviceSession(lan = false, relay = base, values = inputs)
-        assertEquals(0, servers.zkTlsRelay.size)
+        // The relay drops the room once both sockets close, which can trail the holder's result.
+        withTimeout(10_000) { while (servers.zkTlsRelay.size != 0) delay(50) }
     }
 
     @Test

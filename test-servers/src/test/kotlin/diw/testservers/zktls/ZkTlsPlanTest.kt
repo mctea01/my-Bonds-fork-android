@@ -131,7 +131,7 @@ class ZkTlsPlanTest {
     }
 
     @Test
-    fun signedRequestRoundTrip() = runBlocking {
+    fun signedRequestRoundTrip() = runBlocking<Unit> {
         val key = Crypto.createEcPrivateKey(EcCurve.P256)
         val did = DidKeys.didJwk(key.publicKey)
         val request = ZkTlsSessionRequest.create(
