@@ -101,7 +101,7 @@ def witness(data, with_hints=False):
         for prefix, widths, capacity in (("ll", ll, 288), ("dd", dd, 32)):
             widths = widths + [0]*(capacity-len(widths))
             codes = [0]*capacity
-            for (width, code), symbol in table(widths).items(): codes[symbol] = code
+            for (width, code), symbol in table(widths).items(): codes[symbol] = int(f'{code:0{width}b}'[::-1], 2)
             hints[prefix+"_lengths"].extend(widths)
             hints[prefix+"_codes"].extend(codes)
         blocks.append(dict(start=start,end=r.pos,first_token=first,tokens=len(tokens)-first,code_symbols=cs,code_widths=cw,kind=kind))

@@ -52,7 +52,19 @@ fn bits<let N: u32>(data: [u8; N], limit: u32, pos: u32, width: u32) -> u32 {
         let byte = data[index] as u32;
         word = word | (byte << (i * 8));
     }
-    (word >> (pos % 8)) & ((1u32 << width) - 1)
+    let powers: [u32;17] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536];
+    (word / powers[pos % 8]) % powers[width]
+}
+
+// Stored codes use the same low-bit-first representation as the bitstream.
+fn reverse_code(code: u32, width: u32) -> u32 {
+    let mut raw = code;
+    raw = ((raw & 0x5555) << 1) | ((raw >> 1) & 0x5555);
+    raw = ((raw & 0x3333) << 2) | ((raw >> 2) & 0x3333);
+    raw = ((raw & 0x0f0f) << 4) | ((raw >> 4) & 0x0f0f);
+    raw = ((raw & 0x00ff) << 8) | ((raw >> 8) & 0x00ff);
+    let powers: [u32;17] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536];
+    raw / powers[16-width]
 }
 
 fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) -> Huffman<N> {
@@ -77,7 +89,7 @@ fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) ->
     let mut codes = [0u32;N];
     for i in 0..N {
         let width = lengths[i] as u32;
-        codes[i] = if width != 0 { next[width] } else { 0 };
+        codes[i] = reverse_code(if width != 0 { next[width] } else { 0 }, width);
         next[width] += if width != 0 { 1 } else { 0 };
     }
     Huffman { lengths, codes }
@@ -100,14 +112,7 @@ fn symbol_at<let N: u32, let S: u32>(
     assert(value < alphabet & width > 0 & width <= 15);
     let index = offset + value;
     assert_eq(h.lengths[index] as u32, width);
-    let mut raw = bits(data, limit, pos, width);
-    raw = ((raw & 0x55555555) << 1) | ((raw >> 1) & 0x55555555);
-    raw = ((raw & 0x33333333) << 2) | ((raw >> 2) & 0x33333333);
-    raw = ((raw & 0x0f0f0f0f) << 4) | ((raw >> 4) & 0x0f0f0f0f);
-    raw = ((raw & 0x00ff00ff) << 8) | ((raw >> 8) & 0x00ff00ff);
-    raw = (raw << 16) | (raw >> 16);
-    let reversed = raw >> (32 - width);
-    assert_eq(reversed, h.codes[index]);
+    assert_eq(bits(data, limit, pos, width), h.codes[index]);
     pos + width
 }
 
@@ -299,8 +304,8 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
         assert_eq(distances[i],token_distance);
     }
     assert_eq(output_len,plain_len);
-    let mut a = 1u32;
-    let mut b = 0u32;
+    let mut a: Field = 1;
+    let mut weighted: Field = 0;
     for k in 0..P {
         // Earlier-byte dependencies uniquely determine the immutable advice,
         // including overlap. Every byte, including padding, is bound here.
@@ -313,15 +318,18 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             else { assert(dist > 0 & dist <= k); plain[k-dist] }
         } else { 0 };
         assert_eq(plain[k],byte);
-        if k < plain_len {
-            a = (a + byte as u32)%65521;
-            b = (b+a)%65521;
-        }
+        a += plain[k] as Field;
+        weighted += (k as Field) * (plain[k] as Field);
     }
     let p = data_len-4;
     let checksum = (data[p] as u32)*16777216 + (data[p+1] as u32)*65536
         + (data[p+2] as u32)*256 + data[p+3] as u32;
-    assert_eq(b*65536+a,checksum);
+    // Padding is zero, so b = n + sum((n-k)*plain[k]) = n*a-weighted.
+    // a <= 1+40960*255 and b <= 40960*a < 2^39: no field wrap.
+    let b = (plain_len as Field)*a-weighted;
+    let reduced_a = (a as u64)%65521;
+    let reduced_b = (b as u64)%65521;
+    assert_eq(reduced_b*65536+reduced_a,checksum as u64);
     for i in 0..N { if i >= data_len { assert_eq(data[i],0); } }
     plain
 }
