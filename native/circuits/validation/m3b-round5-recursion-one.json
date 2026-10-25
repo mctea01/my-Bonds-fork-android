@@ -1,0 +1,43 @@
+{
+  "scope": "cost-only UltraHonk ZK recursion; no PDF circuit or valid proof",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "bb": "2.1.9",
+  "verifiers": 1,
+  "application_public_inputs_per_proof": 32,
+  "proof_fields": 508,
+  "vk_fields": 115,
+  "proof_type": 7,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 6.0,
+  "source_sha256": "9736d48423ff78fd72d6b7d11b84daedc77dbe888b41e71d0a46b18d1e47b2c7",
+  "gates": {
+    "gates": 704869,
+    "dyadic_size": 1048576
+  },
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000"
+  },
+  "compile": {
+    "seconds": 0.15585351800109493,
+    "exit_code": 0,
+    "status": "compiled",
+    "peak_rss_kib": 60080
+  },
+  "acir_sha256": "31e2fda8ce4e2c92a80785571e42d918057ad566586dab91a058c81a60c9ff27",
+  "gate_measurement": {
+    "seconds": 0.05220445199665846,
+    "exit_code": 1,
+    "status": "compiler_failed",
+    "peak_rss_kib": 12816
+  },
+  "native_gate_error": "bb 2.1.9 CircuitStats sets honk_recursion=0",
+  "fallback_measurement": {
+    "seconds": 3.230040716000076,
+    "exit_code": 0,
+    "status": "compiled",
+    "peak_rss_kib": 487044
+  },
+  "gate_api": "@aztec/bb.js 2.1.9 acirGetCircuitSizes(bytecode, false, true); one WASM thread"
+}

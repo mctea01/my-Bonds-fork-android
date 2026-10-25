@@ -1,6 +1,6 @@
 # P4 零知識證明：總體設計與約定
 
-撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
+撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行。2026-10-25：年齡證明、zkTLS 與 mdoc ZK 已實作並可使用，zkPDF 的電路與證明器開發中（各工作包狀態見 p4-work-packages.md 第 2.1 節）；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
 
 標記：**【確認】** 已讀過原始碼、規格或實測；**【推論】** 依已知資料推論，尚待工作包實測。
 
@@ -139,7 +139,7 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
   - `{"type":"lan","host":"<私有 IPv4>","port":<埠>}`：查驗方手機在同一個區域網路（Wi-Fi 或熱點）的每個位址開啟 TCP 伺服器，直接傳 Noise 位元組，不加 WebSocket 框架（Noise 自己有長度欄位；2026-10-23 實作時由 ws 改為 TCP，Android release 不需要明文 HTTP 堆疊）。只接受 `BondsAgeRequest.lanHost` 允許的私有位址。查驗方先讀第一段資料確認是 Noise 握手再開始驗證。
   - `{"type":"relay","url":"wss://…","room":"<隨機 16 bytes base64url>"}`：雙方都連到中繼，中繼以 `room` 配對後只轉送位元組，看不到內容。中繼可由使用者的主機或測試伺服器提供（`test-servers` 內附可部署的實作），不需要信任。
 - Proxy 模式下查驗方手機要能連到目標網站；MPC 模式的傳輸量大（數十 MB【推論】），手機查驗方預設 Proxy。BLE 頻寬不足，P4 不採用；WP1 量測後再評估 Proxy 模式小頁面是否可行。
-- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。裝置沒有 tlsn 引擎時改由查驗主機（年齡查驗主機的設定，測試環境為測試伺服器）建立請求並驗證，畫面標明結果來自主機。
+- 手機查驗方的結果與電腦版相同，查驗分頁的「官方網站即時查驗」在 Android 與桌面都提供。裝置沒有 tlsn 引擎時改由查驗主機（「正式服務端」的設定，測試環境為測試伺服器）建立請求並驗證，畫面標明結果來自主機。
 - 查驗頁描述檔隨 GitHub Release 發布（2026-10-23 使用者決定）：`templates/` 的檔案由 CI 打包成 `zk-templates.jwt`（`typ` 為 `zk-templates+jwt` 的 ES256 JWS，簽章金鑰為 repo Secret `ZK_TEMPLATES_KEY`，公鑰釘選在 `ZkTemplatePack.TRUSTED_KEYS`），附在 nightly 預先發布版。App 每天檢查一次，只安裝比已安裝版本新的版型包。版型只描述版面與揭露範圍，電路仍釘選在 App 內。不在版型包內的查驗頁只能隨請求附上（`profile_def`），只在測試環境接受。
 
 離線與存證：

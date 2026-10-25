@@ -1,0 +1,144 @@
+--- a/native/circuits/pdf_text_v1/src/inflate.nr
++++ b/native/circuits/pdf_text_v1/src/inflate.nr
+@@ -8,6 +8,12 @@
+     // Indexed by expanded code-length position; entries inside repeats are unused.
+     pub code_symbols: [u16; 320],
+     pub code_widths: [u8; 320],
++    pub cl_lengths: [u8; 19],
++    pub cl_codes: [u32; 19],
++    pub expanded_lengths: [u8; 320],
++    pub cl_prefixes: [u16; 19*15],
++    pub ll_prefixes: [u16; 288*15],
++    pub dd_prefixes: [u16; 32*15],
+ }
+ 
+ pub struct TokenHint {
+@@ -67,30 +73,38 @@
+     raw / powers[16-width]
+ }
+ 
+-fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) -> Huffman<N> {
+-    let mut counts = [0u32;16];
+-    let mut used = 0u32;
+-    for i in 0..N {
+-        assert(lengths[i] <= 15);
+-        let present = if lengths[i] != 0 { 1 } else { 0 };
+-        counts[lengths[i] as u32] += present;
+-        used += present;
+-    }
+-    let mut next = [0u32;16];
+-    let mut code = 0u32;
+-    for i in 1..16 {
+-        code = (code + counts[i - 1]) * 2;
+-        assert(code + counts[i] <= (1u32 << i));
+-        next[i] = code;
+-    }
+-    assert((code + counts[15] == 32768)
+-        | (allow_single & (used == 1) & (counts[1] == 1))
++fn table<let N: u32>(lengths: [u8; N], prefixes: [u16;N*15],
++    allow_single: bool, allow_empty: bool) -> Huffman<N> {
++    assert(N > 0 & N <= 320);
++    let mut canonical = [0 as Field; N];
++    let mut first: Field = 0;
++    let mut used: Field = 0;
++    let mut ones: Field = 0;
++    for width in 1..16 {
++        let mut count: Field = 0;
++        for i in 0..N {
++            // Immutable counters are bound at every constant index, including
++            // the initial zero. They count earlier symbols of this exact width.
++            let prefix = prefixes[i*15+width-1] as Field;
++            assert_eq(prefix,count);
++            let present = lengths[i] as u32 == width;
++            canonical[i] += if present { first + prefix } else { 0 };
++            count = prefix + if present { 1 } else { 0 };
++        }
++        // Prefix recurrences imply count<=N. Even before the tree checks,
++        // first+count<=N*2^15<2^32, so the cast cannot hide overflow.
++        assert((first+count) as u32 <= (1u32 << width));
++        if width == 1 { ones = count; }
++        used += count;
++        first = (first+count)*2;
++    }
++    assert((first == 65536)
++        | (allow_single & (used == 1) & (ones == 1))
+         | (allow_empty & (used == 0)));
+     let mut codes = [0u32;N];
+     for i in 0..N {
+-        let width = lengths[i] as u32;
+-        codes[i] = reverse_code(if width != 0 { next[width] } else { 0 }, width);
+-        next[width] += if width != 0 { 1 } else { 0 };
++        assert(lengths[i] <= 15);
++        codes[i] = reverse_code(canonical[i] as u32, lengths[i] as u32);
+     }
+     Huffman { lengths, codes }
+ }
+@@ -127,9 +141,14 @@
+     for i in 0..19 {
+         if i < hclen { cl[order[i]] = bits(data,limit,start+14+i*3,3) as u8; }
+     }
+-    let ch = table(cl,false,false);
++    let computed_ch = table(cl,hint.cl_prefixes,false,false);
++    for i in 0..19 {
++        assert_eq(hint.cl_lengths[i],computed_ch.lengths[i]);
++        assert_eq(hint.cl_codes[i],computed_ch.codes[i]);
++    }
++    let ch = Huffman { lengths: hint.cl_lengths, codes: hint.cl_codes };
+     let mut pos = start + 14 + hclen * 3;
+-    let mut lengths = [0u8;320];
++    let lengths = hint.expanded_lengths;
+     let mut repeat = 0u32;
+     let mut value = 0u8;
+     for i in 0..320 {
+@@ -151,7 +170,7 @@
+             }
+             repeat -= 1;
+         }
+-        lengths[i] = if i < hlit + hdist { value } else { 0 };
++        assert_eq(lengths[i],if i < hlit + hdist { value } else { 0 });
+     }
+     assert_eq(repeat,0);
+     let mut ll = [0u8;288];
+@@ -159,18 +178,27 @@
+     for i in 0..288 { ll[i] = if i < hlit { lengths[i] } else { 0 }; }
+     for i in 0..32 { dd[i] = if i < hdist { lengths[hlit+i] } else { 0 }; }
+     assert(ll[256] != 0);
+-    (table(ll,true,false),table(dd,true,true),pos)
++    (table(ll,hint.ll_prefixes,true,false),table(dd,hint.dd_prefixes,true,true),pos)
+ }
+ 
+ fn fixed_tables() -> (Huffman<288>, Huffman<32>) {
+-    let mut ll = [0u8;288];
+-    for i in 0..288 { ll[i] = if i < 144 { 8 } else if i < 256 { 9 } else if i < 280 { 7 } else { 8 }; }
+-    (table(ll,false,false),table([5;32],false,false))
++    let mut lengths = [0u8;288];
++    let mut codes = [0u32;288];
++    for i in 0..288 {
++        let width = if i < 144 {8} else if i < 256 {9} else if i < 280 {7} else {8};
++        let code = if i < 144 {48+i} else if i < 256 {400+i-144}
++            else if i < 280 {i-256} else {192+i-280};
++        lengths[i] = width as u8;
++        codes[i] = reverse_code(code,width);
++    }
++    let mut distances = [0u32;32];
++    for i in 0..32 { distances[i] = reverse_code(i,5); }
++    (Huffman { lengths, codes },Huffman { lengths: [5u8;32], codes: distances })
+ }
+ 
+ // Private owner hints select the token that produces each output byte. Prefix
+-// sums make token output intervals disjoint and exhaustive; backward RAM reads
+-// enforce LZ77, including overlapping matches.
++// sums make token output intervals disjoint and exhaustive; backward reads from
++// immutable plain advice enforce LZ77 by induction, including overlapping matches.
+ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
+     data: [u8;N], data_len: u32, blocks: [BlockHint;B], block_count: u32,
+     tokens: [TokenHint;T], owners: [u32;P], plain_len: u32,
+@@ -223,7 +251,7 @@
+                 assert_eq(h.tokens,len);
+                 assert_eq(h.end,pos+len*8);
+             } else if kind == 1 {
+-                let (l,d) = fixed_tables(); block_ll = l; block_dd = d;
++                let (l,d) = comptime { fixed_tables() }; block_ll = l; block_dd = d;
+                 assert(h.tokens > 0);
+             } else {
+                 let (l,d,p) = dynamic_tables(data,limit,pos,h);

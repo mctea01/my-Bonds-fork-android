@@ -1,0 +1,83 @@
+{
+  "timeout_seconds": 1800,
+  "rss_guard_gib": 7.0,
+  "address_space_limit_gib": 24,
+  "compile_flags": [
+    "--bounded-codegen"
+  ],
+  "scope": "lex",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "plain_capacity": 2048,
+  "k": 1,
+  "max_claims": 12,
+  "max_claim_src": 384,
+  "max_anchor_src": 96,
+  "seg_ops": 64,
+  "slot_start": 0,
+  "slot_count": 12,
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "prove": {
+    "first": {
+      "seconds": 105.88143120800669,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1802452
+    },
+    "warm": {
+      "seconds": 106.00241619499866,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1802396
+    }
+  },
+  "source_sha256": {
+    "library/src/claim.nr": "bd348a7c687fe14f4b667048cd2388037f893195ab099ac93d5d26cb293cfd5b",
+    "library/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "library/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "library/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "library/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "library/src/lex_segment.nr": "62f0f9899a55e42dbe9af64ce20d55df248222e87b91d6c7f7c88df9a5ab2d59",
+    "library/src/lib.nr": "1f44f9f2e1af072b54c0a4a7dcfa120ca5e82cb9eb8e589632df28e73a5a7792",
+    "library/src/sha256_window.nr": "6fbf4b01de91b7e534584ed046d7245eb34bdced252b20346072a2a4df051ec5",
+    "library/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f",
+    "src/main.nr": "358bff59f7de2da57e370b289f31f559c3a16305e9ad135f7b7d3623db657793"
+  },
+  "status": "completed",
+  "compile": {
+    "seconds": 143.46872448400245,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 1828212
+  },
+  "acir_sha256": "f09221411545f6255cf6eb680710851b5a2c94e8095e840c511c080bfc123717",
+  "gate_measurement": {
+    "seconds": 13.049612672999501,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 1482588
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 937281,
+        "circuit_size": 972366
+      }
+    ]
+  },
+  "witness": {
+    "seconds": 13.856015224002476,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 784416
+  },
+  "proof_bytes": 16256,
+  "public_input_bytes": 52672,
+  "vk_sha256": "7438ad6db33133dde4f0763a35f5fbe8984ddc90603c2dbc0bce6b69f0f0dcd0",
+  "verify": {
+    "seconds": 0.2767780819995096,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 22412
+  }
+}

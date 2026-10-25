@@ -1,0 +1,84 @@
+--- a/native/circuits/pdf_text_v1/src/inflate.nr
++++ b/native/circuits/pdf_text_v1/src/inflate.nr
+@@ -166,11 +166,18 @@
+     let empty_d = Huffman { lengths: [0u8;32], codes: [0u32;32] };
+     let mut ll = Huffman { lengths: [0u8;B*288], codes: [0u32;B*288] };
+     let mut dd = Huffman { lengths: [0u8;B*32], codes: [0u32;B*32] };
++    // Token decoding needs only scalar block metadata, not code-length hints.
++    let mut block_first = [0u32;B];
++    let mut block_tokens = [0u32;B];
++    let mut block_ends = [0u32;B];
+     let mut body = [0u32;B];
+     let mut kinds = [0u32;B];
+     let mut total_tokens = 0u32;
+     let mut end = 16u32;
+     for b in 0..B {
++        block_first[b] = blocks[b].first_token;
++        block_tokens[b] = blocks[b].tokens;
++        block_ends[b] = blocks[b].end;
+         let mut block_ll = empty_l;
+         let mut block_dd = empty_d;
+         if b < block_count {
+@@ -219,12 +226,15 @@
+     let length_extra: [u32;29] = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+     let distance_base: [u32;30] = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+     let distance_extra: [u32;30] = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
++    // Output reconstruction needs only the symbol from each token hint.
++    let mut symbols = [0u16;T];
+     let mut starts = [0u32;T];
+     let mut lengths = [0u32;T];
+     let mut distances = [0u32;T];
+     let mut output_len = 0u32;
+     let mut previous_end = 16u32;
+     for i in 0..T {
++        symbols[i] = tokens[i].symbol;
+         let mut token_start = 0u32;
+         let mut token_len = 0u32;
+         let mut token_distance = 0u32;
+@@ -232,9 +242,11 @@
+             let t = tokens[i];
+             assert(t.block < block_count);
+             let b = t.block;
+-            let h = blocks[b];
+-            assert(i >= h.first_token & i < h.first_token+h.tokens);
+-            assert_eq(t.start,if i == h.first_token {body[b]} else {previous_end});
++            let first = block_first[b];
++            let count = block_tokens[b];
++            let block_end = block_ends[b];
++            assert(i >= first & i < first+count);
++            assert_eq(t.start,if i == first {body[b]} else {previous_end});
+             let mut pos = t.start;
+             let s = t.symbol as u32;
+             let mut len = 0u32;
+@@ -244,7 +256,7 @@
+             } else {
+                 pos = symbol_at(data,limit,pos,ll,b*288,288,s,t.width as u32);
+                 if s < 256 { len = 1; }
+-                else if s == 256 { assert_eq(i+1,h.first_token+h.tokens); }
++                else if s == 256 { assert_eq(i+1,first+count); }
+                 else {
+                     assert(s <= 285);
+                     let code = s-257;
+@@ -257,10 +269,10 @@
+                     pos += distance_extra[ds];
+                     assert(dist <= window & dist <= output_len);
+                 }
+-                if i+1 == h.first_token+h.tokens { assert_eq(s,256); }
++                if i+1 == first+count { assert_eq(s,256); }
+             }
+-            if i+1 == h.first_token+h.tokens { assert_eq(pos,h.end); }
+-            assert(pos <= h.end);
++            if i+1 == first+count { assert_eq(pos,block_end); }
++            assert(pos <= block_end);
+             token_start = output_len; token_len = len; token_distance = dist;
+             assert(len <= P-output_len);
+             output_len += len;
+@@ -280,7 +292,7 @@
+             assert(owner < total_tokens);
+             assert(k >= starts[owner] & k < starts[owner]+lengths[owner]);
+             let dist = distances[owner];
+-            if dist == 0 { tokens[owner].symbol as u8 }
++            if dist == 0 { symbols[owner] as u8 }
+             else { assert(dist <= k); out[k-dist] }
+         } else { 0 };
+         out[k] = byte;

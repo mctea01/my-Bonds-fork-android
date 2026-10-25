@@ -71,7 +71,7 @@ import diw.wallet.app.PickedFile
 import diw.wallet.app.Screen
 import diw.wallet.app.SignForm
 import diw.wallet.core.document.official.ApprovalPoint
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.MobileMoicaSp
@@ -527,6 +527,9 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                 TextButton(onClick = { model.files.collectSignatureValidation(f) }, enabled = busy == null) {
                     Text(if (v == null) "取得並保存簽署者的撤銷資訊（OCSP 優先）" else "重新取得簽署者的撤銷資訊")
                 }
+                if (model.files.canExtend(f)) {
+                    TextButton(onClick = { model.files.extendPdf(f) }, enabled = busy == null) { Text("延長保存：把所有簽章的撤銷資訊與文件時戳寫進 PDF（另存新檔）") }
+                }
             }
             report.envelope?.let { e ->
                 Text("加密信封", style = MaterialTheme.typography.titleSmall)
@@ -956,15 +959,43 @@ private fun KeyList(list: List<ExternalKeyOption>?, chosen: String?, problem: St
     }
 }
 
+/** Whose SP account of the Ministry of the Interior a mobile citizen certificate signature goes through. */
+private enum class MobileMoicaSource(val title: String) {
+    SERVER("正式服務端的 SP"),
+    BUILT_IN("本版內建的 SP"),
+    MANUAL("手動輸入 SP"),
+}
+
 /**
- * The mobile citizen certificate through an SP account of the Ministry of the Interior: the account built into this
- * build, or, with the developer setting on, one typed in here for this run only (kept in memory, never stored).
+ * The mobile citizen certificate through an SP account of the Ministry of the Interior: the production server's (no
+ * key in the app), the account built into this build, or, with the developer setting on, one typed in here for this
+ * run only (kept in memory, never stored).
  */
 @Composable
 private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
     val settings by model.settingsFlow.collectAsState()
     val manual = settings.manualMobileMoicaSp
     val builtIn = model.files.builtInMobileMoicaSp
+    val configured = remember(settings.zkVerifierUrl) { model.server.base() }
+    // The server is offered only after its /info says it holds an SP account; null while asking.
+    val serverSp by produceState<Result<MobileMoicaEnvironment?>?>(null, configured) {
+        value = configured?.let { url -> runCatching { model.server.mobileMoica(url) } } ?: Result.success(null)
+    }
+    val serverEnvironment = serverSp?.getOrNull()
+    val server = configured?.takeIf { serverEnvironment != null }
+    val serverNote = when {
+        configured == null -> null
+        serverSp == null -> "正在確認正式服務端是否提供行動自然人憑證簽署…"
+        serverSp?.exceptionOrNull() != null -> "無法確認正式服務端是否提供行動自然人憑證簽署：" + serverSp?.exceptionOrNull()?.let(model::describe)
+        serverEnvironment == null -> "正式服務端（${configured.substringAfter("://")}）沒有提供行動自然人憑證簽署（未啟用 twfido）。"
+        else -> null
+    }
+    val sources = listOfNotNull(
+        MobileMoicaSource.SERVER.takeIf { server != null },
+        MobileMoicaSource.BUILT_IN.takeIf { builtIn != null },
+        MobileMoicaSource.MANUAL.takeIf { manual },
+    )
+    var source by remember(sources) { mutableStateOf(if (manual) MobileMoicaSource.MANUAL else sources.firstOrNull()) }
     val last = model.files.mobileMoicaSp
     var env by remember { mutableStateOf(last?.environment ?: MobileMoicaEnvironment.UAT) }
     var serviceId by remember { mutableStateOf(last?.serviceId.orEmpty()) }
@@ -974,29 +1005,50 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     var mode by remember { mutableStateOf(if (canOpenApp) MobileMoicaMode.APP_TO_APP else MobileMoicaMode.PUSH) }
     fun update() {
         val id = idNumber.trim().uppercase()
-        val sp = if (manual) MobileMoicaSp(env, serviceId.trim(), aesKey.trim()).takeIf { serviceId.isNotBlank() && aesKey.isNotBlank() } else builtIn
-        onChange(if (sp != null && MyDataProfile.isValidId(id)) SignerChoice.MobileMoica(sp, id, mode) else null)
+        val choice = when (source) {
+            MobileMoicaSource.SERVER -> server?.let { SignerChoice.MobileMoica(null, id, mode, server = it) }
+            MobileMoicaSource.BUILT_IN -> builtIn?.let { SignerChoice.MobileMoica(it, id, mode) }
+            MobileMoicaSource.MANUAL -> MobileMoicaSp(env, serviceId.trim(), aesKey.trim())
+                .takeIf { serviceId.isNotBlank() && aesKey.isNotBlank() }?.let { SignerChoice.MobileMoica(it, id, mode) }
+            null -> null
+        }
+        onChange(choice?.takeIf { MyDataProfile.isValidId(id) })
     }
-    LaunchedEffect(manual) { update() }
-    if (!manual && builtIn == null) {
-        Text("這個版本沒有內建行動自然人憑證的服務提供者（SP）帳號，無法使用。持有 SP 授權的開發者可在設定開啟「手動輸入 SP 帳號」。",
+    LaunchedEffect(source) { update() }
+    serverNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    if (source == null) {
+        if (configured != null && serverSp == null) return
+        Text("沒有可用的行動自然人憑證服務提供者（SP）帳號：在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；持有 SP 授權的開發者也可在設定開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
-    if (manual) {
-        Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
-            style = MaterialTheme.typography.bodySmall)
+    if (sources.size > 1) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+            sources.forEach { o -> FilterChip(selected = o == source, onClick = { source = o }, label = { Text(o.title) }) }
         }
-        OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
-            singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(
-            value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+    }
+    when (source) {
+        MobileMoicaSource.SERVER -> Text(
+            "經由正式服務端（${server?.substringAfter("://")}）的 SP 帳號簽署（${serverEnvironment?.title}），App 內不放 SP 金鑰。服務端會看到你的身分證統一編號與要簽署的摘要資料（不含文件內容）。" +
+                "送出前會再向服務端確認一次；" + (if (serverEnvironment == MobileMoicaEnvironment.PRODUCTION) "第一次取得的憑證必須由內政部憑證管理中心簽發，" else "測試環境的憑證只標示為測試，") +
+                "簽章也由這支手機驗證。使用設定中的存取權杖。",
+            style = MaterialTheme.typography.bodySmall,
         )
-    } else if (builtIn != null) {
-        Text("使用本版內建的 SP 帳號（${builtIn.environment.title}）。", style = MaterialTheme.typography.bodySmall)
+        MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
+        MobileMoicaSource.MANUAL -> {
+            Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+            }
+            OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        null -> Unit
     }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1152,8 +1204,9 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         SectionTitle("2. 簽署者")
         SignerPicker(model) { choice = it }
         val tsaName = TsaServices.byId(model.settings.tsaId).name
-        var level by remember { mutableStateOf(PadesLevel.entries.firstOrNull { it.name == model.settings.padesLevel } ?: PadesLevel.B_T) }
-        var revocation by remember { mutableStateOf(false) }
+        var level by remember { mutableStateOf(SignatureLevel.of(model.settings.padesLevel)) }
+        var certification by remember { mutableStateOf<Int?>(null) }
+        val firstSignature = f.report?.signatures.isNullOrEmpty()
         var action by remember { mutableStateOf(ApprovalPoint().action) }
         var organization by remember { mutableStateOf("") }
         var unit by remember { mutableStateOf("") }
@@ -1164,21 +1217,22 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         when (form) {
             SignForm.PADES -> {
                 SectionTitle("3. 保證層級")
-                PadesLevel.entries.forEach { l ->
-                    Row(Modifier.fillMaxWidth().clickable { level = l }, verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.material3.RadioButton(selected = l == level, onClick = { level = l })
-                        Column {
-                            Text(l.title, style = MaterialTheme.typography.bodyMedium)
-                            Text(l.detail, style = MaterialTheme.typography.bodySmall)
+                LevelPicker("PAdES", level) { level = it }
+                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
+                if (level.revocation) Text("取不到撤銷資訊時不會簽署，請改選較低的等級或稍後再試。", style = MaterialTheme.typography.bodySmall)
+                SectionTitle("4. 認證簽章（選填）")
+                if (firstSignature) {
+                    CERTIFICATIONS.forEach { (p, title, detail) ->
+                        Row(Modifier.fillMaxWidth().clickable { certification = p }, verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.material3.RadioButton(selected = p == certification, onClick = { certification = p })
+                            Column {
+                                Text(title, style = MaterialTheme.typography.bodyMedium)
+                                Text(detail, style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
-                }
-                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
-                if (level.revocation) Text("撤銷資訊取不到時不會寫入，請改選較低的等級或稍後再試。", style = MaterialTheme.typography.bodySmall)
-                else Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = revocation, onCheckedChange = { revocation = it })
-                    Text("附加憑證鏈與撤銷資訊（OCSP 優先，放在簽章內，需要網路）")
-                }
+                } else Text("文件已有簽章；認證簽章只能是第一個簽章，這次是一般的核准簽章。", style = MaterialTheme.typography.bodySmall)
+                Text("簽章不加頁面外觀（不可見簽章），在 PDF 閱讀器的簽章面板查看。頁面上的簽章圖樣需要內嵌中文字型，尚未支援。", style = MaterialTheme.typography.bodySmall)
                 CollapsibleSection("簽署原因與地點（選填）", key = "sign-reason-${f.id}") {
                     OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1224,20 +1278,16 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 }
             }
             else -> {
-                SectionTitle("3. 選項")
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
-                    Text("加上簽章時戳（$tsaName，需要網路）")
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = revocation, onCheckedChange = { revocation = it })
-                    Text("附加憑證鏈與撤銷資訊（OCSP 優先，baseline LT，需要網路）")
-                }
+                SectionTitle("3. 保證層級")
+                LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
+                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
+                if (level.archive) Text("B-LTA 取不到撤銷資訊時不會簽署；B-LT 取不到時只做到 B-T，簽完會顯示實際等級。", style = MaterialTheme.typography.bodySmall)
+                else if (level.revocation) Text("取不到撤銷資訊時只做到 B-T，簽完會顯示實際等級。", style = MaterialTheme.typography.bodySmall)
             }
         }
         var details by remember { mutableStateOf(false) }
         TextButton(onClick = { details = !details }) { Text(if (details) "隱藏技術細節" else "技術細節") }
-        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, revocation))
+        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
             VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
@@ -1254,7 +1304,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         action.ifBlank { ApprovalPoint().action }, reason.ifBlank { null }, unit.ifBlank { null }, jobTitle.ifBlank { null }, role.ifBlank { null },
                         account.ifBlank { null }, organization.ifBlank { null }, returned,
                     ),
-                    level = level, revocation = revocation,
+                    level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")
         }
@@ -1272,14 +1322,37 @@ private fun InfoCard(title: String, lines: List<String>) {
     }
 }
 
+/** DocMDP permissions a certification signature can carry: value, title and what it allows. */
+private val CERTIFICATIONS = listOf(
+    Triple(null, "不認證", "一般簽章，之後任何人都可以再加簽"),
+    Triple(2, "認證：允許填表與簽署（P=2）", "宣告自己是文件作者；之後只能填寫表單欄位與加簽，其他修改會讓認證失效"),
+    Triple(3, "認證：也允許註解（P=3）", "同 P=2，另外允許加入、修改與刪除註解"),
+    Triple(1, "認證：不允許任何修改（P=1）", "之後不能再加簽；只允許加入長期驗證資料與文件時戳（ISO 32000-2）"),
+)
+
+/** The four baseline levels for [format], each with what it adds. */
+@Composable
+private fun LevelPicker(format: String, level: SignatureLevel, onPick: (SignatureLevel) -> Unit) {
+    SignatureLevel.entries.forEach { l ->
+        Row(Modifier.fillMaxWidth().clickable { onPick(l) }, verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.RadioButton(selected = l == level, onClick = { onPick(l) })
+            Column {
+                Text(l.title(format), style = MaterialTheme.typography.bodyMedium)
+                Text(l.detail, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 /** What the chosen form and options put in the signature, for the expandable technical details. */
-private fun signDetails(form: SignForm, level: PadesLevel, timestamp: Boolean, revocation: Boolean): List<String> = when (form) {
+private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?): List<String> = when (form) {
     SignForm.PADES -> buildList {
         add("SubFilter ETSI.CAdES.detached，摘要 SHA-256，簽署屬性含 signing-certificate-v2，不寫 signingTime（以 PDF 的 /M 宣稱時間）")
         add("增量更新：原有內容與既有簽章不變，簽章涵蓋整份 PDF 到簽章值之前")
+        certification?.let { add("認證簽章：簽章字典的 /Reference 帶 DocMDP 轉換（/P $it），文件目錄的 /Perms /DocMDP 指向這個簽章") }
         if (level.timestamp) add("signature-time-stamp：時戳機構對簽章值的 RFC 3161 時戳，放在未簽署屬性")
-        if (level.revocation || revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
-        if (level == PadesLevel.B_LTA) add("文件時戳：另一個 /Type /DocTimeStamp 欄位（SubFilter ETSI.RFC3161），涵蓋 DSS，之後可再加時戳延長")
+        if (level.revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
+        if (level.archive) add("文件時戳：另一個 /Type /DocTimeStamp 欄位（SubFilter ETSI.RFC3161），涵蓋 DSS；文件頁的「延長保存」可再加一層")
         add("簽完以憑證公鑰重新檢查簽章值，不符就不寫入")
     }
     SignForm.APPROVAL -> listOf(
@@ -1288,15 +1361,19 @@ private fun signDetails(form: SignForm, level: PadesLevel, timestamp: Boolean, r
         "SignedInfo 以 C14N 20010315 正規化，簽章演算法依憑證（rsa-sha256 或 ecdsa-sha256），KeyInfo 放簽署憑證",
         "簽章時間以民國年月日時分（臺北時間）寫在異動資訊",
     ) + (if (timestamp) listOf("文件時戳：對新的簽核檔 SHA-256 取 RFC 3161 時戳，與檔案分開保存") else emptyList())
-    SignForm.XADES -> listOf(
-        "XAdES enveloped（baseline B）：SignedProperties 含 SigningTime、SigningCertificateV2 與 DataObjectFormat，摘要 SHA-256",
-    ) + (if (timestamp) listOf("SignatureTimeStamp：對 SignatureValue 的 RFC 3161 時戳（B-T）") else emptyList()) +
-        (if (revocation) listOf("CertificateValues 與 RevocationValues（OCSP 優先，取不到才用 CRL）（baseline LT）") else emptyList())
-    else -> listOf(
-        "CMS SignedData，摘要 SHA-256，簽署屬性含 signing-certificate-v2 與 signingTime",
-    ) + (if (timestamp) listOf("signature-time-stamp：對簽章值的 RFC 3161 時戳（B-T）") else emptyList()) +
-        (if (revocation) listOf("SignedData 的 certificates 加上完整憑證鏈，crls 加上 CRL 與 OCSP 回應（RFC 5940 otherRevInfo）（baseline LT）") else emptyList()) +
-        (if (form == SignForm.ASIC) listOf("ASiC-E：mimetype、原檔與 META-INF/signature.p7s，ASiCManifest 列出原檔摘要") else emptyList())
+    SignForm.XADES -> buildList {
+        add("XAdES enveloped：SignedProperties 含 SigningTime、SigningCertificateV2 與 DataObjectFormat，摘要 SHA-256，exclusive C14N")
+        if (level.timestamp) add("SignatureTimeStamp：對 SignatureValue 的 RFC 3161 時戳（B-T）")
+        if (level.revocation) add("CertificateValues 與 RevocationValues（OCSP 優先，取不到才用 CRL）（B-LT）")
+        if (level.archive) add("xadesv141:ArchiveTimeStamp：涵蓋文件、SignedInfo、SignatureValue、KeyInfo 與之前的未簽署屬性（EN 319 132-1 5.5.2）（B-LTA）")
+    }
+    else -> buildList {
+        add("CMS SignedData，摘要 SHA-256，簽署屬性含 signing-certificate-v2 與 signingTime")
+        if (level.timestamp) add("signature-time-stamp：對簽章值的 RFC 3161 時戳（B-T）")
+        if (level.revocation) add("SignedData 的 certificates 加上完整憑證鏈，crls 加上 CRL 與 OCSP 回應（RFC 5940 otherRevInfo）（B-LT）")
+        if (level.archive) add("archive-time-stamp-v3：涵蓋內容、簽章與 ats-hash-index-v3 列出的憑證、撤銷資訊與未簽署屬性（EN 319 122-1 5.5.2）（B-LTA）")
+        if (form == SignForm.ASIC) add("ASiC-E：mimetype、原檔與 META-INF/signature001.p7s，ASiCManifest 列出原檔摘要")
+    }
 }
 
 // ---------------------------------------------------------------- preview

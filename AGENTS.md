@@ -15,10 +15,12 @@
 |---|---|
 | `core/src/commonMain` | 協議與信任核心，不依賴 UI |
 | `core/src/jvmCommonMain` | JVM 與 Android 共用的密碼學實作 |
-| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態、流程、紀錄）、`TaiwanModel`（TWDIW 平台服務與 Bonds）、`MsIssuanceModel`（Verified ID）、`ProximityModel`（ISO 18013-5 出示與 DC API Annex C）、`ReaderModel`（ISO 18013-5 查驗）、`StatusMonitor`、`History`（紀錄）、`FilesModel`（文件保存、檢查、時戳、簽署、衍生憑證、取件入口）、`ui/` |
+| `app/src/commonMain` | Compose Multiplatform App：`WalletModel`（狀態、流程、紀錄）、`TaiwanModel`（TWDIW 平台服務與 Bonds）、`MsIssuanceModel`（Verified ID）、`ProximityModel`（ISO 18013-5 出示與 DC API Annex C）、`ReaderModel`（ISO 18013-5 查驗）、`StatusMonitor`、`History`（紀錄）、`FilesModel`（文件保存、檢查、時戳、簽署、延長保存、衍生憑證、取件入口）、`BondsAgeFlow` 與 `BondsAgeVerifierFlow`（年齡證明）、`ZkTlsFlow`（網站查驗證明）、`ui/` |
 | `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼、NFC：Android 的 HCE `WalletNfcService`、讀卡模式與 USB CCID `AndroidNfcReaders`，桌面的 PC/SC `PcscReaders`；取件入口 `PortalWebView`、檔案選取與儲存） |
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
+| `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime、OpenAC 年齡證明、TLSNotary、Noir 電路（`native/circuits`） |
+| `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 發佈，格式見 `templates/README.md` |
 
 `core` 內的主要套件：
 
@@ -34,11 +36,14 @@
 | `profile/msvid` | Microsoft Entra Verified ID 發行、Linked Domains |
 | `document` | 文件檢查（`DocumentInspector`、`DocumentReport`）：PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2 |
 | `document/pdf` | 純 Kotlin PDF 解析（加密含使用者密碼、增量更新、xref stream）、文字擷取（`PdfTextExtractor`）、增量簽署（`PdfWriter`）、預覽用的解密副本（`PdfPlain`）；測試用的 PDF 產生器在 `test-servers` 的 `fixtures/PdfComposer`，App 不製作 PDF 或公文 |
-| `document/sign` | 簽署（`DocumentSigning`：PAdES B-B 到 B-LTA、CAdES、ASiC-E、XAdES、公文線上簽核點、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`）、長期驗證資料（`ValidationCollector`、`ValidationData`） |
+| `document/sign` | 簽署（`DocumentSigning`：PAdES、CAdES、ASiC-E、XAdES 都可選 B-B 到 B-LTA，PDF 認證簽章與延長保存 `extendPdf`，公文線上簽核點、自簽憑證）、`DocumentSigner`、TSA（`TsaServices`、`TsaClient`）、長期驗證資料（`ValidationCollector`、`ValidationData`） |
 | `document/card` | 自然人憑證卡（`GpkiCard`，第一代與第二代含 SCP03）、`GpkiTapSigner`（NFC 兩次感應）、`CardChannel` |
 | `document/derived` | 文件衍生憑證（`DerivedCredentials`：SD-JWT VC 與 vc+moica）、由文件內容解析欄位（`DocumentFields`）、證據查驗（`DerivedEvidence`） |
 | `document/opencerts` | OpenCerts（OpenAttestation v2／v3）完整性、欄位整理（`OpenAttestationDocument`）、以太坊與 DNS 線上查驗（`OpenAttestationOnline`）、發證機構顯示程式宿主頁（`OpenCertRenderer`） |
 | `document/official` | 電子公文「函」XML（`OfficialLetter`，DTD 104_2_utf8） |
+| `zk` | 零知識證明共用層：原生函式庫載入、資產清單與下載（`ZkAssetManifest`）、裝置分級（`ZkRuntime`）、OpenAC 年齡證明（`OpenAcAge`）、Longfellow（`LongfellowZk`）、版型包（`ZkTemplatePack`） |
+| `zktls` | 網站查驗證明：查驗頁版型（`ZkTlsProfile`）、請求（`ZkTlsSessionRequest`）、揭露規劃、網頁證明與本機紀錄（`WebProofCredentials`） |
+| `document/zkpdf` | zkPDF 公開側（`PdfZkSupport`、`Sha256Chain`）；證明器與查驗整合開發中 |
 | `w3c`、`status`、`trust`、`did`、`holder` | W3C VC、狀態清單、信任錨與 DID 信任、DID 解析、錢包層級持有者金鑰 |
 
 ## 已定的設計規則
@@ -100,7 +105,9 @@
 - 簽署方式：自然人憑證卡（Android NFC 兩次感應：先讀憑證、再簽章；USB CCID 與桌面 PC/SC 一次完成）、PKCS#12 檔案、錢包金鑰（`HolderIdentities.DOCUMENT_SIGNER`，自簽憑證）。PIN 不保存。簽完以憑證公鑰檢查簽章值，不符就不寫入。
 - CSC 遠端簽章（`document/sign/Csc.kt`、App 的 `CscModel`）：CSC API v2，OAuth 授權碼加 PKCE，先以 `scope=service` 登入並讀 `credentials/list`，每次簽章再以 `scope=credential`（`credentialID`、`numSignatures`、base64url `hashes`、`hashAlgorithmOID`）授權，最後 `signatures/signHash`（標準 base64、`signAlgo` 優先 ecdsa-with-SHA256 或 sha256WithRSA，EC 的 r||s 轉 DER）；`implicit`／`explicit` 模式改用 `credentials/authorize` 取得 SAD（PIN、OTP 不保存）。內建 EUDI walletcentric 測試服務（demo 與 dev，`wallet-client`、redirect `rqes://oauth/callback`），使用者可自行加入服務並標示測試或正式，存在設定的 `cscServices`。登入由 `CscModel` 以自己的 cookie 跟隨轉址，遇到 OpenID4VP 連結（含只放一個錢包連結的頁面）就由 `WalletModel.presentForAuthorization` 在一般同意畫面出示 PID，取得驗證端回傳的 redirect_uri 後繼續；EUDI 的授權會帶 CSC `qes-approval` transaction_data（`QesApprovalTransaction`），同意畫面列出要簽的份數。有 transaction_data 時 KB-JWT 必須寫出 `transaction_data_hashes_alg`（Multipaz 在 sha-256 時省略，EUDI 驗證端回「must be sha-256」），由 `ResponseBuilder` 補上。需要網頁登入時改開瀏覽器，Android 接收 `rqes://oauth/callback` 與 `diw-wallet://csc/callback`，電腦版貼上最後網址。登入權杖只存在這次執行。
 - 簽署格式：PDF 為 PAdES（增量更新，保留既有簽章），XML 為 XAdES enveloped（含 `DataObjectFormat`，符合 baseline B），其他檔案為 CAdES 分離或封裝、ASiC-E。加密或已鎖定（certification 不允許變更）的 PDF 拒絕簽署。
-- 保證層級：PAdES 由使用者選 B-B、B-T（簽章時戳）、B-LT（再加 DSS：簽署者與時戳機構的憑證、OCSP、CRL，VRI 以 CMS 的 SHA-1 大寫十六進位為鍵）、B-LTA（再加 `/Type /DocTimeStamp`、SubFilter `ETSI.RFC3161` 的文件時戳），選擇記在設定 `padesLevel`；B-LT 以上取不到撤銷資訊時不寫入。B-B、B-T 與其他格式可勾選「附加撤銷資訊」：CAdES 把憑證放進 SignedData.certificates、CRL 與 OCSP（RFC 5940 otherRevInfo）放進 crls，XAdES 寫 `CertificateValues` 與 `RevocationValues`。簽署畫面可展開技術細節。
+- PDF 認證簽章（`PdfSignOptions.certification`，DocMDP P=1 到 3）：只能是文件的第一個簽章，簽章字典寫 `/Reference`（SigRef、TransformMethod DocMDP、`/P`、`/V /1.2`），目錄加 `/Perms /DocMDP`。依 ISO 32000-2，任何 P 之後都允許 DSS 與文件時戳，所以 P=1 也可以是 B-LTA；檢查時 P=1 之後只有在變更不只簽章類，或之後有一般簽章（非 RFC 3161）時才列為問題。
+- 保證層級（`SignatureLevel`：B-B、B-T、B-LT、B-LTA）適用 PAdES、CAdES、XAdES、ASiC-E，預設記在設定 `padesLevel`（電子公文簽核點不適用）。B-T 加簽章時戳；B-LT 再加簽署者與時戳機構的憑證鏈與撤銷資訊（OCSP 優先）：PAdES 寫 DSS（VRI 以 CMS 的 SHA-1 大寫十六進位為鍵），CAdES 把憑證放進 SignedData.certificates、CRL 與 OCSP（RFC 5940 otherRevInfo）放進 crls，XAdES 寫 `CertificateValues` 與 `RevocationValues`；B-LTA 再加保存時戳：PAdES 為 `/Type /DocTimeStamp`、SubFilter `ETSI.RFC3161` 的文件時戳，CAdES 與 ASiC-E 為 archive-time-stamp-v3（`CadesArchive`，ats-hash-index-v3 放在時戳 token 自己的未簽署屬性，一律寫出 SHA-256 演算法，因為 EU DSS 以此重算），XAdES 為 `xadesv141:ArchiveTimeStamp`（EN 319 132-1 5.5.2.2 的輸入順序，Exclusive C14N）。檢查報告寫出「PAdES／CAdES／XAdES 等級：B-x」並驗證每個保存時戳；簽完由報告讀出實際達到的層級（`FilesModel.reachedLevel`），取不到撤銷資訊而低於所選層級時明說，PAdES 的 B-LT 以上取不到時不寫入。簽署畫面可展開技術細節。
+- 延長保存（`DocumentSigning.extendPdf`，文件詳情「延長保存」）：對已簽署的 PDF 為每個簽章（文件時戳只收時戳機構的資料）收集憑證鏈與撤銷資訊寫入 DSS，再加文件時戳，另存「原檔名-ltv.pdf」並記紀錄；沒有可補的資料時不寫入。
 - 電子公文線上簽核（.si，文書及檔案管理電腦化作業規範 109 年版附錄 3 表 3-5、附錄 4 的 `104_sign_utf8.ent`、附錄 5 之三的 DTD；規則與結構整理在 `docs/research/official-document-files.md`）不是 XAdES：根元素 `線上簽核`，每個 `簽核點定義` 內是不帶命名空間的 XMLDSig `Signature`（C14N 20010315、rsa-sha256），Reference 依序為以檔名指向的公文與附件（分離、原始位元組的 SHA-256，摘要 URI 可能是 `xmldsig-more#sha256`）、自己的 `Object`（異動資訊：簽核人員、異動別、簽核意見、民國年月日時分的簽章時間；簽核資訊：檔案清單）、前一個簽核點。`ApprovalSignatures` 驗證每個簽核點（格式 `OFFICIAL_APPROVAL`，檔案不在錢包時註明無法比對），`DocumentSigning.signApproval` 加一個簽核點（`ApprovalPoint`，沒有 .si 時建立新檔），公文與附件本身不改動；公文的簽署格式因此只有「電子公文簽核」與 CAdES、ASiC-E。加簽時寫入 DTD 的必要欄位：`簽核人員`（機關?、單位、職稱、姓名、帳號、角色?，未填寫的必要欄位寫空白）、`簽核文稿清單`（.di 為文稿，交換表單以外的其他檔案為第一份文稿的附件，TIFF 為一般頁面檔格式附件）與每個檔案的 `原始檔序號`；異動別最多 10 字。驗證時另註明不符規範之處（非 RSA-SHA256、非 Canonical XML 1.0、簽核點沒有 URI 或指向不存在的簽核流程、借卡而沒有簽章成立的補簽追認），不影響判定。規範要求經核定憑證機構的憑證，錢包金鑰（自簽 ECDSA）加簽時畫面會警告。線上簽核檔的標題是「線上簽核檔（N 個簽核點）」，不用簽核意見。公開範例檔的檔案摘要相符但簽章值是佔位，驗證結果會顯示簽章值不符。
 - 在學證明（`StudentStatusProof`，中國大陸高校在學證明的格式）與通行證關聯查詢結果（`MainlandPermitLink`，國家移民管理局，台胞證與居住證）由 `ParsedCertificate.parse` 解析，預覽為結構化畫面，欄位供衍生憑證使用。
 - 衍生憑證：每份文件可產生 IETF SD-JWT VC（vct `urn:diw-wallet:vct:document-derived:1`），發行端是錢包的 `HolderIdentities.DOCUMENT_ISSUER` did:key，信任等級 T3、環境 USER。明文 claim 為 `document`（SHA-256、類型、大小）與 `evidence`；可揭露欄位為 disclosure：錢包自己的欄位（姓名、文件標題、檔名、簽署者、簽署時間、來源）與 `DocumentFields` 從文件內容解析的欄位（OpenCerts 資料、公文「函」的發文機關、受文者、日期、字號與主旨、PDF 文字層的「標籤：值」，加密 PDF 以這次輸入的密碼開啟），上限 30 個。持有人自填的欄位要另外展開才能加，名稱前綴 `holderStated:`。證據依序為文件簽章檢查（發行錢包的陳述，查驗端不重算）、文件時戳（查驗端以 SHA-256 重驗）、自然人憑證簽章（vc+moica，`_sd` 與文件雜湊須與 SD-JWT VC 相同，揭露的姓名須等於憑證 CN）。
@@ -119,7 +126,7 @@
 - 入出國日期證明書（`EntryExitCertificate`）：表格左右兩半印在同一行，依項次讀出出境與入境日期；衍生欄位為個人與證明書欄位、最後出入境日期、最近一次出境是否已入境、查詢期間最後一天是否在境內與整份紀錄（一個欄位）；產生衍生憑證時可指定日期加入「該日是否在境內」（`inTaiwanOn_<日期>`，查詢期間外不提供）。預覽以結構化畫面呈現。
 - 中國大陸出入境記錄（`MainlandEntryExitRecord`，國家移民管理局「出入境记录查询结果（电子文件）」，BJCA 簽章）：每列為「序號 出境|入境 日期 證件號碼 口岸 [航班號]」，證件名稱折行印在該列前後（「台湾居民来往大陆」在前、「通行证」在後），陸路與水路沒有航班號，跨頁時有頁尾；序號 1 為最新，同一天以序號排序。衍生欄位為個人與記錄欄位、查詢期間、筆數、最後入境與出境日期、查詢期間最後一天是否在中國大陸境內與整份紀錄；指定日期為 `inMainlandOn_<日期>`。兩種記錄共用 `MovementRecord`（`MovementRecord.parse` 先試台灣證明書），「該日是否在境內」以該日或之前最後一筆移動判斷，之前沒有移動時以之後第一筆反推。比對漢字用 `[\u4e00-\u9fff]`，不用 `\p{IsHan}`（Android 的 regex 不支援）。
 - 戶籍衍生答案與欄位只用比對出的持有人本人（身分證卡或設定的身分證統一編號），單人戶也要比對；沒有持有人資料或比對不到時拒答。預覽（`profile/bonds/HouseholdTranscript`）逐位列出住戶，可切換，比對出的本人排第一。
-- 行動自然人憑證 SP：編譯時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（UAT 或 PRODUCTION）環境變數或 Gradle 屬性產生 `BuiltInSp`（build 目錄，不提交）；設定的「手動輸入 SP 帳號（開發者）」改用簽署畫面輸入、只存在記憶體的帳號。
+- 行動自然人憑證 SP：編譯時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（UAT 或 PRODUCTION）環境變數或 Gradle 屬性產生 `BuiltInSp`（build 目錄，不提交）；設定的「手動輸入 SP 帳號（開發者）」改用簽署畫面輸入、只存在記憶體的帳號。設了正式服務端（`zkVerifierUrl`）時簽署畫面多一個「正式服務端的 SP」來源：`ServerMobileMoicaClient` 呼叫服務端的 `/twfido/sign`（帶 `serverToken`），與 `TwFidoClient` 同樣實作 `MobileMoicaService`，`MobileMoicaSigner` 照樣驗簽章與憑證。這個來源只在服務端 `/info` 列出 `twfido` 與環境時提供（`ServerModel.mobileMoica`），送出身分證號前再確認一次；正式環境第一次取得的憑證必須由 MOICA G3 簽發，簽署要求的環境也要與 `/info` 一致（`FilesModel.checkServerCertificate`），UAT 憑證只標示為測試。
 - OpenCerts（`document/opencerts`）：`OpenAttestationDocument` 檢查 v2（salted 值、flatley 路徑）與 v3（proof.salts、`a.b[0]` 路徑、葉數須等於 salt 數）的 Merkle 完整性，並整理出受領人、主要欄位、發行者、簽署人與簽名圖、成績單、圖片、附件與其他欄位（`view()`，不顯示原始路徑）。`OpenAttestationOnline` 依 oa-verify 線上查驗：文件庫 `isIssued`／`isRevoked`（支援 batch 介面 0xdcfd0745）、token registry `ownerOf`、DID 簽章（EIP-191 對 Merkle root，secp256k1 還原成 did:ethr 位址）與撤銷（NONE、REVOCATION_STORE、OCSP_RESPONDER）；發行者身分看 DNS-TXT（`openatts net=ethereum netId addr`）、DNS-DID 與 OpenCerts 官方登錄，任一成立即通過。DNS 走 DoH（dns.google、cloudflare-dns.com），鏈依 DNS 紀錄的 netId，RPC 用不需金鑰的公開節點；查不到時為 `NOT_CHECKED`，不判失敗。結果存在 `OpenCertInfo.online`，開啟時超過 12 小時重新查驗，離線時保留上一次有意義的結果；完整性、發行與身分都通過才是 `VALID`，完整性或發行失敗為 `INVALID`。離線顯示（`OpenCertOffline`）：沒有程式碼也不連線的頁面（CSP 只允許行內樣式與 data: 圖片，分頁用 CSS），demo-renderer.opencerts.io 的範本（GOVTECH_DEMO、OPENCERTS_DEMO、TESTIMONIALS、TESTIMONIALS2、CERTIFICATE_OF_AWARD，其他名稱如該顯示程式改用預設）依原樣式重寫，標誌與背景圖不內建、以文字代替；其他證書以 `view()` 排版；發證機構的 HTML 內容（testimonial）先移除程式、事件、外部載入。Android 以關閉 JavaScript 與網路的 WebView 顯示。`OpenCertRenderer` 產生 decentralized renderer 的宿主頁（自寫 penpal v5／v4 握手、`RENDER_DOCUMENT`、`UPDATE_HEIGHT`、`UPDATE_TEMPLATES`、`SELECT_TEMPLATE`），只接受 https 的 template URL；Android 以 WebView `loadDataWithBaseURL` 開啟，桌面寫入暫存檔後用系統瀏覽器開啟。內容只在使用者點「以發證機構樣式顯示」時送到發證機構的顯示程式。測試樣本是以 open-attestation 6.9.7 包裝的虛構資料（`test-servers/src/test/resources/documents/opencerts/generate.js`）。
 - MyData：檔名依 Bonds 的項目辨識（`MyDataFiles`），伺服器的不透明檔名改為項目名稱。MyData 的 ZIP 不論是 App 內下載、其他 App 分享或手動選取，收到後立即解出並刪除 ZIP，每個檔案各自保存；來源只寫「MyData・項目名稱」（未經 App 內下載時加「（依檔名判斷）」），取得方式另記「App 內下載」或「從壓縮檔解出」與壓縮檔名；舊資料載入時改成短來源。含國民身分證資料時直接進入身分證卡畫面。MyData 網頁以 XHR 取得 blob、點 `<a download>` 後立刻 revoke 並離開頁面，`PortalWebView` 在每頁注入腳本保留 blob 並經 `DiwVault` 介面交給錢包。
 - MyData 自動填入（Bonds `MyDataAutofillProfile`，`profile/bonds/MyDataProfile`）：設定可存身分證統一編號（檢查碼）與出生日期（民國 7 碼或西元 8 碼），只在 https 且主機正好是 mydata.nat.gov.tw 的頁面執行填入腳本。MyData 的加密 PDF 依序以身分證卡的統號與這個編號自動開啟。
@@ -131,13 +138,14 @@
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
 - 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
-- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 與 zkTLS 證明（P4）。
-- EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest'` 輸出錢包簽出的檔案，再以 `./gradlew -p tools/dss-check run --args=<資料夾>` 用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
+- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 證明與自架主機（P4 開發中）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
+- EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun` 輸出錢包簽出的檔案（長期驗證的樣本在 `<資料夾>/lt`），再以 `./gradlew -p tools/dss-check run --args=<資料夾>`（與 `<資料夾>/lt`）用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
-## 零知識證明要點（P4，設計中）
+## 零知識證明要點（P4，實作中）
 
-- 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`；尚未實作的部分以這三份文件為準，實作完成後把要點移到本節。
+- 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`（第 2.1 節為實作狀態）；年齡證明、zkTLS 與 Longfellow 已實作，要點在本節；zkPDF 的電路（WP3a M3b）與證明器開發中，尚未實作的部分以這三份文件為準。
+- 正式服務端（中繼、zkTLS 查驗主機與回執、年齡查驗主機、網頁查驗；自架、Cloud Run、Cloudflare Containers 部署）在另一個 repo `mctea01/diw-wallet-server`，規則見該 repo 的 AGENTS.md。錢包端是 `ServerModel` 與設定「零知識證明」頁的「正式服務端」：同一個網址（`zkVerifierUrl`）用於中繼、zkTLS 查驗主機與年齡查驗主機；`serverToken` 只由 `ZkTlsFlow.createOnHost` 對該網址帶 `Authorization: Bearer`；「加入信任」讀 `/info` 的 `signing.root`，錢包自行計算 SHA-256 並要求與 `rootSha256` 相符，使用者確認後以來源 `server:<host>` 加入 VERIFIER 與 ISSUER 的 USER 錨點（T2），記下 `serverRootSha256`；`/info` 有 `verifierDid`（網頁查驗端的 did:key）時同一次確認也把它加進 `UserDidTrust`（只有 VERIFIER 角色，記下 `serverVerifierDid`）。之後根憑證或 DID 改變時只顯示警示，不自動接受；重新確認時移除舊 DID。`/info` 的 `publicUrl` 主機與填入的不同時顯示警示（查驗連結、中繼與網頁查驗都用 `publicUrl`）。出示方（`NativeZkTlsEngine.prove`）依序嘗試請求列出的傳輸：對方 30 秒內沒有回應、或沒回應就斷線時（連到同一個私有位址的其他裝置、查驗方已離開的中繼房間）換下一個，此時還沒送出任何私密資料；中繼以關閉原因（`Peer left`、`Room limit`、`Room expired`）告訴兩端結束原因，對應 `ZkTlsChannelEnd` 的訊息。
 - 四種證據：zkPDF（Noir 電路，證明已簽署 PDF 的文字欄位）、zkTLS（TLSNotary，查驗方當 notary 的即時模式；離線時為 T3 的網頁證明或裝置證明紀錄）、年齡證明（直接引用 Bonds 的 OpenAC `openac-age-v1` 資產與格式）、mdoc ZK（Multipaz Longfellow）。
 - 證據都疊加在既有的文件衍生憑證上（`evidence` 陣列），以持有者 `cnf.jwk` 的 RFC 7638 thumbprint 綁定；信任等級取原始簽署者、發行端或連線的等級，零知識證明本身不提高等級；zkPDF 與 zkTLS 永遠不是 T1。
 - 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 只是建議，用來顯示估計與預設選項，不禁止在本機產生證明（D3）；處理器架構不支援或缺少引擎時該後端才不可用。
@@ -200,7 +208,7 @@
 DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots'   # 離屏渲染主要畫面為 PNG
 ./gradlew :app:assembleRelease                 # Android release（R8）
 python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生內建公開根憑證；--check 只檢查，--strict 有警告時回傳 2
-./gradlew -p tools/dss-check run --args=<資料夾>   # 以 EU DSS 驗證錢包簽出的檔案（見上方 P3 要點）
+./gradlew -p tools/dss-check run --args=<資料夾>   # 以 EU DSS 驗證錢包簽出的檔案（長期驗證的樣本在 <資料夾>/lt，見上方 P3 要點）
 ```
 
 測試慣例：

@@ -9,8 +9,9 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
 | `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
+| `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
-每個平台都連結零知識證明的 OpenAC 年齡證明後端（Android、Windows、Linux、macOS）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
+每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
 ## 版本號
 
@@ -49,6 +50,7 @@ JDK 9 以後 keytool 預設建立 PKCS12 keystore，金鑰密碼固定等於 key
 | `DEBUG_KEYSTORE_BASE64` | debug keystore 的 base64，固定 debug APK 的簽章 |
 | `DEBUG_KEYSTORE_PASSWORD` | 只有 debug keystore 密碼不是 `android` 時才設 |
 | `DEBUG_KEY_ALIAS` | 只有 debug keystore 內有多把金鑰時才設 |
+| `ZK_TEMPLATES_KEY` | 版型包的發布私鑰（P-256 PEM），公鑰釘選在 App；見 templates/README.md |
 
 建立 debug keystore（PowerShell，與 release 金鑰分開保管）：
 
@@ -86,7 +88,7 @@ Get-FileHash diw-release.jks -Algorithm SHA256
 
 ## 行動自然人憑證 SP 帳號
 
-SP 帳號在建置時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（`UAT` 或 `PRODUCTION`）產生 `BuiltInSp`，不提交進 repo。目前的 CI workflow 沒有傳入這三個值，所以 nightly 沒有內建 SP 帳號，只能在「設定 > 開發者與測試」手動輸入（只存在記憶體）。持有 SP 許可的開發者可在本機設定環境變數後建置；要讓 CI 內建，需新增同名 secrets 並在 workflow 的 build 與 desktop job 的 `env` 加入這三行（workflow 由使用者手動修改）。
+SP 帳號在建置時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（`UAT` 或 `PRODUCTION`）產生 `BuiltInSp`，不提交進 repo。目前的 CI workflow 沒有傳入這三個值，所以 nightly 沒有內建 SP 帳號；可改用正式服務端的 SP（服務端啟用 `twfido`，App 設定正式服務端與存取權杖），或在「設定 > 開發者與測試」手動輸入（只存在記憶體）。持有 SP 許可的開發者可在本機設定環境變數後建置；要讓 CI 內建，需新增同名 secrets 並在 workflow 的 build 與 desktop job 的 `env` 加入這三行（workflow 由使用者手動修改）。
 
 ## 縮減規則
 

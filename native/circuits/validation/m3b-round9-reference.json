@@ -1,0 +1,26 @@
+{
+  "scope": "Synthetic off-circuit full-chain and split-coverage verification; no witness data retained",
+  "tool_sha256": "a474334db2d00582e55280581fd4959432284f071a15982075d0922e99e7a895",
+  "cases": [
+    {
+      "style": "word",
+      "plain_capacity": 2048,
+      "k": 1,
+      "tokens0": 1024,
+      "tokens": 352,
+      "claim_slots": 3,
+      "claim_segments": 4,
+      "chain_verified": true
+    },
+    {
+      "style": "table",
+      "plain_capacity": 4096,
+      "k": 1,
+      "tokens0": 1536,
+      "tokens": 576,
+      "claim_slots": 3,
+      "claim_segments": 4,
+      "chain_verified": true
+    }
+  ]
+}

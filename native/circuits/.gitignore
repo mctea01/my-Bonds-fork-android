@@ -2,3 +2,9 @@
 /bench/**/Prover.toml
 __pycache__/
 *.log
+/bench/*/Regression.toml
+/pdf_inflate_seg_v1/Prover.toml
+/pdf_inflate_seg_v1/Regression.toml
+
+# Generated witness templates for every segment package.
+**/Prover.toml

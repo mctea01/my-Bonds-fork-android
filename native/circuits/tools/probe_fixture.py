@@ -3,7 +3,7 @@
 import argparse
 import zlib
 from pathlib import Path
-from fixtures import witness, compressed
+from fixtures import witness, compressed, mutate, padded_hints
 
 def small_dynamic():
     bits=[]
@@ -23,23 +23,38 @@ def small_dynamic():
     assert zlib.decompress(data)==b'A'
     return data
 
-def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=None):
+def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=None,block_capacity=1):
     blocks,tokens,owners,plain=witness(data)
-    assert len(blocks)==1 and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
+    assert len(blocks)<=block_capacity and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
+    hints = padded_hints(data,token_capacity,block_capacity)
     data=list(data)
+    if isinstance(mutation, tuple): mutate(data, blocks, tokens, owners, mutation)
     if mutation=='checksum': data[-1]^=1
     if mutation=='gap': tokens[1][1]+=1
     if mutation=='owner': owners[0]=1
     fields={'data':data+[0]*(capacity-len(data)),'data_len':len(data),'plain_len':len(plain),
         'owners':owners+[0]*(plain_capacity-len(owners)),'expected':list(plain)+[0]*(plain_capacity-len(plain))}
+    if block_capacity > 1: fields['block_count'] = len(blocks)
+    if isinstance(mutation, tuple) and mutation[0] == 'hint':
+        _,key,index,delta = mutation
+        hints[key][index] += delta
+    if isinstance(mutation, tuple) and mutation[0] == 'plain':
+        fields['expected'][mutation[1]] ^= 1
+    if isinstance(mutation, tuple) and mutation[0] == 'plain_collision':
+        for offset,delta in enumerate((1,-2,1)):
+            fields['expected'][mutation[1]+offset] += delta
+        assert zlib.adler32(bytes(fields['expected'][:len(plain)])) == zlib.adler32(plain)
     lines=[f'{k} = {v}' for k,v in fields.items()]
+    blocks += [dict(start=0,end=0,first_token=0,tokens=0,code_symbols=[0]*320,code_widths=[0]*320,cl_lengths=[0]*19,cl_codes=[0]*19,expanded_lengths=[0]*320,cl_prefixes=[0]*285,ll_prefixes=[0]*4320,dd_prefixes=[0]*480,cl_first=[0]*16,ll_first=[0]*16,dd_first=[0]*16,header_repeats=[0]*320,header_prefixes=[0]*320,header_suffixes=[0]*320)]*(block_capacity-len(blocks))
     for b in blocks:
         lines.append('[[blocks]]')
         lines.extend(f'{k} = {v}' for k,v in b.items() if k!='kind')
-    keys=['block','start','symbol','width','distance_symbol','distance_width']
-    for token in tokens+[[0]*6]*(token_capacity-len(tokens)):
+    keys=['block','start','symbol','width','distance_symbol','distance_width','prefix','suffix']
+    for token in tokens+[[0]*8]*(token_capacity-len(tokens)):
         lines.append('[[tokens]]')
         lines.extend(f'{k} = {v}' for k,v in zip(keys,token))
+    lines.append('[hints]')
+    lines.extend(f'{key} = {values}' for key, values in hints.items())
     path.write_text('\n'.join(lines)+'\n')
 
 if __name__=='__main__':

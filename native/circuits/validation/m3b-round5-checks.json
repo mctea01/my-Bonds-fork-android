@@ -1,0 +1,31 @@
+{
+  "inflate_source_sha256": "ce33d69d75d3c2b723580d2277e3accc7c134f840222d04e5c4b102a31091e11",
+  "nargo_test": {
+    "passed": 36,
+    "exit_code": 0
+  },
+  "acir_regressions": {
+    "standard": 11,
+    "multiblock": 4,
+    "accepted_controls": 5,
+    "constraint_rejections": 10,
+    "passed": 15
+  },
+  "rss_guard": [
+    {
+      "case": "success",
+      "passed": true
+    },
+    {
+      "case": "timeout",
+      "passed": true
+    },
+    {
+      "case": "rss",
+      "passed": true
+    }
+  ],
+  "fixture_generation": "Regenerated fixtures.py output is byte-identical to tracked sources",
+  "python_syntax": "passed",
+  "node_syntax": "passed"
+}

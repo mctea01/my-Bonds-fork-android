@@ -1,0 +1,70 @@
+{
+  "scope": "inflate only; not the complete pdf_text_v1_1p circuit",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "compiled",
+  "exit_code": 0,
+  "seconds": 36.088498261000495,
+  "peak_rss_kib": 557228,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 6.0,
+  "compressed_capacity": 512,
+  "plain_capacity": 128,
+  "token_capacity": 32,
+  "block_capacity": 1,
+  "main_sha256": "5c5ae1627e7a3e188bd23a9add47b3364b0a9b5c00e5e09c187bebfedb92c63a",
+  "inflate_source_sha256": "ad38b8dc6d7c90c979ec173a983dba7d68fc91ec931e83b4c77266763505a4a3",
+  "acir_sha256": "13ecc64eb059b50dc5d0dc8efcf270381ab0c06d6a70fa62578a8f2f15a19716",
+  "acir_opcodes": 159245,
+  "vk_sha256": "0576fb781fdf9b50f4455dab7fbb43e0f60bd6a11e291f57dacafde08a2f04db",
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 159245,
+        "circuit_size": 307667
+      }
+    ]
+  },
+  "prove": {
+    "first": {
+      "seconds": 11.653177569998661,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 896820
+    },
+    "warm": {
+      "seconds": 11.394119659002172,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 896176
+    }
+  },
+  "verify": {
+    "seconds": 0.05245045000629034,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 14204
+  },
+  "proof_bytes": 16256,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 51057\noom 7\noom_kill 5\noom_group_kill 0"
+  },
+  "gate_measurement": {
+    "exit_code": 0,
+    "status": "compiled",
+    "seconds": 0.9073427370021818
+  },
+  "proof_scope": "Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "witness": {
+    "seconds": 1.3689362950099166,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 273332
+  },
+  "public_input_bytes": 0
+}

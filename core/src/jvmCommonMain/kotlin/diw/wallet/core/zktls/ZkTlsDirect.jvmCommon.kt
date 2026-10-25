@@ -5,37 +5,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.security.KeyStore
-import java.security.cert.CertificateException
 import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
-import javax.net.ssl.TrustManager
 import javax.net.ssl.TrustManagerFactory
-import javax.net.ssl.X509TrustManager
 
 actual object ZkTlsDirect {
     private const val TIMEOUT_MS = 30_000
 
     actual suspend fun fetch(profile: ZkTlsProfile, request: ByteArray, extraRoots: List<ByteArray>): ZkTlsFetched = withContext(Dispatchers.IO) {
-        val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf<TrustManager>(trust(extraRoots)), null) }
-        val socket = try {
-            context.socketFactory.createSocket(profile.host, profile.port) as SSLSocket
-        } catch (e: Exception) {
-            throw ProtocolException("unavailable", "無法連到 ${profile.host}：${e.message}", e)
-        }
-        socket.use { s ->
-            s.soTimeout = TIMEOUT_MS
-            s.sslParameters = s.sslParameters.apply {
-                serverNames = listOf(SNIHostName(profile.host))
-                endpointIdentificationAlgorithm = "HTTPS"
-            }
-            try {
-                s.startHandshake()
-            } catch (e: Exception) {
-                throw ProtocolException("untrusted_server", "${profile.host} 的 TLS 連線無法建立或憑證不受信任：${e.message}", e)
-            }
+        connect(profile, extraRoots).use { s ->
             val session = s.session
             val chain = session.peerCertificates.map { it.encoded }
             s.outputStream.apply { write(request); flush() }
@@ -51,29 +31,42 @@ actual object ZkTlsDirect {
         }
     }
 
-    /** The platform's trust manager, and when that refuses a chain, one that trusts only [extraRoots]. */
-    private fun trust(extraRoots: List<ByteArray>): X509TrustManager {
-        fun manager(store: KeyStore?): X509TrustManager =
-            TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
-                .trustManagers.filterIsInstance<X509TrustManager>().first()
-        val system = manager(null)
-        if (extraRoots.isEmpty()) return system
-        val factory = CertificateFactory.getInstance("X.509")
-        val store = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
-            load(null, null)
-            extraRoots.forEachIndexed { i, der -> setCertificateEntry("extra$i", factory.generateCertificate(der.inputStream())) }
-        }
-        val extra = manager(store)
-        return object : X509TrustManager {
-            override fun checkClientTrusted(chain: Array<out X509Certificate>, authType: String) = system.checkClientTrusted(chain, authType)
-            override fun checkServerTrusted(chain: Array<out X509Certificate>, authType: String) {
-                try {
-                    system.checkServerTrusted(chain, authType)
-                } catch (e: CertificateException) {
-                    extra.checkServerTrusted(chain, authType)
-                }
+    /**
+     * A completed handshake with the platform's roots, or when those refuse the site, with only [extraRoots].
+     * Both use the platform's own trust managers with HTTPS host name checks; nothing is sent before the handshake.
+     */
+    private fun connect(profile: ZkTlsProfile, extraRoots: List<ByteArray>): SSLSocket {
+        val stores = listOf<KeyStore?>(null) + if (extraRoots.isEmpty()) emptyList() else listOf(store(extraRoots))
+        var refused: Exception? = null
+        for (store in stores) {
+            val trust = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(store) }
+            val context = SSLContext.getInstance("TLS").apply { init(null, trust.trustManagers, null) }
+            val socket = try {
+                context.socketFactory.createSocket(profile.host, profile.port) as SSLSocket
+            } catch (e: Exception) {
+                throw ProtocolException("unavailable", "無法連到 ${profile.host}：${e.message}", e)
             }
-            override fun getAcceptedIssuers(): Array<X509Certificate> = system.acceptedIssuers + extra.acceptedIssuers
+            try {
+                socket.soTimeout = TIMEOUT_MS
+                socket.sslParameters = socket.sslParameters.apply {
+                    serverNames = listOf(SNIHostName(profile.host))
+                    endpointIdentificationAlgorithm = "HTTPS"
+                }
+                socket.startHandshake()
+                return socket
+            } catch (e: Exception) {
+                socket.close()
+                refused = e
+            }
+        }
+        throw ProtocolException("untrusted_server", "${profile.host} 的 TLS 連線無法建立或憑證不受信任：${refused?.message}", refused)
+    }
+
+    private fun store(roots: List<ByteArray>): KeyStore {
+        val factory = CertificateFactory.getInstance("X.509")
+        return KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(null, null)
+            roots.forEachIndexed { i, der -> setCertificateEntry("extra$i", factory.generateCertificate(der.inputStream())) }
         }
     }
 }

@@ -1,0 +1,38 @@
+{
+  "timeout_seconds": 720,
+  "rss_guard_gib": 5.0,
+  "address_space_limit_gib": 24,
+  "compile_flags": [
+    "--bounded-codegen"
+  ],
+  "scope": "lex",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "plain_capacity": 2048,
+  "k": 1,
+  "max_claims": 12,
+  "max_claim_src": 384,
+  "slot_start": 0,
+  "slot_count": 12,
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "prove": {},
+  "source_sha256": {
+    "library/src/claim.nr": "206c5907c15cf161ddca31fa10052570de2d3c82b72940b31241235d2245c22b",
+    "library/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "library/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "library/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "library/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "library/src/lex_segment.nr": "7c0c247e2f7ca4838cc9b64d8daca4374c5e26036f366749e2cdfcd8e829b318",
+    "library/src/lib.nr": "1f44f9f2e1af072b54c0a4a7dcfa120ca5e82cb9eb8e589632df28e73a5a7792",
+    "library/src/sha256_window.nr": "6fbf4b01de91b7e534584ed046d7245eb34bdced252b20346072a2a4df051ec5",
+    "library/src/text_plan.nr": "405e5916cb48165c67c327b1257266f5a856cb7bbf07f027dd431fd231ba6dbd",
+    "src/main.nr": "3a579c89700acdb30ed67ec36d91617d56ff7e9883fd9764b5bf887fa085f579"
+  },
+  "compile": {
+    "seconds": 720.1339582619999,
+    "exit_code": 124,
+    "status": "timeout",
+    "peak_rss_kib": 4176080
+  },
+  "status": "timeout"
+}

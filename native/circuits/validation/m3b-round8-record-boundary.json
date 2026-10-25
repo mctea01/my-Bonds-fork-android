@@ -1,0 +1,19 @@
+{
+  "status": "design_issue_reproduced",
+  "pdf_date": 20200101,
+  "concatenated_record_date": 20200109,
+  "date_ge_cutoff": 20200105,
+  "pdf_hex": [
+    48,
+    16
+  ],
+  "concatenated_record_hex": [
+    49
+  ],
+  "constrained_demonstration": {
+    "lexical_segments": 2,
+    "claim_executions": 1,
+    "circuit_accepts_concatenated_record_predicate": true,
+    "pdf_per_string_predicate": false
+  }
+}

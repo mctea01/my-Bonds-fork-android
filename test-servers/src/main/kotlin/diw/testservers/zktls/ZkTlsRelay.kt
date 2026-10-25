@@ -58,6 +58,8 @@ class ZkTlsRelay(
             session.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "Room unavailable"))
             return
         }
+        // Why the room ends, with the same reasons as diw-wallet-server's relay.
+        var end = EXPIRED
         try {
             withTimeoutOrNull(lifetime - (now - room.created)) {
                 val peer = if (first) {
@@ -65,16 +67,16 @@ class ZkTlsRelay(
                     select {
                         room.second.onAwait { it }
                         session.closeReason.onAwait { null }
-                    } ?: return@withTimeoutOrNull
+                    } ?: run { end = PEER_LEFT; return@withTimeoutOrNull }
                 } else room.first
-                forward(session, peer, room)
+                end = forward(session, peer, room)
             }
         } finally {
             synchronized(rooms) { if (rooms[id] === room) rooms.remove(id) }
-            runCatching { session.close() }
+            runCatching { session.close(end) }
             if (room.second.isCompleted) {
                 val other = if (first) room.second.getCompleted() else room.first
-                runCatching { other.close() }
+                runCatching { other.close(end) }
             } else {
                 room.second.cancel()
             }
@@ -82,13 +84,20 @@ class ZkTlsRelay(
     }
 
     /** Copies this side's binary frames to [peer] until this side ends or the room reaches its limit. */
-    private suspend fun forward(from: DefaultWebSocketServerSession, peer: DefaultWebSocketServerSession, room: Room) {
+    private suspend fun forward(from: DefaultWebSocketServerSession, peer: DefaultWebSocketServerSession, room: Room): CloseReason {
         for (frame in from.incoming) {
             if (frame !is Frame.Binary) continue
             val data = frame.data
-            if (data.size > maxFrame || room.bytes.addAndGet(data.size.toLong()) > maxBytes) break
+            if (data.size > maxFrame || room.bytes.addAndGet(data.size.toLong()) > maxBytes) return LIMIT
             peer.send(Frame.Binary(true, data))
         }
+        return PEER_LEFT
+    }
+
+    companion object {
+        val PEER_LEFT = CloseReason(CloseReason.Codes.NORMAL, "Peer left")
+        val LIMIT = CloseReason(CloseReason.Codes.VIOLATED_POLICY, "Room limit")
+        val EXPIRED = CloseReason(CloseReason.Codes.GOING_AWAY, "Room expired")
     }
 }
 
