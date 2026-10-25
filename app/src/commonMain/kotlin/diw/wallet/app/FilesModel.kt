@@ -9,7 +9,7 @@ import diw.wallet.core.document.official.ApprovalFile
 import diw.wallet.core.document.official.ApprovalPoint
 import diw.wallet.core.document.sign.HttpFetch
 import diw.wallet.core.document.sign.SignedDataFetch
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.document.sign.ValidationData
 import diw.wallet.core.profile.bonds.HouseholdTranscript
 import diw.wallet.core.profile.bonds.HouseholdTranscripts
@@ -1413,10 +1413,10 @@ class FilesModel(private val model: WalletModel) {
         f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean,
         allowBreakingCertification: Boolean = false,
         point: ApprovalPoint? = null,
-        /** The PAdES level of a PDF signature; [timestamp] applies to the other forms. */
-        level: PadesLevel = PadesLevel.B_T,
-        /** Add the chains and revocation data (OCSP first) of the signer and the time-stamp authority (baseline LT). */
-        revocation: Boolean = false,
+        /** The baseline level of a PAdES, CAdES, ASiC-E or XAdES signature; [timestamp] applies to approval files. */
+        level: SignatureLevel = SignatureLevel.B_T,
+        /** Make a PDF signature certify the document with this DocMDP permission (1 to 3); first signature only. */
+        certification: Int? = null,
     ) = run("準備簽署") {
         val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
             if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
@@ -1424,13 +1424,10 @@ class FilesModel(private val model: WalletModel) {
         } else null
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
-        val ts = when (form) {
-            SignForm.PADES -> if (level.timestamp) timestamper() else null
-            SignForm.APPROVAL -> null
-            else -> if (timestamp) timestamper() else null
-        }
-        val validation = if ((form == SignForm.PADES && level.revocation) || (revocation && form != SignForm.APPROVAL)) revocationFetch else null
-        if (form == SignForm.PADES) model.updateSettings { it.copy(padesLevel = level.name) }
+        val ts = if (form != SignForm.APPROVAL && level.timestamp) timestamper() else null
+        val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
+        val archive = form != SignForm.APPROVAL && level.archive
+        if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
             is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
@@ -1450,21 +1447,51 @@ class FilesModel(private val model: WalletModel) {
                     PdfSignOptions(
                         reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
                         allowBreakingCertification = allowBreakingCertification,
-                        validation = validation, requireValidation = level.revocation, documentTimestamp = level == PadesLevel.B_LTA,
+                        validation = validation, requireValidation = level.revocation, documentTimestamp = archive,
+                        certification = certification,
                     ), ts,
                 ) to "$base-signed.pdf"
-                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
-                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation) to "${f.name}.p7s"
-                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation) to "${f.name}.p7m"
-                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation) to "$base.asice"
+                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation, archive) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
+                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
+                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
+                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
             }
         }
         busy.value = "檢查並保存簽署結果"
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
-        val levelNote = if (form == SignForm.PADES) "，${level.title}" else if (ts != null || validation != null) "，" + listOfNotNull(ts?.let { "時戳" }, validation?.let { "撤銷資訊" }).joinToString("與") else ""
+        // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
+        val reached = reachedLevel(file(stored.id) ?: stored)
+        val levelNote = "，" + (reached ?: level.short) + (certification?.let { "，認證簽章 P=$it" } ?: "")
         model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = "${form.title}$levelNote，以${signer.source.title}簽署")
-        model.message.value = "已簽署並保存：${stored.name}"
+        val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
+        model.message.value = "已簽署並保存：${stored.name}" + (reached?.let { "（$it" + if (lower) "，低於所選的 ${level.short}：取不到撤銷資訊）" else "）" } ?: "")
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** The baseline level the inspection of [f] found, such as "PAdES B-LT"; null when the report does not say. */
+    private fun reachedLevel(f: StoredFile): String? {
+        val r = f.report ?: return null
+        val line = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).lastOrNull { "等級：B-" in it } ?: return null
+        return line.replace(" 等級：", " ").replace("等級：", " ")
+    }
+
+    /** A signed PDF whose signatures can be extended: it has a signature or time stamp and is not encrypted. */
+    fun canExtend(f: StoredFile): Boolean =
+        f.report?.format == DocumentFormat.PDF && f.report.encrypted != true && f.report.signatures.isNotEmpty()
+
+    /**
+     * Extends every signature of a signed PDF (延長保存): their chains and revocation data go into the DSS and a
+     * document time stamp covers it all (PAdES B-LTA). The result is a new file; the original stays as it is.
+     */
+    fun extendPdf(f: StoredFile) = run("取得撤銷資訊並加上文件時戳") {
+        val result = DocumentSigning.extendPdf(data(f.id), revocationFetch, timestamper())
+        busy.value = "檢查並保存延長後的檔案"
+        val stored = store(f.name.substringBeforeLast('.') + "-ltv.pdf", result.pdf, FileOrigin.SIGNED, f.name, parentId = f.id)
+        val reached = reachedLevel(file(stored.id) ?: stored)
+        model.record(HistoryKind.SIGNED, TsaServices.byId(model.settings.tsaId).name, null, listOf(f.name),
+            note = "延長保存：${result.signatures} 個簽章或時戳加上長期驗證資料與文件時戳" + (reached?.let { "，$it" } ?: ""))
+        model.message.value = "已延長保存：${stored.name}；" + result.validation.summary()
         model.screen.value = Screen.FileDetail(stored.id)
     }
 

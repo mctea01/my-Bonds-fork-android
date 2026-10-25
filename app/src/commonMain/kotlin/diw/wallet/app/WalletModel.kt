@@ -171,7 +171,7 @@ data class WalletSettings(
     val timestampOnSave: Boolean = false,
     /** Keep the time-stamp authority's revocation data (OCSP first, else CRL) with every time stamp. */
     val timestampRevocation: Boolean = true,
-    /** PAdES level the signing screen starts with (PadesLevel name). */
+    /** Baseline level the signing screen starts with for every form (SignatureLevel name; the key predates CAdES and XAdES levels). */
     val padesLevel: String = "B_T",
     /**
      * National ID number the holder saved for MyData (Bonds MyDataAutofillProfile): filled into MyData sign-in pages

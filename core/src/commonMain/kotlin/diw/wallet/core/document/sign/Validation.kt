@@ -139,13 +139,25 @@ data class ValidationData(
     }
 }
 
-/** PAdES baseline levels (ETSI EN 319 142-1) the wallet signs a PDF at. */
-enum class PadesLevel(val title: String, val detail: String) {
-    B_B("PAdES B-B", "簽署憑證與簽章值；沒有可信時間，憑證過期後只能證明完整性"),
-    B_T("PAdES B-T", "加上簽章時戳，以時戳機構證明簽署時間"),
-    B_LT("PAdES B-LT", "B-T 加上簽署者與時戳機構的憑證鏈及撤銷資訊（DSS，OCSP 優先，取不到才用 CRL），憑證過期或憑證機構停止服務後仍可驗證"),
-    B_LTA("PAdES B-LTA", "B-LT 再加文件時戳保護長期驗證資料，之後可再延長");
+/**
+ * Baseline signature levels the wallet signs at, the same four for PAdES (ETSI EN 319 142-1), CAdES and ASiC-E
+ * (EN 319 122-1, EN 319 162-1) and XAdES (EN 319 132-1).
+ */
+enum class SignatureLevel(val short: String, val detail: String) {
+    B_B("B-B", "簽署憑證與簽章值；沒有可信時間，憑證過期後只能證明完整性"),
+    B_T("B-T", "加上簽章時戳，以時戳機構證明簽署時間"),
+    B_LT("B-LT", "B-T 加上簽署者與時戳機構的憑證鏈及撤銷資訊（OCSP 優先，取不到才用 CRL），憑證過期或憑證機構停止服務後仍可驗證"),
+    B_LTA("B-LTA", "B-LT 再加保存時戳保護長期驗證資料（PDF 為文件時戳，CAdES 與 XAdES 為 archive time stamp），之後可再延長");
 
     val timestamp: Boolean get() = this != B_B
     val revocation: Boolean get() = this == B_LT || this == B_LTA
+    val archive: Boolean get() = this == B_LTA
+
+    /** The level with its format, such as "PAdES B-LT". */
+    fun title(format: String) = "$format $short"
+
+    companion object {
+        /** The level a stored name stands for (the settings keep PAdES names), B-T when unknown. */
+        fun of(name: String?): SignatureLevel = entries.firstOrNull { it.name == name } ?: B_T
+    }
 }

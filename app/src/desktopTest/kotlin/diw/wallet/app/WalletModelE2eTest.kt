@@ -5,7 +5,7 @@ import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
 import diw.wallet.core.oid4vci.issuanceRecord
@@ -1031,7 +1031,7 @@ class WalletModelE2eTest {
         holder.files.import(PickedFile("copy.pdf", pdf), FileOrigin.IMPORTED, null).join()
         assertEquals(1, holder.files.files.value.size)
 
-        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false, level = PadesLevel.B_B).join()
+        holder.files.sign(original, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "測試", "", timestamp = false, level = SignatureLevel.B_B).join()
         assertNull(holder.files.error.value, "sign: ${holder.files.error.value}")
         val signed = holder.files.files.value.first { it.origin == FileOrigin.SIGNED }
         val sig = signed.report!!.signatures.single()
@@ -1097,7 +1097,7 @@ class WalletModelE2eTest {
         holder.files.import(PickedFile("letter.di", letterXml), FileOrigin.IMPORTED, null).join()
         val letter = holder.files.files.value.first { it.name == "letter.di" }
         assertEquals("測試公文", letter.report?.title)
-        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false).join()
+        holder.files.sign(letter, SignerChoice.Wallet("測試使用者"), SignForm.XADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
         assertNull(holder.files.error.value, "xades: ${holder.files.error.value}")
         val signedLetter = holder.files.files.value.first { it.origin == FileOrigin.SIGNED && it.parentId == letter.id }
         assertEquals(diw.wallet.core.document.Check.PASS, signedLetter.report!!.signatures.single().integrity)
