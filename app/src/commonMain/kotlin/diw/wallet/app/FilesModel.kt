@@ -9,7 +9,7 @@ import diw.wallet.core.document.official.ApprovalFile
 import diw.wallet.core.document.official.ApprovalPoint
 import diw.wallet.core.document.sign.HttpFetch
 import diw.wallet.core.document.sign.SignedDataFetch
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.document.sign.ValidationData
 import diw.wallet.core.profile.bonds.HouseholdTranscript
 import diw.wallet.core.profile.bonds.HouseholdTranscripts
@@ -47,7 +47,9 @@ import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.sign.MobileMoicaCredentials
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
+import diw.wallet.core.document.sign.MobileMoicaService
 import diw.wallet.core.document.sign.MobileMoicaSigner
+import diw.wallet.core.document.sign.ServerMobileMoicaClient
 import diw.wallet.core.document.sign.TwFidoClient
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
@@ -297,8 +299,11 @@ sealed class SignerChoice {
     class System(val id: String?) : SignerChoice()
     /** A key on a PKCS#11 token loaded from [library]; the PIN is used for this signing only. */
     class Token(val library: String, val pin: String, val id: String) : SignerChoice()
-    /** The mobile citizen certificate, through the SP account of a licence holder entered for this run. */
-    class MobileMoica(val sp: MobileMoicaSp, val idNumber: String, val mode: MobileMoicaMode) : SignerChoice()
+    /**
+     * The mobile citizen certificate, through [sp] (built in, or a licence holder's entered for this run) or, with
+     * [server] set, through the SP account of that production server.
+     */
+    class MobileMoica(val sp: MobileMoicaSp?, val idNumber: String, val mode: MobileMoicaMode, val server: String? = null) : SignerChoice()
     /** A remote signing service (CSC API); the holder signs in and approves each signature with the service. */
     class Csc(val service: CscService) : SignerChoice()
 }
@@ -1413,10 +1418,10 @@ class FilesModel(private val model: WalletModel) {
         f: StoredFile, choice: SignerChoice, form: SignForm, reason: String, location: String, timestamp: Boolean,
         allowBreakingCertification: Boolean = false,
         point: ApprovalPoint? = null,
-        /** The PAdES level of a PDF signature; [timestamp] applies to the other forms. */
-        level: PadesLevel = PadesLevel.B_T,
-        /** Add the chains and revocation data (OCSP first) of the signer and the time-stamp authority (baseline LT). */
-        revocation: Boolean = false,
+        /** The baseline level of a PAdES, CAdES, ASiC-E or XAdES signature; [timestamp] applies to approval files. */
+        level: SignatureLevel = SignatureLevel.B_T,
+        /** Make a PDF signature certify the document with this DocMDP permission (1 to 3); first signature only. */
+        certification: Int? = null,
     ) = run("準備簽署") {
         val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
             if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
@@ -1424,13 +1429,10 @@ class FilesModel(private val model: WalletModel) {
         } else null
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
-        val ts = when (form) {
-            SignForm.PADES -> if (level.timestamp) timestamper() else null
-            SignForm.APPROVAL -> null
-            else -> if (timestamp) timestamper() else null
-        }
-        val validation = if ((form == SignForm.PADES && level.revocation) || (revocation && form != SignForm.APPROVAL)) revocationFetch else null
-        if (form == SignForm.PADES) model.updateSettings { it.copy(padesLevel = level.name) }
+        val ts = if (form != SignForm.APPROVAL && level.timestamp) timestamper() else null
+        val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
+        val archive = form != SignForm.APPROVAL && level.archive
+        if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
             is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
@@ -1450,21 +1452,51 @@ class FilesModel(private val model: WalletModel) {
                     PdfSignOptions(
                         reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
                         allowBreakingCertification = allowBreakingCertification,
-                        validation = validation, requireValidation = level.revocation, documentTimestamp = level == PadesLevel.B_LTA,
+                        validation = validation, requireValidation = level.revocation, documentTimestamp = archive,
+                        certification = certification,
                     ), ts,
                 ) to "$base-signed.pdf"
-                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
-                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation) to "${f.name}.p7s"
-                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation) to "${f.name}.p7m"
-                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation) to "$base.asice"
+                SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation, archive) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
+                SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
+                SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
+                SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
             }
         }
         busy.value = "檢查並保存簽署結果"
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
-        val levelNote = if (form == SignForm.PADES) "，${level.title}" else if (ts != null || validation != null) "，" + listOfNotNull(ts?.let { "時戳" }, validation?.let { "撤銷資訊" }).joinToString("與") else ""
+        // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
+        val reached = reachedLevel(file(stored.id) ?: stored)
+        val levelNote = "，" + (reached ?: level.short) + (certification?.let { "，認證簽章 P=$it" } ?: "")
         model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = "${form.title}$levelNote，以${signer.source.title}簽署")
-        model.message.value = "已簽署並保存：${stored.name}"
+        val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
+        model.message.value = "已簽署並保存：${stored.name}" + (reached?.let { "（$it" + if (lower) "，低於所選的 ${level.short}：取不到撤銷資訊）" else "）" } ?: "")
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** The baseline level the inspection of [f] found, such as "PAdES B-LT"; null when the report does not say. */
+    private fun reachedLevel(f: StoredFile): String? {
+        val r = f.report ?: return null
+        val line = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).lastOrNull { "等級：B-" in it } ?: return null
+        return line.replace(" 等級：", " ").replace("等級：", " ")
+    }
+
+    /** A signed PDF whose signatures can be extended: it has a signature or time stamp and is not encrypted. */
+    fun canExtend(f: StoredFile): Boolean =
+        f.report?.format == DocumentFormat.PDF && f.report.encrypted != true && f.report.signatures.isNotEmpty()
+
+    /**
+     * Extends every signature of a signed PDF (延長保存): their chains and revocation data go into the DSS and a
+     * document time stamp covers it all (PAdES B-LTA). The result is a new file; the original stays as it is.
+     */
+    fun extendPdf(f: StoredFile) = run("取得撤銷資訊並加上文件時戳") {
+        val result = DocumentSigning.extendPdf(data(f.id), revocationFetch, timestamper())
+        busy.value = "檢查並保存延長後的檔案"
+        val stored = store(f.name.substringBeforeLast('.') + "-ltv.pdf", result.pdf, FileOrigin.SIGNED, f.name, parentId = f.id)
+        val reached = reachedLevel(file(stored.id) ?: stored)
+        model.record(HistoryKind.SIGNED, TsaServices.byId(model.settings.tsaId).name, null, listOf(f.name),
+            note = "延長保存：${result.signatures} 個簽章或時戳加上長期驗證資料與文件時戳" + (reached?.let { "，$it" } ?: ""))
+        model.message.value = "已延長保存：${stored.name}；" + result.validation.summary()
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1516,21 +1548,61 @@ class FilesModel(private val model: WalletModel) {
     private val mobileMoicaCerts = mutableMapOf<String, ByteArray>()
 
     private suspend fun mobileMoicaSigner(choice: SignerChoice.MobileMoica, hint: String): MobileMoicaSigner {
-        if (!choice.sp.builtIn) mobileMoicaSp = choice.sp
-        val client = TwFidoClient(model.http, choice.sp.environment, MobileMoicaCredentials(choice.sp.serviceId.trim(), choice.sp.aesKeyBase64.trim()))
+        val server = choice.server
+        val sp = choice.sp
+        val client: MobileMoicaService
+        val cacheKey: String
+        var fromServer: Pair<ServerMobileMoicaClient, MobileMoicaEnvironment>? = null
+        if (server != null) {
+            // Asked again right before the ID number goes out: the server must still say it holds an SP account.
+            val environment = try {
+                model.server.mobileMoica(server)
+            } catch (e: Exception) {
+                throw SigningException("無法確認正式服務端是否提供行動自然人憑證簽署：" + model.describe(e), e)
+            } ?: throw SigningException("正式服務端沒有提供行動自然人憑證簽署（未啟用 twfido），身分證統一編號沒有送出")
+            val serverClient = ServerMobileMoicaClient(model.http, server, model.server.tokenFor(server))
+            fromServer = serverClient to environment
+            client = serverClient
+            cacheKey = "server:" + server + ":" + choice.idNumber
+        } else {
+            if (sp == null) throw SigningException("沒有選擇行動自然人憑證的 SP 帳號")
+            if (!sp.builtIn) mobileMoicaSp = sp
+            client = TwFidoClient(model.http, sp.environment, MobileMoicaCredentials(sp.serviceId.trim(), sp.aesKeyBase64.trim()))
+            cacheKey = sp.environment.name + ":" + sp.serviceId + ":" + choice.idNumber
+        }
         val returnUrl = model.platform.mobileMoicaReturnUrl ?: ""
-        val cacheKey = choice.sp.environment.name + ":" + choice.sp.serviceId + ":" + choice.idNumber
         val signer = MobileMoicaSigner(
             client, choice.idNumber, choice.mode, hint.take(60),
             openApp = { model.platform.openExternal(it) }, returnUrl = returnUrl,
             onStatus = { busy.value = it }, certificate = mobileMoicaCerts[cacheKey],
         )
+        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         val cert = mobileMoicaCerts[cacheKey] ?: run {
             busy.value = "第一次使用：先在行動自然人憑證 App 確認一次以取得憑證，接著再確認簽署"
-            signer.load().also { mobileMoicaCerts[cacheKey] = it }
+            val c = signer.load()
+            fromServer?.let { (serverClient, environment) -> checkServerCertificate(serverClient, environment, c, moica) }
+            c.also { mobileMoicaCerts[cacheKey] = it }
         }
-        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         return if (PlatformCrypto.certificateSignedBy(cert, moica)) signer.withIntermediates(listOf(moica)) else signer
+    }
+
+    /**
+     * A server could answer with any key pair, so its first answer must show that the request really went through
+     * the Ministry of the Interior: the environment the sign request ran in is the one `/info` named, and in the
+     * production environment the certificate is issued by MOICA G3. Test-environment certificates come from the
+     * UAT CA, which this app does not carry, so they are only marked.
+     */
+    private fun checkServerCertificate(client: ServerMobileMoicaClient, expected: MobileMoicaEnvironment, cert: ByteArray, moica: ByteArray) {
+        val ran = client.environment
+        if (ran != null && ran != expected) {
+            throw SigningException("正式服務端這次使用的行動自然人憑證環境（${ran.title}）與它宣告的（${expected.title}）不同，已停止")
+        }
+        when (expected) {
+            MobileMoicaEnvironment.PRODUCTION -> if (!PlatformCrypto.certificateSignedBy(cert, moica)) {
+                throw SigningException("正式服務端回傳的憑證不是內政部憑證管理中心（MOICA G3）簽發，無法確認它真的經由行動自然人憑證簽署，已停止")
+            }
+            MobileMoicaEnvironment.UAT -> busy.value = "正式服務端使用行動自然人憑證測試環境（UAT），簽出的憑證僅供測試"
+        }
     }
 
     /** Adds MOICA G3 after a citizen certificate that a store or token returned without its issuer. */

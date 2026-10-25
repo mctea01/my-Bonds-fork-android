@@ -54,7 +54,7 @@ jobs:
           mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
       - name: Upload template pack
         if: success() && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: zk-templates
           path: dist/zk-templates.jwt
@@ -203,10 +203,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-<<<<<<< HEAD
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-=======
-      - uses: gradle/actions/setup-gradle@v4
       # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
       # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
       - name: Version
@@ -216,7 +213,6 @@ jobs:
           if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
           echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
       # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
->>>>>>> bf3c816 (Refactor GitHub Actions CI workflow for better build process)
       - name: Install deb tools
         if: runner.os == 'Linux'
         run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev
@@ -263,10 +259,7 @@ jobs:
     permissions:
       contents: write
     steps:
-<<<<<<< HEAD
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
-=======
-      - uses: actions/checkout@v4
         with:
           sparse-checkout: version.properties
           sparse-checkout-cone-mode: false
@@ -278,8 +271,7 @@ jobs:
           suffix=""
           if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
           echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
->>>>>>> bf3c816 (Refactor GitHub Actions CI workflow for better build process)
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true

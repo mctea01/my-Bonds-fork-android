@@ -1,0 +1,222 @@
+[
+  {
+    "case": "overlap_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "empty_stored",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "repeat_dynamic",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "hdist_30_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_hdist_31",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_hdist_32",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "long_huffman_codes",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_in_range_token_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_in_range_token_suffix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_adler_collision_plain",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_empty_stored_endpoint",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_empty_huffman_without_eob",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_overlap_owner",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_overlap_distance",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_repeat_without_previous",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_repeat_overrun",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_missing_eob",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_eob_endpoint",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_plain_literal",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_plain_copy",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_table_code",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_literal_table_width",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_distance_table_code",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_table_width",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_starts",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_ends",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_token_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_token_suffix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_lengths",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_distances",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_block_body",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_block_kind",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_code_length_table",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_code_length_width",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_expanded_lengths",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_huffman_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_huffman_initial_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_distance_initial_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_huffman_first_code",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_code_length_first_code",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_empty_distance_first_code",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_header_repeat",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_header_prefix",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_header_suffix",
+    "expected": "reject",
+    "passed": true
+  }
+]

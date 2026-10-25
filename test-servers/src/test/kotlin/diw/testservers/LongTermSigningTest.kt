@@ -191,6 +191,14 @@ class LongTermSigningTest {
         }
     }
 
+    /** With DIW_SIGNED_OUT set, a long-term sample goes there for the EU DSS cross-check (tools/dss-check, folder "lt"). */
+    private fun keep(name: String, bytes: ByteArray) {
+        val dir = System.getenv("DIW_SIGNED_OUT")?.takeIf { it.isNotBlank() } ?: return
+        val out = java.io.File(dir, "lt").apply { mkdirs() }
+        java.io.File(out, "root.cer").writeBytes(root.encoded)
+        java.io.File(out, name).writeBytes(bytes)
+    }
+
     private fun pdf() = PdfComposer.compose("長期驗證測試", listOf(PdfComposer.Block.Heading("長期驗證"), PdfComposer.Block.Paragraph("內容")), emptyList())
 
     @Test
@@ -238,6 +246,85 @@ class LongTermSigningTest {
         val rx = DocumentInspector.inspect(signed, "a.xml", trust)
         assertEquals(DocumentVerdict.VALID, rx.signatures.single().verdict, rx.signatures.single().problems.toString())
         assertTrue(rx.signatures.single().revocationData)
+    }
+
+    @Test
+    fun cadesAsicAndXadesArchiveTimestamps() = runBlocking<Unit> {
+        trustRoot()
+        val content = "長期保存內容".toByteArray()
+        val p7s = DocumentSigning.signCades(content, signer(), true, timestamper, fetch, archive = true)
+        val sig = DocumentInspector.inspect(p7s, "a.txt.p7s", trust, content).signatures.single()
+        assertEquals(DocumentVerdict.VALID, sig.verdict, sig.problems.toString())
+        assertTrue("CAdES 等級：B-LTA" in sig.notes, sig.notes.toString())
+        keep("cades-lta.p7s", p7s)
+        keep("cades-lta.bin", content)
+        assertTrue(sig.notes.any { it.startsWith("保存時戳") && it.endsWith("檢查通過") }, sig.notes.toString())
+
+        // Dropping the revocation values the archive time stamp indexed is caught.
+        val ci = org.bouncycastle.asn1.cms.ContentInfo.getInstance(p7s)
+        val sd = org.bouncycastle.asn1.cms.SignedData.getInstance(ci.content)
+        val stripped = org.bouncycastle.asn1.cms.ContentInfo(ci.contentType,
+            org.bouncycastle.asn1.cms.SignedData(sd.digestAlgorithms, sd.encapContentInfo, sd.certificates, null, sd.signerInfos)).encoded
+        val bad = DocumentInspector.inspect(stripped, "a.txt.p7s", trust, content).signatures.single()
+        assertTrue(bad.problems.any { "被移除或修改" in it }, bad.problems.toString())
+
+        val asice = DocumentSigning.buildAsic(listOf("a.txt" to content), signer(), timestamper, fetch, archive = true)
+        keep("asic-lta.asice", asice)
+        val asicSig = DocumentInspector.inspect(asice, "a.asice", trust).signatures.single()
+        assertEquals(DocumentVerdict.VALID, asicSig.verdict, asicSig.problems.toString())
+        assertTrue("CAdES 等級：B-LTA" in asicSig.notes, asicSig.notes.toString())
+
+        val xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><doc><a>長期保存</a></doc>".toByteArray()
+        val signed = DocumentSigning.signXml(xml, signer(), timestamper, fetch, archive = true)
+        assertTrue("<xadesv141:ArchiveTimeStamp" in String(signed))
+        keep("xades-lta.xml", signed)
+        val x = DocumentInspector.inspect(signed, "a.xml", trust).signatures.single()
+        assertEquals(DocumentVerdict.VALID, x.verdict, x.problems.toString())
+        assertTrue("XAdES 等級：B-LTA" in x.notes, x.notes.toString())
+        assertTrue(x.notes.any { it.startsWith("保存時戳") && it.endsWith("檢查通過") }, x.notes.toString())
+        // The certificate values sit before the archive time stamp, so removing them breaks it.
+        val cut = String(signed).replace(Regex("<xades:CertificateValues>.*?</xades:CertificateValues>"), "").toByteArray()
+        val xb = DocumentInspector.inspect(cut, "a.xml", trust).signatures.single()
+        assertTrue(xb.problems.any { it.startsWith("保存時戳無效") }, xb.problems.toString())
+        // B-LTA without the data it protects is refused.
+        assertTrue(runCatching { DocumentSigning.signCades(content, signer(), true, timestamper, null, archive = true) }.isFailure)
+    }
+
+    @Test
+    fun pdfCertificationAndExtension() = runBlocking<Unit> {
+        trustRoot()
+        val certified = DocumentSigning.signPdf(pdf(), signer(), PdfSignOptions(certification = 2), timestamper)
+        val r = DocumentInspector.inspect(certified, "c.pdf", trust)
+        assertEquals(2, r.signatures.single().docMdp)
+        keep("pades-certified.pdf", certified)
+        // P=2 allows signing; a second certification does not.
+        val second = DocumentSigning.signPdf(certified, signer(), PdfSignOptions(), timestamper)
+        assertEquals(2, DocumentInspector.inspect(second, "c2.pdf", trust).signatures.size)
+        assertTrue(runCatching { DocumentSigning.signPdf(certified, signer(), PdfSignOptions(certification = 1), timestamper) }.isFailure)
+
+        // P=1 with B-LTA: the DSS and the document time stamp after it are permitted changes.
+        val locked = DocumentSigning.signPdf(pdf(), signer(), PdfSignOptions(certification = 1, validation = fetch, documentTimestamp = true), timestamper)
+        keep("pades-certified-p1-lta.pdf", locked)
+        val rl = DocumentInspector.inspect(locked, "l.pdf", trust)
+        assertTrue("PAdES 等級：B-LTA" in rl.notes, rl.notes.toString())
+        assertTrue(rl.signatures.all { s -> s.problems.none { "不允許任何修改" in it } }, rl.signatures.map { it.problems }.toString())
+        assertTrue(rl.signatures.all { it.verdict == DocumentVerdict.VALID }, rl.signatures.map { it.problems }.toString())
+
+        // Extending a B-B signature: validation data and a document time stamp, then a second round.
+        val plain = DocumentSigning.signPdf(pdf(), signer(), PdfSignOptions(), null)
+        val once = DocumentSigning.extendPdf(plain, fetch, timestamper)
+        assertEquals(1, once.signatures)
+        assertTrue(once.documentTimestamp && !once.validation.empty)
+        val r1 = DocumentInspector.inspect(once.pdf, "e1.pdf", trust)
+        assertTrue("PAdES 等級：B-LT" in r1.notes, r1.notes.toString())
+        val twice = DocumentSigning.extendPdf(once.pdf, fetch, timestamper)
+        assertEquals(2, twice.signatures)
+        keep("pades-extended.pdf", twice.pdf)
+        val r2 = DocumentInspector.inspect(twice.pdf, "e2.pdf", trust)
+        assertTrue("PAdES 等級：B-LTA" in r2.notes, r2.notes.toString())
+        assertEquals(3, r2.signatures.size)
+        assertTrue(r2.signatures.all { it.verdict == DocumentVerdict.VALID }, r2.signatures.map { it.problems }.toString())
+        assertTrue(runCatching { DocumentSigning.extendPdf(pdf(), fetch, timestamper) }.isFailure, "nothing to extend")
     }
 
     @Test

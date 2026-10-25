@@ -1,0 +1,12 @@
+{
+  "nargo_tests": 76,
+  "nargo_test_scope": "Includes Brillig semantic tests; not 76 ACIR proofs",
+  "standard_acir_cases": 44,
+  "multiblock_acir_cases": 4,
+  "segment_acir_cases": 49,
+  "segment_reference_cases": 1,
+  "total_acir_accept": 40,
+  "total_acir_reject": 57,
+  "negative_requirement": "Only exit code 1 with Cannot satisfy constraint counts; parse/compile errors never count",
+  "status": "passed"
+}

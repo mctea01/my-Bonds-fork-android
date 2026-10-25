@@ -28,10 +28,13 @@ import diw.wallet.core.zktls.ZkTlsTransport
 import diw.wallet.core.zktls.ZkTlsVerifierSession
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
@@ -259,8 +262,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                             }
                             is ZkResult.Failed -> {
                                 val fresh = request.isFresh(Clock.System.now())
-                                ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, result.reason, retry = result.retryable && fresh)
-                                result.reason
+                                val reason = hostReason(consent)?.let { "查驗主機回報：$it" } ?: result.reason
+                                ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, reason, retry = result.retryable && fresh)
+                                reason
                             }
                             ZkResult.Cancelled -> {
                                 retry(consent)
@@ -285,6 +289,23 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                 "網站查驗證明（zkTLS，${consent.profile.host}），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
             )
         }
+    }
+
+    /**
+     * The verifier host's own reason for a failed proof, when this device opened the session there: the host ends
+     * the connection without saying why, so its status is read for a few seconds while it records the failure.
+     */
+    private suspend fun hostReason(consent: OfflineUi.ZkTlsConsent): String? {
+        val url = consent.hostState ?: return null
+        repeat(HOST_REASON_TRIES) { attempt ->
+            val state = runCatching { DiwJson.parseToJsonElement(client.get(url).bodyAsText()) as? JsonObject }.getOrNull()
+            when (state?.str("status")) {
+                "failed" -> return state.str("reason")
+                "done", null -> return null
+            }
+            if (attempt < HOST_REASON_TRIES - 1) delay(POLL)
+        }
+        return null
     }
 
     /** Stops the running proof and returns to the consent screen. */
@@ -367,16 +388,10 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                     putJsonArray("fields") { profile.fields.forEach { add(it.name) } }
                     put("purpose", SELF_PURPOSE)
                 }
-                val response = client.post("$base/zktls/sessions") {
-                    contentType(ContentType.Application.Json)
-                    accept(ContentType.Application.Json)
-                    setBody(body.toString())
-                }
-                val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
-                    ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
-                if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+                val created = createOnHost(base, body)
                 val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
-                consentFor(link, pick.fileId)
+                val state = created.str("sessionId")?.let { sid -> created.str("token")?.let { "$base/zktls/sessions/$sid?token=${it.encodeURLParameter()}" } }
+                consentFor(link, pick.fileId).copy(hostState = state)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -538,8 +553,13 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         } finally {
             model.endOperation()
         }
-        val where = opened.transports.joinToString("、") { routeName(it) }
-        val details = transportDetails(request) + listOf("查驗方 DID：${key.did}", "請求 id：${request.sessionId}")
+        // The relay is optional when a local address opened; say so, since a holder elsewhere then cannot reach this side.
+        val relayMissing = relay != null && opened.transports.none { it is ZkTlsTransport.Relay }
+        val where = opened.transports.joinToString("、") { routeName(it) } + if (relayMissing) "（中繼 ${hostOf(relay!!)} 連不上，只能在同一個網路查驗）" else ""
+        val details = transportDetails(request) + listOfNotNull(
+            "中繼：無法連到 $relay/zktls/relay，不在同一個網路的出示者連不到這裡".takeIf { relayMissing },
+            "查驗方 DID：${key.did}", "請求 id：${request.sessionId}",
+        )
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, ZkTlsSessionRequest.link(jws), profile, where, local = true, details = details)
         // A holder that keeps the result gets a receipt signed with the key that signed the request.
         val signer = WebProofCredentials.receipts(request, profile, key.did!!, key.signingKey("ES256"))
@@ -567,6 +587,27 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         record(shown)
     }
 
+    /**
+     * Opens a session on the verifier host. The production server's access token goes only to that server; a host
+     * that wants one and has none set gets a pointer to the setting.
+     */
+    private suspend fun createOnHost(base: String, body: JsonObject): JsonObject {
+        val token = model.server.tokenFor(base)
+        val response = client.post("$base/zktls/sessions") {
+            contentType(ContentType.Application.Json)
+            accept(ContentType.Application.Json)
+            token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            setBody(body.toString())
+        }
+        if (response.status == HttpStatusCode.Unauthorized) {
+            throw ProtocolException("unauthorized", if (token == null) "查驗主機需要存取權杖，請到設定的「零知識證明」頁填入" else "查驗主機不接受這個存取權杖，請到設定的「零知識證明」頁更新")
+        }
+        val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
+            ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
+        if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+        return created
+    }
+
     private suspend fun verifyOnHost(profile: ZkTlsProfile, fields: List<String>, purpose: String, note: String) {
         val base = host() ?: throw ProtocolException("unavailable", "$note 但尚未設定查驗主機（設定的「零知識證明」頁，測試環境會使用測試伺服器）。")
         val body = buildJsonObject {
@@ -574,14 +615,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             putJsonArray("fields") { fields.forEach { add(it) } }
             put("purpose", purpose)
         }
-        val response = client.post("$base/zktls/sessions") {
-            contentType(ContentType.Application.Json)
-            accept(ContentType.Application.Json)
-            setBody(body.toString())
-        }
-        val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
-            ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
-        if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+        val created = createOnHost(base, body)
         val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
         val sid = created.str("sessionId") ?: throw ProtocolException("server_error", "No session")
         val token = created.str("token") ?: throw ProtocolException("server_error", "No token")
@@ -637,6 +671,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             backend.settings(ByteString(PlatformCrypto.randomBytes(16)), false))
     }
 
+    private fun hostOf(url: String): String = runCatching { Url(url).host }.getOrDefault(url)
+
     private fun routeName(t: ZkTlsTransport): String = when (t) {
         is ZkTlsTransport.Lan -> "區網"
         is ZkTlsTransport.Relay -> "中繼 " + runCatching { Url(t.url).host }.getOrDefault(t.url)
@@ -690,5 +726,6 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         const val EXPIRED_VERIFIER = "請求已過期，沒有收到出示。"
         private val POLL = 2.seconds
         private val GRACE = 30.seconds
+        private const val HOST_REASON_TRIES = 3
     }
 }

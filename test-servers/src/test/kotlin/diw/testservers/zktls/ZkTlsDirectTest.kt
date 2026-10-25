@@ -55,6 +55,18 @@ class ZkTlsDirectTest {
         }
     }
 
+    /** A certificate that chains to a trusted root but names another host is refused, with the extra roots too. */
+    @Test
+    fun certificateForAnotherHostIsRefused() = runBlocking<Unit> {
+        ZkTlsTarget(responder = record::respond).use { target ->
+            val profile = record.profile(target.port, host = "127.0.0.1")
+            val request = ZkTlsPlanner.request(profile, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+            val e = assertFailsWith<ProtocolException> { ZkTlsDirect.fetch(profile, request, listOf(target.caDer)) }
+            assertEquals("untrusted_server", e.code)
+            assertTrue(target.requests.isEmpty())
+        }
+    }
+
     /** A response larger than the page allows is refused rather than read. */
     @Test
     fun oversizedResponseIsRefused() = runBlocking<Unit> {

@@ -1,0 +1,29 @@
+{
+  "scope": "inflate only; not the complete pdf_text_v1_1p circuit",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "compiler_failed",
+  "exit_code": -9,
+  "seconds": 218.19796397000027,
+  "peak_rss_kib": 8307964,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "compressed_capacity": 8192,
+  "plain_capacity": 1024,
+  "token_capacity": 6144,
+  "block_capacity": 1,
+  "main_sha256": "cacd399308af0abe29a665955ea7d35af51bf46fc26d147cabeab46fec63cc6f",
+  "inflate_source_sha256": "467991ec1aa4259740101c5eaba5c3f9e3e4f787199c87fcd216fdbf366a4b7f",
+  "acir_sha256": null,
+  "acir_opcodes": null,
+  "vk_sha256": null,
+  "gates": null,
+  "prove": null,
+  "verify": null,
+  "proof_bytes": null,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 45225\noom 4\noom_kill 3\noom_group_kill 0"
+  }
+}

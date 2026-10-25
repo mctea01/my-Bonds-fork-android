@@ -284,7 +284,7 @@ internal fun BondsAgeVerifierResultView(model: WalletModel, s: OfflineUi.AgeVeri
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("證據：零知識證明", style = MaterialTheme.typography.titleSmall)
                     BondsAgeVerifierFlow.summary(v).forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    Text("發卡者：${v.issuerDid}", style = MaterialTheme.typography.bodySmall)
+                    Text("發卡者：${BondsAgeVerifierFlow.shortDid(v.issuerDid)}", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

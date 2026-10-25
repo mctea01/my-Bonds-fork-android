@@ -154,7 +154,8 @@ private fun ColourCard(model: WalletModel, doc: Document, record: IssuanceRecord
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 CardLogo(model, record?.logoUri, categoryIcon(record), if (background != null) text else MaterialTheme.colorScheme.primary)
-                Column(Modifier.weight(1f)) {
+                // Room for the test watermark in the corner, so it never covers the name or the status chips.
+                Column(Modifier.weight(1f).padding(end = if (record?.isTestEnvironment == true) 88.dp else 0.dp)) {
                     Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = text)
                     Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall, color = text)
                 }
@@ -169,7 +170,7 @@ private fun ColourCard(model: WalletModel, doc: Document, record: IssuanceRecord
             }
             if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = text)
         }
-        if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp))
+        if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp), fontSize = 20)
     }
 }
 

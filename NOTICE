@@ -107,3 +107,10 @@ Except for the explicitly attributed P4 OpenACAge overlay above, compatibility
 with Bonds (bonds.tw) and open-gpki-pkcs11 was implemented from their observable
 formats and public documentation. OpenAC source licenses and pinned build
 sources are documented under native/openac-age.
+
+Synthetic zkPDF test documents include a subset of Noto Sans CJK SC Regular
+2.004, Copyright 2014-2021 Adobe (http://www.adobe.com/), licensed under the
+SIL Open Font License 1.1. The subset, full license and reproducible subsetting
+script are in tools/zkpdf-testdocs/. Upstream source:
+https://github.com/notofonts/noto-cjk/tree/Sans2.004
+These font assets are used by test fixtures, not bundled into the application.

@@ -36,7 +36,7 @@ import diw.wallet.app.SettingsSection
 import diw.wallet.app.WalletModel
 import diw.wallet.app.WalletSettings
 import diw.wallet.core.compat.TwdiwDialect
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.document.sign.TsaServices
 import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
@@ -94,7 +94,7 @@ fun SettingsScreen(model: WalletModel) {
                 ).joinToString("・")
                 SettingsSection.DOCUMENTS -> listOfNotNull(
                     "時戳機構：" + TsaServices.byId(s.tsaId).name,
-                    "PDF 預設 " + padesLevel(s).title,
+                    "簽署預設 " + padesLevel(s).short,
                     if (s.myDataIdNumber != null) "MyData 自動填入已設定" else null,
                 ).joinToString("・")
                 SettingsSection.TRUST -> listOf(
@@ -130,7 +130,7 @@ fun SettingsPageScreen(model: WalletModel, section: SettingsSection) {
     }
 }
 
-private fun padesLevel(s: WalletSettings) = PadesLevel.entries.firstOrNull { it.name == s.padesLevel } ?: PadesLevel.B_T
+private fun padesLevel(s: WalletSettings) = SignatureLevel.of(s.padesLevel)
 
 @Composable
 private fun SecurityPage(model: WalletModel) {
@@ -199,11 +199,11 @@ private fun DocumentsPage(model: WalletModel) {
         model.updateSettings { it.copy(timestampRevocation = v) }
     }
     HorizontalDivider()
-    SectionTitle("PDF 簽署的預設保證層級")
+    SectionTitle("簽署的預設保證層級（PAdES、CAdES、XAdES、ASiC-E）")
     val level = padesLevel(s)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PadesLevel.entries.forEach { l ->
-            FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.title) })
+        SignatureLevel.entries.forEach { l ->
+            FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.short) })
         }
     }
     Text(level.detail + "。簽署畫面仍可逐次調整，最後選的層級會記住。", style = MaterialTheme.typography.bodySmall)
@@ -360,7 +360,7 @@ private fun DeveloperPage(model: WalletModel) {
     Toggle(
         "手動輸入 SP 帳號",
         "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+            "開啟後簽署畫面仍可改選正式服務端或本版內建的帳號。" + if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
 }

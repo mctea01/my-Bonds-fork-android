@@ -4,7 +4,7 @@
 
 以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並完整相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫，目前提供 Android 與 Windows、Linux 桌面版。
 
-> 狀態：開發中（P4 零知識證明設計中）。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
+> 狀態：開發中（P4 零知識證明：年齡證明、網站查驗證明與 mdoc 零知識出示已可使用，zkPDF 開發中）。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
 
 ## 畫面
 
@@ -38,7 +38,7 @@
 - **判定用顏色、符號與文字三者並用**：綠色為通過，橙色為需留意，紅色為不應接受；「部分」不會看起來像「通過」。
 - **出示前說清楚**：同意畫面顯示查驗方身分、信任錨點、查驗方附上的註冊憑證（verifier_info）檢查結果、提供資料的對象、用途與知情同意書（TWDIW）、請求風險（依欄位敏感度與查驗方信任等級）與要交出的欄位。有多張證件符合時可「更改憑證」。證件被判定為不接受時不能出示。
 - **QR Code 可從圖片讀取**：除了相機掃描，也可選擇截圖或照片讀取 QR Code；電腦版沒有相機時直接從圖片讀取。
-- **不隱藏未完成的功能**：尚未提供的功能顯示為停用列並寫明原因，例如公文交換收發、zkPDF 與 zkTLS 證明。
+- **不隱藏未完成的功能**：尚未提供的功能顯示為停用列並寫明原因，例如公文交換收發、zkPDF 證明與線上查驗（OpenID4VP）。
 - **空狀態附直達動作**：結果以畫面或判定卡呈現，對話框只用於確認有後果的動作。
 
 ## 功能
@@ -52,7 +52,7 @@
 - **格式**：ISO mdoc、IETF SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、包在 SD-JWT 中的 W3C VC）。
 - **Digital Credentials API**：瀏覽器與其他 App 可經系統選擇器要求出示，也可要求存入證件（OpenID4VCI）。
 - **出示**：OpenID4VP 1.0（DCQL、transaction data 含 mdoc、DC API 的未簽章、簽章與多重簽章請求）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
-- **查驗**：以 NFC、USB 讀卡機或電腦 PC/SC 讀卡機讀取 mdoc；離線挑戰查驗 Bonds 相容證件與文件衍生憑證。
+- **查驗**：以 NFC、USB 讀卡機或電腦 PC/SC 讀卡機讀取 mdoc；離線挑戰查驗 Bonds 相容證件與文件衍生憑證；年齡證明與官方網站即時查驗（見[零知識證明](#零知識證明)）。
 - **狀態**：支援 IETF Token Status List、W3C Bitstring Status List、Status List 2021 與 Revocation List 2020，顯示規格原文的狀態。背景自動更新，依用途風險決定是否接受。
 - **信任**：
   - X.509 信任錨點：政府憑證 GPKI、系統憑證庫、內建公開根憑證含中國大陸 CA 與國密 SM2（含 e簽寶公布的合作 CA，每月自動更新）、使用者匯入；中繼憑證（內建或匯入）只補足憑證鏈；
@@ -72,8 +72,10 @@
 - **簽署**：
   - 方式：自然人憑證卡（Android NFC、USB 或 PC/SC 讀卡機）、PKCS#12、錢包金鑰；
   - CSC v2 遠端簽章：內建 EUDI 測試服務，也可自行加入服務；
-  - 格式：PDF 以 PAdES 增量簽署，可選保證層級 B-B、B-T、B-LT、B-LTA；XML 以 XAdES，電子公文在線上簽核檔（.si）加簽核點；其他檔案以 CAdES 或 ASiC-E；
-  - 可附加憑證鏈與撤銷資訊（OCSP 優先），簽署畫面可展開技術細節。
+  - 格式：PDF 以 PAdES 增量簽署，XML 以 XAdES，其他檔案以 CAdES 或 ASiC-E，電子公文在線上簽核檔（.si）加簽核點；
+  - 保證層級：PAdES、CAdES、XAdES、ASiC-E 都可選 B-B、B-T（簽章時戳）、B-LT（再加憑證鏈與撤銷資訊，OCSP 優先）、B-LTA（再加保存時戳），簽完顯示實際達到的層級；
+  - PDF 可選認證簽章（不允許變更、只允許填表、允許填表與註解），已簽署的 PDF 可「延長保存」補上長期驗證資料與文件時戳；
+  - 簽署畫面可展開技術細節；簽出的檔案以 EU DSS 交叉驗證。
 - **預覽與結構化解析**：
   - 可預覽 PDF（含加密 PDF）、圖片、XML、文字與 .p7m 內含的內容；
   - 以結構化畫面呈現電子公文「函」與線上簽核、OpenCerts 證書、台灣入出國日期證明書、中國大陸出入境記錄、通行證關聯查詢結果、在學證明與戶籍謄本（可切換住戶，本人優先）；
@@ -91,11 +93,22 @@
   - 自然人憑證簽章（與 Bonds vc+moica 相容）。
 - **取件入口**：MyData（下載後自動解壓、命名並解析）、MyDoc、教育部大專校院數位證書、戶政、地政、移民署、財政部稅務入口網。
 
+### 零知識證明
+
+證明只交出查驗方要的結論或欄位，信任等級沿用原本的發行端或網站，不因零知識證明而提高。
+
+- **年齡證明（OpenAC，與 Bonds 相容）**：以 TWDIW 有生日欄位的卡片或 Bonds 身分證卡，證明出生日期不晚於查驗方給的日期，不交出生日。可回應 Bonds 網頁的年齡請求；查驗方可用本 App 經主機、藍牙、同一個區域網路或動態 QR 查驗，Bonds App 與本 App 可互相查驗。
+- **官方網站即時查驗（zkTLS，TLSNotary）**：持有人用手機連到官方查詢頁（學信網學籍報告、移民署入出國日期證明書），查驗方只看到查詢結果與指定欄位，看不到持有人輸入的證號；查驗方可以是另一支手機（區域網路或中繼）或電腦版。查詢結果可存成網頁證明證件，之後再出示。查驗頁以簽章的版型包發佈與更新。
+- **mdoc 零知識出示（Longfellow）**：近距離與 Digital Credentials API 的 mdoc 請求明確要求時，以零知識證明出示指定欄位，不揭露 MSO 與簽章。
+- **算力不足時由使用者選擇**：顯示估計時間，可仍在這台裝置產生、在電腦版產生，或不加零知識證據。
+- **zkPDF**（開發中）：證明已簽署 PDF 第 1 頁寫著指定欄位，不交出整份文件。
+
 ### 相容（常駐啟用）
 
 - **數位憑證皮夾（TWDIW）**：官方發證與出示流程、發行端卡面與身分保證等級（IAL）、出示時更改憑證與知情同意書、卡片目錄、臨櫃離線條碼、信任清單與 Arbitrum 錨定。
 - **Bonds**：
-  - 輪播 QR 與藍牙離線出示，以及作為查驗方；
+  - 輪播 QR 與藍牙離線出示，以及作為查驗方（本 App 之間另可走區域網路與動態 QR）；
+  - 年齡證明（OpenAC）的出示與查驗；
   - 以自然人憑證簽署的身分證卡（NationalIDCredential，vc+moica）與線上出示；
   - 擴充來源 `a`，可出示任何綁定金鑰的證件。
 - **Microsoft Entra Verified ID**：`openid-vc://` 發行與出示、Linked Domains、Identity Hub 狀態清單。
@@ -130,7 +143,8 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
   - Windows 內建 PC/SC。
   - Linux 需安裝並啟動 `pcscd`。
   - 電腦只能讀取，不能以 NFC 出示。
-- **行動自然人憑證簽章**：需要內政部核發的 SP 帳號，在編譯時以 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV` 環境變數或 Gradle 屬性提供，不會提交進 repo。
+- **零知識證明的原生函式庫**：需要 Rust 1.95.0（Android 另需 cargo-ndk 與 NDK 28.2.13676358），沒有工具鏈時照常建置但不含零知識證明。`DIW_ZK_NATIVE=require` 強制建置、`skip` 不建置；`DIW_ZK_FEATURES=openac,tlsn` 連結年齡證明與 zkTLS 後端（`openac` 需 protoc 與 libclang）。
+- **行動自然人憑證簽章**：需要內政部核發的 SP 帳號。建議放在正式服務端（[diw-wallet-server](https://github.com/mctea01/diw-wallet-server) 的 `twfido` 功能），App 內不放 SP 金鑰，簽署畫面預設「正式服務端的 SP」；也可在編譯時以 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV` 環境變數或 Gradle 屬性內建，不會提交進 repo。
 
 ### 本機測試伺服器
 
@@ -142,6 +156,8 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 錢包的設定方式與領卡、出示的步驟見 [docs/guides/windows-local-test.md](docs/guides/windows-local-test.md)。
 
+正式環境的服務端（中繼、zkTLS 查驗主機與網頁證明回執、年齡查驗主機、網頁查驗）在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，可部署到自己的主機、Cloud Run 或 Cloudflare Containers。錢包在「設定 > 零知識證明 > 正式服務端」填入網址與存取權杖，按「加入信任」比對簽章根憑證的 SHA-256 後，服務端簽的查驗請求與回執以使用者匯入（T2）顯示。
+
 ## 專案結構
 
 | 路徑 | 內容 |
@@ -149,6 +165,8 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 | `core` | 協議、信任與文件核心（Kotlin Multiplatform，JVM 與 Android），不依賴 UI |
 | `app` | Compose Multiplatform App（Android、桌面） |
 | `test-servers` | 測試伺服器與全部協議測試 |
+| `native` | 零知識證明的 Rust 工作區（OpenAC、TLSNotary、Noir 電路） |
+| `templates` | 零知識證明版型包（zkTLS 查驗頁、zkPDF 版型） |
 | `tools/trust-roots` | 內建公開根憑證產生器 |
 | `tools/dss-check` | 以 EU DSS 交叉驗證錢包簽出的檔案 |
 | `docs` | 設計、研究、驗收與發佈文件 |
@@ -158,6 +176,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 - [docs/README.md](docs/README.md)：所有文件的索引。
 - [設計與路線圖](docs/design/architecture-and-roadmap.md)：目標架構、協定支援矩陣、信任分層與分階段路線。
 - [文件憑證方案](docs/design/document-credentials.md)：衍生憑證、zkPDF、zkTLS、Bonds 與 OpenCerts 的比較與決定。
+- [零知識證明設計](docs/design/p4-zkp.md)：四種證據的格式、信任與隱私約定，電路規格與工作包狀態見同資料夾的 p4-circuits.md、p4-work-packages.md。
 - [研究筆記](docs/research/)：TWDIW、Bonds、Multipaz／EUDI／Microsoft、簽章文件、ZKP 與實機驗證。
 - [AGENTS.md](AGENTS.md)：開發規則、模組職責與實作要點。貢獻前請先閱讀。
 

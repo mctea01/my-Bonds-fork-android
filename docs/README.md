@@ -1,6 +1,6 @@
 # 文件索引
 
-設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。內容已與實作不同的設計與驗收文件，開頭有「現況（2026-10-16）」說明哪些部分已改變；研究文件與實機紀錄保留原貌。P4 尚未實作的部分以 P4 的三份設計文件為準。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
+設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。內容已與實作不同的設計與驗收文件，開頭有「現況（2026-10-16）」說明哪些部分已改變；研究文件與實機紀錄保留原貌。P4 尚未實作的部分以 P4 的三份設計文件為準，各工作包的實作狀態見 [p4-work-packages.md](design/p4-work-packages.md#21-實作狀態2026-10-25)。正式服務端（查驗網頁、年齡查驗主機、zkTLS 中繼）在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，部署說明在該 repo。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
 
 ## 設計
 
@@ -10,7 +10,7 @@
 | [design/document-credentials.md](design/document-credentials.md) | 文件憑證方案：每份文件產生衍生憑證再疊加證據；zkPDF、zkTLS、Bonds、OpenCerts 的比較，各類台灣與中國大陸文件的樣本分析與查驗方式，主動簽署、自然人憑證卡與行動自然人憑證 |
 | [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、D1 到 D6 的決定、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
 | [design/p4-circuits.md](design/p4-circuits.md) | P4 電路規格：樣本結構量測、zkPDF 電路（SHA-256 中間狀態窗口、inflate、lexer、錨點、欄位承諾、日期述詞）、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
-| [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
+| [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
 
 ## 研究
 
@@ -22,6 +22,7 @@
 | [research/documents-signatures.md](research/documents-signatures.md) | 簽章電子文件格式（PAdES、CAdES、XAdES、OFD、ASiC、時戳）與驗證 |
 | [research/official-document-files.md](research/official-document-files.md) | 電子公文檔案結構（DI、SI、外部檔案、文稿頁面檔）、SI 簽核點，以及檔案管理局健檢類別與錢包的對應 |
 | [research/zkp-verifier.md](research/zkp-verifier.md) | ZKP 全景、驗證者身分與意圖揭露、信任分級 UI |
+| [research/p4-benchmarks.md](research/p4-benchmarks.md) | P4 證明系統的電腦版效能量測（實機量測待補） |
 | [research/validation-2026-10-10.md](research/validation-2026-10-10.md) | P0 本地驗證結果 |
 | [research/validation-network-2026-10-10.md](research/validation-network-2026-10-10.md) | 需要外部網路的補驗結果 |
 | [research/device-test-checklist.md](research/device-test-checklist.md) | 實機測試清單 |
@@ -49,3 +50,4 @@
 |---|---|
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
 | [release.md](release.md) | CI 發佈的檔案與簽章 secrets |
+| [../templates/README.md](../templates/README.md) | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |

@@ -58,7 +58,9 @@ class NativeZkTlsEngine(
     /** Loads the library and tells whether it has the tlsn feature. */
     private val ready: suspend () -> Boolean = { true },
 ) : ZkTlsEngine {
-    private val ws: HttpClient by lazy { http.config { install(WebSockets) { maxFrameSize = MAX_FRAME } } }
+    // No maxFrameSize: the OkHttp engine (Android) refuses every session that sets it. Frame sizes are checked by
+    // WebSocketChannel and firstBinary instead.
+    private val ws: HttpClient by lazy { http.config { install(WebSockets) } }
 
     override suspend fun prove(
         session: ZkTlsSessionRequest.Verified,
@@ -72,7 +74,32 @@ class NativeZkTlsEngine(
         val r = session.request
         val sentReveal = try { ZkTlsPlanner.sentReveal(profile, request) } catch (_: ProtocolException) { return@withContext ZkErrors.invalidInput }
         step("連線到查驗方")
-        val (channel, transport) = connect(r.transports) ?: return@withContext UNREACHABLE
+        // A channel that never hears from the verifier reached something else (another device at a private
+        // address, an empty relay room); nothing private has been sent yet, so the next transport is tried.
+        var unanswered: ZkTlsChannelEnd? = null
+        for (transport in candidates(r.transports)) {
+            val channel = runCatching { channelFor(transport) }.getOrNull() ?: continue
+            val attempt = proveOver(channel, transport, session, profile, request, sentReveal, extraRoots, binding, step)
+            if (attempt != null) return@withContext attempt
+            unanswered = unanswered ?: (channel as? EndAware)?.end
+            step("連線到查驗方")
+        }
+        unanswered?.takeIf { it != ZkTlsChannelEnd.NO_REPLY }?.let { ZkResult.Failed(it.message, it.retry) } ?: unreachable(r.transports)
+    }
+
+    /** One attempt over [channel]; null when the verifier never answered there. */
+    private suspend fun proveOver(
+        channel: ZkTlsChannel,
+        transport: ZkTlsTransport,
+        session: ZkTlsSessionRequest.Verified,
+        profile: ZkTlsProfile,
+        request: ByteArray,
+        sentReveal: List<ZkTlsRange>,
+        extraRoots: List<ByteArray>,
+        binding: kotlinx.serialization.json.JsonObject?,
+        step: (String) -> Unit,
+    ): ZkResult<ZkTlsProved>? {
+        val r = session.request
         var plan: ZkTlsPlanner.Plan? = null
         val chooser = object : ZkTlsRevealChooser {
             override fun choose(transcript: ZkTlsTranscript): ZkTlsReveal {
@@ -85,7 +112,7 @@ class NativeZkTlsEngine(
             }
         }
         step("經由查驗方連線到 ${profile.host}")
-        try {
+        return try {
             val t = cancellable(channel) { token ->
                 zktlsProve(
                     channel,
@@ -96,41 +123,38 @@ class NativeZkTlsEngine(
                     chooser, token, session.hash, r.verifierStatic, extraRoots,
                 )
             }
-            val p = plan ?: return@withContext ZkErrors.internal
+            val p = plan ?: return ZkErrors.internal
             val seen = ZkTlsHolder.masked(t.serverName, t.certChainDer, t.time.toLong(), t.sent, t.received, sentReveal, p.received)
             val receipt = t.receipt.takeIf { it.isNotEmpty() }?.decodeToString()
             ZkResult.Ok(ZkTlsProved(t.serverName, t.certChainDer, t.time.toLong(), t.cipherSuite, p, ZkTlsCheck.check(r, profile, seen), transport, receipt))
         } catch (e: ZkException) {
-            failure(e)
+            channel.close()
+            if ((channel as? EndAware)?.answered == false && transportError(e)) null else failure(e, channel)
         }
     }
 
-    /** The first transport that connects, with the channel over it. */
-    private suspend fun connect(transports: List<ZkTlsTransport>): Pair<ZkTlsChannel, ZkTlsTransport>? {
+    /** Local addresses on this device's own subnet first, then the relay and verifier servers. */
+    private fun candidates(transports: List<ZkTlsTransport>): List<ZkTlsTransport> {
         val lan = transports.filterIsInstance<ZkTlsTransport.Lan>()
         val order = preferred(lan.map { "tcp://${it.host}:${it.port}" }).mapNotNull { u -> lan.firstOrNull { "tcp://${it.host}:${it.port}" == u } }
-        for (t in order + ZkTlsHolder.ordered(transports).filter { it !is ZkTlsTransport.Lan }) {
-            val channel = runCatching {
-                when (t) {
-                    is ZkTlsTransport.Lan -> {
-                        val socket = (socketFactoryFor(t.host) ?: SocketFactory.getDefault()).createSocket()
-                        try {
-                            socket.connect(InetSocketAddress(t.host, t.port), LAN_CONNECT_MS)
-                            socket.tcpNoDelay = true
-                            socket.soTimeout = READ_TIMEOUT_MS
-                        } catch (e: IOException) {
-                            socket.close()
-                            throw e
-                        }
-                        SocketChannel(socket)
-                    }
-                    is ZkTlsTransport.Relay -> WebSocketChannel(open("${t.url.trimEnd('/')}/${t.room}"))
-                    is ZkTlsTransport.Wss -> WebSocketChannel(open(t.url))
-                }
-            }.getOrNull()
-            if (channel != null) return channel to t
+        return order + ZkTlsHolder.ordered(transports).filter { it !is ZkTlsTransport.Lan }
+    }
+
+    /** A channel to [t]; the verifier answers the first Noise message at once, so a silent peer is given up early. */
+    private suspend fun channelFor(t: ZkTlsTransport): ZkTlsChannel = when (t) {
+        is ZkTlsTransport.Lan -> {
+            val socket = (socketFactoryFor(t.host) ?: SocketFactory.getDefault()).createSocket()
+            try {
+                socket.connect(InetSocketAddress(t.host, t.port), LAN_CONNECT_MS)
+                socket.tcpNoDelay = true
+            } catch (e: IOException) {
+                socket.close()
+                throw e
+            }
+            SocketChannel(socket, FIRST_BYTES_MS)
         }
-        return null
+        is ZkTlsTransport.Relay -> WebSocketChannel(open("${t.url.trimEnd('/')}/${t.room}"), FIRST_BYTES_MS.toLong())
+        is ZkTlsTransport.Wss -> WebSocketChannel(open(t.url), FIRST_BYTES_MS.toLong())
     }
 
     private suspend fun open(url: String): WebSocketSession = withTimeout(WS_CONNECT_MS) { ws.webSocketSession(url) }
@@ -179,7 +203,7 @@ class NativeZkTlsEngine(
                 try {
                     ZkTlsVerification.verify(channel, jws, request, profile, key, extraRoots, receipts)
                 } catch (e: ZkException) {
-                    failure(e)
+                    failure(e, channel)
                 }
             } catch (_: IOException) {
                 ZkResult.Failed("查驗方的連線已關閉，沒有出示者連線", true)
@@ -236,14 +260,17 @@ class NativeZkTlsEngine(
             }
         }
 
+        /** Also leaves the relay room, so a verifier screen closed before any holder came frees it at once. */
         override fun close() {
             servers.forEach { runCatching { it.second.close() } }
+            relay?.second?.let { runCatching { it.cancel() } }
         }
     }
 
     private suspend fun firstBinary(session: WebSocketSession): ByteArray {
         while (true) {
             val frame = session.incoming.receive()
+            if (frame is Frame.Binary && frame.data.size > ZkTlsChannels.MAX_FRAME) throw IOException("Frame too large")
             if (frame is Frame.Binary && frame.data.isNotEmpty()) return frame.data
             if (frame is Frame.Close) throw IOException("Relay closed")
         }
@@ -251,7 +278,6 @@ class NativeZkTlsEngine(
 
     companion object {
         const val MAX_LAN = 4
-        private const val MAX_FRAME = 1L shl 20
         private const val LAN_CONNECT_MS = 4_000
         private const val WS_CONNECT_MS = 15_000L
         private const val FIRST_BYTES_MS = 30_000
@@ -259,6 +285,16 @@ class NativeZkTlsEngine(
         private val UNREACHABLE = ZkResult.Failed("無法連到查驗方：請確認兩台裝置在同一個網路，或查驗方的中繼可以連線", true)
         private val UNSUPPORTED = ZkResult.Failed("這個版本沒有包含 zkTLS（TLSNotary）", false)
         private val EXPIRED = ZkResult.Failed("查驗請求已過期，沒有出示者連線", false)
+
+        /**
+         * Why no transport reached the verifier. A request that names only verifier hosts has no second device or
+         * shared network involved, so the message names the host instead.
+         */
+        fun unreachable(transports: List<ZkTlsTransport>): ZkResult.Failed {
+            val hosts = transports.map { if (it is ZkTlsTransport.Wss) runCatching { Url(it.url).host }.getOrDefault(it.url) else null }
+            if (hosts.isEmpty() || hosts.any { it == null }) return UNREACHABLE
+            return ZkResult.Failed("無法連到查驗主機 ${hosts.distinct().joinToString("、")}：請確認這台裝置可以連上網路，且查驗主機正在運作", true)
+        }
 
         /** ws or wss address of the relay on an age host given as http(s) or ws(s). */
         fun relayAddress(base: String): String {
@@ -280,6 +316,15 @@ class NativeZkTlsEngine(
         }
 
         private fun range(r: ZkTlsRange) = ZkRange(r.start.toUInt(), r.end.toUInt())
+
+        /** Error codes only: native details may carry private input. A transport error says how [channel] ended when it knows. */
+        fun failure(e: ZkException, channel: ZkTlsChannel): ZkResult<Nothing> {
+            val end = (channel as? EndAware)?.end
+            return if (end != null && transportError(e)) ZkResult.Failed(end.message, end.retry) else failure(e)
+        }
+
+        private fun transportError(e: ZkException) =
+            e is ZkException.Internal && e.code in setOf(502u, ZkTlsChannels.ENDED, ZkTlsChannels.SEND_FAILED, ZkTlsChannels.RECEIVE_FAILED)
 
         /** Error codes only: native details may carry private input. */
         fun failure(e: ZkException): ZkResult<Nothing> = when (e) {
