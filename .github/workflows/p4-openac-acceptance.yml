@@ -26,6 +26,9 @@ jobs:
         with:
           python-version: '3.12'
       - uses: android-actions/setup-android@v3
+        with:
+          # cmdline-tools 16.0 no longer has the "tools" package that the action installs by default.
+          packages: platform-tools
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.90.0
