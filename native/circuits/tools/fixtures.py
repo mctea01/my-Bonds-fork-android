@@ -54,7 +54,8 @@ def prefixes(lengths):
 
 def witness(data, with_hints=False):
     r, blocks, tokens, owners, output = Reader(data), [], [], [], bytearray()
-    hints = {name: [] for name in ("ll_lengths", "ll_codes", "dd_lengths", "dd_codes", "body", "kinds", "starts", "lengths", "distances")}
+    hints = {name: [] for name in ("ll_lengths", "ll_codes", "dd_lengths", "dd_codes", "body", "kinds", "starts", "lengths", "ends", "distances")}
+    token_ends = []
     final = False
     while not final:
         start = r.pos
@@ -74,7 +75,7 @@ def witness(data, with_hints=False):
                 pos = r.pos
                 s = r.bits(8)
                 owners.append(len(tokens)); output.append(s)
-                tokens.append([len(blocks),pos,s,0,0,0])
+                tokens.append([len(blocks),pos,s,0,0,0]); token_ends.append(r.pos)
         else:
             if kind == 1:
                 ll, dd = [8]*144+[9]*112+[7]*24+[8]*8, [5]*32
@@ -120,7 +121,7 @@ def witness(data, with_hints=False):
                 hints["starts"].append(output_start)
                 hints["lengths"].append(len(output)-output_start)
                 hints["distances"].append(distance)
-                tokens.append([len(blocks),pos,s,width,ds,dw])
+                tokens.append([len(blocks),pos,s,width,ds,dw]); token_ends.append(r.pos)
                 if s == 256: break
         hints["body"].append(body); hints["kinds"].append(kind)
         for prefix, widths, capacity in (("ll", ll, 288), ("dd", dd, 32)):
@@ -132,13 +133,18 @@ def witness(data, with_hints=False):
         blocks.append(dict(start=start,end=r.pos,first_token=first,tokens=len(tokens)-first,code_symbols=cs,code_widths=cw,kind=kind,cl_lengths=cl_lengths,cl_codes=cl_codes,expanded_lengths=expanded_lengths,cl_prefixes=prefixes(cl_lengths),ll_prefixes=prefixes(ll+[0]*(288-len(ll))) if kind == 2 else [0]*4320,dd_prefixes=prefixes(dd+[0]*(32-len(dd))) if kind == 2 else [0]*480,cl_first=first_codes(cl_lengths),ll_first=first_codes(ll) if kind == 2 else [0]*16,dd_first=first_codes(dd) if kind == 2 else [0]*16,header_repeats=header_repeats,header_prefixes=header_prefixes,header_suffixes=header_suffixes))
     assert (r.pos+7)//8 == len(data)-4
     assert output == zlib.decompress(data)
+    hints["ends"] = [start+length for start,length in zip(hints["starts"],hints["lengths"])]
+    for token,end in zip(tokens,token_ends):
+        offset,shift = divmod(token[1],8)
+        raw = int.from_bytes(data[offset:offset+7], 'little')
+        token.extend([raw % (1<<shift), raw >> (shift+end-token[1])])
     result = (blocks,tokens,owners,bytes(output))
     return (*result,hints) if with_hints else result
 
 def padded_hints(data, token_capacity, block_capacity):
     *_, hints = witness(data, with_hints=True)
     for key, values in hints.items():
-        size = token_capacity if key in ('starts', 'lengths', 'distances') else block_capacity * (288 if key.startswith('ll_') else 32 if key.startswith('dd_') else 1)
+        size = token_capacity if key in ('starts', 'lengths', 'ends', 'distances') else block_capacity * (288 if key.startswith('ll_') else 32 if key.startswith('dd_') else 1)
         assert len(values) <= size
         values.extend([0]*(size-len(values)))
     return hints
@@ -157,9 +163,9 @@ def nr_fixture(name, data, mutation='', fail=False):
                 for j,x in enumerate(value):
                     if x: lines.append(f'    blocks[{i}].{key}[{j}] = {x};')
             else: lines.append(f'    blocks[{i}].{key} = {value};')
-    lines.append(f'    let mut tokens = [TokenHint {{ block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0 }};{t}];')
+    lines.append(f'    let mut tokens = [TokenHint {{ block:0,start:0,symbol:0,width:0,distance_symbol:0,distance_width:0,prefix:0,suffix:0 }};{t}];')
     for i,token in enumerate(tokens):
-        entries = ','.join(f'{k}:{v}' for k,v in zip(['block','start','symbol','width','distance_symbol','distance_width'],token))
+        entries = ','.join(f'{k}:{v}' for k,v in zip(['block','start','symbol','width','distance_symbol','distance_width','prefix','suffix'],token))
         lines.append(f'    tokens[{i}] = TokenHint {{ {entries} }};')
     hints = padded_hints(data,t,b)
     lines.append(f'    let mut hints = InflateHints {{ '+','.join(key+':'+array(values) for key,values in hints.items())+' };')
@@ -200,15 +206,44 @@ def set_bits(data, pos, width, value):
         index, bit = divmod(pos + i, 8)
         data[index] = (data[index] & ~(1 << bit)) | (((value >> i) & 1) << bit)
 
+def long_codes():
+    """Complete canonical tree with two 15-bit codes, without real input data."""
+    bits = []
+    def put(value,width): bits.extend((value>>i)&1 for i in range(width))
+    def code(value,width): bits.extend((value>>i)&1 for i in reversed(range(width)))
+    put(1,1); put(2,2); put(0,5); put(0,5); put(15,4)
+    cl = [4]*15+[5,0,0,5]
+    for symbol in ORDER: put(cl[symbol],3)
+    encoding = {symbol:(width,value) for (width,value),symbol in table(cl).items()}
+    def emit(symbol):
+        width,value = encoding[symbol]; code(value,width)
+    emit(18); put(65-11,7)
+    for width in range(1,16): emit(width)
+    emit(18); put(138-11,7)
+    emit(18); put(38-11,7)
+    emit(15); emit(0)
+    code(32766,15); code(32767,15)
+    payload = bytes(sum(b<<j for j,b in enumerate(bits[i:i+8])) for i in range(0,len(bits),8))
+    plain = bytes([79])
+    data = b'\x78\x01'+payload+zlib.adler32(plain).to_bytes(4,'big')
+    assert zlib.decompress(data) == plain
+    return data
+
 def regression_cases():
     """Return valid witnesses plus one targeted attack per negative case."""
     dynamic, positions = repeat_dynamic()
+    long = long_codes()
+    long_tokens = witness(long)[1]
     overlap = compressed(b'AB' * 40, zlib.Z_FIXED)
     match = next(i for i, token in enumerate(witness(overlap)[1]) if token[2] > 256)
     copied_byte = witness(overlap)[2].index(match)
     return [
         ('empty_stored', compressed(b'', level=0), None),
         ('repeat_dynamic', dynamic, None),
+        ('long_huffman_codes', long, None),
+        ('rejects_in_range_token_prefix', long, ('token', 0, 6, long_tokens[0][6]^1)),
+        ('rejects_in_range_token_suffix', long, ('token', 0, 7, long_tokens[0][7]^1)),
+        ('rejects_adler_collision_plain', overlap, ('plain_collision', copied_byte)),
         ('rejects_empty_stored_endpoint', compressed(b'', level=0), ('block', 0, 'end', 1)),
         ('rejects_empty_huffman_without_eob', compressed(b''), ('block', 0, 'tokens', -1)),
         ('rejects_overlap_owner', overlap, ('owner', copied_byte, match - 1)),
@@ -225,6 +260,9 @@ def regression_cases():
         ('rejects_table_code', overlap, ('hint', 'll_codes', 65, 1)),
         ('rejects_table_width', overlap, ('hint', 'dd_lengths', 0, 1)),
         ('rejects_starts', overlap, ('hint', 'starts', match, 1)),
+        ('rejects_ends', overlap, ('hint', 'ends', match, 1)),
+        ('rejects_token_prefix', overlap, ('token', match, 6, 255)),
+        ('rejects_token_suffix', overlap, ('token', match, 7, 1<<60)),
         ('rejects_lengths', overlap, ('hint', 'lengths', match, 1)),
         ('rejects_distances', overlap, ('hint', 'distances', match, 1)),
         ('rejects_block_body', overlap, ('hint', 'body', 0, 1)),
@@ -285,7 +323,7 @@ def mutate(data, blocks, tokens, owners, mutation):
     elif kind in ('bits', 'bits_hint'):
         set_bits(data, *args[:3])
         if kind == 'bits_hint': blocks[0]['code_symbols'][args[3]] = args[4]
-    elif kind in ('hint', 'plain'): pass
+    elif kind in ('hint', 'plain', 'plain_collision'): pass
     else: raise ValueError('Unknown synthetic mutation')
 
 def regression_nr(name, data, mutation):
@@ -297,6 +335,10 @@ def regression_nr(name, data, mutation):
     if mutation and mutation[0] == 'hint':
         _,key,index,delta = mutation
         lines.append(f'    hints.{key}[{index}] += {delta};')
+    if mutation and mutation[0] == 'plain_collision':
+        for offset,delta in enumerate((1,-2,1)):
+            index = mutation[1]+offset
+            lines.append(f'    plain[{index}] = plain[{index}] {"+" if delta>0 else "-"} {abs(delta)};')
     if mutation and mutation[0] == 'plain':
         _,index = mutation
         lines.append(f'    plain[{index}] = plain[{index}] ^ 1;')
@@ -309,7 +351,7 @@ def regression_nr(name, data, mutation):
                 for j, item in enumerate(value):
                     if item != original[j]: lines.append(f'    blocks[{i}].{key}[{j}] = {item};')
             elif value != original: lines.append(f'    blocks[{i}].{key} = {value};')
-    keys = ['block', 'start', 'symbol', 'width', 'distance_symbol', 'distance_width']
+    keys = ['block', 'start', 'symbol', 'width', 'distance_symbol', 'distance_width', 'prefix', 'suffix']
     for i, token in enumerate(tokens):
         for j, value in enumerate(token):
             if value != before_tokens[i][j]: lines.append(f'    tokens[{i}].{keys[j]} = {value};')

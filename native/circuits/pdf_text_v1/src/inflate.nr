@@ -29,6 +29,8 @@ pub struct TokenHint {
     pub width: u8,
     pub distance_symbol: u8,
     pub distance_width: u8,
+    pub prefix: u8,
+    pub suffix: u64,
 }
 
 // Immutable advice arrays are bound at constant indices before private reads.
@@ -41,12 +43,52 @@ pub struct InflateHints<let T: u32, let B: u32> {
     pub kinds: [u32; B],
     pub starts: [u32; T],
     pub lengths: [u32; T],
+    pub ends: [u32; T],
     pub distances: [u32; T],
 }
 
 struct Huffman<let N: u32> {
     lengths: [u8; N],
     codes: [u32; N],
+}
+
+global POWERS: [u64;57] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576,2097152,4194304,8388608,16777216,33554432,67108864,134217728,268435456,536870912,1073741824,2147483648,4294967296,8589934592,17179869184,34359738368,68719476736,137438953472,274877906944,549755813888,1099511627776,2199023255552,4398046511104,8796093022208,17592186044416,35184372088832,70368744177664,140737488355328,281474976710656,562949953421312,1125899906842624,2251799813685248,4503599627370496,9007199254740992,18014398509481984,36028797018963968,72057594037927936];
+
+// At most 48 consumed bits plus a seven-bit offset fit in seven bytes.
+// Prefix/suffix range checks make this a unique integer decomposition.
+fn token_window<let N: u32>(data: [u8;N], limit: u32, start: u32,
+    end: u32, encoded: Field, prefix: u8, suffix: u64) {
+    assert(start <= end & end <= limit);
+    let width = end-start;
+    assert(width <= 48);
+    let offset = start/8;
+    let shift = start%8;
+    let mut word: Field = 0;
+    for i in 0..7 {
+        let index = offset+i;
+        // limit=(data_len-4)*8 makes the first four bytes in bounds.
+        // Lookahead beyond the allocated input is canonical zero padding.
+        let byte = if i < 4 { data[index] } else {
+            let safe = if index < N { index } else { 0 };
+            if index < N { data[safe] } else { 0 }
+        };
+        word += (byte as Field)*(POWERS[8*i] as Field);
+    }
+    assert((prefix as u32) < POWERS[shift] as u32);
+    assert(suffix < POWERS[56-shift-width]);
+    // Each encoded component is separately bounded to its declared width.
+    // Both sides are below 2^56, far below the field modulus.
+    assert_eq(word,(prefix as Field)+(POWERS[shift] as Field)
+        *(encoded+(POWERS[width] as Field)*(suffix as Field)));
+}
+
+fn checked_code<let S: u32>(h: Huffman<S>, offset: u32, alphabet: u32,
+    value: u32, width: u32) -> u32 {
+    assert(alphabet <= S & offset <= S-alphabet);
+    assert(value < alphabet & width > 0 & width <= 15);
+    let index = offset+value;
+    assert_eq(h.lengths[index] as u32,width);
+    h.codes[index]
 }
 
 fn bits<let N: u32>(data: [u8; N], limit: u32, pos: u32, width: u32) -> u32 {
@@ -133,11 +175,7 @@ fn symbol_at<let N: u32, let S: u32>(
     data: [u8;N], limit: u32, pos: u32, h: Huffman<S>,
     offset: u32, alphabet: u32, value: u32, width: u32,
 ) -> u32 {
-    assert(alphabet <= S & offset <= S - alphabet);
-    assert(value < alphabet & width > 0 & width <= 15);
-    let index = offset + value;
-    assert_eq(h.lengths[index] as u32, width);
-    assert_eq(bits(data, limit, pos, width), h.codes[index]);
+    assert_eq(bits(data,limit,pos,width),checked_code(h,offset,alphabet,value,width));
     pos + width
 }
 
@@ -335,30 +373,46 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             let block_end = block_ends[b];
             assert(i >= first & i < first+count);
             assert_eq(t.start,if i == first {body[b]} else {previous_end});
-            let mut pos = t.start;
+            let mut consumed = 0u32;
+            let mut encoded: Field = 0;
             let s = t.symbol as u32;
             let mut len = 0u32;
             let mut dist = 0u32;
             if kinds[b] == 0 {
-                assert_eq(s,bits(data,limit,pos,8)); pos += 8; len = 1;
+                assert(s < 256); encoded = s as Field; consumed = 8; len = 1;
             } else {
-                pos = symbol_at(data,limit,pos,ll,b*288,288,s,t.width as u32);
+                encoded = checked_code(ll,b*288,288,s,t.width as u32) as Field;
+                consumed = t.width as u32;
                 if s < 256 { len = 1; }
                 else if s == 256 { assert_eq(i+1,first+count); }
                 else {
                     assert(s <= 285);
                     let code = s-257;
-                    len = length_base[code]+bits(data,limit,pos,length_extra[code]);
-                    pos += length_extra[code];
+                    len = hints.lengths[i];
+                    assert(len >= length_base[code]);
+                    let extra_length = len-length_base[code];
+                    let length_width = length_extra[code];
+                    assert(extra_length < POWERS[length_width] as u32);
+                    encoded += (extra_length as Field)*(POWERS[consumed] as Field);
+                    consumed += length_width;
                     let ds = t.distance_symbol as u32;
                     assert(ds < 30);
-                    pos = symbol_at(data,limit,pos,dd,b*32,32,ds,t.distance_width as u32);
-                    dist = distance_base[ds]+bits(data,limit,pos,distance_extra[ds]);
-                    pos += distance_extra[ds];
+                    let distance_code = checked_code(dd,b*32,32,ds,t.distance_width as u32);
+                    encoded += (distance_code as Field)*(POWERS[consumed] as Field);
+                    consumed += t.distance_width as u32;
+                    dist = hints.distances[i];
+                    assert(dist >= distance_base[ds]);
+                    let extra_distance = dist-distance_base[ds];
+                    let distance_width = distance_extra[ds];
+                    assert(extra_distance < POWERS[distance_width] as u32);
+                    encoded += (extra_distance as Field)*(POWERS[consumed] as Field);
+                    consumed += distance_width;
                     assert(dist <= window & dist <= output_len);
                 }
                 if i+1 == first+count { assert_eq(s,256); }
             }
+            let pos = t.start+consumed;
+            token_window(data,limit,t.start,pos,encoded,t.prefix,t.suffix);
             if i+1 == first+count { assert_eq(pos,block_end); }
             assert(pos <= block_end);
             token_start = output_len; token_len = len; token_distance = dist;
@@ -368,6 +422,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
         }
         assert_eq(starts[i],token_start);
         assert_eq(lengths[i],token_len);
+        assert_eq(hints.ends[i],token_start+token_len);
         assert_eq(distances[i],token_distance);
     }
     assert_eq(output_len,plain_len);
@@ -379,10 +434,10 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
         let byte = if k < plain_len {
             let owner = owners[k];
             assert(owner < total_tokens);
-            assert(k >= starts[owner] & k < starts[owner]+lengths[owner]);
+            assert(k >= starts[owner] & k < hints.ends[owner]);
             let dist = distances[owner];
             if dist == 0 { symbols[owner] as u8 }
-            else { assert(dist > 0 & dist <= k); plain[k-dist] }
+            else { assert(dist <= k); plain[k-dist] }
         } else { 0 };
         assert_eq(plain[k],byte);
         a += plain[k] as Field;
@@ -419,4 +474,26 @@ fn bits_zero_width_at_limit() {
 fn bits_rejects_read_past_limit() {
     let data: [u8;8] = [0xff;8];
     let _ = bits(data,32,17,16);
+}
+
+#[test]
+unconstrained fn bits_all_alignments_and_widths() {
+    let data: [u8;8] = [0xf3,0x9a,0x57,0xc1,0,0,0,0];
+    for pos in 0..8 {
+        for width in 0..17 {
+            let mut expected = 0u32;
+            for j in 0..16 {
+                if j < width {
+                    expected += (((data[(pos+j)/8] as u32) >> ((pos+j)%8)) & 1) << j;
+                }
+            }
+            assert_eq(bits(data,32,pos,width),expected);
+        }
+    }
+}
+
+#[test]
+fn token_window_maximum_width() {
+    let data: [u8;12] = [255,255,255,255,255,255,255,0,0,0,0,0];
+    token_window(data,64,7,55,281474976710655,127,1);
 }
