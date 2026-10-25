@@ -1,0 +1,57 @@
+[
+  {
+    "case": "overlap_control",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "empty_stored",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "repeat_dynamic",
+    "expected": "accept",
+    "passed": true
+  },
+  {
+    "case": "rejects_empty_stored_endpoint",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_empty_huffman_without_eob",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_overlap_owner",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_overlap_distance",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_repeat_without_previous",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_repeat_overrun",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_dynamic_missing_eob",
+    "expected": "reject",
+    "passed": true
+  },
+  {
+    "case": "rejects_eob_endpoint",
+    "expected": "reject",
+    "passed": true
+  }
+]

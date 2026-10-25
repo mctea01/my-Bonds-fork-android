@@ -2,3 +2,4 @@
 /bench/**/Prover.toml
 __pycache__/
 *.log
+/bench/*/Regression.toml

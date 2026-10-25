@@ -8,7 +8,7 @@ import sys
 
 # Explicit repository-local imports also work under python3 -I.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fixtures import compressed, regression_cases
+from fixtures import compressed, regression_cases, multiblock_cases
 from probe_fixture import write
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,20 +17,25 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--nargo', default='nargo')
+    parser.add_argument('--multiblock', action='store_true')
     args = parser.parse_args()
     version = subprocess.check_output([args.nargo, '--version'], text=True)
     if '1.0.0-beta.15' not in version:
         raise RuntimeError('Use the pinned nargo version')
-    subprocess.run([args.nargo, 'compile', '--package', 'inflate_probe'], cwd=ROOT, check=True)
-    prover = ROOT / 'bench/inflate_probe/Regression.toml'
-    cases = [('overlap_control', compressed(b'AB' * 40), None)] + regression_cases()
+    package = 'inflate_multiblock_probe' if args.multiblock else 'inflate_probe'
+    witness_name = f'{package}_regression'
+    subprocess.run([args.nargo, 'compile', '--package', package], cwd=ROOT, check=True)
+    prover = ROOT / 'bench' / package / 'Regression.toml'
+    cases = multiblock_cases() if args.multiblock else [('overlap_control', compressed(b'AB' * 40), None)] + regression_cases()
     results = []
     try:
         for name, data, mutation in cases:
-            write(prover, data, mutation=mutation)
+            write(prover, data, mutation=mutation,
+                  token_capacity=64 if args.multiblock else 32,
+                  block_capacity=3 if args.multiblock else 1)
             result = subprocess.run(
-                [args.nargo, 'execute', '--package', 'inflate_probe',
-                 '--prover-name', 'Regression', '--pedantic-solving', 'regression'],
+                [args.nargo, 'execute', '--package', package,
+                 '--prover-name', 'Regression', '--pedantic-solving', witness_name],
                 cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             # A parsing or compilation failure must never count as rejection.
             rejected = result.returncode == 1 and 'Cannot satisfy constraint' in result.stdout
@@ -41,8 +46,8 @@ def main():
                 raise RuntimeError(f'Unexpected ACIR result for synthetic case {name}; output suppressed')
     finally:
         prover.unlink(missing_ok=True)
-        (ROOT / 'target/regression.gz').unlink(missing_ok=True)
-        target = ROOT / 'target/regressions.json'
+        (ROOT / 'target' / f'{witness_name}.gz').unlink(missing_ok=True)
+        target = ROOT / 'target' / f'{package}-regressions.json'
         target.parent.mkdir(exist_ok=True)
         target.write_text(json.dumps(results, indent=2) + '\n')
 

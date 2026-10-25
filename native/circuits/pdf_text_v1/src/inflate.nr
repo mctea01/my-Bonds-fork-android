@@ -69,8 +69,20 @@ fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) ->
 fn symbol<let N: u32, let S: u32>(
     data: [u8;N], limit: u32, pos: u32, h: Huffman<S>, value: u32, width: u32,
 ) -> u32 {
-    assert(value < S & width > 0 & width <= 15);
-    assert_eq(h.lengths[value] as u32, width);
+    symbol_at(data, limit, pos, h, 0, S, value, width)
+}
+
+// Select only the two scalar entries needed for this symbol. Selecting an
+// entire block's Huffman struct before indexing it expands private array
+// selection for every token in the compiler's SSA.
+fn symbol_at<let N: u32, let S: u32>(
+    data: [u8;N], limit: u32, pos: u32, h: Huffman<S>,
+    offset: u32, alphabet: u32, value: u32, width: u32,
+) -> u32 {
+    assert(alphabet <= S & offset <= S - alphabet);
+    assert(value < alphabet & width > 0 & width <= 15);
+    let index = offset + value;
+    assert_eq(h.lengths[index] as u32, width);
     let mut raw = bits(data, limit, pos, width);
     raw = ((raw & 0x55555555) << 1) | ((raw >> 1) & 0x55555555);
     raw = ((raw & 0x33333333) << 2) | ((raw >> 2) & 0x33333333);
@@ -78,7 +90,7 @@ fn symbol<let N: u32, let S: u32>(
     raw = ((raw & 0x00ff00ff) << 8) | ((raw >> 8) & 0x00ff00ff);
     raw = (raw << 16) | (raw >> 16);
     let reversed = raw >> (32 - width);
-    assert_eq(reversed, h.codes[value]);
+    assert_eq(reversed, h.codes[index]);
     pos + width
 }
 
@@ -152,13 +164,15 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     let limit = (data_len - 4) * 8;
     let empty_l = Huffman { lengths: [0u8;288], codes: [0u32;288] };
     let empty_d = Huffman { lengths: [0u8;32], codes: [0u32;32] };
-    let mut ll = [empty_l;B];
-    let mut dd = [empty_d;B];
+    let mut ll = Huffman { lengths: [0u8;B*288], codes: [0u32;B*288] };
+    let mut dd = Huffman { lengths: [0u8;B*32], codes: [0u32;B*32] };
     let mut body = [0u32;B];
     let mut kinds = [0u32;B];
     let mut total_tokens = 0u32;
     let mut end = 16u32;
     for b in 0..B {
+        let mut block_ll = empty_l;
+        let mut block_dd = empty_d;
         if b < block_count {
             let h = blocks[b];
             assert_eq(h.start,end);
@@ -180,15 +194,23 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
                 assert_eq(h.tokens,len);
                 assert_eq(h.end,pos+len*8);
             } else if kind == 1 {
-                let (l,d) = fixed_tables(); ll[b] = l; dd[b] = d;
+                let (l,d) = fixed_tables(); block_ll = l; block_dd = d;
                 assert(h.tokens > 0);
             } else {
                 let (l,d,p) = dynamic_tables(data,limit,pos,h);
-                ll[b] = l; dd[b] = d; pos = p;
+                block_ll = l; block_dd = d; pos = p;
                 assert(h.tokens > 0);
             }
             body[b] = pos;
             end = h.end;
+        }
+        for j in 0..288 {
+            ll.lengths[b*288+j] = block_ll.lengths[j];
+            ll.codes[b*288+j] = block_ll.codes[j];
+        }
+        for j in 0..32 {
+            dd.lengths[b*32+j] = block_dd.lengths[j];
+            dd.codes[b*32+j] = block_dd.codes[j];
         }
     }
     // Exactly one zlib stream: only the final partial byte may be ignored.
@@ -220,7 +242,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             if kinds[b] == 0 {
                 assert_eq(s,bits(data,limit,pos,8)); pos += 8; len = 1;
             } else {
-                pos = symbol(data,limit,pos,ll[b],s,t.width as u32);
+                pos = symbol_at(data,limit,pos,ll,b*288,288,s,t.width as u32);
                 if s < 256 { len = 1; }
                 else if s == 256 { assert_eq(i+1,h.first_token+h.tokens); }
                 else {
@@ -230,7 +252,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
                     pos += length_extra[code];
                     let ds = t.distance_symbol as u32;
                     assert(ds < 30);
-                    pos = symbol(data,limit,pos,dd[b],ds,t.distance_width as u32);
+                    pos = symbol_at(data,limit,pos,dd,b*32,32,ds,t.distance_width as u32);
                     dist = distance_base[ds]+bits(data,limit,pos,distance_extra[ds]);
                     pos += distance_extra[ds];
                     assert(dist <= window & dist <= output_len);

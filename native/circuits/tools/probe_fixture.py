@@ -23,9 +23,9 @@ def small_dynamic():
     assert zlib.decompress(data)==b'A'
     return data
 
-def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=None):
+def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=None,block_capacity=1):
     blocks,tokens,owners,plain=witness(data)
-    assert len(blocks)==1 and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
+    assert len(blocks)<=block_capacity and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
     data=list(data)
     if isinstance(mutation, tuple): mutate(data, blocks, tokens, owners, mutation)
     if mutation=='checksum': data[-1]^=1
@@ -33,7 +33,9 @@ def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=N
     if mutation=='owner': owners[0]=1
     fields={'data':data+[0]*(capacity-len(data)),'data_len':len(data),'plain_len':len(plain),
         'owners':owners+[0]*(plain_capacity-len(owners)),'expected':list(plain)+[0]*(plain_capacity-len(plain))}
+    if block_capacity > 1: fields['block_count'] = len(blocks)
     lines=[f'{k} = {v}' for k,v in fields.items()]
+    blocks += [dict(start=0,end=0,first_token=0,tokens=0,code_symbols=[0]*320,code_widths=[0]*320)]*(block_capacity-len(blocks))
     for b in blocks:
         lines.append('[[blocks]]')
         lines.extend(f'{k} = {v}' for k,v in b.items() if k!='kind')
