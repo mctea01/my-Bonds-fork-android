@@ -174,44 +174,121 @@ ACIR 後量測。以上是迴圈容量比例與架構上的估計，並非完整
 效能預測；沒有以小 probe 線性外推完整 gate 數，沒有改動 profile
 或替代正式完整電路的驗收。
 
-### Round 5 容量調整與中斷檢查點（2026-10-25，未完成）
+### Round 5 容量、分維度基準與最佳化（2026-10-25）
 
 整合分支 `b35710616411428c93769c0bf8ee7d132eb797c8` 已包含在
-工作分支；容量修改與量測工具提交為 `f79397c`。
-依第 3.7 節，完整容量改為 **8,192 compressed／40,960 plain／
-6,144 tokens／4 blocks**。本輪尚未加入任何 inflate 最佳化，
-下表全部是容量調整後、最佳化前的基準。
+工作分支；容量基準為 `f79397c`，位元讀取最佳化為 `9717d17`。
+完整容量依第 3.7 節改為 **8,192 compressed／40,960 plain／
+6,144 tokens／4 blocks**；沒有進一步縮小容量。
 
-本次實際環境為 AMD EPYC 9V74、**2 vCPU／8 GiB cgroup RAM**，
-與 Round 4 的 4 vCPU／32 GiB 不同。工具仍為 nargo 1.0.0-beta.15
-（noirc `83245db91dcf63420ef4bcbbd85b98f397fee663`）、bb 2.1.9。
-各組以獨立程序、新 temporary package 依序執行，沒有 ACIR 快取。
-`nargo info` 包含完整編譯並回報 opcodes；成功後另跑 `bb gates`。
-每組均設 `--seconds 1800 --address-space-gib 24`，但實體容器
-先受到 8 GiB 限制，**不能將本次 OOM 當成 24 GiB 預算下的失敗**。
+實際環境為 Linux x86_64、AMD EPYC 9V74、**2 vCPU／8 GiB cgroup
+RAM**，與 Round 4 的 4 vCPU／32 GiB 不同。工具仍為 nargo
+1.0.0-beta.15（noirc `83245db91dcf63420ef4bcbbd85b98f397fee663`）、
+bb 2.1.9。各組以獨立程序、新 temporary package 依序執行，沒有 ACIR
+快取。`nargo info` 包含完整編譯；成功後另跑 `bb gates`。
+預算均為 `--seconds 1800 --address-space-gib 24`；24 GiB 是
+RLIMIT_AS 位址空間上限。實體容器先受到 8 GiB 限制，**不能把本次
+OOM 寫成 24 GiB 預算下的失敗，也不能據此推定 prove 成本**。
 
 所有組合 N=8,192；B=區塊、T=記號、P=輸出位元組容量：
 
-| B | T | P | 結果 | 編譯時間 | 峰值 RSS（KiB） | ACIR opcodes | gates |
+| B | T | P | 最佳化前結果 | 編譯時間 | 峰值 RSS（KiB） | ACIR opcodes | gates |
 |---:|---:|---:|---|---:|---:|---:|---:|
 | 4 | 6,144 | 40,960 | cgroup OOM，SIGKILL，無 ACIR | 257.40 s | 8,302,960 | 未取得 | 未取得 |
 | 1 | 6,144 | 40,960 | cgroup OOM，SIGKILL，無 ACIR | 205.75 s | 8,307,004 | 未取得 | 未取得 |
 | 4 | 512 | 1,024 | 編譯與 gates 完成 | 242.89 s | 3,700,048 | 1,735,520 | 5,840,513 |
 | 1 | 6,144 | 1,024 | cgroup OOM，SIGKILL，無 ACIR | 218.20 s | 8,307,964 | 未取得 | 未取得 |
-| 1 | 512 | 40,960 | 執行環境離線，未收到最終結果 | 未取得 | 未取得 | 未取得 | 未取得 |
+| 1 | 512 | 40,960 | cgroup OOM，SIGKILL，無 ACIR | 202.77 s | 8,307,364 | 未取得 | 未取得 |
 
-第三組的 gate 工具另耗時 15.46 s；ACIR SHA-256 為
+第五組的最終 JSON 已在環境恢復後找回；上表取代先前四組的中斷
+檢查點。原始紀錄是 `native/circuits/validation/m3b-round5-baseline-*.json`；
+`m3b-round5-checkpoint.json` 彙整全部五組。成功組 gate 工具另耗時
+15.46 s，ACIR SHA-256 為
 `bd0605ff682e47453c31d1c09bec720c3b49dd7c7398dce099b42f32eba1f723`。
-已完成的數據由工具回傳記錄轉存至
-`native/circuits/validation/m3b-round5-checkpoint.json`；第五組不能
-以最後一次程序觀察值充當完成測量，也尚不能確認環境離線的原因。
 
-目前只能確認：單區塊、1,024-byte 輸出仍會在 6,144 tokens 時耗盡
-此容器記憶體，記號解碼成本需要處理；區塊表不是唯一的瓶頸。
-輸出迴圈的獨立測量尚未完成，不能據此排名全部成本，也沒有線性
-外推完整 gate、prove 或 RSS。
+單區塊時，6,144-token／1,024-byte 與 512-token／40,960-byte
+兩組都耗盡此容器，表示記號解碼與輸出迴圈都需處理，區塊表不是
+唯一瓶頸。由失敗紀錄仍不能精確排名兩者總成本，沒有線性外推
+完整 gates、prove 或 RSS。
 
-最佳化比較、完整容量重測、完整 prove／verify／proof 大小、遞迴
-驗證 gate 實測均 **尚未完成**。尚未達成完整 M3b 或桌面 1 分鐘／
-3 GiB 驗收。恢復後先核對第五組是否有完整記錄，否則重跑，再比較
-必要欄位查表、固定表編譯期建立與位元讀取的候選最佳化。
+#### 同容量候選比較
+
+每個候選**分別**套用到容量基準，沒有混合變更。下表固定
+N=8,192／B=4／T=512／P=1,024；候選另設 6 GiB RSS 保護線，
+三組均完成且未觸及保護線。時間是單次觀察值，不是統計信賴區間。
+
+| 實作 | 編譯時間 | 峰值 RSS（KiB） | ACIR opcodes | gates | 決定 |
+|---|---:|---:|---:|---:|---|
+| 容量基準 | 242.89 s | 3,700,048 | 1,735,520 | 5,840,513 | 比較基準 |
+| 必要欄位投影後查表（scalar） | 244.22 s | 3,567,476 | 1,723,726 | 5,817,272 | 不採用；gates 僅少 0.40%，時間未改善 |
+| 固定 Huffman 表移至編譯期（fixed） | 246.58 s | 3,460,408 | 1,735,520 | 5,840,513 | 不採用；opcodes／gates 相同 |
+| 三 byte 直接位元讀取（bits） | 95.17 s | 2,559,160 | 1,408,180 | 5,265,212 | 採用 |
+
+採用版本 gates 減少 **9.85%**，本次編譯時間少 60.82%、峰值 RSS
+少 30.83%。`bits()` 的 width 上限是 16、位移上限是 7，最多讀
+23 bits，第四個 byte 不影響遮罩後結果。所有正式呼叫的 limit 是
+`(data_len-4)*8`，且 `data_len<=N`、`pos<=limit`，因此
+`offset<=N-4`；包含 limit 位置的零寬度讀取，三個索引都在陣列內。
+移除冗餘的索引夾限與第四次讀取，保留 width／limit 斷言及陣列
+邊界約束，沒有 unconstrained 路徑。新增最大寬度跨三 byte、零寬度
+尾界與越界拒絕測試。各候選的 patch、來源 hash 及量測 JSON 均在
+`validation/m3b-round5-{scalar,fixed,bits}*`；patch 分別適用於 `f79397c`。
+
+#### 最佳化後完整容量重測
+
+| B | T | P | 結果 | 經過時間 | 峰值 RSS（KiB） | ACIR／gates／proof |
+|---:|---:|---:|---|---:|---:|---|
+| 4 | 6,144 | 40,960 | 6 GiB RSS guard 主動中止 | 113.70 s | 6,292,780 | 未取得 |
+
+此組仍設 1,800 秒／24 GiB RLIMIT_AS。為避免再次使 8 GiB 執行環境
+離線，另以 `--rss-limit-gib 6` 保護工作階段；這是**保護性中止**，
+不是 OOM、不是完成編譯所需 RSS，也不是 24 GiB 預算失敗。紀錄為
+`validation/m3b-round5-optimized-full.json`。完整容量尚未完成編譯，
+完整 prove／verify／proof 大小均未量得，因此尚未滿足桌面 1 分鐘／
+3 GiB 的先決條件，沒有開始剩餘 M3b 或自行採用切分方案。
+
+小容量 correctness probe（N=128／P=128／T=32／B=1，合成 dynamic
+Huffman）已重新產生兩次 UltraHonk ZK proof 並獨立驗證：234,992
+opcodes、571,668 gates；first／warm prove 26.65／22.33 s、峰值
+1,745,944／1,744,828 KiB；verify 19.48 ms；proof 16,256 bytes，
+public inputs 0 bytes。first 包含 CRS 首次下載；compile 可能使用快取。
+方法為 `-s ultra_honk --oracle_hash poseidon2`，沒有 `--disable_zk`。
+這是元件正確性測量，不能替代完整容量驗收。完整紀錄與新 hash 見
+`validation/m3b-round5-inflate-probe.json`、`VERSIONS`；Round 4
+環境不同，兩輪 prove 時間不作直接優化比較。
+
+#### UltraHonk ZK 遞迴 verifier 成本
+
+bb 2.1.9 原生 `gates` 的 `CircuitStats` 以 `UltraCircuitBuilder`
+呼叫期待 flavor 的 `_create_program_metadata`，使 `honk_recursion=0`，
+遇遞迴 opcode 時拒絕。量測工具保留此失敗，再用**同版本**
+`@aztec/bb.js` 的既有 WASM API
+`acirGetCircuitSizes(bytecode, false, true)`；沒有修改 bb 原始碼。
+兩條路徑都 finalize UltraCircuitBuilder 並讀 finalized gate count。
+WASM 固定一個 thread；下列時間／RSS 是 gate 建構成本，非 prove。
+
+| verifier 數 | 每份 application public inputs | gates（實測） | dyadic size | gate 建構時間 | 峰值 RSS（KiB） |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 32 | 704,869 | 1,048,576 | 3.23 s | 487,044 |
+| 2 | 32 | 1,471,929 | 2,097,152 | 5.25 s | 872,660 |
+
+Noir 編譯分別 0.156／0.156 s、60,080／60,376 KiB。使用 proof
+type 7（UltraHonk ZK）、508 proof fields、115 VK fields；32 個
+應用公開輸入是量測選項，**不是正式邊界 ABI**。程式與結果為
+`tools/recursion_profile.py`、`tools/recursion_gates.mjs`、
+`validation/m3b-round5-recursion-{one,two}.json`。bb.js 2.1.9 是 MIT
+授權的外部開發量測工具，不打包進 App，見 `native/circuits/NOTICE`。
+
+這些 harness 只量 verifier black box，使用 backend 的 dummy
+assignments；沒有有效遞迴 proof、可信 VK 綁定或段間狀態檢查。
+具體切分提案在 `native/circuits/IMPLEMENTATION.md` 與 PR #21，
+仍待 Claude 決定。n 個葉的二元樹有 n-1 個內節點、2(n-1) 次子證明
+驗證，這是呼叫數，不能把上表倍乘當作整體實測。Merkle 視窗、
+承諾、SHA、lexer、可信 VK 與狀態連接成本都須另測。
+
+Round 5 最終檢查：`nargo test` 36 passed；ACIR regressions 11／11、
+`--multiblock` 4／4（合計 5 正向、10 約束拒絕負向）；要求的三個
+Gradle tasks 成功，362 tests、0 failures／errors、29 skipped。
+兩個 round-trip 測試均執行通過；無 cargo 導致既有 native build
+自動略過，relay 時序測試亦 skipped，不能視為該原生路徑驗收。
+沒有 Rust 修改，沒有執行 cargo test。

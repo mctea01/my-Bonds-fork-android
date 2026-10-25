@@ -1,5 +1,8 @@
 # M3a 電路實作報告
 
+本檔保留 M3a 與 Round 4 的歷史報告。最新容量、測試與限制以後方
+「M3b 檢查點（Round 5）」為準；完整 M3b 尚未完成。
+
 電路：`pdf_text_v1` component library，里程碑 M3a
 基準：`552204f4132839c1a63ac3fe7b3b3ad234dd8862`
 分支：`codex/p4-wp3a-m3a`
@@ -186,40 +189,63 @@ SIGABRT；峰值 RSS 24,139,060 KiB，位址空間預算為 24 GiB。沒有
 及規格凍結提案。不得把小容量 probe 當成完整電路驗收。Claude 仍需
 獨立審查 hint 綁定與新的平坦表索引；本次回歸測試不取代密碼學審查。
 
-## M3b 恢復檢查點（Round 5，中斷，尚未完成）
+## M3b 檢查點（Round 5，尚未完成完整電路）
 
-基準：整合分支 `b35710616411428c93769c0bf8ee7d132eb797c8` 已在
-原工作分支歷史中，開始時 merge 回報 already up to date。
-`f79397c` 將 inflate 上限與完整容量 harness 改成 N=8,192、
-P=40,960、T=6,144、B=4，並讓 `compile_profile.py` 接受分維度
-參數、記錄 opcodes、以 bb 取得 gates，保留失敗與容器限制。
+基準整合分支 `b35710616411428c93769c0bf8ee7d132eb797c8` 已包含在
+工作分支。`f79397c` 將 inflate 上限與完整容量 harness 設為
+N=8,192、P=40,960、T=6,144、B=4；`9717d17` 採用三 byte 位元
+讀取。只修改本目錄與 `docs/research/p4-benchmarks.md`，沒有改動
+其他工作包的介面、退路或相容行為。
 
-這是規格已核准的容量調整，沒有放寬約束，沒有新增 unconstrained
-接受路徑或修改其他工作包介面。既有邊界與多區塊測試原封保留。
+### 完成範圍與量測限制
 
-### 已完成與未完成
+- 五組要求的容量基準全部有最終記錄；第五組在環境恢復後找回。
+  四組在實際 **8 GiB cgroup** 下 OOM；B=4／T=512／P=1,024 成功，
+  1,735,520 opcodes／5,840,513 gates。所有 N=8,192，設 1,800 秒／
+  24 GiB RLIMIT_AS；不能把實體容器限制稱為 24 GiB 預算失敗。
+- 三項候選分別從容量基準測量：必要欄位投影 gates 僅少 0.40%，
+  固定表移至編譯期的 gates 相同，兩者不採用；patch 與數據保留
+  供重現。三 byte 位元讀取採用後，同容量降至 1,408,180 opcodes／
+  5,265,212 gates（少 9.85%），編譯 95.17 s、2,559,160 KiB。
+- `bits()` 最多 16 bits、最大位移 7，最多跨三個 bytes；所有正式
+  呼叫的 `limit=(data_len-4)*8`，故 `offset<=N-4`，包含尾界的
+  width=0。直接索引保留陣列界限與 width／limit 約束，第四個 byte
+  及索引夾限是冗餘工作。沒有放寬接受條件，沒有 unconstrained 路徑。
+- 最佳化後完整容量於 113.70 s、6,292,780 KiB 觸及新設 6 GiB
+  RSS guard，主動中止，無 ACIR。guard 用於保護 8 GiB 工作階段；
+  不是 OOM、完整編譯成本或 24 GiB 預算失敗。
+- 完整 `pdf_text_v1_1p` 尚未實作，完整 prove／verify／proof 大小
+  及正式 ACIR／VK 未取得。桌面 1 分鐘／3 GiB 的先決條件未達成，
+  不進行剩餘 M3b：lexer、運算子表、錨點、欄位承諾、述詞、Word
+  類規則、`PUBLIC_SPEC.md` 與 Z8／Z9／Z13；也沒有開始 M3c。
+- `VERSIONS` 更新的是小容量 `inflate_probe` 的 ACIR／VK hash，
+  不是正式資產凍結。合成 dynamic Huffman 的 ZK first／warm prove
+  26.65／22.33 s、verify 19.48 ms、proof 16,256 bytes；gates 571,668。
+  詳細數據、各組來源 hash 與差異分析見 benchmark 的 Round 5 節。
+- PR #21 保持 draft。以下切分提案沒有實作，須由 Claude 決定。
 
-- 已完成四組基準量測；三組在 **8 GiB cgroup** 下 OOM，一組編譯
-  成功，1,735,520 opcodes／5,840,513 gates。詳細表格在 benchmark
-  的「Round 5 容量調整與中斷檢查點」。
-- 第五組 B=1、T=512、P=40,960 執行中環境離線，尚未收到最終記錄。
-  不將中途 RSS／時間或環境離線當作已完成的 OOM 量測。
-- 各組設有 1,800 秒／24 GiB RLIMIT_AS，但容器實際只有 2 vCPU／
-  8 GiB，不能把結果寫成「24 GiB 仍無法編譯」。
-- 候選最佳化只在工作區準備，**沒有加入分支，也沒有前後實測**。
-  包含區塊／記號必要欄位投影、固定 Huffman 表編譯期建立，以及
-  最多 16 bits 的讀取改用三個 bytes；是否採用仍待驗證。
-- Round 5 的 `nargo test`、兩組 ACIR regressions 與要求的 Gradle
-  指令 **尚未執行完成**。前述 Round 4 測試數是歷史紀錄，不能當成
-  本輪驗收。Python 工具已通過語法編譯；四區塊診斷 harness 已實際
-  完成 Noir 編譯與 bb gates。
-- 沒有完整 PDF 電路、完整 prove／verify／proof 大小或新的正式
-  ACIR／VK；沒有更新正式釘選。既有 `VERSIONS` 中的 probe hash
-  仍是 Round 4 資產，恢復後需對最終來源重新量測。
-- PR #21 保持 draft。沒有開始 M3c 或自行拆電路。Z8／Z9／Z13、
-  lexer、錨點、欄位承諾、述詞與 Word 類規則仍未完成。
+### 本輪驗證
+
+- `nargo test`：36 tests passed，包含三 byte 最大寬度、零寬度尾界、
+  越界拒絕；原有多區塊、不同 Huffman 表與負向案例保留。
+- `python3 -I tools/regressions.py`：11／11；含 `--multiblock`：4／4。
+  合計 5 正向、10 負向；負向必須回報 `Cannot satisfy constraint`，
+  解析／編譯錯誤不算通過。結果在 `validation/m3b-round5-*-regressions.json`。
+- 小容量 probe 兩份 UltraHonk ZK proof 均生成成功，獨立 verify 成功；
+  沒有使用 `--disable_zk`，沒有輸出私密輸入或提交大型資產。
+- Python 工具語法、RSS guard 成功／timeout／RSS 中止路徑已檢查，
+  新 profiler 的完整容量保護中止與遞迴 fallback 均實際執行。
+- `./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`
+  成功（4m 9s）；362 tests、0 failures／errors、29 skipped。
+  `signedPackRoundTrip` 與 `signedRequestRoundTrip` 均被發現並通過。
+  環境沒有 cargo，既有 auto 設定略過 native build；
+  `deviceVerifierBehindTheRelay` 被發現但 skipped，不能宣稱已驗證
+  relay 時序修正。本輪沒有修改 Rust，未執行 cargo test。
+  使用 2 workers、JVM Xmx3g、Kotlin in-process 配合 8 GiB 環境；
+  詳見 `validation/m3b-round5-gradle.json`。
 
 ### 遞迴合併設計草案（待 Claude 決定，沒有實作）
+
 
 候選切分以輸出位置為主：每段最多處理 1,024 個輸出位元組或
 512 個記號，先到者結束；整份文件的原容量保持不變。跨段的
@@ -254,27 +280,36 @@ private witness，對外只暴露第 3.6 節的正式公開輸入，不附送葉
 與中間 inputs，避免洩漏位置與 Adler 中間值。每層均使用 ZK，
 驗證金鑰必須以常數或已驗證 allowlist 綁定，不接受 prover 自選 VK。
 
-成本估計只列可確定的呼叫數：n 個葉證明的二元樹有 n-1 個內節點、
-2(n-1) 次子證明驗證。**尚未取得遞迴驗證 gate 實測**，不能宣稱
-方案已符合時間／記憶體門檻。已核對 bb 2.1.9 的
+n 個葉證明的二元樹有 n-1 個內節點、2(n-1) 次子證明驗證。
+已核對 bb 2.1.9 的
 [bb_proof_verification](https://github.com/AztecProtocol/aztec-packages/blob/v2.1.9/barretenberg/noir/bb_proof_verification/src/lib.nr)：
-UltraHonk ZK 使用 proof type 7、508 proof fields、115 VK fields；
-恢復後須分別量一個與兩個 verifier，並記錄 application public input
-數。狀態連接、Merkle paths、承諾、SHA、lexer 與葉證明成本另計，
-不能把單一 verifier gates 倍乘當成整體實測。
+UltraHonk ZK 使用 proof type 7、508 proof fields、115 VK fields。
+每份 32 個 application public inputs 時，一個／兩個 verifier 的
+**獨立實測**為 704,869／1,471,929 gates，dyadic size 為
+1,048,576／2,097,152；WASM gate 建構為 3.23／5.25 s、峰值
+487,044／872,660 KiB。不是 prove 時間或完整聚合成本。
+
+bb 2.1.9 原生 `gates` 的 `CircuitStats` 把 builder 當作 flavor
+傳入 metadata helper，留下 `honk_recursion=0`，因而拒絕遞迴 opcode。
+`tools/recursion_profile.py` 保留原生失敗，透過同版 bb.js 既有
+`acirGetCircuitSizes(bytecode, false, true)` 量測；沒有修改 backend。
+結果、API、資源限制與 hash 在 `validation/m3b-round5-recursion-*.json`。
+只有 verifier black box，沒有有效遞迴 proof、可信 VK 綁定或段間狀態
+檢查；32 個 inputs 也不是正式 ABI。不能依賴未核實的 `key_hash`
+參數代替完整 VK 的常數／allowlist 綁定。
+
+狀態連接、Merkle paths、承諾、SHA、lexer 與葉證明成本另計。
+不能把 verifier gates 倍乘當成整體實測，不能宣稱方案已符合
+時間／記憶體門檻。新增 optional `@aztec/bb.js` 2.1.9 為 MIT
+授權外部開發工具，記於本目錄 `NOTICE`，沒有打包進 App。
 
 採納前需驗證錯誤 VK／public inputs、交換或跳段、視窗置換、
 overlap、錯誤 Adler／終態等負向案例，並產生與獨立驗證完整聚合 proof。
 本草案不取代規格審查，也不構成可發布的切分實作。
 
-### 恢復順序
+### 下一步
 
-1. 恢復環境後先 fetch／merge 原工作分支，保留工作區未提交檔案；
-   中斷期間透過 GitHub 連接器補了量測與文件檢查點。
-2. 核對實際 RAM／CPU；依既定 1,800 秒／24 GiB 位址空間預算重跑
-   未完成的第五組，並清楚區分容器限制與編譯預算。
-3. 比較候選最佳化，附前後數據與回歸測試，再重測完整容量。
-4. 補遞迴 gate 實測，完成本輪 Noir／ACIR／Gradle 檢查及 PR 說明；
-   只有完整容量通過桌面 prove 門檻時才進入剩餘 M3b 實作。
-
-新增第三方元件：無。沒有修改 Rust、Android 或其他工作包。
+Claude 先審查新的位元讀取邊界推導與遞迴狀態綁定提案，再決定
+後續架構或其他保留容量的最佳化。不能把本輪的保護性中止推論成
+24 GiB 失敗，也不能把小 probe 或 verifier 成本當作完整 M3b 驗收。
+正式電路與 ABI 凍結仍需依工作包流程完成。
