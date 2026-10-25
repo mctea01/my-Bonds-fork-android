@@ -29,10 +29,14 @@ fn bits<let N: u32>(data: [u8; N], limit: u32, pos: u32, width: u32) -> u32 {
     assert(pos <= limit & width <= limit - pos);
     let offset = pos / 8;
     let mut word = 0u32;
-    for i in 0..4 {
+    // At most 16 bits starting at bit offset 7 occupy 23 bits: three bytes.
+    // A fourth byte cannot affect the masked result.
+    for i in 0..3 {
         let index = offset + i;
-        let safe_index = if index < N { index } else { 0 };
-        let byte = if index < N { data[safe_index] as u32 } else { 0 };
+        // Every caller uses limit=(data_len-4)*8 with data_len<=N.
+        // Thus offset<=N-4, including a zero-width read at the limit.
+        // The three indices are in range; keep the array's bounds constraints.
+        let byte = data[index] as u32;
         word = word | (byte << (i * 8));
     }
     (word >> (pos % 8)) & ((1u32 << width) - 1)
@@ -295,4 +299,24 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     assert_eq(b*65536+a,checksum);
     for i in 0..N { if i >= data_len { assert_eq(data[i],0); } }
     out
+}
+
+// The maximum-width unaligned read spans all three bytes. The fourth byte
+// must not contribute, and zero-width reads at the deflate limit remain valid.
+#[test]
+fn bits_three_byte_boundary() {
+    let data: [u8;8] = [0x80,0x12,0x34,0xaa,0,0,0,0];
+    assert_eq(bits(data,32,7,16),0x6825);
+}
+
+#[test]
+fn bits_zero_width_at_limit() {
+    let data: [u8;8] = [0x80,0x12,0x34,0xaa,0xff,0xff,0xff,0xff];
+    assert_eq(bits(data,32,32,0),0);
+}
+
+#[test(should_fail)]
+fn bits_rejects_read_past_limit() {
+    let data: [u8;8] = [0xff;8];
+    let _ = bits(data,32,17,16);
 }
