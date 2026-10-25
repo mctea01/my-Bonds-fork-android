@@ -9,8 +9,9 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
 | `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
+| `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
-每個平台都連結零知識證明的 OpenAC 年齡證明後端（Android、Windows、Linux、macOS）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
+每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
 ## 版本號
 
@@ -49,6 +50,7 @@ JDK 9 以後 keytool 預設建立 PKCS12 keystore，金鑰密碼固定等於 key
 | `DEBUG_KEYSTORE_BASE64` | debug keystore 的 base64，固定 debug APK 的簽章 |
 | `DEBUG_KEYSTORE_PASSWORD` | 只有 debug keystore 密碼不是 `android` 時才設 |
 | `DEBUG_KEY_ALIAS` | 只有 debug keystore 內有多把金鑰時才設 |
+| `ZK_TEMPLATES_KEY` | 版型包的發布私鑰（P-256 PEM），公鑰釘選在 App；見 templates/README.md |
 
 建立 debug keystore（PowerShell，與 release 金鑰分開保管）：
 

@@ -1,6 +1,6 @@
 # P4 零知識證明：總體設計與約定
 
-撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
+撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行。2026-10-25：年齡證明、zkTLS 與 mdoc ZK 已實作並可使用，zkPDF 的電路與證明器開發中（各工作包狀態見 p4-work-packages.md 第 2.1 節）；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
 
 標記：**【確認】** 已讀過原始碼、規格或實測；**【推論】** 依已知資料推論，尚待工作包實測。
 
