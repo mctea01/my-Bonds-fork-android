@@ -3,10 +3,12 @@
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import resource
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -43,6 +45,66 @@ def run_limited(command, stdout, stderr, seconds, limits, rss_limit_gib=None):
         return child.returncode, 'compiled' if child.returncode == 0 else 'compiler_failed'
 
 
+def measured_limited(command, log, seconds, limits, rss_limit_gib):
+    """Use fresh child accounting for each witness/prover/verifier process."""
+    pid = os.fork()
+    if pid == 0:
+        start = time.monotonic()
+        with log.open('w') as output:
+            code, status = run_limited(command, output, output, seconds, limits, rss_limit_gib)
+        result = dict(seconds=time.monotonic()-start, exit_code=code,
+                      status={"compiled":"completed", "compiler_failed":"process_failed"}.get(status,status),
+                      peak_rss_kib=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
+        log.with_suffix('.measurement.json').write_text(json.dumps(result))
+        os._exit(0)
+    _, status = os.waitpid(pid, 0)
+    if status != 0:
+        raise RuntimeError('Measurement worker failed')
+    return json.loads(log.with_suffix('.measurement.json').read_text())
+
+
+def prove_profile(args, root, acir, record, limits):
+    # Explicit local imports remain available under python3 -I.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from fixtures import compressed
+    from probe_fixture import write
+    prover = root/'Prover.toml'
+    write(prover, compressed(b'A'*args.plain), capacity=args.compressed,
+          plain_capacity=args.plain, token_capacity=args.tokens, block_capacity=args.blocks)
+    if args.blocks == 1:
+        prover.write_text('block_count = 1\n'+prover.read_text())
+    args.crs.mkdir(parents=True, exist_ok=True)
+    proof = root/'target/proof'
+    proof.mkdir()
+    record['proof_scope'] = 'Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement'
+    record['zero_knowledge'] = True
+    record['oracle_hash'] = 'poseidon2'
+    record['prove'] = {}
+    commands = [('witness', [args.nargo, 'execute', '--program-dir', str(root), '--pedantic-solving'])]
+    for run in ('first', 'warm'):
+        commands.append((run, [args.bb, 'prove', '-s', 'ultra_honk', '--oracle_hash', 'poseidon2',
+            '-b', str(acir), '-w', str(root/'target/full_inflate_preflight.gz'),
+            '-o', str(proof), '--write_vk', '-c', str(args.crs.resolve())]))
+    commands.append(('verify', [args.bb, 'verify', '-s', 'ultra_honk', '--oracle_hash', 'poseidon2',
+        '-k', str(proof/'vk'), '-p', str(proof/'proof'), '-i', str(proof/'public_inputs'),
+        '-c', str(args.crs.resolve())]))
+    for name, command in commands:
+        result = measured_limited(command, args.output.with_suffix(f'.{name}.log'),
+                                  args.seconds, limits, args.rss_limit_gib)
+        if name in ('first', 'warm'):
+            record['prove'][name] = result
+        else:
+            record[name] = result
+        if (proof/'proof').exists() and (proof/'vk').exists():
+            record['proof_bytes'] = (proof/'proof').stat().st_size
+            record['public_input_bytes'] = (proof/'public_inputs').stat().st_size
+            record['vk_sha256'] = hashlib.sha256((proof/'vk').read_bytes()).hexdigest()
+        args.output.write_text(json.dumps(record, indent=2)+'\n')
+        if result['exit_code'] != 0:
+            return False
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--nargo', default='nargo')
@@ -52,11 +114,15 @@ def main():
     parser.add_argument('--tokens', type=int, default=6144)
     parser.add_argument('--blocks', type=int, default=4)
     parser.add_argument('--bb', help='Pinned bb 2.1.9; measure gates after compilation')
+    parser.add_argument('--prove', action='store_true', help='Also measure a synthetic full-output component proof')
+    parser.add_argument('--crs', type=Path, help='External CRS cache for --prove')
     parser.add_argument('--address-space-gib', type=int, default=24)
     parser.add_argument('--rss-limit-gib', type=float,
                         help='Optional session-protection guard; reported separately from compiler failure')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if args.prove and (not args.bb or not args.crs):
+        parser.error('--prove requires --bb and --crs')
     if args.seconds <= 0 or args.address_space_gib <= 0:
         parser.error('Resource budgets must be positive')
     if args.rss_limit_gib is not None and args.rss_limit_gib <= 0:
@@ -130,9 +196,12 @@ def main():
                 if gate_code == 0:
                     record['gates'] = json.loads(gate_log.read_text())
                     record['acir_opcodes'] = record['gates']['functions'][0]['acir_opcodes']
+        proof_completed = not args.prove
+        if code == 0 and args.prove:
+            proof_completed = prove_profile(args, root, acir, record, limits)
         args.output.write_text(json.dumps(record, indent=2) + '\n')
         print(json.dumps(record, indent=2))
-        if code != 0:
+        if code != 0 or not proof_completed:
             raise SystemExit(1)
 
 
