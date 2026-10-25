@@ -60,6 +60,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.seconds
 
 /** Drives the shared WalletModel (the code behind both the Android and desktop UI) against the DIW test servers. */
@@ -944,6 +945,96 @@ class WalletModelE2eTest {
         assertEquals(TrustTier.T2, after.tier)
         assertEquals(TrustEnvironment.USER, after.environment)
         assertEquals("Partner", after.anchorName)
+    }
+
+    /**
+     * The production server: the access token goes only to that server, its signing root is trusted only after the
+     * fingerprint the wallet computes matches the one the server states, and a changed root is flagged, not accepted.
+     */
+    @Test
+    fun productionServerTokenAndTrust() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        val token = "token-for-the-host-0123"
+        suspend fun root(cn: String) = org.multipaz.mdoc.util.MdocUtil.generateReaderRootCertificate(
+            readerRootKey = org.multipaz.crypto.AsymmetricKey.anonymous(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256)),
+            subject = org.multipaz.crypto.X500Name.fromName("CN=$cn"),
+            serial = org.multipaz.asn1.ASN1Integer.fromRandom(128),
+            validFrom = kotlin.time.Clock.System.now() - 1.days, validUntil = kotlin.time.Clock.System.now() + 365.days,
+            crlUrl = "https://$host/pki/crl",
+        )
+        fun sha(c: org.multipaz.crypto.X509Cert) = java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02x".format(it) }
+        var served = root("$host Signing Root")
+        var stated: String? = null
+        val seen = java.util.Collections.synchronizedList(ArrayList<String?>())
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+            when {
+                request.url.host == host && request.url.encodedPath == "/info" -> respond(buildJsonObject {
+                    put("name", "diw-wallet-server")
+                    putJsonArray("features") { add("relay"); add("zktls") }
+                    put("signing", buildJsonObject {
+                        put("subject", "CN=$host Signing Root")
+                        put("rootSha256", stated ?: sha(served))
+                        put("root", served.toPem())
+                    })
+                }.toString(), io.ktor.http.HttpStatusCode.OK, json)
+                request.url.encodedPath == "/zktls/sessions" -> {
+                    seen.add(request.headers[HttpHeaders.Authorization])
+                    respond("""{"error":"unauthorized","error_description":"這台查驗主機需要存取權杖"}""", io.ktor.http.HttpStatusCode.Unauthorized, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = token) }.join()
+        assertEquals(token, m.server.tokenFor("https://$host/"))
+        assertNull(m.server.tokenFor("https://other.example.org"))
+
+        // A host that wants a token it is not given, and one that refuses the token, point to the setting.
+        val page = diw.testservers.zktls.ZkTlsRecordPage.profile(443, host)
+        suspend fun selfFailure(): String {
+            m.taiwan.zkTls.selfThroughHost(OfflineUi.ZkTlsSelfPick(null, listOf(page), emptySet(), host, null), page)
+            return assertIs<OfflineUi.Failed>(withTimeout(30.seconds) { m.taiwan.offline.first { it is OfflineUi.Failed } }).message
+        }
+        assertTrue("不接受這個存取權杖" in selfFailure())
+        assertEquals("Bearer $token", seen.last())
+        m.updateSettings { it.copy(serverToken = "") }.join()
+        assertTrue("需要存取權杖" in selfFailure())
+        assertNull(seen.last())
+
+        // A stated fingerprint that is not the certificate's is refused.
+        stated = "00".repeat(32)
+        m.server.check(confirm = true)
+        var st = withTimeout(30.seconds) { m.server.state.first { !it.checking && (it.error != null || it.pending != null) } }
+        assertTrue("指紋與憑證不符" in st.error!!, st.error)
+        stated = null
+
+        m.server.check(confirm = true)
+        st = withTimeout(30.seconds) { m.server.state.first { it.pending != null } }
+        val info = st.pending!!
+        assertEquals(sha(served), info.sha256)
+        assertEquals(listOf("relay", "zktls"), info.features)
+        m.server.confirm(info)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == info.sha256 } }
+        suspend fun trusted() = m.trust.allAnchors().filter { it.source == ServerModel.SOURCE_PREFIX + host }
+        withTimeout(30.seconds) { while (trusted().size < 2) delay(50) }
+        assertEquals(setOf(diw.wallet.core.trust.TrustRole.VERIFIER, diw.wallet.core.trust.TrustRole.ISSUER), trusted().map { it.role }.toSet())
+        assertTrue(trusted().all { it.environment == TrustEnvironment.USER && it.certificate == served })
+
+        // The server changes its key: only a warning until the user confirms again, which replaces the old root.
+        served = root("$host Signing Root 2")
+        m.server.check(confirm = false)
+        st = withTimeout(30.seconds) { m.server.state.first { !it.checking && it.changed } }
+        assertNull(st.pending)
+        assertTrue(trusted().all { it.certificate != served })
+        m.server.check(confirm = true)
+        m.server.confirm(withTimeout(30.seconds) { m.server.state.first { it.pending != null } }.pending!!)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == sha(served) } }
+        withTimeout(30.seconds) { while (trusted().any { it.certificate != served } || trusted().size < 2) delay(50) }
+        assertFalse(m.server.state.value.changed)
     }
 
     /**

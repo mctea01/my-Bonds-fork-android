@@ -28,10 +28,13 @@ import diw.wallet.core.zktls.ZkTlsTransport
 import diw.wallet.core.zktls.ZkTlsVerifierSession
 import io.ktor.client.request.accept
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.Url
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
@@ -367,14 +370,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                     putJsonArray("fields") { profile.fields.forEach { add(it.name) } }
                     put("purpose", SELF_PURPOSE)
                 }
-                val response = client.post("$base/zktls/sessions") {
-                    contentType(ContentType.Application.Json)
-                    accept(ContentType.Application.Json)
-                    setBody(body.toString())
-                }
-                val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
-                    ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
-                if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+                val created = createOnHost(base, body)
                 val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
                 consentFor(link, pick.fileId)
             } catch (e: CancellationException) {
@@ -567,6 +563,27 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         record(shown)
     }
 
+    /**
+     * Opens a session on the verifier host. The production server's access token goes only to that server; a host
+     * that wants one and has none set gets a pointer to the setting.
+     */
+    private suspend fun createOnHost(base: String, body: JsonObject): JsonObject {
+        val token = model.server.tokenFor(base)
+        val response = client.post("$base/zktls/sessions") {
+            contentType(ContentType.Application.Json)
+            accept(ContentType.Application.Json)
+            token?.let { header(HttpHeaders.Authorization, "Bearer $it") }
+            setBody(body.toString())
+        }
+        if (response.status == HttpStatusCode.Unauthorized) {
+            throw ProtocolException("unauthorized", if (token == null) "查驗主機需要存取權杖，請到設定的「零知識證明」頁填入" else "查驗主機不接受這個存取權杖，請到設定的「零知識證明」頁更新")
+        }
+        val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
+            ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
+        if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+        return created
+    }
+
     private suspend fun verifyOnHost(profile: ZkTlsProfile, fields: List<String>, purpose: String, note: String) {
         val base = host() ?: throw ProtocolException("unavailable", "$note 但尚未設定查驗主機（設定的「零知識證明」頁，測試環境會使用測試伺服器）。")
         val body = buildJsonObject {
@@ -574,14 +591,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             putJsonArray("fields") { fields.forEach { add(it) } }
             put("purpose", purpose)
         }
-        val response = client.post("$base/zktls/sessions") {
-            contentType(ContentType.Application.Json)
-            accept(ContentType.Application.Json)
-            setBody(body.toString())
-        }
-        val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
-            ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
-        if (!response.status.isSuccess()) throw ProtocolException("server_error", created.str("error_description") ?: "HTTP ${response.status.value}")
+        val created = createOnHost(base, body)
         val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
         val sid = created.str("sessionId") ?: throw ProtocolException("server_error", "No session")
         val token = created.str("token") ?: throw ProtocolException("server_error", "No token")

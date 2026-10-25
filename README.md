@@ -156,7 +156,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 錢包的設定方式與領卡、出示的步驟見 [docs/guides/windows-local-test.md](docs/guides/windows-local-test.md)。
 
-正式環境的服務端（網頁查驗、年齡查驗主機、zkTLS 中繼）在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，可部署到 Cloud Run 或自己的主機；錢包在「設定 > 零知識證明」填入主機網址。
+正式環境的服務端（中繼、zkTLS 查驗主機與網頁證明回執、年齡查驗主機、網頁查驗）在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，可部署到自己的主機、Cloud Run 或 Cloudflare Containers。錢包在「設定 > 零知識證明 > 正式服務端」填入網址與存取權杖，按「加入信任」比對簽章根憑證的 SHA-256 後，服務端簽的查驗請求與回執以使用者匯入（T2）顯示。
 
 ## 專案結構
 

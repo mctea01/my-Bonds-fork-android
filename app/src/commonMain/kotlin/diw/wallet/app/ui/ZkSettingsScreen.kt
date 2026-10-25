@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.WalletModel
 import diw.wallet.core.zk.ZkAsset
@@ -167,8 +168,8 @@ fun ZkSettingsScreen(model: WalletModel) {
         ZkTemplatesSection(model)
 
         HorizontalDivider()
-        SectionTitle("年齡查驗主機")
-        AgeVerifierHost(model)
+        SectionTitle("正式服務端")
+        ServerSection(model)
         HorizontalDivider()
         SectionTitle("自架主機")
         ActionRow(WalletIcons.Link, "加入自架主機", "zkPDF 完成後開放：手機算力不足時可把文件送到自己的主機產生證明，手機先驗證再使用", enabled = false) {}
@@ -245,22 +246,81 @@ internal fun ZkSettingsRow(model: WalletModel, onOpen: () -> Unit) {
     ActionRow(WalletIcons.Shield, "零知識證明", zkSummary(capability).removePrefix("零知識：") + "・電路檔下載與刪除", onClick = onOpen)
 }
 
-/** The Bonds-compatible host the Verify tab's age check uses (the test server, or the user's deployment of it). */
+/**
+ * The production server (diw-wallet-server, or the test server's API) used as relay, zkTLS verifier host and age
+ * host: its address, the access token its zkTLS host asks for, and trusting the root that signs its requests and
+ * receipts after the user compares the fingerprint.
+ */
 @Composable
-private fun AgeVerifierHost(model: WalletModel) {
+private fun ServerSection(model: WalletModel) {
     val settings by model.settingsFlow.collectAsState()
+    val server by model.server.state.collectAsState()
     var url by remember(settings.zkVerifierUrl) { mutableStateOf(settings.zkVerifierUrl) }
+    var token by remember(settings.serverToken) { mutableStateOf(settings.serverToken) }
     val valid = url.isEmpty() || url.startsWith("https://") || settings.testEnvironment && url.startsWith("http://")
+    val saved = settings.zkVerifierUrl.isNotEmpty()
+    LaunchedEffect(settings.zkVerifierUrl) { if (saved && settings.serverRootSha256.isNotEmpty()) model.server.check(confirm = false) }
     Text(
-        "查驗他人年齡時，對方的證明送到這台主機，再轉給這支手機驗證；主機只轉送，看不到出生日期。可部署專案的測試伺服器（test-servers）作為主機。" +
-            "留空時在測試環境使用測試伺服器。",
+        "轉送、網站查驗（zkTLS）與年齡查驗都使用這台服務端；它只轉送與查驗，看不到你的出生日期或文件其他內容。" +
+            "可部署 diw-wallet-server 或專案的測試伺服器（test-servers）。留空時在測試環境使用測試伺服器。",
         style = MaterialTheme.typography.bodySmall,
     )
     OutlinedTextField(
         value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("主機網址（https）") }, isError = !valid,
+        label = { Text("服務端網址（https）") }, isError = !valid,
     )
-    OutlinedButton(onClick = { model.updateSettings { it.copy(zkVerifierUrl = url.trimEnd('/')) } }, enabled = valid && url != settings.zkVerifierUrl) {
-        Text("儲存")
+    OutlinedTextField(
+        value = token, onValueChange = { token = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text("存取權杖（服務端要求時才填）") }, visualTransformation = PasswordVisualTransformation(),
+    )
+    Text("權杖只送給上面這台服務端，以加密方式存在這台裝置。", style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(
+            onClick = {
+                val changedUrl = url.trimEnd('/') != settings.zkVerifierUrl
+                model.updateSettings {
+                    it.copy(zkVerifierUrl = url.trimEnd('/'), serverToken = token, serverRootSha256 = if (changedUrl) "" else it.serverRootSha256)
+                }
+            },
+            enabled = valid && (url != settings.zkVerifierUrl || token != settings.serverToken),
+        ) { Text("儲存") }
+        OutlinedButton(onClick = { model.server.check(confirm = true) }, enabled = saved && !server.checking && url == settings.zkVerifierUrl) {
+            Text(if (server.checking) "讀取中…" else if (settings.serverRootSha256.isEmpty()) "加入信任" else "重新確認信任")
+        }
+    }
+    if (settings.serverRootSha256.isNotEmpty()) {
+        Text("已信任簽章根憑證 SHA-256：${fingerprint(settings.serverRootSha256)}", style = MaterialTheme.typography.bodySmall)
+    }
+    if (server.changed) {
+        Text(
+            "這台服務端的簽章根憑證和你先前信任的不同。可能是業者換了金鑰，也可能不是原本的服務端；請向業者確認新指紋後再按「重新確認信任」。",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
+        )
+    }
+    server.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+
+    server.pending?.let { info ->
+        AlertDialog(
+            onDismissRequest = { model.server.dismiss() },
+            title = { Text("信任這台服務端？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("服務端：${info.url}", style = MaterialTheme.typography.bodySmall)
+                    Text("簽章根憑證：${info.subject}", style = MaterialTheme.typography.bodySmall)
+                    Text("SHA-256：${fingerprint(info.sha256)}", style = MaterialTheme.typography.bodySmall)
+                    if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示；" +
+                            "可在「自訂信任」頁移除。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = { TextButton(onClick = { model.server.confirm(info) }) { Text("指紋相符，信任") } },
+            dismissButton = { TextButton(onClick = { model.server.dismiss() }) { Text("取消") } },
+        )
     }
 }
+
+/** A SHA-256 hex in groups of four for comparing by eye. */
+private fun fingerprint(hex: String): String = hex.uppercase().chunked(4).joinToString(" ")
