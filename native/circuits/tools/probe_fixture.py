@@ -3,7 +3,7 @@
 import argparse
 import zlib
 from pathlib import Path
-from fixtures import witness, compressed, mutate
+from fixtures import witness, compressed, mutate, padded_hints
 
 def small_dynamic():
     bits=[]
@@ -26,6 +26,7 @@ def small_dynamic():
 def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=None,block_capacity=1):
     blocks,tokens,owners,plain=witness(data)
     assert len(blocks)<=block_capacity and len(tokens)<=token_capacity and len(data)<=capacity and len(plain)<=plain_capacity
+    hints = padded_hints(data,token_capacity,block_capacity)
     data=list(data)
     if isinstance(mutation, tuple): mutate(data, blocks, tokens, owners, mutation)
     if mutation=='checksum': data[-1]^=1
@@ -34,6 +35,11 @@ def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=N
     fields={'data':data+[0]*(capacity-len(data)),'data_len':len(data),'plain_len':len(plain),
         'owners':owners+[0]*(plain_capacity-len(owners)),'expected':list(plain)+[0]*(plain_capacity-len(plain))}
     if block_capacity > 1: fields['block_count'] = len(blocks)
+    if isinstance(mutation, tuple) and mutation[0] == 'hint':
+        _,key,index,delta = mutation
+        hints[key][index] += delta
+    if isinstance(mutation, tuple) and mutation[0] == 'plain':
+        fields['expected'][mutation[1]] ^= 1
     lines=[f'{k} = {v}' for k,v in fields.items()]
     blocks += [dict(start=0,end=0,first_token=0,tokens=0,code_symbols=[0]*320,code_widths=[0]*320)]*(block_capacity-len(blocks))
     for b in blocks:
@@ -43,6 +49,8 @@ def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=N
     for token in tokens+[[0]*6]*(token_capacity-len(tokens)):
         lines.append('[[tokens]]')
         lines.extend(f'{k} = {v}' for k,v in zip(keys,token))
+    lines.append('[hints]')
+    lines.extend(f'{key} = {values}' for key, values in hints.items())
     path.write_text('\n'.join(lines)+'\n')
 
 if __name__=='__main__':

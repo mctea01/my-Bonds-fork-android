@@ -38,8 +38,9 @@ def table(lengths):
             next_code[width] += 1
     return result
 
-def witness(data):
+def witness(data, with_hints=False):
     r, blocks, tokens, owners, output = Reader(data), [], [], [], bytearray()
+    hints = {name: [] for name in ("ll_lengths", "ll_codes", "dd_lengths", "dd_codes", "body", "kinds", "starts", "lengths", "distances")}
     final = False
     while not final:
         start = r.pos
@@ -50,7 +51,10 @@ def witness(data):
             r.pos = ((r.pos+7)//8)*8
             length, complement = r.bits(16), r.bits(16)
             assert length ^ complement == 65535
+            body = r.pos
+            ll, dd = [0]*288, [0]*32
             for _ in range(length):
+                hints["starts"].append(len(output)); hints["lengths"].append(1); hints["distances"].append(0)
                 pos = r.pos
                 s = r.bits(8)
                 owners.append(len(tokens)); output.append(s)
@@ -74,8 +78,10 @@ def witness(data):
                 ll, dd = lengths[:hlit], lengths[hlit:]
             else: raise ValueError('reserved block type')
             lt, dt = table(ll), table(dd)
+            body = r.pos
             while True:
                 pos = r.pos
+                output_start, distance = len(output), 0
                 s,width = r.symbol(lt)
                 ds,dw = 0,0
                 if s < 256:
@@ -86,12 +92,31 @@ def witness(data):
                     distance = DBASE[ds]+r.bits(DEXTRA[ds])
                     for _ in range(length):
                         owners.append(len(tokens)); output.append(output[-distance])
+                hints["starts"].append(output_start)
+                hints["lengths"].append(len(output)-output_start)
+                hints["distances"].append(distance)
                 tokens.append([len(blocks),pos,s,width,ds,dw])
                 if s == 256: break
+        hints["body"].append(body); hints["kinds"].append(kind)
+        for prefix, widths, capacity in (("ll", ll, 288), ("dd", dd, 32)):
+            widths = widths + [0]*(capacity-len(widths))
+            codes = [0]*capacity
+            for (width, code), symbol in table(widths).items(): codes[symbol] = code
+            hints[prefix+"_lengths"].extend(widths)
+            hints[prefix+"_codes"].extend(codes)
         blocks.append(dict(start=start,end=r.pos,first_token=first,tokens=len(tokens)-first,code_symbols=cs,code_widths=cw,kind=kind))
     assert (r.pos+7)//8 == len(data)-4
     assert output == zlib.decompress(data)
-    return blocks,tokens,owners,bytes(output)
+    result = (blocks,tokens,owners,bytes(output))
+    return (*result,hints) if with_hints else result
+
+def padded_hints(data, token_capacity, block_capacity):
+    *_, hints = witness(data, with_hints=True)
+    for key, values in hints.items():
+        size = token_capacity if key in ('starts', 'lengths', 'distances') else block_capacity * (288 if key.startswith('ll_') else 32 if key.startswith('dd_') else 1)
+        assert len(values) <= size
+        values.extend([0]*(size-len(values)))
+    return hints
 
 def array(values): return '['+','.join(map(str,values))+']'
 
@@ -111,8 +136,11 @@ def nr_fixture(name, data, mutation='', fail=False):
     for i,token in enumerate(tokens):
         entries = ','.join(f'{k}:{v}' for k,v in zip(['block','start','symbol','width','distance_symbol','distance_width'],token))
         lines.append(f'    tokens[{i}] = TokenHint {{ {entries} }};')
+    hints = padded_hints(data,t,b)
+    lines.append(f'    let mut hints = InflateHints {{ '+','.join(key+':'+array(values) for key,values in hints.items())+' };')
+    lines.append(f'    let mut plain: [u8;{p}] = {array(plain or [0])};')
     lines += [f'    let mut owners: [u32;{p}] = {array(owners or [0])};',f'    let mut plain_len = {len(plain)};',mutation,
-        f'    let result = inflate(data,{n},blocks,{b},tokens,owners,plain_len);',f'    assert_eq(result,{array(plain or [0])});','}']
+        f'    let result = inflate(data,{n},blocks,{b},tokens,owners,plain_len,plain,hints);',f'    assert_eq(result,{array(plain or [0])});','}']
     return '\n'.join(lines)
 
 def compressed(plain, strategy=zlib.Z_DEFAULT_STRATEGY, level=6):
@@ -167,6 +195,15 @@ def regression_cases():
         ('rejects_dynamic_missing_eob', dynamic,
          ('bits_hint', positions['eob_length'], 2, 0, 256, 0)),
         ('rejects_eob_endpoint', overlap, ('block', 0, 'end', 1)),
+        ('rejects_plain_literal', overlap, ('plain', 0)),
+        ('rejects_plain_copy', overlap, ('plain', copied_byte)),
+        ('rejects_table_code', overlap, ('hint', 'll_codes', 65, 1)),
+        ('rejects_table_width', overlap, ('hint', 'dd_lengths', 0, 1)),
+        ('rejects_starts', overlap, ('hint', 'starts', match, 1)),
+        ('rejects_lengths', overlap, ('hint', 'lengths', match, 1)),
+        ('rejects_distances', overlap, ('hint', 'distances', match, 1)),
+        ('rejects_block_body', overlap, ('hint', 'body', 0, 1)),
+        ('rejects_block_kind', overlap, ('hint', 'kinds', 0, 1)),
     ]
 
 def multiblock_cases():
@@ -212,6 +249,7 @@ def mutate(data, blocks, tokens, owners, mutation):
     elif kind in ('bits', 'bits_hint'):
         set_bits(data, *args[:3])
         if kind == 'bits_hint': blocks[0]['code_symbols'][args[3]] = args[4]
+    elif kind in ('hint', 'plain'): pass
     else: raise ValueError('Unknown synthetic mutation')
 
 def regression_nr(name, data, mutation):
@@ -220,6 +258,12 @@ def regression_nr(name, data, mutation):
     mutate(changed, blocks, tokens, owners, mutation)
     before_blocks, before_tokens, before_owners, _ = witness(data)
     lines = []
+    if mutation and mutation[0] == 'hint':
+        _,key,index,delta = mutation
+        lines.append(f'    hints.{key}[{index}] += {delta};')
+    if mutation and mutation[0] == 'plain':
+        _,index = mutation
+        lines.append(f'    plain[{index}] = plain[{index}] ^ 1;')
     for i, value in enumerate(changed):
         if value != data[i]: lines.append(f'    data[{i}] = {value};')
     for i, block in enumerate(blocks):
@@ -260,6 +304,6 @@ def main():
     tests += [regression_nr(*case) for case in regression_cases()]
     tests += [regression_nr(*case) for case in multiblock_cases()]
     target=Path(__file__).resolve().parents[1]/'pdf_text_v1/src/fixtures.nr'
-    target.write_text('// Generated by tools/fixtures.py from synthetic data.\nuse crate::inflate::{inflate,BlockHint,TokenHint};\n\n'+'\n\n'.join(tests)+'\n')
+    target.write_text('// Generated by tools/fixtures.py from synthetic data.\nuse crate::inflate::{inflate,BlockHint,TokenHint,InflateHints};\n\n'+'\n\n'.join(tests)+'\n')
 
 if __name__ == '__main__': main()

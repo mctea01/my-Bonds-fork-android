@@ -19,6 +19,19 @@ pub struct TokenHint {
     pub distance_width: u8,
 }
 
+// Immutable advice arrays are bound at constant indices before private reads.
+pub struct InflateHints<let T: u32, let B: u32> {
+    pub ll_lengths: [u8; B*288],
+    pub ll_codes: [u32; B*288],
+    pub dd_lengths: [u8; B*32],
+    pub dd_codes: [u32; B*32],
+    pub body: [u32; B],
+    pub kinds: [u32; B],
+    pub starts: [u32; T],
+    pub lengths: [u32; T],
+    pub distances: [u32; T],
+}
+
 struct Huffman<let N: u32> {
     lengths: [u8; N],
     codes: [u32; N],
@@ -156,6 +169,7 @@ fn fixed_tables() -> (Huffman<288>, Huffman<32>) {
 pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     data: [u8;N], data_len: u32, blocks: [BlockHint;B], block_count: u32,
     tokens: [TokenHint;T], owners: [u32;P], plain_len: u32,
+    plain: [u8;P], hints: InflateHints<T,B>,
 ) -> [u8;P] {
     assert(N <= 8192 & P <= 40960 & T <= 6144 & B <= 4);
     assert(data_len >= 6 & data_len <= N);
@@ -168,13 +182,19 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     let limit = (data_len - 4) * 8;
     let empty_l = Huffman { lengths: [0u8;288], codes: [0u32;288] };
     let empty_d = Huffman { lengths: [0u8;32], codes: [0u32;32] };
-    let mut ll = Huffman { lengths: [0u8;B*288], codes: [0u32;B*288] };
-    let mut dd = Huffman { lengths: [0u8;B*32], codes: [0u32;B*32] };
-    let mut body = [0u32;B];
-    let mut kinds = [0u32;B];
+    let ll = Huffman { lengths: hints.ll_lengths, codes: hints.ll_codes };
+    let dd = Huffman { lengths: hints.dd_lengths, codes: hints.dd_codes };
+    let body = hints.body;
+    let kinds = hints.kinds;
+    let first_tokens = blocks.map(|h| h.first_token);
+    let block_tokens = blocks.map(|h| h.tokens);
+    let block_ends = blocks.map(|h| h.end);
+    let symbols = tokens.map(|t| t.symbol);
     let mut total_tokens = 0u32;
     let mut end = 16u32;
     for b in 0..B {
+        let mut block_body = 0u32;
+        let mut block_kind = 0u32;
         let mut block_ll = empty_l;
         let mut block_dd = empty_d;
         if b < block_count {
@@ -187,7 +207,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             assert_eq(bits(data,limit,h.start,1),if b+1 == block_count {1} else {0});
             let kind = bits(data,limit,h.start+1,2);
             assert(kind < 3);
-            kinds[b] = kind;
+            block_kind = kind;
             let mut pos = h.start + 3;
             if kind == 0 {
                 pos = ((pos + 7)/8)*8;
@@ -205,16 +225,18 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
                 block_ll = l; block_dd = d; pos = p;
                 assert(h.tokens > 0);
             }
-            body[b] = pos;
+            block_body = pos;
             end = h.end;
         }
+        assert_eq(body[b],block_body);
+        assert_eq(kinds[b],block_kind);
         for j in 0..288 {
-            ll.lengths[b*288+j] = block_ll.lengths[j];
-            ll.codes[b*288+j] = block_ll.codes[j];
+            assert_eq(ll.lengths[b*288+j],block_ll.lengths[j]);
+            assert_eq(ll.codes[b*288+j],block_ll.codes[j]);
         }
         for j in 0..32 {
-            dd.lengths[b*32+j] = block_dd.lengths[j];
-            dd.codes[b*32+j] = block_dd.codes[j];
+            assert_eq(dd.lengths[b*32+j],block_dd.lengths[j]);
+            assert_eq(dd.codes[b*32+j],block_dd.codes[j]);
         }
     }
     // Exactly one zlib stream: only the final partial byte may be ignored.
@@ -223,9 +245,9 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     let length_extra: [u32;29] = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
     let distance_base: [u32;30] = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
     let distance_extra: [u32;30] = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
-    let mut starts = [0u32;T];
-    let mut lengths = [0u32;T];
-    let mut distances = [0u32;T];
+    let starts = hints.starts;
+    let lengths = hints.lengths;
+    let distances = hints.distances;
     let mut output_len = 0u32;
     let mut previous_end = 16u32;
     for i in 0..T {
@@ -236,9 +258,11 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             let t = tokens[i];
             assert(t.block < block_count);
             let b = t.block;
-            let h = blocks[b];
-            assert(i >= h.first_token & i < h.first_token+h.tokens);
-            assert_eq(t.start,if i == h.first_token {body[b]} else {previous_end});
+            let first = first_tokens[b];
+            let count = block_tokens[b];
+            let block_end = block_ends[b];
+            assert(i >= first & i < first+count);
+            assert_eq(t.start,if i == first {body[b]} else {previous_end});
             let mut pos = t.start;
             let s = t.symbol as u32;
             let mut len = 0u32;
@@ -248,7 +272,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
             } else {
                 pos = symbol_at(data,limit,pos,ll,b*288,288,s,t.width as u32);
                 if s < 256 { len = 1; }
-                else if s == 256 { assert_eq(i+1,h.first_token+h.tokens); }
+                else if s == 256 { assert_eq(i+1,first+count); }
                 else {
                     assert(s <= 285);
                     let code = s-257;
@@ -261,33 +285,34 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
                     pos += distance_extra[ds];
                     assert(dist <= window & dist <= output_len);
                 }
-                if i+1 == h.first_token+h.tokens { assert_eq(s,256); }
+                if i+1 == first+count { assert_eq(s,256); }
             }
-            if i+1 == h.first_token+h.tokens { assert_eq(pos,h.end); }
-            assert(pos <= h.end);
+            if i+1 == first+count { assert_eq(pos,block_end); }
+            assert(pos <= block_end);
             token_start = output_len; token_len = len; token_distance = dist;
             assert(len <= P-output_len);
             output_len += len;
             previous_end = pos;
         }
-        starts[i] = token_start; lengths[i] = token_len; distances[i] = token_distance;
+        assert_eq(starts[i],token_start);
+        assert_eq(lengths[i],token_len);
+        assert_eq(distances[i],token_distance);
     }
     assert_eq(output_len,plain_len);
-    let mut out = [0u8;P];
     let mut a = 1u32;
     let mut b = 0u32;
     for k in 0..P {
-        // Keep the array write outside conditional branches. Merging whole
-        // output arrays per byte makes the compiler's SSA grow quadratically.
+        // Earlier-byte dependencies uniquely determine the immutable advice,
+        // including overlap. Every byte, including padding, is bound here.
         let byte = if k < plain_len {
             let owner = owners[k];
             assert(owner < total_tokens);
             assert(k >= starts[owner] & k < starts[owner]+lengths[owner]);
             let dist = distances[owner];
-            if dist == 0 { tokens[owner].symbol as u8 }
-            else { assert(dist <= k); out[k-dist] }
+            if dist == 0 { symbols[owner] as u8 }
+            else { assert(dist > 0 & dist <= k); plain[k-dist] }
         } else { 0 };
-        out[k] = byte;
+        assert_eq(plain[k],byte);
         if k < plain_len {
             a = (a + byte as u32)%65521;
             b = (b+a)%65521;
@@ -298,7 +323,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
         + (data[p+2] as u32)*256 + data[p+3] as u32;
     assert_eq(b*65536+a,checksum);
     for i in 0..N { if i >= data_len { assert_eq(data[i],0); } }
-    out
+    plain
 }
 
 // The maximum-width unaligned read spans all three bytes. The fourth byte

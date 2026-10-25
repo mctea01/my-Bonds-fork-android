@@ -11,10 +11,10 @@ import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-MAIN = '''use pdf_text_v1::inflate::{inflate,BlockHint,TokenHint};
+MAIN = '''use pdf_text_v1::inflate::{inflate,BlockHint,TokenHint,InflateHints};
 fn main(data:[u8;COMPRESSED],data_len:u32,blocks:[BlockHint;BLOCKS],block_count:u32,
-    tokens:[TokenHint;TOKENS],owners:[u32;PLAIN],plain_len:u32,expected:[u8;PLAIN]) {
-    assert_eq(inflate(data,data_len,blocks,block_count,tokens,owners,plain_len),expected);
+    tokens:[TokenHint;TOKENS],owners:[u32;PLAIN],plain_len:u32,hints:InflateHints<TOKENS,BLOCKS>,expected:[u8;PLAIN]) {
+    assert_eq(inflate(data,data_len,blocks,block_count,tokens,owners,plain_len,expected,hints),expected);
 }
 '''
 
