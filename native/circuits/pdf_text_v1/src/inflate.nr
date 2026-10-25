@@ -8,6 +8,18 @@ pub struct BlockHint {
     // Indexed by expanded code-length position; entries inside repeats are unused.
     pub code_symbols: [u16; 320],
     pub code_widths: [u8; 320],
+    pub cl_lengths: [u8; 19],
+    pub cl_codes: [u32; 19],
+    pub expanded_lengths: [u8; 320],
+    pub cl_prefixes: [u16; 19*15],
+    pub ll_prefixes: [u16; 288*15],
+    pub dd_prefixes: [u16; 32*15],
+    pub cl_first: [u32;16],
+    pub ll_first: [u32;16],
+    pub dd_first: [u32;16],
+    pub header_repeats: [u8;320],
+    pub header_prefixes: [u8;320],
+    pub header_suffixes: [u32;320],
 }
 
 pub struct TokenHint {
@@ -67,30 +79,43 @@ fn reverse_code(code: u32, width: u32) -> u32 {
     raw / powers[16-width]
 }
 
-fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) -> Huffman<N> {
-    let mut counts = [0u32;16];
-    let mut used = 0u32;
-    for i in 0..N {
-        assert(lengths[i] <= 15);
-        let present = if lengths[i] != 0 { 1 } else { 0 };
-        counts[lengths[i] as u32] += present;
-        used += present;
+fn table<let N: u32>(lengths: [u8; N], prefixes: [u16;N*15], first_codes: [u32;16],
+    allow_single: bool, allow_empty: bool) -> Huffman<N> {
+    assert(N > 0 & N <= 320);
+    assert_eq(first_codes[0],0);
+    let mut first: Field = 0;
+    let mut used: Field = 0;
+    let mut ones: Field = 0;
+    for width in 1..16 {
+        assert_eq(first_codes[width] as Field,first);
+        let first_code = first_codes[width] as Field;
+        let mut count: Field = 0;
+        for i in 0..N {
+            // Immutable counters are bound at every constant index, including
+            // the initial zero. They count earlier symbols of this exact width.
+            let prefix = prefixes[i*15+width-1] as Field;
+            assert_eq(prefix,count);
+            let present = lengths[i] as u32 == width;
+            count = prefix + if present { 1 } else { 0 };
+        }
+        // Prefix recurrences imply count<=N. Even before the tree checks,
+        // first+count<=N*2^15<2^32, so the cast cannot hide overflow.
+        assert((first_code+count) as u32 <= (1u32 << width));
+        if width == 1 { ones = count; }
+        used += count;
+        first = (first_code+count)*2;
     }
-    let mut next = [0u32;16];
-    let mut code = 0u32;
-    for i in 1..16 {
-        code = (code + counts[i - 1]) * 2;
-        assert(code + counts[i] <= (1u32 << i));
-        next[i] = code;
-    }
-    assert((code + counts[15] == 32768)
-        | (allow_single & (used == 1) & (counts[1] == 1))
+    assert((first == 65536)
+        | (allow_single & (used == 1) & (ones == 1))
         | (allow_empty & (used == 0)));
     let mut codes = [0u32;N];
     for i in 0..N {
+        assert(lengths[i] <= 15);
         let width = lengths[i] as u32;
-        codes[i] = reverse_code(if width != 0 { next[width] } else { 0 }, width);
-        next[width] += if width != 0 { 1 } else { 0 };
+        let safe_width = if width == 0 {1} else {width};
+        let rank = prefixes[i*15+safe_width-1] as u32;
+        let canonical = if width == 0 {0} else {first_codes[width]+rank};
+        codes[i] = reverse_code(canonical,width);
     }
     Huffman { lengths, codes }
 }
@@ -116,6 +141,22 @@ fn symbol_at<let N: u32, let S: u32>(
     pos + width
 }
 
+// A code-length symbol (<=7 bits) and its repeat extra (<=7 bits)
+// are checked together against one three-byte window.
+fn header_window<let N: u32>(data: [u8;N], limit: u32, pos: u32,
+    width: u32, encoded: Field, prefix: u8, suffix: u32) {
+    assert(width <= 14 & pos <= limit & width <= limit-pos);
+    let powers: [u32;25] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576,2097152,4194304,8388608,16777216];
+    let offset = pos/8;
+    let shift = pos%8;
+    let word = (data[offset] as Field)+256*(data[offset+1] as Field)
+        +65536*(data[offset+2] as Field);
+    assert((prefix as u32) < powers[shift]);
+    assert(suffix < powers[24-shift-width]);
+    assert_eq(word,(prefix as Field)+(powers[shift] as Field)
+        *(encoded+(powers[width] as Field)*(suffix as Field)));
+}
+
 fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockHint)
     -> (Huffman<288>, Huffman<32>, u32) {
     let hlit = bits(data,limit,start,5) + 257;
@@ -127,31 +168,48 @@ fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockH
     for i in 0..19 {
         if i < hclen { cl[order[i]] = bits(data,limit,start+14+i*3,3) as u8; }
     }
-    let ch = table(cl,false,false);
+    let computed_ch = table(cl,hint.cl_prefixes,hint.cl_first,false,false);
+    for i in 0..19 {
+        assert_eq(hint.cl_lengths[i],computed_ch.lengths[i]);
+        assert_eq(hint.cl_codes[i],computed_ch.codes[i]);
+    }
+    let ch = Huffman { lengths: hint.cl_lengths, codes: hint.cl_codes };
     let mut pos = start + 14 + hclen * 3;
-    let mut lengths = [0u8;320];
+    let lengths = hint.expanded_lengths;
     let mut repeat = 0u32;
     let mut value = 0u8;
     for i in 0..320 {
         if i < hlit + hdist {
             if repeat == 0 {
                 let s = hint.code_symbols[i] as u32;
-                pos = symbol(data,limit,pos,ch,s,hint.code_widths[i] as u32);
-                if s <= 15 { value = s as u8; repeat = 1; }
+                let width = hint.code_widths[i] as u32;
+                assert(s < 19 & width > 0 & width <= 7);
+                assert_eq(ch.lengths[s] as u32,width);
+                let mut extra = 0u32;
+                let mut extra_width = 0u32;
+                repeat = hint.header_repeats[i] as u32;
+                if s <= 15 { value = s as u8; assert_eq(repeat,1); }
                 else if s == 16 {
-                    assert(i > 0);
-                    repeat = 3 + bits(data,limit,pos,2); pos += 2;
+                    assert(i > 0 & repeat >= 3 & repeat <= 6);
+                    extra = repeat-3; extra_width = 2;
                 } else if s == 17 {
-                    value = 0; repeat = 3 + bits(data,limit,pos,3); pos += 3;
+                    value = 0; assert(repeat >= 3 & repeat <= 10);
+                    extra = repeat-3; extra_width = 3;
                 } else {
-                    assert_eq(s,18);
-                    value = 0; repeat = 11 + bits(data,limit,pos,7); pos += 7;
+                    assert_eq(s,18); value = 0;
+                    assert(repeat >= 11 & repeat <= 138);
+                    extra = repeat-11; extra_width = 7;
                 }
+                let powers: [u32;8] = [1,2,4,8,16,32,64,128];
+                let encoded = (ch.codes[s] as Field)+(powers[width] as Field)*(extra as Field);
+                header_window(data,limit,pos,width+extra_width,encoded,
+                    hint.header_prefixes[i],hint.header_suffixes[i]);
+                pos += width+extra_width;
                 assert(repeat <= hlit + hdist - i);
             }
             repeat -= 1;
         }
-        lengths[i] = if i < hlit + hdist { value } else { 0 };
+        assert_eq(lengths[i],if i < hlit + hdist { value } else { 0 });
     }
     assert_eq(repeat,0);
     let mut ll = [0u8;288];
@@ -159,18 +217,27 @@ fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockH
     for i in 0..288 { ll[i] = if i < hlit { lengths[i] } else { 0 }; }
     for i in 0..32 { dd[i] = if i < hdist { lengths[hlit+i] } else { 0 }; }
     assert(ll[256] != 0);
-    (table(ll,true,false),table(dd,true,true),pos)
+    (table(ll,hint.ll_prefixes,hint.ll_first,true,false),table(dd,hint.dd_prefixes,hint.dd_first,true,true),pos)
 }
 
 fn fixed_tables() -> (Huffman<288>, Huffman<32>) {
-    let mut ll = [0u8;288];
-    for i in 0..288 { ll[i] = if i < 144 { 8 } else if i < 256 { 9 } else if i < 280 { 7 } else { 8 }; }
-    (table(ll,false,false),table([5;32],false,false))
+    let mut lengths = [0u8;288];
+    let mut codes = [0u32;288];
+    for i in 0..288 {
+        let width = if i < 144 {8} else if i < 256 {9} else if i < 280 {7} else {8};
+        let code = if i < 144 {48+i} else if i < 256 {400+i-144}
+            else if i < 280 {i-256} else {192+i-280};
+        lengths[i] = width as u8;
+        codes[i] = reverse_code(code,width);
+    }
+    let mut distances = [0u32;32];
+    for i in 0..32 { distances[i] = reverse_code(i,5); }
+    (Huffman { lengths, codes },Huffman { lengths: [5u8;32], codes: distances })
 }
 
 // Private owner hints select the token that produces each output byte. Prefix
-// sums make token output intervals disjoint and exhaustive; backward RAM reads
-// enforce LZ77, including overlapping matches.
+// sums make token output intervals disjoint and exhaustive; backward reads from
+// immutable plain advice enforce LZ77 by induction, including overlapping matches.
 pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
     data: [u8;N], data_len: u32, blocks: [BlockHint;B], block_count: u32,
     tokens: [TokenHint;T], owners: [u32;P], plain_len: u32,
@@ -223,7 +290,7 @@ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
                 assert_eq(h.tokens,len);
                 assert_eq(h.end,pos+len*8);
             } else if kind == 1 {
-                let (l,d) = fixed_tables(); block_ll = l; block_dd = d;
+                let (l,d) = comptime { fixed_tables() }; block_ll = l; block_dd = d;
                 assert(h.tokens > 0);
             } else {
                 let (l,d,p) = dynamic_tables(data,limit,pos,h);

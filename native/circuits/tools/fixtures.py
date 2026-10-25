@@ -38,6 +38,20 @@ def table(lengths):
             next_code[width] += 1
     return result
 
+def first_codes(lengths):
+    counts = [lengths.count(i) for i in range(16)]
+    counts[0] = 0
+    first = [0]*16
+    for i in range(1,16): first[i] = (first[i-1]+counts[i-1])*2
+    return first
+
+def prefixes(lengths):
+    counts, result = [0]*15, []
+    for width in lengths:
+        result.extend(counts)
+        if width: counts[width-1] += 1
+    return result
+
 def witness(data, with_hints=False):
     r, blocks, tokens, owners, output = Reader(data), [], [], [], bytearray()
     hints = {name: [] for name in ("ll_lengths", "ll_codes", "dd_lengths", "dd_codes", "body", "kinds", "starts", "lengths", "distances")}
@@ -47,6 +61,8 @@ def witness(data, with_hints=False):
         final, kind = r.bits(1), r.bits(2)
         cs, cw = [0]*320, [0]*320
         first = len(tokens)
+        cl_lengths, cl_codes, expanded_lengths = [0]*19, [0]*19, [0]*320
+        header_repeats, header_prefixes, header_suffixes = [0]*320, [0]*320, [0]*320
         if kind == 0:
             r.pos = ((r.pos+7)//8)*8
             length, complement = r.bits(16), r.bits(16)
@@ -68,14 +84,23 @@ def witness(data, with_hints=False):
                 for i in range(hclen): cl[ORDER[i]] = r.bits(3)
                 ch, lengths = table(cl), []
                 while len(lengths) < hlit+hdist:
+                    header_start, expanded_start = r.pos, len(lengths)
                     s, width = r.symbol(ch)
                     cs[len(lengths)], cw[len(lengths)] = s, width
                     if s < 16: lengths.append(s)
                     elif s == 16: lengths.extend([lengths[-1]]*(r.bits(2)+3))
                     elif s == 17: lengths.extend([0]*(r.bits(3)+3))
                     else: lengths.extend([0]*(r.bits(7)+11))
+                    header_repeats[expanded_start] = len(lengths)-expanded_start
+                    offset,shift = divmod(header_start,8)
+                    raw = int.from_bytes(data[offset:offset+3],'little')
+                    header_prefixes[expanded_start] = raw % (1<<shift)
+                    header_suffixes[expanded_start] = raw >> (shift+r.pos-header_start)
                 assert len(lengths) == hlit+hdist
                 ll, dd = lengths[:hlit], lengths[hlit:]
+                cl_lengths = cl
+                for (width, code), symbol in table(cl).items(): cl_codes[symbol] = int(f'{code:0{width}b}'[::-1],2)
+                expanded_lengths = lengths + [0]*(320-len(lengths))
             else: raise ValueError('reserved block type')
             lt, dt = table(ll), table(dd)
             body = r.pos
@@ -104,7 +129,7 @@ def witness(data, with_hints=False):
             for (width, code), symbol in table(widths).items(): codes[symbol] = int(f'{code:0{width}b}'[::-1], 2)
             hints[prefix+"_lengths"].extend(widths)
             hints[prefix+"_codes"].extend(codes)
-        blocks.append(dict(start=start,end=r.pos,first_token=first,tokens=len(tokens)-first,code_symbols=cs,code_widths=cw,kind=kind))
+        blocks.append(dict(start=start,end=r.pos,first_token=first,tokens=len(tokens)-first,code_symbols=cs,code_widths=cw,kind=kind,cl_lengths=cl_lengths,cl_codes=cl_codes,expanded_lengths=expanded_lengths,cl_prefixes=prefixes(cl_lengths),ll_prefixes=prefixes(ll+[0]*(288-len(ll))) if kind == 2 else [0]*4320,dd_prefixes=prefixes(dd+[0]*(32-len(dd))) if kind == 2 else [0]*480,cl_first=first_codes(cl_lengths),ll_first=first_codes(ll) if kind == 2 else [0]*16,dd_first=first_codes(dd) if kind == 2 else [0]*16,header_repeats=header_repeats,header_prefixes=header_prefixes,header_suffixes=header_suffixes))
     assert (r.pos+7)//8 == len(data)-4
     assert output == zlib.decompress(data)
     result = (blocks,tokens,owners,bytes(output))
@@ -124,7 +149,7 @@ def nr_fixture(name, data, mutation='', fail=False):
     blocks,tokens,owners,plain = witness(data)
     n,p,t,b = len(data),max(len(plain),1),max(len(tokens),1),len(blocks)
     lines = [f'#[test{"(should_fail)" if fail else ""}]',f'unconstrained fn {name}() {{',f'    let mut data = {array(data)};',
-        f'    let mut blocks = [BlockHint {{ start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320] }};{b}];']
+        f'    let mut blocks = [BlockHint {{ start:0,end:0,first_token:0,tokens:0,code_symbols:[0;320],code_widths:[0;320],cl_lengths:[0;19],cl_codes:[0;19],expanded_lengths:[0;320],cl_prefixes:[0;285],ll_prefixes:[0;4320],dd_prefixes:[0;480],cl_first:[0;16],ll_first:[0;16],dd_first:[0;16],header_repeats:[0;320],header_prefixes:[0;320],header_suffixes:[0;320] }};{b}];']
     for i,block in enumerate(blocks):
         for key,value in block.items():
             if key == 'kind': continue
@@ -204,6 +229,14 @@ def regression_cases():
         ('rejects_distances', overlap, ('hint', 'distances', match, 1)),
         ('rejects_block_body', overlap, ('hint', 'body', 0, 1)),
         ('rejects_block_kind', overlap, ('hint', 'kinds', 0, 1)),
+        ('rejects_code_length_table', dynamic, ('block_array', 0, 'cl_codes', 18, 1)),
+        ('rejects_expanded_lengths', dynamic, ('block_array', 0, 'expanded_lengths', 65, 1)),
+        ('rejects_huffman_prefix', dynamic, ('block_array', 0, 'll_prefixes', 65*15, 1)),
+        ('rejects_huffman_initial_prefix', dynamic, ('block_array', 0, 'cl_prefixes', 0, 1)),
+        ('rejects_huffman_first_code', dynamic, ('block_array', 0, 'll_first', 1, 1)),
+        ('rejects_header_repeat', dynamic, ('block_array', 0, 'header_repeats', 0, 1)),
+        ('rejects_header_prefix', dynamic, ('block_array', 0, 'header_prefixes', 0, 1)),
+        ('rejects_header_suffix', dynamic, ('block_array', 0, 'header_suffixes', 0, 1)),
     ]
 
 def multiblock_cases():
@@ -240,6 +273,9 @@ def mutate(data, blocks, tokens, owners, mutation):
     if kind == 'block':
         index, key, delta = args
         blocks[index][key] += delta
+    elif kind == 'block_array':
+        block,key,index,delta = args
+        blocks[block][key][index] += delta
     elif kind == 'token':
         index, field, value = args
         tokens[index][field] = value
@@ -290,7 +326,7 @@ def main():
     assert witness(dynamic)[0][0]['kind'] == 2
     c=zlib.compressobj()
     multi=c.compress(b'first synthetic block')+c.flush(zlib.Z_SYNC_FLUSH)+c.compress(b'second synthetic block')+c.flush()
-    vectors = [('stored',stored),('fixed_overlap',fixed),('dynamic',dynamic),('multiple_blocks',multi),('empty',compressed(b''))]
+    vectors = [('adler_wrap',compressed(bytes([255])*600)),('stored',stored),('fixed_overlap',fixed),('dynamic',dynamic),('multiple_blocks',multi),('empty',compressed(b''))]
     tests = [nr_fixture(name,data) for name,data in vectors]
     tests += [nr_fixture('rejects_checksum',fixed,f'    data[{len(fixed)-1}] = data[{len(fixed)-1}] ^ 1;',True),
         nr_fixture('rejects_token_gap',fixed,'    tokens[1].start += 1;',True),

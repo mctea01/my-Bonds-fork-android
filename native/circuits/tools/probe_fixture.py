@@ -41,7 +41,7 @@ def write(path,data,capacity=128,plain_capacity=128,token_capacity=32,mutation=N
     if isinstance(mutation, tuple) and mutation[0] == 'plain':
         fields['expected'][mutation[1]] ^= 1
     lines=[f'{k} = {v}' for k,v in fields.items()]
-    blocks += [dict(start=0,end=0,first_token=0,tokens=0,code_symbols=[0]*320,code_widths=[0]*320)]*(block_capacity-len(blocks))
+    blocks += [dict(start=0,end=0,first_token=0,tokens=0,code_symbols=[0]*320,code_widths=[0]*320,cl_lengths=[0]*19,cl_codes=[0]*19,expanded_lengths=[0]*320,cl_prefixes=[0]*285,ll_prefixes=[0]*4320,dd_prefixes=[0]*480,cl_first=[0]*16,ll_first=[0]*16,dd_first=[0]*16,header_repeats=[0]*320,header_prefixes=[0]*320,header_suffixes=[0]*320)]*(block_capacity-len(blocks))
     for b in blocks:
         lines.append('[[blocks]]')
         lines.extend(f'{k} = {v}' for k,v in b.items() if k!='kind')

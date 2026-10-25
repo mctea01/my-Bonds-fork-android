@@ -17,20 +17,28 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--nargo', default='nargo')
-    parser.add_argument('--multiblock', action='store_true')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--multiblock', action='store_true')
+    group.add_argument('--adler', action='store_true')
     args = parser.parse_args()
     version = subprocess.check_output([args.nargo, '--version'], text=True)
     if '1.0.0-beta.15' not in version:
         raise RuntimeError('Use the pinned nargo version')
-    package = 'inflate_multiblock_probe' if args.multiblock else 'inflate_probe'
+    package = 'inflate_adler_probe' if args.adler else 'inflate_multiblock_probe' if args.multiblock else 'inflate_probe'
     witness_name = f'{package}_regression'
     subprocess.run([args.nargo, 'compile', '--package', package], cwd=ROOT, check=True)
     prover = ROOT / 'bench' / package / 'Regression.toml'
     cases = multiblock_cases() if args.multiblock else [('overlap_control', compressed(b'AB' * 40), None)] + regression_cases()
+    if args.adler:
+        data = compressed(bytes([255])*600)
+        cases = [('adler_wrap_control',data,None),
+                 ('rejects_wrapped_checksum',data,('bits',(len(data)-1)*8,8,data[-1]^1)),
+                 ('rejects_late_plain_copy',data,('plain',599))]
     results = []
     try:
         for name, data, mutation in cases:
             write(prover, data, mutation=mutation,
+                  plain_capacity=1024 if args.adler else 128,
                   token_capacity=64 if args.multiblock else 32,
                   block_capacity=3 if args.multiblock else 1)
             result = subprocess.run(
