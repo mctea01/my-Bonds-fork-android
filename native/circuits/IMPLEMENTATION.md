@@ -109,3 +109,79 @@ Noir／bb 只作開發與證明工具，本分支沒有新增 APK 原生 runtime
 最終 SHA ACIR 因測試與來源 metadata 更新而與首次測量檔 hash 不同；
 `validation/*.json` 同時保留 `measured_acir_sha256`。已從最終 ACIR
 重新產生三組 ZK VK，與量測時 VK 逐 byte 相同，確認約束未改。
+
+## M3b 恢復檢查點（Round 4，尚未完成）
+
+基準：整合分支 `24f32af39d605c92ee3f038ced1263ddbff3c6ff`。
+恢復時遠端 `codex/p4-wp3a-m3b` 只有已合併的 M3a，沒有完整 M3b
+電路。下列修改是 M3b 的前置工作，不能作為可發布的 zkPDF 電路。
+M3d 合成文件在獨立分支 `codex/p4-wp3b-testdocs`、PR #20；本分支
+未帶入該分支的測試文件。
+
+### 已完成的約束與測試
+
+- 第 3.4.1 節：保留全部 inflate 容量與檢查，將每個區塊的 Huffman
+  表放入平坦陣列，`symbol_at` 以 `block * alphabet + symbol` 讀取
+  碼長與 canonical code。區塊、alphabet、symbol 及讀取範圍仍有約束；
+  不先依私密索引選取整張表。沒有新增 unconstrained acceptance path。
+- M3a 的空區塊、overlap、dynamic repeat 與 EOB 審查項目已補上
+  定向負向案例：空 stored endpoint、空 Huffman 缺 EOB、重疊輸出
+  owner／distance、無前項的 repeat 16、repeat 18 超過碼長表尾端、
+  動態表缺 EOB、錯誤 EOB endpoint。EOB endpoint 的修改仍留在原本
+  最後一個 byte 中，避免僅靠 zlib 長度檢查拒絕。
+- 多區塊正向案例包含不同的 fixed／dynamic 表及中間空 stored block；
+  負向案例包含使用另一張表的碼長及跳過空區塊。產生器以 Python
+  zlib 獨立核對每份正向串流，再只改指定的提示或位元。
+- `nargo test`：**33 項通過**（5 項 SHA 測試、28 項 Brillig inflate
+  語意測試）。`tools/regressions.py`：11 個 ACIR 案例通過；加上
+  `--multiblock`：4 個 ACIR 案例通過。共 5 個接受、10 個約束拒絕。
+  ACIR 執行啟用 pedantic solving，未略過 underconstrained 或
+  Brillig constraints checks；解析／編譯錯誤不算負向測試通過。
+- `:core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`
+  通過；354 項發現、325 通過、29 略過、0 失敗。另有兩個既有
+  非 void JUnit 方法沒有被發現（`ZkTemplatePackTest.signedPackRoundTrip`
+  與 `ZkTlsPlanTest.signedRequestRoundTrip`），未計入上述數量。本環境
+  未安裝 Rust，原生測試依既有 auto 規則略過；沒有宣稱 Rust／原生
+  後端驗收通過，也沒有修改 Rust 或 Android 程式。
+
+### 小容量證明與版本
+
+`inflate_probe` 的容量仍為 128 compressed／128 plain／32 tokens／
+1 block。gate 數從 M3a 的 782,382 降至 **680,210**，ACIR opcodes
+296,094。bb 2.1.9、`-s ultra_honk --oracle_hash poseidon2`，不帶
+`--disable_zk`，first／warm 證明 22.29／17.33 秒，峰值 1,795,500
+KiB RSS，16,256-byte proof，獨立 `bb verify` 通過（17.15 ms）。
+此 probe 沒有公開輸入，**不驗證 PDF／SHA 公開綁定**。
+
+本次為 4 vCPU／32 GiB 雲端容器，背景另有完整容量編譯，first
+包含首次 CRS 下載；不能直接與 M3a 的 2 vCPU 時間比較。
+`validation/m3b-inflate-probe.json` 保存量測；`VERSIONS` 更新此
+小容量 probe 的 ACIR／VK SHA-256。M3a 歷史數據仍保留，其他 SHA
+元件沒有改動。這些 hash 不是完整 M3b 的正式釘選。
+
+完整容量 inflate 的兩次 600 秒編譯（原 M3a 與優化版）均 timeout。
+優化版延長到 1,800 秒預算後，在 783.45 秒因記憶體配置失敗而
+SIGABRT；峰值 RSS 24,139,060 KiB，位址空間預算為 24 GiB。沒有
+取得 ACIR 或完整 gate／proof 數據。這是編譯資源限制，不能當成
+證明成本；詳細環境、重現命令與未採用的調整方案見 benchmark 文件。
+
+### 尚未完成與交接界線
+
+| 規格 | 狀態 |
+|---|---|
+| 第 3.4 節 SHA 視窗與 inflate 連接 | 未接上；M3a 元件本身仍存在 |
+| 第 3.4.2–3.4.5 節 lexer、完整性、錨點、承諾、日期述詞 | 未實作 |
+| 第 3.5 節 Word 類規則 | 未實作；沒有宣稱 Z8／Z9／Z13 通過 |
+| 第 3.6 節公開輸入與見證 ABI | 未實作；沒有 `PUBLIC_SPEC.md` 凍結提案 |
+| 第 3.8 節簽章文件欄位與 β 綁定 | 尚不成立；本次 probe 只有解壓元件語意 |
+| 完整 `pdf_text_v1_1p` 的 gate、證明、驗證、ACIR／VK hash | 尚無產物或量測 |
+
+介面變更提案：無。沒有改容量、拆證明、修改其他工作包或新增第三方
+元件。M3c 的開始條件尚未成立：整合分支沒有狀態為「已凍結」的
+`PUBLIC_SPEC.md`，因此未開始證明器與 FFI。
+
+接續工作先重現完整容量 inflate 編譯（`tools/compile_profile.py`；
+量測見 `docs/research/p4-benchmarks.md` 的「完整 zkPDF 電路」一節），
+解決編譯資源成本，再完成上述電路與 ABI、Z8／Z9／Z13、完整 proof
+及規格凍結提案。不得把小容量 probe 當成完整電路驗收。Claude 仍需
+獨立審查 hint 綁定與新的平坦表索引；本次回歸測試不取代密碼學審查。

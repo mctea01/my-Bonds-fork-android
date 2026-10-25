@@ -115,3 +115,61 @@ TLSn executable 是 `cargo test --release -p zktls --no-run` 產生的 loopback
 - OpenAC、inflate 全 profile、M3b 完整 PDF 及手機數據未充分量測前，
   不應由這些 component 結果設成硬性禁止本機運算的條件。沿用既有
   估計提示與使用者選擇，後續由 Claude 接到 `ZkCapability`。
+
+## 完整 zkPDF 電路（Round 4 前置測量，尚未完成）
+
+本節基準為 `24f32af39d605c92ee3f038ced1263ddbff3c6ff`，與上方
+Round 3 環境不同：Linux x86_64、AMD EPYC 9V74，cgroup 配額
+**4 vCPU／32 GiB RAM**。工具仍為 nargo 1.0.0-beta.15（noirc
+`83245db91dcf63420ef4bcbbd85b98f397fee663`）、bb 2.1.9。
+
+**完整 `pdf_text_v1_1p` 尚未實作；以下是完整容量 inflate 元件的
+編譯預檢，不是完整 PDF 電路的 gate／prove／verify 測量。**
+完整容量固定為 8,192 compressed bytes、40,960 plain bytes、20,480
+tokens、8 blocks，沒有縮小。每次建立新的獨立 temporary package，
+沒有 ACIR 快取；編譯器保留全部約束檢查。RSS 為該子程序的 Linux
+峰值，24 GiB 是為雲端工作階段保留餘裕而設的 **RLIMIT_AS 位址空間
+預算**，不是 RSS 上限，也不是第 3.7 節的證明記憶體門檻。
+
+| inflate 實作 | 編譯時間預算 | 結果 | 經過時間 | 峰值 RSS |
+|---|---:|---|---:|---:|
+| 原 M3a | 600 s | timeout，無 ACIR | 600.42 s | 17,328,776 KiB（16.53 GiB） |
+| 平坦 Huffman 表 | 600 s | timeout，無 ACIR | 600.89 s | 14,300,592 KiB（13.64 GiB） |
+| 平坦 Huffman 表 | 1,800 s | allocation failure，SIGABRT，無 ACIR | 783.45 s | 24,139,060 KiB（23.02 GiB） |
+
+延長預算的編譯器訊息為 `memory allocation of 1080 bytes failed`。
+尚不知道不設此預算時所需的總記憶體；不能把 23.02 GiB 當成完成
+編譯的成本，也不能由編譯失敗推定 prove 時間或手機可用性。完整
+gate、prove、verify、proof 大小與完整 ACIR／VK SHA-256 均 **未取得**。
+原始數據在 `native/circuits/validation/m3b-full-inflate-*.json`。
+
+重現優化版預檢：
+
+```sh
+cd native/circuits
+python3 -I tools/compile_profile.py --nargo /path/to/nargo \
+  --seconds 1800 --address-space-gib 24 --output target/full-profile.json
+```
+
+同一修改另以小容量 `inflate_probe` 驗證：128 compressed／128 plain／
+32 tokens／1 block，gate 從 782,382 減為 **680,210（減少 13.06%）**，
+296,094 ACIR opcodes。以 UltraZKFlavor（`-s ultra_honk --oracle_hash
+poseidon2`，不帶 `--disable_zk`）產生兩次 proof，first／warm 為
+22.29／17.33 秒、峰值 1,795,500／1,782,852 KiB；獨立驗證 17.15 ms，
+proof 16,256 bytes，public inputs 0 bytes。first 包含首次 CRS 下載，
+同時有上述完整容量編譯；只作 correctness probe，不是隔離桌面的
+正式效能基準。數據與 ACIR／VK hash 見
+`native/circuits/validation/m3b-inflate-probe.json` 及 `VERSIONS`。
+
+供 Claude 評估的第 3.7 節方案（**未採用**）：
+
+| 方案 | 可量化的局部估計 | 尚不能推論之處 |
+|---|---|---|
+| `MAX_PLAIN` 40,960 → 32,768 | 輸出與逐 byte lexer 的固定迴圈少 20%；其餘容量不變 | 不是總 gate／RSS 少 20%；20,480-token 解碼與兩個 SHA 視窗沒有縮小 |
+| `MAX_PLAIN` 40,960 → 16,384 | 上述迴圈少 60%，但無法容納規格中最大 31,582-byte 樣本 | 不滿足現有樣本覆蓋要求，不能直接作為目前 profile 的替代 |
+| 解壓與文字拆成兩個 proof，再遞迴合併 | 順序執行時元件記憶體不需同時保留；完整容量 inflate 仍須單獨編譯 | 本次 inflate 編譯限制仍存在；需增加私密內容一致性綁定與遞迴驗證成本，不能將兩份獨立 proof 直接視為等價 |
+
+優先可繼續研究保留容量的編譯／約束最佳化，或在較大建置環境完成
+ACIR 後量測。以上是迴圈容量比例與架構上的估計，並非完整電路
+效能預測；沒有以小 probe 線性外推完整 gate 數，沒有改動 profile
+或替代正式完整電路的驗收。
