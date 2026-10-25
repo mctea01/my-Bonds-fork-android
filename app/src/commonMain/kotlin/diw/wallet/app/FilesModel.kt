@@ -47,7 +47,9 @@ import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.sign.MobileMoicaCredentials
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
+import diw.wallet.core.document.sign.MobileMoicaService
 import diw.wallet.core.document.sign.MobileMoicaSigner
+import diw.wallet.core.document.sign.ServerMobileMoicaClient
 import diw.wallet.core.document.sign.TwFidoClient
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
@@ -297,8 +299,11 @@ sealed class SignerChoice {
     class System(val id: String?) : SignerChoice()
     /** A key on a PKCS#11 token loaded from [library]; the PIN is used for this signing only. */
     class Token(val library: String, val pin: String, val id: String) : SignerChoice()
-    /** The mobile citizen certificate, through the SP account of a licence holder entered for this run. */
-    class MobileMoica(val sp: MobileMoicaSp, val idNumber: String, val mode: MobileMoicaMode) : SignerChoice()
+    /**
+     * The mobile citizen certificate, through [sp] (built in, or a licence holder's entered for this run) or, with
+     * [server] set, through the SP account of that production server.
+     */
+    class MobileMoica(val sp: MobileMoicaSp?, val idNumber: String, val mode: MobileMoicaMode, val server: String? = null) : SignerChoice()
     /** A remote signing service (CSC API); the holder signs in and approves each signature with the service. */
     class Csc(val service: CscService) : SignerChoice()
 }
@@ -1543,10 +1548,20 @@ class FilesModel(private val model: WalletModel) {
     private val mobileMoicaCerts = mutableMapOf<String, ByteArray>()
 
     private suspend fun mobileMoicaSigner(choice: SignerChoice.MobileMoica, hint: String): MobileMoicaSigner {
-        if (!choice.sp.builtIn) mobileMoicaSp = choice.sp
-        val client = TwFidoClient(model.http, choice.sp.environment, MobileMoicaCredentials(choice.sp.serviceId.trim(), choice.sp.aesKeyBase64.trim()))
+        val server = choice.server
+        val sp = choice.sp
+        val client: MobileMoicaService
+        val cacheKey: String
+        if (server != null) {
+            client = ServerMobileMoicaClient(model.http, server, model.server.tokenFor(server))
+            cacheKey = "server:" + server + ":" + choice.idNumber
+        } else {
+            if (sp == null) throw SigningException("沒有選擇行動自然人憑證的 SP 帳號")
+            if (!sp.builtIn) mobileMoicaSp = sp
+            client = TwFidoClient(model.http, sp.environment, MobileMoicaCredentials(sp.serviceId.trim(), sp.aesKeyBase64.trim()))
+            cacheKey = sp.environment.name + ":" + sp.serviceId + ":" + choice.idNumber
+        }
         val returnUrl = model.platform.mobileMoicaReturnUrl ?: ""
-        val cacheKey = choice.sp.environment.name + ":" + choice.sp.serviceId + ":" + choice.idNumber
         val signer = MobileMoicaSigner(
             client, choice.idNumber, choice.mode, hint.take(60),
             openApp = { model.platform.openExternal(it) }, returnUrl = returnUrl,

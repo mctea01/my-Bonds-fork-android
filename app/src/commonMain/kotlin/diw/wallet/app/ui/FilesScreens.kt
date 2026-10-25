@@ -959,15 +959,30 @@ private fun KeyList(list: List<ExternalKeyOption>?, chosen: String?, problem: St
     }
 }
 
+/** Whose SP account of the Ministry of the Interior a mobile citizen certificate signature goes through. */
+private enum class MobileMoicaSource(val title: String) {
+    SERVER("正式服務端的 SP"),
+    BUILT_IN("本版內建的 SP"),
+    MANUAL("手動輸入 SP"),
+}
+
 /**
- * The mobile citizen certificate through an SP account of the Ministry of the Interior: the account built into this
- * build, or, with the developer setting on, one typed in here for this run only (kept in memory, never stored).
+ * The mobile citizen certificate through an SP account of the Ministry of the Interior: the production server's (no
+ * key in the app), the account built into this build, or, with the developer setting on, one typed in here for this
+ * run only (kept in memory, never stored).
  */
 @Composable
 private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
     val settings by model.settingsFlow.collectAsState()
     val manual = settings.manualMobileMoicaSp
     val builtIn = model.files.builtInMobileMoicaSp
+    val server = remember(settings.zkVerifierUrl) { model.server.base() }
+    val sources = listOfNotNull(
+        MobileMoicaSource.SERVER.takeIf { server != null },
+        MobileMoicaSource.BUILT_IN.takeIf { builtIn != null },
+        MobileMoicaSource.MANUAL.takeIf { manual },
+    )
+    var source by remember(sources) { mutableStateOf(if (manual) MobileMoicaSource.MANUAL else sources.firstOrNull()) }
     val last = model.files.mobileMoicaSp
     var env by remember { mutableStateOf(last?.environment ?: MobileMoicaEnvironment.UAT) }
     var serviceId by remember { mutableStateOf(last?.serviceId.orEmpty()) }
@@ -977,29 +992,46 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     var mode by remember { mutableStateOf(if (canOpenApp) MobileMoicaMode.APP_TO_APP else MobileMoicaMode.PUSH) }
     fun update() {
         val id = idNumber.trim().uppercase()
-        val sp = if (manual) MobileMoicaSp(env, serviceId.trim(), aesKey.trim()).takeIf { serviceId.isNotBlank() && aesKey.isNotBlank() } else builtIn
-        onChange(if (sp != null && MyDataProfile.isValidId(id)) SignerChoice.MobileMoica(sp, id, mode) else null)
+        val choice = when (source) {
+            MobileMoicaSource.SERVER -> server?.let { SignerChoice.MobileMoica(null, id, mode, server = it) }
+            MobileMoicaSource.BUILT_IN -> builtIn?.let { SignerChoice.MobileMoica(it, id, mode) }
+            MobileMoicaSource.MANUAL -> MobileMoicaSp(env, serviceId.trim(), aesKey.trim())
+                .takeIf { serviceId.isNotBlank() && aesKey.isNotBlank() }?.let { SignerChoice.MobileMoica(it, id, mode) }
+            null -> null
+        }
+        onChange(choice?.takeIf { MyDataProfile.isValidId(id) })
     }
-    LaunchedEffect(manual) { update() }
-    if (!manual && builtIn == null) {
-        Text("這個版本沒有內建行動自然人憑證的服務提供者（SP）帳號，無法使用。持有 SP 授權的開發者可在設定開啟「手動輸入 SP 帳號」。",
+    LaunchedEffect(source) { update() }
+    if (source == null) {
+        Text("沒有可用的行動自然人憑證服務提供者（SP）帳號：在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；持有 SP 授權的開發者也可在設定開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
-    if (manual) {
-        Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
-            style = MaterialTheme.typography.bodySmall)
+    if (sources.size > 1) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+            sources.forEach { o -> FilterChip(selected = o == source, onClick = { source = o }, label = { Text(o.title) }) }
         }
-        OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
-            singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(
-            value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
-            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+    }
+    when (source) {
+        MobileMoicaSource.SERVER -> Text(
+            "經由正式服務端（${server?.substringAfter("://")}）的 SP 帳號簽署，App 內不放 SP 金鑰。服務端會看到你的身分證統一編號與要簽署的摘要資料（不含文件內容），簽章仍由這支手機驗證。使用設定中的存取權杖。",
+            style = MaterialTheme.typography.bodySmall,
         )
-    } else if (builtIn != null) {
-        Text("使用本版內建的 SP 帳號（${builtIn.environment.title}）。", style = MaterialTheme.typography.bodySmall)
+        MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
+        MobileMoicaSource.MANUAL -> {
+            Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
+                style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
+            }
+            OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
+                singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        null -> Unit
     }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())

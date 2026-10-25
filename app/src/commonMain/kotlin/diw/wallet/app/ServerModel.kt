@@ -40,7 +40,8 @@ class ServerModel(private val model: WalletModel) {
 
     val state = MutableStateFlow(State())
 
-    private fun base(): String? = model.settings.zkVerifierUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
+    /** The configured server's address without a trailing slash, or null when none is set. */
+    fun base(): String? = model.settings.zkVerifierUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
 
     /** The token for [base] when it is the configured server; never sent to the test server or another host. */
     fun tokenFor(base: String): String? = model.settings.serverToken.takeIf { it.isNotEmpty() && base() == base.trimEnd('/') }

@@ -144,7 +144,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
   - Linux 需安裝並啟動 `pcscd`。
   - 電腦只能讀取，不能以 NFC 出示。
 - **零知識證明的原生函式庫**：需要 Rust 1.95.0（Android 另需 cargo-ndk 與 NDK 28.2.13676358），沒有工具鏈時照常建置但不含零知識證明。`DIW_ZK_NATIVE=require` 強制建置、`skip` 不建置；`DIW_ZK_FEATURES=openac,tlsn` 連結年齡證明與 zkTLS 後端（`openac` 需 protoc 與 libclang）。
-- **行動自然人憑證簽章**：需要內政部核發的 SP 帳號，在編譯時以 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV` 環境變數或 Gradle 屬性提供，不會提交進 repo。
+- **行動自然人憑證簽章**：需要內政部核發的 SP 帳號。建議放在正式服務端（[diw-wallet-server](https://github.com/mctea01/diw-wallet-server) 的 `twfido` 功能），App 內不放 SP 金鑰，簽署畫面預設「正式服務端的 SP」；也可在編譯時以 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV` 環境變數或 Gradle 屬性內建，不會提交進 repo。
 
 ### 本機測試伺服器
 

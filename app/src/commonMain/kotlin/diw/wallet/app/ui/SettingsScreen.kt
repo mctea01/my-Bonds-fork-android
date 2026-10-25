@@ -360,7 +360,7 @@ private fun DeveloperPage(model: WalletModel) {
     Toggle(
         "手動輸入 SP 帳號",
         "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+            "開啟後簽署畫面仍可改選正式服務端或本版內建的帳號。" + if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
 }
