@@ -68,7 +68,10 @@ Run each case in a separate process, sequentially, with the same resource
 budgets. `nargo info` performs the fresh compilation and reports ACIR opcodes;
 `--bb` additionally runs `bb gates` for completed compilations. Records include
 the container's actual CPU and memory ceilings, which may be lower than the
-requested address-space budget. Successful compilation is saved before gates
+requested address-space budget. On a constrained development container, an
+optional `--rss-limit-gib 6` protects the session. A termination at this guard
+is reported as `rss_guard`, not as OOM, timeout, or evidence of failure at the
+24 GiB address-space ceiling. Successful compilation is saved before gates
 are attempted, so a backend failure cannot erase the compiler result.
 
 The runner uses a fresh temporary package outside this workspace to avoid a
@@ -84,3 +87,36 @@ JSON contains only timings, sizes, gate counts and artifact hashes. First/warm
 runs are fresh processes against the same local SRS cache; no privileged cache
 flush is performed. Compile timing can include a compiler cache hit. RSS is the
 child process peak, not a platform-independent allocation counter.
+
+Measure only the cost of one or two UltraHonk ZK recursive verifiers:
+
+```sh
+npm install --prefix target/recursion-tools --ignore-scripts @aztec/bb.js@2.1.9
+python3 -I tools/recursion_profile.py --nargo /path/to/nargo --bb /path/to/bb \
+  --bb-js target/recursion-tools/node_modules/@aztec/bb.js \
+  --verifiers 1 --public-inputs 32 --rss-limit-gib 6 --output target/recursion-one.json
+python3 -I tools/recursion_profile.py --nargo /path/to/nargo --bb /path/to/bb \
+  --bb-js target/recursion-tools/node_modules/@aztec/bb.js \
+  --verifiers 2 --public-inputs 32 --rss-limit-gib 6 --output target/recursion-two.json
+```
+
+In bb 2.1.9, native `CircuitStats` passes `UltraCircuitBuilder` to a helper
+that expects a flavor, leaving `honk_recursion=0`. The native `gates` command
+therefore rejects recursive opcodes. The runner retains that failure and,
+only for this error, optionally uses the same release's existing WASM API
+`acirGetCircuitSizes(bytecode, false, true)`. Both finalize an Ultra circuit
+and report its finalized gate count; no backend source is patched. The record
+identifies the API, one WASM thread, elapsed time and RSS. These timings are
+gate-construction costs, not proof timings. The optional MIT-licensed tool is
+not bundled with the app; see `NOTICE` in this directory.
+
+These fresh cost-only harnesses use bb 2.1.9's ZK proof type 7 (508 proof
+fields, 115 VK fields). They do not implement PDF splitting, trusted VK
+selection, state chaining or a valid recursive proof. The backend generates
+dummy assignments for gate counting. Application public input counts are
+explicit; these are not a proposed frozen PDF ABI or an end-to-end benchmark.
+
+Round 5 candidate patches in `validation/m3b-round5-*.patch` apply separately
+to capacity-only commit `f79397c`. Only the `bits` candidate is adopted;
+`scalar` and `fixed` are reproducibility records for discarded comparisons.
+Their measurement JSON files include source hashes and explicit capacities.

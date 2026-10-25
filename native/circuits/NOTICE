@@ -1,0 +1,8 @@
+Optional development measurement tool (not bundled with the application):
+
+- @aztec/bb.js 2.1.9, Barretenberg JavaScript/WASM API - MIT License.
+  https://github.com/AztecProtocol/aztec-packages/tree/v2.1.9/barretenberg/ts
+  Used only by tools/recursion_gates.mjs to measure UltraHonk ZK recursive
+  verifier gates. Install externally or under ignored target/recursion-tools.
+  No third-party source, WASM binary, circuit key or proof asset is vendored.
+  The installed package and its dependencies retain their own license files.
