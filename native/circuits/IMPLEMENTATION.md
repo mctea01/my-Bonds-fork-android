@@ -185,3 +185,96 @@ SIGABRT；峰值 RSS 24,139,060 KiB，位址空間預算為 24 GiB。沒有
 解決編譯資源成本，再完成上述電路與 ABI、Z8／Z9／Z13、完整 proof
 及規格凍結提案。不得把小容量 probe 當成完整電路驗收。Claude 仍需
 獨立審查 hint 綁定與新的平坦表索引；本次回歸測試不取代密碼學審查。
+
+## M3b 恢復檢查點（Round 5，中斷，尚未完成）
+
+基準：整合分支 `b35710616411428c93769c0bf8ee7d132eb797c8` 已在
+原工作分支歷史中，開始時 merge 回報 already up to date。
+`f79397c` 將 inflate 上限與完整容量 harness 改成 N=8,192、
+P=40,960、T=6,144、B=4，並讓 `compile_profile.py` 接受分維度
+參數、記錄 opcodes、以 bb 取得 gates，保留失敗與容器限制。
+
+這是規格已核准的容量調整，沒有放寬約束，沒有新增 unconstrained
+接受路徑或修改其他工作包介面。既有邊界與多區塊測試原封保留。
+
+### 已完成與未完成
+
+- 已完成四組基準量測；三組在 **8 GiB cgroup** 下 OOM，一組編譯
+  成功，1,735,520 opcodes／5,840,513 gates。詳細表格在 benchmark
+  的「Round 5 容量調整與中斷檢查點」。
+- 第五組 B=1、T=512、P=40,960 執行中環境離線，尚未收到最終記錄。
+  不將中途 RSS／時間或環境離線當作已完成的 OOM 量測。
+- 各組設有 1,800 秒／24 GiB RLIMIT_AS，但容器實際只有 2 vCPU／
+  8 GiB，不能把結果寫成「24 GiB 仍無法編譯」。
+- 候選最佳化只在工作區準備，**沒有加入分支，也沒有前後實測**。
+  包含區塊／記號必要欄位投影、固定 Huffman 表編譯期建立，以及
+  最多 16 bits 的讀取改用三個 bytes；是否採用仍待驗證。
+- Round 5 的 `nargo test`、兩組 ACIR regressions 與要求的 Gradle
+  指令 **尚未執行完成**。前述 Round 4 測試數是歷史紀錄，不能當成
+  本輪驗收。Python 工具已通過語法編譯；四區塊診斷 harness 已實際
+  完成 Noir 編譯與 bb gates。
+- 沒有完整 PDF 電路、完整 prove／verify／proof 大小或新的正式
+  ACIR／VK；沒有更新正式釘選。既有 `VERSIONS` 中的 probe hash
+  仍是 Round 4 資產，恢復後需對最終來源重新量測。
+- PR #21 保持 draft。沒有開始 M3c 或自行拆電路。Z8／Z9／Z13、
+  lexer、錨點、欄位承諾、述詞與 Word 類規則仍未完成。
+
+### 遞迴合併設計草案（待 Claude 決定，沒有實作）
+
+候選切分以輸出位置為主：每段最多處理 1,024 個輸出位元組或
+512 個記號，先到者結束；整份文件的原容量保持不變。跨段的
+長度距離對保留剩餘長度與距離，下一段先完成該 copy，不重新解碼。
+動態 Huffman header 可用獨立 header 段，保留全部碼長、repeat、
+EOB 與完整樹檢查；空 stored／EOB 必須推進記號或區塊，禁止無進展段。
+
+每個葉證明的公開邊界狀態包括：位元位置、區塊索引／類型／BFINAL、
+全域記號與輸出位置、Adler-32 的 a／b、Huffman 表承諾、LZ77
+視窗根、已輸出內容的串接承諾、未完成 copy 的長度與距離。
+同時綁定壓縮資料承諾、zlib 長度／視窗設定、profile 與段號。
+精確 field 編碼與數量須由 Claude 核准，不在此自行凍結 ABI。
+
+LZ77 用 32,768-byte 環形 Merkle 視窗。葉子綁定槽號、絕對輸出
+位置與 byte；初始根是已知的未寫入狀態。每次讀取驗證當時的根、
+槽號 `(k-distance) mod 32768` 與絕對位置 `k-distance`，並約束
+`1 <= distance <= min(k, zlib window)`，防止接受上一圈舊資料。
+每 byte 寫入後更新根，重疊 match 依序讀寫，能讀到同一 match
+剛產生的 byte。僅攜帶未驗證的 window hash 或各段獨立見證均不足。
+Poseidon2 Merkle tree 的每次 15 層讀寫路徑成本仍須實測。
+
+已輸出內容用含網域、長度與隨機鹽的串接承諾；lexer 段對完全相同
+的順序重算承諾。壓縮資料的根亦須由 SHA 視窗葉電路綁定：驗證
+head／tail、midstates 與 RC4 XOR 後，對實際 zlib bytes 計算根，
+inflate 段的位元讀取需提供該根的 membership 證明。
+
+以平衡二元樹聚合：每個內節點驗證兩個 UltraHonk ZK 子證明，
+核對同一文件／profile、段號連續、左終態等於右初態。根節點檢查
+初態、終態、總容量、唯一 zlib stream、EOB／BFINAL 與 Adler trailer，
+再與 SHA、lexer／claims 證明連接。中間狀態及子證明在上一層是
+private witness，對外只暴露第 3.6 節的正式公開輸入，不附送葉證明
+與中間 inputs，避免洩漏位置與 Adler 中間值。每層均使用 ZK，
+驗證金鑰必須以常數或已驗證 allowlist 綁定，不接受 prover 自選 VK。
+
+成本估計只列可確定的呼叫數：n 個葉證明的二元樹有 n-1 個內節點、
+2(n-1) 次子證明驗證。**尚未取得遞迴驗證 gate 實測**，不能宣稱
+方案已符合時間／記憶體門檻。已核對 bb 2.1.9 的
+[bb_proof_verification](https://github.com/AztecProtocol/aztec-packages/blob/v2.1.9/barretenberg/noir/bb_proof_verification/src/lib.nr)：
+UltraHonk ZK 使用 proof type 7、508 proof fields、115 VK fields；
+恢復後須分別量一個與兩個 verifier，並記錄 application public input
+數。狀態連接、Merkle paths、承諾、SHA、lexer 與葉證明成本另計，
+不能把單一 verifier gates 倍乘當成整體實測。
+
+採納前需驗證錯誤 VK／public inputs、交換或跳段、視窗置換、
+overlap、錯誤 Adler／終態等負向案例，並產生與獨立驗證完整聚合 proof。
+本草案不取代規格審查，也不構成可發布的切分實作。
+
+### 恢復順序
+
+1. 恢復環境後先 fetch／merge 原工作分支，保留工作區未提交檔案；
+   中斷期間透過 GitHub 連接器補了量測與文件檢查點。
+2. 核對實際 RAM／CPU；依既定 1,800 秒／24 GiB 位址空間預算重跑
+   未完成的第五組，並清楚區分容器限制與編譯預算。
+3. 比較候選最佳化，附前後數據與回歸測試，再重測完整容量。
+4. 補遞迴 gate 實測，完成本輪 Noir／ACIR／Gradle 檢查及 PR 說明；
+   只有完整容量通過桌面 prove 門檻時才進入剩餘 M3b 實作。
+
+新增第三方元件：無。沒有修改 Rust、Android 或其他工作包。
