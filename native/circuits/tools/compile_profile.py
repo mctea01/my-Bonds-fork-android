@@ -199,6 +199,11 @@ def main():
         acir = root / 'target/full_inflate_preflight.json'
         if code == 0:
             record['acir_sha256'] = hashlib.sha256(acir.read_bytes()).hexdigest()
+            snapshot = json.loads(acir.read_text()).get('file_map', {})
+            record['source_snapshot_sha256'] = {
+                item['path']: hashlib.sha256(item['source'].encode()).hexdigest()
+                for item in snapshot.values() if 'pdf_text_v1/' in item['path']}
+
             args.output.with_suffix('.acir.json').write_bytes(acir.read_bytes())
             # nargo info prints one row per function: package, function, opcodes.
             counts = re.findall(r'\|\s*full_inflate_preflight\s*\|\s*main\s*\|[^|]+\|\s*(\d+)',

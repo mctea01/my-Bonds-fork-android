@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import contextlib
+import hashlib
 import tempfile
 import zlib
 
@@ -35,17 +37,18 @@ def long_distance():
         symbol(i+257); put(length-LBASE[i],LEXTRA[i])
         j=next(j for j,b in reversed(list(enumerate(DBASE))) if b<=distance)
         code(j,5); put(distance-DBASE[j],DEXTRA[j])
-    put(1,1); put(1,2); symbol(65)
-    remaining=32768-1
+    put(1,1); put(1,2)
+    for byte in range(256): symbol(byte)
+    remaining=32768-256
     while remaining:
         length=min(258,remaining)
         if length<3:
-            symbol(65); remaining-=1
+            symbol(255); remaining-=1
         else: match(length,1); remaining-=length
     match(258,32768); symbol(256)
     payload=bytes(sum(b<<j for j,b in enumerate(bits[i:i+8])) for i in range(0,len(bits),8))
-    data=b'\x78\x01'+payload+zlib.adler32(b'A'*33026).to_bytes(4,'big')
-    assert zlib.decompress(data)==b'A'*33026
+    data=b'\x78\x01'+payload+zlib.adler32(bytes(range(256))+bytes([255])*(32768-256)+bytes(range(256))+bytes([255])*2).to_bytes(4,'big')
+    assert zlib.decompress(data)==bytes(range(256))+bytes([255])*(32768-256)+bytes(range(256))+bytes([255])*2
     return data
 
 
@@ -85,7 +88,9 @@ def run(nargo,module,output):
             (ROOT/'target/segment-failure.log').write_text(proc.stdout)
             raise RuntimeError('Unexpected ACIR result; diagnostic retained under ignored target')
     try:
-        with tempfile.TemporaryDirectory(prefix='diw-segments-') as tmp:
+        # Cache outside the Noir workspace, whose member list excludes harnesses.
+        cache=Path(tempfile.gettempdir())/('diw-segment-regressions-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])
+        with contextlib.nullcontext(str(cache)) as tmp:
             root=package(Path(tmp)/'main',2048,288,3)
             fixed=segments(compressed(b'AB'*3000,zlib.Z_FIXED),h,2048,288,3)
             dynamic=segments(compressed(b'variable alphabet abcdefghijklmnop '*180),h,2048,288,3)
@@ -111,7 +116,19 @@ def run(nargo,module,output):
                 s['cz']=byte_commit(h,s['salt'],bytes(s['data'][:s['data_len']]),len(s['data']))
             attack('rejects_first_zlib_header',fixed[0],header)
             def adler(s):
+                # Preserve unused lookahead so rejection actually tests Adler.
+                assert s['header_count']==0
+                original=bytes(s['data'][:s['data_len']]); blocks=witness(original)[0]
                 s['data'][s['data_len']-1]^=1
+                for event in s['events'][:s['event_count']]:
+                    if event['action']!=2: continue
+                    t=event['token']; symbol=t['symbol']
+                    width=8 if blocks[t['block']]['kind']==0 else t['width']
+                    if blocks[t['block']]['kind']>0 and symbol>256:
+                        width+=LEXTRA[symbol-257]+t['distance_width']+DEXTRA[t['distance_symbol']]
+                    offset,shift=divmod(t['start'],8)
+                    raw=int.from_bytes(bytes(s['data'][offset:offset+7]),'little')
+                    t['prefix']=raw% (1<<shift); t['suffix']=raw>>(shift+width)
                 s['cz']=byte_commit(h,s['salt'],bytes(s['data'][:s['data_len']]),len(s['data']))
             attack('rejects_last_adler',fixed[-1],adler)
             attack('rejects_cz',fixed[0],lambda s:s.__setitem__('cz',s['cz']+1))

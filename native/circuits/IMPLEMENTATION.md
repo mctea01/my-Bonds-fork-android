@@ -1,7 +1,7 @@
 # M3a 電路實作報告
 
-本檔保留 M3a 至 Round 5 的歷史報告。最新約束、測試與限制以後方
-「Round 6 不可變提示與成本」為準；完整 M3b 尚未完成。
+本檔保留 M3a 至 Round 6 的歷史報告。最新分段實作、約束與限制以後方
+「Round 7: committed inflate segments」為準；完整 zkPDF 與詞法段尚未完成。
 
 電路：`pdf_text_v1` component library，里程碑 M3a
 基準：`552204f4132839c1a63ac3fe7b3b3ad234dd8862`

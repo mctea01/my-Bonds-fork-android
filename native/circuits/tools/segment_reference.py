@@ -198,6 +198,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--bb-js',type=Path,required=True,help='Pinned bb.js 2.1.9 dest/node/index.js')
     p.add_argument('--output',type=Path,required=True)
+    p.add_argument('--input',type=Path,help='Optional synthetic RFC 1950 stream; never prints its contents')
     p.add_argument('--plain',type=int,default=2048); p.add_argument('--tokens',type=int,default=288)
     p.add_argument('--blocks',type=int,default=1); p.add_argument('--compressed',type=int,default=8192)
     p.add_argument('--kind',choices=('fixed','dynamic','stored'),default='fixed')
@@ -205,7 +206,8 @@ def main():
     a=p.parse_args(); h=Poseidon(a.bb_js)
     try:
         payload=(b'Synthetic segment stream. '*((a.length+25)//26+1))[:a.length]
-        if a.kind=='stored': data=compressed(payload,level=0)
+        if a.input: data=a.input.read_bytes()
+        elif a.kind=='stored': data=compressed(payload,level=0)
         else: data=compressed(payload,zlib.Z_FIXED if a.kind=='fixed' else zlib.Z_DEFAULT_STRATEGY)
         chain=segments(data,h,a.plain,a.tokens,a.blocks,a.compressed)
         for i,s in enumerate(chain): write(a.output/f'segment-{i:03}/Prover.toml',s)

@@ -229,9 +229,26 @@ def long_codes():
     assert zlib.decompress(data) == plain
     return data
 
+def hdist_stream(count=30):
+    """Complete LL tree and an empty distance tree; only HDIST is varied."""
+    bits=[]
+    def put(value,width): bits.extend((value>>i)&1 for i in range(width))
+    def code(value,width): bits.extend((value>>i)&1 for i in reversed(range(width)))
+    put(1,1); put(2,2); put(0,5); put(count-1,5); put(14,4)
+    for symbol in ORDER[:18]: put({18:1,0:2,1:2}.get(symbol,0),3)
+    code(0,1); put(65-11,7); code(3,2)
+    code(0,1); put(138-11,7); code(0,1); put(52-11,7); code(3,2)
+    code(0,1); tail_extra=16+len(bits); put(count-11,7)
+    code(0,1); code(1,1)
+    payload=bytes(sum(b<<j for j,b in enumerate(bits[i:i+8])) for i in range(0,len(bits),8))
+    data=b'\x78\x01'+payload+zlib.adler32(b'A').to_bytes(4,'big')
+    if count<=30: assert zlib.decompress(data)==b'A'
+    return data,tail_extra
+
 def regression_cases():
     """Return valid witnesses plus one targeted attack per negative case."""
     dynamic, positions = repeat_dynamic()
+    hdist_control, hdist_tail = hdist_stream()
     long = long_codes()
     long_tokens = witness(long)[1]
     overlap = compressed(b'AB' * 40, zlib.Z_FIXED)
@@ -240,8 +257,9 @@ def regression_cases():
     return [
         ('empty_stored', compressed(b'', level=0), None),
         ('repeat_dynamic', dynamic, None),
-        ('rejects_hdist_31', dynamic, ('bits',24,5,30)),
-        ('rejects_hdist_32', dynamic, ('bits',24,5,31)),
+        ('hdist_30_control', hdist_control, None),
+        ('rejects_hdist_31', hdist_control, ('hdist',31,hdist_tail)),
+        ('rejects_hdist_32', hdist_control, ('hdist',32,hdist_tail)),
         ('long_huffman_codes', long, None),
         ('rejects_in_range_token_prefix', long, ('token', 0, 6, long_tokens[0][6]^1)),
         ('rejects_in_range_token_suffix', long, ('token', 0, 7, long_tokens[0][7]^1)),
@@ -361,9 +379,13 @@ def mutate(data, blocks, tokens, owners, mutation):
         set_bits(data, *args[:3])
         if kind == 'bits_hint': blocks[0]['code_symbols'][args[3]] = args[4]
         if kind == 'bits_repeat': blocks[0]['header_repeats'][args[3]] = args[4]
+    elif kind == 'hdist':
+        count,tail = args
+        set_bits(data,24,5,count-1); set_bits(data,tail,7,count-11)
+        blocks[0]['header_repeats'][257]=count
     elif kind in ('hint', 'plain', 'plain_collision'): pass
     else: raise ValueError('Unknown synthetic mutation')
-    if kind in ('bits', 'bits_hint', 'bits_repeat') or (kind == 'token' and args[1] in (1,3,4,5)):
+    if kind in ('bits', 'bits_hint', 'bits_repeat', 'hdist') or (kind == 'token' and args[1] in (1,3,4,5)):
         refresh_window_advice(original,data,blocks,tokens)
 
 def regression_nr(name, data, mutation):
