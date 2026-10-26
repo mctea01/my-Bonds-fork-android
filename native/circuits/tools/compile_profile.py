@@ -125,6 +125,10 @@ def prove_profile(args, root, acir, record, limits):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--bounded-codegen', action='store_true')
+    parser.add_argument('--text-profile', choices=['lex','claim'])
+    parser.add_argument('--k', type=int, default=1)
+    parser.add_argument('--slot-count', type=int, default=12)
     parser.add_argument('--nargo', default='nargo')
     parser.add_argument('--seconds', type=int, default=1800)
     parser.add_argument('--compressed', type=int, default=8192)
@@ -142,6 +146,11 @@ def main():
                         help='Optional session-protection guard; reported separately from compiler failure')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
+    if args.text_profile:
+        sys.path.insert(0,str(Path(__file__).resolve().parent))
+        from text_profile import run
+        run(args)
+        return
     if args.prove and (not args.bb or not args.crs):
         parser.error('--prove requires --bb and --crs')
     if args.seconds <= 0 or args.address_space_gib <= 0:

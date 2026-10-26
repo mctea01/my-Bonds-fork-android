@@ -14,6 +14,16 @@ pub fn commit<let N: u32>(tag: Field, salt: Field, fields: [Field; N]) -> Field 
     state[0]
 }
 
+// Raw fixed-length hash for the Fiat-Shamir transcript (no commitment salt).
+pub fn hash_fields<let N:u32>(input:[Field;N]) -> Field {
+    let mut state=[0,0,0,(N as Field)*18446744073709551616];
+    for chunk in 0..((N+2)/3) {
+        for j in 0..3 { if chunk*3+j<N { state[j]+=input[chunk*3+j]; } }
+        state=std::hash::poseidon2_permutation(state,4);
+    }
+    state[0]
+}
+
 // The last group is left-zero-padded, hence its integer is the big-endian
 // interpretation of the remaining bytes (no multiplication for missing bytes).
 pub fn pack31<let N: u32>(bytes: [u8; N]) -> [Field; (N+30)/31] {

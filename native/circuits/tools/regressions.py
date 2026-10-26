@@ -21,11 +21,17 @@ def main():
     group.add_argument('--multiblock', action='store_true')
     group.add_argument('--adler', action='store_true')
     group.add_argument('--segments', action='store_true')
+    group.add_argument('--lex-claims', action='store_true')
     parser.add_argument('--bb-js', type=Path, help='Pinned bb.js 2.1.9 dest/node/index.js for segment commitments')
     args = parser.parse_args()
     version = subprocess.check_output([args.nargo, '--version'], text=True)
     if '1.0.0-beta.15' not in version:
         raise RuntimeError('Use the pinned nargo version')
+    if args.lex_claims:
+        if not args.bb_js: parser.error("--lex-claims requires --bb-js")
+        from lex_regressions import run
+        run(args.nargo,args.bb_js,ROOT/"target/text-regressions.json")
+        return
     if args.segments:
         if not args.bb_js:
             parser.error('--segments requires --bb-js')

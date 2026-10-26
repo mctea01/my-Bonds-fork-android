@@ -197,9 +197,9 @@ def verify_chain(chain,h,P):
 FIELD_KEYS={'domain','circuit','cz','sin','sout','cp','salt','table_commitment'}
 def toml(value,key=''):
     if isinstance(value,bool): return str(value).lower()
-    if isinstance(value,dict): return '{ '+', '.join(k+' = '+toml(v,k) for k,v in value.items())+' }'
+    if isinstance(value,dict): return '{ '+', '.join(k+' = '+(json.dumps(hex(v)) if k in {'font','name'} and isinstance(v,int) else toml(v,k)) for k,v in value.items())+' }'
     if isinstance(value,list): return '['+', '.join(toml(x,key) for x in value)+']'
-    if key in FIELD_KEYS or key in {'previous','values'}: return json.dumps(hex(value))
+    if key in FIELD_KEYS or key in {'previous','values','font_fp','font_power','name_fp','name_power','field_fp'} or (key in {'font','name'} and value>255): return json.dumps(hex(value))
     return str(value)
 def write(path,fields):
     path.parent.mkdir(parents=True,exist_ok=True)

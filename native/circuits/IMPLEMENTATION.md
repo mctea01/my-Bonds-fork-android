@@ -567,3 +567,156 @@ The fixed-size sample estimate is conditional on per-segment token density:
 cannot ensure this condition. The reference generator rejects an insufficient
 profile, and never silently changes segmentation. Lexical work and a frozen
 interoperability specification remain explicitly outside this round.
+
+## Round 8: first segment, lexical stream, and claim records
+
+Integration branch `cfbfde0` was merged before implementation. The first-segment
+main is `pdf_inflate_seg0_v1`, with the same public order as the general segment
+except for the absent history commitments. Index and first flag are constrained
+to 0/true, then passed as compile-time constants to `inflate_segment<W=0>`.
+There are no history witness arrays. The source array is precisely this segment's
+immutable plaintext. General-segment main requires index > 0 and first = false.
+For W=0/B=1, the sole started table is projected once, and every token asserts
+slot=1 before using it. The dynamic-header/table/token checks are unchanged.
+The initial parser phase requires a header before any token, so this projection
+cannot skip validation or decode from a different table.
+
+### Lexical transducer and completeness
+
+`lex_segment.nr` scans each committed plaintext byte in order. A delimiter first
+finishes a name/number/operator, then is processed in the general state during
+the same transition. Thus no delimiter is dropped and tokens may span any
+segment boundary. A separate less/greater state distinguishes hex strings from
+`<<` / `>>`, including at a boundary. Literal depth and escape state distinguish
+syntax from raw bytes; comments and names never dispatch operators. Word length
+is saturated after three bytes and an overlong bit prevents a prefix such as
+`TJextra` being interpreted as `TJ`.
+
+Only a completed Tj, TJ, single quote, or double quote emits a text record. At
+that transition the circuit requires a pending string, BT, a prior Tf, the
+correct array-closed flag, and a single string kind. BI is rejected on operator
+completion; a string requires dictionary depth zero. BT clears the font. All
+other operators reject pending strings and unclosed arrays. EOF flushes only
+word/name/number/comment modes; strings, dictionaries, arrays, pending displays,
+and BT must be closed. MAX_OPS is a count bound, not a hint-table capacity.
+Every byte and every emitted operator is therefore determined by the committed
+input. There is no operator-position or operator-table advice to omit a string.
+
+Names are accumulated as a big-endian Field integer plus a length at most 16,
+with cached polynomial fingerprint and power. Each byte updates the integer by
+`name*256+b`; the bound gives a maximum below 2^128, so there is no Field wrap.
+Tf copies this tuple into the current font. This contains the same information
+as a 16-byte buffer and length, without private-index writes. The cached font
+fingerprint is not trusted advice: it starts at zero and is updated by the same
+byte transitions, and all components are included in the state commitment.
+The record header is assembled from these cached values and the final raw
+length. Raw fingerprint/power are updated exactly once per consumed raw byte.
+All array writes use compile-time loop indices. Immutable anchor/plan inputs
+are the only private-index lookup sources; slot endpoints and next-enabled-slot links are projected before
+the byte loop. No unsafe or unconstrained acceptance helper was introduced.
+
+### Transcript encodings proposed for Claude's review
+
+`hash_fields(x)` is the already validated fixed-length Poseidon2 sponge, without
+the commitment prefix. All integer bytes below use big-endian encoding.
+
+* Pi (tag 6) fields: MAX_ANCHORS operation indices, then, for each claim slot,
+  its actual record-byte length and `pack31(records padded to MAX_CLAIM_SRC)`.
+  Unused anchors have operation index zero; unused claims have zero length and
+  zero bytes. Pi is reopened on every lexical segment as well as in P_claim.
+* A preimage: for each anchor, `u8 enabled || u8 font_length || font[16] ||
+  u8 kind || u16 raw_length || raw[MAX_ANCHOR_SRC]`; followed by each slot's
+  `u8 enabled || u32 before_anchor || u32 after_anchor`. The fixed-size byte
+  string is pack31 encoded and A is `hash_fields(pack31(bytes))`.
+  Disabled entries and unused byte tails are canonical zero.
+* r is exactly `hash_fields([7,C_z,Pi,A])`. Neither salt nor an extra tag/length
+  commitment prefix is inserted into this four-field hash. A includes slot
+  selection in addition to anchor content; this is an explicit encoding
+  proposal, not a change to the design file. Ordinals/totals are outputs and
+  are excluded from A, preventing a circular transcript definition.
+* C_g (tag 8) fields: interleaved `(G, actual_record_length)` in slot order.
+* Lambda (tag 5) starts with pos, mode, literal depth, escaped, dictionary depth,
+  array, array closed, BT, font length, recent-name length, word value, word
+  length, overlong-word flag, pending string, kind, raw fingerprint, raw power,
+  raw length, operation count, Pi, r; then packed font, packed recent name,
+  font fingerprint/power and name fingerprint/power; then anchor count/ordinal
+  pairs, then each completed slot G/length pair, then current slot index, current
+  field G, and current field length. Its exact
+  serialization is `lex_segment.nr::state_commit`; this ABI is not yet frozen.
+
+Pi fixes the private selected anchor indices and all candidate claim bytes
+before r. C_z fixes the plaintext independently through the SHA/inflate chain.
+The public anchor and range data also enter A. All polynomial coefficients are
+therefore fixed before the challenge is obtained. A different record/claim can
+pass a polynomial equality only at a root of its nonzero difference polynomial;
+lengths and record headers prevent zero-extension ambiguity. This argument uses
+collision resistance and a random-oracle interpretation of the transcript,
+with a query-factor loss for adversarial grinding, rather than pretending a
+prover can make arbitrarily many attempts with the single-draw L/|F| bound.
+
+Each matching record increments each enabled anchor's counter exactly once.
+When the unique operation index in Pi is reached, equality is required and its
+post-increment count is saved as ordinal. Final nonzero ordinal proves that the
+selected record was reached; final counter is the total across the whole stream.
+The verifier must compare final ordinal/total with its policy and require equal
+anchor content and slot selections across all lexical segments.
+
+### Exact claim interval and commitments
+
+The first-plan checks require enabled endpoints, before < after, and ordered,
+nonoverlapping intervals (a shared boundary anchor is permitted). The scanner
+keeps one current slot, accumulates every completed record strictly between its
+two endpoints, and saves its G/length at the after-anchor before advancing to
+the next enabled slot. It does not accumulate any other record. Accumulator and length survive boundaries through Lambda. Final
+lengths must equal Pi's lengths. P_claim independently opens Pi, derives r, and
+fingerprints every supplied record byte to reconstruct the same C_g. Thus,
+subject to the transcript assumptions, its source is exactly the concatenation
+of all records in the selected open interval. Hint tampering cannot merely
+change a private witness without changing Pi, r, and C_g.
+
+Each selected claim hashes the precise 3.4.4 preimage: the 18 ASCII domain bytes,
+u8 absolute slot, 16 private salt bytes, u16 actual length, and the entire
+MAX_CLAIM_SRC zero-padded buffer, with FIPS SHA-256 padding. Disabled digests are
+32 zero bytes. A split claim main publicly identifies its statically pinned
+start/count; every split recomputes the complete Pi and C_g. The verifier must
+require complete, disjoint slot coverage and identical transcript/policy data.
+Beta is an ordinary proof-binding public input, as section 3.1.7 requires.
+
+The date decoder consumes the record headers rather than trusting a font hint.
+It supports width 1/2, literal escapes (including short octal and line
+continuations), and hex whitespace/odd-nibble padding. Digit tables require
+unique active font names and ten distinct code values. Date format code 0 is a
+proposal: four-digit Gregorian year, one/two-digit month and day, nondigit
+separators, exactly three groups, and valid calendar date including leap years.
+DATE_LE=0 / DATE_GE=1 compare the resulting YYYYMMDD with the public cutoff.
+Other format codes reject. The design does not yet assign these numeric codes.
+
+### Blocking source-boundary issue for Claude
+
+The specified record encoding concatenates the raw contents of multiple strings
+without string lengths/boundaries. Decoding that concatenation is not always the
+same as decoding each PDF string then concatenating its decoded text. For example,
+`[(2020-01-)(\7)(1)] TJ` has literal source strings ending in a one-digit octal
+escape, then ASCII 1. Per-string decoding yields a nondigit byte followed by day
+1, whereas the serialized raw concatenation ends in `\71`, decoded as day 9.
+A DATE_GE cutoff of 20200105 distinguishes them. Likewise, `[<3><1>] TJ` decodes
+as bytes 0x30,0x10 per PDF odd-nibble padding but its raw concatenation `31`
+decodes as 0x31. Identity-H code units split across individual strings also need
+an explicit rule.
+
+This implementation follows the specified concatenated-record representation;
+its predicates apply to that representation. It must not be claimed to establish
+the same date as arbitrary PDF per-string decoding until this design issue is
+resolved. Possible fixes require Claude's decision: include per-string lengths
+in authenticated records, or specify and enforce sufficient boundary restrictions.
+The design file is deliberately unchanged; this draft is not a production-ready
+claim of PDF date soundness. No operator-table hints were introduced to work
+around the problem.
+
+
+The isolated Field-counter experiment was explicitly authorized after automatic
+review requested more evidence. Its complete lexical/claim suite and five extra
+constraint rejections (counter/length limits, counter/length near the Field
+modulus, and ordinal bound) passed. It increased the 64-byte candidate from
+332,871 to 379,136 gates and was not adopted. The repository retains u32 counters
+and per-update integer length bounds. This experiment is not a production ABI.
