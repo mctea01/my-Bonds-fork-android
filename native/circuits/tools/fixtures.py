@@ -240,6 +240,8 @@ def regression_cases():
     return [
         ('empty_stored', compressed(b'', level=0), None),
         ('repeat_dynamic', dynamic, None),
+        ('rejects_hdist_31', dynamic, ('bits',24,5,30)),
+        ('rejects_hdist_32', dynamic, ('bits',24,5,31)),
         ('long_huffman_codes', long, None),
         ('rejects_in_range_token_prefix', long, ('token', 0, 6, long_tokens[0][6]^1)),
         ('rejects_in_range_token_suffix', long, ('token', 0, 7, long_tokens[0][7]^1)),

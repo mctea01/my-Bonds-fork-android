@@ -1,2 +1,2 @@
 [workspace]
-members = ["bench/inflate_adler_probe","bench/inflate_probe","bench/inflate_multiblock_probe","bench/inflate_40k","bench/inflate_32k","bench/inflate_16k","pdf_text_v1", "bench/sha256_65", "bench/sha256_130", "bench/sha256_260"]
+members = ["pdf_inflate_seg_v1","bench/inflate_adler_probe","bench/inflate_probe","bench/inflate_multiblock_probe","bench/inflate_40k","bench/inflate_32k","bench/inflate_16k","pdf_text_v1", "bench/sha256_65", "bench/sha256_130", "bench/sha256_260"]

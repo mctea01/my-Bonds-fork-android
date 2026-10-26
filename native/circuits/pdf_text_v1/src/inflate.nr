@@ -47,16 +47,16 @@ pub struct InflateHints<let T: u32, let B: u32> {
     pub distances: [u32; T],
 }
 
-struct Huffman<let N: u32> {
-    lengths: [u8; N],
-    codes: [u32; N],
+pub struct Huffman<let N: u32> {
+    pub lengths: [u8; N],
+    pub codes: [u32; N],
 }
 
-global POWERS: [u64;57] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576,2097152,4194304,8388608,16777216,33554432,67108864,134217728,268435456,536870912,1073741824,2147483648,4294967296,8589934592,17179869184,34359738368,68719476736,137438953472,274877906944,549755813888,1099511627776,2199023255552,4398046511104,8796093022208,17592186044416,35184372088832,70368744177664,140737488355328,281474976710656,562949953421312,1125899906842624,2251799813685248,4503599627370496,9007199254740992,18014398509481984,36028797018963968,72057594037927936];
+pub global POWERS: [u64;57] = [1,2,4,8,16,32,64,128,256,512,1024,2048,4096,8192,16384,32768,65536,131072,262144,524288,1048576,2097152,4194304,8388608,16777216,33554432,67108864,134217728,268435456,536870912,1073741824,2147483648,4294967296,8589934592,17179869184,34359738368,68719476736,137438953472,274877906944,549755813888,1099511627776,2199023255552,4398046511104,8796093022208,17592186044416,35184372088832,70368744177664,140737488355328,281474976710656,562949953421312,1125899906842624,2251799813685248,4503599627370496,9007199254740992,18014398509481984,36028797018963968,72057594037927936];
 
 // At most 48 consumed bits plus a seven-bit offset fit in seven bytes.
 // Prefix/suffix range checks make this a unique integer decomposition.
-fn token_window<let N: u32>(data: [u8;N], limit: u32, start: u32,
+pub fn token_window<let N: u32>(data: [u8;N], limit: u32, start: u32,
     end: u32, encoded: Field, prefix: u8, suffix: u64) {
     assert(start <= end & end <= limit);
     let width = end-start;
@@ -82,7 +82,7 @@ fn token_window<let N: u32>(data: [u8;N], limit: u32, start: u32,
         *(encoded+(POWERS[width] as Field)*(suffix as Field)));
 }
 
-fn checked_code<let S: u32>(h: Huffman<S>, offset: u32, alphabet: u32,
+pub fn checked_code<let S: u32>(h: Huffman<S>, offset: u32, alphabet: u32,
     value: u32, width: u32) -> u32 {
     assert(alphabet <= S & offset <= S-alphabet);
     assert(value < alphabet & width > 0 & width <= 15);
@@ -91,7 +91,7 @@ fn checked_code<let S: u32>(h: Huffman<S>, offset: u32, alphabet: u32,
     h.codes[index]
 }
 
-fn bits<let N: u32>(data: [u8; N], limit: u32, pos: u32, width: u32) -> u32 {
+pub fn bits<let N: u32>(data: [u8; N], limit: u32, pos: u32, width: u32) -> u32 {
     assert(width <= 16);
     assert(pos <= limit & width <= limit - pos);
     let offset = pos / 8;
@@ -195,12 +195,13 @@ fn header_window<let N: u32>(data: [u8;N], limit: u32, pos: u32,
         *(encoded+(powers[width] as Field)*(suffix as Field)));
 }
 
-fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockHint)
+pub fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockHint)
     -> (Huffman<288>, Huffman<32>, u32) {
     let hlit = bits(data,limit,start,5) + 257;
     let hdist = bits(data,limit,start+5,5) + 1;
     let hclen = bits(data,limit,start+10,4) + 4;
     assert(hlit <= 286);
+    assert(hdist <= 30);
     let order: [u32;19] = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
     let mut cl = [0u8;19];
     for i in 0..19 {
@@ -258,7 +259,7 @@ fn dynamic_tables<let N: u32>(data: [u8;N], limit: u32, start: u32, hint: BlockH
     (table(ll,hint.ll_prefixes,hint.ll_first,true,false),table(dd,hint.dd_prefixes,hint.dd_first,true,true),pos)
 }
 
-fn fixed_tables() -> (Huffman<288>, Huffman<32>) {
+pub fn fixed_tables() -> (Huffman<288>, Huffman<32>) {
     let mut lengths = [0u8;288];
     let mut codes = [0u32;288];
     for i in 0..288 {
