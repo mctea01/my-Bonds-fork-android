@@ -1552,8 +1552,17 @@ class FilesModel(private val model: WalletModel) {
         val sp = choice.sp
         val client: MobileMoicaService
         val cacheKey: String
+        var fromServer: Pair<ServerMobileMoicaClient, MobileMoicaEnvironment>? = null
         if (server != null) {
-            client = ServerMobileMoicaClient(model.http, server, model.server.tokenFor(server))
+            // Asked again right before the ID number goes out: the server must still say it holds an SP account.
+            val environment = try {
+                model.server.mobileMoica(server)
+            } catch (e: Exception) {
+                throw SigningException("無法確認正式服務端是否提供行動自然人憑證簽署：" + model.describe(e), e)
+            } ?: throw SigningException("正式服務端沒有提供行動自然人憑證簽署（未啟用 twfido），身分證統一編號沒有送出")
+            val serverClient = ServerMobileMoicaClient(model.http, server, model.server.tokenFor(server))
+            fromServer = serverClient to environment
+            client = serverClient
             cacheKey = "server:" + server + ":" + choice.idNumber
         } else {
             if (sp == null) throw SigningException("沒有選擇行動自然人憑證的 SP 帳號")
@@ -1567,12 +1576,33 @@ class FilesModel(private val model: WalletModel) {
             openApp = { model.platform.openExternal(it) }, returnUrl = returnUrl,
             onStatus = { busy.value = it }, certificate = mobileMoicaCerts[cacheKey],
         )
+        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         val cert = mobileMoicaCerts[cacheKey] ?: run {
             busy.value = "第一次使用：先在行動自然人憑證 App 確認一次以取得憑證，接著再確認簽署"
-            signer.load().also { mobileMoicaCerts[cacheKey] = it }
+            val c = signer.load()
+            fromServer?.let { (serverClient, environment) -> checkServerCertificate(serverClient, environment, c, moica) }
+            c.also { mobileMoicaCerts[cacheKey] = it }
         }
-        val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         return if (PlatformCrypto.certificateSignedBy(cert, moica)) signer.withIntermediates(listOf(moica)) else signer
+    }
+
+    /**
+     * A server could answer with any key pair, so its first answer must show that the request really went through
+     * the Ministry of the Interior: the environment the sign request ran in is the one `/info` named, and in the
+     * production environment the certificate is issued by MOICA G3. Test-environment certificates come from the
+     * UAT CA, which this app does not carry, so they are only marked.
+     */
+    private fun checkServerCertificate(client: ServerMobileMoicaClient, expected: MobileMoicaEnvironment, cert: ByteArray, moica: ByteArray) {
+        val ran = client.environment
+        if (ran != null && ran != expected) {
+            throw SigningException("正式服務端這次使用的行動自然人憑證環境（${ran.title}）與它宣告的（${expected.title}）不同，已停止")
+        }
+        when (expected) {
+            MobileMoicaEnvironment.PRODUCTION -> if (!PlatformCrypto.certificateSignedBy(cert, moica)) {
+                throw SigningException("正式服務端回傳的憑證不是內政部憑證管理中心（MOICA G3）簽發，無法確認它真的經由行動自然人憑證簽署，已停止")
+            }
+            MobileMoicaEnvironment.UAT -> busy.value = "正式服務端使用行動自然人憑證測試環境（UAT），簽出的憑證僅供測試"
+        }
     }
 
     /** Adds MOICA G3 after a citizen certificate that a store or token returned without its issuer. */

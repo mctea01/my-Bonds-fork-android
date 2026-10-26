@@ -1,6 +1,7 @@
 package diw.wallet.app
 
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.trust.TrustRegistry
@@ -78,11 +79,30 @@ class ServerModel(private val model: WalletModel) {
         }
     }
 
-    private suspend fun read(url: String): Info {
+    private suspend fun info(url: String): JsonObject {
         val response = model.http.get("$url/info")
         if (!response.status.isSuccess()) throw ProtocolException("server_error", "HTTP ${response.status.value}")
-        val o = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: throw ProtocolException("server_error", "不是服務端的 /info")
-        val features = (o["features"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+        return DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: throw ProtocolException("server_error", "不是服務端的 /info")
+    }
+
+    private fun features(o: JsonObject) = (o["features"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+
+    /**
+     * The TW FidO service [url]'s SP account signs with, read fresh from `/info`: the server must list the `twfido`
+     * feature and name a known environment. Null when it offers no mobile citizen certificate signing. This is the
+     * server's own claim; the certificate that comes back is checked against MOICA as well (FilesModel).
+     */
+    suspend fun mobileMoica(url: String): MobileMoicaEnvironment? {
+        val o = info(url)
+        if (FEATURE_TWFIDO !in features(o)) return null
+        val name = (o["twfido"] as? JsonObject)?.str("environment")
+        return MobileMoicaEnvironment.entries.firstOrNull { it.name == name }
+            ?: throw ProtocolException("server_error", "服務端沒有說明它的行動自然人憑證 SP 屬於哪個環境")
+    }
+
+    private suspend fun read(url: String): Info {
+        val o = info(url)
+        val features = features(o)
         val verifierDid = o.str("verifierDid")?.trim()?.takeIf { it.startsWith("did:") }
         val signing = o["signing"] as? JsonObject
         if (signing == null && verifierDid == null) {
@@ -145,6 +165,7 @@ class ServerModel(private val model: WalletModel) {
 
     companion object {
         const val SOURCE_PREFIX = "server:"
+        const val FEATURE_TWFIDO = "twfido"
         /** Requests the server signs (verifier) and the web-proof receipts it issues (issuer). */
         val ROLES = listOf(TrustRole.VERIFIER, TrustRole.ISSUER)
     }

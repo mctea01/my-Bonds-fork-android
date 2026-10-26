@@ -951,6 +951,89 @@ class WalletModelE2eTest {
      * The production server: the access token goes only to that server, its signing root is trusted only after the
      * fingerprint the wallet computes matches the one the server states, and a changed root is flagged, not accepted.
      */
+    /**
+     * Signing through the production server's SP: the server is used only when its /info lists twfido with an
+     * environment, the ID number is not sent otherwise, and in the production environment the certificate the first
+     * answer carries must be issued by MOICA G3; a UAT certificate is only marked.
+     */
+    @Test
+    fun theServersMobileMoicaSpIsCheckedBeforeAndAfterUse() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        var features = listOf("relay")
+        var environment: String? = null
+        val posted = java.util.Collections.synchronizedList(ArrayList<String>())
+        val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        fun rsaSign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withRSA").run { initSign(rsa.private); update(data); sign() }
+        val cert = diw.wallet.core.document.sign.DocumentSigning.selfIssuedCertificate(
+            rsa.public.encoded, "測試持有人", { rsaSign(it) }, diw.wallet.core.document.sign.SignerKeyType.RSA, 30,
+        )
+        val data = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        val b64 = java.util.Base64.getEncoder()
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+            val path = request.url.encodedPath
+            when {
+                request.url.host == host && path == "/info" -> respond(buildJsonObject {
+                    put("name", "diw-wallet-server")
+                    putJsonArray("features") { features.forEach { add(it) } }
+                    environment?.let { put("twfido", buildJsonObject { put("environment", it) }) }
+                }.toString(), io.ktor.http.HttpStatusCode.OK, json)
+                request.url.host == host && path == "/twfido/sign" -> {
+                    val o = DiwJson.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject
+                    posted += o["idNumber"]!!.jsonPrimitive.content
+                    val n = posted.size
+                    data["s$n"] = java.util.Base64.getDecoder().decode(o["data"]!!.jsonPrimitive.content)
+                    val ticket = java.util.Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString("""{"transaction_id":"txn-$n","sp_ticket_id":"t-$n"}""".toByteArray()) + ".digest"
+                    respond("""{"sessionId":"s$n","token":"r$n","spTicket":"$ticket","environment":"$environment"}""", io.ktor.http.HttpStatusCode.OK, json)
+                }
+                request.url.host == host && path.startsWith("/twfido/sign/") -> {
+                    val signed = data[path.substringAfterLast('/')]!!
+                    respond("""{"status":"done","signature":"${b64.encodeToString(rsaSign(signed))}","certificate":"${b64.encodeToString(cert)}","hashedIdNumber":"h"}""",
+                        io.ktor.http.HttpStatusCode.OK, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = "token-for-the-host-0123") }.join()
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.single()
+        val choice = SignerChoice.MobileMoica(null, "A123456789", diw.wallet.core.document.sign.MobileMoicaMode.PUSH, server = "https://$host")
+        suspend fun sign(): String? {
+            m.files.sign(stored, choice, SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
+            return m.files.error.value
+        }
+
+        // No twfido in /info: not offered, and the ID number never leaves the phone.
+        assertNull(m.server.mobileMoica("https://$host"))
+        assertTrue("沒有提供行動自然人憑證簽署" in sign()!!)
+        assertTrue(posted.isEmpty())
+
+        // twfido without a known environment is not accepted either.
+        features = listOf("relay", "twfido")
+        environment = "SOMEWHERE"
+        assertFailsWith<diw.wallet.core.util.ProtocolException> { m.server.mobileMoica("https://$host") }
+        assertTrue("無法確認" in sign()!!)
+        assertTrue(posted.isEmpty())
+
+        // Production: a certificate MOICA G3 did not issue is refused after the first answer.
+        environment = "PRODUCTION"
+        assertEquals(diw.wallet.core.document.sign.MobileMoicaEnvironment.PRODUCTION, m.server.mobileMoica("https://$host"))
+        assertTrue("MOICA G3" in sign()!!)
+        assertEquals(1, posted.size)
+
+        // UAT: the test CA is not carried, so the signature goes ahead.
+        environment = "UAT"
+        assertNull(sign())
+        assertEquals(3, posted.size)
+        assertTrue(m.files.files.value.any { it.parentId == stored.id })
+    }
+
     @Test
     fun productionServerTokenAndTrust() = runBlocking<Unit> {
         val host = "diw.example.org"

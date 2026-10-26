@@ -976,7 +976,20 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     val settings by model.settingsFlow.collectAsState()
     val manual = settings.manualMobileMoicaSp
     val builtIn = model.files.builtInMobileMoicaSp
-    val server = remember(settings.zkVerifierUrl) { model.server.base() }
+    val configured = remember(settings.zkVerifierUrl) { model.server.base() }
+    // The server is offered only after its /info says it holds an SP account; null while asking.
+    val serverSp by produceState<Result<MobileMoicaEnvironment?>?>(null, configured) {
+        value = configured?.let { url -> runCatching { model.server.mobileMoica(url) } } ?: Result.success(null)
+    }
+    val serverEnvironment = serverSp?.getOrNull()
+    val server = configured?.takeIf { serverEnvironment != null }
+    val serverNote = when {
+        configured == null -> null
+        serverSp == null -> "正在確認正式服務端是否提供行動自然人憑證簽署…"
+        serverSp?.exceptionOrNull() != null -> "無法確認正式服務端是否提供行動自然人憑證簽署：" + serverSp?.exceptionOrNull()?.let(model::describe)
+        serverEnvironment == null -> "正式服務端（${configured.substringAfter("://")}）沒有提供行動自然人憑證簽署（未啟用 twfido）。"
+        else -> null
+    }
     val sources = listOfNotNull(
         MobileMoicaSource.SERVER.takeIf { server != null },
         MobileMoicaSource.BUILT_IN.takeIf { builtIn != null },
@@ -1002,7 +1015,9 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
         onChange(choice?.takeIf { MyDataProfile.isValidId(id) })
     }
     LaunchedEffect(source) { update() }
+    serverNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (source == null) {
+        if (configured != null && serverSp == null) return
         Text("沒有可用的行動自然人憑證服務提供者（SP）帳號：在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；持有 SP 授權的開發者也可在設定開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
@@ -1014,7 +1029,9 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     }
     when (source) {
         MobileMoicaSource.SERVER -> Text(
-            "經由正式服務端（${server?.substringAfter("://")}）的 SP 帳號簽署，App 內不放 SP 金鑰。服務端會看到你的身分證統一編號與要簽署的摘要資料（不含文件內容），簽章仍由這支手機驗證。使用設定中的存取權杖。",
+            "經由正式服務端（${server?.substringAfter("://")}）的 SP 帳號簽署（${serverEnvironment?.title}），App 內不放 SP 金鑰。服務端會看到你的身分證統一編號與要簽署的摘要資料（不含文件內容）。" +
+                "送出前會再向服務端確認一次；" + (if (serverEnvironment == MobileMoicaEnvironment.PRODUCTION) "第一次取得的憑證必須由內政部憑證管理中心簽發，" else "測試環境的憑證只標示為測試，") +
+                "簽章也由這支手機驗證。使用設定中的存取權杖。",
             style = MaterialTheme.typography.bodySmall,
         )
         MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
