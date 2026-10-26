@@ -292,3 +292,152 @@ Gradle tasks 成功，362 tests、0 failures／errors、29 skipped。
 兩個 round-trip 測試均執行通過；無 cargo 導致既有 native build
 自動略過，relay 時序測試亦 skipped，不能視為該原生路徑驗收。
 沒有 Rust 修改，沒有執行 cargo test。
+
+
+### Round 6 不可變提示與邊際成本（2026-10-25）
+
+本節取代 Round 5 的當前狀態，歷史量測保留。基準整合 commit
+`b35710616411428c93769c0bf8ee7d132eb797c8`，開始前已 merge。
+環境為 AMD EPYC 9V74、2 vCPU、8 GiB cgroup；nargo beta.15
+（noirc `83245db9`）、bb 2.1.9。每筆 fresh `nargo info` 編譯後由
+`bb gates` 取 `circuit_size`，以 1,800 秒、24 GiB RLIMIT_AS、
+6 GiB RSS guard 逐組執行。數據是實測 gate count；時間是單次觀察，
+不代表統計分布。所有 main 只涵蓋 inflate，沒有公開 PDF statement。
+
+#### 分維度實測
+
+階段來源：Round 5=`4414b57`；immutable hints=`b365f47`；
+反轉碼／延後 Adler=`15d25c5`；最終 packed header/token=`f96a903`。
+後續 fixture 修正沒有改變 inflate 原始碼。單位為 gates，破折號表示
+該階段未量測。原始 JSON、容量、時間、RSS、source/ACIR hash 在
+`native/circuits/validation/m3b-round6-matrix.json`，重現指令見 circuits README。
+
+| N | B | T | P | Round 5 | immutable hints | 反轉碼／Adler | 最終 |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 512 | 1 | 32 | 128 | 574,900 | 540,034 | 409,284 | 307,667 |
+| 512 | 2 | 32 | 128 | 1,021,897 | 987,017 | 772,743 | 583,247 |
+| 512 | 3 | 32 | 128 | — | — | — | 857,780 |
+| 512 | 1 | 256 | 128 | 1,099,486 | 1,057,026 | 614,132 | 399,003 |
+| 512 | 1 | 512 | 128 | 1,700,126 | 1,647,874 | 848,244 | 503,387 |
+| 512 | 2 | 256 | 128 | 1,549,609 | 1,510,337 | 983,919 | 680,911 |
+| 512 | 1 | 32 | 1,024 | 2,726,196 | 621,794 | 465,807 | 360,830 |
+| 512 | 1 | 32 | 2,048 | 9,117,862 | 716,116 | 531,286 | 421,587 |
+| 512 | 1 | 32 | 8,192 | — | — | — | 790,003 |
+| 8,192 | 1 | 32 | 128 | 643,366 | 608,500 | 477,749 | 372,979 |
+| 8,192 | 4 | 512 | 2,048 | — | — | — | 1,522,748 |
+
+不可變明文提示在 P=2,048 將 gates 由 9,117,862 降至 716,116，
+最終為 421,587。回頭複製不再讀正在寫入的陣列；每個 byte 仍在
+常數索引驗證，copy 嚴格引用更早位置，故 overlap 由歸納唯一決定。
+詳細健全性、packed window 整數範圍與 Adler 無溢位證明見
+`native/circuits/IMPLEMENTATION.md` 的 Round 6 節。
+
+| 維度（其他參數固定） | 差分區間 | 邊際 gates | 目標與判讀 |
+|---|---|---:|---|
+| T；N512/B1/P128 | 32→256 | 407.750 | <=600，達標 |
+| T；N512/B1/P128 | 256→512 | 407.750 | 同斜率 |
+| T；N512/B2/P128 | 32→256 | 436.000 | <=600；存在 B×T 交互作用 |
+| P；N512/B1/T32 | 128→1,024 | 59.334 | <=60，達標 |
+| P；N512/B1/T32 | 1,024→2,048 | 59.333 | 近似線性 |
+| P；N512/B1/T32 | 2,048→8,192 | 59.964 | <=60；大區間略增，無平方成長 |
+| B；N512/T32/P128 | 1→2 | 275,580 | 未達200,000 |
+| B；N512/T32/P128 | 2→3 | 274,533 | 近似線性，有首槽差異 |
+| B；N512/T256/P128 | 1→2 | 281,908 | 與 T 交互，不能硬套完全可加模型 |
+| N；B1/T32/P128 | 512→8,192 | 8.504/byte | 總增65,312 gates |
+
+最終小基準編譯 35.11 s／598,232 KiB；P8192 組 61.82 s／
+4,021,240 KiB；N8192/B4/T512/P2048 組 123.03 s／1,792,504 KiB。
+記憶體也受編譯器中間表示影響，不能由 gate 斜率推估 RSS。
+
+區塊目標未達：每槽仍需承擔私密 dynamic 路徑，包括 19/288/32
+symbols 的 15 層 canonical prefix 檢查，以及最多 320 個 expanded
+length positions。下表在 N512/B1/T32/P128 比較候選；它們由
+`15d25c5` 演進，各 patch **獨立**套至該 commit，不能累加套用。
+
+| 候選 | gates | 編譯秒數 | 決定 |
+|---|---:|---:|---|
+| Field count，逐 symbol 累加15層 canonical code | 443,851 | 131.39 | 不採用 |
+| u16 count，同逐層選取 | 447,962 | 129.93 | 不採用 |
+| 不可變 prefix，逐層選取 canonical code | 448,288 | 88.13 | 中間比較 |
+| 不可變 prefix 與 first code 查表 | 450,589 | 35.74 | 保留查表以降低編譯成本 |
+| 加 packed header window | 324,219 | 34.20 | 採用，後續再合併 token window |
+
+原始結果與重現 patch 在 `validation/m3b-round6-candidates.json`
+及同前綴 patch。這些是完整候選的 gate 差異，不能歸因為單一函式的
+獨立成本。沒有以信任提示、放寬 Huffman 合法性或 unconstrained
+路徑換取較低 gates。
+
+#### 完整容量估算（不是實測）
+
+使用較大 P 區間斜率與觀察到的 B×T 交互作用，選擇下式作架構估算：
+
+```
+G(N=8192,B,T,P) ≈ 307667 + 65312
+  + 274533*(B-1)
+  + (407.75 + 28.25*(B-1))*(T-32)
+  + 59.9635417*(P-128)
+```
+
+B=4/T=6144/P=40960 得 **約6,655,169 inflate gates（665.5萬）**。
+這是延伸小容量斜率，不能當上限或完整 ACIR 實測。以沒有參與擬合的
+N8192/B4/T512/P2048 檢查，預估1,548,108，實測1,522,748，
+高估25,360（1.67%）；表示槽數交互作用與編譯器門檻未被完全描述。
+此誤差不能當成完整容量的保證誤差範圍。完整 T6144 與 P40960 的
+斜率尚未直接量得，不能從此預測證明時間／RSS。
+
+依本輪要求，把兩個視窗都以已量得的130-block SHA元件估算：
+2×542,101=**1,084,202 gates**。詞法掃描尚未實作／量測，僅沿用
+規格第3.7節的 **30–60 gates/byte 假設**，40,960 bytes 對應
+**1,228,800–2,457,600 gates**。三者相加的完整 PDF 架構預算約
+**8,968,171–10,196,971 gates（897–1,020萬）**。此為指定三部分
+的估算總和，尚未計入未量測的連接、錨點／claims／predicates 等
+額外約束，不能當成正式 `pdf_text_v1_1p` gate count 或完整上限。
+
+Claude 已否決每 byte 驗兩條15層 Merkle路徑的方案。若決定分段，
+方向改成每段對整個32 KiB視窗做一次 Poseidon2 sponge承諾
+（約1,060 packed fields），段內用不可變私密陣列。此方案仍待
+架構決定，本輪沒有實作 lexer、錨點、PUBLIC_SPEC 或分段電路。
+
+#### 完整容量嘗試與 ZK proof
+
+完整 N8192/B4/T6144/P40960 fresh 編譯在 **112.50 s**、
+**6,292,032 KiB** RSS 觸及6 GiB guard，狀態為 `rss_guard`。
+沒有產生 ACIR，故完整 gates／prove／verify／proof bytes 皆未量得。
+這是8 GiB工作階段的保護性中止，並非cgroup OOM，也不是完成所需
+RSS或24 GiB預算失敗；cgroup OOM counters與編譯前相同。直接觀察
+不能證明桌面1分鐘／3 GiB門檻成立。紀錄：`m3b-round6-full.json`。
+
+另外以 N512/B1/T32/P128 的合成重複字元填滿128-byte輸出，驗證新增
+`compile_profile.py --prove` 的受限流程：307,667 gates、159,245
+opcodes，fresh compile 36.09 s／557,228 KiB；witness 1.37 s／
+273,332 KiB；first／warm prove **11.65／11.39 s**、
+**896,820／896,176 KiB**；獨立 verify成功（52.45 ms，含50 ms
+polling粒度）；proof **16,256 bytes**、public inputs **0 bytes**。
+各階段都受24 GiB AS／1,800 s／6 GiB RSS guard限制，個別計算子程序
+RSS。first是此電路的第一個程序，CRS cache已存在，不能稱冷快取。
+使用 bb 2.1.9 `ultra_honk --oracle_hash poseidon2`，未傳
+`--disable_zk`；ZK設定依前述版本原始碼核對。JSON為
+`m3b-round6-proof-small.json`。小容量proof不能替代完整容量驗收。
+
+
+本輪最終檢查：`nargo test` **69 passed**；標準 ACIR regressions
+**41/41**、`--multiblock` **4/4**、`--adler` **3/3**，合計
+**7個正向、41個約束拒絕負向**。每個新增提示陣列有對應篡改案例；
+包含保持Adler不變的錯誤複製明文，以及有界的prefix/suffix篡改。
+不把解析／編譯失敗當負向通過。合成資料產生器與完整結果一併提交。
+
+要求的三個 Gradle tasks 成功，另以 `:test-servers:test --rerun`
+強制重新執行測試（Kotlin compile未變，為UP-TO-DATE），1m9s完成：
+**362 tests、0 failures/errors、29 skipped**。兩個 signed round-trip
+均執行通過；環境無cargo，既有native auto build略過，relay案例
+亦skipped，不能視為其原生路徑驗收。本輪沒有Rust變更，未跑cargo
+test。完整命令及JUnit摘要見 `validation/m3b-round6-gradle.json`。
+
+
+最終合成 dynamic correctness probe（N=P128/T32/B1）亦重新產生
+兩次ZK proof並由獨立程序verify：**304,435 gates、156,770 opcodes**；
+first／warm **11.99／11.91 s**，RSS **877,116／876,796 KiB**；
+verify **17.69 ms**，proof **16,256 bytes**、public inputs **0 bytes**。
+compile 0.74 s使用既有快取，不與fresh profile編譯時間混比。
+JSON為 `m3b-round6-inflate-probe.json`，`VERSIONS`已更新其ACIR/VK
+hash，仍只是component測量資產，並非正式M3b資產釘選。

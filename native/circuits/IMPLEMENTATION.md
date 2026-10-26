@@ -1,7 +1,7 @@
 # M3a 電路實作報告
 
-本檔保留 M3a 與 Round 4 的歷史報告。最新容量、測試與限制以後方
-「M3b 檢查點（Round 5）」為準；完整 M3b 尚未完成。
+本檔保留 M3a 至 Round 5 的歷史報告。最新約束、測試與限制以後方
+「Round 6 不可變提示與成本」為準；完整 M3b 尚未完成。
 
 電路：`pdf_text_v1` component library，里程碑 M3a
 基準：`552204f4132839c1a63ac3fe7b3b3ad234dd8862`
@@ -259,6 +259,7 @@ EOB 與完整樹檢查；空 stored／EOB 必須推進記號或區塊，禁止�
 同時綁定壓縮資料承諾、zlib 長度／視窗設定、profile 與段號。
 精確 field 編碼與數量須由 Claude 核准，不在此自行凍結 ABI。
 
+以下為已被 Claude 在 Round 6 **否決**的歷史方案，不再作為後續建議：
 LZ77 用 32,768-byte 環形 Merkle 視窗。葉子綁定槽號、絕對輸出
 位置與 byte；初始根是已知的未寫入狀態。每次讀取驗證當時的根、
 槽號 `(k-distance) mod 32768` 與絕對位置 `k-distance`，並約束
@@ -313,3 +314,98 @@ Claude 先審查新的位元讀取邊界推導與遞迴狀態綁定提案，再�
 後續架構或其他保留容量的最佳化。不能把本輪的保護性中止推論成
 24 GiB 失敗，也不能把小 probe 或 verifier 成本當作完整 M3b 驗收。
 正式電路與 ABI 凍結仍需依工作包流程完成。
+
+## Round 6 不可變提示與成本
+
+基準整合 commit：`b35710616411428c93769c0bf8ee7d132eb797c8`，開始前已
+fetch 並 merge（Already up to date）。僅調整本工作包的 component library、
+bench、產生器及量測文件；完整 `pdf_text_v1_1p`、lexer、錨點及
+`PUBLIC_SPEC.md` 尚未實作。PR #21 維持 draft。
+
+### 第 3.4.1 節約束與健全性
+
+- **不可變讀取**：`inflate.nr::inflate` 的 `plain`、`InflateHints`
+  都是 private input。區塊迴圈在常數索引綁定平坦的 LL/DD 碼長與
+  反轉碼、body、kind；記號迴圈在常數索引綁定 starts、lengths、ends、
+  distances。私密區塊／owner 索引只讀這些輸入及 `.map` 投影的
+  first_token、token count、end、symbol，沒有私密選取整個 struct。
+- **明文唯一性**：區塊 token 區間連續，token output 區間由累加長度
+  唯一決定；owner 必須落在其非空區間內。literal/stored 字節綁定
+  已驗證的 symbol。copy 的 distance 為正且不超過已產生的長度，
+  每次讀取 `plain[k-dist]` 都嚴格早於 k；以 k 歸納，即使 overlap
+  也只能得到 RFC LZ77 的唯一輸出。每個 `plain[k]` 均由常數索引
+  `assert_eq` 綁定，未使用尾端必須為零。harness 最後比對回傳值與
+  expected 只是自等式，安全性來自上述逐 byte 約束；expected 本身
+  就是被攻擊的明文提示，並非可信外部答案。
+- **Huffman**：`table` 對每個 width=1..15、每個 symbol 驗證
+  prefix counter 初值零及逐項遞推；first code 由前一層 count 決定。
+  私密 width 只讀不可變 prefixes／first_codes。每層保留
+  oversubscription 檢查、完整樹要求與原有單一長度 1／空 distance
+  特例；長度限 15，EOB 必須存在。計數不超過 N<=320，first+count
+  小於 N*2^15<2^32，cast 無法藏起溢位。固定表由 RFC canonical
+  公式在編譯期建立；反轉只在建表時做一次。
+- **dynamic header**：CL 表與 expanded lengths 在常數索引綁定；
+  repeat 16 需前項、16/17/18 的次數範圍與剩餘容量皆受約束。
+  `header_window` 一次驗證 CL code 及 extra，prefix/suffix 各自
+  範圍限定後將三 byte 整數分解，總值小於 2^24，不能靠 Field
+  溢位或進位抵消錯誤碼。碼長內的 unused repeat advice 不影響接受。
+- **token window**：`token_window` 一次驗證 LL code、length extra、
+  DD code、distance extra；各分量由 canonical table 或 base/extra
+  範圍限制，總寬度至多 15+5+15+13=48 bits。加起始位移至多
+  7 bits，只需七 byte；prefix<2^shift，suffix<2^(56-shift-width)，
+  分解等式兩側均小於 2^56，沒有 Field wrap 或歧義。由
+  start<=limit=(data_len-4)*8 推得前四次讀取在界內，後三 byte
+  超出配置 N 時只補零，實際消耗位元仍需 end<=limit。
+  bits helper 的 width<=16 與三 byte 界限仍保留；變動冪改讀常數表。
+- **Adler-32**：令 n=plain_len、a=1+sum(plain[k])、
+  weighted=sum(k*plain[k])。零 padding 推得
+  b=n*a-weighted=n+sum((n-k)*plain[k])>=0。
+  a<=1+40960*255=10,444,801<2^24，b<=40960*a<2^39，
+  所有中間值遠低於 Field 模數與 u64 上限。最後才各做一次 mod65521，
+  與逐 byte Adler recurrence 等價，並完全比對 trailer。
+- **保留條件**：zlib header/window、stored LEN/NLEN、連續 bit
+  endpoint、BFINAL、EOB 最後位置、單一串流精確終點、容量與輸入零
+  padding 都保留；沒有新增 unconstrained 接受路徑，也沒有略過
+  編譯器的 underconstrained checks。
+
+### 測試、介面與後續
+
+`nargo test` 69 項通過；這包含快速 Brillig 語意案例，不能全部稱為
+ACIR proof。另以完整 constrained ACIR、pedantic solving 執行標準
+41、多區塊 4、Adler wraparound 3 案例，共 7 個接受、41 個約束拒絕。
+負向 runner 只接受 `Cannot satisfy constraint`，解析／編譯錯誤不算
+成功。新增攻擊涵蓋錯誤明文、保持 Adler 不變的 (+1,-2,+1) 複製
+修改、表項、起點／終點、距離、prefix counters、first codes、header
+repeat 與有界／越界 token window hints。對語意修改同步更新未消耗
+的 lookahead，避免僅因旁邊 suffix 過時造成拒絕。正向新增合法
+15-bit Huffman 碼及 600 個 0xff 的 Adler 溢回；產生器全部提交。
+
+第 3.4.1 節對應上述 inflate 約束；Z12 元件容量拒絕保留。Z2 的 SHA
+元件案例保留。尚不宣稱完成需要 PDF statement、lexer、公開輸入的
+Z8/Z9/Z13 或整體 M3b。新的 hints 僅改本工作包尚未凍結的 private
+witness 格式；沒有修改第 3.6 節 public ABI、Kotlin/Rust 或其他工作包
+介面。正式串接仍由 Claude 決定。新增第三方元件：無。
+
+分維度量測與完整容量結果見 `docs/research/p4-benchmarks.md` 的 Round 6
+節及 `validation/m3b-round6-*.json`。每記號約 408 gates、每 byte
+約 59.3–60.0 gates，區塊約 27.5 萬 gates，後者未達 20 萬。
+區塊需驗證 19/288/32 三組最多 15 層 canonical prefix 與 320 個
+可能的碼長位置；即使實際是 fixed/stored，私密 kind 仍讓每個槽
+保有 dynamic 路徑的約束成本。以私密提示重用表、反轉碼及 packed
+header 已降低成本；不能僅信任提示或略過表合法性來達標。
+
+原 Round 5 每 byte 兩條 Merkle 路徑方案已被 Claude 否決。如後續
+採分段，方向是每段對完整 32 KiB 視窗做一次 Poseidon2 sponge
+承諾（打包後約 1,060 fields），段內使用不可變私密陣列；本輪沒有
+實作或量測此架構。請 Claude 特別檢查明文歸納、prefix 初值／遞推、
+packed window 範圍證明，以及完整成本估算能否支持單一電路。
+
+
+最終dynamic probe：304,435 gates／156,770 opcodes；first/warm
+11.99/11.91 s、877,116/876,796 KiB RSS；獨立verify 17.69 ms，
+proof 16,256 bytes。實際hash在VERSIONS與
+`validation/m3b-round6-inflate-probe.json`。完整容量編譯在112.50 s
+觸及6 GiB RSS guard，沒有完整ACIR或prove量測；不能視為24 GiB
+預算失敗。Gradle必要tasks成功，test-servers強制重跑362 tests、
+0 failures/errors、29 skipped；native auto build因無cargo略過，
+relay案例亦skipped。此輪沒有Rust變更。完整數據與限制均列於benchmark。

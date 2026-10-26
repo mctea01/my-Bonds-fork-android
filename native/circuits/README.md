@@ -1,4 +1,4 @@
-# M3a component circuits
+# zkPDF component circuits
 
 This workspace implements SHA-256 aligned-window compression and constrained
 RFC 1950/1951 inflate. It does not implement the M3b PDF lexer, claims, predicates
@@ -80,7 +80,8 @@ It exits nonzero when compilation fails, after saving the measurement record.
 The address-space budget protects the development session; it is not the proof
 memory threshold or a circuit parameter. This harness does not include SHA
 windows, PDF parsing, claims or predicates. Missing gate/proof measurements are
-recorded as null, never estimated from a small-capacity proof.
+recorded as null. Round 6 gate extrapolations are separately labeled estimates;
+proof timings and RSS are never extrapolated from a small-capacity proof.
 
 Witness inputs and proof assets are generated under ignored paths. Measurement
 JSON contains only timings, sizes, gate counts and artifact hashes. First/warm
@@ -120,3 +121,48 @@ Round 5 candidate patches in `validation/m3b-round5-*.patch` apply separately
 to capacity-only commit `f79397c`. Only the `bits` candidate is adopted;
 `scalar` and `fixed` are reproducibility records for discarded comparisons.
 Their measurement JSON files include source hashes and explicit capacities.
+
+Round 6 supplies immutable private advice to `inflate`: the plaintext bytes,
+flat Huffman lengths/reversed codes, block body/kind, and token output
+starts/lengths/ends/distances. Each is checked at constant indices before it can
+affect acceptance. Block advice also supplies canonical prefix counters, first
+codes and expanded lengths. Header and token prefix/suffix advice provides a
+range-checked decomposition of the compressed bit window. These are untrusted
+witness inputs, not a parser oracle or a new public ABI. Use the committed
+generators to construct the expanded input format; see `IMPLEMENTATION.md` for
+the induction and integer bounds establishing soundness.
+
+Run the additional Adler wraparound regressions with:
+
+```sh
+python3 -I tools/regressions.py --adler --nargo /path/to/nargo
+```
+
+The Round 6 matrix is in `validation/m3b-round6-matrix.json`. Reproduce each row
+with the indicated source commit and the four capacity arguments to
+`compile_profile.py`. Run sequentially in fresh processes. At N=512 use
+`(B,T,P)` = `(1,32,128)`, `(1,256,128)`, `(1,512,128)`, `(2,32,128)`,
+`(3,32,128)`, `(2,256,128)`, `(1,32,1024)`, `(1,32,2048)`, `(1,32,8192)`;
+at N=8192 use `(1,32,128)` and `(4,512,2048)`. Historical stages use the eight
+tuples recorded in their JSON. Candidate patches apply independently to
+`15d25c5`; they reproduce the library variant for compilation, not a complete
+replacement fixture set. Final source hashes are stable across the subsequent
+fixture-only test correction. ACIR hashes can also reflect source paths and
+compiler metadata.
+
+An optional guarded proof measurement generates a synthetic repeated-byte
+stream filling the selected output capacity and runs witness generation, two
+ZK proofs and an independent verifier:
+
+```sh
+python3 -I tools/compile_profile.py --nargo /path/to/nargo --bb /path/to/bb \
+  --prove --crs /path/to/crs --seconds 1800 --address-space-gib 24 \
+  --rss-limit-gib 6 --output target/full-profile-proof.json
+```
+
+Each proof phase has independent child RSS accounting and the same resource
+guards. Results are saved after each phase; a failed phase exits nonzero without
+claiming a complete proof measurement. The first run uses the existing CRS cache,
+not a privileged cold-cache reset. All temporary witness/proof assets are removed.
+The scalar entrypoint has no public PDF statement, even when every capacity is
+set to its profile maximum.
