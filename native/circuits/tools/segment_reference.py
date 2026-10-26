@@ -22,6 +22,7 @@ STATE_KEYS = ('pos','output','tokens','blocks','phase','kind','final_block',
 TOKEN_KEYS = ('block','start','symbol','width','distance_symbol','distance_width','prefix','suffix')
 DOMAIN = int.from_bytes(b'diw-zkpdf-v1','big')
 CIRCUIT = int.from_bytes(b'pdf_inflate_seg_v1','big')
+CIRCUIT0 = int.from_bytes(b'pdf_inflate_seg0_v1','big')
 
 class Poseidon:
     def __init__(self, module):
@@ -65,16 +66,19 @@ def tables(full,b):
     return (dict(lengths=full['ll_lengths'][b*288:(b+1)*288],codes=full['ll_codes'][b*288:(b+1)*288]),
             dict(lengths=full['dd_lengths'][b*32:(b+1)*32],codes=full['dd_codes'][b*32:(b+1)*32]))
 
-def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,compressed_capacity=8192,salt=42):
+def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,compressed_capacity=8192,salt=42,token0_capacity=None):
     blocks,tokens,_,plain,full=witness(data,with_hints=True)
     if len(data)>compressed_capacity or len(plain)>40960 or len(tokens)>6144 or len(blocks)>4:
         raise ValueError('Synthetic stream exceeds global capacities')
-    P,T,B=plain_capacity,token_capacity,block_capacity
-    W=(32768+P-1)//P; E=T+B
+    P,B=plain_capacity,block_capacity
+    if token0_capacity is None: token0_capacity=token_capacity
+    W=(32768+P-1)//P
     cz=byte_commit(h,salt,data,compressed_capacity)
     state=initial(); previous=[]; result=[]; token_cursor=0
     while True:
         index=len(result); incoming=deepcopy(state); state=deepcopy(state)
+        T=token0_capacity if index==0 else token_capacity; E=T+B
+        W=0 if index==0 else (32768+P-1)//P
         if state['phase']==1 and state['kind']>0: rl,rd=tables(full,state['blocks']-1)
         else: rl,rd=empty_table(288),empty_table(32)
         selected=[]; events=[]; lens=[]; distances=[]
@@ -142,7 +146,7 @@ def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,comp
             for key in ll: ll[key]+=[0]*288; dd[key]+=[0]*32
         selected += [blank_header() for _ in range(B-header_count)]
         cp=plain_commit(h,salt,index,segment_plain,P)
-        current=dict(domain=DOMAIN,circuit=CIRCUIT,index=index,first=index==0,last=last,cz=cz,
+        current=dict(domain=DOMAIN,circuit=CIRCUIT0 if index==0 else CIRCUIT,index=index,first=index==0,last=last,cz=cz,
             sin=0 if index==0 else previous[-1]['sout'],sout=state_commit(h,salt,state),cp=cp,
             previous=[previous[j]['cp'] if j>=0 else 0 for j in range(index-W,index)],
             salt=salt,data=list(data)+[0]*(compressed_capacity-len(data)),data_len=len(data),incoming=incoming,
@@ -151,6 +155,8 @@ def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,comp
                 starts=starts,ends=ends,distances=dists,symbols=symbols,lengths=lens,token_distances=distances),
             history=[list(plain[j*P:(j+1)*P]) if j>=0 else [0]*P for j in range(index-W,index)],
             plain=list(segment_plain)+[0]*(P-length),plain_len=length,owners=event_owner+[0]*(P-length))
+        if index==0:
+            del current["history"]; del current["previous"]
         result.append(current); previous.append(current)
         if last: break
     verify_chain(result,h,P)
@@ -162,11 +168,12 @@ def verify_chain(chain,h,P):
     W=(32768+P-1)//P
     for i,s in enumerate(chain):
         assert s['salt']==chain[0]['salt']
-        assert len(s['plain'])==P and len(s['history'])==W and len(s['previous'])==W
+        W=0 if i==0 else (32768+P-1)//P
+        assert len(s['plain'])==P and len(s.get('history',[]))==W and len(s.get('previous',[]))==W
         assert s['plain'][s['plain_len']:]==[0]*(P-s['plain_len'])
         assert s['data'][s['data_len']:]==[0]*(len(s['data'])-s['data_len'])
         assert s['index']==i and s['first']==(i==0) and s['last']==(i+1==len(chain))
-        assert s['domain']==DOMAIN and s['circuit']==CIRCUIT
+        assert s['domain']==DOMAIN and s['circuit']==(CIRCUIT0 if i==0 else CIRCUIT)
         assert s['cz']==chain[0]['cz']==byte_commit(h,s['salt'],bytes(s['data'][:s['data_len']]),len(s['data']))
         assert s['cp']==plain_commit(h,s['salt'],i,bytes(s['plain'][:s['plain_len']]),P)
         assert s['sin']==(0 if i==0 else chain[i-1]['sout'])
@@ -189,10 +196,10 @@ def verify_chain(chain,h,P):
 
 FIELD_KEYS={'domain','circuit','cz','sin','sout','cp','salt','table_commitment'}
 def toml(value,key=''):
-    if key in FIELD_KEYS: return json.dumps(hex(value))
     if isinstance(value,bool): return str(value).lower()
     if isinstance(value,dict): return '{ '+', '.join(k+' = '+toml(v,k) for k,v in value.items())+' }'
-    if isinstance(value,list): return '['+', '.join(json.dumps(hex(x)) if key=='previous' else toml(x) for x in value)+']'
+    if isinstance(value,list): return '['+', '.join(toml(x,key) for x in value)+']'
+    if key in FIELD_KEYS or key in {'previous','values'}: return json.dumps(hex(value))
     return str(value)
 def write(path,fields):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -204,6 +211,7 @@ def main():
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--input',type=Path,help='Optional synthetic RFC 1950 stream; never prints its contents')
     p.add_argument('--plain',type=int,default=2048); p.add_argument('--tokens',type=int,default=288)
+    p.add_argument('--tokens0',type=int,default=1024)
     p.add_argument('--blocks',type=int,default=1); p.add_argument('--compressed',type=int,default=8192)
     p.add_argument('--kind',choices=('fixed','dynamic','stored'),default='fixed')
     p.add_argument('--length',type=int,default=6000)
@@ -213,10 +221,10 @@ def main():
         if a.input: data=a.input.read_bytes()
         elif a.kind=='stored': data=compressed(payload,level=0)
         else: data=compressed(payload,zlib.Z_FIXED if a.kind=='fixed' else zlib.Z_DEFAULT_STRATEGY)
-        chain=segments(data,h,a.plain,a.tokens,a.blocks,a.compressed)
+        chain=segments(data,h,a.plain,a.tokens,a.blocks,a.compressed,token0_capacity=a.tokens0)
         for i,s in enumerate(chain): write(a.output/f'segment-{i:03}/Prover.toml',s)
         public=[{k:([hex(x) for x in s[k]] if k=='previous' else hex(s[k]) if k in FIELD_KEYS else s[k])
-            for k in ('domain','circuit','index','first','last','cz','sin','sout','cp','previous')} for s in chain]
+            for k in ('domain','circuit','index','first','last','cz','sin','sout','cp','previous') if k in s} for s in chain]
         (a.output/'chain.json').write_text(json.dumps(public,indent=2)+'\n')
         print(f'{len(chain)} synthetic segments; reference chain verified')
     finally: h.close()

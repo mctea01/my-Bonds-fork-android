@@ -1,7 +1,7 @@
 use pdf_text_v1::inflate::{BlockHint,Huffman};
 use pdf_text_v1::inflate_segment::{inflate_segment,State,Event,SegmentHints};
 global SEG_PLAIN:u32=2048;
-global SEG_TOKENS:u32=288;
+global SEG_TOKENS:u32=352;
 global SEG_BLOCK_STARTS:u32=1;
 global MAX_COMPRESSED:u32=8192;
 global W:u32=(32768+SEG_PLAIN-1)/SEG_PLAIN;
@@ -18,6 +18,7 @@ fn main(
     // ASCII big-endian constants; verifier must pin this parameterized circuit.
     assert_eq(domain,0x6469772d7a6b7064662d7631);
     assert_eq(circuit,0x7064665f696e666c6174655f7365675f7631);
+    assert((index>0) & !first);
     inflate_segment::<MAX_COMPRESSED,SEG_PLAIN,SEG_TOKENS,SEG_BLOCK_STARTS,W>(
         index,first,last,cz,sin,sout,cp,previous,salt,data,data_len,incoming,
         resumed_l,resumed_d,headers,header_count,events,event_count,hints,history,plain,plain_len,owners);

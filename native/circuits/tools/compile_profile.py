@@ -70,13 +70,12 @@ def prove_profile(args, root, acir, record, limits):
     from fixtures import compressed
     from probe_fixture import write
     prover = root/'Prover.toml'
-    if args.segment:
+    if args.segment or args.segment0:
         from segment_reference import Poseidon, segments, write as write_segment
         oracle = Poseidon(args.bb_js)
         try:
-            chain = segments(compressed(b'A'*args.plain), oracle, args.plain, args.tokens, args.blocks, args.compressed)
-            assert len(chain) == 1
-            write_segment(prover, chain[0])
+            chain = segments(compressed(b'A'*(args.plain if args.segment0 else args.plain*2)), oracle, args.plain, args.tokens, args.blocks, args.compressed)
+            write_segment(prover, chain[0] if args.segment0 else chain[1])
         finally:
             oracle.close()
     else:
@@ -87,7 +86,7 @@ def prove_profile(args, root, acir, record, limits):
     args.crs.mkdir(parents=True, exist_ok=True)
     proof = root/'target/proof'
     proof.mkdir()
-    record['proof_scope'] = ('Synthetic repeated-byte stream fills plain capacity; single first/final segment with zero history' if args.segment else 'Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement')
+    record['proof_scope'] = ('Synthetic repeated-byte stream fills plain capacity; first/final or second/final segment' if (args.segment or args.segment0) else 'Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement')
     record['zero_knowledge'] = True
     record['oracle_hash'] = 'poseidon2'
     record['prove'] = {}
@@ -133,6 +132,7 @@ def main():
     parser.add_argument('--tokens', type=int, default=6144)
     parser.add_argument('--blocks', type=int, default=4)
     parser.add_argument('--bb', help='Pinned bb 2.1.9; measure gates after compilation')
+    parser.add_argument('--segment0', action='store_true', help='Profile first segment without history')
     parser.add_argument('--segment', action='store_true', help='Profile pdf_inflate_seg_v1 with full 32 KiB history')
     parser.add_argument('--bb-js', type=Path, help='Pinned bb.js dest/node/index.js for segment synthetic witnesses')
     parser.add_argument('--prove', action='store_true', help='Also measure a synthetic full-output component proof')
@@ -151,16 +151,16 @@ def main():
     for name, maximum in [('compressed',8192), ('plain',40960), ('tokens',6144), ('blocks',4)]:
         if not 0 < getattr(args, name) <= maximum:
             parser.error(f'{name} must be between 1 and {maximum}')
-    if args.segment and args.plain > 8192:
+    if (args.segment or args.segment0) and args.plain > 8192:
         parser.error('Segment plain capacity must be <=8192')
-    if args.segment and args.prove and not args.bb_js:
+    if (args.segment or args.segment0) and args.prove and not args.bb_js:
         parser.error('Segment --prove requires --bb-js')
     source = MAIN
-    if args.segment:
-        source = (ROOT/'pdf_inflate_seg_v1/src/main.nr').read_text()
-        for constant, value in [('SEG_PLAIN',args.plain),('SEG_TOKENS',args.tokens),('SEG_BLOCK_STARTS',args.blocks),('MAX_COMPRESSED',args.compressed)]:
+    if args.segment or args.segment0:
+        source = (ROOT/('pdf_inflate_seg0_v1' if args.segment0 else 'pdf_inflate_seg_v1')/'src/main.nr').read_text()
+        for constant, value in [('SEG_PLAIN',args.plain),('SEG0_TOKENS' if args.segment0 else 'SEG_TOKENS',args.tokens),('SEG_BLOCK_STARTS',args.blocks),('MAX_COMPRESSED',args.compressed)]:
             source = re.sub(r'(global '+constant+r':u32=)\d+',lambda m: m[1]+str(value),source)
-    if not args.segment:
+    if not (args.segment or args.segment0):
         for name in ('compressed', 'plain', 'tokens', 'blocks'):
             source = source.replace(name.upper(), str(getattr(args, name)))
     version = subprocess.check_output([args.nargo, '--version'], text=True).strip()
@@ -189,7 +189,7 @@ def main():
             code, status = run_limited([args.nargo, 'info', '--program-dir', str(root)],
                 log, log, args.seconds, limits, args.rss_limit_gib)
         record = dict(
-            scope='inflate segment with commitments and 32 KiB history; not a complete PDF circuit' if args.segment else 'inflate only; not the complete pdf_text_v1_1p circuit',
+            scope=('first inflate segment without history' if args.segment0 else 'inflate segment with 32 KiB history') if (args.segment or args.segment0) else 'inflate only; not the complete pdf_text_v1_1p circuit',
             nargo=version, status=status, exit_code=code,
             seconds=time.monotonic()-start,
             peak_rss_kib=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,

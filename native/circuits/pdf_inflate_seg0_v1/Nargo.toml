@@ -1,0 +1,6 @@
+[package]
+name="pdf_inflate_seg0_v1"
+type="bin"
+authors=[]
+[dependencies]
+pdf_text_v1={path="../pdf_text_v1"}

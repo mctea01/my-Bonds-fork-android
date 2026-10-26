@@ -47,7 +47,8 @@ pub fn inflate_segment<let N:u32,let P:u32,let T:u32,let B:u32,let W:u32>(
     hints:SegmentHints<T+B,B>, history:[[u8;P];W], plain:[u8;P], plain_len:u32, owners:[u32;P],
 ) {
     assert(N>=6 & N<=8192 & P>0 & P<=8192 & T>0 & T<=6144 & B>0 & B<=4);
-    assert_eq(W,(32768+P-1)/P);
+    if W==0 { assert(first & (index==0)); }
+    else { assert_eq(W,(32768+P-1)/P); }
     assert(index<=40960/P & plain_len<=P);
     assert_eq(first,index==0);
     assert(data_len>=6 & data_len<=N);
@@ -112,6 +113,12 @@ pub fn inflate_segment<let N:u32,let P:u32,let T:u32,let B:u32,let W:u32>(
         for j in 0..288 { assert_eq(ll.lengths[(b+1)*288+j],l.lengths[j]); assert_eq(ll.codes[(b+1)*288+j],l.codes[j]); }
         for j in 0..32 { assert_eq(dd.lengths[(b+1)*32+j],d.lengths[j]); assert_eq(dd.codes[(b+1)*32+j],d.codes[j]); }
     }
+    // A first segment with one block start can only decode from table slot 1.
+    // Project that immutable table before private symbol lookups.
+    let mut first_ll=Huffman {lengths:[0u8;288],codes:[0u32;288]};
+    let mut first_dd=Huffman {lengths:[0u8;32],codes:[0u32;32]};
+    for j in 0..288 { first_ll.lengths[j]=ll.lengths[288+j]; first_ll.codes[j]=ll.codes[288+j]; }
+    for j in 0..32 { first_dd.lengths[j]=dd.lengths[32+j]; first_dd.codes[j]=dd.codes[32+j]; }
     let header_starts=headers.map(|h| h.start);
     let mut slot=0u32; let mut started=0u32; let mut decoded=0u32;
     let mut produced=s.pending_len;
@@ -141,7 +148,9 @@ pub fn inflate_segment<let N:u32,let P:u32,let T:u32,let B:u32,let W:u32>(
                 let mut encoded:Field=0; let mut consumed=0u32;
                 if s.kind==0 { assert(value<256); len=1; encoded=value as Field; consumed=8; }
                 else {
-                    encoded=checked_code(ll,slot*288,288,value,t.width as u32) as Field;
+                    encoded=(if (W==0) & (B==1) {
+                        assert_eq(slot,1); checked_code(first_ll,0,288,value,t.width as u32)
+                    } else {checked_code(ll,slot*288,288,value,t.width as u32)}) as Field;
                     consumed=t.width as u32;
                     if value<256 { len=1; }
                     else if value==256 { s.phase=if s.final_block {2} else {0}; }
@@ -152,7 +161,7 @@ pub fn inflate_segment<let N:u32,let P:u32,let T:u32,let B:u32,let W:u32>(
                         assert(extra<POWERS[width] as u32);
                         encoded+=(extra as Field)*(POWERS[consumed] as Field); consumed+=width;
                         let ds=t.distance_symbol as u32; assert(ds<30);
-                        let code=checked_code(dd,slot*32,32,ds,t.distance_width as u32);
+                        let code=if (W==0) & (B==1) {checked_code(first_dd,0,32,ds,t.distance_width as u32)} else {checked_code(dd,slot*32,32,ds,t.distance_width as u32)};
                         encoded+=(code as Field)*(POWERS[consumed] as Field); consumed+=t.distance_width as u32;
                         dist=hints.token_distances[e]; assert(dist>=distance_base[ds]);
                         let extra=dist-distance_base[ds]; let width=distance_extra[ds];

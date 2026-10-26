@@ -14,10 +14,10 @@ from segment_reference import Poseidon,segments,write,ROOT,verify_chain,byte_com
 from fixtures import compressed,witness,table,LBASE,LEXTRA,DBASE,DEXTRA
 
 
-def package(directory,P,T,B,N=8192):
+def package(directory,P,T,B,N=8192,first=False):
     root=Path(directory); (root/'src').mkdir(parents=True,exist_ok=True)
-    source=(ROOT/'pdf_inflate_seg_v1/src/main.nr').read_text()
-    for key,value in [('SEG_PLAIN',P),('SEG_TOKENS',T),('SEG_BLOCK_STARTS',B),('MAX_COMPRESSED',N)]:
+    source=(ROOT/('pdf_inflate_seg0_v1' if first else 'pdf_inflate_seg_v1')/'src/main.nr').read_text()
+    for key,value in [('SEG_PLAIN',P),('SEG0_TOKENS' if first else 'SEG_TOKENS',T),('SEG_BLOCK_STARTS',B),('MAX_COMPRESSED',N)]:
         source=re.sub(r'(global '+key+r':u32=)\d+',lambda m:m[1]+str(value),source)
     (root/'src/main.nr').write_text(source)
     (root/'Nargo.toml').write_text('[package]\nname="segment_regression"\ntype="bin"\nauthors=[]\n'
@@ -76,6 +76,7 @@ def mixed():
 def run(nargo,module,output):
     h=Poseidon(module); results=[]
     def execute(root,name,s,reject=False):
+        if s['circuit']==int.from_bytes(b'pdf_inflate_seg0_v1','big') and name!='rejects_general_segment_zero': root=root.parent/(root.name+'0')
         write(root/'Prover.toml',s)
         proc=subprocess.run([nargo,'execute','--program-dir',str(root),'--pedantic-solving'],
             stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
@@ -92,6 +93,7 @@ def run(nargo,module,output):
         cache=Path(tempfile.gettempdir())/('diw-segment-regressions-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])
         with contextlib.nullcontext(str(cache)) as tmp:
             root=package(Path(tmp)/'main',2048,288,3)
+            package(Path(tmp)/'main0',2048,288,3,first=True)
             fixed=segments(compressed(b'AB'*3000,zlib.Z_FIXED),h,2048,288,3)
             dynamic=segments(compressed(b'variable alphabet abcdefghijklmnop '*180),h,2048,288,3)
             assert witness(bytes(dynamic[0]['data'][:dynamic[0]['data_len']]))[0][0]['kind']==2
@@ -140,11 +142,24 @@ def run(nargo,module,output):
             attack('rejects_domain',fixed[0],lambda s:s.__setitem__('domain',s['domain']+1))
             # Stored blocks cross a segment boundary under a literal-rich profile.
             stored_root=package(Path(tmp)/'stored',64,96,1,512)
+            package(Path(tmp)/'stored0',64,96,1,512,first=True)
             stored=segments(compressed(b'stored-boundary '*9,level=0),h,64,96,1,512)
             assert len(stored)>1 and stored[1]['incoming']['kind']==0
             for i,s in enumerate(stored): execute(stored_root,f'stored_{i}',s)
             attack_base=deepcopy(stored[1]); attack_base['incoming']['stored_end']+=8
             execute(stored_root,'rejects_stored_endpoint',attack_base,True)
+            rich_root=package(Path(tmp)/'rich',256,32,1,1024)
+            package(Path(tmp)/'rich0',256,300,1,1024,first=True)
+            rich=segments(compressed(bytes(range(256))+b'A'*256,zlib.Z_FIXED),h,256,32,1,1024,token0_capacity=300)
+            assert sum(e['action']==2 for e in rich[0]['events'])>32
+            for i,s in enumerate(rich): execute(rich_root,f'rich_first_{i}',s)
+            single=segments(compressed(bytes(range(128)),zlib.Z_FIXED),h,256,32,1,1024,token0_capacity=300)
+            assert len(single)==1
+            execute(rich_root,'rich_single_first_final',single[0])
+            # Build a valid general-segment ABI before forcing the forbidden zero index.
+            general=deepcopy(empty[0]);general['circuit']=int.from_bytes(b'pdf_inflate_seg_v1','big')
+            general['previous']=[0]*16;general['history']=[[0]*2048 for _ in range(16)]
+            execute(root,'rejects_general_segment_zero',general,True)
             # Off-circuit splice/order checks complement proof acceptance.
             swapped=deepcopy(fixed); swapped[1],swapped[2]=swapped[2],swapped[1]
             try: verify_chain(swapped,h,2048)
