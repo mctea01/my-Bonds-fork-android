@@ -560,3 +560,118 @@ ACIR 路徑與 debug metadata 會影響檔案雜湊；這些是量測快照，�
   混合區塊回歸使用 B=3，stored literal-rich 回歸使用 P=64/T=96。
 - 新增第三方元件：無。沿用既有 MIT 的 bb.js 2.1.9 產生獨立承諾向量與見證，
   `native/circuits/NOTICE` 已補述用途。不提交真實文件、私密見證、CRS 或大型 proof 資產。
+
+
+## WP3a M3b Round 8: first segment and streaming text (2026-10-26)
+
+Round 8 merged integration commit `cfbfde0` before implementation. The first
+inflate variant is complete and within the requested bounds. Streaming lex and
+claim circuits and synthetic chain tools are implemented, but the production
+text profile is **not selected**: full-size compilation did not complete within
+the budgets below, and the specified raw TJ record encoding has a date-decoding
+soundness issue requiring Claude's decision. This remains a draft.
+
+### Environment and first-segment measurements
+
+Pinned nargo 1.0.0-beta.15 (noirc `83245db91dcf63420ef4bcbbd85b98f397fee663`),
+Barretenberg / bb.js 2.1.9, UltraHonk ZK with Poseidon2. Cloud AMD EPYC 9V74,
+cgroup 2 vCPU and 8 GiB; these are **cloud measurements of phone/desktop
+parameter sets, not measurements on a phone**. Some compilation and regression
+work overlapped, so wall time includes shared CPU contention. First and warm
+mean two fresh CLI prove processes with the same synthetic witness and cached
+CRS; they are not a cold CRS download or an in-process mobile warmup.
+
+All rows use `SEG_BLOCK_STARTS=1`, `MAX_COMPRESSED=8192`. The SHA segment must
+pin the same compressed capacity. The W=0 specialization reuses the common
+inflate decoder and projects its single validated Huffman table before token
+lookup; no second decoder or unconstrained acceptance path was added.
+
+| Profile | SEG_PLAIN / tokens / W | gates | compile seconds / peak GiB | prove first / warm seconds | verify ms | proof / public input bytes |
+|---|---|---:|---:|---:|---:|---:|
+| Phone first | 2048 / 1024 / 0 | 1,033,678 (2^20) | 107.43 / 2.571 | 45.74 / 40.19 | 18.61 | 16,256 / 288 |
+| Desktop first | 4096 / 1536 / 0 | 1,415,190 (2^21) | 232.25 / 4.685 | 63.57 / 49.80 | 21.16 | 16,256 / 288 |
+| Phone general | 2048 / 352 / 16 | 1,009,891 (2^20) | 120.08 / 1.854 | 43.02 / 45.44 | 20.46 | 16,256 / 800 |
+
+Prove first/warm peak RSS respectively: phone first 1.824/1.824 GiB, desktop
+first 3.383/3.357 GiB, phone general 1.776/1.775 GiB. Each warm proof verified
+with the independent CLI. Choose **1024/352** first/general tokens for phone
+and **1536/576** for desktop (general desktop remains the Round 7 measured
+1,275,375-gate profile). The phone first profile has only 14,898 gates of
+headroom, so any subsequent change needs fresh measurement. The capacities
+cover Claude's aggregate sample counts; M3c still must reject local density
+or block-start overflow before proving.
+
+Exact main snapshots, source/ACIR/VK hashes, process results and peak RSS are
+`native/circuits/validation/m3b-round8-{seg0-phone-projected,seg0-desktop,general-phone}.{json,main.nr}`.
+Large ACIR, witnesses, CRS and proof files are excluded from version control.
+
+### Lex and claim capacity attempts
+
+Lex attempts use `SEG_PLAIN=2048`, `MAX_OPS=512`, `MAX_ANCHORS=16`,
+`MAX_CLAIMS=12`, `MAX_CLAIM_SRC=384`, `MAX_ANCHOR_SRC=64`, with no operator
+table hints. The compiler guard is 5 GiB RSS and 1,800 seconds per process.
+
+| Circuit | K / slots | compile seconds | observed peak GiB | result | gates / prove first / warm / verify / proof bytes |
+|---|---:|---:|---:|---|---|
+| Lex | 1 | 1,800.20 | 4.924 | timeout | unavailable |
+| Lex | 2 | 838.15 | 5.006 | RSS guard | unavailable |
+| Lex | 4 | 155.38 | 5.000 | RSS guard | unavailable |
+| Claim (384 source bytes) | 12 | 1,800.09 | 1.322 | timeout | unavailable |
+
+An RSS guard is a deliberate compiler termination, not an OOM measurement;
+its observed peak is not the memory needed for successful compilation. A
+timeout is not evidence that a circuit exceeds 2^20 or 2^21 gates. No proof or
+verification timing is reported for an uncompiled circuit. Therefore **the
+largest qualifying K is undetermined**, for both phone and desktop. Shipping
+K=1 as a selected profile would be unsupported by these results.
+
+A smaller diagnostic with P=64, K=1 and all the same text capacities compiles
+in 13.10 seconds / 0.636 GiB, at 221,093 gates. It is not a replacement for the
+required P=2048 profile. The user-authorized isolated Field-counter candidate
+increased an earlier P=64 baseline from 332,871 to 379,136 gates; it was not
+adopted. Repository counters and lengths remain u32 with checked updates.
+The parser emits deterministic record events; moving aggregation outside mode
+branches, packing names, and carrying one active field reduced cost without
+adding token-position advice. Further architecture changes require review;
+this round does not silently substitute an operator hint table.
+
+Results and source snapshots are `m3b-round8-lex-k{1,2,4}-final.*`,
+`m3b-round8-claim-12.*`, and `m3b-round8-lex-single-p64.*` in validation.
+
+### Maximum-stream estimates, with missing terms explicit
+
+For 31,582 plaintext bytes and 232 text operators, fixed inflate segmentation
+requires 16 phone or 8 desktop segments. **Estimates only**:
+
+* Phone inflate: 40.1914 + 15 x 45.4436 = **721.84 seconds** (12.03 minutes).
+* Desktop inflate: 49.7963 + 7 x 65.51 = **508.37 seconds** (8.47 minutes),
+  combining this round's first segment with the Round 7 general segment.
+  The latter used a different CPU model, so this is a mixed-environment
+  planning estimate, not a comparable complete benchmark.
+* If K were 1/2/4, lex would require 16/8/4 segments for phone P=2048, or
+  8/4/2 for desktop P=4096. Desktop P=4096 lex is not measured here.
+* With all 12 claims in one claim proof, total inflate+lex+claim segment
+  counts would be 33/25/21 (phone) or 17/13/11 (desktop). With s selected
+  claim proofs, replace the final 1 by s. None of these K choices is approved.
+
+Total prove time is `inflate estimate + ceil(inflate_segments/K) * lex_warm
++ sum(claim_warm)`. The lex and claim terms are **unavailable**, so no numeric
+full-chain prove estimate can honestly be given yet. These formulas exclude
+SHA, witness production, IO, scheduler overhead and actual device differences.
+
+### Design decisions still needed
+
+The authenticated raw record concatenates TJ strings without their individual
+boundaries. `[(2020-01-)(\7)(1)] TJ` decodes per string to a separator followed
+by day 1, while its raw concatenation ends in `\71` and decodes to day 9.
+`[<3><1>] TJ` similarly changes odd-nibble padding. The current date circuit
+proves the concatenated-record date, which cannot establish arbitrary PDF
+per-string date semantics. Claude must decide on authenticated string lengths
+or sufficient boundary restrictions before this draft can be considered sound
+for PDF date predicates. See IMPLEMENTATION.md for the full argument.
+
+The exact proposed A packing also binds enabled slot endpoints after the
+anchor content; ordinal/total outputs are excluded. Numeric date-format and
+predicate codes are documented proposals awaiting design confirmation. No
+`p4-circuits.md` or PUBLIC_SPEC edits were made. No new third-party component
+was added; existing bb.js use remains covered by NOTICE.

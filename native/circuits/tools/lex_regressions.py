@@ -46,7 +46,13 @@ def run(nargo,module,output):
             b=bundle(b' '*prefix+content,a,c)
             for j,w in enumerate(b['lex']):execute(lexroot,f'cross_{label}_{j}',w)
             assert any(w['incoming']['mode']=={'name':4,'string':2,'operator':6}[label] for w in b['lex'][1:])
-        assert any(w['incoming']['field_len']>0 for w in control['lex'][1:])
+        # Separate date groups are complete records in the same claim. Padding
+        # forces a boundary while the current field already contains a record.
+        content=text(b'FAKE START')+text(b'2020-')+b' '*64+text(b'01-')+text(b'02')+text(b'FAKE END')
+        cross_field=bundle(content,[0,4],[(0,1)])
+        assert any(w['incoming']['field_len']>0 for w in cross_field['lex'][1:])
+        for j,w in enumerate(cross_field['lex']):execute(lexroot,f'cross_field_{j}',w)
+        execute(claimroot,'cross_field_claim',cross_field['claim'])
         # Keep all non-mutated ABI values valid; replace and reopen plaintext so
         # syntax attacks cannot fail merely because C_p was left stale.
         def malformed(name,data):
