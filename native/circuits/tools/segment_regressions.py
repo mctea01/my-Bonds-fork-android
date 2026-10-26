@@ -85,9 +85,9 @@ def run(nargo,module,output):
         results.append(dict(case=name,expected='reject' if reject else 'accept',passed=passed))
         print(name+(': pass' if passed else ': FAIL'),flush=True)
         if not passed:
-            # Keep diagnostics local to ignored target; never print private values.
-            (ROOT/'target/segment-failure.log').write_text(proc.stdout)
-            raise RuntimeError('Unexpected ACIR result; diagnostic retained under ignored target')
+            # Persist only status metadata, never witness-bearing diagnostics.
+            (ROOT/'target/segment-failure.log').write_text(json.dumps(dict(case=name,exit_code=proc.returncode,constraint_failed='Cannot satisfy constraint' in proc.stdout))+'\n')
+            raise RuntimeError('Unexpected ACIR result; status metadata retained under ignored target')
     try:
         # Cache outside the Noir workspace, whose member list excludes harnesses.
         cache=Path(tempfile.gettempdir())/('diw-segment-regressions-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])

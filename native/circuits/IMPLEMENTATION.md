@@ -757,3 +757,10 @@ a measured gate count. Neither a production lexical K nor a claim split is
 selected until a successful measurement establishes its capacity. The source
 boundary decision above also remains a release blocker. Benchmark details and
 unavailable measurements are recorded in `docs/research/p4-benchmarks.md`.
+
+Failure diagnostics in the segment/text regression runners retain only the case
+name, exit code and whether a constraint failure was recognized. Raw compiler
+or witness stdout is not persisted. Profiling suppresses witness-execution
+stdout/stderr and records status metadata; compilation-only and prover resource
+logs contain no witness serialization. A synthetic marker check verifies that
+a failing witness command cannot leak its output into the measurement log.

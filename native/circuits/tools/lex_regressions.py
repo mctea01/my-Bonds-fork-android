@@ -23,7 +23,7 @@ def run(nargo,module,output):
         results.append(dict(case=name,expected='reject' if reject else 'accept',passed=passed))
         print(name+(': pass' if passed else ': FAIL'),flush=True)
         if not passed:
-            (ROOT/'target/text-failure.log').write_text(p.stdout)
+            (ROOT/'target/text-failure.log').write_text(json.dumps(dict(case=name,exit_code=p.returncode,constraint_failed='Cannot satisfy constraint' in p.stdout))+'\n')
             raise RuntimeError('Unexpected constrained result; private diagnostic suppressed')
     def bundle(content,anchors,ranges):return build(content,h,P=64,A=8,C=4,Q=128,R=64,anchor_ops=anchors,ranges=ranges,T=96,T0=96,N=1024)
     try:

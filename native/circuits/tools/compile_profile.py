@@ -51,8 +51,12 @@ def measured_limited(command, log, seconds, limits, rss_limit_gib):
     if pid == 0:
         start = time.monotonic()
         with log.open('w') as output:
-            code, status = run_limited(command, output, output, seconds, limits, rss_limit_gib,
+            witness = len(command)>1 and command[1]=='execute'
+            sink = subprocess.DEVNULL if witness else output
+            code, status = run_limited(command, sink, sink, seconds, limits, rss_limit_gib,
                                        0.001 if len(command)>1 and command[1]=='verify' else 0.05)
+            if witness:
+                output.write(json.dumps(dict(exit_code=code,status=status,output='witness diagnostics suppressed'))+'\n')
         result = dict(seconds=time.monotonic()-start, exit_code=code,
                       status={"compiled":"completed", "compiler_failed":"process_failed"}.get(status,status),
                       peak_rss_kib=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
