@@ -58,7 +58,9 @@ class NativeZkTlsEngine(
     /** Loads the library and tells whether it has the tlsn feature. */
     private val ready: suspend () -> Boolean = { true },
 ) : ZkTlsEngine {
-    private val ws: HttpClient by lazy { http.config { install(WebSockets) { maxFrameSize = MAX_FRAME } } }
+    // No maxFrameSize: the OkHttp engine (Android) refuses every session that sets it. Frame sizes are checked by
+    // WebSocketChannel and firstBinary instead.
+    private val ws: HttpClient by lazy { http.config { install(WebSockets) } }
 
     override suspend fun prove(
         session: ZkTlsSessionRequest.Verified,
@@ -82,7 +84,7 @@ class NativeZkTlsEngine(
             unanswered = unanswered ?: (channel as? EndAware)?.end
             step("連線到查驗方")
         }
-        unanswered?.takeIf { it != ZkTlsChannelEnd.NO_REPLY }?.let { ZkResult.Failed(it.message, it.retry) } ?: UNREACHABLE
+        unanswered?.takeIf { it != ZkTlsChannelEnd.NO_REPLY }?.let { ZkResult.Failed(it.message, it.retry) } ?: unreachable(r.transports)
     }
 
     /** One attempt over [channel]; null when the verifier never answered there. */
@@ -258,14 +260,17 @@ class NativeZkTlsEngine(
             }
         }
 
+        /** Also leaves the relay room, so a verifier screen closed before any holder came frees it at once. */
         override fun close() {
             servers.forEach { runCatching { it.second.close() } }
+            relay?.second?.let { runCatching { it.cancel() } }
         }
     }
 
     private suspend fun firstBinary(session: WebSocketSession): ByteArray {
         while (true) {
             val frame = session.incoming.receive()
+            if (frame is Frame.Binary && frame.data.size > ZkTlsChannels.MAX_FRAME) throw IOException("Frame too large")
             if (frame is Frame.Binary && frame.data.isNotEmpty()) return frame.data
             if (frame is Frame.Close) throw IOException("Relay closed")
         }
@@ -273,7 +278,6 @@ class NativeZkTlsEngine(
 
     companion object {
         const val MAX_LAN = 4
-        private const val MAX_FRAME = 1L shl 20
         private const val LAN_CONNECT_MS = 4_000
         private const val WS_CONNECT_MS = 15_000L
         private const val FIRST_BYTES_MS = 30_000
@@ -281,6 +285,16 @@ class NativeZkTlsEngine(
         private val UNREACHABLE = ZkResult.Failed("無法連到查驗方：請確認兩台裝置在同一個網路，或查驗方的中繼可以連線", true)
         private val UNSUPPORTED = ZkResult.Failed("這個版本沒有包含 zkTLS（TLSNotary）", false)
         private val EXPIRED = ZkResult.Failed("查驗請求已過期，沒有出示者連線", false)
+
+        /**
+         * Why no transport reached the verifier. A request that names only verifier hosts has no second device or
+         * shared network involved, so the message names the host instead.
+         */
+        fun unreachable(transports: List<ZkTlsTransport>): ZkResult.Failed {
+            val hosts = transports.map { if (it is ZkTlsTransport.Wss) runCatching { Url(it.url).host }.getOrDefault(it.url) else null }
+            if (hosts.isEmpty() || hosts.any { it == null }) return UNREACHABLE
+            return ZkResult.Failed("無法連到查驗主機 ${hosts.distinct().joinToString("、")}：請確認這台裝置可以連上網路，且查驗主機正在運作", true)
+        }
 
         /** ws or wss address of the relay on an age host given as http(s) or ws(s). */
         fun relayAddress(base: String): String {

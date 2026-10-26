@@ -25,6 +25,8 @@ dependencies {
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.client.mock)
+    // The Android engine: its WebSocket sessions refuse settings the Java engine accepts.
+    testImplementation(libs.ktor.client.okhttp)
     // Encrypts test PDFs with the standard security handler (RC4 and AES revisions).
     testImplementation("org.apache.pdfbox:pdfbox:3.0.8")
 }

@@ -24,15 +24,23 @@ internal object ZkTlsChannels {
     const val SEND_FAILED = 910u
     const val RECEIVE_FAILED = 911u
     const val ENDED = 912u
+
+    /** The largest WebSocket frame accepted; the engine sends chunks of [CHUNK]. */
+    const val MAX_FRAME = 1 shl 20
 }
 
-/** How a relay or the peer ended a WebSocket channel, from the relay's close reason (diw-wallet-server Relay). */
+/**
+ * How a relay, the peer or a verifier host ended a WebSocket channel, from the close reason (diw-wallet-server Relay
+ * and ZkTlsHost).
+ */
 enum class ZkTlsChannelEnd(val reason: String?, val message: String, val retry: Boolean) {
     PEER_LEFT("Peer left", "對方已離開連線，原因請看對方的畫面", true),
     LIMIT("Room limit", "中繼中止了連線：超過中繼的傳輸量上限", false),
     EXPIRED("Room expired", "中繼中止了連線：超過中繼房間的 15 分鐘上限，請查驗方重新產生 QR code", false),
     REFUSED("Room unavailable", "中繼拒絕加入：這個查驗的房間已有兩方或已關閉，請查驗方重新產生 QR code", false),
     BUSY("Too many connections", "中繼拒絕加入：同一個網路位址的連線太多，請稍後再試", true),
+    HOST_UNKNOWN("No such session", "查驗主機找不到這個查驗請求：可能已過期或已經使用過，請重新建立", false),
+    HOST_BUSY("Busy, try again", "查驗主機正在處理另一個查驗，請稍後再試", true),
     NO_REPLY(null, "查驗方沒有回應：對方可能已離開查驗畫面或關閉螢幕，請查驗方重新產生 QR code", false),
     ;
 
@@ -138,6 +146,10 @@ class WebSocketChannel(private val session: WebSocketSession, private val firstR
                 throw e
             } catch (_: Exception) {
                 ended(null)
+            }
+            if (frame is Frame.Binary && frame.data.size > ZkTlsChannels.MAX_FRAME) {
+                close()
+                throw ZkException.Internal(ZkTlsChannels.ENDED)
             }
             if (frame is Frame.Binary && frame.data.isNotEmpty()) {
                 received.set(true)

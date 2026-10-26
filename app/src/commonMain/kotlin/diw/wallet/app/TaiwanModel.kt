@@ -229,6 +229,8 @@ sealed class OfflineUi {
         val preparing: Boolean = false,
         /** The file a kept result becomes evidence of, when this query was started from that file. */
         val forFile: String? = null,
+        /** The verifier host's status address for a session this device opened there, to read why a proof failed. */
+        val hostState: String? = null,
     ) : OfflineUi()
 
     /**

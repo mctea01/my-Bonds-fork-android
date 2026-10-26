@@ -262,8 +262,9 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                             }
                             is ZkResult.Failed -> {
                                 val fresh = request.isFresh(Clock.System.now())
-                                ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, result.reason, retry = result.retryable && fresh)
-                                result.reason
+                                val reason = hostReason(consent)?.let { "查驗主機回報：$it" } ?: result.reason
+                                ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, reason, retry = result.retryable && fresh)
+                                reason
                             }
                             ZkResult.Cancelled -> {
                                 retry(consent)
@@ -288,6 +289,23 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                 "網站查驗證明（zkTLS，${consent.profile.host}），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
             )
         }
+    }
+
+    /**
+     * The verifier host's own reason for a failed proof, when this device opened the session there: the host ends
+     * the connection without saying why, so its status is read for a few seconds while it records the failure.
+     */
+    private suspend fun hostReason(consent: OfflineUi.ZkTlsConsent): String? {
+        val url = consent.hostState ?: return null
+        repeat(HOST_REASON_TRIES) { attempt ->
+            val state = runCatching { DiwJson.parseToJsonElement(client.get(url).bodyAsText()) as? JsonObject }.getOrNull()
+            when (state?.str("status")) {
+                "failed" -> return state.str("reason")
+                "done", null -> return null
+            }
+            if (attempt < HOST_REASON_TRIES - 1) delay(POLL)
+        }
+        return null
     }
 
     /** Stops the running proof and returns to the consent screen. */
@@ -372,7 +390,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                 }
                 val created = createOnHost(base, body)
                 val link = created.str("request") ?: throw ProtocolException("server_error", "No request")
-                consentFor(link, pick.fileId)
+                val state = created.str("sessionId")?.let { sid -> created.str("token")?.let { "$base/zktls/sessions/$sid?token=${it.encodeURLParameter()}" } }
+                consentFor(link, pick.fileId).copy(hostState = state)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -707,5 +726,6 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         const val EXPIRED_VERIFIER = "請求已過期，沒有收到出示。"
         private val POLL = 2.seconds
         private val GRACE = 30.seconds
+        private const val HOST_REASON_TRIES = 3
     }
 }
