@@ -132,7 +132,7 @@ def main():
     parser.add_argument('--nargo', default='nargo')
     parser.add_argument('--seconds', type=int, default=1800)
     parser.add_argument('--compressed', type=int, default=8192)
-    parser.add_argument('--plain', type=int, default=40960)
+    parser.add_argument('--plain', type=int, help='Defaults to 2048 for text profiles, 40960 otherwise')
     parser.add_argument('--tokens', type=int, default=6144)
     parser.add_argument('--blocks', type=int, default=4)
     parser.add_argument('--bb', help='Pinned bb 2.1.9; measure gates after compilation')
@@ -146,17 +146,18 @@ def main():
                         help='Optional session-protection guard; reported separately from compiler failure')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    if args.text_profile:
-        sys.path.insert(0,str(Path(__file__).resolve().parent))
-        from text_profile import run
-        run(args)
-        return
-    if args.prove and (not args.bb or not args.crs):
-        parser.error('--prove requires --bb and --crs')
+    if args.plain is None:
+        args.plain = 2048 if args.text_profile else 40960
     if args.seconds <= 0 or args.address_space_gib <= 0:
         parser.error('Resource budgets must be positive')
     if args.rss_limit_gib is not None and args.rss_limit_gib <= 0:
         parser.error('RSS guard must be positive')
+    if args.text_profile:
+        sys.path.insert(0,str(Path(__file__).resolve().parent))
+        from text_profile import run
+        raise SystemExit(0 if run(args) else 1)
+    if args.prove and (not args.bb or not args.crs):
+        parser.error('--prove requires --bb and --crs')
     for name, maximum in [('compressed',8192), ('plain',40960), ('tokens',6144), ('blocks',4)]:
         if not 0 < getattr(args, name) <= maximum:
             parser.error(f'{name} must be between 1 and {maximum}')

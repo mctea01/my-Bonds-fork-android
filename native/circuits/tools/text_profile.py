@@ -14,6 +14,7 @@ from lex_reference import package,build,synthetic,text,write,Poseidon,ROOT
 def run(args):
     if not args.bb or not args.bb_js:raise ValueError('Text profile requires pinned --bb and --bb-js')
     if args.prove and not args.crs:raise ValueError('--prove requires --crs')
+    if not 1<=args.plain<=8192:raise ValueError('Text fixture plain capacity must be in 1..8192')
     if args.k not in (1,2,4):raise ValueError('K must be 1, 2 or 4')
     if not 1<=args.slot_count<=12:raise ValueError('Invalid slot count')
     version=subprocess.check_output([args.nargo,'--version'],text=True).strip()
@@ -34,14 +35,14 @@ def run(args):
         measured=measured_limited([args.nargo,'info','--program-dir',str(root),*compile_flags],args.output.with_suffix('.compile.log'),args.seconds,limits,args.rss_limit_gib)
         record['compile']=measured;record['status']=measured['status']
         args.output.write_text(json.dumps(record,indent=2)+'\n')
-        if measured['exit_code']:return
+        if measured['exit_code']:return False
         acir=root/'target/text_regression.json';record['acir_sha256']=hashlib.sha256(acir.read_bytes()).hexdigest()
         # Large ACIRs stay outside version control; hashes and source remain reproducible.
         gate_log=args.output.with_suffix('.gates.log')
         record['gate_measurement']=measured_limited([args.bb,'gates','-b',str(acir)],gate_log,args.seconds,limits,args.rss_limit_gib)
         if record['gate_measurement']['exit_code']==0:record['gates']=json.loads(gate_log.read_text()[gate_log.read_text().index('{'):])
         args.output.write_text(json.dumps(record,indent=2)+'\n')
-        if not args.prove or record['gate_measurement']['exit_code']:return
+        if not args.prove or record['gate_measurement']['exit_code']:return record['gate_measurement']['exit_code']==0
         h=Poseidon(args.bb_js)
         try:
             if args.text_profile=='lex':
@@ -69,4 +70,5 @@ def run(args):
             if (proof/'proof').exists():
                 record.update(proof_bytes=(proof/'proof').stat().st_size,public_input_bytes=(proof/'public_inputs').stat().st_size,vk_sha256=hashlib.sha256((proof/'vk').read_bytes()).hexdigest())
             args.output.write_text(json.dumps(record,indent=2)+'\n')
-            if measured['exit_code']:return
+            if measured['exit_code']:return False
+    return True
