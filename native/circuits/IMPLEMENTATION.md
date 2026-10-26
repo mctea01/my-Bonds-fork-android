@@ -409,3 +409,129 @@ proof 16,256 bytes。實際hash在VERSIONS與
 預算失敗。Gradle必要tasks成功，test-servers強制重跑362 tests、
 0 failures/errors、29 skipped；native auto build因無cargo略過，
 relay案例亦skipped。此輪沒有Rust變更。完整數據與限制均列於benchmark。
+
+## Round 7: committed inflate segments
+
+Integration base: `b2c412c`. `pdf_inflate_seg_v1` implements section 3.12.3,
+reusing Round 6 `dynamic_tables`, `fixed_tables`, `checked_code`, `bits` and
+`token_window`. The only change to their accepted language is the requested
+`hdist <= 30`, with 31/32 rejection cases. No third-party circuit was added.
+
+### Commitment encoding (review proposal, not a frozen PUBLIC_SPEC)
+
+`commitment.nr` implements section 3.12.1 using the standard library's public
+BN254 Poseidon2 permutation. beta.15's sponge type is crate-private, so the
+wrapper reproduces its fixed-length sponge: width 4, rate 3, additive absorption,
+IV `(field_count << 64)`, zero-fill final rate, output state[0], no variable-length
+terminator. Preimage is `[tag, salt, number_of_fields, fields...]`. The two known
+answers use the independent bb.js 2.1.9 `poseidon2Hash` API, called by
+`tools/poseidon_reference.mjs`:
+
+- tag=1, salt=42, fields=[0,1,2] ->
+  `0x0e38abf00bd0aeb288ed74a01e99cec931b4904f6ba8aec4b9aa762107256dea`.
+- tag=2, salt=42, fields=[] ->
+  `0x2bea62b95fd366e7903877a49f491dcbb320cd4c7d1b26bb9ed8baa75a564cdf`.
+
+Packing reads each group of at most 31 bytes as a big-endian integer. A short
+last group is left-zero-padded (e.g. [1,2,3] -> 66051); it is not right-padded.
+Every packed integer is below 2^248 and therefore below the BN254 scalar modulus.
+The byte capacities are fixed per circuit. Encodings proposed for Claude review:
+
+- C_z fields: `[actual_byte_length, pack31(z padded to MAX_COMPRESSED)...]`.
+- C_p fields: `[segment_index, actual_byte_length, pack31(plain padded to SEG_PLAIN)...]`.
+- Huffman fields: LL lengths[288], LL codes[288], DD lengths[32], DD codes[32].
+- State fields in order: pos, output, tokens, blocks, phase, kind, final_block,
+  table_commitment, pending_len, pending_dist, a, b, stored_end.
+- Missing history commitments and the first S_in are constant Field zero.
+  Missing history bytes are constrained zero. Existing history segments have
+  length SEG_PLAIN and bind their actual absolute segment index.
+
+The byte length prevents zero-extension collisions in byte encodings. All
+unused compressed/plain bytes are zero. Salt=42 is used only in synthetic
+fixtures; a production prover must generate a fresh private salt with at least
+248 random bits for each evidence package. The circuit cannot prove randomness.
+
+Public main parameters have exactly the section 3.12.3 order: ASCII domain and
+circuit-name Fields, index/first/last, C_z/S_in/S_out/C_p, then oldest-to-newest
+history commitments. The main constrains the ASCII constants and first==(i==0).
+Parameter sets require separately pinned ACIR/VK; they are not interchangeable.
+There is no lexical scan, anchor, claim, Rust/FFI or PUBLIC_SPEC change.
+
+### Segment transition and composition argument
+
+1. Every segment reopens C_z with the same private salt, actual data length and
+   capacity-padded z. A collision-resistant commitment prevents changing z or
+   its length/salt between valid proofs with the same C_z. The SHA content-window
+   component computes this exact commitment over private window XOR public
+   keystream after its existing head/tail/midstate checks.
+2. The first segment forces the RFC zlib initial state and checks the header.
+   Later segments reopen S_in; the verifier must match it to the previous
+   S_out. The header/window limit is rechecked on every segment. Incoming output
+   equals index*SEG_PLAIN; global output/token/block bounds remain 40960/6144/4.
+3. Each started block has its header checked by the reused Round 6 routines.
+   Flattened immutable LL/DD arrays are bound at every constant index. The
+   incoming table is opened against the incoming state's table commitment;
+   newly built tables are committed into the outgoing state. Header events
+   must occur exactly at the state's bit cursor and only in header phase.
+   Token events must occur exactly at the cursor and in body phase. Header
+   slots and token slots cannot be skipped, duplicated or reordered. Inactive
+   events are trailing slots; all their output intervals are empty.
+4. Token bytes, widths, length/distance extras and endpoints use the original
+   bounded integer window decomposition. Canonical symbol lookup, reserved
+   distance rejection and the zlib window bound remain intact. Stored blocks
+   retain the checked end position, consume exactly eight bits per literal,
+   and can end only at that position. Huffman EOB enters header/done phase
+   according to BFINAL. No further events can follow done.
+5. At most one decoded copy crosses the segment's output boundary. Its full
+   interval is checked against the compressed token, but only the segment's
+   prefix is emitted. The outgoing state carries its exact remainder and
+   distance. A following segment emits that remainder before decoding another
+   token. No new nonempty token may start at/after the boundary. Pending copies
+   spanning multiple small segments follow the same rule without redecoding.
+6. Output intervals start with incoming pending copy, then consecutive event
+   intervals. Every byte owner must lie in its nonempty interval. Read source
+   `history || plain_advice` is constructed once and never written thereafter;
+   all source indexing is bounded and every copy distance is positive and at
+   most the already produced global output. Each referenced source byte is
+   strictly earlier than the output byte. Historical openings match previous
+   C_p values with their absolute indices. Induction over global output position
+   therefore fixes every byte uniquely, including overlapping copies. Every
+   current plain byte is bound at a constant index; padding is zero.
+7. If n bytes are emitted, a'=a+sum(byte[k]),
+   b'=b+n*a'-sum(k*byte[k]), with reduction modulo 65521 at the boundary.
+   Incoming a,b<65521, n<=8192, so a'<2^22 and b'<2^35. No Field/u64 wrap is
+   possible; the expression is nonnegative and is the Adler recurrence.
+8. Non-final segments emit exactly SEG_PLAIN bytes and cannot be done. The last
+   segment must be done, have no remaining copy, consume exactly the deflate
+   bytes (except final byte padding), and match the four-byte Adler trailer.
+   With the verifier's contiguous index, shared C_z, S_out/S_in and history C_p
+   checks, induction on segments composes these transitions into the unique
+   complete RFC inflate of the SHA-bound z. This argument assumes commitment
+   collision resistance, proof soundness and a verifier enforcing every join.
+
+All private-index reads target inputs, constants, projections, or arrays fully
+constructed with constant indices before their first read. No array is written
+after a private-index read. There is no unsafe/unconstrained acceptance helper.
+
+### Specification details needing Claude's decision
+
+The design file is deliberately unchanged:
+
+- A stored block needs `stored_end` (or remaining stored bytes) in committed
+  state; the listed state fields alone do not describe a mid-stored boundary.
+- A final stored block has LEN bytes and no symbol 256. Finalization accepts its
+  exact stored end as RFC 1951 requires; the textual EOB requirement needs this
+  explicit exception.
+- Fixed-size plain segments cannot generally also split at block starts. A
+  parameter set with B=1 rejects a fixed-size interval containing more than one
+  start. The regression profile uses B=3 for mixed blocks; production B=1 is
+  suitable for the sample's single dynamic block. Changing to variable-size
+  segments would also require redesigning the fixed W-segment history bound.
+- Section 3.12 does not fully specify field serialization, missing commitments,
+  domain/name Field encoding or byte padding/actual-length handling. The above
+  explicit proposal needs approval before M3c interoperability/freeze.
+
+`tools/segment_reference.py` emits synthetic per-segment Prover.toml files and
+checks public joins, history openings and the complete result independently with
+Python zlib. It is a reference witness generator, not a proof verifier. bb.js is
+an existing MIT development dependency; NOTICE now describes this additional use.

@@ -25,6 +25,8 @@ CIRCUIT = int.from_bytes(b'pdf_inflate_seg_v1','big')
 
 class Poseidon:
     def __init__(self, module):
+        version=json.loads((Path(module).resolve().parents[2]/'package.json').read_text())['version']
+        if version != '2.1.9': raise ValueError('Use pinned bb.js 2.1.9')
         self.child = subprocess.Popen(['node', str(ROOT/'tools/poseidon_reference.mjs'),str(module)],
             stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True)
         self.cache = {}
@@ -79,6 +81,7 @@ def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,comp
         starts=[0]; ends=[state['pending_len']]; dists=[state['pending_dist']]; symbols=[0]
         produced=state['pending_len']; last_dist=state['pending_dist']; decoded=0
         while state['phase']!=2 and produced<=P:
+            if produced==P and (state['phase']==0 or full['lengths'][token_cursor]>0): break
             if len(events)==E: raise ValueError('Segment event capacity insufficient for fixed-size split')
             before=produced; length=0; distance=0; symbol=0
             if state['phase']==0:
@@ -169,7 +172,15 @@ def verify_chain(chain,h,P):
             assert s['history'][w]==(chain[j]['plain'] if j>=0 else [0]*P)
             if j>=0: assert plain_commit(h,s['salt'],j,bytes(s['history'][w]),P)==s['previous'][w]
     actual=b''.join(bytes(s['plain'][:s['plain_len']]) for s in chain)
-    assert actual==zlib.decompress(bytes(chain[0]['data'][:chain[0]['data_len']]))
+    raw=bytes(chain[0]['data'][:chain[0]['data_len']])
+    assert actual==zlib.decompress(raw)
+    blocks,tokens,_,_=witness(raw)
+    checksum=zlib.adler32(actual)
+    final=dict(pos=blocks[-1]['end'],output=len(actual),tokens=len(tokens),blocks=len(blocks),
+        phase=2,kind=blocks[-1]['kind'],final_block=True,table_commitment=0,
+        pending_len=0,pending_dist=0,a=checksum&65535,b=checksum>>16,
+        stored_end=blocks[-1]['end'] if blocks[-1]['kind']==0 else 0)
+    assert chain[-1]['sout']==state_commit(h,chain[-1]['salt'],final)
     return True
 
 FIELD_KEYS={'domain','circuit','cz','sin','sout','cp','salt','table_commitment'}
@@ -193,7 +204,7 @@ def main():
     p.add_argument('--length',type=int,default=6000)
     a=p.parse_args(); h=Poseidon(a.bb_js)
     try:
-        payload=(b'Synthetic segment stream. '*((a.length+25)//26))[:a.length]
+        payload=(b'Synthetic segment stream. '*((a.length+25)//26+1))[:a.length]
         if a.kind=='stored': data=compressed(payload,level=0)
         else: data=compressed(payload,zlib.Z_FIXED if a.kind=='fixed' else zlib.Z_DEFAULT_STRATEGY)
         chain=segments(data,h,a.plain,a.tokens,a.blocks,a.compressed)

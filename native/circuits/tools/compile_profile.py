@@ -69,14 +69,24 @@ def prove_profile(args, root, acir, record, limits):
     from fixtures import compressed
     from probe_fixture import write
     prover = root/'Prover.toml'
-    write(prover, compressed(b'A'*args.plain), capacity=args.compressed,
-          plain_capacity=args.plain, token_capacity=args.tokens, block_capacity=args.blocks)
-    if args.blocks == 1:
-        prover.write_text('block_count = 1\n'+prover.read_text())
+    if args.segment:
+        from segment_reference import Poseidon, segments, write as write_segment
+        oracle = Poseidon(args.bb_js)
+        try:
+            chain = segments(compressed(b'A'*args.plain), oracle, args.plain, args.tokens, args.blocks, args.compressed)
+            assert len(chain) == 1
+            write_segment(prover, chain[0])
+        finally:
+            oracle.close()
+    else:
+        write(prover, compressed(b'A'*args.plain), capacity=args.compressed,
+              plain_capacity=args.plain, token_capacity=args.tokens, block_capacity=args.blocks)
+        if args.blocks == 1:
+            prover.write_text('block_count = 1\n'+prover.read_text())
     args.crs.mkdir(parents=True, exist_ok=True)
     proof = root/'target/proof'
     proof.mkdir()
-    record['proof_scope'] = 'Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement'
+    record['proof_scope'] = ('Synthetic repeated-byte stream fills plain capacity; single first/final segment with zero history' if args.segment else 'Synthetic repeated-byte stream fills plain capacity; component only, no PDF statement')
     record['zero_knowledge'] = True
     record['oracle_hash'] = 'poseidon2'
     record['prove'] = {}
@@ -114,6 +124,8 @@ def main():
     parser.add_argument('--tokens', type=int, default=6144)
     parser.add_argument('--blocks', type=int, default=4)
     parser.add_argument('--bb', help='Pinned bb 2.1.9; measure gates after compilation')
+    parser.add_argument('--segment', action='store_true', help='Profile pdf_inflate_seg_v1 with full 32 KiB history')
+    parser.add_argument('--bb-js', type=Path, help='Pinned bb.js dest/node/index.js for segment synthetic witnesses')
     parser.add_argument('--prove', action='store_true', help='Also measure a synthetic full-output component proof')
     parser.add_argument('--crs', type=Path, help='External CRS cache for --prove')
     parser.add_argument('--address-space-gib', type=int, default=24)
@@ -130,7 +142,15 @@ def main():
     for name, maximum in [('compressed',8192), ('plain',40960), ('tokens',6144), ('blocks',4)]:
         if not 0 < getattr(args, name) <= maximum:
             parser.error(f'{name} must be between 1 and {maximum}')
+    if args.segment and args.plain > 8192:
+        parser.error('Segment plain capacity must be <=8192')
+    if args.segment and args.prove and not args.bb_js:
+        parser.error('Segment --prove requires --bb-js')
     source = MAIN
+    if args.segment:
+        source = (ROOT/'pdf_inflate_seg_v1/src/main.nr').read_text()
+        for constant, value in [('SEG_PLAIN',args.plain),('SEG_TOKENS',args.tokens),('SEG_BLOCK_STARTS',args.blocks),('MAX_COMPRESSED',args.compressed)]:
+            source = re.sub(r'(global '+constant+r':u32=)\d+',lambda m: m[1]+str(value),source)
     for name in ('compressed', 'plain', 'tokens', 'blocks'):
         source = source.replace(name.upper(), str(getattr(args, name)))
     version = subprocess.check_output([args.nargo, '--version'], text=True).strip()
@@ -158,7 +178,7 @@ def main():
             code, status = run_limited([args.nargo, 'info', '--program-dir', str(root)],
                 log, log, args.seconds, limits, args.rss_limit_gib)
         record = dict(
-            scope='inflate only; not the complete pdf_text_v1_1p circuit',
+            scope='inflate segment with commitments and 32 KiB history; not a complete PDF circuit' if args.segment else 'inflate only; not the complete pdf_text_v1_1p circuit',
             nargo=version, status=status, exit_code=code,
             seconds=time.monotonic()-start,
             peak_rss_kib=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss,
@@ -168,6 +188,8 @@ def main():
             token_capacity=args.tokens, block_capacity=args.blocks,
             main_sha256=hashlib.sha256(source.encode()).hexdigest(),
             inflate_source_sha256=source_hash,
+            segment_source_sha256=hashlib.sha256((ROOT/'pdf_text_v1/src/inflate_segment.nr').read_bytes()).hexdigest() if args.segment else None,
+            history_segments=(32768+args.plain-1)//args.plain if args.segment else None,
             acir_sha256=None, acir_opcodes=None, vk_sha256=None, gates=None,
             prove=None, verify=None, proof_bytes=None,
             measurement_command='nargo info (fresh package; includes compilation)',

@@ -166,3 +166,36 @@ claiming a complete proof measurement. The first run uses the existing CRS cache
 not a privileged cold-cache reset. All temporary witness/proof assets are removed.
 The scalar entrypoint has no public PDF statement, even when every capacity is
 set to its profile maximum.
+
+## Round 7 inflate segments
+
+`pdf_inflate_seg_v1` is a draft segment circuit, with public commitments and a
+private immutable 32 KiB history. It is not a full PDF/lexer circuit. The default
+main is P=2048/T=288/B=1/N=8192; W is computed at compile time. Parameter profiles
+are pinned separately; final measurements and recommendations are recorded in
+`docs/research/p4-benchmarks.md`. Exact proposed encodings and the composition
+argument are in `IMPLEMENTATION.md` and need Claude review before M3c.
+
+Use external pinned nargo beta.15, bb 2.1.9 and bb.js 2.1.9 tools. The latter is
+already covered by NOTICE and is only an independent development oracle.
+
+```sh
+python3 -I tools/segment_reference.py --bb-js /path/to/bb.js/dest/node/index.js \
+  --output target/segments --kind dynamic --length 6000
+python3 -I tools/regressions.py --segments --nargo /path/to/nargo \
+  --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/compile_profile.py --segment --plain 2048 --tokens 288 --blocks 1 \
+  --compressed 8192 --nargo /path/to/nargo --bb /path/to/bb --prove \
+  --bb-js /path/to/bb.js/dest/node/index.js --crs /path/to/crs \
+  --rss-limit-gib 5 --output target/profile-segment-2048.json
+```
+
+The segment generator uses synthetic data and salt 42; it never prints witness
+contents. It writes a Prover.toml per segment plus public chain.json and verifies
+all joins/openings and the zlib result. It rejects insufficient token/block-start
+capacity instead of changing fixed-size splitting. Copy a generated Prover.toml
+into a matching parameterized package before `nargo execute --pedantic-solving`.
+For a stored stream, choose enough token slots per emitted literal byte. The
+regressions include a smaller literal-rich profile for stored cross-boundary
+checks and a B=3 mixed-block profile. A B=1 profile is intended for the single
+block sample, not for arbitrary many-block streams.

@@ -20,10 +20,18 @@ def main():
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--multiblock', action='store_true')
     group.add_argument('--adler', action='store_true')
+    group.add_argument('--segments', action='store_true')
+    parser.add_argument('--bb-js', type=Path, help='Pinned bb.js 2.1.9 dest/node/index.js for segment commitments')
     args = parser.parse_args()
     version = subprocess.check_output([args.nargo, '--version'], text=True)
     if '1.0.0-beta.15' not in version:
         raise RuntimeError('Use the pinned nargo version')
+    if args.segments:
+        if not args.bb_js:
+            parser.error('--segments requires --bb-js')
+        from segment_regressions import run
+        run(args.nargo,args.bb_js,ROOT/'target/segment-regressions.json')
+        return
     package = 'inflate_adler_probe' if args.adler else 'inflate_multiblock_probe' if args.multiblock else 'inflate_probe'
     witness_name = f'{package}_regression'
     subprocess.run([args.nargo, 'compile', '--package', package], cwd=ROOT, check=True)
