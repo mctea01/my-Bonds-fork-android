@@ -720,3 +720,38 @@ constraint rejections (counter/length limits, counter/length near the Field
 modulus, and ordinal bound) passed. It increased the 64-byte candidate from
 332,871 to 379,136 gates and was not adopted. The repository retains u32 counters
 and per-update integer length bounds. This experiment is not a production ABI.
+
+### Round 8 reproduction and release status
+
+Run the synthetic checks from `native/circuits` with the pinned tools:
+
+```sh
+nargo test
+python3 -I tools/regressions.py
+python3 -I tools/regressions.py --multiblock
+python3 -I tools/regressions.py --segments --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/regressions.py --lex-claims --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/record_boundary_analysis.py
+python3 -I tools/lex_reference.py --style word --bb-js /path/to/bb.js/dest/node/index.js --output target/synthetic-word
+python3 -I tools/lex_reference.py --style table --bb-js /path/to/bb.js/dest/node/index.js --output target/synthetic-table
+```
+
+The lexical regression profile uses P=64, A=8, C=4, Q=128, R=64 to exercise
+multiple segment boundaries without claiming production-capacity compilation.
+Both layout chains execute inflate, lex and claim, and the Python reference
+reopens commitments and checks joins independently. Additional lexical cases
+force names, literal strings and operators across boundaries, and accumulate a
+single date from multiple records across segments. Negative tests require
+`Cannot satisfy constraint`; parser/compiler failures are failures of the test.
+The record-boundary analysis is a known design limitation, not a passing
+security-rejection test.
+
+For a full capacity profile, use `tools/compile_profile.py --text-profile lex
+--plain 2048 --k 1` (also K=2/4), or `--text-profile claim --slot-count 12`, with
+`--nargo`, `--bb`, `--bb-js`, `--crs`, `--prove`, `--rss-limit-gib 5`, and
+`--output target/profile.json`. Each text profile copies an immutable source
+snapshot before compiling and proving. A timeout or RSS guard does not imply
+a measured gate count. Neither a production lexical K nor a claim split is
+selected until a successful measurement establishes its capacity. The source
+boundary decision above also remains a release blocker. Benchmark details and
+unavailable measurements are recorded in `docs/research/p4-benchmarks.md`.

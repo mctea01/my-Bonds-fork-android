@@ -23,7 +23,7 @@ def run(args):
     compile_flags=['--bounded-codegen'] if args.bounded_codegen else []
     def limits():
         budget=args.address_space_gib*1024**3;resource.setrlimit(resource.RLIMIT_AS,(budget,budget));resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-    record=dict(compile_flags=compile_flags,scope=args.text_profile,nargo=version,plain_capacity=args.plain,k=args.k,max_claims=12,max_claim_src=384,slot_start=0,slot_count=args.slot_count,zero_knowledge=True,oracle_hash='poseidon2',prove={})
+    record=dict(timeout_seconds=args.seconds,rss_guard_gib=args.rss_limit_gib,address_space_limit_gib=args.address_space_gib,compile_flags=compile_flags,scope=args.text_profile,nargo=version,plain_capacity=args.plain,k=args.k,max_claims=12,max_claim_src=384,slot_start=0,slot_count=args.slot_count,zero_knowledge=True,oracle_hash='poseidon2',prove={})
     with tempfile.TemporaryDirectory(prefix='diw-text-profile-') as tmp:
         root=package(tmp,args.text_profile,P=args.plain,K=args.k,A=16,C=12,Q=384,R=64,count=args.slot_count)
         # Compile and execute the exact same immutable source snapshot.

@@ -675,3 +675,31 @@ anchor content; ordinal/total outputs are excluded. Numeric date-format and
 predicate codes are documented proposals awaiting design confirmation. No
 `p4-circuits.md` or PUBLIC_SPEC edits were made. No new third-party component
 was added; existing bb.js use remains covered by NOTICE.
+
+### Round 8 validation
+
+* `nargo test`: **83 passed**; `nargo check` passed. Unit tests are not counted
+  as independent UltraHonk proofs.
+* Standard regressions: **44/44** (5 accept, 39 constraint reject).
+* `--multiblock`: **4/4** (2 accept, 2 constraint reject).
+* `--segments`: **54/54** (36 accept, 17 constraint reject, one reference-only
+  join rejection). Includes first-to-general chaining, one-segment first/final,
+  a first segment over the general token capacity, and rejection of general
+  circuit index zero.
+* `--lex-claims`: **72/72** (55 accept, 16 constraint reject, one reference-only
+  join rejection). Includes both layouts, K=2 padded final group, names,
+  strings and operators crossing boundaries, a field accumulating multiple
+  date records across segments, repeated anchors, WinAnsi escapes, Identity-H
+  hex/literal octal, and DATE_LE/DATE_GE controls. All requested attack classes
+  are exercised through `nargo execute`; parse/compile errors never pass.
+* Total: **172 ACIR executions** (98 accept, 74 constraint reject), plus two
+  independent reference join rejections. The known raw-string boundary issue
+  is reproduced separately and is not counted as a successful rejection.
+* `./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`:
+  **BUILD SUCCESSFUL**, 370 tests, zero failures/errors, 31 skipped. The
+  environment has no cargo; native-dependent cases are not claimed to pass.
+
+Case-level results and circuit source hashes are preserved in
+`native/circuits/validation/m3b-round8-tests.json`. The two styles also pass
+standalone `python3 -I tools/lex_reference.py`, generating ignored synthetic
+Prover.toml files and validating the complete inflate-to-lex-to-claim chain.

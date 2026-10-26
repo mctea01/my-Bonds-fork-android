@@ -1,0 +1,928 @@
+{
+  "code_commit": "6ca4c165967304b3854cf25ced55c1f31eee8485",
+  "nargo_tests": 83,
+  "nargo_check": "passed",
+  "gradle_exit_code": 0,
+  "regressions": {
+    "standard": {
+      "count": 44,
+      "accept": 5,
+      "reject": 39,
+      "cases": [
+        {
+          "case": "overlap_control",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "empty_stored",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "repeat_dynamic",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "hdist_30_control",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_hdist_31",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_hdist_32",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "long_huffman_codes",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_in_range_token_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_in_range_token_suffix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_adler_collision_plain",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_empty_stored_endpoint",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_empty_huffman_without_eob",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_overlap_owner",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_overlap_distance",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_dynamic_repeat_without_previous",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_dynamic_repeat_overrun",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_dynamic_missing_eob",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_eob_endpoint",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_plain_literal",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_plain_copy",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_table_code",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_literal_table_width",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_distance_table_code",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_table_width",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_starts",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_ends",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_token_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_token_suffix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_lengths",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_distances",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_block_body",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_block_kind",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_code_length_table",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_code_length_width",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_expanded_lengths",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_huffman_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_huffman_initial_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_distance_initial_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_huffman_first_code",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_code_length_first_code",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_empty_distance_first_code",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_header_repeat",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_header_prefix",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_header_suffix",
+          "expected": "reject",
+          "passed": true
+        }
+      ]
+    },
+    "multiblock": {
+      "count": 4,
+      "accept": 2,
+      "reject": 2,
+      "cases": [
+        {
+          "case": "different_huffman_tables",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "empty_middle_block",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_wrong_block_table",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_skipped_empty_block",
+          "expected": "reject",
+          "passed": true
+        }
+      ]
+    },
+    "segments": {
+      "count": 54,
+      "accept": 36,
+      "reject": 18,
+      "cases": [
+        {
+          "case": "fixed_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "fixed_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "fixed_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "dynamic_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "dynamic_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "dynamic_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "dynamic_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_5",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_6",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_7",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_8",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_9",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_10",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_11",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_12",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_13",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_14",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_15",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "distance32768_16",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "mixed_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "mixed_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "mixed_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "mixed_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "mixed_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "empty_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_history_plain",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_segment_index",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_resumed_table",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_table_commitment",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_pending_length",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_pending_distance",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_first_zlib_header",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_last_adler",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_cz",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_output_plain",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_sout",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_cp",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_first_flag",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_premature_last",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_domain",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "stored_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "stored_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "stored_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_stored_endpoint",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rich_first_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rich_first_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rich_single_first_final",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_general_segment_zero",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "reference_rejects_reordered_chain",
+          "expected": "reject",
+          "passed": true
+        }
+      ]
+    },
+    "lex_claims": {
+      "count": 72,
+      "accept": 55,
+      "reject": 17,
+      "cases": [
+        {
+          "case": "word_inflate_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_inflate_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_inflate_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_inflate_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_inflate_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_lex_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_lex_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_lex_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_lex_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_lex_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "word_claim",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_5",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_inflate_6",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_5",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_lex_6",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "table_claim",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "k2_padding_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "k2_padding_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "k2_padding_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_name_5",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_string_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_string_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_string_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_string_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_string_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_operator_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_operator_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_operator_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_operator_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_operator_4",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_field_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_field_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_field_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_field_3",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cross_field_claim",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_BI",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_dictionary_string",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_TJ_outside_array",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_show_without_Tf",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_mixed_string_kinds",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_wrong_anchor_operator",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_anchor_ordinal",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_anchor_total",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_plain_commitment",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_overlapping_ranges",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_final_inside_string",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_claim_byte",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_changed_plan_anchor",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_date_cutoff",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "rejects_sha_commitment",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "date_ge_control",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "rejects_date_ge",
+          "expected": "reject",
+          "passed": true
+        },
+        {
+          "case": "cid_literal_lex_0",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cid_literal_lex_1",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cid_literal_lex_2",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "cid_literal_date",
+          "expected": "accept",
+          "passed": true
+        },
+        {
+          "case": "reference_rejects_lex_join",
+          "expected": "reject",
+          "passed": true
+        }
+      ]
+    }
+  },
+  "source_sha256": {
+    "pdf_text_v1/src/claim.nr": "206c5907c15cf161ddca31fa10052570de2d3c82b72940b31241235d2245c22b",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "7c0c247e2f7ca4838cc9b64d8daca4374c5e26036f366749e2cdfcd8e829b318",
+    "pdf_text_v1/src/lib.nr": "1f44f9f2e1af072b54c0a4a7dcfa120ca5e82cb9eb8e589632df28e73a5a7792",
+    "pdf_text_v1/src/sha256_window.nr": "6fbf4b01de91b7e534584ed046d7245eb34bdced252b20346072a2a4df051ec5",
+    "pdf_text_v1/src/text_plan.nr": "405e5916cb48165c67c327b1257266f5a856cb7bbf07f027dd431fd231ba6dbd"
+  },
+  "gradle_tests": {
+    "tests": 370,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 31
+  },
+  "notes": [
+    "Each segments and lex_claims suite includes one reference-only join rejection.",
+    "No parse or compiler error counts as a constrained rejection.",
+    "Gradle native-dependent cases may be skipped because cargo is not installed."
+  ]
+}
