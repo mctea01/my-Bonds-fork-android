@@ -764,3 +764,10 @@ or witness stdout is not persisted. Profiling suppresses witness-execution
 stdout/stderr and records status metadata; compilation-only and prover resource
 logs contain no witness serialization. A synthetic marker check verifies that
 a failing witness command cannot leak its output into the measurement log.
+
+The final bounded-codegen retries also stopped without gate counts: K=1 lex
+after 720 seconds and the slots 0..2 claim candidate after 1,800 seconds.
+All compiler checks remained enabled in the recorded capacity profiles.
+There is no selected production text K or approved claim split, and no
+complete-chain numeric prove estimate. The draft must stay unqualified until
+the source-boundary design issue and full-size compilation are resolved.

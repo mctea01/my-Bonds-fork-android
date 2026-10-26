@@ -619,6 +619,17 @@ table hints. The compiler guard is 5 GiB RSS and 1,800 seconds per process.
 | Lex | 2 | 838.15 | 5.006 | RSS guard | unavailable |
 | Lex | 4 | 155.38 | 5.000 | RSS guard | unavailable |
 | Claim (384 source bytes) | 12 | 1,800.09 | 1.322 | timeout | unavailable |
+| Lex, bounded codegen | 1 | 720.13 | 3.983 | timeout | unavailable |
+| Claim, bounded codegen (384 source bytes) | slots 0..2 of 12 | 1,800.04 | 1.323 | timeout | unavailable |
+
+The two bounded-codegen rows are additional candidates, not selected profiles.
+The lex retry used a 720-second budget; the 3-slot claim used 1,800 seconds.
+All compiler checks remained enabled for these reported profiles. Splitting
+the SHA outputs alone did not produce a completed claim compilation within
+this budget, so no four-proof claim split is approved. The claim main has no
+SEG_PLAIN parameter: the old harness recorded 40960 as an unused fixture
+setting for the 3-slot attempt; compilation stopped before fixture generation.
+The current text harness defaults that setting to 2048.
 
 An RSS guard is a deliberate compiler termination, not an OOM measurement;
 its observed peak is not the memory needed for successful compilation. A
@@ -638,7 +649,8 @@ adding token-position advice. Further architecture changes require review;
 this round does not silently substitute an operator hint table.
 
 Results and source snapshots are `m3b-round8-lex-k{1,2,4}-final.*`,
-`m3b-round8-claim-12.*`, and `m3b-round8-lex-single-p64.*` in validation.
+`m3b-round8-claim-12.*`, `m3b-round8-claim-split3.*`,
+`m3b-round8-lex-k1-bounded.*`, and `m3b-round8-lex-single-p64.*` in validation.
 
 ### Maximum-stream estimates, with missing terms explicit
 
