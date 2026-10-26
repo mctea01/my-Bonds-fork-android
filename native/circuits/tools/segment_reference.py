@@ -66,7 +66,7 @@ def tables(full,b):
     return (dict(lengths=full['ll_lengths'][b*288:(b+1)*288],codes=full['ll_codes'][b*288:(b+1)*288]),
             dict(lengths=full['dd_lengths'][b*32:(b+1)*32],codes=full['dd_codes'][b*32:(b+1)*32]))
 
-def segments(data,h,plain_capacity=2048,token_capacity=288,block_capacity=1,compressed_capacity=8192,salt=42,token0_capacity=None):
+def segments(data,h,plain_capacity=2048,token_capacity=352,block_capacity=1,compressed_capacity=8192,salt=42,token0_capacity=None):
     blocks,tokens,_,plain,full=witness(data,with_hints=True)
     if len(data)>compressed_capacity or len(plain)>40960 or len(tokens)>6144 or len(blocks)>4:
         raise ValueError('Synthetic stream exceeds global capacities')
@@ -210,7 +210,7 @@ def main():
     p.add_argument('--bb-js',type=Path,required=True,help='Pinned bb.js 2.1.9 dest/node/index.js')
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--input',type=Path,help='Optional synthetic RFC 1950 stream; never prints its contents')
-    p.add_argument('--plain',type=int,default=2048); p.add_argument('--tokens',type=int,default=288)
+    p.add_argument('--plain',type=int,default=2048); p.add_argument('--tokens',type=int,default=352)
     p.add_argument('--tokens0',type=int,default=1024)
     p.add_argument('--blocks',type=int,default=1); p.add_argument('--compressed',type=int,default=8192)
     p.add_argument('--kind',choices=('fixed','dynamic','stored'),default='fixed')

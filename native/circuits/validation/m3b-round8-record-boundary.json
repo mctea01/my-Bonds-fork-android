@@ -9,5 +9,11 @@
   ],
   "concatenated_record_hex": [
     49
-  ]
+  ],
+  "constrained_demonstration": {
+    "lexical_segments": 2,
+    "claim_executions": 1,
+    "circuit_accepts_concatenated_record_predicate": true,
+    "pdf_per_string_predicate": false
+  }
 }

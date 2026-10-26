@@ -1,9 +1,11 @@
 # zkPDF component circuits
 
 This workspace implements SHA-256 aligned-window compression and constrained
-RFC 1950/1951 inflate. It does not implement the M3b PDF lexer, claims, predicates
-or final public-input ABI. None of the benchmark binaries is a deployable PDF
-proof circuit.
+RFC 1950/1951 inflate, including first/general segments, plus draft streaming
+PDF lexical and claim circuits. The final public-input ABI is not frozen.
+Production lexical capacity and PDF per-string date semantics remain unresolved;
+see the Round 8 section of IMPLEMENTATION.md. These are not deployable PDF
+proof assets.
 
 Use the exact tool versions in `VERSIONS`. The package manifest's compiler
 constraint cannot express the pinned prerelease, so `tools/measure.py` checks
@@ -170,8 +172,8 @@ set to its profile maximum.
 ## Round 7 inflate segments
 
 `pdf_inflate_seg_v1` is a draft segment circuit, with public commitments and a
-private immutable 32 KiB history. It is not a full PDF/lexer circuit. The default
-main is P=2048/T=288/B=1/N=8192; W=16 is computed at compile time.
+private immutable 32 KiB history. It is not a full PDF/lexer circuit. The Round 7
+main was P=2048/T=288/B=1/N=8192; W=16 is computed at compile time.
 The selected desktop profile is P=4096/T=576/B=1/N=8192/W=8. Parameter profiles
 are pinned separately; final measurements and recommendations are recorded in
 `docs/research/p4-benchmarks.md`. Exact proposed encodings and the composition
@@ -201,3 +203,32 @@ For a stored stream, choose enough token slots per emitted literal byte. The
 regressions include a smaller literal-rich profile for stored cross-boundary
 checks and a B=3 mixed-block profile. A B=1 profile is intended for the single
 block sample, not for arbitrary many-block streams.
+
+
+## Round 8 first, lexical and claim segments
+
+The current phone general main is P=2048/T=352/B=1/N=8192/W=16. Index zero
+uses `pdf_inflate_seg0_v1` with T0=1024 and no history; the general circuit
+rejects index zero. The reference CLI now defaults to these capacities.
+For desktop, generate with `--plain 4096 --tokens 576 --tokens0 1536` and
+compile matching first/general main profiles.
+
+```sh
+python3 -I tools/lex_reference.py --style word --bb-js /path/to/bb.js/dest/node/index.js --output target/text-word
+python3 -I tools/lex_reference.py --style table --bb-js /path/to/bb.js/dest/node/index.js --output target/text-table
+python3 -I tools/regressions.py --lex-claims --nargo /path/to/nargo --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/record_boundary_analysis.py --nargo /path/to/nargo --bb-js /path/to/bb.js/dest/node/index.js
+```
+
+The first two commands generate each inflate, lexical and claim Prover.toml
+and validate the synthetic chain outside the circuit. The regression command
+uses smaller explicitly compiled capacities to test boundaries and constraints.
+The final command demonstrates the known TJ string-boundary design issue,
+including constrained acceptance of the concatenated-record date when the
+PDF per-string date predicate is false. It is not a passing rejection test.
+
+`compile_profile.py --text-profile lex --k 1 --plain 2048` (also K=2/4) and
+`--text-profile claim --slot-count 12` use the production-sized text capacities.
+Add the same pinned tool/proof flags as above. See the benchmark report for
+timeout/RSS-guard results; no production lexical K or claim split is selected.
+No operator-position hint table or unconstrained acceptance path is used.

@@ -744,7 +744,9 @@ force names, literal strings and operators across boundaries, and accumulate a
 single date from multiple records across segments. Negative tests require
 `Cannot satisfy constraint`; parser/compiler failures are failures of the test.
 The record-boundary analysis is a known design limitation, not a passing
-security-rejection test.
+security-rejection test. With `--nargo /path/to/nargo --bb-js /path/to/bb.js/dest/node/index.js`
+it executes two lexical segments and one claim: the concatenated-record
+DATE_GE statement accepts while the PDF per-string date predicate is false.
 
 For a full capacity profile, use `tools/compile_profile.py --text-profile lex
 --plain 2048 --k 1` (also K=2/4), or `--text-profile claim --slot-count 12`, with

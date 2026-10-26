@@ -591,18 +591,20 @@ lookup; no second decoder or unconstrained acceptance path was added.
 | Phone first | 2048 / 1024 / 0 | 1,033,678 (2^20) | 107.43 / 2.571 | 45.74 / 40.19 | 18.61 | 16,256 / 288 |
 | Desktop first | 4096 / 1536 / 0 | 1,415,190 (2^21) | 232.25 / 4.685 | 63.57 / 49.80 | 21.16 | 16,256 / 288 |
 | Phone general | 2048 / 352 / 16 | 1,009,891 (2^20) | 120.08 / 1.854 | 43.02 / 45.44 | 20.46 | 16,256 / 800 |
+| Desktop general | 4096 / 576 / 8 | 1,275,071 (2^21) | 121.60 / 2.492 | 100.98 / 99.70 | 23.74 | 16,256 / 544 |
 
 Prove first/warm peak RSS respectively: phone first 1.824/1.824 GiB, desktop
-first 3.383/3.357 GiB, phone general 1.776/1.775 GiB. Each warm proof verified
+first 3.383/3.357 GiB, phone general 1.776/1.775 GiB, desktop general 3.318/3.318 GiB. Each warm proof verified
 with the independent CLI. Choose **1024/352** first/general tokens for phone
-and **1536/576** for desktop (general desktop remains the Round 7 measured
-1,275,375-gate profile). The phone first profile has only 14,898 gates of
+and **1536/576** for desktop. The general desktop row was remeasured on
+this environment; its two proofs overlapped compiler work, so its wall time
+is not an isolated throughput comparison with the other rows. The phone first profile has only 14,898 gates of
 headroom, so any subsequent change needs fresh measurement. The capacities
 cover Claude's aggregate sample counts; M3c still must reject local density
 or block-start overflow before proving.
 
 Exact main snapshots, source/ACIR/VK hashes, process results and peak RSS are
-`native/circuits/validation/m3b-round8-{seg0-phone-projected,seg0-desktop,general-phone}.{json,main.nr}`.
+`native/circuits/validation/m3b-round8-{seg0-phone-projected,seg0-desktop,general-phone,general-desktop}.{json,main.nr}`.
 Large ACIR, witnesses, CRS and proof files are excluded from version control.
 
 ### Lex and claim capacity attempts
@@ -644,10 +646,9 @@ For 31,582 plaintext bytes and 232 text operators, fixed inflate segmentation
 requires 16 phone or 8 desktop segments. **Estimates only**:
 
 * Phone inflate: 40.1914 + 15 x 45.4436 = **721.84 seconds** (12.03 minutes).
-* Desktop inflate: 49.7963 + 7 x 65.51 = **508.37 seconds** (8.47 minutes),
-  combining this round's first segment with the Round 7 general segment.
-  The latter used a different CPU model, so this is a mixed-environment
-  planning estimate, not a comparable complete benchmark.
+* Desktop inflate: 49.7963 + 7 x 99.7045 = **747.73 seconds** (12.46 minutes).
+  This uses the same environment, but its general proofs overlapped compilation;
+  it is a shared-load planning estimate, not isolated desktop throughput.
 * If K were 1/2/4, lex would require 16/8/4 segments for phone P=2048, or
   8/4/2 for desktop P=4096. Desktop P=4096 lex is not measured here.
 * With all 12 claims in one claim proof, total inflate+lex+claim segment
@@ -668,7 +669,10 @@ by day 1, while its raw concatenation ends in `\71` and decodes to day 9.
 proves the concatenated-record date, which cannot establish arbitrary PDF
 per-string date semantics. Claude must decide on authenticated string lengths
 or sufficient boundary restrictions before this draft can be considered sound
-for PDF date predicates. See IMPLEMENTATION.md for the full argument.
+for PDF date predicates. The dedicated reproduction also executes two lexical segments and one claim
+with pedantic solving: all accept the concatenated-record predicate while the
+PDF predicate is false. These three executions are separate from the passing
+regression totals below. See IMPLEMENTATION.md for the full argument.
 
 The exact proposed A packing also binds enabled slot endpoints after the
 anchor content; ordinal/total outputs are excluded. Numeric date-format and
