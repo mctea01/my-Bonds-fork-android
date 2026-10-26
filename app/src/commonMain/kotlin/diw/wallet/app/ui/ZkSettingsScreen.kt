@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.WalletModel
 import diw.wallet.core.zk.ZkAsset
@@ -259,7 +260,8 @@ private fun ServerSection(model: WalletModel) {
     var token by remember(settings.serverToken) { mutableStateOf(settings.serverToken) }
     val valid = url.isEmpty() || url.startsWith("https://") || settings.testEnvironment && url.startsWith("http://")
     val saved = settings.zkVerifierUrl.isNotEmpty()
-    LaunchedEffect(settings.zkVerifierUrl) { if (saved && settings.serverRootSha256.isNotEmpty()) model.server.check(confirm = false) }
+    val trustedAny = settings.serverRootSha256.isNotEmpty() || settings.serverVerifierDid.isNotEmpty()
+    LaunchedEffect(settings.zkVerifierUrl) { if (saved && trustedAny) model.server.check(confirm = false) }
     Text(
         "轉送、網站查驗（zkTLS）與年齡查驗都使用這台服務端；它只轉送與查驗，看不到你的出生日期或文件其他內容。" +
             "可部署 diw-wallet-server 或專案的測試伺服器（test-servers）。留空時在測試環境使用測試伺服器。",
@@ -279,21 +281,28 @@ private fun ServerSection(model: WalletModel) {
             onClick = {
                 val changedUrl = url.trimEnd('/') != settings.zkVerifierUrl
                 model.updateSettings {
-                    it.copy(zkVerifierUrl = url.trimEnd('/'), serverToken = token, serverRootSha256 = if (changedUrl) "" else it.serverRootSha256)
+                    it.copy(
+                        zkVerifierUrl = url.trimEnd('/'), serverToken = token,
+                        serverRootSha256 = if (changedUrl) "" else it.serverRootSha256,
+                        serverVerifierDid = if (changedUrl) "" else it.serverVerifierDid,
+                    )
                 }
             },
             enabled = valid && (url != settings.zkVerifierUrl || token != settings.serverToken),
         ) { Text("儲存") }
         OutlinedButton(onClick = { model.server.check(confirm = true) }, enabled = saved && !server.checking && url == settings.zkVerifierUrl) {
-            Text(if (server.checking) "讀取中…" else if (settings.serverRootSha256.isEmpty()) "加入信任" else "重新確認信任")
+            Text(if (server.checking) "讀取中…" else if (!trustedAny) "加入信任" else "重新確認信任")
         }
     }
     if (settings.serverRootSha256.isNotEmpty()) {
         Text("已信任簽章根憑證 SHA-256：${fingerprint(settings.serverRootSha256)}", style = MaterialTheme.typography.bodySmall)
     }
+    if (settings.serverVerifierDid.isNotEmpty()) {
+        Text("已信任網頁查驗端：${settings.serverVerifierDid}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
     if (server.changed) {
         Text(
-            "這台服務端的簽章根憑證和你先前信任的不同。可能是業者換了金鑰，也可能不是原本的服務端；請向業者確認新指紋後再按「重新確認信任」。",
+            "這台服務端的簽章根憑證或網頁查驗端 DID 和你先前信任的不同。可能是業者換了金鑰，也可能不是原本的服務端；請向業者確認後再按「重新確認信任」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
         )
     }
@@ -306,17 +315,21 @@ private fun ServerSection(model: WalletModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("服務端：${info.url}", style = MaterialTheme.typography.bodySmall)
-                    Text("簽章根憑證：${info.subject}", style = MaterialTheme.typography.bodySmall)
-                    Text("SHA-256：${fingerprint(info.sha256)}", style = MaterialTheme.typography.bodySmall)
+                    if (info.sha256 != null) {
+                        Text("簽章根憑證：${info.subject}", style = MaterialTheme.typography.bodySmall)
+                        Text("SHA-256：${fingerprint(info.sha256)}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    info.verifierDid?.let { Text("網頁查驗端 DID：$it", style = MaterialTheme.typography.bodySmall) }
                     if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示；" +
+                        "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示，" +
+                            "它的網頁查驗端向你要求出示卡片時也顯示為使用者信任（T2）；網頁查驗端 DID 只由這個網址確認，沒有另外的指紋。" +
                             "可在「自訂信任」頁移除。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { model.server.confirm(info) }) { Text("指紋相符，信任") } },
+            confirmButton = { TextButton(onClick = { model.server.confirm(info) }) { Text(if (info.sha256 != null) "指紋相符，信任" else "信任") } },
             dismissButton = { TextButton(onClick = { model.server.dismiss() }) { Text("取消") } },
         )
     }

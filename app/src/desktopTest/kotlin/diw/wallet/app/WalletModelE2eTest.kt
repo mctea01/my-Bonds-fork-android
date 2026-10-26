@@ -965,6 +965,8 @@ class WalletModelE2eTest {
         fun sha(c: org.multipaz.crypto.X509Cert) = java.security.MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02x".format(it) }
         var served = root("$host Signing Root")
         var stated: String? = null
+        suspend fun newDid() = diw.wallet.core.did.DidKeys.didKeyJwkJcs(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey)
+        var verifierDid = newDid()
         val seen = java.util.Collections.synchronizedList(ArrayList<String?>())
         val engine = io.ktor.client.engine.mock.MockEngine { request ->
             val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
@@ -972,6 +974,7 @@ class WalletModelE2eTest {
                 request.url.host == host && request.url.encodedPath == "/info" -> respond(buildJsonObject {
                     put("name", "diw-wallet-server")
                     putJsonArray("features") { add("relay"); add("zktls") }
+                    put("verifierDid", verifierDid)
                     put("signing", buildJsonObject {
                         put("subject", "CN=$host Signing Root")
                         put("rootSha256", stated ?: sha(served))
@@ -1023,6 +1026,11 @@ class WalletModelE2eTest {
         withTimeout(30.seconds) { while (trusted().size < 2) delay(50) }
         assertEquals(setOf(diw.wallet.core.trust.TrustRole.VERIFIER, diw.wallet.core.trust.TrustRole.ISSUER), trusted().map { it.role }.toSet())
         assertTrue(trusted().all { it.environment == TrustEnvironment.USER && it.certificate == served })
+        // The web verifier's did:key is trusted with it, as the user's own verifier DID.
+        assertEquals(verifierDid, info.verifierDid)
+        assertEquals(verifierDid, m.settings.serverVerifierDid)
+        assertEquals(diw.wallet.core.trust.TrustTier.T2, m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER)?.tier)
+        assertNull(m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.ISSUER))
 
         // The server changes its key: only a warning until the user confirms again, which replaces the old root.
         served = root("$host Signing Root 2")
@@ -1035,6 +1043,18 @@ class WalletModelE2eTest {
         withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == sha(served) } }
         withTimeout(30.seconds) { while (trusted().any { it.certificate != served } || trusted().size < 2) delay(50) }
         assertFalse(m.server.state.value.changed)
+
+        // A new verifier DID with the same root is also only a warning until confirmed; the old DID is then dropped.
+        val oldDid = verifierDid
+        verifierDid = newDid()
+        m.server.check(confirm = false)
+        assertTrue(withTimeout(30.seconds) { m.server.state.first { !it.checking && it.changed } }.changed)
+        assertNull(m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER))
+        m.server.check(confirm = true)
+        m.server.confirm(withTimeout(30.seconds) { m.server.state.first { it.pending != null } }.pending!!)
+        withTimeout(30.seconds) { m.settingsFlow.first { it.serverVerifierDid == verifierDid } }
+        assertEquals(diw.wallet.core.trust.TrustTier.T2, m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER)?.tier)
+        assertNull(m.didTrust.decide(oldDid, diw.wallet.core.trust.TrustRole.VERIFIER))
     }
 
     /**

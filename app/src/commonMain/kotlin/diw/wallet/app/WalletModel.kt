@@ -140,6 +140,8 @@ data class WalletSettings(
     val serverToken: String = "",
     /** SHA-256 of the signing root the user trusted for [zkVerifierUrl]; a different root needs a new confirmation. */
     val serverRootSha256: String = "",
+    /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
+    val serverVerifierDid: String = "",
     val useWalletProvider: Boolean = true,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */

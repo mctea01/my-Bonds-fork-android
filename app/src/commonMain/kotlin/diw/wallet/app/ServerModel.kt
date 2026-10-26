@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import diw.wallet.core.did.DidResolver
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.trust.TrustRegistry
@@ -18,16 +19,28 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.crypto.X509Cert
+import kotlin.time.Clock
 
 /**
  * The production server (diw-wallet-server) set in [WalletSettings.zkVerifierUrl], which serves the relay, the
  * zkTLS verifier host and the age host. Its `/info` names the root that signs its zkTLS requests and web-proof
  * receipts; the user compares the root's SHA-256 with what the operator published and then trusts it as their own
- * anchor (T2) for verifiers and issuers. A changed root is never accepted silently.
+ * anchor (T2) for verifiers and issuers. The same confirmation trusts the DID of its web verifier (`verifierDid`,
+ * a did:key the national platform does not list) as the user's own verifier DID. The DID is bound to the server
+ * only by TLS and the address the user entered. A changed root or DID is never accepted silently.
  */
 class ServerModel(private val model: WalletModel) {
     /** What `/info` says about the server's signing root. */
-    data class Info(val url: String, val subject: String, val sha256: String, val root: X509Cert, val features: List<String>)
+    data class Info(
+        val url: String,
+        /** The signing root, absent when the server runs no zkTLS host. */
+        val subject: String?,
+        val sha256: String?,
+        val root: X509Cert?,
+        val features: List<String>,
+        /** The web verifier's DID, absent when the server runs no web verifier. */
+        val verifierDid: String?,
+    )
 
     data class State(
         val checking: Boolean = false,
@@ -55,8 +68,10 @@ class ServerModel(private val model: WalletModel) {
         model.scope.launch {
             state.value = try {
                 val info = read(url)
-                val trusted = model.settings.serverRootSha256
-                State(pending = info.takeIf { confirm }, changed = trusted.isNotEmpty() && trusted != info.sha256)
+                val s = model.settings
+                val rootChanged = s.serverRootSha256.isNotEmpty() && s.serverRootSha256 != info.sha256
+                val didChanged = s.serverVerifierDid.isNotEmpty() && s.serverVerifierDid != info.verifierDid
+                State(pending = info.takeIf { confirm }, changed = rootChanged || didChanged)
             } catch (e: Exception) {
                 State(error = model.describe(e))
             }
@@ -68,14 +83,25 @@ class ServerModel(private val model: WalletModel) {
         if (!response.status.isSuccess()) throw ProtocolException("server_error", "HTTP ${response.status.value}")
         val o = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: throw ProtocolException("server_error", "不是服務端的 /info")
         val features = (o["features"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+        val verifierDid = o.str("verifierDid")?.trim()?.takeIf { it.startsWith("did:") }
         val signing = o["signing"] as? JsonObject
-            ?: throw ProtocolException("unavailable", "這台服務端沒有簽章金鑰（未啟用 zkTLS 查驗主機），不需要加入信任")
-        val root = X509Cert.fromPem(signing.str("root") ?: throw ProtocolException("server_error", "No signing root"))
-        if (!TrustRegistry.isRoot(root)) throw ProtocolException("server_error", "服務端提供的不是根憑證")
-        val sha = PlatformCrypto.sha256(root.encoded.toByteArray()).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
-        // The fingerprint shown is computed here; the server's own claim must agree with it.
-        if (signing.str("rootSha256")?.lowercase() != sha) throw ProtocolException("server_error", "服務端回報的指紋與憑證不符")
-        return Info(url, root.displaySubject(), sha, root, features)
+        if (signing == null && verifierDid == null) {
+            throw ProtocolException("unavailable", "這台服務端沒有簽章金鑰或網頁查驗端（未啟用 zktls 或 verifier），不需要加入信任")
+        }
+        if (verifierDid != null) {
+            // Only a DID this wallet can resolve to a key is offered; the presentation checks its signature with it.
+            runCatching { DidResolver(model.http).resolveKey(verifierDid, null) }
+                .getOrElse { throw ProtocolException("server_error", "服務端的網頁查驗端 DID 無法解析") }
+        }
+        val signed = signing?.let { sig ->
+            val root = X509Cert.fromPem(sig.str("root") ?: throw ProtocolException("server_error", "No signing root"))
+            if (!TrustRegistry.isRoot(root)) throw ProtocolException("server_error", "服務端提供的不是根憑證")
+            val sha = PlatformCrypto.sha256(root.encoded.toByteArray()).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
+            // The fingerprint shown is computed here; the server's own claim must agree with it.
+            if (sig.str("rootSha256")?.lowercase() != sha) throw ProtocolException("server_error", "服務端回報的指紋與憑證不符")
+            root to sha
+        }
+        return Info(url, signed?.first?.displaySubject(), signed?.second, signed?.first, features, verifierDid)
     }
 
     fun dismiss() {
@@ -88,18 +114,29 @@ class ServerModel(private val model: WalletModel) {
         model.scope.launch {
             try {
                 val src = source(info.url)
+                val host = Url(info.url).host
                 for (old in model.trust.allAnchors()) {
                     if (old.source == src && old.certificate != info.root) model.trust.removeAnchor(old)
                 }
                 var added = 0
-                for (role in ROLES) {
-                    if (model.trust.addAnchor(role, TrustEnvironment.USER, info.root, "正式服務端 ${Url(info.url).host}", official = false, source = src)) added++
+                info.root?.let { root ->
+                    for (role in ROLES) {
+                        if (model.trust.addAnchor(role, TrustEnvironment.USER, root, "正式服務端 $host", official = false, source = src)) added++
+                    }
                 }
-                model.updateSettings { it.copy(serverRootSha256 = info.sha256) }
+                val previousDid = model.settings.serverVerifierDid
+                if (previousDid.isNotEmpty() && previousDid != info.verifierDid) model.userDids.remove(previousDid)
+                info.verifierDid?.let { did ->
+                    if (model.userDids.all().none { it.did == did && TrustRole.VERIFIER.id in it.roles }) added++
+                    model.userDids.put(did, "正式服務端 $host 網頁查驗", setOf(TrustRole.VERIFIER), Clock.System.now().toEpochMilliseconds())
+                }
+                model.updateSettings { it.copy(serverRootSha256 = info.sha256.orEmpty(), serverVerifierDid = info.verifierDid.orEmpty()) }
                 state.value = State()
-                model.message.value = if (added == 0) "已經信任這台服務端" else "已信任服務端 ${Url(info.url).host}（使用者匯入，信任等級 T2）"
+                model.message.value = if (added == 0) "已經信任這台服務端" else "已信任服務端 $host（使用者匯入，信任等級 T2）"
                 model.loadAnchors()
-                model.status.reevaluateIssuers("信任正式服務端", affected = { it.anchorName == null }, accept = { it.environment != null })
+                if (info.root != null) {
+                    model.status.reevaluateIssuers("信任正式服務端", affected = { it.anchorName == null }, accept = { it.environment != null })
+                }
             } catch (e: Exception) {
                 model.message.value = "無法加入信任：" + model.describe(e)
             }
