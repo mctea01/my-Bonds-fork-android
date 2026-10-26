@@ -161,6 +161,10 @@ def verify_chain(chain,h,P):
     if not chain: raise ValueError('Empty chain')
     W=(32768+P-1)//P
     for i,s in enumerate(chain):
+        assert s['salt']==chain[0]['salt']
+        assert len(s['plain'])==P and len(s['history'])==W and len(s['previous'])==W
+        assert s['plain'][s['plain_len']:]==[0]*(P-s['plain_len'])
+        assert s['data'][s['data_len']:]==[0]*(len(s['data'])-s['data_len'])
         assert s['index']==i and s['first']==(i==0) and s['last']==(i+1==len(chain))
         assert s['domain']==DOMAIN and s['circuit']==CIRCUIT
         assert s['cz']==chain[0]['cz']==byte_commit(h,s['salt'],bytes(s['data'][:s['data_len']]),len(s['data']))
@@ -211,7 +215,8 @@ def main():
         else: data=compressed(payload,zlib.Z_FIXED if a.kind=='fixed' else zlib.Z_DEFAULT_STRATEGY)
         chain=segments(data,h,a.plain,a.tokens,a.blocks,a.compressed)
         for i,s in enumerate(chain): write(a.output/f'segment-{i:03}/Prover.toml',s)
-        public=[{k:s[k] for k in ('domain','circuit','index','first','last','cz','sin','sout','cp','previous')} for s in chain]
+        public=[{k:([hex(x) for x in s[k]] if k=='previous' else hex(s[k]) if k in FIELD_KEYS else s[k])
+            for k in ('domain','circuit','index','first','last','cz','sin','sout','cp','previous')} for s in chain]
         (a.output/'chain.json').write_text(json.dumps(public,indent=2)+'\n')
         print(f'{len(chain)} synthetic segments; reference chain verified')
     finally: h.close()

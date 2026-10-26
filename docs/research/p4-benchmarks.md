@@ -441,3 +441,122 @@ verify **17.69 ms**，proof **16,256 bytes**、public inputs **0 bytes**。
 compile 0.74 s使用既有快取，不與fresh profile編譯時間混比。
 JSON為 `m3b-round6-inflate-probe.json`，`VERSIONS`已更新其ACIR/VK
 hash，仍只是component測量資產，並非正式M3b資產釘選。
+
+## Round 7：以 Poseidon2 承諾串接 inflate 段
+
+基準整合分支 `b2c412c`，已先 merge。這一輪實作 `pdf_inflate_seg_v1`、
+共用加鹽承諾、SHA 內容視窗 XOR 後的 C_z，以及 Python 參考切段器；
+沒有做遞迴、詞法掃描、錨點、欄位承諾或 PUBLIC_SPEC。
+健全性論證與需要 Claude 決定的編碼細節見
+`native/circuits/IMPLEMENTATION.md` 的 Round 7 節。
+
+### 環境與量測方法
+
+2026-10-26，Intel Xeon Platinum 8370C 2.80 GHz、Linux x86_64，
+**2 vCPU／8 GiB cgroup**。nargo 1.0.0-beta.15、noirc
+`83245db91dcf63420ef4bcbbd85b98f397fee663`、bb 2.1.9，bb 自動選 3 threads。
+不是 Round 6 的 AMD 主機，也不是實際手機測試。
+
+以 `tools/compile_profile.py --segment` 為每個容量建立新包，執行
+`nargo info`、`bb gates`、pedantic witness、ZK first／warm prove 及獨立
+`bb verify`。每個 child 限 1,800 秒、24 GiB RLIMIT_AS、5 GiB RSS guard；
+實體 cgroup 仍是 8 GiB。證明命令均使用
+`-s ultra_honk --oracle_hash poseidon2`，不傳 `--disable_zk`。
+見證是填滿本段的合成重複字元串流，第一／最後段、歷史視窗全零；
+不是實際文件，也不是整個 PDF 陳述。
+
+首次記錄與必要 Gradle／回歸共用 CPU；first 包含 CRS 下載或擴充。
+因此另在背景工作結束、CRS 已快取後，逐一量兩組獨立 warm。
+兩份 warm 的 VK 與原量測完全相同；手機使用相同 bytecode 的合成
+第一／非最後段見證，電腦使用原第一／最後段見證。這些時間包含
+建 proving key、CLI 啟動；verify 以 1 ms 監測粒度重測，並非純曲線核心時間。
+原始 profiler 的 50 ms verify 監測結果也保留於 JSON，未混稱精密計時。
+
+### 結果與選定容量
+
+共同參數 `MAX_COMPRESSED=8192`、`SEG_BLOCK_STARTS=1`，
+`W=ceil(32768/SEG_PLAIN)`。token 預算依 P/11 的約 1.5 倍取整。
+
+| 用途 | SEG_PLAIN / SEG_TOKENS / W | gates（dyadic） | compile 秒／峰值 GiB | prove first／warm 秒（共用 CPU） | prove 峰值 GiB（所有量測最大） |
+|---|---|---:|---:|---:|---:|
+| 等級 A 手機 | 2048 / 288 / 16 | 974,643（2^20） | 427.41／1.78 | 140.80／194.10 | 1.77 |
+| 電腦 | 4096 / 576 / 8 | 1,275,375（2^21） | 647.92／2.04 | 115.11／96.66 | 3.32 |
+
+| 用途 | 獨立 warm 秒 | warm 峰值 GiB | 獨立 verify ms | proof bytes | public input bytes |
+|---|---:|---:|---:|---:|---:|
+| 等級 A 手機 | 44.18 | 1.77 | 41.39 | 16,256 | 800 |
+| 電腦 | 65.51 | 3.29 | 65.39 | 16,256 | 544 |
+
+手機組符合每段 dyadic ≤2^20；電腦組符合 ≤2^21。4096 能把樣本段數減半，
+且已在此環境完整編譯／證明，故選為本輪電腦參數。編譯時間是開發端
+成本，不能當成手機使用者每次產生證明的時間。所有 prove／verify 均成功。
+
+另外嘗試 `8192 / 1120 / W=4 / B=1 / N=8192`，在 **314.08 秒**觸發
+5 GiB RSS guard，觀察到 **5,272,396 KiB（5.03 GiB）**；工具主動 kill，
+`memory.events` 的 oom／oom_kill 都是 0。未產生 ACIR，沒有 gates、
+prove 或 verify 數據。這不是 OOM、24 GiB 位址空間失敗，也不能說它
+超過 2^21；觀察到的 RSS 只是中止前峰值，不是完整編譯所需記憶體。
+因此未選用此候選。本輪的兩組已選容量均有完整數據，不以外推取代實測。
+
+重現選定容量：
+
+```sh
+python3 -I tools/compile_profile.py --segment --plain 2048 --tokens 288 --blocks 1 \
+  --compressed 8192 --nargo /path/to/nargo --bb /path/to/bb --prove \
+  --bb-js /path/to/bb.js/dest/node/index.js --crs /path/to/crs \
+  --rss-limit-gib 5 --output target/segment-2048.json
+# 電腦組改為 --plain 4096 --tokens 576。
+```
+
+數據與精確量測 main 快照在
+`native/circuits/validation/m3b-round7-segment-{2048,4096}.*`，
+獨立 warm 在 `m3b-round7-isolated-{2048,4096}.json`；8192 保護中止另存
+`m3b-round7-segment-8192-guard.*`。JSON 含實際編譯來源雜湊、ACIR／VK
+SHA-256、逐程序 RSS、退出狀態及 cgroup。測試來源更新若觸發 metadata
+重編譯，另保留 pre-witness ACIR 雜湊，並核對量測／證明 bytecode 完全相同。
+ACIR 路徑與 debug metadata 會影響檔案雜湊；這些是量測快照，非正式資產凍結。
+
+### 最大樣本的估算（不是實測）
+
+樣本聚合資料：31,582 bytes 明文、2,829 tokens、1 個動態區塊。
+固定大小切段需要手機 **16 段**、電腦 **8 段**。下表僅將本次獨立 warm
+乘上段數，假設各段 token 密度在所選預算內，且後續段成本與合成見證近似：
+
+| 容量 | 估計段數 | 估計串行 inflate prove | proof＋public inputs |
+|---|---:|---:|---:|
+| 2048 / 288 | 16 | 16×44.184 = 706.95 秒（11.8 分鐘） | 272,896 bytes |
+| 4096 / 576 | 8 | 8×65.509 = 524.07 秒（8.7 分鐘） | 134,400 bytes |
+
+沒有實際文件或逐段 token 分布，總 token 數不能保證每個固定明文段都能裝入
+288／576 個 token；M3c 必須預檢局部密度，不足時明確拒絕該 profile。
+單一動態區塊的 block-start 預算則足夠。估算不含見證產生、SHA、未實作的
+詞法段、IO 或實際手機差異，不能宣稱已達舊的手機 2 分鐘／電腦 1 分鐘
+整體門檻。沒有用 Claude 的 4 vCPU 數字混算本機總時間。
+
+### 約束測試與交接
+
+- `nargo test`：**76 passed**，含既有 Brillig 語意測試，不稱為 76 份 ACIR proof。
+  新增標準 Poseidon2 已知答案、31-byte 大端打包、SHA XOR／C_z、HDIST 30 control
+  與 31／32 拒絕；HDIST 負向同步修改合法 code-length repeat 與 lookahead。
+- `python3 -I tools/regressions.py`：**44/44**；`--multiblock`：**4/4**。
+- `--segments --bb-js ...`：**49 個 constrained ACIR 案例**（33 接受、16 拒絕），
+  另有 1 個電路外串接換序拒絕，共 50 個 runner 結果。包含 17 段的遠距離
+  32,768-byte copy（可辨識前綴）、跨段 copy、fixed／dynamic 多段、混合三種區塊、
+  stored 跨段與空串流。負向涵蓋歷史明文、索引、表／表承諾、pending 長度／距離、
+  首段 zlib header、末段 Adler、C_z、明文、S_out／C_p、首尾旗標與網域。
+  Adler 攻擊同步更新未消耗 lookahead，確實測 checksum 約束。
+- 合計 **97 個 ACIR 案例：40 接受、57 約束拒絕**，負向只接受
+  `Cannot satisfy constraint`；解析／編譯錯誤不計入通過。
+- 兩組各 first、warm、獨立 warm，共 **6 份 UltraHonk ZK proof** 成功；
+  每組的兩份原始 proof 共用相同見證，warm 重測使用上述合成範圍。
+  各組 warm proof 都由獨立 CLI verify 通過，精密重測 verify 亦通過。
+- 必要 Gradle tasks 全部成功，**368 tests、0 failures/errors、30 skipped**。
+  環境無 cargo，既有 native auto build 與相關案例略過；不宣稱 Rust／原生驗收通過。
+- `tools/segment_reference.py` 以 `python3 -I` 執行，產生每段 Prover.toml，
+  重開所有承諾、核對相鄰狀態與歷史，並以 Python zlib 核對完整結果與最終狀態。
+  合成 salt 固定 42，正式 M3c 必須每份證據重新產生至少 248-bit 隨機 salt。
+- 規格未改；stored_end、stored 最後區塊沒有 EOB、固定段與區塊切點衝突、
+  以及精確 field／空承諾編碼需由 Claude 決定。B=1 用於單區塊樣本；
+  混合區塊回歸使用 B=3，stored literal-rich 回歸使用 P=64/T=96。
+- 新增第三方元件：無。沿用既有 MIT 的 bb.js 2.1.9 產生獨立承諾向量與見證，
+  `native/circuits/NOTICE` 已補述用途。不提交真實文件、私密見證、CRS 或大型 proof 資產。

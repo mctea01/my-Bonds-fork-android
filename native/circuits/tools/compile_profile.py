@@ -21,7 +21,7 @@ fn main(data:[u8;COMPRESSED],data_len:u32,blocks:[BlockHint;BLOCKS],block_count:
 '''
 
 
-def run_limited(command, stdout, stderr, seconds, limits, rss_limit_gib=None):
+def run_limited(command, stdout, stderr, seconds, limits, rss_limit_gib=None, poll_interval=0.05):
     """Keep an optional RSS guard distinct from timeout and compiler failure."""
     start = time.monotonic()
     with subprocess.Popen(command, stdout=stdout, stderr=stderr, preexec_fn=limits) as child:
@@ -41,7 +41,7 @@ def run_limited(command, stdout, stderr, seconds, limits, rss_limit_gib=None):
                 child.kill()
                 child.wait()
                 return (124 if status == 'timeout' else child.returncode), status
-            time.sleep(0.05)
+            time.sleep(poll_interval)
         return child.returncode, 'compiled' if child.returncode == 0 else 'compiler_failed'
 
 
@@ -51,7 +51,8 @@ def measured_limited(command, log, seconds, limits, rss_limit_gib):
     if pid == 0:
         start = time.monotonic()
         with log.open('w') as output:
-            code, status = run_limited(command, output, output, seconds, limits, rss_limit_gib)
+            code, status = run_limited(command, output, output, seconds, limits, rss_limit_gib,
+                                       0.001 if len(command)>1 and command[1]=='verify' else 0.05)
         result = dict(seconds=time.monotonic()-start, exit_code=code,
                       status={"compiled":"completed", "compiler_failed":"process_failed"}.get(status,status),
                       peak_rss_kib=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
@@ -98,9 +99,17 @@ def prove_profile(args, root, acir, record, limits):
     commands.append(('verify', [args.bb, 'verify', '-s', 'ultra_honk', '--oracle_hash', 'poseidon2',
         '-k', str(proof/'vk'), '-p', str(proof/'proof'), '-i', str(proof/'public_inputs'),
         '-c', str(args.crs.resolve())]))
+    compiled_bytecode = json.loads(acir.read_text())['bytecode']
     for name, command in commands:
         result = measured_limited(command, args.output.with_suffix(f'.{name}.log'),
                                   args.seconds, limits, args.rss_limit_gib)
+        if name == 'witness' and result['exit_code'] == 0:
+            solved_acir = json.loads(acir.read_text())
+            if solved_acir['bytecode'] != compiled_bytecode:
+                raise RuntimeError('Circuit changed between compilation and witness generation')
+            record['pre_witness_acir_sha256'] = record['acir_sha256']
+            record['acir_sha256'] = hashlib.sha256(acir.read_bytes()).hexdigest()
+            args.output.with_suffix('.acir.json').write_bytes(acir.read_bytes())
         if name in ('first', 'warm'):
             record['prove'][name] = result
         else:
@@ -151,8 +160,9 @@ def main():
         source = (ROOT/'pdf_inflate_seg_v1/src/main.nr').read_text()
         for constant, value in [('SEG_PLAIN',args.plain),('SEG_TOKENS',args.tokens),('SEG_BLOCK_STARTS',args.blocks),('MAX_COMPRESSED',args.compressed)]:
             source = re.sub(r'(global '+constant+r':u32=)\d+',lambda m: m[1]+str(value),source)
-    for name in ('compressed', 'plain', 'tokens', 'blocks'):
-        source = source.replace(name.upper(), str(getattr(args, name)))
+    if not args.segment:
+        for name in ('compressed', 'plain', 'tokens', 'blocks'):
+            source = source.replace(name.upper(), str(getattr(args, name)))
     version = subprocess.check_output([args.nargo, '--version'], text=True).strip()
     if version.splitlines()[0] != 'nargo version = 1.0.0-beta.15':
         raise RuntimeError('Use the pinned nargo version')
@@ -164,6 +174,7 @@ def main():
         resource.setrlimit(resource.RLIMIT_AS, (budget, budget))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.with_suffix('.main.nr').write_text(source)
     source_hash = hashlib.sha256((ROOT / 'pdf_text_v1/src/inflate.nr').read_bytes()).hexdigest()
     with tempfile.TemporaryDirectory(prefix='diw-inflate-profile-') as directory:
         root = Path(directory)

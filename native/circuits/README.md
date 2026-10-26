@@ -171,7 +171,8 @@ set to its profile maximum.
 
 `pdf_inflate_seg_v1` is a draft segment circuit, with public commitments and a
 private immutable 32 KiB history. It is not a full PDF/lexer circuit. The default
-main is P=2048/T=288/B=1/N=8192; W is computed at compile time. Parameter profiles
+main is P=2048/T=288/B=1/N=8192; W=16 is computed at compile time.
+The selected desktop profile is P=4096/T=576/B=1/N=8192/W=8. Parameter profiles
 are pinned separately; final measurements and recommendations are recorded in
 `docs/research/p4-benchmarks.md`. Exact proposed encodings and the composition
 argument are in `IMPLEMENTATION.md` and need Claude review before M3c.
@@ -192,7 +193,8 @@ python3 -I tools/compile_profile.py --segment --plain 2048 --tokens 288 --blocks
 
 The segment generator uses synthetic data and salt 42; it never prints witness
 contents. It writes a Prover.toml per segment plus public chain.json and verifies
-all joins/openings and the zlib result. It rejects insufficient token/block-start
+all joins/openings and the zlib result. Field values in chain.json are hex
+strings to preserve all 254 bits across JSON readers. It rejects insufficient token/block-start
 capacity instead of changing fixed-size splitting. Copy a generated Prover.toml
 into a matching parameterized package before `nargo execute --pedantic-solving`.
 For a stored stream, choose enough token slots per emitted literal byte. The

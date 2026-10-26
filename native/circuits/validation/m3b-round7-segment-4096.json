@@ -1,0 +1,82 @@
+{
+  "scope": "inflate segment with commitments and 32 KiB history; not a complete PDF circuit",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "compiled",
+  "exit_code": 0,
+  "seconds": 647.9203052099999,
+  "peak_rss_kib": 2141040,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 5.0,
+  "compressed_capacity": 8192,
+  "plain_capacity": 4096,
+  "token_capacity": 576,
+  "block_capacity": 1,
+  "main_sha256": "41e1db4042adadb1883c48b2e91320c8013bd21b675454e09fd7c42c38939a0a",
+  "inflate_source_sha256": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+  "segment_source_sha256": "5f9b727f92087ee0a6d9cdc569156710a0f536cc3038a4ad46588a2f24a5d7a3",
+  "history_segments": 8,
+  "acir_sha256": "658492019771863b33b58a6a21fea191a27763b8924a8b26e2869f7deda2db2b",
+  "acir_opcodes": 771861,
+  "vk_sha256": "0cd242731115c8643eba753bc909d6b8223289c43a209547ec03696eba873555",
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 771861,
+        "circuit_size": 1275375
+      }
+    ]
+  },
+  "prove": {
+    "first": {
+      "seconds": 115.10938903499982,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 3481172
+    },
+    "warm": {
+      "seconds": 96.66375967900012,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 3480788
+    }
+  },
+  "verify": {
+    "seconds": 0.05352305900032661,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 21208
+  },
+  "proof_bytes": 16256,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "gate_measurement": {
+    "exit_code": 0,
+    "status": "compiled",
+    "seconds": 11.855793982000023
+  },
+  "proof_scope": "Synthetic repeated-byte stream fills plain capacity; single first/final segment with zero history",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "witness": {
+    "seconds": 236.56691356400006,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 2110784
+  },
+  "public_input_bytes": 544,
+  "pre_witness_acir_sha256": "1112e55ab9325cd229fea9444b2e0d5607e1b6b3d885f59a1526ea1653b2de41",
+  "gate_bytecode_matches_proven": true,
+  "source_snapshot_sha256": {
+    "pdf_text_v1/src/commitment.nr": "1cd7da2f10b7554bdb98891d225de4f8df1690e5a5896bb4ce9f605d9b5e71e2",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "5f9b727f92087ee0a6d9cdc569156710a0f536cc3038a4ad46588a2f24a5d7a3"
+  },
+  "cpu_model": "Intel Xeon Platinum 8370C @ 2.80GHz",
+  "concurrency_note": "Compilation overlaps other checks; first/warm overlap segment regressions; first extends cached CRS",
+  "dyadic_size": 2097152
+}

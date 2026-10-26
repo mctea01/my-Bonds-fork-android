@@ -6,10 +6,10 @@ oracle_hash=poseidon2
 zero_knowledge=true
 disable_zk=false
 
-# Current small component probe after the Round 6 immutable-advice optimization.
+# Small component probe with Round 7 HDIST <= 30 validation.
 # Previous M3a measurements and hashes remain in validation/inflate_probe.json.
-inflate_probe.acir_sha256=6979f076ad71059d4c5290e9c1c8999012d9c4bf1e2868e90d6f3418ba104300
-inflate_probe.vk_sha256=7ac8821a322600f7e30401b4496ec4aa7dc126ee2b254617c4294c21feab7f47
+inflate_probe.acir_sha256=bc407c7715da554127768bad1683bc53862291c44011780605528984980135e8
+inflate_probe.vk_sha256=63b48bd453a76075572e3fcf1c42108dc2f22f73905f93afdff06b9b5de477b6
 sha256_130.acir_sha256=33d0cb1cb510581ceaa940d3174e87ea5a6d08bf7f919bf3a33b551c2d0d0776
 sha256_130.vk_sha256=dcddff0de3589d444b6128c5e0d2360944c8d3fc714372078b21e6e8705d0872
 sha256_260.acir_sha256=c899a1149f36365b9c7705a058ad4aee28a3394413d582d26faf988a3db1bdde
@@ -19,3 +19,9 @@ sha256_65.vk_sha256=77b16705317977b4f3da76d313e47f80623e6d21f387736a1000ddc089b8
 
 # pdf_text_v1_1p is not implemented yet: no M3b full-circuit ACIR or VK exists.
 # These component measurement hashes are not frozen production asset pins.
+
+# Round 7 selected segment measurement profiles (not production asset pins).
+pdf_inflate_seg_v1.P2048T288B1N8192.acir_sha256=85b6d9d43bc142f17c7c9c21157908bc864fa6c108e2a8080f4b3f4f0a992e5c
+pdf_inflate_seg_v1.P2048T288B1N8192.vk_sha256=0b5b22cce29c5e01aa96dd9b5a8cb523a022fa41ffdccbc82698791ff41a4b53
+pdf_inflate_seg_v1.P4096T576B1N8192.acir_sha256=658492019771863b33b58a6a21fea191a27763b8924a8b26e2869f7deda2db2b
+pdf_inflate_seg_v1.P4096T576B1N8192.vk_sha256=0cd242731115c8643eba753bc909d6b8223289c43a209547ec03696eba873555

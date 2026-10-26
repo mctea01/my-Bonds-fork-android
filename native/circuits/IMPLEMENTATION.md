@@ -535,3 +535,35 @@ The design file is deliberately unchanged:
 checks public joins, history openings and the complete result independently with
 Python zlib. It is a reference witness generator, not a proof verifier. bb.js is
 an existing MIT development dependency; NOTICE now describes this additional use.
+
+### Final Round 7 validation and parameters
+
+Selected phone: SEG_PLAIN=2048, SEG_TOKENS=288, SEG_BLOCK_STARTS=1,
+MAX_COMPRESSED=8192, W=16; 974,643 gates, dyadic 2^20.
+Selected desktop: 4096/576/1/8192/W=8; 1,275,375 gates, dyadic 2^21.
+The 8192/1120 candidate hit the 5 GiB compiler RSS guard before ACIR; no gate
+claim is made for that candidate. This was a protective stop, not an OOM.
+
+All 76 Noir tests, 44 standard ACIR cases, 4 multiblock ACIR cases, and 49 segment
+ACIR cases passed. Segment results contain one additional off-circuit reordered
+chain rejection; it is not counted as an ACIR rejection. Combined ACIR counts
+are 40 accepts and 57 constraint rejections. Positives include fixed/dynamic
+chains, the 17-segment 32768-distance copy with a distinct prefix, mixed block
+starts, stored continuation and empty streams. Every requested negative case
+is constrained; Adler mutations refresh unused window lookahead first.
+Six ZK proof generations succeeded across the two profiles and independent
+warm repeats, with separate successful verifier processes. Both profiles have
+16,256-byte proofs. Detailed times, RSS, scope, source snapshots and hashes are
+in validation/m3b-round7-* and docs/research/p4-benchmarks.md.
+
+Required Gradle tasks passed: 368 tests, zero failures/errors, 30 skipped.
+Native auto build was skipped because cargo is absent; Rust/native execution
+is not claimed. The component probe ACIR/VK was regenerated for HDIST <=30;
+Round 7 proof measurements are the segment profiles, not a new component-probe
+prove benchmark. VERSIONS contains measurement hashes, not production pins.
+
+The fixed-size sample estimate is conditional on per-segment token density:
+16 phone or 8 desktop segments for 31,582 bytes. Aggregate token counts alone
+cannot ensure this condition. The reference generator rejects an insufficient
+profile, and never silently changes segmentation. Lexical work and a frozen
+interoperability specification remain explicitly outside this round.
