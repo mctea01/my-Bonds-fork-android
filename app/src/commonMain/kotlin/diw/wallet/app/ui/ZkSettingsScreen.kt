@@ -307,6 +307,7 @@ private fun ServerSection(model: WalletModel) {
         )
     }
     server.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    server.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 
     server.pending?.let { info ->
         AlertDialog(
@@ -321,6 +322,7 @@ private fun ServerSection(model: WalletModel) {
                     }
                     info.verifierDid?.let { Text("網頁查驗端 DID：$it", style = MaterialTheme.typography.bodySmall) }
                     if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+                    info.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     Text(
                         "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示，" +
                             "它的網頁查驗端向你要求出示卡片時也顯示為使用者信任（T2）；網頁查驗端 DID 只由這個網址確認，沒有另外的指紋。" +

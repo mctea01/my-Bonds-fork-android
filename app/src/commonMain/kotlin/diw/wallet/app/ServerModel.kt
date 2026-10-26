@@ -41,7 +41,22 @@ class ServerModel(private val model: WalletModel) {
         val features: List<String>,
         /** The web verifier's DID, absent when the server runs no web verifier. */
         val verifierDid: String?,
-    )
+        /** The address the server sends wallets to (its public_url), absent from older servers. */
+        val publicUrl: String? = null,
+    ) {
+        /**
+         * A warning when the server sends wallets to another host than the one entered here: sessions, relay links and
+         * the web verifier then point at an address that may not be reachable.
+         */
+        val addressWarning: String?
+            get() {
+                val announced = publicUrl?.let { runCatching { Url(it).host }.getOrNull() } ?: return null
+                val entered = runCatching { Url(url).host }.getOrNull() ?: return null
+                if (announced.equals(entered, ignoreCase = true)) return null
+                return "服務端設定的對外網址是 $announced，和你填的 $entered 不同。查驗連結、中繼與網頁查驗都會用 $announced；" +
+                    "如果它連不到，網站查驗會顯示「無法連到查驗方」。請業者把 public_url 改成 https://$entered，或讓 $announced 可以連線。"
+            }
+    }
 
     data class State(
         val checking: Boolean = false,
@@ -50,6 +65,8 @@ class ServerModel(private val model: WalletModel) {
         /** The root the server names now differs from the one the user trusted. */
         val changed: Boolean = false,
         val error: String? = null,
+        /** [Info.addressWarning] from the last read. */
+        val addressWarning: String? = null,
     )
 
     val state = MutableStateFlow(State())
@@ -72,7 +89,7 @@ class ServerModel(private val model: WalletModel) {
                 val s = model.settings
                 val rootChanged = s.serverRootSha256.isNotEmpty() && s.serverRootSha256 != info.sha256
                 val didChanged = s.serverVerifierDid.isNotEmpty() && s.serverVerifierDid != info.verifierDid
-                State(pending = info.takeIf { confirm }, changed = rootChanged || didChanged)
+                State(pending = info.takeIf { confirm }, changed = rootChanged || didChanged, addressWarning = info.addressWarning)
             } catch (e: Exception) {
                 State(error = model.describe(e))
             }
@@ -121,7 +138,7 @@ class ServerModel(private val model: WalletModel) {
             if (sig.str("rootSha256")?.lowercase() != sha) throw ProtocolException("server_error", "服務端回報的指紋與憑證不符")
             root to sha
         }
-        return Info(url, signed?.first?.displaySubject(), signed?.second, signed?.first, features, verifierDid)
+        return Info(url, signed?.first?.displaySubject(), signed?.second, signed?.first, features, verifierDid, o.str("publicUrl")?.trim())
     }
 
     fun dismiss() {
@@ -151,7 +168,7 @@ class ServerModel(private val model: WalletModel) {
                     model.userDids.put(did, "正式服務端 $host 網頁查驗", setOf(TrustRole.VERIFIER), Clock.System.now().toEpochMilliseconds())
                 }
                 model.updateSettings { it.copy(serverRootSha256 = info.sha256.orEmpty(), serverVerifierDid = info.verifierDid.orEmpty()) }
-                state.value = State()
+                state.value = State(addressWarning = info.addressWarning)
                 model.message.value = if (added == 0) "已經信任這台服務端" else "已信任服務端 $host（使用者匯入，信任等級 T2）"
                 model.loadAnchors()
                 if (info.root != null) {

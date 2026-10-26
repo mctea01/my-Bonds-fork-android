@@ -1050,6 +1050,7 @@ class WalletModelE2eTest {
         var stated: String? = null
         suspend fun newDid() = diw.wallet.core.did.DidKeys.didKeyJwkJcs(org.multipaz.crypto.Crypto.createEcPrivateKey(org.multipaz.crypto.EcCurve.P256).publicKey)
         var verifierDid = newDid()
+        var publicUrl = "https://$host"
         val seen = java.util.Collections.synchronizedList(ArrayList<String?>())
         val engine = io.ktor.client.engine.mock.MockEngine { request ->
             val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
@@ -1057,6 +1058,7 @@ class WalletModelE2eTest {
                 request.url.host == host && request.url.encodedPath == "/info" -> respond(buildJsonObject {
                     put("name", "diw-wallet-server")
                     putJsonArray("features") { add("relay"); add("zktls") }
+                    put("publicUrl", publicUrl)
                     put("verifierDid", verifierDid)
                     put("signing", buildJsonObject {
                         put("subject", "CN=$host Signing Root")
@@ -1103,6 +1105,7 @@ class WalletModelE2eTest {
         val info = st.pending!!
         assertEquals(sha(served), info.sha256)
         assertEquals(listOf("relay", "zktls"), info.features)
+        assertNull(info.addressWarning)
         m.server.confirm(info)
         withTimeout(30.seconds) { m.settingsFlow.first { it.serverRootSha256 == info.sha256 } }
         suspend fun trusted() = m.trust.allAnchors().filter { it.source == ServerModel.SOURCE_PREFIX + host }
@@ -1133,6 +1136,11 @@ class WalletModelE2eTest {
         m.server.check(confirm = false)
         assertTrue(withTimeout(30.seconds) { m.server.state.first { !it.checking && it.changed } }.changed)
         assertNull(m.didTrust.decide(verifierDid, diw.wallet.core.trust.TrustRole.VERIFIER))
+        // A server that sends wallets to another name is flagged: its links would point there.
+        publicUrl = "https://other.example.org"
+        m.server.check(confirm = false)
+        assertTrue("other.example.org" in withTimeout(30.seconds) { m.server.state.first { !it.checking && it.addressWarning != null } }.addressWarning!!)
+        publicUrl = "https://$host"
         m.server.check(confirm = true)
         m.server.confirm(withTimeout(30.seconds) { m.server.state.first { it.pending != null } }.pending!!)
         withTimeout(30.seconds) { m.settingsFlow.first { it.serverVerifierDid == verifierDid } }

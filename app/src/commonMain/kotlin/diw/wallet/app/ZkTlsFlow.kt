@@ -534,8 +534,13 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         } finally {
             model.endOperation()
         }
-        val where = opened.transports.joinToString("、") { routeName(it) }
-        val details = transportDetails(request) + listOf("查驗方 DID：${key.did}", "請求 id：${request.sessionId}")
+        // The relay is optional when a local address opened; say so, since a holder elsewhere then cannot reach this side.
+        val relayMissing = relay != null && opened.transports.none { it is ZkTlsTransport.Relay }
+        val where = opened.transports.joinToString("、") { routeName(it) } + if (relayMissing) "（中繼 ${hostOf(relay!!)} 連不上，只能在同一個網路查驗）" else ""
+        val details = transportDetails(request) + listOfNotNull(
+            "中繼：無法連到 $relay/zktls/relay，不在同一個網路的出示者連不到這裡".takeIf { relayMissing },
+            "查驗方 DID：${key.did}", "請求 id：${request.sessionId}",
+        )
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, ZkTlsSessionRequest.link(jws), profile, where, local = true, details = details)
         // A holder that keeps the result gets a receipt signed with the key that signed the request.
         val signer = WebProofCredentials.receipts(request, profile, key.did!!, key.signingKey("ES256"))
@@ -646,6 +651,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         return model.holderIdentities.getOrCreate(VERIFIER_PROFILE, "did:key", backend.secureArea,
             backend.settings(ByteString(PlatformCrypto.randomBytes(16)), false))
     }
+
+    private fun hostOf(url: String): String = runCatching { Url(url).host }.getOrDefault(url)
 
     private fun routeName(t: ZkTlsTransport): String = when (t) {
         is ZkTlsTransport.Lan -> "區網"

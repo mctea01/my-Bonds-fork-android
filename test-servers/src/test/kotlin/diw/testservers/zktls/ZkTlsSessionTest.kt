@@ -6,7 +6,10 @@ import diw.wallet.core.did.DidResolver
 import diw.wallet.core.zk.ZkBackend
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.zk.native.ZkNative
+import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zktls.NativeZkTlsEngine
+import diw.wallet.core.zktls.WebSocketChannel
+import diw.wallet.core.zktls.ZkTlsChannelEnd
 import diw.wallet.core.zktls.ZkTlsCheck
 import diw.wallet.core.zktls.ZkTlsPlanner
 import diw.wallet.core.zktls.ZkTlsProfiles
@@ -33,7 +36,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -116,6 +121,21 @@ class ZkTlsSessionTest {
         withTimeout(10_000) { while (servers.zkTlsRelay.size != 0) delay(50) }
     }
 
+    /**
+     * Another device at a listed private address takes the connection and drops it: nothing private has been sent,
+     * so the holder moves on to the relay instead of failing.
+     */
+    @Test
+    fun aWrongLocalPeerFallsThroughToTheRelay() = runBlocking {
+        assumeTrue(tlsn(), "Native library built without tlsn")
+        ServerSocket(0, 4, java.net.InetAddress.getByName("127.0.0.1")).use { decoy ->
+            val dropper = Thread { runCatching { while (true) decoy.accept().close() } }.apply { isDaemon = true; start() }
+            deviceSession(lan = false, relay = base, values = inputs, extra = listOf(ZkTlsTransport.Lan("127.0.0.1", decoy.localPort)))
+            dropper.interrupt()
+        }
+        withTimeout(10_000) { while (servers.zkTlsRelay.size != 0) delay(50) }
+    }
+
     @Test
     fun recordNotFound() = runBlocking {
         assumeTrue(tlsn(), "Native library built without tlsn")
@@ -129,10 +149,12 @@ class ZkTlsSessionTest {
     }
 
     /** A device verifier ([lan] on 127.0.0.1, or in a relay room on [relay]) and a holder, run at once. */
-    private suspend fun deviceSession(lan: Boolean, relay: String?, values: Map<String, String>): ZkTlsSeen = kotlinx.coroutines.coroutineScope {
+    private suspend fun deviceSession(
+        lan: Boolean, relay: String?, values: Map<String, String>, extra: List<ZkTlsTransport> = emptyList(),
+    ): ZkTlsSeen = kotlinx.coroutines.coroutineScope {
         val verifier = engine(listOf("127.0.0.1")).open(lan, relay)
         val profile = servers.zkTlsVerifier.profile(ZkTlsRecordPage.PROFILE_ID)!!
-        val request = ZkTlsSessionRequest.create(verifier.transports, verifier.publicKey, profile, listOf("name", "date"), "測試", inlineProfile = true)
+        val request = ZkTlsSessionRequest.create(extra + verifier.transports, verifier.publicKey, profile, listOf("name", "date"), "測試", inlineProfile = true)
         val signer = servers.pki.readerKey("verifier.example")
         val jws = ZkTlsSessionRequest.sign(request, signer, chain = signer.certChain.certificates)
         val verified = async { verifier.verify(jws, request, profile, listOf(servers.recordPage.caDer)) {} }
@@ -165,6 +187,37 @@ class ZkTlsSessionTest {
             a.close(io.ktor.websocket.CloseReason(io.ktor.websocket.CloseReason.Codes.NORMAL, ""))
             // Closing one side closes the other and frees the room.
             withTimeout(5_000) { runCatching { while (true) b.incoming.receive() } }
+            withTimeout(5_000) { while (servers.zkTlsRelay.size > 0) delay(20) }
+        } finally {
+            client.close()
+        }
+    }
+
+    /** A holder learns why a relay channel ended: the peer left, or no verifier answered in the room. */
+    @Test
+    fun relayChannelsSayHowTheyEnded() = runBlocking {
+        val client = HttpClient(Java) { install(WebSockets) }
+        try {
+            val url = "ws://localhost:$port/zktls/relay/" + ByteArray(16) { 7 }.toBase64Url()
+            val verifier = WebSocketChannel(client.webSocketSession(url))
+            val holder = WebSocketChannel(client.webSocketSession(url), firstReplyMs = 5_000)
+            holder.send(byteArrayOf(1))
+            assertEquals(listOf<Byte>(1), verifier.receive().toList())
+            verifier.send(byteArrayOf(2))
+            assertEquals(listOf<Byte>(2), holder.receive().toList())
+            verifier.close()
+            assertFailsWith<ZkException> { holder.receive() }
+            assertEquals(ZkTlsChannelEnd.PEER_LEFT, holder.end)
+            val failed = assertIs<ZkResult.Failed>(NativeZkTlsEngine.failure(ZkException.Internal(502u), holder))
+            assertEquals(ZkTlsChannelEnd.PEER_LEFT.message, failed.reason)
+            holder.close()
+
+            // Alone in a room (the verifier already left): no answer within the first-reply time.
+            val alone = WebSocketChannel(client.webSocketSession("ws://localhost:$port/zktls/relay/" + ByteArray(16) { 8 }.toBase64Url()), firstReplyMs = 300)
+            alone.send(byteArrayOf(1))
+            assertFailsWith<ZkException> { alone.receive() }
+            assertEquals(ZkTlsChannelEnd.NO_REPLY, alone.end)
+            alone.close()
             withTimeout(5_000) { while (servers.zkTlsRelay.size > 0) delay(20) }
         } finally {
             client.close()
