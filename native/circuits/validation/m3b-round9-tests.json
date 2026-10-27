@@ -3,5 +3,66 @@
   "tests": 85,
   "passed": 85,
   "source_commit": "3006243d28744ff0cb3aec4f208a4860dfcb3015",
-  "scope": "Noir test suite; ACIR execution regressions are reported separately"
+  "scope": "Noir test suite and final ACIR regressions; reference-only rejects are separate from constraint rejections",
+  "regressions": {
+    "standard": {
+      "cases": 44,
+      "accepts": 5,
+      "constraint_rejections": 39,
+      "reference_rejections": 0,
+      "results_sha256": "94315cb45c19bd054462714c439b99d26c83905f871511b6862e069d33c83532"
+    },
+    "multiblock": {
+      "cases": 4,
+      "accepts": 2,
+      "constraint_rejections": 2,
+      "reference_rejections": 0,
+      "results_sha256": "57491ab43910320820c55b50cba5095f06249b36c24bfcfef6313a21b230087f"
+    },
+    "segments": {
+      "cases": 54,
+      "accepts": 36,
+      "constraint_rejections": 17,
+      "reference_rejections": 1,
+      "results_sha256": "93e4982d7b8b59a35af7ff53758d87ce476c2ceee760516254d15ec97a5b308a"
+    },
+    "lex": {
+      "cases": 115,
+      "accepts": 85,
+      "constraint_rejections": 28,
+      "reference_rejections": 2,
+      "results_sha256": "c7abe0db69aadb2bd3050d839affda6c6e1a7d50b2882ae571b3650ad8645eb2"
+    }
+  },
+  "source_sha256": {
+    "bench/inflate_16k/src/main.nr": "945264b5314ddd220b28fd8f3c1cf1dacff13ea73e7dc8b79aac76132be12e5b",
+    "bench/inflate_32k/src/main.nr": "3f777ea03c4cee423161edd197ef2ab0df3e25607f4122a92c0b08cf3acf0065",
+    "bench/inflate_40k/src/main.nr": "5b4be0193de3c60ae9dae24bd3acfaf447bd5c4298b6a2c3446347f14911ab10",
+    "bench/inflate_adler_probe/src/main.nr": "95f919239facfffc688be528c3fa7786f96b6f7720e848cd20190b6a2d34c9d4",
+    "bench/inflate_multiblock_probe/src/main.nr": "042a0e9be6ad40f6cccbb9d1b5762ea5a8a6506a37b74f19754341ebf1c02841",
+    "bench/inflate_probe/src/main.nr": "d5342db6035c14afd972686b7bf031beff89d3f3ee92b1671f642f21e6b461b2",
+    "bench/sha256_130/src/main.nr": "29e919b15e324540ce89e2aafb2d17083af1cc4c8cd5d330c1f2c23987dc52ea",
+    "bench/sha256_260/src/main.nr": "320fd181986dba40b75d8c03385ce25976ed1dc3b1484e6c5f0e17b2a602b875",
+    "bench/sha256_65/src/main.nr": "969d2f68253addd3cdd39201d0a9fc566ea30a7d92d683295f607e0206709a3f",
+    "pdf_claim_v1/src/main.nr": "1a01d3fa621211554f90d0ae5c46dedd65578fd401d85d1528b22afee78cae42",
+    "pdf_inflate_seg0_v1/src/main.nr": "43f71265a9bb80a197bd5077cfa76608332edbf4f520243d0c759e2441e2b4b2",
+    "pdf_inflate_seg_v1/src/main.nr": "3aed479fabc0164d63682b43bc75ca8a23989b1c3a8d37fde8ced367adf27ec1",
+    "pdf_lex_seg_v1/src/main.nr": "358bff59f7de2da57e370b289f31f559c3a16305e9ad135f7b7d3623db657793",
+    "pdf_pred_v1/src/main.nr": "7b576bded91e07a6bd65cae082fecca7fad51336ec633607af87c823aa5ed9f4",
+    "pdf_text_v1/src/claim.nr": "bd348a7c687fe14f4b667048cd2388037f893195ab099ac93d5d26cb293cfd5b",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "62f0f9899a55e42dbe9af64ce20d55df248222e87b91d6c7f7c88df9a5ab2d59",
+    "pdf_text_v1/src/lib.nr": "1f44f9f2e1af072b54c0a4a7dcfa120ca5e82cb9eb8e589632df28e73a5a7792",
+    "pdf_text_v1/src/sha256_window.nr": "6fbf4b01de91b7e534584ed046d7245eb34bdced252b20346072a2a4df051ec5",
+    "pdf_text_v1/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f",
+    "tools/lex_reference.py": "a474334db2d00582e55280581fd4959432284f071a15982075d0922e99e7a895",
+    "tools/lex_regressions.py": "333c95956004c04b1e7f646cf00be5ae6415e23a9eeb96375b0f0f93376b7469",
+    "tools/regressions.py": "9300bcac1bc3fd45cb61d822f57639e8ea51e6fb3a0400b499b0b259e8d7d13d",
+    "tools/segment_reference.py": "b6a550994786e99b8c841993b9af13a48cf0e1bdbdfb9cc4e1ea07cf3c73aa17",
+    "tools/segment_regressions.py": "5ea0e57297ddf13271ff1a964237b40a2a5a89880de12d9aefce0965921ffbd5"
+  },
+  "reference_tool_commit": "9cf9be6"
 }
