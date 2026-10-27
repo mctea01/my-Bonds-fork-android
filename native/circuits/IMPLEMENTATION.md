@@ -907,3 +907,30 @@ constant-index output arrays. Anchor/field work is no longer inside that loop.
 The approximately 111k fixed cost includes the 64 operator slots and complete
 plan/anchor transcript commitments. Full-size measurements, rather than this
 linear estimate, determine eligibility.
+
+### Constrained function boundaries and compilation
+
+Pinned Noir beta.15's `#[no_predicates]` is used for lex_segment, step,
+accumulate, pred, date_active and date_code. These remain constrained ACIR
+functions. The attribute delays inlining until after local CFG flattening; it
+does not disable underconstrained checks or Brillig constraint checks. Every
+annotated call is unconditional at its call site. In particular EOF calls step
+with `active = last && flushable_mode`, and each predicate calls date_active
+with its explicit public enabled flag. The source decoder gates every emission
+and parse requirement with that flag; a disabled predicate emits no character
+codes and has no final date requirement. Its selected plan index is canonical
+zero, so an unused out-of-range predicate slot cannot trigger a private read.
+
+This call discipline matters: relying on an implicit enclosing conditional to
+suppress an assertion in a no_predicates function would be incorrect. Here all
+required guards are ordinary constrained booleans inside those functions, and
+active predicates still require a valid calendar date and the requested cutoff.
+Control executions cover a false cutoff, an unused operator position, and fully
+disabled predicates with disabled fonts and an unused out-of-range slot, as well
+as a complete cross-segment lexical chain. The full regression suite also runs
+on the final source. No compiler safety-check skip flag is used.
+
+The compiler mechanism was checked against the pinned upstream sources:
+`compiler/noirc_evaluator/src/ssa/mod.rs`, `ssa/opt/preprocess_fns.rs`, and
+`test_programs/execution_success/no_predicates_basic/src/main.nr` at
+`83245db91dcf63420ef4bcbbd85b98f397fee663`. This is not a new dependency.

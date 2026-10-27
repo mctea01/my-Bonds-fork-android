@@ -3,6 +3,7 @@ use crate::text_plan::{Anchor,Slot,Plan,plan_commit,challenge,check_plan,fingerp
 pub struct DigitFont { pub enabled:bool, pub len:u32, pub name:[u8;16], pub width:u8, pub digits:[u16;10] }
 pub struct Predicate { pub enabled:bool, pub kind:u8, pub slot:u32, pub format:u8, pub cutoff:u32 }
 struct DateState { group:u32, count:u32, year:u32, month:u32, day:u32, gap:bool }
+#[no_predicates]
 fn date_code(mut s:DateState,code:u16,digits:[u16;10],active:bool)->DateState {
     let mut found=false;let mut value=0u32;
     for d in 0..10 {let equal=code==digits[d];found=found|equal;value+=if equal {d} else {0};}
@@ -23,6 +24,12 @@ fn nibble(b:u8)->u8 { assert(is_hex(b)); if b<=57 {b-48} else if b<=70 {b-55} el
 fn white(b:u8)->bool { (b==0)|(b==9)|(b==10)|(b==12)|(b==13)|(b==32) }
 
 pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 {
+    date_active(bytes,len,fonts,true)
+}
+// Always called. Disabled predicates supply active=false, which guards every
+// parser emission and the final date requirement; all constraints remain ACIR.
+#[no_predicates]
+fn date_active<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D],enabled:bool)->u32 {
     assert(len<=Q & D>0);
     let mut font_names=[0;D];
     for d in 0..D {
@@ -39,7 +46,7 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
     let mut flags1=[false;Q];let mut flags2=[false;Q];
     let mut codes1=[0u16;Q];let mut codes2=[0u16;Q];let mut indices=[0u32;Q];
     for i in 0..Q {
-        let active=i<len;let b=bytes[i];
+        let active=enabled & (i<len);let b=bytes[i];
         let start=active & (stage==0);let naming=active & (stage==1);let type_byte=active & (stage==2);
         let count_byte=active & (stage==3);let length_hi=active & (stage==6);let length_lo=active & (stage==4);
         let raw=active & (stage==5);let literal=raw & (kind==0);let hexadecimal=raw & (kind==1);
@@ -124,7 +131,7 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
         s=date_code(s,codes1[i],digits,flags1[i]);
         s=date_code(s,codes2[i],digits,flags2[i]);
     }
-    assert_eq(stage,0); assert_eq(s.group,2); assert(s.count>0 & s.year>0 & s.year<=9999 & s.month>0 & s.month<=12 & s.day>0);
+    assert_eq(stage,0); assert(!enabled | ((s.group==2) & s.count>0 & s.year>0 & s.year<=9999 & s.month>0 & s.month<=12 & s.day>0));
     let leap=(s.year%4==0)&((s.year%100!=0)|(s.year%400==0));
     let days=if s.month==2 {if leap {29} else {28}} else if (s.month==4)|(s.month==6)|(s.month==9)|(s.month==11) {30} else {31};
     assert(s.day<=days); s.year*10000+s.month*100+s.day
@@ -167,6 +174,7 @@ pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let START:u32,let COUNT:u32
         else { assert_eq(digests[j],[0;32]); }
     }
 }
+#[no_predicates]
 pub fn pred<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32>(
     cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,fonts:[DigitFont;D],predicates:[Predicate;V],
     salt:Field,plan:Plan<A,C,Q>) {
@@ -191,11 +199,10 @@ pub fn pred<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32>(
     // the complete decoder for every possible claim slot.
     for v in 0..V {
         let p=predicates[v];
-        if p.enabled {
-            assert(enabled[p.slot]);
-            let value=date(plan.records[p.slot],plan.lengths[p.slot],fonts);
-            if p.kind==0 {assert(value<=p.cutoff);} else {assert(value>=p.cutoff);}
-        }
+        let slot=if p.enabled {p.slot} else {0};
+        assert(!p.enabled | enabled[slot]);
+        let value=date_active(plan.records[slot],plan.lengths[slot],fonts,p.enabled);
+        assert(!p.enabled | if p.kind==0 {value<=p.cutoff} else {value>=p.cutoff});
     }
 }
 

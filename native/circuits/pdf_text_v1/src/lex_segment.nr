@@ -128,6 +128,7 @@ global CLASSES:[[bool;4];256]=[[true,true,false,false],[false,false,false,false]
 struct Record { emitted:bool, fp:Field, power:Field, len:Field, index:u32 }
 // Each next-state field is selected independently. Aggregate state never enters
 // this function, and no branch reassigns a complete state structure.
+#[no_predicates]
 fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     let cls=CLASSES[b as u32];
     let white=cls[0];let delim=cls[1];let numeric=cls[2];let hex=cls[3];
@@ -217,6 +218,7 @@ fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
         else if start_hex {3} else {m};
     (s,record)
 }
+#[no_predicates]
 pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,let R:u32,let O:u32>(
     index:u32,first:bool,last:bool,cz:Field,lin:Field,lout:Field,cp:[Field;K],
     anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,salt:Field,
@@ -282,12 +284,9 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
         previous=p;
     }
     s.ops=base+used;
-    if last {
-        // A valid final stream can only flush a non-show word (normally ET),
-        // name, number or comment: a final show would leave BT open.
-        let flush=(scan.mode==4)|(scan.mode==5)|(scan.mode==6)|(scan.mode==1);
-        let (next,record)=step(scan,10,flush);scan=next;assert(!record.emitted);
-    }
+    // Always call the constrained scanner; its explicit active input guards EOF.
+    let flush=last & ((scan.mode==4)|(scan.mode==5)|(scan.mode==6)|(scan.mode==1));
+    let (next,record)=step(scan,10,flush);scan=next;assert(!record.emitted);
     s=save_scan(s,scan);
     assert(s.depth<=s.pos & s.dict<=s.pos & s.raw_len<=s.pos);
     assert(s.strings_len+s.raw_len<=s.pos+2*s.strings);
@@ -305,6 +304,7 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
 }
 
 // Aggregation runs only once per operator slot, after the scan arrays freeze.
+#[no_predicates]
 fn accumulate<let A:u32,let C:u32,let Q:u32,let R:u32>(mut s:LexState<A,C>,record:Record,
     anchors:[Anchor<R>;A],_slots:[Slot;C],plan:Plan<A,C,Q>,anchor_fp:[Field;A],begins:[u32;C+1],ends:[u32;C+1],next_slot:[u32;C+1])->LexState<A,C> {
     for a in 0..A {
