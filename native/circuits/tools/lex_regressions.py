@@ -93,6 +93,66 @@ def run(nargo,module,output):
         for j,w in enumerate(b['lex']):execute(lexroot,f'cid_literal_lex_{j}',w)
         execute(claimroot,'cid_literal_claim',b['claim'])
         execute(predroot,'cid_literal_date',b['pred'])
+        dense=bundle(b'BT /FakeFont 1 Tf (A) Tj (B) Tj ET',[],[])
+        w=dense['lex'][0];assert w['used']==2
+        execute(lexroot,'operator_slots_control',w)
+        def omit(x):x['used']=1;x['positions'][1]=0
+        lex_attack('rejects_omitted_end_position',w,omit)
+        lex_attack('rejects_non_end_position',w,lambda x:x['positions'].__setitem__(0,0))
+        lex_attack('rejects_duplicate_end_position',w,lambda x:x['positions'].__setitem__(1,x['positions'][0]))
+        def reverse(x):x['positions'][:2]=x['positions'][:2][::-1]
+        lex_attack('rejects_decreasing_end_positions',w,reverse)
+        lex_attack('rejects_nonzero_unused_position',w,lambda x:x['positions'].__setitem__(2,1))
+        claim_attack('rejects_public_slot_start',lambda x:x.__setitem__('start',1))
+        claim_attack('rejects_public_slot_count',lambda x:x.__setitem__('count',3))
+        w=deepcopy(control['pred']);w['cg']+=1;execute(predroot,'rejects_predicate_result_commitment',w,True)
+        # The same multi-string operator serves as two anchors with ordinal 1/2.
+        multi=b'BT /FakeFont 1 Tf [(FAKE)( ANCHOR)] TJ ET\n'
+        b=bundle(multi+text(b'2020-01-02')+multi,[0,2],[(0,1)])
+        for j,x in enumerate(b['lex']):execute(lexroot,f'multi_string_anchor_{j}',x)
+        execute(claimroot,'multi_string_anchor_claim',b['claim'])
+        execute(predroot,'multi_string_anchor_pred',b['pred'])
+        show=b'BT /FakeFont 12 Tf [(2020-01-)(\\7)(1)] TJ ET\n'
+        b=bundle(text(b'FAKE START')+show+text(b'FAKE END'),[0,2],[(0,1)])
+        for j,x in enumerate(b['lex']):execute(lexroot,f'v2_octal_boundary_lex_{j}',x)
+        execute(claimroot,'v2_octal_boundary_claim',b['claim'])
+        w=deepcopy(b['pred']);w['predicates'][0].update(kind=1,cutoff=20200101)
+        execute(predroot,'v2_octal_boundary_date_ge',w)
+        w['predicates'][0]['cutoff']=20200105;execute(predroot,'rejects_cross_string_octal',w,True)
+        from lex_reference import decode_string,record
+        raw=b'BT /FakeFont 1 Tf [<3><1>] TJ ET\n'
+        b=bundle(raw,[],[])
+        for j,x in enumerate(b['lex']):execute(lexroot,f'v2_odd_hex_lex_{j}',x)
+        assert decode_string(b'3',1)+decode_string(b'1',1)==bytes([0x30,0x10])
+        # Reopen all transcript commitments when testing only predicate decoding.
+        # This prevents a stale C_g from masquerading as a decoder rejection.
+        def predicate_record(data,font=None):
+            w=deepcopy(control['pred']);p=w['plan'];p['records'][0]=list(data)+[0]*(128-len(data));p['lengths'][0]=len(data)
+            if font is not None:w['fonts'][0]=font
+            pi=plan_commit(h,w['salt'],p);r=challenge(h,w['cz'],pi,w['anchors'],w['slots'])
+            w['cg']=result_commit(h,w['salt'],dict(values=[fp(bytes(x[:n]),r) for x,n in zip(p['records'],p['lengths'])],lengths=p['lengths']))
+            return w
+        font=deepcopy(control['pred']['fonts'][0]);font['digits']=[65,48,66,67,68,69,70,71,72,73]
+        data=record(b'FakeFont',1,[b'424142412D41302D',b'3',b'1'])
+        w=predicate_record(data,font);execute(predroot,'v2_per_string_odd_hex_date',w)
+        # Build actual odd-length decoded strings without changing v2 lengths.
+        data=record(b'FakeCID',1,[b'00',b'32003000320030002D00300031002D00300032'])
+        w=predicate_record(data);execute(predroot,'rejects_odd_identity_string',w,True)
+        cases=[('literal_continuations',0,[b'2020-0'+bytes([92,13,10])+b'1-0'+bytes([92,10])+b'2']),
+               ('literal_line_endings',0,[b'2020'+bytes([13,10])+b'01'+bytes([13])+b'02']),
+               ('hex_whitespace',1,[b'32 30'+bytes([9])+b'32'+bytes([13,10])+b'30 2d 30 31 2d 30 32'])]
+        for name,kind,parts in cases:
+            w=predicate_record(record(b'FakeFont',kind,parts));execute(predroot,name,w)
+        # Valid 255-string control; change the final four-space string into
+        # three empty strings, preserving byte length and the prior state.
+        content=b'BT /FakeFont 1 Tf ['+b'()'*254+b'(    )] TJ ET'
+        b=bundle(content,[],[])
+        for j,x in enumerate(b['lex']):execute(lexroot,f'string_count_255_{j}',x)
+        start=content.index(b'(    )');segment=start//64
+        assert start%64+6<=64
+        w=deepcopy(b['lex'][segment]);w['plain'][0][start%64:start%64+6]=list(b'()()()')
+        w['cp'][0]=plain_commit(h,w['salt'],segment,bytes(w['plain'][0][:w['lengths'][0]]),64)
+        execute(lexroot,'rejects_more_than_255_strings',w,True)
         bad=deepcopy(control);bad['lex'][1]['lin']+=1
         try:verify_chain(bad,h,64,1)
         except AssertionError:results.append(dict(case='reference_rejects_lex_join',expected='reject',passed=True))

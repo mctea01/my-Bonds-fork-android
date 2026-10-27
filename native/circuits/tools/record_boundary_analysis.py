@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproduce the specified raw-TJ record boundary ambiguity, using fake dates."""
+"""Verify that v2 preserves the formerly ambiguous per-string boundaries."""
 import argparse
 import hashlib
 import json
@@ -10,7 +10,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lex_reference import decode_literal
+from lex_reference import decode_literal,record,decode_record,decode_string
 
 
 def analyze():
@@ -29,9 +29,11 @@ def analyze():
     pdf_hex = b''.join(bytes.fromhex(part + '0') for part in hex_parts)
     record_hex = bytes.fromhex(''.join(hex_parts))
     assert pdf_hex == bytes([0x30, 0x10]) and record_hex == bytes([0x31])
-    return dict(status='design_issue_reproduced', pdf_date=pdf_date,
-                concatenated_record_date=record_date, date_ge_cutoff=20200105,
-                pdf_hex=list(pdf_hex), concatenated_record_hex=list(record_hex))
+    encoded=record(b'FakeFont',0,parts)
+    assert b''.join(decode_string(x,0) for x in decode_record(encoded)[2])==per_string
+    encoded=record(b'FakeFont',1,[b'3',b'1'])
+    assert b''.join(decode_string(x,1) for x in decode_record(encoded)[2])==pdf_hex
+    return dict(status='v2_boundaries_preserved',literal=True,hex=True)
 
 
 def constrained_demo(nargo, module):
@@ -42,21 +44,24 @@ def constrained_demo(nargo, module):
         content = text(b'FAKE START') + show + text(b'FAKE END')
         chain = build(content, h, P=64, A=8, C=4, Q=128, R=64,
                       anchor_ops=[0, 2], ranges=[(0, 1)], T=96, T0=96, N=1024)
-        chain['claim']['predicates'][0].update(kind=1, cutoff=20200105)
+        chain['pred']['predicates'][0].update(kind=1, cutoff=20200101)
         verify_chain(chain, h, 64, 1)
         cache = Path(tempfile.gettempdir()) / ('diw-text-regressions-' + hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])
         lex = package(cache / 'lex', 'lex', P=64, A=8, C=4, Q=128, R=64)
         claim = package(cache / 'claim', 'claim', A=8, C=4, Q=128, R=64)
-        executions = [(lex, witness) for witness in chain['lex']] + [(claim, chain['claim'])]
+        pred=package(cache/'pred','pred',A=8,C=4,Q=128,R=64)
+        executions = [(lex, witness) for witness in chain['lex']] + [(claim, chain['claim']), (pred,chain['pred'])]
         for root, witness in executions:
             write(root / 'Prover.toml', witness)
             result = subprocess.run([nargo, 'execute', '--program-dir', str(root), '--pedantic-solving'],
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if result.returncode:
                 raise RuntimeError('Boundary demonstration execution failed; witness output suppressed')
-        return dict(lexical_segments=len(chain['lex']), claim_executions=1,
-                    circuit_accepts_concatenated_record_predicate=True,
-                    pdf_per_string_predicate=False)
+        chain['pred']['predicates'][0]['cutoff']=20200105
+        write(pred/'Prover.toml',chain['pred'])
+        result=subprocess.run([nargo,'execute','--program-dir',str(pred),'--pedantic-solving'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        assert result.returncode==1 and 'Cannot satisfy constraint' in result.stdout
+        return dict(lexical_segments=len(chain['lex']),claim_executions=1,predicate_accepts=1,predicate_constraint_rejections=1)
     finally:
         h.close()
 

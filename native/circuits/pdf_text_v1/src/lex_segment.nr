@@ -36,101 +36,101 @@ pub fn state_commit<let A:u32,let C:u32>(salt:Field,s:LexState<A,C>)->Field {
 }
 struct ScanState {
     mode:u8,
-    depth:u32,
+    depth:Field,
     escaped:bool,
-    dict:u32,
+    dict:Field,
     array:bool,
     closed:bool,
     bt:bool,
     font:Field,
-    font_len:u32,
+    font_len:Field,
     name:Field,
-    name_len:u32,
+    name_len:Field,
     font_fp:Field,
     font_power:Field,
     name_fp:Field,
     name_power:Field,
-    word:u32,
-    word_len:u32,
+    word:Field,
+    word_len:Field,
     long_word:bool,
     pending:bool,
     kind:u8,
     raw_fp:Field,
     raw_power:Field,
-    raw_len:u32,
+    raw_len:u16,
     strings_fp:Field,
     strings_power:Field,
-    strings_len:u32,
-    strings:u32,
+    strings_len:Field,
+    strings:Field,
     r:Field,
 }
 fn scan_state<let A:u32,let C:u32>(s:LexState<A,C>)->ScanState { ScanState {
     mode:s.mode,
-    depth:s.depth,
+    depth:s.depth as Field,
     escaped:s.escaped,
-    dict:s.dict,
+    dict:s.dict as Field,
     array:s.array,
     closed:s.closed,
     bt:s.bt,
     font:s.font,
-    font_len:s.font_len,
+    font_len:s.font_len as Field,
     name:s.name,
-    name_len:s.name_len,
+    name_len:s.name_len as Field,
     font_fp:s.font_fp,
     font_power:s.font_power,
     name_fp:s.name_fp,
     name_power:s.name_power,
-    word:s.word,
-    word_len:s.word_len,
+    word:s.word as Field,
+    word_len:s.word_len as Field,
     long_word:s.long_word,
     pending:s.pending,
     kind:s.kind,
     raw_fp:s.raw_fp,
     raw_power:s.raw_power,
-    raw_len:s.raw_len,
+    raw_len:s.raw_len as u16,
     strings_fp:s.strings_fp,
     strings_power:s.strings_power,
-    strings_len:s.strings_len,
-    strings:s.strings,
+    strings_len:s.strings_len as Field,
+    strings:s.strings as Field,
     r:s.r,
 } }
 fn save_scan<let A:u32,let C:u32>(mut s:LexState<A,C>,v:ScanState)->LexState<A,C> {
     s.mode=v.mode;
-    s.depth=v.depth;
+    s.depth=v.depth as u32;assert_eq(v.depth,s.depth as Field);
     s.escaped=v.escaped;
-    s.dict=v.dict;
+    s.dict=v.dict as u32;assert_eq(v.dict,s.dict as Field);
     s.array=v.array;
     s.closed=v.closed;
     s.bt=v.bt;
     s.font=v.font;
-    s.font_len=v.font_len;
+    s.font_len=v.font_len as u32;assert_eq(v.font_len,s.font_len as Field);
     s.name=v.name;
-    s.name_len=v.name_len;
+    s.name_len=v.name_len as u32;assert_eq(v.name_len,s.name_len as Field);
     s.font_fp=v.font_fp;
     s.font_power=v.font_power;
     s.name_fp=v.name_fp;
     s.name_power=v.name_power;
-    s.word=v.word;
-    s.word_len=v.word_len;
+    s.word=v.word as u32;assert_eq(v.word,s.word as Field);
+    s.word_len=v.word_len as u32;assert_eq(v.word_len,s.word_len as Field);
     s.long_word=v.long_word;
     s.pending=v.pending;
     s.kind=v.kind;
     s.raw_fp=v.raw_fp;
     s.raw_power=v.raw_power;
-    s.raw_len=v.raw_len;
+    s.raw_len=v.raw_len as u32;
     s.strings_fp=v.strings_fp;
     s.strings_power=v.strings_power;
-    s.strings_len=v.strings_len;
-    s.strings=v.strings;
+    s.strings_len=v.strings_len as u32;assert_eq(v.strings_len,s.strings_len as Field);
+    s.strings=v.strings as u32;assert_eq(v.strings,s.strings as Field);
     s.r=v.r;
 s }
-global CLASSES:[u8;256]=[3,0,0,0,0,0,0,0,0,3,3,0,3,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,2,0,0,2,2,0,4,0,4,4,2,12,12,12,12,12,12,12,12,12,12,0,0,2,0,2,0,0,8,8,8,8,8,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,2,0,0,0,8,8,8,8,8,8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
-struct Record { emitted:bool, fp:Field, power:Field, len:u32, index:u32 }
+global CLASSES:[[bool;4];256]=[[true,true,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[true,true,false,false],[true,true,false,false],[false,false,false,false],[true,true,false,false],[true,true,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[true,true,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,true,false,false],[false,false,false,false],[false,false,false,false],[false,true,false,false],[false,true,false,false],[false,false,false,false],[false,false,true,false],[false,false,false,false],[false,false,true,false],[false,false,true,false],[false,true,false,false],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,true,true],[false,false,false,false],[false,false,false,false],[false,true,false,false],[false,false,false,false],[false,true,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,true,false,false],[false,false,false,false],[false,true,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,true],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false],[false,false,false,false]];
+struct Record { emitted:bool, fp:Field, power:Field, len:Field, index:u32 }
 // Each next-state field is selected independently. Aggregate state never enters
 // this function, and no branch reassigns a complete state structure.
 fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     let cls=CLASSES[b as u32];
-    let white=(cls&1)!=0;let delim=(cls&2)!=0;let numeric=(cls&4)!=0;let hex=(cls&8)!=0;
+    let white=cls[0];let delim=cls[1];let numeric=cls[2];let hex=cls[3];
     let word_end=active & (s.mode==6) & delim;
     let token_end=active & ((s.mode==4)|(s.mode==5)|(s.mode==6)) & delim;
     let w=if s.long_word {0} else {s.word};
@@ -139,11 +139,11 @@ fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     assert(!word_end | (w!=0x4249));
     assert(!word_end | !s.pending | show);
     assert(!word_end | show | (!s.array & !s.closed));
-    assert(!show | (s.bt & (s.font_len>0) & s.pending & !s.array & (s.dict==0)));
+    assert(!show | (s.bt & (s.font_len!=0) & s.pending & !s.array & (s.dict==0)));
     assert(!show | ((w==0x544a)==s.closed));
     assert(!bt | (!s.bt & (s.dict==0)));
     assert(!et | (s.bt & (s.dict==0)));
-    assert(!tf | (s.bt & (s.dict==0) & (s.name_len>0)));
+    assert(!tf | (s.bt & (s.dict==0) & (s.name_len!=0)));
     let prefix=s.font_len as Field*s.font_power+s.font_fp;
     let header=(prefix*s.r+s.kind as Field)*s.r+s.strings as Field;
     let record=Record {emitted:show,fp:if show {header*s.strings_power+s.strings_fp} else {0},
@@ -165,7 +165,7 @@ fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     assert(!begin | ((s.bt|bt) & !et & (s.dict==0) & !closed));
     assert(!begin | !pending | (s.kind==kind));
     assert(!open_dict | (!pending & !s.array));
-    assert(!greater | ((b==62) & (s.dict>0)));
+    assert(!greater | ((b==62) & (s.dict!=0)));
     assert(!array_open | (!s.array & !closed & !pending & (s.dict==0)));
     assert(!array_close | (s.array & (s.dict==0)));
     assert(!name_start | (!pending & !closed));
@@ -176,14 +176,14 @@ fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     let name_byte=active & (m==4);
     let word_byte=active & (m==6);
     let word_start=g & !white & !delim & !numeric;
-    let grow_word=word_byte & (s.word_len<3);
-    assert(!name_byte | (s.name_len<16));
+    let grow_word=word_byte & (s.word_len!=3);
+    assert(!name_byte | (s.name_len!=16));
     let depth_add=literal & !s.escaped & (b==40);
     let depth_sub=literal & !s.escaped & (b==41);
-    assert(!depth_sub | (s.depth>0));
-    s.depth=if start_literal {1} else {s.depth+(depth_add as u32)-(depth_sub as u32)};
-    s.dict=s.dict+(open_dict as u32)-(greater as u32);
-    assert(s.depth<=40960 & s.dict<=40960);
+    assert(!depth_sub | (s.depth!=0));
+    s.depth=if start_literal {1} else {s.depth+(depth_add as Field)-(depth_sub as Field)};
+    s.dict=s.dict+(open_dict as Field)-(greater as Field);
+
     s.escaped=if literal { !s.escaped & (b==92) } else {s.escaped};
     s.array=if array_open {true} else if array_close {false} else {s.array};
     s.closed=if array_close {true} else {closed};
@@ -195,21 +195,22 @@ fn step(mut s:ScanState,b:u8,active:bool)->(ScanState,Record) {
     s.name=if name_start {0} else if name_byte {s.name*256+b as Field} else {s.name};
     s.name_fp=if name_start {0} else if name_byte {s.name_fp*s.r+b as Field} else {s.name_fp};
     s.name_power=if name_start {1} else if name_byte {s.name_power*s.r} else {s.name_power};
-    s.name_len=if name_start {0} else {s.name_len+(name_byte as u32)};
-    s.word=if word_start {b as u32} else if word_end {0} else if grow_word {s.word*256+b as u32} else {s.word};
-    s.word_len=if word_start {1} else if word_end {0} else {s.word_len+(grow_word as u32)};
+    s.name_len=if name_start {0} else {s.name_len+(name_byte as Field)};
+    s.word=if word_start {b as Field} else if word_end {0} else if grow_word {s.word*256+b as Field} else {s.word};
+    s.word_len=if word_start {1} else if word_end {0} else {s.word_len+(grow_word as Field)};
     s.long_word=if word_start|word_end {false} else {s.long_word|(word_byte & !grow_word)};
     s.pending=pending|begin;s.kind=if begin {kind} else if show {0} else {s.kind};
     let string_fp=((s.raw_len/256) as Field*s.r+(s.raw_len%256) as Field)*s.raw_power+s.raw_fp;
     let string_power=s.raw_power*s.r*s.r;
     s.strings_fp=if show {0} else if close {s.strings_fp*string_power+string_fp} else {s.strings_fp};
     s.strings_power=if show {1} else if close {s.strings_power*string_power} else {s.strings_power};
-    s.strings_len=if show {0} else {s.strings_len+if close {s.raw_len+2} else {0}};
-    s.strings=if show {0} else {s.strings+(close as u32)};
-    assert(s.strings<=255 & s.strings_len<=40960+510);
+    s.strings_len=if show {0} else {s.strings_len+if close {s.raw_len as Field+2} else {0}};
+    assert(!close | (s.strings!=255));
+    s.strings=if show {0} else {s.strings+(close as Field)};
+
     s.raw_fp=if close {0} else if take {s.raw_fp*s.r+b as Field} else {s.raw_fp};
     s.raw_power=if close {1} else if take {s.raw_power*s.r} else {s.raw_power};
-    s.raw_len=if close {0} else {s.raw_len+(take as u32)};assert(s.raw_len<=65535);
+    s.raw_len=if close {0} else {s.raw_len+(take as u16)};
     let general_mode=if white|array_open|array_close {0u8} else if b==37 {1} else if start_literal {2}
         else if b==60 {7} else if b==62 {8} else if name_start {4} else if numeric {5} else {6};
     s.mode=if g {general_mode} else if close|open_dict|greater|(active & (m==1) & ((b==10)|(b==13))) {0}
@@ -244,8 +245,13 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
     }
     if first {s.slot=next_slot[0];}
     assert(s.slot<=C & s.field_len<=Q);
+    // These invariants are established at the initial state and preserved by
+    // every byte transition. Checking them at phase boundaries avoids repeated
+    // range comparisons without allowing a larger accepted stream.
+    assert(s.depth<=s.pos & s.dict<=s.pos & s.raw_len<=s.pos);
+    assert(s.strings<=255 & s.strings_len+s.raw_len<=s.pos+2*s.strings);
     let mut scan=scan_state(s);
-    let mut emitted=[false;K*P];let mut fps=[0;K*P];let mut powers=[0;K*P];let mut sizes=[0u32;K*P];
+    let mut emitted=[false;K*P];let mut fps=[0;K*P];let mut powers=[0;K*P];let mut sizes=[0;K*P];
     let mut total=0u32;let mut ended=false;
     for k in 0..K {
         let n=lengths[k];assert(n<=P);
@@ -283,6 +289,8 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
         let (next,record)=step(scan,10,flush);scan=next;assert(!record.emitted);
     }
     s=save_scan(s,scan);
+    assert(s.depth<=s.pos & s.dict<=s.pos & s.raw_len<=s.pos);
+    assert(s.strings_len+s.raw_len<=s.pos+2*s.strings);
     if last {
         assert_eq(s.mode,0); assert(!s.pending & !s.bt & !s.array & !s.closed & (s.dict==0));
         for a in 0..A {
@@ -300,7 +308,7 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
 fn accumulate<let A:u32,let C:u32,let Q:u32,let R:u32>(mut s:LexState<A,C>,record:Record,
     anchors:[Anchor<R>;A],_slots:[Slot;C],plan:Plan<A,C,Q>,anchor_fp:[Field;A],begins:[u32;C+1],ends:[u32;C+1],next_slot:[u32;C+1])->LexState<A,C> {
     for a in 0..A {
-        let equal=(record.fp==anchor_fp[a]) & (record.len==anchors[a].len);
+        let equal=(record.fp==anchor_fp[a]) & (record.len==anchors[a].len as Field);
         let matching=record.emitted & anchors[a].enabled & equal;
         s.counts[a]+=matching as u32;
         if record.emitted & anchors[a].enabled & (record.index==plan.anchor_ops[a]) {
@@ -311,7 +319,8 @@ fn accumulate<let A:u32,let C:u32,let Q:u32,let R:u32>(mut s:LexState<A,C>,recor
     let current=s.slot;
     let inside=record.emitted & (current<C) & (record.index>begins[current]) & (record.index<ends[current]);
     if inside {s.field_fp=s.field_fp*record.power+record.fp;}
-    s.field_len+=if inside {record.len} else {0};assert(s.field_len<=Q);
+    assert_eq(record.len,(record.len as u32) as Field);
+    s.field_len+=if inside {record.len as u32} else {0};assert(s.field_len<=Q);
     let closing=record.emitted & (current<C) & (record.index==ends[current]);
     for c in 0..C {
         if closing & (current==c) {s.values[c]=s.field_fp;s.lengths[c]=s.field_len;}

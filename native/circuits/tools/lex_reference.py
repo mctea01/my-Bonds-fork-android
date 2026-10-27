@@ -15,7 +15,7 @@ MOD=2188824287183927522224640574525727508854836440041603434369820418657580849561
 PRED=int.from_bytes(b'pdf_pred_v1','big')
 LEX=int.from_bytes(b'pdf_lex_seg_v1','big'); CLAIM=int.from_bytes(b'pdf_claim_v1','big')
 FIELD_KEYS.update({'lin','lout','cg','pi','r','raw_fp','raw_power','strings_fp','strings_power'})
-BASE=('pos','mode','depth','escaped','dict','array','closed','bt','font_len','name_len','word','word_len','long_word','pending','kind','raw_fp','raw_power','strings_fp','strings_power','raw_len','ops','pi','r')
+BASE=('pos','mode','depth','escaped','dict','array','closed','bt','font_len','name_len','word','word_len','long_word','pending','kind','raw_fp','raw_power','raw_len','ops','pi','r')
 
 def fp(data,r):
     x=0
@@ -230,7 +230,10 @@ def decode_literal(raw):
     escapes={110:10,114:13,116:9,98:8,102:12}
     while i<len(raw):
         b=raw[i];i+=1
-        if b!=92:out.append(b);continue
+        if b!=92:
+            out.append(10 if b==13 else b)
+            if b==13 and i<len(raw) and raw[i]==10:i+=1
+            continue
         if i==len(raw):raise ValueError('Incomplete literal escape')
         b=raw[i];i+=1
         if 48<=b<=55:

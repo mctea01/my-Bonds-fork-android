@@ -771,3 +771,101 @@ All compiler checks remained enabled in the recorded capacity profiles.
 There is no selected production text K or approved claim split, and no
 complete-chain numeric prove estimate. The draft must stay unqualified until
 the source-boundary design issue and full-size compilation are resolved.
+
+## Round 9: v2 records and separate operator, claim and predicate phases
+
+This section supersedes the Round 8 source-boundary limitation and its proposed
+encodings. Integration design commit `55cdcd8` was merged before implementation.
+Inflate sources and first/general mains are unchanged. No PUBLIC_SPEC, Rust
+witness producer or Kotlin verifier is part of this change.
+
+### Scan and operator completeness
+
+`step` receives only `ScanState`; anchor counters, ordinals, completed claims and
+current claim accumulators are absent from its arguments. Each next-state scalar
+is selected independently. A single immutable 256-entry byte-classification table
+supplies whitespace, delimiter, numeric and hexadecimal flags. Every source byte
+is processed in order, including delimiter reprocessing. Names and font names
+are bounded big-endian integers, with cached fingerprint and power derived from
+the same input transitions. The outer state contains all pending string and
+operator fingerprint components, so neither string boundaries nor partial names
+can disappear at a segment join.
+
+The first phase writes `emitted`, fingerprint, length and power arrays only at
+constant indices `k*P+i`. After that phase those arrays are never written again.
+The second phase reads them at private positions. Every active position is in
+range, points to an emitted event, and is strictly greater than its predecessor.
+The private used count equals the sum of all emitted flags. Therefore the
+selected positions form an ordered subset without duplicates whose cardinality
+is the cardinality of the complete emitted set: it is exactly that set. Omitting,
+repeating, reordering or inventing an event cannot satisfy these constraints.
+Unused positions are zero; their derived fingerprint, power and length are zero.
+There is no separate unconstrained record-content hint.
+
+Operator indices are the incoming operation count plus slot index; the outgoing
+count is bounded by MAX_OPS. Anchor matching checks both fingerprint and record
+length. Aggregation runs once per operator slot. Completed field results are
+written by a constant-index loop with conditional selection, costing O(C) per
+operator slot; private slot indices only read immutable endpoint/next-slot
+projections. No private-index read targets an array subsequently written.
+
+EOF is processed separately and cannot emit a text record: a final show would
+leave BT open, which the final-state checks reject. A valid final ET/name/number
+or comment may be flushed, and all other modes and pending constructs must be
+closed. Thus an extra synthetic source byte is not needed in the operator table.
+
+### v2 serialization and challenge order
+
+The exact byte record is `font_length || font || kind || string_count ||
+(length_be16 || raw_bytes)*`. Count is in 1..255 for any emitted operator.
+Raw bytes remain unchanged. At every string close, its two-byte length is
+prepended algebraically to its raw fingerprint and appended to the operator's
+string accumulator. At show completion, font length/name, kind and string count
+are prepended. The accumulated power is exactly r raised to the record length.
+Anchor A encodes enabled/record_length_be16/record[R], followed by each slot's
+enabled/before_be32/after_be32; R is 96 in production profiles.
+
+This serialization is uniquely parseable: each string has an explicit length,
+and the count determines where the next record begins. Different string
+boundaries therefore yield different byte sequences and different formal
+polynomials (given the length). Evaluation at one Field challenge is not an
+injective function and must not be described as collision-free. Soundness uses
+the specified challenge order: C_z fixes plaintext, Pi fixes candidate record
+bytes and anchor indices, and A fixes public anchors/ranges before
+`r=hash_fields([7,C_z,Pi,A])`. Distinct fixed sequences can agree only at a root
+of a nonzero difference polynomial. The bound includes the adversary's random
+oracle queries/grinding attempts, in addition to commitment collision resistance
+and proof soundness. No claim relies on a freely chosen post-challenge record.
+
+### Per-string decoding and split statement binding
+
+`date` parses each v2 record and resets its escape, octal, hexadecimal nibble and
+Identity-H pair state at every string boundary. It flushes 1-3 digit octal
+escapes modulo 256; handles named/ordinary escaped characters and CR/LF line
+continuations; normalizes unescaped CR and CRLF to LF; ignores PDF hexadecimal
+whitespace; and pads an odd final nibble within that string. Identity-H rejects
+a remaining half-code at that boundary, rather than joining it to the next
+string. Code-to-digit mapping uses the public, uniquely named font table.
+All other codes separate digit groups. Calendar checks require exactly three
+groups, a four-digit positive year, one/two-digit month and day, and a valid
+Gregorian date. Within the Word-like stream and public font-table assumptions,
+this is the same sequence of displayed character codes as PDF per-string
+interpretation; it does not assert visual layout order or implement ToUnicode.
+
+Every claim/predicate main calls the same `bind_plan`: canonical plan opening,
+plan/range validation, Pi and r recomputation, every slot fingerprint, and the
+full interleaved G/length C_g. Claim proofs only SHA-hash their compile-time slot
+interval. Public start/count must equal those constants. Predicate proofs decode
+only the at-most-two publicly selected enabled slots, independently of claim
+splitting. Beta is public in both. The external verifier must require common
+C_z, A/ranges, C_g and beta, contiguous lexical joins, and disjoint complete
+claim-slot coverage.
+
+Specification clarification for Claude: Pi is private in claim/predicate mains
+and committed inside lexical Lambda; it is not a common public input in 3.12.6.
+Consequently literal equality of Pi openings across all proof kinds is not an
+independently checked public equality. Matching candidate text is bound through
+C_g and the transcript-dependent fingerprint argument above. If literal equality
+of Pi (including otherwise irrelevant anchor indices) is required, the design
+must specify a shared public Pi or an equivalent explicit link. This report does
+not silently add a public input or claim that the verifier currently compares Pi.
