@@ -32,6 +32,8 @@ def run(args):
         (root/'Nargo.toml').write_text('[package]\nname="text_regression"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path="library"}\n')
         source=(root/'src/main.nr').read_bytes();args.output.with_suffix('.main.nr').write_bytes(source)
         record['source_sha256']={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(root.rglob('*.nr'))}
+        record['status']='compiling'
+        args.output.write_text(json.dumps(record,indent=2)+'\n')
         measured=measured_limited([args.nargo,'info','--program-dir',str(root),*compile_flags],args.output.with_suffix('.compile.log'),args.seconds,limits,args.rss_limit_gib)
         record['compile']=measured;record['status']=measured['status']
         args.output.write_text(json.dumps(record,indent=2)+'\n')

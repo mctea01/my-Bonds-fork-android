@@ -184,7 +184,7 @@ def decode_record(data):
 
 def operator_capacity(P,K):return 64*((P*K+2047)//2048)
 
-def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,T=352,T0=1024,N=8192):
+def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,T=352,T0=1024,N=8192,claim_slots=None):
     anchor_ops=[] if anchor_ops is None else anchor_ops;ranges=[] if ranges is None else ranges
     # First pass collects exact record bytes, independently of their fingerprints.
     scan=Scanner(0,3,[],[],dict(anchor_ops=[]));
@@ -223,7 +223,16 @@ def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,
     digests=[list(hashlib.sha256(b'diw-zkpdf-claim-v1'+bytes([c])+bytes(salts[c])+plan['lengths'][c].to_bytes(2,'big')+bytes(plan['records'][c])).digest()) if slots[c]['enabled'] else [0]*32 for c in range(C)]
     claim=dict(domain=DOMAIN,circuit=CLAIM,beta=[7]*32,start=0,count=C,cz=cz,anchors=anchors,slots=slots,cg=lex[-1]['cg'],digests=digests,salt=salt,plan=plan,claim_salts=salts)
     pred=dict(domain=DOMAIN,circuit=PRED,beta=[7]*32,cz=cz,anchors=anchors,slots=slots,cg=lex[-1]['cg'],fonts=fonts,predicates=predicates,salt=salt,plan=plan)
-    result=dict(inflate=chain,lex=lex,claim=claim,pred=pred);verify_chain(result,h,P,K);return result
+    result=dict(inflate=chain,lex=lex,claim=claim,pred=pred,claims=split_claims(claim,C if claim_slots is None else claim_slots));verify_chain(result,h,P,K);return result
+
+def split_claims(claim,count):
+    capacity=len(claim['slots']);assert 1<=count<=capacity
+    result=[]
+    for start in range(0,capacity,count):
+        x=deepcopy(claim);size=min(count,capacity-start)
+        x.update(start=start,count=size,digests=claim['digests'][start:start+size],claim_salts=claim['claim_salts'][start:start+size])
+        result.append(x)
+    return result
 
 def decode_literal(raw):
     out=bytearray();i=0
@@ -311,6 +320,15 @@ def verify_chain(bundle,h,P,K):
         if slot['enabled']:
             expected=hashlib.sha256(b'diw-zkpdf-claim-v1'+bytes([i])+bytes(claim['claim_salts'][i])+len(exact).to_bytes(2,'big')+bytes(p['records'][i])).digest()
             assert expected==bytes(claim['digests'][i])
+    coverage=0
+    for part in bundle['claims']:
+        for key in ('cz','anchors','slots','cg','beta','plan','salt'):assert part[key]==claim[key]
+        start,count=part['start'],part['count']
+        assert start==coverage and 0<count<=len(c)-start
+        assert part['digests']==claim['digests'][start:start+count]
+        assert part['claim_salts']==claim['claim_salts'][start:start+count]
+        coverage+=count
+    assert coverage==len(c)
     statement=bundle['pred']
     for key in ('cz','anchors','slots','cg','beta','plan','salt'):assert statement[key]==claim[key]
     for pred in statement['predicates']:
@@ -328,12 +346,12 @@ def package(path,kind,P=64,K=1,A=4,C=2,Q=96,R=32,start=0,count=None):
     (path/'src/main.nr').write_text(source);(path/'Nargo.toml').write_text('[package]\nname="text_regression"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path='+json.dumps(str(ROOT/'pdf_text_v1'))+'}\n');return path
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--bb-js',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--plain',type=int,default=2048);parser.add_argument('--k',type=int,default=1);parser.add_argument('--style',choices=['word','table'],default='word');args=parser.parse_args();h=Poseidon(args.bb_js)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--bb-js',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--plain',type=int,default=2048);parser.add_argument('--k',type=int,default=1);parser.add_argument('--claim-slots',type=int,default=12);parser.add_argument('--style',choices=['word','table'],default='word');args=parser.parse_args();h=Poseidon(args.bb_js)
     try:
-        content,anchors,ranges=synthetic(args.style);bundle=build(content,h,args.plain,args.k,anchor_ops=anchors,ranges=ranges)
+        content,anchors,ranges=synthetic(args.style);bundle=build(content,h,args.plain,args.k,anchor_ops=anchors,ranges=ranges,claim_slots=args.claim_slots)
         for name in ('inflate','lex'):
             for i,x in enumerate(bundle[name]):write(args.output/f'{name}-{i:03}'/'Prover.toml',x)
-        write(args.output/'claim-000'/'Prover.toml',bundle['claim'])
+        for i,part in enumerate(bundle['claims']):write(args.output/f'claim-{i:03}'/'Prover.toml',part)
         write(args.output/'pred-000'/'Prover.toml',bundle['pred'])
         print('Synthetic inflate/lex/claim/pred chain verified; witnesses written')
     finally:h.close()

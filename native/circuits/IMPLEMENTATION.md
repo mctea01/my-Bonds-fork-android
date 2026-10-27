@@ -869,3 +869,41 @@ C_g and the transcript-dependent fingerprint argument above. If literal equality
 of Pi (including otherwise irrelevant anchor indices) is required, the design
 must specify a shared public Pi or an equivalent explicit link. This report does
 not silently add a public input or claim that the verifier currently compares Pi.
+
+### Bounded scanner arithmetic
+
+The scalar scan counters for depth, dictionary depth, name/font lengths, word
+length/value, completed-string count and completed-string byte length use Field
+arithmetic internally. The committed ABI remains u32, and every Field-to-u32
+state write asserts the reverse conversion equals the original Field. Raw
+string length uses checked u16 arithmetic; the incoming bound below ensures its
+conversion from u32 cannot truncate. Each emitted record length is likewise
+checked before its conversion for claim-length arithmetic.
+
+At both scan phase boundaries the circuit checks depth <= pos, dict <= pos,
+raw_len <= pos, and strings_len + raw_len <= pos + 2*strings; incoming strings
+are at most 255. The initial state satisfies these invariants. Each consumed
+raw byte increases the last inequality's left side by one; a close moves raw
+bytes into the completed-string prefix and adds two length bytes while also
+incrementing strings. Resetting an operator decreases the left side to zero.
+Depth and dictionary decrements require a nonzero counter. Names reset to zero
+and cannot append at length 16; word buffers saturate at length 3 and set the
+long-word flag. A close cannot increment a count already equal to 255.
+Induction from the initial state therefore bounds all these intermediate values
+by the consumed-byte count (at most 40960), plus at most 510 length-prefix bytes.
+The word integer is at most 24 bits and packed names at most 128 bits. None can
+wrap the BN254 Field. These bounds justify checking redundant length/depth
+limits at phase boundaries; no accepted complete stream gains a larger limit.
+No unconstrained range or arithmetic helper is used.
+
+The first u32 scan draft measured about 585 gates/byte. Returning four booleans
+from each byte-class entry avoids four u8 bitwise operations, and the bounded
+scalar representation further reduces the measured slope to about 420
+(gate counts 137585/164514/218276 at P=64/128/256 with 64 operator slots).
+This still exceeds the 200-300 target. The remaining per-byte work is the mode
+and Word-rule transition, checked raw-length and escape/depth tracking,
+name/word accumulation, per-string and record fingerprints, and the four
+constant-index output arrays. Anchor/field work is no longer inside that loop.
+The approximately 111k fixed cost includes the 64 operator slots and complete
+plan/anchor transcript commitments. Full-size measurements, rather than this
+linear estimate, determine eligibility.

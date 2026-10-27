@@ -1,0 +1,21 @@
+{
+  "integration_commit": "55cdcd8",
+  "circuit_commit": "5673b6907edc430e5e93051790b47d393586eb10",
+  "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
+  "cgroup": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000"
+  },
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "bb": "2.1.9",
+  "gradle": {
+    "status": "BUILD SUCCESSFUL",
+    "seconds": 792,
+    "native_build": "Skipped by existing auto policy; cargo unavailable",
+    "tests": 370,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 31
+  },
+  "timing_scope": "Cloud 2-vCPU measurements, with overlap during initial slope and claim runs; not physical-phone measurements"
+}

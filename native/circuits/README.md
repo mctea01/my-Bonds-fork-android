@@ -205,7 +205,7 @@ checks and a B=3 mixed-block profile. A B=1 profile is intended for the single
 block sample, not for arbitrary many-block streams.
 
 
-## Round 8 first, lexical and claim segments
+## Round 9 v2 text records and split claims/predicates
 
 The current phone general main is P=2048/T=352/B=1/N=8192/W=16. Index zero
 uses `pdf_inflate_seg0_v1` with T0=1024 and no history; the general circuit
@@ -220,15 +220,20 @@ python3 -I tools/regressions.py --lex-claims --nargo /path/to/nargo --bb-js /pat
 python3 -I tools/record_boundary_analysis.py --nargo /path/to/nargo --bb-js /path/to/bb.js/dest/node/index.js
 ```
 
-The first two commands generate each inflate, lexical and claim Prover.toml
-and validate the synthetic chain outside the circuit. The regression command
-uses smaller explicitly compiled capacities to test boundaries and constraints.
-The final command demonstrates the known TJ string-boundary design issue,
-including constrained acceptance of the concatenated-record date when the
-PDF per-string date predicate is false. It is not a passing rejection test.
+The first two commands generate each inflate, lexical, claim and predicate
+Prover.toml and validate the synthetic chain outside the circuit. Add
+`--claim-slots N` to generate disjoint claim ranges; compile each range with its
+matching SLOT_START/SLOT_COUNT. `--lex-claims` retains the previous round's
+cases and exercises v2 boundaries, operator-list completeness, split claims and
+predicate-only attacks. A negative case passes only on an ACIR constraint
+failure. The boundary-analysis command now verifies that v2 preserves PDF
+per-string octal and odd-hex decoding and rejects the former false predicate.
 
-`compile_profile.py --text-profile lex --k 1 --plain 2048` (also K=2/4) and
-`--text-profile claim --slot-count 12` use the production-sized text capacities.
-Add the same pinned tool/proof flags as above. See the benchmark report for
-timeout/RSS-guard results; no production lexical K or claim split is selected.
-No operator-position hint table or unconstrained acceptance path is used.
+`compile_profile.py --text-profile lex --k 1 --plain 2048` (also K=2/4),
+`--text-profile claim --slot-count 12`, and `--text-profile pred` use the full
+text capacities A=16/C=12/Q=384/R=96. Add the pinned tool/proof flags and
+`--bounded-codegen` used in the Round 9 profiles. Gate counts, timing, memory,
+selected capacities and unavailable measurements are recorded in the benchmark
+report. Each operator-position list is checked against immutable scanner output;
+there is no unconstrained acceptance helper. Inflate and lex must use identical
+plaintext segment sizes, since C_p commits to the capacity-padded segment.

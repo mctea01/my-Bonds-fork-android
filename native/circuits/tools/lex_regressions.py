@@ -35,6 +35,10 @@ def run(nargo,module,output):
             for j,w in enumerate(b['lex']):execute(lexroot,f'{style}_lex_{j}',w)
             execute(claimroot,f'{style}_claim',b['claim'])
             execute(predroot,f'{style}_pred',b['pred'])
+            if style=='table':
+                two=deepcopy(b['pred']);two['predicates'][1].update(enabled=True,slot=1,kind=1,cutoff=20200102)
+                execute(predroot,'two_predicates_control',two)
+                two['predicates'][1]['cutoff']=20200103;execute(predroot,'rejects_second_predicate_cutoff',two,True)
             if style=='word':control=b
         content,a,c=synthetic('word')
         wide=build(content,h,P=64,K=2,A=8,C=4,Q=128,R=64,anchor_ops=a,ranges=c,T=96,T0=96,N=1024)
@@ -93,10 +97,26 @@ def run(nargo,module,output):
         for j,w in enumerate(b['lex']):execute(lexroot,f'cid_literal_lex_{j}',w)
         execute(claimroot,'cid_literal_claim',b['claim'])
         execute(predroot,'cid_literal_date',b['pred'])
+        from lex_reference import split_claims
+        divided=deepcopy(control);divided['claims']=split_claims(control['claim'],2)
+        verify_chain(divided,h,64,1)
+        for j,part in enumerate(divided['claims']):
+            root=package(cache/f'claim-split-{j}','claim',A=8,C=4,Q=128,R=64,start=part['start'],count=part['count'])
+            execute(root,f'split_claim_{j}',part)
+        broken=deepcopy(divided);broken['claims'][1]['start']=1
+        try:verify_chain(broken,h,64,1)
+        except AssertionError:results.append(dict(case='reference_rejects_claim_coverage',expected='reject',passed=True))
+        else:raise RuntimeError('Reference accepted overlapping claim coverage')
         dense=bundle(b'BT /FakeFont 1 Tf (A) Tj (B) Tj ET',[],[])
         w=dense['lex'][0];assert w['used']==2
         execute(lexroot,'operator_slots_control',w)
-        def omit(x):x['used']=1;x['positions'][1]=0
+        def omit(x):
+            from lex_reference import Scanner,state_commit
+            pi=plan_commit(h,x['salt'],x['plan']);r=challenge(h,x['cz'],pi,x['anchors'],x['slots'])
+            scan=Scanner(pi,r,x['anchors'],x['slots'],x['plan'])
+            for byte in x['plain'][0][:x['lengths'][0]]:scan.step(byte);scan.s['pos']+=1
+            scan.eof();scan.aggregate(scan.records);scan.s['ops']=1
+            x['lout']=state_commit(h,x['salt'],scan.s);x['used']=1;x['positions'][1]=0
         lex_attack('rejects_omitted_end_position',w,omit)
         lex_attack('rejects_non_end_position',w,lambda x:x['positions'].__setitem__(0,0))
         lex_attack('rejects_duplicate_end_position',w,lambda x:x['positions'].__setitem__(1,x['positions'][0]))
