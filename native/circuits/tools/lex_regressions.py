@@ -14,6 +14,7 @@ def run(nargo,module,output):
     cache=Path(tempfile.gettempdir())/('diw-text-regressions-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])
     lexroot=package(cache/'lex','lex',P=64,A=8,C=4,Q=128,R=64)
     claimroot=package(cache/'claim','claim',A=8,C=4,Q=128,R=64)
+    predroot=package(cache/'pred','pred',A=8,C=4,Q=128,R=64)
     infroot=inflate_package(cache/'inflate',64,96,1,1024)
     inf0root=inflate_package(cache/'inflate0',64,96,1,1024,first=True)
     def execute(root,name,w,reject=False):
@@ -33,6 +34,7 @@ def run(nargo,module,output):
             for j,w in enumerate(b['inflate']):execute(inf0root if j==0 else infroot,f'{style}_inflate_{j}',w)
             for j,w in enumerate(b['lex']):execute(lexroot,f'{style}_lex_{j}',w)
             execute(claimroot,f'{style}_claim',b['claim'])
+            execute(predroot,f'{style}_pred',b['pred'])
             if style=='word':control=b
         content,a,c=synthetic('word')
         wide=build(content,h,P=64,K=2,A=8,C=4,Q=128,R=64,anchor_ops=a,ranges=c,T=96,T0=96,N=1024)
@@ -53,6 +55,7 @@ def run(nargo,module,output):
         assert any(w['incoming']['field_len']>0 for w in cross_field['lex'][1:])
         for j,w in enumerate(cross_field['lex']):execute(lexroot,f'cross_field_{j}',w)
         execute(claimroot,'cross_field_claim',cross_field['claim'])
+        execute(predroot,'cross_field_pred',cross_field['pred'])
         # Keep all non-mutated ABI values valid; replace and reopen plaintext so
         # syntax attacks cannot fail merely because C_p was left stale.
         def malformed(name,data):
@@ -79,16 +82,17 @@ def run(nargo,module,output):
             w=deepcopy(control['claim']);mutate(w);execute(claimroot,name,w,True)
         claim_attack('rejects_claim_byte',lambda w:w['plan']['records'][0].__setitem__(20,w['plan']['records'][0][20]^1))
         claim_attack('rejects_changed_plan_anchor',lambda w:w['plan']['anchor_ops'].__setitem__(0,1))
-        claim_attack('rejects_date_cutoff',lambda w:w['predicates'][0].__setitem__('cutoff',20190101))
+        w=deepcopy(control['pred']);w['predicates'][0]['cutoff']=20190101;execute(predroot,'rejects_date_cutoff',w,True)
         claim_attack('rejects_sha_commitment',lambda w:w['digests'][0].__setitem__(0,w['digests'][0][0]^1))
-        w=deepcopy(control['claim']);w['predicates'][0].update(kind=1,cutoff=20190101);execute(claimroot,'date_ge_control',w)
-        w['predicates'][0]['cutoff']=20210101;execute(claimroot,'rejects_date_ge',w,True)
+        w=deepcopy(control['pred']);w['predicates'][0].update(kind=1,cutoff=20190101);execute(predroot,'date_ge_control',w)
+        w['predicates'][0]['cutoff']=20210101;execute(predroot,'rejects_date_ge',w,True)
         # Identity-H literal octal decoding, escaped parentheses as separators.
         raw=b'\\0002\\0000\\0002\\0000\\000\\(\\0000\\0001\\000\\)\\0000\\0002'
         content=text(b'FAKE START')+text(raw,b'FakeCID')+text(b'FAKE END')
         b=bundle(content,[0,2],[(0,1)])
         for j,w in enumerate(b['lex']):execute(lexroot,f'cid_literal_lex_{j}',w)
-        execute(claimroot,'cid_literal_date',b['claim'])
+        execute(claimroot,'cid_literal_claim',b['claim'])
+        execute(predroot,'cid_literal_date',b['pred'])
         bad=deepcopy(control);bad['lex'][1]['lin']+=1
         try:verify_chain(bad,h,64,1)
         except AssertionError:results.append(dict(case='reference_rejects_lex_join',expected='reject',passed=True))

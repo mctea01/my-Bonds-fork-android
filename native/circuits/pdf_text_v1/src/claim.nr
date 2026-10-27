@@ -31,6 +31,7 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
     assert(len<=Q);
     let mut cursor=0u32; let mut stage=0u8; let mut font_len=0u32; let mut name=[0u8;16];
     let mut name_pos=0u32; let mut kind=0u8; let mut remaining=0u32;
+    let mut strings=0u32;
     let mut width=0u8; let mut digits=[0u16;10];
     let mut high=0u16; let mut half=false; let mut hex_high=0u8; let mut hex_half=false;
     let mut escape=0u8; let mut octal=0u32; let mut octal_count=0u32;
@@ -43,7 +44,8 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
                 for j in 0..16 { if j==name_pos { name[j]=b; } } name_pos+=1;
                 if name_pos==font_len { stage=2; }
             } else if stage==2 { assert(b<=1); kind=b; stage=3; }
-            else if stage==3 { remaining=(b as u32)*256; stage=4; }
+            else if stage==3 { strings=b as u32;assert(strings>0);stage=6; }
+            else if stage==6 { remaining=(b as u32)*256; stage=4; }
             else if stage==4 {
                 remaining+=b as u32; assert(remaining<=len-cursor);
                 let mut matched=false;
@@ -52,7 +54,8 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
                         assert(!matched); matched=true; width=fonts[d].width; digits=fonts[d].digits;
                     }
                 }
-                assert(matched); stage=if remaining==0 {0} else {5};
+                assert(matched);assert(strings>0);strings-=1;
+                stage=if remaining==0 {if strings==0 {0} else {6}} else {5};
             } else {
                 assert_eq(stage,5); assert(remaining>0); remaining-=1;
                 let mut out=false; let mut value=0u8;
@@ -96,7 +99,7 @@ pub fn date<let Q:u32,let D:u32>(bytes:[u8;Q],len:u32,fonts:[DigitFont;D])->u32 
                         let byte=if flush_hex {hex_high*16} else {(octal%256) as u8};
                         if first_out {assert(!second_out);second_out=true;second_byte=byte;} else {first_out=true;first_byte=byte;}
                     }
-                    assert(escape!=1);escape=0;hex_half=false;stage=0;
+                    assert(escape!=1);escape=0;hex_half=false;stage=if strings==0 {0} else {6};
                 }
                 // At most two decoded bytes per source byte: a short octal
                 // escape followed by an ordinary byte. Decode each only once.
@@ -131,15 +134,30 @@ pub fn sha_claim<let Q:u32>(slot:u8,salt:[u8;16],bytes:[u8;Q],len:u32)->[u8;32] 
     let mut digest=[0u8;32];
     for i in 0..8 { for j in 0..4 { digest[i*4+j]=(state[i]>>(8*(3-j))) as u8; } } digest
 }
-pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32,let START:u32,let COUNT:u32>(
-    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,digests:[[u8;32];COUNT],fonts:[DigitFont;D],predicates:[Predicate;V],
-    salt:Field,plan:Plan<A,C,Q>,claim_salts:[[u8;16];COUNT]) {
-    assert(START+COUNT<=C & COUNT>0 & C<=256);
+pub fn bind_plan<let A:u32,let C:u32,let Q:u32,let R:u32>(
+    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,salt:Field,plan:Plan<A,C,Q>) {
     check_plan(plan,anchors,slots,512);
     let pi=plan_commit(salt,plan); let r=challenge(cz,pi,anchors,slots);
     let mut values=[0;C];
     for c in 0..C { let (fp,_)=fingerprint(plan.records[c],plan.lengths[c],r); values[c]=fp; }
     assert_eq(results_commit(salt,values,plan.lengths),cg);
+}
+pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let START:u32,let COUNT:u32>(
+    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,digests:[[u8;32];COUNT],
+    salt:Field,plan:Plan<A,C,Q>,claim_salts:[[u8;16];COUNT]) {
+    assert(START+COUNT<=C & COUNT>0 & C<=256);
+    bind_plan(cz,anchors,slots,cg,salt,plan);
+    for j in 0..COUNT {
+        let c=START+j;
+        if slots[c].enabled { assert_eq(sha_claim(c as u8,claim_salts[j],plan.records[c],plan.lengths[c]),digests[j]); }
+        else { assert_eq(digests[j],[0;32]); }
+    }
+}
+pub fn pred<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32>(
+    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,fonts:[DigitFont;D],predicates:[Predicate;V],
+    salt:Field,plan:Plan<A,C,Q>) {
+    assert(V<=2);
+    bind_plan(cz,anchors,slots,cg,salt,plan);
     for d in 0..D {
         let f=fonts[d]; assert(f.len<=16);
         if f.enabled {assert(f.len>0 & ((f.width==1)|(f.width==2)));}
@@ -154,17 +172,12 @@ pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32,let STA
         for e in 0..D { if (d<e)&f.enabled&fonts[e].enabled { assert((f.len!=fonts[e].len)|(f.name!=fonts[e].name)); } }
     }
     for v in 0..V { if predicates[v].enabled { assert(predicates[v].slot<C & predicates[v].kind<=1); assert_eq(predicates[v].format,0); } }
-    for j in 0..COUNT {
-        let c=START+j;
-        if slots[c].enabled { assert_eq(sha_claim(c as u8,claim_salts[j],plan.records[c],plan.lengths[c]),digests[j]); }
-        else { assert_eq(digests[j],[0;32]); }
-    }
     let enabled=slots.map(|s| s.enabled);
     // Select immutable input records once per predicate, rather than duplicating
     // the complete decoder for every possible claim slot.
     for v in 0..V {
         let p=predicates[v];
-        if p.enabled & (p.slot>=START) & (p.slot<START+COUNT) {
+        if p.enabled {
             assert(enabled[p.slot]);
             let value=date(plan.records[p.slot],plan.lengths[p.slot],fonts);
             if p.kind==0 {assert(value<=p.cutoff);} else {assert(value>=p.cutoff);}
@@ -185,36 +198,36 @@ fn test_fonts(width:u8)->[DigitFont;1] {
 
 #[test]
 fn date_ascii() {
-    let bytes:[u8;13]=[1, 70, 0, 0, 8, 50, 48, 50, 48, 45, 49, 45, 50];
-    assert_eq(date(bytes,13,test_fonts(1)),20200102);
+    let bytes:[u8;14]=[1, 70, 0, 1, 0, 8, 50, 48, 50, 48, 45, 49, 45, 50];
+    assert_eq(date(bytes,14,test_fonts(1)),20200102);
 }
 
 #[test]
 fn date_octal() {
-    let bytes:[u8;21]=[1, 70, 0, 0, 16, 50, 48, 50, 48, 92, 48, 53, 53, 48, 49, 92, 48, 53, 53, 48, 50];
-    assert_eq(date(bytes,21,test_fonts(1)),20200102);
+    let bytes:[u8;22]=[1, 70, 0, 1, 0, 16, 50, 48, 50, 48, 92, 48, 53, 53, 48, 49, 92, 48, 53, 53, 48, 50];
+    assert_eq(date(bytes,22,test_fonts(1)),20200102);
 }
 
 #[test]
 fn date_short_octal() {
-    let bytes:[u8;19]=[1, 70, 0, 0, 14, 50, 48, 50, 48, 92, 53, 53, 48, 49, 92, 53, 53, 48, 50];
-    assert_eq(date(bytes,19,test_fonts(1)),20200102);
+    let bytes:[u8;20]=[1, 70, 0, 1, 0, 14, 50, 48, 50, 48, 92, 53, 53, 48, 49, 92, 53, 53, 48, 50];
+    assert_eq(date(bytes,20,test_fonts(1)),20200102);
 }
 
 #[test]
 fn date_identity_hex() {
-    let bytes:[u8;45]=[1, 70, 1, 0, 40, 48, 48, 51, 50, 48, 48, 51, 48, 48, 48, 51, 50, 48, 48, 51, 48, 48, 48, 50, 100, 48, 48, 51, 48, 48, 48, 51, 49, 48, 48, 50, 100, 48, 48, 51, 48, 48, 48, 51, 50];
-    assert_eq(date(bytes,45,test_fonts(2)),20200102);
+    let bytes:[u8;46]=[1, 70, 1, 1, 0, 40, 48, 48, 51, 50, 48, 48, 51, 48, 48, 48, 51, 50, 48, 48, 51, 48, 48, 48, 50, 100, 48, 48, 51, 48, 48, 48, 51, 49, 48, 48, 50, 100, 48, 48, 51, 48, 48, 48, 51, 50];
+    assert_eq(date(bytes,46,test_fonts(2)),20200102);
 }
 
 #[test(should_fail)]
 fn rejects_invalid_calendar_date() {
-    let bytes:[u8;15]=[1, 70, 0, 0, 10, 50, 48, 50, 49, 45, 48, 50, 45, 50, 57];
-    assert_eq(date(bytes,15,test_fonts(1)),20210229);
+    let bytes:[u8;16]=[1, 70, 0, 1, 0, 10, 50, 48, 50, 49, 45, 48, 50, 45, 50, 57];
+    assert_eq(date(bytes,16,test_fonts(1)),20210229);
 }
 
 #[test(should_fail)]
 fn rejects_extra_date_digits() {
-    let bytes:[u8;15]=[1, 70, 0, 0, 10, 50, 48, 50, 48, 45, 49, 45, 50, 32, 51];
-    assert_eq(date(bytes,15,test_fonts(1)),20200102);
+    let bytes:[u8;16]=[1, 70, 0, 1, 0, 10, 50, 48, 50, 48, 45, 49, 45, 50, 32, 51];
+    assert_eq(date(bytes,16,test_fonts(1)),20200102);
 }

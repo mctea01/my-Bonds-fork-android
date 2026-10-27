@@ -130,7 +130,7 @@ def prove_profile(args, root, acir, record, limits):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--bounded-codegen', action='store_true')
-    parser.add_argument('--text-profile', choices=['lex','claim'])
+    parser.add_argument('--text-profile', choices=['lex','claim','pred'])
     parser.add_argument('--k', type=int, default=1)
     parser.add_argument('--slot-count', type=int, default=12)
     parser.add_argument('--nargo', default='nargo')

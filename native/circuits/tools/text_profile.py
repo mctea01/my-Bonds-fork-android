@@ -24,9 +24,9 @@ def run(args):
     compile_flags=['--bounded-codegen'] if args.bounded_codegen else []
     def limits():
         budget=args.address_space_gib*1024**3;resource.setrlimit(resource.RLIMIT_AS,(budget,budget));resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-    record=dict(timeout_seconds=args.seconds,rss_guard_gib=args.rss_limit_gib,address_space_limit_gib=args.address_space_gib,compile_flags=compile_flags,scope=args.text_profile,nargo=version,plain_capacity=args.plain,k=args.k,max_claims=12,max_claim_src=384,slot_start=0,slot_count=args.slot_count,zero_knowledge=True,oracle_hash='poseidon2',prove={})
+    record=dict(timeout_seconds=args.seconds,rss_guard_gib=args.rss_limit_gib,address_space_limit_gib=args.address_space_gib,compile_flags=compile_flags,scope=args.text_profile,nargo=version,plain_capacity=args.plain,k=args.k,max_claims=12,max_claim_src=384,max_anchor_src=96,seg_ops=64*((args.k*args.plain+2047)//2048),slot_start=0,slot_count=args.slot_count,zero_knowledge=True,oracle_hash='poseidon2',prove={})
     with tempfile.TemporaryDirectory(prefix='diw-text-profile-') as tmp:
-        root=package(tmp,args.text_profile,P=args.plain,K=args.k,A=16,C=12,Q=384,R=64,count=args.slot_count)
+        root=package(tmp,args.text_profile,P=args.plain,K=args.k,A=16,C=12,Q=384,R=96,count=args.slot_count)
         # Compile and execute the exact same immutable source snapshot.
         shutil.copytree(ROOT/'pdf_text_v1',root/'library',ignore=shutil.ignore_patterns('target','Prover.toml','__pycache__'))
         (root/'Nargo.toml').write_text('[package]\nname="text_regression"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path="library"}\n')
@@ -46,13 +46,14 @@ def run(args):
         h=Poseidon(args.bb_js)
         try:
             if args.text_profile=='lex':
-                content,a,c=synthetic();content+=b' '*max(0,args.k*args.plain-len(content))
+                content,a,c=synthetic() if args.plain>=2048 else (text(b'FAKE'),[],[])
+                content+=b' '*max(0,args.k*args.plain-len(content))
             else:
                 content=text(b'FAKE BOUNDARY')
                 for _ in range(12):content+=text(b'2020\\05501\\05502')+text(b'FAKE BOUNDARY')
                 a=list(range(0,25,2));c=[(i,i+1) for i in range(12)]
             b=build(content,h,P=args.plain,K=args.k,anchor_ops=a,ranges=c)
-            w=b['lex'][0] if args.text_profile=='lex' else b['claim']
+            w=b['lex'][0] if args.text_profile=='lex' else b[args.text_profile]
             if args.text_profile=='claim':
                 w['count']=args.slot_count;w['digests']=w['digests'][:args.slot_count];w['claim_salts']=w['claim_salts'][:args.slot_count]
             write(root/'Prover.toml',w)
