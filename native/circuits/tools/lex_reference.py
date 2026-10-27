@@ -346,9 +346,14 @@ def package(path,kind,P=64,K=1,A=4,C=2,Q=96,R=32,start=0,count=None):
     (path/'src/main.nr').write_text(source);(path/'Nargo.toml').write_text('[package]\nname="text_regression"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path='+json.dumps(str(ROOT/'pdf_text_v1'))+'}\n');return path
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--bb-js',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--plain',type=int,default=2048);parser.add_argument('--k',type=int,default=1);parser.add_argument('--claim-slots',type=int,default=12);parser.add_argument('--style',choices=['word','table'],default='word');args=parser.parse_args();h=Poseidon(args.bb_js)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--bb-js',type=Path,required=True);parser.add_argument('--output',type=Path,required=True);parser.add_argument('--plain',type=int,default=2048);parser.add_argument('--k',type=int,default=1);parser.add_argument('--claim-slots',type=int,default=12);parser.add_argument('--style',choices=['word','table'],default='word')
+    parser.add_argument('--tokens',type=int,help='General inflate capacity; defaults to 352 (2048 bytes) or 576 (4096 bytes)')
+    parser.add_argument('--tokens0',type=int,help='First inflate capacity; defaults to 1024 (2048 bytes) or 1536 (4096 bytes)')
+    args=parser.parse_args();h=Poseidon(args.bb_js)
     try:
-        content,anchors,ranges=synthetic(args.style);bundle=build(content,h,args.plain,args.k,anchor_ops=anchors,ranges=ranges,claim_slots=args.claim_slots)
+        tokens=args.tokens if args.tokens is not None else (576 if args.plain==4096 else 352)
+        tokens0=args.tokens0 if args.tokens0 is not None else (1536 if args.plain==4096 else 1024)
+        content,anchors,ranges=synthetic(args.style);bundle=build(content,h,args.plain,args.k,anchor_ops=anchors,ranges=ranges,claim_slots=args.claim_slots,T=tokens,T0=tokens0)
         for name in ('inflate','lex'):
             for i,x in enumerate(bundle[name]):write(args.output/f'{name}-{i:03}'/'Prover.toml',x)
         for i,part in enumerate(bundle['claims']):write(args.output/f'claim-{i:03}'/'Prover.toml',part)

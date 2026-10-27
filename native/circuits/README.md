@@ -212,6 +212,7 @@ uses `pdf_inflate_seg0_v1` with T0=1024 and no history; the general circuit
 rejects index zero. The reference CLI now defaults to these capacities.
 For desktop, generate with `--plain 4096 --tokens 576 --tokens0 1536` and
 compile matching first/general main profiles.
+The text-chain CLI selects these token defaults automatically for `--plain 4096`.
 
 ```sh
 python3 -I tools/lex_reference.py --style word --bb-js /path/to/bb.js/dest/node/index.js --output target/text-word
