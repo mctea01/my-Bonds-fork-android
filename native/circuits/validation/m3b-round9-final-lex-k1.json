@@ -1,6 +1,6 @@
 {
   "timeout_seconds": 1800,
-  "rss_guard_gib": 4.0,
+  "rss_guard_gib": 7.0,
   "address_space_limit_gib": 24,
   "compile_flags": [
     "--bounded-codegen"
@@ -19,20 +19,20 @@
   "oracle_hash": "poseidon2",
   "prove": {
     "first": {
-      "seconds": 113.082775502,
+      "seconds": 105.88143120800669,
       "exit_code": 0,
       "status": "completed",
-      "peak_rss_kib": 1802496
+      "peak_rss_kib": 1802452
     },
     "warm": {
-      "seconds": 74.89860737800336,
+      "seconds": 106.00241619499866,
       "exit_code": 0,
       "status": "completed",
-      "peak_rss_kib": 1802140
+      "peak_rss_kib": 1802396
     }
   },
   "source_sha256": {
-    "library/src/claim.nr": "e807d20fd408c38544279b0112ee881dfc9a23170775e905a6896e0b4504636f",
+    "library/src/claim.nr": "bd348a7c687fe14f4b667048cd2388037f893195ab099ac93d5d26cb293cfd5b",
     "library/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
     "library/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
     "library/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
@@ -45,17 +45,17 @@
   },
   "status": "completed",
   "compile": {
-    "seconds": 185.76560712100036,
+    "seconds": 143.46872448400245,
     "exit_code": 0,
     "status": "completed",
-    "peak_rss_kib": 1819648
+    "peak_rss_kib": 1828212
   },
-  "acir_sha256": "93e5170685288e4321180e617bcd22e44cd50034d1a0cdd7497b63a5d8149b34",
+  "acir_sha256": "f09221411545f6255cf6eb680710851b5a2c94e8095e840c511c080bfc123717",
   "gate_measurement": {
-    "seconds": 20.048574108004686,
+    "seconds": 13.049612672999501,
     "exit_code": 0,
     "status": "completed",
-    "peak_rss_kib": 1482572
+    "peak_rss_kib": 1482588
   },
   "gates": {
     "functions": [
@@ -66,18 +66,18 @@
     ]
   },
   "witness": {
-    "seconds": 28.177570393003407,
+    "seconds": 13.856015224002476,
     "exit_code": 0,
     "status": "completed",
-    "peak_rss_kib": 604584
+    "peak_rss_kib": 784416
   },
   "proof_bytes": 16256,
   "public_input_bytes": 52672,
   "vk_sha256": "7438ad6db33133dde4f0763a35f5fbe8984ddc90603c2dbc0bce6b69f0f0dcd0",
   "verify": {
-    "seconds": 0.04018232599628391,
+    "seconds": 0.2767780819995096,
     "exit_code": 0,
     "status": "completed",
-    "peak_rss_kib": 22288
+    "peak_rss_kib": 22412
   }
 }
