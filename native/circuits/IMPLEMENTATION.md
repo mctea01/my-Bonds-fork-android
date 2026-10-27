@@ -899,7 +899,7 @@ No unconstrained range or arithmetic helper is used.
 The first u32 scan draft measured about 585 gates/byte. Returning four booleans
 from each byte-class entry avoids four u8 bitwise operations, and the bounded
 scalar representation further reduces the measured slope to about 420
-(gate counts 137585/164514/218276 at P=64/128/256 with 64 operator slots).
+(gate counts 137498/164427/218189 at P=64/128/256 with 64 operator slots).
 This still exceeds the 200-300 target. The remaining per-byte work is the mode
 and Word-rule transition, checked raw-length and escape/depth tracking,
 name/word accumulation, per-string and record fingerprints, and the four

@@ -1,6 +1,6 @@
 {
   "integration_commit": "55cdcd8",
-  "circuit_commit": "5673b6907edc430e5e93051790b47d393586eb10",
+  "circuit_commit": "3006243d28744ff0cb3aec4f208a4860dfcb3015",
   "cpu_model": "INTEL(R) XEON(R) PLATINUM 8573C",
   "cgroup": {
     "memory.max": "8589934592",
@@ -17,5 +17,5 @@
     "errors": 0,
     "skipped": 31
   },
-  "timing_scope": "Cloud 2-vCPU measurements, with overlap during initial slope and claim runs; not physical-phone measurements"
+  "timing_scope": "Cloud 2-vCPU measurements; most profiles overlap ACIR regression executions or other compilation/proof jobs. K=4 is scheduled alone. Not physical-phone measurements."
 }

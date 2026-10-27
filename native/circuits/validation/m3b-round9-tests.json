@@ -2,6 +2,6 @@
   "command": "nargo test",
   "tests": 85,
   "passed": 85,
-  "source_commit": "5673b6907edc430e5e93051790b47d393586eb10",
+  "source_commit": "3006243d28744ff0cb3aec4f208a4860dfcb3015",
   "scope": "Noir test suite; ACIR execution regressions are reported separately"
 }
