@@ -238,3 +238,12 @@ selected capacities and unavailable measurements are recorded in the benchmark
 report. Each operator-position list is checked against immutable scanner output;
 there is no unconstrained acceptance helper. Inflate and lex must use identical
 plaintext segment sizes, since C_p commits to the capacity-padded segment.
+
+Measured production configurations are phone P=2048/K=1/SEG_OPS=64 and desktop
+P=4096/K=1/SEG_OPS=128, with 12 slots in one claim proof and at most two
+predicates in a separate proof. The requested common-P=2048 comparison also
+measures desktop K=2/SEG_OPS=128; that variant consumes two 2048-byte inflate
+commitments, not one 4096-byte commitment. Generate the desktop main with the
+matching compile-time constants before compiling its verification key. Full
+timings, capacity limits and sample-stream estimates are in
+`docs/research/p4-benchmarks.md` at the repository root.

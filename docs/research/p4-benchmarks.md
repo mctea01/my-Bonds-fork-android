@@ -719,3 +719,149 @@ Case-level results and circuit source hashes are preserved in
 `native/circuits/validation/m3b-round8-tests.json`. The two styles also pass
 standalone `python3 -I tools/lex_reference.py`, generating ignored synthetic
 Prover.toml files and validating the complete inflate-to-lex-to-claim chain.
+
+## WP3a M3b Round 9: v2 records, two-phase lexing and separate predicates
+
+This section supersedes Round 8's unresolved string-boundary issue and text
+capacity results. Integration design commit `55cdcd8` was merged first. Circuit
+sources are at `3006243`; validation JSONs retain exact per-file SHA-256 hashes,
+generated mains, ACIR/VK hashes and process exit status. Inflate code and all
+first/general inflate parameters remain unchanged.
+
+Measurements use pinned Noir 1.0.0-beta.15 (`83245db9`) and bb/bb.js 2.1.9,
+UltraHonk ZK with Poseidon2, on the same cloud 2-vCPU / 8-GiB environment.
+`--bounded-codegen` is used; no constraint or underconstrained safety checks
+are skipped. `#[no_predicates]` delays local constrained-function inlining;
+all such calls are unconditional and carry explicit active guards. See
+IMPLEMENTATION.md for the call discipline and pinned upstream references.
+Most measurements overlap regression executions or other profiling work;
+first/warm differences include scheduler noise. K=4 is run alone with
+RAYON_NUM_THREADS=1 and a 7.6-GiB RSS guard. Its initial default-worker
+compile hit the 7-GiB guard after 425.13 s (7.042 GiB peak); that attempt
+produced no gates or proofs and is preserved among development diagnostics. These are not measurements on physical phones or desktop devices.
+
+All text profiles use 16 anchors, 12 claims, 384 bytes per claim and 96 bytes
+per full v2 anchor record. Predicate capacity is two with four digit fonts.
+The claim fixture enables all 12 slots. The predicate fixture enables one
+predicate; two-active-predicate correctness is separately constraint-tested.
+Times below are seconds; RSS is GiB. First/warm are separate prover processes
+sharing a local CRS cache, not a cold-network setup benchmark. Proof bytes
+exclude public inputs and the verification key.
+
+| Profile | Gates | Compile s / RSS | Prove first / warm s | Prove first / warm RSS | Verify s / RSS | Proof bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| Lex P=64 K=1 O=64 | 137,498 | 19.085 / 0.472 | 26.776 / 25.891 | 0.426 / 0.425 | 0.036 / 0.014 | 16256 |
+| Lex P=128 K=1 O=64 | 164,427 | 10.735 / 0.572 | 15.655 / 17.237 | 0.439 / 0.439 | 0.039 / 0.014 | 16256 |
+| Lex P=256 K=1 O=64 | 218,189 | 16.171 / 0.596 | 21.777 / 23.496 | 0.446 / 0.446 | 0.048 / 0.014 | 16256 |
+| Lex P=2048 K=1 O=64 | 972,366 | 143.469 / 1.744 | 105.881 / 106.002 | 1.719 / 1.719 | 0.277 / 0.021 | 16256 |
+| Lex P=2048 K=2 O=128 | 1,874,016 | 208.866 / 3.403 | 151.007 / 153.105 | 3.432 / 3.432 | 0.045 / 0.034 | 16256 |
+| Lex P=2048 K=4 O=256 | unavailable | N/A / N/A | N/A | N/A | N/A | N/A |
+| Lex P=4096 K=1 O=128 | 1,873,834 | 302.318 / 3.404 | 169.358 / 165.337 | 3.467 / 3.468 | 0.052 / 0.033 | 16256 |
+| Claim start=0 count=12 | 429,943 | 9.577 / 0.436 | 48.870 / 45.953 | 0.865 / 0.866 | 0.054 / 0.014 | 16256 |
+| Predicate capacity=2 | 702,339 | 78.560 / 1.657 | 61.604 / 90.267 | 1.676 / 1.676 | 0.151 / 0.040 | 16256 |
+
+Every completed profile has two successful ZK proofs and an independent bb
+verification. Witness generation is measured separately in each JSON; it is
+not included in the prove columns. Source snapshots and full measurements are
+`native/circuits/validation/m3b-round9-final-*`. Intermediate diagnostics are
+collected in `m3b-round9-development-profiles.json`; interrupted or deliberately
+canceled old-code runs are not treated as compiler capacity failures.
+
+### Cost and selected parameters
+
+At fixed O=64, final P=64/128/256 counts are 137,498 / 164,427 / 218,189.
+The two interval slopes are 420.77 and 420.02 gates/byte; the endpoint fit is
+420.27 gates/byte with approximately 110,601 fixed gates. Claude's previous
+221,093 / 373,124 / 677,070 counts imply approximately 2,375 gates/byte.
+The new scan is about 82.3% cheaper per byte, but misses the 200-300 target.
+Remaining cost is mode and Word-rule transitions, checked raw length,
+escape/depth bookkeeping, name/word values, string/record fingerprints and
+constant-index emitted arrays. Anchor counts, ordinals and claim accumulation
+now run only in operator slots. A boolean-valued 256-entry classification table
+avoids the u8 bitwise-mask overhead. Bounded Field counters preserve the
+committed u32 ABI through exact conversion checks and inductive bounds.
+
+For the requested common SEG_PLAIN=2048 comparison, choose K=1 / O=64 for
+phone and K=2 / O=128 for desktop. K=1 has 972,366 gates (76,210 below 2^20);
+K=2 has 1,874,016 (223,136 below 2^21). K=4 has no completed gate/proof measurement yet: the first run hit its
+RSS guard and the final-source retry is still compiling. These are the largest
+successfully proved K choices so far, not a measured gate-bound exclusion of K=4. Operator capacity is 64 per 2048-byte covered range, exceeding the
+reported sample maxima of 38/2048 and 75/4096 without accepting overflow.
+
+The selected desktop inflate profile produces 4096-byte commitments. Since
+C_p commits to the padded capacity, it cannot directly feed the P=2048 lex
+variant. The compatible measured desktop lex variant is P=4096, K=1, O=128:
+it covers the same 4096 bytes per proof and joins the existing desktop inflate
+chain. Keep this distinction in M3c and profile identifiers; do not mix these
+verification keys or reinterpret C_p.
+
+Both device tiers select all 12 slots in one claim segment, start=0/count=12:
+this is the maximum allowed by MAX_CLAIMS and fits below 2^20. Generic static
+partitions remain supported and tested with two distinct ranges. Every claim
+part recomputes the complete Pi/r/C_g and only hashes its own slots. The
+separate two-predicate circuit also fits below 2^20; omit it when no predicate
+is requested.
+
+### Maximum-stream planning estimate
+
+For the supplied 31,582 plaintext bytes / 232 operators, using the measured
+per-window sample maxima and up to 12 slots / two predicates:
+
+| Tier | Inflate | Lex | Claim | Pred | Total proofs | Estimated warm prove time |
+|---|---:|---:|---:|---:|---:|---:|
+| Phone: P=2048, K=1 | 16 | 16 | 1 | 1 | 34 | 2554.10 s (42.57 min) |
+| Desktop: P=4096, K=1 | 8 | 8 | 1 | 1 | 18 | 2206.64 s (36.78 min) |
+
+These are **estimates**, not full real-document proofs or device benchmarks.
+Phone = 40.1914 + 15 x 45.4436 + 16 x 106.0024 + 45.9525 + 90.2668.
+Desktop = 49.7963 + 7 x 99.7045 + 8 x 165.3371 + 45.9525 + 90.2668.
+The inflate terms are the unchanged Round 8 first/general warm measurements;
+the desktop general run had shared compilation load (Round 7's separate run
+was about 66 s). This is a shared-load planning estimate. It excludes witness
+production, compilation/setup, IO and scheduling. Without predicates subtract
+one proof and 90.2668 s. The alternate desktop P=2048/K=2 chain would need
+16 inflate + 8 lex + 1 claim + 1 predicate = 26 proofs.
+
+### v2 soundness and design clarification
+
+Full v2 anchor records and field records include every string's u16 length.
+Per-string octal, continuation, hexadecimal whitespace/odd nibble and Identity-H
+pair state reset at the authenticated boundary. The two reported boundary
+examples are covered by accepting and constraint-rejecting controls. A record's
+formal polynomial and length encode those boundaries uniquely; evaluating at
+one r is probabilistic, not injective. The soundness statement includes the
+specified C_z/Pi/A-before-r ordering and random-oracle grinding attempts.
+
+Claude clarification: Pi is private in claim/pred and committed inside lexical
+Lambda. The specified public interface has no common public Pi equality.
+Matching candidate text is bound through C_g and transcript-dependent
+fingerprints; literal equality of every Pi opening (including irrelevant
+anchor indices) is not independently checked by the external verifier. If
+literal equality is intended, the design needs public Pi or an equivalent
+explicit link. The implementation follows the current interface and does not
+silently change the specification. No new third-party component was added.
+
+### Validation
+
+* standard: **44/44**, 5 accepts, 39 constraint rejections, 0 reference-only rejections.
+* multiblock: **4/4**, 2 accepts, 2 constraint rejections, 0 reference-only rejections.
+* segments: **54/54**, 36 accepts, 17 constraint rejections, 1 reference-only rejections.
+* lex: **115/115**, 85 accepts, 28 constraint rejections, 2 reference-only rejections.
+* `nargo test`: **85 passed** on the final circuit source.
+* `./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`:
+  **BUILD SUCCESSFUL**, 370 tests, zero failures/errors, 31 skipped. The existing
+  native build policy skipped Rust because cargo is unavailable; no native
+  execution coverage is claimed.
+
+Constraint regressions use pedantic ACIR solving and require the explicit
+constraint-failure diagnostic; parse/compile errors never count as rejections.
+They retain Round 8 cases and add omitted/false/duplicate/decreasing positions,
+nonzero unused positions, more than 255 strings, odd Identity-H strings, public
+slot-range mismatches, predicate C_g mismatch, multi-string anchor matching,
+both date boundaries and two active predicates. Off-circuit chain checks also
+require complete disjoint claim coverage and matching commitments, public
+parameters and beta. Reference-only failures are listed separately.
+
+Only native/circuits and this benchmark document were edited after the initial
+integration merge. PUBLIC_SPEC, Rust witnesses and Kotlin verification remain
+outside this round; PR #21 remains draft.

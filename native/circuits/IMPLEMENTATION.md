@@ -934,3 +934,27 @@ The compiler mechanism was checked against the pinned upstream sources:
 `compiler/noirc_evaluator/src/ssa/mod.rs`, `ssa/opt/preprocess_fns.rs`, and
 `test_programs/execution_success/no_predicates_basic/src/main.nr` at
 `83245db91dcf63420ef4bcbbd85b98f397fee663`. This is not a new dependency.
+
+### Final constrained validation and profile joins
+
+The final circuit source passes 85 Noir tests. ACIR regressions contain 128
+accepting executions and 86 constraint rejections, plus three separately
+identified off-circuit join/coverage rejections. The 115 text cases include
+all operator-position attacks, a 255-string control and excess-string rejection,
+per-string octal/hex boundaries, Identity-H parity, multiple-string anchors,
+two active predicates and disjoint static claim partitions. The omitted-position
+case recomputes its outgoing state with the reduced operator count, so it cannot
+pass the test merely by leaving a stale state commitment. Predicate decoder
+attacks reopen Pi, r and C_g when needed to isolate the decoding requirement.
+Case names, outcomes and source hashes are in validation/m3b-round9-tests.json
+and its referenced result files; parser/compiler failures never count.
+
+The measured phone lexical profile uses P=2048/K=1/O=64. The compatible desktop
+profile uses P=4096/K=1/O=128. In the requested common-P=2048 comparison,
+K=2/O=128 also fits the desktop gate limit, but its two C_p inputs cannot be
+replaced by a single desktop 4096-byte C_p: commit_plain includes the padded
+capacity. External chain validation must select a matching inflate/lex profile.
+Both tiers fit all 12 claim slots in one proof and two predicate selections in
+one separate proof. Generic claim partitions remain constrained by their
+public compile-time start/count and full-plan C_g recomputation. Measurements
+and the estimated total chain cost are in docs/research/p4-benchmarks.md.
