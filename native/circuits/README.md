@@ -1,11 +1,46 @@
 # zkPDF component circuits
 
-This workspace implements SHA-256 aligned-window compression and constrained
-RFC 1950/1951 inflate, including first/general segments, plus draft streaming
-PDF lexical and claim circuits. The final public-input ABI is not frozen.
-Production lexical capacity and PDF per-string date semantics remain unresolved;
-see the Round 8 section of IMPLEMENTATION.md. These are not deployable PDF
-proof assets.
+This workspace implements the seven zkPDF segment kinds: SHA content and opaque,
+first/general inflate, lexical, claim and predicate. The selected phone and
+desktop candidates use the parameters in [PUBLIC_SPEC.md](PUBLIC_SPEC.md), whose
+ABI and S/Lambda field order remain a draft for Claude's review. Round 10 of
+[IMPLEMENTATION.md](IMPLEMENTATION.md) describes the current soundness argument;
+earlier rounds below are historical experiments, not alternative release profiles.
+
+From this directory, run the required circuit and fixture checks:
+
+```sh
+nargo test
+python3 -I tools/regressions.py
+python3 -I tools/regressions.py --multiblock
+python3 -I tools/regressions.py --segments --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/regressions.py --lex-claims --bb-js /path/to/bb.js/dest/node/index.js
+python3 -I tools/regressions.py --sha
+python3 -I tools/pdf_fixture_chain.py
+```
+
+All tools accept `--nargo /path/to/nargo`. The fixture-chain command uses only
+Python's standard library and nargo: its Poseidon2 reference does not require
+bb.js. It reads the five committed fictional M3d PDFs without modifying them,
+emits complete private Prover.toml files under ignored `target/pdf-fixture-chain/`,
+and prints only case outcomes. It is an M3c reference, not Rust or a production
+PDF/CMS verifier. Negative PDF cases require the actual lexical constraint to
+fail; oversize is rejected before witness generation.
+
+After all tests and other compilation have ended, measure the ten distinct
+candidate packages sequentially (four packages are shared between tiers):
+
+```sh
+python3 -I tools/serial_profiles.py --nargo /path/to/nargo --bb /path/to/bb \
+  --crs /path/to/crs --output target/round10-profiles
+```
+
+This invokes `compile_profile.py --formal-tier ... --formal-kind ...`, with
+HARDWARE_CONCURRENCY=2 and RAYON_NUM_THREADS=2, against the actual workspace
+packages. It checks for competing nargo/bb/Java processes, compiles each package
+fresh, and measures independent first/warm ZK provers and verification. Never
+run these measurements concurrently with regression or Gradle jobs. `--resume`
+retains only already verified records whose circuit sources still match.
 
 Use the exact tool versions in `VERSIONS`. The package manifest's compiler
 constraint cannot express the pinned prerelease, so `tools/measure.py` checks
