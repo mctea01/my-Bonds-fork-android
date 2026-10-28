@@ -25,7 +25,7 @@ def run(nargo,output):
         for root in roots.values():
             p=root/'src/main.nr';s=p.read_text().replace('MAX_SHA_BLOCKS:u32=130','MAX_SHA_BLOCKS:u32=3').replace('MAX_SHA_BLOCKS:u32=128','MAX_SHA_BLOCKS:u32=3').replace('MAX_COMPRESSED:u32=8192','MAX_COMPRESSED:u32=128');p.write_text(s)
         for kind in roots:
-            control=fixture(kind,n=62);root=roots[kind]
+            control=fixture(kind,n=60);root=roots[kind]
             results.append(execute(nargo,root,kind+'_control',control))
             def attack(name,mutate,base=control):
                 w=deepcopy(base);mutate(w);results.append(execute(nargo,root,kind+'_'+name,w,True))
@@ -42,7 +42,7 @@ def run(nargo,output):
             attack('rejects_unused_tail',lambda w:w['tail'].__setitem__(2,'0x1'))
             if kind=='content':
                 full=fixture(kind,n=128);results.append(execute(nargo,root,'content_full_capacity',full))
-                clear=fixture(kind,n=62,encrypted=False);results.append(execute(nargo,root,'content_clear_control',clear))
+                clear=fixture(kind,n=60,encrypted=False);results.append(execute(nargo,root,'content_clear_control',clear))
                 attack('rejects_unencrypted_key',lambda w:w.__setitem__('encrypted',False))
                 attack('rejects_key_after_length',lambda w:w['keystream'].__setitem__(2,'0x1'))
                 attack('rejects_noncanonical_last_pack',lambda w:w['keystream'].__setitem__(-1,hex(1<<32)))

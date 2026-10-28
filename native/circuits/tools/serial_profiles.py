@@ -17,7 +17,9 @@ def busy_processes():
     for p in Path('/proc').glob('[0-9]*/comm'):
         try:
             name=p.read_text().strip()
-            if name in ('nargo','bb','java'):names.append(name)
+            if name in ('nargo','bb','java'):
+                status=(p.parent/'status').read_text()
+                if not any(line.startswith('State:') and 'Z (zombie)' in line for line in status.splitlines()):names.append(name)
         except (FileNotFoundError,PermissionError,ProcessLookupError):pass
     return names
 

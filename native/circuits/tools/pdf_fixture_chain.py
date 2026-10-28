@@ -331,7 +331,7 @@ def execute(nargo,root,label,w,reject=False):
         source=(ROOT/'pdf_text_v1/src/lex_segment.nr').read_text().splitlines()
         needle='w!=0x4249' if 'inline-image' in label else '(s.bt|bt)'
         line=next(i+1 for i,s in enumerate(source) if needle in s)
-        constrained=needle in p.stdout or bool(re.search(r'lex_segment\.nr:'+str(line)+r'[:\)]',p.stdout))
+        constrained=bool(re.search(r'lex_segment\.nr:'+str(line)+r'[:\)]',p.stdout))
     if not (constrained if reject else p.returncode==0):raise RuntimeError(label+': unexpected circuit result; diagnostics suppressed')
     print(label+(': constraint rejection' if reject else ': accepted'),flush=True)
     return dict(case=label,outcome='constraint_rejection' if reject else 'accepted')

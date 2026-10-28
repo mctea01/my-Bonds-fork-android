@@ -245,7 +245,9 @@ pending_dist,a,b,stored_end`.
 
 All are u32 except phase/kind u8, final_block bool, table_commitment Field.
 Initial S=(16,0,0,0,0,0,false,0,0,0,1,0,0). First sin is constant zero,
-not commit(initial). stored_end is necessary for mid-stored-block continuation.
+not commit(initial). phase is 0 header, 1 body, 2 done; kind is 0 stored,
+1 fixed Huffman, 2 dynamic Huffman. stored_end is a bit position necessary
+for mid-stored-block continuation.
 
 Lambda (tag 5), 90 Fields, **this order is proposed frozen**:
 
@@ -262,6 +264,8 @@ Field-valued members: pi,r,font,name, all *_fp, all *_power, values[].
 Booleans: escaped,array,closed,bt,long_word,pending. mode/kind are u8; all other
 scalar counters and counts/ordinals/lengths arrays are u32. This is the exact
 `lex_segment.nr::state_commit` order; it includes all four v2 string fields.
+mode is 0 general, 1 comment, 2 literal, 3 hex, 4 name, 5 number, 6 word,
+7 less-than lookahead, 8 greater-than lookahead; kind is 0 literal / 1 hex.
 font/name encode at most 16 bytes as big-endian integers, with separate length.
 First lin=0. Initialization sets fingerprint accumulators to zero and powers to
 one, pi/r to derived values and slot to the first enabled slot (or C).
