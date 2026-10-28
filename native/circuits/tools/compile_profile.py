@@ -129,6 +129,8 @@ def prove_profile(args, root, acir, record, limits):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--formal-tier',choices=['phone','desktop'])
+    parser.add_argument('--formal-kind',choices=['sha_content','sha_opaque','inflate0','inflate','lex','claim','pred'])
     parser.add_argument('--bounded-codegen', action='store_true')
     parser.add_argument('--text-profile', choices=['lex','claim','pred'])
     parser.add_argument('--k', type=int, default=1)
@@ -156,6 +158,11 @@ def main():
         parser.error('Resource budgets must be positive')
     if args.rss_limit_gib is not None and args.rss_limit_gib <= 0:
         parser.error('RSS guard must be positive')
+    if args.formal_tier or args.formal_kind:
+        if not (args.formal_tier and args.formal_kind):parser.error('Both formal tier and kind are required')
+        sys.path.insert(0,str(Path(__file__).resolve().parent))
+        from formal_profile import run
+        raise SystemExit(0 if run(args) else 1)
     if args.text_profile:
         sys.path.insert(0,str(Path(__file__).resolve().parent))
         from text_profile import run

@@ -1,7 +1,7 @@
 # M3a 電路實作報告
 
-本檔保留 M3a 至 Round 6 的歷史報告。最新分段實作、約束與限制以後方
-「Round 7: committed inflate segments」為準；完整 zkPDF 與詞法段尚未完成。
+本檔保留 M3a 至 Round 9 的歷史報告。最新實作、約束與驗證以後方
+「Round 10: SHA segments and fixture composition」為準；公開 ABI 草稿仍待 Claude 審查凍結。
 
 電路：`pdf_text_v1` component library，里程碑 M3a
 基準：`552204f4132839c1a63ac3fe7b3b3ad234dd8862`
@@ -958,3 +958,125 @@ Both tiers fit all 12 claim slots in one proof and two predicate selections in
 one separate proof. Generic claim partitions remain constrained by their
 public compile-time start/count and full-plan C_g recomputation. Measurements
 and the estimated total chain cost are in docs/research/p4-benchmarks.md.
+
+## Round 10: SHA segments and fixture composition
+
+Integration `9810ab7` was merged before the changes. `sha_segment.nr` exposes
+`content` and `opaque` through two public mains in the exact section 3.12.8 order.
+`sha256_window.nr`, inflate, scalar scanning and predicate decoding are unchanged.
+The only lexical constraint change canonicalizes intermediate public outputs;
+claim/predicate `bind_plan` now receives each main's MAX_OPS instead of using a
+literal 512. The selected compositions require that parameter to equal lexical
+MAX_OPS; `formal_profiles.validate` checks that relationship, including a
+mismatched-parameter rejection. A reduced-limit claim/predicate ACIR test rejects
+an otherwise valid plan that exceeds that main's parameter. MAX_OPS is not added
+to the C_g preimage: parameter equality is enforced by the pinned composition,
+not by claiming that distinct upper bounds always produce distinct C_g values.
+
+### SHA soundness and external binding
+
+1. Domain/name constants, unsigned public SHA words, positive block count within
+   B=130/128, and head/tail lengths <64 are constrained. Head+tail is strictly
+   less than 64*blocks before unsigned subtraction. The derived private length
+   n=64*blocks-head_len-tail_len is therefore positive and cannot wrap. Content
+   additionally requires n<=8192; there is no independent private length hint.
+2. The reused window compares every active head/tail byte with its corresponding
+   immutable block byte, requires unused boundary bytes and unused blocks zero,
+   and applies FIPS compression from the exact H_s to H_e. All SHA input words
+   are big-endian encodings of range-constrained u8 bytes. Neither an unchecked
+   midstate transition nor an unconstrained acceptance helper is introduced.
+3. The verifier's V3 calculation fixes H_s from the public signed prefix and
+   connects H_e through the remaining public blocks to the CMS messageDigest.
+   V4 authenticates that digest. V5 obtains the signed revision's exact first
+   page Contents object, generation, xref offset, Length and FlateDecode header.
+   It supplies the corresponding aligned window and public head/tail. These
+   external checks prevent choosing an unrelated signed object or hiding object
+   headers in a private window. Under SHA binding/collision assumptions and
+   proof soundness, the remaining n window bytes are precisely the signed
+   content stream's payload, even when the signature covers an earlier revision.
+4. Public head/tail buffers are pack31 encoded (31+31+1 bytes); the same
+   canonical unpacker produces the exact 63-byte arrays for the window helper.
+   Every public keystream Field is converted to 32 big-endian bytes and all bytes
+   outside its pack31 group width are constrained zero (31 bytes for the first
+   264 groups, 8 for the last). This rejects modular/noncanonical high-byte
+   alternatives. The resulting byte array is constructed entirely with constant
+   indices before use. An unencrypted stream requires every key byte zero;
+   either encryption mode requires every key byte at i>=n zero. At i<n the
+   immutable window byte at head_len+i is XORed with this unique key byte.
+   The resulting z buffer is zero outside n and is passed to the same
+   `commit_bytes(1,salt,z,n)` used by all inflate segments.
+5. Consequently C_z binds the decryption of the exact signed payload, including
+   its actual length and fixed padded capacity. Poseidon2 collision resistance
+   prevents changing z, salt or n between SHA and inflate openings. With V6's
+   independent empty-password RC4 derivation and U validation, a prover cannot
+   choose a different key. In clear mode it cannot use a nonzero key even without
+   V6. A changed head/tail boundary changes public inputs that V3/V5 reconstruct;
+   changing a zero-padded key tail or private length cannot move the XOR boundary.
+6. Opaque has no salt or C_z because it only authenticates its SHA transition.
+   Its stream role and offset still require V2/V3/V5. No encryption claim is made
+   about its private payload. With two windows, order follows signed-message
+   offsets; their aligned block ranges must be disjoint, not merely their payloads.
+
+Private indexing reads only immutable block inputs. `unpack31` writes at
+constant indices; the key/z arrays are never privately read before completion.
+No new no_predicates annotation is introduced, and existing annotated functions
+continue to be called unconditionally with explicit activity arguments.
+
+The selected SHA content capacity is 130 blocks as specified. With n<=8192 and
+head/tail<=63, at most 129 complete active blocks are attainable (130*64-126
+exceeds 8192). The conservative capacity remains unchanged; the synthetic
+capacity benchmark uses n=8192, head=63, tail=1, 129 active blocks inside B=130.
+The compiler still instantiates all 130 compression slots. Opaque exercises all
+128 active blocks. This is a capacity observation, not a relaxed constraint.
+
+### Reference tools and review boundary
+
+`pdf_fixture_chain.py` uses only the Python standard library and nargo. Its
+bounded parser resolves classic/xref-stream revisions, object streams, exact
+stream lengths, first-page resources, WinAnsi and fixture Identity-H bfchar
+CMaps. It authenticates the empty user password for V2/R3 before RC4 stream
+processing. SHA compression is independently calculated by `sha_fixture.py`
+and checked against hashlib/CMS messageDigest; redacted parsing locates the
+same content/QR ranges without using their payloads. The actual compressed
+payload is passed into the existing segment reference; it is never recompressed
+for the signed statement. V2 record decoding chooses separate name and birthday
+slots from the synthetic template labels, with a hidden birthday DATE_LE policy.
+Student digits have width 1; travel digits have width 2 from public CMap codes.
+
+Public-only composition checks compare SHA C_z, inflate state/history links,
+lexical state/C_p coverage, final anchors, slots, C_g, beta and predicate policy.
+They do not compare private Pi openings. Separate reference checks also open
+private advice and validate plaintext, records, claim hashes and calendar dates;
+those stronger test-oracle checks are not presented as external verifier powers.
+Metadata mutation controls reject changed C_z/C_p/beta, missing lexical/SHA
+proof roles and an altered H_e outside the circuit.
+
+The negative fixtures are passed as their real SHA-bound plaintext to the
+lexical ACIR. The tool requires `Cannot satisfy constraint` and the actual
+BI/forbidden-string assertion location, so a stale output commitment cannot be
+counted as a Word-rule rejection. Oversized plaintext is rejected before any
+fixture-specific witness is written, with the actual length and MAX_PLAIN reason.
+Subprocess output is captured and suppressed; only case names and outcomes are
+printed. Generated Prover.toml files and witnesses remain ignored, and the five
+input PDFs and generator sources remain read-only.
+
+The tool does not implement production certificate trust or credential policy.
+V4 remains in existing Kotlin DocumentInspector/tests and V8 is covered by the
+separate serial ZK proof measurements, not by calling nargo alone. The Python PDF
+reader intentionally rejects unsupported features outside the supplied fixture
+profile; it is an M3c reference, not an alternate production parser. Any observed
+Kotlin support differences are reported in the PR rather than fixed here.
+
+`PUBLIC_SPEC.md` proposes the exact existing S/Lambda commitment order and the
+actual seven public/private ABIs for review. It explicitly records the inherited
+one-u8-per-Field public-byte encoding, which needs reconciliation with the
+blanket pack31 sentence in design section 1.1.3. New SHA head/tail and keystream follow the
+specification's pack31 requirement. Pi remains private under Claude's
+section 3.12.6 reasoning; the prior Round 9 request to expose it is superseded.
+
+New reference data: BN254 Poseidon2 constants from Barretenberg v2.1.9,
+Apache-2.0, attributed with the complete license in NOTICE. The Python
+permutation/sponge passes independent bb.js known answers; existing bb.js 2.1.9
+remains an optional MIT development dependency for older regression tools.
+No new application dependency, Rust producer, Kotlin verifier or workflow change
+is included.

@@ -870,3 +870,79 @@ parameters and beta. Reference-only failures are listed separately.
 Only native/circuits and this benchmark document were edited after the initial
 integration merge. PUBLIC_SPEC, Rust witnesses and Kotlin verification remain
 outside this round; PR #21 remains draft.
+
+## Round 10: SHA segments, signed fixture chains and isolated profiles (2026-10-28)
+
+本輪先合併整合分支 `9810ab7`，完成 SHA 內容／opaque 段、兩項 Round 9
+修正，以及 `PUBLIC_SPEC.md` 草稿。兩個 SHA 段重用 `sha256_window`；
+head/tail 與金鑰流以 pack31 公開。內容段在 XOR 後輸出與 inflate 相同
+容量／長度編碼的 C_z。沒有修改 inflate 或最佳化詞法掃描。
+
+### 簽章合成文件的完整約束串接
+
+`python3 -I tools/pdf_fixture_chain.py --nargo /path/to/nargo`（在
+`native/circuits`）只使用標準函式庫與指定的五份 M3d 合成 PDF。文件與
+`tools/zkpdf-testdocs/` 均未修改。工具依簽章涵蓋版本解析 xref／xref
+stream、壓縮物件、頁面、內容與 QR 串流；自己的 SHA-256 compression
+與 hashlib／CMS messageDigest 相符；RC4 V2/R3 以空密碼推導 key 並驗證
+U。遮蔽後再次解析所得的視窗與字型資源相同。
+
+| 文件 | SHA | inflate | 詞法 | 欄位 | 述詞 | 結果 |
+|---|---:|---:|---:|---:|---:|---|
+| student.pdf | 內容 1、opaque 1 | 1 | 1 | 1 | 1 | 全段 nargo execute 接受；姓名揭露與生日述詞；WinAnsi 數字寬度 1 |
+| travel-rc4.pdf | 內容 1 | 1 | 1 | 1 | 1 | 全段接受；RC4、姓名揭露與生日述詞；Identity-H 數字寬度 2 |
+| student-inline-image.pdf | — | — | 1 | — | — | 真實合成內容在 BI 約束位置拒絕 |
+| student-actual-text.pdf | — | — | 1 | — | — | 真實合成內容在禁止字典字串的約束位置拒絕 |
+| student-oversized.pdf | — | — | — | — | — | 產生見證前拒絕：40966 > MAX_PLAIN 40960 |
+
+兩份正向文件各 6／5 個受約束執行；兩份詞法負向額外要求失敗來源位置
+對應 Word 規則，避免將錯誤輸出承諾或編譯失敗當成語法拒絕。兩份正向
+文件各有 6 個電路外負向控制：更改 C_z、C_p、beta，省略 lexical 或
+SHA-content，以及竄改 H_e。公開串接檢查不讀 Pi／S／Lambda 開啟資料；
+另一層參考檢查才重算私密開啟與揭露欄位的 SHA-256 承諾。
+
+這些文件不足一個手機明文段；一般 inflate 段、跨段狀態與 32 KiB 歷史
+由分段回歸另外驗證。工具是 M3c 的參考見證產生器，不是 Rust 實作，
+也不把 nargo 執行稱為 UltraHonk proof 或完整的 CMS 信任驗證。CMS
+簽章／信任維持既有 Kotlin 測試與查驗政策。現有 PdfZkSupport 對這兩份
+文件的內容、RC4、字型與數字結果沒有發現不同；但 PdfTextExtractor.runs
+仍把部分跨字串八進位／奇數 hex 案例拒絕或串接 raw，與 v2 保留字串
+邊界的能力不同，已在 PR 交由 Claude 處理。
+
+### 量測方法與資產界線
+
+固定 Noir 1.0.0-beta.15（noirc `83245db91dcf63420ef4bcbbd85b98f397fee663`）、
+bb 2.1.9、UltraHonk ZK、Poseidon2；不傳 `--disable_zk`。同一 2-vCPU／
+8-GiB cgroup，`HARDWARE_CONCURRENCY=2`、`RAYON_NUM_THREADS=2`。
+完成全部其他編譯、回歸與 Gradle 後，以 `tools/compile_profile.py` 依序
+執行十個不同的正式候選 package。SHA、claim、pred 是兩種等級共用的
+四個電路，不重複計為不同資產。每組重新編譯，依序執行 witness、first
+prove、warm prove、獨立 verify；量測期間不跑其他編譯或回歸。
+
+`tools/serial_profiles.py` 重現完整順序，在每組開始前拒絕仍存在的
+nargo／bb／Java 程序。24 GiB 為 RLIMIT_AS，另設 6 GiB RSS guard；
+實體環境仍是 8 GiB。first/warm 是兩個獨立 prover 程序，使用同一個
+CRS cache，不代表手機冷開機／熱開機。first 若下載 CRS 會包含下載
+時間；每份 JSON 記錄 cache 前後大小。這是主機上的單次觀察值，不是
+實機手機／桌機分布。Proof bytes 不包含公開輸入、VK 或 PDF。
+
+```sh
+cd native/circuits
+python3 -I tools/serial_profiles.py --nargo /path/to/nargo --bb /path/to/bb \
+  --crs /path/to/crs --output target/round10-profiles
+```
+
+或對其中一組直接執行：
+
+```sh
+HARDWARE_CONCURRENCY=2 RAYON_NUM_THREADS=2 python3 -I tools/compile_profile.py \
+  --formal-tier phone --formal-kind sha_content --nargo /path/to/nargo \
+  --bb /path/to/bb --prove --crs /path/to/crs --seconds 1800 \
+  --address-space-gib 24 --rss-limit-gib 6 --output target/phone-sha-content.json
+```
+
+`PUBLIC_SPEC.md` 明列實際公開輸入：SHA content 294、opaque 27、inflate
+first 9、一般段手機 25／電腦 17、lex 1646、claim 2058、pred 1798 Fields。
+既有 text 三種電路的 bytes 逐 byte 佔一個 Field，與第 1.1.3 節的一律
+pack31 文字需由 Claude 在凍結前統一；新 SHA 段遵守 pack31。`VERSIONS`
+的候選資產指紋不等於 Claude 已審查或 Kotlin 已加入釘選清單。

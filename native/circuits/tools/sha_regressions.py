@@ -14,7 +14,7 @@ def fixture(kind='content',capacity=3,n=128,head_len=3,encrypted=True):
     head=bytes(range(head_len));tail=bytes((-(head_len+n))%64)
     data=head+private+tail;state=IV[:]
     for i in range(0,len(data),64):state=compress(state,data[i:i+64])
-    w=dict(domain=DOMAIN,circuit=int.from_bytes(('pdf_sha_'+kind+'_v1').encode(),'big'),mid_in=IV,mid_out=state,blocks=len(data)//64,head_len=len(head),head=list(head)+[0]*(63-len(head)),tail_len=len(tail),tail=list(tail)+[0]*(63-len(tail)),bytes=list(data)+[0]*(capacity*64-len(data)))
+    w=dict(domain=DOMAIN,circuit=int.from_bytes(('pdf_sha_'+kind+'_v1').encode(),'big'),mid_in=IV,mid_out=state,blocks=len(data)//64,head_len=len(head),head=[hex(x) for x in pack31(head+bytes(63-len(head)))],tail_len=len(tail),tail=[hex(x) for x in pack31(tail+bytes(63-len(tail)))],bytes=list(data)+[0]*(capacity*64-len(data)))
     if kind=='content':w.update(encrypted=encrypted,keystream=[hex(x) for x in pack31(key+bytes(128-n))],cz=byte_commit(h,42,z,128),salt=42)
     return w
 
@@ -29,15 +29,17 @@ def run(nargo,output):
             results.append(execute(nargo,root,kind+'_control',control))
             def attack(name,mutate,base=control):
                 w=deepcopy(base);mutate(w);results.append(execute(nargo,root,kind+'_'+name,w,True))
-            attack('rejects_head',lambda w:w['head'].__setitem__(0,w['head'][0]^1))
-            attack('rejects_tail',lambda w:w['tail'].__setitem__(0,1))
+            attack('rejects_head',lambda w:w['head'].__setitem__(0,hex(int(w['head'][0],16)^(1<<240))))
+            attack('rejects_tail',lambda w:w['tail'].__setitem__(0,hex(1<<240)))
             attack('rejects_mid_out',lambda w:w['mid_out'].__setitem__(0,w['mid_out'][0]^1))
             attack('rejects_zero_blocks',lambda w:w.__setitem__('blocks',0))
             attack('rejects_excess_blocks',lambda w:w.__setitem__('blocks',4))
             attack('rejects_zero_private_length',lambda w:w.update(blocks=1,head_len=1,tail_len=63))
             attack('rejects_unused_block',lambda w:w['bytes'].__setitem__(128,1))
-            attack('rejects_unused_head',lambda w:w['head'].__setitem__(62,1))
-            attack('rejects_unused_tail',lambda w:w['tail'].__setitem__(62,1))
+            attack('rejects_head_pack_width',lambda w:w['head'].__setitem__(2,'0x100'))
+            attack('rejects_tail_pack_width',lambda w:w['tail'].__setitem__(0,hex(1<<248)))
+            attack('rejects_unused_head',lambda w:w['head'].__setitem__(2,'0x1'))
+            attack('rejects_unused_tail',lambda w:w['tail'].__setitem__(2,'0x1'))
             if kind=='content':
                 full=fixture(kind,n=128);results.append(execute(nargo,root,'content_full_capacity',full))
                 clear=fixture(kind,n=62,encrypted=False);results.append(execute(nargo,root,'content_clear_control',clear))
@@ -47,5 +49,5 @@ def run(nargo,output):
                 attack('rejects_oversized_pack',lambda w:w['keystream'].__setitem__(0,hex(1<<248)))
                 attack('rejects_wrong_cz',lambda w:w.__setitem__('cz',w['cz']+1))
                 attack('rejects_changed_ciphertext',lambda w:w['bytes'].__setitem__(5,w['bytes'][5]^1))
-                attack('rejects_excess_private_length',lambda w:w.update(head_len=0,head=[0]*63,tail_len=0,tail=[0]*63),full)
+                attack('rejects_excess_private_length',lambda w:w.update(head_len=0,head=["0x0"]*3,tail_len=0,tail=["0x0"]*3),full)
     output.parent.mkdir(parents=True,exist_ok=True);output.write_text(json.dumps(results,indent=2)+'\n')

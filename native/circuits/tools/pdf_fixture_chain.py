@@ -253,13 +253,20 @@ def window(pdf,stream,message,br,kind,h):
     finish=state[:]
     for i in range(left,right,64):finish=compress(finish,message[i:i+64])
     head=message[left:offset];tail=message[offset+end-start:right]
-    w=dict(domain=DOMAIN,circuit=int.from_bytes(('pdf_sha_'+kind+'_v1').encode(),'big'),mid_in=state,mid_out=finish,blocks=blocks,head_len=len(head),head=list(head)+[0]*(63-len(head)),tail_len=len(tail),tail=list(tail)+[0]*(63-len(tail)),bytes=list(message[left:right])+[0]*((limit-blocks)*64))
+    w=dict(domain=DOMAIN,circuit=int.from_bytes(('pdf_sha_'+kind+'_v1').encode(),'big'),mid_in=state,mid_out=finish,blocks=blocks,head_len=len(head),head=[hex(x) for x in pack31(head+bytes(63-len(head)))],tail_len=len(tail),tail=[hex(x) for x in pack31(tail+bytes(63-len(tail)))],bytes=list(message[left:right])+[0]*((limit-blocks)*64))
     if kind=='content':
         n=end-start
         if not 0<n<=8192:raise Unsupported('Compressed stream exceeds MAX_COMPRESSED=8192')
         key=pdf.keystream(stream['ref'],n);z=bytes(x^y for x,y in zip(pdf.data[start:end],key))
         w.update(encrypted=pdf.key is not None,keystream=[hex(x) for x in pack31(key+bytes(8192-n))],cz=byte_commit(h,42,z,8192),salt=42)
     return dict(left=left,right=right,offset=offset,length=end-start,kind=kind,witness=w)
+
+def unpack_public(packed,size):
+    result=bytearray()
+    for i,x in enumerate(packed):
+        width=min(31,size-i*31);value=int(x,16) if isinstance(x,str) else x
+        assert 0<=value<1<<(width*8);result.extend(value.to_bytes(width,'big'))
+    assert len(result)==size;return bytes(result)
 
 def check_sha_chain(message,digest,windows):
     state=IV[:];cursor=0
@@ -269,8 +276,8 @@ def check_sha_chain(message,digest,windows):
         w=entry['witness'];assert state==w['mid_in']
         assert w['blocks']*64==entry['right']-entry['left']
         assert w['head_len']==entry['offset']-entry['left'] and w['tail_len']==entry['right']-entry['offset']-entry['length']
-        assert bytes(w['head'][:w['head_len']])==message[entry['left']:entry['offset']]
-        assert bytes(w['tail'][:w['tail_len']])==message[entry['offset']+entry['length']:entry['right']]
+        assert unpack_public(w['head'],63)[:w['head_len']]==message[entry['left']:entry['offset']]
+        assert unpack_public(w['tail'],63)[:w['tail_len']]==message[entry['offset']+entry['length']:entry['right']]
         state=w['mid_out'];cursor=entry['right']
     padded=message+b'\x80'+bytes((55-len(message))%64)+(len(message)*8).to_bytes(8,'big')
     for i in range(cursor,len(padded),64):state=compress(state,padded[i:i+64])
@@ -310,9 +317,11 @@ def check_public_chain(bundle,windows,expected_anchors,expected_slots,expected_f
     return True
 
 def decode_text(raw,fonts):
-    font,kind,strings=decode_record(raw);width,mapping=fonts[font];data=b''.join(decode_string(x,kind) for x in strings)
-    assert len(data)%width==0
-    return ''.join(mapping[int.from_bytes(data[i:i+width],'big')] for i in range(0,len(data),width))
+    font,kind,strings=decode_record(raw);width,mapping=fonts[font];text=[]
+    for source in strings:
+        data=decode_string(source,kind);assert len(data)%width==0
+        text.extend(mapping[int.from_bytes(data[i:i+width],'big')] for i in range(0,len(data),width))
+    return ''.join(text)
 
 def execute(nargo,root,label,w,reject=False):
     write(root/'Prover.toml',w)
@@ -379,10 +388,13 @@ def main():
         for b in plain:scan.step(b)
         scan.eof();labels=[decode_text(x,fonts) for x in scan.records]
         after='科系' if filename=='student.pdf' else '序號'
-        indices=[labels.index(x) for x in ('姓名','學號' if filename=='student.pdf' else '證件號','出生日期',after)]
+        selected=('姓名','學號' if filename=='student.pdf' else '證件號','出生日期',after)
+        assert all(labels.count(x)==1 for x in selected)
+        indices=[labels.index(x) for x in selected]
         z=bytes(x^y for x,y in zip(pdf.data[stream['start']:stream['end']],pdf.keystream(stream['ref'],stream['end']-stream['start'])))
         digit_fonts=[]
         for name,(width,mapping) in fonts.items():
+            assert all(list(mapping.values()).count(str(i))==1 for i in range(10))
             inv={v:k for k,v in mapping.items()};digit_fonts.append(dict(enabled=True,len=len(name),name=list(name)+[0]*(16-len(name)),width=width,digits=[inv[str(i)] for i in range(10)]))
         digit_fonts += [dict(enabled=False,len=0,name=[0]*16,width=0,digits=[0]*10)]*(4-len(digit_fonts))
         bundle=build(plain,h,anchor_ops=indices,ranges=[(0,1),(2,3)],compressed_data=z,fonts_override=digit_fonts,predicate_slot=1,cutoff=20050101)
