@@ -9,3 +9,5 @@ pub mod text_plan;
 pub mod lex_segment;
 
 pub mod claim;
+
+pub mod sha_segment;
