@@ -17,5 +17,5 @@
     "errors": 0,
     "skipped": 31
   },
-  "timing_scope": "Cloud 2-vCPU measurements; most profiles overlap ACIR regression executions or other compilation/proof jobs. K=4 is scheduled alone. Not physical-phone measurements."
+  "timing_scope": "Cloud 2-vCPU measurements; most profiles overlap ACIR regressions or other profiling. K=4 runs alone with RAYON_NUM_THREADS=1 and a 7.6-GiB guard; its first prove includes a 256-MiB CRS download. Not physical-phone measurements."
 }

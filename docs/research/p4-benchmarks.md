@@ -738,15 +738,18 @@ Most measurements overlap regression executions or other profiling work;
 first/warm differences include scheduler noise. K=4 is run alone with
 RAYON_NUM_THREADS=1 and a 7.6-GiB RSS guard. Its initial default-worker
 compile hit the 7-GiB guard after 425.13 s (7.042 GiB peak); that attempt
-produced no gates or proofs and is preserved among development diagnostics. These are not measurements on physical phones or desktop devices.
+produced no gates or proofs and is preserved among development diagnostics.
+These are not measurements on physical phones or desktop devices.
 
 All text profiles use 16 anchors, 12 claims, 384 bytes per claim and 96 bytes
 per full v2 anchor record. Predicate capacity is two with four digit fonts.
 The claim fixture enables all 12 slots. The predicate fixture enables one
 predicate; two-active-predicate correctness is separately constraint-tested.
 Times below are seconds; RSS is GiB. First/warm are separate prover processes
-sharing a local CRS cache, not a cold-network setup benchmark. Proof bytes
-exclude public inputs and the verification key.
+sharing a local CRS cache. K=4 first prove includes an automatic 256-MiB CRS
+download to extend that cache; its warm prove reuses the downloaded data. The
+other profiles are not cold-network setup benchmarks. Proof bytes exclude
+public inputs and the verification key.
 
 | Profile | Gates | Compile s / RSS | Prove first / warm s | Prove first / warm RSS | Verify s / RSS | Proof bytes |
 |---|---:|---:|---:|---:|---:|---:|
@@ -755,7 +758,7 @@ exclude public inputs and the verification key.
 | Lex P=256 K=1 O=64 | 218,189 | 16.171 / 0.596 | 21.777 / 23.496 | 0.446 / 0.446 | 0.048 / 0.014 | 16256 |
 | Lex P=2048 K=1 O=64 | 972,366 | 143.469 / 1.744 | 105.881 / 106.002 | 1.719 / 1.719 | 0.277 / 0.021 | 16256 |
 | Lex P=2048 K=2 O=128 | 1,874,016 | 208.866 / 3.403 | 151.007 / 153.105 | 3.432 / 3.432 | 0.045 / 0.034 | 16256 |
-| Lex P=2048 K=4 O=256 | unavailable | N/A / N/A | N/A | N/A | N/A | N/A |
+| Lex P=2048 K=4 O=256 | 3,677,278 | 414.670 / 7.513 | 200.288 / 169.179 | 6.839 / 6.838 | 0.047 / 0.070 | 16256 |
 | Lex P=4096 K=1 O=128 | 1,873,834 | 302.318 / 3.404 | 169.358 / 165.337 | 3.467 / 3.468 | 0.052 / 0.033 | 16256 |
 | Claim start=0 count=12 | 429,943 | 9.577 / 0.436 | 48.870 / 45.953 | 0.865 / 0.866 | 0.054 / 0.014 | 16256 |
 | Predicate capacity=2 | 702,339 | 78.560 / 1.657 | 61.604 / 90.267 | 1.676 / 1.676 | 0.151 / 0.040 | 16256 |
@@ -783,9 +786,8 @@ committed u32 ABI through exact conversion checks and inductive bounds.
 
 For the requested common SEG_PLAIN=2048 comparison, choose K=1 / O=64 for
 phone and K=2 / O=128 for desktop. K=1 has 972,366 gates (76,210 below 2^20);
-K=2 has 1,874,016 (223,136 below 2^21). K=4 has no completed gate/proof measurement yet: the first run hit its
-RSS guard and the final-source retry is still compiling. These are the largest
-successfully proved K choices so far, not a measured gate-bound exclusion of K=4. Operator capacity is 64 per 2048-byte covered range, exceeding the
+K=2 has 1,874,016 (223,136 below 2^21). The K=4 result above determines its
+exclusion. Operator capacity is 64 per 2048-byte covered range, exceeding the
 reported sample maxima of 38/2048 and 75/4096 without accepting overflow.
 
 The selected desktop inflate profile produces 4096-byte commitments. Since
@@ -794,6 +796,9 @@ variant. The compatible measured desktop lex variant is P=4096, K=1, O=128:
 it covers the same 4096 bytes per proof and joins the existing desktop inflate
 chain. Keep this distinction in M3c and profile identifiers; do not mix these
 verification keys or reinterpret C_p.
+
+With operator capacity growing by 64 slots per 2048 bytes, the measured full
+K=1/2/4 slope is about 440 gates/covered byte, including aggregation growth.
 
 Both device tiers select all 12 slots in one claim segment, start=0/count=12:
 this is the maximum allowed by MAX_CLAIMS and fits below 2^20. Generic static
@@ -818,7 +823,7 @@ Desktop = 49.7963 + 7 x 99.7045 + 8 x 165.3371 + 45.9525 + 90.2668.
 The inflate terms are the unchanged Round 8 first/general warm measurements;
 the desktop general run had shared compilation load (Round 7's separate run
 was about 66 s). This is a shared-load planning estimate. It excludes witness
-production, compilation/setup, IO and scheduling. Without predicates subtract
+production, circuit compilation and additional preparation/orchestration time. Without predicates subtract
 one proof and 90.2668 s. The alternate desktop P=2048/K=2 chain would need
 16 inflate + 8 lex + 1 claim + 1 predicate = 26 proofs.
 
