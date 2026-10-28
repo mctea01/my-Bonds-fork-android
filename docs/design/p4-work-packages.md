@@ -70,7 +70,7 @@
 | WP0 | 完成：`native/` 工作區、uniffi 綁定、`core/zk`、資產清單與下載、裝置分級 |
 | WP1 | 電腦版量測完成（`docs/research/p4-benchmarks.md`）；實機量測與等級門檻待使用者執行 |
 | WP2 | 完成 |
-| WP3a | M3a 完成；M3b 在 draft PR #21：第六輪完成單一 inflate 的最佳化，量測後改為分段證明（p4-circuits.md 第 3.12 節），第七輪實作 inflate 段並量測段大小 |
+| WP3a | M3a 完成；M3b 在 draft PR #21：分段證明（p4-circuits.md 第 3.12 節），第七至九輪完成 inflate 段、第一段變體、詞法段、欄位段與述詞段；第十輪做 SHA 段、合成文件的端到端測試與 `PUBLIC_SPEC.md` 草稿，之後由 Claude 凍結公開輸入 |
 | WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c 證明器等 M3b 凍結公開輸入後開始 |
 | WP4 | 未開始（等 WP3b）；文件詳情的「產生 zkPDF 證明」與自架主機仍是停用列 |
 | WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
