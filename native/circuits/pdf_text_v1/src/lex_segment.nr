@@ -299,7 +299,10 @@ pub fn lex_segment<let K:u32,let P:u32,let M:u32,let A:u32,let C:u32,let Q:u32,l
         assert_eq(s.slot,C);assert_eq(s.field_fp,0);assert_eq(s.field_len,0);
         for c in 0..C {assert_eq(s.lengths[c],plan.lengths[c]);}
         assert_eq(results_commit(salt,s.values,s.lengths),cg);
-    } else { assert_eq(cg,0); }
+    } else {
+        assert_eq(cg,0);
+        for a in 0..A { assert_eq(anchors[a].ordinal,0); assert_eq(anchors[a].total,0); }
+    }
     assert_eq(state_commit(salt,s),lout);
 }
 

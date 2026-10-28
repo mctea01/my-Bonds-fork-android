@@ -156,8 +156,9 @@ pub fn sha_claim<let Q:u32>(slot:u8,salt:[u8;16],bytes:[u8;Q],len:u32)->[u8;32] 
     for i in 0..8 { for j in 0..4 { digest[i*4+j]=(state[i]>>(8*(3-j))) as u8; } } digest
 }
 pub fn bind_plan<let A:u32,let C:u32,let Q:u32,let R:u32>(
-    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,salt:Field,plan:Plan<A,C,Q>) {
-    check_plan(plan,anchors,slots,512);
+    cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,salt:Field,plan:Plan<A,C,Q>,max_ops:u32) {
+    assert(max_ops>0 & max_ops<=512);
+    check_plan(plan,anchors,slots,max_ops);
     let pi=plan_commit(salt,plan); let r=challenge(cz,pi,anchors,slots);
     let mut values=[0;C];
     for c in 0..C { let (fp,_)=fingerprint(plan.records[c],plan.lengths[c],r); values[c]=fp; }
@@ -165,9 +166,9 @@ pub fn bind_plan<let A:u32,let C:u32,let Q:u32,let R:u32>(
 }
 pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let START:u32,let COUNT:u32>(
     cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,digests:[[u8;32];COUNT],
-    salt:Field,plan:Plan<A,C,Q>,claim_salts:[[u8;16];COUNT]) {
+    salt:Field,plan:Plan<A,C,Q>,claim_salts:[[u8;16];COUNT],max_ops:u32) {
     assert(START+COUNT<=C & COUNT>0 & C<=256);
-    bind_plan(cz,anchors,slots,cg,salt,plan);
+    bind_plan(cz,anchors,slots,cg,salt,plan,max_ops);
     for j in 0..COUNT {
         let c=START+j;
         if slots[c].enabled { assert_eq(sha_claim(c as u8,claim_salts[j],plan.records[c],plan.lengths[c]),digests[j]); }
@@ -177,9 +178,9 @@ pub fn claim<let A:u32,let C:u32,let Q:u32,let R:u32,let START:u32,let COUNT:u32
 #[no_predicates]
 pub fn pred<let A:u32,let C:u32,let Q:u32,let R:u32,let D:u32,let V:u32>(
     cz:Field,anchors:[Anchor<R>;A],slots:[Slot;C],cg:Field,fonts:[DigitFont;D],predicates:[Predicate;V],
-    salt:Field,plan:Plan<A,C,Q>) {
+    salt:Field,plan:Plan<A,C,Q>,max_ops:u32) {
     assert(V<=2);
-    bind_plan(cz,anchors,slots,cg,salt,plan);
+    bind_plan(cz,anchors,slots,cg,salt,plan,max_ops);
     for d in 0..D {
         let f=fonts[d]; assert(f.len<=16);
         if f.enabled {assert(f.len>0 & ((f.width==1)|(f.width==2)));}

@@ -40,6 +40,9 @@ def run(nargo,module,output):
                 execute(predroot,'two_predicates_control',two)
                 two['predicates'][1]['cutoff']=20200103;execute(predroot,'rejects_second_predicate_cutoff',two,True)
             if style=='word':control=b
+        for kind in ('claim','pred'):
+            limited=package(cache/('limited-'+kind),kind,A=8,C=4,Q=128,R=64,M=2)
+            execute(limited,'rejects_'+kind+'_plan_operator_limit',control[kind],True)
         content,a,c=synthetic('word')
         wide=build(content,h,P=64,K=2,A=8,C=4,Q=128,R=64,anchor_ops=a,ranges=c,T=96,T0=96,N=1024)
         wide_root=package(cache/'lex2','lex',P=64,K=2,A=8,C=4,Q=128,R=64)
@@ -73,6 +76,8 @@ def run(nargo,module,output):
         def lex_attack(name,base,mutate):
             w=deepcopy(base);mutate(w);execute(lexroot,name,w,True)
         lex_attack('rejects_wrong_anchor_operator',control['lex'][0],lambda w:w['plan']['anchor_ops'].__setitem__(0,1))
+        lex_attack('rejects_nonfinal_anchor_ordinal',control['lex'][0],lambda w:w['anchors'][0].__setitem__('ordinal',1))
+        lex_attack('rejects_nonfinal_anchor_total',control['lex'][0],lambda w:w['anchors'][0].__setitem__('total',1))
         lex_attack('rejects_anchor_ordinal',control['lex'][-1],lambda w:w['anchors'][0].__setitem__('ordinal',2))
         lex_attack('rejects_anchor_total',control['lex'][-1],lambda w:w['anchors'][0].__setitem__('total',1))
         lex_attack('rejects_plain_commitment',control['lex'][0],lambda w:w['plain'][0].__setitem__(0,w['plain'][0][0]^1))

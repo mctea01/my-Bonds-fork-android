@@ -1,5 +1,6 @@
 use pdf_text_v1::text_plan::{Anchor,Slot,Plan};
 use pdf_text_v1::claim::{claim};
+global MAX_OPS:u32=512;
 global MAX_ANCHORS:u32=16;
 global MAX_CLAIMS:u32=12;
 global MAX_CLAIM_SRC:u32=384;
@@ -16,5 +17,5 @@ fn main(domain:pub Field,circuit:pub Field,beta:pub [u8;32],start:pub u32,count:
     // beta is a statement-binding public input, as required by section 3.1.7.
     let _binding=beta;
     claim::<MAX_ANCHORS,MAX_CLAIMS,MAX_CLAIM_SRC,MAX_ANCHOR_SRC,SLOT_START,SLOT_COUNT>(
-        cz,anchors,slots,cg,digests,salt,plan,claim_salts);
+        cz,anchors,slots,cg,digests,salt,plan,claim_salts,MAX_OPS);
 }

@@ -184,7 +184,7 @@ def decode_record(data):
 
 def operator_capacity(P,K):return 64*((P*K+2047)//2048)
 
-def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,T=352,T0=1024,N=8192,claim_slots=None):
+def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,T=352,T0=1024,N=8192,claim_slots=None,compressed_data=None,fonts_override=None,predicate_slot=0,cutoff=20210101):
     anchor_ops=[] if anchor_ops is None else anchor_ops;ranges=[] if ranges is None else ranges
     # First pass collects exact record bytes, independently of their fingerprints.
     scan=Scanner(0,3,[],[],dict(anchor_ops=[]));
@@ -199,7 +199,7 @@ def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,
     for c,(before,after) in enumerate(ranges):
         data=b''.join(records[anchor_ops[before]+1:anchor_ops[after]]);assert len(data)<=Q
         slots[c]=dict(enabled=True,before=before,after=after);plan['lengths'][c]=len(data);plan['records'][c]=list(data)+[0]*(Q-len(data))
-    chain=segments(compressed(content,zlib.Z_FIXED),h,P,T,1,N,token0_capacity=T0)
+    chain=segments(compressed(content,zlib.Z_FIXED) if compressed_data is None else compressed_data,h,P,T,1,N,token0_capacity=T0)
     cz=chain[0]['cz'];salt=42;pi=plan_commit(h,salt,plan);r=challenge(h,cz,pi,anchors,slots)
     scan=Scanner(pi,r,anchors,slots,plan);lex=[]
     for j,start in enumerate(range(0,len(chain),K)):
@@ -215,10 +215,14 @@ def build(content,h,P=2048,K=1,A=16,C=12,Q=384,R=96,anchor_ops=None,ranges=None,
         scan.aggregate(scan.records[record_start:]);assert len(positions)<=operator_capacity(P,K)
         assert scan.s['lengths']==[min(x,y) for x,y in zip(scan.s['lengths'],plan['lengths'])]
         lex.append(dict(domain=DOMAIN,circuit=LEX,index=j,first=j==0,last=last,cz=cz,lin=0 if j==0 else lex[-1]['lout'],lout=state_commit(h,salt,scan.s),cp=[x['cp'] for x in group]+[0]*(K-len(group)),anchors=deepcopy(anchors),slots=deepcopy(slots),cg=result_commit(h,salt,scan.s) if last else 0,salt=salt,plain=[x['plain'] for x in group]+[[0]*P for _ in range(K-len(group))],lengths=[x['plain_len'] for x in group]+[0]*(K-len(group)),incoming=incoming,plan=deepcopy(plan),used=len(positions),positions=positions+[0]*(operator_capacity(P,K)-len(positions))))
+    for segment in lex:
+        if not segment["last"]:
+            for anchor in segment["anchors"]: anchor.update(ordinal=0,total=0)
     fonts=[]
     for name,width in [(b'FakeFont',1),(b'FakeCID',2)]:fonts.append(dict(enabled=True,len=len(name),name=list(name)+[0]*(16-len(name)),width=width,digits=list(range(48,58))))
     fonts += [dict(enabled=False,len=0,name=[0]*16,width=0,digits=[0]*10) for _ in range(2)]
-    predicates=[dict(enabled=bool(ranges),kind=0,slot=0,format=0,cutoff=20210101),dict(enabled=False,kind=0,slot=0,format=0,cutoff=0)]
+    if fonts_override is not None:fonts=deepcopy(fonts_override)
+    predicates=[dict(enabled=bool(ranges),kind=0,slot=predicate_slot,format=0,cutoff=cutoff),dict(enabled=False,kind=0,slot=0,format=0,cutoff=0)]
     salts=[[c+1]*16 for c in range(C)]
     digests=[list(hashlib.sha256(b'diw-zkpdf-claim-v1'+bytes([c])+bytes(salts[c])+plan['lengths'][c].to_bytes(2,'big')+bytes(plan['records'][c])).digest()) if slots[c]['enabled'] else [0]*32 for c in range(C)]
     claim=dict(domain=DOMAIN,circuit=CLAIM,beta=[7]*32,start=0,count=C,cz=cz,anchors=anchors,slots=slots,cg=lex[-1]['cg'],digests=digests,salt=salt,plan=plan,claim_salts=salts)
@@ -290,7 +294,9 @@ def verify_chain(bundle,h,P,K):
     offset=0
     for j,x in enumerate(lex):
         assert x['index']==j and x['first']==(j==0) and x['last']==(j==len(lex)-1)
-        assert x['cz']==inf[0]['cz']==claim['cz'] and x['anchors']==a and x['slots']==c and x['plan']==p
+        assert x['cz']==inf[0]['cz']==claim['cz'] and [{k:v for k,v in y.items() if k not in ('ordinal','total')} for y in x['anchors']]==[{k:v for k,v in y.items() if k not in ('ordinal','total')} for y in a] and x['slots']==c and x['plan']==p
+        if not x['last']: assert x['cg']==0 and all(y['ordinal']==y['total']==0 for y in x['anchors'])
+        else: assert x['anchors']==a
         assert x['lin']==(0 if j==0 else lex[j-1]['lout'])
         if j:assert state_commit(h,x['salt'],x['incoming'])==x['lin']
         positions=[];record_start=len(scan.records)
@@ -338,10 +344,10 @@ def verify_chain(bundle,h,P,K):
             assert value<=pred['cutoff'] if pred['kind']==0 else value>=pred['cutoff']
     return True
 
-def package(path,kind,P=64,K=1,A=4,C=2,Q=96,R=32,start=0,count=None):
+def package(path,kind,P=64,K=1,A=4,C=2,Q=96,R=32,start=0,count=None,M=512):
     path=Path(path);(path/'src').mkdir(parents=True,exist_ok=True)
     name={'lex':'pdf_lex_seg_v1','claim':'pdf_claim_v1','pred':'pdf_pred_v1'}[kind];source=(ROOT/name/'src/main.nr').read_text()
-    for key,value in dict(SEG_PLAIN=P,K=K,SEG_OPS=operator_capacity(P,K),MAX_ANCHORS=A,MAX_CLAIMS=C,MAX_CLAIM_SRC=Q,MAX_ANCHOR_SRC=R,SLOT_START=start,SLOT_COUNT=C if count is None else count).items():
+    for key,value in dict(MAX_OPS=M,SEG_PLAIN=P,K=K,SEG_OPS=operator_capacity(P,K),MAX_ANCHORS=A,MAX_CLAIMS=C,MAX_CLAIM_SRC=Q,MAX_ANCHOR_SRC=R,SLOT_START=start,SLOT_COUNT=C if count is None else count).items():
         source=re.sub(r'(global '+key+r':u32=)\d+',lambda m:m[1]+str(value),source)
     (path/'src/main.nr').write_text(source);(path/'Nargo.toml').write_text('[package]\nname="text_regression"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path='+json.dumps(str(ROOT/'pdf_text_v1'))+'}\n');return path
 
