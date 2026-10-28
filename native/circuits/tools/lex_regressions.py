@@ -10,6 +10,12 @@ from lex_reference import build,synthetic,text,package,write,plain_commit,verify
 from segment_regressions import package as inflate_package
 
 def run(nargo,module,output):
+    from formal_profiles import validate
+    for tier in ('phone','desktop'):
+        validate(tier)
+        try:validate(tier,{'claim':{'MAX_OPS':511}})
+        except AssertionError:pass
+        else:raise RuntimeError('Composition accepted unequal operator limits')
     h=Poseidon(module);results=[]
     cache=Path(tempfile.gettempdir())/('diw-text-regressions-'+hashlib.sha256(str(ROOT).encode()).hexdigest()[:16])
     lexroot=package(cache/'lex','lex',P=64,A=8,C=4,Q=128,R=64)

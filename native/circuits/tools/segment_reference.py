@@ -196,6 +196,7 @@ def verify_chain(chain,h,P):
 
 FIELD_KEYS={'domain','circuit','cz','sin','sout','cp','salt','table_commitment'}
 def toml(value,key=''):
+    if isinstance(value,str):return json.dumps(value)
     if isinstance(value,bool): return str(value).lower()
     if isinstance(value,dict): return '{ '+', '.join(k+' = '+(json.dumps(hex(v)) if k in {'font','name'} and isinstance(v,int) else toml(v,k)) for k,v in value.items())+' }'
     if isinstance(value,list): return '['+', '.join(toml(x,key) for x in value)+']'
