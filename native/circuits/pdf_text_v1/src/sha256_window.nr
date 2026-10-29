@@ -72,9 +72,19 @@ pub fn sha256_content_window<let B:u32,let N:u32>(
     sha256_window(bytes,blocks,mid_in,mid_out,head,head_len,tail,tail_len,private_len);
     assert(private_len<=N);
     let mut z=[0u8;N];
-    for i in 0..N {
-        if i<private_len { z[i]=bytes[head_len+i]^keystream[i]; }
-        else { assert_eq(keystream[i],0); }
+    // Every read uses one immutable two-block window. Its 64 indices are
+    // shared across all output blocks instead of indexing the full SHA input.
+    for b in 0..((N+63)/64) {
+        let mut window=[0u8;128];
+        for j in 0..128 { if b*64+j<B*64 {window[j]=bytes[b*64+j];} }
+        for j in 0..64 {
+            if b*64+j<N {
+                let i=b*64+j;
+                let decoded=window[head_len+j]^keystream[i];
+                z[i]=if i<private_len {decoded} else {0};
+                if i>=private_len {assert_eq(keystream[i],0);}
+            }
+        }
     }
     crate::commitment::commit_bytes(1,salt,z,private_len)
 }

@@ -996,10 +996,17 @@ not by claiming that distinct upper bounds always produce distinct C_g values.
    content stream's payload, even when the signature covers an earlier revision.
 4. Public head/tail buffers are pack31 encoded (31+31+1 bytes); the same
    canonical unpacker produces the exact 63-byte arrays for the window helper.
-   Every public keystream Field is converted to 32 big-endian bytes and all bytes
-   outside its pack31 group width are constrained zero (31 bytes for the first
-   264 groups, 8 for the last). This rejects modular/noncanonical high-byte
-   alternatives. The resulting byte array is constructed entirely with constant
+   Every packed Field is split at bit 128 using a constrained u128 cast for
+   the low limb and `(packed-low)/2^128` for the high limb. Both limbs are
+   decomposed into 16 bytes. For every canonical Field input the high limb is
+   below 2^126, so witness decomposition remains defined even for bad packs.
+   The high limb's first byte is constrained zero, and unused bytes of a short
+   final group are zero (8-byte final key group, 1-byte final head/tail group).
+   Thus high<2^120 and low<2^128. The enforced recomposition is below 2^248,
+   below the BN254 modulus, and has a unique integer solution without wrapping.
+   This rejects noncanonical high bits by constraints, including Field modulus
+   minus one, rather than treating a witness-decomposition error as rejection.
+   The resulting byte array is constructed entirely with constant
    indices before use. An unencrypted stream requires every key byte zero;
    either encryption mode requires every key byte at i>=n zero. At i<n the
    immutable window byte at head_len+i is XORed with this unique key byte.
@@ -1021,6 +1028,18 @@ Private indexing reads only immutable block inputs. `unpack31` writes at
 constant indices; the key/z arrays are never privately read before completion.
 No new no_predicates annotation is introduced, and existing annotated functions
 continue to be called unconditionally with explicit activity arguments.
+
+Content extraction reads immutable 128-byte windows, one per 64 output bytes.
+Window b is constructed at constant indices from source positions 64*b through
+64*b+127, with zero only past the fixed source capacity, then never written
+again. For output i=64*b+j, the private read at head_len+j is always in range
+because head_len<64 and j<64. It returns source[head_len+i]. If i<n, the SHA
+length equation guarantees head_len+i<B*64, so padding can never replace an
+active payload byte. The same 64 index expressions are shared across windows.
+Inactive z positions and key bytes remain constrained zero; clear mode adds an
+independent all-zero packed-key check. Uniqueness of pack31 makes that check
+equivalent to checking every key byte. No mutable private-indexed array or
+unconstrained selection is introduced.
 
 The selected SHA content capacity is 130 blocks as specified. With n<=8192 and
 head/tail<=63, at most 129 complete active blocks are attainable (130*64-126

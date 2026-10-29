@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 from pdf_fixture_chain import sha_package,execute
-from poseidon_reference import Poseidon
+from poseidon_reference import Poseidon,P
 from segment_reference import ROOT,DOMAIN,pack31,byte_commit
 from sha_fixture import IV,compress
 
@@ -38,10 +38,14 @@ def run(nargo,output):
             attack('rejects_unused_block',lambda w:w['bytes'].__setitem__(128,1))
             attack('rejects_head_pack_width',lambda w:w['head'].__setitem__(2,'0x100'))
             attack('rejects_tail_pack_width',lambda w:w['tail'].__setitem__(0,hex(1<<248)))
+            attack('rejects_max_field_pack',lambda w:w['head'].__setitem__(0,hex(P-1)))
             attack('rejects_unused_head',lambda w:w['head'].__setitem__(2,'0x1'))
             attack('rejects_unused_tail',lambda w:w['tail'].__setitem__(2,'0x1'))
             if kind=='content':
                 full=fixture(kind,n=128);results.append(execute(nargo,root,'content_full_capacity',full))
+                for offset in (0,31,32,63):
+                    results.append(execute(nargo,root,'content_full_head_'+str(offset),fixture(kind,n=128,head_len=offset)))
+                results.append(execute(nargo,root,'content_single_byte_head_63',fixture(kind,n=1,head_len=63)))
                 clear=fixture(kind,n=60,encrypted=False);results.append(execute(nargo,root,'content_clear_control',clear))
                 attack('rejects_unencrypted_key',lambda w:w.__setitem__('encrypted',False))
                 attack('rejects_key_after_length',lambda w:w['keystream'].__setitem__(2,'0x1'))

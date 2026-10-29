@@ -6,9 +6,18 @@ pub fn unpack31<let N:u32>(packed:[Field;(N+30)/31])->[u8;N] {
     let mut bytes=[0u8;N];
     for g in 0..((N+30)/31) {
         let width=if (g+1)*31<=N {31} else {N-g*31};
-        let group=packed[g].to_be_bytes::<32>();
-        for j in 0..32 { if j<32-width {assert_eq(group[j],0);} }
-        for j in 0..31 { if j<width {bytes[g*31+j]=group[32-width+j];} }
+        // Two 128-bit limbs keep decomposition defined for every Field input.
+        // A noncanonical pack fails a constraint, not a witness directive.
+        let low=packed[g] as u128;
+        let high=(packed[g]-(low as Field))/0x100000000000000000000000000000000;
+        let hi=high.to_be_bytes::<16>();
+        let lo=(low as Field).to_be_bytes::<16>();
+        assert_eq(hi[0],0);
+        let mut group=[0u8;31];
+        for j in 0..15 {group[j]=hi[j+1];}
+        for j in 0..16 {group[j+15]=lo[j];}
+        for j in 0..31 { if j<31-width {assert_eq(group[j],0);} }
+        for j in 0..31 { if j<width {bytes[g*31+j]=group[31-width+j];} }
     }
     bytes
 }
@@ -24,7 +33,7 @@ pub fn content<let B:u32,let N:u32>(
     let n=blocks*64-head_len-tail_len;
     assert(n<=N);
     let key=unpack31::<N>(keystream);
-    for i in 0..N { if !encrypted | (i>=n) {assert_eq(key[i],0);} }
+    for i in 0..((N+30)/31) { if !encrypted {assert_eq(keystream[i],0);} }
     assert_eq(sha256_content_window(bytes,blocks,mid_in,mid_out,
         head,head_len,tail,tail_len,n,key,salt),cz);
 }
@@ -45,3 +54,9 @@ fn unpack_short_final_group() {
 }
 #[test(should_fail)]
 fn rejects_noncanonical_final_group() { let _x=unpack31::<33>([0,0x10000]); }
+
+#[test]
+fn unpack_maximum_full_group() {
+    let x=unpack31::<31>([0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff]);
+    for i in 0..31 {assert_eq(x[i],255);}
+}
