@@ -1,9 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests"
+  ],
   "timezone": "Asia/Taipei",
-  "baseBranches": ["main"],
-  "labels": ["dependencies"],
+  "labels": [
+    "dependencies"
+  ],
   "platformAutomerge": true,
   "automergeStrategy": "squash",
   "rebaseWhen": "auto",
@@ -13,20 +17,31 @@
   "packageRules": [
     {
       "description": "Minor, patch and digest updates merge by themselves once CI passes",
-      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
       "automerge": true,
       "minimumReleaseAge": "3 days"
     },
     {
       "description": "Major updates wait for approval on the Dependency Dashboard",
-      "matchUpdateTypes": ["major"],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "dependencyDashboardApproval": true,
       "automerge": false
     },
     {
       "description": "Multipaz and Ktor move together; the wallet carries workarounds for Multipaz",
       "groupName": "multipaz and ktor",
-      "matchPackageNames": ["org.multipaz:**", "io.ktor:**"],
+      "matchPackageNames": [
+        "org.multipaz:**",
+        "io.ktor:**"
+      ],
       "automerge": false
     },
     {
@@ -48,11 +63,14 @@
         "androidx.credentials.registry:**",
         "com.google.android.gms:play-services-identity-credentials"
       ],
-      "automerge": false
+      "automerge": false,
+      "groupName": "credential manager and dc api"
     },
     {
       "description": "xml-apis 2.0.2 is an old relocation artifact, not a newer release",
-      "matchPackageNames": ["xml-apis:xml-apis"],
+      "matchPackageNames": [
+        "xml-apis:xml-apis"
+      ],
       "enabled": false
     }
   ]
