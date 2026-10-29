@@ -89,6 +89,16 @@ object CredentialDetails {
         return listOfNotNull(if (ownProtocol) null else "OpenID4VCI 1.0") + recorded
     }
 
+    fun clientAuthName(method: String): String = when (method) {
+        "attest_jwt_client_auth" -> "錢包證明（attest_jwt_client_auth）"
+        "private_key_jwt" -> "用戶端金鑰簽章（private_key_jwt）"
+        "none" -> "公開用戶端（只送 client_id）"
+        else -> method
+    }
+
+    fun tokenTypeName(type: String): String =
+        if (type.equals("DPoP", true)) "DPoP 綁定（RFC 9449），權杖只能由本錢包的金鑰使用" else "$type（未綁定金鑰）"
+
     fun keyStorageName(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.displayName ?: wire
 
     suspend fun credential(r: IssuanceRecord?, c: Credential?): List<DetailSection> {
@@ -107,6 +117,8 @@ object CredentialDetails {
                     it.vct?.let { v -> add(DetailRow("類型（vct）", v)) }
                     it.docType?.let { v -> add(DetailRow("類型（docType）", v)) }
                     add(DetailRow("規格", specs(it).joinToString("、")))
+                    it.clientAuthentication?.let { v -> add(DetailRow("用戶端驗證", clientAuthName(v))) }
+                    it.tokenType?.let { v -> add(DetailRow("存取權杖", tokenTypeName(v))) }
                     add(DetailRow("領取時間", time(it.issuedAt)))
                     it.notificationId?.let { v -> add(DetailRow("notification_id", v)) }
                 }

@@ -115,6 +115,8 @@ class Oid4vciE2eTest {
         assertFalse(r.trust.mayShowAsVerified)
         val record = r.document.issuanceRecord!!
         assertTrue(record.isTestEnvironment)
+        assertEquals("DPoP", record.tokenType)
+        assertTrue(record.clientAuthentication != null)
         assertEquals("測試身分憑證", r.document.displayName)
         // Registered JWT claims belong to the details view; only the credential's own data is listed.
         val paths = diw.wallet.core.credential.ClaimReader.read(r.credentials.first(), w.documentTypes).map { it.path }
@@ -206,7 +208,9 @@ class Oid4vciE2eTest {
         val c = client(w, remoteProvider(w))
         val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
         c.authorizePreAuthorized(session, null)
-        assertTrue(c.issue(session, "pid_sd_jwt", keys(w)) is IssuanceResult.Issued)
+        val r = c.issue(session, "pid_sd_jwt", keys(w))
+        assertTrue(r is IssuanceResult.Issued)
+        assertEquals("private_key_jwt", r.document.issuanceRecord!!.clientAuthentication)
     }
 
     @Test

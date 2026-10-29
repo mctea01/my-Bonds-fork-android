@@ -26,6 +26,8 @@ import diw.wallet.core.oid4vci.IssuanceSession
 import diw.wallet.core.oid4vci.KeyRequest
 import diw.wallet.core.oid4vci.Oid4vciClient
 import diw.wallet.core.oid4vci.PublicClientWalletProvider
+import diw.wallet.core.oid4vci.IssuerRoutedWalletProvider
+import diw.wallet.core.oid4vci.MultipazTestWalletProvider
 import diw.wallet.core.oid4vci.RemoteWalletProvider
 import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
@@ -143,6 +145,8 @@ data class WalletSettings(
     /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
     val serverVerifierDid: String = "",
     val useWalletProvider: Boolean = true,
+    /** Use the Multipaz TestApp public test identity with issuer.multipaz.org (test environment only, off by default). */
+    val multipazTestIdentity: Boolean = false,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */
     val walletProviderUrl: String? = null,
@@ -1053,8 +1057,18 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     private var cachedProvider: Pair<String, WalletProvider>? = null
+    private val multipazTestProvider by lazy { MultipazTestWalletProvider() }
 
     private fun walletProvider(): WalletProvider {
+        val base = baseWalletProvider()
+        val s = settings
+        if (!(s.testEnvironment && s.multipazTestIdentity)) return base
+        return IssuerRoutedWalletProvider(base) { ci, asIssuer ->
+            multipazTestProvider.takeIf { MultipazTestWalletProvider.appliesTo(ci, asIssuer) }
+        }
+    }
+
+    private fun baseWalletProvider(): WalletProvider {
         val s = settings
         val configuredUrl = s.walletProviderUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
         val localTestProvider = configuredUrl == null && s.testEnvironment && s.useWalletProvider
