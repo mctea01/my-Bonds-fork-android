@@ -34,6 +34,6 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 androidx-fragment = { module = "androidx.fragment:fragment-ktx", version = "1.8.9" }
 androidx-browser = { module = "androidx.browser:browser", version = "1.8.0" }
 androidx-credentials = { module = "androidx.credentials:credentials", version = "1.5.0" }
-androidx-credentials-registry = { module = "androidx.credentials.registry:registry-provider", version = "1.0.0-alpha03" }
+androidx-credentials-registry = { module = "androidx.credentials.registry:registry-provider", version = "1.0.0-alpha05" }
 # Same version multipaz-dcapi registers with; used directly to await the registration result.
 play-services-identity-credentials = { module = "com.google.android.gms:play-services-identity-credentials", version = "16.0.0-alpha08" }
