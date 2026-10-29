@@ -112,7 +112,7 @@ import org.multipaz.crypto.X509Cert
 import org.multipaz.asn1.OID
 import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
-import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.oid4vp.WalletTransactionTypes
 import diw.wallet.core.document.sign.CscService
 import diw.wallet.core.document.sign.SigningException
 import org.multipaz.document.buildDocumentStore
@@ -378,7 +378,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
-        QesApprovalTransaction.types.forEach { addTransactionType(it) }
+        WalletTransactionTypes.all.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
         private set

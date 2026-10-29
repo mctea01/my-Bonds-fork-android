@@ -102,7 +102,10 @@
 - 加入可見簽章（可選）：使用者在預覽頁選頁與位置，產生外觀串流（簽署者姓名、時間、可選圖片），寫入 `/AP`；其餘流程不變。
 - 工作量：檢視小（1 個工作階段），加入可見簽章中（1 到 2 個工作階段）。
 
-### C13 Payment
+### C13 Payment（2026-10-29 已實作）
+
+- 已登錄 `PaymentTransaction`（`WalletTransactionTypes`），同意畫面列出交易內容，KB-JWT 帶交易資料雜湊；端對端測試 `paymentTransactionIsDescribedAndBound`。尚待以 Multipaz 付款測試卡加真實 Verifier 驗收。
+
 
 - 標準：EUDI TS12「SCA Implementation with the Wallet」的交易資料型別 `urn:eudi:sca:payment:1`；EMVCo 2026-06 公布的 Digital Payment Credential Schema Framework 草案仍在徵詢意見。
 - 現況：OpenID4VP 的 `transaction_data` 已支援（目前登錄 QES 兩種型別）。Multipaz 0.101 的 multipaz-doctypes 已有 `PaymentTransaction`（TS12），issuer.multipaz.org 也提供 `payment_sca_mdoc` 與 `payment_sca_sd_jwt` 測試卡，開啟 Multipaz 測試身分即可領。
