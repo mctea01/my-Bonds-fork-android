@@ -40,6 +40,7 @@ import diw.wallet.core.util.parseJsonObject
 import diw.wallet.core.util.queryParameters
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
+import kotlin.coroutines.cancellation.CancellationException
 import io.ktor.client.HttpClient
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.forms.FormDataContent
@@ -408,12 +409,17 @@ class Oid4vciClient(
         val methods = meta.tokenEndpointAuthMethods
         val selected = session.clientAuthMethod
         // Metadata without token_endpoint_auth_methods_supported says nothing about attestation; issuers built on
-        // Credo (Animo) still require it, and an unused OAuth-Client-Attestation header is ignored by the rest.
-        if (selected == "attest_jwt_client_auth" || (selected == null && ("attest_jwt_client_auth" in methods || methods.isEmpty()))) {
+        // Credo (Animo) still require it, and an unused OAuth-Client-Attestation header is ignored by the rest. That
+        // attempt is best effort and only for 1.0 issuers: dialect sessions (TWDIW, draft 11) stay public clients, and
+        // a wallet backend that cannot attest leaves the public client path as it was.
+        val implicit = selected == null && methods.isEmpty() && session.compat.owner == null
+        if (selected == "attest_jwt_client_auth" || (selected == null && "attest_jwt_client_auth" in methods) || implicit) {
             val attestation = try {
                 session.provider.walletAttestation()
-            } catch (e: ProtocolException) {
-                if (e.code == "wallet_provider_unsupported") null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (implicit || (e is ProtocolException && e.code == "wallet_provider_unsupported")) null
                 else throw e
             }
             if (attestation != null) {

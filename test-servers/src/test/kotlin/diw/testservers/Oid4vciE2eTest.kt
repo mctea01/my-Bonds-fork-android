@@ -241,6 +241,33 @@ class Oid4vciE2eTest {
     }
 
     @Test
+    fun unlistedMethodsUseAttestationWhenAvailable() = runBlocking<Unit> {
+        start(IssuerOptions(advertisedAuthMethods = emptyList()))
+        val w = wallet()
+        val c = client(w, remoteProvider(w))
+        val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        c.authorizePreAuthorized(session, null)
+        val r = c.issue(session, "pid_sd_jwt", keys(w)) as IssuanceResult.Issued
+        assertEquals("attest_jwt_client_auth", r.document.issuanceRecord?.clientAuthentication)
+    }
+
+    @Test
+    fun unlistedMethodsFallBackToPublicClientWhenBackendFails() = runBlocking<Unit> {
+        start(IssuerOptions(advertisedAuthMethods = emptyList()))
+        val w = wallet()
+        val remote = remoteProvider(w)
+        val provider = object : WalletProvider by remote {
+            override suspend fun walletAttestation(): diw.wallet.core.oid4vci.WalletAttestation =
+                throw ProtocolException("wallet_provider_error", "backend down")
+        }
+        val c = client(w, provider)
+        val session = c.startFromOffer(offer(listOf("pid_sd_jwt")))
+        c.authorizePreAuthorized(session, null)
+        val r = c.issue(session, "pid_sd_jwt", keys(w)) as IssuanceResult.Issued
+        assertEquals("none", r.document.issuanceRecord?.clientAuthentication)
+    }
+
+    @Test
     fun clientAssertionRequiredRejectsPublicClient() = runBlocking<Unit> {
         start(IssuerOptions(requireClientAssertion = true))
         val w = wallet()

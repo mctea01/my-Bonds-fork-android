@@ -189,7 +189,7 @@
 
 ## 用戶端驗證、請求物件與 mdoc 簽署清單
 
-- OpenID4VCI 用戶端驗證（`Oid4vciClient.clientAuthenticationFor`）依授權伺服器的 `token_endpoint_auth_methods_supported` 依序選擇 `attest_jwt_client_auth`（錢包後端有提供時）、`private_key_jwt`（錢包後端的 `client-assertion`，以錢包實例金鑰的短效 PoP 申請），都取不到時以公開用戶端送出 `client_id`，由伺服器決定。Keycloak（含 EUDI 發行端）不會列出 `none` 但接受公開用戶端加 PKCE，所以不可因為清單沒有 `none` 就不送請求；伺服器以 `invalid_client` 拒絕公開用戶端時才回報 `client_authentication_unavailable`。PAR 與 Token 使用同一個方法。中繼資料沒有列出方法時（TWDIW、draft 11）為公開用戶端。
+- OpenID4VCI 用戶端驗證（`Oid4vciClient.clientAuthenticationFor`）依授權伺服器的 `token_endpoint_auth_methods_supported` 依序選擇 `attest_jwt_client_auth`（錢包後端有提供時）、`private_key_jwt`（錢包後端的 `client-assertion`，以錢包實例金鑰的短效 PoP 申請），都取不到時以公開用戶端送出 `client_id`，由伺服器決定。Keycloak（含 EUDI 發行端）不會列出 `none` 但接受公開用戶端加 PKCE，所以不可因為清單沒有 `none` 就不送請求；伺服器以 `invalid_client` 拒絕公開用戶端時才回報 `client_authentication_unavailable`。PAR 與 Token 使用同一個方法。中繼資料沒有列出方法時：TWDIW、draft 11 等方言為公開用戶端；OpenID4VCI 1.0 發證端先嘗試錢包證明（Credo／Animo 要求），錢包後端取不到或出錯時退回公開用戶端。
 - 錢包後端：設定的「互通 > OpenID4VCI 錢包身分」填正式後端（只接受 https）與 `client_id`，沒有填時，測試環境開啟「使用測試錢包提供者」才用測試伺服器的後端；後端回 404 視為不支援該方法。發證端回「clientId must be authenticated」是發證端要求註冊的用戶端，與發行端信任等級無關。
 - DC API `openid4vp-v1-multisigned`：JWS JSON Serialization，每個簽章的受保護標頭必須帶 `client_id`（payload 不可有 `client_id` 與 `verifier_info`），不接受未受保護的標頭；每個簽章分別驗證，取信任等級最高者，全部失敗時拒絕，不會退回未簽章處理。`openid4vp-v1-unsigned` 帶 `request` 時拒絕。
 - 加密的 request object（JWE，5 段）只用錢包自己登錄的 ECDH-ES 金鑰解密（`Oid4vpHolder` 的 `requestObjectDecryptionKeys`），不使用請求附帶的金鑰；解密不代表查驗方已驗證，需要簽章的 client_id 前綴仍要求 JWS。App 目前沒有登錄或公布解密金鑰，所以實際上會拒絕加密的 request object。Multipaz 的 JWE 解密一定以長度前綴帶入 apu 與 apv，送方必須設定兩者。解密後的 `client_id` 必須等於外層；已簽章的 request object 由驗證器比對（舊版草案可省略內層 `client_id`）。
