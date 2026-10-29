@@ -976,3 +976,52 @@ SHA 案例包含 head/tail、H_e、C_z、金鑰、私密長度與區塊數竄改
 為 BUILD SUCCESSFUL；370 tests、0 failures/errors、31 skipped。未變更 Rust
 或 Kotlin；native 仍依既有 auto policy。完整摘要與來源指紋在
 `native/circuits/validation/m3b-round10-tests.json`。
+
+### 最終獨立量測數據
+
+| Circuit / tier | Gates | Compile s / RSS GiB | Prove first / warm s | Prove first / warm RSS GiB | Verify s / RSS GiB | Proof bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| sha_content / shared | 996,617 | 14.479 / 0.989 | 39.314 / 38.247 | 1.817 / 1.816 | 0.033 / 0.013 | 16256 |
+| sha_opaque / shared | 571,201 | 2.381 / 0.313 | 30.146 / 36.986 | 1.624 / 1.623 | 0.024 / 0.014 | 16256 |
+| inflate0 / phone | 1,033,678 | 149.094 / 2.339 | 40.998 / 39.513 | 1.818 / 1.818 | 0.031 / 0.018 | 16256 |
+| inflate / phone | 1,009,891 | 119.846 / 1.677 | 47.072 / 47.661 | 1.797 / 1.796 | 0.026 / 0.017 | 16256 |
+| inflate0 / desktop | 1,415,190 | 325.100 / 4.092 | 98.493 / 59.468 | 3.357 / 3.357 | 0.024 / 0.023 | 16256 |
+| inflate / desktop | 1,275,071 | 170.205 / 2.173 | 75.073 / 70.468 | 3.298 / 3.297 | 0.025 / 0.021 | 16256 |
+| lex / phone | 972,398 | 62.548 / 1.750 | 34.962 / 44.937 | 1.712 / 1.711 | 0.032 / 0.021 | 16256 |
+| lex / desktop | 1,873,866 | 141.417 / 3.404 | 78.467 / 67.441 | 3.432 / 3.432 | 0.050 / 0.033 | 16256 |
+| claim / shared | 429,943 | 5.699 / 0.429 | 23.882 / 18.814 | 0.874 / 0.879 | 0.035 / 0.014 | 16256 |
+| pred / shared | 702,339 | 45.477 / 1.693 | 54.271 / 47.998 | 1.676 / 1.677 | 0.059 / 0.018 | 16256 |
+
+兩種 SHA、claim、pred 為兩個等級共用；四個共享電路加六個等級專屬
+電路，共十份 ACIR/VK、十四個 profile/kind 對應。每組 proof 均驗證通過，
+proof 為 16,256 bytes；公開輸入另計。所有完成量測的 CRS cache 前後相同，
+first/warm 均未包含下載。原始 JSON、完整 source/ACIR/VK SHA-256 與 ABI
+位於 `native/circuits/validation/m3b-round10-{tier}-{kind}.json`；全部十四個
+對應已寫入 `VERSIONS`。文字三種電路的 codegen 旗標也屬於資產識別。
+
+手機詞法為 972,398 gates，比第九輪增加 32，餘裕 76,178；電腦詞法為
+1,873,866 gates。SHA 內容 996,617 gates，距手機上限 51,959；手機
+inflate-first 仍為 1,033,678，保留原本的 14,898 餘裕。本輪未最佳化詞法段。
+
+新量測入口最初漏帶文字電路原有的 `--bounded-codegen`，未列入下列
+估算：手機 unbounded 診斷為 1,005,628 gates；電腦 unbounded 在兩／一
+編譯執行緒下分別於 99.27／93.78 秒觸及 6 GiB RSS guard，均沒有 gates
+或 proof。原始診斷另存 `m3b-round10-lex-unbounded-phone.json`、
+`m3b-round10-desktop-lex-rss-guard.json` 與
+`m3b-round10-desktop-lex-single-thread-unbounded-rss-guard.json`。
+恢復旗標後完成全部正式候選量測，未放寬任何約束或資源保護。
+
+### 31,582 bytes／232 operators 樣本估算
+
+| 等級 | inflate / lex / claim / pred / SHA | 總段數 | first 總秒數（估算） | warm 總秒數（估算） | warm 分鐘（估算） |
+|---|---|---:|---:|---:|---:|
+| phone | 16 / 16 / 1 / 1 / 1–2 | 35–36 | 1423.92–1454.07 | 1578.47–1615.46 | 26.31–26.92 |
+| desktop | 8 / 8 / 1 / 1 / 1–2 | 19–20 | 1369.21–1399.35 | 1197.33–1234.32 | 19.96–20.57 |
+
+範圍的上下界分別是不含／含一段 opaque，兩者均包含一個述詞段。
+令 k=ceil(31582/P)，總 prove = SHA-content + inflate-first +
+(k−1)×inflate-general + k×lex + claim + pred，選用 opaque 時再加 SHA-opaque。
+這是將各電路的單段量測相加的估算，不是該文件的整份證明實測，也不是
+手機實機時間；不含編譯、見證產生、PDF/CMS 處理及 I/O。假設樣本各段的
+文字運算子、token 與 DEFLATE 區塊起點均符合所選參數；232 個運算子的
+總數本身不能保證任一局部段都不超限。無述詞時各減一段及 pred 時間。

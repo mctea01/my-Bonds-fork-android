@@ -1099,3 +1099,41 @@ permutation/sponge passes independent bb.js known answers; existing bb.js 2.1.9
 remains an optional MIT development dependency for older regression tools.
 No new application dependency, Rust producer, Kotlin verifier or workflow change
 is included.
+
+
+### Round 10 validation and candidate assets
+
+The final source passes 88 Noir unit tests, 261 regression cases (137 accepts,
+121 constrained rejections and 3 external-reference rejections), and all five
+specified PDF fixture outcomes. The SHA suite includes 9 accepts and 31
+constraint rejections, including the maximal canonical Field as a bad pack and
+the maximal legal 31-byte group as a unit-test control. Both positive PDFs pass
+every segment's constrained execution and public joins; their two negative
+Word-profile counterparts reject at the intended lexical assertions. The
+oversized fixture rejects before witness generation. Required Gradle tasks
+succeed with 370 tests, zero failures/errors and 31 skips.
+
+All ten distinct candidate assets have independently generated first/warm ZK
+proofs and a successful verify. Four shared assets yield fourteen profile/kind
+mappings across the phone and desktop tiers. Public ABI counts are checked
+against both compiler ABI flattening and emitted public-input file sizes.
+VERSIONS hashes the final ACIR JSON after witness generation and the binary VK;
+the measured bytecode is asserted unchanged by witness generation. Source, ACIR
+and VK hashes are rechecked before emitting the report and version mappings.
+
+Text assets retain the Round 9 --bounded-codegen flag for both compilation and
+execution. Omitting that flag created diagnostic variants, not the final pins:
+unbounded phone lexical had 1,005,628 gates; two unbounded desktop compilation
+attempts hit the 6 GiB guard without producing gates or proofs. The final
+bounded desktop compilation uses one Rayon thread; all provers use two threads.
+The preserved diagnostic JSONs are excluded from composition selection and
+sample estimates. All profile measurements run serially, after other tests and
+compilation finish, with default UltraHonk zero knowledge enabled.
+
+Final phone lexical is 972,398 gates (76,178 below 2^20); desktop lexical is
+1,873,866. The additional 32 gates enforce canonical intermediate anchor
+outputs; no lexical optimization is included. SHA content is 996,617 gates
+(51,959 below 2^20), opaque is 571,201. Phone inflate-first remains 1,033,678,
+with its existing 14,898-gate margin. Full timing/RSS, proof sizes and explicitly
+qualified maximum-sample estimates are in docs/research/p4-benchmarks.md and
+validation/m3b-round10-*.json. PUBLIC_SPEC remains a draft for Claude's freeze.
