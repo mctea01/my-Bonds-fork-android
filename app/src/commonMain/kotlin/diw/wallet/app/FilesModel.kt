@@ -1649,7 +1649,7 @@ class FilesModel(private val model: WalletModel) {
      * slot, so only the leaf certificate is used; the verifier builds the chain from its trust store.
      */
     private suspend fun pivSigner(choice: SignerChoice.Piv): PivTapSigner {
-        busy.value = if (choice.reader.external) "請把 PIV 卡插入讀卡機「${choice.reader.name}」，讀取期間請勿拔出。" else "請將 PIV 卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
+        busy.value = if (choice.reader.external) "請讓 PIV 卡或 YubiKey 透過「${choice.reader.name}」保持接上手機，簽署期間請勿拔除。" else "請將 PIV 卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
         val signer = PivTapSigner(choice.reader.reader, choice.pin, choice.slot)
         signer.load()
         return signer
@@ -1660,7 +1660,7 @@ class FilesModel(private val model: WalletModel) {
      * certificates and let the user pick a slot instead of the wallet choosing one.
      */
     suspend fun pivCertificates(reader: NfcReaderOption): List<PivCard.KeyInfo> {
-        val message = if (reader.external) "請把 PIV 卡插入讀卡機「${reader.name}」讀取卡片上的憑證清單。"
+        val message = if (reader.external) "請讓 PIV 卡或 YubiKey 透過「${reader.name}」保持接上手機，讀取卡片上的憑證清單。"
             else "請將 PIV 卡（IC 晶片面）貼近 NFC 感應區讀取卡片上的憑證清單。"
         return reader.reader.scan(message, tagInteractionFunc = { tag ->
             val card = PivCard(NfcCardChannel(tag))
