@@ -8,9 +8,7 @@
   "automergeStrategy": "squash",
   "rebaseWhen": "auto",
   "vulnerabilityAlerts": {
-    "labels": ["security"],
-    "automerge": true,
-    "minimumReleaseAge": null
+    "enabled": false
   },
   "packageRules": [
     {
