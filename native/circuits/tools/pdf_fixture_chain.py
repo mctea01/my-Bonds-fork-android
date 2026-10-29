@@ -427,7 +427,7 @@ def main():
             write(args.output/filename/label/'Prover.toml',w);execute(args.nargo,roots[kind],filename+'/'+label,w)
         results.append(dict(fixture=filename,outcome='accepted',sha_segments=len(windows),inflate_segments=len(bundle['inflate']),lex_segments=len(bundle['lex']),claim_segments=1,predicate_segments=1,public_join_rejections=public_rejections,date_digit_width=1 if filename=='student.pdf' else 2,joins='SHA digest, boundaries, C_z, S, history C_p, Lambda, coverage, anchors, C_g, beta, claim opening and date checked'))
     (args.output/'results.json').write_text(json.dumps(dict(scope='Synthetic fixtures; nargo constrained execution, not ZK proofs or production CMS trust verification',results=results),indent=2)+'\n')
-    print('Five fixture outcomes verified; private witnesses remain in ignored target only')
+    print('Five fixture outcomes verified; private witnesses remain local and untracked')
 if __name__=='__main__':
     try:main()
     except Exception as error:
