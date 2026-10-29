@@ -1,97 +1,241 @@
-name: CodeQL
+name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
-  schedule:
-    - cron: "30 3 * * 1"
-  workflow_dispatch:
+
+# A newer push to the same PR cancels the older run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
-  actions: read
-  security-events: write
+  checks: write
+  pull-requests: write
 
 env:
   LANG: C.UTF-8
-  LC_ALL: C.UTF-8
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
 
 jobs:
-  analyze:
-    name: Analyze (${{ matrix.language }})
+  # The build/version number is the git commit count, not github.run_number: the run number now climbs fast because
+  # CodeQL and dependency-bot workflows share it, so it is no longer a meaningful version. The commit count grows
+  # monotonically with development and is the same for every job on the same commit. fetch-depth: 0 is required so the
+  # count is the real history, not 1 from a shallow checkout.
+  version:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 5
+    outputs:
+      name: ${{ steps.v.outputs.name }}
+      code: ${{ steps.v.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          line=$(sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*//p' version.properties | head -n1 | tr -d '[:space:]')
+          count=$(git rev-list --count HEAD)
+          echo "name=$line.$count" >> "$GITHUB_OUTPUT"
+          echo "code=$count" >> "$GITHUB_OUTPUT"
+          echo "Version $line.$count (versionCode $count)"
 
+  # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
+  # and a broken build does not hide the test results. The nightly release still waits for both.
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      - name: Core and protocol tests
+        run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
+      - name: App flow tests (desktop)
+        if: success() || failure()
+        run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
+      # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
+      - name: Test report
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6
+        if: always()
+        with:
+          report_paths: "**/build/test-results/**/*.xml"
+          include_passed: false
+          detailed_summary: true
+          annotate_only: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      - name: Upload test results and reports
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: failure()
+        with:
+          name: test-logs
+          path: |
+            **/build/test-results/**/*.xml
+            **/build/reports/tests/
+            build/reports/problems/
+          retention-days: 14
+
+  build:
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_VERSION: ${{ needs.version.outputs.name }}
+      # Release signing (docs/release.md). Without it the release APK is signed with the debug key.
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      DIW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      DIW_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      DIW_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      # Optional: base64 of a debug.keystore so every debug APK has the same signature.
+      DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      - name: Signing keys
+        run: |
+          # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            mkdir -p ~/.android
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > ~/.android/debug.keystore
+            echo "Using the debug keystore from secrets"
+          fi
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::No ANDROID_KEYSTORE_BASE64: the release APK is signed with the debug key"
+            exit 0
+          fi
+          jks="$RUNNER_TEMP/release.jks"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$jks"; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not valid base64 (docs/release.md)"
+            exit 1
+          fi
+          if [ -z "$DIW_KEYSTORE_PASSWORD" ] || [ -z "$DIW_KEY_ALIAS" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS are required with ANDROID_KEYSTORE_BASE64"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD > "$RUNNER_TEMP/keys.txt" 2>&1; then
+            grep -v JAVA_TOOL_OPTIONS "$RUNNER_TEMP/keys.txt" | tail -n 2
+            echo "::error::ANDROID_KEYSTORE_PASSWORD does not open the keystore, or ANDROID_KEYSTORE_BASE64 is not the whole .jks file"
+            exit 1
+          fi
+          if ! keytool -list -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" > /dev/null 2>&1; then
+            echo "Keys in the keystore: $(grep -i PrivateKeyEntry "$RUNNER_TEMP/keys.txt" | cut -d, -f1 | paste -sd' ')"
+            echo "::error::ANDROID_KEY_ALIAS is not a key in the keystore"
+            exit 1
+          fi
+          # Compare with keytool -list -v on your own .jks; the key password itself is checked by the Gradle build.
+          keytool -list -v -keystore "$jks" -storepass:env DIW_KEYSTORE_PASSWORD -alias "$DIW_KEY_ALIAS" 2>/dev/null | grep -m1 'SHA256:' || true
+          rm -f "$RUNNER_TEMP/keys.txt"
+          echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
+          echo "Using the release keystore from secrets"
+      - name: Android APKs (debug)
+        run: |
+          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ needs.version.outputs.code }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
+      - name: Android APKs (release)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ needs.version.outputs.code }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
+      - name: Upload APK
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: success()
+        with:
+          name: android
+          path: dist/*.apk
+          retention-days: 14
+
+  desktop:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
-          # The GitHub Actions workflows themselves.
-          - language: actions
-            build-mode: none
-          # The Kotlin/Java code: core, app (Android + desktop) and test-servers.
-          - language: java-kotlin
-            build-mode: manual
-          # Rust (native/) is not analysed here: CodeQL's buildless Rust extractor cannot
-          # ingest this workspace (uniffi FFI plus vendored circom/spartan crates and a
-          # pinned 1.95 toolchain), so the rust database comes out empty and fails the run.
-          # The Noir circuits have no CodeQL analyzer either. Cover the Rust with clippy and
-          # cargo-audit in the normal CI instead.
-
+          - os: windows-latest
+            name: windows
+            tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
+          - os: ubuntu-latest
+            name: linux
+            tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      APP_VERSION: ${{ needs.version.outputs.name }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up JDK 21
-        if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle
-        if: matrix.language == 'java-kotlin'
-        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-          queries: security-extended
-          # Vendored third-party Rust, generated build output, docs and the Noir
-          # circuits carry no findings worth reporting for this project.
-          config: |
-            paths-ignore:
-              - docs/**
-              - '**/build/**'
-              - native/**/vendor/**
-              - native/circuits/**
-
-      # Compile the main source sets so the extractor sees them, without building the
-      # Rust native library (DIW_ZK_NATIVE=skip): the Android SDK on the runner builds
-      # the Android variant, the desktop target covers desktopMain, and the JVM target
-      # covers commonMain and the native-binding Kotlin in jvmCommonMain.
-      - name: Build Java/Kotlin
-        if: matrix.language == 'java-kotlin'
-        env:
-          DIW_ZK_NATIVE: skip
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      - name: Install deb tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb
+      - name: Package ${{ matrix.name }}
+        run: ./gradlew --no-daemon --stacktrace "-Pdiw.desktopVersion=$APP_VERSION" ${{ matrix.tasks }}
+      # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
+      - name: Start the release build
+        if: runner.os == 'Linux'
         run: |
-          chmod +x ./gradlew
-          ./gradlew \
-            --no-daemon \
-            --no-build-cache \
-            --stacktrace \
-            :core:compileKotlinJvm \
-            :app:compileKotlinDesktop \
-            :app:compileDebugKotlinAndroid \
-            :test-servers:classes
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+          set +e
+          DIW_WALLET_HOME="$RUNNER_TEMP/wallet" timeout 20 xvfb-run -a java -jar app/build/compose/jars/*-release.jar > start.log 2>&1
+          code=$?
+          cat start.log
+          if [ $code -ne 124 ]; then echo "The release build exited early (code $code)"; exit 1; fi
+      - name: Collect files
+        run: |
+          mkdir -p dist
+          find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \;
+          cp app/build/compose/jars/*.jar dist/
+          ls -l dist
+      - name: Upload ${{ matrix.name }} files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          category: "/language:${{ matrix.language }}"
-          
+          name: ${{ matrix.name }}
+          path: dist/*
+          retention-days: 14
+
+  # Every push to main replaces the "nightly" pre-release; release files are downloaded as-is, not zipped.
+  # Published only when the tests passed too; drop "test" from needs to publish regardless.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, test, build, desktop]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      APP_VERSION: ${{ needs.version.outputs.name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l dist
+          cat > notes.md <<EOF
+          Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
+
+          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized). The -debug.apk also allows HTTP test servers on the local network.
+          - Windows: .msi installer, no admin rights needed
+          - Linux: .deb package (Debian, Ubuntu)
+          - Any OS with Java 21: DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          EOF
+          gh release delete nightly --cleanup-tag --yes || true
+          gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md
