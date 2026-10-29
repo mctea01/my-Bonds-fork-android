@@ -341,6 +341,11 @@ class FederationResolver(
             if (candidates.none { k -> runCatching { signed.verify(VerificationKey.fromJwk(k)) }.isSuccess }) {
                 fail("signed_jwks_uri of ${resolved.entityId} is not signed by a key of its Entity Configuration")
             }
+            // Jws.verify checks only the signature; reject a key set whose JWT is outside its own validity, so an
+            // expired signed JWK Set cannot keep rotated-out keys alive.
+            val now = clock.now().epochSeconds
+            signed.payload.long("iat")?.let { if (it > now + skew) fail("signed_jwks_uri of ${resolved.entityId} is not yet valid") }
+            signed.payload.long("exp")?.let { if (it <= now - skew) fail("signed_jwks_uri of ${resolved.entityId} has expired") }
             return signed.payload.arr("keys")?.mapNotNull { it as? JsonObject }.orEmpty()
         }
         md.str("jwks_uri")?.let { uri ->
@@ -360,7 +365,15 @@ class FederationResolver(
     suspend fun verifiedTrustMarkTypes(resolved: ResolvedEntity): List<String> {
         if (resolved.trustMarks.isEmpty()) return emptyList()
         val now = clock.now().epochSeconds
-        val issuers = runCatching { configuration(resolved.anchor.entityId).trustMarkIssuers }.getOrNull()
+        // trust_mark_issuers must come from an anchor configuration signed by a key the user already confirmed (the
+        // saved anchor keys), not merely by a key the fetched configuration carries for itself: whoever controls the
+        // anchor endpoint could otherwise self-sign a configuration authorising their own trust-mark issuer.
+        val issuers = runCatching {
+            val config = configuration(resolved.anchor.entityId)
+            config.verifyWith(resolved.anchor.keys)
+            config.checkTime(now, skew)
+            config.trustMarkIssuers
+        }.getOrNull()
         return resolved.trustMarks.mapNotNull { (type, jwt) ->
             runCatching {
                 val mark = Jws.parse(jwt)

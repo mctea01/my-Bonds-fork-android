@@ -184,9 +184,18 @@ class PivCard(private val channel: CardChannel) {
 
         fun hex4(sw: Int) = sw.toString(16).uppercase().padStart(4, '0')
 
-        /** RSA or EC P-256 from the certificate; other keys are refused. */
+        /**
+         * RSA-2048 or EC P-256 from the certificate; other keys are refused. The RSA modulus must be exactly 2048
+         * bits: [sign] uses the RSA-2048 algorithm identifier, a 256-byte padded block and a 256-byte signature, so a
+         * 1024/3072/4096-bit key would fail at signing. Refusing it here lets the slot be skipped and the next usable
+         * certificate be found, instead of stopping on a key that cannot sign.
+         */
         fun keyTypeOf(certificate: ByteArray): SignerKeyType {
-            if (PlatformCrypto.rsaPublicKeyFromCertificate(certificate) != null) return SignerKeyType.RSA
+            PlatformCrypto.rsaPublicKeyFromCertificate(certificate)?.let { rsa ->
+                val bits = rsaModulusBits(rsa.modulus)
+                if (bits != 2048) throw SigningException("PIV 憑證的 RSA 金鑰長度（$bits 位元）不支援，只支援 RSA-2048 與 EC P-256")
+                return SignerKeyType.RSA
+            }
             val ec = runCatching { org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(certificate)).ecPublicKey }.getOrNull()
                 ?: throw SigningException("無法讀取 PIV 憑證的公開金鑰")
             if (ec.curve != org.multipaz.crypto.EcCurve.P256) throw SigningException("PIV 憑證的金鑰（${ec.curve.name}）不支援，只支援 RSA 與 EC P-256")
@@ -200,6 +209,17 @@ class PivCard(private val channel: CardChannel) {
             n < 0x80 -> byteArrayOf(n.toByte())
             n < 0x100 -> byteArrayOf(0x81.toByte(), n.toByte())
             else -> byteArrayOf(0x82.toByte(), (n shr 8).toByte(), n.toByte())
+        }
+
+        /** Bit length of an RSA modulus, ignoring any leading zero sign byte. */
+        private fun rsaModulusBits(modulus: ByteArray): Int {
+            var i = 0
+            while (i < modulus.size && modulus[i] == 0.toByte()) i++
+            if (i >= modulus.size) return 0
+            val top = modulus[i].toInt() and 0xFF
+            var highBit = 7
+            while (highBit > 0 && (top shr highBit) == 0) highBit--
+            return (modulus.size - i - 1) * 8 + highBit + 1
         }
     }
 }
