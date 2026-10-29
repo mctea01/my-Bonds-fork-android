@@ -4,7 +4,7 @@ ktor = "3.3.3"
 coroutines = "1.10.2"
 serialization = "1.9.0"
 kotlinxIo = "0.8.2"
-bouncycastle = "1.85"
+bouncycastle = "1.86"
 
 [libraries]
 multipaz = { module = "org.multipaz:multipaz", version.ref = "multipaz" }
