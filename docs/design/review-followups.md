@@ -36,7 +36,11 @@
 
 ## B. 標準補全
 
-### B5 OpenID Federation 1.0
+### B5 OpenID Federation 1.0（2026-10-29 已實作出示端）
+
+- 已完成：`core/federation` 的 `FederationResolver`（信任鏈建立與驗證、`trust_chain` 標頭、constraints、metadata 覆寫）與 `MetadataPolicy`（七個標準運算子的合併與套用、`metadata_policy_crit`）；`RequestValidator` 以解析後的 Verifier jwks 驗證 `openid_federation:` 請求；「自訂信任」可加入 Trust Anchor（顯示金鑰指紋確認，USER 為 T2、TEST 為 T3）。測試在 `test-servers` 的 `FederationTest`（Trust Anchor、中介、Verifier 三層，涵蓋政策、離線鏈、錯誤金鑰、無錨點、路徑長度與政策衝突）。
+- 尚未做：`signed_jwks_uri`／`jwks_uri`、Trust Mark 驗證（目前只記錄類型）、發證端中繼資料走聯邦、TrustRegistry 層的統一錨點類型（目前在 federation 模組內以相同 tier 規則判定）。
+- 以下為原規劃。
 
 - 規格：OpenID Federation 1.0 已於 2026-02-17 定稿；OpenID4VP 1.0 的 `openid_federation:` 用戶端識別依此驗證。EUDI 的信任框架也規劃用它。
 - 做法：
