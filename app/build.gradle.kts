@@ -242,7 +242,7 @@ releaseKey.exceptionOrNull()?.message?.let { problem ->
 
 configurations.all {
     resolutionStrategy {
-        force("org.bouncycastle:bcprov-jdk18on:1.85", "org.bouncycastle:bcpkix-jdk18on:1.85")
+        force("org.bouncycastle:bcprov-jdk18on:1.85", "org.bouncycastle:bcpkix-jdk18on:1.86")
     }
 }
 
