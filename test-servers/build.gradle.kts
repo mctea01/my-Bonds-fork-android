@@ -19,7 +19,7 @@ dependencies {
     implementation(libs.ktor.client.java)
     implementation(libs.bcprov)
     implementation(libs.bcpkix)
-    implementation("org.slf4j:slf4j-simple:2.0.17")
+    implementation("org.slf4j:slf4j-simple:2.0.20")
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.server.test.host)
