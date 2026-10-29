@@ -4,7 +4,7 @@ import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.oid4vp.Oid4vpHolder
-import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.oid4vp.WalletTransactionTypes
 import diw.wallet.core.oid4vp.PresentationPolicy
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
@@ -59,7 +59,7 @@ class WalletFixture(
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
-        QesApprovalTransaction.types.forEach { addTransactionType(it) }
+        WalletTransactionTypes.all.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
     lateinit var holder: Oid4vpHolder
@@ -84,6 +84,23 @@ class WalletFixture(
         if (trustIssuer && pki != null) trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
         holder = Oid4vpHolder(httpClient, trust, source, env, policy, holderIdentities)
         return this
+    }
+
+    /** A Multipaz payment SCA credential (the only credential Multipaz applies payment transactions to). */
+    suspend fun issueSdJwtPayment(pki: TestPki) {
+        val vct = "org.multipaz.payment.sca.1"
+        val doc = documentStore.createDocument(displayName = "Payment")
+        val cred = KeyBoundSdJwtVcCredential.create(doc, null, "sdjwt", secureArea, vct, SoftwareCreateKeySettings.Builder().build())
+        val sdJwt = SdJwt.create(
+            issuerKey = pki.documentSigner,
+            kbKey = secureArea.getKeyInfo(cred.alias).publicKey,
+            claims = buildJsonObject { put("holder_name", "Che-Chuan Lin"); put("issuer_name", "Test Bank") },
+            nonSdClaims = buildJsonObject {
+                put("iss", "https://issuer.test.diw.invalid"); put("vct", vct)
+                put("iat", pki.validFrom.epochSeconds); put("exp", pki.validUntil.epochSeconds)
+            },
+        )
+        cred.certify(sdJwt.compactSerialization.encodeToByteString())
     }
 
     suspend fun issueSdJwtPid(pki: TestPki) {

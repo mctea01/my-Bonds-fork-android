@@ -56,6 +56,7 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.AATL -> "Adobe 核可信任清單（AATL）"
     TrustLabel.EUTL -> "歐盟信任清單（EUTL）"
     TrustLabel.EU_QUALIFIED -> "歐盟合格信任服務"
+    TrustLabel.OPENID_FEDERATION -> "OpenID Federation 信任鏈"
 }
 
 /** The clause added for an EU trusted list service the list names as qualified. */
