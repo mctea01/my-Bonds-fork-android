@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "timezone": "Asia/Taipei",
+  "baseBranches": ["main"],
+  "labels": ["dependencies"],
+  "platformAutomerge": true,
+  "automergeStrategy": "squash",
+  "rebaseWhen": "auto",
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": true,
+    "minimumReleaseAge": null
+  },
+  "packageRules": [
+    {
+      "description": "Minor, patch and digest updates merge by themselves once CI passes",
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Major updates wait for approval on the Dependency Dashboard",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "automerge": false
+    },
+    {
+      "description": "Multipaz and Ktor move together; the wallet carries workarounds for Multipaz",
+      "groupName": "multipaz and ktor",
+      "matchPackageNames": ["org.multipaz:**", "io.ktor:**"],
+      "automerge": false
+    },
+    {
+      "description": "Toolchain: Kotlin, Compose Multiplatform and the Android Gradle plugin",
+      "matchPackageNames": [
+        "org.jetbrains.kotlin.**",
+        "org.jetbrains.compose",
+        "org.jetbrains.compose.**",
+        "com.android.application",
+        "com.android.library",
+        "com.android.tools.**"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "Credential Manager and DC API need a device check, CI does not cover them",
+      "matchPackageNames": [
+        "androidx.credentials:**",
+        "androidx.credentials.registry:**",
+        "com.google.android.gms:play-services-identity-credentials"
+      ],
+      "automerge": false
+    },
+    {
+      "description": "xml-apis 2.0.2 is an old relocation artifact, not a newer release",
+      "matchPackageNames": ["xml-apis:xml-apis"],
+      "enabled": false
+    }
+  ]
+}
