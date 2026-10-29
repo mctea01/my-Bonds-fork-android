@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
 import javax.net.ssl.SNIHostName
@@ -174,7 +175,9 @@ object ProfileCheckTool {
             image.size > 3 && image[0] == 'G'.code.toByte() && image[1] == 'I'.code.toByte() -> ".gif"
             else -> ".jpg"
         }
-        val file = File.createTempFile("zktls-captcha", ext).apply { deleteOnExit(); writeBytes(image) }
+        // Files.createTempFile restricts the file to the current user (POSIX 0600), unlike File.createTempFile which
+        // leaves the captcha image readable by other local accounts in the shared temp directory.
+        val file = Files.createTempFile("zktls-captcha", ext).toFile().apply { deleteOnExit(); writeBytes(image) }
         val opened = runCatching {
             val desktop = java.awt.Desktop.getDesktop()
             desktop.isSupported(java.awt.Desktop.Action.OPEN).also { if (it) desktop.open(file) }

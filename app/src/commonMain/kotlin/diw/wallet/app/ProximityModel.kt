@@ -279,7 +279,13 @@ class ProximityModel(private val model: WalletModel) {
      * bound to its origin. Returns the response object ({protocol, data}), or null when the user declines or the
      * request cannot be answered; a failure stays on screen until the user leaves it.
      */
-    suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String, appId: String?): JsonObject? {
+    suspend fun presentDcApi(
+        protocol: String,
+        data: JsonObject,
+        origin: String,
+        appId: String?,
+        selectedDocumentIds: List<String> = emptyList(),
+    ): JsonObject? {
         cancel()
         listening.value = false
         state.value = ProximityUi.Working("驗證請求中")
@@ -288,13 +294,15 @@ class ProximityModel(private val model: WalletModel) {
         var refused: Shared? = null
         val channel = ProximityChannel.DC_API
         return try {
+            // The documents the system selector chose answer the request; a chosen document that no longer exists fails.
+            val preselected = model.resolveSelectedDocuments(selectedDocumentIds)
             val response = withContext(model.unlockProvider) {
                 digitalCredentialsPresentment(
                     protocol = protocol,
                     data = data,
                     appId = appId,
                     origin = origin,
-                    preselectedDocuments = emptyList(),
+                    preselectedDocuments = preselected,
                     source = source(channel, onShared = { shared = it }, onRefused = { refused = it }),
                 )
             }

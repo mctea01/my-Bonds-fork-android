@@ -1,6 +1,7 @@
 package diw.wallet.app.android
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -69,6 +70,10 @@ import org.multipaz.crypto.Algorithm
 import org.multipaz.digitalcredentials.DigitalCredentials
 import org.multipaz.digitalcredentials.getDefault
 import org.multipaz.document.DocumentStore
+import org.multipaz.document.androidCredmanBitmap
+import org.multipaz.document.androidCredmanTitle
+import org.multipaz.document.setAndroidCredmanBitmap
+import org.multipaz.document.setAndroidCredmanTitle
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.sdjwt.credential.SdJwtVcCredential
@@ -485,10 +490,13 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
                 // the wallet's mdoc consent; both use the wallet's own screens.
                 val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
+                val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
+                // The system picker shows each credential with the card's own name and art; the wallet name is appended
+                // to the name and the launcher icon is overlaid on the art so the user sees which wallet answers.
+                applyCredmanDisplay(model, appName)
                 dc.register(model.documentStore, model.documentTypes, protocols, force)
                 // Multipaz only logs the system's answer and remembers the data as registered either way, so the
                 // Digital Credentials entry is registered again here and the answer awaited.
-                val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
                 val database = credentialDatabase(appName, model, protocols)
                 val matcher = withContext(Dispatchers.IO) { context.assets.open(MATCHER_ASSET).use { it.readBytes() } }
                 IdentityCredentialManager.getClient(context)
@@ -508,6 +516,40 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             Logger.e(TAG, "Digital Credentials registration failed", e)
             DcApiRegistration(0, runCatching { notListable(model) }.getOrDefault(0), emptySet(), e.message ?: e::class.simpleName, now)
         }
+    }
+
+    /**
+     * Sets the Digital Credentials display for each document: the title is the card's own name with the wallet name
+     * appended, and the bitmap is the card art with the launcher icon overlaid. These are the per-document overrides
+     * multipaz-dcapi reads, so the system picker shows the card's own content rather than only a background. Writes
+     * happen only when the computed value differs, so repeated registrations do not churn storage.
+     */
+    private suspend fun applyCredmanDisplay(model: WalletModel, appName: String) {
+        val icon = runCatching { launcherIconPng() }.getOrNull()?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        for (doc in model.documentStore.listDocuments()) {
+            val base = doc.displayName ?: doc.typeDisplayName
+            if (base != null) {
+                val title = "$base · $appName"
+                if (doc.androidCredmanTitle != title) runCatching { doc.setAndroidCredmanTitle(title) }
+            }
+            val art = doc.cardArt?.toByteArray()
+            val composed = if (art != null && icon != null) runCatching { overlayAppIcon(art, icon) }.getOrNull() else null
+            val bitmap = composed?.let { ByteString(it) }
+            if (bitmap != null && doc.androidCredmanBitmap != bitmap) runCatching { doc.setAndroidCredmanBitmap(bitmap) }
+        }
+    }
+
+    /** The card art PNG with [icon] drawn in the lower-right corner at a fifth of the card's width. */
+    private fun overlayAppIcon(cardArtPng: ByteArray, icon: Bitmap): ByteArray {
+        val source = BitmapFactory.decodeByteArray(cardArtPng, 0, cardArtPng.size) ?: return cardArtPng
+        val canvasBitmap = source.copy(Bitmap.Config.ARGB_8888, true) ?: return cardArtPng
+        val canvas = Canvas(canvasBitmap)
+        val side = (canvasBitmap.width / 5).coerceAtLeast(24)
+        val margin = side / 4
+        val left = canvasBitmap.width - side - margin
+        val top = canvasBitmap.height - side - margin
+        canvas.drawBitmap(icon, null, Rect(left, top, left + side, top + side), Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true })
+        return java.io.ByteArrayOutputStream().also { canvasBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     }
 
     /**

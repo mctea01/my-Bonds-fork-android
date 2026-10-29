@@ -138,6 +138,8 @@ kotlin {
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.bouncycastle") useVersion(libs.versions.bouncycastle.get())
+        // Keep every transitive Netty artifact on the patched version (SNI routing bypass, request smuggling).
+        if (requested.group == "io.netty" && requested.name != "netty-bom") useVersion(libs.versions.netty.get())
     }
 }
 

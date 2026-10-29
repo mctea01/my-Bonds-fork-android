@@ -5,6 +5,8 @@ coroutines = "1.10.2"
 serialization = "1.9.0"
 kotlinxIo = "0.9.1"
 bouncycastle = "1.86"
+# Ktor 3.3.3 brings Netty 4.2.7; 4.2.17+ fixes the request smuggling and SNI routing bypass (CVE-2026-75595) advisories.
+netty = "4.2.19.Final"
 jna = "5.17.0"
 
 [libraries]
@@ -26,8 +28,7 @@ ktor-client-java = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
-# Ktor 3.3.3 brings Netty 4.2.7, which has request smuggling and SNI bypass advisories fixed in 4.2.17.
-netty-bom = { module = "io.netty:netty-bom", version = "4.2.19.Final" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }

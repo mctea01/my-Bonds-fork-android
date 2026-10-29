@@ -25,6 +25,9 @@ import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.card.GpkiTapSigner
+import diw.wallet.core.document.card.NfcCardChannel
+import diw.wallet.core.document.card.PivCard
+import diw.wallet.core.document.card.PivTapSigner
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
@@ -291,6 +294,11 @@ object MyDataFiles {
 sealed class SignerChoice {
     /** The citizen digital certificate (or another GPKI) card on [reader]; the PIN is used for this signing only. */
     class Card(val reader: NfcReaderOption, val pin: String) : SignerChoice()
+    /**
+     * A PIV card (NIST SP 800-73-4) on [reader]; [slot] chooses which key slot's certificate signs (null lets the
+     * card's first usable slot answer). The PIN is used for this signing only.
+     */
+    class Piv(val reader: NfcReaderOption, val pin: String, val slot: Int? = null) : SignerChoice()
     /** A PKCS#12 file opened with its password. */
     class Pkcs12(val file: ByteArray, val password: String) : SignerChoice()
     /** The wallet's own key with a self-issued certificate in [name]. */
@@ -1442,7 +1450,8 @@ class FilesModel(private val model: WalletModel) {
         val archive = form != SignForm.APPROVAL && level.archive
         if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
-            is SignerChoice.Card -> "簽署中：依提示再次感應卡片"
+            is SignerChoice.Card -> "簽署中：依提示再次感應自然人憑證卡（同一張卡）"
+            is SignerChoice.Piv -> "簽署中：依提示再次感應 PIV 卡（同一張卡）"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
             is SignerChoice.Csc -> "簽署中：請依畫面授權這次簽章"
             else -> "簽署中"
@@ -1534,6 +1543,7 @@ class FilesModel(private val model: WalletModel) {
 
     private suspend fun signer(choice: SignerChoice, hint: String = "DIW MY WALLET 文件簽署"): DocumentSigner = when (choice) {
         is SignerChoice.Card -> cardSigner(choice)
+        is SignerChoice.Piv -> pivSigner(choice)
         is SignerChoice.Pkcs12 -> DocumentSigning.pkcs12Signer(choice.file, choice.password)
         is SignerChoice.Wallet -> walletSigner(choice.name)
         is SignerChoice.System -> withMoicaChain(model.platform.externalKeys.systemSigner(choice.id))
@@ -1626,12 +1636,37 @@ class FilesModel(private val model: WalletModel) {
 
     /** A card signer with its certificate read (first tap); MOICA G3 is added to the chain when it issued the card. */
     private suspend fun cardSigner(choice: SignerChoice.Card): GpkiTapSigner {
-        busy.value = if (choice.reader.external) "請把卡片放到讀卡機「${choice.reader.name}」" else "請將自然人憑證卡靠近手機背面"
+        busy.value = if (choice.reader.external) "請把自然人憑證卡插入讀卡機「${choice.reader.name}」，讀取期間請勿拔出。" else "請將自然人憑證卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
         val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         val probe = GpkiTapSigner(choice.reader.reader, choice.pin)
         val cert = probe.load()
         val intermediates = if (PlatformCrypto.certificateSignedBy(cert, moica)) listOf(moica) else emptyList()
         return if (intermediates.isEmpty()) probe else GpkiTapSigner(choice.reader.reader, choice.pin, intermediates).also { it.load() }
+    }
+
+    /**
+     * A PIV card signer with its certificate read (first tap). A PIV card does not carry its issuer chain in a fixed
+     * slot, so only the leaf certificate is used; the verifier builds the chain from its trust store.
+     */
+    private suspend fun pivSigner(choice: SignerChoice.Piv): PivTapSigner {
+        busy.value = if (choice.reader.external) "請把 PIV 卡插入讀卡機「${choice.reader.name}」，讀取期間請勿拔出。" else "請將 PIV 卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
+        val signer = PivTapSigner(choice.reader.reader, choice.pin, choice.slot)
+        signer.load()
+        return signer
+    }
+
+    /**
+     * Reads every usable certificate on a PIV card in one tap (no PIN), so the signing screen can list all the
+     * certificates and let the user pick a slot instead of the wallet choosing one.
+     */
+    suspend fun pivCertificates(reader: NfcReaderOption): List<PivCard.KeyInfo> {
+        val message = if (reader.external) "請把 PIV 卡插入讀卡機「${reader.name}」讀取卡片上的憑證清單。"
+            else "請將 PIV 卡（IC 晶片面）貼近 NFC 感應區讀取卡片上的憑證清單。"
+        return reader.reader.scan(message, tagInteractionFunc = { tag ->
+            val card = PivCard(NfcCardChannel(tag))
+            card.connect()
+            card.allSigningKeys()
+        })
     }
 
     /** The wallet's own P-256 key (document-signer identity) with a self-issued certificate in [name]. */

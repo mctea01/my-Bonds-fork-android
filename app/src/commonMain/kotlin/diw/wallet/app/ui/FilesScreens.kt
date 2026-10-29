@@ -98,6 +98,8 @@ import diw.wallet.core.document.SignatureInfo
 import diw.wallet.core.document.SignaturePlacementInfo
 import diw.wallet.core.document.TimestampInfo
 import diw.wallet.core.document.card.GpkiCard
+import diw.wallet.core.document.card.PivCard
+import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.EvidenceResult
@@ -798,7 +800,7 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
 
 private enum class SignerKind(val title: String) {
-    CARD("自然人憑證卡"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"),
+    CARD("自然人憑證卡"), PIV("PIV 卡"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"),
     PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
 }
 
@@ -838,6 +840,83 @@ internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Un
         style = MaterialTheme.typography.bodySmall)
 }
 
+/**
+ * Picks a PIV card (NIST SP 800-73-4: YubiKey, PIVKey, US PIV/CAC and the like) on a reader, takes its PIN, and
+ * optionally reads the card once to list every certificate on it so the user can choose which slot signs instead of
+ * the wallet choosing the first usable one. Slots are not restricted: all four primary slots and the twenty retired
+ * key-management slots are listed when they hold a usable certificate.
+ */
+@Composable
+private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+    var readers by remember { mutableStateOf<NfcReaderList?>(null) }
+    var reader by remember { mutableStateOf<NfcReaderOption?>(null) }
+    var pin by remember { mutableStateOf("") }
+    var slot by remember { mutableStateOf<Int?>(null) }
+    var certs by remember { mutableStateOf<List<PivCard.KeyInfo>?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) {
+        readers = runCatching { model.platform.nfcReaders() }.getOrElse { NfcReaderList(emptyList(), model.describe(it)) }
+        reader = readers?.readers?.firstOrNull()
+    }
+    fun update() = onChange(reader?.takeIf { pin.length in PivCard.PIN_MIN..PivCard.PIN_MAX }?.let { SignerChoice.Piv(it, pin, slot) })
+    val list = readers
+    when {
+        list == null -> CircularProgressIndicator(Modifier.size(20.dp))
+        list.readers.isEmpty() -> {
+            Text(list.problem ?: "找不到 NFC 或讀卡機", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); certs = null; slot = null; update() } }) { Text("重新尋找") }
+        }
+        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; certs = null; slot = null; update() }, label = { Text(r.name) }) }
+        }
+    }
+    OutlinedTextField(
+        value = pin,
+        onValueChange = { v -> pin = v.filter { it.code in 0x21..0x7E }.take(PivCard.PIN_MAX); update() },
+        label = { Text("PIV PIN 碼（${PivCard.PIN_MIN} 至 ${PivCard.PIN_MAX} 位）") },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+    reader?.let { r ->
+        OutlinedButton(onClick = {
+            busy = true
+            scope.launch {
+                problem = null
+                certs = runCatching { model.files.pivCertificates(r) }.getOrElse { problem = model.describe(it); null }
+                busy = false
+            }
+        }, enabled = !busy) { Text(if (busy) "讀取中" else if (certs == null) "讀取卡片列出憑證" else "重新讀取憑證") }
+    }
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    val found = certs
+    if (found != null) {
+        if (found.isEmpty()) {
+            Text("這張 PIV 卡沒有可用的簽章憑證（支援 RSA-2048 與 EC P-256）。", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Row(Modifier.fillMaxWidth().clickable { slot = null; update() }, verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.RadioButton(selected = slot == null, onClick = { slot = null; update() })
+                Text("自動（卡片第一個可用的憑證）", style = MaterialTheme.typography.bodyMedium)
+            }
+            found.forEach { k ->
+                val name = runCatching { DocumentSigning.certificateSummary(k.certificate)?.first }.getOrNull()
+                Row(Modifier.fillMaxWidth().clickable { slot = k.slot; update() }, verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.RadioButton(selected = slot == k.slot, onClick = { slot = k.slot; update() })
+                    Column {
+                        Text(k.slotName, style = MaterialTheme.typography.bodyMedium)
+                        Text((name?.let { "$it · " } ?: "") + (if (k.keyType == diw.wallet.core.document.sign.SignerKeyType.RSA) "RSA" else "EC P-256"),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
+    Text("支援任何 PIV 卡（YubiKey、PIVKey、美國 PIV／CAC 等），不限 YubiKey。可先讀取卡片列出每個金鑰槽的憑證再選擇，或留「自動」由卡片的第一張可用憑證簽署。PIN 碼只用於這次簽署，不會保存；輸入錯誤次數過多會鎖卡。手機需感應兩次：先讀取憑證，再簽署。",
+        style = MaterialTheme.typography.bodySmall)
+}
+
 @Composable
 private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
     var kind by remember { mutableStateOf(SignerKind.CARD) }
@@ -851,7 +930,7 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             SignerKind.CARD -> card
             SignerKind.PKCS12 -> p12?.takeIf { password.isNotEmpty() }?.let { SignerChoice.Pkcs12(it.bytes, password) }
             SignerKind.WALLET -> SignerChoice.Wallet(walletName)
-            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE, SignerKind.CSC -> other
+            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE, SignerKind.CSC, SignerKind.PIV -> other
         }
     )
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -862,6 +941,7 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
         SignerKind.TOKEN -> TokenKeyPicker(model) { other = it; update() }
         SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
+        SignerKind.PIV -> PivKeyPicker(model) { other = it; update() }
         SignerKind.CARD -> CardPicker(model) { update(it) }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }

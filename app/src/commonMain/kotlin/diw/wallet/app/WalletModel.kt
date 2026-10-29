@@ -498,6 +498,9 @@ class WalletModel(val platform: PlatformServices) {
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
+            // The same Longfellow ZK system the proximity path uses, so an online OpenID4VP request that asks for a ZKP
+            // is answered with one instead of failing because no ZK system was registered on this source.
+            zkSystemRepository = proximity.longfellow.repository,
             domainsMdocSignature = listOf(CredentialDomains.MDOC),
             domainsKeyBoundSdJwt = listOf(CredentialDomains.SD_JWT),
             domainsKeylessSdJwt = listOf(CredentialDomains.SD_JWT_KEYLESS),
@@ -1401,16 +1404,31 @@ class WalletModel(val platform: PlatformServices) {
      * included), or null to cancel the flow. A failed request stays on screen until the user leaves it, so the reason
      * can be read instead of the caller only seeing a cancelled request.
      */
-    suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String): JsonObject? {
+    suspend fun presentDcApi(
+        protocol: String,
+        data: JsonObject,
+        origin: String,
+        selectedDocumentIds: List<String> = emptyList(),
+    ): JsonObject? {
         val done = startDcApi()
         try {
             val h = holder()
-            presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)))
+            val preselected = resolveSelectedDocuments(selectedDocumentIds)
+            presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)), preselected = preselected)
         } catch (e: Exception) {
             dcApiError = Oid4vpHolder.dcApiError(data, e)
             presentation.value = PresentationUi.Failed(describe(e))
         }
         return done.await()
+    }
+
+    /**
+     * The held documents the system selector chose, by their Credential Manager ids (each a document identifier). A
+     * chosen credential that no longer exists is an explicit failure: the request is never answered from another
+     * credential the holder did not pick.
+     */
+    suspend fun resolveSelectedDocuments(ids: List<String>): List<Document> = ids.map { id ->
+        documentStore.lookupDocument(id) ?: throw ProtocolException("access_denied", "選取的證件已不存在")
     }
 
     /**
@@ -1444,10 +1462,20 @@ class WalletModel(val platform: PlatformServices) {
         offline: TwdiwOfflineSession? = null,
         chosen: CredentialSelection? = null,
         checkedAttestations: List<diw.wallet.core.oid4vp.VerifierAttestation>? = null,
+        preselected: List<Document> = emptyList(),
     ): PresentationUi.Consent {
         val consent = when (prepared) {
             is PreparedPresentation -> {
-                val selection = chosen ?: prepared.queryResult.select(emptyList())
+                val selection = chosen ?: prepared.queryResult.select(preselected)
+                // Multipaz silently falls back to the first match when the preselected documents cannot be honoured, so
+                // the honoured set is checked here: a credential the holder picked that does not satisfy the request is
+                // an explicit failure rather than a different credential being disclosed.
+                if (chosen == null && preselected.isNotEmpty()) {
+                    val honoured = selection.matches.map { it.credential.document.identifier }.toSet()
+                    if (preselected.any { it.identifier !in honoured }) {
+                        throw ProtocolException("access_denied", "選取的證件無法符合此請求")
+                    }
+                }
                 val alternatives = standardAlternatives(prepared.queryResult, selection)
                 val items = selection.matches.mapIndexed { i, m ->
                     val doc = m.credential.document
@@ -1503,6 +1531,15 @@ class WalletModel(val platform: PlatformServices) {
                     notable = notable(paths, labels, sensitivity),
                 )
                 PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
+            }
+        }
+        // The Digital Credentials API only registers mdoc and SD-JWT VC documents, which are answered as a
+        // PreparedPresentation; a preselected document reaching any other path cannot be the credential the holder
+        // picked, so the request is refused rather than answered from a credential they did not choose.
+        if (chosen == null && preselected.isNotEmpty() && prepared !is PreparedPresentation) {
+            val honoured = consent.items.mapNotNull { it.documentId }.toSet()
+            if (preselected.any { it.identifier !in honoured }) {
+                throw ProtocolException("access_denied", "選取的證件無法符合此請求")
             }
         }
         val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
