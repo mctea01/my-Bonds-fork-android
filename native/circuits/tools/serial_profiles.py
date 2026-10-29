@@ -36,9 +36,10 @@ def main():
         if args.resume and output.exists():
             import hashlib
             r=json.loads(output.read_text())
-            if r.get('status')=='verified' and all(hashlib.sha256((ROOT/k).read_bytes()).hexdigest()==v for k,v in r['source_sha256'].items()):
+            if r.get('status')=='verified' and r.get('compile_flags',[])==(['--bounded-codegen'] if kind in ('lex','claim','pred') else []) and all(hashlib.sha256((ROOT/k).read_bytes()).hexdigest()==v for k,v in r['source_sha256'].items()):
                 print(tier+'/'+kind+': verified source-identical record retained',flush=True);continue
         command=[sys.executable,'-I',str(ROOT/'tools/compile_profile.py'),'--formal-tier',tier,'--formal-kind',kind,'--nargo',str(Path(args.nargo).resolve()),'--bb',str(Path(args.bb).resolve()),'--prove','--crs',str(args.crs.resolve()),'--seconds','1800','--address-space-gib','24','--rss-limit-gib','6','--output',str(output.resolve())]
+        if (tier,kind)==('desktop','lex'):command+=['--compile-threads','1']
         print(tier+'/'+kind+': isolated compile, first/warm prove, verify',flush=True)
         result=subprocess.run(command,env=env,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         if result.returncode:raise RuntimeError(tier+'/'+kind+': measurement failed; inspect sanitized metadata')

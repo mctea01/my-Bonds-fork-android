@@ -129,6 +129,7 @@ def prove_profile(args, root, acir, record, limits):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--compile-threads',type=int,choices=[1,2],default=2)
     parser.add_argument('--formal-tier',choices=['phone','desktop'])
     parser.add_argument('--formal-kind',choices=['sha_content','sha_opaque','inflate0','inflate','lex','claim','pred'])
     parser.add_argument('--bounded-codegen', action='store_true')

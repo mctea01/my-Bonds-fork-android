@@ -38,6 +38,7 @@ def witness(tier,kind):
 
 def run(args):
     tier,kind=args.formal_tier,args.formal_kind;validate(tier)
+    compile_flags=["--bounded-codegen"] if kind in ("lex","claim","pred") else []
     assert args.bb and args.crs and args.prove
     version=subprocess.check_output([args.nargo,'--version'],text=True).strip();assert version.splitlines()[0]=='nargo version = 1.0.0-beta.15'
     assert subprocess.check_output([args.bb,'--version'],text=True).strip()=='2.1.9'
@@ -47,7 +48,7 @@ def run(args):
     proof=ROOT/'target/formal-proofs'/name;proof.mkdir(parents=True,exist_ok=True)
     def limits():
         size=args.address_space_gib*1024**3;resource.setrlimit(resource.RLIMIT_AS,(size,size));resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-    record=dict(scope='Candidate formal package; synthetic witness; serial isolated measurement',tier=tier,kind=kind,package=name,nargo=version,bb='2.1.9',zero_knowledge=True,oracle_hash='poseidon2',prove={},environment={**{n:Path('/sys/fs/cgroup',n).read_text().strip() for n in ('cpu.max','memory.max')},'hardware_concurrency':os.environ.get('HARDWARE_CONCURRENCY'),'rayon_num_threads':os.environ.get('RAYON_NUM_THREADS'),'cpu_affinity':sorted(os.sched_getaffinity(0))},parameters=PARAMS[tier],source_sha256={str(x.relative_to(ROOT)):hashlib.sha256(x.read_bytes()).hexdigest() for x in sorted([*root.rglob('*.nr'),*(ROOT/'pdf_text_v1/src').glob('*.nr')])})
+    record=dict(scope='Candidate formal package; synthetic witness; serial isolated measurement',tier=tier,kind=kind,package=name,compile_flags=compile_flags,nargo=version,bb='2.1.9',zero_knowledge=True,oracle_hash='poseidon2',prove={},environment={**{n:Path('/sys/fs/cgroup',n).read_text().strip() for n in ('cpu.max','memory.max')},'hardware_concurrency':os.environ.get('HARDWARE_CONCURRENCY'),'rayon_num_threads':os.environ.get('RAYON_NUM_THREADS'),'compile_threads':args.compile_threads,'cpu_affinity':sorted(os.sched_getaffinity(0))},parameters=PARAMS[tier],source_sha256={str(x.relative_to(ROOT)):hashlib.sha256(x.read_bytes()).hexdigest() for x in sorted([*root.rglob('*.nr'),*(ROOT/'pdf_text_v1/src').glob('*.nr')])})
     record['crs_before']={str(x.relative_to(args.crs)):x.stat().st_size for x in args.crs.rglob('*') if x.is_file()}
     def save():args.output.write_text(json.dumps(record,indent=2)+'\n')
     def measure(label,cmd):
@@ -58,11 +59,11 @@ def run(args):
     try:
         # Delete only this package's cached ACIR so compilation is measured fresh.
         acir.unlink(missing_ok=True)
-        if not measure('compile',[args.nargo,'info','--program-dir',str(ROOT),'--package',name]):return False
+        if not measure('compile',['env','RAYON_NUM_THREADS='+str(args.compile_threads),args.nargo,'info','--program-dir',str(ROOT),'--package',name,*compile_flags]):return False
         if not measure('gate_measurement',[args.bb,'gates','-b',str(acir)]):return False
         gate=args.output.with_suffix('.gate_measurement.log').read_text();record['gates']=json.loads(gate[gate.index('{'):]);save()
         before=json.loads(acir.read_text())['bytecode']
-        if not measure('witness',[args.nargo,'execute','--program-dir',str(ROOT),'--package',name,'--pedantic-solving']):return False
+        if not measure('witness',[args.nargo,'execute','--program-dir',str(ROOT),'--package',name,'--pedantic-solving',*compile_flags]):return False
         assert before==json.loads(acir.read_text())['bytecode']
         record['acir_sha256']=hashlib.sha256(acir.read_bytes()).hexdigest();record['abi']=json.loads(acir.read_text())['abi'];save()
         for label in ('first','warm'):

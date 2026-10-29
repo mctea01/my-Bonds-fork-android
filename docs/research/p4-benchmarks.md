@@ -906,8 +906,8 @@ SHA-content，以及竄改 H_e。公開串接檢查不讀 Pi／S／Lambda 開啟
 也不把 nargo 執行稱為 UltraHonk proof 或完整的 CMS 信任驗證。CMS
 簽章／信任維持既有 Kotlin 測試與查驗政策。現有 PdfZkSupport 對這兩份
 文件的內容、RC4、字型與數字結果沒有發現不同；但 PdfTextExtractor.runs
-仍把部分跨字串八進位／奇數 hex 案例拒絕或串接 raw，與 v2 保留字串
-邊界的能力不同，已在 PR 交由 Claude 處理。
+先串接 raw，再以解碼等價性檢查拒絕會改變結果的跨字串八進位／奇數
+hex 案例；v2 則保留各字串邊界，這項介面差異在 PR 交由 Claude 處理。
 
 ### 量測方法與資產界線
 
@@ -918,6 +918,9 @@ bb 2.1.9、UltraHonk ZK、Poseidon2；不傳 `--disable_zk`。同一 2-vCPU／
 執行十個不同的正式候選 package。SHA、claim、pred 是兩種等級共用的
 四個電路，不重複計為不同資產。每組重新編譯，依序執行 witness、first
 prove、warm prove、獨立 verify；量測期間不跑其他編譯或回歸。
+文字三種電路沿用第九輪的 `--bounded-codegen`，compile 與 witness 的
+旗標一致；SHA／inflate 為預設 codegen。電腦詞法編譯另設
+`RAYON_NUM_THREADS=1`，其 prover 仍為兩執行緒。
 
 `tools/serial_profiles.py` 重現完整順序，在每組開始前拒絕仍存在的
 nargo／bb／Java 程序。24 GiB 為 RLIMIT_AS，另設 6 GiB RSS guard；

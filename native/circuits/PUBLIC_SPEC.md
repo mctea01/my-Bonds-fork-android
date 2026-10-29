@@ -37,6 +37,11 @@ SHA-256 digests for these exact packages; historical component hashes are not
 composition keys. ACIR hash means SHA-256 over the complete emitted JSON file,
 not only its base64 bytecode. Compiler source maps can affect this digest.
 
+Lexical, claim and predicate packages use the pinned `--bounded-codegen`
+compiler flag for both compilation and witness execution, as in Round 9.
+SHA and inflate use default code generation. This compiler configuration is
+part of each asset identity; do not substitute an unbounded text-circuit VK.
+
 Encoding is over the BN254 scalar field
 `21888242871839275222246405745257275088548364400416034343698204186575808495617`.
 A scalar `Field` occupies one field element, canonically represented in 32-byte
