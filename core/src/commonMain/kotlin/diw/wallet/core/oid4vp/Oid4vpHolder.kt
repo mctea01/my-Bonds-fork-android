@@ -106,10 +106,15 @@ class Oid4vpHolder(
     private val derivedHolders: suspend () -> List<HolderHint> = { emptyList() },
     /** Decryption keys registered for encrypted request objects (not keys received from the verifier). */
     private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
+    /** OpenID Federation Trust Anchors for openid_federation verifiers. */
+    federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
 ) {
     private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
-    private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust)
+    private val validator = RequestValidator(
+        trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust,
+        diw.wallet.core.federation.FederationResolver(httpClient, federationAnchors, environment.insecureLoopbackAllowed),
+    )
     private val legacy = LegacyRequestValidator(httpClient, trustRegistry, didResolver, didTrust, policy, environment.insecureLoopbackAllowed, dialects)
     private val builder = ResponseBuilder(source)
     private val extended = ExtendedPresenter(httpClient, source.documentStore, holderIdentities, dialects, environment.insecureLoopbackAllowed)

@@ -182,6 +182,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
 
+    override val canShareFiles: Boolean get() = true
+
+    override suspend fun shareFile(name: String, mediaType: String, bytes: ByteArray): Boolean =
+        fileAccess?.share(name, mediaType, bytes) ?: false
+
     override val embeddedBrowser: Boolean get() = true
 
     override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {

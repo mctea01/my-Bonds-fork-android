@@ -1,6 +1,6 @@
 package diw.wallet.app.ui
 
-import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.oid4vp.WalletTransactionTypes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -230,9 +230,11 @@ fun PresentationScreen(model: WalletModel) {
                 val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s) { i, id -> model.changeCredential(s, i, id) }
                 if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) {
-                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
-                    req.transactionData.mapNotNull { QesApprovalTransaction.describe(it) }.forEach {
-                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表授權以下交易：")
+                    req.transactionData.forEach { entry ->
+                        WalletTransactionTypes.describe(entry).forEachIndexed { i, line ->
+                            Text(line, style = if (i == 0) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
                 // Kept when the holder changes a credential, which replaces the consent state of the same request.

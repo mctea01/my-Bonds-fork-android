@@ -53,6 +53,22 @@ interface WalletProvider {
     suspend fun keyAttestation(keys: List<KeyAttestation>, nonce: String?, userAuthentication: Boolean): String?
 }
 
+/**
+ * Sends the issuers [route] names to another provider and everything else to [default]. Kept out of
+ * [WalletProvider] so a wrapper written as `object : WalletProvider by other` keeps its own overrides.
+ */
+class IssuerRoutedWalletProvider(
+    private val default: WalletProvider,
+    private val route: (credentialIssuer: String, authorizationServer: String) -> WalletProvider?,
+) : WalletProvider by default {
+    fun forIssuer(credentialIssuer: String, authorizationServer: String): WalletProvider =
+        route(credentialIssuer, authorizationServer) ?: default.forIssuer(credentialIssuer, authorizationServer)
+}
+
+/** The provider a session with this issuer and authorization server keeps for every exchange. */
+fun WalletProvider.forIssuer(credentialIssuer: String, authorizationServer: String): WalletProvider =
+    (this as? IssuerRoutedWalletProvider)?.forIssuer(credentialIssuer, authorizationServer) ?: this
+
 /** No back end: a plain public client. Works with issuers that need neither wallet nor key attestation. */
 class PublicClientWalletProvider(override val clientId: String) : WalletProvider {
     override suspend fun walletAttestation(): WalletAttestation? = null

@@ -355,6 +355,13 @@ private fun DeveloperPage(model: WalletModel) {
     SectionTitle("測試錨點")
     OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text("匯入 EUDI 參考實作測試錨點") }
     OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
+    Toggle(
+        "Multipaz 測試身分",
+        "向 issuer.multipaz.org 領卡時改用 Multipaz TestApp 公開的測試金鑰做錢包證明、用戶端金鑰簽章與金鑰證明。" +
+            "這組金鑰任何人都能取得，只能用於測試，其他發證端不受影響。需先開啟自訂測試伺服器。",
+        s.multipazTestIdentity,
+        enabled = s.testEnvironment,
+    ) { v -> model.updateSettings { it.copy(multipazTestIdentity = v) } }
     HorizontalDivider()
     SectionTitle("行動自然人憑證")
     Toggle(

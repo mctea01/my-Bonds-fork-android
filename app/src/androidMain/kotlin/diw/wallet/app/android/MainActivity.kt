@@ -52,6 +52,8 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         app.platform.fileAccess = fileAccess
+        // Copies left by an earlier run's share sheet.
+        if (savedInstanceState == null) AndroidFileAccess.clearShared(this)
         enableEdgeToEdge()
         setContent {
             // The system Back gesture follows the in-app Back button; on the documents tab it leaves the app.
@@ -78,6 +80,7 @@ class MainActivity : FragmentActivity() {
         // Card emulation preference only holds while this activity is in the foreground.
         app.platform.applyNfcPreference(this)
         app.model.onAppResumed()
+        AndroidFileAccess.clearStaleShared(this)
     }
 
     override fun onPause() {
@@ -90,6 +93,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onDestroy() {
         if (app.platform.fileAccess === fileAccess) app.platform.fileAccess = null
+        if (isFinishing) AndroidFileAccess.clearShared(this)
         promptModel.cancel()
         super.onDestroy()
     }
