@@ -374,6 +374,9 @@ private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: L
             model.files.collectContainerValidation(f)
         }
         ActionRow(WalletIcons.Send, "匯出公文容器", "壓縮檔內含全部檔案（原檔名）、時戳與撤銷資訊，以及依簽核點整理的說明") { model.files.exportContainer(f) }
+        if (model.platform.canShareFiles) {
+            ActionRow(WalletIcons.Share, "分享公文容器", "同一個壓縮檔直接交給其他 App，不另存檔") { model.files.exportContainer(f, share = true) }
+        }
     }
 }
 
@@ -510,6 +513,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) { Text("加上時戳") }
             OutlinedButton(onClick = { model.screen.value = Screen.FileDerive(f.id) }) { Text(if (derived != null) "重新產生衍生憑證" else "衍生憑證") }
             OutlinedButton(onClick = { model.files.export(f) }) { Text("匯出") }
+            if (model.platform.canShareFiles) OutlinedButton(onClick = { model.files.export(f, share = true) }) { Text("分享") }
         }
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
             LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
@@ -626,6 +630,9 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         }
         if (model.files.hasEvidence(f)) {
             ActionRow(WalletIcons.Send, "匯出文件與證據", "壓縮檔內含原檔、時戳（.tsr）、憑證、OCSP 與 CRL，可在其他工具查驗") { model.files.exportWithEvidence(f) }
+            if (model.platform.canShareFiles) {
+                ActionRow(WalletIcons.Share, "分享文件與證據", "同一個壓縮檔直接交給其他 App，不另存檔") { model.files.exportWithEvidence(f, share = true) }
+            }
         }
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
@@ -1838,6 +1845,9 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { model.files.storeOpenCertAttachment(f, a) }, enabled = busy == null) { Text("存入文件") }
                 OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a) }, enabled = busy == null) { Text("匯出") }
+                if (model.platform.canShareFiles) {
+                    OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a, share = true) }, enabled = busy == null) { Text("分享") }
+                }
             }
         }
     }

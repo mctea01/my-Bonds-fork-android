@@ -75,7 +75,10 @@
 - 需要使用者：一支已在 9C 槽放好憑證的 YubiKey 做實機驗收。
 - 工作量：中（2 個工作階段）。
 
-### C9 匯出直接分享
+### C9 匯出直接分享（2026-10-29 已實作）
+
+- 文件、文件與證據、公文容器、OpenCerts 附件與身分證卡都加上「分享」（Android）。尚待實機確認分享到常用 App（Gmail、LINE、雲端硬碟）時檔名與內容正確。
+
 
 - 現況：Android 只處理收到的 `ACTION_SEND`；匯出一律存檔。
 - 做法：匯出時寫入 App 快取下的專用分享目錄，用 `FileProvider` 產生 content URI，以 `ACTION_SEND`／`ACTION_SEND_MULTIPLE` 分享（中文檔名放在 `EXTRA_TITLE` 與 `ClipData`，保持 UTF-8）。分享畫面關閉、App 回到前景或下次啟動時清空目錄。桌面版維持另存新檔。
