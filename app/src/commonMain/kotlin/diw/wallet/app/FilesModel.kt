@@ -1289,25 +1289,32 @@ class FilesModel(private val model: WalletModel) {
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
-    fun exportOpenCertAttachment(a: OaAttachment) = run("匯出附件") {
-        if (!model.platform.saveFile(a.name, a.type ?: "application/octet-stream", a.bytes)) model.message.value = "未匯出"
+    fun exportOpenCertAttachment(a: OaAttachment, share: Boolean = false) = run(if (share) "分享附件" else "匯出附件") {
+        deliver(a.name, a.type ?: "application/octet-stream", a.bytes, share)
     }
 
-    fun export(f: StoredFile) = run("匯出檔案") {
-        if (!model.platform.saveFile(f.name, f.mediaType, data(f.id))) model.message.value = "未匯出"
+    fun export(f: StoredFile, share: Boolean = false) = run(if (share) "分享檔案" else "匯出檔案") {
+        deliver(f.name, f.mediaType, data(f.id), share)
+    }
+
+    /** Saves [bytes] through the platform save dialog, or hands them to another app when [share]. */
+    private suspend fun deliver(name: String, mediaType: String, bytes: ByteArray, share: Boolean): Boolean {
+        val done = if (share) model.platform.shareFile(name, mediaType, bytes) else model.platform.saveFile(name, mediaType, bytes)
+        if (!done) model.message.value = if (share) "未分享" else "未匯出"
+        return done
     }
 
     /** True when [f] has something to export besides the file: time stamps or collected revocation data. */
     fun hasEvidence(f: StoredFile): Boolean = f.timestamps.isNotEmpty() || f.signatureValidation != null
 
     /** Exports [f] with its time stamps and revocation data as a ZIP, for checking elsewhere. */
-    fun exportWithEvidence(f: StoredFile) = run("匯出文件與證據") {
+    fun exportWithEvidence(f: StoredFile, share: Boolean = false) = run(if (share) "分享文件與證據" else "匯出文件與證據") {
         val entries = ArrayList<Pair<String, ByteArray>>()
         entries.add(f.name to data(f.id))
         entries.addAll(evidenceEntries(f, ""))
         entries.add("說明.txt" to evidenceReadme(listOf(f), null).encodeToByteArray())
         val name = f.name.substringBeforeLast('.').ifBlank { f.name } + "（含證據）.zip"
-        if (!model.platform.saveFile(name, "application/zip", DocumentSigning.zip(entries))) model.message.value = "未匯出"
+        deliver(name, "application/zip", DocumentSigning.zip(entries), share)
     }
 
     /**
@@ -1315,7 +1322,7 @@ class FilesModel(private val model: WalletModel) {
      * names them, so other systems can check it), their evidence under 證據/, and a list of the files by signing
      * point with what the wallet found.
      */
-    fun exportContainer(main: StoredFile) = run("匯出公文容器") {
+    fun exportContainer(main: StoredFile, share: Boolean = false) = run(if (share) "分享公文容器" else "匯出公文容器") {
         val all = (listOf(main) + members(main)).distinctBy { it.id }
         val entries = ArrayList<Pair<String, ByteArray>>()
         val used = HashSet<String>()
@@ -1330,8 +1337,9 @@ class FilesModel(private val model: WalletModel) {
         }
         entries.add("說明.txt" to evidenceReadme(all, containerLayout(main)).encodeToByteArray())
         val name = main.name.substringBeforeLast('.').ifBlank { main.name } + "（公文容器）.zip"
-        if (!model.platform.saveFile(name, "application/zip", DocumentSigning.zip(entries))) model.message.value = "未匯出"
-        else model.message.value = "已匯出 ${all.size} 個檔案與它們的證據"
+        if (deliver(name, "application/zip", DocumentSigning.zip(entries), share)) {
+            model.message.value = (if (share) "已分享 " else "已匯出 ") + "${all.size} 個檔案與它們的證據"
+        }
     }
 
     /** Time stamps (.tsr) and validation data (certificates, OCSP responses, CRLs) of [f], under [dir]. */
@@ -1826,9 +1834,9 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Exports the national ID card as Bonds vc+moica JSON. */
-    fun exportNationalId(f: StoredFile) = run("匯出身分證卡") {
+    fun exportNationalId(f: StoredFile, share: Boolean = false) = run(if (share) "分享身分證卡" else "匯出身分證卡") {
         val card = f.nationalId ?: throw SigningException("這份文件沒有身分證卡")
-        if (!model.platform.saveFile("national-id.vc-moica.json", "application/vc+moica", card.encodeToByteArray())) model.message.value = "未匯出"
+        deliver("national-id.vc-moica.json", "application/vc+moica", card.encodeToByteArray(), share)
     }
 
     /** Removes the national ID card; the PDF it was made from stays in the vault. */

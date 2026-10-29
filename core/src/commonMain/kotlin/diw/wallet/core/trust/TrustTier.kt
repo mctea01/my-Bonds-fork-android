@@ -59,6 +59,9 @@ enum class TrustLabel {
      * read from that document, not for whoever issued the document.
      */
     SELF_ISSUED,
+
+    /** The party's metadata comes from an OpenID Federation trust chain to a configured Trust Anchor. */
+    OPENID_FEDERATION,
 }
 
 /**

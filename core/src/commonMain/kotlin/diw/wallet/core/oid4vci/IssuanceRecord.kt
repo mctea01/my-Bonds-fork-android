@@ -65,6 +65,10 @@ data class IssuanceRecord(
     val displayCheckedAt: Long? = null,
     /** The credential display description as the issuer wrote it (TWDIW puts {"ial": ...} there). */
     val displayDescription: String? = null,
+    /** Token endpoint client authentication used (attest_jwt_client_auth, private_key_jwt or none); null when no token was requested. */
+    val clientAuthentication: String? = null,
+    /** Access token type the authorization server issued (DPoP or Bearer); null when no token was requested. */
+    val tokenType: String? = null,
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)

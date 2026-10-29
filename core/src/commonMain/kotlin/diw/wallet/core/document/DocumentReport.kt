@@ -159,6 +159,22 @@ data class SignatureInfo(
         }
 }
 
+/**
+ * The on-page box of one signature, as a fraction of the page with the origin top-left, matched to a
+ * [SignatureInfo] by [label]. A viewer frames it over the rendered page; an invisible signature has visible=false.
+ */
+@Serializable
+data class SignaturePlacementInfo(
+    val label: String,
+    /** 0-based page index. */
+    val page: Int,
+    val x0: Float,
+    val y0: Float,
+    val x1: Float,
+    val y1: Float,
+    val visible: Boolean,
+)
+
 /** The encrypted envelope of a CMS EnvelopedData file: who can open it. */
 @Serializable
 data class EnvelopeInfo(
@@ -207,6 +223,8 @@ data class DocumentReport(
     val pages: Int? = null,
     val encrypted: Boolean = false,
     val signatures: List<SignatureInfo> = emptyList(),
+    /** Where each signature's widget sits on a page, for framing it over a rendered PDF page (PDF only). */
+    val signaturePlacements: List<SignaturePlacementInfo> = emptyList(),
     val envelope: EnvelopeInfo? = null,
     val openCert: OpenCertInfo? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */

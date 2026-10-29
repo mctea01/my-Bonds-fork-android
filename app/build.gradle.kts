@@ -215,6 +215,7 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(project(":test-servers"))
                 implementation(libs.ktor.server.netty)
+                implementation(project.dependencies.platform(libs.netty.bom))
                 implementation(libs.ktor.client.java)
                 implementation(libs.ktor.client.mock)
                 implementation(libs.bcpkix)

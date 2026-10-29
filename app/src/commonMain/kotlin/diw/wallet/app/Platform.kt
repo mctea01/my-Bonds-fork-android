@@ -179,6 +179,12 @@ interface PlatformServices {
     /** Lets the user save [bytes] under a name they choose; false when cancelled or not possible. */
     suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = false
 
+    /** Whether [shareFile] can hand a file to another app (the Android share sheet). */
+    val canShareFiles: Boolean get() = false
+
+    /** Hands a copy of the file to another app; false when not shared. The copy is removed afterwards. */
+    suspend fun shareFile(name: String, mediaType: String, bytes: ByteArray): Boolean = false
+
     /** Document source pages open inside the app (downloads go straight to the vault) rather than in a browser. */
     val embeddedBrowser: Boolean get() = false
 

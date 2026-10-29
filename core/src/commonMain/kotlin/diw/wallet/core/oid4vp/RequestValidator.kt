@@ -1,6 +1,9 @@
 package diw.wallet.core.oid4vp
 
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.federation.FederationResolver
+import diw.wallet.core.federation.ResolvedEntity
+import diw.wallet.core.federation.jwks
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.DidTrust
@@ -39,6 +42,8 @@ class RequestValidator(
      * trust list, DIDs the user trusts, Linked Domains). A DID none of them knows stays T3.
      */
     private val didTrust: DidTrust = DidTrust.NONE,
+    /** Trust Chains for openid_federation client identifiers; null when no Trust Anchor can be configured. */
+    private val federation: FederationResolver? = null,
 ) {
     suspend fun validate(raw: RawAuthorizationRequest): ValidatedAuthorizationRequest {
         val p = raw.params
@@ -213,8 +218,7 @@ class RequestValidator(
 
             ClientIdPrefix.VERIFIER_ATTESTATION -> authenticateVerifierAttestation(raw, jws, clientId, responseUri)
 
-            ClientIdPrefix.OPENID_FEDERATION ->
-                throw RequestValidationException("invalid_client", "openid_federation trust chains are not supported yet")
+            ClientIdPrefix.OPENID_FEDERATION -> authenticateFederation(raw, jws, clientId, rawClientId, responseMode)
 
             ClientIdPrefix.PRE_REGISTERED -> {
                 val reg = policy.preRegistered.firstOrNull { it.clientId == rawClientId }
@@ -333,6 +337,41 @@ class RequestValidator(
         return VerifierIdentityInfo(
             clientId, clientId.raw, claims.str("name") ?: clientId.value, chain, emptyList(), null, decision
         )
+    }
+
+    /**
+     * OpenID4VP 1.0 section 5.9.3: the client identifier is an Entity Identifier, the Verifier metadata comes from a
+     * Trust Chain to a configured Trust Anchor (the trust_chain JWS header when it validates, else fetched), and the
+     * request object is signed with a key in that metadata's jwks.
+     */
+    private suspend fun authenticateFederation(
+        raw: RawAuthorizationRequest,
+        jws: Jws?,
+        clientId: ClientId,
+        rawClientId: String,
+        responseMode: ResponseMode,
+    ): VerifierIdentityInfo {
+        val req = jws ?: throw RequestValidationException("invalid_request", "openid_federation requests must be signed")
+        val resolver = federation ?: throw RequestValidationException("invalid_client", "OpenID Federation is not available")
+        val entityId = clientId.value
+        if (!isAcceptableEndpoint(entityId, allowInsecureLoopback)) {
+            throw RequestValidationException("invalid_client", "openid_federation client identifier must be an https Entity Identifier")
+        }
+        val fromHeader: ResolvedEntity? = FederationResolver.trustChainHeader(req)?.let { chain ->
+            runCatching { resolver.resolveChain(chain, FederationResolver.VERIFIER) }.getOrNull()?.takeIf { it.entityId == entityId }
+        }
+        val resolved = fromHeader ?: try {
+            resolver.resolve(entityId, FederationResolver.VERIFIER)
+        } catch (e: Exception) {
+            throw RequestValidationException("invalid_client", "No trust chain for $entityId: ${e.message}", cause = e)
+        }
+        val keys = resolved.jwks()
+        if (keys.isEmpty()) throw RequestValidationException("invalid_client", "The Verifier metadata of $entityId has no jwks")
+        val candidates = req.kid?.let { kid -> keys.filter { it.str("kid") == kid } } ?: keys
+        val verified = candidates.any { k -> runCatching { req.verify(VerificationKey.fromJwk(k)) }.isSuccess }
+        if (!verified) throw RequestValidationException("invalid_request_object", "Request object is not signed by a key of $entityId")
+        return VerifierIdentityInfo(clientId, rawClientId, resolved.displayName, null, emptyList(), null, resolved.trust)
+            .also { checkSignedResponseTarget(it, responseMode, raw) }
     }
 
     private fun checkSignedResponseTarget(info: VerifierIdentityInfo, mode: ResponseMode, raw: RawAuthorizationRequest) {

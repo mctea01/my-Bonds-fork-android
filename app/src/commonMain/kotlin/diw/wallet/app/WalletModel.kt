@@ -8,7 +8,12 @@ import diw.wallet.core.did.DidResolver
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.federation.FederationAnchor
+import diw.wallet.core.federation.FederationAnchors
+import diw.wallet.core.federation.FederationResolver
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.jose.jwkThumbprint
+import diw.wallet.core.jose.publicJwk
 import diw.wallet.core.credential.CardImages
 import diw.wallet.core.util.QrDecoder
 import androidx.compose.ui.graphics.FilterQuality
@@ -26,6 +31,8 @@ import diw.wallet.core.oid4vci.IssuanceSession
 import diw.wallet.core.oid4vci.KeyRequest
 import diw.wallet.core.oid4vci.Oid4vciClient
 import diw.wallet.core.oid4vci.PublicClientWalletProvider
+import diw.wallet.core.oid4vci.IssuerRoutedWalletProvider
+import diw.wallet.core.oid4vci.MultipazTestWalletProvider
 import diw.wallet.core.oid4vci.RemoteWalletProvider
 import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
@@ -72,6 +79,8 @@ import diw.wallet.core.trust.UserTrustedDid
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.isAcceptableEndpoint
+import diw.wallet.core.util.obj
+import diw.wallet.core.util.str
 import diw.wallet.core.w3c.addDiwCredentialImplementations
 import diw.wallet.core.x509.displaySubject
 import io.ktor.client.HttpClient
@@ -110,7 +119,7 @@ import org.multipaz.crypto.X509Cert
 import org.multipaz.asn1.OID
 import org.multipaz.document.Document
 import org.multipaz.document.DocumentStore
-import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.oid4vp.WalletTransactionTypes
 import diw.wallet.core.document.sign.CscService
 import diw.wallet.core.document.sign.SigningException
 import org.multipaz.document.buildDocumentStore
@@ -143,6 +152,8 @@ data class WalletSettings(
     /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
     val serverVerifierDid: String = "",
     val useWalletProvider: Boolean = true,
+    /** Use the Multipaz TestApp public test identity with issuer.multipaz.org (test environment only, off by default). */
+    val multipazTestIdentity: Boolean = false,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */
     val walletProviderUrl: String? = null,
@@ -362,6 +373,9 @@ class WalletModel(val platform: PlatformServices) {
     val trustedDids = MutableStateFlow<List<UserTrustedDid>>(emptyList())
     /** Intermediate certificates the user imported; the built-in ones are listed from BuiltInPublicRoots. */
     val intermediates = MutableStateFlow<List<diw.wallet.core.trust.StoredIntermediate>>(emptyList())
+    /** OpenID Federation Trust Anchors the user added, and one fetched but not yet confirmed. */
+    val federationAnchorList = MutableStateFlow<List<FederationAnchor>>(emptyList())
+    val pendingFederationAnchor = MutableStateFlow<PendingFederationAnchor?>(null)
 
     lateinit var storage: Storage
         private set
@@ -374,7 +388,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
-        QesApprovalTransaction.types.forEach { addTransactionType(it) }
+        WalletTransactionTypes.all.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
         private set
@@ -413,6 +427,7 @@ class WalletModel(val platform: PlatformServices) {
     val linkedDomains: LinkedDomains by lazy { LinkedDomains(http, DidResolver(http)) }
     /** DIDs the user trusts themselves, outside any national list. */
     val userDids: UserDidTrust by lazy { UserDidTrust(storage) }
+    val federationAnchors: FederationAnchors by lazy { FederationAnchors(storage) }
     /**
      * Trust for parties identified by a DID: the TWDIW trust list first, then the DIDs the user trusts, then Linked
      * Domains. The user's own decision comes before Linked Domains, so a link that cannot be fetched or verified does
@@ -1053,8 +1068,18 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     private var cachedProvider: Pair<String, WalletProvider>? = null
+    private val multipazTestProvider by lazy { MultipazTestWalletProvider() }
 
     private fun walletProvider(): WalletProvider {
+        val base = baseWalletProvider()
+        val s = settings
+        if (!(s.testEnvironment && s.multipazTestIdentity)) return base
+        return IssuerRoutedWalletProvider(base) { ci, asIssuer ->
+            multipazTestProvider.takeIf { MultipazTestWalletProvider.appliesTo(ci, asIssuer) }
+        }
+    }
+
+    private fun baseWalletProvider(): WalletProvider {
         val s = settings
         val configuredUrl = s.walletProviderUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
         val localTestProvider = configuredUrl == null && s.testEnvironment && s.useWalletProvider
@@ -1316,7 +1341,12 @@ class WalletModel(val platform: PlatformServices) {
         moicaHolder = { holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
         derivedSources = { files.holderDerivedSources() },
         derivedHolders = { files.holderHints() },
+        federationAnchors = { activeFederationAnchors() },
     )
+
+    /** Test anchors take part only while the test environment is on, like test X.509 anchors. */
+    private suspend fun activeFederationAnchors(): List<FederationAnchor> =
+        federationAnchors.all().filter { it.trustEnvironment != TrustEnvironment.TEST || settings.testEnvironment }
 
     /** Bonds self-issued cards (vc+moica) for an online request: the national ID cards only. */
     private fun heldMoicaCards(): List<HeldMoicaCard> =
@@ -1692,6 +1722,7 @@ class WalletModel(val platform: PlatformServices) {
         trustedDids.value = userDids.all().sortedBy { it.name }
         intermediates.value = trust.intermediates().sortedBy { it.name }
         mdocLists.value = trust.mdocTrustLists().sortedBy { it.name }
+        federationAnchorList.value = federationAnchors.all().sortedBy { it.name }
     }
 
     /**
@@ -1806,6 +1837,51 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /**
+     * Fetches the self-signed Entity Configuration of [entityId] and holds it for confirmation: an anchor's keys are
+     * trusted on the user's word, so the key thumbprints are shown to compare with what the federation publishes.
+     */
+    fun fetchFederationAnchor(entityId: String, name: String, environment: TrustEnvironment) = scope.launch {
+        try {
+            val id = entityId.trim()
+            if (environment == TrustEnvironment.TEST && !settings.testEnvironment) throw ProtocolException("invalid_request", "測試錨點需先開啟測試環境")
+            val ec = FederationResolver(http, { emptyList() }, environmentPolicy.insecureLoopbackAllowed).configuration(id)
+            ec.checkTime(kotlin.time.Clock.System.now().epochSeconds, 120)
+            val organization = ec.metadata.obj("federation_entity")?.str("organization_name")
+            val jwks = kotlinx.serialization.json.buildJsonObject { put("keys", kotlinx.serialization.json.JsonArray(ec.jwks.map { publicJwk(it) })) }
+            val anchor = FederationAnchor(
+                entityId = id,
+                jwks = jwks.toString(),
+                name = name.trim().ifEmpty { organization ?: runCatching { io.ktor.http.Url(id).host }.getOrDefault(id) },
+                environment = environment.id,
+                addedAt = kotlin.time.Clock.System.now().epochSeconds,
+            )
+            pendingFederationAnchor.value = PendingFederationAnchor(
+                anchor, organization, ec.authorityHints,
+                ec.jwks.map { k -> (k.str("kid")?.let { "$it：" } ?: "") + runCatching { jwkThumbprint(k) }.getOrDefault("無法計算") },
+            )
+        } catch (e: Exception) {
+            message.value = "無法取得 Trust Anchor：" + describe(e)
+        }
+    }
+
+    fun confirmFederationAnchor() = scope.launch {
+        val p = pendingFederationAnchor.value ?: return@launch
+        pendingFederationAnchor.value = null
+        try {
+            federationAnchors.put(p.anchor)
+            message.value = "已信任 OpenID Federation Trust Anchor「${p.anchor.name}」"
+            loadAnchors()
+        } catch (e: Exception) {
+            message.value = "無法加入：" + describe(e)
+        }
+    }
+
+    fun removeFederationAnchor(anchor: FederationAnchor) = scope.launch {
+        federationAnchors.remove(anchor.entityId)
+        loadAnchors()
+    }
+
     // ---------------------------------------------------------------- helpers
 
     fun describe(e: Throwable): String = when (e) {
@@ -1875,3 +1951,13 @@ class WalletModel(val platform: PlatformServices) {
             items.fold(verifierRisk(verifierTier)) { acc, i -> RiskLevel.max(acc, i.sensitivity) }
     }
 }
+
+/** A Trust Anchor fetched from its Entity Configuration, waiting for the user to compare its keys. */
+data class PendingFederationAnchor(
+    val anchor: FederationAnchor,
+    val organization: String?,
+    /** A Trust Anchor normally has none; hints mean the entity is itself under another anchor. */
+    val authorityHints: List<String>,
+    /** "kid：RFC 7638 thumbprint" for each key. */
+    val thumbprints: List<String>,
+)

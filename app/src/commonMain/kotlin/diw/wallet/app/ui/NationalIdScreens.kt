@@ -204,6 +204,9 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
         SectionTitle("動作")
         ActionRow(WalletIcons.Scan, "出示", "到「使用」掃描查驗方的 QR Code") { model.showTab(HomeTab.USE) }
         ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON，含全部欄位") { model.files.exportNationalId(f) }
+        if (model.platform.canShareFiles) {
+            ActionRow(WalletIcons.Share, "分享 vc+moica", "同一份 JSON 直接交給其他 App，不另存檔") { model.files.exportNationalId(f, share = true) }
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))

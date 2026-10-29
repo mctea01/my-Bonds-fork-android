@@ -111,6 +111,11 @@ class WalletModelE2eTest {
         val saved = ArrayList<Pair<String, ByteArray>>()
         override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean { saved.add(name to bytes); return true }
 
+        /** Files the wallet handed to the share sheet. */
+        val shared = ArrayList<Pair<String, ByteArray>>()
+        override val canShareFiles: Boolean get() = true
+        override suspend fun shareFile(name: String, mediaType: String, bytes: ByteArray): Boolean { shared.add(name to bytes); return true }
+
         override val bondsLink: BondsLinkPeripheral get() = link.peripheral
         override val bondsLinkCentral: BondsLinkCentral get() = link.central
 
@@ -1417,6 +1422,11 @@ class WalletModelE2eTest {
         val entries = diw.wallet.core.document.sign.DocumentSigning.unzip(exported)
         assertTrue(entries.keys.containsAll(listOf("簽核函.di", "附件一.txt", "附件二.txt", "簽核函.si", "說明.txt")), "entries: ${entries.keys}")
         assertTrue(entries.getValue("說明.txt").decodeToString().contains("簽核點 2"))
+
+        // Sharing hands the same container to another app instead of saving it.
+        holder.files.exportContainer(main, share = true).join()
+        assertEquals("簽核函（公文容器）.zip", platform.shared.last().first)
+        assertTrue(holder.message.value.orEmpty().startsWith("已分享"), "message: ${holder.message.value}")
 
         holder.files.delete(main, withMembers = true).join()
         assertEquals(listOf("說明.txt"), holder.files.files.value.map { it.name })
