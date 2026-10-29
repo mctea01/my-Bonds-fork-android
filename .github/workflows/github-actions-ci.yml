@@ -40,7 +40,7 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
       # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
       - name: Test report
-        uses: mikepenz/action-junit-report@3585e9575db828022551b4231f165eb59a0e74e3 # v5
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6
         if: always()
         with:
           report_paths: "**/build/test-results/**/*.xml"
