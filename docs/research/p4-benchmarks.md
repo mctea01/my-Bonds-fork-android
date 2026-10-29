@@ -871,7 +871,7 @@ Only native/circuits and this benchmark document were edited after the initial
 integration merge. PUBLIC_SPEC, Rust witnesses and Kotlin verification remain
 outside this round; PR #21 remains draft.
 
-## Round 10: SHA segments, signed fixture chains and isolated profiles (2026-10-28)
+## Round 10: SHA segments, signed fixture chains and isolated profiles (2026-10-29)
 
 本輪先合併整合分支 `9810ab7`，完成 SHA 內容／opaque 段、兩項 Round 9
 修正，以及 `PUBLIC_SPEC.md` 草稿。兩個 SHA 段重用 `sha256_window`；
@@ -946,3 +946,30 @@ first 9、一般段手機 25／電腦 17、lex 1646、claim 2058、pred 1798 Fie
 既有 text 三種電路的 bytes 逐 byte 佔一個 Field，與第 1.1.3 節的一律
 pack31 文字需由 Claude 在凍結前統一；新 SHA 段遵守 pack31。`VERSIONS`
 的候選資產指紋不等於 Claude 已審查或 Kotlin 已加入釘選清單。
+
+
+### 必要檢查結果
+
+`nargo test`：88 passed。`python3 -I tools/regressions.py` 各模式如下；
+約束拒絕必須來自實際 ACIR 執行，解析、編譯或見證分解錯誤不算通過。
+
+| 模式 | 接受 | 約束拒絕 | 電路外拒絕 | 合計 |
+|---|---:|---:|---:|---:|
+| 標準 inflate | 5 | 39 | 0 | 44 |
+| --multiblock | 2 | 2 | 0 | 4 |
+| --segments | 36 | 17 | 1 | 54 |
+| --lex-claims（含欄位與述詞） | 85 | 32 | 2 | 119 |
+| --sha | 9 | 31 | 0 | 40 |
+| 合計 | 137 | 121 | 3 | 261 |
+
+SHA 案例包含 head/tail、H_e、C_z、金鑰、私密長度與區塊數竄改，
+非標準 pack31 高位及 Field 模數減一；正向控制包含 head=0/31/32/63、
+滿容量、單位元組內容及未加密內容。31-byte 分組以兩個 128-bit limb
+解碼，約束高 byte 為零；所有 Field 輸入都能產生分解，超寬值在約束
+拒絕。內容抽取只讀已完成的 128-byte 視窗，不以私密索引讀寫同一陣列。
+
+五份 PDF 串接結果如上表，另外驗證 12 個公開串接竄改控制。
+`./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`
+為 BUILD SUCCESSFUL；370 tests、0 failures/errors、31 skipped。未變更 Rust
+或 Kotlin；native 仍依既有 auto policy。完整摘要與來源指紋在
+`native/circuits/validation/m3b-round10-tests.json`。
