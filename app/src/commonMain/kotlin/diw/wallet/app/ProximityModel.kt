@@ -79,8 +79,8 @@ sealed class ProximityUi {
         internal val answer: CompletableDeferred<Boolean>,
     ) : ProximityUi()
 
-    data class Done(val verifier: String, val documents: List<String>) : ProximityUi()
-    data class Failed(val message: String) : ProximityUi()
+    data class Done(val verifier: String, val documents: List<String>, val channel: ProximityChannel = ProximityChannel.NFC) : ProximityUi()
+    data class Failed(val message: String, val channel: ProximityChannel = ProximityChannel.NFC) : ProximityUi()
 }
 
 /**
@@ -215,7 +215,7 @@ class ProximityModel(private val model: WalletModel) {
         fun finish() {
             if (state.value is ProximityUi.Done) return
             val s = shared ?: return
-            state.value = ProximityUi.Done(s.verifier, s.items.map { it.documentName })
+            state.value = ProximityUi.Done(s.verifier, s.items.map { it.documentName }, channel)
             model.record(HistoryKind.PRESENTED, s.verifier, s.trust, s.items.map { it.documentName }, s.items.flatMap { it.claims }, note(channel))
         }
         try {
@@ -240,20 +240,20 @@ class ProximityModel(private val model: WalletModel) {
                     },
                 )
             }
-            if (sent) finish() else state.value = ProximityUi.Failed("查驗設備結束了連線，沒有提出請求")
+            if (sent) finish() else state.value = ProximityUi.Failed("查驗設備結束了連線，沒有提出請求", channel)
         } catch (e: CancellationException) {
             throw e
         } catch (e: PresentmentCanceledException) {
             refused?.let { model.record(HistoryKind.DECLINED, it.verifier, it.trust, it.items.map { i -> i.documentName }, it.items.flatMap { i -> i.claims }, note(channel)) }
-            state.value = ProximityUi.Failed("已拒絕分享")
+            state.value = ProximityUi.Failed("已拒絕分享", channel)
         } catch (e: PresentmentCannotSatisfyRequestException) {
-            state.value = ProximityUi.Failed("這支手機沒有查驗設備要求的證件。近距離出示適用行動駕照等 mdoc 證件。")
+            state.value = ProximityUi.Failed("這支手機沒有查驗設備要求的證件。近距離出示適用行動駕照等 mdoc 證件。", channel)
         } catch (e: NotImplementedError) {
             // A transport the platform does not implement (Bluetooth on the desktop).
-            state.value = ProximityUi.Failed("此平台不支援近距離傳輸（藍牙或 NFC）")
+            state.value = ProximityUi.Failed("此平台不支援近距離傳輸（藍牙或 NFC）", channel)
         } catch (e: Exception) {
             // Readers often close the connection or stop talking once they have the response.
-            if (sent) finish() else state.value = ProximityUi.Failed(failure(e))
+            if (sent) finish() else state.value = ProximityUi.Failed(failure(e), channel)
         } finally {
             runCatching { transport?.close() }
             engaged?.transports?.forEach { t -> if (t !== transport) runCatching { t.close() } }
@@ -307,7 +307,7 @@ class ProximityModel(private val model: WalletModel) {
                 )
             }
             shared?.let { s ->
-                state.value = ProximityUi.Done(s.verifier, s.items.map { it.documentName })
+                state.value = ProximityUi.Done(s.verifier, s.items.map { it.documentName }, channel)
                 model.record(HistoryKind.PRESENTED, s.verifier, s.trust, s.items.map { it.documentName }, s.items.flatMap { it.claims }, note(channel))
             }
             response
@@ -326,9 +326,9 @@ class ProximityModel(private val model: WalletModel) {
         }
     }
 
-    /** Shows why a request failed and waits until the user leaves the screen. */
+    /** Shows why a DC API request failed and waits until the user leaves the screen (a DC API request cannot be retried in the wallet). */
     private suspend fun failAndWait(message: String): JsonObject? {
-        state.value = ProximityUi.Failed(message)
+        state.value = ProximityUi.Failed(message, ProximityChannel.DC_API)
         model.screen.first { it != Screen.Proximity }
         return null
     }

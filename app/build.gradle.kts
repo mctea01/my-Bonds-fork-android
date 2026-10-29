@@ -107,9 +107,12 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
 }
 
 /**
- * One version for every output, from version.properties (major.minor) and the GitHub Actions run number (patch, and
- * the Android versionCode, which grows across pull request and main builds alike). A pull request build is marked
- * -pr<N>, a build outside CI -dev. -Pdiw.versionName, -Pdiw.versionCode and -Pdiw.desktopVersion still override.
+ * One version for every output, from version.properties (major.minor) and the git commit count (patch, and the
+ * Android versionCode). The commit count grows monotonically with development and, unlike the GitHub Actions run
+ * number, is not inflated by CodeQL or dependency-bot workflows, so it is a meaningful build number. A pull request
+ * build is marked -pr<N>, a build outside CI -dev. -Pdiw.versionName, -Pdiw.versionCode and -Pdiw.desktopVersion
+ * still override (CI passes them when it has the full history). A shallow checkout reports a count of 1, so CI must
+ * check out with fetch-depth: 0, or pass -Pdiw.versionCode explicitly.
  */
 val releaseLine: String = rootProject.file("version.properties").readLines()
     .firstNotNullOfOrNull { Regex("""\s*version\s*=\s*(\d+\.\d+)\s*""").matchEntire(it)?.groupValues?.get(1) }
@@ -117,11 +120,19 @@ val releaseLine: String = rootProject.file("version.properties").readLines()
 val ciRun: Int? = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull()
 val pullRequest: String? = providers.environmentVariable("GITHUB_REF").orNull
     ?.let { Regex("refs/pull/(\\d+)/.*").matchEntire(it)?.groupValues?.get(1) }
+/** The commit count on the current history, or null when git is unavailable (e.g. a source archive). */
+val gitCount: Int? = runCatching {
+    providers.exec { commandLine("git", "rev-list", "--count", "HEAD") }
+        .standardOutput.asText.get().trim().toIntOrNull()
+}.getOrNull()?.takeIf { it > 0 }
+/** The build (patch) number and Android versionCode: an explicit override, else the commit count, else the run number. */
+val patch: Int = (findProperty("diw.versionCode") as String?)?.toIntOrNull() ?: gitCount ?: ciRun ?: 1
+val insideCi: Boolean = ciRun != null
 /** Numeric, as MSI and deb require. */
-val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: "$releaseLine.${ciRun ?: 0}"
+val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: "$releaseLine.$patch"
 val appVersionName: String = (findProperty("diw.versionName") as String?)
-    ?: ("$releaseLine.${ciRun ?: 0}" + when { ciRun == null -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
-val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt() ?: ciRun ?: 1
+    ?: ("$releaseLine.$patch" + when { !insideCi -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
+val appVersionCode: Int = patch
 
 tasks.register("printVersion") {
     val name = appVersionName

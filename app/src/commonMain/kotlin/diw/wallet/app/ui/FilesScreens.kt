@@ -800,8 +800,13 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
 
 private enum class SignerKind(val title: String) {
-    CARD("自然人憑證卡"), PIV("PIV 卡"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"), TOKEN("硬體憑證（PKCS#11）"),
+    HARDWARE("實體卡／硬體憑證"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"),
     PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
+}
+
+/** The physical cards and hardware tokens grouped under [SignerKind.HARDWARE]: a citizen certificate card, a PIV card, or a PKCS#11 token. */
+private enum class HardwareKind(val title: String) {
+    SMART_CARD("自然人憑證卡"), PIV("PIV 卡"), PKCS11("硬體憑證（PKCS#11）"),
 }
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
@@ -919,30 +924,37 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
 
 @Composable
 private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
-    var kind by remember { mutableStateOf(SignerKind.CARD) }
+    var kind by remember { mutableStateOf(SignerKind.HARDWARE) }
+    var hardware by remember { mutableStateOf(HardwareKind.SMART_CARD) }
     var p12 by remember { mutableStateOf<PickedFile?>(null) }
     var password by remember { mutableStateOf("") }
     var walletName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var other by remember { mutableStateOf<SignerChoice?>(null) }
-    fun update(card: SignerChoice.Card? = null) = onChange(
+    fun update() = onChange(
         when (kind) {
-            SignerKind.CARD -> card
             SignerKind.PKCS12 -> p12?.takeIf { password.isNotEmpty() }?.let { SignerChoice.Pkcs12(it.bytes, password) }
             SignerKind.WALLET -> SignerChoice.Wallet(walletName)
-            SignerKind.SYSTEM, SignerKind.TOKEN, SignerKind.MOBILE, SignerKind.CSC, SignerKind.PIV -> other
+            SignerKind.HARDWARE, SignerKind.SYSTEM, SignerKind.MOBILE, SignerKind.CSC -> other
         }
     )
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(k.title) }) }
     }
     when (kind) {
+        SignerKind.HARDWARE -> {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HardwareKind.entries.forEach { h -> FilterChip(selected = h == hardware, onClick = { hardware = h; other = null; update() }, label = { Text(h.title) }) }
+            }
+            when (hardware) {
+                HardwareKind.SMART_CARD -> CardPicker(model) { other = it; update() }
+                HardwareKind.PIV -> PivKeyPicker(model) { other = it; update() }
+                HardwareKind.PKCS11 -> TokenKeyPicker(model) { other = it; update() }
+            }
+        }
         SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
-        SignerKind.TOKEN -> TokenKeyPicker(model) { other = it; update() }
         SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
-        SignerKind.PIV -> PivKeyPicker(model) { other = it; update() }
-        SignerKind.CARD -> CardPicker(model) { update(it) }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
             OutlinedTextField(

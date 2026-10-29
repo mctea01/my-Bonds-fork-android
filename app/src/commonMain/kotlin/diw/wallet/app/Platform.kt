@@ -4,6 +4,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SigningException
 import io.ktor.client.HttpClient
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.nfc.NfcTagReader
 import org.multipaz.securearea.CreateKeySettings
@@ -88,6 +90,9 @@ data class NfcReaderList(val readers: List<NfcReaderOption>, val problem: String
 /** A file the user picked or another app handed over. */
 class PickedFile(val name: String, val bytes: ByteArray, val mediaType: String? = null)
 
+/** The always-null NFC scan prompt for platforms that do not drive a reader-mode scan sheet. */
+internal val NoNfcScanPrompt: StateFlow<String?> = MutableStateFlow(null)
+
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
     val platformName: String
@@ -166,6 +171,14 @@ interface PlatformServices {
 
     /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader) or a citizen certificate card. */
     suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
+
+    /**
+     * While the phone is in NFC reader mode waiting for a card tap (reading or signing with a citizen certificate or
+     * PIV card), this holds the prompt to show in a scan sheet; null when no scan is in progress. Platforms that read
+     * cards only through an external reader leave it null. The UI shows a sheet, like the FIDO2 key prompt, so the
+     * user taps at the right moment and a stray tap is not left unhandled by the system.
+     */
+    val nfcScanPrompt: StateFlow<String?> get() = NoNfcScanPrompt
 
     /** Lets the user pick a file to store; null when cancelled or not possible. */
     suspend fun pickFile(): PickedFile? = null

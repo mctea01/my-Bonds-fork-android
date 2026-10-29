@@ -353,6 +353,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     /** The reader mode of an in-person verification in progress; Android ends reader mode when the activity pauses. */
     @Volatile var readerMode: ((Activity) -> Unit)? = null
 
+    /** Set to the tap prompt while the phone's own NFC is in reader mode waiting for a card; the UI shows a scan sheet. */
+    val nfcScanPromptState = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    override val nfcScanPrompt: kotlinx.coroutines.flow.StateFlow<String?> get() = nfcScanPromptState
+
     override suspend fun nfcReaders(): NfcReaderList = AndroidNfcReaders.list(context, this)
 
     /**

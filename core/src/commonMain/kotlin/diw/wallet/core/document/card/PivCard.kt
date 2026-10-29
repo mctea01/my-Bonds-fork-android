@@ -7,18 +7,24 @@ import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.document.sign.SigningException
 import diw.wallet.core.jose.PlatformCrypto
+import kotlinx.io.bytestring.ByteString
+import org.multipaz.crypto.EcCurve
+import org.multipaz.crypto.X509Cert
+import org.multipaz.crypto.X509KeyUsage
 
 /**
  * A PIV card (NIST SP 800-73-4), as a YubiKey, PIVKey, Nitrokey or a US PIV/CAC card presents over USB or NFC. This
  * is an independent implementation of the publicly documented command set, not a YubiKey library: SELECT the PIV
  * application, GET DATA for a slot's X.509 certificate, VERIFY the PIN, and GENERAL AUTHENTICATE to sign. It reads
- * a certificate without the PIN and signs only after a PIN the user typed. RSA-2048 and EC P-256 keys are supported;
- * other key sizes and curves are refused because the document formats this wallet writes cannot use them. Every slot
- * the standard defines is read, not only a card's first one, so any certificate on the card can be chosen.
+ * a certificate without the PIN and signs only after a PIN the user typed. RSA (1024/2048/3072/4096) and EC P-256
+ * keys are supported; the signing method follows the key's length (the GENERAL AUTHENTICATE algorithm identifier
+ * and the PKCS#1 block and signature length all come from the modulus size), so the key length is not restricted.
+ * Every slot the standard defines is read, not only a card's first one, so any certificate on the card can be
+ * chosen; certificates whose key usage is not for signing are left out.
  */
 class PivCard(private val channel: CardChannel) {
-    /** A PIV key slot, the certificate it holds and a human label for the slot. */
-    class KeyInfo(val slot: Int, val keyType: SignerKeyType, val certificate: ByteArray, val slotName: String)
+    /** A PIV key slot, the certificate it holds, its RSA modulus length in bytes (0 for EC), and a human label. */
+    class KeyInfo(val slot: Int, val keyType: SignerKeyType, val certificate: ByteArray, val slotName: String, val rsaBytes: Int = 0)
 
     /** Selects the PIV application. */
     suspend fun connect() {
@@ -37,21 +43,24 @@ class PivCard(private val channel: CardChannel) {
         var lastError: String? = null
         for (slot in slots) {
             val cert = runCatching { readCertificate(slot) }.getOrElse { lastError = it.message; null } ?: continue
-            val type = runCatching { keyTypeOf(cert) }.getOrElse { lastError = it.message; null } ?: continue
-            return KeyInfo(slot, type, cert, slotName(slot))
+            // When the wallet chooses (no explicit slot), a certificate whose key usage is not for signing is skipped.
+            if (only == null && !canSign(cert)) continue
+            val info = runCatching { keyInfo(slot, cert) }.getOrElse { lastError = it.message; null } ?: continue
+            return info
         }
         throw SigningException(lastError ?: "這張 PIV 卡沒有可用的簽章憑證")
     }
 
     /**
-     * Every slot this card holds a usable certificate in (RSA-2048 or EC P-256), in the standard's slot order, so the
-     * user can pick which certificate to sign with instead of the wallet choosing one. A slot without a certificate or
-     * with an unsupported key is skipped.
+     * Every slot this card holds a certificate the wallet can sign with, in the standard's slot order, so the user can
+     * pick which certificate to sign with instead of the wallet choosing one. Every slot is read first; a slot without
+     * a certificate, with an unsupported key, or whose key usage is not for signing (e.g. a key-management encryption
+     * certificate) is then left out.
      */
     suspend fun allSigningKeys(): List<KeyInfo> = ALL_SLOTS.mapNotNull { slot ->
         val cert = runCatching { readCertificate(slot) }.getOrNull() ?: return@mapNotNull null
-        val type = runCatching { keyTypeOf(cert) }.getOrNull() ?: return@mapNotNull null
-        KeyInfo(slot, type, cert, slotName(slot))
+        if (!canSign(cert)) return@mapNotNull null
+        runCatching { keyInfo(slot, cert) }.getOrNull()
     }
 
     /** GET DATA for the X.509 certificate object of [slot]; decompresses it when the CertInfo byte says gzip. */
@@ -80,8 +89,9 @@ class PivCard(private val channel: CardChannel) {
     suspend fun sign(pin: String, key: KeyInfo, sha256: ByteArray): ByteArray {
         require(sha256.size == 32)
         verifyPin(pin)
+        // The algorithm identifier and the PKCS#1 block length follow the key's length, so any supported RSA size signs.
         val (alg, payload) = when (key.keyType) {
-            SignerKeyType.RSA -> 0x07 to GpkiCard.pkcs1Block(GpkiCard.SHA256_DIGEST_INFO + sha256)
+            SignerKeyType.RSA -> rsaAlgId(key.rsaBytes * 8) to pkcs1Block(GpkiCard.SHA256_DIGEST_INFO + sha256, key.rsaBytes)
             SignerKeyType.EC_P256 -> 0x11 to sha256
         }
         // Dynamic authentication template: 7C { 82 (empty response) 81 (data to sign) }.
@@ -92,7 +102,7 @@ class PivCard(private val channel: CardChannel) {
         if (top.tag != 0x7C) throw SigningException("PIV 簽章回應格式錯誤")
         val sig = Der.children(top.value).firstOrNull { it.tag == 0x82 }?.value
             ?: throw SigningException("PIV 簽章回應沒有簽章值")
-        if (key.keyType == SignerKeyType.RSA && sig.size != RSA_LEN) throw SigningException("PIV 回傳的 RSA 簽章長度不正確")
+        if (key.keyType == SignerKeyType.RSA && sig.size != key.rsaBytes) throw SigningException("PIV 回傳的 RSA 簽章長度不正確")
         return sig
     }
 
@@ -145,7 +155,6 @@ class PivCard(private val channel: CardChannel) {
         const val SLOT_SIGNATURE = 0x9C
         const val SLOT_KEY_MGMT = 0x9D
         const val SLOT_CARD_AUTH = 0x9E
-        private const val RSA_LEN = 256
 
         val PIV_AID = DocCryptoUtil.unhex("A000000308000010000100")
 
@@ -185,21 +194,51 @@ class PivCard(private val channel: CardChannel) {
         fun hex4(sw: Int) = sw.toString(16).uppercase().padStart(4, '0')
 
         /**
-         * RSA-2048 or EC P-256 from the certificate; other keys are refused. The RSA modulus must be exactly 2048
-         * bits: [sign] uses the RSA-2048 algorithm identifier, a 256-byte padded block and a 256-byte signature, so a
-         * 1024/3072/4096-bit key would fail at signing. Refusing it here lets the slot be skipped and the next usable
-         * certificate be found, instead of stopping on a key that cannot sign.
+         * The key type and, for RSA, the modulus length of a slot's certificate. Any RSA length PIV defines an
+         * algorithm identifier for (1024/2048/3072/4096) and EC P-256 are accepted; other keys are refused because the
+         * document formats this wallet writes cannot use them. Refusing lets [signingKey] skip the slot and find the
+         * next usable certificate instead of stopping on a key that cannot sign.
          */
-        fun keyTypeOf(certificate: ByteArray): SignerKeyType {
+        fun keyInfo(slot: Int, certificate: ByteArray): KeyInfo {
             PlatformCrypto.rsaPublicKeyFromCertificate(certificate)?.let { rsa ->
                 val bits = rsaModulusBits(rsa.modulus)
-                if (bits != 2048) throw SigningException("PIV 憑證的 RSA 金鑰長度（$bits 位元）不支援，只支援 RSA-2048 與 EC P-256")
-                return SignerKeyType.RSA
+                rsaAlgId(bits) // throws when PIV has no algorithm identifier for this length
+                return KeyInfo(slot, SignerKeyType.RSA, certificate, slotName(slot), rsaBytes = (bits + 7) / 8)
             }
-            val ec = runCatching { org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(certificate)).ecPublicKey }.getOrNull()
+            val ec = runCatching { X509Cert(ByteString(certificate)).ecPublicKey }.getOrNull()
                 ?: throw SigningException("無法讀取 PIV 憑證的公開金鑰")
-            if (ec.curve != org.multipaz.crypto.EcCurve.P256) throw SigningException("PIV 憑證的金鑰（${ec.curve.name}）不支援，只支援 RSA 與 EC P-256")
-            return SignerKeyType.EC_P256
+            if (ec.curve != EcCurve.P256) throw SigningException("PIV 憑證的金鑰（${ec.curve.name}）不支援，只支援 RSA 與 EC P-256")
+            return KeyInfo(slot, SignerKeyType.EC_P256, certificate, slotName(slot))
+        }
+
+        /**
+         * Whether a certificate's key usage allows signing: true when it asserts digitalSignature or nonRepudiation,
+         * or declares no key usage at all; false for a key-management or encryption-only certificate. Used to leave
+         * purpose-mismatched slots out of the signing choices.
+         */
+        fun canSign(certificate: ByteArray): Boolean {
+            val usage = runCatching { X509Cert(ByteString(certificate)).keyUsage }.getOrNull() ?: return true
+            if (usage.isEmpty()) return true
+            return X509KeyUsage.DIGITAL_SIGNATURE in usage || X509KeyUsage.NON_REPUDIATION in usage
+        }
+
+        /** The PIV GENERAL AUTHENTICATE algorithm identifier for an RSA key of [bits] (NIST SP 800-78 / YubiKey). */
+        private fun rsaAlgId(bits: Int): Int = when (bits) {
+            1024 -> 0x06
+            2048 -> 0x07
+            3072 -> 0x05
+            4096 -> 0x16
+            else -> throw SigningException("PIV 的 RSA 金鑰長度（$bits 位元）不支援，支援 1024/2048/3072/4096 與 EC P-256")
+        }
+
+        /** EMSA-PKCS1-v1_5 encoding of [t] to [len] bytes (the key's modulus length). */
+        private fun pkcs1Block(t: ByteArray, len: Int): ByteArray {
+            if (t.size > len - 11) throw SigningException("PIV 簽章資料過長，無法以此金鑰長度簽署")
+            val b = ByteArray(len) { 0xFF.toByte() }
+            b[0] = 0; b[1] = 1
+            b[len - t.size - 1] = 0
+            t.copyInto(b, len - t.size)
+            return b
         }
 
         /** A BER-TLV element with a definite length (short or long form). */
