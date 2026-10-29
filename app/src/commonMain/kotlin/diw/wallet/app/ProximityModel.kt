@@ -263,7 +263,8 @@ class ProximityModel(private val model: WalletModel) {
     }
 
     private fun failure(e: Exception): String = when (e) {
-        is diw.wallet.core.zk.LongfellowZk.ProofException -> "零知識證明產生或自驗失敗，未送出證件資料"
+        is diw.wallet.core.zk.LongfellowZk.ProofException ->
+            "零知識證明產生或自驗失敗，未送出證件資料" + (e.cause?.message?.takeIf { it.isNotBlank() }?.let { "（原因：$it）" } ?: "")
         is Unavailable -> e.message.orEmpty()
         is kotlinx.coroutines.TimeoutCancellationException -> "查驗設備沒有連線。請確認藍牙已開啟，再感應或掃描一次。"
         is MdocTransportClosedException -> "連線中斷。請再感應或掃描一次。"
