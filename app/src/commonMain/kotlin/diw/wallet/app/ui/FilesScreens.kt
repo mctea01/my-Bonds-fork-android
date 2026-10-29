@@ -6,12 +6,15 @@ import diw.wallet.core.document.sign.CscServices
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -92,6 +95,7 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.LaterChanges
 import diw.wallet.core.document.SignatureInfo
+import diw.wallet.core.document.SignaturePlacementInfo
 import diw.wallet.core.document.TimestampInfo
 import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.derived.DerivedClaim
@@ -1411,12 +1415,15 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             }
             if (p.pages.isNotEmpty()) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
-                PreviewImage(p.pages[i], "第 ${i + 1} 頁")
+                val placements = f.report?.signaturePlacements.orEmpty()
+                val signatures = f.report?.signatures.orEmpty()
+                PreviewImage(p.pages[i], "第 ${i + 1} 頁", placements.filter { it.page == i }, signatures)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { page = i - 1 }, enabled = i > 0) { Text("上一頁") }
                     Text("第 ${i + 1} / ${p.total} 頁", style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text("下一頁") }
                 }
+                SignaturePlacementLegend(placements, signatures, i, p.pages.size)
                 if (p.total > p.pages.size) Text("預覽前 ${p.pages.size} 頁；完整內容請匯出後以閱讀器開啟。", style = MaterialTheme.typography.bodySmall)
             } else {
                 Text("這個平台無法繪製頁面，以下是文件的文字。", style = MaterialTheme.typography.bodySmall)
@@ -1724,12 +1731,66 @@ private fun OfficialItemView(item: OfficialItem, depth: Int) {
 }
 
 @Composable
-private fun PreviewImage(image: ImageBitmap, description: String) {
-    Image(
-        image, contentDescription = description, contentScale = ContentScale.FillWidth,
-        modifier = Modifier.fillMaxWidth().aspectRatio(image.width.toFloat() / image.height.coerceAtLeast(1))
-            .clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
-    )
+private fun PreviewImage(
+    image: ImageBitmap,
+    description: String,
+    placements: List<SignaturePlacementInfo> = emptyList(),
+    signatures: List<SignatureInfo> = emptyList(),
+) {
+    val visible = placements.filter { it.visible }
+    if (visible.isEmpty()) {
+        Image(
+            image, contentDescription = description, contentScale = ContentScale.FillWidth,
+            modifier = Modifier.fillMaxWidth().aspectRatio(image.width.toFloat() / image.height.coerceAtLeast(1))
+                .clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+        )
+        return
+    }
+    // Frame each visible signature over the rendered page; the frame colour follows the signature's verdict.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val w = maxWidth
+        val h = w * (image.height.toFloat() / image.width.coerceAtLeast(1))
+        Image(
+            image, contentDescription = description, contentScale = ContentScale.FillWidth,
+            modifier = Modifier.fillMaxWidth().height(h)
+                .clip(RoundedCornerShape(8.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)),
+        )
+        visible.forEach { pl ->
+            val verdict = signatures.firstOrNull { it.label == pl.label }?.verdict
+            val color = when (verdict) {
+                DocumentVerdict.VALID -> MaterialTheme.colorScheme.primary
+                DocumentVerdict.INVALID -> MaterialTheme.colorScheme.error
+                else -> MaterialTheme.colorScheme.tertiary
+            }
+            Box(
+                Modifier.offset(x = w * pl.x0, y = h * pl.y0)
+                    .size(width = (w * (pl.x1 - pl.x0)).coerceAtLeast(6.dp), height = (h * (pl.y1 - pl.y0)).coerceAtLeast(6.dp))
+                    .border(2.dp, color, RoundedCornerShape(3.dp)),
+            )
+        }
+    }
+}
+
+/** Which signatures sit on the page now shown, and which are invisible, so the frames above are readable. */
+@Composable
+private fun SignaturePlacementLegend(placements: List<SignaturePlacementInfo>, signatures: List<SignatureInfo>, page: Int, previewPages: Int) {
+    if (placements.isEmpty()) return
+    val onPage = placements.filter { it.page == page && it.visible }
+    val invisible = placements.filter { !it.visible }
+    if (onPage.isNotEmpty()) {
+        Text("本頁的可見簽章：" + onPage.joinToString("、") { it.label }, style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    val otherPages = placements.filter { it.visible && it.page != page }.map { it.page }.distinct().sorted()
+    if (otherPages.isNotEmpty()) {
+        Text("其他頁的簽章位置：第 " + otherPages.joinToString("、") { (it + 1).toString() } + " 頁" +
+            (if (otherPages.any { it >= previewPages }) "（部分頁未在預覽內）" else ""),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+    }
+    if (invisible.isNotEmpty()) {
+        Text("不可見簽章（沒有外觀，不顯示位置）：" + invisible.joinToString("、") { it.label },
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+    }
 }
 
 @Composable

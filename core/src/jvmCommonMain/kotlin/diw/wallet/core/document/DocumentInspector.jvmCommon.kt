@@ -231,6 +231,11 @@ actual object DocumentInspector {
         }
         val level = padesLevel(upgraded.map { it.first to it.second }, dss)
         if (level != null) notes.add(level)
+        // Where each signature sits on its page, matched to the SignatureInfo label by field name.
+        val labels = upgraded.map { it.second.label }.toSet()
+        val placements = sigs.placements().filter { it.fieldName != null && it.fieldName in labels }.map {
+            SignaturePlacementInfo(it.fieldName!!, it.page, it.x0, it.y0, it.x1, it.y1, it.visible)
+        }
         if (dss != null) notes.add("文件含長期驗證資料（DSS）：${dss.certificates.size} 張憑證、${dss.ocsps.size} 份 OCSP、${dss.crls.size} 份 CRL")
         return base.copy(
             format = DocumentFormat.PDF,
@@ -238,6 +243,7 @@ actual object DocumentInspector {
             pages = sigs.pageCount(),
             encrypted = pdf.encrypted,
             signatures = upgraded.map { it.second },
+            signaturePlacements = placements,
             notes = notes,
             problems = problems,
         )
