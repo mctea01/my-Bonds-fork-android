@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
+import diw.wallet.app.VisibleSignature
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
 import diw.wallet.core.document.official.OfficialItem
@@ -74,6 +75,7 @@ import diw.wallet.app.PickedFile
 import diw.wallet.app.Screen
 import diw.wallet.app.SignForm
 import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.pdf.PdfSignatureAppearance
 import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
@@ -1309,6 +1311,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         val tsaName = TsaServices.byId(model.settings.tsaId).name
         var level by remember { mutableStateOf(SignatureLevel.of(model.settings.padesLevel)) }
         var certification by remember { mutableStateOf<Int?>(null) }
+        var visible by remember { mutableStateOf<VisibleSignature?>(null) }
         val firstSignature = f.report?.signatures.isNullOrEmpty()
         var action by remember { mutableStateOf(ApprovalPoint().action) }
         var organization by remember { mutableStateOf("") }
@@ -1335,7 +1338,8 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         }
                     }
                 } else Text("文件已有簽章；認證簽章只能是第一個簽章，這次是一般的核准簽章。", style = MaterialTheme.typography.bodySmall)
-                Text("簽章不加頁面外觀（不可見簽章），在 PDF 閱讀器的簽章面板查看。頁面上的簽章圖樣需要內嵌中文字型，尚未支援。", style = MaterialTheme.typography.bodySmall)
+                SectionTitle("5. 頁面上的簽章（選填）")
+                VisibleSignaturePicker(model, f, visible) { visible = it }
                 CollapsibleSection("簽署原因與地點（選填）", key = "sign-reason-${f.id}") {
                     OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1390,7 +1394,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         }
         var details by remember { mutableStateOf(false) }
         TextButton(onClick = { details = !details }) { Text(if (details) "隱藏技術細節" else "技術細節") }
-        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }))
+        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
             VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
@@ -1408,8 +1412,83 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         account.ifBlank { null }, organization.ifBlank { null }, returned,
                     ),
                     level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
+                    visible = visible.takeIf { form == SignForm.PADES },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")
+        }
+    }
+}
+
+/**
+ * Whether the PDF signature shows on a page, and where: the page (first, last or a number), a preset position and an
+ * optional picture. The box is drawn over the page preview when that page has been rendered.
+ */
+@Composable
+private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: VisibleSignature?, onChange: (VisibleSignature?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val total = (f.report?.pages ?: 1).coerceAtLeast(1)
+    var pageText by remember(f.id) { mutableStateOf(total.toString()) }
+    var imageNote by remember(f.id) { mutableStateOf<String?>(null) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = value != null, onCheckedChange = { on ->
+            onChange(if (on) VisibleSignature(-1, PdfSignatureAppearance.Position.BOTTOM_RIGHT) else null)
+            pageText = total.toString()
+        })
+        Text("在頁面上顯示簽章")
+    }
+    if (value == null) {
+        Text("不勾選時是不可見簽章，只在 PDF 閱讀器的簽章面板出現。", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text("頁面（共 $total 頁）", style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(VisibleSignature(0, value.position, value.image)) }, label = { Text("第一頁") })
+        FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(VisibleSignature(-1, value.position, value.image)) }, label = { Text("最後一頁") })
+        OutlinedTextField(
+            value = pageText,
+            onValueChange = { t ->
+                pageText = t.filter { it.isDigit() }.take(5)
+                pageText.toIntOrNull()?.takeIf { it in 1..total }?.let { onChange(VisibleSignature(it - 1, value.position, value.image)) }
+            },
+            label = { Text("頁碼") }, singleLine = true, modifier = Modifier.width(110.dp),
+        )
+    }
+    Text("位置", style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        PdfSignatureAppearance.Position.entries.forEach { pos ->
+            FilterChip(selected = pos == value.position, onClick = { onChange(VisibleSignature(value.page, pos, value.image)) }, label = { Text(pos.title) })
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = {
+            scope.launch {
+                val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
+                val img = runCatching { model.files.signatureImage(picked.bytes) }.getOrNull()
+                imageNote = if (img == null) "無法讀取這張圖片" else "已選擇：" + picked.name
+                if (img != null) onChange(VisibleSignature(value.page, value.position, img))
+            }
+        }) { Text(if (value.image == null) "加入簽名圖片（選填）" else "更換簽名圖片") }
+        if (value.image != null) TextButton(onClick = { imageNote = null; onChange(VisibleSignature(value.page, value.position, null)) }) { Text("移除圖片") }
+    }
+    imageNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Text("簽章框內寫入簽署者姓名（取自憑證）、簽署時間，以及有填寫時的原因與地點。中文使用閱讀器內建的中文字型，Adobe Acrobat 需安裝亞洲語言字型包。", style = MaterialTheme.typography.bodySmall)
+    // The box over the page preview, when that page is among the rendered ones.
+    val previews by model.files.previews.collectAsState()
+    val pages = (previews[f.id] as? FilePreview.Pages)?.pages.orEmpty()
+    val index = if (value.page < 0) total + value.page else value.page
+    val look = PdfSignatureAppearance.preset(value.position, index, listOf("x"))
+    pages.getOrNull(index)?.let { image ->
+        BoxWithConstraints(Modifier.fillMaxWidth(0.6f)) {
+            val w = maxWidth
+            val h = w * (image.height.toFloat() / image.width.coerceAtLeast(1))
+            Image(image, contentDescription = "第 ${index + 1} 頁", contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth().height(h).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)))
+            Box(
+                Modifier.offset(x = w * look.x.toFloat(), y = h * look.y.toFloat())
+                    .size(width = w * look.width.toFloat(), height = h * look.height.toFloat())
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
+            )
         }
     }
 }
@@ -1448,10 +1527,12 @@ private fun LevelPicker(format: String, level: SignatureLevel, onPick: (Signatur
 }
 
 /** What the chosen form and options put in the signature, for the expandable technical details. */
-private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?): List<String> = when (form) {
+private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false): List<String> = when (form) {
     SignForm.PADES -> buildList {
         add("SubFilter ETSI.CAdES.detached，摘要 SHA-256，簽署屬性含 signing-certificate-v2，不寫 signingTime（以 PDF 的 /M 宣稱時間）")
         add("增量更新：原有內容與既有簽章不變，簽章涵蓋整份 PDF 到簽章值之前")
+        add(if (visible) "可見簽章：簽章欄位的 widget 有非零 /Rect 與外觀串流（/AP /N，Form XObject）；文字用 PDF 預先定義的中文字型 MSung-Light（Adobe-CNS1、UniCNS-UTF16-H，不內嵌，由閱讀器提供），圖片為 FlateDecode RGB 加透明遮罩（/SMask）；頁面旋轉時以 /Matrix 轉正"
+            else "不可見簽章：widget 的 /Rect 為 0，只在閱讀器的簽章面板出現")
         certification?.let { add("認證簽章：簽章字典的 /Reference 帶 DocMDP 轉換（/P $it），文件目錄的 /Perms /DocMDP 指向這個簽章") }
         if (level.timestamp) add("signature-time-stamp：時戳機構對簽章值的 RFC 3161 時戳，放在未簽署屬性")
         if (level.revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
