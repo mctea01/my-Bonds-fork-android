@@ -37,7 +37,9 @@ import kotlin.coroutines.resume
 
 /**
  * NFC readers on Android: the phone's own NFC in reader mode, and USB CCID readers attached by OTG, the USB class
- * that PC/SC readers use on a computer (ACR122U, ACR1252U and similar).
+ * that PC/SC readers use on a computer (ACR122U, ACR1252U and similar). A security key plugged in directly (YubiKey,
+ * Nitrokey, Gnuk) is a CCID device with its card always inserted, so PIV and OpenPGP work through the same path; a
+ * YubiKey over NFC is an ISO-DEP tag in reader mode.
  */
 internal object AndroidNfcReaders {
     fun list(context: Context, platform: AndroidPlatform): NfcReaderList {
@@ -52,13 +54,38 @@ internal object AndroidNfcReaders {
         val usb = context.getSystemService(UsbManager::class.java)
         usb?.deviceList?.values?.forEach { device ->
             val index = (0 until device.interfaceCount).firstOrNull { device.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_CSCID }
-                ?: return@forEach
-            val name = device.productName?.takeIf { it.isNotBlank() } ?: "USB 讀卡機"
+            if (index == null) {
+                // A security key with only FIDO or OTP turned on has no smart card interface for PIV or OpenPGP.
+                tokenName(device)?.let { problems += "$it 已接上，但沒有開啟智慧卡（CCID）介面，無法使用 PIV 或 OpenPGP。請以 Yubico Authenticator 等工具在 USB 介面設定開啟 CCID；只支援 FIDO 的 Security Key 系列沒有這兩種功能。" }
+                return@forEach
+            }
+            val name = tokenName(device) ?: device.productName?.takeIf { it.isNotBlank() } ?: "USB 讀卡機"
             readers += NfcReaderOption("$name（USB）", external = true, reader = UsbCcidTagReader(context, usb, device, index))
         }
-        if (readers.isEmpty()) problems += "也可以用 OTG 接上 USB 非接觸式讀卡機（CCID）。"
+        if (readers.isEmpty()) problems += "也可以用 OTG 接上 USB 非接觸式讀卡機（CCID），或直接插上 YubiKey 等 USB 安全金鑰。"
         return NfcReaderList(readers, problems.joinToString("").ifEmpty { null })
     }
+
+    /**
+     * A clear name for a USB security key that holds the cards itself (no card to insert): its product name, or the
+     * maker's name when the device reports none. Null for anything else, which keeps its own product name.
+     */
+    private fun tokenName(device: UsbDevice): String? {
+        val maker = TOKEN_VENDORS[device.vendorId] ?: return null
+        val product = device.productName?.trim()?.takeIf { it.isNotEmpty() }
+        return when {
+            product == null -> maker
+            product.contains(maker, ignoreCase = true) -> product
+            else -> "$maker $product"
+        }
+    }
+
+    /** USB vendor IDs of security keys with PIV or OpenPGP applets on a CCID interface. */
+    private val TOKEN_VENDORS = mapOf(
+        0x1050 to "YubiKey",
+        0x20A0 to "Nitrokey",
+        0x234B to "Gnuk",
+    )
 }
 
 /**

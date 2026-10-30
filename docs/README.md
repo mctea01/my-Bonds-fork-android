@@ -11,6 +11,7 @@
 | [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、D1 到 D6 的決定、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
 | [design/p4-circuits.md](design/p4-circuits.md) | P4 電路規格：樣本結構量測、zkPDF 電路（SHA-256 中間狀態窗口、inflate、lexer、錨點、欄位承諾、日期述詞）、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
 | [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
+| [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
 | [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
 
 ## 研究

@@ -242,6 +242,9 @@ private fun TrustPage(model: WalletModel) {
     ActionRow(WalletIcons.Shield, "信任錨點", "全部內建與匯入的 X.509 根憑證、中繼憑證、DID 信任來源與文件簽章信任清單的下載狀態") {
         model.screen.value = Screen.TrustAnchors
     }
+    ActionRow(WalletIcons.Shield, "OpenPGP 公開金鑰", "OpenPGP 簽章與加密使用的公開金鑰：自己的卡片、核對過指紋的金鑰、介紹人與不信任的金鑰") {
+        model.screen.value = Screen.OpenPgpKeys()
+    }
 }
 
 @Composable

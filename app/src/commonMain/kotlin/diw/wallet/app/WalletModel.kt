@@ -253,6 +253,11 @@ sealed class Screen {
     data object CustomTrust : Screen()
     /** Zero-knowledge proofs: device tier, engines and circuit assets, opened from the security settings. */
     data object ZkSettings : Screen()
+    /**
+     * OpenPGP public keys and the user's trust in each, opened from the trust settings or from a file whose signer
+     * is missing ([query] is then looked up at once and Back returns to [from]).
+     */
+    data class OpenPgpKeys(val query: String? = null, val from: Screen? = null) : Screen()
     /** A code shown at a counter or to a verifier (TWDIW pickup barcode, Bonds frames, Bonds verification). */
     data object Offline : Screen()
     data object MsIssuance : Screen()
@@ -453,6 +458,7 @@ class WalletModel(val platform: PlatformServices) {
     val reader = ReaderModel(this)
     val files = FilesModel(this)
     val csc = CscModel(this)
+    val openPgp = OpenPgpModel(this)
     val trustLists = TrustListsModel(this)
     val zk = ZkModel(scope, platform.zk)
     val zkTemplates = ZkTemplatesModel(this)
@@ -516,6 +522,7 @@ class WalletModel(val platform: PlatformServices) {
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
         status.load()
+        openPgp.load()
         files.load()
         documents.value = documentStore.listDocuments()
         files.reconcileDerived(documents.value.map { it.identifier }.toSet())
@@ -725,6 +732,10 @@ class WalletModel(val platform: PlatformServices) {
             Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
+            is Screen.OpenPgpKeys -> {
+                openPgp.dismissFound()
+                screen.value = s.from ?: Screen.SettingsPage(SettingsSection.TRUST)
+            }
             Screen.Offline -> {
                 val file = taiwan.zkTls.queryFile
                 taiwan.closeOffline()

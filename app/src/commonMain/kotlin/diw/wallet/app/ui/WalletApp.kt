@@ -164,6 +164,7 @@ fun WalletApp(
                     Screen.TrustAnchors -> TrustAnchorsScreen(model)
                     Screen.CustomTrust -> CustomTrustScreen(model)
                     Screen.ZkSettings -> ZkSettingsScreen(model)
+                    is Screen.OpenPgpKeys -> OpenPgpKeysScreen(model, s)
                     Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
                     Screen.MsIssuance -> MsIssuanceScreen(model)
                     Screen.Proximity -> ProximityScreen(model)
@@ -215,6 +216,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.TrustAnchors -> "信任錨點"
     Screen.CustomTrust -> "自訂信任"
     Screen.ZkSettings -> "零知識證明"
+    is Screen.OpenPgpKeys -> "OpenPGP 公開金鑰"
     Screen.Offline -> "出示與查驗"
     Screen.MsIssuance -> "加入 Verified ID"
     Screen.Proximity -> "感應出示"

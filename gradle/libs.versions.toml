@@ -32,6 +32,7 @@ ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.re
 ktor-server-test-host = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncycastle" }
 # Android's bundled DOM rejects non-ASCII element and DOCTYPE names (Chinese official documents).
 xerces = { module = "xerces:xercesImpl", version = "2.12.2" }
 # QR Code reading from images; the version Multipaz's Android camera scanner already brings in.
