@@ -9,6 +9,7 @@ import diw.wallet.core.document.pdf.PdfException
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfSignatureField
 import diw.wallet.core.document.pdf.PdfSignatures
+import diw.wallet.core.document.pgp.OpenPgpInspection
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.ASN1OctetString
 import org.bouncycastle.asn1.ASN1Sequence
@@ -50,6 +51,7 @@ actual object DocumentInspector {
                 DocumentFormat.XML -> xml(data, fileName, base, checks, now, related)
                 DocumentFormat.OFD, DocumentFormat.ASIC_E, DocumentFormat.ZIP -> container(data, base, checks, now)
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
+                DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
                 DocumentFormat.IMAGE -> base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data)))
                 else -> base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
@@ -92,6 +94,8 @@ actual object DocumentInspector {
             if (runCatching { TimeStampResponse(b) }.isSuccess) return DocumentFormat.TIMESTAMP
             return DocumentFormat.OTHER
         }
+        // OpenPGP armor is text and binary OpenPGP starts with a packet tag (high bit set), never a PDF or ZIP header.
+        if (OpenPgpInspection.detect(b, name)) return DocumentFormat.OPENPGP
         if (PdfFile.isPdf(b)) return DocumentFormat.PDF
         if (Zip.isZip(b)) {
             val files = runCatching { Zip.read(b) }.getOrNull() ?: return DocumentFormat.ZIP

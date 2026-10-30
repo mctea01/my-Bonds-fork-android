@@ -24,6 +24,8 @@ enum class DocumentFormat(val mediaType: String) {
     ZIP("application/zip"),
     /** OpenAttestation (OpenCerts) document. */
     OPENCERTS("application/vnd.opencerts+json"),
+    /** OpenPGP data (RFC 4880, RFC 9580): signatures, signed or encrypted messages, keys; armored or binary. */
+    OPENPGP("application/pgp-signature"),
     JSON("application/json"),
     /** Office document: OOXML or ODF (a ZIP package) or the older OLE compound file (.doc, .xls, .ppt). */
     OFFICE("application/octet-stream"),
@@ -49,6 +51,7 @@ enum class SignatureFormat(val title: String) {
     ASIC_CADES("ASiC-E（CAdES）"),
     RFC3161("RFC 3161 時戳"),
     OPENCERTS("OpenAttestation（Merkle 證明）"),
+    OPENPGP("OpenPGP"),
 }
 
 /** One check: passed, passed with a caveat, failed, or not possible here. */
@@ -227,6 +230,8 @@ data class DocumentReport(
     val signaturePlacements: List<SignaturePlacementInfo> = emptyList(),
     val envelope: EnvelopeInfo? = null,
     val openCert: OpenCertInfo? = null,
+    /** What an OpenPGP file holds: keys, recipients of an encrypted message, the literal data of a signed message. */
+    val openPgp: diw.wallet.core.document.pgp.OpenPgpReport? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */
     val entries: List<String> = emptyList(),
     val notes: List<String> = emptyList(),

@@ -372,7 +372,7 @@ debugKey.exceptionOrNull()?.message?.let { problem ->
 
 configurations.all {
     resolutionStrategy {
-        force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86")
+        force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86", "org.bouncycastle:bcpg-jdk18on:1.86")
         // Keep every transitive Netty artifact on the patched version (SNI routing bypass, request smuggling).
         eachDependency { if (requested.group == "io.netty" && requested.name != "netty-bom") useVersion(libs.versions.netty.get()) }
     }
