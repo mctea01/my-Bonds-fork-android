@@ -1209,7 +1209,8 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
         Text("測試服務簽出的簽章由測試 CA 簽發，沒有法律效力，查驗時會顯示為無法確認的憑證。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error)
     }
-    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。",
+    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。" +
+        "服務提供時戳（signatures/timestamp）時以服務的時戳為準，失敗才改用設定的時戳機構；只提供 signatures/signDoc 的服務由服務產生 PAdES 簽章。",
         style = MaterialTheme.typography.bodySmall)
     if (!adding) {
         OutlinedButton(onClick = { adding = true }) { Text("加入遠端簽章服務") }
@@ -1220,6 +1221,15 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
 
 @Composable
 private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
+    var byProfile by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !byProfile, onClick = { byProfile = false }, label = { Text("逐項填寫") })
+        FilterChip(selected = byProfile, onClick = { byProfile = true }, label = { Text("匯入 CSC Profile") })
+    }
+    if (byProfile) {
+        CscProfileForm(model, onDone)
+        return
+    }
     var name by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("https://") }
     var clientId by remember { mutableStateOf("") }
@@ -1243,6 +1253,33 @@ private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text("加入") }
+        OutlinedButton(onClick = onDone) { Text("取消") }
+    }
+}
+
+/**
+ * Adds services from a CSC profile, pasted or read from a file: JSON with name, baseUrl, clientId and environment,
+ * optionally clientSecret, redirectUri and note (CscServices.fromProfile).
+ */
+@Composable
+private fun CscProfileForm(model: WalletModel, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    OutlinedTextField(value = text, onValueChange = { text = it.take(20_000); problem = null }, label = { Text("CSC Profile（JSON）") },
+        minLines = 4, modifier = Modifier.fillMaxWidth())
+    Text("服務商提供的設定檔，格式為 {\"type\":\"csc-profile\",\"name\":…,\"baseUrl\":…,\"clientId\":…,\"environment\":\"production\" 或 \"test\"}，可包含多個服務的陣列；redirectUri 未填時使用錢包自己的 ${CscServices.WALLET_REDIRECT}。",
+        style = MaterialTheme.typography.bodySmall)
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            runCatching { model.csc.addProfile(text) }
+                .onSuccess { model.message.value = "已加入 $it 個遠端簽章服務"; onDone() }
+                .onFailure { problem = it.message }
+        }, enabled = text.isNotBlank()) { Text("加入") }
+        OutlinedButton(onClick = {
+            scope.launch { model.platform.pickFile()?.let { text = it.bytes.decodeToString().take(20_000); problem = null } }
+        }) { Text("從檔案讀取") }
         OutlinedButton(onClick = onDone) { Text("取消") }
     }
 }

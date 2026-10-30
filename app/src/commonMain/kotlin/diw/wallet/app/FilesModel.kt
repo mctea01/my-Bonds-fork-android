@@ -46,6 +46,8 @@ import diw.wallet.core.document.pdf.PdfPlain
 import diw.wallet.app.ui.localTime
 import diw.wallet.core.document.pdf.PdfAppearanceImage
 import diw.wallet.core.document.pdf.PdfSignOptions
+import diw.wallet.core.document.pdf.PdfIncrementalSigner
+import diw.wallet.core.document.sign.CscSigner
 import diw.wallet.core.document.pdf.PdfSignatureAppearance
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
@@ -1456,7 +1458,14 @@ class FilesModel(private val model: WalletModel) {
         } else null
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
-        val ts = if (form != SignForm.APPROVAL && level.timestamp) timestamper() else null
+        // A CSC service that offers signatures/timestamp time-stamps its own signatures (falling back to the chosen authority).
+        val cscTs = (signer as? CscSigner)?.let { runCatching { it.timestamper() }.getOrNull() }
+        val ts = if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
+        // A CSC service without signatures/signHash but with signatures/signDoc builds the PAdES CMS itself.
+        val viaSignDoc = form == SignForm.PADES && signer is CscSigner && !signer.supportsSignHash() && signer.supportsSignDoc()
+        if (signer is CscSigner && !viaSignDoc && !signer.supportsSignHash()) {
+            throw SigningException(if (signer.supportsSignDoc()) "這個遠端簽章服務只提供 signatures/signDoc，目前只能用於 PAdES（PDF）簽章" else "這個遠端簽章服務沒有提供 signatures/signHash 或 signatures/signDoc")
+        }
         val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
         val archive = form != SignForm.APPROVAL && level.archive
         if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
@@ -1479,15 +1488,15 @@ class FilesModel(private val model: WalletModel) {
         }
         val (bytes, name) = withContext(model.unlockProvider) {
             when (form) {
-                SignForm.PADES -> DocumentSigning.signPdf(
-                    data, signer,
-                    PdfSignOptions(
+                SignForm.PADES -> {
+                    val options = PdfSignOptions(
                         reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
                         allowBreakingCertification = allowBreakingCertification,
                         validation = validation, requireValidation = level.revocation, documentTimestamp = archive,
                         certification = certification, time = now, appearance = appearance,
-                    ), ts,
-                ) to "$base-signed.pdf"
+                    )
+                    (if (viaSignDoc) signPdfViaSignDoc(data, signer as CscSigner, options, level, ts) else DocumentSigning.signPdf(data, signer, options, ts)) to "$base-signed.pdf"
+                }
                 SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation, archive) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
                 SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
                 SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
@@ -1504,6 +1513,27 @@ class FilesModel(private val model: WalletModel) {
         val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
         model.message.value = "已簽署並保存：${stored.name}" + (reached?.let { "（$it" + if (lower) "，低於所選的 ${level.short}：取不到撤銷資訊）" else "）" } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** Tries [first]; when it fails, [second], so a missing remote time stamp never stops a signature. */
+    private fun fallbackTimestamper(first: Timestamper, second: Timestamper) = Timestamper { data ->
+        try { first.timestamp(data) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { second.timestamp(data) }
+    }
+
+    /**
+     * PAdES through CSC signatures/signDoc: the wallet prepares the incremental update, the service returns the CMS
+     * for its digest at AdES-B-B or AdES-B-T, and B-LT and B-LTA are reached by extending the signed file locally
+     * (DSS and a document time stamp, as 延長保存 does).
+     */
+    private suspend fun signPdfViaSignDoc(pdf: ByteArray, signer: CscSigner, options: PdfSignOptions, level: SignatureLevel, ts: Timestamper?): ByteArray {
+        val prepared = PdfIncrementalSigner.prepare(pdf, PdfSignOptions(
+            reason = options.reason, location = options.location, signerName = options.signerName,
+            allowBreakingCertification = options.allowBreakingCertification, certification = options.certification,
+            time = options.time, appearance = options.appearance, reserve = 64 * 1024,
+        ))
+        val cms = signer.signPadesDigest(prepared.signedData(), if (level.timestamp) "AdES-B-T" else "AdES-B-B")
+        val signed = prepared.finish(cms)
+        return if (level.revocation) DocumentSigning.extendPdf(signed, revocationFetch, ts ?: timestamper()).pdf else signed
     }
 
     /** The text of a visible signature: who signed, when (local time), and the reason and location when given. */
