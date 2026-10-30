@@ -1,6 +1,6 @@
 [versions]
-multipaz = "0.101.0"
-ktor = "3.3.3"
+multipaz = "0.102.0"
+ktor = "3.6.0"
 coroutines = "1.11.0"
 serialization = "1.12.0"
 kotlinxIo = "0.9.1"
