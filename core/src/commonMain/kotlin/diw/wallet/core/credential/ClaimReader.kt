@@ -7,6 +7,7 @@ import diw.wallet.core.w3c.W3cVcCredential
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.cbor.Bstr
@@ -107,9 +108,15 @@ object ClaimReader {
         if (claim is JsonClaim) sexCode(name, claim.value)?.let { return it }
         // Elements the document type does not describe are rendered by Multipaz as CBOR diagnostics ("\"PID\"", [..]).
         if (claim is MdocClaim && claim.attribute == null) plainCbor(claim.value)?.let { return it }
+        // mDL driving_privileges is one claim holding every category; Multipaz renders it as one CBOR diagnostic line
+        // that is hard to read, so each category is put on its own line here.
+        if (claim is MdocClaim && name == "driving_privileges" && claim.value is CborArray) return drivingPrivileges(claim.value as CborArray)
         // Even described structured elements (mDL driving_privileges and the like) are rendered by Multipaz as raw
         // CBOR diagnostics, so nested date tags show up as 1004("2025-02-28"). Render those ourselves to read cleanly.
         if (claim is MdocClaim && (claim.value is CborArray || claim.value is CborMap)) return mdocStructured(claim.value)
+        // A JSON object or array claim (SD-JWT VC address, place_of_birth, nationalities...) would otherwise show as
+        // raw JSON; render it as readable key/value text, preferring a formatted address line when the issuer sends one.
+        if (claim is JsonClaim && (claim.value is JsonObject || claim.value is JsonArray)) return render(claim.value)
         return claim.render()
     }
 
@@ -158,6 +165,35 @@ object ClaimReader {
         "sign" to "條件",
         "value" to "值",
     )
+
+    /** The keys of one mDL driving_privileges entry rendered separately, so they are not merged into the line below. */
+    private val drivingPrivilegeKeys = setOf("vehicle_category_code", "issue_date", "expiry_date", "codes")
+
+    /** Value of [key] in a CBOR map, or null; keys are text strings. */
+    private fun CborMap.field(key: String): DataItem? =
+        items.entries.firstOrNull { (k, _) -> (k as? Tstr)?.value == key }?.value
+
+    /**
+     * mDL driving_privileges as one line per vehicle category: "B 類　核發 ..., 到期 ..., 附註 ...". Any other key the
+     * document type carries on an entry is appended by its label so nothing is dropped.
+     */
+    private fun drivingPrivileges(v: CborArray): String {
+        if (v.items.isEmpty()) return "無"
+        return v.items.joinToString("\n") { item ->
+            if (item !is CborMap) return@joinToString mdocStructured(item)
+            val category = item.field("vehicle_category_code")?.let { mdocStructured(it) }
+            val parts = buildList {
+                item.field("issue_date")?.let { add("核發 ${mdocStructured(it)}") }
+                item.field("expiry_date")?.let { add("到期 ${mdocStructured(it)}") }
+                item.field("codes")?.let { add("附註 ${mdocStructured(it)}") }
+                for ((k, x) in item.items) {
+                    val key = (k as? Tstr)?.value ?: continue
+                    if (key !in drivingPrivilegeKeys) add("${mdocFieldLabels[key] ?: key}: ${mdocStructured(x)}")
+                }
+            }
+            (category?.let { "$it 類" } ?: "權限") + if (parts.isEmpty()) "" else "　" + parts.joinToString("，")
+        }
+    }
 
     /** ISO/IEC 5218 sex codes (the PID's sex claim) as words. */
     private fun sexCode(name: String, v: JsonElement): String? {
@@ -222,7 +258,23 @@ object ClaimReader {
 
     private fun render(v: JsonElement): String = when (v) {
         is JsonPrimitive -> v.content
-        is JsonArray -> v.joinToString(", ") { render(it) }
-        is JsonObject -> v.entries.joinToString(", ") { (k, x) -> "$k: ${render(x)}" }
+        is JsonArray -> v.joinToString("；") { render(it) }
+        is JsonObject -> {
+            // A formatted address line, when the issuer sends one, reads better than the parts joined.
+            val formatted = (v["formatted"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.replace("\n", " ")
+            formatted ?: v.entries.filterNot { (_, x) -> x is JsonNull }
+                .joinToString("，") { (k, x) -> "${jsonFieldLabels[k] ?: k}: ${render(x)}" }
+        }
     }
+
+    /** Readable names for the sub-fields of structured JSON claims such as address and place_of_birth. */
+    private val jsonFieldLabels = mapOf(
+        "street_address" to "街道",
+        "house_number" to "門牌",
+        "locality" to "縣市",
+        "region" to "地區",
+        "country" to "國家",
+        "postal_code" to "郵遞區號",
+        "formatted" to "完整地址",
+    )
 }
