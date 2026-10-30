@@ -137,9 +137,27 @@ object ClaimReader {
             else -> mdocStructured(v.taggedItem)
         }
         is CborArray -> v.items.joinToString("；") { mdocStructured(it) }
-        is CborMap -> v.items.entries.joinToString("，") { (k, x) -> "${mdocStructured(k)}: ${mdocStructured(x)}" }
+        is CborMap -> v.items.entries.joinToString("，") { (k, x) ->
+            val key = (k as? Tstr)?.value?.let { mdocFieldLabels[it] ?: it } ?: mdocStructured(k)
+            "$key: ${mdocStructured(x)}"
+        }
         else -> v.toString()
     }
+
+    /**
+     * Readable names for the keys inside structured mdoc values such as mDL driving_privileges and its nested codes
+     * (restrictions and endorsements). The code itself is always shown as its value; the full per-jurisdiction meaning
+     * of a vehicle category or restriction code is left to the planned localisation work.
+     */
+    private val mdocFieldLabels = mapOf(
+        "vehicle_category_code" to "類別代號",
+        "issue_date" to "核發日",
+        "expiry_date" to "到期日",
+        "codes" to "附註",
+        "code" to "代號",
+        "sign" to "條件",
+        "value" to "值",
+    )
 
     /** ISO/IEC 5218 sex codes (the PID's sex claim) as words. */
     private fun sexCode(name: String, v: JsonElement): String? {

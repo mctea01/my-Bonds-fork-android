@@ -619,14 +619,19 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
-    /** Imports the IACA certificates of the public Multipaz test issuer as TEST anchors. */
+    /**
+     * Imports the roots of the public Multipaz test issuers as TEST anchors, fetched online so a re-keyed root is
+     * picked up here without a new build: issuer.multipaz.org and utopia.multipaz.org are two separate registry roots
+     * (the Utopia registry rotates its key), so both are fetched and one failing does not stop the other.
+     */
     fun importMultipazTestAnchors() = scope.launch {
-        try {
-            val n = addMultipazIssuerAnchors(MULTIPAZ_ISSUER)
-            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（結果標示為測試）"
-        } catch (e: Exception) {
-            message.value = "匯入失敗：${e.message}"
+        var added = 0
+        val failures = mutableListOf<String>()
+        for ((label, base) in listOf("issuer" to MULTIPAZ_ISSUER, "utopia" to UTOPIA_ISSUER)) {
+            try { added += addMultipazIssuerAnchors(base) } catch (e: Exception) { failures += "$label：${e.message}" }
         }
+        message.value = if (failures.isEmpty()) "已匯入 $added 個 Multipaz 測試信任錨點（issuer 與 utopia，結果標示為測試）"
+            else "已匯入 $added 個 Multipaz 測試信任錨點，部分失敗：${failures.joinToString("；")}"
     }
 
     /**
@@ -1964,6 +1969,7 @@ class WalletModel(val platform: PlatformServices) {
         const val MAX_QR_IMAGE_SIDE = 2400
         val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
+        const val UTOPIA_ISSUER = "https://utopia.multipaz.org/id"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
 
         fun tierTitle(t: TrustTier): String = when (t) {
