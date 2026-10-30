@@ -66,6 +66,13 @@ class CscModel(private val model: WalletModel) {
         model.updateSettings { it.copy(cscServices = it.cscServices + s) }
     }
 
+    /** Adds the services of a CSC profile (JSON); a service already present (same address and client_id) is replaced. */
+    fun addProfile(json: String): Int {
+        val list = CscServices.fromProfile(json, model.settings.allowLoopbackHttp)
+        model.updateSettings { st -> st.copy(cscServices = st.cscServices.filterNot { old -> list.any { it.id == old.id } } + list) }
+        return list.size
+    }
+
     fun remove(id: String) {
         tokens.remove(id)
         model.updateSettings { st -> st.copy(cscServices = st.cscServices.filterNot { it.id == id }) }

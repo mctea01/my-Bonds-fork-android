@@ -107,10 +107,11 @@ class TrustAnchorsTest {
             val c = r.certificate
             val sha = MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02X".format(it) }
             assertEquals(r.sha256, sha, "${r.name} fingerprint")
-            assertEquals(c.subject, c.issuer, "${r.name} is a root")
+            // The C2PA trust list names some intermediates as anchors; every other group holds roots only.
+            if (r.group != BuiltInPublicRoots.Group.CONTENT_CREDENTIALS) assertEquals(c.subject, c.issuer, "${r.name} is a root")
             assertTrue(c.validityNotBefore <= updated && updated <= c.validityNotAfter, "${r.name} was not valid on ${BuiltInPublicRoots.UPDATED}")
             val jca = factory.generateCertificate(c.encoded.toByteArray().inputStream()) as java.security.cert.X509Certificate
-            jca.verify(jca.publicKey, bc)
+            if (c.subject == c.issuer) jca.verify(jca.publicKey, bc)
             assertEquals(r.algorithm == "SM2", jca.sigAlgOID == "1.2.156.10197.1.501", "${r.name} signature algorithm")
         }
         // The e-invoice document signature issuer: the GDCA root as published for verifying electronic documents.

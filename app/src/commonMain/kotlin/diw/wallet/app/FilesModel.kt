@@ -43,7 +43,12 @@ import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.document.opencerts.OpenCertView
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfPlain
+import diw.wallet.app.ui.localTime
+import diw.wallet.core.document.pdf.PdfAppearanceImage
 import diw.wallet.core.document.pdf.PdfSignOptions
+import diw.wallet.core.document.pdf.PdfIncrementalSigner
+import diw.wallet.core.document.sign.CscSigner
+import diw.wallet.core.document.pdf.PdfSignatureAppearance
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
@@ -291,6 +296,12 @@ object MyDataFiles {
 }
 
 /** Who signs a document. */
+/**
+ * A visible PDF signature chosen on the signing screen: the page (0-based, -1 for the last page), a preset position
+ * and an optional picture such as a handwritten signature. The text lines are filled in at signing time.
+ */
+class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Position, val image: PdfAppearanceImage? = null)
+
 sealed class SignerChoice {
     /** The citizen digital certificate (or another GPKI) card on [reader]; the PIN is used for this signing only. */
     class Card(val reader: NfcReaderOption, val pin: String) : SignerChoice()
@@ -1438,6 +1449,8 @@ class FilesModel(private val model: WalletModel) {
         level: SignatureLevel = SignatureLevel.B_T,
         /** Make a PDF signature certify the document with this DocMDP permission (1 to 3); first signature only. */
         certification: Int? = null,
+        /** Show the PDF signature on a page; null keeps it invisible. */
+        visible: VisibleSignature? = null,
     ) = run("準備簽署") {
         val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
             if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
@@ -1445,7 +1458,14 @@ class FilesModel(private val model: WalletModel) {
         } else null
         val data = data(f.id)
         val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
-        val ts = if (form != SignForm.APPROVAL && level.timestamp) timestamper() else null
+        // A CSC service that offers signatures/timestamp time-stamps its own signatures (falling back to the chosen authority).
+        val cscTs = (signer as? CscSigner)?.let { runCatching { it.timestamper() }.getOrNull() }
+        val ts = if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
+        // A CSC service without signatures/signHash but with signatures/signDoc builds the PAdES CMS itself.
+        val viaSignDoc = form == SignForm.PADES && signer is CscSigner && !signer.supportsSignHash() && signer.supportsSignDoc()
+        if (signer is CscSigner && !viaSignDoc && !signer.supportsSignHash()) {
+            throw SigningException(if (signer.supportsSignDoc()) "這個遠端簽章服務只提供 signatures/signDoc，目前只能用於 PAdES（PDF）簽章" else "這個遠端簽章服務沒有提供 signatures/signHash 或 signatures/signDoc")
+        }
         val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
         val archive = form != SignForm.APPROVAL && level.archive
         if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
@@ -1462,17 +1482,21 @@ class FilesModel(private val model: WalletModel) {
             return@run
         }
         val base = f.name.substringBeforeLast('.')
+        val now = Clock.System.now()
+        val appearance = visible?.let { v ->
+            PdfSignatureAppearance.preset(v.position, v.page, appearanceLines(signerName ?: signer.source.title, now.epochSeconds, reason, location), v.image)
+        }
         val (bytes, name) = withContext(model.unlockProvider) {
             when (form) {
-                SignForm.PADES -> DocumentSigning.signPdf(
-                    data, signer,
-                    PdfSignOptions(
+                SignForm.PADES -> {
+                    val options = PdfSignOptions(
                         reason = reason.ifBlank { null }, location = location.ifBlank { null }, signerName = signerName,
                         allowBreakingCertification = allowBreakingCertification,
                         validation = validation, requireValidation = level.revocation, documentTimestamp = archive,
-                        certification = certification,
-                    ), ts,
-                ) to "$base-signed.pdf"
+                        certification = certification, time = now, appearance = appearance,
+                    )
+                    (if (viaSignDoc) signPdfViaSignDoc(data, signer as CscSigner, options, level, ts) else DocumentSigning.signPdf(data, signer, options, ts)) to "$base-signed.pdf"
+                }
                 SignForm.XADES -> DocumentSigning.signXml(data, signer, ts, validation, archive) to (base + "-signed." + f.name.substringAfterLast('.', "xml"))
                 SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
                 SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
@@ -1489,6 +1513,70 @@ class FilesModel(private val model: WalletModel) {
         val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
         model.message.value = "已簽署並保存：${stored.name}" + (reached?.let { "（$it" + if (lower) "，低於所選的 ${level.short}：取不到撤銷資訊）" else "）" } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** Tries [first]; when it fails, [second], so a missing remote time stamp never stops a signature. */
+    private fun fallbackTimestamper(first: Timestamper, second: Timestamper) = Timestamper { data ->
+        try { first.timestamp(data) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { second.timestamp(data) }
+    }
+
+    /**
+     * PAdES through CSC signatures/signDoc: the wallet prepares the incremental update, the service returns the CMS
+     * for its digest at AdES-B-B or AdES-B-T, and B-LT and B-LTA are reached by extending the signed file locally
+     * (DSS and a document time stamp, as 延長保存 does).
+     */
+    private suspend fun signPdfViaSignDoc(pdf: ByteArray, signer: CscSigner, options: PdfSignOptions, level: SignatureLevel, ts: Timestamper?): ByteArray {
+        val prepared = PdfIncrementalSigner.prepare(pdf, PdfSignOptions(
+            reason = options.reason, location = options.location, signerName = options.signerName,
+            allowBreakingCertification = options.allowBreakingCertification, certification = options.certification,
+            time = options.time, appearance = options.appearance, reserve = 64 * 1024,
+        ))
+        val cms = signer.signPadesDigest(prepared.signedData(), if (level.timestamp) "AdES-B-T" else "AdES-B-B")
+        DocumentSigning.verifyDetached(cms, prepared.signedData(), signer.certificateChain.first())
+        val signed = prepared.finish(cms)
+        return if (level.revocation) DocumentSigning.extendPdf(signed, revocationFetch, ts ?: timestamper()).pdf else signed
+    }
+
+    /** The text of a visible signature: who signed, when (local time), and the reason and location when given. */
+    fun appearanceLines(signerName: String, epochSeconds: Long, reason: String, location: String): List<String> = buildList {
+        add("數位簽署：" + signerName.take(40))
+        add("時間：" + localTime(epochSeconds))
+        reason.trim().takeIf { it.isNotEmpty() }?.let { add("原因：" + it.take(40)) }
+        location.trim().takeIf { it.isNotEmpty() }?.let { add("地點：" + it.take(40)) }
+    }
+
+    /**
+     * A picture for a visible signature from an image file (PNG, JPEG and what the platform decodes), reduced so the
+     * longer side is at most [maxSide] pixels; transparency is kept. Null when the file is not a picture.
+     */
+    fun signatureImage(bytes: ByteArray, maxSide: Int = 480): PdfAppearanceImage? {
+        val bitmap = model.platform.decodeImage(bytes) ?: return null
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= 0 || h <= 0) return null
+        val pixels = IntArray(w * h)
+        bitmap.readPixels(pixels)
+        val scale = minOf(1.0, maxSide.toDouble() / maxOf(w, h))
+        val tw = maxOf(1, (w * scale).toInt())
+        val th = maxOf(1, (h * scale).toInt())
+        if (tw == w && th == h) return PdfAppearanceImage(w, h, pixels)
+        // Box filter: each target pixel averages the source pixels it covers (straight alpha weighted by alpha).
+        val out = IntArray(tw * th)
+        for (ty in 0 until th) {
+            val y0 = ty * h / th; val y1 = maxOf(y0 + 1, (ty + 1) * h / th)
+            for (tx in 0 until tw) {
+                val x0 = tx * w / tw; val x1 = maxOf(x0 + 1, (tx + 1) * w / tw)
+                var a = 0L; var r = 0L; var g = 0L; var b = 0L; var n = 0L
+                for (y in y0 until y1) for (x in x0 until x1) {
+                    val p = pixels[y * w + x]
+                    val pa = (p ushr 24).toLong()
+                    a += pa; r += ((p shr 16) and 0xFF) * pa; g += ((p shr 8) and 0xFF) * pa; b += (p and 0xFF) * pa; n++
+                }
+                out[ty * tw + tx] = if (a == 0L) 0 else
+                    ((a / n).toInt() shl 24) or ((r / a).toInt() shl 16) or ((g / a).toInt() shl 8) or (b / a).toInt()
+            }
+        }
+        return PdfAppearanceImage(tw, th, out)
     }
 
     /** The baseline level the inspection of [f] found, such as "PAdES B-LT"; null when the report does not say. */
