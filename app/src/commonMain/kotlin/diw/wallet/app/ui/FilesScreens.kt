@@ -301,7 +301,7 @@ private fun groupOf(f: StoredFile, members: Int): String {
     val source = f.source.orEmpty()
     if (source.startsWith("MyData")) return source.substringAfter("・", "MyData").substringBefore("（").ifBlank { "MyData" }
     val ext = f.name.substringAfterLast('.', "").lowercase()
-    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co")) return "電子公文"
+    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co", "en", "esw")) return "電子公文"
     return f.report?.format?.let { formatTitle(it) } ?: "其他檔案"
 }
 
