@@ -299,6 +299,16 @@ class Oid4vpE2eTest {
     }
 
     @Test
+    fun dcApiAcceptsDraft24Openid4vpProtocol() = runBlocking<Unit> {
+        val w = WalletFixture().init(servers.pki)
+        w.issueMdl(servers.pki, listOf("qes_authorization"))
+        // OpenID4VP Draft 24 registers the DC API protocol as the plain "openid4vp"; an unsigned request must resolve.
+        val request = w.holder.resolveDcApi("openid4vp", mdocQesRequest(), "https://rp.example")
+        val outcome = w.holder.respondDefault(w.holder.prepare(request)) as PresentationOutcome.DcApi
+        assertTrue(outcome.data["vp_token"]!!.jsonObject.containsKey("mdl"))
+    }
+
+    @Test
     fun mdocTransactionWithoutIssuerKeyAuthorizationIsRejected() = runBlocking<Unit> {
         val w = WalletFixture().init(servers.pki)
         w.issueMdl(servers.pki)
