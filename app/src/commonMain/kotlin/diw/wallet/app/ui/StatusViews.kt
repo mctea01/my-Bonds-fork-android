@@ -118,6 +118,9 @@ fun StatusPanel(model: WalletModel, doc: Document) {
         }
         Text(StatusTexts.explain(d.finding), style = MaterialTheme.typography.bodyMedium)
         specStatus(current?.status)?.let { Text("規格狀態值：$it", style = MaterialTheme.typography.bodySmall) }
+        current?.status?.mechanism?.let { m ->
+            Text("撤銷機制：$m" + (current.status.uri?.let { "（$it）" } ?: ""), style = MaterialTheme.typography.bodySmall)
+        }
         current?.let {
             Text(
                 "查詢時間：${localTime(it.status.checkedAt)}" + if (d.stale) "（超過${StatusTexts.risk(d.risk)}證件允許的時間，需重新查詢）" else "",

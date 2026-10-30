@@ -498,6 +498,9 @@ class WalletModel(val platform: PlatformServices) {
         source = SimplePresentmentSource(
             documentStore = documentStore,
             documentTypeRepository = documentTypes,
+            // The same Longfellow ZK system the proximity path uses, so an online OpenID4VP request that asks for a ZKP
+            // is answered with one instead of failing because no ZK system was registered on this source.
+            zkSystemRepository = proximity.longfellow.repository,
             domainsMdocSignature = listOf(CredentialDomains.MDOC),
             domainsKeyBoundSdJwt = listOf(CredentialDomains.SD_JWT),
             domainsKeylessSdJwt = listOf(CredentialDomains.SD_JWT_KEYLESS),
@@ -616,14 +619,19 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
-    /** Imports the IACA certificates of the public Multipaz test issuer as TEST anchors. */
+    /**
+     * Imports the roots of the public Multipaz test issuers as TEST anchors, fetched online so a re-keyed root is
+     * picked up here without a new build: issuer.multipaz.org and utopia.multipaz.org are two separate registry roots
+     * (the Utopia registry rotates its key), so both are fetched and one failing does not stop the other.
+     */
     fun importMultipazTestAnchors() = scope.launch {
-        try {
-            val n = addMultipazIssuerAnchors(MULTIPAZ_ISSUER)
-            message.value = "已匯入 $n 個 Multipaz 測試信任錨點（結果標示為測試）"
-        } catch (e: Exception) {
-            message.value = "匯入失敗：${e.message}"
+        var added = 0
+        val failures = mutableListOf<String>()
+        for ((label, base) in listOf("issuer" to MULTIPAZ_ISSUER, "utopia" to UTOPIA_ISSUER)) {
+            try { added += addMultipazIssuerAnchors(base) } catch (e: Exception) { failures += "$label：${e.message}" }
         }
+        message.value = if (failures.isEmpty()) "已匯入 $added 個 Multipaz 測試信任錨點（issuer 與 utopia，結果標示為測試）"
+            else "已匯入 $added 個 Multipaz 測試信任錨點，部分失敗：${failures.joinToString("；")}"
     }
 
     /**
@@ -1401,16 +1409,31 @@ class WalletModel(val platform: PlatformServices) {
      * included), or null to cancel the flow. A failed request stays on screen until the user leaves it, so the reason
      * can be read instead of the caller only seeing a cancelled request.
      */
-    suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String): JsonObject? {
+    suspend fun presentDcApi(
+        protocol: String,
+        data: JsonObject,
+        origin: String,
+        selectedDocumentIds: List<String> = emptyList(),
+    ): JsonObject? {
         val done = startDcApi()
         try {
             val h = holder()
-            presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)))
+            val preselected = resolveSelectedDocuments(selectedDocumentIds)
+            presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)), preselected = preselected)
         } catch (e: Exception) {
             dcApiError = Oid4vpHolder.dcApiError(data, e)
             presentation.value = PresentationUi.Failed(describe(e))
         }
         return done.await()
+    }
+
+    /**
+     * The held documents the system selector chose, by their Credential Manager ids (each a document identifier). A
+     * chosen credential that no longer exists is an explicit failure: the request is never answered from another
+     * credential the holder did not pick.
+     */
+    suspend fun resolveSelectedDocuments(ids: List<String>): List<Document> = ids.map { id ->
+        documentStore.lookupDocument(id) ?: throw ProtocolException("access_denied", "選取的證件已不存在")
     }
 
     /**
@@ -1444,10 +1467,20 @@ class WalletModel(val platform: PlatformServices) {
         offline: TwdiwOfflineSession? = null,
         chosen: CredentialSelection? = null,
         checkedAttestations: List<diw.wallet.core.oid4vp.VerifierAttestation>? = null,
+        preselected: List<Document> = emptyList(),
     ): PresentationUi.Consent {
         val consent = when (prepared) {
             is PreparedPresentation -> {
-                val selection = chosen ?: prepared.queryResult.select(emptyList())
+                val selection = chosen ?: prepared.queryResult.select(preselected)
+                // Multipaz silently falls back to the first match when the preselected documents cannot be honoured, so
+                // the honoured set is checked here: a credential the holder picked that does not satisfy the request is
+                // an explicit failure rather than a different credential being disclosed.
+                if (chosen == null && preselected.isNotEmpty()) {
+                    val honoured = selection.matches.map { it.credential.document.identifier }.toSet()
+                    if (preselected.any { it.identifier !in honoured }) {
+                        throw ProtocolException("access_denied", "選取的證件無法符合此請求")
+                    }
+                }
                 val alternatives = standardAlternatives(prepared.queryResult, selection)
                 val items = selection.matches.mapIndexed { i, m ->
                     val doc = m.credential.document
@@ -1503,6 +1536,15 @@ class WalletModel(val platform: PlatformServices) {
                     notable = notable(paths, labels, sensitivity),
                 )
                 PresentationUi.Consent(prepared, null, listOf(item), fields, offline)
+            }
+        }
+        // The Digital Credentials API only registers mdoc and SD-JWT VC documents, which are answered as a
+        // PreparedPresentation; a preselected document reaching any other path cannot be the credential the holder
+        // picked, so the request is refused rather than answered from a credential they did not choose.
+        if (chosen == null && preselected.isNotEmpty() && prepared !is PreparedPresentation) {
+            val honoured = consent.items.mapNotNull { it.documentId }.toSet()
+            if (preselected.any { it.identifier !in honoured }) {
+                throw ProtocolException("access_denied", "選取的證件無法符合此請求")
             }
         }
         val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
@@ -1927,6 +1969,7 @@ class WalletModel(val platform: PlatformServices) {
         const val MAX_QR_IMAGE_SIDE = 2400
         val ISSUER_PATHS = listOf("/issuer", "/draft13", "/openid4vci", "/oid4vci", "/v1")
         const val MULTIPAZ_ISSUER = "https://issuer.multipaz.org/issuer"
+        const val UTOPIA_ISSUER = "https://utopia.multipaz.org/id"
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
 
         fun tierTitle(t: TrustTier): String = when (t) {

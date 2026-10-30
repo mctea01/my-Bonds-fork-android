@@ -19,7 +19,7 @@ class GpkiTapSigner(
     private val reader: NfcTagReader,
     private val pin: String,
     private val intermediates: List<ByteArray> = emptyList(),
-    private val tapMessage: String = "請將自然人憑證卡靠近讀卡區域",
+    private val tapMessage: String = "請將自然人憑證卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間請保持貼合、不要移動卡片。",
 ) : DocumentSigner {
     private var key: GpkiCard.KeyInfo? = null
 
@@ -42,7 +42,7 @@ class GpkiTapSigner(
     override suspend fun sign(data: ByteArray): ByteArray {
         val k = key ?: throw SigningException("尚未讀取卡片憑證")
         val digest = DocCrypto.digest("SHA-256", data)
-        val signature = reader.scan("再次感應卡片以完成簽署，簽署時請保持不動", tagInteractionFunc = { tag ->
+        val signature = reader.scan("請再次將自然人憑證卡貼近 NFC 感應區完成簽署，簽署期間請保持不動，完成前請勿移開卡片。", tagInteractionFunc = { tag ->
             val card = GpkiCard(NfcCardChannel(tag))
             card.connect()
             card.signSha256(pin, k.keyRef, digest)

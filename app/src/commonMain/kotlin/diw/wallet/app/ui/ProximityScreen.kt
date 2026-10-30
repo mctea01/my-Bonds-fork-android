@@ -62,14 +62,23 @@ fun ProximityScreen(model: WalletModel) {
             VerdictCard(Verdict.PASS, "已出示", listOf("已將「${s.documents.joinToString("、")}」交給 ${s.verifier}。", "出示的對象與欄位名稱記在「紀錄」。"))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { model.back() }) { Text("完成") }
-                OutlinedButton(onClick = { model.proximity.again() }) { Text("再出示一次") }
+                // "Present again" restarts the in-person listening flow; a DC API request is driven by the browser, not retriable here.
+                if (s.channel != diw.wallet.app.ProximityChannel.DC_API) {
+                    OutlinedButton(onClick = { model.proximity.again() }) { Text("再出示一次") }
+                }
             }
         }
         is ProximityUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             VerdictCard(Verdict.FAIL, "無法完成", listOf(s.message))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { model.proximity.again() }) { Text("再試一次") }
-                OutlinedButton(onClick = { model.back() }) { Text("離開") }
+            // A DC API request cannot be retried inside the wallet (the browser owns it); "再試一次" would otherwise drop
+            // the user onto the NFC sensing screen, which never answers the original online request.
+            if (s.channel == diw.wallet.app.ProximityChannel.DC_API) {
+                Button(onClick = { model.back() }) { Text("離開") }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { model.proximity.again() }) { Text("再試一次") }
+                    OutlinedButton(onClick = { model.back() }) { Text("離開") }
+                }
             }
         }
     }

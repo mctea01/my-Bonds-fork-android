@@ -19,6 +19,8 @@ enum class SignerSource(val title: String) {
     MOBILE_MOICA("行動自然人憑證"),
     /** A remote signing service through the Cloud Signature Consortium API. */
     CSC("遠端簽章服務（CSC）"),
+    /** A PIV card (NIST SP 800-73-4): YubiKey, PIVKey, US PIV/CAC and the like, read over NFC, USB or PC/SC. */
+    PIV("PIV 卡"),
 }
 
 /**

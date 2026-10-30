@@ -175,6 +175,8 @@ object ProfileCheckTool {
             image.size > 3 && image[0] == 'G'.code.toByte() && image[1] == 'I'.code.toByte() -> ".gif"
             else -> ".jpg"
         }
+        // Files.createTempFile restricts the file to the current user (POSIX 0600), unlike File.createTempFile which
+        // leaves the captcha image readable by other local accounts in the shared temp directory.
         val file = Files.createTempFile("zktls-captcha", ext).toFile().apply { deleteOnExit(); writeBytes(image) }
         val opened = runCatching {
             val desktop = java.awt.Desktop.getDesktop()

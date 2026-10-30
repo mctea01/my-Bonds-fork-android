@@ -92,7 +92,8 @@ class LongfellowZk(platformName: String, nativeCheck: () -> String? = Longfellow
         }
     }
 
-    class ProofException : IllegalArgumentException("Longfellow proof operation failed")
+    class ProofException(cause: Throwable? = null) :
+        IllegalArgumentException("Longfellow proof operation failed" + (cause?.message?.let { ": $it" } ?: ""), cause)
 
     companion object {
         private fun copySpec(spec: ZkSystemSpec) = ZkSystemSpec(spec.id, spec.system).also { copy ->
@@ -103,8 +104,8 @@ class LongfellowZk(platformName: String, nativeCheck: () -> String? = Longfellow
             block()
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
-            throw ProofException()
+        } catch (e: Exception) {
+            throw ProofException(e)
         }
     }
 }

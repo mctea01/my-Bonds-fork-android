@@ -77,6 +77,21 @@ actual object DocumentInspector {
 
     fun sniff(b: ByteArray, name: String?): DocumentFormat {
         val ext = name?.substringAfterLast('.', "")?.lowercase()
+        // A CMS/DER container must be recognised before the PDF magic-byte scan. An opaque PKCS#7 SignedData that
+        // encapsulates a PDF (an S/MIME-signed .pdf.p7m, as SSL.com sends) carries "%PDF-" only a few dozen header
+        // bytes in, so isPdf would otherwise classify the whole signed file as a plain (unsigned) PDF and the CMS
+        // signature would never be checked. No PDF, ZIP, CFB or image starts with a DER SEQUENCE (0x30), so testing
+        // the DER container types first is safe for every other format.
+        if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
+            val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
+            when (oid) {
+                SIGNED_DATA -> return if (runCatching { CmsChecks.signedData(b, null).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
+                GmSignedData.GM_SIGNED_DATA -> return DocumentFormat.CMS_SIGNED
+                ENVELOPED_DATA -> return DocumentFormat.CMS_ENVELOPED
+            }
+            if (runCatching { TimeStampResponse(b) }.isSuccess) return DocumentFormat.TIMESTAMP
+            return DocumentFormat.OTHER
+        }
         if (PdfFile.isPdf(b)) return DocumentFormat.PDF
         if (Zip.isZip(b)) {
             val files = runCatching { Zip.read(b) }.getOrNull() ?: return DocumentFormat.ZIP
@@ -89,16 +104,6 @@ actual object DocumentInspector {
         }
         if (b.size > 8 && b.copyOfRange(0, 8).contentEquals(CFB_MAGIC)) return DocumentFormat.OFFICE
         ImageKind.of(b)?.let { kind -> if (kind != ImageKind.BMP && kind != ImageKind.ICO || ImageKind.ofExtension(name ?: "") == kind) return DocumentFormat.IMAGE }
-        if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
-            val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
-            when (oid) {
-                SIGNED_DATA -> return if (runCatching { CmsChecks.signedData(b, null).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
-                GmSignedData.GM_SIGNED_DATA -> return DocumentFormat.CMS_SIGNED
-                ENVELOPED_DATA -> return DocumentFormat.CMS_ENVELOPED
-            }
-            if (runCatching { TimeStampResponse(b) }.isSuccess) return DocumentFormat.TIMESTAMP
-            return DocumentFormat.OTHER
-        }
         val head = b.copyOfRange(0, minOf(b.size, 512)).decodeToString().removePrefix("﻿").trimStart()
         return when {
             head.startsWith("<") -> DocumentFormat.XML

@@ -105,11 +105,15 @@ private class ReaderModeTagReader(private val context: Context, private val plat
         val enable: (Activity) -> Unit = { a -> adapter.enableReaderMode(a, callback, FLAGS, null) }
         val host = platform.activity ?: throw IllegalStateException("請先開啟錢包畫面")
         platform.readerMode = enable
+        // Show the scan sheet only while reader mode is actually waiting for a tap, so the user taps at the right
+        // moment and a tap outside this window is not left for the system to report as an unhandled tag.
+        platform.nfcScanPromptState.value = message ?: "請將卡片貼近手機背面的 NFC 感應區"
         withContext(Dispatchers.Main) { enable(host) }
         try {
             return outcome.await()
         } finally {
             guard.cancel()
+            platform.nfcScanPromptState.value = null
             if (platform.readerMode === enable) platform.readerMode = null
             withContext(NonCancellable + Dispatchers.Main) {
                 (platform.activity ?: host).let { a -> runCatching { adapter.disableReaderMode(a) } }
