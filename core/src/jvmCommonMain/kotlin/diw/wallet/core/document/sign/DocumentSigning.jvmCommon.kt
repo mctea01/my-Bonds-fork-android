@@ -131,6 +131,15 @@ actual object DocumentSigning {
         return der
     }
 
+    actual fun verifyDetached(cms: ByteArray, content: ByteArray, certificate: ByteArray) {
+        val cert = X509CertificateHolder(certificate)
+        val parsed = runCatching { CMSSignedData(CMSProcessableByteArray(content), cms) }.getOrElse { throw SigningException("遠端簽章服務回傳的不是有效的 CMS 簽章") }
+        val signer = parsed.signerInfos.signers.singleOrNull() ?: throw SigningException("遠端簽章服務回傳的簽章不是單一簽署者")
+        if (!signer.sid.match(cert)) throw SigningException("遠端簽章服務回傳的簽章不是以選擇的憑證簽署")
+        val ok = runCatching { signer.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(cert)) }.getOrDefault(false)
+        if (!ok) throw SigningException("遠端簽章服務回傳的簽章無法通過驗證（摘要或簽章不符）")
+    }
+
     private fun verifyRaw(cert: X509CertificateHolder, type: SignerKeyType, data: ByteArray, signature: ByteArray) {
         val ok = GmSignedData.verifySignature(cert, if (type == SignerKeyType.RSA) "1.2.840.113549.1.1.11" else "1.2.840.10045.4.3.2", null, data, signature)
         if (!ok) throw SigningException("簽章無法以憑證的公開金鑰驗證：卡片或金鑰與憑證不相符")

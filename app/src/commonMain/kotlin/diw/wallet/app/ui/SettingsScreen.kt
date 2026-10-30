@@ -40,6 +40,12 @@ import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.document.sign.TsaServices
 import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
+import diw.wallet.core.profile.twdiw.TwdiwDeviceKeyRecord
+import androidx.compose.material3.Card
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 
 @Composable
 private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
@@ -248,6 +254,13 @@ private fun InteropPage(model: WalletModel) {
     var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
     Text("數位憑證皮夾（TWDIW）、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
         style = MaterialTheme.typography.bodySmall)
+    SectionTitle("近距離出示（ISO/IEC 18013-5）")
+    Toggle(
+        "NFC 靜態交握",
+        "關閉時（預設）以協商式交握讓讀取端選擇 BLE 或 NFC；開啟時直接提供 BLE 兩種模式與 NFC 資料傳輸，給只支援靜態交握的讀取設備。",
+        s.nfcStaticHandover,
+    ) { v -> model.updateSettings { it.copy(nfcStaticHandover = v) } }
+    HorizontalDivider()
     SectionTitle("OpenID4VCI 錢包身分")
     Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
         style = MaterialTheme.typography.bodySmall)
@@ -318,6 +331,48 @@ private fun InteropPage(model: WalletModel) {
             twdiwUserAgent = TwdiwPlatform.DEFAULT_USER_AGENT
             twdiwFrontend = TwdiwPlatform.PRODUCTION_FRONTEND
         }) { Text("還原預設") }
+    }
+    TwdiwDeviceKeySection(model)
+}
+
+/**
+ * The TWDIW ecosystem device key per partner-card platform: where the key lives, whether api/did accepted it, and
+ * the server's last answer verbatim (the request format is inferred, so the answer is what to compare on a device).
+ */
+@Composable
+private fun TwdiwDeviceKeySection(model: WalletModel) {
+    val scope = rememberCoroutineScope()
+    var reload by remember { mutableStateOf(0) }
+    val records by produceState(emptyList<TwdiwDeviceKeyRecord>(), reload) {
+        value = runCatching { model.twdiwDeviceKeys.records() }.getOrDefault(emptyList())
+    }
+    HorizontalDivider()
+    SectionTitle("數位憑證皮夾生態系裝置金鑰")
+    Text("官方夥伴卡平台（moda.wallet.gov.tw）的領卡請求要帶 Twdiw-Signature。錢包在第一次領卡時於本機產生裝置金鑰（StrongBox 優先，其次 TEE，最後是軟體金鑰），附金鑰證明向平台的 api/did 註冊，取得 keyId 後以它簽章；註冊格式依官方 App 結構推斷，平台不接受時改用持有者金鑰簽，不影響其他發證端。",
+        style = MaterialTheme.typography.bodySmall)
+    if (records.isEmpty()) {
+        Text("尚未建立：第一次向夥伴卡平台領卡時建立。", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    records.forEach { r ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(r.host, style = MaterialTheme.typography.titleSmall)
+                LabelValue("金鑰位置", when (r.protection) { "strongbox" -> "StrongBox 安全晶片"; "tee" -> "TEE 可信執行環境"; else -> "軟體金鑰" })
+                LabelValue("金鑰 DID", r.did)
+                LabelValue("註冊", if (r.registered) "已註冊，keyId：${r.keyId}" + (r.status?.let { "（status $it）" } ?: "") else "未註冊")
+                r.lastHttpStatus?.let { LabelValue("最後一次回應", "HTTP $it" + (r.lastAttemptAt?.let { t -> "・" + localTime(t) } ?: "")) }
+                r.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                r.lastResponse?.takeIf { it.isNotBlank() }?.let { body ->
+                    var open by remember(r.host) { mutableStateOf(false) }
+                    TextButton(onClick = { open = !open }) { Text(if (open) "隱藏伺服器回應" else "顯示伺服器回應原文") }
+                    if (open) SelectionContainer { Text(body, style = MaterialTheme.typography.bodySmall) }
+                }
+                OutlinedButton(onClick = { scope.launch { runCatching { model.twdiwDeviceKeys.reset(r.host) }; reload++ } }) {
+                    Text("刪除金鑰並於下次領卡重新註冊")
+                }
+            }
+        }
     }
 }
 

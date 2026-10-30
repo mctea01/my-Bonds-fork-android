@@ -51,6 +51,7 @@ private fun roleName(r: TrustRole): String = when (r) {
     TrustRole.TRUST_LIST_PROVIDER -> "VICAL／RICAL 清單發行者"
     TrustRole.TSA -> "時間戳記"
     TrustRole.DOCUMENT -> "文件簽章"
+    TrustRole.CONTENT -> "內容憑證（C2PA）"
 }
 
 private fun environmentTitle(e: TrustEnvironment): String = when (e) {
@@ -436,7 +437,7 @@ private fun ImportAnchorSection(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Text("用途（根憑證）", style = MaterialTheme.typography.labelLarge)
-    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
+    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
         Text("匯入")
     }

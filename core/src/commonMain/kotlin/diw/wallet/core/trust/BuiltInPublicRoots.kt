@@ -13,7 +13,9 @@ import org.multipaz.util.fromBase64
  * - common services: the roots of the certificate chains that the e-invoice and immigration services serve
  *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency);
  * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
- *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
+ *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them);
+ * - content credentials: the anchors of the C2PA trust list, used for C2PA manifest signers only. The list names
+ *   intermediates as anchors too, so this group is not limited to self-issued certificates.
  *
  * A chain to any of them is T2, like the platform store: a trust root verified a domain or organisation. The mainland
  * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
@@ -25,7 +27,7 @@ import org.multipaz.util.fromBase64
  * they are trusted only once imported.
  */
 object BuiltInPublicRoots {
-    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
+    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING, CONTENT_CREDENTIALS }
 
     class Root(
         val name: String,
@@ -57,11 +59,12 @@ object BuiltInPublicRoots {
     }
 
     /** The date the set of roots last changed (UTC). */
-    const val UPDATED = "2026-10-16"
+    const val UPDATED = "2026-10-30"
 
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
     const val TIMESTAMPING_SOURCE = "builtin:timestamping"
+    const val CONTENT_CREDENTIALS_SOURCE = "builtin:c2pa"
 
     val all: List<Root> by lazy {
         listOf(
@@ -4706,12 +4709,668 @@ object BuiltInPublicRoots {
             "QsyPXk7n3MLF+mpED41WiHrfiYRsoLM+PfFlAAmI6irrQM6zXawyF67Bm+nQwfVJlN2nznxaB+uuIJwXMJJpk3Lzmltxm/5q33ow" +
             "aY6zLtsPLN0=",
         ),
+        Root(
+            name = "Adobe Product Issuing CA vault-a-or2.adobe.net cai",
+            owner = "Adobe Inc",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "B3A47548314F3CDC8537D35FA382E0935B93381CF8EE9BAEA99EC81C8C76F6D2",
+            b64 = "MIIDhDCCAwugAwIBAgIUTNz+Jl3kNFEJK5md8Tp/Cwsm/B4wCgYIKoZIzj0EAwMwbzELMAkGA1UEBhMCVVMxETAPBgNVBAcTCFNh" +
+            "biBKb3NlMRMwEQYDVQQKEwpBZG9iZSBJbmMuMRAwDgYDVQQLEwdQcm9kdWN0MSYwJAYDVQQDEx1BZG9iZSBQcm9kdWN0IEludGVy" +
+            "bWVkaWF0ZSBDQTAeFw0yNTExMTkxODI5NDRaFw0zMDExMjAwMDMwMTRaMIGGMTswOQYDVQQDEzJBZG9iZSBQcm9kdWN0IElzc3Vp" +
+            "bmcgQ0EgdmF1bHQtYS1vcjIuYWRvYmUubmV0IGNhaTESMBAGA1UEChMJQWRvYmUgSW5jMQswCQYDVQQGEwJVUzERMA8GA1UEBxMI" +
+            "U2FuIEpvc2UxEzARBgNVBAgTCkNhbGlmb3JuaWEwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAASArJB/ZRkabuyoSoGy/6JS124LqMOe" +
+            "KRTruZ4GIxZ3Rg2UKXeWDINVsgXVewJalg98T0HgeXyXM8Ia0y0dLQUhxT++kVaascgJBuevPs8z5Z+n+grN03x6ttUORdJ4O9qj" +
+            "ggFOMIIBSjASBgNVHRMBAf8ECDAGAQH/AgEAMB8GA1UdIwQYMBaAFBldp+77+M3A85KlrD7gVNgW7D8UMFsGCCsGAQUFBwEBBE8w" +
+            "TTBLBggrBgEFBQcwAoY/aHR0cDovL3BraS1jZG4uYWRvYmUubmV0L2NhL2Fkb2JlX2ludGVybmFsX2ludGVybWVkaWF0ZV9wcm9k" +
+            "dWN0ME0GA1UdHwRGMEQwQqBAoD6GPGh0dHA6Ly9wa2ktY2RuLmFkb2JlLm5ldC9hZG9iZV9pbnRlcm5hbF9pbnRlcm1lZGlhdGVf" +
+            "cHJvZHVjdDAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFC76762PJu/wKMyE92MRuG8aw1sIMBcGA1UdIAQQMA4wDAYKKwYBBAGD" +
+            "6F4BATAfBgNVHSUEGDAWBgorBgEEAYPoXgIBBggrBgEFBQcDBDAKBggqhkjOPQQDAwNnADBkAjAfjQ+ZR+qrZcyWiOVr07JrjClk" +
+            "luOhKPreYGCIQjRXvZPiFPDorO1df9tEIPmJ2Q4CMAIfpEWAmTsAggP/MIJIBoTabnBjhwmUcaqRdjK/LuT3KvwkZzZ6R7iPDkQs" +
+            "0d+dQA==",
+        ),
+        Root(
+            name = "Castlabs C2PA ECC P-384 Root CA",
+            owner = "Castlabs",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "FA4D2A19FD5F940C9F6E160BEB31AEBA9AC786735A1E92D748F63D72F333DCE6",
+            b64 = "MIICyDCCAk2gAwIBAgIUN5SkK2Lb2Ts/j1AC3K8Y3eVydFQwCgYIKoZIzj0EAwMwgZAxKDAmBgNVBAMMH0Nhc3RsYWJzIEMyUEEg" +
+            "RUNDIFAtMzg0IFJvb3QgQ0ExCzAJBgNVBAYTAkRFMQ8wDQYDVQQHDAZCZXJsaW4xETAPBgNVBAoMCENhc3RsYWJzMSIwIAYDVQQL" +
+            "DBlDMlBBIFRydXN0IEluZnJhc3RydWN0dXJlMQ8wDQYDVQQIDAZCZXJsaW4wHhcNMjYwNzA4MDE0NDMwWhcNMzYwNzA1MDE0NDMw" +
+            "WjCBkDEoMCYGA1UEAwwfQ2FzdGxhYnMgQzJQQSBFQ0MgUC0zODQgUm9vdCBDQTELMAkGA1UEBhMCREUxDzANBgNVBAcMBkJlcmxp" +
+            "bjERMA8GA1UECgwIQ2FzdGxhYnMxIjAgBgNVBAsMGUMyUEEgVHJ1c3QgSW5mcmFzdHJ1Y3R1cmUxDzANBgNVBAgMBkJlcmxpbjB2" +
+            "MBAGByqGSM49AgEGBSuBBAAiA2IABPXhd9L+pjQVnUXH6I7+oFSrd6JpO4A+CYDm/AuDZgJvwiuJlrM9dC3CAE7UAK8IcQEo85qz" +
+            "uak0TfLdPaJWD26+q3tJ/S7NW4sOKhH09KRN7iFqXbsOe8FOxaQql/UrMqNmMGQwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQI" +
+            "MAYBAf8CAQIwHQYDVR0OBBYEFHNKe2PoAANQBj4/25eRv2VY4Fy7MB8GA1UdIwQYMBaAFHNKe2PoAANQBj4/25eRv2VY4Fy7MAoG" +
+            "CCqGSM49BAMDA2kAMGYCMQDUlNJD49UxzwBccYHiz0wgmbIXBDdgpVrLfWTQnbi21BhfPBQ6j0HJ24FY36L5oj8CMQCv5+bKgBIk" +
+            "Jq9USBx2FjjDkukYjQMI/WDD6SH6QGTdotsH3cQQ6bjr9C+0ruxxx08=",
+        ),
+        Root(
+            name = "DigiCert ECC P384 L1 Claim Signing ICA for C2PA G1",
+            owner = "DigiCert",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "E3F586629A0BA187CE9FEB67EB81381C367B7FF288842706B941114FDE5A0F71",
+            b64 = "MIIDdzCCAv2gAwIBAgIQUhYZxg4djFjAWbZwab2qqTAKBggqhkjOPQQDAzBTMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNl" +
+            "cnQsIEluYy4xKzApBgNVBAMTIkRpZ2lDZXJ0IEVDQyBQMzg0IFJvb3QgZm9yIEMyUEEgRzEwHhcNMjUwODI3MDAwMDAwWhcNMzAw" +
+            "ODI2MjM1OTU5WjBjMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNlcnQsIEluYy4xOzA5BgNVBAMTMkRpZ2lDZXJ0IEVDQyBQ" +
+            "Mzg0IEwxIENsYWltIFNpZ25pbmcgSUNBIGZvciBDMlBBIEcxMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEJ2hiwBWq/Dldnu/FxGwf" +
+            "HDAmRxezmmKQtIWSd/HYfiJW2T9wNJmSPywB5Kl7WBJXyaxyUwhn8tpDqBypcT0hlN8Mi8Cql9yj9t2MJXN3KshCyBiQWjcKnZoO" +
+            "FhW83E1oo4IBhDCCAYAwEgYDVR0TAQH/BAgwBgEB/wIBADAXBgNVHSAEEDAOMAwGCisGAQQBg+heAQEwTQYDVR0fBEYwRDBCoECg" +
+            "PoY8aHR0cDovL2NybC5vbmUuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0RUNDUDM4NFJvb3Rmb3JDMlBBRzEuY3JsMA4GA1UdDwEB/wQE" +
+            "AwIBBjCBhgYIKwYBBQUHAQEEejB4MCgGCCsGAQUFBzABhhxodHRwOi8vb2NzcC5vbmUuZGlnaWNlcnQuY29tMEwGCCsGAQUFBzAC" +
+            "hkBodHRwOi8vY2FjZXJ0cy5vbmUuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0RUNDUDM4NFJvb3Rmb3JDMlBBRzEuY3J0MCkGA1UdJQQi" +
+            "MCAGCisGAQQBg+heAgEGCCsGAQUFBwMEBggrBgEFBQcDJDAdBgNVHQ4EFgQUJqGs/hW9GFhOR/R0fNP8EaPxlocwHwYDVR0jBBgw" +
+            "FoAU9BgRrgmCiU78m7Qz9vTfvQJOlDYwCgYIKoZIzj0EAwMDaAAwZQIwa6ohDos9g13+HZlgKR45C5K3qug4QUi3tHu79IL601lg" +
+            "QSDgpnclOmJOuWxZFxfGAjEA3kAU5JV6no1hQpZdtb11g+B5wCHWbUVPYZLXZ1Ie2RaND1QmLeYYKbuqsC58ZtSw",
+        ),
+        Root(
+            name = "DigiCert ECC P384 Root for C2PA G1",
+            owner = "DigiCert",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "795B3D3206E8066658B01BFD0DD8C5ABBE47FFE8F1A0782AE1BAEEC7DEBB3BAE",
+            b64 = "MIICSTCCAc+gAwIBAgIQCZ2yarc/T5eBQYVHCJTdyjAKBggqhkjOPQQDAzBTMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGlnaUNl" +
+            "cnQsIEluYy4xKzApBgNVBAMTIkRpZ2lDZXJ0IEVDQyBQMzg0IFJvb3QgZm9yIEMyUEEgRzEwIBcNMjUwODI3MDAwMDAwWhgPMjA1" +
+            "MDA4MjYyMzU5NTlaMFMxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjErMCkGA1UEAxMiRGlnaUNlcnQgRUND" +
+            "IFAzODQgUm9vdCBmb3IgQzJQQSBHMTB2MBAGByqGSM49AgEGBSuBBAAiA2IABNHiy4U9/SpPSnQ3ogU+q3mnM/f9zmLuqF8krS0L" +
+            "NUC0T81Nu57WCGSb6149CVpkRRC6BYlfGcBWVYXar4aX10oXggSiFPi93ovkAfUN9wikKqVu6amI7tRQPKXJ95UsFaNmMGQwEgYD" +
+            "VR0TAQH/BAgwBgEB/wIBAjAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFPQYEa4JgolO/Ju0M/b0370CTpQ2MB8GA1UdIwQYMBaA" +
+            "FPQYEa4JgolO/Ju0M/b0370CTpQ2MAoGCCqGSM49BAMDA2gAMGUCMQCg31cyC7If2VPMUvqEr08WB6QhRVpAa+GNRlKUOJlSMq/y" +
+            "2tm+80RTxpV2RsYC9UsCMGkKQ0Yx4FIs1RhYtXVIgTyHrSxGne4/457DlIS+IMIJN5YdgMNj6G6tzM47QDGl2w==",
+        ),
+        Root(
+            name = "DigiCert RSA4096 L1 Claim Signing ICA for C2PA G1",
+            owner = "DigiCert",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "RSA 4096",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "AC6A530262E9738B23137C90404837B6A6C618E55537AE7F2A93EFEED02A0764",
+            b64 = "MIIGxDCCBKygAwIBAgIQJ4BVBbBmDXnyAtI0JLlo5TANBgkqhkiG9w0BAQwFADBSMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGln" +
+            "aUNlcnQsIEluYy4xKjAoBgNVBAMTIURpZ2lDZXJ0IFJTQTQwOTYgUm9vdCBmb3IgQzJQQSBHMTAeFw0yNTA4MjcwMDAwMDBaFw0z" +
+            "MDA4MjYyMzU5NTlaMGIxCzAJBgNVBAYTAlVTMRcwFQYDVQQKEw5EaWdpQ2VydCwgSW5jLjE6MDgGA1UEAxMxRGlnaUNlcnQgUlNB" +
+            "NDA5NiBMMSBDbGFpbSBTaWduaW5nIElDQSBmb3IgQzJQQSBHMTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAKiOlc64" +
+            "4cuaOoCElG+yGHBmAtfXRw3fSBfRTCf/9yaMQiyEGCxP8HKTfxtdqD8zmXqePLCLzGM2ccGJx3w5RzpFdOhopwGIKsTm+C1wHmZc" +
+            "5Lws5wst7rFQstF8nIN9TBP5H6elZcoNaUhqCJ0bxmeXp6J0iiRKiuLF2j0Grfv4cBL8+XlLRE3gOf1yqEsEZktfK9qeCUuugltx" +
+            "XwL1WP8IKgtkMeLo0QZQSAg4R+gyX6C1j64nlAtVRewqSrug+Rkquz94doEscaq3w+ypp8pJ9ovpn9Zdx6PArh4uK90YB/ThB92V" +
+            "oi2xK8T9D8xnzpONwBfKPiUS502160mZuF09Xgm6zBNRPFKmAdhN73QV4i5Hn2rv5104AR4QGvz5Egh/bZ5RElIutD/CvVrOS1fy" +
+            "km6ZIVuxqHUx0pxWkAsjRyCE+fuhczhWQfVy2EUst98kNjUZC/OFF4TxfcWt7xu7CKNZb3rE7nrbMAbPLKPZjAlT7GlmEhaadw/Y" +
+            "3ap0sPnO3BtsBP3kOSed3lP3zEfokBLSYsQtwDWzdWanGE3nB2HvBmcviYdiP48gXP/5uybnVlKUHXb0gBtdYzNTBx3ynoUrWtbN" +
+            "wvMuTKv6mmnuLxhGiEWEK+BYStlfOiPvUdpyr+TMsaujPpWq9IUX6qmsOcl1gfujK/lJ3kuvSUm3AgMBAAGjggGEMIIBgDASBgNV" +
+            "HRMBAf8ECDAGAQH/AgEAMBcGA1UdIAQQMA4wDAYKKwYBBAGD6F4BATAOBgNVHQ8BAf8EBAMCAQYwgYYGCCsGAQUFBwEBBHoweDAo" +
+            "BggrBgEFBQcwAYYcaHR0cDovL29jc3Aub25lLmRpZ2ljZXJ0LmNvbTBMBggrBgEFBQcwAoZAaHR0cDovL2NhY2VydHMub25lLmRp" +
+            "Z2ljZXJ0LmNvbS9EaWdpQ2VydFJTQTQwOTZSb290Zm9yQzJQQUcxLmNydDBNBgNVHR8ERjBEMEKgQKA+hjxodHRwOi8vY3JsLm9u" +
+            "ZS5kaWdpY2VydC5jb20vRGlnaUNlcnRSU0E0MDk2Um9vdGZvckMyUEFHMS5jcmwwKQYDVR0lBCIwIAYKKwYBBAGD6F4CAQYIKwYB" +
+            "BQUHAwQGCCsGAQUFBwMkMB0GA1UdDgQWBBTCmxzaIdNwH6lU5HUf8IFpzcgbRTAfBgNVHSMEGDAWgBRW6yc4mj5I1nKAhZt6wwdR" +
+            "WgTz5TANBgkqhkiG9w0BAQwFAAOCAgEAt8Kn2LQMxbL10BAx5ebm1G/TMTrgQN9yf18ZE5qNk3ipoFFtijZzRT5zidKi+/956V11" +
+            "nPMgm90W/CMtapHImj3Da4eoShzl7N6hPjGYuHJUFfCYaJFxgz0r2sdFYc0drpOlfLa+WVUmgXM8QhbWiHcyk37z8Ega6p1fjFVH" +
+            "6QqKWwXhSuR5aH0QflBHJKdWRkRZSTNBU2Hj1FOqhZBPPM+jvLGWgkQghpQTrO9pTILZ0nb3rTkvClimBewUwTkjoB8M4UHifHcX" +
+            "J7/RnFzj+KHR5kWdzVTzuCLcIlTNeACYQZaAj/eT9vzI1n6IUoU04R/9STijYHr05VbH1jM94rDJzjE8Hjf+f8YV9X/38Rc3gcH1" +
+            "hLzAKqwIyF/XieaquJLXY90O1Ads/WTrNRlf5A4109FKnELdw8R9vOneDvslbrHxu/MmoanzJlqxW1Sw6tlU0G2kMfyIH9y0RLmT" +
+            "iJndW9UXyzMUtGID1N2lhdO0BmwBuzCbZWRHCD0NcP9l5Kc8fCL95OgdpRbivEFeGynZZiCjvrJ9tT+uGWQiBbTlEgR57e1KsEPF" +
+            "Kxb0M81ewNEo+vhxaSoWvXv84ZM/Zc9a0ZqPMEPr3073hQvLguizQTWJQstDjzlmOWF7K6hnI70rTNLhZBEFC3XJlBYxbUMlGdH4" +
+            "ebLc9IUUXRE00ws=",
+        ),
+        Root(
+            name = "DigiCert RSA4096 Root for C2PA G1",
+            owner = "DigiCert",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "RSA 4096",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "0BB9164513ADA25B47B92DEE48F4CE31FB458097074FB0A35596938EDEDF4DC2",
+            b64 = "MIIFljCCA36gAwIBAgIQL2uv995UIpTpN6WRLwYnHDANBgkqhkiG9w0BAQwFADBSMQswCQYDVQQGEwJVUzEXMBUGA1UEChMORGln" +
+            "aUNlcnQsIEluYy4xKjAoBgNVBAMTIURpZ2lDZXJ0IFJTQTQwOTYgUm9vdCBmb3IgQzJQQSBHMTAgFw0yNTA4MjcwMDAwMDBaGA8y" +
+            "MDUwMDgyNjIzNTk1OVowUjELMAkGA1UEBhMCVVMxFzAVBgNVBAoTDkRpZ2lDZXJ0LCBJbmMuMSowKAYDVQQDEyFEaWdpQ2VydCBS" +
+            "U0E0MDk2IFJvb3QgZm9yIEMyUEEgRzEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQDTX44Mw12/in3jeV80FcoutZhx" +
+            "tvhZQHAdiFtiYd9Y+quavnHRqtcexRZQ0n1XtGXeiusE72M6G4dwdTsHXoXVNXjwrO9a/fA/46u+/T5ZU6FyRQdahwQNIXL5PVfq" +
+            "rjwX2Ta2Gby2z4tbhfzxtgJSosJGJsCGq5mGiBXIqBkbua0YOvuX1WifAuDQun84bw+qwCCWxStyQuUcZMm6xl24ye5RZnz8xkct" +
+            "z/p68kgNa9IhJlHrZ3CAe1zEu3PrNS7Oq/uzN06tJi6rkpXCV6GlhN0RlEPmUb3pg8kYqQ9uca7u4UTyl/F9QqG2xMDgAtNDrfNb" +
+            "WpyOfnoYGNQvQyD5M7slsz9j9sUcKwspaz8zmuu31UXPqmvME+UalDvFeknQZP+ft9Uv8eICovCQxvy1Iwg3sjc2hO0lbYYn/JqG" +
+            "ARg+5jP/SlkY4dSypdYBtBaAfVxTd+iQm4k1oAEIP7ujyQ+1U0F9gygQPwQrMOcyYINgkcsp36rb1znuxlIF6LIcfO1bkVSxvHqd" +
+            "0CVP8vwrYXKJOr4dES1s4k12kxv+csvZWiuSqY0uhFUSMSE5id5zWW7H6ZCX3J3Ati2MjyRjyyejDbTQdTS3wlF4f4bLaWidMWSZ" +
+            "3JCyZABXpj46RtdbhZgV7I7BZTXCI6FIBuUaiZzW9RHhVzR+qrfBOx40mwIDAQABo2YwZDASBgNVHRMBAf8ECDAGAQH/AgECMA4G" +
+            "A1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUVusnOJo+SNZygIWbesMHUVoE8+UwHwYDVR0jBBgwFoAUVusnOJo+SNZygIWbesMHUVoE" +
+            "8+UwDQYJKoZIhvcNAQEMBQADggIBAIjcpKt4FeVibq6zP1m2RUagL6PEW+8o5CC5kv0mDMcCgqNTsyNJlr/1yYzzpEC82QaCZ34g" +
+            "4eMXnOwq+5jF5xQ5b7RV7X9nFuPXh7r2CittMkBLPKp/jSApyfEI2qgNtPWc5voKRgPrkSuHu+wB5gTg7AkN9CCZeaauMesIIn7/" +
+            "8lWOSho9a5DVCJekYh+WcfnSP6l0ilRw1WhnAtPwadhcQ9zJxKe6LSdsH3yNJhViIQNrBhlAO3BNZF1q2JfOM6TCiY/I+M8Afzuv" +
+            "xF/xyxeDlcRNo6QbfAvUybDOsleg9NxO+EK3VXTInzaWidoX9TRdEx0iiERj9OB7ehZBwTUllBH6UtxFy3X7YRSnO8ZdjtEERJmk" +
+            "BNZztgd4KWBnaFMERI0ObiqN1az0uqe8sRULEJ1Ay79sTsJtiemNChMxmYb83XU11wSX/W54tD6vPQPCwn84AeLgYSfA10QwRyAo" +
+            "99pwmjZzrCx5uBH7jCVYBkP7iQ6ho3yHror7znE8LJrrWytOuumEFzxQ0NSaXjrDRKCLKTKnr8niIj+lB/SJsBua52a6HHRckrpD" +
+            "okgPSPOYI4A+ZGC//Ron9i3S8ce2dQHAWNCqB2ADtnu4Yf36OfmHdrCLhzIxlPKKDPXwgxv7NTRFs1d7KcIpjYuZp71eZA74ZqxD" +
+            "gVa7CMkhdgML",
+        ),
+        Root(
+            name = "Encypher C2PA Issuing CA 2026",
+            owner = "Encypher Corp.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "7C82D82B416D87CB357477710C27C028685D2C3274585DD9814A697FD18B6D2C",
+            b64 = "MIID6zCCA3GgAwIBAgIUXzMIOXOrlyOjfKthGAPSSBM5n3UwCgYIKoZIzj0EAwMwgY4xCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApD" +
+            "YWxpZm9ybmlhMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMRcwFQYDVQQKDA5FbmN5cGhlciBDb3JwLjEUMBIGA1UECwwLQ0EgRGl2" +
+            "aXNpb24xIzAhBgNVBAMMGkVuY3lwaGVyIEMyUEEgUm9vdCBDQSAyMDI2MB4XDTI2MDUyMjEzNDk1NloXDTMxMDUyMzEzNDk1Nlow" +
+            "gZExCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMRcwFQYDVQQKDA5FbmN5" +
+            "cGhlciBDb3JwLjEUMBIGA1UECwwLQ0EgRGl2aXNpb24xJjAkBgNVBAMMHUVuY3lwaGVyIEMyUEEgSXNzdWluZyBDQSAyMDI2MHYw" +
+            "EAYHKoZIzj0CAQYFK4EEACIDYgAEINEuEOHZL9o8vKynpXV9O+04syCIj+WeydlgTMJBMhiZ8MhEyig+4R0kmGpX/RZjgSSQh/aQ" +
+            "4NYpv9SHx1r1t3agJEpfYv/jZB4AfeGC47OiEREewKHBWD1cVg6qrFtVo4IBiTCCAYUwEgYDVR0TAQH/BAgwBgEB/wIBADAOBgNV" +
+            "HQ8BAf8EBAMCAQYwIAYDVR0lBBkwFwYKKwYBBAGD6F4CAQYJKoZIhvcvAQEFMB0GA1UdDgQWBBT5K7GC8GHRLCg4CpI6Owg8ubeZ" +
+            "8DAfBgNVHSMEGDAWgBS3gC7ps3/HLQbb3uuqL4U8gDnKEDA3BgNVHR8EMDAuMCygKqAohiZodHRwOi8vY2EuZW5jeXBoZXIuY29t" +
+            "L2NybC9yb290LWNhLmNybDB1BggrBgEFBQcBAQRpMGcwJwYIKwYBBQUHMAGGG2h0dHA6Ly9jYS5lbmN5cGhlci5jb20vb2NzcDA8" +
+            "BggrBgEFBQcwAoYwaHR0cDovL2NhLmVuY3lwaGVyLmNvbS9yZXBvc2l0b3J5L2lzc3VpbmctY2EuY3J0ME0GA1UdIARGMEQwQgYK" +
+            "KwYBBAGD6F4BATA0MDIGCCsGAQUFBwIBFiZodHRwczovL2NhLmVuY3lwaGVyLmNvbS9yZXBvc2l0b3J5L2NwczAKBggqhkjOPQQD" +
+            "AwNoADBlAjABzhltQpFyat0q5DZPJh+XvWnRAUej/4yrnPkQgtZZufnTVg9csupYAtdD8EVvkJ8CMQDKaReb1d/xaGyypi9HwEqV" +
+            "RaEClhopAogb+8VtoUbBD/3mKv0rGlYOUa9heE2DRkw=",
+        ),
+        Root(
+            name = "Encypher C2PA Root CA 2026",
+            owner = "Encypher Corp.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "A3A229E56B60CBC964E78E221FE9E6373048325240E4E20EA5EF52115BBA826C",
+            b64 = "MIIDFDCCApqgAwIBAgIUS2zOIYRKaa59snU3NcNFadfTtoAwCgYIKoZIzj0EAwMwgY4xCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApD" +
+            "YWxpZm9ybmlhMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMRcwFQYDVQQKDA5FbmN5cGhlciBDb3JwLjEUMBIGA1UECwwLQ0EgRGl2" +
+            "aXNpb24xIzAhBgNVBAMMGkVuY3lwaGVyIEMyUEEgUm9vdCBDQSAyMDI2MB4XDTI2MDUyMjEzNDk1NloXDTQ2MDUxNzEzNDk1Nlow" +
+            "gY4xCzAJBgNVBAYTAlVTMRMwEQYDVQQIDApDYWxpZm9ybmlhMRYwFAYDVQQHDA1TYW4gRnJhbmNpc2NvMRcwFQYDVQQKDA5FbmN5" +
+            "cGhlciBDb3JwLjEUMBIGA1UECwwLQ0EgRGl2aXNpb24xIzAhBgNVBAMMGkVuY3lwaGVyIEMyUEEgUm9vdCBDQSAyMDI2MHYwEAYH" +
+            "KoZIzj0CAQYFK4EEACIDYgAE27XmRBc4mE0dYfUhLiuPiAnY3tRDMke9evylB+VgyMspT1svR9h3KXxr8tml+1oM82US+pw2jJen" +
+            "fUxoUJGVDY/lvwl+4Q+7vawXFd26yPv/CQSnhI+w05+yiSiwshIOo4G2MIGzMBIGA1UdEwEB/wQIMAYBAf8CAQEwDgYDVR0PAQH/" +
+            "BAQDAgEGMB0GA1UdDgQWBBS3gC7ps3/HLQbb3uuqL4U8gDnKEDAfBgNVHSMEGDAWgBS3gC7ps3/HLQbb3uuqL4U8gDnKEDBNBgNV" +
+            "HSAERjBEMEIGCisGAQQBg+heAQEwNDAyBggrBgEFBQcCARYmaHR0cHM6Ly9jYS5lbmN5cGhlci5jb20vcmVwb3NpdG9yeS9jcHMw" +
+            "CgYIKoZIzj0EAwMDaAAwZQIwYeb83YEb/Oh9uELuvO9jpb85orRWWQiceqf0sCwxtJw07/giyy/hI1BFvbQZcfkLAjEAj8jfwuJS" +
+            "J9LjeeYL/VXStQWDHewxbIouIKdYpS9ZBidpsi+01tpQY1j7apLAXMHO",
+        ),
+        Root(
+            name = "Google C2PA Media Services 1P ICA G3",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "24213596A832EFB823864EACF5B2428C3D472435E38991CD805CE72AF4BB9924",
+            b64 = "MIIC3DCCAmOgAwIBAgIUQfqlIUd2IVjaf5ss/439Fgke7j4wCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwHhcNMjUwNTA4MjIzNjI2WhcNMzAwNTA4MjIzNjI2WjBR" +
+            "MQswCQYDVQQGEwJVUzETMBEGA1UECgwKR29vZ2xlIExMQzEtMCsGA1UEAwwkR29vZ2xlIEMyUEEgTWVkaWEgU2VydmljZXMgMVAg" +
+            "SUNBIEczMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEuCPlUxSiltqnB2lx2ES7FK+TVZWmAxRzzDjTzKZ8umoqyvCqSLOkZBrOieaL" +
+            "qrp+rnzt0EADWWH3X62NqzEXRewW6rb/lS7VXkVCM02gC0ZgJW7+PCsZgLoUBUQ+nkN5o4IBCDCCAQQwFwYDVR0gBBAwDjAMBgor" +
+            "BgEEAYPoXgEBMA4GA1UdDwEB/wQEAwIBBjAfBgNVHSUEGDAWBggrBgEFBQcDBAYKKwYBBAGD6F4CATASBgNVHRMBAf8ECDAGAQH/" +
+            "AgEAMGQGCCsGAQUFBwEBBFgwVjAsBggrBgEFBQcwAoYgaHR0cDovL3BraS5nb29nL2MycGEvcm9vdC1nMy5jcnQwJgYIKwYBBQUH" +
+            "MAGGGmh0dHA6Ly9jMnBhLW9jc3AucGtpLmdvb2cvMB8GA1UdIwQYMBaAFJxc2IlTQ+da1YHbA94ZfwQqKi2qMB0GA1UdDgQWBBTa" +
+            "e+G9tCyKheAQ1muax0rx+t/2NzAKBggqhkjOPQQDAwNnADBkAjACxtEE3NW13bwN1u/51ericNF6rkEhYVESDO6Jqb5cX37Hwg0X" +
+            "9S2rH+vXaoFZIHsCMC03wCKKomDHgqV47UtyyHpZlo5IZACW72Xdc4gipdWMEmhvPk88dvxbYtn+LVd9zA==",
+        ),
+        Root(
+            name = "Google C2PA Mobile A 1P ICA G3",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "6BFC731B77117FE3CACC7070B42CD6BBE1086F62F76C15E1A89694CF7AC36B99",
+            b64 = "MIIC1jCCAl2gAwIBAgIUXKoTHSLJjkXHIxvKY29YmxgOzoowCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwHhcNMjUwNTA4MjIzNjI4WhcNMzAwNTA4MjIzNjI4WjBL" +
+            "MQswCQYDVQQGEwJVUzETMBEGA1UECgwKR29vZ2xlIExMQzEnMCUGA1UEAwweR29vZ2xlIEMyUEEgTW9iaWxlIEEgMVAgSUNBIEcz" +
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEx5s4bjuNRDlYKtdj4Dd14esDWyBAk+fNPHFGlDcWX2lTdxgeeKYFcaw7ZdhD5fWAqUZ+" +
+            "+M5wdXXUoGHDFAwfPmTaRKzZupUu7uMFZtolBzAuT2I51meHEfMHU95kRkTIo4IBCDCCAQQwDgYDVR0PAQH/BAQDAgEGMB8GA1Ud" +
+            "JQQYMBYGCCsGAQUFBwMEBgorBgEEAYPoXgIBMBIGA1UdEwEB/wQIMAYBAf8CAQAwFwYDVR0gBBAwDjAMBgorBgEEAYPoXgEBMGQG" +
+            "CCsGAQUFBwEBBFgwVjAsBggrBgEFBQcwAoYgaHR0cDovL3BraS5nb29nL2MycGEvcm9vdC1nMy5jcnQwJgYIKwYBBQUHMAGGGmh0" +
+            "dHA6Ly9jMnBhLW9jc3AucGtpLmdvb2cvMB8GA1UdIwQYMBaAFJxc2IlTQ+da1YHbA94ZfwQqKi2qMB0GA1UdDgQWBBQOccStRBCO" +
+            "VzAFalyyAs6XkvF+IDAKBggqhkjOPQQDAwNnADBkAjBjAj22bX3vKs/3Q4K0qE7jPwY3BljcaGyhTg9Gk6ni0+3TxuluLCq+zITX" +
+            "auG0qy0CMFfS4bUxKdwCjWOnamLCA9xiaO82my0UN0kvxNMFflLsmeO4PL+NI/u3EJ347o+4jA==",
+        ),
+        Root(
+            name = "Google C2PA Mobile A 1P ICA G3 L1",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "93202C5D038C04B65E360B364943811EB55D2F4ABD0F702404B9E6BA100D078E",
+            b64 = "MIIC2TCCAmCgAwIBAgIUdEQo46dHfO396b1NFkYHqblfVzAwCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwHhcNMjUwNTA4MjIzNjI3WhcNMzAwNTA4MjIzNjI3WjBO" +
+            "MQswCQYDVQQGEwJVUzETMBEGA1UECgwKR29vZ2xlIExMQzEqMCgGA1UEAwwhR29vZ2xlIEMyUEEgTW9iaWxlIEEgMVAgSUNBIEcz" +
+            "IEwxMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEiso7FbPFqaTmLWL6vJq0Q0FTLVILWVg1nyG1kR2JkEc5E9WWk62YSJreXbX6axJq" +
+            "DGecSk5kvqcb9EVJ+wymonRaqy7Gk9c6fi9Hr1mK2mfJZRlXCIXeMXeneVG8NMJ8o4IBCDCCAQQwFwYDVR0gBBAwDjAMBgorBgEE" +
+            "AYPoXgEBMA4GA1UdDwEB/wQEAwIBBjAfBgNVHSUEGDAWBggrBgEFBQcDBAYKKwYBBAGD6F4CATASBgNVHRMBAf8ECDAGAQH/AgEA" +
+            "MGQGCCsGAQUFBwEBBFgwVjAsBggrBgEFBQcwAoYgaHR0cDovL3BraS5nb29nL2MycGEvcm9vdC1nMy5jcnQwJgYIKwYBBQUHMAGG" +
+            "Gmh0dHA6Ly9jMnBhLW9jc3AucGtpLmdvb2cvMB8GA1UdIwQYMBaAFJxc2IlTQ+da1YHbA94ZfwQqKi2qMB0GA1UdDgQWBBSu91pC" +
+            "mLI7HftmLBUUmRZ631vvlDAKBggqhkjOPQQDAwNnADBkAjA6bs5IFiYOZjmln6Bii/ShnzrqTn4GxKdCZhP79ul9iPz+mQynpORT" +
+            "yTY84SsxzicCMCI2tAB6n8FQ5BkN1apEUG5gcJlrrNd1rdqtBNXJZHXqYG1m7T4gYBB4PHNYYFBGfA==",
+        ),
+        Root(
+            name = "Google C2PA Mobile B 1P ICA G3",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "9309D5A82B43B9D975CE8CCC0C41B2C2F3097083C7AF99F2AA9CFFC25498F97D",
+            b64 = "MIIC1zCCAl2gAwIBAgIUac3GAHq5vTwO71pE75SNo8wcJVcwCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwHhcNMjUwNTA4MjIzNjI3WhcNMzAwNTA4MjIzNjI3WjBL" +
+            "MQswCQYDVQQGEwJVUzETMBEGA1UECgwKR29vZ2xlIExMQzEnMCUGA1UEAwweR29vZ2xlIEMyUEEgTW9iaWxlIEIgMVAgSUNBIEcz" +
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEbns1saor1bu/tYfe1ozY2yZwBgkcmIcmr552foAPn5v4zmS61OEsC5VwKHBgi9uTuXZ8" +
+            "SSV1KSPyysqrgm542XLPWsMlkuWRfneQBANeLAk6aEBqDASoDJ7Aoube5tuao4IBCDCCAQQwDgYDVR0PAQH/BAQDAgEGMB8GA1Ud" +
+            "JQQYMBYGCCsGAQUFBwMEBgorBgEEAYPoXgIBMBIGA1UdEwEB/wQIMAYBAf8CAQAwFwYDVR0gBBAwDjAMBgorBgEEAYPoXgEBMGQG" +
+            "CCsGAQUFBwEBBFgwVjAsBggrBgEFBQcwAoYgaHR0cDovL3BraS5nb29nL2MycGEvcm9vdC1nMy5jcnQwJgYIKwYBBQUHMAGGGmh0" +
+            "dHA6Ly9jMnBhLW9jc3AucGtpLmdvb2cvMB8GA1UdIwQYMBaAFJxc2IlTQ+da1YHbA94ZfwQqKi2qMB0GA1UdDgQWBBT4N2ZAjPoD" +
+            "JR1+UgU4KwafcJT5mDAKBggqhkjOPQQDAwNoADBlAjEAg2SjBAAmAOvOLd1kKYZQzkiD6KSXe4+3zALTs5SQCK3xmmkxsFzJbBCI" +
+            "iuTbxsrIAjAhQm+LpSxSwkIZiwWI7rGiJMv7BCj38HhiQpmR5lr+anbBOQtyUsWhYsCGlDmiWzA=",
+        ),
+        Root(
+            name = "Google C2PA Mobile B 1P ICA G3 L1",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "A42581572FC1CB92B850B5B4DA269F254D78E46DA69B7FDBE0743626359F599E",
+            b64 = "MIIC2zCCAmCgAwIBAgIUBpMF/2hh9GWQEhKn4uebRk7j2PcwCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwHhcNMjUwNTA4MjIzNjI3WhcNMzAwNTA4MjIzNjI3WjBO" +
+            "MQswCQYDVQQGEwJVUzETMBEGA1UECgwKR29vZ2xlIExMQzEqMCgGA1UEAwwhR29vZ2xlIEMyUEEgTW9iaWxlIEIgMVAgSUNBIEcz" +
+            "IEwxMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEKGv3Fd3J1vOPfrR744lpYlGc05lZ57UyVDKGHTPj71PuwW19oHO932WXXf+K4jBk" +
+            "otgXeBChrhrTiUGxBdrmYRB1m6MyAJ/wT3xw06YRcGxoiW0bIhbMN4YNIAMW76Noo4IBCDCCAQQwFwYDVR0gBBAwDjAMBgorBgEE" +
+            "AYPoXgEBMA4GA1UdDwEB/wQEAwIBBjAfBgNVHSUEGDAWBggrBgEFBQcDBAYKKwYBBAGD6F4CATASBgNVHRMBAf8ECDAGAQH/AgEA" +
+            "MGQGCCsGAQUFBwEBBFgwVjAsBggrBgEFBQcwAoYgaHR0cDovL3BraS5nb29nL2MycGEvcm9vdC1nMy5jcnQwJgYIKwYBBQUHMAGG" +
+            "Gmh0dHA6Ly9jMnBhLW9jc3AucGtpLmdvb2cvMB8GA1UdIwQYMBaAFJxc2IlTQ+da1YHbA94ZfwQqKi2qMB0GA1UdDgQWBBRLBf7g" +
+            "DA1hOViJqHtuE8btC3KB8TAKBggqhkjOPQQDAwNpADBmAjEAhfcU5E3IKMRw/Wxd9YfUdxTpi5HM99JiHG0KmFxcPGd8tDBAXkox" +
+            "EV/OYIEeyVl4AjEA1QH3goidp0++w4rQ6P8wbdw3BtlkSJpGsQ4WQc0i5bWzKyN/WtDOZj/RG3+bqaw+",
+        ),
+        Root(
+            name = "Google C2PA Root CA G3",
+            owner = "Google LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "E383A91825FF2A0944857F2E0C1BEBB3BDF84A3E430BB505FEF8E4023ED8A3C7",
+            b64 = "MIICLjCCAbOgAwIBAgIUUZK4AROFKiXQZ1UG7FG6qPGc1g8wCgYIKoZIzj0EAwMwQzELMAkGA1UEBhMCVVMxEzARBgNVBAoMCkdv" +
+            "b2dsZSBMTEMxHzAdBgNVBAMMFkdvb2dsZSBDMlBBIFJvb3QgQ0EgRzMwIBcNMjUwNTA4MjIzMjIxWhgPMjA1MDA1MDgyMjMyMjFa" +
+            "MEMxCzAJBgNVBAYTAlVTMRMwEQYDVQQKDApHb29nbGUgTExDMR8wHQYDVQQDDBZHb29nbGUgQzJQQSBSb290IENBIEczMHYwEAYH" +
+            "KoZIzj0CAQYFK4EEACIDYgAEhv9f/juKcPpe3Fm7eAISMuSyS+tBxn0aYHC83J+qAsFWREGN9p6PN/OBoouPzpOFRxvrlWoWmAI3" +
+            "p1lXyPg4E3eg7SNChgopUIpihGu6qlhP8rLXf3p8bhI5FTQ2MaF2o2YwZDASBgNVHRMBAf8ECDAGAQH/AgECMA4GA1UdDwEB/wQE" +
+            "AwIBBjAfBgNVHSMEGDAWgBScXNiJU0PnWtWB2wPeGX8EKiotqjAdBgNVHQ4EFgQUnFzYiVND51rVgdsD3hl/BCoqLaowCgYIKoZI" +
+            "zj0EAwMDaQAwZgIxAIyVEe5bdUMkk6BthEWy9QSEMb74BOyK8/8pgMX0NPwLlo1ikLNY78ov+k21vZrEZQIxANQ91muDXgPjAMAk" +
+            "zAlKi32Z9VBB37ynTveKVC7ofTW0ZFfIIYYpWUR1+C4m2yRkOQ==",
+        ),
+        Root(
+            name = "Huanyu Trust C2PA EC-384 Root CA",
+            owner = "Huanyu Trust Ltd",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "8C32D62A262D2BC419BF2342CF03A95A19AEF782A7D538FF98F5E974AEE1E4C5",
+            b64 = "MIICTTCCAdOgAwIBAgIUCqsLOXYNHdz0EBDsWKcrsiBcF10wCgYIKoZIzj0EAwMwUzELMAkGA1UEBhMCQ04xGTAXBgNVBAoTEEh1" +
+            "YW55dSBUcnVzdCBMdGQxKTAnBgNVBAMTIEh1YW55dSBUcnVzdCBDMlBBIEVDLTM4NCBSb290IENBMCAXDTI2MDQxMzA2MDUwOVoY" +
+            "DzIwNTEwNDEzMDYwNTA5WjBTMQswCQYDVQQGEwJDTjEZMBcGA1UEChMQSHVhbnl1IFRydXN0IEx0ZDEpMCcGA1UEAxMgSHVhbnl1" +
+            "IFRydXN0IEMyUEEgRUMtMzg0IFJvb3QgQ0EwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAARDnAlELrIETK81oB6E/ZfbkGSH9YPhGdFp" +
+            "XTzDCHD3IsKPQdPPv/mF319XjdrZMECxpH9rbmWGuWrhq6K8zIGO27H2MUE658XNu6aO5xcZV/YdAMkG/YWPYo9CmCT4/SujZjBk" +
+            "MBIGA1UdEwEB/wQIMAYBAf8CAQIwHwYDVR0jBBgwFoAUYc0ZfGc1yTPouBQYj81mEEdaefswHQYDVR0OBBYEFGHNGXxnNckz6LgU" +
+            "GI/NZhBHWnn7MA4GA1UdDwEB/wQEAwIBBjAKBggqhkjOPQQDAwNoADBlAjEAqfQxNSnmGxtt1QBKJbaY8AyUiaJxzX5MnH0l/iel" +
+            "nc6DqBhIcALvKKc3a8MizR01AjB85bwUFBgs6WlIWZ6sFDDbCQzrWpPU11YQnj/mGom7yXjL/2axHPWPY2Do/ldP5mc=",
+        ),
+        Root(
+            name = "HUAWEI C2PA ECC384 Root CA E346",
+            owner = "Huawei Technologies Co.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "A7BF75564E899940D3E8E8A85369B4EFE3B92956BC58DD97302EF26E7345922D",
+            b64 = "MIICoDCCAiagAwIBAgIIKsblXSNLwF8wCgYIKoZIzj0EAwMwXzELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHUh1YXdlaSBUZWNobm9s" +
+            "b2dpZXMgQ28uLCBMdGQuMSgwJgYDVQQDDB9IVUFXRUkgQzJQQSBFQ0MzODQgUm9vdCBDQSBFMzQ2MB4XDTI2MDQxMzAxNTQxMFoX" +
+            "DTQ2MDQwODAxNTQxMFowXzELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHUh1YXdlaSBUZWNobm9sb2dpZXMgQ28uLCBMdGQuMSgwJgYD" +
+            "VQQDDB9IVUFXRUkgQzJQQSBFQ0MzODQgUm9vdCBDQSBFMzQ2MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEOrBoSivfM2LRlG3B4r52" +
+            "hE0vDjQR2iWv9sKTZXzkscQIasoH+uYBDDie9VcosH4Mfq/UxN8ojhW7BZW38LT38SmYpJPZirtzKTyCD4ha4dU8tLcHoJsOn3p+" +
+            "kBw09Bvoo4GuMIGrMB8GA1UdIwQYMBaAFM/OyEcEDscO78w/okatAmz35ypMMB0GA1UdDgQWBBTPzshHBA7HDu/MP6JGrQJs9+cq" +
+            "TDASBgNVHRMBAf8ECDAGAQH/AgECMEUGCCsGAQUFBwELBDkwNzA1BggrBgEFBQcwBYYpaHR0cDovL2NhLmh1YXdlaWNsb3VkLmNv" +
+            "bS9yZXBvc2l0b3J5Lmh0bWwwDgYDVR0PAQH/BAQDAgEGMAoGCCqGSM49BAMDA2gAMGUCMDCsqpRvJIPw6OAQi2Rj0CWnwJgK75YK" +
+            "5gj+K9xomIDu8ai/2ExrifL8JgROQOeZegIxAL3tT3Dp84wP18ohYU83gkRcA8j9B3T4BRpxY1Ew9IJMYJ2zqz0weFjAEGNC9Z36" +
+            "XQ==",
+        ),
+        Root(
+            name = "Irdeto C2PA Root CA G1",
+            owner = "Irdeto BV",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "413B08353828BDB436FD6457FDDAB2BF5098A59A2182321111852377C69398F1",
+            b64 = "MIICLDCCAbGgAwIBAgIUL8JDbqsQllkL9gozEdKhKc9GFAcwCgYIKoZIzj0EAwMwQjELMAkGA1UEBhMCTkwxEjAQBgNVBAoMCUly" +
+            "ZGV0byBCVjEfMB0GA1UEAwwWSXJkZXRvIEMyUEEgUm9vdCBDQSBHMTAgFw0yNTEyMDUxMjQ0NDBaGA8yMDUwMTIwNTEyNDQ0MFow" +
+            "QjELMAkGA1UEBhMCTkwxEjAQBgNVBAoMCUlyZGV0byBCVjEfMB0GA1UEAwwWSXJkZXRvIEMyUEEgUm9vdCBDQSBHMTB2MBAGByqG" +
+            "SM49AgEGBSuBBAAiA2IABEOtgkWt4t4r3Fvn2vDshY1KcZ63/VTaZN7K2uiAcCeztiH+ZSFf4hA5cSCABRJ+VkWZYLvnhNLsCVbt" +
+            "Eij6mDN5hf4VIUdUNgUonGZ6tkL1Djs3CUIkjD+nH/HXbCSjpqNmMGQwEgYDVR0TAQH/BAgwBgEB/wIBAjAOBgNVHQ8BAf8EBAMC" +
+            "AQYwHQYDVR0OBBYEFGs1MrTyCBABc00WKVK0njUakyplMB8GA1UdIwQYMBaAFGs1MrTyCBABc00WKVK0njUakyplMAoGCCqGSM49" +
+            "BAMDA2kAMGYCMQCB1h+esIhAsddoGkZI1aXwwCFMwL/cHskaM8JZsvUfcecGQmG08ZVesfUeCzei0SECMQCLjWbR4LY1mgfF+Pzl" +
+            "ieDZ9DTcd5qOpJaSf90/8AnQA/UWGtRGqJsrmERInDoXEOA=",
+        ),
+        Root(
+            name = "NETLOCK ECC C2PA Claim Signing G2 CA 1",
+            owner = "NETLOCK Kft.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "912A9F420A06576A384DFB61D4ED99ECEA720EEED0D8870673F043D87028A2CA",
+            b64 = "MIIDYzCCAumgAwIBAgIOaqKfZwARyv+zZG6aaCUwCgYIKoZIzj0EAwMwSjELMAkGA1UEBhMCSFUxFTATBgNVBAoMDE5FVExPQ0sg" +
+            "S2Z0LjEkMCIGA1UEAwwbTkVUTE9DSyBFQ0MgQzJQQSBSb290IENBIEcyMB4XDTI2MDkxMDEzMTMzOFoXDTMxMDkxMTEzMTMzOFow" +
+            "VTELMAkGA1UEBhMCSFUxFTATBgNVBAoMDE5FVExPQ0sgS2Z0LjEvMC0GA1UEAwwmTkVUTE9DSyBFQ0MgQzJQQSBDbGFpbSBTaWdu" +
+            "aW5nIEcyIENBIDEwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQn7hIuwc6rA0c10MMseTJAFJsAKiaTK/j3gdhrDR4cBqelMltU6mAj" +
+            "VM1TQpDUz9Gd7p7ytQL1klyOA171OpkC9diLjSaYmuSAz6V5+Yyc41VwBt59M/xCrae2yyUOU0ijggGJMIIBhTASBgNVHRMBAf8E" +
+            "CDAGAQH/AgEAMA4GA1UdDwEB/wQEAwIBBjApBgNVHSUEIjAgBgorBgEEAYPoXgIBBggrBgEFBQcDBAYIKwYBBQUHAyQwHQYDVR0O" +
+            "BBYEFD78hIEkbyQZC/GeemPvrtZ0u1WUMB8GA1UdIwQYMBaAFAANvQGaTNtgkNALBuB7ycSbCUWVMEgGA1UdHwRBMD8wPaA7oDmG" +
+            "N2h0dHA6Ly9jcmwuZWNjLm5ldGxvY2suaHUvaW5kZXguY2dpP2NybD1lY2NjMnBhcm9vdGNhZzIwgZAGCCsGAQUFBwEBBIGDMIGA" +
+            "MDoGCCsGAQUFBzABhi5odHRwOi8vb2NzcC5lY2MubmV0bG9jay5odS9lY2NjMnBhcm9vdGNhZzIuY2dpMEIGCCsGAQUFBzAChjZo" +
+            "dHRwOi8vYWlhLmVjYy5uZXRsb2NrLmh1L2luZGV4LmNnaT9jYT1lY2NjMnBhcm9vdGNhZzIwFwYDVR0gBBAwDjAMBgorBgEEAYPo" +
+            "XgEBMAoGCCqGSM49BAMDA2gAMGUCMBgrHv4tU9usRTsH9fYOVuHIvLUv/pupbz3htwGedmNU+BcjyhBBBPHLbGjnPiGwegIxAM8u" +
+            "UME5bh24GdbXYuiSfop69Yh9u+cJsix+CVPmDDaPuP/x3yfVk5PSpCuVsRVMcw==",
+        ),
+        Root(
+            name = "NETLOCK ECC C2PA Root CA G2",
+            owner = "NETLOCK Kft.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "9AC99BA3275A347D74C82F5931314A283A8D38EFF547A0F58EA5F08CE2ABFE5D",
+            b64 = "MIICNDCCAbmgAwIBAgIOaqKfZwAQVgLG28qDBwwwCgYIKoZIzj0EAwMwSjELMAkGA1UEBhMCSFUxFTATBgNVBAoMDE5FVExPQ0sg" +
+            "S2Z0LjEkMCIGA1UEAwwbTkVUTE9DSyBFQ0MgQzJQQSBSb290IENBIEcyMB4XDTI2MDkxMDEyMTUzNVoXDTQ2MDkxMDEyMTUzNVow" +
+            "SjELMAkGA1UEBhMCSFUxFTATBgNVBAoMDE5FVExPQ0sgS2Z0LjEkMCIGA1UEAwwbTkVUTE9DSyBFQ0MgQzJQQSBSb290IENBIEcy" +
+            "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEHTmQ+x+UmVGeF6yhIW+YX2ualZU7c4ayVbKUM5NdkB5Clho0rBaM20GiJfzpL77AYdpw" +
+            "i+32I6FHcAJvBej66teQBGFwgfWzDoB3sB5/R2EWVHfTYVl045r0HSrYhz3bo2YwZDASBgNVHRMBAf8ECDAGAQH/AgEBMA4GA1Ud" +
+            "DwEB/wQEAwIBBjAdBgNVHQ4EFgQUAA29AZpM22CQ0AsG4HvJxJsJRZUwHwYDVR0jBBgwFoAUAA29AZpM22CQ0AsG4HvJxJsJRZUw" +
+            "CgYIKoZIzj0EAwMDaQAwZgIxAP94aUUQG/w4O7nmtIxiQ5u2ncc+qFwIF0/k1Y6iK/cZ+qtr7kv9jUkC+WMKOMuWAQIxAMgGKZih" +
+            "eGUyMXItIzxnAcpKnDQ086cMWNi2tWDlKSqX+k8GB1mdrJmObqnKeZTbeg==",
+        ),
+        Root(
+            name = "SSL.com C2PA ECC Root CA 2025",
+            owner = "SSL Corporation",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "8A8B023BEED955F5D337070568E3329A5E76AE9ED3F1821090F5605E1FFDB050",
+            b64 = "MIICRTCCAcugAwIBAgIUHTAeXakkTyAFDkZfyu8YyCO9ubgwCgYIKoZIzj0EAwIwTzEmMCQGA1UEAwwdU1NMLmNvbSBDMlBBIEVD" +
+            "QyBSb290IENBIDIwMjUxGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjELMAkGA1UEBhMCVVMwIBcNMjUwNzE4MTU1MTQ5WhgPMjA1" +
+            "MDA3MTIxNTUxNDlaME8xJjAkBgNVBAMMHVNTTC5jb20gQzJQQSBFQ0MgUm9vdCBDQSAyMDI1MRgwFgYDVQQKDA9TU0wgQ29ycG9y" +
+            "YXRpb24xCzAJBgNVBAYTAlVTMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEo3WOe9pIesN2XWe6KQdiUO+cU1mr+Bs8opia0I+IA5m8" +
+            "oYhBJmJWPxLea7PH6tlW6f5wqkIOaeJkJ7X1pz3IHPjO8qkXimKjiUwt/B7IoEj6rhoqkAV4AMO2BMxbS1MUo2YwZDASBgNVHRMB" +
+            "Af8ECDAGAQH/AgECMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUU50WGoV8zfcRPowvdPbBkJ1Og6swHwYDVR0jBBgwFoAUU50W" +
+            "GoV8zfcRPowvdPbBkJ1Og6swCgYIKoZIzj0EAwIDaAAwZQIxALxN0Q+F+9KXOnYUKcW70UuxgitT8iwjTBGCIXJbJw4XaMtVdVGf" +
+            "4HwYNITBgr+rWwIwczO4trazVV27OTCl8xNR0IH4UuyFgBVuzMsIj8IPkQw5mVhtvhY7nNgp3Dyy2LeE",
+        ),
+        Root(
+            name = "SSL.com C2PA RSA Root CA 2025",
+            owner = "SSL Corporation",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "RSA 4096",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "4C8AD434E01F769AC96DFFC9729D702A0F20E55D891EBD86443C5CC8C2FAB47C",
+            b64 = "MIIFlDCCA3ygAwIBAgIUExeshkq/ESresWEq3YWcEUTmxvowDQYJKoZIhvcNAQELBQAwTzEmMCQGA1UEAwwdU1NMLmNvbSBDMlBB" +
+            "IFJTQSBSb290IENBIDIwMjUxGDAWBgNVBAoMD1NTTCBDb3Jwb3JhdGlvbjELMAkGA1UEBhMCVVMwIBcNMjUxMTA3MTYyNzEzWhgP" +
+            "MjA1MDExMDExNjI3MTNaME8xJjAkBgNVBAMMHVNTTC5jb20gQzJQQSBSU0EgUm9vdCBDQSAyMDI1MRgwFgYDVQQKDA9TU0wgQ29y" +
+            "cG9yYXRpb24xCzAJBgNVBAYTAlVTMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA07LXx05AgfZnF6CPMzpPwA+vGxfq" +
+            "i2Pw3/gvhAe4UdzmasSutCRK9sK66DZYta4AbYPS0/2IToqo1n33f9/XrmQ62uM3XAyKXfg8UWUaj2WsyA3dIxY5l80B0S0EX0V1" +
+            "HpP6ygw1IDfJ/KKkknn/0o14zmNkRzLpqQDOMoL4s+kli8NtkEOG8M8NrH5QJCNRL7lN0DG8TvRa10Zfwyxnd4yw9DT2HWJInjC+" +
+            "Hww9QZua/u6bTy0pFHV0vVCgKQuPtbX8b60998t4b56trGesWapUefIEu6GH1CkQu7nhsk1Rf59+uPv1NQLOm7wbyghHtQQ00baR" +
+            "/687r7/qXxRLV1CFNH3nAgFfHkD8N07GWS5C1OOmkUPrc2f9tdKWOJ6USDJCOX1DkTeeo9RgwSJfLueDtAOp19dlBo2UW79A2MGN" +
+            "6VI119DoW04VUjxmPHLIWtt08ZRTHzvN2I2DA3ic5Wt4pgSLXDZ6ztlFX4Y6nXwVFdWae9zwLpm9ttsF4fepLyPAUTuT9m0j/oeQ" +
+            "t3KmyxIukYD8I1PiSQ6YDLIiWFZcYC8LMyiYmQEX6spsE+IF37lx2nZ1OF+DAOSCYYamZx6HYShgN4zN1QYTMJdxbz5JgRTIIioV" +
+            "dJTqeF/5GsSGP6f9Eym8ND9jLQzm8MBEMfvlAgw0q1ieN2Q9INSN3qMCAwEAAaNmMGQwEgYDVR0TAQH/BAgwBgEB/wIBAjAOBgNV" +
+            "HQ8BAf8EBAMCAQYwHQYDVR0OBBYEFPwqSnU6gPqZY5Pwc1fsvpOwfcN7MB8GA1UdIwQYMBaAFPwqSnU6gPqZY5Pwc1fsvpOwfcN7" +
+            "MA0GCSqGSIb3DQEBCwUAA4ICAQBAqkR9j5wKs0T7e9gHTUWlLAnkWLyZI7AuEoXimyJ7Ocy1EwZyu3TDZ2jCecLNXENnUwjuKaEm" +
+            "/8sCwzrVqpxzIgkS1jVLuVURlrj2+apT/7wBw8LCKMZ6cDhQJV3A1+9hyCc5ozkE1LgcJfWELrBWeBuj8rWLAf0DDgtwaED7nS9c" +
+            "9P8UgrxHYTMe2AHWEfczXBirx5ubpNaokR0W01aSdXa97ohoS+ZmK0bxvmWCugI4tfsypsVllV2iD9v/BPLCVHP+7ot520mE21Wd" +
+            "QKD69M54V8KAqfmNoG6I3TB2EcKJ0NpKI0zWniSX05NDrv70INu+vAI8Sso/mRMHpuo03/0iTm3z8J4ACjwP071U0R3wCjTxN8z2" +
+            "95EwOf1/JQH5h0njkarxFsWsnHJtWwE3kGEibO3ivB2U3FyS1osN0bEA4X5CSeMFGDJFCXVB0l4/KeHHNRk3DEVjr5dzcwt/C2DL" +
+            "j9VuaeWEWuVbA3/PDR/MnZzDtPj1TVLswGkWKwG+AyJaHkLysZD0IKwL4SZGGCRvyKw+G5Go0vvHVyUMPHqVTBApxY9lpt6absyM" +
+            "PdRnf+w0tdFlhCd2rauRA0HX7JZ5xqnYjkfk0m7MpoauCsQR9udJvv5HpMv7wvJRchf62/pPnjLKhN/dx9LR/EVqBPbPMhqdzO6O" +
+            "bQdqUJzXPQ==",
+        ),
+        Root(
+            name = "Snowball ECC P384 Claim Signing ICA for C2PA G1",
+            owner = "Snowball Technology Co.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "35A8B33C209655B32404A017C2D1F3EE28C123702EC1539D8C2F1D6C60209F93",
+            b64 = "MIIDrjCCAzSgAwIBAgIUMPJ1KkDp+fvHaZOBsdKSnPm/hdowCgYIKoZIzj0EAwMwZTELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHVNu" +
+            "b3diYWxsIFRlY2hub2xvZ3kgQ28uLCBMdGQuMS4wLAYDVQQDDCVTbm93YmFsbCBFQ0MgUDM4NCBSb290IENBIGZvciBDMlBBIEcx" +
+            "MB4XDTI2MDYxODA5NDQ1OVoXDTMxMDYxOTA5NDQ1OVowbzELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHVNub3diYWxsIFRlY2hub2xv" +
+            "Z3kgQ28uLCBMdGQuMTgwNgYDVQQDDC9Tbm93YmFsbCBFQ0MgUDM4NCBDbGFpbSBTaWduaW5nIElDQSBmb3IgQzJQQSBHMTB2MBAG" +
+            "ByqGSM49AgEGBSuBBAAiA2IABJvqMpOfFPJuwAV3s2YGMbe7mRj48rsUZsJrMSOWU3SnssFtPEWTFh8QyM88zaFuprKC8nm53vnE" +
+            "MkGG+YtmZdBfzsmayZqs9Rq6EQchDSF2vVNvE9wxAqhKJIawhYSTe6OCAZkwggGVMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0P" +
+            "AQH/BAQDAgEGMCkGA1UdJQQiMCAGCisGAQQBg+heAgEGCCsGAQUFBwMEBggrBgEFBQcDJDAdBgNVHQ4EFgQUt0FFkasBa70GGSB6" +
+            "Ntn52UCzqwYwHwYDVR0jBBgwFoAU6R4F1vboIaKQly8jCAQX2lQhWPQwFwYDVR0gBBAwDjAMBgorBgEEAYPoXgEBMIGUBggrBgEF" +
+            "BQcBAQSBhzCBhDAtBggrBgEFBQcwAYYhaHR0cDovL29jc3AuYzJwYS5zbm93YmFsbHRlY2guY29tMFMGCCsGAQUFBzAChkdodHRw" +
+            "Oi8vY2FjZXJ0cy5jMnBhLnNub3diYWxsdGVjaC5jb20vU25vd2JhbGxFQ0NQMzg0Um9vdENBZm9yQzJQQUcxLmNydDBUBgNVHR8E" +
+            "TTBLMEmgR6BFhkNodHRwOi8vY3JsLmMycGEuc25vd2JhbGx0ZWNoLmNvbS9Tbm93YmFsbEVDQ1AzODRSb290Q0Fmb3JDMlBBRzEu" +
+            "Y3JsMAoGCCqGSM49BAMDA2gAMGUCMQCp0U69fhqepzep6uvRFmGge+mgVJX1a2JsC3m+W6GAA62UruIAskoTmrEC0iZXMwYCMAcK" +
+            "DRNtDSwk9balyQ/8RUPGGwGS2AvOsUC0H84jMBNCL+DlPg7dJz1gc32QCv9sWA==",
+        ),
+        Root(
+            name = "Snowball ECC P384 Root CA for C2PA G1",
+            owner = "Snowball Technology Co.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "C7C19ABE03866247732DF7C509CAA8D6454AF29A9C3A137AFE77D37C4E0E68BE",
+            b64 = "MIICiTCCAg6gAwIBAgIUVlsRGj1G9vJ4ws2jMYyFlFcKUokwCgYIKoZIzj0EAwMwZTELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHVNu" +
+            "b3diYWxsIFRlY2hub2xvZ3kgQ28uLCBMdGQuMS4wLAYDVQQDDCVTbm93YmFsbCBFQ0MgUDM4NCBSb290IENBIGZvciBDMlBBIEcx" +
+            "MB4XDTI2MDYxODA5MzkxOVoXDTQ2MDYxMzA5MzkxOVowZTELMAkGA1UEBhMCQ04xJjAkBgNVBAoMHVNub3diYWxsIFRlY2hub2xv" +
+            "Z3kgQ28uLCBMdGQuMS4wLAYDVQQDDCVTbm93YmFsbCBFQ0MgUDM4NCBSb290IENBIGZvciBDMlBBIEcxMHYwEAYHKoZIzj0CAQYF" +
+            "K4EEACIDYgAELJUrcxeVmmYrb8Kl/YVAYYFiyuiqiIa6z/1nFoCpB2JV/Qkwjdns7rOvLheWBi1s880NcwqD/KD9t9/SOgWTfD+W" +
+            "OAhtPioAql2YYUl0toOUzoXaAOB3+HIQRiKsL2RIo38wfTASBgNVHRMBAf8ECDAGAQH/AgECMA4GA1UdDwEB/wQEAwIBBjAdBgNV" +
+            "HQ4EFgQU6R4F1vboIaKQly8jCAQX2lQhWPQwHwYDVR0jBBgwFoAU6R4F1vboIaKQly8jCAQX2lQhWPQwFwYDVR0gBBAwDjAMBgor" +
+            "BgEEAYPoXgEBMAoGCCqGSM49BAMDA2kAMGYCMQD6/xszsnZoYt+gYIsgYKTMFARxRpB5N16s2u2hgkuFs4zyLco1z7gOk0mv6EbB" +
+            "km0CMQCcsqIQnr45MVjDUdn9L//VdGDO6H+P67vBdmvb3LiLTB+Ey/JYYfnHHIKzJrRG4ls=",
+        ),
+        Root(
+            name = "Tauth Root CA",
+            owner = "Tauth Labs Inc.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "F3FF22E4CAAC4CDF5C47DAC08CCCA0E71E415BE8E9C00C3B7AD7E293469F8EC3",
+            b64 = "MIIDjzCCAxWgAwIBAgIUW6zwDse+LBk8Yvy/u3p7lSjnaA4wCgYIKoZIzj0EAwMwgZcxCzAJBgNVBAYTAlVTMREwDwYDVQQIDAhO" +
+            "ZXcgWW9yazERMA8GA1UEBwwITmV3IFlvcmsxGDAWBgNVBAoMD1RhdXRoIExhYnMgSW5jLjEUMBIGA1UECwwLQ0EgRGl2aXNpb24x" +
+            "FjAUBgNVBAMMDVRhdXRoIFJvb3QgQ0ExGjAYBgkqhkiG9w0BCQEWC2NhQHRhdXRoLmlvMB4XDTI2MDEwNTE2MDgzMVoXDTQ1MTIz" +
+            "MTE2MDgzMVowgZcxCzAJBgNVBAYTAlVTMREwDwYDVQQIDAhOZXcgWW9yazERMA8GA1UEBwwITmV3IFlvcmsxGDAWBgNVBAoMD1Rh" +
+            "dXRoIExhYnMgSW5jLjEUMBIGA1UECwwLQ0EgRGl2aXNpb24xFjAUBgNVBAMMDVRhdXRoIFJvb3QgQ0ExGjAYBgkqhkiG9w0BCQEW" +
+            "C2NhQHRhdXRoLmlvMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAETgpV7Q9tsMzXFPduTyVt71IRRfU0yeZGVuXmVO6zyUXxqGCg07ja" +
+            "fnMyv24pRwJ9Bk+ROhslNWFS0NhXjIINDuk4h5JiKcEEGBJIlGl7jOB/MPLF/HU7CfURT2ayXKXmo4IBHjCCARowHQYDVR0OBBYE" +
+            "FB3RAQfd1ulUQKBf+J34TnS1CxI+MIHXBgNVHSMEgc8wgcyAFB3RAQfd1ulUQKBf+J34TnS1CxI+oYGdpIGaMIGXMQswCQYDVQQG" +
+            "EwJVUzERMA8GA1UECAwITmV3IFlvcmsxETAPBgNVBAcMCE5ldyBZb3JrMRgwFgYDVQQKDA9UYXV0aCBMYWJzIEluYy4xFDASBgNV" +
+            "BAsMC0NBIERpdmlzaW9uMRYwFAYDVQQDDA1UYXV0aCBSb290IENBMRowGAYJKoZIhvcNAQkBFgtjYUB0YXV0aC5pb4IUW6zwDse+" +
+            "LBk8Yvy/u3p7lSjnaA4wDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAYYwCgYIKoZIzj0EAwMDaAAwZQIxAJzhLaivtrjO" +
+            "MyEAuoHQRIhN2u7kw2iWZZyAT6FJH4+GBYudax0dfewXeIvC0MH5SwIwAKojdigAO86Xvk6++B875ZpTjQIysPX0bGumbmAwcAms" +
+            "qum9JLLIRCDz+7KtWrRP",
+        ),
+        Root(
+            name = "Trufo C2PA Root CA (2025",
+            owner = "Trufo Inc.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "A09208EBD885D89C3FC6C32519D16A57509ACC63F9EBCC0A4A094432DAEE1480",
+            b64 = "MIIDOTCCAr6gAwIBAgIUbXqcPd1r9yQm/fznG9RlSWyXiwswCgYIKoZIzj0EAwMwgagxCzAJBgNVBAYTAlVTMREwDwYDVQQIDAhO" +
+            "ZXcgWW9yazERMA8GA1UEBwwITmV3IFlvcmsxEzARBgNVBAoMClRydWZvIEluYy4xFDASBgNVBAsMC0NBIERpdmlzaW9uMRowGAYJ" +
+            "KoZIhvcNAQkBFgtjYUB0cnVmby5haTEsMCoGA1UEAwwjVHJ1Zm8gQzJQQSBSb290IENBICgyMDI1LCBFQ0MgUDM4NCkwHhcNMjUx" +
+            "MjMwMTkwNTAzWhcNNDUxMjI1MTkwNTAzWjCBqDELMAkGA1UEBhMCVVMxETAPBgNVBAgMCE5ldyBZb3JrMREwDwYDVQQHDAhOZXcg" +
+            "WW9yazETMBEGA1UECgwKVHJ1Zm8gSW5jLjEUMBIGA1UECwwLQ0EgRGl2aXNpb24xGjAYBgkqhkiG9w0BCQEWC2NhQHRydWZvLmFp" +
+            "MSwwKgYDVQQDDCNUcnVmbyBDMlBBIFJvb3QgQ0EgKDIwMjUsIEVDQyBQMzg0KTB2MBAGByqGSM49AgEGBSuBBAAiA2IABAp0qnhI" +
+            "wMtN6LeGdBVtHLPn85ecetr/lqcXFk8ypK9ukJzU8LLv55Kh/MYTgEnuIKEOPhDxLDRdahc0mAjRnql4kLk395abw9WZjrBPek3q" +
+            "jv0qITR8VPYFABuZ5FRKx6OBpjCBozAdBgNVHQ4EFgQUA9Vfr36D5QQdWYAnSjT/Rf3rSXgwHwYDVR0jBBgwFoAUA9Vfr36D5QQd" +
+            "WYAnSjT/Rf3rSXgwEgYDVR0TAQH/BAgwBgEB/wIBAjAOBgNVHQ8BAf8EBAMCAQYwPQYDVR0gBDYwNDAyBgorBgEEAYPoPAEBMCQw" +
+            "IgYIKwYBBQUHAgEWFmh0dHBzOi8vdHJ1Zm8uYWkvY3BjcHMwCgYIKoZIzj0EAwMDaQAwZgIxAMUeYWZyxS2maiVkNETL29RAuLn/" +
+            "gHYTkt97l6evXwHLN46v28mI39BIf6slyWnrCwIxAPRs/FJ+DoA0d/PCkrF946S+pG7vRqLnjB9OhMdmrMPvzaqxKQYOBVx7SE4K" +
+            "z48W8A==",
+        ),
+        Root(
+            name = "TrustAsia C2PA ECC Root CA",
+            owner = "TrustAsia Technologies",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "8CB6572DF304CE2BAF1D3E93FCB604D5EEC8501FEEAC6AF763EFD4DD7AA4ECC5",
+            b64 = "MIICWjCCAd+gAwIBAgIUdUWMu3G69tNb9bwz/0KTupxLm1kwCgYIKoZIzj0EAwMwWTELMAkGA1UEBhMCQ04xJTAjBgNVBAoMHFRy" +
+            "dXN0QXNpYSBUZWNobm9sb2dpZXMsIEluYy4xIzAhBgNVBAMMGlRydXN0QXNpYSBDMlBBIEVDQyBSb290IENBMCAXDTI2MDYwNTAz" +
+            "NTAwMFoYDzIwNTEwNjA1MDM0OTU5WjBZMQswCQYDVQQGEwJDTjElMCMGA1UECgwcVHJ1c3RBc2lhIFRlY2hub2xvZ2llcywgSW5j" +
+            "LjEjMCEGA1UEAwwaVHJ1c3RBc2lhIEMyUEEgRUNDIFJvb3QgQ0EwdjAQBgcqhkjOPQIBBgUrgQQAIgNiAAQLERY0d7ug9MiCqmXn" +
+            "DjDs2med9zfTqTWOcG3OD5Q6FSEgNUcjT5Qy7xzKn1MfqaY4Ye3sf+Do7cCDR6AiFW6SqLQobfJ70jMDsSQYlrCCjMLvb+NdNPhE" +
+            "D43s8fgehxyjZjBkMBIGA1UdEwEB/wQIMAYBAf8CAQIwDgYDVR0PAQH/BAQDAgEGMB0GA1UdDgQWBBT13DKCd7Jlz2rEe0vBlwo/" +
+            "CoR2mDAfBgNVHSMEGDAWgBT13DKCd7Jlz2rEe0vBlwo/CoR2mDAKBggqhkjOPQQDAwNpADBmAjEAwp2Jie8k6/haTc/df3QsX+Tt" +
+            "g7WpARtYTwJSP4Z+ggpf39sZ+7QPOE50BqBj9Q6zAjEAjZ+5glED9tav6r3jWuMOmKTBkobBXzvjqTDLGG570BbSQfNmS3HRC6u5" +
+            "YTIpElpb",
+        ),
+        Root(
+            name = "TrustAsia C2PA RSA Root CA",
+            owner = "TrustAsia Technologies",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "RSA 4096",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "67A5A52AF341D284C188F0416BC38D91AEC75B9F69D51643BD3430EC1F2EC07F",
+            b64 = "MIIFqDCCA5CgAwIBAgIUNqYa1cdsY+cp091HGRPKXzrE4kwwDQYJKoZIhvcNAQEMBQAwWTELMAkGA1UEBhMCQ04xJTAjBgNVBAoM" +
+            "HFRydXN0QXNpYSBUZWNobm9sb2dpZXMsIEluYy4xIzAhBgNVBAMMGlRydXN0QXNpYSBDMlBBIFJTQSBSb290IENBMCAXDTI2MDYw" +
+            "NTAzNTMwMFoYDzIwNTEwNjA1MDM1MjU5WjBZMQswCQYDVQQGEwJDTjElMCMGA1UECgwcVHJ1c3RBc2lhIFRlY2hub2xvZ2llcywg" +
+            "SW5jLjEjMCEGA1UEAwwaVHJ1c3RBc2lhIEMyUEEgUlNBIFJvb3QgQ0EwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCv" +
+            "gJqlqXZ+SYbtl9dLK4SQ5Gt9KrPbOmWEeMYnh8UdB3+KzkrG6PSZ1/s6KDIiEPNH1Sno7UOnTWzZ50Ce3Qq4PKFJBb9iJ0cbtw4q" +
+            "GOjHDhgXhozvnPQhXy6uiEODKgsKRaZwxT7xer3ZOAbX/30tQDwyAavoEtb+F+o2faYxHwjojUnKzO0Aaz68h7U5zMHgdMUvkqc0" +
+            "B5NIpoTixCj7Om2X0XROWAFx7ELrVxMmyL4PCWOjcaRXoP5QlDHiIc5Ck9/HD6VYr2jJG/8BFZqk9l+mgNlxjaIbp0D/B3D7Wvxc" +
+            "GOFRqiRJRni3LAsdVAMGPs/msUVBsYnTIEWb1o8qvkKpPOE0OtseEhWIQX4EDTA3Kim1xVqcS3+9irfDf7Jda2vOX1mamZa+Y89x" +
+            "CZcG7ce4u0fpE/NOs46dymoG/zU0uUvdKOtzvddNuDOWymROa6SVG6uETSdVFRsQfR/Dp8MQegVLB6ITAfnXHc3Pn67B1ncsL359" +
+            "DcwlZkqYGegsz//8ToRAlSSA/9C9vzlXfbGIg2HHtToHcwa6BjDkRpfdm6nkegfCvoaWT4k/9vDQNXvg8Wee1vpUDKhB7y1SSaSk" +
+            "m+7wr8fV4ovFGSrbygpr0BuGm+ShU3Vh+8UXAICPntscPAgNXidB9A8Zgib5rJjiVi0sxizPYueAchPQDwIDAQABo2YwZDASBgNV" +
+            "HRMBAf8ECDAGAQH/AgECMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUCdViRLQz3hH0IboHIKjSrMMHRYAwHwYDVR0jBBgwFoAU" +
+            "CdViRLQz3hH0IboHIKjSrMMHRYAwDQYJKoZIhvcNAQEMBQADggIBAHInmN938SAQOkERvIrZDi14uVmZP5GgqQ6ZH4BF77RFcQcD" +
+            "l7Id+3WBf1WqSl0zyuq6HulYyM6pWikh0W5K/NBBLlt+zXtEHbW71jhAhCKALdbclT+KuqRRQbrzATXPyYB5Jb/7xlUIofilo70+" +
+            "lqNwahsyY5F+6XlOZ4JuA84RdfxGdyn/IJlOJ9mc2RbI6aAxMuFcsot483gOYtkU4Og0g9M7XsdLT2VXwuVk3hXwc7UWlZUm1Vn6" +
+            "dGmrcSj41wGlw9JGMU87OfzYFseGBDGDc2XvnjFCY+SBAEWGk4m6ugNGat8OKBVNpnYGp0iNODMtQXJ0aUCvOziFPJY9li08sUDe" +
+            "HI9ZwLB+yADsaC1gaX4eloRFsIyyl7YRQEY1/EfVw3wnN+XBJYyBw9v1RtpXDh/vO2ezzXc1sdH/WgXMGGrRdiCAZb5mFkjTEoKX" +
+            "VnkGMn7bnJKuFgDQPWerA24Jck1JQTuQBXJOAt8FVaYMjL6wPSIv84UjVXIRkOP4ZOydpYgykEl5LfOWcQtA4U6h+obS35aB8YE1" +
+            "KC9rIeEE8q5onGo6tRYJzh+mB/XSUP35fNbwe4FkI3I6ZpNSS6wt9HY0DCYCNhAz7KP8RwexR/stlYyeUxbj3+jxK4AOGTZQEKBB" +
+            "WkoqfrPCDpybwpXCxxP5qtj6+iKCvpx9jmvr",
+        ),
+        Root(
+            name = "Verimago Claim Signing Issuing CA",
+            owner = "Verimago LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；清單列入的中繼憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "10D4FBA28CD37AFF41DC776C8C46E398A4D366D40640094CCA8A1AA87EBAD0D0",
+            b64 = "MIIDTDCCAtOgAwIBAgIUNcPH/7deevUcZvKM0EQGUJN99PMwCgYIKoZIzj0EAwMwVDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCldh" +
+            "c2hpbmd0b24xFTATBgNVBAoTDFZlcmltYWdvIExMQzEZMBcGA1UEAxMQVmVyaW1hZ28gUm9vdCBDQTAeFw0yNjA1MTUwMTQ2NTBa" +
+            "Fw0zMTA1MTUwNzQ2NTBaMGUxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpXYXNoaW5ndG9uMRUwEwYDVQQKEwxWZXJpbWFnbyBMTEMx" +
+            "KjAoBgNVBAMTIVZlcmltYWdvIENsYWltIFNpZ25pbmcgSXNzdWluZyBDQTB2MBAGByqGSM49AgEGBSuBBAAiA2IABPB0fzGODSoL" +
+            "VNkTQWekSBkL6rD2h2//WP+4f1pdl9K8K0Z8Bt0SrlOXNtrpI/ytOybRwV7nH3TDAWkZV833jc8Gjgqs7P0Q4ZZc4+4WIey3eD90" +
+            "84B8rLXs3/K/q7NyHaOCAVMwggFPMBIGA1UdEwEB/wQIMAYBAf8CAQAwDgYDVR0PAQH/BAQDAgEGMCkGA1UdJQQiMCAGCisGAQQB" +
+            "g+heAgEGCCsGAQUFBwMEBggrBgEFBQcDJDAXBgNVHSAEEDAOMAwGCisGAQQBg+heAQEwHQYDVR0OBBYEFCM0wx5MWMCrBF5eYt8J" +
+            "9b41TMwcMB8GA1UdIwQYMBaAFAJJr6VZKSr0tdmR4GqMrKLIVu16MDsGA1UdHwQ0MDIwMKAuoCyGKmh0dHA6Ly9jYS52ZXJpbWFn" +
+            "by5pby9jcmwvaW50ZXJtZWRpYXRlLmNybDBoBggrBgEFBQcBAQRcMFowJgYIKwYBBQUHMAGGGmh0dHA6Ly9jYS52ZXJpbWFnby5p" +
+            "by9vY3NwMDAGCCsGAQUFBzAChiRodHRwOi8vY2EudmVyaW1hZ28uaW8vY2VydHMvcm9vdC5wZW0wCgYIKoZIzj0EAwMDZwAwZAIw" +
+            "Dq2qaR9as+lyVFcwsUTlMIm/OGxgW4dqVg7jlsBST+3xvS0nIpZUS7lcF44FVcFdAjA5abgOYS/ie7NXxp3smYtuFoKzc/V7TAaL" +
+            "0VS/HGB3x7sTa+D6HIY3/ls33Dy/4Gk=",
+        ),
+        Root(
+            name = "Verimago Root CA",
+            owner = "Verimago LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "67683E192A428F70EB8B116781A3EB966C3D1E3AED4EF70A2AFF88208BF19CB6",
+            b64 = "MIICTjCCAdSgAwIBAgIVAOFSVdVKiaIUGZlbNzPTi5bS/Gy+MAoGCCqGSM49BAMDMFQxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpX" +
+            "YXNoaW5ndG9uMRUwEwYDVQQKEwxWZXJpbWFnbyBMTEMxGTAXBgNVBAMTEFZlcmltYWdvIFJvb3QgQ0EwHhcNMjYwNTE1MDE0NjUw" +
+            "WhcNNDYwNTE1MDE0NjUwWjBUMQswCQYDVQQGEwJVUzETMBEGA1UECBMKV2FzaGluZ3RvbjEVMBMGA1UEChMMVmVyaW1hZ28gTExD" +
+            "MRkwFwYDVQQDExBWZXJpbWFnbyBSb290IENBMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAExn74thYXg89OFcXCobav4kqQAt0YDK4h" +
+            "28ovPP5RJWs77BBRwUhbdb0C6SMVFJ+MuyUK/cBoua+cSIOhN6prHNqeHbZMi3nzlbVfEbDDWm9hy+OxXtOLlJQYL5zjUgkco2Yw" +
+            "ZDASBgNVHRMBAf8ECDAGAQH/AgECMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUAkmvpVkpKvS12ZHgaoysoshW7XowHwYDVR0j" +
+            "BBgwFoAUAkmvpVkpKvS12ZHgaoysoshW7XowCgYIKoZIzj0EAwMDaAAwZQIwDqzc2oVzZezm4GeER3jPUDWNj4zsqdXciOoGO0Jk" +
+            "AHmCvyUBt8FH9vZK9d6bZ9DEAjEA5eFk9oFV8cm8pyJ2+hKo5ji/iip8A0T5U2GwHQyNW4GXdTaTwkzPD7X6whoLKKB/",
+        ),
+        Root(
+            name = "RealReel C2PA Root CA",
+            owner = "Whole Earth Labs LLC",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "5559383DDD6666EB38FF746D592C5F6686B1C3340F4FDD584076D32E60B5E858",
+            b64 = "MIICPzCCAcWgAwIBAgIUK7g4QvDKVbdq1t88l76ZMwiegK0wCgYIKoZIzj0EAwMwTDELMAkGA1UEBhMCVVMxHTAbBgNVBAoMFFdo" +
+            "b2xlIEVhcnRoIExhYnMgTExDMR4wHAYDVQQDDBVSZWFsUmVlbCBDMlBBIFJvb3QgQ0EwIBcNMjYwNzI0MDAyNzAyWhgPMjA1MTA3" +
+            "MjQwMDI3MDJaMEwxCzAJBgNVBAYTAlVTMR0wGwYDVQQKDBRXaG9sZSBFYXJ0aCBMYWJzIExMQzEeMBwGA1UEAwwVUmVhbFJlZWwg" +
+            "QzJQQSBSb290IENBMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEJVWLUwyoBcqwmv3cUuX4/fpVanvQdjJKG4CazLx5XO/eu7qgxCur" +
+            "zpLTuRAC3Lr+tY4LA5shXTSFYqNRRlQnxkYugqEfqDJcUhks1evDAlYZdBB3X134zjk9DHQElntEo2YwZDASBgNVHRMBAf8ECDAG" +
+            "AQH/AgEBMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUoaV/7ghFZ89nsoENzOrkL+Pmwg0wHwYDVR0jBBgwFoAUoaV/7ghFZ89n" +
+            "soENzOrkL+Pmwg0wCgYIKoZIzj0EAwMDaAAwZQIwF8nY6P9IvWgtd9dKjnelTOZwICUuxVHbd/uHvU9hjwez+B33zyL1iP+8E/HU" +
+            "e9yDAjEAmUnK720BAi3UXkj8kZHs74wnIy4oh8buxmiecO1akF4I3B+0+18SkclV6ytF+Zms",
+        ),
+        Root(
+            name = "Xiaomi Root CA(EC-P384)",
+            owner = "Xiaomi Inc.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-384",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "974FE7DB4D39F349F6B44196A0B969CF0BACB772F42AF8A5776D52C5E60BE305",
+            b64 = "MIICeDCCAf6gAwIBAgITAJQBmyrWaBV3JOroB8uDgC0MxDAKBggqhkjOPQQDAzBpMQswCQYDVQQGEwJDTjEQMA4GA1UECBMHQmVp" +
+            "amluZzEQMA4GA1UEBxMHQmVpamluZzEUMBIGA1UEChMLWGlhb21pIEluYy4xIDAeBgNVBAMTF1hpYW9taSBSb290IENBKEVDLVAz" +
+            "ODQpMCAXDTI1MDkyNTAxMjI0MFoYDzIwNTAwOTE5MDEyMjQwWjBpMQswCQYDVQQGEwJDTjEQMA4GA1UECBMHQmVpamluZzEQMA4G" +
+            "A1UEBxMHQmVpamluZzEUMBIGA1UEChMLWGlhb21pIEluYy4xIDAeBgNVBAMTF1hpYW9taSBSb290IENBKEVDLVAzODQpMHYwEAYH" +
+            "KoZIzj0CAQYFK4EEACIDYgAEDOfbCvQLZmlcAW7uOnEiCJ3KpVxu+qYxrwBDbSIRsDc2xg9o94+8pX+mveme5SsSsKM/0ouu5+EC" +
+            "whkxRof/1BDQ21cK+n4HBY0G7P3RltI6moeDv4bdVvC4ni+yJpFvo2YwZDAdBgNVHQ4EFgQUm8DQDCIUeaz1o+Cc286YCgebcc4w" +
+            "HwYDVR0jBBgwFoAUm8DQDCIUeaz1o+Cc286YCgebcc4wEgYDVR0TAQH/BAgwBgEB/wIBAjAOBgNVHQ8BAf8EBAMCAQYwCgYIKoZI" +
+            "zj0EAwMDaAAwZQIwUfj3heoA8iZfAMqHrZwarUM71v3Y1gqlltdgOzv9mix5O/EDxHcQm26a9NrrMTXmAjEAgwjR42dkym44QlV+" +
+            "QXR05vuMf1o/bdAXmJKvhjDgPTK9VYRagFLaTqFtjuZfDg3L",
+        ),
+        Root(
+            name = "vivo Content Provenance and Authenticity Root CA",
+            owner = "vivo Mobile Communication Co.",
+            group = Group.CONTENT_CREDENTIALS,
+            algorithm = "ECC P-521",
+            purposes = "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；根憑證",
+            source = "C2PA 信任清單（https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem）",
+            sha256 = "62E8FAEC4A1A7674A9437AA1AFFB20580615986E6C10A08D1AA093428AA087AB",
+            b64 = "MIIC0zCCAjSgAwIBAgIJAMIN3t2/xTDAMAoGCCqGSM49BAMEMHYxOTA3BgNVBAMMMHZpdm8gQ29udGVudCBQcm92ZW5hbmNlIGFu" +
+            "ZCBBdXRoZW50aWNpdHkgUm9vdCBDQTEsMCoGA1UECgwjdml2byBNb2JpbGUgQ29tbXVuaWNhdGlvbiBDby4sIEx0ZC4xCzAJBgNV" +
+            "BAYTAkNOMCAXDTI1MDkxODA5MDkxM1oYDzIwNTUwOTExMDkwOTEzWjB2MTkwNwYDVQQDDDB2aXZvIENvbnRlbnQgUHJvdmVuYW5j" +
+            "ZSBhbmQgQXV0aGVudGljaXR5IFJvb3QgQ0ExLDAqBgNVBAoMI3Zpdm8gTW9iaWxlIENvbW11bmljYXRpb24gQ28uLCBMdGQuMQsw" +
+            "CQYDVQQGEwJDTjCBmzAQBgcqhkjOPQIBBgUrgQQAIwOBhgAEANQigNuQ6RnYFSK2BWkaksR3fRFFytX4nzX3E4hLV/N/7m/XttNH" +
+            "xNDase0cAXwR9pO23p6fb/9NbifILv2wzPn2ASMr306Y2frv/UjJ5J6WgHet2OFywRaPjFjJWRuk4JCy0qoSxyyx230g8GYdacZz" +
+            "IqSzVTW7/Xz4mjnWDTOB/Db+o2YwZDASBgNVHRMBAf8ECDAGAQH/AgECMA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUgB0dwwUc" +
+            "pK4u7az42vKC2y+nnY8wHwYDVR0jBBgwFoAUgB0dwwUcpK4u7az42vKC2y+nnY8wCgYIKoZIzj0EAwQDgYwAMIGIAkIB9cjlRbw8" +
+            "I0+0VAIOENCEzKOfp2risHuo3KVqyaSVK/T6KzMNvpq3ihA6ZjnuH9i5y5XWV//awWbFJDSuT0Bq+pwCQgHuthBjGmDl/nycr3Mx" +
+            "JErDVYZBh4b140LQBU60MtiPERVYwme03ukGImPW/OKbEWYmnhHyMAf1ym/3UK/lOv3G2w==",
+        ),
         )
     }
 
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
     val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
+    val contentCredentials: List<Root> get() = all.filter { it.group == Group.CONTENT_CREDENTIALS }
 
     val intermediates: List<Intermediate> by lazy {
         listOf(

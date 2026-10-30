@@ -69,17 +69,17 @@ data class BundleMatch(val evidence: List<BundleEvidence>) {
  */
 object OfficialBundles {
     /** Root elements of the forms that accompany a document rather than being one. */
-    val FORMS = setOf("交換表單", "文書訊息表單", "線上簽核", "跨機關陳核會稿交換表單")
+    val FORMS = setOf("交換表單", "文書訊息表單", "線上簽核", "跨機關陳核會稿交換表單") + ExchangeFiles.ROOTS
 
     /** True when [bytes] named [name] is an official document that can hold related files (a .di and the like). */
     fun isMain(name: String, bytes: ByteArray): Boolean {
         val ext = name.substringAfterLast('.', "").lowercase()
-        if (ext in setOf("sw", "si", "dm", "co")) return false
+        if (ext in setOf("sw", "si", "dm", "co", "en", "esw")) return false
         val root = XmlTree.parse(bytes)?.root ?: return false
         return root.name in OfficialDocuments.KINDS && root.name !in FORMS
     }
 
-    /** True when [name] is a file of the official document exchange (.di, .sw, .si, .dm, .co). */
+    /** True when [name] is a file of the official document exchange (.di, .sw, .si, .dm, .co, .en, .esw). */
     fun isExchangeFile(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in OfficialDocuments.EXTENSIONS
 
     /**
@@ -161,6 +161,19 @@ object OfficialBundles {
         if (doc != null && other != null) {
             when (other.name) {
                 "交換表單" -> receivers(doc, other)?.let { evidence.add(it) }
+                ExchangeFiles.ENVELOPE -> {
+                    // The envelope lists the files it carries with their hashes, and the document's subject.
+                    val listed = ExchangeFiles.envelopeFiles(other).filter { it.name == mainName }
+                    when {
+                        listed.any { it.matches(mainName, main) == true } -> { evidence.add(BundleEvidence("信封檔列出這份公文，雜湊相符", true)); approved = true }
+                        listed.isNotEmpty() -> evidence.add(BundleEvidence("信封檔列出同名檔案，但雜湊不同", false))
+                    }
+                    val subject = other.child("subject")?.deepText()?.let(::norm).orEmpty()
+                    val docSubject = doc.child("主旨")?.deepText()?.let(::norm).orEmpty()
+                    if (subject.isNotEmpty() && docSubject.isNotEmpty() && (subject == docSubject || docSubject.startsWith(subject))) {
+                        evidence.add(BundleEvidence("信封檔的主旨與公文相同", true))
+                    }
+                }
                 "線上簽核" -> {
                     when (ApprovalFile.of(candidateName, candidate)?.lists(mainName, main)) {
                         true -> { evidence.add(BundleEvidence("簽核檔列出這份公文，內容雜湊相符", true)); approved = true }

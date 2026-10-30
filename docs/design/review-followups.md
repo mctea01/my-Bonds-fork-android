@@ -27,8 +27,10 @@
    - Netty 4.2.7（Ktor 3.3.3 帶入，只用於測試伺服器、桌面測試與正式服務端）：34 筆，含 1 筆 Critical（CVE-2026-75595 SNI 路由繞過）與多筆 HTTP 請求走私。以 Netty BOM 釘到 4.2.19.Final，OSV 查無公告。正式服務端在 diw-wallet-server PR #9。
    - 原生 Rust crate：沒有高風險命中。crypto-bigint 0.5.5（RUSTSEC-2026-0387 時序，經 elliptic-curve 0.13）、block-buffer 0.10.4（中）、tracing-subscriber 0.2.25（低，CVE-2025-58160）與幾個已停止維護的 crate，都要等上游升級。
 
-## TWDIW 生態系簽章註冊
+## TWDIW 生態系簽章註冊（2026-10-30 已依推斷格式實作）
 
+- 已完成：`TwdiwDeviceKeys` 在 StrongBox、TEE、軟體依序建立 P-256 裝置金鑰（金鑰證明綁定生態系 nonce），向 `{origin}/api/did/` 註冊（did、keyType、keyPrefix、JWK、證明鏈、nonce、持有證明 JWS 與本 App 自己的 appHash／appPlatform／appVersion），成功時以回應的 keyId 簽 `Twdiw-Signature`。官方請求格式仍未取得，伺服器回應原文保存在「設定 > 互通」供實機比對；被拒絕時改用持有金鑰簽章，不阻擋領卡。測試 `TwdiwEcosystemSignatureTest`。
+- 以下為原規劃。
 - 現況：Twdiw-Signature 由本 App 自己的金鑰簽，預設只對 moda.wallet.gov.tw 加上；後端回 500/11021 的原因推測是金鑰沒有註冊。
 - 做法：用本 App 的 Android Keystore 金鑰（StrongBox 優先，否則 TEE，沒有硬體時用軟體兜底金鑰）呼叫 `api/did` 註冊並保存 keyId；簽章前向 `api/ext/nonce/generate?type=ecosyst` 取 nonce；標頭依官方 App 格式（ES256、payload 七欄依字母排序後 compact、簽章為 64 位元組 r||s）。
 - 界線：appHash、appPlatform、appVersion 填本 App 自己的值。後端若因此拒絕，記錄結果，不改成冒充官方 App。
@@ -36,10 +38,11 @@
 
 ## B. 標準補全
 
-### B5 OpenID Federation 1.0（2026-10-29 已實作出示端）
+### B5 OpenID Federation 1.0（2026-10-29 出示端，2026-10-30 發證端）
 
 - 已完成：`core/federation` 的 `FederationResolver`（信任鏈建立與驗證、`trust_chain` 標頭、constraints、metadata 覆寫）與 `MetadataPolicy`（七個標準運算子的合併與套用、`metadata_policy_crit`）；`RequestValidator` 以解析後的 Verifier jwks 驗證 `openid_federation:` 請求；「自訂信任」可加入 Trust Anchor（顯示金鑰指紋確認，USER 為 T2、TEST 為 T3）。測試在 `test-servers` 的 `FederationTest`（Trust Anchor、中介、Verifier 三層，涵蓋政策、離線鏈、錯誤金鑰、無錨點、路徑長度與政策衝突）。
-- 尚未做：`signed_jwks_uri`／`jwks_uri`、Trust Mark 驗證（目前只記錄類型）、發證端中繼資料走聯邦、TrustRegistry 層的統一錨點類型（目前在 federation 模組內以相同 tier 規則判定）。
+- PR #55 補上 `signed_jwks_uri`／`jwks_uri` 與 Trust Mark 驗證。2026-10-30：發證端中繼資料走聯邦，`MetadataFetcher` 以信任鏈的 `openid_credential_issuer` 中繼資料覆蓋發證端自身提供的欄位，錨點等級較好時採用（測試 `federatedIssuerMetadataAndTrust`）。
+- 尚未做：TrustRegistry 層的統一錨點類型（目前在 federation 模組內以相同 tier 規則判定）。
 - 以下為原規劃。
 
 - 規格：OpenID Federation 1.0 已於 2026-02-17 定稿；OpenID4VP 1.0 的 `openid_federation:` 用戶端識別依此驗證。EUDI 的信任框架也規劃用它。
@@ -52,7 +55,10 @@
 - 測試：test-servers 加一個 Trust Anchor、一個中介、一個 Verifier 的聯邦；驗收要涵蓋 policy 合併、過期、迴圈與深度限制。
 - 工作量：中（3 到 4 個工作階段）。
 
-### B6 電子公文 `.en`、`.esw`
+### B6 電子公文 `.en`、`.esw`（2026-10-30 已實作讀取）
+
+- 已完成：依規範附錄 5 二(二) 4 至 6 的 DTD 讀取信封檔（發文與受文單位、交換資訊、封裝檔案與雜湊）、加密交換表單（收文機關與憑證卡、加密金鑰大小）與交換確認訊息，結構化預覽；信封檔列出的同名檔案雜湊相符時當作公文容器的強證據。ESW 的對稱演算法規範未指定，只顯示收文對象不解密。測試 `ExchangeFilesTest`。尚未有真實樣本比對。
+- 以下為原規劃。
 
 - 性質：依《文書及檔案管理電腦化作業規範》，EN 是信封檔（XML，記收發文機關與文書資訊），ESW 是加密交換表單檔（記收文機關憑證卡號與加密後內容）。兩者都是公文交換系統以機關憑證（GCA）產生的交換用檔案，不是個人簽核文件。
 - 建議範圍：
@@ -62,7 +68,9 @@
 - 需要使用者提供：EN、ESW 樣本各一份（可去識別化），以及規範附件中的 DTD 版本。
 - 工作量：小到中（EN 1 個工作階段；ESW 視樣本而定）。
 
-### B7 NFC 近距離出示實機測試
+### B7 NFC 近距離出示實機測試（2026-10-30 測試清單已寫好）
+
+- 已完成：`docs/research/device-test-checklist.md` 新增本錢包的 N1 到 N7（協商式與靜態交握、NFC 資料傳輸、QR、HCE 狀態與多錢包並存、感應查驗、同意與紀錄）；設定 > 互通加上「NFC 靜態交握」開關。等使用者用兩台裝置實測。
 
 - 現況：`WalletNfcService`（HCE，ISO 18013-5 NFC 交握）已實作，但沒有完整的實機互通紀錄。
 - 做法：以 Multipaz Verifier App 或 EUDI 參考 Verifier 對實機測 NFC 交握加 BLE 資料傳輸，以及 NFC 靜態交握；測試項目補進 `docs/research/device-test-checklist.md`。
@@ -71,7 +79,7 @@
 
 ## C. 新需求（請使用者排序）
 
-### C8 PIV（YubiKey）簽章
+### C8 PIV（YubiKey）簽章（PR #55 已實作）
 
 - 函式庫：Yubico YubiKit for Android 3.2.1（2026-09-08，Apache-2.0，minSdk 21，本專案為 29）。透過 USB 或 NFC 建立 `SmartCardConnection`，`PivSession` 驗 PIN 後用 9C（Digital Signature）槽簽章；也提供 JCA Provider，可直接接 `DocumentSigner`。
 - 做法：新增 `PivDocumentSigner`（Android 專用，放 androidMain），讀 9C 槽憑證當簽署者憑證，支援 RSA 2048 與 P-256／P-384；簽章時提示插入或靠卡，PIN 錯誤次數顯示剩餘次數。桌面版可用 PC/SC（javax.smartcardio）走同一套 APDU，列為次要。
@@ -88,24 +96,30 @@
 - 做法：匯出時寫入 App 快取下的專用分享目錄，用 `FileProvider` 產生 content URI，以 `ACTION_SEND`／`ACTION_SEND_MULTIPLE` 分享（中文檔名放在 `EXTRA_TITLE` 與 `ClipData`，保持 UTF-8）。分享畫面關閉、App 回到前景或下次啟動時清空目錄。桌面版維持另存新檔。
 - 工作量：小（1 個工作階段）。
 
-### C10 CSC API 補全與 CSC Profile
+### C10 CSC API 補全與 CSC Profile（2026-10-30 已實作）
+
+- 已完成：PAR（`oauth2/pushed_authorize` 或 AS 的 PAR 端點）、非同步 `signHash`（`signatures/signPolling`）、`signatures/signDoc`（只有 signDoc 的服務也能做 PAdES）、`signatures/timestamp`（優先使用，失敗退回設定的 TSA）、`info` 的 signature_formats 與 conformance_levels、CSC Profile 匯入（貼上或讀檔）。以 CSC API v2.2 PDF 核對。測試 `CscSigningTest`（mock QTSP）。`authorization_details`（RFC 9396）尚未做。
+- 以下為原規劃。
 
 - 現況：`Csc.kt` 已支援 CSC API v2 的 OAuth 2.0 授權碼、`credentials/list`、`credentials/info`、`credentials/authorize`、`signatures/signHash`，相容 v1 的 PIN 與 OTP 欄位，內建 EUDI 測試服務。
 - 補全：CSC API v2 後續版本的 `oauth2/pushed_authorize`（PAR）、RFC 9396 `authorization_details`（credential 範圍授權）、`signatures/signDoc`、`signatures/timestamp` 與非同步簽章回應。實作前以 CSC 官網最新版 PDF 逐一核對端點與參數。
 - CSC Profile：讓使用者只輸入服務網址，其餘從 `info` 與 RFC 8414 中繼資料自動推導；常見服務（EUDI、各國 QTSP）提供內建 Profile 檔（端點、client_id、redirect URI、支援的 authType 與簽章演算法）。台灣目前沒有公開的 CSC 服務，先保留 Profile 格式讓之後加入。
 - 工作量：中（2 到 3 個工作階段），需要能測的服務；沒有的部分以 test-servers 模擬。
 
-### C11 C2PA 與 CAWG
+### C11 C2PA 與 CAWG（2026-10-30 已實作讀取與驗證）
+
+- 已完成：改以純 Kotlin 實作（不用 c2pa-android 原生函式庫，APK 不增加原生檔，桌面版同一套）。讀 JPEG、PNG、WebP 與 sidecar 的 manifest store，v1／v2 claim，COSE 簽章（ES、PS、Ed25519）與 sigTst 時戳，宣告雜湊與 `c2pa.hash.data` 硬綁定，動作、成分、作者、AI 訓練選擇與 CAWG 身分；結果用規格的狀態代碼。簽署者以新的 `TrustRole.CONTENT` 判定，內建 C2PA 信任清單（32 個錨點）並由每月腳本更新。以 c2pa-python（c2pa-rs 0.91）產生的檔案與 c2pa-rs 的 CA.jpg 驗證。尚未支援：BMFF（影片、HEIC）、PDF 內嵌 manifest、`c2pa.hash.boxes`、身分彙整服務的簽章驗證、寫入。
+- 以下為原規劃。
 
 - 函式庫：Content Authenticity Initiative 的 c2pa-android 1.0.0（Kotlin 包裝 c2pa-rs C API，Apache-2.0 或 MIT，minSdk 28），可從檔案或串流讀取並驗證 manifest。
 - 做法：圖片與 PDF 檢視時讀取 C2PA manifest，顯示簽署者、產生工具、動作紀錄（actions）、成分（ingredients）與驗證結果；CAWG 身分斷言顯示身分與綁定方式。簽署者憑證以現有 TrustRegistry 評定，並加入 C2PA 信任清單作為錨點來源。
 - 限制：原生函式庫會增加 APK 大小（需實測），桌面版需另外打包 c2pa-rs；先只做讀取與驗證，不做寫入。
 - 工作量：中（2 個工作階段）。
 
-### C12 PDF 可見簽章（2026-10-29 已實作檢視）
+### C12 PDF 可見簽章（2026-10-29 檢視，2026-10-30 加入可見簽章）
 
 - 已完成（檢視）：`PdfSignatures.placements()` 解析每個簽章 widget 的頁碼、/Rect 與頁面 /Rotate，換算成以左上角為原點的比例框；`DocumentReport.signaturePlacements` 帶出，文件預覽在對應頁面框出位置（顏色依簽章判定），並列出其他頁與不可見簽章。零面積或 Hidden/NoView 的 widget 標為不可見。測試 `PdfSignaturePlacementTest`。
-- 尚未做（加入可見簽章，選配）：簽署時產生外觀串流（/AP）寫入非零 Rect 的 widget；目前加簽仍為不可見簽章。
+- 2026-10-30 已完成加入可見簽章：簽署畫面「頁面上的簽章（選填）」選頁（第一頁、最後一頁或頁碼）、五個位置與選填圖片；寫入非零 Rect 的 widget 與 /AP 外觀串流（中文以不內嵌的 MSung-Light 顯示，圖片含透明度遮罩），旋轉頁面以 /Matrix 對應。測試在 `DocumentSigningTest`，PDFium 算圖確認。
 - 現況（原規劃）：簽署時的簽章欄位 Rect 為零（不可見）；驗證時列出簽章但不顯示位置。
 - 檢視：解析每個簽章 widget 的頁碼與 Rect，在預覽頁上框出位置並可點選對應的驗證結果。
 - 加入可見簽章（可選）：使用者在預覽頁選頁與位置，產生外觀串流（簽署者姓名、時間、可選圖片），寫入 `/AP`；其餘流程不變。

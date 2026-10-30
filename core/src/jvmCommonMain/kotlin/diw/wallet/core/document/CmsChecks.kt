@@ -181,6 +181,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         problems: MutableList<String>,
         notes: MutableList<String>,
         coversWhole: Boolean? = null,
+        role: TrustRole = TrustRole.DOCUMENT,
     ): SignatureInfo {
         if (signer == null) {
             return SignatureInfo(format, label, algorithm, null, emptyList(), integrity, coversWhole, claimedTime = claimed,
@@ -200,7 +201,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
             else -> { problems.add("簽署憑證不在有效期間內"); Check.FAIL }
         }
         val at = trustedTime ?: if (validNow) now else claimed?.let { Instant.fromEpochSeconds(it) } ?: now
-        val decision = pki.decide(TrustRole.DOCUMENT, chain, at)
+        val decision = pki.decide(role, chain, at)
         if (PkiSupport.unknownAnchor(decision)) {
             val root = chain.last()
             notes.add(if (pki.selfSigned(root)) "憑證鏈的根憑證「${pki.cn(root.subject) ?: root.subject}」不在信任錨點；確認來源後可信任這個根憑證（T2）"

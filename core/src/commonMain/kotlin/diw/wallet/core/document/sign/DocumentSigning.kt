@@ -17,6 +17,13 @@ expect object DocumentSigning {
     suspend fun signPdf(pdf: ByteArray, signer: DocumentSigner, options: PdfSignOptions, timestamper: Timestamper?): ByteArray
 
     /**
+     * Checks a CMS SignedData made elsewhere (such as by a CSC service through signDoc) before it goes into a file:
+     * one signer, identified as [certificate], whose signature verifies over the detached [content]. Throws
+     * [SigningException] otherwise.
+     */
+    fun verifyDetached(cms: ByteArray, content: ByteArray, certificate: ByteArray)
+
+    /**
      * With [validation], the chains and revocation data (OCSP first) go into the signature (baseline LT); [archive]
      * adds an archive-time-stamp-v3 (B-LTA) and needs both [timestamper] and [validation].
      */

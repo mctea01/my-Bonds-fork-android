@@ -179,30 +179,10 @@ class PdfSignatures(private val pdf: PdfFile) {
     fun placements(): List<PdfSignaturePlacement> = runCatching {
         val pageIndex = HashMap<Int, Int>()
         val pageBox = HashMap<Int, Pair<FloatArray, Int>>() // page num -> (cropOrMediaBox llx,lly,urx,ury, rotate)
-        val seen = HashSet<Int>()
-        var index = 0
-        fun box(d: PdfDict, key: String): FloatArray? {
-            val a = pdf.array(d[key]) ?: return null
-            if (a.size < 4) return null
-            val v = a.map { (pdf.resolve(it) as? PdfNumber)?.double?.toFloat() ?: return null }
-            return floatArrayOf(minOf(v[0], v[2]), minOf(v[1], v[3]), maxOf(v[0], v[2]), maxOf(v[1], v[3]))
+        PdfPages.list(pdf).forEachIndexed { i, p ->
+            pageIndex[p.ref.num] = i
+            pageBox[p.ref.num] = p.box to p.rotate
         }
-        fun walk(node: PdfObject?, media: FloatArray?, crop: FloatArray?, rotate: Int, depth: Int) {
-            if (depth > 64) return
-            if (node is PdfRef && !seen.add(node.num)) return
-            val d = pdf.dict(node) ?: return
-            val m = box(d, "MediaBox") ?: media
-            val c = box(d, "CropBox") ?: crop
-            val r = ((pdf.resolve(d["Rotate"]) as? PdfNumber)?.int ?: rotate).mod(360)
-            val kids = pdf.array(d["Kids"])
-            if (kids != null && d.name("Type") != "Page") {
-                kids.forEach { walk(it, m, c, r, depth + 1) }
-            } else if (node is PdfRef) {
-                (c ?: m)?.let { pageBox[node.num] = it to r }
-                pageIndex[node.num] = index++
-            }
-        }
-        walk(pdf.catalog["Pages"], null, null, 0, 0)
 
         val out = ArrayList<PdfSignaturePlacement>()
         val acro = pdf.dict(pdf.catalog["AcroForm"])

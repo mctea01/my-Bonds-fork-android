@@ -788,5 +788,9 @@
         "黑龙江CA（中安）根证书": "黑龍江 CA（中安）HLJCA"
       }
     }
-  ]
+  ],
+  "c2pa": {
+    "url": "https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem",
+    "file": "c2pa/C2PA-TRUST-LIST.pem"
+  }
 }

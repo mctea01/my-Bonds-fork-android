@@ -8,7 +8,11 @@ import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.LaterChanges
 import diw.wallet.core.document.SignatureFormat
 import diw.testservers.fixtures.PdfComposer
+import diw.wallet.core.document.pdf.PdfAppearanceImage
+import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfSignOptions
+import diw.wallet.core.document.pdf.PdfSignatureAppearance
+import diw.wallet.core.document.pdf.PdfSignatures
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.sign.SignerKeyType
@@ -164,6 +168,56 @@ class DocumentSigningTest {
         // Changing a byte inside the signed range breaks the signature.
         val tampered = twice.copyOf().also { val i = String(it, Charsets.ISO_8859_1).indexOf("/Producer"); it[i + 1] = 'p'.code.toByte() }
         assertEquals(DocumentVerdict.INVALID, DocumentInspector.inspect(tampered, "x.pdf", trust).verdict)
+    }
+
+    @Test
+    fun visiblePadesSignatureHasAppearanceAtTheChosenBox() = runBlocking<Unit> {
+        trustRoot()
+        // A half-transparent 4x2 picture exercises the soft mask.
+        val image = PdfAppearanceImage(4, 2, IntArray(8) { if (it % 2 == 0) 0xFF2040A0.toInt() else 0x80FF0000.toInt() })
+        val look = PdfSignatureAppearance.preset(PdfSignatureAppearance.Position.BOTTOM_RIGHT, -1, listOf("簽署者：王小明", "2026-10-30 12:00 Taipei"), image)
+        val signed = DocumentSigning.signPdf(composed(), signer(false), PdfSignOptions(reason = "可見簽章", appearance = look), timestamper)
+        save("pades-visible.pdf", signed)
+        val r = DocumentInspector.inspect(signed, "v.pdf", trust)
+        assertEquals(DocumentVerdict.VALID, r.verdict, r.signatures.single().problems.toString())
+
+        val placement = PdfSignatures(PdfFile(signed)).placements().single()
+        assertTrue(placement.visible)
+        assertEquals(0, placement.page)
+        assertEquals(look.x.toFloat(), placement.x0, 0.01f)
+        assertEquals(look.y.toFloat(), placement.y0, 0.01f)
+        assertEquals((look.x + look.width).toFloat(), placement.x1, 0.01f)
+        assertEquals((look.y + look.height).toFloat(), placement.y1, 0.01f)
+
+        val text = String(signed, Charsets.ISO_8859_1)
+        assertTrue("/AP <</N " in text && "/Subtype /Form" in text, "appearance stream")
+        assertTrue("/UniCNS-UTF16-H" in text, "CJK CMap")
+        assertTrue("/SMask" in text, "soft mask for the transparent pixels")
+    }
+
+    @Test
+    fun visibleSignatureOnRotatedPageMapsBackToUserSpace() = runBlocking<Unit> {
+        val sb = StringBuilder("%PDF-1.7\n")
+        val offsets = IntArray(4)
+        fun obj(n: Int, body: String) { offsets[n] = sb.length; sb.append("$n 0 obj\n$body\nendobj\n") }
+        obj(1, "<</Type /Catalog /Pages 2 0 R>>")
+        obj(2, "<</Type /Pages /Kids [3 0 R] /Count 1 /Rotate 90>>")
+        obj(3, "<</Type /Page /Parent 2 0 R /MediaBox [0 0 600 800]>>")
+        val xref = sb.length
+        sb.append("xref\n0 4\n0000000000 65535 f\r\n")
+        for (n in 1..3) sb.append(offsets[n].toString().padStart(10, '0')).append(" 00000 n\r\n")
+        sb.append("trailer\n<</Size 4 /Root 1 0 R>>\nstartxref\n$xref\n%%EOF\n")
+        val look = PdfSignatureAppearance(0, 0.1, 0.2, 0.3, 0.1, listOf("Rotated"))
+        val signed = DocumentSigning.signPdf(sb.toString().toByteArray(), signer(true), PdfSignOptions(appearance = look), null)
+        val p = PdfSignatures(PdfFile(signed)).placements().single()
+        assertTrue(p.visible)
+        assertEquals(0.1f, p.x0, 0.005f)
+        assertEquals(0.2f, p.y0, 0.005f)
+        assertEquals(0.4f, p.x1, 0.005f)
+        assertEquals(0.3f, p.y1, 0.005f)
+        // The appearance is turned against the page rotation so the text reads upright.
+        assertTrue("/Matrix [0 1 -1 0 0 0]" in String(signed, Charsets.ISO_8859_1))
+        assertFailsWith<SigningException> { DocumentSigning.signPdf(signed, signer(true), PdfSignOptions(appearance = PdfSignatureAppearance(3, 0.1, 0.1, 0.2, 0.1, listOf("x"))), null) }
     }
 
     @Test

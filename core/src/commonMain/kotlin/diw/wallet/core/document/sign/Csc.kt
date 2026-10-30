@@ -3,6 +3,7 @@ package diw.wallet.core.document.sign
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.arr
+import diw.wallet.core.util.bool
 import diw.wallet.core.util.int
 import diw.wallet.core.util.long
 import diw.wallet.core.util.isAcceptableEndpoint
@@ -86,12 +87,64 @@ object CscServices {
     )
 
     val builtIn: List<CscService> = listOf(EUDI_DEMO, EUDI_DEV)
+
+    /**
+     * Services from a CSC profile: a JSON object, or an array of them, holding what /info cannot tell, so the user
+     * does not type each value. Members: "type" ("csc-profile"), "name", "baseUrl" (the CSC API root), "clientId",
+     * optional "clientSecret", "redirectUri" (the wallet's own when absent), "environment" ("test" or
+     * "production"), optional "note". [allowHttp] admits http base addresses (loopback test servers only).
+     */
+    fun fromProfile(json: String, allowHttp: Boolean = false): List<CscService> {
+        val root = runCatching { DiwJson.parseToJsonElement(json.trim()) }.getOrElse { throw CscException("CSC Profile 不是 JSON") }
+        val items = when (root) {
+            is JsonObject -> listOf(root)
+            is kotlinx.serialization.json.JsonArray -> root.mapNotNull { it as? JsonObject }
+            else -> emptyList()
+        }
+        if (items.isEmpty()) throw CscException("CSC Profile 沒有任何服務")
+        return items.mapIndexed { i, o ->
+            o.str("type")?.let { if (it != PROFILE_TYPE) throw CscException("第 ${i + 1} 項不是 CSC Profile（type 為 $it）") }
+            val name = o.str("name")?.trim()?.takeIf { it.isNotEmpty() } ?: throw CscException("第 ${i + 1} 項缺少 name")
+            val base = o.str("baseUrl")?.trim()?.trimEnd('/') ?: throw CscException("「$name」缺少 baseUrl")
+            if (!base.startsWith("https://") && !(allowHttp && base.startsWith("http://"))) throw CscException("「$name」的 baseUrl 必須是 https")
+            val clientId = o.str("clientId")?.trim()?.takeIf { it.isNotEmpty() } ?: throw CscException("「$name」缺少 clientId")
+            val env = when (o.str("environment")?.lowercase()) {
+                "test" -> CscEnvironment.TEST
+                "production", null -> CscEnvironment.PRODUCTION
+                else -> throw CscException("「$name」的 environment 只能是 test 或 production")
+            }
+            CscService(
+                id = "user-" + PlatformCrypto.sha256((base + "|" + clientId).encodeToByteArray()).copyOfRange(0, 6).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') },
+                name = name.take(60),
+                baseUrl = base,
+                clientId = clientId,
+                clientSecret = o.str("clientSecret")?.trim()?.ifEmpty { null },
+                redirectUri = o.str("redirectUri")?.trim()?.takeIf { ':' in it } ?: WALLET_REDIRECT,
+                environment = env,
+                note = o.str("note")?.take(200),
+            )
+        }
+    }
+
+    /** A profile for [s] that another wallet can import; the client secret is left out unless [withSecret]. */
+    fun profileOf(s: CscService, withSecret: Boolean = false): String = buildJsonObject {
+        put("type", PROFILE_TYPE)
+        put("name", s.name)
+        put("baseUrl", s.baseUrl)
+        put("clientId", s.clientId)
+        if (withSecret) s.clientSecret?.let { put("clientSecret", it) }
+        put("redirectUri", s.redirectUri)
+        put("environment", if (s.environment == CscEnvironment.TEST) "test" else "production")
+        s.note?.let { put("note", it) }
+    }.toString()
+
+    const val PROFILE_TYPE = "csc-profile"
 }
 
 /** A failure reported by a remote signing service or in its authorization; [message] is shown as is. */
 class CscException(message: String, val error: String? = null, cause: Throwable? = null) : Exception(message, cause)
 
-/** What /info says about a service. */
+/** What /info says about a service (CSC API v2.2 section 11.1). */
 data class CscInfo(
     val name: String?,
     val oauth2: String?,
@@ -99,7 +152,17 @@ data class CscInfo(
     val authTypes: List<String>,
     val methods: List<String>,
     val signAlgorithms: List<String>,
-)
+    val specs: String? = null,
+    val region: String? = null,
+    /** RFC 9396 authorization_details is accepted at the authorization server. */
+    val supportsRar: Boolean = false,
+    val asynchronousOperationMode: Boolean = false,
+    /** signatures/signDoc: signature formats (C, X, P, J), envelope properties and conformance levels. */
+    val signatureFormats: List<String> = emptyList(),
+    val conformanceLevels: List<String> = emptyList(),
+) {
+    fun supports(method: String): Boolean = methods.isEmpty() && method == "signatures/signHash" || method in methods
+}
 
 /** A signing key and certificate the user holds at a service (credentials/list or credentials/info). */
 data class CscCredential(
@@ -147,7 +210,7 @@ interface CscUserAgent {
 /** CSC API v2 client for one [service]. */
 class CscClient(private val http: HttpClient, val service: CscService) {
     private var info: CscInfo? = null
-    private var endpoints: Pair<String, String>? = null
+    private var endpoints: OAuthEndpoints? = null
     private val base = service.baseUrl.trim().trimEnd('/')
 
     suspend fun info(): CscInfo = info ?: run {
@@ -159,11 +222,23 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             authTypes = o.strList("authType"),
             methods = o.strList("methods"),
             signAlgorithms = o.obj("signAlgorithms")?.strList("algos").orEmpty(),
+            specs = o.str("specs"),
+            region = o.str("region"),
+            supportsRar = o.bool("supportsRar") == true,
+            asynchronousOperationMode = o.bool("asynchronousOperationMode") == true,
+            signatureFormats = o.obj("signature_formats")?.strList("formats").orEmpty(),
+            conformanceLevels = o.strList("conformance_levels"),
         ).also { info = it }
     }
 
-    /** Authorization and token endpoints: RFC 8414 metadata of oauth2Issuer, else the oauth2 base address. */
-    private suspend fun endpoints(): Pair<String, String> = endpoints ?: run {
+    /** The OAuth endpoints: authorization, token, and pushed authorization (RFC 9126) when the service has one. */
+    private class OAuthEndpoints(val authorize: String, val token: String, val par: String?)
+
+    /**
+     * Authorization, token and pushed authorization endpoints: RFC 8414 metadata of oauth2Issuer, else the oauth2 base
+     * address with the CSC paths (oauth2/pushed_authorize only when /info lists it).
+     */
+    private suspend fun endpoints(): OAuthEndpoints = endpoints ?: run {
         val i = info()
         val issuer = i.oauth2Issuer?.trimEnd('/')
         val fromMetadata = issuer?.let { iss ->
@@ -172,18 +247,22 @@ class CscClient(private val http: HttpClient, val service: CscService) {
                 val m = DiwJson.parseToJsonElement(r.bodyAsText()) as JsonObject
                 val a = m.str("authorization_endpoint")
                 val t = m.str("token_endpoint")
-                if (r.status.isSuccess() && a != null && t != null) a to t else null
+                if (r.status.isSuccess() && a != null && t != null) OAuthEndpoints(a, t, m.str("pushed_authorization_request_endpoint")) else null
             }.getOrNull()
         }
         val oauth = (i.oauth2 ?: issuer)?.trimEnd('/')
-        val pair = fromMetadata ?: oauth?.let { "$it/oauth2/authorize" to "$it/oauth2/token" }
-            ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")
+        val found = fromMetadata ?: oauth?.let {
+            OAuthEndpoints("$it/oauth2/authorize", "$it/oauth2/token", if ("oauth2/pushed_authorize" in i.methods) "$it/oauth2/pushed_authorize" else null)
+        } ?: throw CscException("遠端簽章服務沒有提供 OAuth 2.0 授權位址，目前只支援 OAuth 授權的服務")
         val allowTestLocalhost = service.environment == CscEnvironment.TEST
-        if (!isAcceptableEndpoint(pair.first, allowTestLocalhost) ||
-            !isAcceptableEndpoint(pair.second, allowTestLocalhost)
-        ) throw CscException("遠端簽章 OAuth 授權與 Token 端點必須使用 HTTPS（本機測試環境除外）")
-        pair.also { endpoints = it }
+        if (listOfNotNull(found.authorize, found.token, found.par).any { !isAcceptableEndpoint(it, allowTestLocalhost) }) {
+            throw CscException("遠端簽章 OAuth 授權與 Token 端點必須使用 HTTPS（本機測試環境除外）")
+        }
+        found.also { endpoints = it }
     }
+
+    /** True when the authorization request goes through the pushed authorization endpoint. */
+    suspend fun usesPushedAuthorization(): Boolean = endpoints().par != null
 
     /**
      * Authorization request for [scope] ("service" to list credentials, "credential" to approve signatures) with
@@ -194,23 +273,39 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         extra: Map<String, String> = emptyMap(),
         authorizationDetails: String? = null,
     ): CscAuthorizationRequest {
-        val (authorize, _) = endpoints()
+        val ep = endpoints()
         val verifier = PlatformCrypto.randomBytes(32).toBase64Url()
         val challenge = PlatformCrypto.sha256(verifier.encodeToByteArray()).toBase64Url()
         val state = PlatformCrypto.randomBytes(16).toBase64Url()
-        val url = URLBuilder(authorize).apply {
-            parameters.append("response_type", "code")
-            parameters.append("client_id", service.clientId)
-            parameters.append("redirect_uri", service.redirectUri)
-            parameters.append("scope", scope)
-            parameters.append("code_challenge", challenge)
-            parameters.append("code_challenge_method", "S256")
-            parameters.append("state", state)
-            parameters.append("lang", "zh-TW")
-            extra.forEach { (k, v) -> parameters.append(k, v) }
-            authorizationDetails?.let { parameters.append("authorization_details", it) }
-        }.buildString()
+        val params = LinkedHashMap<String, String>()
+        params["response_type"] = "code"
+        params["client_id"] = service.clientId
+        params["redirect_uri"] = service.redirectUri
+        params["scope"] = scope
+        params["code_challenge"] = challenge
+        params["code_challenge_method"] = "S256"
+        params["state"] = state
+        params["lang"] = "zh-TW"
+        params.putAll(extra)
+        authorizationDetails?.let { params["authorization_details"] = it }
+        val url = if (ep.par != null) {
+            // RFC 9126: the parameters go to the service directly (authenticated like a token request); the browser
+            // only carries client_id and the request_uri the service answers with.
+            val r = http.submitForm(ep.par, parameters { params.forEach { (k, v) -> append(k, v) } }) { clientAuthentication() }
+            val o = parse(r, "推送授權要求")
+            val requestUri = o.str("request_uri") ?: throw CscException("遠端簽章服務的推送授權沒有回傳 request_uri")
+            URLBuilder(ep.authorize).apply {
+                parameters.append("client_id", service.clientId)
+                parameters.append("request_uri", requestUri)
+            }.buildString()
+        } else URLBuilder(ep.authorize).apply { params.forEach { (k, v) -> parameters.append(k, v) } }.buildString()
         return CscAuthorizationRequest(url, state, verifier, authorizationDetails)
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.clientAuthentication() {
+        service.clientSecret?.takeIf { it.isNotEmpty() }?.let { secret ->
+            header(HttpHeaders.Authorization, "Basic " + Base64.Default.encode("${service.clientId}:$secret".encodeToByteArray()))
+        }
     }
 
     /** The authorization code in the address the service redirected to, after checking state and errors. */
@@ -230,7 +325,7 @@ class CscClient(private val http: HttpClient, val service: CscService) {
     }
 
     suspend fun token(code: String, request: CscAuthorizationRequest): CscToken {
-        val (_, tokenEndpoint) = endpoints()
+        val tokenEndpoint = endpoints().token
         val r = http.submitForm(tokenEndpoint, parameters {
             append("grant_type", "authorization_code")
             append("code", code)
@@ -238,11 +333,7 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             append("code_verifier", request.codeVerifier)
             append("client_id", service.clientId)
             request.authorizationDetails?.let { append("authorization_details", it) }
-        }) {
-            service.clientSecret?.takeIf { it.isNotEmpty() }?.let { secret ->
-                header(HttpHeaders.Authorization, "Basic " + Base64.Default.encode("${service.clientId}:$secret".encodeToByteArray()))
-            }
-        }
+        }) { clientAuthentication() }
         val o = parse(r, "取得存取權杖")
         val access = o.str("access_token") ?: throw CscException("遠端簽章服務沒有回傳存取權杖")
         if (!o.str("token_type").equals("Bearer", true)) {
@@ -325,9 +416,63 @@ class CscClient(private val http: HttpClient, val service: CscService) {
             put("signAlgo", signAlgorithm)
             put("operationMode", "S")
         }, token)
-        val signatures = o.strList("signatures").map { it.fromBase64() }
+        // A service may process the request asynchronously anyway and answer with a responseID (section 11.13).
+        val done = o.str("responseID")?.takeIf { o["signatures"] == null }?.let { poll(token, it) } ?: o
+        val signatures = done.strList("signatures").map { it.fromBase64() }
         if (signatures.size != hashes.size) throw CscException("遠端簽章服務回傳的簽章數量不符")
         return signatures
+    }
+
+    /**
+     * signatures/signDoc with one document digest (section 11.14): the service builds the AdES signature itself and
+     * returns the SignatureObject, for PAdES (format "P") the CMS SignedData to embed in the PDF. [level] is a
+     * conformance level such as AdES-B-B or AdES-B-T.
+     */
+    suspend fun signDoc(token: CscToken, credentialId: String, hash: ByteArray, format: String, level: String, signAlgorithm: String, sad: String? = null): ByteArray {
+        val o = call("signatures/signDoc", buildJsonObject {
+            put("credentialID", credentialId)
+            sad?.let { put("SAD", it) }
+            putJsonArray("documentDigests") {
+                addJsonObject {
+                    putJsonArray("hashes") { add(JsonPrimitive(Base64.Default.encode(hash))) }
+                    put("hashAlgorithmOID", SHA256_OID)
+                    put("signature_format", format)
+                    put("conformance_level", level)
+                    put("signAlgo", signAlgorithm)
+                    if (format == "C") put("signed_envelope_property", "Detached")
+                }
+            }
+            put("hashAlgorithmOID", SHA256_OID)
+            put("operationMode", "S")
+        }, token)
+        val done = o.str("responseID")?.takeIf { o["SignatureObject"] == null && o["DocumentWithSignature"] == null }?.let { poll(token, it) } ?: o
+        return done.strList("SignatureObject").singleOrNull()?.fromBase64()
+            ?: throw CscException("遠端簽章服務的 signDoc 沒有回傳簽章物件（SignatureObject）")
+    }
+
+    /** signatures/signPolling until the asynchronous request completes (200) rather than pending (202). */
+    private suspend fun poll(token: CscToken, responseId: String): JsonObject {
+        repeat(POLL_ATTEMPTS) {
+            val r = http.post("$base/signatures/signPolling") {
+                header(HttpHeaders.Authorization, "Bearer " + token.accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("requestID", responseId) }.toString())
+            }
+            if (r.status.value != 202) return parse(r, "signatures/signPolling")
+            kotlinx.coroutines.delay(POLL_INTERVAL_MS)
+        }
+        throw CscException("遠端簽章服務在 ${POLL_ATTEMPTS * POLL_INTERVAL_MS / 1000} 秒內沒有完成簽章")
+    }
+
+    /** signatures/timestamp (section 11.16): an RFC 3161 token from the service over [hash] (SHA-256), with a nonce. */
+    suspend fun timestamp(token: CscToken, hash: ByteArray): ByteArray {
+        val nonce = PlatformCrypto.randomBytes(16).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+        val o = call("signatures/timestamp", buildJsonObject {
+            put("hash", Base64.Default.encode(hash))
+            put("hashAlgo", SHA256_OID)
+            put("nonce", nonce)
+        }, token)
+        return o.str("timestamp")?.fromBase64() ?: throw CscException("遠端簽章服務沒有回傳時戳")
     }
 
     private suspend fun call(method: String, body: JsonObject, token: CscToken?): JsonObject {
@@ -356,6 +501,8 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         const val EC_PUBLIC_KEY = "1.2.840.10045.2.1"
         const val RSA_SHA256 = "1.2.840.113549.1.1.11"
         const val RSA_ENCRYPTION = "1.2.840.113549.1.1.1"
+        private const val POLL_ATTEMPTS = 60
+        private const val POLL_INTERVAL_MS = 2000L
     }
 }
 
@@ -411,50 +558,84 @@ class CscSigner(
         val c = credential ?: load()
         val hash = PlatformCrypto.sha256(data)
         val algorithm = signAlgorithm(c)
-        val signature = when (c.authMode) {
-            "implicit", "explicit" -> {
-                val token = serviceToken()
-                if (c.otpNeeded && c.otpOnline) client.sendOtp(token, c.id)
-                val pin = if (c.pinNeeded) agent.askSecret("遠端簽章 PIN 碼", false) ?: throw SigningException("已取消簽署") else null
-                val otp = if (c.otpNeeded) agent.askSecret("一次性密碼（OTP）", true) ?: throw SigningException("已取消簽署") else null
-                onStatus("遠端簽章服務簽署中")
-                val sad = client.authorizeCredential(token, c.id, listOf(hash), pin, otp, asciiDescription(hint))
-                client.signHash(token, c.id, listOf(hash), algorithm, sad)
-            }
-            else -> {
-                onStatus("授權這次簽章")
-                // CSC v2 lists the credential parameters; services built on the EUDI signer read only the RFC 9396
-                // authorization_details form (the demo answers 400 without it), so both are sent.
-                val details = buildJsonArray {
-                    addJsonObject {
-                        put("type", "credential")
-                        put("credentialID", c.id)
-                        put("numSignatures", 1)
-                        putJsonArray("documentDigests") {
-                            addJsonObject {
-                                put("hash", Base64.Default.encode(hash))
-                                put("label", asciiDescription(hint))
-                            }
-                        }
-                        put("hashAlgorithmOID", CscClient.SHA256_OID)
-                    }
-                }.toString()
-                val request = client.authorizationRequest("credential", mapOf(
-                    "credentialID" to c.id,
-                    "numSignatures" to "1",
-                    "hashes" to hash.toBase64Url(),
-                    "hashAlgorithmOID" to CscClient.SHA256_OID,
-                    "description" to asciiDescription(hint),
-                ), details)
-                val back = agent.authorize(request.url, client.service.redirectUri, "授權「${client.service.name}」簽署：$hint")
-                val token = client.token(client.code(back, request), request)
-                onStatus("遠端簽章服務簽署中")
-                client.signHash(token, c.id, listOf(hash), algorithm)
-            }
-        }.single()
+        val (token, sad) = authorize(c, hash)
+        onStatus("遠端簽章服務簽署中")
+        val signature = client.signHash(token, c.id, listOf(hash), algorithm, sad).single()
         return if (keyTypeOf(c.certificates.first()) == SignerKeyType.EC_P256 && signature.size == 64) {
             EcSignature(signature.copyOfRange(0, 32), signature.copyOfRange(32, 64)).toDerEncoded()
         } else signature
+    }
+
+    /** The service offers raw signatures (signatures/signHash); a service without it can still sign PAdES through signDoc. */
+    suspend fun supportsSignHash(): Boolean = client.info().supports("signatures/signHash")
+
+    suspend fun supportsSignDoc(): Boolean = client.info().supports("signatures/signDoc")
+
+    /**
+     * A PAdES signature built by the service (signatures/signDoc, format P) over [signedData], the bytes a PDF
+     * signature covers: returns the CMS SignedData to place in /Contents. [level] is AdES-B-B or AdES-B-T.
+     */
+    suspend fun signPadesDigest(signedData: ByteArray, level: String): ByteArray {
+        val c = credential ?: load()
+        val hash = PlatformCrypto.sha256(signedData)
+        val (token, sad) = authorize(c, hash)
+        onStatus("遠端簽章服務產生 PAdES 簽章")
+        return client.signDoc(token, c.id, hash, "P", level, signAlgorithm(c), sad)
+    }
+
+    /**
+     * The service's own time-stamp authority (signatures/timestamp) when /info lists it, so B-T and later levels use
+     * the RSSP's pre-configured service as the specification intends; null otherwise.
+     */
+    suspend fun timestamper(): Timestamper? {
+        if (!client.info().supports("signatures/timestamp")) return null
+        return Timestamper { data ->
+            onStatus("取得遠端簽章服務的時戳")
+            client.timestamp(serviceToken(), PlatformCrypto.sha256(data))
+        }
+    }
+
+    /**
+     * Approves signing [hash] with the credential: implicit and explicit modes ask for a PIN or OTP and return the
+     * service token with the SAD; oauth2code runs a credential-scope authorization and returns its token.
+     */
+    private suspend fun authorize(c: CscCredential, hash: ByteArray): Pair<CscToken, String?> = when (c.authMode) {
+        "implicit", "explicit" -> {
+            val token = serviceToken()
+            if (c.otpNeeded && c.otpOnline) client.sendOtp(token, c.id)
+            val pin = if (c.pinNeeded) agent.askSecret("遠端簽章 PIN 碼", false) ?: throw SigningException("已取消簽署") else null
+            val otp = if (c.otpNeeded) agent.askSecret("一次性密碼（OTP）", true) ?: throw SigningException("已取消簽署") else null
+            onStatus("遠端簽章服務授權中")
+            token to client.authorizeCredential(token, c.id, listOf(hash), pin, otp, asciiDescription(hint))
+        }
+        else -> {
+            onStatus("授權這次簽章")
+            // CSC v2 lists the credential parameters; services built on the EUDI signer read only the RFC 9396
+            // authorization_details form (the demo answers 400 without it), so both are sent.
+            val details = buildJsonArray {
+                addJsonObject {
+                    put("type", "credential")
+                    put("credentialID", c.id)
+                    put("numSignatures", 1)
+                    putJsonArray("documentDigests") {
+                        addJsonObject {
+                            put("hash", Base64.Default.encode(hash))
+                            put("label", asciiDescription(hint))
+                        }
+                    }
+                    put("hashAlgorithmOID", CscClient.SHA256_OID)
+                }
+            }.toString()
+            val request = client.authorizationRequest("credential", mapOf(
+                "credentialID" to c.id,
+                "numSignatures" to "1",
+                "hashes" to hash.toBase64Url(),
+                "hashAlgorithmOID" to CscClient.SHA256_OID,
+                "description" to asciiDescription(hint),
+            ), details)
+            val back = agent.authorize(request.url, client.service.redirectUri, "授權「${client.service.name}」簽署：$hint")
+            client.token(client.code(back, request), request) to null
+        }
     }
 
     companion object {
