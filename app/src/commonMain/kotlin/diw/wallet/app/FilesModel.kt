@@ -1532,6 +1532,7 @@ class FilesModel(private val model: WalletModel) {
             time = options.time, appearance = options.appearance, reserve = 64 * 1024,
         ))
         val cms = signer.signPadesDigest(prepared.signedData(), if (level.timestamp) "AdES-B-T" else "AdES-B-B")
+        DocumentSigning.verifyDetached(cms, prepared.signedData(), signer.certificateChain.first())
         val signed = prepared.finish(cms)
         return if (level.revocation) DocumentSigning.extendPdf(signed, revocationFetch, ts ?: timestamper()).pdf else signed
     }

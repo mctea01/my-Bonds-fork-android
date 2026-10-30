@@ -449,6 +449,10 @@ class CscSigningTest {
         val pdf = diw.testservers.fixtures.PdfComposer.compose("CSC", listOf(diw.testservers.fixtures.PdfComposer.Block.Paragraph("signDoc")), emptyList())
         val prepared = diw.wallet.core.document.pdf.PdfIncrementalSigner.prepare(pdf, diw.wallet.core.document.pdf.PdfSignOptions(reserve = 64 * 1024))
         val cms = signer.signPadesDigest(prepared.signedData(), "AdES-B-B")
+        diw.wallet.core.document.sign.DocumentSigning.verifyDetached(cms, prepared.signedData(), signer.certificateChain.first())
+        assertFailsWith<diw.wallet.core.document.sign.SigningException> {
+            diw.wallet.core.document.sign.DocumentSigning.verifyDetached(cms, prepared.signedData() + 0, signer.certificateChain.first())
+        }
         val signed = prepared.finish(cms)
         val report = diw.wallet.core.document.DocumentInspector.inspect(signed, "csc.pdf", object : diw.wallet.core.document.DocumentTrustSource {
             val registry = diw.wallet.core.trust.TrustRegistry(org.multipaz.storage.ephemeral.EphemeralStorage(), diw.wallet.core.env.EnvironmentPolicy())

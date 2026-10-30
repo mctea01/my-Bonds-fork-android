@@ -83,10 +83,13 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
         val notes = ArrayList<String>()
         val holders = cose.chain.mapNotNull { Bc.holder(it) }
         val signer = holders.firstOrNull()
-        val valid = signer != null && runCatching { verify(cose, C2paManifests.toBeSigned(cose.protectedBytes, cose.payload ?: m.claimBytes), signer) }.getOrDefault(false)
+        // The signature always covers the claim as parsed; an embedded payload that is not that claim is a mismatch.
+        val payloadMismatch = cose.payload != null && !cose.payload.contentEquals(m.claimBytes)
+        val valid = signer != null && !payloadMismatch && runCatching { verify(cose, C2paManifests.toBeSigned(cose.protectedBytes, m.claimBytes), signer) }.getOrDefault(false)
+        val why = when { signer == null -> "簽章沒有附上簽署憑證"; payloadMismatch -> "簽章內嵌的內容不是這份聲明"; else -> "聲明簽章無效" }
         statuses += if (valid) C2paStatus("claimSignature.validated", url, true)
-        else C2paStatus("claimSignature.mismatch", url, false, if (signer == null) "簽章沒有附上簽署憑證" else "聲明簽章無效")
-        if (!valid) problems.add(if (signer == null) "C2PA 簽章沒有附上簽署憑證（x5chain）" else "C2PA 聲明簽章無效")
+        else C2paStatus("claimSignature.mismatch", url, false, why)
+        if (!valid) problems.add(if (signer == null) "C2PA 簽章沒有附上簽署憑證（x5chain）" else "C2PA $why")
 
         val timestamp = cose.timestamps.firstOrNull()?.let { (header, token) ->
             val tok = CmsChecks.tokenOf(token)

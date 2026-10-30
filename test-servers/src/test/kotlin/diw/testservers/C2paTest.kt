@@ -105,6 +105,123 @@ class C2paTest {
     }
 
     @Test
+    fun unsignedHardBindingIsNotUsed() = runBlocking<Unit> {
+        trustTestRoot()
+        val png = sample("signed.png")
+        val (chunk, store) = caBX(png)
+        // A forged data hash, not referenced by the claim, put before the signed one, over changed pixels.
+        val label = "c2pa.hash.data__1".encodeToByteArray() + 0
+        val jumd = box("jumd", hex("63626f72001100108000" + "00aa00389b71") + byteArrayOf(0x03) + label)
+        val placeholder = ByteArray(32)
+        val forgedLength = 8 + jumd.size + 8 + cborHash(0, 0, placeholder).size
+        val newChunkSize = 12 + store.size + forgedLength
+        val cbor = cborHash(chunk.toLong(), newChunkSize.toLong(), placeholder)
+        val forged = box("jumb", jumd + box("cbor", cbor))
+        assertEquals(forgedLength, forged.size)
+        val assertions = labelBox(store, "c2pa.assertions")
+        val at = assertions + 8 + u32(store, assertions + 8)
+        val newStore = grow(store, at, forged)
+        val out = png.copyOfRange(0, chunk) + pngChunk("caBX", newStore) + png.copyOfRange(chunk + 12 + store.size, png.size)
+        val idat = (8 until out.size - 4).first { String(out, it, 4, Charsets.ISO_8859_1) == "IDAT" }
+        out[idat + 6] = (out[idat + 6].toInt() xor 0x01).toByte()
+        val digest = java.security.MessageDigest.getInstance("SHA-256").apply {
+            update(out, 0, chunk); update(out, chunk + newChunkSize, out.size - chunk - newChunkSize)
+        }.digest()
+        val hashAt = chunk + 8 + at + forged.size - placeholder.size
+        digest.copyInto(out, hashAt)
+        val r = inspect(out, "signed.png")
+        assertTrue("assertion.dataHash.mismatch" in r.codes(), r.codes().toString())
+        assertTrue("c2pa.hash.data__1" !in r.c2pa!!.manifests.first().assertions)
+        assertEquals(DocumentVerdict.INVALID, r.verdict)
+    }
+
+    @Test
+    fun embeddedPayloadMustBeTheParsedClaim() = runBlocking<Unit> {
+        trustTestRoot()
+        val png = sample("signed.png")
+        val (chunk, store) = caBX(png)
+        val claim = labelBox(store, "c2pa.claim.v2")
+        val claimCbor = claim + 8 + u32(store, claim + 8) + 8
+        val claimBytes = store.copyOfRange(claimCbor, claim + u32(store, claim))
+        // The signed claim goes into the COSE payload, then the manifest's claim is changed.
+        val sig = labelBox(store, "c2pa.signature")
+        val sigEnd = sig + u32(store, sig)
+        val nil = sigEnd - 66 - 1
+        assertEquals(0xf6, store[nil].toInt() and 0xFF)
+        val payload = byteArrayOf(0x59, (claimBytes.size shr 8).toByte(), claimBytes.size.toByte()) + claimBytes
+        var newStore = grow(store, nil, payload.copyOfRange(0, payload.size - 1))
+        payload.copyInto(newStore, nil)
+        val title = "測試圖片".encodeToByteArray()
+        val t = (claimCbor until claimCbor + claimBytes.size).first { i -> title.indices.all { newStore[i + it] == title[it] } }
+        "偽造圖片".encodeToByteArray().copyInto(newStore, t)
+        val out = png.copyOfRange(0, chunk) + pngChunk("caBX", newStore) + png.copyOfRange(chunk + 12 + store.size, png.size)
+        val r = inspect(out, "signed.png")
+        val m = r.c2pa!!.manifests.first()
+        assertEquals("偽造圖片.png", m.title)
+        assertTrue("claimSignature.mismatch" in r.codes(), r.codes().toString())
+        assertTrue("claimSignature.validated" !in r.codes())
+        assertEquals(Check.FAIL, r.signatures.single().integrity)
+    }
+
+    private fun caBX(png: ByteArray): Pair<Int, ByteArray> {
+        var i = 8
+        while (i + 12 <= png.size) {
+            val len = java.nio.ByteBuffer.wrap(png, i, 4).int
+            if (String(png, i + 4, 4, Charsets.ISO_8859_1) == "caBX") return i to png.copyOfRange(i + 8, i + 8 + len)
+            i += 12 + len
+        }
+        error("no caBX chunk")
+    }
+
+    private fun pngChunk(type: String, data: ByteArray): ByteArray {
+        val t = type.toByteArray(Charsets.ISO_8859_1)
+        val crc = java.util.zip.CRC32().apply { update(t); update(data) }.value
+        return java.nio.ByteBuffer.allocate(12 + data.size).putInt(data.size).put(t).put(data).putInt(crc.toInt()).array()
+    }
+
+    private fun u32(b: ByteArray, at: Int) = java.nio.ByteBuffer.wrap(b, at, 4).int
+
+    private fun box(type: String, body: ByteArray) =
+        java.nio.ByteBuffer.allocate(8 + body.size).putInt(8 + body.size).put(type.toByteArray(Charsets.ISO_8859_1)).put(body).array()
+
+    private fun hex(s: String) = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+    /** Start of the superbox whose description box carries [label]. */
+    private fun labelBox(store: ByteArray, label: String): Int {
+        val l = label.encodeToByteArray() + 0
+        val pos = (0..store.size - l.size).first { i -> l.indices.all { store[i + it] == l[it] } && String(store, i - 21, 4, Charsets.ISO_8859_1) == "jumd" }
+        return pos - 25 - 8
+    }
+
+    /** Inserts [bytes] at [at] and grows every JUMBF box that contains that position. */
+    private fun grow(store: ByteArray, at: Int, bytes: ByteArray): ByteArray {
+        val out = store.copyOfRange(0, at) + bytes + store.copyOfRange(at, store.size)
+        fun walk(from: Int, to: Int) {
+            var off = from
+            while (off + 8 <= to) {
+                val len = u32(store, off)
+                if (off < at && at < off + len) {
+                    java.nio.ByteBuffer.wrap(out, off, 4).putInt(len + bytes.size)
+                    if (String(store, off + 4, 4, Charsets.ISO_8859_1) == "jumb") walk(off + 8, off + len)
+                }
+                off += len
+            }
+        }
+        walk(0, store.size)
+        return out
+    }
+
+    /** CBOR of a c2pa.hash.data assertion with one exclusion; the hash is the last field. */
+    private fun cborHash(start: Long, length: Long, hash: ByteArray): ByteArray {
+        fun head(major: Int, n: Long): ByteArray = java.nio.ByteBuffer.allocate(5).put(((major shl 5) or 26).toByte()).putInt(n.toInt()).array()
+        fun tstr(s: String) = byteArrayOf((0x60 or s.length).toByte()) + s.toByteArray()
+        return byteArrayOf(0xa3.toByte()) +
+            tstr("exclusions") + byteArrayOf(0x81.toByte(), 0xa2.toByte()) + tstr("start") + head(0, start) + tstr("length") + head(0, length) +
+            tstr("alg") + tstr("sha256") +
+            tstr("hash") + byteArrayOf(0x58, hash.size.toByte()) + hash
+    }
+
+    @Test
     fun sidecarManifestHasNoAssetToBind() = runBlocking<Unit> {
         trustTestRoot()
         val png = sample("signed.png")

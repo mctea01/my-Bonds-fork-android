@@ -371,11 +371,13 @@ object C2paManifests {
      * the manifest has no data hash; other bindings (boxes, BMFF, collections) are reported as not checked.
      */
     fun bindingStatus(store: C2paStore, m: C2paManifest): C2paStatus? {
-        val assertions = m.box.child("c2pa.assertions") ?: return null
-        val hashBox = assertions.children.firstOrNull { it.label?.startsWith("c2pa.hash.data") == true }
+        val signed = signedAssertions(m)
+        val hashBox = signed.firstOrNull { it.label?.startsWith("c2pa.hash.data") == true }
         if (hashBox == null) {
-            val other = assertions.children.firstOrNull { l -> listOf("c2pa.hash.boxes", "c2pa.hash.bmff", "c2pa.hash.collection").any { l.label?.startsWith(it) == true } }
-            return other?.let { C2paStatus("assertion.hardBinding.notChecked", absolute(m, "self#jumbf=c2pa.assertions/${it.label}"), false, "這種綁定（${it.label}）錢包尚未檢查") }
+            val other = signed.firstOrNull { l -> listOf("c2pa.hash.boxes", "c2pa.hash.bmff", "c2pa.hash.collection").any { l.label?.startsWith(it) == true } }
+            if (other != null) return C2paStatus("assertion.hardBinding.notChecked", absolute(m, "self#jumbf=c2pa.assertions/${other.label}"), false, "這種綁定（${other.label}）錢包尚未檢查")
+            val unsigned = m.box.child("c2pa.assertions")?.children.orEmpty().firstOrNull { it.label?.startsWith("c2pa.hash.") == true } ?: return null
+            return C2paStatus("claim.hardBindings.missing", absolute(m, "self#jumbf=c2pa.assertions/${unsigned.label}"), false, "硬綁定宣告（${unsigned.label}）沒有被簽署的聲明引用")
         }
         val url = absolute(m, "self#jumbf=c2pa.assertions/${hashBox.label}")
         val asset = store.asset ?: return C2paStatus("assertion.dataHash.notChecked", url, false, "獨立的 manifest 檔沒有附上原始檔案，無法檢查")
@@ -404,6 +406,22 @@ object C2paManifests {
         else C2paStatus("assertion.dataHash.mismatch", url, false, "檔案內容與資料雜湊不符，簽署後被修改過")
     }
 
+    /**
+     * The assertion boxes of [m] that its signed claim references with a matching hash, in store order. Boxes the claim
+     * does not reference (or whose hash does not match) are never read for bindings or display.
+     */
+    fun signedAssertions(m: C2paManifest): List<JumbfSuperbox> {
+        val boxes = m.box.child("c2pa.assertions")?.children.orEmpty()
+        val prefix = "/c2pa/${m.label}/"
+        return boxes.filter { b ->
+            m.assertionRefs.any { r ->
+                val raw = r.url.substringAfter("jumbf=", r.url)
+                val path = if (raw.startsWith("/")) raw.takeIf { it.startsWith(prefix) }?.removePrefix(prefix) else raw
+                path == "c2pa.assertions/${b.label}" && DocCrypto.digest(jcaHash(r.algorithm ?: m.algorithm), b.hashedBytes).contentEquals(r.hash)
+            }
+        }
+    }
+
     fun absolute(m: C2paManifest, url: String): String {
         val path = url.substringAfter("jumbf=", url)
         return if (path.startsWith("/")) "self#jumbf=$path" else "self#jumbf=/c2pa/${m.label}/$path"
@@ -413,8 +431,7 @@ object C2paManifests {
 
     /** The assertion labelled [label] (or a numbered instance of it) decoded to JSON, from its CBOR or JSON box. */
     fun assertion(m: C2paManifest, vararg labels: String): List<Pair<String, JsonElement>> {
-        val store = m.box.child("c2pa.assertions") ?: return emptyList()
-        return store.children.filter { b -> labels.any { l -> b.label == l || b.label?.startsWith("${l}__") == true } }.mapNotNull { b ->
+        return signedAssertions(m).filter { b -> labels.any { l -> b.label == l || b.label?.startsWith("${l}__") == true } }.mapNotNull { b ->
             val v = b.content("cbor")?.let { runCatching { toJson(Cbor.decode(it)) }.getOrNull() }
                 ?: b.content("json")?.let { runCatching { DiwJson.parseToJsonElement(it.decodeToString()) }.getOrNull() }
             v?.let { b.label!! to it }
@@ -422,7 +439,7 @@ object C2paManifests {
     }
 
     /** Assertion labels of [m] in store order. */
-    fun labels(m: C2paManifest): List<String> = m.box.child("c2pa.assertions")?.children.orEmpty().mapNotNull { it.label }
+    fun labels(m: C2paManifest): List<String> = signedAssertions(m).mapNotNull { it.label }
 
     /** The claim generator: the name and version of the first generator info, or the v1 string. */
     fun generator(m: C2paManifest): String? {
@@ -472,8 +489,7 @@ object C2paManifests {
 
     /** The raw CAWG identity assertions of [m]: signer payload (CBOR), signature bytes and the sig_type. */
     fun identityAssertions(m: C2paManifest): List<Triple<DataItem, ByteArray, String>> {
-        val store = m.box.child("c2pa.assertions") ?: return emptyList()
-        return store.children.filter { it.label == "cawg.identity" || it.label?.startsWith("cawg.identity__") == true }.mapNotNull { b ->
+        return signedAssertions(m).filter { it.label == "cawg.identity" || it.label?.startsWith("cawg.identity__") == true }.mapNotNull { b ->
             val d = runCatching { Cbor.decode(b.content("cbor") ?: return@mapNotNull null) }.getOrNull() ?: return@mapNotNull null
             val payload = d.getOrNullAny("signer_payload") ?: return@mapNotNull null
             val sig = (d.getOrNullAny("signature") as? Bstr)?.value ?: return@mapNotNull null
