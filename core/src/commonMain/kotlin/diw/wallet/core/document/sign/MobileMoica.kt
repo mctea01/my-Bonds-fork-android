@@ -19,6 +19,7 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.Crypto
+import org.multipaz.crypto.toSecretKey
 import kotlin.io.encoding.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -185,14 +186,14 @@ class TwFidoClient(
         /** hex(iv || AES-256-GCM(lowercase hex of SHA-256(payload)) || tag). */
         suspend fun spChecksum(payload: String, key: ByteArray, iv: ByteArray): String {
             val digestHex = hex(PlatformCrypto.sha256(payload.encodeToByteArray()))
-            return hex(iv + Crypto.encrypt(Algorithm.A256GCM, key, iv, digestHex.encodeToByteArray()))
+            return hex(iv + Crypto.encrypt(Algorithm.A256GCM, key.toSecretKey(), iv, digestHex.encodeToByteArray()))
         }
 
         /** Opens [checksum] with [key] and checks that it covers [payload]; false for anything else. */
         suspend fun verifyChecksum(checksum: String, payload: String, key: ByteArray): Boolean {
             val combined = unhex(checksum) ?: return false
             if (combined.size <= 12 + 16) return false
-            val opened = runCatching { Crypto.decrypt(Algorithm.A256GCM, key, combined.copyOfRange(0, 12), combined.copyOfRange(12, combined.size)) }
+            val opened = runCatching { Crypto.decrypt(Algorithm.A256GCM, key.toSecretKey(), combined.copyOfRange(0, 12), combined.copyOfRange(12, combined.size)) }
                 .getOrNull() ?: return false
             return opened.contentEquals(hex(PlatformCrypto.sha256(payload.encodeToByteArray())).encodeToByteArray())
         }
