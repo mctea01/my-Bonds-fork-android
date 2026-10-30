@@ -150,7 +150,7 @@ class TwdiwEcosystemSignatureTest {
         val record = keys.record("moda.wallet.gov.tw") ?: error("no record")
         assertEquals("kid-77", record.keyId)
         assertEquals("1", record.status)
-        val publicKey = area.getKeyInfo(record.alias).publicKey
+        val publicKey = area.getKeyInfo(record.alias).ecPublicKey
         jws.verify(VerificationKey.Ec(publicKey))
         assertEquals("kid-77", jws.header.str("kid"))
         assertEquals("kid-77", jws.payload.str("keyId"))

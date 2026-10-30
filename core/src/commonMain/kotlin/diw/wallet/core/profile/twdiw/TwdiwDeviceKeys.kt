@@ -141,7 +141,7 @@ class TwdiwDeviceKeys(
                 val made = runCatching { b.secureArea.createKey(null, b.settings(challenge)) }
                 made.exceptionOrNull()?.let { failure = it }
                 val ki = made.getOrNull() ?: continue
-                val did = DidKeys.didKeyJwkJcs(ki.publicKey)
+                val did = DidKeys.didKeyJwkJcs(ki.ecPublicKey)
                 created = Triple(b.secureArea, ki, TwdiwDeviceKeyRecord(
                     host = host, secureArea = b.secureArea.identifier, alias = ki.alias, protection = b.protection,
                     keyPrefix = keyPrefix(b.protection), did = did,
