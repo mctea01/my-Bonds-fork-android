@@ -30,6 +30,8 @@ enum class TrustRole(val id: String) {
     TSA("tsa"),
     /** Signers of documents (PDF, CMS, XML, OFD signatures and seals). */
     DOCUMENT("document"),
+    /** Signers of content credentials (C2PA manifests on pictures and other media). */
+    CONTENT("content"),
 }
 
 /** Metadata extension keys stored in [TrustMetadata.extensions]. */
@@ -122,10 +124,10 @@ class TrustRegistry(
          * The system store holds web PKI CAs: they may identify issuers, verifiers, status list signers, document
          * signers and time-stamp authorities, nothing else (never a wallet provider).
          */
-        private val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA)
+        private val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)
 
         /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
-        private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA)
+        private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)
 
         private fun isEc(c: X509Cert): Boolean = runCatching { c.ecPublicKey }.isSuccess
 
@@ -437,7 +439,7 @@ class TrustRegistry(
                 if (role !in SYSTEM_ROLES) continue
                 val found = runCatching {
                     PublicRoots.anchorOf(chain, atTime, platform = policy.systemStoreEnabled, mainlandChina = policy.mainlandChinaRootsEnabled,
-                        timestamping = role == TrustRole.TSA)
+                        timestamping = role == TrustRole.TSA, contentCredentials = role == TrustRole.CONTENT)
                 }.getOrNull() ?: continue
                 val metadata = trustMetadata(found.label, env, official = false, source = found.source, region = found.region)
                 return AnchorMatch(env, metadata, false, found.certificate)

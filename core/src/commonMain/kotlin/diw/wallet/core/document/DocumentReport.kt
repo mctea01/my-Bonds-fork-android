@@ -49,6 +49,7 @@ enum class SignatureFormat(val title: String) {
     ASIC_CADES("ASiC-E（CAdES）"),
     RFC3161("RFC 3161 時戳"),
     OPENCERTS("OpenAttestation（Merkle 證明）"),
+    C2PA("C2PA 內容憑證（COSE）"),
 }
 
 /** One check: passed, passed with a caveat, failed, or not possible here. */
@@ -227,6 +228,8 @@ data class DocumentReport(
     val signaturePlacements: List<SignaturePlacementInfo> = emptyList(),
     val envelope: EnvelopeInfo? = null,
     val openCert: OpenCertInfo? = null,
+    /** Content credentials (C2PA manifests) of a picture or a sidecar manifest file. */
+    val c2pa: diw.wallet.core.document.c2pa.C2paInfo? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */
     val entries: List<String> = emptyList(),
     val notes: List<String> = emptyList(),

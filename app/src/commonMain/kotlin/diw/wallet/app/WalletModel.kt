@@ -1840,10 +1840,10 @@ class WalletModel(val platform: PlatformServices) {
             if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", "根憑證已過期")
             val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
             var added = 0
-            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA)) {
+            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)) {
                 if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
             }
-            message.value = if (added == 0) "「$name」已經是信任錨點" else "已信任「$name」（文件簽章與時間戳記，信任等級 T2）"
+            message.value = if (added == 0) "「$name」已經是信任錨點" else "已信任「$name」（文件簽章、時間戳記與內容憑證，信任等級 T2）"
             loadAnchors()
             status.reevaluateIssuers("信任根憑證「$name」", affected = { it.anchorName == null }, accept = { it.environment != null })
             onDone()

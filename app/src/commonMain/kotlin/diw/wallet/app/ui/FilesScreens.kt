@@ -50,6 +50,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
 import diw.wallet.app.VisibleSignature
+import diw.wallet.core.document.c2pa.C2paInfo
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
 import diw.wallet.core.document.official.OfficialItem
@@ -550,6 +551,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                 e.contentEncryption?.let { LabelValue("內容加密", it, small = true) }
             }
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
+            report.c2pa?.let { C2paSection(f, it) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
                 CollapsibleSection("容器內的檔案", report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
@@ -2026,6 +2028,50 @@ private fun methodText(m: OaMethod): String = when (m) {
  * after a while, or on request), and what the certificate shows: recipient, main fields, issuers, signatories,
  * transcript, images, attachments and the remaining fields with readable labels.
  */
+/** Content credentials of a picture: what each manifest says and the checks in the C2PA specification's codes. */
+@Composable
+private fun C2paSection(f: StoredFile, c: C2paInfo) {
+    SectionTitle("內容憑證（C2PA）")
+    Text("C2PA manifest 記錄這個檔案由誰、用什麼工具、經過哪些步驟產生，並由簽署者簽章。存放位置：${c.container}。", style = MaterialTheme.typography.bodySmall)
+    c.manifests.forEach { m ->
+        val failed = m.statuses.any { !it.success && (it.code.endsWith("mismatch") || it.code == "assertion.missing" || it.code == "claimSignature.missing") }
+        val trusted = m.statuses.any { it.code == "signingCredential.trusted" }
+        CollapsibleSection(if (m.active) "目前的 manifest" else "成分的 manifest", initiallyExpanded = m.active, key = "c2pa-${f.id}-${m.label}") {
+            VerdictPill(
+                when { failed -> Verdict.FAIL; trusted -> Verdict.PASS; else -> Verdict.CAUTION },
+                when { failed -> "內容或簽章不符"; trusted -> "簽章有效，簽署者在信任錨點"; else -> "簽章有效，簽署者不在信任錨點" },
+            )
+            m.title?.let { LabelValue("標題", it, small = true) }
+            m.signer?.let { LabelValue("簽署者", it, small = true) }
+            m.signedAt?.let { LabelValue("時戳時間", localTime(it), small = true) }
+            m.generator?.let { LabelValue("產生工具", it, small = true) }
+            m.format?.let { LabelValue("格式", it, small = true) }
+            if (m.authors.isNotEmpty()) LabelValue("作者", m.authors.joinToString("、"), small = true)
+            m.actions.forEach { a ->
+                LabelValue("動作", listOfNotNull(a.action, a.digitalSourceType?.let { "來源 $it" }, a.softwareAgent, a.description, a.time).joinToString("，"), small = true)
+            }
+            m.ingredients.forEach { i ->
+                LabelValue("成分", listOfNotNull(i.title, i.relationship, i.format).joinToString("，") + if (i.manifest != null) "（附 manifest）" else "", small = true)
+            }
+            m.identities.forEach { id ->
+                VerdictPill(checkVerdict(id.signature), "身分（${id.sigType}）：" + id.names.joinToString("、").ifEmpty { "未列名稱" })
+                id.detail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            m.training.forEach { LabelValue("AI 訓練與資料探勘", it, small = true) }
+            CollapsibleSection("技術細節", m.statuses.size, key = "c2pa-detail-${f.id}-${m.label}") {
+                LabelValue("Manifest", m.label, small = true)
+                LabelValue("聲明版本", "v${m.claimVersion}", small = true)
+                m.instanceId?.let { LabelValue("instanceID", it, small = true) }
+                LabelValue("宣告", m.assertions.joinToString("、"), small = true)
+                m.statuses.forEach { s ->
+                    Text(s.code + (s.explanation?.let { "：$it" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                        color = if (s.success) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo, busy: String?) {
     val view by produceState<OpenCertView?>(null, f.id, f.sha256) { value = model.files.openCertView(f) }

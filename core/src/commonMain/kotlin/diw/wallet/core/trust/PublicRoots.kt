@@ -17,9 +17,13 @@ object PublicRoots {
     /**
      * The public root [chain] (leaf first) validates to at [at]: the mainland China CAs first when [mainlandChina]
      * is on, so that their chains are named as such, then the platform store and the built-in service roots when
-     * [platform] is on, and for a time-stamp authority ([timestamping]) the built-in time stamping roots.
+     * [platform] is on, and for a time-stamp authority ([timestamping]) the built-in time stamping roots. For a C2PA
+     * manifest signer ([contentCredentials]) the C2PA trust list is checked too, under the same switch.
      */
-    fun anchorOf(chain: List<X509Cert>, at: Instant, platform: Boolean, mainlandChina: Boolean, timestamping: Boolean = false): Found? {
+    fun anchorOf(
+        chain: List<X509Cert>, at: Instant, platform: Boolean, mainlandChina: Boolean,
+        timestamping: Boolean = false, contentCredentials: Boolean = false,
+    ): Found? {
         if (mainlandChina) {
             val roots = BuiltInPublicRoots.mainlandChina.validAt(at)
             Pkix.anchorOf(chain, roots.map { it.certificate }, at)?.let { a ->
@@ -33,6 +37,13 @@ object PublicRoots {
             Pkix.anchorOf(chain, services.map { it.certificate }, at)?.let { a ->
                 val r = services.first { it.certificate == a }
                 return Found(a, "常用服務憑證機構：${r.name}", BuiltInPublicRoots.SERVICE_SOURCE, null)
+            }
+            if (contentCredentials) {
+                val roots = BuiltInPublicRoots.contentCredentials.validAt(at)
+                Pkix.anchorOf(chain, roots.map { it.certificate }, at)?.let { a ->
+                    val r = roots.first { it.certificate == a }
+                    return Found(a, "C2PA 信任清單：${r.name}", BuiltInPublicRoots.CONTENT_CREDENTIALS_SOURCE, null)
+                }
             }
             if (timestamping) {
                 val tsa = BuiltInPublicRoots.timestamping.validAt(at)

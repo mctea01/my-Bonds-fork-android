@@ -550,6 +550,52 @@ def kotlin_b64(der):
     return " +\n            ".join("\"" + b[j:j + 100] + "\"" for j in range(0, len(b), 100))
 
 
+def c2pa_trust_list(cfg, entries):
+    """Adds the valid anchors of the C2PA trust list to [entries]; returns the report lines."""
+    path = os.path.join(HERE, cfg["file"])
+    old = open(path, encoding="utf-8").read() if os.path.exists(path) else ""
+    try:
+        text = fetch(cfg["url"]).decode("utf-8")
+        how = "連線取得"
+    except Exception as e:
+        if not old:
+            raise
+        text = old
+        how = "沿用釘選的清單（" + str(e).splitlines()[0][:80] + "）"
+        notes.append("C2PA 信任清單這次無法下載，沿用釘選的清單")
+    ders = pem_blocks(text)
+    if not ders:
+        raise RuntimeError(cfg["url"] + " holds no certificate")
+    old_fps = {sha256(d) for d in pem_blocks(old)}
+    new_fps = [sha256(d) for d in ders]
+    if old and set(new_fps) != old_fps:
+        warn(f"C2PA 信任清單有變更（新增 {len(set(new_fps) - old_fps)} 張，移除 {len(old_fps - set(new_fps))} 張），請確認後合併")
+    if not old:
+        warn("首次取得 C2PA 信任清單，請確認後合併")
+    if WRITE and text != old:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+    lines = [f"來源：{cfg['url']}（{how}）", "", "| 憑證 | 機構 | 種類 | 有效至 | 狀態 |", "|---|---|---|---|---|"]
+    for der in ders:
+        c = Cert(der)
+        fp = sha256(der)
+        org = re.search(r"(?:^|, )O=([^,]+)", c.subject)
+        name = common_name(c.subject) or c.subject
+        kind = "根憑證" if c.self_issued else "清單列入的中繼憑證"
+        state = "有效"
+        if not c.valid_at(TODAY):
+            state = "已過期，不內建"
+        elif fp in entries:
+            state = "已在其他群組"
+        else:
+            entries[fp] = {"name": name, "owner": org.group(1).strip() if org else name, "group": "CONTENT_CREDENTIALS",
+                           "algorithm": c.algorithm, "base": "C2PA 內容憑證（Content Credentials）簽署者的信任錨點；" + kind,
+                           "services": [], "source": "C2PA 信任清單（" + cfg["url"] + "）", "sha256": fp, "der": der}
+        lines.append(f"| {name} | {org.group(1).strip() if org else '-'} | {kind} | {c.not_after.date()} | {state} |")
+    return lines
+
+
 def kotlin(entries, intermediates, importable, updated):
     blocks = []
     for e in entries:
@@ -591,7 +637,9 @@ import org.multipaz.util.fromBase64
  * - common services: the roots of the certificate chains that the e-invoice and immigration services serve
  *   (China's tax administration and immigration administration, Taiwan's e-invoice platform and immigration agency);
  * - time stamping: the roots the Microsoft root program includes for the Time Stamping EKU, used for time-stamp
- *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them).
+ *   authorities only (platform stores hold TLS roots, and many TSA roots are in none of them);
+ * - content credentials: the anchors of the C2PA trust list, used for C2PA manifest signers only. The list names
+ *   intermediates as anchors too, so this group is not limited to self-issued certificates.
  *
  * A chain to any of them is T2, like the platform store: a trust root verified a domain or organisation. The mainland
  * China group is switched on and off on its own; the others follow the platform store switch. A root is used only
@@ -603,7 +651,7 @@ import org.multipaz.util.fromBase64
  * they are trusted only once imported.
  */
 object BuiltInPublicRoots {
-    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING }
+    enum class Group { MAINLAND_CHINA, SERVICE, TIMESTAMPING, CONTENT_CREDENTIALS }
 
     class Root(
         val name: String,
@@ -640,6 +688,7 @@ object BuiltInPublicRoots {
     const val MAINLAND_SOURCE = "builtin:mainland-china"
     const val SERVICE_SOURCE = "builtin:services"
     const val TIMESTAMPING_SOURCE = "builtin:timestamping"
+    const val CONTENT_CREDENTIALS_SOURCE = "builtin:c2pa"
 
     val all: List<Root> by lazy {
         listOf(
@@ -650,6 +699,7 @@ object BuiltInPublicRoots {
     val mainlandChina: List<Root> get() = all.filter { it.group == Group.MAINLAND_CHINA }
     val services: List<Root> get() = all.filter { it.group == Group.SERVICE }
     val timestamping: List<Root> get() = all.filter { it.group == Group.TIMESTAMPING }
+    val contentCredentials: List<Root> get() = all.filter { it.group == Group.CONTENT_CREDENTIALS }
 
     val intermediates: List<Intermediate> by lazy {
         listOf(
@@ -833,14 +883,20 @@ def main():
                        "base": uses_text(e["uses"]), "services": [], "source": "CCADB（Microsoft 根憑證計畫，時間戳記用途）",
                        "sha256": fp, "der": e["der"]}
 
+    # Content credentials: the anchors of the C2PA trust list (conformance program), roots and the intermediates it
+    # lists as anchors. The list is pinned; a change is written and needs a person to review the pull request.
+    report += ["## C2PA 信任清單（內容憑證）", ""] + c2pa_trust_list(cfg["c2pa"], entries) + [""]
+
     for e in entries.values():
         parts = [p for p in (e["base"], ("、".join(e["services"]) + "的網站憑證鏈") if e["services"] else "") if p]
         e["purposes"] = "；".join(parts)
         # CCADB roots are replaced from their source when they expire; pinned roots were warned about above.
+        if e["group"] == "CONTENT_CREDENTIALS":
+            continue
         if e["algorithm"] != "SM2" and e["sha256"] not in pinned_certs and cert_of(e["sha256"]).not_after < warn_until:
             notes.append(f"{e['name']} 將於 {cert_of(e['sha256']).not_after.date()} 到期，到期後依來源自動移除或更新")
 
-    order = {"MAINLAND_CHINA": 0, "SERVICE": 1, "TIMESTAMPING": 2}
+    order = {"MAINLAND_CHINA": 0, "SERVICE": 1, "TIMESTAMPING": 2, "CONTENT_CREDENTIALS": 3}
     ordered = sorted(entries.values(), key=lambda e: (order[e["group"]], e["algorithm"] == "SM2", e["owner"], e["name"], e["sha256"]))
 
     # Importable roots: pinned, self-issued, untrusted until the user imports one.
@@ -938,7 +994,7 @@ def main():
     report[4:4] = ["## 摘要", "",
                    f"- 內建根憑證 {len(ordered)} 個：中國大陸 {sum(1 for e in ordered if e['group'] == 'MAINLAND_CHINA')} 個"
                    f"（SM2 {sum(1 for e in ordered if e['algorithm'] == 'SM2')} 個），常用服務 {sum(1 for e in ordered if e['group'] == 'SERVICE')} 個"
-                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個；中繼憑證 {len(intermediates)} 個，可匯入的根憑證 {len(importable)} 個",
+                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個，C2PA {sum(1 for e in ordered if e['group'] == 'CONTENT_CREDENTIALS')} 個；中繼憑證 {len(intermediates)} 個，可匯入的根憑證 {len(importable)} 個",
                    "- 檔案" + ("有變更" if changed else "沒有變更"),
                    *[f"- 新增：{e['name']}（{e['owner']}，SHA-256 {e['sha256']}）" for e in added],
                    *[f"- 移除：{n}（SHA-256 {fp}）" for fp, n in removed],
