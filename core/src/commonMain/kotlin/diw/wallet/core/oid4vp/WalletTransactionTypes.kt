@@ -35,41 +35,42 @@ object WalletTransactionTypes {
             return listOf("付款授權：交易資料格式不正確")
         }
         if (obj != null && type in EudiPaymentTransaction.IDENTIFIERS) {
-            return describeEudiPayment(obj)
+            return describeEudiPayment(obj) ?: listOf("付款授權：交易資料缺少收款方或金額")
         }
         return listOf("交易資料（" + (type ?: "未知類型") + "）")
     }
 
     /**
-     * Describes the EUDI reference / Animo payment payload leniently: field names are read as both the TS12 shape
-     * (payee object, amount, currency) and simpler shapes (payee string, currency_amount object), so a vendor
-     * variant still yields a readable consent line rather than an opaque type name.
+     * Describes the EUDI reference / Animo payment payload. Field names are read as both the TS12 shape (payee object,
+     * amount, currency) and simpler shapes (payee string, currency_amount object). Returns null when neither a payee
+     * nor an amount can be read, so a payment the holder could not be shown is not treated as supported: AGENTS.md
+     * requires the payee and amount on the consent screen, and [EudiPaymentTransaction] rejects such an entry.
      */
-    private fun describeEudiPayment(o: JsonObject): List<String> = buildList {
-        val payee = o.obj("payee")?.str("name") ?: o.str("payee")
-        val currencyAmount = o.obj("currency_amount")
-        val currency = o.str("currency") ?: currencyAmount?.str("currency")
-        val amount = (o["amount"] as? JsonPrimitive)?.content ?: currencyAmount?.str("value")
-        val sum = when {
-            amount != null && currency != null -> "$amount $currency"
-            amount != null -> amount
-            else -> null
+    private fun describeEudiPayment(o: JsonObject): List<String>? {
+        // Some issuers nest the payment fields under "payload" (as TS12 does); others put them at the top level.
+        val p = o.obj("payload") ?: o
+        val payee = p.obj("payee")?.str("name") ?: p.str("payee")
+        val currencyAmount = p.obj("currency_amount")
+        val currency = p.str("currency") ?: currencyAmount?.str("currency")
+        val amount = (p["amount"] as? JsonPrimitive)?.content ?: currencyAmount?.str("value")
+        if (payee == null || amount == null) return null
+        val sum = if (currency != null) "$amount $currency" else amount
+        return buildList {
+            add("付款授權：向 $payee 支付 $sum")
+            p.obj("payee")?.str("website")?.let { add("收款方網站：$it") }
+            (p.str("transaction_id") ?: p.str("transactionId"))?.let { add("交易編號：$it") }
+            (p.str("date_time") ?: p.str("dateTime"))?.let { add("建立時間：$it") }
+            (p.str("execution_date") ?: p.str("executionDate"))?.let { add("預定執行日：$it") }
+            if (p.obj("recurrence") != null || p.obj("recurring_schedule") != null) add("此為定期付款授權")
         }
-        add(
-            buildString {
-                append("付款授權")
-                when {
-                    payee != null && sum != null -> append("：向 $payee 支付 $sum")
-                    payee != null -> append("：向 $payee 付款")
-                    sum != null -> append("：支付 $sum")
-                }
-            }
-        )
-        o.obj("payee")?.str("website")?.let { add("收款方網站：$it") }
-        (o.str("transaction_id") ?: o.str("transactionId"))?.let { add("交易編號：$it") }
-        (o.str("date_time") ?: o.str("dateTime"))?.let { add("建立時間：$it") }
-        (o.str("execution_date") ?: o.str("executionDate"))?.let { add("預定執行日：$it") }
-        if (o.obj("recurrence") != null || o.obj("recurring_schedule") != null) add("此為定期付款授權")
+    }
+
+    /** Whether a payment payload carries a payee and an amount the holder can be shown (any supported field shape). */
+    internal fun eudiPaymentShowable(o: JsonObject): Boolean {
+        val p = o.obj("payload") ?: o
+        val payee = p.obj("payee")?.str("name") ?: p.str("payee")
+        val amount = (p["amount"] as? JsonPrimitive)?.content ?: p.obj("currency_amount")?.str("value")
+        return payee != null && amount != null
     }
 
     private fun describePayment(p: PaymentTransaction.Payload): List<String> = buildList {
@@ -134,9 +135,16 @@ class EudiPaymentTransaction(identifier: String) : TransactionType<JsonObject>(
     displayName = "付款授權",
     identifier = identifier,
 ) {
-    override fun parseOpenId4VpRequest(jsonString: String): JsonObject =
-        DiwJson.parseToJsonElement(jsonString) as? JsonObject
+    override fun parseOpenId4VpRequest(jsonString: String): JsonObject {
+        val o = DiwJson.parseToJsonElement(jsonString) as? JsonObject
             ?: throw IllegalArgumentException("transaction_data is not an object")
+        // A payment the holder cannot be shown (no readable payee and amount) is refused rather than bound blindly
+        // into the presentation; the consent screen must show who is paid and how much.
+        if (!WalletTransactionTypes.eudiPaymentShowable(o)) {
+            throw IllegalArgumentException("payment transaction_data must carry a payee and an amount")
+        }
+        return o
+    }
 
     companion object {
         val IDENTIFIERS: List<String> = listOf(

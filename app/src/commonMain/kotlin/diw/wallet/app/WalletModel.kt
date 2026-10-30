@@ -1111,7 +1111,14 @@ class WalletModel(val platform: PlatformServices) {
 
     private var cachedProvider: Pair<String, WalletProvider>? = null
     private val multipazTestProvider by lazy { MultipazTestWalletProvider() }
-    private val selfAttestationProvider by lazy { SelfAttestationWalletProvider(settings.clientId) }
+    private var cachedSelfProvider: Pair<String, SelfAttestationWalletProvider>? = null
+
+    /** Self-attestation provider, rebuilt when the client_id changes so a settings edit takes effect. */
+    private fun selfAttestationProvider(): SelfAttestationWalletProvider {
+        val id = settings.clientId
+        cachedSelfProvider?.takeIf { it.first == id }?.let { return it.second }
+        return SelfAttestationWalletProvider(id).also { cachedSelfProvider = id to it }
+    }
 
     private fun walletProvider(): WalletProvider {
         val s = settings
@@ -1124,7 +1131,7 @@ class WalletModel(val platform: PlatformServices) {
         return IssuerRoutedWalletProvider(base) { ci, asIssuer ->
             when {
                 multipazOn && MultipazTestWalletProvider.appliesTo(ci, asIssuer) -> multipazTestProvider
-                selfOn -> selfAttestationProvider
+                selfOn -> selfAttestationProvider()
                 else -> null
             }
         }

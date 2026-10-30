@@ -20,6 +20,7 @@ import diw.wallet.app.NfcReaderOption
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -237,9 +238,25 @@ private class UsbCcidTag(
 
     override val maxTransceiveLength = 65536
 
-    suspend fun powerOn() {
-        // PC_to_RDR_IccPowerOn with bPowerSelect = 0 (automatic voltage); the reply carries the ATR, which we ignore.
-        exchange(0x62, ByteArray(0))
+    /**
+     * Powers the slot on, waiting for a card. A USB security key holds its card permanently, so this returns at once;
+     * an external contactless reader (ACR122U and similar) reports no card until one is presented, so PC_to_RDR_
+     * IccPowerOn is retried until a card appears or the wait runs out, rather than failing on the first attempt. The
+     * reply carries the ATR, which is ignored.
+     */
+    suspend fun powerOn() = withContext(Dispatchers.IO) {
+        var waited = 0
+        while (true) {
+            writeMessage(0x62, ByteArray(0)) // bPowerSelect = 0 (automatic voltage)
+            var msg = readMessage()
+            while (msg.size >= 10 && ((msg[7].toInt() shr 6) and 0x03) == 2) msg = readMessage() // time extension
+            if (msg.size < 10) throw NfcTagLostException("CCID 回應標頭不完整")
+            if (((msg[7].toInt() shr 6) and 0x03) == 0) return@withContext // slot powered: a card is present
+            // Failed, usually because no card is present yet; wait and poll again until a card appears.
+            if (waited >= POWER_ON_TIMEOUT_MS) throw NfcTagLostException("讀卡機上沒有偵測到卡片")
+            delay(POWER_ON_POLL_MS.toLong())
+            waited += POWER_ON_POLL_MS
+        }
     }
 
     override suspend fun transceive(command: CommandApdu): ResponseApdu {
@@ -313,5 +330,7 @@ private class UsbCcidTag(
     private companion object {
         const val WRITE_TIMEOUT_MS = 3_000
         const val READ_TIMEOUT_MS = 15_000
+        const val POWER_ON_TIMEOUT_MS = 30_000
+        const val POWER_ON_POLL_MS = 250
     }
 }

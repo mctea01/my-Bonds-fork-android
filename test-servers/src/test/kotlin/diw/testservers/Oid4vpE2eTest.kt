@@ -447,6 +447,20 @@ class Oid4vpE2eTest {
         assertEquals(listOf(expected), claims["transaction_data_hashes"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
 
+    /** The EUDI reference / Animo payment variant: shown with payee and amount from either shape; rejected when it carries neither. */
+    @Test
+    fun eudiPaymentVariantShownOrRejected() {
+        val top = """{"type":"urn:eudi:sca:eu.europa.ec:payment:single:1","credential_ids":["pay"],
+            "payee":{"name":"Wero"},"amount":"23.58","currency":"EUR","transaction_id":"T1"}""".encodeToByteArray().toBase64Url()
+        assertEquals("付款授權：向 Wero 支付 23.58 EUR", diw.wallet.core.oid4vp.WalletTransactionTypes.describe(top).first())
+        val nested = """{"type":"urn:eudi:sca:eu.europa.ec:payment:single:1","credential_ids":["pay"],
+            "payload":{"payee":{"name":"Wero"},"currency_amount":{"currency":"EUR","value":"5.00"}}}""".encodeToByteArray().toBase64Url()
+        assertEquals("付款授權：向 Wero 支付 5.00 EUR", diw.wallet.core.oid4vp.WalletTransactionTypes.describe(nested).first())
+        // A payment the holder could not be shown (no payee and amount) is refused, not bound blindly.
+        val type = diw.wallet.core.oid4vp.EudiPaymentTransaction("urn:eudi:sca:eu.europa.ec:payment:single:1")
+        assertFailsWith<IllegalArgumentException> { type.parseOpenId4VpRequest("""{"type":"urn:eudi:sca:eu.europa.ec:payment:single:1","note":"x"}""") }
+    }
+
     @Test
     fun relayedSdJwtFailsAudienceCheck() = runBlocking {
         // Wallet answers an attacker origin; verifier evaluates with its own origin: KB aud must not match.
