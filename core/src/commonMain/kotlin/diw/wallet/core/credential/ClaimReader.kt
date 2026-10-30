@@ -11,7 +11,13 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.CborArray
+import org.multipaz.cbor.CborDouble
+import org.multipaz.cbor.CborFloat
+import org.multipaz.cbor.CborInt
+import org.multipaz.cbor.CborMap
 import org.multipaz.cbor.DataItem
+import org.multipaz.cbor.Simple
+import org.multipaz.cbor.Tagged
 import org.multipaz.cbor.Tstr
 import org.multipaz.claim.Claim
 import org.multipaz.claim.JsonClaim
@@ -101,6 +107,9 @@ object ClaimReader {
         if (claim is JsonClaim) sexCode(name, claim.value)?.let { return it }
         // Elements the document type does not describe are rendered by Multipaz as CBOR diagnostics ("\"PID\"", [..]).
         if (claim is MdocClaim && claim.attribute == null) plainCbor(claim.value)?.let { return it }
+        // Even described structured elements (mDL driving_privileges and the like) are rendered by Multipaz as raw
+        // CBOR diagnostics, so nested date tags show up as 1004("2025-02-28"). Render those ourselves to read cleanly.
+        if (claim is MdocClaim && (claim.value is CborArray || claim.value is CborMap)) return mdocStructured(claim.value)
         return claim.render()
     }
 
@@ -109,6 +118,27 @@ object ClaimReader {
         is Tstr -> v.value
         is CborArray -> v.items.takeIf { items -> items.all { it is Tstr } }?.joinToString(", ") { (it as Tstr).value }
         else -> null
+    }
+
+    /**
+     * A structured CBOR value (a map or array, such as mDL driving_privileges) as readable text: date tags become
+     * plain dates, maps become "key: value" pairs and arrays are joined, so no CBOR diagnostic notation leaks through.
+     */
+    private fun mdocStructured(v: DataItem): String = when (v) {
+        is Tstr -> v.value
+        is CborInt -> v.asNumber.toString()
+        is CborDouble -> v.value.toString()
+        is CborFloat -> v.value.toString()
+        is Simple -> runCatching { if (v.asBoolean) "是" else "否" }.getOrDefault("")
+        is Bstr -> v.value.let { if (ClaimPictures.isImage(it)) ClaimPictures.describe(it) else "${(it.size + 1023) / 1024} KB" }
+        is Tagged -> when (v.tagNumber) {
+            Tagged.FULL_DATE_STRING -> runCatching { v.asDateString.toString() }.getOrElse { mdocStructured(v.taggedItem) }
+            Tagged.DATE_TIME_STRING -> runCatching { v.asDateTimeString.toString() }.getOrElse { mdocStructured(v.taggedItem) }
+            else -> mdocStructured(v.taggedItem)
+        }
+        is CborArray -> v.items.joinToString("；") { mdocStructured(it) }
+        is CborMap -> v.items.entries.joinToString("，") { (k, x) -> "${mdocStructured(k)}: ${mdocStructured(x)}" }
+        else -> v.toString()
     }
 
     /** ISO/IEC 5218 sex codes (the PID's sex claim) as words. */
