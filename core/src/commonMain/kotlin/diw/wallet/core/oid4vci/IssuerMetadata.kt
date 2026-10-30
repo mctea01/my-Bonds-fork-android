@@ -313,6 +313,12 @@ class MetadataFetcher(
     private val allowInsecureLoopback: Boolean,
     /** Trust for a DID that signs the metadata (TWDIW trust list, DIDs the user trusts, Linked Domains). */
     private val didTrust: diw.wallet.core.trust.DidTrust = diw.wallet.core.trust.DidTrust.NONE,
+    /**
+     * OpenID Federation: an issuer that resolves to a configured Trust Anchor as openid_credential_issuer gets the
+     * metadata of its Trust Chain (after the superiors' metadata policies) over what it serves itself, and the tier
+     * of that anchor when it is better than the one its own metadata earns.
+     */
+    private val federation: diw.wallet.core.federation.FederationResolver? = null,
 ) {
     /** Fetches issuer metadata; metadata in an older shape is normalized by [compat] (draft 11/12 credentials_supported). */
     suspend fun issuer(credentialIssuer: String, compat: diw.wallet.core.compat.DialectSet? = null): IssuerMetadata {
@@ -340,10 +346,11 @@ class MetadataFetcher(
             val signed = obj.str("signed_metadata")?.let { verifySigned(it, credentialIssuer) }
             if (signed != null) JsonObject(obj + signed.first) to signed.second else unsigned(obj)
         }
-        val shaped = if (json.obj("credential_configurations_supported") == null) {
-            compat?.first { it.normalizeIssuerMetadata(json) } ?: json
-        } else json
-        val parsed = IssuerMetadata.parse(shaped, trust)
+        val (federated, finalTrust) = federated(credentialIssuer, json, trust)
+        val shaped = if (federated.obj("credential_configurations_supported") == null) {
+            compat?.first { it.normalizeIssuerMetadata(federated) } ?: federated
+        } else federated
+        val parsed = IssuerMetadata.parse(shaped, finalTrust)
         val metadata = if (parsed.credentialIssuer == credentialIssuer) parsed else {
             // Only the dialect owning the session may accept a difference; the standard path requires identity.
             val id = compat?.owned { it.issuerIdentifier(credentialIssuer, parsed.credentialIssuer) }
@@ -355,6 +362,20 @@ class MetadataFetcher(
         metadata.deferredCredentialEndpoint?.let { checkEndpoint(it, "deferred_credential_endpoint") }
         metadata.notificationEndpoint?.let { checkEndpoint(it, "notification_endpoint") }
         return metadata
+    }
+
+    /**
+     * The issuer's metadata and trust through OpenID Federation, when a Trust Anchor is configured and the issuer
+     * resolves to it; otherwise [json] and [trust] unchanged. A chain that does not resolve leaves the issuer as it is.
+     */
+    private suspend fun federated(credentialIssuer: String, json: JsonObject, trust: TrustDecision): Pair<JsonObject, TrustDecision> {
+        val resolver = federation ?: return json to trust
+        val resolved = runCatching {
+            resolver.resolve(credentialIssuer, diw.wallet.core.federation.FederationResolver.ISSUER)
+        }.getOrNull() ?: return json to trust
+        val merged = JsonObject(json + resolved.metadata.filterKeys { it != "credential_issuer" })
+        val better = resolved.trust.tier < trust.tier || (resolved.trust.tier == trust.tier && trust.anchorName == null)
+        return merged to if (better) resolved.trust else trust.copy(reasons = trust.reasons + resolved.trust.reasons)
     }
 
     /** Checks authorization server metadata a dialect supplied for an issuer that publishes none. */

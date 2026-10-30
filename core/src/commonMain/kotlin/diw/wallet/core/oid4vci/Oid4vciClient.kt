@@ -202,9 +202,14 @@ class Oid4vciClient(
     private val holderIdentities: HolderIdentities? = null,
     /** Trust for issuers identified by a DID (TWDIW trust list, linked domains). */
     private val didTrust: DidTrust = DidTrust.NONE,
+    /** OpenID Federation Trust Anchors; an issuer that resolves to one takes its metadata and tier from the chain. */
+    federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
 ) {
     private val loopback = environment.insecureLoopbackAllowed
-    private val metadata = MetadataFetcher(httpClient, trustRegistry, loopback, didTrust)
+    private val metadata = MetadataFetcher(
+        httpClient, trustRegistry, loopback, didTrust,
+        diw.wallet.core.federation.FederationResolver(httpClient, { federationAnchors() }, loopback),
+    )
     private val offers = CredentialOfferResolver(httpClient, loopback)
     private val inspector = CredentialInspector(httpClient, trustRegistry, loopback, didTrust)
     private val w3cInspector = W3cInspector(httpClient, trustRegistry, loopback, didTrust)
