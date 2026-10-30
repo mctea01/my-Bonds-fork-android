@@ -95,6 +95,8 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.LaterChanges
 import diw.wallet.core.document.SignatureInfo
+import diw.wallet.core.document.SignatureFormat
+import diw.wallet.core.document.pgp.OpenPgpKind
 import diw.wallet.core.document.SignaturePlacementInfo
 import diw.wallet.core.document.TimestampInfo
 import diw.wallet.core.document.card.GpkiCard
@@ -184,6 +186,7 @@ private fun formatTitle(f: DocumentFormat): String = when (f) {
     DocumentFormat.OFFICE -> "Office 文件"
     DocumentFormat.IMAGE -> "圖片"
     DocumentFormat.TEXT -> "文字檔"
+    DocumentFormat.OPENPGP -> "OpenPGP"
     DocumentFormat.OTHER -> "其他檔案"
 }
 
@@ -505,6 +508,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     var withMembers by remember { mutableStateOf(false) }
     var removeStamp by remember { mutableStateOf<Int?>(null) }
     var pickContent by remember { mutableStateOf(false) }
+    var encrypting by remember { mutableStateOf(false) }
     val derived = f.derivedDocumentId?.let { id -> docs.firstOrNull { it.identifier == id } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         // What it is and whether it holds, then what can be done with it.
@@ -548,6 +552,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                 e.contentEncryption?.let { LabelValue("內容加密", it, small = true) }
             }
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
+            report.openPgp?.let { pgp -> OpenPgpFileSection(model, f, report, pgp, busy) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
                 CollapsibleSection("容器內的檔案", report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
@@ -631,8 +636,12 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         }
         SectionTitle("其他動作")
         if (report?.format == DocumentFormat.ZIP) ActionRow(WalletIcons.Document, "解出檔案", "逐一保存並檢查壓縮檔內的檔案（MyData 下載檔）") { model.files.extract(f) }
-        if (report?.format == DocumentFormat.CMS_SIGNED && f.contentId == null && report.signatures.any { it.integrity == Check.NOT_CHECKED }) {
-            ActionRow(WalletIcons.Link, "選擇被簽署的檔案", "分離式簽章（.p7s）需要原檔才能檢查") { pickContent = true }
+        if ((report?.format == DocumentFormat.CMS_SIGNED || report?.openPgp?.kind == OpenPgpKind.DETACHED_SIGNATURE) &&
+            f.contentId == null && report.signatures.any { it.integrity == Check.NOT_CHECKED }) {
+            ActionRow(WalletIcons.Link, "選擇被簽署的檔案", "分離式簽章（.p7s、.asc、.sig）需要原檔才能檢查") { pickContent = true }
+        }
+        if (report?.openPgp?.kind != OpenPgpKind.ENCRYPTED) {
+            ActionRow(WalletIcons.Shield, "以 OpenPGP 加密", "加密給 OpenPGP 公開金鑰清單中的收件人（含自己的卡），另存新檔") { encrypting = true }
         }
         if (model.files.hasEvidence(f)) {
             ActionRow(WalletIcons.Send, "匯出文件與證據", "壓縮檔內含原檔、時戳（.tsr）、憑證、OCSP 與 CRL，可在其他工具查驗") { model.files.exportWithEvidence(f) }
@@ -675,6 +684,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             dismissButton = { TextButton(onClick = { removeStamp = null }) { Text("取消") } },
         )
     }
+    if (encrypting) OpenPgpEncryptDialog(model, f) { encrypting = false }
     if (pickContent) {
         AlertDialog(
             onDismissRequest = { pickContent = false },
@@ -756,8 +766,10 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                     onDismiss = { trusting = false },
                 )
             }
+            val openPgp = s.format == SignatureFormat.OPENPGP
+            if (openPgp) s.signer?.let { LabelValue("簽署金鑰指紋", groupedFingerprint(it.serialHex), small = true) }
             LabelValue("內容完整", checkText(s.integrity), small = true)
-            LabelValue("憑證效期", checkText(s.certificateValidity), small = true)
+            LabelValue(if (openPgp) "金鑰效力" else "憑證效期", checkText(s.certificateValidity), small = true)
             s.coversWholeDocument?.let { LabelValue("涵蓋整份文件", if (it) "是" else "否", small = true) }
             s.laterChanges?.let {
                 LabelValue("簽署後的修改", when (it) {
@@ -767,7 +779,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 }, small = true)
             }
             s.timestamp?.let { TimestampLine(it) } ?: s.claimedTime?.let { LabelValue("聲稱的簽署時間", localTime(it) + "（未經時戳證明）", small = true) }
-            LabelValue("撤銷資訊", if (s.revocationData) "簽章或文件內附 OCSP／CRL" else "沒有內附", small = true)
+            if (!openPgp) LabelValue("撤銷資訊", if (s.revocationData) "簽章或文件內附 OCSP／CRL" else "沒有內附", small = true)
             s.reason?.let { LabelValue("原因", it, small = true) }
             s.location?.let { LabelValue("地點", it, small = true) }
             s.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -804,9 +816,12 @@ private enum class SignerKind(val title: String) {
     PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
 }
 
-/** The physical cards and hardware tokens grouped under [SignerKind.HARDWARE]: a citizen certificate card, a PIV card, or a PKCS#11 token. */
+/**
+ * The physical cards and hardware tokens grouped under [SignerKind.HARDWARE]: a citizen certificate card, a PIV card,
+ * an OpenPGP card (or a YubiKey's OpenPGP applet), or a PKCS#11 token.
+ */
 private enum class HardwareKind(val title: String) {
-    SMART_CARD("自然人憑證卡"), PIV("PIV 卡"), PKCS11("硬體憑證（PKCS#11）"),
+    SMART_CARD("自然人憑證卡"), PIV("PIV 卡"), OPENPGP("OpenPGP 卡／YubiKey"), PKCS11("硬體憑證（PKCS#11）"),
 }
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
@@ -949,6 +964,7 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             when (hardware) {
                 HardwareKind.SMART_CARD -> CardPicker(model) { other = it; update() }
                 HardwareKind.PIV -> PivKeyPicker(model) { other = it; update() }
+                HardwareKind.OPENPGP -> OpenPgpKeyPicker(model, x509 = true) { other = it; update() }
                 HardwareKind.PKCS11 -> TokenKeyPicker(model) { other = it; update() }
             }
         }
@@ -1305,7 +1321,12 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
             }
         }
         SectionTitle("2. 簽署者")
-        SignerPicker(model) { choice = it }
+        val openPgpForm = form == SignForm.OPENPGP_DETACHED
+        // The OpenPGP form signs only with an OpenPGP card; switching forms starts the signer choice again.
+        LaunchedEffect(openPgpForm) { choice = null }
+        androidx.compose.runtime.key(openPgpForm) {
+            if (openPgpForm) OpenPgpKeyPicker(model, x509 = false) { choice = it } else SignerPicker(model) { choice = it }
+        }
         val tsaName = TsaServices.byId(model.settings.tsaId).name
         var level by remember { mutableStateOf(SignatureLevel.of(model.settings.padesLevel)) }
         var certification by remember { mutableStateOf<Int?>(null) }
@@ -1379,6 +1400,10 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                     Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
                     Text("為新的簽核檔加上文件時戳（$tsaName，需要網路）")
                 }
+            }
+            SignForm.OPENPGP_DETACHED -> {
+                Text("OpenPGP 簽章沒有時戳與撤銷資訊的保證層級；簽章時間由卡片簽署時寫入。需要證明時間時，可另外為原檔或 .asc 加上時戳。",
+                    style = MaterialTheme.typography.bodySmall)
             }
             else -> {
                 SectionTitle("3. 保證層級")
@@ -1470,6 +1495,12 @@ private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolea
         if (level.revocation) add("CertificateValues 與 RevocationValues（OCSP 優先，取不到才用 CRL）（B-LT）")
         if (level.archive) add("xadesv141:ArchiveTimeStamp：涵蓋文件、SignedInfo、SignatureValue、KeyInfo 與之前的未簽署屬性（EN 319 132-1 5.5.2）（B-LTA）")
     }
+    SignForm.OPENPGP_DETACHED -> listOf(
+        "OpenPGP v4 分離式簽章（RFC 4880／RFC 9580），簽章類型 0x00（二進位文件），ASCII armor",
+        "雜湊依金鑰：RSA、P-256 與 Ed25519 用 SHA-256，P-384 用 SHA-384，P-521 用 SHA-512",
+        "已簽署子封包：簽章建立時間與簽發者指紋；未簽署子封包：簽發者金鑰 ID",
+        "簽署前先比對卡上的指紋，換了卡片會在送出 PIN 之前停止；簽完以重建的公開金鑰重新驗證，不符就不保存",
+    )
     else -> buildList {
         add("CMS SignedData，摘要 SHA-256，簽署屬性含 signing-certificate-v2 與 signingTime")
         if (level.timestamp) add("signature-time-stamp：對簽章值的 RFC 3161 時戳（B-T）")

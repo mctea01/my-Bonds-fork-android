@@ -230,6 +230,42 @@ class OpenPgpTest {
     }
 
     @Test
+    fun introducerRaisesUnverifiedKeysOneLevel() = runBlocking<Unit> {
+        val intro = OpenPgpCardSim(SimKey.P256_ECDSA, null)
+        val subject = OpenPgpCardSim(SimKey.ED25519, null)
+        val bc = org.bouncycastle.jce.provider.BouncyCastleProvider()
+        val introPub = intro.certificate.publicKey
+        val introKey = intro.secretRing.secretKey.extractPrivateKey(null)
+        val uid = subject.certificate.publicKey.userIDs.next()
+        val gen = org.bouncycastle.openpgp.PGPSignatureGenerator(
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder(introPub.algorithm, org.bouncycastle.bcpg.HashAlgorithmTags.SHA256).setProvider(bc),
+            introPub,
+        )
+        gen.init(org.bouncycastle.openpgp.PGPSignature.POSITIVE_CERTIFICATION, introKey)
+        val certification = gen.generateCertification(uid, subject.certificate.publicKey)
+        val certified = org.bouncycastle.openpgp.PGPPublicKey.addCertification(subject.certificate.publicKey, uid, certification)
+        val subjectCert = org.bouncycastle.openpgp.PGPPublicKeyRing.insertPublicKey(subject.certificate, certified).getEncoded(true)
+        val introCert = intro.certificate.getEncoded(true)
+
+        val signer = OpenPgpTapSigner(subject.reader(), subject.pin)
+        signer.load(false)
+        val asc = signer.signDetached(content)
+        suspend fun tier(introTrust: OpenPgpTrust, introducer: Boolean) = DocumentInspector.inspect(
+            asc, "doc.asc",
+            trust(OpenPgpTrustedKey(introCert, "Intro", introTrust, introducer), OpenPgpTrustedKey(subjectCert, "Subject", OpenPgpTrust.UNVERIFIED)),
+            content,
+        ).signatures.single().trust?.tier
+        assertEquals("T2", tier(OpenPgpTrust.VERIFIED, true))
+        assertEquals("T2", tier(OpenPgpTrust.OWN_CARD, true))
+        assertEquals("T3", tier(OpenPgpTrust.VERIFIED, false))
+        assertEquals("T3", tier(OpenPgpTrust.UNVERIFIED, true))
+
+        // The key packets of a full certificate let a card key that cannot be rebuilt alone be matched.
+        val bodies = OpenPgp.keyBodies(subjectCert)
+        assertTrue(bodies.any { OpenPgpPackets.fingerprint(it).contentEquals(subject.sigFingerprint) })
+    }
+
+    @Test
     fun certificatesAndSecretKeysAreDescribed() = runBlocking<Unit> {
         val sim = OpenPgpCardSim(SimKey.RSA2048, SimKey.RSA2048)
         val pub = armored(sim.certificate.getEncoded(true))

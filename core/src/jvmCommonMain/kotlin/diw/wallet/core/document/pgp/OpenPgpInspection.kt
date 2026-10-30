@@ -336,7 +336,7 @@ internal object OpenPgpInspection {
 
     private fun introducerOf(entry: Keyring.Entry, keyring: Keyring): String? {
         val master = entry.ring.publicKey
-        val introducers = keyring.entries.filter { it.key.introducer && it.key.trust == OpenPgpTrust.VERIFIED && it !== entry }
+        val introducers = keyring.entries.filter { it.key.introducer && (it.key.trust == OpenPgpTrust.VERIFIED || it.key.trust == OpenPgpTrust.OWN_CARD) && it !== entry }
         if (introducers.isEmpty()) return null
         for (uid in master.userIDs.asSequence()) for (cert in master.getSignaturesForID(uid).asSequence()) {
             if (!cert.isCertification || cert.signatureType == PGPSignature.CERTIFICATION_REVOCATION) continue

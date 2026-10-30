@@ -28,6 +28,15 @@ import diw.wallet.core.document.card.GpkiTapSigner
 import diw.wallet.core.document.card.NfcCardChannel
 import diw.wallet.core.document.card.PivCard
 import diw.wallet.core.document.card.PivTapSigner
+import diw.wallet.core.document.card.OpenPgpKeySlot
+import diw.wallet.core.document.pgp.OpenPgp
+import diw.wallet.core.document.pgp.OpenPgpCards
+import diw.wallet.core.document.pgp.OpenPgpKind
+import diw.wallet.core.document.pgp.OpenPgpPackets
+import diw.wallet.core.document.pgp.OpenPgpPlaintext
+import diw.wallet.core.document.pgp.OpenPgpTapSigner
+import diw.wallet.core.document.pgp.OpenPgpTrust
+import diw.wallet.core.document.pgp.OpenPgpTrustedKey
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
@@ -121,6 +130,9 @@ enum class FileOrigin(val title: String) {
     SIGNED("本錢包簽署"),
     COMPOSED("本錢包製作"),
     LETTER("本錢包製作的公文"),
+    ENCRYPTED("本錢包加密（OpenPGP）"),
+    DECRYPTED("以 OpenPGP 卡解密"),
+    UNWRAPPED("從 OpenPGP 訊息取出"),
 }
 
 /** A file in the vault: its fingerprint, the last inspection, time stamps, and the credential derived from it. */
@@ -314,6 +326,11 @@ sealed class SignerChoice {
     class MobileMoica(val sp: MobileMoicaSp?, val idNumber: String, val mode: MobileMoicaMode, val server: String? = null) : SignerChoice()
     /** A remote signing service (CSC API); the holder signs in and approves each signature with the service. */
     class Csc(val service: CscService) : SignerChoice()
+    /**
+     * The signature key of an OpenPGP card (OpenPGP card, YubiKey, Nitrokey) on [reader]; PW1 is used for this signing
+     * only. Signs OpenPGP signatures, and the X.509 formats with an RSA or P-256 key.
+     */
+    class OpenPgp(val reader: NfcReaderOption, val pin: String) : SignerChoice()
 }
 
 /** An SP account entered for this run; kept in memory only, never stored. */
@@ -327,6 +344,7 @@ enum class SignForm(val title: String, val detail: String) {
     CADES_DETACHED("分離式簽章檔（.p7s）", "原檔不變，另存一個簽章檔"),
     CADES_ENVELOPING("包覆式簽章檔（.p7m）", "原檔包在簽章檔內"),
     ASIC("ASiC-E 容器（.asice）", "原檔與 CAdES 簽章放在同一個容器"),
+    OPENPGP_DETACHED("OpenPGP 分離式簽章（.asc）", "以 OpenPGP 卡或 YubiKey 簽署，原檔不變，另存 .asc；GnuPG 等 OpenPGP 工具都能驗證"),
 }
 
 /**
@@ -346,6 +364,8 @@ class FilesModel(private val model: WalletModel) {
         override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: Instant): TrustDecision = model.trust.decide(role, chain, at)
 
         override suspend fun knownCertificates(): List<ByteArray> = model.trust.chainCertificates().map { it.encoded.toByteArray() }
+
+        override suspend fun openPgpKeys(): List<OpenPgpTrustedKey> = model.openPgp.trustedKeys()
 
         override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) emptyList()
@@ -722,6 +742,17 @@ class FilesModel(private val model: WalletModel) {
             DocumentFormat.JSON, DocumentFormat.TEXT, DocumentFormat.OPENCERTS -> {
                 val text = bytes.decodeToString()
                 FilePreview.Text(text.take(FilePreview.TEXT_LIMIT), text.length > FilePreview.TEXT_LIMIT)
+            }
+            DocumentFormat.OPENPGP -> {
+                val pgp = f.report?.openPgp
+                val clear = pgp?.clearText
+                when {
+                    clear != null -> FilePreview.Text(clear.take(FilePreview.TEXT_LIMIT), clear.length > FilePreview.TEXT_LIMIT)
+                    pgp?.kind == OpenPgpKind.ENCRYPTED -> FilePreview.Unavailable("加密的 OpenPGP 訊息，請在下方以 OpenPGP 卡解密")
+                    pgp?.kind == OpenPgpKind.SIGNED_MESSAGE || pgp?.kind == OpenPgpKind.LITERAL ->
+                        FilePreview.Unavailable("內容包在 OpenPGP 訊息內，請在下方取出內容後預覽")
+                    else -> FilePreview.Unavailable("OpenPGP 簽章與金鑰沒有內容預覽，請看下方的 OpenPGP 資訊")
+                }
             }
             DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable("壓縮檔與容器請看下方的內容清單；ZIP 解出後可逐一預覽")
             DocumentFormat.OFFICE -> FilePreview.Unavailable("Office 文件無法在錢包內預覽，請匯出後以 Office 等軟體開啟")
@@ -1424,6 +1455,7 @@ class FilesModel(private val model: WalletModel) {
         add(SignForm.CADES_DETACHED)
         add(SignForm.CADES_ENVELOPING)
         add(SignForm.ASIC)
+        add(SignForm.OPENPGP_DETACHED)
     }
 
     /**
@@ -1439,6 +1471,10 @@ class FilesModel(private val model: WalletModel) {
         /** Make a PDF signature certify the document with this DocMDP permission (1 to 3); first signature only. */
         certification: Int? = null,
     ) = run("準備簽署") {
+        if (form == SignForm.OPENPGP_DETACHED) {
+            signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException("OpenPGP 簽章需要 OpenPGP 卡（或 YubiKey 等安全金鑰）"))
+            return@run
+        }
         val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
             if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
             if (c.files.isEmpty()) throw SigningException("沒有要簽核的公文檔案")
@@ -1452,6 +1488,7 @@ class FilesModel(private val model: WalletModel) {
         busy.value = when (choice) {
             is SignerChoice.Card -> "簽署中：依提示再次感應自然人憑證卡（同一張卡）"
             is SignerChoice.Piv -> "簽署中：依提示再次感應 PIV 卡（同一張卡）"
+            is SignerChoice.OpenPgp -> if (choice.reader.external) "簽署中：請讓 OpenPGP 卡或 YubiKey 保持接上" else "簽署中：依提示再次感應 OpenPGP 卡（同一張卡）"
             is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
             is SignerChoice.Csc -> "簽署中：請依畫面授權這次簽章"
             else -> "簽署中"
@@ -1478,6 +1515,7 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
                 SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
+                SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
         }
         busy.value = "檢查並保存簽署結果"
@@ -1550,6 +1588,103 @@ class FilesModel(private val model: WalletModel) {
         is SignerChoice.Token -> withMoicaChain(model.platform.externalKeys.tokenSigner(choice.library, choice.pin, choice.id))
         is SignerChoice.MobileMoica -> mobileMoicaSigner(choice, hint)
         is SignerChoice.Csc -> model.csc.signer(choice.service, hint.take(60)) { busy.value = it }
+        is SignerChoice.OpenPgp -> openPgpSigner(choice, x509 = true)
+    }
+
+    /**
+     * An OpenPGP card signer with the card read (first tap). For the X.509 formats the key gets the card's cardholder
+     * certificate, the certificate the card signed for itself before, or a new self-issued one (kept for next time).
+     */
+    private suspend fun openPgpSigner(choice: SignerChoice.OpenPgp, x509: Boolean): OpenPgpTapSigner {
+        busy.value = OpenPgpModel.tapMessage(choice.reader, "讀取卡片")
+        val signer = OpenPgpTapSigner(
+            choice.reader.reader, choice.pin, model.openPgp.knownBodies(), { model.openPgp.selfIssuedCertificate(it) },
+            tapMessage = OpenPgpModel.tapMessage(choice.reader, "讀取卡片"),
+            signMessage = OpenPgpModel.tapMessage(choice.reader, "以同一張卡完成簽署"),
+        )
+        signer.load(x509)
+        val made = signer.selfIssued
+        val fpr = signer.signatureKey.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
+        if (made != null && fpr != null) model.openPgp.keepSelfIssued(fpr, made)
+        return signer
+    }
+
+    /**
+     * Signs [f] with an OpenPGP card as an armored detached signature and stores it beside [f]. The card read by this
+     * wallet is the holder's own, so its keys join the OpenPGP list as such when they are not listed yet.
+     */
+    private suspend fun signOpenPgp(f: StoredFile, choice: SignerChoice.OpenPgp) {
+        val data = data(f.id)
+        val signer = openPgpSigner(choice, x509 = false)
+        val info = signer.info ?: throw SigningException("尚未讀取 OpenPGP 卡")
+        val key = signer.signatureKey
+        val fpr = key.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
+        val listed = fpr?.let { model.openPgp.holder(it) }
+        val added = if (listed == null || (listed.trust == OpenPgpTrust.UNVERIFIED)) runCatching { model.openPgp.addCard(info) }.isSuccess else false
+        busy.value = OpenPgpModel.tapMessage(choice.reader, "以同一張卡完成簽署")
+        val bytes = signer.signDetached(data)
+        busy.value = "檢查並保存簽署結果"
+        val stored = store("${f.name}.asc", bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = f.id)
+        val name = model.openPgp.holder(fpr ?: "")?.info?.name ?: info.cardholder ?: info.label
+        model.record(HistoryKind.SIGNED, name, null, listOf(f.name), note = "${SignForm.OPENPGP_DETACHED.title}，以${SignerSource.OPENPGP.title}簽署（${key.algorithm}）")
+        model.message.value = "已簽署並保存：${stored.name}" + if (added) "；這張卡的公開金鑰已加入 OpenPGP 公開金鑰清單（自己的卡）" else ""
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    // ---------------------------------------------------------------- OpenPGP messages
+
+    /** Checks the OpenPGP files again after the key list or the user's trust changed. */
+    suspend fun reinspectOpenPgp() {
+        files.value.filter { it.report?.format == DocumentFormat.OPENPGP }.forEach { runCatching { refreshed(it) } }
+    }
+
+    /** Decrypts the OpenPGP message [f] with the card on [reader] and stores the content (and the signatures inside). */
+    fun decryptOpenPgp(f: StoredFile, reader: NfcReaderOption, pin: String) = run("以 OpenPGP 卡解密") {
+        val bytes = data(f.id)
+        busy.value = OpenPgpModel.tapMessage(reader, "解密這份訊息")
+        val (info, session) = OpenPgpCards.sessionKey(
+            reader.reader, OpenPgpModel.tapMessage(reader, "解密這份訊息"), pin, bytes, model.openPgp.knownBodies(),
+        )
+        busy.value = "解密並檢查完整性"
+        val plain = withContext(Dispatchers.Default) { OpenPgp.decrypt(bytes, session.first, session.second) }
+        val dec = info.key(OpenPgpKeySlot.DECRYPTION)?.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
+        if (dec != null && model.openPgp.holder(dec) == null) runCatching { model.openPgp.addCard(info) }
+        val stored = storePlain(f, plain, FileOrigin.DECRYPTED)
+        model.message.value = "已解密並保存：${stored.name}" + if (plain.detachedSignature != null) "（內含的簽章另存為 .asc）" else ""
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** Takes the content out of a signed (or plain) OpenPGP message [f], keeping its signatures as a detached signature. */
+    fun unwrapOpenPgp(f: StoredFile) = run("取出 OpenPGP 訊息的內容") {
+        val plain = withContext(Dispatchers.Default) { OpenPgp.literal(data(f.id)) } ?: throw SigningException("這份 OpenPGP 訊息沒有可取出的內容")
+        val stored = storePlain(f, plain, FileOrigin.UNWRAPPED)
+        model.message.value = "已取出並保存：${stored.name}"
+        model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    private suspend fun storePlain(f: StoredFile, plain: OpenPgpPlaintext, origin: FileOrigin): StoredFile {
+        val fallback = f.name.removeSuffix(".gpg").removeSuffix(".pgp").removeSuffix(".asc").removeSuffix(".sig")
+            .takeIf { it != f.name && it.isNotBlank() } ?: (f.name + ".out")
+        val name = plain.fileName?.substringAfterLast('/')?.substringAfterLast('\\')?.let { safeName(it) } ?: fallback
+        val stored = store(name, plain.data, origin, f.name, parentId = f.id)
+        plain.detachedSignature?.let { sig ->
+            store("${stored.name}.asc", OpenPgpPackets.armor("SIGNATURE", sig).encodeToByteArray(), origin, f.name, parentId = f.id, contentId = stored.id)
+        }
+        return stored
+    }
+
+    /**
+     * Encrypts [f] to the listed keys [fingerprints] (AES-256 with integrity protection) and stores the message as
+     * `.asc` when [armor], else `.gpg`.
+     */
+    fun encryptOpenPgp(f: StoredFile, fingerprints: List<String>, armor: Boolean) = run("以 OpenPGP 加密") {
+        if (fingerprints.isEmpty()) throw SigningException("請至少選擇一位收件人")
+        val entries = fingerprints.mapNotNull { model.openPgp.entry(it) }
+        val certs = entries.map { it.certificate.fromBase64() }
+        val bytes = withContext(Dispatchers.Default) { OpenPgp.encrypt(data(f.id), f.name, certs, armor) }
+        val stored = store(f.name + if (armor) ".asc" else ".gpg", bytes, FileOrigin.ENCRYPTED, f.name, parentId = f.id)
+        model.message.value = "已加密給 ${entries.size} 位收件人並保存：${stored.name}"
+        model.screen.value = Screen.FileDetail(stored.id)
     }
 
     /** SP account entered on the signing screen during this run (developer option); never written to storage. */

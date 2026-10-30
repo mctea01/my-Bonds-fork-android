@@ -28,8 +28,17 @@
 
 | 平台 | 傳輸 |
 |---|---|
-| Android | 手機 NFC（IsoDep）、USB CCID 讀卡機或直接插上的 YubiKey／Nitrokey（`AndroidNfcReaders`） |
-| 桌面 | PC/SC（`PcscReaders`） |
+| Android | 手機 NFC（IsoDep reader mode，YubiKey 5 NFC 貼近即可）、OTG 接上的 USB CCID 讀卡機，或直接插上的 YubiKey／Nitrokey／Gnuk（Multipaz `CcidDriver`，APDU 層，與讀卡機同一條路；`AndroidNfcReaders`） |
+| 桌面 | PC/SC（`PcscReaders`）：讀卡機或直接插上的安全金鑰 |
+
+Android 的 YubiKey 與其他安全金鑰：
+
+- 依 USB 廠商代碼標示名稱（Yubico 0x1050 為「YubiKey」、0x20A0 為「Nitrokey」、0x234B 為「Gnuk」），在讀卡機清單顯示為「YubiKey 5 NFC（USB）」等，並優先選用直插的金鑰（不需感應）。
+- 插上的 YubiKey 沒有 CCID 介面時（只開了 FIDO／OTP，或是只支援 FIDO 的 Security Key 系列），清單說明要以 Yubico Authenticator 在 USB 介面設定開啟 CCID。
+- 讀卡機清單可「重新尋找」，簽署途中插上的金鑰不必重開畫面。
+- 第一次使用 USB 裝置時系統會詢問權限；NFC 由錢包自己的感應提示顯示，只在等待感應時開啟 reader mode。
+
+桌面：GnuPG 的 scdaemon 會獨占 YubiKey（SCARD_E_SHARING_VIOLATION）。直插的金鑰不會被拔出，以前的等待移除迴圈會一直等，現在改為立即停止並提示關閉該程式或執行 `gpgconf --kill scdaemon`。
 
 不依賴 YubiKit 或任何廠商程式庫。已知可用的卡片：YubiKey 5（OpenPGP applet 3.4）、Nitrokey Pro 2／Start／3、Gnuk（FST-01）、SmartPGP（JavaCard）、ZeitControl／FLOSS OpenPGP 卡 2.x 與 3.x。卡片 AID 前綴 `D2 76 00 01 24 01`，回應中的版本、廠商代碼與序號顯示在卡片資訊。
 
@@ -40,10 +49,11 @@
 | `core/commonMain/.../document/card/OpenPgpCard.kt` | `OpenPgpCard`、`OpenPgpCardInfo`、`OpenPgpCardKey`、`OpenPgpAlgorithm` | APDU：SELECT、GET DATA（6E、65、5F50、7A、F9）、讀公開金鑰（GENERATE ASYMMETRIC KEY PAIR P1=81）、SELECT DATA＋GET DATA 7F21、VERIFY（含 KDF-DO）、PSO:CDS、PSO:DECIPHER |
 | `core/commonMain/.../document/pgp/OpenPgpPackets.kt` | `OpenPgpPackets` | 純 Kotlin：由卡片公開金鑰重建 v4 公開金鑰封包並比對卡上指紋（C5）、MPI、v4 簽章封包、ASCII armor 與 CRC-24 |
 | `core/commonMain/.../document/pgp/OpenPgpCardSigner.kt` | `OpenPgpTapSigner` | `DocumentSigner`（X.509 格式）與 `signDetached`（OpenPGP 分離式簽章）；每次簽章前 VERIFY PW1，簽完以公開金鑰檢查簽章值 |
-| `core/commonMain/.../document/pgp/OpenPgp.kt` | `expect object OpenPgp` | App 需要的 OpenPGP 運算：解析公開金鑰、加密、取出加密訊息的收件人、以會話金鑰解密、ECDH／X25519 金鑰解包 |
+| `core/commonMain/.../document/pgp/OpenPgp.kt` | `expect object OpenPgp`、`OpenPgpTrust`、`OpenPgpTrustedKey`、`OpenPgpReport` | App 需要的 OpenPGP 運算：解析公開金鑰、取出金鑰封包、加密、以會話金鑰解密、取出簽章訊息的內容；信任等級與報告模型 |
 | `core/jvmCommonMain/.../document/pgp/` | `OpenPgp` actual、`OpenPgpInspection` | 以 Bouncy Castle `bcpg` 實作；`DocumentInspector` 新增 `DocumentFormat.OPENPGP` 與 `SignatureFormat.OPENPGP` |
-| `app/commonMain/.../OpenPgpModel.kt` | `OpenPgpModel` | 公開金鑰清單（儲存表 `openpgp-keys`）、讀卡、加密、解密、keys.openpgp.org 查詢 |
-| `app/commonMain/.../ui/OpenPgpScreens.kt` | 簽署者選擇、卡片資訊、公開金鑰清單、加解密畫面 | |
+| `app/commonMain/.../OpenPgpModel.kt` | `OpenPgpModel` | 公開金鑰清單與信任（儲存表 `DiwOpenPgpKeys`）、卡片自簽憑證（`DiwOpenPgpCardCerts`）、讀卡、WKD 與 keys.openpgp.org 查詢 |
+| `app/commonMain/.../FilesModel.kt` | `SignerChoice.OpenPgp`、`SignForm.OPENPGP_DETACHED` | 以卡簽署（.asc 與 X.509 格式）、以卡解密、取出簽章訊息內容、加密給收件人 |
+| `app/commonMain/.../ui/OpenPgpScreens.kt` | 簽署者選擇、卡片資訊、公開金鑰清單、文件頁 OpenPGP 區塊、加密對話框 | |
 
 新增依賴 `org.bouncycastle:bcpg-jdk18on`（與 bcprov、bcpkix 同版，Renovate 同一組更新）。卡片 APDU 與簽章封包是 commonMain 純 Kotlin，不需要 bcpg；查驗、加密與解密用 bcpg 以涵蓋 v3／v4／v6、壓縮、各種演算法。
 
@@ -107,34 +117,50 @@ OpenPGP 的指紋包含金鑰產生時間與（ECDH）KDF 參數，卡片只存�
 | 加密訊息 | 列出收件人 key ID 或指紋與演算法、加密演算法；收件人是自己的 OpenPGP 卡時提供「以 OpenPGP 卡解密」 |
 
 每個簽章產生一個 `SignatureInfo`（`SignatureFormat.OPENPGP`）：
-- `integrity`：找到公開金鑰時為驗證結果；找不到為 NOT_CHECKED，並說明簽署者指紋，提供查詢 keys.openpgp.org。
+- `integrity`：找到公開金鑰時為驗證結果；找不到為 NOT_CHECKED，並說明簽署者指紋，文件頁提供查詢簽署者的公開金鑰。
 - 子金鑰簽章需有有效的子金鑰綁定簽章且金鑰旗標允許簽章（沒有旗標時接受）；主金鑰或子金鑰在簽章時已撤銷或到期時 `certificateValidity` 為 FAIL。
 - `signer` 以 `CertInfo` 表示：subject 為主要使用者 ID，serialHex 為指紋，publicKey 為演算法描述，der 留空（不是 X.509）。
 - `claimedTime` 為簽章建立時間（宣稱，未經時戳）；檔案層的 RFC 3161 時戳照舊可加。
 
 ## 9. 公開金鑰清單與信任
 
-OpenPGP 沒有 X.509 信任根，錢包不計算 Web of Trust。清單內每把金鑰都是使用者明確加入的：
+OpenPGP 沒有 X.509 信任根。錢包不計算完整的 Web of Trust，而是讓使用者對每把金鑰明確決定（同 GnuPG 的 validity 與 owner trust 的簡化版），對應錢包的信任等級：
 
-| 來源 | 信任 |
-|---|---|
-| 使用者匯入檔案 | T2，USER_ANCHOR（與使用者匯入的根憑證同級，非官方） |
-| 自己的 OpenPGP 卡 | T2，USER_ANCHOR，名稱為「OpenPGP 卡 廠商 序號」 |
-| keys.openpgp.org 查詢 | 先以強提示確認（伺服器只驗證過電子郵件），加入後 T2，USER_ANCHOR |
-| 不在清單 | 不判定（integrity NOT_CHECKED，整體 PARTIAL） |
+| 信任（`OpenPgpTrust`） | 等級 | 如何得到 |
+|---|---|---|
+| 自己的 OpenPGP 卡（OWN_CARD） | T2，USER_ANCHOR | 只能由錢包讀取卡片設定：讀卡後「加入公開金鑰清單」、以卡簽署或解密時卡片金鑰不在清單（或只是未核對）時自動標示 |
+| 已核對指紋（VERIFIED） | T2，USER_ANCHOR | 使用者確認已透過可靠管道核對完整 40 位指紋（對話框列出分組指紋，並提醒短 ID 可偽造） |
+| 未核對（UNVERIFIED） | T3；由介紹人認證時升為 T2 | 匯入檔案、文件中的金鑰、WKD 或 keys.openpgp.org 查到的金鑰的預設 |
+| 不信任（DISTRUSTED） | T4，簽章一律不可信 | 使用者設定；保留在清單避免被重新匯入當成新金鑰 |
+| 不在清單 | 不判定 | integrity NOT_CHECKED，整體 PARTIAL，提供查詢 |
 
-清單存在錢包儲存表 `openpgp-keys`，以主金鑰指紋為鍵；`DocumentTrustSource` 新增 `openPgpKeys()` 提供給查驗。刪除金鑰後重新檢查不會自動進行，文件頁可「重新檢查」。
+介紹人：已核對或自己的卡的金鑰可設為介紹人，它對某把「未核對」金鑰的使用者 ID 所做的有效認證（非撤銷）讓該金鑰升為 T2，報告寫出「由某某認證」。只算一層，不往下傳遞，以免信任在使用者不知情下擴散。
+
+清單規則：
+
+- 以主金鑰指紋為鍵；同一把金鑰再次匯入時更新憑證內容（可能帶新的撤銷或到期），保留使用者的信任。
+- 已有「不信任」的金鑰不會因重新匯入或查詢而變成可信。
+- 只含卡片金鑰（沒有使用者 ID 與綁定簽章）的項目，在匯入涵蓋這些金鑰的完整公開金鑰時被取代，並沿用原本的信任；卡片讀取不會覆蓋已有的完整公開金鑰。
+- 給查驗的順序是「不信任」優先，再依信任高低，避免同一把金鑰在兩個項目時誤判為可信。
+- 清單或信任改變後，錢包重新檢查所有 OpenPGP 檔案。
+
+查詢（都需使用者看過結果並以強提示確認才加入，加入後為未核對）：
+
+- 電子郵件：先查該網域的 Web Key Directory（advanced：`openpgpkey.網域`，再 direct：`網域/.well-known/openpgpkey/hu/`，檔名為小寫本地部分 SHA-1 的 z-base-32），沒有時查 keys.openpgp.org `/vks/v1/by-email/`。只保留使用者 ID 含該地址的金鑰。
+- 40 位指紋或 16 位金鑰 ID：keys.openpgp.org `/vks/v1/by-fingerprint/`、`by-keyid/`，只保留含該指紋或 ID 的金鑰。
+- 回應超過 1 MB 拒絕。
 
 ## 10. 加密與解密
 
-- 加密：選擇清單內一或多把有加密能力的金鑰（含自己的卡片解密金鑰，以 6 節重建的封包），以 AES-256、SEIPD v1（MDC）加密，literal data 帶原檔名，輸出 `原檔名.gpg`，存為新檔。v6 金鑰由 bcpg 依 RFC 9580 處理。
-- 解密：讀卡比對收件人。RSA：PSO:DECIPHER 送 `00`＋密文，卡片回傳去填充的會話資料（演算法、金鑰、檢查碼）。ECDH（18）：送 `A6 { 7F49 { 86 臨時公開金鑰 } }` 取共享秘密，依 RFC 6637 以 KDF 與 AES Key Wrap 解出會話金鑰。X25519（25，v6）：取共享秘密後以 HKDF-SHA256 與 AES-128 Key Wrap 解出。會話金鑰交給 bcpg 解密並檢查完整性（MDC 或 AEAD），不完整就不保存。解出的檔案以 literal data 的檔名（清理後）存為新檔並檢查。
+- 加密：選擇清單內一或多把有加密能力、未撤銷、不是「不信任」的金鑰（預設勾選自己的卡），以 AES-256、SEIPD v1（MDC）加密，literal data 帶原檔名，輸出 `原檔名.asc`（armor）或 `原檔名.gpg`，存為新檔。收件人有未核對的金鑰時以紅字提醒。
+- 解密：讀卡比對收件人（PKESK v3 金鑰 ID 或 v6 指紋），不是寄給這張卡時在送出 PIN 前停止。RSA（1）：PSO:DECIPHER 送 `00`＋密文，卡片回傳去填充的會話資料（演算法、金鑰、檢查碼）。ECDH（18，NIST、brainpool 與 Curve25519）：送 `A6 { 7F49 { 86 臨時公開金鑰 } }` 取共享秘密，依 RFC 6637 以 KDF 與 AES Key Wrap 解出會話金鑰。v6 的 X25519（25）金鑰目前沒有 OpenPGP 卡支援，不實作。會話金鑰交給 bcpg 解密並檢查完整性（MDC 或 AEAD）；沒有完整性保護的舊式 SED 一律拒絕，MDC 不符就不保存。解出的檔案以 literal data 的檔名（清理後）存為新檔並檢查，內含的簽章另存為 `.asc` 分離式簽章與內容配對。
+- 簽章訊息（gpg --sign）與未簽章的 literal data：文件頁「取出內容另存」，簽章同樣另存為 `.asc`。
 
 ## 11. 介面
 
-- 簽署畫面：「實體卡／硬體憑證」群組加入「OpenPGP 卡」；選讀卡機、輸入 PIN、可先讀取卡片看金鑰與憑證。簽章格式多一個「OpenPGP 分離式簽章（.asc）」，只在選 OpenPGP 卡時出現；卡片金鑰不是 RSA／P-256 時 X.509 格式不可選並說明原因。
-- 文件頁：OpenPGP 簽章卡片顯示指紋、使用者 ID、演算法；找不到公開金鑰時提供「從 keys.openpgp.org 取得」與「匯入公開金鑰」。公開金鑰檔提供「加入公開金鑰清單」；加密訊息提供「以 OpenPGP 卡解密」。每份文件的其他動作加「加密給 OpenPGP 收件人」。
-- 設定 → 信任 →「OpenPGP 公開金鑰」：清單、匯入、讀取 OpenPGP 卡加入、刪除、匯出（armor）。
+- 簽署畫面：簽章格式多一個「OpenPGP 分離式簽章（.asc）」，選它時簽署者只有 OpenPGP 卡；其他格式在「實體卡／硬體憑證」群組多一個「OpenPGP 卡／YubiKey」。都可選讀卡機（含重新尋找）、輸入 PW1、先讀取卡片看金鑰、指紋、PIN 剩餘次數與是否有持卡人憑證；簽章金鑰不是 RSA／P-256 時說明 X.509 格式不可用。
+- 文件頁：OpenPGP 簽章卡片顯示簽署金鑰指紋與「金鑰效力」，不顯示 X.509 的撤銷資訊列；OpenPGP 區塊列出檔案中的金鑰（可加入清單）、加密訊息的收件人與「以 OpenPGP 卡解密」、簽章訊息的「取出內容另存」、清單中沒有的簽署者的「查詢簽署者的公開金鑰」。分離式 `.asc`／`.sig` 沒有配對原檔時可「選擇被簽署的檔案」。其他動作加「以 OpenPGP 加密」。
+- 設定 → 信任 →「OpenPGP 公開金鑰」：信任等級說明、匯入檔案、查詢、讀取自己的卡、每把金鑰的信任切換、介紹人、匯出／分享（armor）、移除。
 
 ## 12. 測試與驗收
 

@@ -61,6 +61,16 @@ actual object OpenPgp {
         return out
     }
 
+    actual fun keyBodies(certificate: ByteArray): List<ByteArray> = runCatching {
+        blocks(certificate).flatMap { block ->
+            val f = BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(block)))
+            generateSequence { runCatching { f.nextObject() }.getOrNull() }
+                .filterIsInstance<PGPPublicKeyRing>()
+                .flatMap { ring -> ring.publicKeys.asSequence().map { it.publicKeyPacket.encodedContents } }
+                .toList()
+        }
+    }.getOrDefault(emptyList())
+
     /** Each armored block of [data] on its own (a file may hold several), or the binary data itself. */
     internal fun blocks(data: ByteArray): List<ByteArray> {
         val text = runCatching { data.decodeToString(throwOnInvalidSequence = true) }.getOrNull() ?: return listOf(data)
@@ -158,8 +168,7 @@ actual object OpenPgp {
         return content
     }
 
-    /** The literal data of an unencrypted OpenPGP message (plain or signed), or null when it has none. */
-    fun literal(message: ByteArray): OpenPgpPlaintext? = runCatching {
+    actual fun literal(message: ByteArray): OpenPgpPlaintext? = runCatching {
         readMessage(BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(message))))
     }.getOrNull()?.takeIf { it.fileName != null || it.data.isNotEmpty() }
 

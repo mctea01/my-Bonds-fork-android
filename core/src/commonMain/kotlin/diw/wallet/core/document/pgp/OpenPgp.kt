@@ -116,6 +116,12 @@ expect object OpenPgp {
     /** The certificates in [data] (armored or binary, one or more), each with its binary public part. */
     fun certificates(data: ByteArray): List<Pair<OpenPgpKeyInfo, ByteArray>>
 
+    /** The key packet bodies (primary key and subkeys) of the binary certificate [certificate], for matching card keys. */
+    fun keyBodies(certificate: ByteArray): List<ByteArray>
+
+    /** The literal data of an unencrypted OpenPGP message (plain or signed), or null when it has none. */
+    fun literal(message: ByteArray): OpenPgpPlaintext?
+
     /** Whether [signature] (a binary or armored v4 signature packet) verifies over [data] with the key packet body [keyBody]. */
     fun verifyDetached(keyBody: ByteArray, data: ByteArray, signature: ByteArray): Boolean
 

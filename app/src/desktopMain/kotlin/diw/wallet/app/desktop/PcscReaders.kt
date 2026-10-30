@@ -36,7 +36,7 @@ object PcscReaders {
         configure()
         return try {
             NfcReaderList(terminals().map { NfcReaderOption(it.name, external = true, reader = PcscTagReader(it)) })
-                .let { if (it.readers.isEmpty()) it.copy(problem = "沒有找到 PC/SC 讀卡機，請接上非接觸式（NFC）讀卡機。") else it }
+                .let { if (it.readers.isEmpty()) it.copy(problem = "沒有找到 PC/SC 讀卡機，請接上非接觸式（NFC）讀卡機，或直接插上 YubiKey 等 USB 安全金鑰（需開啟 CCID 智慧卡介面）。") else it }
         } catch (e: Throwable) {
             if (e is VirtualMachineError) throw e
             NfcReaderList(emptyList(), reason(e))
@@ -127,7 +127,15 @@ class PcscTagReader(private val terminal: CardTerminal) : NfcTagReader {
             while (true) {
                 currentCoroutineContext().ensureActive()
                 if (!withContext(io) { terminal.waitForCardPresent(POLL_MS) }) continue
-                val card = withContext(io) { runCatching { terminal.connect("*") }.getOrNull() }
+                val attempt = withContext(io) { runCatching { terminal.connect("*") } }
+                attempt.exceptionOrNull()?.let { e ->
+                    // A token that never leaves the slot (YubiKey) held by another program would be waited on forever.
+                    if (SHARING_VIOLATION in PcscReaders.describe(e)) throw IllegalStateException(
+                        "「${terminal.name}」正被其他程式獨占使用（常見於 GnuPG 的 scdaemon）。請關閉該程式，" +
+                            "或執行 gpgconf --kill scdaemon 後再試。",
+                    )
+                }
+                val card = attempt.getOrNull()
                 if (card == null) {
                     awaitRemoval(io)
                     continue
@@ -161,6 +169,7 @@ class PcscTagReader(private val terminal: CardTerminal) : NfcTagReader {
 
     private companion object {
         const val POLL_MS = 300L
+        const val SHARING_VIOLATION = "SCARD_E_SHARING_VIOLATION"
     }
 }
 
