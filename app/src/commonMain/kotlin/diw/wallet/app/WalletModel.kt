@@ -3,7 +3,10 @@ package diw.wallet.app
 import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.Draft13Dialect
 import diw.wallet.core.compat.EudiDialect
+import diw.wallet.core.compat.TwdiwAppIdentity
 import diw.wallet.core.compat.TwdiwDialect
+import diw.wallet.core.profile.twdiw.TwdiwDeviceKeys
+import diw.wallet.core.profile.twdiw.TwdiwKeyBackend
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.env.EnvironmentPolicy
@@ -398,6 +401,8 @@ class WalletModel(val platform: PlatformServices) {
     /** Time stamps, OCSP, CRLs and issuer certificates, over http where their publishers use it. */
     val signedDataHttp: diw.wallet.core.document.sign.SignedDataHttp by lazy { platform.signedDataHttp(http) }
     lateinit var holderIdentities: HolderIdentities
+    /** The TWDIW ecosystem device key and its registration at each partner-card platform. */
+    lateinit var twdiwDeviceKeys: TwdiwDeviceKeys
         private set
     private lateinit var historyLog: HistoryLog
     private val historyLock = Mutex()
@@ -487,6 +492,9 @@ class WalletModel(val platform: PlatformServices) {
         val repo = SecureAreaRepository.Builder().apply { backends.map { it.secureArea }.distinct().forEach { add(it) } }.build()
         documentStore = buildDocumentStore(storage, repo) { addDiwCredentialImplementations(repo) }
         holderIdentities = HolderIdentities(storage, repo)
+        twdiwDeviceKeys = TwdiwDeviceKeys(storage, repo, http, backends = {
+            backends.map { b -> TwdiwKeyBackend(b.secureArea, b.protection.wire) { challenge -> b.settings(challenge, false) } }
+        }, identity = { twdiwAppIdentity() })
         trust = TrustRegistry(storage, environmentPolicy)
         // Chains that leave out an intermediate certificate are completed from their AIA caIssuers links.
         trust.issuerFetcher = { url -> files.trustSource.fetchIssuerCertificates(url).firstOrNull() }
@@ -1068,12 +1076,19 @@ class WalletModel(val platform: PlatformServices) {
      */
     private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
         listOf(
-            TwdiwDialect(http, loopback, clientId = { settings.twdiwClientId }, registeredIssuerTrust = { url ->
+            TwdiwDialect(http, loopback, clientId = { settings.twdiwClientId }, appIdentity = { twdiwAppIdentity() }, registeredIssuerTrust = { url ->
                 twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.issuerDecision(url) }.getOrNull() }
-            }),
+            }, deviceKey = { origin -> if (::twdiwDeviceKeys.isInitialized) twdiwDeviceKeys.signingKey(origin) else null }),
             Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect(),
         )
     }
+
+    /** This wallet's own TWDIW ecosystem identity: its own application id, version and platform, never the official app's. */
+    fun twdiwAppIdentity(): TwdiwAppIdentity = TwdiwAppIdentity(
+        appId = TwdiwAppIdentity.DEFAULT.appId,
+        appVersion = AppBuild.version ?: TwdiwAppIdentity.DEFAULT.appVersion,
+        appPlatform = if (platform.platformName.startsWith("Android")) "android" else "desktop",
+    )
 
     private var cachedProvider: Pair<String, WalletProvider>? = null
     private val multipazTestProvider by lazy { MultipazTestWalletProvider() }
