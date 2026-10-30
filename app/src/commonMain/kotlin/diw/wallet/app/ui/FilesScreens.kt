@@ -743,10 +743,12 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
             }
             Text(s.format.title, style = MaterialTheme.typography.bodySmall)
             s.signer?.let { signer ->
-                LabelValue("簽署者", signer.commonName ?: signer.subject, onClick = {
-                    val chain = s.chain.mapNotNull { certOf(it) }
-                    if (chain.isNotEmpty()) model.screen.value = Screen.Certificate(chain, 0, model.screen.value)
-                })
+                // An OpenPGP signer is a key, not an X.509 certificate (its der is empty), so there is no certificate
+                // screen to open: only make the row tappable when the chain actually holds DER-encoded X.509 certs,
+                // otherwise the X.509 certificate screen would be opened on empty bytes and crash.
+                val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
+                LabelValue("簽署者", signer.commonName ?: signer.subject,
+                    onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value) }))
             }
             s.trust?.let { t ->
                 val d = t.decision()

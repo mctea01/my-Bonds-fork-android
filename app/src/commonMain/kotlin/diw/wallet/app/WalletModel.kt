@@ -37,6 +37,7 @@ import diw.wallet.core.oid4vci.PublicClientWalletProvider
 import diw.wallet.core.oid4vci.IssuerRoutedWalletProvider
 import diw.wallet.core.oid4vci.MultipazTestWalletProvider
 import diw.wallet.core.oid4vci.RemoteWalletProvider
+import diw.wallet.core.oid4vci.SelfAttestationWalletProvider
 import diw.wallet.core.oid4vci.WalletProvider
 import diw.wallet.core.oid4vci.pick
 import diw.wallet.core.oid4vp.ConsentTerms
@@ -157,6 +158,12 @@ data class WalletSettings(
     val useWalletProvider: Boolean = true,
     /** Use the Multipaz TestApp public test identity with issuer.multipaz.org (test environment only, off by default). */
     val multipazTestIdentity: Boolean = false,
+    /**
+     * Send an unverified self-signed wallet/key attestation to issuers this wallet has no registered provider for,
+     * so sandbox issuers that require attestation but do not check the provider still accept us. Off by default; no
+     * real issuer trusts these keys, so it only helps demos.
+     */
+    val selfAttestationFallback: Boolean = false,
     val clientId: String = "diw-wallet",
     /** Registered HTTPS wallet backend, separate from the local test provider. */
     val walletProviderUrl: String? = null,
@@ -1104,13 +1111,29 @@ class WalletModel(val platform: PlatformServices) {
 
     private var cachedProvider: Pair<String, WalletProvider>? = null
     private val multipazTestProvider by lazy { MultipazTestWalletProvider() }
+    private var cachedSelfProvider: Pair<String, SelfAttestationWalletProvider>? = null
+
+    /** Self-attestation provider, rebuilt when the client_id changes so a settings edit takes effect. */
+    private fun selfAttestationProvider(): SelfAttestationWalletProvider {
+        val id = settings.clientId
+        cachedSelfProvider?.takeIf { it.first == id }?.let { return it.second }
+        return SelfAttestationWalletProvider(id).also { cachedSelfProvider = id to it }
+    }
 
     private fun walletProvider(): WalletProvider {
-        val base = baseWalletProvider()
         val s = settings
-        if (!(s.testEnvironment && s.multipazTestIdentity)) return base
+        val base = baseWalletProvider()
+        val multipazOn = s.testEnvironment && s.multipazTestIdentity
+        // The self-signed fallback only steps in when no real or local provider is configured (base is a public
+        // client); a configured provider already vouches for the wallet and takes precedence per issuer.
+        val selfOn = s.selfAttestationFallback && base is PublicClientWalletProvider
+        if (!multipazOn && !selfOn) return base
         return IssuerRoutedWalletProvider(base) { ci, asIssuer ->
-            multipazTestProvider.takeIf { MultipazTestWalletProvider.appliesTo(ci, asIssuer) }
+            when {
+                multipazOn && MultipazTestWalletProvider.appliesTo(ci, asIssuer) -> multipazTestProvider
+                selfOn -> selfAttestationProvider()
+                else -> null
+            }
         }
     }
 

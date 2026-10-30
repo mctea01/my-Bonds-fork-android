@@ -2143,7 +2143,8 @@ class WalletModelE2eTest {
                 verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
             })
             val outcome = assertNotNull(result.outcome, result.error)
-            assertTrue(outcome.passed && outcome.found)
+            // The record page is synthetic, so the verdict (status, revealed fields, problems) is safe to print.
+            assertTrue(outcome.passed && outcome.found, "local=${result.local} receipt=${result.receipt} $outcome")
             assertEquals(mapOf("name" to record.NAME, "date" to record.DATE), outcome.fields)
             assertEquals(expectLocal, result.local)
             assertEquals(expectReceipt, result.receipt)
