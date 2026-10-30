@@ -332,6 +332,26 @@ class DocumentFieldsTest {
     }
 
     @Test
+    fun guideMentioningCertificateIsNotParsed() {
+        // A new-student guide/FAQ that only lists the certificate in its table of contents, and mentions 入學 in
+        // passing, must not be read as a proof of student status (the earlier heuristic matched it by substring).
+        val text = """
+            福州大學 2026 級 港澳臺新生常見事項整理
+            給 26 級港澳臺新生的常見問題答疑
+
+            目錄
+            7. 銀行卡與繳費 .......... 6
+            8. 在學證明與居住證辦理 .......... 7
+            9. 入學與註冊流程 .......... 8
+
+            新生入學後可至 https://idself.fzu.edu.cn/public/client/account-activate 啟用帳號。
+            入學報到時請攜帶證件，辦理在學證明請洽教務處。
+        """.trimIndent()
+        assertNull(diw.wallet.core.document.derived.StudentStatusProof.parse(text))
+        assertNull(diw.wallet.core.document.derived.ParsedCertificate.parse(text))
+    }
+
+    @Test
     fun mainlandPermitLink() {
         // The layout of the National Immigration Administration's permit association, with fictitious values.
         val text = """
