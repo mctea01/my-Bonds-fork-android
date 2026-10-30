@@ -182,7 +182,7 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 相依版本限制：
 
 - Multipaz 0.102 的 JVM 產物以 Java 21 編譯（Android 產物仍為 Java 17），所以 `core` 的 jvm 目標與桌面版都是 JVM 21，Android 目標維持 17。
-- Ktor 3.6 要求的 OkHttp 5.5 需要 compileSdk 37，超出 AGP 8.13 的範圍；`app/build.gradle.kts` 暫時固定 OkHttp 5.4.0（Ktor 引擎用到的 API 都在 5.4），升級 AGP 與 compileSdk 時一併移除。
+- Ktor 3.6 要求的 OkHttp 5.5 需要 compileSdk 37，超出 AGP 8.13 的範圍；根目錄 `build.gradle.kts` 暫時固定 OkHttp 5.4.0（Ktor 引擎用到的 API 都在 5.4），升級 AGP 與 compileSdk 時一併移除。
 
 測試慣例：
 

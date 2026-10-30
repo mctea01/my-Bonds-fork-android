@@ -243,9 +243,6 @@ releaseKey.exceptionOrNull()?.message?.let { problem ->
 configurations.all {
     resolutionStrategy {
         force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86")
-        // Ktor 3.6 asks for OkHttp 5.5, whose AAR needs compileSdk 37 (beyond AGP 8.13). 5.4 has every OkHttp API the
-        // Ktor engine calls; lift this together with the AGP and compileSdk upgrade.
-        force("com.squareup.okhttp3:okhttp:5.4.0", "com.squareup.okhttp3:okhttp-android:5.4.0", "com.squareup.okhttp3:okhttp-jvm:5.4.0")
     }
 }
 

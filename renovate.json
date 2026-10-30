@@ -71,7 +71,7 @@
       "groupName": "credential manager and dc api"
     },
     {
-      "description": "OkHttp 5.5 needs compileSdk 37; held at 5.4 until AGP 9 and compileSdk 37 (see app/build.gradle.kts)",
+      "description": "OkHttp 5.5 needs compileSdk 37; held at 5.4 until AGP 9 and compileSdk 37 (see the root build.gradle.kts)",
       "matchPackageNames": [
         "com.squareup.okhttp3:**"
       ],
