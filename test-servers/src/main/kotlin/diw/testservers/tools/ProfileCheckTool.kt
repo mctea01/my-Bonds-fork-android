@@ -14,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
 import javax.net.ssl.SNIHostName
@@ -167,14 +168,14 @@ object ProfileCheckTool {
     }
 
 
-    /** Writes the picture code to a temporary file and opens it where the desktop allows; deleted on exit. */
+    /** Writes the picture code to an owner-only temporary file and opens it where the desktop allows; deleted on exit. */
     private fun showCaptcha(image: ByteArray) {
         val ext = when {
             image.size > 3 && image[0] == 0x89.toByte() && image[1] == 'P'.code.toByte() -> ".png"
             image.size > 3 && image[0] == 'G'.code.toByte() && image[1] == 'I'.code.toByte() -> ".gif"
             else -> ".jpg"
         }
-        val file = File.createTempFile("zktls-captcha", ext).apply { deleteOnExit(); writeBytes(image) }
+        val file = Files.createTempFile("zktls-captcha", ext).toFile().apply { deleteOnExit(); writeBytes(image) }
         val opened = runCatching {
             val desktop = java.awt.Desktop.getDesktop()
             desktop.isSupported(java.awt.Desktop.Action.OPEN).also { if (it) desktop.open(file) }
