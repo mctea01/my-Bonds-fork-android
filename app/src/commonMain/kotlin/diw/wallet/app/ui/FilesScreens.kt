@@ -49,6 +49,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
+import diw.wallet.app.VisibleSignature
+import diw.wallet.core.document.c2pa.C2paInfo
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
 import diw.wallet.core.document.official.OfficialItem
@@ -74,6 +76,7 @@ import diw.wallet.app.PickedFile
 import diw.wallet.app.Screen
 import diw.wallet.app.SignForm
 import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.pdf.PdfSignatureAppearance
 import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
@@ -302,7 +305,7 @@ private fun groupOf(f: StoredFile, members: Int): String {
     val source = f.source.orEmpty()
     if (source.startsWith("MyData")) return source.substringAfter("・", "MyData").substringBefore("（").ifBlank { "MyData" }
     val ext = f.name.substringAfterLast('.', "").lowercase()
-    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co")) return "電子公文"
+    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co", "en", "esw")) return "電子公文"
     return f.report?.format?.let { formatTitle(it) } ?: "其他檔案"
 }
 
@@ -553,6 +556,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             report.openPgp?.let { pgp -> OpenPgpFileSection(model, f, report, pgp, busy) }
+            report.c2pa?.let { C2paSection(f, it) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
                 CollapsibleSection("容器內的檔案", report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
@@ -1223,7 +1227,8 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
         Text("測試服務簽出的簽章由測試 CA 簽發，沒有法律效力，查驗時會顯示為無法確認的憑證。", style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error)
     }
-    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。",
+    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。" +
+        "服務提供時戳（signatures/timestamp）時以服務的時戳為準，失敗才改用設定的時戳機構；只提供 signatures/signDoc 的服務由服務產生 PAdES 簽章。",
         style = MaterialTheme.typography.bodySmall)
     if (!adding) {
         OutlinedButton(onClick = { adding = true }) { Text("加入遠端簽章服務") }
@@ -1234,6 +1239,15 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
 
 @Composable
 private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
+    var byProfile by remember { mutableStateOf(false) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !byProfile, onClick = { byProfile = false }, label = { Text("逐項填寫") })
+        FilterChip(selected = byProfile, onClick = { byProfile = true }, label = { Text("匯入 CSC Profile") })
+    }
+    if (byProfile) {
+        CscProfileForm(model, onDone)
+        return
+    }
     var name by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("https://") }
     var clientId by remember { mutableStateOf("") }
@@ -1257,6 +1271,33 @@ private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text("加入") }
+        OutlinedButton(onClick = onDone) { Text("取消") }
+    }
+}
+
+/**
+ * Adds services from a CSC profile, pasted or read from a file: JSON with name, baseUrl, clientId and environment,
+ * optionally clientSecret, redirectUri and note (CscServices.fromProfile).
+ */
+@Composable
+private fun CscProfileForm(model: WalletModel, onDone: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var text by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
+    OutlinedTextField(value = text, onValueChange = { text = it.take(20_000); problem = null }, label = { Text("CSC Profile（JSON）") },
+        minLines = 4, modifier = Modifier.fillMaxWidth())
+    Text("服務商提供的設定檔，格式為 {\"type\":\"csc-profile\",\"name\":…,\"baseUrl\":…,\"clientId\":…,\"environment\":\"production\" 或 \"test\"}，可包含多個服務的陣列；redirectUri 未填時使用錢包自己的 ${CscServices.WALLET_REDIRECT}。",
+        style = MaterialTheme.typography.bodySmall)
+    problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = {
+            runCatching { model.csc.addProfile(text) }
+                .onSuccess { model.message.value = "已加入 $it 個遠端簽章服務"; onDone() }
+                .onFailure { problem = it.message }
+        }, enabled = text.isNotBlank()) { Text("加入") }
+        OutlinedButton(onClick = {
+            scope.launch { model.platform.pickFile()?.let { text = it.bytes.decodeToString().take(20_000); problem = null } }
+        }) { Text("從檔案讀取") }
         OutlinedButton(onClick = onDone) { Text("取消") }
     }
 }
@@ -1330,6 +1371,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         val tsaName = TsaServices.byId(model.settings.tsaId).name
         var level by remember { mutableStateOf(SignatureLevel.of(model.settings.padesLevel)) }
         var certification by remember { mutableStateOf<Int?>(null) }
+        var visible by remember { mutableStateOf<VisibleSignature?>(null) }
         val firstSignature = f.report?.signatures.isNullOrEmpty()
         var action by remember { mutableStateOf(ApprovalPoint().action) }
         var organization by remember { mutableStateOf("") }
@@ -1356,7 +1398,8 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         }
                     }
                 } else Text("文件已有簽章；認證簽章只能是第一個簽章，這次是一般的核准簽章。", style = MaterialTheme.typography.bodySmall)
-                Text("簽章不加頁面外觀（不可見簽章），在 PDF 閱讀器的簽章面板查看。頁面上的簽章圖樣需要內嵌中文字型，尚未支援。", style = MaterialTheme.typography.bodySmall)
+                SectionTitle("5. 頁面上的簽章（選填）")
+                VisibleSignaturePicker(model, f, visible) { visible = it }
                 CollapsibleSection("簽署原因與地點（選填）", key = "sign-reason-${f.id}") {
                     OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -1415,7 +1458,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         }
         var details by remember { mutableStateOf(false) }
         TextButton(onClick = { details = !details }) { Text(if (details) "隱藏技術細節" else "技術細節") }
-        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }))
+        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
             VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
@@ -1433,8 +1476,83 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                         account.ifBlank { null }, organization.ifBlank { null }, returned,
                     ),
                     level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
+                    visible = visible.takeIf { form == SignForm.PADES },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text("簽署")
+        }
+    }
+}
+
+/**
+ * Whether the PDF signature shows on a page, and where: the page (first, last or a number), a preset position and an
+ * optional picture. The box is drawn over the page preview when that page has been rendered.
+ */
+@Composable
+private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: VisibleSignature?, onChange: (VisibleSignature?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    val total = (f.report?.pages ?: 1).coerceAtLeast(1)
+    var pageText by remember(f.id) { mutableStateOf(total.toString()) }
+    var imageNote by remember(f.id) { mutableStateOf<String?>(null) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = value != null, onCheckedChange = { on ->
+            onChange(if (on) VisibleSignature(-1, PdfSignatureAppearance.Position.BOTTOM_RIGHT) else null)
+            pageText = total.toString()
+        })
+        Text("在頁面上顯示簽章")
+    }
+    if (value == null) {
+        Text("不勾選時是不可見簽章，只在 PDF 閱讀器的簽章面板出現。", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text("頁面（共 $total 頁）", style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(VisibleSignature(0, value.position, value.image)) }, label = { Text("第一頁") })
+        FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(VisibleSignature(-1, value.position, value.image)) }, label = { Text("最後一頁") })
+        OutlinedTextField(
+            value = pageText,
+            onValueChange = { t ->
+                pageText = t.filter { it.isDigit() }.take(5)
+                pageText.toIntOrNull()?.takeIf { it in 1..total }?.let { onChange(VisibleSignature(it - 1, value.position, value.image)) }
+            },
+            label = { Text("頁碼") }, singleLine = true, modifier = Modifier.width(110.dp),
+        )
+    }
+    Text("位置", style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        PdfSignatureAppearance.Position.entries.forEach { pos ->
+            FilterChip(selected = pos == value.position, onClick = { onChange(VisibleSignature(value.page, pos, value.image)) }, label = { Text(pos.title) })
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = {
+            scope.launch {
+                val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
+                val img = runCatching { model.files.signatureImage(picked.bytes) }.getOrNull()
+                imageNote = if (img == null) "無法讀取這張圖片" else "已選擇：" + picked.name
+                if (img != null) onChange(VisibleSignature(value.page, value.position, img))
+            }
+        }) { Text(if (value.image == null) "加入簽名圖片（選填）" else "更換簽名圖片") }
+        if (value.image != null) TextButton(onClick = { imageNote = null; onChange(VisibleSignature(value.page, value.position, null)) }) { Text("移除圖片") }
+    }
+    imageNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    Text("簽章框內寫入簽署者姓名（取自憑證）、簽署時間，以及有填寫時的原因與地點。中文使用閱讀器內建的中文字型，Adobe Acrobat 需安裝亞洲語言字型包。", style = MaterialTheme.typography.bodySmall)
+    // The box over the page preview, when that page is among the rendered ones.
+    val previews by model.files.previews.collectAsState()
+    val pages = (previews[f.id] as? FilePreview.Pages)?.pages.orEmpty()
+    val index = if (value.page < 0) total + value.page else value.page
+    val look = PdfSignatureAppearance.preset(value.position, index, listOf("x"))
+    pages.getOrNull(index)?.let { image ->
+        BoxWithConstraints(Modifier.fillMaxWidth(0.6f)) {
+            val w = maxWidth
+            val h = w * (image.height.toFloat() / image.width.coerceAtLeast(1))
+            Image(image, contentDescription = "第 ${index + 1} 頁", contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxWidth().height(h).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)))
+            Box(
+                Modifier.offset(x = w * look.x.toFloat(), y = h * look.y.toFloat())
+                    .size(width = w * look.width.toFloat(), height = h * look.height.toFloat())
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                    .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
+            )
         }
     }
 }
@@ -1473,10 +1591,12 @@ private fun LevelPicker(format: String, level: SignatureLevel, onPick: (Signatur
 }
 
 /** What the chosen form and options put in the signature, for the expandable technical details. */
-private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?): List<String> = when (form) {
+private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false): List<String> = when (form) {
     SignForm.PADES -> buildList {
         add("SubFilter ETSI.CAdES.detached，摘要 SHA-256，簽署屬性含 signing-certificate-v2，不寫 signingTime（以 PDF 的 /M 宣稱時間）")
         add("增量更新：原有內容與既有簽章不變，簽章涵蓋整份 PDF 到簽章值之前")
+        add(if (visible) "可見簽章：簽章欄位的 widget 有非零 /Rect 與外觀串流（/AP /N，Form XObject）；文字用 PDF 預先定義的中文字型 MSung-Light（Adobe-CNS1、UniCNS-UTF16-H，不內嵌，由閱讀器提供），圖片為 FlateDecode RGB 加透明遮罩（/SMask）；頁面旋轉時以 /Matrix 轉正"
+            else "不可見簽章：widget 的 /Rect 為 0，只在閱讀器的簽章面板出現")
         certification?.let { add("認證簽章：簽章字典的 /Reference 帶 DocMDP 轉換（/P $it），文件目錄的 /Perms /DocMDP 指向這個簽章") }
         if (level.timestamp) add("signature-time-stamp：時戳機構對簽章值的 RFC 3161 時戳，放在未簽署屬性")
         if (level.revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
@@ -1939,6 +2059,50 @@ private fun methodText(m: OaMethod): String = when (m) {
  * after a while, or on request), and what the certificate shows: recipient, main fields, issuers, signatories,
  * transcript, images, attachments and the remaining fields with readable labels.
  */
+/** Content credentials of a picture: what each manifest says and the checks in the C2PA specification's codes. */
+@Composable
+private fun C2paSection(f: StoredFile, c: C2paInfo) {
+    SectionTitle("內容憑證（C2PA）")
+    Text("C2PA manifest 記錄這個檔案由誰、用什麼工具、經過哪些步驟產生，並由簽署者簽章。存放位置：${c.container}。", style = MaterialTheme.typography.bodySmall)
+    c.manifests.forEach { m ->
+        val failed = m.statuses.any { !it.success && (it.code.endsWith("mismatch") || it.code == "assertion.missing" || it.code == "claimSignature.missing") }
+        val trusted = m.statuses.any { it.code == "signingCredential.trusted" }
+        CollapsibleSection(if (m.active) "目前的 manifest" else "成分的 manifest", initiallyExpanded = m.active, key = "c2pa-${f.id}-${m.label}") {
+            VerdictPill(
+                when { failed -> Verdict.FAIL; trusted -> Verdict.PASS; else -> Verdict.CAUTION },
+                when { failed -> "內容或簽章不符"; trusted -> "簽章有效，簽署者在信任錨點"; else -> "簽章有效，簽署者不在信任錨點" },
+            )
+            m.title?.let { LabelValue("標題", it, small = true) }
+            m.signer?.let { LabelValue("簽署者", it, small = true) }
+            m.signedAt?.let { LabelValue("時戳時間", localTime(it), small = true) }
+            m.generator?.let { LabelValue("產生工具", it, small = true) }
+            m.format?.let { LabelValue("格式", it, small = true) }
+            if (m.authors.isNotEmpty()) LabelValue("作者", m.authors.joinToString("、"), small = true)
+            m.actions.forEach { a ->
+                LabelValue("動作", listOfNotNull(a.action, a.digitalSourceType?.let { "來源 $it" }, a.softwareAgent, a.description, a.time).joinToString("，"), small = true)
+            }
+            m.ingredients.forEach { i ->
+                LabelValue("成分", listOfNotNull(i.title, i.relationship, i.format).joinToString("，") + if (i.manifest != null) "（附 manifest）" else "", small = true)
+            }
+            m.identities.forEach { id ->
+                VerdictPill(checkVerdict(id.signature), "身分（${id.sigType}）：" + id.names.joinToString("、").ifEmpty { "未列名稱" })
+                id.detail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+            m.training.forEach { LabelValue("AI 訓練與資料探勘", it, small = true) }
+            CollapsibleSection("技術細節", m.statuses.size, key = "c2pa-detail-${f.id}-${m.label}") {
+                LabelValue("Manifest", m.label, small = true)
+                LabelValue("聲明版本", "v${m.claimVersion}", small = true)
+                m.instanceId?.let { LabelValue("instanceID", it, small = true) }
+                LabelValue("宣告", m.assertions.joinToString("、"), small = true)
+                m.statuses.forEach { s ->
+                    Text(s.code + (s.explanation?.let { "：$it" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                        color = if (s.success) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo, busy: String?) {
     val view by produceState<OpenCertView?>(null, f.id, f.sha256) { value = model.files.openCertView(f) }

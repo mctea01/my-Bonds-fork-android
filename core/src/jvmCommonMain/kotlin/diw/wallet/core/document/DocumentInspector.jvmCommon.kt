@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.official.OfficialDocuments
@@ -39,7 +40,8 @@ actual object DocumentInspector {
         now: Instant,
         related: Map<String, ByteArray>,
     ): DocumentReport {
-        val checks = CmsChecks(PkiSupport(trust))
+        val pki = PkiSupport(trust)
+        val checks = CmsChecks(pki)
         val base = DocumentReport(DocumentFormat.OTHER, DocCryptoUtil.hex(DocCrypto.digest("SHA-256", bytes)), bytes.size.toLong(), checkedAt = now.epochSeconds)
         val (data, decodedNote) = unwrapText(bytes)
         return try {
@@ -53,8 +55,9 @@ actual object DocumentInspector {
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
                 DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
-                DocumentFormat.IMAGE -> base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data)))
-                else -> base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
+                DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, now)
+                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, now)
+                    else base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
         } catch (e: Exception) {
@@ -171,6 +174,14 @@ actual object DocumentInspector {
         if (kind != ImageKind.TIFF) return "${kind.title} 圖片"
         val pages = runCatching { TiffDecoder.directories(b) }.getOrNull() ?: return "TIFF 圖片（無法讀取頁面資訊）"
         return "TIFF 圖片，共 ${pages.size} 頁；第 1 頁 ${pages.first().describe()}"
+    }
+
+    /** Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one. */
+    private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, now: Instant): DocumentReport {
+        val store = runCatching { C2paManifests.read(b) }.getOrNull() ?: return report
+        val (info, signature) = C2paSignatures(pki, checks).inspect(store, now)
+        val note = "含 C2PA 內容憑證（${info.manifests.size} 份 manifest，存放於 ${store.container}）"
+        return report.copy(c2pa = info, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
     }
 
     private fun certificateNote(b: ByteArray): String? =

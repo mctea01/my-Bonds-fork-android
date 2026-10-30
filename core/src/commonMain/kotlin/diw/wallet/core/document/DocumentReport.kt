@@ -52,6 +52,7 @@ enum class SignatureFormat(val title: String) {
     RFC3161("RFC 3161 時戳"),
     OPENCERTS("OpenAttestation（Merkle 證明）"),
     OPENPGP("OpenPGP"),
+    C2PA("C2PA 內容憑證（COSE）"),
 }
 
 /** One check: passed, passed with a caveat, failed, or not possible here. */
@@ -232,6 +233,8 @@ data class DocumentReport(
     val openCert: OpenCertInfo? = null,
     /** What an OpenPGP file holds: keys, recipients of an encrypted message, the literal data of a signed message. */
     val openPgp: diw.wallet.core.document.pgp.OpenPgpReport? = null,
+    /** Content credentials (C2PA manifests) of a picture or a sidecar manifest file. */
+    val c2pa: diw.wallet.core.document.c2pa.C2paInfo? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */
     val entries: List<String> = emptyList(),
     val notes: List<String> = emptyList(),

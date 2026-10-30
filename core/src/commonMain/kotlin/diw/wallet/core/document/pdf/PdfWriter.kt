@@ -164,10 +164,12 @@ class PdfSignOptions(
      * filling and signing, 3 also annotations. Only the first signature of a document can certify it.
      */
     val certification: Int? = null,
+    /** A visible signature on a page; null keeps the field invisible (zero /Rect). */
+    val appearance: PdfSignatureAppearance? = null,
 )
 
 /**
- * Adds an invisible signature field to a PDF by incremental update (ISO 32000-1 7.5.6 and 12.8): the original bytes
+ * Adds a signature field (invisible, or visible with [PdfSignOptions.appearance]) to a PDF by incremental update (ISO 32000-1 7.5.6 and 12.8): the original bytes
  * stay as they are, so existing signatures remain valid. [prepare] writes the update with a placeholder for the
  * signature value; [Prepared.finish] fills in the CMS signature over [Prepared.signedData].
  */
@@ -204,7 +206,19 @@ object PdfIncrementalSigner {
         val sigNum = next++
         val fieldNum = next++
         val fieldRef = PdfRef(fieldNum, 0)
-        val (pageRef, page) = firstPage(pdf) ?: throw SigningException("PDF 沒有頁面")
+        val pages = PdfPages.list(pdf)
+        if (pages.isEmpty()) throw SigningException("PDF 沒有頁面")
+        val visible = options.appearance?.takeIf { options.subFilter != "ETSI.RFC3161" }
+        val pageInfo = if (visible == null) pages.first() else {
+            val i = if (visible.page < 0) pages.size + visible.page else visible.page
+            pages.getOrNull(i) ?: throw SigningException("PDF 只有 ${pages.size} 頁，沒有第 ${i + 1} 頁")
+        }
+        val pageRef = pageInfo.ref
+        val page = pageInfo.dict
+        val look = visible?.let { PdfAppearanceBuilder.build(it, pageInfo) }
+        val apNum = if (look != null) next++ else 0
+        val imNum = if (look?.image != null) next++ else 0
+        val maskNum = if (look?.mask != null) next++ else 0
         val updates = LinkedHashMap<Int, PdfObject>()
 
         // AcroForm with the new field.
@@ -229,7 +243,7 @@ object PdfIncrementalSigner {
                 updates[catalogRef.num] = catalog.with("AcroForm", PdfRef(acroNum, 0))
             }
         }
-        // The widget goes on the first page.
+        // The widget goes on the chosen page (the first page for an invisible signature).
         when (val annots = page["Annots"]) {
             is PdfRef -> updates[annots.num] = PdfArray(pdf.array(annots).orEmpty() + fieldRef)
             else -> updates[pageRef.num] = page.with("Annots", PdfArray((annots as? PdfArray).orEmpty() + fieldRef))
@@ -243,8 +257,8 @@ object PdfIncrementalSigner {
         val field = PdfDict.of(
             "Type" to PdfName("Annot"), "Subtype" to PdfName("Widget"), "FT" to PdfName("Sig"),
             "T" to PdfWriter.text(name), "V" to PdfRef(sigNum, 0), "F" to PdfNumber.of(132),
-            "Rect" to PdfArray(List(4) { PdfNumber.of(0) }), "P" to pageRef,
-        )
+            "Rect" to (look?.rect?.let { r -> PdfArray(r.map { PdfNumber(fmt(it)) }) } ?: PdfArray(List(4) { PdfNumber.of(0) })), "P" to pageRef,
+        ).let { d -> if (look != null) d.with("AP", PdfDict.of("N" to PdfRef(apNum, 0))) else d }
 
         val out = PdfOutput(original)
         if (original.isNotEmpty() && original.last() != '\n'.code.toByte()) out.append("\n")
@@ -274,6 +288,20 @@ object PdfIncrementalSigner {
         val contentsStart = sigOffset + header + contentsAt
         val contentsEnd = contentsStart + options.reserve * 2 + 2
         out.obj(fieldNum, 0, PdfWriter.serialize(field))
+        if (look != null) {
+            var form = look.form
+            if (look.image != null) {
+                val res = form["Resources"] as? PdfDict ?: PdfDict.of()
+                form = form.with("Resources", res.with("XObject", PdfDict.of("Im1" to PdfRef(imNum, 0))))
+                var imageDict = look.image.first
+                if (look.mask != null) {
+                    imageDict = imageDict.with("SMask", PdfRef(maskNum, 0))
+                    out.stream(maskNum, 0, look.mask.first, look.mask.second)
+                }
+                out.stream(imNum, 0, imageDict, look.image.second)
+            }
+            out.stream(apNum, 0, form, look.content)
+        }
         for ((num, obj) in updates) out.obj(num, pdf.generation(num), PdfWriter.serialize(obj))
 
         val trailer = LinkedHashMap<String, PdfObject>()
@@ -353,13 +381,8 @@ object PdfIncrementalSigner {
         return out.bytes()
     }
 
-    private fun firstPage(pdf: PdfFile): Pair<PdfRef, PdfDict>? {
-        var ref = pdf.catalog["Pages"] as? PdfRef ?: return null
-        repeat(64) {
-            val d = pdf.dict(ref) ?: return null
-            if (d.name("Type") == "Page" || d["Kids"] == null) return ref to d
-            ref = pdf.array(d["Kids"])?.firstOrNull() as? PdfRef ?: return null
-        }
-        return null
+    private fun fmt(v: Double): String {
+        val r = kotlin.math.round(v * 100) / 100
+        return if (r == kotlin.math.floor(r)) r.toLong().toString() else r.toString()
     }
 }
