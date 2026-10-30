@@ -36,8 +36,10 @@ import io.ktor.http.isSuccess
 import io.ktor.http.parameters
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.credential.SecureAreaBoundCredential
 import org.multipaz.openid.dcql.DcqlCredentialQueryException
 import org.multipaz.presentment.ConsentData
+import org.multipaz.presentment.CredentialMatchSourceOpenID4VP
 import org.multipaz.presentment.CredentialQueryResult
 import org.multipaz.presentment.CredentialSelection
 import org.multipaz.presentment.PresentmentSource
@@ -187,7 +189,43 @@ class Oid4vpHolder(
         } catch (e: DcqlCredentialQueryException) {
             throw ProtocolException("access_denied", "No stored credential satisfies the request", e)
         }
-        return PreparedPresentation(request, result, ConsentData.fromCredentialQueryResult(result, source))
+        val filtered = filterHolderBinding(result, request)
+        return PreparedPresentation(request, filtered, ConsentData.fromCredentialQueryResult(filtered, source))
+    }
+
+    /**
+     * Multipaz DCQL matching does not yet honour require_cryptographic_holder_binding, so a query that needs it would
+     * still offer a keyless credential the holder could pick and only fail when the response is built. A keyless
+     * credential cannot produce the key binding the query asks for, so it is removed from the candidates here, aligning
+     * the standard path with [diw.wallet.core.oid4vp.ext.OwnDcql]; a query left with no key-bound credential fails
+     * explicitly rather than presenting a keyless one.
+     */
+    private fun filterHolderBinding(result: CredentialQueryResult, request: ValidatedAuthorizationRequest): CredentialQueryResult {
+        val bindingRequired = request.dcqlQuery.arr("credentials").orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .filter { (it["require_cryptographic_holder_binding"] as? JsonPrimitive)?.content != "false" }
+            .mapNotNull { it.str("id") }
+            .toSet()
+        if (bindingRequired.isEmpty()) return result
+        fun keep(match: org.multipaz.presentment.CredentialPresentmentSetOptionMemberMatch): Boolean {
+            val id = (match.source as? CredentialMatchSourceOpenID4VP)?.credentialQuery?.id ?: return true
+            if (id !in bindingRequired) return true
+            // mdoc credentials are always device-bound; a keyless SD-JWT VC credential is not SecureAreaBound.
+            return match.credential is SecureAreaBoundCredential
+        }
+        val sets = result.credentialSets.mapNotNull { set ->
+            val options = set.options.mapNotNull { option ->
+                val members = option.members.map { it.copy(matches = it.matches.filter(::keep)) }
+                if (members.any { it.matches.isEmpty() }) null else option.copy(members = members)
+            }
+            when {
+                options.isNotEmpty() -> set.copy(options = options)
+                set.optional -> null
+                else -> throw ProtocolException("access_denied", "No key-bound credential satisfies a query that requires cryptographic holder binding")
+            }
+        }
+        if (sets.isEmpty()) throw ProtocolException("access_denied", "No key-bound credential satisfies the request")
+        return result.copy(credentialSets = sets)
     }
 
     /** Responds to a request prepared by the wallet's own engine with its chosen credentials. */

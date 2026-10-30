@@ -96,18 +96,20 @@ class DcApiActivity : FragmentActivity() {
             val option = request.credentialOptions.filterIsInstance<GetDigitalCredentialOption>().firstOrNull()
                 ?: throw IllegalStateException("不是數位憑證請求")
             val json = Json.parseToJsonElement(option.requestJson).jsonObject
-            val selected = selectedProtocol(request)
+            val selected = selectedEntry(request)
             val entry = json["requests"]?.jsonArray?.map { it.jsonObject }
-                ?.firstOrNull { selected == null || it["protocol"]?.jsonPrimitive?.content == selected }
+                ?.firstOrNull { selected == null || it["protocol"]?.jsonPrimitive?.content == selected.protocol }
                 ?: throw IllegalStateException("請求中沒有可處理的協定")
             val p = entry["protocol"]!!.jsonPrimitive.content
             protocol = p
+            // The documents the holder picked in the system selector (one entry, or every element of a credential set).
+            val documentIds = selected?.documentIds.orEmpty()
             when {
-                p.startsWith("openid4vp") -> app.model.presentDcApi(p, entry["data"]!!.jsonObject, origin)
+                p.startsWith("openid4vp") -> app.model.presentDcApi(p, entry["data"]!!.jsonObject, origin, documentIds)
                 // ISO/IEC 18013-7 Annex C: the mdoc DeviceRequest, answered on the same consent screen as in person.
                 p == "org-iso-mdoc" || p == "org.iso.mdoc" -> {
                     val appId = if (origin.startsWith("android:")) caller.packageName else null
-                    app.model.proximity.presentDcApi(p, entry["data"]!!.jsonObject, origin, appId)?.get("data")?.jsonObject
+                    app.model.proximity.presentDcApi(p, entry["data"]!!.jsonObject, origin, appId, documentIds)?.get("data")?.jsonObject
                 }
                 else -> throw IllegalStateException("不支援的協定：$p")
             }
@@ -183,11 +185,30 @@ class DcApiActivity : FragmentActivity() {
         finish()
     }
 
-    /** Protocol part of the entry the user picked in the system selector ("<type> <protocol> <docId>" or a credential set). */
-    private fun selectedProtocol(request: ProviderGetCredentialRequest): String? {
-        val setId = request.sourceBundle?.getString("androidx.credentials.registry.provider.extra.CREDENTIAL_SET_ID")
-        if (setId != null) return setId.split(" ").getOrNull(1)
-        return runCatching { request.selectedEntryId }.getOrNull()?.split(" ")?.getOrNull(1)
+    /** The protocol and document ids of the entry the user picked in the system selector. */
+    private data class SelectedEntry(val protocol: String, val documentIds: List<String>)
+
+    /**
+     * What the user picked in the system selector: a single entry ("<type> <protocol> <docId>"), or a credential set
+     * (CREDENTIAL_SET_ID "<type> <protocol>" with CREDENTIAL_SET_ELEMENT_ID_n entries, one per document the set needs).
+     * The docId is the document's Credential Manager id, which is its [org.multipaz.document.Document.identifier]; it is
+     * carried through so the picked credential, not merely the first match, answers the request.
+     */
+    private fun selectedEntry(request: ProviderGetCredentialRequest): SelectedEntry? {
+        val bundle = request.sourceBundle
+        val setId = bundle?.getString("androidx.credentials.registry.provider.extra.CREDENTIAL_SET_ID")
+        if (setId != null) {
+            val protocol = setId.split(" ").getOrNull(1) ?: return null
+            val length = bundle.getInt("androidx.credentials.registry.provider.extra.CREDENTIAL_SET_ELEMENT_LENGTH", 0)
+            val ids = (0 until length).mapNotNull { n ->
+                bundle.getString("androidx.credentials.registry.provider.extra.CREDENTIAL_SET_ELEMENT_ID_$n")
+                    ?.split(" ")?.getOrNull(2)
+            }
+            return SelectedEntry(protocol, ids)
+        }
+        val entryId = runCatching { request.selectedEntryId }.getOrNull()?.split(" ") ?: return null
+        val protocol = entryId.getOrNull(1) ?: return null
+        return SelectedEntry(protocol, listOfNotNull(entryId.getOrNull(2)))
     }
 
     private companion object {

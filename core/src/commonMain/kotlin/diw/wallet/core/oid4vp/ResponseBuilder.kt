@@ -240,19 +240,27 @@ class ResponseBuilder(private val source: PresentmentSource) {
 
     private fun findZkSystem(match: CredentialPresentmentSetOptionMemberMatch): Pair<ZkSystem, ZkSystemSpec> {
         val query = (match.source as CredentialMatchSourceOpenID4VP).credentialQuery
-        val repo = source.zkSystemRepository ?: throw ProtocolException("invalid_request", "ZK proofs are not available on this device")
         val specs = (query.meta["zk_system_type"] as? JsonArray ?: JsonArray(emptyList())).map { entry ->
             val o = entry.jsonObject
             ZkSystemSpec(o["id"]!!.jsonPrimitive.content, o["system"]!!.jsonPrimitive.content).also { spec ->
                 for ((k, v) in o) if (k != "id" && k != "system") spec.addParam(k, v)
             }
         }
+        val requested = specs.map { it.system }.distinct()
+        // The request asked for a ZK proof; a request that cannot be answered with one fails rather than silently
+        // falling back to a plaintext response, so the verifier learns why no proof was produced.
+        if (specs.isEmpty()) {
+            throw ProtocolException("invalid_request", "A zero-knowledge proof was requested but the request names no zk_system_type")
+        }
+        val repo = source.zkSystemRepository
+            ?: throw ProtocolException("invalid_request", "This device cannot produce a zero-knowledge proof (the ZK system is unavailable); requested: ${requested.joinToString()}")
         for (spec in specs) {
             val sys = repo.lookup(spec.system) ?: continue
             val matching = sys.getMatchingSystemSpec(specs, query.claims) ?: continue
             return sys to matching
         }
-        throw ProtocolException("invalid_request", "No matching ZK system for the request")
+        val available = repo.getAllZkSystemSpecs().map { it.system }.distinct()
+        throw ProtocolException("invalid_request", "No registered ZK system matches the request (requested: ${requested.joinToString()}; available: ${available.joinToString().ifEmpty { "none" }})")
     }
 
     private suspend fun presentSdJwt(

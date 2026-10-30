@@ -246,7 +246,7 @@ class TrustAnchorsTest {
     @Test
     fun multipazTestAnchorsAreBuiltIn() = runBlocking<Unit> {
         val now = Clock.System.now()
-        assertEquals(18, BuiltInTestAnchors.all.size)
+        assertEquals(19, BuiltInTestAnchors.all.size)
         assertEquals(BuiltInTestAnchors.all.size, BuiltInTestAnchors.all.map { it.certificate }.toSet().size, "no anchor twice")
         for (a in BuiltInTestAnchors.all) {
             val c = a.certificate

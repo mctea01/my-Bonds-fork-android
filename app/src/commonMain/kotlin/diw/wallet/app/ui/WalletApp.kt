@@ -192,6 +192,7 @@ fun WalletApp(
             )
         }
         pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
+        NfcScanSheet(model)
     }
 }
 

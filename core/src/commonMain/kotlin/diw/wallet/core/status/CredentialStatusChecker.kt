@@ -12,9 +12,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
+import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString as bsDecode
+import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.Tagged
 import org.multipaz.cose.Cose
 import org.multipaz.cose.CoseNumberLabel
 import org.multipaz.credential.Credential
@@ -27,6 +31,7 @@ import kotlinx.serialization.json.longOrNull
 import org.multipaz.util.fromBase64Url
 import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.revocation.CompressedStatusList
+import org.multipaz.revocation.IdentifierList
 import org.multipaz.revocation.RevocationCheckState
 import org.multipaz.revocation.RevocationStatus
 import org.multipaz.sdjwt.SdJwt
@@ -71,6 +76,8 @@ data class CredentialStatus(
     val assurance: StatusAssurance = if (trusted) StatusAssurance.TRUSTED else StatusAssurance.UNVERIFIED,
     /** False when the credential names no status list at all (the issuer offers no status), as opposed to a list that could not be read. */
     val referenced: Boolean = true,
+    /** The revocation mechanism in the specification's own name, e.g. "Token Status List" or "Identifier List". */
+    val mechanism: String? = null,
 ) {
     val usable: Boolean get() = state == RevocationCheckState.VALID && trusted
 
@@ -110,7 +117,11 @@ class CredentialStatusChecker(
 
     private data class Cached(val list: CompressedStatusList, val trusted: Boolean, val env: TrustEnvironment?, val until: Instant, val token: StatusListToken)
 
+    private data class CachedIdentifiers(val list: IdentifierList, val env: TrustEnvironment?, val until: Instant, val anchorName: String?)
+
     private val cache = mutableMapOf<String, Cached>()
+
+    private val identifierCache = mutableMapOf<String, CachedIdentifiers>()
 
     suspend fun check(credential: Credential, bypassCache: Boolean = false): CredentialStatus {
         if (credential is W3cVcCredential) {
@@ -124,24 +135,28 @@ class CredentialStatusChecker(
         return check(status, issuerChain, bypassCache)
     }
 
-    suspend fun check(status: RevocationStatus, issuerChain: List<X509Cert>?, bypassCache: Boolean = false): CredentialStatus {
-        if (status !is RevocationStatus.StatusList) {
-            return result(RevocationCheckState.UNKNOWN, false, null, "Only Token Status List is supported")
-        }
+    suspend fun check(status: RevocationStatus, issuerChain: List<X509Cert>?, bypassCache: Boolean = false): CredentialStatus = when (status) {
+        is RevocationStatus.StatusList -> checkStatusList(status, issuerChain, bypassCache)
+        // ISO/IEC 18013-5 Section 12.3.6.4 Identifier List: a CWT whose membership set lists the revoked documents.
+        is RevocationStatus.IdentifierList -> checkIdentifierList(status, issuerChain, bypassCache)
+        else -> result(RevocationCheckState.UNKNOWN, false, null, "Unsupported revocation mechanism")
+    }
+
+    private suspend fun checkStatusList(status: RevocationStatus.StatusList, issuerChain: List<X509Cert>?, bypassCache: Boolean): CredentialStatus {
         val loopback = trustRegistry.policy.insecureLoopbackAllowed
         if (!isAcceptableEndpoint(status.uri, loopback)) {
-            return result(RevocationCheckState.UNKNOWN, false, null, "Status list uri is not https")
+            return result(RevocationCheckState.UNKNOWN, false, null, "Status list uri is not https", mechanism = TOKEN_STATUS_LIST)
         }
         val now = Clock.System.now()
         val cached = cache[status.uri]?.takeIf { !bypassCache && it.until > now } ?: try {
             fetch(status.uri, issuerChain).also { cache[status.uri] = it }
         } catch (e: Exception) {
-            return result(RevocationCheckState.UNKNOWN, false, null, e.message, uri = status.uri, index = status.idx)
+            return result(RevocationCheckState.UNKNOWN, false, null, e.message, uri = status.uri, index = status.idx, mechanism = TOKEN_STATUS_LIST)
         }
         val code = try {
             cached.list.decompress()[status.idx]
         } catch (e: Exception) {
-            return result(RevocationCheckState.UNKNOWN, false, cached.env, "Index ${status.idx} outside the status list", null, status.uri, status.idx, cached.token)
+            return result(RevocationCheckState.UNKNOWN, false, cached.env, "Index ${status.idx} outside the status list", null, status.uri, status.idx, cached.token, mechanism = TOKEN_STATUS_LIST)
         }
         val state = when (code) {
             0 -> RevocationCheckState.VALID
@@ -150,7 +165,52 @@ class CredentialStatusChecker(
             else -> RevocationCheckState.UNKNOWN
         }
         val detail = if (state == RevocationCheckState.UNKNOWN) "Status code $code" else null
-        return result(state, cached.trusted, cached.env, detail, code, status.uri, status.idx, cached.token)
+        return result(state, cached.trusted, cached.env, detail, code, status.uri, status.idx, cached.token, mechanism = TOKEN_STATUS_LIST)
+    }
+
+    /**
+     * Identifier List (ISO/IEC 18013-5): the document is revoked when its [RevocationStatus.IdentifierList.id] is in
+     * the signed CWT's membership set. The CWT signer must chain to an enabled STATUS_LIST or ISSUER anchor, matching
+     * the trust evaluation the Token Status List path uses; an unverified list is never relied on.
+     */
+    private suspend fun checkIdentifierList(status: RevocationStatus.IdentifierList, issuerChain: List<X509Cert>?, bypassCache: Boolean): CredentialStatus {
+        val loopback = trustRegistry.policy.insecureLoopbackAllowed
+        if (!isAcceptableEndpoint(status.uri, loopback)) {
+            return result(RevocationCheckState.UNKNOWN, false, null, "Identifier list uri is not https", uri = status.uri, mechanism = IDENTIFIER_LIST)
+        }
+        val now = Clock.System.now()
+        val cached = identifierCache[status.uri]?.takeIf { !bypassCache && it.until > now } ?: try {
+            fetchIdentifiers(status, issuerChain).also { identifierCache[status.uri] = it }
+        } catch (e: Exception) {
+            return result(RevocationCheckState.UNKNOWN, false, null, e.message, uri = status.uri, mechanism = IDENTIFIER_LIST)
+        }
+        val state = if (cached.list.contains(status.id)) RevocationCheckState.INVALID else RevocationCheckState.VALID
+        return result(state, true, cached.env, "ISO/IEC 18013-5 Identifier List（${cached.anchorName ?: "signed"}）", uri = status.uri, mechanism = IDENTIFIER_LIST)
+    }
+
+    private suspend fun fetchIdentifiers(status: RevocationStatus.IdentifierList, issuerChain: List<X509Cert>?): CachedIdentifiers {
+        val resp = httpClient.get(status.uri) { header(HttpHeaders.Accept, "application/identifierlist+cwt") }
+        if (!resp.status.isSuccess()) error("Identifier list fetch returned ${resp.status.value}")
+        val cwt = resp.readRawBytes()
+        // The signer chain is taken from the CWT's COSE_Sign1 x5chain, then from the status reference's own certificate,
+        // then the issuer chain, so the list can be matched against a trust anchor exactly as a status list token is.
+        val sign1 = run {
+            val decoded = Cbor.decode(cwt)
+            (if (decoded is Tagged && decoded.tagNumber == Tagged.COSE_SIGN1) decoded.taggedItem else decoded).asCoseSign1
+        }
+        val x5chain = (sign1.unprotectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_X5CHAIN)]
+            ?: sign1.protectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_X5CHAIN)])?.asX509CertChain?.certificates
+        val signerChain = x5chain ?: status.certificate?.let { listOf(it) } ?: issuerChain
+            ?: error("Identifier list token has no x5c and the issuer chain is unknown")
+        val match = trustRegistry.match(TrustRole.STATUS_LIST, signerChain) ?: trustRegistry.match(TrustRole.ISSUER, signerChain)
+            ?: error("Identifier list signer does not chain to an enabled anchor")
+        val list = IdentifierList.fromCwt(
+            cwt = cwt,
+            trustedRootCert = match.anchor,
+            checks = mapOf(WebTokenCheck.SUB to status.uri),
+        )
+        val until = minOf(list.expirationTime, Clock.System.now() + maxCacheAge)
+        return CachedIdentifiers(list, match.environment, until, match.metadata.displayName)
     }
 
     private suspend fun fetch(uri: String, issuerChain: List<X509Cert>?): Cached {
@@ -190,9 +250,14 @@ class CredentialStatusChecker(
         uri: String? = null,
         index: Int? = null,
         token: StatusListToken? = null,
-    ) = CredentialStatus(state, trusted, env, Clock.System.now(), detail, code, uri, index, token)
+        mechanism: String? = null,
+    ) = CredentialStatus(state, trusted, env, Clock.System.now(), detail, code, uri, index, token, mechanism = mechanism)
 
     companion object {
+        /** Revocation mechanisms in their specifications' own names. */
+        const val TOKEN_STATUS_LIST = "Token Status List"
+        const val IDENTIFIER_LIST = "Identifier List"
+
         /** Extracts the status reference and issuer chain from a stored credential. */
         suspend fun statusOf(credential: Credential): Pair<RevocationStatus, List<X509Cert>?>? = when (credential) {
             is MdocCredential -> {

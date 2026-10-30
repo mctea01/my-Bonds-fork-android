@@ -276,7 +276,16 @@ class PdfSignatures(private val pdf: PdfFile) {
     /** Number of pages per the page tree root. */
     fun pageCount(): Int? = runCatching { (pdf.dict(pdf.catalog["Pages"])?.get("Count")?.let { pdf.resolve(it) } as? PdfNumber)?.int }.getOrNull()
 
-    fun title(): String? = runCatching { (pdf.resolve(pdf.dict(pdf.trailer["Info"])?.get("Title")) as? PdfString)?.text()?.trim()?.ifEmpty { null } }.getOrNull()
+    /**
+     * The document title from the Info dictionary, when it decodes to readable text. An encrypted PDF whose password
+     * we do not have leaves the title string as ciphertext (encryptionProblem set), and a few files carry a title in a
+     * broken encoding, so both are rejected here and the caller falls back to the file name instead of showing garble.
+     */
+    fun title(): String? = runCatching {
+        if (pdf.encryptionProblem != null) return@runCatching null
+        (pdf.resolve(pdf.dict(pdf.trailer["Info"])?.get("Title")) as? PdfString)?.text()?.trim()
+            ?.takeIf { s -> s.isNotEmpty() && s.none { c -> c == '�' || (c.isISOControl() && c != '\t' && c != '\n' && c != '\r') } }
+    }.getOrNull()
 
     /**
      * What changed after the revision ending at [signedLength]: nothing, only signatures and validation data (new

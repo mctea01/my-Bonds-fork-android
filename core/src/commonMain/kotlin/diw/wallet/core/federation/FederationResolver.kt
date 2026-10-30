@@ -49,7 +49,18 @@ class EntityStatement private constructor(val jws: Jws) {
     val metadataPolicy: JsonObject? get() = claims.obj("metadata_policy")
     val constraints: JsonObject? get() = claims.obj("constraints")
     val fetchEndpoint: String? get() = metadata.obj("federation_entity")?.str("federation_fetch_endpoint")
-    val trustMarkTypes: List<String> get() = claims.arr("trust_marks").orEmpty().mapNotNull { (it as? JsonObject)?.str("trust_mark_type") ?: (it as? JsonObject)?.str("id") }
+    val trustMarkTypes: List<String> get() = trustMarks.map { it.first }
+
+    /** The leaf's trust marks as (trust_mark_type, trust-mark JWT) pairs (OpenID Federation 1.0 section 7.1). */
+    val trustMarks: List<Pair<String, String>> get() = claims.arr("trust_marks").orEmpty().mapNotNull { entry ->
+        val o = entry as? JsonObject ?: return@mapNotNull null
+        val type = o.str("trust_mark_type") ?: o.str("id") ?: return@mapNotNull null
+        val jwt = o.str("trust_mark") ?: return@mapNotNull null
+        type to jwt
+    }
+
+    /** An anchor's trust_mark_issuers claim: trust_mark_type -> allowed issuer Entity Identifiers. */
+    val trustMarkIssuers: JsonObject? get() = claims.obj("trust_mark_issuers")
 
     /** Verifies the signature with one of [keys], chosen by kid when the header names one. */
     suspend fun verifyWith(keys: List<JsonObject>) {
@@ -149,6 +160,10 @@ data class ResolvedEntity(
     val expiresAt: Long,
     val trustMarkTypes: List<String>,
     val chain: List<String>,
+    /** The leaf Entity Configuration's own keys, to verify a signed_jwks_uri it publishes. */
+    val leafKeys: List<JsonObject> = emptyList(),
+    /** The leaf's trust marks as (type, JWT) pairs, to be verified against the Trust Anchor on demand. */
+    val trustMarks: List<Pair<String, String>> = emptyList(),
 ) {
     /** A Trust Anchor is the party that vouches; its environment and official flag set the tier as for X.509 anchors. */
     val trust: TrustDecision get() = TrustDecision(
@@ -305,7 +320,90 @@ class FederationResolver(
             expiresAt = chain.minOf { it.exp },
             trustMarkTypes = leaf.trustMarkTypes,
             chain = chain.map { it.jws.compact },
+            leafKeys = leaf.jwks,
+            trustMarks = leaf.trustMarks,
         )
+    }
+
+    /**
+     * The Verifier's signing keys: inline `jwks`, else fetched from `jwks_uri`, else from a `signed_jwks_uri` JWT
+     * verified with the entity's own federation keys. The earlier version read only inline `jwks`, so verifiers that
+     * publish their keys by reference could not be authenticated.
+     */
+    suspend fun verifierKeys(resolved: ResolvedEntity): List<JsonObject> {
+        val md = resolved.metadata
+        md.obj("jwks")?.arr("keys")?.mapNotNull { it as? JsonObject }?.takeIf { it.isNotEmpty() }?.let { return it }
+        md.str("signed_jwks_uri")?.let { uri ->
+            val signed = Jws.parse(fetchBody(uri, "application/jwk-set+jwt"))
+            // A signed_jwks_uri JWT is signed with one of the entity's Federation Entity Keys.
+            val kid = signed.kid
+            val candidates = if (kid != null) resolved.leafKeys.filter { it.str("kid") == kid } else resolved.leafKeys
+            if (candidates.none { k -> runCatching { signed.verify(VerificationKey.fromJwk(k)) }.isSuccess }) {
+                fail("signed_jwks_uri of ${resolved.entityId} is not signed by a key of its Entity Configuration")
+            }
+            // Jws.verify checks only the signature; reject a key set whose JWT is outside its own validity, so an
+            // expired signed JWK Set cannot keep rotated-out keys alive.
+            val now = clock.now().epochSeconds
+            signed.payload.long("iat")?.let { if (it > now + skew) fail("signed_jwks_uri of ${resolved.entityId} is not yet valid") }
+            signed.payload.long("exp")?.let { if (it <= now - skew) fail("signed_jwks_uri of ${resolved.entityId} has expired") }
+            return signed.payload.arr("keys")?.mapNotNull { it as? JsonObject }.orEmpty()
+        }
+        md.str("jwks_uri")?.let { uri ->
+            val set = DiwJson.parseToJsonElement(fetchBody(uri, "application/jwk-set+json")) as? JsonObject
+                ?: fail("jwks_uri of ${resolved.entityId} did not return a JWK Set")
+            return set.arr("keys")?.mapNotNull { it as? JsonObject }.orEmpty()
+        }
+        return emptyList()
+    }
+
+    /**
+     * The trust mark types the leaf presents that verify (OpenID Federation 1.0 section 7.4): a signed trust-mark+jwt
+     * whose subject is the leaf, within its validity, signed by an issuer the Trust Anchor authorises for that type in
+     * its trust_mark_issuers (when it declares any) and whose key comes from the issuer's Entity Configuration. Marks
+     * that do not verify are dropped, never failing the request; a declared type that is not verified is not returned.
+     */
+    suspend fun verifiedTrustMarkTypes(resolved: ResolvedEntity): List<String> {
+        if (resolved.trustMarks.isEmpty()) return emptyList()
+        val now = clock.now().epochSeconds
+        // trust_mark_issuers must come from an anchor configuration signed by a key the user already confirmed (the
+        // saved anchor keys), not merely by a key the fetched configuration carries for itself: whoever controls the
+        // anchor endpoint could otherwise self-sign a configuration authorising their own trust-mark issuer.
+        val issuers = runCatching {
+            val config = configuration(resolved.anchor.entityId)
+            config.verifyWith(resolved.anchor.keys)
+            config.checkTime(now, skew)
+            config.trustMarkIssuers
+        }.getOrNull()
+        return resolved.trustMarks.mapNotNull { (type, jwt) ->
+            runCatching {
+                val mark = Jws.parse(jwt)
+                if (mark.typ != TRUST_MARK_TYPE) return@runCatching null
+                val claims = mark.payload
+                if (claims.str("sub") != resolved.entityId) return@runCatching null
+                if (claims.str("trust_mark_type") != type && claims.str("id") != type) return@runCatching null
+                claims.long("iat")?.let { if (it > now + skew) return@runCatching null }
+                claims.long("exp")?.let { if (it <= now - skew) return@runCatching null }
+                val issuer = claims.str("iss") ?: return@runCatching null
+                // When the anchor lists trust_mark_issuers, the issuer must be authorised for this type.
+                issuers?.arr(type)?.let { allowed ->
+                    if (allowed.none { (it as? JsonPrimitive)?.content == issuer }) return@runCatching null
+                }
+                val issuerKeys = configuration(issuer).jwks
+                val kid = mark.kid
+                val candidates = if (kid != null) issuerKeys.filter { it.str("kid") == kid } else issuerKeys
+                if (candidates.none { k -> runCatching { mark.verify(VerificationKey.fromJwk(k)) }.isSuccess }) return@runCatching null
+                type
+            }.getOrNull()
+        }.distinct()
+    }
+
+    private suspend fun fetchBody(url: String, accept: String): String {
+        if (!isAcceptableEndpoint(url, allowInsecureLoopback)) fail("Federation endpoints must use HTTPS: $url")
+        val r = http.get(url) { header(HttpHeaders.Accept, accept) }
+        if (!r.status.isSuccess()) fail("$url answered ${r.status.value}")
+        val text = r.bodyAsText()
+        if (text.length > MAX_STATEMENT) fail("$url returned more than $MAX_STATEMENT characters")
+        return text.trim()
     }
 
     /** RFC 5280 style host constraint: ".example.com" covers subdomains, "example.com" the host itself. */
@@ -341,6 +439,7 @@ class FederationResolver(
 
     companion object {
         private const val MAX_STATEMENT = 256 * 1024
+        private const val TRUST_MARK_TYPE = "trust-mark+jwt"
         const val VERIFIER = "openid_credential_verifier"
         const val ISSUER = "openid_credential_issuer"
 
