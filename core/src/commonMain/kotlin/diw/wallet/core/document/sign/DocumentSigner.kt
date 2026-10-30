@@ -21,6 +21,8 @@ enum class SignerSource(val title: String) {
     CSC("遠端簽章服務（CSC）"),
     /** A PIV card (NIST SP 800-73-4): YubiKey, PIVKey, US PIV/CAC and the like, read over NFC, USB or PC/SC. */
     PIV("PIV 卡"),
+    /** An OpenPGP card (YubiKey, Nitrokey, Gnuk and the like) read over NFC, USB or PC/SC. */
+    OPENPGP("OpenPGP 卡"),
 }
 
 /**
