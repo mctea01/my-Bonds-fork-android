@@ -254,6 +254,13 @@ private fun InteropPage(model: WalletModel) {
     var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
     Text("數位憑證皮夾（TWDIW）、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
         style = MaterialTheme.typography.bodySmall)
+    SectionTitle("近距離出示（ISO/IEC 18013-5）")
+    Toggle(
+        "NFC 靜態交握",
+        "關閉時（預設）以協商式交握讓讀取端選擇 BLE 或 NFC；開啟時直接提供 BLE 兩種模式與 NFC 資料傳輸，給只支援靜態交握的讀取設備。",
+        s.nfcStaticHandover,
+    ) { v -> model.updateSettings { it.copy(nfcStaticHandover = v) } }
+    HorizontalDivider()
     SectionTitle("OpenID4VCI 錢包身分")
     Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
         style = MaterialTheme.typography.bodySmall)
