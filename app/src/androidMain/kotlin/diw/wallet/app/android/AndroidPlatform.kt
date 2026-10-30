@@ -67,8 +67,7 @@ import kotlinx.io.bytestring.ByteString
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.DataItem
 import org.multipaz.crypto.Algorithm
-import org.multipaz.digitalcredentials.DigitalCredentials
-import org.multipaz.digitalcredentials.getDefault
+import org.multipaz.digitalcredentials.DigitalCredentialsCredman
 import org.multipaz.document.DocumentStore
 import org.multipaz.document.androidCredmanBitmap
 import org.multipaz.document.androidCredmanTitle
@@ -487,7 +486,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         runCatching { model.ensureCardArt() }.onFailure { if (it is CancellationException) throw it; Logger.w(TAG, "Card art failed", it) }
         val now = Clock.System.now()
         model.dcApiRegistration.value = try {
-            val dc = DigitalCredentials.getDefault()
+            val dc = DigitalCredentialsCredman.create()
             if (!dc.registerAvailable) {
                 DcApiRegistration(0, notListable(model), emptySet(), "此裝置沒有提供 Digital Credentials API 註冊", now)
             } else {
@@ -593,11 +592,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     }
 
     /**
-     * The credential database multipaz-dcapi registers, in the format its matcher reads. The library keeps
+     * The credential database multipaz-dcapi-credman registers, in the format its matcher reads. The library keeps
      * calculateCredentialDatabase internal, so it is called through its JVM signature (the class is kept by R8).
      */
     private suspend fun credentialDatabase(appName: String, model: WalletModel, protocols: Set<String>): DataItem {
-        val method = Class.forName("org.multipaz.digitalcredentials.DigitalCredentialsExt_androidKt").getMethod(
+        val method = Class.forName("org.multipaz.digitalcredentials.DigitalCredentialsCredmanKt").getMethod(
             "calculateCredentialDatabase", String::class.java, DocumentStore::class.java, DocumentTypeRepository::class.java,
             Set::class.java, Continuation::class.java,
         )
@@ -639,7 +638,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     private companion object {
         const val TAG = "AndroidPlatform"
-        /** Matcher shipped in multipaz-dcapi; the system runs it against each request to list matching credentials. */
+        /** Matcher shipped in multipaz-dcapi-credman; the system runs it against each request to list matching credentials. */
         const val MATCHER_ASSET = "identitycredentialmatcher.wasm"
         const val DIGITAL_CREDENTIAL_TYPE = "androidx.credentials.TYPE_DIGITAL_CREDENTIAL"
         /** Issuance matcher from the CMWallet sample (Apache-2.0, matcher/issuance/provision.c). */

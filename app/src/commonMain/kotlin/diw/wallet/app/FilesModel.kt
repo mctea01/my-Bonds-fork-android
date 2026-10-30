@@ -1877,7 +1877,7 @@ class FilesModel(private val model: WalletModel) {
                     created, null, CredentialDomains.SD_JWT, keys.secureArea, DerivedCredentials.VCT,
                     keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
                 )
-                val holderKey = credential.secureArea.getKeyInfo(credential.alias).publicKey
+                val holderKey = credential.secureArea.getKeyInfo(credential.alias).ecPublicKey
                 val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil)
                 credential.certify(compact.encodeToByteString())
                 created.edit { provisioned = true }

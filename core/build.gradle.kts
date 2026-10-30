@@ -88,7 +88,7 @@ val androidDomExtras by tasks.registering(Jar::class) {
 
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
-    jvm { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+    jvm { compilerOptions { jvmTarget.set(JvmTarget.JVM_21) } }
     compilerOptions {
         optIn.add("kotlin.time.ExperimentalTime")
         optIn.add("kotlin.io.encoding.ExperimentalEncodingApi")
@@ -139,8 +139,6 @@ kotlin {
 configurations.all {
     resolutionStrategy.eachDependency {
         if (requested.group == "org.bouncycastle") useVersion(libs.versions.bouncycastle.get())
-        // Keep every transitive Netty artifact on the patched version (SNI routing bypass, request smuggling).
-        if (requested.group == "io.netty" && requested.name != "netty-bom") useVersion(libs.versions.netty.get())
     }
 }
 

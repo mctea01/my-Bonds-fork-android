@@ -168,7 +168,7 @@ object ProfileCheckTool {
     }
 
 
-    /** Writes the picture code to a temporary file and opens it where the desktop allows; deleted on exit. */
+    /** Writes the picture code to an owner-only temporary file and opens it where the desktop allows; deleted on exit. */
     private fun showCaptcha(image: ByteArray) {
         val ext = when {
             image.size > 3 && image[0] == 0x89.toByte() && image[1] == 'P'.code.toByte() -> ".png"

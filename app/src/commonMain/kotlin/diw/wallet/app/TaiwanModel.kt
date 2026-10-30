@@ -620,7 +620,7 @@ class TaiwanModel(private val model: WalletModel) {
             val info = cred.secureArea.getKeyInfo(cred.alias)
             BondsOfflinePresentation.presentSdJwtVc(
                 request, cred.issuerProvidedData.decodeToString(),
-                AsymmetricKey.AnonymousSecureAreaBased(alias = cred.alias, secureArea = cred.secureArea, keyInfo = info, algorithm = Algorithm.ES256), info.publicKey, disclosing,
+                AsymmetricKey.AnonymousSecureAreaBased(alias = cred.alias, secureArea = cred.secureArea, keyInfo = info, algorithm = Algorithm.ES256), info.ecPublicKey, disclosing,
             )
         }
         BondsCardKind.MOICA -> {

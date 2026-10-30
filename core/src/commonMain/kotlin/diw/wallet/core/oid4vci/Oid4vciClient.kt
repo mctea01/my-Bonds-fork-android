@@ -74,6 +74,7 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.EcPrivateKey
 import org.multipaz.crypto.EcPublicKey
+import org.multipaz.crypto.PublicKey
 import org.multipaz.crypto.JsonWebEncryption
 import org.multipaz.credential.Credential
 import org.multipaz.credential.SecureAreaBoundCredential
@@ -730,7 +731,7 @@ class Oid4vciClient(
             val needsDid = config.prefersDidKid || (style != null && style.kid != ProofKid.JWK)
             return List(count) {
                 val info = keys.secureArea.createKey(null, settings)
-                val did = if (needsDid) HolderKey.didFor(info.publicKey, didMethodFor(config)) else null
+                val did = if (needsDid) HolderKey.didFor(info.ecPublicKey, didMethodFor(config)) else null
                 W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, keys.secureArea, info.alias, false, did)
             }
         }
@@ -1026,10 +1027,10 @@ class Oid4vciClient(
             ?: compat.first { it.credentialsFromResponse(json) }
             ?: throw ProtocolException("invalid_credential_response", "Response has no credentials array")
         if (issued.isEmpty()) throw ProtocolException("invalid_credential_response", "Empty credentials array")
-        val byKey = mutableMapOf<EcPublicKey?, Credential>()
+        val byKey = mutableMapOf<PublicKey?, Credential>()
         for (c in pending) {
             val key = when (c) {
-                is SecureAreaBoundCredential -> c.secureArea.getKeyInfo(c.alias).publicKey
+                is SecureAreaBoundCredential -> c.secureArea.getKeyInfo(c.alias).ecPublicKey
                 is W3cVcCredential -> c.holderPublicKey()
                 else -> null
             }

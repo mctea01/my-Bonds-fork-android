@@ -18,6 +18,7 @@ import org.multipaz.cose.Cose
 import org.multipaz.cose.CoseNumberLabel
 import org.multipaz.crypto.Algorithm
 import org.multipaz.crypto.EcPublicKey
+import org.multipaz.crypto.PublicKey
 import org.multipaz.crypto.X509Cert
 import org.multipaz.mdoc.issuersigned.IssuerNamespaces
 import org.multipaz.mdoc.mso.MobileSecurityObject
@@ -34,7 +35,7 @@ data class InspectedCredential(
     val validUntil: Instant?,
     val revocationStatus: RevocationStatus?,
     /** Holder key the issuer bound the credential to (cnf.jwk or MSO deviceKey); null for keyless SD-JWT VC. */
-    val boundKey: EcPublicKey?,
+    val boundKey: PublicKey?,
 )
 
 /**

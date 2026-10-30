@@ -314,7 +314,7 @@ class BondsNationalIdTest {
     private suspend fun holder(): HolderKey {
         val area = SoftwareSecureArea.create(EphemeralStorage())
         val info = area.createKey(null, SoftwareCreateKeySettings.Builder().build())
-        return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.publicKey))
+        return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.ecPublicKey))
     }
 
     @Test
