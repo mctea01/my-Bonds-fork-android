@@ -420,6 +420,12 @@ private fun DeveloperPage(model: WalletModel) {
         s.multipazTestIdentity,
         enabled = s.testEnvironment,
     ) { v -> model.updateSettings { it.copy(multipazTestIdentity = v) } }
+    Toggle(
+        "自簽錢包證明兜底",
+        "向要求錢包證明或金鑰證明、但本錢包沒有註冊提供者的發證端，改送本錢包自簽的證明。這把金鑰沒有任何發證端信任，" +
+            "只能讓不檢查提供者的沙箱／示範發證端（如 Animo）接受；正式發證端（如 Bundesdruckerei）仍會拒絕。設有註冊提供者時不生效。",
+        s.selfAttestationFallback,
+    ) { v -> model.updateSettings { it.copy(selfAttestationFallback = v) } }
     HorizontalDivider()
     SectionTitle("行動自然人憑證")
     Toggle(
