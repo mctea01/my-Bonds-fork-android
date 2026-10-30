@@ -18,10 +18,11 @@ import kotlin.time.Duration.Companion.minutes
 
 /**
  * The test identity Multipaz publishes in its open-source TestApp (samples/testapp ProvisioningSupport.kt,
- * Apache-2.0), which the Multipaz sample issuer (issuer.multipaz.org) trusts for client assertions, wallet
- * attestations and key attestations. Multipaz states these keys are for testing only and that no real
- * provisioning server can trust them, so the wallet uses them only in the test environment, only for
- * [HOSTS], and only when the user turns them on.
+ * Apache-2.0), which the Multipaz sample issuers trust for client assertions, wallet attestations and key
+ * attestations. The same TestApp identity serves every Multipaz sample issuer, so it covers both
+ * issuer.multipaz.org and the Utopia sample issuer utopia.multipaz.org (whose test mDL the Multipaz web verifier
+ * asks for). Multipaz states these keys are for testing only and that no real provisioning server can trust them,
+ * so the wallet uses them only in the test environment, only for [HOSTS], and only when the user turns them on.
  */
 class MultipazTestWalletProvider : WalletProvider {
     override val clientId: String = CLIENT_ID
@@ -65,8 +66,8 @@ class MultipazTestWalletProvider : WalletProvider {
     companion object {
         const val CLIENT_ID = "urn:uuid:418745b8-78a3-4810-88df-7898aff3ffb4"
 
-        /** Issuers that trust this identity. */
-        val HOSTS = setOf("issuer.multipaz.org")
+        /** Multipaz sample issuers that trust this TestApp identity. */
+        val HOSTS = setOf("issuer.multipaz.org", "utopia.multipaz.org")
 
         fun appliesTo(credentialIssuer: String, authorizationServer: String): Boolean =
             listOf(credentialIssuer, authorizationServer).all { runCatching { Url(it).host in HOSTS }.getOrDefault(false) }

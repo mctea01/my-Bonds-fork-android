@@ -3,7 +3,6 @@ package diw.wallet.core.oid4vp
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.federation.FederationResolver
 import diw.wallet.core.federation.ResolvedEntity
-import diw.wallet.core.federation.jwks
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.DidTrust
@@ -365,12 +364,21 @@ class RequestValidator(
         } catch (e: Exception) {
             throw RequestValidationException("invalid_client", "No trust chain for $entityId: ${e.message}", cause = e)
         }
-        val keys = resolved.jwks()
+        // Keys inline in the metadata, or behind jwks_uri / signed_jwks_uri.
+        val keys = try {
+            resolver.verifierKeys(resolved)
+        } catch (e: Exception) {
+            throw RequestValidationException("invalid_client", "Cannot read the Verifier keys of $entityId: ${e.message}", cause = e)
+        }
         if (keys.isEmpty()) throw RequestValidationException("invalid_client", "The Verifier metadata of $entityId has no jwks")
         val candidates = req.kid?.let { kid -> keys.filter { it.str("kid") == kid } } ?: keys
         val verified = candidates.any { k -> runCatching { req.verify(VerificationKey.fromJwk(k)) }.isSuccess }
         if (!verified) throw RequestValidationException("invalid_request_object", "Request object is not signed by a key of $entityId")
-        return VerifierIdentityInfo(clientId, rawClientId, resolved.displayName, null, emptyList(), null, resolved.trust)
+        // Trust marks the leaf presents that verify against the Trust Anchor, added to the trust reasons when present.
+        val verifiedMarks = runCatching { resolver.verifiedTrustMarkTypes(resolved) }.getOrDefault(emptyList())
+        val trust = if (verifiedMarks.isEmpty()) resolved.trust
+            else resolved.trust.copy(reasons = resolved.trust.reasons + ("Verified trust marks: " + verifiedMarks.joinToString()))
+        return VerifierIdentityInfo(clientId, rawClientId, resolved.displayName, null, emptyList(), null, trust)
             .also { checkSignedResponseTarget(it, responseMode, raw) }
     }
 

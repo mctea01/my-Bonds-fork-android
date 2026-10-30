@@ -217,7 +217,7 @@ class ReaderModel(private val model: WalletModel) {
             }
             val eReaderKey = Crypto.createEcPrivateKey(EcCurve.P256)
             val tapped = option.reader.scan<Tapped>(
-                message = "請將對方的手機靠近",
+                message = "請對方在錢包開啟「感應出示」，再將手機背面貼近$where，保持靠近直到讀取完成。",
                 tagInteractionFunc = { tag ->
                     // Not an mdoc (a card, a locked phone that asks to be unlocked): keep waiting for the next tap.
                     val handover = mdocReaderNfcHandover(tag, offered) ?: return@scan null
