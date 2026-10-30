@@ -41,17 +41,17 @@ actual object OpenPgp {
     /** Literal data larger than this is refused, so a compressed message cannot exhaust memory. */
     internal const val MAX_LITERAL = 256L * 1024 * 1024
 
-    actual fun certificates(data: ByteArray): List<Pair<OpenPgpKeyInfo, ByteArray>> {
+    actual fun certificates(data: ByteArray, cardKeys: Set<String>): List<Pair<OpenPgpKeyInfo, ByteArray>> {
         val out = ArrayList<Pair<OpenPgpKeyInfo, ByteArray>>()
         for (block in blocks(data)) {
             val f = BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(block)))
             while (true) {
                 val o = runCatching { f.nextObject() }.getOrNull() ?: break
                 when (o) {
-                    is PGPPublicKeyRing -> out.add(describe(o, false) to o.getEncoded(true))
+                    is PGPPublicKeyRing -> out.add(describe(o, false, cardKeys) to o.getEncoded(true))
                     is PGPSecretKeyRing -> {
                         val ring = PGPPublicKeyRing(o.publicKeys.asSequence().toList())
-                        out.add(describe(ring, true) to ring.getEncoded(true))
+                        out.add(describe(ring, true, cardKeys) to ring.getEncoded(true))
                     }
                     is PGPMarker -> {}
                     else -> break
@@ -59,6 +59,12 @@ actual object OpenPgp {
             }
         }
         return out
+    }
+
+    actual fun merge(old: ByteArray, update: ByteArray): ByteArray = try {
+        PGPPublicKeyRing.join(PGPPublicKeyRing(old, calculator), PGPPublicKeyRing(update, calculator)).getEncoded(true)
+    } catch (e: Exception) {
+        throw SigningException("無法合併兩份 OpenPGP 公開金鑰：" + (e.message ?: e.javaClass.simpleName), e)
     }
 
     actual fun keyBodies(certificate: ByteArray): List<ByteArray> = runCatching {
@@ -87,11 +93,11 @@ actual object OpenPgp {
         sig.verify()
     }.getOrDefault(false)
 
-    actual fun encrypt(data: ByteArray, fileName: String, recipients: List<ByteArray>, armor: Boolean): ByteArray {
+    actual fun encrypt(data: ByteArray, fileName: String, recipients: List<ByteArray>, armor: Boolean, cardKeys: Set<String>): ByteArray {
         if (recipients.isEmpty()) throw SigningException("請至少選擇一位收件人")
         val keys = recipients.map { bytes ->
             val ring = PGPPublicKeyRing(bytes, calculator)
-            encryptionKey(ring) ?: throw SigningException("「" + (ring.publicKey.userIDs.asSequence().firstOrNull() ?: hex(ring.publicKey.fingerprint)) + "」沒有可用的加密金鑰（已撤銷、過期或金鑰旗標不允許加密）")
+            encryptionKey(ring, cardKeys) ?: throw SigningException("「" + (ring.publicKey.userIDs.asSequence().firstOrNull() ?: hex(ring.publicKey.fingerprint)) + "」沒有可用的加密金鑰（已撤銷、過期或金鑰旗標不允許加密）")
         }
         val bout = ByteArrayOutputStream()
         val sink: OutputStream = if (armor) ArmoredOutputStream(bout) else bout
@@ -110,16 +116,15 @@ actual object OpenPgp {
     }
 
     /**
-     * The key of [ring] to encrypt to. A certificate the wallet built from a card has no signatures: its encryption
-     * subkey is used. A published certificate needs a subkey (or primary key) whose binding allows encryption and that
-     * is neither revoked nor expired.
+     * The key of [ring] to encrypt to: a subkey (or primary key) whose binding allows encryption and that is neither
+     * revoked nor expired. A subkey the wallet read from the holder's card ([cardKeys]) needs no binding; a certificate
+     * the wallet built from a card has none.
      */
-    internal fun encryptionKey(ring: PGPPublicKeyRing): PGPPublicKey? {
+    internal fun encryptionKey(ring: PGPPublicKeyRing, cardKeys: Set<String> = emptySet()): PGPPublicKey? {
         val keys = ring.publicKeys.asSequence().toList()
         val master = ring.publicKey
-        if (keys.none { it.signatures.hasNext() }) {
-            return keys.firstOrNull { !it.isMasterKey && it.isEncryptionKey } ?: master.takeIf { it.isEncryptionKey }
-        }
+        keys.firstOrNull { !it.isMasterKey && it.isEncryptionKey && hex(it.fingerprint) in cardKeys && validBinding(master, it) == null && !it.hasRevocation() && !master.hasRevocation() }
+            ?.let { return it }
         val now = System.currentTimeMillis()
         fun usable(k: PGPPublicKey, flags: Int): Boolean = k.isEncryptionKey && !k.hasRevocation() &&
             (k.validSeconds == 0L || k.creationTime.time + k.validSeconds * 1000 > now) &&
@@ -215,7 +220,7 @@ actual object OpenPgp {
 
     // ---------------------------------------------------------------- description
 
-    internal fun describe(ring: PGPPublicKeyRing, hadSecret: Boolean): OpenPgpKeyInfo {
+    internal fun describe(ring: PGPPublicKeyRing, hadSecret: Boolean, cardKeys: Set<String> = emptySet()): OpenPgpKeyInfo {
         val master = ring.publicKey
         val subs = ring.publicKeys.asSequence().filter { !it.isMasterKey }.toList()
         val flags = primaryFlags(master)
@@ -225,7 +230,7 @@ actual object OpenPgp {
             version = master.version,
             userIds = master.userIDs.asSequence().toList(),
             primary = primary,
-            subkeys = subs.map { k -> keyInfo(k, validBinding(master, k)?.hashedSubPackets?.keyFlags ?: if (k.signatures.hasNext()) -1 else 0, master) },
+            subkeys = subs.map { k -> keyInfo(k, validBinding(master, k)?.hashedSubPackets?.keyFlags ?: if (hex(k.fingerprint) in cardKeys) 0 else -1, master) },
             hadSecret = hadSecret,
         )
     }

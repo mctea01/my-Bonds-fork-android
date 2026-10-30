@@ -260,9 +260,62 @@ class OpenPgpTest {
         assertEquals("T3", tier(OpenPgpTrust.VERIFIED, false))
         assertEquals("T3", tier(OpenPgpTrust.UNVERIFIED, true))
 
+        // An introducer revoked as compromised, or a certification it withdrew, raises nothing.
+        fun generator(type: Int, reason: Int? = null) = org.bouncycastle.openpgp.PGPSignatureGenerator(
+            org.bouncycastle.openpgp.operator.jcajce.JcaPGPContentSignerBuilder(introPub.algorithm, org.bouncycastle.bcpg.HashAlgorithmTags.SHA256).setProvider(bc),
+            introPub,
+        ).apply {
+            init(type, introKey)
+            if (reason != null) setHashedSubpackets(org.bouncycastle.openpgp.PGPSignatureSubpacketGenerator().apply { setRevocationReason(false, reason.toByte(), "") }.generate())
+        }
+        val revocation = generator(org.bouncycastle.openpgp.PGPSignature.KEY_REVOCATION, org.bouncycastle.bcpg.sig.RevocationReasonTags.KEY_COMPROMISED.toInt())
+            .generateCertification(introPub)
+        val revokedIntro = org.bouncycastle.openpgp.PGPPublicKeyRing.insertPublicKey(
+            intro.certificate, org.bouncycastle.openpgp.PGPPublicKey.addCertification(introPub, revocation),
+        ).getEncoded(true)
+        suspend fun tierWith(introCertificate: ByteArray, subjectCertificate: ByteArray) = DocumentInspector.inspect(
+            asc, "doc.asc",
+            trust(OpenPgpTrustedKey(introCertificate, "Intro", OpenPgpTrust.VERIFIED, true), OpenPgpTrustedKey(subjectCertificate, "Subject", OpenPgpTrust.UNVERIFIED)),
+            content,
+        ).signatures.single().trust?.tier
+        assertEquals("T3", tierWith(revokedIntro, subjectCert))
+        val withdrawal = generator(org.bouncycastle.openpgp.PGPSignature.CERTIFICATION_REVOCATION).generateCertification(uid, certified)
+        val withdrawn = org.bouncycastle.openpgp.PGPPublicKeyRing.insertPublicKey(
+            subject.certificate, org.bouncycastle.openpgp.PGPPublicKey.addCertification(certified, uid, withdrawal),
+        ).getEncoded(true)
+        assertEquals("T3", tierWith(introCert, withdrawn))
+        // A copy without the revocation, joined with the stored one, keeps it.
+        assertTrue(OpenPgp.certificates(OpenPgp.merge(revokedIntro, introCert)).single().first.revoked)
+        assertTrue(OpenPgp.certificates(OpenPgp.merge(introCert, revokedIntro)).single().first.revoked)
+
         // The key packets of a full certificate let a card key that cannot be rebuilt alone be matched.
         val bodies = OpenPgp.keyBodies(subjectCert)
         assertTrue(bodies.any { OpenPgpPackets.fingerprint(it).contentEquals(subject.sigFingerprint) })
+    }
+
+    @Test
+    fun strippedCertificateCannotCarryAForeignSubkey() = runBlocking<Unit> {
+        val victim = OpenPgpCardSim(SimKey.RSA2048, null)
+        val attacker = OpenPgpCardSim(SimKey.P256_ECDSA, SimKey.P256_ECDH)
+        val victimBody = victim.certificate.publicKey.publicKeyPacket.encodedContents
+        val attackerSig = attacker.certificate.publicKey.publicKeyPacket.encodedContents
+        val attackerDec = attacker.certificate.publicKeys.asSequence().first { !it.isMasterKey }.publicKeyPacket.encodedContents
+        // The trusted primary key with every signature removed and the attacker's keys appended as subkeys.
+        val stripped = OpenPgpPackets.cardCertificate(listOf(victimBody, attackerSig, attackerDec))
+        val signer = OpenPgpTapSigner(attacker.reader(), attacker.pin)
+        signer.load(false)
+        val asc = signer.signDetached(content)
+        val forged = DocumentInspector.inspect(asc, "doc.asc", trust(OpenPgpTrustedKey(stripped, "Victim", OpenPgpTrust.VERIFIED)), content)
+        assertEquals(Check.FAIL, forged.signatures.single().certificateValidity)
+        assertTrue(forged.verdict != DocumentVerdict.VALID)
+        assertFailsWith<SigningException> { OpenPgp.encrypt(content, "x.txt", listOf(stripped), false) }
+        assertTrue(OpenPgp.certificates(stripped).single().first.subkeys.none { it.canSign || it.canEncrypt })
+
+        // The same keys read from the holder's own card need no binding.
+        val cardKeys = setOf(OpenPgp.hex(attacker.sigFingerprint), OpenPgp.hex(attacker.decFingerprint!!))
+        val own = DocumentInspector.inspect(asc, "doc.asc", trust(OpenPgpTrustedKey(stripped, "Card", OpenPgpTrust.OWN_CARD, cardKeys = cardKeys)), content)
+        assertEquals(DocumentVerdict.VALID, own.verdict, own.signatures.single().problems.toString())
+        assertTrue(OpenPgp.encrypt(content, "x.txt", listOf(stripped), false, cardKeys).isNotEmpty())
     }
 
     @Test

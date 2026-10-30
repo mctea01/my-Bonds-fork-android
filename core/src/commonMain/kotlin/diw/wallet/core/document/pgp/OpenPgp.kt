@@ -94,13 +94,16 @@ enum class OpenPgpTrust(val title: String, val detail: String) {
 /**
  * A certificate in the wallet's OpenPGP list as the inspector sees it: the binary certificate, its display [name], the
  * user's [trust], and whether its certifications of other keys count ([introducer], one level, like a fully trusted
- * owner in GnuPG).
+ * owner in GnuPG). [cardKeys] are the fingerprints (upper-case hex) of keys the wallet read from the holder's own
+ * card: only those may stand in the certificate without a binding signature. Every other subkey needs a valid binding,
+ * so a certificate stripped of its signatures cannot slip a foreign subkey under a trusted primary key.
  */
 class OpenPgpTrustedKey(
     val certificate: ByteArray,
     val name: String,
     val trust: OpenPgpTrust = OpenPgpTrust.VERIFIED,
     val introducer: Boolean = false,
+    val cardKeys: Set<String> = emptySet(),
 )
 
 /** The content of a decrypted message: the literal data and the signatures that were inside, as a detached signature. */
@@ -113,8 +116,17 @@ class OpenPgpPlaintext(val fileName: String?, val data: ByteArray, val detachedS
  * [OpenPgpPackets] instead, so the card never sits behind a synchronous library callback.
  */
 expect object OpenPgp {
-    /** The certificates in [data] (armored or binary, one or more), each with its binary public part. */
-    fun certificates(data: ByteArray): List<Pair<OpenPgpKeyInfo, ByteArray>>
+    /**
+     * The certificates in [data] (armored or binary, one or more), each with its binary public part. Subkeys without
+     * a valid binding are listed as usable for nothing, except the keys in [cardKeys] (read from the holder's card).
+     */
+    fun certificates(data: ByteArray, cardKeys: Set<String> = emptySet()): List<Pair<OpenPgpKeyInfo, ByteArray>>
+
+    /**
+     * [old] and [update] (binary certificates of the same primary key) joined: every user ID, subkey and signature of
+     * both, so a newer copy that leaves out a revocation cannot remove it.
+     */
+    fun merge(old: ByteArray, update: ByteArray): ByteArray
 
     /** The key packet bodies (primary key and subkeys) of the binary certificate [certificate], for matching card keys. */
     fun keyBodies(certificate: ByteArray): List<ByteArray>
@@ -128,9 +140,10 @@ expect object OpenPgp {
     /**
      * Encrypts [data] to [recipients] (binary certificates, or a key packet the wallet built from a card) with AES-256
      * and integrity protection; [fileName] goes in the literal data. Each certificate's usable encryption key is
-     * chosen: a valid, unrevoked, unexpired key whose flags allow encryption.
+     * chosen: a valid, unrevoked, unexpired key whose flags allow encryption; a subkey without a binding only when it
+     * is in [cardKeys].
      */
-    fun encrypt(data: ByteArray, fileName: String, recipients: List<ByteArray>, armor: Boolean): ByteArray
+    fun encrypt(data: ByteArray, fileName: String, recipients: List<ByteArray>, armor: Boolean, cardKeys: Set<String> = emptySet()): ByteArray
 
     /**
      * Decrypts [message] with a session key ([algorithm], [key]) a card recovered. The integrity check (MDC or AEAD)

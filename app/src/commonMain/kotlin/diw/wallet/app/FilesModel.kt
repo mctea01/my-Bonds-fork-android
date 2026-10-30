@@ -1681,7 +1681,8 @@ class FilesModel(private val model: WalletModel) {
         if (fingerprints.isEmpty()) throw SigningException("請至少選擇一位收件人")
         val entries = fingerprints.mapNotNull { model.openPgp.entry(it) }
         val certs = entries.map { it.certificate.fromBase64() }
-        val bytes = withContext(Dispatchers.Default) { OpenPgp.encrypt(data(f.id), f.name, certs, armor) }
+        val cardKeys = entries.flatMap { it.cardKeySet }.toSet()
+        val bytes = withContext(Dispatchers.Default) { OpenPgp.encrypt(data(f.id), f.name, certs, armor, cardKeys) }
         val stored = store(f.name + if (armor) ".asc" else ".gpg", bytes, FileOrigin.ENCRYPTED, f.name, parentId = f.id)
         model.message.value = "已加密給 ${entries.size} 位收件人並保存：${stored.name}"
         model.screen.value = Screen.FileDetail(stored.id)

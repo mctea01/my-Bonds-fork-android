@@ -267,8 +267,9 @@ internal object OpenPgpInspection {
             validity = Check.FAIL
             problems += "簽章本身已過期（簽章到期時間）"
         }
-        val bare = entry.ring.publicKeys.asSequence().none { it.signatures.hasNext() }
-        if (!key.isMasterKey && !bare) {
+        // Only a key the wallet read from the holder's card may lack a binding; anything else could be a foreign
+        // subkey placed under a trusted primary key in a copy stripped of its signatures.
+        if (!key.isMasterKey && OpenPgp.hex(key.fingerprint) !in entry.key.cardKeys) {
             val binding = OpenPgp.validBinding(master, key)
             if (binding == null) { validity = Check.FAIL; problems += "子金鑰沒有有效的綁定簽章，不能代表主金鑰" }
             else {
@@ -278,9 +279,7 @@ internal object OpenPgpInspection {
         }
         for (k in listOfNotNull(master, key.takeIf { !it.isMasterKey })) {
             val rev = OpenPgp.revocation(k, master) ?: continue
-            val reason = rev.hashedSubPackets?.revocationReason?.revocationReason?.toInt()
-            val soft = reason == RevocationReasonTags.KEY_SUPERSEDED.toInt() || reason == RevocationReasonTags.KEY_RETIRED.toInt() ||
-                reason == RevocationReasonTags.USER_NO_LONGER_VALID.toInt()
+            val soft = soft(rev)
             val revokedAt = rev.creationTime.time / 1000
             if (!soft || created >= revokedAt) {
                 validity = Check.FAIL
@@ -288,7 +287,7 @@ internal object OpenPgpInspection {
             } else notes += (if (k.isMasterKey) "主金鑰" else "子金鑰") + "在簽署後才停用，這個簽章仍有效"
         }
 
-        val (tier, anchor) = tierOf(entry, keyring)
+        val (tier, anchor) = tierOf(entry, keyring, now)
         if (entry.key.trust == OpenPgpTrust.DISTRUSTED) problems += "你已將這把金鑰設為不信任"
         if (tier == "T3") problems += "尚未核對這把金鑰的指紋：簽章屬於這把金鑰，但無法確認金鑰屬於誰"
         val uid = master.userIDs.asSequence().firstOrNull()
@@ -324,33 +323,69 @@ internal object OpenPgpInspection {
      * The tier of a signature by [entry]: the user's own trust, raised from unverified to T2 when a user ID carries a
      * valid certification by a key the user verified and made an introducer.
      */
-    private fun tierOf(entry: Keyring.Entry, keyring: Keyring): Pair<String, String> = when (entry.key.trust) {
+    /** A revocation for a superseded, retired or no longer used key: signatures made before it stay valid. */
+    private fun soft(rev: PGPSignature): Boolean {
+        val reason = rev.hashedSubPackets?.revocationReason?.revocationReason?.toInt()
+        return reason == RevocationReasonTags.KEY_SUPERSEDED.toInt() || reason == RevocationReasonTags.KEY_RETIRED.toInt() ||
+            reason == RevocationReasonTags.USER_NO_LONGER_VALID.toInt()
+    }
+
+    private fun tierOf(entry: Keyring.Entry, keyring: Keyring, now: Instant): Pair<String, String> = when (entry.key.trust) {
         OpenPgpTrust.OWN_CARD, OpenPgpTrust.VERIFIED -> "T2" to entry.key.name + "（" + entry.key.trust.title + "）"
         OpenPgpTrust.DISTRUSTED -> "T4" to entry.key.name + "（不信任）"
         OpenPgpTrust.UNVERIFIED -> {
-            val introducer = introducerOf(entry, keyring)
+            val introducer = introducerOf(entry, keyring, now)
             if (introducer != null) "T2" to entry.key.name + "（由「" + introducer + "」認證）"
             else "T3" to entry.key.name + "（未核對指紋）"
         }
     }
 
-    private fun introducerOf(entry: Keyring.Entry, keyring: Keyring): String? {
+
+    /**
+     * The introducer whose certification of one of [entry]'s user IDs holds: made by the introducer's primary key while
+     * it was valid (created, not expired, not revoked as compromised, or made before a retirement), not expired itself,
+     * and not withdrawn by a later certification revocation from the same key.
+     */
+    private fun introducerOf(entry: Keyring.Entry, keyring: Keyring, now: Instant): String? {
         val master = entry.ring.publicKey
         val introducers = keyring.entries.filter { it.key.introducer && (it.key.trust == OpenPgpTrust.VERIFIED || it.key.trust == OpenPgpTrust.OWN_CARD) && it !== entry }
         if (introducers.isEmpty()) return null
-        for (uid in master.userIDs.asSequence()) for (cert in master.getSignaturesForID(uid).asSequence()) {
-            if (!cert.isCertification || cert.signatureType == PGPSignature.CERTIFICATION_REVOCATION) continue
-            for (intro in introducers) {
-                val signerKey = intro.ring.publicKeys.asSequence().firstOrNull { k ->
-                    cert.keyIdentifiers.any { id -> id.fingerprint?.contentEquals(k.fingerprint) ?: (id.keyId == k.keyID) }
-                } ?: continue
-                val ok = runCatching {
-                    cert.init(BcPGPContentVerifierBuilderProvider(), signerKey)
-                    cert.verifyCertification(uid, master)
-                }.getOrDefault(false)
-                if (ok) return intro.key.name
+        for (uid in master.userIDs.asSequence()) {
+            val sigs = master.getSignaturesForID(uid).asSequence().toList()
+            for (cert in sigs) {
+                if (!cert.isCertification || cert.signatureType == PGPSignature.CERTIFICATION_REVOCATION) continue
+                for (intro in introducers) {
+                    val introMaster = intro.ring.publicKey
+                    if (!issuedBy(cert, introMaster) || !verifies(cert, introMaster, uid, master)) continue
+                    if (!introducerValidAt(introMaster, cert, now)) continue
+                    val withdrawn = sigs.any { r ->
+                        r.signatureType == PGPSignature.CERTIFICATION_REVOCATION && !r.creationTime.before(cert.creationTime) &&
+                            issuedBy(r, introMaster) && verifies(r, introMaster, uid, master)
+                    }
+                    if (!withdrawn) return intro.key.name
+                }
             }
         }
         return null
+    }
+
+    private fun issuedBy(sig: PGPSignature, key: PGPPublicKey): Boolean =
+        sig.keyIdentifiers.any { id -> id.fingerprint?.contentEquals(key.fingerprint) ?: (id.keyId == key.keyID) }
+
+    private fun verifies(sig: PGPSignature, signer: PGPPublicKey, uid: String, subject: PGPPublicKey): Boolean = runCatching {
+        sig.init(BcPGPContentVerifierBuilderProvider(), signer)
+        sig.verifyCertification(uid, subject)
+    }.getOrDefault(false)
+
+    /** Whether the introducer's primary key could certify when [cert] was made, and [cert] has not expired. */
+    private fun introducerValidAt(introMaster: PGPPublicKey, cert: PGPSignature, now: Instant): Boolean {
+        val made = cert.creationTime.time / 1000
+        val created = introMaster.creationTime.time / 1000
+        if (made < created) return false
+        if (introMaster.validSeconds > 0 && made > created + introMaster.validSeconds) return false
+        val expires = cert.hashedSubPackets?.signatureExpirationTime ?: 0L
+        if (expires > 0 && now.epochSeconds > made + expires) return false
+        val rev = OpenPgp.revocation(introMaster, introMaster) ?: return true
+        return soft(rev) && made < rev.creationTime.time / 1000
     }
 }

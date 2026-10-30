@@ -48,7 +48,13 @@ data class OpenPgpKeyEntry(
     val addedAt: Long,
     /** Only the keys a card holds, without user IDs or binding signatures (made by the wallet from the card). */
     val cardOnly: Boolean = false,
+    /** Fingerprints of the keys the wallet read from the holder's card: the only keys allowed without a binding signature. */
+    val cardKeys: List<String> = emptyList(),
 ) {
+    /** [cardKeys], or for an entry stored before they were recorded, every key of a card-only entry. */
+    val cardKeySet: Set<String>
+        get() = cardKeys.ifEmpty { if (cardOnly) (listOf(info.primary) + info.subkeys).map { it.fingerprint } else emptyList() }.toSet()
+
     /** Introductions count only from a key the user has checked. */
     val introduces: Boolean get() = introducer && (trust == OpenPgpTrust.OWN_CARD || trust == OpenPgpTrust.VERIFIED)
 }
@@ -88,7 +94,7 @@ class OpenPgpModel(private val model: WalletModel) {
 
     /** The list as the document inspector uses it: refused keys first, so a key in two entries is never trusted by mistake. */
     fun trustedKeys(): List<OpenPgpTrustedKey> = keys.value.sortedWith(ORDER).mapNotNull { e ->
-        runCatching { OpenPgpTrustedKey(e.certificate.fromBase64(), e.info.name, e.trust, e.introduces) }.getOrNull()
+        runCatching { OpenPgpTrustedKey(e.certificate.fromBase64(), e.info.name, e.trust, e.introduces, e.cardKeySet) }.getOrNull()
     }
 
     /** Key packet bodies of every listed key, for matching the keys a card holds to their OpenPGP fingerprints. */
@@ -124,11 +130,15 @@ class OpenPgpModel(private val model: WalletModel) {
     // ---------------------------------------------------------------- adding keys
 
     /**
-     * Adds or updates a certificate. A key already listed gets the new certificate (it may carry a revocation or a new
-     * expiry) and keeps the user's trust unless [trust] is the holder's own card; card-only entries the new
-     * certificate covers are replaced by it, keeping their trust.
+     * Adds or updates a certificate. A key already listed gets the two copies joined (a newer copy may add a
+     * revocation or a new expiry, and leaving something out removes nothing) and keeps the user's trust unless [trust]
+     * is the holder's own card; card-only entries the new certificate covers are replaced by it, keeping their trust
+     * and card keys. [cardKeys] are the fingerprints of keys just read from the holder's card.
      */
-    suspend fun put(info: OpenPgpKeyInfo, certificate: ByteArray, trust: OpenPgpTrust, source: String, cardOnly: Boolean = false): OpenPgpKeyEntry = lock.withLock {
+    suspend fun put(
+        info: OpenPgpKeyInfo, certificate: ByteArray, trust: OpenPgpTrust, source: String, cardOnly: Boolean = false,
+        cardKeys: Collection<String> = emptyList(),
+    ): OpenPgpKeyEntry = lock.withLock {
         val t = model.storage.getTable(keyTable)
         val existing = keys.value.firstOrNull { it.fingerprint == info.fingerprint }
         val covered = if (cardOnly) emptyList() else keys.value.filter { e ->
@@ -140,17 +150,25 @@ class OpenPgpModel(private val model: WalletModel) {
             OpenPgpTrust.DISTRUSTED in kept -> OpenPgpTrust.DISTRUSTED
             else -> (kept + trust).minByOrNull { it.ordinal } ?: trust
         }
-        // A card-only entry never replaces a full certificate of the same key.
+        val allCardKeys = (listOfNotNull(existing) + covered).flatMap { it.cardKeySet }.plus(cardKeys).distinct()
+        // A card-only entry never replaces a full certificate of the same key; two copies of the same key are joined.
         val keepFull = cardOnly && existing != null && !existing.cardOnly
+        val joined = when {
+            keepFull -> existing!!.certificate.fromBase64()
+            existing != null -> runCatching { OpenPgp.merge(existing.certificate.fromBase64(), certificate) }.getOrDefault(certificate)
+            else -> certificate
+        }
+        val joinedInfo = OpenPgp.certificates(joined, allCardKeys.toSet()).firstOrNull()?.first ?: info
         val e = OpenPgpKeyEntry(
             fingerprint = info.fingerprint,
-            certificate = if (keepFull) existing!!.certificate else certificate.toBase64(),
-            info = if (keepFull) existing!!.info else info,
+            certificate = joined.toBase64(),
+            info = joinedInfo.copy(hadSecret = info.hadSecret || existing?.info?.hadSecret == true),
             trust = decided,
             introducer = existing?.introducer ?: false,
             source = existing?.source ?: source,
             addedAt = existing?.addedAt ?: Clock.System.now().epochSeconds,
-            cardOnly = if (keepFull) false else cardOnly,
+            cardOnly = if (keepFull || (existing != null && !existing.cardOnly)) false else cardOnly,
+            cardKeys = allCardKeys,
         )
         covered.forEach { t.delete(it.fingerprint) }
         val bytes = DiwJson.encodeToString(OpenPgpKeyEntry.serializer(), e).encodeToByteString()
@@ -198,15 +216,16 @@ class OpenPgpModel(private val model: WalletModel) {
         val fprs = listOfNotNull(sig, dec, aut).mapNotNull { it.fingerprint?.let { f -> DocCryptoUtil.hex(f).uppercase() } }
         if (fprs.isEmpty()) throw SigningException("這張 OpenPGP 卡沒有金鑰")
         keys.value.firstOrNull { e -> !e.cardOnly && fprs.any { e.info.has(it) } }?.let { full ->
-            return put(full.info, full.certificate.fromBase64(), OpenPgpTrust.OWN_CARD, full.source)
+            return put(full.info, full.certificate.fromBase64(), OpenPgpTrust.OWN_CARD, full.source, cardKeys = fprs.filter { full.info.has(it) })
         }
         val bodies = listOfNotNull(sig ?: dec ?: aut, dec, aut).distinct().mapNotNull { it.packet }.distinctBy { it.toList() }
         if (bodies.isEmpty()) throw SigningException(
             "無法由卡片重建公開金鑰（指紋不符，常見於以 ECDH 參數不同的工具產生的金鑰）。請先匯入你的公開金鑰檔，再讀取卡片標示為自己的卡",
         )
         val cert = OpenPgpPackets.cardCertificate(bodies)
-        val (parsed, binary) = OpenPgp.certificates(cert).firstOrNull() ?: throw SigningException("無法建立卡片金鑰的憑證")
-        return put(parsed, binary, OpenPgpTrust.OWN_CARD, info.label, cardOnly = true)
+        val built = bodies.map { DocCryptoUtil.hex(OpenPgpPackets.fingerprint(it)).uppercase() }
+        val (parsed, binary) = OpenPgp.certificates(cert, built.toSet()).firstOrNull() ?: throw SigningException("無法建立卡片金鑰的憑證")
+        return put(parsed, binary, OpenPgpTrust.OWN_CARD, info.label, cardOnly = true, cardKeys = built)
     }
 
     fun addReadCard() = run("加入卡片的公開金鑰") {
