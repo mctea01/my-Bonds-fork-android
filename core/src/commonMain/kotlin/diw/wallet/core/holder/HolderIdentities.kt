@@ -27,7 +27,7 @@ class HolderKey(
     val did: String? = null,
 ) {
     val alias: String get() = keyInfo.alias
-    val publicKey: EcPublicKey get() = keyInfo.publicKey
+    val publicKey: EcPublicKey get() = keyInfo.ecPublicKey
 
     /** Signing key for JOSE/COSE with [alg] (a JOSE name); the key's own algorithm when null. */
     fun signingKey(alg: String? = null): AsymmetricKey.AnonymousSecureAreaBased = AsymmetricKey.AnonymousSecureAreaBased(
@@ -73,7 +73,7 @@ class HolderIdentities(
         val t = table()
         val bytes = DiwJson.encodeToString(StoredIdentity.serializer(), stored).encodeToByteString()
         if (t.get(profile) == null) t.insert(profile, bytes) else t.update(profile, bytes)
-        return HolderKey(secureArea, info, shared = true, did = HolderKey.didFor(info.publicKey, didMethod))
+        return HolderKey(secureArea, info, shared = true, did = HolderKey.didFor(info.ecPublicKey, didMethod))
     }
 
     /** The profile's key, or null when it was never created or its key is gone. */
@@ -81,7 +81,7 @@ class HolderIdentities(
         val stored = table().get(profile)?.let { DiwJson.decodeFromString(StoredIdentity.serializer(), it.decodeToString()) } ?: return null
         val area = secureAreas.getImplementation(stored.secureArea) ?: return null
         val info = runCatching { area.getKeyInfo(stored.alias) }.getOrNull() ?: return null
-        return HolderKey(area, info, shared = true, did = HolderKey.didFor(info.publicKey, stored.didMethod))
+        return HolderKey(area, info, shared = true, did = HolderKey.didFor(info.ecPublicKey, stored.didMethod))
     }
 
     /** The shared key of whichever profile holds [publicKey]. */

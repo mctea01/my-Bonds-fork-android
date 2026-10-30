@@ -2,96 +2,73 @@ package diw.wallet.app.android
 
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.io.bytestring.ByteString
-import org.multipaz.compose.mdoc.CombinedNfcService
-import org.multipaz.compose.mdoc.MdocNfcDataTransferService
-import org.multipaz.compose.mdoc.NfcApduService
+import org.multipaz.mdoc.nfc.MdocNfcDataTransferService
 import org.multipaz.mdoc.nfc.MdocNfcEngagementHelper
 import org.multipaz.nfc.CommandApdu
 import org.multipaz.nfc.Nfc
+import org.multipaz.nfc.NfcApduRouter
+import org.multipaz.nfc.NfcApduService
+import org.multipaz.nfc.NfcDeactivationReason
 import org.multipaz.nfc.ResponseApdu
-import org.multipaz.util.Logger
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Host card emulation for ISO/IEC 18013-5 proximity presentation: the NDEF application carries the NFC engagement
  * and the mdoc data transfer application carries the data when the reader chose NFC over BLE. Both route to the
  * shared [diw.wallet.app.ProximityModel], which only engages while the wallet's 感應出示 screen is open.
  */
-class WalletNfcService : CombinedNfcService() {
+class WalletNfcService : NfcApduRouter() {
     override fun buildServices(): Map<ByteString, NfcApduService> = mapOf(
-        Nfc.NDEF_APPLICATION_ID to NdefEngagementService(this, ::sendResponseApdu),
-        Nfc.ISO_MDOC_NFC_DATA_TRANSFER_APPLICATION_ID to MdocNfcDataTransferService(this, ::sendResponseApdu),
+        Nfc.NDEF_APPLICATION_ID to NdefEngagementService(applicationContext),
+        Nfc.ISO_MDOC_NFC_DATA_TRANSFER_APPLICATION_ID to DataTransferService(applicationContext),
     )
+}
+
+/**
+ * NFC data transfer. Multipaz answers 6A82 at once while no NFC transport is open, but the wallet opens its transport
+ * just after the handover, so a SELECT that comes first waits for it while the 感應出示 screen is open.
+ */
+private class DataTransferService(private val context: Context) : MdocNfcDataTransferService() {
+    override suspend fun processCommandApdu(commandApdu: CommandApdu): ResponseApdu {
+        var response = super.processCommandApdu(commandApdu)
+        if (!commandApdu.isApplicationSelect) return response
+        val proximity = (context as WalletApplication).model.proximity
+        val deadline = TimeSource.Monotonic.markNow() + 2.seconds
+        while (response.status == Nfc.RESPONSE_STATUS_ERROR_FILE_OR_APPLICATION_NOT_FOUND && proximity.listening.value && deadline.hasNotPassedNow()) {
+            delay(100.milliseconds)
+            response = super.processCommandApdu(commandApdu)
+        }
+        return response
+    }
 }
 
 /**
  * NFC engagement over the NDEF Type 4 Tag application, after Multipaz's MdocNdefService (Apache-2.0) but handing the
  * transaction to the wallet's own consent screen, key unlock and history instead of Multipaz's presentment activity.
- * APDUs are handled on one coroutine so suspend functions can be used; SELECT is answered at once, since Android
- * gives the tap to another wallet when the first answer is slow, and replayed to the engagement helper.
+ * [NfcApduService] handles APDUs one at a time on a coroutine; SELECT is answered at once, since Android gives the
+ * tap to another wallet when the first answer is slow, and replayed to the engagement helper.
  */
-private class NdefEngagementService(context: Context, sendResponse: (ByteArray) -> Unit) : NfcApduService(context, sendResponse) {
-    private val app get() = applicationContext as WalletApplication
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val events = Channel<Event>(Channel.UNLIMITED)
-    private var worker: Job? = null
+private class NdefEngagementService(private val context: Context) : NfcApduService() {
+    private val app get() = context as WalletApplication
 
     @Volatile private var engagement: MdocNfcEngagementHelper? = null
     private var first: CommandApdu? = null
     private var received = 0
 
-    private sealed interface Event {
-        data class Command(val apdu: CommandApdu) : Event
-        data class Deactivated(val reason: Int) : Event
-    }
+    override suspend fun processCommandApdu(commandApdu: CommandApdu): ResponseApdu = process(commandApdu)
 
-    override fun onCreate() {
-        worker = scope.launch {
-            for (e in events) {
-                try {
-                    when (e) {
-                        is Event.Command -> process(e.apdu)?.let { sendResponseApdu(it.encode()) }
-                        is Event.Deactivated -> reset()
-                    }
-                } catch (ex: CancellationException) {
-                    if (!isActive) throw ex
-                } catch (ex: Exception) {
-                    Logger.w(TAG, "APDU handling failed", ex)
-                }
-            }
-        }
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        events.close()
-    }
-
-    override fun processCommandApdu(commandApdu: ByteArray, extras: Bundle?): ByteArray? {
-        val apdu = runCatching { CommandApdu.decode(commandApdu) }.getOrNull() ?: return null
-        events.trySend(Event.Command(apdu))
-        return null
-    }
-
-    override fun onDeactivated(reason: Int) {
-        // Unblocks the helper if it waits for the reader inside processApdu.
+    override suspend fun processDeactivated(reason: NfcDeactivationReason) {
         engagement?.processDeactivated(reason)
-        events.trySend(Event.Deactivated(reason))
+        reset()
     }
 
-    private suspend fun process(apdu: CommandApdu): ResponseApdu? {
+    private suspend fun process(apdu: CommandApdu): ResponseApdu {
         val proximity = app.model.proximity
         if (received == 0) {
             // Not listening: tell the reader there is no mdoc here, so it moves on.
@@ -114,16 +91,12 @@ private class NdefEngagementService(context: Context, sendResponse: (ByteArray) 
 
     /** The reader completed the handover: a short vibration, and the wallet comes to the front for the consent. */
     private fun engaged() {
-        applicationContext.getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
+        context.getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 50, 100), -1))
         // A service bound by the system for card emulation may start an activity from the background.
-        applicationContext.startActivity(
-            Intent(applicationContext, MainActivity::class.java)
+        context.startActivity(
+            Intent(context, MainActivity::class.java)
                 .setAction(MainActivity.ACTION_PROXIMITY)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         )
-    }
-
-    private companion object {
-        const val TAG = "WalletNfcService"
     }
 }

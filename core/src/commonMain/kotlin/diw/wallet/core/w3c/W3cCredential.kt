@@ -107,7 +107,7 @@ class W3cVcCredential : Credential {
 
     suspend fun holderPublicKey(): EcPublicKey? {
         val a = alias ?: return null
-        return secureArea?.getKeyInfo(a)?.publicKey
+        return secureArea?.getKeyInfo(a)?.ecPublicKey
     }
 
     override suspend fun deserialize(dataItem: DataItem) {

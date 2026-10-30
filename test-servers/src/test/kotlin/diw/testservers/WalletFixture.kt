@@ -116,7 +116,7 @@ class WalletFixture(
             version = "1.0", docType = DrivingLicense.MDL_DOCTYPE,
             signedAt = pki.validFrom, validFrom = pki.validFrom, validUntil = pki.validUntil, expectedUpdate = null,
             digestAlgorithm = Algorithm.SHA256, valueDigests = nsData.getValueDigests(Algorithm.SHA256),
-            deviceKey = cred.getAttestation().publicKey,
+            deviceKey = cred.getAttestation().ecPublicKey,
             deviceKeyAuthorizedNamespaces = authorizedTransactionNamespaces,
         )
         val tagged = Cbor.encode(Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(mso.toDataItem()))))

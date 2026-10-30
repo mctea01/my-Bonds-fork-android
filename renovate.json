@@ -71,6 +71,13 @@
       "groupName": "credential manager and dc api"
     },
     {
+      "description": "OkHttp 5.5 needs compileSdk 37; held at 5.4 until AGP 9 and compileSdk 37 (see the root build.gradle.kts)",
+      "matchPackageNames": [
+        "com.squareup.okhttp3:**"
+      ],
+      "allowedVersions": "<5.5.0"
+    },
+    {
       "description": "xml-apis 2.0.2 is an old relocation artifact, not a newer release",
       "matchPackageNames": [
         "xml-apis:xml-apis"

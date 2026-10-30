@@ -131,7 +131,7 @@ class DerivedCredentialTest {
     private suspend fun key(): HolderKey {
         val area = SoftwareSecureArea.create(EphemeralStorage())
         val info = area.createKey(null, SoftwareCreateKeySettings.Builder().build())
-        return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.publicKey))
+        return HolderKey(area, info, shared = true, did = DidKeys.didKey(info.ecPublicKey))
     }
 
     private class Issued(val compact: String, val credentialKey: org.multipaz.crypto.EcPrivateKey)

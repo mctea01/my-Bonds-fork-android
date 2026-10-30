@@ -26,6 +26,8 @@
 -dontwarn org.apache.fontbox.**
 -dontwarn org.apache.commons.logging.**
 -dontwarn org.sqlite.**
+# Guava (through Multipaz's key attestation verifier) calls MethodHandle and VarHandle signature-polymorphic methods.
+-dontwarn com.google.common.**
 -dontwarn okio.**
 -dontwarn android.**
 -dontwarn androidx.**

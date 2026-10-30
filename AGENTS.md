@@ -81,6 +81,7 @@
 
 - Multipaz `NfcTransportMdocReader.open()` 在呼叫者的作用域啟動 I/O 迴圈，不可包在 `withTimeout` 內（會等到逾時）；連線逾時以另一個 coroutine 在逾時後關閉傳輸。
 - Multipaz `NfcTransportMdoc` 的靜態實例只在 `NfcTransportMdoc.onDeactivated()`（感應場消失）時移除，`close()` 不會。Android 由 HCE 服務呼叫；測試的 `LoopbackTag.close()` 也要呼叫，否則下一個測試會出現兩個實例。
+- Android HCE 服務 `WalletNfcService` 是 Multipaz 的 `NfcApduRouter`（0.102 起位於 `org.multipaz.nfc`），依 AID 分給 NDEF 交握（`NdefEngagementService`）與資料傳輸（`DataTransferService`）。還沒有 `NfcTransportMdoc` 時 Multipaz 會立即回 6A82，而錢包在交握後才開啟傳輸，所以「感應出示」畫面開著時，資料傳輸的 SELECT 最多等 2 秒。
 - NFC 是半雙工：最後一個 ENVELOPE 的回應就是持有者的 DeviceResponse，會等到使用者同意後才送出。
 - PC/SC：只用短 APDU（`maxTransceiveLength` 261）；關閉 JDK 的自動 GET RESPONSE（`sun.security.smartcardio.t0GetResponse` / `t1GetResponse` 設為 false），由 18013-5 的 61XX 流程自行處理；Linux 自動尋找 `libpcsclite.so.1`；Windows 在沒有讀卡機時會停止智慧卡服務，重新列出時以反射重設 JDK 快取的 context（需要 `--add-opens java.smartcardio/sun.security.smartcardio=ALL-UNNAMED`）。
 - `java.smartcardio` 不在 class path 預設解析的模組內：桌面編譯加 `-Xadd-modules=java.smartcardio`，執行與測試加 `--add-modules=java.smartcardio`，jlink 模組清單也要列入。
@@ -151,7 +152,7 @@
 
 - DC API 收卡：以 play-services 的 `IdentityCredentialManager.registerCreationOptions` 註冊（type `androidx.credentials.TYPE_DIGITAL_CREDENTIAL`、id `openid4vci`），matcher 為 CMWallet 的 `assets/openid4vci_provision.wasm`；`DcApiActivity` 處理 `androidx.credentials.registry.provider.action.CREATE_CREDENTIAL`（protocol `openid4vci-v1`、`openid4vci1.0`、`openid4vci`），`WalletModel.receiveDcApi` 把 offer 交給一般領卡流程，完成後回應 `{"protocol":…,"data":{}}`。
 - KB-JWT：請求沒有 transaction_data 時不寫出 `transaction_data_hashes`（Multipaz 會寫空陣列，walt.id verifier2 以 transaction-data-hash-check 拒絕），由 `ResponseBuilder` 移除。
-- Digital Credentials API：multipaz-dcapi 只把 mdoc 與 SD-JWT VC 註冊給系統選擇器，只有 W3C 格式的卡片（如 TWDIW）不會出現在選擇器，需以 QR 碼或連結出示。Multipaz 會以快取雜湊略過「資料未變」的註冊，系統拒絕時也只寫 log，所以 App 每次啟動強制註冊，並等待系統回覆，結果與「重新向系統註冊」顯示在設定。
+- Digital Credentials API：multipaz-dcapi-credman（0.102 起由 multipaz-dcapi 拆出，以 `DigitalCredentialsCredman.create()` 建立）只把 mdoc 與 SD-JWT VC 註冊給系統選擇器，只有 W3C 格式的卡片（如 TWDIW）不會出現在選擇器，需以 QR 碼或連結出示。Multipaz 會以快取雜湊略過「資料未變」的註冊，系統拒絕時也只寫 log，所以 App 每次啟動強制註冊，並等待系統回覆，結果與「重新向系統註冊」顯示在設定。
 - App 圖示：Android 為 `res/mipmap-anydpi-v26` 自適應圖示（含主題圖示）；桌面圖示由 `python3 app/icons/generate_icons.py` 依同一幾何產生，修改圖示時兩者一起更新。
 
 ## 用戶端驗證、請求物件與 mdoc 簽署清單
@@ -177,6 +178,11 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生內建公開根憑證；--check 只檢查，--strict 有警告時回傳 2
 ./gradlew -p tools/dss-check run --args=<資料夾>   # 以 EU DSS 驗證錢包簽出的檔案（見上方 P3 要點）
 ```
+
+相依版本限制：
+
+- Multipaz 0.102 的 JVM 產物以 Java 21 編譯（Android 產物仍為 Java 17），所以 `core` 的 jvm 目標與桌面版都是 JVM 21，Android 目標維持 17。
+- Ktor 3.6 要求的 OkHttp 5.5 需要 compileSdk 37，超出 AGP 8.13 的範圍；根目錄 `build.gradle.kts` 暫時固定 OkHttp 5.4.0（Ktor 引擎用到的 API 都在 5.4），升級 AGP 與 compileSdk 時一併移除。
 
 測試慣例：
 

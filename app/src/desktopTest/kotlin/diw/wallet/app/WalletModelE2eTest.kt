@@ -457,13 +457,13 @@ class WalletModelE2eTest {
             val select = command.ins == org.multipaz.nfc.Nfc.INS_SELECT && command.p1 == org.multipaz.nfc.Nfc.INS_SELECT_P1_APPLICATION
             if (select) selected = command.payload
             if (selected != org.multipaz.nfc.Nfc.ISO_MDOC_NFC_DATA_TRANSFER_APPLICATION_ID) return helper.processApdu(command)
-            // The wallet opens its NFC transport just after the handover; until then a SELECT finds no transport and
-            // is sent again. Any other APDU waits: NFC is half duplex, so the answer to the last ENVELOPE carries the
+            // The wallet opens its NFC transport just after the handover; until then a SELECT finds no transport (6A82)
+            // and is sent again. Any other APDU waits: NFC is half duplex, so the answer to the last ENVELOPE carries the
             // wallet's response, which comes after the user's consent.
             repeat(if (select) 40 else 1) {
-                val answer = kotlinx.coroutines.CompletableDeferred<org.multipaz.nfc.ResponseApdu>()
-                org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu(command.encode()) { answer.complete(org.multipaz.nfc.ResponseApdu.decode(it)) }
-                (if (select) kotlinx.coroutines.withTimeoutOrNull(500) { answer.await() } else answer.await())?.let { return it }
+                val answer = org.multipaz.mdoc.transport.NfcTransportMdoc.processCommandApdu(command)
+                if (!select || answer.status != org.multipaz.nfc.Nfc.RESPONSE_STATUS_ERROR_FILE_OR_APPLICATION_NOT_FOUND) return answer
+                kotlinx.coroutines.delay(500)
             }
             error("No answer from the wallet's NFC transport")
         }
