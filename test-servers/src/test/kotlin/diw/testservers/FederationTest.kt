@@ -5,6 +5,7 @@ import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.federation.FederationAnchor
 import diw.wallet.core.federation.FederationResolver
+import diw.wallet.core.oid4vci.MetadataFetcher
 import diw.wallet.core.federation.MetadataPolicy
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.signJws
@@ -29,6 +30,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
@@ -122,6 +124,10 @@ class FederationTest {
                         putJsonArray("response_types") { add("vp_token"); add("code") }
                         put("jwks", requestKey.jwks)
                     }
+                    putJsonObject("openid_credential_issuer") {
+                        put("credential_issuer", rp)
+                        putJsonArray("display") { addJsonObject { put("name", "Federated Issuer"); put("locale", "en") } }
+                    }
                 }
             })
             served["$ta/.well-known/openid-federation"] = taConfig
@@ -165,6 +171,35 @@ class FederationTest {
         TrustRegistry(EphemeralStorage(), EnvironmentPolicy()), DidResolver(http), PresentationPolicy(), false,
         federation = FederationResolver(http, { anchors }),
     )
+
+    @Test
+    fun federatedIssuerMetadataAndTrust() = runBlocking<Unit> {
+        val f = Federation().build()
+        val selfServed = buildJsonObject {
+            put("credential_issuer", rp)
+            put("credential_endpoint", "$rp/credential")
+            putJsonArray("display") { addJsonObject { put("name", "Self Named"); put("locale", "en") } }
+            putJsonObject("credential_configurations_supported") { putJsonObject("pid") { put("format", "dc+sd-jwt"); put("vct", "urn:example:pid") } }
+        }.toString()
+        val http = HttpClient(MockEngine { request ->
+            val url = request.url.toString()
+            when {
+                url == "$rp/.well-known/openid-credential-issuer" -> respond(selfServed, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                f.served[url] != null -> respond(f.served[url]!!, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/entity-statement+jwt"))
+                else -> respond("", HttpStatusCode.NotFound)
+            }
+        })
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        val federated = MetadataFetcher(http, registry, false, federation = FederationResolver(http, { listOf(f.anchor()) })).issuer(rp)
+        assertEquals(TrustTier.T2, federated.trust.tier)
+        assertTrue(TrustLabel.OPENID_FEDERATION in federated.trust.labels)
+        assertEquals("Federated Issuer", federated.display.first().name)
+        assertEquals("$rp/credential", federated.credentialEndpoint)
+
+        val plain = MetadataFetcher(http, registry, false, federation = FederationResolver(http, { emptyList() })).issuer(rp)
+        assertEquals("Self Named", plain.display.first().name)
+        assertTrue(TrustLabel.OPENID_FEDERATION !in plain.trust.labels)
+    }
 
     @Test
     fun resolvedMetadataFollowsEveryPolicy() = runBlocking<Unit> {

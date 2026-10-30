@@ -1068,6 +1068,7 @@ class WalletModel(val platform: PlatformServices) {
         dialects = issuanceDialects(),
         holderIdentities = holderIdentities,
         didTrust = didTrust,
+        federationAnchors = { activeFederationAnchors() },
     )
 
     /**
