@@ -3,6 +3,10 @@
 pub mod acir;
 mod field;
 mod inflate;
+mod lex;
+mod prepare;
+mod public;
+pub use prepare::check;
 mod types;
 pub use types::*;
 pub const NOIR_REVISION: &str = "1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663";

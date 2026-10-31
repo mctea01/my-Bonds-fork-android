@@ -25,6 +25,35 @@ pub struct Executed {
     pub public_inputs: Vec<u8>,
 }
 
+/// Flatten public ABI parameters without performing witness execution.
+pub fn public_inputs(artifact: &[u8], inputs: &serde_json::Value) -> Result<Vec<u8>> {
+    let artifact: Artifact = serde_json::from_slice(artifact).map_err(|_| Error("acir_json"))?;
+    let input = Format::Json
+        .parse(&inputs.to_string(), &artifact.abi)
+        .map_err(|_| Error("acir_input"))?;
+    let witness = artifact
+        .abi
+        .encode(&input, None)
+        .map_err(|_| Error("acir_input"))?;
+    let mut index = 0;
+    let mut output = Vec::new();
+    for parameter in &artifact.abi.parameters {
+        let end = index + parameter.typ.field_count();
+        if parameter.is_public() {
+            for i in index..end {
+                output.extend(
+                    witness
+                        .get_index(i)
+                        .ok_or(Error("acir_public_input"))?
+                        .to_be_bytes(),
+                );
+            }
+        }
+        index = end;
+    }
+    Ok(output)
+}
+
 fn solve(
     program: &Program<FieldElement>,
     index: usize,
