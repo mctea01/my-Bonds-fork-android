@@ -1,0 +1,11 @@
+zkPDF native runtime dependencies
+
+Noir acvm, acir, brillig_vm, bn254_blackbox_solver, noirc_abi and associated
+workspace crates: v1.0.0-beta.15, commit
+83245db91dcf63420ef4bcbbd85b98f397fee663, MIT OR Apache-2.0.
+https://github.com/noir-lang/noir/tree/83245db91dcf63420ef4bcbbd85b98f397fee663
+Copyright the Noir contributors. Upstream license texts accompany the sources.
+
+Other direct dependencies: base64 (MIT OR Apache-2.0), serde and serde_json
+(MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0).
+Exact transitive revisions are recorded in ../Cargo.lock.
