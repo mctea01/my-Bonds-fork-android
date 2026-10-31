@@ -462,4 +462,44 @@ mod tests {
         assert!(lex::Scanner::collect(b"BI /W 1 /H 1 ID x EI").is_err());
         assert!(lex::Scanner::collect(b"BT /Span << /ActualText (hidden) >> BDC ET").is_err());
     }
+
+    #[test]
+    #[ignore = "requires authenticated circuit assets; runs all synthetic ACVM witnesses"]
+    fn execute_synthetic_acvm() {
+        use std::{fs, path::PathBuf, time::Instant};
+        let assets = PathBuf::from(std::env::var_os("ZKPDF_ASSETS_DIR").expect("assets_directory"));
+        let output = std::env::var_os("ZKPDF_SYNTHETIC_OUTPUT").map(PathBuf::from);
+        for (name, source) in [
+            (
+                "student",
+                include_str!("../../../test-servers/src/test/resources/zkpdf/student.json"),
+            ),
+            (
+                "travel-rc4",
+                include_str!("../../../test-servers/src/test/resources/zkpdf/travel-rc4.json"),
+            ),
+        ] {
+            let fixture: Value = serde_json::from_str(source).unwrap();
+            let input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();
+            let prepared = prepare(&input, field::number(42)).unwrap();
+            for (kind, index, witness) in &prepared.stages {
+                let artifact =
+                    crate::assets::circuit(&assets, &input.composition, kind, false).unwrap();
+                let start = Instant::now();
+                let result = crate::acir::execute(&artifact, witness).unwrap();
+                assert!(result.public_inputs == crate::public::encode(kind, witness).unwrap());
+                println!(
+                    "synthetic={name} kind={kind} index={index} witness_ms={}",
+                    start.elapsed().as_millis()
+                );
+                if let Some(output) = &output {
+                    let dir = output.join(name).join(format!("{kind}-{index}"));
+                    fs::create_dir_all(&dir).unwrap();
+                    fs::write(dir.join("bytecode.gz"), result.bytecode).unwrap();
+                    fs::write(dir.join("witness.gz"), result.witness).unwrap();
+                    fs::write(dir.join("public_inputs"), result.public_inputs).unwrap();
+                }
+            }
+        }
+    }
 }
