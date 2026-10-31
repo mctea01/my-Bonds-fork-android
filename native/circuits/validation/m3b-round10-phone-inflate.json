@@ -1,0 +1,923 @@
+{
+  "scope": "Candidate formal package; synthetic witness; serial isolated measurement",
+  "tier": "phone",
+  "kind": "inflate",
+  "package": "pdf_inflate_seg_v1",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "bb": "2.1.9",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "prove": {
+    "first": {
+      "seconds": 47.07150424300016,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1884124
+    },
+    "warm": {
+      "seconds": 47.660640049999984,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1883528
+    }
+  },
+  "environment": {
+    "cpu.max": "200000 100000",
+    "memory.max": "8589934592",
+    "hardware_concurrency": "2",
+    "rayon_num_threads": "2",
+    "cpu_affinity": [
+      0,
+      1,
+      2
+    ]
+  },
+  "parameters": {
+    "P": 2048,
+    "T0": 1024,
+    "T": 352,
+    "W": 16,
+    "O": 64
+  },
+  "source_sha256": {
+    "pdf_inflate_seg_v1/src/main.nr": "3aed479fabc0164d63682b43bc75ca8a23989b1c3a8d37fde8ced367adf27ec1",
+    "pdf_text_v1/src/claim.nr": "9cd00f3a342e292f8ccc17acc155cc1ec35b9384d0d0bd0889d62a4783c6cc77",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "94472ec03ad257451b10d30df09c4c41abecc4caa82e25b72634bbe9587f5bf1",
+    "pdf_text_v1/src/lib.nr": "ce06bf1bc37498e346937439130647db5e1a119847ad494e64101e009a877c6d",
+    "pdf_text_v1/src/sha256_window.nr": "e8c30d7a83b90ca8d4a45f318568f52642dcc8ff07c3fd1e065e49b27033b121",
+    "pdf_text_v1/src/sha_segment.nr": "ebcd3d4c9dea2694909676d8434755a6a2a6a60cd84b8f74794ae7ba305e9229",
+    "pdf_text_v1/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f"
+  },
+  "crs_before": {
+    "bn254_g2.dat": 128,
+    "bn254_g1.dat": 134217792
+  },
+  "compile": {
+    "seconds": 119.84573041099998,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 1758440
+  },
+  "gate_measurement": {
+    "seconds": 3.6894384330000776,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 794924
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 550958,
+        "circuit_size": 1009891
+      }
+    ]
+  },
+  "witness": {
+    "seconds": 4.708017169999948,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 490692
+  },
+  "acir_sha256": "7cbed9ef789b12720d7fe6c39ba2886655d53c91f2e65b5bf3e3299cb39fc522",
+  "abi": {
+    "parameters": [
+      {
+        "name": "domain",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "circuit",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "first",
+        "type": {
+          "kind": "boolean"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "last",
+        "type": {
+          "kind": "boolean"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "cz",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "sin",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "sout",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "cp",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "previous",
+        "type": {
+          "kind": "array",
+          "length": 16,
+          "type": {
+            "kind": "field"
+          }
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "salt",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "data",
+        "type": {
+          "kind": "array",
+          "length": 8192,
+          "type": {
+            "kind": "integer",
+            "sign": "unsigned",
+            "width": 8
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "data_len",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "incoming",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::inflate_segment::State",
+          "fields": [
+            {
+              "name": "pos",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "output",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "tokens",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "blocks",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "phase",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 8
+              }
+            },
+            {
+              "name": "kind",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 8
+              }
+            },
+            {
+              "name": "final_block",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "table_commitment",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "pending_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "pending_dist",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "a",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "b",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "stored_end",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "resumed_l",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::inflate::Huffman",
+          "fields": [
+            {
+              "name": "lengths",
+              "type": {
+                "kind": "array",
+                "length": 288,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 8
+                }
+              }
+            },
+            {
+              "name": "codes",
+              "type": {
+                "kind": "array",
+                "length": 288,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "resumed_d",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::inflate::Huffman",
+          "fields": [
+            {
+              "name": "lengths",
+              "type": {
+                "kind": "array",
+                "length": 32,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 8
+                }
+              }
+            },
+            {
+              "name": "codes",
+              "type": {
+                "kind": "array",
+                "length": 32,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "headers",
+        "type": {
+          "kind": "array",
+          "length": 1,
+          "type": {
+            "kind": "struct",
+            "path": "pdf_text_v1::inflate::BlockHint",
+            "fields": [
+              {
+                "name": "start",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "end",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "first_token",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "tokens",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "code_symbols",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 16
+                  }
+                }
+              },
+              {
+                "name": "code_widths",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "cl_lengths",
+                "type": {
+                  "kind": "array",
+                  "length": 19,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "cl_codes",
+                "type": {
+                  "kind": "array",
+                  "length": 19,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 32
+                  }
+                }
+              },
+              {
+                "name": "expanded_lengths",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "cl_prefixes",
+                "type": {
+                  "kind": "array",
+                  "length": 285,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 16
+                  }
+                }
+              },
+              {
+                "name": "ll_prefixes",
+                "type": {
+                  "kind": "array",
+                  "length": 4320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 16
+                  }
+                }
+              },
+              {
+                "name": "dd_prefixes",
+                "type": {
+                  "kind": "array",
+                  "length": 480,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 16
+                  }
+                }
+              },
+              {
+                "name": "cl_first",
+                "type": {
+                  "kind": "array",
+                  "length": 16,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 32
+                  }
+                }
+              },
+              {
+                "name": "ll_first",
+                "type": {
+                  "kind": "array",
+                  "length": 16,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 32
+                  }
+                }
+              },
+              {
+                "name": "dd_first",
+                "type": {
+                  "kind": "array",
+                  "length": 16,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 32
+                  }
+                }
+              },
+              {
+                "name": "header_repeats",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "header_prefixes",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "header_suffixes",
+                "type": {
+                  "kind": "array",
+                  "length": 320,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 32
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "header_count",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "events",
+        "type": {
+          "kind": "array",
+          "length": 353,
+          "type": {
+            "kind": "struct",
+            "path": "pdf_text_v1::inflate_segment::Event",
+            "fields": [
+              {
+                "name": "action",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 8
+                }
+              },
+              {
+                "name": "token",
+                "type": {
+                  "kind": "struct",
+                  "path": "pdf_text_v1::inflate::TokenHint",
+                  "fields": [
+                    {
+                      "name": "block",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 32
+                      }
+                    },
+                    {
+                      "name": "start",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 32
+                      }
+                    },
+                    {
+                      "name": "symbol",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 16
+                      }
+                    },
+                    {
+                      "name": "width",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 8
+                      }
+                    },
+                    {
+                      "name": "distance_symbol",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 8
+                      }
+                    },
+                    {
+                      "name": "distance_width",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 8
+                      }
+                    },
+                    {
+                      "name": "prefix",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 8
+                      }
+                    },
+                    {
+                      "name": "suffix",
+                      "type": {
+                        "kind": "integer",
+                        "sign": "unsigned",
+                        "width": 64
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "event_count",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "hints",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::inflate_segment::SegmentHints",
+          "fields": [
+            {
+              "name": "ll_lengths",
+              "type": {
+                "kind": "array",
+                "length": 576,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 8
+                }
+              }
+            },
+            {
+              "name": "ll_codes",
+              "type": {
+                "kind": "array",
+                "length": 576,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "dd_lengths",
+              "type": {
+                "kind": "array",
+                "length": 64,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 8
+                }
+              }
+            },
+            {
+              "name": "dd_codes",
+              "type": {
+                "kind": "array",
+                "length": 64,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "starts",
+              "type": {
+                "kind": "array",
+                "length": 354,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "ends",
+              "type": {
+                "kind": "array",
+                "length": 354,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "distances",
+              "type": {
+                "kind": "array",
+                "length": 354,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "symbols",
+              "type": {
+                "kind": "array",
+                "length": 354,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 16
+                }
+              }
+            },
+            {
+              "name": "lengths",
+              "type": {
+                "kind": "array",
+                "length": 353,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "token_distances",
+              "type": {
+                "kind": "array",
+                "length": 353,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "history",
+        "type": {
+          "kind": "array",
+          "length": 16,
+          "type": {
+            "kind": "array",
+            "length": 2048,
+            "type": {
+              "kind": "integer",
+              "sign": "unsigned",
+              "width": 8
+            }
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "plain",
+        "type": {
+          "kind": "array",
+          "length": 2048,
+          "type": {
+            "kind": "integer",
+            "sign": "unsigned",
+            "width": 8
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "plain_len",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "owners",
+        "type": {
+          "kind": "array",
+          "length": 2048,
+          "type": {
+            "kind": "integer",
+            "sign": "unsigned",
+            "width": 32
+          }
+        },
+        "visibility": "private"
+      }
+    ],
+    "return_type": null,
+    "error_types": {
+      "361444214588792908": {
+        "error_kind": "string",
+        "string": "attempt to multiply with overflow"
+      },
+      "1998584279744703196": {
+        "error_kind": "string",
+        "string": "attempt to subtract with overflow"
+      },
+      "5421095327929394772": {
+        "error_kind": "string",
+        "string": "attempt to bit-shift with overflow"
+      },
+      "5476849662351484621": {
+        "error_kind": "string",
+        "string": "Field failed to decompose into specified 5 limbs"
+      },
+      "14990209321349310352": {
+        "error_kind": "string",
+        "string": "attempt to add with overflow"
+      },
+      "16431471497789672479": {
+        "error_kind": "string",
+        "string": "Index out of bounds"
+      }
+    }
+  },
+  "verify": {
+    "seconds": 0.02555817299980845,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 17976
+  },
+  "crs_after": {
+    "bn254_g2.dat": 128,
+    "bn254_g1.dat": 134217792
+  },
+  "proof_bytes": 16256,
+  "public_input_bytes": 800,
+  "vk_sha256": "9e2fb178d307965de315666734f8abc79cfda454115bca7ff4503274ae684f9c",
+  "status": "verified"
+}

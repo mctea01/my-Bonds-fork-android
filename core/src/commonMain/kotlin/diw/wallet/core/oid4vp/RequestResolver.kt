@@ -125,17 +125,23 @@ class RequestResolver(
 
     /**
      * Builds a request from a W3C Digital Credentials API invocation.
-     * @param protocol e.g. openid4vp-v1-unsigned, openid4vp-v1-signed
+     * @param protocol e.g. openid4vp-v1-unsigned, openid4vp-v1-signed, or the plain openid4vp of OpenID4VP Draft 24
      * @param data the request data member
      * @param callerOrigin the caller origin provided by the platform; a trailing slash is dropped (an origin has no path)
      */
     suspend fun fromDcApi(protocol: String, data: JsonObject, callerOrigin: String): RawAuthorizationRequest {
-        if (protocol !in setOf("openid4vp-v1-unsigned", "openid4vp-v1-signed", "openid4vp-v1-multisigned")) {
+        // OpenID4VP Draft 24 (and verifiers still on it) register the DC API protocol as the plain "openid4vp": a
+        // request member means a signed request object, otherwise the parameters sit directly in data. Map it to the
+        // OpenID4VP 1.0 signed/unsigned handling so both names work.
+        val effective = if (protocol == "openid4vp") {
+            if (data["request"] is JsonPrimitive) "openid4vp-v1-signed" else "openid4vp-v1-unsigned"
+        } else protocol
+        if (effective !in setOf("openid4vp-v1-unsigned", "openid4vp-v1-signed", "openid4vp-v1-multisigned")) {
             throw RequestValidationException("invalid_request", "Unsupported DC API protocol '$protocol'")
         }
         val origin = callerOrigin.removeSuffix("/")
         val request = data["request"]
-        return when (protocol) {
+        return when (effective) {
             "openid4vp-v1-unsigned" -> {
                 if (request != null || "payload" in data || "signatures" in data) {
                     throw RequestValidationException("invalid_request", "Unsigned DC API protocol cannot carry a signed request")

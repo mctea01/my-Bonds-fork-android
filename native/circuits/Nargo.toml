@@ -1,0 +1,2 @@
+[workspace]
+members = ["profiles/desktop/pdf_inflate_seg0_v1","profiles/desktop/pdf_inflate_seg_v1","profiles/desktop/pdf_lex_seg_v1","pdf_sha_content_v1","pdf_sha_opaque_v1","pdf_pred_v1","pdf_lex_seg_v1","pdf_claim_v1","pdf_inflate_seg0_v1","pdf_inflate_seg_v1","bench/inflate_adler_probe","bench/inflate_probe","bench/inflate_multiblock_probe","bench/inflate_40k","bench/inflate_32k","bench/inflate_16k","pdf_text_v1", "bench/sha256_65", "bench/sha256_130", "bench/sha256_260"]

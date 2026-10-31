@@ -1,0 +1,33 @@
+{
+  "scope": "Estimate for 31582 plaintext bytes and 232 operators, including one claim and one predicate; not a measured full sample proof chain",
+  "estimates": {
+    "phone": {
+      "inflate": 16,
+      "lex": 16,
+      "without_opaque_proofs": 35,
+      "with_opaque_proofs": 36,
+      "first": {
+        "without_opaque_seconds": 1423.9222653629624,
+        "with_opaque_seconds": 1454.0680484569623
+      },
+      "warm": {
+        "without_opaque_seconds": 1578.470763402014,
+        "with_opaque_seconds": 1615.4566216780138
+      }
+    },
+    "desktop": {
+      "inflate": 8,
+      "lex": 8,
+      "without_opaque_proofs": 19,
+      "with_opaque_proofs": 20,
+      "first": {
+        "without_opaque_seconds": 1369.2057154949973,
+        "with_opaque_seconds": 1399.3514985889972
+      },
+      "warm": {
+        "without_opaque_seconds": 1197.333710079981,
+        "with_opaque_seconds": 1234.319568355981
+      }
+    }
+  }
+}

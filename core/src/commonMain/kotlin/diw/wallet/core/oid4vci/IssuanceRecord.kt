@@ -44,7 +44,10 @@ data class IssuanceRecord(
     val specs: List<String> = emptyList(),
     /** Why the issuer got its trust tier, for the details view. */
     val reasons: List<String> = emptyList(),
-    /** Claim names the issuer gave for the user's language, keyed by claim path joined with '.'. */
+    /**
+     * Claim names, keyed "locale|path" (path joined with '.') as an issuer gave them, or by the bare path for the
+     * names this wallet gives its own credentials (derived documents, web query results).
+     */
     val claimNames: Map<String, String> = emptyMap(),
     /** W3C credential types from the issuer configuration. */
     val w3cTypes: List<String> = emptyList(),
@@ -56,6 +59,16 @@ data class IssuanceRecord(
     val logoUri: String? = null,
     val backgroundColor: String? = null,
     val textColor: String? = null,
+    /** Card face image URI from the credential display (background_image), shown as the card when it decodes. */
+    val backgroundImageUri: String? = null,
+    /** When the display metadata was last read for a credential stored before card faces were kept (epoch seconds). */
+    val displayCheckedAt: Long? = null,
+    /** The credential display description as the issuer wrote it (TWDIW puts {"ial": ...} there). */
+    val displayDescription: String? = null,
+    /** Token endpoint client authentication used (attest_jwt_client_auth, private_key_jwt or none); null when no token was requested. */
+    val clientAuthentication: String? = null,
+    /** Access token type the authorization server issued (DPoP or Bearer); null when no token was requested. */
+    val tokenType: String? = null,
 ) {
     val trustTier: TrustTier get() = TrustTier.valueOf(tier)
     val trustEnvironment: TrustEnvironment? get() = TrustEnvironment.fromId(environment)

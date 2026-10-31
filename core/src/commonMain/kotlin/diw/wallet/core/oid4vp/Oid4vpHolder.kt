@@ -17,6 +17,7 @@ import diw.wallet.core.oid4vp.ext.ExtendedOutcome
 import diw.wallet.core.oid4vp.ext.ExtendedPrepared
 import diw.wallet.core.oid4vp.ext.ExtendedPresenter
 import diw.wallet.core.oid4vp.ext.LegacyRequestValidator
+import diw.wallet.core.oid4vp.ext.WalletCredential
 import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.jose.Jws
@@ -35,8 +36,10 @@ import io.ktor.http.isSuccess
 import io.ktor.http.parameters
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.multipaz.credential.SecureAreaBoundCredential
 import org.multipaz.openid.dcql.DcqlCredentialQueryException
 import org.multipaz.presentment.ConsentData
+import org.multipaz.presentment.CredentialMatchSourceOpenID4VP
 import org.multipaz.presentment.CredentialQueryResult
 import org.multipaz.presentment.CredentialSelection
 import org.multipaz.presentment.PresentmentSource
@@ -105,10 +108,15 @@ class Oid4vpHolder(
     private val derivedHolders: suspend () -> List<HolderHint> = { emptyList() },
     /** Decryption keys registered for encrypted request objects (not keys received from the verifier). */
     private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
+    /** OpenID Federation Trust Anchors for openid_federation verifiers. */
+    federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
 ) {
     private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
-    private val validator = RequestValidator(trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust)
+    private val validator = RequestValidator(
+        trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust,
+        diw.wallet.core.federation.FederationResolver(httpClient, federationAnchors, environment.insecureLoopbackAllowed),
+    )
     private val legacy = LegacyRequestValidator(httpClient, trustRegistry, didResolver, didTrust, policy, environment.insecureLoopbackAllowed, dialects)
     private val builder = ResponseBuilder(source)
     private val extended = ExtendedPresenter(httpClient, source.documentStore, holderIdentities, dialects, environment.insecureLoopbackAllowed)
@@ -181,7 +189,43 @@ class Oid4vpHolder(
         } catch (e: DcqlCredentialQueryException) {
             throw ProtocolException("access_denied", "No stored credential satisfies the request", e)
         }
-        return PreparedPresentation(request, result, ConsentData.fromCredentialQueryResult(result, source))
+        val filtered = filterHolderBinding(result, request)
+        return PreparedPresentation(request, filtered, ConsentData.fromCredentialQueryResult(filtered, source))
+    }
+
+    /**
+     * Multipaz DCQL matching does not yet honour require_cryptographic_holder_binding, so a query that needs it would
+     * still offer a keyless credential the holder could pick and only fail when the response is built. A keyless
+     * credential cannot produce the key binding the query asks for, so it is removed from the candidates here, aligning
+     * the standard path with [diw.wallet.core.oid4vp.ext.OwnDcql]; a query left with no key-bound credential fails
+     * explicitly rather than presenting a keyless one.
+     */
+    private fun filterHolderBinding(result: CredentialQueryResult, request: ValidatedAuthorizationRequest): CredentialQueryResult {
+        val bindingRequired = request.dcqlQuery.arr("credentials").orEmpty()
+            .mapNotNull { it as? JsonObject }
+            .filter { (it["require_cryptographic_holder_binding"] as? JsonPrimitive)?.content != "false" }
+            .mapNotNull { it.str("id") }
+            .toSet()
+        if (bindingRequired.isEmpty()) return result
+        fun keep(match: org.multipaz.presentment.CredentialPresentmentSetOptionMemberMatch): Boolean {
+            val id = (match.source as? CredentialMatchSourceOpenID4VP)?.credentialQuery?.id ?: return true
+            if (id !in bindingRequired) return true
+            // mdoc credentials are always device-bound; a keyless SD-JWT VC credential is not SecureAreaBound.
+            return match.credential is SecureAreaBoundCredential
+        }
+        val sets = result.credentialSets.mapNotNull { set ->
+            val options = set.options.mapNotNull { option ->
+                val members = option.members.map { it.copy(matches = it.matches.filter(::keep)) }
+                if (members.any { it.matches.isEmpty() }) null else option.copy(members = members)
+            }
+            when {
+                options.isNotEmpty() -> set.copy(options = options)
+                set.optional -> null
+                else -> throw ProtocolException("access_denied", "No key-bound credential satisfies a query that requires cryptographic holder binding")
+            }
+        }
+        if (sets.isEmpty()) throw ProtocolException("access_denied", "No key-bound credential satisfies the request")
+        return result.copy(credentialSets = sets)
     }
 
     /** Responds to a request prepared by the wallet's own engine with its chosen credentials. */
@@ -210,6 +254,20 @@ class Oid4vpHolder(
             is ExtendedOutcome.Redirect -> PresentationOutcome.Redirect(o.url)
             is ExtendedOutcome.DcApi -> PresentationOutcome.DcApi(o.data)
         }
+    }
+
+    /** [prepared] with line [index] answered by [credential], one of the line's alternatives (the holder changed the credential). */
+    fun replace(prepared: PreparedExtended, index: Int, credential: WalletCredential): PreparedExtended =
+        PreparedExtended(extended.replace(prepared.prepared, index, credential))
+
+    /**
+     * Recipient, occasion, purpose and terms page of [request] for the consent screen: from the owning profile, or the
+     * Presentation Exchange purpose; null when the request says nothing about them.
+     */
+    fun consentTerms(request: ValidatedAuthorizationRequest): ConsentTerms? {
+        extended.dialectOf(request)?.consentTerms(request)?.let { return it }
+        val purpose = request.presentationDefinition?.str("purpose")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return ConsentTerms(purpose = purpose)
     }
 
     suspend fun respond(prepared: PreparedExtended): PresentationOutcome = when (val o = extended.respond(prepared.prepared)) {

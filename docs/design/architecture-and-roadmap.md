@@ -1,15 +1,27 @@
 # DIW MY WALLET 技術背景與跨平台轉換規劃
 
-撰寫日期：2026-10-10
+撰寫日期：2026-10-10。現況更新：2026-10-16。
+
+> **現況（2026-10-16）：** 本文是 P0 的規劃，保留當時的調研與理由；之後的決定以 [AGENTS.md](../../AGENTS.md) 為準。與本文原始內容不同的主要有：
+> - 非標準 Profile（TWDIW、Bonds、Microsoft Verified ID、draft13、draft11、EUDI）全部常駐啟用、不提供開關，程式仍與標準路徑隔離（2026-10-11 決定）。
+> - 信任分層依 AGENTS.md 規則 3：TWDIW 以外的信任根（GPKI、系統憑證庫與內建公開根憑證、AATL、EUTL、Linked Domains、使用者匯入的根憑證與信任的 DID）為 T2；T1 只用於官方清單並經額外驗證；測試錨一律可用、標示測試、等級 T3。
+> - 文件驗證在 `core` 以純 Kotlin 與 BouncyCastle 自行實作（PDF、CMS、XMLDSig、OFD 與 SES、SM2、RFC 3161）；EU DSS 只在 `tools/dss-check` 做交叉驗證，PDFBox 只用於桌面預覽。
+> - 介面不另開「台灣數位憑證」專區，方言帶來的功能併入證件、文件、使用、查驗、紀錄五個分頁（AGENTS.md 規則 10）。
+> - TWDIW 卡片共用一把錢包層級持有者金鑰（`HolderIdentities.TWDIW`），才能一起出示。
+> - 實體自然人憑證卡在 Android 以 NFC 使用（D1 實機與 P3），也支援 USB CCID 與桌面 PC/SC。
+> - ZKP 的設計由 P4 文件取代：[p4-zkp.md](p4-zkp.md)、[p4-circuits.md](p4-circuits.md)、[p4-work-packages.md](p4-work-packages.md)。
+> - 正式服務端（網頁查驗、年齡查驗主機、zkTLS 中繼）獨立在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server) repo，以 Cloud Run 或使用者的主機部署（2026-10-25）；Cloudflare Workers 版中繼能力不足，不做。
+> - 各階段進度見「分階段路線圖」的狀態欄。
+
 ## 結論
 
 建議以 Kotlin Multiplatform（KMP）加 Compose Multiplatform（Android 與 iOS 共用介面）為主體，Multipaz 0.101.0 為憑證與金鑰底層，Android 先行。第二輪調研確認三件事：TWDIW 是自有方言而非標準 OID4VC、Multipaz 沒有「以驗證者憑證為證據」的能力、以及沒有任何開源庫能在 commonMain 完整驗證 PAdES 或 OFD，這三層都要自建。
 
-- 標準必備、非標準可選：OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、ISO 18013-5、W3C DC API 為核心；TWDIW 方言、Bonds 風格的 G2C 功能、Microsoft JWT-VC 皆以可關閉的 Profile 外掛。
+- 標準必備、非標準可選：OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、ISO 18013-5、W3C DC API 為核心；TWDIW 方言、Bonds 風格的 G2C 功能、Microsoft JWT-VC 都是獨立模組的 Profile，常駐啟用（2026-10-11 決定），只在標準流程停下的位置介入。
 - 驗證者透明：請求先走標準認證（x509\_hash 等），再以 verifier\_info 攜帶驗證者自己的憑證（法人、代理、員工憑證）證明身分、代表關係與目的，皮夾依 T1 至 T4 四級提示。
-- ZKP：短期用 Longfellow（mdoc，發行端不必改），並以 OpenAC 補 SD-JWT（已有 TWDIW 年齡證明 PoC），BBS 列為中長期。驗證端同樣支援。
-- 文件：驗證核心先放 Android／JVM（BouncyCastle、EU DSS 部分模組、ofdrw），iOS 後續以 GmSSL、OpenSSL、PDFium 接上。
-- 下一步：P0 本地與網路驗證已完成（見 P0 驗證結果），實機 D1 已確認台灣網路不被擋、生物辨識綁定正常、root 機會偽造金鑰證明；接著完成 NFC 與低階機 ZK 驗證；P1 已於 2026-10-11 完成，P2 進行 OpenID4VC 全組合與 TWDIW、Bonds、Microsoft 相容 Profile。
+- ZKP：P4 做 zkPDF、zkTLS、OpenAC 年齡證明（引用 Bonds）與 Longfellow，持有端與驗證端都支援，設計見 [p4-zkp.md](p4-zkp.md)；BBS 列為中長期。
+- 文件：驗證與簽署在 `core` 以純 Kotlin 與 BouncyCastle 實作（P3 完成），iOS 後續再接上原生密碼學程式庫。
+- 進度（2026-10-25）：P0 驗證完成；P1、P2、P3 已合併進 main；P4 的年齡證明、zkTLS 與 mdoc ZK 已實作，zkPDF 開發中。
 
 ## 參考來源盤點
 
@@ -23,7 +35,7 @@
 | [EUDI Wallet](https://eudi.dev/latest/) | 歐盟 ARF v3.0.0（2026-07-21）與參考實作 | wallet-core 僅 Android且依賴 Multipaz；openid4vp／vci／sdjwt 為 JVM | mso\_mdoc、SD-JWT VC | OpenID4VCI、OpenID4VP、HAIP、rQES（CSC）、Token Status List | Apache-2.0，官方聲明非生產用 | 標準對齊、WRPAC／WRPRC 驗證者透明、簽章 |
 | [Microsoft Entra Verified ID](https://learn.microsoft.com/entra/verified-id/verifiable-credentials-standards) | 企業 VC 服務 | 雲端＋Android 程式庫（MIT、Private Preview） | JWT VC（VCDM 1.1） | SIOPv2、OpenID4VP ID1、PE v2、did:web、Linked Domains | 商用服務 | 企業員工證互通；Multipaz 不支援 W3C VC／ DID，需另建堆疊 |
 
-完整調研筆記（各點附檔案行號或 URL，標註已確認／推論）放在專案檔案 research 資料夾。
+完整調研筆記（各點附檔案行號或 URL，標註已確認／推論）收在 [docs/research](../research)。
 
 ## TWDIW 官方 App 現況
 
@@ -57,13 +69,13 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 
 &#91;embedded content: 目標架構 · 四層加外部服務\]
 
-標準核心永遠啟用；虛線的非標準 Profile 只在使用者或設定開啟時參與，且一律經過信任引擎標示等級。平台層只放金鑰硬體、系統 API 與原生庫的對接，因此加上 iOS 時不需重寫協定、介面與儲存。
+標準核心永遠啟用；虛線的非標準 Profile 常駐啟用，只在標準流程停下的位置介入，且一律經過信任引擎標示等級。平台層只放金鑰硬體、系統 API 與原生庫的對接，因此加上 iOS 時不需重寫協定、介面與儲存。
 
 裝置完整性不以 Key Attestation 單獨判定：實機 D1 證實 root 機可產生偽造但簽章有效的證明鏈。App 端只收集金鑰證明與 Play Integrity 結果並上傳，由錢包提供者後端判定；依使用者決定（2026-10-10），多數情況只需確認金鑰證明有效，不特別檢查是否為 RKP 鏈；判定結果決定可否申請 EUDI 等要求 key attestation 的憑證，與軟體兜底層的降級標示一致。
 
 ## 協定與演算法支援矩陣
 
-標準項目一律必備且預設開啟；非標準項目以 Profile 外掛，可個別關閉，且永遠不改變標準流程的行為。「底層」欄寫明哪些由 Multipaz 提供、哪些要自建。
+標準項目一律必備且預設開啟；非標準項目以 Profile 實作、常駐啟用，且永遠不改變標準流程的行為。「底層」欄寫明哪些由 Multipaz 提供、哪些要自建。
 
 | 類別 | 標準（必備） | 非標準／舊版（可選 Profile） | 底層 |
 | --- | --- | --- | --- |
@@ -101,7 +113,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 - 驗證者的 ZKP：組織內的個人可用 ZK 只揭露「機關與角色」不揭露姓名；法人本身不可匿名。
 - 互通：自訂的 verifier\_info format 會被其他皮夾忽略，因此一定保留 registration\_cert 標準路徑，自訂聲明只是增益。
 
-信任分級與提示（同樣套用在發證者，即非官方憑證）：
+信任分級與提示（同樣套用在發證者，即非官方憑證）。下表是 P0 的提案；實作的分層定義見 AGENTS.md 規則 3（T1 官方清單並經額外驗證、T2 連到信任根、T3 可驗證但沒有連到信任根與所有測試錨、T4 驗證失敗），低信任操作以 `RiskConfirmDialog` 列出風險、勾選後可繼續；verifier\_info 由 `VerifierInfoCheck` 在同意畫面檢查（P3 先做）。
 
 | 等級 | 條件 | 提示方式 |
 | --- | --- | --- |
@@ -143,6 +155,8 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 
 沒有開源庫能在 commonMain 完整驗證 PAdES、XAdES 或 OFD，因此共用層只放資料模型、ByteRange 規則、OFD 解析、JWS 與保存功能，密碼驗證先放 Android／JVM；驗證結果統一用 ETSI EN 319 102-1 的 Indication／SubIndication 表示。
 
+P3 的實作結果：PDF 解析（含加密與增量更新）、文字擷取、PAdES 簽署在 `core/document/pdf` 以純 Kotlin 完成；CMS、XMLDSig、XAdES、OFD 與 SES、SM2 由 BouncyCastle 與自寫程式驗證；電子公文的線上簽核（.si）是自訂的 XMLDSig 結構，不是 XAdES。下表的 PdfBox-Android、Santuario、ofdrw 沒有用在 App 內，EU DSS 只用於交叉驗證。結果以 `DocumentReport` 表示（VALID、PARTIAL、INVALID、UNSIGNED），細節見 AGENTS.md 的 P3 要點。
+
 | 格式 | Android／JVM 實作 | iOS 實作 | 授權風險 | 重點問題 |
 | --- | --- | --- | --- | --- |
 | PAdES／PDF CMS（含自然人憑證 PDF 簽章） | PdfBox-Android（取 ByteRange、修訂版）＋BouncyCastle（CMS、TSP、OCSP）＋自寫 ETSI 驗證邏輯 | PDFium＋OpenSSL（cinterop）或商用 SDK | 低；iText 為 AGPL 不採用 | 需自行防禦 USF、ISA、SWA、Shadow 攻擊；EU DSS 的 PAdES 模組用到 java.awt，Android 可能不可用 |
@@ -179,7 +193,9 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | ConvenienceStorePickup | 官方離線驗證者清單（vpList）、短效條碼 | 需處理 401／402 分支 |
 | G2cServiceProvider（通用） | 保留的未來標準接口：服務描述、信任錨、請求／回應轉換、使用者提示等級 | 由設定檔註冊，可個別停用 |
 
-金鑰設計同樣沿用 Bonds：一張憑證一把持有者金鑰，避免兩個驗證者關聯同一人的不同憑證；Keystore 別名用不透明亂數，全部清除時必須涵蓋所有別名。
+金鑰設計原本沿用 Bonds 的一張憑證一把持有者金鑰；實作後 TWDIW 卡片改為共用一把錢包層級金鑰（`HolderIdentities.TWDIW`），因為 TWDIW 一次出示多張卡時要求同一個持有者。Keystore 別名用不透明亂數，全部清除時必須涵蓋所有別名。
+
+各介面的現況（2026-10-16）：TwdiwProfile、OfflinePresentation、ConvenienceStorePickup 在 P2 完成；CitizenCardSigner 以 NFC、USB CCID 與桌面 PC/SC 完成（P3）；MyDataImporter 改為 App 內下載並解壓，身分證資料做成 Bonds 身分證卡、以實體自然人憑證卡簽署；MobileCitizenCertSigner 的 SP 帳號改為編譯時設定，沒有帳號時維持停用；OfficialDocumentInbox 先做公文容器、驗證與線上簽核點，收發仍是停用列。
 
 ## 軟體兜底層
 
@@ -195,7 +211,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | 近端傳輸 | BLE、NFC（ISO 18013-5） | QR 分包→ 線上中繼 | 模擬器與多數 PC 無 BLE／ NFC |
 | 相機 | CameraX | 圖檔解碼、貼上文字 | 無 |
 | 裝置完整性 | Play Integrity、Key Attestation | 無法退回，改由使用者知情同意 | TW FidO broker 等需完整性證明的服務將無法使用 |
-| ZK 原生庫 | Longfellow（Android arm64／x86\_64、JVM 僅 macOS 與 linux-x86\_64）、OpenAC | 停用 ZK，改一般選擇性揭露 | Linux 手機（aarch64）與 32 位元 ARM 暫無 Longfellow，需自行編譯 |
+| ZK 原生庫 | Longfellow（Android arm64／x86\_64、JVM 僅 macOS 與 linux-x86\_64）、OpenAC、P4 的 zkPDF 與 tlsn | 顯示估計，由使用者選擇本機、電腦版、自架主機或一般選擇性揭露（p4-zkp.md 第 8 節） | Linux 手機（aarch64）與 32 位元 ARM 暫無 Longfellow，需自行編譯 |
 | 推播 | FCM | 輪詢 | 較耗電、延遲較高 |
 | 可信時間 | 網路時間、TSA 回應時間 | 本機時鐘 | 標「時間未經驗證」 |
 
@@ -208,8 +224,8 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | 環境 | 來源 | 預設 | UI 區分 |
 | --- | --- | --- | --- |
 | 正式（Standard） | 官方信任清單與正式根應證 | 啟用 | 一般配色，可達 T1 |
-| 測試（Test） | 沙盒、UAT、一致性測試、參考實作的測試根 | 關閉，在開發者設定開啟 | 整頁「測試環境」條帶與浮水印，最高只到 T3，結果不得顯示為綠色通過 |
-| 使用者自訂 | 使用者自行匯入的根或 DID | 關閉 | 標「使用者自訂信任」，最高 T3 |
+| 測試（Test） | 沙盒、UAT、一致性測試、參考實作的測試根、Multipaz 內建錨點、TWDIW 官方 sandbox | 一律可用；開發者設定的開關只管理自訂測試伺服器位址（2026-10-15 決定） | 標示「測試」，等級 T3，結果不具效力，不得顯示為官方 |
+| 使用者自訂 | 使用者自行匯入的根或信任的 DID | 使用者加入即生效 | 標「使用者自訂信任」，T2（2026-10-15 決定），不顯示為官方 |
 
 規則：測試環境的憑證存在獨立空間，不得與正式憑證合併在同一次出示；正式驗證者請求不會配對測試憑證；發佈版內建的測試錨永遠不被當成正式（Bonds 「Release 不接受沙盒 issuer」原則，CI 檢查）。信任包以簽章方式下發，整批驗證後才原子替換。
 
@@ -221,7 +237,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | Bonds | 數位部信任清單＋ Arbitrum 鏈上錨定 | 同 TWDIW | issuer-lite 的 did:key 釘選例外 | 自建，鏈上錨定為可選 |
 | Multipaz | ISO 18013-5 IACA → Document Signer；Reader root → reader cert；VICAL、RICAL | 各發行機關 IACA | Multipaz 測試 IACA（issuer.multipaz.org、Identity Reader） | Multipaz TrustManager 家族（Composite、Vical、Rical） |
 | EUDI | ETSI LoTL／Trusted List（TS 119 612）與 LoTE（TS 119 602）：PID 提供者、Wallet 提供者、WRPAC CA、WRPRC 提供者；Token Status List | 歐盟 LoTL | EUDI 參考實作與一致性測試的測試根 | eudi-lib-kmp-etsi-1196x2、statium；內建 LoTE 驗證器只驗簽章，需自補 PKIX 與 CRL／OCSP |
-| Microsoft Entra | did:web＋ Well-Known DID Configuration（Linked Domains）＋ W3C Status List | 正式租戶 | 測試租戶 | 自建（Multipaz 不支援 DID）；強度約等同 DV 應證，標 T3 |
+| Microsoft Entra | did:web＋ Well-Known DID Configuration（Linked Domains）＋ W3C Status List | 正式租戶 | 測試租戶 | 自建（Multipaz 不支援 DID）；依 Microsoft 錢包程式庫的規則，Linked Domains 驗證成功為 T2，失敗為 T4 |
 | OpenID Federation | Trust Anchor → Intermediate → Leaf | 各聯邦 | 各聯邦測試錨 | 自建 |
 | 台灣 GPKI | GRCA → MOICA／GCA／XCA 等 | 正式根（不在 Mozilla 與 AATL，需自帶） | 測試憑證機構 | BouncyCastle |
 | 中國 SM2 | 各 SM2 根與中繼 | 盡力收集、標示信任等級 | 廠商測試根 | BouncyCastle、GmSSL |
@@ -295,7 +311,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | 原生發證 | issuance request 加 manifest，attestations 含 idTokens、selfIssued、presentations、accessTokens | 支援 selfIssued、presentations、idTokens（外部登入頁）；accessTokens 需租戶設定，僅保留接口 | P2 |
 | OID4VCI | draft 11，仍為 preview | 走 draft11 方言 | P2 |
 | 識別 | Issuer、Verifier 用 did:web；持有者用 did:jwk P-256 | did:web 解析與 did:jwk 持有者金鑰 | P2 |
-| Linked Domains | did-configuration.json | 驗證通過時信任等級最高 T3，不視為官方 | P2 |
+| Linked Domains | did-configuration.json | 驗證通過為 T2（`LINKED_DOMAIN`），不視為官方；失敗為 T4 | P2 |
 | 憑證與狀態 | JWT-VC 加 StatusList2021 | JWT-VC 儲存、驗章與 StatusList2021 | P2 |
 | 演算法 | ES256K 已於 2026-07-01 退役 | 僅用於驗舊卡，不用於新簽章 | P2 |
 | 互通驗收 | 需要 Entra 租戶 | 自建 ms 風格測試端做本地驗收；正式互通需 Entra 測試租戶，列入實機清單 | P2 |
@@ -342,23 +358,23 @@ P2 完成後，下列各維度可任意組合。標準路徑（OpenID4VCI 1.0、
 
 TWDIW 發證端要求 client\_id 為 moda\_dw，代表本錢包會以官方 App 的識別碼領卡。此值在設定中揭露給使用者並可修改，方言本身不可關閉。
 
-UI：新增「台灣數位憑證」頁面，展示 TWDIW 憑證（卡面、發行機關、信任清單與鏈上錨定結果、狀態）與 Bonds 自訂內容（超商取貨條碼、電信卡申請目錄、離線出示）及各自圖示；Bonds 文件類支援排在 P3（2026-10-11 階段調整，見「文件憑證方案比較」）。P2 一併更新 AGENTS.md 與 README.md。
+UI（原規劃，後來改為併入五個分頁，不另開專區）：新增「台灣數位憑證」頁面，展示 TWDIW 憑證（卡面、發行機關、信任清單與鏈上錨定結果、狀態）與 Bonds 自訂內容（超商取貨條碼、電信卡申請目錄、離線出示）及各自圖示；Bonds 文件類支援排在 P3（2026-10-11 階段調整，見「文件憑證方案比較」）。P2 一併更新 AGENTS.md 與 README.md。
 
 P2 驗收：自建測試端涵蓋各方言的本地測試全數通過；TWDIW 正式領卡與出示、Entra 租戶互通、BLE 等列入實機清單。
 
 ## 分階段路線圖
 
-六個階段依序推進，每個階段都以「可在實機上展示的端到端流程」作為驗收；介面與核心從第一天就寫在 commonMain，iOS 在 P6 接上。
+六個階段依序推進，每個階段都以「可在實機上展示的端到端流程」作為驗收；介面與核心從第一天就寫在 commonMain，iOS 在 P6 接上。階段在 2026-10-11 調整過（文件與簽章提前為 P3，ZKP 為 P4，驗證者透明移到 P5），下表是調整後的版本。
 
-| 階段 | 內容 | 驗收條件 |
-| --- | --- | --- |
-| P0 骨架與風險實測 | KMP＋CMP 專案、鎖定 Multipaz 版本；實測 Cloudflare UA、moda\_dw 發證、EU DSS 與 ofdrw 在 Android 執行、BC 版本衝突；建立軟體兜底層與正式／測試信任分區，讓模擬器與 JVM 桌面版即可跑通流程；架設多 Profile 測試發行端與驗證端及測試 CA、OCSP、TSA | 三項實測有結論並更新本文件 |
-| P1 標準核心（Android） | PIN／生物辨識綁定金鑰、OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、DC API、Token Status List、補 expected\_origins 與 client\_id 檢查 | 通過 Multipaz 與 EUDI 測試發行端／驗證端（2026-10-11 完成，PR #1 已合併） |
-| P2 OpenID4VC 全組合與相容 Profile | OpenID4VCI／OpenID4VP 各版本、格式、grant、proof、response\_mode 全組合；draft13、draft11、TWDIW 官方、Bonds、Microsoft Verified ID 五個 Profile 預設啟用可關閉；StatusList2021 等狀態清單、TWDIW 信任清單與鏈上錨定、超商取貨、離線 QR／BLE、Linked Domains、非官方憑證接受提示 | 自建各方言測試端本地測試全數通過；實機從 TWDIW 發行端領卡並通過 TWDIW 驗證端，並以 Entra 測試租戶互通 |
-| P3 文件、簽章與衍生憑證 | PAdES／CAdES（含 PKCS#7 .p7s／.p7m）／XMLDSig／OFD＋SES 驗證、三組信任包、保存與時戳；自然人憑證卡 NFC／USB／PC/SC 簽章與主動簽署（PAdES、ASiC-E、自製證書）；文件衍生憑證（SD-JWT VC，可匯出 vc+moica）與自然人憑證證據層；教育部、MyDoc、MyData、戶政、地政、移民署取件入口；戶籍 asdt 解析嘗試；OpenCerts 只匯入保存；行動自然人憑證用於內嵌頁面登入；行動自然人憑證 SP 簽章、CSC 遠端簽章、電子公文收發等外部條件前為停用列 | 以測試樣本通過 ETSI 驗證報告比對；實機以 TP07 卡 NFC 簽出可被 DSS 驗證的 PAdES；一份真實文件產生衍生憑證並被另一台手機查驗 |
-| P4 ZKP（文件與憑證） | 共用原生 ZK 執行環境與裝置分級與退回；zkTLS（TLSNotary，先做即時模式，第一個對象學信網報告與移民署證明書查驗頁，兩者都不需自然人憑證，離線用裝置證明紀錄）；zkPDF 版型電路（含加密 PDF，第一個對象為中國大陸大學在學證明（未加密、RSA 簽章、有時戳），再做大陸國家移民管理局的出入境記錄與關聯證明（RC4 加密且使用者密碼為空））；Longfellow 持有與驗證、OpenAC SD-JWT 年齡證明 | 中階機完成一次文件 zkTLS 出示與一次 ZK 憑證出示與驗證；zkPDF 若手機做不到則以桌面產生並在畫面標明 |
-| P5 驗證者透明與主動驗證 | 驗證者聲明、WRPRC、T1–T4 提示、驗證者模式（含自己的聲明與證據）；衍生憑證與 ZK 證明的查驗政策 | 兩台手機互為持有者與驗證者，顯示身分、代表關係與目的 |
-| P6 iOS | iosMain：Secure Enclave、GmSSL、OpenSSL、PDFium、ZK 原生庫；另以軟體兜底層驗收 AOSP、Linux 手機與 PC（JVM） | P1 至 P5 在 iOS 實機通過 |
+| 階段 | 內容 | 驗收條件 | 狀態（2026-10-16） |
+| --- | --- | --- | --- |
+| P0 骨架與風險實測 | KMP＋CMP 專案、鎖定 Multipaz 版本；實測 Cloudflare UA、moda\_dw 發證、EU DSS 與 ofdrw、BC 版本衝突；軟體兜底層與正式／測試信任分區；多 Profile 測試發行端與驗證端及測試 CA、OCSP、TSA | 實測有結論並更新本文件 | 完成 |
+| P1 標準核心（Android） | PIN／生物辨識綁定金鑰、OpenID4VCI 1.0、OpenID4VP 1.0（DCQL）、SD-JWT VC、mdoc、DC API、Token Status List、補 expected\_origins 與 client\_id 檢查 | 通過 Multipaz 與 EUDI 測試發行端／驗證端 | 完成（PR #1 至 #4） |
+| P2 OpenID4VC 全組合與相容 Profile | OpenID4VCI／OpenID4VP 各版本、格式、grant、proof、response\_mode 全組合；draft13、draft11、TWDIW 官方、Bonds、Microsoft Verified ID 常駐啟用；狀態清單、TWDIW 信任清單與鏈上錨定、超商取貨、離線 QR／BLE、Linked Domains；ISO 18013-5 近距離出示與查驗（含 NFC、PC/SC）；中國大陸與國密根憑證 | 自建各方言測試端本地測試全數通過；實機 TWDIW 領卡與出示、Entra 互通 | 完成（PR #5 至 #7），部分實機項目待驗 |
+| P3 文件、簽章與衍生憑證 | PAdES／CAdES／XAdES／ASiC／OFD＋SES 驗證、AATL 與 EUTL、保存、時戳與長期驗證資料；自然人憑證卡（NFC、USB CCID、PC/SC）、PKCS#12、錢包金鑰與 CSC 遠端簽章；電子公文容器與線上簽核點；文件衍生憑證（SD-JWT VC、vc+moica）與 Bonds 身分證卡；OpenCerts 完整查驗；MyData 與各取件入口；verifier\_info 檢查 | ETSI 報告比對（DSS）；TP07 卡 NFC 簽 PAdES；真實文件產生衍生憑證並被另一台手機查驗 | 完成（PR #8、#9），實機項目見 [p3-acceptance.md](../acceptance/p3-acceptance.md) |
+| P4 ZKP（文件與憑證） | zkPDF、zkTLS（即時模式，手機與電腦都可當查驗方）、OpenAC 年齡證明、Longfellow；裝置分級與使用者選擇 | 見 [p4-zkp.md](p4-zkp.md) 第 12 節 | 年齡證明、zkTLS、Longfellow 已實作；zkPDF 開發中（[p4-work-packages.md](p4-work-packages.md) 第 2.1 節） |
+| P5 驗證者透明與主動驗證 | 驗證者聲明、WRPRC、驗證者模式（含自己的聲明與證據）；衍生憑證與 ZK 證明的查驗政策 | 兩台手機互為持有者與驗證者，顯示身分、代表關係與目的 | 未開始（verifier\_info 檢查已在 P3 先做） |
+| P6 iOS | iosMain：Secure Enclave、原生密碼學與 ZK 程式庫；另以軟體兜底層驗收 AOSP、Linux 手機與 PC（JVM） | P1 至 P5 在 iOS 實機通過 | 未開始 |
 
 ## P0 驗證結果（2026-10-10）
 
@@ -406,4 +422,4 @@ P2 驗收：自建測試端涵蓋各方言的本地測試全數通過；TWDIW �
 - [EUDI ARF v3.0.0](https://eudi.dev/latest/)、[EUDI 參考實作](https://docs.eudi.dev/latest/)、[eu-digital-identity-wallet](https://github.com/eu-digital-identity-wallet) 各庫
 - [Microsoft Entra Verified ID 支援標準](https://learn.microsoft.com/entra/verified-id/verifiable-credentials-standards)
 - 文件簽章：EU DSS 6.5、ofdrw、PdfBox-Android、GmSSL、BouncyCastle 原始碼；ZKP：draft-google-cfrg-libzk-02、EUDI TS13／TS14、ethereum／zkID
-- 五份詳細調研筆記（各點附檔案行號或 URL）已併附於本次回覆的專案檔案
+- 詳細調研筆記（各點附檔案行號或 URL）收在 [docs/research](../research)

@@ -1,0 +1,32 @@
+[package]
+name = "ecdsa-spartan2"
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "ecdsa_spartan2"
+path = "src/lib.rs"
+
+[features]
+default = []
+
+[dependencies]
+spartan2 = { git = "https://github.com/0xVikasRushi/Spartan2.git", rev = "d687dbb639eccbdd21e62fecec97c5826bc4dbbf", default-features = false }
+circom-scotia = { git = "https://github.com/0xVikasRushi/circom-scotia", rev = "bd39c019dba20d32ce5727e2408632dbca269e82", default-features = false }
+
+bellpepper = "0.4.0"
+bellpepper-core = "0.4.0"
+ff = { version = "0.13.0", features = ["derive"] }
+serde_json = "1.0.140"
+serde = { version = "1.0.219", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter", "time"] }
+sha2 = "0.10.7"
+bincode = "1.3.3"
+memmap2 = "0.9.8"
+num-bigint = "0.4.6"
+base64 = "0.22"
+
+
+

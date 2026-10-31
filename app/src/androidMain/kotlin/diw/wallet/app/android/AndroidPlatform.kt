@@ -1,6 +1,7 @@
 package diw.wallet.app.android
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -40,6 +41,7 @@ import kotlinx.serialization.json.buildJsonObject
 import com.google.android.gms.identitycredentials.RegistrationRequest
 import com.google.android.gms.tasks.Task
 import diw.wallet.app.DcApiRegistration
+import diw.wallet.app.BondsLinkCentral
 import diw.wallet.app.BondsLinkPeripheral
 import diw.wallet.app.ExternalKeys
 import diw.wallet.app.KeyBackend
@@ -67,6 +69,10 @@ import org.multipaz.cbor.DataItem
 import org.multipaz.crypto.Algorithm
 import org.multipaz.digitalcredentials.DigitalCredentialsCredman
 import org.multipaz.document.DocumentStore
+import org.multipaz.document.androidCredmanBitmap
+import org.multipaz.document.androidCredmanTitle
+import org.multipaz.document.setAndroidCredmanBitmap
+import org.multipaz.document.setAndroidCredmanTitle
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.sdjwt.credential.SdJwtVcCredential
@@ -96,6 +102,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.time.Clock
 import diw.wallet.core.document.sign.CleartextHttp
+import diw.wallet.core.profile.bonds.BondsLanLink
+import diw.wallet.core.profile.bonds.SocketBondsLanLink
 import diw.wallet.core.document.sign.KtorSignedDataHttp
 import diw.wallet.core.document.sign.SignedDataHttp
 import diw.wallet.core.document.sign.SignedDataRoutes
@@ -144,14 +152,45 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val bondsLink: BondsLinkPeripheral by lazy { AndroidBondsLink(context) { activity } }
 
+    override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
+
+    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory } }
+
+    /**
+     * The connected network whose own subnet holds [host]: the Wi-Fi or hotspot both phones share. A socket left
+     * unbound goes over the default network, which is mobile data while that Wi-Fi has no Internet access.
+     */
+    @Suppress("DEPRECATION")
+    private fun localNetworkFor(host: String): android.net.Network? {
+        val target = runCatching { java.net.InetAddress.getByName(host) }.getOrNull() as? java.net.Inet4Address ?: return null
+        if (!target.isSiteLocalAddress && !target.isLinkLocalAddress) return null
+        val connectivity = context.getSystemService(android.net.ConnectivityManager::class.java) ?: return null
+        fun bits(a: java.net.InetAddress) = a.address.fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xff) }
+        return connectivity.allNetworks.firstOrNull { network ->
+            connectivity.getLinkProperties(network)?.linkAddresses.orEmpty().any { link ->
+                val own = link.address as? java.net.Inet4Address ?: return@any false
+                val prefix = link.prefixLength.coerceIn(0, 32)
+                val mask = if (prefix == 0) 0L else (0xffffffffL shl (32 - prefix)) and 0xffffffffL
+                (bits(own) and mask) == (bits(target) and mask)
+            }
+        }
+    }
+
     /** File picking and saving through the activity's result launchers; set while MainActivity exists. */
     @Volatile var fileAccess: AndroidFileAccess? = null
 
     override suspend fun pickFile(): PickedFile? = fileAccess?.pick()
 
+    override suspend fun pickImage(): PickedFile? = fileAccess?.pick(arrayOf("image/*"))
+
     override suspend fun pickFiles(): List<PickedFile> = fileAccess?.pickMany().orEmpty()
 
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = fileAccess?.save(name, mediaType, bytes) ?: false
+
+    override val canShareFiles: Boolean get() = true
+
+    override suspend fun shareFile(name: String, mediaType: String, bytes: ByteArray): Boolean =
+        fileAccess?.share(name, mediaType, bytes) ?: false
 
     override val embeddedBrowser: Boolean get() = true
 
@@ -191,8 +230,26 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         canvas.clipPath(card)
         canvas.drawColor(spec.background)
         val pad = 32f
+        // An issuer card face covers the card (centre crop) as in the official TWDIW wallet; shades at the top and the
+        // bottom keep the title and the issuer readable on any image, so the text is always white.
+        val face = spec.face?.asAndroidBitmap()
+        if (face != null) {
+            val scale = maxOf(w.toFloat() / face.width, h.toFloat() / face.height)
+            val sw = (w / scale).toInt().coerceAtMost(face.width)
+            val sh = (h / scale).toInt().coerceAtMost(face.height)
+            val src = Rect((face.width - sw) / 2, (face.height - sh) / 2, (face.width + sw) / 2, (face.height + sh) / 2)
+            canvas.drawBitmap(face, src, RectF(0f, 0f, w.toFloat(), h.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+            val shade = 0x8C000000.toInt()
+            canvas.drawRect(0f, 0f, w.toFloat(), h * 0.45f, Paint().apply {
+                shader = LinearGradient(0f, 0f, 0f, h * 0.45f, shade, 0, Shader.TileMode.CLAMP)
+            })
+            canvas.drawRect(0f, h * 0.7f, w.toFloat(), h.toFloat(), Paint().apply {
+                shader = LinearGradient(0f, h * 0.7f, 0f, h.toFloat(), 0, shade, Shader.TileMode.CLAMP)
+            })
+        }
+        val foreground = if (face != null) android.graphics.Color.WHITE else spec.foreground
         // The picture (a document page or a portrait) fills the right part of the card and fades into the background.
-        val textRight = spec.picture?.asAndroidBitmap()?.let { pic ->
+        val textRight = spec.picture?.takeIf { face == null }?.asAndroidBitmap()?.let { pic ->
             val left = w * 0.6f
             val area = RectF(left, 0f, w.toFloat(), h.toFloat())
             val scale = maxOf(area.width() / pic.width, area.height() / pic.height)
@@ -207,7 +264,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             left - 8f
         } ?: (w - pad)
         var top = pad
-        spec.logo?.asAndroidBitmap()?.let { logo ->
+        spec.logo?.takeIf { face == null }?.asAndroidBitmap()?.let { logo ->
             val size = 72f
             val scale = size / maxOf(logo.width, logo.height)
             val dst = RectF(pad, pad, pad + logo.width * scale, pad + logo.height * scale)
@@ -219,7 +276,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         }
         val width = (textRight - pad).toInt().coerceAtLeast(120)
         val titlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = spec.foreground
+            color = foreground
             textSize = 44f
             typeface = Typeface.DEFAULT_BOLD
         }
@@ -230,7 +287,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         title.draw(canvas)
         canvas.restore()
         val issuerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = (spec.foreground and 0x00FFFFFF) or (0xD9 shl 24)
+            color = (foreground and 0x00FFFFFF) or (0xD9 shl 24)
             textSize = 26f
         }
         val issuer = TextUtils.ellipsize(spec.issuer, issuerPaint, width.toFloat(), TextUtils.TruncateAt.END).toString()
@@ -294,6 +351,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     /** The reader mode of an in-person verification in progress; Android ends reader mode when the activity pauses. */
     @Volatile var readerMode: ((Activity) -> Unit)? = null
+
+    /** Set to the tap prompt while the phone's own NFC is in reader mode waiting for a card; the UI shows a scan sheet. */
+    val nfcScanPromptState = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    override val nfcScanPrompt: kotlinx.coroutines.flow.StateFlow<String?> get() = nfcScanPromptState
 
     override suspend fun nfcReaders(): NfcReaderList = AndroidNfcReaders.list(context, this)
 
@@ -374,6 +435,24 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
+    override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
+        diw.wallet.core.zk.native.JvmZkEnvironment(
+            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },
+            { host -> localNetworkFor(host)?.socketFactory },
+        ) {
+            val memory = android.app.ActivityManager.MemoryInfo()
+            context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(memory)
+            val mib = 1024L * 1024L
+            diw.wallet.core.zk.ZkPlatformInfo(
+                abi = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown",
+                totalRamMb = memory.totalMem / mib,
+                availableRamMb = memory.availMem / mib,
+                freeDiskMb = context.noBackupFilesDir.usableSpace / mib,
+                isDesktop = false,
+            )
+        }
+    }
+
     // The release network security configuration refuses clear text; http time stamps, OCSP, CRLs and AIA
     // certificates go through a plain socket instead, since each reply is checked by its signature.
     override fun signedDataHttp(http: HttpClient): SignedDataHttp = SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp())
@@ -414,10 +493,13 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
                 // the wallet's mdoc consent; both use the wallet's own screens.
                 val protocols = dc.supportedProtocols.filter { it.startsWith("openid4vp") || it == "org-iso-mdoc" }.toSet()
+                val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
+                // The system picker shows each credential with the card's own name and art; the wallet name is appended
+                // to the name and the launcher icon is overlaid on the art so the user sees which wallet answers.
+                applyCredmanDisplay(model, appName)
                 dc.register(model.documentStore, model.documentTypes, protocols, force)
                 // Multipaz only logs the system's answer and remembers the data as registered either way, so the
                 // Digital Credentials entry is registered again here and the answer awaited.
-                val appName = context.applicationInfo.loadLabel(context.packageManager).toString()
                 val database = credentialDatabase(appName, model, protocols)
                 val matcher = withContext(Dispatchers.IO) { context.assets.open(MATCHER_ASSET).use { it.readBytes() } }
                 IdentityCredentialManager.getClient(context)
@@ -425,9 +507,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                     .awaitResult()
                 val issuance = runCatching { registerIssuance(appName) }
                     .onFailure { if (it is CancellationException) throw it; Logger.e(TAG, "Digital Credentials issuance registration failed", it) }
+                val entries = database["credentials"].asArray
                 DcApiRegistration(
-                    database["credentials"].asArray.size, notListable(model), protocols, null, now,
+                    entries.size, notListable(model), protocols, null, now,
                     issuance = issuance.isSuccess, issuanceError = issuance.exceptionOrNull()?.let { it.message ?: it::class.simpleName },
+                    entries = entries.map { describeEntry(it) },
                 )
             }
         } catch (e: Exception) {
@@ -435,6 +519,40 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             Logger.e(TAG, "Digital Credentials registration failed", e)
             DcApiRegistration(0, runCatching { notListable(model) }.getOrDefault(0), emptySet(), e.message ?: e::class.simpleName, now)
         }
+    }
+
+    /**
+     * Sets the Digital Credentials display for each document: the title is the card's own name with the wallet name
+     * appended, and the bitmap is the card art with the launcher icon overlaid. These are the per-document overrides
+     * multipaz-dcapi reads, so the system picker shows the card's own content rather than only a background. Writes
+     * happen only when the computed value differs, so repeated registrations do not churn storage.
+     */
+    private suspend fun applyCredmanDisplay(model: WalletModel, appName: String) {
+        val icon = runCatching { launcherIconPng() }.getOrNull()?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        for (doc in model.documentStore.listDocuments()) {
+            val base = doc.displayName ?: doc.typeDisplayName
+            if (base != null) {
+                val title = "$base · $appName"
+                if (doc.androidCredmanTitle != title) runCatching { doc.setAndroidCredmanTitle(title) }
+            }
+            val art = doc.cardArt?.toByteArray()
+            val composed = if (art != null && icon != null) runCatching { overlayAppIcon(art, icon) }.getOrNull() else null
+            val bitmap = composed?.let { ByteString(it) }
+            if (bitmap != null && doc.androidCredmanBitmap != bitmap) runCatching { doc.setAndroidCredmanBitmap(bitmap) }
+        }
+    }
+
+    /** The card art PNG with [icon] drawn in the lower-right corner at a fifth of the card's width. */
+    private fun overlayAppIcon(cardArtPng: ByteArray, icon: Bitmap): ByteArray {
+        val source = BitmapFactory.decodeByteArray(cardArtPng, 0, cardArtPng.size) ?: return cardArtPng
+        val canvasBitmap = source.copy(Bitmap.Config.ARGB_8888, true) ?: return cardArtPng
+        val canvas = Canvas(canvasBitmap)
+        val side = (canvasBitmap.width / 5).coerceAtLeast(24)
+        val margin = side / 4
+        val left = canvasBitmap.width - side - margin
+        val top = canvasBitmap.height - side - margin
+        canvas.drawBitmap(icon, null, Rect(left, top, left + side, top + side), Paint(Paint.ANTI_ALIAS_FLAG).apply { isFilterBitmap = true })
+        return java.io.ByteArrayOutputStream().also { canvasBitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
     }
 
     /**
@@ -489,6 +607,23 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
                 throw e.targetException
             }
         } as DataItem
+    }
+
+    /**
+     * One registered credential as the matcher reads it, so the holder can see why a request finds nothing (a
+     * different doctype or vct, or no claims when the wallet could not read them).
+     */
+    private fun describeEntry(item: DataItem): String {
+        val title = item.getOrNull("title")?.asTstr ?: "證件"
+        item.getOrNull("mdoc")?.let { mdoc ->
+            val claims = mdoc.getOrNull("namespaces")?.asMap?.values?.sumOf { it.asMap.size } ?: 0
+            return "$title：mdoc ${mdoc.getOrNull("docType")?.asTstr.orEmpty()}，$claims 個欄位"
+        }
+        item.getOrNull("sdjwt")?.let { sdJwt ->
+            val claims = sdJwt.getOrNull("claims")?.asMap?.size ?: 0
+            return "$title：SD-JWT VC ${sdJwt.getOrNull("vct")?.asTstr.orEmpty()}，$claims 個欄位"
+        }
+        return title
     }
 
     /** Documents held only as W3C VCs: the platform matcher offers mdoc and SD-JWT VC credentials only. */

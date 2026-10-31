@@ -147,7 +147,15 @@ fun CollapsibleSection(
  * stays visible, greyed, and its detail says why.
  */
 @Composable
-fun ActionRow(icon: ImageVector, title: String, detail: String, enabled: Boolean = true, onClick: () -> Unit) {
+fun ActionRow(
+    icon: ImageVector,
+    title: String,
+    detail: String,
+    enabled: Boolean = true,
+    /** Drawn in place of [icon], e.g. an issuer logo. */
+    leading: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Card(
         Modifier.fillMaxWidth().then(if (enabled) Modifier.clickable(onClick = onClick) else Modifier),
         shape = RoundedCornerShape(Tokens.CardRadius),
@@ -156,7 +164,8 @@ fun ActionRow(icon: ImageVector, title: String, detail: String, enabled: Boolean
         ),
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+            if (leading != null) leading()
+            else Icon(icon, contentDescription = null, tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(28.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium,
@@ -174,5 +183,18 @@ fun InlineError(text: String, onRetry: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         OutlinedButton(onClick = onRetry) { Text("重試") }
+    }
+}
+
+/** Technical details under a folded header; nothing when there are none. */
+@Composable
+fun TechDetails(lines: List<String>, key: String) {
+    if (lines.isEmpty()) return
+    Column(Modifier.fillMaxWidth()) {
+        CollapsibleSection("技術細節", key = key) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
     }
 }

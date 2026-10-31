@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.official.OfficialDocuments
@@ -9,6 +10,7 @@ import diw.wallet.core.document.pdf.PdfException
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfSignatureField
 import diw.wallet.core.document.pdf.PdfSignatures
+import diw.wallet.core.document.pgp.OpenPgpInspection
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.ASN1OctetString
 import org.bouncycastle.asn1.ASN1Sequence
@@ -38,7 +40,8 @@ actual object DocumentInspector {
         now: Instant,
         related: Map<String, ByteArray>,
     ): DocumentReport {
-        val checks = CmsChecks(PkiSupport(trust))
+        val pki = PkiSupport(trust)
+        val checks = CmsChecks(pki)
         val base = DocumentReport(DocumentFormat.OTHER, DocCryptoUtil.hex(DocCrypto.digest("SHA-256", bytes)), bytes.size.toLong(), checkedAt = now.epochSeconds)
         val (data, decodedNote) = unwrapText(bytes)
         return try {
@@ -50,9 +53,11 @@ actual object DocumentInspector {
                 DocumentFormat.XML -> xml(data, fileName, base, checks, now, related)
                 DocumentFormat.OFD, DocumentFormat.ASIC_E, DocumentFormat.ZIP -> container(data, base, checks, now)
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
+                DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
-                DocumentFormat.IMAGE -> base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data)))
-                else -> base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
+                DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, now)
+                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, now)
+                    else base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
         } catch (e: Exception) {
@@ -77,6 +82,23 @@ actual object DocumentInspector {
 
     fun sniff(b: ByteArray, name: String?): DocumentFormat {
         val ext = name?.substringAfterLast('.', "")?.lowercase()
+        // A CMS/DER container must be recognised before the PDF magic-byte scan. An opaque PKCS#7 SignedData that
+        // encapsulates a PDF (an S/MIME-signed .pdf.p7m, as SSL.com sends) carries "%PDF-" only a few dozen header
+        // bytes in, so isPdf would otherwise classify the whole signed file as a plain (unsigned) PDF and the CMS
+        // signature would never be checked. No PDF, ZIP, CFB or image starts with a DER SEQUENCE (0x30), so testing
+        // the DER container types first is safe for every other format.
+        if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
+            val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
+            when (oid) {
+                SIGNED_DATA -> return if (runCatching { CmsChecks.signedData(b, null).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
+                GmSignedData.GM_SIGNED_DATA -> return DocumentFormat.CMS_SIGNED
+                ENVELOPED_DATA -> return DocumentFormat.CMS_ENVELOPED
+            }
+            if (runCatching { TimeStampResponse(b) }.isSuccess) return DocumentFormat.TIMESTAMP
+            return DocumentFormat.OTHER
+        }
+        // OpenPGP armor is text and binary OpenPGP starts with a packet tag (high bit set), never a PDF or ZIP header.
+        if (OpenPgpInspection.detect(b, name)) return DocumentFormat.OPENPGP
         if (PdfFile.isPdf(b)) return DocumentFormat.PDF
         if (Zip.isZip(b)) {
             val files = runCatching { Zip.read(b) }.getOrNull() ?: return DocumentFormat.ZIP
@@ -89,16 +111,6 @@ actual object DocumentInspector {
         }
         if (b.size > 8 && b.copyOfRange(0, 8).contentEquals(CFB_MAGIC)) return DocumentFormat.OFFICE
         ImageKind.of(b)?.let { kind -> if (kind != ImageKind.BMP && kind != ImageKind.ICO || ImageKind.ofExtension(name ?: "") == kind) return DocumentFormat.IMAGE }
-        if (b.isNotEmpty() && b[0] == 0x30.toByte()) {
-            val oid = runCatching { ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(b)).getObjectAt(0)).id }.getOrNull()
-            when (oid) {
-                SIGNED_DATA -> return if (runCatching { CmsChecks.signedData(b, null).signedContentTypeOID == TST_INFO }.getOrDefault(false)) DocumentFormat.TIMESTAMP else DocumentFormat.CMS_SIGNED
-                GmSignedData.GM_SIGNED_DATA -> return DocumentFormat.CMS_SIGNED
-                ENVELOPED_DATA -> return DocumentFormat.CMS_ENVELOPED
-            }
-            if (runCatching { TimeStampResponse(b) }.isSuccess) return DocumentFormat.TIMESTAMP
-            return DocumentFormat.OTHER
-        }
         val head = b.copyOfRange(0, minOf(b.size, 512)).decodeToString().removePrefix("﻿").trimStart()
         return when {
             head.startsWith("<") -> DocumentFormat.XML
@@ -164,6 +176,14 @@ actual object DocumentInspector {
         return "TIFF 圖片，共 ${pages.size} 頁；第 1 頁 ${pages.first().describe()}"
     }
 
+    /** Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one. */
+    private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, now: Instant): DocumentReport {
+        val store = runCatching { C2paManifests.read(b) }.getOrNull() ?: return report
+        val (info, signature) = C2paSignatures(pki, checks).inspect(store, now)
+        val note = "含 C2PA 內容憑證（${info.manifests.size} 份 manifest，存放於 ${store.container}）"
+        return report.copy(c2pa = info, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
+    }
+
     private fun certificateNote(b: ByteArray): String? =
         Bc.holder(b)?.let { "這是一張 X.509 憑證（${it.subject}），可在設定的信任錨點匯入" }
 
@@ -195,7 +215,11 @@ actual object DocumentInspector {
             var integrity = info.integrity
             if (!f.gapIsContentsOnly) { p.add("簽章範圍（ByteRange）沒有涵蓋簽章值以外的全部內容"); integrity = Check.FAIL }
             p.addAll(changeProblems)
-            if (f.docMdpPermission == 1 && changes != LaterChanges.NONE) p.add("此認證簽章不允許任何修改，但之後仍有更新")
+            // ISO 32000-2 12.8.2.2: a DSS and document time stamps may follow any certification, P=1 included.
+            val laterSignature = fields.any { it.signedLength > f.signedLength && it.subFilter != "ETSI.RFC3161" }
+            if (f.docMdpPermission == 1 && changes != LaterChanges.NONE && (changes != LaterChanges.SIGNATURES_ONLY || laterSignature)) {
+                p.add("此認證簽章不允許任何修改，但之後仍有更新")
+            }
             if (f.docMdpPermission != null) n.add("認證簽章（DocMDP P=${f.docMdpPermission}）")
             if (!whole && changes == LaterChanges.SIGNATURES_ONLY) n.add("簽署後只加入簽章、時戳或驗證資料")
             results.add(f to info.copy(
@@ -227,6 +251,11 @@ actual object DocumentInspector {
         }
         val level = padesLevel(upgraded.map { it.first to it.second }, dss)
         if (level != null) notes.add(level)
+        // Where each signature sits on its page, matched to the SignatureInfo label by field name.
+        val labels = upgraded.map { it.second.label }.toSet()
+        val placements = sigs.placements().filter { it.fieldName != null && it.fieldName in labels }.map {
+            SignaturePlacementInfo(it.fieldName!!, it.page, it.x0, it.y0, it.x1, it.y1, it.visible)
+        }
         if (dss != null) notes.add("文件含長期驗證資料（DSS）：${dss.certificates.size} 張憑證、${dss.ocsps.size} 份 OCSP、${dss.crls.size} 份 CRL")
         return base.copy(
             format = DocumentFormat.PDF,
@@ -234,6 +263,7 @@ actual object DocumentInspector {
             pages = sigs.pageCount(),
             encrypted = pdf.encrypted,
             signatures = upgraded.map { it.second },
+            signaturePlacements = placements,
             notes = notes,
             problems = problems,
         )
@@ -291,7 +321,7 @@ actual object DocumentInspector {
     }
 
     /** The DER object at the start of a zero-padded /Contents (BER with indefinite lengths is kept whole). */
-    private fun trimDer(b: ByteArray): ByteArray {
+    internal fun trimDer(b: ByteArray): ByteArray {
         if (b.size < 2 || b[0] != 0x30.toByte()) return b
         val l0 = b[1].toInt() and 0xFF
         if (l0 == 0x80) return b

@@ -83,8 +83,21 @@ data class StudentStatusProof(
         fun recognize(text: String): Boolean {
             val t = MyDataText.halfWidth(text)
             val compact = t.replace(Regex("\\s+"), "")
-            val title = titles.any { MyDataText.halfWidth(it).replace(" ", "") in compact }
-            return title && (Regex("(学号|學號):").containsMatchIn(compact) || Regex("(入学|入學)").containsMatchIn(compact))
+            // The title must stand as its own heading line, not merely appear somewhere in the text: a guide or FAQ
+            // whose table of contents lists "8. 在學證明與居住證辦理 ...... 7" contains the words but is no certificate.
+            val titleLine = t.lines().any { line ->
+                val l = line.trim().replace(" ", "")
+                titles.any { title ->
+                    val h = MyDataText.halfWidth(title).replace(" ", "")
+                    l == h || (l.startsWith(h) && l.length <= h.length + 4)
+                }
+            }
+            // The statement a real proof carries ("...现在X学院Y专业...学习", or 兹证明/特此证明); a document that only
+            // mentions the words in passing does not, so this rejects guides and FAQs that name the certificate.
+            val certifies = (Regex("现在$HAN+?(学院|系)").containsMatchIn(compact) && Regex("专业$HAN*?学习").containsMatchIn(compact)) ||
+                (Regex("現在$HAN+?(學院|系)").containsMatchIn(compact) && Regex("專業$HAN*?學習").containsMatchIn(compact)) ||
+                Regex("(兹证明|茲證明|特此证明|特此證明)").containsMatchIn(compact)
+            return titleLine && certifies
         }
 
         fun parse(text: String): StudentStatusProof? {

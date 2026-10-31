@@ -22,6 +22,12 @@ interface DocumentTrustSource {
      * complete chains whose signatures leave issuers out. They never make a chain trusted by themselves.
      */
     suspend fun knownCertificates(): List<ByteArray> = emptyList()
+
+    /**
+     * OpenPGP certificates the user added (imported files, keys looked up and confirmed, their own OpenPGP card):
+     * OpenPGP has no X.509 roots, so a signature is checked only against these keys.
+     */
+    suspend fun openPgpKeys(): List<diw.wallet.core.document.pgp.OpenPgpTrustedKey> = emptyList()
 }
 
 /**

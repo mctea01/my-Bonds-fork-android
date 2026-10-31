@@ -1,18 +1,32 @@
 package diw.wallet.core.compat
 
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.VerificationKey
+import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.IssuerMetadata
+import diw.wallet.core.profile.twdiw.TwdiwDeviceSigningKey
+import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.highlyTrusted
+import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.hostOf
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
 import io.ktor.client.HttpClient
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
+import kotlin.time.Clock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.addJsonObject
@@ -27,7 +41,7 @@ import kotlinx.serialization.json.put
  * - the metadata may name the issuer without the offer's trailing slash (the live telecom card issuer does); the
  *   identifier keeps the slash, so the token endpoint and the proof aud are what the issuer expects;
  * - the token request carries client_id (moda_dw), authorization_details and an empty tx_code when none is asked;
- * - c_nonce comes in the token response;
+ * - c_nonce comes in the token response; an issuer that publishes a nonce_endpoint (moda) wants the endpoint's value;
  * - the proof JWT has kid set to the holder did:key (jwk_jcs-pub) without a fragment, no jwk, and iss = client_id;
  * - the credential request is credential_identifier + proofs, the response a single credential;
  * - credentials announced as jwt_vc_json are SD-JWTs (typ vc+sd-jwt) with the W3C credential under vc and no vct;
@@ -42,6 +56,29 @@ class TwdiwDialect(
     private val allowInsecureLoopback: Boolean,
     /** client_id sent to TWDIW issuers; moda_dw is the official wallet's and what TWDIW issuers accept. */
     private val clientId: () -> String = { DEFAULT_CLIENT_ID },
+    /**
+     * Issuer hosts whose credential endpoint requires the TWDIW ecosystem signature (the official partner-card
+     * platform). An empty set disables the signature, which is the behaviour for every other TWDIW issuer (the
+     * telecom cards and the lite test issuers do not use it).
+     */
+    private val ecosystemSignatureHosts: () -> Set<String> = { setOf("moda.wallet.gov.tw") },
+    /**
+     * This wallet's own ecosystem application identity, used to sign credential requests to the hosts above. These
+     * are DIW's own values, not the official app's; the official app's embedded application key is never used.
+     */
+    private val appIdentity: () -> TwdiwAppIdentity = { TwdiwAppIdentity.DEFAULT },
+    /** Base URL of the ecosystem nonce endpoint for an issuer; the issuer's own origin by default. */
+    private val ecosystemBase: (IssuerMetadata) -> String = { defaultEcosystemBase(it.credentialIssuer) },
+    /**
+     * The TWDIW trust list's decision for an organisation registered for a credential issuer URL (its host and the
+     * organisation ID in the path); null when no listed organisation is registered for it.
+     */
+    private val registeredIssuerTrust: suspend (credentialIssuer: String) -> TrustDecision? = { null },
+    /**
+     * The device key registered at the ecosystem (`api/did/`) for an issuer origin, with its keyId; null when there
+     * is none or registration failed, and the holder key signs instead.
+     */
+    private val deviceKey: suspend (origin: String) -> TwdiwDeviceSigningKey? = { null },
 ) : IssuanceDialect {
     override val id = ID
     override val spec = "TWDIW"
@@ -88,7 +125,30 @@ class TwdiwDialect(
 
     override fun nonceWithoutEndpoint(tokenResponse: JsonObject): String? = tokenResponse.str("c_nonce")
 
+    /**
+     * TWDIW issuers publish unsigned metadata, so before issuance the issuer would rest on TLS alone (T3). The trust
+     * list registers the platform issuer URL for each organisation, so its decision for that organisation applies;
+     * the unsigned metadata label stays. The credential's own issuer DID is checked again after issuance.
+     */
+    override suspend fun issuerTrust(issuer: IssuerMetadata): TrustDecision? {
+        if (issuer.trust.tier.highlyTrusted) return null
+        val listed = registeredIssuerTrust(issuer.credentialIssuer) ?: return null
+        val unsigned = issuer.trust.labels.filter { it == TrustLabel.UNSIGNED_METADATA }
+        return listed.copy(labels = listed.labels + unsigned)
+    }
+
     override fun nonceFromError(error: JsonObject): String? = error.str("c_nonce")
+
+    /**
+     * TWDIW answers with {resp_code, resp_message} instead of an OAuth error_description. Keep these details without
+     * inferring which validation checks passed: the deployed handler and downstream service can differ from the
+     * older public implementation, including application authentication separate from the holder's proof.
+     */
+    override fun errorDetail(error: JsonObject): String? {
+        val code = (error["resp_code"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() } ?: return null
+        val message = error.str("resp_message")?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+        return "TWDIW resp_code $code" + (message?.let { " ($it)" } ?: "")
+    }
 
     override fun proofStyle(issuer: IssuerMetadata, config: CredentialConfiguration): ProofStyle = ProofStyle(ProofKid.BARE_DID, clientId())
 
@@ -97,6 +157,52 @@ class TwdiwDialect(
             put("credential_identifier", credentialIdentifier ?: config.id)
             proofs?.let { put("proofs", it) }
         }
+
+    /**
+     * TWDIW's ecosystem signature, as the official wallet adds it on the official partner-card platform: the
+     * credential POST also carries a Twdiw-Signature header, an ES256 JWT over the SHA-256 of the exact outgoing
+     * request bytes, bound to a one-time ecosystem nonce. The signature is produced with this wallet's own device key
+     * registered at the ecosystem ([deviceKey], as the official wallet registers its device key), else its holder key,
+     * and this wallet's own application identity; this is interoperability with the published protocol shape,
+     * not a copy of the official application's embedded key, which the wallet never has. Issuers outside
+     * [ecosystemSignatureHosts] get no header, and a missing or failing ecosystem nonce endpoint leaves the request
+     * unsigned rather than blocking issuance.
+     */
+    override suspend fun outboundCredentialHeaders(context: OutboundCredentialContext): Map<String, String>? {
+        val host = runCatching { hostOf(context.issuer.credentialIssuer) }.getOrNull() ?: return null
+        if (host !in ecosystemSignatureHosts()) return null
+        val base = ecosystemBase(context.issuer)
+        // Registration (when needed) consumes a nonce of its own, so the header's nonce is fetched afterwards.
+        val device = runCatching { deviceKey(base) }.getOrNull()
+        val nonce = fetchEcosystemNonce(base) ?: return null
+        val identity = appIdentity()
+        val keyId = device?.keyId ?: context.keyId
+        // The official app serialises the seven payload members in alphabetical order.
+        val jwt = signJws(
+            buildJsonObject { put("typ", "JWT"); put("alg", "ES256"); put("kid", keyId) },
+            buildJsonObject {
+                put("appHash", DocCryptoUtil.hex(PlatformCrypto.sha256(identity.appId.encodeToByteArray())))
+                put("appPlatform", identity.appPlatform)
+                put("appVersion", identity.appVersion)
+                put("bodyHash", DocCryptoUtil.hex(PlatformCrypto.sha256(context.requestBytes)))
+                put("keyId", keyId)
+                put("nonce", nonce)
+                put("timestamp", Clock.System.now().toEpochMilliseconds().toString())
+            },
+            device?.key ?: context.signingKey,
+        )
+        return mapOf(ECOSYSTEM_SIGNATURE_HEADER to jwt)
+    }
+
+    /** A fresh ecosystem nonce, or null when the endpoint is absent or does not answer with one. */
+    private suspend fun fetchEcosystemNonce(base: String): String? = runCatching {
+        val resp = httpClient.get(base.trimEnd('/') + ECOSYSTEM_NONCE_PATH) {
+            header(HttpHeaders.Accept, "application/json")
+        }
+        if (!resp.status.isSuccess()) return null
+        val body = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: return null
+        (body.obj("data") ?: body).str("nonce")?.takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     override fun credentialsFromResponse(response: JsonObject): List<String>? =
         (response["credential"] as? JsonPrimitive)?.takeIf { it.isString }?.let { listOf(it.content) }
@@ -124,11 +230,30 @@ class TwdiwDialect(
         const val ID = "twdiw"
         const val ENTRY_HINT = "twdiw"
         const val DEFAULT_CLIENT_ID = "moda_dw"
+        const val ECOSYSTEM_SIGNATURE_HEADER = "Twdiw-Signature"
+        const val ECOSYSTEM_NONCE_PATH = "/api/ext/nonce/generate?type=ecosyst"
 
         /** Hosts of the TWDIW platform and its issuers and verifiers (wallet.gov.tw and subdomains). */
         fun isTwdiwHost(host: String): Boolean {
             val h = host.lowercase().trimEnd('.')
             return h == "wallet.gov.tw" || h.endsWith(".wallet.gov.tw")
         }
+
+        /** The issuer's own scheme and authority, where the ecosystem nonce endpoint lives by default. */
+        fun defaultEcosystemBase(credentialIssuer: String): String {
+            val scheme = credentialIssuer.substringBefore("://", "https")
+            val authority = credentialIssuer.substringAfter("://", credentialIssuer).substringBefore('/')
+            return "$scheme://$authority"
+        }
+    }
+}
+
+/**
+ * This wallet's own TWDIW ecosystem application identity. [appHash] in the signed payload is derived from [appId],
+ * so these describe DIW, not the official application; no official-app key or identity is embedded.
+ */
+data class TwdiwAppIdentity(val appId: String, val appVersion: String, val appPlatform: String) {
+    companion object {
+        val DEFAULT = TwdiwAppIdentity(appId = "diw", appVersion = "0.1", appPlatform = "android")
     }
 }

@@ -1,0 +1,45 @@
+{
+  "package": "sha256_260",
+  "nargo": "1.0.0-beta.15",
+  "bb": "2.1.9",
+  "zk": true,
+  "oracle_hash": "poseidon2",
+  "compile": {
+    "seconds": 0.31711388600160717,
+    "peak_rss_kib": 96684,
+    "exit_code": 0
+  },
+  "witness": {
+    "seconds": 0.478756444001192,
+    "peak_rss_kib": 99044,
+    "exit_code": 0
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 50204,
+        "circuit_size": 1081341
+      }
+    ]
+  },
+  "first": {
+    "seconds": 67.45759105300021,
+    "peak_rss_kib": 3334824,
+    "exit_code": 0
+  },
+  "warm": {
+    "seconds": 68.0138863559987,
+    "peak_rss_kib": 3320892,
+    "exit_code": 0
+  },
+  "verify": {
+    "seconds": 0.02604030400107149,
+    "peak_rss_kib": 13996,
+    "exit_code": 0
+  },
+  "acir_sha256": "c899a1149f36365b9c7705a058ad4aee28a3394413d582d26faf988a3db1bdde",
+  "vk_sha256": "1ebf69f28ddf243ef435052ec1c28c08484f834e831096bc9c8ced9e77d5f544",
+  "proof_bytes": 16256,
+  "public_input_bytes": 512,
+  "measured_acir_sha256": "72e317449902ee6ae85b93f14d0b8bb5da80f685c4de5e22ed62f61985bead8b"
+}

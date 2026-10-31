@@ -1,0 +1,79 @@
+name: ZK templates
+
+# Builds the signed zkTLS and zkPDF template pack (templates/README.md) and attaches it to the zk-templates release,
+# which the app reads beside nightly (ZkTemplatePack.SOURCES) and installs when it is newer.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "templates/**"
+      - "test-servers/src/main/kotlin/diw/testservers/tools/TemplatePackTool.kt"
+      - ".github/workflows/zk-templates.yml"
+
+# One release at a time; a newer run waits instead of racing the upload.
+concurrency:
+  group: zk-templates
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  LANG: C.UTF-8
+  JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
+  # The pack needs no native library.
+  DIW_ZK_NATIVE: skip
+  RELEASE_TAG: zk-templates
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+      # Every page profile in templates/ (drafts included) must parse, and the pack must build and read back.
+      - name: Check templates
+        run: >-
+          ./gradlew --no-daemon --stacktrace :test-servers:test
+          --tests diw.testservers.zktls.ZkTemplatePackTest
+          --tests diw.testservers.zktls.ZkTlsPrepareTest
+      - name: Build signed pack
+        env:
+          ZK_TEMPLATES_KEY: ${{ secrets.ZK_TEMPLATES_KEY }}
+        run: |
+          if [ -z "$ZK_TEMPLATES_KEY" ]; then echo "::error::The ZK_TEMPLATES_KEY secret is not set"; exit 1; fi
+          ./gradlew --no-daemon --stacktrace :test-servers:templatePack
+          mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
+          sha256sum dist/zk-templates.jwt | tee dist/zk-templates.jwt.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-templates
+          path: dist/
+          retention-days: 14
+      - name: Publish to the zk-templates release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Signed zkTLS and zkPDF page templates (templates/ at ${GITHUB_SHA::7}, branch ${GITHUB_REF_NAME})."
+            echo
+            echo "The app reads releases/download/${RELEASE_TAG}/zk-templates.jwt beside the nightly release and installs"
+            echo "the newer valid pack. Built $(date -u +%Y-%m-%dT%H:%M:%SZ) by run ${GITHUB_RUN_NUMBER}."
+            echo
+            echo "Pages:"
+            find templates/zktls -name '*.json' -printf '- zktls/%f\n' | sort
+            find templates/zkpdf -name '*.json' -printf '- zkpdf/%f\n' 2>/dev/null | sort
+          } > notes.md
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/zk-templates.jwt dist/zk-templates.jwt.sha256 --clobber
+            gh release edit "$RELEASE_TAG" --notes-file notes.md
+          else
+            gh release create "$RELEASE_TAG" dist/zk-templates.jwt dist/zk-templates.jwt.sha256 \
+              --prerelease --latest=false --target "$GITHUB_SHA" --title "ZK templates" --notes-file notes.md
+          fi

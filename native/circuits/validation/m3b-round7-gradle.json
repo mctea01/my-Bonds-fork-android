@@ -1,0 +1,15 @@
+{
+  "tests": 368,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 30,
+  "tasks": [
+    ":core:compileKotlinJvm",
+    ":app:compileKotlinDesktop",
+    ":test-servers:test"
+  ],
+  "status": "BUILD SUCCESSFUL",
+  "native": "Skipped by existing auto mode: no cargo",
+  "environment": "2 vCPU / 8 GiB; JDK 21; existing Gradle cache; proxy and system Java truststore",
+  "seconds": 965
+}

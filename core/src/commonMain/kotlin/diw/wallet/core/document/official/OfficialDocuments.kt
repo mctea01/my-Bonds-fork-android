@@ -41,7 +41,8 @@ data class OfficialStep(
 /**
  * A Taiwanese official document in XML (文書處理檔案管理手冊 DTD 104 series): 函, 書函, 令, 公告, 簽, 稿, 便簽,
  * 開會通知單, 會勘通知單, 會銜公文會辦單, the online approval file 線上簽核 (.si), the message form 文書訊息表單 (.dm),
- * the exchange form 交換表單 (.sw) and the cross-agency consultation form 跨機關陳核會稿交換表單 (.co).
+ * the exchange form 交換表單 (.sw), the cross-agency consultation form 跨機關陳核會稿交換表單 (.co), and the exchange
+ * files: envelope (.en), encrypted exchange form (.esw) and exchange confirmation message ([ExchangeFiles]).
  */
 data class OfficialDocument(
     /** The root element, such as 函. */
@@ -63,12 +64,12 @@ object OfficialDocuments {
     val KINDS = setOf(
         "函", "書函", "令", "公告", "簽", "稿", "便簽", "開會通知單", "會勘通知單", "會銜公文會辦單", "公文會辦單",
         "線上簽核", "文書訊息表單", "交換表單", "跨機關陳核會稿交換表單",
-    )
+    ) + ExchangeFiles.ROOTS
 
-    private val dtd = Regex("(^|/)104_[A-Za-z0-9]+(_utf8)?\\.dtd$", RegexOption.IGNORE_CASE)
+    private val dtd = Regex("(^|/)104_[A-Za-z0-9_-]+(_utf8)?\\.dtd$", RegexOption.IGNORE_CASE)
 
     /** File name extensions the official document exchange uses. */
-    val EXTENSIONS = setOf("di", "si", "sw", "co", "dm")
+    val EXTENSIONS = setOf("di", "si", "sw", "co", "dm", "en", "esw")
 
     /** The document in [bytes], or null when it is not XML or not an official document. */
     fun parse(bytes: ByteArray): OfficialDocument? {
@@ -81,6 +82,7 @@ object OfficialDocuments {
     fun read(root: XmlElement): OfficialDocument {
         if (root.name == "線上簽核") return approval(root)
         if (root.name == "交換表單") return roster(root)
+        if (root.name in ExchangeFiles.ROOTS) return ExchangeFiles.read(root)
         val category = root.children.firstOrNull { it.name.endsWith("類別") }?.let { code(it) }
         val agency = root.all("發文機關").mapNotNull { it.child("全銜")?.text?.ifBlank { null } }
             .ifEmpty { listOfNotNull(root.child("全銜")?.text?.ifBlank { null }) }

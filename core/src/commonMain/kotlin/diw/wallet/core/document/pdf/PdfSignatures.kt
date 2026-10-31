@@ -47,6 +47,22 @@ class PdfSignatureField(
 /** Long-term validation data of the document security store (ETSI EN 319 142-1 5.4). */
 class PdfDss(val certificates: List<ByteArray>, val ocsps: List<ByteArray>, val crls: List<ByteArray>)
 
+/**
+ * Where a signature's widget sits on a page, normalized to the page's CropBox (or MediaBox) with the origin at the
+ * top-left and the page's /Rotate applied, so a viewer can frame it over a rendered page image. [visible] is false
+ * for the zero-sized or hidden widget of an invisible signature (ISO 32000-1 12.7.4.5).
+ */
+class PdfSignaturePlacement(
+    val fieldName: String?,
+    /** 0-based page index in reading order. */
+    val page: Int,
+    val x0: Float,
+    val y0: Float,
+    val x1: Float,
+    val y1: Float,
+    val visible: Boolean,
+)
+
 /** Signature fields, validation data and change analysis of a PDF. */
 class PdfSignatures(private val pdf: PdfFile) {
     private val bytes = pdf.bytes
@@ -155,6 +171,81 @@ class PdfSignatures(private val pdf: PdfFile) {
         )
     }
 
+    /**
+     * The on-page position of every signature widget (ISO 32000-1 12.7.4.5): walks the page tree for each page's box
+     * and rotation, then the AcroForm signature fields for their widgets' /P and /Rect. A field whose widget has no
+     * page, a zero-area /Rect or the Hidden/NoView flag is reported as not visible.
+     */
+    fun placements(): List<PdfSignaturePlacement> = runCatching {
+        val pageIndex = HashMap<Int, Int>()
+        val pageBox = HashMap<Int, Pair<FloatArray, Int>>() // page num -> (cropOrMediaBox llx,lly,urx,ury, rotate)
+        PdfPages.list(pdf).forEachIndexed { i, p ->
+            pageIndex[p.ref.num] = i
+            pageBox[p.ref.num] = p.box to p.rotate
+        }
+
+        val out = ArrayList<PdfSignaturePlacement>()
+        val acro = pdf.dict(pdf.catalog["AcroForm"])
+        val fields = pdf.array(acro?.get("Fields")).orEmpty()
+        val visited = HashSet<Int>()
+        fun field(o: PdfObject, parentName: String?, inheritedFt: String?, depth: Int) {
+            if (depth > 32) return
+            if (o is PdfRef && !visited.add(o.num)) return
+            val d = pdf.dict(o) ?: return
+            val name = listOfNotNull(parentName, (d["T"] as? PdfString)?.text()).joinToString(".").ifEmpty { null }
+            val ft = d.name("FT") ?: inheritedFt
+            val kids = pdf.array(d["Kids"])
+            if (kids != null && kids.any { pdf.dict(it)?.has("T") == true }) {
+                kids.forEach { field(it, name, ft, depth + 1) }
+                return
+            }
+            if (ft != "Sig") return
+            // The widget is this dictionary, or its single widget kid (a field merged with its widget, or split out).
+            val widgets = if (kids != null) kids.mapNotNull { pdf.dict(it) to (it as? PdfRef) } else listOf(d to (o as? PdfRef))
+            for ((w, _) in widgets) {
+                if (w == null) continue
+                val pageRef = w["P"] as? PdfRef
+                val idx = pageRef?.let { pageIndex[it.num] }
+                val box = pageRef?.let { pageBox[it.num] }
+                val rect = pdf.array(w["Rect"])?.mapNotNull { (pdf.resolve(it) as? PdfNumber)?.double }
+                val flags = (pdf.resolve(w["F"]) as? PdfNumber)?.int ?: 0
+                val hidden = (flags and 0x2) != 0 || (flags and 0x20) != 0 // Hidden or NoView
+                if (idx == null || box == null || rect == null || rect.size < 4) {
+                    out.add(PdfSignaturePlacement(name, idx ?: 0, 0f, 0f, 0f, 0f, false))
+                    continue
+                }
+                out.add(place(name, idx, box.first, box.second, rect, hidden))
+            }
+        }
+        fields.forEach { field(it, null, null, 0) }
+        out
+    }.getOrDefault(emptyList())
+
+    /** Maps a widget /Rect in PDF user space to a top-left normalized box on the displayed (rotated) page. */
+    private fun place(name: String?, page: Int, b: FloatArray, rotate: Int, rect: List<Double>, hidden: Boolean): PdfSignaturePlacement {
+        val w = (b[2] - b[0]).takeIf { it > 0 } ?: 1f
+        val h = (b[3] - b[1]).takeIf { it > 0 } ?: 1f
+        val rx0 = minOf(rect[0], rect[2]).toFloat(); val rx1 = maxOf(rect[0], rect[2]).toFloat()
+        val ry0 = minOf(rect[1], rect[3]).toFloat(); val ry1 = maxOf(rect[1], rect[3]).toFloat()
+        // Unrotated, top-left origin.
+        var nx0 = (rx0 - b[0]) / w; var nx1 = (rx1 - b[0]) / w
+        var ny0 = (b[3] - ry1) / h; var ny1 = (b[3] - ry0) / h
+        // Apply the page /Rotate (clockwise) to the four corners, then take the bounding box.
+        val corners = listOf(nx0 to ny0, nx1 to ny0, nx1 to ny1, nx0 to ny1).map { (x, y) ->
+            when (rotate) {
+                90 -> (1f - y) to x
+                180 -> (1f - x) to (1f - y)
+                270 -> y to (1f - x)
+                else -> x to y
+            }
+        }
+        nx0 = corners.minOf { it.first }; nx1 = corners.maxOf { it.first }
+        ny0 = corners.minOf { it.second }; ny1 = corners.maxOf { it.second }
+        val area = (rx1 - rx0) * (ry1 - ry0)
+        val visible = !hidden && area > 1f
+        return PdfSignaturePlacement(name, page, nx0.coerceIn(0f, 1f), ny0.coerceIn(0f, 1f), nx1.coerceIn(0f, 1f), ny1.coerceIn(0f, 1f), visible)
+    }
+
     /** Certificates, OCSP responses and CRLs of the /DSS dictionary. */
     fun dss(): PdfDss? = runCatching {
         val dss = pdf.dict(pdf.catalog["DSS"]) ?: return null
@@ -165,7 +256,16 @@ class PdfSignatures(private val pdf: PdfFile) {
     /** Number of pages per the page tree root. */
     fun pageCount(): Int? = runCatching { (pdf.dict(pdf.catalog["Pages"])?.get("Count")?.let { pdf.resolve(it) } as? PdfNumber)?.int }.getOrNull()
 
-    fun title(): String? = runCatching { (pdf.resolve(pdf.dict(pdf.trailer["Info"])?.get("Title")) as? PdfString)?.text()?.trim()?.ifEmpty { null } }.getOrNull()
+    /**
+     * The document title from the Info dictionary, when it decodes to readable text. An encrypted PDF whose password
+     * we do not have leaves the title string as ciphertext (encryptionProblem set), and a few files carry a title in a
+     * broken encoding, so both are rejected here and the caller falls back to the file name instead of showing garble.
+     */
+    fun title(): String? = runCatching {
+        if (pdf.encryptionProblem != null) return@runCatching null
+        (pdf.resolve(pdf.dict(pdf.trailer["Info"])?.get("Title")) as? PdfString)?.text()?.trim()
+            ?.takeIf { s -> s.isNotEmpty() && s.none { c -> c == '�' || (c.isISOControl() && c != '\t' && c != '\n' && c != '\r') } }
+    }.getOrNull()
 
     /**
      * What changed after the revision ending at [signedLength]: nothing, only signatures and validation data (new

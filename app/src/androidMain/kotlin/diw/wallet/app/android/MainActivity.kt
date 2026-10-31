@@ -18,7 +18,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -26,6 +29,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import diw.wallet.app.FileOrigin
 import diw.wallet.app.HomeTab
+import diw.wallet.app.QrScanStep
 import diw.wallet.app.Screen
 import diw.wallet.app.ui.WalletApp
 import kotlinx.coroutines.CompletableDeferred
@@ -42,12 +46,14 @@ import org.multipaz.prompt.AndroidPromptModel
 class MainActivity : FragmentActivity() {
     private val app get() = application as WalletApplication
     private val promptModel = AndroidPromptModel.Builder().apply { addCommonDialogs() }.build()
-    private val scanRequest = MutableStateFlow<CompletableDeferred<String?>?>(null)
+    private val scanRequest = MutableStateFlow<ScanRequest?>(null)
     private val fileAccess = AndroidFileAccess(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         app.platform.fileAccess = fileAccess
+        // Copies left by an earlier run's share sheet.
+        if (savedInstanceState == null) AndroidFileAccess.clearShared(this)
         enableEdgeToEdge()
         setContent {
             // The system Back gesture follows the in-app Back button; on the documents tab it leaves the app.
@@ -55,15 +61,16 @@ class MainActivity : FragmentActivity() {
             val tab by app.model.tab.collectAsState()
             BackHandler(enabled = screen != Screen.Home || tab != HomeTab.DOCUMENTS) { app.model.back() }
             PromptDialogs(promptModel)
-            WalletApp(app.model, scanQr = {
-                val d = CompletableDeferred<String?>()
-                scanRequest.value = d
-                try { d.await() } finally { scanRequest.value = null }
-            })
+            WalletApp(app.model, scanQr = { scan(ScanRequest(null)) }, scanQrStream = { onCode -> scan(ScanRequest(onCode)) })
             val scan by scanRequest.collectAsState()
-            scan?.let { QrScanDialog(it) }
+            scan?.let { QrScanDialog(it) { app.model.qrFromImage() } }
         }
         handle(intent)
+    }
+
+    private suspend fun scan(request: ScanRequest): String? {
+        scanRequest.value = request
+        return try { request.result.await() } finally { scanRequest.value = null }
     }
 
     override fun onResume() {
@@ -73,6 +80,7 @@ class MainActivity : FragmentActivity() {
         // Card emulation preference only holds while this activity is in the foreground.
         app.platform.applyNfcPreference(this)
         app.model.onAppResumed()
+        AndroidFileAccess.clearStaleShared(this)
     }
 
     override fun onPause() {
@@ -85,6 +93,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onDestroy() {
         if (app.platform.fileAccess === fileAccess) app.platform.fileAccess = null
+        if (isFinishing) AndroidFileAccess.clearShared(this)
         promptModel.cancel()
         super.onDestroy()
     }
@@ -131,10 +140,18 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+/** A camera scan: one code completes [result]; with [stream], every new code goes to it until it says done. */
+private class ScanRequest(val stream: ((String) -> QrScanStep)?) {
+    val result = CompletableDeferred<String?>()
+}
+
 @Composable
-private fun QrScanDialog(result: CompletableDeferred<String?>) {
+private fun QrScanDialog(request: ScanRequest, readImage: suspend () -> String?) {
+    val result = request.result
     val permission = rememberCameraPermissionState()
     val scope = rememberCoroutineScope()
+    var last by remember(request) { mutableStateOf<String?>(null) }
+    var progress by remember(request) { mutableStateOf<String?>(null) }
     LaunchedEffect(permission.isGranted) {
         if (!permission.isGranted) permission.launchPermissionRequest()
     }
@@ -147,13 +164,35 @@ private fun QrScanDialog(result: CompletableDeferred<String?>) {
                         cameraSelection = CameraSelection.DEFAULT_BACK_CAMERA,
                         captureResolution = CameraCaptureResolution.MEDIUM,
                         showCameraPreview = true,
-                        onCodeScanned = { code -> if (code != null) result.complete(code) },
+                        onCodeScanned = { code ->
+                            val stream = request.stream
+                            when {
+                                code == null || code == last -> {}
+                                stream == null -> result.complete(code)
+                                else -> {
+                                    // The camera sees each frame many times; only a new one is handed on.
+                                    last = code
+                                    val step = stream(code)
+                                    progress = step.progress
+                                    if (step.done) result.complete(null)
+                                }
+                            }
+                        },
                     )
                 } else {
                     Text("需要相機權限才能掃描 QR Code")
                     Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text("允許相機") }
                 }
-                OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) { Text("取消") }
+                progress?.let { Text(it) }
+                // A code on this phone's own screen (an issuer page, a screenshot) cannot be scanned with its camera.
+                if (request.stream == null) {
+                    OutlinedButton(onClick = { scope.launch { readImage()?.let { result.complete(it) } } }, modifier = Modifier.fillMaxWidth()) {
+                        Text("從圖片讀取 QR Code")
+                    }
+                }
+                OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (request.stream == null) "取消" else "停止掃描")
+                }
             }
         }
     }
