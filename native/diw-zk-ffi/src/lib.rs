@@ -28,6 +28,7 @@ fn protect_worker_panics() {
 uniffi::setup_scaffolding!("diw_zk");
 
 mod openac;
+mod zkpdf;
 mod zktls;
 
 #[derive(uniffi::Record)]
@@ -125,6 +126,9 @@ pub fn native_info() -> ZkNativeInfo {
             if cfg!(feature = "tlsn") {
                 features.push("tlsn".into());
             }
+            if cfg!(feature = "zkpdf") {
+                features.push("zkpdf".into());
+            }
             features
         },
         tlsn: {
@@ -137,8 +141,26 @@ pub fn native_info() -> ZkNativeInfo {
                 None
             }
         },
-        noir: None,
-        bb: None,
+        noir: {
+            #[cfg(feature = "zkpdf")]
+            {
+                Some(zkpdf_prover::NOIR_REVISION.into())
+            }
+            #[cfg(not(feature = "zkpdf"))]
+            {
+                None
+            }
+        },
+        bb: {
+            #[cfg(feature = "zkpdf")]
+            {
+                Some(zkpdf_prover::BB_REVISION.into())
+            }
+            #[cfg(not(feature = "zkpdf"))]
+            {
+                None
+            }
+        },
         zkid: {
             #[cfg(feature = "openac")]
             {

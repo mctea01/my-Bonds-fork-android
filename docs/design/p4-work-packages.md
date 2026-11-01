@@ -71,7 +71,7 @@
 | WP1 | 電腦版量測完成（`docs/research/p4-benchmarks.md`）；實機量測與等級門檻待使用者執行 |
 | WP2 | 完成 |
 | WP3a | M3a、M3b 完成（PR #21 於 2026-10-29 合併進整合分支）：分段證明（p4-circuits.md 第 3.12 節），公開輸入 `native/circuits/PUBLIC_SPEC.md` 已凍結，`VERSIONS` 為候選釘選值 |
-| WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3b 凍結公開輸入後，M3c 證明器於 2026-10-29 開始 |
+| WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c（Rust 見證、UltraHonk 證明與查驗、uniffi）PR #74 於 2026-11-01 合併進整合分支，Linux 驗證完成，Android 與 macOS 待實際建置，Windows 暫不支援 |
 | WP4 | 未開始（等 WP3b）；文件詳情的「產生 zkPDF 證明」與自架主機仍是停用列 |
 | WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
 | WP6 | 完成：M6a 與 M6b；區域網路改為直接 TCP（第 5.2 節）；簽章版型包；學信網中英文報告頁與移民署入出國日期證明書查驗頁；網頁證明與本機紀錄存入證件 |
@@ -239,7 +239,7 @@ uniffi 介面（2026-10-29 依分段證明改寫，取代原本的單一電路�
 ```rust
 pub struct ZkPdfWindowInput { pub role: String /* "content" | "opaque" */, pub mid_in: Vec<u8> /* 32 */, pub head: Vec<u8>, pub private_data: Vec<u8>, pub tail: Vec<u8>, pub key_stream: Option<Vec<u8>> }
 pub struct ZkPdfRecord { pub font: Vec<u8>, pub kind: u8 /* 0 literal, 1 hex */, pub strings: Vec<Vec<u8>> }  // v2 紀錄（p4-circuits.md 3.4.4）
-pub struct ZkPdfAnchorInput { pub record: ZkPdfRecord }
+pub struct ZkPdfAnchorInput { pub record: ZkPdfRecord, pub ordinal: u32 /* 要用第幾次出現的相同紀錄，1 起算（2026-11-01 加入） */ }
 pub struct ZkPdfSlotInput { pub slot: u32, pub before_anchor: u32, pub after_anchor: u32, pub salt: Vec<u8> /* 16 */ }
 pub struct ZkPdfDigitTable { pub font: Vec<u8>, pub width: u8, pub codes: Vec<u32> /* 10 */ }
 pub struct ZkPdfPredicateInput { pub kind: u8 /* 0 DATE_LE, 1 DATE_GE */, pub slot: u32, pub format: u8, pub cutoff: u32 }
@@ -260,9 +260,16 @@ pub struct ZkPdfVerified { pub mid_outs: Vec<Vec<u8>>, pub claim_digests: Vec<Ve
 ```
 
 - `zkpdf_verify` 以 `spec` 組出每一段由查驗端決定的公開輸入，與證明附帶的公開輸入逐欄比對；承諾（`C_z`、`S`、`C_p`、`Λ`、`C_g`）取自證明，依 `native/circuits/PUBLIC_SPEC.md` 的查驗端清單檢查串接；再以釘選的驗證金鑰驗證每一段。H_e 由回傳值交給 Kotlin 接續 SHA-256（V3），CMS、信任、V5–V7 與 V10 留在 Kotlin（WP4）。
-- 段的順序、數量、旗標與參數只依組合識別碼決定，證明者不能選擇其他切法。
+- 段的順序、數量、旗標與參數只依組合識別碼決定，證明者不能選擇其他切法；唯一的例外是明文長度為 `SEG_PLAIN` 倍數時可多一個空的最後 inflate 段（p4-circuits.md 第 3.12.4 節），查驗端接受兩種。
 - 資產（每個電路的 ACIR、驗證金鑰、CRS 片段）由既有的資產機制提供並在使用前核對 SHA-256，執行時不得自行從網路下載 CRS。
 - 進度回報至少包含目前段的種類、序號與總段數，取消在段與段之間及 bb 允許的位置檢查。
+- PR #74（M3c）審查決定（2026-11-01）：
+  - 空尾段不重新凍結電路，記在 p4-circuits.md 第 3.12.4 節。
+  - 介面略寫的型別採用 `native/zkpdf-prover/src/types.rs` 的具體定義：`ZkPdfWindowPublic` 含 `blocks: u32`；`ZkPdfAnchorPublic` 含 `ordinal`、`total: u32`；`ZkPdfSlotPublic` 含 `slot`、`before_anchor`、`after_anchor: u32`；`ZkPdfPlan` 含各種段數與預估的證明及公開輸入大小。進度回報的序號是整包 1 起算，`ZkPdfSegmentProof.index` 維持各種類 0 起算，SHA 段依視窗順序。
+  - `ZkPdfAnchorInput` 加 `ordinal`：產生器選第 `ordinal` 次出現的相同 v2 紀錄，沒有那麼多次時以固定錯誤碼拒絕；查驗端仍以描述檔的 `ordinal`、`total` 獨立檢查。
+  - `claim_records`、`claim_digests` 固定 12 個並以 slot 為索引，未使用的 slot 紀錄為空、摘要為 0；錨點結果依輸入順序。
+  - Rust 回傳各視窗的 H_e；SHA 接續、CMS、簽章版本與字型規則由 WP4 在 Kotlin 綁定。單獨的 `zkpdf_verify` 不保證拒絕替換成另一個同聲明的有效證明，呼叫端必須完成 WP4 的檢查才算查驗通過。
+  - Windows：bb 2.1.9 需要 POSIX 移植，zkPDF 暫不支援 Windows，錢包在 Windows 顯示為不支援。
 - 合成測試文件產生器（Python 或 Kotlin 皆可，以 `-I` 執行 Python）：輸出「仿在學證明」（WinAnsi 數字、Type0 中文、QR 影像）與「仿出入境記錄」（RC4、數字為 CID）兩種，以 test-servers 的測試 PKI 簽章；字型使用授權允許再散布的字型子集（例如 Noto Sans CJK，OFL），在 NOTICE 記錄。
 
 驗收：

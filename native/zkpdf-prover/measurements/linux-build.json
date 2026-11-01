@@ -1,0 +1,17 @@
+{
+  "revision": "f2bed7ed073966bb2a2dcdd02a133d11bf2996d3",
+  "target": "x86_64-unknown-linux-gnu",
+  "build_seconds": 826.881,
+  "static_library_bytes": 59405654,
+  "date": "2026-11-01",
+  "jobs": 2,
+  "build_directory_initially_empty": true,
+  "source_checkout_already_present": true,
+  "dependencies_fetched": true,
+  "concurrent_work": "Brief Rust compilation and ACVM boundary probe; no proof benchmarks",
+  "static_library_sha256": "17f8132786fccb141c8d13a631acd57020af51edf8f8b71e8811df8ff915e995",
+  "rust_host_build_seconds": 100,
+  "ffi_library_bytes": 26448632,
+  "final_ffi_library_bytes": 26449200,
+  "incremental_rust_host_build_seconds": 33.17
+}

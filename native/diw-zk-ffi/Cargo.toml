@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 bindgen = ["uniffi/cli"]
-zkpdf = ["dep:zkpdf-prover"]
+zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb"]
 tlsn = ["dep:zktls"]
 openac = ["dep:openac-age"]
 
