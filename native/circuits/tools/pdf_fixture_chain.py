@@ -344,7 +344,7 @@ def sha_package(path,kind):
     (path/'Nargo.toml').write_text('[package]\nname="sha_fixture"\ntype="bin"\nauthors=[]\n[dependencies]\npdf_text_v1={path='+json.dumps(str(ROOT/'pdf_text_v1'))+'}\n')
     return path
 
-def export_m3c(directory, filename, bundle, windows):
+def export_m3c(directory, filename, bundle, windows, composition="zkpdf-v1-phone"):
     """Export only the authorized synthetic fixtures, without running nargo."""
     from lex_reference import decode_record
     def record(raw):
@@ -370,7 +370,7 @@ def export_m3c(directory, filename, bundle, windows):
             public_slots.append(public);slots.append(dict(**public,salt=claim['claim_salts'][i]))
     fonts=[dict(font=f['name'][:f['len']],width=f['width'],codes=f['digits']) for f in bundle['pred']['fonts'] if f['enabled']]
     predicates=[{k:v for k,v in p.items() if k!='enabled'} for p in bundle['pred']['predicates'] if p['enabled']]
-    common=dict(composition='zkpdf-v1-phone',binding=claim['beta'],digit_tables=fonts,predicates=predicates)
+    common=dict(composition=composition,binding=claim['beta'],digit_tables=fonts,predicates=predicates)
     result=dict(input=dict(**common,windows=private_windows,anchors=anchors,slots=slots,assets_dir=''),
                 spec=dict(**common,windows=public_windows,anchors=public_anchors,slots=public_slots),
                 reference_salt='0x2a',reference_public_inputs=[])
@@ -401,6 +401,24 @@ def export_m3c(directory, filename, bundle, windows):
         result['reference_public_inputs'].append(dict(kind=kind,index=index,bytes=len(encoded),sha256=hashlib.sha256(encoded).hexdigest()))
     directory.mkdir(parents=True,exist_ok=True)
     (directory/(filename.removesuffix('.pdf')+'.json')).write_text(json.dumps(result,indent=2)+'\n')
+
+def export_segment_vectors(directory,h):
+    # Long comments cross lexical boundaries; backreferences cross inflate
+    # boundaries and exercise pending copies and authenticated history.
+    from fixtures import compressed
+    content=b'%'+b'a'*5000+b'\nBT /FakeFont 10 Tf (A) Tj (2024-01-01) Tj (B) Tj ET\n'
+    data=compressed(content,zlib.Z_FIXED)
+    tail=bytes((-len(data))%64);raw=data+tail;finish=IV[:]
+    for i in range(0,len(raw),64):finish=compress(finish,raw[i:i+64])
+    w=dict(domain=DOMAIN,circuit=int.from_bytes(b'pdf_sha_content_v1','big'),
+           mid_in=IV,mid_out=finish,blocks=len(raw)//64,head_len=0,head=pack31(bytes(63)),
+           tail_len=len(tail),tail=pack31(tail+bytes(63-len(tail))),bytes=list(raw)+[0]*(8320-len(raw)),
+           encrypted=False,keystream=pack31(bytes(8192)),cz=byte_commit(h,42,data,8192),salt=42)
+    windows=[dict(kind='content',length=len(data),witness=w)]
+    for profile,P,T,T0 in [('phone',2048,352,1024),('desktop',4096,576,1536)]:
+        bundle=build(content,h,P=P,T=T,T0=T0,anchor_ops=[0,2],ranges=[(0,1)],
+                     compressed_data=data,cutoff=20250101)
+        export_m3c(directory,'segments-'+profile+'.pdf',bundle,windows,'zkpdf-v1-'+profile)
 
 def main():
     if not __debug__:raise RuntimeError("Reference checks require normal Python assertion mode")
@@ -489,7 +507,19 @@ def main():
         for kind,label,w in stages:
             write(args.output/filename/label/'Prover.toml',w);execute(args.nargo,roots[kind],filename+'/'+label,w)
         results.append(dict(fixture=filename,outcome='accepted',sha_segments=len(windows),inflate_segments=len(bundle['inflate']),lex_segments=len(bundle['lex']),claim_segments=1,predicate_segments=1,public_join_rejections=public_rejections,date_digit_width=1 if filename=='student.pdf' else 2,joins='SHA digest, boundaries, C_z, S, history C_p, Lambda, coverage, anchors, C_g, beta, claim opening and date checked'))
-    if args.export_json:return
+    if args.export_json:
+        export_segment_vectors(args.export_json,h)
+        template=json.loads((args.export_json/'student.json').read_text())['input']
+        cases=[]
+        for name,plain,code in [('Z8-BI',b'BI /W 1 /H 1 ID x EI','word_profile'),
+                                ('Z8-ActualText',b'BT /Span << /ActualText (hidden) >> BDC ET','word_profile'),
+                                ('Z12',b' '*40961,'max_plain')]:
+            value=deepcopy(template);check_window=value['windows'][0]
+            check_window['private_data']=list(zlib.compress(plain));check_window['key_stream']=None
+            check_window['tail']=[0]*((-len(check_window['head'])-len(check_window['private_data']))%64)
+            cases.append(dict(name=name,input=value,error=code))
+        (args.export_json/'check-rejections.json').write_text(json.dumps(cases,indent=2)+'\n')
+        return
     (args.output/'results.json').write_text(json.dumps(dict(scope='Synthetic fixtures; nargo constrained execution, not ZK proofs or production CMS trust verification',results=results),indent=2)+'\n')
     print('Five fixture outcomes verified; private witnesses remain local and untracked')
 if __name__=='__main__':

@@ -64,7 +64,7 @@ pub fn circuit(directory: &Path, composition: &str, kind: &str, vk: bool) -> Res
 }
 pub fn crs(directory: &Path) -> Result<(Vec<u8>, Vec<u8>)> {
     let load = |(name, size, hash): (&str, usize, &str)| -> Result<Vec<u8>> {
-        let bytes = read(&directory.join("crs").join(name), size, hash)?;
+        let bytes = read(&directory.join(name), size, hash)?;
         if bytes.len() != size {
             return Err(Error("crs_size"));
         }

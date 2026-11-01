@@ -3,7 +3,6 @@ use crate::{
     field::{self, F},
     inflate, lex, Error, Result, *,
 };
-use acvm::AcirField;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -37,6 +36,10 @@ pub fn anchors(input: &[ZkPdfAnchorInput]) -> Result<Vec<Value>> {
     require(input.len() <= 16, "max_anchors")?;
     let mut anchors = Vec::new();
     for a in input {
+        let encoded_length = a.record.strings.iter().try_fold(a.record.font.len() + 3,
+            |n, s| n.checked_add(2).and_then(|n| n.checked_add(s.len())))
+            .ok_or(Error("max_anchor_length"))?;
+        require(encoded_length <= 96, "max_anchor_length")?;
         let mut bytes = record_bytes(&a.record)?;
         let len = bytes.len();
         require(len <= 96, "max_anchor_length")?;
@@ -439,6 +442,8 @@ mod tests {
         for source in [
             include_str!("../../../test-servers/src/test/resources/zkpdf/student.json"),
             include_str!("../../../test-servers/src/test/resources/zkpdf/travel-rc4.json"),
+            include_str!("../../../test-servers/src/test/resources/zkpdf/segments-phone.json"),
+            include_str!("../../../test-servers/src/test/resources/zkpdf/segments-desktop.json"),
         ] {
             let fixture: Value = serde_json::from_str(source).unwrap();
             let input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();
@@ -478,6 +483,8 @@ mod tests {
                 "travel-rc4",
                 include_str!("../../../test-servers/src/test/resources/zkpdf/travel-rc4.json"),
             ),
+            ("segments-phone", include_str!("../../../test-servers/src/test/resources/zkpdf/segments-phone.json")),
+            ("segments-desktop", include_str!("../../../test-servers/src/test/resources/zkpdf/segments-desktop.json")),
         ] {
             let fixture: Value = serde_json::from_str(source).unwrap();
             let input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();
@@ -500,6 +507,51 @@ mod tests {
                     fs::write(dir.join("public_inputs"), result.public_inputs).unwrap();
                 }
             }
+        }
+    }
+    #[test]
+    fn z8_and_z12_are_rejected_before_asset_access() {
+        let cases: Value = serde_json::from_str(include_str!(
+            "../../../test-servers/src/test/resources/zkpdf/check-rejections.json"
+        ))
+        .unwrap();
+        for case in cases.as_array().unwrap() {
+            let input: ZkPdfProveInput = serde_json::from_value(case["input"].clone()).unwrap();
+            let rejected = check(&input).err().expect("check_must_reject");
+            assert!(
+                rejected.0 == case["error"].as_str().unwrap(),
+                "fixed_rejection_code"
+            );
+        }
+    }
+    #[test]
+    #[ignore = "requires authenticated circuit assets"]
+    fn z9_and_z13_fail_constrained_execution() {
+        let directory = std::path::PathBuf::from(
+            std::env::var_os("ZKPDF_ASSETS_DIR").expect("assets_directory"),
+        );
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../test-servers/src/test/resources/zkpdf/student.json"
+        ))
+        .unwrap();
+        let input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();
+        let mut prepared = prepare(&input, field::number(42)).unwrap();
+        for (kind, _, witness) in &mut prepared.stages {
+            if kind == "lex" {
+                let used = witness["used"].as_u64().unwrap() - 1;
+                witness["used"] = json!(used);
+                witness["positions"][used as usize] = json!(0);
+            } else if kind == "pred" {
+                witness["predicates"][0]["cutoff"] = json!(19800101);
+            } else {
+                continue;
+            }
+            let artifact =
+                crate::assets::circuit(&directory, &input.composition, kind, false).unwrap();
+            assert!(
+                crate::acir::execute(&artifact, witness).is_err(),
+                "invalid_witness_accepted"
+            );
         }
     }
 }

@@ -6,6 +6,7 @@ consumers must verify the manifest and never download missing CRS files.
 """
 import argparse
 import hashlib
+import gzip
 import json
 import os
 from pathlib import Path
@@ -85,8 +86,11 @@ def main():
     require(subprocess.check_output([args.bb, "--version"], text=True).strip() == versions["bb"], "bb_version")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    crs = (args.crs or output / "crs").resolve()
+    crs = (args.crs or output).resolve()
     checked_crs(crs, args.download_crs)
+    for name in CRS:
+        if crs / name != output / name:
+            shutil.copyfile(crs / name, output / name)
     environment = dict(os.environ, RAYON_NUM_THREADS="1", HARDWARE_CONCURRENCY="2")
     mappings = {}
     built = {}
@@ -114,6 +118,17 @@ def main():
                 command.append(flags)
             subprocess.run(command, env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             acir = ROOT / "target" / (package + ".json")
+            # VERSIONS hashes complete nargo JSON, including debug source paths.
+            # Canonicalize only those paths to the frozen build root. ABI,
+            # bytecode and all other data must still match the frozen digest.
+            artifact = json.loads(acir.read_bytes())
+            frozen_root = "/workspace/my-Bonds-fork-android/native/circuits/"
+            for item in artifact.get("file_map", {}).values():
+                path = item.get("path", "").replace("\\", "/")
+                prefix = ROOT.as_posix() + "/"
+                if path.startswith(prefix):
+                    item["path"] = frozen_root + path[len(prefix):]
+            acir.write_text(json.dumps(artifact, ensure_ascii=False, separators=(",", ":")))
             require(digest(acir) == expected[0], "acir_integrity:" + package)
             with tempfile.TemporaryDirectory(dir=output) as temporary:
                 subprocess.run([args.bb, "write_vk", "-s", "ultra_honk", "--oracle_hash", "poseidon2",
@@ -128,7 +143,19 @@ def main():
                               "acir_sha256": expected[0], "vk_sha256": expected[1]}
     require(len(mappings) == 14 and len(built) == 10, "composition_count")
     (output / "manifest.json").write_text(json.dumps(mappings, indent=2) + "\n")
-    print("Ten distinct assets and fourteen composition mappings verified")
+    catalog = json.loads((ROOT.parent / "assets.json").read_text())
+    entries = [entry for entry in catalog if entry["backend"] == "NOIR_ULTRAHONK"]
+    require(len(entries) == 22, "asset_catalog_count")
+    for entry in entries:
+        path = output / entry["id"]
+        require(path.stat().st_size == entry["installedBytes"]
+                and digest(path) == entry["installedSha256"], "catalog_installed_integrity")
+        packaged = path.with_suffix(path.suffix + ".gz")
+        if not packaged.is_file() or digest(packaged) != entry["gzipSha256"]:
+            packaged.write_bytes(gzip.compress(path.read_bytes(), compresslevel=9, mtime=0))
+        require(packaged.stat().st_size == entry["gzipBytes"]
+                and digest(packaged) == entry["gzipSha256"], "catalog_gzip_integrity")
+    print("Ten distinct circuits, fourteen composition mappings and CRS verified")
 
 
 if __name__ == "__main__":

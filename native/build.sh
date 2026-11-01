@@ -20,13 +20,23 @@ if [[ -n "$features" ]]; then
     IFS=',' read -ra backends <<< "$features"
     for backend in "${backends[@]}"; do
         case "$backend" in
-            openac|tlsn) ;;
+            openac|tlsn|zkpdf) ;;
             *) echo "Unsupported DIW_ZK_FEATURES entry" >&2; exit 1 ;;
         esac
     done
 fi
 feature_args=()
 [[ -z "$features" ]] || feature_args=(--features "$features")
+# Static C++ sources are acquired only by this explicit build step.
+build_zkpdf() {
+    local bb_target=$1
+    [[ ",$features," == *,zkpdf,* ]] || return 0
+    export ZKPDF_BB_SOURCE=${ZKPDF_BB_SOURCE:-"$PWD/target/bb-source"}
+    export ZKPDF_BB_BUILD=${ZKPDF_BB_BUILD:-"$PWD/target/bb-$bb_target"}
+    if [[ ! -f "$ZKPDF_BB_BUILD/lib/libbarretenberg.a" || ! -f "$ZKPDF_BB_BUILD/_deps/libdeflate-build/libdeflate.a" ]]; then
+        python3 -I zkpdf-prover/tools/build_bb.py --source "$ZKPDF_BB_SOURCE" --build "$ZKPDF_BB_BUILD" --target "$bb_target"
+    fi
+}
 IFS=',' read -ra selected <<< "$targets"
 for target in "${selected[@]}"; do
     if [[ "$target" == android ]]; then
@@ -36,7 +46,21 @@ for target in "${selected[@]}"; do
         grep -Eq "Pkg.Revision *= *$NDK_VERSION$" "$ANDROID_NDK_HOME/source.properties" || exit 1
         [[ "$(cargo ndk --version)" == "cargo-ndk $CARGO_NDK_VERSION" ]] || { echo "Pinned cargo-ndk is required" >&2; exit 1; }
         rustup target add aarch64-linux-android x86_64-linux-android
-        cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+        if [[ ",$features," == *,zkpdf,* ]]; then
+            bb_build_override=${ZKPDF_BB_BUILD:-}
+            for abi in arm64-v8a x86_64; do
+                if [[ "$abi" == arm64-v8a ]]; then rust_target=aarch64-linux-android; clang_target=aarch64-linux-android;
+                else rust_target=x86_64-linux-android; clang_target=x86_64-linux-android; fi
+                export ZKPDF_BB_BUILD=${bb_build_override:-"$PWD/target/bb-$rust_target"}
+                build_zkpdf "$rust_target"
+                case "$(uname -s)" in Linux*) ndk_host=linux-x86_64 ;; Darwin*) ndk_host=darwin-x86_64 ;; *) exit 1 ;; esac
+                export CXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/${clang_target}29-clang++"
+                export AR="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/llvm-ar"
+                cargo ndk -t "$abi" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+            done
+        else
+            cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+        fi
     else
         case "$target" in
             x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
@@ -44,6 +68,7 @@ for target in "${selected[@]}"; do
             aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib ;;
             *) echo "Unsupported desktop target" >&2; exit 1 ;;
         esac
+        build_zkpdf "$target"
         rustup target add "$target"
         cargo build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"} --target "$target"
         mkdir -p "dist/resources/zk/native/$platform"

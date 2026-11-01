@@ -5864,7 +5864,9 @@ version = "0.1.0"
 dependencies = [
  "acvm",
  "base64 0.22.1",
+ "bincode 2.0.1",
  "bn254_blackbox_solver",
+ "flate2",
  "getrandom 0.2.17",
  "noirc_abi",
  "serde",

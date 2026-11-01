@@ -7,5 +7,16 @@ https://github.com/noir-lang/noir/tree/83245db91dcf63420ef4bcbbd85b98f397fee663
 Copyright the Noir contributors. Upstream license texts accompany the sources.
 
 Other direct dependencies: base64 (MIT OR Apache-2.0), serde and serde_json
-(MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0).
+(MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0), bincode (MIT), flate2 (MIT OR Apache-2.0).
 Exact transitive revisions are recorded in ../Cargo.lock.
+
+Barretenberg: v2.1.9, commit f2bed7ed073966bb2a2dcdd02a133d11bf2996d3,
+Apache-2.0, Copyright Aztec Labs and contributors.
+https://github.com/AztecProtocol/aztec-packages/tree/f2bed7ed073966bb2a2dcdd02a133d11bf2996d3/barretenberg
+Statically linked with logging disabled by the application environment hooks.
+Its pinned build dependencies include msgpack-c (Boost Software License 1.0,
+5ee9a1c8c325658b29867829677c7eb79c433a98), libdeflate (MIT,
+b03254d978d7af21a7512dee8fdc3367bc15c656), Tracy headers (BSD-3-Clause),
+and LMDB (OpenLDAP Public License 2.8). Upstream CMake files pin these sources.
+The BN254 CRS is the public Aztec Ignition ceremony transcript prefix, not a
+secret setup key. Runtime never downloads it; exact hashes are in assets.json.

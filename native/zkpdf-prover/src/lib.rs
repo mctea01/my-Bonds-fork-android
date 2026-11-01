@@ -18,3 +18,12 @@ pub const BB_REVISION: &str = "2.1.9+f2bed7ed073966bb2a2dcdd02a133d11bf2996d3";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Error(pub &'static str);
 pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(feature = "bb")]
+mod backend;
+#[cfg(feature = "bb")]
+mod runtime;
+#[cfg(feature = "bb")]
+pub use runtime::{prove, prove_with_metrics, verify, SegmentMetrics};
+mod opening;
+pub use opening::verify_opening;

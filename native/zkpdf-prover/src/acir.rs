@@ -12,6 +12,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use bn254_blackbox_solver::Bn254BlackBoxSolver;
 use noirc_abi::{input_parser::Format, Abi};
 use serde::Deserialize;
+use std::io::Read;
 
 #[derive(Deserialize)]
 struct Artifact {
@@ -126,9 +127,20 @@ pub fn execute(artifact: &[u8], inputs: &serde_json::Value) -> Result<Executed> 
         let value = solved.get_index(*index).ok_or(Error("acir_public_input"))?;
         public_inputs.extend(value.to_be_bytes());
     }
+    // Match beta.15's legacy encoding explicitly, independent of the
+    // process-wide NOIR_SERIALIZATION_FORMAT environment variable.
+    let raw = bincode::serde::encode_to_vec(
+        &stack,
+        bincode::config::legacy().with_limit::<{ u32::MAX as usize }>(),
+    )
+    .map_err(|_| Error("witness_encoding"))?;
+    let mut witness = Vec::new();
+    flate2::read::GzEncoder::new(raw.as_slice(), flate2::Compression::best())
+        .read_to_end(&mut witness)
+        .map_err(|_| Error("witness_encoding"))?;
     Ok(Executed {
         bytecode,
-        witness: stack.serialize().map_err(|_| Error("witness_encoding"))?,
+        witness,
         public_inputs,
     })
 }
