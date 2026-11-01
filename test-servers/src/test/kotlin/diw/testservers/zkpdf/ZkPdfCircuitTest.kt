@@ -26,7 +26,7 @@ class ZkPdfCircuitTest {
     private fun input(o: JsonObject, assets: String) = ZkPdfProveInput(
         o.text("composition"), o.bytes("binding"), o.list("windows").map { w ->
             ZkPdfWindowInput(w.text("role"), w.bytes("mid_in"), w.bytes("head"), w.bytes("private_data"), w.bytes("tail"), w.keyStream()) },
-        o.list("anchors").map { ZkPdfAnchorInput(record(it.getValue("record").jsonObject)) },
+        o.list("anchors").map { ZkPdfAnchorInput(record(it.getValue("record").jsonObject), it.uint("ordinal")) },
         o.list("slots").map { ZkPdfSlotInput(it.uint("slot"), it.uint("before_anchor"), it.uint("after_anchor"), it.bytes("salt")) },
         fonts(o), predicates(o), assets)
     private fun spec(o: JsonObject) = ZkPdfVerifierSpec(
@@ -51,6 +51,17 @@ class ZkPdfCircuitTest {
             val policy = spec(fixture.getValue("spec").jsonObject)
             val plan = zkpdfCheck(request)
             assertEquals(6u, plan.totalSegments)
+            for (ordinal in listOf(0u, 2u, UInt.MAX_VALUE)) {
+                val invalid = request.copy(anchors = listOf(request.anchors.first().copy(ordinal = ordinal)) + request.anchors.drop(1), assetsDir = "")
+                assertEquals("anchor_ordinal", assertFailsWith<ZkException.InvalidInput> { zkpdfCheck(invalid) }.reason)
+                ZkCancelToken().use { token ->
+                    assertEquals("anchor_ordinal", assertFailsWith<ZkException.InvalidInput> {
+                        zkpdfProve(invalid, token, object : ZkProgress {
+                            override fun onProgress(kind: String, index: UInt, total: UInt) { error("unexpected_progress") }
+                        })
+                    }.reason)
+                }
+            }
             var completed = 0u
             ZkCancelToken().use { token ->
                 val result = zkpdfProve(request, token, object : ZkProgress {
@@ -65,6 +76,8 @@ class ZkPdfCircuitTest {
                 val verified = zkpdfVerify(policy, result.bundle, assets)
                 assertTrue(verified.midOuts.zip(result.midOuts).all { (a, b) -> a.contentEquals(b) })
                 assertTrue(verified.claimDigests.zip(result.claimDigests).all { (a, b) -> a.contentEquals(b) })
+                val changedPolicy = policy.copy(anchors = listOf(policy.anchors.first().copy(ordinal = 2u, total = 2u)) + policy.anchors.drop(1))
+                assertFailsWith<ZkException.InvalidInput> { zkpdfVerify(changedPolicy, result.bundle, assets) }
                 val first = result.bundle.segments.first()
                 val changed = first.proof.copyOf().apply { this[100] = (this[100].toInt() xor 1).toByte() }
                 val tampered = result.bundle.copy(segments = listOf(first.copy(proof = changed)) + result.bundle.segments.drop(1))

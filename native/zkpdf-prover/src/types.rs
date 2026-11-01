@@ -22,6 +22,8 @@ pub struct ZkPdfRecord {
 #[serde(deny_unknown_fields)]
 pub struct ZkPdfAnchorInput {
     pub record: ZkPdfRecord,
+    /// One-based occurrence of this exact v2 record.
+    pub ordinal: u32,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

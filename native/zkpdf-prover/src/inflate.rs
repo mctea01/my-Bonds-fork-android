@@ -396,7 +396,7 @@ pub fn segments(
 
 // Production eagerly consumes a zero-output end marker at the boundary.
 // The alternative is instantiated only by the frozen-constraint regression test.
-fn segments_with_boundary<const DEFER_END: bool>(
+pub(crate) fn segments_with_boundary<const DEFER_END: bool>(
     data: &[u8],
     full: &Decoded,
     p: usize,
@@ -612,7 +612,7 @@ fn segments_with_boundary<const DEFER_END: bool>(
             )?;
             break;
         }
-        ensure(result.len() < 20, "max_plain")?;
+        ensure(result.len() < 40960 / p + 1, "max_plain")?;
     }
     Ok(result)
 }
@@ -624,7 +624,7 @@ mod tests {
     use sha2::{Digest, Sha256};
 
     #[test]
-    #[ignore = "documents a frozen-circuit boundary requiring design review; needs authenticated assets"]
+    #[ignore = "requires authenticated assets; both frozen boundary choices are accepted"]
     fn frozen_empty_final_segment_boundary() {
         // One fixed-Huffman block of 2048 spaces. Both boundary choices satisfy
         // the frozen ACIR for the same compressed input and plaintext length.
