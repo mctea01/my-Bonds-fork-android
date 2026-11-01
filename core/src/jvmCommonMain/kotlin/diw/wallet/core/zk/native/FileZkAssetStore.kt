@@ -38,7 +38,7 @@ class FileZkAssetStore(
                 "Invalid asset hash"
             }
             require(asset.role.isNotEmpty() && asset.role.all { it in setOf("prover", "verifier") }) { "Invalid asset role" }
-            require(asset.urls.isNotEmpty() && asset.urls.all(::httpsUrl)) { "Invalid asset URL" }
+            require((asset.urls.isNotEmpty() || asset.backend == ZkBackend.NOIR_ULTRAHONK) && asset.urls.all(::httpsUrl)) { "Invalid asset URL" }
         }
         require(directory.isDirectory || directory.mkdirs()) { "Asset directory unavailable" }
     }

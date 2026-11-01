@@ -23,7 +23,7 @@ class ZkNativeTest {
             requested.forEach { assertTrue(it in info.features, "$it requested but not built") }
             assertTrue(selfTest())
             ZkCancelToken().use { it.cancel() }
-            assertEquals(listOf("runtime") + listOf("openac", "tlsn").filter { it in info.features }, info.features)
+            assertEquals(listOf("runtime") + listOf("openac", "tlsn", "zkpdf").filter { it in info.features }, info.features)
             if ("openac" in info.features) {
                 assertEquals("b395e09c225ff45b003f0087c28e2e208e22f944", info.zkid)
             } else {

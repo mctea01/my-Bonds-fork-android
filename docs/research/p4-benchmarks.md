@@ -1025,3 +1025,107 @@ inflate-first 仍為 1,033,678，保留原本的 14,898 餘裕。本輪未最佳
 手機實機時間；不含編譯、見證產生、PDF/CMS 處理及 I/O。假設樣本各段的
 文字運算子、token 與 DEFLATE 區塊起點均符合所選參數；232 個運算子的
 總數本身不能保證任一局部段都不超限。無述詞時各減一段及 pred 時間。
+
+
+## Round 11: M3c Rust 見證、靜態 UltraHonk 與完整合成證明（2026-11-01）
+
+選用官方 Noir Rust crates beta.15（`83245db91dcf63420ef4bcbbd85b98f397fee663`）
+加上 Barretenberg 2.1.9 靜態函式庫（`f2bed7ed073966bb2a2dcdd02a133d11bf2996d3`）。
+沒有採用 noir_rs beta.14-2：其 Noir beta.14／bb 2.0.3 與本輪凍結組合不符，
+未假設相鄰版本的 ACIR 或證明格式相容。未更改 `VERSIONS`、電路或設計文件。
+Rust 在記憶體執行 ACVM，C++ bridge 固定 UltraZKFlavor／Poseidon2，逐段產生並自驗。
+CRS 先核對大小與 SHA-256，再初始化 memory CRS factory；執行時沒有 CLI 子行程、
+網路下載或 polynomial 暫存檔。Noir crate 採 MIT OR Apache-2.0，bb 採 Apache-2.0；
+其他元件見 `native/zkpdf-prover/NOTICE`。
+
+### 主機與量測方法
+
+Linux x86_64，AMD EPYC 9V74，cgroup CPU quota 2 vCPU、RAM 8 GiB；Rust 1.95.0、
+GCC 14.2.0、Release／thin LTO。bb 關閉自訂 ASM，原生 worker 固定 2。
+兩份文件各以獨立 Rust process 單獨、依序執行，沒有同時跑編譯、其他證明或測試。
+使用 `synthetic_bench`，只接受提交的虛構文件；證明、公開輸入大小不含 JSON 包裝。
+
+每段見證時間為 ACVM 執行與 witness serialization；prove 為 native 呼叫，包含
+bbapi 所需的解壓與 proving key 計算。每段開始以 `/proc/self/clear_refs` 的 5
+重設 VmHWM，量測該段的 RSS 高峰；整體取最大值。總 wall time 另外包含 Rust
+私密提示準備、資產雜湊、CRS 初始化及逐段自驗。公開輸入比對與最終整包查驗另列
+總計，沒有把編譯時間當作見證時間。原始數據與合成輸入指紋在
+`native/zkpdf-prover/measurements/linux-synthetic.json`，重現命令見同 crate README。
+
+| 文件 | 段別 | ACVM 見證 s | Prove s | 自驗 s | 段峰值 RSS GiB | Proof bytes | Public input bytes |
+|---|---|---:|---:|---:|---:|---:|---:|
+| student | sha_content | 0.341 | 26.116 | 0.016 | 1.874 | 16256 | 9408 |
+| student | sha_opaque | 0.079 | 20.245 | 0.014 | 1.724 | 16256 | 864 |
+| student | inflate0 | 2.324 | 22.764 | 0.012 | 2.081 | 16256 | 288 |
+| student | lex | 3.342 | 22.464 | 0.031 | 2.177 | 16256 | 52672 |
+| student | claim | 0.213 | 11.293 | 0.023 | 1.040 | 16256 | 65856 |
+| student | pred | 2.391 | 19.879 | 0.022 | 1.985 | 16256 | 57536 |
+| travel-rc4 | sha_content | 0.338 | 22.321 | 0.014 | 1.857 | 16256 | 9408 |
+| travel-rc4 | inflate0 | 2.377 | 22.573 | 0.012 | 2.054 | 16256 | 288 |
+| travel-rc4 | lex | 3.352 | 22.863 | 0.020 | 2.208 | 16256 | 52672 |
+| travel-rc4 | claim | 0.215 | 12.146 | 0.023 | 1.060 | 16256 | 65856 |
+| travel-rc4 | pred | 2.438 | 20.012 | 0.021 | 1.989 | 16256 | 57536 |
+
+| 文件 | 段數 | ACVM 合計 s | Prove 合計 s | 自驗合計 s | 完整產生 wall s | 含最終查驗 wall s | 最大 RSS GiB | Proof bytes 合計 | Public input bytes 合計 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| student | 6 | 8.690 | 122.761 | 0.118 | 133.190 | 133.416 | 2.177 | 97536 | 186624 |
+| travel-rc4 | 5 | 8.720 | 99.915 | 0.090 | 109.220 | 109.423 | 2.208 | 81280 | 185760 |
+
+另以 desktop 組合完整產生 student 的 6 段證明，含最終查驗為 170.667 s，峰值
+RSS 3.969 GiB；原始逐段數據在 `linux-desktop-student.json`。此短文件在兩個
+組合都只需一個明文段，desktop 較大的電路容量不會減少段數。以這份實際有效的
+desktop bundle 混入 phone 的 inflate／lex 段，Rust verifier 均拒絕。
+
+與 Round 10 的 bb CLI warm prove 比較，同一組段別加總為 student 226.495 s、
+travel 189.509 s；本輪 native prove 加總為 122.761／99.915 s。這不是受控的
+語言效能比較：兩輪執行日期、主機狀態、編譯旗標與輸入不同，不能將差異全歸因於
+Rust。金鑰與每段 16,256-byte 證明格式相同。Rust process 的 RSS 同時包含 ACVM、
+CRS 與配置器保留記憶體，Round 10 的獨立 bb CLI RSS 不含前一個 nargo process，
+因此也不能直接宣稱記憶體退化或改善。
+
+### 驗證與平台範圍
+
+兩份文件均由 Rust 完整產生、每段自驗，再以獨立 verifier specification 查驗通過。
+Python 參考公開輸入與 Rust 逐段一致；額外手機／桌面向量涵蓋跨段詞法狀態、
+inflate pending copy 與 authenticated history。`zkpdf_check` 的 BI、ActualText、
+MAX_PLAIN 拒絕與欄位開啟的換 slot／改 byte 測試皆通過。
+
+Linux 的 `native/build.sh host`（`DIW_ZK_FEATURES=zkpdf`）成功；首次 Rust host
+build 在已有 C++ archive 下為 100 s。靜態 bb archive 59,405,654 bytes，
+建置工具由空的 CMake build directory 完整編譯成功，wall time 826.881 s
+（13 分 46.881 秒，2 jobs，含依賴取得；期間曾並行執行邊界測試的 Rust 編譯）。
+其 archive SHA-256 為 `17f8132786fccb141c8d13a631acd57020af51edf8f8b71e8811df8ff915e995`，
+與實際產生本輪證明的先前 archive 完全相同；資料在 `linux-build.json`。
+啟用 zkPDF 的 Linux uniffi `.so` 量測時為 26,448,632 bytes，最終建置為
+26,449,200 bytes（增量 Rust build 33.17 s）。Android arm64-v8a／x86_64
+與 macOS arm64 的建置路徑已提供，尚未在相應 SDK／主機執行。Windows 仍需移植
+bb 2.1.9 的 POSIX 隨機來源、記憶體映射及配置 API；工具明確拒絕該 target，沒有
+偷偷替換 Noir 或 bb 版本。這是全平台驗收的未解限制。
+
+完整 Rust workspace（含 zkpdf）59 tests 通過、6 ignored；既有 zkTLS 測試在此主機
+需 `RUST_MIN_STACK=67108864`。新增後的 zkPDF Release 單元測試 12 通過、4 項
+預設忽略；其中 3 項資產／證明測試與下述凍結邊界重現均以 opt-in 實際執行。
+11 段 Rust 證明由官方 CLI 2.1.9 驗證，
+11 段 CLI 證明亦由 Rust 驗證，全部使用凍結 VK。Z9／Z13 由 ACVM 拒絕；Z4、Z14、
+換段、調序、公開輸入不符與錯誤組合金鑰均拒絕。Kotlin 的 `ZkPdfCircuitTest` 已實際經 uniffi 執行
+一份文件的 check／prove／verify，並拒絕竄改證明與預先取消；沒有跳過此測試。
+Kotlin 主程式與測試編譯成功，全套 426 tests、0 failures/errors、30 skipped；
+`ZkPdfCircuitTest` 為 1 passed、0 skipped。原先兩項整合失敗在使用者明確授權後，
+以四處最小修正處理（catalog pin、待發布 zkPDF 空 URL、core Gradle 白名單、
+既有 native feature 測試）。App 的獨立 Gradle 白名單仍交 Claude 修改，故測試先以
+`DIW_ZK_FEATURES=zkpdf native/build.sh host` 建置，再用 `-Pdiw.zkNative=skip`
+讓 Gradle 重用已包裝的原生庫；並未跳過 Kotlin 的實際證明測試。
+
+### 凍結切段邊界：待 Claude 決定
+
+新增的 `frozen_empty_final_segment_boundary` 使用同一份固定 Huffman 壓縮串流
+（明文為 2,048 個空白），確認正常的一段見證，以及延後 EOB 的兩段見證
+（第一段 `plain_len=2048,last=false`；第二段 `plain_len=0,last=true`）均通過
+釘選 ACIR 的約束執行。這是三次 ACVM 執行的重現，沒有把它宣稱為完整惡意 PDF
+或整包證明。正式見證產生器會優先消耗 EOB；測試的替代切法只在測試中實例化。
+
+`inflate_segment.nr` 只要求非最後段滿 P，最後段並未要求非空；lex 也接受最後段
+長度 0。`ZkPdfVerifierSpec` 沒有明文長度，現有查驗端只能從 bundle 推得 k，無法
+靠公開輸入排除此替代切法。故本輪「切段只由組合與資料長度決定」的嚴格要求尚未
+滿足，不能宣告完整 M3c 驗收。修復需要 Claude 決定是否重新凍結約束／資產，或
+修改公開長度與切段規則；本輪未改電路、`PUBLIC_SPEC.md`、`VERSIONS` 或設計文件。

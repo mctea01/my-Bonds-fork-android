@@ -120,5 +120,303 @@
     "installedSha256": "352eeef11b56b48d2ffe71ea6f4a7c305fa4840cd2c111ae10878722891482a3",
     "installedBytes": 551178,
     "license": "MIT (zkID circuits); GPL-3.0-or-later (circomlib 2.0.5 templates compiled into the circuit)"
+  },
+  {
+    "id": "bn254_g1.dat",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "d91b51d7a7d2c9de408f8876932b6dc483a51910a3c88b5804bb7c9f4e0b138c",
+    "gzipBytes": 134258737,
+    "installedSha256": "ea6069e3563ad79f186d1c0088499309cbdaeb54254346760ffec7fe15ae49cd",
+    "installedBytes": 134217792,
+    "license": "Public cryptographic parameters (Aztec Ignition ceremony)"
+  },
+  {
+    "id": "bn254_g2.dat",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "39c790ce6f4a6d5e6798a91420d4b4614d12d1693520e24259b116d2cf9bcc36",
+    "gzipBytes": 151,
+    "installedSha256": "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f",
+    "installedBytes": 128,
+    "license": "Public cryptographic parameters (Aztec Ignition ceremony)"
+  },
+  {
+    "id": "pdf_claim_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "b5bd4d63bd6fdfd685037ec4276cad7ddac59571fb870122cd9b94076eacf3d6",
+    "gzipBytes": 518197,
+    "installedSha256": "96f9bb56503c4125bfb905f5b34f0ab2ecc3ecbad23ba4f9c5f4e195e4656faa",
+    "installedBytes": 1086280,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_claim_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "ce22c054b65ebfbb58f56041bb07981c083a6af2648fbbe7d598eadf2982a16c",
+    "gzipBytes": 2005,
+    "installedSha256": "ef22b840908125ad8053e19d2ba0ac3146b5e4fb690f61efd74b18b395811cd0",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg0_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "74e3e9d102cd68ae26a54d702f9bb067b416d244dddd54d7ddb0aa13060ef60a",
+    "gzipBytes": 7332500,
+    "installedSha256": "6ab073c5a074331c7ad19f2c5fbf130dd29a1c8fc8b10e45d3daf6b4f5745d55",
+    "installedBytes": 11691737,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg0_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "f671e2832e2d4f218cf18e03493976bdcd7a4451059c8f846ca5bd8b9789f7c0",
+    "gzipBytes": 2005,
+    "installedSha256": "1dfb19f83383dd196d899d2f9186c86a420ab8a8929d8f440eef7b8cc7d74738",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg0_v1_desktop.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "84c2e674c7345196e643757708f18d85812a4b17f90a4b1d7927912394d084dd",
+    "gzipBytes": 10666810,
+    "installedSha256": "2bd89f3e87457d76262009225db7332f6a4e46e117ef93b4e2c5e554712f19b3",
+    "installedBytes": 16907329,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg0_v1_desktop.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "ef4169e6b0b06479c13840175d863899f4ecc14eb97c6b982ac74f89b47aa806",
+    "gzipBytes": 2004,
+    "installedSha256": "f4f159804b04c5fa26720224ba43c889f9f057a50ff75bcd24f72f5a7d77c24f",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "aa987195300294ee3dc9b51d3094ef78f3cf8ec0b8a0b05365fdb5609468eec3",
+    "gzipBytes": 4881272,
+    "installedSha256": "7cbed9ef789b12720d7fe6c39ba2886655d53c91f2e65b5bf3e3299cb39fc522",
+    "installedBytes": 8557850,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "01dde1c82597ce40edcbd2b774b5b640fb1b77e5e3a0b7e1e0aded8680ac8a8e",
+    "gzipBytes": 2004,
+    "installedSha256": "9e2fb178d307965de315666734f8abc79cfda454115bca7ff4503274ae684f9c",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg_v1_desktop.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "1af6c0e571f9141c06d7a286f57871541264a69f7e96c1ddef91a8511113a41b",
+    "gzipBytes": 7075642,
+    "installedSha256": "70e3300018fe5fc6144ebe40d019242c9f572cf80a6d50050c9b0af9a87ddcc9",
+    "installedBytes": 12263200,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_inflate_seg_v1_desktop.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "ab2fe4da2c12853e4e1e179e1cd140b654e7a52390e935dc1bdb8011480ca710",
+    "gzipBytes": 2008,
+    "installedSha256": "c56ed03f45ec99e44c59aea00b79055c59712c85f6b7bec273719e4130c711b2",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_lex_seg_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "f23c3f97c0452ae4d79504640caed70107923d90fa3a69863dfea7bcc4eecda4",
+    "gzipBytes": 10835869,
+    "installedSha256": "6f33cb79e9b65345f438b95dc0e584a6b401a747526884aa5e80370d718386a0",
+    "installedBytes": 16151582,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_lex_seg_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "91704197e017cade107a78118676776d8d09193ba606cf070ca220496a644359",
+    "gzipBytes": 2002,
+    "installedSha256": "6a357f339eef01016ce1792525bedfad8f7023287a0bbd5dd9b864d6b44b321d",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_lex_seg_v1_desktop.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "8c690b62cd5262c7687bed2f00026864d2928d515420c91233ccb4539a617105",
+    "gzipBytes": 21321216,
+    "installedSha256": "df28392f7b912c36a9e20d483e71ce6cbff2892b2749751538b47954e5be097f",
+    "installedBytes": 31654280,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_lex_seg_v1_desktop.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "ec7285771e6b9774690f203e3e01fb7f6bc09b3dd2c80d55e3671bf2a6b110cc",
+    "gzipBytes": 2004,
+    "installedSha256": "9e94e813c45615125d5d406eaf576b353147bce0970dd2450118a95293d52d5f",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_pred_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "d01c5146014d80d67fb0dde4a6acd3d84fe0463effd885740c487870ea8d29ff",
+    "gzipBytes": 7319333,
+    "installedSha256": "94e4769d4cc5b0a4fd2048bf00df4b0f7b6237c2f76a2c44cdee8f9eabd9f8b2",
+    "installedBytes": 11044989,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_pred_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "2a2858495b7bcc81880e6cc0136c959aa16f32386f6d6637bbfe3b2e34d7c2f9",
+    "gzipBytes": 2004,
+    "installedSha256": "ab9a7d4af04ae502cd9c6628ff3b9b6cfedb0d4d06c13dd789648ab988a00af9",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_sha_content_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "7b043ddf79c3f5cd7dc122e222924611c3c793ad4a56c418e74b1b4c68e07963",
+    "gzipBytes": 854479,
+    "installedSha256": "2b743ea3729edba3c23e273c8bf23fd4f9ab86d705cb96fb94cdcdcd3ed8e246",
+    "installedBytes": 1789785,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_sha_content_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "4c2882fb7c441475b1b9facb98f27dde3e3e7eb9f071650f5d425a93f9e7bb2a",
+    "gzipBytes": 2007,
+    "installedSha256": "304a50af8c97e73ed59f528df8507b779e2caf9f61aef89861bb5ac2f7cfeb07",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_sha_opaque_v1.json",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover"
+    ],
+    "urls": [],
+    "gzipSha256": "fcdb12e60d620760793828d9ae7e05a3f26d161cc83b80b4b4453e8996dfc5ad",
+    "gzipBytes": 229005,
+    "installedSha256": "720679295b98c9be46d71fb9593173aa4591d8a95cd97a14e88f7888583abb16",
+    "installedBytes": 451559,
+    "license": "Apache-2.0 (DIW circuits)"
+  },
+  {
+    "id": "pdf_sha_opaque_v1.vk",
+    "backend": "NOIR_ULTRAHONK",
+    "role": [
+      "prover",
+      "verifier"
+    ],
+    "urls": [],
+    "gzipSha256": "29c9569422111825ff1bf58727ecfa63ee6c9a6f0dc2ebaede507afefb52231f",
+    "gzipBytes": 2001,
+    "installedSha256": "cd2a5fbbfab145ce73da656ccbd94ee39f5a01ab5157df799f52c012ed69561f",
+    "installedBytes": 3680,
+    "license": "Apache-2.0 (DIW circuits)"
   }
 ]

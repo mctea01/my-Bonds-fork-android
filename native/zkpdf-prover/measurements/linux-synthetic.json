@@ -1,0 +1,188 @@
+{
+  "date": "2026-11-01",
+  "platform": "Linux x86_64",
+  "cpu": "AMD EPYC 9V74",
+  "cpu_quota": 2,
+  "memory_limit_bytes": 8589934592,
+  "rust": "1.95.0",
+  "noir": "1.0.0-beta.15",
+  "bb": "2.1.9",
+  "oracle_hash": "poseidon2",
+  "zero_knowledge": true,
+  "composition": "zkpdf-v1-phone",
+  "native_workers": 2,
+  "cpp_compiler": "GCC 14.2.0",
+  "disable_asm": true,
+  "documents": [
+    {
+      "summary": {
+        "fixture": "student",
+        "peak_rss_kib": 2282496,
+        "segments": 6,
+        "total_prove_ms": 133190,
+        "total_with_verify_ms": 133416,
+        "sum_witness_ms": 8690,
+        "sum_prove_ms": 122761,
+        "sum_verify_ms": 118,
+        "sum_proof_bytes": 97536,
+        "sum_public_input_bytes": 186624,
+        "fixture_sha256": "0d39add7aca049fe316b22ab1090c3c37817d492312a9287e04e81a66ddc4d88"
+      },
+      "stages": [
+        {
+          "peak_rss_kib": 1965312,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 26116,
+            "public_input_bytes": 9408,
+            "verify_ms": 16,
+            "witness_ms": 341
+          }
+        },
+        {
+          "peak_rss_kib": 1807824,
+          "segment": {
+            "index": 1,
+            "kind": "sha_opaque",
+            "proof_bytes": 16256,
+            "prove_ms": 20245,
+            "public_input_bytes": 864,
+            "verify_ms": 14,
+            "witness_ms": 79
+          }
+        },
+        {
+          "peak_rss_kib": 2182116,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 22764,
+            "public_input_bytes": 288,
+            "verify_ms": 12,
+            "witness_ms": 2324
+          }
+        },
+        {
+          "peak_rss_kib": 2282496,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 22464,
+            "public_input_bytes": 52672,
+            "verify_ms": 31,
+            "witness_ms": 3342
+          }
+        },
+        {
+          "peak_rss_kib": 1090452,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 11293,
+            "public_input_bytes": 65856,
+            "verify_ms": 23,
+            "witness_ms": 213
+          }
+        },
+        {
+          "peak_rss_kib": 2081376,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 19879,
+            "public_input_bytes": 57536,
+            "verify_ms": 22,
+            "witness_ms": 2391
+          }
+        }
+      ]
+    },
+    {
+      "summary": {
+        "fixture": "travel-rc4",
+        "peak_rss_kib": 2315652,
+        "segments": 5,
+        "total_prove_ms": 109220,
+        "total_with_verify_ms": 109423,
+        "sum_witness_ms": 8720,
+        "sum_prove_ms": 99915,
+        "sum_verify_ms": 90,
+        "sum_proof_bytes": 81280,
+        "sum_public_input_bytes": 185760,
+        "fixture_sha256": "a08769aca832bd5209628557b269a322f2d17d8153a8f8c5997696a78283ed39"
+      },
+      "stages": [
+        {
+          "peak_rss_kib": 1946908,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 22321,
+            "public_input_bytes": 9408,
+            "verify_ms": 14,
+            "witness_ms": 338
+          }
+        },
+        {
+          "peak_rss_kib": 2153684,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 22573,
+            "public_input_bytes": 288,
+            "verify_ms": 12,
+            "witness_ms": 2377
+          }
+        },
+        {
+          "peak_rss_kib": 2315652,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 22863,
+            "public_input_bytes": 52672,
+            "verify_ms": 20,
+            "witness_ms": 3352
+          }
+        },
+        {
+          "peak_rss_kib": 1111828,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 12146,
+            "public_input_bytes": 65856,
+            "verify_ms": 23,
+            "witness_ms": 215
+          }
+        },
+        {
+          "peak_rss_kib": 2085652,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 20012,
+            "public_input_bytes": 57536,
+            "verify_ms": 21,
+            "witness_ms": 2438
+          }
+        }
+      ]
+    }
+  ],
+  "static_library_bytes": 59405654,
+  "ffi_library_bytes": 26448632,
+  "runtime_source_tree": "b16ac63daebdabb74ee151532e032e39295e0417",
+  "bridge_sha256": "bead69123b508e485422d3e493f9ea37cac78b9d8df7f5d06db54c2d620cbc7f"
+}
