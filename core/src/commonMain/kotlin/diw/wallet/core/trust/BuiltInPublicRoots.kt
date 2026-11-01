@@ -624,7 +624,7 @@ object BuiltInPublicRoots {
         ),
         Root(
             name = "HBCA",
-            owner = "河北省電子認證 HBCA",
+            owner = "湖北省數字證書認證 HBCA",
             group = Group.MAINLAND_CHINA,
             algorithm = "RSA 2048",
             purposes = "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
