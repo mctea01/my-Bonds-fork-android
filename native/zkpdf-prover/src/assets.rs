@@ -95,4 +95,39 @@ mod tests {
         assert!(package("zkpdf-v1-phone", "../claim").is_err());
         assert!(pin("noirc_commit").unwrap() == "83245db91dcf63420ef4bcbbd85b98f397fee663");
     }
+    #[test]
+    fn crs_constants_match_shipping_catalog() {
+        let catalog: serde_json::Value =
+            serde_json::from_str(include_str!("../../assets.json")).unwrap();
+        for (name, size, hash) in CRS {
+            let entry = catalog
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|e| e["id"] == name)
+                .unwrap();
+            assert!(entry["installedBytes"] == size && entry["installedSha256"] == hash);
+        }
+    }
+    #[test]
+    fn corrupt_and_missing_assets_are_rejected() {
+        let directory =
+            std::env::temp_dir().join(format!("zkpdf-assets-test-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        for vk in [false, true] {
+            let path = directory.join(if vk {
+                "pdf_claim_v1.vk"
+            } else {
+                "pdf_claim_v1.json"
+            });
+            let _ = std::fs::remove_file(&path);
+            assert!(circuit(&directory, "zkpdf-v1-phone", "claim", vk).is_err());
+            std::fs::write(&path, b"corrupted synthetic asset").unwrap();
+            assert!(
+                circuit(&directory, "zkpdf-v1-phone", "claim", vk).err()
+                    == Some(Error("asset_integrity"))
+            );
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 }

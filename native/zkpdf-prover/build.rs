@@ -71,11 +71,17 @@ fn main() {
     println!("cargo:rustc-link-lib=static=deflate");
     println!(
         "cargo:rustc-link-lib={}",
-        if target.contains("apple") || target.contains("android") {
+        if target.contains("android") {
+            "c++_static"
+        } else if target.contains("apple") {
             "c++"
         } else {
             "stdc++"
         }
     );
-    println!("cargo:rustc-link-lib=pthread");
+    if target.contains("android") {
+        println!("cargo:rustc-link-lib=c++abi");
+    } else {
+        println!("cargo:rustc-link-lib=pthread");
+    }
 }

@@ -48,6 +48,7 @@ pub fn prove_with_metrics(
     for (ordinal, (kind, index, witness)) in prepared.stages.iter().enumerate() {
         poll()?;
         progress(kind, ordinal as u32 + 1, prepared.plan.total_segments);
+        poll()?;
         let artifact = assets::circuit(directory, &input.composition, kind, false)?;
         let vk = assets::circuit(directory, &input.composition, kind, true)?;
         let started = Instant::now();
@@ -150,6 +151,7 @@ mod tests {
             assert!(verify(&spec, bundle, &assets).is_ok());
             let mut changed = spec.clone();
             changed.anchors[0].ordinal = 2;
+            changed.anchors[0].total = 2;
             assert!(verify(&changed, bundle, &assets).is_err());
             let mut changed = bundle.clone();
             changed.segments.swap(0, 1);

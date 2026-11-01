@@ -36,8 +36,13 @@ pub fn anchors(input: &[ZkPdfAnchorInput]) -> Result<Vec<Value>> {
     require(input.len() <= 16, "max_anchors")?;
     let mut anchors = Vec::new();
     for a in input {
-        let encoded_length = a.record.strings.iter().try_fold(a.record.font.len() + 3,
-            |n, s| n.checked_add(2).and_then(|n| n.checked_add(s.len())))
+        let encoded_length = a
+            .record
+            .strings
+            .iter()
+            .try_fold(a.record.font.len() + 3, |n, s| {
+                n.checked_add(2).and_then(|n| n.checked_add(s.len()))
+            })
             .ok_or(Error("max_anchor_length"))?;
         require(encoded_length <= 96, "max_anchor_length")?;
         let mut bytes = record_bytes(&a.record)?;
@@ -483,8 +488,16 @@ mod tests {
                 "travel-rc4",
                 include_str!("../../../test-servers/src/test/resources/zkpdf/travel-rc4.json"),
             ),
-            ("segments-phone", include_str!("../../../test-servers/src/test/resources/zkpdf/segments-phone.json")),
-            ("segments-desktop", include_str!("../../../test-servers/src/test/resources/zkpdf/segments-desktop.json")),
+            (
+                "segments-phone",
+                include_str!("../../../test-servers/src/test/resources/zkpdf/segments-phone.json"),
+            ),
+            (
+                "segments-desktop",
+                include_str!(
+                    "../../../test-servers/src/test/resources/zkpdf/segments-desktop.json"
+                ),
+            ),
         ] {
             let fixture: Value = serde_json::from_str(source).unwrap();
             let input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();

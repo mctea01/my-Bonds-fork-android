@@ -235,6 +235,7 @@ mod tests {
         assert!(policy(&spec, &bundle).is_ok());
         let mut changed = spec.clone();
         changed.anchors[0].ordinal = 2;
+        changed.anchors[0].total = 2;
         assert!(policy(&changed, &bundle).is_err());
         let mut changed = spec.clone();
         changed.binding[0] ^= 1;

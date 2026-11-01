@@ -33,10 +33,17 @@ fn main() {
                     .find(|l| l.starts_with("VmHWM:"))
                     .map(str::to_owned)
             });
-            let kib = rss.as_deref().and_then(|s| s.split_whitespace().nth(1))
+            let kib = rss
+                .as_deref()
+                .and_then(|s| s.split_whitespace().nth(1))
                 .and_then(|s| s.parse::<u64>().ok());
-            if let Some(kib) = kib { peak_kib.set(peak_kib.get().max(kib)); }
-            println!("{}", serde_json::json!({"segment":metric,"peak_rss_kib":kib}));
+            if let Some(kib) = kib {
+                peak_kib.set(peak_kib.get().max(kib));
+            }
+            println!(
+                "{}",
+                serde_json::json!({"segment":metric,"peak_rss_kib":kib})
+            );
         },
     )
     .expect("synthetic_prove_failed");

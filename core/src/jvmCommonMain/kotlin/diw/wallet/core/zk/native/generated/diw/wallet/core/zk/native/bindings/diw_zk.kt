@@ -654,6 +654,9 @@ internal open class UniffiForeignFutureStructVoid(
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureStructVoid.UniffiByValue,)
 }
+internal interface UniffiCallbackInterfaceZkProgressMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`kind`: RustBuffer.ByValue,`index`: Int,`total`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceZkTlsChannelMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`data`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -668,6 +671,22 @@ internal interface UniffiCallbackInterfaceZkTlsReceiptIssuerMethod0 : com.sun.jn
 }
 internal interface UniffiCallbackInterfaceZkTlsRevealChooserMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`transcript`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+@Structure.FieldOrder("onProgress", "uniffiFree")
+internal open class UniffiVTableCallbackInterfaceZkProgress(
+    @JvmField internal var `onProgress`: UniffiCallbackInterfaceZkProgressMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `onProgress`: UniffiCallbackInterfaceZkProgressMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfaceZkProgress(`onProgress`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceZkProgress) {
+        `onProgress` = other.`onProgress`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
 }
 @Structure.FieldOrder("send", "receive", "close", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceZkTlsChannel(
@@ -821,6 +840,14 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -858,6 +885,12 @@ fun uniffi_diw_zk_checksum_func_self_test(
 ): Short
 fun uniffi_diw_zk_checksum_func_verify_age_presentation(
 ): Short
+fun uniffi_diw_zk_checksum_func_zkpdf_check(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpdf_prove(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpdf_verify(
+): Short
 fun uniffi_diw_zk_checksum_func_zktls_prove(
 ): Short
 fun uniffi_diw_zk_checksum_func_zktls_verify(
@@ -865,6 +898,8 @@ fun uniffi_diw_zk_checksum_func_zktls_verify(
 fun uniffi_diw_zk_checksum_method_zkcanceltoken_cancel(
 ): Short
 fun uniffi_diw_zk_checksum_constructor_zkcanceltoken_new(
+): Short
+fun uniffi_diw_zk_checksum_method_zkprogress_on_progress(
 ): Short
 fun uniffi_diw_zk_checksum_method_zktlschannel_send(
 ): Short
@@ -914,6 +949,7 @@ internal interface UniffiLib : Library {
             val lib = loadIndirect<UniffiLib>(componentName)
             // No need to check the contract version and checksums, since 
             // we already did that with `IntegrityCheckingUniffiLib` above.
+            uniffiCallbackInterfaceZkProgress.register(lib)
             uniffiCallbackInterfaceZkTlsChannel.register(lib)
             uniffiCallbackInterfaceZkTlsReceiptIssuer.register(lib)
             uniffiCallbackInterfaceZkTlsRevealChooser.register(lib)
@@ -935,6 +971,8 @@ fun uniffi_diw_zk_fn_free_zkcanceltoken(`ptr`: Pointer,uniffi_out_err: UniffiRus
 fun uniffi_diw_zk_fn_constructor_zkcanceltoken_new(uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_diw_zk_fn_method_zkcanceltoken_cancel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_diw_zk_fn_init_callback_vtable_zkprogress(`vtable`: UniffiVTableCallbackInterfaceZkProgress,
 ): Unit
 fun uniffi_diw_zk_fn_init_callback_vtable_zktlschannel(`vtable`: UniffiVTableCallbackInterfaceZkTlsChannel,
 ): Unit
@@ -964,6 +1002,12 @@ fun uniffi_diw_zk_fn_func_self_test(uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,`expectedIssuerKeyX`: RustBuffer.ByValue,`expectedIssuerKeyY`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_diw_zk_fn_func_zkpdf_check(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpdf_prove(`input`: RustBuffer.ByValue,`cancel`: Pointer,`progress`: Long,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpdf_verify(`spec`: RustBuffer.ByValue,`bundle`: RustBuffer.ByValue,`assetsDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zktls_prove(`channel`: Long,`request`: RustBuffer.ByValue,`choose`: Long,`cancel`: Pointer,`requestHash`: RustBuffer.ByValue,`verifierStaticPublic`: RustBuffer.ByValue,`extraRootsDer`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zktls_verify(`channel`: Long,`expectedHost`: RustBuffer.ByValue,`port`: Short,`maxSent`: Int,`maxRecv`: Int,`mode`: RustBuffer.ByValue,`cancel`: Pointer,`requestHash`: RustBuffer.ByValue,`verifierStaticPrivate`: RustBuffer.ByValue,`extraRootsDer`: RustBuffer.ByValue,`issuer`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1127,6 +1171,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_diw_zk_checksum_func_verify_age_presentation() != 383.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_diw_zk_checksum_func_zkpdf_check() != 47012.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpdf_prove() != 49521.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpdf_verify() != 19451.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_diw_zk_checksum_func_zktls_prove() != 25121.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1137,6 +1190,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_constructor_zkcanceltoken_new() != 33946.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_method_zkprogress_on_progress() != 2177.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_method_zktlschannel_send() != 3945.toShort()) {
@@ -1892,6 +1948,678 @@ public object FfiConverterTypeZkNativeInfo: FfiConverterRustBuffer<ZkNativeInfo>
 
 
 
+data class ZkPdfAnchorInput (
+    var `record`: ZkPdfRecord
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfAnchorInput: FfiConverterRustBuffer<ZkPdfAnchorInput> {
+    override fun read(buf: ByteBuffer): ZkPdfAnchorInput {
+        return ZkPdfAnchorInput(
+            FfiConverterTypeZkPdfRecord.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfAnchorInput) = (
+            FfiConverterTypeZkPdfRecord.allocationSize(value.`record`)
+    )
+
+    override fun write(value: ZkPdfAnchorInput, buf: ByteBuffer) {
+            FfiConverterTypeZkPdfRecord.write(value.`record`, buf)
+    }
+}
+
+
+
+data class ZkPdfAnchorPublic (
+    var `record`: ZkPdfRecord, 
+    var `ordinal`: kotlin.UInt, 
+    var `total`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfAnchorPublic: FfiConverterRustBuffer<ZkPdfAnchorPublic> {
+    override fun read(buf: ByteBuffer): ZkPdfAnchorPublic {
+        return ZkPdfAnchorPublic(
+            FfiConverterTypeZkPdfRecord.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfAnchorPublic) = (
+            FfiConverterTypeZkPdfRecord.allocationSize(value.`record`) +
+            FfiConverterUInt.allocationSize(value.`ordinal`) +
+            FfiConverterUInt.allocationSize(value.`total`)
+    )
+
+    override fun write(value: ZkPdfAnchorPublic, buf: ByteBuffer) {
+            FfiConverterTypeZkPdfRecord.write(value.`record`, buf)
+            FfiConverterUInt.write(value.`ordinal`, buf)
+            FfiConverterUInt.write(value.`total`, buf)
+    }
+}
+
+
+
+data class ZkPdfBundle (
+    var `composition`: kotlin.String, 
+    var `segments`: List<ZkPdfSegmentProof>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfBundle: FfiConverterRustBuffer<ZkPdfBundle> {
+    override fun read(buf: ByteBuffer): ZkPdfBundle {
+        return ZkPdfBundle(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeZkPdfSegmentProof.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfBundle) = (
+            FfiConverterString.allocationSize(value.`composition`) +
+            FfiConverterSequenceTypeZkPdfSegmentProof.allocationSize(value.`segments`)
+    )
+
+    override fun write(value: ZkPdfBundle, buf: ByteBuffer) {
+            FfiConverterString.write(value.`composition`, buf)
+            FfiConverterSequenceTypeZkPdfSegmentProof.write(value.`segments`, buf)
+    }
+}
+
+
+
+data class ZkPdfDigitTable (
+    var `font`: kotlin.ByteArray, 
+    var `width`: kotlin.UByte, 
+    var `codes`: List<kotlin.UInt>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfDigitTable: FfiConverterRustBuffer<ZkPdfDigitTable> {
+    override fun read(buf: ByteBuffer): ZkPdfDigitTable {
+        return ZkPdfDigitTable(
+            FfiConverterByteArray.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfDigitTable) = (
+            FfiConverterByteArray.allocationSize(value.`font`) +
+            FfiConverterUByte.allocationSize(value.`width`) +
+            FfiConverterSequenceUInt.allocationSize(value.`codes`)
+    )
+
+    override fun write(value: ZkPdfDigitTable, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`font`, buf)
+            FfiConverterUByte.write(value.`width`, buf)
+            FfiConverterSequenceUInt.write(value.`codes`, buf)
+    }
+}
+
+
+
+data class ZkPdfPlan (
+    var `composition`: kotlin.String, 
+    var `totalSegments`: kotlin.UInt, 
+    var `shaSegments`: kotlin.UInt, 
+    var `inflateSegments`: kotlin.UInt, 
+    var `lexSegments`: kotlin.UInt, 
+    var `claimSegments`: kotlin.UInt, 
+    var `predicateSegments`: kotlin.UInt, 
+    var `estimatedProofBytes`: kotlin.ULong, 
+    var `publicInputBytes`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfPlan: FfiConverterRustBuffer<ZkPdfPlan> {
+    override fun read(buf: ByteBuffer): ZkPdfPlan {
+        return ZkPdfPlan(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfPlan) = (
+            FfiConverterString.allocationSize(value.`composition`) +
+            FfiConverterUInt.allocationSize(value.`totalSegments`) +
+            FfiConverterUInt.allocationSize(value.`shaSegments`) +
+            FfiConverterUInt.allocationSize(value.`inflateSegments`) +
+            FfiConverterUInt.allocationSize(value.`lexSegments`) +
+            FfiConverterUInt.allocationSize(value.`claimSegments`) +
+            FfiConverterUInt.allocationSize(value.`predicateSegments`) +
+            FfiConverterULong.allocationSize(value.`estimatedProofBytes`) +
+            FfiConverterULong.allocationSize(value.`publicInputBytes`)
+    )
+
+    override fun write(value: ZkPdfPlan, buf: ByteBuffer) {
+            FfiConverterString.write(value.`composition`, buf)
+            FfiConverterUInt.write(value.`totalSegments`, buf)
+            FfiConverterUInt.write(value.`shaSegments`, buf)
+            FfiConverterUInt.write(value.`inflateSegments`, buf)
+            FfiConverterUInt.write(value.`lexSegments`, buf)
+            FfiConverterUInt.write(value.`claimSegments`, buf)
+            FfiConverterUInt.write(value.`predicateSegments`, buf)
+            FfiConverterULong.write(value.`estimatedProofBytes`, buf)
+            FfiConverterULong.write(value.`publicInputBytes`, buf)
+    }
+}
+
+
+
+data class ZkPdfPredicateInput (
+    var `kind`: kotlin.UByte, 
+    var `slot`: kotlin.UInt, 
+    var `format`: kotlin.UByte, 
+    var `cutoff`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfPredicateInput: FfiConverterRustBuffer<ZkPdfPredicateInput> {
+    override fun read(buf: ByteBuffer): ZkPdfPredicateInput {
+        return ZkPdfPredicateInput(
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfPredicateInput) = (
+            FfiConverterUByte.allocationSize(value.`kind`) +
+            FfiConverterUInt.allocationSize(value.`slot`) +
+            FfiConverterUByte.allocationSize(value.`format`) +
+            FfiConverterUInt.allocationSize(value.`cutoff`)
+    )
+
+    override fun write(value: ZkPdfPredicateInput, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`kind`, buf)
+            FfiConverterUInt.write(value.`slot`, buf)
+            FfiConverterUByte.write(value.`format`, buf)
+            FfiConverterUInt.write(value.`cutoff`, buf)
+    }
+}
+
+
+
+data class ZkPdfProveInput (
+    var `composition`: kotlin.String, 
+    var `binding`: kotlin.ByteArray, 
+    var `windows`: List<ZkPdfWindowInput>, 
+    var `anchors`: List<ZkPdfAnchorInput>, 
+    var `slots`: List<ZkPdfSlotInput>, 
+    var `digitTables`: List<ZkPdfDigitTable>, 
+    var `predicates`: List<ZkPdfPredicateInput>, 
+    var `assetsDir`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfProveInput: FfiConverterRustBuffer<ZkPdfProveInput> {
+    override fun read(buf: ByteBuffer): ZkPdfProveInput {
+        return ZkPdfProveInput(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypeZkPdfWindowInput.read(buf),
+            FfiConverterSequenceTypeZkPdfAnchorInput.read(buf),
+            FfiConverterSequenceTypeZkPdfSlotInput.read(buf),
+            FfiConverterSequenceTypeZkPdfDigitTable.read(buf),
+            FfiConverterSequenceTypeZkPdfPredicateInput.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfProveInput) = (
+            FfiConverterString.allocationSize(value.`composition`) +
+            FfiConverterByteArray.allocationSize(value.`binding`) +
+            FfiConverterSequenceTypeZkPdfWindowInput.allocationSize(value.`windows`) +
+            FfiConverterSequenceTypeZkPdfAnchorInput.allocationSize(value.`anchors`) +
+            FfiConverterSequenceTypeZkPdfSlotInput.allocationSize(value.`slots`) +
+            FfiConverterSequenceTypeZkPdfDigitTable.allocationSize(value.`digitTables`) +
+            FfiConverterSequenceTypeZkPdfPredicateInput.allocationSize(value.`predicates`) +
+            FfiConverterString.allocationSize(value.`assetsDir`)
+    )
+
+    override fun write(value: ZkPdfProveInput, buf: ByteBuffer) {
+            FfiConverterString.write(value.`composition`, buf)
+            FfiConverterByteArray.write(value.`binding`, buf)
+            FfiConverterSequenceTypeZkPdfWindowInput.write(value.`windows`, buf)
+            FfiConverterSequenceTypeZkPdfAnchorInput.write(value.`anchors`, buf)
+            FfiConverterSequenceTypeZkPdfSlotInput.write(value.`slots`, buf)
+            FfiConverterSequenceTypeZkPdfDigitTable.write(value.`digitTables`, buf)
+            FfiConverterSequenceTypeZkPdfPredicateInput.write(value.`predicates`, buf)
+            FfiConverterString.write(value.`assetsDir`, buf)
+    }
+}
+
+
+
+data class ZkPdfProveOutput (
+    var `bundle`: ZkPdfBundle, 
+    var `midOuts`: List<kotlin.ByteArray>, 
+    var `anchorOrdinals`: List<kotlin.UInt>, 
+    var `anchorTotals`: List<kotlin.UInt>, 
+    var `claimRecords`: List<kotlin.ByteArray>, 
+    var `claimDigests`: List<kotlin.ByteArray>, 
+    var `proveMs`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfProveOutput: FfiConverterRustBuffer<ZkPdfProveOutput> {
+    override fun read(buf: ByteBuffer): ZkPdfProveOutput {
+        return ZkPdfProveOutput(
+            FfiConverterTypeZkPdfBundle.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfProveOutput) = (
+            FfiConverterTypeZkPdfBundle.allocationSize(value.`bundle`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`midOuts`) +
+            FfiConverterSequenceUInt.allocationSize(value.`anchorOrdinals`) +
+            FfiConverterSequenceUInt.allocationSize(value.`anchorTotals`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`claimRecords`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`claimDigests`) +
+            FfiConverterULong.allocationSize(value.`proveMs`)
+    )
+
+    override fun write(value: ZkPdfProveOutput, buf: ByteBuffer) {
+            FfiConverterTypeZkPdfBundle.write(value.`bundle`, buf)
+            FfiConverterSequenceByteArray.write(value.`midOuts`, buf)
+            FfiConverterSequenceUInt.write(value.`anchorOrdinals`, buf)
+            FfiConverterSequenceUInt.write(value.`anchorTotals`, buf)
+            FfiConverterSequenceByteArray.write(value.`claimRecords`, buf)
+            FfiConverterSequenceByteArray.write(value.`claimDigests`, buf)
+            FfiConverterULong.write(value.`proveMs`, buf)
+    }
+}
+
+
+
+data class ZkPdfRecord (
+    var `font`: kotlin.ByteArray, 
+    var `kind`: kotlin.UByte, 
+    var `strings`: List<kotlin.ByteArray>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfRecord: FfiConverterRustBuffer<ZkPdfRecord> {
+    override fun read(buf: ByteBuffer): ZkPdfRecord {
+        return ZkPdfRecord(
+            FfiConverterByteArray.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfRecord) = (
+            FfiConverterByteArray.allocationSize(value.`font`) +
+            FfiConverterUByte.allocationSize(value.`kind`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`strings`)
+    )
+
+    override fun write(value: ZkPdfRecord, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`font`, buf)
+            FfiConverterUByte.write(value.`kind`, buf)
+            FfiConverterSequenceByteArray.write(value.`strings`, buf)
+    }
+}
+
+
+
+data class ZkPdfSegmentProof (
+    var `kind`: kotlin.String, 
+    var `index`: kotlin.UInt, 
+    var `proof`: kotlin.ByteArray, 
+    var `publicInputs`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfSegmentProof: FfiConverterRustBuffer<ZkPdfSegmentProof> {
+    override fun read(buf: ByteBuffer): ZkPdfSegmentProof {
+        return ZkPdfSegmentProof(
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfSegmentProof) = (
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterUInt.allocationSize(value.`index`) +
+            FfiConverterByteArray.allocationSize(value.`proof`) +
+            FfiConverterByteArray.allocationSize(value.`publicInputs`)
+    )
+
+    override fun write(value: ZkPdfSegmentProof, buf: ByteBuffer) {
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterUInt.write(value.`index`, buf)
+            FfiConverterByteArray.write(value.`proof`, buf)
+            FfiConverterByteArray.write(value.`publicInputs`, buf)
+    }
+}
+
+
+
+data class ZkPdfSlotInput (
+    var `slot`: kotlin.UInt, 
+    var `beforeAnchor`: kotlin.UInt, 
+    var `afterAnchor`: kotlin.UInt, 
+    var `salt`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfSlotInput: FfiConverterRustBuffer<ZkPdfSlotInput> {
+    override fun read(buf: ByteBuffer): ZkPdfSlotInput {
+        return ZkPdfSlotInput(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfSlotInput) = (
+            FfiConverterUInt.allocationSize(value.`slot`) +
+            FfiConverterUInt.allocationSize(value.`beforeAnchor`) +
+            FfiConverterUInt.allocationSize(value.`afterAnchor`) +
+            FfiConverterByteArray.allocationSize(value.`salt`)
+    )
+
+    override fun write(value: ZkPdfSlotInput, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`slot`, buf)
+            FfiConverterUInt.write(value.`beforeAnchor`, buf)
+            FfiConverterUInt.write(value.`afterAnchor`, buf)
+            FfiConverterByteArray.write(value.`salt`, buf)
+    }
+}
+
+
+
+data class ZkPdfSlotPublic (
+    var `slot`: kotlin.UInt, 
+    var `beforeAnchor`: kotlin.UInt, 
+    var `afterAnchor`: kotlin.UInt
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfSlotPublic: FfiConverterRustBuffer<ZkPdfSlotPublic> {
+    override fun read(buf: ByteBuffer): ZkPdfSlotPublic {
+        return ZkPdfSlotPublic(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfSlotPublic) = (
+            FfiConverterUInt.allocationSize(value.`slot`) +
+            FfiConverterUInt.allocationSize(value.`beforeAnchor`) +
+            FfiConverterUInt.allocationSize(value.`afterAnchor`)
+    )
+
+    override fun write(value: ZkPdfSlotPublic, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`slot`, buf)
+            FfiConverterUInt.write(value.`beforeAnchor`, buf)
+            FfiConverterUInt.write(value.`afterAnchor`, buf)
+    }
+}
+
+
+
+data class ZkPdfVerified (
+    var `midOuts`: List<kotlin.ByteArray>, 
+    var `claimDigests`: List<kotlin.ByteArray>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfVerified: FfiConverterRustBuffer<ZkPdfVerified> {
+    override fun read(buf: ByteBuffer): ZkPdfVerified {
+        return ZkPdfVerified(
+            FfiConverterSequenceByteArray.read(buf),
+            FfiConverterSequenceByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfVerified) = (
+            FfiConverterSequenceByteArray.allocationSize(value.`midOuts`) +
+            FfiConverterSequenceByteArray.allocationSize(value.`claimDigests`)
+    )
+
+    override fun write(value: ZkPdfVerified, buf: ByteBuffer) {
+            FfiConverterSequenceByteArray.write(value.`midOuts`, buf)
+            FfiConverterSequenceByteArray.write(value.`claimDigests`, buf)
+    }
+}
+
+
+
+data class ZkPdfVerifierSpec (
+    var `composition`: kotlin.String, 
+    var `binding`: kotlin.ByteArray, 
+    var `windows`: List<ZkPdfWindowPublic>, 
+    var `anchors`: List<ZkPdfAnchorPublic>, 
+    var `slots`: List<ZkPdfSlotPublic>, 
+    var `digitTables`: List<ZkPdfDigitTable>, 
+    var `predicates`: List<ZkPdfPredicateInput>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfVerifierSpec: FfiConverterRustBuffer<ZkPdfVerifierSpec> {
+    override fun read(buf: ByteBuffer): ZkPdfVerifierSpec {
+        return ZkPdfVerifierSpec(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypeZkPdfWindowPublic.read(buf),
+            FfiConverterSequenceTypeZkPdfAnchorPublic.read(buf),
+            FfiConverterSequenceTypeZkPdfSlotPublic.read(buf),
+            FfiConverterSequenceTypeZkPdfDigitTable.read(buf),
+            FfiConverterSequenceTypeZkPdfPredicateInput.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfVerifierSpec) = (
+            FfiConverterString.allocationSize(value.`composition`) +
+            FfiConverterByteArray.allocationSize(value.`binding`) +
+            FfiConverterSequenceTypeZkPdfWindowPublic.allocationSize(value.`windows`) +
+            FfiConverterSequenceTypeZkPdfAnchorPublic.allocationSize(value.`anchors`) +
+            FfiConverterSequenceTypeZkPdfSlotPublic.allocationSize(value.`slots`) +
+            FfiConverterSequenceTypeZkPdfDigitTable.allocationSize(value.`digitTables`) +
+            FfiConverterSequenceTypeZkPdfPredicateInput.allocationSize(value.`predicates`)
+    )
+
+    override fun write(value: ZkPdfVerifierSpec, buf: ByteBuffer) {
+            FfiConverterString.write(value.`composition`, buf)
+            FfiConverterByteArray.write(value.`binding`, buf)
+            FfiConverterSequenceTypeZkPdfWindowPublic.write(value.`windows`, buf)
+            FfiConverterSequenceTypeZkPdfAnchorPublic.write(value.`anchors`, buf)
+            FfiConverterSequenceTypeZkPdfSlotPublic.write(value.`slots`, buf)
+            FfiConverterSequenceTypeZkPdfDigitTable.write(value.`digitTables`, buf)
+            FfiConverterSequenceTypeZkPdfPredicateInput.write(value.`predicates`, buf)
+    }
+}
+
+
+
+data class ZkPdfWindowInput (
+    var `role`: kotlin.String, 
+    var `midIn`: kotlin.ByteArray, 
+    var `head`: kotlin.ByteArray, 
+    var `privateData`: kotlin.ByteArray, 
+    var `tail`: kotlin.ByteArray, 
+    var `keyStream`: kotlin.ByteArray?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfWindowInput: FfiConverterRustBuffer<ZkPdfWindowInput> {
+    override fun read(buf: ByteBuffer): ZkPdfWindowInput {
+        return ZkPdfWindowInput(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfWindowInput) = (
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterByteArray.allocationSize(value.`midIn`) +
+            FfiConverterByteArray.allocationSize(value.`head`) +
+            FfiConverterByteArray.allocationSize(value.`privateData`) +
+            FfiConverterByteArray.allocationSize(value.`tail`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`keyStream`)
+    )
+
+    override fun write(value: ZkPdfWindowInput, buf: ByteBuffer) {
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterByteArray.write(value.`midIn`, buf)
+            FfiConverterByteArray.write(value.`head`, buf)
+            FfiConverterByteArray.write(value.`privateData`, buf)
+            FfiConverterByteArray.write(value.`tail`, buf)
+            FfiConverterOptionalByteArray.write(value.`keyStream`, buf)
+    }
+}
+
+
+
+data class ZkPdfWindowPublic (
+    var `role`: kotlin.String, 
+    var `midIn`: kotlin.ByteArray, 
+    var `blocks`: kotlin.UInt, 
+    var `head`: kotlin.ByteArray, 
+    var `tail`: kotlin.ByteArray, 
+    var `keyStream`: kotlin.ByteArray?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeZkPdfWindowPublic: FfiConverterRustBuffer<ZkPdfWindowPublic> {
+    override fun read(buf: ByteBuffer): ZkPdfWindowPublic {
+        return ZkPdfWindowPublic(
+            FfiConverterString.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ZkPdfWindowPublic) = (
+            FfiConverterString.allocationSize(value.`role`) +
+            FfiConverterByteArray.allocationSize(value.`midIn`) +
+            FfiConverterUInt.allocationSize(value.`blocks`) +
+            FfiConverterByteArray.allocationSize(value.`head`) +
+            FfiConverterByteArray.allocationSize(value.`tail`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`keyStream`)
+    )
+
+    override fun write(value: ZkPdfWindowPublic, buf: ByteBuffer) {
+            FfiConverterString.write(value.`role`, buf)
+            FfiConverterByteArray.write(value.`midIn`, buf)
+            FfiConverterUInt.write(value.`blocks`, buf)
+            FfiConverterByteArray.write(value.`head`, buf)
+            FfiConverterByteArray.write(value.`tail`, buf)
+            FfiConverterOptionalByteArray.write(value.`keyStream`, buf)
+    }
+}
+
+
+
 data class ZkRange (
     var `start`: kotlin.UInt, 
     var `end`: kotlin.UInt
@@ -2304,6 +3032,64 @@ public object FfiConverterTypeZkError : FfiConverterRustBuffer<ZkException> {
 
 
 
+public interface ZkProgress {
+    
+    /**
+     * One-based position in the complete composition, emitted before the segment.
+     */
+    fun `onProgress`(`kind`: kotlin.String, `index`: kotlin.UInt, `total`: kotlin.UInt)
+    
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceZkProgress {
+    internal object `onProgress`: UniffiCallbackInterfaceZkProgressMethod0 {
+        override fun callback(`uniffiHandle`: Long,`kind`: RustBuffer.ByValue,`index`: Int,`total`: Int,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeZkProgress.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onProgress`(
+                    FfiConverterString.lift(`kind`),
+                    FfiConverterUInt.lift(`index`),
+                    FfiConverterUInt.lift(`total`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeZkProgress.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceZkProgress.UniffiByValue(
+        `onProgress`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_diw_zk_fn_init_callback_vtable_zkprogress(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypeZkProgress: FfiConverterCallbackInterface<ZkProgress>()
+
+
+
+
+
 /**
  * Implementations must allow concurrent send/receive and close must unblock both.
  */
@@ -2543,6 +3329,66 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
 /**
  * @suppress
  */
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterByteArray.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterByteArray.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterByteArray.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>> {
+    override fun read(buf: ByteBuffer): List<kotlin.UInt> {
+        val len = buf.getInt()
+        return List<kotlin.UInt>(len) {
+            FfiConverterUInt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.UInt>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterUInt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.UInt>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterUInt.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
@@ -2589,6 +3435,258 @@ public object FfiConverterSequenceByteArray: FfiConverterRustBuffer<List<kotlin.
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterByteArray.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfAnchorInput: FfiConverterRustBuffer<List<ZkPdfAnchorInput>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfAnchorInput> {
+        val len = buf.getInt()
+        return List<ZkPdfAnchorInput>(len) {
+            FfiConverterTypeZkPdfAnchorInput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfAnchorInput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfAnchorInput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfAnchorInput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfAnchorInput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfAnchorPublic: FfiConverterRustBuffer<List<ZkPdfAnchorPublic>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfAnchorPublic> {
+        val len = buf.getInt()
+        return List<ZkPdfAnchorPublic>(len) {
+            FfiConverterTypeZkPdfAnchorPublic.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfAnchorPublic>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfAnchorPublic.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfAnchorPublic>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfAnchorPublic.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfDigitTable: FfiConverterRustBuffer<List<ZkPdfDigitTable>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfDigitTable> {
+        val len = buf.getInt()
+        return List<ZkPdfDigitTable>(len) {
+            FfiConverterTypeZkPdfDigitTable.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfDigitTable>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfDigitTable.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfDigitTable>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfDigitTable.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfPredicateInput: FfiConverterRustBuffer<List<ZkPdfPredicateInput>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfPredicateInput> {
+        val len = buf.getInt()
+        return List<ZkPdfPredicateInput>(len) {
+            FfiConverterTypeZkPdfPredicateInput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfPredicateInput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfPredicateInput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfPredicateInput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfPredicateInput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfSegmentProof: FfiConverterRustBuffer<List<ZkPdfSegmentProof>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfSegmentProof> {
+        val len = buf.getInt()
+        return List<ZkPdfSegmentProof>(len) {
+            FfiConverterTypeZkPdfSegmentProof.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfSegmentProof>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfSegmentProof.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfSegmentProof>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfSegmentProof.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfSlotInput: FfiConverterRustBuffer<List<ZkPdfSlotInput>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfSlotInput> {
+        val len = buf.getInt()
+        return List<ZkPdfSlotInput>(len) {
+            FfiConverterTypeZkPdfSlotInput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfSlotInput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfSlotInput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfSlotInput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfSlotInput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfSlotPublic: FfiConverterRustBuffer<List<ZkPdfSlotPublic>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfSlotPublic> {
+        val len = buf.getInt()
+        return List<ZkPdfSlotPublic>(len) {
+            FfiConverterTypeZkPdfSlotPublic.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfSlotPublic>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfSlotPublic.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfSlotPublic>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfSlotPublic.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfWindowInput: FfiConverterRustBuffer<List<ZkPdfWindowInput>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfWindowInput> {
+        val len = buf.getInt()
+        return List<ZkPdfWindowInput>(len) {
+            FfiConverterTypeZkPdfWindowInput.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfWindowInput>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfWindowInput.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfWindowInput>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfWindowInput.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeZkPdfWindowPublic: FfiConverterRustBuffer<List<ZkPdfWindowPublic>> {
+    override fun read(buf: ByteBuffer): List<ZkPdfWindowPublic> {
+        val len = buf.getInt()
+        return List<ZkPdfWindowPublic>(len) {
+            FfiConverterTypeZkPdfWindowPublic.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ZkPdfWindowPublic>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeZkPdfWindowPublic.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ZkPdfWindowPublic>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeZkPdfWindowPublic.write(it, buf)
         }
     }
 }
@@ -2750,6 +3848,36 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_verify_age_presentation(
         FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`nonce`),FfiConverterString.lower(`claimName`),FfiConverterUByte.lower(`claimFormat`),FfiConverterULong.lower(`cutoff`),FfiConverterString.lower(`expectedIssuerKeyX`),FfiConverterString.lower(`expectedIssuerKeyY`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `zkpdfCheck`(`input`: ZkPdfProveInput): ZkPdfPlan {
+            return FfiConverterTypeZkPdfPlan.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpdf_check(
+        FfiConverterTypeZkPdfProveInput.lower(`input`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `zkpdfProve`(`input`: ZkPdfProveInput, `cancel`: ZkCancelToken, `progress`: ZkProgress): ZkPdfProveOutput {
+            return FfiConverterTypeZkPdfProveOutput.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpdf_prove(
+        FfiConverterTypeZkPdfProveInput.lower(`input`),FfiConverterTypeZkCancelToken.lower(`cancel`),FfiConverterTypeZkProgress.lower(`progress`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `zkpdfVerify`(`spec`: ZkPdfVerifierSpec, `bundle`: ZkPdfBundle, `assetsDir`: kotlin.String): ZkPdfVerified {
+            return FfiConverterTypeZkPdfVerified.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpdf_verify(
+        FfiConverterTypeZkPdfVerifierSpec.lower(`spec`),FfiConverterTypeZkPdfBundle.lower(`bundle`),FfiConverterString.lower(`assetsDir`),_status)
 }
     )
     }
