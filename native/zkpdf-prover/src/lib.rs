@@ -1,6 +1,6 @@
 //! Offline witness execution for the frozen zkPDF v1 circuits.
 
-pub mod acir;
+mod acir;
 mod assets;
 mod field;
 mod inflate;

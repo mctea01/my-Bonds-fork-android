@@ -16,7 +16,8 @@ https://github.com/AztecProtocol/aztec-packages/tree/f2bed7ed073966bb2a2dcdd02a1
 Statically linked with logging disabled by the application environment hooks.
 Its pinned build dependencies include msgpack-c (Boost Software License 1.0,
 5ee9a1c8c325658b29867829677c7eb79c433a98), libdeflate (MIT,
-b03254d978d7af21a7512dee8fdc3367bc15c656), Tracy headers (BSD-3-Clause),
-and LMDB (OpenLDAP Public License 2.8). Upstream CMake files pin these sources.
+b03254d978d7af21a7512dee8fdc3367bc15c656), Tracy headers (BSD-3-Clause,
+5d542dc09f3d9378d005092a4ad446bd405f819a), and LMDB
+(OpenLDAP Public License 2.8, ddd0a773e2f44d38e4e31ec9ed81af81f4e4ccbb). Upstream CMake files pin these sources.
 The BN254 CRS is the public Aztec Ignition ceremony transcript prefix, not a
 secret setup key. Runtime never downloads it; exact hashes are in assets.json.

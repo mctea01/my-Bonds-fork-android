@@ -186,6 +186,29 @@ mod tests {
             desktop.composition = changed.composition.clone();
             assert!(verify(&desktop, &changed, &assets).is_err());
         }
+        if let Some(path) = std::env::var_os("ZKPDF_DESKTOP_BUNDLE") {
+            let desktop: ZkPdfBundle =
+                serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+            let (_, spec) = fixture("student");
+            let mut desktop_spec = spec.clone();
+            desktop_spec.composition = "zkpdf-v1-desktop".into();
+            assert!(verify(&desktop_spec, &desktop, &assets).is_ok());
+            for kind in ["inflate0", "lex"] {
+                let index = student
+                    .segments
+                    .iter()
+                    .position(|s| s.kind == kind)
+                    .unwrap();
+                let mut mixed = student.clone();
+                mixed.segments[index] = desktop
+                    .segments
+                    .iter()
+                    .find(|s| s.kind == kind)
+                    .unwrap()
+                    .clone();
+                assert!(verify(&spec, &mixed, &assets).is_err());
+            }
+        }
         let (_, spec) = fixture("student");
         let mut changed = student;
         changed.segments[0] = travel.segments[0].clone();

@@ -28,6 +28,14 @@ def digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def package_gzip(data):
+    encoded = bytearray(gzip.compress(data, compresslevel=9, mtime=0))
+    # Frozen catalog packaging uses OS=3. Python 3.13 changed compress(mtime=0)
+    # to OS=255; pin this metadata byte independently of Python/host defaults.
+    encoded[9] = 3
+    return bytes(encoded)
+
+
 def require(condition, code):
     if not condition:
         raise ValueError(code)
@@ -152,7 +160,7 @@ def main():
                 and digest(path) == entry["installedSha256"], "catalog_installed_integrity")
         packaged = path.with_suffix(path.suffix + ".gz")
         if not packaged.is_file() or digest(packaged) != entry["gzipSha256"]:
-            packaged.write_bytes(gzip.compress(path.read_bytes(), compresslevel=9, mtime=0))
+            packaged.write_bytes(package_gzip(path.read_bytes()))
         require(packaged.stat().st_size == entry["gzipBytes"]
                 and digest(packaged) == entry["gzipSha256"], "catalog_gzip_integrity")
     print("Ten distinct circuits, fourteen composition mappings and CRS verified")

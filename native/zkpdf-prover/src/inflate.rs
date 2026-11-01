@@ -391,6 +391,19 @@ pub fn segments(
     t: usize,
     salt: F,
 ) -> Result<Vec<Value>> {
+    segments_with_boundary::<false>(data, full, p, t0, t, salt)
+}
+
+// Production eagerly consumes a zero-output end marker at the boundary.
+// The alternative is instantiated only by the frozen-constraint regression test.
+fn segments_with_boundary<const DEFER_END: bool>(
+    data: &[u8],
+    full: &Decoded,
+    p: usize,
+    t0: usize,
+    t: usize,
+    salt: F,
+) -> Result<Vec<Value>> {
     let zero = field::number(0);
     let cz = field::bytes_commit(1, salt, None, data, 8192)?;
     let mut state = State {
@@ -439,7 +452,9 @@ pub fn segments(
         let mut decoded = 0;
         while state.phase != 2 && produced <= p {
             if produced == p
-                && (state.phase == 0 || full.tokens.get(cursor).is_some_and(|x| x.length > 0))
+                && (DEFER_END
+                    || state.phase == 0
+                    || full.tokens.get(cursor).is_some_and(|x| x.length > 0))
             {
                 break;
             }
@@ -607,6 +622,41 @@ mod tests {
     use super::*;
     use acvm::AcirField;
     use sha2::{Digest, Sha256};
+
+    #[test]
+    #[ignore = "documents a frozen-circuit boundary requiring design review; needs authenticated assets"]
+    fn frozen_empty_final_segment_boundary() {
+        // One fixed-Huffman block of 2048 spaces. Both boundary choices satisfy
+        // the frozen ACIR for the same compressed input and plaintext length.
+        let data = [
+            120, 1, 83, 24, 5, 163, 96, 20, 140, 130, 81, 48, 10, 70, 193, 136, 3, 0, 196, 0, 0, 16,
+        ];
+        let decoded = decode(&data).unwrap();
+        assert_eq!(decoded.plain.len(), 2048);
+        let canonical = segments(&data, &decoded, 2048, 1024, 352, field::number(42)).unwrap();
+        assert_eq!(canonical.len(), 1);
+        let witnesses =
+            segments_with_boundary::<true>(&data, &decoded, 2048, 1024, 352, field::number(42))
+                .unwrap();
+        assert_eq!(witnesses.len(), 2);
+        assert!(witnesses[0]["last"] == false && witnesses[1]["last"] == true);
+        assert!(witnesses[0]["plain_len"] == 2048 && witnesses[1]["plain_len"] == 0);
+        let directory = std::env::var("ZKPDF_ASSETS_DIR").expect("assets_directory");
+        for (kind, witness) in [
+            ("inflate0", &canonical[0]),
+            ("inflate0", &witnesses[0]),
+            ("inflate", &witnesses[1]),
+        ] {
+            let artifact = crate::assets::circuit(
+                std::path::Path::new(&directory),
+                "zkpdf-v1-phone",
+                kind,
+                false,
+            )
+            .unwrap();
+            assert!(crate::acir::execute(&artifact, witness).is_ok());
+        }
+    }
     #[test]
     fn synthetic_public_inputs_match_python() {
         for source in [

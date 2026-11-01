@@ -30,6 +30,7 @@ export ZKPDF_BB_BUILD="$PWD/target/bb-x86_64-unknown-linux-gnu"
 DIW_ZK_FEATURES=zkpdf ./build.sh host
 RUST_MIN_STACK=67108864 cargo test --workspace --locked --features diw-zk-ffi/zkpdf
 ./generate-bindings.sh
+cd ..
 ```
 
 `generate-bindings.sh` emits all exports in a runtime-only build. It does not
@@ -72,8 +73,19 @@ absolute debug source paths, it canonicalizes only `file_map` paths to the
 frozen compilation root before checking the complete file hash.
 
 The added catalog URLs are intentionally empty pending release publication.
-The existing Kotlin manifest pin, empty-URL validation and Gradle backend
-allowlist require integration changes outside this work package's edit scope.
+The Kotlin manifest pin, pending zkPDF URL validation, core Gradle allowlist and
+native feature test were updated under an explicit scope exception. The app
+Gradle allowlist still excludes zkpdf and remains for Claude to update. Until
+then, build the native library first as above and reuse it for Kotlin checks:
+
+```sh
+ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" ./gradlew \
+  :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test \
+  -Pdiw.zkNative=skip -Pdiw.zkFeatures=
+```
+
+This skips rebuilding the already packaged native library; it does not skip
+`ZkPdfCircuitTest`, which requires and executes the zkPDF backend when present.
 
 ## API behavior
 
@@ -124,7 +136,8 @@ ZKPDF_SYNTHETIC_OUTPUT=/tmp/zkpdf-rust cargo test --manifest-path native/Cargo.t
   --release -p zkpdf-prover --features bb --locked real_proof_rejections -- --ignored
 ```
 
-The benchmark accepts only the two embedded fictional documents. It reports
+The benchmark accepts only the two embedded fictional documents. An optional
+fourth argument selects `zkpdf-v1-desktop` for additional composition coverage. It reports
 per-segment ACVM, proving, self-verification time, proof/public-input bytes and
 Linux RSS. On Linux it resets VmHWM via `/proc/self/clear_refs` at each segment;
 the maximum is reported for the complete proof. Total wall time also includes
@@ -139,3 +152,26 @@ For both interoperability directions, set `ZKPDF_SYNTHETIC_OUTPUT` while running
 --rust /tmp/zkpdf-rust --acvm /tmp/zkpdf-acvm --output /tmp/zkpdf-cli`.
 Set `ZKPDF_CLI_PROOFS=/tmp/zkpdf-cli` for `real_proof_rejections` to require Rust
 verification of all CLI proofs as well as the real-bundle negative cases.
+
+`claim_records` and `claim_digests` have twelve entries indexed by slot; disabled
+records are empty and disabled digests are zero. Anchor ordinal/total vectors
+follow the supplied enabled-anchor order. The optional `ZKPDF_DESKTOP_BUNDLE`
+path on `real_proof_rejections` adds validation of a separately generated desktop
+student bundle and rejects mixing its inflate/lex proofs into the phone bundle.
+
+## Frozen boundary requiring design review
+
+The ignored `frozen_empty_final_segment_boundary` regression executes the pinned
+ACIR for both one segment and two segments of the same 2048-byte plaintext:
+deferring the end-of-block symbol permits an empty final segment. Production
+witness generation eagerly consumes that symbol, but a verifier cannot enforce
+this choice from the current public inputs. `ZkPdfVerifierSpec` has no plaintext
+length. Strict unique segmentation therefore remains an acceptance blocker for
+Claude to resolve in the frozen circuit/specification. The test demonstrates
+constraint satisfaction, not a complete adversarial PDF proof bundle.
+
+```sh
+ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" cargo test \
+  --manifest-path native/Cargo.toml --release -p zkpdf-prover --features bb \
+  --locked frozen_empty_final_segment_boundary -- --ignored
+```

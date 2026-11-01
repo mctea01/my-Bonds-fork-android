@@ -4,7 +4,10 @@ fn main() {
     use std::{fs, path::PathBuf, time::Instant};
     use zkpdf_prover::*;
     let args: Vec<_> = std::env::args().collect();
-    assert!(args.len() == 4, "synthetic_bench_arguments");
+    assert!(
+        args.len() == 4 || args.len() == 5,
+        "synthetic_bench_arguments"
+    );
     let source = match args[1].as_str() {
         "student" => include_str!("../../../test-servers/src/test/resources/zkpdf/student.json"),
         "travel-rc4" => {
@@ -14,8 +17,16 @@ fn main() {
     };
     let fixture: serde_json::Value = serde_json::from_str(source).unwrap();
     let mut input: ZkPdfProveInput = serde_json::from_value(fixture["input"].clone()).unwrap();
-    let spec: ZkPdfVerifierSpec = serde_json::from_value(fixture["spec"].clone()).unwrap();
+    let mut spec: ZkPdfVerifierSpec = serde_json::from_value(fixture["spec"].clone()).unwrap();
     input.assets_dir = args[2].clone();
+    if let Some(composition) = args.get(4) {
+        assert!(
+            matches!(composition.as_str(), "zkpdf-v1-phone" | "zkpdf-v1-desktop"),
+            "composition"
+        );
+        input.composition = composition.clone();
+        spec.composition = composition.clone();
+    }
     let out = PathBuf::from(&args[3]);
     fs::create_dir_all(&out).unwrap();
     let peak_kib = std::cell::Cell::new(0u64);
@@ -62,7 +73,7 @@ fn main() {
     .unwrap();
     println!(
         "{}",
-        serde_json::json!({"fixture":args[1], "total_prove_ms":result.prove_ms,
+        serde_json::json!({"fixture":args[1], "composition":input.composition, "total_prove_ms":result.prove_ms,
         "total_with_verify_ms":started.elapsed().as_millis(),"segments":result.bundle.segments.len(),"peak_rss_kib":peak_kib.get()})
     );
 }
