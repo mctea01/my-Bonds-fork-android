@@ -1,0 +1,90 @@
+name: zkPDF assets
+
+# Builds the frozen zkPDF circuit assets (10 ACIR, 10 verification keys, the CRS prefix) from native/circuits with
+# the pinned nargo and bb, checks every file against native/circuits/VERSIONS and native/assets.json, and publishes
+# the gzip files to the zkpdf-v1 release that native/assets.json points to. Run it by hand; the files never change
+# for v1, so an existing release is only completed, never overwritten.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: zkpdf-assets
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  LANG: C.UTF-8
+  RELEASE_TAG: zkpdf-v1
+  NARGO_URL: https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.15/nargo-x86_64-unknown-linux-gnu.tar.gz
+  NARGO_SHA256: ca1c6437508e195294e630e5866b17b956e0d5ab0c99625b379ba54001d59c39
+  BB_URL: https://github.com/AztecProtocol/aztec-packages/releases/download/v2.1.9/barretenberg-amd64-linux.tar.gz
+  BB_SHA256: 2152f4055fb2c616362ef196f8a658aa5048e3e7b66ee4d2ab025783fdc08060
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Pinned nargo and bb
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          curl -sSLf -o "$RUNNER_TEMP/nargo.tgz" "$NARGO_URL"
+          curl -sSLf -o "$RUNNER_TEMP/bb.tgz" "$BB_URL"
+          echo "$NARGO_SHA256  $RUNNER_TEMP/nargo.tgz" | sha256sum -c -
+          echo "$BB_SHA256  $RUNNER_TEMP/bb.tgz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/nargo.tgz" -C "$RUNNER_TEMP/tools" nargo
+          tar xzf "$RUNNER_TEMP/bb.tgz" -C "$RUNNER_TEMP/tools" bb
+          echo "NARGO=$RUNNER_TEMP/tools/nargo" >> "$GITHUB_ENV"
+          echo "BB=$RUNNER_TEMP/tools/bb" >> "$GITHUB_ENV"
+      # Compiles every circuit, writes every verification key and fetches the CRS prefix; all checked by hash.
+      - name: Build and check assets
+        run: python3 -I native/circuits/tools/build_assets.py --download-crs
+      - name: Collect release files
+        run: |
+          mkdir -p dist
+          python3 -I - <<'EOF'
+          import json, pathlib, shutil
+          catalog = json.loads(pathlib.Path("native/assets.json").read_text())
+          source = pathlib.Path("native/circuits/target/zkpdf-assets")
+          names = []
+          for entry in catalog:
+              if entry["backend"] != "NOIR_ULTRAHONK":
+                  continue
+              name = entry["id"] + ".gz"
+              expected = f"https://github.com/${{ github.repository }}/releases/download/zkpdf-v1/{name}"
+              if entry["urls"] != [expected]:
+                  raise SystemExit(f"assets.json must list {expected}")
+              shutil.copyfile(source / name, pathlib.Path("dist") / name)
+              names.append(name)
+          if len(names) != 22:
+              raise SystemExit("expected 22 zkPDF assets")
+          EOF
+          (cd dist && sha256sum *.gz > SHA256SUMS && cat SHA256SUMS)
+      - name: Publish to the zkpdf-v1 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Frozen zkPDF v1 circuit assets (native/circuits at ${GITHUB_SHA::7}): ACIR and verification keys"
+            echo "built with nargo 1.0.0-beta.15 and bb 2.1.9, and the BN254 CRS prefix. The app downloads them as listed in"
+            echo "native/assets.json and checks each SHA-256 before use. SHA256SUMS lists the gzip files."
+          } > notes.md
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # Frozen files: upload only what is missing; a different file under the same name is an error.
+            existing=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+            for file in dist/*; do
+              name=$(basename "$file")
+              if printf '%s\n' "$existing" | grep -qx "$name"; then
+                gh release download "$RELEASE_TAG" --pattern "$name" --output "$RUNNER_TEMP/check" --clobber
+                cmp -s "$file" "$RUNNER_TEMP/check" || { echo "::error::$name differs from the published file"; exit 1; }
+              else
+                gh release upload "$RELEASE_TAG" "$file"
+              fi
+            done
+          else
+            gh release create "$RELEASE_TAG" dist/* --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "zkPDF assets v1" --notes-file notes.md
+          fi
