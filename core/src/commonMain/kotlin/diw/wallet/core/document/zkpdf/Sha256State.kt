@@ -11,6 +11,12 @@ class Sha256State private constructor(private val state: IntArray) {
             return Sha256State(words.copyOf())
         }
 
+        /** The big-endian 32-byte form that [toBytes] writes and the circuits use. */
+        fun ofBytes(bytes: ByteArray): Sha256State {
+            require(bytes.size == 32) { "Invalid SHA-256 state size" }
+            return Sha256State(IntArray(8) { k -> (0 until 4).fold(0) { acc, j -> (acc shl 8) or (bytes[k * 4 + j].toInt() and 255) } })
+        }
+
         private val K = longArrayOf(
             0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
             0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
