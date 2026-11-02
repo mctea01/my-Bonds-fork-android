@@ -20,15 +20,17 @@ env:
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
   # The ZK native library (native/build.sh) must be built; without this a missing toolchain only skips it.
   DIW_ZK_NATIVE: require
-  # Link the OpenAC age-proof backend (needs protoc and libclang) on every platform.
-  DIW_ZK_FEATURES: openac,tlsn
+  # Link the OpenAC age-proof (needs protoc and libclang), TLSNotary and zkPDF (Barretenberg, a C++ build with CMake and
+  # Ninja) backends. The desktop matrix leaves zkPDF out on Windows (no port of Barretenberg 2.1.9) and macOS (not yet
+  # built there).
+  DIW_ZK_FEATURES: openac,tlsn,zkpdf
 
 jobs:
   # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
   # and a broken build does not hide the test results. The nightly release still waits for both.
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -39,8 +41,35 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-      - name: ZK native build tools (protoc and libclang for OpenAC)
-        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
+      - name: ZK native build tools (protoc and libclang for OpenAC, Ninja for Barretenberg)
+        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
+      # Barretenberg for zkPDF is a pinned C++ build of several minutes; reuse it while build_bb.py is unchanged.
+      - name: Cache Barretenberg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-x86_64-unknown-linux-gnu
+          key: bb-2.1.9-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
+      - name: Cache zkPDF assets
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/zkpdf-assets
+          key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
+      # The published circuit assets, checked by hash; ZkPdfCircuitTest proves and verifies a synthetic document with them.
+      - name: zkPDF assets
+        run: |
+          set +e
+          python3 -I native/circuits/tools/fetch_assets.py --output "$HOME/zkpdf-assets"
+          code=$?
+          set -e
+          if [ $code -eq 0 ]; then
+            echo "ZKPDF_ASSETS_DIR=$HOME/zkpdf-assets" >> "$GITHUB_ENV"
+          elif [ $code -eq 3 ]; then
+            echo "::warning::zkPDF assets are not published yet (run the zkPDF assets workflow); the zkPDF proof test is skipped"
+          else
+            exit $code
+          fi
       - name: Core and protocol tests
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
@@ -85,7 +114,7 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 100
     env:
       # Release signing (docs/release.md). Without it the release APK is signed with the debug key.
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -113,9 +142,18 @@ jobs:
       # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
       - name: ZK native tools (cargo-ndk and the pinned NDK)
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev
+          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
           cargo install cargo-ndk --version 4.1.2 --locked
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+      # Barretenberg for zkPDF, built per ABI with the pinned NDK; reused while build_bb.py and the NDK are unchanged.
+      - name: Cache Barretenberg (Android)
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-aarch64-linux-android
+            native/target/bb-x86_64-linux-android
+          key: bb-2.1.9-android-ndk28.2.13676358-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
 
       - name: Signing keys
         run: |
@@ -187,15 +225,20 @@ jobs:
           - os: windows-latest
             name: windows
             tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn,zkpdf
           # Apple silicon; only the jar, since an unsigned app bundle is refused by Gatekeeper.
           - os: macos-latest
             name: macos
             tasks: ":app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      DIW_ZK_FEATURES: ${{ matrix.features }}
     defaults:
       run:
         shell: bash
@@ -216,7 +259,16 @@ jobs:
       # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
       - name: Install deb tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev
+        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb protobuf-compiler libclang-dev ninja-build cmake
+      # Barretenberg for zkPDF is a pinned C++ build of several minutes; reuse it while build_bb.py is unchanged.
+      - name: Cache Barretenberg
+        if: runner.os == 'Linux'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-x86_64-unknown-linux-gnu
+          key: bb-2.1.9-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
       - name: Install Windows build tools
         if: runner.os == 'Windows'
         run: |
