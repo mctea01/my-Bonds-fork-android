@@ -1,0 +1,563 @@
+{
+  "date": "2026-11-02",
+  "implementation_revision": "c3f7d9d7de68d0f69e848d88cca4d4c9bcd3ceb3",
+  "host": {
+    "system": "Linux",
+    "architecture": "x86_64",
+    "kernel": "6.18.57",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "cpu_max": "200000 100000",
+    "memory_max_bytes": 8589934592,
+    "rust": "rustc 1.95.0 (59807616e 2026-04-14)",
+    "cxx": "g++ (Debian 14.2.0-19) 14.2.0"
+  },
+  "versions": {
+    "nargo": "1.0.0-beta.15",
+    "noirc_commit": "83245db91dcf63420ef4bcbbd85b98f397fee663",
+    "bb": "2.1.9",
+    "oracle_hash": "poseidon2",
+    "zero_knowledge": "true"
+  },
+  "fixture_sha256": {
+    "student": "72837a308eaef4e9792c1286a7684e945f07b72b5f1f60093fc9e5b7ea60dd22",
+    "travel-rc4": "c5c20dc719af18d68d8724e3afa10adcb21e39a495c0e57858b5f7a22eeffbee"
+  },
+  "method": {
+    "composition": "zkpdf-v1-phone",
+    "samples_per_fixture_and_worker": 1,
+    "workers": [
+      1,
+      2,
+      4
+    ],
+    "build": "Release thin LTO, bench-workers feature, compile-time ZKPDF_BENCH_WORKERS; production default remains two",
+    "isolation": "Fresh process for each fixture, sequential runs, no concurrent builds/tests/proofs, Gradle daemon stopped; warm OS file cache",
+    "rss": "Linux VmHWM reset with /proc/self/clear_refs=5 before each segment; maximum of segment peaks, includes Rust/ACVM/CRS and native prover",
+    "timing": "Native prove sums exclude ACVM and verification. Complete wall includes preparation, asset checks, CRS, ACVM, proving, self-verification, final verification and output; excludes compilation.",
+    "limits": "Linux CPU quota is two vCPUs, so four workers are oversubscribed. Single observations, not phone-device measurements."
+  },
+  "runs": [
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "student",
+        "peak_rss_kib": 2246732,
+        "segments": 6,
+        "total_prove_ms": 214116,
+        "total_with_verify_ms": 214348,
+        "workers": 1
+      },
+      "segment_totals": {
+        "witness_ms": 8730,
+        "prove_ms": 204745,
+        "verify_ms": 103,
+        "proof_bytes": 97536,
+        "public_input_bytes": 186624
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1959572,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 40875,
+            "public_input_bytes": 9408,
+            "verify_ms": 15,
+            "witness_ms": 368
+          }
+        },
+        {
+          "peak_rss_kib": 1785580,
+          "segment": {
+            "index": 1,
+            "kind": "sha_opaque",
+            "proof_bytes": 16256,
+            "prove_ms": 33381,
+            "public_input_bytes": 864,
+            "verify_ms": 12,
+            "witness_ms": 81
+          }
+        },
+        {
+          "peak_rss_kib": 2150220,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 39300,
+            "public_input_bytes": 288,
+            "verify_ms": 12,
+            "witness_ms": 2415
+          }
+        },
+        {
+          "peak_rss_kib": 2246732,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 37903,
+            "public_input_bytes": 52672,
+            "verify_ms": 20,
+            "witness_ms": 3316
+          }
+        },
+        {
+          "peak_rss_kib": 1091612,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 19631,
+            "public_input_bytes": 65856,
+            "verify_ms": 22,
+            "witness_ms": 184
+          }
+        },
+        {
+          "peak_rss_kib": 2065976,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 33655,
+            "public_input_bytes": 57536,
+            "verify_ms": 22,
+            "witness_ms": 2366
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    },
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "travel-rc4",
+        "peak_rss_kib": 2293168,
+        "segments": 5,
+        "total_prove_ms": 177751,
+        "total_with_verify_ms": 177956,
+        "workers": 1
+      },
+      "segment_totals": {
+        "witness_ms": 8699,
+        "prove_ms": 168412,
+        "verify_ms": 89,
+        "proof_bytes": 81280,
+        "public_input_bytes": 185760
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1928260,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 38257,
+            "public_input_bytes": 9408,
+            "verify_ms": 14,
+            "witness_ms": 363
+          }
+        },
+        {
+          "peak_rss_kib": 2153636,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 38481,
+            "public_input_bytes": 288,
+            "verify_ms": 12,
+            "witness_ms": 2363
+          }
+        },
+        {
+          "peak_rss_kib": 2293168,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 38953,
+            "public_input_bytes": 52672,
+            "verify_ms": 20,
+            "witness_ms": 3408
+          }
+        },
+        {
+          "peak_rss_kib": 1078680,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 19566,
+            "public_input_bytes": 65856,
+            "verify_ms": 22,
+            "witness_ms": 191
+          }
+        },
+        {
+          "peak_rss_kib": 2061476,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 33155,
+            "public_input_bytes": 57536,
+            "verify_ms": 21,
+            "witness_ms": 2374
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    },
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "student",
+        "peak_rss_kib": 2283188,
+        "segments": 6,
+        "total_prove_ms": 142450,
+        "total_with_verify_ms": 142687,
+        "workers": 2
+      },
+      "segment_totals": {
+        "witness_ms": 9322,
+        "prove_ms": 132505,
+        "verify_ms": 108,
+        "proof_bytes": 97536,
+        "public_input_bytes": 186624
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1978984,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 24470,
+            "public_input_bytes": 9408,
+            "verify_ms": 15,
+            "witness_ms": 350
+          }
+        },
+        {
+          "peak_rss_kib": 1821272,
+          "segment": {
+            "index": 1,
+            "kind": "sha_opaque",
+            "proof_bytes": 16256,
+            "prove_ms": 22048,
+            "public_input_bytes": 864,
+            "verify_ms": 12,
+            "witness_ms": 81
+          }
+        },
+        {
+          "peak_rss_kib": 2166268,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 24601,
+            "public_input_bytes": 288,
+            "verify_ms": 13,
+            "witness_ms": 2707
+          }
+        },
+        {
+          "peak_rss_kib": 2283188,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 25160,
+            "public_input_bytes": 52672,
+            "verify_ms": 24,
+            "witness_ms": 3410
+          }
+        },
+        {
+          "peak_rss_kib": 1111616,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 12711,
+            "public_input_bytes": 65856,
+            "verify_ms": 22,
+            "witness_ms": 206
+          }
+        },
+        {
+          "peak_rss_kib": 2069568,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 23515,
+            "public_input_bytes": 57536,
+            "verify_ms": 22,
+            "witness_ms": 2568
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    },
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "travel-rc4",
+        "peak_rss_kib": 2297092,
+        "segments": 5,
+        "total_prove_ms": 117510,
+        "total_with_verify_ms": 117718,
+        "workers": 2
+      },
+      "segment_totals": {
+        "witness_ms": 8799,
+        "prove_ms": 108089,
+        "verify_ms": 90,
+        "proof_bytes": 81280,
+        "public_input_bytes": 185760
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1962780,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 27379,
+            "public_input_bytes": 9408,
+            "verify_ms": 14,
+            "witness_ms": 352
+          }
+        },
+        {
+          "peak_rss_kib": 2148796,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 23548,
+            "public_input_bytes": 288,
+            "verify_ms": 13,
+            "witness_ms": 2417
+          }
+        },
+        {
+          "peak_rss_kib": 2297092,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 24112,
+            "public_input_bytes": 52672,
+            "verify_ms": 20,
+            "witness_ms": 3292
+          }
+        },
+        {
+          "peak_rss_kib": 1134304,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 11937,
+            "public_input_bytes": 65856,
+            "verify_ms": 22,
+            "witness_ms": 194
+          }
+        },
+        {
+          "peak_rss_kib": 2097496,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 21113,
+            "public_input_bytes": 57536,
+            "verify_ms": 21,
+            "witness_ms": 2544
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    },
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "student",
+        "peak_rss_kib": 2294176,
+        "segments": 6,
+        "total_prove_ms": 152951,
+        "total_with_verify_ms": 153166,
+        "workers": 4
+      },
+      "segment_totals": {
+        "witness_ms": 9684,
+        "prove_ms": 142607,
+        "verify_ms": 110,
+        "proof_bytes": 97536,
+        "public_input_bytes": 186624
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1973696,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 25337,
+            "public_input_bytes": 9408,
+            "verify_ms": 14,
+            "witness_ms": 365
+          }
+        },
+        {
+          "peak_rss_kib": 1815008,
+          "segment": {
+            "index": 1,
+            "kind": "sha_opaque",
+            "proof_bytes": 16256,
+            "prove_ms": 23902,
+            "public_input_bytes": 864,
+            "verify_ms": 12,
+            "witness_ms": 79
+          }
+        },
+        {
+          "peak_rss_kib": 2160776,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 28868,
+            "public_input_bytes": 288,
+            "verify_ms": 17,
+            "witness_ms": 2741
+          }
+        },
+        {
+          "peak_rss_kib": 2294176,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 28968,
+            "public_input_bytes": 52672,
+            "verify_ms": 22,
+            "witness_ms": 3850
+          }
+        },
+        {
+          "peak_rss_kib": 1093608,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 13136,
+            "public_input_bytes": 65856,
+            "verify_ms": 23,
+            "witness_ms": 302
+          }
+        },
+        {
+          "peak_rss_kib": 2109108,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 22396,
+            "public_input_bytes": 57536,
+            "verify_ms": 22,
+            "witness_ms": 2347
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    },
+    {
+      "summary": {
+        "composition": "zkpdf-v1-phone",
+        "fixture": "travel-rc4",
+        "peak_rss_kib": 2293700,
+        "segments": 5,
+        "total_prove_ms": 124358,
+        "total_with_verify_ms": 124571,
+        "workers": 4
+      },
+      "segment_totals": {
+        "witness_ms": 8751,
+        "prove_ms": 115026,
+        "verify_ms": 99,
+        "proof_bytes": 81280,
+        "public_input_bytes": 185760
+      },
+      "segments": [
+        {
+          "peak_rss_kib": 1957860,
+          "segment": {
+            "index": 0,
+            "kind": "sha_content",
+            "proof_bytes": 16256,
+            "prove_ms": 26330,
+            "public_input_bytes": 9408,
+            "verify_ms": 19,
+            "witness_ms": 323
+          }
+        },
+        {
+          "peak_rss_kib": 2159440,
+          "segment": {
+            "index": 0,
+            "kind": "inflate0",
+            "proof_bytes": 16256,
+            "prove_ms": 25786,
+            "public_input_bytes": 288,
+            "verify_ms": 12,
+            "witness_ms": 2394
+          }
+        },
+        {
+          "peak_rss_kib": 2293700,
+          "segment": {
+            "index": 0,
+            "kind": "lex",
+            "proof_bytes": 16256,
+            "prove_ms": 26194,
+            "public_input_bytes": 52672,
+            "verify_ms": 22,
+            "witness_ms": 3330
+          }
+        },
+        {
+          "peak_rss_kib": 1093372,
+          "segment": {
+            "index": 0,
+            "kind": "claim",
+            "proof_bytes": 16256,
+            "prove_ms": 14411,
+            "public_input_bytes": 65856,
+            "verify_ms": 23,
+            "witness_ms": 208
+          }
+        },
+        {
+          "peak_rss_kib": 2108952,
+          "segment": {
+            "index": 0,
+            "kind": "pred",
+            "proof_bytes": 16256,
+            "prove_ms": 22305,
+            "public_input_bytes": 57536,
+            "verify_ms": 23,
+            "witness_ms": 2496
+          }
+        }
+      ],
+      "verification": "Every segment self-verified and the complete bundle independently verified"
+    }
+  ]
+}

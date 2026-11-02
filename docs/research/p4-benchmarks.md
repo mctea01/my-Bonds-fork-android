@@ -1184,3 +1184,24 @@ C++ runtime 靜態連結，無須額外打包 `libc++_shared.so` 或其他共享
 兩者所有 PT_LOAD 對齊皆為 0x4000（16 KiB）。產物 SHA-256、大小及建置區間在
 `native/zkpdf-prover/measurements/android-m3c2.json`。本輪沒有在手機執行，
 實機量測由使用者進行。
+
+### Linux phone 組合：1／2／4 workers
+
+主機為 Linux x86_64、AMD EPYC 9V74，cgroup 為 2 vCPU／8 GiB；Rust 1.95.0、GCC 14.2.0、Release／thin LTO，靜態 bb 2.1.9。使用明確啟用的 bench-workers feature，在編譯期選擇 1、2、4；正常 zkpdf 建置不啟用該 feature，仍固定為 2。
+
+六組各執行一次，依序使用獨立程序，量測期間沒有其他建置、測試或證明，Gradle daemon 已停止。檔案快取已暖機；每個程序重新載入／驗證資產及 CRS，並產生新承諾鹽。所有段均自驗，最後另以 verifier specification 查驗整包，六組皆成功。
+
+每段開始以 /proc/self/clear_refs=5 重設 VmHWM，整組取各段峰值最大值。RSS 包含 Rust、ACVM、CRS、bb 與配置器保留記憶體；不是獨立 bb CLI 的 RSS。下表 bb prove 為原生證明呼叫的合計，整份 wall 另含提示準備、資產檢查、CRS、ACVM、自驗、最後查驗與輸出，不含編譯。
+
+| Workers | 文件 | ACVM 合計 s | bb prove 合計 s | 整份含查驗 wall s | 最大段 RSS KiB | RSS GiB |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | student | 8.730 | 204.745 | 214.348 | 2,246,732 | 2.143 |
+| 1 | travel-rc4 | 8.699 | 168.412 | 177.956 | 2,293,168 | 2.187 |
+| 2 | student | 9.322 | 132.505 | 142.687 | 2,283,188 | 2.177 |
+| 2 | travel-rc4 | 8.799 | 108.089 | 117.718 | 2,297,092 | 2.191 |
+| 4 | student | 9.684 | 142.607 | 153.166 | 2,294,176 | 2.188 |
+| 4 | travel-rc4 | 8.751 | 115.026 | 124.571 | 2,293,700 | 2.187 |
+
+本次 2 workers 比 1 worker 快，但峰值 RSS 差異很小：兩份文件在全部設定下約落在 2.14–2.19 GiB。4 workers 在只有 2 vCPU quota 的主機沒有更快，不能據此推定真正四核心手機的速度。這些是單次觀察及完整 Rust 程序的段峰值，供 WP1 規劃實機門檻時參考；本輪沒有更改預設 workers 或手機門檻。
+
+原始逐段資料、工具版本、CPU／RAM 限制與合成輸入指紋在 native/zkpdf-prover/measurements/linux-workers-m3c2.json；重現指令見該 crate README 的 Worker measurements。student 為 6 段、proof 共 97,536 bytes、公開輸入 186,624 bytes；travel-rc4 為 5 段、proof 共 81,280 bytes、公開輸入 185,760 bytes，三種 worker 設定均相同。
