@@ -1,0 +1,48 @@
+{
+  "date": "2026-11-02",
+  "base_revision": "ad7a1761cd70d7a94870bd19ff7c01bc597b75ef",
+  "implementation_revision": "c3f7d9d7de68d0f69e848d88cca4d4c9bcd3ceb3",
+  "command": "DIW_ZK_FEATURES=zkpdf native/build.sh android",
+  "rust": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo_ndk": "cargo-ndk 4.1.2",
+  "ndk": "28.2.13676358",
+  "android_api": 29,
+  "abis": [
+    {
+      "abi": "arm64-v8a",
+      "library_bytes": 15105840,
+      "library_sha256": "c4d2e9837636dd4c81a3d41b754fd42b3fa93ab50ef47c0e69e3d4c7f7f14986",
+      "machine": "AArch64",
+      "needed": [
+        "libdl.so",
+        "libm.so",
+        "libc.so"
+      ],
+      "load_alignments": [
+        "0x4000"
+      ],
+      "last_build_script_seconds": 1,
+      "bb_resumed_build_seconds": 1032.015,
+      "corrected_bridge_incremental_build_seconds": 137
+    },
+    {
+      "abi": "x86_64",
+      "library_bytes": 16210592,
+      "library_sha256": "7db3dcaaa25ba25964902e70d6b0a8f19b74678b9f89c4212759d832157fc124",
+      "machine": "Advanced Micro Devices X86-64",
+      "needed": [
+        "libdl.so",
+        "libm.so",
+        "libc.so"
+      ],
+      "load_alignments": [
+        "0x4000"
+      ],
+      "last_build_script_seconds": 721,
+      "bb_resumed_build_seconds": 629.913,
+      "rust_release_build_seconds": 90
+    }
+  ],
+  "timing_scope": "C++ builds resumed after interrupted jobs; no complete cold-build timing was obtained. Final arm64 invocation reused all build artifacts; its earlier corrected bridge rebuild took 137 seconds including Cargo lock waiting. x86_64 final invocation includes resumed C++ compilation and Rust build. Other builds/tests overlapped these build timings.",
+  "runtime_scope": "ELF inspection only; no Android device execution. Both use the static C++ runtime and need only Android system shared libraries."
+}

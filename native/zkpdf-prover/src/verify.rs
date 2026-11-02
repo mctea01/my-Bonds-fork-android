@@ -36,7 +36,8 @@ pub fn policy(spec: &ZkPdfVerifierSpec, bundle: &ZkPdfBundle) -> Result<ZkPdfVer
             && spec.windows.len() <= 2
             && spec.windows.iter().filter(|x| x.role == "content").count() == 1,
     )?;
-    require(bundle.segments.len() <= 45)?;
+    // The maximum-length document may have one additional empty final pair.
+    require(bundle.segments.len() <= spec.windows.len() + 2 * (40960 / p + 1) + 2)?;
     let pred = (!spec.predicates.is_empty()) as usize;
     let paired = bundle
         .segments
@@ -45,7 +46,7 @@ pub fn policy(spec: &ZkPdfVerifierSpec, bundle: &ZkPdfBundle) -> Result<ZkPdfVer
         .ok_or(Error("segment_count"))?;
     require(paired >= 2 && paired % 2 == 0)?;
     let k = paired / 2;
-    require(k <= 40960 / p)?;
+    require(k <= 40960 / p + 1)?;
     for segment in &bundle.segments {
         require(segment.proof.len() == 16256)?;
         // Reject encodings that a field parser could otherwise reduce modulo p.
@@ -56,6 +57,7 @@ pub fn policy(spec: &ZkPdfVerifierSpec, bundle: &ZkPdfBundle) -> Result<ZkPdfVer
         .iter()
         .map(|a| ZkPdfAnchorInput {
             record: a.record.clone(),
+            ordinal: a.ordinal,
         })
         .collect();
     let mut anchors = prepare::anchors(&anchor_inputs)?;

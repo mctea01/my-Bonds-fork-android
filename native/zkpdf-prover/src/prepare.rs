@@ -36,6 +36,7 @@ pub fn anchors(input: &[ZkPdfAnchorInput]) -> Result<Vec<Value>> {
     require(input.len() <= 16, "max_anchors")?;
     let mut anchors = Vec::new();
     for a in input {
+        require(a.ordinal > 0, "anchor_ordinal")?;
         let encoded_length = a
             .record
             .strings
@@ -188,6 +189,14 @@ pub fn sha_public(window: &ZkPdfWindowPublic, mid_out: &[u8], cz: F) -> Result<V
     Ok(value)
 }
 pub fn prepare(input: &ZkPdfProveInput, salt: F) -> Result<Prepared> {
+    prepare_with_boundary::<false>(input, salt)
+}
+
+// Only regression tests instantiate the deferred end-marker path.
+pub(crate) fn prepare_with_boundary<const DEFER_END: bool>(
+    input: &ZkPdfProveInput,
+    salt: F,
+) -> Result<Prepared> {
     let (p, t0, t, o) = parameters(&input.composition)?;
     require(input.binding.len() == 32, "binding_length")?;
     require(
@@ -244,13 +253,15 @@ pub fn prepare(input: &ZkPdfProveInput, salt: F) -> Result<Prepared> {
             .filter(|(_, r)| **r == bytes)
             .map(|(j, _)| j)
             .collect();
-        // WP3b supplies record content only. Select its first exact occurrence;
-        // the verifier still enforces its independent ordinal/total policy.
-        let index = matches.first().copied().ok_or(Error("anchor_missing"))?;
+        // The requested occurrence selects the operator used for slot boundaries.
+        let index = matches
+            .get((a.ordinal - 1) as usize)
+            .copied()
+            .ok_or(Error("anchor_ordinal"))?;
         anchor_ops[i] = index;
-        anchors[i]["ordinal"] = json!(1);
+        anchors[i]["ordinal"] = json!(a.ordinal);
         anchors[i]["total"] = json!(matches.len());
-        ordinals.push(1);
+        ordinals.push(a.ordinal);
         totals.push(matches.len() as u32);
     }
     let mut claim_records = vec![vec![0u8; 384]; 12];
@@ -269,7 +280,11 @@ pub fn prepare(input: &ZkPdfProveInput, salt: F) -> Result<Prepared> {
         }
     }
     let plan = json!({"anchor_ops":anchor_ops,"lengths":claim_lengths,"records":claim_records});
-    let inflate = inflate::segments(&z, &full, p, t0, t, salt)?;
+    let inflate = if DEFER_END {
+        inflate::segments_with_boundary::<true>(&z, &full, p, t0, t, salt)?
+    } else {
+        inflate::segments(&z, &full, p, t0, t, salt)?
+    };
     let cz = lex::scalar(&inflate[0]["cz"]);
     let pi = lex::plan_commit(salt, &plan)?;
     let r = lex::challenge(cz, pi, &anchors, &slots)?;

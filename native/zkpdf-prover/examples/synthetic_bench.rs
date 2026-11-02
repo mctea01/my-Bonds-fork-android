@@ -73,7 +73,7 @@ fn main() {
     .unwrap();
     println!(
         "{}",
-        serde_json::json!({"fixture":args[1], "composition":input.composition, "total_prove_ms":result.prove_ms,
+        serde_json::json!({"fixture":args[1], "composition":input.composition, "workers":env!("ZKPDF_COMPILED_WORKERS").parse::<u32>().unwrap(), "total_prove_ms":result.prove_ms,
         "total_with_verify_ms":started.elapsed().as_millis(),"segments":result.bundle.segments.len(),"peak_rss_kib":peak_kib.get()})
     );
 }
