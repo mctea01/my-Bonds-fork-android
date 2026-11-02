@@ -107,21 +107,45 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
 }
 
 /**
- * One version for every output, from version.properties (major.minor) and the GitHub Actions run number (patch, and
- * the Android versionCode, which grows across pull request and main builds alike). A pull request build is marked
- * -pr<N>, a build outside CI -dev. -Pdiw.versionName, -Pdiw.versionCode and -Pdiw.desktopVersion still override.
+ * One version for every output. version.properties holds the release line (major.minor), changed by hand for a new
+ * stage or release. The patch is the number of commits since the commit that last changed that line: it restarts at 0
+ * with each release line, is the same for a commit on every machine and grows with every merge to main. The Android
+ * versionCode is major * 1,000,000 + minor * 10,000 + patch. A pull request build is marked -pr<N>, a build outside
+ * CI -dev. tools/app-version.sh applies the same rule for the CI file names. -Pdiw.versionName, -Pdiw.versionCode
+ * and -Pdiw.desktopVersion still override.
  */
-val releaseLine: String = rootProject.file("version.properties").readLines()
-    .firstNotNullOfOrNull { Regex("""\s*version\s*=\s*(\d+\.\d+)\s*""").matchEntire(it)?.groupValues?.get(1) }
+val releaseLine: List<Int> = rootProject.file("version.properties").readLines()
+    .firstNotNullOfOrNull { Regex("""\s*version\s*=\s*(\d+)\.(\d+)\s*""").matchEntire(it)?.destructured }
+    ?.let { (major, minor) -> listOf(major.toInt(), minor.toInt()) }
     ?: throw GradleException("version.properties needs a line version=<major>.<minor>")
-val ciRun: Int? = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull()
+fun git(vararg args: String): String? = try {
+    val run = providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+        isIgnoreExitValue = true
+    }
+    if (run.result.get().exitValue == 0) run.standardOutput.asText.get().trim().ifEmpty { null } else null
+} catch (e: Exception) {
+    null
+}
+val inCi: Boolean = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+val patch: Int = run {
+    val counted = if (git("rev-parse", "--is-shallow-repository") != "false") null
+    else git("log", "-G^version=", "-1", "--format=%H", "--", "version.properties")
+        ?.let { base -> git("rev-list", "--count", "$base..HEAD") }?.toIntOrNull()
+    // tools/app-version.sh fails the CI jobs that publish files when the history is missing; tests only warn.
+    if (counted == null && inCi) logger.warn("Version: no full git history, patch 0 (check out with fetch-depth: 0)")
+    (counted ?: 0).also { if (it >= 10_000) throw GradleException("Start a new release line in version.properties") }
+}
 val pullRequest: String? = providers.environmentVariable("GITHUB_REF").orNull
     ?.let { Regex("refs/pull/(\\d+)/.*").matchEntire(it)?.groupValues?.get(1) }
+val versionNumber: String = "${releaseLine[0]}.${releaseLine[1]}.$patch"
 /** Numeric, as MSI and deb require. */
-val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: "$releaseLine.${ciRun ?: 0}"
+val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: versionNumber
 val appVersionName: String = (findProperty("diw.versionName") as String?)
-    ?: ("$releaseLine.${ciRun ?: 0}" + when { ciRun == null -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
-val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt() ?: ciRun ?: 1
+    ?: (versionNumber + when { !inCi -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
+val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt()
+    ?: (releaseLine[0] * 1_000_000 + releaseLine[1] * 10_000 + patch)
 
 tasks.register("printVersion") {
     val name = appVersionName
