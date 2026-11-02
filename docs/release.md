@@ -15,15 +15,17 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 
 ## 版本號
 
-版本號只記在 repo 根目錄的 `version.properties`（`version=主版號.次版號`），建置時補上修訂號：
+版本號只記在 repo 根目錄的 `version.properties`（`version=主版號.次版號`，進入新階段或正式發佈時手動修改），建置時補上修訂號：從最後一次修改 `version=` 那一行的 commit 起算的 commit 數。同一個 commit 在任何機器算出的版本都相同，換新的主版號或次版號時修訂號從 0 重新開始，之後每合併一次到 main 加 1。不再使用 CI 執行次數。
 
 | 建置 | 版本 | Android versionCode |
 |---|---|---|
-| push 到 main（nightly） | `0.4.<CI 執行次數>` | CI 執行次數 |
-| pull request | `0.4.<CI 執行次數>-pr<PR 編號>` | CI 執行次數 |
-| 本機 | `0.4.0-dev` | 1 |
+| push 到 main（nightly） | `0.4.<修訂號>` | 主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號（0.4.3 為 40003） |
+| pull request | `0.4.<修訂號>-pr<PR 編號>` | 同上 |
+| 本機 | `0.4.<修訂號>-dev` | 同上 |
 
-CI 執行次數在 PR 與 main 之間共用且只會增加，所以新建置一定能覆蓋安裝舊版（同一把簽章金鑰時）。進入新階段或正式發佈時只改 `version.properties`。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以同一規則算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
+修訂號需要完整的 git 歷史：CI 的 checkout 使用 `fetch-depth: 0`，`tools/app-version.sh` 在歷史不完整時讓發佈檔案的工作失敗；只跑測試的工作只警告並以修訂號 0 繼續。修訂號達 10,000 時建置要求換新的版本線。
+
+versionCode 由版本算出，換新版本線時一定變大（0.4 起為 40000 以上，大於舊規則的 CI 執行次數），所以新建置能覆蓋安裝舊版（同一把簽章金鑰時）；同一版本線內只要從 main 依序建置，也一定變大。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本（`0.4.<修訂號>`）。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以 `tools/app-version.sh`（與 Gradle 同一規則）算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
 
 ## Android 簽章
 
