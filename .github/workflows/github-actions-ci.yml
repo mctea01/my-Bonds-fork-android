@@ -31,6 +31,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
@@ -95,19 +98,18 @@ jobs:
       DIW_DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
       # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
       - name: Version
-        run: |
-          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
-          suffix=""
-          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
-          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
       # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
       - name: ZK native tools (cargo-ndk and the pinned NDK)
         run: |
@@ -199,19 +201,18 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
-      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
       # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
       - name: Version
-        run: |
-          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
-          suffix=""
-          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
-          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
       # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
       - name: Install deb tools
         if: runner.os == 'Linux'
@@ -259,18 +260,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          sparse-checkout: version.properties
-          sparse-checkout-cone-mode: false
-      # version.properties holds major.minor; the run number is the patch and the Android versionCode, the same rule
+          fetch-depth: 0
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
       # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
       - name: Version
-        run: |
-          base=$(sed -n 's/^version=\([0-9]*\.[0-9]*\)[[:space:]]*$/\1/p' version.properties)
-          suffix=""
-          if [ "${{ github.event_name }}" = pull_request ]; then suffix="-pr${{ github.event.pull_request.number }}"; fi
-          echo "APP_VERSION=$base.${{ github.run_number }}$suffix" >> "$GITHUB_ENV"
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
