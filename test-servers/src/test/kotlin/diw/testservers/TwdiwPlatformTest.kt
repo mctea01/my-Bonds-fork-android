@@ -44,6 +44,7 @@ import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 import diw.wallet.core.profile.twdiw.TwdiwServices
+import diw.wallet.core.profile.twdiw.TwdiwApplicationKey
 import diw.wallet.core.profile.twdiw.TwdiwTrustList
 import diw.wallet.core.profile.twdiw.TwdiwUserAgent
 import diw.wallet.core.status.CredentialStatusChecker
@@ -52,6 +53,7 @@ import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.util.str
 import diw.wallet.core.w3c.W3cVcCredential
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.runBlocking
@@ -75,6 +77,7 @@ import kotlin.test.assertTrue
 /** The TWDIW official issuance, status, trust list, presentation and offline barcode flows against [TwdiwPlatformMock]. */
 class TwdiwPlatformTest {
     private class Setup(val mock: TwdiwPlatformMock, val w: WalletFixture) {
+        var applicationKey: TwdiwApplicationKey? = null
         val platform = TwdiwPlatform(frontendUrl = TwdiwPlatformMock.FRONTEND, test = true)
         val trustList = TwdiwTrustList(w.httpClient, platform, storage = w.storage)
         val didTrust = DidTrust(listOf(trustList))
@@ -88,7 +91,8 @@ class TwdiwPlatformTest {
         fun client() = Oid4vciClient(
             w.httpClient, w.trust, w.env, PublicClientWalletProvider("diw-wallet"), w.documentStore,
             dialects = listOf(
-                TwdiwDialect(w.httpClient, false, registeredIssuerTrust = { trustList.issuerDecision(it) }),
+                TwdiwDialect(w.httpClient, false, registeredIssuerTrust = { trustList.issuerDecision(it) },
+                    ecosystemSignatureHosts = { setOf(TwdiwPlatformMock.ISSUER_HOST) }, applicationKey = { applicationKey }),
                 Draft13Dialect(w.httpClient, false),
                 Draft11Dialect(),
             ),
@@ -126,6 +130,40 @@ class TwdiwPlatformTest {
             env = EnvironmentPolicy(testEnvironmentEnabled = true),
         ).init()
         Setup(mock, w)
+    }
+
+    @Test
+    fun newerIssuanceSeparatesHolderAndApplicationKeysAndNonces() = runBlocking<Unit> {
+        for (tokenNonceIncluded in listOf(true, false)) {
+            val s = setup()
+            s.mock.nonceEndpointPublished = true
+            s.mock.tokenNonceIncluded = tokenNonceIncluded
+            val key = TwdiwApplicationKey.fromPrivateKey(Crypto.createEcPrivateKey(EcCurve.P256))
+            s.applicationKey = key
+            s.mock.applicationPublicKey = key.publicKey
+            val result = s.receive()
+            assertEquals(1, result.credentials.size)
+            assertEquals(1, s.mock.endpointNonces)
+            assertEquals(1, s.mock.ecosystemNonces)
+            val payload = assertNotNull(s.mock.lastApplicationPayload)
+            assertEquals("ecosystem-nonce-1", payload.str("nonce"))
+            assertEquals(key.keyId, payload.str("keyId"))
+            val holder = assertNotNull(s.w.holderIdentities.find(HolderIdentities.TWDIW))
+            assertNotEquals(holder.publicKey, key.publicKey)
+            assertTrue(s.mock.errors.isEmpty(), s.mock.errors.toString())
+        }
+    }
+
+    @Test
+    fun olderIssuerStillIssuesWhenApplicationExtensionIsAbsent() = runBlocking<Unit> {
+        val s = setup()
+        s.applicationKey = TwdiwApplicationKey.fromPrivateKey(Crypto.createEcPrivateKey(EcCurve.P256))
+        val result = s.receive()
+        assertEquals(1, result.credentials.size)
+        assertEquals(0, s.mock.endpointNonces)
+        assertEquals(0, s.mock.ecosystemNonces)
+        assertNull(s.mock.lastApplicationPayload)
+        assertTrue(s.mock.errors.isEmpty(), s.mock.errors.toString())
     }
 
     @Test

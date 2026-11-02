@@ -11,6 +11,8 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
+本次提交不修改 `.github/workflows/`。AAB 已可在本機建置；CI 的 TWDIW secrets 注入、AAB 建置與上傳仍待手動套用 workflow。套用後可另發佈 `DIW-MY-WALLET-<版本>.aab` 與 `DIW-MY-WALLET-<版本>-debug.aab`，分別為 release／debug App Bundle。
+
 每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android 與 Linux 另連結 zkPDF（Barretenberg 2.1.9，`openac,tlsn,zkpdf`），Windows 暫不支援、macOS 尚未建置。zkPDF 的電路資產在 `zkpdf-v1` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
 ## 版本號
@@ -30,6 +32,8 @@ versionCode 由版本算出，換新版本線時一定變大（0.4 起為 40000 
 ## Android 簽章
 
 release APK 以 repo secrets 的金鑰簽章；沒有設定時改用 debug 金鑰。debug APK 以 `DEBUG_KEYSTORE_BASE64` 的金鑰簽章，沒有設定時每次 CI 用新產生的金鑰，無法覆蓋安裝舊版。CI 記錄會印出兩把金鑰的 SHA-256 指紋（`Debug APK signed with key ...`、`Release APK signed with key ...`），每次相同才代表簽章固定。
+
+AAB 使用相同 build type 的 signingConfig。AAB 是分發格式，不能直接當 APK 安裝；由 Google Play 或 bundletool 產生適合裝置的 APK。要上架時必須提供正式 upload key，debug 金鑰的 fallback 僅供測試。
 
 建立金鑰（PowerShell，金鑰請自行保管，遺失後無法再更新已安裝的 App）：
 
@@ -87,6 +91,51 @@ Get-FileHash diw-release.jks -Algorithm SHA256
 `Keystore type` 為 `PKCS12` 時刪除 `ANDROID_KEY_PASSWORD`；`SHA256` 指紋要與 CI 印出的相同，不同代表 secret 存的是另一個檔案。
 
 本機建置 release：設定環境變數 `DIW_KEYSTORE_FILE`、`DIW_KEYSTORE_PASSWORD`、`DIW_KEY_ALIAS`（金鑰密碼不同時再設 `DIW_KEY_PASSWORD`）後執行 `./gradlew :app:assembleRelease`。
+
+APK 與 AAB 一起建置：
+
+```bash
+./gradlew :app:assembleDebug :app:bundleDebug
+./gradlew :app:assembleRelease :app:bundleRelease
+```
+
+本機驗證使用 `--max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process`，讓 Kotlin 與 R8 共用受限的 JVM heap，避免另外保留大型 Kotlin daemon 後在 R8 階段達到記憶體上限。手動更新 CI Android 建置命令時也建議加入相同參數。
+
+## TWDIW 應用簽章金鑰
+
+這組金鑰用於新版 TWDIW `dwapp-201i` 格式的 `Twdiw-Signature`，獨立於 holder／Android APK 簽章金鑰。尚未找到 `diwapp-200i` 的另一份契約，因此設定不以該未確認名稱命名。只匯入自行產生或合法取得的應用金鑰，不讀取官方 APK 的私鑰資產。
+
+| GitHub Actions secret | Gradle／本機環境變數 | 格式 |
+|---|---|---|
+| `TWDIW_APP_PRIVATE_KEY` | `DIW_TWDIW_APP_PRIVATE_KEY` | 未加密 P-256 PKCS#8 PEM（`BEGIN PRIVATE KEY`），或其 DER 的標準 Base64 |
+| `TWDIW_APP_PUBLIC_KEY` | `DIW_TWDIW_APP_PUBLIC_KEY` | P-256 SPKI PEM（`BEGIN PUBLIC KEY`），或其 DER 的標準 Base64 |
+
+兩個值都空白或未設時，`:app:generateTwdiwApplicationKey` 以 JDK 產生新的 P-256 配對。它在 `app/build/twdiwApplicationKeyState/` 保留本機配對，讓同一工作目錄的 APK、AAB、桌面產物及後續增量建置使用相同應用 keyId；`clean` 或新 CI runner 會產生另一組。要跨 CI 發行保持 keyId，必須提供固定配對。
+
+兩值須同時提供；只填一個、格式錯誤、曲線不是 P-256，或簽署／驗簽證明不匹配時，建置失敗，不會悄悄改用隨機金鑰。建置只記錄來源及公鑰文字指紋，不輸出私鑰。產生的 Kotlin source 位於 `app/build/generated/twdiwApplicationKey/kotlin/`；POSIX 系統下 state 與 source 權限為 0600，不作此任務的 build-cache artifact，也不提交或額外上傳 state/source。
+
+目前提交的 workflow 尚未注入這兩個 secrets，因此僅在 GitHub 設定 secrets 尚不會生效，CI 仍會產生測試配對。手動套用 workflow 時，應只在 push 建置注入；PR 建置使用自己的生成測試配對。Android debug／release 的 APK／AAB 及桌面包都支援相同環境輸入。未使用的兩個 GitHub secrets 可以保持不存在，不必手動填空字串。
+
+要啟用 CI secrets，手動在 `build` 與 `desktop` job 的既有 `env` 加入：
+
+```yaml
+DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
+```
+
+同時將 Android 命令加入對應的 `:app:bundleDebug`／`:app:bundleRelease`，把 `app/build/outputs/bundle/<variant>/app-<variant>.aab` 複製到 `dist`，並在 Android artifact 的 `path` 保留 `dist/*.apk`、加入 `dist/*.aab`。新增的金鑰建置測試可透過 `python3 tools/twdiw/test_generate_application_key.py` 執行。
+
+本機 PowerShell 匯入合法金鑰：
+
+```powershell
+$env:DIW_TWDIW_APP_PRIVATE_KEY = [IO.File]::ReadAllText((Resolve-Path "my-application-private.pem"))
+$env:DIW_TWDIW_APP_PUBLIC_KEY = [IO.File]::ReadAllText((Resolve-Path "my-application-public.pem"))
+./gradlew :app:assembleRelease :app:bundleRelease
+```
+
+Secrets 保護的是 repo 與建置輸入；這項設計會把應用簽章能力放進發行產物，不能把客戶端內嵌私鑰視為無法擷取的機密。不得提供不允許散布在客戶端的金鑰；未來平台若要求非匯出金鑰或後端簽署，需依正式契約另接 signer。
+
+應用身分使用本專案 `diw.wallet.app`、本次版本與平台，keyId 是該配對 Base64 SPKI 文字的 SHA-256。自動生成或合法匯入不代表官方平台已准入；正式受理仍須官方授權與端到端驗收。新版／舊版流程與驗證紀錄見 [TWDIW 新版領卡實作](acceptance/twdiw-application-signature.md)。
 
 ## 行動自然人憑證 SP 帳號
 

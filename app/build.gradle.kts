@@ -106,6 +106,19 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
     outputDir.set(layout.buildDirectory.dir("generated/builtInSp/kotlin"))
 }
 
+/** Provision a separate P-256 application key, using secrets or a stable local pair until clean. */
+val twdiwApplicationKeySources = layout.buildDirectory.dir("generated/twdiwApplicationKey/kotlin")
+val generateTwdiwApplicationKey by tasks.registering(Exec::class) {
+    val generator = rootProject.file("tools/twdiw/GenerateApplicationKey.java")
+    val java = File(System.getProperty("java.home"), "bin/" + if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+    commandLine(java, generator, twdiwApplicationKeySources.get().asFile, layout.buildDirectory.dir("twdiwApplicationKeyState").get().asFile)
+    inputs.file(generator)
+    outputs.dir(twdiwApplicationKeySources)
+    // Secrets are inherited by the child process, never command-line arguments or Gradle task inputs/history.
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Generated sources contain application signing key material") { true }
+}
+
 /**
  * One version for every output. version.properties holds the release line (major.minor), changed by hand for a new
  * stage or release. The patch is the number of commits since the commit that last changed that line: it restarts at 0
@@ -200,6 +213,7 @@ kotlin {
     sourceSets {
         commonMain.get().kotlin.srcDir(generateBuiltInSp.map { it.outputDir })
         commonMain.get().kotlin.srcDir(generateAppBuild.map { it.outputDir })
+        commonMain.get().kotlin.srcDir(generateTwdiwApplicationKey.map { twdiwApplicationKeySources.get() })
         commonMain.dependencies {
             implementation(project(":core"))
             implementation(compose.runtime)

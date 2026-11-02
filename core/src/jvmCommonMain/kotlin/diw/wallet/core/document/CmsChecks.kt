@@ -49,9 +49,13 @@ internal class CmsChecks(private val pki: PkiSupport) {
         extraCrls: List<ByteArray> = emptyList(),
         claimedTimeOverride: Long? = null,
         fallbackClaimed: Long? = null,
+        /** SHA-256 of detached content that is not available itself (a zkPDF masked file, whose digest is proven). */
+        contentSha256: ByteArray? = null,
     ): List<SignatureInfo> {
         val sd = try {
-            signedData(cms, content)
+            if (contentSha256 != null) {
+                CMSSignedData(mapOf(SHA256.algorithm.id to contentSha256), ContentInfo.getInstance(Bc.parse(cms)).encoded)
+            } else signedData(cms, content)
         } catch (e: Exception) {
             return listOf(failed(format, label, "無法解析 CMS 簽章：" + (e.message ?: e.javaClass.simpleName)))
         }
@@ -60,7 +64,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val (cmsOcsps, cmsCrls) = pki.cmsRevocation(sd)
         val signers = sd.signerInfos.signers.toList()
         if (signers.isEmpty()) return listOf(failed(format, label, "簽章檔內沒有簽署者"))
-        val detachedMissing = content == null && sd.signedContent == null
+        val detachedMissing = content == null && contentSha256 == null && sd.signedContent == null
         return signers.mapIndexed { i, si ->
             check(si, certs, format, if (signers.size > 1) "$label（簽署者 ${i + 1}）" else label, now, detachedMissing,
                 cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed, sd, content)

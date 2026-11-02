@@ -8,6 +8,7 @@ import diw.wallet.core.zk.OpenAcAgeProver
 import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkNativeStatus
+import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.profile.bonds.SocketBondsLanLink
@@ -53,6 +54,8 @@ class JvmZkEnvironment(
     override val ageProver: OpenAcAgeProver? by lazy { store?.let { OpenAcAgeNativeProver(it, File(dataDirectory, "zk-work"), File(dataDirectory, "zk-cache")) } }
 
     override val ageVerifier: OpenAcAgeVerifier? by lazy { store?.let { OpenAcAgeNativeVerifier(it, File(dataDirectory, "zk-verify")) } }
+
+    override val pdf: ZkPdfEngine? by lazy { store?.let { ZkPdfNativeEngine(it) } }
 
     override val tls: ZkTlsEngine by lazy {
         NativeZkTlsEngine(http, lan::localAddresses, lan::preferred, socketFactoryFor) {

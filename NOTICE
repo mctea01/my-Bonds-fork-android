@@ -62,6 +62,11 @@ its own license:
 
 Development and test tools that are not shipped in the application:
 
+- fontTools (tools/twdiw-assets, offline font resource inspection) - MIT License
+- cryptography (TWDIW offline public-key inspection and local signing tools) -
+  Apache License 2.0 or BSD 3-Clause
+- SPIRV-Tools (optional tools/twdiw-assets shader disassembly and validation) -
+  Apache License 2.0
 - EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
 - Rust 1.95.0 - Apache License 2.0 or MIT
 - cargo-ndk 4.1.2 - Apache License 2.0 or MIT

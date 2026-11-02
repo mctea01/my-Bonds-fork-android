@@ -1,15 +1,16 @@
 package diw.testservers
 
 import diw.wallet.core.compat.OutboundCredentialContext
+import diw.wallet.core.compat.TwdiwAppIdentity
 import diw.wallet.core.compat.TwdiwDialect
-import diw.wallet.core.profile.twdiw.TwdiwDeviceKeys
-import diw.wallet.core.profile.twdiw.TwdiwKeyBackend
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.oid4vci.IssuerMetadata
+import diw.wallet.core.profile.twdiw.TwdiwApplicationKey
 import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -17,6 +18,12 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import java.security.KeyFactory
+import java.security.MessageDigest
+import java.security.Signature
+import java.security.spec.X509EncodedKeySpec
+import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.crypto.Algorithm
@@ -25,170 +32,140 @@ import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * The TWDIW ecosystem signature the official partner-card platform expects: a Twdiw-Signature header over the exact
- * outgoing bytes, bound to a one-time ecosystem nonce, signed with this wallet's own holder key. These tests use a
- * freshly generated key and a synthetic nonce endpoint; no official-app key or real card is involved.
- */
+/** SDK-compatible wire tests with separate locally generated application and holder keys. */
 class TwdiwEcosystemSignatureTest {
-    private val holderKey = runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
+    private val holder = runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
+    private val appPrivate = runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
+    private val application = TwdiwApplicationKey.fromPrivateKey(appPrivate)
 
-    private fun issuer(host: String) = IssuerMetadata(
-        credentialIssuer = "https://$host/",
-        authorizationServers = emptyList(),
-        credentialEndpoint = "https://$host/credential",
-        nonceEndpoint = null,
-        deferredCredentialEndpoint = null,
-        notificationEndpoint = null,
-        requestEncryption = null,
-        responseEncryption = null,
-        batchSize = 1,
-        display = emptyList(),
-        configurations = emptyMap(),
-        trust = TrustDecision.unknown("test"),
-        raw = JsonObject(emptyMap()),
+    private fun issuer(url: String) = IssuerMetadata(
+        credentialIssuer = url, authorizationServers = emptyList(), credentialEndpoint = url + "credential",
+        nonceEndpoint = null, deferredCredentialEndpoint = null, notificationEndpoint = null,
+        requestEncryption = null, responseEncryption = null, batchSize = 1, display = emptyList(),
+        configurations = emptyMap(), trust = TrustDecision.unknown("test"), raw = JsonObject(emptyMap()),
     )
 
-    private fun dialect(requests: MutableList<String>, hosts: Set<String>, nonceStatus: HttpStatusCode = HttpStatusCode.OK): TwdiwDialect {
+    private fun dialect(
+        requests: MutableList<String>,
+        status: HttpStatusCode = HttpStatusCode.OK,
+        response: String = """{"code":"0","data":{"nonce":"eco-123"}}""",
+        key: TwdiwApplicationKey? = application,
+    ): TwdiwDialect {
         val http = HttpClient(MockEngine { request ->
-            requests += request.url.encodedPath + "?" + request.url.parameters.toString()
-            if (request.url.encodedPath == "/api/ext/nonce/generate" && request.url.parameters["type"] == "ecosyst") {
-                respond(
-                    """{"code":"0","data":{"nonce":"eco-123"}}""",
-                    nonceStatus,
-                    headersOf(HttpHeaders.ContentType, "application/json"),
-                )
-            } else {
-                respond("", HttpStatusCode.NotFound)
-            }
+            requests += "${request.method.value} ${request.url}"
+            check(request.method.value == "GET") { "No registration POST is permitted" }
+            check(request.url.parameters["type"] == "ecosyst")
+            respond(response, status, headersOf(HttpHeaders.ContentType, "application/json"))
         })
-        return TwdiwDialect(http, allowInsecureLoopback = false, ecosystemSignatureHosts = { hosts })
+        return TwdiwDialect(http, false, applicationKey = { key },
+            appIdentity = { TwdiwAppIdentity("diw.wallet.app", "0.4-test", "Android") })
     }
 
-    private suspend fun headers(dialect: TwdiwDialect, host: String, bytes: ByteArray): Map<String, String>? =
-        dialect.outboundCredentialHeaders(
-            OutboundCredentialContext(
-                issuer = issuer(host),
-                requestBytes = bytes,
-                keyId = "did:key:zTestHolder",
-                publicKey = holderKey.publicKey,
-                signingKey = AsymmetricKey.AnonymousExplicit(holderKey, Algorithm.ES256),
-            ),
-        )
+    private suspend fun headers(dialect: TwdiwDialect, url: String, body: ByteArray) =
+        dialect.outboundCredentialHeaders(OutboundCredentialContext(
+            issuer(url), body, "did:key:zHolder", holder.publicKey, AsymmetricKey.AnonymousExplicit(holder, Algorithm.ES256),
+        ))
 
     @Test
-    fun signsExactBytesWithEcosystemNonceForTargetedHost() = runBlocking<Unit> {
+    fun usesApplicationKeySdkWireShapeAndPrefixedNonce() = runBlocking<Unit> {
         val requests = mutableListOf<String>()
-        val body = """{"credential_identifier":"AgeOver18","proofs":{"jwt":["p"]}}""".encodeToByteArray()
-        val result = headers(dialect(requests, setOf("moda.wallet.gov.tw")), "moda.wallet.gov.tw", body)
-            ?: error("expected a signature header")
-        val jwt = result[TwdiwDialect.ECOSYSTEM_SIGNATURE_HEADER] ?: error("missing ${TwdiwDialect.ECOSYSTEM_SIGNATURE_HEADER}")
-        assertTrue(requests.any { it.startsWith("/api/ext/nonce/generate") }, "ecosystem nonce was not fetched")
+        val body = """{"credential_identifier":"card","proofs":{"jwt":["proof"]}}""".encodeToByteArray()
+        val jwt = headers(dialect(requests), "https://moda.wallet.gov.tw/oid4vci/api/issuer/00000000/", body)
+            ?.get(TwdiwDialect.ECOSYSTEM_SIGNATURE_HEADER) ?: error("No application signature")
+        assertEquals(listOf("GET https://moda.wallet.gov.tw/oid4vci/api/ext/nonce/generate?type=ecosyst"), requests)
         val jws = Jws.parse(jwt)
-        jws.verify(VerificationKey.Ec(holderKey.publicKey))
-        assertEquals("JWT", jws.header.str("typ"))
-        assertEquals("ES256", jws.header.str("alg"))
+        jws.verify(VerificationKey.Ec(application.publicKey))
+        assertFails { jws.verify(VerificationKey.Ec(holder.publicKey)) }
+        assertEquals("""{"alg":"ES256","typ":"JWT"}""", jws.header.toString())
+        assertNull(jws.header.str("kid"))
+        assertEquals(64, jws.signature.size)
+        assertEquals(listOf("appHash", "appPlatform", "appVersion", "bodyHash", "keyId", "nonce", "timestamp"), jws.payload.keys.toList())
+        assertEquals("diw.wallet.app", jws.payload.str("appHash"))
+        assertEquals("Android", jws.payload.str("appPlatform"))
+        assertEquals("0.4-test", jws.payload.str("appVersion"))
         assertEquals(DocCryptoUtil.hex(PlatformCrypto.sha256(body)), jws.payload.str("bodyHash"))
         assertEquals("eco-123", jws.payload.str("nonce"))
-        assertEquals("did:key:zTestHolder", jws.payload.str("keyId"))
-        assertEquals("android", jws.payload.str("appPlatform"))
-        assertTrue(jws.payload.str("timestamp")!!.toLong() > 0)
-        // appHash describes this wallet's identity (sha256 of its app id), never the official app's.
-        assertEquals(DocCryptoUtil.hex(PlatformCrypto.sha256("diw".encodeToByteArray())), jws.payload.str("appHash"))
+        assertTrue(jws.payload.str("timestamp")!!.toLong() > 1_000_000_000_000)
+        val spkiText = application.publicKey.toPem().lineSequence().filterNot { it.startsWith("-----") }.joinToString("") { it.trim() }
+        val der = Base64.getDecoder().decode(spkiText)
+        val javaPublic = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(der))
+        val independentVerifier = Signature.getInstance("SHA256withECDSAinP1363Format")
+        independentVerifier.initVerify(javaPublic)
+        independentVerifier.update(jws.signingInput)
+        assertTrue(independentVerifier.verify(jws.signature), "JDK must independently accept the raw JOSE signature")
+        val expected = MessageDigest.getInstance("SHA-256").digest(Base64.getEncoder().encode(javaPublic.encoded))
+        assertEquals(DocCryptoUtil.hex(expected), jws.payload.str("keyId"))
+        assertNotEquals(DocCryptoUtil.hex(MessageDigest.getInstance("SHA-256").digest(der)), jws.payload.str("keyId"))
     }
 
     @Test
-    fun noHeaderForUntargetedHostAndNoNonceFetch() = runBlocking<Unit> {
+    fun originalBodyWhitespaceIsBoundBySignature() = runBlocking<Unit> {
         val requests = mutableListOf<String>()
-        val result = headers(dialect(requests, setOf("moda.wallet.gov.tw")), "issuer-vc.telecom.example", "x".encodeToByteArray())
-        assertNull(result)
-        assertTrue(requests.isEmpty(), "no request should be made for an untargeted host")
+        val d = dialect(requests)
+        val first = Jws.parse(headers(d, "https://moda.wallet.gov.tw/api/issuer/1/", "{}".encodeToByteArray())!!.values.single())
+        val second = Jws.parse(headers(d, "https://moda.wallet.gov.tw/api/issuer/1/", "{}\n".encodeToByteArray())!!.values.single())
+        assertNotEquals(first.payload.str("bodyHash"), second.payload.str("bodyHash"))
     }
 
     @Test
-    fun missingNonceEndpointLeavesRequestUnsigned() = runBlocking<Unit> {
+    fun legacyOriginAndUntargetedIssuerRemainSupported() = runBlocking<Unit> {
         val requests = mutableListOf<String>()
-        val result = headers(dialect(requests, setOf("moda.wallet.gov.tw"), HttpStatusCode.NotFound), "moda.wallet.gov.tw", "x".encodeToByteArray())
-        assertNull(result)
-        assertTrue(requests.any { it.startsWith("/api/ext/nonce/generate") }, "the nonce endpoint should have been tried")
+        assertTrue(headers(dialect(requests), "https://moda.wallet.gov.tw/", byteArrayOf()) != null)
+        assertEquals("GET https://moda.wallet.gov.tw/api/ext/nonce/generate?type=ecosyst", requests.single())
+        requests.clear()
+        assertNull(headers(dialect(requests), "https://97179430.wallet.gov.tw/oid4vci/api/issuer/97179430/", byteArrayOf()))
+        assertTrue(requests.isEmpty())
     }
 
-    /** A platform mock: nonce endpoint plus api/did/ answering [registration] (status, body); records request bodies. */
-    private fun platform(bodies: MutableList<String>, registration: Pair<HttpStatusCode, String>): HttpClient {
-        var n = 0
-        return HttpClient(MockEngine { request ->
-            when (request.url.encodedPath) {
-                "/api/ext/nonce/generate" -> respond("""{"code":"0","data":{"nonce":"eco-${++n}"}}""", HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
-                "/api/did/" -> {
-                    bodies += String((request.body as io.ktor.http.content.OutgoingContent.ByteArrayContent).bytes())
-                    respond(registration.second, registration.first, headersOf(HttpHeaders.ContentType, "application/json"))
-                }
-                else -> respond("", HttpStatusCode.NotFound)
+    @Test
+    fun absentExtensionKeepsLegacyRequestUnsigned() = runBlocking<Unit> {
+        for (status in listOf(HttpStatusCode.NotFound, HttpStatusCode.Gone)) {
+            val requests = mutableListOf<String>()
+            assertNull(headers(dialect(requests, status), "https://moda.wallet.gov.tw/oid4vci/api/issuer/1/", byteArrayOf()))
+            assertEquals(1, requests.size)
+        }
+    }
+
+    @Test
+    fun noApplicationKeyNeverFallsBackToHolderOrRegistration() = runBlocking<Unit> {
+        val requests = mutableListOf<String>()
+        assertNull(headers(dialect(requests, key = null), "https://moda.wallet.gov.tw/", byteArrayOf()))
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun deployedNonceErrorsDoNotSilentlyDowngrade() = runBlocking<Unit> {
+        for ((status, response) in listOf(
+            HttpStatusCode.InternalServerError to "{}",
+            HttpStatusCode.OK to """{"code":"12","data":{"nonce":"refused"}}""",
+            HttpStatusCode.OK to """{"code":"0","data":{}}""",
+            HttpStatusCode.OK to "not-json",
+        )) {
+            val error = assertFailsWith<ProtocolException> {
+                headers(dialect(mutableListOf(), status, response), "https://moda.wallet.gov.tw/", byteArrayOf())
             }
-        })
-    }
-
-    private fun deviceKeys(http: HttpClient, area: org.multipaz.securearea.software.SoftwareSecureArea, storage: org.multipaz.storage.Storage) = TwdiwDeviceKeys(
-        storage, org.multipaz.securearea.SecureAreaRepository.Builder().add(area).build(), http,
-        backends = { listOf(TwdiwKeyBackend(area, "software") { org.multipaz.securearea.software.SoftwareCreateKeySettings.Builder().build() }) },
-    )
-
-    @Test
-    fun registeredDeviceKeySignsWithItsKeyId() = runBlocking<Unit> {
-        val bodies = mutableListOf<String>()
-        val http = platform(bodies, HttpStatusCode.OK to """{"code":"0","data":{"keyId":"kid-77","status":"1"}}""")
-        val storage = org.multipaz.storage.ephemeral.EphemeralStorage()
-        val area = org.multipaz.securearea.software.SoftwareSecureArea.create(storage)
-        val keys = deviceKeys(http, area, storage)
-        val dialect = TwdiwDialect(http, allowInsecureLoopback = false, deviceKey = { keys.signingKey(it) })
-        val body = "{}".encodeToByteArray()
-        val jwt = headers(dialect, "moda.wallet.gov.tw", body)?.get(TwdiwDialect.ECOSYSTEM_SIGNATURE_HEADER) ?: error("no header")
-        val jws = Jws.parse(jwt)
-        val record = keys.record("moda.wallet.gov.tw") ?: error("no record")
-        assertEquals("kid-77", record.keyId)
-        assertEquals("1", record.status)
-        val publicKey = area.getKeyInfo(record.alias).ecPublicKey
-        jws.verify(VerificationKey.Ec(publicKey))
-        assertEquals("kid-77", jws.header.str("kid"))
-        assertEquals("kid-77", jws.payload.str("keyId"))
-        // The header's nonce is fetched after registration consumed its own one.
-        assertEquals("eco-2", jws.payload.str("nonce"))
-        assertEquals(listOf("appHash", "appPlatform", "appVersion", "bodyHash", "keyId", "nonce", "timestamp"), jws.payload.keys.toList())
-
-        val sent = diw.wallet.core.util.DiwJson.parseToJsonElement(bodies.single()) as JsonObject
-        assertEquals(record.did, sent.str("did"))
-        assertEquals("EC", sent.str("keyType"))
-        assertEquals("software://", sent.str("keyPrefix"))
-        assertEquals("eco-1", sent.str("nonce"))
-        // The proof of possession is signed by the new key over the registration nonce.
-        val proof = Jws.parse(sent.str("proof")!!)
-        proof.verify(VerificationKey.Ec(publicKey))
-        assertEquals("eco-1", proof.payload.str("nonce"))
-
-        // A second issuance reuses the registration without calling api/did again.
-        headers(dialect, "moda.wallet.gov.tw", body)
-        assertEquals(1, bodies.size)
+            assertEquals("twdiw_ecosystem_nonce_failed", error.code)
+        }
     }
 
     @Test
-    fun refusedRegistrationFallsBackToHolderKeyAndKeepsTheAnswer() = runBlocking<Unit> {
-        val bodies = mutableListOf<String>()
-        val http = platform(bodies, HttpStatusCode.BadRequest to """{"code":"40001","message":"unknown app"}""")
-        val storage = org.multipaz.storage.ephemeral.EphemeralStorage()
-        val area = org.multipaz.securearea.software.SoftwareSecureArea.create(storage)
-        val keys = deviceKeys(http, area, storage)
-        val dialect = TwdiwDialect(http, allowInsecureLoopback = false, deviceKey = { keys.signingKey(it) })
-        val jwt = headers(dialect, "moda.wallet.gov.tw", "{}".encodeToByteArray())?.get(TwdiwDialect.ECOSYSTEM_SIGNATURE_HEADER) ?: error("no header")
-        Jws.parse(jwt).verify(VerificationKey.Ec(holderKey.publicKey))
-        val record = keys.record("moda.wallet.gov.tw") ?: error("no record")
-        assertNull(record.keyId)
-        assertEquals(400, record.lastHttpStatus)
-        assertTrue(record.lastResponse!!.contains("unknown app"))
-        // Within the retry interval the platform is not asked again.
-        headers(dialect, "moda.wallet.gov.tw", "{}".encodeToByteArray())
-        assertEquals(1, bodies.size)
+    fun requestCancellationIsPreserved() = runBlocking<Unit> {
+        val http = HttpClient(MockEngine { throw CancellationException("cancel") })
+        val dialect = TwdiwDialect(http, false, applicationKey = { application })
+        assertFailsWith<CancellationException> { headers(dialect, "https://moda.wallet.gov.tw/", byteArrayOf()) }
+    }
+
+    @Test
+    fun pemImportValidatesPairAndCurve() = runBlocking<Unit> {
+        val imported = TwdiwApplicationKey.fromPem(appPrivate.toPem(), appPrivate.publicKey.toPem())
+        assertEquals(application.keyId, imported.keyId)
+        assertFails { TwdiwApplicationKey.fromPem(appPrivate.toPem(), holder.publicKey.toPem()) }
+        assertFailsWith<IllegalArgumentException> { TwdiwApplicationKey.fromPrivateKey(Crypto.createEcPrivateKey(EcCurve.P384)) }
     }
 }

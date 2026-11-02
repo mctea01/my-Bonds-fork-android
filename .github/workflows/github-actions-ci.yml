@@ -70,6 +70,8 @@ jobs:
           else
             exit $code
           fi
+      - name: Application signing key build tests
+        run: python3 tools/twdiw/test_generate_application_key.py
       - name: Core and protocol tests
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
@@ -125,6 +127,9 @@ jobs:
       DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
       DIW_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
       DIW_DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+      # Caller-owned TWDIW application signing pair. PR builds always generate their own test pair.
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -198,23 +203,27 @@ jobs:
           rm -f "$RUNNER_TEMP/keys.txt"
           echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
           echo "Using the release keystore from secrets"
-      - name: Android APKs (debug)
+      - name: Android APK and AAB (debug)
         run: |
-          ./gradlew --no-daemon --stacktrace :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:bundleDebug
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
-      - name: Android APKs (release)
+          cp app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug.aab"
+      - name: Android APK and AAB (release)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease :app:bundleRelease
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
-      - name: Upload APK
+          cp app/build/outputs/bundle/release/app-release.aab "dist/DIW-MY-WALLET-$APP_VERSION.aab"
+      - name: Upload Android packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: android
-          path: dist/*.apk
+          path: |
+            dist/*.apk
+            dist/*.aab
           retention-days: 14
 
   desktop:
@@ -239,6 +248,8 @@ jobs:
     timeout-minutes: 90
     env:
       DIW_ZK_FEATURES: ${{ matrix.features }}
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     defaults:
       run:
         shell: bash
@@ -332,7 +343,7 @@ jobs:
           cat > notes.md <<EOF
           Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
 
-          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized). The -debug.apk also allows HTTP test servers on the local network.
+          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized), with .aab for bundle distribution. The -debug.apk and -debug.aab are test builds.
           - Windows: .msi installer, no admin rights needed
           - Linux: .deb package (Debian, Ubuntu)
           - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar

@@ -189,7 +189,28 @@ actual object DocumentInspector {
 
     // ---- PDF ----
 
-    private suspend fun pdf(bytes: ByteArray, base: DocumentReport, checks: CmsChecks, now: Instant): DocumentReport {
+    actual suspend fun inspectWithheldPdf(
+        bytes: ByteArray,
+        byteRange: IntArray,
+        sha256: ByteArray,
+        trust: DocumentTrustSource,
+        now: Instant,
+    ): DocumentReport {
+        require(sha256.size == 32)
+        val range = byteRange.map { it.toLong() }
+        val checks = CmsChecks(PkiSupport(trust))
+        val base = DocumentReport(DocumentFormat.PDF, "", bytes.size.toLong(), checkedAt = now.epochSeconds)
+        // Labels as pdf() assigns them; signatures over other ranges read withheld bytes and cannot be checked here.
+        val fields = PdfSignatures(PdfFile(bytes)).fields().sortedBy { it.signedLength }
+        val index = fields.indexOfFirst { it.byteRange == range }
+        val report = pdf(bytes, base, checks, now, range to sha256)
+        if (index < 0) return report.copy(signatures = emptyList(), problems = report.problems + "找不到被證明的簽章")
+        val label = fields[index].fieldName ?: "簽章 ${index + 1}"
+        return report.copy(signatures = report.signatures.filter { it.label == label })
+    }
+
+    private suspend fun pdf(bytes: ByteArray, base: DocumentReport, checks: CmsChecks, now: Instant,
+        withheld: Pair<List<Long>, ByteArray>? = null): DocumentReport {
         val pdf = try { PdfFile(bytes) } catch (e: PdfException) {
             return base.copy(format = DocumentFormat.PDF, problems = listOf("PDF 結構無法讀取：" + e.message))
         }
@@ -207,7 +228,7 @@ actual object DocumentInspector {
         val results = ArrayList<Pair<PdfSignatureField, SignatureInfo>>()
         for ((i, f) in fields.withIndex()) {
             val label = f.fieldName ?: "簽章 ${i + 1}"
-            val info = pdfSignature(f, bytes, label, dss, checks, now)
+            val info = pdfSignature(f, bytes, label, dss, checks, now, withheld?.takeIf { it.first == f.byteRange }?.second)
             val whole = f.signedLength >= fileEnd
             val (changes, changeProblems) = if (whole) LaterChanges.NONE to emptyList() else sigs.changesAfter(f.signedLength)
             val p = info.problems.toMutableList()
@@ -292,7 +313,17 @@ actual object DocumentInspector {
         return "PAdES 等級：$level"
     }
 
-    private suspend fun pdfSignature(f: PdfSignatureField, bytes: ByteArray, label: String, dss: diw.wallet.core.document.pdf.PdfDss?, checks: CmsChecks, now: Instant): SignatureInfo {
+    private suspend fun pdfSignature(f: PdfSignatureField, bytes: ByteArray, label: String, dss: diw.wallet.core.document.pdf.PdfDss?, checks: CmsChecks, now: Instant,
+        withheldSha256: ByteArray? = null): SignatureInfo {
+        if (withheldSha256 != null) {
+            // Parts of the signed bytes are withheld (zkPDF): the proven SHA-256 stands for them. Only SHA-256 CMS.
+            if (f.subFilter !in setOf("ETSI.CAdES.detached", "adbe.pkcs7.detached")) {
+                return checks.failed(SignatureFormat.PADES, label, "這種簽章格式不能用於零知識證明")
+            }
+            val format = if (f.subFilter == "ETSI.CAdES.detached") SignatureFormat.PADES else SignatureFormat.PDF_PKCS7
+            return checks.verify(trimDer(f.contents), null, format, label, now, dss?.certificates.orEmpty(), dss?.ocsps.orEmpty(),
+                dss?.crls.orEmpty(), fallbackClaimed = PdfDates.parse(f.claimedTime), contentSha256 = withheldSha256).first()
+        }
         val signed = try { f.signedData(bytes) } catch (e: PdfException) {
             return checks.failed(SignatureFormat.PADES, label, "簽章範圍無效：" + e.message)
         }

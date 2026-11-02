@@ -339,8 +339,7 @@ private fun InteropPage(model: WalletModel) {
 }
 
 /**
- * The TWDIW ecosystem device key per partner-card platform: where the key lives, whether api/did accepted it, and
- * the server's last answer verbatim (the request format is inferred, so the answer is what to compare on a device).
+ * Current application key and optional historical device-registration records, retained for deletion only.
  */
 @Composable
 private fun TwdiwDeviceKeySection(model: WalletModel) {
@@ -350,20 +349,19 @@ private fun TwdiwDeviceKeySection(model: WalletModel) {
         value = runCatching { model.twdiwDeviceKeys.records() }.getOrDefault(emptyList())
     }
     HorizontalDivider()
-    SectionTitle("數位憑證皮夾生態系裝置金鑰")
-    Text("官方夥伴卡平台（moda.wallet.gov.tw）的領卡請求要帶 Twdiw-Signature。錢包在第一次領卡時於本機產生裝置金鑰（StrongBox 優先，其次 TEE，最後是軟體金鑰），附金鑰證明向平台的 api/did 註冊，取得 keyId 後以它簽章；註冊格式依官方 App 結構推斷，平台不接受時改用持有者金鑰簽，不影響其他發證端。",
+    SectionTitle("數位憑證皮夾應用簽章金鑰")
+    Text("新版夥伴卡平台的領卡請求使用獨立的應用簽章金鑰；平台是否接受此應用與金鑰，由發行端決定。舊版發證端仍可使用原有領卡流程。",
         style = MaterialTheme.typography.bodySmall)
-    if (records.isEmpty()) {
-        Text("尚未建立：第一次向夥伴卡平台領卡時建立。", style = MaterialTheme.typography.bodySmall)
-        return
-    }
+    LabelValue("金鑰來源", if (model.twdiwApplicationKeySource == "provided") "建置時提供" else "建置時產生")
+    LabelValue("應用金鑰 ID", model.twdiwApplicationKeyId ?: "尚未載入")
+    if (records.isNotEmpty()) Text("以下為舊版留下的裝置金鑰紀錄，已停止使用，可自行刪除。", style = MaterialTheme.typography.bodySmall)
     records.forEach { r ->
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(r.host, style = MaterialTheme.typography.titleSmall)
                 LabelValue("金鑰位置", when (r.protection) { "strongbox" -> "StrongBox 安全晶片"; "tee" -> "TEE 可信執行環境"; else -> "軟體金鑰" })
                 LabelValue("金鑰 DID", r.did)
-                LabelValue("註冊", if (r.registered) "已註冊，keyId：${r.keyId}" + (r.status?.let { "（status $it）" } ?: "") else "未註冊")
+                LabelValue("舊紀錄", r.keyId?.let { "keyId：$it" } ?: "當時未取得 keyId")
                 r.lastHttpStatus?.let { LabelValue("最後一次回應", "HTTP $it" + (r.lastAttemptAt?.let { t -> "・" + localTime(t) } ?: "")) }
                 r.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 r.lastResponse?.takeIf { it.isNotBlank() }?.let { body ->
@@ -372,7 +370,7 @@ private fun TwdiwDeviceKeySection(model: WalletModel) {
                     if (open) SelectionContainer { Text(body, style = MaterialTheme.typography.bodySmall) }
                 }
                 OutlinedButton(onClick = { scope.launch { runCatching { model.twdiwDeviceKeys.reset(r.host) }; reload++ } }) {
-                    Text("刪除金鑰並於下次領卡重新註冊")
+                    Text("刪除舊金鑰與紀錄")
                 }
             }
         }

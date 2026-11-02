@@ -91,7 +91,7 @@ PDF 簽章的 `messageDigest` 是 ByteRange 兩段串接的 SHA-256。令 M 為�
 | V1 | 套件版本、版型、電路名稱與 ACIR、驗證金鑰的 SHA-256 都在釘選清單 | 拒絕 |
 | V2 | 解壓遮蔽檔，長度等於 `size`；視窗互不重疊，位移落在 ByteRange 的雜湊範圍內，不含填充區塊 | 拒絕 |
 | V3 | 從頭計算 SHA-256；每到視窗起點比對 H_s，視窗後以 H_e 接續；最後等於 CMS `messageDigest` | 拒絕 |
-| V4 | 以既有 `DocumentInspector` 驗證 CMS 簽章、憑證鏈（`TrustRole.DOCUMENT`）與簽章時戳；ByteRange 之後若有增量更新，以既有 `LaterChanges` 判斷，不得改到第 1 頁內容與字型 | 拒絕或依既有規則判定 |
+| V4 | 以 `DocumentInspector.inspectWithheldPdf` 用 V3 的 SHA-256 驗證 CMS 簽章、憑證鏈（`TrustRole.DOCUMENT`）與簽章時戳；遮蔽檔只含簽章涵蓋的版本，ByteRange 必須到檔尾（2026-11-02，原本的 `LaterChanges` 判斷改為不帶之後的更新） | 拒絕；簽署者未通過信任檢查時證明仍成立但標為警告 |
 | V5 | 解析遮蔽檔中「簽章所涵蓋版本」的結構：目錄 → 第 1 頁 → `/Contents` 物件 → xref 位移 → 物件標頭 `/Length`、`/Filter /FlateDecode`；內容視窗必須恰好是這個串流資料。`opaque` 視窗必須恰好是某個物件的串流資料 | 拒絕 |
 | V6 | 若有 `/Encrypt`：必須是 Standard V2 R3（RC4），以空白使用者密碼依 PDF 演算法 2 推導檔案金鑰，以演算法 6 驗證 `/U`；計算內容物件的 RC4 金鑰流並比對公開輸入。其他加密方式不支援 | 不支援或拒絕 |
 | V7 | 依第 1 頁資源取得字型解碼器（WinAnsi、Identity-H＋ToUnicode）；解碼每個錨點輸出，與描述檔該欄位可接受的錨點標籤完全相同（第 3.11 節），序數與總數相符；為日期述詞產生「字型名稱、編碼值 → 數字」對照表 | 拒絕 |
@@ -243,7 +243,7 @@ content:
 | Z8 | 內容串流含 `BI` 或 ActualText | 產生前檢查拒絕；強行產生時證明不成立 |
 | Z9 | 日期述詞 cutoff 早於出生日期 | 證明不成立 |
 | Z10 | RC4 文件的金鑰流被改 | V6 失敗 |
-| Z11 | 簽章之後的增量更新改了第 1 頁 | V4 依 `LaterChanges` 判定 |
+| Z11 | 簽章之後的增量更新改了第 1 頁 | 證明與遮蔽檔只含簽章涵蓋的版本（p4-zkp.md 第 5.1 節，2026-11-02）；之後的修改不進入證據，證明的是簽署時的內容 |
 | Z12 | 解壓後超過 `MAX_PLAIN` | 產生前檢查拒絕並說明 |
 | Z13 | 證明者提供漏掉一個字串的運算子表提示 | 證明不成立 |
 | Z14 | 自驗失敗的證明 | 不寫入衍生憑證 |

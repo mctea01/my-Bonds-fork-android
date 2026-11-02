@@ -27,6 +27,33 @@ class ZkPdfTextRecord(val font: ByteArray, val kind: Int, val strings: List<Byte
         other is ZkPdfTextRecord && encoded().contentEquals(other.encoded())
 
     override fun hashCode(): Int = encoded().contentHashCode()
+
+    companion object {
+        /** Records encoded back to back, as a field's source; throws on any malformed or trailing byte. */
+        fun parseAll(bytes: ByteArray): List<ZkPdfTextRecord> {
+            val out = ArrayList<ZkPdfTextRecord>()
+            var i = 0
+            fun next(): Int {
+                if (i >= bytes.size) throw PdfException("Malformed zkPDF record")
+                return bytes[i++].toInt() and 255
+            }
+            while (i < bytes.size) {
+                val fontLength = next()
+                if (fontLength !in 1..16 || i + fontLength > bytes.size) throw PdfException("Malformed zkPDF record")
+                val font = bytes.copyOfRange(i, i + fontLength).also { i += fontLength }
+                val kind = next()
+                val count = next()
+                if (kind > 1 || count == 0) throw PdfException("Malformed zkPDF record")
+                val strings = List(count) {
+                    val length = next() * 256 + next()
+                    if (i + length > bytes.size) throw PdfException("Malformed zkPDF record")
+                    bytes.copyOfRange(i, i + length).also { i += length }
+                }
+                out += ZkPdfTextRecord(font, kind, strings)
+            }
+            return out
+        }
+    }
 }
 
 /**

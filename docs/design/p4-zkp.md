@@ -104,20 +104,26 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 
 欄位本身（例如 `name`、`studentId`）仍是一般 disclosure，值是解碼後的文字；不懂 zkPDF 的查驗端照常讀取，只是無法確認它來自文件。
 
-證據包（`ZkPdfEvidence`，JSON，鍵名固定）：
+證據包（`ZkPdfEvidence`，JSON，鍵名固定；2026-11-02 依第 3.12 節分段證明改寫，實作在 `core/.../document/zkpdf/ZkPdfEvidence.kt`）：
 
 | 鍵 | 型別 | 說明 |
 |---|---|---|
 | `v` | 整數 | 固定 `1` |
 | `type` | 字串 | 固定 `ZkPdfProof` |
-| `profile` | 字串 | 版型描述檔識別碼與版本，例如 `cn.fzu.student-status/1` |
-| `circuit` | 物件 | `{"name":"pdf_text_v1_1p","acirSha256":"…","vkSha256":"…","noir":"…","bb":"…"}`；查驗端只接受程式內釘選的組合 |
+| `profile` | 字串 | 版型描述檔識別碼與版本，例如 `cn.fzu.student-status/1`；查驗端只接受已釘選的版型（V1） |
+| `composition` | 字串 | `zkpdf-v1-phone` 或 `zkpdf-v1-desktop`；決定各段電路與驗證金鑰，金鑰的 SHA-256 由原生程式依 `native/circuits/VERSIONS` 釘選（V1） |
 | `binding` | 字串 | base64url(SHA-256(衍生憑證 `cnf.jwk` 的 RFC 7638 thumbprint 的 UTF-8)) |
-| `document` | 物件 | 遮蔽後的 PDF：`{"size":<原檔大小>,"zlib":"<base64url，遮蔽後檔案以 zlib 壓縮>","windows":[…]}`；私密區段在遮蔽檔中以 0x00 填滿 |
-| `windows[]` | 陣列 | 每個私密區段：`{"role":"content"|"opaque","offset":<檔案位移>,"length":<位元組數>,"midIn":"hex32","midOut":"hex32","blocks":<SHA-256 區塊數>}` |
-| `outputs` | 物件 | 電路的公開輸出：錨點（字型名稱、原始字串位元組、序數、總數）、欄位承諾（每個 slot 32 bytes）、述詞結果；查驗端以自己重算的值組成公開輸入，這裡只供除錯與顯示 |
-| `proof` | 字串 | base64url 的 UltraHonk 證明 |
+| `document` | 物件 | `{"size":<位元組數>,"zlib":"<base64url>"}`：遮蔽後的**簽章所涵蓋版本**（截到 ByteRange 結尾，不含之後的增量更新），私密區段以 0x00 填滿 |
+| `windows[]` | 陣列 | 依版面順序（內容視窗在前）：`{"role":"content"|"opaque","offset":<檔案位移>,"length":<位元組數>,"blocks":<SHA-256 區塊數>,"midOut":"hex32"}`。查驗端自己由遮蔽檔與版型重算位移、長度、區塊數、head、tail 與 midIn，只取 `midOut` 接續雜湊，並在 V8 比對證明輸出的 midOut |
+| `anchors[]` | 陣列 | `{"record":"<base64url，v2 紀錄>","ordinal":1,"total":1}`；查驗端以公開字型解碼並比對版型標籤（V7） |
+| `slots[]` | 陣列 | `{"claim":"<欄位名>","slot":<0 起連號>,"before":<錨點索引>,"after":<錨點索引>}` |
+| `predicates[]` | 陣列 | `{"kind":"DATE_LE"|"DATE_GE","claim":"<日期欄位>","cutoff":<YYYYMMDD>}`；述詞在產生時決定，查驗方依自己的政策判斷是否足夠 |
+| `segments[]` | 陣列 | `{"kind":"sha_content"|"sha_opaque"|"inflate0"|"inflate"|"lex"|"claim"|"pred","index":<int>,"proof":"<base64url>","publicInputs":"<base64url>"}`，即原生 `ZkPdfBundle`；查驗端以自己組的陳述交給 `zkpdfVerify`，公開輸入必須完全相符 |
 | `createdAt` | 字串 | ISO 8601 |
+
+`zkOpen:<欄位名>` 的 `src` 是兩個錨點之間各運算子的 v2 紀錄依序串接；承諾為 SHA-256("diw-zkpdf-claim-v1" ‖ u8 slot ‖ salt ‖ u16 長度 ‖ src 補零到 384 bytes)，與欄位段輸出相同（V10）。
+
+遮蔽檔只含簽章涵蓋的版本（2026-11-02 決定）：證明的是簽署者簽下的內容，之後的增量更新（註解、DSS、文件時戳）與證明無關，帶上只會增加大小與洩漏。代價是查驗端看不到之後加入的 DSS 與文件時戳，長期驗證只能用簽章本身內嵌的撤銷資訊與簽章時戳。CMS 檢查（V4）以 `DocumentInspector.inspectWithheldPdf` 進行：以 V3 重算的 SHA-256 代替檔案內容驗證 CMS（只接受 `adbe.pkcs7.detached` 與 `ETSI.CAdES.detached`），其餘信任、效期、撤銷與簽章時戳的判定與一般 PDF 相同。
 
 遮蔽後的檔案約為原檔大小（福州大學樣本 520 KB，大部分是影像與字型），所以 `zkPdf` disclosure 只適合線上出示（OpenID4VP direct\_post、DC API）與 BLE；QR 出示不帶 zkPDF 證據，畫面寫明原因。後續可用「版型資源包」把每份文件都相同的影像（學校標誌、印章）改成以 SHA-256 參照，縮小證據包。【推論】
 

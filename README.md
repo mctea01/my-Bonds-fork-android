@@ -105,7 +105,7 @@
 
 ### 相容（常駐啟用）
 
-- **數位憑證皮夾（TWDIW）**：官方發證與出示流程、發行端卡面與身分保證等級（IAL）、出示時更改憑證與知情同意書、卡片目錄、臨櫃離線條碼、信任清單與 Arbitrum 錨定。
+- **數位憑證皮夾（TWDIW）**：新版應用簽章格式與舊版領卡相容、發行端卡面與身分保證等級（IAL）、出示時更改憑證與知情同意書、卡片目錄、臨櫃離線條碼、信任清單與 Arbitrum 錨定。新版應用金鑰可在建置時合法提供，未提供時產生測試配對；官方平台准入仍需另外驗收。
 - **Bonds**：
   - 輪播 QR 與藍牙離線出示，以及作為查驗方（本 App 之間另可走區域網路與動態 QR）；
   - 年齡證明（OpenAC）的出示與查驗；
@@ -132,6 +132,8 @@ main 每次更新後，CI 發佈「nightly」預先發行版。
 ```bash
 ./gradlew :app:assembleDebug          # Android debug APK
 ./gradlew :app:assembleRelease        # Android release APK（R8）
+./gradlew :app:bundleDebug            # Android debug AAB
+./gradlew :app:bundleRelease          # Android release AAB（與 release APK 同一簽章設定）
 ./gradlew :app:run                    # 桌面版
 ./gradlew :test-servers:test          # 協議、互通、文件與方言測試
 ./gradlew :app:desktopTest            # App 流程測試

@@ -11,7 +11,7 @@
 | `withHashAlgorithm` 補償 | 屬實，為相容 Multipaz 回應格式的刻意補償 | 無 |
 | TrustManager 只接受 EC | 部分屬實：自訂 TrustManager 只處理 EC，RSA 憑證鏈由平台 PKIX 驗證補上，結果正確 | 無 |
 | SD-JWT VC 一定要 nbf | 找不到要求 nbf 的程式路徑，沒有 nbf 的憑證可正常匯入 | 無 |
-| Twdiw-Signature 未實作 | 已過時：`TwdiwDialect.outboundCredentialHeaders` 已用本 App 自己的金鑰簽；缺的是向 `api/did` 註冊裝置金鑰 | TWDIW 註冊 |
+| Twdiw-Signature 未實作 | 已有本 App 自有金鑰簽章實作，但未驗收官方接受；`api/did` 手機註冊推論未獲證實，樣本 SDK 的簽章金鑰來自 APK 資產 | TWDIW 應用身分查證 |
 | `.en`、`.esw` 不支援 | 屬實：電子公文只認 DI、SI、SW、CO、DM | B6 |
 | CI Action 未釘選、下載檔未驗證 | 屬實 | A1 已修正 |
 | 依賴 CVE | 見 A4 | A4 已處理 |
@@ -27,14 +27,22 @@
    - Netty 4.2.7（Ktor 3.3.3 帶入，只用於測試伺服器、桌面測試與正式服務端）：34 筆，含 1 筆 Critical（CVE-2026-75595 SNI 路由繞過）與多筆 HTTP 請求走私。以 Netty BOM 釘到 4.2.19.Final，OSV 查無公告。正式服務端在 diw-wallet-server PR #9。
    - 原生 Rust crate：沒有高風險命中。crypto-bigint 0.5.5（RUSTSEC-2026-0387 時序，經 elliptic-curve 0.13）、block-buffer 0.10.4（中）、tracing-subscriber 0.2.25（低，CVE-2025-58160）與幾個已停止維護的 crate，都要等上游升級。
 
-## TWDIW 生態系簽章註冊（2026-10-30 已依推斷格式實作）
+## TWDIW 應用簽章（2026-11-03 已修正實作）
 
-- 已完成：`TwdiwDeviceKeys` 在 StrongBox、TEE、軟體依序建立 P-256 裝置金鑰（金鑰證明綁定生態系 nonce），向 `{origin}/api/did/` 註冊（did、keyType、keyPrefix、JWK、證明鏈、nonce、持有證明 JWS 與本 App 自己的 appHash／appPlatform／appVersion），成功時以回應的 keyId 簽 `Twdiw-Signature`。官方請求格式仍未取得，伺服器回應原文保存在「設定 > 互通」供實機比對；被拒絕時改用持有金鑰簽章，不阻擋領卡。測試 `TwdiwEcosystemSignatureTest`。
+現行領卡流程已依 1.0.14 證據改用獨立應用配對，不再呼叫推測性手機註冊 API 或 fallback 到 holder 金鑰。修正 appHash、keyId、Header／Payload、Android 大小寫與 `/oid4vci` 服務前綴；保留無應用簽章擴充的舊端點。建置支援合法自有金鑰 secrets 與空值生成，Android 增加 AAB。實作及驗證見 [驗收紀錄](../acceptance/twdiw-application-signature.md)。以下較早敘述僅為歷史，未獲證實的註冊規劃已停用。
+
+現況（2026-11-02）：此處的「已完成」只指本機推斷流程與 Mock 測試，未完成官方註冊互通。公開的 `POST /api/did` 是機構 DID 註冊，尚不能當成手機裝置金鑰的註冊契約；11021 是上游 VC 服務通用錯誤，不能據此認定未註冊金鑰。本次公開端點 GET 量測與使用者實機線索見 [裝置金鑰註冊查證](../research/twdiw-device-registration.md)，以下保留原規劃，不能當成已驗證的官方規則。
+
+商店版附件追加查證：nonce 實際保留 `/oid4vci` 服務前綴；`https://moda.wallet.gov.tw/oid4vci/api/ext/nonce/generate?type=ecosyst` 實測 200 且回傳 nonce。Dart 的 `api/did`、`api/did/` 用於 GET 發行者清單與狀態；生態系簽章由 `did_sdk_channel` 的原生 `dwapp-201i` 回傳。手機註冊仍需追同版 APK 的原生處理者，不能把相對字串直接當成裝置註冊端點。
+
+完整 APK 追加查證：使用者已提供 1.0.14 APK（曾合併或重簽），七欄 JWT 模型可確認；但 keyType/keyPrefix/status 的線索實為 Tink MonitoringKeysetInfo，不能支持目前猜測的裝置註冊流程。已純離線解開兩層封裝，確認 `N3Kf59pP` 的簽章 getter 從 `dwapp201i_private.txt` 匯入 PKCS#8 EC 私鑰並以 SHA256withECDSA 簽署。`G91c5eRH` 則明列 frontend 的 App API；尚無手機裝置註冊端點證據；後續已藉 VM 符號模型追到成功路徑的 appHash（原始 package 名）及 keyId（雙層公鑰 reader 正規化文字的 SHA-256），appPlatform 亦已後續藉 unidbg 的真實 JNI helper 執行確認為 Android（見 native helper 雲端模擬驗證文件），第三方准入仍未確認。後續提供的 27 個分割 APK 均通過 v3 驗簽，簽章指紋與官方 frontend assetlinks 一致，相關程式與資產和合併包完全相同，故上述靜態結論已核對到官方簽署內容。詳見上述研究文件的 APK 章節；後續靜態分析不以前置抓包或成功執行修改包為條件。
+
+- 已停用：舊 `TwdiwDeviceKeys` 的金鑰建立、推測性註冊與 holder fallback；現僅保留讀刪歷史紀錄的能力。`TwdiwEcosystemSignatureTest` 已改驗證已確認的應用簽章格式。
 - 以下為原規劃。
 - 現況：Twdiw-Signature 由本 App 自己的金鑰簽，預設只對 moda.wallet.gov.tw 加上；後端回 500/11021 的原因推測是金鑰沒有註冊。
 - 做法：用本 App 的 Android Keystore 金鑰（StrongBox 優先，否則 TEE，沒有硬體時用軟體兜底金鑰）呼叫 `api/did` 註冊並保存 keyId；簽章前向 `api/ext/nonce/generate?type=ecosyst` 取 nonce；標頭依官方 App 格式（ES256、payload 七欄依字母排序後 compact、簽章為 64 位元組 r||s）。
 - 界線：appHash、appPlatform、appVersion 填本 App 自己的值。後端若因此拒絕，記錄結果，不改成冒充官方 App。
-- 需要使用者提供：官方 App 1.0.14 的 `api/did` 請求與回應（欄位、標頭、錯誤碼），以及 nonce 完整網址與回應（確認 `type=ecosyst` 是否完整）。
+- 已取得：本版本 nonce 服務前綴及 SDK 簽章來源證據。第三方應用准入仍需正式契約與合法配對，不能自行補造手機註冊端點。
 
 ## B. 標準補全
 

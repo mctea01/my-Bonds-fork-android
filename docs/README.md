@@ -19,6 +19,15 @@
 | 文件 | 內容 |
 |---|---|
 | [research/twdiw.md](research/twdiw.md) | TWDIW 官方 App 與平台的發證、出示、信任清單與互通細節 |
+| [research/twdiw-device-registration.md](research/twdiw-device-registration.md) | 裝置金鑰註冊查證：官方分割 APK 簽章與 assetlinks 核對、SDK 封裝及簽章呼叫鏈、frontend API、nonce 前綴、TLS 限制與待確認契約 |
+| [research/twdiw-1.0.14-issuance-review.md](research/twdiw-1.0.14-issuance-review.md) | 領卡與簽章分析附件核對：VM 成功路徑的 appHash／keyId 映射、公鑰雙層 reader 與指紋、DEX 交接、nonce／grant_type 校正 |
+| [research/twdiw-native-helper-emulation.md](research/twdiw-native-helper-emulation.md) | 雲端 unidbg 執行驗證：98 筆 JNI 註冊、四個 helper 與算術區塊綁定、appPlatform 確認為 Android、空間用量與重現產物 |
+| [research/twdiw-jws-local-generation.md](research/twdiw-jws-local-generation.md) | 自有測試金鑰建立 TWDIW 格式 JWS、原始 bytes／七欄驗證、OpenSSL 獨立驗簽與可重現工具 |
+| [research/twdiw-1.0.14-signing-and-oid4vci.md](research/twdiw-1.0.14-signing-and-oid4vci.md) | 1.0.14 簽章與領卡整合流程：holder／應用／發行者金鑰來源、dwapp-201i 七欄 JWS、兩種 nonce、Token 與 Credential 請求及證據界線 |
+| [research/twdiw-1.0.14-assets.md](research/twdiw-1.0.14-assets.md) | 完整 19 檔 assets 盤點：中英文 HTML、Lottie、Flutter 清單／授權聲明／字型／shader 解碼與可讀衍生物、兩個不同公鑰、原始資產交付 |
+| [research/twdiw-1.0.14-asset-decoding-guide.md](research/twdiw-1.0.14-asset-decoding-guide.md) | 資產逐層解碼：FNV／PCG／三種 reader、完整字型 TTX、shader FlatBuffer／SPIR-V、ART 方法索引與旗標、checksum 對照限制及 v2 重現包 |
+| [research/twdiw-1.0.14-key-asset-usage.md](research/twdiw-1.0.14-key-asset-usage.md) | 四個金鑰資產用途：已確認 .txt 簽章／keyId 來源、不同公鑰指紋，以及無副檔名資產尚未確定的消費者 |
+| [acceptance/twdiw-application-signature.md](acceptance/twdiw-application-signature.md) | 新版 TWDIW 應用簽章與舊版領卡、合法金鑰／空值生成、APK／AAB 本機驗證及待手動套用的 CI 設定 |
 | [research/bonds.md](research/bonds.md) | Bonds 的離線出示、自發卡（vc+moica）、MyData 流程與已知問題 |
 | [research/multipaz-eudi-ms.md](research/multipaz-eudi-ms.md) | Multipaz、EUDI 參考實作與 Microsoft Entra Verified ID |
 | [research/documents-signatures.md](research/documents-signatures.md) | 簽章電子文件格式（PAdES、CAdES、XAdES、OFD、ASiC、時戳）與驗證 |

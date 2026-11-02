@@ -10,7 +10,7 @@ import diw.wallet.core.jose.signJws
 import diw.wallet.core.oid4vci.AuthServerMetadata
 import diw.wallet.core.oid4vci.CredentialConfiguration
 import diw.wallet.core.oid4vci.IssuerMetadata
-import diw.wallet.core.profile.twdiw.TwdiwDeviceSigningKey
+import diw.wallet.core.profile.twdiw.TwdiwApplicationKey
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.highlyTrusted
@@ -26,6 +26,7 @@ import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpHeaders
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
 import kotlin.time.Clock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -67,7 +68,7 @@ class TwdiwDialect(
      * are DIW's own values, not the official app's; the official app's embedded application key is never used.
      */
     private val appIdentity: () -> TwdiwAppIdentity = { TwdiwAppIdentity.DEFAULT },
-    /** Base URL of the ecosystem nonce endpoint for an issuer; the issuer's own origin by default. */
+    /** Service prefix before /api/, preserving prefixes such as /oid4vci. */
     private val ecosystemBase: (IssuerMetadata) -> String = { defaultEcosystemBase(it.credentialIssuer) },
     /**
      * The TWDIW trust list's decision for an organisation registered for a credential issuer URL (its host and the
@@ -75,10 +76,10 @@ class TwdiwDialect(
      */
     private val registeredIssuerTrust: suspend (credentialIssuer: String) -> TrustDecision? = { null },
     /**
-     * The device key registered at the ecosystem (`api/did/`) for an issuer origin, with its keyId; null when there
-     * is none or registration failed, and the holder key signs instead.
+     * A separately provisioned application key. No guessed device registration or holder-key fallback is used.
+     * Null leaves legacy requests unsigned; the application build supplies its own key by default.
      */
-    private val deviceKey: suspend (origin: String) -> TwdiwDeviceSigningKey? = { null },
+    private val applicationKey: suspend () -> TwdiwApplicationKey? = { null },
 ) : IssuanceDialect {
     override val id = ID
     override val spec = "TWDIW"
@@ -161,48 +162,56 @@ class TwdiwDialect(
     /**
      * TWDIW's ecosystem signature, as the official wallet adds it on the official partner-card platform: the
      * credential POST also carries a Twdiw-Signature header, an ES256 JWT over the SHA-256 of the exact outgoing
-     * request bytes, bound to a one-time ecosystem nonce. The signature is produced with this wallet's own device key
-     * registered at the ecosystem ([deviceKey], as the official wallet registers its device key), else its holder key,
-     * and this wallet's own application identity; this is interoperability with the published protocol shape,
-     * not a copy of the official application's embedded key, which the wallet never has. Issuers outside
-     * [ecosystemSignatureHosts] get no header, and a missing or failing ecosystem nonce endpoint leaves the request
-     * unsigned rather than blocking issuance.
+     * request bytes, bound to a one-time ecosystem nonce and signed by a distinct application key. The wire profile
+     * follows the analyzed 1.0.14 SDK, using this wallet's own identity and key. An absent extension endpoint keeps
+     * legacy issuance unsigned. Other nonce errors are reported without silently downgrading a newer endpoint.
      */
     override suspend fun outboundCredentialHeaders(context: OutboundCredentialContext): Map<String, String>? {
         val host = runCatching { hostOf(context.issuer.credentialIssuer) }.getOrNull() ?: return null
         if (host !in ecosystemSignatureHosts()) return null
+        val application = applicationKey() ?: return null
         val base = ecosystemBase(context.issuer)
-        // Registration (when needed) consumes a nonce of its own, so the header's nonce is fetched afterwards.
-        val device = runCatching { deviceKey(base) }.getOrNull()
         val nonce = fetchEcosystemNonce(base) ?: return null
         val identity = appIdentity()
-        val keyId = device?.keyId ?: context.keyId
-        // The official app serialises the seven payload members in alphabetical order.
+        // This SDK DTO's adapter explicitly writes these seven members in this order.
         val jwt = signJws(
-            buildJsonObject { put("typ", "JWT"); put("alg", "ES256"); put("kid", keyId) },
+            buildJsonObject { put("alg", "ES256"); put("typ", "JWT") },
             buildJsonObject {
-                put("appHash", DocCryptoUtil.hex(PlatformCrypto.sha256(identity.appId.encodeToByteArray())))
+                put("appHash", identity.appId)
                 put("appPlatform", identity.appPlatform)
                 put("appVersion", identity.appVersion)
                 put("bodyHash", DocCryptoUtil.hex(PlatformCrypto.sha256(context.requestBytes)))
-                put("keyId", keyId)
+                put("keyId", application.keyId)
                 put("nonce", nonce)
                 put("timestamp", Clock.System.now().toEpochMilliseconds().toString())
             },
-            device?.key ?: context.signingKey,
+            application.signingKey,
         )
         return mapOf(ECOSYSTEM_SIGNATURE_HEADER to jwt)
     }
 
-    /** A fresh ecosystem nonce, or null when the endpoint is absent or does not answer with one. */
-    private suspend fun fetchEcosystemNonce(base: String): String? = runCatching {
-        val resp = httpClient.get(base.trimEnd('/') + ECOSYSTEM_NONCE_PATH) {
-            header(HttpHeaders.Accept, "application/json")
+    /** 404/410 means the extension is absent; failures on an existing extension must remain visible. */
+    private suspend fun fetchEcosystemNonce(base: String): String? {
+        try {
+            val resp = httpClient.get(base.trimEnd('/') + ECOSYSTEM_NONCE_PATH) {
+                header(HttpHeaders.Accept, "application/json")
+            }
+            if (resp.status.value in setOf(404, 410)) return null
+            if (!resp.status.isSuccess()) throw ProtocolException("twdiw_ecosystem_nonce_failed", "Ecosystem nonce endpoint returned HTTP ${resp.status.value}")
+            val body = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject
+                ?: throw ProtocolException("twdiw_ecosystem_nonce_failed", "Invalid ecosystem nonce response")
+            val code = (body["code"] as? JsonPrimitive)?.content
+            if (code != null && code != "0") throw ProtocolException("twdiw_ecosystem_nonce_failed", "Ecosystem nonce request was refused")
+            return (body.obj("data") ?: body).str("nonce")?.takeIf { it.isNotBlank() }
+                ?: throw ProtocolException("twdiw_ecosystem_nonce_failed", "Ecosystem nonce response has no nonce")
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: ProtocolException) {
+            throw error
+        } catch (error: Exception) {
+            throw ProtocolException("twdiw_ecosystem_nonce_failed", "Cannot obtain an ecosystem nonce", error)
         }
-        if (!resp.status.isSuccess()) return null
-        val body = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: return null
-        (body.obj("data") ?: body).str("nonce")?.takeIf { it.isNotBlank() }
-    }.getOrNull()
+    }
 
     override fun credentialsFromResponse(response: JsonObject): List<String>? =
         (response["credential"] as? JsonPrimitive)?.takeIf { it.isString }?.let { listOf(it.content) }
@@ -239,8 +248,9 @@ class TwdiwDialect(
             return h == "wallet.gov.tw" || h.endsWith(".wallet.gov.tw")
         }
 
-        /** The issuer's own scheme and authority, where the ecosystem nonce endpoint lives by default. */
+        /** Same service-prefix selection as applyVCKx: keep everything before /api/. */
         fun defaultEcosystemBase(credentialIssuer: String): String {
+            if ("/api/" in credentialIssuer) return credentialIssuer.substringBefore("/api/").trimEnd('/')
             val scheme = credentialIssuer.substringBefore("://", "https")
             val authority = credentialIssuer.substringAfter("://", credentialIssuer).substringBefore('/')
             return "$scheme://$authority"
@@ -249,11 +259,10 @@ class TwdiwDialect(
 }
 
 /**
- * This wallet's own TWDIW ecosystem application identity. [appHash] in the signed payload is derived from [appId],
- * so these describe DIW, not the official application; no official-app key or identity is embedded.
+ * This wallet's own identity. The payload's appHash is the unmodified appId despite the historical field name.
  */
 data class TwdiwAppIdentity(val appId: String, val appVersion: String, val appPlatform: String) {
     companion object {
-        val DEFAULT = TwdiwAppIdentity(appId = "diw", appVersion = "0.1", appPlatform = "android")
+        val DEFAULT = TwdiwAppIdentity(appId = "diw.wallet.app", appVersion = "0.1", appPlatform = "Android")
     }
 }

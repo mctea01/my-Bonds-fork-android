@@ -2,6 +2,8 @@ package diw.testservers
 
 import diw.wallet.core.did.DidKeys
 import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.DocCryptoUtil
+import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.jose.signJws
@@ -108,6 +110,9 @@ class TwdiwPlatformMock private constructor(
     private var cNonce: String? = null
     /** Current partner-card tokens omit c_nonce when metadata publishes a nonce endpoint. */
     var tokenNonceIncluded = true
+    var applicationPublicKey: EcPublicKey? = null
+    var ecosystemNonces = 0
+    var lastApplicationPayload: JsonObject? = null
     var credentialRequests = 0
         private set
     private val transactions = mutableMapOf<String, String>()
@@ -265,6 +270,11 @@ class TwdiwPlatformMock private constructor(
     private suspend fun MockRequestHandleScope.issuer(request: HttpRequestData): HttpResponseData {
         val url = request.url.toString().substringBefore('?')
         return when {
+            url == "$ISSUER_ORIGIN/oid4vci/api/ext/nonce/generate" && applicationPublicKey != null -> {
+                expect(request.method == HttpMethod.Get && request.url.parameters["type"] == "ecosyst") { "ecosystem nonce method/type" }
+                ecosystemNonces++
+                json(buildJsonObject { put("code", "0"); putJsonObject("data") { put("nonce", "ecosystem-nonce-$ecosystemNonces") } })
+            }
             url == ISSUER + ".well-known/openid-credential-issuer" -> json(metadata())
             url == ISSUER + "token" && request.method == HttpMethod.Post -> token(request)
             url == ISSUER + "credential" && request.method == HttpMethod.Post -> credential(request)
@@ -345,7 +355,23 @@ class TwdiwPlatformMock private constructor(
     private suspend fun MockRequestHandleScope.credential(request: HttpRequestData): HttpResponseData {
         credentialRequests++
         expect(request.headers[HttpHeaders.Authorization] == "Bearer $accessToken") { "Authorization ${request.headers[HttpHeaders.Authorization]}" }
-        val body = DiwJson.parseToJsonElement(bodyText(request)) as JsonObject
+        val bytes = request.body.toByteArray()
+        val body = DiwJson.parseToJsonElement(bytes.decodeToString()) as JsonObject
+        val applicationKey = applicationPublicKey
+        if (applicationKey != null) {
+            val application = Jws.parse(request.headers["Twdiw-Signature"] ?: fail("application signature missing"))
+            application.verify(VerificationKey.Ec(applicationKey))
+            expect(application.header.toString() == """{"alg":"ES256","typ":"JWT"}""") { "application header" }
+            expect(application.payload.str("appHash") == "diw.wallet.app") { "application identity" }
+            expect(application.payload.str("appPlatform") == "Android") { "application platform" }
+            expect(application.payload.str("bodyHash") == DocCryptoUtil.hex(PlatformCrypto.sha256(bytes))) { "application body hash" }
+            val text = applicationKey.toPem().lineSequence().filterNot { it.startsWith("-----") }.joinToString("") { it.trim() }
+            expect(application.payload.str("keyId") == DocCryptoUtil.hex(PlatformCrypto.sha256(text.encodeToByteArray()))) { "application key fingerprint" }
+            expect(application.payload.str("nonce") == "ecosystem-nonce-$ecosystemNonces") { "application nonce" }
+            lastApplicationPayload = application.payload
+        } else {
+            expect(request.headers["Twdiw-Signature"] == null) { "legacy issuer received an application signature" }
+        }
         expect(body.str("credential_identifier") == CONFIG_ID) { "credential_identifier ${body.str("credential_identifier")}" }
         val proof = (body.obj("proofs")?.arr("jwt")?.singleOrNull() as? JsonPrimitive)?.content ?: fail("proofs.jwt missing")
         val jws = Jws.parse(proof)
