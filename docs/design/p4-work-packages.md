@@ -71,7 +71,7 @@
 | WP1 | 電腦版量測完成（`docs/research/p4-benchmarks.md`）；實機量測與等級門檻待使用者執行 |
 | WP2 | 完成 |
 | WP3a | M3a、M3b 完成（PR #21 於 2026-10-29 合併進整合分支）：分段證明（p4-circuits.md 第 3.12 節），公開輸入 `native/circuits/PUBLIC_SPEC.md` 已凍結，`VERSIONS` 為候選釘選值 |
-| WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c（Rust 見證、UltraHonk 證明與查驗、uniffi）PR #74 於 2026-11-01 合併進整合分支，Linux 驗證完成，Android 與 macOS 待實際建置，Windows 暫不支援 |
+| WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c（Rust 見證、UltraHonk 證明與查驗、uniffi）PR #74 於 2026-11-01 合併進整合分支；錨點序數、空尾段回歸與 Android 實際建置（arm64-v8a、x86_64，不需額外打包共享函式庫）在 PR #76（2026-11-02）。macOS 待實際建置，Windows 暫不支援；手機門檻待實機量測（電腦版 2 個 worker 最快，峰值約 2.2 GB） |
 | WP4 | 未開始（等 WP3b）；文件詳情的「產生 zkPDF 證明」與自架主機仍是停用列 |
 | WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
 | WP6 | 完成：M6a 與 M6b；區域網路改為直接 TCP（第 5.2 節）；簽章版型包；學信網中英文報告頁與移民署入出國日期證明書查驗頁；網頁證明與本機紀錄存入證件 |
