@@ -72,6 +72,7 @@ impl From<zkpdf_prover::ZkPdfRecord> for ZkPdfRecord {
 #[derive(uniffi::Record)]
 pub struct ZkPdfAnchorInput {
     pub record: ZkPdfRecord,
+    pub ordinal: u32,
 }
 
 #[cfg(feature = "zkpdf")]
@@ -79,6 +80,7 @@ impl From<ZkPdfAnchorInput> for zkpdf_prover::ZkPdfAnchorInput {
     fn from(value: ZkPdfAnchorInput) -> Self {
         Self {
             record: value.record.into(),
+            ordinal: value.ordinal,
         }
     }
 }
@@ -88,6 +90,7 @@ impl From<zkpdf_prover::ZkPdfAnchorInput> for ZkPdfAnchorInput {
     fn from(value: zkpdf_prover::ZkPdfAnchorInput) -> Self {
         Self {
             record: value.record.into(),
+            ordinal: value.ordinal,
         }
     }
 }

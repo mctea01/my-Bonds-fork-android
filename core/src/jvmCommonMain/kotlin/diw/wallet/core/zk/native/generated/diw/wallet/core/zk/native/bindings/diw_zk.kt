@@ -1949,7 +1949,8 @@ public object FfiConverterTypeZkNativeInfo: FfiConverterRustBuffer<ZkNativeInfo>
 
 
 data class ZkPdfAnchorInput (
-    var `record`: ZkPdfRecord
+    var `record`: ZkPdfRecord, 
+    var `ordinal`: kotlin.UInt
 ) {
     
     companion object
@@ -1962,15 +1963,18 @@ public object FfiConverterTypeZkPdfAnchorInput: FfiConverterRustBuffer<ZkPdfAnch
     override fun read(buf: ByteBuffer): ZkPdfAnchorInput {
         return ZkPdfAnchorInput(
             FfiConverterTypeZkPdfRecord.read(buf),
+            FfiConverterUInt.read(buf),
         )
     }
 
     override fun allocationSize(value: ZkPdfAnchorInput) = (
-            FfiConverterTypeZkPdfRecord.allocationSize(value.`record`)
+            FfiConverterTypeZkPdfRecord.allocationSize(value.`record`) +
+            FfiConverterUInt.allocationSize(value.`ordinal`)
     )
 
     override fun write(value: ZkPdfAnchorInput, buf: ByteBuffer) {
             FfiConverterTypeZkPdfRecord.write(value.`record`, buf)
+            FfiConverterUInt.write(value.`ordinal`, buf)
     }
 }
 

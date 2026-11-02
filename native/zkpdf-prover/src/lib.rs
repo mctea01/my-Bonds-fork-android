@@ -27,3 +27,6 @@ mod runtime;
 pub use runtime::{prove, prove_with_metrics, verify, SegmentMetrics};
 mod opening;
 pub use opening::verify_opening;
+
+#[cfg(test)]
+mod regression_tests;

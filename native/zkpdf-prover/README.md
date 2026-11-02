@@ -8,7 +8,7 @@ revision selection, CMS trust, SHA continuation between windows and V5–V7/V10.
 The runtime uses official Noir beta.15 Rust crates at
 `83245db91dcf63420ef4bcbbd85b98f397fee663` and a static Barretenberg 2.1.9 at
 `f2bed7ed073966bb2a2dcdd02a133d11bf2996d3`. The C++ bridge fixes the flavor to
-zero-knowledge UltraHonk and Poseidon2. It limits native workers to two, catches
+zero-knowledge UltraHonk and Poseidon2. Production fixes native workers to two, catches
 C++ exceptions, suppresses upstream diagnostic hooks, disables polynomial disk
 spilling and uses an authenticated memory CRS factory. No runtime download or
 CLI subprocess is used. Noir foreign calls are rejected. Witness encoding is
@@ -44,12 +44,13 @@ For macOS arm64, run the same build on a macOS arm64 host using
 `--target aarch64-apple-darwin` and AppleClang. For Android, install the pinned
 NDK/cargo-ndk from `native/README.md`, then run
 `DIW_ZK_FEATURES=zkpdf native/build.sh android`; each ABI requires its own CMake
-build directory. These platform builds have not been executed in this Linux
-workspace. Windows is currently blocked by upstream POSIX dependencies
+build directory. `build.sh` supplies the API-29 NDK wrapper through
+`ZKPDF_CXX`/`ZKPDF_AR`, independently of cargo-ndk's rewritten `CXX` and
+`CXXFLAGS`. It reports elapsed seconds and library bytes for each ABI.
+Android build results are recorded in `docs/research/p4-benchmarks.md`.
+macOS has not been built in this Linux workspace. Windows is currently blocked by upstream POSIX dependencies
 (`sys/random.h`, `sys/mman.h` and allocation/file APIs); the build tool fails
-explicitly rather than substituting a different backend version. A Windows port
-and target-specific validation remain required before claiming all-platform
-M3c acceptance.
+explicitly rather than substituting a different backend version. Windows zkPDF is currently unsupported; no POSIX port is attempted.
 
 ## Assets
 
@@ -72,20 +73,14 @@ entries, including deterministic gzip files. Because frozen ACIR JSON contains
 absolute debug source paths, it canonicalizes only `file_map` paths to the
 frozen compilation root before checking the complete file hash.
 
-The added catalog URLs are intentionally empty pending release publication.
-The Kotlin manifest pin, pending zkPDF URL validation, core Gradle allowlist and
-native feature test were updated under an explicit scope exception. The app
-Gradle allowlist still excludes zkpdf and remains for Claude to update. Until
-then, build the native library first as above and reuse it for Kotlin checks:
+The catalog URLs remain empty pending release publication. Both Gradle feature
+allowlists accept zkpdf. To require the host backend and execute the Kotlin test:
 
 ```sh
-ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" ./gradlew \
-  :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test \
-  -Pdiw.zkNative=skip -Pdiw.zkFeatures=
+DIW_ZK_FEATURES=zkpdf ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" \
+  ./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test \
+  -Pdiw.zkNative=require
 ```
-
-This skips rebuilding the already packaged native library; it does not skip
-`ZkPdfCircuitTest`, which requires and executes the zkPDF backend when present.
 
 ## API behavior
 
@@ -111,8 +106,9 @@ successful proof verification.
 WP3b leaves some record definitions implicit. The implementation makes
 `WindowPublic.blocks`, anchor ordinal/total and slot indices `u32`;
 `ZkPdfPlan` provides composition, counts for each segment family, total segments,
-estimated proof bytes and public input bytes. Since `AnchorInput` contains only
-a record, generation selects its first exact occurrence; the independent
+estimated proof bytes and public input bytes. `AnchorInput.ordinal` is a required one-based occurrence of the exact v2 record.
+Zero or an unavailable occurrence fails with `anchor_ordinal` during both check
+and prove preparation, before asset access or progress callbacks. The independent
 verifier's ordinal/total policy is still mandatory. SHA segments follow the
 verifier's ordered windows. Inflate/lex segmentation is fixed by composition and
 actual plaintext length; the latter remains private and is enforced by the
@@ -159,19 +155,46 @@ follow the supplied enabled-anchor order. The optional `ZKPDF_DESKTOP_BUNDLE`
 path on `real_proof_rejections` adds validation of a separately generated desktop
 student bundle and rejects mixing its inflate/lex proofs into the phone bundle.
 
-## Frozen boundary requiring design review
+## Accepted empty-tail boundary
 
-The ignored `frozen_empty_final_segment_boundary` regression executes the pinned
-ACIR for both one segment and two segments of the same 2048-byte plaintext:
-deferring the end-of-block symbol permits an empty final segment. Production
-witness generation eagerly consumes that symbol, but a verifier cannot enforce
-this choice from the current public inputs. `ZkPdfVerifierSpec` has no plaintext
-length. Strict unique segmentation therefore remains an acceptance blocker for
-Claude to resolve in the frozen circuit/specification. The test demonstrates
-constraint satisfaction, not a complete adversarial PDF proof bundle.
+The frozen circuits accept one additional empty final inflate segment (and its
+matching lexical segment) when plaintext length is a multiple of `SEG_PLAIN`.
+The generator consumes the end marker eagerly and `check` excludes that empty
+pair. Public-input policy accepts both forms, including at `MAX_PLAIN=40960`;
+proof verification remains mandatory. Never identify or deduplicate a document
+by segment count, proof bundle bytes or their hash.
+
+Ordinary Rust regressions cover phone and desktop boundaries, second-occurrence
+slot selection, independent verifier ordinals and fixed pre-generation errors.
+The following opt-in tests also execute frozen constraints:
 
 ```sh
 ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" cargo test \
   --manifest-path native/Cargo.toml --release -p zkpdf-prover --features bb \
   --locked frozen_empty_final_segment_boundary -- --ignored
+ZKPDF_ASSETS_DIR="$PWD/native/circuits/target/zkpdf-assets" cargo test \
+  --manifest-path native/Cargo.toml --release -p zkpdf-prover --features bb \
+  --locked second_occurrence_executes_frozen_acvm -- --ignored
+```
+
+## Worker measurements
+
+`bench-workers` is an explicit measurement-only feature. It requires
+`ZKPDF_BENCH_WORKERS=1`, `2` or `4` at compile time and embeds that fixed count
+in the C++ bridge. Without this feature production always uses two workers,
+regardless of that environment variable. Do not enable it in packaged builds.
+Run each build and its two synthetic processes sequentially, without other builds
+or proofs. Metrics include the compiled worker count; results are in
+`docs/research/p4-benchmarks.md`.
+
+```sh
+host=$(rustc -vV | sed -n 's/^host: //p')
+for workers in 1 2 4; do
+  ZKPDF_BENCH_WORKERS="$workers" cargo build --manifest-path native/Cargo.toml \
+    --release --locked --target "$host" -p zkpdf-prover --features bench-workers --example synthetic_bench
+  for fixture in student travel-rc4; do
+    "native/target/$host/release/examples/synthetic_bench" "$fixture" "$ZKPDF_ASSETS_DIR" \
+      "/tmp/zkpdf-workers-$workers/$fixture"
+  done
+done
 ```

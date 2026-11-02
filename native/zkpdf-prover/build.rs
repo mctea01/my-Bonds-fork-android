@@ -1,12 +1,31 @@
 use std::{env, path::PathBuf, process::Command};
 fn main() {
     println!("cargo:rerun-if-changed=cpp/bridge.cpp");
-    for name in ["ZKPDF_BB_SOURCE", "ZKPDF_BB_BUILD", "CXX", "AR"] {
+    for name in [
+        "ZKPDF_BB_SOURCE",
+        "ZKPDF_BB_BUILD",
+        "ZKPDF_CXX",
+        "ZKPDF_AR",
+        "CXX",
+        "AR",
+    ] {
         println!("cargo:rerun-if-env-changed={name}");
     }
     if env::var_os("CARGO_FEATURE_BB").is_none() {
         return;
     }
+    let workers = if env::var_os("CARGO_FEATURE_BENCH_WORKERS").is_some() {
+        println!("cargo:rerun-if-env-changed=ZKPDF_BENCH_WORKERS");
+        let value = env::var("ZKPDF_BENCH_WORKERS").expect("benchmark_workers_required");
+        assert!(
+            matches!(value.as_str(), "1" | "2" | "4"),
+            "benchmark_workers_invalid"
+        );
+        value
+    } else {
+        "2".to_owned()
+    };
+    println!("cargo:rustc-env=ZKPDF_COMPILED_WORKERS={workers}");
     let source =
         PathBuf::from(env::var_os("ZKPDF_BB_SOURCE").expect("ZKPDF_BB_SOURCE is required"));
     let build = PathBuf::from(env::var_os("ZKPDF_BB_BUILD").expect("ZKPDF_BB_BUILD is required"));
@@ -24,7 +43,11 @@ fn main() {
     );
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let target = env::var("TARGET").unwrap();
-    let mut compiler = Command::new(env::var_os("CXX").unwrap_or("c++".into()));
+    let mut compiler = Command::new(
+        env::var_os("ZKPDF_CXX")
+            .or_else(|| env::var_os("CXX"))
+            .unwrap_or("c++".into()),
+    );
     compiler
         .args([
             "-std=c++20",
@@ -35,6 +58,7 @@ fn main() {
             "-DNO_PAR_ALGOS",
             "-pthread",
         ])
+        .arg(format!("-DZKPDF_WORKERS={workers}"))
         .arg("-I")
         .arg(source.join("barretenberg/cpp/src"))
         .arg("-I")
@@ -48,13 +72,17 @@ fn main() {
         "bb_bridge_compile"
     );
     assert!(
-        Command::new(env::var_os("AR").unwrap_or("ar".into()))
-            .arg("crs")
-            .arg(out.join("libzkpdf_bridge.a"))
-            .arg(out.join("bridge.o"))
-            .status()
-            .expect("bb_bridge_archiver")
-            .success(),
+        Command::new(
+            env::var_os("ZKPDF_AR")
+                .or_else(|| env::var_os("AR"))
+                .unwrap_or("ar".into())
+        )
+        .arg("crs")
+        .arg(out.join("libzkpdf_bridge.a"))
+        .arg(out.join("bridge.o"))
+        .status()
+        .expect("bb_bridge_archiver")
+        .success(),
         "bb_bridge_archive"
     );
     println!("cargo:rustc-link-search=native={}", out.display());

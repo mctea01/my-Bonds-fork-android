@@ -10,7 +10,7 @@ extern bool slow_low_memory;
 // Barretenberg's environment hooks must never emit private diagnostics.
 extern "C" void logstr(char const*) {}
 // Bound native worker fan-out on phones and resource-limited hosts.
-extern "C" uint32_t env_hardware_concurrency() { return 2; }
+extern "C" uint32_t env_hardware_concurrency() { return ZKPDF_WORKERS; }
 extern "C" [[noreturn]] void throw_or_abort_impl(char const*) { throw std::runtime_error("bb_failure"); }
 
 namespace {

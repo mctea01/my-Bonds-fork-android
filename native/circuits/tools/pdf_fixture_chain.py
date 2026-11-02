@@ -362,7 +362,7 @@ def export_m3c(directory, filename, bundle, windows, composition="zkpdf-v1-phone
     claim=bundle['claim'];anchors=[];public_anchors=[];slots=[];public_slots=[]
     for a in claim['anchors']:
         if a['enabled']:
-            encoded=record(a['raw'][:a['len']]);anchors.append(dict(record=encoded))
+            encoded=record(a['raw'][:a['len']]);anchors.append(dict(record=encoded,ordinal=a['ordinal']))
             public_anchors.append(dict(record=encoded,ordinal=a['ordinal'],total=a['total']))
     for i,s in enumerate(claim['slots']):
         if s['enabled']:
