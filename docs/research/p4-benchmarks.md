@@ -1129,3 +1129,58 @@ Kotlin 主程式與測試編譯成功，全套 426 tests、0 failures/errors、3
 靠公開輸入排除此替代切法。故本輪「切段只由組合與資料長度決定」的嚴格要求尚未
 滿足，不能宣告完整 M3c 驗收。修復需要 Claude 決定是否重新凍結約束／資產，或
 修改公開長度與切段規則；本輪未改電路、`PUBLIC_SPEC.md`、`VERSIONS` 或設計文件。
+
+## Round 12: M3c2 序數、空尾段與 Android 建置（2026-11-02）
+
+基底為整合分支 `ad7a176`，實作為 `7712c5d`、`c3f7d9d`。
+依 PR #74 的審查決定，空尾段是同一文件的另一種合法證明包，已不再是
+Round 11 所列的待決阻礙；本輪沒有重新凍結電路或資產。
+
+### 介面與回歸驗證
+
+`ZkPdfAnchorInput.ordinal` 為必要的 `u32`，從 1 起算。產生器以第 ordinal
+次相同 v2 紀錄選取欄位邊界；0 或超過實際次數時，check 與 prove 在讀取資產、
+進度回呼與證明產生前回傳固定的 `anchor_ordinal`，不包含紀錄內容。
+Rust／UniFFI、腳本產生的 Kotlin 綁定與 JSON 匯出已同步；既有合成錨點皆為 1。
+重複紀錄測試只在 Rust 內建立必要的內容串流，沒有新增 PDF。
+
+一般 Rust 測試確認第二次紀錄選取正確欄位，並拒絕不同 verifier ordinal。
+phone／desktop 分別測試一段、兩段與 40,960-byte 上限：誠實產生器與 check
+不多算空尾段，公開輸入 policy 則接受完整串接的另一種切法。
+最大段數上限修正為 phone 21／desktop 11，容納最後一個空 inflate 段及其
+對應 lexical 段；誠實產生器在該長度仍各為 20／10 段。policy 測試的 proof
+是無效佔位資料，只驗證公開輸入檢查，不宣稱通過密碼學驗證。
+另外實際執行凍結 ACVM，第二次錨點選取及既有兩種 inflate 尾界均通過。
+錢包與查驗端仍不得以段數、證明包位元組或其雜湊辨識／去重文件。
+
+驗收結果：
+
+- `RUST_MIN_STACK=67108864 cargo test --workspace --locked --features diw-zk-ffi/zkpdf`：64 passed、0 failed、8 ignored；另單獨執行兩項上述 ACVM 測試，均為 1 passed、0 ignored。
+- `DIW_ZK_FEATURES=zkpdf native/build.sh host`：成功。
+- `python3 -I native/circuits/tools/build_assets.py`：十個電路、十四個組合對應與 CRS 全部符合凍結雜湊及資產清單。
+- `./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test`：搭配 `DIW_ZK_FEATURES=zkpdf`、`ZKPDF_ASSETS_DIR` 與 `-Pdiw.zkNative=require` 成功；427 tests、0 failures、0 errors、30 skipped。`ZkPdfCircuitTest` 為 1 passed、0 skipped，實際執行 check／prove／verify、無效序數與改動 verifier policy 的拒絕測試。此輪 Gradle daemon 設為 `-Xmx2g`，沒有修改專案設定。
+
+### Android 實際交叉建置
+
+以 `DIW_ZK_FEATURES=zkpdf native/build.sh android`、Rust 1.95.0、
+cargo-ndk 4.1.2、NDK 28.2.13676358、API 29 成功產生兩個 ABI。
+原本 cargo-ndk 會改寫 CXX 並將目標設定放入 CXXFLAGS，但手動編譯 bridge 的
+build.rs 沒有解析該旗標，導致 arm64 連結時發現主機 x86-64 物件檔。
+修正後 build.sh 以專用 ZKPDF_CXX／ZKPDF_AR 傳入各 ABI 的 NDK wrapper，
+已由實際建置及 ELF 檢查確認目標正確，沒有替換工具鏈版本。
+
+| ABI | libdiw_zk.so bytes | 最後成功 build.sh 的該 ABI 耗時 | C++ 續建區間 |
+|---|---:|---|---:|
+| arm64-v8a | 15,105,840 | 1 s（全快取；先前修正 bridge 後的重建為 137 s，含 Cargo 鎖等待） | 1032.015 s |
+| x86_64 | 16,210,592 | 721 s（包含 C++ 續建與 Rust release 90 s） | 629.913 s |
+
+工作程序曾中斷而續建，沒有量得完整冷建置時間；上表各區間不能直接相加成
+冷建置耗時。編譯期間也曾與其他建置／測試交疊。為配合工作區容量，已完成的
+Android C++ archive 去除 debug 資訊並清理中間物件；最終 Rust release 原本
+即會移除 debug 資訊，沒有更動程式碼或證明邏輯。
+
+兩個 ELF 的 DT_NEEDED 都只有 Android 系統的 `libdl.so`、`libm.so`、`libc.so`；
+C++ runtime 靜態連結，無須額外打包 `libc++_shared.so` 或其他共享函式庫。
+兩者所有 PT_LOAD 對齊皆為 0x4000（16 KiB）。產物 SHA-256、大小及建置區間在
+`native/zkpdf-prover/measurements/android-m3c2.json`。本輪沒有在手機執行，
+實機量測由使用者進行。
