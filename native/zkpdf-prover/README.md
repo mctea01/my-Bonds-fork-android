@@ -73,7 +73,9 @@ entries, including deterministic gzip files. Because frozen ACIR JSON contains
 absolute debug source paths, it canonicalizes only `file_map` paths to the
 frozen compilation root before checking the complete file hash.
 
-The catalog URLs remain empty pending release publication. Both Gradle feature
+The catalog URLs point to the `zkpdf-v1` release, which the `zkPDF assets`
+workflow (`.github/workflows/zkpdf-assets.yml`, run by hand) builds with this tool
+and publishes without ever replacing a published file. Both Gradle feature
 allowlists accept zkpdf. To require the host backend and execute the Kotlin test:
 
 ```sh
