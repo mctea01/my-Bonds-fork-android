@@ -7,6 +7,8 @@ license.workspace = true
 [features]
 default = []
 bb = []
+# Measurement builds only; production retains two workers.
+bench-workers = ["bb"]
 
 [dependencies]
 acvm = { git = "https://github.com/noir-lang/noir.git", rev = "83245db91dcf63420ef4bcbbd85b98f397fee663", features = ["bn254"] }

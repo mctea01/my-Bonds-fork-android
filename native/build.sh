@@ -49,6 +49,7 @@ for target in "${selected[@]}"; do
         rustup target add aarch64-linux-android x86_64-linux-android
         if [[ ",$features," == *,zkpdf,* ]]; then
             for abi in arm64-v8a x86_64; do
+                abi_started=$SECONDS
                 if [[ "$abi" == arm64-v8a ]]; then rust_target=aarch64-linux-android; clang_target=aarch64-linux-android;
                 else rust_target=x86_64-linux-android; clang_target=x86_64-linux-android; fi
                 export ZKPDF_BB_BUILD=${bb_build_override:-"$PWD/target/bb-$rust_target"}
@@ -56,7 +57,11 @@ for target in "${selected[@]}"; do
                 case "$(uname -s)" in Linux*) ndk_host=linux-x86_64 ;; Darwin*) ndk_host=darwin-x86_64 ;; *) exit 1 ;; esac
                 zkpdf_cxx="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/${clang_target}29-clang++"
                 zkpdf_ar="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/llvm-ar"
-                CXX="$zkpdf_cxx" AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+                # cargo-ndk replaces CXX and moves target selection to CXXFLAGS.
+                # Keep the bridge's explicit API/ABI wrapper independent of it.
+                ZKPDF_CXX="$zkpdf_cxx" ZKPDF_AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+                printf 'zkpdf_android abi=%s build_seconds=%s library_bytes=%s\n' \
+                    "$abi" "$((SECONDS - abi_started))" "$(wc -c < "dist/android/$abi/libdiw_zk.so")"
             done
         else
             cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
