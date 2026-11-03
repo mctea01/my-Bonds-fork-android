@@ -27,6 +27,16 @@ if [[ -n "$features" ]]; then
 fi
 feature_args=()
 [[ -z "$features" ]] || feature_args=(--features "$features")
+# Android ABIs for the android target (DIW_ZK_ANDROID_ABIS, a comma list); CI builds one ABI per job to bound disk use.
+android_abis=${DIW_ZK_ANDROID_ABIS:-arm64-v8a,x86_64}
+IFS=',' read -ra abis <<< "$android_abis"
+abi_args=()
+for abi in "${abis[@]}"; do
+    case "$abi" in
+        arm64-v8a|x86_64) abi_args+=(-t "$abi") ;;
+        *) echo "Unsupported DIW_ZK_ANDROID_ABIS entry" >&2; exit 1 ;;
+    esac
+done
 # Static C++ sources are acquired only by this explicit build step.
 bb_build_override=${ZKPDF_BB_BUILD:-}
 build_zkpdf() {
@@ -48,7 +58,7 @@ for target in "${selected[@]}"; do
         [[ "$(cargo ndk --version)" == "cargo-ndk $CARGO_NDK_VERSION" ]] || { echo "Pinned cargo-ndk is required" >&2; exit 1; }
         rustup target add aarch64-linux-android x86_64-linux-android
         if [[ ",$features," == *,zkpdf,* ]]; then
-            for abi in arm64-v8a x86_64; do
+            for abi in "${abis[@]}"; do
                 abi_started=$SECONDS
                 if [[ "$abi" == arm64-v8a ]]; then rust_target=aarch64-linux-android; clang_target=aarch64-linux-android;
                 else rust_target=x86_64-linux-android; clang_target=x86_64-linux-android; fi
@@ -64,7 +74,7 @@ for target in "${selected[@]}"; do
                     "$abi" "$((SECONDS - abi_started))" "$(wc -c < "dist/android/$abi/libdiw_zk.so")"
             done
         else
-            cargo ndk -t arm64-v8a -t x86_64 --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+            cargo ndk "${abi_args[@]}" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
         fi
     else
         case "$target" in

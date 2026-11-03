@@ -22,7 +22,11 @@ task builds arm64-v8a and x86_64. `-Pdiw.zkNative` (or `DIW_ZK_NATIVE`) picks
 how: `auto` (default) builds only when bash and cargo (and, for Android,
 cargo-ndk 4.1.2 and the pinned NDK under ANDROID_HOME) are installed and
 otherwise packages no library, so the app reports ZK as unavailable; `require`
-always builds and fails without the tools (use it in CI); `skip` never builds.
+always builds and fails without the tools; `skip` never builds; `prebuilt`
+never builds but fails unless the libraries are already in `native/dist` (CI
+builds them in separate jobs and passes them in as artifacts).
+`DIW_ZK_ANDROID_ABIS` (default `arm64-v8a,x86_64`) limits `native/build.sh
+android` to some ABIs.
 On Windows the tasks run Git for Windows' bash, because `bash` there starts WSL. Both use release Rust libraries. The Android
 application uses its existing R8 release build plus native/zk.pro. Do not edit
 the generated Kotlin binding. It uses the JNA cleaner on both platforms,
@@ -31,10 +35,17 @@ including Android versions without java.lang.ref.Cleaner.
 `native/build.sh all` requests Linux x86_64, Windows x86_64, macOS arm64, and
 the two Android ABIs. Cross compiling requires the appropriate platform SDK
 and Cargo linker configuration. It fails if any requested target cannot be
-built; it never silently substitutes a host binary. The release workflow
-should run `host` on Linux x86_64, Windows x86_64 (MSYS bash), and macOS arm64,
-and `android` on Linux. Merge the `dist/resources` artifacts to package all
-desktop platforms into one jar, or ship just the current platform's artifact.
+built; it never silently substitutes a host binary.
+
+CI (`.github/workflows/github-actions-ci.yml`) builds the libraries in their
+own jobs: `native-android` runs `android` on Linux once per ABI
+(`DIW_ZK_ANDROID_ABIS`), `native-linux` runs `host` on Linux x86_64, and
+`native-desktop` runs `host` on Windows x86_64 (Git bash) and macOS arm64.
+Each uploads only `dist/android/<abi>/libdiw_zk.so` or `dist/resources` as a
+`zk-native-*` artifact; the Gradle jobs download them back into the same
+`native/dist` paths and run with `DIW_ZK_NATIVE=prebuilt`, so they need no
+Rust, NDK, protoc, libclang or CMake. Local builds are unchanged: without
+`prebuilt` Gradle still runs `native/build.sh` itself.
 
 Before invoking generated bindings, call `ZkNative.load(appPrivateDirectory)`.
 On desktop it verifies the packaged library digest and atomically extracts a

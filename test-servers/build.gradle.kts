@@ -53,9 +53,10 @@ tasks.test {
         maxParallelForks = 1
     }
     jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g")
-    // ZkNativeTest needs the library unless core's buildZkDesktop may leave it out (see core/build.gradle.kts).
+    // ZkNativeTest needs the library unless core's buildZkDesktop may leave it out (see core/build.gradle.kts);
+    // a prebuilt library must be there just as a required one.
     systemProperty("diw.zkNative", providers.gradleProperty("diw.zkNative")
-        .orElse(providers.environmentVariable("DIW_ZK_NATIVE")).getOrElse("auto"))
+        .orElse(providers.environmentVariable("DIW_ZK_NATIVE")).getOrElse("auto").let { if (it == "prebuilt") "require" else it })
     systemProperty("diw.zkFeatures", providers.gradleProperty("diw.zkFeatures")
         .orElse(providers.environmentVariable("DIW_ZK_FEATURES")).getOrElse(""))
     testLogging {

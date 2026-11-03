@@ -16,9 +16,9 @@ plugins {
 /** The pinned NDK, also used by native/build.sh. */
 val zkNdkVersion = "28.2.13676358"
 
-/** Same modes as core's buildZkDesktop: auto (build when the tools are installed), require, skip. */
+/** Same modes as core's buildZkDesktop: auto (build when the tools are installed), require, skip, prebuilt. */
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
-    .getOrElse("auto").also { require(it in setOf("auto", "require", "skip")) { "diw.zkNative must be auto, require or skip" } }
+    .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
 
 /** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn and zkpdf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
 val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
@@ -39,6 +39,16 @@ fun zkCommandOutput(vararg command: String): String? = runCatching {
     output.takeIf { process.waitFor() == 0 }
 }.getOrNull()
 
+/** With diw.zkNative=prebuilt, fails unless both ABIs that native/build.sh android writes are already in native/dist. */
+val checkZkAndroidPrebuilt by tasks.registering {
+    val libraries = listOf("arm64-v8a", "x86_64").map { rootProject.file("native/dist/android/$it/libdiw_zk.so") }
+    onlyIf("diw.zkNative=prebuilt") { zkNativeMode == "prebuilt" }
+    doLast {
+        val missing = libraries.filterNot { it.isFile }
+        if (missing.isNotEmpty()) throw GradleException("diw.zkNative=prebuilt: missing ${missing.joinToString()} (run native/build.sh android, or use another diw.zkNative mode)")
+    }
+}
+
 val buildZkAndroid by tasks.registering(Exec::class) {
     workingDir(rootProject.projectDir)
     commandLine(zkBash ?: "bash", "native/build.sh", "android")
@@ -46,10 +56,11 @@ val buildZkAndroid by tasks.registering(Exec::class) {
     inputs.property("zkFeatures", zkFeatures)
     inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
     outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
+    dependsOn(checkZkAndroidPrebuilt)
     onlyIf("the Rust toolchain, cargo-ndk and the pinned NDK are installed, or diw.zkNative=require") {
         when (zkNativeMode) {
             "require" -> true
-            "skip" -> false
+            "skip", "prebuilt" -> false
             else -> {
                 val ndk = System.getenv("ANDROID_HOME")?.let { File(it, "ndk/$zkNdkVersion/source.properties") }
                 (zkBash != null && ndk?.isFile == true && zkCommandOutput("cargo", "ndk", "--version") == "cargo-ndk 4.1.2").also {
