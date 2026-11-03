@@ -362,7 +362,7 @@ class TwdiwPlatformMock private constructor(
             val application = Jws.parse(request.headers["Twdiw-Signature"] ?: fail("application signature missing"))
             application.verify(VerificationKey.Ec(applicationKey))
             expect(application.header.toString() == """{"alg":"ES256","typ":"JWT"}""") { "application header" }
-            expect(application.payload.str("appHash") == "diw.wallet.app") { "application identity" }
+            expect(application.payload.str("appHash") == "tw.gov.moda.diw") { "application identity" }
             expect(application.payload.str("appPlatform") == "Android") { "application platform" }
             expect(application.payload.str("bodyHash") == DocCryptoUtil.hex(PlatformCrypto.sha256(bytes))) { "application body hash" }
             val text = applicationKey.toPem().lineSequence().filterNot { it.startsWith("-----") }.joinToString("") { it.trim() }
