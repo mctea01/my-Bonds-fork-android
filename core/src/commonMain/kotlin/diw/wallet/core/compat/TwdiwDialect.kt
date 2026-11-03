@@ -263,6 +263,6 @@ class TwdiwDialect(
  */
 data class TwdiwAppIdentity(val appId: String, val appVersion: String, val appPlatform: String) {
     companion object {
-        val DEFAULT = TwdiwAppIdentity(appId = "diw.wallet.app", appVersion = "0.1", appPlatform = "Android")
+        val DEFAULT = TwdiwAppIdentity(appId = "tw.gov.moda.diw", appVersion = "1.0.14", appPlatform = "Android")
     }
 }
