@@ -170,7 +170,7 @@ DIW MY WALLET 是開放原始碼的整合數位皮夾：在同一個 App 內領�
 
 【隱私】
 ・證件、文件與金鑰只加密保存在你的裝置
-・只有在你同意出示、領卡或簽署時，才把必要的資料傳給你選擇的發證端、查驗方或簽章服務
+・只有在你同意出示、領卡或簽署時，才把必要的資料傳給你選擇的發證端、查驗方或簽章服務；OpenCerts 證書選擇「以發證機構樣式顯示」時，證書內容會送到發證機構的顯示程式
 ・沒有廣告，沒有分析或追蹤 SDK，不需要註冊帳號
 ・紀錄只記欄位名稱，不記內容
 
@@ -206,7 +206,7 @@ Zero-knowledge proofs
 
 Privacy
 - Credentials, documents and keys are stored encrypted on your device only
-- Data leaves the device only when you agree to present, receive or sign, and only to the issuer, verifier or signing service you chose
+- Data leaves the device only when you agree to present, receive or sign, and only to the issuer, verifier or signing service you chose; viewing an OpenCerts certificate in the issuer's style sends it to the issuer's renderer
 - No ads, no analytics or tracking SDKs, no account
 
 Important
@@ -280,7 +280,7 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 | 個人資訊 | 地址 | 戶籍地址等證件欄位 |
 | 個人資訊 | 其他資訊 | 出生日期、國籍、性別等證件欄位 |
 | 相片和影片 | 相片 | mdoc 等證件的照片欄位 |
-| 檔案和文件 | 檔案和文件 | 文件衍生憑證與 zkPDF 證據可能附上文件的簽署版本 |
+| 檔案和文件 | 檔案和文件 | 文件衍生憑證與 zkPDF 證據可能附上文件的簽署版本；OpenCerts 證書選擇「以發證機構樣式顯示」時，整份證書送到證書指定的發證機構顯示程式（`OpenCertRenderer`） |
 
 不申報的類別與原因：
 
@@ -288,6 +288,8 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 - 財務、健康、訊息、通訊錄、日曆、App 活動、網頁瀏覽記錄、App 資訊與效能、裝置或其他 ID：沒有傳出裝置。
 - 相機畫面、生物辨識、自然人憑證卡讀出的資料：只在裝置上處理；簽章傳給使用者選擇的服務時，傳的是簽章值與文件雜湊，不是檔案。
 - 時戳、OCSP、CRL：傳的是文件雜湊與憑證序號，不屬於上表的使用者資料類型。
+- OpenCerts 線上查驗：以 DNS over HTTPS 查發證機構網域、向公開區塊鏈節點查文件庫的 Merkle root，不含證書欄位。
+- 取件入口（MyData、移民署等網站）：在 App 內 WebView 瀏覽政府網站，屬於 Play 豁免的「在網頁檢視中瀏覽開放網路」；下載的檔案只存在裝置上。
 
 以後若加入當機回報、分析、正式服務端的預設網址，或把文件傳到伺服器產生證明（例如 zkPDF 證明器），要更新這一節。
 
