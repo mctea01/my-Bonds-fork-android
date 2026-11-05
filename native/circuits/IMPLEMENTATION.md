@@ -1172,3 +1172,9 @@ Synthetic fixtures (phone composition, two workers, 4 vCPU, serial runs):
 
 The lexical segment is the slowest (18.5–19.3 s) and the largest in memory.
 `real_proof_rejections_and_cli_interop` passes with these bundles.
+
+Both real-document templates (`templates/zkpdf/`) prove and verify every field
+with the new assets on the same host: the 7-field permit check in 4 segments
+(101 s, previously 214 s with bb 2.1.9) and the 9-field student-status
+certificate in 19 segments (581 s, previously 691 s). Only counts and timings
+are recorded; the documents stay outside the repository.
