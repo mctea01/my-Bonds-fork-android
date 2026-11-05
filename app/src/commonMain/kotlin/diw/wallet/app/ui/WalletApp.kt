@@ -91,6 +91,10 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
+    val consent by model.legal.consent.collectAsState()
+    // Shown at the first start and after a legal text changed; stays up on its summary page until the holder leaves it.
+    var onboarding by remember { mutableStateOf(false) }
+    LaunchedEffect(ready, consent.complete) { if (ready && !consent.complete) onboarding = true }
 
     LaunchedEffect(msg) {
         msg?.let { snackbar.showSnackbar(it); model.message.value = null }
@@ -105,6 +109,11 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val scan: (() -> Unit)? = if (scanQr != null) ({ scanning = true }) else null
 
     WalletTheme {
+        if (ready && onboarding) {
+            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                Box(Modifier.padding(padding).fillMaxSize()) { OnboardingScreen(model) { onboarding = false } }
+            }
+        } else {
         Scaffold(
             topBar = {
                 Column {
@@ -160,6 +169,8 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.DocumentSources -> DocumentSourcesScreen(model)
                     is Screen.Portal -> PortalScreen(model, s)
                     is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
+                    is Screen.LegalText -> LegalTextScreen(model, s)
+                    is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
                 }
             }
         }
@@ -172,6 +183,7 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
             )
         }
         pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
+        }
     }
 }
 
@@ -206,6 +218,8 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.DocumentSources -> "取得文件"
     is Screen.Portal -> "取得文件"
     is Screen.OfficialBundle -> "公文容器"
+    is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
+    is Screen.IntegrationStatement -> diw.wallet.app.legal.LegalStrings.STATEMENTS_TITLE
 }
 
 @Composable

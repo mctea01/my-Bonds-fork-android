@@ -229,7 +229,8 @@ fun DocumentSourcesScreen(model: WalletModel) {
             style = MaterialTheme.typography.bodySmall,
         )
         SectionTitle("MyData")
-        DocumentSources.myData.forEach { src ->
+        if (!model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA)
+        else DocumentSources.myData.forEach { src ->
             ActionRow(if (src.nationalId) WalletIcons.Person else WalletIcons.Government, src.name, src.detail) { open(src) }
         }
         SectionTitle("其他來源")
@@ -838,7 +839,8 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
     when (kind) {
         SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
         SignerKind.TOKEN -> TokenKeyPicker(model) { other = it; update() }
-        SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
+        SignerKind.MOBILE -> if (model.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA)) MobileMoicaPicker(model) { other = it; update() }
+            else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
         SignerKind.CARD -> CardPicker(model) { update(it) }
         SignerKind.PKCS12 -> {
@@ -1896,6 +1898,10 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
 @Composable
 fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
     val src = DocumentSources.byId(screen.sourceId) ?: return
+    if (src.myData && !model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) {
+        Column(Modifier.padding(16.dp)) { IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA) }
+        return
+    }
     val busy by model.files.busy.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
