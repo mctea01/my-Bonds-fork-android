@@ -31,7 +31,10 @@ class ZkTemplatePackTest {
         File(dir, "zkpdf").mkdirs()
         val profile = DiwJson.encodeToJsonElement(ZkTlsProfile.serializer(), ZkTlsRecordPage.profile(443, "record.example"))
         File(dir, "zktls/record.json").writeText(profile.toString())
-        File(dir, "zkpdf/sample.json").writeText("""{"id":"example.student-status/1","note":"layout only"}""")
+        File(dir, "zkpdf/sample.json").writeText(
+            """{"id":"example.student-status/1","title":"在學證明","opaqueImages":[],""" +
+                """"fields":[{"claim":"name","label":"姓名","before":["姓名"],"after":["學號"],"normalize":"text"}]}""",
+        )
         return dir
     }
 
@@ -64,6 +67,16 @@ class ZkTemplatePackTest {
         File(dir, "zktls/bad.json").writeText("""{"id":"Bad Id","title":"x","host":"x","request":{"path":"/"},"status":{"reveal":"a","success":"a"},"fields":[]}""")
         val e = assertFailsWith<IllegalArgumentException> { TemplatePackTool.build(dir) }
         assertTrue(e.message!!.startsWith("bad.json"))
+    }
+
+    @Test
+    fun documentTemplatesAreCheckedAndNeverTestOnes() {
+        val dir = folder()
+        File(dir, "zkpdf/bad.json").writeText("""{"id":"example.other/1","note":"layout only"}""")
+        assertTrue(assertFailsWith<IllegalArgumentException> { TemplatePackTool.build(dir) }.message!!.startsWith("bad.json"))
+        File(dir, "zkpdf/bad.json").writeText(File(dir, "zkpdf/sample.json").readText()
+            .replace("example.student-status/1", "example.other/1").replace("\"fields\"", "\"test\":true,\"fields\""))
+        assertTrue(assertFailsWith<IllegalArgumentException> { TemplatePackTool.build(dir) }.message!!.contains("test template"))
     }
 
     @Test

@@ -1,6 +1,8 @@
 package diw.wallet.app
 
 import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.zkpdf.ZkPdfProfile
+import diw.wallet.core.document.zkpdf.ZkPdfProfiles
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.zk.ZkTemplatePack
@@ -14,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import org.multipaz.storage.StorageTableSpec
@@ -46,6 +49,8 @@ class ZkTemplatesModel(private val model: WalletModel) {
         val notice: String? = null,
         /** Unsigned pages imported for testing. */
         val testPages: List<ZkTlsProfile> = emptyList(),
+        /** Unsigned zkPDF document templates imported for testing. */
+        val testDocuments: List<ZkPdfProfile> = emptyList(),
     ) {
         /** False until a release key is pinned in this build: no pack can be accepted then. */
         val keyConfigured: Boolean get() = ZkTemplatePack.TRUSTED_KEYS.isNotEmpty()
@@ -62,8 +67,10 @@ class ZkTemplatesModel(private val model: WalletModel) {
         val t = model.storage.getTable(table)
         val checked = runCatching { Blobs.get(t, CHECKED)?.decodeToString()?.toLong() }.getOrNull()
         val local = runCatching { Blobs.get(t, TEST_PAGES)?.decodeToString()?.let(::profiles) }.getOrNull().orEmpty()
+        val localDocs = runCatching { Blobs.get(t, TEST_DOCUMENTS)?.decodeToString()?.let(::documents) }.getOrNull().orEmpty()
         val source = runCatching { Blobs.get(t, SOURCE)?.decodeToString() }.getOrNull()
-        state.value = state.value.copy(checkedAt = checked, testPages = local, source = source)
+        state.value = state.value.copy(checkedAt = checked, testPages = local, testDocuments = localDocs, source = source)
+        ZkPdfProfiles.installTest(localDocs)
         val jws = runCatching { Blobs.get(t, PACK) }.getOrNull()?.decodeToString() ?: return
         val pack = runCatching { ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), highest()) }.getOrNull() ?: return
         install(pack)
@@ -133,12 +140,13 @@ class ZkTemplatesModel(private val model: WalletModel) {
         if (picked.isEmpty()) return null
         val notes = mutableListOf<String>()
         val pages = mutableListOf<ZkTlsProfile>()
+        val docs = mutableListOf<ZkPdfProfile>()
         for (f in picked) {
             try {
                 for ((name, bytes) in entries(f.name, f.bytes)) {
                     val text = bytes.decodeToString().trim().removePrefix("\uFEFF")
                     if (text.startsWith("ey")) notes += importPack(text)
-                    else pages += pagesOf(name, text)
+                    else unsigned(name, text).let { (p, d) -> pages += p; docs += d }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -147,14 +155,17 @@ class ZkTemplatesModel(private val model: WalletModel) {
             }
         }
         if (pages.isNotEmpty()) notes += addTestPages(pages)
+        if (docs.isNotEmpty()) notes += addTestDocuments(docs)
         return notes.joinToString("\n").ifEmpty { "檔案中沒有版型" }
     }
 
-    /** Removes the pages imported for testing. */
+    /** Removes the pages and document templates imported for testing. */
     fun clearTestPages() {
         model.scope.launch {
             runCatching { Blobs.delete(model.storage.getTable(table), TEST_PAGES) }
-            state.value = state.value.copy(testPages = emptyList(), notice = "已清除測試查驗頁")
+            runCatching { Blobs.delete(model.storage.getTable(table), TEST_DOCUMENTS) }
+            ZkPdfProfiles.installTest(emptyList())
+            state.value = state.value.copy(testPages = emptyList(), testDocuments = emptyList(), notice = "已清除測試查驗頁與文件版型")
         }
     }
 
@@ -174,15 +185,42 @@ class ZkTemplatesModel(private val model: WalletModel) {
         return "已安裝版型包：${pack.zktls.size} 個查驗頁、${pack.zkpdf.size} 個文件版型"
     }
 
-    /** Page descriptions in a JSON file: one page, the test server's {"profiles": [...]} or an unsigned pack payload. */
-    private fun pagesOf(name: String, text: String): List<ZkTlsProfile> {
-        if (!model.settings.testEnvironment) throw ProtocolException("invalid_templates", "未簽章的查驗頁只能在測試環境匯入")
+    /**
+     * Unsigned templates in a JSON file: one verification page, one zkPDF document template (it has "fields"), the
+     * test server's {"profiles": [...]}, or an unsigned pack payload with "zktls" and "zkpdf".
+     */
+    private fun unsigned(name: String, text: String): Pair<List<ZkTlsProfile>, List<ZkPdfProfile>> {
+        if (!model.settings.testEnvironment) throw ProtocolException("invalid_templates", "未簽章的版型只能在測試環境匯入")
         val o = runCatching { DiwJson.parseToJsonElement(text) as JsonObject }.getOrNull()
-            ?: throw ProtocolException("invalid_templates", "$name 不是版型包或查驗頁描述檔")
-        val list = (o["profiles"] ?: o["zktls"]) as? JsonArray
-        return list?.map { (it as? JsonObject)?.let(ZkTlsProfile::parse) ?: throw ProtocolException("invalid_templates", "$name 的查驗頁格式錯誤") }
-            ?: listOf(ZkTlsProfile.parse(o))
+            ?: throw ProtocolException("invalid_templates", "$name 不是版型包或版型描述檔")
+        fun document(e: JsonElement): ZkPdfProfile = runCatching { ZkPdfProfile.parse(e as JsonObject) }
+            .getOrElse { throw ProtocolException("invalid_templates", "$name 的文件版型格式錯誤") }
+        // zkTLS pages have "fields" too; a document template's fields are delimited by "before" labels.
+        val documentFields = (o["fields"] as? JsonArray)?.firstOrNull() as? JsonObject
+        if (documentFields?.containsKey("before") == true) return emptyList<ZkTlsProfile>() to listOf(document(o))
+        val pages = (o["profiles"] ?: o["zktls"]) as? JsonArray
+        val docs = (o["zkpdf"] as? JsonArray)?.map(::document).orEmpty()
+        if (pages == null && o["zkpdf"] != null) return emptyList<ZkTlsProfile>() to docs
+        return (pages?.map { (it as? JsonObject)?.let(ZkTlsProfile::parse) ?: throw ProtocolException("invalid_templates", "$name 的查驗頁格式錯誤") }
+            ?: listOf(ZkTlsProfile.parse(o))) to docs
     }
+
+    private suspend fun addTestDocuments(docs: List<ZkPdfProfile>): String {
+        val signed = ZkPdfProfiles.installed.map { it.id }.toSet()
+        val (clash, fresh) = docs.partition { it.id in signed }
+        val merged = state.value.testDocuments.filter { old -> fresh.none { it.id == old.id } } + fresh
+        val array = buildJsonArray { merged.forEach { add(it.toJson()) } }
+        Blobs.put(model.storage.getTable(table), TEST_DOCUMENTS, array.toString().encodeToByteArray())
+        ZkPdfProfiles.installTest(merged)
+        state.value = state.value.copy(testDocuments = ZkPdfProfiles.testProfiles)
+        return buildString {
+            append("已匯入 ${fresh.size} 個測試文件版型（只在測試環境使用）")
+            if (clash.isNotEmpty()) append("；${clash.joinToString("、") { it.id }} 與已簽章的文件版型同名，未匯入")
+        }
+    }
+
+    private fun documents(text: String): List<ZkPdfProfile> =
+        (DiwJson.parseToJsonElement(text) as JsonArray).mapNotNull { (it as? JsonObject)?.let { o -> runCatching { ZkPdfProfile.parse(o) }.getOrNull() } }
 
     private suspend fun addTestPages(pages: List<ZkTlsProfile>): String {
         val signed = ZkTlsProfiles.installed.map { it.id }.toSet()
@@ -215,6 +253,9 @@ class ZkTemplatesModel(private val model: WalletModel) {
 
     private fun install(pack: ZkTemplatePack) {
         ZkTlsProfiles.install(pack)
+        ZkPdfProfiles.install(pack)
+        // Test templates may not shadow a template the new pack signs.
+        ZkPdfProfiles.installTest(state.value.testDocuments)
         state.value = state.value.copy(
             version = pack.version,
             issuedAt = pack.issuedAt.epochSeconds,
@@ -230,6 +271,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
         private const val HIGHEST = "highest"
         private const val CHECKED = "checked"
         private const val TEST_PAGES = "testPages"
+        private const val TEST_DOCUMENTS = "testDocuments"
         private const val SOURCE = "source"
         private const val MAX_FILE = 1 shl 20
         private val table = StorageTableSpec(name = "DiwZkTemplates", supportPartitions = false, supportExpiration = false)

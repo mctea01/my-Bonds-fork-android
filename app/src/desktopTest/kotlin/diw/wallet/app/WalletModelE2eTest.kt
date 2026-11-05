@@ -2263,6 +2263,13 @@ class WalletModelE2eTest {
         assertEquals(1, st.testPages.size)
         assertTrue("1 個測試查驗頁" in st.notice!!, st.notice)
 
+        // A zkPDF document template is told apart from a page (which also has "fields") by its "before" labels.
+        val document = """{"id":"test.student-status/9","title":"Synthetic","opaqueImages":[],"fields":[""" +
+            """{"claim":"name","label":"Name","before":["姓名"],"after":["學號"],"normalize":"clause"}]}"""
+        st = import(PickedFile("document.json", document.encodeToByteArray()))
+        assertEquals(listOf("test.student-status/9"), st.testDocuments.map { it.id }, st.notice)
+        assertEquals(1, st.testPages.size)
+
         // Imported pages survive a restart and are offered to the verifier as test pages, even without the server.
         val (other, _) = newWallet(m.storage)
         assertEquals(1, other.zkTemplates.state.value.testPages.size)

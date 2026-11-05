@@ -5,7 +5,7 @@ import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.LaterChanges
 import diw.wallet.core.document.pdf.*
-import diw.wallet.core.document.zkpdf.PdfZkSupport
+import diw.wallet.core.document.zkpdf.*
 import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.*
@@ -50,6 +50,15 @@ class SyntheticDocumentsTest {
             override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: Instant): TrustDecision = registry.decide(role, chain, at)
             override suspend fun fetchIssuerCertificates(url: String) = emptyList<ByteArray>()
         }
+    }
+
+    @Test fun secondPagesAreRefusedBecauseTheyWouldStayPublic() = runBlocking<Unit> {
+        val profile = ZkPdfProfile("test.two-pages/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        assertEquals(listOf("name"), ZkPdfPlanner.plan(generated.getValue("student.pdf"), profile).slots.map { it.claim })
+        val two = SyntheticDocuments.twoPages(fonts, material)
+        assertEquals(2, PdfTextExtractor.pages(PdfFile(two)).size)
+        assertFailsWith<PdfException> { ZkPdfPlanner.plan(two, profile) }
     }
 
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {

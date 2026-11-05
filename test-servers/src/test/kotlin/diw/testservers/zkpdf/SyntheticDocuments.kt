@@ -6,6 +6,7 @@ import diw.wallet.core.document.sign.*
 import diw.wallet.core.util.QrEncoder
 import kotlinx.serialization.json.*
 import org.apache.pdfbox.Loader
+import org.apache.pdfbox.pdmodel.PDPage
 import org.apache.pdfbox.pdmodel.encryption.AccessPermission
 import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.apache.pdfbox.pdmodel.interactive.digitalsignature.PDSignature
@@ -171,6 +172,16 @@ object SyntheticDocuments {
         val data = signing.content.use { it.readBytes() }
         signing.setSignature(DocumentSigning.cms(data, signer, encapsulate = false, pades = true, timestamper = null))
         output.toByteArray()
+    }
+
+    /** The student document with a blank second page, signed; not a committed fixture (zkPDF v1 refuses it). */
+    suspend fun twoPages(fonts: Fonts, material: Material): ByteArray {
+        val unsigned = Loader.loadPDF(unsigned(fonts, false)).use { document ->
+            document.documentId = FIXED_MILLIS
+            document.addPage(PDPage())
+            ByteArrayOutputStream().also { document.save(it) }.toByteArray()
+        }
+        return signWithContainer(unsigned, material.signer)
     }
 
     suspend fun generate(fonts: Fonts, material: Material): LinkedHashMap<String, ByteArray> {

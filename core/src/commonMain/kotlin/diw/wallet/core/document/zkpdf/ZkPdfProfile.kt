@@ -94,14 +94,29 @@ enum class ZkPdfNormalize(val code: String) {
     /** All white space removed (identifiers). */
     COMPACT("compact"),
     /**
+     * A value cut out of running prose: as [TEXT], then the separators that a sentence puts around it (commas,
+     * colons, semicolons, the ideographic comma and full stop, in full and half width) removed from both ends.
+     */
+    CLAUSE("clause"),
+    /** A year and month written as a 4-digit year and a 1–2 digit month separated by non-digits, as YYYY-MM. */
+    MONTH("month"),
+    /**
      * A Gregorian date written as a 4-digit year, a 1–2 digit month and a 1–2 digit day separated by non-digits
      * (date format 0 of the predicate circuit), disclosed as YYYY-MM-DD.
      */
     DATE("date");
 
+    private companion object {
+        const val CLAUSE_SEPARATORS = ",，、;；:：。"
+    }
+
     fun apply(text: String): String? = when (this) {
         TEXT -> text.trim().replace(Regex("\\s+"), " ").takeIf { it.isNotEmpty() }
         COMPACT -> text.replace(Regex("\\s+"), "").takeIf { it.isNotEmpty() }
+        CLAUSE -> TEXT.apply(text)?.trim { it.isWhitespace() || it in CLAUSE_SEPARATORS }?.takeIf { it.isNotEmpty() }
+        MONTH -> Regex("[0-9]+").findAll(text).map { it.value }.toList().takeIf { g ->
+            g.size == 2 && g[0].length == 4 && g[1].length in 1..2 && g[1].toInt() in 1..12
+        }?.let { (y, m) -> y + "-" + m.padStart(2, '0') }
         DATE -> ZkPdfDates.parse(text)?.let { (y, m, d) ->
             y.toString().padStart(4, '0') + "-" + m.toString().padStart(2, '0') + "-" + d.toString().padStart(2, '0')
         }

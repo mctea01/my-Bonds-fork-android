@@ -37,6 +37,17 @@ import diw.wallet.core.document.pgp.OpenPgpPlaintext
 import diw.wallet.core.document.pgp.OpenPgpTapSigner
 import diw.wallet.core.document.pgp.OpenPgpTrust
 import diw.wallet.core.document.pgp.OpenPgpTrustedKey
+import diw.wallet.core.document.pdf.PdfException
+import diw.wallet.core.document.zkpdf.ZkPdfCreated
+import diw.wallet.core.document.zkpdf.ZkPdfEvidence
+import diw.wallet.core.document.zkpdf.ZkPdfPlan
+import diw.wallet.core.document.zkpdf.ZkPdfPlanner
+import diw.wallet.core.document.zkpdf.ZkPdfPredicate
+import diw.wallet.core.document.zkpdf.ZkPdfProfile
+import diw.wallet.core.document.zkpdf.ZkPdfProfiles
+import diw.wallet.core.document.zkpdf.ZkPdfProofs
+import diw.wallet.core.zk.ZkPdfEngine
+import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
@@ -98,6 +109,8 @@ import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -107,6 +120,7 @@ import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.crypto.EcPublicKey
 import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
 import org.multipaz.crypto.X509Cert
@@ -692,7 +706,29 @@ class FilesModel(private val model: WalletModel) {
         val notice: String? = null,
         /** The entry and exit record the PDF holds (Taiwan or mainland China), for claims about a day the holder picks. */
         val entryExit: MovementRecord? = null,
+        /** zkPDF templates that fit the PDF, each with at least one field it can prove. */
+        val zkPdf: List<ZkPdfMatch> = emptyList(),
     )
+
+    /** A zkPDF template that fits a PDF: the values it can prove (read from page 1) and the fields it cannot, with why. */
+    class ZkPdfMatch(val profile: ZkPdfProfile, val fields: List<DerivedClaim>, val unavailable: List<Pair<String, String>>)
+
+    /**
+     * A zkPDF proof to add to a derived credential: the template, the date conditions (at most two), the circuit
+     * composition, and [extended] when the user chose to prove here against the device advice (longer time limit).
+     */
+    class ZkPdfChoice(val profileId: String, val predicates: List<ZkPdfPredicate>, val composition: String, val extended: Boolean)
+
+    /** The templates that fit [pdf] (unencrypted, or encrypted with an empty open password; one document signature). */
+    private fun zkPdfMatches(pdf: ByteArray): List<ZkPdfMatch> = ZkPdfProfiles.available(model.settings.testEnvironment).mapNotNull { profile ->
+        val plan = try { ZkPdfPlanner.plan(pdf, profile) } catch (_: PdfException) { return@mapNotNull null }
+        if (plan.slots.isEmpty()) return@mapNotNull null
+        ZkPdfMatch(
+            profile,
+            plan.slots.map { DerivedClaim(it.claim, it.value, profile.field(it.claim)?.label) },
+            plan.unavailable.map { (claim, why) -> (profile.field(claim)?.label ?: claim) to why },
+        )
+    }
 
     /**
      * The claims of a derived credential of [f], read from the document rather than typed: its report, its source,
@@ -714,7 +750,8 @@ class FilesModel(private val model: WalletModel) {
             else -> {}
         }
         val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints())
-        DeriveFields(suggested.claims, locked, suggested.notice, text?.let { MovementRecord.parse(it) })
+        val zk = if (report.format == DocumentFormat.PDF) zkPdfMatches(bytes) else emptyList()
+        DeriveFields(suggested.claims, locked, suggested.notice, text?.let { MovementRecord.parse(it) }, zk)
     }
 
     private suspend fun makePreview(f: StoredFile, password: String?): FilePreview {
@@ -1923,8 +1960,22 @@ class FilesModel(private val model: WalletModel) {
      * document issuer key, with the document check and a time stamp as evidence. Signing the document itself is a
      * separate step (PAdES, CAdES, XAdES); a signature made before deriving is part of the document check.
      */
-    fun derive(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?) = run("產生衍生憑證") {
+    fun derive(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, zk: ZkPdfChoice? = null) = run("產生衍生憑證") {
         val data = data(f.id)
+        // A zkPDF proof is planned first, so a file the template does not fit fails before anything is created.
+        val zkPlan = zk?.let { choice ->
+            val profile = ZkPdfProfiles.find(choice.profileId, model.settings.testEnvironment) ?: throw SigningException("找不到文件版型，請更新版型")
+            val plan = withContext(Dispatchers.Default) {
+                try { ZkPdfPlanner.plan(data, profile, choice.predicates) } catch (_: PdfException) { null }
+            } ?: throw SigningException("這份 PDF 不符合文件版型「${profile.title}」")
+            if (plan.slots.isEmpty()) throw SigningException("文件版型「${profile.title}」在這份 PDF 中沒有可證明的欄位")
+            val engine = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+            if (!engine.ready(choice.composition, true)) throw SigningException("zkPDF 的電路檔尚未下載完成")
+            Triple(choice, plan, engine)
+        }
+        val zkNames = zkPlan?.second?.slots?.map { it.claim }.orEmpty().toSet()
+        // A proven field replaces a field of the same name read from the text layer.
+        val textClaims = claims.filter { it.name !in zkNames && !DerivedCredentials.isProofClaim(it.name) }
         // The evidence states the result as of now, never a report cached from an earlier check.
         val report = refreshed(f).report ?: DocumentInspector.inspect(data, f.name, trustSource)
         val now = Clock.System.now()
@@ -1936,13 +1987,17 @@ class FilesModel(private val model: WalletModel) {
                 ?: if (timestamp) { busy.value = "向時戳機構取得時戳"; timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
         }
-        if (claims.isEmpty()) throw SigningException("請至少選擇一個欄位")
-        val disclosures = DerivedCredentials.disclosures(claims)
+        if (textClaims.isEmpty() && zkPlan == null) throw SigningException("請至少選擇一個欄位")
+        val zkLabels = zkPlan?.second?.let { plan ->
+            plan.slots.associate { s -> s.claim to (plan.profile.field(s.claim)?.label ?: s.claim) } +
+                plan.slots.associate { s -> ZkPdfEvidence.OPEN_PREFIX + s.claim to "「${plan.profile.field(s.claim)?.label ?: s.claim}」的零知識開啟資料" } +
+                (ZkPdfEvidence.CLAIM to "zkPDF 零知識證明（出示文件欄位時一併勾選）")
+        }.orEmpty()
         val doc = withContext(model.unlockProvider) {
             busy.value = "產生衍生憑證"
             val issuer = identity(HolderIdentities.DOCUMENT_ISSUER)
             val keys = model.keyRequest()
-            val title = claims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: f.name
+            val title = textClaims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: zkPlan?.second?.profile?.title ?: f.name
             val record = IssuanceRecord(
                 credentialIssuer = issuer.did!!,
                 configurationId = CONFIGURATION,
@@ -1956,7 +2011,7 @@ class FilesModel(private val model: WalletModel) {
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
                 specs = listOf("IETF SD-JWT VC"),
-                claimNames = DerivedCredentials.claimLabels + claims.filter { it.label != null }.associate { it.name to it.label!! },
+                claimNames = DerivedCredentials.claimLabels + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
                 profile = PROFILE,
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = "文件衍生憑證", appData = record.encode())
@@ -1966,6 +2021,11 @@ class FilesModel(private val model: WalletModel) {
                     keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
                 )
                 val holderKey = credential.secureArea.getKeyInfo(credential.alias).ecPublicKey
+                // The proof is bound to this credential's key, so it runs after the key exists and before signing.
+                val proven = zkPlan?.let { (choice, plan, engine) -> provePdf(f, data, plan, holderKey, choice, engine) }
+                val disclosures = DerivedCredentials.jsonDisclosures(
+                    textClaims.map { it.name to JsonPrimitive(it.value) } + proven?.disclosures().orEmpty(),
+                )
                 val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil)
                 credential.certify(compact.encodeToByteString())
                 created.edit { provisioned = true }
@@ -1980,9 +2040,59 @@ class FilesModel(private val model: WalletModel) {
         }
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
-        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), claims.map { DerivedCredentials.labelOf(it) })
-        model.message.value = "已產生衍生憑證，可在「證件」出示"
+        val labels = textClaims.map { DerivedCredentials.labelOf(it) } +
+            zkPlan?.second?.let { plan -> plan.slots.map { s -> (plan.profile.field(s.claim)?.label ?: s.claim) + "（zkPDF）" } }.orEmpty()
+        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), labels)
+        model.message.value = if (zkPlan != null) "已產生含 zkPDF 證明的衍生憑證，可在「證件」出示" else "已產生衍生憑證，可在「證件」出示"
         model.screen.value = Screen.FileDetail(f.id)
+    }
+
+    /**
+     * Runs the zkPDF proof of [plan] for the credential key [holderKey] as a background proof (one at a time, with a
+     * time limit and cancellation from the screen), showing the segment progress. Nothing unproven is returned.
+     */
+    private suspend fun provePdf(
+        f: StoredFile,
+        pdf: ByteArray,
+        plan: ZkPdfPlan,
+        holderKey: EcPublicKey,
+        choice: ZkPdfChoice,
+        engine: ZkPdfEngine,
+    ): ZkPdfCreated {
+        val jwk = holderKey.toJwk()
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, choice.extended) { step ->
+            step("準備")
+            ZkPdfProofs.create(pdf, plan, jwk, choice.composition, engine, { kind, done, total ->
+                val text = "產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"
+                step(text)
+                busy.value = text
+            })
+        }
+        val result = try {
+            job.await()
+        } catch (e: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            ZkResult.Cancelled
+        }
+        return when (result) {
+            is ZkResult.Ok -> result.value
+            is ZkResult.Failed -> throw SigningException(result.reason)
+            ZkResult.Cancelled -> throw SigningException("已取消 zkPDF 證明，未產生衍生憑證")
+        }
+    }
+
+    /** Stops the zkPDF proof running for the file [fileId]. */
+    fun cancelZkPdf(fileId: String) = model.zk.cancel(zkJobId(fileId))
+
+    fun zkJobId(fileId: String) = "zkpdf:$fileId"
+
+    private fun segmentName(kind: String): String = when (kind) {
+        "sha_content", "sha_opaque" -> "文件雜湊"
+        "inflate0", "inflate" -> "解壓縮"
+        "lex" -> "文字解析"
+        "claim" -> "欄位承諾"
+        "pred" -> "日期條件"
+        else -> "證明"
     }
 
     /** Clears the link of every file to the derived credential [documentId], after that credential was deleted. */

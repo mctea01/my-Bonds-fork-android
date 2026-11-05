@@ -1,0 +1,16 @@
+{
+  "id": "cn.fzu.student-status/1",
+  "title": "福州大學學籍（在學）證明",
+  "opaqueImages": ["Image45"],
+  "fields": [
+    { "claim": "verificationCode", "label": "驗證密鑰", "before": ["Verification Code)"], "after": ["验证官网"], "normalize": "clause" },
+    { "claim": "certificateNumber", "label": "證明編號", "before": ["O."], "after": ["学生："], "normalize": "compact" },
+    { "claim": "name", "label": "姓名", "before": ["学生："], "after": ["性别："], "normalize": "clause" },
+    { "claim": "gender", "label": "性別", "before": ["性别："], "after": ["出生于"], "normalize": "clause" },
+    { "claim": "birthDate", "label": "出生日期", "before": ["出生于"], "after": ["日"], "normalize": "date" },
+    { "claim": "studentId", "label": "學號", "before": ["学号"], "after": ["证件号码"], "normalize": "clause" },
+    { "claim": "idNumber", "label": "證件號碼", "before": ["证件号码"], "after": ["。于"], "normalize": "clause" },
+    { "claim": "enrollmentMonth", "label": "入學年月", "before": ["。于"], "after": ["入学，现在"], "normalize": "month" },
+    { "claim": "collegeAndMajor", "label": "學院與專業", "before": ["入学，现在"], "after": ["专业"], "normalize": "text" }
+  ]
+}

@@ -63,7 +63,7 @@
 
 建議順序：WP0、WP2、WP8 平行開始，同時做 WP3a 的 M3a（SHA-256 與 inflate 子電路）供 WP1 量測；WP0 完成後先做 WP7 的原生部分，當作整條管線（建置、資產下載、Android 打包、自驗）的第一個端對端測試（D5）；接著 WP3b、WP5 平行；WP4、WP6 接在後面；WP9、WP10 收尾。
 
-### 2.1 實作狀態（2026-10-25）
+### 2.1 實作狀態（2026-11-02）
 
 | WP | 狀態 |
 |---|---|
@@ -72,12 +72,12 @@
 | WP2 | 完成 |
 | WP3a | M3a、M3b 完成（PR #21 於 2026-10-29 合併進整合分支）：分段證明（p4-circuits.md 第 3.12 節），公開輸入 `native/circuits/PUBLIC_SPEC.md` 已凍結，`VERSIONS` 為候選釘選值 |
 | WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c（Rust 見證、UltraHonk 證明與查驗、uniffi）PR #74 於 2026-11-01 合併進整合分支；錨點序數、空尾段回歸與 Android 實際建置（arm64-v8a、x86_64，不需額外打包共享函式庫）在 PR #76（2026-11-02）。macOS 待實際建置，Windows 暫不支援；手機門檻待實機量測（電腦版 2 個 worker 最快，峰值約 2.2 GB） |
-| WP4 | 未開始（等 WP3b）；文件詳情的「產生 zkPDF 證明」與自架主機仍是停用列 |
+| WP4 | M4a 完成（2026-11-02）：規劃器、遮蔽（只保留被簽的版本）、segment bundle 證據、查驗 V1–V10、衍生憑證的產生（背景證明、進度與取消）與 Bonds 出示查驗、版型包的文件版型與測試環境匯入；合成文件以真實原生證明走完產生與查驗。M4b 進行中（2026-11-05）：福州大學學籍（在學）證明版型 `templates/zkpdf/cn.fzu.student-status.json` 以真實文件核對，9 個欄位都以原生電路（電腦版組合，19 段，約 11.5 分鐘）證明並查驗通過；核對工具 `:test-servers:checkZkPdf` 只印文字形狀。v1 只接受單頁文件（其他頁會留在遮蔽檔），所以 2 頁的移民管理局出入境記錄不提供版型。新增 `clause`、`month` 正規化。bb 升級到 v6.0.0 後重跑（使用者 2026-11-05 決定在 M4b 凍結前升級）。M4c（`.zkpdf` 匯出匯入、自架主機）未開始，對應選項在選擇畫面停用 |
 | WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
 | WP6 | 完成：M6a 與 M6b；區域網路改為直接 TCP（第 5.2 節）；簽章版型包；學信網中英文報告頁與移民署入出國日期證明書查驗頁；網頁證明與本機紀錄存入證件 |
 | WP7 | 完成：Bonds 網頁年齡請求、主機或本機驗證，以及本錢包延伸的藍牙、區域網路、動態 QR 查驗 |
 | WP8 | 完成：Longfellow 近距離與 DC API |
-| WP9 | 年齡證明、zkTLS、mdoc ZK 的畫面與設定的「零知識證明」頁完成；zkPDF 的畫面等 WP4 |
+| WP9 | 年齡證明、zkTLS、mdoc ZK 的畫面與設定的「零知識證明」頁完成；zkPDF 在衍生憑證畫面（版型、可證明與無法證明的欄位、日期條件、電路檔下載、進度與取消），證據在證件與查驗結果的證據列 |
 | WP10 | 未開始；P4 驗收文件在 zkPDF 完成後撰寫 |
 
 ## 3. 工作包細節
@@ -299,6 +299,8 @@ object ZkPdf {
     suspend fun verify(credential: JsonObject, disclosed: Map<String, JsonElement>, trust: DocumentTrustSource, policy: ZkPdfPolicy): ZkPdfVerification
 }
 ```
+
+實作時的介面以程式碼為準：`ZkPdfEngine`（core/zk）取代上面的 `ZkPdfProofEngine`，`ZkPdfPlanner.plan` 與 `ZkPdfProofs.create` 取代 `ZkPdf.prepare` 與 `evidence`，`ZkPdfVerifier.verify` 由 `DerivedEvidence.verify(..., disclosed, ZkPdfContext)` 呼叫；App 端在 `FilesModel.derive(..., ZkPdfChoice)`。
 
 驗收：Z2、Z3、Z6、Z7、Z10、Z11 測試；以合成文件完成「產生衍生憑證、出示、查驗」；`.zkpdf` 匯出匯入與自架主機產生各一次；真實樣本在本機核對（不提交）。
 
