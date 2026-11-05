@@ -48,9 +48,9 @@ pub fn policy(spec: &ZkPdfVerifierSpec, bundle: &ZkPdfBundle) -> Result<ZkPdfVer
     let k = paired / 2;
     require(k <= 40960 / p + 1)?;
     for segment in &bundle.segments {
-        require(segment.proof.len() == 16256)?;
+        require(segment.proof.len() == crate::PROOF_BYTES)?;
         // Reject encodings that a field parser could otherwise reduce modulo p.
-        public::decode(&segment.proof, 508)?;
+        public::decode(&segment.proof, crate::PROOF_BYTES / 32)?;
     }
     let anchor_inputs: Vec<_> = spec
         .anchors
@@ -221,7 +221,7 @@ mod tests {
                         index,
                         // Deliberately invalid proofs: these tests exercise policy
                         // reconstruction only, never cryptographic acceptance.
-                        proof: vec![0; 16256],
+                        proof: vec![0; crate::PROOF_BYTES],
                     }
                 })
                 .collect(),

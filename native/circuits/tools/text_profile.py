@@ -18,10 +18,10 @@ def run(args):
     if args.k not in (1,2,4):raise ValueError('K must be 1, 2 or 4')
     if not 1<=args.slot_count<=12:raise ValueError('Invalid slot count')
     version=subprocess.check_output([args.nargo,'--version'],text=True).strip()
-    assert version.splitlines()[0]=='nargo version = 1.0.0-beta.15'
-    assert subprocess.check_output([args.bb,'--version'],text=True).strip()=='2.1.9'
+    assert version.splitlines()[0]=='nargo version = 1.0.0-rc.3'
+    assert subprocess.check_output([args.bb,'--version'],text=True).strip().removeprefix('v')=='6.0.0'
     args.output.parent.mkdir(parents=True,exist_ok=True)
-    compile_flags=['--bounded-codegen'] if args.bounded_codegen else []
+    compile_flags=[]  # nargo 1.0.0-rc.3 removed --bounded-codegen
     def limits():
         budget=args.address_space_gib*1024**3;resource.setrlimit(resource.RLIMIT_AS,(budget,budget));resource.setrlimit(resource.RLIMIT_CORE,(0,0))
     record=dict(timeout_seconds=args.seconds,rss_guard_gib=args.rss_limit_gib,address_space_limit_gib=args.address_space_gib,compile_flags=compile_flags,scope=args.text_profile,nargo=version,plain_capacity=args.plain,k=args.k,max_claims=12,max_claim_src=384,max_anchor_src=96,seg_ops=64*((args.k*args.plain+2047)//2048),slot_start=0,slot_count=args.slot_count,zero_knowledge=True,oracle_hash='poseidon2',prove={})
@@ -61,7 +61,7 @@ def run(args):
             write(root/'Prover.toml',w)
         finally:h.close()
         args.crs.mkdir(parents=True,exist_ok=True);proof=root/'proof';proof.mkdir()
-        commands=[('witness',[args.nargo,'execute','--program-dir',str(root),'--pedantic-solving',*compile_flags])]
+        commands=[('witness',[args.nargo,'execute','--program-dir',str(root),*compile_flags])]
         for name in ('first','warm'):commands.append((name,[args.bb,'prove','-s','ultra_honk','--oracle_hash','poseidon2','-b',str(acir),'-w',str(root/'target/text_regression.gz'),'-o',str(proof),'--write_vk','-c',str(args.crs.resolve())]))
         commands.append(('verify',[args.bb,'verify','-s','ultra_honk','--oracle_hash','poseidon2','-k',str(proof/'vk'),'-p',str(proof/'proof'),'-i',str(proof/'public_inputs'),'-c',str(args.crs.resolve())]))
         original=json.loads(acir.read_text())['bytecode']

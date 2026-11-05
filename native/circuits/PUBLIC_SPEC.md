@@ -40,10 +40,11 @@ SHA-256 digests for these exact packages; historical component hashes are not
 composition keys. ACIR hash means SHA-256 over the complete emitted JSON file,
 not only its base64 bytecode. Compiler source maps can affect this digest.
 
-Lexical, claim and predicate packages use the pinned `--bounded-codegen`
-compiler flag for both compilation and witness execution, as in Round 9.
-SHA and inflate use default code generation. This compiler configuration is
-part of each asset identity; do not substitute an unbounded text-circuit VK.
+All packages use default code generation. Round 9 to 12 compiled the lexical,
+claim and predicate packages with `--bounded-codegen`; nargo 1.0.0-rc.3 removed
+that flag, so the 2026-11 toolchain upgrade (nargo 1.0.0-rc.3, bb 6.0.0) compiles
+them with default flags. The compiler configuration is part of each asset
+identity; the hashes in `VERSIONS` name the exact assets.
 
 Encoding is over the BN254 scalar field
 `21888242871839275222246405745257275088548364400416034343698204186575808495617`.
@@ -340,7 +341,7 @@ one, pi/r to derived values and slot to the first enabled slot (or C).
     font resources, and apply template normalization; require equality with the
     claimed revealed value (V10). Hidden predicate slots need no opening.
 14. Construct the exact ordered public Field arrays yourself and verify **every**
-    UltraHonk proof with the pinned zero-knowledge key and bb 2.1.9 poseidon2
+    UltraHonk proof with the pinned zero-knowledge key and bb 6.0.0 poseidon2
     configuration, never --disable_zk (V8). Reject unknown/duplicate/unconsumed
     proofs, altered constants, noncanonical Field encodings, wrong proof length,
     missing joins or failed verification. nargo execution alone is not V8.

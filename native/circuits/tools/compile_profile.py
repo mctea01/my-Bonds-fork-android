@@ -94,7 +94,7 @@ def prove_profile(args, root, acir, record, limits):
     record['zero_knowledge'] = True
     record['oracle_hash'] = 'poseidon2'
     record['prove'] = {}
-    commands = [('witness', [args.nargo, 'execute', '--program-dir', str(root), '--pedantic-solving'])]
+    commands = [('witness', [args.nargo, 'execute', '--program-dir', str(root)])]
     for run in ('first', 'warm'):
         commands.append((run, [args.bb, 'prove', '-s', 'ultra_honk', '--oracle_hash', 'poseidon2',
             '-b', str(acir), '-w', str(root/'target/full_inflate_preflight.gz'),
@@ -132,7 +132,7 @@ def main():
     parser.add_argument('--compile-threads',type=int,choices=[1,2],default=2)
     parser.add_argument('--formal-tier',choices=['phone','desktop'])
     parser.add_argument('--formal-kind',choices=['sha_content','sha_opaque','inflate0','inflate','lex','claim','pred'])
-    parser.add_argument('--bounded-codegen', action='store_true')
+    parser.add_argument('--bounded-codegen', action='store_true', help='Ignored: nargo 1.0.0-rc.3 removed this flag')
     parser.add_argument('--text-profile', choices=['lex','claim','pred'])
     parser.add_argument('--k', type=int, default=1)
     parser.add_argument('--slot-count', type=int, default=12)
@@ -142,7 +142,7 @@ def main():
     parser.add_argument('--plain', type=int, help='Defaults to 2048 for text profiles, 40960 otherwise')
     parser.add_argument('--tokens', type=int, default=6144)
     parser.add_argument('--blocks', type=int, default=4)
-    parser.add_argument('--bb', help='Pinned bb 2.1.9; measure gates after compilation')
+    parser.add_argument('--bb', help='Pinned bb 6.0.0; measure gates after compilation')
     parser.add_argument('--segment0', action='store_true', help='Profile first segment without history')
     parser.add_argument('--segment', action='store_true', help='Profile pdf_inflate_seg_v1 with full 32 KiB history')
     parser.add_argument('--bb-js', type=Path, help='Pinned bb.js dest/node/index.js for segment synthetic witnesses')
@@ -186,9 +186,9 @@ def main():
         for name in ('compressed', 'plain', 'tokens', 'blocks'):
             source = source.replace(name.upper(), str(getattr(args, name)))
     version = subprocess.check_output([args.nargo, '--version'], text=True).strip()
-    if version.splitlines()[0] != 'nargo version = 1.0.0-beta.15':
+    if version.splitlines()[0] != 'nargo version = 1.0.0-rc.3':
         raise RuntimeError('Use the pinned nargo version')
-    if args.bb and subprocess.check_output([args.bb, '--version'], text=True).strip() != '2.1.9':
+    if args.bb and subprocess.check_output([args.bb, '--version'], text=True).strip().removeprefix('v') != '6.0.0':
         raise RuntimeError('Use the pinned bb version')
     # Only the compiler child receives these limits. Preserve the rest of the session.
     def limits():

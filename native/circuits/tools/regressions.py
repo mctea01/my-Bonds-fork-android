@@ -26,7 +26,7 @@ def main():
     parser.add_argument('--bb-js', type=Path, help='Pinned bb.js 2.1.9 dest/node/index.js for segment commitments')
     args = parser.parse_args()
     version = subprocess.check_output([args.nargo, '--version'], text=True)
-    if '1.0.0-beta.15' not in version:
+    if '1.0.0-rc.3' not in version:
         raise RuntimeError('Use the pinned nargo version')
     if args.sha:
         from sha_regressions import run
@@ -62,7 +62,7 @@ def main():
                   block_capacity=3 if args.multiblock else 1)
             result = subprocess.run(
                 [args.nargo, 'execute', '--package', package,
-                 '--prover-name', 'Regression', '--pedantic-solving', witness_name],
+                 '--prover-name', 'Regression', witness_name],
                 cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             # A parsing or compilation failure must never count as rejection.
             rejected = result.returncode == 1 and 'Cannot satisfy constraint' in result.stdout

@@ -54,7 +54,8 @@ extern "C" int zkpdf_bb_init(const uint8_t* g1, size_t g1_size, const uint8_t* g
 }
 extern "C" int zkpdf_bb_prove(const uint8_t* acir, size_t acir_size, const uint8_t* vk, size_t vk_size,
                               const uint8_t* witness, size_t witness_size,
-                              uint8_t* proof, size_t proof_size, uint8_t* pi, size_t pi_size) noexcept {
+                              uint8_t* proof, size_t proof_capacity, size_t* proof_size,
+                              uint8_t* pi, size_t pi_size) noexcept {
     try {
         bb::bbapi::CircuitProve request;
         request.circuit.bytecode = bytes(acir, acir_size);
@@ -62,7 +63,9 @@ extern "C" int zkpdf_bb_prove(const uint8_t* acir, size_t acir_size, const uint8
         request.witness = bytes(witness, witness_size);
         request.settings = settings();
         auto result = std::move(request).execute();
-        output(result.proof, proof, proof_size);
+        if (result.proof.size() * 32 > proof_capacity) return 1;
+        output(result.proof, proof, result.proof.size() * 32);
+        *proof_size = result.proof.size() * 32;
         output(result.public_inputs, pi, pi_size);
         return 0;
     } catch (...) { return 1; }
@@ -76,5 +79,19 @@ extern "C" int zkpdf_bb_verify(const uint8_t* vk, size_t vk_size, const uint8_t*
         request.public_inputs = fields(pi, pi_size);
         request.settings = settings();
         return std::move(request).execute().verified ? 0 : 1;
+    } catch (...) { return 1; }
+}
+// Build-time only: derives the verification key exactly as `bb write_vk` does.
+extern "C" int zkpdf_bb_vk(const uint8_t* acir, size_t acir_size, uint8_t* vk, size_t capacity, size_t* written) noexcept {
+    try {
+        bb::bbapi::CircuitComputeVk request;
+        request.circuit.name = "circuit";
+        request.circuit.bytecode = bytes(acir, acir_size);
+        request.settings = settings();
+        auto result = std::move(request).execute();
+        if (result.bytes.size() > capacity) return 1;
+        std::memcpy(vk, result.bytes.data(), result.bytes.size());
+        *written = result.bytes.size();
+        return 0;
     } catch (...) { return 1; }
 }

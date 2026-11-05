@@ -269,7 +269,7 @@ pub struct ZkPdfVerified { pub mid_outs: Vec<Vec<u8>>, pub claim_digests: Vec<Ve
   - `ZkPdfAnchorInput` 加 `ordinal`：產生器選第 `ordinal` 次出現的相同 v2 紀錄，沒有那麼多次時以固定錯誤碼拒絕；查驗端仍以描述檔的 `ordinal`、`total` 獨立檢查。
   - `claim_records`、`claim_digests` 固定 12 個並以 slot 為索引，未使用的 slot 紀錄為空、摘要為 0；錨點結果依輸入順序。
   - Rust 回傳各視窗的 H_e；SHA 接續、CMS、簽章版本與字型規則由 WP4 在 Kotlin 綁定。單獨的 `zkpdf_verify` 不保證拒絕替換成另一個同聲明的有效證明，呼叫端必須完成 WP4 的檢查才算查驗通過。
-  - Windows：bb 2.1.9 需要 POSIX 移植，zkPDF 暫不支援 Windows，錢包在 Windows 顯示為不支援。
+  - Windows：bb 6.0.0 上游只以 zig 交叉編譯 Windows，需要移植，zkPDF 暫不支援 Windows，錢包在 Windows 顯示為不支援。
 - 合成測試文件產生器（Python 或 Kotlin 皆可，以 `-I` 執行 Python）：輸出「仿在學證明」（WinAnsi 數字、Type0 中文、QR 影像）與「仿出入境記錄」（RC4、數字為 CID）兩種，以 test-servers 的測試 PKI 簽章；字型使用授權允許再散布的字型子集（例如 Noto Sans CJK，OFL），在 NOTICE 記錄。
 
 驗收：

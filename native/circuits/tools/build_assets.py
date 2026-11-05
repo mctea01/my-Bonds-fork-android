@@ -48,9 +48,9 @@ def pins():
             key, value = line.split("=", 1)
             require(key not in entries, "duplicate_version_key")
             entries[key] = value
-    require(entries["nargo"] == "1.0.0-beta.15", "nargo_pin")
-    require(entries["noirc_commit"] == "83245db91dcf63420ef4bcbbd85b98f397fee663", "noirc_pin")
-    require(entries["bb"] == "2.1.9" and entries["oracle_hash"] == "poseidon2"
+    require(entries["nargo"] == "1.0.0-rc.3", "nargo_pin")
+    require(entries["noirc_commit"] == "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7", "noirc_pin")
+    require(entries["bb"] == "6.0.0" and entries["oracle_hash"] == "poseidon2"
             and entries["zero_knowledge"] == "true" and entries["disable_zk"] == "false", "backend_pin")
     return entries
 
@@ -79,10 +79,60 @@ def checked_crs(directory, download):
         require(path.is_file() and path.stat().st_size == size and digest(path) == expected, "crs_integrity")
 
 
+def build(args, environment, crs, output, package, flags, expected):
+    command = [args.nargo, "compile", "--program-dir", str(ROOT), "--package", package]
+    # nargo 1.0.0-rc.3 removed --bounded-codegen; every package compiles with default flags.
+    require(flags == "default", "compile_flags")
+    subprocess.run(command, env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    acir = ROOT / "target" / (package + ".json")
+    # VERSIONS hashes complete nargo JSON, including debug source paths.
+    # Canonicalize only those paths to the frozen build root. ABI,
+    # bytecode and all other data must still match the frozen digest.
+    artifact = json.loads(acir.read_bytes())
+    frozen_root = "/workspace/my-Bonds-fork-android/native/circuits/"
+    for item in artifact.get("file_map", {}).values():
+        path = item.get("path", "").replace("\\", "/")
+        prefix = ROOT.as_posix() + "/"
+        if path.startswith(prefix):
+            item["path"] = frozen_root + path[len(prefix):]
+    acir.write_text(json.dumps(artifact, ensure_ascii=False, separators=(",", ":")))
+    require(args.repin or digest(acir) == expected[0], "acir_integrity:" + package)
+    with tempfile.TemporaryDirectory(dir=output) as temporary:
+        vk = Path(temporary) / "vk"
+        if args.vk_tool is None:
+            subprocess.run([args.bb, "write_vk", "-s", "ultra_honk", "--oracle_hash", "poseidon2",
+                            "-b", str(acir), "-o", temporary, "-c", str(crs)],
+                           env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run([str(args.vk_tool), str(crs), str(acir), str(vk)],
+                           env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        require(args.repin or digest(vk) == expected[1], "vk_integrity:" + package)
+        shutil.copyfile(acir, output / (package + ".json"))
+        shutil.copyfile(vk, output / (package + ".vk"))
+    return digest(output / (package + ".json")), digest(output / (package + ".vk"))
+
+
+def repin_versions(actual):
+    lines = []
+    for line in (ROOT / "VERSIONS").read_text().splitlines():
+        key = line.split("=", 1)[0]
+        identity, _, kind = key.rpartition(".")
+        if identity in actual and kind in ("acir_sha256", "vk_sha256"):
+            line = key + "=" + actual[identity][0 if kind == "acir_sha256" else 1]
+        lines.append(line)
+    (ROOT / "VERSIONS").write_text("\n".join(lines) + "\n")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--nargo", default=os.environ.get("NARGO", "nargo"))
     parser.add_argument("--bb", default=os.environ.get("BB", "bb"))
+    # Local alternative to the bb CLI: zkpdf-prover's zkpdf-vk binary, linked against the same
+    # pinned barretenberg revision. CI keeps the upstream CLI, so both paths must agree.
+    parser.add_argument("--vk-tool", type=Path)
+    # Writes the new hashes into VERSIONS and native/assets.json instead of requiring the frozen ones;
+    # only for a deliberate toolchain upgrade.
+    parser.add_argument("--repin", action="store_true")
     parser.add_argument("--output", type=Path, default=ROOT / "target/zkpdf-assets")
     parser.add_argument("--crs", type=Path)
     parser.add_argument("--download-crs", action="store_true")
@@ -91,7 +141,9 @@ def main():
     nargo_version = subprocess.check_output([args.nargo, "--version"], text=True)
     require(nargo_version.splitlines()[0] == "nargo version = " + versions["nargo"]
             and versions["noirc_commit"] in nargo_version, "nargo_version")
-    require(subprocess.check_output([args.bb, "--version"], text=True).strip() == versions["bb"], "bb_version")
+    if args.vk_tool is None:
+        reported = subprocess.check_output([args.bb, "--version"], text=True).strip().removeprefix("v")
+        require(reported == versions["bb"], "bb_version")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     crs = (args.crs or output).resolve()
@@ -102,6 +154,7 @@ def main():
     environment = dict(os.environ, RAYON_NUM_THREADS="1", HARDWARE_CONCURRENCY="2")
     mappings = {}
     built = {}
+    actual = {}
     for key, package in versions.items():
         if not key.startswith("zkpdf-v1-") or not key.endswith(".package"):
             continue
@@ -109,60 +162,45 @@ def main():
         flags = versions[identity + ".compile_flags"]
         expected = (versions[identity + ".acir_sha256"], versions[identity + ".vk_sha256"])
         if package in built:
-            require(built[package] == (flags, expected), "shared_asset_pin")
+            require(built[package][0] == flags and (args.repin or built[package][1] == expected), "shared_asset_pin")
+            hashes = built[package][1]
         else:
-            print(package + ": compile and check frozen hashes", flush=True)
+            print(package + ": compile and check " + ("new" if args.repin else "frozen") + " hashes", flush=True)
             installed_acir = output / (package + ".json")
             installed_vk = output / (package + ".vk")
-            if (installed_acir.is_file() and installed_vk.is_file()
+            if (not args.repin and installed_acir.is_file() and installed_vk.is_file()
                     and digest(installed_acir) == expected[0] and digest(installed_vk) == expected[1]):
-                built[package] = (flags, expected)
-                mappings[identity] = {"acir": package + ".json", "vk": package + ".vk",
-                                      "acir_sha256": expected[0], "vk_sha256": expected[1]}
-                continue
-            command = [args.nargo, "compile", "--program-dir", str(ROOT), "--package", package]
-            if flags != "default":
-                require(flags == "--bounded-codegen", "compile_flags")
-                command.append(flags)
-            subprocess.run(command, env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            acir = ROOT / "target" / (package + ".json")
-            # VERSIONS hashes complete nargo JSON, including debug source paths.
-            # Canonicalize only those paths to the frozen build root. ABI,
-            # bytecode and all other data must still match the frozen digest.
-            artifact = json.loads(acir.read_bytes())
-            frozen_root = "/workspace/my-Bonds-fork-android/native/circuits/"
-            for item in artifact.get("file_map", {}).values():
-                path = item.get("path", "").replace("\\", "/")
-                prefix = ROOT.as_posix() + "/"
-                if path.startswith(prefix):
-                    item["path"] = frozen_root + path[len(prefix):]
-            acir.write_text(json.dumps(artifact, ensure_ascii=False, separators=(",", ":")))
-            require(digest(acir) == expected[0], "acir_integrity:" + package)
-            with tempfile.TemporaryDirectory(dir=output) as temporary:
-                subprocess.run([args.bb, "write_vk", "-s", "ultra_honk", "--oracle_hash", "poseidon2",
-                                "-b", str(acir), "-o", temporary, "-c", str(crs)],
-                               env=environment, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                vk = Path(temporary) / "vk"
-                require(digest(vk) == expected[1], "vk_integrity:" + package)
-                shutil.copyfile(acir, output / (package + ".json"))
-                shutil.copyfile(vk, output / (package + ".vk"))
-            built[package] = (flags, expected)
+                hashes = expected
+            else:
+                hashes = build(args, environment, crs, output, package, flags, expected)
+            built[package] = (flags, hashes)
+        actual[identity] = hashes
         mappings[identity] = {"acir": package + ".json", "vk": package + ".vk",
-                              "acir_sha256": expected[0], "vk_sha256": expected[1]}
+                              "acir_sha256": hashes[0], "vk_sha256": hashes[1]}
     require(len(mappings) == 14 and len(built) == 10, "composition_count")
+    if args.repin:
+        repin_versions(actual)
     (output / "manifest.json").write_text(json.dumps(mappings, indent=2) + "\n")
-    catalog = json.loads((ROOT.parent / "assets.json").read_text())
+    catalog_path = ROOT.parent / "assets.json"
+    catalog = json.loads(catalog_path.read_text())
     entries = [entry for entry in catalog if entry["backend"] == "NOIR_ULTRAHONK"]
     require(len(entries) == 22, "asset_catalog_count")
     for entry in entries:
         path = output / entry["id"]
+        packaged = path.with_suffix(path.suffix + ".gz")
+        if args.repin:
+            packaged.write_bytes(package_gzip(path.read_bytes()))
+            entry.update(gzipSha256=digest(packaged), gzipBytes=packaged.stat().st_size,
+                         installedSha256=digest(path), installedBytes=path.stat().st_size)
+            continue
         require(path.stat().st_size == entry["installedBytes"]
                 and digest(path) == entry["installedSha256"], "catalog_installed_integrity")
-        packaged = path.with_suffix(path.suffix + ".gz")
         if not packaged.is_file() or digest(packaged) != entry["gzipSha256"]:
             packaged.write_bytes(package_gzip(path.read_bytes()))
         require(packaged.stat().st_size == entry["gzipBytes"]
                 and digest(packaged) == entry["gzipSha256"], "catalog_gzip_integrity")
+    if args.repin:
+        catalog_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
     print("Ten distinct circuits, fourteen composition mappings and CRS verified")
 
 

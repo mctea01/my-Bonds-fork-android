@@ -99,7 +99,7 @@ class ZkPdfEvidenceTest {
 
         override fun ready(composition: String, prover: Boolean) = ready
 
-        override suspend fun check(statement: ZkPdfStatement, witness: ZkPdfWitness) = ZkResult.Ok(ZkPdfCost(6, 6L * 16256))
+        override suspend fun check(statement: ZkPdfStatement, witness: ZkPdfWitness) = ZkResult.Ok(ZkPdfCost(6, 6L * 14656))
 
         override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit): ZkResult<ZkPdfProofOutput> {
             val midOuts = statement.windows.mapIndexed { i, w ->
@@ -126,7 +126,7 @@ class ZkPdfEvidenceTest {
             }
             progress("sha_content", 1, 1)
             proven = fingerprint(statement)
-            return ZkResult.Ok(ZkPdfProofOutput(listOf(ZkPdfSegment("sha_content", 0, ByteArray(16256) { 1 }, ByteArray(64))),
+            return ZkResult.Ok(ZkPdfProofOutput(listOf(ZkPdfSegment("sha_content", 0, ByteArray(14656) { 1 }, ByteArray(64))),
                 midOuts, sources, digests, 1).also { output = it })
         }
 

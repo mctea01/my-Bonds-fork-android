@@ -432,7 +432,7 @@ pub(crate) fn prepare_with_boundary<const DEFER_END: bool>(
         lex_segments: inflate.len() as u32,
         claim_segments: 1,
         predicate_segments: (!input.predicates.is_empty()) as u32,
-        estimated_proof_bytes: stages.len() as u64 * 16256,
+        estimated_proof_bytes: stages.len() as u64 * crate::PROOF_BYTES as u64,
         public_input_bytes,
     };
     let records = claim_records

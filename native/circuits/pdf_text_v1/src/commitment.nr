@@ -9,7 +9,7 @@ pub fn commit<let N: u32>(tag: Field, salt: Field, fields: [Field; N]) -> Field 
         for j in 0..3 {
             if chunk*3+j < N+3 { state[j] += input[chunk*3+j]; }
         }
-        state = std::hash::poseidon2_permutation(state,4);
+        state = std::hash::poseidon2_permutation(state);
     }
     state[0]
 }
@@ -19,7 +19,7 @@ pub fn hash_fields<let N:u32>(input:[Field;N]) -> Field {
     let mut state=[0,0,0,(N as Field)*18446744073709551616];
     for chunk in 0..((N+2)/3) {
         for j in 0..3 { if chunk*3+j<N { state[j]+=input[chunk*3+j]; } }
-        state=std::hash::poseidon2_permutation(state,4);
+        state=std::hash::poseidon2_permutation(state);
     }
     state[0]
 }

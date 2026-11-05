@@ -93,7 +93,7 @@ mod tests {
         }
         assert!(package("other", "claim").is_err());
         assert!(package("zkpdf-v1-phone", "../claim").is_err());
-        assert!(pin("noirc_commit").unwrap() == "83245db91dcf63420ef4bcbbd85b98f397fee663");
+        assert!(pin("noirc_commit").unwrap() == "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7");
     }
     #[test]
     fn crs_constants_match_shipping_catalog() {

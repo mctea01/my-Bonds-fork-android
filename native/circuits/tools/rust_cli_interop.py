@@ -21,7 +21,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--bb", default="bb")
     args = parser.parse_args()
-    if subprocess.check_output([args.bb, "--version"], text=True).strip() != "2.1.9":
+    if subprocess.check_output([args.bb, "--version"], text=True).strip().removeprefix("v") != "6.0.0":
         raise SystemExit("bb_version")
     pins = dict(line.strip().split("=", 1) for line in
                 (Path(__file__).resolve().parents[1] / "VERSIONS").read_text().splitlines()
