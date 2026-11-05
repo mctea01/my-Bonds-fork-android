@@ -1488,6 +1488,36 @@ class WalletModelE2eTest {
         assertNull(again.blockedIntegration(link))
     }
 
+    /** An offer fetched from elsewhere that names a TWDIW issuer stops before anything is asked of wallet.gov.tw. */
+    @Test
+    fun declinedTwdiwBlocksIndirectOffers() = runBlocking<Unit> {
+        val hosts = java.util.Collections.synchronizedList(ArrayList<String>())
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            hosts.add(request.url.host)
+            if (request.url.host == "offers.example.com") {
+                val offer = buildJsonObject {
+                    put("credential_issuer", "https://issuer.wallet.gov.tw")
+                    put("credential_configuration_ids", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("card"))))
+                    put("grants", buildJsonObject {
+                        put("urn:ietf:params:oauth:grant-type:pre-authorized_code", buildJsonObject { put("pre-authorized_code", "c") })
+                    })
+                }
+                respond(offer.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            } else respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.handleUri("openid-credential-offer://?credential_offer_uri=https%3A%2F%2Foffers.example.com%2Fo")
+        val r = withTimeout(10.seconds) { m.issuance.first { it is IssuanceUi.Failed || it is IssuanceUi.Review } }
+        assertIs<IssuanceUi.Failed>(r)
+        assertTrue("數位憑證皮夾" in r.message, r.message)
+        assertTrue(hosts.none { it.endsWith("wallet.gov.tw") }, "contacted: $hosts")
+    }
+
     /** Renders the first-start pages and the legal settings for review; DIW_SCREENSHOTS names the output folder. */
     @Test
     fun legalScreenshots() = runBlocking<Unit> {

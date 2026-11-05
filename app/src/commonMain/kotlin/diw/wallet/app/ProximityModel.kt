@@ -279,6 +279,8 @@ class ProximityModel(private val model: WalletModel) {
      * request cannot be answered; a failure stays on screen until the user leaves it.
      */
     suspend fun presentDcApi(protocol: String, data: JsonObject, origin: String, appId: String?): JsonObject? {
+        // As for OpenID4VP: nothing is handled before the first-start pages are done.
+        model.legal.awaitComplete()
         cancel()
         listening.value = false
         state.value = ProximityUi.Working("驗證請求中")

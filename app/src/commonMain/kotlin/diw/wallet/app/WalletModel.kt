@@ -955,10 +955,11 @@ class WalletModel(val platform: PlatformServices) {
         dialects = issuanceDialects(),
         holderIdentities = holderIdentities,
         didTrust = didTrust,
+        checkIssuer = { requireTwdiwAllowed(it) },
     )
 
     /**
-     * Always on: each dialect only takes sessions it owns (TWDIW hosts or entry, draft 11/13 metadata); the EUDI
+     * TWDIW only while its statement is accepted, the others always: each dialect only takes sessions it owns (TWDIW hosts or entry, draft 11/13 metadata); the EUDI
      * dialect only answers an authorization response iss below the authorization server's own issuer.
      */
     private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
