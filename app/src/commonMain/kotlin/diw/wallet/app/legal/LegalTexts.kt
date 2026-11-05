@@ -73,10 +73,12 @@ private fun document(id: String, title: String, version: Int, date: String, summ
 
 /**
  * Every legal text of the app in Traditional Chinese, kept in one place for translation. The developer and contact
- * details are those of the published app; forks that publish their own builds must replace them.
+ * details are those of the published app; forks that publish their own builds must replace them. No e-mail address is
+ * published in the repository: private contact goes through the one on the app store listing.
  */
 object LegalTexts {
-    const val DEVELOPER = "LIN, CHE-CHUAN"
+    /** The developer's name in this language (LIN, CHE-CHUAN in English). */
+    const val DEVELOPER = "林哲全"
     const val SOURCE_URL = "https://github.com/mctea01/my-Bonds-fork-android"
     const val ISSUES_URL = "$SOURCE_URL/issues"
     /** Where the published Markdown versions live (docs/legal on the main branch). */
