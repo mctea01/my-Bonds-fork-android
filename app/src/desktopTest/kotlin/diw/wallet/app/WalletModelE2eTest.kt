@@ -82,6 +82,8 @@ class WalletModelE2eTest {
         /** Replaces the network, for hosts the local test servers cannot stand in for (https did:web). */
         val client: (() -> HttpClient)? = null,
         override val platformName: String = "test",
+        /** No local network: the zkTLS verifier is reachable through a relay only. */
+        val noLan: Boolean = false,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
@@ -120,7 +122,7 @@ class WalletModelE2eTest {
         override val bondsLinkCentral: BondsLinkCentral get() = link.central
 
         /** The real sockets, on loopback: the test machine may have no Wi-Fi. */
-        override val bondsLan = object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
+        override val bondsLan: diw.wallet.core.profile.bonds.BondsLanLink? = if (noLan) null else object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
             override fun localAddresses() = listOf("127.0.0.1")
             override fun localInterfaces() = listOf(diw.wallet.core.profile.bonds.LanInterface("127.0.0.1", "lo", "loopback", diw.wallet.core.profile.bonds.LanInterface.Kind.OTHER))
         }
@@ -131,8 +133,8 @@ class WalletModelE2eTest {
         }
     }
 
-    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test"): Pair<WalletModel, TestPlatform> {
-        val p = TestPlatform(storage, platformName = platformName)
+    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false): Pair<WalletModel, TestPlatform> {
+        val p = TestPlatform(storage, platformName = platformName, noLan = noLan)
         val m = WalletModel(p)
         p.model = m
         // Answers every App PIN request like a user would.
@@ -2076,6 +2078,88 @@ class WalletModelE2eTest {
         assertEquals(before, m.screen.value, "the signing screen comes back")
     }
 
+    // ---------------------------------------------------------------- production server: sharing and the choice between two
+
+    private val shareRoot = "ab".repeat(32)
+
+    private suspend fun serverWallet(own: String?, policy: ServerPolicy): WalletModel {
+        val m = WalletModel(TestPlatform(EphemeralStorage()))
+        m.init()
+        m.updateSettings { it.copy(zkVerifierUrl = own.orEmpty(), serverPolicy = policy.id) }.join()
+        return m
+    }
+
+    @Test
+    fun holderOrdersRoutesByPolicy() = runBlocking<Unit> {
+        val lan = diw.wallet.core.zktls.ZkTlsTransport.Lan("192.168.1.2", 4000)
+        val mine = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://mine.example/zktls/relay", "r1")
+        val theirs = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://theirs.example/zktls/relay", "r2")
+        val host = diw.wallet.core.zktls.ZkTlsTransport.Wss("wss://theirs.example/zktls/sessions/1")
+        val offered = listOf(lan, theirs, mine, host)
+
+        assertEquals(listOf(lan, mine, theirs, host), serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_OWN).server.orderForHolder(offered))
+        assertEquals(listOf(lan, theirs, mine, host), serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_PEER).server.orderForHolder(offered))
+        val strict = serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.OWN_ONLY).server
+        assertEquals(listOf(lan, mine, host), strict.orderForHolder(offered))
+        assertNull(strict.holderRouteHint(offered))
+        // The verifier listed only its own relay: nothing this wallet would use beyond the local network.
+        val hint = strict.holderRouteHint(listOf(lan, theirs))!!
+        assertTrue("mine.example" in hint && "顯示我的服務端 QR Code" in hint, hint)
+        // A wallet without a server takes the other party's relay under the default policy.
+        val none = serverWallet(null, diw.wallet.app.ServerPolicy.PREFER_OWN).server
+        assertEquals(listOf(lan, theirs), none.orderForHolder(listOf(lan, theirs)))
+        assertTrue("查驗方沒有提供中繼" in none.holderRouteHint(listOf(lan))!!)
+    }
+
+    @Test
+    fun verifierOpensRoomsOnBothServers() = runBlocking<Unit> {
+        val m = serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_OWN)
+        assertEquals(listOf("https://mine.example"), m.server.relaysForVerifier())
+        assertEquals("https://mine.example", m.server.ageHost())
+        m.server.usePeer(diw.wallet.core.server.ServerShare("https://theirs.example", token = "never-kept"))
+        assertNull(m.server.peer.value!!.token)
+        assertEquals(listOf("https://mine.example", "https://theirs.example"), m.server.relaysForVerifier())
+        assertEquals("https://mine.example", m.server.ageHost())
+        m.updateSettings { it.copy(serverPolicy = diw.wallet.app.ServerPolicy.PREFER_PEER.id) }.join()
+        assertEquals(listOf("https://theirs.example", "https://mine.example"), m.server.relaysForVerifier())
+        assertEquals("https://theirs.example", m.server.ageHost())
+        m.taiwan.closeOffline()
+        assertNull(m.server.peer.value)
+
+        // Only the other party has a server: it is the relay and the age host.
+        val alone = serverWallet(null, diw.wallet.app.ServerPolicy.PREFER_OWN)
+        assertNull(alone.server.ageHost())
+        alone.server.scanPeer(diw.wallet.core.server.ServerShare("https://theirs.example").link())
+        assertEquals(listOf("https://theirs.example"), alone.server.relaysForVerifier(null))
+        assertEquals("https://theirs.example", alone.server.ageHost())
+    }
+
+    @Test
+    fun receivedShareWaitsForTheUser() = runBlocking<Unit> {
+        val m = serverWallet("https://old.example", diw.wallet.app.ServerPolicy.PREFER_OWN)
+        m.updateSettings { it.copy(serverToken = "old-token", serverRootSha256 = shareRoot, serverVerifierDid = "did:key:old") }.join()
+        val link = diw.wallet.core.server.ServerShare("https://new.example", token = "new-token").link()
+        m.handleUri(link)
+        assertEquals("https://new.example", m.server.pendingShare.value?.url)
+        assertEquals("https://old.example", m.settings.zkVerifierUrl)
+        m.server.adopt(m.server.pendingShare.value!!).join()
+        assertNull(m.server.pendingShare.value)
+        val s = m.settings
+        assertEquals("https://new.example", s.zkVerifierUrl)
+        assertEquals("new-token", s.serverToken)
+        // Trust in the old server's shareRoot is not carried over to another server.
+        assertEquals("", s.serverRootSha256)
+        assertEquals("", s.serverVerifierDid)
+
+        // Sharing: the token only when asked for, the trusted fingerprint always.
+        m.updateSettings { it.copy(serverRootSha256 = shareRoot) }.join()
+        assertNull(m.server.share(includeToken = false)!!.token)
+        assertEquals("new-token", m.server.share(includeToken = true)!!.token)
+        assertEquals(shareRoot, m.server.share(includeToken = false)!!.rootSha256)
+        m.updateSettings { it.copy(zkVerifierUrl = "") }.join()
+        assertNull(m.server.share(includeToken = false))
+    }
+
     /**
      * zkTLS between two wallets on the test server's synthetic record page: the verifier checks the proof itself
      * (local network or relay), then lets the host check one. Only the status and the chosen fields are revealed.
@@ -2137,7 +2221,9 @@ class WalletModelE2eTest {
             assertEquals(record.DATE, claims.str("date"))
             val method = claims.str("method")
             assertEquals(if (expectReceipt) web.METHOD_PROXY else web.METHOD_DEVICE, method)
-            assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+            // The record page is synthetic: naming which value leaked is safe.
+            val leaked = listOf("serial" to record.SERIAL, "hidden" to record.HIDDEN, "code" to record.CODE).filter { it.second in claims.toString() }
+            assertTrue(leaked.isEmpty(), "kept claims carry $leaked: $claims")
 
             val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
                 verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
@@ -2164,6 +2250,60 @@ class WalletModelE2eTest {
         assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
         assertEquals(3, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
         assertEquals(3, holder.history.value.count { it.kind == HistoryKind.ISSUED })
+    }
+
+    /**
+     * Two parties with different servers: the verifier, with no local network, scans the holder's server and opens a
+     * room on both relays (the test server answers at two host names); the holder takes its own, as its policy says.
+     */
+    @Test
+    fun zkTlsThroughTheHoldersRelay() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (verifier, _) = newWallet(noLan = true)
+        val (holder, _) = newWallet()
+        org.junit.jupiter.api.Assumptions.assumeTrue(verifier.zk.tls() is diw.wallet.core.zk.ZkResult.Ok, "native library without tlsn")
+        val holderServer = "http://127.0.0.1:$port"
+        holder.updateSettings { it.copy(zkVerifierUrl = holderServer, serverPolicy = ServerPolicy.PREFER_OWN.id) }.join()
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+
+        verifier.taiwan.zkTls.openSetup()
+        val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        verifier.taiwan.zkTls.startVerifier(setup.pages.single { it.id == record.PROFILE_ID }, listOf("name"), "資格確認")
+        val first = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting || it is OfflineUi.Failed }
+        })
+        assertEquals(listOf("localhost"), first.request.transports.map { io.ktor.http.Url((it as diw.wallet.core.zktls.ZkTlsTransport.Relay).url).host })
+
+        // The holder shows its server; scanning it on the waiting screen opens the request again with both relays.
+        val shared = assertNotNull(holder.server.share(includeToken = false)).link()
+        verifier.handleUri(shared)
+        val waiting = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting && it.request != first.request || it is OfflineUi.Failed }
+        })
+        val relayHosts = waiting.request.transports.map { io.ktor.http.Url((it as diw.wallet.core.zktls.ZkTlsTransport.Relay).url).host }
+        assertEquals(listOf("localhost", "127.0.0.1"), relayHosts)
+
+        holder.handleUri(waiting.link)
+        val consent = assertIs<OfflineUi.ZkTlsConsent>(withTimeout(30.seconds) {
+            holder.taiwan.offline.first { (it is OfflineUi.ZkTlsConsent && it.session.request == waiting.request) || it is OfflineUi.Failed }
+        })
+        assertNull(consent.routeHint)
+        holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+        val proved = assertIs<OfflineUi.ZkTlsHolderResult>(withTimeout(180.seconds) {
+            holder.taiwan.offline.first { it is OfflineUi.ZkTlsHolderResult }
+        })
+        assertNull(proved.error, proved.error)
+        val route = assertIs<diw.wallet.core.zktls.ZkTlsTransport.Relay>(proved.proved!!.transport)
+        assertEquals("127.0.0.1", io.ktor.http.Url(route.url).host)
+        val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
+        })
+        assertTrue(assertNotNull(result.outcome, result.error).passed)
+        verifier.taiwan.closeOffline()
+        assertNull(verifier.server.peer.value)
     }
 
     /**

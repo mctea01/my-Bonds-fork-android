@@ -41,6 +41,7 @@ import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,9 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var job: Job? = null
+
+    /** The last request this device showed as verifier, to open again with the other party's server. */
+    private var lastVerifier: Triple<ZkTlsProfile, List<String>, String>? = null
     private var prepareJob: Job? = null
     private var documentJob: Job? = null
 
@@ -167,7 +171,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             TaiwanModel.shortDid(did) to model.didTrust.decideOrDefault(did, TrustRole.VERIFIER, "The verifier's DID is in no trust source")
         }
         findDocumentValues(profile, forFile)
-        return OfflineUi.ZkTlsConsent(verified, profile, name, trust, inline = ZkTlsProfiles.find(profile.id) == null, forFile = forFile)
+        return OfflineUi.ZkTlsConsent(verified, profile, name, trust, inline = ZkTlsProfiles.find(profile.id) == null, forFile = forFile,
+            routeHint = model.server.holderRouteHint(verified.request.transports))
     }
 
     /**
@@ -236,8 +241,13 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                         val roots = extraRoots()
                         pending = if (keep) keeper.prepare() else null
                         val binding = pending?.jwk
+                        // The routes in the order this wallet's server policy prefers; the signed request is unchanged.
+                        val routed = ZkTlsSessionRequest.Verified(
+                            request.copy(transports = model.server.orderForHolder(request.transports)),
+                            consent.session.jws, consent.session.chain, consent.session.did,
+                        )
                         val result = model.zk.prove(id, ZkProofKind.TLS) { step ->
-                            engine.value.prove(consent.session, consent.profile, bytes, roots, binding, step)
+                            engine.value.prove(routed, consent.profile, bytes, roots, binding, step)
                         }.await()
                         when (result) {
                             is ZkResult.Ok -> {
@@ -515,6 +525,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
      */
     fun startVerifier(profile: ZkTlsProfile, fields: List<String>, purpose: String) {
         stop()
+        lastVerifier = Triple(profile, fields, purpose)
         ui.value = OfflineUi.Working("建立網站查驗請求")
         job = model.scope.launch {
             try {
@@ -529,17 +540,30 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: Exception) {
                 ui.value = OfflineUi.Failed("無法建立網站查驗：" + model.describe(e))
             } finally {
-                session?.close()
-                session = null
-                model.platform.keepScreenOn(false)
+                // A request opened again (the other party's server) has its own session by now: leave that one alone.
+                if (job == null || job === currentCoroutineContext()[Job]) {
+                    session?.close()
+                    session = null
+                    model.platform.keepScreenOn(false)
+                }
             }
         }
     }
 
+    /**
+     * Opens the same request again, after the other party's server was scanned ([ServerModel.usePeer]): the new QR
+     * lists a room on that server's relay as well.
+     */
+    fun restartVerifier() {
+        val (profile, fields, purpose) = lastVerifier ?: return
+        startVerifier(profile, fields, purpose)
+    }
+
     private suspend fun verifyHere(engine: ZkTlsEngine, profile: ZkTlsProfile, fields: List<String>, purpose: String) {
-        val relay = host()
+        val relays = model.server.relaysForVerifier(host())
+        val relay = relays.firstOrNull()
         val opened = try {
-            engine.open(lan = model.platform.bondsLan != null, relayUrl = relay)
+            engine.open(lan = model.platform.bondsLan != null, relayUrls = relays)
         } catch (e: ProtocolException) {
             if (e.code != "unavailable") throw e
             throw IllegalStateException(noRoute(relay))
@@ -555,9 +579,11 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         }
         // The relay is optional when a local address opened; say so, since a holder elsewhere then cannot reach this side.
         val relayMissing = relay != null && opened.transports.none { it is ZkTlsTransport.Relay }
+        val peerMissing = model.server.peer.value?.let { p -> opened.transports.none { it is ZkTlsTransport.Relay && hostOf(it.url) == p.host } } == true
         val where = opened.transports.joinToString("、") { routeName(it) } + if (relayMissing) "（中繼 ${hostOf(relay!!)} 連不上，只能在同一個網路查驗）" else ""
         val details = transportDetails(request) + listOfNotNull(
             "中繼：無法連到 $relay/zktls/relay，不在同一個網路的出示者連不到這裡".takeIf { relayMissing },
+            "對方的服務端 ${model.server.peer.value?.host} 的中繼連不上".takeIf { peerMissing && !relayMissing },
             "查驗方 DID：${key.did}", "請求 id：${request.sessionId}",
         )
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, ZkTlsSessionRequest.link(jws), profile, where, local = true, details = details)

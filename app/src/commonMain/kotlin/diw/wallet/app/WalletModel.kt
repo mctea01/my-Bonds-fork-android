@@ -56,6 +56,7 @@ import diw.wallet.core.oid4vp.compat.MsVerifiedIdPresentationDialect
 import diw.wallet.core.oid4vp.compat.TwdiwCustomField
 import diw.wallet.core.oid4vp.compat.TwdiwPresentationDialect
 import diw.wallet.core.profile.bonds.BondsAgeRequest
+import diw.wallet.core.server.ServerShare
 import diw.wallet.core.zktls.ZkTlsSessionRequest
 import diw.wallet.core.profile.bonds.BondsNationalId
 import diw.wallet.core.profile.bonds.BondsPresentationRequest
@@ -157,6 +158,11 @@ data class WalletSettings(
     val serverRootSha256: String = "",
     /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
     val serverVerifierDid: String = "",
+    /**
+     * Which server a check between two wallets runs through when both have one ([ServerPolicy] id): this wallet's own
+     * first, the other party's first, or only its own.
+     */
+    val serverPolicy: String = ServerPolicy.PREFER_OWN.id,
     val useWalletProvider: Boolean = true,
     /** Use the Multipaz TestApp public test identity with issuer.multipaz.org (test environment only, off by default). */
     val multipazTestIdentity: Boolean = false,
@@ -1034,6 +1040,10 @@ class WalletModel(val platform: PlatformServices) {
         platform.mobileMoicaReturnUrl?.let { if (u.startsWith(it)) return }
         if (ZkTlsSessionRequest.looksLike(u)) {
             taiwan.zkTls.start(u)
+            return
+        }
+        if (ServerShare.looksLike(u)) {
+            server.receive(u)
             return
         }
         if (BondsAgeRequest.looksLike(u)) {
