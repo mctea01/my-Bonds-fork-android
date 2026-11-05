@@ -1137,3 +1137,38 @@ outputs; no lexical optimization is included. SHA content is 996,617 gates
 with its existing 14,898-gate margin. Full timing/RSS, proof sizes and explicitly
 qualified maximum-sample estimates are in docs/research/p4-benchmarks.md and
 validation/m3b-round10-*.json. PUBLIC_SPEC remains a draft for Claude's freeze.
+
+## Toolchain upgrade: Barretenberg 6.0.0 and Noir 1.0.0-rc.3 (2026-11)
+
+The project uses one Barretenberg for zkPDF and the planned zkPassport support,
+so zkPDF moved from bb 2.1.9 / Noir beta.15 to bb 6.0.0 (aztec-packages
+`0219f11d8133970df3974fe5ae65e006bf8c193a`), which pairs with Noir 1.0.0-rc.3
+(`5a7ee9bf5ed8973076df7bb0d2b723024db09ae7`). The circuit sources, public ABI
+and PUBLIC_SPEC semantics are unchanged; only the stdlib call
+`poseidon2_permutation(state)` lost its length argument. All 88 `nargo test`
+cases pass under rc.3.
+
+- rc.3 removed `--bounded-codegen` and `--pedantic-solving` (pedantic solving
+  is always on). Every package now compiles with default flags. Dyadic sizes
+  from the new verification keys: phone SHA content, SHA opaque, inflate-first,
+  inflate, lexical and predicate 2^20, claim 2^19; desktop inflate-first and
+  lexical 2^21, desktop inflate 2^20. Every phone circuit stays within 2^20.
+- The bb 6.0.0 verification keys carry 8 fewer public inputs (smaller pairing
+  point object). Zero-knowledge UltraHonk proofs are 14,656 bytes (458 fields,
+  padded to `CONST_PROOF_SIZE_LOG_N = 25`) instead of 16,256.
+- Witnesses use nargo's default compact msgpack encoding, fixed explicitly so
+  `NOIR_SERIALIZATION_FORMAT` cannot change it.
+- VERSIONS and native/assets.json were repinned with
+  `build_assets.py --repin --vk-tool target/release/zkpdf-vk`; the `zkPDF
+  assets` workflow rebuilds them with the upstream bb CLI and must reproduce
+  the same hashes before publishing to the `zkpdf-v1-bb6` release.
+
+Synthetic fixtures (phone composition, two workers, 4 vCPU, serial runs):
+
+| Fixture | Segments | Total prove | Peak RSS | Verify per segment |
+|---|---|---|---|---|
+| student | 6 | 86.4 s | 1,925,640 KiB | 8–18 ms |
+| travel-rc4 | 5 | 73.7 s | 1,899,940 KiB | 8–20 ms |
+
+The lexical segment is the slowest (18.5–19.3 s) and the largest in memory.
+`real_proof_rejections_and_cli_interop` passes with these bundles.

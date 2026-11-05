@@ -201,6 +201,11 @@ def main():
                 and digest(packaged) == entry["gzipSha256"], "catalog_gzip_integrity")
     if args.repin:
         catalog_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n")
+        # The app checks the bundled catalog against this pin before using any asset.
+        manifest = ROOT.parents[1] / "core/src/commonMain/kotlin/diw/wallet/core/zk/ZkAssetManifest.kt"
+        source = manifest.read_text()
+        start = source.index('SHA256 = "') + len('SHA256 = "')
+        manifest.write_text(source[:start] + digest(catalog_path) + source[start + 64:])
     print("Ten distinct circuits, fourteen composition mappings and CRS verified")
 
 
