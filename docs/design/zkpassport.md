@@ -122,9 +122,9 @@ zkPassport 的證明要用它發佈的 vkey 與相同 bb 版本驗證；本專�
 使用者 2026-11-05 指出原生函式庫已經偏大，要求評估升級。建議**把 P4 的 bb 升到 v6.0.0，全專案只留一套 bb**，不要兩套並存：
 
 - bb 只被 zkPDF 使用；OpenAC 用 Spartan2、zkTLS 用 TLSNotary、Longfellow 由 Multipaz 提供，都不受影響【確認：`native/*/Cargo.toml`】。
-- 要改的地方：`build_bb.py` 的 tag 與 REVISION、`cpp/bridge.cpp` 對 `bbapi` 的呼叫（v2 到 v6 之間 API 有變動【推論】）、Noir 從 beta.15 升到與 bb v6 搭配的版本（zkPassport 用 beta.22）、`zkpdf-prover` 的 acvm／noirc_abi 版本；zkPDF 電路原始碼與 `PUBLIC_SPEC.md` 的 v1 公開輸入不變，只重新編譯並更新 `VERSIONS` 的 ACIR 與 VK 雜湊，重新發佈 zkpdf 的 Release 資產與簽署的範本包。
+- 要改的地方：`build_bb.py` 的 tag 與 REVISION、`cpp/bridge.cpp` 對 `bbapi` 的呼叫（v2 到 v6 之間 API 有變動【推論】）、Noir 從 beta.15 升到與 bb v6.0.0 搭配的 v1.0.0-rc.3（P4 串 2026-11-05 查證；rc.3 沒有官方 release 執行檔，要以 cargo 自行建置，且移除了 `--bounded-codegen`）、`zkpdf-prover` 的 acvm／noirc_abi 版本；zkPDF 電路原始碼與 `PUBLIC_SPEC.md` 的 v1 公開輸入不變，只重新編譯並更新 `VERSIONS` 的 ACIR 與 VK 雜湊，重新發佈 zkpdf 的 Release 資產與簽署的範本包。
 - 驗證方式：P4 既有的 zkPDF 回歸測試、正負向測試向量與實機量測（證明時間、記憶體峰值）都要在新版本重跑，結果不得變差到超出 p4-zkp.md 第 8 節的門檻。
-- 升級後 zkPassport 的證明與 zkPDF 共用同一個 bb 與同一份 SRS；zkPassport 需要的 Noir 執行（witness 產生）也與 zkPDF 共用 acvm。
+- 升級後 zkPassport 的證明與 zkPDF 共用同一個 bb 與同一份 SRS；zkPassport 需要的 Noir 執行（witness 產生）也與 zkPDF 共用 acvm。zkPassport 發佈的電路包以 Noir beta.22 編譯，rc.3 的 acvm 能否讀取 beta.22 的 ACIR 序列化格式要在 Z2 開始時先驗證【推論】；不相容時，以 rc.3 從 zkPassport 的電路原始碼重新編譯並確認 vkey 雜湊與其註冊表一致，或只在 zkPassport 這邊另外鎖一版 acvm（純 Rust，不含 bb，體積小）。
 - 附帶好處：`build_bb.py` 目前因 v2.1.9 的 POSIX 依賴而不支援 Windows，v6 是否改善要在升級時確認【推論】。
 
 時間點：在 P4 收尾前（M4b 正式範圍凍結前）由 P4 升級，zkPDF 的正式資產只發佈一次（第 8 節第 8 項）。
