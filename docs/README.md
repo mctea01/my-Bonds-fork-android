@@ -14,6 +14,7 @@
 | [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
 | [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
 | [design/i18n.md](design/i18n.md) | 多語系規劃：現況字串量、Compose resources 機制、預設語言與 App 內切換、core 訊息代碼化、術語表、分階段工作與檢查 |
+| [design/zkpassport.md](design/zkpassport.md) | zkPassport 支援與整合研究：元件與授權、請求與 bridge 協定、查驗與信任模型、FaceMatch 的 App 綁定、與 P4 的契合點（bb 版本、SRS、NFC、CSCA 錨點、Photo ID mdoc）、Z1 電子護照到 Z4 文件與憑證整合的方案、對外服務與法律聲明、安全審查重點與待決事項 |
 
 ## 研究
 
