@@ -246,3 +246,4 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
 - CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly）需要三者都成功。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
 - 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。版本只記在 `version.properties`（主版號.次版號），修訂號為最後一次修改 `version=` 那一行之後的 commit 數（不用 CI 執行次數），Android versionCode 為主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號；規則在 `app/build.gradle.kts`，CI 檔名用同規則的 `tools/app-version.sh`（需要 `fetch-depth: 0`）。PR 建置加 `-pr<N>`，本機為 `-dev`；debug 簽章金鑰由 `DIW_DEBUG_KEYSTORE_FILE` 指定。
+- Google Play 上架資訊在 [docs/google-play.md](docs/google-play.md)。新增權限、把資料傳出裝置的功能（含預設伺服器）、分析／當機回報／廣告 SDK，或從網路下載的檔案類型時，要同步更新其中的權限表與資料安全答案；不可下載或載入可執行程式碼（dex、jar、.so），Play 只允許下載資料。
