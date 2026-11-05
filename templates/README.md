@@ -6,7 +6,7 @@
   目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告）與 `cn.chsi.xjbg-en.json`（同一報告的英文版，
   需先在學信網申請英文版；另揭露線上驗證到期日），都只輸入在線驗證碼；`tw.gov.immigration.entryexit.json`（移民署入出國日期證明書驗證，
   輸入證號、序號與圖形驗證碼；揭露發證日期、姓名、國籍、性別、出生日期與最近一次出入境日期，不揭露證號與序號）。
-- `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式見下方「zkPDF 文件版型」與 `docs/design/p4-circuits.md` 第 3.11 節）。目前有：`cn.fzu.student-status.json`（福州大學學籍（在學）證明）與 `cn.nia.permit-link.json`（國家移民管理局通行證與居住證關聯查詢結果；居住證號碼後面那行的文字尚未核對，暫不含居住證號碼），都在 2026-11-05 以真實文件實際證明並查驗。
+- `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式見下方「zkPDF 文件版型」與 `docs/design/p4-circuits.md` 第 3.11 節）。目前有：`cn.fzu.student-status.json`（福州大學學籍（在學）證明）與 `cn.nia.permit-link.json`（國家移民管理局通行證與居住證關聯查詢結果），都在 2026-11-05 以真實文件實際證明並查驗。
 
 ## zkPDF 文件版型
 

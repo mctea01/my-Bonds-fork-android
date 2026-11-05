@@ -8,6 +8,7 @@
     { "claim": "gender", "label": "性別", "before": ["，性别:"], "after": ["，出"], "normalize": "clause" },
     { "claim": "birthDate", "label": "出生日期", "before": ["生日期:"], "after": ["    台湾居民来往大陆通行证号码："], "normalize": "date" },
     { "claim": "travelPermitNumber", "label": "台灣居民來往大陸通行證號碼", "before": ["    台湾居民来往大陆通行证号码："], "after": ["，有效期至："], "normalize": "compact" },
-    { "claim": "travelPermitValidUntil", "label": "通行證有效期至", "before": ["，有效期至："], "after": ["    台湾居民居住证号码："], "normalize": "date" }
+    { "claim": "travelPermitValidUntil", "label": "通行證有效期至", "before": ["，有效期至："], "after": ["    台湾居民居住证号码："], "normalize": "date" },
+    { "claim": "residencePermitNumber", "label": "台灣居民居住證號碼", "before": ["    台湾居民居住证号码："], "after": ["    请为该凭证持有人办理相关事务依法提供服务便利。"], "normalize": "clause" }
   ]
 }
