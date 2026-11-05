@@ -2105,6 +2105,12 @@ class WalletModelE2eTest {
         // The verifier listed only its own relay: nothing this wallet would use beyond the local network.
         val hint = strict.holderRouteHint(listOf(lan, theirs))!!
         assertTrue("mine.example" in hint && "顯示我的服務端 QR Code" in hint, hint)
+        // Two servers behind one host name: only the relay at this wallet's own path is its own.
+        val shared = serverWallet("https://example.org/mine", diw.wallet.app.ServerPolicy.OWN_ONLY).server
+        val ownPath = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://example.org/mine/zktls/relay", "r3")
+        val otherPath = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://example.org/theirs/zktls/relay", "r4")
+        assertEquals(listOf(lan, ownPath), shared.orderForHolder(listOf(lan, otherPath, ownPath)))
+        assertTrue(shared.holderRouteHint(listOf(lan, otherPath)) != null)
         // A wallet without a server takes the other party's relay under the default policy.
         val none = serverWallet(null, diw.wallet.app.ServerPolicy.PREFER_OWN).server
         assertEquals(listOf(lan, theirs), none.orderForHolder(listOf(lan, theirs)))

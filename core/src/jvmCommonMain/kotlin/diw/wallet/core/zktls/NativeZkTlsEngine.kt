@@ -306,16 +306,7 @@ class NativeZkTlsEngine(
         }
 
         /** ws or wss address of the relay on an age host given as http(s) or ws(s). */
-        fun relayAddress(base: String): String {
-            val u = Url(base.trim().trimEnd('/'))
-            val scheme = when (u.protocol) {
-                URLProtocol.HTTPS, URLProtocol.WSS -> "wss"
-                URLProtocol.HTTP, URLProtocol.WS -> "ws"
-                else -> throw ProtocolException("invalid_request", "The relay must be a web address")
-            }
-            val port = if (u.port == u.protocol.defaultPort) "" else ":${u.port}"
-            return "$scheme://${u.host}$port${u.encodedPath.trimEnd('/')}/zktls/relay"
-        }
+        fun relayAddress(base: String): String = ZkTlsTransport.relayAddress(base)
 
         /** The first Noise message from the prover starts with its 16-bit length: the ephemeral key and a tag. */
         fun opensHandshake(first: ByteArray): Boolean {

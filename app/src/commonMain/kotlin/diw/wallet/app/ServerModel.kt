@@ -364,10 +364,11 @@ class ServerModel(private val model: WalletModel) {
      * out. A verifier host (wss) is the verifier itself, not an intermediary, and stays.
      */
     fun orderForHolder(transports: List<ZkTlsTransport>): List<ZkTlsTransport> {
-        val ownHost = base()?.let { hostOf(it) }
+        val own = base()
         val lan = transports.filterIsInstance<ZkTlsTransport.Lan>()
         val relays = transports.filterIsInstance<ZkTlsTransport.Relay>()
-        val (mine, others) = relays.partition { ownHost != null && hostOf(it.url).equals(ownHost, ignoreCase = true) }
+        // The whole relay endpoint counts: two servers behind one host name differ by port or path.
+        val (mine, others) = relays.partition { own != null && ZkTlsTransport.sameRelay(it.url, own) }
         val chosen = when (policy) {
             ServerPolicy.PREFER_OWN -> mine + others
             ServerPolicy.PREFER_PEER -> others + mine

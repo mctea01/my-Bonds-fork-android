@@ -30,6 +30,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.ServerPolicy
+import diw.wallet.app.Screen
 import diw.wallet.app.ServerStrings
 import diw.wallet.app.WalletModel
 import diw.wallet.core.server.ServerShare
@@ -169,7 +170,11 @@ internal fun PendingShareDialog(model: WalletModel) {
         confirmButton = {
             Row {
                 TextButton(onClick = { model.server.usePeer(share) }) { Text(ServerStrings.IMPORT_FOR_SESSION) }
-                TextButton(onClick = { model.server.adopt(share) }) { Text(ServerStrings.IMPORT_AS_MINE) }
+                TextButton(onClick = {
+                    model.server.adopt(share)
+                    // The trust confirmation and any mismatch are shown with the server settings.
+                    model.screen.value = Screen.ZkSettings
+                }) { Text(ServerStrings.IMPORT_AS_MINE) }
             }
         },
         dismissButton = { TextButton(onClick = { model.server.pendingShare.value = null }) { Text(ServerStrings.IMPORT_CANCEL) } },
