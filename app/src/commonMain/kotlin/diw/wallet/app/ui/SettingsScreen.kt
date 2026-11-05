@@ -413,7 +413,7 @@ private fun AboutPage(model: WalletModel) {
     LabelValue("數位憑證皮夾 client_id", s.twdiwClientId, small = true)
     HorizontalDivider()
     SectionTitle("授權")
-    Text("Copyright 2026 LIN, CHE-CHUAN。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
+    Text("Copyright 2026 " + diw.wallet.app.legal.LegalTexts.DEVELOPER + "。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
     Text("內建的信任錨點是各憑證機構與 Multipaz 專案公開的憑證，只用於驗證憑證鏈；Adobe AATL 與歐盟 EUTL 在 App 內下載並驗證，只內建簽署憑證的指紋。" +
         "沒有複製 Bonds 的程式碼，相容性依公開的格式與文件實作。",
         style = MaterialTheme.typography.bodySmall)
