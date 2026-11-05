@@ -1,6 +1,6 @@
 # zkPassport 支援與整合：研究與方案
 
-撰寫日期：2026-11-05。狀態：研究與方案，尚未實作；第 8 節的事項待使用者決定後才開始實作。
+撰寫日期：2026-11-05。狀態：方案已定（第 8 節，2026-11-05 使用者決定），P4 完成後開始實作。
 
 標記：**【確認】** 已讀過 zkPassport 原始碼（`zkpassport/circuits`、`zkpassport/zkpassport-packages`、`zkpassport/noir_rs`、`zkpassport/zkpassport-docs`，2026-11-04 的 main）或本 repo 程式碼；**【推論】** 依已知資料推論，需在實作時驗證。
 
@@ -17,14 +17,14 @@ P4 的設計文件（`p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`）�
 | Z3 zkPassport 相容回應 | 本錢包掃描網站或 App 的 zkPassport 請求 QR，用 Z1 讀到的護照資料以 zkPassport 的公開電路產生證明並回應 | 使用者不必另裝 zkPassport App；同一份護照資料同時服務本專案與 zkPassport 生態 | 大 |
 | Z4 文件與憑證整合 | 護照衍生 SD-JWT VC（含 zkPassport 證據）、以 bind 電路把證明綁到持有者金鑰、ISO 23220 Photo ID mdoc、年齡證明多一種後端、護照與其他文件的關聯 | 使用者要的「既有功能與 zkPassport、文件、憑證整合」 | 中到大 |
 
-不做：zkPassport 的 FaceMatch 證明與加鹽唯一識別碼（OPRF）。兩者都綁定 zkPassport 官方 App 的應用程式識別碼，第三方 App 產生的證明一定會被查驗端拒絕（第 3.5 節）。
+FaceMatch 與加鹽唯一識別碼（OPRF）：zkPassport 的版本綁定官方 App 的應用程式識別碼與 TACEO 的 OPRF 節點，本錢包產生的這兩種證明一定會被 zkPassport 的查驗端拒絕（第 3.5 節）。依使用者決定，本專案仍以同一批電路完成這兩項，改用本專案自己的值（本 App 的 app id、Play Integrity 金鑰、本專案的 OPRF 金鑰，私密的部分以 secret 保存），在本專案的查驗端可以驗證（第 5.5 節）。
 
 可行性的關鍵事實：
 
 - zkPassport 的證明系統與 P4 相同（Noir 電路、Barretenberg UltraHonk），電路以 Apache-2.0 公開，查驗端只核對驗證金鑰雜湊是否在 zkPassport 的電路註冊表裡，不核對是哪個 App 產生的（FaceMatch 除外）。所以本錢包用同一批電路產生的證明，一般的 zkPassport 查驗端會接受。【確認：`zkpassport-sdk/src/public-input-checker.ts` 只在 FaceMatch 核對 app id hash】
 - zkPassport 已把 App 端的輸入產生（`zkpassport-core`）、請求流程狀態機（`zkpassport-ffi` 的 `driver.rs`）與 bridge 協定（`zkpassport-bridge`）移植成 Rust，授權 MIT，可以直接放進本專案的 `native/` 工作區。【確認：`zkpassport-packages/rust/Cargo.toml` 的 `license = "MIT"`】
 - 臺灣護照在 zkPassport 的支援清單上（`passport_support: 1`），中國大陸護照也是；臺灣身分證沒有晶片，不適用。【確認：`registry-sdk/src/document-support-rules.json` 的 TWN、CHN 項目】
-- 主要成本是 Barretenberg 版本：zkPassport 用 barretenberg-rs 6.0.0（bb.js v6），P4 釘選 bb 2.1.9，證明與驗證金鑰格式很可能不相容，需要第二套 bb 或整體升級（第 4.2 節）。
+- 主要成本是 Barretenberg 版本：zkPassport 用 barretenberg-rs 6.0.0（bb.js v6），P4 釘選 bb 2.1.9，證明與驗證金鑰格式很可能不相容。決定把 P4 的 bb 升到 v6.0.0，全專案只留一套（第 4.2 節）。
 
 ## 2. zkPassport 是什麼
 
@@ -117,13 +117,19 @@ FaceMatch 電路在 Android 上驗證 Play Integrity 權杖與 Android 金鑰證
 
 ### 4.2 Barretenberg 版本
 
-zkPassport 的證明要用它發佈的 vkey 與相同 bb 版本驗證；本專案的 zkPDF 釘選 bb 2.1.9。三個選擇：
+zkPassport 的證明要用它發佈的 vkey 與相同 bb 版本驗證；本專案的 zkPDF 釘選 bb 2.1.9（aztec-packages `v2.1.9`，以 `native/zkpdf-prover/tools/build_bb.py` 從原始碼靜態建置，Android 每個 ABI 的 `.so` 約 15 到 16 MB）【確認】。zkPassport 用 barretenberg-rs 6.0.0（對應 aztec-packages `v6.0.0`，目前最新的 tag）【確認】。
 
-1. 在 `native/` 另建 `zkpassport` feature，引用 zkPassport 的 `noir_rs`（barretenberg-rs 6.0.0），與 zkPDF 的 bb 2.1.9 並存。原生函式庫變大、建置時間增加，但互不影響。**建議**。
-2. 把整個 P4 升到 bb 6：zkPDF 的 v1 ABI 已凍結、vkey 已發佈，升級等於重發 zkpdf-v1 資產，不建議在 P4 結束前做。
-3. 只做查驗並一律用 zkPassport 的查驗 API：違反「盡量不依賴伺服器」與隱私原則，只當可選退回。
+使用者 2026-11-05 指出原生函式庫已經偏大，要求評估升級。建議**把 P4 的 bb 升到 v6.0.0，全專案只留一套 bb**，不要兩套並存：
 
-【推論】兩套 bb 靜態連結在同一個 `.so` 可能有符號衝突，WP0 式的建置驗證要先做；不行就拆成兩個 `.so`。
+- bb 只被 zkPDF 使用；OpenAC 用 Spartan2、zkTLS 用 TLSNotary、Longfellow 由 Multipaz 提供，都不受影響【確認：`native/*/Cargo.toml`】。
+- 要改的地方：`build_bb.py` 的 tag 與 REVISION、`cpp/bridge.cpp` 對 `bbapi` 的呼叫（v2 到 v6 之間 API 有變動【推論】）、Noir 從 beta.15 升到與 bb v6 搭配的版本（zkPassport 用 beta.22）、`zkpdf-prover` 的 acvm／noirc_abi 版本；zkPDF 電路原始碼與 `PUBLIC_SPEC.md` 的 v1 公開輸入不變，只重新編譯並更新 `VERSIONS` 的 ACIR 與 VK 雜湊，重新發佈 zkpdf 的 Release 資產與簽署的範本包。
+- 驗證方式：P4 既有的 zkPDF 回歸測試、正負向測試向量與實機量測（證明時間、記憶體峰值）都要在新版本重跑，結果不得變差到超出 p4-zkp.md 第 8 節的門檻。
+- 升級後 zkPassport 的證明與 zkPDF 共用同一個 bb 與同一份 SRS；zkPassport 需要的 Noir 執行（witness 產生）也與 zkPDF 共用 acvm。
+- 附帶好處：`build_bb.py` 目前因 v2.1.9 的 POSIX 依賴而不支援 Windows，v6 是否改善要在升級時確認【推論】。
+
+時間點有兩種，見第 8 節第 7 項：在 P4 收尾前（M4b 正式範圍凍結前）升級，zkPDF 的正式資產只發佈一次；或 P4 完成後作為 zkPassport 的第一步（Z0），zkPDF 資產要再發佈一次。
+
+不採用的做法：兩套 bb 並存（每個 ABI 多約 15 MB，且兩套靜態 C++ 可能符號衝突）；只用 zkPassport 的查驗 API（違反盡量不依賴伺服器與隱私原則，只當可選退回）。
 
 ### 4.3 信任分級
 
@@ -146,10 +152,10 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 ### 5.2 Z2 zkPassport 查驗
 
 - 查驗分頁新增「zkPassport」：以既有的查驗設定畫面選擇要求（年齡門檻、國籍包含或排除、揭露欄位、效期、bind），產生第 3.1 節的網址與 QR；`d` 用本專案控制的網域（例如使用者 VPS 上的查驗網頁網域），scope 依用途。
-- 以 Kotlin 或 `zkpassport-bridge` 連接 bridge，收齊子證明後在本機驗證（4.2 選項 1），公開輸入檢查移植 `public-input-checker.ts` 中非 FaceMatch 的部分。
+- 以 Kotlin 或 `zkpassport-bridge` 連接 bridge，收齊子證明後以升級後的 bb（4.2）在本機驗證，公開輸入檢查移植 `public-input-checker.ts`；FaceMatch 與 OPRF 的檢查同時接受 zkPassport 的值與本專案的值（5.5），結果標明是哪一種。
 - 鏈上註冊表根：用 JSON-RPC `eth_call` 讀取，RPC 位址可設定（內建公開 RPC 與使用者自訂）；查到的根、電路清單與憑證包快取在本機，離線時以快取驗證並顯示「註冊表狀態截至 ○○」。
 - 結果用既有的判定卡：每個揭露與述詞一列，標示「零知識證明（zkPassport）」與信任等級（4.3）。
-- 要求 FaceMatch 或加鹽識別碼時，提示只有 zkPassport 官方 App 能回應。
+- 要求 FaceMatch 或加鹽識別碼時，可選「zkPassport 官方」或「本專案」：前者只有官方 App 能回應，後者只有本錢包能回應（5.5）。
 
 ### 5.3 Z3 zkPassport 相容回應
 
@@ -157,7 +163,7 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 同意畫面：顯示 `d`、bridge 回報的建立者 origin、服務名稱與用途、每項要求；`d` 與 origin 不一致或 origin 不是 https 時以 `RiskConfirmDialog` 強提示（第 7 節的轉送攻擊）。服務名稱與 logo 來自請求本身，一律標示「未經驗證」，除非能對上 zkPassport dashboard 的網域註冊【推論：dashboard 有公開查詢介面需確認】。
 - 基礎證明在 Z1 讀取護照後背景產生並快取（依 p4-zkp.md 第 8 節的裝置分級與前景服務）；揭露證明在同意後產生，產生後先本機驗證再送出。
 - 使用 zkPassport 發佈的電路包，依 manifest 與註冊表根核對 SHA-256 後才載入，與 P4 的資產規則一致（不從清單外載入）。
-- 不支援的要求（FaceMatch、OPRF、`compressed` 模式需雲端證明器）回 `error` 並在畫面說明；`compressed` 模式可選擇在使用者同意後交給 zkPassport 雲端證明器，預設不做。
+- 請求要 FaceMatch 或 OPRF 時，本錢包可以用本專案的值產生（5.5），但 zkPassport 的查驗端會拒絕；同意畫面先說明這一點，使用者仍要送出才產生。`compressed` 模式需要 zkPassport 雲端證明器，預設不做，使用者同意後才交給它。
 - 協定沒有公開規格，SDK 升級曾要求 App 最低版本（SDK 0.17 需要 App 1.4.0）；以 SDK 的 e2e 測試與 bridge acceptance 測試建立回歸測試，並以設定頁顯示支援的協定版本。
 
 ### 5.4 Z4 文件與憑證整合
@@ -172,6 +178,28 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 5. **護照與其他文件的關聯**：入出國日期證明書、大陸出入境記錄等文件含證件號碼時，在本機比對 DG1 的號碼與文件解析出的號碼，加入既有的「雙證件關聯」。之後可設計零知識關聯電路，證明 zkPassport 承諾中的證件號碼等於 zkPDF 欄位承諾中的號碼而不揭露號碼；兩邊都是 Poseidon2 承諾，但承諾格式不同，列為後續研究。
 6. **簽章**：護照晶片不提供簽章用的私鑰，不適用電子簽章。
 
+### 5.5 本專案的 FaceMatch 與加鹽唯一識別碼（2026-11-05 使用者決定）
+
+zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同樣強度、但信任本專案的版本。電路沿用 zkPassport 的公開電路，不改電路，只換電路外核對的值。
+
+**FaceMatch**（`facematch/android` 電路）【確認：電路參數】：
+
+- 電路驗證 Android 金鑰證明鏈（Google 根金鑰）、裝置金鑰對 client data 的簽章（含 DG2 雜湊與比對模式）、Play Integrity 權杖的簽章，並把 app id、Play Integrity 驗證公鑰、環境、模式放進參數承諾。
+- 本專案的值：app id 為本 App 的套件名稱；Play Integrity 驗證公鑰是本專案在 Play Console 取得的值（公開常數，寫進查驗端）；權杖的解密金鑰是私密值，存在 diw-wallet-server 的 secret（例如 `DIW_PLAY_INTEGRITY_DECRYPTION_KEY`，Cloud Run 用 Secret Manager、Cloudflare 用 secret），由伺服器解密後把 Google 簽署的權杖交回手機放進電路，不放進 APK。
+- 人臉比對在手機上做：DG2（JPEG 2000）與現場自拍以 Multipaz `multipaz-facenet` 比對，活體檢查沿用 zkPassport 的「轉頭」流程概念。比對結果與模式由裝置金鑰簽進 client data，電路只證明簽章與承諾，不證明比對演算法本身；這與 zkPassport 的信任假設相同（信任 App 與裝置）。
+- 前提：Play Integrity 只在 Google Play 安裝的版本可用，所以 FaceMatch 只在 Play 版提供；GitHub Release 或側載的 APK 顯示停用列並寫明原因。本專案的 Google Play 上架正在另一串進行。
+- iOS 版（P6）用 App Attest 的同一套電路，屆時再補。
+
+**加鹽唯一識別碼（OPRF）**【確認：`oprf-auth` 電路與 `zkpassport-utils/src/oprf`】：
+
+- zkPassport 的流程：手機以 `oprf-auth` 電路證明盲化查詢對應的私密 nullifier 與基礎證明的承諾一致，送到 TACEO 的三個 OPRF 節點（門檻 2），節點檢查 FaceMatch 證明後回傳盲化結果與 DLEQ 證明，揭露電路驗證 DLEQ 並輸出加鹽識別碼與 OPRF 公鑰雜湊。查驗端核對公鑰雜湊等於 TACEO 的公鑰。
+- 本專案的版本：diw-wallet-server 新增 OPRF 評估端點，金鑰（BabyJubJub 純量）存在 secret（例如 `DIW_OPRF_KEY`），公鑰與公鑰雜湊公開並內建在 App 與查驗端；端點只回盲化結果與 DLEQ 證明，看不到 nullifier 與證件資料。
+- 授權規則（伺服器端）：驗證 `oprf-auth` 證明與基礎證明的承諾一致、基礎證明的憑證樹根有效，並要求同一承諾的本專案 FaceMatch 證明（strict）；沒有 FaceMatch 的版本（非 Play 版）可以改用「裝置金鑰證明＋速率限制」取得較低等級的加鹽識別碼，查驗結果標示「未經人臉比對」。
+- 之後可改成多台主機的門檻 OPRF（TACEO 的 `oprf-nr` 協定），降低單一金鑰外洩的風險；第一版先單一金鑰，金鑰外洩時以輪替公鑰（key id）處理，舊識別碼全部失效，聲明中寫明。
+- 不在 APK 內放 OPRF 金鑰：任何人都能從 APK 取出，等於沒有加鹽。若要離線使用，只能接受未加鹽識別碼。
+
+**互通性**：上述證明只有本專案的查驗端（Z2、diw-wallet-server 的查驗網頁）接受；zkPassport 的 SDK 會因 app id 或 OPRF 公鑰雜湊不符而拒絕【確認：`public-input-checker.ts`】。畫面與聲明都要寫明。
+
 ## 6. 對外服務與法律聲明
 
 依使用者 2026-11-05 的要求，與 TWDIW、Microsoft Verified ID 類似、依賴特定營運方服務的支援，需要專門的法律聲明與確認頁，不同意即停用。zkPassport 屬於此類：
@@ -183,26 +211,34 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 | Ethereum RPC | 讀註冊表根 | RPC 提供者看得到查詢的合約 | 使用者自訂 RPC 或自己的節點 |
 | 查驗 API | 本機驗證失敗時退回 | 整份證明與查詢結果 | 預設關閉 |
 | 雲端證明器 | `compressed` 模式 | 子證明（不是證件原始資料）【推論】 | 預設不做 |
+| 本專案 OPRF 端點（diw-wallet-server） | 本專案的加鹽識別碼（5.5） | IP、時間、盲化查詢與授權用的證明；看不到 nullifier 與證件資料 | 不用時只能用未加鹽識別碼 |
+| Google Play Integrity、本專案的權杖解密端點 | 本專案的 FaceMatch（5.5） | Google 看得到裝置完整性查詢；本專案伺服器看得到完整性結果，看不到人臉與證件資料 | 非 Play 版不提供 FaceMatch |
 
-聲明要寫明：zkPassport 不是本專案的服務、上述各項的資料流向、FaceMatch 與加鹽識別碼不可用、zkPassport 服務條款允許營運方隨時變更或停止服務（Terms 第 11、17 節）、以及未加鹽唯一識別碼可被發證國推算。聲明頁與停用開關由「法律聲明與初始化頁面」那串統一設計；Z1 不依賴 zkPassport，不受此停用影響。
+聲明要寫明：zkPassport 不是本專案的服務、上述各項的資料流向、本專案的 FaceMatch 與加鹽識別碼只被本專案的查驗端接受、zkPassport 服務條款允許營運方隨時變更或停止服務（Terms 第 11、17 節）、以及未加鹽唯一識別碼可被發證國推算。聲明頁與停用開關由「法律聲明與初始化頁面」那串統一設計；Z1 不依賴 zkPassport，不受此停用影響。
 
 ## 7. 安全與隱私審查重點
 
-- **bridge 的固定 nonce**：同一工作階段所有訊息共用一個 GCM nonce，金鑰也沒有經過 KDF。看得到密文的一方（bridge 營運者或網路上的人）可以由兩則密文推得明文的 XOR，並可能偽造訊息【確認：`zkpassport-bridge/src/lib.rs`；推論：GCM nonce 重用的已知後果】。本錢包為了互通只能照做，但要：每次請求用新的 ECDH 金鑰對、不在 bridge 上傳送任何未經 ZK 處理的個資、查驗端只信任驗證通過的證明而不信任 `done` 的明文結果。建議另向 zkPassport 回報（使用者決定）。
+- **bridge 的固定 nonce**：同一工作階段所有訊息共用一個 GCM nonce，金鑰也沒有經過 KDF。看得到密文的一方（bridge 營運者或網路上的人）可以由兩則密文推得明文的 XOR，並可能偽造訊息【確認：`zkpassport-bridge/src/lib.rs`；推論：GCM nonce 重用的已知後果】。本錢包為了互通只能照做，但要：每次請求用新的 ECDH 金鑰對、不在 bridge 上傳送任何未經 ZK 處理的個資、查驗端只信任驗證通過的證明而不信任 `done` 的明文結果。已決定經 GitHub 私密漏洞回報向 zkPassport 回報（第 8 節）。
 - **網域未經驗證**：網址的 `d` 由建立請求的人填寫，惡意網站可以填別人的網域，取得綁定該網域的證明後轉送給真正的網站使用。持有端要比對 bridge 回報的建立者 origin 與 `d`，不一致時強提示；查驗端（Z2）以自己控制的網域建立請求。
 - **唯一識別碼的可連結性**：未加鹽識別碼對同一服務固定，且發證國可推算；同意畫面要寫明。
 - **DG2 相片與完整 DG1** 不得寫入紀錄、log 或當機報告（沿用 p4-zkp.md 第 10 節的私密輸入規則）。
 - **測試證件**：ZKR 模擬護照與 Sepolia 註冊表只在測試環境，與正式結果在畫面上區分。
 - **電路來源**：只接受 manifest 內、雜湊相符、且 manifest 根等於鏈上電路註冊表根的電路；這也是信任 zkPassport 營運方的地方，聲明中要寫明。
 
-## 8. 待使用者決定
+## 8. 決定（2026-11-05）
 
-1. **範圍**：建議做 Z1 到 Z4，其中 Z3（本錢包直接回應 zkPassport 請求）工作量最大；也可以先做 Z1、Z2、Z4，Z3 之後再做，期間回應 zkPassport 請求改為轉交官方 App。
-2. **時程位置**：建議排在 P4（zkPDF 的 App 整合與 M4b）完成之後，作為 P4 的延伸工作包；Z1 不依賴 ZK，可提前。
-3. **查驗 API 退回**：建議預設關閉，使用者可在設定開啟。
-4. **Ethereum RPC**：建議內建一個公開 RPC 並允許自訂；或要求使用者自訂才啟用。
-5. **NFC 實作**：建議 Kotlin 自行實作 BAC／PACE；JMRTD（LGPL-3.0）只作測試對照。
-6. **回報 bridge nonce 問題**：是否由使用者向 zkPassport 回報（安全回報管道在 `zkpassport-packages/SECURITY.md`）。
+| # | 事項 | 決定 |
+|---|---|---|
+| 1 | 範圍 | Z1 到 Z4 全做，Z3（本錢包直接回應 zkPassport 請求）最後完成 |
+| 2 | 時程 | P4 完成後開始，作為 P4 的延伸工作包；Z1 不依賴 ZK |
+| 3 | 查驗 API 退回 | 預設關閉，使用者可在設定開啟 |
+| 4 | Ethereum RPC | 內建一個公開 RPC，允許自訂 |
+| 5 | NFC 實作 | Kotlin 自行實作 BAC／PACE；JMRTD（LGPL-3.0）只作測試對照 |
+| 6 | bridge nonce 問題 | 向 zkPassport 回報，經 GitHub 私密漏洞回報（`zkpassport-packages` 的 Security 頁），由使用者送出 |
+| 7 | OPRF 與 FaceMatch | 仍要完成，改用本專案的值，私密值以 secret 保存（5.5） |
+| 8 | bb 版本 | 升級到 v6.0.0，全專案只留一套（4.2）；升級時間點待定 |
+
+建議的順序：Z0 bb 升級（若不在 P4 內完成）、Z1、Z2、Z4、5.5、Z3。
 
 ## 9. 參考
 
