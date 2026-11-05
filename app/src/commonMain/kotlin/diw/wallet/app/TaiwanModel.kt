@@ -870,6 +870,7 @@ class TaiwanModel(private val model: WalletModel) {
                             ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
                     },
                     documentTrust = model.files.trustSource,
+                    zkPdf = model.zkPdfContext,
                 ).verify(jws, request)
                 val trust = issuerTrust(result)
                 offline.value = OfflineUi.Working("查詢證件狀態")

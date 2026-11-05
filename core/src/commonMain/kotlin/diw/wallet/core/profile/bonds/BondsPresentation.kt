@@ -6,6 +6,7 @@ import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
 import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
@@ -274,8 +275,9 @@ object BondsOfflinePresentation {
         requireAny(request)
         val sdJwt = SdJwt.fromCompactSerialization(compact.substringBeforeLast('~') + "~")
         if (sdJwt.kbKey != holderKey) throw ProtocolException("invalid_key", "The card is bound to another key")
-        val kept = if (disclosing == null) sdJwt else sdJwt.filter { path, _ ->
-            path.any { (it as? JsonPrimitive)?.isString == true && it.content in disclosing }
+        val names = disclosing?.let(DerivedCredentials::withOpenings)
+        val kept = if (names == null) sdJwt else sdJwt.filter { path, _ ->
+            path.any { (it as? JsonPrimitive)?.isString == true && it.content in names }
         }
         return sign(SD_JWT_PREFIX + kept.compactSerialization, request, signingKey, DidKeys.didJwk(holderKey), now)
     }
@@ -572,6 +574,8 @@ class BondsOfflineVerifier(
     /** Trust for the time stamps carried as evidence by derived credentials; null leaves them unchecked. */
     private val documentTrust: DocumentTrustSource? = null,
     private val moicaCa: MoicaCa = MoicaCa.PRODUCTION,
+    /** Templates and engine for a zkPDF bundle a derived credential discloses; null leaves it unchecked. */
+    private val zkPdf: ZkPdfContext? = null,
 ) {
     suspend fun verify(presentationJws: String, request: BondsPresentationRequest, now: Instant = Clock.System.now()): BondsVerifiedPresentation {
         val jws = Jws.parse(presentationJws.trim())
@@ -673,10 +677,12 @@ class BondsOfflineVerifier(
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Card expired") }
         sdJwt.validFrom?.let { if (it > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid") }
         val derived = sdJwt.credentialType == DerivedCredentials.VCT
-        val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL && !(derived && it == "evidence") }))
+        val claims = flatten(JsonObject(processed.filterKeys {
+            it !in SD_JWT_VC_TECHNICAL && !(derived && (it == "evidence" || DerivedCredentials.isProofClaim(it)))
+        }))
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(compact).issuerJwt).payload
-            DerivedEvidence.verify(signed, documentTrust)
+            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now)
         } else emptyList()
         return BondsVerifiedPresentation(
             holder, BondsCredentialSource.ANY, claims, iss, created, bound, null,

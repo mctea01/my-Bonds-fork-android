@@ -1,5 +1,6 @@
 package diw.testservers.tools
 
+import diw.wallet.core.document.zkpdf.ZkPdfProfile
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.zk.ZkTemplatePack
 import diw.wallet.core.zktls.ZkTlsProfile
@@ -51,7 +52,14 @@ object TemplatePackTool {
         fun json(f: File) = runCatching { DiwJson.parseToJsonElement(f.readText(Charsets.UTF_8)) as JsonObject }
             .getOrElse { throw IllegalArgumentException("${f.name} is not a JSON object", it) }
         val zktls = files("zktls").map { f -> runCatching { ZkTlsProfile.parse(json(f)) }.getOrElse { throw IllegalArgumentException("${f.name}: ${it.message}", it) } }
-        val zkpdf = files("zkpdf").map(::json)
+        // A document template must parse as the wallet reads it, and a test template never goes into a release pack.
+        val zkpdf = files("zkpdf").map { f ->
+            val o = json(f)
+            val profile = runCatching { ZkPdfProfile.parse(o) }.getOrElse { throw IllegalArgumentException("${f.name}: ${it.message}", it) }
+            require(!profile.test) { "${f.name}: a test template cannot be published" }
+            profile.toJson()
+        }
+        require(zkpdf.map { it["id"] }.toSet().size == zkpdf.size) { "Duplicate zkPDF template identifier" }
         val pack = ZkTemplatePack(version, kotlin.time.Instant.fromEpochSeconds(version), zktls, zkpdf)
         // The same checks a wallet applies.
         return ZkTemplatePack.read(pack.payload())

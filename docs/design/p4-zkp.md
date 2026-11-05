@@ -100,7 +100,7 @@ native/ (Rust workspace，新)
 zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-derived:1`）裡，形式是兩種 disclosure，讓持有人出示時可以選擇要不要帶：
 
 - `zkPdf`：值為「zkPDF 證據包」（JSON 物件，見下）。只有查驗方要求這個 claim 時才揭露。
-- `zkOpen:<欄位名>`：值為 `{"slot": <int>, "salt": "<base64url 16 bytes>", "src": "<base64url>"}`，是欄位 `<欄位名>` 的零知識開啟資料。持有人揭露某個 zk 欄位時，同時揭露同名欄位與它的 `zkOpen:`。
+- `zkOpen:<欄位名>`：值為 `{"slot": <int>, "salt": "<base64url 16 bytes>", "src": "<base64url>"}`，是欄位 `<欄位名>` 的零知識開啟資料。持有人揭露某個 zk 欄位時，同時揭露同名欄位與它的 `zkOpen:`（出示時選了 `zkPdf`，App 會自動帶上每個已選欄位的 `zkOpen:`）。
 
 欄位本身（例如 `name`、`studentId`）仍是一般 disclosure，值是解碼後的文字；不懂 zkPDF 的查驗端照常讀取，只是無法確認它來自文件。
 
@@ -124,6 +124,8 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 `zkOpen:<欄位名>` 的 `src` 是兩個錨點之間各運算子的 v2 紀錄依序串接；承諾為 SHA-256("diw-zkpdf-claim-v1" ‖ u8 slot ‖ salt ‖ u16 長度 ‖ src 補零到 384 bytes)，與欄位段輸出相同（V10）。
 
 遮蔽檔只含簽章涵蓋的版本（2026-11-02 決定）：證明的是簽署者簽下的內容，之後的增量更新（註解、DSS、文件時戳）與證明無關，帶上只會增加大小與洩漏。代價是查驗端看不到之後加入的 DSS 與文件時戳，長期驗證只能用簽章本身內嵌的撤銷資訊與簽章時戳。CMS 檢查（V4）以 `DocumentInspector.inspectWithheldPdf` 進行：以 V3 重算的 SHA-256 代替檔案內容驗證 CMS（只接受 `adbe.pkcs7.detached` 與 `ETSI.CAdES.detached`），其餘信任、效期、撤銷與簽章時戳的判定與一般 PDF 相同。
+
+實作（2026-11-02，WP4 M4a）：持有端在衍生憑證畫面勾選「附上 zkPDF 零知識證明」，App 以已安裝的版型逐一規劃，列出可證明與無法證明的欄位與原因，可為日期欄位加最多兩個「不晚於／不早於」條件；只支援沒有開啟密碼（或開啟密碼為空）且只有一個文件簽章的 PDF。證明綁定新憑證的金鑰，所以先建立憑證金鑰，再於背景產生證明（一次一個、可取消、有時間上限），自驗通過才簽發；失敗或取消時不留下憑證。同名的文字層欄位由 zk 欄位取代。版型來自簽章版型包，測試環境另可匯入未簽章的測試版型（一律標示為測試，查驗方也要匯入同一份，摘要會註明「測試版型」）。查驗在 `DerivedEvidence.verify`：揭露了 `zkPdf` 就以 `ZkPdfVerifier` 檢查，結果分成證明本身、每個揭露欄位、日期條件與未揭露欄位幾列；沒有引擎或驗證金鑰時是「未檢查」，不會當作通過。`zkPdf` 與 `zkOpen:` 不列在證件資料中。
 
 遮蔽後的檔案約為原檔大小（福州大學樣本 520 KB，大部分是影像與字型），所以 `zkPdf` disclosure 只適合線上出示（OpenID4VP direct\_post、DC API）與 BLE；QR 出示不帶 zkPDF 證據，畫面寫明原因。後續可用「版型資源包」把每份文件都相同的影像（學校標誌、印章）改成以 SHA-256 參照，縮小證據包。【推論】
 

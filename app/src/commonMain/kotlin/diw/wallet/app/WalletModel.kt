@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.core.document.derived.ZkPdfContext
+import diw.wallet.core.document.zkpdf.ZkPdfProfiles
 import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.Draft13Dialect
 import diw.wallet.core.compat.EudiDialect
@@ -472,6 +474,10 @@ class WalletModel(val platform: PlatformServices) {
     val trustLists = TrustListsModel(this)
     val zk = ZkModel(scope, platform.zk)
     val zkTemplates = ZkTemplatesModel(this)
+
+    /** How this wallet checks a zkPDF bundle: the installed templates (test ones in the test environment) and the engine. */
+    val zkPdfContext: ZkPdfContext
+        get() = ZkPdfContext({ id -> ZkPdfProfiles.find(id, settings.testEnvironment) }, { zk.pdf() })
 
     private var issuanceSession: IssuanceSession? = null
     private var dcApiResult: CompletableDeferred<JsonObject?>? = null

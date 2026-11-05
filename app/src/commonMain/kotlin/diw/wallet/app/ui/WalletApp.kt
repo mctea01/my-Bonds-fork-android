@@ -63,6 +63,7 @@ import diw.wallet.core.x509.displaySubject
 import org.multipaz.document.Document
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.document.derived.EvidenceResult
 import diw.wallet.core.zktls.WebProofCredentials
 import diw.wallet.core.trust.TrustRole
@@ -344,7 +345,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
         // A web query result's source, method and session are shown as where the values came from.
         val web = WebProofCredentials.isWebCredential(record?.vct)
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
-            ?.filterNot { derived && it.path.firstOrNull() in setOf("document", "evidence") }
+            ?.filterNot { derived && (it.path.firstOrNull() in setOf("document", "evidence") || it.path.firstOrNull()?.let(DerivedCredentials::isProofClaim) == true) }
             ?.filterNot { web && it.path.firstOrNull() in WebProofCredentials.SOURCE_CLAIMS }
             ?.map {
                 val value = if (web && it.path == listOf(WebProofCredentials.CLAIM_STATUS)) WebProofCredentials.plainStatus(it.value) else it.value
@@ -366,7 +367,8 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
                     d["sha256"]?.jsonPrimitive?.content?.let { "SHA-256 " + it.take(16) + "..." },
                 ).joinToString("，")
             }
-            evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true)
+            val disclosed = SdJwtDisclosures.parse(compact).disclosures.mapNotNull { d -> d.name?.let { it to d.value } }.toMap()
+            evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true, disclosed = disclosed, zk = model.zkPdfContext)
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

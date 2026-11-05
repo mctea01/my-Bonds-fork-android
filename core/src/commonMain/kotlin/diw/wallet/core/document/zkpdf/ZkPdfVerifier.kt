@@ -158,12 +158,14 @@ object ZkPdfVerifier {
             signature.verdict != DocumentVerdict.VALID || fields.any { it.check != Check.PASS } -> Check.WARN
             else -> Check.PASS
         }
-        val summary = when (check) {
-            Check.FAIL -> "部分出示的值與文件不符"
-            Check.PASS -> "已證明出自 $signer 簽章的「${profile.title}」"
-            else -> if (signature.verdict != DocumentVerdict.VALID) "證明成立，但簽署者 $signer 未通過信任檢查" else "證明成立，部分欄位無法確認"
+        val summary = when {
+            check == Check.FAIL -> "部分出示的值與文件不符"
+            signature.verdict != DocumentVerdict.VALID -> "證明成立，但簽署者 $signer 未通過信任檢查"
+            fields.any { it.check != Check.PASS } -> "證明成立，部分欄位無法確認"
+            else -> "已證明出自 $signer 簽章的「${profile.title}」"
         }
-        return ZkPdfVerification(check, summary, profile, signature, fields, predicateResults, hidden)
+        // A test template (test environment only) was never reviewed against a real document; the summary says so.
+        return ZkPdfVerification(check, (if (profile.test) "測試版型：" else "") + summary, profile, signature, fields, predicateResults, hidden)
     }
 
     /** Text of a field source (v2 records back to back) with the page fonts, or null when a record cannot be read. */

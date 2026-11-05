@@ -37,6 +37,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.produceState
 import diw.wallet.app.FilesModel
+import diw.wallet.app.ZkChoiceContext
+import diw.wallet.app.ZkChoiceKind
+import diw.wallet.app.ZkProofKind
+import diw.wallet.core.zk.ZkPdfAssets
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -614,7 +618,9 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
         }
         if (report?.format == DocumentFormat.PDF) {
-            ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "P4 尚未完成：以零知識證明 PDF 內的機關簽章與指定欄位，不必交出整份文件", enabled = false) {}
+            ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "在衍生憑證附上零知識證明：證明欄位出自 PDF 內的簽章，不必交出整份文件；需有符合的文件版型") {
+                model.screen.value = Screen.FileDerive(f.id)
+            }
         }
         f.webProofIds.mapNotNull { id -> docs.firstOrNull { it.identifier == id } }.forEach { proof ->
             ActionRow(WalletIcons.Link, proof.displayName ?: "網站查驗結果", "這份文件的網站查驗證據，已在「證件」") {
@@ -2248,6 +2254,9 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     var validDays by remember { mutableStateOf<Int?>(null) }
     var dayText by remember(f) { mutableStateOf("") }
     var dayClaims by remember(f) { mutableStateOf<List<DerivedClaim>>(emptyList()) }
+    var zkForm by remember(f) { mutableStateOf(ZkPdfDeriveForm()) }
+    var zkGate by remember(f) { mutableStateOf(false) }
+    val composition = zkPdfComposition(model)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("把「${f.report?.title ?: f.name}」變成可出示的證件。查驗方只會看到你勾選的欄位，以及文件指紋、格式與大小；原檔不會送出。",
             style = MaterialTheme.typography.bodyMedium)
@@ -2315,6 +2324,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
             Text(if (f.timestamps.any { it.trusted }) "附上已保存的時戳" else "取得並附上文件時戳（只送出 SHA-256）")
         }
+        if (f.report?.format == DocumentFormat.PDF) ZkPdfDeriveSection(model, f.id, fields?.zkPdf, zkForm) { zkForm = it }
         SectionTitle("3. 有效期間")
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf<Pair<Int?, String>>(null to "不限", 365 to "一年", 1825 to "五年").forEach { (d, t) ->
@@ -2327,10 +2337,31 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), "持有人自填：" + noteName.trim())
             } else null,
         )
+        val zkMatch = fields?.zkPdf?.let { zkForm.match(it) }?.takeIf { zkForm.on }
+        val zkProblem = zkMatch?.let { zkForm.predicates(it).second }
         Button(
-            onClick = { model.files.derive(f, claims, timestamp, validDays) },
-            enabled = busy == null && claims.isNotEmpty(),
-        ) { Text("產生衍生憑證") }
+            onClick = { if (zkMatch != null) zkGate = true else model.files.derive(f, claims, timestamp, validDays) },
+            enabled = busy == null && (claims.isNotEmpty() || zkMatch != null) && zkProblem == null,
+        ) { Text(if (zkMatch != null) "產生零知識證明與衍生憑證" else "產生衍生憑證") }
+        if (zkGate && zkMatch != null) {
+            ZkProofGate(
+                zk = model.zk,
+                kind = ZkProofKind.PDF,
+                context = ZkChoiceContext(withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明", desktopImport = false),
+                assets = ZkPdfAssets.required(composition, true),
+                onDecision = { choice, extended ->
+                    zkGate = false
+                    when (choice) {
+                        ZkChoiceKind.ON_DEVICE -> model.files.derive(f, claims, timestamp, validDays,
+                            FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended))
+                        ZkChoiceKind.WITHOUT_ZK -> if (claims.isNotEmpty()) model.files.derive(f, claims, timestamp, validDays)
+                            else model.message.value = "請至少選擇一個欄位"
+                        else -> model.message.value = "這個方式尚未提供；可在電腦版錢包匯入同一份文件後產生"
+                    }
+                },
+                onDismiss = { zkGate = false },
+            )
+        }
         CollapsibleSection("衍生憑證證明什麼", key = "derive-about") {
             Text("衍生憑證由這支錢包的文件發行金鑰（did:key）簽發，結構是 IETF SD-JWT VC，信任等級為 T3：它證明你在何時、以哪些證據保存了這份文件，不代表原發文機關另行背書。Bonds 的 vc+moica 結構只用於身分證卡；Bonds 查驗方要的 MyData 衍生答案（所得、勞保、戶籍）在出示當下才由原檔產生，不需先在這裡製作。",
                 style = MaterialTheme.typography.bodySmall)

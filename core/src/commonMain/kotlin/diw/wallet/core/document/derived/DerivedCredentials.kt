@@ -11,7 +11,9 @@ import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.profile.bonds.HolderHint
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.w3c.SdJwtDisclosures
+import diw.wallet.core.document.zkpdf.ZkPdfEvidence
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -132,13 +134,26 @@ object DerivedCredentials {
         report.signatures.firstOrNull { it.verdict == DocumentVerdict.VALID } ?: report.signatures.firstOrNull()
 
     /** Encoded disclosures with fresh 128 bit salts, in the order given. Names must be unique. */
-    fun disclosures(claims: List<DerivedClaim>): List<String> {
-        require(claims.map { it.name }.toSet().size == claims.size) { "Duplicate claim names" }
-        return claims.map { c ->
-            val array = JsonArray(listOf(JsonPrimitive(PlatformCrypto.randomBytes(16).toBase64Url()), JsonPrimitive(c.name), JsonPrimitive(c.value)))
+    fun disclosures(claims: List<DerivedClaim>): List<String> = jsonDisclosures(claims.map { it.name to JsonPrimitive(it.value) })
+
+    /** [disclosures] for claims of any JSON value (a zkPDF bundle and its openings are objects). Names must be unique. */
+    fun jsonDisclosures(claims: List<Pair<String, JsonElement>>): List<String> {
+        require(claims.map { it.first }.toSet().size == claims.size) { "Duplicate claim names" }
+        return claims.map { (name, value) ->
+            val array = JsonArray(listOf(JsonPrimitive(PlatformCrypto.randomBytes(16).toBase64Url()), JsonPrimitive(name), value))
             array.toString().encodeToByteArray().toBase64Url()
         }
     }
+
+    /** Claims that carry zkPDF proof data rather than a value for people (the bundle and the field openings). */
+    fun isProofClaim(name: String): Boolean = name == ZkPdfEvidence.CLAIM || name.startsWith(ZkPdfEvidence.OPEN_PREFIX)
+
+    /**
+     * [names] to disclose, plus the zkPDF opening of each disclosed field when the zkPDF bundle is among them, so a
+     * field shown with the proof can be checked against it (p4-zkp.md 5.1). Without the bundle nothing is added.
+     */
+    fun withOpenings(names: Set<String>): Set<String> =
+        if (ZkPdfEvidence.CLAIM !in names) names else names + names.filterNot(::isProofClaim).map { ZkPdfEvidence.OPEN_PREFIX + it }
 
     /** What the wallet found about the document's signatures, as a statement of the issuing wallet. */
     fun signatureEvidence(report: DocumentReport): JsonObject = buildJsonObject {

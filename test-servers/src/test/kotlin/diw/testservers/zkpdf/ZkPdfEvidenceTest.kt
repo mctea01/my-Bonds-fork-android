@@ -1,6 +1,24 @@
 package diw.testservers.zkpdf
 
 import diw.wallet.core.document.Check
+import diw.wallet.core.did.DidKeys
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.DerivedDocument
+import diw.wallet.core.document.derived.ZkPdfContext
+import diw.wallet.core.holder.HolderKey
+import diw.wallet.core.profile.bonds.BondsCredentialSource
+import diw.wallet.core.profile.bonds.BondsOfflinePresentation
+import diw.wallet.core.profile.bonds.BondsOfflineVerifier
+import diw.wallet.core.profile.bonds.BondsPresentationRequest
+import io.ktor.client.engine.mock.respondError
+import io.ktor.http.HttpStatusCode
+import org.multipaz.crypto.Algorithm
+import org.multipaz.crypto.AsymmetricKey
+import org.multipaz.crypto.Crypto
+import org.multipaz.crypto.EcCurve
+import org.multipaz.securearea.software.SoftwareCreateKeySettings
+import org.multipaz.securearea.software.SoftwareSecureArea
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.zkpdf.*
 import diw.wallet.core.env.EnvironmentPolicy
@@ -165,6 +183,79 @@ class ZkPdfEvidenceTest {
                 assertFalse(plain.copyOfRange(w.offset, w.offset + w.length).all { it == 0.toByte() })
             }
         }
+    }
+
+    /**
+     * The whole derived credential path: the proof is bound to the credential key, its bundle and openings travel as
+     * SD-JWT disclosures, the holder discloses one field over Bonds, and the verifier shows that field as proven
+     * evidence while the proof data stays out of the claims.
+     */
+    @Test fun derivedCredentialCarriesTheProofOverBonds() = runBlocking<Unit> {
+        val area = SoftwareSecureArea.create(EphemeralStorage())
+        val info = area.createKey(null, SoftwareCreateKeySettings.Builder().build())
+        val issuer = HolderKey(area, info, shared = true, did = DidKeys.didKey(info.ecPublicKey))
+        val credentialKey = Crypto.createEcPrivateKey(EcCurve.P256)
+        val pdf = resource("student.pdf")
+        val engine = FakeEngine()
+        val plan = ZkPdfPlanner.plan(pdf, student, listOf(birthCutoff))
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, credentialKey.publicKey.toJwk(), ZkPdfStatement.PHONE, engine, { _, _, _ -> }, now),
+        ).value
+        val disclosures = DerivedCredentials.jsonDisclosures(listOf(DerivedCredentials.CLAIM_TITLE to JsonPrimitive("仿在學證明")) + created.disclosures())
+        val document = DerivedDocument("00".repeat(32), "application/pdf", pdf.size.toLong())
+        val compact = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, emptyList(), disclosures, now)
+        val request = BondsPresentationRequest.generate("文件查驗", BondsCredentialSource.ANY)
+        val jws = BondsOfflinePresentation.presentSdJwtVc(
+            request, compact, AsymmetricKey.anonymous(credentialKey, Algorithm.ES256), credentialKey.publicKey,
+            // The opening of each disclosed field comes along with the bundle.
+            setOf(DerivedCredentials.CLAIM_TITLE, "name", ZkPdfEvidence.CLAIM), now,
+        )
+        val resolver = DidResolver(HttpClient(MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }))
+        val context = ZkPdfContext(profiles::get) { engine }
+        val result = BondsOfflineVerifier(resolver, documentTrust = trust(), zkPdf = context).verify(jws, request, now)
+        assertEquals(setOf(DerivedCredentials.CLAIM_TITLE, "name"), result.claims.keys.filter { !it.startsWith("document.") }.toSet())
+        assertEquals("林測試", result.claims["name"])
+        val zk = result.evidence.filter { it.type == ZkPdfEvidence.TYPE }
+        assertEquals(Check.PASS, zk.first().check, zk.first().detail)
+        assertEquals(Check.PASS, zk.single { it.title == "zkPDF 欄位：姓名" }.check)
+        assertTrue(zk.any { it.title == "zkPDF 條件" && "2005-01-01" in it.detail })
+        assertTrue(zk.any { it.title == "zkPDF 未揭露欄位" && "學號" in it.detail && "出生日期" in it.detail })
+
+        // Without an engine the proof is reported as not checked, never as passed.
+        val unchecked = BondsOfflineVerifier(resolver, documentTrust = trust(), zkPdf = ZkPdfContext(profiles::get) { null }).verify(jws, request, now)
+        assertEquals(Check.NOT_CHECKED, unchecked.evidence.single { it.type == ZkPdfEvidence.TYPE }.check)
+
+        // A bundle proven for another key does not pass on this credential (V9).
+        val foreign = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, other, ZkPdfStatement.PHONE, engine, { _, _, _ -> }, now),
+        ).value
+        val moved = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, emptyList(),
+            DerivedCredentials.jsonDisclosures(foreign.disclosures()), now)
+        val movedJws = BondsOfflinePresentation.presentSdJwtVc(
+            request, moved, AsymmetricKey.anonymous(credentialKey, Algorithm.ES256), credentialKey.publicKey, null, now,
+        )
+        val rejected = BondsOfflineVerifier(resolver, documentTrust = trust(), zkPdf = context).verify(movedJws, request, now)
+        assertEquals(Check.FAIL, rejected.evidence.first { it.type == ZkPdfEvidence.TYPE }.check)
+    }
+
+    @Test fun templatesComeFromThePackAndTestImports() {
+        val pack = ZkTemplatePack(5, now, emptyList(), listOf(
+            student.toJson().let { o -> JsonObject(o - "test" + ("id" to JsonPrimitive("signed.student-status/1"))) },
+            travel.toJson(),
+            buildJsonObject { put("id", "broken/1") },
+        ))
+        ZkPdfProfiles.install(pack)
+        // A pack entry marked as a test template and an entry that does not parse are skipped.
+        assertEquals(listOf("signed.student-status/1"), ZkPdfProfiles.installed.map { it.id })
+        ZkPdfProfiles.installTest(listOf(travel, ZkPdfProfile("signed.student-status/1", "x", emptyList(), student.fields)))
+        assertEquals(listOf("test.travel-record/1"), ZkPdfProfiles.testProfiles.map { it.id })
+        assertTrue(ZkPdfProfiles.testProfiles.all { it.test })
+        assertNull(ZkPdfProfiles.find("test.travel-record/1", testEnvironment = false))
+        assertNotNull(ZkPdfProfiles.find("test.travel-record/1", testEnvironment = true))
+        // An older pack never replaces a newer one.
+        ZkPdfProfiles.install(ZkTemplatePack(4, now, emptyList(), emptyList()))
+        assertEquals(1, ZkPdfProfiles.installed.size)
+        ZkPdfProfiles.installTest(emptyList())
     }
 
     @Test fun hiddenFieldsAndUntrustedSigners() = runBlocking<Unit> {

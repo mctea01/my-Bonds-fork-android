@@ -8,6 +8,7 @@ import diw.wallet.core.zk.ZkCapability
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkErrors
 import diw.wallet.core.zk.ZkNativeStatus
+import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.zk.OpenAcAgeCheck
 import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkPlatformInfo
@@ -37,7 +38,7 @@ import kotlin.time.Instant
 
 /** The proofs the wallet produces, with the engine each needs, its default time limit and its measured memory peak. */
 enum class ZkProofKind(val backend: ZkBackend, val label: String, val timeout: Duration, val peakMemoryMb: Long?) {
-    PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, null),
+    PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, 2300),
     AGE(ZkBackend.OPENAC_SPARTAN2, "年齡零知識證明", 5.minutes, 2325),
     TLS(ZkBackend.TLSN, "網站查驗證明", 2.minutes, null),
     MDOC_AGE(ZkBackend.LONGFELLOW, "mdoc 年齡零知識證明", 3.minutes, null);
@@ -151,11 +152,14 @@ class ZkModel(
 
     private fun proverAssets(backend: ZkBackend) = catalog.filter { it.backend == backend && "prover" in it.role }
 
-    /** What producing [kind] here needs; evaluates the device first if that has not been done. */
-    suspend fun readiness(kind: ZkProofKind): ZkReadiness = withContext(dispatcher) {
+    /**
+     * What producing [kind] here needs; evaluates the device first if that has not been done. [only] limits the
+     * prover assets to those identifiers (a zkPDF composition needs only its own circuits).
+     */
+    suspend fun readiness(kind: ZkProofKind, only: Collection<String>? = null): ZkReadiness = withContext(dispatcher) {
         val capable = capability.value ?: evaluate()
         val store = environment?.assets
-        val missing = proverAssets(kind.backend).filter { asset ->
+        val missing = proverAssets(kind.backend).filter { only == null || it.id in only }.filter { asset ->
             val status = assetStatus.value[asset.id] ?: store?.status(asset.id)?.also { s -> assetStatus.update { it + (asset.id to s) } }
             status != ZkAssetStatus.READY
         }
@@ -209,6 +213,16 @@ class ZkModel(
             return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.TLSN] ?: "此版本沒有網站查驗證明引擎（zkTLS）", false)
         }
         return environment?.tls?.let { ZkResult.Ok(it) } ?: ZkErrors.unsupported
+    }
+
+    /**
+     * The zkPDF engine, or null when this build or device has none. Verifying needs only the small verification keys
+     * and the CRS; [ZkPdfEngine.ready] says whether they are installed.
+     */
+    suspend fun pdf(): ZkPdfEngine? {
+        val capable = withContext(dispatcher) { capability.value ?: evaluate() }
+        if (ZkBackend.NOIR_ULTRAHONK !in capable.backends) return null
+        return environment?.pdf
     }
 
     /** Downloads [ids] one after another with progress; stops at the first failure, which stays in [downloads]. */
@@ -288,6 +302,14 @@ class ZkModel(
             } finally {
                 running.update { it - id }
             }
+        }
+        // A proof cancelled before its body starts never reaches the catch above, so its queued state is closed here.
+        task.invokeOnCompletion { cause ->
+            if (cause is CancellationException) _jobs.update { jobs ->
+                val job = jobs[id]
+                if (job != null && job.active) jobs + (id to job.copy(phase = ZkJobPhase.CANCELLED, step = null, message = "已取消", retryable = true)) else jobs
+            }
+            running.update { it - id }
         }
         running.update { it + (id to task) }
         task.start()

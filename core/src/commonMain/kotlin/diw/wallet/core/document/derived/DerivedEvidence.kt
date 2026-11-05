@@ -3,15 +3,27 @@ package diw.wallet.core.document.derived
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentTrustSource
+import diw.wallet.core.document.zkpdf.ZkPdfEvidence
+import diw.wallet.core.document.zkpdf.ZkPdfProfile
+import diw.wallet.core.document.zkpdf.ZkPdfVerifier
 import diw.wallet.core.util.obj
+import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.util.str
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.util.fromBase64
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Clock
 import kotlin.time.Instant
+
+/**
+ * What checking a zkPDF bundle needs: the pinned templates by identifier (test templates only in the test
+ * environment) and the engine with the verification keys, or null where this device has none.
+ */
+class ZkPdfContext(val profiles: (String) -> ZkPdfProfile?, val engine: suspend () -> ZkPdfEngine?)
 
 /** One piece of evidence of a derived credential, as the verifier sees it. */
 data class EvidenceResult(val type: String, val title: String, val check: Check, val detail: String)
@@ -26,15 +38,56 @@ object DerivedEvidence {
      * [credential] is the issuer-signed SD-JWT VC payload, whose document object and evidence array are read.
      * [own] words the signature statement for the holder whose wallet made it, instead of for a verifier.
      */
-    suspend fun verify(credential: JsonObject, trust: DocumentTrustSource?, own: Boolean = false): List<EvidenceResult> {
+    suspend fun verify(
+        credential: JsonObject,
+        trust: DocumentTrustSource?,
+        own: Boolean = false,
+        /** The disclosed claims of the presentation (or every claim, for the holder's own view), by name. */
+        disclosed: Map<String, JsonElement> = emptyMap(),
+        /** How to check a zkPDF bundle among [disclosed]; null leaves it unchecked. */
+        zk: ZkPdfContext? = null,
+        now: Instant = Clock.System.now(),
+    ): List<EvidenceResult> {
         val document = credential.obj("document")
         val sha256 = document?.str("sha256")
         val evidence = (credential["evidence"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-        return evidence.map { e ->
+        val listed = evidence.map { e ->
             when (e.str("type")) {
                 DerivedCredentials.EVIDENCE_TIMESTAMP -> timestamp(e, sha256, trust)
                 DerivedCredentials.EVIDENCE_SIGNATURE -> signature(e, own)
                 else -> EvidenceResult(e.str("type") ?: "", "其他證據", Check.NOT_CHECKED, "本錢包不認識這種證據")
+            }
+        }
+        val bundle = disclosed[ZkPdfEvidence.CLAIM] ?: return listed
+        return listed + zkPdf(bundle, credential, disclosed, trust, zk, now)
+    }
+
+    /**
+     * The zkPDF bundle of a derived credential (p4-zkp.md 5.1): the proof itself, then each disclosed field and date
+     * condition it covers. The proof is bound to the credential's own key (cnf.jwk), so it cannot be moved to another
+     * credential.
+     */
+    private suspend fun zkPdf(
+        bundle: JsonElement,
+        credential: JsonObject,
+        disclosed: Map<String, JsonElement>,
+        trust: DocumentTrustSource?,
+        zk: ZkPdfContext?,
+        now: Instant,
+    ): List<EvidenceResult> {
+        val title = "PDF 簽章零知識證明（zkPDF）"
+        val evidence = bundle as? JsonObject ?: return listOf(EvidenceResult(ZkPdfEvidence.TYPE, title, Check.FAIL, "零知識證據的格式不正確"))
+        val jwk = credential.obj("cnf")?.obj("jwk") ?: return listOf(EvidenceResult(ZkPdfEvidence.TYPE, title, Check.FAIL, "證件沒有綁定金鑰"))
+        if (zk == null || trust == null) return listOf(EvidenceResult(ZkPdfEvidence.TYPE, title, Check.NOT_CHECKED, "此處無法查驗零知識證明"))
+        val v = ZkPdfVerifier.verify(evidence, disclosed, jwk, zk.profiles, zk.engine(), trust, now)
+        return buildList {
+            add(EvidenceResult(ZkPdfEvidence.TYPE, title, v.check, v.summary + (v.profile?.let { "（版型 ${it.id}）" } ?: "")))
+            v.fields.forEach { add(EvidenceResult(ZkPdfEvidence.TYPE, "zkPDF 欄位：${it.label}", it.check, it.detail)) }
+            if (v.check != Check.FAIL && v.check != Check.NOT_CHECKED) {
+                v.predicates.forEach { add(EvidenceResult(ZkPdfEvidence.TYPE, "zkPDF 條件", Check.PASS, "已證明${it.text}，不揭露實際日期")) }
+                if (v.hidden.isNotEmpty()) {
+                    add(EvidenceResult(ZkPdfEvidence.TYPE, "zkPDF 未揭露欄位", Check.NOT_CHECKED, "證明涵蓋但這次沒有出示：${v.hidden.joinToString("、")}"))
+                }
             }
         }
     }

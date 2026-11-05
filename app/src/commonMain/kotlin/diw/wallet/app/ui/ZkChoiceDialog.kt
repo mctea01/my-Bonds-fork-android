@@ -84,13 +84,15 @@ fun ZkProofGate(
     zk: ZkModel,
     kind: ZkProofKind,
     context: ZkChoiceContext = ZkChoiceContext(),
+    /** The prover assets this proof needs, when it needs only some of the backend's (a zkPDF composition). */
+    assets: Collection<String>? = null,
     onDecision: (choice: ZkChoiceKind, extended: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var state by remember(kind) { mutableStateOf<GateState>(GateState.Checking) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(kind) {
-        val readiness = zk.readiness(kind)
+        val readiness = zk.readiness(kind, assets)
         state = when {
             !readiness.recommended -> GateState.Choose(readiness)
             readiness.missing.isNotEmpty() -> GateState.ConfirmDownload(readiness, extended = false)

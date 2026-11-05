@@ -17,6 +17,8 @@ data class ZkChoiceContext(
     val selfHostConfigured: Boolean = false,
     /** What happens when the user goes on without a proof, e.g. "衍生憑證照一般方式產生"; null when there is no such path. */
     val withoutZk: String? = null,
+    /** Whether a proof made by the desktop wallet can be imported here yet. */
+    val desktopImport: Boolean = true,
 )
 
 private fun mb(bytes: Long) = "${bytes / (1024L * 1024L)} MB"
@@ -49,10 +51,13 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
             ZkChoiceOption(
                 ZkChoiceKind.DESKTOP,
                 if (readiness.kind.answersVerifier) "改用電腦版回應" else "在電腦版產生後匯入",
-                if (readiness.kind.answersVerifier) "在電腦版錢包加入同一張卡片後，掃描查驗方的 QR Code 回應"
-                else "在電腦版開啟同一份文件產生證據檔，再匯入這台裝置；以文件的 SHA-256 確認是同一份",
-                enabled = true,
-                recommended = !readiness.recommended,
+                when {
+                    readiness.kind.answersVerifier -> "在電腦版錢包加入同一張卡片後，掃描查驗方的 QR Code 回應"
+                    context.desktopImport -> "在電腦版開啟同一份文件產生證據檔，再匯入這台裝置；以文件的 SHA-256 確認是同一份"
+                    else -> "電腦版產生後匯入尚未提供；可在電腦版錢包匯入同一份文件，直接在電腦上產生衍生憑證"
+                },
+                enabled = readiness.kind.answersVerifier || context.desktopImport,
+                recommended = !readiness.recommended && (readiness.kind.answersVerifier || context.desktopImport),
             ),
         )
         if (readiness.kind == ZkProofKind.PDF) add(
