@@ -79,6 +79,28 @@ tasks.register<JavaExec>("templatePack") {
 // Checks a zkTLS page profile against the real site on this machine (templates/README.md): -Pprofile=<file>, and
 // -Pshow to print the values read, -Psave=<file> to keep the response (it holds the query result), -Pfrom=<file> to
 // check the rules against a kept response without contacting the site.
+tasks.register<JavaExec>("checkZkPdf") {
+    group = "verification"
+    description = "Checks a zkPDF document template against a real signed PDF on this machine"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("diw.testservers.tools.ZkPdfTemplateTool")
+    jvmArgs("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8")
+    val file = providers.gradleProperty("file")
+    val template = providers.gradleProperty("template")
+    val reveal = providers.gradleProperty("reveal")
+    val show = providers.gradleProperty("show")
+    val prove = providers.gradleProperty("prove")
+    val root = providers.gradleProperty("root")
+    argumentProviders.add(CommandLineArgumentProvider {
+        listOfNotNull(file.orNull?.let { rootProject.file(it).absolutePath }) +
+            (template.orNull?.let { listOf("--template", rootProject.file(it).absolutePath) } ?: listOf("--outline")) +
+            (reveal.orNull?.let { listOf("--reveal", it) } ?: emptyList()) +
+            (if (show.isPresent) listOf("--show") else emptyList()) +
+            (prove.orNull?.let { listOf("--prove", rootProject.file(it).absolutePath) } ?: emptyList()) +
+            (root.orNull?.let { listOf("--root", rootProject.file(it).absolutePath) } ?: emptyList())
+    })
+}
+
 tasks.register<JavaExec>("checkProfile") {
     group = "verification"
     description = "Checks a zkTLS verification page profile against the real site"

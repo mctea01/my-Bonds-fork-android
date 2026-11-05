@@ -195,7 +195,9 @@ class ZkTemplatesModel(private val model: WalletModel) {
             ?: throw ProtocolException("invalid_templates", "$name 不是版型包或版型描述檔")
         fun document(e: JsonElement): ZkPdfProfile = runCatching { ZkPdfProfile.parse(e as JsonObject) }
             .getOrElse { throw ProtocolException("invalid_templates", "$name 的文件版型格式錯誤") }
-        if (o["fields"] != null) return emptyList<ZkTlsProfile>() to listOf(document(o))
+        // zkTLS pages have "fields" too; a document template's fields are delimited by "before" labels.
+        val documentFields = (o["fields"] as? JsonArray)?.firstOrNull() as? JsonObject
+        if (documentFields?.containsKey("before") == true) return emptyList<ZkTlsProfile>() to listOf(document(o))
         val pages = (o["profiles"] ?: o["zktls"]) as? JsonArray
         val docs = (o["zkpdf"] as? JsonArray)?.map(::document).orEmpty()
         if (pages == null && o["zkpdf"] != null) return emptyList<ZkTlsProfile>() to docs

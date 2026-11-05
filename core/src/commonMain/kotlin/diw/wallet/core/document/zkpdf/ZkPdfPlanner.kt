@@ -96,7 +96,10 @@ object ZkPdfPlanner {
         val range = signature(whole).byteRange.map { it.toInt() }.toIntArray()
         val signed = PdfZkSupport.signedRevision(pdf, range, password)
         val content = PdfZkSupport.pageContentObject(signed, 0)
-        val page = PdfTextExtractor.pages(signed).first()
+        val pages = PdfTextExtractor.pages(signed)
+        // The masked file keeps every other page as it is, so a second page would be disclosed in full (v1 proves page 1).
+        require(pages.size == 1) { "zkPDF v1 supports single-page documents" }
+        val page = pages.first()
         val xobjects = signed.dict(signed.dict(page["Resources"])?.get("XObject"))
         val opaque = profile.opaqueImages.map { name ->
             val ref = xobjects?.entries?.get(name) as? PdfRef ?: error("Private image unavailable")

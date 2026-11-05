@@ -147,7 +147,7 @@ fun ZkPdfDeriveSection(
         }
     }
     form.predicates(match).second?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Text("證明在這台裝置的背景產生，手機約需數分鐘、佔用約 2 GB 記憶體；可隨時取消，未完成時不會產生憑證。只支援沒有開啟密碼且只有一個文件簽章的 PDF。",
+    Text("證明在這台裝置的背景產生，手機約需數分鐘、佔用約 2 GB 記憶體；可隨時取消，未完成時不會產生憑證。只支援單頁、沒有開啟密碼且只有一個文件簽章的 PDF。",
         style = MaterialTheme.typography.bodySmall)
     if (job != null && job.active) {
         Text(job.step ?: if (job.phase == ZkJobPhase.QUEUED) "等待其他證明完成" else "產生中", style = MaterialTheme.typography.bodySmall,

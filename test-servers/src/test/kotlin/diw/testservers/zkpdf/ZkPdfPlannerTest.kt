@@ -160,6 +160,13 @@ class ZkPdfPlannerTest {
         assertNull(ZkPdfDates.yyyymmdd("04/02/29"))
         assertEquals("2004-02-09", ZkPdfNormalize.DATE.apply("2004.2.9"))
         assertEquals("A B", ZkPdfNormalize.TEXT.apply("  A \n B "))
+        assertEquals("林測試", ZkPdfNormalize.CLAUSE.apply("：林測試， "))
+        assertEquals("SYN 01", ZkPdfNormalize.CLAUSE.apply(" : SYN  01 。"))
+        assertNull(ZkPdfNormalize.CLAUSE.apply(" ，、"))
+        assertEquals("2025-09", ZkPdfNormalize.MONTH.apply("2025年9月"))
+        assertNull(ZkPdfNormalize.MONTH.apply("2025年13月"))
+        assertNull(ZkPdfNormalize.MONTH.apply("25年9月"))
+        assertNull(ZkPdfNormalize.MONTH.apply("2025年9月1日"))
         assertFailsWith<IllegalArgumentException> { ZkPdfPredicate(ZkPdfPredicate.DATE_LE, "x", 2005) }
         val json = student.toJson()
         assertEquals(json, ZkPdfProfile.parse(json).toJson())
