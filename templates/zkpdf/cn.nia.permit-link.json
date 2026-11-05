@@ -1,0 +1,13 @@
+{
+  "id": "cn.nia.permit-link/1",
+  "title": "通行證與居住證關聯查詢結果",
+  "opaqueImages": [],
+  "fields": [
+    { "claim": "residentOf", "label": "居民身分", "before": ["    经系统核验，"], "after": ["居民，姓名:"], "normalize": "clause" },
+    { "claim": "name", "label": "姓名", "before": ["居民，姓名:"], "after": ["，性别:"], "normalize": "clause" },
+    { "claim": "gender", "label": "性別", "before": ["，性别:"], "after": ["，出"], "normalize": "clause" },
+    { "claim": "birthDate", "label": "出生日期", "before": ["生日期:"], "after": ["    台湾居民来往大陆通行证号码："], "normalize": "date" },
+    { "claim": "travelPermitNumber", "label": "台灣居民來往大陸通行證號碼", "before": ["    台湾居民来往大陆通行证号码："], "after": ["，有效期至："], "normalize": "compact" },
+    { "claim": "travelPermitValidUntil", "label": "通行證有效期至", "before": ["，有效期至："], "after": ["    台湾居民居住证号码："], "normalize": "date" }
+  ]
+}
