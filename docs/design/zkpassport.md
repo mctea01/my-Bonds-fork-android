@@ -127,7 +127,7 @@ zkPassport 的證明要用它發佈的 vkey 與相同 bb 版本驗證；本專�
 - 升級後 zkPassport 的證明與 zkPDF 共用同一個 bb 與同一份 SRS；zkPassport 需要的 Noir 執行（witness 產生）也與 zkPDF 共用 acvm。
 - 附帶好處：`build_bb.py` 目前因 v2.1.9 的 POSIX 依賴而不支援 Windows，v6 是否改善要在升級時確認【推論】。
 
-時間點有兩種，見第 8 節第 7 項：在 P4 收尾前（M4b 正式範圍凍結前）升級，zkPDF 的正式資產只發佈一次；或 P4 完成後作為 zkPassport 的第一步（Z0），zkPDF 資產要再發佈一次。
+時間點：在 P4 收尾前（M4b 正式範圍凍結前）由 P4 升級，zkPDF 的正式資產只發佈一次（第 8 節第 8 項）。
 
 不採用的做法：兩套 bb 並存（每個 ABI 多約 15 MB，且兩套靜態 C++ 可能符號衝突）；只用 zkPassport 的查驗 API（違反盡量不依賴伺服器與隱私原則，只當可選退回）。
 
@@ -236,9 +236,9 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 | 5 | NFC 實作 | Kotlin 自行實作 BAC／PACE；JMRTD（LGPL-3.0）只作測試對照 |
 | 6 | bridge nonce 問題 | 向 zkPassport 回報，經 GitHub 私密漏洞回報（`zkpassport-packages` 的 Security 頁），由使用者送出 |
 | 7 | OPRF 與 FaceMatch | 仍要完成，改用本專案的值，私密值以 secret 保存（5.5） |
-| 8 | bb 版本 | 升級到 v6.0.0，全專案只留一套（4.2）；升級時間點待定 |
+| 8 | bb 版本 | 升級到 v6.0.0，全專案只留一套（4.2），在 P4 收尾前（M4b 正式範圍凍結前）由 P4 完成 |
 
-建議的順序：Z0 bb 升級（若不在 P4 內完成）、Z1、Z2、Z4、5.5、Z3。
+順序：（P4 內完成 bb 升級）Z1、Z2、Z4、5.5、Z3。
 
 ## 9. 參考
 
