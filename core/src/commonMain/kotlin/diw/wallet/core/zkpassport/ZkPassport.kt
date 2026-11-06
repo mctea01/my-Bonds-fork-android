@@ -130,6 +130,9 @@ object ZkPassport {
     const val SDK_VERSION = "0.19.3"
     const val MAINNET = 1L
     const val SEPOLIA = 11155111L
+    /** Built-in public Ethereum nodes the registries are read from when the user has not set their own. */
+    const val MAINNET_RPC = "https://ethereum-rpc.publicnode.com"
+    const val SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com"
 
     fun chain(devMode: Boolean): Long = if (devMode) SEPOLIA else MAINNET
 
