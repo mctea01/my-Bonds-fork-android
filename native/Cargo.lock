@@ -3435,7 +3435,7 @@ dependencies = [
  "circom-witnesscalc",
  "ecdsa-spartan2",
  "ff 0.13.1",
- "num-bigint 0.4.8",
+ "num-bigint 0.5.1",
  "num-traits",
  "p256 0.13.2",
  "rand_core 0.6.4",
