@@ -192,12 +192,13 @@ fun UseTab(model: WalletModel, scan: ScanActions) {
         SectionTitle("臨櫃出示")
         Text("出示證件後，由服務方系統產生條碼，給店員或機台掃描。", style = MaterialTheme.typography.bodySmall)
         when {
+            !model.legal.enabled(diw.wallet.app.legal.Integration.TWDIW) -> IntegrationOffRow(model, diw.wallet.app.legal.Integration.TWDIW, "臨櫃服務")
             error != null -> InlineError(error!!) { model.taiwan.loadServices() }
             services == null -> CircularProgressIndicator(Modifier.size(24.dp))
             services!!.isEmpty() -> Text("目前沒有臨櫃服務。", style = MaterialTheme.typography.bodySmall)
             else -> services!!.forEach { s ->
                 ActionRow(WalletIcons.Store, s.name, if (docs.isEmpty()) "先加入證件才能出示" else "出示證件後顯示條碼", enabled = docs.isNotEmpty()) {
-                    model.taiwan.startPickup(s)
+                    model.withTwdiwNotice { model.taiwan.startPickup(s) }
                 }
             }
         }

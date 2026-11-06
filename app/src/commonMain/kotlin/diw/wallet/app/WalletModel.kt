@@ -84,7 +84,9 @@ import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.trust.UserDidTrust
 import diw.wallet.core.trust.UserTrustedDid
 import diw.wallet.core.util.DiwJson
+import diw.wallet.app.legal.Integration
 import diw.wallet.core.util.ProtocolException
+import diw.wallet.core.util.hostOf
 import diw.wallet.core.util.isAcceptableEndpoint
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
@@ -244,6 +246,7 @@ enum class SettingsSection(val title: String) {
     INTEROP("互通"),
     DEVELOPER("開發者與測試"),
     GENERAL("顯示"),
+    LEGAL(diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION),
     ABOUT("關於"),
 }
 
@@ -299,6 +302,13 @@ sealed class Screen {
      * in, or null for every file outside a container; [next] are further documents of the same import.
      */
     data class OfficialBundle(val mainId: String, val only: List<String>?, val next: List<String> = emptyList()) : Screen()
+    /** The terms, the privacy policy or a statement (LegalDocument.id), opened from the legal settings. */
+    data class LegalText(val documentId: String) : Screen()
+    /**
+     * An integration statement with the holder's decision; [pendingUri] is the link that needed the integration, opened
+     * once the holder agrees.
+     */
+    data class IntegrationStatement(val integration: Integration, val pendingUri: String? = null) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -461,13 +471,17 @@ class WalletModel(val platform: PlatformServices) {
      * Domains. The user's own decision comes before Linked Domains, so a link that cannot be fetched or verified does
      * not override a DID the user chose to trust.
      */
-    val didTrust: DidTrust get() = DidTrust(twdiwTrustLists + listOf(userDids, linkedDomains))
+    val didTrust: DidTrust
+        get() = DidTrust((if (legal.enabled(Integration.TWDIW)) twdiwTrustLists else emptyList()) + listOf(userDids, linkedDomains))
     val twdiwServices: TwdiwServices get() = TwdiwServices(http, twdiwTrustFor(twdiwPlatform), twdiwPlatform)
     /** One instance, so custom field values attached before a response reach the response. */
     val twdiwPresentation = TwdiwPresentationDialect { did, host ->
+        if (!legal.enabled(Integration.TWDIW)) return@TwdiwPresentationDialect null
         twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.hostRegistered(did, host) }.getOrNull() }
     }
     private val msPresentation = MsVerifiedIdPresentationDialect()
+    /** Consent to the terms, the privacy policy and the integration statements. */
+    val legal = LegalModel(this)
     fun didResolver() = DidResolver(http, environmentPolicy.insecureLoopbackAllowed)
 
     val taiwan = TaiwanModel(this)
@@ -515,6 +529,7 @@ class WalletModel(val platform: PlatformServices) {
     suspend fun init() {
         storage = platform.openStorage()
         settingsFlow.value = loadSettings()
+        legal.load(storage)
         loadLearnedLabels()
         backends = platform.keyBackends(storage) { reason -> operationPin(reason) }
         val repo = SecureAreaRepository.Builder().apply { backends.map { it.secureArea }.distinct().forEach { add(it) } }.build()
@@ -551,10 +566,14 @@ class WalletModel(val platform: PlatformServices) {
         documents.value = documentStore.listDocuments()
         files.reconcileDerived(documents.value.map { it.identifier }.toSet())
         ready.value = true
-        status.refreshDue()
-        trustLists.refreshDue()
-        zkTemplates.refreshDue()
-        refreshMdocTrustLists(quiet = true)
+        // Nothing is fetched before the holder has accepted the terms and decided on every statement.
+        scope.launch {
+            legal.awaitComplete()
+            status.refreshDue()
+            trustLists.refreshDue()
+            zkTemplates.refreshDue()
+            refreshMdocTrustLists(quiet = true)
+        }
     }
 
     // ---------------------------------------------------------------- settings
@@ -786,6 +805,9 @@ class WalletModel(val platform: PlatformServices) {
             Screen.DocumentSources -> showTab(HomeTab.FILES)
             is Screen.Portal -> screen.value = Screen.DocumentSources
             is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
+            is Screen.LegalText -> screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
+            is Screen.IntegrationStatement ->
+                screen.value = if (s.pendingUri != null) Screen.Home else Screen.SettingsPage(SettingsSection.LEGAL)
         }
         return true
     }
@@ -1026,6 +1048,14 @@ class WalletModel(val platform: PlatformServices) {
 
     fun handleUri(uri: String) {
         val u = uri.trim()
+        // Links that arrive during the first-start pages wait until the holder has decided on every text.
+        if (!legal.complete) {
+            scope.launch {
+                legal.awaitComplete()
+                handleUri(u)
+            }
+            return
+        }
         val scheme = u.substringBefore(':').lowercase()
         if (ms.isLoginRedirect(u)) {
             ms.completeLogin(u)
@@ -1066,6 +1096,14 @@ class WalletModel(val platform: PlatformServices) {
             else taiwan.ageVerifier.acceptFrame(u).progress?.let { message.value = it }
             return
         }
+        blockedIntegration(u)?.let { i ->
+            screen.value = Screen.IntegrationStatement(i, pendingUri = u)
+            return
+        }
+        if (namesTwdiw(u) && !legal.noticed(Integration.TWDIW)) {
+            withTwdiwNotice { handleUri(u) }
+            return
+        }
         when (val entry = TwdiwEntryParser.parse(u)) {
             is TwdiwEntry.Offer -> return startIssuance(entry.uri, TwdiwEntry.ENTRY_HINT)
             is TwdiwEntry.Presentation -> return startPresentation(entry.uri, TwdiwEntry.ENTRY_HINT)
@@ -1083,6 +1121,52 @@ class WalletModel(val platform: PlatformServices) {
             else -> message.value = "無法辨識的連結"
         }
     }
+
+    /**
+     * The switched-off integration [uri] needs: TWDIW entry points and links naming a wallet.gov.tw address, or a
+     * Verified ID openid-vc request. Null when nothing blocks it.
+     */
+    fun blockedIntegration(uri: String): Integration? {
+        val u = uri.trim()
+        if (!legal.enabled(Integration.TWDIW) && namesTwdiw(u)) return Integration.TWDIW
+        if (!legal.enabled(Integration.MS_VERIFIED_ID) && u.substringBefore(':').lowercase() == "openid-vc") return Integration.MS_VERIFIED_ID
+        return null
+    }
+
+    /** [uri] is a TWDIW entry point or names a wallet.gov.tw address. */
+    private fun namesTwdiw(uri: String): Boolean = TwdiwEntryParser.parse(uri) != null || LegalModel.namesTwdiwHost(uri)
+
+    /** The one-time reminder shown before the first request the holder starts with an integration, and what follows it. */
+    class IntegrationNotice(val integration: Integration, val proceed: () -> Unit)
+
+    val integrationNotice = MutableStateFlow<IntegrationNotice?>(null)
+
+    /**
+     * Runs [action], first showing once that TWDIW is reached through a compatible, unofficial flow (the TWDIW
+     * statement asks for this reminder before the first request). Background refreshes do not wait for it.
+     */
+    fun withTwdiwNotice(action: () -> Unit) {
+        if (!legal.enabled(Integration.TWDIW) || legal.noticed(Integration.TWDIW)) action()
+        else integrationNotice.value = IntegrationNotice(Integration.TWDIW, action)
+    }
+
+    /** The holder read the reminder and goes on. */
+    fun continueNotice() {
+        val n = integrationNotice.value ?: return
+        integrationNotice.value = null
+        scope.launch {
+            legal.acknowledge(n.integration).join()
+            n.proceed()
+        }
+    }
+
+    /** Fails with the reason when [integration] is off; used where the address is known only after resolving. */
+    private fun requireIntegration(integration: Integration, needed: Boolean) {
+        if (needed && !legal.enabled(integration)) throw IntegrationDisabledException(integration, legal.disabledMessage(integration))
+    }
+
+    private fun requireTwdiwAllowed(url: String?) =
+        requireIntegration(Integration.TWDIW, url != null && runCatching { TwdiwDialect.isTwdiwHost(hostOf(url)) }.getOrDefault(false))
 
     /** openid-vc: a Verified ID issuance request (prompt=create) or a presentation request. */
     private fun startVerifiedId(uri: String) {
@@ -1108,17 +1192,18 @@ class WalletModel(val platform: PlatformServices) {
         holderIdentities = holderIdentities,
         didTrust = didTrust,
         federationAnchors = { activeFederationAnchors() },
+        checkIssuer = { requireTwdiwAllowed(it) },
     )
 
     /**
-     * Always on: each dialect only takes sessions it owns (TWDIW hosts or entry, draft 11/13 metadata); the EUDI
+     * TWDIW only while its statement is accepted, the others always: each dialect only takes sessions it owns (TWDIW hosts or entry, draft 11/13 metadata); the EUDI
      * dialect only answers an authorization response iss below the authorization server's own issuer.
      */
     private fun issuanceDialects() = environmentPolicy.insecureLoopbackAllowed.let { loopback ->
-        listOf(
+        listOfNotNull(
             TwdiwDialect(http, loopback, clientId = { settings.twdiwClientId }, appIdentity = { twdiwAppIdentity() }, registeredIssuerTrust = { url ->
                 twdiwTrustLists.firstNotNullOfOrNull { runCatching { it.issuerDecision(url) }.getOrNull() }
-            }, applicationKey = { twdiwApplicationKey }),
+            }, applicationKey = { twdiwApplicationKey }).takeIf { legal.enabled(Integration.TWDIW) },
             Draft13Dialect(http, loopback), Draft11Dialect(), EudiDialect(),
         )
     }
@@ -1208,8 +1293,10 @@ class WalletModel(val platform: PlatformServices) {
         screen.value = Screen.Issuance
         scope.launch {
             try {
+                blockedIntegration(uri)?.let { throw IntegrationDisabledException(it, legal.disabledMessage(it)) }
                 val c = oid4vci()
                 val session = c.startFromOffer(uri, entryHint)
+                requireTwdiwAllowed(session.issuer.credentialIssuer)
                 issuanceSession = session
                 learnLabels(session.issuer.configurations.values)
                 val issuerName = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
@@ -1236,6 +1323,7 @@ class WalletModel(val platform: PlatformServices) {
         screen.value = Screen.Issuance
         scope.launch {
             try {
+                requireTwdiwAllowed(url)
                 val c = oid4vci()
                 val base = url.substringBefore('?').substringBefore('#')
                 val root = base.trimEnd('/')
@@ -1307,7 +1395,7 @@ class WalletModel(val platform: PlatformServices) {
      * after a short grace period for a redirect that is on its way, the wait ends instead of spinning forever.
      */
     fun onAppResumed() {
-        if (ready.value) status.refreshDue()
+        if (ready.value && legal.complete) status.refreshDue()
         if (!leftForBrowser) return
         leftForBrowser = false
         val waiting = issuance.value as? IssuanceUi.WaitingForBrowser ?: return
@@ -1415,7 +1503,7 @@ class WalletModel(val platform: PlatformServices) {
         http, trust, source, environmentPolicy, PresentationPolicy(),
         holderIdentities = holderIdentities,
         didTrust = didTrust,
-        dialects = listOf(twdiwPresentation, msPresentation),
+        dialects = listOfNotNull(twdiwPresentation, msPresentation.takeIf { legal.enabled(Integration.MS_VERIFIED_ID) }),
         moicaCards = { heldMoicaCards() },
         moicaHolder = { holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED) },
         derivedSources = { files.holderDerivedSources() },
@@ -1436,8 +1524,10 @@ class WalletModel(val platform: PlatformServices) {
         screen.value = Screen.Presentation
         scope.launch {
             try {
+                blockedIntegration(uri)?.let { throw IntegrationDisabledException(it, legal.disabledMessage(it)) }
                 val h = holder()
                 val request = h.resolveUri(uri, entryHint)
+                requireTwdiwAllowed(request.target)
                 offline?.let { twdiwServices.checkOfflineRequest(it, request) }
                 presentation.value = consentFor(h.prepare(request), fields, offline)
             } catch (e: Exception) {
@@ -1486,11 +1576,14 @@ class WalletModel(val platform: PlatformServices) {
         origin: String,
         selectedDocumentIds: List<String> = emptyList(),
     ): JsonObject? {
+        legal.awaitComplete()
         val done = startDcApi()
         try {
             val h = holder()
             val preselected = resolveSelectedDocuments(selectedDocumentIds)
-            presentation.value = consentFor(h.prepare(h.resolveDcApi(protocol, data, origin)), preselected = preselected)
+            val request = h.resolveDcApi(protocol, data, origin)
+            requireTwdiwAllowed(request.target)
+            presentation.value = consentFor(h.prepare(request), preselected = preselected)
         } catch (e: Exception) {
             dcApiError = Oid4vpHolder.dcApiError(data, e)
             presentation.value = PresentationUi.Failed(describe(e))
@@ -1513,6 +1606,7 @@ class WalletModel(val platform: PlatformServices) {
      * the usual review and issuance screens; returns true when the user leaves them with a credential saved.
      */
     suspend fun receiveDcApi(data: JsonObject, origin: String): Boolean {
+        legal.awaitComplete()
         startIssuance(dcApiOfferUri(data), requestedBy = origin)
         screen.first { it != Screen.Issuance }
         return (issuance.value as? IssuanceUi.Done)?.results?.isNotEmpty() == true

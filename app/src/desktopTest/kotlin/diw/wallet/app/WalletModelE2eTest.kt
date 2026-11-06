@@ -142,6 +142,7 @@ class WalletModelE2eTest {
             m.pinRequest.collect { r -> if (r != null) { p.pinPrompts++; r.result.complete(pin) } }
         }
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(testEnvironment = true, allowLoopbackHttp = true, testServerUrl = base) }.join()
         m.importTestAnchors().join()
         return m to p
@@ -155,6 +156,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(testEnvironment = true, testServerUrl = "https://issuer.multipaz.org") }.join()
         m.importTestAnchors().join()
         val text = m.message.value
@@ -171,6 +173,7 @@ class WalletModelE2eTest {
             val m = WalletModel(p)
             p.model = m
             m.init()
+            m.legal.acceptAll()
             withTimeout(60.seconds) {
                 m.handleUri(host)
                 val r = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
@@ -553,6 +556,7 @@ class WalletModelE2eTest {
         // A restart reads the stored results.
         val again = WalletModel(TestPlatform(storage))
         again.init()
+        again.legal.acceptAll()
         assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, again.statuses.value.getValue(id).status.state)
     }
 
@@ -945,6 +949,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         val before = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
         assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
         m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
@@ -1006,6 +1011,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = "token-for-the-host-0123") }.join()
         val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
@@ -1084,6 +1090,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = token) }.join()
         assertEquals(token, m.server.tokenFor("https://$host/"))
         assertNull(m.server.tokenFor("https://other.example.org"))
@@ -1815,6 +1822,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.files.import(PickedFile("degree.opencert", cert), FileOrigin.IMPORTED, null).join()
         assertNull(m.files.error.value, "import: ${m.files.error.value}")
         val stored = m.files.files.value.single()
@@ -2055,6 +2063,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         val service = diw.wallet.core.document.sign.CscService(
             "mock", "Mock", "https://qtsp.example/csc/v2", "wallet-client", "secret", "rqes://oauth/callback",
             diw.wallet.core.document.sign.CscEnvironment.TEST,
@@ -2085,6 +2094,7 @@ class WalletModelE2eTest {
     private suspend fun serverWallet(own: String?, policy: ServerPolicy): WalletModel {
         val m = WalletModel(TestPlatform(EphemeralStorage()))
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(zkVerifierUrl = own.orEmpty(), serverPolicy = policy.id) }.join()
         return m
     }
@@ -2438,5 +2448,145 @@ class WalletModelE2eTest {
 
         templates.clearTestPages()
         withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
+    }
+
+    /**
+     * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
+     * decisions survive a restart.
+     */
+    @Test
+    fun legalConsentGatesLinksAndIntegrations() = runBlocking<Unit> {
+        val storage = EphemeralStorage()
+        val p = TestPlatform(storage)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        assertFalse(m.legal.complete)
+        m.handleUri("not a link")
+        delay(300)
+        assertNull(m.message.value, "nothing is handled before the holder has decided")
+
+        m.legal.acceptBasics().join()
+        assertFalse(m.legal.complete, "the statements are still undecided")
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        assertTrue(m.legal.complete, "the reserved zkPassport statement is not asked for yet")
+        withTimeout(5.seconds) { m.message.first { it == "無法辨識的連結" } }
+
+        val twdiw = diw.wallet.app.legal.Integration.TWDIW
+        assertEquals(twdiw, m.blockedIntegration("modadigitalwallet://credential_offer?credential_offer_uri=https%3A%2F%2Fissuer.wallet.gov.tw%2Fo"))
+        assertEquals(twdiw, m.blockedIntegration("openid-credential-offer://?credential_offer_uri=https%253A%252F%252Fissuer-vc.wallet.gov.tw%252Fo"))
+        assertEquals(twdiw, m.blockedIntegration("""openid-credential-offer://?credential_offer={"credential_issuer":"https:\/\/x.wallet.gov.tw"}"""))
+        assertEquals(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, m.blockedIntegration("openid-vc://?request_uri=https://example.com/r"))
+        assertNull(m.blockedIntegration("openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example.com%2Fo"))
+        assertNull(m.blockedIntegration("openid4vp://?client_id=x&request_uri=https%3A%2F%2Fwallet.gov.tw.example.com%2Fr"))
+
+        val link = "modadigitalwallet://authorize?request_uri=https%3A%2F%2Fverifier.wallet.gov.tw%2Fr"
+        m.handleUri(link)
+        assertEquals(Screen.IntegrationStatement(twdiw, pendingUri = link), m.screen.value)
+        m.screen.value = Screen.Home
+        m.taiwan.loadServices()
+        assertNull(m.taiwan.cardServices.value, "the TWDIW catalogue is not fetched")
+
+        val again = WalletModel(TestPlatform(storage).also { it.model = m })
+        again.init()
+        assertTrue(again.legal.complete)
+        assertFalse(again.legal.enabled(twdiw))
+        assertTrue(again.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA))
+        again.legal.decide(twdiw, true).join()
+        assertNull(again.blockedIntegration(link))
+
+        // The first TWDIW request the holder starts waits for the one-time reminder; cancelling leaves it undone.
+        again.handleUri(link)
+        assertEquals(twdiw, again.integrationNotice.value?.integration)
+        assertEquals(Screen.Home, again.screen.value)
+        again.integrationNotice.value = null
+        var ran = 0
+        again.withTwdiwNotice { ran++ }
+        assertEquals(0, ran)
+        again.continueNotice()
+        withTimeout(5.seconds) { while (ran == 0) delay(20) }
+        assertTrue(again.legal.noticed(twdiw))
+        again.withTwdiwNotice { ran++ }
+        assertEquals(2, ran, "the reminder is shown once")
+    }
+
+    /** An offer fetched from elsewhere that names a TWDIW issuer stops before anything is asked of wallet.gov.tw. */
+    @Test
+    fun declinedTwdiwBlocksIndirectOffers() = runBlocking<Unit> {
+        val hosts = java.util.Collections.synchronizedList(ArrayList<String>())
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            hosts.add(request.url.host)
+            if (request.url.host == "offers.example.com") {
+                val offer = buildJsonObject {
+                    put("credential_issuer", "https://issuer.wallet.gov.tw")
+                    put("credential_configuration_ids", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("card"))))
+                    put("grants", buildJsonObject {
+                        put("urn:ietf:params:oauth:grant-type:pre-authorized_code", buildJsonObject { put("pre-authorized_code", "c") })
+                    })
+                }
+                respond(offer.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            } else respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.handleUri("openid-credential-offer://?credential_offer_uri=https%3A%2F%2Foffers.example.com%2Fo")
+        val r = withTimeout(10.seconds) { m.issuance.first { it is IssuanceUi.Failed || it is IssuanceUi.Review } }
+        assertIs<IssuanceUi.Failed>(r)
+        assertTrue("數位憑證皮夾" in r.message, r.message)
+        assertTrue(hosts.none { it.endsWith("wallet.gov.tw") }, "contacted: $hosts")
+    }
+
+    /** Renders the first-start pages and the legal settings for review; DIW_SCREENSHOTS names the output folder. */
+    @Test
+    fun legalScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        val p = TestPlatform(EphemeralStorage())
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+
+        fun shot(name: String, height: Int = 892, content: @androidx.compose.runtime.Composable () -> Unit) {
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f), content = content)
+            try {
+                var image = scene.render(0)
+                for (i in 1..8) {
+                    Thread.sleep(100)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+        val app: @androidx.compose.runtime.Composable () -> Unit = { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+
+        shot("legal-01-welcome", content = app)
+        // An earlier version on record skips the welcome page and shows the terms page.
+        m.legal.consent.value = LegalConsent(terms = ConsentRecord(0, true, 0), privacy = ConsentRecord(0, true, 0))
+        shot("legal-02-terms", 1500, app)
+        m.legal.acceptBasics().join()
+        shot("legal-03-statement-twdiw", 2600, app)
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, true).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
+        shot("legal-04-statement-mydata", 2000, app)
+        m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        shot("legal-05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
+        m.screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
+        shot("legal-06-settings", content = app)
+        m.screen.value = Screen.IntegrationStatement(diw.wallet.app.legal.Integration.TWDIW, pendingUri = "modadigitalwallet://authorize?x=1")
+        shot("legal-07-statement-from-link", 2600, app)
+        m.screen.value = Screen.Home
+        m.tab.value = HomeTab.USE
+        shot("legal-08-use-twdiw-off", content = app)
     }
 }

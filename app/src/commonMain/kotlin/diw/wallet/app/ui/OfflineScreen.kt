@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -40,6 +41,7 @@ import diw.wallet.app.Screen
 import diw.wallet.app.OfflineUi
 import diw.wallet.app.StatusTexts
 import diw.wallet.app.WalletModel
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.profile.bonds.BondsOfflinePresentation
 import diw.wallet.core.status.RiskLevel
@@ -149,6 +151,7 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
                 Text("挑戰建立時間：${s.request.createdAt}", style = MaterialTheme.typography.bodySmall)
                 Text("Bonds 的查驗挑戰沒有查驗方簽章，無法確認對方身分；請確認用途與眼前的對象相符再出示。",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Text(LegalStrings.BONDS_UNENCRYPTED_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
         Text("選擇憑證", style = MaterialTheme.typography.titleSmall)
@@ -202,6 +205,7 @@ internal fun bondsSourceLabel(source: BondsCredentialSource): String = when (sou
 private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
     var index by remember(s.frames) { mutableStateOf(0) }
     var paused by remember(s.frames) { mutableStateOf(false) }
+    var confirmLink by remember(s.frames) { mutableStateOf(false) }
     val left = secondsLeft(s.expiresAt)
     LaunchedEffect(s.frames, paused) {
         while (!paused && s.frames.size > 1) {
@@ -229,7 +233,7 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
         }
         val link = model.platform.bondsLink
         if (s.request.linkServiceId != null && link != null && left > 0) {
-            OutlinedButton(onClick = { model.taiwan.sendOverLink(s) }) {
+            OutlinedButton(onClick = { confirmLink = true }) {
                 Icon(WalletIcons.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text(" 改用藍牙傳送")
             }
@@ -238,6 +242,15 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
         Text("出示內容以本機的持有者金鑰簽章，綁定查驗方的挑戰與用途，無法轉用於其他查驗。", style = MaterialTheme.typography.bodySmall)
         TechDetails(s.details, "frames-${s.request.challenge}")
         Button(onClick = { model.back() }) { Text("完成") }
+    }
+    if (confirmLink) {
+        AlertDialog(
+            onDismissRequest = { confirmLink = false },
+            title = { Text(LegalStrings.BONDS_LINK_TITLE) },
+            text = { Text(LegalStrings.BONDS_UNENCRYPTED_WARNING) },
+            confirmButton = { TextButton(onClick = { confirmLink = false; model.taiwan.sendOverLink(s) }) { Text(LegalStrings.BONDS_LINK_SEND) } },
+            dismissButton = { TextButton(onClick = { confirmLink = false }) { Text(LegalStrings.CANCEL) } },
+        )
     }
 }
 

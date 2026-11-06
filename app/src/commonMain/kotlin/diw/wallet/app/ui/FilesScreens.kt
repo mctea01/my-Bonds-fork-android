@@ -85,6 +85,7 @@ import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.MobileMoicaSp
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
 import diw.wallet.app.StoredFile
@@ -245,7 +246,8 @@ fun DocumentSourcesScreen(model: WalletModel) {
             style = MaterialTheme.typography.bodySmall,
         )
         SectionTitle("MyData")
-        DocumentSources.myData.forEach { src ->
+        if (!model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA)
+        else DocumentSources.myData.forEach { src ->
             ActionRow(if (src.nationalId) WalletIcons.Person else WalletIcons.Government, src.name, src.detail) { open(src) }
         }
         SectionTitle("其他來源")
@@ -981,7 +983,8 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             }
         }
         SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
-        SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
+        SignerKind.MOBILE -> if (model.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA)) MobileMoicaPicker(model) { other = it; update() }
+            else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
@@ -1149,7 +1152,7 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     serverNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (source == null) {
         if (configured != null && serverSp == null) return
-        Text("沒有可用的行動自然人憑證服務提供者（SP）帳號：在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；持有 SP 授權的開發者也可在設定開啟「手動輸入 SP 帳號」。",
+        Text(LegalStrings.MOICA_SP_NOT_CONFIGURED + "可在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；依法持有 SP 授權者可在「設定 > 開發者與測試」開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
@@ -1167,8 +1170,8 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
         )
         MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
         MobileMoicaSource.MANUAL -> {
-            Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
-                style = MaterialTheme.typography.bodySmall)
+            Text("開發者選項：以你依法有權使用的 SP 帳號簽署，不得輸入未經授權取得的帳號或金鑰。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。" +
+                LegalStrings.MOICA_SP_PROVIDER_UNKNOWN, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
             }
@@ -1180,6 +1183,15 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
             )
         }
         null -> Unit
+    }
+    val environment = when (source) {
+        MobileMoicaSource.SERVER -> serverEnvironment
+        MobileMoicaSource.BUILT_IN -> builtIn?.environment
+        MobileMoicaSource.MANUAL -> env
+        null -> null
+    }
+    if (environment == MobileMoicaEnvironment.UAT) {
+        Text(LegalStrings.MOICA_SP_ENV_TEST, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -2372,6 +2384,10 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
 @Composable
 fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
     val src = DocumentSources.byId(screen.sourceId) ?: return
+    if (src.myData && !model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) {
+        Column(Modifier.padding(16.dp)) { IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA) }
+        return
+    }
     val busy by model.files.busy.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
