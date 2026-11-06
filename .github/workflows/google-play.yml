@@ -1,0 +1,124 @@
+name: Google Play
+
+# Uploads the release App Bundle of a GitHub release (the "nightly" pre-release by default) to Google Play, with its
+# R8 mapping and the release notes in distribution/whatsnew. A manual run picks the track and status. With the
+# repository variable PLAY_AUTO_TRACK set (for example internal), every successful CI run of a push to main also
+# uploads its nightly there. The first bundle of the app is uploaded by hand in Play Console. Setup: docs/google-play.md.
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Play track (alpha is closed testing, beta is open testing)
+        type: choice
+        options: [internal, alpha, beta, production]
+        default: internal
+      status:
+        description: Release status (an app that was never published accepts only draft)
+        type: choice
+        options: [draft, completed, inProgress]
+        default: draft
+      user_fraction:
+        description: Staged rollout fraction for inProgress, between 0 and 1 (for example 0.1)
+        required: false
+      tag:
+        description: GitHub release that holds the App Bundle
+        default: nightly
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One upload at a time. A waiting run is not cancelled, so a version is never skipped by accident.
+concurrency:
+  group: google-play
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PLAY_AUTO_TRACK != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The secret can live on this environment, and its protection rules (required reviewers) gate every upload.
+    environment: google-play
+    env:
+      PLAY_PACKAGE: diw.wallet.app
+      TAG: ${{ inputs.tag || 'nightly' }}
+      TRACK: ${{ inputs.track || vars.PLAY_AUTO_TRACK }}
+      STATUS: ${{ inputs.status || vars.PLAY_AUTO_STATUS || 'draft' }}
+      USER_FRACTION: ${{ inputs.user_fraction }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: distribution
+      - name: Check settings
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$PLAY_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::error::Secret PLAY_SERVICE_ACCOUNT_JSON is not set (docs/google-play.md)"
+            exit 1
+          fi
+          if ! printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["type"]=="service_account" and d["client_email"]' 2> /dev/null; then
+            echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not the JSON key of a service account"
+            exit 1
+          fi
+          case "$STATUS" in
+            inProgress)
+              if [ -z "$USER_FRACTION" ]; then echo "::error::Status inProgress needs user_fraction"; exit 1; fi ;;
+            draft|completed)
+              echo "USER_FRACTION=" >> "$GITHUB_ENV" ;;
+            *)
+              echo "::error::Unknown status $STATUS (PLAY_AUTO_STATUS takes draft or completed)"; exit 1 ;;
+          esac
+          echo "Track $TRACK, status $STATUS, release $TAG"
+      - name: Release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          # After a CI run, upload only the nightly that this run published; a newer push may already have replaced it.
+          if [ -n "$RUN_SHA" ]; then
+            target=$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)
+            if [ "$target" != "$RUN_SHA" ]; then
+              echo "::notice::Release $TAG is at $target, not at $RUN_SHA of this CI run: nothing uploaded"
+              echo "SKIP=1" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          fi
+          mkdir -p dist
+          gh release download "$TAG" --dir dist --pattern 'DIW-MY-WALLET-*.aab' --pattern 'DIW-MY-WALLET-*-mapping.txt'
+          rm -f dist/*-debug.aab
+          ls -l dist
+          set -- dist/*.aab
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::Release $TAG needs exactly one release .aab (DIW-MY-WALLET-<version>.aab)"
+            exit 1
+          fi
+          version=$(basename "$1" .aab)
+          version=${version#DIW-MY-WALLET-}
+          echo "AAB=$1" >> "$GITHUB_ENV"
+          echo "RELEASE_NAME=$version" >> "$GITHUB_ENV"
+          if [ -f "dist/DIW-MY-WALLET-$version-mapping.txt" ]; then
+            echo "MAPPING=dist/DIW-MY-WALLET-$version-mapping.txt" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No R8 mapping in release $TAG: crash reports in Play Console stay obfuscated"
+          fi
+      - name: Upload to Google Play
+        if: env.SKIP != '1'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PLAY_PACKAGE }}
+          releaseFiles: ${{ env.AAB }}
+          releaseName: ${{ env.RELEASE_NAME }}
+          tracks: ${{ env.TRACK }}
+          status: ${{ env.STATUS }}
+          userFraction: ${{ env.USER_FRACTION }}
+          mappingFile: ${{ env.MAPPING }}
+          whatsNewDirectory: distribution/whatsnew

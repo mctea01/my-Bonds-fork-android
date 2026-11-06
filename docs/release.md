@@ -6,12 +6,14 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 |---|---|
 | `DIW-MY-WALLET-<版本>.apk` | Android release 版：R8 縮減與最佳化，網路安全設定只允許本機與模擬器主機的 HTTP |
 | `DIW-MY-WALLET-<版本>-debug.apk` | Android debug 版：未最佳化，允許區網測試伺服器的 HTTP |
+| `DIW-MY-WALLET-<版本>.aab`、`DIW-MY-WALLET-<版本>-debug.aab` | release／debug App Bundle，供 Google Play 或 bundletool 使用，不能直接安裝 |
+| `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄（套用 `diw-wallet/play/` 的 CI 修改後才有） |
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
 | `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
-本次提交不修改 `.github/workflows/`。AAB 已可在本機建置；CI 的 TWDIW secrets 注入、AAB 建置與上傳仍待手動套用 workflow。套用後可另發佈 `DIW-MY-WALLET-<版本>.aab` 與 `DIW-MY-WALLET-<版本>-debug.aab`，分別為 release／debug App Bundle。
+Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 nightly 取 AAB 上傳）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
 
 每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android 與 Linux 另連結 zkPDF（Barretenberg 6.0.0，`openac,tlsn,zkpdf`），Windows 暫不支援、macOS 尚未建置。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
@@ -116,16 +118,14 @@ APK 與 AAB 一起建置：
 
 兩值須同時提供；只填一個、格式錯誤、曲線不是 P-256，或簽署／驗簽證明不匹配時，建置失敗，不會悄悄改用隨機金鑰。建置只記錄來源及公鑰文字指紋，不輸出私鑰。產生的 Kotlin source 位於 `app/build/generated/twdiwApplicationKey/kotlin/`；POSIX 系統下 state 與 source 權限為 0600，不作此任務的 build-cache artifact，也不提交或額外上傳 state/source。
 
-目前提交的 workflow 尚未注入這兩個 secrets，因此僅在 GitHub 設定 secrets 尚不會生效，CI 仍會產生測試配對。手動套用 workflow 時，應只在 push 建置注入；PR 建置使用自己的生成測試配對。Android debug／release 的 APK／AAB 及桌面包都支援相同環境輸入。未使用的兩個 GitHub secrets 可以保持不存在，不必手動填空字串。
-
-要啟用 CI secrets，手動在 `build` 與 `desktop` job 的既有 `env` 加入：
+CI 的 `build` 與 `desktop` job 只在 push 建置注入這兩個 secrets；PR 建置使用自己的生成測試配對。Android debug／release 的 APK／AAB 及桌面包都支援相同環境輸入。沒有設定這兩個 GitHub secrets 時 push 建置也產生測試配對，不必手動填空字串。兩個 job 的 `env` 為：
 
 ```yaml
 DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
 DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
 ```
 
-同時將 Android 命令加入對應的 `:app:bundleDebug`／`:app:bundleRelease`，把 `app/build/outputs/bundle/<variant>/app-<variant>.aab` 複製到 `dist`，並在 Android artifact 的 `path` 保留 `dist/*.apk`、加入 `dist/*.aab`。新增的金鑰建置測試可透過 `python3 tools/twdiw/test_generate_application_key.py` 執行。
+Android 建置以 `:app:bundleDebug`／`:app:bundleRelease` 一併產生 AAB 並收進 `android` Artifact。金鑰建置測試可透過 `python3 tools/twdiw/test_generate_application_key.py` 執行。
 
 本機 PowerShell 匯入合法金鑰：
 

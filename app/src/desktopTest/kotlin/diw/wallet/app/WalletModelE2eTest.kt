@@ -464,6 +464,70 @@ class WalletModelE2eTest {
         }
     }
 
+    /**
+     * Google Play phone screenshots (1080 x 1920, 9:16) with fictional test data: DIW_PLAY_SCREENSHOTS names the output
+     * folder (distribution/play/screenshots in the repository). Snackbars are cleared before each shot.
+     */
+    @Test
+    fun playScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_PLAY_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        start()
+        val (m, _) = newWallet()
+        issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
+        m.refreshDocuments().join()
+        withTimeout(30.seconds) { m.statuses.first { it.size >= 2 } }
+
+        fun screen(name: String, s: Screen, tab: HomeTab = HomeTab.DOCUMENTS) {
+            m.tab.value = tab
+            m.screen.value = s
+            m.message.value = null
+            val scene = androidx.compose.ui.ImageComposeScene(1080, 1920, androidx.compose.ui.unit.Density(1080f / 412f)) {
+                diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
+            }
+            try {
+                var image = scene.render(0)
+                for (i in 1..12) {
+                    Thread.sleep(150)
+                    m.message.value = null
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+
+        val text = http.post("$base/verifier/sessions") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("client_id_prefix", "x509_san_dns") }.toString())
+        }.bodyAsText()
+        m.handleUri(DiwJson.parseToJsonElement(text).jsonObject["uri"]!!.jsonPrimitive.content)
+        withTimeout(60.seconds) { m.presentation.first { it is PresentationUi.Consent || it is PresentationUi.Failed } }
+        screen("02-presentation-consent", Screen.Presentation)
+
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.first()
+        screen("04-file-sign", Screen.FileSign(stored.id))
+        m.files.sign(stored, SignerChoice.Wallet("測試使用者"), SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B).join()
+        m.files.import(PickedFile("idPhotoRev.pdf", nationalIdPdf()), FileOrigin.EXTRACTED, null).join()
+        val idFile = m.files.files.value.first { it.name == "idPhotoRev.pdf" }
+        m.files.readNationalId(idFile, "A123456789").join()
+        m.files.issueNationalId(assertNotNull(m.files.nationalIdDraft.value), "簽署中") { rsaSigner("測試人員") }.join()
+        screen("01-documents", Screen.Home, HomeTab.DOCUMENTS)
+        screen("03-files", Screen.Home, HomeTab.FILES)
+
+        m.handleUri(ageRequest("s"))
+        val age = assertIs<OfflineUi.AgeChoose>(withTimeout(10.seconds) { m.taiwan.offline.first { it is OfflineUi.AgeChoose || it is OfflineUi.Failed } })
+        val request = diw.wallet.core.profile.bonds.BondsAgeRequest.create(18, BondsCredentialSource.TWDIW, "年齡確認", "https://age.example.org/api/zkp/response/abc")
+        m.taiwan.offline.value = OfflineUi.AgeChoose(request, age.cards)
+        screen("05-age-proof", Screen.Offline)
+        screen("06-verify", Screen.Home, HomeTab.VERIFY)
+        screen("07-trust-anchors", Screen.TrustAnchors)
+    }
+
     /** Two credentials at once: each opens from the result list, Back returns there, and the details are grouped. */
     @Test
     fun batchIssuanceDetailsAndBackNavigation() = runBlocking<Unit> {

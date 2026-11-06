@@ -13,6 +13,7 @@
 | [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
 | [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
 | [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
+| [design/i18n.md](design/i18n.md) | 多語系規劃：現況字串量、Compose resources 機制、預設語言與 App 內切換、core 訊息代碼化、術語表、分階段工作與檢查 |
 
 ## 研究
 
@@ -66,4 +67,5 @@
 |---|---|
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
 | [release.md](release.md) | CI 發佈的檔案與簽章 secrets |
+| [google-play.md](google-play.md) | Google Play 上架：帳號活動要求、上架前檢查、簽署金鑰選擇、自動提交 workflow、商店資訊、資料安全與內容分級等表單答案 |
 | [../templates/README.md](../templates/README.md) | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |
