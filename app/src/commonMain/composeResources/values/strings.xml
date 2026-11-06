@@ -4268,4 +4268,5 @@
     <string name="zkp_trust_unchecked">Trust: by zkPassport's certificate registry (T3). %1$s</string>
     <string name="zkp_err_certificates">The registry's certificate package could not be downloaded, so the issuing country's CSCA was not compared with this app's anchors.</string>
     <string name="zkp_err_certificates_root">The downloaded certificate package does not hash to the registry root of the proofs, so it was not used.</string>
+    <string name="derive_chip_file">Chip file, %1$d bytes. Lets a verifier repeat passive authentication; it holds the whole zone, so present it only when needed.</string>
 </resources>

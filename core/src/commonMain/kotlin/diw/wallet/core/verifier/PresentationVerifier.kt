@@ -323,7 +323,7 @@ class PresentationVerifier(
         checks += requestedClaims(query, processed)
         sdJwt.validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         sdJwt.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
-        val derived = vct == DerivedCredentials.VCT
+        val derived = DerivedCredentials.isDerived(vct)
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(token.substringBeforeLast('~') + "~").issuerJwt).payload
             DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now).map { e ->
@@ -336,7 +336,7 @@ class PresentationVerifier(
             }
         } else emptyList()
         val technical = setOf("iss", "iat", "nbf", "exp", "vct", "cnf", "status", "_sd_alg", "sub")
-        val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isProofClaim(k))) }
+        val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isTechnicalClaim(k))) }
             .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content ?: v.toString() }
         // A document-derived credential is the holder wallet's own statement (T3); its evidence is what a verifier weighs.
         val trust = if (derived) {

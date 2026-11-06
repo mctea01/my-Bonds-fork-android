@@ -274,6 +274,32 @@ class MrtdTest {
         assertEquals(MrtdDump.decode(dump.encode()), dump)
     }
 
+    /** A passport-derived credential: zone claims, the wallet's statement, and passive authentication repeated from DG1 and SOD. */
+    @Test fun derivedCredentialEvidenceIsRepeatedFromDg1AndSod() = runBlocking {
+        val dump = read(chip())
+        val report = inspect(dump)
+        val claims = diw.wallet.core.document.derived.TravelDocumentFields.claims(dump, 2026)
+        val byName = claims.associate { it.name to it.value }
+        assertEquals("312345678", byName["documentNumber"])
+        assertEquals("CHE CHUAN", byName["givenNames"])
+        assertEquals("1990-01-15", byName["birthDate"])
+        assertEquals("2030-01-01", byName["expiryDate"])
+        val evidence = diw.wallet.core.document.derived.TravelDocumentFields.evidence(report, dump)!!
+        val disclosed = claims.associate { it.name to kotlinx.serialization.json.JsonPrimitive(it.value) as kotlinx.serialization.json.JsonElement }
+        val verify = { d: Map<String, kotlinx.serialization.json.JsonElement>, anchor: Boolean ->
+            runBlocking { diw.wallet.core.document.derived.TravelDocumentFields.verify(evidence, d, trust(anchor), own = false) }
+        }
+        val full = verify(disclosed, true)
+        assertEquals(listOf(Check.PASS, Check.PASS), full.map { it.check }, full.toString())
+        assertEquals(Check.WARN, verify(disclosed, false).first().check)
+        val statementOnly = verify(disclosed.filterKeys { !diw.wallet.core.document.derived.TravelDocumentFields.isRaw(it) }, true)
+        assertEquals(Check.NOT_CHECKED, statementOnly.single().check)
+        val changed = verify(disclosed + ("documentNumber" to kotlinx.serialization.json.JsonPrimitive("999999999")), true)
+        assertEquals(Check.FAIL, changed.last().check)
+        val otherSod = disclosed + ("travelDocumentSod" to kotlinx.serialization.json.JsonPrimitive(java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))))
+        assertEquals(Check.FAIL, verify(otherSod, true).single().check)
+    }
+
     @Test fun bacOnlyChipWithChipAuthenticationVersionOne() {
         val dump = read(chip(paceOid = null, caOid = MrtdOids.CA_ECDH + ".1"))
         assertEquals("BAC", dump.access)

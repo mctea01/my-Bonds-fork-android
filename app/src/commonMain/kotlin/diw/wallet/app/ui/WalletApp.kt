@@ -370,7 +370,7 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
         anchorName = r.anchorName,
         // Credentials derived before the label existed are recognised by their type.
         labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet() +
-            (if (r.vct == DerivedCredentials.VCT) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
+            (if (DerivedCredentials.isDerived(r.vct)) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
         reasons = r.reasons,
     )
 }
@@ -397,11 +397,11 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
         count = creds.size
         val first = creds.firstOrNull()
         // A derived credential's document and evidence objects are shown as checked evidence, not as raw data.
-        val derived = record?.vct == DerivedCredentials.VCT
+        val derived = DerivedCredentials.isDerived(record?.vct)
         // A web query result's source, method and session are shown as where the values came from.
         val web = WebProofCredentials.isWebCredential(record?.vct)
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
-            ?.filterNot { derived && (it.path.firstOrNull() in setOf("document", "evidence") || it.path.firstOrNull()?.let(DerivedCredentials::isProofClaim) == true) }
+            ?.filterNot { derived && (it.path.firstOrNull() in setOf("document", "evidence") || it.path.firstOrNull()?.let(DerivedCredentials::isTechnicalClaim) == true) }
             ?.filterNot { web && it.path.firstOrNull() in WebProofCredentials.SOURCE_CLAIMS }
             ?.map {
                 val value = if (web && it.path == listOf(WebProofCredentials.CLAIM_STATUS)) WebProofCredentials.plainStatus(it.value) else it.value

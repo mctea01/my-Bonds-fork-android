@@ -55,13 +55,8 @@ object Passports {
     }
 
     /** "YYMMDD" as YYYY-MM-DD, the century chosen so a birth date is in the past and an expiry date near now. */
-    fun date(yymmdd: String, expiry: Boolean, currentYear: Int): String {
-        if (yymmdd.length != 6 || !yymmdd.all { it.isDigit() }) return yymmdd.replace('<', '?')
-        val yy = yymmdd.take(2).toInt()
-        val pivot = currentYear % 100
-        val century = if (expiry) (if (yy < pivot + 50) 2000 else 1900) else (if (yy <= pivot) 2000 else 1900)
-        return "${century + yy}-${yymmdd.substring(2, 4)}-${yymmdd.substring(4, 6)}"
-    }
+    fun date(yymmdd: String, expiry: Boolean, currentYear: Int): String =
+        diw.wallet.core.document.derived.TravelDocumentFields.date(yymmdd, expiry, currentYear)
 
     /** YYYYMMDD as YYYY-MM-DD. */
     fun fullDate(s: String?): String? = s?.takeIf { it.length == 8 }?.let { "${it.take(4)}-${it.substring(4, 6)}-${it.substring(6)}" } ?: s

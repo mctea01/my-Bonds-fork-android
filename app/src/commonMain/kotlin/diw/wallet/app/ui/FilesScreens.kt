@@ -2332,7 +2332,11 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 Checkbox(checked = c.name in chosen, onCheckedChange = { chosen = if (it) chosen + c.name else chosen - c.name })
                 Column {
                     Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
-                    Text(c.value, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (diw.wallet.core.document.derived.TravelDocumentFields.isRaw(c.name)) stringResource(Res.string.derive_chip_file, c.value.length * 3 / 4)
+                        else c.value,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }
