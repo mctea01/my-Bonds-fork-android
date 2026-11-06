@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pgp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.CertInfo
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentFormat
@@ -113,32 +114,32 @@ internal object OpenPgpInspection {
             return report.copy(
                 openPgp = OpenPgpReport(if (secret) OpenPgpKind.SECRET_KEYS else OpenPgpKind.PUBLIC_KEYS, keys = keys),
                 notes = listOf(
-                    if (secret) "檔案含有 OpenPGP 私鑰。錢包不保存私鑰，加入清單時只保留公開部分；請妥善保管或刪除這個檔案。"
-                    else "OpenPGP 公開金鑰：可加入 OpenPGP 公開金鑰清單，用來檢查這把金鑰的簽章與加密給對方。",
+                    if (secret) ct("core_pgpi_secret_file")
+                    else ct("core_pgpi_public_file"),
                 ),
             )
         }
         val content = literal
         if (content != null) {
-            val infos = sigs.mapIndexed { i, s -> verify(s, content, keyring, label(i, sigs.size, "簽章訊息"), now) }
+            val infos = sigs.mapIndexed { i, s -> verify(s, content, keyring, label(i, sigs.size, ct("core_pgpi_signed_message")), now) }
             return report.copy(
                 signatures = infos,
                 openPgp = OpenPgpReport(
                     if (sigs.isEmpty() && !onePass) OpenPgpKind.LITERAL else OpenPgpKind.SIGNED_MESSAGE,
                     literalName = literalName, literalSize = content.size.toLong(), signers = signers(sigs),
                 ),
-                notes = listOf("內容（" + (literalName ?: "未命名") + "，${content.size} 位元組）包在 OpenPGP 訊息內，可另存成檔案。"),
+                notes = listOf(ct("core_pgpi_content_start") + (literalName ?: ct("core_pgpi_unnamed")) + ct("core_pgpi_content_end", content.size)),
             )
         }
-        if (sigs.isEmpty()) return report.copy(problems = listOf("看起來是 OpenPGP 資料，但沒有簽章、金鑰或內容"))
+        if (sigs.isEmpty()) return report.copy(problems = listOf(ct("core_pgpi_nothing")))
         val infos = sigs.mapIndexed { i, s ->
-            if (detached == null) missingContent(s, label(i, sigs.size, "分離式簽章"))
-            else verify(s, detached, keyring, label(i, sigs.size, "分離式簽章"), now)
+            if (detached == null) missingContent(s, label(i, sigs.size, ct("core_pgpi_detached")))
+            else verify(s, detached, keyring, label(i, sigs.size, ct("core_pgpi_detached")), now)
         }
         return report.copy(
             signatures = infos,
             openPgp = OpenPgpReport(OpenPgpKind.DETACHED_SIGNATURE, signers = signers(sigs)),
-            notes = if (detached == null) listOf("分離式簽章：請選擇被簽署的原檔才能檢查") else emptyList(),
+            notes = if (detached == null) listOf(ct("core_pgpi_detached_choose")) else emptyList(),
         )
     }
 
@@ -160,16 +161,16 @@ internal object OpenPgpInspection {
             body.add(lines[i].let { if (it.startsWith("- ")) it.substring(2) else it }.trimEnd(' ', '\t'))
             i++
         }
-        if (i >= lines.size) return base.copy(format = DocumentFormat.OPENPGP, problems = listOf("明文簽章訊息缺少簽章區塊"))
+        if (i >= lines.size) return base.copy(format = DocumentFormat.OPENPGP, problems = listOf(ct("core_pgpi_clear_no_block")))
         val signed = body.joinToString("\r\n")
         val armored = lines.subList(i, lines.size).joinToString("\n").encodeToByteArray()
         val sigs = (BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(armored))).nextObject() as? PGPSignatureList)?.asSequence()?.toList().orEmpty()
-        val infos = sigs.mapIndexed { n, s -> verify(s, signed.encodeToByteArray(), keyring, label(n, sigs.size, "明文簽章"), now) }
+        val infos = sigs.mapIndexed { n, s -> verify(s, signed.encodeToByteArray(), keyring, label(n, sigs.size, ct("core_pgpi_cleartext")), now) }
         return base.copy(
             format = DocumentFormat.OPENPGP,
             signatures = infos,
             openPgp = OpenPgpReport(OpenPgpKind.CLEARTEXT_SIGNED, clearText = body.joinToString("\n"), signers = signers(sigs)),
-            problems = if (sigs.isEmpty()) listOf("明文簽章訊息的簽章區塊無法讀取") else emptyList(),
+            problems = if (sigs.isEmpty()) listOf(ct("core_pgpi_clear_bad_block")) else emptyList(),
         )
     }
 
@@ -181,21 +182,21 @@ internal object OpenPgpInspection {
                         ?: java.lang.Long.toHexString(d.keyID).uppercase().padStart(16, '0'),
                     OpenPgp.publicKeyAlgorithmName(d.algorithm),
                 )
-                is PGPPBEEncryptedData -> OpenPgpRecipient("密碼", "以密碼加密（SKESK v${d.version}）")
+                is PGPPBEEncryptedData -> OpenPgpRecipient(ct("core_pgpi_passphrase"), ct("core_pgpi_skesk", d.version))
                 else -> null
             }
         }.toList()
         val protection = when {
             list.isEmpty -> null
-            list[0].isAEAD -> "AEAD（SEIPD v2 或 OCB）"
-            list.isIntegrityProtected -> "SEIPD v1，含 MDC 完整性檢查"
-            else -> "舊式 SED，沒有完整性保護"
+            list[0].isAEAD -> ct("core_pgpi_aead")
+            list.isIntegrityProtected -> ct("core_pgpi_seipd1")
+            else -> ct("core_pgpi_sed")
         }
         return report.copy(
             encrypted = true,
             openPgp = OpenPgpReport(OpenPgpKind.ENCRYPTED, recipients = recipients, encryption = protection),
-            notes = listOf("OpenPGP 加密訊息：寄給 ${recipients.size} 位收件人。收件人是你的 OpenPGP 卡時，可以用卡片解密。"),
-            problems = if (protection?.startsWith("舊式") == true) listOf("沒有完整性保護，錢包不會解密這份訊息") else emptyList(),
+            notes = listOf(ct("core_pgpi_encrypted", recipients.size)),
+            problems = if (protection?.startsWith(ct("core_pgpi_legacy")) == true) listOf(ct("core_pgpi_no_integrity")) else emptyList(),
         )
     }
 
@@ -210,7 +211,7 @@ internal object OpenPgpInspection {
         claimedTime = s.creationTime.time / 1000,
         trust = null,
         certificateValidity = Check.NOT_CHECKED,
-        problems = listOf("分離式簽章需要原檔才能檢查"),
+        problems = listOf(ct("core_pgpi_detached_needs")),
     )
 
     /** Verifies [s] over [content] with the list's certificates and judges the key's validity at the signing time. */
@@ -218,9 +219,9 @@ internal object OpenPgpInspection {
         val created = s.creationTime.time / 1000
         val algorithm = OpenPgp.publicKeyAlgorithmName(s.keyAlgorithm) + " / " + OpenPgp.hashName(s.hashAlgorithm)
         val type = when (s.signatureType) {
-            PGPSignature.BINARY_DOCUMENT -> "二進位文件（0x00）"
-            PGPSignature.CANONICAL_TEXT_DOCUMENT -> "正規化文字（0x01）"
-            else -> "類型 0x" + s.signatureType.toString(16)
+            PGPSignature.BINARY_DOCUMENT -> ct("core_pgpi_binary")
+            PGPSignature.CANONICAL_TEXT_DOCUMENT -> ct("core_pgpi_text")
+            else -> ct("core_pgpi_type") + s.signatureType.toString(16)
         }
         val found = keyring.find(s) ?: return SignatureInfo(
             format = SignatureFormat.OPENPGP,
@@ -234,47 +235,47 @@ internal object OpenPgpInspection {
             trust = null,
             certificateValidity = Check.NOT_CHECKED,
             problems = listOf(
-                "OpenPGP 公開金鑰清單中沒有簽署者的金鑰（" + (signers(listOf(s)).firstOrNull() ?: "未標示") +
-                    "），無法檢查。可匯入對方的公開金鑰，或從 keys.openpgp.org 查詢。",
+                ct("core_pgpi_no_signer_key") + (signers(listOf(s)).firstOrNull() ?: ct("core_pgpi_unlabeled")) +
+                    ct("core_pgpi_no_signer_key_end"),
             ),
-            notes = listOf("簽章類型：$type"),
+            notes = listOf(ct("core_pgpi_sig_type", type)),
         )
         val (entry, key) = found
         val master = entry.ring.publicKey
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
-        notes += "簽章類型：$type"
-        notes += "簽署金鑰：" + OpenPgpPackets.fingerprintText(key.fingerprint) + "（" + OpenPgp.algorithmName(key) + "）"
-        if (!key.isMasterKey) notes += "主金鑰：" + OpenPgpPackets.fingerprintText(master.fingerprint)
+        notes += ct("core_pgpi_sig_type", type)
+        notes += ct("core_pgpi_signing_key") + OpenPgpPackets.fingerprintText(key.fingerprint) + ct("core_paren_open_space") + OpenPgp.algorithmName(key) + ct("core_paren_close")
+        if (!key.isMasterKey) notes += ct("core_pgpi_primary_key") + OpenPgpPackets.fingerprintText(master.fingerprint)
 
         val integrity = runCatching {
             s.init(BcPGPContentVerifierBuilderProvider(), key)
             s.update(content)
             s.verify()
-        }.getOrElse { problems += "簽章無法驗證：" + (it.message ?: it.javaClass.simpleName); false }
+        }.getOrElse { problems += ct("core_pgpi_unverifiable") + (it.message ?: it.javaClass.simpleName); false }
         var integrityCheck = if (integrity) Check.PASS else Check.FAIL
         if (integrity && s.hashAlgorithm in setOf(1, 2, 3)) {
             integrityCheck = Check.WARN
-            problems += "簽章使用 " + OpenPgp.hashName(s.hashAlgorithm) + "，已不安全，無法排除偽造"
+            problems += ct("core_pgpi_uses") + OpenPgp.hashName(s.hashAlgorithm) + ct("core_pgpi_insecure")
         }
-        if (!integrity) problems += "簽章值與內容不符：文件在簽署後被修改，或簽章不是這份文件的"
+        if (!integrity) problems += ct("core_pgpi_mismatch")
 
         var validity = Check.PASS
         val keyCreated = key.creationTime.time / 1000
-        if (created < keyCreated) { validity = Check.FAIL; problems += "簽章時間早於簽署金鑰的建立時間" }
-        if (key.validSeconds > 0 && created > keyCreated + key.validSeconds) { validity = Check.FAIL; problems += "簽署時金鑰已過期" }
+        if (created < keyCreated) { validity = Check.FAIL; problems += ct("core_pgpi_before_key") }
+        if (key.validSeconds > 0 && created > keyCreated + key.validSeconds) { validity = Check.FAIL; problems += ct("core_pgpi_key_expired") }
         if (s.hashedSubPackets?.signatureExpirationTime?.let { it > 0 && now.epochSeconds > created + it } == true) {
             validity = Check.FAIL
-            problems += "簽章本身已過期（簽章到期時間）"
+            problems += ct("core_pgpi_sig_expired")
         }
         // Only a key the wallet read from the holder's card may lack a binding; anything else could be a foreign
         // subkey placed under a trusted primary key in a copy stripped of its signatures.
         if (!key.isMasterKey && OpenPgp.hex(key.fingerprint) !in entry.key.cardKeys) {
             val binding = OpenPgp.validBinding(master, key)
-            if (binding == null) { validity = Check.FAIL; problems += "子金鑰沒有有效的綁定簽章，不能代表主金鑰" }
+            if (binding == null) { validity = Check.FAIL; problems += ct("core_pgpi_subkey_unbound") }
             else {
                 val flags = binding.hashedSubPackets?.keyFlags ?: 0
-                if (flags != 0 && flags and KeyFlags.SIGN_DATA == 0) { validity = Check.FAIL; problems += "子金鑰的金鑰旗標不允許簽署資料" }
+                if (flags != 0 && flags and KeyFlags.SIGN_DATA == 0) { validity = Check.FAIL; problems += ct("core_pgpi_subkey_no_sign") }
             }
         }
         for (k in listOfNotNull(master, key.takeIf { !it.isMasterKey })) {
@@ -283,18 +284,18 @@ internal object OpenPgpInspection {
             val revokedAt = rev.creationTime.time / 1000
             if (!soft || created >= revokedAt) {
                 validity = Check.FAIL
-                problems += (if (k.isMasterKey) "主金鑰" else "子金鑰") + "已撤銷" + (if (soft) "（撤銷後才簽署）" else "（金鑰可能外洩，撤銷前的簽章也不可信）")
-            } else notes += (if (k.isMasterKey) "主金鑰" else "子金鑰") + "在簽署後才停用，這個簽章仍有效"
+                problems += (if (k.isMasterKey) ct("core_pgpi_primary") else ct("core_pgpi_subkey")) + ct("core_pgpi_revoked") + (if (soft) ct("core_pgpi_signed_after") else ct("core_pgpi_compromised"))
+            } else notes += (if (k.isMasterKey) ct("core_pgpi_primary") else ct("core_pgpi_subkey")) + ct("core_pgpi_retired")
         }
 
         val (tier, anchor) = tierOf(entry, keyring, now)
-        if (entry.key.trust == OpenPgpTrust.DISTRUSTED) problems += "你已將這把金鑰設為不信任"
-        if (tier == "T3") problems += "尚未核對這把金鑰的指紋：簽章屬於這把金鑰，但無法確認金鑰屬於誰"
+        if (entry.key.trust == OpenPgpTrust.DISTRUSTED) problems += ct("core_pgpi_distrusted")
+        if (tier == "T3") problems += ct("core_pgpi_unverified")
         val uid = master.userIDs.asSequence().firstOrNull()
         val expires = key.validSeconds.takeIf { it > 0 }?.let { keyCreated + it } ?: 253402300799L
         val signer = CertInfo(
             subject = uid ?: entry.key.name,
-            issuer = "OpenPGP（" + entry.key.trust.title + "）",
+            issuer = ct("core_pgpi_issuer_start") + entry.key.trust.title + ct("core_paren_close"),
             commonName = uid ?: entry.key.name,
             serialHex = OpenPgp.hex(key.fingerprint),
             notBefore = keyCreated,
@@ -331,12 +332,12 @@ internal object OpenPgpInspection {
     }
 
     private fun tierOf(entry: Keyring.Entry, keyring: Keyring, now: Instant): Pair<String, String> = when (entry.key.trust) {
-        OpenPgpTrust.OWN_CARD, OpenPgpTrust.VERIFIED -> "T2" to entry.key.name + "（" + entry.key.trust.title + "）"
-        OpenPgpTrust.DISTRUSTED -> "T4" to entry.key.name + "（不信任）"
+        OpenPgpTrust.OWN_CARD, OpenPgpTrust.VERIFIED -> "T2" to entry.key.name + ct("core_paren_open_space") + entry.key.trust.title + ct("core_paren_close")
+        OpenPgpTrust.DISTRUSTED -> "T4" to entry.key.name + ct("core_pgpi_anchor_distrusted")
         OpenPgpTrust.UNVERIFIED -> {
             val introducer = introducerOf(entry, keyring, now)
-            if (introducer != null) "T2" to entry.key.name + "（由「" + introducer + "」認證）"
-            else "T3" to entry.key.name + "（未核對指紋）"
+            if (introducer != null) "T2" to entry.key.name + ct("core_pgpi_certified_by") + introducer + ct("core_pgpi_certified_end")
+            else "T3" to entry.key.name + ct("core_pgpi_anchor_unverified")
         }
     }
 

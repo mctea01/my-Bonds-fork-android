@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pgp
 
+import diw.wallet.core.i18n.ct
 import kotlinx.serialization.Serializable
 
 /** One key of an OpenPGP certificate: the primary key or a subkey. Times are epoch seconds. */
@@ -26,7 +27,7 @@ data class OpenPgpKeyInfo(
     /** The file held a secret key; the wallet keeps only the public part. */
     val hadSecret: Boolean = false,
 ) {
-    val name: String get() = userIds.firstOrNull() ?: "OpenPGP 金鑰"
+    val name: String get() = userIds.firstOrNull() ?: ct("core_pgpk_key")
     val canSign: Boolean get() = (listOf(primary) + subkeys).any { it.canSign && !it.revoked }
     val canEncrypt: Boolean get() = (listOf(primary) + subkeys).any { it.canEncrypt && !it.revoked }
     val revoked: Boolean get() = primary.revoked
@@ -40,14 +41,16 @@ data class OpenPgpKeyInfo(
 
 /** What an OpenPGP file holds. */
 @Serializable
-enum class OpenPgpKind(val title: String) {
-    DETACHED_SIGNATURE("OpenPGP 分離式簽章"),
-    CLEARTEXT_SIGNED("OpenPGP 明文簽章訊息"),
-    SIGNED_MESSAGE("OpenPGP 簽章訊息"),
-    LITERAL("OpenPGP 資料（未簽章）"),
-    PUBLIC_KEYS("OpenPGP 公開金鑰"),
-    SECRET_KEYS("OpenPGP 私鑰"),
-    ENCRYPTED("OpenPGP 加密訊息"),
+enum class OpenPgpKind(private val titleKey: String) {
+    DETACHED_SIGNATURE("core_pgpk_detached"),
+    CLEARTEXT_SIGNED("core_pgpk_cleartext"),
+    SIGNED_MESSAGE("core_pgpk_signed"),
+    LITERAL("core_pgpk_literal"),
+    PUBLIC_KEYS("core_pgpk_public"),
+    SECRET_KEYS("core_pgpk_secret"),
+    ENCRYPTED("core_pgpk_encrypted");
+
+    val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
 }
 
 /** One recipient of an encrypted OpenPGP message. */
@@ -80,15 +83,19 @@ data class OpenPgpReport(
  * this is the user's own decision, as GnuPG's validity and owner trust are; it maps onto the wallet's tiers.
  */
 @Serializable
-enum class OpenPgpTrust(val title: String, val detail: String) {
+enum class OpenPgpTrust(private val titleKey: String, private val detailKey: String) {
     /** The holder's own OpenPGP card, read by this wallet. */
-    OWN_CARD("自己的 OpenPGP 卡", "由這個錢包從你的卡片讀取，T2"),
+    OWN_CARD("core_pgpt_own", "core_pgpt_own_text"),
     /** The user compared the fingerprint with the owner through a reliable channel. */
-    VERIFIED("已核對指紋", "已透過可靠管道（當面、電話、官方網站）核對指紋，T2"),
+    VERIFIED("core_pgpt_verified", "core_pgpt_verified_text"),
     /** Imported or looked up but not compared: the signature is genuine for this key, the key's owner is not proven. */
-    UNVERIFIED("未核對", "簽章可驗證，但無法確認金鑰屬於誰，T3；由你信任的介紹人認證過則升為 T2"),
+    UNVERIFIED("core_pgpt_unverified", "core_pgpt_unverified_text"),
     /** Kept in the list but refused: signatures by it are shown as untrusted. */
-    DISTRUSTED("不信任", "保留在清單中，但它的簽章一律判定為不可信，T4"),
+    DISTRUSTED("core_pgpt_distrusted", "core_pgpt_distrusted_text");
+
+    val detail: String get() = if (detailKey.startsWith("core_")) ct(detailKey) else detailKey
+
+    val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
 }
 
 /**

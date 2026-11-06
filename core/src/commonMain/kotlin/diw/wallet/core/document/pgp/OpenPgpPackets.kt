@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pgp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.card.OpenPgpAlgorithm
@@ -50,21 +51,21 @@ object OpenPgpPackets {
         HASH_SHA256 -> "SHA-256"
         HASH_SHA384 -> "SHA-384"
         HASH_SHA512 -> "SHA-512"
-        else -> throw SigningException("不支援的雜湊演算法 $id")
+        else -> throw SigningException(ct("core_pgpp_hash_unsupported", id))
     }
 
     fun hashId(name: String): Int = when (name) {
         "SHA-256" -> HASH_SHA256
         "SHA-384" -> HASH_SHA384
         "SHA-512" -> HASH_SHA512
-        else -> throw SigningException("不支援的雜湊演算法 $name")
+        else -> throw SigningException(ct("core_pgpp_hash_unsupported", name))
     }
 
     /** The hash an OpenPGP signature by a card key uses: SHA-256 for RSA, the curve's size otherwise. */
     fun hashFor(algorithm: OpenPgpAlgorithm): Int = when (algorithm) {
         is OpenPgpAlgorithm.Rsa -> HASH_SHA256
         is OpenPgpAlgorithm.Ec -> hashId(algorithm.curve.hash)
-        is OpenPgpAlgorithm.Unsupported -> throw SigningException("OpenPGP 卡的簽章金鑰演算法不支援：$algorithm")
+        is OpenPgpAlgorithm.Unsupported -> throw SigningException(ct("core_pgpc_alg_unsupported", algorithm))
     }
 
     fun digestInfo(hash: Int, digest: ByteArray): ByteArray = DocCryptoUtil.unhex(DIGEST_INFO.getValue(hash)) + digest
@@ -187,7 +188,7 @@ object OpenPgpPackets {
      */
     fun finish(p: PendingSignature, raw: ByteArray): ByteArray {
         val mpis = if (p.algorithm == 1) mpi(raw) else {
-            if (raw.size % 2 != 0) throw SigningException("OpenPGP 卡回傳的簽章長度不正確")
+            if (raw.size % 2 != 0) throw SigningException(ct("core_pgpc_sig_length"))
             val half = raw.size / 2
             mpi(raw.copyOfRange(0, half)) + mpi(raw.copyOfRange(half, raw.size))
         }
@@ -294,10 +295,10 @@ object OpenPgpPackets {
 
     /** Reads an MPI at [off]: its value and the offset after it. */
     fun readMpi(b: ByteArray, off: Int): Pair<ByteArray, Int> {
-        if (off + 2 > b.size) throw SigningException("OpenPGP 資料格式錯誤（MPI）")
+        if (off + 2 > b.size) throw SigningException(ct("core_pgpp_mpi"))
         val bits = ((b[off].toInt() and 0xFF) shl 8) or (b[off + 1].toInt() and 0xFF)
         val n = (bits + 7) / 8
-        if (off + 2 + n > b.size) throw SigningException("OpenPGP 資料格式錯誤（MPI 長度）")
+        if (off + 2 + n > b.size) throw SigningException(ct("core_pgpp_mpi_length"))
         return b.copyOfRange(off + 2, off + 2 + n) to off + 2 + n
     }
 
@@ -307,18 +308,18 @@ object OpenPgpPackets {
      */
     fun cardInput(pkesk: OpenPgpPkesk, key: OpenPgpCardKey): ByteArray = when (val alg = key.algorithm) {
         is OpenPgpAlgorithm.Rsa -> {
-            if (pkesk.algorithm != 1 && pkesk.algorithm != 2) throw SigningException("加密金鑰演算法與卡片不符")
+            if (pkesk.algorithm != 1 && pkesk.algorithm != 2) throw SigningException(ct("core_pgpp_alg_mismatch"))
             val (c, _) = readMpi(pkesk.fields, 0)
             val n = (alg.modulusBits + 7) / 8
-            if (c.size > n) throw SigningException("RSA 密文長度不正確")
+            if (c.size > n) throw SigningException(ct("core_pgpp_rsa_length"))
             ByteArray(n - c.size) + c
         }
         is OpenPgpAlgorithm.Ec -> {
-            if (pkesk.algorithm != 18) throw SigningException("加密金鑰演算法與卡片不符")
+            if (pkesk.algorithm != 18) throw SigningException(ct("core_pgpp_alg_mismatch"))
             val (point, _) = readMpi(pkesk.fields, 0)
             if (alg.curve.native && point.size == 33 && point[0] == 0x40.toByte()) point.copyOfRange(1, 33) else point
         }
-        is OpenPgpAlgorithm.Unsupported -> throw SigningException("OpenPGP 卡的解密金鑰演算法不支援")
+        is OpenPgpAlgorithm.Unsupported -> throw SigningException(ct("core_pgpp_decrypt_alg"))
     }
 
     /**
@@ -330,14 +331,14 @@ object OpenPgpPackets {
         val block = when (pkesk.algorithm) {
             1, 2 -> cardOutput
             18 -> ecdhUnwrap(pkesk, keyBody, cardOutput)
-            else -> throw SigningException("不支援的加密金鑰演算法 ${pkesk.algorithm}")
+            else -> throw SigningException(ct("core_pgpp_enc_alg", pkesk.algorithm))
         }
-        if (block.size < 4) throw SigningException("解出的會話金鑰格式錯誤")
+        if (block.size < 4) throw SigningException(ct("core_pgpp_session_format"))
         val alg = block[0].toInt() and 0xFF
         val key = block.copyOfRange(1, block.size - 2)
         val sum = key.sumOf { it.toInt() and 0xFF } and 0xFFFF
         val stored = ((block[block.size - 2].toInt() and 0xFF) shl 8) or (block[block.size - 1].toInt() and 0xFF)
-        if (sum != stored) throw SigningException("會話金鑰檢查碼不符：這份資料不是寄給這張卡片，或資料已損毀")
+        if (sum != stored) throw SigningException(ct("core_pgpp_session_checksum"))
         return alg to key
     }
 
@@ -345,13 +346,13 @@ object OpenPgpPackets {
         // keyBody: version, time(4), algorithm, oid length, oid, MPI point, KDF parameters (03 01 hash sym).
         val oidLen = keyBody[6].toInt() and 0xFF
         val oid = keyBody.copyOfRange(7, 7 + oidLen)
-        val curve = OpenPgpCurve.of(oid) ?: throw SigningException("不支援的 ECDH 曲線")
+        val curve = OpenPgpCurve.of(oid) ?: throw SigningException(ct("core_pgpp_curve"))
         val (_, afterPoint) = readMpi(keyBody, 7 + oidLen)
         val kdf = keyBody.copyOfRange(afterPoint, keyBody.size)
-        if (kdf.size < 4 || kdf[0].toInt() != 3) throw SigningException("ECDH 公開金鑰缺少 KDF 參數")
+        if (kdf.size < 4 || kdf[0].toInt() != 3) throw SigningException(ct("core_pgpp_no_kdf"))
         val hash = kdf[2].toInt() and 0xFF
         val sym = kdf[3].toInt() and 0xFF
-        val kekSize = when (sym) { 7 -> 16; 8 -> 24; 9 -> 32; else -> throw SigningException("不支援的 ECDH 金鑰包裝演算法 $sym") }
+        val kekSize = when (sym) { 7 -> 16; 8 -> 24; 9 -> 32; else -> throw SigningException(ct("core_pgpp_wrap_alg", sym)) }
         val z = sharedX(curve, shared)
         val param = byteArrayOf(oidLen.toByte()) + oid + byteArrayOf(18) + byteArrayOf(3, 1, hash.toByte(), sym.toByte()) +
             "Anonymous Sender    ".encodeToByteArray() + fingerprint(keyBody)
@@ -362,7 +363,7 @@ object OpenPgpPackets {
         val padded = aesKeyUnwrap(kek, wrapped)
         val pad = padded.last().toInt() and 0xFF
         if (pad == 0 || pad > 8 || pad > padded.size || (padded.size - pad until padded.size).any { (padded[it].toInt() and 0xFF) != pad }) {
-            throw SigningException("ECDH 會話金鑰的填充不正確")
+            throw SigningException(ct("core_pgpp_padding"))
         }
         return padded.copyOf(padded.size - pad)
     }
@@ -372,12 +373,12 @@ object OpenPgpPackets {
         shared.size == curve.size -> shared
         shared.size == curve.size + 1 && shared[0] == 0x40.toByte() -> shared.copyOfRange(1, shared.size)
         shared.size == 2 * curve.size + 1 && shared[0] == 0x04.toByte() -> shared.copyOfRange(1, 1 + curve.size)
-        else -> throw SigningException("OpenPGP 卡回傳的共享秘密長度不正確")
+        else -> throw SigningException(ct("core_pgpp_shared_length"))
     }
 
     /** AES key unwrap (RFC 3394) with the default IV. */
     fun aesKeyUnwrap(kek: ByteArray, wrapped: ByteArray): ByteArray {
-        if (wrapped.size < 24 || wrapped.size % 8 != 0) throw SigningException("金鑰包裝資料長度不正確")
+        if (wrapped.size < 24 || wrapped.size % 8 != 0) throw SigningException(ct("core_pgpp_wrap_length"))
         val n = wrapped.size / 8 - 1
         var a = wrapped.copyOfRange(0, 8)
         val r = Array(n) { wrapped.copyOfRange(8 * (it + 1), 8 * (it + 2)) }
@@ -391,7 +392,7 @@ object OpenPgpPackets {
                 r[i - 1] = b.copyOfRange(8, 16)
             }
         }
-        if (!a.all { it == 0xA6.toByte() }) throw SigningException("金鑰包裝檢查失敗：這份資料不是寄給這張卡片")
+        if (!a.all { it == 0xA6.toByte() }) throw SigningException(ct("core_pgpp_wrap_failed"))
         return r.fold(ByteArray(0)) { acc, x -> acc + x }
     }
 }

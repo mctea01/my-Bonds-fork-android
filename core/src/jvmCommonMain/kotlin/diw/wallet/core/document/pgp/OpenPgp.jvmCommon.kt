@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pgp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.sign.SigningException
 import org.bouncycastle.bcpg.ArmoredOutputStream
@@ -64,7 +65,7 @@ actual object OpenPgp {
     actual fun merge(old: ByteArray, update: ByteArray): ByteArray = try {
         PGPPublicKeyRing.join(PGPPublicKeyRing(old, calculator), PGPPublicKeyRing(update, calculator)).getEncoded(true)
     } catch (e: Exception) {
-        throw SigningException("無法合併兩份 OpenPGP 公開金鑰：" + (e.message ?: e.javaClass.simpleName), e)
+        throw SigningException(ct("core_pgpj_merge_failed") + (e.message ?: e.javaClass.simpleName), e)
     }
 
     actual fun keyBodies(certificate: ByteArray): List<ByteArray> = runCatching {
@@ -94,10 +95,10 @@ actual object OpenPgp {
     }.getOrDefault(false)
 
     actual fun encrypt(data: ByteArray, fileName: String, recipients: List<ByteArray>, armor: Boolean, cardKeys: Set<String>): ByteArray {
-        if (recipients.isEmpty()) throw SigningException("請至少選擇一位收件人")
+        if (recipients.isEmpty()) throw SigningException(ct("core_pgpj_choose_recipient"))
         val keys = recipients.map { bytes ->
             val ring = PGPPublicKeyRing(bytes, calculator)
-            encryptionKey(ring, cardKeys) ?: throw SigningException("「" + (ring.publicKey.userIDs.asSequence().firstOrNull() ?: hex(ring.publicKey.fingerprint)) + "」沒有可用的加密金鑰（已撤銷、過期或金鑰旗標不允許加密）")
+            encryptionKey(ring, cardKeys) ?: throw SigningException(ct("core_quote_open") + (ring.publicKey.userIDs.asSequence().firstOrNull() ?: hex(ring.publicKey.fingerprint)) + ct("core_pgpj_no_enc_key"))
         }
         val bout = ByteArrayOutputStream()
         val sink: OutputStream = if (armor) ArmoredOutputStream(bout) else bout
@@ -156,19 +157,19 @@ actual object OpenPgp {
         val f = BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(message)))
         var o = f.nextObject()
         while (o is PGPMarker) o = f.nextObject()
-        val list = o as? PGPEncryptedDataList ?: throw SigningException("這不是 OpenPGP 加密訊息")
+        val list = o as? PGPEncryptedDataList ?: throw SigningException(ct("core_pgpj_not_encrypted"))
         val enc = list.encryptedDataObjects.asSequence().filterIsInstance<PGPPublicKeyEncryptedData>().firstOrNull()
-            ?: throw SigningException("這份加密訊息沒有公開金鑰收件人")
-        if (!enc.isIntegrityProtected && !enc.isAEAD) throw SigningException("這份加密訊息沒有完整性保護（舊式 SED），為避免遭竄改的內容被當成可信資料，已拒絕解密")
+            ?: throw SigningException(ct("core_pgpj_no_pk_recipient"))
+        if (!enc.isIntegrityProtected && !enc.isAEAD) throw SigningException(ct("core_pgpj_sed_refused"))
         val alg = if (algorithm == 0) SymmetricKeyAlgorithmTags.AES_256 else algorithm
         val stream = try {
             enc.getDataStream(BcSessionKeyDataDecryptorFactory(PGPSessionKey(alg, key)))
         } catch (e: Exception) {
-            throw SigningException("無法以卡片解出的會話金鑰解密：" + (e.message ?: e.javaClass.simpleName), e)
+            throw SigningException(ct("core_pgpj_session_failed") + (e.message ?: e.javaClass.simpleName), e)
         }
         val content = readMessage(BcPGPObjectFactory(stream))
         if (enc.isIntegrityProtected && !enc.isAEAD && !runCatching { enc.verify() }.getOrDefault(false)) {
-            throw SigningException("解密後的完整性檢查（MDC）失敗：資料可能被竄改，已不保存")
+            throw SigningException(ct("core_pgpj_mdc_failed"))
         }
         return content
     }
@@ -183,7 +184,7 @@ actual object OpenPgp {
         var data: ByteArray? = null
         val signatures = ArrayList<PGPSignature>()
         fun walk(factory: BcPGPObjectFactory, depth: Int) {
-            if (depth > 4) throw SigningException("OpenPGP 訊息巢狀層數過多")
+            if (depth > 4) throw SigningException(ct("core_pgpj_too_deep"))
             while (true) {
                 when (val o = factory.nextObject() ?: return) {
                     is PGPCompressedData -> walk(BcPGPObjectFactory(o.dataStream), depth + 1)
@@ -201,7 +202,7 @@ actual object OpenPgp {
         val detached = if (signatures.isEmpty()) null else ByteArrayOutputStream().also { out ->
             signatures.forEach { it.encode(out) }
         }.toByteArray()
-        return OpenPgpPlaintext(name, data ?: throw SigningException("OpenPGP 訊息內沒有資料"), detached)
+        return OpenPgpPlaintext(name, data ?: throw SigningException(ct("core_pgpj_no_data")), detached)
     }
 
     internal fun readCapped(input: InputStream): ByteArray {
@@ -212,7 +213,7 @@ actual object OpenPgp {
             val n = input.read(buf)
             if (n < 0) break
             total += n
-            if (total > MAX_LITERAL) throw SigningException("OpenPGP 訊息內容超過 256 MB，已停止")
+            if (total > MAX_LITERAL) throw SigningException(ct("core_pgpj_too_large"))
             out.write(buf, 0, n)
         }
         return out.toByteArray()
@@ -281,7 +282,7 @@ actual object OpenPgp {
             PublicKeyAlgorithmTags.Ed448 -> "Ed448"
             PublicKeyAlgorithmTags.X25519 -> "X25519"
             PublicKeyAlgorithmTags.X448 -> "X448"
-            else -> "演算法 ${k.algorithm}"
+            else -> ct("core_pgpj_algorithm", k.algorithm)
         }
     }
 
@@ -295,7 +296,7 @@ actual object OpenPgp {
         11 -> "SHA-224"
         12 -> "SHA3-256"
         14 -> "SHA3-512"
-        else -> "雜湊 $id"
+        else -> ct("core_pgpj_hash", id)
     }
 
     fun publicKeyAlgorithmName(id: Int): String = when (id) {
@@ -309,7 +310,7 @@ actual object OpenPgp {
         26 -> "X448"
         27 -> "Ed25519"
         28 -> "Ed448"
-        else -> "演算法 $id"
+        else -> ct("core_pgpj_algorithm", id)
     }
 
     fun symmetricName(id: Int): String = when (id) {
@@ -321,7 +322,7 @@ actual object OpenPgp {
         9 -> "AES-256"
         10 -> "Twofish"
         11, 12, 13 -> "Camellia"
-        else -> "演算法 $id"
+        else -> ct("core_pgpj_algorithm", id)
     }
 
     private val CURVES = mapOf(

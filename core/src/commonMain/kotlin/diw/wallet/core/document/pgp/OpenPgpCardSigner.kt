@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pgp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.card.GpkiCard
 import diw.wallet.core.document.card.NfcCardChannel
@@ -46,21 +47,21 @@ object OpenPgpCards {
         reader: NfcTagReader, message: String, pin: String, encrypted: ByteArray, known: List<ByteArray> = emptyList(),
     ): Pair<OpenPgpCardInfo, Pair<Int, ByteArray>> {
         val pkesks = OpenPgpPackets.pkesks(encrypted)
-        if (pkesks.isEmpty()) throw SigningException("這份資料不是以公開金鑰加密的 OpenPGP 訊息")
+        if (pkesks.isEmpty()) throw SigningException(ct("core_pgpc_not_pkesk"))
         return reader.scan(message, tagInteractionFunc = { tag ->
             val card = OpenPgpCard(NfcCardChannel(tag))
             card.connect()
             val info = withPackets(card.readInfo(), known)
-            val key = info.key(OpenPgpKeySlot.DECRYPTION) ?: throw SigningException("OpenPGP 卡上沒有解密金鑰")
+            val key = info.key(OpenPgpKeySlot.DECRYPTION) ?: throw SigningException(ct("core_pgp_no_decrypt_key"))
             val body = key.packet ?: throw SigningException(
-                "無法由卡片重建解密金鑰的公開金鑰（指紋不符），請先把這張卡的公開金鑰匯入 OpenPGP 公開金鑰清單",
+                ct("core_pgpc_rebuild_decrypt"),
             )
             val fpr = OpenPgpPackets.fingerprint(body)
             val pkesk = pkesks.firstOrNull { it.isFor(fpr) && !it.keyId.isNullOrAnonymous() }
                 ?: pkesks.firstOrNull { it.isFor(fpr) }
                 ?: throw SigningException(
-                    "這份資料不是寄給這張卡片（卡片解密金鑰 " + OpenPgpPackets.fingerprintText(fpr) + "；收件人 " +
-                        pkesks.joinToString("、") { it.keyIdText } + "）",
+                    ct("core_pgpc_not_for_card") + OpenPgpPackets.fingerprintText(fpr) + ct("core_pgpc_recipients") +
+                        pkesks.joinToString(ct("core_sep_list")) { it.keyIdText } + ct("core_paren_close"),
                 )
             val out = card.decipher(pin, key, OpenPgpPackets.cardInput(pkesk, key))
             info to OpenPgpPackets.sessionKey(pkesk, body, out)
@@ -79,7 +80,7 @@ object OpenPgpCards {
             derSeq(derOid("2A8648CE3D0201"), derOid("2A8648CE3D030107")),
             derTag(0x03, byteArrayOf(0) + m.point),
         )
-        null -> throw SigningException("OpenPGP 卡上沒有簽章金鑰")
+        null -> throw SigningException(ct("core_pgpc_no_sign_key"))
     }
 
     /** r||s to a DER ECDSA signature. */
@@ -125,8 +126,8 @@ class OpenPgpTapSigner(
     private val pin: String,
     private val known: List<ByteArray> = emptyList(),
     private val cachedCertificate: (fingerprint: String) -> ByteArray? = { null },
-    private val tapMessage: String = "請將 OpenPGP 卡（或 YubiKey 等安全金鑰）貼近 NFC 感應區，讀取期間請保持貼合、不要移動。",
-    private val signMessage: String = "請再次將同一張 OpenPGP 卡貼近 NFC 感應區完成簽署，完成前請勿移開。",
+    private val tapMessage: String = ct("core_pgpc_hold"),
+    private val signMessage: String = ct("core_pgpc_hold_again"),
 ) : DocumentSigner {
     var info: OpenPgpCardInfo? = null
         private set
@@ -138,12 +139,12 @@ class OpenPgpTapSigner(
         private set
 
     override val certificateChain: List<ByteArray>
-        get() = listOf(certificate ?: throw SigningException("尚未讀取 OpenPGP 卡的憑證"))
-    override val keyType: SignerKeyType get() = keyTypeOf(key ?: throw SigningException("尚未讀取 OpenPGP 卡"))
+        get() = listOf(certificate ?: throw SigningException(ct("core_pgpc_cert_not_read")))
+    override val keyType: SignerKeyType get() = keyTypeOf(key ?: throw SigningException(ct("core_pgpc_not_read")))
     override val source = SignerSource.OPENPGP
 
     /** The signature key read at [load]. */
-    val signatureKey: OpenPgpCardKey get() = key ?: throw SigningException("尚未讀取 OpenPGP 卡")
+    val signatureKey: OpenPgpCardKey get() = key ?: throw SigningException(ct("core_pgpc_not_read"))
 
     /**
      * Reads the card and its signature key. With [x509] the key must be RSA or EC P-256 and gets a certificate: the
@@ -154,7 +155,7 @@ class OpenPgpTapSigner(
             val card = OpenPgpCard(NfcCardChannel(tag))
             card.connect()
             val read = OpenPgpCards.withPackets(card.readInfo(), known)
-            val k = read.key(OpenPgpKeySlot.SIGNATURE) ?: throw SigningException("這張 OpenPGP 卡沒有簽章金鑰")
+            val k = read.key(OpenPgpKeySlot.SIGNATURE) ?: throw SigningException(ct("core_pgpc_card_no_sign_key"))
             var made: ByteArray? = null
             val cert = if (!x509) null else {
                 keyTypeOf(k)
@@ -193,7 +194,7 @@ class OpenPgpTapSigner(
                 ec != null && PlatformCrypto.verifyEcdsaRaw("secp256r1", ec.x, ec.y, data, ecdsaRaw(signature, 32))
             }
         }
-        if (!ok) throw SigningException("簽章與先前讀取的 OpenPGP 卡不符，請使用同一張卡片")
+        if (!ok) throw SigningException(ct("core_pgpc_sig_mismatch"))
         return signature
     }
 
@@ -204,7 +205,7 @@ class OpenPgpTapSigner(
     suspend fun signDetached(data: ByteArray): ByteArray {
         val k = signatureKey
         val body = k.packet ?: throw SigningException(
-            "無法由卡片重建簽章金鑰的 OpenPGP 公開金鑰（卡上指紋 ${k.fingerprintText ?: "無"} 不符），請先把你的公開金鑰匯入 OpenPGP 公開金鑰清單",
+            ct("core_pgpc_rebuild_sign", k.fingerprintText ?: ct("core_none")),
         )
         val hash = OpenPgpPackets.hashFor(k.algorithm)
         val pending = OpenPgpPackets.prepare(data, body, Clock.System.now().epochSeconds, hash)
@@ -216,7 +217,7 @@ class OpenPgpTapSigner(
             card.sign(pin, input)
         })
         val packet = OpenPgpPackets.finish(pending, normalize(k, raw))
-        if (!OpenPgp.verifyDetached(body, data, packet)) throw SigningException("簽章與先前讀取的 OpenPGP 卡不符，請使用同一張卡片")
+        if (!OpenPgp.verifyDetached(body, data, packet)) throw SigningException(ct("core_pgpc_sig_mismatch"))
         return OpenPgpPackets.armor("SIGNATURE", packet).encodeToByteArray()
     }
 
@@ -224,13 +225,13 @@ class OpenPgpTapSigner(
     private suspend fun sameCard(card: OpenPgpCard, k: OpenPgpCardKey) {
         val now = card.fingerprint(OpenPgpKeySlot.SIGNATURE)
         if (k.fingerprint != null && now != null && !now.contentEquals(k.fingerprint)) {
-            throw SigningException("這不是先前讀取的 OpenPGP 卡（簽章金鑰指紋不同），請使用同一張卡片")
+            throw SigningException(ct("core_pgpc_other_card"))
         }
     }
 
     /** RSA signatures are padded to the modulus length; EC r||s must be two equal halves. */
     private fun normalize(k: OpenPgpCardKey, raw: ByteArray): ByteArray = when (val a = k.algorithm) {
-        is OpenPgpAlgorithm.Ec -> if (raw.size == 2 * a.curve.size) raw else throw SigningException("OpenPGP 卡回傳的簽章長度不正確")
+        is OpenPgpAlgorithm.Ec -> if (raw.size == 2 * a.curve.size) raw else throw SigningException(ct("core_pgpc_sig_length"))
         else -> raw
     }
 
@@ -239,7 +240,7 @@ class OpenPgpTapSigner(
         return when (keyTypeOf(k)) {
             SignerKeyType.RSA -> card.sign(pin, GpkiCard.SHA256_DIGEST_INFO + digest)
             SignerKeyType.EC_P256 -> OpenPgpCards.ecdsaDer(card.sign(pin, digest).also {
-                if (it.size != 64) throw SigningException("OpenPGP 卡回傳的 ECDSA 簽章長度不正確")
+                if (it.size != 64) throw SigningException(ct("core_pgpc_ecdsa_length"))
             })
         }
     }
@@ -249,8 +250,8 @@ class OpenPgpTapSigner(
         fun keyTypeOf(k: OpenPgpCardKey): SignerKeyType = when (val a = k.algorithm) {
             is OpenPgpAlgorithm.Rsa -> SignerKeyType.RSA
             is OpenPgpAlgorithm.Ec -> if (a.pgpId == 19 && a.curve == OpenPgpCurve.P256) SignerKeyType.EC_P256
-                else throw SigningException("OpenPGP 卡的簽章金鑰是 $a，只能做 OpenPGP 簽章；PDF、CAdES、XAdES 等格式需要 RSA 或 ECDSA P-256 金鑰")
-            is OpenPgpAlgorithm.Unsupported -> throw SigningException("OpenPGP 卡的簽章金鑰演算法不支援：$a")
+                else throw SigningException(ct("core_pgpc_openpgp_only", a))
+            is OpenPgpAlgorithm.Unsupported -> throw SigningException(ct("core_pgpc_alg_unsupported", a))
         }
 
         fun x509Capable(k: OpenPgpCardKey): Boolean = runCatching { keyTypeOf(k) }.isSuccess
