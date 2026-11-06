@@ -13,8 +13,34 @@ pub fn ascii(s: &str) -> F {
 pub fn json(f: F) -> Value {
     Value::String(format!("0x{}", f.to_hex()))
 }
+/// Noir's `Poseidon2::hash` sponge (width 4, rate 3, additive absorption, IV = length << 64, final
+/// zero padding, output `state[0]`; p4-circuits.md 3.12.1). The solver crate exports only the permutation.
 pub fn hash(fields: &[F]) -> Result<F> {
-    bn254_blackbox_solver::poseidon_hash(fields).map_err(|_| Error("poseidon"))
+    const RATE: usize = 3;
+    let mut state = [F::zero(); RATE + 1];
+    state[RATE] = F::from(fields.len()) * F::from(1u128 << 64);
+    let duplex = |state: &mut [F; RATE + 1], cache: &[F]| -> Result<()> {
+        for (s, c) in state.iter_mut().zip(cache) {
+            *s += *c;
+        }
+        let out = bn254_blackbox_solver::poseidon2_permutation(&state[..])
+            .map_err(|_| Error("poseidon"))?;
+        if out.len() != RATE + 1 {
+            return Err(Error("poseidon"));
+        }
+        state.copy_from_slice(&out);
+        Ok(())
+    };
+    let mut cache = Vec::with_capacity(RATE);
+    for field in fields {
+        if cache.len() == RATE {
+            duplex(&mut state, &cache)?;
+            cache.clear();
+        }
+        cache.push(*field);
+    }
+    duplex(&mut state, &cache)?;
+    Ok(state[0])
 }
 pub fn commit(tag: usize, salt: F, data: &[F]) -> Result<F> {
     let mut fields = vec![number(tag), salt, number(data.len())];

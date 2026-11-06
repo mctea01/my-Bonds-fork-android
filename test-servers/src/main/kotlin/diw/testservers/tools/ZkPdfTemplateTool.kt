@@ -89,11 +89,12 @@ object ZkPdfTemplateTool {
         exitProcess(2)
     }
 
+    /** Candidate labels: a comma list (trimmed), or a file with one per line kept as written, spaces included. */
     private fun labels(option: String?): List<String> = when {
         option == null -> emptyList()
-        option.startsWith("@") -> File(option.drop(1)).readLines(Charsets.UTF_8)
-        else -> option.split(',')
-    }.map { it.trim() }.filter { it.isNotEmpty() }
+        option.startsWith("@") -> File(option.drop(1)).readLines(Charsets.UTF_8).map { it.removeSuffix("\r") }
+        else -> option.split(',').map { it.trim() }
+    }.filter { it.isNotBlank() }
 
     /** Shape of [text] that keeps its structure and hides its content. */
     fun shape(text: String): String = buildString {

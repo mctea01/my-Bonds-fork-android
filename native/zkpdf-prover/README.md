@@ -5,14 +5,14 @@ records and slot boundaries, not PDF files. Kotlin remains responsible for signe
 revision selection, CMS trust, SHA continuation between windows and V5–V7/V10.
 `PUBLIC_SPEC.md` remains the verifier contract.
 
-The runtime uses official Noir beta.15 Rust crates at
-`83245db91dcf63420ef4bcbbd85b98f397fee663` and a static Barretenberg 2.1.9 at
-`f2bed7ed073966bb2a2dcdd02a133d11bf2996d3`. The C++ bridge fixes the flavor to
+The runtime uses official Noir 1.0.0-rc.3 Rust crates at
+`5a7ee9bf5ed8973076df7bb0d2b723024db09ae7` and a static Barretenberg 6.0.0 at
+`0219f11d8133970df3974fe5ae65e006bf8c193a` (aztec-packages v6.0.0, which pairs with Noir rc.3). The C++ bridge fixes the flavor to
 zero-knowledge UltraHonk and Poseidon2. Production fixes native workers to two, catches
 C++ exceptions, suppresses upstream diagnostic hooks, disables polynomial disk
 spilling and uses an authenticated memory CRS factory. No runtime download or
 CLI subprocess is used. Noir foreign calls are rejected. Witness encoding is
-explicit beta.15 legacy bincode plus gzip, independent of environment settings.
+nargo's default compact msgpack plus gzip, independent of environment settings.
 See `NOTICE` and `../Cargo.lock` for licenses and dependency pins.
 
 ## Build on Linux
@@ -66,14 +66,20 @@ the asset build tool.
 python3 -I native/circuits/tools/build_assets.py --download-crs
 ```
 
-This requires pinned nargo beta.15 and bb 2.1.9 on PATH, or `NARGO`/`BB`.
+This requires pinned nargo 1.0.0-rc.3 and bb 6.0.0 on PATH, or `NARGO`/`BB`.
+nargo rc.3 has no release binary; build it with
+`cargo install --locked --git https://github.com/noir-lang/noir --tag v1.0.0-rc.3 nargo_cli`.
+Without the bb CLI, `--vk-tool target/release/zkpdf-vk` derives each key through this
+crate's own Barretenberg link (`cargo build --release -p zkpdf-prover --features bb --bin zkpdf-vk`);
+the CI asset workflow uses the upstream CLI, so both must produce the pinned hashes.
+`--repin` writes new hashes into `VERSIONS` and `assets.json` for a deliberate toolchain upgrade.
 `--download-crs` is an explicit build-time option; omit it for offline rebuilding
 with existing CRS. The tool verifies all frozen hashes and package catalog
 entries, including deterministic gzip files. Because frozen ACIR JSON contains
 absolute debug source paths, it canonicalizes only `file_map` paths to the
 frozen compilation root before checking the complete file hash.
 
-The catalog URLs point to the `zkpdf-v1` release, which the `zkPDF assets`
+The catalog URLs point to the `zkpdf-v1-bb6` release (the bb 2.1.9 assets stay in `zkpdf-v1`), which the `zkPDF assets`
 workflow (`.github/workflows/zkpdf-assets.yml`, run by hand) builds with this tool
 and publishes without ever replacing a published file. Both Gradle feature
 allowlists accept zkpdf. To require the host backend and execute the Kotlin test:

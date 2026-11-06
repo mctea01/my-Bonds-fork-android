@@ -78,7 +78,7 @@ def run(nargo,module,output):
     def execute(root,name,s,reject=False):
         if s['circuit']==int.from_bytes(b'pdf_inflate_seg0_v1','big') and name!='rejects_general_segment_zero': root=root.parent/(root.name+'0')
         write(root/'Prover.toml',s)
-        proc=subprocess.run([nargo,'execute','--program-dir',str(root),'--pedantic-solving'],
+        proc=subprocess.run([nargo,'execute','--program-dir',str(root)],
             stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         rejected=proc.returncode==1 and 'Cannot satisfy constraint' in proc.stdout
         passed=rejected if reject else proc.returncode==0

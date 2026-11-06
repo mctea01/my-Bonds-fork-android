@@ -76,7 +76,7 @@ fn bundle(input: &ZkPdfProveInput, prepared: &prepare::Prepared) -> ZkPdfBundle 
                 index: *index,
                 public_inputs: public::encode(kind, witness).unwrap(),
                 // Invalid placeholder proofs: exercise only public-input policy.
-                proof: vec![0; 16256],
+                proof: vec![0; crate::PROOF_BYTES],
             })
             .collect(),
     }

@@ -25,7 +25,7 @@ def run(nargo,module,output):
     inf0root=inflate_package(cache/'inflate0',64,96,1,1024,first=True)
     def execute(root,name,w,reject=False):
         write(root/'Prover.toml',w)
-        p=subprocess.run([nargo,'execute','--program-dir',str(root),'--pedantic-solving'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        p=subprocess.run([nargo,'execute','--program-dir',str(root)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         passed=(p.returncode==1 and 'Cannot satisfy constraint' in p.stdout) if reject else p.returncode==0
         results.append(dict(case=name,expected='reject' if reject else 'accept',passed=passed))
         print(name+(': pass' if passed else ': FAIL'),flush=True)

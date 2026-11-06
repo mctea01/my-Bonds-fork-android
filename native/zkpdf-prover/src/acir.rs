@@ -4,7 +4,7 @@ use crate::{Error, Result};
 use acvm::acir::{
     circuit::Program,
     native_types::{WitnessMap, WitnessStack},
-    FieldElement,
+    FieldElement, SerializationFormat,
 };
 use acvm::pwg::{ACVMStatus, ACVM};
 use acvm::AcirField;
@@ -12,7 +12,6 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use bn254_blackbox_solver::Bn254BlackBoxSolver;
 use noirc_abi::{input_parser::Format, Abi};
 use serde::Deserialize;
-use std::io::Read;
 
 #[derive(Deserialize)]
 struct Artifact {
@@ -37,7 +36,8 @@ fn solve(
         return Err(Error("acir_call_depth"));
     }
     let circuit = program.functions.get(index).ok_or(Error("acir_function"))?;
-    let solver = Bn254BlackBoxSolver(true);
+    // Pedantic solving is always on in this ACVM version.
+    let solver = Bn254BlackBoxSolver;
     let mut vm = ACVM::new(
         &solver,
         &circuit.opcodes,
@@ -70,6 +70,14 @@ fn solve(
     Ok(witness)
 }
 
+/// The gzip-compressed ACIR program of a nargo artifact.
+pub fn bytecode(artifact: &[u8]) -> Result<Vec<u8>> {
+    let artifact: Artifact = serde_json::from_slice(artifact).map_err(|_| Error("acir_json"))?;
+    STANDARD
+        .decode(&artifact.bytecode)
+        .map_err(|_| Error("acir_bytecode"))
+}
+
 /// Call only after the asset's complete JSON digest has been authenticated.
 pub fn execute(artifact: &[u8], inputs: &serde_json::Value) -> Result<Executed> {
     let artifact: Artifact = serde_json::from_slice(artifact).map_err(|_| Error("acir_json"))?;
@@ -98,16 +106,10 @@ pub fn execute(artifact: &[u8], inputs: &serde_json::Value) -> Result<Executed> 
         let value = solved.get_index(*index).ok_or(Error("acir_public_input"))?;
         public_inputs.extend(value.to_be_bytes());
     }
-    // Match beta.15's legacy encoding explicitly, independent of the
-    // process-wide NOIR_SERIALIZATION_FORMAT environment variable.
-    let raw = bincode::serde::encode_to_vec(
-        &stack,
-        bincode::config::legacy().with_limit::<{ u32::MAX as usize }>(),
-    )
-    .map_err(|_| Error("witness_encoding"))?;
-    let mut witness = Vec::new();
-    flate2::read::GzEncoder::new(raw.as_slice(), flate2::Compression::best())
-        .read_to_end(&mut witness)
+    // nargo's default encoding (compact msgpack, gzip), fixed explicitly so the
+    // process-wide NOIR_SERIALIZATION_FORMAT environment variable cannot change it.
+    let witness = stack
+        .serialize_with_format(SerializationFormat::MsgpackCompact)
         .map_err(|_| Error("witness_encoding"))?;
     Ok(Executed {
         bytecode,

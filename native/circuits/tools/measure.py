@@ -37,13 +37,13 @@ def main():
     p.add_argument('--bb', default='bb')
     p.add_argument('--crs', required=True)
     args = p.parse_args()
-    assert '1.0.0-beta.15' in subprocess.check_output([args.nargo,'--version'],text=True)
-    assert subprocess.check_output([args.bb,'--version'],text=True).strip() == '2.1.9'
+    assert '1.0.0-rc.3' in subprocess.check_output([args.nargo,'--version'],text=True)
+    assert subprocess.check_output([args.bb,'--version'],text=True).strip().removeprefix('v') == '6.0.0'
     results = ROOT/'target/measurements'
     results.mkdir(parents=True,exist_ok=True)
     for package in args.packages:
         if not package.replace('_','').isalnum(): raise ValueError('Invalid package')
-        record = dict(package=package,nargo='1.0.0-beta.15',bb='2.1.9',zk=True,oracle_hash='poseidon2')
+        record = dict(package=package,nargo='1.0.0-rc.3',bb='6.0.0',zk=True,oracle_hash='poseidon2')
         record['compile'] = measured([args.nargo,'compile','--package',package],results/f'{package}-compile.log')
         record['witness'] = measured([args.nargo,'execute','--package',package],results/f'{package}-execute.log')
         acir = ROOT/'target'/f'{package}.json'

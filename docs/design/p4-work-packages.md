@@ -72,7 +72,7 @@
 | WP2 | 完成 |
 | WP3a | M3a、M3b 完成（PR #21 於 2026-10-29 合併進整合分支）：分段證明（p4-circuits.md 第 3.12 節），公開輸入 `native/circuits/PUBLIC_SPEC.md` 已凍結，`VERSIONS` 為候選釘選值 |
 | WP3b | M3d（可重現的已簽署合成測試文件）完成（PR #20）；M3c（Rust 見證、UltraHonk 證明與查驗、uniffi）PR #74 於 2026-11-01 合併進整合分支；錨點序數、空尾段回歸與 Android 實際建置（arm64-v8a、x86_64，不需額外打包共享函式庫）在 PR #76（2026-11-02）。macOS 待實際建置，Windows 暫不支援；手機門檻待實機量測（電腦版 2 個 worker 最快，峰值約 2.2 GB） |
-| WP4 | M4a 完成（2026-11-02）：規劃器、遮蔽（只保留被簽的版本）、segment bundle 證據、查驗 V1–V10、衍生憑證的產生（背景證明、進度與取消）與 Bonds 出示查驗、版型包的文件版型與測試環境匯入；合成文件以真實原生證明走完產生與查驗。M4b 進行中（2026-11-05）：福州大學學籍（在學）證明版型 `templates/zkpdf/cn.fzu.student-status.json` 以真實文件核對，9 個欄位都以原生電路（電腦版組合，19 段，約 11.5 分鐘）證明並查驗通過；核對工具 `:test-servers:checkZkPdf` 只印文字形狀。v1 只接受單頁文件（其他頁會留在遮蔽檔），所以 2 頁的移民管理局出入境記錄不提供版型。新增 `clause`、`month` 正規化。bb 升級到 v6.0.0 後重跑（使用者 2026-11-05 決定在 M4b 凍結前升級）。M4c（`.zkpdf` 匯出匯入、自架主機）未開始，對應選項在選擇畫面停用 |
+| WP4 | M4a 完成（2026-11-02）：規劃器、遮蔽（只保留被簽的版本）、segment bundle 證據、查驗 V1–V10、衍生憑證的產生（背景證明、進度與取消）與 Bonds 出示查驗、版型包的文件版型與測試環境匯入；合成文件以真實原生證明走完產生與查驗。M4b 進行中（2026-11-05）：福州大學學籍（在學）證明版型 `templates/zkpdf/cn.fzu.student-status.json` 以真實文件核對，9 個欄位都以原生電路（電腦版組合，19 段，約 11.5 分鐘）證明並查驗通過；移民管理局通行證與居住證關聯查詢結果版型 `cn.nia.permit-link.json` 7 個欄位（含通行證與居住證號碼；RC4 加密，4 段，約 3.5 分鐘）同樣通過；核對工具 `:test-servers:checkZkPdf` 只印文字形狀。v1 只接受單頁文件（其他頁會留在遮蔽檔），所以 2 頁的移民管理局出入境記錄不提供版型。新增 `clause`、`month` 正規化。bb 升級到 v6.0.0 後重跑（使用者 2026-11-05 決定在 M4b 凍結前升級）。M4c（`.zkpdf` 匯出匯入、自架主機）未開始，對應選項在選擇畫面停用 |
 | WP5 | 完成（Proxy 與 MPC，`ZkTlsLoopbackTest`） |
 | WP6 | 完成：M6a 與 M6b；區域網路改為直接 TCP（第 5.2 節）；簽章版型包；學信網中英文報告頁與移民署入出國日期證明書查驗頁；網頁證明與本機紀錄存入證件 |
 | WP7 | 完成：Bonds 網頁年齡請求、主機或本機驗證，以及本錢包延伸的藍牙、區域網路、動態 QR 查驗 |
@@ -269,7 +269,7 @@ pub struct ZkPdfVerified { pub mid_outs: Vec<Vec<u8>>, pub claim_digests: Vec<Ve
   - `ZkPdfAnchorInput` 加 `ordinal`：產生器選第 `ordinal` 次出現的相同 v2 紀錄，沒有那麼多次時以固定錯誤碼拒絕；查驗端仍以描述檔的 `ordinal`、`total` 獨立檢查。
   - `claim_records`、`claim_digests` 固定 12 個並以 slot 為索引，未使用的 slot 紀錄為空、摘要為 0；錨點結果依輸入順序。
   - Rust 回傳各視窗的 H_e；SHA 接續、CMS、簽章版本與字型規則由 WP4 在 Kotlin 綁定。單獨的 `zkpdf_verify` 不保證拒絕替換成另一個同聲明的有效證明，呼叫端必須完成 WP4 的檢查才算查驗通過。
-  - Windows：bb 2.1.9 需要 POSIX 移植，zkPDF 暫不支援 Windows，錢包在 Windows 顯示為不支援。
+  - Windows：bb 6.0.0 上游只以 zig 交叉編譯 Windows，需要移植，zkPDF 暫不支援 Windows，錢包在 Windows 顯示為不支援。
 - 合成測試文件產生器（Python 或 Kotlin 皆可，以 `-I` 執行 Python）：輸出「仿在學證明」（WinAnsi 數字、Type0 中文、QR 影像）與「仿出入境記錄」（RC4、數字為 CID）兩種，以 test-servers 的測試 PKI 簽章；字型使用授權允許再散布的字型子集（例如 Noto Sans CJK，OFL），在 NOTICE 記錄。
 
 驗收：

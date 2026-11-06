@@ -129,7 +129,7 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/bn254_g1.dat.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/bn254_g1.dat.gz"
     ],
     "gzipSha256": "d91b51d7a7d2c9de408f8876932b6dc483a51910a3c88b5804bb7c9f4e0b138c",
     "gzipBytes": 134258737,
@@ -145,7 +145,7 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/bn254_g2.dat.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/bn254_g2.dat.gz"
     ],
     "gzipSha256": "39c790ce6f4a6d5e6798a91420d4b4614d12d1693520e24259b116d2cf9bcc36",
     "gzipBytes": 151,
@@ -160,12 +160,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_claim_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_claim_v1.json.gz"
     ],
-    "gzipSha256": "b5bd4d63bd6fdfd685037ec4276cad7ddac59571fb870122cd9b94076eacf3d6",
-    "gzipBytes": 518197,
-    "installedSha256": "96f9bb56503c4125bfb905f5b34f0ab2ecc3ecbad23ba4f9c5f4e195e4656faa",
-    "installedBytes": 1086280,
+    "gzipSha256": "a8ab8032e74a57a57bb58582fb7ac364a275cb048584189005a0e47656c79603",
+    "gzipBytes": 450762,
+    "installedSha256": "cf9245ef89beab085c33f333a690cabcdbf2d3a1a35a9e793b808cf54f635bef",
+    "installedBytes": 884777,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -176,11 +176,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_claim_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_claim_v1.vk.gz"
     ],
-    "gzipSha256": "ce22c054b65ebfbb58f56041bb07981c083a6af2648fbbe7d598eadf2982a16c",
-    "gzipBytes": 2005,
-    "installedSha256": "ef22b840908125ad8053e19d2ba0ac3146b5e4fb690f61efd74b18b395811cd0",
+    "gzipSha256": "9e5b5e247b88c857f41066b1e009dd9e2f06633a4a991b7025a0a9d845984c12",
+    "gzipBytes": 1929,
+    "installedSha256": "140c9fd3b33cfbded5731a8c5181c327e9bc2fa377d463b04316f2dd470de624",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -191,12 +191,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg0_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg0_v1.json.gz"
     ],
-    "gzipSha256": "74e3e9d102cd68ae26a54d702f9bb067b416d244dddd54d7ddb0aa13060ef60a",
-    "gzipBytes": 7332500,
-    "installedSha256": "6ab073c5a074331c7ad19f2c5fbf130dd29a1c8fc8b10e45d3daf6b4f5745d55",
-    "installedBytes": 11691737,
+    "gzipSha256": "b8d17a47f8fa8763e3c31bd5d07ced5c4a572748c2cabe1deaafcf8e491e15a7",
+    "gzipBytes": 6674679,
+    "installedSha256": "3eedcdaa45ab83cf8432464e4594dbc17c806cc1d42b99c3859d9a8af67a9d95",
+    "installedBytes": 10509317,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -207,11 +207,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg0_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg0_v1.vk.gz"
     ],
-    "gzipSha256": "f671e2832e2d4f218cf18e03493976bdcd7a4451059c8f846ca5bd8b9789f7c0",
-    "gzipBytes": 2005,
-    "installedSha256": "1dfb19f83383dd196d899d2f9186c86a420ab8a8929d8f440eef7b8cc7d74738",
+    "gzipSha256": "15985baa14d68defe92fc72050071b54af9673d7d51a22ed3d835e39ee19912b",
+    "gzipBytes": 1930,
+    "installedSha256": "9d5e6e676ff5a4adfa48ed6420fbd2c0cad9c428c83998f9c7cf771106c33966",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -222,12 +222,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg0_v1_desktop.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg0_v1_desktop.json.gz"
     ],
-    "gzipSha256": "84c2e674c7345196e643757708f18d85812a4b17f90a4b1d7927912394d084dd",
-    "gzipBytes": 10666810,
-    "installedSha256": "2bd89f3e87457d76262009225db7332f6a4e46e117ef93b4e2c5e554712f19b3",
-    "installedBytes": 16907329,
+    "gzipSha256": "de41f2a0fc2933333c01cab7645b710ed603293f3fb8936bfddfcb91201a0160",
+    "gzipBytes": 9747288,
+    "installedSha256": "918d1be00d07ebb8ece1a8c59dd130a3786fad228f6b26e59ec8753c1bff3698",
+    "installedBytes": 15203018,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -238,11 +238,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg0_v1_desktop.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg0_v1_desktop.vk.gz"
     ],
-    "gzipSha256": "ef4169e6b0b06479c13840175d863899f4ecc14eb97c6b982ac74f89b47aa806",
-    "gzipBytes": 2004,
-    "installedSha256": "f4f159804b04c5fa26720224ba43c889f9f057a50ff75bcd24f72f5a7d77c24f",
+    "gzipSha256": "e650d1d858ffa4b50230ea8cbae597f4c8c6cef737e9c0ad39eac91ccc1d4011",
+    "gzipBytes": 1930,
+    "installedSha256": "9244e17443a93e0a14c1a9ac8038d4d64d3cf1d0596a750cd9282b43b2c9f171",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -253,12 +253,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg_v1.json.gz"
     ],
-    "gzipSha256": "aa987195300294ee3dc9b51d3094ef78f3cf8ec0b8a0b05365fdb5609468eec3",
-    "gzipBytes": 4881272,
-    "installedSha256": "7cbed9ef789b12720d7fe6c39ba2886655d53c91f2e65b5bf3e3299cb39fc522",
-    "installedBytes": 8557850,
+    "gzipSha256": "19eb338db4291eaa8fdc5612a0ebe1f5942349da861c72701ddd4855051b72e4",
+    "gzipBytes": 4339832,
+    "installedSha256": "9a6796169e5ce3258a0043f00e48ca3382f5db7cc0c8dfb7f874539972ef9b82",
+    "installedBytes": 7547094,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -269,11 +269,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg_v1.vk.gz"
     ],
-    "gzipSha256": "01dde1c82597ce40edcbd2b774b5b640fb1b77e5e3a0b7e1e0aded8680ac8a8e",
-    "gzipBytes": 2004,
-    "installedSha256": "9e2fb178d307965de315666734f8abc79cfda454115bca7ff4503274ae684f9c",
+    "gzipSha256": "e077b5fd816ebb4159e46065aab73164a9e026d1b90b95e352e30f9f280536eb",
+    "gzipBytes": 1933,
+    "installedSha256": "54cf94bd691bf0b625aa50aa3ee7cd05240efb3976600150330fd4fa96bab415",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -284,12 +284,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg_v1_desktop.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg_v1_desktop.json.gz"
     ],
-    "gzipSha256": "1af6c0e571f9141c06d7a286f57871541264a69f7e96c1ddef91a8511113a41b",
-    "gzipBytes": 7075642,
-    "installedSha256": "70e3300018fe5fc6144ebe40d019242c9f572cf80a6d50050c9b0af9a87ddcc9",
-    "installedBytes": 12263200,
+    "gzipSha256": "8f98ff4815b88d75e0615a861053aa8de90f604f056c0f6089ab72a7d50fe896",
+    "gzipBytes": 6229391,
+    "installedSha256": "fe81cd7ec79aa33805094731b89eb6640a82c7c0698b470ed49b399d0661cedf",
+    "installedBytes": 10695457,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -300,11 +300,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_inflate_seg_v1_desktop.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_inflate_seg_v1_desktop.vk.gz"
     ],
-    "gzipSha256": "ab2fe4da2c12853e4e1e179e1cd140b654e7a52390e935dc1bdb8011480ca710",
-    "gzipBytes": 2008,
-    "installedSha256": "c56ed03f45ec99e44c59aea00b79055c59712c85f6b7bec273719e4130c711b2",
+    "gzipSha256": "5aa8336bdf7000754fd7570e2da196f157c325b780f5c7ce06251b37f9ac32ba",
+    "gzipBytes": 1937,
+    "installedSha256": "0082b91df12edc71bc19e04c7ac6c890f18105dd9940095b30f4cd565fed51ed",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -315,12 +315,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_lex_seg_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_lex_seg_v1.json.gz"
     ],
-    "gzipSha256": "f23c3f97c0452ae4d79504640caed70107923d90fa3a69863dfea7bcc4eecda4",
-    "gzipBytes": 10835869,
-    "installedSha256": "6f33cb79e9b65345f438b95dc0e584a6b401a747526884aa5e80370d718386a0",
-    "installedBytes": 16151582,
+    "gzipSha256": "df94423f1b8694ce1081f2a7ce451b17fec8b08c3c2e0d6672e548dead9b8bc3",
+    "gzipBytes": 11209787,
+    "installedSha256": "a674617e7e2b8f71f1308f91bfaba32211ae8179448ccaa5eee02400313545bd",
+    "installedBytes": 16180730,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -331,11 +331,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_lex_seg_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_lex_seg_v1.vk.gz"
     ],
-    "gzipSha256": "91704197e017cade107a78118676776d8d09193ba606cf070ca220496a644359",
-    "gzipBytes": 2002,
-    "installedSha256": "6a357f339eef01016ce1792525bedfad8f7023287a0bbd5dd9b864d6b44b321d",
+    "gzipSha256": "f461ba30aeb7b87ab7524691c0eafa392c56a7edb4362f15da51b83dec096f6d",
+    "gzipBytes": 1591,
+    "installedSha256": "2ca52420271f3b6b581f2eb05c144a2f603f3f4e63593dc3211fd83a3b092f23",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -346,12 +346,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_lex_seg_v1_desktop.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_lex_seg_v1_desktop.json.gz"
     ],
-    "gzipSha256": "8c690b62cd5262c7687bed2f00026864d2928d515420c91233ccb4539a617105",
-    "gzipBytes": 21321216,
-    "installedSha256": "df28392f7b912c36a9e20d483e71ce6cbff2892b2749751538b47954e5be097f",
-    "installedBytes": 31654280,
+    "gzipSha256": "1c9a7b413421b5d85151ee1b6046f44b2abc977550a9c2019420e35a446b8193",
+    "gzipBytes": 22126993,
+    "installedSha256": "1cc09b3c13edcbb70f76cb62245eca7463ba93e8cc071e313c927977bf962ed2",
+    "installedBytes": 31847869,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -362,11 +362,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_lex_seg_v1_desktop.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_lex_seg_v1_desktop.vk.gz"
     ],
-    "gzipSha256": "ec7285771e6b9774690f203e3e01fb7f6bc09b3dd2c80d55e3671bf2a6b110cc",
-    "gzipBytes": 2004,
-    "installedSha256": "9e94e813c45615125d5d406eaf576b353147bce0970dd2450118a95293d52d5f",
+    "gzipSha256": "8c8600272f7b7e66276522315c90dd28509430ef7b5db94569626dca68dfceb0",
+    "gzipBytes": 1589,
+    "installedSha256": "a08105d5193dc822798c105ee4669f4f845f1f9580fd458af0fd570a5a1bc3a0",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -377,12 +377,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_pred_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_pred_v1.json.gz"
     ],
-    "gzipSha256": "d01c5146014d80d67fb0dde4a6acd3d84fe0463effd885740c487870ea8d29ff",
-    "gzipBytes": 7319333,
-    "installedSha256": "94e4769d4cc5b0a4fd2048bf00df4b0f7b6237c2f76a2c44cdee8f9eabd9f8b2",
-    "installedBytes": 11044989,
+    "gzipSha256": "07df373ba715c97da3a9849f6d534863d0ca969b2af92a8e489bcad336060511",
+    "gzipBytes": 7028191,
+    "installedSha256": "5772516a4aa385c30ef18fcee7f21e01f9c0e7cda62b1d9e929f3981d447b5f0",
+    "installedBytes": 10830043,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -393,11 +393,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_pred_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_pred_v1.vk.gz"
     ],
-    "gzipSha256": "2a2858495b7bcc81880e6cc0136c959aa16f32386f6d6637bbfe3b2e34d7c2f9",
-    "gzipBytes": 2004,
-    "installedSha256": "ab9a7d4af04ae502cd9c6628ff3b9b6cfedb0d4d06c13dd789648ab988a00af9",
+    "gzipSha256": "3e4fe8a3689461cf6a90349119ea705802c5e396b63d914476ba091b376e9470",
+    "gzipBytes": 1585,
+    "installedSha256": "ffe543004b09c96f20fd03315578c386f6aa1d946a3cc77e48c4680850748079",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -408,12 +408,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_sha_content_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_sha_content_v1.json.gz"
     ],
-    "gzipSha256": "7b043ddf79c3f5cd7dc122e222924611c3c793ad4a56c418e74b1b4c68e07963",
-    "gzipBytes": 854479,
-    "installedSha256": "2b743ea3729edba3c23e273c8bf23fd4f9ab86d705cb96fb94cdcdcd3ed8e246",
-    "installedBytes": 1789785,
+    "gzipSha256": "4979ca70cc525cc8c464fb50625e0c1cb4d5c95c3090ba74591263990f0a001a",
+    "gzipBytes": 847531,
+    "installedSha256": "1e3e3e8989cb045d062fae398395b8fedea34bac466bb320d2c81aaf16159f63",
+    "installedBytes": 1675145,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -424,11 +424,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_sha_content_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_sha_content_v1.vk.gz"
     ],
-    "gzipSha256": "4c2882fb7c441475b1b9facb98f27dde3e3e7eb9f071650f5d425a93f9e7bb2a",
-    "gzipBytes": 2007,
-    "installedSha256": "304a50af8c97e73ed59f528df8507b779e2caf9f61aef89861bb5ac2f7cfeb07",
+    "gzipSha256": "4fa2da95d2fcd34f5efdf0e8fca4b0a327181eb82531a6056d190794a3cb90a6",
+    "gzipBytes": 1935,
+    "installedSha256": "9214f1db1c31c180e76082cb1a74c752bb91261784d7fab76ccbef8c0822da50",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   },
@@ -439,12 +439,12 @@
       "prover"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_sha_opaque_v1.json.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_sha_opaque_v1.json.gz"
     ],
-    "gzipSha256": "fcdb12e60d620760793828d9ae7e05a3f26d161cc83b80b4b4453e8996dfc5ad",
-    "gzipBytes": 229005,
-    "installedSha256": "720679295b98c9be46d71fb9593173aa4591d8a95cd97a14e88f7888583abb16",
-    "installedBytes": 451559,
+    "gzipSha256": "d86fb0c32bc651eed674c5216fbb7c53b2abd67d71ef13c0a7b877eda80eb594",
+    "gzipBytes": 243414,
+    "installedSha256": "3a497a7b2498a7b05f25bbabcd8ee2dbe6797fb0bbb2426d46b15df597a0a3d1",
+    "installedBytes": 487741,
     "license": "Apache-2.0 (DIW circuits)"
   },
   {
@@ -455,11 +455,11 @@
       "verifier"
     ],
     "urls": [
-      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1/pdf_sha_opaque_v1.vk.gz"
+      "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpdf-v1-bb6/pdf_sha_opaque_v1.vk.gz"
     ],
-    "gzipSha256": "29c9569422111825ff1bf58727ecfa63ee6c9a6f0dc2ebaede507afefb52231f",
-    "gzipBytes": 2001,
-    "installedSha256": "cd2a5fbbfab145ce73da656ccbd94ee39f5a01ab5157df799f52c012ed69561f",
+    "gzipSha256": "e64904a7bbe9c6419dc43e43dbb4bc91803368468b8bf3040fee1478846ef4cb",
+    "gzipBytes": 1799,
+    "installedSha256": "ffeb3ec58363647dfacdb172075dd53fccad15d5ae60670a1c518161e5786b5f",
     "installedBytes": 3680,
     "license": "Apache-2.0 (DIW circuits)"
   }

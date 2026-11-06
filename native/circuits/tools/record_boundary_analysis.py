@@ -53,13 +53,13 @@ def constrained_demo(nargo, module):
         executions = [(lex, witness) for witness in chain['lex']] + [(claim, chain['claim']), (pred,chain['pred'])]
         for root, witness in executions:
             write(root / 'Prover.toml', witness)
-            result = subprocess.run([nargo, 'execute', '--program-dir', str(root), '--pedantic-solving'],
+            result = subprocess.run([nargo, 'execute', '--program-dir', str(root)],
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             if result.returncode:
                 raise RuntimeError('Boundary demonstration execution failed; witness output suppressed')
         chain['pred']['predicates'][0]['cutoff']=20200105
         write(pred/'Prover.toml',chain['pred'])
-        result=subprocess.run([nargo,'execute','--program-dir',str(pred),'--pedantic-solving'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        result=subprocess.run([nargo,'execute','--program-dir',str(pred)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         assert result.returncode==1 and 'Cannot satisfy constraint' in result.stdout
         return dict(lexical_segments=len(chain['lex']),claim_executions=1,predicate_accepts=1,predicate_constraint_rejections=1)
     finally:

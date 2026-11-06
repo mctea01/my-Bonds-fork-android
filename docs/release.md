@@ -15,7 +15,7 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 
 Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 nightly 取 AAB 上傳）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
 
-每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android 與 Linux 另連結 zkPDF（Barretenberg 2.1.9，`openac,tlsn,zkpdf`），Windows 暫不支援、macOS 尚未建置。zkPDF 的電路資產在 `zkpdf-v1` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
+每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android 與 Linux 另連結 zkPDF（Barretenberg 6.0.0，`openac,tlsn,zkpdf`），Windows 暫不支援、macOS 尚未建置。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
 零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-desktop`（Windows、macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 

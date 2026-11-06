@@ -325,7 +325,7 @@ def decode_text(raw,fonts):
 
 def execute(nargo,root,label,w,reject=False):
     write(root/'Prover.toml',w)
-    p=subprocess.run([nargo,'execute','--program-dir',str(root),'--pedantic-solving'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+    p=subprocess.run([nargo,'execute','--program-dir',str(root)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
     constrained=p.returncode==1 and 'Cannot satisfy constraint' in p.stdout
     if reject and constrained and ('inline-image' in label or 'actual-text' in label):
         source=(ROOT/'pdf_text_v1/src/lex_segment.nr').read_text().splitlines()
@@ -423,7 +423,7 @@ def export_segment_vectors(directory,h):
 def main():
     if not __debug__:raise RuntimeError("Reference checks require normal Python assertion mode")
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--nargo',default='nargo');parser.add_argument('--output',type=Path,default=ROOT/'target/pdf-fixture-chain');parser.add_argument('--export-json',type=Path,help='Export the two positive synthetic WP3b inputs and verifier specifications');args=parser.parse_args()
-    version=subprocess.check_output([args.nargo,'--version'],text=True);assert version.splitlines()[0]=='nargo version = 1.0.0-beta.15'
+    version=subprocess.check_output([args.nargo,'--version'],text=True);assert version.splitlines()[0]=='nargo version = 1.0.0-rc.3'
     from formal_profiles import validate
     validate('phone')
     h=Poseidon();h.self_test();args.output.mkdir(parents=True,exist_ok=True)

@@ -38,7 +38,7 @@ fn main() {
     assert!(
         revision.status.success()
             && String::from_utf8_lossy(&revision.stdout).trim()
-                == "f2bed7ed073966bb2a2dcdd02a133d11bf2996d3",
+                == "0219f11d8133970df3974fe5ae65e006bf8c193a",
         "bb_revision"
     );
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
@@ -56,6 +56,10 @@ fn main() {
             "-DDISABLE_ASM=1",
             "-DDISABLE_AZTEC_VM=1",
             "-DNO_PAR_ALGOS",
+            // The definitions every barretenberg object is compiled with, so the headers agree.
+            "-DNDEBUG",
+            "-DMSGPACK_NO_BOOST",
+            "-DMSGPACK_USE_STD_VARIANT_ADAPTOR",
             "-pthread",
         ])
         .arg(format!("-DZKPDF_WORKERS={workers}"))
@@ -96,6 +100,7 @@ fn main() {
     );
     println!("cargo:rustc-link-lib=static=zkpdf_bridge");
     println!("cargo:rustc-link-lib=static=barretenberg");
+    println!("cargo:rustc-link-lib=static=zkpdf_vm2_stub");
     println!("cargo:rustc-link-lib=static=deflate");
     println!(
         "cargo:rustc-link-lib={}",
