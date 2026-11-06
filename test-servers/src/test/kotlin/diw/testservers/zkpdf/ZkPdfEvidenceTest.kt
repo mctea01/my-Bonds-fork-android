@@ -293,6 +293,21 @@ class ZkPdfEvidenceTest {
         val plain = verifier.verifyDirectPost(present(paths = listOf("name")), session)
         assertTrue(plain.credentials.single().checks.any { it.name == "requested claims" && it.status == diw.wallet.core.verifier.CheckStatus.FAIL })
         assertTrue(plain.credentials.single().evidence.none { "zkPDF" in it.name })
+
+        // DCQL paths are resolved in full and values are enforced.
+        fun requestedClaims(claims: String): diw.wallet.core.verifier.CheckStatus {
+            val query = Json.parseToJsonElement(
+                """{"credentials":[{"id":"doc","format":"dc+sd-jwt","meta":{"vct_values":["${DerivedCredentials.VCT}"]},"claims":$claims}]}""",
+            ).jsonObject
+            val other = diw.wallet.core.verifier.VerifierSession(session.nonce, clientId, "direct_post", query)
+            return runBlocking { verifier.verifyDirectPost(present(), other) }.credentials.single().checks.single { it.name == "requested claims" }.status
+        }
+        assertEquals(diw.wallet.core.verifier.CheckStatus.PASS, requestedClaims("""[{"path":["name"],"values":["林測試"]}]"""))
+        assertEquals(diw.wallet.core.verifier.CheckStatus.FAIL, requestedClaims("""[{"path":["name"],"values":["其他姓名"]}]"""))
+        assertEquals(diw.wallet.core.verifier.CheckStatus.FAIL, requestedClaims("""[{"path":["name","given"]}]"""))
+        assertEquals(diw.wallet.core.verifier.CheckStatus.PASS, requestedClaims(
+            """[{"id":"a","path":["name"],"values":["其他姓名"]},{"id":"b","path":["name"]}],"claim_sets":[["a"],["b"]]""",
+        ))
     }
 
     @Test fun templatesComeFromThePackAndTestImports() {

@@ -2321,7 +2321,7 @@ class FilesModel(private val model: WalletModel) {
     private suspend fun selfHostedProver(local: ZkPdfEngine): Pair<RemoteZkPdfEngine, String> {
         val s = model.settings
         if (s.zkProverUrl.isEmpty()) throw SigningException("尚未在設定的「零知識證明」頁加入自架主機")
-        ZkProverHost.problem(s.zkProverUrl)?.let { throw SigningException("自架主機的網址無法使用：$it") }
+        ZkProverHost.problem(s.zkProverUrl, model.platform::cleartextPermitted)?.let { throw SigningException("自架主機的網址無法使用：$it") }
         val remote = RemoteZkPdfEngine(ZkProverHost("自架主機", s.zkProverUrl, s.zkProverToken), local, model.http)
         busy.value = "連線自架主機"
         val offered = when (val r = remote.compositions()) {

@@ -378,7 +378,7 @@ private fun ProverSection(model: WalletModel) {
     var result by remember(settings.zkProverUrl, settings.zkProverToken) { mutableStateOf<String?>(null) }
     var checking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    val urlProblem = url.takeIf { it.isNotEmpty() }?.let { ZkProverHost.problem(it) }
+    val urlProblem = url.takeIf { it.isNotEmpty() }?.let { ZkProverHost.problem(it, model.platform::cleartextPermitted) }
     val tokenProblem = if (url.isNotEmpty() && token.length < ZkProverHost.MIN_TOKEN) "存取權杖至少 ${ZkProverHost.MIN_TOKEN} 個字元" else null
     Text(
         "這台裝置算力不足時，可把 PDF 第 1 頁的內容與證明需要的私密資料送到你自己架設的 zk-prover-server 產生 zkPDF 證明，" +
@@ -387,7 +387,7 @@ private fun ProverSection(model: WalletModel) {
     )
     OutlinedTextField(
         value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("主機網址（https；區域網路可用 http）") }, isError = urlProblem != null,
+        label = { Text(if (model.platform.cleartextPermitted("192.168.0.1")) "主機網址（https；區域網路可用 http）" else "主機網址（https）") }, isError = urlProblem != null,
         supportingText = urlProblem?.let { { Text(it) } },
     )
     OutlinedTextField(

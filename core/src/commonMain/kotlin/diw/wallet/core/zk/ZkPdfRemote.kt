@@ -173,13 +173,21 @@ class ZkProverHost(val name: String, val url: String, val token: String) {
         /** The shortest access token the prover accepts (tools/zk-prover-server). */
         const val MIN_TOKEN = 24
 
-        /** Null when [url] is acceptable; otherwise why not. Plain HTTP is only allowed to private-network addresses. */
-        fun problem(url: String): String? {
+        /**
+         * Null when [url] is acceptable; otherwise why not. Plain HTTP is only allowed to private-network addresses, and
+         * only where this build's HTTP stack permits clear text to that host ([cleartextPermitted]; Android release
+         * builds refuse it, see network_security_config.xml), so a setting that cannot connect is never accepted.
+         */
+        fun problem(url: String, cleartextPermitted: (String) -> Boolean = { true }): String? {
             val parsed = runCatching { Url(url) }.getOrNull() ?: return "網址格式不正確"
             if (parsed.host.isBlank() || parsed.user != null || parsed.password != null || parsed.fragment.isNotEmpty()) return "網址格式不正確"
             return when (parsed.protocol) {
                 URLProtocol.HTTPS -> null
-                URLProtocol.HTTP -> if (privateHost(parsed.host)) null else "公開網路上的主機必須使用 https"
+                URLProtocol.HTTP -> when {
+                    !privateHost(parsed.host) -> "公開網路上的主機必須使用 https"
+                    !cleartextPermitted(parsed.host) -> "這個版本只能以 https 連線自架主機，請在主機前加上 TLS 反向代理後使用 https 網址"
+                    else -> null
+                }
                 else -> "只支援 https 網址"
             }
         }

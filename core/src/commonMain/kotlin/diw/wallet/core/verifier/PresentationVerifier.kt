@@ -26,6 +26,11 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.DataItem
@@ -314,10 +319,7 @@ class PresentationVerifier(
         val vctValues = (query.obj("meta")?.get("vct_values") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }
         checks += if (vctValues == null || vct in vctValues) Check("vct", CheckStatus.PASS, vct)
         else Check("vct", CheckStatus.FAIL, "$vct not requested")
-        val requested = (query["claims"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-            .mapNotNull { c -> (c["path"] as? JsonArray)?.firstOrNull()?.let { (it as? JsonPrimitive)?.content } }
-        val missing = requested.filter { it !in processed }
-        checks += if (missing.isEmpty()) Check("requested claims", CheckStatus.PASS) else Check("requested claims", CheckStatus.FAIL, "missing $missing")
+        checks += requestedClaims(query, processed)
         sdJwt.validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         sdJwt.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
         val derived = vct == DerivedCredentials.VCT
@@ -343,6 +345,64 @@ class PresentationVerifier(
         else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")
         return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence)
     }
+
+    /**
+     * The DCQL `claims` (and `claim_sets`) of [query] against the disclosed claims [disclosed]: every path is resolved
+     * in full (keys, array indices and null for all elements), a claim that selects nothing is missing, and a claim
+     * with `values` passes only when a selected value equals one of them. Without `claim_sets` every claim is needed;
+     * with them, one set whose claims all pass is enough.
+     */
+    private fun requestedClaims(query: JsonObject, disclosed: JsonObject): Check {
+        val claims = (query["claims"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+        if (claims.isEmpty()) return Check("requested claims", CheckStatus.PASS)
+        val failures = linkedMapOf<String, String>()
+        claims.forEachIndexed { index, claim ->
+            val label = (claim["id"] as? JsonPrimitive)?.contentOrNull ?: "#$index"
+            val path = claim["path"] as? JsonArray
+            if (path.isNullOrEmpty()) {
+                failures[label] = "no path"
+                return@forEachIndexed
+            }
+            val selected = selectClaim(disclosed, path)
+            val values = (claim["values"] as? JsonArray)?.mapNotNull { it as? JsonPrimitive }
+            when {
+                selected.isEmpty() -> failures[label] = "missing ${pathText(path)}"
+                values != null && selected.none { v -> v is JsonPrimitive && values.any { sameValue(it, v) } } ->
+                    failures[label] = "${pathText(path)} not one of the requested values"
+            }
+        }
+        val sets = (query["claim_sets"] as? JsonArray)?.mapNotNull { set -> (set as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } }
+        val ids = claims.mapIndexed { i, c -> (c["id"] as? JsonPrimitive)?.contentOrNull ?: "#$i" }
+        val passed = if (sets.isNullOrEmpty()) failures.isEmpty()
+        else sets.any { set -> set.isNotEmpty() && set.all { it in ids && it !in failures } }
+        return if (passed) Check("requested claims", CheckStatus.PASS)
+        else Check("requested claims", CheckStatus.FAIL, failures.values.joinToString("; ").ifEmpty { "no claim set satisfied" })
+    }
+
+    private fun selectClaim(root: JsonElement, path: JsonArray): List<JsonElement> {
+        var current = listOf(root)
+        for (step in path) {
+            current = current.flatMap { node ->
+                when {
+                    step is JsonNull -> (node as? JsonArray)?.toList().orEmpty()
+                    step is JsonPrimitive && step.isString -> listOfNotNull((node as? JsonObject)?.get(step.content))
+                    step is JsonPrimitive -> step.intOrNull?.let { i -> (node as? JsonArray)?.getOrNull(i) }?.let { listOf(it) }.orEmpty()
+                    else -> emptyList()
+                }
+            }
+            if (current.isEmpty()) break
+        }
+        return current
+    }
+
+    /** DCQL value matching: strings with strings, numbers by value, booleans with booleans. */
+    private fun sameValue(wanted: JsonPrimitive, actual: JsonPrimitive): Boolean = when {
+        wanted.isString || actual.isString -> wanted.isString && actual.isString && wanted.content == actual.content
+        wanted.booleanOrNull != null || actual.booleanOrNull != null -> wanted.booleanOrNull == actual.booleanOrNull
+        else -> wanted.doubleOrNull != null && wanted.doubleOrNull == actual.doubleOrNull
+    }
+
+    private fun pathText(path: JsonArray) = path.joinToString(".") { (it as? JsonPrimitive)?.contentOrNull ?: "*" }
 
     private fun kbChecks(token: String?, expectedAud: String, now: Instant): List<Check> {
         if (token == null || token.endsWith("~")) return listOf(Check("key binding", CheckStatus.FAIL, "no KB-JWT"))
