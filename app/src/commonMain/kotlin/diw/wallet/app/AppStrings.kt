@@ -41,7 +41,7 @@ object AppText {
     }
 
     /** [resource] in the loaded language with [args] in its %n$s placeholders; the key when nothing is loaded yet. */
-    fun get(resource: StringResource, vararg args: Any): String {
+    fun get(resource: StringResource, vararg args: Any?): String {
         var text = loaded?.second?.get(resource.key) ?: resource.key
         args.forEachIndexed { i, a -> text = text.replace("%${i + 1}\$s", a.toString()).replace("%${i + 1}\$d", a.toString()) }
         return text
@@ -49,4 +49,4 @@ object AppText {
 }
 
 /** Short form of [AppText.get] for model code. */
-fun tr(resource: StringResource, vararg args: Any): String = AppText.get(resource, *args)
+fun tr(resource: StringResource, vararg args: Any?): String = AppText.get(resource, *args)

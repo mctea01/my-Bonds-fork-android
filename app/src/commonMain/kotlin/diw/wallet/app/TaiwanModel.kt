@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.app.legal.Integration
 import diw.wallet.core.holder.HolderIdentities
@@ -380,7 +382,7 @@ class TaiwanModel(private val model: WalletModel) {
                 offlineServices.value = s.offlineServices()
                 cardServices.value = s.cardServices()
             } catch (e: Exception) {
-                servicesError.value = "無法取得數位憑證皮夾的服務清單：" + model.describe(e)
+                servicesError.value = tr(Res.string.tw_services_failed) + model.describe(e)
             }
         }
     }
@@ -389,7 +391,7 @@ class TaiwanModel(private val model: WalletModel) {
     fun applyFor(service: TwdiwCardService) {
         val url = service.issuerServiceUrl
         if (url == null) {
-            model.message.value = "此憑證沒有提供申請頁面"
+            model.message.value = tr(Res.string.tw_no_apply_page)
             return
         }
         model.platform.openBrowser(url)
@@ -404,7 +406,7 @@ class TaiwanModel(private val model: WalletModel) {
                     is TwdiwStaticTarget.Request -> model.startPresentation(t.entry.uri, TwdiwEntry.ENTRY_HINT, t.fields)
                 }
             } catch (e: Exception) {
-                model.message.value = "無法開啟此 QR Code：" + model.describe(e)
+                model.message.value = tr(Res.string.tw_qr_unopenable) + model.describe(e)
             }
         }
     }
@@ -415,7 +417,7 @@ class TaiwanModel(private val model: WalletModel) {
             model.message.value = model.legal.disabledMessage(Integration.TWDIW)
             return
         }
-        offline.value = OfflineUi.Working("向 ${service.name} 建立取貨交易")
+        offline.value = OfflineUi.Working(tr(Res.string.tw_creating_pickup, service.name))
         model.screen.value = Screen.Offline
         model.scope.launch {
             try {
@@ -433,7 +435,7 @@ class TaiwanModel(private val model: WalletModel) {
     fun startPickup711() {
         val service = offlineServices.value?.firstOrNull { it.vpUid == TwdiwPlatform.PICKUP_711_VP_UID }
         if (service == null) {
-            model.message.value = "尚未取得 7-ELEVEN 取貨服務，請稍候或重新整理服務清單"
+            model.message.value = tr(Res.string.tw_no_pickup_service)
             loadServices()
             return
         }
@@ -442,12 +444,12 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** After the presentation: fetch the barcode signed with the presented card's (shared TWDIW) key. */
     fun fetchBarcode(session: TwdiwOfflineSession) {
-        offline.value = OfflineUi.Working("取得取貨條碼")
+        offline.value = OfflineUi.Working(tr(Res.string.tw_getting_pickup_code))
         model.screen.value = Screen.Offline
         model.scope.launch {
             try {
                 val holder = model.holderIdentities.find(HolderIdentities.TWDIW)
-                    ?: throw ProtocolException("credential_unavailable", "找不到數位憑證皮夾的持有者金鑰")
+                    ?: throw ProtocolException("credential_unavailable", tr(Res.string.tw_no_wallet_key))
                 val barcode = try {
                     withContext(model.unlockProvider) { model.twdiwServices.barcode(session, holder) }
                 } finally {
@@ -480,7 +482,7 @@ class TaiwanModel(private val model: WalletModel) {
             }.sortedBy { it.entry.displayName }
             verifyAll(force = refresh)
         } catch (e: Exception) {
-            trustError.value = "無法取得信任清單：" + model.describe(e)
+            trustError.value = tr(Res.string.tw_trust_list_failed) + model.describe(e)
         }
     }
 
@@ -512,7 +514,7 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** Checks one organisation now: its self-signed DID document and its Arbitrum registration. */
     fun verifyEntry(row: TwdiwTrustRow) = model.scope.launch {
-        if (!check(row)) model.message.value = "無法連線查驗 ${row.entry.displayName}，請稍後再試"
+        if (!check(row)) model.message.value = tr(Res.string.tw_check_unreachable, row.entry.displayName)
     }
 
     private suspend fun check(row: TwdiwTrustRow): Boolean = try {
@@ -551,18 +553,18 @@ class TaiwanModel(private val model: WalletModel) {
                         BondsCard(null, null, BondsCardKind.MOICA, NATIONAL_ID_NAME, nationalIdClaims(card), card)
                     }
                     offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
-                    else OfflineUi.Failed("對方要求以自然人憑證簽署的 Bonds 身分證卡（vc+moica）。到「文件」開啟 MyData 的國民身分證資料 PDF 製作身分證卡後就能出示；姓名一定會揭露。")
+                    else OfflineUi.Failed(tr(Res.string.tw_needs_bonds_id))
                     return@launch
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value
                 val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
                 offline.value = when {
                     cards.isNotEmpty() -> OfflineUi.BondsChoose(request, cards)
-                    request.source == BondsCredentialSource.TWDIW -> OfflineUi.Failed("這個查驗方只接受政府皮夾卡片，這支手機沒有可出示的卡片。先到「證件」加入卡片，就能出示給查驗方。")
-                    else -> OfflineUi.Failed("這支手機沒有可離線出示的證件。離線出示適用綁定金鑰的 SD-JWT VC 與 W3C 證件；行動駕照等 mdoc 證件請改用「感應出示」。")
+                    request.source == BondsCredentialSource.TWDIW -> OfflineUi.Failed(tr(Res.string.tw_only_gov_cards))
+                    else -> OfflineUi.Failed(tr(Res.string.tw_no_offline_cards))
                 }
             } catch (e: Exception) {
-                offline.value = OfflineUi.Failed("無法讀取查驗方的 QR Code：" + model.describe(e))
+                offline.value = OfflineUi.Failed(tr(Res.string.tw_verifier_qr_unreadable) + model.describe(e))
             }
         }
     }
@@ -570,7 +572,7 @@ class TaiwanModel(private val model: WalletModel) {
     /** The card [doc] offers for a request from [source], or null when it has none that fits. */
     private suspend fun bondsCard(doc: Document, source: BondsCredentialSource): BondsCard? {
         val creds = doc.getCertifiedCredentials()
-        val name = doc.displayName ?: "數位憑證"
+        val name = doc.displayName ?: tr(Res.string.tw_card_fallback)
         creds.filterIsInstance<W3cVcCredential>().firstOrNull { it.encoding == W3cEncoding.SD_JWT && it.keyBound }?.let {
             return BondsCard(doc, it, BondsCardKind.W3C_SD_JWT, name, BondsOfflinePresentation.disclosableClaims(it))
         }
@@ -590,7 +592,7 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** Signs the presentation of [card] with [disclosing] and shows it as frames. */
     fun presentBonds(request: BondsPresentationRequest, card: BondsCard, disclosing: Set<String>) {
-        offline.value = OfflineUi.Working("簽署出示資料")
+        offline.value = OfflineUi.Working(tr(Res.string.tw_signing_presentation))
         model.scope.launch {
             val shown = if (card.selective) disclosing else card.claims.map { it.first }.toSet()
             try {
@@ -606,7 +608,7 @@ class TaiwanModel(private val model: WalletModel) {
                 // Over the local network the QR stays hidden unless that route fails or the user asks for it.
                 val viaLan = request.lanUrls.isNotEmpty() && model.platform.bondsLan != null
                 val state = OfflineUi.BondsFrames(request, frames, jws, Clock.System.now() + 5.minutes, fountain = fountain, showQr = !viaLan,
-                    details = LanDetails.presentation(request) + request.lanUrls.map { "查驗方接收位址：" + LanDetails.hostPort(it) })
+                    details = LanDetails.presentation(request) + request.lanUrls.map { tr(Res.string.tw_verifier_address) + LanDetails.hostPort(it) })
                 offline.value = state
                 model.platform.keepScreenOn(true)
                 recordBonds(request, card, shown, null)
@@ -624,7 +626,7 @@ class TaiwanModel(private val model: WalletModel) {
             val key = cred.holderPublicKey()?.let { model.holderIdentities.findByPublicKey(it) }
                 ?: cred.holderKey()
                 ?: model.holderIdentities.find(HolderIdentities.TWDIW)
-                ?: throw ProtocolException("credential_unavailable", "找不到此憑證的持有者金鑰")
+                ?: throw ProtocolException("credential_unavailable", tr(Res.string.tw_no_holder_key))
             BondsOfflinePresentation.present(request, cred, key, model.didResolver(), disclosing)
         }
         BondsCardKind.SD_JWT_VC -> {
@@ -637,12 +639,12 @@ class TaiwanModel(private val model: WalletModel) {
         }
         BondsCardKind.MOICA -> {
             val holder = model.holderIdentities.find(HolderIdentities.BONDS_SELF_ISSUED)
-                ?: throw ProtocolException("credential_unavailable", "找不到自然人憑證卡片的持有者金鑰")
+                ?: throw ProtocolException("credential_unavailable", tr(Res.string.tw_no_moica_key))
             BondsOfflinePresentation.presentMoica(request, card.moica!!, holder, disclosing)
         }
         BondsCardKind.JWT_VC -> {
             val cred = card.credential as W3cVcCredential
-            val key = cred.holderKey() ?: throw ProtocolException("credential_unavailable", "找不到此憑證的持有者金鑰")
+            val key = cred.holderKey() ?: throw ProtocolException("credential_unavailable", tr(Res.string.tw_no_holder_key))
             BondsOfflinePresentation.presentJwtVc(request, cred.raw, key.signingKey("ES256"), key.publicKey, cred.holderDid, model.didResolver())
         }
     }
@@ -657,8 +659,8 @@ class TaiwanModel(private val model: WalletModel) {
     private fun recordBonds(request: BondsPresentationRequest, card: BondsCard, disclosing: Set<String>, failure: String?) {
         val record = card.document?.issuanceRecord
         model.record(
-            HistoryKind.PRESENTED, request.audience ?: "離線查驗方", null, listOf(card.name),
-            disclosing.map { model.claimLabel(it.split('.'), null, record) }, "離線出示，用途：${request.purpose}", failure,
+            HistoryKind.PRESENTED, request.audience ?: tr(Res.string.tw_offline_verifier), null, listOf(card.name),
+            disclosing.map { model.claimLabel(it.split('.'), null, record) }, tr(Res.string.tw_offline_presented, request.purpose), failure,
         )
     }
 
@@ -679,14 +681,14 @@ class TaiwanModel(private val model: WalletModel) {
                 if (cur.presentationJws == state.presentationJws) offline.value = cur.copy(link = text, showQr = showQr ?: cur.showQr)
             }
             try {
-                link.unavailableReason()?.let { update("藍牙無法使用：$it", showQr = true); return@launch }
-                update("等待查驗方以藍牙連線", showQr = false)
+                link.unavailableReason()?.let { update(tr(Res.string.tw_ble_unavailable, it), showQr = true); return@launch }
+                update(tr(Res.string.tw_ble_waiting), showQr = false)
                 val ok = link.send(uuid, state.presentationJws) { update(it) }
-                update(if (ok) "查驗方已收到" else "藍牙傳送未完成，請改用 QR Code", showQr = !ok)
+                update(if (ok) tr(Res.string.tw_verifier_received) else tr(Res.string.tw_ble_incomplete), showQr = !ok)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                update("藍牙傳送失敗：" + (e.message ?: ""), showQr = true)
+                update(tr(Res.string.tw_ble_failed) + (e.message ?: ""), showQr = true)
             }
         }
     }
@@ -700,17 +702,17 @@ class TaiwanModel(private val model: WalletModel) {
             fun update(text: String, showQr: Boolean, reached: String? = null) {
                 val cur = offline.value as? OfflineUi.BondsFrames ?: return
                 if (cur.presentationJws != state.presentationJws) return
-                offline.value = cur.copy(lan = text, showQr = showQr, details = cur.details + listOfNotNull(reached?.let { "送達位址：" + LanDetails.hostPort(it) }))
+                offline.value = cur.copy(lan = text, showQr = showQr, details = cur.details + listOfNotNull(reached?.let { tr(Res.string.tw_delivery_address) + LanDetails.hostPort(it) }))
             }
             try {
-                update("正在經區網送給查驗方", showQr = false)
+                update(tr(Res.string.tw_lan_sending), showQr = false)
                 val (status, text, reached) = lan.postFirstFrom(urls, BondsLanPresentation.seal(state.presentationJws, state.request), LAN_SEND_TIMEOUT)
                 val refusal = BondsLanPresentation.refusal(status, text)
-                update(if (refusal == null) "已經區網送達查驗方，結果以對方畫面為準" else "查驗方沒有接受（$refusal），請讓對方掃描 QR Code", showQr = refusal != null, reached)
+                update(if (refusal == null) tr(Res.string.tw_lan_delivered) else tr(Res.string.tw_lan_refused, refusal), showQr = refusal != null, reached)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                update("區網沒有送達（${model.describe(e)}），請讓對方掃描 QR Code 或改用藍牙", showQr = true)
+                update(tr(Res.string.tw_lan_not_delivered, model.describe(e)), showQr = true)
             }
         }
     }
@@ -732,10 +734,10 @@ class TaiwanModel(private val model: WalletModel) {
             val lan = model.platform.bondsLan
             val interfaces = lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
             if (lan == null || interfaces.isEmpty()) {
-                showChallenge(plain, lan?.let { "這支手機沒有連上 Wi-Fi 或開啟熱點，不能經區網接收" })
+                showChallenge(plain, lan?.let { tr(Res.string.tw_lan_no_network) })
                 return
             }
-            offline.value = OfflineUi.Working("準備查驗挑戰")
+            offline.value = OfflineUi.Working(tr(Res.string.tw_preparing_challenge))
             listenOnLan(lan, interfaces, purpose, source, plain)
         } catch (e: Exception) {
             model.message.value = model.describe(e)
@@ -769,10 +771,10 @@ class TaiwanModel(private val model: WalletModel) {
                             purpose, source, lanUrls = urls, lanKey = BondsLanPresentation.keyText(key.publicKey), qr = true,
                         )
                         request = r
-                        showChallenge(r, "對方也可經區網（這台裝置的${interfaces.networks()}）直接送出", LanDetails.presentation(r, LanDetails.listening(urls, interfaces)))
+                        showChallenge(r, tr(Res.string.tw_lan_also, interfaces.networks()), LanDetails.presentation(r, LanDetails.listening(urls, interfaces)))
                     }) { body ->
                         val r = request!!
-                        if (!active(r)) return@serve BondsLanPresentation.refused("查驗已結束") to true
+                        if (!active(r)) return@serve BondsLanPresentation.refused(tr(Res.string.tw_check_ended)) to true
                         try {
                             presentation = BondsLanPresentation.open(body, key, r)
                             BondsLanPresentation.received() to true
@@ -780,9 +782,9 @@ class TaiwanModel(private val model: WalletModel) {
                             throw e
                         } catch (e: Exception) {
                             (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == r }?.let {
-                                offline.value = it.copy(lan = "收到一份無法使用的區網資料（${model.describe(e)}），繼續等待")
+                                offline.value = it.copy(lan = tr(Res.string.tw_lan_bad_data, model.describe(e)))
                             }
-                            BondsLanPresentation.refused("不是這次查驗挑戰的出示資料") to false
+                            BondsLanPresentation.refused(tr(Res.string.tw_not_this_challenge)) to false
                         }
                     }
                 }
@@ -795,10 +797,10 @@ class TaiwanModel(private val model: WalletModel) {
                 val r = request
                 if (r == null) {
                     // The socket could not be opened: the camera and Bluetooth still work.
-                    if (offline.value is OfflineUi.Working) showChallenge(fallback, "無法在區網接收（${model.describe(e)}）")
+                    if (offline.value is OfflineUi.Working) showChallenge(fallback, tr(Res.string.tw_lan_receive_failed, model.describe(e)))
                 } else {
                     (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == r }?.let {
-                        offline.value = it.copy(lan = "區網接收中斷（${model.describe(e)}），請改掃描對方畫面")
+                        offline.value = it.copy(lan = tr(Res.string.tw_lan_interrupted, model.describe(e)))
                     }
                 }
             }
@@ -828,8 +830,8 @@ class TaiwanModel(private val model: WalletModel) {
                 (offline.value as? OfflineUi.VerifierChallenge)?.takeIf { it.request == request }?.let { offline.value = it.copy(link = text) }
             }
             try {
-                central.unavailableReason()?.let { update("藍牙無法使用（$it），請改掃描對方畫面"); return@launch }
-                update("也可由對方以藍牙直接傳送")
+                central.unavailableReason()?.let { update(tr(Res.string.tw_ble_unavailable_scan, it)); return@launch }
+                update(tr(Res.string.tw_ble_also))
                 val jws = central.receive(uuid, BondsLinkTransport.MAX_PAYLOAD, ::update, null).decodeToString()
                 if ((offline.value as? OfflineUi.VerifierChallenge)?.request == request) {
                     verifierCollector = null
@@ -838,7 +840,7 @@ class TaiwanModel(private val model: WalletModel) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                update("藍牙接收失敗（${model.describe(e)}），請改掃描對方畫面")
+                update(tr(Res.string.tw_ble_receive_failed, model.describe(e)))
             }
         }
     }
@@ -851,7 +853,7 @@ class TaiwanModel(private val model: WalletModel) {
         val fountain = AnimatedQrTransport.isFrame(text)
         val collector: ((String) -> BondsReception)? = if (fountain) verifierFountain?.let { it::accept } else verifierCollector?.let { it::accept }
         if (state == null || collector == null) {
-            model.message.value = "這是出示給查驗方的畫面；要查驗對方，請先到「查驗」產生查驗挑戰"
+            model.message.value = tr(Res.string.tw_wrong_screen)
             return
         }
         try {
@@ -862,7 +864,7 @@ class TaiwanModel(private val model: WalletModel) {
             }
         } catch (e: Exception) {
             if (fountain) verifierFountain = AnimatedQrCollector(BondsLinkTransport.MAX_PAYLOAD) else verifierCollector = BondsFrameCollector()
-            model.message.value = "畫面讀取失敗，請重新掃描：" + (e.message ?: "")
+            model.message.value = tr(Res.string.tw_screen_unreadable) + (e.message ?: "")
             offline.value = state.copy(received = 0, total = 0)
         }
     }
@@ -870,7 +872,7 @@ class TaiwanModel(private val model: WalletModel) {
     private fun verify(request: BondsPresentationRequest, jws: String) {
         // Whichever transport delivered first wins; the others stop (this may be called from one of their jobs).
         stopVerifierTransports()
-        offline.value = OfflineUi.Working("驗證出示資料")
+        offline.value = OfflineUi.Working(tr(Res.string.tw_verifying_presentation))
         val risk = verifierRisk
         model.scope.launch {
             offline.value = try {
@@ -879,24 +881,24 @@ class TaiwanModel(private val model: WalletModel) {
                     model.didResolver(),
                     { iss, kid ->
                         withTimeoutOrNull(STATUS_TIMEOUT) { metadata.resolve(iss, kid) }
-                            ?: throw ProtocolException("invalid_credential", "無法取得發行端金鑰（需要網路）")
+                            ?: throw ProtocolException("invalid_credential", tr(Res.string.tw_issuer_key_offline))
                     },
                     documentTrust = model.files.trustSource,
                     zkPdf = model.zkPdfContext,
                 ).verify(jws, request)
                 val trust = issuerTrust(result)
-                offline.value = OfflineUi.Working("查詢證件狀態")
+                offline.value = OfflineUi.Working(tr(Res.string.tw_checking_status))
                 val status = cardStatus(result)
                 val decision = StatusPolicy.decide(status, risk)
                 model.record(
-                    HistoryKind.VERIFIED, result.moica?.cardholderName ?: "出示者 ${shortDid(result.holder)}", trust,
-                    listOfNotNull(trust?.anchorName ?: result.issuer?.let { "發行端 ${shortDid(it)}" }),
+                    HistoryKind.VERIFIED, result.moica?.cardholderName ?: tr(Res.string.tw_holder_did, shortDid(result.holder)), trust,
+                    listOfNotNull(trust?.anchorName ?: result.issuer?.let { tr(Res.string.tw_issuer_did, shortDid(it)) }),
                     result.claims.keys.map { model.claimLabel(it.split('.'), null, null) },
-                    verifierNote(request) + "；" + StatusTexts.summary(decision),
+                    verifierNote(request) + tr(Res.string.sep_semicolon) + StatusTexts.summary(decision),
                 )
                 OfflineUi.VerifierResult(request, result, trust, null, risk, status, decision)
             } catch (e: Exception) {
-                model.record(HistoryKind.VERIFIED, "出示者", null, note = verifierNote(request), failure = model.describe(e))
+                model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = verifierNote(request), failure = model.describe(e))
                 OfflineUi.VerifierResult(request, null, null, model.describe(e), risk)
             }
         }
@@ -908,7 +910,7 @@ class TaiwanModel(private val model: WalletModel) {
      */
     private suspend fun cardStatus(result: BondsVerifiedPresentation): CredentialStatus {
         val checker = CredentialStatusChecker(model.http, model.trust, didTrust = model.didTrust)
-        val unknown = CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), "離線或狀態清單逾時未回應")
+        val unknown = CredentialStatus(RevocationCheckState.UNKNOWN, false, null, Clock.System.now(), tr(Res.string.tw_status_timeout))
         result.revocationStatus?.let { ref ->
             return withTimeoutOrNull(STATUS_TIMEOUT) { runCatching { checker.check(ref, result.issuerChain, bypassCache = true) }.getOrNull() } ?: unknown
         }
@@ -930,7 +932,7 @@ class TaiwanModel(private val model: WalletModel) {
     }
 
     private fun verifierNote(request: BondsPresentationRequest) =
-        "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
+        tr(Res.string.tw_offline_verified, request.purpose) + (request.audience?.let { tr(Res.string.tw_verified_as, it) } ?: "")
 
     fun closeOffline() {
         model.server.clearPeer()
@@ -957,7 +959,7 @@ class TaiwanModel(private val model: WalletModel) {
         /** A DID shortened for a list line: method and the last characters of the identifier. */
         fun shortDid(did: String): String = if (did.length <= 28) did else did.take(14) + "..." + did.takeLast(8)
 
-        const val NATIONAL_ID_NAME = "國民身分證（自然人憑證簽署）"
+        val NATIONAL_ID_NAME: String get() = tr(Res.string.tw_national_id_name)
 
         /** Claims of a national ID card in Bonds' display order. */
         fun nationalIdClaims(card: MoicaSignedCredential): List<Pair<String, String>> =

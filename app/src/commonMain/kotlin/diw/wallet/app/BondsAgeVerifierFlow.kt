@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.profile.bonds.AnimatedQrCollector
 import diw.wallet.core.profile.bonds.BondsAgePackage
 import diw.wallet.core.profile.bonds.BondsAgeRequest
@@ -96,7 +98,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         stop()
         lastStart = Triple(minimumAge, source, purpose)
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("建立年齡查驗請求")
+        ui.value = OfflineUi.Working(tr(Res.string.agev_creating))
         job = model.scope.launch {
             try {
                 val local = engines()
@@ -105,15 +107,15 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 val request = BondsAgeRequest.parse(created.str("request") ?: throw ProtocolException("server_error", "No request"), insecureHosts())
                 val session = created.str("sessionId") ?: throw ProtocolException("server_error", "No session")
                 val token = created.str("token") ?: throw ProtocolException("server_error", "No token")
-                val note = (local as? ZkResult.Failed)?.let { "這支手機無法驗證（${it.reason}），改由查驗主機驗證。" }
+                val note = (local as? ZkResult.Failed)?.let { tr(Res.string.agev_local_fallback, it.reason) }
                 model.platform.keepScreenOn(true)
                 ui.value = OfflineUi.AgeVerifierWaiting(request, Url(host).host, engine != null, note,
-                    details = LanDetails.age(request) + "回應網址：${request.responseUrl}", peerable = true)
+                    details = LanDetails.age(request) + tr(Res.string.agev_response_url, request.responseUrl), peerable = true)
                 follow(host, session, token, request, engine, note)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.value = OfflineUi.Failed("無法建立年齡查驗：" + model.describe(e))
+                ui.value = OfflineUi.Failed(tr(Res.string.agev_create_failed) + model.describe(e))
             } finally {
                 // A request sent again through another server keeps the screen on for itself.
                 if (job == null || job === currentCoroutineContext()[Job]) model.platform.keepScreenOn(false)
@@ -134,12 +136,12 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         } else null
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working(if (bluetooth) "準備藍牙年齡查驗" else "準備動態 QR 年齡查驗")
+        ui.value = OfflineUi.Working(if (bluetooth) tr(Res.string.agev_preparing_ble) else tr(Res.string.agev_preparing_qr))
         job = model.scope.launch {
             try {
                 val engine = localEngine(if (bluetooth) BLUETOOTH else ANIMATED_QR) ?: return@launch
                 // Without Bluetooth the holder's animated QR still works, so a radio problem is a note, not a failure.
-                val note = link?.unavailableReason()?.let { "藍牙無法使用（$it），請改掃描出示者的動態 QR Code。" }
+                val note = link?.unavailableReason()?.let { tr(Res.string.agev_ble_use_qr, it) }
                 val request = BondsAgeRequest.create(minimumAge, source, purpose, null, qr = true)
                 val host = if (bluetooth) BLUETOOTH else ANIMATED_QR
                 val waiting = OfflineUi.AgeVerifierWaiting(request, host, relay = true, note = note, details = LanDetails.age(request))
@@ -167,7 +169,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                update { it.copy(link = "藍牙沒有完成（${model.describe(e)}），仍可掃描出示者的動態 QR Code。") }
+                                update { it.copy(link = tr(Res.string.agev_ble_incomplete, model.describe(e))) }
                             }
                             shown?.let { done.complete(it) }
                         }
@@ -190,7 +192,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.value = OfflineUi.Failed("年齡查驗沒有完成：" + model.describe(e))
+                ui.value = OfflineUi.Failed(tr(Res.string.agev_incomplete) + model.describe(e))
             } finally {
                 frames = null
                 model.platform.keepScreenOn(false)
@@ -200,11 +202,11 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
 
     /** A frame of the holder's animated QR for the running nearby check; the camera closes once the package is whole. */
     fun acceptFrame(text: String): QrScanStep {
-        val pending = frames ?: return QrScanStep(true, "目前沒有等待動態 QR Code 的年齡查驗")
+        val pending = frames ?: return QrScanStep(true, tr(Res.string.agev_no_qr_wait))
         val reception = try {
             pending.collector.accept(text)
         } catch (e: BondsTransportException) {
-            return QrScanStep(false, "這張畫面無法讀取，請繼續對準")
+            return QrScanStep(false, tr(Res.string.agev_frame_unreadable))
         }
         val (got, total) = when (reception) {
             is BondsReception.Completed -> {
@@ -215,7 +217,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             is BondsReception.Accepted -> reception.received to reception.total
             is BondsReception.Duplicate -> reception.received to reception.total
         }
-        val progress = "動態 QR Code 已收到 ${got * 100 / total}%（$got / $total）"
+        val progress = tr(Res.string.agev_qr_progress, got * 100 / total, got, total)
         (ui.value as? OfflineUi.AgeVerifierWaiting)?.takeIf { it.request == pending.request }?.let { ui.value = it.copy(scanned = progress) }
         return QrScanStep(false, progress)
     }
@@ -228,12 +230,12 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
      */
     fun startLan(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
         val lan = model.platform.bondsLan ?: run {
-            model.message.value = "這個平台無法在區網接收證明，請改用藍牙或查驗主機。"
+            model.message.value = tr(Res.string.agev_no_lan_platform)
             return
         }
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("準備區網年齡查驗")
+        ui.value = OfflineUi.Working(tr(Res.string.agev_preparing_lan))
         job = model.scope.launch {
             try {
                 val interfaces = lan.localInterfaces().take(MAX_LAN_URLS).ifEmpty {
@@ -241,9 +243,9 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                     return@launch
                 }
                 val addresses = interfaces.map { it.address }
-                val engine = localEngine("區網") ?: return@launch
+                val engine = localEngine(tr(Res.string.age_route_label_lan)) ?: return@launch
                 // People see the network; the addresses are in the technical details.
-                val host = "區網（${interfaces.networks()}）"
+                val host = tr(Res.string.agev_lan_host, interfaces.networks())
                 var details = emptyList<String>()
                 var request: BondsAgeRequest? = null
                 var result: OfflineUi.AgeVerifierResult? = null
@@ -269,7 +271,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.value = OfflineUi.Failed("區網年齡查驗沒有完成：" + model.describe(e))
+                ui.value = OfflineUi.Failed(tr(Res.string.agev_lan_incomplete) + model.describe(e))
             } finally {
                 model.platform.keepScreenOn(false)
             }
@@ -280,7 +282,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     private suspend fun localEngine(how: String): OpenAcAgeVerifier? = when (val r = engines()) {
         is ZkResult.Ok -> r.value
         is ZkResult.Failed -> {
-            ui.value = OfflineUi.Failed("這台裝置無法驗證年齡證明（${r.reason}）。$how 查驗要在這台裝置上驗證，可改用查驗主機。")
+            ui.value = OfflineUi.Failed(tr(Res.string.agev_no_local_engine, r.reason, how))
             null
         }
         ZkResult.Cancelled -> null
@@ -305,7 +307,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         val body = response.bodyAsText()
         val json = runCatching { DiwJson.parseToJsonElement(body) as? JsonObject }.getOrNull()
         if (!response.status.isSuccess() || json == null) {
-            throw ProtocolException("server_error", json?.str("error_description") ?: "查驗主機回應 HTTP ${response.status.value}")
+            throw ProtocolException("server_error", json?.str("error_description") ?: tr(Res.string.agev_host_http, response.status.value))
         }
         return json
     }
@@ -325,7 +327,7 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 }
                 state?.str("state") == "done" -> {
                     val verdict = (state["verdict"] as? JsonObject)?.let { BondsAgeVerdict.parse(it.toString()) }
-                    show(OfflineUi.AgeVerifierResult(request, hostName, null, verdict, if (verdict == null) "查驗主機的結果無法讀取" else null))
+                    show(OfflineUi.AgeVerifierResult(request, hostName, null, verdict, if (verdict == null) tr(Res.string.agev_host_unreadable) else null))
                     return
                 }
                 state?.str("state") == "received" ->
@@ -350,11 +352,11 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     } catch (e: CancellationException) {
         throw e
     } catch (e: ProtocolException) {
-        OfflineUi.AgeVerifierResult(request, host, null, null, "收到的證明無法讀取：" + model.describe(e)) to
-            BondsAgeVerdict("failed", false, "證明回應缺少必要欄位", request.minimumAge, null)
+        OfflineUi.AgeVerifierResult(request, host, null, null, tr(Res.string.agev_proof_unreadable) + model.describe(e)) to
+            BondsAgeVerdict("failed", false, tr(Res.string.agev_proof_incomplete), request.minimumAge, null)
     } catch (e: Exception) {
-        OfflineUi.AgeVerifierResult(request, host, null, null, "這支手機無法完成驗證：" + model.describe(e)) to
-            BondsAgeVerdict("failed", false, "查驗方無法完成驗證", request.minimumAge, null)
+        OfflineUi.AgeVerifierResult(request, host, null, null, tr(Res.string.agev_local_failed) + model.describe(e)) to
+            BondsAgeVerdict("failed", false, tr(Res.string.agev_verifier_failed), request.minimumAge, null)
     }
 
     private suspend fun answer(host: String, session: String, token: String, verdict: BondsAgeVerdict) {
@@ -375,15 +377,15 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         val failure = when {
             accepted -> null
             v != null -> v.reason
-            else -> result.remote?.reason ?: result.error ?: "沒有收到證明"
+            else -> result.remote?.reason ?: result.error ?: tr(Res.string.agev_no_proof)
         }
         model.record(
-            HistoryKind.VERIFIED, "年齡零知識證明", v?.issuerTrust,
-            listOfNotNull(v?.let { if (it.selfIssued) "自發卡（持有者自己的金鑰）" else "發卡者 ${shortDid(it.issuerDid)}" }),
-            listOf("年滿 ${result.request.minimumAge} 歲"),
-            "OpenAC 零知識年齡查驗（Bonds 相容）" + (if (result.request.nearby) (if (result.host == ANIMATED_QR) "，掃描動態 QR Code 收到、不經伺服器" else "，藍牙直接收到、不經伺服器") else if (result.request.lan) "，區網直接收到、不經伺服器" else "") +
-                (if (v != null) "，在這支手機驗證" else "，由 ${result.host} 驗證") +
-                "，用途：${result.request.purpose.ifEmpty { "未說明" }}",
+            HistoryKind.VERIFIED, tr(Res.string.agev_age_proof), v?.issuerTrust,
+            listOfNotNull(v?.let { if (it.selfIssued) tr(Res.string.agev_self_issued) else tr(Res.string.agev_issuer, shortDid(it.issuerDid)) }),
+            listOf(tr(Res.string.age_over_n, result.request.minimumAge)),
+            tr(Res.string.agev_note_start) + (if (result.request.nearby) (if (result.host == ANIMATED_QR) tr(Res.string.agev_note_qr) else tr(Res.string.agev_note_ble)) else if (result.request.lan) tr(Res.string.agev_note_lan) else "") +
+                (if (v != null) tr(Res.string.agev_note_here) else tr(Res.string.agev_note_by, result.host)) +
+                tr(Res.string.agev_note_purpose, result.request.purpose.ifEmpty { tr(Res.string.age_unstated) }),
             failure,
         )
     }
@@ -393,21 +395,21 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         /** A long DID cut to its start and end for display. */
         fun shortDid(did: String) = if (did.length > 28) did.take(18) + "…" + did.takeLast(6) else did
 
-        private fun seconds(ms: Long) = ((ms + 50) / 100).let { "${it / 10}.${it % 10} 秒" }
+        private fun seconds(ms: Long) = ((ms + 50) / 100).let { tr(Res.string.agev_seconds, it / 10, it % 10) }
 
         val POLL = 1.seconds
         val GRACE = 30.seconds
-        const val EXPIRED = "對方沒有在時限內出示，請重新產生查驗請求。"
-        const val BLUETOOTH = "藍牙"
-        const val ANIMATED_QR = "動態 QR Code"
-        const val NO_LAN = "這支手機沒有連上 Wi-Fi 或開啟熱點，無法用區網查驗。請兩支手機連上同一個 Wi-Fi，或由其中一支開熱點讓另一支連上。"
-        const val NO_CENTRAL = "這個平台無法以藍牙接收證明，請改用查驗主機。"
+        val EXPIRED: String get() = tr(Res.string.agev_expired)
+        val BLUETOOTH: String get() = tr(Res.string.age_route_label_bluetooth)
+        val ANIMATED_QR: String get() = tr(Res.string.agev_animated_qr)
+        val NO_LAN: String get() = tr(Res.string.agev_no_lan)
+        val NO_CENTRAL: String get() = tr(Res.string.agev_no_central)
 
         fun summary(v: BondsAgeVerification): List<String> = listOfNotNull(
-            "出示者證明自己年滿 ${v.request.minimumAge} 歲（出生日期不晚於 ${v.request.cutoff}），沒有交出出生日期或其他欄位。",
-            "零知識證明（OpenAC）：在這支手機驗證，耗時 ${seconds(v.verifyMs)}；出示者產生證明 ${seconds(v.prepareMs + v.showMs)}。",
-            "出生日期欄位：${v.claimName}",
-            if (v.selfIssued) "這是自發卡：由出示者自己的卡片金鑰簽署，不是政府背書。" else null,
+            tr(Res.string.agev_summary_age, v.request.minimumAge, v.request.cutoff),
+            tr(Res.string.agev_summary_zk, seconds(v.verifyMs), seconds(v.prepareMs + v.showMs)),
+            tr(Res.string.agev_summary_claim, v.claimName),
+            if (v.selfIssued) tr(Res.string.agev_summary_self) else null,
             v.reason,
         )
     }
