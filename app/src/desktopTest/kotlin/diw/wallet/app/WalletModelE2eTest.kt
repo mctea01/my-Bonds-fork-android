@@ -84,6 +84,8 @@ class WalletModelE2eTest {
         override val platformName: String = "test",
         /** No local network: the zkTLS verifier is reachable through a relay only. */
         val noLan: Boolean = false,
+        /** Replaces the zkPassport verifier, so its sessions can be driven without zkPassport's services. */
+        val zkPassport: diw.wallet.core.zkpassport.ZkPassportVerifier? = null,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
@@ -129,7 +131,11 @@ class WalletModelE2eTest {
 
         override val zk by lazy {
             val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
-            diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+            val real = diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+            val fake = zkPassport
+            if (fake == null) real else object : diw.wallet.core.zk.ZkEnvironment by real {
+                override val zkPassport = fake
+            }
         }
     }
 
@@ -2514,6 +2520,95 @@ class WalletModelE2eTest {
         withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
     }
 
+    /** A zkPassport verifier session driven by hand: what the holder's app would do over the bridge. */
+    private class FakeZkPassport : diw.wallet.core.zkpassport.ZkPassportVerifier {
+        val requests = ArrayList<diw.wallet.core.zkpassport.ZkPassportRequest>()
+        val state = kotlinx.coroutines.flow.MutableStateFlow<diw.wallet.core.zkpassport.ZkPassportState>(diw.wallet.core.zkpassport.ZkPassportState.Connecting)
+        var closed = 0
+        override fun open(request: diw.wallet.core.zkpassport.ZkPassportRequest, config: diw.wallet.core.zkpassport.ZkPassportConfig, scope: CoroutineScope): diw.wallet.core.zkpassport.ZkPassportSession {
+            requests.add(request)
+            state.value = diw.wallet.core.zkpassport.ZkPassportState.Connecting
+            return object : diw.wallet.core.zkpassport.ZkPassportSession {
+                override val state = this@FakeZkPassport.state
+                override fun close() { closed++ }
+            }
+        }
+    }
+
+    /**
+     * zkPassport verification: gated by its statement, the setup starts from this wallet's own server domain, the
+     * request link is shown once the bridge is connected, and the result and a rejection end in the history.
+     */
+    @Test
+    fun zkPassportVerifierFlow() = runBlocking<Unit> {
+        val fake = FakeZkPassport()
+        val p = TestPlatform(EphemeralStorage(), zkPassport = fake)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        val zkp = diw.wallet.app.legal.Integration.ZKPASSPORT
+        m.legal.decide(zkp, false).join()
+        m.taiwan.zkPassport.openSetup()
+        assertEquals(Screen.IntegrationStatement(zkp), m.screen.value)
+        m.taiwan.zkPassport.start(diw.wallet.core.zkpassport.ZkPassportRequest("example.org", "n", "p"))
+        assertTrue(fake.requests.isEmpty(), "nothing is asked without the statement")
+
+        m.legal.decide(zkp, true).join()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://wallet.example.org:8443/base") }.join()
+        m.taiwan.zkPassport.openSetup()
+        val setup = assertIs<OfflineUi.ZkPassportSetup>(m.taiwan.offline.value)
+        assertEquals("wallet.example.org", setup.domain)
+        assertNull(setup.note)
+        assertEquals(listOf("TWN", "JPN"), ZkPassportFlow.countries("twn, JPN;twn"))
+        assertNull(ZkPassportFlow.countries("TW"))
+        assertNotNull(ZkPassportFlow.domainProblem("not a domain"))
+        assertNull(ZkPassportFlow.domainProblem("https://Example.org/path"))
+
+        val request = diw.wallet.core.zkpassport.ZkPassportRequest(
+            domain = "https://Verify.Example.org/x", name = "DIW", purpose = "age check", minAge = 18,
+            disclose = setOf(diw.wallet.core.zkpassport.ZkPassportField.NATIONALITY),
+        )
+        m.taiwan.zkPassport.start(request)
+        assertEquals(request, fake.requests.single())
+        assertEquals("verify.example.org", m.settings.zkPassportDomain, "the domain used is kept for next time")
+        val url = "https://zkpassport.id/r?d=verify.example.org&t=00"
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Waiting(url)
+        val waiting = withTimeout(5.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkPassportWaiting && it.url == url } as OfflineUi.ZkPassportWaiting
+        }
+        assertIs<diw.wallet.core.zkpassport.ZkPassportState.Waiting>(waiting.state)
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Receiving(1, 3)
+        withTimeout(5.seconds) { m.taiwan.offline.first { (it as? OfflineUi.ZkPassportWaiting)?.state is diw.wallet.core.zkpassport.ZkPassportState.Receiving } }
+
+        val result = diw.wallet.core.zkpassport.ZkPassport.result(
+            """{"verified":true,"errors":[],"version":"0.21.1","date":1762387200,"uniqueIdentifier":"123456789012345","uniqueIdentifierType":"NON_SALTED",""" +
+                """"disclosed":{"documentCode":"P","issuingCountry":"TWN","nationality":"TWN","layout":"td3"},""" +
+                """"conditions":{"compare_age":{"minAge":18,"maxAge":0}},"devMode":false}""",
+        )
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Done(result)
+        val shown = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified } as OfflineUi.ZkPassportVerified }
+        assertEquals(result, shown.result)
+        val claims = ZkPassportFlow.claims(result)
+        assertTrue("國籍：TWN" in claims && "發證國：TWN" in claims && "年齡：至少 18 歲" in claims, claims.toString())
+        val entry = withTimeout(5.seconds) { m.history.first { h -> h.any { it.party == "zkPassport" } } }.first { it.party == "zkPassport" }
+        assertEquals(HistoryKind.VERIFIED, entry.kind)
+        assertNull(entry.failure)
+        assertTrue(entry.note!!.contains("verify.example.org"), entry.note)
+
+        m.taiwan.zkPassport.start(request)
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Rejected
+        val rejected = withTimeout(5.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified && it.result == null } as OfflineUi.ZkPassportVerified
+        }
+        assertEquals("對方拒絕了請求。", rejected.error)
+        assertEquals(listOf("零知識證明驗證失敗。", "電路不在 zkPassport 電路註冊表中。"), ZkPassportFlow.problems(listOf("proof:disclose_bytes:x", "vkey:a", "circuit_root_mismatch", "proof:b")))
+
+        m.taiwan.zkPassport.start(request)
+        m.back()
+        assertTrue(fake.closed >= 1, "leaving the screen closes the session")
+    }
+
     /**
      * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
      * decisions survive a restart.
@@ -2536,7 +2631,9 @@ class WalletModelE2eTest {
         m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, false).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
-        assertTrue(m.legal.complete, "the reserved zkPassport statement is not asked for yet")
+        assertFalse(m.legal.complete, "zkPassport verification is offered, so its statement is asked for too")
+        m.legal.decide(diw.wallet.app.legal.Integration.ZKPASSPORT, false).join()
+        assertTrue(m.legal.complete)
         withTimeout(5.seconds) { m.message.first { it == "無法辨識的連結" } }
 
         val twdiw = diw.wallet.app.legal.Integration.TWDIW

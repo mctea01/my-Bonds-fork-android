@@ -236,6 +236,14 @@ data class WalletSettings(
     val manualMobileMoicaSp: Boolean = false,
     /** Remote signing services (CSC API) the user added; the built-in ones are in CscServices. */
     val cscServices: List<CscService> = emptyList(),
+    /** Domain zkPassport requests are made for; empty uses the host of [zkVerifierUrl]. */
+    val zkPassportDomain: String = "",
+    /** Ethereum JSON-RPC for the zkPassport registry on mainnet; empty uses the built-in public node. */
+    val zkPassportMainnetRpc: String = "",
+    /** The same for Sepolia, read by zkPassport checks in the test environment. */
+    val zkPassportSepoliaRpc: String = "",
+    /** Let zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
+    val zkPassportVerifierApi: Boolean = false,
 )
 
 /**

@@ -12,7 +12,7 @@
 | [microsoft-verified-id.md](microsoft-verified-id.md) | Microsoft Entra Verified ID 專門聲明 |
 | [mobile-moica.md](mobile-moica.md) | 行動自然人憑證專門聲明 |
 | [mydata.md](mydata.md) | MyData 專門聲明 |
-| [zkpassport.md](zkpassport.md) | zkPassport 專門聲明（功能上線前不會在 App 內詢問） |
+| [zkpassport.md](zkpassport.md) | zkPassport 專門聲明（查驗他人的 zkPassport 證明） |
 
 ## 同意的規則
 

@@ -189,6 +189,9 @@ fun ZkSettingsScreen(model: WalletModel) {
         HorizontalDivider()
         SectionTitle(stringResource(Res.string.zk_self_host))
         ProverSection(model)
+        HorizontalDivider()
+        SectionTitle(stringResource(Res.string.zkp_settings_title))
+        ZkPassportSettingsSection(model)
         if (info?.isDesktop == true) {
             HorizontalDivider()
             SectionTitle(stringResource(Res.string.zk_phone_requests))

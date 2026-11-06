@@ -68,7 +68,7 @@ The developer reduces risks with security measures in the software, but does not
 
 ## 6. Dedicated services and individual choices
 
-The following integrations need you to read their dedicated statements and choose whether to accept them: the TWDIW digital wallet of the Ministry of Digital Affairs, Microsoft Entra Verified ID, the mobile citizen digital certificate of the Ministry of the Interior, and MyData of the Ministry of Digital Affairs. The zkPassport integration has not been released yet, and its statement is a reserved document; a feature that is not actually provided is not enabled by showing its text in advance.
+The following integrations need you to read their dedicated statements and choose whether to accept them: the TWDIW digital wallet of the Ministry of Digital Affairs, Microsoft Entra Verified ID, the mobile citizen digital certificate of the Ministry of the Interior, and MyData of the Ministry of Digital Affairs. The zkPassport compatible features have their own dedicated statement, which lists the parts offered; a feature that is not actually provided is not enabled by showing its text in advance.
 
 Declining or withdrawing a dedicated statement stops only further connections and features of that particular integration, and the other standards-compatible features remain available. Credentials and documents kept earlier stay on the device as a rule; data sent to third parties earlier and signatures, presentations or applications already completed are not deleted or invalidated automatically by withdrawal. You can choose again under Settings > Legal and consent.
 

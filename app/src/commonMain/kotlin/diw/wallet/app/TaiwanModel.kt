@@ -321,6 +321,23 @@ sealed class OfflineUi {
         val receipt: Boolean = false,
     ) : OfflineUi()
 
+    /** zkPassport verifier setup; [test]: the test environment, where test passports may be accepted. */
+    data class ZkPassportSetup(val domain: String, val test: Boolean, val note: String?) : OfflineUi()
+
+    /** A zkPassport request in progress: [url] is the request link once the bridge is connected. */
+    data class ZkPassportWaiting(
+        val request: diw.wallet.core.zkpassport.ZkPassportRequest,
+        val url: String?,
+        val state: diw.wallet.core.zkpassport.ZkPassportState,
+    ) : OfflineUi()
+
+    /** The zkPassport check's outcome, or why there is none ([error]). */
+    data class ZkPassportVerified(
+        val request: diw.wallet.core.zkpassport.ZkPassportRequest,
+        val result: diw.wallet.core.zkpassport.ZkPassportResult?,
+        val error: String?,
+    ) : OfflineUi()
+
     data class VerifierResult(
         val request: BondsPresentationRequest,
         val result: BondsVerifiedPresentation?,
@@ -362,6 +379,7 @@ class TaiwanModel(private val model: WalletModel) {
     val age = BondsAgeFlow(model, offline)
     val ageVerifier = BondsAgeVerifierFlow(model, offline)
     val zkTls = ZkTlsFlow(model, offline)
+    val zkPassport = ZkPassportFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -939,6 +957,7 @@ class TaiwanModel(private val model: WalletModel) {
         age.stop()
         ageVerifier.stop()
         zkTls.stop()
+        zkPassport.stop()
         linkJob?.cancel()
         linkJob = null
         lanJob?.cancel()

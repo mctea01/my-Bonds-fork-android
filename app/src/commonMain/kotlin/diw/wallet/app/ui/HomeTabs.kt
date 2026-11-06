@@ -50,6 +50,7 @@ import diw.wallet.app.HomeTab
 import diw.wallet.app.Screen
 import diw.wallet.app.StatusMonitor
 import diw.wallet.app.WalletModel
+import diw.wallet.app.legal.Integration
 import diw.wallet.core.oid4vci.issuanceRecord
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.status.RiskLevel
@@ -279,6 +280,11 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
             WalletIcons.Link, stringResource(Res.string.verify_zktls),
             stringResource(Res.string.verify_zktls_text),
         ) { model.taiwan.zkTls.openSetup() }
+        if (model.legal.enabled(Integration.ZKPASSPORT)) {
+            ActionRow(WalletIcons.Shield, stringResource(Res.string.verify_zkpassport), stringResource(Res.string.verify_zkpassport_text)) {
+                model.taiwan.zkPassport.openSetup()
+            }
+        } else IntegrationOffRow(model, Integration.ZKPASSPORT, stringResource(Res.string.verify_zkpassport))
         SectionTitle(stringResource(Res.string.verify_verifier_identity))
         ActionRow(WalletIcons.Person, stringResource(Res.string.verify_as_whom), stringResource(Res.string.verify_as_whom_text), enabled = false) {}
         SectionTitle(stringResource(Res.string.verify_other_methods))

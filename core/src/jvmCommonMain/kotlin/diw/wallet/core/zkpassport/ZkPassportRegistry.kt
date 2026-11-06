@@ -129,8 +129,8 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         const val IS_ROOT_VALID = "0x2aae4296"
         const val CERTIFICATE_REGISTRY = 1
         const val CIRCUIT_REGISTRY = 2
-        const val MAINNET_RPC = "https://ethereum-rpc.publicnode.com"
-        const val SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com"
+        const val MAINNET_RPC = ZkPassport.MAINNET_RPC
+        const val SEPOLIA_RPC = ZkPassport.SEPOLIA_RPC
         const val MAINNET_CIRCUITS = "https://circuits2.zkpassport.id/mainnet"
         const val TESTNET_CIRCUITS = "https://circuits2.zkpassport.id/testnet"
         const val VERIFIER_API = "https://verifier.zkpassport.id/verify"

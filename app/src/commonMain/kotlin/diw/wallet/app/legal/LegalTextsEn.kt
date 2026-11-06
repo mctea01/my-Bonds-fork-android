@@ -203,7 +203,7 @@ internal object LegalTextsEn {
         section(
             "Dedicated services and individual choices",
             p("The following integrations need you to read their dedicated statements and choose whether to accept them: the TWDIW digital wallet of the Ministry of Digital Affairs, Microsoft Entra Verified ID, the mobile citizen digital certificate of the Ministry of the Interior, and MyData of the Ministry of Digital Affairs. " +
-                "The zkPassport integration has not been released yet, and its statement is a reserved document; a feature that is not actually provided is not enabled by showing its text in advance."),
+                "The zkPassport compatible features have their own dedicated statement, which lists the parts offered; a feature that is not actually provided is not enabled by showing its text in advance."),
             p("Declining or withdrawing a dedicated statement stops only further connections and features of that particular integration, and the other standards-compatible features remain available. Credentials and documents kept earlier stay on the device as a rule; data sent to third parties earlier and signatures, presentations or applications already completed " +
                 "are not deleted or invalidated automatically by withdrawal. You can choose again under Settings > Legal and consent."),
         )
@@ -539,61 +539,61 @@ internal object LegalTextsEn {
     }
 
     private val zkPassport = document(
-        "zkpassport", "zkPassport Statement (reserved, feature not yet available)", 1, DATE,
+        "zkpassport", "zkPassport Statement", 2, "2026-11-06",
         listOf(
-            "**The zkPassport compatible features are not available yet.** This document describes the third-party zero-knowledge proof flow planned for the future; showing this document does not provide or enable the feature right away.",
-            "In the current plan, the zkPassport relay service, circuit and certificate package downloads and blockchain lookups are run by third parties, which may see your IP address, the connection time and some request metadata.",
-            "FaceMatch and salted unique identifier proofs, which only the official app can produce, are not planned to be supported; unsalted identifiers may stay the same within one service and are not completely unlinkable.",
-            "Declining means the zkPassport service is not used; NFC reading and local verification of e-passports provided by other features are not affected. The actual data flows and this statement should be checked again before release.",
+            "**What is offered now is verifying others:** this app creates a zkPassport request, the other person answers with zero-knowledge proofs from a zkPassport compatible app, and this app verifies them on the device. Answering other people's requests with this app is not offered yet.",
+            "Verifying connects to third parties: the zkPassport relay service, the circuit download server and a public node for the Ethereum registry contract (which you can replace with your own node in settings). They may see your IP address, the connection time and some metadata.",
+            "You only receive the fields and condition results the other person's proofs disclose, plus an identifier that stays the same under the domain you entered; the domain in a request is entered by the requester and cannot be confirmed by the holder.",
+            "Declining means the zkPassport service is not used; NFC reading and local verification of e-passports are not affected.",
         ),
         EN,
     ) {
         section(
-            "Planned features and current state",
-            p("zkPassport is a third-party zero-knowledge proof protocol and related services for electronic passports. In the current plan of this project, e-passport data read by NFC could in future be used to produce or verify particular zero-knowledge proofs about conditions such as age or nationality, " +
-                "instead of sending the full passport content with each proof; zkPassport requests to verify others might also be produced."),
-            p("**This integration is not offered yet.** If features or interfaces are added or changed, data transfers are widened or third-party providers change, the statement should be revised and the matching consent obtained before release; no security can be promised to users on the basis of an unimplemented design."),
+            "What is offered",
+            p("zkPassport is a third-party zero-knowledge proof protocol and related services for electronic passports. This app currently offers the verifier side: you choose the fields the other person discloses (the document type and issuing country are always disclosed) and conditions such as age, nationality, issuing country and bound data, " +
+                "and this app creates a request link and QR code; the other person reads their e-passport chip with a zkPassport compatible app, which produces proofs and returns them through the relay service, and this app checks every proof and its public inputs on the device."),
+            p("**Not offered yet:** answering other people's zkPassport requests with this app, cloud proving, and conditions such as FaceMatch, sanctions lists and salted unique identifiers. When features or data flows change materially, this statement is updated and you are asked to choose again."),
         )
         section(
-            "Planned operators and data flows",
-            p("If implemented according to the current plan, the following may be involved:"),
+            "Third-party operators and data flows",
             list(
-                "**Relay service (such as `bridge.zkpassport.id`):** forwards requests or proofs between the requester and the responder. If end-to-end encryption is actually enabled and verified, the service usually cannot read the protected proof content directly, but may still observe the IP address, " +
-                "connection time, session identifiers and transfer sizes; until verified, it cannot be guaranteed that no content is visible.",
-                "**Circuit, certificate package and sanctions list downloads:** the download servers may record your IP address and the kind of data obtained, and from that infer the passport's issuing country, signature algorithm or verification context.",
-                "**Public Ethereum nodes:** circuits, certificate trees or registry contracts are queried through nodes; node operators may learn the queried addresses, times and contracts.",
-                "**Optional online verification API:** the whole proof and related results might be sent to a third party only when you enable it separately and the configured trigger conditions are met; disabled by default in the current plan.",
-                "**Optional cloud proving service:** if some kind of compressed proof needs third-party computation, the necessary sub-proofs or computation data might be sent only after you confirm that request; not enabled by default in the current plan. Sub-proofs are not necessarily the raw passport data, but may still contain identifying information.",
+                "**Relay service (`bridge.zkpassport.id`):** forwards requests and proofs between you and the other person. Messages are encrypted with keys the two sides exchange, but the encryption protocol is designed by a third party and this app cannot guarantee its strength; the service can still observe IP addresses, connection times, " +
+                "session identifiers and transfer sizes. So that the other person's app accepts the request, this app connects with the domain you entered as its origin.",
+                "**Circuit downloads (`circuits2.zkpassport.id`):** the circuit manifest and verification keys for the proofs' version are downloaded and kept in a local cache; the server may record your IP address, the version and the kinds of circuits fetched, and infer from them the signature algorithm of the other person's document.",
+                "**Public Ethereum node:** the zkPassport registry contract is queried to confirm that the certificate tree and circuit manifest used by the proofs were valid on the proof date. By default a public node service is used (`ethereum-rpc.publicnode.com`, or a Sepolia test network node in test mode), " +
+                "which you can replace with your own node in settings; the node operator may learn the contract, time and roots queried.",
+                "**zkPassport online verification API (`verifier.zkpassport.id`, off by default):** only when you enable it in settings and the local Barretenberg verification fails are the whole proofs, the request conditions and the result the other person's app returned sent to that service for its decision; " +
+                "the result is then marked as decided by that service.",
             ),
-            p("The actual third-party names, endpoints, data visibility, security mechanisms and retention periods are those of the released version, the service terms and the tested message flows."),
+            p("The services the other person's app connects to (such as its proving or download flows) are decided by that app and are outside this statement."),
         )
         section(
-            "Privacy, unique identifiers and verification limits",
+            "What you receive and its limits",
             list(
-                "**FaceMatch:** in the current compatible plan, this app does not support FaceMatch proofs, which only the official zkPassport app can produce; requests that need it cannot be completed by this app.",
-                "**Salted identifiers:** the current plan does not support salted unique identifiers that need the official mechanism; unsalted identifiers may be derived from passport data, the domain and the purpose and stay the same within the same service context, so there is a risk of linking across sessions; " +
-                "parties who know the full chip data may also derive the related results.",
-                "**Requester identity:** the domain or identification in a request may be supplied by whoever created the request; this app plans to compare the origin and warn on mismatch, but a warning does not mean that the other side's real identity has been independently confirmed.",
-                "**Service availability:** third parties may change or stop their services under their own rules. A zero-knowledge proof only guarantees properties under a particular circuit and verification conditions, and **does not mean that any identity or claim is recognized by a government**.",
+                "**Only committed values are used:** the fields and conditions shown come from the public inputs of verified proofs; the plaintext result the other person's app sends alongside is not relied on.",
+                "**Identifier:** the proofs usually carry an unsalted identifier derived from the passport data, the domain and the purpose, which stays the same for the same domain and purpose and can recognize the same passport when it is presented again; it is not the passport number, but it is linkable information and should be handled with care.",
+                "**Domain and requester identity:** the domain in a request is entered by the requester, and the other person's app shows it but cannot confirm it; when verifying, this app only confirms that the proofs were made for that domain, which does not mean that anyone's real identity has been confirmed.",
+                "**Scope of trust:** verification confirms that the proofs match the certificate tree and circuits in the zkPassport registry; when the issuing country's CSCA is also among this app's trust anchors, a higher trust is shown. A zero-knowledge proof only guarantees properties under a particular circuit, and **does not mean that any identity or claim is recognized by a government**.",
+                "**Test mode:** accepts proofs from zkPassport test passports and uses the test network registry; results are marked as tests and should not be used for real checks.",
+                "**Service availability:** third parties may change or stop their services under their own rules; when a service or node cannot be reached, verification fails rather than skipping a check.",
             ),
         )
         section(
             "Unofficial compatible implementation",
-            p("This app has no cooperation, certification, authorization, agency or endorsement relationship with zkPassport or its operators. The related compatible features are planned to be implemented from its public and suitably licensed code, circuits and interfaces; an open-source licence does not necessarily grant permission to use third-party online services or a trademark licence. " +
-                "The zkPassport name is used only to identify the protocol or service intended to be supported."),
+            p("This app has no cooperation, certification, authorization, agency or endorsement relationship with zkPassport or its operators. The compatible features are implemented from its public and suitably licensed code, circuits and interfaces; an open-source licence does not necessarily grant permission to use third-party online services or a trademark licence. " +
+                "The zkPassport name is used only to identify the supported protocol or service."),
         )
         section(
             "After declining or withdrawing",
             list(
-                "This app does not connect to the zkPassport relay, downloads, on-chain lookups, cloud proving or online verification services for this integration; related requests show that the feature is not enabled or not yet provided.",
-                "Independent e-passport NFC reading, local signature verification and document keeping (where the version provides them) are not disabled by declining this.",
-                "Before release, the choice made on this statement should not be used as a blank advance authorization for wider future data use; if the data flows or features differ materially, the updated statement should be shown separately.",
+                "This app does not connect to the zkPassport relay service, circuit downloads, Ethereum nodes or the online verification service for this integration, and the zkPassport feature of the verify tab shows that it is not enabled.",
+                "Independent e-passport NFC reading, local signature verification and document keeping are not disabled by declining this.",
             ),
         )
         section(
             "Consent and withdrawal",
-            p("Only once this feature is officially provided and the statement is confirmed again for the released version does \"Accept and enable\" mean that you choose to use the matching zkPassport compatible features. You can withdraw under Settings > Legal and consent to stop further integration requests; data sent earlier, " +
-                "completed proofs or third-party records are not deleted automatically by withdrawal. **In versions where the feature is not yet available, \"not yet provided\" should be shown, and choosing to accept must not be read as the feature being enabled.**"),
+            p("Choosing \"Accept and enable\" means that you understand how the third parties above handle data, and choose to use this app's zkPassport verification. You can withdraw under Settings > Legal and consent to stop further requests; data sent earlier, " +
+                "completed verifications or third-party records are not deleted automatically by withdrawal."),
         )
     }
 
