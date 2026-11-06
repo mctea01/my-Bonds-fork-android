@@ -75,7 +75,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 | A. 匯出現有的 release 金鑰作為應用程式簽署金鑰（Play Console 的「使用其他應用程式的金鑰」或「匯出並上傳 Java KeyStore 的金鑰」，用 Google 提供的 PEPK 工具加密上傳），上傳金鑰也用同一把 | GitHub nightly 的 APK 與 Play 安裝的 App 簽章相同，可以互相覆蓋更新；CI 不必改。缺點是這把金鑰同時存在 GitHub secrets 與 Google，外洩時只能靠金鑰輪替（Android 13 以上才完全有效） |
 | B. 由 Google 產生應用程式簽署金鑰，現有 release 金鑰當上傳金鑰 | 最安全，上傳金鑰外洩可以重設。但 Play 版與 GitHub 版簽章不同，使用者切換來源要先解除安裝（錢包資料會一起刪除）；依 APK 簽章的設定（例如 TWDIW 應用身分、Digital Asset Links）要登記兩個指紋 |
 
-已決定採用 A（2026-11-05）：這個專案以 GitHub 發佈為主，使用者會在兩個來源之間切換，而錢包資料不能因為換來源而遺失。CI 不用新增 secret。建立第一個版本時，在「Play 應用程式簽署」選擇上傳自己的金鑰，依畫面下載 PEPK 工具，以 `diw-release.jks` 與別名 `diw` 產生加密後的金鑰檔上傳；上傳金鑰也使用同一把。
+已決定採用 A（2026-11-05）：這個專案以 GitHub 發佈為主，使用者會在兩個來源之間切換，而錢包資料不能因為換來源而遺失。CI 不用新增 secret。建立第一個版本時，在「Play 應用程式簽署」選擇上傳自己的金鑰，依畫面下載 PEPK 工具，以 `diw-release.jks` 與別名 `diw` 產生加密後的金鑰檔上傳；上傳金鑰也使用同一把。PEPK 先問 keystore 密碼、再問金鑰密碼：`diw-release.jks` 是 PKCS12，兩次都輸入 keystore 密碼（`ANDROID_KEYSTORE_PASSWORD`）。金鑰密碼打錯時 PEPK 只會回 `Given final block not properly padded`。
 
 ## 4. 自動提交 workflow
 
