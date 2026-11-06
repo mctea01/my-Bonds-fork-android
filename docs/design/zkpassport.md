@@ -129,6 +129,8 @@ zkPassport 的證明要用它發佈的 vkey 與相同 bb 版本驗證；本專�
 
 時間點：在 P4 收尾前（M4b 正式範圍凍結前）由 P4 升級，zkPDF 的正式資產只發佈一次（第 8 節第 8 項）。
 
+2026-11-06 實測更正：zkPassport 目前發佈的 0.21.1 電路以 bb 5.0.0 產生 vkey 與證明（SDK `bb-verifier.ts`：0.22.0 起才用 bb v6，0.22.0 尚未發佈）。以 compare_age 與 zkpassport-packages 的測試向量核對：Noir rc.3 的 acvm 可以讀取並執行 beta.22 的 ACIR；bb v6 由同一份 ACIR 算出的 vkey 與發佈的不同；bb.js 5.0.0 的證明 bb v6 不接受，bb v6 的證明 bb.js 5.0.0 也不接受。所以只用 bb v6 時，0.21.1 的證明不能在本機查驗或產生，要等 0.22.0，或另外加入 bb v5（使用者決定中）。
+
 不採用的做法：兩套 bb 並存（每個 ABI 多約 15 MB，且兩套靜態 C++ 可能符號衝突）；只用 zkPassport 的查驗 API（違反盡量不依賴伺服器與隱私原則，只當可選退回）。
 
 ### 4.3 信任分級
