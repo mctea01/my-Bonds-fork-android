@@ -88,9 +88,14 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val msg by model.message.collectAsState()
     val proximityListening by model.proximity.listening.collectAsState()
     val pin by model.pinRequest.collectAsState()
+    val notice by model.integrationNotice.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf(false) }
+    val consent by model.legal.consent.collectAsState()
+    // Shown at the first start and after a legal text changed; stays up on its summary page until the holder leaves it.
+    var onboarding by remember { mutableStateOf(false) }
+    LaunchedEffect(ready, consent.complete) { if (ready && !consent.complete) onboarding = true }
 
     LaunchedEffect(msg) {
         msg?.let { snackbar.showSnackbar(it); model.message.value = null }
@@ -105,6 +110,11 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
     val scan: (() -> Unit)? = if (scanQr != null) ({ scanning = true }) else null
 
     WalletTheme {
+        if (ready && onboarding) {
+            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                Box(Modifier.padding(padding).fillMaxSize()) { OnboardingScreen(model) { onboarding = false } }
+            }
+        } else {
         Scaffold(
             topBar = {
                 Column {
@@ -160,6 +170,8 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
                     Screen.DocumentSources -> DocumentSourcesScreen(model)
                     is Screen.Portal -> PortalScreen(model, s)
                     is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
+                    is Screen.LegalText -> LegalTextScreen(model, s)
+                    is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
                 }
             }
         }
@@ -172,6 +184,8 @@ fun WalletApp(model: WalletModel, scanQr: (suspend () -> String?)? = null) {
             )
         }
         pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
+        notice?.let { n -> IntegrationNoticeDialog(model, n) }
+        }
     }
 }
 
@@ -206,6 +220,29 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.DocumentSources -> "取得文件"
     is Screen.Portal -> "取得文件"
     is Screen.OfficialBundle -> "公文容器"
+    is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
+    is Screen.IntegrationStatement -> diw.wallet.app.legal.LegalStrings.STATEMENTS_TITLE
+}
+
+/** The one-time reminder before the first request of an integration; reading the statement leaves the request undone. */
+@Composable
+private fun IntegrationNoticeDialog(model: WalletModel, n: WalletModel.IntegrationNotice) {
+    val cancel = { model.integrationNotice.value = null }
+    AlertDialog(
+        onDismissRequest = cancel,
+        title = { Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_TITLE) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_WARNING)
+                TextButton(onClick = {
+                    cancel()
+                    model.screen.value = Screen.IntegrationStatement(n.integration)
+                }) { Text(diw.wallet.app.legal.LegalStrings.READ_STATEMENT) }
+            }
+        },
+        confirmButton = { Button(onClick = { model.continueNotice() }) { Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_CONTINUE) } },
+        dismissButton = { TextButton(onClick = cancel) { Text(diw.wallet.app.legal.LegalStrings.CANCEL) } },
+    )
 }
 
 @Composable

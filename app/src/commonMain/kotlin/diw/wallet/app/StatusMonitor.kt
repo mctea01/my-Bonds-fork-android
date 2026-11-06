@@ -114,14 +114,21 @@ class StatusMonitor(private val model: WalletModel) {
         runJob = model.scope.launch {
             val now = Clock.System.now()
             val checker = checker()
-            val due = model.documents.value.filter { force || isDue(it, now) }
+            // Credentials of a switched-off integration are not checked: their lists are hosted by its operator.
+            val due = model.documents.value.filter { model.legal.allows(it) && (force || isDue(it, now)) }
             coroutineScope { due.forEach { doc -> launch { gate.withPermit { query(doc, checker) } } } }
             verifyIssuers(force)
         }
     }
 
     /** Queries [doc] now, as the Query button does. */
-    fun refresh(doc: Document) = model.scope.launch { gate.withPermit { query(doc, checker()) } }
+    fun refresh(doc: Document) = model.scope.launch {
+        model.legal.integrationOf(doc)?.takeIf { !model.legal.enabled(it) }?.let {
+            model.message.value = model.legal.disabledMessage(it)
+            return@launch
+        }
+        gate.withPermit { query(doc, checker()) }
+    }
 
     /** Queries the documents a request is about to use when their result is too old for the request's [risk]. */
     fun refreshFor(documentIds: Collection<String>, risk: RiskLevel) {
@@ -204,6 +211,7 @@ class StatusMonitor(private val model: WalletModel) {
      * cards keep the trust they have.
      */
     private suspend fun verifyIssuers(force: Boolean) {
+        if (!model.legal.enabled(diw.wallet.app.legal.Integration.TWDIW)) return
         val now = Clock.System.now()
         if (!force && lastIssuerCheck?.let { now - it < ISSUER_RECHECK } == true) return
         val byIssuer = model.documents.value
@@ -263,7 +271,8 @@ class StatusMonitor(private val model: WalletModel) {
         var changed = false
         for (doc in model.documents.value) {
             val record = doc.issuanceRecord ?: continue
-            if (!affected(record)) continue
+            // A switched-off integration's trust source is not consulted, so its cards keep their last result.
+            if (!affected(record) || !model.legal.allows(doc)) continue
             val trust = runCatching { currentIssuerTrust(doc) }.getOrNull() ?: continue
             if (accept(trust) && applyTrust(doc, trust, why)) changed = true
         }

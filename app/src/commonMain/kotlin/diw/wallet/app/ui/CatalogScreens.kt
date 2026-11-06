@@ -37,6 +37,7 @@ import diw.wallet.app.Screen
 import diw.wallet.app.TwdiwTrustRow
 import diw.wallet.app.WalletModel
 import diw.wallet.core.document.DocumentFormat
+import diw.wallet.app.legal.Integration
 import diw.wallet.core.profile.twdiw.AnchorState
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
 
@@ -59,6 +60,7 @@ fun AddDocumentScreen(model: WalletModel) {
         SectionTitle("政府皮夾卡片")
         Text("在發行端網站完成申請後，卡片自動加入這支手機。", style = MaterialTheme.typography.bodySmall)
         when {
+            !model.legal.enabled(Integration.TWDIW) -> IntegrationOffRow(model, Integration.TWDIW, "政府皮夾卡片")
             error != null -> InlineError(error!!) { model.taiwan.loadServices() }
             cards == null -> CircularProgressIndicator(Modifier.size(24.dp))
             cards!!.isEmpty() -> Text("目前沒有可申請的卡片。", style = MaterialTheme.typography.bodySmall)
@@ -81,7 +83,8 @@ fun AddDocumentScreen(model: WalletModel) {
             f.nationalId == null && f.report?.format == DocumentFormat.PDF && (MyDataFiles.recognize(f.name)?.nationalId == true || f.source?.contains("國民身分證資料") == true)
         }
         val hasCard = files.any { it.nationalId != null }
-        ActionRow(
+        if (!model.legal.enabled(Integration.MYDATA)) IntegrationOffRow(model, Integration.MYDATA, "國民身分證卡（Bonds 自發卡）")
+        else ActionRow(
             WalletIcons.Person, "國民身分證卡（Bonds 自發卡）",
             if (hasCard) "已有身分證卡；從 MyData 重新下載可再製作" else "從 MyData 下載國民身分證資料，以自然人憑證簽成卡片，可回應 Bonds 的自然人憑證自發卡查驗",
         ) {

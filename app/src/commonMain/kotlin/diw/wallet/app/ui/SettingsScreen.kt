@@ -34,6 +34,8 @@ import diw.wallet.app.Screen
 import diw.wallet.app.SettingsSection
 import diw.wallet.app.WalletModel
 import diw.wallet.app.WalletSettings
+import diw.wallet.app.legal.Integration
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.core.document.sign.TsaServices
@@ -67,6 +69,7 @@ private val SettingsSection.icon: ImageVector
         SettingsSection.INTEROP -> WalletIcons.Link
         SettingsSection.DEVELOPER -> WalletIcons.Phone
         SettingsSection.GENERAL -> WalletIcons.Settings
+        SettingsSection.LEGAL -> WalletIcons.Pass
         SettingsSection.ABOUT -> WalletIcons.Info
     }
 
@@ -99,9 +102,12 @@ fun SettingsScreen(model: WalletModel) {
                     "AATL：" + onOff(s.aatlTrustList),
                     "EUTL：" + onOff(s.eutlTrustList),
                 ).joinToString("・")
-                SettingsSection.INTEROP -> "相容處理常駐啟用・錢包後端：" + if (s.walletProviderUrl.isNullOrBlank()) "未設定" else "已設定"
+                SettingsSection.INTEROP -> "數位憑證皮夾：" + onOff(model.legal.enabled(Integration.TWDIW)) +
+                    "・Verified ID：" + onOff(model.legal.enabled(Integration.MS_VERIFIED_ID)) +
+                    "・錢包後端：" + if (s.walletProviderUrl.isNullOrBlank()) "未設定" else "已設定"
                 SettingsSection.DEVELOPER -> "自訂測試伺服器：" + onOff(s.testEnvironment) + if (s.manualMobileMoicaSp) "・手動 SP 帳號" else ""
                 SettingsSection.GENERAL -> "預設展開技術細節：" + onOff(s.showDetails)
+                SettingsSection.LEGAL -> legalSummary(model)
                 SettingsSection.ABOUT -> "版本 " + appVersion() + "・授權、第三方元件與原始碼"
             }
             ActionRow(section.icon, section.title, summary) { model.screen.value = Screen.SettingsPage(section) }
@@ -121,6 +127,7 @@ fun SettingsPageScreen(model: WalletModel, section: SettingsSection) {
             SettingsSection.INTEROP -> InteropPage(model)
             SettingsSection.DEVELOPER -> DeveloperPage(model)
             SettingsSection.GENERAL -> GeneralPage(model)
+            SettingsSection.LEGAL -> LegalSettingsPage(model)
             SettingsSection.ABOUT -> AboutPage(model)
         }
     }
@@ -223,9 +230,11 @@ private fun TrustPage(model: WalletModel) {
     Toggle("歐盟 EUTL", "只用於文件簽章與時戳，依各國監管期間判定，T2", s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
     HorizontalDivider()
     SectionTitle("清單與錨點")
-    ActionRow(WalletIcons.Shield, "數位憑證皮夾信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
-        model.screen.value = Screen.TrustList
-    }
+    if (model.legal.enabled(Integration.TWDIW)) {
+        ActionRow(WalletIcons.Shield, "數位憑證皮夾信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
+            model.screen.value = Screen.TrustList
+        }
+    } else IntegrationOffRow(model, Integration.TWDIW, "數位憑證皮夾信任清單")
     ActionRow(WalletIcons.Shield, "信任錨點", "全部內建與匯入的 X.509 根憑證、中繼憑證、DID 信任來源與文件簽章信任清單的下載狀態") {
         model.screen.value = Screen.TrustAnchors
     }
@@ -239,8 +248,11 @@ private fun InteropPage(model: WalletModel) {
     var providerUrl by remember(s.walletProviderUrl) { mutableStateOf(s.walletProviderUrl.orEmpty()) }
     var twdiwUserAgent by remember(s.twdiwUserAgent) { mutableStateOf(s.twdiwUserAgent) }
     var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
-    Text("數位憑證皮夾（TWDIW）、Bonds、OpenID4VCI 草案 11/13、EUDI 參考實作與 Microsoft Verified ID 的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。",
+    Text("Bonds、OpenID4VCI 草案 11/13 與 EUDI 參考實作的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。" +
+        "數位憑證皮夾（TWDIW）與 Microsoft Verified ID 由中央營運，需同意專門聲明才會啟用。",
         style = MaterialTheme.typography.bodySmall)
+    if (!model.legal.enabled(Integration.TWDIW)) IntegrationOffRow(model, Integration.TWDIW)
+    if (!model.legal.enabled(Integration.MS_VERIFIED_ID)) IntegrationOffRow(model, Integration.MS_VERIFIED_ID)
     SectionTitle("OpenID4VCI 錢包身分")
     Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
         style = MaterialTheme.typography.bodySmall)
@@ -350,10 +362,11 @@ private fun DeveloperPage(model: WalletModel) {
     OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
     HorizontalDivider()
     SectionTitle("行動自然人憑證")
+    if (!model.legal.enabled(Integration.MOBILE_MOICA)) IntegrationOffRow(model, Integration.MOBILE_MOICA)
     Toggle(
         "手動輸入 SP 帳號",
-        "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+        "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，只供依法持有 SP 授權者使用；帳號只保存在這次執行的記憶體。" +
+            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" + LegalStrings.MOICA_SP_FORK_ONLY else "關閉時使用本版內建的帳號。",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
 }
@@ -401,7 +414,7 @@ private fun AboutPage(model: WalletModel) {
     LabelValue("數位憑證皮夾 client_id", s.twdiwClientId, small = true)
     HorizontalDivider()
     SectionTitle("授權")
-    Text("Copyright 2026 LIN, CHE-CHUAN。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
+    Text("Copyright 2026 " + diw.wallet.app.legal.LegalTexts.DEVELOPER + "。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
     Text("內建的信任錨點是各憑證機構與 Multipaz 專案公開的憑證，只用於驗證憑證鏈；Adobe AATL 與歐盟 EUTL 在 App 內下載並驗證，只內建簽署憑證的指紋。" +
         "沒有複製 Bonds 的程式碼，相容性依公開的格式與文件實作。",
         style = MaterialTheme.typography.bodySmall)
@@ -451,6 +464,7 @@ private fun MyDataProfileSection(model: WalletModel) {
     var birth by remember { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
     SectionTitle("MyData 自動填入")
+    if (!model.legal.enabled(Integration.MYDATA)) IntegrationOffRow(model, Integration.MYDATA)
     Text("保存身分證統一編號與出生日期後，App 內開啟 MyData 時自動填入登入欄位，下載的 PDF 也會自動用統一編號開啟。只存在這支裝置，不會送到 MyData 以外的網站；不保存也可以，每次自行輸入。",
         style = MaterialTheme.typography.bodySmall)
     val saved = s.myDataIdNumber

@@ -570,7 +570,7 @@ class FilesModel(private val model: WalletModel) {
      */
     private fun knownPasswords(): List<String> =
         (nationalIdCards().mapNotNull { (_, c) -> runCatching { TaiwanModel.nationalIdClaims(c).toMap()["unifiedNo"] }.getOrNull() } +
-            listOfNotNull(model.settings.myDataIdNumber)).distinct()
+            listOfNotNull(savedMyDataId())).distinct()
 
     /** Open passwords of PDFs entered in this session, by file id; never stored. */
     private val passwords = HashMap<String, String>()
@@ -1500,6 +1500,9 @@ class FilesModel(private val model: WalletModel) {
     private val mobileMoicaCerts = mutableMapOf<String, ByteArray>()
 
     private suspend fun mobileMoicaSigner(choice: SignerChoice.MobileMoica, hint: String): MobileMoicaSigner {
+        if (!model.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA)) {
+            throw SigningException(model.legal.disabledMessage(diw.wallet.app.legal.Integration.MOBILE_MOICA))
+        }
         if (!choice.sp.builtIn) mobileMoicaSp = choice.sp
         val client = TwFidoClient(model.http, choice.sp.environment, MobileMoicaCredentials(choice.sp.serviceId.trim(), choice.sp.aesKeyBase64.trim()))
         val returnUrl = model.platform.mobileMoicaReturnUrl ?: ""
@@ -1664,7 +1667,11 @@ class FilesModel(private val model: WalletModel) {
     fun holderHints(): List<HolderHint> =
         nationalIdCards().mapNotNull { (_, c) ->
             runCatching { TaiwanModel.nationalIdClaims(c).toMap() }.getOrNull()?.let { HolderHint(it["unifiedNo"], it["name"]) }
-        } + listOfNotNull(model.settings.myDataIdNumber?.let { HolderHint(it, null) })
+        } + listOfNotNull(savedMyDataId()?.let { HolderHint(it, null) })
+
+    /** The ID number saved for MyData, used only while the MyData statement is accepted. */
+    private fun savedMyDataId(): String? =
+        model.settings.myDataIdNumber?.takeIf { model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA) }
 
     private suspend fun sourceText(f: StoredFile): String = withContext(Dispatchers.Default) {
         val bytes = data(f.id)

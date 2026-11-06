@@ -34,6 +34,12 @@
 | [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
 | [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：OpenID4VCI 用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
 
+## 法律聲明
+
+| 文件 | 內容 |
+|---|---|
+| [legal/README.md](legal/README.md) | 隱私權政策、用戶協議與各中央營運服務的專門聲明（網頁版，由 App 內文字產生），以及同意與停用的規則 |
+
 ## 使用與發佈
 
 | 文件 | 內容 |
