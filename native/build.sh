@@ -80,7 +80,8 @@ for target in "${selected[@]}"; do
         case "$target" in
             x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
             x86_64-pc-windows-gnu|x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll ;;
-            aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib ;;
+            # One minimum macOS for Barretenberg, the bridge and rustc (otherwise each object targets a different one).
+            aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib; export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0} ;;
             *) echo "Unsupported desktop target" >&2; exit 1 ;;
         esac
         build_zkpdf "$target"
