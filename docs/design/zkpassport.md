@@ -185,6 +185,13 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 請求要 FaceMatch 或 OPRF 時，本錢包可以用本專案的值產生（5.5），但 zkPassport 的查驗端會拒絕；同意畫面先說明這一點，使用者仍要送出才產生。`compressed` 模式需要 zkPassport 雲端證明器，預設不做，使用者同意後才交給它。
 - 協定沒有公開規格，SDK 升級曾要求 App 最低版本（SDK 0.17 需要 App 1.4.0）；以 SDK 的 e2e 測試與 bridge acceptance 測試建立回歸測試，並以設定頁顯示支援的協定版本。
 
+Z3 進度（2026-11-06，core 完成）：
+
+- `ZkPassport.parseLink` 讀 `https://zkpassport.id/r`（與 App Clip 的 `/c`）連結成 `ZkPassportIncoming`（網域、查驗方公鑰、查詢、服務資訊、模式、SDK 版本、dev）。
+- `ZkPassportHolderBridge` 是 bridge 的持有端：第一次連線以 `moc` 帶交握、以 `ooc` 向 bridge 取得建立者連線的 origin；之後 bridge 標示其他 origin 的訊框一律丟棄（與 @obsidion/bridge 的 joiner 相同）。加解密與建立端共用 `ZkPassportBridgeChannel`。
+- `ZkPassportResponder`：連線並取得 origin（`originMatches` 比對連結的網域，不符時 App 以強提示確認）、送 `accept`／`reject`，再送證明器產生的訊息；證明期間連線中斷時重新連線。
+- 測試以本機 bridge 讓本錢包的查驗端與回應器完整交換一次。App 的掃描、同意畫面與證明流程待做；完整流程仍需 0.22.0 電路。
+
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 
 - 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo，`src/` 不改）。電路的選擇、順序與輸入都與官方 App 相同。
