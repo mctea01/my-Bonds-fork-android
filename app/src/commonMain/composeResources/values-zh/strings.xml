@@ -778,6 +778,7 @@
     <string name="core_csc_state_mismatch">授權回應與這次要求不符（state 不同），已停止</string>
     <string name="core_csc_timeout">遠端簽章服務在 %1$s 秒內沒有完成簽章</string>
     <string name="core_csc_wrong_cert">遠端簽章服務回傳的簽章不是以選擇的憑證簽署</string>
+    <string name="core_dc_no_did">文件發行金鑰沒有 DID</string>
     <string name="core_detached_checked">已以選擇的原始檔檢查分離式簽章</string>
     <string name="core_digest_unsupported">不支援的摘要方法 %1$s</string>
     <string name="core_encapsulated_content">內含原始內容（%1$s 位元組），可另存原檔</string>
@@ -791,6 +792,7 @@
     <string name="core_eu_cert_unlisted">歐盟清單的簽署憑證不在公告的憑證中</string>
     <string name="core_eu_format">歐盟清單格式不符</string>
     <string name="core_eu_sig_bad">歐盟清單的簽章不成立</string>
+    <string name="core_eudi_reference">EUDI 參考實作</string>
     <string name="core_file_base64_decoded">檔案是 base64 文字，已解碼</string>
     <string name="core_file_pem_decoded">檔案是 PEM 文字，已解碼</string>
     <string name="core_file_unreadable">無法讀取檔案：</string>
@@ -851,6 +853,10 @@
     <string name="core_key_type_unsupported">不支援的金鑰類型 %1$s</string>
     <string name="core_label_colon">%1$s：</string>
     <string name="core_label_value">%1$s：%2$s</string>
+    <string name="core_lan_ethernet">有線網路</string>
+    <string name="core_lan_hotspot">熱點</string>
+    <string name="core_lan_local">區網</string>
+    <string name="core_lan_other">其他網路</string>
     <string name="core_level_bb">簽署憑證與簽章值；沒有可信時間，憑證過期後只能證明完整性</string>
     <string name="core_level_blt">B-T 加上簽署者與時戳機構的憑證鏈及撤銷資訊（OCSP 優先，取不到才用 CRL），憑證過期或憑證機構停止服務後仍可驗證</string>
     <string name="core_level_blta">B-LT 再加保存時戳保護長期驗證資料（PDF 為文件時戳，CAdES 與 XAdES 為 archive time stamp），之後可再延長</string>
@@ -1005,6 +1011,7 @@
     <string name="core_office_word">Word 文件（OOXML）</string>
     <string name="core_office_word_97">Word 97-2003 文件</string>
     <string name="core_official_note">台灣電子公文（%1$s）</string>
+    <string name="core_oid4vci_unavailable">（發行端伺服器暫時無法回應，請稍後再試）</string>
     <string name="core_opencerts_checked">已檢查內容與 Merkle 證明是否一致；發行者是否確實發行與發行者身分以網路查詢以太坊與 DNS 紀錄</string>
     <string name="core_p12_no_cert">憑證檔內沒有憑證</string>
     <string name="core_p12_no_key">憑證檔內沒有私密金鑰</string>
@@ -1253,6 +1260,15 @@
     <string name="core_pos_bottom_right">右下</string>
     <string name="core_pos_top_left">左上</string>
     <string name="core_pos_top_right">右上</string>
+    <string name="core_pr_c2pa">C2PA 信任清單：%1$s</string>
+    <string name="core_pr_china">中國大陸憑證機構：%1$s</string>
+    <string name="core_pr_common">常用服務憑證機構：%1$s</string>
+    <string name="core_pr_system">系統憑證庫：</string>
+    <string name="core_pr_tsa">時間戳記憑證機構：%1$s</string>
+    <string name="core_pv_holder_wallet">持有人錢包（文件衍生）</string>
+    <string name="core_qes_authorization">遠端簽章授權</string>
+    <string name="core_qes_digest">摘要 </string>
+    <string name="core_qes_sign_n">遠端簽章授權：簽署 %1$s 份</string>
     <string name="core_quote_open">「</string>
     <string name="core_reason_unknown">原因不明</string>
     <string name="core_recipient_issuer">%1$s（序號 %2$s）</string>
@@ -1357,6 +1373,8 @@
     <string name="core_tl_sig_bad">簽章不成立</string>
     <string name="core_tl_territory">清單的國別 %1$s 與歐盟清單不符</string>
     <string name="core_tl_too_large">清單超過 %1$s MB</string>
+    <string name="core_tlk_aatl">Adobe 核可信任清單（AATL）</string>
+    <string name="core_tlk_eutl">歐盟信任清單（EUTL）</string>
     <string name="core_transform_unsupported">不支援的轉換</string>
     <string name="core_transform_unsupported_n">不支援的轉換 %1$s</string>
     <string name="core_tsa">時戳機構</string>

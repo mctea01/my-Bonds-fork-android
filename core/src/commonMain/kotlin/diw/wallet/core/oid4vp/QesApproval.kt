@@ -1,5 +1,6 @@
 package diw.wallet.core.oid4vp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.arr
 import diw.wallet.core.util.int
@@ -14,7 +15,7 @@ import org.multipaz.util.fromBase64Url
  * The wallet shows what is approved and binds the presentation to it through transaction_data_hashes.
  */
 class QesApprovalTransaction(identifier: String) : TransactionType<JsonObject>(
-    displayName = "遠端簽章授權",
+    displayName = ct("core_qes_authorization"),
     identifier = identifier,
 ) {
     override fun parseOpenId4VpRequest(jsonString: String): JsonObject =
@@ -33,9 +34,9 @@ class QesApprovalTransaction(identifier: String) : TransactionType<JsonObject>(
             val o = runCatching { DiwJson.parseToJsonElement(encoded.fromBase64Url().decodeToString()) as JsonObject }.getOrNull() ?: return null
             if (o.str("type") !in setOf(CSC_2025, QES_AUTHORIZATION)) return null
             val digests = (o.arr("documentDigests") ?: o.arr("documentDigest")).orEmpty().mapNotNull { it as? JsonObject }
-            val labels = digests.map { d -> d.str("label")?.takeIf { it.isNotBlank() } ?: ("摘要 " + (d.str("hash") ?: "").take(16)) }
+            val labels = digests.map { d -> d.str("label")?.takeIf { it.isNotBlank() } ?: (ct("core_qes_digest") + (d.str("hash") ?: "").take(16)) }
             val count = o.int("numSignatures") ?: digests.size
-            return "遠端簽章授權：簽署 $count 份" + if (labels.isEmpty()) "" else "（" + labels.joinToString("、") + "）"
+            return ct("core_qes_sign_n", count) + if (labels.isEmpty()) "" else ct("core_paren_open_space") + labels.joinToString(ct("core_sep_list")) + ct("core_paren_close")
         }
     }
 }

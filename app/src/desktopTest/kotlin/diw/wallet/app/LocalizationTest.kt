@@ -8,6 +8,8 @@ import diw.wallet.app.res.screen_settings
 import diw.wallet.app.res.sep_comma
 import diw.wallet.app.res.settings_history_count
 import diw.wallet.app.res.web_proof_government
+import diw.wallet.core.i18n.CoreStrings
+import diw.wallet.core.i18n.ct
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.Locale
@@ -87,6 +89,24 @@ class LocalizationTest {
             AppText.load("zh-TW")
             assertEquals("取消", tr(Res.string.action_cancel))
             assertEquals("已加入 3 張證件", tr(Res.string.flow_added_count, 3))
+        } finally {
+            AppText.load(null)
+        }
+    }
+
+    @Test
+    fun coreMessagesHaveBothLanguages() {
+        val zh = strings("values-zh").filterKeys { it.startsWith("core_") }
+        assertEquals(zh.keys, CoreStrings.ZH.keys, "core_ keys of values-zh and CoreStrings (tools/i18n/i18n.py writes both)")
+    }
+
+    @Test
+    fun coreMessagesFollowTheLoadedLanguage() = runBlocking<Unit> {
+        try {
+            AppText.load("en")
+            assertEquals("Signature 2", ct("core_signature_n", 2))
+            AppText.load("zh-TW")
+            assertEquals("簽章 2", ct("core_signature_n", 2))
         } finally {
             AppText.load(null)
         }

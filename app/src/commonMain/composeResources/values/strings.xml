@@ -778,6 +778,7 @@
     <string name="core_csc_state_mismatch">The authorization response does not match this request (different state), so it was stopped</string>
     <string name="core_csc_timeout">The remote signing service did not finish signing within %1$s seconds</string>
     <string name="core_csc_wrong_cert">The signature the remote signing service returned was not made with the chosen certificate</string>
+    <string name="core_dc_no_did">The document issuing key has no DID</string>
     <string name="core_detached_checked">The detached signature was checked with the chosen original file</string>
     <string name="core_digest_unsupported">Unsupported digest method %1$s</string>
     <string name="core_encapsulated_content">Contains the original content (%1$s bytes), which can be saved separately</string>
@@ -791,6 +792,7 @@
     <string name="core_eu_cert_unlisted">The EU list's signing certificate is not among the announced certificates</string>
     <string name="core_eu_format">The EU list format does not match</string>
     <string name="core_eu_sig_bad">The EU list signature does not hold</string>
+    <string name="core_eudi_reference">EUDI reference implementation</string>
     <string name="core_file_base64_decoded">The file is base64 text and was decoded</string>
     <string name="core_file_pem_decoded">The file is PEM text and was decoded</string>
     <string name="core_file_unreadable">Cannot read the file: </string>
@@ -851,6 +853,10 @@
     <string name="core_key_type_unsupported">Unsupported key type %1$s</string>
     <string name="core_label_colon">%1$s: </string>
     <string name="core_label_value">%1$s: %2$s</string>
+    <string name="core_lan_ethernet">Wired network</string>
+    <string name="core_lan_hotspot">Hotspot</string>
+    <string name="core_lan_local">local network</string>
+    <string name="core_lan_other">Other network</string>
     <string name="core_level_bb">Signing certificate and signature value; with no trusted time, only integrity can be proven after the certificate expires</string>
     <string name="core_level_blt">B-T plus the certificate chains of the signer and the time stamp authority and revocation data (OCSP first, CRL when OCSP is unavailable), so it can still be validated after the certificate expires or the CA stops operating</string>
     <string name="core_level_blta">B-LT plus an archive time stamp protecting the long-term validation data (a document time stamp for PDF, an archive time stamp for CAdES and XAdES), which can be extended later</string>
@@ -1005,6 +1011,7 @@
     <string name="core_office_word">Word document (OOXML)</string>
     <string name="core_office_word_97">Word 97-2003 document</string>
     <string name="core_official_note">Taiwan official document (%1$s)</string>
+    <string name="core_oid4vci_unavailable"> (the issuer server is temporarily unavailable; try again later)</string>
     <string name="core_opencerts_checked">Checked that the content matches the Merkle proof; whether the issuer really issued it and the issuer's identity are checked online against Ethereum and DNS records</string>
     <string name="core_p12_no_cert">The certificate file has no certificate</string>
     <string name="core_p12_no_key">The certificate file has no private key</string>
@@ -1253,6 +1260,15 @@
     <string name="core_pos_bottom_right">Bottom right</string>
     <string name="core_pos_top_left">Top left</string>
     <string name="core_pos_top_right">Top right</string>
+    <string name="core_pr_c2pa">C2PA trust list: %1$s</string>
+    <string name="core_pr_china">Mainland China certification authority: %1$s</string>
+    <string name="core_pr_common">Common service certification authority: %1$s</string>
+    <string name="core_pr_system">System certificate store: </string>
+    <string name="core_pr_tsa">Time stamping certification authority: %1$s</string>
+    <string name="core_pv_holder_wallet">Holder wallet (document-derived)</string>
+    <string name="core_qes_authorization">Remote signing authorization</string>
+    <string name="core_qes_digest">digest </string>
+    <string name="core_qes_sign_n">Remote signing authorization: sign %1$s documents</string>
     <string name="core_quote_open">\"</string>
     <string name="core_reason_unknown">unknown reason</string>
     <string name="core_recipient_issuer">%1$s (serial %2$s)</string>
@@ -1357,6 +1373,8 @@
     <string name="core_tl_sig_bad">The signature does not hold</string>
     <string name="core_tl_territory">The list's country %1$s does not match the EU list</string>
     <string name="core_tl_too_large">The list is larger than %1$s MB</string>
+    <string name="core_tlk_aatl">Adobe Approved Trust List (AATL)</string>
+    <string name="core_tlk_eutl">EU Trusted Lists (EUTL)</string>
     <string name="core_transform_unsupported">Unsupported transform</string>
     <string name="core_transform_unsupported_n">Unsupported transform %1$s</string>
     <string name="core_tsa">time stamp authority</string>
