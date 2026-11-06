@@ -52,6 +52,8 @@ internal class CmsChecks(private val pki: PkiSupport) {
         fallbackClaimed: Long? = null,
         /** SHA-256 of detached content that is not available itself (a zkPDF masked file, whose digest is proven). */
         contentSha256: ByteArray? = null,
+        /** The role whose anchors the signer must chain to. */
+        role: TrustRole = TrustRole.DOCUMENT,
     ): List<SignatureInfo> {
         val sd = try {
             if (contentSha256 != null) {
@@ -68,7 +70,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val detachedMissing = content == null && contentSha256 == null && sd.signedContent == null
         return signers.mapIndexed { i, si ->
             check(si, certs, format, if (signers.size > 1) ct("core_cms_signer_n", label, i + 1) else label, now, detachedMissing,
-                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed, sd, content)
+                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed, sd, content, role)
         }
     }
 
@@ -85,6 +87,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         fallbackClaimed: Long?,
         sd: CMSSignedData,
         content: ByteArray?,
+        role: TrustRole,
     ): SignatureInfo {
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
@@ -167,6 +170,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
             now = now,
             problems = problems,
             notes = notes,
+            role = role,
         )
     }
 
