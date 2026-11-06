@@ -1,6 +1,6 @@
 package diw.wallet.app.ui
 
-import diw.wallet.core.oid4vp.QesApprovalTransaction
+import diw.wallet.core.oid4vp.WalletTransactionTypes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +50,9 @@ import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.trust.highlyTrusted
 import diw.wallet.core.oid4vp.AttestationVerdict
+import diw.wallet.core.oid4vp.ConsentTerms
+import diw.wallet.core.oid4vci.issuanceRecord
+import diw.wallet.core.profile.twdiw.TwdiwAssurance
 
 @Composable
 internal fun Busy(text: String) {
@@ -218,20 +221,24 @@ fun PresentationScreen(model: WalletModel) {
                     addAll(req.warnings)
                 }
                 TrustCard("查驗方", v.displayName, v.trust, extra)
+                s.terms?.let { ConsentTermsCard(model, it) }
                 s.attestations.forEach { VerifierAttestationCard(it) }
                 val settings by model.settingsFlow.collectAsState()
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
                 TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
                 if (showDetails) DetailSections(model, CredentialDetails.request(req))
-                val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s)
+                val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s) { i, id -> model.changeCredential(s, i, id) }
                 if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) {
-                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表簽署。")
-                    req.transactionData.mapNotNull { QesApprovalTransaction.describe(it) }.forEach {
-                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表授權以下交易：")
+                    req.transactionData.forEach { entry ->
+                        WalletTransactionTypes.describe(entry).forEachIndexed { i, line ->
+                            Text(line, style = if (i == 0) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium)
+                        }
                     }
                 }
-                val values = remember(s) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+                // Kept when the holder changes a credential, which replaces the consent state of the same request.
+                val values = remember(req) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
                 if (s.fields.isNotEmpty()) Text("對方要求填寫：", style = MaterialTheme.typography.titleSmall)
                 s.fields.forEach { f ->
                     val value = values[f.ename].orEmpty()
@@ -254,6 +261,9 @@ fun PresentationScreen(model: WalletModel) {
                 val failed = s.attestations.filter { it.verdict == AttestationVerdict.INVALID }
                 val attestationsOk = failed.isEmpty() || riskOverride(s, "仍要分享（查驗方的登錄證明不成立）", "查驗方的登錄證明不成立",
                     failed.flatMap { it.problems }.distinct().take(5) + "登錄證明說明查驗方是誰、可以要求哪些資料；不成立時，對方可能冒用身分或超出用途。")
+                if (s.terms?.termsUri != null) {
+                    Text("點選「同意分享」即表示已閱讀知情同意書並同意提供上列資料。", style = MaterialTheme.typography.bodySmall)
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk && statusOk && attestationsOk) { Text("同意分享") }
                     OutlinedButton(onClick = { model.decline(s) }) { Text("拒絕") }
@@ -263,15 +273,40 @@ fun PresentationScreen(model: WalletModel) {
     }
 }
 
+/** Who receives the data, the occasion and purpose of the request, and the terms page (TWDIW 知情同意書). */
+@Composable
+private fun ConsentTermsCard(model: WalletModel, terms: ConsentTerms) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            terms.recipient?.let { LabelValue("提供資料的對象", it) }
+            terms.scenario?.let { LabelValue("使用情境", it) }
+            terms.purpose?.let { LabelValue("用途", it) }
+            terms.termsUri?.let { uri ->
+                val title = (terms.scenario?.let { "「$it」" } ?: "") + "知情同意書"
+                TextButton(onClick = { model.platform.openBrowser(uri) }) { Text("閱讀$title") }
+                Text("由查驗方提供，在瀏覽器開啟：$uri", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 /**
  * The request's risk and the documents asked for, each with its status judged at that risk. A document whose status
  * the request rejects (revoked; suspended or unconfirmed for the risk) is shared only after the strong confirmation;
  * a new status query is offered first where it may help. Returns whether the user may go on. [key] identifies the
- * request.
+ * request. With [onChange], a line that other held documents can also answer offers to change the credential.
  */
 @Composable
-internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, risk: RiskLevel, verifierTier: TrustTier, key: Any): Boolean {
+internal fun requestedDocuments(
+    model: WalletModel,
+    items: List<ConsentItem>,
+    risk: RiskLevel,
+    verifierTier: TrustTier,
+    key: Any,
+    onChange: ((index: Int, documentId: String) -> Unit)? = null,
+): Boolean {
     val statuses by model.statuses.collectAsState()
+    val documents by model.documents.collectAsState()
     val decisions = items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, risk) } }
     Text("這次請求的風險：" + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
     Text(requestRiskReason(risk, items, verifierTier), style = MaterialTheme.typography.bodySmall)
@@ -281,7 +316,14 @@ internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, ri
             Box(Modifier.padding(12.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(item.documentName, style = MaterialTheme.typography.titleMedium)
+                    val current = documents.firstOrNull { it.identifier == item.documentId }
+                    assuranceText(current?.issuanceRecord)?.let {
+                        Text("身分保證等級（IAL）：$it", style = MaterialTheme.typography.bodySmall)
+                    }
                     decisions[i]?.let { RequestStatusLine(it) }
+                    if (onChange != null && item.alternatives.isNotEmpty() && current != null) {
+                        CredentialChooser(item, current, documents.filter { it.identifier in item.alternatives }) { onChange(i, it) }
+                    }
                     if (item.whole) {
                         Text("對方要求整張證件。這張證件無法只出示部分欄位，下列欄位都會交給對方：", style = MaterialTheme.typography.bodySmall)
                     }
@@ -313,6 +355,35 @@ internal fun requestedDocuments(model: WalletModel, items: List<ConsentItem>, ri
         Text("部分證件的狀態無法完全確認，對方可能另行查證。", style = MaterialTheme.typography.bodySmall)
     }
     return rejected.isEmpty() || overridden
+}
+
+/**
+ * Changes the credential of a consent line, like the official TWDIW wallet's 更改憑證: the current document is checked;
+ * picking another one presents it instead. Cards with a higher identity assurance level come first.
+ */
+@Composable
+private fun CredentialChooser(item: ConsentItem, current: org.multipaz.document.Document, others: List<org.multipaz.document.Document>, onPick: (String) -> Unit) {
+    var open by remember(item.documentId) { mutableStateOf(false) }
+    TextButton(onClick = { open = !open }) { Text(if (open) "收合" else "更改憑證（另有 ${others.size} 張符合）") }
+    if (!open) return
+    Text("這一項只會出示一張證件，點選其他證件即可更換。", style = MaterialTheme.typography.bodySmall)
+    val options = (listOf(current) + others).sortedByDescending { TwdiwAssurance.rank(it.issuanceRecord?.displayDescription) }
+    options.forEach { doc ->
+        val record = doc.issuanceRecord
+        val detail = listOfNotNull(
+            assuranceText(record)?.let { "IAL：$it" },
+            record?.anchorName ?: record?.credentialIssuer,
+        ).joinToString("・")
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            androidx.compose.material3.RadioButton(selected = doc.identifier == current.identifier, onClick = {
+                if (doc.identifier != current.identifier) { open = false; onPick(doc.identifier) }
+            })
+            Column(Modifier.weight(1f)) {
+                Text(doc.displayName ?: "證件", style = MaterialTheme.typography.bodyMedium)
+                if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
 }
 
 /** Why a request has its risk: the most sensitive field asked for, or a verifier that is not on an official list. */

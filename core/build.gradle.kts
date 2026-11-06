@@ -7,6 +7,89 @@ plugins {
 }
 
 /**
+ * How the ZK native library (native/build.sh) is built. "auto" (default) builds it when bash and cargo are installed
+ * and otherwise leaves it out, so ZkNative reports zero-knowledge proofs as unavailable; "require" always builds and
+ * fails without the tools; "skip" never builds. "prebuilt" never builds either, but the library native/build.sh would
+ * write must already be in native/dist (CI builds it in a separate job and passes it in as an artifact); a missing
+ * library fails the build. Set with -Pdiw.zkNative or DIW_ZK_NATIVE.
+ */
+val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
+    .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
+
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn and zkpdf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
+    .getOrElse("").also { f ->
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac, tlsn and zkpdf"
+        }
+    }
+
+/** Git for Windows' bash: a plain "bash" on Windows starts WSL, which usually has no distribution installed. */
+val zkBash: String? = if (!System.getProperty("os.name").startsWith("Windows")) "bash" else
+    listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramW6432"))
+        .map { File(it, "Git/bin/bash.exe") }.firstOrNull { it.isFile }?.path
+
+fun zkCommandSucceeds(vararg command: String): Boolean = runCatching {
+    val process = ProcessBuilder(*command).directory(rootDir).redirectErrorStream(true).start()
+    process.inputStream.readBytes()
+    process.waitFor() == 0
+}.getOrDefault(false)
+
+/** The host library that native/build.sh host writes under native/dist/resources/zk/native, or null on other hosts. */
+val zkDesktopLibrary: String? = System.getProperty("os.name").let { os ->
+    val x64 = System.getProperty("os.arch") in setOf("amd64", "x86_64")
+    when {
+        os.startsWith("Linux") && x64 -> "linux-x86_64/libdiw_zk.so"
+        os.startsWith("Windows") && x64 -> "windows-x86_64/diw_zk.dll"
+        os.startsWith("Mac") && System.getProperty("os.arch") == "aarch64" -> "macos-aarch64/libdiw_zk.dylib"
+        else -> null
+    }
+}
+
+/** With diw.zkNative=prebuilt, fails unless the host library and its digest are already in native/dist. */
+val checkZkDesktopPrebuilt by tasks.registering {
+    val library = zkDesktopLibrary?.let { rootProject.file("native/dist/resources/zk/native/$it") }
+    onlyIf("diw.zkNative=prebuilt") { zkNativeMode == "prebuilt" }
+    doLast {
+        if (library == null) throw GradleException("diw.zkNative=prebuilt: no ZK native library is built for this host")
+        val missing = listOf(library, File("${library.path}.sha256")).filterNot { it.isFile }
+        if (missing.isNotEmpty()) throw GradleException("diw.zkNative=prebuilt: missing ${missing.joinToString()} (run native/build.sh host, or use another diw.zkNative mode)")
+    }
+}
+
+val buildZkDesktop by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine(zkBash ?: "bash", "native/build.sh", "host")
+    environment("DIW_ZK_FEATURES", zkFeatures)
+    inputs.property("zkFeatures", zkFeatures)
+    inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/resources"))
+    dependsOn(checkZkDesktopPrebuilt)
+    onlyIf("the Rust toolchain is installed, or diw.zkNative=require") {
+        when (zkNativeMode) {
+            "require" -> true
+            "skip", "prebuilt" -> false
+            else -> (zkBash != null && zkCommandSucceeds("cargo", "--version")).also {
+                if (!it) logger.warn("ZK native library not built: bash or cargo not found (-Pdiw.zkNative=require fails instead)")
+            }
+        }
+    }
+}
+val zkAssetResources by tasks.registering {
+    val source = rootProject.file("native/assets.json")
+    val destination = layout.buildDirectory.dir("generated/zkAssets")
+    inputs.file(source)
+    outputs.dir(destination)
+    doLast {
+        // Keep the pinned bytes identical on Windows checkouts with CRLF conversion.
+        destination.get().file("zk/assets.json").asFile.apply {
+            parentFile.mkdirs()
+            writeText(source.readText().replace("\r\n", "\n"))
+        }
+    }
+}
+
+/**
  * The DOM interfaces Xerces implements that Android does not ship (DOM events, ranges, traversal, views, HTML, CSS,
  * ElementTraversal, StAX). Only classes absent from android.jar are taken from xml-apis, so nothing shadows the
  * platform's own javax.xml and org.w3c.dom classes.
@@ -40,10 +123,13 @@ kotlin {
         val jvmCommonMain by creating { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(jvmCommonMain)
         jvmMain.get().dependsOn(jvmCommonMain)
+        commonMain.get().resources.srcDir(zkAssetResources)
+        jvmMain.get().resources.srcDir(buildZkDesktop.map { rootProject.file("native/dist/resources") })
 
         commonMain.dependencies {
             api(libs.multipaz)
             api(libs.multipaz.doctypes)
+            api(libs.multipaz.longfellow)
             api(libs.coroutines.core)
             api(libs.serialization.json)
             api(libs.kotlinx.io)
@@ -52,14 +138,18 @@ kotlin {
         jvmCommonMain.dependencies {
             implementation(libs.bcprov)
             implementation(libs.bcpkix)
+            implementation(libs.bcpg)
+            implementation(libs.zxing.core)
         }
         androidMain.dependencies {
+            api("${libs.jna.get()}@aar")
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
             implementation(libs.xerces.get().toString()) { exclude(group = "xml-apis") }
             implementation(files(androidDomExtras))
         }
         jvmMain.dependencies {
+            api(libs.jna)
             implementation(libs.ktor.client.java)
             implementation(libs.sqlite.jdbc)
         }
@@ -80,6 +170,8 @@ configurations.all {
 android {
     namespace = "diw.wallet.core"
     compileSdk = 36
+    // The Android library does not package commonMain resources, so the pinned asset list is added here as well.
+    sourceSets.getByName("main").resources.srcDir(layout.buildDirectory.dir("generated/zkAssets"))
     defaultConfig { minSdk = 28 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -95,3 +187,5 @@ tasks.withType<Test>().configureEach {
         showStandardStreams = true
     }
 }
+
+tasks.matching { it.name.startsWith("process") && it.name.endsWith("JavaRes") }.configureEach { dependsOn(zkAssetResources) }

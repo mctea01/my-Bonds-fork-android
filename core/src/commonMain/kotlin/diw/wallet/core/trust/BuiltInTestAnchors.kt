@@ -49,6 +49,7 @@ object BuiltInTestAnchors {
             Anchor("Apple Digital ID（美國）", ISSUER_ROLES, APPLE_DIGITAL_ID_US, production = true),
             Anchor("Multipaz TEST IACA（Multipaz 發行端）", ISSUER_ROLES, MULTIPAZ_TEST_IACA),
             Anchor("utopia.multipaz.org（Utopia 測試發行端）", ISSUER_ROLES, UTOPIA_ISSUER_ROOT),
+            Anchor("utopia.multipaz.org（Utopia 測試發行端，2026 更新金鑰）", ISSUER_ROLES, UTOPIA_ISSUER_ROOT_2026),
             Anchor("Google Payground（測試）", ISSUER_ROLES, GOOGLE_PAYGROUND),
             Anchor("Google Wallet ID pass Sandbox（測試）", ISSUER_ROLES, GOOGLE_ID_PASS_SANDBOX),
             Anchor("Multipaz Wallet In-App IACA（Multipaz Wallet 內建發行）", ISSUER_ROLES, MULTIPAZ_WALLET_IACA),
@@ -231,6 +232,25 @@ object BuiltInTestAnchors {
         "ZzAdBgNVHQ4EFgQUIC0jIgjKmykwZZLeJyAU/eQtzPcwHwYDVR0jBBgwFoAUIC0jIgjKmykwZZLeJyAU/eQtzPcwCgYIKoZIzj0E" +
         "AwMDaAAwZQIxAJSaluaAlfdeeC01gmBdkqMlAM8+bNvenByPBOY7V9kJmv8GgaHHtMxRcBjjr+P9XwIwP96fOexFJr3EFnifcw8i" +
         "7WFUQTDyMRUPGp3uK10Um5jpXDZeaC95CsDxQhc4S6qR"
+
+    /**
+     * utopia.multipaz.org registry root, rotated 2026-09-30 (served by /id/signing_certificate). The server re-keyed its
+     * "OpenID4VCI Root at https://utopia.multipaz.org/registry" root, so credentials issued after the rotation chain to
+     * this key, not [UTOPIA_ISSUER_ROOT]; both are kept so test cards from before and after the rotation stay trusted.
+     * SHA-256 7f0ba1aae4a4c5c6fec04b9de59366d96bb2eb352877dbfdafa962e2a7deeb35.
+     */
+    private const val UTOPIA_ISSUER_ROOT_2026 =
+        "MIICwTCCAkegAwIBAgIRANjjMbhVeqt94GRq8Xm0JYEwCgYIKoZIzj0EAwMwTzFAMD4GA1UEAww3T3BlbklENFZDSSBS" +
+        "b290IGF0IGh0dHBzOi8vdXRvcGlhLm11bHRpcGF6Lm9yZy9yZWdpc3RyeTELMAkGA1UEBgwCVVMwHhcNMjYwOTMwMjAw" +
+        "MDIzWhcNNDEwOTI2MjAwMDIzWjBPMUAwPgYDVQQDDDdPcGVuSUQ0VkNJIFJvb3QgYXQgaHR0cHM6Ly91dG9waWEubXVs" +
+        "dGlwYXoub3JnL3JlZ2lzdHJ5MQswCQYDVQQGDAJVUzB2MBAGByqGSM49AgEGBSuBBAAiA2IABAndoFbMdBfqjQ61Cjkx" +
+        "AOE14gRQT/ruL+cfzZYEdRSyu1aLMjP7TFaWzLh96uqE/JFMIfvQk5uJ655+s8IE1UGM8CBhbz0b2lVhy8ts9QleaCNf" +
+        "YSu/FdW30P2vdrPyK6OB5jCB4zAOBgNVHQ8BAf8EBAMCAQYwEgYDVR0TAQH/BAgwBgEB/wIBADAvBgNVHRIEKDAmhiRo" +
+        "dHRwczovL3V0b3BpYS5tdWx0aXBhei5vcmcvcmVnaXN0cnkwTAYDVR0fBEUwQzBBoD+gPYY7aHR0cHM6Ly91dG9waWEu" +
+        "bXVsdGlwYXoub3JnL3JlZ2lzdHJ5L2NybC9jcmVkZW50aWFsX3NpZ25pbmcwHQYDVR0OBBYEFHmysRh2V3vETnd4PvQ4" +
+        "PfE8J8LJMB8GA1UdIwQYMBaAFHmysRh2V3vETnd4PvQ4PfE8J8LJMAoGCCqGSM49BAMDA2gAMGUCMAsUsdV/DyYe74+s" +
+        "bXe1vey6v80WfRwb4St4FMvpc0/46+qdVQt7ZYuJZns5uRZf0QIxAPEXP72RZCzGPuPkAUc9eXiZOjGLIjyRbkyJ24x4" +
+        "U0qz4f+EW8HqMiAPjf0pF7wcCw=="
 
     /** Google Payground; Multipaz Wallet trusted issuers. SHA-256 847f9abf31f7a22de23b21b849a5ab6fbbe0826c030469e55d71ef2e79b27296. */
     private const val GOOGLE_PAYGROUND =

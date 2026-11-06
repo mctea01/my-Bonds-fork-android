@@ -1,0 +1,7 @@
+[package]
+name = "inflate_probe"
+type = "bin"
+authors = []
+compiler_version = ">=0.36.0"
+[dependencies]
+pdf_text_v1 = { path = "../../pdf_text_v1" }

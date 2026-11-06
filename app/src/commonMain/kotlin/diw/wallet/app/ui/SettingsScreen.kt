@@ -20,6 +20,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,10 +38,16 @@ import diw.wallet.app.WalletSettings
 import diw.wallet.app.legal.Integration
 import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.compat.TwdiwDialect
-import diw.wallet.core.document.sign.PadesLevel
+import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.document.sign.TsaServices
 import diw.wallet.core.profile.bonds.MyDataProfile
 import diw.wallet.core.profile.twdiw.TwdiwPlatform
+import diw.wallet.core.profile.twdiw.TwdiwDeviceKeyRecord
+import androidx.compose.material3.Card
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 
 @Composable
 private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
@@ -79,12 +86,15 @@ fun SettingsScreen(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     val history by model.history.collectAsState()
     val reg by model.dcApiRegistration.collectAsState()
+    val zkCapability by model.zk.capability.collectAsState()
+    LaunchedEffect(Unit) { model.zk.probe() }
     SettingsColumn {
         SettingsSection.entries.forEach { section ->
             val summary = when (section) {
                 SettingsSection.SECURITY -> listOfNotNull(
                     model.backends.firstOrNull()?.let { "金鑰保護：" + it.protection.displayName },
                     "每次使用需驗證：" + onOff(s.requireUserAuth),
+                    zkSummary(zkCapability),
                     "紀錄 ${history.size} 筆",
                 ).joinToString("・")
                 SettingsSection.CREDENTIALS -> listOfNotNull(
@@ -93,7 +103,7 @@ fun SettingsScreen(model: WalletModel) {
                 ).joinToString("・")
                 SettingsSection.DOCUMENTS -> listOfNotNull(
                     "時戳機構：" + TsaServices.byId(s.tsaId).name,
-                    "PDF 預設 " + padesLevel(s).title,
+                    "簽署預設 " + padesLevel(s).short,
                     if (s.myDataIdNumber != null) "MyData 自動填入已設定" else null,
                 ).joinToString("・")
                 SettingsSection.TRUST -> listOf(
@@ -133,7 +143,7 @@ fun SettingsPageScreen(model: WalletModel, section: SettingsSection) {
     }
 }
 
-private fun padesLevel(s: WalletSettings) = PadesLevel.entries.firstOrNull { it.name == s.padesLevel } ?: PadesLevel.B_T
+private fun padesLevel(s: WalletSettings) = SignatureLevel.of(s.padesLevel)
 
 @Composable
 private fun SecurityPage(model: WalletModel) {
@@ -147,6 +157,9 @@ private fun SecurityPage(model: WalletModel) {
     Toggle("每次使用需驗證", "使用證件金鑰前要求生物辨識或裝置 PIN（軟體金鑰一律需 App PIN）", s.requireUserAuth) { v ->
         model.updateSettings { it.copy(requireUserAuth = v) }
     }
+    HorizontalDivider()
+    SectionTitle("隱私")
+    ZkSettingsRow(model) { model.screen.value = Screen.ZkSettings }
     HorizontalDivider()
     SectionTitle("紀錄")
     Text("紀錄只保存對象、時間、證件與欄位名稱，不保存欄位內容。目前共 ${history.size} 筆。", style = MaterialTheme.typography.bodySmall)
@@ -199,11 +212,11 @@ private fun DocumentsPage(model: WalletModel) {
         model.updateSettings { it.copy(timestampRevocation = v) }
     }
     HorizontalDivider()
-    SectionTitle("PDF 簽署的預設保證層級")
+    SectionTitle("簽署的預設保證層級（PAdES、CAdES、XAdES、ASiC-E）")
     val level = padesLevel(s)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        PadesLevel.entries.forEach { l ->
-            FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.title) })
+        SignatureLevel.entries.forEach { l ->
+            FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.short) })
         }
     }
     Text(level.detail + "。簽署畫面仍可逐次調整，最後選的層級會記住。", style = MaterialTheme.typography.bodySmall)
@@ -238,6 +251,9 @@ private fun TrustPage(model: WalletModel) {
     ActionRow(WalletIcons.Shield, "信任錨點", "全部內建與匯入的 X.509 根憑證、中繼憑證、DID 信任來源與文件簽章信任清單的下載狀態") {
         model.screen.value = Screen.TrustAnchors
     }
+    ActionRow(WalletIcons.Shield, "OpenPGP 公開金鑰", "OpenPGP 簽章與加密使用的公開金鑰：自己的卡片、核對過指紋的金鑰、介紹人與不信任的金鑰") {
+        model.screen.value = Screen.OpenPgpKeys()
+    }
 }
 
 @Composable
@@ -253,6 +269,13 @@ private fun InteropPage(model: WalletModel) {
         style = MaterialTheme.typography.bodySmall)
     if (!model.legal.enabled(Integration.TWDIW)) IntegrationOffRow(model, Integration.TWDIW)
     if (!model.legal.enabled(Integration.MS_VERIFIED_ID)) IntegrationOffRow(model, Integration.MS_VERIFIED_ID)
+    SectionTitle("近距離出示（ISO/IEC 18013-5）")
+    Toggle(
+        "NFC 靜態交握",
+        "關閉時（預設）以協商式交握讓讀取端選擇 BLE 或 NFC；開啟時直接提供 BLE 兩種模式與 NFC 資料傳輸，給只支援靜態交握的讀取設備。",
+        s.nfcStaticHandover,
+    ) { v -> model.updateSettings { it.copy(nfcStaticHandover = v) } }
+    HorizontalDivider()
     SectionTitle("OpenID4VCI 錢包身分")
     Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
         style = MaterialTheme.typography.bodySmall)
@@ -324,6 +347,46 @@ private fun InteropPage(model: WalletModel) {
             twdiwFrontend = TwdiwPlatform.PRODUCTION_FRONTEND
         }) { Text("還原預設") }
     }
+    TwdiwDeviceKeySection(model)
+}
+
+/**
+ * Current application key and optional historical device-registration records, retained for deletion only.
+ */
+@Composable
+private fun TwdiwDeviceKeySection(model: WalletModel) {
+    val scope = rememberCoroutineScope()
+    var reload by remember { mutableStateOf(0) }
+    val records by produceState(emptyList<TwdiwDeviceKeyRecord>(), reload) {
+        value = runCatching { model.twdiwDeviceKeys.records() }.getOrDefault(emptyList())
+    }
+    HorizontalDivider()
+    SectionTitle("數位憑證皮夾應用簽章金鑰")
+    Text("新版夥伴卡平台的領卡請求使用獨立的應用簽章金鑰；平台是否接受此應用與金鑰，由發行端決定。舊版發證端仍可使用原有領卡流程。",
+        style = MaterialTheme.typography.bodySmall)
+    LabelValue("金鑰來源", if (model.twdiwApplicationKeySource == "provided") "建置時提供" else "建置時產生")
+    LabelValue("應用金鑰 ID", model.twdiwApplicationKeyId ?: "尚未載入")
+    if (records.isNotEmpty()) Text("以下為舊版留下的裝置金鑰紀錄，已停止使用，可自行刪除。", style = MaterialTheme.typography.bodySmall)
+    records.forEach { r ->
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(r.host, style = MaterialTheme.typography.titleSmall)
+                LabelValue("金鑰位置", when (r.protection) { "strongbox" -> "StrongBox 安全晶片"; "tee" -> "TEE 可信執行環境"; else -> "軟體金鑰" })
+                LabelValue("金鑰 DID", r.did)
+                LabelValue("舊紀錄", r.keyId?.let { "keyId：$it" } ?: "當時未取得 keyId")
+                r.lastHttpStatus?.let { LabelValue("最後一次回應", "HTTP $it" + (r.lastAttemptAt?.let { t -> "・" + localTime(t) } ?: "")) }
+                r.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                r.lastResponse?.takeIf { it.isNotBlank() }?.let { body ->
+                    var open by remember(r.host) { mutableStateOf(false) }
+                    TextButton(onClick = { open = !open }) { Text(if (open) "隱藏伺服器回應" else "顯示伺服器回應原文") }
+                    if (open) SelectionContainer { Text(body, style = MaterialTheme.typography.bodySmall) }
+                }
+                OutlinedButton(onClick = { scope.launch { runCatching { model.twdiwDeviceKeys.reset(r.host) }; reload++ } }) {
+                    Text("刪除舊金鑰與紀錄")
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -360,13 +423,27 @@ private fun DeveloperPage(model: WalletModel) {
     SectionTitle("測試錨點")
     OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text("匯入 EUDI 參考實作測試錨點") }
     OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
+    Toggle(
+        "Multipaz 測試身分",
+        "向 issuer.multipaz.org 領卡時改用 Multipaz TestApp 公開的測試金鑰做錢包證明、用戶端金鑰簽章與金鑰證明。" +
+            "這組金鑰任何人都能取得，只能用於測試，其他發證端不受影響。需先開啟自訂測試伺服器。",
+        s.multipazTestIdentity,
+        enabled = s.testEnvironment,
+    ) { v -> model.updateSettings { it.copy(multipazTestIdentity = v) } }
+    Toggle(
+        "自簽錢包證明兜底",
+        "向要求錢包證明或金鑰證明、但本錢包沒有註冊提供者的發證端，改送本錢包自簽的證明。這把金鑰沒有任何發證端信任，" +
+            "只能讓不檢查提供者的沙箱／示範發證端（如 Animo）接受；正式發證端（如 Bundesdruckerei）仍會拒絕。設有註冊提供者時不生效。",
+        s.selfAttestationFallback,
+    ) { v -> model.updateSettings { it.copy(selfAttestationFallback = v) } }
     HorizontalDivider()
     SectionTitle("行動自然人憑證")
     if (!model.legal.enabled(Integration.MOBILE_MOICA)) IntegrationOffRow(model, Integration.MOBILE_MOICA)
     Toggle(
         "手動輸入 SP 帳號",
         "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，只供依法持有 SP 授權者使用；帳號只保存在這次執行的記憶體。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" + LegalStrings.MOICA_SP_FORK_ONLY else "關閉時使用本版內建的帳號。",
+            "開啟後簽署畫面仍可改選正式服務端或本版內建的帳號。" +
+            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" + LegalStrings.MOICA_SP_FORK_ONLY else "",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
 }
@@ -441,6 +518,8 @@ private fun DigitalCredentialsSection(model: WalletModel) {
     }
     Text(summary, style = MaterialTheme.typography.bodySmall,
         color = if (r.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    // What the system matcher compares a request against: the doctype or vct and the claims of each credential.
+    for (entry in r.entries) Text(entry, style = MaterialTheme.typography.bodySmall)
     if (r.notListable > 0) {
         Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
             style = MaterialTheme.typography.bodySmall)

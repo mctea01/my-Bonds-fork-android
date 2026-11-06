@@ -1,0 +1,86 @@
+{
+  "date": "2026-11-01",
+  "scope": "Additional valid desktop composition and mixed-composition rejection coverage",
+  "stages": [
+    {
+      "peak_rss_kib": 1938280,
+      "segment": {
+        "index": 0,
+        "kind": "sha_content",
+        "proof_bytes": 16256,
+        "prove_ms": 22792,
+        "public_input_bytes": 9408,
+        "verify_ms": 13,
+        "witness_ms": 350
+      }
+    },
+    {
+      "peak_rss_kib": 1804952,
+      "segment": {
+        "index": 1,
+        "kind": "sha_opaque",
+        "proof_bytes": 16256,
+        "prove_ms": 23067,
+        "public_input_bytes": 864,
+        "verify_ms": 12,
+        "witness_ms": 73
+      }
+    },
+    {
+      "peak_rss_kib": 3878224,
+      "segment": {
+        "index": 0,
+        "kind": "inflate0",
+        "proof_bytes": 16256,
+        "prove_ms": 37855,
+        "public_input_bytes": 288,
+        "verify_ms": 14,
+        "witness_ms": 3525
+      }
+    },
+    {
+      "peak_rss_kib": 4161496,
+      "segment": {
+        "index": 0,
+        "kind": "lex",
+        "proof_bytes": 16256,
+        "prove_ms": 42026,
+        "public_input_bytes": 52672,
+        "verify_ms": 20,
+        "witness_ms": 6659
+      }
+    },
+    {
+      "peak_rss_kib": 1415928,
+      "segment": {
+        "index": 0,
+        "kind": "claim",
+        "proof_bytes": 16256,
+        "prove_ms": 11177,
+        "public_input_bytes": 65856,
+        "verify_ms": 22,
+        "witness_ms": 190
+      }
+    },
+    {
+      "peak_rss_kib": 2103252,
+      "segment": {
+        "index": 0,
+        "kind": "pred",
+        "proof_bytes": 16256,
+        "prove_ms": 19653,
+        "public_input_bytes": 57536,
+        "verify_ms": 24,
+        "witness_ms": 2339
+      }
+    }
+  ],
+  "summary": {
+    "composition": "zkpdf-v1-desktop",
+    "fixture": "student",
+    "peak_rss_kib": 4161496,
+    "segments": 6,
+    "total_prove_ms": 170430,
+    "total_with_verify_ms": 170667
+  }
+}

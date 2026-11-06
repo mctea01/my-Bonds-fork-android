@@ -3,22 +3,43 @@ package diw.wallet.core.document.sign
 import diw.wallet.core.document.official.ApprovalPoint
 import diw.wallet.core.document.pdf.PdfSignOptions
 
+/** The result of [DocumentSigning.extendPdf]: the new file, the signatures covered and what the revocation checks found. */
+class PdfExtension(val pdf: ByteArray, val signatures: Int, val validation: ValidationData, val documentTimestamp: Boolean)
+
 /**
  * Making signed documents with any [DocumentSigner]: PAdES (an incremental update keeps earlier signatures valid),
  * CAdES (.p7s detached or .p7m enveloping), ASiC-E containers for several files, and XAdES enveloped signatures
- * for XML such as official documents. With a [Timestamper] the signatures get a signature time stamp (-T level).
+ * for XML such as official documents. With a [Timestamper] the signatures get a signature time stamp (B-T), with
+ * validation data the chains and revocation data (B-LT), and with `archive` an archive time stamp over both (B-LTA).
  * Every signature is verified with the signer certificate before it is returned.
  */
 expect object DocumentSigning {
     suspend fun signPdf(pdf: ByteArray, signer: DocumentSigner, options: PdfSignOptions, timestamper: Timestamper?): ByteArray
 
-    /** With [validation], the chains and revocation data (OCSP first) go into the signature (baseline LT). */
-    suspend fun signCades(content: ByteArray, signer: DocumentSigner, detached: Boolean, timestamper: Timestamper?, validation: HttpFetch? = null): ByteArray
+    /**
+     * Checks a CMS SignedData made elsewhere (such as by a CSC service through signDoc) before it goes into a file:
+     * one signer, identified as [certificate], whose signature verifies over the detached [content]. Throws
+     * [SigningException] otherwise.
+     */
+    fun verifyDetached(cms: ByteArray, content: ByteArray, certificate: ByteArray)
 
-    suspend fun buildAsic(files: List<Pair<String, ByteArray>>, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch? = null): ByteArray
+    /**
+     * With [validation], the chains and revocation data (OCSP first) go into the signature (baseline LT); [archive]
+     * adds an archive-time-stamp-v3 (B-LTA) and needs both [timestamper] and [validation].
+     */
+    suspend fun signCades(content: ByteArray, signer: DocumentSigner, detached: Boolean, timestamper: Timestamper?, validation: HttpFetch? = null, archive: Boolean = false): ByteArray
 
-    /** With [validation], XAdES CertificateValues and RevocationValues are added (baseline LT). */
-    suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch? = null): ByteArray
+    suspend fun buildAsic(files: List<Pair<String, ByteArray>>, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch? = null, archive: Boolean = false): ByteArray
+
+    /** With [validation], XAdES CertificateValues and RevocationValues are added (baseline LT); [archive] adds an ArchiveTimeStamp (B-LTA). */
+    suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch? = null, archive: Boolean = false): ByteArray
+
+    /**
+     * Extends the signatures of a signed PDF: the validation data of every signature and time stamp in it goes into
+     * the DSS (B-LT), then, with [timestamper], a document time stamp covers it all (B-LTA). Earlier signatures and
+     * time stamps stay valid. Run it again before the last time stamp's certificate expires to keep the PDF verifiable.
+     */
+    suspend fun extendPdf(pdf: ByteArray, validation: HttpFetch, timestamper: Timestamper?): PdfExtension
 
     /** Chain (completed through AIA) and revocation data, OCSP first, of a certificate chain (signer first). */
     suspend fun collectValidation(chain: List<ByteArray>, fetch: HttpFetch, known: List<ByteArray> = emptyList()): ValidationData

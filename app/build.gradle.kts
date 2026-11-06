@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.security.KeyStore
+import java.security.MessageDigest
 
 plugins {
     kotlin("multiplatform")
@@ -12,9 +13,67 @@ plugins {
     kotlin("plugin.serialization")
 }
 
+/** The pinned NDK, also used by native/build.sh. */
+val zkNdkVersion = "28.2.13676358"
+
+/** Same modes as core's buildZkDesktop: auto (build when the tools are installed), require, skip, prebuilt. */
+val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
+    .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
+
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn and zkpdf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
+    .getOrElse("").also { f ->
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac, tlsn and zkpdf"
+        }
+    }
+
+/** Git for Windows' bash: a plain "bash" on Windows starts WSL, which usually has no distribution installed. */
+val zkBash: String? = if (!System.getProperty("os.name").startsWith("Windows")) "bash" else
+    listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramW6432"))
+        .map { File(it, "Git/bin/bash.exe") }.firstOrNull { it.isFile }?.path
+
+fun zkCommandOutput(vararg command: String): String? = runCatching {
+    val process = ProcessBuilder(*command).directory(rootDir).redirectErrorStream(true).start()
+    val output = process.inputStream.readBytes().decodeToString().trim()
+    output.takeIf { process.waitFor() == 0 }
+}.getOrNull()
+
+/** With diw.zkNative=prebuilt, fails unless both ABIs that native/build.sh android writes are already in native/dist. */
+val checkZkAndroidPrebuilt by tasks.registering {
+    val libraries = listOf("arm64-v8a", "x86_64").map { rootProject.file("native/dist/android/$it/libdiw_zk.so") }
+    onlyIf("diw.zkNative=prebuilt") { zkNativeMode == "prebuilt" }
+    doLast {
+        val missing = libraries.filterNot { it.isFile }
+        if (missing.isNotEmpty()) throw GradleException("diw.zkNative=prebuilt: missing ${missing.joinToString()} (run native/build.sh android, or use another diw.zkNative mode)")
+    }
+}
+
+val buildZkAndroid by tasks.registering(Exec::class) {
+    workingDir(rootProject.projectDir)
+    commandLine(zkBash ?: "bash", "native/build.sh", "android")
+    environment("DIW_ZK_FEATURES", zkFeatures)
+    inputs.property("zkFeatures", zkFeatures)
+    inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
+    dependsOn(checkZkAndroidPrebuilt)
+    onlyIf("the Rust toolchain, cargo-ndk and the pinned NDK are installed, or diw.zkNative=require") {
+        when (zkNativeMode) {
+            "require" -> true
+            "skip", "prebuilt" -> false
+            else -> {
+                val ndk = System.getenv("ANDROID_HOME")?.let { File(it, "ndk/$zkNdkVersion/source.properties") }
+                (zkBash != null && ndk?.isFile == true && zkCommandOutput("cargo", "ndk", "--version") == "cargo-ndk 4.1.2").also {
+                    if (!it) logger.warn("ZK native library not packaged: cargo-ndk 4.1.2 or NDK $zkNdkVersion under ANDROID_HOME not found (-Pdiw.zkNative=require fails instead)")
+                }
+            }
+        }
+    }
+}
+
 /**
  * The mobile citizen certificate SP account built into this build, from the environment or Gradle properties
- * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI passes them as secrets).
+ * (DIW_MOICA_SP_SERVICE_ID, DIW_MOICA_SP_AES_KEY, DIW_MOICA_SP_ENV = UAT or PRODUCTION; CI can pass them as secrets, see docs/release.md).
  * The generated source stays in the build directory and is never committed; without the values the app has no
  * built-in account and only the developer setting can supply one.
  */
@@ -58,7 +117,66 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
     outputDir.set(layout.buildDirectory.dir("generated/builtInSp/kotlin"))
 }
 
-/** Version and commit shown on the About page; CI passes the version and GitHub sets GITHUB_SHA. */
+/** Provision a separate P-256 application key, using secrets or a stable local pair until clean. */
+val twdiwApplicationKeySources = layout.buildDirectory.dir("generated/twdiwApplicationKey/kotlin")
+val generateTwdiwApplicationKey by tasks.registering(Exec::class) {
+    val generator = rootProject.file("tools/twdiw/GenerateApplicationKey.java")
+    val java = File(System.getProperty("java.home"), "bin/" + if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
+    commandLine(java, generator, twdiwApplicationKeySources.get().asFile, layout.buildDirectory.dir("twdiwApplicationKeyState").get().asFile)
+    inputs.file(generator)
+    outputs.dir(twdiwApplicationKeySources)
+    // Secrets are inherited by the child process, never command-line arguments or Gradle task inputs/history.
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf("Generated sources contain application signing key material") { true }
+}
+
+/**
+ * One version for every output. version.properties holds the release line (major.minor), changed by hand for a new
+ * stage or release. The patch is the number of commits since the commit that last changed that line: it restarts at 0
+ * with each release line, is the same for a commit on every machine and grows with every merge to main. The Android
+ * versionCode is major * 1,000,000 + minor * 10,000 + patch. A pull request build is marked -pr<N>, a build outside
+ * CI -dev. tools/app-version.sh applies the same rule for the CI file names. -Pdiw.versionName, -Pdiw.versionCode
+ * and -Pdiw.desktopVersion still override.
+ */
+val releaseLine: List<Int> = rootProject.file("version.properties").readLines()
+    .firstNotNullOfOrNull { Regex("""\s*version\s*=\s*(\d+)\.(\d+)\s*""").matchEntire(it)?.destructured }
+    ?.let { (major, minor) -> listOf(major.toInt(), minor.toInt()) }
+    ?: throw GradleException("version.properties needs a line version=<major>.<minor>")
+fun git(vararg args: String): String? = try {
+    val run = providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+        isIgnoreExitValue = true
+    }
+    if (run.result.get().exitValue == 0) run.standardOutput.asText.get().trim().ifEmpty { null } else null
+} catch (e: Exception) {
+    null
+}
+val inCi: Boolean = providers.environmentVariable("GITHUB_ACTIONS").orNull == "true"
+val patch: Int = run {
+    val counted = if (git("rev-parse", "--is-shallow-repository") != "false") null
+    else git("log", "-G^version=", "-1", "--format=%H", "--", "version.properties")
+        ?.let { base -> git("rev-list", "--count", "$base..HEAD") }?.toIntOrNull()
+    // tools/app-version.sh fails the CI jobs that publish files when the history is missing; tests only warn.
+    if (counted == null && inCi) logger.warn("Version: no full git history, patch 0 (check out with fetch-depth: 0)")
+    (counted ?: 0).also { if (it >= 10_000) throw GradleException("Start a new release line in version.properties") }
+}
+val pullRequest: String? = providers.environmentVariable("GITHUB_REF").orNull
+    ?.let { Regex("refs/pull/(\\d+)/.*").matchEntire(it)?.groupValues?.get(1) }
+val versionNumber: String = "${releaseLine[0]}.${releaseLine[1]}.$patch"
+/** Numeric, as MSI and deb require. */
+val desktopVersion: String = (findProperty("diw.desktopVersion") as String?) ?: versionNumber
+val appVersionName: String = (findProperty("diw.versionName") as String?)
+    ?: (versionNumber + when { !inCi -> "-dev"; pullRequest != null -> "-pr$pullRequest"; else -> "" })
+val appVersionCode: Int = (findProperty("diw.versionCode") as String?)?.toInt()
+    ?: (releaseLine[0] * 1_000_000 + releaseLine[1] * 10_000 + patch)
+
+tasks.register("printVersion") {
+    val name = appVersionName
+    doLast { println(name) }
+}
+
+/** Version and commit shown on the About page; GitHub sets GITHUB_SHA. */
 abstract class GenerateAppBuild : DefaultTask() {
     @get:Input @get:Optional abstract val version: Property<String>
     @get:Input @get:Optional abstract val commit: Property<String>
@@ -85,7 +203,7 @@ abstract class GenerateAppBuild : DefaultTask() {
 }
 
 val generateAppBuild by tasks.registering(GenerateAppBuild::class) {
-    version.set(providers.gradleProperty("diw.versionName").orElse(providers.gradleProperty("diw.desktopVersion")))
+    version.set(appVersionName)
     commit.set(providers.environmentVariable("GITHUB_SHA"))
     outputDir.set(layout.buildDirectory.dir("generated/appBuild/kotlin"))
 }
@@ -106,6 +224,7 @@ kotlin {
     sourceSets {
         commonMain.get().kotlin.srcDir(generateBuiltInSp.map { it.outputDir })
         commonMain.get().kotlin.srcDir(generateAppBuild.map { it.outputDir })
+        commonMain.get().kotlin.srcDir(generateTwdiwApplicationKey.map { twdiwApplicationKeySources.get() })
         commonMain.dependencies {
             implementation(project(":core"))
             implementation(compose.runtime)
@@ -145,6 +264,7 @@ kotlin {
                 implementation(kotlin("test"))
                 implementation(project(":test-servers"))
                 implementation(libs.ktor.server.netty)
+                implementation(project.dependencies.platform(libs.netty.bom))
                 implementation(libs.ktor.client.java)
                 implementation(libs.ktor.client.mock)
                 implementation(libs.bcpkix)
@@ -157,6 +277,10 @@ kotlin {
 // Actions passes a missing secret as an empty string. The key is opened here so a wrong secret fails with a clear
 // message instead of a padding error at packaging time.
 class ReleaseKey(val file: File, val storePassword: String, val alias: String, val keyPassword: String)
+
+/** SHA-256 of the signing certificate, as keytool -list -v prints it, to compare builds in the CI log. */
+fun KeyStore.fingerprint(alias: String): String =
+    MessageDigest.getInstance("SHA-256").digest(getCertificate(alias).encoded).joinToString(":") { "%02X".format(it) }
 
 val releaseKey: Result<ReleaseKey?> = runCatching {
     fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
@@ -181,22 +305,56 @@ val releaseKey: Result<ReleaseKey?> = runCatching {
     val keyPassword = passwords.firstOrNull { runCatching { keyStore.getKey(alias, it.toCharArray()) }.isSuccess }
         ?: throw GradleException("Key \"$alias\" opens with neither ANDROID_KEY_PASSWORD nor ANDROID_KEYSTORE_PASSWORD")
     if (keyPassword != passwords.first()) logger.warn("ANDROID_KEY_PASSWORD does not open the release key; using the keystore password")
-    logger.lifecycle("Release APK signed with key \"$alias\" from $path")
+    logger.lifecycle("Release APK signed with key \"$alias\" from $path, SHA-256 ${keyStore.fingerprint(alias)}")
+    ReleaseKey(store, storePassword, alias, keyPassword)
+}
+
+/**
+ * Debug key from DIW_DEBUG_KEYSTORE_FILE (CI writes the DEBUG_KEYSTORE_BASE64 secret there), so every debug APK has
+ * the same signature instead of the build machine's own debug key. The Android Studio defaults (password android,
+ * alias androiddebugkey) are tried unless DIW_DEBUG_KEYSTORE_PASSWORD or DIW_DEBUG_KEY_ALIAS say otherwise; a
+ * keystore with a single key uses that key.
+ */
+val debugKey: Result<ReleaseKey?> = runCatching {
+    fun env(name: String) = System.getenv(name)?.takeIf { it.isNotBlank() }
+    val path = env("DIW_DEBUG_KEYSTORE_FILE") ?: return@runCatching null
+    val store = file(path)
+    if (!store.isFile || store.length() == 0L) throw GradleException("Debug keystore $path is missing or empty: check DEBUG_KEYSTORE_BASE64")
+    val storePasswords = listOfNotNull(env("DIW_DEBUG_KEYSTORE_PASSWORD"), "android").distinct()
+    val (keyStore, storePassword) = storePasswords.firstNotNullOfOrNull { p ->
+        runCatching { KeyStore.getInstance(store, p.toCharArray()) to p }.getOrNull()
+    } ?: throw GradleException("Cannot open the debug keystore with password \"android\": set the secret DEBUG_KEYSTORE_PASSWORD")
+    val keys = keyStore.aliases().toList().filter { keyStore.isKeyEntry(it) }
+    val alias = env("DIW_DEBUG_KEY_ALIAS") ?: keys.singleOrNull() ?: keys.firstOrNull { it.equals("androiddebugkey", ignoreCase = true) }
+        ?: throw GradleException("The debug keystore has several keys $keys: set the secret DEBUG_KEY_ALIAS")
+    if (alias !in keys) throw GradleException("No key \"$alias\" in the debug keystore; its keys: $keys")
+    val keyPassword = listOf(storePassword, "android").distinct().firstOrNull { runCatching { keyStore.getKey(alias, it.toCharArray()) }.isSuccess }
+        ?: throw GradleException("The debug key \"$alias\" does not open with the keystore password")
+    logger.lifecycle("Debug APK signed with key \"$alias\" from $path, SHA-256 ${keyStore.fingerprint(alias)}")
     ReleaseKey(store, storePassword, alias, keyPassword)
 }
 
 android {
     namespace = "diw.wallet.app"
     compileSdk = 36
+    ndkVersion = zkNdkVersion
+    sourceSets.getByName("main").jniLibs.srcDir(rootProject.file("native/dist/android"))
     defaultConfig {
         applicationId = "diw.wallet.app"
         minSdk = 29
         targetSdk = 36
-        // CI passes -Pdiw.versionCode=<run> and -Pdiw.versionName so each build installs over the previous one.
-        versionCode = (findProperty("diw.versionCode") as String?)?.toInt() ?: 1
-        versionName = (findProperty("diw.versionName") as String?) ?: "0.1.0-p1"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
     signingConfigs {
+        debugKey.getOrNull()?.let { key ->
+            getByName("debug") {
+                storeFile = key.file
+                storePassword = key.storePassword
+                keyAlias = key.alias
+                keyPassword = key.keyPassword
+            }
+        }
         releaseKey.getOrNull()?.let { key ->
             create("release") {
                 storeFile = key.file
@@ -211,6 +369,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     packaging {
+        // JNA's AAR also carries ABIs that Android no longer supports.
+        jniLibs.excludes += setOf("lib/armeabi/**", "lib/mips/**", "lib/mips64/**")
         resources {
             excludes += setOf(
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
@@ -229,20 +389,28 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(rootProject.file("native/zk.pro"))
             // Without a release key the optimized APK is signed with the debug key, so it still installs for testing.
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
 
-// A release key that is set but does not open stops release builds at once; debug builds and tests still run.
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("JniLibFolders") }.configureEach {
+    dependsOn(buildZkAndroid)
+}
+
+// A key that is set but does not open stops the builds it signs at once; the other builds and tests still run.
 releaseKey.exceptionOrNull()?.message?.let { problem ->
     tasks.matching { it.name == "preReleaseBuild" }.configureEach { doFirst { throw GradleException(problem) } }
+}
+debugKey.exceptionOrNull()?.message?.let { problem ->
+    tasks.matching { it.name == "preDebugBuild" }.configureEach { doFirst { throw GradleException(problem) } }
 }
 
 configurations.all {
     resolutionStrategy {
-        force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86")
+        force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86", "org.bouncycastle:bcpg-jdk18on:1.86")
     }
 }
 
@@ -252,14 +420,19 @@ compose.desktop {
         // PC/SC: the module is not resolved by default from the class path, and the reader list re-establishes the
         // smart card context after Windows restarts the service.
         jvmArgs += listOf("--add-modules=java.smartcardio", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
+        // The JVM caps its heap at a quarter of RAM by default; document parsing and large imports get half. Proving
+        // runs in the native library, whose memory is outside the heap and not limited by this.
+        jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8")
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "DIW-MY-WALLET"
-            // CI passes -Pdiw.desktopVersion=0.1.<run> so each installer upgrades the previous one.
-            packageVersion = (findProperty("diw.desktopVersion") as String?) ?: "0.1.0"
+            // Each installer upgrades the previous one, as the patch number grows.
+            packageVersion = desktopVersion
             description = "DIW MY WALLET"
             vendor = "DIW MY WALLET"
             modules("java.instrument", "java.logging", "java.management", "java.naming", "java.net.http", "java.smartcardio", "java.sql", "jdk.crypto.ec", "jdk.httpserver", "jdk.unsupported")
+            // Memory figures for the zero-knowledge capability check (com.sun.management).
+            modules("jdk.management")
             // Signing with PKCS#11 tokens (SunPKCS11), and on Windows with keys in the certificate store (SunMSCAPI),
             // which only the Windows JDK has.
             modules("jdk.crypto.cryptoki")
@@ -277,6 +450,7 @@ compose.desktop {
             }
         }
         buildTypes.release.proguard {
+            configurationFiles.from(rootProject.file("native/zk.pro"))
             configurationFiles.from(project.file("compose-desktop.pro"))
             obfuscate.set(false)
         }

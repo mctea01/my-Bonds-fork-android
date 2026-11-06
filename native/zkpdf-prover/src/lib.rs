@@ -1,0 +1,41 @@
+//! Offline witness execution for the frozen zkPDF v1 circuits.
+
+mod acir;
+mod assets;
+mod field;
+mod inflate;
+mod lex;
+mod prepare;
+mod public;
+mod verify;
+pub use prepare::check;
+mod types;
+pub use types::*;
+pub const NOIR_REVISION: &str = "1.0.0-rc.3+5a7ee9bf5ed8973076df7bb0d2b723024db09ae7";
+pub const BB_REVISION: &str = "6.0.0+0219f11d8133970df3974fe5ae65e006bf8c193a";
+/// Zero-knowledge UltraHonk proof size (fields of 32 bytes) for bb 6.0.0 with Poseidon2.
+pub const PROOF_BYTES: usize = 14656;
+
+/// Errors expose fixed codes only; upstream diagnostic payloads are discarded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Error(pub &'static str);
+pub type Result<T> = std::result::Result<T, Error>;
+
+#[cfg(feature = "bb")]
+mod backend;
+#[cfg(feature = "bb")]
+mod runtime;
+#[cfg(feature = "bb")]
+pub use runtime::{prove, prove_with_metrics, verify, SegmentMetrics};
+
+/// Build tooling: the verification key `bb write_vk` derives for a nargo artifact,
+/// using the authenticated CRS in `crs_directory`.
+#[cfg(feature = "bb")]
+pub fn write_vk(crs_directory: &std::path::Path, artifact: &[u8]) -> Result<Vec<u8>> {
+    backend::Session::open(crs_directory)?.vk(artifact)
+}
+mod opening;
+pub use opening::verify_opening;
+
+#[cfg(test)]
+mod regression_tests;

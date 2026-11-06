@@ -1,6 +1,6 @@
 # 文件索引
 
-設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
+設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。內容已與實作不同的設計與驗收文件，開頭有「現況（2026-10-16）」說明哪些部分已改變；研究文件與實機紀錄保留原貌。P4 尚未實作的部分以 P4 的三份設計文件為準，各工作包的實作狀態見 [p4-work-packages.md](design/p4-work-packages.md#21-實作狀態2026-10-25)。正式服務端（查驗網頁、年齡查驗主機、zkTLS 中繼）在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，部署說明在該 repo。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
 
 ## 設計
 
@@ -8,17 +8,32 @@
 |---|---|
 | [design/architecture-and-roadmap.md](design/architecture-and-roadmap.md) | 技術背景與跨平台轉換規劃：參考來源、TWDIW 官方 App 現況、目標架構、協定支援矩陣、驗證者身分與目的、ZKP 策略、電子文件、軟體兜底、PKI 分區、判定模型、P2 實作規劃、分階段路線圖、P0 驗證與風險 |
 | [design/document-credentials.md](design/document-credentials.md) | 文件憑證方案：每份文件產生衍生憑證再疊加證據；zkPDF、zkTLS、Bonds、OpenCerts 的比較，各類台灣與中國大陸文件的樣本分析與查驗方式，主動簽署、自然人憑證卡與行動自然人憑證 |
+| [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、D1 到 D6 的決定、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
+| [design/p4-circuits.md](design/p4-circuits.md) | P4 電路規格：樣本結構量測、zkPDF 電路（SHA-256 中間狀態窗口、inflate、lexer、錨點、欄位承諾、日期述詞）、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
+| [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
+| [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
+| [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
 
 ## 研究
 
 | 文件 | 內容 |
 |---|---|
 | [research/twdiw.md](research/twdiw.md) | TWDIW 官方 App 與平台的發證、出示、信任清單與互通細節 |
+| [research/twdiw-device-registration.md](research/twdiw-device-registration.md) | 裝置金鑰註冊查證：官方分割 APK 簽章與 assetlinks 核對、SDK 封裝及簽章呼叫鏈、frontend API、nonce 前綴、TLS 限制與待確認契約 |
+| [research/twdiw-1.0.14-issuance-review.md](research/twdiw-1.0.14-issuance-review.md) | 領卡與簽章分析附件核對：VM 成功路徑的 appHash／keyId 映射、公鑰雙層 reader 與指紋、DEX 交接、nonce／grant_type 校正 |
+| [research/twdiw-native-helper-emulation.md](research/twdiw-native-helper-emulation.md) | 雲端 unidbg 執行驗證：98 筆 JNI 註冊、四個 helper 與算術區塊綁定、appPlatform 確認為 Android、空間用量與重現產物 |
+| [research/twdiw-jws-local-generation.md](research/twdiw-jws-local-generation.md) | 自有測試金鑰建立 TWDIW 格式 JWS、原始 bytes／七欄驗證、OpenSSL 獨立驗簽與可重現工具 |
+| [research/twdiw-1.0.14-signing-and-oid4vci.md](research/twdiw-1.0.14-signing-and-oid4vci.md) | 1.0.14 簽章與領卡整合流程：holder／應用／發行者金鑰來源、dwapp-201i 七欄 JWS、兩種 nonce、Token 與 Credential 請求及證據界線 |
+| [research/twdiw-1.0.14-assets.md](research/twdiw-1.0.14-assets.md) | 完整 19 檔 assets 盤點：中英文 HTML、Lottie、Flutter 清單／授權聲明／字型／shader 解碼與可讀衍生物、兩個不同公鑰、原始資產交付 |
+| [research/twdiw-1.0.14-asset-decoding-guide.md](research/twdiw-1.0.14-asset-decoding-guide.md) | 資產逐層解碼：FNV／PCG／三種 reader、完整字型 TTX、shader FlatBuffer／SPIR-V、ART 方法索引與旗標、checksum 對照限制及 v2 重現包 |
+| [research/twdiw-1.0.14-key-asset-usage.md](research/twdiw-1.0.14-key-asset-usage.md) | 四個金鑰資產用途：已確認 .txt 簽章／keyId 來源、不同公鑰指紋，以及無副檔名資產尚未確定的消費者 |
+| [acceptance/twdiw-application-signature.md](acceptance/twdiw-application-signature.md) | 新版 TWDIW 應用簽章與舊版領卡、合法金鑰／空值生成、APK／AAB 本機驗證及待手動套用的 CI 設定 |
 | [research/bonds.md](research/bonds.md) | Bonds 的離線出示、自發卡（vc+moica）、MyData 流程與已知問題 |
 | [research/multipaz-eudi-ms.md](research/multipaz-eudi-ms.md) | Multipaz、EUDI 參考實作與 Microsoft Entra Verified ID |
 | [research/documents-signatures.md](research/documents-signatures.md) | 簽章電子文件格式（PAdES、CAdES、XAdES、OFD、ASiC、時戳）與驗證 |
 | [research/official-document-files.md](research/official-document-files.md) | 電子公文檔案結構（DI、SI、外部檔案、文稿頁面檔）、SI 簽核點，以及檔案管理局健檢類別與錢包的對應 |
 | [research/zkp-verifier.md](research/zkp-verifier.md) | ZKP 全景、驗證者身分與意圖揭露、信任分級 UI |
+| [research/p4-benchmarks.md](research/p4-benchmarks.md) | P4 證明系統的電腦版效能量測（實機量測待補） |
 | [research/validation-2026-10-10.md](research/validation-2026-10-10.md) | P0 本地驗證結果 |
 | [research/validation-network-2026-10-10.md](research/validation-network-2026-10-10.md) | 需要外部網路的補驗結果 |
 | [research/device-test-checklist.md](research/device-test-checklist.md) | 實機測試清單 |
@@ -34,6 +49,11 @@
 | [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
 | [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：OpenID4VCI 用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
 
+## Review
+
+| 文件 | 內容 |
+|---|---|
+| [review/project-review.md](review/project-review.md) | 全專案審查指南：閱讀順序、熱點檔案、設計規則對照的程式位置、安全審查重點、已知未驗證項目、P4 審查依據與回報格式 |
 ## 法律聲明
 
 | 文件 | 內容 |
@@ -46,3 +66,4 @@
 |---|---|
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
 | [release.md](release.md) | CI 發佈的檔案與簽章 secrets |
+| [../templates/README.md](../templates/README.md) | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |

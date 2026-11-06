@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copies handed to other apps by the share sheet; AndroidFileAccess clears the directory. -->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

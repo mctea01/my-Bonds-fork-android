@@ -1,0 +1,30 @@
+{
+  "scope": "inflate only; not the complete pdf_text_v1_1p circuit",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "rss_guard",
+  "exit_code": -9,
+  "seconds": 112.49993758299388,
+  "peak_rss_kib": 6292032,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 6.0,
+  "compressed_capacity": 8192,
+  "plain_capacity": 40960,
+  "token_capacity": 6144,
+  "block_capacity": 4,
+  "main_sha256": "3379725a1052a41a39320285af500db63a91777ea2a2f91c9533f49285d7c7c0",
+  "inflate_source_sha256": "ad38b8dc6d7c90c979ec173a983dba7d68fc91ec931e83b4c77266763505a4a3",
+  "acir_sha256": null,
+  "acir_opcodes": null,
+  "vk_sha256": null,
+  "gates": null,
+  "prove": null,
+  "verify": null,
+  "proof_bytes": null,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 51057\noom 7\noom_kill 5\noom_group_kill 0"
+  }
+}

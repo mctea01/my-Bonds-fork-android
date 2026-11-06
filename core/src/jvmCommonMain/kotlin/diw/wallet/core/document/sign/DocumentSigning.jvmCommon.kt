@@ -3,6 +3,7 @@ package diw.wallet.core.document.sign
 import diw.wallet.core.document.ApprovalSignatures
 import diw.wallet.core.document.Asic
 import diw.wallet.core.document.Bc
+import diw.wallet.core.document.CadesArchive
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.DocumentInspector
@@ -10,7 +11,10 @@ import diw.wallet.core.document.GmSignedData
 import diw.wallet.core.document.XmlDsig
 import diw.wallet.core.document.Zip
 import diw.wallet.core.document.official.ApprovalPoint
+import diw.wallet.core.document.pdf.PdfException
+import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfIncrementalSigner
+import diw.wallet.core.document.pdf.PdfSignatures
 import diw.wallet.core.document.pdf.PdfSignOptions
 import org.bouncycastle.asn1.ASN1EncodableVector
 import org.bouncycastle.asn1.ASN1Integer
@@ -63,9 +67,14 @@ actual object DocumentSigning {
 
     /**
      * CMS SignedData with one signer: content type, message digest and ESS signing-certificate-v2 attributes (plus
-     * signing time unless [pades]), and a signature time stamp when [timestamper] is given.
+     * signing time unless [pades]), and a signature time stamp when [timestamper] is given. [validation] adds the
+     * chains and revocation data (baseline LT) and [archive] then an archive-time-stamp-v3 over all of it (B-LTA).
      */
-    suspend fun cms(content: ByteArray, signer: DocumentSigner, encapsulate: Boolean, pades: Boolean, timestamper: Timestamper?, validation: HttpFetch? = null): ByteArray {
+    suspend fun cms(
+        content: ByteArray, signer: DocumentSigner, encapsulate: Boolean, pades: Boolean, timestamper: Timestamper?,
+        validation: HttpFetch? = null, archive: Boolean = false,
+    ): ByteArray {
+        if (archive && (timestamper == null || validation == null)) throw SigningException("B-LTA 需要時戳機構與撤銷資訊")
         val chain = signer.certificateChain.map { X509CertificateHolder(it) }
         val leaf = chain.first()
         val attrs = ASN1EncodableVector()
@@ -110,12 +119,25 @@ actual object DocumentSigning {
             revocation as ASN1Set?,
             DERSet(si),
         )
-        val der = ContentInfo(CMSObjectIdentifiers.signedData, sd).getEncoded("DER")
+        var der = ContentInfo(CMSObjectIdentifiers.signedData, sd).getEncoded("DER")
+        if (archive) {
+            if (lt?.empty != false) throw SigningException("取不到撤銷資訊（OCSP 與 CRL 都無法取得），無法做到 B-LTA：" + (lt?.summary() ?: ""))
+            der = CadesArchive.addArchiveTimestamp(der, content) { timestamper!!.timestamp(it) }
+        }
         // The result must verify like any third party would verify it.
         val parsed = if (encapsulate) CMSSignedData(der) else CMSSignedData(CMSProcessableByteArray(content), der)
         val ok = parsed.signerInfos.signers.first().verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(leaf))
         if (!ok) throw SigningException("產生的簽章無法通過驗證")
         return der
+    }
+
+    actual fun verifyDetached(cms: ByteArray, content: ByteArray, certificate: ByteArray) {
+        val cert = X509CertificateHolder(certificate)
+        val parsed = runCatching { CMSSignedData(CMSProcessableByteArray(content), cms) }.getOrElse { throw SigningException("遠端簽章服務回傳的不是有效的 CMS 簽章") }
+        val signer = parsed.signerInfos.signers.singleOrNull() ?: throw SigningException("遠端簽章服務回傳的簽章不是單一簽署者")
+        if (!signer.sid.match(cert)) throw SigningException("遠端簽章服務回傳的簽章不是以選擇的憑證簽署")
+        val ok = runCatching { signer.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(cert)) }.getOrDefault(false)
+        if (!ok) throw SigningException("遠端簽章服務回傳的簽章無法通過驗證（摘要或簽章不符）")
     }
 
     private fun verifyRaw(cert: X509CertificateHolder, type: SignerKeyType, data: ByteArray, signature: ByteArray) {
@@ -139,16 +161,56 @@ actual object DocumentSigning {
             )
         }
         // B-LTA: a document time stamp over everything, the validation data included.
-        if (options.documentTimestamp) {
-            val ts = timestamper ?: throw SigningException("B-LTA 需要時戳機構")
-            val docTs = PdfIncrementalSigner.prepare(out, PdfSignOptions(subFilter = "ETSI.RFC3161", reserve = 20 * 1024, allowBreakingCertification = options.allowBreakingCertification))
-            out = docTs.finish(ts.timestamp(docTs.signedData()))
-        }
+        if (options.documentTimestamp) out = documentTimestamp(out, timestamper ?: throw SigningException("B-LTA 需要時戳機構"))
         return out
     }
 
-    actual suspend fun signCades(content: ByteArray, signer: DocumentSigner, detached: Boolean, timestamper: Timestamper?, validation: HttpFetch?): ByteArray =
-        cms(content, signer, encapsulate = !detached, pades = false, timestamper = timestamper, validation = validation)
+    /**
+     * A document time stamp (/DocTimeStamp) after everything in [pdf]. ISO 32000-2 12.8.2.2 lets DSS and document
+     * time stamps follow any certification, P=1 included, so the certification check does not apply.
+     */
+    private suspend fun documentTimestamp(pdf: ByteArray, timestamper: Timestamper): ByteArray {
+        val docTs = PdfIncrementalSigner.prepare(pdf, PdfSignOptions(subFilter = "ETSI.RFC3161", reserve = 20 * 1024, allowBreakingCertification = true))
+        return docTs.finish(timestamper.timestamp(docTs.signedData()))
+    }
+
+    actual suspend fun extendPdf(pdf: ByteArray, validation: HttpFetch, timestamper: Timestamper?): PdfExtension {
+        val file = try { PdfFile(pdf) } catch (e: PdfException) { throw SigningException("PDF 結構無法讀取：" + e.message, e) }
+        val sigs = PdfSignatures(file)
+        val fields = sigs.fields().filter { it.contents.isNotEmpty() }
+        if (fields.isEmpty()) throw SigningException("這份 PDF 沒有簽章或時戳可以延長")
+        val known = sigs.dss()?.certificates.orEmpty()
+        var v = ValidationData()
+        val vriKeys = ArrayList<String>()
+        for (f in fields) {
+            val contents = DocumentInspector.trimDer(f.contents)
+            vriKeys.add(DocCryptoUtil.hex(DocCrypto.digest("SHA-1", contents)).uppercase())
+            if (f.subFilter == "ETSI.RFC3161") {
+                v = v.plus(timestampValidation(contents, validation, known))
+                continue
+            }
+            val chain = signerChain(contents)
+            if (chain.isNotEmpty()) v = v.plus(collectValidation(chain, validation, known))
+            signatureTimestamp(contents)?.let { v = v.plus(timestampValidation(it, validation, known)) }
+        }
+        if (v.empty) throw SigningException("取不到撤銷資訊（OCSP 與 CRL 都無法取得）：" + v.summary())
+        val dec = java.util.Base64.getDecoder()
+        var out = PdfIncrementalSigner.addValidationData(pdf, v.certificates.map { dec.decode(it) }, v.ocsps.map { dec.decode(it) }, v.crls.map { dec.decode(it) }, vriKeys)
+        if (timestamper != null) out = documentTimestamp(out, timestamper)
+        return PdfExtension(out, fields.size, v, timestamper != null)
+    }
+
+    /** The signer's certificate of a CMS signature first, then the other certificates it carries. */
+    private fun signerChain(cms: ByteArray): List<ByteArray> = runCatching {
+        val sd = CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(Bc.parse(cms)))
+        @Suppress("UNCHECKED_CAST")
+        val certs = sd.certificates.getMatches(null).toList() as List<X509CertificateHolder>
+        val own = certs.firstOrNull { sd.signerInfos.signers.first().sid.match(it) } ?: return@runCatching emptyList()
+        (listOf(own) + certs.filter { it != own }).map { it.encoded }
+    }.getOrDefault(emptyList())
+
+    actual suspend fun signCades(content: ByteArray, signer: DocumentSigner, detached: Boolean, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray =
+        cms(content, signer, encapsulate = !detached, pades = false, timestamper = timestamper, validation = validation, archive = archive)
 
     actual suspend fun collectValidation(chain: List<ByteArray>, fetch: HttpFetch, known: List<ByteArray>): ValidationData =
         ValidationCollector.collect(chain, fetch, known)
@@ -172,11 +234,11 @@ actual object DocumentSigning {
 
     /** The signature time-stamp token of a CMS signature, when it has one. */
     private fun signatureTimestamp(cms: ByteArray): ByteArray? = runCatching {
-        val si = CMSSignedData(cms).signerInfos.signers.first()
+        val si = CMSSignedData(org.bouncycastle.asn1.cms.ContentInfo.getInstance(Bc.parse(cms))).signerInfos.signers.first()
         si.unsignedAttributes?.get(PKCSObjectIdentifiers.id_aa_signatureTimeStampToken)?.attrValues?.getObjectAt(0)?.toASN1Primitive()?.encoded
     }.getOrNull()
 
-    actual suspend fun buildAsic(files: List<Pair<String, ByteArray>>, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?): ByteArray {
+    actual suspend fun buildAsic(files: List<Pair<String, ByteArray>>, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray {
         require(files.isNotEmpty())
         val names = files.map { it.first }
         if (names.toSet().size != names.size || names.any { it.startsWith("META-INF/") || it == "mimetype" || it.contains("..") }) {
@@ -184,7 +246,7 @@ actual object DocumentSigning {
         }
         val sigPath = "META-INF/signature001.p7s"
         val manifest = Asic.manifest(files, sigPath)
-        val signature = cms(manifest, signer, encapsulate = false, pades = false, timestamper = timestamper, validation = validation)
+        val signature = cms(manifest, signer, encapsulate = false, pades = false, timestamper = timestamper, validation = validation, archive = archive)
         val entries = ArrayList<Pair<String, ByteArray>>()
         entries.add("mimetype" to Asic.MIME_E.encodeToByteArray())
         entries.addAll(files)
@@ -193,11 +255,14 @@ actual object DocumentSigning {
         return Zip.write(entries, stored = setOf("mimetype"))
     }
 
-    actual suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?): ByteArray =
-        XmlDsig.signEnveloped(
+    actual suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray {
+        if (archive && (timestamper == null || validation == null)) throw SigningException("B-LTA 需要時戳機構與撤銷資訊")
+        return XmlDsig.signEnveloped(
             xml, signer, Clock.System.now(), timestamper?.let { t -> { data: ByteArray -> t.timestamp(data) } },
             validation?.let { f -> { token: ByteArray? -> collectValidation(signer.certificateChain, f).plus(token?.let { timestampValidation(it, f) } ?: ValidationData()) } },
+            archive,
         )
+    }
 
     actual suspend fun signApproval(approval: ByteArray?, files: List<Pair<String, ByteArray>>, signer: DocumentSigner, point: ApprovalPoint): ByteArray =
         ApprovalSignatures.sign(approval, files, signer, point)

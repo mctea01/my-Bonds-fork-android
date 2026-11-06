@@ -6,6 +6,7 @@ import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
 import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
@@ -60,7 +61,9 @@ enum class BondsCredentialSource(val wire: String) {
 
 /**
  * The challenge a Bonds verifier shows as a plain JSON QR: {v, c, p, t, a?, b?, k}. Everything in it is untrusted
- * text from the person in front of the holder; it does not authenticate the verifier.
+ * text from the person in front of the holder; it does not authenticate the verifier. This wallet's verifier adds
+ * keys Bonds ignores: l and e, the local network addresses and a one-time P-256 key ([BondsLanPresentation]), and q:1,
+ * which says the presentation can also be shown as an animated fountain QR ([AnimatedQrTransport]).
  */
 data class BondsPresentationRequest(
     val challenge: String,
@@ -70,6 +73,15 @@ data class BondsPresentationRequest(
     /** One-time BLE service UUID the holder advertises under; null when the verifier only offers the camera. */
     val linkServiceId: String?,
     val source: BondsCredentialSource,
+    /**
+     * Plain http URLs on the verifier's private IPv4 addresses (one per network card it listens on, best first) where
+     * the sealed presentation can be posted; empty when it is not listening.
+     */
+    val lanUrls: List<String> = emptyList(),
+    /** The verifier's one-time P-256 key (base64url uncompressed point) the presentation is sealed to; set with [lanUrls]. */
+    val lanKey: String? = null,
+    /** The verifier also scans an animated fountain QR (DIWQ1), which survives missed frames. */
+    val qr: Boolean = false,
 ) {
     fun encode(): String = Jcs.canonicalize(buildJsonObject {
         put("v", VERSION)
@@ -79,6 +91,9 @@ data class BondsPresentationRequest(
         linkServiceId?.let { put("b", it) }
         put("k", source.wire)
         put("t", createdAt.epochSeconds)
+        if (lanUrls.isNotEmpty()) put("l", JsonArray(lanUrls.map { JsonPrimitive(it) }))
+        lanKey?.let { put("e", it) }
+        if (qr) put("q", 1)
     })
 
     companion object {
@@ -90,10 +105,13 @@ data class BondsPresentationRequest(
         private const val B64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
         private val UUID_RE = Regex("^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 
-        /** True when [text] looks like a Bonds request (a JSON object with the version and challenge keys). */
+        /**
+         * True when [text] looks like a Bonds offline challenge (a JSON object with the version and challenge keys).
+         * A response address marks a [BondsAgeRequest] instead, which shares the keys but is answered online.
+         */
         fun looksLike(text: String): Boolean {
             val t = text.trim()
-            return t.startsWith("{") && "\"c\"" in t && "\"v\"" in t
+            return t.startsWith("{") && "\"c\"" in t && "\"v\"" in t && !BondsAgeRequest.looksLike(t)
         }
 
         fun parse(text: String): BondsPresentationRequest {
@@ -105,7 +123,9 @@ data class BondsPresentationRequest(
             val source = if (version == LEGACY_VERSION) BondsCredentialSource.SELF_ISSUED
             else BondsCredentialSource.fromWire(o.str("k")) ?: throw ProtocolException("invalid_request", "Unknown credential source")
             val link = o.str("b")?.also { if (!UUID_RE.matches(it)) throw ProtocolException("invalid_request", "Malformed link service id") }
-            return create(o.str("c") ?: "", o.str("p") ?: "", Instant.fromEpochSeconds(createdAt), o.str("a"), link, source)
+            val qr = (o["q"] as? JsonPrimitive)?.content == "1"
+            val lan = BondsLanPresentation.urlList(o["l"]) ?: throw ProtocolException("invalid_request", "Malformed local network address")
+            return create(o.str("c") ?: "", o.str("p") ?: "", Instant.fromEpochSeconds(createdAt), o.str("a"), link, source, lan, o.str("e"), qr)
         }
 
         /** The validating constructor: a request that fails these checks cannot exist. */
@@ -116,6 +136,9 @@ data class BondsPresentationRequest(
             audience: String? = null,
             linkServiceId: String? = null,
             source: BondsCredentialSource = BondsCredentialSource.TWDIW,
+            lanUrls: List<String> = emptyList(),
+            lanKey: String? = null,
+            qr: Boolean = false,
         ): BondsPresentationRequest {
             if (challenge.isEmpty() || challenge.length > MAX_CHALLENGE || challenge.any { it !in B64URL }) {
                 throw ProtocolException("invalid_request", "Malformed challenge")
@@ -127,7 +150,15 @@ data class BondsPresentationRequest(
             val a = audience?.trim()?.ifEmpty { null }?.also {
                 if (it.codePointCount() > MAX_AUDIENCE || it.any { c -> displayUnsafe(c) }) throw ProtocolException("invalid_request", "Malformed audience")
             }
-            return BondsPresentationRequest(challenge, p, Instant.fromEpochSeconds(createdAt.epochSeconds), a, linkServiceId?.uppercase(), source)
+            val lan = lanUrls.distinct()
+            if (lan.isEmpty() != (lanKey == null)) throw ProtocolException("invalid_request", "A local network address needs its key")
+            if (lan.size > MAX_LAN_URLS || !lan.all { BondsLanPresentation.acceptableUrl(it) }) {
+                throw ProtocolException("invalid_request", "Malformed local network address")
+            }
+            if (lanKey != null && !BondsLanPresentation.acceptableKey(lanKey)) throw ProtocolException("invalid_request", "Malformed local network key")
+            return BondsPresentationRequest(
+                challenge, p, Instant.fromEpochSeconds(createdAt.epochSeconds), a, linkServiceId?.uppercase(), source, lan, lanKey, qr,
+            )
         }
 
         /** Control and format characters plus line and paragraph separators, which can reorder or break the text around them. */
@@ -139,10 +170,18 @@ data class BondsPresentationRequest(
         }
 
         /** A fresh request with a 128 bit challenge and a one-time link service id (verifier side). */
-        fun generate(purpose: String, source: BondsCredentialSource, audience: String? = null, now: Instant = Clock.System.now()): BondsPresentationRequest =
-            create(PlatformCrypto.randomBytes(16).toBase64Url(), purpose, now, audience, randomUuid(), source)
+        fun generate(
+            purpose: String,
+            source: BondsCredentialSource,
+            audience: String? = null,
+            now: Instant = Clock.System.now(),
+            lanUrls: List<String> = emptyList(),
+            lanKey: String? = null,
+            qr: Boolean = false,
+        ): BondsPresentationRequest =
+            create(PlatformCrypto.randomBytes(16).toBase64Url(), purpose, now, audience, randomUuid(), source, lanUrls, lanKey, qr)
 
-        private fun randomUuid(): String {
+        internal fun randomUuid(): String {
             val b = PlatformCrypto.randomBytes(16)
             b[6] = ((b[6].toInt() and 0x0f) or 0x40).toByte()
             b[8] = ((b[8].toInt() and 0x3f) or 0x80).toByte()
@@ -236,8 +275,9 @@ object BondsOfflinePresentation {
         requireAny(request)
         val sdJwt = SdJwt.fromCompactSerialization(compact.substringBeforeLast('~') + "~")
         if (sdJwt.kbKey != holderKey) throw ProtocolException("invalid_key", "The card is bound to another key")
-        val kept = if (disclosing == null) sdJwt else sdJwt.filter { path, _ ->
-            path.any { (it as? JsonPrimitive)?.isString == true && it.content in disclosing }
+        val names = disclosing?.let(DerivedCredentials::withOpenings)
+        val kept = if (names == null) sdJwt else sdJwt.filter { path, _ ->
+            path.any { (it as? JsonPrimitive)?.isString == true && it.content in names }
         }
         return sign(SD_JWT_PREFIX + kept.compactSerialization, request, signingKey, DidKeys.didJwk(holderKey), now)
     }
@@ -534,6 +574,8 @@ class BondsOfflineVerifier(
     /** Trust for the time stamps carried as evidence by derived credentials; null leaves them unchecked. */
     private val documentTrust: DocumentTrustSource? = null,
     private val moicaCa: MoicaCa = MoicaCa.PRODUCTION,
+    /** Templates and engine for a zkPDF bundle a derived credential discloses; null leaves it unchecked. */
+    private val zkPdf: ZkPdfContext? = null,
 ) {
     suspend fun verify(presentationJws: String, request: BondsPresentationRequest, now: Instant = Clock.System.now()): BondsVerifiedPresentation {
         val jws = Jws.parse(presentationJws.trim())
@@ -635,10 +677,12 @@ class BondsOfflineVerifier(
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Card expired") }
         sdJwt.validFrom?.let { if (it > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid") }
         val derived = sdJwt.credentialType == DerivedCredentials.VCT
-        val claims = flatten(JsonObject(processed.filterKeys { it !in SD_JWT_VC_TECHNICAL && !(derived && it == "evidence") }))
+        val claims = flatten(JsonObject(processed.filterKeys {
+            it !in SD_JWT_VC_TECHNICAL && !(derived && (it == "evidence" || DerivedCredentials.isProofClaim(it)))
+        }))
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(compact).issuerJwt).payload
-            DerivedEvidence.verify(signed, documentTrust)
+            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now)
         } else emptyList()
         return BondsVerifiedPresentation(
             holder, BondsCredentialSource.ANY, claims, iss, created, bound, null,

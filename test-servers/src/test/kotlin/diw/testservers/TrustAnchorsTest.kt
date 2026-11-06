@@ -107,10 +107,11 @@ class TrustAnchorsTest {
             val c = r.certificate
             val sha = MessageDigest.getInstance("SHA-256").digest(c.encoded.toByteArray()).joinToString("") { "%02X".format(it) }
             assertEquals(r.sha256, sha, "${r.name} fingerprint")
-            assertEquals(c.subject, c.issuer, "${r.name} is a root")
+            // The C2PA trust list names some intermediates as anchors; every other group holds roots only.
+            if (r.group != BuiltInPublicRoots.Group.CONTENT_CREDENTIALS) assertEquals(c.subject, c.issuer, "${r.name} is a root")
             assertTrue(c.validityNotBefore <= updated && updated <= c.validityNotAfter, "${r.name} was not valid on ${BuiltInPublicRoots.UPDATED}")
             val jca = factory.generateCertificate(c.encoded.toByteArray().inputStream()) as java.security.cert.X509Certificate
-            jca.verify(jca.publicKey, bc)
+            if (c.subject == c.issuer) jca.verify(jca.publicKey, bc)
             assertEquals(r.algorithm == "SM2", jca.sigAlgOID == "1.2.156.10197.1.501", "${r.name} signature algorithm")
         }
         // The e-invoice document signature issuer: the GDCA root as published for verifying electronic documents.
@@ -246,7 +247,7 @@ class TrustAnchorsTest {
     @Test
     fun multipazTestAnchorsAreBuiltIn() = runBlocking<Unit> {
         val now = Clock.System.now()
-        assertEquals(18, BuiltInTestAnchors.all.size)
+        assertEquals(19, BuiltInTestAnchors.all.size)
         assertEquals(BuiltInTestAnchors.all.size, BuiltInTestAnchors.all.map { it.certificate }.toSet().size, "no anchor twice")
         for (a in BuiltInTestAnchors.all) {
             val c = a.certificate
@@ -323,5 +324,33 @@ class TrustAnchorsTest {
         val fresh = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
         fresh.issuerFetcher = { other.encoded.toByteArray() }
         assertEquals(listOf(leaf), fresh.complete(listOf(leaf)))
+    }
+
+    /** GPKI chains are RSA: an RSA leaf under an RSA identity anchor is T2 for every role the anchor holds. */
+    @Test
+    fun rsaChainUnderIdentityAnchor() = runBlocking<Unit> {
+        val gen = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }
+        val rootKey = gen.generateKeyPair()
+        val leafKey = gen.generateKeyPair()
+        fun rsaCert(subject: String, issuer: String, key: KeyPair, signer: PrivateKey, ca: Boolean): X509Cert {
+            val now = System.currentTimeMillis()
+            val b = JcaX509v3CertificateBuilder(
+                X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now - 86_400_000L), Date(now + 365L * 86_400_000L), X500Name(subject), key.public,
+            )
+                .addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
+                .addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature))
+                .addExtension(Extension.subjectKeyIdentifier, false, JcaX509ExtensionUtils().createSubjectKeyIdentifier(key.public))
+            return X509Cert(ByteString(b.build(JcaContentSignerBuilder("SHA256withRSA").build(signer)).encoded))
+        }
+        val root = rsaCert("CN=RSA Identity CA,C=TW", "CN=RSA Identity CA,C=TW", rootKey, rootKey.private, ca = true)
+        val leaf = rsaCert("CN=agency.example,C=TW", "CN=RSA Identity CA,C=TW", leafKey, rootKey.private, ca = false)
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        val roles = listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT)
+        for (role in roles) registry.addAnchor(role, TrustEnvironment.PRODUCTION, root, "RSA Identity CA", official = false, source = "test", identity = true)
+        for (role in roles) for (chain in listOf(listOf(leaf), listOf(leaf, root))) {
+            val d = registry.decide(role, chain)
+            assertEquals(TrustTier.T2, d.tier, "$role with ${chain.size} certificates: ${d.reasons}")
+            assertTrue(TrustLabel.IDENTITY_VERIFIED in d.labels)
+        }
     }
 }

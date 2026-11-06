@@ -1,0 +1,686 @@
+{
+  "scope": "Candidate formal package; synthetic witness; serial isolated measurement",
+  "tier": "phone",
+  "kind": "lex",
+  "package": "pdf_lex_seg_v1",
+  "compile_flags": [
+    "--bounded-codegen"
+  ],
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "bb": "2.1.9",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "prove": {
+    "first": {
+      "seconds": 34.961580036997475,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1794752
+    },
+    "warm": {
+      "seconds": 44.93684267500066,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1794504
+    }
+  },
+  "environment": {
+    "cpu.max": "200000 100000",
+    "memory.max": "8589934592",
+    "hardware_concurrency": "2",
+    "rayon_num_threads": "2",
+    "compile_threads": 2,
+    "cpu_affinity": [
+      0,
+      1,
+      2
+    ]
+  },
+  "parameters": {
+    "P": 2048,
+    "T0": 1024,
+    "T": 352,
+    "W": 16,
+    "O": 64
+  },
+  "source_sha256": {
+    "pdf_lex_seg_v1/src/main.nr": "358bff59f7de2da57e370b289f31f559c3a16305e9ad135f7b7d3623db657793",
+    "pdf_text_v1/src/claim.nr": "9cd00f3a342e292f8ccc17acc155cc1ec35b9384d0d0bd0889d62a4783c6cc77",
+    "pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "pdf_text_v1/src/fixtures.nr": "155030fadb72d126c718a8693e6e02c4565fa3b407bd758f8495a04b78e22ed1",
+    "pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+    "pdf_text_v1/src/lex_segment.nr": "94472ec03ad257451b10d30df09c4c41abecc4caa82e25b72634bbe9587f5bf1",
+    "pdf_text_v1/src/lib.nr": "ce06bf1bc37498e346937439130647db5e1a119847ad494e64101e009a877c6d",
+    "pdf_text_v1/src/sha256_window.nr": "e8c30d7a83b90ca8d4a45f318568f52642dcc8ff07c3fd1e065e49b27033b121",
+    "pdf_text_v1/src/sha_segment.nr": "ebcd3d4c9dea2694909676d8434755a6a2a6a60cd84b8f74794ae7ba305e9229",
+    "pdf_text_v1/src/text_plan.nr": "f746cd1cb5f2e488ed6c71436a399e06a7dd2ae0615bc9c48cd20a7c61e4a15f"
+  },
+  "crs_before": {
+    "bn254_g2.dat": 128,
+    "bn254_g1.dat": 134217792
+  },
+  "compile": {
+    "seconds": 62.54773413200019,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 1834524
+  },
+  "gate_measurement": {
+    "seconds": 4.8946681229972455,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 1482584
+  },
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 937313,
+        "circuit_size": 972398
+      }
+    ]
+  },
+  "witness": {
+    "seconds": 7.132193893998192,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 674312
+  },
+  "acir_sha256": "6f33cb79e9b65345f438b95dc0e584a6b401a747526884aa5e80370d718386a0",
+  "abi": {
+    "parameters": [
+      {
+        "name": "domain",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "circuit",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "index",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "first",
+        "type": {
+          "kind": "boolean"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "last",
+        "type": {
+          "kind": "boolean"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "cz",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "lin",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "lout",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "cp",
+        "type": {
+          "kind": "array",
+          "length": 1,
+          "type": {
+            "kind": "field"
+          }
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "anchors",
+        "type": {
+          "kind": "array",
+          "length": 16,
+          "type": {
+            "kind": "struct",
+            "path": "pdf_text_v1::text_plan::Anchor",
+            "fields": [
+              {
+                "name": "enabled",
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              {
+                "name": "len",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "raw",
+                "type": {
+                  "kind": "array",
+                  "length": 96,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              },
+              {
+                "name": "ordinal",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "total",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            ]
+          }
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "slots",
+        "type": {
+          "kind": "array",
+          "length": 12,
+          "type": {
+            "kind": "struct",
+            "path": "pdf_text_v1::text_plan::Slot",
+            "fields": [
+              {
+                "name": "enabled",
+                "type": {
+                  "kind": "boolean"
+                }
+              },
+              {
+                "name": "before",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              },
+              {
+                "name": "after",
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            ]
+          }
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "cg",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "public"
+      },
+      {
+        "name": "salt",
+        "type": {
+          "kind": "field"
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "plain",
+        "type": {
+          "kind": "array",
+          "length": 1,
+          "type": {
+            "kind": "array",
+            "length": 2048,
+            "type": {
+              "kind": "integer",
+              "sign": "unsigned",
+              "width": 8
+            }
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "lengths",
+        "type": {
+          "kind": "array",
+          "length": 1,
+          "type": {
+            "kind": "integer",
+            "sign": "unsigned",
+            "width": 32
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "incoming",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::lex_segment::LexState",
+          "fields": [
+            {
+              "name": "pos",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "mode",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 8
+              }
+            },
+            {
+              "name": "depth",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "escaped",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "dict",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "array",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "closed",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "bt",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "font",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "font_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "name",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "name_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "font_fp",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "font_power",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "name_fp",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "name_power",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "word",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "word_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "long_word",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "pending",
+              "type": {
+                "kind": "boolean"
+              }
+            },
+            {
+              "name": "kind",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 8
+              }
+            },
+            {
+              "name": "raw_fp",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "raw_power",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "raw_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "strings_fp",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "strings_power",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "strings_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "strings",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "ops",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "counts",
+              "type": {
+                "kind": "array",
+                "length": 16,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "ordinals",
+              "type": {
+                "kind": "array",
+                "length": 16,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "values",
+              "type": {
+                "kind": "array",
+                "length": 12,
+                "type": {
+                  "kind": "field"
+                }
+              }
+            },
+            {
+              "name": "lengths",
+              "type": {
+                "kind": "array",
+                "length": 12,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "slot",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "field_fp",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "field_len",
+              "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+              }
+            },
+            {
+              "name": "pi",
+              "type": {
+                "kind": "field"
+              }
+            },
+            {
+              "name": "r",
+              "type": {
+                "kind": "field"
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "plan",
+        "type": {
+          "kind": "struct",
+          "path": "pdf_text_v1::text_plan::Plan",
+          "fields": [
+            {
+              "name": "anchor_ops",
+              "type": {
+                "kind": "array",
+                "length": 16,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "lengths",
+              "type": {
+                "kind": "array",
+                "length": 12,
+                "type": {
+                  "kind": "integer",
+                  "sign": "unsigned",
+                  "width": 32
+                }
+              }
+            },
+            {
+              "name": "records",
+              "type": {
+                "kind": "array",
+                "length": 12,
+                "type": {
+                  "kind": "array",
+                  "length": 384,
+                  "type": {
+                    "kind": "integer",
+                    "sign": "unsigned",
+                    "width": 8
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "positions",
+        "type": {
+          "kind": "array",
+          "length": 64,
+          "type": {
+            "kind": "integer",
+            "sign": "unsigned",
+            "width": 32
+          }
+        },
+        "visibility": "private"
+      },
+      {
+        "name": "used",
+        "type": {
+          "kind": "integer",
+          "sign": "unsigned",
+          "width": 32
+        },
+        "visibility": "private"
+      }
+    ],
+    "return_type": null,
+    "error_types": {
+      "361444214588792908": {
+        "error_kind": "string",
+        "string": "attempt to multiply with overflow"
+      },
+      "14990209321349310352": {
+        "error_kind": "string",
+        "string": "attempt to add with overflow"
+      }
+    }
+  },
+  "verify": {
+    "seconds": 0.03249941000103718,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 22492
+  },
+  "crs_after": {
+    "bn254_g2.dat": 128,
+    "bn254_g1.dat": 134217792
+  },
+  "proof_bytes": 16256,
+  "public_input_bytes": 52672,
+  "vk_sha256": "6a357f339eef01016ce1792525bedfad8f7023287a0bbd5dd9b864d6b44b321d",
+  "status": "verified"
+}

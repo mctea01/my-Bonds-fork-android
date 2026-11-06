@@ -29,6 +29,8 @@ data class PdfNumber(val text: String) : PdfObject() {
 }
 
 class PdfString(val bytes: ByteArray, val hex: Boolean = false) : PdfObject() {
+    /** Populated only when a parser explicitly retains source spelling for zkPDF. */
+    internal var sourceBytes: ByteArray? = null
     /** Text string (ISO 32000-1 7.9.2.2): UTF-16BE with BOM, UTF-8 with BOM (PDF 2.0), else PDFDocEncoding. */
     fun text(): String = PdfText.decode(bytes)
 

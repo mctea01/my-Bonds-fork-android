@@ -51,6 +51,7 @@ private fun roleName(r: TrustRole): String = when (r) {
     TrustRole.TRUST_LIST_PROVIDER -> "VICAL／RICAL 清單發行者"
     TrustRole.TSA -> "時間戳記"
     TrustRole.DOCUMENT -> "文件簽章"
+    TrustRole.CONTENT -> "內容憑證（C2PA）"
 }
 
 private fun environmentTitle(e: TrustEnvironment): String = when (e) {
@@ -134,6 +135,7 @@ internal fun CustomTrustRow(model: WalletModel) {
     val dids by model.trustedDids.collectAsState()
     val intermediates by model.intermediates.collectAsState()
     val lists by model.mdocLists.collectAsState()
+    val federation by model.federationAnchorList.collectAsState()
     val roots = anchors?.filter { it.environment == TrustEnvironment.USER }?.map { it.certificate }?.distinct()?.size ?: 0
     ActionRow(WalletIcons.Shield, "自訂信任",
         "匯入的根憑證 $roots 張、中繼憑證 ${intermediates.size} 張、自行信任的 DID ${dids.size} 個、mdoc 簽署清單 ${lists.size} 份；" +
@@ -184,6 +186,9 @@ fun CustomTrustScreen(model: WalletModel) {
         HorizontalDivider()
         SectionTitle("自行信任的 DID")
         TrustedDidSection(model, dids)
+
+        HorizontalDivider()
+        FederationSection(model)
 
         HorizontalDivider()
         SignedListSection(model)
@@ -432,7 +437,7 @@ private fun ImportAnchorSection(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Text("用途（根憑證）", style = MaterialTheme.typography.labelLarge)
-    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
+    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
         Text("匯入")
     }
@@ -519,5 +524,87 @@ private fun TrustedDidSection(model: WalletModel, dids: List<UserTrustedDid>) {
     RoleChips(listOf(TrustRole.ISSUER, TrustRole.VERIFIER), roles) { roles = it }
     Button(onClick = { model.trustDid(did, name, roles); did = ""; name = "" }, enabled = did.startsWith("did:") && roles.isNotEmpty()) {
         Text("信任這個 DID")
+    }
+}
+
+/**
+ * OpenID Federation Trust Anchors: a Verifier whose client_id is openid_federation:<entity> is accepted when its
+ * trust chain ends at one of these. The anchor's keys come from its own Entity Configuration and are trusted only
+ * after the user compares the thumbprints with what the federation publishes.
+ */
+@Composable
+private fun FederationSection(model: WalletModel) {
+    val anchors by model.federationAnchorList.collectAsState()
+    val pending by model.pendingFederationAnchor.collectAsState()
+    val settings by model.settingsFlow.collectAsState()
+    var entityId by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
+    var test by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<diw.wallet.core.federation.FederationAnchor?>(null) }
+    SectionTitle("OpenID Federation 信任錨點")
+    Text("查驗方以 openid_federation: 開頭的識別碼出示請求時，錢包沿著聯邦的信任鏈驗證到這裡的 Trust Anchor，並採用信任鏈套用政策後的查驗方資訊與金鑰。" +
+        "使用者加入的錨點判定為 T2（不顯示為官方），測試錨點為 T3，且只在測試環境開啟時採用。",
+        style = MaterialTheme.typography.bodySmall)
+    if (anchors.isEmpty()) Text("尚未加入。", style = MaterialTheme.typography.bodySmall)
+    anchors.forEach { a ->
+        Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(a.name, style = MaterialTheme.typography.titleSmall)
+                    Text(a.entityId, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    Text((if (a.trustEnvironment == TrustEnvironment.TEST) "測試錨點（T3）" else "使用者加入（T2）") +
+                        "・金鑰 ${a.keys.size} 把・加入於 " + localTime(Instant.fromEpochSeconds(a.addedAt)),
+                        style = MaterialTheme.typography.bodySmall)
+                    if (a.trustEnvironment == TrustEnvironment.TEST && !settings.testEnvironment) {
+                        Text("測試環境未開啟，目前不採用", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                TextButton(onClick = { removing = a }) { Text("移除") }
+            }
+        }
+    }
+    OutlinedTextField(value = entityId, onValueChange = { entityId = it.trim().take(512) }, label = { Text("Trust Anchor 的 Entity Identifier（https://…）") },
+        singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = name, onValueChange = { name = it.take(80) }, label = { Text("顯示名稱（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(selected = !test, onClick = { test = false }, label = { Text("正式使用（T2）") })
+        FilterChip(selected = test, onClick = { test = true }, enabled = settings.testEnvironment, label = { Text("測試錨點（T3）") })
+    }
+    Button(onClick = {
+        model.fetchFederationAnchor(entityId, name, if (test && settings.testEnvironment) TrustEnvironment.TEST else TrustEnvironment.USER)
+    }, enabled = entityId.startsWith("https://") || (settings.testEnvironment && entityId.startsWith("http://"))) {
+        Text("取得錨點資訊")
+    }
+    pending?.let { p ->
+        AlertDialog(
+            onDismissRequest = { model.pendingFederationAnchor.value = null },
+            title = { Text("信任這個 Trust Anchor？") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(p.anchor.name, style = MaterialTheme.typography.titleSmall)
+                    Text(p.anchor.entityId, style = MaterialTheme.typography.bodySmall)
+                    p.organization?.let { Text("組織名稱：$it", style = MaterialTheme.typography.bodySmall) }
+                    Text("請將以下金鑰指紋（RFC 7638 SHA-256）與聯邦公布的值比對，一致才加入。網路取得的資訊本身無法證明這是正確的錨點。",
+                        style = MaterialTheme.typography.bodySmall)
+                    p.thumbprints.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
+                    if (p.authorityHints.isNotEmpty()) {
+                        Text("注意：這個實體還有上級（" + p.authorityHints.joinToString("、") + "），它可能是中介機構而不是 Trust Anchor。",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { model.confirmFederationAnchor(); entityId = ""; name = "" }) { Text("指紋一致，加入") } },
+            dismissButton = { TextButton(onClick = { model.pendingFederationAnchor.value = null }) { Text("取消") } },
+        )
+    }
+    removing?.let { a ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("移除這個 Trust Anchor？") },
+            text = { Text("「${a.name}」移除後，經由它的聯邦驗證的查驗方不再被信任。") },
+            confirmButton = { TextButton(onClick = { model.removeFederationAnchor(a); removing = null }) { Text("移除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("取消") } },
+        )
     }
 }

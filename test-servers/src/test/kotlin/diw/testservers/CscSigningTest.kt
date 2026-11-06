@@ -63,7 +63,11 @@ class CscSigningTest {
     )
 
     /** The mock service: keys, issued codes and tokens, and what each credential token may sign. */
-    private class Qtsp(val ec: Boolean, val authMode: String = "oauth2code") {
+    private class Qtsp(
+        val ec: Boolean, val authMode: String = "oauth2code",
+        /** Offer oauth2/pushed_authorize, answer signHash asynchronously, offer timestamps, or only signDoc. */
+        val par: Boolean = false, val async: Boolean = false, val timestamps: Boolean = false, val signDocOnly: Boolean = false,
+    ) {
         val key: KeyPair = if (ec) KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
         else KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
         val cert: ByteArray = JcaX509v3CertificateBuilder(
@@ -75,12 +79,21 @@ class CscSigningTest {
         var signHashCalls = 0
         var authorizations = 0
         var pins = mutableListOf<String>()
+        val pushed = mutableMapOf<String, Map<String, String>>()
+        var polls = 0
+        var timestampRequests = mutableListOf<JsonObject>()
+        var signDocRequests = mutableListOf<JsonObject>()
 
         fun authorizeRedirect(url: String): String {
             authorizations++
-            val q = parseQueryString(Url(url).encodedQuery)
+            val raw = parseQueryString(Url(url).encodedQuery).entries().associate { it.key to it.value.first() }
+            // With PAR the browser carries only client_id and request_uri; the parameters were pushed before.
+            val q = raw["request_uri"]?.let { uri ->
+                check(raw.keys == setOf("client_id", "request_uri")) { "PAR authorize must carry only client_id and request_uri: $raw" }
+                pushed.remove(uri) ?: error("unknown request_uri")
+            } ?: raw.also { check(!par) { "parameters must be pushed" } }
             val code = "code-$authorizations"
-            codes[code] = q["code_challenge"]!! to q.entries().associate { it.key to it.value.first() }
+            codes[code] = q["code_challenge"]!! to q
             return "${q["redirect_uri"]}?code=$code&state=${q["state"]}"
         }
 
@@ -96,8 +109,46 @@ class CscSigningTest {
                     put("name", "Mock QTSP")
                     put("oauth2", "https://qtsp.example")
                     putJsonArray("authType") { add(JsonPrimitive("oauth2code")) }
-                    putJsonArray("methods") { listOf("credentials/list", "signatures/signHash", "credentials/authorize").forEach { add(JsonPrimitive(it)) } }
+                    putJsonArray("methods") {
+                        buildList {
+                            add("credentials/list"); add("credentials/authorize")
+                            add(if (signDocOnly) "signatures/signDoc" else "signatures/signHash")
+                            if (par) add("oauth2/pushed_authorize")
+                            if (timestamps) add("signatures/timestamp")
+                            if (async) add("signatures/signPolling")
+                        }.forEach { add(JsonPrimitive(it)) }
+                    }
+                    put("asynchronousOperationMode", async)
                 })
+                "/oauth2/pushed_authorize" -> {
+                    if (req.headers[HttpHeaders.Authorization] != "Basic " + Base64.getEncoder().encodeToString("wallet-client:secret".toByteArray())) return error("client authentication failed")
+                    val uri = "urn:qtsp:par:" + pushed.size
+                    pushed[uri] = parseQueryString(body).entries().associate { it.key to it.value.first() }
+                    json(buildJsonObject { put("request_uri", uri); put("expires_in", 90) }, HttpStatusCode.Created)
+                }
+                "/csc/v2/signatures/timestamp" -> {
+                    if (tokens[bearer]?.get("scope") != "service") return error("service token required")
+                    val o = Json.parseToJsonElement(body).jsonObject
+                    timestampRequests += o
+                    json(buildJsonObject { put("timestamp", Base64.getEncoder().encodeToString("TST:".toByteArray() + Base64.getDecoder().decode(o["hash"]!!.jsonPrimitive.content))) })
+                }
+                "/csc/v2/signatures/signPolling" -> {
+                    polls++
+                    val id = Json.parseToJsonElement(body).jsonObject["requestID"]!!.jsonPrimitive.content
+                    val ready = pending[id] ?: return error("unknown requestID")
+                    if (polls < 2) scope.respond("", HttpStatusCode.Accepted) else json(ready)
+                }
+                "/csc/v2/signatures/signDoc" -> {
+                    val o = Json.parseToJsonElement(body).jsonObject
+                    signDocRequests += o
+                    val t = tokens[bearer] ?: return error("unknown token")
+                    if (t["scope"] != "credential") return error("credential token required")
+                    val d = o["documentDigests"]!!.jsonArray.single().jsonObject
+                    if (d["signature_format"]!!.jsonPrimitive.content != "P") return error("only PAdES")
+                    val hash = Base64.getDecoder().decode(d["hashes"]!!.jsonArray.single().jsonPrimitive.content)
+                    if (!hash.contentEquals(Base64.getUrlDecoder().decode(t["hashes"]!!))) return error("hash not authorized")
+                    json(buildJsonObject { putJsonArray("SignatureObject") { add(JsonPrimitive(Base64.getEncoder().encodeToString(padesCms(hash)))) } })
+                }
                 "/oauth2/token" -> {
                     val basic = req.headers[HttpHeaders.Authorization]
                     if (basic != "Basic " + Base64.getEncoder().encodeToString("wallet-client:secret".toByteArray())) return error("client authentication failed: $basic")
@@ -153,10 +204,35 @@ class CscSigningTest {
                             Base64.getEncoder().encodeToString(Signature.getInstance("NONEwithRSA").apply { initSign(key.private); update(digestInfo) }.sign())
                         }
                     }
-                    json(buildJsonObject { put("signatures", JsonArray(signatures.map { JsonPrimitive(it) })) })
+                    val result = buildJsonObject { put("signatures", JsonArray(signatures.map { JsonPrimitive(it) })) }
+                    if (async) {
+                        val id = "resp-" + pending.size
+                        pending[id] = result
+                        json(buildJsonObject { put("responseID", id) })
+                    } else json(result)
                 }
                 else -> scope.respond("", HttpStatusCode.NotFound)
             }
+        }
+
+        val pending = mutableMapOf<String, JsonObject>()
+
+        /** A detached CMS SignedData whose message digest is [hash] (the PDF byte-range digest), as a signDoc service returns. */
+        fun padesCms(hash: ByteArray): ByteArray {
+            val holder = org.bouncycastle.cert.X509CertificateHolder(cert)
+            val digests = org.bouncycastle.operator.DigestCalculatorProvider { alg ->
+                object : org.bouncycastle.operator.DigestCalculator {
+                    private val sink = java.io.ByteArrayOutputStream()
+                    override fun getAlgorithmIdentifier() = alg
+                    override fun getOutputStream() = sink
+                    override fun getDigest() = hash
+                }
+            }
+            val gen = org.bouncycastle.cms.CMSSignedDataGenerator()
+            gen.addSignerInfoGenerator(org.bouncycastle.cms.SignerInfoGeneratorBuilder(digests)
+                .build(JcaContentSignerBuilder(if (ec) "SHA256withECDSA" else "SHA256withRSA").build(key.private), holder))
+            gen.addCertificate(holder)
+            return gen.generate(org.bouncycastle.cms.CMSAbsentContent(), false).encoded
         }
 
         private fun info(id: String, enabled: Boolean) = buildJsonObject {
@@ -193,6 +269,7 @@ class CscSigningTest {
     private fun agent(qtsp: Qtsp, pin: String? = null) = object : CscUserAgent {
         override suspend fun authorize(url: String, redirectUri: String, purpose: String): String {
             assertTrue(url.startsWith("https://qtsp.example/oauth2/authorize?"), url)
+            if (qtsp.par) assertTrue("request_uri=" in url && "code_challenge" !in url, url)
             return qtsp.authorizeRedirect(url)
         }
         override suspend fun askSecret(label: String, numeric: Boolean): String? = pin
@@ -321,5 +398,88 @@ class CscSigningTest {
         assertContentEquals(MessageDigest.getInstance("SHA-256").digest(data), Base64.getUrlDecoder().decode(q["hashes"]))
         assertEquals("S256", q["code_challenge_method"])
         assertEquals("service", parseQueryString(Url(urls[0]).encodedQuery)["scope"])
+    }
+
+    @Test
+    fun pushedAuthorizationKeepsParametersOutOfTheBrowser() = runBlocking<Unit> {
+        val qtsp = Qtsp(ec = true, par = true)
+        val signer = CscSigner(CscClient(client(qtsp), service), agent(qtsp))
+        signer.load()
+        val content = "par".toByteArray()
+        verifyCades(DocumentSigning.signCades(content, signer, true, null), content, qtsp.cert)
+        assertEquals(2, qtsp.authorizations)
+        assertTrue(qtsp.pushed.isEmpty(), "each pushed request is used once")
+    }
+
+    @Test
+    fun asynchronousSignHashIsPolled() = runBlocking<Unit> {
+        val qtsp = Qtsp(ec = false, async = true)
+        val signer = CscSigner(CscClient(client(qtsp), service), agent(qtsp))
+        signer.load()
+        val content = "async".toByteArray()
+        verifyCades(DocumentSigning.signCades(content, signer, true, null), content, qtsp.cert)
+        assertEquals(2, qtsp.polls, "one 202 Accepted, then the result")
+    }
+
+    @Test
+    fun serviceTimestampCarriesHashAndNonce() = runBlocking<Unit> {
+        val qtsp = Qtsp(ec = true, timestamps = true)
+        val signer = CscSigner(CscClient(client(qtsp), service), agent(qtsp))
+        signer.load()
+        val ts = signer.timestamper() ?: error("the service lists signatures/timestamp")
+        val data = "stamp me".toByteArray()
+        val token = ts.timestamp(data)
+        val digest = MessageDigest.getInstance("SHA-256").digest(data)
+        assertContentEquals("TST:".toByteArray() + digest, token)
+        val req = qtsp.timestampRequests.single()
+        assertEquals("2.16.840.1.101.3.4.2.1", req["hashAlgo"]!!.jsonPrimitive.content)
+        assertTrue(req["nonce"]!!.jsonPrimitive.content.matches(Regex("[0-9a-f]{32}")))
+        // Without the method there is no remote time stamp.
+        val plain = CscSigner(CscClient(client(Qtsp(ec = true)), service), agent(Qtsp(ec = true)))
+        assertEquals(null, runCatching { plain.load(); plain.timestamper() }.getOrNull())
+    }
+
+    @Test
+    fun signDocOnlyServiceProducesAValidPades() = runBlocking<Unit> {
+        val qtsp = Qtsp(ec = true, signDocOnly = true)
+        val signer = CscSigner(CscClient(client(qtsp), service), agent(qtsp))
+        signer.load()
+        assertEquals(false, signer.supportsSignHash())
+        assertEquals(true, signer.supportsSignDoc())
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("CSC", listOf(diw.testservers.fixtures.PdfComposer.Block.Paragraph("signDoc")), emptyList())
+        val prepared = diw.wallet.core.document.pdf.PdfIncrementalSigner.prepare(pdf, diw.wallet.core.document.pdf.PdfSignOptions(reserve = 64 * 1024))
+        val cms = signer.signPadesDigest(prepared.signedData(), "AdES-B-B")
+        diw.wallet.core.document.sign.DocumentSigning.verifyDetached(cms, prepared.signedData(), signer.certificateChain.first())
+        assertFailsWith<diw.wallet.core.document.sign.SigningException> {
+            diw.wallet.core.document.sign.DocumentSigning.verifyDetached(cms, prepared.signedData() + 0, signer.certificateChain.first())
+        }
+        val signed = prepared.finish(cms)
+        val report = diw.wallet.core.document.DocumentInspector.inspect(signed, "csc.pdf", object : diw.wallet.core.document.DocumentTrustSource {
+            val registry = diw.wallet.core.trust.TrustRegistry(org.multipaz.storage.ephemeral.EphemeralStorage(), diw.wallet.core.env.EnvironmentPolicy())
+            override suspend fun decide(role: diw.wallet.core.trust.TrustRole, chain: List<org.multipaz.crypto.X509Cert>, at: kotlin.time.Instant) = registry.decide(role, chain, at)
+            override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = emptyList()
+        })
+        assertEquals(diw.wallet.core.document.Check.PASS, report.signatures.single().integrity, report.signatures.single().problems.toString())
+        val req = qtsp.signDocRequests.single()
+        assertEquals("AdES-B-B", req["documentDigests"]!!.jsonArray.single().jsonObject["conformance_level"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun cscProfileImportsServices() = runBlocking<Unit> {
+        val json = """[{"type":"csc-profile","name":"QTSP A","baseUrl":"https://a.example/csc/v2/","clientId":"wallet","environment":"production"},
+            {"name":"QTSP B","baseUrl":"https://b.example/csc/v2","clientId":"w2","clientSecret":"s","redirectUri":"app://cb","environment":"test","note":"sandbox"}]"""
+        val list = diw.wallet.core.document.sign.CscServices.fromProfile(json)
+        assertEquals(2, list.size)
+        assertEquals("https://a.example/csc/v2", list[0].baseUrl)
+        assertEquals(diw.wallet.core.document.sign.CscServices.WALLET_REDIRECT, list[0].redirectUri)
+        assertEquals(CscEnvironment.PRODUCTION, list[0].environment)
+        assertEquals(CscEnvironment.TEST, list[1].environment)
+        assertEquals("s", list[1].clientSecret)
+        // Round trip without the secret; the same address and client_id give the same id.
+        val again = diw.wallet.core.document.sign.CscServices.fromProfile(diw.wallet.core.document.sign.CscServices.profileOf(list[1]))
+        assertEquals(list[1].id, again.single().id)
+        assertEquals(null, again.single().clientSecret)
+        assertFailsWith<CscException> { diw.wallet.core.document.sign.CscServices.fromProfile("""{"name":"x","baseUrl":"http://x.example","clientId":"c"}""") }
+        assertFailsWith<CscException> { diw.wallet.core.document.sign.CscServices.fromProfile("""{"type":"other","name":"x","baseUrl":"https://x.example","clientId":"c"}""") }
     }
 }

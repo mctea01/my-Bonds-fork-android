@@ -49,9 +49,13 @@ internal class CmsChecks(private val pki: PkiSupport) {
         extraCrls: List<ByteArray> = emptyList(),
         claimedTimeOverride: Long? = null,
         fallbackClaimed: Long? = null,
+        /** SHA-256 of detached content that is not available itself (a zkPDF masked file, whose digest is proven). */
+        contentSha256: ByteArray? = null,
     ): List<SignatureInfo> {
         val sd = try {
-            signedData(cms, content)
+            if (contentSha256 != null) {
+                CMSSignedData(mapOf(SHA256.algorithm.id to contentSha256), ContentInfo.getInstance(Bc.parse(cms)).encoded)
+            } else signedData(cms, content)
         } catch (e: Exception) {
             return listOf(failed(format, label, "無法解析 CMS 簽章：" + (e.message ?: e.javaClass.simpleName)))
         }
@@ -60,10 +64,10 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val (cmsOcsps, cmsCrls) = pki.cmsRevocation(sd)
         val signers = sd.signerInfos.signers.toList()
         if (signers.isEmpty()) return listOf(failed(format, label, "簽章檔內沒有簽署者"))
-        val detachedMissing = content == null && sd.signedContent == null
+        val detachedMissing = content == null && contentSha256 == null && sd.signedContent == null
         return signers.mapIndexed { i, si ->
             check(si, certs, format, if (signers.size > 1) "$label（簽署者 ${i + 1}）" else label, now, detachedMissing,
-                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed)
+                cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed, sd, content)
         }
     }
 
@@ -78,6 +82,8 @@ internal class CmsChecks(private val pki: PkiSupport) {
         crls: List<ByteArray>,
         claimedTimeOverride: Long?,
         fallbackClaimed: Long?,
+        sd: CMSSignedData,
+        content: ByteArray?,
     ): SignatureInfo {
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
@@ -133,6 +139,19 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val adobe = attrs?.get(PkiSupport.ADOBE_REVOCATION)?.let { pki.adobeRevocation(it.attrValues.getObjectAt(0)) }
         val allOcsps = ocsps + adobe?.first.orEmpty()
         val allCrls = crls + adobe?.second.orEmpty()
+        // CAdES baseline level, and the archive time stamps of B-LTA rebuilt from their hash index.
+        if (format == SignatureFormat.CADES || format == SignatureFormat.ASIC_CADES) {
+            val signed = content ?: (sd.signedContent?.content as? ByteArray)
+            val asn = org.bouncycastle.asn1.cms.SignedData.getInstance(sd.toASN1Structure().content)
+            val archives = runCatching { CadesArchive.find(asn, si.toASN1Structure(), signed) }.getOrDefault(emptyList())
+            notes.add("CAdES 等級：" + XmlDsig.baselineLevel(timestamp != null, allOcsps.isNotEmpty() || allCrls.isNotEmpty(), archives.isNotEmpty()))
+            for (a in archives) {
+                a.problem?.let { if (a.input == null) notes.add(it) else problems.add(it) }
+                val ts = a.input?.let { timestamp(a.token, it) } ?: continue
+                notes.add(XmlDsig.archiveNote(ts))
+                if (ts.imprint == Check.FAIL || ts.signature == Check.FAIL) problems.add("保存時戳無效：" + ts.problems.joinToString("；"))
+            }
+        }
         return evaluate(
             format = format,
             label = label,
@@ -166,6 +185,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
         problems: MutableList<String>,
         notes: MutableList<String>,
         coversWhole: Boolean? = null,
+        role: TrustRole = TrustRole.DOCUMENT,
     ): SignatureInfo {
         if (signer == null) {
             return SignatureInfo(format, label, algorithm, null, emptyList(), integrity, coversWhole, claimedTime = claimed,
@@ -185,7 +205,7 @@ internal class CmsChecks(private val pki: PkiSupport) {
             else -> { problems.add("簽署憑證不在有效期間內"); Check.FAIL }
         }
         val at = trustedTime ?: if (validNow) now else claimed?.let { Instant.fromEpochSeconds(it) } ?: now
-        val decision = pki.decide(TrustRole.DOCUMENT, chain, at)
+        val decision = pki.decide(role, chain, at)
         if (PkiSupport.unknownAnchor(decision)) {
             val root = chain.last()
             notes.add(if (pki.selfSigned(root)) "憑證鏈的根憑證「${pki.cn(root.subject) ?: root.subject}」不在信任錨點；確認來源後可信任這個根憑證（T2）"

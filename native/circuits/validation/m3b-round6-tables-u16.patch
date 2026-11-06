@@ -1,0 +1,104 @@
+--- a/native/circuits/pdf_text_v1/src/inflate.nr
++++ b/native/circuits/pdf_text_v1/src/inflate.nr
+@@ -8,6 +8,9 @@
+     // Indexed by expanded code-length position; entries inside repeats are unused.
+     pub code_symbols: [u16; 320],
+     pub code_widths: [u8; 320],
++    pub cl_lengths: [u8; 19],
++    pub cl_codes: [u32; 19],
++    pub expanded_lengths: [u8; 320],
+ }
+ 
+ pub struct TokenHint {
+@@ -68,29 +71,34 @@
+ }
+ 
+ fn table<let N: u32>(lengths: [u8; N], allow_single: bool, allow_empty: bool) -> Huffman<N> {
+-    let mut counts = [0u32;16];
+-    let mut used = 0u32;
+-    for i in 0..N {
+-        assert(lengths[i] <= 15);
+-        let present = if lengths[i] != 0 { 1 } else { 0 };
+-        counts[lengths[i] as u32] += present;
+-        used += present;
+-    }
+-    let mut next = [0u32;16];
+-    let mut code = 0u32;
+-    for i in 1..16 {
+-        code = (code + counts[i - 1]) * 2;
+-        assert(code + counts[i] <= (1u32 << i));
+-        next[i] = code;
+-    }
+-    assert((code + counts[15] == 32768)
+-        | (allow_single & (used == 1) & (counts[1] == 1))
++    // Count each width using constant indices. No mutable histogram is privately
++    // indexed. Bounded counters also prevent long expanded linear expressions.
++    let mut canonical = [0 as Field; N];
++    let mut first: Field = 0;
++    let mut used: Field = 0;
++    let mut ones: Field = 0;
++    for width in 1..16 {
++        let mut count = 0u16;
++        for i in 0..N {
++            let present = lengths[i] as u32 == width;
++            canonical[i] += if present { first + count as Field } else { 0 };
++            count += if present { 1 } else { 0 };
++        }
++        // Even an invalid histogram has first+count <= N*2^15 < 2^32
++        // for the only alphabets (19, 32, 288); no cast can hide overflow.
++        assert(N <= 320);
++        assert((first+count as Field) as u32 <= (1u32 << width));
++        if width == 1 { ones = count as Field; }
++        used += count as Field;
++        first = (first+count as Field)*2;
++    }
++    assert((first == 65536)
++        | (allow_single & (used == 1) & (ones == 1))
+         | (allow_empty & (used == 0)));
+     let mut codes = [0u32;N];
+     for i in 0..N {
+-        let width = lengths[i] as u32;
+-        codes[i] = reverse_code(if width != 0 { next[width] } else { 0 }, width);
+-        next[width] += if width != 0 { 1 } else { 0 };
++        assert(lengths[i] <= 15);
++        codes[i] = reverse_code(canonical[i] as u32, lengths[i] as u32);
+     }
+     Huffman { lengths, codes }
+ }
+@@ -127,9 +135,14 @@
+     for i in 0..19 {
+         if i < hclen { cl[order[i]] = bits(data,limit,start+14+i*3,3) as u8; }
+     }
+-    let ch = table(cl,false,false);
++    let computed_ch = table(cl,false,false);
++    for i in 0..19 {
++        assert_eq(hint.cl_lengths[i],computed_ch.lengths[i]);
++        assert_eq(hint.cl_codes[i],computed_ch.codes[i]);
++    }
++    let ch = Huffman { lengths: hint.cl_lengths, codes: hint.cl_codes };
+     let mut pos = start + 14 + hclen * 3;
+-    let mut lengths = [0u8;320];
++    let lengths = hint.expanded_lengths;
+     let mut repeat = 0u32;
+     let mut value = 0u8;
+     for i in 0..320 {
+@@ -151,7 +164,7 @@
+             }
+             repeat -= 1;
+         }
+-        lengths[i] = if i < hlit + hdist { value } else { 0 };
++        assert_eq(lengths[i],if i < hlit + hdist { value } else { 0 });
+     }
+     assert_eq(repeat,0);
+     let mut ll = [0u8;288];
+@@ -169,8 +182,8 @@
+ }
+ 
+ // Private owner hints select the token that produces each output byte. Prefix
+-// sums make token output intervals disjoint and exhaustive; backward RAM reads
+-// enforce LZ77, including overlapping matches.
++// sums make token output intervals disjoint and exhaustive; backward reads from
++// immutable plain advice enforce LZ77 by induction, including overlapping matches.
+ pub fn inflate<let N: u32, let P: u32, let T: u32, let B: u32>(
+     data: [u8;N], data_len: u32, blocks: [BlockHint;B], block_count: u32,
+     tokens: [TokenHint;T], owners: [u32;P], plain_len: u32,

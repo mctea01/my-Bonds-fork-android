@@ -1,0 +1,29 @@
+{
+  "plain_capacity": 4096,
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "scope": "Same measured circuit bytecode; synthetic first/nonfinal (2048) or first/final (4096)",
+  "concurrency_note": "No other build, test, compiler or prover processes from this task; cached CRS",
+  "warm": {
+    "seconds": 65.50864959,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 3450240
+  },
+  "verify": {
+    "seconds": 0.06538620799983619,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 14152
+  },
+  "proof_bytes": 16256,
+  "public_input_bytes": 544,
+  "vk_sha256": "0cd242731115c8643eba753bc909d6b8223289c43a209547ec03696eba873555",
+  "coarse_verify": {
+    "seconds": 0.05307727600029466,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 14032
+  },
+  "verify_poll_interval_seconds": 0.001
+}

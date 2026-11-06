@@ -18,26 +18,322 @@ permissions:
 env:
   LANG: C.UTF-8
   JAVA_TOOL_OPTIONS: -Dfile.encoding=UTF-8
-  APP_VERSION: 0.1.${{ github.run_number }}
+  # The ZK native library is built by the native-* jobs with native/build.sh and handed to the Gradle jobs as an
+  # artifact in native/dist; "prebuilt" makes Gradle use it as-is and fail when it is missing, instead of building it
+  # again. Local builds keep the default ("auto"), which still builds it from source.
+  DIW_ZK_NATIVE: prebuilt
+  # Link the OpenAC age-proof (needs protoc and libclang), TLSNotary and zkPDF (Barretenberg, a C++ build with CMake and
+  # Ninja) backends. The desktop matrix leaves zkPDF out on Windows (no port of Barretenberg 6.0.0).
+  DIW_ZK_FEATURES: openac,tlsn,zkpdf
+  # Release Rust builds are not incremental anyway; this keeps a stray dev build from writing incremental state, and
+  # no debug info is generated (smaller target directories on the small runner disks).
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_RELEASE_DEBUG: 0
+  CARGO_TERM_COLOR: always
 
 jobs:
-  # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
-  # and a broken build does not hide the test results. The nightly release still waits for both.
-  test:
+  # The native jobs only build the ZK library and upload the final files (zk-native-* artifacts, kept 3 days). They
+  # hold the Rust, NDK, protoc, libclang and Barretenberg toolchains, so the Gradle jobs below no longer install them
+  # and each job fits in the runner disk ("No space left on device" when everything ran in one job).
+  native-android:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # One ABI per job: each holds only its own Rust target directory and Barretenberg build.
+          - abi: arm64-v8a
+            target: aarch64-linux-android
+          - abi: x86_64
+            target: x86_64-linux-android
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      DIW_ZK_ANDROID_ABIS: ${{ matrix.abi }}
+    steps:
+      # Large preinstalled toolchains this job never uses. The Android SDK stays (the pinned NDK goes into it); only the
+      # other NDK versions, the emulator and the system images are removed.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/swift \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/microsoft /opt/google /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
+          find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 ! -name 28.2.13676358 -exec sudo rm -rf {} +
+          sudo rm -rf "$ANDROID_HOME/emulator" "$ANDROID_HOME/system-images"
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Only the crate registry and git checkouts (~/.cargo), not native/target: a restored target directory would
+      # take as much disk as a fresh build plus the archive, and Barretenberg has its own cache below.
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native
+          shared-key: zk-native
+          cache-targets: false
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Cache cargo-ndk
+        id: cargo-ndk
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.cargo/bin/cargo-ndk
+          key: cargo-ndk-4.1.2-${{ runner.os }}-${{ runner.arch }}
+      # Rust is on the runner image; native/rust-toolchain.toml installs the pinned version on first use.
+      - name: ZK native tools (protoc, libclang, Ninja, CMake, cargo-ndk and the pinned NDK)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
+          if [ "$(cargo ndk --version 2>/dev/null)" != "cargo-ndk 4.1.2" ]; then cargo install cargo-ndk --version 4.1.2 --locked --force; fi
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+      # Barretenberg for zkPDF, built for this ABI with the pinned NDK; reused while build_bb.py and the NDK are unchanged.
+      - name: Cache Barretenberg (Android ${{ matrix.abi }})
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-${{ matrix.target }}
+          key: bb-6.0.0-${{ matrix.target }}-ndk28.2.13676358-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
+      - name: Build libdiw_zk.so (${{ matrix.abi }})
+        run: |
+          bash native/build.sh android
+          ls -l native/dist/android/*/
+          df -h /
+      - name: Upload ${{ matrix.abi }} library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-native-android-${{ matrix.abi }}
+          # The directory, so the artifact keeps the <abi>/libdiw_zk.so layout that jniLibs expects.
+          path: native/dist/android/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+      # Leaves only the cached Barretenberg directories, so saving the caches has room for its archive.
+      - name: Drop intermediate build files
+        if: always()
+        run: |
+          if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' -exec rm -rf {} +; fi
+          df -h /
+
+  # The Linux desktop library, used by both the tests and the Linux desktop package.
+  native-linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # Large preinstalled toolchains this job never uses, the Android SDK included.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/swift \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/microsoft /opt/google /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /usr/local/lib/android
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Only the crate registry and git checkouts; see native-android.
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native
+          shared-key: zk-native
+          cache-targets: false
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: ZK native build tools (protoc and libclang for OpenAC, Ninja and CMake for Barretenberg)
+        run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
+      # Barretenberg for zkPDF is a pinned C++ build of several minutes; reuse it while build_bb.py is unchanged.
+      - name: Cache Barretenberg
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-x86_64-unknown-linux-gnu
+          key: bb-6.0.0-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
+      - name: Build libdiw_zk.so (linux-x86_64)
+        run: |
+          bash native/build.sh host
+          ls -lR native/dist/resources
+          df -h /
+      - name: Upload linux library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-native-linux
+          # The directory, so the artifact keeps the zk/native/<platform>/ layout of the JVM resources.
+          path: native/dist/resources/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+      - name: Drop intermediate build files
+        if: always()
+        run: |
+          if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' -exec rm -rf {} +; fi
+          df -h /
+
+  # Windows (without zkPDF, see DIW_ZK_FEATURES above) and macOS desktop libraries. On macOS the zkPDF backend is also
+  # checked end to end: ZkPdfCircuitTest proves and verifies the synthetic document with the published assets.
+  native-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+            features: openac,tlsn
+          # Apple silicon.
+          - os: macos-latest
+            name: macos
+            features: openac,tlsn,zkpdf
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      DIW_ZK_FEATURES: ${{ matrix.features }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Only the crate registry and git checkouts; see native-android.
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native
+          shared-key: zk-native
+          cache-targets: false
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
+      - name: Install Windows build tools
+        if: runner.os == 'Windows'
+        run: |
+          choco install protoc -y --no-progress
+          if [ ! -f "/c/Program Files/LLVM/bin/libclang.dll" ]; then choco install llvm -y --no-progress; fi
+          printf '%s\n' 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
+      - name: Install macOS build tools
+        if: runner.os == 'macOS'
+        run: |
+          brew install protobuf ninja
+          command -v cmake > /dev/null || brew install cmake
+      # Barretenberg for zkPDF (Apple clang, arm64); reused while build_bb.py is unchanged.
+      - name: Cache Barretenberg (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-aarch64-apple-darwin
+          key: bb-6.0.0-aarch64-apple-darwin-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
+      - name: Build the ${{ matrix.name }} library
+        run: |
+          bash native/build.sh host
+          ls -lR native/dist/resources
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        if: runner.os == 'macOS'
         with:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        if: runner.os == 'macOS'
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Cache zkPDF assets (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/zkpdf-assets
+          key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
+      # The macOS library with the published circuit assets: a real proof and its verification on Apple silicon.
+      - name: zkPDF proof on macOS
+        if: runner.os == 'macOS'
+        run: |
+          python3 -I native/circuits/tools/fetch_assets.py --output "$HOME/zkpdf-assets"
+          ZKPDF_ASSETS_DIR="$HOME/zkpdf-assets" ./gradlew --no-daemon --stacktrace :test-servers:test \
+            --tests 'diw.testservers.zkpdf.ZkPdfCircuitTest' -Pdiw.zkNative=prebuilt
+          python3 -I - <<'PY'
+          import pathlib, sys, xml.etree.ElementTree as ET
+          reports = list(pathlib.Path("test-servers/build/test-results/test").glob("*ZkPdfCircuitTest*.xml"))
+          cases = [c for r in reports for c in ET.parse(r).getroot().iter("testcase")
+                   if c.get("name", "").startswith("syntheticDocumentThroughUniffi")]
+          if not cases or any(c.find("skipped") is not None for c in cases):
+              sys.exit("the zkPDF proof test did not run on macOS")
+          PY
+      - name: Upload ${{ matrix.name }} library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-native-${{ matrix.name }}
+          path: native/dist/resources/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+  # Tests run on their own, beside the builds: a failing test does not stop the APKs and packages from being built,
+  # and a broken build does not hide the test results. The nightly release still waits for both.
+  test:
+    needs: native-linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      # Pull requests and other branches only read the Gradle cache; main writes it.
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      # The Linux desktop library (with zkPDF) from native-linux, where core's JVM resources expect it. The core
+      # Android unit tests run on the JVM and do not load the Android library.
+      - name: ZK native library
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: zk-native-linux
+          path: native/dist/resources
+      - name: Cache zkPDF assets
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/zkpdf-assets
+          key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
+      # The published circuit assets, checked by hash; ZkPdfCircuitTest proves and verifies a synthetic document with them.
+      - name: zkPDF assets
+        run: |
+          set +e
+          python3 -I native/circuits/tools/fetch_assets.py --output "$HOME/zkpdf-assets"
+          code=$?
+          set -e
+          if [ $code -eq 0 ]; then
+            echo "ZKPDF_ASSETS_DIR=$HOME/zkpdf-assets" >> "$GITHUB_ENV"
+          elif [ $code -eq 3 ]; then
+            echo "::warning::zkPDF assets are not published yet (run the zkPDF assets workflow); the zkPDF proof test is skipped"
+          else
+            exit $code
+          fi
+      - name: Application signing key build tests
+        run: python3 tools/twdiw/test_generate_application_key.py
       - name: Core and protocol tests
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
         if: success() || failure()
         run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
+      # zkTLS and zkPDF page templates (templates/README.md), signed for the nightly release. Skipped without the key.
+      - name: Template pack
+        if: success() && github.event_name == 'push'
+        env:
+          ZK_TEMPLATES_KEY: ${{ secrets.ZK_TEMPLATES_KEY }}
+        run: |
+          if [ -z "$ZK_TEMPLATES_KEY" ]; then echo "::warning::No ZK_TEMPLATES_KEY: the release carries no template pack"; exit 0; fi
+          ./gradlew --no-daemon --stacktrace :test-servers:templatePack
+          mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
+      - name: Upload template pack
+        if: success() && github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: zk-templates
+          path: dist/zk-templates.jwt
+          if-no-files-found: ignore
+          retention-days: 14
       # Failed tests appear as annotations on the PR "Files changed" tab and in the run summary.
       - name: Test report
         uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6
@@ -59,30 +355,76 @@ jobs:
           retention-days: 14
 
   build:
+    needs: native-android
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 100
     env:
       # Release signing (docs/release.md). Without it the release APK is signed with the debug key.
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       DIW_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       DIW_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       DIW_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      # Optional: base64 of a debug.keystore so every debug APK has the same signature.
+      # Base64 of a keystore that signs every debug APK, so each installs over the previous one (docs/release.md).
       DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+      DIW_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
+      DIW_DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+      # Caller-owned TWDIW application signing pair. PR builds always generate their own test pair.
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     steps:
+      # Room for the Android build: unused preinstalled toolchains and the NDK versions other than the pinned one.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/swift \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/microsoft /opt/google /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby
+          find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 ! -name 28.2.13676358 -exec sudo rm -rf {} +
+          sudo rm -rf "$ANDROID_HOME/emulator" "$ANDROID_HOME/system-images"
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 21
+      # Pull requests and other branches only read the Gradle cache; main writes it.
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
+      # Only the pinned NDK, which the Android Gradle plugin uses to strip the packaged libdiw_zk.so as before; Rust,
+      # cargo-ndk and the C++ tools are in native-android.
+      - name: Pinned NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
+      # Both ABIs from native-android, merged into native/dist/android/<abi>/libdiw_zk.so (the jniLibs directory).
+      - name: ZK native libraries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: zk-native-android-*
+          path: native/dist/android
+          merge-multiple: true
+
       - name: Signing keys
         run: |
           # Line breaks and spaces from PowerShell or the secrets form are not part of the base64 text.
+          # Gradle reads the debug key from DIW_DEBUG_KEYSTORE_FILE and prints its SHA-256 fingerprint.
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
-            mkdir -p ~/.android
-            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > ~/.android/debug.keystore
+            debug="$RUNNER_TEMP/debug.keystore"
+            if ! printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d ' \r\n' | base64 -d > "$debug"; then
+              echo "::error::DEBUG_KEYSTORE_BASE64 is not valid base64 (docs/release.md)"
+              exit 1
+            fi
+            echo "DIW_DEBUG_KEYSTORE_FILE=$debug" >> "$GITHUB_ENV"
             echo "Using the debug keystore from secrets"
+          else
+            echo "::warning::No DEBUG_KEYSTORE_BASE64: each debug APK is signed with a new key and cannot update the last one"
           fi
           if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "::warning::No ANDROID_KEYSTORE_BASE64: the release APK is signed with the debug key"
@@ -112,26 +454,34 @@ jobs:
           rm -f "$RUNNER_TEMP/keys.txt"
           echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
           echo "Using the release keystore from secrets"
-      - name: Android APKs (debug)
+      - name: Android APK and AAB (debug)
         run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:bundleDebug
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
-      - name: Android APKs (release)
+          cp app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug.aab"
+      - name: Android APK and AAB (release)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          ./gradlew --no-daemon --stacktrace "-Pdiw.versionCode=${{ github.run_number }}" "-Pdiw.versionName=$APP_VERSION" :app:assembleRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease :app:bundleRelease
           mkdir -p dist
           cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
-      - name: Upload APK
+          cp app/build/outputs/bundle/release/app-release.aab "dist/DIW-MY-WALLET-$APP_VERSION.aab"
+      - name: Upload Android packages
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: success()
         with:
           name: android
-          path: dist/*.apk
+          path: |
+            dist/*.apk
+            dist/*.aab
           retention-days: 14
 
   desktop:
+    # Each package needs its own library. The legs still run when a native job of another OS failed; a leg whose library
+    # is missing fails at the download step.
+    needs: [native-linux, native-desktop]
+    if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
       matrix:
@@ -139,26 +489,54 @@ jobs:
           - os: windows-latest
             name: windows
             tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn,zkpdf
+          # Apple silicon; only the jar, since an unsigned app bundle is refused by Gatekeeper.
+          - os: macos-latest
+            name: macos
+            tasks: ":app:packageReleaseUberJarForCurrentOS"
+            features: openac,tlsn
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 90
+    env:
+      DIW_ZK_FEATURES: ${{ matrix.features }}
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The patch number counts commits (tools/app-version.sh), so the whole history is needed.
+          fetch-depth: 0
       - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
         with:
           distribution: temurin
           java-version: 21
+      # Pull requests and other branches only read the Gradle cache; main writes it.
       - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
+      # This OS's library from native-linux or native-desktop, where core's JVM resources expect it.
+      - name: ZK native library
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: zk-native-${{ matrix.name }}
+          path: native/dist/resources
+      # fakeroot builds the .deb; xvfb starts the release build below.
       - name: Install deb tools
         if: runner.os == 'Linux'
         run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb
       - name: Package ${{ matrix.name }}
-        run: ./gradlew --no-daemon --stacktrace "-Pdiw.desktopVersion=$APP_VERSION" ${{ matrix.tasks }}
+        run: ./gradlew --no-daemon --stacktrace ${{ matrix.tasks }}
       # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
       - name: Start the release build
         if: runner.os == 'Linux'
@@ -171,7 +549,7 @@ jobs:
       - name: Collect files
         run: |
           mkdir -p dist
-          find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \;
+          if [ -d app/build/compose/binaries ]; then find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \; ; fi
           cp app/build/compose/jars/*.jar dist/
           ls -l dist
       - name: Upload ${{ matrix.name }} files
@@ -191,8 +569,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          fetch-depth: 0
+      # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      - name: Version
+        run: bash tools/app-version.sh >> "$GITHUB_ENV"
+      # Only the release files; the zk-native-* libraries are already inside the packages.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: "{android,windows,linux,macos,zk-templates}"
           path: dist
           merge-multiple: true
       - name: Publish nightly
@@ -204,10 +591,11 @@ jobs:
           cat > notes.md <<EOF
           Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
 
-          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized). The -debug.apk also allows HTTP test servers on the local network.
+          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized), with .aab for bundle distribution. The -debug.apk and -debug.aab are test builds.
           - Windows: .msi installer, no admin rights needed
           - Linux: .deb package (Debian, Ubuntu)
-          - Any OS with Java 21: DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
+          - zk-templates.jwt: signed zkTLS and zkPDF page templates, downloaded by the app (when the release key is set)
           EOF
           gh release delete nightly --cleanup-tag --yes || true
           gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md

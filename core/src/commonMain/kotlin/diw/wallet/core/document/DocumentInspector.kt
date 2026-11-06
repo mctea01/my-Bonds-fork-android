@@ -22,6 +22,12 @@ interface DocumentTrustSource {
      * complete chains whose signatures leave issuers out. They never make a chain trusted by themselves.
      */
     suspend fun knownCertificates(): List<ByteArray> = emptyList()
+
+    /**
+     * OpenPGP certificates the user added (imported files, keys looked up and confirmed, their own OpenPGP card):
+     * OpenPGP has no X.509 roots, so a signature is checked only against these keys.
+     */
+    suspend fun openPgpKeys(): List<diw.wallet.core.document.pgp.OpenPgpTrustedKey> = emptyList()
 }
 
 /**
@@ -41,6 +47,20 @@ expect object DocumentInspector {
         now: Instant = Clock.System.now(),
         /** Files of the same case by name, for the signing points of an online approval file (.si). */
         related: Map<String, ByteArray> = emptyMap(),
+    ): DocumentReport
+
+    /**
+     * Checks the one PDF signature whose ByteRange is [byteRange] in a file whose signed bytes are partly withheld
+     * (a zkPDF masked file): [sha256] is the proven digest of the signed ranges and stands for the file bytes. Trust,
+     * validity, revocation, time stamps and later changes are checked as by [inspect]; the report lists only that
+     * signature. Only SHA-256 CMS signatures (adbe.pkcs7.detached, ETSI.CAdES.detached) qualify.
+     */
+    suspend fun inspectWithheldPdf(
+        bytes: ByteArray,
+        byteRange: IntArray,
+        sha256: ByteArray,
+        trust: DocumentTrustSource,
+        now: Instant = Clock.System.now(),
     ): DocumentReport
 
     /** Verifies an RFC 3161 token (or a response holding one) over [data] (the stored file). */

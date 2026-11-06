@@ -1,5 +1,11 @@
 package diw.wallet.app
 
+import diw.wallet.core.zk.LongfellowZk
+import org.multipaz.mdoc.request.buildDeviceRequest
+import org.multipaz.mdoc.request.DocRequestInfo
+import org.multipaz.mdoc.request.ZkRequest
+import org.multipaz.mdoc.zkp.ZkSystemSpec
+import org.multipaz.mdoc.zkp.ZkDocument
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.status.CredentialStatusChecker
 import diw.wallet.core.status.RiskLevel
@@ -100,6 +106,17 @@ data class ReadDocument(
     val statusDecision: StatusDecision,
 )
 
+/** A proof reveals neither MSO dates nor a credential status reference. */
+data class ReadZkDocument(
+    val docType: String,
+    val issuerTrust: TrustDecision,
+    val chain: List<X509Cert>,
+    val proofTime: kotlin.time.Instant,
+    val claims: List<ReadClaim>,
+) {
+    override fun toString() = "ReadZkDocument"
+}
+
 /** What the in-person verification screen shows. */
 sealed class ReaderUi {
     /** Choosing what to ask for, the risk of the purpose and the reader. */
@@ -113,6 +130,7 @@ sealed class ReaderUi {
         val documents: List<ReadDocument>,
         /** Why the response could not be verified; null when every document passed the integrity checks. */
         val integrityError: String?,
+        val zkDocuments: List<ReadZkDocument> = emptyList(),
     ) : ReaderUi()
     data class Failed(val request: ReaderRequest, val message: String) : ReaderUi()
 }
@@ -127,6 +145,7 @@ sealed class ReaderUi {
 class ReaderModel(private val model: WalletModel) {
     val state = MutableStateFlow<ReaderUi>(ReaderUi.Setup)
     val readers = MutableStateFlow<NfcReaderList?>(null)
+    val longfellow by lazy { LongfellowZk(model.platform.platformName) }
 
     /** Creates the Bluetooth transport after a tap; the platform default unless a test replaces it. */
     var transportFactory: MdocTransportFactory = MdocTransportFactory.Default
@@ -163,26 +182,31 @@ class ReaderModel(private val model: WalletModel) {
         job = null
     }
 
-    /** Waits for a tap on [option] and reads [request]; the result is judged at [risk]. */
-    fun start(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel) {
+    /** Waits for a tap. [requireZk] requests only age_over_18 and forbids ordinary mdoc responses. */
+    fun start(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false) {
         cancel()
-        job = model.scope.launch { read(option, request, risk) }
+        job = model.scope.launch { read(option, request, risk, requireZk) }
     }
 
     private class Unavailable(message: String) : Exception(message)
 
     /** The decrypted DeviceResponse and what it is bound to. */
-    private class Received(val response: ByteArray, val transcript: DataItem, val eReaderKey: EcPrivateKey, val transport: String)
+    private class Received(val response: ByteArray, val transcript: DataItem, val eReaderKey: EcPrivateKey, val transport: String, val zkSpecs: List<ZkSystemSpec>)
 
     private sealed class Tapped {
         class Done(val received: Received) : Tapped()
         class Bluetooth(val handover: MdocReaderNfcHandoverResult) : Tapped()
     }
 
-    internal suspend fun read(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel) {
+    internal suspend fun read(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false) {
         val where = if (option.external) "讀卡機「${option.name}」" else "這支手機的背面"
         state.value = ReaderUi.Scanning(request, "請對方在錢包開啟「感應出示」，再把手機靠近$where。")
         try {
+            val zkSpecs = if (requireZk) {
+                if (request != ReaderRequest.AGE_OVER_18) throw Unavailable("零知識查驗目前僅支援年滿 18 歲")
+                longfellow.unavailableReason?.let { throw Unavailable(it) }
+                longfellow.specs(1).also { if (it.isEmpty()) throw Unavailable("沒有可用的 Longfellow 電路") }
+            } else emptyList()
             val bluetooth = option.bluetooth && model.platform.proximityTransportUnavailableReason() == null
             val offered = buildList<MdocConnectionMethod> {
                 if (bluetooth) {
@@ -193,7 +217,7 @@ class ReaderModel(private val model: WalletModel) {
             }
             val eReaderKey = Crypto.createEcPrivateKey(EcCurve.P256)
             val tapped = option.reader.scan<Tapped>(
-                message = "請將對方的手機靠近",
+                message = "請對方在錢包開啟「感應出示」，再將手機背面貼近$where，保持靠近直到讀取完成。",
                 tagInteractionFunc = { tag ->
                     // Not an mdoc (a card, a locked phone that asks to be unlocked): keep waiting for the next tap.
                     val handover = mdocReaderNfcHandover(tag, offered) ?: return@scan null
@@ -206,7 +230,7 @@ class ReaderModel(private val model: WalletModel) {
                         state.value = ReaderUi.Scanning(request, "已感應，請對方在手機上確認分享，期間手機請保持靠近。")
                         val transport = NfcTransportMdocReader(MdocRole.MDOC_READER, transportOptions, nfc)
                         transport.setTag(tag)
-                        Tapped.Done(exchange(transport, handover, eReaderKey, request, "NFC"))
+                        Tapped.Done(exchange(transport, handover, eReaderKey, request, "NFC", zkSpecs))
                     }
                 },
             )
@@ -221,7 +245,7 @@ class ReaderModel(private val model: WalletModel) {
                         )
                     }
                     state.value = ReaderUi.Scanning(request, "已感應，以藍牙連線。請對方在手機上確認分享。")
-                    exchange(transportFactory.createTransport(ble, MdocRole.MDOC_READER, transportOptions), tapped.handover, eReaderKey, request, "藍牙")
+                    exchange(transportFactory.createTransport(ble, MdocRole.MDOC_READER, transportOptions), tapped.handover, eReaderKey, request, "藍牙", zkSpecs)
                 }
             }
             state.value = ReaderUi.Scanning(request, "驗證證件與查詢狀態")
@@ -247,6 +271,7 @@ class ReaderModel(private val model: WalletModel) {
         eReaderKey: EcPrivateKey,
         request: ReaderRequest,
         via: String,
+        zkSpecs: List<ZkSystemSpec>,
     ): Received {
         try {
             val encodedEngagement = handover.encodedDeviceEngagement.toByteArray()
@@ -263,7 +288,10 @@ class ReaderModel(private val model: WalletModel) {
                 remotePublicKey = engagement.eDeviceKey,
                 encodedSessionTranscript = encodedTranscript,
             )
-            val deviceRequest = DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
+            val deviceRequest = if (zkSpecs.isNotEmpty()) Cbor.encode(buildDeviceRequest(transcript) {
+                addDocRequest(request.docType, mapOf(request.namespace to mapOf("age_over_18" to false)),
+                    DocRequestInfo(zkRequest = ZkRequest(systemSpecs = zkSpecs, zkRequired = true)))
+            }.toDataItem()) else DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
                 docType = request.docType,
                 // Nothing is kept: the wallet records field names only.
                 itemsToRequest = mapOf(request.namespace to request.elements.associateWith { false }),
@@ -296,7 +324,7 @@ class ReaderModel(private val model: WalletModel) {
             if (transport !is NfcTransportMdocReader) {
                 runCatching { transport.sendMessage(SessionEncryption.encodeStatus(Constants.SESSION_DATA_STATUS_SESSION_TERMINATION)) }
             }
-            return Received(plain, transcript, eReaderKey, via)
+            return Received(plain, transcript, eReaderKey, via, zkSpecs)
         } finally {
             runCatching { transport.close() }
         }
@@ -307,15 +335,31 @@ class ReaderModel(private val model: WalletModel) {
         // Issuer signature, digests, validity at this time and device authentication bound to this session.
         val integrity = try {
             response.verify(sessionTranscript = received.transcript, eReaderKey = AsymmetricKey.anonymous(received.eReaderKey))
+            if (received.zkSpecs.isNotEmpty()) {
+                require(response.status == DeviceResponse.STATUS_OK && response.documents.isEmpty() && response.zkDocuments.size == 1)
+                val proof = response.zkDocuments.single()
+                require(proof.documentData.docType == request.docType)
+                require(proof.documentData.issuerSigned.keys == setOf(request.namespace))
+                require(proof.documentData.issuerSigned.getValue(request.namespace).keys == setOf("age_over_18"))
+                longfellow.verify(proof, received.zkSpecs, received.transcript)
+            }
             null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            integrityFailure(e)
+            if (received.zkSpecs.isNotEmpty()) "零知識證明驗證失敗" else integrityFailure(e)
         }
         if (integrity != null) {
             model.record(HistoryKind.VERIFIED, "出示者", null, note = note(request, received.transport), failure = integrity)
             return ReaderUi.Result(request, risk, received.transport, emptyList(), integrity)
+        }
+        if (received.zkSpecs.isNotEmpty()) {
+            val documents = response.zkDocuments.map { zkDocument(it) }
+            documents.forEach { d ->
+                model.record(HistoryKind.VERIFIED, "零知識年齡證明", d.issuerTrust,
+                    claims = d.claims.map { it.label }, note = note(request, received.transport) + "；Longfellow 零知識證明，未揭露 MSO 與撤銷狀態")
+            }
+            return ReaderUi.Result(request, risk, received.transport, emptyList(), null, documents)
         }
         if (response.status != DeviceResponse.STATUS_OK && response.documents.isEmpty()) {
             throw Unavailable("對方回應錯誤（狀態碼 ${response.status}），沒有提供證件。")
@@ -331,6 +375,16 @@ class ReaderModel(private val model: WalletModel) {
             )
         }
         return ReaderUi.Result(request, risk, received.transport, documents, null)
+    }
+
+    private suspend fun zkDocument(proof: ZkDocument): ReadZkDocument {
+        val data = proof.documentData
+        val chain = data.msoX5chain?.certificates ?: emptyList()
+        // The proof binds the docType, so a VICAL that authorises the issuer for other document types still limits it.
+        val trust = model.trust.decide(TrustRole.ISSUER, chain, docType = data.docType)
+        val value = data.issuerSigned.getValue(MDL_NS).getValue("age_over_18").asBoolean
+        return ReadZkDocument(data.docType, trust, chain, data.timestamp,
+            listOf(ReadClaim(model.claimLabel(listOf(MDL_NS, "age_over_18"), null, null), if (value) "是" else "否")))
     }
 
     private suspend fun document(doc: MdocDocument, request: ReaderRequest, risk: RiskLevel): ReadDocument {

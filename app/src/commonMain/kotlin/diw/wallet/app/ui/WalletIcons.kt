@@ -53,6 +53,11 @@ object WalletIcons {
         )
     }
 
+    /** Picture: read a QR Code from an image. */
+    val Image by lazy {
+        icon("Image", "M21,19V5c0,-1.1 -0.9,-2 -2,-2H5c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h14c1.1,0 2,-0.9 2,-2zM8.5,13.5l2.5,3.01L14.5,12l4.5,6H5l3.5,-4.5z")
+    }
+
     /** Scanner frame: scan a code. */
     val Scan by lazy {
         icon(
@@ -118,6 +123,12 @@ object WalletIcons {
 
     /** Paper plane: a presentation that was sent. */
     val Send by lazy { icon("Send", "M2.01,21L23,12 2.01,3 2,10l15,2 -15,2z") }
+    val Share by lazy {
+        icon("Share", "M18,16.08c-0.76,0 -1.44,0.3 -1.96,0.77L8.91,12.7c0.05,-0.23 0.09,-0.46 0.09,-0.7s-0.04,-0.47 -0.09,-0.7l7.05,-4.11" +
+            "c0.54,0.5 1.25,0.81 2.04,0.81 1.66,0 3,-1.34 3,-3s-1.34,-3 -3,-3 -3,1.34 -3,3c0,0.24 0.04,0.47 0.09,0.7L8.04,9.81" +
+            "C7.5,9.31 6.79,9 6,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3c0.79,0 1.5,-0.31 2.04,-0.81l7.12,4.16c-0.05,0.21 -0.08,0.43 -0.08,0.65" +
+            " 0,1.61 1.31,2.92 2.92,2.92s2.92,-1.31 2.92,-2.92 -1.31,-2.92 -2.92,-2.92z")
+    }
 
     /** Tray with a down arrow: a document that was received. */
     val Receive by lazy { icon("Receive", "M19,9h-4V3H9v6H5l7,7 7,-7zM5,18v2h14v-2H5z") }

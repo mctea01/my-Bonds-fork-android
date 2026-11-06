@@ -54,6 +54,18 @@ class MobileMoicaResult(val signature: ByteArray, val certificate: ByteArray, va
 class MobileMoicaException(val code: String?, message: String) : Exception(message)
 
 /**
+ * Where mobile citizen certificate signing requests go: the Ministry of the Interior's service with an SP account held
+ * here ([TwFidoClient]), or a server that holds the account ([ServerMobileMoicaClient]). Either way the signature and
+ * certificate come back unverified; [MobileMoicaSigner] checks them.
+ */
+interface MobileMoicaService {
+    suspend fun requestPush(idNumber: String, hint: String, data: ByteArray, timeLimit: Int, deviceAlias: String? = null): MobileMoicaTicket
+    suspend fun requestAppToApp(idNumber: String, hint: String, data: ByteArray, timeLimit: Int): MobileMoicaTicket
+    /** Polls until the holder signs or [timeLimit] (plus a margin) passes. */
+    suspend fun await(ticket: MobileMoicaTicket, timeLimit: Int, pollInterval: Duration = TwFidoClient.POLL_INTERVAL): MobileMoicaResult
+}
+
+/**
  * TW FidO SP API v2.9 client for the SIGN operation, following Bonds' implementation: push to the holder's device
  * (ATH-03), app-to-app tickets (ATH-01) and result polling (ATH-02). Every request carries sp_checksum and every
  * result is accepted only when idp_checksum opens under the same key and covers this response.
@@ -63,9 +75,9 @@ class TwFidoClient(
     private val environment: MobileMoicaEnvironment,
     private val credentials: MobileMoicaCredentials,
     private val baseUrl: String = environment.baseUrl,
-) {
+) : MobileMoicaService {
     /** Asks the service to push a signing prompt to the holder's devices ([deviceAlias] limits it to one device). */
-    suspend fun requestPush(idNumber: String, hint: String, data: ByteArray, timeLimit: Int, deviceAlias: String? = null): MobileMoicaTicket {
+    override suspend fun requestPush(idNumber: String, hint: String, data: ByteArray, timeLimit: Int, deviceAlias: String?): MobileMoicaTicket {
         checkTimeLimit(timeLimit)
         val txn = newTransactionId()
         val signData = Base64.encode(data)
@@ -75,7 +87,7 @@ class TwFidoClient(
     }
 
     /** Issues an app-to-app ticket; open [deepLink] to hand the request to the mobile citizen certificate app. */
-    suspend fun requestAppToApp(idNumber: String, hint: String, data: ByteArray, timeLimit: Int): MobileMoicaTicket {
+    override suspend fun requestAppToApp(idNumber: String, hint: String, data: ByteArray, timeLimit: Int): MobileMoicaTicket {
         checkTimeLimit(timeLimit)
         val txn = newTransactionId()
         val signData = Base64.encode(data)
@@ -114,8 +126,7 @@ class TwFidoClient(
         return MobileMoicaResult(sigBytes, certDer, hashed)
     }
 
-    /** Polls until the holder signs or [timeLimit] (plus a margin) passes. */
-    suspend fun await(ticket: MobileMoicaTicket, timeLimit: Int, pollInterval: Duration = POLL_INTERVAL): MobileMoicaResult {
+    override suspend fun await(ticket: MobileMoicaTicket, timeLimit: Int, pollInterval: Duration): MobileMoicaResult {
         val deadline = Clock.System.now() + timeLimit.seconds + 10.seconds
         while (true) {
             delay(pollInterval)
@@ -286,7 +297,7 @@ enum class MobileMoicaMode(val title: String) {
  * the app. Every signature is checked against that certificate, so another holder's answer is refused.
  */
 class MobileMoicaSigner(
-    private val client: TwFidoClient,
+    private val client: MobileMoicaService,
     private val idNumber: String,
     private val mode: MobileMoicaMode,
     private val hint: String,

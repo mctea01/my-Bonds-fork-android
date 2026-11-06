@@ -1,0 +1,38 @@
+{
+  "command": "./gradlew :core:compileKotlinJvm :app:compileKotlinDesktop :test-servers:test",
+  "options": [
+    "--no-daemon",
+    "--console=plain",
+    "--max-workers=2",
+    "-Dorg.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8",
+    "-Pkotlin.compiler.execution.strategy=in-process"
+  ],
+  "result": "BUILD SUCCESSFUL",
+  "elapsed_seconds": 249,
+  "suites": 62,
+  "tests": 362,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 29,
+  "integration_regressions": [
+    {
+      "classname": "diw.testservers.zktls.ZkTlsSessionTest",
+      "name": "deviceVerifierBehindTheRelay()",
+      "skipped": true,
+      "failure": false
+    },
+    {
+      "classname": "diw.testservers.zktls.ZkTlsPlanTest",
+      "name": "signedRequestRoundTrip()",
+      "skipped": false,
+      "failure": false
+    },
+    {
+      "classname": "diw.testservers.zktls.ZkTemplatePackTest",
+      "name": "signedPackRoundTrip()",
+      "skipped": false,
+      "failure": false
+    }
+  ],
+  "native_build": "Existing auto configuration skipped Rust native build because cargo is unavailable; native-dependent tests remain skipped"
+}

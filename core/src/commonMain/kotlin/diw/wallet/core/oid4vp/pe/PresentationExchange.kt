@@ -179,6 +179,41 @@ object PresentationExchange {
         return out.values.toList()
     }
 
+    /**
+     * True when [picked] (one match per descriptor id) is a submission the definition accepts: every descriptor when
+     * there are no submission_requirements, otherwise each requirement met and no descriptor outside them. Used when the
+     * holder swaps a chosen credential for another candidate.
+     */
+    fun satisfies(definition: PresentationDefinition, picked: Map<String, DescriptorMatch>): Boolean {
+        if (picked.any { (id, m) -> m.descriptor.id != id }) return false
+        if (definition.requirements.isEmpty()) return definition.descriptors.all { it.id in picked } && picked.size == definition.descriptors.size
+        val covered = mutableSetOf<String>()
+        fun met(r: SubmissionRequirement): Boolean {
+            // A member is present when its descriptor is picked, or when its nested requirement is met by picked descriptors.
+            val present: Int
+            val total: Int
+            if (r.from != null) {
+                val ids = definition.descriptors.filter { r.from in it.groups }.map { it.id }
+                covered += ids
+                total = ids.size
+                present = ids.count { it in picked }
+            } else {
+                total = r.fromNested.size
+                present = r.fromNested.count { met(it) }
+            }
+            return when (r.rule) {
+                "all" -> total > 0 && present == total
+                "pick" -> {
+                    val min = r.count ?: r.min ?: 1
+                    val max = r.count ?: r.max ?: total
+                    present in min..max
+                }
+                else -> false
+            }
+        }
+        return definition.requirements.all { met(it) } && picked.keys.all { it in covered }
+    }
+
     private fun evaluate(r: SubmissionRequirement, def: PresentationDefinition, pick: (String) -> DescriptorMatch?): List<DescriptorMatch>? {
         // Each member is a list of matches (one per descriptor of a group, or the result of a nested requirement).
         val members: List<List<DescriptorMatch>?> = if (r.from != null) {

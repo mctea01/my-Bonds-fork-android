@@ -313,7 +313,7 @@
       "file": "esign-partners/hbca-8829892d.pem",
       "name": "HBCA",
       "subjectDN": "C=CN, ST=Hubei, L=Wuhan, O=Hubei Digital Certificate Authority Center CO Ltd., CN=HBCA",
-      "owner": "河北省電子認證 HBCA",
+      "owner": "湖北省數字證書認證 HBCA",
       "purposes": "文件簽章（e簽寶線上簽署平台合作的憑證機構）",
       "url": "https://etreaty.oss-cn-hangzhou.aliyuncs.com/apps/open-platform-download/eSign-Partnered-CA-Root-Certificates-20260518.zip",
       "page": "https://help.esign.cn/detail?id=pkmiax&nameSpace=cs3-dept%2Fexboae",
@@ -776,7 +776,7 @@
       "defaultOwner": "e簽寶合作 CA",
       "owners": {
         "CFCA根证书": "中國金融認證中心 CFCA",
-        "HBCA根证书": "河北省電子認證 HBCA",
+        "HBCA根证书": "湖北省數字證書認證 HBCA",
         "SmartCA根证书": "SmartCA",
         "ZJCA根证书": "浙江省數字安全證書管理中心 ZJCA",
         "eSignCA根证书": "e簽寶 eSign",
@@ -788,5 +788,9 @@
         "黑龙江CA（中安）根证书": "黑龍江 CA（中安）HLJCA"
       }
     }
-  ]
+  ],
+  "c2pa": {
+    "url": "https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem",
+    "file": "c2pa/C2PA-TRUST-LIST.pem"
+  }
 }

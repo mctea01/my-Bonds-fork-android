@@ -1,0 +1,78 @@
+{
+  "scope": "inflate segment with 32 KiB history",
+  "nargo": "nargo version = 1.0.0-beta.15\nnoirc version = 1.0.0-beta.15+83245db91dcf63420ef4bcbbd85b98f397fee663\n(git version hash: 83245db91dcf63420ef4bcbbd85b98f397fee663, is dirty: false)",
+  "status": "compiled",
+  "exit_code": 0,
+  "seconds": 120.077601899,
+  "peak_rss_kib": 1944028,
+  "timeout_seconds": 1800,
+  "address_space_limit_gib": 24,
+  "rss_guard_gib": 5.0,
+  "compressed_capacity": 8192,
+  "plain_capacity": 2048,
+  "token_capacity": 352,
+  "block_capacity": 1,
+  "main_sha256": "3aed479fabc0164d63682b43bc75ca8a23989b1c3a8d37fde8ced367adf27ec1",
+  "inflate_source_sha256": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+  "segment_source_sha256": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b",
+  "history_segments": 16,
+  "acir_sha256": "66499f8f40fd5a5c106e4095d0774a171816cda32a28779b66abb454ea5872b2",
+  "acir_opcodes": 550958,
+  "vk_sha256": "9e2fb178d307965de315666734f8abc79cfda454115bca7ff4503274ae684f9c",
+  "gates": {
+    "functions": [
+      {
+        "acir_opcodes": 550958,
+        "circuit_size": 1009891
+      }
+    ]
+  },
+  "prove": {
+    "first": {
+      "seconds": 43.019370756999706,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1861800
+    },
+    "warm": {
+      "seconds": 45.44355181900028,
+      "exit_code": 0,
+      "status": "completed",
+      "peak_rss_kib": 1861520
+    }
+  },
+  "verify": {
+    "seconds": 0.02046147100190865,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 34864
+  },
+  "proof_bytes": 16256,
+  "measurement_command": "nargo info (fresh package; includes compilation)",
+  "environment": {
+    "memory.max": "8589934592",
+    "cpu.max": "200000 100000",
+    "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "source_snapshot_sha256": {
+    "/workspace/my-Bonds-fork-android/native/circuits/pdf_text_v1/src/commitment.nr": "78b71c8cb33da4e8ed6c17a86dc8f4a0b1ef69142cbf35d331fe98c55e477f0a",
+    "/workspace/my-Bonds-fork-android/native/circuits/pdf_text_v1/src/inflate.nr": "d782d21857cf0521981520b2db767b29b7028b6c876641ad31ebac8ba1b27c74",
+    "/workspace/my-Bonds-fork-android/native/circuits/pdf_text_v1/src/inflate_segment.nr": "da22ab01139345821291feb51936b4a781ac1fe8e53b02511be6a81d76215d8b"
+  },
+  "gate_measurement": {
+    "exit_code": 0,
+    "status": "compiled",
+    "seconds": 2.924628633001703
+  },
+  "proof_scope": "Synthetic repeated-byte stream fills plain capacity; first/final or second/final segment",
+  "zero_knowledge": true,
+  "oracle_hash": "poseidon2",
+  "pre_witness_acir_sha256": "66499f8f40fd5a5c106e4095d0774a171816cda32a28779b66abb454ea5872b2",
+  "witness": {
+    "seconds": 3.331095715002448,
+    "exit_code": 0,
+    "status": "completed",
+    "peak_rss_kib": 443200
+  },
+  "public_input_bytes": 800
+}

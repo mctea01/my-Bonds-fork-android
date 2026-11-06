@@ -1,0 +1,26 @@
+[package]
+name = "zkpdf-prover"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "zkpdf-vk"
+required-features = ["bb"]
+
+[features]
+default = []
+bb = []
+# Measurement builds only; production retains two workers.
+bench-workers = ["bb"]
+
+[dependencies]
+acvm = { git = "https://github.com/noir-lang/noir.git", rev = "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7", features = ["bn254"] }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir.git", rev = "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7" }
+noirc_abi = { git = "https://github.com/noir-lang/noir.git", rev = "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7", features = ["bn254"] }
+base64 = "=0.22.1"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+sha2 = { workspace = true, features = ["compress"] }
+getrandom = "=0.2.17"
+flate2 = "=1.1.10"

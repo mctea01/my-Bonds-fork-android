@@ -1,0 +1,28 @@
+{
+  "exit_code": 124,
+  "seconds": 600.4248681930003,
+  "peak_rss_kib": 17328776,
+  "address_space_limit_gib": 24,
+  "compressed_capacity": 8192,
+  "plain_capacity": 40960,
+  "token_capacity": 20480,
+  "block_capacity": 8,
+  "scope": "Original M3a inflate only; not pdf_text_v1_1p",
+  "status": "timeout",
+  "timeout_seconds": 600,
+  "nargo": "1.0.0-beta.15",
+  "source_commit": "24f32af39d605c92ee3f038ced1263ddbff3c6ff",
+  "inflate_source_sha256": "c8513f21c7ee4240a4c15784eb5b60a5062daa835d11542661cf476d3a800eef",
+  "environment": {
+    "cpu": "AMD EPYC 9V74",
+    "cpu_quota": 4,
+    "memory_limit_gib": 32
+  },
+  "acir_sha256": null,
+  "vk_sha256": null,
+  "gates": null,
+  "prove": null,
+  "verify": null,
+  "proof_bytes": null,
+  "main_source": "use pdf_text_v1::inflate::{inflate,BlockHint,TokenHint};\nfn main(data:[u8;8192],data_len:u32,blocks:[BlockHint;8],block_count:u32,tokens:[TokenHint;20480],owners:[u32;40960],plain_len:u32,expected:[u8;40960]) {\n assert_eq(inflate(data,data_len,blocks,block_count,tokens,owners,plain_len),expected);\n}\n"
+}
