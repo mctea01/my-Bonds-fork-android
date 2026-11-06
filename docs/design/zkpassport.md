@@ -185,19 +185,21 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 請求要 FaceMatch 或 OPRF 時，本錢包可以用本專案的值產生（5.5），但 zkPassport 的查驗端會拒絕；同意畫面先說明這一點，使用者仍要送出才產生。`compressed` 模式需要 zkPassport 雲端證明器，預設不做，使用者同意後才交給它。
 - 協定沒有公開規格，SDK 升級曾要求 App 最低版本（SDK 0.17 需要 App 1.4.0）；以 SDK 的 e2e 測試與 bridge acceptance 測試建立回歸測試，並以設定頁顯示支援的協定版本。
 
-Z3 進度（2026-11-06，core 完成）：
+Z3 進度（2026-11-06，core 與 App 流程完成，只在測試環境）：
 
 - `ZkPassport.parseLink` 讀 `https://zkpassport.id/r`（與 App Clip 的 `/c`）連結成 `ZkPassportIncoming`（網域、查驗方公鑰、查詢、服務資訊、模式、SDK 版本、dev）。
 - `ZkPassportHolderBridge` 是 bridge 的持有端：第一次連線以 `moc` 帶交握、以 `ooc` 向 bridge 取得建立者連線的 origin；之後 bridge 標示其他 origin 的訊框一律丟棄（與 @obsidion/bridge 的 joiner 相同）。加解密與建立端共用 `ZkPassportBridgeChannel`。
 - `ZkPassportResponder`：連線並取得 origin（`originMatches` 比對連結的網域，不符時 App 以強提示確認）、送 `accept`／`reject`，再送證明器產生的訊息；證明期間連線中斷時重新連線。
-- 測試以本機 bridge 讓本錢包的查驗端與回應器完整交換一次。App 的掃描、同意畫面與證明流程待做；完整流程仍需 0.22.0 電路。
+- 測試以本機 bridge 讓本錢包的查驗端與回應器完整交換一次。完整流程仍需 0.22.0 電路。
+- App（`ZkPassportFlow.answer`）：`WalletModel.handleUri` 辨識請求連結（掃描或開啟），需要 zkPassport 聲明，且在 v3 聲明審閱並寫入 `LegalTexts.kt` 前只在測試環境開放（正式環境顯示說明，不連線）。先以 `ZkPassportHolder.connect` 開 bridge 取得 origin，同意畫面（`OfflineUi.ZkPassportAnswerConsent`）列出請求自述的網域、服務與用途（標示未經驗證）、`asks` 整理的每項要求與已保存的電子護照；origin 不符時以 `RiskConfirmDialog` 再確認。同意後以該護照 `MrtdDump` 的 SOD、DG1、DG2 證明並送出，拒絕送 `reject`；兩者都記入紀錄（不保存證明）。FaceMatch 與 fast 以外的模式只能拒絕；回應時不使用 OPRF（未加鹽識別碼）。e2e 測試 `zkPassportAnswerFlow`。
+- 聲明 v3 草稿（涵蓋回應請求與 OPRF）待使用者審閱，審閱前不改 `LegalTexts.kt`。
 
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 
 - 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo，`src/` 不改）。電路的選擇、順序與輸入都與官方 App 相同。
 - `diw-zk-ffi` 匯出 `ZkPassportProofSession`（driver 的 next／provide）與 `zkpassport_prove`（執行電路並以 bb v6 證明，回傳公開輸入接證明的 hex 與 vkey；先做上一節的 vkey 雜湊核對，不符回 `circuit_vkey_mismatch`）。compare_age 在 x86_64 release 約 4 秒（含 vkey 計算）。
 - Kotlin `ZkPassportProver`（jvmCommonMain）：鏈上 `latestRoot` 取最新憑證根，憑證包要雜湊到該根，manifest 的電路根要在註冊表有效，之後下載電路逐一證明；註冊表檔案以網址快取（憑證包以根、manifest 以版本、電路以雜湊命名，不會過期），只接受 zkpassport.id 的 HTTPS 主機。bridge 的 `proof` 訊息補上 SDK 需要的 `vkeyHash` 與 `version`。鹽為每次新產生的 248 位元亂數。
-- 預設電路版本 `0.22.0`（第一個以 bb v6 產生 vkey 的版本，尚未發佈）；0.21.1 的電路在 vkey 核對就會停下，因為 bb v6 算出的 vkey 與發佈的不同（4.2）。若使用者決定加入 bb v5，這裡改為依電路包的 `bb_version` 選擇後端。
+- 預設電路版本 `0.22.0`（第一個以 bb v6 產生 vkey 的版本，尚未發佈）；0.21.1 的電路在 vkey 核對就會停下，因為 bb v6 算出的 vkey 與發佈的不同（4.2）。使用者 2026-11-06 決定只用 bb v6、等 0.22.0，不加入 bb v5。
 - 測試：原生 `cargo test -p diw-zk-ffi --features zkpdf`（含以 compare_age 實際證明並驗證的 ignored 測試）；`ZkPassportProverTest` 以真實憑證包與 0.21.1 manifest 檢查核對順序與錯誤碼。完整流程需要真實護照與 0.22.0 電路，排在實機驗證。
 
 ### 5.4 Z4 文件與憑證整合
