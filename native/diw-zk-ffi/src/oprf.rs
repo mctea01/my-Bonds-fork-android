@@ -5,6 +5,7 @@
 use crate::ZkError;
 
 /// zkPassport's OPRF domain separator (`OPRF_DEFAULT_DOMAIN_SEPARATOR`, matching the oprf-nr library).
+#[cfg(feature = "oprf")]
 pub const DOMAIN_SEPARATOR: u64 = 1_330_664_006;
 
 #[cfg(feature = "oprf")]
