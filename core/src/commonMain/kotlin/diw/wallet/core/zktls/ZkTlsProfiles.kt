@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.zk.ZkTemplatePack
 
@@ -37,8 +38,8 @@ object ZkTlsProfiles {
             }
             return known
         }
-        val definition = request.profileDefinition ?: throw ProtocolException("invalid_profile", "查驗頁 ${request.profileId} 不在已安裝的版型包中，請更新版型")
-        if (!allowInline) throw ProtocolException("invalid_profile", "查驗頁 ${request.profileId} 不在已安裝的版型包中，只能在測試環境使用")
+        val definition = request.profileDefinition ?: throw ProtocolException("invalid_profile", ct("core_zkp_profile_update", request.profileId))
+        if (!allowInline) throw ProtocolException("invalid_profile", ct("core_zkp_profile_test", request.profileId))
         val profile = ZkTlsProfile.parse(definition)
         if (profile.id != request.profileId) throw ProtocolException("invalid_profile", "The verification page does not match the request")
         return profile

@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,7 +45,7 @@ actual object ZkTlsDirect {
             val socket = try {
                 context.socketFactory.createSocket(profile.host, profile.port) as SSLSocket
             } catch (e: Exception) {
-                throw ProtocolException("unavailable", "無法連到 ${profile.host}：${e.message}", e)
+                throw ProtocolException("unavailable", ct("core_zkd_unreachable", profile.host, e.message), e)
             }
             try {
                 socket.soTimeout = TIMEOUT_MS
@@ -59,7 +60,7 @@ actual object ZkTlsDirect {
                 refused = e
             }
         }
-        throw ProtocolException("untrusted_server", "${profile.host} 的 TLS 連線無法建立或憑證不受信任：${refused?.message}", refused)
+        throw ProtocolException("untrusted_server", ct("core_zkd_tls", profile.host, refused?.message), refused)
     }
 
     private fun store(roots: List<ByteArray>): KeyStore {

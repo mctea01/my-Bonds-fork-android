@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -58,28 +59,28 @@ object ZkTlsPrepare {
         previous?.values?.let { values.putAll(it) }
         if (previous == null) prepare.page?.let { path ->
             val page = fetch(path)
-            if (!page.status.isSuccess()) throw ProtocolException("prepare_failed", "網站回應 ${page.status.value}，無法開始查詢")
+            if (!page.status.isSuccess()) throw ProtocolException("prepare_failed", ct("core_zkp_site_status", page.status.value))
             if (prepare.values.isNotEmpty()) {
                 val bytes = page.readRawBytes()
-                if (bytes.size > MAX_PAGE) throw ProtocolException("prepare_failed", "網站頁面過大")
+                if (bytes.size > MAX_PAGE) throw ProtocolException("prepare_failed", ct("core_zkp_page_large"))
                 val text = bytes.decodeToString()
                 prepare.values.forEach { v ->
                     val value = Regex(v.pattern).find(text)?.groupValues?.getOrNull(1)
-                    if (value == null || !ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("prepare_failed", "網站頁面沒有查詢需要的欄位，頁面可能已改版")
+                    if (value == null || !ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("prepare_failed", ct("core_zkp_page_changed"))
                     values[v.name] = value
                 }
             }
         }
         val image = ZkTlsProfile.PLACEHOLDER.replace(prepare.image!!) { m ->
-            (values[m.groupValues[1]] ?: throw ProtocolException("prepare_failed", "網頁工作階段已失效")).encodeURLParameter()
+            (values[m.groupValues[1]] ?: throw ProtocolException("prepare_failed", ct("core_zkp_session_gone"))).encodeURLParameter()
         }
         val picture = fetch(image)
-        if (!picture.status.isSuccess()) throw ProtocolException("prepare_failed", "網站回應 ${picture.status.value}，無法取得驗證碼圖片")
-        if (picture.contentType()?.contentType != "image") throw ProtocolException("prepare_failed", "網站沒有回傳驗證碼圖片")
+        if (!picture.status.isSuccess()) throw ProtocolException("prepare_failed", ct("core_zkp_captcha_status", picture.status.value))
+        if (picture.contentType()?.contentType != "image") throw ProtocolException("prepare_failed", ct("core_zkp_no_captcha"))
         val bytes = picture.readRawBytes()
-        if (bytes.isEmpty() || bytes.size > MAX_IMAGE) throw ProtocolException("prepare_failed", "驗證碼圖片大小不符")
+        if (bytes.isEmpty() || bytes.size > MAX_IMAGE) throw ProtocolException("prepare_failed", ct("core_zkp_captcha_size"))
         val missing = prepare.cookies.filter { it !in cookies }
-        if (missing.isNotEmpty()) throw ProtocolException("prepare_failed", "網站沒有建立查詢工作階段")
+        if (missing.isNotEmpty()) throw ProtocolException("prepare_failed", ct("core_zkp_no_session"))
         return Session(cookies.filterKeys { it in prepare.cookies }, bytes, values)
     }
 }

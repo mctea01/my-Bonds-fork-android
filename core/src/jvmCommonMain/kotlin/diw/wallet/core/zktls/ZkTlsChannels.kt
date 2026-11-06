@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zk.native.bindings.ZkTlsChannel
 import io.ktor.websocket.DefaultWebSocketSession
@@ -34,14 +35,14 @@ internal object ZkTlsChannels {
  * and ZkTlsHost).
  */
 enum class ZkTlsChannelEnd(val reason: String?, val message: String, val retry: Boolean) {
-    PEER_LEFT("Peer left", "對方已離開連線，原因請看對方的畫面", true),
-    LIMIT("Room limit", "中繼中止了連線：超過中繼的傳輸量上限", false),
-    EXPIRED("Room expired", "中繼中止了連線：超過中繼房間的 15 分鐘上限，請查驗方重新產生 QR code", false),
-    REFUSED("Room unavailable", "中繼拒絕加入：這個查驗的房間已有兩方或已關閉，請查驗方重新產生 QR code", false),
-    BUSY("Too many connections", "中繼拒絕加入：同一個網路位址的連線太多，請稍後再試", true),
-    HOST_UNKNOWN("No such session", "查驗主機找不到這個查驗請求：可能已過期或已經使用過，請重新建立", false),
-    HOST_BUSY("Busy, try again", "查驗主機正在處理另一個查驗，請稍後再試", true),
-    NO_REPLY(null, "查驗方沒有回應：對方可能已離開查驗畫面或關閉螢幕，請查驗方重新產生 QR code", false),
+    PEER_LEFT("Peer left", ct("core_zkc_peer_left"), true),
+    LIMIT("Room limit", ct("core_zkc_relay_quota"), false),
+    EXPIRED("Room expired", ct("core_zkc_relay_time"), false),
+    REFUSED("Room unavailable", ct("core_zkc_relay_full"), false),
+    BUSY("Too many connections", ct("core_zkc_relay_busy"), true),
+    HOST_UNKNOWN("No such session", ct("core_zkc_host_unknown"), false),
+    HOST_BUSY("Busy, try again", ct("core_zkc_host_busy"), true),
+    NO_REPLY(null, ct("core_zkc_no_answer"), false),
     ;
 
     companion object {

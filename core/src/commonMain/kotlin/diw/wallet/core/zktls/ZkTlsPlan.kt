@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
@@ -38,8 +39,8 @@ object ZkTlsPlanner {
     ): ByteArray {
         val r = profile.request
         for (input in r.inputs) {
-            val value = inputs[input.name] ?: throw ProtocolException("invalid_input", "${input.label}未填寫")
-            if (!Regex(input.pattern).matches(value)) throw ProtocolException("invalid_input", "${input.label}格式不符")
+            val value = inputs[input.name] ?: throw ProtocolException("invalid_input", ct("core_zkp_missing", input.label))
+            if (!Regex(input.pattern).matches(value)) throw ProtocolException("invalid_input", ct("core_zkp_format", input.label))
         }
         val page = pageValues(profile, values)
         fun raw(name: String) = inputs[name] ?: page.getValue(name)
@@ -53,7 +54,7 @@ object ZkTlsPlanner {
                 template.split('&').forEach { pair ->
                     val value = ZkTlsProfile.PLACEHOLDER.replace(pair.substringAfter('=')) { raw(it.groupValues[1]) }
                     // A value can never end its part: no line breaks, no boundary.
-                    if ('\r' in value || '\n' in value || BOUNDARY in value) throw ProtocolException("invalid_input", "輸入的內容含有不允許的字元")
+                    if ('\r' in value || '\n' in value || BOUNDARY in value) throw ProtocolException("invalid_input", ct("core_zkp_bad_chars"))
                     append("--").append(BOUNDARY).append("\r\n")
                     append("Content-Disposition: form-data; name=\"").append(pair.substringBefore('=')).append("\"\r\n\r\n")
                     append(value).append("\r\n")
@@ -76,7 +77,7 @@ object ZkTlsPlanner {
             append("\r\n")
         }.encodeToByteArray()
         val bytes = if (body == null) head else head + body
-        if (bytes.size > profile.limits.maxSent) throw ProtocolException("invalid_input", "請求超過 ${profile.limits.maxSent} 位元組")
+        if (bytes.size > profile.limits.maxSent) throw ProtocolException("invalid_input", ct("core_zkp_too_long", profile.limits.maxSent))
         return bytes
     }
 
@@ -85,8 +86,8 @@ object ZkTlsPlanner {
 
     /** The page values a profile names, each present and a token; a missing one means the session must be prepared again. */
     fun pageValues(profile: ZkTlsProfile, values: Map<String, String>): Map<String, String> = profile.prepare.values.associate { v ->
-        val value = values[v.name] ?: throw ProtocolException("invalid_input", "網頁工作階段已失效，請重新取得驗證碼")
-        if (!ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("invalid_input", "網站頁面的欄位格式不符")
+        val value = values[v.name] ?: throw ProtocolException("invalid_input", ct("core_zkp_session_expired"))
+        if (!ZkTlsProfile.VALUE_RE.matches(value)) throw ProtocolException("invalid_input", ct("core_zkp_page_fields"))
         v.name to value
     }
 
@@ -94,8 +95,8 @@ object ZkTlsPlanner {
     fun cookieHeader(profile: ZkTlsProfile, cookies: Map<String, String>): String? {
         if (profile.prepare.cookies.isEmpty()) return null
         val sent = profile.prepare.cookies.mapNotNull { name -> cookies[name]?.let { name to it } }
-        if (sent.size != profile.prepare.cookies.size) throw ProtocolException("invalid_input", "網頁工作階段已失效，請重新取得驗證碼")
-        sent.forEach { (_, v) -> if (!COOKIE_VALUE_RE.matches(v)) throw ProtocolException("invalid_input", "網站給的 Cookie 格式不符") }
+        if (sent.size != profile.prepare.cookies.size) throw ProtocolException("invalid_input", ct("core_zkp_session_expired"))
+        sent.forEach { (_, v) -> if (!COOKIE_VALUE_RE.matches(v)) throw ProtocolException("invalid_input", ct("core_zkp_cookie")) }
         return sent.joinToString("; ") { (k, v) -> "$k=$v" }
     }
 
@@ -225,14 +226,14 @@ data class ZkTlsOutcome(
 object ZkTlsCheck {
     fun check(request: ZkTlsSessionRequest, profile: ZkTlsProfile, seen: ZkTlsSeen): ZkTlsOutcome {
         val problems = mutableListOf<String>()
-        if (!seen.serverName.equals(profile.host, ignoreCase = true)) problems += "連線的網站是 ${seen.serverName}，不是 ${profile.host}"
+        if (!seen.serverName.equals(profile.host, ignoreCase = true)) problems += ct("core_zkp_wrong_site", seen.serverName, profile.host)
         val sentParts = seen.sentMask.map { seen.sent.copyOfRange(it.start, it.end).decodeToString() to it }
         val line = "${profile.request.method} ${profile.request.path}"
         val first = sentParts.firstOrNull { it.second.start == 0 }?.first
         if (first == null || first.length != line.length + 1 || !first.startsWith(line) || first.last() !in setOf('?', ' ')) {
-            problems += "請求的網址不是查驗頁描述檔指定的頁面"
+            problems += ct("core_zkp_wrong_page")
         }
-        if (sentParts.none { it.first == ZkTlsPlanner.hostLine(profile) }) problems += "請求沒有揭露指定網站的 Host 標頭"
+        if (sentParts.none { it.first == ZkTlsPlanner.hostLine(profile) }) problems += ct("core_zkp_no_host")
         val segments = seen.receivedMask.map { Utf8Text(ChunkedBody.strip(seen.received.copyOfRange(it.start, it.end))).string }
         val statusText = segments.firstNotNullOfOrNull { Regex(profile.status.reveal).find(it)?.value }
         val found = statusText != null && Regex(profile.status.success).containsMatchIn(statusText)
@@ -243,7 +244,7 @@ object ZkTlsCheck {
             val value = rule?.let { r -> segments.firstNotNullOfOrNull { s -> r.find(s)?.groupValues?.getOrNull(1) } }
             if (value != null) fields[name] = value.trim() else missing += name
         }
-        if (statusText == null) problems += "回應沒有揭露查詢狀態"
+        if (statusText == null) problems += ct("core_zkp_no_status")
         return ZkTlsOutcome(profile, seen.serverName, seen.time, statusText, found, fields, missing, problems)
     }
 }

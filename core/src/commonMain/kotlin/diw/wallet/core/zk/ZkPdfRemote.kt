@@ -1,5 +1,6 @@
 package diw.wallet.core.zk
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.zkpdf.ZkPdfTextRecord
 import diw.wallet.core.jose.PlatformCrypto
 import io.ktor.client.HttpClient
@@ -179,16 +180,16 @@ class ZkProverHost(val name: String, val url: String, val token: String) {
          * builds refuse it, see network_security_config.xml), so a setting that cannot connect is never accepted.
          */
         fun problem(url: String, cleartextPermitted: (String) -> Boolean = { true }): String? {
-            val parsed = runCatching { Url(url) }.getOrNull() ?: return "網址格式不正確"
-            if (parsed.host.isBlank() || parsed.user != null || parsed.password != null || parsed.fragment.isNotEmpty()) return "網址格式不正確"
+            val parsed = runCatching { Url(url) }.getOrNull() ?: return ct("core_zkh_bad_url")
+            if (parsed.host.isBlank() || parsed.user != null || parsed.password != null || parsed.fragment.isNotEmpty()) return ct("core_zkh_bad_url")
             return when (parsed.protocol) {
                 URLProtocol.HTTPS -> null
                 URLProtocol.HTTP -> when {
-                    !privateHost(parsed.host) -> "公開網路上的主機必須使用 https"
-                    !cleartextPermitted(parsed.host) -> "這個版本只能以 https 連線自架主機，請在主機前加上 TLS 反向代理後使用 https 網址"
+                    !privateHost(parsed.host) -> ct("core_zkh_public_https")
+                    !cleartextPermitted(parsed.host) -> ct("core_zkh_https_only")
                     else -> null
                 }
-                else -> "只支援 https 網址"
+                else -> ct("core_zkh_https_only_short")
             }
         }
 
@@ -232,9 +233,9 @@ class RemoteZkPdfEngine(
                 contentType(ContentType.Application.Json)
                 setBody(ZkPdfRemote.encodeRequest(request).toString())
             }
-            if (response.status == HttpStatusCode.Unauthorized) return ZkResult.Failed("自架主機拒絕存取，請檢查存取權杖", false)
-            if (response.status == HttpStatusCode.TooManyRequests) return ZkResult.Failed("自架主機正在處理其他證明，請稍後重試", true)
-            if (!response.status.isSuccess()) return ZkResult.Failed("自架主機無法接受這個證明（HTTP ${response.status.value}）", true)
+            if (response.status == HttpStatusCode.Unauthorized) return ZkResult.Failed(ct("core_zkh_denied"), false)
+            if (response.status == HttpStatusCode.TooManyRequests) return ZkResult.Failed(ct("core_zkh_busy"), true)
+            if (!response.status.isSuccess()) return ZkResult.Failed(ct("core_zkh_refused", response.status.value), true)
             json(response)?.let { (it["id"] as? JsonPrimitive)?.content } ?: return INVALID
         } catch (e: CancellationException) {
             throw e
@@ -261,8 +262,8 @@ class RemoteZkPdfEngine(
     suspend fun compositions(): ZkResult<List<String>> {
         val o = try {
             val response = http.get(prover.url.trimEnd('/') + "/v1/health") { bearerAuth(prover.token) }
-            if (response.status == HttpStatusCode.Unauthorized) return ZkResult.Failed("自架主機拒絕存取，請檢查存取權杖", false)
-            if (!response.status.isSuccess()) return ZkResult.Failed("自架主機回應 HTTP ${response.status.value}", true)
+            if (response.status == HttpStatusCode.Unauthorized) return ZkResult.Failed(ct("core_zkh_denied"), false)
+            if (!response.status.isSuccess()) return ZkResult.Failed(ct("core_zkh_http", response.status.value), true)
             json(response) ?: return INVALID
         } catch (e: CancellationException) {
             throw e
@@ -279,7 +280,7 @@ class RemoteZkPdfEngine(
         while (true) {
             val o = try {
                 val response = http.get(url) { bearerAuth(prover.token) }
-                if (response.status == HttpStatusCode.NotFound) return ZkResult.Failed("自架主機已不再保留這個證明工作", true)
+                if (response.status == HttpStatusCode.NotFound) return ZkResult.Failed(ct("core_zkh_gone"), true)
                 if (!response.status.isSuccess()) null else json(response)
             } catch (e: CancellationException) {
                 throw e
@@ -295,8 +296,8 @@ class RemoteZkPdfEngine(
             failures = 0
             when ((o["state"] as? JsonPrimitive)?.content) {
                 "done" -> return ZkResult.Ok(o["result"] as? JsonObject ?: return INVALID)
-                "failed" -> return ZkResult.Failed("自架主機產生證明失敗：" +
-                    ((o["reason"] as? JsonPrimitive)?.content?.take(80) ?: "原因不明"), (o["retryable"] as? JsonPrimitive)?.booleanOrNull ?: false)
+                "failed" -> return ZkResult.Failed(ct("core_zkh_failed") +
+                    ((o["reason"] as? JsonPrimitive)?.content?.take(80) ?: ct("core_reason_unknown")), (o["retryable"] as? JsonPrimitive)?.booleanOrNull ?: false)
                 "cancelled" -> return ZkResult.Cancelled
                 "running", "queued" -> {
                     val kind = (o["kind"] as? JsonPrimitive)?.content
@@ -315,9 +316,9 @@ class RemoteZkPdfEngine(
     }.getOrNull()
 
     companion object {
-        private val UNREACHABLE = ZkResult.Failed("無法連線到自架主機", true)
-        private val INVALID = ZkResult.Failed("自架主機的回應格式不正確", false)
-        private val REJECTED = ZkResult.Failed("證明未通過這台裝置的驗證，未寫入憑證", false)
+        private val UNREACHABLE get() = ZkResult.Failed(ct("core_zkh_unreachable"), true)
+        private val INVALID get() = ZkResult.Failed(ct("core_zkh_bad_answer"), false)
+        private val REJECTED get() = ZkResult.Failed(ct("core_zkh_not_verified"), false)
 
         /**
          * Accepts a proof made elsewhere only when [local] verifies every segment against [statement] (built on this

@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.zk.ZkErrors
 import diw.wallet.core.zk.ZkResult
@@ -75,7 +76,7 @@ class NativeZkTlsEngine(
         if (!ready()) return@withContext UNSUPPORTED
         val r = session.request
         val sentReveal = try { ZkTlsPlanner.sentReveal(profile, request) } catch (_: ProtocolException) { return@withContext ZkErrors.invalidInput }
-        step("連線到查驗方")
+        step(ct("core_zkn_connecting"))
         // A channel that never hears from the verifier reached something else (another device at a private
         // address, an empty relay room); nothing private has been sent yet, so the next transport is tried.
         var unanswered: ZkTlsChannelEnd? = null
@@ -84,7 +85,7 @@ class NativeZkTlsEngine(
             val attempt = proveOver(channel, transport, session, profile, request, sentReveal, extraRoots, binding, step)
             if (attempt != null) return@withContext attempt
             unanswered = unanswered ?: (channel as? EndAware)?.end
-            step("連線到查驗方")
+            step(ct("core_zkn_connecting"))
         }
         unanswered?.takeIf { it != ZkTlsChannelEnd.NO_REPLY }?.let { ZkResult.Failed(it.message, it.retry) } ?: unreachable(r.transports)
     }
@@ -109,11 +110,11 @@ class NativeZkTlsEngine(
                 val p = runCatching { ZkTlsPlanner.receivedReveal(profile, r.fields, transcript.received) }
                     .getOrElse { ZkTlsPlanner.Plan(emptyList(), null, emptyMap(), r.fields) }
                 plan = p
-                step("揭露查驗方要求的欄位")
+                step(ct("core_zkn_disclosing"))
                 return ZkTlsReveal(sentReveal.map(::range), p.received.map(::range), emptyList())
             }
         }
-        step("經由查驗方連線到 ${profile.host}")
+        step(ct("core_zkn_via", profile.host))
         return try {
             val t = cancellable(channel) { token ->
                 zktlsProve(
@@ -179,7 +180,7 @@ class NativeZkTlsEngine(
             }.awaitAll().filterNotNull()
         }
         if (servers.isEmpty() && relays.isEmpty()) {
-            throw ProtocolException("unavailable", if (lan) "無法在區域網路開啟連線，也無法連到中繼" else "無法連到中繼")
+            throw ProtocolException("unavailable", if (lan) ct("core_zkn_no_lan_relay") else ct("core_zkn_no_relay"))
         }
         Session(key, servers, relays)
     }
@@ -205,14 +206,14 @@ class NativeZkTlsEngine(
             try {
                 val left = request.expiresAt - Clock.System.now()
                 val channel = withTimeoutOrNull(left) { firstHolder() } ?: return@withContext EXPIRED
-                waiting("出示者已連線，正在查驗")
+                waiting(ct("core_zkn_holder_connected"))
                 try {
                     ZkTlsVerification.verify(channel, jws, request, profile, key, extraRoots, receipts)
                 } catch (e: ZkException) {
                     failure(e, channel)
                 }
             } catch (_: IOException) {
-                ZkResult.Failed("查驗方的連線已關閉，沒有出示者連線", true)
+                ZkResult.Failed(ct("core_zkn_closed"), true)
             } finally {
                 close()
             }
@@ -291,9 +292,9 @@ class NativeZkTlsEngine(
         private const val WS_CONNECT_MS = 15_000L
         private const val FIRST_BYTES_MS = 30_000
         private const val READ_TIMEOUT_MS = 300_000
-        private val UNREACHABLE = ZkResult.Failed("無法連到查驗方：請確認兩台裝置在同一個網路，或查驗方的中繼可以連線", true)
-        private val UNSUPPORTED = ZkResult.Failed("這個版本沒有包含 zkTLS（TLSNotary）", false)
-        private val EXPIRED = ZkResult.Failed("查驗請求已過期，沒有出示者連線", false)
+        private val UNREACHABLE get() = ZkResult.Failed(ct("core_zkn_unreachable"), true)
+        private val UNSUPPORTED get() = ZkResult.Failed(ct("core_zkn_missing"), false)
+        private val EXPIRED get() = ZkResult.Failed(ct("core_zkn_expired"), false)
 
         /**
          * Why no transport reached the verifier. A request that names only verifier hosts has no second device or
@@ -302,7 +303,7 @@ class NativeZkTlsEngine(
         fun unreachable(transports: List<ZkTlsTransport>): ZkResult.Failed {
             val hosts = transports.map { if (it is ZkTlsTransport.Wss) runCatching { Url(it.url).host }.getOrDefault(it.url) else null }
             if (hosts.isEmpty() || hosts.any { it == null }) return UNREACHABLE
-            return ZkResult.Failed("無法連到查驗主機 ${hosts.distinct().joinToString("、")}：請確認這台裝置可以連上網路，且查驗主機正在運作", true)
+            return ZkResult.Failed(ct("core_zkn_host_unreachable", hosts.distinct().joinToString(ct("core_sep_list"))), true)
         }
 
         /** ws or wss address of the relay on an age host given as http(s) or ws(s). */
@@ -330,12 +331,12 @@ class NativeZkTlsEngine(
         fun failure(e: ZkException): ZkResult<Nothing> = when (e) {
             is ZkException.Cancelled -> ZkResult.Cancelled
             is ZkException.Unsupported -> UNSUPPORTED
-            is ZkException.InvalidInput -> ZkResult.Failed("查驗頁的請求不符合 zkTLS 的限制", false)
-            is ZkException.ResourceExhausted -> ZkResult.Failed("網站回應超過上限，或查驗超過 10 分鐘", false)
+            is ZkException.InvalidInput -> ZkResult.Failed(ct("core_zkn_limits"), false)
+            is ZkException.ResourceExhausted -> ZkResult.Failed(ct("core_zkn_too_large"), false)
             is ZkException.Internal -> when (e.code) {
-                501u -> ZkResult.Failed("zkTLS 協定失敗：網站憑證不受信任、網站不支援 TLS 1.2，或雙方的請求不一致", true)
+                501u -> ZkResult.Failed(ct("core_zkn_protocol"), true)
                 502u, ZkTlsChannels.ENDED, ZkTlsChannels.SEND_FAILED, ZkTlsChannels.RECEIVE_FAILED ->
-                    ZkResult.Failed("與對方的連線中斷", true)
+                    ZkResult.Failed(ct("core_zkn_link_lost"), true)
                 else -> ZkErrors.internal
             }
         }

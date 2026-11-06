@@ -335,7 +335,7 @@ class OpenAttestationOnline(
             "80002" to listOf("https://polygon-amoy-bor-rpc.publicnode.com"),
         )
 
-        private val NETWORKS = mapOf("1" to ct("core_eth_mainnet"), "11155111" to ct("core_eth_sepolia"), "137" to "Polygon", "80002" to ct("core_eth_amoy"), "3" to ct("core_eth_ropsten"), "5" to ct("core_eth_goerli"))
+        private val NETWORKS: Map<String, String> get() = mapOf("1" to ct("core_eth_mainnet"), "11155111" to ct("core_eth_sepolia"), "137" to "Polygon", "80002" to ct("core_eth_amoy"), "3" to ct("core_eth_ropsten"), "5" to ct("core_eth_goerli"))
 
         fun netName(id: String?): String = NETWORKS[id ?: "1"] ?: ct("core_eth_chain", id)
 

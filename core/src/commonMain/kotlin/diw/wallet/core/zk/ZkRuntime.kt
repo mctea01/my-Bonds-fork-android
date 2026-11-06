@@ -1,5 +1,6 @@
 package diw.wallet.core.zk
 
+import diw.wallet.core.i18n.ct
 import kotlinx.serialization.Serializable
 
 enum class ZkTier { A, B, C }
@@ -42,17 +43,17 @@ object ZkCapabilities {
         if (abi == "windows-x86_64") backends.remove(ZkBackend.LONGFELLOW)
         val reasons = ZkBackend.entries.associateWith { backend ->
             when {
-                !supported -> "此處理器架構沒有可用的零知識原生程式庫"
-                abi == "windows-x86_64" && backend == ZkBackend.LONGFELLOW -> "Windows 尚無 Longfellow 原生程式庫"
-                native == null -> "零知識原生程式庫無法載入"
-                backend !in backends -> "此版本尚未包含此證明後端"
-                platform.freeDiskMb < ZkThresholds.PROVER_FREE_DISK_MB -> "可用儲存空間偏低，建議先釋放空間或使用電腦版"
+                !supported -> ct("core_zkr_no_arch")
+                abi == "windows-x86_64" && backend == ZkBackend.LONGFELLOW -> ct("core_zkr_no_windows_longfellow")
+                native == null -> ct("core_zkr_load_failed")
+                backend !in backends -> ct("core_zkr_backend_missing")
+                platform.freeDiskMb < ZkThresholds.PROVER_FREE_DISK_MB -> ct("core_zkr_low_storage")
                 tier == ZkTier.C || platform.availableRamMb < ZkThresholds.PROVER_AVAILABLE_RAM_MB ->
-                    "可用記憶體偏低，仍可嘗試產生，或改用電腦版"
+                    ct("core_zkr_low_memory")
                 // Measured 2026-11-06: the phone composition of a real one-page certificate ran past 10 minutes on a
                 // phone with a 2.5 GB peak, so zkPDF on any phone is offered with the desktop and self-hosted routes first.
                 backend == ZkBackend.NOIR_ULTRAHONK && !platform.isDesktop ->
-                    "手機產生 zkPDF 證明需要 10 分鐘以上、記憶體約 2.5 GB，建議改用電腦版或自架主機"
+                    ct("core_zkr_phone_zkpdf")
                 else -> ""
             }
         }.filterValues { it.isNotEmpty() }
@@ -68,8 +69,8 @@ sealed interface ZkResult<out T> {
 
 /** Backend error details are deliberately not echoed: they may contain private input. */
 object ZkErrors {
-    val invalidInput = ZkResult.Failed("證明輸入不符合要求", false)
-    val unsupported = ZkResult.Failed("目前裝置或版本不支援此操作", false)
-    val resources = ZkResult.Failed("可用資源不足，請稍後重試或使用電腦版", true)
-    val internal = ZkResult.Failed("零知識作業失敗，請重試", true)
+    val invalidInput = ZkResult.Failed(ct("core_zkr_bad_input"), false)
+    val unsupported = ZkResult.Failed(ct("core_zkr_unsupported"), false)
+    val resources = ZkResult.Failed(ct("core_zkr_resources"), true)
+    val internal = ZkResult.Failed(ct("core_zkr_failed"), true)
 }

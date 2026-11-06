@@ -1,5 +1,6 @@
 package diw.wallet.core.zk
 
+import diw.wallet.core.i18n.ct
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.*
 import org.multipaz.cbor.DataItem
@@ -23,7 +24,7 @@ internal expect object LongfellowNative {
  */
 class LongfellowZk(platformName: String, nativeCheck: () -> String? = LongfellowNative::unavailableReason) {
     val unavailableReason: String? by lazy {
-        if (platformName.startsWith("Windows", ignoreCase = true)) "Windows 尚無 Longfellow 原生函式庫" else nativeCheck()
+        if (platformName.startsWith("Windows", ignoreCase = true)) ct("core_zkr_no_windows_longfellow_lib") else nativeCheck()
     }
     val repository: ZkSystemRepository? by lazy {
         if (unavailableReason != null) null else ZkSystemRepository().apply { add(CheckedSystem()) }

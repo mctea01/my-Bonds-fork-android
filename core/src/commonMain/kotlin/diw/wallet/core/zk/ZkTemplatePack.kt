@@ -1,5 +1,6 @@
 package diw.wallet.core.zk
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.jose.signJws
@@ -56,7 +57,7 @@ data class ZkTemplatePack(
         const val MANUAL_URL = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zk-templates/$FILE"
 
         /** Where the wallet looks, with the name it shows; the newest valid pack of all of them is installed. */
-        val SOURCES: List<Pair<String, String>> = listOf("nightly" to RELEASE_URL, "手動發布" to MANUAL_URL)
+        val SOURCES: List<Pair<String, String>> get() = listOf("nightly" to RELEASE_URL, ct("core_zkt_manual") to MANUAL_URL)
 
         /**
          * PEM public keys (P-256) allowed to sign packs. The private key is the repository's GitHub Actions secret
@@ -82,14 +83,14 @@ data class ZkTemplatePack(
          * copy cannot bring back a template that was withdrawn.
          */
         suspend fun verify(jws: String, keys: List<EcPublicKey>, minimumVersion: Long = 0): ZkTemplatePack {
-            if (keys.isEmpty()) throw ProtocolException("unavailable", "這個版本尚未設定版型簽章金鑰")
+            if (keys.isEmpty()) throw ProtocolException("unavailable", ct("core_zkt_no_key"))
             val parsed = Jws.parse(jws.trim())
             if (parsed.typ != TYP || parsed.alg != "ES256") throw ProtocolException("invalid_templates", "Not a template pack")
             if (keys.none { k -> runCatching { parsed.verify(VerificationKey.Ec(k)) }.isSuccess }) {
-                throw ProtocolException("invalid_templates", "版型包的簽章不是本專案的發布金鑰")
+                throw ProtocolException("invalid_templates", ct("core_zkt_wrong_key"))
             }
             val pack = read(parsed.payload)
-            if (pack.version < minimumVersion) throw ProtocolException("stale_templates", "版型包比已安裝的版本舊")
+            if (pack.version < minimumVersion) throw ProtocolException("stale_templates", ct("core_zkt_older"))
             return pack
         }
 
