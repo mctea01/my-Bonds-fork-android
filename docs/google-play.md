@@ -220,13 +220,21 @@ Source code and issues: https://github.com/mctea01/my-Bonds-fork-android
 
 ### 5.4 圖像
 
-| 素材 | 規格 | 現況 |
-|---|---|---|
-| 應用程式圖示 | 512 × 512 PNG，32 位元含 alpha，1 MB 內 | 啟動圖示是向量（`res/drawable/ic_launcher_*.xml`），需另外輸出 PNG |
-| 主題圖片 | 1,024 × 500 JPG 或 24 位元 PNG，不含 alpha | 需要製作 |
-| 手機螢幕截圖 | 2 到 8 張，每邊 320 到 3,840 像素，長邊不超過短邊的 2 倍 | `desktopTest` 繪製的畫面是 824 × 1,784（比例 2.17），要裁成 824 × 1,648 或加邊到 892 × 1,784；建議至少 1,080 像素寬以便推薦版位 |
+素材在 `distribution/play/`，可直接上傳到 Play Console 的「主要商店資訊」：
 
-截圖只能使用測試資料。不要出現 TWDIW 卡面上的政府標誌、真實姓名或證號，避免冒用與個資問題。
+| 素材 | 規格 | 檔案 |
+|---|---|---|
+| 應用程式圖示 | 512 × 512 PNG，32 位元含 alpha，1 MB 內 | `icon-512.png`：由啟動圖示的向量（`res/drawable/ic_launcher_*.xml`）以 108 × 108 全畫布輸出，與 Android Studio 的 Play 商店圖示相同，圓角由 Play 套用 |
+| 主題圖片 | 1,024 × 500 JPG 或 24 位元 PNG，不含 alpha | `feature-graphic.png`：品牌靛藍底、圖示與「數位憑證、簽章文件與零知識證明，整合在一個開源錢包」 |
+| 手機螢幕截圖 | 2 到 8 張，每邊 320 到 3,840 像素，長邊不超過短邊的 2 倍 | `screenshots/01` 到 `07`，1,080 × 1,920（9:16）：證件、出示同意、文件、簽署、年齡證明、查驗、信任錨點 |
+
+截圖由 `WalletModelE2eTest.playScreenshots` 以虛構的測試資料離屏繪製，介面改變後重新產生：
+
+```bash
+DIW_PLAY_SCREENSHOTS=$PWD/distribution/play/screenshots ./gradlew :app:desktopTest --tests '*playScreenshots'
+```
+
+截圖是電腦版測試環境的畫面，所以有紅色的測試橫幅與「TEST 測試」浮水印，簽署畫面會顯示「此平台不支援 NFC 讀取」；這些都是實際行為，沒有加工。不要出現 TWDIW 卡面上的政府標誌、真實姓名或證號，避免冒用與個資問題。i18n 完成後以英文介面另外產生 en-US 的截圖。
 
 ## 6. 應用程式內容（App content）
 
@@ -318,5 +326,5 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 | 隱私權政策公開網址、用戶協議 | 法律聲明 | 進行中 |
 | 首次啟動頁與 TWDIW、Microsoft Verified ID 專門聲明 | 法律聲明 | 進行中 |
 | 介面多語系、英文商店資訊與英文截圖 | i18n（[design/i18n.md](design/i18n.md)） | 法律聲明與 zkPassport 研究完成後 |
-| 圖示 PNG、主題圖片、裁切後的截圖 | 上架 | 待製作 |
+| 圖示 PNG、主題圖片、截圖 | 上架 | 完成（`distribution/play/`） |
 | `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 待套用 |
