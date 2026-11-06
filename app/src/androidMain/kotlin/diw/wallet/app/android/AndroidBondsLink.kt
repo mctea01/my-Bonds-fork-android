@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -44,14 +47,14 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         else emptyArray()
 
     override suspend fun unavailableReason(): String? {
-        val adapter = manager?.adapter ?: return "此裝置沒有藍牙"
+        val adapter = manager?.adapter ?: return tr(Res.string.ble_none)
         val missing = permissions.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) {
             activity()?.requestPermissions(missing.toTypedArray(), PERMISSION_REQUEST)
-            return "請允許「附近的裝置」權限後再試一次"
+            return tr(Res.string.ble_permission_retry)
         }
-        if (!adapter.isEnabled) return "藍牙未開啟"
-        if (adapter.bluetoothLeAdvertiser == null || !adapter.isMultipleAdvertisementSupported) return "此裝置不支援藍牙周邊模式"
+        if (!adapter.isEnabled) return tr(Res.string.ble_off)
+        if (adapter.bluetoothLeAdvertiser == null || !adapter.isMultipleAdvertisementSupported) return tr(Res.string.blep_no_peripheral)
         return null
     }
 
@@ -161,12 +164,12 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             }
 
             override fun onNotificationSent(device: BluetoothDevice, status: Int) {
-                events.trySend(if (status == BluetoothGatt.GATT_SUCCESS) Event.Sent else Event.Failed("通知傳送失敗（$status）"))
+                events.trySend(if (status == BluetoothGatt.GATT_SUCCESS) Event.Sent else Event.Failed(tr(Res.string.blep_notify_failed, status)))
             }
         }
         val advertising = object : AdvertiseCallback() {
             override fun onStartFailure(errorCode: Int) {
-                events.trySend(Event.Failed("無法開始廣播（$errorCode）"))
+                events.trySend(Event.Failed(tr(Res.string.blep_advertise_failed, errorCode)))
             }
         }
         try {
@@ -178,7 +181,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             }
             // addService completes asynchronously; advertising before onServiceAdded lets a fast verifier discover an empty server.
             if (!server.addService(service)) {
-                onProgress("無法建立藍牙服務")
+                onProgress(tr(Res.string.blep_service_failed))
                 return null
             }
             val added = withTimeoutOrNull(SERVICE_TIMEOUT) {
@@ -187,7 +190,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 status
             }
             if (added != BluetoothGatt.GATT_SUCCESS) {
-                onProgress(if (added == null) "建立藍牙服務逾時" else "無法建立藍牙服務（$added）")
+                onProgress(if (added == null) tr(Res.string.blep_service_timeout) else tr(Res.string.blep_service_status, added))
                 return null
             }
             advertiser.startAdvertising(
@@ -250,7 +253,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 Event.Hello -> hello = true
                 Event.Received -> {
                     received = true
-                    if (awaitReply && hello) onProgress("查驗方已收到，正在驗證") else { done = true; result = ByteArray(0) }
+                    if (awaitReply && hello) onProgress(tr(Res.string.blep_received)) else { done = true; result = ByteArray(0) }
                 }
                 is Event.Reply -> if (awaitReply) {
                     val r = runCatching { replies.accept(e.frame) }.getOrNull()
@@ -258,7 +261,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
                 }
                 is Event.Failed -> { onProgress(e.reason); done = true; if (received) result = ByteArray(0) }
                 is Event.Disconnected -> if (e.device == device) {
-                    if (!received) onProgress("查驗方已中斷連線")
+                    if (!received) onProgress(tr(Res.string.blep_disconnected))
                     done = true
                     if (received) result = ByteArray(0)
                 }
@@ -267,8 +270,8 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
         }
         val chunks = chunksFor((mtu - 3).coerceAtMost(MAX_NOTIFICATION))
         for ((i, chunk) in chunks.withIndex()) {
-            onProgress("藍牙傳送中 ${i + 1} / ${chunks.size}")
-            if (!notify(server, device, frames, chunk)) { onProgress("藍牙傳送失敗"); return null }
+            onProgress(tr(Res.string.blep_sending, i + 1, chunks.size))
+            if (!notify(server, device, frames, chunk)) { onProgress(tr(Res.string.blep_send_failed)); return null }
             while (!done) {
                 val e = events.receive()
                 if (e == Event.Sent) break
@@ -276,7 +279,7 @@ class AndroidBondsLink(private val context: Context, private val activity: () ->
             }
             if (done) return result
         }
-        onProgress(if (awaitReply) "等待查驗方的結果" else "等待查驗方確認")
+        onProgress(if (awaitReply) tr(Res.string.blep_wait_result) else tr(Res.string.blep_wait_ack))
         while (!done) settle(events.receive())
         return result
     }

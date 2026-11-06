@@ -1,5 +1,9 @@
 package diw.wallet.app.android
 
+import org.jetbrains.compose.resources.stringResource
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -116,8 +120,8 @@ class MainActivity : FragmentActivity() {
             app.model.scope.launch {
                 app.awaitReady()
                 val picked = runCatching { AndroidFileAccess.read(this@MainActivity, uri) }.getOrNull()
-                if (picked == null) app.model.message.value = "無法讀取這個檔案"
-                else app.model.files.import(picked, FileOrigin.IMPORTED, "其他 App")
+                if (picked == null) app.model.message.value = tr(Res.string.main_file_unreadable)
+                else app.model.files.import(picked, FileOrigin.IMPORTED, tr(Res.string.main_other_app))
             }
             return
         }
@@ -180,18 +184,18 @@ private fun QrScanDialog(request: ScanRequest, readImage: suspend () -> String?)
                         },
                     )
                 } else {
-                    Text("需要相機權限才能掃描 QR Code")
-                    Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text("允許相機") }
+                    Text(stringResource(Res.string.scan_camera_needed))
+                    Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text(stringResource(Res.string.scan_allow_camera)) }
                 }
                 progress?.let { Text(it) }
                 // A code on this phone's own screen (an issuer page, a screenshot) cannot be scanned with its camera.
                 if (request.stream == null) {
                     OutlinedButton(onClick = { scope.launch { readImage()?.let { result.complete(it) } } }, modifier = Modifier.fillMaxWidth()) {
-                        Text("從圖片讀取 QR Code")
+                        Text(stringResource(Res.string.scan_from_image))
                     }
                 }
                 OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (request.stream == null) "取消" else "停止掃描")
+                    Text(if (request.stream == null) stringResource(Res.string.action_cancel) else stringResource(Res.string.scan_stop))
                 }
             }
         }

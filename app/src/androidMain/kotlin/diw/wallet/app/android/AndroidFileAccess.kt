@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -142,7 +145,7 @@ class AndroidFileAccess(private val activity: ComponentActivity) {
                     val n = input.read(buf)
                     if (n < 0) break
                     out.write(buf, 0, n)
-                    if (out.size() > MAX_BYTES) throw IllegalStateException("檔案超過 64 MB")
+                    if (out.size() > MAX_BYTES) throw IllegalStateException(tr(Res.string.file_over_64mb))
                 }
                 out.toByteArray()
             } ?: return@withContext null

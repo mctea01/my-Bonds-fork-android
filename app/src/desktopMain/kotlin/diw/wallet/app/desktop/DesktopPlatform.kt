@@ -1,5 +1,8 @@
 package diw.wallet.app.desktop
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import com.sun.net.httpserver.HttpServer
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -109,7 +112,7 @@ class DesktopPlatform(
         createContext("/oid4vci/callback") { ex ->
             val query = ex.requestURI.rawQuery
             onRedirect(oid4vciRedirectUri + if (query != null) "?$query" else "")
-            val body = "<html><head><meta charset=\"utf-8\"></head><body>授權完成，請回到 DIW MY WALLET。</body></html>".encodeToByteArray()
+            val body = tr(Res.string.dp_auth_done_page).encodeToByteArray()
             ex.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
             ex.sendResponseHeaders(200, body.size.toLong())
             ex.responseBody.use { it.write(body) }
@@ -154,38 +157,38 @@ class DesktopPlatform(
     }
 
     /** PC/SC readers poll for cards and cannot emulate one, so a computer reads wallets but does not present by NFC. */
-    override fun nfcPresentationUnavailableReason(): String = "電腦的 PC/SC 讀卡機只能讀取，不能模擬卡片；感應出示請使用手機"
+    override fun nfcPresentationUnavailableReason(): String = tr(Res.string.dp_no_emulation)
 
     override suspend fun nfcReaders(): NfcReaderList = withContext(Dispatchers.IO) { PcscReaders.list() }
 
     override suspend fun pickFile(): PickedFile? = withContext(Dispatchers.IO) {
-        val chosen = dialog("匯入文件", FileDialog.LOAD, null) ?: return@withContext null
-        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException("檔案超過 64 MB")
+        val chosen = dialog(tr(Res.string.dp_import_document), FileDialog.LOAD, null) ?: return@withContext null
+        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException(tr(Res.string.file_over_64mb))
         PickedFile(chosen.name, chosen.readBytes())
     }
 
     override suspend fun pickImage(): PickedFile? = withContext(Dispatchers.IO) {
-        val chosen = dialog("選擇含 QR Code 的圖片", FileDialog.LOAD, null) ?: return@withContext null
-        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException("檔案超過 64 MB")
+        val chosen = dialog(tr(Res.string.dp_choose_qr_image), FileDialog.LOAD, null) ?: return@withContext null
+        if (chosen.length() > MAX_FILE_BYTES) throw IllegalStateException(tr(Res.string.file_over_64mb))
         PickedFile(chosen.name, chosen.readBytes())
     }
 
     override suspend fun pickFiles(): List<PickedFile> = withContext(Dispatchers.IO) {
         var chosen: List<File> = emptyList()
         EventQueue.invokeAndWait {
-            val d = FileDialog(null as Frame?, "匯入文件（可選多個）", FileDialog.LOAD)
+            val d = FileDialog(null as Frame?, tr(Res.string.dp_import_documents), FileDialog.LOAD)
             d.isMultipleMode = true
             d.isVisible = true
             chosen = d.files.toList()
         }
         chosen.map { f ->
-            if (f.length() > MAX_FILE_BYTES) throw IllegalStateException("${f.name} 超過 64 MB")
+            if (f.length() > MAX_FILE_BYTES) throw IllegalStateException(tr(Res.string.dp_file_over_64mb, f.name))
             PickedFile(f.name, f.readBytes())
         }
     }
 
     override suspend fun saveFile(name: String, mediaType: String, bytes: ByteArray): Boolean = withContext(Dispatchers.IO) {
-        val chosen = dialog("另存文件", FileDialog.SAVE, name) ?: return@withContext false
+        val chosen = dialog(tr(Res.string.dp_save_document), FileDialog.SAVE, name) ?: return@withContext false
         chosen.writeBytes(bytes)
         true
     }

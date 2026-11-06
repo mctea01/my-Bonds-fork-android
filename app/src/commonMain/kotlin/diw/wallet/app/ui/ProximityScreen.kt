@@ -62,7 +62,7 @@ fun ProximityScreen(model: WalletModel) {
         }
         is ProximityUi.Consent -> ConsentView(model, s)
         is ProximityUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.PASS, stringResource(Res.string.flow_presented), listOf(stringResource(Res.string.prox_handed, s.documents.joinToString("、"), s.verifier), stringResource(Res.string.flow_presented_history)))
+            VerdictCard(Verdict.PASS, stringResource(Res.string.flow_presented), listOf(stringResource(Res.string.prox_handed, s.documents.joinToString(stringResource(Res.string.sep_list)), s.verifier), stringResource(Res.string.flow_presented_history)))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_done)) }
                 // "Present again" restarts the in-person listening flow; a DC API request is driven by the browser, not retriable here.

@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
@@ -89,17 +92,17 @@ class DcApiActivity : FragmentActivity() {
         var protocol: String? = null
         val data = try {
             val request = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent)
-                ?: throw IllegalStateException("沒有 Credential Manager 請求")
+                ?: throw IllegalStateException(tr(Res.string.dc_no_request))
             val caller = request.callingAppInfo
             val origin = runCatching { caller.getOrigin(privilegedUserAgents) }.getOrNull()
                 ?: getAppOrigin(caller.signingInfoCompat.signingCertificateHistory[0].toByteArray())
             val option = request.credentialOptions.filterIsInstance<GetDigitalCredentialOption>().firstOrNull()
-                ?: throw IllegalStateException("不是數位憑證請求")
+                ?: throw IllegalStateException(tr(Res.string.dc_not_digital))
             val json = Json.parseToJsonElement(option.requestJson).jsonObject
             val selected = selectedEntry(request)
             val entry = json["requests"]?.jsonArray?.map { it.jsonObject }
                 ?.firstOrNull { selected == null || it["protocol"]?.jsonPrimitive?.content == selected.protocol }
-                ?: throw IllegalStateException("請求中沒有可處理的協定")
+                ?: throw IllegalStateException(tr(Res.string.dc_no_protocol))
             val p = entry["protocol"]!!.jsonPrimitive.content
             protocol = p
             // The documents the holder picked in the system selector (one entry, or every element of a credential set).
@@ -111,7 +114,7 @@ class DcApiActivity : FragmentActivity() {
                     val appId = if (origin.startsWith("android:")) caller.packageName else null
                     app.model.proximity.presentDcApi(p, entry["data"]!!.jsonObject, origin, appId, documentIds)?.get("data")?.jsonObject
                 }
-                else -> throw IllegalStateException("不支援的協定：$p")
+                else -> throw IllegalStateException(tr(Res.string.dc_bad_protocol, p))
             }
         } catch (e: CancellationException) {
             throw e
@@ -138,16 +141,16 @@ class DcApiActivity : FragmentActivity() {
         val result = Intent()
         val protocol = try {
             val request = PendingIntentHandler.retrieveProviderCreateCredentialRequest(intent)
-                ?: throw IllegalStateException("沒有 Credential Manager 請求")
+                ?: throw IllegalStateException(tr(Res.string.dc_no_request))
             val caller = request.callingAppInfo
             val origin = runCatching { caller.getOrigin(privilegedUserAgents) }.getOrNull()
                 ?: getAppOrigin(caller.signingInfoCompat.signingCertificateHistory[0].toByteArray())
             val requestJson = (request.callingRequest as? CreateDigitalCredentialRequest)?.requestJson
                 ?: request.callingRequest.credentialData.getString("androidx.credentials.BUNDLE_KEY_REQUEST_JSON")
-                ?: throw IllegalStateException("不是數位憑證請求")
+                ?: throw IllegalStateException(tr(Res.string.dc_not_digital))
             val entry = Json.parseToJsonElement(requestJson).jsonObject["requests"]?.jsonArray?.map { it.jsonObject }
                 ?.firstOrNull { it["protocol"]?.jsonPrimitive?.content in ISSUANCE_PROTOCOLS }
-                ?: throw IllegalStateException("請求中沒有 OpenID4VCI 發卡協定")
+                ?: throw IllegalStateException(tr(Res.string.dc_no_issuance))
             val p = entry["protocol"]!!.jsonPrimitive.content
             if (app.model.receiveDcApi(entry["data"]!!.jsonObject, origin)) p else null
         } catch (e: CancellationException) {
@@ -157,7 +160,7 @@ class DcApiActivity : FragmentActivity() {
             null
         }
         if (protocol == null) {
-            PendingIntentHandler.setCreateCredentialException(result, CreateCredentialCancellationException("使用者取消或沒有存入證件"))
+            PendingIntentHandler.setCreateCredentialException(result, CreateCredentialCancellationException(tr(Res.string.dc_issuance_cancelled)))
         } else {
             val ack = buildJsonObject { put("protocol", JsonPrimitive(protocol)); put("data", JsonObject(emptyMap())) }
             PendingIntentHandler.setCreateCredentialResponse(result, CreateDigitalCredentialResponse(Json.encodeToString(JsonObject.serializer(), ack)))
@@ -174,7 +177,7 @@ class DcApiActivity : FragmentActivity() {
 
     private fun fail() {
         val result = Intent()
-        PendingIntentHandler.setGetCredentialException(result, GetCredentialCancellationException("使用者取消或無法處理請求"))
+        PendingIntentHandler.setGetCredentialException(result, GetCredentialCancellationException(tr(Res.string.dc_cancelled)))
         done(result)
     }
 

@@ -1,5 +1,9 @@
 package diw.wallet.app.ui
 
+import org.jetbrains.compose.resources.stringResource
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
@@ -24,7 +28,7 @@ import java.io.File
 actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boolean, onExternal: (String) -> Unit) {
     var failure by remember { mutableStateOf<String?>(null) }
     Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("電腦版以系統瀏覽器顯示。頁面暫存在電腦上，關閉 App 時刪除。" + if (offline) "頁面不含程式，也不會連線。" else "", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.oc_desktop_note) + if (offline) stringResource(Res.string.oc_offline_note) else "", style = MaterialTheme.typography.bodySmall)
         Button(onClick = {
             failure = runCatching {
                 val file = File.createTempFile("opencert-", ".html").apply {
@@ -33,8 +37,8 @@ actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boole
                 }
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) Desktop.getDesktop().browse(file.toURI())
                 else ProcessBuilder("xdg-open", file.absolutePath).start()
-            }.exceptionOrNull()?.let { "無法開啟瀏覽器：${it.message ?: it::class.simpleName}" }
-        }) { Text("在瀏覽器開啟") }
+            }.exceptionOrNull()?.let { tr(Res.string.oc_browser_failed, it.message ?: it::class.simpleName) }
+        }) { Text(stringResource(Res.string.oc_open_browser)) }
         failure?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
     }
 }

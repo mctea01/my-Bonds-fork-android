@@ -719,7 +719,7 @@ class WalletModel(val platform: PlatformServices) {
             try { added += addMultipazIssuerAnchors(base) } catch (e: Exception) { failures += tr(Res.string.pair_colon, label, e.message.toString()) }
         }
         message.value = if (failures.isEmpty()) tr(Res.string.msg_imported_multipaz, added)
-            else tr(Res.string.msg_imported_multipaz_partial, added, failures.joinToString("；"))
+            else tr(Res.string.msg_imported_multipaz_partial, added, failures.joinToString(tr(Res.string.sep_semicolon)))
     }
 
     /**

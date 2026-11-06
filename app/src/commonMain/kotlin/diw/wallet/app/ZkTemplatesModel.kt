@@ -107,7 +107,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
                         problems += tr(Res.string.label_colon, name) + (e.message ?: e::class.simpleName)
                     }
                 }
-                val found = best ?: throw IllegalStateException(tr(Res.string.zkt_download_failed, problems.joinToString("；")))
+                val found = best ?: throw IllegalStateException(tr(Res.string.zkt_download_failed, problems.joinToString(tr(Res.string.sep_semicolon))))
                 val t = model.storage.getTable(table)
                 if (found.third.version > (state.value.version ?: 0)) store(found.second, found.third, found.first)
                 val now = Clock.System.now().epochSeconds
@@ -217,7 +217,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
         state.value = state.value.copy(testDocuments = ZkPdfProfiles.testProfiles)
         return buildString {
             append(tr(Res.string.zkt_imported_docs, fresh.size))
-            if (clash.isNotEmpty()) append(tr(Res.string.zkt_doc_clash, clash.joinToString("、") { it.id }))
+            if (clash.isNotEmpty()) append(tr(Res.string.zkt_doc_clash, clash.joinToString(tr(Res.string.sep_list)) { it.id }))
         }
     }
 
@@ -233,7 +233,7 @@ class ZkTemplatesModel(private val model: WalletModel) {
         state.value = state.value.copy(testPages = merged)
         return buildString {
             append(tr(Res.string.zkt_imported_pages, fresh.size))
-            if (clash.isNotEmpty()) append(tr(Res.string.zkt_page_clash, clash.joinToString("、") { it.id }))
+            if (clash.isNotEmpty()) append(tr(Res.string.zkt_page_clash, clash.joinToString(tr(Res.string.sep_list)) { it.id }))
         }
     }
 

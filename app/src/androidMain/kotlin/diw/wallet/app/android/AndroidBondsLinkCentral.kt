@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
@@ -45,14 +48,14 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
 
     override suspend fun unavailableReason(): String? {
-        val adapter = manager?.adapter ?: return "此裝置沒有藍牙"
+        val adapter = manager?.adapter ?: return tr(Res.string.ble_none)
         val missing = permissions.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) {
             activity()?.let { a -> a.runOnUiThread { a.requestPermissions(missing.toTypedArray(), PERMISSION_REQUEST) } }
-            return "請允許「附近的裝置」權限後再試一次"
+            return tr(Res.string.ble_permission_retry)
         }
-        if (!adapter.isEnabled) return "藍牙未開啟"
-        if (adapter.bluetoothLeScanner == null) return "此裝置不支援藍牙掃描"
+        if (!adapter.isEnabled) return tr(Res.string.ble_off)
+        if (adapter.bluetoothLeScanner == null) return tr(Res.string.ble_no_scan)
         return null
     }
 
@@ -77,8 +80,8 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         onProgress: (String) -> Unit,
         answer: (suspend (ByteArray) -> ByteArray)?,
     ): ByteArray {
-        val adapter = manager?.adapter ?: throw BondsTransportException("此裝置沒有藍牙")
-        val scanner = adapter.bluetoothLeScanner ?: throw BondsTransportException("此裝置不支援藍牙掃描")
+        val adapter = manager?.adapter ?: throw BondsTransportException(tr(Res.string.ble_none))
+        val scanner = adapter.bluetoothLeScanner ?: throw BondsTransportException(tr(Res.string.ble_no_scan))
         val service = UUID.fromString(serviceUuid)
         var last: String? = null
         repeat(ATTEMPTS) {
@@ -94,7 +97,7 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
             }
             var gatt: BluetoothGatt? = null
             try {
-                onProgress(if (last == null) "等待出示者的手機以藍牙連線" else "重新尋找出示者：$last")
+                onProgress(if (last == null) tr(Res.string.blec_waiting) else tr(Res.string.blec_searching_again, last))
                 scanner.startScan(
                     listOf(ScanFilter.Builder().setServiceUuid(ParcelUuid(service)).build()),
                     ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(),
@@ -103,14 +106,14 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
                 val device = await(events, null) {
                     when (it) {
                         is Event.Found -> it.device
-                        is Event.ScanFailed -> throw BondsTransportException("無法開始藍牙掃描（${it.code}）")
+                        is Event.ScanFailed -> throw BondsTransportException(tr(Res.string.blec_scan_failed, it.code))
                         else -> null
                     }
                 }
                 runCatching { scanner.stopScan(scan) }
-                onProgress("已找到出示者，正在連線")
+                onProgress(tr(Res.string.blec_found))
                 gatt = device.connectGatt(context, false, callback(events), BluetoothDevice.TRANSPORT_LE)
-                    ?: throw Dropped("無法連線")
+                    ?: throw Dropped(tr(Res.string.blec_cannot_connect))
                 return exchange(gatt, events, service, maxPayload, onProgress, answer)
             } catch (e: Dropped) {
                 last = e.message
@@ -120,7 +123,7 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
                 events.close()
             }
         }
-        throw BondsTransportException("藍牙連線一再中斷：$last")
+        throw BondsTransportException(tr(Res.string.blec_keeps_dropping, last))
     }
 
     private fun callback(events: Channel<Event>) = object : BluetoothGattCallback() {
@@ -165,39 +168,39 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         onProgress: (String) -> Unit,
         answer: (suspend (ByteArray) -> ByteArray)?,
     ): ByteArray {
-        await(events, STEP_TIMEOUT) { (it as? Event.Connection)?.let { c -> if (c.connected) true else throw Dropped("連線失敗（${c.status}）") } }
+        await(events, STEP_TIMEOUT) { (it as? Event.Connection)?.let { c -> if (c.connected) true else throw Dropped(tr(Res.string.blec_connect_failed, c.status)) } }
         gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
         if (Build.VERSION.SDK_INT >= 26) gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED)
         val mtu = if (!gatt.requestMtu(MAX_MTU)) DEFAULT_MTU
         else withTimeoutOrNull(STEP_TIMEOUT) { await(events, null) { (it as? Event.Mtu)?.mtu } } ?: DEFAULT_MTU
-        if (!gatt.discoverServices()) throw Dropped("無法讀取對方的藍牙服務")
-        await(events, STEP_TIMEOUT) { (it as? Event.Discovered)?.let { d -> if (d.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped("讀取藍牙服務失敗（${d.status}）") } }
-        val s = gatt.getService(service) ?: throw Dropped("對方沒有這次查驗的藍牙服務")
+        if (!gatt.discoverServices()) throw Dropped(tr(Res.string.blec_no_services))
+        await(events, STEP_TIMEOUT) { (it as? Event.Discovered)?.let { d -> if (d.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped(tr(Res.string.blec_services_failed, d.status)) } }
+        val s = gatt.getService(service) ?: throw Dropped(tr(Res.string.blec_no_service))
         val frames = s.getCharacteristic(UUID.fromString(BondsLinkTransport.FRAMES_CHARACTERISTIC))
         val state = s.getCharacteristic(UUID.fromString(BondsLinkTransport.STATE_CHARACTERISTIC))
         val reply = answer?.let { s.getCharacteristic(UUID.fromString(BondsLinkTransport.REPLY_CHARACTERISTIC)) }
-        if (frames == null || state == null) throw BondsTransportException("對方的藍牙服務不支援 Bonds 傳輸")
-        val cccd = frames.getDescriptor(CCCD) ?: throw BondsTransportException("對方的藍牙服務不支援通知")
+        if (frames == null || state == null) throw BondsTransportException(tr(Res.string.blec_not_bonds))
+        val cccd = frames.getDescriptor(CCCD) ?: throw BondsTransportException(tr(Res.string.blec_no_notify))
         // A holder with the reply characteristic (this wallet) is told a verdict follows; Bonds has none and only waits for "received".
         reply?.let { write(gatt, events, it, byteArrayOf(BondsLinkTransport.REPLY_HELLO)) }
         if (!gatt.setCharacteristicNotification(frames, true) || !writeDescriptor(gatt, cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
-            throw Dropped("無法訂閱對方的資料")
+            throw Dropped(tr(Res.string.blec_no_subscribe))
         }
-        await(events, STEP_TIMEOUT) { (it as? Event.DescriptorWritten)?.let { d -> if (d.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped("訂閱失敗（${d.status}）") } }
+        await(events, STEP_TIMEOUT) { (it as? Event.DescriptorWritten)?.let { d -> if (d.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped(tr(Res.string.blec_subscribe_failed, d.status)) } }
 
         val collector = BondsLinkCollector(maxPayload, BondsLinkTransport.AGE_MAX_CHUNKS)
         val payload = await(events, FRAME_TIMEOUT) {
             (it as? Event.Frame)?.let { f ->
                 when (val r = collector.accept(f.value)) {
                     is BondsReception.Completed -> r.payload
-                    is BondsReception.Accepted -> { onProgress("藍牙接收中 ${r.received} / ${r.total}"); null }
+                    is BondsReception.Accepted -> { onProgress(tr(Res.string.blec_receiving, r.received, r.total)); null }
                     is BondsReception.Duplicate -> null
                 }
             }
         }
         write(gatt, events, state, byteArrayOf(BondsLinkTransport.RECEIVED))
         if (answer == null) return payload
-        onProgress("已收到證明，正在驗證")
+        onProgress(tr(Res.string.blec_received))
         val verdict = answer(payload)
         if (reply != null) {
             // The verdict is a courtesy to the holder: this device already has the result, so a lost link is not a failure.
@@ -214,8 +217,8 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
     /** Receives events until [pick] returns a value; a disconnect is [Dropped], silence for [timeout] (when given) as well. */
     private suspend fun <T : Any> await(events: Channel<Event>, timeout: Duration?, pick: (Event) -> T?): T {
         while (true) {
-            val e = if (timeout == null) events.receive() else withTimeoutOrNull(timeout) { events.receive() } ?: throw Dropped("對方沒有回應")
-            if (e is Event.Connection && !e.connected) throw Dropped("連線中斷（${e.status}）")
+            val e = if (timeout == null) events.receive() else withTimeoutOrNull(timeout) { events.receive() } ?: throw Dropped(tr(Res.string.blec_no_answer))
+            if (e is Event.Connection && !e.connected) throw Dropped(tr(Res.string.blec_dropped, e.status))
             pick(e)?.let { return it }
         }
     }
@@ -230,8 +233,8 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
             c.value = value
             gatt.writeCharacteristic(c)
         }
-        if (!started) throw Dropped("無法寫入藍牙資料")
-        await(events, STEP_TIMEOUT) { (it as? Event.Written)?.let { w -> if (w.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped("寫入失敗（${w.status}）") } }
+        if (!started) throw Dropped(tr(Res.string.blec_write_failed))
+        await(events, STEP_TIMEOUT) { (it as? Event.Written)?.let { w -> if (w.status == BluetoothGatt.GATT_SUCCESS) true else throw Dropped(tr(Res.string.blec_write_status, w.status)) } }
     }
 
     @SuppressLint("MissingPermission")

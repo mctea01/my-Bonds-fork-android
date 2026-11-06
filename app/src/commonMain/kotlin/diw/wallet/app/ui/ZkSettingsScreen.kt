@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.tr
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
 import diw.wallet.app.res.*
@@ -156,7 +157,7 @@ fun ZkSettingsScreen(model: WalletModel) {
                 val download = downloads[asset.id]
                 Column(Modifier.fillMaxWidth().padding(start = 8.dp)) {
                     Text(
-                        stringResource(Res.string.zk_asset_line, asset.id, if ("verifier" in asset.role) "產生與查驗" else "產生", sizeText(asset.installedBytes)) +
+                        stringResource(Res.string.zk_asset_line, asset.id, if ("verifier" in asset.role) stringResource(Res.string.zk_role_prove_verify) else stringResource(Res.string.zk_role_prove), sizeText(asset.installedBytes)) +
                             (statuses[asset.id]?.title ?: if (refreshing) stringResource(Res.string.zk_checking) else stringResource(Res.string.zk_unchecked)),
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -356,7 +357,7 @@ private fun ServerSection(model: WalletModel) {
                         Text(stringResource(Res.string.sha256_line, fingerprint(info.sha256)), style = MaterialTheme.typography.bodySmall)
                     }
                     info.verifierDid?.let { Text(stringResource(Res.string.zk_server_verifier_did, it), style = MaterialTheme.typography.bodySmall) }
-                    if (info.features.isNotEmpty()) Text(stringResource(Res.string.zk_server_features, info.features.joinToString("、")), style = MaterialTheme.typography.bodySmall)
+                    if (info.features.isNotEmpty()) Text(stringResource(Res.string.zk_server_features, info.features.joinToString(stringResource(Res.string.sep_list))), style = MaterialTheme.typography.bodySmall)
                     info.federation?.let {
                         Text(ServerStrings.FEDERATION_CONFIRMED + ServerStrings.federationVerified(it), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary)
@@ -493,29 +494,29 @@ private fun MeasurementSection(model: WalletModel) {
 
 internal fun measurementLine(m: ZkMeasurement): String {
     val outcome = when (m.phase) {
-        ZkJobPhase.DONE -> "完成"
-        ZkJobPhase.FAILED -> "失敗"
-        ZkJobPhase.TIMED_OUT -> "逾時"
-        ZkJobPhase.CANCELLED -> "已停止"
+        ZkJobPhase.DONE -> tr(Res.string.zkm_done)
+        ZkJobPhase.FAILED -> tr(Res.string.zkm_failed)
+        ZkJobPhase.TIMED_OUT -> tr(Res.string.zkm_timed_out)
+        ZkJobPhase.CANCELLED -> tr(Res.string.zkm_stopped)
         else -> m.phase.name
     }
-    val peak = m.peakMemoryMb?.let { "，記憶體峰值 $it MB" } ?: ""
-    val note = m.note?.let { "（$it）" } ?: ""
-    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { "，停在「$it」" } ?: ""
-    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak$step"
+    val peak = m.peakMemoryMb?.let { tr(Res.string.zkm_peak, it) } ?: ""
+    val note = m.note?.let { tr(Res.string.parenthesized, it) } ?: ""
+    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { tr(Res.string.zkm_stopped_at, it) } ?: ""
+    return tr(Res.string.zkm_line, m.kind.label, note, outcome, m.seconds, peak, step)
 }
 
 /** Plain lines for a report: device class first, then one line per proof. */
 internal fun measurementReport(entries: List<ZkMeasurement>): String {
     val device = entries.firstNotNullOfOrNull { it.platform }?.let {
-        "裝置：${it.abi}，記憶體 ${it.totalRamMb} MB（偵測時可用 ${it.availableRamMb} MB），${if (it.isDesktop) "電腦版" else "手機版"}"
-    } ?: "裝置：未知"
+        tr(Res.string.zkm_device, it.abi, it.totalRamMb, it.availableRamMb, if (it.isDesktop) tr(Res.string.zkm_desktop) else tr(Res.string.zkm_phone))
+    } ?: tr(Res.string.zkm_device_unknown)
     return (listOf(device) + entries.map { "${it.at} ${it.kind.name} ${measurementLine(it)}" }).joinToString("\n")
 }
 
 internal fun compositionTitle(id: String): String = when (id) {
-    ZkPdfStatement.PHONE -> "手機版電路"
-    ZkPdfStatement.DESKTOP -> "電腦版電路"
+    ZkPdfStatement.PHONE -> tr(Res.string.zkm_phone_circuit)
+    ZkPdfStatement.DESKTOP -> tr(Res.string.zkm_desktop_circuit)
     else -> id
 }
 

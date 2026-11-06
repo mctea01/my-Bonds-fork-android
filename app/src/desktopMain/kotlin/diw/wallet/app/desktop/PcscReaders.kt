@@ -1,5 +1,8 @@
 package diw.wallet.app.desktop
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import diw.wallet.app.NfcReaderList
 import diw.wallet.app.NfcReaderOption
 import kotlinx.coroutines.ExecutorCoroutineDispatcher
@@ -36,7 +39,7 @@ object PcscReaders {
         configure()
         return try {
             NfcReaderList(terminals().map { NfcReaderOption(it.name, external = true, reader = PcscTagReader(it)) })
-                .let { if (it.readers.isEmpty()) it.copy(problem = "沒有找到 PC/SC 讀卡機，請接上非接觸式（NFC）讀卡機，或直接插上 YubiKey 等 USB 安全金鑰（需開啟 CCID 智慧卡介面）。") else it }
+                .let { if (it.readers.isEmpty()) it.copy(problem = tr(Res.string.pcsc_none)) else it }
         } catch (e: Throwable) {
             if (e is VirtualMachineError) throw e
             NfcReaderList(emptyList(), reason(e))
@@ -85,11 +88,11 @@ object PcscReaders {
         val windows = System.getProperty("os.name").orEmpty().lowercase().contains("windows")
         return when {
             STALE_CONTEXT.any { it in text } ->
-                if (windows) "Windows 的智慧卡服務沒有執行。請接上讀卡機，再重新開啟 App。"
-                else "PC/SC 服務（pcscd）沒有執行。請啟動 pcscd（例如 sudo systemctl start pcscd）後再試。"
+                if (windows) tr(Res.string.pcsc_windows_service)
+                else tr(Res.string.pcsc_pcscd)
             e is UnsatisfiedLinkError || "library" in text.lowercase() || "PlatformPCSC" in text ->
-                "找不到 PC/SC 函式庫。Linux 請安裝 pcscd 與 libpcsclite1（或 pcsc-lite-libs）。"
-            else -> "無法使用 PC/SC 讀卡機：$text"
+                tr(Res.string.pcsc_no_library)
+            else -> tr(Res.string.pcsc_failed, text)
         }
     }
 
@@ -131,8 +134,8 @@ class PcscTagReader(private val terminal: CardTerminal) : NfcTagReader {
                 attempt.exceptionOrNull()?.let { e ->
                     // A token that never leaves the slot (YubiKey) held by another program would be waited on forever.
                     if (SHARING_VIOLATION in PcscReaders.describe(e)) throw IllegalStateException(
-                        "「${terminal.name}」正被其他程式獨占使用（常見於 GnuPG 的 scdaemon）。請關閉該程式，" +
-                            "或執行 gpgconf --kill scdaemon 後再試。",
+                        tr(Res.string.pcsc_exclusive_1, terminal.name) +
+                            tr(Res.string.pcsc_exclusive_2),
                     )
                 }
                 val card = attempt.getOrNull()
