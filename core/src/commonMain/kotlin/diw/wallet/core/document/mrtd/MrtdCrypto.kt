@@ -47,4 +47,14 @@ expect object MrtdCrypto {
 
     /** "RSA 2048", "EC brainpoolP256r1" and the like, for display. */
     fun describeKey(spki: ByteArray): String?
+
+    /** The CSCA certificates of an ICAO master list (CMS SignedData of a CscaMasterList); null when [bytes] is not one. */
+    fun masterList(bytes: ByteArray): MasterList?
 }
+
+/**
+ * An ICAO CSCA master list (ICAO 9303 part 12, 9): the country signing CA certificates a state collected and signed.
+ * [signatureValid] says the list is intact under the certificate it carries; whether to trust that signer is the
+ * holder's decision, so the list's certificates are imported as the holder's own anchors.
+ */
+class MasterList(val certificates: List<ByteArray>, val signer: String?, val signatureValid: Boolean)

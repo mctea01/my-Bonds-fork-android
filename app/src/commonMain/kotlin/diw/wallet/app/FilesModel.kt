@@ -164,6 +164,8 @@ enum class FileOrigin(private val titleRes: org.jetbrains.compose.resources.Stri
     ENCRYPTED(Res.string.origin_encrypted),
     DECRYPTED(Res.string.origin_decrypted),
     UNWRAPPED(Res.string.origin_unwrapped),
+    /** Read from a document chip (an electronic passport) over NFC. */
+    CHIP(Res.string.origin_chip),
     ;
 
     val title: String get() = tr(titleRes)
@@ -249,6 +251,8 @@ sealed class FilePreview {
         val certificate: ParsedCertificate? = null,
     ) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
+    /** A travel document read from its chip, laid out as its data page. */
+    class Passport(val view: PassportView) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
     /** An official document (公文) laid out as a reader sees it; [source] is the XML, shown only on request. */
     class Official(val document: OfficialDocument, val source: String, val truncated: Boolean) : FilePreview()
@@ -581,6 +585,18 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
+    /**
+     * Reads a travel document chip on [reader] with [secret] (the zone's access key or the card access number) and
+     * stores what it read as a file; passive authentication runs as for any file, and the file screen opens.
+     */
+    fun readPassport(reader: NfcReaderOption, secret: diw.wallet.core.document.mrtd.AccessSecret) = run(tr(Res.string.mrtd_stage_access)) {
+        val dump = Passports.read(reader, secret) { busy.value = it }
+        busy.value = tr(Res.string.step_read_check)
+        val f = store(Passports.fileName(dump), dump.encode(), FileOrigin.CHIP, tr(Res.string.mrtd_source))
+        model.message.value = tr(Res.string.msg_saved_name, f.name)
+        model.screen.value = Screen.FileDetail(f.id)
+    }
+
     /** A file handed over by another app or downloaded from a source site. */
     fun import(picked: PickedFile, origin: FileOrigin, source: String?) = run(tr(Res.string.step_read_check)) { importNow(picked, origin, source) }
 
@@ -858,6 +874,9 @@ class FilesModel(private val model: WalletModel) {
                     else -> FilePreview.Unavailable(tr(Res.string.msg_pgp_no_preview))
                 }
             }
+            DocumentFormat.EMRTD -> diw.wallet.core.document.mrtd.MrtdDump.decode(bytes)
+                ?.let { FilePreview.Passport(Passports.view(it) { b -> model.platform.decodeImage(b) }) }
+                ?: FilePreview.Unavailable(tr(Res.string.core_mrtd_unreadable))
             DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable(tr(Res.string.msg_archive_preview))
             DocumentFormat.OFFICE -> FilePreview.Unavailable(tr(Res.string.msg_office_preview))
             DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable(tr(Res.string.msg_envelope_preview))

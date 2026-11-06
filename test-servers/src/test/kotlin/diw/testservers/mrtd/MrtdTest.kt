@@ -326,6 +326,30 @@ class MrtdTest {
         assertEquals(DocumentVerdict.INVALID, inspect(changed).verdict)
     }
 
+    @Test fun masterListGivesItsCertificatesAndChecksItsSignature() {
+        val other = rsa()
+        val second = cert("C=JP,O=Test,CN=Test CSCA JP", "C=JP,O=Test,CN=Test CSCA JP", other.public, other, true)
+        val content = DERSequence(arrayOf(ASN1Integer(0), org.bouncycastle.asn1.DERSet(arrayOf(csca.toASN1Structure(), second.toASN1Structure())))).encoded
+        fun signed(body: ByteArray): ByteArray {
+            val gen = CMSSignedDataGenerator()
+            gen.addSignerInfoGenerator(JcaSignerInfoGeneratorBuilder(JcaDigestCalculatorProviderBuilder().setProvider(bc).build())
+                .build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(dscKey.private), dsc))
+            gen.addCertificates(JcaCertStore(listOf(dsc)))
+            return gen.generate(CMSProcessableByteArray(ASN1ObjectIdentifier("2.23.136.1.1.2"), body), true).encoded
+        }
+        val list = assertNotNull(MrtdCrypto.masterList(signed(content)))
+        assertTrue(list.signatureValid)
+        assertEquals(setOf(csca.encoded.toList(), second.encoded.toList()), list.certificates.map { it.toList() }.toSet())
+        // A byte changed inside the second certificate's own signature keeps the list readable but breaks the list signature.
+        val tampered = signed(content).also { b ->
+            val sig = second.signature
+            val at = (0..b.size - sig.size).first { i -> (sig.indices).all { b[i + it] == sig[it] } } + sig.size / 2
+            b[at] = (b[at] + 1).toByte()
+        }
+        assertEquals(false, MrtdCrypto.masterList(tampered)?.signatureValid)
+        assertEquals(null, MrtdCrypto.masterList(BerTlv.encode(0x77, ByteArray(4))))
+    }
+
     @Test fun unknownCountrySigningCaIsPartial() {
         val report = inspect(read(chip()), anchor = false)
         assertEquals(DocumentVerdict.PARTIAL, report.verdict)
