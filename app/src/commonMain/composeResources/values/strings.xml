@@ -1868,6 +1868,19 @@
     <string name="files_derived">Document-derived credential</string>
     <string name="files_derived_exists">In Credentials: IETF SD-JWT VC, issued with this wallet's document issuing key</string>
     <string name="files_derived_text">A derived credential turns the document into a presentable credential (IETF SD-JWT VC) that gives only the fields you choose, with the signature check and timestamps attached; the original file is never sent.</string>
+    <string name="files_passport_links">Documents about this passport</string>
+    <string name="files_passport_links_reading">Looking through the stored documents...</string>
+    <string name="files_passport_links_none">No stored document names this passport number.</string>
+    <string name="files_passport_link">Names passport number %1$s</string>
+    <string name="files_passport_link_name">Names passport number %1$s and the same surname</string>
+    <string name="files_passport_links_text">The wallet compares the passport number with the text of the stored documents (entry and exit certificates, mainland China entry and exit records and the like) on this device only. A matching number links the documents for you to see; it is not part of a credential.</string>
+    <string name="files_photo_id">ISO 23220 Photo ID (mdoc)</string>
+    <string name="files_photo_id_exists">In Credentials: ISO/IEC 23220 Photo ID mdoc, issued with this wallet's document issuing key</string>
+    <string name="files_photo_id_text">A Photo ID is a standard mdoc made from the passport chip: the names, dates and numbers of the data page, the photo, and the chip files (DG1, DG2, SOD) so a verifier can check the passport against the issuing state itself. It is presented over OpenID4VP, ISO 18013-5 and the Digital Credentials API, giving only the fields asked for.</string>
+    <string name="files_photo_id_make">Make Photo ID</string>
+    <string name="files_photo_id_remake">Make Photo ID again</string>
+    <string name="photo_id_title">Photo ID</string>
+    <string name="photo_id_type">ISO 23220 Photo ID</string>
     <string name="files_document_missing_text">The document may have been deleted.</string>
     <string name="files_empty_text">Import PDFs, official documents, OFD, .p7s / .p7m, ASiC-E, MyData archives, OpenCerts and other files. The wallet keeps the original and checks signatures, timestamps and certificate chains; later you can sign them or make presentable derived credentials.</string>
     <string name="files_empty_title">No documents yet</string>
@@ -2404,6 +2417,9 @@
     <string name="msg_decrypted_sig"> (the embedded signature was saved as .asc)</string>
     <string name="msg_deleted_container">Deleted the document and %1$s files in its container</string>
     <string name="msg_derived">Made a derived credential; it can be presented from Credentials</string>
+    <string name="msg_photo_id_issued">Made a Photo ID; it can be presented from Credentials</string>
+    <string name="msg_photo_id_no_dg1">The passport file has no readable DG1</string>
+    <string name="msg_photo_id_expired">The passport has expired; a Photo ID is not made from it</string>
     <string name="msg_derived_zk">Made a derived credential with a zkPDF proof; it can be presented from Credentials</string>
     <string name="msg_download_failed">Download failed: HTTP %1$s</string>
     <string name="msg_download_vk">Download the verification key for desktop proofs first</string>
@@ -3528,6 +3544,7 @@
     <string name="step_decrypt_check">Decrypting and checking integrity</string>
     <string name="step_delete_file">Deleting the file</string>
     <string name="step_derive">Making the derived credential</string>
+    <string name="step_photo_id">Making the Photo ID</string>
     <string name="step_export_attachment">Exporting the attachment</string>
     <string name="step_export_file">Exporting the file</string>
     <string name="step_export_id">Exporting the ID card</string>

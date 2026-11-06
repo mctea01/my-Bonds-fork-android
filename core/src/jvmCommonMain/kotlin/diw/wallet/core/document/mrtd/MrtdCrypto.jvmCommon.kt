@@ -184,6 +184,18 @@ actual object MrtdCrypto {
         return null
     }
 
+    private val alpha2ByAlpha3: Map<String, String> by lazy {
+        java.util.Locale.getISOCountries().mapNotNull { a2 ->
+            runCatching { @Suppress("DEPRECATION") java.util.Locale("", a2).isO3Country }.getOrNull()?.takeIf { it.length == 3 }?.let { it to a2 }
+        }.toMap()
+    }
+
+    actual fun alpha2(code: String): String? = when (val c = code.trim('<', ' ').uppercase()) {
+        "D" -> "DE"
+        "RKS" -> "XK"
+        else -> alpha2ByAlpha3[c]
+    }
+
     actual fun describeKey(spki: ByteArray): String? = runCatching {
         val info = SubjectPublicKeyInfo.getInstance(ASN1Primitive.fromByteArray(spki))
         when (info.algorithm.algorithm) {

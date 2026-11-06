@@ -50,6 +50,9 @@ expect object MrtdCrypto {
 
     /** The CSCA certificates of an ICAO master list (CMS SignedData of a CscaMasterList); null when [bytes] is not one. */
     fun masterList(bytes: ByteArray): MasterList?
+
+    /** ISO 3166-1 alpha-2 of an ICAO 9303 state code ("D" is Germany, "RKS" Kosovo); null for codes of no state. */
+    fun alpha2(code: String): String?
 }
 
 /**
