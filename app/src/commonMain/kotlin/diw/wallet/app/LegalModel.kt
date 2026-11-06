@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.app.legal.Integration
 import diw.wallet.app.legal.LegalDocument
 import diw.wallet.app.legal.LegalStrings
@@ -126,7 +128,7 @@ class LegalModel(private val model: WalletModel) {
     fun name(i: Integration): String = LegalTexts.statement(i).name
 
     /** Message for a link, request or action that needs a switched-off service. */
-    fun disabledMessage(i: Integration): String = "「${name(i)}」未啟用。你可在「設定 > 法律聲明與同意」檢視並決定是否同意。"
+    fun disabledMessage(i: Integration): String = tr(Res.string.legal_not_enabled, name(i))
 
     private fun now() = Clock.System.now().epochSeconds
 

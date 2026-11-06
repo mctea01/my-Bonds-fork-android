@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.card.OpenPgpCardInfo
@@ -180,29 +182,29 @@ class OpenPgpModel(private val model: WalletModel) {
     /** Adds every certificate in [data] (armored or binary, public or secret keys: only the public part is kept). */
     suspend fun importBytes(data: ByteArray, source: String): List<OpenPgpKeyEntry> {
         val certs = OpenPgp.certificates(data)
-        if (certs.isEmpty()) throw SigningException("檔案中沒有 OpenPGP 公開金鑰")
+        if (certs.isEmpty()) throw SigningException(tr(Res.string.pgp_no_keys_in_file))
         return certs.map { (info, cert) -> put(info, cert, OpenPgpTrust.UNVERIFIED, source) }
     }
 
-    fun pickAndImport() = run("讀取公開金鑰檔") {
+    fun pickAndImport() = run(tr(Res.string.pgp_reading_file)) {
         val picked = model.platform.pickFiles()
         if (picked.isEmpty()) return@run
-        val added = picked.flatMap { importBytes(it.bytes, "匯入：" + it.name) }
+        val added = picked.flatMap { importBytes(it.bytes, tr(Res.string.pgp_imported_from) + it.name) }
         val secret = added.count { it.info.hadSecret }
-        model.message.value = "已加入 ${added.size} 把公開金鑰（未核對）" + if (secret > 0) "；檔案含私鑰，錢包只保留公開部分" else ""
+        model.message.value = tr(Res.string.pgp_added_unchecked, added.size) + if (secret > 0) tr(Res.string.pgp_secret_dropped) else ""
         model.files.reinspectOpenPgp()
     }
 
     /** Adds the certificates a stored file holds (a .asc or .gpg key file in the Files tab) as unverified. */
-    fun importFromFile(f: StoredFile) = run("加入檔案中的公開金鑰") {
-        val added = importBytes(model.files.data(f.id), "文件：" + f.name)
-        model.message.value = "已加入 ${added.size} 把公開金鑰（未核對，請與持有人核對指紋）"
+    fun importFromFile(f: StoredFile) = run(tr(Res.string.pgp_adding_file_keys)) {
+        val added = importBytes(model.files.data(f.id), tr(Res.string.pgp_document_from) + f.name)
+        model.message.value = tr(Res.string.pgp_added_check_fp, added.size)
         model.files.reinspectOpenPgp()
     }
 
     /** Reads the OpenPGP card on [reader] without a PIN and shows its keys. */
-    fun readCard(reader: NfcReaderOption) = run("讀取 OpenPGP 卡") {
-        card.value = OpenPgpCards.read(reader.reader, tapMessage(reader, "讀取卡片上的金鑰"), knownBodies())
+    fun readCard(reader: NfcReaderOption) = run(tr(Res.string.pgp_reading_card)) {
+        card.value = OpenPgpCards.read(reader.reader, tapMessage(reader, tr(Res.string.pgp_reading_card_keys)), knownBodies())
     }
 
     /**
@@ -214,24 +216,24 @@ class OpenPgpModel(private val model: WalletModel) {
         val dec = info.key(OpenPgpKeySlot.DECRYPTION)
         val aut = info.key(OpenPgpKeySlot.AUTHENTICATION)
         val fprs = listOfNotNull(sig, dec, aut).mapNotNull { it.fingerprint?.let { f -> DocCryptoUtil.hex(f).uppercase() } }
-        if (fprs.isEmpty()) throw SigningException("這張 OpenPGP 卡沒有金鑰")
+        if (fprs.isEmpty()) throw SigningException(tr(Res.string.pgp_card_no_keys))
         keys.value.firstOrNull { e -> !e.cardOnly && fprs.any { e.info.has(it) } }?.let { full ->
             return put(full.info, full.certificate.fromBase64(), OpenPgpTrust.OWN_CARD, full.source, cardKeys = fprs.filter { full.info.has(it) })
         }
         val bodies = listOfNotNull(sig ?: dec ?: aut, dec, aut).distinct().mapNotNull { it.packet }.distinctBy { it.toList() }
         if (bodies.isEmpty()) throw SigningException(
-            "無法由卡片重建公開金鑰（指紋不符，常見於以 ECDH 參數不同的工具產生的金鑰）。請先匯入你的公開金鑰檔，再讀取卡片標示為自己的卡",
+            tr(Res.string.pgp_card_rebuild_failed),
         )
         val cert = OpenPgpPackets.cardCertificate(bodies)
         val built = bodies.map { DocCryptoUtil.hex(OpenPgpPackets.fingerprint(it)).uppercase() }
-        val (parsed, binary) = OpenPgp.certificates(cert, built.toSet()).firstOrNull() ?: throw SigningException("無法建立卡片金鑰的憑證")
+        val (parsed, binary) = OpenPgp.certificates(cert, built.toSet()).firstOrNull() ?: throw SigningException(tr(Res.string.pgp_card_cert_failed))
         return put(parsed, binary, OpenPgpTrust.OWN_CARD, info.label, cardOnly = true, cardKeys = built)
     }
 
-    fun addReadCard() = run("加入卡片的公開金鑰") {
+    fun addReadCard() = run(tr(Res.string.pgp_adding_card_key)) {
         val info = card.value ?: return@run
         val e = addCard(info)
-        model.message.value = "已加入：${e.info.name}（自己的 OpenPGP 卡）"
+        model.message.value = tr(Res.string.pgp_added_own_card, e.info.name)
         model.files.reinspectOpenPgp()
     }
 
@@ -245,18 +247,18 @@ class OpenPgpModel(private val model: WalletModel) {
     }
 
     /** Sets the user's trust; the own-card level is only given by reading the card. */
-    fun setTrust(fingerprint: String, trust: OpenPgpTrust) = run("變更信任") {
-        if (trust == OpenPgpTrust.OWN_CARD) throw SigningException("「自己的 OpenPGP 卡」只能由讀取卡片設定")
+    fun setTrust(fingerprint: String, trust: OpenPgpTrust) = run(tr(Res.string.pgp_changing_trust)) {
+        if (trust == OpenPgpTrust.OWN_CARD) throw SigningException(tr(Res.string.pgp_own_card_only))
         change(fingerprint) { it.copy(trust = trust) }
         model.files.reinspectOpenPgp()
     }
 
-    fun setIntroducer(fingerprint: String, introducer: Boolean) = run("變更介紹人") {
+    fun setIntroducer(fingerprint: String, introducer: Boolean) = run(tr(Res.string.pgp_changing_introducer)) {
         change(fingerprint) { it.copy(introducer = introducer) }
         model.files.reinspectOpenPgp()
     }
 
-    fun remove(fingerprint: String) = run("移除公開金鑰") {
+    fun remove(fingerprint: String) = run(tr(Res.string.pgp_removing_key)) {
         lock.withLock {
             model.storage.getTable(keyTable).delete(fingerprint)
             keys.value = keys.value.filter { it.fingerprint != fingerprint }
@@ -265,12 +267,12 @@ class OpenPgpModel(private val model: WalletModel) {
     }
 
     /** Saves or shares the certificate as an armored PUBLIC KEY BLOCK. */
-    fun export(fingerprint: String, share: Boolean) = run(if (share) "分享公開金鑰" else "匯出公開金鑰") {
+    fun export(fingerprint: String, share: Boolean) = run(if (share) tr(Res.string.pgp_sharing_key) else tr(Res.string.pgp_exporting_key)) {
         val e = entry(fingerprint) ?: return@run
         val armored = OpenPgpPackets.armor("PUBLIC KEY BLOCK", e.certificate.fromBase64()).encodeToByteArray()
         val name = "0x" + e.fingerprint.takeLast(16) + ".asc"
         val done = if (share) model.platform.shareFile(name, "application/pgp-keys", armored) else model.platform.saveFile(name, "application/pgp-keys", armored)
-        if (!done) model.message.value = if (share) "未分享" else "未匯出"
+        if (!done) model.message.value = if (share) tr(Res.string.msg_not_shared) else tr(Res.string.msg_not_exported)
     }
 
     // ---------------------------------------------------------------- lookup
@@ -279,7 +281,7 @@ class OpenPgpModel(private val model: WalletModel) {
      * Looks a key up: an e-mail address in its domain's Web Key Directory first, then on keys.openpgp.org; a
      * fingerprint or key ID on keys.openpgp.org. Only certificates that hold what was asked for are offered.
      */
-    fun lookup(query: String) = run("查詢公開金鑰") {
+    fun lookup(query: String) = run(tr(Res.string.pgp_looking_up)) {
         found.value = null
         found.value = search(query)
     }
@@ -296,11 +298,11 @@ class OpenPgpModel(private val model: WalletModel) {
             }
             Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$").matches(q) -> {
                 val wkd = runCatching { wkd(q) }.getOrNull().orEmpty().filter { k -> k.first.userIds.any { q.lowercase() in it.lowercase() } }
-                if (wkd.isNotEmpty()) OpenPgpFound(q, "Web Key Directory（" + q.substringAfter('@').lowercase() + "）", wkd)
+                if (wkd.isNotEmpty()) OpenPgpFound(q, tr(Res.string.pgp_wkd_start) + q.substringAfter('@').lowercase() + tr(Res.string.paren_close), wkd)
                 else OpenPgpFound(q, "keys.openpgp.org", fetch("$VKS/vks/v1/by-email/" + q.encodeURLPathPart())
                     ?.let { OpenPgp.certificates(it) }.orEmpty().filter { k -> k.first.userIds.any { q.lowercase() in it.lowercase() } })
             }
-            else -> throw SigningException("請輸入 40 位指紋、16 位金鑰 ID 或電子郵件地址")
+            else -> throw SigningException(tr(Res.string.pgp_query_hint))
         }
     }
 
@@ -326,18 +328,18 @@ class OpenPgpModel(private val model: WalletModel) {
     private suspend fun fetch(url: String): ByteArray? {
         val r = model.http.get(url)
         if (r.status == HttpStatusCode.NotFound) return null
-        if (!r.status.isSuccess()) throw SigningException("查詢失敗（HTTP ${r.status.value}）")
+        if (!r.status.isSuccess()) throw SigningException(tr(Res.string.pgp_lookup_failed, r.status.value))
         val body = r.readRawBytes()
-        if (body.size > MAX_KEY_BYTES) throw SigningException("回傳的公開金鑰超過 ${MAX_KEY_BYTES / 1024} KB，已拒絕")
+        if (body.size > MAX_KEY_BYTES) throw SigningException(tr(Res.string.pgp_key_too_large, MAX_KEY_BYTES / 1024))
         return body.takeIf { it.isNotEmpty() }
     }
 
     /** Adds the keys of the last lookup as unverified. */
-    fun acceptFound() = run("加入查到的公開金鑰") {
+    fun acceptFound() = run(tr(Res.string.pgp_add_found)) {
         val f = found.value ?: return@run
         f.keys.forEach { (info, cert) -> put(info, cert, OpenPgpTrust.UNVERIFIED, f.source) }
         found.value = null
-        model.message.value = "已加入 ${f.keys.size} 把公開金鑰（未核對，請與持有人核對指紋）"
+        model.message.value = tr(Res.string.pgp_added_check_fp, f.keys.size)
         model.files.reinspectOpenPgp()
     }
 
@@ -356,8 +358,8 @@ class OpenPgpModel(private val model: WalletModel) {
 
         /** What to tell the user before a tap on [reader]. */
         fun tapMessage(reader: NfcReaderOption, purpose: String): String =
-            if (reader.external) "請讓 OpenPGP 卡或 YubiKey 透過「${reader.name}」保持接上，$purpose，完成前請勿拔除。"
-            else "請將 OpenPGP 卡或 YubiKey 貼近手機背面的 NFC 感應區，$purpose，讀取期間保持貼合不要移動。"
+            if (reader.external) tr(Res.string.pgp_keep_reader, reader.name, purpose)
+            else tr(Res.string.pgp_hold_nfc, purpose)
 
         /** z-base-32 (RFC 6189) of [b], as the Web Key Directory names its files. */
         fun zBase32(b: ByteArray): String {

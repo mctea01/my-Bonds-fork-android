@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+
 /** Where a proof is produced when this device is short of resources (p4-zkp.md section 8). */
 enum class ZkChoiceKind { ON_DEVICE, DESKTOP, SELF_HOSTED, WITHOUT_ZK }
 
@@ -32,16 +35,16 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
     val desktop = info?.isDesktop == true
     val here = buildList {
         readiness.kind.peakMemoryMb?.let { peak ->
-            add("預估記憶體峰值 $peak MB" + (info?.let { "（目前可用 ${it.availableRamMb} MB）" } ?: ""))
+            add(tr(Res.string.zkc_peak, peak) + (info?.let { tr(Res.string.zkc_available, it.availableRamMb) } ?: ""))
         }
-        if (readiness.missing.isNotEmpty()) add("需先下載 ${mb(readiness.downloadBytes)}，安裝後佔用 ${mb(readiness.installedBytes)}")
-        if (!readiness.recommended) add("可能被系統中止；可隨時取消，最長執行 ${readiness.kind.extendedTimeout.inWholeMinutes} 分鐘")
+        if (readiness.missing.isNotEmpty()) add(tr(Res.string.zkc_download, mb(readiness.downloadBytes), mb(readiness.installedBytes)))
+        if (!readiness.recommended) add(tr(Res.string.zkc_may_stop, readiness.kind.extendedTimeout.inWholeMinutes))
     }
     val onDevice = ZkChoiceOption(
         ZkChoiceKind.ON_DEVICE,
-        if (readiness.recommended) "在這台裝置產生" else "仍在這台裝置產生",
-        if (readiness.canRunHere) here.joinToString("。").ifEmpty { "在背景產生，可隨時取消" }
-        else readiness.advice ?: "這台裝置無法產生此證明",
+        if (readiness.recommended) tr(Res.string.zkc_on_device) else tr(Res.string.zkc_on_device_anyway),
+        if (readiness.canRunHere) here.joinToString(tr(Res.string.sentence_end)).ifEmpty { tr(Res.string.zkc_background) }
+        else readiness.advice ?: tr(Res.string.zkc_cannot_here),
         enabled = readiness.canRunHere,
         recommended = readiness.recommended,
     )
@@ -50,11 +53,11 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
         if (!desktop) add(
             ZkChoiceOption(
                 ZkChoiceKind.DESKTOP,
-                if (readiness.kind.answersVerifier) "改用電腦版回應" else "在電腦版產生後匯入",
+                if (readiness.kind.answersVerifier) tr(Res.string.zkc_desktop_answer) else tr(Res.string.zkc_desktop_import),
                 when {
-                    readiness.kind.answersVerifier -> "在電腦版錢包加入同一張卡片後，掃描查驗方的 QR Code 回應"
-                    context.desktopImport -> "匯出證明請求檔（含第 1 頁內容），在電腦版錢包產生證明後匯入這台裝置；證明會先在這台裝置驗證再使用"
-                    else -> "電腦版產生後匯入尚未提供；可在電腦版錢包匯入同一份文件，直接在電腦上產生衍生憑證"
+                    readiness.kind.answersVerifier -> tr(Res.string.zkc_desktop_answer_text)
+                    context.desktopImport -> tr(Res.string.zkc_desktop_import_text)
+                    else -> tr(Res.string.zkc_desktop_import_missing)
                 },
                 enabled = readiness.kind.answersVerifier || context.desktopImport,
                 recommended = !readiness.recommended && (readiness.kind.answersVerifier || context.desktopImport),
@@ -63,15 +66,15 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
         if (readiness.kind == ZkProofKind.PDF) add(
             ZkChoiceOption(
                 ZkChoiceKind.SELF_HOSTED,
-                "送到自架主機產生",
-                if (context.selfHostConfigured) "主機會收到第 1 頁的內容與證明需要的私密資料，不是整份文件；回傳的證明會先在這台裝置驗證再使用"
-                else "需先在設定的「零知識證明」頁加入自架主機",
+                tr(Res.string.zkc_self_hosted),
+                if (context.selfHostConfigured) tr(Res.string.zkc_self_hosted_text)
+                else tr(Res.string.zkc_self_hosted_missing),
                 enabled = context.selfHostConfigured,
                 recommended = false,
             ),
         )
         context.withoutZk?.let {
-            add(ZkChoiceOption(ZkChoiceKind.WITHOUT_ZK, "不加零知識證據", "$it；隱私較低", enabled = true, recommended = false))
+            add(ZkChoiceOption(ZkChoiceKind.WITHOUT_ZK, tr(Res.string.zkc_without), tr(Res.string.zkc_without_text, it), enabled = true, recommended = false))
         }
     }
 }

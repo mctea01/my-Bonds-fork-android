@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import org.multipaz.crypto.Algorithm
 import org.multipaz.prompt.Reason
 import org.multipaz.securearea.KeyLockedException
@@ -20,8 +22,8 @@ suspend fun softwareBackend(storage: Storage, pinPrompt: suspend (String) -> Str
     KeyBackend(SoftwareSecureArea.create(storage), KeyProtection.SOFTWARE) { _, userAuth ->
         val b = SoftwareCreateKeySettings.Builder()
         if (userAuth) {
-            val pin = pinPrompt("設定此憑證金鑰的 App PIN（至少 6 位數字），之後每次使用都需輸入")
-                ?: throw KeyLockedException("使用者取消輸入 App PIN")
+            val pin = pinPrompt(tr(Res.string.sk_set_pin))
+                ?: throw KeyLockedException(tr(Res.string.sk_pin_cancelled))
             b.setPassphraseRequired(true, pin, PassphraseConstraints.PIN_SIX_DIGITS_OR_LONGER)
         }
         b.build()
@@ -34,10 +36,10 @@ class PinOrPlatformUnlock(
 ) : KeyUnlockDataProvider {
     override suspend fun getKeyUnlockData(secureArea: SecureArea, alias: String, algorithm: Algorithm, unlockReason: Reason): KeyUnlockData {
         if (secureArea is SoftwareSecureArea) {
-            val pin = pinPrompt() ?: throw KeyLockedException("使用者取消輸入 App PIN")
+            val pin = pinPrompt() ?: throw KeyLockedException(tr(Res.string.sk_pin_cancelled))
             return SoftwareKeyUnlockData(secureArea, alias, pin)
         }
         return platform?.getKeyUnlockData(secureArea, alias, algorithm, unlockReason)
-            ?: throw KeyLockedException("此平台無法解鎖 ${secureArea.displayName} 的金鑰")
+            ?: throw KeyLockedException(tr(Res.string.sk_cannot_unlock, secureArea.displayName))
     }
 }

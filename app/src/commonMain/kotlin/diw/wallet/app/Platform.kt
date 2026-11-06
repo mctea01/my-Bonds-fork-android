@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.StringResource
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SigningException
@@ -21,10 +24,12 @@ expect fun decodeImageBytes(bytes: ByteArray): ImageBitmap?
 expect fun encodePng(image: ImageBitmap): ByteArray?
 
 /** Where credential keys live; listed from strongest to weakest. */
-enum class KeyProtection(val wire: String, val displayName: String, val hardware: Boolean) {
-    STRONGBOX("strongbox", "StrongBox 安全晶片", true),
-    TEE("tee", "TEE 可信執行環境", true),
-    SOFTWARE("software", "軟體金鑰（App PIN 保護）", false),
+enum class KeyProtection(val wire: String, private val displayNameRes: StringResource, val hardware: Boolean) {
+    STRONGBOX("strongbox", Res.string.key_strongbox, true),
+    TEE("tee", Res.string.key_tee, true),
+    SOFTWARE("software", Res.string.key_software_pin, false);
+
+    val displayName: String get() = tr(displayNameRes)
 }
 
 /** A secure area and how to create keys in it. */
@@ -167,19 +172,19 @@ interface PlatformServices {
     fun keepScreenOn(on: Boolean) {}
 
     /** Why an NFC tap cannot start a proximity presentation now (no NFC, NFC off, no card emulation); null when it can. */
-    fun nfcPresentationUnavailableReason(): String? = "此裝置不支援 NFC 感應出示"
+    fun nfcPresentationUnavailableReason(): String? = tr(Res.string.pl_no_nfc_present)
 
     /**
      * Why Bluetooth cannot carry a proximity presentation now (no Bluetooth, turned off, permission missing, which is
      * then asked for); null when it can.
      */
-    suspend fun proximityTransportUnavailableReason(): String? = "此平台不支援藍牙近距離傳輸"
+    suspend fun proximityTransportUnavailableReason(): String? = tr(Res.string.reader_no_ble)
 
     /** While true, NFC taps go to the wallet rather than another wallet app (Android card emulation preference). */
     fun setNfcPresentationActive(active: Boolean) {}
 
     /** NFC readers for reading another wallet in person (ISO/IEC 18013-5 mdoc reader) or a citizen certificate card. */
-    suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), "此平台不支援 NFC 讀取")
+    suspend fun nfcReaders(): NfcReaderList = NfcReaderList(emptyList(), tr(Res.string.pl_no_nfc_read))
 
     /**
      * While the phone is in NFC reader mode waiting for a card tap (reading or signing with a citizen certificate or
@@ -248,8 +253,8 @@ interface ExternalKeys {
 }
 
 object NoExternalKeys : ExternalKeys {
-    override val systemUnavailableReason = "此平台沒有可用的系統金鑰庫"
-    override val tokenUnavailableReason = "此平台不支援 PKCS#11 硬體憑證"
+    override val systemUnavailableReason = tr(Res.string.pl_no_keystore)
+    override val tokenUnavailableReason = tr(Res.string.pl_no_pkcs11)
     override suspend fun systemSigner(id: String?): DocumentSigner = throw SigningException(systemUnavailableReason)
     override suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner = throw SigningException(tokenUnavailableReason)
 }

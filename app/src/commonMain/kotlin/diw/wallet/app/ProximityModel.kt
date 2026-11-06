@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.StringResource
 import diw.wallet.core.credential.ClaimReader
 import diw.wallet.core.credential.ClaimSensitivity
 import diw.wallet.core.oid4vci.CredentialDomains
@@ -52,11 +55,13 @@ import org.multipaz.util.toBase64Url
 import kotlin.time.Duration.Companion.minutes
 
 /** How an ISO mdoc presentation was started. */
-enum class ProximityChannel(val title: String, val spec: String) {
-    NFC("NFC 感應", "ISO/IEC 18013-5"),
-    QR("QR Code", "ISO/IEC 18013-5"),
+enum class ProximityChannel(private val titleRes: StringResource?, val spec: String) {
+    NFC(Res.string.proximity_nfc, "ISO/IEC 18013-5"),
+    QR(null, "ISO/IEC 18013-5"),
     /** A web page or app through the Digital Credentials API, protocol org-iso-mdoc. */
-    DC_API("瀏覽器或 App（Digital Credentials API）", "ISO/IEC 18013-7 Annex C"),
+    DC_API(Res.string.proximity_dc_api, "ISO/IEC 18013-7 Annex C");
+
+    val title: String get() = titleRes?.let { tr(it) } ?: "QR Code"
 }
 
 /** What the proximity presentation screen shows. */
@@ -219,10 +224,10 @@ class ProximityModel(private val model: WalletModel) {
             model.record(HistoryKind.PRESENTED, s.verifier, s.trust, s.items.map { it.documentName }, s.items.flatMap { it.claims }, note(channel))
         }
         try {
-            if (channel == ProximityChannel.NFC) state.value = ProximityUi.Working("已感應，正在連線查驗設備")
+            if (channel == ProximityChannel.NFC) state.value = ProximityUi.Working(tr(Res.string.prox_tapped))
             engaged = engage()
             transport = withTimeout(CONNECT_TIMEOUT) { engaged.transports.waitForConnection(eSenderKey = engaged.eDeviceKey.publicKey) }
-            state.value = ProximityUi.Working("等待查驗設備的請求")
+            state.value = ProximityUi.Working(tr(Res.string.prox_waiting))
             val source = source(channel, onShared = { shared = it }, onRefused = { refused = it })
             withContext(model.unlockProvider) {
                 Iso18013Presentment(
@@ -236,21 +241,21 @@ class ProximityModel(private val model: WalletModel) {
                     onWaitingForRequest = { if (sent) finish() },
                     onSendingResponse = {
                         sent = true
-                        state.value = ProximityUi.Working("送出證件資料")
+                        state.value = ProximityUi.Working(tr(Res.string.prox_sending))
                     },
                 )
             }
-            if (sent) finish() else state.value = ProximityUi.Failed("查驗設備結束了連線，沒有提出請求", channel)
+            if (sent) finish() else state.value = ProximityUi.Failed(tr(Res.string.prox_no_request), channel)
         } catch (e: CancellationException) {
             throw e
         } catch (e: PresentmentCanceledException) {
             refused?.let { model.record(HistoryKind.DECLINED, it.verifier, it.trust, it.items.map { i -> i.documentName }, it.items.flatMap { i -> i.claims }, note(channel)) }
-            state.value = ProximityUi.Failed("已拒絕分享", channel)
+            state.value = ProximityUi.Failed(tr(Res.string.msg_share_declined), channel)
         } catch (e: PresentmentCannotSatisfyRequestException) {
-            state.value = ProximityUi.Failed("這支手機沒有查驗設備要求的證件。近距離出示適用行動駕照等 mdoc 證件。", channel)
+            state.value = ProximityUi.Failed(tr(Res.string.prox_no_document), channel)
         } catch (e: NotImplementedError) {
             // A transport the platform does not implement (Bluetooth on the desktop).
-            state.value = ProximityUi.Failed("此平台不支援近距離傳輸（藍牙或 NFC）", channel)
+            state.value = ProximityUi.Failed(tr(Res.string.prox_unsupported), channel)
         } catch (e: Exception) {
             // Readers often close the connection or stop talking once they have the response.
             if (sent) finish() else state.value = ProximityUi.Failed(failure(e), channel)
@@ -264,15 +269,15 @@ class ProximityModel(private val model: WalletModel) {
 
     private fun failure(e: Exception): String = when (e) {
         is diw.wallet.core.zk.LongfellowZk.ProofException ->
-            "零知識證明產生或自驗失敗，未送出證件資料" + (e.cause?.message?.takeIf { it.isNotBlank() }?.let { "（原因：$it）" } ?: "")
+            tr(Res.string.prox_zk_failed) + (e.cause?.message?.takeIf { it.isNotBlank() }?.let { tr(Res.string.prox_reason, it) } ?: "")
         is Unavailable -> e.message.orEmpty()
-        is kotlinx.coroutines.TimeoutCancellationException -> "查驗設備沒有連線。請確認藍牙已開啟，再感應或掃描一次。"
-        is MdocTransportClosedException -> "連線中斷。請再感應或掃描一次。"
-        else -> "近距離出示失敗：" + model.describe(e)
+        is kotlinx.coroutines.TimeoutCancellationException -> tr(Res.string.prox_no_connection)
+        is MdocTransportClosedException -> tr(Res.string.prox_link_lost)
+        else -> tr(Res.string.prox_failed) + model.describe(e)
     }
 
     private fun note(channel: ProximityChannel) =
-        if (channel == ProximityChannel.DC_API) "${channel.title}，${channel.spec}" else "近距離出示（${channel.spec}，${channel.title}）"
+        if (channel == ProximityChannel.DC_API) tr(Res.string.prox_note_dc, channel.title, channel.spec) else tr(Res.string.prox_note, channel.spec, channel.title)
 
     /**
      * A Digital Credentials API request in the ISO mdoc protocol (ISO/IEC 18013-7 Annex C): the DeviceRequest is
@@ -291,7 +296,7 @@ class ProximityModel(private val model: WalletModel) {
         model.legal.awaitComplete()
         cancel()
         listening.value = false
-        state.value = ProximityUi.Working("驗證請求中")
+        state.value = ProximityUi.Working(tr(Res.string.flow_checking_request))
         model.screen.value = Screen.Proximity
         var shared: Shared? = null
         var refused: Shared? = null
@@ -321,9 +326,9 @@ class ProximityModel(private val model: WalletModel) {
             refused?.let { model.record(HistoryKind.DECLINED, it.verifier, it.trust, it.items.map { i -> i.documentName }, it.items.flatMap { i -> i.claims }, note(channel)) }
             null
         } catch (e: PresentmentCannotSatisfyRequestException) {
-            failAndWait("這支手機沒有對方要求的證件。")
+            failAndWait(tr(Res.string.prox_no_requested))
         } catch (e: Exception) {
-            failAndWait(if (e is diw.wallet.core.zk.LongfellowZk.ProofException) failure(e) else "請求無法處理：" + model.describe(e))
+            failAndWait(if (e is diw.wallet.core.zk.LongfellowZk.ProofException) failure(e) else tr(Res.string.prox_request_failed) + model.describe(e))
         } finally {
             model.endOperation()
         }
@@ -372,14 +377,14 @@ class ProximityModel(private val model: WalletModel) {
                     longfellow.repository?.lookup(spec.system)
                         ?.getMatchingSystemSpec(request.systemSpecs, match.claims.keys.toList()) != null
                 }
-                check(supported) { longfellow.unavailableReason ?: "無法使用要求的零知識證明電路" }
+                check(supported) { longfellow.unavailableReason ?: tr(Res.string.prox_no_circuit) }
             }
         }
         onDocumentsInFocus(selection.matches.map { it.credential.document })
         val items = selection.matches.map { m ->
             val doc = m.credential.document
             ConsentItem(
-                documentName = doc.displayName ?: "證件",
+                documentName = doc.displayName ?: tr(Res.string.credential_fallback),
                 claims = m.claims.values.map { model.claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) },
                 documentTrust = null,
                 documentId = doc.identifier,
@@ -398,7 +403,7 @@ class ProximityModel(private val model: WalletModel) {
             model.trust.decide(TrustRole.VERIFIER, chain)
         }
         val verifier = chain.firstOrNull()?.let { c -> c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject() }
-            ?: requester.origin ?: requester.appId ?: "未提供身分的查驗設備"
+            ?: requester.origin ?: requester.appId ?: tr(Res.string.prox_anonymous_reader)
         val risk = WalletModel.requestRisk(items, trust.tier)
         model.status.refreshFor(items.mapNotNull { it.documentId }, risk)
         val answer = CompletableDeferred<Boolean>()
@@ -406,7 +411,7 @@ class ProximityModel(private val model: WalletModel) {
         val s = Shared(verifier, trust, items)
         return if (answer.await()) {
             onShared(s)
-            state.value = ProximityUi.Working("產生並送出回應")
+            state.value = ProximityUi.Working(tr(Res.string.step_respond))
             selection
         } else {
             onRefused(s)
