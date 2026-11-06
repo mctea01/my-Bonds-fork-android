@@ -84,6 +84,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "addchain"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5665045de74fda906c0abfaec40cf2551f88c34dccea869f3fe950dde7209764"
+dependencies = [
+ "num-bigint 0.4.8",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2001,7 +2012,7 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "bitvec",
  "byteorder",
- "ff_derive",
+ "ff_derive 0.13.1",
  "rand_core 0.6.4",
  "subtle",
 ]
@@ -2012,6 +2023,8 @@ version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1f686ab92a9fb0eaf188f6c6c87b89490baa6fdb0db4544ba4dc47f7942489f"
 dependencies = [
+ "bitvec",
+ "ff_derive 0.14.0",
  "rand_core 0.10.1",
  "subtle",
 ]
@@ -2022,13 +2035,28 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f10d12652036b0e99197587c6ba87a8fc3031986499973c030d8b44fcc151b60"
 dependencies = [
- "addchain",
+ "addchain 0.2.1",
  "num-bigint 0.3.3",
  "num-integer",
  "num-traits",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "ff_derive"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "241afe8c15ffa21933eaefe8a563af36fd9fc98a3e8a044e8f7db52eb1fae3d8"
+dependencies = [
+ "addchain 0.3.0",
+ "num-bigint 0.4.8",
+ "num-integer",
+ "num-traits",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -3434,7 +3462,7 @@ dependencies = [
  "chrono",
  "circom-witnesscalc",
  "ecdsa-spartan2",
- "ff 0.13.1",
+ "ff 0.14.0",
  "num-bigint 0.4.8",
  "num-traits",
  "p256 0.13.2",
