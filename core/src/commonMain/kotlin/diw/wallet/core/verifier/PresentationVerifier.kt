@@ -1,6 +1,19 @@
 package diw.wallet.core.verifier
 
+import diw.wallet.core.did.DidResolver
+import diw.wallet.core.document.DocumentTrustSource
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.jose.VerificationKey
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.util.obj
+import diw.wallet.core.w3c.SdJwtDisclosures
+import kotlinx.serialization.json.JsonElement
+import org.multipaz.sdjwt.SdJwtKb
+import diw.wallet.core.document.Check as DocumentCheck
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRegistry
@@ -63,8 +76,15 @@ data class CredentialVerification(
     val claims: Map<String, String>,
     val checks: List<Check>,
     val issuerTrust: TrustDecision,
+    /**
+     * The evidence a document-derived credential carries (signature statement, time stamp, zkPDF proof and its
+     * fields). A failed entry fails the credential; one that could not be checked is shown but does not.
+     */
+    val evidence: List<Check> = emptyList(),
 ) {
-    val passed: Boolean get() = checks.all { it.status == CheckStatus.PASS } && issuerTrust.environment != null
+    val passed: Boolean
+        get() = checks.all { it.status == CheckStatus.PASS } && issuerTrust.environment != null &&
+            evidence.none { it.status == CheckStatus.FAIL }
 }
 
 data class PresentationVerification(
@@ -96,6 +116,14 @@ class PresentationVerifier(
      * wallets do. Off by default; the test Verifier enables it and reports a compatibility note.
      */
     private val acceptUnsecuredJwtResponse: Boolean = false,
+    /**
+     * Resolves the issuer of an SD-JWT VC that names a DID instead of carrying x5c (document-derived credentials);
+     * Multipaz takes issuer keys from x5c only, so these are checked here. Null rejects such credentials.
+     */
+    private val didResolver: DidResolver? = null,
+    /** Checks the time stamp and the zkPDF proof of a document-derived credential; null leaves them unchecked. */
+    private val documentTrust: DocumentTrustSource? = null,
+    private val zkPdf: ZkPdfContext? = null,
 ) {
     /** Verifies a direct_post / direct_post.jwt body (form parameters). */
     suspend fun verifyDirectPost(form: Map<String, String>, session: VerifierSession): PresentationVerification {
@@ -169,20 +197,28 @@ class PresentationVerifier(
         if (unknown.isNotEmpty()) sessionChecks += Check("vp_token ids", CheckStatus.FAIL, "unrequested ids $unknown")
 
         val now = Clock.System.now()
-        val presentations: List<VerifiedPresentation> = try {
+        // SD-JWT VCs whose issuer is a DID (no x5c) are verified here; the rest go through Multipaz.
+        val didIssued = vpToken.keys.filter { id -> didIssuedSdJwt(vpToken[id]) != null }.toSet()
+        val standard = JsonObject(vpToken.filterKeys { it !in didIssued })
+        val presentations: List<VerifiedPresentation> = if (standard.isEmpty()) emptyList() else try {
             VerificationUtil.verifyOpenID4VPResponse(
                 now = now,
-                vpToken = vpToken,
+                vpToken = standard,
                 sessionTranscript = transcript,
                 nonce = session.nonce,
                 documentTypeRepository = documentTypeRepository,
                 zkSystemRepository = zkSystemRepository,
-                queryData = queryData,
+                queryData = queryData.filterKeys { it !in didIssued },
             )
         } catch (e: Exception) {
             return PresentationVerification(emptyList(), "invalid_presentation", "signature/binding verification failed: ${e.message}", sessionChecks)
         }
-        val results = presentations.map { vp -> evaluate(vp, vpToken, expectedAud, now) }
+        val results = presentations.map { vp -> evaluate(vp, vpToken, expectedAud, now) } +
+            didIssued.mapNotNull { id ->
+                val query = (session.dcqlQuery["credentials"] as? JsonArray)?.filterIsInstance<JsonObject>()?.firstOrNull { it.str("id") == id }
+                    ?: return@mapNotNull null
+                verifyDidIssued(id, didIssuedSdJwt(vpToken[id])!!, query, session.nonce, expectedAud, now)
+            }
         val missing = queryData.keys.filter { id -> results.none { it.queryId == id } }
         if (missing.isNotEmpty()) sessionChecks += Check("requested credentials", CheckStatus.WARN, "not returned: $missing")
         return PresentationVerification(results, sessionChecks = sessionChecks)
@@ -219,6 +255,93 @@ class PresentationVerifier(
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, "${trust.anchorName} (${trust.environment.id})")
         else Check("issuer trust", CheckStatus.FAIL, "issuer chain not anchored in an enabled environment")
         return CredentialVerification(id, format, typeName, claims, checks, trust)
+    }
+
+    /** The SD-JWT VC (with KB-JWT) in [entry] when its issuer is a DID and it carries no x5c; null otherwise. */
+    private fun didIssuedSdJwt(entry: JsonElement?): String? {
+        if (didResolver == null) return null
+        val token = ((entry as? JsonArray)?.singleOrNull() ?: entry)?.let { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            ?: return null
+        if ('~' !in token) return null
+        return runCatching {
+            val jwt = token.substringBefore('~').split('.')
+            val header = DiwJson.parseToJsonElement(jwt[0].fromBase64Url().decodeToString()) as JsonObject
+            val payload = DiwJson.parseToJsonElement(jwt[1].fromBase64Url().decodeToString()) as JsonObject
+            token.takeIf { "x5c" !in header && payload.str("iss")?.startsWith("did:") == true }
+        }.getOrNull()
+    }
+
+    /**
+     * An SD-JWT VC issued by a DID: the issuer signature with the DID's key, the KB-JWT (signature with the cnf key,
+     * nonce, audience and age), the requested type and claims, the validity window, and for a document-derived
+     * credential its evidence, including a zkPDF proof when the holder disclosed it.
+     */
+    private suspend fun verifyDidIssued(
+        id: String,
+        token: String,
+        query: JsonObject,
+        nonce: String,
+        expectedAud: String,
+        now: Instant,
+    ): CredentialVerification {
+        val checks = mutableListOf<Check>()
+        fun failed(reason: String) = CredentialVerification(id, "dc+sd-jwt", "unknown", emptyMap(), checks + Check("signature and holder binding", CheckStatus.FAIL, reason),
+            TrustDecision.unknown(reason))
+        val kb = try {
+            SdJwtKb.fromCompactSerialization(token)
+        } catch (_: Exception) {
+            return failed("malformed SD-JWT VC")
+        }
+        val sdJwt = kb.sdJwt
+        val iss = sdJwt.issuer ?: return failed("no issuer")
+        val issuerKey = try {
+            (didResolver!!.resolveKey(iss, sdJwt.jwtHeader.str("kid")).key as? VerificationKey.Ec)?.key
+        } catch (_: Exception) {
+            null
+        } ?: return failed("issuer DID key cannot be resolved")
+        val processed = try {
+            kb.verify(
+                issuerKey = issuerKey,
+                checkNonce = { it == nonce },
+                checkAudience = { it == expectedAud },
+                checkCreationTime = { kotlin.math.abs((now - it).inWholeSeconds) <= maxKbAge.inWholeSeconds },
+            )
+        } catch (e: Exception) {
+            return failed("issuer signature or key binding invalid: ${e.message}")
+        }
+        checks += Check("signature and holder binding", CheckStatus.PASS, "issuer $iss; KB-JWT nonce, aud and iat")
+        val vct = sdJwt.credentialType ?: ""
+        val vctValues = (query.obj("meta")?.get("vct_values") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }
+        checks += if (vctValues == null || vct in vctValues) Check("vct", CheckStatus.PASS, vct)
+        else Check("vct", CheckStatus.FAIL, "$vct not requested")
+        val requested = (query["claims"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+            .mapNotNull { c -> (c["path"] as? JsonArray)?.firstOrNull()?.let { (it as? JsonPrimitive)?.content } }
+        val missing = requested.filter { it !in processed }
+        checks += if (missing.isEmpty()) Check("requested claims", CheckStatus.PASS) else Check("requested claims", CheckStatus.FAIL, "missing $missing")
+        sdJwt.validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
+        sdJwt.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
+        val derived = vct == DerivedCredentials.VCT
+        val evidence = if (derived) {
+            val signed = Jws.parse(SdJwtDisclosures.parse(token.substringBeforeLast('~') + "~").issuerJwt).payload
+            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now).map { e ->
+                Check(e.title, when (e.check) {
+                    DocumentCheck.PASS -> CheckStatus.PASS
+                    DocumentCheck.FAIL -> CheckStatus.FAIL
+                    DocumentCheck.WARN -> CheckStatus.WARN
+                    DocumentCheck.NOT_CHECKED -> CheckStatus.UNKNOWN
+                }, e.detail)
+            }
+        } else emptyList()
+        val technical = setOf("iss", "iat", "nbf", "exp", "vct", "cnf", "status", "_sd_alg", "sub")
+        val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isProofClaim(k))) }
+            .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content ?: v.toString() }
+        // A document-derived credential is the holder wallet's own statement (T3); its evidence is what a verifier weighs.
+        val trust = if (derived) {
+            TrustDecision(TrustTier.T3, TrustEnvironment.USER, official = false, anchorName = "持有人錢包（文件衍生）", labels = setOf(TrustLabel.SELF_ISSUED))
+        } else TrustDecision.unknown("issuer identified by a DID that this verifier does not trust")
+        checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, trust.anchorName ?: iss)
+        else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")
+        return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence)
     }
 
     private fun kbChecks(token: String?, expectedAud: String, now: Instant): List<Check> {

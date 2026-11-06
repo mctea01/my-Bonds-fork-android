@@ -6,6 +6,8 @@ import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
 import kotlinx.io.bytestring.encodeToByteString
+import diw.wallet.core.document.derived.DerivedCredentials
+import diw.wallet.core.w3c.SdJwtDisclosures
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -273,7 +275,7 @@ class ResponseBuilder(private val source: PresentmentSource) {
         val claims = src.credentialQuery.claims as List<JsonRequestedClaim>
         val base = credential as Credential
         val sdJwt = SdJwt.fromCompactSerialization(base.issuerProvidedData.decodeToString())
-        val filtered = sdJwt.filter(claims.map { it.claimPath })
+        val filtered = sdJwt.filter(zkPdfPaths(sdJwt, claims.map { it.claimPath }))
         base.increaseUsageCount()
         if (credential !is SecureAreaBoundCredential) {
             if (requiresHolderBinding(request, src.credentialQuery.id)) {
@@ -316,6 +318,19 @@ class ResponseBuilder(private val source: PresentmentSource) {
     }
 
     companion object {
+        /**
+         * For a document-derived credential, the zkPDF opening of every requested field when the request asks for the
+         * zkPDF bundle, so each field shown with the proof can be checked against it (p4-zkp.md 5.1); a verifier only
+         * names the fields and the bundle. Openings the credential does not hold are not added.
+         */
+        fun zkPdfPaths(sdJwt: SdJwt, paths: List<JsonArray>): List<JsonArray> {
+            if (sdJwt.credentialType != DerivedCredentials.VCT) return paths
+            val names = paths.mapNotNull { p -> (p.singleOrNull() as? JsonPrimitive)?.takeIf { it.isString }?.content }.toSet()
+            val held = SdJwtDisclosures.parse(sdJwt.compactSerialization).disclosures.mapNotNull { it.name }.toSet()
+            val added = DerivedCredentials.withOpenings(names) - names
+            return paths + added.filter { it in held }.map { JsonArray(listOf(JsonPrimitive(it))) }
+        }
+
         /** Builds an OpenID4VP error response body. */
         fun errorPayload(error: String, description: String?, state: String?): JsonObject = buildJsonObject {
             put("error", error)

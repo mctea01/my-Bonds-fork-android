@@ -47,6 +47,8 @@ class TestServers(
      */
     zkTlsHost: String = "localhost",
     zkTlsPort: Int = 0,
+    /** Checks zkPDF proofs in document-derived credentials presented over OpenID4VP; null reports them as not checked. */
+    zkPdf: diw.wallet.core.document.derived.ZkPdfContext? = null,
 ) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true))
@@ -56,7 +58,18 @@ class TestServers(
     }
     val httpClient = HttpClient(Java)
     val longfellow = diw.wallet.core.zk.LongfellowZk(System.getProperty("os.name"))
-    val presentationVerifier = PresentationVerifier(trust, documentTypes, CachingRevocationChecker(storage, httpClient), zkSystemRepository = longfellow.repository, acceptUnsecuredJwtResponse = true)
+    /** Document signers and time-stamp authorities as the test trust registry decides them, without fetching AIA. */
+    val documentTrust = object : diw.wallet.core.document.DocumentTrustSource {
+        override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: kotlin.time.Instant) = trust.decide(role, chain, at)
+        override suspend fun fetchIssuerCertificates(url: String) = emptyList<ByteArray>()
+    }
+    val presentationVerifier = PresentationVerifier(
+        trust, documentTypes, CachingRevocationChecker(storage, httpClient), zkSystemRepository = longfellow.repository,
+        acceptUnsecuredJwtResponse = true,
+        didResolver = diw.wallet.core.did.DidResolver(httpClient, allowInsecureLoopback = true),
+        documentTrust = documentTrust,
+        zkPdf = zkPdf,
+    )
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
     val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
     val walletProvider = WalletProviderService(baseUrl, pki)

@@ -219,6 +219,9 @@ class VerifierService(
                         put("checks", JsonArray(c.checks.map { ch ->
                             buildJsonObject { put("name", ch.name); put("status", ch.status.name); put("detail", ch.detail) }
                         }))
+                        if (c.evidence.isNotEmpty()) put("evidence", JsonArray(c.evidence.map { ch ->
+                            buildJsonObject { put("name", ch.name); put("status", ch.status.name); put("detail", ch.detail) }
+                        }))
                     })
                 }
             })
