@@ -1790,6 +1790,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "uniffi",
+ "zkpassport-verify",
  "zkpdf-prover",
  "zktls",
 ]
@@ -5994,6 +5995,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "zkpassport-verify"
+version = "0.1.0"
+dependencies = [
+ "acvm",
+ "base64 0.23.1",
+ "bn254_blackbox_solver",
+ "flate2",
+ "hex",
+ "num-bigint 0.4.8",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

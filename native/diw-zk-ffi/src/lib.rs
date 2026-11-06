@@ -28,6 +28,7 @@ fn protect_worker_panics() {
 uniffi::setup_scaffolding!("diw_zk");
 
 mod openac;
+mod zkpassport;
 mod zkpdf;
 mod zktls;
 

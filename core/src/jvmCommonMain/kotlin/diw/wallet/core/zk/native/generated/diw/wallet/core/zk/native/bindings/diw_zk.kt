@@ -848,6 +848,12 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -884,6 +890,12 @@ fun uniffi_diw_zk_checksum_func_reblind_show(
 fun uniffi_diw_zk_checksum_func_self_test(
 ): Short
 fun uniffi_diw_zk_checksum_func_verify_age_presentation(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_circuit_root(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_inspect(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_verify(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpdf_check(
 ): Short
@@ -1002,6 +1014,12 @@ fun uniffi_diw_zk_fn_func_self_test(uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,`expectedIssuerKeyX`: RustBuffer.ByValue,`expectedIssuerKeyY`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_diw_zk_fn_func_zkpassport_circuit_root(`manifestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_inspect(`proofsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_verify(`requestJson`: RustBuffer.ByValue,`crsDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpdf_check(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpdf_prove(`input`: RustBuffer.ByValue,`cancel`: Pointer,`progress`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1169,6 +1187,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_verify_age_presentation() != 383.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_circuit_root() != 54841.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_inspect() != 36238.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_verify() != 55767.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpdf_check() != 47012.toShort()) {
@@ -3852,6 +3879,47 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_verify_age_presentation(
         FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`nonce`),FfiConverterString.lower(`claimName`),FfiConverterUByte.lower(`claimFormat`),FfiConverterULong.lower(`cutoff`),FfiConverterString.lower(`expectedIssuerKeyX`),FfiConverterString.lower(`expectedIssuerKeyY`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The circuit registry root a manifest hashes to; fails when it differs from the declared root.
+         */
+    @Throws(ZkException::class) fun `zkpassportCircuitRoot`(`manifestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_circuit_root(
+        FfiConverterString.lower(`manifestJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Version, circuit names, certificate registry root and proof date of a JSON array of proofs.
+         */
+    @Throws(ZkException::class) fun `zkpassportInspect`(`proofsJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_inspect(
+        FfiConverterString.lower(`proofsJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Checks a bundle and verifies every proof with Barretenberg. `crs_dir` is the zkPDF asset directory when
+         * its full CRS is installed, so proving keeps working afterwards; without it only the two CRS points
+         * verification needs are loaded. The JSON result carries `verified` and the error codes.
+         */
+    @Throws(ZkException::class) fun `zkpassportVerify`(`requestJson`: kotlin.String, `crsDir`: kotlin.String?): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_verify(
+        FfiConverterString.lower(`requestJson`),FfiConverterOptionalString.lower(`crsDir`),_status)
 }
     )
     }
