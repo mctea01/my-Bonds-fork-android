@@ -8,7 +8,7 @@ license.workspace = true
 circom-witnesscalc = { path = "vendor/circom-witnesscalc", default-features = false }
 ecdsa-spartan2 = { path = "vendor/ecdsa-spartan2", default-features = false }
 spartan2 = { git = "https://github.com/0xVikasRushi/Spartan2.git", rev = "d687dbb639eccbdd21e62fecec97c5826bc4dbbf", default-features = false }
-base64 = "0.22"
+base64 = "0.23"
 chrono = "0.4"
 ff = "0.13"
 num-bigint = "0.4"
