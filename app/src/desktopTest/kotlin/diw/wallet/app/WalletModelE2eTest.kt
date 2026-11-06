@@ -1081,6 +1081,32 @@ class WalletModelE2eTest {
      * The production server: the access token goes only to that server, its signing root is trusted only after the
      * fingerprint the wallet computes matches the one the server states, and a changed root is flagged, not accepted.
      */
+    /** The OPRF key hash comes from the server's /info only when it lists the oprf feature and a well-formed hash. */
+    @Test
+    fun theServersOprfKeyHashIsReadFromItsInfo() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        var features = listOf("relay")
+        var hash: String? = "0x2999856dbf71ded2838925cd1c239540bdc4f8a4a828872c6a9fca6"
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            if (request.url.host == host && request.url.encodedPath == "/info") respond(buildJsonObject {
+                putJsonArray("features") { features.forEach { add(it) } }
+                put("oprf", buildJsonObject { put("keyId", "1"); put("pk", buildJsonObject { put("x", "0x1"); put("y", "0x2"); hash?.let { put("hash", it) } }) })
+            }.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            else respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        assertNull(m.server.oprfKeyHash("https://$host"), "not listed as a feature")
+        features = listOf("relay", "oprf")
+        assertEquals(hash, m.server.oprfKeyHash("https://$host"))
+        hash = "not-a-hash"
+        assertNull(m.server.oprfKeyHash("https://$host"))
+        hash = null
+        assertNull(m.server.oprfKeyHash("https://$host"))
+    }
+
     /**
      * Signing through the production server's SP: the server is used only when its /info lists twfido with an
      * environment, the ID number is not sent otherwise, and in the production environment the certificate the first

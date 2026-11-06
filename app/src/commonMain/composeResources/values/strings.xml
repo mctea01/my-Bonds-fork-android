@@ -4215,6 +4215,7 @@
     <string name="zkp_err_mock">Proofs of a test passport, accepted only with test passports allowed.</string>
     <string name="zkp_err_native">This device has no component that can verify zkPassport proofs.</string>
     <string name="zkp_err_nullifier">The identifier in the proofs is inconsistent or of an unsupported kind.</string>
+    <string name="zkp_err_oprf_key">Salted identifiers are accepted only under the OPRF key of this wallet's server; the proofs use another key, or no server with the OPRF is set.</string>
     <string name="zkp_err_proof">A zero-knowledge proof did not verify.</string>
     <string name="zkp_err_query">The proofs do not cover every condition asked for.</string>
     <string name="zkp_err_registry">The Ethereum registry cannot be read. Check the connection or the node in the settings.</string>
