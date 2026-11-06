@@ -8,8 +8,8 @@ import org.jetbrains.compose.resources.stringResource
 /** Interface strings of the first-start pages and the legal settings, read from the string resources (legal_*). */
 object LegalStrings {
     val SUMMARY: String @Composable get() = stringResource(Res.string.legal_summary)
-    /** Shown above a legal text when the interface is not in Chinese (empty in Chinese). */
-    val CHINESE_ONLY: String @Composable get() = stringResource(Res.string.legal_chinese_only)
+    /** Shown above a translated legal text: the Chinese original prevails (empty in Chinese). */
+    val TRANSLATION_NOTE: String @Composable get() = stringResource(Res.string.legal_translation_note)
     val FULL_TEXT: String @Composable get() = stringResource(Res.string.legal_full_text)
     val OPEN_ONLINE: String @Composable get() = stringResource(Res.string.legal_open_online)
 

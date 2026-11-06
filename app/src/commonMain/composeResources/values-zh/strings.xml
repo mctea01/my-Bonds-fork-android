@@ -2183,7 +2183,6 @@
     <string name="legal_bonds_link_title">以藍牙傳送？</string>
     <string name="legal_bonds_unencrypted_warning">此離線傳輸不提供連線層加密，附近或同網路的人可能截取你出示的資料。請確認是否繼續。</string>
     <string name="legal_cancel">取消</string>
-    <string name="legal_chinese_only"></string>
     <string name="legal_decline_disable">不同意，停用這項功能</string>
     <string name="legal_disabled_line">未同意，已停用</string>
     <string name="legal_disabled_row">「%1$s」尚未啟用：你未同意其專門聲明。點選以檢視。</string>
@@ -2195,6 +2194,7 @@
     <string name="legal_done_title">設定完成</string>
     <string name="legal_enabled_line">已同意，啟用中（版本 %1$s，%2$s）</string>
     <string name="legal_full_text">全文</string>
+    <string name="legal_language">zh</string>
     <string name="legal_moica_sp_env_test">你目前選擇測試環境；測試憑證不得作為正式簽署結果。</string>
     <string name="legal_moica_sp_fork_only">內建 SP 為原始碼預留機制；只有衍生版本發布者依法取得授權並完成實際配置後，才能使用。</string>
     <string name="legal_moica_sp_not_configured">目前沒有可用的行動自然人憑證服務提供者（SP）。本專案開發者未提供內建 SP；如需使用，須自行設定依法獲授權的服務端或 SP 來源。</string>
@@ -2216,6 +2216,7 @@
     <string name="legal_statements_title">專門聲明</string>
     <string name="legal_statements_updated">此項專門聲明已更新，請閱讀並再次選擇是否啟用。</string>
     <string name="legal_summary">重點摘要</string>
+    <string name="legal_translation_note"></string>
     <string name="legal_twdiw_compatibility_continue">了解，繼續</string>
     <string name="legal_twdiw_compatibility_title">非官方相容流程</string>
     <string name="legal_twdiw_compatibility_warning">此功能使用非官方相容流程，可能以官方皮夾識別資訊連線；本 App 並非官方皮夾，平台可能拒絕。請先閱讀專門聲明。</string>

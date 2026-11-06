@@ -2183,7 +2183,6 @@
     <string name="legal_bonds_link_title">Send over Bluetooth?</string>
     <string name="legal_bonds_unencrypted_warning">This offline transfer has no connection-level encryption: people nearby or on the same network may capture the data you present. Please confirm whether to continue.</string>
     <string name="legal_cancel">Cancel</string>
-    <string name="legal_chinese_only">These documents are available in Traditional Chinese only, and the Chinese text is the one you accept.</string>
     <string name="legal_decline_disable">Decline and disable this feature</string>
     <string name="legal_disabled_line">Declined, disabled</string>
     <string name="legal_disabled_row">%1$s is not enabled: you have not accepted its statement. Tap to view it.</string>
@@ -2195,6 +2194,7 @@
     <string name="legal_done_title">All set</string>
     <string name="legal_enabled_line">Accepted and enabled (version %1$s, %2$s)</string>
     <string name="legal_full_text"> (full text)</string>
+    <string name="legal_language">en</string>
     <string name="legal_moica_sp_env_test">You chose the test environment; test certificates must not be used as production signatures.</string>
     <string name="legal_moica_sp_fork_only">The built-in SP is a mechanism reserved in the source code; it can be used only after the publisher of a derived version is lawfully authorized and has configured it.</string>
     <string name="legal_moica_sp_not_configured">No service provider (SP) for the mobile citizen digital certificate is available. The developer of this project provides no built-in SP; to use it, set up a lawfully authorized service or SP source yourself.</string>
@@ -2216,6 +2216,7 @@
     <string name="legal_statements_title">Integration statements</string>
     <string name="legal_statements_updated">This statement has been updated. Please read it and choose again whether to enable it.</string>
     <string name="legal_summary">Summary</string>
+    <string name="legal_translation_note">This English text is a translation of the Traditional Chinese original. If the two differ, the Chinese text prevails.</string>
     <string name="legal_twdiw_compatibility_continue">Understood, continue</string>
     <string name="legal_twdiw_compatibility_title">Unofficial compatible flow</string>
     <string name="legal_twdiw_compatibility_warning">This feature uses an unofficial compatible flow and may connect with the official wallet's identifiers. This app is not the official wallet, and the platform may refuse it. Please read the integration statement first.</string>

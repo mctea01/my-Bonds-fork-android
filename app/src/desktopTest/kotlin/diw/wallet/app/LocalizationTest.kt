@@ -101,12 +101,15 @@ class LocalizationTest {
     }
 
     @Test
-    fun coreMessagesFollowTheLoadedLanguage() = runBlocking<Unit> {
+    fun coreMessagesAndLegalTextsFollowTheLoadedLanguage() = runBlocking<Unit> {
         try {
             AppText.load("en")
             assertEquals("Signature 2", ct("core_signature_n", 2))
+            assertEquals("en", diw.wallet.app.legal.LegalTexts.terms.language)
+            assertEquals("LIN, CHE-CHUAN", diw.wallet.app.legal.LegalTexts.DEVELOPER)
             AppText.load("zh-TW")
             assertEquals("簽章 2", ct("core_signature_n", 2))
+            assertEquals("zh", diw.wallet.app.legal.LegalTexts.terms.language)
         } finally {
             AppText.load(null)
         }
