@@ -49,6 +49,9 @@ interface ZkEnvironment {
     /** TLSNotary proofs (zkTLS); null where the platform has none. Calls report Unsupported when the library lacks tlsn. */
     val tls: diw.wallet.core.zktls.ZkTlsEngine? get() = null
 
+    /** zkPassport requests verified on this device; null where the platform has none. */
+    val zkPassport: diw.wallet.core.zkpassport.ZkPassportVerifier? get() = null
+
     /** Resident memory of this process in MiB, sampled while a proof runs to measure its peak; null where unknown. */
     fun residentMemoryMb(): Long? = null
 }
