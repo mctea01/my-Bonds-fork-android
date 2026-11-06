@@ -3,7 +3,12 @@ package diw.testservers.zkpassport
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.zk.native.ZkNative
 import diw.wallet.core.zk.native.bindings.nativeInfo
+import diw.wallet.core.zk.native.bindings.oprfBlind
+import diw.wallet.core.zk.native.bindings.oprfEvaluate
+import diw.wallet.core.zk.native.bindings.oprfFinalize
+import diw.wallet.core.zk.native.bindings.oprfPublicKey
 import diw.wallet.core.zk.native.bindings.zkpassportCertificates
+import diw.wallet.core.zkpassport.ZkPassportOprfClient
 import diw.wallet.core.zkpassport.ZkPassportProver
 import diw.wallet.core.zkpassport.ZkPassportRegistry
 import io.ktor.client.HttpClient
@@ -15,6 +20,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -110,5 +116,46 @@ class ZkPassportProverTest {
         val a = ZkPassportProver.salt().toBigInteger()
         val b = ZkPassportProver.salt().toBigInteger()
         assertTrue(a != b && a.bitLength() <= 248 && b.bitLength() <= 248)
+    }
+
+    /** A diw-wallet-server stand-in answering with the native OPRF under [secret]; [answerSecret] can differ. */
+    private fun oprfServer(secret: String, answerSecret: String = secret, token: String = "t".repeat(16)) = HttpClient(MockEngine { request ->
+        val url = request.url.toString()
+        when {
+            url.endsWith("/oprf/v1/key") -> respond("""{"key_id":"1","pk":${oprfPublicKey(secret)}}""", HttpStatusCode.OK)
+            url.endsWith("/oprf/v1/evaluate") && request.headers["Authorization"] != "Bearer $token" -> respond("", HttpStatusCode.Unauthorized)
+            url.endsWith("/oprf/v1/evaluate") -> {
+                val body = Json.parseToJsonElement(request.body.toByteArray().decodeToString()).jsonObject
+                respond(oprfEvaluate(answerSecret, buildJsonObject { put("blinded_query", body["blinded_query"]!!) }.toString()), HttpStatusCode.OK)
+            }
+            else -> respond("", HttpStatusCode.NotFound)
+        }
+    })
+
+    @Test fun oprfAnswersAreCheckedAgainstTheServersKey() = runBlocking<Unit> {
+        assumeTrue(native(), "zkPDF backend not built")
+        val secret = "0x1234567890abcdef"
+        val query = "0x25d736ccb33e663ca64bf23add154cb740c5fa863b518da3c1a584f856b48986"
+        val client = ZkPassportOprfClient.connect(oprfServer(secret), "https://diw.example.org/", "t".repeat(16))
+        assertEquals("1", client.keyId)
+        val blinded = Json.parseToJsonElement(oprfBlind(query)).jsonObject
+        val answer = client.evaluate(blinded["blinded_query"] as JsonObject)
+        val request = buildJsonObject {
+            put("query", query)
+            put("beta", blinded["beta"]!!)
+            put("pk", client.publicKey)
+            listOf("response_blinded", "dlog_e", "dlog_s").forEach { put(it, answer[it]!!) }
+        }
+        val done = Json.parseToJsonElement(oprfFinalize(request.toString())).jsonObject
+        assertTrue(done["output"]!!.jsonPrimitive.content.startsWith("0x"))
+
+        // An answer under another key names it, and a wrong token is refused.
+        val other = ZkPassportOprfClient.connect(oprfServer(secret, answerSecret = "0x99"), "https://diw.example.org", "t".repeat(16))
+        assertEquals("oprf_key_changed", assertFailsWith<ZkPassportProver.Failure> { other.evaluate(blinded["blinded_query"] as JsonObject) }.code)
+        val denied = ZkPassportOprfClient.connect(oprfServer(secret), "https://diw.example.org", "x".repeat(16))
+        assertEquals("oprf_denied", assertFailsWith<ZkPassportProver.Failure> { denied.evaluate(blinded["blinded_query"] as JsonObject) }.code)
+        assertEquals("oprf_unavailable", assertFailsWith<ZkPassportProver.Failure> {
+            ZkPassportOprfClient.connect(HttpClient(MockEngine { respond("", HttpStatusCode.NotFound) }), "https://diw.example.org", null)
+        }.code)
     }
 }

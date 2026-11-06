@@ -230,6 +230,7 @@ class JvmZkPassportVerifier(
                     put("certificateRootValid", certificateValid)
                     put("circuitRoot", circuitRoot)
                     put("circuitRootValid", circuitValid)
+                    config.oprfKeyHash?.let { put("oprfPublicKeyHash", it) }
                 }.toString()
                 val result = ZkPassport.result(zkpassportVerify(requestJson, crsDirectory()?.absolutePath))
                 if (result.errors.none { it.startsWith("vkey:") || it.startsWith("circuit_root") || it == "manifest_root" }) {
