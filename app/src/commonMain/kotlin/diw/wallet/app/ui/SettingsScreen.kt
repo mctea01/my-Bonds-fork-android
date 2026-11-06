@@ -35,6 +35,7 @@ import diw.wallet.app.SettingsSection
 import diw.wallet.app.WalletModel
 import diw.wallet.app.WalletSettings
 import diw.wallet.app.legal.Integration
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.compat.TwdiwDialect
 import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.core.document.sign.TsaServices
@@ -364,8 +365,8 @@ private fun DeveloperPage(model: WalletModel) {
     if (!model.legal.enabled(Integration.MOBILE_MOICA)) IntegrationOffRow(model, Integration.MOBILE_MOICA)
     Toggle(
         "手動輸入 SP 帳號",
-        "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，供持有 SP 授權的開發者測試；帳號只保存在這次執行的記憶體。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" else "關閉時使用本版內建的帳號。",
+        "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，只供依法持有 SP 授權者使用；帳號只保存在這次執行的記憶體。" +
+            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" + LegalStrings.MOICA_SP_FORK_ONLY else "關閉時使用本版內建的帳號。",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
 }

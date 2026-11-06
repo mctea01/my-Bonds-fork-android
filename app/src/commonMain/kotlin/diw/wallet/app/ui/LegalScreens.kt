@@ -34,6 +34,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.LegalConsent
 import diw.wallet.app.Screen
@@ -65,6 +71,31 @@ private fun statusLine(c: LegalConsent, i: Integration): String {
     }
 }
 
+/**
+ * The legal texts mark emphasis with **bold** and names such as hosts with `code`, the same marks the published Markdown
+ * uses; this renders both and leaves any other character as it is.
+ */
+internal fun legalAnnotated(text: String): AnnotatedString = buildAnnotatedString {
+    var i = 0
+    while (i < text.length) {
+        val bold = text.startsWith("**", i)
+        val mark = if (bold) "**" else if (text[i] == '`') "`" else null
+        val end = mark?.let { text.indexOf(it, i + it.length) } ?: -1
+        if (mark == null || end < 0) {
+            append(text[i])
+            i++
+            continue
+        }
+        val inner = text.substring(i + mark.length, end)
+        if (bold) {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(legalAnnotated(inner)) }
+        } else {
+            withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) { append(inner) }
+        }
+        i = end + mark.length
+    }
+}
+
 /** A legal text: version line, summary and the numbered sections. */
 @Composable
 fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
@@ -75,9 +106,9 @@ fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
             Text("${i + 1}. ${s.heading}", style = MaterialTheme.typography.titleSmall)
             s.blocks.forEach { b ->
                 when (b) {
-                    is LegalBlock.Paragraph -> Text(b.text, style = MaterialTheme.typography.bodyMedium)
+                    is LegalBlock.Paragraph -> Text(legalAnnotated(b.text), style = MaterialTheme.typography.bodyMedium)
                     is LegalBlock.Bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        b.items.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
+                        b.items.forEach { Text(legalAnnotated("・$it"), style = MaterialTheme.typography.bodyMedium) }
                     }
                 }
             }
@@ -94,7 +125,7 @@ private fun SummaryCard(points: List<String>) {
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(LegalStrings.SUMMARY, style = MaterialTheme.typography.titleSmall)
-            points.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
+            points.forEach { Text(legalAnnotated("・$it"), style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
@@ -247,6 +278,11 @@ fun LegalSettingsPage(model: WalletModel) {
     Text(LegalStrings.SETTINGS_STATEMENTS_TEXT, style = MaterialTheme.typography.bodySmall)
     Integration.entries.filter { it.available }.forEach { i ->
         ActionRow(i.icon, LegalTexts.statement(i).name, statusLine(consent, i)) { model.screen.value = Screen.IntegrationStatement(i) }
+    }
+    // Reserved statements are only previewed: nothing can be agreed to until the feature ships.
+    Integration.entries.filterNot { it.available }.forEach { i ->
+        val st = LegalTexts.statement(i)
+        ActionRow(i.icon, st.name, LegalStrings.notAvailableLine(st.name)) { model.screen.value = Screen.LegalText(st.document.id) }
     }
     HorizontalDivider()
     SectionTitle(LegalStrings.SETTINGS_ONLINE)

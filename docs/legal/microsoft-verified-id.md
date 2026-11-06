@@ -4,39 +4,42 @@
 
 ## 重點摘要
 
-- Verified ID 的領卡與出示經由 Microsoft 的雲端服務進行，Microsoft 與使用它的組織都會收到你的請求。
-- 本 App 依 Microsoft 公開的協定與開源程式相容實作，不是 Microsoft Authenticator，與 Microsoft 沒有合作關係。
-- Verified ID 卡片共用一把持有者金鑰，不同查驗方可能比對它，把你的出示串連起來。
-- 不同意時，本 App 不處理 Verified ID 的領卡與出示請求；已保存的卡片保留。
+- Microsoft Entra Verified ID 是 Microsoft 提供的憑證服務；相關組織亦可能參與發行、查驗及保存資料。
+- 本 App 依公開文件及相容協定處理 Verified ID 請求，**不是 Microsoft Authenticator，也未獲 Microsoft 認證、授權或背書**。
+- Verified ID 相容卡片依目前設計共用持有者金鑰及識別資訊，出示紀錄可能被不同查驗方關聯。
+- 不同意時停用 Verified ID 專屬領取、出示與狀態查詢，已存卡片保留；一般標準協定功能不受影響。
 
-## 1. 這項功能是什麼
+## 1. 服務內容
 
-Microsoft Entra Verified ID 是 Microsoft 提供給組織的可驗證憑證服務。同意後，本 App 可以用 openid-vc 連結或 QR Code 領取組織發行的卡片（包括登入組織帳號、填寫自述欄位與出示其他卡片），並出示給使用 Verified ID 的查驗方。
+Microsoft Entra Verified ID 是 Microsoft 提供給組織發行及查驗可驗證憑證的服務。你選擇啟用後，本 App 可透過相容的 `openid-vc` 連結或 QR Code 領取組織發行的卡片，包括依流程登入組織、輸入自述欄位或出示其他卡片，亦可回應使用 Verified ID 服務的查驗請求。
 
-## 2. 營運者與資料流向
+## 2. 營運者與資料傳送
 
-- 領卡與出示的請求與回應經由 Microsoft 營運的 Verified ID 服務傳送，再交給發行或查驗的組織。
-- 領卡時送出持有者 DID 與公鑰、你登入組織帳號取得的權杖、你填寫的欄位，以及你選擇出示的其他卡片。
-- 出示時送出你選擇的卡片與欄位、持有者 DID 與簽章。
-- 本 App 會讀取組織網域上的 DID 設定（Linked Domains）確認組織身分，並以 Microsoft 的 DID 解析服務（discover.did.msidentity.com）解析 did:ion。
-- Microsoft 依其隱私權聲明處理這些資料，組織依其政策處理。
+- **領取：** 相關請求及回應可能透過 Microsoft 的 Verified ID 雲端服務與組織系統傳遞，內容可包含持有者 DID、公鑰、授權權杖、使用者自述欄位，以及你選擇提供的其他卡片或證明。
+- **出示：** 可能傳送選定憑證與欄位、持有者 DID、簽章及必要協定資訊給 Microsoft 的服務與查驗組織。
+- **身分與 DID 解析：** 本 App 可能讀取組織網域中的 Linked Domains 設定及 DID 文件；解析 `did:ion` 時可向 Microsoft 解析端點（如 `discover.did.msidentity.com`）發送 DID 查詢。
+- **狀態查詢：** 如服務有相關要求，本 App 可能向 Microsoft 或組織端查詢憑證撤銷狀態。
 
-## 3. 中央化的風險
+Microsoft 與各組織依其實際收到的資料、服務條款及隱私權政策分別處理；連線時可能取得你的 IP 位址、連線時間及相關識別資訊。
 
-- Microsoft 可以看到哪個組織在何時向你發卡或查驗；服務變更或停止時，卡片可能無法再出示或驗證。
-- 組織可以撤銷卡片，撤銷狀態由 Microsoft 的服務提供。
-- Verified ID 卡片使用同一把持有者金鑰，查驗方之間可能比對持有者 DID，把你在不同地方的出示串連起來。
+## 3. 服務及可追蹤性風險
 
-## 4. 非官方的相容實作
+- Microsoft 與相關組織可能得知領卡或查驗請求發生的時間與關聯對象；服務變更或停止時，可能無法繼續出示或驗證。
+- 憑證可由授權的發行組織撤銷；狀態依相應服務提供的資料及查詢結果而定。
+- 依目前相容設計，多張 Verified ID 卡片共用持有者金鑰；相同 DID 或可重複辨識的資訊可能讓查驗方跨情境關聯出示紀錄。只揭露選定欄位並不保證匿名。
 
-本 App 不是 Microsoft Authenticator，與 Microsoft 沒有合作、認證或授權關係；Microsoft、Entra 與 Verified ID 是 Microsoft 的商標。相容功能依 Microsoft 的公開文件與開源錢包程式庫實作，Microsoft 變更協定時可能失效。
+## 4. 非官方相容實作
 
-## 5. 不同意時
+本 App 是獨立開發的相容工具，不是 Microsoft Authenticator，與 Microsoft 沒有隸屬、合作、認證、授權或背書關係。Microsoft、Entra、Verified ID 及 Microsoft Authenticator 等名稱或商標屬其權利人；本 App 僅為識別服務與說明互通用途而提及。
 
-- openid-vc 連結與 QR Code 會提示這項功能已停用，本 App 不連線 Microsoft 的 Verified ID 服務。
-- 不處理 Verified ID 形式的出示請求；標準的 OpenID4VP 請求與其他功能不受影響。
-- 已保存的卡片保留在裝置上，但不會自動查詢狀態。
+相關協定或安全要求可能更新，Microsoft 或組織亦可能拒絕本 App 的非官方實作，開發者不保證所有請求均可使用。
 
-## 6. 同意的意思
+## 5. 不同意或撤回後
 
-同意表示你了解上述資料流向與風險，並要求本 App 代你與這項服務互動。同意不是使用本 App 的條件。你可以隨時在「設定 > 法律聲明與同意」撤回，撤回後本 App 立即停止連線這項服務；撤回前已完成的互動不受影響。
+- 本 App 不處理 Verified ID 專屬的 `openid-vc` 領卡連結、QR Code 與特定出示請求，亦不依此整合連線 Microsoft 的 Verified ID 服務。
+- 已保存的 Verified ID 卡片不因此刪除，但不會依本項整合進行自動狀態查詢。
+- 一般 OpenID4VP 等標準請求仍可運作；如另有獨立 DID 解析或信任查詢功能，應依其一般資料流向及設定辦理，不將本項停用解讀為封鎖所有 Microsoft 網域。
+
+## 6. 同意與撤回
+
+「同意並啟用」表示你了解上述跨服務傳送、非官方相容性及識別可關聯風險，並選擇使用此項整合。你可以在「設定 > 法律聲明與同意」撤回，停止此整合後續請求；撤回前已送出或完成的互動，不因此失效或自動從 Microsoft 或組織系統刪除。其他 App 功能照常使用。

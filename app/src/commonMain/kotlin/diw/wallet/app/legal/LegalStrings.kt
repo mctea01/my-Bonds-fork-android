@@ -10,30 +10,30 @@ object LegalStrings {
 
     // Welcome
     const val WELCOME_TITLE = "歡迎使用 DIW MY WALLET"
-    const val WELCOME_TEXT = "保存與出示數位證件、查驗他人證件，並保存、檢查與簽署電子文件。開始前，請閱讀並確認以下事項。"
+    const val WELCOME_TEXT = "保存與出示數位證件、查驗他人證件，以及保存、檢查與簽署電子文件。本 App 預定提供年滿 18 歲者使用；開始前請閱讀以下說明。"
     val WELCOME_POINTS = listOf(
-        "資料留在這支裝置" to "證件、金鑰與文件加密保存在裝置上，開發者沒有收集資料的伺服器。",
-        "出示什麼由你決定" to "每次出示前都會列出查驗方與要交出的欄位，經你同意才送出。",
-        "標準優先" to "依 OpenID4VC、ISO/IEC 18013-5 等公開標準實作；中央營運的服務需另外同意才會啟用。",
+        "資料以本機保存為主" to "證件、金鑰與文件在裝置上受保護；使用領取、出示、簽署及查詢等功能時，必要資訊仍可能傳給第三方，開發者目前沒有預設接收錢包資料的伺服器。",
+        "出示前確認資料" to "本 App 會依支援協定顯示查驗方及要揭露的欄位；請確認內容後再送出。必要的協定識別與驗證資訊也可能同時傳送。",
+        "標準優先、整合可選" to "主要依公開標準運作；TWDIW、Verified ID、行動自然人憑證及 MyData 等專門整合須另行選擇啟用。",
     )
     const val WELCOME_START = "開始"
 
     // Terms and privacy
     const val BASICS_TITLE = "用戶協議與隱私權政策"
-    const val BASICS_TEXT = "請閱讀以下兩份文件。同意後才能使用本 App。"
-    const val BASICS_UPDATED = "用戶協議或隱私權政策已更新，請閱讀並再次確認。"
+    const val BASICS_TEXT = "請閱讀並確認以下兩份文件。分別同意用戶協議及隱私權政策後，才能使用本 App。"
+    const val BASICS_UPDATED = "用戶協議或隱私權政策已更新，請閱讀變更後的文件並再次確認。"
     const val AGREE_TERMS = "我已閱讀並同意「用戶協議」"
     const val AGREE_PRIVACY = "我已閱讀並同意「隱私權政策」"
     const val AGREE_CONTINUE = "同意並繼續"
     const val DISAGREE = "不同意"
-    const val DISAGREE_TITLE = "需要同意才能使用"
-    const val DISAGREE_TEXT = "不同意用戶協議與隱私權政策時無法使用本 App。你可以直接關閉 App；目前尚未保存任何證件或文件，解除安裝即可移除。"
+    const val DISAGREE_TITLE = "需要完成確認才能使用"
+    const val DISAGREE_TEXT = "未同意用戶協議或隱私權政策，將無法繼續使用本 App。你可以關閉 App；如曾使用本 App，裝置內可能已有保存的資料，請依隱私權政策說明刪除或移除。"
     const val BACK_TO_READING = "回到文件"
 
     // Statements
     const val STATEMENTS_TITLE = "專門聲明"
-    const val STATEMENTS_INTRO = "以下服務由單一營運者集中提供，使用時資料會經過該營運者。請逐項決定是否啟用；不同意的服務會停用，其他功能照常使用，之後可在設定變更。"
-    const val STATEMENTS_UPDATED = "這份專門聲明已更新，請閱讀並再次決定。"
+    const val STATEMENTS_INTRO = "以下整合功能會連線到各自的服務營運者。請逐項選擇是否啟用；不同意只停用該項整合，其他功能照常使用。日後可在設定中變更。"
+    const val STATEMENTS_UPDATED = "此項專門聲明已更新，請閱讀並再次選擇是否啟用。"
     fun statementProgress(index: Int, total: Int) = "專門聲明 $index / $total"
     fun operatorLine(operator: String) = "營運者：$operator"
     const val ACCEPT_ENABLE = "同意並啟用"
@@ -41,14 +41,14 @@ object LegalStrings {
 
     // Done
     const val DONE_TITLE = "設定完成"
-    const val DONE_TEXT = "你可以隨時在「設定 > 法律聲明與同意」重新閱讀文件，或變更各項服務的同意。"
+    const val DONE_TEXT = "你可以在「設定 > 法律聲明與同意」重新閱讀文件或調整專門服務的啟用選擇。撤回不會自動刪除已傳給第三方的資料。"
     const val DONE_START = "開始使用"
 
     // Settings
     const val SETTINGS_SECTION = "法律聲明與同意"
     const val SETTINGS_BASICS = "用戶協議與隱私權政策"
-    const val SETTINGS_STATEMENTS_TEXT = "中央營運的服務只有在你同意它的專門聲明後才會啟用。撤回同意後，本 App 立即停止連線該服務，已保存的證件與文件保留。"
-    const val SETTINGS_ONLINE = "網頁版（可提供給 Google Play 等平台）"
+    const val SETTINGS_STATEMENTS_TEXT = "各項整合功能須先同意專門聲明才會啟用。撤回後停止依該整合發起後續服務請求，已保存的證件與文件原則上保留；先前傳出的資料不會自動刪除。"
+    const val SETTINGS_ONLINE = "公開網頁版"
     fun acceptedLine(version: Int, date: String) = "版本 $version・$date 同意"
     fun settingsSummary(enabled: Int, total: Int) = "已同意用戶協議與隱私權政策・專門聲明啟用 $enabled / $total"
 
@@ -57,13 +57,26 @@ object LegalStrings {
     const val DISABLED_LINE = "未同意，已停用"
     const val PENDING_LINE = "尚未決定，已停用"
     const val WITHDRAW = "撤回同意並停用"
-    const val WITHDRAW_TITLE = "撤回同意？"
-    fun withdrawText(name: String) = "撤回後，本 App 立即停止連線「$name」，相關功能顯示為停用；已保存的證件與文件保留。之後可以再次同意。"
+    const val WITHDRAW_TITLE = "確定撤回同意？"
+    fun withdrawText(name: String) =
+        "撤回後，本 App 將停止依「$name」整合發起後續服務請求，相關功能會停用；已保存的證件與文件原則上保留。撤回前已送出或完成的互動，以及第三方已取得的資料，不會自動取消或刪除。之後可再次同意。"
     const val CANCEL = "取消"
-    fun pendingLink(name: String) = "這個連結需要「$name」。同意後會接著開啟。"
+    fun pendingLink(name: String) = "此連結需要先啟用「$name」。請先閱讀專門聲明並決定是否同意；同意後才會繼續開啟連結。"
 
     /** Shown where a feature of a switched-off service would be. */
-    fun disabledRow(name: String) = "「$name」未啟用：你沒有同意它的專門聲明。點選檢視聲明。"
+    fun disabledRow(name: String) = "「$name」尚未啟用：你未同意其專門聲明。點選以檢視。"
     /** Message for a link, request or action that needs a switched-off service. */
-    fun disabledMessage(name: String) = "「$name」功能未啟用：你沒有同意它的專門聲明。可在「設定 > 法律聲明與同意」檢視並啟用。"
+    fun disabledMessage(name: String) = "「$name」未啟用。你可在「設定 > 法律聲明與同意」檢視並決定是否同意。"
+
+    // Integrations that are not offered (yet) and service notes
+    /** A reserved statement whose feature has not shipped; shown read-only in the legal settings. */
+    fun notAvailableLine(name: String) = "「$name」整合功能尚未上線，目前無法啟用。點選可預覽聲明。"
+    /** The signing screen when no SP account of the mobile citizen certificate is available, even with the statement accepted. */
+    const val MOICA_SP_NOT_CONFIGURED = "目前沒有可用的行動自然人憑證服務提供者（SP）。本專案開發者未提供內建 SP；如需使用，須自行設定依法獲授權的服務端或 SP 來源。"
+    /** The developer setting: what the built-in SP option of the source code is for. */
+    const val MOICA_SP_FORK_ONLY = "內建 SP 為原始碼預留機制；只有衍生版本發布者依法取得授權並完成實際配置後，才能使用。"
+    /** The holder picked the test environment of the mobile citizen certificate. */
+    const val MOICA_SP_ENV_TEST = "你目前選擇測試環境；測試憑證不得作為正式簽署結果。"
+    /** An SP whose holder could not be confirmed. */
+    const val MOICA_SP_PROVIDER_UNKNOWN = "尚無法核實此 SP 的實際持有人或使用授權，請勿將其視為已獲官方認可。"
 }

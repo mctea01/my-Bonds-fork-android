@@ -75,6 +75,7 @@ import diw.wallet.core.document.sign.PadesLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.MobileMoicaSp
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
 import diw.wallet.app.StoredFile
@@ -973,13 +974,13 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     }
     LaunchedEffect(manual) { update() }
     if (!manual && builtIn == null) {
-        Text("這個版本沒有內建行動自然人憑證的服務提供者（SP）帳號，無法使用。持有 SP 授權的開發者可在設定開啟「手動輸入 SP 帳號」。",
+        Text(LegalStrings.MOICA_SP_NOT_CONFIGURED + "依法持有 SP 授權者可在「設定 > 開發者與測試」開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
     if (manual) {
-        Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
-            style = MaterialTheme.typography.bodySmall)
+        Text("開發者選項：以你依法有權使用的 SP 帳號簽署，不得輸入未經授權取得的帳號或金鑰。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。" +
+            LegalStrings.MOICA_SP_PROVIDER_UNKNOWN, style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
         }
@@ -991,6 +992,10 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
         )
     } else if (builtIn != null) {
         Text("使用本版內建的 SP 帳號（${builtIn.environment.title}）。", style = MaterialTheme.typography.bodySmall)
+    }
+    val environment = if (manual) env else builtIn?.environment
+    if (environment == MobileMoicaEnvironment.UAT) {
+        Text(LegalStrings.MOICA_SP_ENV_TEST, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
