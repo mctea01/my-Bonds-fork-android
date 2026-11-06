@@ -3437,7 +3437,7 @@ dependencies = [
  "ff 0.13.1",
  "num-bigint 0.4.8",
  "num-traits",
- "p256 0.13.2",
+ "p256 0.14.0",
  "rand_core 0.6.4",
  "rayon",
  "serde_json",
