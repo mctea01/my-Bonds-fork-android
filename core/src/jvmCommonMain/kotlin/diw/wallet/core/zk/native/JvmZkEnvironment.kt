@@ -77,6 +77,10 @@ class JvmZkEnvironment(
         ZkPassportProver(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
     }
 
+    override val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder by lazy {
+        diw.wallet.core.zkpassport.JvmZkPassportHolder(http, zkPassportProver)
+    }
+
     override val tls: ZkTlsEngine by lazy {
         NativeZkTlsEngine(http, lan::localAddresses, lan::preferred, socketFactoryFor) {
             (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.TLSN) == true

@@ -232,3 +232,65 @@ class ZkPassportResponder(
         private const val PING = """{"method":"ping","params":{},"nocache":true}"""
     }
 }
+
+/** [ZkPassportHolder] over zkPassport's bridge and [ZkPassportProver]. */
+class JvmZkPassportHolder(
+    private val http: HttpClient,
+    private val prover: ZkPassportProver,
+    private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
+) : ZkPassportHolder {
+    override suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer {
+        val responder = ZkPassportResponder(http, incoming, bridgeUrl)
+        val origin = try {
+            responder.connect()
+        } catch (e: ZkPassportResponder.Failure) {
+            responder.close()
+            throw ZkPassportAnswerFailure(e.code)
+        }
+        return Answer(responder, incoming, origin, rpc)
+    }
+
+    private inner class Answer(
+        private val responder: ZkPassportResponder,
+        private val incoming: ZkPassportIncoming,
+        override val origin: String,
+        private val rpc: String?,
+    ) : ZkPassportAnswer {
+        override val originMatches: Boolean get() = responder.originMatches
+
+        override suspend fun reject() = bridged { responder.reject() }
+
+        override suspend fun answer(chip: ZkPassportChip, progress: (ZkPassportAnswerProgress) -> Unit) {
+            bridged { responder.accept() }
+            val job = ZkPassportProver.Job(
+                query = incoming.query, domain = incoming.domain, scope = incoming.scope, devMode = incoming.devMode, rpc = rpc,
+            )
+            val proved = try {
+                prover.prove(ZkPassportProver.Chip(chip.sod, chip.dg1, chip.dg2), job) { p ->
+                    progress(
+                        when (p) {
+                            ZkPassportProver.Progress.Registry -> ZkPassportAnswerProgress.Registry
+                            is ZkPassportProver.Progress.Circuits -> ZkPassportAnswerProgress.Circuits(p.count)
+                            is ZkPassportProver.Progress.Proving -> ZkPassportAnswerProgress.Proving(p.index, p.total, p.name)
+                        },
+                    )
+                }
+            } catch (e: ZkPassportProver.Failure) {
+                // The requester's app reads these texts; the one for documents without inputs is the SDK's own.
+                val text = if (e.code == "inputs") "This ID is not supported yet" else "Proof generation failed: ${e.code}"
+                runCatching { responder.send(listOf("error" to buildJsonObject { put("error", text) })) }
+                throw ZkPassportAnswerFailure(e.code)
+            }
+            progress(ZkPassportAnswerProgress.Sending)
+            bridged { responder.send(proved) }
+        }
+
+        override fun close() = responder.close()
+
+        private suspend fun bridged(block: suspend () -> Unit) = try {
+            block()
+        } catch (e: ZkPassportResponder.Failure) {
+            throw ZkPassportAnswerFailure(e.code)
+        }
+    }
+}
