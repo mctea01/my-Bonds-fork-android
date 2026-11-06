@@ -435,6 +435,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
 
+    /** OkHttp refuses clear text where the network security configuration does (release: only this device and the emulator host). */
+    override fun cleartextPermitted(host: String): Boolean =
+        android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host)
+
     override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
         diw.wallet.core.zk.native.JvmZkEnvironment(
             context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },

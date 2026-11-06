@@ -25,7 +25,9 @@ tools/zk-prover-server/build/install/zk-prover-server/bin/zk-prover-server --ass
 
 The token needs at least 24 characters; enter the same token when adding the server in the wallet
 (Settings, 零知識證明). Plain HTTP is accepted only for private-network addresses (10/8, 172.16/12, 192.168/16,
-localhost, `.local`); for anything else put a TLS reverse proxy in front and use its `https://` address.
+localhost, `.local`), and only by the desktop wallet and Android debug builds: Android release builds refuse clear
+text (network security configuration), so they need `https://`. For those, and for anything outside the private
+network, put a TLS reverse proxy in front and use its `https://` address.
 A proof needs about 2 GB of memory; one proof runs at a time and results are kept for one hour.
 
 ## API

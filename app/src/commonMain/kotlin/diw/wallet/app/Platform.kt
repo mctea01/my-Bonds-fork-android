@@ -108,6 +108,9 @@ interface PlatformServices {
 
     fun httpClient(): HttpClient
 
+    /** Whether [httpClient] may send clear-text HTTP to [host] (Android follows its network security configuration). */
+    fun cleartextPermitted(host: String): Boolean = true
+
     /**
      * HTTP for time stamps, OCSP, CRLs and issuer certificates (replies verified by signature), following redirects.
      * Android release builds refuse clear text in OkHttp, so Android sends http URLs through its own socket client.

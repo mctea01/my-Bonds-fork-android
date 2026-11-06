@@ -74,6 +74,9 @@ class ProverServiceTest {
         assertNotNull(ZkProverHost.problem("http://prover.example.org"))
         assertNotNull(ZkProverHost.problem("http://8.8.8.8"))
         assertNotNull(ZkProverHost.problem("ftp://192.168.1.2"))
+        // A build whose HTTP stack refuses clear text (Android release) only takes https.
+        assertNotNull(ZkProverHost.problem("http://192.168.1.20:8787") { false })
+        assertNull(ZkProverHost.problem("https://192.168.1.20:8787") { false })
     }
 
     @Test
