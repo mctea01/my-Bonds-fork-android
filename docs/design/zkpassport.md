@@ -1,6 +1,6 @@
 # zkPassport 支援與整合：研究與方案
 
-撰寫日期：2026-11-05。狀態：方案已定（第 8 節，2026-11-05 使用者決定），P4 完成後開始實作。
+撰寫日期：2026-11-05。狀態：方案已定（第 8 節，2026-11-05 使用者決定）；2026-11-06 起實作，Z1 已完成（第 5.1 節），接著 Z2。
 
 標記：**【確認】** 已讀過 zkPassport 原始碼（`zkpassport/circuits`、`zkpassport/zkpassport-packages`、`zkpassport/noir_rs`、`zkpassport/zkpassport-docs`，2026-11-04 的 main）或本 repo 程式碼；**【推論】** 依已知資料推論，需在實作時驗證。
 
@@ -148,6 +148,15 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 文件分頁的結構化預覽：個人（姓名、國籍、出生日期、性別）、證件（種類、號碼、發證國、效期）、晶片（被動驗證、CA／AA、DSC 與 CSCA）、DG2 相片（JPEG 2000 經 `multipaz-jpeg2000` 解碼）；卡面影像用於 DC API 選擇。
 - 原始 DG 與 SOD 以 App 私有儲存加密保存，DG2 屬敏感資料；同一本護照重讀時更新而非新增，換發的新護照與舊護照可並存（沿用文件並存規則）。
 - 不依賴 zkPassport 的任何服務，可單獨交付。
+
+實作狀態（2026-11-06，Z1 完成）：
+
+- 核心在 `core/document/mrtd`：機讀區解析（`Mrz`：TD1、TD2、TD3，檢查碼，名字以 `<` 分段全部保留，DG11 的完整姓名另外顯示；姓名可能被截斷時加註）、BAC 與 PACE（`MrtdAccess`：通用對應 GM，ECDH 與 DH，標準參數 0 到 2、8 到 18，3DES 與 AES 128／192／256）、安全通訊（`SecureChannel`）、晶片驗證 CA（v1 3DES 與 AES）、主動驗證 AA（RSA ISO 9796-2 與 ECDSA，挑戰與回應保存，查驗時重新驗證）、LDS 解析（`Lds`：COM、DG1、DG2 相片、DG5、DG11、DG12、DG14、DG15）、讀取流程（`MrtdReader`）。讀取結果是 `MrtdDump`（`urn:diw-wallet:emrtd:1` 的 JSON，副檔名 `.emrtd.json`），存成一般檔案，隨文件加密保存。
+- 被動驗證在 `MrtdInspection`：SOD 的 CMS 簽章、DSC 到 CSCA（新信任角色 `TrustRole.TRAVEL_DOCUMENT`，不在系統角色內）、每個資料群組的雜湊、DSC 國別與機讀區簽發國比對。沒有 CSCA 錨點時結果為部分驗證。
+- 不內建 CSCA：信任錨點頁可匯入 ICAO 主清單（.ml，驗章後加入，世代交替的連結憑證當中繼憑證，過期的略過），或匯入 PEM。
+- App：檔案分頁「讀取電子護照」（機讀區三欄或貼上機讀區自動填入、CAN、內建 NFC 或外接讀卡機），檔案預覽顯示相片、所有名字、DG11／DG12 與晶片資訊，詳細頁顯示雜湊比對結果。
+- JPEG 2000 相片：`multipaz-jpeg2000` 不在 Maven Central，目前無法解碼時只列出格式並保留原始資料，之後再決定解碼方式。
+- 測試：`test-servers` 的 `mrtd/SoftwarePassport` 模擬晶片，`MrtdTest` 含 ICAO 9303 附錄 D 的 BAC 與安全通訊已知答案、PACE 各組合、CA、AA、複製晶片、竄改與未知 CSCA。尚未以實體護照測試。
 
 ### 5.2 Z2 zkPassport 查驗
 
