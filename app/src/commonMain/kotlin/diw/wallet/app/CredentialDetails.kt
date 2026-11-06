@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.oid4vci.IssuanceRecord
 import diw.wallet.core.oid4vp.ValidatedAuthorizationRequest
@@ -56,19 +58,19 @@ object CredentialDetails {
 
     /** Format with its wire name, e.g. "SD-JWT VC（dc+sd-jwt）". */
     fun formatName(format: String): String = when (format) {
-        "mso_mdoc" -> "ISO/IEC 18013-5 mdoc（mso_mdoc）"
-        "dc+sd-jwt" -> "SD-JWT VC（dc+sd-jwt）"
-        "vc+sd-jwt" -> "SD-JWT VC 草案（vc+sd-jwt）"
-        "jwt_vc_json" -> "W3C VC，JWT（jwt_vc_json）"
-        "jwt_vc_json-ld" -> "W3C VC，JWT 與 JSON-LD（jwt_vc_json-ld）"
-        "ldp_vc" -> "W3C VC，Data Integrity（ldp_vc）"
-        "jwt_vc" -> "W3C VC，JWT（jwt_vc，舊版草案）"
+        "mso_mdoc" -> tr(Res.string.fmt_mso_mdoc)
+        "dc+sd-jwt" -> tr(Res.string.fmt_dc_sd_jwt)
+        "vc+sd-jwt" -> tr(Res.string.fmt_vc_sd_jwt)
+        "jwt_vc_json" -> tr(Res.string.fmt_jwt_vc_json)
+        "jwt_vc_json-ld" -> tr(Res.string.fmt_jwt_vc_json_ld)
+        "ldp_vc" -> tr(Res.string.fmt_ldp_vc)
+        "jwt_vc" -> tr(Res.string.fmt_jwt_vc)
         else -> format
     }
 
     /** Format of a stored credential; TWDIW issues W3C credentials in SD-JWT under the vc+sd-jwt name. */
     fun formatName(r: IssuanceRecord): String =
-        if (r.profile == "twdiw" && r.format == "vc+sd-jwt") "W3C VC，SD-JWT（vc+sd-jwt，TWDIW）" else formatName(r.format)
+        if (r.profile == "twdiw" && r.format == "vc+sd-jwt") tr(Res.string.fmt_twdiw) else formatName(r.format)
 
     /** Short format name for the credential list. */
     fun formatLabel(format: String): String = when (format) {
@@ -90,14 +92,14 @@ object CredentialDetails {
     }
 
     fun clientAuthName(method: String): String = when (method) {
-        "attest_jwt_client_auth" -> "錢包證明（attest_jwt_client_auth）"
-        "private_key_jwt" -> "用戶端金鑰簽章（private_key_jwt）"
-        "none" -> "公開用戶端（只送 client_id）"
+        "attest_jwt_client_auth" -> tr(Res.string.auth_attest)
+        "private_key_jwt" -> tr(Res.string.auth_private_key)
+        "none" -> tr(Res.string.auth_public)
         else -> method
     }
 
     fun tokenTypeName(type: String): String =
-        if (type.equals("DPoP", true)) "DPoP 綁定（RFC 9449），權杖只能由本錢包的金鑰使用" else "$type（未綁定金鑰）"
+        if (type.equals("DPoP", true)) tr(Res.string.token_dpop) else tr(Res.string.token_unbound, type)
 
     fun keyStorageName(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.displayName ?: wire
 
@@ -109,60 +111,60 @@ object CredentialDetails {
             else -> Parsed()
         }
         return listOf(
-            DetailSection("發證資訊", buildList {
+            DetailSection(tr(Res.string.cd_issuance), buildList {
                 r?.let {
-                    add(DetailRow("發行端", it.credentialIssuer))
-                    add(DetailRow("設定 ID", it.configurationId))
-                    add(DetailRow("格式", formatName(it)))
-                    it.vct?.let { v -> add(DetailRow("類型（vct）", v)) }
-                    it.docType?.let { v -> add(DetailRow("類型（docType）", v)) }
-                    add(DetailRow("規格", specs(it).joinToString("、")))
-                    it.clientAuthentication?.let { v -> add(DetailRow("用戶端驗證", clientAuthName(v))) }
-                    it.tokenType?.let { v -> add(DetailRow("存取權杖", tokenTypeName(v))) }
-                    add(DetailRow("領取時間", time(it.issuedAt)))
+                    add(DetailRow(tr(Res.string.role_issuer), it.credentialIssuer))
+                    add(DetailRow(tr(Res.string.cd_configuration_id), it.configurationId))
+                    add(DetailRow(tr(Res.string.credential_format), formatName(it)))
+                    it.vct?.let { v -> add(DetailRow(tr(Res.string.cd_type_vct), v)) }
+                    it.docType?.let { v -> add(DetailRow(tr(Res.string.cd_type_doctype), v)) }
+                    add(DetailRow(tr(Res.string.credential_specs), specs(it).joinToString(tr(Res.string.sep_list))))
+                    it.clientAuthentication?.let { v -> add(DetailRow(tr(Res.string.cd_client_auth), clientAuthName(v))) }
+                    it.tokenType?.let { v -> add(DetailRow(tr(Res.string.cd_access_token), tokenTypeName(v))) }
+                    add(DetailRow(tr(Res.string.cd_received_at), time(it.issuedAt)))
                     it.notificationId?.let { v -> add(DetailRow("notification_id", v)) }
                 }
                 c?.let {
-                    add(DetailRow("憑證 ID", it.identifier))
-                    add(DetailRow("已使用次數", it.usageCount.toString()))
+                    add(DetailRow(tr(Res.string.cd_credential_id), it.identifier))
+                    add(DetailRow(tr(Res.string.cd_usage_count), it.usageCount.toString()))
                 }
             }),
-            DetailSection("信任判斷", buildList {
+            DetailSection(tr(Res.string.cd_trust), buildList {
                 r?.let {
-                    add(DetailRow("信任等級", it.tier))
-                    it.environment?.let { v -> add(DetailRow("信任環境", v)) }
-                    it.anchorName?.let { v -> add(DetailRow("信任錨點", v)) }
-                    it.reasons.forEach { v -> add(DetailRow("判斷依據", v)) }
+                    add(DetailRow(tr(Res.string.cd_trust_level), it.tier))
+                    it.environment?.let { v -> add(DetailRow(tr(Res.string.cd_trust_env), v)) }
+                    it.anchorName?.let { v -> add(DetailRow(tr(Res.string.cd_trust_anchor), v)) }
+                    it.reasons.forEach { v -> add(DetailRow(tr(Res.string.cd_reason), v)) }
                 }
             }),
-            DetailSection("發行者簽章", parsed.signature + chainRows(parsed.chain)),
-            DetailSection("有效期間", buildList {
+            DetailSection(tr(Res.string.cd_issuer_signature), parsed.signature + chainRows(parsed.chain)),
+            DetailSection(tr(Res.string.reader_validity), buildList {
                 c?.let {
-                    val from = if (it.validFrom.epochSeconds > 0) "${time(it.validFrom)} 至 " else "至 "
-                    add(DetailRow("憑證有效期間", from + time(it.validUntil)))
+                    val from = if (it.validFrom.epochSeconds > 0) tr(Res.string.cd_from_to, time(it.validFrom)) else tr(Res.string.cd_to)
+                    add(DetailRow(tr(Res.string.cd_cert_validity), from + time(it.validUntil)))
                 }
                 addAll(parsed.validity)
             }),
-            DetailSection("狀態清單", parsed.status),
-            DetailSection("持有者金鑰", buildList {
+            DetailSection(tr(Res.string.role_status_list), parsed.status),
+            DetailSection(tr(Res.string.cd_holder_key), buildList {
                 addAll(parsed.holderKey)
                 if (c is SecureAreaBoundCredential) {
-                    add(DetailRow("金鑰位置", c.secureArea.displayName))
+                    add(DetailRow(tr(Res.string.cd_key_location), c.secureArea.displayName))
                     runCatching { c.secureArea.getKeyInfo(c.alias) }.getOrNull()?.let {
-                        add(DetailRow("簽章演算法", it.algorithm.name))
+                        add(DetailRow(tr(Res.string.cd_sig_alg), it.algorithm.name))
                     }
-                    add(DetailRow("私鑰", "只存在金鑰位置內，無法匯出或顯示"))
+                    add(DetailRow(tr(Res.string.cd_private_key), tr(Res.string.cd_private_key_value)))
                 }
                 if (c is W3cVcCredential) {
-                    c.holderDid?.let { add(DetailRow("持有者 DID", it)) }
-                    c.secureArea?.let { add(DetailRow("金鑰位置", it.displayName)) }
-                    if (c.sharedKey) add(DetailRow("金鑰用途", "此服務的所有憑證共用同一把持有者金鑰（如官方皮夾的做法）"))
-                    if (!c.keyBound) add(DetailRow("持有者綁定", "無（持有即可出示的憑證）"))
-                    else add(DetailRow("私鑰", "只存在金鑰位置內，無法匯出或顯示"))
+                    c.holderDid?.let { add(DetailRow(tr(Res.string.cd_holder_did), it)) }
+                    c.secureArea?.let { add(DetailRow(tr(Res.string.cd_key_location), it.displayName)) }
+                    if (c.sharedKey) add(DetailRow(tr(Res.string.cd_key_use), tr(Res.string.cd_shared_key)))
+                    if (!c.keyBound) add(DetailRow(tr(Res.string.cd_holder_binding), tr(Res.string.cd_no_binding)))
+                    else add(DetailRow(tr(Res.string.cd_private_key), tr(Res.string.cd_private_key_value)))
                 }
-                r?.keyStorage?.let { add(DetailRow("金鑰保護", keyStorageName(it))) }
+                r?.keyStorage?.let { add(DetailRow(tr(Res.string.credential_key_protection), keyStorageName(it))) }
             }),
-            DetailSection("其他", parsed.other),
+            DetailSection(tr(Res.string.cd_other), parsed.other),
         ).filter { it.rows.isNotEmpty() }
     }
 
@@ -183,13 +185,13 @@ object CredentialDetails {
         val chain = (header?.get("x5c") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }
             ?.mapNotNull { runCatching { X509Cert(ByteString(it.fromBase64())) }.getOrNull() }.orEmpty()
         val signature = buildList {
-            header?.text("alg")?.let { add(DetailRow("演算法（alg）", it)) }
-            header?.text("typ")?.let { add(DetailRow("類型（typ）", it)) }
-            header?.text("kid")?.let { add(DetailRow("金鑰 ID（kid）", it)) }
-            header?.text("jku")?.let { add(DetailRow("金鑰集位置（jku）", it)) }
-            payload?.text("iss")?.let { add(DetailRow("發行者（iss）", it)) }
+            header?.text("alg")?.let { add(DetailRow(tr(Res.string.cd_alg), it)) }
+            header?.text("typ")?.let { add(DetailRow(tr(Res.string.cd_typ), it)) }
+            header?.text("kid")?.let { add(DetailRow(tr(Res.string.cd_kid), it)) }
+            header?.text("jku")?.let { add(DetailRow(tr(Res.string.cd_jku), it)) }
+            payload?.text("iss")?.let { add(DetailRow(tr(Res.string.cd_iss), it)) }
         }
-        val validity = listOf("iat" to "簽發時間（iat）", "nbf" to "生效時間（nbf）", "exp" to "到期時間（exp）").mapNotNull { (k, label) ->
+        val validity = listOf("iat" to tr(Res.string.cd_iat), "nbf" to tr(Res.string.cd_nbf), "exp" to tr(Res.string.cd_exp)).mapNotNull { (k, label) ->
             (payload?.get(k) as? JsonPrimitive)?.longOrNull?.let { DetailRow(label, time(it)) }
         }
         val statusList = (payload?.get("status") as? JsonObject)?.get("status_list") as? JsonObject
@@ -197,9 +199,9 @@ object CredentialDetails {
         val jwk = (payload?.get("cnf") as? JsonObject)?.get("jwk") as? JsonObject
         val holderKey = jwk?.let { keyRows(runCatching { EcPublicKey.fromJwk(it) }.getOrNull(), it.text("kty")) }.orEmpty()
         val other = buildList {
-            payload?.text("sub")?.let { add(DetailRow("主體（sub）", it)) }
-            payload?.text("_sd_alg")?.let { add(DetailRow("揭露摘要演算法（_sd_alg）", it)) }
-            add(DetailRow("選擇性揭露項目數", parts.drop(1).count { it.isNotEmpty() && '.' !in it }.toString()))
+            payload?.text("sub")?.let { add(DetailRow(tr(Res.string.cd_sub), it)) }
+            payload?.text("_sd_alg")?.let { add(DetailRow(tr(Res.string.cd_sd_alg), it)) }
+            add(DetailRow(tr(Res.string.cd_disclosure_count), parts.drop(1).count { it.isNotEmpty() && '.' !in it }.toString()))
         }
         return Parsed(signature, chain, validity, status, holderKey, other)
     }
@@ -209,13 +211,13 @@ object CredentialDetails {
         val vc = runCatching { c.credentialJson() }.getOrNull()
         val status = vc?.let { W3cStatusEntry.parseAll(it) }.orEmpty().flatMap { e ->
             listOf(
-                DetailRow("機制", e.type),
-                DetailRow("用途（statusPurpose）", e.purpose),
-                DetailRow("清單位置", e.listUrl),
-                DetailRow("索引", e.index.toString()),
+                DetailRow(tr(Res.string.cd_mechanism), e.type),
+                DetailRow(tr(Res.string.cd_status_purpose), e.purpose),
+                DetailRow(tr(Res.string.cd_list_location), e.listUrl),
+                DetailRow(tr(Res.string.cd_index), e.index.toString()),
             )
         }
-        val types = DetailRow("W3C 類型", c.types.joinToString())
+        val types = DetailRow(tr(Res.string.cd_w3c_type), c.types.joinToString())
         if (c.encoding == W3cEncoding.JSON_LD) {
             val proofs = when (val p = vc?.get("proof")) {
                 is JsonObject -> listOf(p)
@@ -224,17 +226,17 @@ object CredentialDetails {
             }
             val signature = proofs.flatMap { p ->
                 listOfNotNull(
-                    p.text("type")?.let { DetailRow("證明類型", it) },
-                    p.text("cryptosuite")?.let { DetailRow("密碼套件（cryptosuite）", it) },
-                    p.text("verificationMethod")?.let { DetailRow("驗證方法", it) },
-                    p.text("created")?.let { DetailRow("建立時間", it) },
+                    p.text("type")?.let { DetailRow(tr(Res.string.cd_proof_type), it) },
+                    p.text("cryptosuite")?.let { DetailRow(tr(Res.string.cd_cryptosuite), it) },
+                    p.text("verificationMethod")?.let { DetailRow(tr(Res.string.cd_verification_method), it) },
+                    p.text("created")?.let { DetailRow(tr(Res.string.cd_created), it) },
                 )
             }
             val validity = listOfNotNull(
-                vc?.text("validFrom")?.let { DetailRow("生效時間（validFrom）", it) },
-                vc?.text("issuanceDate")?.let { DetailRow("簽發時間（issuanceDate）", it) },
-                vc?.text("validUntil")?.let { DetailRow("到期時間（validUntil）", it) },
-                vc?.text("expirationDate")?.let { DetailRow("到期時間（expirationDate）", it) },
+                vc?.text("validFrom")?.let { DetailRow(tr(Res.string.cd_valid_from), it) },
+                vc?.text("issuanceDate")?.let { DetailRow(tr(Res.string.cd_issuance_date), it) },
+                vc?.text("validUntil")?.let { DetailRow(tr(Res.string.cd_valid_until), it) },
+                vc?.text("expirationDate")?.let { DetailRow(tr(Res.string.cd_expiration_date), it) },
             )
             return Parsed(signature, emptyList(), validity, status, emptyList(), listOf(types))
         }
@@ -247,52 +249,52 @@ object CredentialDetails {
         val auth = runCatching { signed["issuerAuth"].asCoseSign1 }.getOrNull() ?: return Parsed()
         val signature = buildList {
             auth.protectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_ALG)]?.asNumber?.toInt()?.let { id ->
-                add(DetailRow("演算法", runCatching { Algorithm.fromCoseAlgorithmIdentifier(id).name }.getOrNull() ?: id.toString()))
+                add(DetailRow(tr(Res.string.cd_algorithm), runCatching { Algorithm.fromCoseAlgorithmIdentifier(id).name }.getOrNull() ?: id.toString()))
             }
         }
         val chain = auth.unprotectedHeaders[CoseNumberLabel(Cose.COSE_LABEL_X5CHAIN)]?.asX509CertChain?.certificates.orEmpty()
         val mso = runCatching { MobileSecurityObject.fromDataItem(Cbor.decode(Cbor.decode(auth.payload!!).asTagged.asBstr)) }.getOrNull()
             ?: return Parsed(signature, chain)
         val validity = buildList {
-            add(DetailRow("簽發時間（signed）", time(mso.signedAt)))
-            add(DetailRow("生效時間（validFrom）", time(mso.validFrom)))
-            add(DetailRow("到期時間（validUntil）", time(mso.validUntil)))
-            mso.expectedUpdate?.let { add(DetailRow("預計更新（expectedUpdate）", time(it))) }
+            add(DetailRow(tr(Res.string.cd_signed), time(mso.signedAt)))
+            add(DetailRow(tr(Res.string.cd_valid_from), time(mso.validFrom)))
+            add(DetailRow(tr(Res.string.cd_valid_until), time(mso.validUntil)))
+            mso.expectedUpdate?.let { add(DetailRow(tr(Res.string.cd_expected_update), time(it))) }
         }
         val status = when (val s = mso.revocationStatus) {
             is RevocationStatus.StatusList -> statusReference(s.uri, s.idx.toLong())
             null -> emptyList()
-            else -> listOf(DetailRow("狀態機制", s::class.simpleName ?: "unknown"))
+            else -> listOf(DetailRow(tr(Res.string.cd_status_mechanism), s::class.simpleName ?: "unknown"))
         }
         val other = listOf(
-            DetailRow("MSO 版本", mso.version),
+            DetailRow(tr(Res.string.cd_mso_version), mso.version),
             DetailRow("docType", mso.docType),
-            DetailRow("摘要演算法", mso.digestAlgorithm.name),
+            DetailRow(tr(Res.string.cd_digest_alg), mso.digestAlgorithm.name),
         )
         return Parsed(signature, chain, validity, status, keyRows(mso.deviceKey, "EC"), other)
     }
 
     private fun statusReference(uri: String?, idx: Long?): List<DetailRow> = listOfNotNull(
-        DetailRow("機制", "Token Status List"),
-        uri?.let { DetailRow("清單位置（uri）", it) },
-        idx?.let { DetailRow("索引（idx）", it.toString()) },
+        DetailRow(tr(Res.string.cd_mechanism), "Token Status List"),
+        uri?.let { DetailRow(tr(Res.string.cd_list_uri), it) },
+        idx?.let { DetailRow(tr(Res.string.cd_list_idx), it.toString()) },
     )
 
     /** Key type and JWK thumbprint (RFC 7638) instead of the raw key coordinates. */
     private suspend fun keyRows(key: EcPublicKey?, kty: String?): List<DetailRow> {
-        if (key == null) return listOfNotNull(kty?.let { DetailRow("公鑰類型", it) })
+        if (key == null) return listOfNotNull(kty?.let { DetailRow(tr(Res.string.cd_key_type), it) })
         val thumbprint = runCatching { key.toJwkThumbprint(Algorithm.SHA256).toByteArray().toBase64Url() }.getOrNull()
         return listOfNotNull(
-            DetailRow("公鑰類型", "${kty ?: "EC"} ${key.curve.name}"),
-            thumbprint?.let { DetailRow("公鑰指紋（JWK SHA-256）", it) },
+            DetailRow(tr(Res.string.cd_key_type), "${kty ?: "EC"} ${key.curve.name}"),
+            thumbprint?.let { DetailRow(tr(Res.string.cd_jwk_thumbprint), it) },
         )
     }
 
     private fun chainRows(chain: List<X509Cert>): List<DetailRow> = chain.mapIndexed { i, c ->
         val label = when {
-            i == 0 -> "簽署憑證"
-            i == chain.lastIndex && c.subject == c.issuer -> "根憑證"
-            else -> "中繼憑證 ${i}"
+            i == 0 -> tr(Res.string.reader_issuer_cert_signer)
+            i == chain.lastIndex && c.subject == c.issuer -> tr(Res.string.certificate_trust_root_label)
+            else -> tr(Res.string.cd_intermediate_n, i)
         }
         DetailRow(label, c.displaySubject(), chain, i)
     }
@@ -300,25 +302,25 @@ object CredentialDetails {
     /** Parsed status after a status query, by the Token Status List terms. */
     fun status(s: CredentialStatus): List<DetailSection> {
         if (s.w3cEntries.isNotEmpty() || s.label != null) return w3cStatus(s)
-        val value = s.code?.let { "${s.specName}（0x${it.toString(16).uppercase().padStart(2, '0')}）" }
+        val value = s.code?.let { tr(Res.string.cd_status_hex, s.specName.toString(), it.toString(16).uppercase().padStart(2, '0')) }
         val token = s.list
         return listOf(
-            DetailSection("狀態查詢結果", buildList {
-                value?.let { add(DetailRow("狀態值", it)) }
-                add(DetailRow("意義", statusMeaning(s.code) ?: (s.detail ?: "無法取得")))
-                s.uri?.let { add(DetailRow("清單位置（uri）", it)) }
-                s.index?.let { add(DetailRow("索引（idx）", it.toString())) }
-                add(DetailRow("查詢時間", time(s.checkedAt)))
-                add(DetailRow("清單簽章", assuranceText(s.assurance)))
-                s.environment?.let { add(DetailRow("信任環境", it.id)) }
+            DetailSection(tr(Res.string.cd_status_result), buildList {
+                value?.let { add(DetailRow(tr(Res.string.cd_status_value), it)) }
+                add(DetailRow(tr(Res.string.cd_meaning), statusMeaning(s.code) ?: (s.detail ?: tr(Res.string.cd_unavailable))))
+                s.uri?.let { add(DetailRow(tr(Res.string.cd_list_uri), it)) }
+                s.index?.let { add(DetailRow(tr(Res.string.cd_list_idx), it.toString())) }
+                add(DetailRow(tr(Res.string.cd_queried_at), time(s.checkedAt)))
+                add(DetailRow(tr(Res.string.cd_list_signature), assuranceText(s.assurance)))
+                s.environment?.let { add(DetailRow(tr(Res.string.cd_trust_env), it.id)) }
             }),
-            DetailSection("狀態清單權杖", buildList {
+            DetailSection(tr(Res.string.cd_status_list_token), buildList {
                 token?.let { t ->
-                    add(DetailRow("每項位元數（bits）", t.bitsPerItem.toString()))
-                    add(DetailRow("簽發時間（iat）", time(t.issuedAt)))
-                    t.expiresAt?.let { add(DetailRow("到期時間（exp）", time(it))) }
-                    t.ttl?.let { add(DetailRow("快取秒數（ttl）", it.toString())) }
-                    t.anchorName?.let { add(DetailRow("信任錨點", it)) }
+                    add(DetailRow(tr(Res.string.cd_bits), t.bitsPerItem.toString()))
+                    add(DetailRow(tr(Res.string.cd_iat), time(t.issuedAt)))
+                    t.expiresAt?.let { add(DetailRow(tr(Res.string.cd_exp), time(it))) }
+                    t.ttl?.let { add(DetailRow(tr(Res.string.cd_ttl), it.toString())) }
+                    t.anchorName?.let { add(DetailRow(tr(Res.string.cd_trust_anchor), it)) }
                     addAll(chainRows(t.signer))
                 }
             }),
@@ -327,24 +329,24 @@ object CredentialDetails {
 
     /** W3C status lists: each credentialStatus entry by its statusPurpose and value as the specification names them. */
     private fun w3cStatus(s: CredentialStatus): List<DetailSection> {
-        val overall = DetailSection("狀態查詢結果", buildList {
-            s.label?.let { add(DetailRow("狀態", it)) }
-            add(DetailRow("意義", stateMeaning(s.state)))
-            s.detail?.let { add(DetailRow("說明", it)) }
-            add(DetailRow("查詢時間", time(s.checkedAt)))
-            add(DetailRow("清單簽章", assuranceText(s.assurance)))
-            s.environment?.let { add(DetailRow("信任環境", it.id)) }
+        val overall = DetailSection(tr(Res.string.cd_status_result), buildList {
+            s.label?.let { add(DetailRow(tr(Res.string.field_status), it)) }
+            add(DetailRow(tr(Res.string.cd_meaning), stateMeaning(s.state)))
+            s.detail?.let { add(DetailRow(tr(Res.string.cd_note), it)) }
+            add(DetailRow(tr(Res.string.cd_queried_at), time(s.checkedAt)))
+            add(DetailRow(tr(Res.string.cd_list_signature), assuranceText(s.assurance)))
+            s.environment?.let { add(DetailRow(tr(Res.string.cd_trust_env), it.id)) }
         })
         val entries = s.w3cEntries.mapIndexed { i, e ->
-            DetailSection("狀態項目 ${i + 1}（${e.entry.purpose}）", buildList {
-                add(DetailRow("機制", e.entry.type))
-                add(DetailRow("狀態", e.label))
-                e.value?.let { add(DetailRow("值", "0x" + it.toString(16).uppercase())) }
-                add(DetailRow("意義", stateMeaning(e.state)))
-                add(DetailRow("清單位置", e.entry.listUrl))
-                add(DetailRow("索引", e.entry.index.toString()))
-                add(DetailRow("清單簽章", assuranceText(e.assurance)))
-                e.detail?.let { add(DetailRow("說明", it)) }
+            DetailSection(tr(Res.string.cd_status_entry, i + 1, e.entry.purpose), buildList {
+                add(DetailRow(tr(Res.string.cd_mechanism), e.entry.type))
+                add(DetailRow(tr(Res.string.field_status), e.label))
+                e.value?.let { add(DetailRow(tr(Res.string.cd_value), "0x" + it.toString(16).uppercase())) }
+                add(DetailRow(tr(Res.string.cd_meaning), stateMeaning(e.state)))
+                add(DetailRow(tr(Res.string.cd_list_location), e.entry.listUrl))
+                add(DetailRow(tr(Res.string.cd_index), e.entry.index.toString()))
+                add(DetailRow(tr(Res.string.cd_list_signature), assuranceText(e.assurance)))
+                e.detail?.let { add(DetailRow(tr(Res.string.cd_note), it)) }
             })
         }
         return listOf(overall) + entries
@@ -352,26 +354,26 @@ object CredentialDetails {
 
     /** How far the list's signature ties it to the issuer. */
     fun assuranceText(a: diw.wallet.core.status.StatusAssurance): String = when (a) {
-        diw.wallet.core.status.StatusAssurance.TRUSTED -> "已驗證（金鑰綁定發行端或信任錨點）"
-        diw.wallet.core.status.StatusAssurance.TLS_ONLY -> "已驗證，但金鑰只經 HTTPS 確認（jku 無法對應發行端）"
-        diw.wallet.core.status.StatusAssurance.UNVERIFIED -> "未驗證"
+        diw.wallet.core.status.StatusAssurance.TRUSTED -> tr(Res.string.cd_list_verified)
+        diw.wallet.core.status.StatusAssurance.TLS_ONLY -> tr(Res.string.cd_list_https)
+        diw.wallet.core.status.StatusAssurance.UNVERIFIED -> tr(Res.string.cd_list_unverified)
     }
 
     fun stateMeaning(state: org.multipaz.revocation.RevocationCheckState): String = when (state) {
-        org.multipaz.revocation.RevocationCheckState.VALID -> "有效"
-        org.multipaz.revocation.RevocationCheckState.INVALID -> "無效（已撤銷）"
-        org.multipaz.revocation.RevocationCheckState.SUSPENDED -> "暫停"
-        else -> "無法判斷"
+        org.multipaz.revocation.RevocationCheckState.VALID -> tr(Res.string.cd_state_valid)
+        org.multipaz.revocation.RevocationCheckState.INVALID -> tr(Res.string.cd_state_invalid)
+        org.multipaz.revocation.RevocationCheckState.SUSPENDED -> tr(Res.string.cd_state_suspended)
+        else -> tr(Res.string.cd_state_unknown)
     }
 
     /** Short translation of a Token Status List value. */
     fun statusMeaning(code: Int?): String? = when (code) {
         null -> null
-        0 -> "有效"
-        1 -> "無效（已撤銷）"
-        2 -> "暫停"
-        3, in 12..15 -> "發行端自訂狀態"
-        else -> "規格保留值"
+        0 -> tr(Res.string.cd_state_valid)
+        1 -> tr(Res.string.cd_state_invalid)
+        2 -> tr(Res.string.cd_state_suspended)
+        3, in 12..15 -> tr(Res.string.cd_state_issuer)
+        else -> tr(Res.string.cd_state_reserved)
     }
 
     /** Technical details of a presentation request for the consent screen. */
@@ -379,32 +381,32 @@ object CredentialDetails {
         val v = req.verifier
         val chain = v.certificateChain?.certificates.orEmpty()
         return listOf(
-            DetailSection("請求", buildList {
+            DetailSection(tr(Res.string.cd_request), buildList {
                 // The specification the request actually follows; OpenID4VP 1.0 with DCQL unless the request is older.
                 val spec = req.specs.ifEmpty { listOf("OpenID4VP 1.0", "DCQL") } + if (req.responseMode.dcApi) listOf("Digital Credentials API") else emptyList()
-                add(DetailRow("規格", spec.distinct().joinToString("、")))
-                add(DetailRow("回應方式（response_mode）", req.responseMode.wire))
-                req.responseUri?.let { add(DetailRow("回應位置（response_uri）", it)) }
+                add(DetailRow(tr(Res.string.credential_specs), spec.distinct().joinToString(tr(Res.string.sep_list))))
+                add(DetailRow(tr(Res.string.cd_response_mode), req.responseMode.wire))
+                req.responseUri?.let { add(DetailRow(tr(Res.string.cd_response_uri), it)) }
                 add(DetailRow("nonce", req.nonce))
                 req.state?.let { add(DetailRow("state", it)) }
                 if (req.expectedOrigins.isNotEmpty()) add(DetailRow("expected_origins", req.expectedOrigins.joinToString()))
-                req.origin?.let { add(DetailRow("呼叫來源", it)) }
+                req.origin?.let { add(DetailRow(tr(Res.string.cd_origin), it)) }
             }),
-            DetailSection("驗證端身分", buildList {
+            DetailSection(tr(Res.string.cd_verifier_identity), buildList {
                 add(DetailRow("client_id", v.clientId.raw))
-                if (v.effectiveClientId != v.clientId.raw) add(DetailRow("回應綁定的 client_id", v.effectiveClientId))
-                v.trust.reasons.forEach { add(DetailRow("判斷依據", it)) }
+                if (v.effectiveClientId != v.clientId.raw) add(DetailRow(tr(Res.string.cd_bound_client_id), v.effectiveClientId))
+                v.trust.reasons.forEach { add(DetailRow(tr(Res.string.cd_reason), it)) }
                 req.verifierInfo.forEach {
-                    add(DetailRow("verifier_info", it.format + if (it.credentialIds.isEmpty()) "" else "（${it.credentialIds.joinToString()}）"))
+                    add(DetailRow("verifier_info", it.format + if (it.credentialIds.isEmpty()) "" else tr(Res.string.parenthesized, it.credentialIds.joinToString())))
                 }
                 req.clientMetadata?.keys?.takeIf { it.isNotEmpty() }?.let { add(DetailRow("client_metadata", it.joinToString())) }
                 addAll(chainRows(chain))
             }),
             when {
-                req.presentationDefinition != null -> DetailSection("要求內容（Presentation Exchange）",
+                req.presentationDefinition != null -> DetailSection(tr(Res.string.cd_request_pe),
                     listOf(DetailRow("presentation_definition", pretty.encodeToString(JsonElement.serializer(), req.presentationDefinition!!))))
-                req.dcqlQuery.isNotEmpty() -> DetailSection("要求內容（DCQL）", listOf(DetailRow("查詢", pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery))))
-                else -> DetailSection("要求內容", emptyList())
+                req.dcqlQuery.isNotEmpty() -> DetailSection(tr(Res.string.cd_request_dcql), listOf(DetailRow(tr(Res.string.cd_query), pretty.encodeToString(JsonElement.serializer(), req.dcqlQuery))))
+                else -> DetailSection(tr(Res.string.cd_request_content), emptyList())
             },
         ).filter { it.rows.isNotEmpty() }
     }
@@ -421,53 +423,53 @@ object CredentialDetails {
         val cert = runCatching { X509Cert(ByteString(card.certificate.fromBase64())) }.getOrNull()
         val committed = (c["_sd"] as? JsonArray)?.size
         val disclosures = card.disclosures.mapNotNull { runCatching { SdJwtDisclosures.decode(it) }.getOrNull() }
-        fun list(k: String) = (c[k] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.joinToString("、") ?: c.text(k)
+        fun list(k: String) = (c[k] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }?.joinToString(tr(Res.string.sep_list)) ?: c.text(k)
         val subject = c["credentialSubject"] as? JsonObject
         return listOf(
-            DetailSection("查驗結果", when {
-                check == null -> listOf(DetailRow("狀態", "查驗中"))
+            DetailSection(tr(Res.string.cd_check_result), when {
+                check == null -> listOf(DetailRow(tr(Res.string.field_status), tr(Res.string.cd_checking)))
                 check.isSuccess -> check.getOrThrow().let { v ->
                     listOf(
-                        DetailRow("結果", "通過：簽章值、憑證鏈（MOICA G3、GRCA G3）、雜湊承諾" + if (v.nameChecked) "與姓名比對" else ""),
-                        DetailRow("持卡人（憑證 CN）", v.cardholderName),
-                        DetailRow("憑證序號", v.certificateSerialHex),
-                        DetailRow("可揭露欄位", "${v.claims.size}" + if (v.withheldClaims > 0) "（另有 ${v.withheldClaims} 個未附）" else ""),
+                        DetailRow(tr(Res.string.cd_result), tr(Res.string.cd_moica_passed) + if (v.nameChecked) tr(Res.string.cd_name_match) else ""),
+                        DetailRow(tr(Res.string.cd_cardholder), v.cardholderName),
+                        DetailRow(tr(Res.string.cd_cert_serial), v.certificateSerialHex),
+                        DetailRow(tr(Res.string.cd_disclosable), "${v.claims.size}" + if (v.withheldClaims > 0) tr(Res.string.cd_withheld, v.withheldClaims) else ""),
                     )
                 }
-                else -> listOf(DetailRow("結果", "未通過：" + (check.exceptionOrNull()?.message ?: "原因不明")))
+                else -> listOf(DetailRow(tr(Res.string.cd_result), tr(Res.string.cd_failed) + (check.exceptionOrNull()?.message ?: tr(Res.string.cd_unknown_reason))))
             }),
-            DetailSection("憑證內容", listOfNotNull(
-                list("type")?.let { DetailRow("類型", it) },
+            DetailSection(tr(Res.string.cd_credential_content), listOfNotNull(
+                list("type")?.let { DetailRow(tr(Res.string.credential_type), it) },
                 list("@context")?.let { DetailRow("@context", it) },
-                c.text("issuer")?.let { DetailRow("發行者", it) },
-                subject?.text("id")?.let { DetailRow("主體（credentialSubject.id）", it) },
-                c.text("validFrom")?.let { DetailRow("生效時間（validFrom）", it) },
-                DetailRow("到期時間（validUntil）", c.text("validUntil") ?: "未設定"),
-                committed?.let { DetailRow("雜湊承諾（_sd）", "$it 個，SHA-256" + if (c["_sd_alg"] == null) "（未寫 _sd_alg，與 Bonds 相同）" else "") },
-                DetailRow("payload", "${payload.size} 位元組，JCS 正規化 JSON，base64url"),
+                c.text("issuer")?.let { DetailRow(tr(Res.string.oa_issuer), it) },
+                subject?.text("id")?.let { DetailRow(tr(Res.string.cd_subject_id), it) },
+                c.text("validFrom")?.let { DetailRow(tr(Res.string.cd_valid_from), it) },
+                DetailRow(tr(Res.string.cd_valid_until), c.text("validUntil") ?: tr(Res.string.state_not_set)),
+                committed?.let { DetailRow(tr(Res.string.cd_sd_commitments), tr(Res.string.cd_sd_count, it) + if (c["_sd_alg"] == null) tr(Res.string.cd_no_sd_alg) else "") },
+                DetailRow("payload", tr(Res.string.cd_payload_size, payload.size)),
                 DetailRow("payload SHA-256", hexPlain(PlatformCrypto.sha256(payload))),
             )),
-            DetailSection("自然人憑證簽章", listOfNotNull(
-                DetailRow("簽章構造", card.tbsConstruction),
-                DetailRow("簽署字串", MoicaSignedCredential.TBS_PREFIX + hexPlain(PlatformCrypto.sha256(payload))),
-                DetailRow("簽章演算法", "RSASSA-PKCS1-v1_5 SHA-256（RS256）"),
-                DetailRow("簽章值", "${runCatching { card.signature.fromBase64().size }.getOrDefault(0)} 位元組"),
-                cert?.let { DetailRow("簽署憑證", it.subject.name, listOf(it)) },
-                cert?.let { DetailRow("憑證簽發者", it.issuer.name) },
-                cert?.let { DetailRow("憑證有效期間", "${time(it.validityNotBefore)} 至 ${time(it.validityNotAfter)}") },
+            DetailSection(tr(Res.string.cd_moica_signature), listOfNotNull(
+                DetailRow(tr(Res.string.cd_signature_structure), card.tbsConstruction),
+                DetailRow(tr(Res.string.cd_signed_string), MoicaSignedCredential.TBS_PREFIX + hexPlain(PlatformCrypto.sha256(payload))),
+                DetailRow(tr(Res.string.cd_sig_alg), tr(Res.string.cd_rs256)),
+                DetailRow(tr(Res.string.cd_signature_value), tr(Res.string.cd_bytes, runCatching { card.signature.fromBase64().size }.getOrDefault(0))),
+                cert?.let { DetailRow(tr(Res.string.reader_issuer_cert_signer), it.subject.name, listOf(it)) },
+                cert?.let { DetailRow(tr(Res.string.cd_cert_issuer), it.issuer.name) },
+                cert?.let { DetailRow(tr(Res.string.cd_cert_validity_period), tr(Res.string.range_from_to, time(it.validityNotBefore), time(it.validityNotAfter))) },
             )),
-            DetailSection("發行者簽章（issuerJWS）", card.issuerJws?.let { jws ->
+            DetailSection(tr(Res.string.cd_issuer_jws), card.issuerJws?.let { jws ->
                 val header = runCatching { DiwJson.parseToJsonElement(jws.substringBefore('.').fromBase64Url().decodeToString()) as JsonObject }.getOrNull()
                 listOfNotNull(
-                    header?.text("alg")?.let { DetailRow("演算法", it) },
+                    header?.text("alg")?.let { DetailRow(tr(Res.string.cd_algorithm), it) },
                     header?.text("typ")?.let { DetailRow("typ", it) },
                     header?.text("cty")?.let { DetailRow("cty", it) },
-                    header?.text("kid")?.let { DetailRow("金鑰（kid）", it) },
-                    DetailRow("涵蓋內容", "與 payload 相同的位元組"),
+                    header?.text("kid")?.let { DetailRow(tr(Res.string.cd_key_kid), it) },
+                    DetailRow(tr(Res.string.cd_covers), tr(Res.string.cd_same_bytes)),
                 )
-            } ?: listOf(DetailRow("issuerJWS", "沒有（舊版 Bonds 卡片）"))),
-            DetailSection("揭露欄位（disclosures）", disclosures.map { d ->
-                DetailRow(d.name?.let { labels[it] ?: it } ?: "（無名稱）", "雜湊 " + d.digest)
+            } ?: listOf(DetailRow("issuerJWS", tr(Res.string.cd_old_bonds)))),
+            DetailSection(tr(Res.string.cd_disclosures), disclosures.map { d ->
+                DetailRow(d.name?.let { labels[it] ?: it } ?: tr(Res.string.cd_no_name), tr(Res.string.cd_hash) + d.digest)
             }),
         ).filter { it.rows.isNotEmpty() }
     }
@@ -477,62 +479,62 @@ object CredentialDetails {
     fun certificate(c: X509Cert): List<DetailSection> {
         val now = Clock.System.now()
         val state = when {
-            now < c.validityNotBefore -> "尚未生效"
-            now > c.validityNotAfter -> "已過期"
-            else -> "有效期間內"
+            now < c.validityNotBefore -> tr(Res.string.cert_not_yet)
+            now > c.validityNotAfter -> tr(Res.string.cert_expired)
+            else -> tr(Res.string.cert_in_validity)
         }
         val san = runCatching { c.subjectAltNames() }.getOrNull()
         val known = setOf(OID_SKI, OID_AKI, OID_KEY_USAGE, OID_BASIC_CONSTRAINTS, OID_SAN, OID_EKU, OID_CRL_DP, OID_AIA)
         val extensions = runCatching { c.extensions }.getOrNull().orEmpty()
         return listOf(
-            DetailSection("主體與簽發者", listOf(
-                DetailRow("主體", c.subject.name),
-                DetailRow("簽發者", c.issuer.name),
-                DetailRow("自簽", if (c.subject == c.issuer) "是" else "否"),
+            DetailSection(tr(Res.string.cert_subject_issuer), listOf(
+                DetailRow(tr(Res.string.cert_subject), c.subject.name),
+                DetailRow(tr(Res.string.cert_issuer), c.issuer.name),
+                DetailRow(tr(Res.string.cert_self_signed), if (c.subject == c.issuer) tr(Res.string.answer_yes) else tr(Res.string.answer_no)),
             )),
-            DetailSection("基本資訊", listOf(
-                DetailRow("版本", "v${c.version + 1}"),
-                DetailRow("序號", hex(c.serialNumber.value)),
-                DetailRow("生效時間", time(c.validityNotBefore)),
-                DetailRow("到期時間", time(c.validityNotAfter)),
-                DetailRow("目前狀態", state),
-                DetailRow("簽章演算法", if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM3withSM2（國密）"
+            DetailSection(tr(Res.string.cert_basic), listOf(
+                DetailRow(tr(Res.string.oa_version), "v${c.version + 1}"),
+                DetailRow(tr(Res.string.cert_serial), hex(c.serialNumber.value)),
+                DetailRow(tr(Res.string.cert_not_before), time(c.validityNotBefore)),
+                DetailRow(tr(Res.string.cert_not_after), time(c.validityNotAfter)),
+                DetailRow(tr(Res.string.cert_state), state),
+                DetailRow(tr(Res.string.cd_sig_alg), if (c.signatureAlgorithmOid == SM3_WITH_SM2) tr(Res.string.cert_sm2_alg)
                     else runCatching { c.signatureAlgorithm.name }.getOrNull() ?: c.signatureAlgorithmOid),
             )),
-            DetailSection("公鑰", listOfNotNull(
+            DetailSection(tr(Res.string.cert_public_key), listOfNotNull(
                 (runCatching { c.ecPublicKey.curve.name }.getOrNull()?.let { "EC $it" }
-                    ?: if (c.signatureAlgorithmOid == SM3_WITH_SM2) "SM2（國密）" else null)?.let { DetailRow("演算法與曲線", it) },
-                runCatching { c.subjectKeyIdentifier }.getOrNull()?.let { DetailRow("主體金鑰識別碼", hex(it)) },
+                    ?: if (c.signatureAlgorithmOid == SM3_WITH_SM2) tr(Res.string.cert_sm2) else null)?.let { DetailRow(tr(Res.string.cert_alg_curve), it) },
+                runCatching { c.subjectKeyIdentifier }.getOrNull()?.let { DetailRow(tr(Res.string.cert_ski), hex(it)) },
             )),
-            DetailSection("擴充欄位", buildList {
+            DetailSection(tr(Res.string.cert_extensions), buildList {
                 runCatching { c.keyUsage }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { ku ->
-                    add(DetailRow("金鑰用途", ku.sortedBy { it.bitNumber }.joinToString("、") { KEY_USAGE_NAMES[it] ?: it.description }))
+                    add(DetailRow(tr(Res.string.cd_key_use), ku.sortedBy { it.bitNumber }.joinToString(tr(Res.string.sep_list)) { KEY_USAGE_NAMES[it] ?: it.description }))
                 }
                 runCatching { c.basicConstraints }.getOrNull()?.let { (ca, path) ->
-                    add(DetailRow("基本限制", if (ca) "CA" + (path?.let { "，路徑長度 $it" } ?: "") else "非 CA"))
+                    add(DetailRow(tr(Res.string.cert_basic_constraints), if (ca) "CA" + (path?.let { tr(Res.string.cert_path_len, it) } ?: "") else tr(Res.string.cert_not_ca)))
                 }
-                extendedKeyUsage(c)?.let { add(DetailRow("延伸金鑰用途", it)) }
+                extendedKeyUsage(c)?.let { add(DetailRow(tr(Res.string.cert_eku), it)) }
                 san?.let { s ->
-                    if (s.dnsNames.isNotEmpty()) add(DetailRow("主體別名 DNS", s.dnsNames.joinToString()))
-                    if (s.uris.isNotEmpty()) add(DetailRow("主體別名 URI", s.uris.joinToString()))
-                    if (s.emails.isNotEmpty()) add(DetailRow("主體別名 Email", s.emails.joinToString()))
+                    if (s.dnsNames.isNotEmpty()) add(DetailRow(tr(Res.string.cert_san_dns), s.dnsNames.joinToString()))
+                    if (s.uris.isNotEmpty()) add(DetailRow(tr(Res.string.cert_san_uri), s.uris.joinToString()))
+                    if (s.emails.isNotEmpty()) add(DetailRow(tr(Res.string.cert_san_email), s.emails.joinToString()))
                 }
-                runCatching { c.authorityKeyIdentifier }.getOrNull()?.let { add(DetailRow("簽發者金鑰識別碼", hex(it))) }
-                uris(c, OID_CRL_DP)?.let { add(DetailRow("CRL 發布點", it)) }
-                uris(c, OID_AIA)?.let { add(DetailRow("授權資訊存取", it)) }
+                runCatching { c.authorityKeyIdentifier }.getOrNull()?.let { add(DetailRow(tr(Res.string.cert_aki), hex(it))) }
+                uris(c, OID_CRL_DP)?.let { add(DetailRow(tr(Res.string.cert_crl_dp), it)) }
+                uris(c, OID_AIA)?.let { add(DetailRow(tr(Res.string.cert_aia), it)) }
                 extensions.filter { it.oid !in known }.forEach {
-                    val name = EXTENSION_NAMES[it.oid]?.let { n -> "$n（${it.oid}）" } ?: it.oid
-                    add(DetailRow("其他擴充", name + if (it.isCritical) "，關鍵" else ""))
+                    val name = EXTENSION_NAMES[it.oid]?.let { n -> tr(Res.string.files_group_count, n, it.oid) } ?: it.oid
+                    add(DetailRow(tr(Res.string.cert_other_ext), name + if (it.isCritical) tr(Res.string.cert_critical) else ""))
                 }
             }),
-            DetailSection("指紋", listOf(DetailRow("SHA-256", hex(PlatformCrypto.sha256(c.encoded.toByteArray()))))),
+            DetailSection(tr(Res.string.cert_fingerprint), listOf(DetailRow("SHA-256", hex(PlatformCrypto.sha256(c.encoded.toByteArray()))))),
         ).filter { it.rows.isNotEmpty() }
     }
 
     private fun extendedKeyUsage(c: X509Cert): String? {
         val bytes = c.getExtensionValue(OID_EKU) ?: return null
         val seq = runCatching { ASN1.decode(bytes) as? ASN1Sequence }.getOrNull() ?: return null
-        return seq.elements.filterIsInstance<ASN1ObjectIdentifier>().joinToString("、") { EKU_NAMES[it.oid] ?: it.oid }.ifEmpty { null }
+        return seq.elements.filterIsInstance<ASN1ObjectIdentifier>().joinToString(tr(Res.string.sep_list)) { EKU_NAMES[it.oid] ?: it.oid }.ifEmpty { null }
     }
 
     /** URIs (GeneralName tag 6) anywhere inside an extension, e.g. CRL distribution points and authority information access. */
@@ -563,37 +565,37 @@ object CredentialDetails {
     private const val SM3_WITH_SM2 = "1.2.156.10197.1.501"
 
     private val EXTENSION_NAMES = mapOf(
-        "2.5.29.18" to "簽發者別名",
-        "2.5.29.32" to "憑證政策",
-        "2.5.29.30" to "名稱限制",
-        "2.5.29.36" to "政策限制",
-        "1.3.6.1.5.5.7.1.3" to "合格憑證聲明",
-        "1.3.6.1.5.5.7.48.1.5" to "OCSP 免檢查",
+        "2.5.29.18" to tr(Res.string.cert_ian),
+        "2.5.29.32" to tr(Res.string.cert_policies),
+        "2.5.29.30" to tr(Res.string.cert_name_constraints),
+        "2.5.29.36" to tr(Res.string.cert_policy_constraints),
+        "1.3.6.1.5.5.7.1.3" to tr(Res.string.cert_qc),
+        "1.3.6.1.5.5.7.48.1.5" to tr(Res.string.cert_ocsp_nocheck),
     )
 
     private val KEY_USAGE_NAMES = mapOf(
-        X509KeyUsage.DIGITAL_SIGNATURE to "數位簽章（digitalSignature）",
-        X509KeyUsage.NON_REPUDIATION to "不可否認（nonRepudiation）",
-        X509KeyUsage.KEY_ENCIPHERMENT to "金鑰加密（keyEncipherment）",
-        X509KeyUsage.DATA_ENCIPHERMENT to "資料加密（dataEncipherment）",
-        X509KeyUsage.KEY_AGREEMENT to "金鑰協商（keyAgreement）",
-        X509KeyUsage.KEY_CERT_SIGN to "簽發憑證（keyCertSign）",
-        X509KeyUsage.CRL_SIGN to "簽發 CRL（cRLSign）",
-        X509KeyUsage.ENCIPHER_ONLY to "僅加密（encipherOnly）",
-        X509KeyUsage.DECIPHER_ONLY to "僅解密（decipherOnly）",
+        X509KeyUsage.DIGITAL_SIGNATURE to tr(Res.string.ku_digital_signature),
+        X509KeyUsage.NON_REPUDIATION to tr(Res.string.ku_non_repudiation),
+        X509KeyUsage.KEY_ENCIPHERMENT to tr(Res.string.ku_key_encipherment),
+        X509KeyUsage.DATA_ENCIPHERMENT to tr(Res.string.ku_data_encipherment),
+        X509KeyUsage.KEY_AGREEMENT to tr(Res.string.ku_key_agreement),
+        X509KeyUsage.KEY_CERT_SIGN to tr(Res.string.ku_key_cert_sign),
+        X509KeyUsage.CRL_SIGN to tr(Res.string.ku_crl_sign),
+        X509KeyUsage.ENCIPHER_ONLY to tr(Res.string.ku_encipher_only),
+        X509KeyUsage.DECIPHER_ONLY to tr(Res.string.ku_decipher_only),
     )
 
     private val EKU_NAMES = mapOf(
-        "1.3.6.1.5.5.7.3.1" to "伺服器驗證",
-        "1.3.6.1.5.5.7.3.2" to "用戶端驗證",
-        "1.3.6.1.5.5.7.3.3" to "程式碼簽署",
-        "1.3.6.1.5.5.7.3.4" to "電子郵件保護",
-        "1.3.6.1.5.5.7.3.8" to "時間戳記",
-        "1.3.6.1.5.5.7.3.9" to "OCSP 簽署",
-        "1.0.18013.5.1.2" to "mdoc 文件簽署（DS）",
-        "1.0.18013.5.1.6" to "mdoc 讀取端驗證",
+        "1.3.6.1.5.5.7.3.1" to tr(Res.string.eku_server),
+        "1.3.6.1.5.5.7.3.2" to tr(Res.string.eku_client),
+        "1.3.6.1.5.5.7.3.3" to tr(Res.string.eku_code),
+        "1.3.6.1.5.5.7.3.4" to tr(Res.string.eku_email),
+        "1.3.6.1.5.5.7.3.8" to tr(Res.string.role_timestamp),
+        "1.3.6.1.5.5.7.3.9" to tr(Res.string.eku_ocsp),
+        "1.0.18013.5.1.2" to tr(Res.string.eku_mdoc_ds),
+        "1.0.18013.5.1.6" to tr(Res.string.eku_mdoc_reader),
         "1.0.18013.5.1.7" to "mdoc IACA",
-        "1.0.18013.5.1.8" to "mdoc 讀取端 CA",
+        "1.0.18013.5.1.8" to tr(Res.string.eku_mdoc_reader_ca),
     )
 
     private fun hex(b: ByteArray): String = b.joinToString(":") { (it.toInt() and 0xff).toString(16).uppercase().padStart(2, '0') }

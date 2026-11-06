@@ -491,7 +491,7 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 
 tasks.named<Test>("desktopTest") {
     useJUnitPlatform()
-    jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g", "--add-modules=java.smartcardio")
+    jvmArgs("-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=TW", "-Xmx3g", "--add-modules=java.smartcardio")
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
