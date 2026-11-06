@@ -32,6 +32,8 @@ enum class DocumentFormat(val mediaType: String) {
     OFFICE("application/octet-stream"),
     IMAGE("image/*"),
     TEXT("text/plain"),
+    /** What the wallet read from an electronic passport or other ICAO 9303 travel document chip. */
+    EMRTD("application/vnd.diw.emrtd+json"),
     OTHER("application/octet-stream"),
 }
 
@@ -53,7 +55,9 @@ enum class SignatureFormat(private val text: String) {
     RFC3161("core_fmt_rfc3161"),
     OPENCERTS("core_fmt_opencerts"),
     OPENPGP("OpenPGP"),
-    C2PA("core_fmt_c2pa");
+    C2PA("core_fmt_c2pa"),
+    /** Passive authentication of a travel document chip: the security object (SOD) signed by a document signer. */
+    ICAO_PA("core_fmt_icao_pa");
 
     /** The name shown, in the app language; names that are the same in every language are kept as they are. */
     val title: String get() = if (text.startsWith("core_")) ct(text) else text
@@ -241,6 +245,8 @@ data class DocumentReport(
     val c2pa: diw.wallet.core.document.c2pa.C2paInfo? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */
     val entries: List<String> = emptyList(),
+    /** The checks of a travel document chip read into the wallet. */
+    val travelDocument: TravelDocumentCheck? = null,
     val notes: List<String> = emptyList(),
     val problems: List<String> = emptyList(),
     val checkedAt: Long,
@@ -260,3 +266,30 @@ data class DocumentReport(
     val bestTier: TrustTier?
         get() = signatures.filter { it.verdict == DocumentVerdict.VALID }.mapNotNull { s -> s.trust?.let { runCatching { TrustTier.valueOf(it.tier) }.getOrNull() } }.minOrNull()
 }
+
+/**
+ * Passive authentication of a travel document chip (ICAO 9303 part 11, 5.1) and what was checked while it was read:
+ * the data groups whose hashes match the signed security object, and the anti-cloning protocols.
+ */
+@Serializable
+data class TravelDocumentCheck(
+    val hashAlgorithm: String?,
+    /** Data group numbers whose hash matches the security object. */
+    val matched: List<Int>,
+    val mismatched: List<Int>,
+    /** Listed in the security object but not read (DG3, DG4, or files the chip refused). */
+    val notRead: List<Int>,
+    /** Read but not covered by the security object. */
+    val notCovered: List<Int>,
+    val ldsVersion: String?,
+    /** BAC or the PACE protocol used to read the chip. */
+    val access: String,
+    /** Chip Authentication at reading time (cannot be repeated without the chip). */
+    val chipAuthentication: diw.wallet.core.document.mrtd.ChipCheck,
+    /** Active Authentication, its stored signature verified again now. */
+    val activeAuthentication: diw.wallet.core.document.mrtd.ChipCheck,
+    /** Country of the document signer certificate (C=), to compare with the issuing state of the zone. */
+    val signerCountry: String?,
+    val issuingState: String?,
+    val readAt: Long,
+)
