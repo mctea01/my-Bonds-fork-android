@@ -214,7 +214,12 @@ def cmd_apply(path, translations, model=False):
     for imp in imports:
         if imp not in new and plan:
             m = re.search(r"^import .*$", new, re.M)
-            new = new[:m.start()] + imp + "\n" + new[m.start():]
+            if m:
+                new = new[:m.start()] + imp + "\n" + new[m.start():]
+            else:
+                p = re.search(r"^package .*$", new, re.M)
+                at = p.end() if p else 0
+                new = new[:at] + "\n\n" + imp + new[at:]
     Path(path).write_text(new, encoding="utf-8")
     write_strings(RES / "values/strings.xml", en)
     write_strings(RES / "values-zh/strings.xml", zh)

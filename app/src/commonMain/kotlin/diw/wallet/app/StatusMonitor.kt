@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.app.ui.DocumentCategory
 import diw.wallet.app.ui.categoryOf
 import diw.wallet.app.ui.storedTrust
@@ -187,7 +189,7 @@ class StatusMonitor(private val model: WalletModel) {
     private fun merge(previous: DocumentStatus?, result: CredentialStatus, now: Instant): DocumentStatus {
         val failed = result.state == RevocationCheckState.UNKNOWN && result.referenced
         return if (failed && previous != null && previous.status.state in DEFINITE) {
-            DocumentStatus(previous.status, result.detail ?: "無法讀取狀態清單", now)
+            DocumentStatus(previous.status, result.detail ?: tr(Res.string.status_list_unreadable), now)
         } else DocumentStatus(result, null, now)
     }
 
@@ -196,13 +198,13 @@ class StatusMonitor(private val model: WalletModel) {
         val from = before?.state?.takeIf { it in DEFINITE }
         val to = after.state.takeIf { it in DEFINITE } ?: return
         if (to == from || (from == null && to == RevocationCheckState.VALID)) return
-        val name = doc.displayName ?: "證件"
-        val note = (from?.let { CredentialDetails.stateMeaning(it) } ?: "尚未查詢") + " → " + CredentialDetails.stateMeaning(to)
+        val name = doc.displayName ?: tr(Res.string.credential_fallback)
+        val note = (from?.let { CredentialDetails.stateMeaning(it) } ?: tr(Res.string.status_never_checked)) + " → " + CredentialDetails.stateMeaning(to)
         model.record(
             HistoryKind.STATUS, issuerName(doc), storedTrust(doc), listOf(name),
-            note = "證件狀態：$note" + (after.label?.let { "（$it）" } ?: ""), status = to.name,
+            note = tr(Res.string.status_history_note, note) + (after.label?.let { tr(Res.string.parenthesized, it) } ?: ""), status = to.name,
         )
-        model.message.value = "「$name」狀態變更：${CredentialDetails.stateMeaning(to)}"
+        model.message.value = tr(Res.string.status_changed_msg, name, CredentialDetails.stateMeaning(to))
     }
 
     /**
@@ -246,19 +248,19 @@ class StatusMonitor(private val model: WalletModel) {
         return runCatching { model.didTrust.decideOrDefault(did, TrustRole.ISSUER, "Not listed by any trust source") }.getOrNull()
     }
 
-    private suspend fun applyTrust(doc: Document, trust: TrustDecision, why: String = "重新查驗信任清單與區塊鏈註冊"): Boolean {
+    private suspend fun applyTrust(doc: Document, trust: TrustDecision, why: String = tr(Res.string.pin_reason_recheck_lists)): Boolean {
         val record = doc.issuanceRecord ?: return false
         if (record.tier == trust.tier.name && record.anchorName == trust.anchorName && record.official == trust.official &&
             record.environment == trust.environment?.id) return false
-        val before = WalletModel.tierTitle(record.trustTier) + (record.anchorName?.let { "（$it）" } ?: "")
+        val before = WalletModel.tierTitle(record.trustTier) + (record.anchorName?.let { tr(Res.string.parenthesized, it) } ?: "")
         doc.edit { appData = record.withTrust(trust).encode() }
-        val name = doc.displayName ?: "證件"
+        val name = doc.displayName ?: tr(Res.string.credential_fallback)
         model.record(
             HistoryKind.STATUS, issuerName(doc), trust, listOf(name),
-            note = "發行端信任：$before → ${WalletModel.tierTitle(trust.tier)}" + (trust.anchorName?.let { "（$it）" } ?: "") + "，$why",
+            note = tr(Res.string.status_trust_note, before, WalletModel.tierTitle(trust.tier)) + (trust.anchorName?.let { tr(Res.string.parenthesized, it) } ?: "") + tr(Res.string.cert_path_len_sep, why),
             status = TRUST_CHANGE,
         )
-        model.message.value = "「$name」的發行端信任變更為 ${WalletModel.tierTitle(trust.tier)}"
+        model.message.value = tr(Res.string.status_trust_msg, name, WalletModel.tierTitle(trust.tier))
         return true
     }
 
@@ -306,7 +308,7 @@ class StatusMonitor(private val model: WalletModel) {
         return W3cVc.issuer(vc, W3cVc.jwtPayloadOrNull(cred.raw, cred.encoding))?.takeIf { it.startsWith("did:") }
     }
 
-    private fun issuerName(doc: Document): String = doc.issuanceRecord?.anchorName ?: doc.typeDisplayName ?: doc.issuanceRecord?.credentialIssuer ?: "發行端"
+    private fun issuerName(doc: Document): String = doc.issuanceRecord?.anchorName ?: doc.typeDisplayName ?: doc.issuanceRecord?.credentialIssuer ?: tr(Res.string.role_issuer)
 
     private suspend fun save() {
         val map = statuses.value.mapValues { (_, d) ->
@@ -366,52 +368,52 @@ class StatusMonitor(private val model: WalletModel) {
 /** Words for status findings, verdicts and risk levels. */
 object StatusTexts {
     fun finding(f: StatusFinding): String = when (f) {
-        StatusFinding.VALID -> "有效"
-        StatusFinding.VALID_TLS_ONLY -> "有效（清單僅經 HTTPS 確認）"
-        StatusFinding.VALID_UNVERIFIED -> "有效（清單簽章未驗證）"
-        StatusFinding.REVOKED -> "已撤銷"
-        StatusFinding.SUSPENDED -> "暫停使用"
-        StatusFinding.NO_STATUS -> "發行端未提供狀態"
-        StatusFinding.UNKNOWN -> "無法確認狀態"
-        StatusFinding.NOT_CHECKED -> "尚未查詢狀態"
+        StatusFinding.VALID -> tr(Res.string.status_text_valid)
+        StatusFinding.VALID_TLS_ONLY -> tr(Res.string.status_text_valid_https)
+        StatusFinding.VALID_UNVERIFIED -> tr(Res.string.status_text_valid_unverified)
+        StatusFinding.REVOKED -> tr(Res.string.status_text_revoked)
+        StatusFinding.SUSPENDED -> tr(Res.string.status_text_suspended)
+        StatusFinding.NO_STATUS -> tr(Res.string.status_text_none)
+        StatusFinding.UNKNOWN -> tr(Res.string.status_text_unknown)
+        StatusFinding.NOT_CHECKED -> tr(Res.string.status_text_unchecked)
     }
 
     fun explain(f: StatusFinding): String = when (f) {
-        StatusFinding.VALID -> "狀態清單由發行端或信任錨點簽署，簽章已驗證。"
-        StatusFinding.VALID_TLS_ONLY -> "狀態清單的金鑰取自 jku 網址，但該網址無法對應到發行端，來源只由 HTTPS 連線確認。"
-        StatusFinding.VALID_UNVERIFIED -> "狀態清單的簽章無法驗證，內容可能遭竄改。"
-        StatusFinding.REVOKED -> "發行端已撤銷這張證件，不應再使用。"
-        StatusFinding.SUSPENDED -> "發行端暫停了這張證件，恢復前不應使用。"
-        StatusFinding.NO_STATUS -> "這張證件沒有狀態清單，是否有效只能依有效期間判斷。"
-        StatusFinding.UNKNOWN -> "狀態清單無法讀取，或回傳的值沒有定義。"
-        StatusFinding.NOT_CHECKED -> "還沒有查詢過這張證件的狀態。"
+        StatusFinding.VALID -> tr(Res.string.status_explain_valid)
+        StatusFinding.VALID_TLS_ONLY -> tr(Res.string.status_explain_https)
+        StatusFinding.VALID_UNVERIFIED -> tr(Res.string.status_explain_unverified)
+        StatusFinding.REVOKED -> tr(Res.string.status_explain_revoked)
+        StatusFinding.SUSPENDED -> tr(Res.string.status_explain_suspended)
+        StatusFinding.NO_STATUS -> tr(Res.string.status_explain_none)
+        StatusFinding.UNKNOWN -> tr(Res.string.status_explain_unknown)
+        StatusFinding.NOT_CHECKED -> tr(Res.string.status_explain_unchecked)
     }
 
     fun risk(r: RiskLevel): String = when (r) {
-        RiskLevel.LOW -> "低風險"
-        RiskLevel.MEDIUM -> "中風險"
-        RiskLevel.HIGH -> "高風險"
+        RiskLevel.LOW -> tr(Res.string.risk_low)
+        RiskLevel.MEDIUM -> tr(Res.string.risk_medium)
+        RiskLevel.HIGH -> tr(Res.string.risk_high)
     }
 
     fun riskExamples(r: RiskLevel): String = when (r) {
-        RiskLevel.LOW -> "會員、出席、優惠"
-        RiskLevel.MEDIUM -> "政府服務、臨櫃取貨、年齡確認"
-        RiskLevel.HIGH -> "身分核對、金融、門禁與病歷"
+        RiskLevel.LOW -> tr(Res.string.risk_examples_low)
+        RiskLevel.MEDIUM -> tr(Res.string.risk_examples_medium)
+        RiskLevel.HIGH -> tr(Res.string.risk_examples_high)
     }
 
     fun verdict(v: StatusVerdict): String = when (v) {
-        StatusVerdict.ACCEPT -> "可接受"
-        StatusVerdict.CAUTION -> "需留意"
-        StatusVerdict.REJECT -> "不應接受"
+        StatusVerdict.ACCEPT -> tr(Res.string.verdict_accept)
+        StatusVerdict.CAUTION -> tr(Res.string.verdict_caution)
+        StatusVerdict.REJECT -> tr(Res.string.verdict_reject)
     }
 
     /** One line: the finding, the verdict at the risk, staleness and the test environment. */
     fun summary(d: StatusDecision): String =
-        finding(d.finding) + "，依${risk(d.risk)}用途" + verdict(d.verdict) + qualifiers(d)
+        finding(d.finding) + tr(Res.string.status_for_risk, risk(d.risk)) + verdict(d.verdict) + qualifiers(d)
 
     /** Why a pass shows as caution: a stale result or a test list. */
     fun qualifiers(d: StatusDecision): String = buildList {
-        if (d.test) add("測試環境")
-        if (d.stale) add("查詢結果已過時")
-    }.let { if (it.isEmpty()) "" else "（" + it.joinToString("，") + "）" }
+        if (d.test) add(tr(Res.string.status_qual_test))
+        if (d.stale) add(tr(Res.string.status_qual_stale))
+    }.let { if (it.isEmpty()) "" else tr(Res.string.paren_open) + it.joinToString(tr(Res.string.sep_comma)) + tr(Res.string.paren_close) }
 }
