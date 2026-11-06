@@ -93,9 +93,15 @@ class PickedFile(val name: String, val bytes: ByteArray, val mediaType: String? 
 /** The always-null NFC scan prompt for platforms that do not drive a reader-mode scan sheet. */
 internal val NoNfcScanPrompt: StateFlow<String?> = MutableStateFlow(null)
 
+/** The language store of platforms that keep no setting (tests). */
+internal val ProcessLanguageStore: AppLanguageStore = MemoryLanguageStore()
+
 /** Everything platform specific the shared wallet model needs. */
 interface PlatformServices {
     val platformName: String
+
+    /** The interface language chosen in the app. */
+    val languageStore: AppLanguageStore get() = ProcessLanguageStore
 
     /** Encrypted storage for documents, keys metadata and trust anchors. */
     suspend fun openStorage(): Storage

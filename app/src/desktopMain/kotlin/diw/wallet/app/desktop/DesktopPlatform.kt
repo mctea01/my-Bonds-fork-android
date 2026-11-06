@@ -100,6 +100,7 @@ class PinValueCipher(private val key: SecretKey) : ValueCipher {
 class DesktopPlatform(
     private val dataDir: File,
     private val cipher: ValueCipher,
+    override val languageStore: diw.wallet.app.AppLanguageStore,
     private val onRedirect: (String) -> Unit,
 ) : PlatformServices {
     override val platformName = "${System.getProperty("os.name")} ${System.getProperty("os.version")} (JVM ${System.getProperty("java.version")})"

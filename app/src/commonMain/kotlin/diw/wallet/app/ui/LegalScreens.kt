@@ -62,6 +62,7 @@ internal val Integration.icon: ImageVector
     }
 
 /** The holder's decision on [i] in one line. */
+@Composable
 private fun statusLine(c: LegalConsent, i: Integration): String {
     val r = c.record(i)
     return when {
@@ -101,6 +102,7 @@ internal fun legalAnnotated(text: String): AnnotatedString = buildAnnotatedStrin
 fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(LegalStrings.versionLine(doc.version, doc.effectiveDate), style = MaterialTheme.typography.bodySmall)
+        ChineseOnlyNote()
         if (withSummary) SummaryCard(doc.summary)
         doc.sections.forEachIndexed { i, s ->
             Text("${i + 1}. ${s.heading}", style = MaterialTheme.typography.titleSmall)
@@ -113,6 +115,14 @@ fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
                 }
             }
         }
+    }
+}
+
+/** The legal texts are Chinese only; outside Chinese the reader is told which text they accept. */
+@Composable
+private fun ChineseOnlyNote() {
+    LegalStrings.CHINESE_ONLY.takeIf { it.isNotBlank() }?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -168,7 +178,7 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
     }
     PageColumn {
         when (step) {
-            OnboardingStep.WELCOME -> WelcomePage { welcomed = true }
+            OnboardingStep.WELCOME -> WelcomePage(model) { welcomed = true }
             OnboardingStep.BASICS -> BasicsPage(updated = !firstStart) { model.legal.acceptBasics() }
             OnboardingStep.STATEMENTS -> {
                 val i = consent.undecided.first()
@@ -184,8 +194,9 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
 }
 
 @Composable
-private fun WelcomePage(onStart: () -> Unit) {
+private fun WelcomePage(model: WalletModel, onStart: () -> Unit) {
     Icon(WalletIcons.Wallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+    LanguageChooser(model)
     Text(LegalStrings.WELCOME_TITLE, style = MaterialTheme.typography.headlineSmall)
     Text(LegalStrings.WELCOME_TEXT, style = MaterialTheme.typography.bodyMedium)
     LegalStrings.WELCOME_POINTS.forEach { (title, text) ->
@@ -204,6 +215,7 @@ private fun BasicsPage(updated: Boolean, onAccept: () -> Unit) {
     var refused by remember { mutableStateOf(false) }
     Text(LegalStrings.BASICS_TITLE, style = MaterialTheme.typography.headlineSmall)
     Text(if (updated) LegalStrings.BASICS_UPDATED else LegalStrings.BASICS_TEXT, style = MaterialTheme.typography.bodyMedium)
+    ChineseOnlyNote()
     listOf(LegalTexts.terms, LegalTexts.privacy).forEach { doc ->
         HorizontalDivider()
         Text(doc.title, style = MaterialTheme.typography.titleMedium)
@@ -290,6 +302,7 @@ fun LegalSettingsPage(model: WalletModel) {
 }
 
 /** The settings summary line of the legal page. */
+@Composable
 fun legalSummary(model: WalletModel): String {
     val c = model.legal.consent.value
     val shipped = Integration.entries.filter { it.available }

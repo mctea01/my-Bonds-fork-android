@@ -125,7 +125,8 @@ class LegalModel(private val model: WalletModel) {
 
     fun name(i: Integration): String = LegalTexts.statement(i).name
 
-    fun disabledMessage(i: Integration): String = LegalStrings.disabledMessage(name(i))
+    /** Message for a link, request or action that needs a switched-off service. */
+    fun disabledMessage(i: Integration): String = "「${name(i)}」未啟用。你可在「設定 > 法律聲明與同意」檢視並決定是否同意。"
 
     private fun now() = Clock.System.now().epochSeconds
 

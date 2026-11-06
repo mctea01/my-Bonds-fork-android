@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -62,11 +65,11 @@ import kotlin.time.Instant
 fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     NavigationBar {
         listOf(
-            Triple(HomeTab.DOCUMENTS, "證件", WalletIcons.Wallet),
-            Triple(HomeTab.FILES, "文件", WalletIcons.Document),
-            Triple(HomeTab.USE, "使用", WalletIcons.Scan),
-            Triple(HomeTab.VERIFY, "查驗", WalletIcons.Shield),
-            Triple(HomeTab.HISTORY, "紀錄", WalletIcons.History),
+            Triple(HomeTab.DOCUMENTS, stringResource(Res.string.tab_documents), WalletIcons.Wallet),
+            Triple(HomeTab.FILES, stringResource(Res.string.tab_files), WalletIcons.Document),
+            Triple(HomeTab.USE, stringResource(Res.string.tab_use), WalletIcons.Scan),
+            Triple(HomeTab.VERIFY, stringResource(Res.string.tab_verify), WalletIcons.Shield),
+            Triple(HomeTab.HISTORY, stringResource(Res.string.tab_history), WalletIcons.History),
         ).forEach { (tab, label, icon) ->
             NavigationBarItem(
                 selected = tab == selected,
@@ -83,13 +86,13 @@ fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
 fun AddDocumentSheet(model: WalletModel, onDismiss: () -> Unit, onList: () -> Unit, scan: ScanActions) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 32.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("加入證件", style = MaterialTheme.typography.titleLarge)
-            Text("從清單選擇要申請的證件，或讀取發行端提供的 QR Code。", style = MaterialTheme.typography.bodyMedium)
-            ActionRow(WalletIcons.Document, "從清單選擇", "政府皮夾卡片、自製的身分證卡與文件衍生憑證，或輸入發行端網址") { onList() }
+            Text(stringResource(Res.string.action_add_credential), style = MaterialTheme.typography.titleLarge)
+            Text(stringResource(Res.string.add_sheet_text), style = MaterialTheme.typography.bodyMedium)
+            ActionRow(WalletIcons.Document, stringResource(Res.string.screen_add_document), stringResource(Res.string.add_sheet_list_text)) { onList() }
             scan.camera?.let { camera ->
-                ActionRow(WalletIcons.Scan, "掃描 QR Code", "發行端網頁或櫃台提供的領卡 QR Code") { camera() }
+                ActionRow(WalletIcons.Scan, stringResource(Res.string.action_scan_qr), stringResource(Res.string.add_sheet_scan_text)) { camera() }
             }
-            ActionRow(WalletIcons.Image, "從圖片讀取 QR Code", "領卡 QR Code 的截圖或照片，例如在同一支手機上開啟的發行端網頁") { scan.image() }
+            ActionRow(WalletIcons.Image, stringResource(Res.string.action_qr_from_image), stringResource(Res.string.add_sheet_image_text)) { scan.image() }
         }
     }
 }

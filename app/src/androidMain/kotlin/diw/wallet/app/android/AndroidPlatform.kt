@@ -143,6 +143,7 @@ class KeystoreValueCipher(private val alias: String = "diw-storage-v1") : ValueC
 class AndroidPlatform(private val context: Context) : PlatformServices {
     override val platformName = "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
     override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
+    override val languageStore = AndroidLanguageStore(context)
 
     /** Prompt model of the activity in the foreground; biometric prompts need one. */
     @Volatile var promptModel: AndroidPromptModel? = null

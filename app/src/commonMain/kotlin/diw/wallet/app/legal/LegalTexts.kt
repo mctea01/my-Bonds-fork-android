@@ -23,8 +23,8 @@ class LegalDocument(
     /** The published Markdown form (docs/legal), generated from this text so both stay the same. */
     fun toMarkdown(): String = buildString {
         append("# ").append(title).append("\n\n")
-        append(LegalStrings.versionLine(version, effectiveDate)).append("\n\n")
-        append("## ").append(LegalStrings.SUMMARY).append("\n\n")
+        append("版本 $version・生效日期 $effectiveDate").append("\n\n")
+        append("## 重點摘要").append("\n\n")
         summary.forEach { append("- ").append(it).append('\n') }
         sections.forEachIndexed { i, s ->
             append("\n## ").append(i + 1).append(". ").append(s.heading).append("\n\n")

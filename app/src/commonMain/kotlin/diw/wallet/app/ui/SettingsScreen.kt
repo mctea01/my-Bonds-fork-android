@@ -1,5 +1,10 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.AppLanguage
+import diw.wallet.app.KeyProtection
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,7 +70,8 @@ private fun SettingsColumn(content: @Composable ColumnScope.() -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
 }
 
-private fun onOff(v: Boolean) = if (v) "開" else "關"
+@Composable
+private fun onOff(v: Boolean) = if (v) stringResource(Res.string.state_on) else stringResource(Res.string.state_off)
 
 private val SettingsSection.icon: ImageVector
     get() = when (this) {
@@ -85,6 +91,7 @@ private val SettingsSection.icon: ImageVector
 fun SettingsScreen(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     val history by model.history.collectAsState()
+    val lang by model.appLanguage.collectAsState()
     val reg by model.dcApiRegistration.collectAsState()
     val zkCapability by model.zk.capability.collectAsState()
     LaunchedEffect(Unit) { model.zk.probe() }
@@ -92,35 +99,35 @@ fun SettingsScreen(model: WalletModel) {
         SettingsSection.entries.forEach { section ->
             val summary = when (section) {
                 SettingsSection.SECURITY -> listOfNotNull(
-                    model.backends.firstOrNull()?.let { "金鑰保護：" + it.protection.displayName },
-                    "每次使用需驗證：" + onOff(s.requireUserAuth),
+                    model.backends.firstOrNull()?.let { stringResource(Res.string.settings_key_protection_prefix) + it.protection.label() },
+                    stringResource(Res.string.settings_user_auth_prefix) + onOff(s.requireUserAuth),
                     zkSummary(zkCapability),
-                    "紀錄 ${history.size} 筆",
+                    stringResource(Res.string.settings_history_count, history.size),
                 ).joinToString("・")
                 SettingsSection.CREDENTIALS -> listOfNotNull(
-                    "自動更新狀態：" + onOff(s.autoStatus),
-                    reg?.let { r -> if (r.error != null) "系統選擇器註冊失敗" else "系統選擇器 ${r.registered} 張" },
+                    stringResource(Res.string.settings_auto_status_prefix) + onOff(s.autoStatus),
+                    reg?.let { r -> if (r.error != null) stringResource(Res.string.settings_dc_failed) else stringResource(Res.string.settings_dc_count, r.registered) },
                 ).joinToString("・")
                 SettingsSection.DOCUMENTS -> listOfNotNull(
-                    "時戳機構：" + TsaServices.byId(s.tsaId).name,
-                    "簽署預設 " + padesLevel(s).short,
-                    if (s.myDataIdNumber != null) "MyData 自動填入已設定" else null,
+                    stringResource(Res.string.settings_tsa_prefix) + TsaServices.byId(s.tsaId).name,
+                    stringResource(Res.string.settings_sign_default_prefix) + padesLevel(s).short,
+                    if (s.myDataIdNumber != null) stringResource(Res.string.settings_mydata_set) else null,
                 ).joinToString("・")
                 SettingsSection.TRUST -> listOf(
-                    "系統憑證庫：" + onOff(s.systemTrustStore),
-                    "中國大陸 CA：" + onOff(s.mainlandChinaRoots),
-                    "AATL：" + onOff(s.aatlTrustList),
-                    "EUTL：" + onOff(s.eutlTrustList),
+                    stringResource(Res.string.settings_system_store_prefix) + onOff(s.systemTrustStore),
+                    stringResource(Res.string.settings_china_prefix) + onOff(s.mainlandChinaRoots),
+                    stringResource(Res.string.settings_aatl_prefix) + onOff(s.aatlTrustList),
+                    stringResource(Res.string.settings_eutl_prefix) + onOff(s.eutlTrustList),
                 ).joinToString("・")
-                SettingsSection.INTEROP -> "數位憑證皮夾：" + onOff(model.legal.enabled(Integration.TWDIW)) +
-                    "・Verified ID：" + onOff(model.legal.enabled(Integration.MS_VERIFIED_ID)) +
-                    "・錢包後端：" + if (s.walletProviderUrl.isNullOrBlank()) "未設定" else "已設定"
-                SettingsSection.DEVELOPER -> "自訂測試伺服器：" + onOff(s.testEnvironment) + if (s.manualMobileMoicaSp) "・手動 SP 帳號" else ""
-                SettingsSection.GENERAL -> "預設展開技術細節：" + onOff(s.showDetails)
+                SettingsSection.INTEROP -> stringResource(Res.string.settings_twdiw_prefix) + onOff(model.legal.enabled(Integration.TWDIW)) +
+                    stringResource(Res.string.settings_msvid_prefix) + onOff(model.legal.enabled(Integration.MS_VERIFIED_ID)) +
+                    stringResource(Res.string.settings_provider_prefix) + if (s.walletProviderUrl.isNullOrBlank()) stringResource(Res.string.state_not_set) else stringResource(Res.string.state_set)
+                SettingsSection.DEVELOPER -> stringResource(Res.string.settings_test_server_prefix) + onOff(s.testEnvironment) + if (s.manualMobileMoicaSp) stringResource(Res.string.settings_manual_sp) else ""
+                SettingsSection.GENERAL -> stringResource(Res.string.settings_language_prefix) + languageName(AppLanguage.of(lang)) + stringResource(Res.string.settings_show_details_middle) + onOff(s.showDetails)
                 SettingsSection.LEGAL -> legalSummary(model)
-                SettingsSection.ABOUT -> "版本 " + appVersion() + "・授權、第三方元件與原始碼"
+                SettingsSection.ABOUT -> stringResource(Res.string.settings_version_prefix) + appVersion() + stringResource(Res.string.settings_about_summary)
             }
-            ActionRow(section.icon, section.title, summary) { model.screen.value = Screen.SettingsPage(section) }
+            ActionRow(section.icon, stringResource(section.title), summary) { model.screen.value = Screen.SettingsPage(section) }
         }
     }
 }
@@ -150,29 +157,29 @@ private fun SecurityPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     val history by model.history.collectAsState()
     var confirmClear by remember { mutableStateOf(false) }
-    SectionTitle("金鑰")
+    SectionTitle(stringResource(Res.string.settings_keys))
     model.backends.forEachIndexed { i, b ->
-        Text((if (i == 0) "金鑰保護：" else "備用：") + b.protection.displayName, style = MaterialTheme.typography.bodyMedium)
+        Text((if (i == 0) stringResource(Res.string.settings_key_protection_prefix) else stringResource(Res.string.settings_key_backup_prefix)) + b.protection.label(), style = MaterialTheme.typography.bodyMedium)
     }
-    Toggle("每次使用需驗證", "使用證件金鑰前要求生物辨識或裝置 PIN（軟體金鑰一律需 App PIN）", s.requireUserAuth) { v ->
+    Toggle(stringResource(Res.string.settings_user_auth), stringResource(Res.string.settings_user_auth_text), s.requireUserAuth) { v ->
         model.updateSettings { it.copy(requireUserAuth = v) }
     }
     HorizontalDivider()
-    SectionTitle("隱私")
+    SectionTitle(stringResource(Res.string.settings_privacy))
     ZkSettingsRow(model) { model.screen.value = Screen.ZkSettings }
     HorizontalDivider()
-    SectionTitle("紀錄")
-    Text("紀錄只保存對象、時間、證件與欄位名稱，不保存欄位內容。目前共 ${history.size} 筆。", style = MaterialTheme.typography.bodySmall)
-    OutlinedButton(onClick = { confirmClear = true }, enabled = history.isNotEmpty()) { Text("清除所有紀錄") }
+    SectionTitle(stringResource(Res.string.tab_history))
+    Text(stringResource(Res.string.settings_history_text, history.size), style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { confirmClear = true }, enabled = history.isNotEmpty()) { Text(stringResource(Res.string.settings_clear_history)) }
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("清除所有紀錄？") },
-            text = { Text("紀錄刪除後無法復原。證件本身不受影響。") },
+            title = { Text(stringResource(Res.string.settings_clear_history_title)) },
+            text = { Text(stringResource(Res.string.settings_clear_history_text)) },
             confirmButton = {
-                TextButton(onClick = { confirmClear = false; model.clearHistory() }) { Text("清除紀錄", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { confirmClear = false; model.clearHistory() }) { Text(stringResource(Res.string.settings_clear_history_confirm), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
@@ -180,47 +187,47 @@ private fun SecurityPage(model: WalletModel) {
 @Composable
 private fun CredentialsPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    SectionTitle("證件狀態")
+    SectionTitle(stringResource(Res.string.settings_credential_status))
     Toggle(
-        "自動更新證件狀態",
-        "開啟或回到 App 時，在背景查詢逾時的狀態：身分證件每 30 分鐘、政府皮夾卡片每 12 小時、其他每 3 天；狀態改變時通知並記入紀錄。也會每 12 小時重新查驗所持卡片發行端的信任清單與區塊鏈註冊。",
+        stringResource(Res.string.settings_auto_status),
+        stringResource(Res.string.settings_auto_status_text),
         s.autoStatus,
     ) { v -> model.updateSettings { it.copy(autoStatus = v) } }
     val issuerCheck by model.status.issuerCheck.collectAsState()
-    issuerCheck?.let { (done, total) -> Text("正在重新查驗發行端：$done / $total", style = MaterialTheme.typography.bodySmall) }
-    OutlinedButton(onClick = { model.status.refreshDue(force = true) }) { Text("立即更新所有證件狀態") }
+    issuerCheck?.let { (done, total) -> Text(stringResource(Res.string.settings_issuer_check, done, total), style = MaterialTheme.typography.bodySmall) }
+    OutlinedButton(onClick = { model.status.refreshDue(force = true) }) { Text(stringResource(Res.string.settings_status_now)) }
     DigitalCredentialsSection(model)
 }
 
 @Composable
 private fun DocumentsPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    SectionTitle("時戳")
-    Text("簽署文件、保存檔案與產生衍生憑證時使用的時戳機構（RFC 3161）。只會送出檔案的 SHA-256。", style = MaterialTheme.typography.bodySmall)
+    SectionTitle(stringResource(Res.string.settings_timestamps))
+    Text(stringResource(Res.string.settings_tsa_text), style = MaterialTheme.typography.bodySmall)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         TsaServices.all.forEach { t ->
             FilterChip(selected = s.tsaId == t.id, onClick = { model.updateSettings { it.copy(tsaId = t.id) } }, label = { Text(t.name) })
         }
     }
     val tsa = TsaServices.byId(s.tsaId)
-    Text(tsa.url + if (tsa.publicRoot) "（根憑證在常見憑證庫，信任等級 T2）" else "（根憑證不在內建清單，需在信任錨點匯入，用途選時間戳記）",
+    Text(tsa.url + if (tsa.publicRoot) stringResource(Res.string.settings_tsa_public_root) else stringResource(Res.string.settings_tsa_import_root),
         style = MaterialTheme.typography.bodySmall)
-    Toggle("保存文件時自動加時戳", "匯入或製作的文件保存後立即向時戳機構取得時戳，證明檔案當時已存在", s.timestampOnSave) { v ->
+    Toggle(stringResource(Res.string.settings_timestamp_on_save), stringResource(Res.string.settings_timestamp_on_save_text), s.timestampOnSave) { v ->
         model.updateSettings { it.copy(timestampOnSave = v) }
     }
-    Toggle("時戳與簽章一併保存撤銷資訊", "取得時戳時，同時取得時戳機構憑證鏈的 OCSP 回應（取不到才用 CRL）與時戳一起保存；保存含簽章的文件時，也取得簽署者與其時戳機構的撤銷資訊。憑證過期後仍可驗證", s.timestampRevocation) { v ->
+    Toggle(stringResource(Res.string.settings_timestamp_revocation), stringResource(Res.string.settings_timestamp_revocation_text), s.timestampRevocation) { v ->
         model.updateSettings { it.copy(timestampRevocation = v) }
     }
     HorizontalDivider()
-    SectionTitle("簽署的預設保證層級（PAdES、CAdES、XAdES、ASiC-E）")
+    SectionTitle(stringResource(Res.string.settings_signature_level))
     val level = padesLevel(s)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SignatureLevel.entries.forEach { l ->
             FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.short) })
         }
     }
-    Text(level.detail + "。簽署畫面仍可逐次調整，最後選的層級會記住。", style = MaterialTheme.typography.bodySmall)
-    Text("遠端簽章（CSC）服務在簽署畫面的「簽署者」選擇或新增。", style = MaterialTheme.typography.bodySmall)
+    Text(level.detail + stringResource(Res.string.settings_signature_level_text), style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.settings_csc_hint), style = MaterialTheme.typography.bodySmall)
     HorizontalDivider()
     MyDataProfileSection(model)
 }
@@ -228,30 +235,30 @@ private fun DocumentsPage(model: WalletModel) {
 @Composable
 private fun TrustPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    Text("信任等級：T1 官方清單並經額外驗證，T2 連到信任根，兩者都視為高可信；T3 可驗證但沒有連到信任根；T4 驗證失敗。測試環境的結果永遠不是官方。",
+    Text(stringResource(Res.string.settings_trust_levels),
         style = MaterialTheme.typography.bodySmall)
     CustomTrustRow(model)
     HorizontalDivider()
-    SectionTitle("信任來源")
-    Toggle("系統憑證庫與常用服務根憑證", "憑證鏈連到這台裝置的系統根憑證或內建的常用服務根憑證時為 T2，不顯示為官方", s.systemTrustStore) { v ->
+    SectionTitle(stringResource(Res.string.settings_trust_sources))
+    Toggle(stringResource(Res.string.settings_system_store), stringResource(Res.string.settings_system_store_text), s.systemTrustStore) { v ->
         model.updateSettings { it.copy(systemTrustStore = v) }
     }
-    Toggle("中國大陸憑證機構", "Mozilla 或 Microsoft 根憑證計畫收錄的中國大陸 CA 與公布的國密 SM2 根憑證，T2，加上中國大陸憑證機構標籤", s.mainlandChinaRoots) { v ->
+    Toggle(stringResource(Res.string.settings_china), stringResource(Res.string.settings_china_text), s.mainlandChinaRoots) { v ->
         model.updateSettings { it.copy(mainlandChinaRoots = v) }
     }
-    Toggle("Adobe AATL", "只用於文件簽章與時戳，T2", s.aatlTrustList) { v -> model.updateSettings { it.copy(aatlTrustList = v) } }
-    Toggle("歐盟 EUTL", "只用於文件簽章與時戳，依各國監管期間判定，T2", s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
+    Toggle("Adobe AATL", stringResource(Res.string.settings_aatl_text), s.aatlTrustList) { v -> model.updateSettings { it.copy(aatlTrustList = v) } }
+    Toggle(stringResource(Res.string.settings_eutl), stringResource(Res.string.settings_eutl_text), s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
     HorizontalDivider()
-    SectionTitle("清單與錨點")
+    SectionTitle(stringResource(Res.string.settings_lists_anchors))
     if (model.legal.enabled(Integration.TWDIW)) {
-        ActionRow(WalletIcons.Shield, "數位憑證皮夾信任清單", "數位憑證皮夾公布的發行端與查驗方，以及各組織在區塊鏈上的註冊") {
+        ActionRow(WalletIcons.Shield, stringResource(Res.string.settings_twdiw_trust_list), stringResource(Res.string.settings_twdiw_trust_list_text)) {
             model.screen.value = Screen.TrustList
         }
-    } else IntegrationOffRow(model, Integration.TWDIW, "數位憑證皮夾信任清單")
-    ActionRow(WalletIcons.Shield, "信任錨點", "全部內建與匯入的 X.509 根憑證、中繼憑證、DID 信任來源與文件簽章信任清單的下載狀態") {
+    } else IntegrationOffRow(model, Integration.TWDIW, stringResource(Res.string.settings_twdiw_trust_list))
+    ActionRow(WalletIcons.Shield, stringResource(Res.string.screen_trust_anchors), stringResource(Res.string.settings_trust_anchors_text)) {
         model.screen.value = Screen.TrustAnchors
     }
-    ActionRow(WalletIcons.Shield, "OpenPGP 公開金鑰", "OpenPGP 簽章與加密使用的公開金鑰：自己的卡片、核對過指紋的金鑰、介紹人與不信任的金鑰") {
+    ActionRow(WalletIcons.Shield, stringResource(Res.string.screen_openpgp_keys), stringResource(Res.string.settings_openpgp_text)) {
         model.screen.value = Screen.OpenPgpKeys()
     }
 }
@@ -264,33 +271,33 @@ private fun InteropPage(model: WalletModel) {
     var providerUrl by remember(s.walletProviderUrl) { mutableStateOf(s.walletProviderUrl.orEmpty()) }
     var twdiwUserAgent by remember(s.twdiwUserAgent) { mutableStateOf(s.twdiwUserAgent) }
     var twdiwFrontend by remember(s.twdiwFrontendUrl) { mutableStateOf(s.twdiwFrontendUrl) }
-    Text("Bonds、OpenID4VCI 草案 11/13 與 EUDI 參考實作的相容處理一律啟用，只用於屬於它們的請求，不影響標準流程。" +
-        "數位憑證皮夾（TWDIW）與 Microsoft Verified ID 由中央營運，需同意專門聲明才會啟用。",
+    Text(stringResource(Res.string.settings_interop_text) +
+        stringResource(Res.string.settings_interop_central_text),
         style = MaterialTheme.typography.bodySmall)
     if (!model.legal.enabled(Integration.TWDIW)) IntegrationOffRow(model, Integration.TWDIW)
     if (!model.legal.enabled(Integration.MS_VERIFIED_ID)) IntegrationOffRow(model, Integration.MS_VERIFIED_ID)
-    SectionTitle("近距離出示（ISO/IEC 18013-5）")
+    SectionTitle(stringResource(Res.string.settings_proximity))
     Toggle(
-        "NFC 靜態交握",
-        "關閉時（預設）以協商式交握讓讀取端選擇 BLE 或 NFC；開啟時直接提供 BLE 兩種模式與 NFC 資料傳輸，給只支援靜態交握的讀取設備。",
+        stringResource(Res.string.settings_nfc_static),
+        stringResource(Res.string.settings_nfc_static_text),
         s.nfcStaticHandover,
     ) { v -> model.updateSettings { it.copy(nfcStaticHandover = v) } }
     HorizontalDivider()
-    SectionTitle("OpenID4VCI 錢包身分")
-    Text("正式發證端可要求 Wallet Attestation 或 Client Assertion。需向受信任的錢包後端申請並登錄 client_id；後端及其簽章來源必須獲得發證端信任，不能以測試憑證冒充。",
+    SectionTitle(stringResource(Res.string.settings_wallet_identity))
+    Text(stringResource(Res.string.settings_wallet_identity_text),
         style = MaterialTheme.typography.bodySmall)
     OutlinedTextField(
         value = walletClientId,
         onValueChange = { walletClientId = it.trim().take(256) },
-        label = { Text("錢包 client_id") },
+        label = { Text(stringResource(Res.string.settings_wallet_client_id)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = providerUrl,
         onValueChange = { providerUrl = it.trim().take(500) },
-        label = { Text("受信任的錢包後端 HTTPS 網址") },
-        supportingText = { Text("留空時使用公開用戶端；測試後端另於開發者設定。請勿填寫發證端網址。") },
+        label = { Text(stringResource(Res.string.settings_provider_url)) },
+        supportingText = { Text(stringResource(Res.string.settings_provider_url_text)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -301,31 +308,31 @@ private fun InteropPage(model: WalletModel) {
     OutlinedButton(
         enabled = validProvider && walletClientId.isNotBlank() && walletChanged,
         onClick = { model.updateSettings { it.copy(clientId = walletClientId, walletProviderUrl = providerUrl.ifBlank { null }) } },
-    ) { Text("儲存錢包身分") }
-    if (!validProvider) Text("錢包後端必須使用 HTTPS 網址，且不得包含查詢參數或片段。", color = MaterialTheme.colorScheme.error)
+    ) { Text(stringResource(Res.string.settings_save_wallet_identity)) }
+    if (!validProvider) Text(stringResource(Res.string.settings_provider_url_invalid), color = MaterialTheme.colorScheme.error)
     HorizontalDivider()
-    SectionTitle("數位憑證皮夾")
+    SectionTitle(stringResource(Res.string.settings_twdiw))
     OutlinedTextField(
         value = twdiwClientId,
         onValueChange = { twdiwClientId = it.trim() },
-        label = { Text("發行端 client_id") },
-        supportingText = { Text("預設 moda_dw 是官方數位憑證皮夾的識別碼，發行端只接受它；這個 App 以它表明相容官方流程") },
+        label = { Text(stringResource(Res.string.settings_twdiw_client_id)) },
+        supportingText = { Text(stringResource(Res.string.settings_twdiw_client_id_text)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = twdiwUserAgent,
         onValueChange = { twdiwUserAgent = it },
-        label = { Text("送往 wallet.gov.tw 的 User-Agent") },
-        supportingText = { Text("只用於 wallet.gov.tw；其防護會拒絕程式庫預設值（錯誤 1010）") },
+        label = { Text(stringResource(Res.string.settings_twdiw_user_agent)) },
+        supportingText = { Text(stringResource(Res.string.settings_twdiw_user_agent_text)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = twdiwFrontend,
         onValueChange = { twdiwFrontend = it.trim() },
-        label = { Text("平台位址（需使用自訂測試伺服器）") },
-        supportingText = { Text("正式環境固定使用 ${TwdiwPlatform.PRODUCTION_FRONTEND}；UAT 為 ${TwdiwPlatform.UAT_FRONTEND}") },
+        label = { Text(stringResource(Res.string.settings_twdiw_frontend)) },
+        supportingText = { Text(stringResource(Res.string.settings_twdiw_frontend_text, TwdiwPlatform.PRODUCTION_FRONTEND, TwdiwPlatform.UAT_FRONTEND)) },
         singleLine = true,
         enabled = s.testEnvironment,
         modifier = Modifier.fillMaxWidth(),
@@ -340,12 +347,12 @@ private fun InteropPage(model: WalletModel) {
                     twdiwFrontendUrl = twdiwFrontend.ifEmpty { TwdiwPlatform.PRODUCTION_FRONTEND },
                 )
             }
-        }, enabled = changed) { Text("儲存") }
+        }, enabled = changed) { Text(stringResource(Res.string.action_save)) }
         OutlinedButton(onClick = {
             twdiwClientId = TwdiwDialect.DEFAULT_CLIENT_ID
             twdiwUserAgent = TwdiwPlatform.DEFAULT_USER_AGENT
             twdiwFrontend = TwdiwPlatform.PRODUCTION_FRONTEND
-        }) { Text("還原預設") }
+        }) { Text(stringResource(Res.string.action_restore_defaults)) }
     }
     TwdiwDeviceKeySection(model)
 }
@@ -361,28 +368,28 @@ private fun TwdiwDeviceKeySection(model: WalletModel) {
         value = runCatching { model.twdiwDeviceKeys.records() }.getOrDefault(emptyList())
     }
     HorizontalDivider()
-    SectionTitle("數位憑證皮夾應用簽章金鑰")
-    Text("新版夥伴卡平台的領卡請求使用獨立的應用簽章金鑰；平台是否接受此應用與金鑰，由發行端決定。舊版發證端仍可使用原有領卡流程。",
+    SectionTitle(stringResource(Res.string.settings_twdiw_app_key))
+    Text(stringResource(Res.string.settings_twdiw_app_key_text),
         style = MaterialTheme.typography.bodySmall)
-    LabelValue("金鑰來源", if (model.twdiwApplicationKeySource == "provided") "建置時提供" else "建置時產生")
-    LabelValue("應用金鑰 ID", model.twdiwApplicationKeyId ?: "尚未載入")
-    if (records.isNotEmpty()) Text("以下為舊版留下的裝置金鑰紀錄，已停止使用，可自行刪除。", style = MaterialTheme.typography.bodySmall)
+    LabelValue(stringResource(Res.string.settings_key_source), if (model.twdiwApplicationKeySource == "provided") stringResource(Res.string.settings_key_source_build) else stringResource(Res.string.settings_key_source_generated))
+    LabelValue(stringResource(Res.string.settings_app_key_id), model.twdiwApplicationKeyId ?: stringResource(Res.string.state_not_loaded))
+    if (records.isNotEmpty()) Text(stringResource(Res.string.settings_old_device_keys), style = MaterialTheme.typography.bodySmall)
     records.forEach { r ->
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(r.host, style = MaterialTheme.typography.titleSmall)
-                LabelValue("金鑰位置", when (r.protection) { "strongbox" -> "StrongBox 安全晶片"; "tee" -> "TEE 可信執行環境"; else -> "軟體金鑰" })
-                LabelValue("金鑰 DID", r.did)
-                LabelValue("舊紀錄", r.keyId?.let { "keyId：$it" } ?: "當時未取得 keyId")
-                r.lastHttpStatus?.let { LabelValue("最後一次回應", "HTTP $it" + (r.lastAttemptAt?.let { t -> "・" + localTime(t) } ?: "")) }
+                LabelValue(stringResource(Res.string.settings_key_location), when (r.protection) { "strongbox" -> stringResource(Res.string.key_strongbox); "tee" -> stringResource(Res.string.key_tee); else -> stringResource(Res.string.key_software) })
+                LabelValue(stringResource(Res.string.settings_key_did), r.did)
+                LabelValue(stringResource(Res.string.settings_old_record), r.keyId?.let { stringResource(Res.string.settings_key_id, it) } ?: stringResource(Res.string.settings_key_id_missing))
+                r.lastHttpStatus?.let { LabelValue(stringResource(Res.string.settings_last_response), "HTTP $it" + (r.lastAttemptAt?.let { t -> "・" + localTime(t) } ?: "")) }
                 r.lastError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                 r.lastResponse?.takeIf { it.isNotBlank() }?.let { body ->
                     var open by remember(r.host) { mutableStateOf(false) }
-                    TextButton(onClick = { open = !open }) { Text(if (open) "隱藏伺服器回應" else "顯示伺服器回應原文") }
+                    TextButton(onClick = { open = !open }) { Text(if (open) stringResource(Res.string.settings_hide_response) else stringResource(Res.string.settings_show_response)) }
                     if (open) SelectionContainer { Text(body, style = MaterialTheme.typography.bodySmall) }
                 }
                 OutlinedButton(onClick = { scope.launch { runCatching { model.twdiwDeviceKeys.reset(r.host) }; reload++ } }) {
-                    Text("刪除舊金鑰與紀錄")
+                    Text(stringResource(Res.string.settings_delete_old_keys))
                 }
             }
         }
@@ -393,115 +400,158 @@ private fun TwdiwDeviceKeySection(model: WalletModel) {
 private fun DeveloperPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     var url by remember(s.testServerUrl) { mutableStateOf(s.testServerUrl) }
-    Text("測試用的信任錨點（Multipaz 內建發行端與查驗端、EUDI 參考實作、匯入的測試錨點）一律可用，驗證結果標示為測試且不具效力；這個開關只管理下方自訂的測試伺服器位址。",
+    Text(stringResource(Res.string.settings_test_text),
         style = MaterialTheme.typography.bodySmall)
-    SectionTitle("自訂測試伺服器")
-    Toggle("使用自訂測試伺服器", "啟用測試伺服器網址、測試錢包提供者與非正式的數位憑證皮夾平台位址", s.testEnvironment) { v ->
+    SectionTitle(stringResource(Res.string.settings_test_server))
+    Toggle(stringResource(Res.string.settings_use_test_server), stringResource(Res.string.settings_use_test_server_text), s.testEnvironment) { v ->
         model.updateSettings { it.copy(testEnvironment = v, allowLoopbackHttp = v && it.allowLoopbackHttp) }
     }
-    Toggle("允許本機與區網 HTTP", "僅限 localhost、模擬器主機與私有網段（10.x、172.16 至 172.31、192.168.x），用於本地測試伺服器；正式版 APK 只允許前兩者", s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
+    Toggle(stringResource(Res.string.settings_local_http), stringResource(Res.string.settings_local_http_text), s.allowLoopbackHttp, enabled = s.testEnvironment) { v ->
         model.updateSettings { it.copy(allowLoopbackHttp = v) }
     }
-    Toggle("使用測試錢包提供者", "向測試伺服器取得錢包證明與金鑰證明", s.useWalletProvider, enabled = s.testEnvironment) { v ->
+    Toggle(stringResource(Res.string.settings_test_provider), stringResource(Res.string.settings_test_provider_text), s.useWalletProvider, enabled = s.testEnvironment) { v ->
         model.updateSettings { it.copy(useWalletProvider = v) }
     }
     OutlinedTextField(
         value = url,
         onValueChange = { url = it.trim() },
-        label = { Text("測試伺服器網址") },
+        label = { Text(stringResource(Res.string.settings_test_server_url)) },
         singleLine = true,
         enabled = s.testEnvironment,
         modifier = Modifier.fillMaxWidth(),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { model.updateSettings { it.copy(testServerUrl = url) } }, enabled = s.testEnvironment && url != s.testServerUrl) {
-            Text("儲存網址")
+            Text(stringResource(Res.string.settings_save_url))
         }
-        OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text("從測試伺服器匯入錨點") }
+        OutlinedButton(onClick = { model.importTestAnchors() }, enabled = s.testEnvironment) { Text(stringResource(Res.string.settings_import_test_anchors)) }
     }
     HorizontalDivider()
-    SectionTitle("測試錨點")
-    OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text("匯入 EUDI 參考實作測試錨點") }
-    OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text("從 issuer.multipaz.org 更新 Multipaz 發行端錨點") }
+    SectionTitle(stringResource(Res.string.settings_test_anchors))
+    OutlinedButton(onClick = { model.importEudiTestAnchors() }) { Text(stringResource(Res.string.settings_import_eudi_anchors)) }
+    OutlinedButton(onClick = { model.importMultipazTestAnchors() }) { Text(stringResource(Res.string.settings_update_multipaz_anchors)) }
     Toggle(
-        "Multipaz 測試身分",
-        "向 issuer.multipaz.org 領卡時改用 Multipaz TestApp 公開的測試金鑰做錢包證明、用戶端金鑰簽章與金鑰證明。" +
-            "這組金鑰任何人都能取得，只能用於測試，其他發證端不受影響。需先開啟自訂測試伺服器。",
+        stringResource(Res.string.settings_multipaz_identity),
+        stringResource(Res.string.settings_multipaz_identity_text) +
+            stringResource(Res.string.settings_multipaz_identity_note),
         s.multipazTestIdentity,
         enabled = s.testEnvironment,
     ) { v -> model.updateSettings { it.copy(multipazTestIdentity = v) } }
     Toggle(
-        "自簽錢包證明兜底",
-        "向要求錢包證明或金鑰證明、但本錢包沒有註冊提供者的發證端，改送本錢包自簽的證明。這把金鑰沒有任何發證端信任，" +
-            "只能讓不檢查提供者的沙箱／示範發證端（如 Animo）接受；正式發證端（如 Bundesdruckerei）仍會拒絕。設有註冊提供者時不生效。",
+        stringResource(Res.string.settings_self_attestation),
+        stringResource(Res.string.settings_self_attestation_text) +
+            stringResource(Res.string.settings_self_attestation_note),
         s.selfAttestationFallback,
     ) { v -> model.updateSettings { it.copy(selfAttestationFallback = v) } }
     HorizontalDivider()
-    SectionTitle("行動自然人憑證")
+    SectionTitle(stringResource(Res.string.settings_mobile_moica))
     if (!model.legal.enabled(Integration.MOBILE_MOICA)) IntegrationOffRow(model, Integration.MOBILE_MOICA)
     Toggle(
-        "手動輸入 SP 帳號",
-        "行動自然人憑證簽章改用簽署畫面輸入的服務提供者帳號，只供依法持有 SP 授權者使用；帳號只保存在這次執行的記憶體。" +
-            "開啟後簽署畫面仍可改選正式服務端或本版內建的帳號。" +
-            if (model.files.builtInMobileMoicaSp == null) "這個版本沒有內建 SP 帳號。" + LegalStrings.MOICA_SP_FORK_ONLY else "",
+        stringResource(Res.string.settings_manual_sp_title),
+        stringResource(Res.string.settings_manual_sp_text) +
+            stringResource(Res.string.settings_manual_sp_note) +
+            if (model.files.builtInMobileMoicaSp == null) stringResource(Res.string.settings_no_builtin_sp) + LegalStrings.MOICA_SP_FORK_ONLY else "",
         s.manualMobileMoicaSp,
     ) { v -> model.updateSettings { it.copy(manualMobileMoicaSp = v) } }
+}
+
+/** Where credential keys live, in the interface language. */
+@Composable
+fun KeyProtection.label(): String = stringResource(
+    when (this) {
+        KeyProtection.STRONGBOX -> Res.string.key_strongbox
+        KeyProtection.TEE -> Res.string.key_tee
+        KeyProtection.SOFTWARE -> Res.string.key_software_pin
+    },
+)
+
+/** A credential's recorded key storage ([KeyProtection.wire]) in the interface language. */
+@Composable
+fun keyStorageLabel(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.label() ?: wire
+
+@Composable
+private fun languageName(l: AppLanguage) = when (l) {
+    AppLanguage.SYSTEM -> stringResource(Res.string.settings_language_system)
+    AppLanguage.TRADITIONAL_CHINESE -> stringResource(Res.string.language_zh_hant)
+    AppLanguage.ENGLISH -> stringResource(Res.string.language_en)
+}
+
+/** The interface language: the system's, Traditional Chinese or English; Android 13 and later keep it as the per-app language. */
+@Composable
+fun LanguageChooser(model: WalletModel) {
+    val tag by model.appLanguage.collectAsState()
+    val current = AppLanguage.of(tag)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(stringResource(Res.string.settings_language), style = MaterialTheme.typography.titleSmall)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AppLanguage.entries.forEach { l ->
+                FilterChip(selected = l == current, onClick = { model.setAppLanguage(l) }, label = {
+                    Text(languageName(l))
+                })
+            }
+        }
+    }
 }
 
 @Composable
 private fun GeneralPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    Toggle("預設展開技術細節", "證件與出示請求的規格、簽章、憑證鏈、有效期間、金鑰與信任判斷", s.showDetails) { v ->
+    LanguageChooser(model)
+    Text(stringResource(Res.string.settings_language_text), style = MaterialTheme.typography.bodySmall)
+    HorizontalDivider()
+    Toggle(stringResource(Res.string.settings_show_details), stringResource(Res.string.settings_show_details_text), s.showDetails) { v ->
         model.updateSettings { it.copy(showDetails = v) }
     }
 }
 
 private const val SOURCE_URL = "https://github.com/mctea01/my-Bonds-fork-android"
 
-private fun appVersion(): String = AppBuild.version ?: "開發版"
+@Composable
+private fun appVersion(): String = AppBuild.version ?: stringResource(Res.string.settings_dev_build)
 
 /** Third-party software shipped in the app, as NOTICE lists it. */
-private val THIRD_PARTY = listOf(
+@Composable
+private fun thirdParty() = listOf(
     "Multipaz" to "Apache License 2.0",
-    "Kotlin、kotlinx.coroutines、kotlinx.serialization、kotlinx-io、kotlinx-datetime" to "Apache License 2.0",
+    "Kotlin, kotlinx.coroutines, kotlinx.serialization, kotlinx-io, kotlinx-datetime" to "Apache License 2.0",
     "Ktor" to "Apache License 2.0",
-    "Compose Multiplatform、AndroidX" to "Apache License 2.0",
+    "Compose Multiplatform, AndroidX" to "Apache License 2.0",
     "Google Play services identity credentials" to "Android Software Development Kit License",
-    "Bouncy Castle" to "Bouncy Castle License（MIT 類）",
-    "Apache Xerces2、xml-apis" to "Apache License 2.0",
-    "Apache PDFBox（電腦版預覽）" to "Apache License 2.0",
-    "SQLite JDBC（電腦版）" to "Apache License 2.0；SQLite 為公眾領域",
-    "CMWallet 收卡比對程式（Android）" to "Apache License 2.0",
+    "Bouncy Castle" to stringResource(Res.string.settings_license_bc),
+    "Apache Xerces2, xml-apis" to "Apache License 2.0",
+    stringResource(Res.string.settings_component_pdfbox) to "Apache License 2.0",
+    stringResource(Res.string.settings_component_sqlite) to stringResource(Res.string.settings_license_sqlite),
+    stringResource(Res.string.settings_component_cmwallet) to "Apache License 2.0",
 )
 
 @Composable
 private fun AboutPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     Text("DIW MY WALLET", style = MaterialTheme.typography.titleLarge)
-    Text("跨平台的數位憑證錢包：保存與出示數位證件、查驗他人證件，並保存、檢查與簽署電子文件。依 OpenID4VCI 1.0、OpenID4VP 1.0、ISO/IEC 18013-5 與 18013-7、" +
-        "SD-JWT VC、W3C VC 等標準實作，並相容數位憑證皮夾、Bonds、EUDI Wallet 與 Microsoft Verified ID。",
+    Text(stringResource(Res.string.settings_about_text) +
+        stringResource(Res.string.settings_about_text_2),
         style = MaterialTheme.typography.bodySmall)
-    SectionTitle("版本")
-    LabelValue("版本", appVersion())
-    AppBuild.commit?.let { LabelValue("建置來源", it) }
-    LabelValue("平台", model.platform.platformName)
+    SectionTitle(stringResource(Res.string.settings_version))
+    LabelValue(stringResource(Res.string.settings_version), appVersion())
+    AppBuild.commit?.let { LabelValue(stringResource(Res.string.settings_build_source), it) }
+    LabelValue(stringResource(Res.string.settings_platform), model.platform.platformName)
     HorizontalDivider()
-    SectionTitle("識別碼")
+    SectionTitle(stringResource(Res.string.settings_identifiers))
     LabelValue("Client ID", s.clientId, small = true)
-    LabelValue("數位憑證皮夾 client_id", s.twdiwClientId, small = true)
+    LabelValue(stringResource(Res.string.settings_twdiw_client_id_label), s.twdiwClientId, small = true)
     HorizontalDivider()
-    SectionTitle("授權")
-    Text("Copyright 2026 " + diw.wallet.app.legal.LegalTexts.DEVELOPER + "。以 Apache License 2.0 授權。", style = MaterialTheme.typography.bodyMedium)
-    Text("內建的信任錨點是各憑證機構與 Multipaz 專案公開的憑證，只用於驗證憑證鏈；Adobe AATL 與歐盟 EUTL 在 App 內下載並驗證，只內建簽署憑證的指紋。" +
-        "沒有複製 Bonds 的程式碼，相容性依公開的格式與文件實作。",
+    SectionTitle(stringResource(Res.string.settings_license))
+    Text("Copyright 2026 " + diw.wallet.app.legal.LegalTexts.DEVELOPER + stringResource(Res.string.settings_license_text), style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(Res.string.settings_anchor_note) +
+        stringResource(Res.string.settings_bonds_note),
         style = MaterialTheme.typography.bodySmall)
-    SectionTitle("第三方元件")
-    THIRD_PARTY.forEach { (name, license) -> LabelValue(name, license, small = true) }
+    SectionTitle(stringResource(Res.string.settings_third_party))
+    thirdParty().forEach { (name, license) -> LabelValue(name, license, small = true) }
     HorizontalDivider()
-    SectionTitle("原始碼")
+    SectionTitle(stringResource(Res.string.settings_source))
     LabelValue("GitHub", SOURCE_URL, small = true) { model.platform.openBrowser(SOURCE_URL) }
-    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/LICENSE") }) { Text("授權全文") }
-    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/NOTICE") }) { Text("第三方授權聲明（NOTICE）") }
+    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/LICENSE") }) { Text(stringResource(Res.string.settings_license_full)) }
+    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/NOTICE") }) { Text(stringResource(Res.string.settings_notice)) }
 }
 
 /** Registration with the system credential picker (Android Digital Credentials API); hidden where there is none. */
@@ -510,26 +560,26 @@ private fun DigitalCredentialsSection(model: WalletModel) {
     val reg by model.dcApiRegistration.collectAsState()
     val r = reg ?: return
     HorizontalDivider()
-    SectionTitle("瀏覽器與 App 出示、收卡")
+    SectionTitle(stringResource(Res.string.settings_dc_title))
     val summary = when {
-        r.error != null -> "最近一次向系統註冊失敗：${r.error}"
-        r.registered == 0 -> "目前沒有可由系統選擇器出示的證件。系統選擇器只支援 mdoc 與 SD-JWT VC 證件。"
-        else -> "已向系統註冊 ${r.registered} 張證件。網頁或其他 App 以 Digital Credentials API 要求證件時，系統選擇器會在證件類型相符時列出本 App。"
+        r.error != null -> stringResource(Res.string.settings_dc_error, r.error)
+        r.registered == 0 -> stringResource(Res.string.settings_dc_none)
+        else -> stringResource(Res.string.settings_dc_registered, r.registered)
     }
     Text(summary, style = MaterialTheme.typography.bodySmall,
         color = if (r.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     // What the system matcher compares a request against: the doctype or vct and the claims of each credential.
     for (entry in r.entries) Text(entry, style = MaterialTheme.typography.bodySmall)
     if (r.notListable > 0) {
-        Text("${r.notListable} 張只有 W3C 格式的證件（例如數位憑證皮夾卡片）不在系統選擇器的支援範圍，請改用 QR 碼或連結出示。",
+        Text(stringResource(Res.string.settings_dc_w3c, r.notListable),
             style = MaterialTheme.typography.bodySmall)
     }
     when {
-        r.issuance -> Text("網頁或 App 以 Digital Credentials API 發卡（OpenID4VCI）時，系統會列出本 App 作為存放位置。", style = MaterialTheme.typography.bodySmall)
-        r.issuanceError != null -> Text("Digital Credentials API 收卡註冊失敗：${r.issuanceError}", style = MaterialTheme.typography.bodySmall,
+        r.issuance -> Text(stringResource(Res.string.settings_dc_issuance), style = MaterialTheme.typography.bodySmall)
+        r.issuanceError != null -> Text(stringResource(Res.string.settings_dc_issuance_error, r.issuanceError), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error)
     }
-    OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text("重新向系統註冊") }
+    OutlinedButton(onClick = { model.reregisterDigitalCredentials() }) { Text(stringResource(Res.string.settings_dc_register)) }
 }
 
 /**
@@ -542,33 +592,35 @@ private fun MyDataProfileSection(model: WalletModel) {
     var id by remember { mutableStateOf("") }
     var birth by remember { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
-    SectionTitle("MyData 自動填入")
+    SectionTitle(stringResource(Res.string.settings_mydata_autofill))
     if (!model.legal.enabled(Integration.MYDATA)) IntegrationOffRow(model, Integration.MYDATA)
-    Text("保存身分證統一編號與出生日期後，App 內開啟 MyData 時自動填入登入欄位，下載的 PDF 也會自動用統一編號開啟。只存在這支裝置，不會送到 MyData 以外的網站；不保存也可以，每次自行輸入。",
+    Text(stringResource(Res.string.settings_mydata_autofill_text),
         style = MaterialTheme.typography.bodySmall)
     val saved = s.myDataIdNumber
     if (saved != null) {
-        LabelValue("身分證統一編號", saved.take(1) + "*".repeat(6) + saved.takeLast(3))
-        s.myDataBirthDate?.let { LabelValue("出生日期", it.take(4) + "-" + it.substring(4, 6) + "-" + it.substring(6)) }
-        OutlinedButton(onClick = { model.updateSettings { it.copy(myDataIdNumber = null, myDataBirthDate = null) } }) { Text("移除已保存的資料") }
+        LabelValue(stringResource(Res.string.settings_national_id_number), saved.take(1) + "*".repeat(6) + saved.takeLast(3))
+        s.myDataBirthDate?.let { LabelValue(stringResource(Res.string.settings_birth_date), it.take(4) + "-" + it.substring(4, 6) + "-" + it.substring(6)) }
+        OutlinedButton(onClick = { model.updateSettings { it.copy(myDataIdNumber = null, myDataBirthDate = null) } }) { Text(stringResource(Res.string.settings_mydata_remove)) }
         return
     }
     OutlinedTextField(
         value = id, onValueChange = { v -> id = v.filter { it.isLetterOrDigit() }.take(10); problem = null },
-        label = { Text("身分證統一編號") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(Res.string.settings_national_id_number)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
     OutlinedTextField(
         value = birth, onValueChange = { v -> birth = v.filter { it.isDigit() }.take(8); problem = null },
-        label = { Text("出生日期（西元 19880101 或民國 0770101）") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(Res.string.settings_birth_date_input)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
     )
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    val idInvalid = stringResource(Res.string.settings_national_id_invalid)
+    val birthInvalid = stringResource(Res.string.settings_birth_date_invalid)
     OutlinedButton(
         onClick = {
             val today = kotlin.time.Clock.System.now().toString().take(10).replace("-", "")
             val date = MyDataProfile.normalizeBirthDate(birth, today)
             when {
-                !MyDataProfile.isValidId(id) -> problem = "身分證統一編號不正確"
-                date == null -> problem = "出生日期不正確"
+                !MyDataProfile.isValidId(id) -> problem = idInvalid
+                date == null -> problem = birthInvalid
                 else -> {
                     model.updateSettings { it.copy(myDataIdNumber = MyDataProfile.normalizeId(id), myDataBirthDate = date) }
                     id = ""
@@ -577,5 +629,5 @@ private fun MyDataProfileSection(model: WalletModel) {
             }
         },
         enabled = id.isNotBlank() && birth.isNotBlank(),
-    ) { Text("保存") }
+    ) { Text(stringResource(Res.string.action_store)) }
 }

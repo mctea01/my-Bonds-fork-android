@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.document.zkpdf.ZkPdfProfiles
 import diw.wallet.core.compat.Draft11Dialect
@@ -245,16 +247,16 @@ data class WalletSettings(
 enum class HomeTab { DOCUMENTS, FILES, USE, VERIFY, HISTORY }
 
 /** The groups of the settings screen, each on its own page. */
-enum class SettingsSection(val title: String) {
-    SECURITY("安全與隱私"),
-    CREDENTIALS("證件與出示"),
-    DOCUMENTS("文件與簽章"),
-    TRUST("信任"),
-    INTEROP("互通"),
-    DEVELOPER("開發者與測試"),
-    GENERAL("顯示"),
-    LEGAL(diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION),
-    ABOUT("關於"),
+enum class SettingsSection(val title: org.jetbrains.compose.resources.StringResource) {
+    SECURITY(Res.string.settings_section_security),
+    CREDENTIALS(Res.string.settings_section_credentials),
+    DOCUMENTS(Res.string.settings_section_documents),
+    TRUST(Res.string.settings_section_trust),
+    INTEROP(Res.string.settings_section_interop),
+    DEVELOPER(Res.string.settings_section_developer),
+    GENERAL(Res.string.settings_section_general),
+    LEGAL(Res.string.legal_settings_section),
+    ABOUT(Res.string.settings_section_about),
 }
 
 sealed class Screen {
@@ -511,12 +513,30 @@ class WalletModel(val platform: PlatformServices) {
     /** Error data for the DC API caller once the user leaves a failed request; null cancels the flow instead. */
     private var dcApiError: JsonObject? = null
 
-    /** The user's languages (BCP 47, most preferred first) with English as the last fallback. */
-    val locales: List<String> by lazy {
-        (androidx.compose.ui.text.intl.LocaleList.current.localeList.map { it.toLanguageTag() } + "en").distinct()
-    }
+    /** The interface language chosen in the app; null follows the system. */
+    val appLanguage: StateFlow<String?> get() = platform.languageStore.tag
+
+    fun setAppLanguage(language: AppLanguage) = platform.languageStore.set(language)
+
+    /** An interface string in the chosen language, for messages and other text made outside composition. */
+    suspend fun text(resource: org.jetbrains.compose.resources.StringResource, vararg args: Any): String =
+        platform.languageStore.text(resource, *args)
+
+    /** The user's languages (BCP 47, most preferred first): the language chosen in the app, the system's, then English. */
+    val locales: List<String>
+        get() = (listOfNotNull(appLanguage.value) + androidx.compose.ui.text.intl.LocaleList.current.localeList.map { it.toLanguageTag() } + "en").distinct()
+
+    private val learnedLabels = mutableMapOf<String, String>()
+    private var labelsFor: List<String>? = null
+    private var labels: ClaimLabels? = null
+
     /** Claim names in the user's language; names learned from issuer metadata are cached in storage. */
-    val claimLabels by lazy { ClaimLabels(locales) }
+    val claimLabels: ClaimLabels
+        get() {
+            val current = locales
+            labels?.takeIf { labelsFor == current }?.let { return it }
+            return ClaimLabels(current, learnedLabels).also { labels = it; labelsFor = current }
+        }
 
     val settings: WalletSettings get() = settingsFlow.value
     val environmentPolicy: EnvironmentPolicy

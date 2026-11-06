@@ -31,3 +31,6 @@
 -dontwarn okio.**
 -dontwarn android.**
 -dontwarn androidx.**
+
+# Interface strings read outside composition build their resource environment by reflection (AppStrings).
+-keep class org.jetbrains.compose.resources.ResourceEnvironment { <init>(...); }

@@ -5,7 +5,7 @@
 ## 溝通與輸出
 
 - 與使用者交談一律使用繁體中文；程式碼註解、識別字、commit 訊息使用英文。
-- 程式碼不可使用 emoji 或特殊符號；App 介面字串使用繁體中文。
+- 程式碼不可使用 emoji 或特殊符號。App 介面字串放在 `app/src/commonMain/composeResources`（`values` 英文、`values-zh` 繁體中文），畫面以 `stringResource(Res.string.x)`、畫面外以 `WalletModel.text` 取用；新文字不要寫成程式常值，舊畫面依 [docs/design/i18n.md](docs/design/i18n.md) 以 `tools/i18n/i18n.py` 搬移。
 - 交付完整實作，不留框架或 TODO 佔位。
 - 在 Windows 執行指令前確保 UTF-8（`chcp 65001`、`-Dfile.encoding=UTF-8`）。
 
@@ -216,7 +216,7 @@
 
 ## 法律聲明與首次啟動
 
-- 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`，首次啟動與設定頁的字串在 `app/legal/LegalStrings.kt`，以便之後翻譯；不要把這些文字寫在畫面程式裡。
+- 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`，目前只有繁體中文（英文介面會說明以中文為準）；首次啟動與設定頁的字串由 `app/legal/LegalStrings.kt` 讀字串資源（`legal_*`）。不要把這些文字寫在畫面程式裡。
 - `docs/legal/*.md` 由 `LegalDocument.toMarkdown()` 產生，`LegalDocumentsTest` 檢查兩者一致；改文字後以 `DIW_UPDATE_LEGAL=1` 執行該測試重新產生。實質變更要調高 `version`，使用者下次開啟時只重新確認有變更的文件；錯字修正不調版本。
 - `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。
 - 服務停用時：`blockedIntegration` 擋下 TWDIW 入口與含 wallet.gov.tw 位址的連結（含百分比編碼與 JSON 跳脫）、openid-vc，改開 `Screen.IntegrationStatement`（同意後接著處理連結）；解析後才知道位址的請求以 `requireTwdiwAllowed` 檢查；`StatusMonitor` 不查詢該服務證件的狀態、不重新判定其發行端；MyData 保存的身分證統一編號不使用。

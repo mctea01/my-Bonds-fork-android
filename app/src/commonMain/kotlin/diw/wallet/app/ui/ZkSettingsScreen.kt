@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,8 +63,10 @@ internal val ZkTier.title: String
     }
 
 /** The settings-list summary: the device tier once it is known. */
+@androidx.compose.runtime.Composable
 internal fun zkSummary(capability: ZkCapability?): String =
-    capability?.let { "零知識：等級 ${it.tier.name}" } ?: "零知識：尚未評估"
+    capability?.let { org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_summary_tier, it.tier.name) }
+        ?: org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_summary_unknown)
 
 private val ZkAssetStatus.title: String
     get() = when (this) {
@@ -264,7 +267,14 @@ private fun ZkTemplatesSection(model: WalletModel) {
 @Composable
 internal fun ZkSettingsRow(model: WalletModel, onOpen: () -> Unit) {
     val capability by model.zk.capability.collectAsState()
-    ActionRow(WalletIcons.Shield, "零知識證明", zkSummary(capability).removePrefix("零知識：") + "・電路檔下載與刪除", onClick = onOpen)
+    val tier = capability?.let { org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_tier, it.tier.name) }
+        ?: org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_unknown)
+    ActionRow(
+        WalletIcons.Shield,
+        org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.screen_zk_settings),
+        tier + org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_assets),
+        onClick = onOpen,
+    )
 }
 
 /**
