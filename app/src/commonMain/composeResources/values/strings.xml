@@ -2970,6 +2970,10 @@
     <string name="reader_error_status">The other wallet answered with an error (status code %1$s) and provided no credential.</string>
     <string name="reader_eu_pid">EU personal identity (PID)</string>
     <string name="reader_eu_pid_text">Name, date of birth, nationality and issuing country</string>
+    <string name="reader_photo_id">Photo ID from a passport (ISO 23220)</string>
+    <string name="reader_photo_id_text">Name, date of birth, photo, nationality and passport number, with the chip files so passive authentication is repeated here</string>
+    <string name="reader_chip_file">Chip file, %1$d bytes</string>
+    <string name="reader_holder_wallet">The holder's wallet (self-issued)</string>
     <string name="reader_expired"> (expired)</string>
     <string name="reader_external">External reader; data is sent over NFC</string>
     <string name="reader_failed">Could not finish the check</string>

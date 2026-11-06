@@ -2970,6 +2970,10 @@
     <string name="reader_error_status">對方回應錯誤（狀態碼 %1$s），沒有提供證件。</string>
     <string name="reader_eu_pid">歐盟個人身分（PID）</string>
     <string name="reader_eu_pid_text">姓名、出生日期、國籍與發行國</string>
+    <string name="reader_photo_id">護照 Photo ID（ISO 23220）</string>
+    <string name="reader_photo_id_text">姓名、出生日期、相片、國籍與護照號碼，附晶片檔案以在此重做被動驗證</string>
+    <string name="reader_chip_file">晶片檔案，%1$d 位元組</string>
+    <string name="reader_holder_wallet">出示者的錢包（自簽）</string>
     <string name="reader_expired">（已過期）</string>
     <string name="reader_external">外接讀卡機，資料以 NFC 傳送</string>
     <string name="reader_failed">無法完成查驗</string>

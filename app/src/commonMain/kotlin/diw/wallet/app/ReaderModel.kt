@@ -15,6 +15,11 @@ import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.status.StatusDecision
 import diw.wallet.core.status.StatusPolicy
 import diw.wallet.core.trust.TrustDecision
+import diw.wallet.core.trust.TrustLabel
+import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.document.derived.EvidenceResult
+import diw.wallet.core.document.derived.TravelDocumentPhotoId
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.x509.displaySubject
 import kotlinx.coroutines.CancellationException
@@ -66,7 +71,15 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 /** What the reader asks the other wallet for: one ISO mdoc document type and its data elements. */
-enum class ReaderRequest(private val titleRes: StringResource, private val detailRes: StringResource, val docType: String, val namespace: String, val elements: List<String>) {
+enum class ReaderRequest(
+    private val titleRes: StringResource,
+    private val detailRes: StringResource,
+    val docType: String,
+    val namespace: String,
+    val elements: List<String>,
+    /** Elements of other namespaces of the same document. */
+    val more: Map<String, List<String>> = emptyMap(),
+) {
     MDL_IDENTITY(
         Res.string.reader_mdl_identity, Res.string.reader_mdl_identity_text, MDL, MDL_NS,
         listOf("family_name", "given_name", "birth_date", "portrait", "document_number", "issuing_country", "issuing_authority", "issue_date", "expiry_date"),
@@ -79,6 +92,12 @@ enum class ReaderRequest(private val titleRes: StringResource, private val detai
     EU_PID(
         Res.string.reader_eu_pid, Res.string.reader_eu_pid_text, PID, PID,
         listOf("family_name", "given_name", "birth_date", "nationality", "issuing_country", "expiry_date"),
+    ),
+    /** A Photo ID made from an electronic passport, with the chip files so passive authentication is repeated here. */
+    PHOTO_ID(
+        Res.string.reader_photo_id, Res.string.reader_photo_id_text, TravelDocumentPhotoId.DOCTYPE, TravelDocumentPhotoId.NAMESPACE,
+        listOf("family_name", "given_name", "birth_date", "portrait", "nationality", "issuing_country", "document_number", "expiry_date"),
+        mapOf(TravelDocumentPhotoId.DATAGROUPS_NAMESPACE to listOf("dg1", "dg2", "sod")),
     );
 
     val title: String get() = tr(titleRes)
@@ -110,6 +129,8 @@ data class ReadDocument(
     val withheld: List<String>,
     val status: CredentialStatus,
     val statusDecision: StatusDecision,
+    /** What the verifier checked beyond the issuer signature (passive authentication of a Photo ID's chip files). */
+    val evidence: List<EvidenceResult> = emptyList(),
 )
 
 /** A proof reveals neither MSO dates nor a credential status reference. */
@@ -300,7 +321,8 @@ class ReaderModel(private val model: WalletModel) {
             }.toDataItem()) else DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
                 docType = request.docType,
                 // Nothing is kept: the wallet records field names only.
-                itemsToRequest = mapOf(request.namespace to request.elements.associateWith { false }),
+                itemsToRequest = mapOf(request.namespace to request.elements.associateWith { false }) +
+                    request.more.mapValues { (_, names) -> names.associateWith { false } },
                 requestInfo = null,
                 readerKey = null,
                 signatureAlgorithm = Algorithm.UNSET,
@@ -396,7 +418,16 @@ class ReaderModel(private val model: WalletModel) {
     private suspend fun document(doc: MdocDocument, request: ReaderRequest, risk: RiskLevel): ReadDocument {
         val chain = doc.issuerCertChain.certificates
         // The docType limits an issuer CA that a VICAL authorises for some document types only.
-        val trust = model.trust.decide(TrustRole.ISSUER, chain, docType = doc.docType)
+        val anchored = model.trust.decide(TrustRole.ISSUER, chain, docType = doc.docType)
+        // A Photo ID a holder wallet made from a passport is that wallet's statement (T3); its chip files are checked here.
+        val photoId = doc.docType == TravelDocumentPhotoId.DOCTYPE
+        val trust = if (photoId && anchored.environment == null) {
+            TrustDecision(TrustTier.T3, TrustEnvironment.USER, official = false, anchorName = tr(Res.string.reader_holder_wallet), labels = setOf(TrustLabel.SELF_ISSUED))
+        } else anchored
+        val evidence = if (photoId) {
+            val disclosed = doc.issuerNamespaces.data.mapValues { (_, items) -> items.mapValues { it.value.dataElementValue } }
+            runCatching { TravelDocumentPhotoId.verify(disclosed, model.files.trustSource) }.getOrDefault(emptyList())
+        } else emptyList()
         val mso = doc.mso
         val type = model.documentTypes.getDocumentTypeForMdoc(doc.docType)
         val claims = doc.issuerNamespaces.data.flatMap { (ns, items) ->
@@ -404,10 +435,14 @@ class ReaderModel(private val model: WalletModel) {
                 val attribute = type?.mdocDocumentType?.namespaces?.get(ns)?.dataElements?.get(element)?.attribute
                 val label = model.claimLabel(listOf(ns, element), attribute?.displayName, null)
                 val value = item.dataElementValue
-                when (attribute?.type) {
+                when {
+                    ns == TravelDocumentPhotoId.DATAGROUPS_NAMESPACE ->
+                        ReadClaim(label, tr(Res.string.reader_chip_file, runCatching { value.asBstr.size }.getOrDefault(0)))
+                    else -> when (attribute?.type) {
                     DocumentAttributeType.Picture -> ReadClaim(label, "", runCatching { value.asBstr }.getOrNull())
                     DocumentAttributeType.Boolean -> ReadClaim(label, if (runCatching { value.asBoolean }.getOrDefault(false)) tr(Res.string.answer_yes) else tr(Res.string.answer_no))
                     else -> ReadClaim(label, MdocClaim(label, attribute, doc.docType, ns, element, value).render(TimeZone.currentSystemDefault()))
+                    }
                 }
             }
         }
@@ -431,6 +466,7 @@ class ReaderModel(private val model: WalletModel) {
             withheld = withheld,
             status = status,
             statusDecision = StatusPolicy.decide(status, risk),
+            evidence = evidence,
         )
     }
 
