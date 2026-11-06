@@ -440,6 +440,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
+        addDocumentType(org.multipaz.documenttype.knowntypes.PhotoID.getDocumentType())
         WalletTransactionTypes.all.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
@@ -993,7 +994,7 @@ class WalletModel(val platform: PlatformServices) {
 
     private suspend fun cardArtSpec(doc: Document): CardArtSpec {
         val record = doc.issuanceRecord
-        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier }
+        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier || it.photoIdDocumentId == doc.identifier }
         val background = parseColor(record?.backgroundColor) ?: when {
             derived != null -> Color(0xFF334155)
             else -> when (categoryOf(record)) {

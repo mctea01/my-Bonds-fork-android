@@ -1868,6 +1868,19 @@
     <string name="files_derived">文件衍生憑證</string>
     <string name="files_derived_exists">已在「證件」：IETF SD-JWT VC，由本錢包的文件發行金鑰簽發</string>
     <string name="files_derived_text">衍生憑證把文件變成可出示的證件（IETF SD-JWT VC），只交出你選的欄位，附上簽章檢查與時戳；原檔不會送出。</string>
+    <string name="files_passport_links">與此護照相關的文件</string>
+    <string name="files_passport_links_reading">正在查看已存的文件...</string>
+    <string name="files_passport_links_none">已存的文件中沒有記載這個護照號碼。</string>
+    <string name="files_passport_link">記載護照號碼 %1$s</string>
+    <string name="files_passport_link_name">記載護照號碼 %1$s，英文姓氏相同</string>
+    <string name="files_passport_links_text">錢包只在本機以護照號碼比對已存文件的文字（入出國日期證明書、大陸出入境記錄等）。號碼相符時列出供你查看，不會放進憑證。</string>
+    <string name="files_photo_id">ISO 23220 Photo ID（mdoc）</string>
+    <string name="files_photo_id_exists">已在「證件」：ISO/IEC 23220 Photo ID mdoc，由本錢包的文件發行金鑰簽發</string>
+    <string name="files_photo_id_text">Photo ID 是由護照晶片產生的標準 mdoc：資料頁的姓名、日期與號碼、相片，以及晶片檔案（DG1、DG2、SOD），讓查驗方自行向發證國核對護照。可經 OpenID4VP、ISO 18013-5 與 Digital Credentials API 出示，只交出對方要求的欄位。</string>
+    <string name="files_photo_id_make">產生 Photo ID</string>
+    <string name="files_photo_id_remake">重新產生 Photo ID</string>
+    <string name="photo_id_title">Photo ID</string>
+    <string name="photo_id_type">ISO 23220 Photo ID</string>
     <string name="files_document_missing_text">文件可能已刪除。</string>
     <string name="files_empty_text">匯入 PDF、電子公文、OFD、.p7s／.p7m、ASiC-E、MyData 壓縮檔或 OpenCerts 等檔案，錢包會保存原檔並檢查簽章、時戳與憑證鏈；之後可以簽署，或做成可出示的衍生憑證。</string>
     <string name="files_empty_title">還沒有文件</string>
@@ -2404,6 +2417,9 @@
     <string name="msg_decrypted_sig">（內含的簽章另存為 .asc）</string>
     <string name="msg_deleted_container">已刪除公文與容器內 %1$s 個檔案</string>
     <string name="msg_derived">已產生衍生憑證，可在「證件」出示</string>
+    <string name="msg_photo_id_issued">已產生 Photo ID，可在「證件」出示</string>
+    <string name="msg_photo_id_no_dg1">護照檔案沒有可讀的 DG1</string>
+    <string name="msg_photo_id_expired">護照已過期，不產生 Photo ID</string>
     <string name="msg_derived_zk">已產生含 zkPDF 證明的衍生憑證，可在「證件」出示</string>
     <string name="msg_download_failed">下載失敗：HTTP %1$s</string>
     <string name="msg_download_vk">請先下載驗證電腦版證明所需的驗證金鑰</string>
@@ -3528,6 +3544,7 @@
     <string name="step_decrypt_check">解密並檢查完整性</string>
     <string name="step_delete_file">刪除檔案</string>
     <string name="step_derive">產生衍生憑證</string>
+    <string name="step_photo_id">產生 Photo ID</string>
     <string name="step_export_attachment">匯出附件</string>
     <string name="step_export_file">匯出檔案</string>
     <string name="step_export_id">匯出身分證卡</string>

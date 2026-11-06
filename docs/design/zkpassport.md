@@ -195,6 +195,12 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 5. **護照與其他文件的關聯**：入出國日期證明書、大陸出入境記錄等文件含證件號碼時，在本機比對 DG1 的號碼與文件解析出的號碼，加入既有的「雙證件關聯」。之後可設計零知識關聯電路，證明 zkPassport 承諾中的證件號碼等於 zkPDF 欄位承諾中的號碼而不揭露號碼；兩邊都是 Poseidon2 承諾，但承諾格式不同，列為後續研究。
 6. **簽章**：護照晶片不提供簽章用的私鑰，不適用電子簽章。
 
+實作狀態（2026-11-06，第 2、4 項依賴 Z3 的手機端證明，排在 Z3 之後）：
+
+- 第 1 項：`TravelDocumentFields`，衍生憑證 vct `urn:diw-wallet:vct:travel-document-derived:1`，欄位全部來自 DG1（所有名字都保留），證據 `TravelDocumentPassiveAuthentication` 記錄錢包當時的被動驗證、CSCA 信任等級、晶片驗證與主動驗證、DG1 與 SOD 的 SHA-256。持有者可另外揭露 `travelDocumentDg1` 與 `travelDocumentSod`：查驗方先核對雜湊，再重做被動驗證並比對每個揭露欄位與 DG1。zkPassport 證明作為證據的部分隨 Z3 加入。
+- 第 3 項：`TravelDocumentPhotoId`，檔案頁「產生 Photo ID」。doctype `org.iso.23220.photoid.1`；`org.iso.23220.1` 放姓、名、出生日期、出生年、年齡門檻（13、15、16、18、21、25、60、65，只會由否變是，不會誇大）、相片（DG2）、效期、發證國與國籍（ISO 3166-1 alpha-2，`D` 轉 DE、`RKS` 轉 XK，非國家代碼不放）、性別（ISO/IEC 5218）、證件號碼；`org.iso.23220.datagroups.1` 放 dg1、dg2、sod 原文。發行者是錢包的文件發行金鑰，憑證為自簽的文件簽發者憑證（keyUsage digitalSignature、EKU mdlDS），效期一年且不超過護照效期，信任為 T3。走既有的 OpenID4VP DCQL、ISO 18013-5 與 DC API 出示，與 zkPassport 方言隔離。本專案查驗端（`PresentationVerifier`）遇到未錨定的 Photo ID 時視為持有者錢包的聲明（T3），以揭露的 dg1、sod（與 dg2）重做被動驗證並比對揭露欄位；持有者綁定仍是錢包的聲明，結果另列一行說明。
+- 第 5 項：`TravelDocumentLinks`，護照檔案頁列出文字中記載同一護照號碼的已存文件（PDF 文字層、文字與 XML），英文姓氏也相同時標示；只在本機比對，不放進憑證。零知識關聯電路仍為後續研究。
+
 ### 5.5 本專案的 FaceMatch 與加鹽唯一識別碼（2026-11-05 使用者決定）
 
 zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同樣強度、但信任本專案的版本。電路沿用 zkPassport 的公開電路，不改電路，只換電路外核對的值。

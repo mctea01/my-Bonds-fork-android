@@ -300,6 +300,68 @@ class MrtdTest {
         assertEquals(Check.FAIL, verify(otherSod, true).single().check)
     }
 
+    @Test fun photoIdMdocCarriesTheZoneAndTheChipFiles() = runBlocking {
+        val dump = read(chip())
+        val now = Instant.parse("2026-11-06T00:00:00Z")
+        val area = org.multipaz.securearea.software.SoftwareSecureArea.create(EphemeralStorage())
+        val settings = org.multipaz.securearea.software.SoftwareCreateKeySettings.Builder().build()
+        val issuer = diw.wallet.core.holder.HolderKey(area, area.createKey(null, settings), shared = false)
+        val device = area.createKey(null, settings).ecPublicKey
+        val photoId = diw.wallet.core.document.derived.TravelDocumentPhotoId
+        val elements = assertNotNull(photoId.elements(dump, now))
+        val until = photoId.validUntil(dump, now)
+        assertEquals(now + photoId.VALIDITY, until)
+        val signed = org.multipaz.cbor.Cbor.decode(photoId.issuerSigned(issuer, elements, device, now, until).toByteArray())
+        val sign1 = signed["issuerAuth"].asCoseSign1
+        val chain = assertNotNull(sign1.unprotectedHeaders[org.multipaz.cose.CoseNumberLabel(org.multipaz.cose.Cose.COSE_LABEL_X5CHAIN)]).asX509CertChain
+        assertEquals(issuer.publicKey, chain.certificates.single().ecPublicKey)
+        org.multipaz.cose.Cose.coseSign1Check(issuer.publicKey, null, sign1, org.multipaz.crypto.Algorithm.ES256)
+        val mso = org.multipaz.mdoc.mso.MobileSecurityObject.fromDataItem(org.multipaz.cbor.Cbor.decode(org.multipaz.cbor.Cbor.decode(sign1.payload!!).asTagged.asBstr))
+        assertEquals(photoId.DOCTYPE, mso.docType)
+        assertEquals(device, mso.deviceKey)
+        val ns = org.multipaz.mdoc.issuersigned.IssuerNamespaces.fromDataItem(signed["nameSpaces"])
+        ns.validateAgainstMso(mso)
+        val person = ns.data.getValue(photoId.NAMESPACE).mapValues { it.value.dataElementValue }
+        assertEquals("LIN", person.getValue("family_name").asTstr)
+        assertEquals("CHE CHUAN", person.getValue("given_name").asTstr)
+        assertEquals("1990-01-15", person.getValue("birth_date").asDateString.toString())
+        assertEquals("2030-01-01", person.getValue("expiry_date").asDateString.toString())
+        assertEquals("TW", person.getValue("issuing_country").asTstr)
+        assertEquals("TW", person.getValue("nationality").asTstr)
+        assertEquals(1L, person.getValue("sex").asNumber)
+        assertEquals(org.multipaz.cbor.Simple.TRUE, person.getValue("age_over_18"))
+        assertEquals(org.multipaz.cbor.Simple.FALSE, person.getValue("age_over_60"))
+        assertTrue(person.containsKey("portrait"))
+        val groups = ns.data.getValue(photoId.DATAGROUPS_NAMESPACE).mapValues { it.value.dataElementValue.asBstr }
+        assertContentEquals(dump.file(LdsFile.DG1), groups["dg1"])
+        assertContentEquals(dump.file(LdsFile.DG2), groups["dg2"])
+        assertContentEquals(dump.file(LdsFile.SOD), groups["sod"])
+        // The verifier repeats passive authentication from the disclosed chip files and compares the person fields.
+        val disclosed = ns.data.mapValues { (_, items) -> items.mapValues { it.value.dataElementValue } }
+        val checked = photoId.verify(disclosed, trust(true), now)
+        assertEquals(listOf(Check.PASS, Check.PASS, Check.NOT_CHECKED), checked.map { it.check }, checked.toString())
+        assertEquals(Check.WARN, photoId.verify(disclosed, trust(false), now).first().check)
+        val renamed = disclosed + (photoId.NAMESPACE to disclosed.getValue(photoId.NAMESPACE) + ("family_name" to org.multipaz.cbor.Tstr("WANG")))
+        assertEquals(Check.FAIL, photoId.verify(renamed, trust(true), now)[1].check)
+        val older = disclosed + (photoId.NAMESPACE to disclosed.getValue(photoId.NAMESPACE) + ("age_over_60" to org.multipaz.cbor.Simple.TRUE))
+        assertEquals(Check.FAIL, photoId.verify(older, trust(true), now)[1].check)
+        val noFiles = disclosed - photoId.DATAGROUPS_NAMESPACE
+        assertEquals(Check.NOT_CHECKED, photoId.verify(noFiles, trust(true), now).single().check)
+        assertEquals("DE", MrtdCrypto.alpha2("D<<"))
+        assertEquals("XK", MrtdCrypto.alpha2("RKS"))
+        assertEquals(null, MrtdCrypto.alpha2("XXA"))
+    }
+
+    @Test fun otherDocumentsAreLinkedByPassportNumber() {
+        val mrz = Mrz.parse(mrzLine1 + "\n" + mrzLine2)!!
+        val links = diw.wallet.core.document.derived.TravelDocumentLinks
+        val certificate = "入出國日期證明書\n姓名：林哲全\n英文姓名：LIN, CHE CHUAN\n護照號碼或統一證號：３１２３４５６７８\n出生日期：1990-01-15"
+        assertEquals(diw.wallet.core.document.derived.TravelDocumentLinks.Mention("312345678", true), links.mention(mrz, certificate))
+        assertEquals(false, links.mention(mrz, "證件號碼 3 1 2 3 4 5 6 7 8")?.sameName)
+        assertEquals(null, links.mention(mrz, "護照號碼 3123456789"))
+        assertEquals(null, links.mention(mrz, "沒有號碼"))
+    }
+
     @Test fun bacOnlyChipWithChipAuthenticationVersionOne() {
         val dump = read(chip(paceOid = null, caOid = MrtdOids.CA_ECDH + ".1"))
         assertEquals("BAC", dump.access)

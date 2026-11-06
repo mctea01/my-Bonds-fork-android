@@ -123,20 +123,7 @@ object TravelDocumentFields {
             return listOf(EvidenceResult(EVIDENCE, title, Check.FAIL, "附上的 DG1 或 SOD 不是產生憑證時檢查的檔案"))
         }
         if (trust == null) return listOf(EvidenceResult(EVIDENCE, title, Check.NOT_CHECKED, "$statement。此處無法重做被動驗證。"))
-        val dump = MrtdDump(files = mapOf(LdsFile.DG1.name to Base64.encode(dg1), LdsFile.SOD.name to Base64.encode(sod)), access = "presented", readAt = now.epochSeconds)
-        val report = DocumentInspector.inspect(dump.encode(), null, trust, now = now)
-        val check = report.travelDocument
-        val signature = report.signatures.firstOrNull()
-        val result = when {
-            report.format != DocumentFormat.EMRTD || check == null || signature == null ->
-                EvidenceResult(EVIDENCE, title, Check.FAIL, "DG1 與 SOD 無法解讀")
-            1 !in check.matched || signature.integrity != Check.PASS ->
-                EvidenceResult(EVIDENCE, title, Check.FAIL, "SOD 的簽章或 DG1 雜湊不符")
-            report.verdict == DocumentVerdict.VALID ->
-                EvidenceResult(EVIDENCE, title, Check.PASS, "已重做被動驗證：SOD 由 ${check.signerCountry ?: "發證國"} 的文件簽發者簽署並連到信任的 CSCA" + (signature.trust?.let { "（${it.tier}）" } ?: ""))
-            else ->
-                EvidenceResult(EVIDENCE, title, Check.WARN, "已重做被動驗證：SOD 簽章與 DG1 雜湊正確，但文件簽發者沒有連到本處信任的 CSCA")
-        }
+        val result = passiveAuthentication(title, dg1, sod, null, trust, now)
         if (result.check == Check.FAIL) return listOf(result)
         val mrz = Lds.dg1(dg1) ?: return listOf(EvidenceResult(EVIDENCE, title, Check.FAIL, "DG1 無法解讀"))
         val year = now.toString().take(4).toInt()
@@ -145,6 +132,32 @@ object TravelDocumentFields {
         val fields = if (differing.isEmpty()) EvidenceResult(EVIDENCE, "電子護照欄位", Check.PASS, "出示的機讀區欄位與 DG1 相符")
         else EvidenceResult(EVIDENCE, "電子護照欄位", Check.FAIL, "出示的欄位與 DG1 不符：" + differing.joinToString("、"))
         return listOf(result, fields)
+    }
+
+    /**
+     * Passive authentication of chip files a verifier received ([dg2] optional): the security object's signature,
+     * the hashes of the given files, and the chain of its document signer to a trusted CSCA.
+     */
+    suspend fun passiveAuthentication(title: String, dg1: ByteArray, sod: ByteArray, dg2: ByteArray?, trust: DocumentTrustSource, now: Instant): EvidenceResult {
+        val files = buildMap {
+            put(LdsFile.DG1.name, Base64.encode(dg1))
+            put(LdsFile.SOD.name, Base64.encode(sod))
+            dg2?.let { put(LdsFile.DG2.name, Base64.encode(it)) }
+        }
+        val dump = MrtdDump(files = files, access = "presented", readAt = now.epochSeconds)
+        val report = DocumentInspector.inspect(dump.encode(), null, trust, now = now)
+        val check = report.travelDocument
+        val signature = report.signatures.firstOrNull()
+        return when {
+            report.format != DocumentFormat.EMRTD || check == null || signature == null ->
+                EvidenceResult(EVIDENCE, title, Check.FAIL, "DG1 與 SOD 無法解讀")
+            1 !in check.matched || (dg2 != null && 2 !in check.matched) || signature.integrity != Check.PASS ->
+                EvidenceResult(EVIDENCE, title, Check.FAIL, "SOD 的簽章或資料群組雜湊不符")
+            report.verdict == DocumentVerdict.VALID ->
+                EvidenceResult(EVIDENCE, title, Check.PASS, "已重做被動驗證：SOD 由 ${check.signerCountry ?: "發證國"} 的文件簽發者簽署並連到信任的 CSCA" + (signature.trust?.let { "（${it.tier}）" } ?: ""))
+            else ->
+                EvidenceResult(EVIDENCE, title, Check.WARN, "已重做被動驗證：SOD 簽章與資料群組雜湊正確，但文件簽發者沒有連到本處信任的 CSCA")
+        }
     }
 
     private fun statement(e: JsonObject, own: Boolean): String {
