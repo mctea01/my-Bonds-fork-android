@@ -19,7 +19,7 @@
 | `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼、NFC：Android 的 HCE `WalletNfcService`、讀卡模式與 USB CCID `AndroidNfcReaders`，桌面的 PC/SC `PcscReaders`；取件入口 `PortalWebView`、檔案選取與儲存） |
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
-| `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime、OpenAC 年齡證明、TLSNotary、Noir 電路（`native/circuits`）、zkPassport 證明組查驗（`native/zkpassport-verify`）；`native/third_party` 是收進 repo 的上游原始碼（zkPassport 的輸入產生與 driver），只改 Cargo.toml，工作區排除、不跑其測試 |
+| `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime、OpenAC 年齡證明、TLSNotary、Noir 電路（`native/circuits`）、zkPassport 證明組查驗（`native/zkpassport-verify`）；`native/vendor/zkpassport` 是收進 repo 的上游原始碼（zkPassport 的輸入產生與 driver），只改 Cargo.toml，工作區排除、不跑其測試 |
 | `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 發佈，格式見 `templates/README.md` |
 
 `core` 內的主要套件：
