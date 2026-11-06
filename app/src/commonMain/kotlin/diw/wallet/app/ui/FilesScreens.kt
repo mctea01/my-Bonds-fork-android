@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import diw.wallet.app.CscPrompt
 import diw.wallet.core.zk.ZkPdfStatement
 import diw.wallet.core.document.sign.CscEnvironment
@@ -161,11 +164,12 @@ internal fun sizeText(size: Long): String = when {
     else -> "${size / 1024 / 1024}.${(size % (1024 * 1024)) * 10 / (1024 * 1024)} MB"
 }
 
+@Composable
 private fun verdictOf(v: DocumentVerdict): Pair<Verdict, String> = when (v) {
-    DocumentVerdict.VALID -> Verdict.PASS to "簽章有效"
-    DocumentVerdict.PARTIAL -> Verdict.CAUTION to "簽章部分通過"
-    DocumentVerdict.INVALID -> Verdict.FAIL to "簽章無效"
-    DocumentVerdict.UNSIGNED -> Verdict.CAUTION to "沒有簽章"
+    DocumentVerdict.VALID -> Verdict.PASS to stringResource(Res.string.doc_verdict_valid)
+    DocumentVerdict.PARTIAL -> Verdict.CAUTION to stringResource(Res.string.doc_verdict_partial)
+    DocumentVerdict.INVALID -> Verdict.FAIL to stringResource(Res.string.doc_verdict_invalid)
+    DocumentVerdict.UNSIGNED -> Verdict.CAUTION to stringResource(Res.string.doc_verdict_unsigned)
 }
 
 private fun checkVerdict(c: Check): Verdict = when (c) {
@@ -174,29 +178,31 @@ private fun checkVerdict(c: Check): Verdict = when (c) {
     else -> Verdict.CAUTION
 }
 
+@Composable
 private fun checkText(c: Check): String = when (c) {
-    Check.PASS -> "通過"
-    Check.WARN -> "需留意"
-    Check.FAIL -> "失敗"
-    Check.NOT_CHECKED -> "無法檢查"
+    Check.PASS -> stringResource(Res.string.check_pass)
+    Check.WARN -> stringResource(Res.string.check_warn)
+    Check.FAIL -> stringResource(Res.string.check_fail)
+    Check.NOT_CHECKED -> stringResource(Res.string.check_not_checked)
 }
 
+@Composable
 private fun formatTitle(f: DocumentFormat): String = when (f) {
     DocumentFormat.PDF -> "PDF"
-    DocumentFormat.CMS_SIGNED -> "CMS 簽章（PKCS#7）"
-    DocumentFormat.CMS_ENVELOPED -> "CMS 加密信封（PKCS#7）"
-    DocumentFormat.TIMESTAMP -> "RFC 3161 時戳"
+    DocumentFormat.CMS_SIGNED -> stringResource(Res.string.format_cms_signed)
+    DocumentFormat.CMS_ENVELOPED -> stringResource(Res.string.format_cms_enveloped)
+    DocumentFormat.TIMESTAMP -> stringResource(Res.string.format_timestamp)
     DocumentFormat.XML -> "XML"
     DocumentFormat.OFD -> "OFD"
-    DocumentFormat.ASIC_E -> "ASiC-E 容器"
-    DocumentFormat.ZIP -> "ZIP 壓縮檔"
-    DocumentFormat.OPENCERTS -> "OpenCerts（OpenAttestation）"
+    DocumentFormat.ASIC_E -> stringResource(Res.string.format_asic)
+    DocumentFormat.ZIP -> stringResource(Res.string.format_zip)
+    DocumentFormat.OPENCERTS -> stringResource(Res.string.format_opencerts)
     DocumentFormat.JSON -> "JSON"
-    DocumentFormat.OFFICE -> "Office 文件"
-    DocumentFormat.IMAGE -> "圖片"
-    DocumentFormat.TEXT -> "文字檔"
+    DocumentFormat.OFFICE -> stringResource(Res.string.format_office)
+    DocumentFormat.IMAGE -> stringResource(Res.string.format_image)
+    DocumentFormat.TEXT -> stringResource(Res.string.format_text)
     DocumentFormat.OPENPGP -> "OpenPGP"
-    DocumentFormat.OTHER -> "其他檔案"
+    DocumentFormat.OTHER -> stringResource(Res.string.format_other)
 }
 
 // ---------------------------------------------------------------- files tab
@@ -215,20 +221,20 @@ fun FilesTab(model: WalletModel) {
             Button(onClick = { model.files.pickAndImport() }, enabled = busy == null) {
                 Icon(WalletIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("匯入文件")
+                Text(stringResource(Res.string.files_import))
             }
             OutlinedButton(onClick = { model.screen.value = Screen.DocumentSources }) {
                 Icon(WalletIcons.Government, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("從網站取得")
+                Text(stringResource(Res.string.files_from_web))
             }
         }
         BusyLine(busy, error)
         if (files.isEmpty()) {
             EmptyState(
-                WalletIcons.Document, "還沒有文件",
-                "匯入 PDF、電子公文、OFD、.p7s／.p7m、ASiC-E、MyData 壓縮檔或 OpenCerts 等檔案，錢包會保存原檔並檢查簽章、時戳與憑證鏈；之後可以簽署，或做成可出示的衍生憑證。",
-                "從 MyData 等網站取得",
+                WalletIcons.Document, stringResource(Res.string.files_empty_title),
+                stringResource(Res.string.files_empty_text),
+                stringResource(Res.string.files_from_mydata),
             ) { model.screen.value = Screen.DocumentSources }
         } else FileList(model, files)
     }
@@ -242,8 +248,8 @@ fun DocumentSourcesScreen(model: WalletModel) {
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            if (model.platform.embeddedBrowser) "在 App 內開啟來源網站，下載的文件直接保存到「文件」；需要行動自然人憑證登入時會轉到官方 App。"
-            else "在系統瀏覽器開啟來源網站，下載後回到「文件」用「匯入文件」保存。",
+            if (model.platform.embeddedBrowser) stringResource(Res.string.files_web_inapp)
+            else stringResource(Res.string.files_web_browser),
             style = MaterialTheme.typography.bodySmall,
         )
         SectionTitle("MyData")
@@ -251,10 +257,10 @@ fun DocumentSourcesScreen(model: WalletModel) {
         else DocumentSources.myData.forEach { src ->
             ActionRow(if (src.nationalId) WalletIcons.Person else WalletIcons.Government, src.name, src.detail) { open(src) }
         }
-        SectionTitle("其他來源")
+        SectionTitle(stringResource(Res.string.files_other_sources))
         DocumentSources.others.forEach { src -> ActionRow(WalletIcons.Government, src.name, src.detail) { open(src) } }
-        SectionTitle("電子公文收發")
-        ActionRow(WalletIcons.Send, "公文交換（收發）", "需要機關的公文電子交換帳號與憑證，個人錢包目前無法收發；收到的公文檔案可匯入保存與檢查", enabled = false) {}
+        SectionTitle(stringResource(Res.string.files_official_exchange))
+        ActionRow(WalletIcons.Send, stringResource(Res.string.files_exchange), stringResource(Res.string.files_exchange_text), enabled = false) {}
     }
 }
 
@@ -270,7 +276,7 @@ internal fun BusyLine(busy: String?, error: String?) {
 }
 
 /** How the files list is laid out: newest first, or grouped by what the files are (MyData item, official documents). */
-private enum class FileOrder(val title: String) { RECENT("依保存時間"), ITEM("依項目") }
+private enum class FileOrder(val title: org.jetbrains.compose.resources.StringResource) { RECENT(Res.string.files_by_time), ITEM(Res.string.files_by_item) }
 
 /** The files outside containers; a container's own files show on its document's screen. */
 @Composable
@@ -286,20 +292,20 @@ private fun FileList(model: WalletModel, files: List<StoredFile>) {
             files.any { it.bundleOf == f.id && it.name.contains(q, ignoreCase = true) }
     }
     if (outside.size > 5) {
-        OutlinedTextField(value = query, onValueChange = { query = it.take(60) }, label = { Text("搜尋檔名、標題或來源") }, singleLine = true,
+        OutlinedTextField(value = query, onValueChange = { query = it.take(60) }, label = { Text(stringResource(Res.string.files_search)) }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
     }
     if (outside.size > 1) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${outside.size} 份文件", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            FileOrder.entries.forEach { o -> FilterChip(selected = o == order, onClick = { order = o }, label = { Text(o.title) }) }
+            Text(stringResource(Res.string.files_count, outside.size), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+            FileOrder.entries.forEach { o -> FilterChip(selected = o == order, onClick = { order = o }, label = { Text(stringResource(o.title)) }) }
         }
     }
-    if (q.isNotEmpty() && shown.isEmpty()) Text("沒有符合「$q」的文件。", style = MaterialTheme.typography.bodySmall)
+    if (q.isNotEmpty() && shown.isEmpty()) Text(stringResource(Res.string.files_no_match, q), style = MaterialTheme.typography.bodySmall)
     when (order) {
         FileOrder.RECENT -> shown.forEach { f -> FileRow(f, counts[f.id] ?: 0) { model.screen.value = Screen.FileDetail(f.id) } }
         FileOrder.ITEM -> shown.groupBy { groupOf(it, counts[it.id] ?: 0) }.toSortedMap().forEach { (group, list) ->
-            Text("$group（${list.size}）", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.files_group_count, group, list.size), style = MaterialTheme.typography.titleSmall)
             list.sortedWith(compareByDescending<StoredFile> { periodKey(it.period) }.thenByDescending { it.addedAt }).forEach { f ->
                 FileRow(f, counts[f.id] ?: 0) { model.screen.value = Screen.FileDetail(f.id) }
             }
@@ -308,12 +314,13 @@ private fun FileList(model: WalletModel, files: List<StoredFile>) {
 }
 
 /** The group a file is listed under: its MyData item, official documents, else its format. */
+@Composable
 private fun groupOf(f: StoredFile, members: Int): String {
     val source = f.source.orEmpty()
-    if (source.startsWith("MyData")) return source.substringAfter("・", "MyData").substringBefore("（").ifBlank { "MyData" }
+    if (source.startsWith("MyData")) return source.substringAfter("・", "MyData").substringBefore(stringResource(Res.string.paren_open)).ifBlank { "MyData" }
     val ext = f.name.substringAfterLast('.', "").lowercase()
-    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co", "en", "esw")) return "電子公文"
-    return f.report?.format?.let { formatTitle(it) } ?: "其他檔案"
+    if (members > 0 || ext in setOf("di", "sw", "si", "dm", "co", "en", "esw")) return stringResource(Res.string.files_group_official)
+    return f.report?.format?.let { formatTitle(it) } ?: stringResource(Res.string.format_other)
 }
 
 /** "113 年度" as a number for sorting, newest first; files without a period sort last. */
@@ -321,7 +328,7 @@ private fun periodKey(period: String?): Int = period?.let { Regex("\\d+").find(i
 
 @Composable
 private fun FileRow(f: StoredFile, members: Int = 0, onClick: () -> Unit) {
-    val (verdict, text) = f.report?.let { verdictOf(it.verdict) } ?: (Verdict.CAUTION to "尚未檢查")
+    val (verdict, text) = f.report?.let { verdictOf(it.verdict) } ?: (Verdict.CAUTION to stringResource(Res.string.files_unchecked))
     Card(Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -332,10 +339,10 @@ private fun FileRow(f: StoredFile, members: Int = 0, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall)
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     VerdictPill(verdict, text)
-                    if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, "時戳")
-                    if (f.derivedDocumentId != null) InfoPill("已衍生憑證")
-                    if (f.nationalId != null) InfoPill("身分證卡")
-                    if (members > 0) InfoPill("公文容器・$members 個關連檔")
+                    if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, stringResource(Res.string.files_tag_timestamp))
+                    if (f.derivedDocumentId != null) InfoPill(stringResource(Res.string.files_tag_derived))
+                    if (f.nationalId != null) InfoPill(stringResource(Res.string.files_tag_national_id))
+                    if (members > 0) InfoPill(stringResource(Res.string.files_tag_container, members))
                 }
             }
         }
@@ -349,9 +356,9 @@ private fun FileRow(f: StoredFile, members: Int = 0, onClick: () -> Unit) {
 private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: List<StoredFile>) {
     val owner = f.bundleOf?.let { id -> files.firstOrNull { it.id == id } }
     if (owner != null) {
-        SectionTitle("公文容器")
-        LabelValue("屬於", owner.name, onClick = { model.screen.value = Screen.FileDetail(owner.id) })
-        OutlinedButton(onClick = { model.files.leaveBundle(f) }) { Text("移出容器") }
+        SectionTitle(stringResource(Res.string.files_container))
+        LabelValue(stringResource(Res.string.files_belongs_to), owner.name, onClick = { model.screen.value = Screen.FileDetail(owner.id) })
+        OutlinedButton(onClick = { model.files.leaveBundle(f) }) { Text(stringResource(Res.string.files_move_out)) }
         return
     }
     var main by remember(f.id) { mutableStateOf(false) }
@@ -362,39 +369,39 @@ private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: L
     val members = own + inherited
     // With an online approval in the container, its files are shown under the signing point that signed them.
     val layout by produceState<FilesModel.ContainerLayout?>(null, f.id, files) { value = model.files.containerLayout(f) }
-    SectionTitle("公文容器")
+    SectionTitle(stringResource(Res.string.files_container))
     if (members.isEmpty()) {
-        Text("這份公文還沒有關連檔。交換表單（.sw）、簽核檔（.si）與附件可放進同一個容器，一起保存與查看。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.files_container_empty), style = MaterialTheme.typography.bodySmall)
     }
     val open = { m: StoredFile -> model.screen.value = Screen.FileDetail(m.id) }
     val l = layout
     if (l != null) {
         ContainerHealth(l, listOf(f) + members)
-        Text("依線上簽核檔的簽核點排列：每個檔案列在第一個簽署它的簽核點下。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.files_container_by_point), style = MaterialTheme.typography.bodySmall)
         FileRow(l.approval) { open(l.approval) }
         l.points.forEach { p -> ContainerPointView(p, f, open) }
         if (l.others.isNotEmpty()) {
-            Text("簽核檔未列出的檔案", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.files_container_unlisted), style = MaterialTheme.typography.titleSmall)
             l.others.forEach { m -> FileRow(m) { open(m) } }
         }
     } else {
         own.forEach { m -> FileRow(m) { open(m) } }
         if (inherited.isNotEmpty()) {
-            Text("沿用簽署前公文的關連檔（未另外簽署）：", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.files_container_inherited), style = MaterialTheme.typography.bodySmall)
             inherited.forEach { m -> FileRow(m) { open(m) } }
         }
     }
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text("匯入關連文件") }
-        OutlinedButton(onClick = { model.screen.value = Screen.OfficialBundle(f.id, null) }) { Text("從已保存的文件加入") }
+        OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text(stringResource(Res.string.files_import_related)) }
+        OutlinedButton(onClick = { model.screen.value = Screen.OfficialBundle(f.id, null) }) { Text(stringResource(Res.string.files_add_saved)) }
     }
     if (members.isNotEmpty()) {
-        ActionRow(WalletIcons.Shield, "取得容器內簽章的撤銷資訊", "為容器內每個含簽章的檔案與尚未保存撤銷資訊的時戳取得 OCSP（取不到才用 CRL）") {
+        ActionRow(WalletIcons.Shield, stringResource(Res.string.files_container_revocation), stringResource(Res.string.files_container_revocation_text)) {
             model.files.collectContainerValidation(f)
         }
-        ActionRow(WalletIcons.Send, "匯出公文容器", "壓縮檔內含全部檔案（原檔名）、時戳與撤銷資訊，以及依簽核點整理的說明") { model.files.exportContainer(f) }
+        ActionRow(WalletIcons.Send, stringResource(Res.string.files_container_export), stringResource(Res.string.files_container_export_text)) { model.files.exportContainer(f) }
         if (model.platform.canShareFiles) {
-            ActionRow(WalletIcons.Share, "分享公文容器", "同一個壓縮檔直接交給其他 App，不另存檔") { model.files.exportContainer(f, share = true) }
+            ActionRow(WalletIcons.Share, stringResource(Res.string.files_container_share), stringResource(Res.string.files_container_share_text)) { model.files.exportContainer(f, share = true) }
         }
     }
 }
@@ -411,13 +418,13 @@ private fun ContainerHealth(l: FilesModel.ContainerLayout, all: List<StoredFile>
     val signed = all.filter { it.report?.signatures?.isNotEmpty() == true }
     val withRevocation = signed.count { it.signatureValidation != null }
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        VerdictPill(if (l.missing == 0) Verdict.PASS else Verdict.CAUTION, if (l.missing == 0) "檔案齊全" else "缺 ${l.missing} 個檔案")
-        if (l.changed > 0) VerdictPill(Verdict.CAUTION, "${l.changed} 個檔案與簽核時不同")
+        VerdictPill(if (l.missing == 0) Verdict.PASS else Verdict.CAUTION, if (l.missing == 0) stringResource(Res.string.files_container_complete) else stringResource(Res.string.files_container_missing, l.missing))
+        if (l.changed > 0) VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_container_changed, l.changed))
         VerdictPill(
             when { failed > 0 -> Verdict.FAIL; unsigned == 0 && signatures.all { it.verdict == DocumentVerdict.VALID } -> Verdict.PASS; else -> Verdict.CAUTION },
-            "簽核點 ${l.points.size} 個" + (if (failed > 0) "，$failed 個簽章不成立" else "") + (if (unsigned > 0) "，$unsigned 個沒有憑證簽章" else ""),
+            stringResource(Res.string.files_points, l.points.size) + (if (failed > 0) stringResource(Res.string.files_points_failed, failed) else "") + (if (unsigned > 0) stringResource(Res.string.files_points_unsigned, unsigned) else ""),
         )
-        if (signed.isNotEmpty()) VerdictPill(if (withRevocation == signed.size) Verdict.PASS else Verdict.CAUTION, "撤銷資訊 $withRevocation／${signed.size}")
+        if (signed.isNotEmpty()) VerdictPill(if (withRevocation == signed.size) Verdict.PASS else Verdict.CAUTION, stringResource(Res.string.files_revocation_count, withRevocation, signed.size))
     }
 }
 
@@ -427,17 +434,17 @@ private fun ContainerPointView(p: FilesModel.ContainerPoint, main: StoredFile, o
     Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(p.title, style = MaterialTheme.typography.titleSmall)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            p.signature?.let { s -> val (v, t) = verdictOf(s.verdict); VerdictPill(v, t) } ?: VerdictPill(Verdict.CAUTION, "沒有憑證簽章")
+            p.signature?.let { s -> val (v, t) = verdictOf(s.verdict); VerdictPill(v, t) } ?: VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_no_cert_signature))
             p.time?.let { Text(localTime(it), style = MaterialTheme.typography.bodySmall) }
         }
         Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             p.files.forEach { m ->
-                if (m.id == main.id) Text("本公文：${m.name}", style = MaterialTheme.typography.bodySmall)
+                if (m.id == main.id) Text(stringResource(Res.string.files_main_document, m.name), style = MaterialTheme.typography.bodySmall)
                 else FileRow(m) { open(m) }
             }
-            if (p.repeated.isNotEmpty()) Text("另簽核前面簽核點已列出的 ${p.repeated.size} 個檔案（內容未變）", style = MaterialTheme.typography.bodySmall)
-            p.changed.forEach { VerdictPill(Verdict.CAUTION, "$it：內容與這個簽核點簽署時不同") }
-            p.missing.forEach { VerdictPill(Verdict.CAUTION, "$it：不在容器內") }
+            if (p.repeated.isNotEmpty()) Text(stringResource(Res.string.files_point_repeated, p.repeated.size), style = MaterialTheme.typography.bodySmall)
+            p.changed.forEach { VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_point_changed, it)) }
+            p.missing.forEach { VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_point_absent, it)) }
         }
     }
 }
@@ -450,7 +457,7 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
     val error by model.files.error.collectAsState()
     val main = files.firstOrNull { it.id == screen.mainId }
     if (main == null) {
-        EmptyState(WalletIcons.Document, "找不到這份公文", "公文可能已刪除。", "回到文件") { model.showTab(HomeTab.FILES) }
+        EmptyState(WalletIcons.Document, stringResource(Res.string.files_official_missing), stringResource(Res.string.files_official_missing_text), stringResource(Res.string.files_back_to_list)) { model.showTab(HomeTab.FILES) }
         return
     }
     var candidates by remember(screen) { mutableStateOf<List<FilesModel.BundleCandidate>?>(null) }
@@ -462,13 +469,13 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(main.report?.title ?: main.name, style = MaterialTheme.typography.titleMedium)
-        Text("檔案本身沒有寫明屬於哪一份公文，錢包依檔名、交換表單的發送對象與公文附件欄比對，請確認要放進這份公文容器的檔案。",
+        Text(stringResource(Res.string.files_pick_related_text),
             style = MaterialTheme.typography.bodySmall)
         BusyLine(busy, error)
         val list = candidates
         when {
             list == null -> CircularProgressIndicator(Modifier.size(20.dp))
-            list.isEmpty() -> Text("沒有可以放入的檔案。", style = MaterialTheme.typography.bodySmall)
+            list.isEmpty() -> Text(stringResource(Res.string.files_pick_none), style = MaterialTheme.typography.bodySmall)
             else -> list.forEach { c ->
                 Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
@@ -476,9 +483,9 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
                         Checkbox(checked = chosen[c.file.id] == true, onCheckedChange = { chosen[c.file.id] = it })
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(c.file.name, style = MaterialTheme.typography.titleSmall)
-                            Text(listOfNotNull(c.file.report?.title, c.file.report?.format?.let { formatTitle(it) }, localTime(c.file.addedAt)).joinToString("　"),
+                            Text(listOfNotNull(c.file.report?.title, c.file.report?.format?.let { formatTitle(it) }, localTime(c.file.addedAt)).joinToString(stringResource(Res.string.sep_space)),
                                 style = MaterialTheme.typography.bodySmall)
-                            if (c.match.evidence.isEmpty()) Text("沒有找到與這份公文相關的線索", style = MaterialTheme.typography.bodySmall)
+                            if (c.match.evidence.isEmpty()) Text(stringResource(Res.string.files_pick_no_clue), style = MaterialTheme.typography.bodySmall)
                             c.match.evidence.forEach { e -> VerdictPill(if (e.supports) Verdict.PASS else Verdict.CAUTION, e.text) }
                         }
                     }
@@ -488,10 +495,10 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
         val ids = chosen.filterValues { it }.keys.toList()
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.files.confirmBundle(main, ids, screen.only, screen.next) }, enabled = ids.isNotEmpty() && busy == null) {
-                Text("放入容器（${ids.size}）")
+                Text(stringResource(Res.string.files_put_in, ids.size))
             }
             OutlinedButton(onClick = { model.files.confirmBundle(main, emptyList(), screen.only, screen.next) }, enabled = busy == null) {
-                Text(if (screen.next.isEmpty()) "都不放入" else "略過這份公文")
+                Text(if (screen.next.isEmpty()) stringResource(Res.string.files_put_none) else stringResource(Res.string.files_skip_document))
             }
         }
     }
@@ -510,7 +517,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     // Every open checks the signatures again with the current time and trust anchors.
     LaunchedEffect(screen.fileId) { model.files.refresh(screen.fileId) }
     if (f == null) {
-        EmptyState(WalletIcons.Document, "找不到這份文件", "文件可能已刪除。", "回到文件") { model.showTab(HomeTab.FILES) }
+        EmptyState(WalletIcons.Document, stringResource(Res.string.files_file_missing), stringResource(Res.string.files_document_missing_text), stringResource(Res.string.files_back_to_list)) { model.showTab(HomeTab.FILES) }
         return
     }
     val report = f.report
@@ -529,50 +536,50 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         BusyLine(busy, error)
         if (report != null) ReportVerdict(report)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.screen.value = Screen.FileSign(f.id) }) { Text("簽署") }
-            OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) { Text("加上時戳") }
-            OutlinedButton(onClick = { model.screen.value = Screen.FileDerive(f.id) }) { Text(if (derived != null) "重新產生衍生憑證" else "衍生憑證") }
-            OutlinedButton(onClick = { model.files.export(f) }) { Text("匯出") }
-            if (model.platform.canShareFiles) OutlinedButton(onClick = { model.files.export(f, share = true) }) { Text("分享") }
+            Button(onClick = { model.screen.value = Screen.FileSign(f.id) }) { Text(stringResource(Res.string.files_sign)) }
+            OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_add_timestamp)) }
+            OutlinedButton(onClick = { model.screen.value = Screen.FileDerive(f.id) }) { Text(if (derived != null) stringResource(Res.string.files_rederive) else stringResource(Res.string.files_derive)) }
+            OutlinedButton(onClick = { model.files.export(f) }) { Text(stringResource(Res.string.action_export)) }
+            if (model.platform.canShareFiles) OutlinedButton(onClick = { model.files.export(f, share = true) }) { Text(stringResource(Res.string.action_share)) }
         }
         f.contentId?.let { id -> files.firstOrNull { it.id == id } }?.let { c ->
-            LabelValue("簽署的檔案", c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
+            LabelValue(stringResource(Res.string.files_signed_file), c.name, onClick = { model.screen.value = Screen.FileDetail(c.id) })
         }
         OfficialContainerSection(model, f, files)
         // An OpenCerts certificate is shown field by field below rather than as JSON text.
         if (report?.format != DocumentFormat.OPENCERTS) FilePreviewSection(model, f)
 
         if (report != null) {
-            SectionTitle(if (report.signatures.isEmpty()) "檢查結果" else "簽章（${report.signatures.size}）")
+            SectionTitle(if (report.signatures.isEmpty()) stringResource(Res.string.files_check_result) else stringResource(Res.string.files_signatures, report.signatures.size))
             report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) { model.files.reinspect(f) } }
             if (report.signatures.isNotEmpty()) {
                 val v = f.signatureValidation
-                if (v != null) LabelValue("簽章撤銷資訊", v.summary() + "，取得於 ${localTime(v.collectedAt)}", small = true)
+                if (v != null) LabelValue(stringResource(Res.string.files_signature_revocation), v.summary() + stringResource(Res.string.files_got_at, localTime(v.collectedAt)), small = true)
                 TextButton(onClick = { model.files.collectSignatureValidation(f) }, enabled = busy == null) {
-                    Text(if (v == null) "取得並保存簽署者的撤銷資訊（OCSP 優先）" else "重新取得簽署者的撤銷資訊")
+                    Text(if (v == null) stringResource(Res.string.files_get_revocation) else stringResource(Res.string.files_get_revocation_again))
                 }
                 if (model.files.canExtend(f)) {
-                    TextButton(onClick = { model.files.extendPdf(f) }, enabled = busy == null) { Text("延長保存：把所有簽章的撤銷資訊與文件時戳寫進 PDF（另存新檔）") }
+                    TextButton(onClick = { model.files.extendPdf(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_extend)) }
                 }
             }
             report.envelope?.let { e ->
-                Text("加密信封", style = MaterialTheme.typography.titleSmall)
-                Text("這是加密給特定對象的檔案（CMS EnvelopedData），錢包無法開啟內容，只能保存原檔。", style = MaterialTheme.typography.bodySmall)
-                e.recipients.forEach { LabelValue("收件者", it, small = true) }
-                e.contentEncryption?.let { LabelValue("內容加密", it, small = true) }
+                Text(stringResource(Res.string.files_envelope), style = MaterialTheme.typography.titleSmall)
+                Text(stringResource(Res.string.files_envelope_text), style = MaterialTheme.typography.bodySmall)
+                e.recipients.forEach { LabelValue(stringResource(Res.string.files_recipients), it, small = true) }
+                e.contentEncryption?.let { LabelValue(stringResource(Res.string.files_content_encryption), it, small = true) }
             }
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             report.openPgp?.let { pgp -> OpenPgpFileSection(model, f, report, pgp, busy) }
             report.c2pa?.let { C2paSection(f, it) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
-                CollapsibleSection("容器內的檔案", report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
-                    if (zip) Text("點選檔案可開啟與檢查；容器與它的簽章保持不變。", style = MaterialTheme.typography.bodySmall)
+                CollapsibleSection(stringResource(Res.string.files_container_files), report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
+                    if (zip) Text(stringResource(Res.string.files_container_files_text), style = MaterialTheme.typography.bodySmall)
                     report.entries.take(50).forEach { entry ->
-                        if (zip) LabelValue("檔案", OfficialBundles.decodeZipName(entry), small = true, onClick = { model.files.openEntry(f, entry) })
+                        if (zip) LabelValue(stringResource(Res.string.label_file), OfficialBundles.decodeZipName(entry), small = true, onClick = { model.files.openEntry(f, entry) })
                         else Text(entry, style = MaterialTheme.typography.bodySmall)
                     }
-                    if (report.entries.size > 50) Text("另有 ${report.entries.size - 50} 個檔案", style = MaterialTheme.typography.bodySmall)
+                    if (report.entries.size > 50) Text(stringResource(Res.string.files_more, report.entries.size - 50), style = MaterialTheme.typography.bodySmall)
                 }
             }
             report.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -581,154 +588,154 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             val opened = previews[f.id] is FilePreview.Pages
             report.problems.forEach { p ->
                 if (opened && p.startsWith(ENCRYPTED_PDF_PROBLEM)) {
-                    Text("PDF 已加密，已用這次輸入的密碼開啟（密碼不保存）；簽章檢查不需要密碼。", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(Res.string.files_pdf_encrypted), style = MaterialTheme.typography.bodySmall)
                 } else Text(p, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("檢查時間：${localTime(report.checkedAt)}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                TextButton(onClick = { model.files.reinspect(f) }, enabled = busy == null) { Text("重新檢查") }
+                Text(stringResource(Res.string.files_checked_at, localTime(report.checkedAt)), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { model.files.reinspect(f) }, enabled = busy == null) { Text(stringResource(Res.string.zk_check_again)) }
             }
         }
 
-        SectionTitle("時戳（${f.timestamps.size}）")
-        if (f.timestamps.isEmpty()) Text("還沒有時戳。時戳由時戳機構（${TsaServices.byId(model.settings.tsaId).name}）證明這份檔案在某個時間已存在，只會送出檔案的 SHA-256。",
+        SectionTitle(stringResource(Res.string.files_timestamps, f.timestamps.size))
+        if (f.timestamps.isEmpty()) Text(stringResource(Res.string.files_no_timestamp, TsaServices.byId(model.settings.tsaId).name),
             style = MaterialTheme.typography.bodySmall)
         f.timestamps.forEachIndexed { i, t ->
-            VerdictPill(if (t.trusted) Verdict.PASS else Verdict.CAUTION, "${t.tsa ?: "時戳機構"}　${localTime(t.time)}" + if (t.trusted) "" else "（機構不在信任錨點）")
+            VerdictPill(if (t.trusted) Verdict.PASS else Verdict.CAUTION, stringResource(Res.string.files_timestamp_line, t.tsa ?: stringResource(Res.string.tsa_fallback), localTime(t.time)) + if (t.trusted) "" else stringResource(Res.string.files_tsa_untrusted))
             val v = t.validation
-            if (v != null) Text(v.summary() + "，取得於 ${localTime(v.collectedAt)}", style = MaterialTheme.typography.bodySmall)
+            if (v != null) Text(v.summary() + stringResource(Res.string.files_got_at, localTime(v.collectedAt)), style = MaterialTheme.typography.bodySmall)
             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                if (v == null) TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text("取得並保存時戳機構的撤銷資訊（OCSP 優先）") }
-                TextButton(onClick = { removeStamp = i }, enabled = busy == null) { Text("移除這個時戳", color = MaterialTheme.colorScheme.error) }
+                if (v == null) TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text(stringResource(Res.string.files_get_tsa_revocation)) }
+                TextButton(onClick = { removeStamp = i }, enabled = busy == null) { Text(stringResource(Res.string.files_remove_timestamp), color = MaterialTheme.colorScheme.error) }
             }
         }
 
-        SectionTitle("證件與證明")
+        SectionTitle(stringResource(Res.string.files_credentials_proofs))
         if (derived != null) {
-            ActionRow(WalletIcons.Card, derived.displayName ?: "文件衍生憑證", "已在「證件」：IETF SD-JWT VC，由本錢包的文件發行金鑰簽發") {
+            ActionRow(WalletIcons.Card, derived.displayName ?: stringResource(Res.string.files_derived), stringResource(Res.string.files_derived_exists)) {
                 model.screen.value = Screen.DocumentDetail(derived.identifier, Screen.FileDetail(f.id))
             }
         } else {
-            Text("衍生憑證把文件變成可出示的證件（IETF SD-JWT VC），只交出你選的欄位，附上簽章檢查與時戳；原檔不會送出。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.files_derived_text), style = MaterialTheme.typography.bodySmall)
         }
         f.zkPdfPending?.let { pending ->
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("等待電腦版產生的 zkPDF 證明", style = MaterialTheme.typography.titleSmall)
+                    Text(stringResource(Res.string.files_zkpdf_pending), style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "證明請求建立於 ${localTime(pending.createdAt)}。在電腦版錢包的「零知識證明」設定頁開啟請求檔產生證明，" +
-                            "再把 .zkpdf 檔匯入這裡；證明會先在這台裝置驗證，通過才產生衍生憑證。",
+                        stringResource(Res.string.files_zkpdf_pending_text_1, localTime(pending.createdAt)) +
+                            stringResource(Res.string.files_zkpdf_pending_text_2),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { model.files.importZkPdfProof(f) }, enabled = busy == null) { Text("匯入證明檔") }
-                        TextButton(onClick = { model.files.cancelZkPdfRequest(f) }, enabled = busy == null) { Text("取消請求") }
+                        Button(onClick = { model.files.importZkPdfProof(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_import_proof)) }
+                        TextButton(onClick = { model.files.cancelZkPdfRequest(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_cancel_request)) }
                     }
                 }
             }
         }
         if (f.nationalId != null) {
-            ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
+            ActionRow(WalletIcons.Person, stringResource(Res.string.national_id_bonds), stringResource(Res.string.files_national_id_made)) {
                 model.screen.value = Screen.NationalId(f.id, Screen.FileDetail(f.id))
             }
         } else if (report?.format == DocumentFormat.PDF) {
-            ActionRow(WalletIcons.Person, "製作 Bonds 身分證卡", "這是 MyData 下載的國民身分證資料 PDF 時，可做成以自然人憑證簽署的身分證卡") {
+            ActionRow(WalletIcons.Person, stringResource(Res.string.files_make_national_id), stringResource(Res.string.files_make_national_id_text)) {
                 model.screen.value = Screen.NationalIdCreate(f.id)
             }
         }
         if (report?.format == DocumentFormat.PDF) {
-            ActionRow(WalletIcons.Shield, "產生 zkPDF 證明", "在衍生憑證附上零知識證明：證明欄位出自 PDF 內的簽章，不必交出整份文件；需有符合的文件版型") {
+            ActionRow(WalletIcons.Shield, stringResource(Res.string.files_make_zkpdf), stringResource(Res.string.files_make_zkpdf_text)) {
                 model.screen.value = Screen.FileDerive(f.id)
             }
         }
         f.webProofIds.mapNotNull { id -> docs.firstOrNull { it.identifier == id } }.forEach { proof ->
-            ActionRow(WalletIcons.Link, proof.displayName ?: "網站查驗結果", "這份文件的網站查驗證據，已在「證件」") {
+            ActionRow(WalletIcons.Link, proof.displayName ?: stringResource(Res.string.files_web_result), stringResource(Res.string.files_web_result_text)) {
                 model.screen.value = Screen.DocumentDetail(proof.identifier, Screen.FileDetail(f.id))
             }
         }
-        ActionRow(WalletIcons.Link, "產生網站查驗證明（zkTLS）",
-            "到官方查驗頁查詢，把結果存成這份文件的證據：透過查驗主機產生 zkTLS 證明，或只用這支手機存為本機紀錄") {
+        ActionRow(WalletIcons.Link, stringResource(Res.string.files_make_zktls),
+            stringResource(Res.string.files_make_zktls_text)) {
             model.taiwan.zkTls.openSelf(f.id)
         }
 
-        CollapsibleSection("檔案資訊", key = "file-info-${f.id}") {
-            LabelValue("檔名", f.name)
-            report?.title?.let { LabelValue("標題", it) }
-            LabelValue("格式", report?.format?.let { formatTitle(it) } ?: f.mediaType)
-            LabelValue("大小", sizeText(f.size))
-            report?.pages?.let { LabelValue("頁數", "$it") }
-            f.period?.let { LabelValue("期間", it) }
-            LabelValue("保存時間", localTime(f.addedAt))
-            LabelValue("來源", f.source ?: f.origin.title)
-            if (f.source != null || f.archive != null) LabelValue("取得方式", f.origin.title + (f.archive?.let { "（$it）" } ?: ""))
+        CollapsibleSection(stringResource(Res.string.files_info), key = "file-info-${f.id}") {
+            LabelValue(stringResource(Res.string.files_name), f.name)
+            report?.title?.let { LabelValue(stringResource(Res.string.files_title), it) }
+            LabelValue(stringResource(Res.string.credential_format), report?.format?.let { formatTitle(it) } ?: f.mediaType)
+            LabelValue(stringResource(Res.string.files_size), sizeText(f.size))
+            report?.pages?.let { LabelValue(stringResource(Res.string.files_pages), "$it") }
+            f.period?.let { LabelValue(stringResource(Res.string.files_period), it) }
+            LabelValue(stringResource(Res.string.files_saved_at), localTime(f.addedAt))
+            LabelValue(stringResource(Res.string.files_source), f.source ?: f.origin.title)
+            if (f.source != null || f.archive != null) LabelValue(stringResource(Res.string.files_obtained_by), f.origin.title + (f.archive?.let { stringResource(Res.string.parenthesized, it) } ?: ""))
             LabelValue("SHA-256", f.sha256, small = true)
         }
-        SectionTitle("其他動作")
-        if (report?.format == DocumentFormat.ZIP) ActionRow(WalletIcons.Document, "解出檔案", "逐一保存並檢查壓縮檔內的檔案（MyData 下載檔）") { model.files.extract(f) }
+        SectionTitle(stringResource(Res.string.files_other_actions))
+        if (report?.format == DocumentFormat.ZIP) ActionRow(WalletIcons.Document, stringResource(Res.string.files_extract), stringResource(Res.string.files_extract_text)) { model.files.extract(f) }
         if ((report?.format == DocumentFormat.CMS_SIGNED || report?.openPgp?.kind == OpenPgpKind.DETACHED_SIGNATURE) &&
             f.contentId == null && report.signatures.any { it.integrity == Check.NOT_CHECKED }) {
-            ActionRow(WalletIcons.Link, "選擇被簽署的檔案", "分離式簽章（.p7s、.asc、.sig）需要原檔才能檢查") { pickContent = true }
+            ActionRow(WalletIcons.Link, stringResource(Res.string.files_choose_signed), stringResource(Res.string.files_choose_signed_text)) { pickContent = true }
         }
         if (report?.openPgp?.kind != OpenPgpKind.ENCRYPTED) {
-            ActionRow(WalletIcons.Shield, "以 OpenPGP 加密", "加密給 OpenPGP 公開金鑰清單中的收件人（含自己的卡），另存新檔") { encrypting = true }
+            ActionRow(WalletIcons.Shield, stringResource(Res.string.pgp_encrypt_title), stringResource(Res.string.files_pgp_encrypt_text)) { encrypting = true }
         }
         if (model.files.hasEvidence(f)) {
-            ActionRow(WalletIcons.Send, "匯出文件與證據", "壓縮檔內含原檔、時戳（.tsr）、憑證、OCSP 與 CRL，可在其他工具查驗") { model.files.exportWithEvidence(f) }
+            ActionRow(WalletIcons.Send, stringResource(Res.string.files_export_evidence), stringResource(Res.string.files_export_evidence_text)) { model.files.exportWithEvidence(f) }
             if (model.platform.canShareFiles) {
-                ActionRow(WalletIcons.Share, "分享文件與證據", "同一個壓縮檔直接交給其他 App，不另存檔") { model.files.exportWithEvidence(f, share = true) }
+                ActionRow(WalletIcons.Share, stringResource(Res.string.files_share_evidence), stringResource(Res.string.files_container_share_text)) { model.files.exportWithEvidence(f, share = true) }
             }
         }
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text("刪除文件", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.files_delete), color = MaterialTheme.colorScheme.error)
         }
     }
     if (confirmDelete) {
         val own = files.count { it.bundleOf == f.id }
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("刪除這份文件？") },
+            title = { Text(stringResource(Res.string.files_delete_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("檔案與它的時戳會從這支裝置刪除，無法復原。已產生的衍生憑證保留在「證件」。")
+                    Text(stringResource(Res.string.files_delete_text))
                     if (own > 0) {
                         Row(Modifier.clickable { withMembers = !withMembers }, verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(checked = withMembers, onCheckedChange = { withMembers = it })
-                            Text("一併刪除容器內的 $own 個檔案（不勾選時改回獨立檔案）")
+                            Text(stringResource(Res.string.files_delete_members, own))
                         }
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.delete(f, withMembers && own > 0) }) { Text("刪除", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.delete(f, withMembers && own > 0) }) { Text(stringResource(Res.string.action_delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
     removeStamp?.let { index ->
         AlertDialog(
             onDismissRequest = { removeStamp = null },
-            title = { Text("移除這個時戳？") },
-            text = { Text("時戳與一起保存的撤銷資訊會刪除，無法復原；之後可以再向時戳機構取得新的時戳。") },
-            confirmButton = { TextButton(onClick = { removeStamp = null; model.files.removeTimestamp(f, index) }) { Text("移除", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { removeStamp = null }) { Text("取消") } },
+            title = { Text(stringResource(Res.string.files_remove_timestamp_title)) },
+            text = { Text(stringResource(Res.string.files_remove_timestamp_text)) },
+            confirmButton = { TextButton(onClick = { removeStamp = null; model.files.removeTimestamp(f, index) }) { Text(stringResource(Res.string.action_remove), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { removeStamp = null }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
     if (encrypting) OpenPgpEncryptDialog(model, f) { encrypting = false }
     if (pickContent) {
         AlertDialog(
             onDismissRequest = { pickContent = false },
-            title = { Text("選擇被簽署的檔案") },
+            title = { Text(stringResource(Res.string.files_choose_signed)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val others = files.filter { it.id != f.id }
-                    if (others.isEmpty()) Text("請先匯入原檔。")
+                    if (others.isEmpty()) Text(stringResource(Res.string.files_import_original))
                     others.forEach { c ->
                         Text(c.name, Modifier.fillMaxWidth().clickable { pickContent = false; model.files.attachContent(f, c) }.padding(vertical = 6.dp),
                             color = MaterialTheme.colorScheme.primary)
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { pickContent = false }) { Text("取消") } },
+            confirmButton = { TextButton(onClick = { pickContent = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
@@ -738,12 +745,12 @@ private fun ReportVerdict(report: DocumentReport) {
     val (verdict, title) = verdictOf(report.verdict)
     val caveats = buildList {
         when (report.verdict) {
-            DocumentVerdict.VALID -> report.bestTier?.let { add("簽署者信任等級：" + WalletModel.tierTitle(it)) }
-            DocumentVerdict.PARTIAL -> add("簽章本身完整，但有項目無法確認，請看下方各簽章的說明。")
-            DocumentVerdict.INVALID -> add("文件在簽署後被修改，或簽章、憑證不成立，不要依賴它的內容。")
-            DocumentVerdict.UNSIGNED -> add(if (report.envelope != null) "這是加密信封，不是簽章文件。" else "這份檔案沒有可檢查的數位簽章，只保存原檔與指紋。")
+            DocumentVerdict.VALID -> report.bestTier?.let { add(stringResource(Res.string.files_signer_tier) + WalletModel.tierTitle(it)) }
+            DocumentVerdict.PARTIAL -> add(stringResource(Res.string.files_partial_text))
+            DocumentVerdict.INVALID -> add(stringResource(Res.string.files_invalid_text))
+            DocumentVerdict.UNSIGNED -> add(if (report.envelope != null) stringResource(Res.string.files_envelope_not_signed) else stringResource(Res.string.files_unsigned_text))
         }
-        if (report.encrypted) add("PDF 已加密，簽章仍可檢查。")
+        if (report.encrypted) add(stringResource(Res.string.files_encrypted_ok))
     }
     VerdictCard(verdict, title, caveats)
 }
@@ -763,7 +770,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (count > 1) "簽章 ${index + 1}" else "簽章", style = MaterialTheme.typography.titleSmall)
+                Text(if (count > 1) stringResource(Res.string.files_signature_n, index + 1) else stringResource(Res.string.label_signature_noun), style = MaterialTheme.typography.titleSmall)
                 VerdictPill(verdict, text)
             }
             Text(s.format.title, style = MaterialTheme.typography.bodySmall)
@@ -772,7 +779,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 // screen to open: only make the row tappable when the chain actually holds DER-encoded X.509 certs,
                 // otherwise the X.509 certificate screen would be opened on empty bytes and crash.
                 val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
-                LabelValue("簽署者", signer.commonName ?: signer.subject,
+                LabelValue(stringResource(Res.string.files_signer), signer.commonName ?: signer.subject,
                     onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value) }))
             }
             s.trust?.let { t ->
@@ -784,35 +791,35 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 Text(signerTrustLine(d), style = MaterialTheme.typography.bodySmall)
             }
             untrustedRoot?.let { root ->
-                TextButton(onClick = { trusting = true }) { Text("信任根憑證「${root.commonName ?: root.subject}」") }
+                TextButton(onClick = { trusting = true }) { Text(stringResource(Res.string.files_trust_root_named, root.commonName ?: root.subject)) }
                 if (trusting) RiskConfirmDialog(
-                    title = "信任「${root.commonName ?: root.subject}」",
+                    title = stringResource(Res.string.platform_trust_title, root.commonName ?: root.subject),
                     lines = listOf(
-                        "這個根憑證不在錢包的信任錨點內，錢包無法確認它的管理方式與簽發對象。",
-                        "請先由官方網站等可靠來源確認它的指紋，再決定是否信任。",
-                        "信任後，連到它的文件簽章與時間戳記判定為 T2（使用者匯入，非官方），可隨時在信任錨點移除。",
+                        stringResource(Res.string.files_root_unknown),
+                        stringResource(Res.string.files_root_check),
+                        stringResource(Res.string.files_root_effect),
                     ),
-                    confirm = "信任",
+                    confirm = stringResource(Res.string.zk_server_trust),
                     onConfirm = { trusting = false; model.trustRootCertificate(root.der.fromBase64(), onTrusted) },
                     onDismiss = { trusting = false },
                 )
             }
             val openPgp = s.format == SignatureFormat.OPENPGP
-            if (openPgp) s.signer?.let { LabelValue("簽署金鑰指紋", groupedFingerprint(it.serialHex), small = true) }
-            LabelValue("內容完整", checkText(s.integrity), small = true)
-            LabelValue(if (openPgp) "金鑰效力" else "憑證效期", checkText(s.certificateValidity), small = true)
-            s.coversWholeDocument?.let { LabelValue("涵蓋整份文件", if (it) "是" else "否", small = true) }
+            if (openPgp) s.signer?.let { LabelValue(stringResource(Res.string.files_key_fingerprint), groupedFingerprint(it.serialHex), small = true) }
+            LabelValue(stringResource(Res.string.files_integrity), checkText(s.integrity), small = true)
+            LabelValue(if (openPgp) stringResource(Res.string.files_key_validity) else stringResource(Res.string.files_cert_validity), checkText(s.certificateValidity), small = true)
+            s.coversWholeDocument?.let { LabelValue(stringResource(Res.string.files_covers_whole), if (it) stringResource(Res.string.answer_yes) else stringResource(Res.string.answer_no), small = true) }
             s.laterChanges?.let {
-                LabelValue("簽署後的修改", when (it) {
-                    LaterChanges.NONE -> "沒有"
-                    LaterChanges.SIGNATURES_ONLY -> "只有後續簽章或時戳"
-                    LaterChanges.OTHER -> "有其他修改"
+                LabelValue(stringResource(Res.string.files_changes_after), when (it) {
+                    LaterChanges.NONE -> stringResource(Res.string.files_changes_none)
+                    LaterChanges.SIGNATURES_ONLY -> stringResource(Res.string.files_changes_later_sigs)
+                    LaterChanges.OTHER -> stringResource(Res.string.files_changes_other)
                 }, small = true)
             }
-            s.timestamp?.let { TimestampLine(it) } ?: s.claimedTime?.let { LabelValue("聲稱的簽署時間", localTime(it) + "（未經時戳證明）", small = true) }
-            if (!openPgp) LabelValue("撤銷資訊", if (s.revocationData) "簽章或文件內附 OCSP／CRL" else "沒有內附", small = true)
-            s.reason?.let { LabelValue("原因", it, small = true) }
-            s.location?.let { LabelValue("地點", it, small = true) }
+            s.timestamp?.let { TimestampLine(it) } ?: s.claimedTime?.let { LabelValue(stringResource(Res.string.files_claimed_time), localTime(it) + stringResource(Res.string.files_claimed_unproven), small = true) }
+            if (!openPgp) LabelValue(stringResource(Res.string.files_revocation), if (s.revocationData) stringResource(Res.string.files_revocation_embedded) else stringResource(Res.string.files_revocation_none), small = true)
+            s.reason?.let { LabelValue(stringResource(Res.string.files_reason), it, small = true) }
+            s.location?.let { LabelValue(stringResource(Res.string.files_location), it, small = true) }
             s.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             s.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
@@ -821,17 +828,17 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
 
 @Composable
 private fun TimestampLine(t: TimestampInfo) {
-    LabelValue("時戳", localTime(t.time) + "　" + (t.tsa ?: "") + if (t.trusted) "" else "（${checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)}）", small = true)
+    LabelValue(stringResource(Res.string.files_tag_timestamp), localTime(t.time) + stringResource(Res.string.sep_space) + (t.tsa ?: "") + if (t.trusted) "" else stringResource(Res.string.parenthesized, checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)), small = true)
 }
 
 /** Checked evidence of a derived credential, for the verifier result. */
 @Composable
 fun EvidenceRows(evidence: List<EvidenceResult>) {
     if (evidence.isEmpty()) return
-    Text("文件證據", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(Res.string.files_evidence), style = MaterialTheme.typography.titleSmall)
     evidence.forEach { e ->
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            VerdictPill(checkVerdict(e.check), e.title + "：" + checkText(e.check))
+            VerdictPill(checkVerdict(e.check), e.title + stringResource(Res.string.label_colon_sep) + checkText(e.check))
             Text(e.detail, style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -842,17 +849,17 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 /** Start of the inspector's problem for a PDF whose open password is not known. */
 private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
 
-private enum class SignerKind(val title: String) {
-    HARDWARE("實體卡／硬體憑證"), MOBILE("行動自然人憑證"), CSC("遠端簽章（CSC）"), SYSTEM("系統金鑰"),
-    PKCS12("憑證檔（PKCS#12）"), WALLET("錢包自有金鑰"),
+private enum class SignerKind(val title: org.jetbrains.compose.resources.StringResource) {
+    HARDWARE(Res.string.signer_hardware), MOBILE(Res.string.signer_mobile), CSC(Res.string.signer_csc), SYSTEM(Res.string.signer_system),
+    PKCS12(Res.string.signer_pkcs12), WALLET(Res.string.signer_wallet),
 }
 
 /**
  * The physical cards and hardware tokens grouped under [SignerKind.HARDWARE]: a citizen certificate card, a PIV card,
  * an OpenPGP card (or a YubiKey's OpenPGP applet), or a PKCS#11 token.
  */
-private enum class HardwareKind(val title: String) {
-    SMART_CARD("自然人憑證卡"), PIV("PIV 卡"), OPENPGP("OpenPGP 卡／YubiKey"), PKCS11("硬體憑證（PKCS#11）"),
+private enum class HardwareKind(val title: org.jetbrains.compose.resources.StringResource) {
+    SMART_CARD(Res.string.hardware_moica), PIV(Res.string.hardware_piv), OPENPGP(Res.string.hardware_openpgp), PKCS11(Res.string.hardware_pkcs11),
 }
 
 /** Picks a reader for the citizen certificate card and takes its PIN; [onChange] gets the choice or null. */
@@ -871,8 +878,8 @@ internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Un
     when {
         list == null -> CircularProgressIndicator(Modifier.size(20.dp))
         list.readers.isEmpty() -> {
-            Text(list.problem ?: "找不到 NFC 或讀卡機", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); update() } }) { Text("重新尋找") }
+            Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
         else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; update() }, label = { Text(r.name) }) }
@@ -881,13 +888,13 @@ internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Un
     OutlinedTextField(
         value = pin,
         onValueChange = { v -> pin = v.filter { it.isDigit() }.take(GpkiCard.PIN_MAX); update() },
-        label = { Text("卡片 PIN 碼（${GpkiCard.PIN_MIN} 至 ${GpkiCard.PIN_MAX} 位數字）") },
+        label = { Text(stringResource(Res.string.files_card_pin, GpkiCard.PIN_MIN, GpkiCard.PIN_MAX)) },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
         modifier = Modifier.fillMaxWidth(),
     )
-    Text("PIN 碼只用於這次簽署，不會保存或記錄。輸入錯誤時會立即停止並顯示剩餘次數，以免鎖卡。手機需感應兩次：先讀取憑證，再簽署。",
+    Text(stringResource(Res.string.files_card_pin_text),
         style = MaterialTheme.typography.bodySmall)
 }
 
@@ -916,8 +923,8 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
     when {
         list == null -> CircularProgressIndicator(Modifier.size(20.dp))
         list.readers.isEmpty() -> {
-            Text(list.problem ?: "找不到 NFC 或讀卡機", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); certs = null; slot = null; update() } }) { Text("重新尋找") }
+            Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); certs = null; slot = null; update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
         else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; certs = null; slot = null; update() }, label = { Text(r.name) }) }
@@ -926,7 +933,7 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
     OutlinedTextField(
         value = pin,
         onValueChange = { v -> pin = v.filter { it.code in 0x21..0x7E }.take(PivCard.PIN_MAX); update() },
-        label = { Text("PIV PIN 碼（${PivCard.PIN_MIN} 至 ${PivCard.PIN_MAX} 位）") },
+        label = { Text(stringResource(Res.string.files_piv_pin, PivCard.PIN_MIN, PivCard.PIN_MAX)) },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
         modifier = Modifier.fillMaxWidth(),
@@ -939,17 +946,17 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
                 certs = runCatching { model.files.pivCertificates(r) }.getOrElse { problem = model.describe(it); null }
                 busy = false
             }
-        }, enabled = !busy) { Text(if (busy) "讀取中" else if (certs == null) "讀取卡片列出憑證" else "重新讀取憑證") }
+        }, enabled = !busy) { Text(if (busy) stringResource(Res.string.state_reading) else if (certs == null) stringResource(Res.string.files_piv_read) else stringResource(Res.string.files_piv_read_again)) }
     }
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     val found = certs
     if (found != null) {
         if (found.isEmpty()) {
-            Text("這張 PIV 卡沒有可用的簽章憑證（支援 RSA-2048 與 EC P-256）。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.files_piv_none), style = MaterialTheme.typography.bodySmall)
         } else {
             Row(Modifier.fillMaxWidth().clickable { slot = null; update() }, verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.RadioButton(selected = slot == null, onClick = { slot = null; update() })
-                Text("自動（卡片第一個可用的憑證）", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(Res.string.files_piv_auto), style = MaterialTheme.typography.bodyMedium)
             }
             found.forEach { k ->
                 val name = runCatching { DocumentSigning.certificateSummary(k.certificate)?.first }.getOrNull()
@@ -964,7 +971,7 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             }
         }
     }
-    Text("支援任何 PIV 卡（YubiKey、PIVKey、美國 PIV／CAC 等），不限 YubiKey。可先讀取卡片列出每個金鑰槽的憑證再選擇，或留「自動」由卡片的第一張可用憑證簽署。PIN 碼只用於這次簽署，不會保存；輸入錯誤次數過多會鎖卡。手機需感應兩次：先讀取憑證，再簽署。",
+    Text(stringResource(Res.string.files_piv_text),
         style = MaterialTheme.typography.bodySmall)
 }
 
@@ -985,12 +992,12 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
         }
     )
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(k.title) }) }
+        SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(stringResource(k.title)) }) }
     }
     when (kind) {
         SignerKind.HARDWARE -> {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                HardwareKind.entries.forEach { h -> FilterChip(selected = h == hardware, onClick = { hardware = h; other = null; update() }, label = { Text(h.title) }) }
+                HardwareKind.entries.forEach { h -> FilterChip(selected = h == hardware, onClick = { hardware = h; other = null; update() }, label = { Text(stringResource(h.title)) }) }
             }
             when (hardware) {
                 HardwareKind.SMART_CARD -> CardPicker(model) { other = it; update() }
@@ -1004,17 +1011,17 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
         SignerKind.PKCS12 -> {
-            OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
+            OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: stringResource(Res.string.files_choose_p12)) }
             OutlinedTextField(
-                value = password, onValueChange = { password = it; update() }, label = { Text("憑證檔密碼") }, singleLine = true,
+                value = password, onValueChange = { password = it; update() }, label = { Text(stringResource(Res.string.files_p12_password)) }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
             )
-            Text("憑證檔與密碼只用於這次簽署，不會保存。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.files_p12_note), style = MaterialTheme.typography.bodySmall)
         }
         SignerKind.WALLET -> {
-            OutlinedTextField(value = walletName, onValueChange = { walletName = it.take(64); update() }, label = { Text("憑證上的名稱") }, singleLine = true,
+            OutlinedTextField(value = walletName, onValueChange = { walletName = it.take(64); update() }, label = { Text(stringResource(Res.string.files_cert_name)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
-            Text("以錢包的金鑰與自簽憑證簽署：可證明文件沒有被修改，但無法證明你是誰（查驗方會看到 T3 或無法確認）。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.files_wallet_key_text), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -1030,7 +1037,7 @@ private fun SystemKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Uni
     }
     if (keys.systemPicker) {
         LaunchedEffect(Unit) { onChange(SignerChoice.System(null)) }
-        Text("按下「簽署」後由系統列出已安裝的憑證（設定中的「加密與憑證」），由你選擇要讓錢包使用哪一把。金鑰留在系統內，錢包只取得簽章結果。",
+        Text(stringResource(Res.string.files_android_keychain),
             style = MaterialTheme.typography.bodySmall)
         return
     }
@@ -1043,9 +1050,9 @@ private fun SystemKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Uni
         list = runCatching { keys.systemKeys() }.getOrElse { problem = model.describe(it); emptyList() }
     }
     LaunchedEffect(Unit) { load() }
-    KeyList(list, chosen, problem, "系統金鑰庫中沒有可簽章的憑證") { chosen = it; onChange(SignerChoice.System(it)) }
-    OutlinedButton(onClick = { load() }) { Text("重新讀取") }
-    Text("Windows 列出「個人」憑證存放區（含 HiCOS 等驅動程式登錄的自然人憑證卡），macOS 列出鑰匙圈；使用卡片時系統可能另外要求 PIN 碼。",
+    KeyList(list, chosen, problem, stringResource(Res.string.files_system_none)) { chosen = it; onChange(SignerChoice.System(it)) }
+    OutlinedButton(onClick = { load() }) { Text(stringResource(Res.string.action_reload)) }
+    Text(stringResource(Res.string.files_system_text),
         style = MaterialTheme.typography.bodySmall)
 }
 
@@ -1071,10 +1078,10 @@ private fun TokenKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit
                 label = { Text(path.substringAfterLast('/').substringAfterLast('\\')) }) }
         }
     }
-    OutlinedTextField(value = library, onValueChange = { library = it.trim(); list = null; onChange(null) }, label = { Text("PKCS#11 模組路徑") },
+    OutlinedTextField(value = library, onValueChange = { library = it.trim(); list = null; onChange(null) }, label = { Text(stringResource(Res.string.files_pkcs11_path)) },
         singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(
-        value = pin, onValueChange = { pin = it.take(32); list = null; onChange(null) }, label = { Text("PIN 碼") }, singleLine = true,
+        value = pin, onValueChange = { pin = it.take(32); list = null; onChange(null) }, label = { Text(stringResource(Res.string.files_pin)) }, singleLine = true,
         visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
     )
     OutlinedButton(onClick = {
@@ -1084,11 +1091,11 @@ private fun TokenKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit
             list = runCatching { keys.tokenKeys(library, pin) }.getOrElse { problem = model.describe(it); emptyList() }
             busy = false
         }
-    }, enabled = library.isNotBlank() && pin.isNotEmpty() && !busy) { Text(if (busy) "讀取中" else "讀取金鑰") }
+    }, enabled = library.isNotBlank() && pin.isNotEmpty() && !busy) { Text(if (busy) stringResource(Res.string.state_reading) else stringResource(Res.string.files_pkcs11_read)) }
     if (list != null || problem != null) {
-        KeyList(list, chosen, problem, "這個硬體憑證沒有可簽章的金鑰") { chosen = it; onChange(SignerChoice.Token(library, pin, it)) }
+        KeyList(list, chosen, problem, stringResource(Res.string.files_pkcs11_none)) { chosen = it; onChange(SignerChoice.Token(library, pin, it)) }
     }
-    Text("例如 HiCOS 的 PKCS#11 模組可直接使用自然人憑證卡，其他 USB 憑證請填入廠商提供的模組。PIN 碼只用於這次簽署，不會保存；輸入錯誤次數過多會鎖卡。",
+    Text(stringResource(Res.string.files_pkcs11_text),
         style = MaterialTheme.typography.bodySmall)
 }
 
@@ -1111,10 +1118,10 @@ private fun KeyList(list: List<ExternalKeyOption>?, chosen: String?, problem: St
 }
 
 /** Whose SP account of the Ministry of the Interior a mobile citizen certificate signature goes through. */
-private enum class MobileMoicaSource(val title: String) {
-    SERVER("正式服務端的 SP"),
-    BUILT_IN("本版內建的 SP"),
-    MANUAL("手動輸入 SP"),
+private enum class MobileMoicaSource(val title: org.jetbrains.compose.resources.StringResource) {
+    SERVER(Res.string.moica_source_server),
+    BUILT_IN(Res.string.moica_source_builtin),
+    MANUAL(Res.string.moica_source_manual),
 }
 
 /**
@@ -1136,9 +1143,9 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     val server = configured?.takeIf { serverEnvironment != null }
     val serverNote = when {
         configured == null -> null
-        serverSp == null -> "正在確認正式服務端是否提供行動自然人憑證簽署…"
-        serverSp?.exceptionOrNull() != null -> "無法確認正式服務端是否提供行動自然人憑證簽署：" + serverSp?.exceptionOrNull()?.let(model::describe)
-        serverEnvironment == null -> "正式服務端（${configured.substringAfter("://")}）沒有提供行動自然人憑證簽署（未啟用 twfido）。"
+        serverSp == null -> stringResource(Res.string.moica_checking_server)
+        serverSp?.exceptionOrNull() != null -> stringResource(Res.string.moica_server_unknown) + serverSp?.exceptionOrNull()?.let(model::describe)
+        serverEnvironment == null -> stringResource(Res.string.moica_server_none, configured.substringAfter("://"))
         else -> null
     }
     val sources = listOfNotNull(
@@ -1169,33 +1176,33 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     serverNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (source == null) {
         if (configured != null && serverSp == null) return
-        Text(LegalStrings.MOICA_SP_NOT_CONFIGURED + "可在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；依法持有 SP 授權者可在「設定 > 開發者與測試」開啟「手動輸入 SP 帳號」。",
+        Text(LegalStrings.MOICA_SP_NOT_CONFIGURED + stringResource(Res.string.moica_server_hint),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
     if (sources.size > 1) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            sources.forEach { o -> FilterChip(selected = o == source, onClick = { source = o }, label = { Text(o.title) }) }
+            sources.forEach { o -> FilterChip(selected = o == source, onClick = { source = o }, label = { Text(stringResource(o.title)) }) }
         }
     }
     when (source) {
         MobileMoicaSource.SERVER -> Text(
-            "經由正式服務端（${server?.substringAfter("://")}）的 SP 帳號簽署（${serverEnvironment?.title}），App 內不放 SP 金鑰。服務端會看到你的身分證統一編號與要簽署的摘要資料（不含文件內容）。" +
-                "送出前會再向服務端確認一次；" + (if (serverEnvironment == MobileMoicaEnvironment.PRODUCTION) "第一次取得的憑證必須由內政部憑證管理中心簽發，" else "測試環境的憑證只標示為測試，") +
-                "簽章也由這支手機驗證。使用設定中的存取權杖。",
+            stringResource(Res.string.moica_via_server, (server?.substringAfter("://")).toString(), (serverEnvironment?.title).toString()) +
+                stringResource(Res.string.moica_via_server_confirm) + (if (serverEnvironment == MobileMoicaEnvironment.PRODUCTION) stringResource(Res.string.moica_via_server_production) else stringResource(Res.string.moica_via_server_test)) +
+                stringResource(Res.string.moica_via_server_verify),
             style = MaterialTheme.typography.bodySmall,
         )
-        MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
+        MobileMoicaSource.BUILT_IN -> builtIn?.let { Text(stringResource(Res.string.moica_builtin, it.environment.title), style = MaterialTheme.typography.bodySmall) }
         MobileMoicaSource.MANUAL -> {
-            Text("開發者選項：以你依法有權使用的 SP 帳號簽署，不得輸入未經授權取得的帳號或金鑰。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。" +
+            Text(stringResource(Res.string.moica_manual_text) +
                 LegalStrings.MOICA_SP_PROVIDER_UNKNOWN, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
             }
-            OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text("SP 服務代碼（sp_service_id）") },
+            OutlinedTextField(value = serviceId, onValueChange = { serviceId = it.take(64); update() }, label = { Text(stringResource(Res.string.moica_sp_service_id)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(
-                value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text("SP AES 金鑰（base64）") }, singleLine = true,
+                value = aesKey, onValueChange = { aesKey = it.take(64); update() }, label = { Text(stringResource(Res.string.moica_sp_key)) }, singleLine = true,
                 visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -1210,7 +1217,7 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     if (environment == MobileMoicaEnvironment.UAT) {
         Text(LegalStrings.MOICA_SP_ENV_TEST, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
-    OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
+    OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text(stringResource(Res.string.national_id_number)) },
         singleLine = true, modifier = Modifier.fillMaxWidth())
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         MobileMoicaMode.entries.forEach { m ->
@@ -1218,8 +1225,8 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
         }
     }
     Text(
-        "第一次簽署需在 App 確認兩次：先取得你的憑證，再簽署文件；之後這次執行內只需確認一次。" +
-            if (canOpenApp) "" else "電腦無法開啟行動自然人憑證 App，請用推播。",
+        stringResource(Res.string.moica_confirm_twice) +
+            if (canOpenApp) "" else stringResource(Res.string.moica_desktop_push),
         style = MaterialTheme.typography.bodySmall,
     )
 }
@@ -1241,7 +1248,7 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
         Text(env.title, style = MaterialTheme.typography.titleSmall)
         val list = services.filter { it.environment == env }
         if (list.isEmpty()) {
-            Text(if (env == CscEnvironment.PRODUCTION) "沒有內建的正式服務。正式服務需要向服務商申請帳號，取得 client_id 後在下方加入。" else "沒有測試服務",
+            Text(if (env == CscEnvironment.PRODUCTION) stringResource(Res.string.csc_no_production) else stringResource(Res.string.csc_no_test),
                 style = MaterialTheme.typography.bodySmall)
         }
         list.forEach { svc ->
@@ -1250,25 +1257,25 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(svc.name, style = MaterialTheme.typography.bodyMedium)
-                        if (svc.environment == CscEnvironment.TEST) VerdictPill(Verdict.CAUTION, "測試")
+                        if (svc.environment == CscEnvironment.TEST) VerdictPill(Verdict.CAUTION, stringResource(Res.string.csc_test))
                     }
-                    Text(svc.baseUrl.substringAfter("://").substringBefore('/') + if (svc.builtIn) "（內建）" else "（自行加入）",
+                    Text(svc.baseUrl.substringAfter("://").substringBefore('/') + if (svc.builtIn) stringResource(Res.string.csc_builtin) else stringResource(Res.string.csc_user),
                         style = MaterialTheme.typography.bodySmall)
                     svc.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
-                if (!svc.builtIn) TextButton(onClick = { model.csc.remove(svc.id) }) { Text("移除") }
+                if (!svc.builtIn) TextButton(onClick = { model.csc.remove(svc.id) }) { Text(stringResource(Res.string.action_remove)) }
             }
         }
     }
     if (chosen?.let { model.csc.service(it)?.environment } == CscEnvironment.TEST) {
-        Text("測試服務簽出的簽章由測試 CA 簽發，沒有法律效力，查驗時會顯示為無法確認的憑證。", style = MaterialTheme.typography.bodySmall,
+        Text(stringResource(Res.string.csc_test_note), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error)
     }
-    Text("按下「簽署」後先登入服務（需要時由錢包出示身分證件），再授權這一次簽章；登入在這次執行內有效，不會保存。若帳號有多張憑證，使用第一張可用的。" +
-        "服務提供時戳（signatures/timestamp）時以服務的時戳為準，失敗才改用設定的時戳機構；只提供 signatures/signDoc 的服務由服務產生 PAdES 簽章。",
+    Text(stringResource(Res.string.csc_flow_text) +
+        stringResource(Res.string.csc_timestamp_text),
         style = MaterialTheme.typography.bodySmall)
     if (!adding) {
-        OutlinedButton(onClick = { adding = true }) { Text("加入遠端簽章服務") }
+        OutlinedButton(onClick = { adding = true }) { Text(stringResource(Res.string.csc_add)) }
     } else {
         CscServiceForm(model) { adding = false }
     }
@@ -1278,8 +1285,8 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
 private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     var byProfile by remember { mutableStateOf(false) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = !byProfile, onClick = { byProfile = false }, label = { Text("逐項填寫") })
-        FilterChip(selected = byProfile, onClick = { byProfile = true }, label = { Text("匯入 CSC Profile") })
+        FilterChip(selected = !byProfile, onClick = { byProfile = false }, label = { Text(stringResource(Res.string.csc_add_fields)) })
+        FilterChip(selected = byProfile, onClick = { byProfile = true }, label = { Text(stringResource(Res.string.csc_import_profile)) })
     }
     if (byProfile) {
         CscProfileForm(model, onDone)
@@ -1295,20 +1302,20 @@ private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         CscEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e }, label = { Text(e.title) }) }
     }
-    OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, label = { Text("服務名稱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it.trim().take(300) }, label = { Text("CSC API 位址（例如 https://host/csc/v2）") },
+    OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, label = { Text(stringResource(Res.string.csc_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it.trim().take(300) }, label = { Text(stringResource(Res.string.csc_url)) },
         singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = clientId, onValueChange = { clientId = it.trim().take(200) }, label = { Text("client_id") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = secret, onValueChange = { secret = it.trim().take(200) }, label = { Text("client_secret（選填）") }, singleLine = true,
+    OutlinedTextField(value = secret, onValueChange = { secret = it.trim().take(200) }, label = { Text(stringResource(Res.string.csc_secret)) }, singleLine = true,
         visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-    OutlinedTextField(value = redirect, onValueChange = { redirect = it.trim().take(300) }, label = { Text("redirect_uri（向服務商登記的位址）") },
+    OutlinedTextField(value = redirect, onValueChange = { redirect = it.trim().take(300) }, label = { Text(stringResource(Res.string.csc_redirect)) },
         singleLine = true, modifier = Modifier.fillMaxWidth())
-    Text("服務商需登記 redirect_uri；Android 會接收 ${CscServices.WALLET_REDIRECT}，電腦版在瀏覽器完成後貼上最後的網址。client_secret 保存在錢包的加密儲存區。",
+    Text(stringResource(Res.string.csc_redirect_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text("加入") }
-        OutlinedButton(onClick = onDone) { Text("取消") }
+        Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text(stringResource(Res.string.action_add)) }
+        OutlinedButton(onClick = onDone) { Text(stringResource(Res.string.action_cancel)) }
     }
 }
 
@@ -1321,21 +1328,22 @@ private fun CscProfileForm(model: WalletModel, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var text by remember { mutableStateOf("") }
     var problem by remember { mutableStateOf<String?>(null) }
-    OutlinedTextField(value = text, onValueChange = { text = it.take(20_000); problem = null }, label = { Text("CSC Profile（JSON）") },
+    val addedPattern = stringResource(Res.string.csc_added, "{n}")
+    OutlinedTextField(value = text, onValueChange = { text = it.take(20_000); problem = null }, label = { Text(stringResource(Res.string.csc_profile_json)) },
         minLines = 4, modifier = Modifier.fillMaxWidth())
-    Text("服務商提供的設定檔，格式為 {\"type\":\"csc-profile\",\"name\":…,\"baseUrl\":…,\"clientId\":…,\"environment\":\"production\" 或 \"test\"}，可包含多個服務的陣列；redirectUri 未填時使用錢包自己的 ${CscServices.WALLET_REDIRECT}。",
+    Text(stringResource(Res.string.csc_profile_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = {
             runCatching { model.csc.addProfile(text) }
-                .onSuccess { model.message.value = "已加入 $it 個遠端簽章服務"; onDone() }
+                .onSuccess { model.message.value = addedPattern.replace("{n}", it.toString()); onDone() }
                 .onFailure { problem = it.message }
-        }, enabled = text.isNotBlank()) { Text("加入") }
+        }, enabled = text.isNotBlank()) { Text(stringResource(Res.string.action_add)) }
         OutlinedButton(onClick = {
             scope.launch { model.platform.pickFile()?.let { text = it.bytes.decodeToString().take(20_000); problem = null } }
-        }) { Text("從檔案讀取") }
-        OutlinedButton(onClick = onDone) { Text("取消") }
+        }) { Text(stringResource(Res.string.csc_from_file)) }
+        OutlinedButton(onClick = onDone) { Text(stringResource(Res.string.action_cancel)) }
     }
 }
 
@@ -1354,19 +1362,19 @@ internal fun CscPromptPanel(model: WalletModel) {
                 modifier = Modifier.fillMaxWidth(),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { prompt.answer.complete(value) }, enabled = value.isNotEmpty()) { Text("送出") }
-                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text("取消") }
+                Button(onClick = { prompt.answer.complete(value) }, enabled = value.isNotEmpty()) { Text(stringResource(Res.string.action_send)) }
+                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }
         }
         is CscPrompt.Browser -> {
             var pasted by remember(prompt) { mutableStateOf("") }
-            Text("已在瀏覽器開啟：${prompt.purpose}。完成後通常會自動回到錢包；沒有回來時，把瀏覽器最後的網址（以 ${prompt.redirectUri} 開頭）貼在這裡。",
+            Text(stringResource(Res.string.csc_browser_opened, prompt.purpose, prompt.redirectUri),
                 style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("瀏覽器最後的網址") }, singleLine = true,
+            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text(stringResource(Res.string.csc_last_url)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { prompt.answer.complete(pasted) }, enabled = pasted.startsWith(prompt.redirectUri)) { Text("繼續") }
-                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text("取消") }
+                Button(onClick = { prompt.answer.complete(pasted) }, enabled = pasted.startsWith(prompt.redirectUri)) { Text(stringResource(Res.string.action_continue)) }
+                OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }
         }
     }
@@ -1388,7 +1396,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(f.report?.title ?: f.name, style = MaterialTheme.typography.titleLarge)
         if (f.report?.title != null && f.report.title != f.name) Text(f.name, style = MaterialTheme.typography.bodySmall)
-        SectionTitle("1. 簽章格式")
+        SectionTitle(stringResource(Res.string.sign_step_format))
         forms.forEach { sf ->
             Row(Modifier.fillMaxWidth().clickable { form = sf }, verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.RadioButton(selected = sf == form, onClick = { form = sf })
@@ -1398,7 +1406,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 }
             }
         }
-        SectionTitle("2. 簽署者")
+        SectionTitle(stringResource(Res.string.sign_step_signer))
         val openPgpForm = form == SignForm.OPENPGP_DETACHED
         // The OpenPGP form signs only with an OpenPGP card; switching forms starts the signer choice again.
         LaunchedEffect(openPgpForm) { choice = null }
@@ -1419,89 +1427,89 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         var returned by remember { mutableStateOf(false) }
         when (form) {
             SignForm.PADES -> {
-                SectionTitle("3. 保證層級")
+                SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker("PAdES", level) { level = it }
-                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
-                if (level.revocation) Text("取不到撤銷資訊時不會簽署，請改選較低的等級或稍後再試。", style = MaterialTheme.typography.bodySmall)
-                SectionTitle("4. 認證簽章（選填）")
+                if (level.timestamp) Text(stringResource(Res.string.sign_tsa, tsaName), style = MaterialTheme.typography.bodySmall)
+                if (level.revocation) Text(stringResource(Res.string.sign_lta_strict), style = MaterialTheme.typography.bodySmall)
+                SectionTitle(stringResource(Res.string.sign_step_certify))
                 if (firstSignature) {
                     CERTIFICATIONS.forEach { (p, title, detail) ->
                         Row(Modifier.fillMaxWidth().clickable { certification = p }, verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.RadioButton(selected = p == certification, onClick = { certification = p })
                             Column {
-                                Text(title, style = MaterialTheme.typography.bodyMedium)
-                                Text(detail, style = MaterialTheme.typography.bodySmall)
+                                Text(stringResource(title), style = MaterialTheme.typography.bodyMedium)
+                                Text(stringResource(detail), style = MaterialTheme.typography.bodySmall)
                             }
                         }
                     }
-                } else Text("文件已有簽章；認證簽章只能是第一個簽章，這次是一般的核准簽章。", style = MaterialTheme.typography.bodySmall)
-                SectionTitle("5. 頁面上的簽章（選填）")
+                } else Text(stringResource(Res.string.sign_certify_unavailable), style = MaterialTheme.typography.bodySmall)
+                SectionTitle(stringResource(Res.string.sign_step_visible))
                 VisibleSignaturePicker(model, f, visible) { visible = it }
-                CollapsibleSection("簽署原因與地點（選填）", key = "sign-reason-${f.id}") {
-                    OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text("簽署原因") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text("簽署地點") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                CollapsibleSection(stringResource(Res.string.sign_reason_location), key = "sign-reason-${f.id}") {
+                    OutlinedTextField(value = reason, onValueChange = { reason = it.take(100) }, label = { Text(stringResource(Res.string.sign_reason)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = location, onValueChange = { location = it.take(100) }, label = { Text(stringResource(Res.string.sign_location)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
             }
             SignForm.APPROVAL -> {
                 val case by produceState<FilesModel.ApprovalCase?>(null, f.id) { value = runCatching { model.files.approvalCase(f) }.getOrNull() }
                 case?.let { c ->
-                    InfoCard("簽核範圍", buildList {
-                        add(if (c.approval != null) "加在簽核檔「${c.approval.name}」之後，涵蓋前一個簽核點" else "建立新的簽核檔")
-                        add("涵蓋 ${c.files.size} 個檔案：" + c.files.joinToString("、") { it.name })
-                        if (c.missing.isNotEmpty()) add("不在錢包內，無法簽核：" + c.missing.joinToString("、"))
-                        add("公文與附件本身不改動，簽核點以檔名與 SHA-256 摘要列出每個檔案。")
+                    InfoCard(stringResource(Res.string.sign_approval_scope), buildList {
+                        add(if (c.approval != null) stringResource(Res.string.sign_approval_after, c.approval.name) else stringResource(Res.string.sign_approval_new))
+                        add(stringResource(Res.string.sign_approval_covers, c.files.size) + c.files.joinToString(stringResource(Res.string.sep_list)) { it.name })
+                        if (c.missing.isNotEmpty()) add(stringResource(Res.string.sign_approval_absent) + c.missing.joinToString(stringResource(Res.string.sep_list)))
+                        add(stringResource(Res.string.sign_approval_note))
                     })
                 }
                 if (choice is SignerChoice.Wallet) {
-                    VerdictCard(Verdict.CAUTION, "錢包金鑰不符合線上簽核規範", listOf(
-                        "規範要求簽核點以經核定憑證機構簽發的憑證（自然人憑證、公務人員電子識別證等）簽章，演算法為 RSA-SHA256。",
-                        "錢包金鑰是自簽的 ECDSA 憑證，只能證明檔案沒有被改過，機關的公文系統不會接受。",
+                    VerdictCard(Verdict.CAUTION, stringResource(Res.string.sign_approval_wallet_key), listOf(
+                        stringResource(Res.string.sign_approval_rules),
+                        stringResource(Res.string.sign_approval_wallet_text),
                     ))
                 }
-                SectionTitle("3. 簽核內容")
+                SectionTitle(stringResource(Res.string.sign_step_approval))
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ApprovalPoint.ACTIONS.forEach { a -> FilterChip(selected = a == action, onClick = { action = a }, label = { Text(a) }) }
                 }
-                OutlinedTextField(value = action, onValueChange = { action = it.trim().take(ApprovalPoint.ACTION_MAX) }, label = { Text("異動別（最多 10 字，可自行輸入）") },
+                OutlinedTextField(value = action, onValueChange = { action = it.trim().take(ApprovalPoint.ACTION_MAX) }, label = { Text(stringResource(Res.string.sign_change_kind)) },
                     singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = returned, onCheckedChange = { returned = it })
-                    Text("退文（退回前一個簽核點或承辦人）")
+                    Text(stringResource(Res.string.sign_return))
                 }
-                OutlinedTextField(value = reason, onValueChange = { reason = it.take(500) }, label = { Text("簽核意見（選填）") }, modifier = Modifier.fillMaxWidth())
-                SectionTitle("4. 簽核人員")
-                OutlinedTextField(value = organization, onValueChange = { organization = it.take(60) }, label = { Text("機關（選填）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = unit, onValueChange = { unit = it.take(60) }, label = { Text("單位") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = jobTitle, onValueChange = { jobTitle = it.take(60) }, label = { Text("職稱") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = account, onValueChange = { account = it.take(60) }, label = { Text("公文系統帳號") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = role, onValueChange = { role = it.take(60) }, label = { Text("角色（選填，例如承辦人員、會辦人員）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("姓名取自簽署憑證。單位、職稱與帳號是規範的必要欄位，沒有填寫時寫入空白。", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(value = reason, onValueChange = { reason = it.take(500) }, label = { Text(stringResource(Res.string.sign_opinion)) }, modifier = Modifier.fillMaxWidth())
+                SectionTitle(stringResource(Res.string.sign_step_person))
+                OutlinedTextField(value = organization, onValueChange = { organization = it.take(60) }, label = { Text(stringResource(Res.string.sign_agency)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = unit, onValueChange = { unit = it.take(60) }, label = { Text(stringResource(Res.string.sign_unit)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = jobTitle, onValueChange = { jobTitle = it.take(60) }, label = { Text(stringResource(Res.string.sign_job_title)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = account, onValueChange = { account = it.take(60) }, label = { Text(stringResource(Res.string.sign_account)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = role, onValueChange = { role = it.take(60) }, label = { Text(stringResource(Res.string.sign_role)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(stringResource(Res.string.sign_person_note), style = MaterialTheme.typography.bodySmall)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
-                    Text("為新的簽核檔加上文件時戳（$tsaName，需要網路）")
+                    Text(stringResource(Res.string.sign_approval_timestamp, tsaName))
                 }
             }
             SignForm.OPENPGP_DETACHED -> {
-                Text("OpenPGP 簽章沒有時戳與撤銷資訊的保證層級；簽章時間由卡片簽署時寫入。需要證明時間時，可另外為原檔或 .asc 加上時戳。",
+                Text(stringResource(Res.string.sign_pgp_level),
                     style = MaterialTheme.typography.bodySmall)
             }
             else -> {
-                SectionTitle("3. 保證層級")
+                SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
-                if (level.timestamp) Text("時戳機構：$tsaName（需要網路）", style = MaterialTheme.typography.bodySmall)
-                if (level.archive) Text("B-LTA 取不到撤銷資訊時不會簽署；B-LT 取不到時只做到 B-T，簽完會顯示實際等級。", style = MaterialTheme.typography.bodySmall)
-                else if (level.revocation) Text("取不到撤銷資訊時只做到 B-T，簽完會顯示實際等級。", style = MaterialTheme.typography.bodySmall)
+                if (level.timestamp) Text(stringResource(Res.string.sign_tsa, tsaName), style = MaterialTheme.typography.bodySmall)
+                if (level.archive) Text(stringResource(Res.string.sign_lta_lt), style = MaterialTheme.typography.bodySmall)
+                else if (level.revocation) Text(stringResource(Res.string.sign_lt_only), style = MaterialTheme.typography.bodySmall)
             }
         }
         var details by remember { mutableStateOf(false) }
-        TextButton(onClick = { details = !details }) { Text(if (details) "隱藏技術細節" else "技術細節") }
-        if (details) InfoCard("技術細節", signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null))
+        TextButton(onClick = { details = !details }) { Text(if (details) stringResource(Res.string.action_hide_details) else stringResource(Res.string.technical_details)) }
+        if (details) InfoCard(stringResource(Res.string.technical_details), signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
-            VerdictCard(Verdict.FAIL, "此文件有不允許任何修改的認證簽章", listOf("再加簽會產生新的版本，原認證簽章將被判定為「之後仍有更新」而失效。建議改用 CAdES 或 ASiC-E 另外簽署。"))
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.sign_certified_locked), listOf(stringResource(Res.string.sign_certified_locked_text)))
             riskOverride(
-                f.id, "仍要以 PAdES 加簽", "破壞原有的認證簽章",
-                listOf("原認證者宣告這份文件不允許任何修改。", "加簽後，查驗方會看到原認證簽章之後仍有更新，可能拒絕這份文件。", "原始檔案仍保留在文件分頁。"),
+                f.id, stringResource(Res.string.sign_pades_anyway), stringResource(Res.string.sign_break_certification),
+                listOf(stringResource(Res.string.sign_break_text_1), stringResource(Res.string.sign_break_text_2), stringResource(Res.string.sign_break_text_3)),
             )
         } else true
         BusyLine(busy, error)
@@ -1515,7 +1523,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                     level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
                     visible = visible.takeIf { form == SignForm.PADES },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
-            Text("簽署")
+            Text(stringResource(Res.string.files_sign))
         }
     }
 }
@@ -1535,26 +1543,26 @@ private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: Vis
             onChange(if (on) VisibleSignature(-1, PdfSignatureAppearance.Position.BOTTOM_RIGHT) else null)
             pageText = total.toString()
         })
-        Text("在頁面上顯示簽章")
+        Text(stringResource(Res.string.sign_visible))
     }
     if (value == null) {
-        Text("不勾選時是不可見簽章，只在 PDF 閱讀器的簽章面板出現。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.sign_invisible_note), style = MaterialTheme.typography.bodySmall)
         return
     }
-    Text("頁面（共 $total 頁）", style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(Res.string.sign_page_count, total), style = MaterialTheme.typography.bodyMedium)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(VisibleSignature(0, value.position, value.image)) }, label = { Text("第一頁") })
-        FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(VisibleSignature(-1, value.position, value.image)) }, label = { Text("最後一頁") })
+        FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(VisibleSignature(0, value.position, value.image)) }, label = { Text(stringResource(Res.string.sign_first_page)) })
+        FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(VisibleSignature(-1, value.position, value.image)) }, label = { Text(stringResource(Res.string.sign_last_page)) })
         OutlinedTextField(
             value = pageText,
             onValueChange = { t ->
                 pageText = t.filter { it.isDigit() }.take(5)
                 pageText.toIntOrNull()?.takeIf { it in 1..total }?.let { onChange(VisibleSignature(it - 1, value.position, value.image)) }
             },
-            label = { Text("頁碼") }, singleLine = true, modifier = Modifier.width(110.dp),
+            label = { Text(stringResource(Res.string.sign_page_number)) }, singleLine = true, modifier = Modifier.width(110.dp),
         )
     }
-    Text("位置", style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(Res.string.sign_position), style = MaterialTheme.typography.bodyMedium)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         PdfSignatureAppearance.Position.entries.forEach { pos ->
             FilterChip(selected = pos == value.position, onClick = { onChange(VisibleSignature(value.page, pos, value.image)) }, label = { Text(pos.title) })
@@ -1565,14 +1573,14 @@ private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: Vis
             scope.launch {
                 val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
                 val img = runCatching { model.files.signatureImage(picked.bytes) }.getOrNull()
-                imageNote = if (img == null) "無法讀取這張圖片" else "已選擇：" + picked.name
+                imageNote = if (img == null) model.text(Res.string.sign_image_bad) else model.text(Res.string.sign_image_chosen) + picked.name
                 if (img != null) onChange(VisibleSignature(value.page, value.position, img))
             }
-        }) { Text(if (value.image == null) "加入簽名圖片（選填）" else "更換簽名圖片") }
-        if (value.image != null) TextButton(onClick = { imageNote = null; onChange(VisibleSignature(value.page, value.position, null)) }) { Text("移除圖片") }
+        }) { Text(if (value.image == null) stringResource(Res.string.sign_add_image) else stringResource(Res.string.sign_change_image)) }
+        if (value.image != null) TextButton(onClick = { imageNote = null; onChange(VisibleSignature(value.page, value.position, null)) }) { Text(stringResource(Res.string.sign_remove_image)) }
     }
     imageNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-    Text("簽章框內寫入簽署者姓名（取自憑證）、簽署時間，以及有填寫時的原因與地點。中文使用閱讀器內建的中文字型，Adobe Acrobat 需安裝亞洲語言字型包。", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.sign_box_text), style = MaterialTheme.typography.bodySmall)
     // The box over the page preview, when that page is among the rendered ones.
     val previews by model.files.previews.collectAsState()
     val pages = (previews[f.id] as? FilePreview.Pages)?.pages.orEmpty()
@@ -1582,7 +1590,7 @@ private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: Vis
         BoxWithConstraints(Modifier.fillMaxWidth(0.6f)) {
             val w = maxWidth
             val h = w * (image.height.toFloat() / image.width.coerceAtLeast(1))
-            Image(image, contentDescription = "第 ${index + 1} 頁", contentScale = ContentScale.FillWidth,
+            Image(image, contentDescription = stringResource(Res.string.sign_page_n, index + 1), contentScale = ContentScale.FillWidth,
                 modifier = Modifier.fillMaxWidth().height(h).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(6.dp)))
             Box(
                 Modifier.offset(x = w * look.x.toFloat(), y = h * look.y.toFloat())
@@ -1607,10 +1615,10 @@ private fun InfoCard(title: String, lines: List<String>) {
 
 /** DocMDP permissions a certification signature can carry: value, title and what it allows. */
 private val CERTIFICATIONS = listOf(
-    Triple(null, "不認證", "一般簽章，之後任何人都可以再加簽"),
-    Triple(2, "認證：允許填表與簽署（P=2）", "宣告自己是文件作者；之後只能填寫表單欄位與加簽，其他修改會讓認證失效"),
-    Triple(3, "認證：也允許註解（P=3）", "同 P=2，另外允許加入、修改與刪除註解"),
-    Triple(1, "認證：不允許任何修改（P=1）", "之後不能再加簽；只允許加入長期驗證資料與文件時戳（ISO 32000-2）"),
+    Triple(null, Res.string.certify_none, Res.string.certify_none_text),
+    Triple(2, Res.string.certify_p2, Res.string.certify_p2_text),
+    Triple(3, Res.string.certify_p3, Res.string.certify_p3_text),
+    Triple(1, Res.string.certify_p1, Res.string.certify_p1_text),
 )
 
 /** The four baseline levels for [format], each with what it adds. */
@@ -1628,42 +1636,43 @@ private fun LevelPicker(format: String, level: SignatureLevel, onPick: (Signatur
 }
 
 /** What the chosen form and options put in the signature, for the expandable technical details. */
+@Composable
 private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false): List<String> = when (form) {
     SignForm.PADES -> buildList {
-        add("SubFilter ETSI.CAdES.detached，摘要 SHA-256，簽署屬性含 signing-certificate-v2，不寫 signingTime（以 PDF 的 /M 宣稱時間）")
-        add("增量更新：原有內容與既有簽章不變，簽章涵蓋整份 PDF 到簽章值之前")
-        add(if (visible) "可見簽章：簽章欄位的 widget 有非零 /Rect 與外觀串流（/AP /N，Form XObject）；文字用 PDF 預先定義的中文字型 MSung-Light（Adobe-CNS1、UniCNS-UTF16-H，不內嵌，由閱讀器提供），圖片為 FlateDecode RGB 加透明遮罩（/SMask）；頁面旋轉時以 /Matrix 轉正"
-            else "不可見簽章：widget 的 /Rect 為 0，只在閱讀器的簽章面板出現")
-        certification?.let { add("認證簽章：簽章字典的 /Reference 帶 DocMDP 轉換（/P $it），文件目錄的 /Perms /DocMDP 指向這個簽章") }
-        if (level.timestamp) add("signature-time-stamp：時戳機構對簽章值的 RFC 3161 時戳，放在未簽署屬性")
-        if (level.revocation) add("DSS：簽署者與時戳機構的憑證鏈（以 AIA 補齊）、OCSP 回應或 CRL，並以簽章的 SHA-1 建 VRI 項目")
-        if (level.archive) add("文件時戳：另一個 /Type /DocTimeStamp 欄位（SubFilter ETSI.RFC3161），涵蓋 DSS；文件頁的「延長保存」可再加一層")
-        add("簽完以憑證公鑰重新檢查簽章值，不符就不寫入")
+        add(stringResource(Res.string.tech_pades_1))
+        add(stringResource(Res.string.tech_pades_2))
+        add(if (visible) stringResource(Res.string.tech_pades_visible)
+            else stringResource(Res.string.tech_pades_invisible))
+        certification?.let { add(stringResource(Res.string.tech_pades_certify, it)) }
+        if (level.timestamp) add(stringResource(Res.string.tech_pades_bt))
+        if (level.revocation) add(stringResource(Res.string.tech_pades_lt))
+        if (level.archive) add(stringResource(Res.string.tech_pades_lta))
+        add(stringResource(Res.string.tech_verify_after))
     }
     SignForm.APPROVAL -> listOf(
-        "文書處理手冊的線上簽核格式（104_sign DTD）：在 <線上簽核資訊> 加一個 <簽核點定義>，內含不帶命名空間的 XMLDSig <Signature>",
-        "Reference：每個公文與附件以檔名指向檔案本身（SHA-256 摘要）、自己的 <Object>（異動資訊與簽核檔案清單）、前一個簽核點",
-        "SignedInfo 以 C14N 20010315 正規化，簽章演算法依憑證（rsa-sha256 或 ecdsa-sha256），KeyInfo 放簽署憑證",
-        "簽章時間以民國年月日時分（臺北時間）寫在異動資訊",
-    ) + (if (timestamp) listOf("文件時戳：對新的簽核檔 SHA-256 取 RFC 3161 時戳，與檔案分開保存") else emptyList())
+        stringResource(Res.string.tech_approval_1),
+        stringResource(Res.string.tech_approval_2),
+        stringResource(Res.string.tech_approval_3),
+        stringResource(Res.string.tech_approval_4),
+    ) + (if (timestamp) listOf(stringResource(Res.string.tech_approval_5)) else emptyList())
     SignForm.XADES -> buildList {
-        add("XAdES enveloped：SignedProperties 含 SigningTime、SigningCertificateV2 與 DataObjectFormat，摘要 SHA-256，exclusive C14N")
-        if (level.timestamp) add("SignatureTimeStamp：對 SignatureValue 的 RFC 3161 時戳（B-T）")
-        if (level.revocation) add("CertificateValues 與 RevocationValues（OCSP 優先，取不到才用 CRL）（B-LT）")
-        if (level.archive) add("xadesv141:ArchiveTimeStamp：涵蓋文件、SignedInfo、SignatureValue、KeyInfo 與之前的未簽署屬性（EN 319 132-1 5.5.2）（B-LTA）")
+        add(stringResource(Res.string.tech_xades_1))
+        if (level.timestamp) add(stringResource(Res.string.tech_xades_bt))
+        if (level.revocation) add(stringResource(Res.string.tech_xades_lt))
+        if (level.archive) add(stringResource(Res.string.tech_xades_lta))
     }
     SignForm.OPENPGP_DETACHED -> listOf(
-        "OpenPGP v4 分離式簽章（RFC 4880／RFC 9580），簽章類型 0x00（二進位文件），ASCII armor",
-        "雜湊依金鑰：RSA、P-256 與 Ed25519 用 SHA-256，P-384 用 SHA-384，P-521 用 SHA-512",
-        "已簽署子封包：簽章建立時間與簽發者指紋；未簽署子封包：簽發者金鑰 ID",
-        "簽署前先比對卡上的指紋，換了卡片會在送出 PIN 之前停止；簽完以重建的公開金鑰重新驗證，不符就不保存",
+        stringResource(Res.string.tech_pgp_1),
+        stringResource(Res.string.tech_pgp_2),
+        stringResource(Res.string.tech_pgp_3),
+        stringResource(Res.string.tech_pgp_4),
     )
     else -> buildList {
-        add("CMS SignedData，摘要 SHA-256，簽署屬性含 signing-certificate-v2 與 signingTime")
-        if (level.timestamp) add("signature-time-stamp：對簽章值的 RFC 3161 時戳（B-T）")
-        if (level.revocation) add("SignedData 的 certificates 加上完整憑證鏈，crls 加上 CRL 與 OCSP 回應（RFC 5940 otherRevInfo）（B-LT）")
-        if (level.archive) add("archive-time-stamp-v3：涵蓋內容、簽章與 ats-hash-index-v3 列出的憑證、撤銷資訊與未簽署屬性（EN 319 122-1 5.5.2）（B-LTA）")
-        if (form == SignForm.ASIC) add("ASiC-E：mimetype、原檔與 META-INF/signature001.p7s，ASiCManifest 列出原檔摘要")
+        add(stringResource(Res.string.tech_cades_1))
+        if (level.timestamp) add(stringResource(Res.string.tech_cades_bt))
+        if (level.revocation) add(stringResource(Res.string.tech_cades_lt))
+        if (level.archive) add(stringResource(Res.string.tech_cades_lta))
+        if (form == SignForm.ASIC) add(stringResource(Res.string.tech_asic))
     }
 }
 
@@ -1678,9 +1687,9 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
     var password by remember(f.id) { mutableStateOf("") }
     var page by remember(f.id) { mutableStateOf(0) }
     var showText by remember(f.id) { mutableStateOf(false) }
-    SectionTitle("預覽")
+    SectionTitle(stringResource(Res.string.files_preview))
     when (p) {
-        null, FilePreview.Loading -> Text("正在產生預覽", style = MaterialTheme.typography.bodySmall)
+        null, FilePreview.Loading -> Text(stringResource(Res.string.files_preview_making), style = MaterialTheme.typography.bodySmall)
         is FilePreview.Pages -> {
             when (val r = p.entryExit) {
                 is EntryExitCertificate -> EntryExitView(r)
@@ -1697,42 +1706,42 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
                 val i = page.coerceIn(0, p.pages.lastIndex)
                 val placements = f.report?.signaturePlacements.orEmpty()
                 val signatures = f.report?.signatures.orEmpty()
-                PreviewImage(p.pages[i], "第 ${i + 1} 頁", placements.filter { it.page == i }, signatures)
+                PreviewImage(p.pages[i], stringResource(Res.string.sign_page_n, i + 1), placements.filter { it.page == i }, signatures)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { page = i - 1 }, enabled = i > 0) { Text("上一頁") }
-                    Text("第 ${i + 1} / ${p.total} 頁", style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text("下一頁") }
+                    TextButton(onClick = { page = i - 1 }, enabled = i > 0) { Text(stringResource(Res.string.files_prev_page)) }
+                    Text(stringResource(Res.string.preview_page_of, i + 1, p.total), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text(stringResource(Res.string.files_next_page)) }
                 }
                 SignaturePlacementLegend(placements, signatures, i, p.pages.size)
-                if (p.total > p.pages.size) Text("預覽前 ${p.pages.size} 頁；完整內容請匯出後以閱讀器開啟。", style = MaterialTheme.typography.bodySmall)
+                if (p.total > p.pages.size) Text(stringResource(Res.string.preview_first_pages, p.pages.size), style = MaterialTheme.typography.bodySmall)
             } else {
-                Text("這個平台無法繪製頁面，以下是文件的文字。", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(Res.string.preview_text_only), style = MaterialTheme.typography.bodySmall)
             }
             p.text?.let { t ->
-                TextButton(onClick = { showText = !showText }) { Text(if (showText) "隱藏文字層" else "顯示文字層") }
+                TextButton(onClick = { showText = !showText }) { Text(if (showText) stringResource(Res.string.preview_hide_text) else stringResource(Res.string.preview_show_text)) }
                 if (showText || p.pages.isEmpty()) SelectableText(t)
             }
         }
         is FilePreview.Picture -> PreviewImage(p.image, f.name)
         is FilePreview.Text -> {
             SelectableText(p.text)
-            if (p.truncated) Text("只顯示前 ${FilePreview.TEXT_LIMIT} 字。", style = MaterialTheme.typography.bodySmall)
+            if (p.truncated) Text(stringResource(Res.string.preview_text_limit, FilePreview.TEXT_LIMIT), style = MaterialTheme.typography.bodySmall)
         }
         is FilePreview.Official -> {
             OfficialDocumentView(p.document)
-            TextButton(onClick = { showText = !showText }) { Text(if (showText) "隱藏原始 XML" else "顯示原始 XML") }
+            TextButton(onClick = { showText = !showText }) { Text(if (showText) stringResource(Res.string.preview_hide_xml) else stringResource(Res.string.preview_show_xml)) }
             if (showText) {
                 SelectableText(p.source)
-                if (p.truncated) Text("只顯示前 ${FilePreview.TEXT_LIMIT} 字。", style = MaterialTheme.typography.bodySmall)
+                if (p.truncated) Text(stringResource(Res.string.preview_text_limit, FilePreview.TEXT_LIMIT), style = MaterialTheme.typography.bodySmall)
             }
         }
         is FilePreview.NeedsPassword -> {
-            Text(if (p.wrong) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼。MyData 的文件通常是身分證統一編號；密碼只用於這次開啟，不會保存。",
+            Text(if (p.wrong) stringResource(Res.string.pdf_wrong_password) else stringResource(Res.string.pdf_password_text),
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text("開啟密碼") }, singleLine = true,
+                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text(stringResource(Res.string.pdf_password)) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
-                Button(onClick = { model.files.preview(f, password) }, enabled = password.isNotBlank()) { Text("開啟") }
+                Button(onClick = { model.files.preview(f, password) }, enabled = password.isNotBlank()) { Text(stringResource(Res.string.action_open)) }
             }
         }
         is FilePreview.Unavailable -> Text(p.reason, style = MaterialTheme.typography.bodySmall)
@@ -1750,14 +1759,14 @@ private fun HouseholdView(h: HouseholdTranscript) {
         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(h.title ?: "戶籍資料", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(h.title ?: stringResource(Res.string.household_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         if (h.household.isNotEmpty()) {
-            Text("戶籍", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.household_registration), style = MaterialTheme.typography.titleSmall)
             h.household.forEach { (k, v) -> if (k.isEmpty()) Text(v, style = MaterialTheme.typography.bodySmall) else LabelValue(k, v, small = true) }
         }
-        Text("住戶（${h.people.size} 位）", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.household_people, h.people.size), style = MaterialTheme.typography.titleSmall)
         if (!h.holderFound) {
-            Text("沒有比對到持有人本人（以身分證卡或設定的身分證統一編號比對），依文件順序列出。", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(Res.string.household_no_holder), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.outline)
         }
         if (h.people.size > 1) {
@@ -1766,13 +1775,13 @@ private fun HouseholdView(h: HouseholdTranscript) {
                     FilterChip(
                         selected = i == selected,
                         onClick = { selected = i },
-                        label = { Text((person.member.name ?: "住戶 ${i + 1}") + if (person.holder) "（本人）" else "") },
+                        label = { Text((person.member.name ?: stringResource(Res.string.household_person, i + 1)) + if (person.holder) stringResource(Res.string.household_self) else "") },
                     )
                 }
             }
         }
         val person = h.people[selected.coerceIn(0, h.people.lastIndex)]
-        if (person.holder) Text("持有人本人", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+        if (person.holder) Text(stringResource(Res.string.household_holder), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         person.fields.forEach { (k, v) -> if (k.isEmpty()) Text(v, style = MaterialTheme.typography.bodySmall) else LabelValue(k, v, small = true) }
     }
 }
@@ -1784,39 +1793,39 @@ private fun EntryExitView(c: EntryExitCertificate) {
         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("入出國日期證明書", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
-        c.name?.let { LabelValue("姓名", it, small = true) }
-        c.englishName?.let { LabelValue("英文姓名", it, small = true) }
-        c.nationality?.let { LabelValue("國籍", it, small = true) }
-        c.gender?.let { LabelValue("性別", it, small = true) }
-        c.idNumber?.let { LabelValue("護照號碼或統一證號", it, small = true) }
-        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
-        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        c.issuer?.let { LabelValue("發證機關", it, small = true) }
-        c.serialNumber?.let { LabelValue("證明書序號", it, small = true) }
-        c.issuedAt?.let { LabelValue("發證時間", it, small = true) }
-        if (c.periodFrom != null && c.periodTo != null) LabelValue("查詢期間", "${c.periodFrom} 至 ${c.periodTo}", small = true)
-        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
-        Text("入出境摘要", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        LabelValue("紀錄筆數", "${c.trips.size} 筆", small = true)
-        c.latestExit?.let { LabelValue("最後出境日期", it.toString(), small = true) }
-        c.latestEntry?.let { LabelValue("最後入境日期", it.toString(), small = true) }
-        c.returnedFromLatestTrip?.let { LabelValue("最近一次出境", if (it) "已入境" else "尚未入境", small = true) }
-        c.inTaiwanAtEnd?.let { LabelValue("${c.coveredUntil} 時", if (it) "在境內" else "在境外", small = true) }
+        Text(stringResource(Res.string.entry_exit_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(stringResource(Res.string.section_personal), style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue(stringResource(Res.string.field_name), it, small = true) }
+        c.englishName?.let { LabelValue(stringResource(Res.string.field_name_en), it, small = true) }
+        c.nationality?.let { LabelValue(stringResource(Res.string.field_nationality), it, small = true) }
+        c.gender?.let { LabelValue(stringResource(Res.string.field_sex), it, small = true) }
+        c.idNumber?.let { LabelValue(stringResource(Res.string.field_passport_or_id), it, small = true) }
+        c.birthDate?.let { LabelValue(stringResource(Res.string.field_birth_date), it.toString(), small = true) }
+        Text(stringResource(Res.string.section_document), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.issuer?.let { LabelValue(stringResource(Res.string.field_issuing_authority), it, small = true) }
+        c.serialNumber?.let { LabelValue(stringResource(Res.string.field_certificate_serial), it, small = true) }
+        c.issuedAt?.let { LabelValue(stringResource(Res.string.field_issued_at), it, small = true) }
+        if (c.periodFrom != null && c.periodTo != null) LabelValue(stringResource(Res.string.field_query_period), stringResource(Res.string.range_from_to, c.periodFrom.toString(), c.periodTo.toString()), small = true)
+        c.pages?.let { LabelValue(stringResource(Res.string.files_pages), stringResource(Res.string.page_count, it), small = true) }
+        Text(stringResource(Res.string.entry_exit_summary), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue(stringResource(Res.string.field_record_count), stringResource(Res.string.record_count, c.trips.size), small = true)
+        c.latestExit?.let { LabelValue(stringResource(Res.string.field_last_exit), it.toString(), small = true) }
+        c.latestEntry?.let { LabelValue(stringResource(Res.string.field_last_entry), it.toString(), small = true) }
+        c.returnedFromLatestTrip?.let { LabelValue(stringResource(Res.string.field_latest_exit), if (it) stringResource(Res.string.entry_back) else stringResource(Res.string.entry_not_back), small = true) }
+        c.inTaiwanAtEnd?.let { LabelValue(stringResource(Res.string.as_of, c.coveredUntil.toString()), if (it) stringResource(Res.string.entry_inside) else stringResource(Res.string.entry_outside), small = true) }
         if (c.trips.isNotEmpty()) {
-            Text("入出境紀錄", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            Text(stringResource(Res.string.entry_exit_records), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
             Row(Modifier.fillMaxWidth()) {
-                Text("項次", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
-                Text("出境日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
-                Text("入境日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
+                Text(stringResource(Res.string.field_item_no), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
+                Text(stringResource(Res.string.field_exit_date), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
+                Text(stringResource(Res.string.field_entry_date), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
             }
             HorizontalDivider()
             c.trips.forEach { t ->
                 Row(Modifier.fillMaxWidth()) {
                     Text(t.item.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
-                    Text(t.exit?.toString() ?: "無", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
-                    Text(t.entry?.toString() ?: "尚未入境", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
+                    Text(t.exit?.toString() ?: stringResource(Res.string.value_none), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
+                    Text(t.entry?.toString() ?: stringResource(Res.string.entry_not_back), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.2f))
                 }
             }
         }
@@ -1832,33 +1841,33 @@ private fun StudentStatusView(c: StudentStatusProof) {
     ) {
         Text(c.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         c.number?.let { Text("NO. $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) }
-        Text("學生", style = MaterialTheme.typography.titleSmall)
-        c.name?.let { LabelValue("姓名", it, small = true) }
-        c.englishName?.let { LabelValue("英文姓名", it, small = true) }
-        c.gender?.let { LabelValue("性別", it, small = true) }
-        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
-        c.studentId?.let { LabelValue("學號", it, small = true) }
-        c.idNumber?.let { LabelValue("證件號碼", it, small = true) }
-        Text("學籍", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        c.school?.let { LabelValue("學校", it, small = true) }
-        LabelValue("狀態", "在學（證明列印時）", small = true)
-        c.enrolled?.let { LabelValue("入學年月", it, small = true) }
-        c.college?.let { LabelValue("學院", it + (c.collegeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
-        c.major?.let { LabelValue("專業", it + (c.majorEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
-        c.programme?.let { LabelValue("學制", it + (c.programmeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
-        Text("出具單位", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        c.office?.let { LabelValue("單位", it + (c.officeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
-        c.printDate?.let { LabelValue("列印日期", it.toString(), small = true) }
-        c.address?.let { LabelValue("地址", it + (c.zipCode?.let { z -> "（郵遞區號 $z）" } ?: ""), small = true) }
-        c.phone?.let { LabelValue("電話", it, small = true) }
-        c.contactPhone?.let { LabelValue("諮詢電話", it, small = true) }
-        c.email?.let { LabelValue("電子郵件", it, small = true) }
-        c.website?.let { LabelValue("網站", it, small = true) }
+        Text(stringResource(Res.string.section_student), style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue(stringResource(Res.string.field_name), it, small = true) }
+        c.englishName?.let { LabelValue(stringResource(Res.string.field_name_en), it, small = true) }
+        c.gender?.let { LabelValue(stringResource(Res.string.field_sex), it, small = true) }
+        c.birthDate?.let { LabelValue(stringResource(Res.string.field_birth_date), it.toString(), small = true) }
+        c.studentId?.let { LabelValue(stringResource(Res.string.field_student_id), it, small = true) }
+        c.idNumber?.let { LabelValue(stringResource(Res.string.field_id_number), it, small = true) }
+        Text(stringResource(Res.string.section_enrolment), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.school?.let { LabelValue(stringResource(Res.string.field_school), it, small = true) }
+        LabelValue(stringResource(Res.string.field_status), stringResource(Res.string.enrolment_status), small = true)
+        c.enrolled?.let { LabelValue(stringResource(Res.string.field_enrolled), it, small = true) }
+        c.college?.let { LabelValue(stringResource(Res.string.field_college), it + (c.collegeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.major?.let { LabelValue(stringResource(Res.string.field_major), it + (c.majorEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.programme?.let { LabelValue(stringResource(Res.string.field_program), it + (c.programmeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        Text(stringResource(Res.string.section_issuer), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        c.office?.let { LabelValue(stringResource(Res.string.field_unit), it + (c.officeEnglish?.let { e -> "\n$e" } ?: ""), small = true) }
+        c.printDate?.let { LabelValue(stringResource(Res.string.field_print_date), it.toString(), small = true) }
+        c.address?.let { LabelValue(stringResource(Res.string.field_address), it + (c.zipCode?.let { z -> stringResource(Res.string.postal_code, z) } ?: ""), small = true) }
+        c.phone?.let { LabelValue(stringResource(Res.string.field_phone), it, small = true) }
+        c.contactPhone?.let { LabelValue(stringResource(Res.string.field_enquiry_phone), it, small = true) }
+        c.email?.let { LabelValue(stringResource(Res.string.field_email), it, small = true) }
+        c.website?.let { LabelValue(stringResource(Res.string.field_website), it, small = true) }
         if (c.verificationCode != null || c.verificationUrl != null) {
-            Text("驗證", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-            c.verificationCode?.let { LabelValue("驗證密鑰", it, small = true) }
-            c.verificationUrl?.let { LabelValue("驗證網址", it, small = true) }
-            Text("學校的驗證網頁以驗證密鑰查詢這份證明；網址若是 http，連線沒有加密，查詢結果只能當作輔助比對。",
+            Text(stringResource(Res.string.section_verification), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            c.verificationCode?.let { LabelValue(stringResource(Res.string.field_verify_key), it, small = true) }
+            c.verificationUrl?.let { LabelValue(stringResource(Res.string.field_verify_url), it, small = true) }
+            Text(stringResource(Res.string.enrolment_verify_note),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
         }
     }
@@ -1874,24 +1883,24 @@ private fun PermitLinkView(c: MainlandPermitLink) {
         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("通行證與居住證關聯查詢結果", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
-        c.name?.let { LabelValue("姓名", it, small = true) }
-        c.gender?.let { LabelValue("性別", it, small = true) }
-        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
-        c.residentOf?.let { LabelValue("身分", "${it}居民", small = true) }
-        Text("同時持用或曾持用的證件", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        if (c.permits.isEmpty()) Text("讀不出證件清單，請看下方頁面。", style = MaterialTheme.typography.bodySmall)
-        c.permits.forEach { p -> LabelValue(p.name, p.number + (p.validUntil?.let { "\n有效期至 $it" } ?: ""), small = true) }
+        Text(stringResource(Res.string.permits_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(stringResource(Res.string.section_personal), style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue(stringResource(Res.string.field_name), it, small = true) }
+        c.gender?.let { LabelValue(stringResource(Res.string.field_sex), it, small = true) }
+        c.birthDate?.let { LabelValue(stringResource(Res.string.field_birth_date), it.toString(), small = true) }
+        c.residentOf?.let { LabelValue(stringResource(Res.string.field_identity), stringResource(Res.string.permits_resident, it), small = true) }
+        Text(stringResource(Res.string.permits_held), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        if (c.permits.isEmpty()) Text(stringResource(Res.string.permits_unreadable), style = MaterialTheme.typography.bodySmall)
+        c.permits.forEach { p -> LabelValue(p.name, p.number + (p.validUntil?.let { stringResource(Res.string.permits_valid_until, it) } ?: ""), small = true) }
         if (c.travelPermit != null && c.residencePermit != null) {
-            Text("文件記載通行證與居住證屬於同一人。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.permits_same_person), style = MaterialTheme.typography.bodySmall)
         }
-        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        LabelValue("發證機關", c.issuer, small = true)
-        c.number?.let { LabelValue("編號", it, small = true) }
-        c.queryDate?.let { LabelValue("查詢日期", it.toString(), small = true) }
-        c.validUntil?.let { LabelValue("有效期至", "$it（自查詢日期起 ${c.validDays} 天）", small = true) }
-        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
+        Text(stringResource(Res.string.section_document), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue(stringResource(Res.string.field_issuing_authority), c.issuer, small = true)
+        c.number?.let { LabelValue(stringResource(Res.string.field_number), it, small = true) }
+        c.queryDate?.let { LabelValue(stringResource(Res.string.field_query_date), it.toString(), small = true) }
+        c.validUntil?.let { LabelValue(stringResource(Res.string.field_valid_until), stringResource(Res.string.permits_valid_days, it, c.validDays.toString()), small = true) }
+        c.pages?.let { LabelValue(stringResource(Res.string.files_pages), stringResource(Res.string.page_count, it), small = true) }
     }
 }
 
@@ -1905,39 +1914,39 @@ private fun MainlandEntryExitView(c: MainlandEntryExitRecord) {
         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text("出入境記錄查詢結果（中國大陸）", style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
-        Text("個人資訊", style = MaterialTheme.typography.titleSmall)
-        c.name?.let { LabelValue("姓名", it, small = true) }
-        c.gender?.let { LabelValue("性別", it, small = true) }
-        c.birthDate?.let { LabelValue("出生日期", it.toString(), small = true) }
-        c.documentNumber?.let { LabelValue((c.documentLabel ?: "證件") + "號碼", it, small = true) }
-        Text("文件資訊", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        LabelValue("發證機關", c.issuer, small = true)
-        c.number?.let { LabelValue("編號", it, small = true) }
-        c.queryDate?.let { LabelValue("查詢日期", it.toString(), small = true) }
-        if (c.periodFrom != null && c.periodTo != null) LabelValue("查詢期間", "${c.periodFrom} 至 ${c.periodTo}", small = true)
-        c.madeAt?.let { LabelValue("製作日期", it, small = true) }
-        c.pages?.let { LabelValue("頁數", "$it 頁", small = true) }
-        Text("出入境摘要", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
-        LabelValue("紀錄筆數", "${c.movements.size} 筆", small = true)
-        c.latestArrival?.let { LabelValue("最後入境中國大陸", it.toString(), small = true) }
-        c.latestDeparture?.let { LabelValue("最後離開中國大陸", it.toString(), small = true) }
-        c.insideAtEnd?.let { LabelValue("${c.coveredUntil} 時", if (it) "在中國大陸境內" else "不在中國大陸境內", small = true) }
+        Text(stringResource(Res.string.china_movements_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        Text(stringResource(Res.string.section_personal), style = MaterialTheme.typography.titleSmall)
+        c.name?.let { LabelValue(stringResource(Res.string.field_name), it, small = true) }
+        c.gender?.let { LabelValue(stringResource(Res.string.field_sex), it, small = true) }
+        c.birthDate?.let { LabelValue(stringResource(Res.string.field_birth_date), it.toString(), small = true) }
+        c.documentNumber?.let { LabelValue((c.documentLabel ?: stringResource(Res.string.field_document)) + stringResource(Res.string.field_number_short), it, small = true) }
+        Text(stringResource(Res.string.section_document), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue(stringResource(Res.string.field_issuing_authority), c.issuer, small = true)
+        c.number?.let { LabelValue(stringResource(Res.string.field_number), it, small = true) }
+        c.queryDate?.let { LabelValue(stringResource(Res.string.field_query_date), it.toString(), small = true) }
+        if (c.periodFrom != null && c.periodTo != null) LabelValue(stringResource(Res.string.field_query_period), stringResource(Res.string.range_from_to, c.periodFrom.toString(), c.periodTo.toString()), small = true)
+        c.madeAt?.let { LabelValue(stringResource(Res.string.field_made_date), it, small = true) }
+        c.pages?.let { LabelValue(stringResource(Res.string.files_pages), stringResource(Res.string.page_count, it), small = true) }
+        Text(stringResource(Res.string.china_movements_summary), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        LabelValue(stringResource(Res.string.field_record_count), stringResource(Res.string.record_count, c.movements.size), small = true)
+        c.latestArrival?.let { LabelValue(stringResource(Res.string.china_last_entry), it.toString(), small = true) }
+        c.latestDeparture?.let { LabelValue(stringResource(Res.string.china_last_exit), it.toString(), small = true) }
+        c.insideAtEnd?.let { LabelValue(stringResource(Res.string.as_of, c.coveredUntil.toString()), if (it) stringResource(Res.string.china_inside) else stringResource(Res.string.china_outside), small = true) }
         if (c.movements.isNotEmpty()) {
-            Text("出入境記錄", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            Text(stringResource(Res.string.china_movements_records), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
             Row(Modifier.fillMaxWidth()) {
-                Text("序號", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.5f))
-                Text("出入境", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
-                Text("日期", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.1f))
-                Text("口岸與航班", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.6f))
+                Text(stringResource(Res.string.field_serial_no), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.5f))
+                Text(stringResource(Res.string.field_direction), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(0.6f))
+                Text(stringResource(Res.string.field_date), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.1f))
+                Text(stringResource(Res.string.field_port_flight), style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.6f))
             }
             HorizontalDivider()
             c.movements.forEach { m ->
                 Row(Modifier.fillMaxWidth()) {
                     Text(m.item.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.5f))
-                    Text(if (m.arrival) "入境" else "出境", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
+                    Text(if (m.arrival) stringResource(Res.string.direction_entry) else stringResource(Res.string.direction_exit), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.6f))
                     Text(m.date.toString(), style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1.1f))
-                    Text(listOfNotNull(m.port, m.flight).joinToString(" ").ifEmpty { "未記載" }, style = MaterialTheme.typography.bodySmall,
+                    Text(listOfNotNull(m.port, m.flight).joinToString(" ").ifEmpty { stringResource(Res.string.value_not_recorded) }, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1.6f))
                 }
             }
@@ -1967,9 +1976,9 @@ private fun OfficialDocumentView(doc: OfficialDocument) {
             }
         }
         if (doc.flow.isNotEmpty()) {
-            Text("簽核流程", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+            Text(stringResource(Res.string.approval_flow), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
             doc.flow.forEachIndexed { i, node ->
-                Text("${i + 1}. ${node.name}" + (node.action?.takeIf { it != node.name }?.let { "（$it）" } ?: ""),
+                Text("${i + 1}. ${node.name}" + (node.action?.takeIf { it != node.name }?.let { stringResource(Res.string.parenthesized, it) } ?: ""),
                     style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = (node.depth * 16).dp))
             }
         }
@@ -1978,15 +1987,15 @@ private fun OfficialDocumentView(doc: OfficialDocument) {
                 Modifier.fillMaxWidth().padding(top = 6.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("簽核點 ${i + 1}：" + listOfNotNull(step.action, step.point?.takeIf { it != step.action }).joinToString("・"),
+                Text(stringResource(Res.string.approval_point, i + 1) + listOfNotNull(step.action, step.point?.takeIf { it != step.action }).joinToString("・"),
                     style = MaterialTheme.typography.titleSmall)
-                step.signer?.let { LabelValue("簽核人員", it + (step.role?.let { r -> "（$r）" } ?: "")) }
-                step.time?.let { LabelValue("簽章時間", it, small = true) }
-                step.opinions.forEach { LabelValue("簽核意見", it) }
-                if (step.next.isNotEmpty()) LabelValue("次位簽核人員", step.next.joinToString("、"), small = true)
-                step.certificate?.let { LabelValue("簽章憑證", it, small = true) }
-                if (step.drafts.isNotEmpty()) LabelValue("文稿", step.drafts.joinToString("、"), small = true)
-                if (step.files.isNotEmpty()) LabelValue("檔案", step.files.joinToString("\n"), small = true)
+                step.signer?.let { LabelValue(stringResource(Res.string.approval_person), it + (step.role?.let { r -> stringResource(Res.string.parenthesized, r) } ?: "")) }
+                step.time?.let { LabelValue(stringResource(Res.string.approval_time), it, small = true) }
+                step.opinions.forEach { LabelValue(stringResource(Res.string.approval_opinion), it) }
+                if (step.next.isNotEmpty()) LabelValue(stringResource(Res.string.approval_next), step.next.joinToString(stringResource(Res.string.sep_list)), small = true)
+                step.certificate?.let { LabelValue(stringResource(Res.string.approval_cert), it, small = true) }
+                if (step.drafts.isNotEmpty()) LabelValue(stringResource(Res.string.approval_drafts), step.drafts.joinToString(stringResource(Res.string.sep_list)), small = true)
+                if (step.files.isNotEmpty()) LabelValue(stringResource(Res.string.label_file), step.files.joinToString("\n"), small = true)
             }
         }
     }
@@ -2058,17 +2067,17 @@ private fun SignaturePlacementLegend(placements: List<SignaturePlacementInfo>, s
     val onPage = placements.filter { it.page == page && it.visible }
     val invisible = placements.filter { !it.visible }
     if (onPage.isNotEmpty()) {
-        Text("本頁的可見簽章：" + onPage.joinToString("、") { it.label }, style = MaterialTheme.typography.bodySmall,
+        Text(stringResource(Res.string.preview_visible_here) + onPage.joinToString(stringResource(Res.string.sep_list)) { it.label }, style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     val otherPages = placements.filter { it.visible && it.page != page }.map { it.page }.distinct().sorted()
     if (otherPages.isNotEmpty()) {
-        Text("其他頁的簽章位置：第 " + otherPages.joinToString("、") { (it + 1).toString() } + " 頁" +
-            (if (otherPages.any { it >= previewPages }) "（部分頁未在預覽內）" else ""),
+        Text(stringResource(Res.string.preview_other_pages) + otherPages.joinToString(stringResource(Res.string.sep_list)) { (it + 1).toString() } + stringResource(Res.string.preview_pages_tail) +
+            (if (otherPages.any { it >= previewPages }) stringResource(Res.string.preview_some_outside) else ""),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
     if (invisible.isNotEmpty()) {
-        Text("不可見簽章（沒有外觀，不顯示位置）：" + invisible.joinToString("、") { it.label },
+        Text(stringResource(Res.string.preview_invisible) + invisible.joinToString(stringResource(Res.string.sep_list)) { it.label },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
 }
@@ -2084,11 +2093,12 @@ private fun SelectableText(text: String) {
 
 // ---------------------------------------------------------------- OpenCerts
 
+@Composable
 private fun methodText(m: OaMethod): String = when (m) {
-    OaMethod.DOCUMENT_STORE -> "以太坊文件庫"
-    OaMethod.TOKEN_REGISTRY -> "以太坊權杖登錄（可轉讓文件）"
-    OaMethod.DID -> "DID 簽章"
-    OaMethod.NONE -> "未提供"
+    OaMethod.DOCUMENT_STORE -> stringResource(Res.string.oa_document_store)
+    OaMethod.TOKEN_REGISTRY -> stringResource(Res.string.oa_token_registry)
+    OaMethod.DID -> stringResource(Res.string.oa_did)
+    OaMethod.NONE -> stringResource(Res.string.value_not_given)
 }
 
 /**
@@ -2099,40 +2109,40 @@ private fun methodText(m: OaMethod): String = when (m) {
 /** Content credentials of a picture: what each manifest says and the checks in the C2PA specification's codes. */
 @Composable
 private fun C2paSection(f: StoredFile, c: C2paInfo) {
-    SectionTitle("內容憑證（C2PA）")
-    Text("C2PA manifest 記錄這個檔案由誰、用什麼工具、經過哪些步驟產生，並由簽署者簽章。存放位置：${c.container}。", style = MaterialTheme.typography.bodySmall)
+    SectionTitle(stringResource(Res.string.c2pa_title))
+    Text(stringResource(Res.string.c2pa_text, c.container), style = MaterialTheme.typography.bodySmall)
     c.manifests.forEach { m ->
         val failed = m.statuses.any { !it.success && (it.code.endsWith("mismatch") || it.code == "assertion.missing" || it.code == "claimSignature.missing") }
         val trusted = m.statuses.any { it.code == "signingCredential.trusted" }
-        CollapsibleSection(if (m.active) "目前的 manifest" else "成分的 manifest", initiallyExpanded = m.active, key = "c2pa-${f.id}-${m.label}") {
+        CollapsibleSection(if (m.active) stringResource(Res.string.c2pa_active) else stringResource(Res.string.c2pa_ingredient_manifest), initiallyExpanded = m.active, key = "c2pa-${f.id}-${m.label}") {
             VerdictPill(
                 when { failed -> Verdict.FAIL; trusted -> Verdict.PASS; else -> Verdict.CAUTION },
-                when { failed -> "內容或簽章不符"; trusted -> "簽章有效，簽署者在信任錨點"; else -> "簽章有效，簽署者不在信任錨點" },
+                when { failed -> stringResource(Res.string.c2pa_invalid); trusted -> stringResource(Res.string.c2pa_trusted); else -> stringResource(Res.string.c2pa_untrusted) },
             )
-            m.title?.let { LabelValue("標題", it, small = true) }
-            m.signer?.let { LabelValue("簽署者", it, small = true) }
-            m.signedAt?.let { LabelValue("時戳時間", localTime(it), small = true) }
-            m.generator?.let { LabelValue("產生工具", it, small = true) }
-            m.format?.let { LabelValue("格式", it, small = true) }
-            if (m.authors.isNotEmpty()) LabelValue("作者", m.authors.joinToString("、"), small = true)
+            m.title?.let { LabelValue(stringResource(Res.string.files_title), it, small = true) }
+            m.signer?.let { LabelValue(stringResource(Res.string.files_signer), it, small = true) }
+            m.signedAt?.let { LabelValue(stringResource(Res.string.c2pa_timestamp), localTime(it), small = true) }
+            m.generator?.let { LabelValue(stringResource(Res.string.c2pa_generator), it, small = true) }
+            m.format?.let { LabelValue(stringResource(Res.string.credential_format), it, small = true) }
+            if (m.authors.isNotEmpty()) LabelValue(stringResource(Res.string.c2pa_author), m.authors.joinToString(stringResource(Res.string.sep_list)), small = true)
             m.actions.forEach { a ->
-                LabelValue("動作", listOfNotNull(a.action, a.digitalSourceType?.let { "來源 $it" }, a.softwareAgent, a.description, a.time).joinToString("，"), small = true)
+                LabelValue(stringResource(Res.string.c2pa_actions), listOfNotNull(a.action, a.digitalSourceType?.let { stringResource(Res.string.c2pa_source, it) }, a.softwareAgent, a.description, a.time).joinToString(stringResource(Res.string.sep_comma)), small = true)
             }
             m.ingredients.forEach { i ->
-                LabelValue("成分", listOfNotNull(i.title, i.relationship, i.format).joinToString("，") + if (i.manifest != null) "（附 manifest）" else "", small = true)
+                LabelValue(stringResource(Res.string.c2pa_ingredients), listOfNotNull(i.title, i.relationship, i.format).joinToString(stringResource(Res.string.sep_comma)) + if (i.manifest != null) stringResource(Res.string.c2pa_has_manifest) else "", small = true)
             }
             m.identities.forEach { id ->
-                VerdictPill(checkVerdict(id.signature), "身分（${id.sigType}）：" + id.names.joinToString("、").ifEmpty { "未列名稱" })
+                VerdictPill(checkVerdict(id.signature), stringResource(Res.string.c2pa_identity, id.sigType) + id.names.joinToString(stringResource(Res.string.sep_list)).ifEmpty { stringResource(Res.string.c2pa_no_name) })
                 id.detail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
-            m.training.forEach { LabelValue("AI 訓練與資料探勘", it, small = true) }
-            CollapsibleSection("技術細節", m.statuses.size, key = "c2pa-detail-${f.id}-${m.label}") {
+            m.training.forEach { LabelValue(stringResource(Res.string.c2pa_training), it, small = true) }
+            CollapsibleSection(stringResource(Res.string.technical_details), m.statuses.size, key = "c2pa-detail-${f.id}-${m.label}") {
                 LabelValue("Manifest", m.label, small = true)
-                LabelValue("聲明版本", "v${m.claimVersion}", small = true)
+                LabelValue(stringResource(Res.string.c2pa_claim_version), "v${m.claimVersion}", small = true)
                 m.instanceId?.let { LabelValue("instanceID", it, small = true) }
-                LabelValue("宣告", m.assertions.joinToString("、"), small = true)
+                LabelValue(stringResource(Res.string.c2pa_assertions), m.assertions.joinToString(stringResource(Res.string.sep_list)), small = true)
                 m.statuses.forEach { s ->
-                    Text(s.code + (s.explanation?.let { "：$it" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                    Text(s.code + (s.explanation?.let { stringResource(Res.string.colon_value, it) } ?: ""), style = MaterialTheme.typography.bodySmall,
                         color = if (s.success) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                 }
             }
@@ -2144,67 +2154,67 @@ private fun C2paSection(f: StoredFile, c: C2paInfo) {
 private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo, busy: String?) {
     val view by produceState<OpenCertView?>(null, f.id, f.sha256) { value = model.files.openCertView(f) }
     val v = view
-    SectionTitle("OpenCerts 證書")
-    (v?.title ?: oc.name)?.let { LabelValue("名稱", it) }
-    LabelValue("版本", oc.version, small = true)
-    VerdictPill(checkVerdict(oc.integrity), "內容完整性：" + checkText(oc.integrity))
-    if (oc.integrity == Check.FAIL) Text("內容與 Merkle 證明不一致，檔案在發行後被改過。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    SectionTitle(stringResource(Res.string.oa_title))
+    (v?.title ?: oc.name)?.let { LabelValue(stringResource(Res.string.oa_name), it) }
+    LabelValue(stringResource(Res.string.oa_version), oc.version, small = true)
+    VerdictPill(checkVerdict(oc.integrity), stringResource(Res.string.oa_integrity) + checkText(oc.integrity))
+    if (oc.integrity == Check.FAIL) Text(stringResource(Res.string.oa_tampered), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     val online = oc.online
     if (online == null) {
-        Text("尚未在網路上查驗：發行者是否在以太坊發行且未撤銷，以及網域的 DNS 紀錄是否證明發行者身分。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.oa_not_checked), style = MaterialTheme.typography.bodySmall)
     } else {
-        VerdictPill(checkVerdict(online.issuance), "發行狀態：" + checkText(online.issuance))
+        VerdictPill(checkVerdict(online.issuance), stringResource(Res.string.oa_issuance) + checkText(online.issuance))
         online.issuanceDetail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-        VerdictPill(checkVerdict(online.identity), "發行者身分：" + checkText(online.identity))
+        VerdictPill(checkVerdict(online.identity), stringResource(Res.string.oa_identity) + checkText(online.identity))
         online.identityDetail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-        online.registryName?.let { LabelValue("OpenCerts 登錄名稱", it, small = true) }
-        Text("查驗時間：${localTime(online.checkedAt)}", style = MaterialTheme.typography.bodySmall)
+        online.registryName?.let { LabelValue(stringResource(Res.string.oa_registry), it, small = true) }
+        Text(stringResource(Res.string.oa_checked_at, localTime(online.checkedAt)), style = MaterialTheme.typography.bodySmall)
     }
-    OutlinedButton(onClick = { model.files.recheckOpenCert(f) }, enabled = busy == null) { Text(if (online == null) "查驗發行狀態" else "重新查驗") }
+    OutlinedButton(onClick = { model.files.recheckOpenCert(f) }, enabled = busy == null) { Text(if (online == null) stringResource(Res.string.oa_check) else stringResource(Res.string.action_check_again_query)) }
     if (v == null) return
     val builtIn = v.templateUrl?.let { url -> Regex("^https://([^/:]+)").find(url.trim())?.groupValues?.get(1)?.lowercase() in OpenCertOffline.BUILT_IN_HOSTS } == true
-    ActionRow(WalletIcons.Document, "離線顯示證書",
-        if (builtIn) "依發證機構使用的 OpenCerts 範例樣式排版，不需要網路，內容不離開手機" else "由錢包依證書內容排版，不需要網路，內容不離開手機") {
+    ActionRow(WalletIcons.Document, stringResource(Res.string.oa_offline),
+        if (builtIn) stringResource(Res.string.oa_offline_template) else stringResource(Res.string.oa_offline_wallet)) {
         model.screen.value = Screen.OpenCertRender(f.id, offline = true)
     }
     v.templateUrl?.let { url ->
         val origin = Regex("^https://[^/]+").find(url.trim())?.value
         if (origin != null) {
-            ActionRow(WalletIcons.Document, "以發證機構樣式顯示", "證書內容會傳給發證機構指定的顯示程式（$origin）") {
+            ActionRow(WalletIcons.Document, stringResource(Res.string.oa_issuer_style), stringResource(Res.string.oa_issuer_style_text, origin)) {
                 model.screen.value = Screen.OpenCertRender(f.id)
             }
         } else {
-            ActionRow(WalletIcons.Document, "以發證機構樣式顯示", "顯示程式不是 https 網址，無法安全載入", enabled = false) {}
+            ActionRow(WalletIcons.Document, stringResource(Res.string.oa_issuer_style), stringResource(Res.string.oa_renderer_not_https), enabled = false) {}
         }
     }
     if (v.recipient.isNotEmpty()) {
-        SectionTitle("受領人")
+        SectionTitle(stringResource(Res.string.oa_recipient))
         v.recipient.forEach { (k, value) -> LabelValue(k, value) }
     }
     if (v.main.isNotEmpty()) {
-        SectionTitle("證書內容")
+        SectionTitle(stringResource(Res.string.oa_content))
         v.main.forEach { (k, value) -> LabelValue(k, value) }
     }
     v.issuers.forEachIndexed { i, issuer ->
-        SectionTitle(if (v.issuers.size > 1) "發行者 ${i + 1}" else "發行者")
-        issuer.name?.let { LabelValue("名稱", it) }
-        issuer.url?.let { LabelValue("網址", it, small = true) }
-        LabelValue("發行方式", methodText(issuer.method), small = true)
-        issuer.value?.let { LabelValue(if (issuer.method == OaMethod.DID) "DID" else "合約地址", it, small = true) }
-        issuer.identityType?.let { t -> LabelValue("身分證明", t + (issuer.identityLocation?.let { "：$it" } ?: ""), small = true) }
-        issuer.revocationType?.let { t -> LabelValue("撤銷機制", t + (issuer.revocationLocation?.let { "：$it" } ?: ""), small = true) }
+        SectionTitle(if (v.issuers.size > 1) stringResource(Res.string.oa_issuer_n, i + 1) else stringResource(Res.string.oa_issuer))
+        issuer.name?.let { LabelValue(stringResource(Res.string.oa_name), it) }
+        issuer.url?.let { LabelValue(stringResource(Res.string.oa_url), it, small = true) }
+        LabelValue(stringResource(Res.string.oa_method), methodText(issuer.method), small = true)
+        issuer.value?.let { LabelValue(if (issuer.method == OaMethod.DID) "DID" else stringResource(Res.string.oa_contract), it, small = true) }
+        issuer.identityType?.let { t -> LabelValue(stringResource(Res.string.oa_identity_proof), t + (issuer.identityLocation?.let { stringResource(Res.string.colon_value, it) } ?: ""), small = true) }
+        issuer.revocationType?.let { t -> LabelValue(stringResource(Res.string.oa_revocation), t + (issuer.revocationLocation?.let { stringResource(Res.string.colon_value, it) } ?: ""), small = true) }
     }
     if (v.signatories.isNotEmpty()) {
-        SectionTitle("簽署人")
+        SectionTitle(stringResource(Res.string.oa_signatories))
         v.signatories.forEach { s ->
-            listOfNotNull(s.name, s.position, s.organisation).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString("，"), style = MaterialTheme.typography.bodyMedium) }
+            listOfNotNull(s.name, s.position, s.organisation).takeIf { it.isNotEmpty() }?.let { Text(it.joinToString(stringResource(Res.string.sep_comma)), style = MaterialTheme.typography.bodyMedium) }
             s.image?.let { model.platform.decodeImage(it) }?.let { img ->
-                Image(img, contentDescription = "簽名", contentScale = ContentScale.Fit, modifier = Modifier.height(64.dp))
+                Image(img, contentDescription = stringResource(Res.string.oa_signature), contentScale = ContentScale.Fit, modifier = Modifier.height(64.dp))
             }
         }
     }
     if (v.transcript.isNotEmpty()) {
-        SectionTitle("成績單")
+        SectionTitle(stringResource(Res.string.oa_transcript))
         Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
             Row {
                 v.transcriptColumns.forEach { c -> Text(c, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(120.dp).padding(4.dp)) }
@@ -2215,7 +2225,7 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
         }
     }
     if (v.images.isNotEmpty()) {
-        SectionTitle("圖片")
+        SectionTitle(stringResource(Res.string.format_image))
         v.images.forEach { (name, bytes) ->
             model.platform.decodeImage(bytes)?.let { img ->
                 Text(name, style = MaterialTheme.typography.bodySmall)
@@ -2224,20 +2234,20 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
         }
     }
     if (v.attachments.isNotEmpty()) {
-        SectionTitle("附件")
+        SectionTitle(stringResource(Res.string.oa_attachments))
         v.attachments.forEach { a ->
-            Text("${a.name}（${sizeText(a.bytes.size.toLong())}）", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.files_group_count, a.name, sizeText(a.bytes.size.toLong())), style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { model.files.storeOpenCertAttachment(f, a) }, enabled = busy == null) { Text("存入文件") }
-                OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a) }, enabled = busy == null) { Text("匯出") }
+                OutlinedButton(onClick = { model.files.storeOpenCertAttachment(f, a) }, enabled = busy == null) { Text(stringResource(Res.string.oa_store)) }
+                OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a) }, enabled = busy == null) { Text(stringResource(Res.string.action_export)) }
                 if (model.platform.canShareFiles) {
-                    OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a, share = true) }, enabled = busy == null) { Text("分享") }
+                    OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a, share = true) }, enabled = busy == null) { Text(stringResource(Res.string.action_share)) }
                 }
             }
         }
     }
     if (v.other.isNotEmpty()) {
-        SectionTitle("其他欄位")
+        SectionTitle(stringResource(Res.string.oa_other_fields))
         v.other.forEach { (k, value) -> LabelValue(k, value, small = true) }
     }
 }
@@ -2251,12 +2261,12 @@ fun OpenCertRenderScreen(model: WalletModel, screen: Screen.OpenCertRender) {
     }
     Column(Modifier.fillMaxSize()) {
         if (!screen.offline) {
-            Text("由發證機構指定的顯示程式繪製；內容與上一頁的檢查結果相同，查驗結果以上一頁為準。", style = MaterialTheme.typography.bodySmall,
+            Text(stringResource(Res.string.oa_renderer_note), style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
         when (val html = page) {
-            null -> Text("正在準備", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
-            "" -> Text(if (screen.offline) "無法讀取這份證書。" else "這份證書沒有可用的 https 顯示程式。", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+            null -> Text(stringResource(Res.string.state_preparing), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
+            "" -> Text(if (screen.offline) stringResource(Res.string.oa_unreadable) else stringResource(Res.string.oa_no_renderer), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
             else -> OpenCertRendererView(html, Modifier.fillMaxWidth().weight(1f), offline = screen.offline) { url ->
                 model.platform.openBrowser(url)
             }
@@ -2287,22 +2297,22 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     var zkGate by remember(f) { mutableStateOf(false) }
     val composition = zkPdfComposition(model)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("把「${f.report?.title ?: f.name}」變成可出示的證件。查驗方只會看到你勾選的欄位，以及文件指紋、格式與大小；原檔不會送出。",
+        Text(stringResource(Res.string.derive_intro, f.report?.title ?: f.name),
             style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             f.report?.let { r -> val (v, t) = verdictOf(r.verdict); VerdictPill(v, t) }
-            if (f.timestamps.any { it.trusted }) VerdictPill(Verdict.PASS, "已有時戳")
+            if (f.timestamps.any { it.trusted }) VerdictPill(Verdict.PASS, stringResource(Res.string.derive_has_timestamp))
             f.source?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
-        SectionTitle("1. 欄位（由文件內容解析）")
-        if (fields == null) Text("正在讀取文件內容", style = MaterialTheme.typography.bodySmall)
+        SectionTitle(stringResource(Res.string.derive_step_fields))
+        if (fields == null) Text(stringResource(Res.string.derive_reading), style = MaterialTheme.typography.bodySmall)
         if (fields?.locked == true) {
-            Text(if (tried != null) "密碼不正確，請再試一次。" else "這份 PDF 有開啟密碼，輸入後才能讀出文件內的欄位（MyData 文件通常是身分證統一編號）。密碼只用於這次讀取，不會保存；在設定保存 MyData 自動填入，或已製作身分證卡時，MyData 文件會自動開啟。",
+            Text(if (tried != null) stringResource(Res.string.pdf_wrong_password) else stringResource(Res.string.derive_password_text),
                 style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text("開啟密碼") }, singleLine = true,
+                OutlinedTextField(value = password, onValueChange = { password = it.take(64) }, label = { Text(stringResource(Res.string.pdf_password)) }, singleLine = true,
                     visualTransformation = PasswordVisualTransformation(), modifier = Modifier.weight(1f))
-                Button(onClick = { tried = password }, enabled = password.isNotBlank()) { Text("讀取") }
+                Button(onClick = { tried = password }, enabled = password.isNotBlank()) { Text(stringResource(Res.string.derive_read)) }
             }
         }
         fields?.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -2315,20 +2325,20 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 }
             }
         }
-        if (fields != null && suggested.isEmpty()) Text("文件內沒有可解析的欄位。", style = MaterialTheme.typography.bodySmall)
+        if (fields != null && suggested.isEmpty()) Text(stringResource(Res.string.derive_no_fields), style = MaterialTheme.typography.bodySmall)
         val entryExit = fields?.entryExit
         if (entryExit != null) {
-            Text("指定日期是否在${entryExit.inside}（依出入境紀錄計算，可加入多個日期）", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.derive_presence, entryExit.inside), style = MaterialTheme.typography.bodyMedium)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(value = dayText, onValueChange = { dayText = it.take(10) }, label = { Text("日期（2026-01-31）") }, singleLine = true,
+                OutlinedTextField(value = dayText, onValueChange = { dayText = it.take(10) }, label = { Text(stringResource(Res.string.derive_date_label)) }, singleLine = true,
                     modifier = Modifier.weight(1f))
                 val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
                 val answer = day?.let { DocumentFields.insideOn(entryExit, it) }
-                Button(onClick = { answer?.let { a -> dayClaims = dayClaims.filter { it.name != a.name } + a } }, enabled = answer != null) { Text("加入") }
+                Button(onClick = { answer?.let { a -> dayClaims = dayClaims.filter { it.name != a.name } + a } }, enabled = answer != null) { Text(stringResource(Res.string.action_add)) }
             }
             val day = runCatching { LocalDate.parse(dayText.trim()) }.getOrNull()
             if (dayText.isNotBlank() && (day == null || DocumentFields.insideOn(entryExit, day) == null)) {
-                Text(if (day == null) "日期格式為 年-月-日。" else "這個日期不在文件的查詢期間（${entryExit.periodFrom} 至 ${entryExit.coveredUntil}），無法判斷。",
+                Text(if (day == null) stringResource(Res.string.derive_date_format) else stringResource(Res.string.derive_date_outside, entryExit.periodFrom.toString(), entryExit.coveredUntil.toString()),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             dayClaims.forEach { c ->
@@ -2336,34 +2346,34 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                     Checkbox(checked = true, onCheckedChange = { dayClaims = dayClaims - c })
                     Column {
                         Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
-                        Text(if (c.value == "true") "在${entryExit.inside}" else "不在${entryExit.inside}", style = MaterialTheme.typography.bodySmall)
+                        Text(if (c.value == "true") stringResource(Res.string.derive_was_in, entryExit.inside) else stringResource(Res.string.derive_was_not_in, entryExit.inside), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
-        TextButton(onClick = { showNote = !showNote }) { Text(if (showNote) "不加入自填欄位" else "加入自填欄位（查驗方會看到這是持有人自填）") }
+        TextButton(onClick = { showNote = !showNote }) { Text(if (showNote) stringResource(Res.string.derive_no_note) else stringResource(Res.string.derive_add_note)) }
         if (showNote) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = noteName, onValueChange = { noteName = it.take(32) }, label = { Text("欄位名稱") }, singleLine = true, modifier = Modifier.weight(1f))
-                OutlinedTextField(value = noteValue, onValueChange = { noteValue = it.take(200) }, label = { Text("內容") }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = noteName, onValueChange = { noteName = it.take(32) }, label = { Text(stringResource(Res.string.derive_note_name)) }, singleLine = true, modifier = Modifier.weight(1f))
+                OutlinedTextField(value = noteValue, onValueChange = { noteValue = it.take(200) }, label = { Text(stringResource(Res.string.derive_note_value)) }, singleLine = true, modifier = Modifier.weight(1f))
             }
         }
-        SectionTitle("2. 證據")
+        SectionTitle(stringResource(Res.string.derive_step_evidence))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = timestamp, onCheckedChange = { timestamp = it })
-            Text(if (f.timestamps.any { it.trusted }) "附上已保存的時戳" else "取得並附上文件時戳（只送出 SHA-256）")
+            Text(if (f.timestamps.any { it.trusted }) stringResource(Res.string.derive_attach_timestamp) else stringResource(Res.string.derive_get_timestamp))
         }
         if (f.report?.format == DocumentFormat.PDF) ZkPdfDeriveSection(model, f.id, fields?.zkPdf, zkForm) { zkForm = it }
-        SectionTitle("3. 有效期間")
+        SectionTitle(stringResource(Res.string.derive_step_validity))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf<Pair<Int?, String>>(null to "不限", 365 to "一年", 1825 to "五年").forEach { (d, t) ->
+            listOf<Pair<Int?, String>>(null to stringResource(Res.string.derive_unlimited), 365 to stringResource(Res.string.derive_one_year), 1825 to stringResource(Res.string.derive_five_years)).forEach { (d, t) ->
                 FilterChip(selected = validDays == d, onClick = { validDays = d }, label = { Text(t) })
             }
         }
         BusyLine(busy, error)
         val claims = suggested.filter { it.name in chosen } + dayClaims + listOfNotNull(
             if (showNote && noteName.isNotBlank() && noteValue.isNotBlank()) {
-                DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), "持有人自填：" + noteName.trim())
+                DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), stringResource(Res.string.derive_self_asserted) + noteName.trim())
             } else null,
         )
         val zkMatch = fields?.zkPdf?.let { zkForm.match(it) }?.takeIf { zkForm.on }
@@ -2371,14 +2381,16 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
         Button(
             onClick = { if (zkMatch != null) zkGate = true else model.files.derive(f, claims, timestamp, validDays) },
             enabled = busy == null && (claims.isNotEmpty() || zkMatch != null) && zkProblem == null,
-        ) { Text(if (zkMatch != null) "產生零知識證明與衍生憑證" else "產生衍生憑證") }
+        ) { Text(if (zkMatch != null) stringResource(Res.string.derive_make_zk) else stringResource(Res.string.derive_make)) }
         if (zkGate && zkMatch != null) {
+            val chooseOne = stringResource(Res.string.derive_choose_one)
+            val notOffered = stringResource(Res.string.derive_not_offered)
             ZkProofGate(
                 zk = model.zk,
                 kind = ZkProofKind.PDF,
                 context = ZkChoiceContext(
                     selfHostConfigured = model.settings.zkProverUrl.isNotEmpty(),
-                    withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明",
+                    withoutZk = stringResource(Res.string.derive_without_zk),
                     desktopImport = composition == ZkPdfStatement.PHONE,
                 ),
                 assets = ZkPdfAssets.required(composition, true),
@@ -2393,15 +2405,15 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                         ZkChoiceKind.SELF_HOSTED -> model.files.derive(f, claims, timestamp, validDays,
                             FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended = true, selfHosted = true))
                         ZkChoiceKind.WITHOUT_ZK -> if (claims.isNotEmpty()) model.files.derive(f, claims, timestamp, validDays)
-                            else model.message.value = "請至少選擇一個欄位"
-                        else -> model.message.value = "這個方式尚未提供；可在電腦版錢包匯入同一份文件後產生"
+                            else model.message.value = chooseOne
+                        else -> model.message.value = notOffered
                     }
                 },
                 onDismiss = { zkGate = false },
             )
         }
-        CollapsibleSection("衍生憑證證明什麼", key = "derive-about") {
-            Text("衍生憑證由這支錢包的文件發行金鑰（did:key）簽發，結構是 IETF SD-JWT VC，信任等級為 T3：它證明你在何時、以哪些證據保存了這份文件，不代表原發文機關另行背書。Bonds 的 vc+moica 結構只用於身分證卡；Bonds 查驗方要的 MyData 衍生答案（所得、勞保、戶籍）在出示當下才由原檔產生，不需先在這裡製作。",
+        CollapsibleSection(stringResource(Res.string.derive_what_title), key = "derive-about") {
+            Text(stringResource(Res.string.derive_what_text),
                 style = MaterialTheme.typography.bodySmall)
         }
     }
@@ -2420,20 +2432,21 @@ fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
             Text(src.name, style = MaterialTheme.typography.titleSmall)
             Text(
                 when {
-                    src.nationalId -> "1. 在 MyData 頁面選擇驗證方式並同意；2. 行動自然人憑證會轉到官方 App，完成後回到這裡；3. 按下載，ZIP 會自動解出，接著輸入身分證統一編號開啟 PDF。"
-                    src.myData -> "在 MyData 頁面完成驗證後按下載；ZIP 會自動解出，每個檔案各自保存並檢查。需要較久產生的文件，完成後從「MyData 個人文件」下載。"
-                    else -> "下載的文件會直接保存並檢查；網站要求行動自然人憑證時，會轉到官方 App 完成登入後回到這裡。"
+                    src.nationalId -> stringResource(Res.string.mydata_steps_mobile)
+                    src.myData -> stringResource(Res.string.mydata_steps)
+                    else -> stringResource(Res.string.portal_steps)
                 },
                 style = MaterialTheme.typography.bodySmall,
             )
             busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
         }
+        val noApp = stringResource(Res.string.portal_no_app)
         PortalWebView(
             url = src.url,
             modifier = Modifier.fillMaxWidth().weight(1f),
             onFile = { model.files.importDownload(it, src) },
             onExternal = { url ->
-                if (!model.platform.openExternal(url)) model.message.value = "這支手機沒有可開啟這個連結的 App（例如行動自然人憑證）"
+                if (!model.platform.openExternal(url)) model.message.value = noApp
             },
             onError = { model.message.value = it },
             autofill = myDataAutofill(model).takeIf { src.myData },
@@ -2442,9 +2455,11 @@ fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
 }
 
 /** The saved MyData ID number and birth date, filled into MyData's own pages (Bonds autofill). */
+@Composable
 private fun myDataAutofill(model: WalletModel): PortalAutofill? {
     val id = model.settings.myDataIdNumber ?: return null
     val birth = model.settings.myDataBirthDate ?: return null
-    return PortalAutofill(MyDataProfile.HOST, MyDataProfile.autofillScript(id, birth)) { n -> model.message.value = "已在 MyData 頁面填入 $n 個已保存的欄位" }
+    val filled = stringResource(Res.string.mydata_autofilled, "{n}")
+    return PortalAutofill(MyDataProfile.HOST, MyDataProfile.autofillScript(id, birth)) { n -> model.message.value = filled.replace("{n}", n.toString()) }
 }
 
