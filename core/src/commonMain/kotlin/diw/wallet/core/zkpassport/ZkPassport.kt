@@ -1,0 +1,229 @@
+package diw.wallet.core.zkpassport
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
+import kotlin.io.encoding.Base64
+
+/** Data a zkPassport request can ask the holder to disclose (the SDK's query keys). */
+enum class ZkPassportField(val key: String) {
+    DOCUMENT_TYPE("document_type"),
+    ISSUING_COUNTRY("issuing_country"),
+    FULLNAME("fullname"),
+    NATIONALITY("nationality"),
+    BIRTHDATE("birthdate"),
+    EXPIRY_DATE("expiry_date"),
+    DOCUMENT_NUMBER("document_number"),
+    GENDER("gender"),
+}
+
+/**
+ * What this wallet asks a zkPassport holder for. The document type and issuing country are always disclosed: they
+ * fix the zone layout the other fields are read with and decide the trust shown. [domain] is the service the proofs
+ * are scoped to; the holder's app shows it but nothing proves it, so the result is labelled with it as entered.
+ */
+data class ZkPassportRequest(
+    val domain: String,
+    val name: String,
+    val purpose: String,
+    val logo: String = "",
+    val scope: String? = null,
+    val disclose: Set<ZkPassportField> = emptySet(),
+    val minAge: Int? = null,
+    val nationalityIn: List<String> = emptyList(),
+    val nationalityOut: List<String> = emptyList(),
+    val issuingCountryIn: List<String> = emptyList(),
+    val issuingCountryOut: List<String> = emptyList(),
+    val customData: String? = null,
+    /** Accepts mock documents (zkPassport's test passports) and uses the Sepolia registry. */
+    val devMode: Boolean = false,
+    val validitySeconds: Long = ZkPassport.DEFAULT_VALIDITY,
+)
+
+/** Where the registries are read; null RPC addresses use the built-in public nodes. */
+data class ZkPassportConfig(
+    val mainnetRpc: String? = null,
+    val sepoliaRpc: String? = null,
+    /** Lets zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
+    val verifierApi: Boolean = false,
+)
+
+/** The holder's document as the proofs disclose it; every value is committed to by a verified proof. */
+data class ZkPassportDisclosed(
+    val documentCode: String?,
+    val issuingCountry: String?,
+    val nationality: String?,
+    val lastName: String?,
+    val givenNames: String?,
+    val documentNumber: String?,
+    /** YYMMDD as in the zone. */
+    val birthdate: String?,
+    val expiryDate: String?,
+    val gender: String?,
+    /** "td3" (passport), "td1" (card) or "unknown". */
+    val layout: String,
+)
+
+data class ZkPassportResult(
+    val verified: Boolean,
+    /** Codes from the native checker or this client, such as `scope:compare_age` or `registry_unreachable`. */
+    val errors: List<String>,
+    val version: String?,
+    /** The date the proofs were made for, Unix seconds. */
+    val proofDate: Long?,
+    val uniqueIdentifier: String?,
+    val identifierType: String?,
+    val disclosed: ZkPassportDisclosed?,
+    val minAge: Int?,
+    val maxAge: Int?,
+    val nationalityIn: List<String>,
+    val nationalityOut: List<String>,
+    val issuingCountryIn: List<String>,
+    val issuingCountryOut: List<String>,
+    val boundData: String?,
+    val devMode: Boolean,
+    /** Decided by zkPassport's verifier service instead of on this device. */
+    val viaVerifierApi: Boolean = false,
+)
+
+sealed interface ZkPassportState {
+    data object Connecting : ZkPassportState
+    /** Show [url] as a QR code or open it on this phone. */
+    data class Waiting(val url: String) : ZkPassportState
+    data class Scanned(val url: String) : ZkPassportState
+    data object Generating : ZkPassportState
+    data class Receiving(val received: Int, val total: Int) : ZkPassportState
+    data object Verifying : ZkPassportState
+    data class Done(val result: ZkPassportResult) : ZkPassportState
+    data object Rejected : ZkPassportState
+    /** [code]: `unsupported_document`, `proof_failed`, `holder_error`, `connection`, `native_unavailable`. */
+    data class Failed(val code: String, val detail: String? = null) : ZkPassportState
+}
+
+interface ZkPassportSession {
+    val state: StateFlow<ZkPassportState>
+    fun close()
+}
+
+/** Asks a zkPassport holder over zkPassport's bridge and verifies the proofs on this device. */
+interface ZkPassportVerifier {
+    fun open(request: ZkPassportRequest, config: ZkPassportConfig, scope: CoroutineScope): ZkPassportSession
+}
+
+object ZkPassport {
+    const val DEFAULT_VALIDITY: Long = 7 * 24 * 60 * 60
+    /** The SDK version the request URL claims; the holder's app reads its parameters by it. */
+    const val SDK_VERSION = "0.19.3"
+    const val MAINNET = 1L
+    const val SEPOLIA = 11155111L
+
+    fun chain(devMode: Boolean): Long = if (devMode) SEPOLIA else MAINNET
+
+    /** The SDK's domain form: lower case without scheme, port, path, query or fragment. */
+    fun normalizeDomain(input: String): String =
+        input.trim().lowercase().substringAfter("://").substringBefore('/').substringBefore('?')
+            .substringBefore('#').substringAfterLast('@').substringBefore(':')
+
+    /** The SDK query object for [request]. */
+    fun query(request: ZkPassportRequest): JsonObject = buildJsonObject {
+        val disclose = request.disclose + ZkPassportField.DOCUMENT_TYPE + ZkPassportField.ISSUING_COUNTRY
+        for (field in ZkPassportField.entries) {
+            val inList = when (field) {
+                ZkPassportField.NATIONALITY -> request.nationalityIn
+                ZkPassportField.ISSUING_COUNTRY -> request.issuingCountryIn
+                else -> emptyList()
+            }
+            val outList = when (field) {
+                ZkPassportField.NATIONALITY -> request.nationalityOut
+                ZkPassportField.ISSUING_COUNTRY -> request.issuingCountryOut
+                else -> emptyList()
+            }
+            if (field !in disclose && inList.isEmpty() && outList.isEmpty()) continue
+            putJsonObject(field.key) {
+                if (field in disclose) put("disclose", true)
+                if (inList.isNotEmpty()) putJsonArray("in") { inList.forEach { add(JsonPrimitive(it)) } }
+                if (outList.isNotEmpty()) putJsonArray("out") { outList.forEach { add(JsonPrimitive(it)) } }
+            }
+        }
+        request.minAge?.let { age -> putJsonObject("age") { put("gte", age) } }
+        request.customData?.takeIf { it.isNotEmpty() }?.let { data -> putJsonObject("bind") { put("custom_data", data) } }
+    }
+
+    /** The service object of the request URL. */
+    fun service(request: ZkPassportRequest): JsonObject = buildJsonObject {
+        put("name", request.name)
+        put("logo", request.logo)
+        put("purpose", request.purpose)
+        request.scope?.takeIf { it.isNotEmpty() }?.let { put("scope", it) }
+    }
+
+    /** The `https://zkpassport.id/r` link the holder's app opens; [bridgeId] is the bridge's public key in hex. */
+    fun url(request: ZkPassportRequest, bridgeId: String, nowSeconds: Long): String {
+        val config = Base64.encode(Json.encodeToString(JsonObject.serializer(), query(request)).encodeToByteArray())
+        val service = Base64.encode(Json.encodeToString(JsonObject.serializer(), service(request)).encodeToByteArray())
+        return "https://zkpassport.id/r?d=${normalizeDomain(request.domain)}&t=$bridgeId&c=${encode(config)}&s=${encode(service)}" +
+            "&p=$bridgeId&m=fast&v=$SDK_VERSION&dt=${nowSeconds - request.validitySeconds}&dev=${if (request.devMode) 1 else 0}"
+    }
+
+    /** encodeURIComponent for the base64 alphabet. */
+    private fun encode(s: String): String = s.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
+
+    private fun JsonElement?.text(): String? = (this as? JsonPrimitive)?.contentOrNull
+    private fun JsonElement?.countries(): List<String> =
+        (this as? JsonObject)?.get("countries")?.let { it as? JsonArray }?.mapNotNull { it.text() }.orEmpty()
+
+    /** Reads the native checker's JSON result. */
+    fun result(json: String, viaVerifierApi: Boolean = false): ZkPassportResult {
+        val o = Json.parseToJsonElement(json).jsonObject
+        val conditions = o["conditions"] as? JsonObject ?: JsonObject(emptyMap())
+        val age = conditions["compare_age"] as? JsonObject
+        val disclosed = (o["disclosed"] as? JsonObject)?.let { d ->
+            ZkPassportDisclosed(
+                documentCode = d["documentCode"].text(), issuingCountry = d["issuingCountry"].text(),
+                nationality = d["nationality"].text(), lastName = d["lastName"].text(), givenNames = d["givenNames"].text(),
+                documentNumber = d["documentNumber"].text(), birthdate = d["birthdate"].text(),
+                expiryDate = d["expiryDate"].text(), gender = d["gender"].text(), layout = d["layout"].text() ?: "unknown",
+            )
+        }
+        return ZkPassportResult(
+            verified = o["verified"]?.jsonPrimitive?.booleanOrNull == true,
+            errors = (o["errors"] as? JsonArray)?.mapNotNull { it.text() }.orEmpty(),
+            version = o["version"].text(),
+            proofDate = (o["date"] as? JsonPrimitive)?.longOrNull,
+            uniqueIdentifier = o["uniqueIdentifier"].text(),
+            identifierType = o["uniqueIdentifierType"].text(),
+            disclosed = disclosed,
+            minAge = (age?.get("minAge") as? JsonPrimitive)?.longOrNull?.toInt(),
+            maxAge = (age?.get("maxAge") as? JsonPrimitive)?.longOrNull?.toInt(),
+            nationalityIn = conditions["inclusion_check_nationality"].countries(),
+            nationalityOut = conditions["exclusion_check_nationality"].countries(),
+            issuingCountryIn = conditions["inclusion_check_issuing_country"].countries(),
+            issuingCountryOut = conditions["exclusion_check_issuing_country"].countries(),
+            boundData = (conditions["bind"] as? JsonObject)?.get("data")?.let { it as? JsonObject }?.get("custom_data").text(),
+            devMode = o["devMode"]?.jsonPrimitive?.booleanOrNull == true,
+            viaVerifierApi = viaVerifierApi,
+        )
+    }
+
+    /** A result for a bundle that could not be checked at all. */
+    fun failure(error: String, devMode: Boolean): ZkPassportResult = ZkPassportResult(
+        false, listOf(error), null, null, null, null, null, null, null,
+        emptyList(), emptyList(), emptyList(), emptyList(), null, devMode,
+    )
+
+    internal fun JsonObject.array(key: String) = this[key]?.jsonArray
+}

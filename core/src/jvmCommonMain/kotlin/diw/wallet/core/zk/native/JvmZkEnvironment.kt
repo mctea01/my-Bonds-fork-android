@@ -8,10 +8,13 @@ import diw.wallet.core.zk.OpenAcAgeProver
 import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkNativeStatus
+import diw.wallet.core.zk.ZkPdfAssets
 import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.profile.bonds.SocketBondsLanLink
+import diw.wallet.core.zkpassport.JvmZkPassportVerifier
+import diw.wallet.core.zkpassport.ZkPassportVerifier
 import diw.wallet.core.zktls.NativeZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsEngine
 import io.ktor.client.HttpClient
@@ -56,6 +59,14 @@ class JvmZkEnvironment(
     override val ageVerifier: OpenAcAgeVerifier? by lazy { store?.let { OpenAcAgeNativeVerifier(it, File(dataDirectory, "zk-verify")) } }
 
     override val pdf: ZkPdfEngine? by lazy { store?.let { ZkPdfNativeEngine(it) } }
+
+    override val zkPassport: ZkPassportVerifier by lazy {
+        JvmZkPassportVerifier(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = {
+            store?.let { s -> ZkPdfAssets.CRS.map { s.installedFile(it) ?: return@let null }.first().parentFile }
+        }, nativeReady = {
+            (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.NOIR_ULTRAHONK) == true
+        })
+    }
 
     override val tls: ZkTlsEngine by lazy {
         NativeZkTlsEngine(http, lan::localAddresses, lan::preferred, socketFactoryFor) {
