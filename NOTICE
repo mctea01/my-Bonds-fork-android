@@ -59,6 +59,12 @@ its own license:
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
+- zkPassport zkpassport-packages Rust crates (zkpassport-core, zkpassport-ffi,
+  zkpassport-bridge), revision dae2129a0722e9391a4a243c6d53df0a134a74f8,
+  vendored in native/third_party/zkpassport - MIT License (as declared in the
+  crates' Cargo manifests; see native/third_party/zkpassport/README.md)
+- taceo-poseidon2 0.2, k256 0.13, aes-gcm 0.10, sha1 0.10, base64 and hex -
+  MIT or Apache License 2.0; miniz_oxide 0.8 - MIT, Zlib or Apache License 2.0
 
 Development and test tools that are not shipped in the application:
 
