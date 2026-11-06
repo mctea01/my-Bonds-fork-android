@@ -1,5 +1,6 @@
 package diw.wallet.core.trust
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.Bc
 import diw.wallet.core.document.XmlDsig
 import diw.wallet.core.document.XmlParsing
@@ -59,7 +60,7 @@ class TrustListLoader(
     private class Fetched(val bytes: ByteArray?, val etag: String?, val lastModified: String?)
 
     private suspend fun fetch(url: String, etag: String?, lastModified: String?): Fetched {
-        if (!url.startsWith("https://") && !url.startsWith("http://")) throw TrustListException("不支援的網址：$url")
+        if (!url.startsWith("https://") && !url.startsWith("http://")) throw TrustListException(ct("core_tl_bad_url", url))
         val resp: HttpResponse = http.get(url) {
             etag?.let { header(HttpHeaders.IfNoneMatch, it) }
             lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
@@ -67,7 +68,7 @@ class TrustListLoader(
         if (resp.status == HttpStatusCode.NotModified) return Fetched(null, etag, lastModified)
         if (!resp.status.isSuccess()) throw TrustListException("HTTP ${resp.status.value}")
         val bytes = resp.readRawBytes()
-        if (bytes.size > MAX_LIST_BYTES) throw TrustListException("清單超過 ${MAX_LIST_BYTES / 1024 / 1024} MB")
+        if (bytes.size > MAX_LIST_BYTES) throw TrustListException(ct("core_tl_too_large", MAX_LIST_BYTES / 1024 / 1024))
         return Fetched(bytes, resp.headers[HttpHeaders.ETag], resp.headers[HttpHeaders.LastModified])
     }
 
@@ -76,7 +77,7 @@ class TrustListLoader(
         val f = fetch(aatlUrl, previous?.etag, previous?.lastModified)
         val at = now().epochSeconds
         if (f.bytes == null && previous != null) return previous.copy(fetchedAt = at)
-        val (services, signer) = aatlFromPdf(f.bytes ?: throw TrustListException("沒有內容"), adobeRootPins, now())
+        val (services, signer) = aatlFromPdf(f.bytes ?: throw TrustListException(ct("core_tl_empty")), adobeRootPins, now())
         return TrustListSnapshot(
             kind = TrustListKind.AATL.id, fetchedAt = at, etag = f.etag, lastModified = f.lastModified, signer = signer,
             parts = listOf(TrustListPart("AATL", aatlUrl, services = services)),
@@ -94,7 +95,7 @@ class TrustListLoader(
         val lotl = if (lotlBytes != null) parseLotl(lotlBytes, pins) else null
         // An unchanged EU list leaves the national lists to be refreshed with the signers it named last time.
         val pointers = lotl?.pointers ?: previous?.parts?.map { Pointer(it.territory, it.url, it.signerPins.toSet()) }
-            ?: throw TrustListException("沒有內容")
+            ?: throw TrustListException(ct("core_tl_empty"))
         val wanted = pointers.filter { territories == null || it.territory in territories }
         val before = previous?.parts.orEmpty().associateBy { it.territory }
         val gate = Semaphore(parallelism)
@@ -104,7 +105,7 @@ class TrustListLoader(
                     val old = before[p.territory]
                     try {
                         // A list kept from before the signers were recorded waits for the next EU list.
-                        if (p.signerPins.isEmpty()) return@withPermit old ?: TrustListPart(p.territory, p.url, error = "歐盟清單未更新")
+                        if (p.signerPins.isEmpty()) return@withPermit old ?: TrustListPart(p.territory, p.url, error = ct("core_tl_eu_stale"))
                         val sameUrl = old?.url == p.url
                         val r = fetch(p.url, old?.etag?.takeIf { sameUrl }, old?.lastModified?.takeIf { sameUrl })
                         val bytes = r.bytes ?: return@withPermit old!!.copy(error = null, signerPins = p.signerPins.sorted())
@@ -174,16 +175,16 @@ class TrustListLoader(
          */
         fun aatlFromPdf(pdf: ByteArray, rootPins: Set<String>, at: Instant): Pair<List<ListedService>, String> {
             val file = PdfFile(pdf)
-            val field = PdfSignatures(file).fields().firstOrNull { it.contents.isNotEmpty() } ?: throw TrustListException("AATL 沒有簽章")
-            if (field.signedLength != pdf.size.toLong()) throw TrustListException("AATL 簽章後有變更")
+            val field = PdfSignatures(file).fields().firstOrNull { it.contents.isNotEmpty() } ?: throw TrustListException(ct("core_aatl_unsigned"))
+            if (field.signedLength != pdf.size.toLong()) throw TrustListException(ct("core_aatl_changed"))
             val cms = runCatching { CMSSignedData(CMSProcessableByteArray(field.signedData(pdf)), field.contents.trimDer()) }
-                .getOrElse { throw TrustListException("AATL 簽章無法解析", it) }
+                .getOrElse { throw TrustListException(ct("core_aatl_sig_bad"), it) }
             val certs = cms.certificates.getMatches(null).map { it as X509CertificateHolder }
-            val info = cms.signerInfos.signers.firstOrNull() ?: throw TrustListException("AATL 沒有簽署者")
-            val signer = certs.firstOrNull { info.sid.match(it) } ?: throw TrustListException("AATL 沒有附上簽署者憑證")
+            val info = cms.signerInfos.signers.firstOrNull() ?: throw TrustListException(ct("core_aatl_no_signer"))
+            val signer = certs.firstOrNull { info.sid.match(it) } ?: throw TrustListException(ct("core_aatl_no_cert"))
             val intact = runCatching { info.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(signer)) }.getOrDefault(false)
-            if (!intact) throw TrustListException("AATL 簽章值不符")
-            val settings = embeddedFile(file, "SecuritySettings.xml") ?: throw TrustListException("AATL 沒有 SecuritySettings.xml")
+            if (!intact) throw TrustListException(ct("core_aatl_sig_mismatch"))
+            val settings = embeddedFile(file, "SecuritySettings.xml") ?: throw TrustListException(ct("core_aatl_no_settings"))
             val services = parseAatl(settings)
             // The pinned root may come from the signature or from the list itself: only its fingerprint decides.
             val roots = (certs.map { it.encoded } + services.map { it.der }).filter { TrustLists.pin(it) in rootPins }
@@ -195,7 +196,7 @@ class TrustListLoader(
                 chain.add(certs.firstOrNull { it !in chain && it.subject == cur.issuer } ?: break)
             }
             val anchor = Pkix.anchorOf(chain.map { X509Cert(ByteString(it.encoded)) }, roots, at)
-                ?: throw TrustListException("AATL 簽署者沒有連到 Adobe Root CA G2")
+                ?: throw TrustListException(ct("core_aatl_not_adobe"))
             check(TrustLists.pin(anchor.encoded.toByteArray()) in rootPins)
             return services to (Bc.cn(signer) ?: signer.subject.toString())
         }
@@ -223,10 +224,10 @@ class TrustListLoader(
 
         /** The EU list of trusted lists in [xml], when signed by a certificate with one of [pins]. */
         fun parseLotl(xml: ByteArray, pins: Set<String>): Lotl {
-            val signer = XmlDsig.envelopedSigner(xml) ?: throw TrustListException("歐盟清單的簽章不成立")
-            if (TrustLists.pin(signer.encoded) !in pins) throw TrustListException("歐盟清單的簽署憑證不在公告的憑證中")
+            val signer = XmlDsig.envelopedSigner(xml) ?: throw TrustListException(ct("core_eu_sig_bad"))
+            if (TrustLists.pin(signer.encoded) !in pins) throw TrustListException(ct("core_eu_cert_unlisted"))
             val root = XmlParsing.parse(xml).documentElement
-            val scheme = XmlParsing.child(root, TSL, "SchemeInformation") ?: throw TrustListException("歐盟清單格式不符")
+            val scheme = XmlParsing.child(root, TSL, "SchemeInformation") ?: throw TrustListException(ct("core_eu_format"))
             val pointers = ArrayList<Pointer>()
             var selfPins = emptyList<String>()
             for (p in XmlParsing.descendants(scheme, TSL, "OtherTSLPointer")) {
@@ -245,12 +246,12 @@ class TrustListLoader(
 
         /** The national list in [xml] for [pointer]: signed by one of the pointer's certificates, for its territory. */
         fun parseTl(xml: ByteArray, pointer: Pointer, etag: String? = null, lastModified: String? = null): TrustListPart {
-            val signer = XmlDsig.envelopedSigner(xml) ?: throw TrustListException("簽章不成立")
-            if (TrustLists.pin(signer.encoded) !in pointer.signerPins) throw TrustListException("簽署憑證不是歐盟清單公告的憑證")
+            val signer = XmlDsig.envelopedSigner(xml) ?: throw TrustListException(ct("core_tl_sig_bad"))
+            if (TrustLists.pin(signer.encoded) !in pointer.signerPins) throw TrustListException(ct("core_tl_cert_unlisted"))
             val root = XmlParsing.parse(xml).documentElement
-            val scheme = XmlParsing.child(root, TSL, "SchemeInformation") ?: throw TrustListException("清單格式不符")
+            val scheme = XmlParsing.child(root, TSL, "SchemeInformation") ?: throw TrustListException(ct("core_tl_format"))
             val territory = XmlParsing.text(XmlParsing.child(scheme, TSL, "SchemeTerritory"))
-            if (territory != null && territory != pointer.territory) throw TrustListException("清單的國別 $territory 與歐盟清單不符")
+            if (territory != null && territory != pointer.territory) throw TrustListException(ct("core_tl_territory", territory))
             val services = ArrayList<ListedService>()
             for (tsp in XmlParsing.descendants(root, TSL, "TrustServiceProvider")) {
                 val provider = XmlParsing.child(tsp, TSL, "TSPInformation")?.let { name(XmlParsing.child(it, TSL, "TSPName")) }

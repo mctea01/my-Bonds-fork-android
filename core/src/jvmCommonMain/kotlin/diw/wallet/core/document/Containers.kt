@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import java.io.ByteArrayInputStream
 import diw.wallet.core.util.TextEncodings
 import java.io.ByteArrayOutputStream
@@ -47,7 +48,7 @@ object Zip {
             count = u64(bytes, z64 + 32)
             cdOffset = u64(bytes, z64 + 48)
         }
-        if (count > MAX_ENTRIES) throw IllegalArgumentException("壓縮檔內的檔案太多")
+        if (count > MAX_ENTRIES) throw IllegalArgumentException(ct("core_zip_too_many"))
         val out = LinkedHashMap<String, ByteArray>()
         var total = 0L
         var p = cdOffset.toInt()
@@ -81,9 +82,9 @@ object Zip {
             p = extraEnd + commentLen
             val name = (unicodeName ?: TextEncodings.decode(rawName, flags and 0x800 != 0)).replace('\\', '/').trimStart('/')
             if (name.isEmpty() || name.endsWith("/") || name.split('/').any { it == ".." }) return@repeat
-            if (flags and 1 != 0) throw IllegalArgumentException("壓縮檔「$name」有密碼保護，無法解開")
+            if (flags and 1 != 0) throw IllegalArgumentException(ct("core_zip_password", name))
             total += size
-            if (total > MAX_TOTAL) throw IllegalArgumentException("壓縮檔解開後超過 256 MB")
+            if (total > MAX_TOTAL) throw IllegalArgumentException(ct("core_zip_too_large"))
             val lh = local.toInt()
             if (u32(bytes, lh) != 0x04034b50L) throw IllegalArgumentException("bad local header")
             val dataStart = lh + 30 + u16(bytes, lh + 26) + u16(bytes, lh + 28)
@@ -101,13 +102,13 @@ object Zip {
                             if (r == 0 && (inf.needsInput() || inf.needsDictionary())) break
                             n += r
                         }
-                        if (n != buf.size) throw IllegalArgumentException("「$name」解壓縮後大小不符")
+                        if (n != buf.size) throw IllegalArgumentException(ct("core_zip_size_mismatch", name))
                         buf
                     } finally {
                         inf.end()
                     }
                 }
-                else -> throw IllegalArgumentException("壓縮檔「$name」使用不支援的壓縮方式（$method）")
+                else -> throw IllegalArgumentException(ct("core_zip_method", name, method))
             }
         }
         return out
@@ -124,7 +125,7 @@ object Zip {
         ZipInputStream(ByteArrayInputStream(bytes), charset).use { z ->
             while (true) {
                 val e = z.nextEntry ?: break
-                if (out.size >= MAX_ENTRIES) throw IllegalArgumentException("壓縮檔內的檔案太多")
+                if (out.size >= MAX_ENTRIES) throw IllegalArgumentException(ct("core_zip_too_many"))
                 val name = e.name.replace('\\', '/').trimStart('/')
                 if (e.isDirectory || name.isEmpty() || name.split('/').any { it == ".." }) continue
                 val buf = ByteArrayOutputStream()
@@ -133,7 +134,7 @@ object Zip {
                     val n = z.read(chunk)
                     if (n < 0) break
                     total += n
-                    if (total > MAX_TOTAL) throw IllegalArgumentException("壓縮檔解開後超過 256 MB")
+                    if (total > MAX_TOTAL) throw IllegalArgumentException(ct("core_zip_too_large"))
                     buf.write(chunk, 0, n)
                 }
                 out[name] = buf.toByteArray()
@@ -194,9 +195,9 @@ internal object Asic {
                 val expected = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(ref, XmlDsig.DS, "DigestValue")).orEmpty()) }.getOrNull()
                 val data = files[uri]
                 when {
-                    data == null -> { problems.add("容器內找不到 $uri"); digestsOk = Check.FAIL }
-                    alg == null || expected == null -> { problems.add("$uri 的摘要演算法不支援"); if (digestsOk == Check.PASS) digestsOk = Check.NOT_CHECKED }
-                    !DocCrypto.digest(alg, data).contentEquals(expected) -> { problems.add("$uri 在簽署後被修改"); digestsOk = Check.FAIL }
+                    data == null -> { problems.add(ct("core_asic_missing", uri)); digestsOk = Check.FAIL }
+                    alg == null || expected == null -> { problems.add(ct("core_asic_digest", uri)); if (digestsOk == Check.PASS) digestsOk = Check.NOT_CHECKED }
+                    !DocCrypto.digest(alg, data).contentEquals(expected) -> { problems.add(ct("core_asic_modified", uri)); digestsOk = Check.FAIL }
                 }
             }
             val results = checks.verify(sig, manifest, SignatureFormat.ASIC_CADES, sigRef.substringAfterLast('/'), now)
@@ -207,7 +208,7 @@ internal object Asic {
         for ((path, xml) in files.filterKeys { it.startsWith("META-INF/") && it.contains("signatures", true) && it.endsWith(".xml") }) {
             usedSignatures.add(path)
             val results = runCatching { XmlDsig.verify(xml, path.substringAfterLast('/'), checks, now) { uri -> files[uri] } }
-                .getOrElse { listOf(checks.failed(SignatureFormat.XADES, path, "無法解析 XAdES：" + (it.message ?: ""))) }
+                .getOrElse { listOf(checks.failed(SignatureFormat.XADES, path, ct("core_asic_xades_bad") + (it.message ?: ""))) }
             val covered = runCatching {
                 XmlParsing.descendants(XmlParsing.parse(xml), XmlDsig.DS, "Reference").map { java.net.URLDecoder.decode(it.getAttribute("URI"), "UTF-8") }.toSet()
             }.getOrDefault(emptySet())
@@ -229,7 +230,7 @@ internal object Asic {
             r.integrity == Check.PASS -> digests
             else -> r.integrity
         }
-        val notes = if (missing.isEmpty()) r.notes else r.notes + ("簽章沒有涵蓋容器內的：" + missing.take(5).joinToString("、"))
+        val notes = if (missing.isEmpty()) r.notes else r.notes + (ct("core_asic_uncovered") + missing.take(5).joinToString(ct("core_sep_list")))
         return r.copy(integrity = integrity, problems = r.problems + problems, notes = notes, coversWholeDocument = missing.isEmpty())
     }
 

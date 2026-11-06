@@ -1,5 +1,6 @@
 package diw.wallet.core.document.opencerts
 
+import diw.wallet.core.i18n.ct
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.UtcOffset
@@ -55,12 +56,12 @@ object OpenCertOffline {
             }
             if (tabs != null) return Page(html(tabs, NOTE_BUILT_IN), true, tabs.map { it.first })
         }
-        val tabs = listOf("證書內容" to generic(doc.view()))
+        val tabs = listOf(ct("core_oc_content") to generic(doc.view()))
         return Page(html(tabs, NOTE_GENERIC), false, tabs.map { it.first })
     }
 
-    private const val NOTE_BUILT_IN = "離線顯示：依 OpenCerts 範例顯示程式的樣式排版，標誌與背景圖以文字代替。查驗結果以錢包的檢查為準。"
-    private const val NOTE_GENERIC = "離線顯示：錢包依證書內容排版，不是發證機構的樣式。查驗結果以錢包的檢查為準。"
+    private val NOTE_BUILT_IN: String get() = ct("core_oc_offline_template")
+    private val NOTE_GENERIC: String get() = ct("core_oc_offline_plain")
 
     private fun templateName(doc: OpenAttestationDocument): String? {
         val t = (if (doc.v3) (doc.data["openAttestationMetadata"] as? JsonObject)?.get("template") else doc.data["\$template"]) as? JsonObject
@@ -160,7 +161,7 @@ object OpenCertOffline {
     }
 
     private fun media(): String =
-        "<div class=\"a4 pad\"><p>這個分頁是發證機構放在 YouTube 的介紹影片，需要網路，請改用「以發證機構樣式顯示」開啟。</p></div>"
+        ct("core_oc_youtube_tab")
 
     private const val MOE_BAND = "MINISTRY OF EDUCATION "
 
@@ -240,9 +241,9 @@ object OpenCertOffline {
     @OptIn(ExperimentalEncodingApi::class)
     private fun generic(v: OpenCertView): String = buildString {
         append("<div class=\"a4 pad generic\">")
-        v.issuers.mapNotNull { it.name }.distinct().takeIf { it.isNotEmpty() }?.let { append("<div class=\"issuer\">").append(esc(it.joinToString("、"))).append("</div>") }
-        v.images.firstOrNull { it.first == "標誌" }?.let { append(image(dataUrl(it.second), "max-height:2.5cm;max-width:60%")) }
-        append("<h1>").append(esc(v.title ?: "OpenCerts 證書")).append("</h1>")
+        v.issuers.mapNotNull { it.name }.distinct().takeIf { it.isNotEmpty() }?.let { append("<div class=\"issuer\">").append(esc(it.joinToString(ct("core_sep_list")))).append("</div>") }
+        v.images.firstOrNull { it.first == ct("core_oc_logo") }?.let { append(image(dataUrl(it.second), "max-height:2.5cm;max-width:60%")) }
+        append("<h1>").append(esc(v.title ?: ct("core_oc_certificate"))).append("</h1>")
         fun table(title: String?, rows: List<Pair<String, String>>) {
             if (rows.isEmpty()) return
             title?.let { append("<h2>").append(esc(it)).append("</h2>") }
@@ -250,19 +251,19 @@ object OpenCertOffline {
             rows.forEach { (k, value) -> append("<tr><th>").append(esc(k)).append("</th><td>").append(esc(value)).append("</td></tr>") }
             append("</table>")
         }
-        table("受領人", v.recipient)
-        table("證書內容", v.main)
+        table(ct("core_oc_recipient"), v.recipient)
+        table(ct("core_oc_content"), v.main)
         if (v.transcript.isNotEmpty()) {
-            append("<h2>成績單</h2><div class=\"scroll\"><table class=\"transcript\"><tr>")
+            append(ct("core_oc_transcript"))
             v.transcriptColumns.forEach { append("<th>").append(esc(it)).append("</th>") }
             append("</tr>")
             v.transcript.forEach { row -> append("<tr>"); row.forEach { append("<td>").append(esc(it)).append("</td>") }; append("</tr>") }
             append("</table></div>")
         }
-        table("其他欄位", v.other)
-        val pictures = v.images.filter { it.first != "標誌" }
+        table(ct("core_oc_other_fields"), v.other)
+        val pictures = v.images.filter { it.first != ct("core_oc_logo") }
         if (pictures.isNotEmpty()) {
-            append("<h2>圖片</h2>")
+            append(ct("core_oc_images"))
             pictures.forEach { (name, bytes) -> append("<figure>").append(image(dataUrl(bytes), "max-width:100%;max-height:6cm")).append("<figcaption>").append(esc(name)).append("</figcaption></figure>") }
         }
         if (v.signatories.isNotEmpty()) {
@@ -277,9 +278,9 @@ object OpenCertOffline {
             append("</div>")
         }
         if (v.attachments.isNotEmpty()) {
-            append("<h2>附件</h2><ul>")
+            append(ct("core_oc_attachments"))
             v.attachments.forEach { append("<li>").append(esc(it.name)).append("</li>") }
-            append("</ul><p class=\"hint\">附件可在證書頁面存入文件或匯出。</p>")
+            append(ct("core_oc_attachments_end"))
         }
         append("</div>")
     }

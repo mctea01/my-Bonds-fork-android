@@ -1,5 +1,6 @@
 package diw.wallet.core.document.image
 
+import diw.wallet.core.i18n.ct
 import java.io.ByteArrayOutputStream
 import java.util.zip.Inflater
 
@@ -31,15 +32,15 @@ object TiffDecoder {
         /** A short description: size, compression and colour model. */
         fun describe(): String {
             val c = when (compression) {
-                1 -> "未壓縮"; 2 -> "CCITT RLE"; 3 -> "CCITT Group 3"; 4 -> "CCITT Group 4"; 5 -> "LZW"
-                6, 7 -> "JPEG"; 8, 32946 -> "Deflate"; 32773 -> "PackBits"; else -> "壓縮方式 $compression"
+                1 -> ct("core_tiff_uncompressed"); 2 -> "CCITT RLE"; 3 -> "CCITT Group 3"; 4 -> "CCITT Group 4"; 5 -> "LZW"
+                6, 7 -> "JPEG"; 8, 32946 -> "Deflate"; 32773 -> "PackBits"; else -> ct("core_tiff_compression", compression)
             }
             val bits = values(258)?.firstOrNull() ?: 1
             val kind = when (photometric) {
-                0, 1 -> if (bits == 1L) "黑白" else "灰階"
-                2 -> "彩色（RGB）"; 3 -> "調色盤"; 5 -> "彩色（CMYK）"; 6 -> "彩色（YCbCr）"; else -> "色彩模式 $photometric"
+                0, 1 -> if (bits == 1L) ct("core_tiff_bilevel") else ct("core_tiff_gray")
+                2 -> ct("core_tiff_rgb"); 3 -> ct("core_tiff_palette"); 5 -> ct("core_tiff_cmyk"); 6 -> ct("core_tiff_ycbcr"); else -> ct("core_tiff_photometric", photometric)
             }
-            return "${width} x ${height}，$kind，$c"
+            return ct("core_tiff_describe", width, height, kind, c)
         }
     }
 
@@ -52,7 +53,7 @@ object TiffDecoder {
 
     /** The directories of every page, in file order. */
     fun directories(b: ByteArray): List<Directory> {
-        if (!isTiff(b)) throw ImageDecodeException("不是 TIFF 檔案")
+        if (!isTiff(b)) throw ImageDecodeException(ct("core_tiff_not_tiff"))
         val r = Reader(b)
         val out = ArrayList<Directory>()
         var offset = r.u32(4)
@@ -85,7 +86,7 @@ object TiffDecoder {
             out.add(Directory(tags))
             offset = r.u32(at + 2 + n * 12)
         }
-        if (out.isEmpty()) throw ImageDecodeException("TIFF 沒有影像")
+        if (out.isEmpty()) throw ImageDecodeException(ct("core_tiff_no_image"))
         return out
     }
 
@@ -93,25 +94,25 @@ object TiffDecoder {
 
     /** Page [page] of the TIFF in [b]. */
     fun decode(b: ByteArray, page: Int = 0): RasterImage {
-        val d = directories(b).getOrNull(page) ?: throw ImageDecodeException("TIFF 沒有第 ${page + 1} 頁")
+        val d = directories(b).getOrNull(page) ?: throw ImageDecodeException(ct("core_tiff_no_page", page + 1))
         val width = d.width
         val height = d.height
-        if (width <= 0 || height <= 0 || width.toLong() * height > 100_000_000L) throw ImageDecodeException("TIFF 尺寸不合理（$width x $height）")
-        if (d.value(284, 1) != 1L && d.value(277, 1) > 1) throw ImageDecodeException("不支援分平面（planar）的 TIFF")
+        if (width <= 0 || height <= 0 || width.toLong() * height > 100_000_000L) throw ImageDecodeException(ct("core_tiff_bad_size", width, height))
+        if (d.value(284, 1) != 1L && d.value(277, 1) > 1) throw ImageDecodeException(ct("core_tiff_planar"))
         val compression = d.compression
-        if (compression == 6 || compression == 7) throw ImageDecodeException("不支援 JPEG 壓縮的 TIFF")
+        if (compression == 6 || compression == 7) throw ImageDecodeException(ct("core_tiff_jpeg"))
         val spp = d.value(277, 1).toInt().coerceIn(1, 8)
         val bps = (d.values(258)?.firstOrNull() ?: 1L).toInt()
-        if (bps !in setOf(1, 2, 4, 8, 16)) throw ImageDecodeException("不支援每個樣本 $bps 位元的 TIFF")
+        if (bps !in setOf(1, 2, 4, 8, 16)) throw ImageDecodeException(ct("core_tiff_bps", bps))
         val fillReversed = d.value(266, 1) == 2L
         val little = b[0] == 'I'.code.toByte()
         val photometric = d.photometric
         val tiled = d.values(324) != null || d.values(322) != null
         val blockW = if (tiled) d.value(322).toInt() else width
         val blockH = if (tiled) d.value(323).toInt() else d.value(278, height.toLong()).toInt().coerceIn(1, height)
-        val offsets = (if (tiled) d.values(324) else d.values(273)) ?: throw ImageDecodeException("TIFF 沒有影像資料位置")
+        val offsets = (if (tiled) d.values(324) else d.values(273)) ?: throw ImageDecodeException(ct("core_tiff_no_offsets"))
         val counts = (if (tiled) d.values(325) else d.values(279)) ?: LongArray(offsets.size) { (b.size - offsets[it]).coerceAtLeast(0) }
-        if (blockW <= 0 || blockH <= 0) throw ImageDecodeException("TIFF 區塊尺寸不正確")
+        if (blockW <= 0 || blockH <= 0) throw ImageDecodeException(ct("core_tiff_bad_strip"))
         val across = (width + blockW - 1) / blockW
         val rowBytes = (blockW * spp * bps + 7) / 8
         // Samples of the whole page, unpacked to one int per sample.
@@ -123,7 +124,7 @@ object TiffDecoder {
             val rows = minOf(blockH, if (tiled) blockH else height - y0)
             val start = off.toInt()
             val len = counts.getOrElse(i) { 0L }.toInt()
-            if (start < 0 || len < 0 || start + len > b.size) throw ImageDecodeException("TIFF 影像資料超出檔案範圍")
+            if (start < 0 || len < 0 || start + len > b.size) throw ImageDecodeException(ct("core_tiff_out_of_range"))
             var raw = b.copyOfRange(start, start + len)
             if (fillReversed) raw = ByteArray(raw.size) { reverse(raw[it]) }
             val data = when (compression) {
@@ -132,7 +133,7 @@ object TiffDecoder {
                 5 -> lzw(raw, rowBytes * rows)
                 8, 32946 -> inflate(raw, rowBytes * rows)
                 32773 -> packBits(raw, rowBytes * rows)
-                else -> throw ImageDecodeException("不支援這種 TIFF 壓縮方式（$compression）")
+                else -> throw ImageDecodeException(ct("core_tiff_compression_unsupported", compression))
             }
             if (d.value(317, 1) == 2L && bps == 8) undoPredictor(data, rowBytes, rows, spp)
             for (y in 0 until rows) {
@@ -200,9 +201,9 @@ object TiffDecoder {
                 RasterImage(width, height, ch, out)
             }
             3 -> {
-                val map = d.values(320) ?: throw ImageDecodeException("調色盤 TIFF 沒有色彩表")
+                val map = d.values(320) ?: throw ImageDecodeException(ct("core_tiff_no_colormap"))
                 val size = 1 shl bps
-                if (map.size < size * 3) throw ImageDecodeException("TIFF 色彩表不完整")
+                if (map.size < size * 3) throw ImageDecodeException(ct("core_tiff_colormap_short"))
                 val out = ByteArray(n * 3)
                 for (i in 0 until n) {
                     // The sample was scaled to 0..255; the palette index is the raw value.
@@ -212,7 +213,7 @@ object TiffDecoder {
                 RasterImage(width, height, 3, out)
             }
             5 -> {
-                if (spp < 4) throw ImageDecodeException("CMYK TIFF 的樣本數不足")
+                if (spp < 4) throw ImageDecodeException(ct("core_tiff_cmyk_samples"))
                 val out = ByteArray(n * 3)
                 for (i in 0 until n) {
                     val k = s[i * spp + 3]
@@ -220,7 +221,7 @@ object TiffDecoder {
                 }
                 RasterImage(width, height, 3, out)
             }
-            else -> throw ImageDecodeException("不支援這種 TIFF 色彩模式（$photometric）")
+            else -> throw ImageDecodeException(ct("core_tiff_photometric_unsupported", photometric))
         }
     }
 
@@ -354,7 +355,7 @@ internal class Ccitt(
     private val total = data.size.toLong() * 8
 
     private fun bit(): Int {
-        if (pos >= total) throw ImageDecodeException("CCITT 資料提早結束")
+        if (pos >= total) throw ImageDecodeException(ct("core_ccitt_eof"))
         val v = (data[(pos / 8).toInt()].toInt() shr (7 - (pos % 8).toInt())) and 1
         pos++
         return v
@@ -481,7 +482,7 @@ internal class Ccitt(
         if (bit() == 1) return if (bit() == 1) Mode.VR2 else Mode.VL2
         // 0 0 0 0 0 1 x
         if (bit() == 1) return if (bit() == 1) Mode.VR3 else Mode.VL3
-        throw ImageDecodeException("CCITT 二維編碼不正確（位置 ${pos / 8}）")
+        throw ImageDecodeException(ct("core_ccitt_2d", pos / 8))
     }
 
     /** One run of [white] or black pixels: makeup codes, then the terminating code. */
@@ -500,7 +501,7 @@ internal class Ccitt(
             v = (v shl 1) or bit()
             table[(len shl 16) or v]?.let { return it }
         }
-        throw ImageDecodeException("CCITT 長度碼不正確（位置 ${pos / 8}）")
+        throw ImageDecodeException(ct("core_ccitt_run", pos / 8))
     }
 
     companion object {

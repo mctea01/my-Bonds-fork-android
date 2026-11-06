@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocumentInspector
 import kotlinx.coroutines.CancellationException
 
@@ -34,13 +35,13 @@ class TsaClient(private val http: SignedDataHttp, private val url: String) : Tim
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw SigningException("無法連線到時戳機構（$url）：" + (e.message ?: e::class.simpleName), e)
+            throw SigningException(ct("core_tsa_unreachable", url) + (e.message ?: e::class.simpleName), e)
         }
-        if (!reply.success) throw SigningException("時戳機構回應 HTTP ${reply.status}")
+        if (!reply.success) throw SigningException(ct("core_tsa_http", reply.status))
         return try {
             DocumentInspector.timestampToken(reply.body)
         } catch (e: Exception) {
-            throw SigningException(e.message ?: "時戳機構的回應無法解析", e)
+            throw SigningException(e.message ?: ct("core_tsa_unparsable"), e)
         }
     }
 }

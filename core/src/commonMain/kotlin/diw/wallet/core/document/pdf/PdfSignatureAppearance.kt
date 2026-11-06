@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pdf
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.jose.PlatformCrypto
 import kotlin.math.max
 import kotlin.math.min
@@ -53,8 +54,11 @@ class PdfSignatureAppearance(
         }
     }
 
-    enum class Position(val title: String) {
-        BOTTOM_RIGHT("右下"), BOTTOM_CENTER("下方中央"), BOTTOM_LEFT("左下"), TOP_RIGHT("右上"), TOP_LEFT("左上"),
+    enum class Position(private val titleKey: String) {
+        BOTTOM_RIGHT("core_pos_bottom_right"), BOTTOM_CENTER("core_pos_bottom_center"), BOTTOM_LEFT("core_pos_bottom_left"),
+        TOP_RIGHT("core_pos_top_right"), TOP_LEFT("core_pos_top_left");
+
+        val title: String get() = ct(titleKey)
     }
 }
 

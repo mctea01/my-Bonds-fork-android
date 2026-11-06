@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import java.security.PrivateKey
 import java.security.Provider
 import java.security.Signature
@@ -18,7 +19,7 @@ class JcaDocumentSigner(
     override val source: SignerSource,
     private val provider: Provider? = null,
 ) : DocumentSigner {
-    private val certificate = chain.firstOrNull() ?: throw SigningException("這把金鑰沒有憑證")
+    private val certificate = chain.firstOrNull() ?: throw SigningException(ct("core_key_no_certificate"))
     override val certificateChain: List<ByteArray> = chain.map { it.encoded }
     override val keyType: SignerKeyType = typeOf(certificate)
 
@@ -30,12 +31,12 @@ class JcaDocumentSigner(
             s.update(data)
             s.sign()
         } catch (e: Exception) {
-            throw SigningException("無法以這把金鑰簽署：" + (e.message ?: e::class.simpleName), e)
+            throw SigningException(ct("core_jds_sign_failed") + (e.message ?: e::class.simpleName), e)
         }
         val ok = runCatching {
             Signature.getInstance(alg).run { initVerify(certificate.publicKey); update(data); verify(signature) }
         }.getOrDefault(false)
-        if (!ok) throw SigningException("簽章與憑證不符，可能選到了不同的金鑰")
+        if (!ok) throw SigningException(ct("core_jds_mismatch"))
         return signature
     }
 
@@ -47,10 +48,10 @@ class JcaDocumentSigner(
                 "RSA" -> SignerKeyType.RSA
                 "EC", "ECDSA" -> {
                     val bits = (pub as? ECPublicKey)?.params?.curve?.field?.fieldSize
-                    if (bits != null && bits != 256) throw SigningException("只支援 P-256 的 EC 金鑰（這把是 $bits 位元）")
+                    if (bits != null && bits != 256) throw SigningException(ct("core_jds_p256_only", bits))
                     SignerKeyType.EC_P256
                 }
-                else -> throw SigningException("不支援的金鑰類型 ${pub.algorithm}")
+                else -> throw SigningException(ct("core_key_type_unsupported", pub.algorithm))
             }
         }
     }

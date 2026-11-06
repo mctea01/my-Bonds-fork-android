@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRole
@@ -103,7 +104,7 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
     fun keyDescription(h: X509CertificateHolder): String {
         val alg = h.subjectPublicKeyInfo.algorithm
         return when (alg.algorithm.id) {
-            "1.2.840.113549.1.1.1", "1.2.840.113549.1.1.10" -> "RSA " + rsaBits(h) + " 位元"
+            "1.2.840.113549.1.1.1", "1.2.840.113549.1.1.10" -> "RSA " + rsaBits(h) + ct("core_bits_suffix")
             "1.2.840.10045.2.1" -> when (alg.parameters?.toString()) {
                 "1.2.840.10045.3.1.7" -> "ECDSA P-256"
                 "1.3.132.0.34" -> "ECDSA P-384"
@@ -192,12 +193,12 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
 
     private fun reason(st: RevokedStatus): String? = runCatching {
         if (!st.hasRevocationReason()) null else when (st.revocationReason) {
-            CRLReason.keyCompromise -> "金鑰洩漏"
-            CRLReason.cACompromise -> "憑證機構金鑰洩漏"
-            CRLReason.affiliationChanged -> "隸屬變更"
-            CRLReason.superseded -> "已被取代"
-            CRLReason.cessationOfOperation -> "停止使用"
-            CRLReason.certificateHold -> "暫時停用"
+            CRLReason.keyCompromise -> ct("core_crl_key_compromise")
+            CRLReason.cACompromise -> ct("core_crl_ca_compromise")
+            CRLReason.affiliationChanged -> ct("core_crl_affiliation")
+            CRLReason.superseded -> ct("core_crl_superseded")
+            CRLReason.cessationOfOperation -> ct("core_crl_cessation")
+            CRLReason.certificateHold -> ct("core_crl_hold")
             else -> null
         }
     }.getOrNull()
