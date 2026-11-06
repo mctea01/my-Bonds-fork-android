@@ -99,6 +99,22 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         runCatching { cached("manifest-$chain-$version.json").delete() }
     }
 
+    /**
+     * The CSCA keys of the certificate package for registry [root], once the native checker hashed the package to
+     * that root ([check] returns its summary). Cached by root, so a root seen once needs no download.
+     */
+    suspend fun certificates(chain: Long, root: String, check: (String) -> String): JsonObject {
+        require(Regex("0x[0-9a-f]{64}").matches(root))
+        val file = cached("certificates-$chain-$root.json")
+        if (file.isFile) runCatching { return Json.parseToJsonElement(file.readText()).jsonObject }
+        val base = if (chain == ZkPassport.MAINNET) MAINNET_CERTIFICATES else TESTNET_CERTIFICATES
+        val raw = fetch("$base/$root.json", "certificates_unavailable").decodeToString()
+        val summary = Json.parseToJsonElement(runCatching { check(raw) }.getOrElse { throw Unreachable("certificates_root") }).jsonObject
+        if ((summary["root"] as? JsonPrimitive)?.contentOrNull?.lowercase() != root) throw Unreachable("certificates_root")
+        runCatching { file.writeText(summary.toString()) }
+        return summary
+    }
+
     /** `isRootValid(registryId, root, timestamp)` on the root registry. */
     suspend fun rootValid(chain: Long, rpc: String?, registry: Int, root: String, timestamp: Long): Boolean {
         val word = { hex: String -> hex.removePrefix("0x").lowercase().padStart(64, '0') }
@@ -134,6 +150,8 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         const val MAINNET_CIRCUITS = "https://circuits2.zkpassport.id/mainnet"
         const val TESTNET_CIRCUITS = "https://circuits2.zkpassport.id/testnet"
         const val VERIFIER_API = "https://verifier.zkpassport.id/verify"
+        const val MAINNET_CERTIFICATES = "https://certificates.zkpassport.id/mainnet"
+        const val TESTNET_CERTIFICATES = "https://certificates.zkpassport.id/testnet"
         private const val MAX_DOWNLOAD = 32 * 1024 * 1024
     }
 }

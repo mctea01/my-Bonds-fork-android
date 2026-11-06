@@ -1,6 +1,7 @@
 package diw.wallet.core.zkpassport
 
 import diw.wallet.core.zk.native.bindings.ZkException
+import diw.wallet.core.zk.native.bindings.zkpassportCertificates
 import diw.wallet.core.zk.native.bindings.zkpassportCircuitRoot
 import diw.wallet.core.zk.native.bindings.zkpassportInspect
 import diw.wallet.core.zk.native.bindings.zkpassportVerify
@@ -235,13 +236,11 @@ class JvmZkPassportVerifier(
                     registry.remember(chain, version, manifest, vkeys, hashes)
                 }
                 // Only a Barretenberg rejection is worth a second opinion; every other failure is final.
-                if (!result.verified && config.verifierApi && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
-                    verifierApi(request, proofs, queryResult)?.let { api ->
-                        return@withContext if (api) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
-                        else result
-                    }
-                }
-                result
+                val decided = if (!result.verified && config.verifierApi && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
+                    if (verifierApi(request, proofs, queryResult) == true) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
+                    else result
+                } else result
+                if (decided.verified && !dev) decided.copy(csca = csca(chain, certificateRoot, decided, config.cscaAnchors)) else decided
             } catch (e: ZkPassportRegistry.Unreachable) {
                 ZkPassport.failure(e.code, dev)
             } catch (e: ZkException) {
@@ -252,6 +251,25 @@ class JvmZkPassportVerifier(
                 ZkPassport.failure("bundle", dev)
             }
         }
+
+    /**
+     * The registry's CSCA keys of the issuing country against [anchors]: the disclosed issuing country, else the
+     * countries the proofs limit it to; null when the proofs say nothing about it.
+     */
+    private suspend fun csca(chain: Long, root: String, result: ZkPassportResult, anchors: List<ByteArray>): ZkPassportCscaCheck? {
+        val countries = result.disclosed?.issuingCountry?.takeIf { it.length == 3 }?.let(::listOf) ?: result.issuingCountryIn
+        if (countries.isEmpty()) return null
+        val summary = try {
+            registry.certificates(chain, root) { zkpassportCertificates(it) }
+        } catch (e: ZkPassportRegistry.Unreachable) {
+            return ZkPassportCscaCheck(countries, 0, 0, e.code)
+        }
+        val keys = summary["certificates"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
+            .filter { (it["country"] as? JsonPrimitive)?.contentOrNull in countries }
+            .mapNotNull { (it["publicKey"] as? JsonPrimitive)?.contentOrNull }
+        val anchorKeys = anchors.mapNotNull { ZkPassportCsca.publicKey(it) }
+        return ZkPassportCscaCheck(countries, keys.size, keys.count { k -> anchorKeys.any { ZkPassportCsca.same(it, k) } })
+    }
 
     /** zkPassport's verifier service; null when it gave no usable answer. */
     private suspend fun verifierApi(request: ZkPassportRequest, proofs: List<JsonObject>, queryResult: JsonElement): Boolean? = runCatching {

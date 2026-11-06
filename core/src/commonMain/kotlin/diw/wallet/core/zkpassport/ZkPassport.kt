@@ -60,7 +60,26 @@ data class ZkPassportConfig(
     val sepoliaRpc: String? = null,
     /** Lets zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
     val verifierApi: Boolean = false,
+    /** DER of this wallet's CSCA anchors, against which the registry's keys of the issuing country are checked. */
+    val cscaAnchors: List<ByteArray> = emptyList(),
 )
+
+/**
+ * The registry's CSCA keys for the issuing country the proofs disclose (or limit to), checked against this wallet's
+ * CSCA anchors (docs/design/zkpassport.md 4.3). The circuits bind the CSCA's country to the document's issuing
+ * state, so when every such key is an anchor the signer chains to one of them.
+ */
+data class ZkPassportCscaCheck(
+    val countries: List<String>,
+    /** Keys of [countries] in the certificate package the proofs' registry root was built from. */
+    val inPackage: Int,
+    /** Of those, the keys that are also this wallet's anchors. */
+    val anchored: Int,
+    /** Why the package could not be checked (`certificates_unavailable`, `certificates_root`), or null. */
+    val error: String? = null,
+) {
+    val allAnchored: Boolean get() = error == null && inPackage > 0 && anchored == inPackage
+}
 
 /** The holder's document as the proofs disclose it; every value is committed to by a verified proof. */
 data class ZkPassportDisclosed(
@@ -98,6 +117,8 @@ data class ZkPassportResult(
     val devMode: Boolean,
     /** Decided by zkPassport's verifier service instead of on this device. */
     val viaVerifierApi: Boolean = false,
+    /** The issuing country's CSCA keys against this wallet's anchors; null without an issuing country or a pass. */
+    val csca: ZkPassportCscaCheck? = null,
 )
 
 sealed interface ZkPassportState {

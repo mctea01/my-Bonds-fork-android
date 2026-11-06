@@ -13,6 +13,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 mod zk;
+pub mod certificates;
 use zk::{merkle_root, num_public_inputs, pack_be_bits, pack_be_bytes, poseidon2_hash, vkey_fields, CIRCUIT_REGISTRY_HEIGHT};
 
 /// The SDK's default validity of the proven current date, in seconds.

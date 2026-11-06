@@ -368,3 +368,21 @@ fn disclose_commitment_matches_a_real_circuit_output() {
     assert_eq!(d["expiryDate"], json!("600101"));
     assert_eq!(d["documentNumber"], json!("PA1234567"));
 }
+
+/// The mainnet certificate package of 2026-11 (its serialised tree left out) hashes to the root the registry
+/// published for it, and changing one key changes the root.
+#[test]
+fn published_certificates_hash_to_the_registry_root() {
+    let mut text = String::new();
+    flate2::read::GzDecoder::new(&fixture("certificates-1398607f.json.gz")[..]).read_to_string(&mut text).unwrap();
+    let out: Value = serde_json::from_str(&certificates::package_json(&text).unwrap()).unwrap();
+    assert_eq!(out["root"], json!("0x1398607f65ee117db9e7de8a9a91e0c7bbe157d431c4cb2dcf764be3b1a101c2"));
+    let keys = out["certificates"].as_array().unwrap();
+    assert_eq!(keys.len(), 614);
+    assert!(keys.iter().any(|k| k["country"] == json!("JPN")));
+    let mut package: Value = serde_json::from_str(&text).unwrap();
+    package["certificates"][0]["country"] = json!("ZZZ");
+    assert_ne!(hex32(&certificates::root(&package).unwrap()), out["root"].as_str().unwrap());
+    package["version"] = json!(2);
+    assert_eq!(certificates::root(&package).unwrap_err(), "certificates_version");
+}
