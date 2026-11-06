@@ -35,11 +35,12 @@ jobs:
           # The Kotlin/Java code: core, app (Android + desktop) and test-servers.
           - language: java-kotlin
             build-mode: manual
-          # Rust (native/) is not analysed here: CodeQL's buildless Rust extractor cannot
-          # ingest this workspace (uniffi FFI plus vendored circom/spartan crates and a
-          # pinned 1.95 toolchain), so the rust database comes out empty and fails the run.
-          # The Noir circuits have no CodeQL analyzer either. Cover the Rust with clippy and
-          # cargo-audit in the normal CI instead.
+          # The zero-knowledge native runtime in native/ (Rust workspace: diw-zk-ffi,
+          # zkpdf-prover, zktls, openac-age). Rust only has a buildless extractor; it loads
+          # the workspace through cargo metadata, so the pinned toolchain and the crate
+          # sources are prepared below. The Noir circuits have no CodeQL analyzer.
+          - language: rust
+            build-mode: none
 
     steps:
       - name: Checkout repository
@@ -56,20 +57,35 @@ jobs:
         if: matrix.language == 'java-kotlin'
         uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
 
+      # The extractor picks the default toolchain at the repository root, not the one
+      # pinned in native/rust-toolchain.toml, so make the pinned one (with rust-src for
+      # the standard library sources) the default and fetch the locked crates up front.
+      - name: Set up Rust
+        if: matrix.language == 'rust'
+        working-directory: native
+        run: |
+          toolchain=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          test -n "$toolchain"
+          rustup toolchain install "$toolchain" --profile minimal --component rust-src
+          rustup default "$toolchain"
+          cargo fetch --locked
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended
-          # Vendored third-party Rust, generated build output, docs and the Noir
-          # circuits carry no findings worth reporting for this project.
+          # Vendored third-party Rust, the upstream copies kept under openac-age/patches
+          # (not compiled), generated build output, docs and the Noir circuits carry no
+          # findings worth reporting for this project.
           config: |
             paths-ignore:
               - docs/**
               - '**/build/**'
               - native/**/vendor/**
               - native/circuits/**
+              - native/openac-age/patches/**
 
       # Compile the main source sets so the extractor sees them, without building the
       # Rust native library (DIW_ZK_NATIVE=skip): the Android SDK on the runner builds
@@ -94,4 +110,3 @@ jobs:
         uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: "/language:${{ matrix.language }}"
-          
