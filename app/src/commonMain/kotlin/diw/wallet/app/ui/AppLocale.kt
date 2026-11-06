@@ -16,12 +16,20 @@ expect object LocalAppLocale {
     infix fun provides(value: String?): ProvidedValue<*>
 }
 
-/** Shows [content] in the language chosen in [store], redrawing it when the choice changes. */
+/**
+ * Shows [content] in the language chosen in [store], redrawing it when the choice changes. Where the platform applies
+ * the choice itself ([AppLanguageStore.systemManaged], the per-app language of Android 13 and later), the configuration
+ * it gave the activity already holds the language and is left as it is: overriding it would fall back to the system
+ * language of the phone.
+ */
 @Composable
 fun AppLocaleScope(store: AppLanguageStore, content: @Composable () -> Unit) {
     val tag by store.tag.collectAsState()
-    val override = if (store.systemManaged) null else tag
-    CompositionLocalProvider(LocalAppLocale provides override) {
-        key(override) { content() }
+    if (store.systemManaged) {
+        key(tag) { content() }
+        return
+    }
+    CompositionLocalProvider(LocalAppLocale provides tag) {
+        key(tag) { content() }
     }
 }
