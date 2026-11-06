@@ -554,6 +554,9 @@ class WalletModel(val platform: PlatformServices) {
     val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }
 
     suspend fun init() {
+        // Strings read outside composition follow the app language from the first message on.
+        AppText.load(platform.languageStore.tag.value)
+        scope.launch { platform.languageStore.tag.collect { AppText.load(it) } }
         storage = platform.openStorage()
         settingsFlow.value = loadSettings()
         legal.load(storage)

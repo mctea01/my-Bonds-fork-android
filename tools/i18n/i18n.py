@@ -2,8 +2,10 @@
 """Moves Chinese string literals of a Kotlin UI file into Compose Multiplatform string resources.
 
   extract FILE            lists the literals with Chinese text: index, line, text with %n$s placeholders, arguments
-  apply FILE TRANSLATIONS replaces the listed literals by stringResource(Res.string.key, args) and adds the strings to
-                          composeResources/values (English) and values-zh (Traditional Chinese)
+  apply FILE TRANSLATIONS [--tr]
+                          replaces the listed literals by stringResource(Res.string.key, args) and adds the strings to
+                          composeResources/values (English) and values-zh (Traditional Chinese); with --tr the literal
+                          becomes tr(Res.string.key, args), for model code outside composition
   check [FILES...]        counts Chinese literals per file (the i18n check of docs/design/i18n.md)
 
 TRANSLATIONS is a UTF-8 text file with one line per literal to move: "index<TAB>key<TAB>English". A key that already
@@ -166,7 +168,7 @@ def write_strings(f, strings):
     f.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def cmd_apply(path, translations):
+def cmd_apply(path, translations, model=False):
     src, found = chinese(path)
     en = read_strings(RES / "values/strings.xml")
     zh = read_strings(RES / "values-zh/strings.xml")
@@ -192,7 +194,8 @@ def cmd_apply(path, translations):
         en[key], zh[key] = english, text
         if bare and args:
             sys.exit("@%s cannot take arguments" % key)
-        call = ("Res.string.%s" % key) if bare else "stringResource(Res.string.%s%s)" % (key, "".join(", " + a for a in args))
+        fn = "tr" if model else "stringResource"
+        call = ("Res.string.%s" % key) if bare else "%s(Res.string.%s%s)" % (fn, key, "".join(", " + a for a in args))
         plan[idx] = call
     out, last = [], 0
     for idx, (s, e, b) in enumerate(found):
@@ -205,6 +208,9 @@ def cmd_apply(path, translations):
     imports = ["import diw.wallet.app.res.Res", "import diw.wallet.app.res.*"]
     if any(c.startswith("stringResource(") for c in plan.values()):
         imports.insert(0, "import org.jetbrains.compose.resources.stringResource")
+    package = re.search(r"^package (\S+)", new, re.M)
+    if any(c.startswith("tr(") for c in plan.values()) and not (package and package.group(1) == "diw.wallet.app"):
+        imports.insert(0, "import diw.wallet.app.tr")
     for imp in imports:
         if imp not in new and plan:
             m = re.search(r"^import .*$", new, re.M)
@@ -230,7 +236,7 @@ if __name__ == "__main__":
     if a[:1] == ["extract"]:
         cmd_extract(a[1])
     elif a[:1] == ["apply"]:
-        cmd_apply(a[1], a[2])
+        cmd_apply(a[1], a[2], "--tr" in a[3:])
     elif a[:1] == ["check"]:
         cmd_check(a[1:])
     else:

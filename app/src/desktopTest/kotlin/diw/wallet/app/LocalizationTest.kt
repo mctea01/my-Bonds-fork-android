@@ -1,6 +1,8 @@
 package diw.wallet.app
 
 import diw.wallet.app.res.Res
+import diw.wallet.app.res.action_cancel
+import diw.wallet.app.res.flow_added_count
 import diw.wallet.app.res.legal_version_line
 import diw.wallet.app.res.screen_settings
 import diw.wallet.app.res.sep_comma
@@ -74,5 +76,19 @@ class LocalizationTest {
         assertEquals(null, store.tag.value)
         assertEquals(AppLanguage.TRADITIONAL_CHINESE, AppLanguage.of("zh-Hant-TW"))
         assertEquals(AppLanguage.SYSTEM, AppLanguage.of("ja"))
+    }
+
+    @Test
+    fun modelStringsFollowTheLoadedLanguage() = runBlocking<Unit> {
+        try {
+            AppText.load("en")
+            assertEquals("Cancel", tr(Res.string.action_cancel))
+            assertEquals("3 credentials added", tr(Res.string.flow_added_count, 3))
+            AppText.load("zh-TW")
+            assertEquals("取消", tr(Res.string.action_cancel))
+            assertEquals("已加入 3 張證件", tr(Res.string.flow_added_count, 3))
+        } finally {
+            AppText.load(null)
+        }
     }
 }
