@@ -489,7 +489,8 @@ internal fun measurementLine(m: ZkMeasurement): String {
     }
     val peak = m.peakMemoryMb?.let { "，記憶體峰值 $it MB" } ?: ""
     val note = m.note?.let { "（$it）" } ?: ""
-    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak"
+    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { "，停在「$it」" } ?: ""
+    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak$step"
 }
 
 /** Plain lines for a report: device class first, then one line per proof. */

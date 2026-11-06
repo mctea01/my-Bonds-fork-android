@@ -35,7 +35,7 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
             add("預估記憶體峰值 $peak MB" + (info?.let { "（目前可用 ${it.availableRamMb} MB）" } ?: ""))
         }
         if (readiness.missing.isNotEmpty()) add("需先下載 ${mb(readiness.downloadBytes)}，安裝後佔用 ${mb(readiness.installedBytes)}")
-        if (!readiness.recommended) add("可能被系統中止；可隨時取消，最長執行 ${ZkModel.EXTENDED_TIMEOUT.inWholeMinutes} 分鐘")
+        if (!readiness.recommended) add("可能被系統中止；可隨時取消，最長執行 ${readiness.kind.extendedTimeout.inWholeMinutes} 分鐘")
     }
     val onDevice = ZkChoiceOption(
         ZkChoiceKind.ON_DEVICE,

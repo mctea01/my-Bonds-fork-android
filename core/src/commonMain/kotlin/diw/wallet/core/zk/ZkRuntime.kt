@@ -49,7 +49,10 @@ object ZkCapabilities {
                 platform.freeDiskMb < ZkThresholds.PROVER_FREE_DISK_MB -> "可用儲存空間偏低，建議先釋放空間或使用電腦版"
                 tier == ZkTier.C || platform.availableRamMb < ZkThresholds.PROVER_AVAILABLE_RAM_MB ->
                     "可用記憶體偏低，仍可嘗試產生，或改用電腦版"
-                backend == ZkBackend.NOIR_ULTRAHONK && tier == ZkTier.B -> "建議使用電腦版，手機效能仍待量測"
+                // Measured 2026-11-06: the phone composition of a real one-page certificate ran past 10 minutes on a
+                // phone with a 2.5 GB peak, so zkPDF on any phone is offered with the desktop and self-hosted routes first.
+                backend == ZkBackend.NOIR_ULTRAHONK && !platform.isDesktop ->
+                    "手機產生 zkPDF 證明需要 10 分鐘以上、記憶體約 2.5 GB，建議改用電腦版或自架主機"
                 else -> ""
             }
         }.filterValues { it.isNotEmpty() }

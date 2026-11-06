@@ -38,9 +38,18 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
-/** The proofs the wallet produces, with the engine each needs, its default time limit and its measured memory peak. */
-enum class ZkProofKind(val backend: ZkBackend, val label: String, val timeout: Duration, val peakMemoryMb: Long?) {
-    PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, 2300),
+/**
+ * The proofs the wallet produces, with the engine each needs, its default time limit, the limit when the user chose
+ * to produce it here anyway, and its measured memory peak (whole process, the zkPDF figure from a phone).
+ */
+enum class ZkProofKind(
+    val backend: ZkBackend,
+    val label: String,
+    val timeout: Duration,
+    val peakMemoryMb: Long?,
+    val extendedTimeout: Duration = 30.minutes,
+) {
+    PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, 2600, 60.minutes),
     AGE(ZkBackend.OPENAC_SPARTAN2, "年齡零知識證明", 5.minutes, 2325),
     TLS(ZkBackend.TLSN, "網站查驗證明", 2.minutes, null),
     MDOC_AGE(ZkBackend.LONGFELLOW, "mdoc 年齡零知識證明", 3.minutes, null);
@@ -91,6 +100,8 @@ data class ZkMeasurement(
     val seconds: Long,
     val peakMemoryMb: Long?,
     val note: String?,
+    /** The last progress step shown (e.g. which segment of how many), so a stopped proof still says how far it got. */
+    val lastStep: String? = null,
     val platform: ZkPlatformInfo?,
     val at: Instant,
 )
@@ -108,7 +119,7 @@ class ZkModel(
     private val environment: ZkEnvironment?,
     /** Long native calls block their thread, so they stay off the shared default pool. */
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(2),
-    private val timeoutFor: (ZkProofKind, Boolean) -> Duration = { kind, extended -> if (extended) EXTENDED_TIMEOUT else kind.timeout },
+    private val timeoutFor: (ZkProofKind, Boolean) -> Duration = { kind, extended -> if (extended) kind.extendedTimeout else kind.timeout },
     private val clock: Clock = Clock.System,
 ) {
     val capability = MutableStateFlow<ZkCapability?>(null)
@@ -129,6 +140,8 @@ class ZkModel(
     private val proving = Mutex()
     private val running = MutableStateFlow<Map<String, Job>>(emptyMap())
     private var downloadJob: Job? = null
+    /** The last step of each running proof; proofs run one at a time, so the map stays small. */
+    private val lastStep = MutableStateFlow<Map<String, String>>(emptyMap())
 
     val catalog: List<ZkAsset> get() = environment?.catalog.orEmpty()
 
@@ -302,11 +315,14 @@ class ZkModel(
                     if (kind.backend !in capable.backends) return@withLock finish(id, ZkErrors.unsupported)
                     val started = clock.now()
                     set(ZkJob(id, kind, ZkJobPhase.RUNNING, startedAt = started, timeout = limit))
-                    val meter = Meter(started, kind, note)
+                    val meter = Meter(id, started, kind, note)
                     try {
                         val result = withTimeoutOrNull(limit) {
                             try {
-                                prove { step -> _jobs.update { jobs -> jobs[id]?.let { jobs + (id to it.copy(step = step)) } ?: jobs } }
+                                prove { step ->
+                                    lastStep.update { it + (id to step) }
+                                    _jobs.update { jobs -> jobs[id]?.let { jobs + (id to it.copy(step = step)) } ?: jobs }
+                                }
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (_: Exception) {
@@ -361,7 +377,7 @@ class ZkModel(
     }
 
     /** Samples resident memory while one proof runs and records the measurement once, when it stops. */
-    private inner class Meter(private val started: Instant, private val kind: ZkProofKind, private val note: String?) {
+    private inner class Meter(private val id: String, private val started: Instant, private val kind: ZkProofKind, private val note: String?) {
         private val peak = MutableStateFlow<Long?>(null)
         private var recorded = false
         private val sampler: Job? = environment?.let { env ->
@@ -384,7 +400,8 @@ class ZkModel(
             sampler?.cancel()
             environment?.let { sample(it) }
             val entry = ZkMeasurement(kind, phase, (clock.now() - started).inWholeSeconds, peak.value, note,
-                platformInfo.value, clock.now())
+                lastStep.value[id], platformInfo.value, clock.now())
+            lastStep.update { it - id }
             measurements.update { (listOf(entry) + it).take(MEASUREMENTS) }
         }
     }
@@ -400,7 +417,6 @@ class ZkModel(
     fun clear(id: String) = _jobs.update { jobs -> if (jobs[id]?.active == true) jobs else jobs - id }
 
     companion object {
-        val EXTENDED_TIMEOUT = 30.minutes
         val VERIFY_TIMEOUT = 2.minutes
         private val SAMPLE_INTERVAL = 500.milliseconds
         const val MEASUREMENTS = 10
