@@ -77,6 +77,17 @@ object LegalStrings {
     const val MOICA_SP_FORK_ONLY = "內建 SP 為原始碼預留機制；只有衍生版本發布者依法取得授權並完成實際配置後，才能使用。"
     /** The holder picked the test environment of the mobile citizen certificate. */
     const val MOICA_SP_ENV_TEST = "你目前選擇測試環境；測試憑證不得作為正式簽署結果。"
+    /** Bonds offline presentation: QR frames and the BLE link carry no session encryption. */
+    const val BONDS_UNENCRYPTED_WARNING = "此離線傳輸不提供連線層加密，附近或同網路的人可能截取你出示的資料。請確認是否繼續。"
+    const val BONDS_LINK_TITLE = "以藍牙傳送？"
+    const val BONDS_LINK_SEND = "仍要傳送"
+
+    /** Before the first request to the TWDIW platform after the statement was accepted. */
+    const val TWDIW_COMPATIBILITY_TITLE = "非官方相容流程"
+    const val TWDIW_COMPATIBILITY_WARNING = "此功能使用非官方相容流程，可能以官方皮夾識別資訊連線；本 App 並非官方皮夾，平台可能拒絕。請先閱讀專門聲明。"
+    const val TWDIW_COMPATIBILITY_CONTINUE = "了解，繼續"
+    const val READ_STATEMENT = "閱讀專門聲明"
+
     /** An SP whose holder could not be confirmed. */
     const val MOICA_SP_PROVIDER_UNKNOWN = "尚無法核實此 SP 的實際持有人或使用授權，請勿將其視為已獲官方認可。"
 }

@@ -27,12 +27,16 @@ data class ConsentRecord(val version: Int, val accepted: Boolean, val epochSecon
     val date: String get() = Instant.fromEpochSeconds(epochSeconds).toString().take(10)
 }
 
-/** The holder's decisions on the terms, the privacy policy and each integration statement (by Integration.id). */
+/**
+ * The holder's decisions on the terms, the privacy policy and each integration statement (by Integration.id), and the
+ * integrations whose one-time reminder before the first request the holder has seen ([notices]).
+ */
 @Serializable
 data class LegalConsent(
     val terms: ConsentRecord? = null,
     val privacy: ConsentRecord? = null,
     val integrations: Map<String, ConsentRecord> = emptyMap(),
+    val notices: Set<String> = emptySet(),
 ) {
     fun current(doc: LegalDocument, record: ConsentRecord?) = record != null && record.accepted && record.version == doc.version
 
@@ -85,10 +89,18 @@ class LegalModel(private val model: WalletModel) {
         c.copy(integrations = c.integrations + (i.id to ConsentRecord(LegalTexts.statement(i).document.version, accepted, now())))
     }
 
+    /** The holder has seen the reminder shown before the first request of [i]. */
+    fun noticed(i: Integration): Boolean = i.id in consent.value.notices
+
+    fun acknowledge(i: Integration) = update { c -> c.copy(notices = c.notices + i.id) }
+
     /** Accepts every text; used by tests that run the wallet without the first-start pages. */
     internal suspend fun acceptAll() {
         acceptBasics().join()
-        Integration.entries.filter { it.available }.forEach { decide(it, true).join() }
+        Integration.entries.filter { it.available }.forEach {
+            decide(it, true).join()
+            acknowledge(it).join()
+        }
     }
 
     private fun update(transform: (LegalConsent) -> LegalConsent) = model.scope.launch {

@@ -1486,6 +1486,20 @@ class WalletModelE2eTest {
         assertTrue(again.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA))
         again.legal.decide(twdiw, true).join()
         assertNull(again.blockedIntegration(link))
+
+        // The first TWDIW request the holder starts waits for the one-time reminder; cancelling leaves it undone.
+        again.handleUri(link)
+        assertEquals(twdiw, again.integrationNotice.value?.integration)
+        assertEquals(Screen.Home, again.screen.value)
+        again.integrationNotice.value = null
+        var ran = 0
+        again.withTwdiwNotice { ran++ }
+        assertEquals(0, ran)
+        again.continueNotice()
+        withTimeout(5.seconds) { while (ran == 0) delay(20) }
+        assertTrue(again.legal.noticed(twdiw))
+        again.withTwdiwNotice { ran++ }
+        assertEquals(2, ran, "the reminder is shown once")
     }
 
     /** An offer fetched from elsewhere that names a TWDIW issuer stops before anything is asked of wallet.gov.tw. */

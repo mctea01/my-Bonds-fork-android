@@ -200,7 +200,7 @@ fun UseTab(model: WalletModel, scan: (() -> Unit)?) {
             services!!.isEmpty() -> Text("目前沒有臨櫃服務。", style = MaterialTheme.typography.bodySmall)
             else -> services!!.forEach { s ->
                 ActionRow(WalletIcons.Store, s.name, if (docs.isEmpty()) "先加入證件才能出示" else "出示證件後顯示條碼", enabled = docs.isNotEmpty()) {
-                    model.taiwan.startPickup(s)
+                    model.withTwdiwNotice { model.taiwan.startPickup(s) }
                 }
             }
         }

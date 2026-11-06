@@ -895,6 +895,10 @@ class WalletModel(val platform: PlatformServices) {
             screen.value = Screen.IntegrationStatement(i, pendingUri = u)
             return
         }
+        if (namesTwdiw(u) && !legal.noticed(Integration.TWDIW)) {
+            withTwdiwNotice { handleUri(u) }
+            return
+        }
         when (val entry = TwdiwEntryParser.parse(u)) {
             is TwdiwEntry.Offer -> return startIssuance(entry.uri, TwdiwEntry.ENTRY_HINT)
             is TwdiwEntry.Presentation -> return startPresentation(entry.uri, TwdiwEntry.ENTRY_HINT)
@@ -919,9 +923,36 @@ class WalletModel(val platform: PlatformServices) {
      */
     fun blockedIntegration(uri: String): Integration? {
         val u = uri.trim()
-        if (!legal.enabled(Integration.TWDIW) && (TwdiwEntryParser.parse(u) != null || LegalModel.namesTwdiwHost(u))) return Integration.TWDIW
+        if (!legal.enabled(Integration.TWDIW) && namesTwdiw(u)) return Integration.TWDIW
         if (!legal.enabled(Integration.MS_VERIFIED_ID) && u.substringBefore(':').lowercase() == "openid-vc") return Integration.MS_VERIFIED_ID
         return null
+    }
+
+    /** [uri] is a TWDIW entry point or names a wallet.gov.tw address. */
+    private fun namesTwdiw(uri: String): Boolean = TwdiwEntryParser.parse(uri) != null || LegalModel.namesTwdiwHost(uri)
+
+    /** The one-time reminder shown before the first request the holder starts with an integration, and what follows it. */
+    class IntegrationNotice(val integration: Integration, val proceed: () -> Unit)
+
+    val integrationNotice = MutableStateFlow<IntegrationNotice?>(null)
+
+    /**
+     * Runs [action], first showing once that TWDIW is reached through a compatible, unofficial flow (the TWDIW
+     * statement asks for this reminder before the first request). Background refreshes do not wait for it.
+     */
+    fun withTwdiwNotice(action: () -> Unit) {
+        if (!legal.enabled(Integration.TWDIW) || legal.noticed(Integration.TWDIW)) action()
+        else integrationNotice.value = IntegrationNotice(Integration.TWDIW, action)
+    }
+
+    /** The holder read the reminder and goes on. */
+    fun continueNotice() {
+        val n = integrationNotice.value ?: return
+        integrationNotice.value = null
+        scope.launch {
+            legal.acknowledge(n.integration).join()
+            n.proceed()
+        }
     }
 
     /** Fails with the reason when [integration] is off; used where the address is known only after resolving. */

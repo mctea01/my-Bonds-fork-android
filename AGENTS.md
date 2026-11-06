@@ -171,8 +171,11 @@
 - `docs/legal/*.md` 由 `LegalDocument.toMarkdown()` 產生，`LegalDocumentsTest` 檢查兩者一致；改文字後以 `DIW_UPDATE_LEGAL=1` 執行該測試重新產生。實質變更要調高 `version`，使用者下次開啟時只重新確認有變更的文件；錯字修正不調版本。
 - `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。
 - 服務停用時：`blockedIntegration` 擋下 TWDIW 入口與含 wallet.gov.tw 位址的連結（含百分比編碼與 JSON 跳脫）、openid-vc，改開 `Screen.IntegrationStatement`（同意後接著處理連結）；解析後才知道位址的請求以 `requireTwdiwAllowed` 檢查；`StatusMonitor` 不查詢該服務證件的狀態、不重新判定其發行端；MyData 保存的身分證統一編號不使用。
-- 未上線的服務（`Integration.available = false`，目前是 zkPassport）只發佈聲明，不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
-- 測試建立 `WalletModel` 後呼叫 `legal.acceptAll()`，否則連結不會被處理。
+- 未上線的服務（`Integration.available = false`，目前是 zkPassport）只發佈聲明，在設定頁只能預覽、不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
+- 法律文字只用兩種 Markdown 標記：`**粗體**` 與反引號（主機名稱等），App 以 `legalAnnotated` 顯示，其他字元照原樣；不要用表格、連結語法或巢狀清單。
+- 使用者發起的第一個 TWDIW 請求（TWDIW 連結、臨櫃服務）先經 `withTwdiwNotice` 顯示一次非官方相容提醒，看過的記在 `LegalConsent.notices`；背景查詢不等這個提醒。
+- 一般文字用地域稱呼（臺灣地區、中國大陸），法規、機關與品牌照正式名稱寫。行動自然人憑證：發布版本不內建 SP（CI 不設 `DIW_MOICA_SP_*`），沒有 SP 時簽署畫面要明說。
+- 測試建立 `WalletModel` 後呼叫 `legal.acceptAll()`（同時略過一次性提醒），否則連結不會被處理。
 
 ## 建置與測試
 
