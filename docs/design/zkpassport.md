@@ -231,6 +231,12 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 - 之後可改成多台主機的門檻 OPRF（TACEO 的 `oprf-nr` 協定），降低單一金鑰外洩的風險；第一版先單一金鑰，金鑰外洩時以輪替公鑰（key id）處理，舊識別碼全部失效，聲明中寫明。
 - 不在 APK 內放 OPRF 金鑰：任何人都能從 APK 取出，等於沒有加鹽。若要離線使用，只能接受未加鹽識別碼。
 
+實作狀態（2026-11-06）：
+
+- OPRF：原生 `oprf` 功能（`zkpdf` 會一併開啟）以 TACEO `taceo-oprf-core` 0.6.3（MIT／Apache-2.0）實作單一金鑰 OPRF 與 Chaum-Pedersen 證明：`oprf_public_key`（含電路輸出的 `oprf_pk_hash`）、`oprf_evaluate`（伺服器端）、`oprf_blind`、`oprf_finalize`（錢包端，核對證明後產生電路的 `oprf_proof` 與輸出）。已實測：zkPassport 的 compare_age 電路以本專案的證明與輸出（`nullifier_secret`）執行成功，改動證明或輸出即失敗；`oprf_pk_hash` 的算法對上 zkPassport 自己的金鑰雜湊常數。
+- 錢包：`ZkPassportProver.Job.oprf` 有值時，揭露電路證明前把私密 nullifier 盲化送到服務端，回答須對設定的公鑰通過證明，輸出填入 `nullifier_secret`；`ZkPassportOprfClient` 讀 diw-wallet-server 的 `/oprf/v1/key` 並以伺服器權杖呼叫 `/oprf/v1/evaluate`。查驗端以 `ZkPassportConfig.oprfKeyHash` 指定接受的金鑰雜湊。
+- 伺服器端點與金鑰 secret 在 diw-wallet-server（`oprf` 功能）。第一版的授權是伺服器權杖加每個位址的次數上限；FaceMatch 授權等 Play Integrity 金鑰（需使用者在 Play Console 產生）後加入，在此之前的識別碼標示「未經人臉比對」。
+
 **互通性**：上述證明只有本專案的查驗端（Z2、diw-wallet-server 的查驗網頁）接受；zkPassport 的 SDK 會因 app id 或 OPRF 公鑰雜湊不符而拒絕【確認：`public-input-checker.ts`】。畫面與聲明都要寫明。
 
 ## 6. 對外服務與法律聲明

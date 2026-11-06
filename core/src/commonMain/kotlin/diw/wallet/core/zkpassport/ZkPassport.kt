@@ -62,6 +62,11 @@ data class ZkPassportConfig(
     val verifierApi: Boolean = false,
     /** DER of this wallet's CSCA anchors, against which the registry's keys of the issuing country are checked. */
     val cscaAnchors: List<ByteArray> = emptyList(),
+    /**
+     * The `oprf_pk_hash` (0x hex) of the project OPRF key the user's server publishes (5.5); salted identifiers
+     * under any other key, zkPassport's included, are refused. Null accepts none.
+     */
+    val oprfKeyHash: String? = null,
 )
 
 /**

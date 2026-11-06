@@ -5,6 +5,8 @@ import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zk.native.bindings.ZkPassportProofSession
 import diw.wallet.core.zk.native.bindings.zkpassportCertificates
 import diw.wallet.core.zk.native.bindings.zkpassportCircuitRoot
+import diw.wallet.core.zk.native.bindings.oprfBlind
+import diw.wallet.core.zk.native.bindings.oprfFinalize
 import diw.wallet.core.zk.native.bindings.zkpassportProve
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.Dispatchers
@@ -45,8 +47,18 @@ class ZkPassportProver(
     class Chip(val sod: ByteArray, val dg1: ByteArray, val dg2: ByteArray?)
 
     /**
-     * What to prove. [query] is the SDK query object, [domain] and [scope] the service scope the proofs bind to,
-     * [nullifierSecret] the OPRF-derived secret when the request asks for a unique identifier.
+     * The project's OPRF service (docs/design/zkpassport.md 5.5). [publicKey] (`{x, y}`) is the key the answer must
+     * prove it used; [evaluate] sends `{"blinded_query": {x, y}}` and returns the service's JSON answer.
+     */
+    interface Oprf {
+        val publicKey: JsonObject
+        suspend fun evaluate(blindedQuery: JsonObject): JsonObject
+    }
+
+    /**
+     * What to prove. [query] is the SDK query object, [domain] and [scope] the service scope the proofs bind to.
+     * With [oprf] the disclosure proofs carry the salted unique identifier: the private nullifier is blinded, the
+     * service's answer checked against its key, and the output becomes the circuits' `nullifier_secret`.
      */
     data class Job(
         val query: JsonObject,
@@ -56,7 +68,7 @@ class ZkPassportProver(
         val circuitVersion: String = CIRCUIT_VERSION,
         val rpc: String? = null,
         val nowSeconds: Long = System.currentTimeMillis() / 1000,
-        val nullifierSecret: String? = null,
+        val oprf: Oprf? = null,
     )
 
     sealed interface Progress {
@@ -110,6 +122,7 @@ class ZkPassportProver(
         val proofs = ArrayList<Proof>()
         val messages = ArrayList<Pair<String, JsonElement>>()
         var total = 0
+        var salted: Pair<String, JsonObject>? = null
         repeat(MAX_COMMANDS) {
             ensureActive()
             val command = Json.parseToJsonElement(session.next()).jsonObject
@@ -138,12 +151,23 @@ class ZkPassportProver(
                     }
                 }
                 "prove" -> {
+                    val inputs = command["inputs"] as? JsonObject ?: throw Failure("driver")
+                    val oprf = job.oprf
+                    val proving = if (oprf != null && "oprf_proof" in inputs) {
+                        val nullifier = ((inputs["salted_private_nullifier"] as? JsonObject)?.get("value") as? JsonPrimitive)?.contentOrNull
+                            ?: throw Failure("oprf_query")
+                        val result = salted?.takeIf { it.first == nullifier }?.second ?: salt(oprf, nullifier).also { salted = nullifier to it }
+                        JsonObject(command + ("inputs" to JsonObject(inputs + mapOf(
+                            "nullifier_secret" to (result["output"] ?: throw Failure("oprf")),
+                            "oprf_proof" to (result["oprf_proof"] ?: throw Failure("oprf")),
+                        ))))
+                    } else command
                     val index = (command["id"] as? JsonPrimitive)?.intOrNull ?: throw Failure("driver")
                     val name = command.text("name") ?: throw Failure("driver")
                     val hash = hashes[name] ?: throw Failure("vkey:$name")
                     progress(Progress.Proving(index, total, name))
                     val out = try {
-                        Json.parseToJsonElement(zkpassportProve(command.toString(), hash, crs, cancel)).jsonObject
+                        Json.parseToJsonElement(zkpassportProve(proving.toString(), hash, crs, cancel)).jsonObject
                     } catch (e: ZkException.Cancelled) {
                         throw kotlinx.coroutines.CancellationException("cancelled")
                     } catch (e: ZkException.InvalidInput) {
@@ -173,6 +197,38 @@ class ZkPassportProver(
             }
         }
         throw Failure("driver")
+    }
+
+    /**
+     * The OPRF round for private nullifier [query]: blinds it here, asks the service and checks the answer's proof
+     * against the configured key, so a service using another key cannot salt the identifier unnoticed.
+     */
+    private suspend fun salt(oprf: Oprf, query: String): JsonObject {
+        val blinded = try {
+            Json.parseToJsonElement(oprfBlind(query)).jsonObject
+        } catch (e: ZkException) {
+            throw Failure("oprf_unavailable")
+        }
+        val answer = try {
+            oprf.evaluate(blinded["blinded_query"] as? JsonObject ?: throw Failure("oprf"))
+        } catch (e: Failure) {
+            throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw Failure("oprf_unreachable")
+        }
+        val request = buildJsonObject {
+            put("query", query)
+            put("beta", blinded["beta"] ?: throw Failure("oprf"))
+            put("pk", oprf.publicKey)
+            for (key in listOf("response_blinded", "dlog_e", "dlog_s")) put(key, answer[key] ?: throw Failure("oprf_answer"))
+        }
+        return try {
+            Json.parseToJsonElement(oprfFinalize(request.toString())).jsonObject
+        } catch (e: ZkException) {
+            throw Failure("oprf_proof")
+        }
     }
 
     private fun provide(session: ZkPassportProofSession, id: String, data: String) {
@@ -232,7 +288,6 @@ class ZkPassportProver(
             put("query", job.query)
             put("service_scope", ZkPassport.normalizeDomain(job.domain))
             put("service_subscope", job.scope.orEmpty())
-            job.nullifierSecret?.let { put("nullifier_secret", it) }
             put("current_date_timestamp", job.nowSeconds)
             put("salt", salt())
         }

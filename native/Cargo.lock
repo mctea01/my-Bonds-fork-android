@@ -1786,11 +1786,18 @@ dependencies = [
 name = "diw-zk-ffi"
 version = "0.1.0"
 dependencies = [
+ "ark-ec 0.6.0",
+ "ark-ff 0.6.0",
  "base64 0.23.1",
  "hex",
+ "num-bigint 0.4.8",
  "openac-age",
+ "rand 0.8.8",
  "serde_json",
  "sha2 0.10.9",
+ "taceo-ark-babyjubjub",
+ "taceo-oprf-core",
+ "taceo-poseidon2 0.3.1",
  "thiserror 2.0.21",
  "uniffi",
  "zkpassport-ffi",
@@ -4866,6 +4873,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "taceo-ark-babyjubjub"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14ecf2df99fec8b65be444d27f4ac20d75486be15423b4cd507517683312a4b0"
+dependencies = [
+ "ark-bn254 0.6.0",
+ "ark-ec 0.6.0",
+ "ark-ff 0.6.0",
+ "ark-std 0.6.0",
+]
+
+[[package]]
+name = "taceo-ark-serde-compat"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d338a8f08216a0982c20bd301f11a4fe620e99e8bdc6b8e8be20ec66eaf158d"
+dependencies = [
+ "ark-ec 0.6.0",
+ "ark-ff 0.6.0",
+ "ark-serialize 0.6.0",
+ "num-bigint 0.4.8",
+ "serde",
+ "taceo-ark-babyjubjub",
+]
+
+[[package]]
+name = "taceo-oprf-core"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f66b5a67d71a6022abb42198d87184aebbac1f45538b5858d22c87d0958a805"
+dependencies = [
+ "ark-ec 0.6.0",
+ "ark-ff 0.6.0",
+ "ark-serialize 0.6.0",
+ "blake3",
+ "itertools 0.15.0",
+ "num-bigint 0.4.8",
+ "rand 0.8.8",
+ "serde",
+ "subtle",
+ "taceo-ark-babyjubjub",
+ "taceo-ark-serde-compat",
+ "taceo-poseidon2 0.3.1",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "taceo-poseidon2"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4875,6 +4930,18 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-std 0.5.0",
  "num-bigint 0.4.8",
+ "num-traits",
+]
+
+[[package]]
+name = "taceo-poseidon2"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec520fb3e8be3d68d4e40efc62ae332e129c33df335c35892f25a79e2621626f"
+dependencies = [
+ "ark-bn254 0.6.0",
+ "ark-ff 0.6.0",
+ "ark-std 0.6.0",
  "num-traits",
 ]
 
@@ -5663,6 +5730,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "uuid"
+version = "1.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a0e2d11620c50695fe12bbbfde96b3477fe606e7284c22d505c12ce51214514"
+dependencies = [
+ "getrandom 0.4.3",
+ "js-sys",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "valuable"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6060,7 +6138,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2 0.10.9",
- "taceo-poseidon2",
+ "taceo-poseidon2 0.2.1",
 ]
 
 [[package]]

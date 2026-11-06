@@ -65,6 +65,9 @@ its own license:
   crates' Cargo manifests; see native/third_party/zkpassport/README.md)
 - taceo-poseidon2 0.2, k256 0.13, aes-gcm 0.10, sha1 0.10, base64 and hex -
   MIT or Apache License 2.0; miniz_oxide 0.8 - MIT, Zlib or Apache License 2.0
+- TACEO taceo-oprf-core 0.6.3, taceo-ark-babyjubjub 0.6, taceo-ark-serde-compat
+  0.6 and taceo-poseidon2 0.3 (the project OPRF), arkworks 0.6, uuid and
+  itertools - MIT or Apache License 2.0
 
 Development and test tools that are not shipped in the application:
 

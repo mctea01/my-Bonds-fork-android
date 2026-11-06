@@ -12,7 +12,9 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 bindgen = ["uniffi/cli"]
-zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:serde_json", "dep:hex", "dep:base64"]
+zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:serde_json", "dep:hex", "dep:base64", "oprf"]
+# The project OPRF (zkPassport 5.5): light, no Barretenberg; zkPassport proving turns it on.
+oprf = ["dep:taceo-oprf-core", "dep:taceo-poseidon2", "dep:ark-babyjubjub", "dep:ark-ec", "dep:ark-ff", "dep:num-bigint", "dep:rand", "dep:serde_json"]
 tlsn = ["dep:zktls"]
 openac = ["dep:openac-age"]
 
@@ -29,6 +31,13 @@ zkpassport-ffi = { path = "../third_party/zkpassport/zkpassport-ffi", optional =
 serde_json = { version = "=1.0.154", optional = true }
 hex = { version = "0.4", optional = true }
 base64 = { version = "=0.23.1", optional = true }
+taceo-oprf-core = { version = "=0.6.3", default-features = false, optional = true }
+taceo-poseidon2 = { version = "0.3", default-features = false, features = ["bn254", "t4"], optional = true }
+ark-babyjubjub = { package = "taceo-ark-babyjubjub", version = "0.6", optional = true }
+ark-ec = { version = "0.6", optional = true }
+ark-ff = { version = "0.6", optional = true }
+num-bigint = { version = "0.4", optional = true }
+rand = { version = "0.8", optional = true }
 
 [[bin]]
 name = "uniffi-bindgen"

@@ -66,7 +66,8 @@ pub fn zkpassport_verify(request_json: String, crs_dir: Option<String>) -> Resul
         {
             let dir = crs_dir.map(std::path::PathBuf::from);
             zkpassport_verify::verify_json(&request_json, |vk, proof, public| {
-                zkpdf_prover::verify_ultrahonk(dir.as_deref(), vk, proof, public).map_err(|e| e.0.to_string())
+                zkpdf_prover::verify_ultrahonk(dir.as_deref(), vk, proof, public)
+                    .map_err(|e| e.0.to_string())
             })
             .map_err(invalid)
         }
@@ -127,7 +128,10 @@ impl ZkPassportProofSession {
         run_worker(64 * 1024 * 1024, ZkCancelToken::new(), move |_| {
             #[cfg(feature = "zkpdf")]
             {
-                let mut s = self.inner.lock().map_err(|_| invalid("session_state".into()))?;
+                let mut s = self
+                    .inner
+                    .lock()
+                    .map_err(|_| invalid("session_state".into()))?;
                 s.provide(&id, &data).map_err(invalid)
             }
             #[cfg(not(feature = "zkpdf"))]
@@ -154,21 +158,36 @@ pub fn zkpassport_prove(
     run_worker(64 * 1024 * 1024, cancel, move |token| {
         #[cfg(feature = "zkpdf")]
         {
-            let command: serde_json::Value = serde_json::from_str(&command_json).map_err(|_| invalid("command_json".into()))?;
-            let circuit = command["circuit"].as_str().filter(|c| !c.is_empty()).ok_or_else(|| invalid("command_circuit".into()))?;
-            let inputs = command.get("inputs").filter(|i| i.is_object()).ok_or_else(|| invalid("command_inputs".into()))?;
-            let expected = vkey_hash.trim().trim_start_matches("0x").to_ascii_lowercase();
-            if expected.is_empty() || expected.len() > 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+            let command: serde_json::Value =
+                serde_json::from_str(&command_json).map_err(|_| invalid("command_json".into()))?;
+            let circuit = command["circuit"]
+                .as_str()
+                .filter(|c| !c.is_empty())
+                .ok_or_else(|| invalid("command_circuit".into()))?;
+            let inputs = command
+                .get("inputs")
+                .filter(|i| i.is_object())
+                .ok_or_else(|| invalid("command_inputs".into()))?;
+            let expected = vkey_hash
+                .trim()
+                .trim_start_matches("0x")
+                .to_ascii_lowercase();
+            if expected.is_empty()
+                || expected.len() > 64
+                || !expected.bytes().all(|b| b.is_ascii_hexdigit())
+            {
                 return Err(invalid("vkey_hash".into()));
             }
             let crs = std::path::Path::new(&crs_dir);
-            let vk = zkpdf_prover::write_vk(crs, circuit.as_bytes()).map_err(|e| invalid(e.0.to_string()))?;
+            let vk = zkpdf_prover::write_vk(crs, circuit.as_bytes())
+                .map_err(|e| invalid(e.0.to_string()))?;
             if format!("{:064x}", zkpassport_verify::vkey_hash(&vk)) != format!("{expected:0>64}") {
                 return Err(invalid("circuit_vkey_mismatch".into()));
             }
             token.check()?;
             let (proof, public, vk) =
-                zkpdf_prover::prove_ultrahonk(crs, circuit.as_bytes(), Some(&vk), inputs).map_err(|e| invalid(e.0.to_string()))?;
+                zkpdf_prover::prove_ultrahonk(crs, circuit.as_bytes(), Some(&vk), inputs)
+                    .map_err(|e| invalid(e.0.to_string()))?;
             token.check()?;
             let mut joined = public;
             joined.extend_from_slice(&proof);
@@ -198,12 +217,19 @@ mod tests {
         let session = ZkPassportProofSession::new(config.to_string()).unwrap();
         let first: serde_json::Value = serde_json::from_str(&session.next()).unwrap();
         assert_eq!(first["action"], "fetch");
-        let urls: Vec<&str> = first["requests"].as_array().unwrap().iter().map(|r| r["url"].as_str().unwrap()).collect();
+        let urls: Vec<&str> = first["requests"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["url"].as_str().unwrap())
+            .collect();
         assert_eq!(urls.len(), 2);
         assert!(urls[0].starts_with("https://certificates.zkpassport.id/mainnet"));
         assert!(urls[1].starts_with("https://circuits2.zkpassport.id/mainnet"));
         assert!(ZkPassportProofSession::new("{".into()).is_err());
-        assert!(zkpassport_prove("{}".into(), "0x1".into(), ".".into(), ZkCancelToken::new()).is_err());
+        assert!(
+            zkpassport_prove("{}".into(), "0x1".into(), ".".into(), ZkCancelToken::new()).is_err()
+        );
     }
 
     /// Proves a published zkPassport circuit and verifies the proof under the returned key:
@@ -213,20 +239,39 @@ mod tests {
     #[test]
     #[ignore = "requires a packaged circuit, its inputs and the full CRS"]
     fn proves_a_packaged_circuit() {
-        let read = |name: &str| std::fs::read_to_string(std::env::var_os(name).expect(name)).unwrap();
+        let read =
+            |name: &str| std::fs::read_to_string(std::env::var_os(name).expect(name)).unwrap();
         let crs = std::env::var("ZKPDF_ASSETS_DIR").expect("ZKPDF_ASSETS_DIR");
         let hash = std::env::var("ZKPASSPORT_VKEY_HASH").unwrap_or_else(|_| {
-            let vk = zkpdf_prover::write_vk(std::path::Path::new(&crs), read("ZKPASSPORT_CIRCUIT").as_bytes()).unwrap();
+            let vk = zkpdf_prover::write_vk(
+                std::path::Path::new(&crs),
+                read("ZKPASSPORT_CIRCUIT").as_bytes(),
+            )
+            .unwrap();
             format!("0x{:x}", zkpassport_verify::vkey_hash(&vk))
         });
         let inputs: serde_json::Value = serde_json::from_str(&read("ZKPASSPORT_INPUTS")).unwrap();
         let command = serde_json::json!({ "action": "prove", "id": 0, "circuit": read("ZKPASSPORT_CIRCUIT"), "inputs": inputs });
-        let wrong = zkpassport_prove(command.to_string(), "0x1".into(), crs.clone(), ZkCancelToken::new());
-        assert!(matches!(wrong, Err(ZkError::InvalidInput { reason }) if reason == "circuit_vkey_mismatch"));
-        let out: serde_json::Value =
-            serde_json::from_str(&zkpassport_prove(command.to_string(), hash, crs.clone(), ZkCancelToken::new()).unwrap()).unwrap();
+        let wrong = zkpassport_prove(
+            command.to_string(),
+            "0x1".into(),
+            crs.clone(),
+            ZkCancelToken::new(),
+        );
+        assert!(
+            matches!(wrong, Err(ZkError::InvalidInput { reason }) if reason == "circuit_vkey_mismatch")
+        );
+        let out: serde_json::Value = serde_json::from_str(
+            &zkpassport_prove(command.to_string(), hash, crs.clone(), ZkCancelToken::new())
+                .unwrap(),
+        )
+        .unwrap();
         let joined = hex::decode(out["proof"].as_str().unwrap()).unwrap();
-        let vk = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, out["vkey"].as_str().unwrap()).unwrap();
+        let vk = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            out["vkey"].as_str().unwrap(),
+        )
+        .unwrap();
         let (pi, proof) = joined.split_at(joined.len() - zkpdf_prover::PROOF_BYTES);
         assert!(!pi.is_empty() && pi.len() % 32 == 0);
         zkpdf_prover::verify_ultrahonk(Some(std::path::Path::new(&crs)), &vk, proof, pi).unwrap();

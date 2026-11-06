@@ -866,6 +866,16 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -888,6 +898,16 @@ fun uniffi_diw_zk_checksum_func_create_age_show_input(
 fun uniffi_diw_zk_checksum_func_generate_shared_blinds(
 ): Short
 fun uniffi_diw_zk_checksum_func_native_info(
+): Short
+fun uniffi_diw_zk_checksum_func_oprf_blind(
+): Short
+fun uniffi_diw_zk_checksum_func_oprf_evaluate(
+): Short
+fun uniffi_diw_zk_checksum_func_oprf_finalize(
+): Short
+fun uniffi_diw_zk_checksum_func_oprf_public_key(
+): Short
+fun uniffi_diw_zk_checksum_func_oprf_public_key_hash(
 ): Short
 fun uniffi_diw_zk_checksum_func_prove_jwt(
 ): Short
@@ -1031,6 +1051,16 @@ fun uniffi_diw_zk_fn_func_create_age_show_input(`documentsPath`: RustBuffer.ByVa
 fun uniffi_diw_zk_fn_func_generate_shared_blinds(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_native_info(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_oprf_blind(`query`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_oprf_evaluate(`secret`: RustBuffer.ByValue,`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_oprf_finalize(`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_oprf_public_key(`secret`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_oprf_public_key_hash(`pkJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_prove_jwt(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1202,6 +1232,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_native_info() != 9623.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_oprf_blind() != 29815.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_oprf_evaluate() != 16325.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_oprf_finalize() != 37758.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_oprf_public_key() != 43025.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_oprf_public_key_hash() != 27221.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_prove_jwt() != 60252.toShort()) {
@@ -4144,6 +4189,73 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_native_info(
         _status)
+}
+    )
+    }
+    
+
+        /**
+         * Wallet side: blinds [query]; returns `beta` (keep it private) and `blinded_query`.
+         */
+    @Throws(ZkException::class) fun `oprfBlind`(`query`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_oprf_blind(
+        FfiConverterString.lower(`query`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Server side: answers `{"blinded_query": {x, y}}` with `pk`, `response_blinded`, `dlog_e` and `dlog_s`.
+         */
+    @Throws(ZkException::class) fun `oprfEvaluate`(`secret`: kotlin.String, `requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_oprf_evaluate(
+        FfiConverterString.lower(`secret`),FfiConverterString.lower(`requestJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Wallet side: `{query, beta, pk, response_blinded, dlog_e, dlog_s}` to the circuit's `oprf_proof` and `output`,
+         * once the proof shows the server used the key behind `pk` (the caller checks `pk` is the project's key).
+         */
+    @Throws(ZkException::class) fun `oprfFinalize`(`requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_oprf_finalize(
+        FfiConverterString.lower(`requestJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The public key `{x, y, hash}` of the OPRF secret key [secret] (a nonzero BabyJubJub scalar); `hash` is the
+         * `oprf_pk_hash` the disclosure circuits output for it.
+         */
+    @Throws(ZkException::class) fun `oprfPublicKey`(`secret`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_oprf_public_key(
+        FfiConverterString.lower(`secret`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The `oprf_pk_hash` (0x hex) of a public key `{"x", "y"}`, as a verifier compares it.
+         */
+    @Throws(ZkException::class) fun `oprfPublicKeyHash`(`pkJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_oprf_public_key_hash(
+        FfiConverterString.lower(`pkJson`),_status)
 }
     )
     }
