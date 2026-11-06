@@ -27,7 +27,7 @@ zktls = { path = "../zktls", optional = true }
 openac-age = { path = "../openac-age", optional = true }
 zkpassport-verify = { path = "../zkpassport-verify", optional = true }
 # zkPassport's own input generation and session driver (MIT), vendored from a reviewed revision.
-zkpassport-ffi = { path = "../third_party/zkpassport/zkpassport-ffi", optional = true }
+zkpassport-ffi = { path = "../vendor/zkpassport/zkpassport-ffi", optional = true }
 serde_json = { version = "=1.0.154", optional = true }
 hex = { version = "0.4", optional = true }
 base64 = { version = "=0.23.1", optional = true }

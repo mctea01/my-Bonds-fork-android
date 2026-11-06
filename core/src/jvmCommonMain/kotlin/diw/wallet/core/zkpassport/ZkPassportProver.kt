@@ -28,7 +28,7 @@ import java.util.Base64
 
 /**
  * zkPassport proofs made on this device from a passport's chip files. zkPassport's own input generation and session
- * driver (vendored under native/third_party/zkpassport) decide which circuits run and in what order; this class
+ * driver (vendored under native/vendor/zkpassport) decide which circuits run and in what order; this class
  * only fetches, checks and proves. Every fetched file is checked before use: the certificate package must hash to
  * the registry's latest root, the manifest to a circuit root the registry lists, and each circuit's key, derived
  * here, to its manifest leaf, so no circuit outside the registry runs on the chip data.
