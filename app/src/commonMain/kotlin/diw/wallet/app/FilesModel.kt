@@ -61,6 +61,8 @@ import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
 import diw.wallet.core.document.derived.ParsedCertificate
 import diw.wallet.core.document.derived.DerivedDocument
+import diw.wallet.core.document.derived.TravelDocumentFields
+import diw.wallet.core.document.mrtd.MrtdDump
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OaAttachment
@@ -820,6 +822,11 @@ class FilesModel(private val model: WalletModel) {
             }
             DocumentFormat.XML -> xml = bytes.decodeToString().removePrefix("\uFEFF").takeIf { OfficialDocuments.parse(bytes) != null }
             else -> {}
+        }
+        if (report.format == DocumentFormat.EMRTD) {
+            // A travel document's claims are its zone, never the file name or a typed value.
+            val dump = MrtdDump.decode(bytes) ?: return@withContext DeriveFields(emptyList(), false)
+            return@withContext DeriveFields(TravelDocumentFields.claims(dump, Clock.System.now().toString().take(4).toInt()), false)
         }
         val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints())
         val zk = if (report.format == DocumentFormat.PDF) zkPdfMatches(bytes) else emptyList()
@@ -2101,8 +2108,11 @@ class FilesModel(private val model: WalletModel) {
         val now = Clock.System.now()
         val validUntil = validDays?.let { now + it.days }
         val document = DerivedDocument(f.sha256, f.mediaType, f.size)
+        val travel = if (report.format == DocumentFormat.EMRTD) MrtdDump.decode(data) else null
+        val vct = if (travel != null) TravelDocumentFields.VCT else DerivedCredentials.VCT
         val evidence = buildList {
-            add(DerivedCredentials.signatureEvidence(report))
+            if (travel != null) TravelDocumentFields.evidence(report, travel)?.let { add(it) }
+            else add(DerivedCredentials.signatureEvidence(report))
             val stamp = f.timestamps.lastOrNull { it.trusted }?.let { it.token.fromBase64() }
                 ?: if (timestamp) { busy.value = tr(Res.string.step_get_timestamp); timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
@@ -2121,7 +2131,7 @@ class FilesModel(private val model: WalletModel) {
                 credentialIssuer = issuer.did!!,
                 configurationId = CONFIGURATION,
                 format = "dc+sd-jwt",
-                vct = DerivedCredentials.VCT,
+                vct = vct,
                 tier = TrustTier.T3.name,
                 environment = TrustEnvironment.USER.id,
                 official = false,
@@ -2130,16 +2140,16 @@ class FilesModel(private val model: WalletModel) {
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
                 specs = listOf("IETF SD-JWT VC"),
-                claimNames = DerivedCredentials.claimLabels + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
+                claimNames = DerivedCredentials.claimLabels + (if (travel != null) TravelDocumentFields.labels else emptyMap()) + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
                 profile = PROFILE,
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = tr(Res.string.files_derived), appData = record.encode())
             try {
                 val credential = if (key != null) {
-                    KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, DerivedCredentials.VCT, key.alias)
+                    KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, vct, key.alias)
                 } else {
                     KeyBoundSdJwtVcCredential.create(
-                        created, null, CredentialDomains.SD_JWT, keys.secureArea, DerivedCredentials.VCT,
+                        created, null, CredentialDomains.SD_JWT, keys.secureArea, vct,
                         keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
                     )
                 }
@@ -2148,7 +2158,7 @@ class FilesModel(private val model: WalletModel) {
                 val disclosures = DerivedCredentials.jsonDisclosures(
                     textClaims.map { it.name to JsonPrimitive(it.value) } + proven?.disclosures().orEmpty(),
                 )
-                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil)
+                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil, vct)
                 credential.certify(compact.encodeToByteString())
                 created.edit { provisioned = true }
             } catch (e: Exception) {

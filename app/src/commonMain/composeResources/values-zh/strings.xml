@@ -4268,4 +4268,5 @@
     <string name="zkp_trust_unchecked">信任：依 zkPassport 憑證註冊表（T3）。%1$s</string>
     <string name="zkp_err_certificates">無法下載註冊表的憑證包，未能將發證國 CSCA 與本 App 的信任錨點比對。</string>
     <string name="zkp_err_certificates_root">下載的憑證包雜湊不等於證明使用的註冊表根，已捨棄。</string>
+    <string name="derive_chip_file">晶片檔案，%1$d 位元組。可讓查驗方重做被動驗證；內含完整機讀區，只在需要時出示。</string>
 </resources>
