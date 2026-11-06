@@ -4259,8 +4259,13 @@
     <string name="zkp_tech_scope">Scope: %1$s</string>
     <string name="zkp_tech_version">Circuit version: %1$s</string>
     <string name="zkp_test_caveat">Test passport: not for real checks.</string>
-    <string name="zkp_trust_registry">Trust: by zkPassport's certificate registry (T3).</string>
+    <string name="zkp_trust_registry">Trust: by zkPassport's certificate registry (T3); the proofs do not say the issuing country.</string>
     <string name="zkp_unverified_suffix"> (domain as entered, not verified)</string>
     <string name="zkp_verifier_api">Let zkPassport's verifier service decide</string>
     <string name="zkp_verifier_api_note">Only when this phone cannot verify a proof itself; the proofs and the request are then sent to zkPassport. Off by default.</string>
+    <string name="zkp_trust_anchored">Trust: every CSCA of %1$s in zkPassport's registry is one of this app's trust anchors (T2).</string>
+    <string name="zkp_trust_partial">Trust: by zkPassport's certificate registry (T3). Of its %2$d CSCA keys for %1$s, %3$d are this app's trust anchors; import the country's CSCA (for example from an ICAO master list) to reach T2.</string>
+    <string name="zkp_trust_unchecked">Trust: by zkPassport's certificate registry (T3). %1$s</string>
+    <string name="zkp_err_certificates">The registry's certificate package could not be downloaded, so the issuing country's CSCA was not compared with this app's anchors.</string>
+    <string name="zkp_err_certificates_root">The downloaded certificate package does not hash to the registry root of the proofs, so it was not used.</string>
 </resources>

@@ -3,7 +3,10 @@ package diw.wallet.app
 import diw.wallet.app.legal.Integration
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
+import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.zkpassport.ZkPassport
+import diw.wallet.core.zkpassport.ZkPassportCscaCheck
 import diw.wallet.core.zkpassport.ZkPassportConfig
 import diw.wallet.core.zkpassport.ZkPassportField
 import diw.wallet.core.zkpassport.ZkPassportRequest
@@ -62,10 +65,10 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.ZkPassportWaiting(request, null, ZkPassportState.Connecting)
-        val opened = engine.open(request, config, model.scope)
-        session = opened
         model.platform.keepScreenOn(true)
         job = model.scope.launch {
+            val opened = engine.open(request, config.copy(cscaAnchors = cscaAnchors()), model.scope)
+            session = opened
             try {
                 var url: String? = null
                 opened.state.takeWhile { s ->
@@ -83,10 +86,17 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                     s !is ZkPassportState.Done && s != ZkPassportState.Rejected && s !is ZkPassportState.Failed
                 }.collect {}
             } finally {
+                opened.close()
                 model.platform.keepScreenOn(false)
             }
         }
     }
+
+    /** This wallet's CSCA anchors (production and the user's own), as DER. */
+    private suspend fun cscaAnchors(): List<ByteArray> =
+        listOf(TrustEnvironment.PRODUCTION, TrustEnvironment.USER).flatMap { env ->
+            runCatching { model.trust.anchors(TrustRole.TRAVEL_DOCUMENT, env) }.getOrDefault(emptyList()).map { it.first.encoded.toByteArray() }
+        }
 
     fun stop() {
         session?.close()
@@ -206,6 +216,17 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             if (r.issuingCountryIn.isNotEmpty()) add(tr(Res.string.zkp_issuing_in, r.issuingCountryIn.joinToString(sep)))
             if (r.issuingCountryOut.isNotEmpty()) add(tr(Res.string.zkp_issuing_out, r.issuingCountryOut.joinToString(sep)))
             r.boundData?.let { add(tr(Res.string.zkp_bound, it)) }
+        }
+
+        /** The trust line of a passed check (docs/design/zkpassport.md 4.3): T2 when every key is an anchor. */
+        fun trust(check: ZkPassportCscaCheck?): String {
+            val sep = tr(Res.string.sep_list)
+            return when {
+                check == null -> tr(Res.string.zkp_trust_registry)
+                check.allAnchored -> tr(Res.string.zkp_trust_anchored, check.countries.joinToString(sep))
+                check.error != null -> tr(Res.string.zkp_trust_unchecked, if (check.error == "certificates_root") tr(Res.string.zkp_err_certificates_root) else tr(Res.string.zkp_err_certificates))
+                else -> tr(Res.string.zkp_trust_partial, check.countries.joinToString(sep), check.inPackage, check.anchored)
+            }
         }
 
         const val MAX_COUNTRIES = 200

@@ -232,4 +232,54 @@ class ZkPassportBridgeTest {
         assertTrue(calls.first().startsWith("https://circuits2.zkpassport.id/mainnet/by-version/0.21.1/"))
         Unit
     }
+
+    private fun certificate(algorithm: String, spec: java.security.spec.AlgorithmParameterSpec?): Pair<ByteArray, java.security.PublicKey> {
+        val g = java.security.KeyPairGenerator.getInstance(algorithm, org.bouncycastle.jce.provider.BouncyCastleProvider())
+        if (spec != null) g.initialize(spec) else g.initialize(2048)
+        val pair = g.generateKeyPair()
+        val name = org.bouncycastle.asn1.x500.X500Name("CN=CSCA,C=ZZ")
+        val now = System.currentTimeMillis()
+        val builder = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(name, BigInteger.ONE, java.util.Date(now), java.util.Date(now + 86_400_000), name, pair.public)
+        val signer = org.bouncycastle.operator.jcajce.JcaContentSignerBuilder(if (algorithm == "RSA") "SHA256withRSA" else "SHA256withECDSA")
+            .setProvider(org.bouncycastle.jce.provider.BouncyCastleProvider()).build(pair.private)
+        return builder.build(signer).encoded to pair.public
+    }
+
+    /** Anchor keys compare with package keys as zkPassport serialises them, brainpool included. */
+    @Test
+    fun cscaKeysCompareWithPackageKeys() {
+        val (rsaDer, rsa) = certificate("RSA", null)
+        val modulus = (rsa as java.security.interfaces.RSAPublicKey).modulus
+        val rsaKey = diw.wallet.core.zkpassport.ZkPassportCsca.publicKey(rsaDer)!!
+        assertTrue(diw.wallet.core.zkpassport.ZkPassportCsca.same(rsaKey, "0x" + modulus.toString(16)))
+        assertFalse(diw.wallet.core.zkpassport.ZkPassportCsca.same(rsaKey, "0x" + modulus.add(BigInteger.TWO).toString(16)))
+        val (ecDer, ec) = certificate("EC", java.security.spec.ECGenParameterSpec("brainpoolP384r1"))
+        val w = (ec as java.security.interfaces.ECPublicKey).w
+        val hex = { b: BigInteger -> b.toString(16).padStart(96, '0') }
+        val ecKey = diw.wallet.core.zkpassport.ZkPassportCsca.publicKey(ecDer)!!
+        assertTrue(diw.wallet.core.zkpassport.ZkPassportCsca.same(ecKey, "0x" + hex(w.affineX) + hex(w.affineY)))
+        assertFalse(diw.wallet.core.zkpassport.ZkPassportCsca.same(ecKey, "0x" + hex(w.affineY) + hex(w.affineX)))
+        assertEquals(null, diw.wallet.core.zkpassport.ZkPassportCsca.publicKey(byteArrayOf(1, 2, 3)))
+    }
+
+    /** The certificate package is used only when it hashes to the proofs' root, and is then kept by root. */
+    @Test
+    fun certificatePackagesAreCheckedAgainstTheRoot() = runBlocking {
+        val root = "0x" + "ab".repeat(32)
+        val calls = ArrayList<String>()
+        val engine = MockEngine { req ->
+            calls.add(req.url.toString())
+            respond("""{"version":1,"certificates":[]}""", HttpStatusCode.OK)
+        }
+        val registry = ZkPassportRegistry(HttpClient(engine), Files.createTempDirectory("zkpassport").toFile())
+        val wrong = runCatching { registry.certificates(ZkPassport.MAINNET, root) { """{"root":"0x01","certificates":[]}""" } }.exceptionOrNull()
+        assertEquals("certificates_root", (wrong as ZkPassportRegistry.Unreachable).code)
+        val summary = """{"root":"$root","certificates":[{"country":"ZZZ","publicKey":"0a"}]}"""
+        assertEquals(Json.parseToJsonElement(summary), registry.certificates(ZkPassport.MAINNET, root) { summary })
+        assertEquals("https://certificates.zkpassport.id/mainnet/$root.json", calls.last())
+        val before = calls.size
+        assertEquals(Json.parseToJsonElement(summary), registry.certificates(ZkPassport.MAINNET, root) { error("not called") })
+        assertEquals(before, calls.size, "a checked package needs no second download")
+        Unit
+    }
 }

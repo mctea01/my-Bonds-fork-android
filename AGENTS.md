@@ -19,7 +19,7 @@
 | `app/src/androidMain`、`desktopMain` | 平台實作（相機掃描、硬體金鑰、DC API、Bonds BLE、圖片解碼、NFC：Android 的 HCE `WalletNfcService`、讀卡模式與 USB CCID `AndroidNfcReaders`，桌面的 PC/SC `PcscReaders`；取件入口 `PortalWebView`、檔案選取與儲存） |
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
-| `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime、OpenAC 年齡證明、TLSNotary、Noir 電路（`native/circuits`） |
+| `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime、OpenAC 年齡證明、TLSNotary、Noir 電路（`native/circuits`）、zkPassport 證明組查驗（`native/zkpassport-verify`） |
 | `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 發佈，格式見 `templates/README.md` |
 
 `core` 內的主要套件：
@@ -46,13 +46,14 @@
 | `document/c2pa` | C2PA manifest 讀取（`C2paManifests`：JPEG APP11、PNG caBX、WebP、sidecar 的 JUMBF，v1／v2 claim，宣告雜湊與資料雜湊硬綁定，動作、成分、作者、CAWG 身分） |
 | `zk` | 零知識證明共用層：原生函式庫載入、資產清單與下載（`ZkAssetManifest`）、裝置分級（`ZkRuntime`）、OpenAC 年齡證明（`OpenAcAge`）、Longfellow（`LongfellowZk`）、版型包（`ZkTemplatePack`） |
 | `zktls` | 網站查驗證明：查驗頁版型（`ZkTlsProfile`）、請求（`ZkTlsSessionRequest`）、揭露規劃、網頁證明與本機紀錄（`WebProofCredentials`） |
+| `zkpassport` | zkPassport 查驗端：請求與網址（`ZkPassport`）、bridge 加密通道（`ZkPassportBridgeProtocol`）、電路清單、憑證包與鏈上註冊表（`ZkPassportRegistry`）、CSCA 錨點比對（`ZkPassportCsca`）、工作階段與本機驗證（`JvmZkPassportVerifier`）；設計在 `docs/design/zkpassport.md` |
 | `document/zkpdf` | zkPDF 公開側（`PdfZkSupport`、`Sha256Chain`）；證明器與查驗整合開發中 |
 | `w3c`、`status`、`trust`、`did`、`holder` | W3C VC、狀態清單、信任錨與 DID 信任、DID 解析、錢包層級持有者金鑰 |
 
 ## 已定的設計規則
 
 1. **標準優先，方言隔離。** 標準路徑（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、mdoc）不含任何方言邏輯。方言只在標準會停下的位置透過 hook 介入（`IssuanceDialect`、`PresentationDialect` 的介面註解列出每個 hook），而且只對它擁有的 session 生效。
-2. **方言常駐啟用；中央營運的服務需同意專門聲明。** Bonds、OpenID4VCI 草案 11/13 與 EUDI 方言常駐啟用、不提供開關；新增方言時加入 `WalletModel` 的方言清單。由單一營運者集中提供的服務（`legal/Integration`：數位憑證皮夾、Microsoft Verified ID、行動自然人憑證、MyData，預留 zkPassport）各有專門聲明，持有者同意目前版本後才啟用（`LegalModel.enabled`）；不同意時不連線該營運者（TWDIW 方言與信任清單、Verified ID 出示方言不加入、入口顯示 `IntegrationOffRow`、連結開啟聲明頁），標準路徑與已保存的資料不受影響。TWDIW 官方實作與 Bonds 仍須完整支援。新增此類服務時加入 `Integration` 與 `LegalTexts` 的聲明。
+2. **方言常駐啟用；中央營運的服務需同意專門聲明。** Bonds、OpenID4VCI 草案 11/13 與 EUDI 方言常駐啟用、不提供開關；新增方言時加入 `WalletModel` 的方言清單。由單一營運者集中提供的服務（`legal/Integration`：數位憑證皮夾、Microsoft Verified ID、行動自然人憑證、MyData、zkPassport 查驗）各有專門聲明，持有者同意目前版本後才啟用（`LegalModel.enabled`）；不同意時不連線該營運者（TWDIW 方言與信任清單、Verified ID 出示方言不加入、入口顯示 `IntegrationOffRow`、連結開啟聲明頁），標準路徑與已保存的資料不受影響。TWDIW 官方實作與 Bonds 仍須完整支援。新增此類服務時加入 `Integration` 與 `LegalTexts` 的聲明。
 3. **信任分層。** T1 官方清單並經額外驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 連到信任根（內建 GPKI、系統憑證庫與內建公開根憑證、AATL 與 EUTL、C2PA 信任清單（只用於內容憑證，`TrustRole.CONTENT`）、內建的正式發行端、Linked Domains、使用者匯入的根憑證、mdoc 簽署清單（VICAL、RICAL）與信任的 DID，以及 TWDIW 已列名但鏈上註冊無法確認或角色不符）；T1 與 T2 視為高可信（`TrustTier.highlyTrusted`）；T3 可驗證但沒有連到信任根（未列名 DID、不在任何清單的憑證鏈）與所有測試錨；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。中繼憑證（`BuiltInPublicRoots.intermediates`，含 e簽寶等線上簽核平台，或使用者匯入）只補足憑證鏈，等級由最後連到的根憑證決定；`importableRoots` 是不在任何計畫內的根憑證，只用來補鏈，使用者匯入後才信任。低信任的操作不禁止：`ui/RiskConfirm.kt` 的 `RiskConfirmDialog` 列出風險，勾選承擔後才可繼續（使用者可能有自己的特殊環境）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
    - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA（自然人憑證）用於查驗方與文件簽章，不用於發行端。
    - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T2（`SYSTEM_ANCHOR`）。同一個環境還包含三組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
@@ -135,6 +136,7 @@
 - 行動自然人憑證 SP：編譯時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`DIW_MOICA_SP_ENV`（UAT 或 PRODUCTION）環境變數或 Gradle 屬性產生 `BuiltInSp`（build 目錄，不提交）；設定的「手動輸入 SP 帳號（開發者）」改用簽署畫面輸入、只存在記憶體的帳號。設了正式服務端（`zkVerifierUrl`）時簽署畫面多一個「正式服務端的 SP」來源：`ServerMobileMoicaClient` 呼叫服務端的 `/twfido/sign`（帶 `serverToken`），與 `TwFidoClient` 同樣實作 `MobileMoicaService`，`MobileMoicaSigner` 照樣驗簽章與憑證。這個來源只在服務端 `/info` 列出 `twfido` 與環境時提供（`ServerModel.mobileMoica`），送出身分證號前再確認一次；正式環境第一次取得的憑證必須由 MOICA G3 簽發，簽署要求的環境也要與 `/info` 一致（`FilesModel.checkServerCertificate`），UAT 憑證只標示為測試。
 - OpenCerts（`document/opencerts`）：`OpenAttestationDocument` 檢查 v2（salted 值、flatley 路徑）與 v3（proof.salts、`a.b[0]` 路徑、葉數須等於 salt 數）的 Merkle 完整性，並整理出受領人、主要欄位、發行者、簽署人與簽名圖、成績單、圖片、附件與其他欄位（`view()`，不顯示原始路徑）。`OpenAttestationOnline` 依 oa-verify 線上查驗：文件庫 `isIssued`／`isRevoked`（支援 batch 介面 0xdcfd0745）、token registry `ownerOf`、DID 簽章（EIP-191 對 Merkle root，secp256k1 還原成 did:ethr 位址）與撤銷（NONE、REVOCATION_STORE、OCSP_RESPONDER）；發行者身分看 DNS-TXT（`openatts net=ethereum netId addr`）、DNS-DID 與 OpenCerts 官方登錄，任一成立即通過。DNS 走 DoH（dns.google、cloudflare-dns.com），鏈依 DNS 紀錄的 netId，RPC 用不需金鑰的公開節點；查不到時為 `NOT_CHECKED`，不判失敗。結果存在 `OpenCertInfo.online`，開啟時超過 12 小時重新查驗，離線時保留上一次有意義的結果；完整性、發行與身分都通過才是 `VALID`，完整性或發行失敗為 `INVALID`。離線顯示（`OpenCertOffline`）：沒有程式碼也不連線的頁面（CSP 只允許行內樣式與 data: 圖片，分頁用 CSS），demo-renderer.opencerts.io 的範本（GOVTECH_DEMO、OPENCERTS_DEMO、TESTIMONIALS、TESTIMONIALS2、CERTIFICATE_OF_AWARD，其他名稱如該顯示程式改用預設）依原樣式重寫，標誌與背景圖不內建、以文字代替；其他證書以 `view()` 排版；發證機構的 HTML 內容（testimonial）先移除程式、事件、外部載入。Android 以關閉 JavaScript 與網路的 WebView 顯示。`OpenCertRenderer` 產生 decentralized renderer 的宿主頁（自寫 penpal v5／v4 握手、`RENDER_DOCUMENT`、`UPDATE_HEIGHT`、`UPDATE_TEMPLATES`、`SELECT_TEMPLATE`），只接受 https 的 template URL；Android 以 WebView `loadDataWithBaseURL` 開啟，桌面寫入暫存檔後用系統瀏覽器開啟。內容只在使用者點「以發證機構樣式顯示」時送到發證機構的顯示程式。測試樣本是以 open-attestation 6.9.7 包裝的虛構資料（`test-servers/src/test/resources/documents/opencerts/generate.js`）。
 - 電子護照（`document/mrtd`）：先試 PACE（EF.CardAccess），失敗或沒有再選 applet 走 BAC；讀 COM、DG14 後做晶片驗證（新金鑰下晶片不回應即失敗，不退回舊通道），再讀其他檔案與 DG15 的主動驗證。DG3、DG4 需要政府端的終端驗證，不讀取，列入未讀取。名字依機讀區 `<` 分段全部保留，不可只取第一段。讀取結果存為 `.emrtd.json`（`MrtdDump`），不另存在其他地方；機讀區資料與 CAN 不保存。CSCA 不內建，使用者以 ICAO 主清單或 PEM 匯入為 `TRAVEL_DOCUMENT` 錨點。測試以 `test-servers` 的 `SoftwarePassport` 模擬晶片，不放真實護照資料。
+- zkPassport 查驗（`core/zkpassport`、`native/zkpassport-verify`）：只採用已驗證證明承諾的值，不採信對方 App 的 `done` 明文；電路清單的根與憑證樹根都要經鏈上 `isRootValid`，電路金鑰要雜湊到清單；查詢的每個條件都要有證明支撐（比 SDK 嚴格）。憑證包須雜湊到證明的憑證樹根才用來比對 CSCA：揭露或限定的發證國，其 CSCA 全部在 `TRAVEL_DOCUMENT` 錨點中為 T2，否則 T3。zkPassport 查驗 API 只在 bb 驗證失敗且使用者開啟時使用。新增錯誤代碼時同步 `ZkPassportFlow.problems`。
 - MyData：檔名依 Bonds 的項目辨識（`MyDataFiles`），伺服器的不透明檔名改為項目名稱。MyData 的 ZIP 不論是 App 內下載、其他 App 分享或手動選取，收到後立即解出並刪除 ZIP，每個檔案各自保存；來源只寫「MyData・項目名稱」（未經 App 內下載時加「（依檔名判斷）」），取得方式另記「App 內下載」或「從壓縮檔解出」與壓縮檔名；舊資料載入時改成短來源。含國民身分證資料時直接進入身分證卡畫面。MyData 網頁以 XHR 取得 blob、點 `<a download>` 後立刻 revoke 並離開頁面，`PortalWebView` 在每頁注入腳本保留 blob 並經 `DiwVault` 介面交給錢包。
 - MyData 自動填入（Bonds `MyDataAutofillProfile`，`profile/bonds/MyDataProfile`）：設定可存身分證統一編號（檢查碼）與出生日期（民國 7 碼或西元 8 碼），只在 https 且主機正好是 mydata.nat.gov.tw 的頁面執行填入腳本。MyData 的加密 PDF 依序以身分證卡的統號與這個編號自動開啟。
 - PDF 文字欄位（`DocumentFields.fromText`）：標籤為中文字（可帶括號或斜線）或最多四個英文字，可接括號內的翻譯與「/English」；值在全形逗號、句號、分號或四個以上空白處結束；標籤在行尾時取下一行開頭。「NO.xxxx」為文件編號；「出生于 2007 年 02 月 16 日」「于 2025 年 09 月入学」等句子另外解析。標題優先取含證明、證書、謄本、資料、通知、執照或 Certificate、Proof、Transcript 的行。
@@ -218,11 +220,11 @@
 
 ## 法律聲明與首次啟動
 
-- 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`，目前只有繁體中文（英文介面會說明以中文為準）；首次啟動與設定頁的字串由 `app/legal/LegalStrings.kt` 讀字串資源（`legal_*`）。不要把這些文字寫在畫面程式裡。
+- 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`（繁體中文原文）與 `LegalTextsEn.kt`（英文譯文，註明以中文為準）；首次啟動與設定頁的字串由 `app/legal/LegalStrings.kt` 讀字串資源（`legal_*`）。不要把這些文字寫在畫面程式裡。
 - `docs/legal/*.md` 由 `LegalDocument.toMarkdown()` 產生，`LegalDocumentsTest` 檢查兩者一致；改文字後以 `DIW_UPDATE_LEGAL=1` 執行該測試重新產生。實質變更要調高 `version`，使用者下次開啟時只重新確認有變更的文件；錯字修正不調版本。
 - `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。
 - 服務停用時：`blockedIntegration` 擋下 TWDIW 入口與含 wallet.gov.tw 位址的連結（含百分比編碼與 JSON 跳脫）、openid-vc，改開 `Screen.IntegrationStatement`（同意後接著處理連結）；解析後才知道位址的請求以 `requireTwdiwAllowed` 檢查；`StatusMonitor` 不查詢該服務證件的狀態、不重新判定其發行端；MyData 保存的身分證統一編號不使用。
-- 未上線的服務（`Integration.available = false`，目前是 zkPassport）只發佈聲明，在設定頁只能預覽、不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
+- 未上線的服務（`Integration.available = false`，目前沒有）只發佈聲明，在設定頁只能預覽、不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
 - 法律文字只用兩種 Markdown 標記：`**粗體**` 與反引號（主機名稱等），App 以 `legalAnnotated` 顯示，其他字元照原樣；不要用表格、連結語法或巢狀清單。
 - 使用者發起的第一個 TWDIW 請求（TWDIW 連結、臨櫃服務）先經 `withTwdiwNotice` 顯示一次非官方相容提醒，看過的記在 `LegalConsent.notices`；背景查詢不等這個提醒。
 - 一般文字用地域稱呼（臺灣地區、中國大陸），法規、機關與品牌照正式名稱寫。行動自然人憑證：發布版本不內建 SP（CI 不設 `DIW_MOICA_SP_*`），沒有 SP 時簽署畫面要明說。

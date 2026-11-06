@@ -191,11 +191,11 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
                 val caveats = buildList {
                     if (r.devMode) add(stringResource(Res.string.zkp_test_caveat))
                     if (r.viaVerifierApi) add(stringResource(Res.string.zkp_api_caveat))
-                    add(stringResource(Res.string.zkp_trust_registry))
+                    add(ZkPassportFlow.trust(r.csca))
                     add(stringResource(Res.string.zkp_domain_caveat, domain))
                 }
                 VerdictCard(
-                    if (r.devMode || r.viaVerifierApi) Verdict.CAUTION else Verdict.PASS,
+                    if (r.devMode || r.viaVerifierApi || r.csca?.allAnchored != true) Verdict.CAUTION else Verdict.PASS,
                     if (r.devMode) stringResource(Res.string.zkp_passed_test) else stringResource(Res.string.zkp_passed),
                     caveats,
                 )

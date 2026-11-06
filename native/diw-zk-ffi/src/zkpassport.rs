@@ -42,6 +42,20 @@ pub fn zkpassport_circuit_root(manifest_json: String) -> Result<String, ZkError>
     }
 }
 
+/// The certificate registry root a packaged certificates file hashes to, and its CSCA keys by country, as JSON.
+#[uniffi::export]
+pub fn zkpassport_certificates(package_json: String) -> Result<String, ZkError> {
+    #[cfg(feature = "zkpdf")]
+    {
+        zkpassport_verify::certificates::package_json(&package_json).map_err(invalid)
+    }
+    #[cfg(not(feature = "zkpdf"))]
+    {
+        let _ = package_json;
+        Err(disabled())
+    }
+}
+
 /// Checks a bundle and verifies every proof with Barretenberg. `crs_dir` is the zkPDF asset directory when
 /// its full CRS is installed, so proving keeps working afterwards; without it only the two CRS points
 /// verification needs are loaded. The JSON result carries `verified` and the error codes.

@@ -854,6 +854,8 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -890,6 +892,8 @@ fun uniffi_diw_zk_checksum_func_reblind_show(
 fun uniffi_diw_zk_checksum_func_self_test(
 ): Short
 fun uniffi_diw_zk_checksum_func_verify_age_presentation(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_certificates(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_circuit_root(
 ): Short
@@ -1014,6 +1018,8 @@ fun uniffi_diw_zk_fn_func_self_test(uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,`expectedIssuerKeyX`: RustBuffer.ByValue,`expectedIssuerKeyY`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
+fun uniffi_diw_zk_fn_func_zkpassport_certificates(`packageJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_circuit_root(`manifestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_inspect(`proofsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1187,6 +1193,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_verify_age_presentation() != 383.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_certificates() != 23725.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_circuit_root() != 54841.toShort()) {
@@ -3879,6 +3888,19 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_verify_age_presentation(
         FfiConverterString.lower(`documentsPath`),FfiConverterString.lower(`nonce`),FfiConverterString.lower(`claimName`),FfiConverterUByte.lower(`claimFormat`),FfiConverterULong.lower(`cutoff`),FfiConverterString.lower(`expectedIssuerKeyX`),FfiConverterString.lower(`expectedIssuerKeyY`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The certificate registry root a packaged certificates file hashes to, and its CSCA keys by country, as JSON.
+         */
+    @Throws(ZkException::class) fun `zkpassportCertificates`(`packageJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_certificates(
+        FfiConverterString.lower(`packageJson`),_status)
 }
     )
     }

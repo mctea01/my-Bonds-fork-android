@@ -166,6 +166,14 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 結果用既有的判定卡：每個揭露與述詞一列，標示「零知識證明（zkPassport）」與信任等級（4.3）。
 - 要求 FaceMatch 或加鹽識別碼時，可選「zkPassport 官方」或「本專案」：前者只有官方 App 能回應，後者只有本錢包能回應（5.5）。
 
+實作狀態（2026-11-06，Z2 未加 FaceMatch 與加鹽識別碼）：
+
+- 原生 `native/zkpassport-verify`（`diw-zk-ffi` 的 zkpdf 功能）：證明組解讀與承諾串接、公開輸入與查詢參數承諾（揭露、年齡、國籍與發證國的包含或排除、bind）、日期與效期、網域與 scope、識別碼類型（模擬護照只在測試模式）、電路清單根（高度 12 的 Poseidon2 樹）與金鑰雜湊、憑證包樹根（v0 與 v1，含撤銷與主清單樹），以 bb v6 驗證每個子證明。只回報證明承諾的值，查詢的每個條件都要有證明支撐。測試以 zkPassport 正式的 0.21.1 清單、compare_age 金鑰與 2026-11 主網憑證包核對到鏈上的值。
+- Kotlin `core/zkpassport`：請求網址與 SDK 查詢（`ZkPassport`）、bridge 建立端（`ZkPassportBridgeProtocol`，ECDH、AES-GCM、zlib 分塊、ping、重連與 replay）、電路清單與金鑰、憑證包、`isRootValid`（`ZkPassportRegistry`，依清單版本與憑證樹根快取在本機）、工作階段（`JvmZkPassportVerifier`，最多重連 5 次）。證明全部失敗於 bb 且使用者開啟時才問 zkPassport 查驗 API，結果標示。
+- 信任：揭露或限定的發證國，其憑證包中的 CSCA 金鑰全部是本 App 的 `TRAVEL_DOCUMENT` 錨點時為 T2（結果卡通過），否則 T3（結果卡注意）並列出比對數；憑證包下載失敗或雜湊不符時維持 T3。
+- App：查驗分頁「以 zkPassport 查驗護照」（需同意 zkPassport 專門聲明 v2），設定網域、服務名稱、用途、揭露欄位、最低年齡、國籍與發證國條件、綁定資料，測試環境可接受測試護照；QR 與在本機開啟、進度、結果卡（揭露值、條件、識別碼與其可關聯性、證明日期、技術細節）與歷史紀錄。零知識證明設定頁有網域、主網與 Sepolia 節點（空白用內建公開節點）與查驗 API 開關（預設關閉）。Windows 沒有 zkPDF 原生元件，入口會說明無法查驗。
+- 未驗證：zkPassport 目前鏈上的 0.21.1 電路是 bb 5 產生的證明，以 bb v6 驗證尚未以實機與官方 App 測試；離線時註冊表查詢會失敗，「註冊表狀態截至」的離線模式尚未提供。
+
 ### 5.3 Z3 zkPassport 相容回應
 
 - 使用分頁的掃描器辨識 `https://zkpassport.id/r?…`（Android 無法驗證 zkpassport.id 的 App Links，所以以 App 內掃描為主，不註冊攔截該網域）。

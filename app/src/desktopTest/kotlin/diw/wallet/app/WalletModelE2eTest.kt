@@ -2570,6 +2570,7 @@ class WalletModelE2eTest {
             disclose = setOf(diw.wallet.core.zkpassport.ZkPassportField.NATIONALITY),
         )
         m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.isEmpty()) delay(20) }
         assertEquals(request, fake.requests.single())
         assertEquals("verify.example.org", m.settings.zkPassportDomain, "the domain used is kept for next time")
         val url = "https://zkpassport.id/r?d=verify.example.org&t=00"
@@ -2589,6 +2590,9 @@ class WalletModelE2eTest {
         fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Done(result)
         val shown = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified } as OfflineUi.ZkPassportVerified }
         assertEquals(result, shown.result)
+        assertTrue("T2" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 2)))
+        assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 1)))
+        assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 0, 0, "certificates_unavailable")))
         val claims = ZkPassportFlow.claims(result)
         assertTrue("國籍：TWN" in claims && "發證國：TWN" in claims && "年齡：至少 18 歲" in claims, claims.toString())
         val entry = withTimeout(5.seconds) { m.history.first { h -> h.any { it.party == "zkPassport" } } }.first { it.party == "zkPassport" }
@@ -2597,6 +2601,7 @@ class WalletModelE2eTest {
         assertTrue(entry.note!!.contains("verify.example.org"), entry.note)
 
         m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.size < 2) delay(20) }
         fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Rejected
         val rejected = withTimeout(5.seconds) {
             m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified && it.result == null } as OfflineUi.ZkPassportVerified
@@ -2604,9 +2609,11 @@ class WalletModelE2eTest {
         assertEquals("對方拒絕了請求。", rejected.error)
         assertEquals(listOf("零知識證明驗證失敗。", "電路不在 zkPassport 電路註冊表中。"), ZkPassportFlow.problems(listOf("proof:disclose_bytes:x", "vkey:a", "circuit_root_mismatch", "proof:b")))
 
+        val closed = fake.closed
         m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.size < 3) delay(20) }
         m.back()
-        assertTrue(fake.closed >= 1, "leaving the screen closes the session")
+        withTimeout(5.seconds) { while (fake.closed == closed) delay(20) }
     }
 
     /**
