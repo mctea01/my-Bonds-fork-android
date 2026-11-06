@@ -238,6 +238,63 @@ class ZkPdfEvidenceTest {
         assertEquals(Check.FAIL, rejected.evidence.first { it.type == ZkPdfEvidence.TYPE }.check)
     }
 
+    /**
+     * The same credential over OpenID4VP direct_post: the verifier asks for a field and the zkPDF bundle, the holder
+     * adds that field's opening, and the verifier checks the DID issuer, the KB-JWT and the proof.
+     */
+    @Test fun derivedCredentialCarriesTheProofOverOpenId4Vp() = runBlocking<Unit> {
+        val area = SoftwareSecureArea.create(EphemeralStorage())
+        val info = area.createKey(null, SoftwareCreateKeySettings.Builder().build())
+        val issuer = HolderKey(area, info, shared = true, did = DidKeys.didKey(info.ecPublicKey))
+        val credentialKey = Crypto.createEcPrivateKey(EcCurve.P256)
+        val pdf = resource("student.pdf")
+        val engine = FakeEngine()
+        val plan = ZkPdfPlanner.plan(pdf, student, listOf(birthCutoff))
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, credentialKey.publicKey.toJwk(), ZkPdfStatement.PHONE, engine, { _, _, _ -> }, now),
+        ).value
+        val disclosures = DerivedCredentials.jsonDisclosures(listOf(DerivedCredentials.CLAIM_TITLE to JsonPrimitive("仿在學證明")) + created.disclosures())
+        val document = DerivedDocument("00".repeat(32), "application/pdf", pdf.size.toLong())
+        val compact = DerivedCredentials.sdJwtVc(issuer, credentialKey.publicKey, document, emptyList(), disclosures, kotlin.time.Clock.System.now())
+
+        val clientId = "x509_san_dns:verifier.example"
+        val dcql = Json.parseToJsonElement(
+            """{"credentials":[{"id":"doc","format":"dc+sd-jwt","meta":{"vct_values":["${DerivedCredentials.VCT}"]},""" +
+                """"claims":[{"path":["name"]},{"path":["${ZkPdfEvidence.CLAIM}"]}]}]}""",
+        ).jsonObject
+        val session = diw.wallet.core.verifier.VerifierSession("nonce-0123456789abcdef", clientId, "direct_post", dcql)
+        suspend fun present(nonce: String = session.nonce, paths: List<String> = listOf("name", ZkPdfEvidence.CLAIM)): Map<String, String> {
+            val sdJwt = org.multipaz.sdjwt.SdJwt.fromCompactSerialization(compact)
+            val requested = paths.map { JsonArray(listOf(JsonPrimitive(it))) }
+            val token = sdJwt.filter(diw.wallet.core.oid4vp.ResponseBuilder.zkPdfPaths(sdJwt, requested)).present(
+                signingKey = AsymmetricKey.anonymous(credentialKey, Algorithm.ES256),
+                nonce = nonce, audience = clientId, creationTime = kotlin.time.Clock.System.now(),
+            ).compactSerialization
+            return mapOf("vp_token" to buildJsonObject { putJsonArray("doc") { add(token) } }.toString())
+        }
+        val resolver = DidResolver(HttpClient(MockEngine { respondError(HttpStatusCode.ServiceUnavailable) }))
+        val verifier = diw.wallet.core.verifier.PresentationVerifier(
+            TrustRegistry(EphemeralStorage(), EnvironmentPolicy(testEnvironmentEnabled = true)),
+            org.multipaz.documenttype.DocumentTypeRepository(), null,
+            didResolver = resolver, documentTrust = trust(),
+            zkPdf = ZkPdfContext(profiles::get) { engine },
+        )
+        val result = verifier.verifyDirectPost(present(), session)
+        assertTrue(result.passed, result.toString())
+        val c = result.credentials.single()
+        assertEquals("林測試", c.claims["name"])
+        assertTrue(c.claims.keys.none { DerivedCredentials.isProofClaim(it) }, c.claims.keys.toString())
+        assertEquals(diw.wallet.core.verifier.CheckStatus.PASS, c.evidence.first { it.name.startsWith("PDF 簽章零知識證明") }.status)
+        assertEquals(diw.wallet.core.verifier.CheckStatus.PASS, c.evidence.single { it.name == "zkPDF 欄位：姓名" }.status)
+
+        // A KB-JWT made for another request is refused.
+        assertFalse(verifier.verifyDirectPost(present(nonce = "other-nonce-0123456789"), session).passed)
+        // Without the bundle the field is still the holder wallet's statement, with no zkPDF entry.
+        val plain = verifier.verifyDirectPost(present(paths = listOf("name")), session)
+        assertTrue(plain.credentials.single().checks.any { it.name == "requested claims" && it.status == diw.wallet.core.verifier.CheckStatus.FAIL })
+        assertTrue(plain.credentials.single().evidence.none { "zkPDF" in it.name })
+    }
+
     @Test fun templatesComeFromThePackAndTestImports() {
         val pack = ZkTemplatePack(5, now, emptyList(), listOf(
             student.toJson().let { o -> JsonObject(o - "test" + ("id" to JsonPrimitive("signed.student-status/1"))) },
@@ -379,6 +436,43 @@ class ZkPdfEvidenceTest {
             }
         }
         assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.PHONE, lying, { _, _, _ -> }, now))
+    }
+
+    /**
+     * M4c: a proof made on another machine (the desktop wallet or a self-hosted prover) from an exported request is
+     * accepted only for that request's key and salts, and only after the requesting side verifies it itself.
+     */
+    @Test fun proofMadeElsewhereFromAnExportedRequest() = runBlocking<Unit> {
+        val engine = FakeEngine()
+        val pdf = resource("student.pdf")
+        val plan = ZkPdfPlanner.plan(pdf, student, listOf(birthCutoff))
+        // Phone: the request carries the statement and the private windows with the salts, never the whole file.
+        val salts = ZkPdfPlanner.salts(plan.slots.size)
+        val statement = ZkPdfProofs.statement(plan, ZkPdfStatement.DESKTOP, ZkPdfProofs.binding(holder))
+        val request = ZkPdfRemote.Request(ZkPdfRemote.newId(), statement, ZkPdfWitness(plan.privateData, salts))
+        val requestBytes = ZkPdfRemote.encodeRequest(request).toString().encodeToByteArray()
+        assertTrue(requestBytes.size < pdf.size * 4)
+        // Desktop: proves the request as it arrived and returns the outputs.
+        val received = ZkPdfRemote.parseRequest(ZkPdfRemote.parse(requestBytes))
+        val output = assertIs<ZkResult.Ok<ZkPdfProofOutput>>(engine.prove(received.statement, received.witness) { _, _, _ -> }).value
+        val responseBytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(received.id, output)).toString().encodeToByteArray()
+        // Phone: the imported outputs stand in for a prover and must verify against the statement built here.
+        val response = ZkPdfRemote.parseResponse(ZkPdfRemote.parse(responseBytes))
+        assertEquals(request.id, response.requestId)
+        val imported = object : ZkPdfEngine by engine {
+            override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
+                RemoteZkPdfEngine.accept(statement, response.output, engine)
+        }
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now, salts),
+        ).value
+        assertEquals(ZkPdfStatement.DESKTOP, created.evidence.composition)
+        assertEquals(Check.PASS, verify(disclosed(created), engine, trust()).check)
+        // Another credential key changes the statement, so the same outputs no longer verify.
+        assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, other, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now, salts))
+        // Fresh salts do not open the commitments the proof carries.
+        assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now,
+            ZkPdfPlanner.salts(plan.slots.size)))
     }
 
     @Test fun malformedEvidenceIsRejected() = runBlocking<Unit> {

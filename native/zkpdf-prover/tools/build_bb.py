@@ -56,7 +56,9 @@ def main():
     elif args.target == "aarch64-apple-darwin":
         if platform.system() != "Darwin":
             raise SystemExit("native_macos_host_required")
-        flags += ["-DARM=ON", "-DCMAKE_OSX_ARCHITECTURES=arm64"]
+        # The same minimum as native/build.sh gives rustc and the bridge, so every object agrees.
+        flags += ["-DARM=ON", "-DCMAKE_OSX_ARCHITECTURES=arm64",
+                  "-DCMAKE_OSX_DEPLOYMENT_TARGET=" + os.environ.get("MACOSX_DEPLOYMENT_TARGET", "14.0")]
     elif args.target in ("aarch64-linux-android", "x86_64-linux-android"):
         ndk = Path(os.environ["ANDROID_NDK_HOME"])
         abi = "arm64-v8a" if args.target.startswith("aarch64") else "x86_64"

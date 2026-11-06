@@ -26,4 +26,12 @@ class ZkCapabilitiesTest {
         assertFalse(ZkBackend.LONGFELLOW in windows.backends)
         assertTrue(windows.reasons.getValue(ZkBackend.LONGFELLOW).contains("Windows"))
     }
+
+    @Test fun zkPdfOnPhonesIsOfferedWithTheDesktopFirst() = runBlocking<Unit> {
+        val phone = ZkPlatformInfo("arm64-v8a", 16384, 8192, 65536, false)
+        val reasons = ZkCapabilities.evaluate(phone, engines).reasons
+        assertTrue(reasons.getValue(ZkBackend.NOIR_ULTRAHONK).contains("電腦版"))
+        assertNull(reasons[ZkBackend.OPENAC_SPARTAN2])
+        assertNull(ZkCapabilities.evaluate(phone.copy(abi = "linux-x86_64", isDesktop = true), engines).reasons[ZkBackend.NOIR_ULTRAHONK])
+    }
 }

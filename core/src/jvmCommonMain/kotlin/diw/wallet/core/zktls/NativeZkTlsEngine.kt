@@ -21,6 +21,8 @@ import io.ktor.http.Url
 import io.ktor.websocket.Frame
 import io.ktor.websocket.WebSocketSession
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -159,32 +161,36 @@ class NativeZkTlsEngine(
 
     private suspend fun open(url: String): WebSocketSession = withTimeout(WS_CONNECT_MS) { ws.webSocketSession(url) }
 
-    override suspend fun open(lan: Boolean, relayUrl: String?): ZkTlsVerifierSession = withContext(Dispatchers.IO) {
+    override suspend fun open(lan: Boolean, relayUrls: List<String>): ZkTlsVerifierSession = withContext(Dispatchers.IO) {
         if (!ready()) throw ProtocolException("unsupported", UNSUPPORTED.reason)
         val key = ZkTlsKey()
         val servers = if (!lan) emptyList() else addresses().distinct().take(MAX_LAN).mapNotNull { a ->
             runCatching { a to ServerSocket(0, 4, InetAddress.getByName(a)) }.getOrNull()
         }
-        val relay = relayUrl?.let { base ->
-            runCatching {
-                val url = relayAddress(base)
-                val room = ByteArray(16).also { SecureRandom().nextBytes(it) }.toBase64Url()
-                ZkTlsTransport.Relay(url, room) to open("$url/$room")
-            }.getOrNull()
+        // One room on every relay that answers (both parties' servers when they differ); the holder picks one.
+        val relays = coroutineScope {
+            relayUrls.map { relayAddress(it) }.distinct().take(MAX_RELAYS).map { url ->
+                async {
+                    runCatching {
+                        val room = ByteArray(16).also { SecureRandom().nextBytes(it) }.toBase64Url()
+                        ZkTlsTransport.Relay(url, room) to open("$url/$room")
+                    }.getOrNull()
+                }
+            }.awaitAll().filterNotNull()
         }
-        if (servers.isEmpty() && relay == null) {
+        if (servers.isEmpty() && relays.isEmpty()) {
             throw ProtocolException("unavailable", if (lan) "無法在區域網路開啟連線，也無法連到中繼" else "無法連到中繼")
         }
-        Session(key, servers, relay)
+        Session(key, servers, relays)
     }
 
     private inner class Session(
         private val key: ZkTlsKey,
         private val servers: List<Pair<String, ServerSocket>>,
-        private val relay: Pair<ZkTlsTransport.Relay, WebSocketSession>?,
+        private val relays: List<Pair<ZkTlsTransport.Relay, WebSocketSession>>,
     ) : ZkTlsVerifierSession {
         override val transports: List<ZkTlsTransport> =
-            servers.map { (a, s) -> ZkTlsTransport.Lan(a, s.localPort) } + listOfNotNull(relay?.first)
+            servers.map { (a, s) -> ZkTlsTransport.Lan(a, s.localPort) } + relays.map { it.first }
 
         override val publicKey: ByteArray get() = key.publicKey
 
@@ -215,15 +221,15 @@ class NativeZkTlsEngine(
         /** Waits on every listener; the first holder that sends a plausible handshake wins and the rest close. */
         private suspend fun firstHolder(): ZkTlsChannel {
             val winner = CompletableDeferred<ZkTlsChannel>()
-            var viaRelay = false
+            var viaRelay: WebSocketSession? = null
             try {
                 coroutineScope {
-                    val listeners = servers.map { (_, server) -> launch { accept(server, winner) } } + listOfNotNull(relay?.let { (_, session) ->
+                    val listeners = servers.map { (_, server) -> launch { accept(server, winner) } } + relays.map { (_, session) ->
                         launch {
                             val first = runCatching { firstBinary(session) }.getOrNull()
-                            if (first != null && opensHandshake(first) && winner.complete(PrimedChannel(first, WebSocketChannel(session)))) viaRelay = true
+                            if (first != null && opensHandshake(first) && winner.complete(PrimedChannel(first, WebSocketChannel(session)))) viaRelay = session
                         }
-                    })
+                    }
                     // Every listener ended (the relay closed, the sockets failed) with no holder.
                     launch {
                         listeners.joinAll()
@@ -236,7 +242,8 @@ class NativeZkTlsEngine(
                 }
             } finally {
                 servers.forEach { runCatching { it.second.close() } }
-                if (!viaRelay) relay?.second?.let { runCatching { it.cancel() } }
+                // Leave the rooms the holder did not take.
+                relays.forEach { (_, session) -> if (session !== viaRelay) runCatching { session.cancel() } }
             }
             return winner.getCompleted()
         }
@@ -263,7 +270,7 @@ class NativeZkTlsEngine(
         /** Also leaves the relay room, so a verifier screen closed before any holder came frees it at once. */
         override fun close() {
             servers.forEach { runCatching { it.second.close() } }
-            relay?.second?.let { runCatching { it.cancel() } }
+            relays.forEach { (_, session) -> runCatching { session.cancel() } }
         }
     }
 
@@ -278,6 +285,8 @@ class NativeZkTlsEngine(
 
     companion object {
         const val MAX_LAN = 4
+        /** Relays a verifier joins at once: its own server and the holder's. */
+        const val MAX_RELAYS = 3
         private const val LAN_CONNECT_MS = 4_000
         private const val WS_CONNECT_MS = 15_000L
         private const val FIRST_BYTES_MS = 30_000
@@ -297,16 +306,7 @@ class NativeZkTlsEngine(
         }
 
         /** ws or wss address of the relay on an age host given as http(s) or ws(s). */
-        fun relayAddress(base: String): String {
-            val u = Url(base.trim().trimEnd('/'))
-            val scheme = when (u.protocol) {
-                URLProtocol.HTTPS, URLProtocol.WSS -> "wss"
-                URLProtocol.HTTP, URLProtocol.WS -> "ws"
-                else -> throw ProtocolException("invalid_request", "The relay must be a web address")
-            }
-            val port = if (u.port == u.protocol.defaultPort) "" else ":${u.port}"
-            return "$scheme://${u.host}$port${u.encodedPath.trimEnd('/')}/zktls/relay"
-        }
+        fun relayAddress(base: String): String = ZkTlsTransport.relayAddress(base)
 
         /** The first Noise message from the prover starts with its 16-bit length: the ephemeral key and a tag. */
         fun opensHandshake(first: ByteArray): Boolean {

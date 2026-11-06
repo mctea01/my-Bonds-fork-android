@@ -51,7 +51,7 @@
 ## 已定的設計規則
 
 1. **標準優先，方言隔離。** 標準路徑（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、mdoc）不含任何方言邏輯。方言只在標準會停下的位置透過 hook 介入（`IssuanceDialect`、`PresentationDialect` 的介面註解列出每個 hook），而且只對它擁有的 session 生效。
-2. **所有方言常駐啟用，不提供開關。** TWDIW 官方實作與 Bonds 必須完整支援；新增方言時加入 `WalletModel` 的方言清單，不新增設定。
+2. **方言常駐啟用；中央營運的服務需同意專門聲明。** Bonds、OpenID4VCI 草案 11/13 與 EUDI 方言常駐啟用、不提供開關；新增方言時加入 `WalletModel` 的方言清單。由單一營運者集中提供的服務（`legal/Integration`：數位憑證皮夾、Microsoft Verified ID、行動自然人憑證、MyData，預留 zkPassport）各有專門聲明，持有者同意目前版本後才啟用（`LegalModel.enabled`）；不同意時不連線該營運者（TWDIW 方言與信任清單、Verified ID 出示方言不加入、入口顯示 `IntegrationOffRow`、連結開啟聲明頁），標準路徑與已保存的資料不受影響。TWDIW 官方實作與 Bonds 仍須完整支援。新增此類服務時加入 `Integration` 與 `LegalTexts` 的聲明。
 3. **信任分層。** T1 官方清單並經額外驗證（TWDIW 已列名且 Arbitrum 註冊相符、標為官方的正式錨點）；T2 連到信任根（內建 GPKI、系統憑證庫與內建公開根憑證、AATL 與 EUTL、C2PA 信任清單（只用於內容憑證，`TrustRole.CONTENT`）、內建的正式發行端、Linked Domains、使用者匯入的根憑證、mdoc 簽署清單（VICAL、RICAL）與信任的 DID，以及 TWDIW 已列名但鏈上註冊無法確認或角色不符）；T1 與 T2 視為高可信（`TrustTier.highlyTrusted`）；T3 可驗證但沒有連到信任根（未列名 DID、不在任何清單的憑證鏈）與所有測試錨；T4 驗證失敗（簽章或憑證鏈不成立、未簽章要求、清單與鏈上不符、網域連結失效）。中繼憑證（`BuiltInPublicRoots.intermediates`，含 e簽寶等線上簽核平台，或使用者匯入）只補足憑證鏈，等級由最後連到的根憑證決定；`importableRoots` 是不在任何計畫內的根憑證，只用來補鏈，使用者匯入後才信任。低信任的操作不禁止：`ui/RiskConfirm.kt` 的 `RiskConfirmDialog` 列出風險，勾選承擔後才可繼續（使用者可能有自己的特殊環境）。畫面上的說明集中在 `ui/TrustViews.kt`（`tierAdvice`、`issuerTrustLine`、`TierLegend`），修改分層時一併更新。正式與測試環境在同一個 App 內，UI 必須區分；測試環境的決策永遠不是官方。
    - 內建的 GPKI 錨點（`trust/BuiltInAnchors`，由 grca.nat.gov.tw 取得的運作中根憑證與中繼憑證）只確認身分，判定為 T2 並標示 `IDENTITY_VERIFIED`；MOICA（自然人憑證）用於查驗方與文件簽章，不用於發行端。
    - 系統憑證庫（`TrustEnvironment.SYSTEM`，設定可關閉）只確認網域，判定為 T2（`SYSTEM_ANCHOR`）。同一個環境還包含三組內建公開根憑證（`trust/BuiltInPublicRoots`，比對由 `trust/PublicRoots` 負責）：
@@ -78,7 +78,7 @@
 7. **兜底實作。** 平台或 SDK 不支援時改用純軟體實作（軟體金鑰、純 Kotlin QR 編碼），模擬器、AOSP、桌面都要能用。
 8. **金鑰證明只確認金鑰有效，不檢查 RKP。**
 9. **CI release 產物必須經 R8 / ProGuard 最佳化**，不可只是 debug 建置。
-10. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（上方「匯入文件」與「從網站取得」，下方文件清單；取件入口在 `Screen.DocumentSources`；文件內容頁依序為標題與判定、常用動作（簽署、時戳、衍生憑證、匯出）、公文容器、預覽、簽章、時戳、證件與證明，檔案資訊收合在下方）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪，依用途分為八組（`SettingsSection`：安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、關於；關於頁的版本與 commit 由建置產生的 `AppBuild` 提供，第三方元件與 `NOTICE` 一致），清單每列顯示目前的設定，點選進入該組的頁面（`Screen.SettingsPage`）；新增設定時放進對應的組並更新清單的摘要。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
+10. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（上方「匯入文件」與「從網站取得」，下方文件清單；取件入口在 `Screen.DocumentSources`；文件內容頁依序為標題與判定、常用動作（簽署、時戳、衍生憑證、匯出）、公文容器、預覽、簽章、時戳、證件與證明，檔案資訊收合在下方）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪，依用途分為九組（`SettingsSection`：安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、法律聲明與同意、關於；關於頁的版本與 commit 由建置產生的 `AppBuild` 提供，第三方元件與 `NOTICE` 一致），清單每列顯示目前的設定，點選進入該組的頁面（`Screen.SettingsPage`）；新增設定時放進對應的組並更新清單的摘要。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
 11. **設計 token 沿用 Bonds**（`ui/UiKit.kt`）：互動主色為靛色，綠、橙、紅只用於判定（判定卡為 0.14 透明度色底、符號與文字三者並用，「部分」不可看起來像「通過」）；空狀態附直達動作；尚未實作的功能顯示為停用列並寫明原因，不隱藏；結果用畫面或判定卡呈現，警示對話框只用於確認有後果的動作。
 12. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T2，不會顯示為官方；匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 信任 > 自訂信任」（`Screen.CustomTrust`），信任錨點頁只列出全部錨點。
 
@@ -143,7 +143,7 @@
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
 - 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
-- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 證明與自架主機（P4 開發中）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
+- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun` 輸出錢包簽出的檔案（長期驗證的樣本在 `<資料夾>/lt`），再以 `./gradlew -p tools/dss-check run --args=<資料夾>`（與 `<資料夾>/lt`）用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
@@ -151,6 +151,8 @@
 
 - 設計、電路與工作包見 `docs/design/p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`（第 2.1 節為實作狀態）；年齡證明、zkTLS 與 Longfellow 已實作，要點在本節；zkPDF 的電路（WP3a M3b）與證明器開發中，尚未實作的部分以這三份文件為準。
 - 正式服務端（中繼、zkTLS 查驗主機與回執、年齡查驗主機、網頁查驗；自架、Cloud Run、Cloudflare Containers 部署）在另一個 repo `mctea01/diw-wallet-server`，規則見該 repo 的 AGENTS.md。錢包端是 `ServerModel` 與設定「零知識證明」頁的「正式服務端」：同一個網址（`zkVerifierUrl`）用於中繼、zkTLS 查驗主機與年齡查驗主機；`serverToken` 只由 `ZkTlsFlow.createOnHost` 對該網址帶 `Authorization: Bearer`；「加入信任」讀 `/info` 的 `signing.root`，錢包自行計算 SHA-256 並要求與 `rootSha256` 相符，使用者確認後以來源 `server:<host>` 加入 VERIFIER 與 ISSUER 的 USER 錨點（T2），記下 `serverRootSha256`；`/info` 有 `verifierDid`（網頁查驗端的 did:key）時同一次確認也把它加進 `UserDidTrust`（只有 VERIFIER 角色，記下 `serverVerifierDid`）。之後根憑證或 DID 改變時只顯示警示，不自動接受；重新確認時移除舊 DID。`/info` 的 `publicUrl` 主機與填入的不同時顯示警示（查驗連結、中繼與網頁查驗都用 `publicUrl`）。出示方（`NativeZkTlsEngine.prove`）依序嘗試請求列出的傳輸：對方 30 秒內沒有回應、或沒回應就斷線時（連到同一個私有位址的其他裝置、查驗方已離開的中繼房間）換下一個，此時還沒送出任何私密資料；中繼以關閉原因（`Peer left`、`Room limit`、`Room expired`）告訴兩端結束原因，對應 `ZkTlsChannelEnd` 的訊息。
+- 服務端分享與兩方協商（2026-11-05）：`core/server/ServerShare`（`diw-server://v1?c=<base64url JSON>`，鍵 `url`、`name`、`root`、`did`、`fed`、`features`、`token`；只在 https、無帳密與 query 時接受，http 只在測試環境），`WalletModel.handleUri` 交給 `ServerModel.receive`：查驗方等待畫面（zkTLS 本機驗證或年齡主機模式）時當作對方的服務端，其他時候顯示 `PendingShareDialog`（設為我的服務端或只用在這次查驗）。`adopt` 換網址時清掉舊的信任紀錄，讀 `/info` 時根憑證或 DID 與分享的不同就拒絕。`/info` 有 `federation.entityId` 時以使用者的 OpenID Federation 信任錨點解析 `diw_wallet_server` 中繼資料，指紋或 DID 不同就拒絕。對方的服務端（`ServerModel.peer`，不含權杖）只用在當次查驗，`TaiwanModel.closeOffline` 清除。查驗方以 `relaysForVerifier` 在自己與對方的中繼各開一個房間（`ZkTlsEngine.open(lan, relayUrls)`，最多 3 個），掃描對方服務端後 `ZkTlsFlow.restartVerifier` 以同樣的欄位重開請求（舊工作階段的清理不可關掉新的）；出示方以 `orderForHolder` 依 `WalletSettings.serverPolicy`（`ServerPolicy`：`prefer_own` 預設、`prefer_peer`、`own_only`）排序中繼，簽署過的請求不變，`holderRouteHint` 在同意畫面說明沒有可用路線時的作法。年齡查驗的主機由 `ServerModel.ageHost` 依同一設定選擇，`BondsAgeVerifierFlow.restart` 重送。這組畫面文字集中在 `ServerStrings`（之後 i18n），共用畫面在 `ui/ServerShareViews.kt`，掃描用 `LocalQrReader`。
+- 桌面版原生執行檔（實驗，2026-11-05）：`tools/desktop-native.sh` 以 GraalVM 25 把 release uber jar 編成 Linux 原生執行檔（需約 11 GB 記憶體）。uber jar 須去掉 Bouncy Castle 簽章檔並標 `Multi-Release: true`（sqlite-jdbc 的 native-image feature 在 `META-INF/versions/9`）；Skiko 從 `java.home/lib` 載入 `libjawt.so`，啟動腳本以 `-Djava.home` 指向執行檔目錄。反射設定由 tracing agent 在 Xvfb 下執行取得，只涵蓋執行到的畫面（`AGENT_INTERACTIVE=1` 可手動操作補齊）。實測首頁可顯示（含中文），RSS 約 187 MB；PC/SC、PKCS#11、zk 原生程式庫等流程未驗證，JVM 版仍是正式發行。
 - 四種證據：zkPDF（Noir 電路，證明已簽署 PDF 的文字欄位）、zkTLS（TLSNotary，查驗方當 notary 的即時模式；離線時為 T3 的網頁證明或裝置證明紀錄）、年齡證明（直接引用 Bonds 的 OpenAC `openac-age-v1` 資產與格式）、mdoc ZK（Multipaz Longfellow）。
 - 證據都疊加在既有的文件衍生憑證上（`evidence` 陣列），以持有者 `cnf.jwk` 的 RFC 7638 thumbprint 綁定；信任等級取原始簽署者、發行端或連線的等級，零知識證明本身不提高等級；zkPDF 與 zkTLS 永遠不是 T1。
 - 原生程式碼放在 `native/`（Rust 工作區、uniffi 以 JNA 綁定，Noir 電路在 `native/circuits`），Kotlin 介面在 `core/zk`、`core/document/zkpdf`、`core/zktls`；裝置分級 A、B、C 只是建議，用來顯示估計與預設選項，不禁止在本機產生證明（D3）；處理器架構不支援或缺少引擎時該後端才不可用。
@@ -211,6 +213,18 @@
 - mdoc `transaction_data`：`ResponseBuilder` 以 Multipaz 的 `TransactionType` 產生 DeviceSigned 命名空間，每個元素都要在 MSO 的 `KeyAuthorizations` 內，否則拒絕；零知識出示不支援 transaction_data。
 - mdoc 簽署清單（`TrustRegistry.importSignedMdocTrustList`）：VICAL 加入發行端信任、RICAL 加入查驗方信任，環境為 USER（T2，不顯示官方）。清單的 COSE 簽署憑證鏈必須連到同一環境中以 `TrustRole.TRUST_LIST_PROVIDER` 匯入的根憑證，不可由測試錨點升級成 USER 或正式；RICAL 每一項都必須是 trust anchor；只接受 https、4 MB 以內，同一來源的新版須同一發行者、同一簽署憑證且版本遞增。Multipaz 驗證憑證時不檢查清單的 `notAfter`，所以 `retireExpiredMdocTrustLists` 在比對前把過期清單移出驗證用的 TrustManager；匯入的原檔另存在 `signed-lists-<角色>-<環境>`，過期後仍可更新或移除。開啟 App 時與「更新到期的清單」更新已過 `nextUpdate` 或已過期的清單，一份失敗不影響其他清單。
 - 行動自然人憑證、CSC 與電子公文以公開規格為交付範圍；沒有內政部 SP、QTSP 或機關公文交換帳號是外部條件，不是程式缺陷，也不可捏造政府收發 API 或以測試憑證冒充。尚未實作：App 端的 request object 解密金鑰登錄；Android HTTPS App Links 不規劃。
+
+## 法律聲明與首次啟動
+
+- 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`，首次啟動與設定頁的字串在 `app/legal/LegalStrings.kt`，以便之後翻譯；不要把這些文字寫在畫面程式裡。
+- `docs/legal/*.md` 由 `LegalDocument.toMarkdown()` 產生，`LegalDocumentsTest` 檢查兩者一致；改文字後以 `DIW_UPDATE_LEGAL=1` 執行該測試重新產生。實質變更要調高 `version`，使用者下次開啟時只重新確認有變更的文件；錯字修正不調版本。
+- `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。
+- 服務停用時：`blockedIntegration` 擋下 TWDIW 入口與含 wallet.gov.tw 位址的連結（含百分比編碼與 JSON 跳脫）、openid-vc，改開 `Screen.IntegrationStatement`（同意後接著處理連結）；解析後才知道位址的請求以 `requireTwdiwAllowed` 檢查；`StatusMonitor` 不查詢該服務證件的狀態、不重新判定其發行端；MyData 保存的身分證統一編號不使用。
+- 未上線的服務（`Integration.available = false`，目前是 zkPassport）只發佈聲明，在設定頁只能預覽、不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
+- 法律文字只用兩種 Markdown 標記：`**粗體**` 與反引號（主機名稱等），App 以 `legalAnnotated` 顯示，其他字元照原樣；不要用表格、連結語法或巢狀清單。
+- 使用者發起的第一個 TWDIW 請求（TWDIW 連結、臨櫃服務）先經 `withTwdiwNotice` 顯示一次非官方相容提醒，看過的記在 `LegalConsent.notices`；背景查詢不等這個提醒。
+- 一般文字用地域稱呼（臺灣地區、中國大陸），法規、機關與品牌照正式名稱寫。行動自然人憑證：發布版本不內建 SP（CI 不設 `DIW_MOICA_SP_*`），沒有 SP 時簽署畫面要明說。
+- 測試建立 `WalletModel` 後呼叫 `legal.acceptAll()`（同時略過一次性提醒），否則連結不會被處理。
 
 ## 建置與測試
 

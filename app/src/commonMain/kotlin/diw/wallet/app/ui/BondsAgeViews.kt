@@ -34,6 +34,7 @@ import diw.wallet.app.BondsAgeFlow
 import diw.wallet.app.BondsAgeVerifierFlow
 import diw.wallet.app.OfflineUi
 import diw.wallet.app.QrScanStep
+import diw.wallet.app.ServerStrings
 import diw.wallet.app.WalletModel
 import diw.wallet.app.ZkChoiceKind
 import diw.wallet.app.ZkJobPhase
@@ -253,6 +254,7 @@ internal fun BondsAgeVerifierWaitingView(
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         s.scanned?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         TechDetails(s.details, "age-${s.request.requestId}")
+        if (s.peerable && !s.checking) PeerServerButton(model)
         if (s.request.qr && !s.checking) {
             if (streamQr != null) Button(onClick = { scanning = true }, enabled = !scanning) { Text("掃描出示者的動態 QR Code") }
             else Text("這個裝置沒有相機，無法掃描動態 QR Code。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -310,7 +312,8 @@ internal fun BondsAgeVerifierSetup(model: WalletModel, canScanFrames: Boolean) {
     var ageText by remember { mutableStateOf("18") }
     var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
     var purpose by remember { mutableStateOf("年齡確認") }
-    val host = model.taiwan.ageVerifier.host()
+    val peer by model.server.peer.collectAsState()
+    val host = remember(peer) { model.server.ageHost() }
     val available = mapOf(
         AgeRoute.BLUETOOTH to (model.platform.bondsLinkCentral != null),
         AgeRoute.QR to canScanFrames,
@@ -334,12 +337,12 @@ internal fun BondsAgeVerifierSetup(model: WalletModel, canScanFrames: Boolean) {
                     AgeRoute.BLUETOOTH -> "出示者的手機以藍牙把證明直接傳到這支手機，雙方都不需要網路。出示者可使用本錢包或 Bonds App（格式與 Bonds 的雙機查驗相同）；本錢包同時會顯示動態 QR Code 備用。"
                     AgeRoute.QR -> "不用網路也不用藍牙：出示者的錢包把證明顯示成連續變換的動態 QR Code，用這支手機的相機掃描到完成（約數十秒）。出示者需使用本錢包。"
                     AgeRoute.LAN -> "兩支手機連在同一個 Wi-Fi（或一支開熱點讓另一支連上），證明直接傳到這支手機，不經網際網路。出示者需使用本錢包。"
-                    AgeRoute.HOST -> host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" }
-                        ?: "尚未設定年齡查驗主機：到設定的「零知識證明」頁填入（測試環境會使用測試伺服器）。"
+                    AgeRoute.HOST -> host?.let { "年齡查驗主機：$it。請求與 Bonds 的網頁查驗相同，由主機轉送。" } ?: ServerStrings.AGE_NO_HOST
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = if (route == AgeRoute.HOST && host == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (route == AgeRoute.HOST) PeerServerButton(model)
             OutlinedTextField(value = ageText, onValueChange = { t -> ageText = t.filter { it.isDigit() }.take(3) },
                 label = { Text("年滿幾歲") }, singleLine = true, modifier = Modifier.width(140.dp), isError = age == null)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -12,6 +12,8 @@ extern "C" void logstr(char const*) {}
 // Bound native worker fan-out on phones and resource-limited hosts.
 extern "C" uint32_t env_hardware_concurrency() { return ZKPDF_WORKERS; }
 extern "C" [[noreturn]] void throw_or_abort_impl(char const*) { throw std::runtime_error("bb_failure"); }
+// The env module is not linked; memory checkpoints are never logged, and macOS rejects undefined symbols.
+std::size_t peak_rss_bytes() { return 0; }
 
 namespace {
 std::vector<uint8_t> bytes(const uint8_t* data, size_t size) { return { data, data + size }; }

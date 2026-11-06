@@ -287,6 +287,8 @@ class ProximityModel(private val model: WalletModel) {
         appId: String?,
         selectedDocumentIds: List<String> = emptyList(),
     ): JsonObject? {
+        // As for OpenID4VP: nothing is handled before the first-start pages are done.
+        model.legal.awaitComplete()
         cancel()
         listening.value = false
         state.value = ProximityUi.Working("驗證請求中")

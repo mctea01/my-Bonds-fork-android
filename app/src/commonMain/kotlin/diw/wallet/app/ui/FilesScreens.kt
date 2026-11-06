@@ -1,6 +1,7 @@
 package diw.wallet.app.ui
 
 import diw.wallet.app.CscPrompt
+import diw.wallet.core.zk.ZkPdfStatement
 import diw.wallet.core.document.sign.CscEnvironment
 import diw.wallet.core.document.sign.CscServices
 import androidx.compose.foundation.clickable
@@ -85,6 +86,7 @@ import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.app.SignerChoice
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.MobileMoicaSp
+import diw.wallet.app.legal.LegalStrings
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
 import diw.wallet.app.StoredFile
@@ -245,7 +247,8 @@ fun DocumentSourcesScreen(model: WalletModel) {
             style = MaterialTheme.typography.bodySmall,
         )
         SectionTitle("MyData")
-        DocumentSources.myData.forEach { src ->
+        if (!model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA)
+        else DocumentSources.myData.forEach { src ->
             ActionRow(if (src.nationalId) WalletIcons.Person else WalletIcons.Government, src.name, src.detail) { open(src) }
         }
         SectionTitle("其他來源")
@@ -607,6 +610,22 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
         } else {
             Text("衍生憑證把文件變成可出示的證件（IETF SD-JWT VC），只交出你選的欄位，附上簽章檢查與時戳；原檔不會送出。", style = MaterialTheme.typography.bodySmall)
+        }
+        f.zkPdfPending?.let { pending ->
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("等待電腦版產生的 zkPDF 證明", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "證明請求建立於 ${localTime(pending.createdAt)}。在電腦版錢包的「零知識證明」設定頁開啟請求檔產生證明，" +
+                            "再把 .zkpdf 檔匯入這裡；證明會先在這台裝置驗證，通過才產生衍生憑證。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { model.files.importZkPdfProof(f) }, enabled = busy == null) { Text("匯入證明檔") }
+                        TextButton(onClick = { model.files.cancelZkPdfRequest(f) }, enabled = busy == null) { Text("取消請求") }
+                    }
+                }
+            }
         }
         if (f.nationalId != null) {
             ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
@@ -981,7 +1000,8 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             }
         }
         SignerKind.SYSTEM -> SystemKeyPicker(model) { other = it; update() }
-        SignerKind.MOBILE -> MobileMoicaPicker(model) { other = it; update() }
+        SignerKind.MOBILE -> if (model.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA)) MobileMoicaPicker(model) { other = it; update() }
+            else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
         SignerKind.CSC -> CscPicker(model) { other = it; update() }
         SignerKind.PKCS12 -> {
             OutlinedButton(onClick = { scope.launch { model.platform.pickFile()?.let { p12 = it; update() } } }) { Text(p12?.name ?: "選擇 .p12／.pfx 檔") }
@@ -1149,7 +1169,7 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
     serverNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
     if (source == null) {
         if (configured != null && serverSp == null) return
-        Text("沒有可用的行動自然人憑證服務提供者（SP）帳號：在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；持有 SP 授權的開發者也可在設定開啟「手動輸入 SP 帳號」。",
+        Text(LegalStrings.MOICA_SP_NOT_CONFIGURED + "可在設定的「零知識證明」頁填入啟用行動自然人憑證簽署的正式服務端；依法持有 SP 授權者可在「設定 > 開發者與測試」開啟「手動輸入 SP 帳號」。",
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return
     }
@@ -1167,8 +1187,8 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
         )
         MobileMoicaSource.BUILT_IN -> builtIn?.let { Text("使用本版內建的 SP 帳號（${it.environment.title}）。", style = MaterialTheme.typography.bodySmall) }
         MobileMoicaSource.MANUAL -> {
-            Text("開發者選項：以你持有的 SP 帳號簽署。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。",
-                style = MaterialTheme.typography.bodySmall)
+            Text("開發者選項：以你依法有權使用的 SP 帳號簽署，不得輸入未經授權取得的帳號或金鑰。帳號與金鑰只保存在這次執行的記憶體，不會寫入裝置。" +
+                LegalStrings.MOICA_SP_PROVIDER_UNKNOWN, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MobileMoicaEnvironment.entries.forEach { e -> FilterChip(selected = e == env, onClick = { env = e; update() }, label = { Text(e.title) }) }
             }
@@ -1180,6 +1200,15 @@ private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> U
             )
         }
         null -> Unit
+    }
+    val environment = when (source) {
+        MobileMoicaSource.SERVER -> serverEnvironment
+        MobileMoicaSource.BUILT_IN -> builtIn?.environment
+        MobileMoicaSource.MANUAL -> env
+        null -> null
+    }
+    if (environment == MobileMoicaEnvironment.UAT) {
+        Text(LegalStrings.MOICA_SP_ENV_TEST, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
     OutlinedTextField(value = idNumber, onValueChange = { idNumber = it.take(10); update() }, label = { Text("身分證統一編號") },
         singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -2347,13 +2376,22 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             ZkProofGate(
                 zk = model.zk,
                 kind = ZkProofKind.PDF,
-                context = ZkChoiceContext(withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明", desktopImport = false),
+                context = ZkChoiceContext(
+                    selfHostConfigured = model.settings.zkProverUrl.isNotEmpty(),
+                    withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明",
+                    desktopImport = composition == ZkPdfStatement.PHONE,
+                ),
                 assets = ZkPdfAssets.required(composition, true),
+                verifyAssets = FilesModel.SELF_HOST_ASSETS,
                 onDecision = { choice, extended ->
                     zkGate = false
                     when (choice) {
                         ZkChoiceKind.ON_DEVICE -> model.files.derive(f, claims, timestamp, validDays,
                             FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended))
+                        ZkChoiceKind.DESKTOP -> model.files.exportZkPdfRequest(f, claims, timestamp, validDays,
+                            FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, ZkPdfStatement.DESKTOP, extended = true))
+                        ZkChoiceKind.SELF_HOSTED -> model.files.derive(f, claims, timestamp, validDays,
+                            FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended = true, selfHosted = true))
                         ZkChoiceKind.WITHOUT_ZK -> if (claims.isNotEmpty()) model.files.derive(f, claims, timestamp, validDays)
                             else model.message.value = "請至少選擇一個欄位"
                         else -> model.message.value = "這個方式尚未提供；可在電腦版錢包匯入同一份文件後產生"
@@ -2372,6 +2410,10 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
 @Composable
 fun PortalScreen(model: WalletModel, screen: Screen.Portal) {
     val src = DocumentSources.byId(screen.sourceId) ?: return
+    if (src.myData && !model.legal.enabled(diw.wallet.app.legal.Integration.MYDATA)) {
+        Column(Modifier.padding(16.dp)) { IntegrationOffRow(model, diw.wallet.app.legal.Integration.MYDATA) }
+        return
+    }
     val busy by model.files.busy.collectAsState()
     Column(Modifier.fillMaxSize()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {

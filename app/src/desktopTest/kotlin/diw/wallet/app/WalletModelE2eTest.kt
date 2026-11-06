@@ -82,6 +82,8 @@ class WalletModelE2eTest {
         /** Replaces the network, for hosts the local test servers cannot stand in for (https did:web). */
         val client: (() -> HttpClient)? = null,
         override val platformName: String = "test",
+        /** No local network: the zkTLS verifier is reachable through a relay only. */
+        val noLan: Boolean = false,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
@@ -120,7 +122,7 @@ class WalletModelE2eTest {
         override val bondsLinkCentral: BondsLinkCentral get() = link.central
 
         /** The real sockets, on loopback: the test machine may have no Wi-Fi. */
-        override val bondsLan = object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
+        override val bondsLan: diw.wallet.core.profile.bonds.BondsLanLink? = if (noLan) null else object : diw.wallet.core.profile.bonds.BondsLanLink by diw.wallet.core.profile.bonds.SocketBondsLanLink() {
             override fun localAddresses() = listOf("127.0.0.1")
             override fun localInterfaces() = listOf(diw.wallet.core.profile.bonds.LanInterface("127.0.0.1", "lo", "loopback", diw.wallet.core.profile.bonds.LanInterface.Kind.OTHER))
         }
@@ -131,8 +133,8 @@ class WalletModelE2eTest {
         }
     }
 
-    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test"): Pair<WalletModel, TestPlatform> {
-        val p = TestPlatform(storage, platformName = platformName)
+    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false): Pair<WalletModel, TestPlatform> {
+        val p = TestPlatform(storage, platformName = platformName, noLan = noLan)
         val m = WalletModel(p)
         p.model = m
         // Answers every App PIN request like a user would.
@@ -140,6 +142,7 @@ class WalletModelE2eTest {
             m.pinRequest.collect { r -> if (r != null) { p.pinPrompts++; r.result.complete(pin) } }
         }
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(testEnvironment = true, allowLoopbackHttp = true, testServerUrl = base) }.join()
         m.importTestAnchors().join()
         return m to p
@@ -153,6 +156,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(testEnvironment = true, testServerUrl = "https://issuer.multipaz.org") }.join()
         m.importTestAnchors().join()
         val text = m.message.value
@@ -169,6 +173,7 @@ class WalletModelE2eTest {
             val m = WalletModel(p)
             p.model = m
             m.init()
+            m.legal.acceptAll()
             withTimeout(60.seconds) {
                 m.handleUri(host)
                 val r = m.issuance.first { it is IssuanceUi.Review || it is IssuanceUi.Failed }
@@ -615,6 +620,7 @@ class WalletModelE2eTest {
         // A restart reads the stored results.
         val again = WalletModel(TestPlatform(storage))
         again.init()
+        again.legal.acceptAll()
         assertEquals(org.multipaz.revocation.RevocationCheckState.INVALID, again.statuses.value.getValue(id).status.state)
     }
 
@@ -1007,6 +1013,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         val before = assertNotNull(m.didTrust.decide(did, diw.wallet.core.trust.TrustRole.ISSUER))
         assertEquals(TrustTier.T4, before.tier, "an unverifiable domain link alone is T4")
         m.trustDid(did, "Partner", setOf(diw.wallet.core.trust.TrustRole.ISSUER)).join()
@@ -1068,6 +1075,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = "token-for-the-host-0123") }.join()
         val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
         m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
@@ -1146,6 +1154,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = token) }.join()
         assertEquals(token, m.server.tokenFor("https://$host/"))
         assertNull(m.server.tokenFor("https://other.example.org"))
@@ -1877,6 +1886,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         m.files.import(PickedFile("degree.opencert", cert), FileOrigin.IMPORTED, null).join()
         assertNull(m.files.error.value, "import: ${m.files.error.value}")
         val stored = m.files.files.value.single()
@@ -2117,6 +2127,7 @@ class WalletModelE2eTest {
         val m = WalletModel(p)
         p.model = m
         m.init()
+        m.legal.acceptAll()
         val service = diw.wallet.core.document.sign.CscService(
             "mock", "Mock", "https://qtsp.example/csc/v2", "wallet-client", "secret", "rqes://oauth/callback",
             diw.wallet.core.document.sign.CscEnvironment.TEST,
@@ -2138,6 +2149,95 @@ class WalletModelE2eTest {
         }
         assertTrue("身分驗證" in e.message!!, e.message)
         assertEquals(before, m.screen.value, "the signing screen comes back")
+    }
+
+    // ---------------------------------------------------------------- production server: sharing and the choice between two
+
+    private val shareRoot = "ab".repeat(32)
+
+    private suspend fun serverWallet(own: String?, policy: ServerPolicy): WalletModel {
+        val m = WalletModel(TestPlatform(EphemeralStorage()))
+        m.init()
+        m.legal.acceptAll()
+        m.updateSettings { it.copy(zkVerifierUrl = own.orEmpty(), serverPolicy = policy.id) }.join()
+        return m
+    }
+
+    @Test
+    fun holderOrdersRoutesByPolicy() = runBlocking<Unit> {
+        val lan = diw.wallet.core.zktls.ZkTlsTransport.Lan("192.168.1.2", 4000)
+        val mine = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://mine.example/zktls/relay", "r1")
+        val theirs = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://theirs.example/zktls/relay", "r2")
+        val host = diw.wallet.core.zktls.ZkTlsTransport.Wss("wss://theirs.example/zktls/sessions/1")
+        val offered = listOf(lan, theirs, mine, host)
+
+        assertEquals(listOf(lan, mine, theirs, host), serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_OWN).server.orderForHolder(offered))
+        assertEquals(listOf(lan, theirs, mine, host), serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_PEER).server.orderForHolder(offered))
+        val strict = serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.OWN_ONLY).server
+        assertEquals(listOf(lan, mine, host), strict.orderForHolder(offered))
+        assertNull(strict.holderRouteHint(offered))
+        // The verifier listed only its own relay: nothing this wallet would use beyond the local network.
+        val hint = strict.holderRouteHint(listOf(lan, theirs))!!
+        assertTrue("mine.example" in hint && "顯示我的服務端 QR Code" in hint, hint)
+        // Two servers behind one host name: only the relay at this wallet's own path is its own.
+        val shared = serverWallet("https://example.org/mine", diw.wallet.app.ServerPolicy.OWN_ONLY).server
+        val ownPath = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://example.org/mine/zktls/relay", "r3")
+        val otherPath = diw.wallet.core.zktls.ZkTlsTransport.Relay("wss://example.org/theirs/zktls/relay", "r4")
+        assertEquals(listOf(lan, ownPath), shared.orderForHolder(listOf(lan, otherPath, ownPath)))
+        assertTrue(shared.holderRouteHint(listOf(lan, otherPath)) != null)
+        // A wallet without a server takes the other party's relay under the default policy.
+        val none = serverWallet(null, diw.wallet.app.ServerPolicy.PREFER_OWN).server
+        assertEquals(listOf(lan, theirs), none.orderForHolder(listOf(lan, theirs)))
+        assertTrue("查驗方沒有提供中繼" in none.holderRouteHint(listOf(lan))!!)
+    }
+
+    @Test
+    fun verifierOpensRoomsOnBothServers() = runBlocking<Unit> {
+        val m = serverWallet("https://mine.example", diw.wallet.app.ServerPolicy.PREFER_OWN)
+        assertEquals(listOf("https://mine.example"), m.server.relaysForVerifier())
+        assertEquals("https://mine.example", m.server.ageHost())
+        m.server.usePeer(diw.wallet.core.server.ServerShare("https://theirs.example", token = "never-kept"))
+        assertNull(m.server.peer.value!!.token)
+        assertEquals(listOf("https://mine.example", "https://theirs.example"), m.server.relaysForVerifier())
+        assertEquals("https://mine.example", m.server.ageHost())
+        m.updateSettings { it.copy(serverPolicy = diw.wallet.app.ServerPolicy.PREFER_PEER.id) }.join()
+        assertEquals(listOf("https://theirs.example", "https://mine.example"), m.server.relaysForVerifier())
+        assertEquals("https://theirs.example", m.server.ageHost())
+        m.taiwan.closeOffline()
+        assertNull(m.server.peer.value)
+
+        // Only the other party has a server: it is the relay and the age host.
+        val alone = serverWallet(null, diw.wallet.app.ServerPolicy.PREFER_OWN)
+        assertNull(alone.server.ageHost())
+        alone.server.scanPeer(diw.wallet.core.server.ServerShare("https://theirs.example").link())
+        assertEquals(listOf("https://theirs.example"), alone.server.relaysForVerifier(null))
+        assertEquals("https://theirs.example", alone.server.ageHost())
+    }
+
+    @Test
+    fun receivedShareWaitsForTheUser() = runBlocking<Unit> {
+        val m = serverWallet("https://old.example", diw.wallet.app.ServerPolicy.PREFER_OWN)
+        m.updateSettings { it.copy(serverToken = "old-token", serverRootSha256 = shareRoot, serverVerifierDid = "did:key:old") }.join()
+        val link = diw.wallet.core.server.ServerShare("https://new.example", token = "new-token").link()
+        m.handleUri(link)
+        assertEquals("https://new.example", m.server.pendingShare.value?.url)
+        assertEquals("https://old.example", m.settings.zkVerifierUrl)
+        m.server.adopt(m.server.pendingShare.value!!).join()
+        assertNull(m.server.pendingShare.value)
+        val s = m.settings
+        assertEquals("https://new.example", s.zkVerifierUrl)
+        assertEquals("new-token", s.serverToken)
+        // Trust in the old server's shareRoot is not carried over to another server.
+        assertEquals("", s.serverRootSha256)
+        assertEquals("", s.serverVerifierDid)
+
+        // Sharing: the token only when asked for, the trusted fingerprint always.
+        m.updateSettings { it.copy(serverRootSha256 = shareRoot) }.join()
+        assertNull(m.server.share(includeToken = false)!!.token)
+        assertEquals("new-token", m.server.share(includeToken = true)!!.token)
+        assertEquals(shareRoot, m.server.share(includeToken = false)!!.rootSha256)
+        m.updateSettings { it.copy(zkVerifierUrl = "") }.join()
+        assertNull(m.server.share(includeToken = false))
     }
 
     /**
@@ -2201,7 +2301,9 @@ class WalletModelE2eTest {
             assertEquals(record.DATE, claims.str("date"))
             val method = claims.str("method")
             assertEquals(if (expectReceipt) web.METHOD_PROXY else web.METHOD_DEVICE, method)
-            assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+            // The record page is synthetic: naming which value leaked is safe.
+            val leaked = listOf("serial" to record.SERIAL, "hidden" to record.HIDDEN, "code" to record.CODE).filter { it.second in claims.toString() }
+            assertTrue(leaked.isEmpty(), "kept claims carry $leaked: $claims")
 
             val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
                 verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
@@ -2228,6 +2330,60 @@ class WalletModelE2eTest {
         assertTrue(holder.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
         assertEquals(3, verifier.history.value.count { it.kind == HistoryKind.VERIFIED && it.failure == null })
         assertEquals(3, holder.history.value.count { it.kind == HistoryKind.ISSUED })
+    }
+
+    /**
+     * Two parties with different servers: the verifier, with no local network, scans the holder's server and opens a
+     * room on both relays (the test server answers at two host names); the holder takes its own, as its policy says.
+     */
+    @Test
+    fun zkTlsThroughTheHoldersRelay() = runBlocking<Unit> {
+        servers = TestServers(base, TestPki.create(), zkTls = { true }).init()
+        server = servers.start(port, wait = false)
+        val (verifier, _) = newWallet(noLan = true)
+        val (holder, _) = newWallet()
+        org.junit.jupiter.api.Assumptions.assumeTrue(verifier.zk.tls() is diw.wallet.core.zk.ZkResult.Ok, "native library without tlsn")
+        val holderServer = "http://127.0.0.1:$port"
+        holder.updateSettings { it.copy(zkVerifierUrl = holderServer, serverPolicy = ServerPolicy.PREFER_OWN.id) }.join()
+        val record = diw.testservers.zktls.ZkTlsRecordPage
+
+        verifier.taiwan.zkTls.openSetup()
+        val setup = assertIs<OfflineUi.ZkTlsVerifierSetup>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierSetup || it is OfflineUi.Failed }
+        })
+        verifier.taiwan.zkTls.startVerifier(setup.pages.single { it.id == record.PROFILE_ID }, listOf("name"), "資格確認")
+        val first = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting || it is OfflineUi.Failed }
+        })
+        assertEquals(listOf("localhost"), first.request.transports.map { io.ktor.http.Url((it as diw.wallet.core.zktls.ZkTlsTransport.Relay).url).host })
+
+        // The holder shows its server; scanning it on the waiting screen opens the request again with both relays.
+        val shared = assertNotNull(holder.server.share(includeToken = false)).link()
+        verifier.handleUri(shared)
+        val waiting = assertIs<OfflineUi.ZkTlsVerifierWaiting>(withTimeout(30.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierWaiting && it.request != first.request || it is OfflineUi.Failed }
+        })
+        val relayHosts = waiting.request.transports.map { io.ktor.http.Url((it as diw.wallet.core.zktls.ZkTlsTransport.Relay).url).host }
+        assertEquals(listOf("localhost", "127.0.0.1"), relayHosts)
+
+        holder.handleUri(waiting.link)
+        val consent = assertIs<OfflineUi.ZkTlsConsent>(withTimeout(30.seconds) {
+            holder.taiwan.offline.first { (it is OfflineUi.ZkTlsConsent && it.session.request == waiting.request) || it is OfflineUi.Failed }
+        })
+        assertNull(consent.routeHint)
+        holder.taiwan.zkTls.prove(consent, mapOf("serial" to record.SERIAL, "code" to record.CODE))
+        val proved = assertIs<OfflineUi.ZkTlsHolderResult>(withTimeout(180.seconds) {
+            holder.taiwan.offline.first { it is OfflineUi.ZkTlsHolderResult }
+        })
+        assertNull(proved.error, proved.error)
+        val route = assertIs<diw.wallet.core.zktls.ZkTlsTransport.Relay>(proved.proved!!.transport)
+        assertEquals("127.0.0.1", io.ktor.http.Url(route.url).host)
+        val result = assertIs<OfflineUi.ZkTlsVerifierResult>(withTimeout(60.seconds) {
+            verifier.taiwan.offline.first { it is OfflineUi.ZkTlsVerifierResult && it.request == waiting.request }
+        })
+        assertTrue(assertNotNull(result.outcome, result.error).passed)
+        verifier.taiwan.closeOffline()
+        assertNull(verifier.server.peer.value)
     }
 
     /**
@@ -2356,5 +2512,145 @@ class WalletModelE2eTest {
 
         templates.clearTestPages()
         withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
+    }
+
+    /**
+     * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
+     * decisions survive a restart.
+     */
+    @Test
+    fun legalConsentGatesLinksAndIntegrations() = runBlocking<Unit> {
+        val storage = EphemeralStorage()
+        val p = TestPlatform(storage)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        assertFalse(m.legal.complete)
+        m.handleUri("not a link")
+        delay(300)
+        assertNull(m.message.value, "nothing is handled before the holder has decided")
+
+        m.legal.acceptBasics().join()
+        assertFalse(m.legal.complete, "the statements are still undecided")
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        assertTrue(m.legal.complete, "the reserved zkPassport statement is not asked for yet")
+        withTimeout(5.seconds) { m.message.first { it == "無法辨識的連結" } }
+
+        val twdiw = diw.wallet.app.legal.Integration.TWDIW
+        assertEquals(twdiw, m.blockedIntegration("modadigitalwallet://credential_offer?credential_offer_uri=https%3A%2F%2Fissuer.wallet.gov.tw%2Fo"))
+        assertEquals(twdiw, m.blockedIntegration("openid-credential-offer://?credential_offer_uri=https%253A%252F%252Fissuer-vc.wallet.gov.tw%252Fo"))
+        assertEquals(twdiw, m.blockedIntegration("""openid-credential-offer://?credential_offer={"credential_issuer":"https:\/\/x.wallet.gov.tw"}"""))
+        assertEquals(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, m.blockedIntegration("openid-vc://?request_uri=https://example.com/r"))
+        assertNull(m.blockedIntegration("openid-credential-offer://?credential_offer_uri=https%3A%2F%2Fissuer.example.com%2Fo"))
+        assertNull(m.blockedIntegration("openid4vp://?client_id=x&request_uri=https%3A%2F%2Fwallet.gov.tw.example.com%2Fr"))
+
+        val link = "modadigitalwallet://authorize?request_uri=https%3A%2F%2Fverifier.wallet.gov.tw%2Fr"
+        m.handleUri(link)
+        assertEquals(Screen.IntegrationStatement(twdiw, pendingUri = link), m.screen.value)
+        m.screen.value = Screen.Home
+        m.taiwan.loadServices()
+        assertNull(m.taiwan.cardServices.value, "the TWDIW catalogue is not fetched")
+
+        val again = WalletModel(TestPlatform(storage).also { it.model = m })
+        again.init()
+        assertTrue(again.legal.complete)
+        assertFalse(again.legal.enabled(twdiw))
+        assertTrue(again.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA))
+        again.legal.decide(twdiw, true).join()
+        assertNull(again.blockedIntegration(link))
+
+        // The first TWDIW request the holder starts waits for the one-time reminder; cancelling leaves it undone.
+        again.handleUri(link)
+        assertEquals(twdiw, again.integrationNotice.value?.integration)
+        assertEquals(Screen.Home, again.screen.value)
+        again.integrationNotice.value = null
+        var ran = 0
+        again.withTwdiwNotice { ran++ }
+        assertEquals(0, ran)
+        again.continueNotice()
+        withTimeout(5.seconds) { while (ran == 0) delay(20) }
+        assertTrue(again.legal.noticed(twdiw))
+        again.withTwdiwNotice { ran++ }
+        assertEquals(2, ran, "the reminder is shown once")
+    }
+
+    /** An offer fetched from elsewhere that names a TWDIW issuer stops before anything is asked of wallet.gov.tw. */
+    @Test
+    fun declinedTwdiwBlocksIndirectOffers() = runBlocking<Unit> {
+        val hosts = java.util.Collections.synchronizedList(ArrayList<String>())
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            hosts.add(request.url.host)
+            if (request.url.host == "offers.example.com") {
+                val offer = buildJsonObject {
+                    put("credential_issuer", "https://issuer.wallet.gov.tw")
+                    put("credential_configuration_ids", kotlinx.serialization.json.JsonArray(listOf(kotlinx.serialization.json.JsonPrimitive("card"))))
+                    put("grants", buildJsonObject {
+                        put("urn:ietf:params:oauth:grant-type:pre-authorized_code", buildJsonObject { put("pre-authorized_code", "c") })
+                    })
+                }
+                respond(offer.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            } else respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.handleUri("openid-credential-offer://?credential_offer_uri=https%3A%2F%2Foffers.example.com%2Fo")
+        val r = withTimeout(10.seconds) { m.issuance.first { it is IssuanceUi.Failed || it is IssuanceUi.Review } }
+        assertIs<IssuanceUi.Failed>(r)
+        assertTrue("數位憑證皮夾" in r.message, r.message)
+        assertTrue(hosts.none { it.endsWith("wallet.gov.tw") }, "contacted: $hosts")
+    }
+
+    /** Renders the first-start pages and the legal settings for review; DIW_SCREENSHOTS names the output folder. */
+    @Test
+    fun legalScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        val p = TestPlatform(EphemeralStorage())
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+
+        fun shot(name: String, height: Int = 892, content: @androidx.compose.runtime.Composable () -> Unit) {
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f), content = content)
+            try {
+                var image = scene.render(0)
+                for (i in 1..8) {
+                    Thread.sleep(100)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+        val app: @androidx.compose.runtime.Composable () -> Unit = { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+
+        shot("legal-01-welcome", content = app)
+        // An earlier version on record skips the welcome page and shows the terms page.
+        m.legal.consent.value = LegalConsent(terms = ConsentRecord(0, true, 0), privacy = ConsentRecord(0, true, 0))
+        shot("legal-02-terms", 1500, app)
+        m.legal.acceptBasics().join()
+        shot("legal-03-statement-twdiw", 2600, app)
+        m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, true).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
+        shot("legal-04-statement-mydata", 2000, app)
+        m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        shot("legal-05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
+        m.screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
+        shot("legal-06-settings", content = app)
+        m.screen.value = Screen.IntegrationStatement(diw.wallet.app.legal.Integration.TWDIW, pendingUri = "modadigitalwallet://authorize?x=1")
+        shot("legal-07-statement-from-link", 2600, app)
+        m.screen.value = Screen.Home
+        m.tab.value = HomeTab.USE
+        shot("legal-08-use-twdiw-off", content = app)
     }
 }

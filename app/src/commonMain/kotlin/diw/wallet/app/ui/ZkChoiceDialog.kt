@@ -69,9 +69,11 @@ fun ZkChoicePanel(readiness: ZkReadiness, options: List<ZkChoiceOption>, onPick:
 private sealed interface GateState {
     data object Checking : GateState
     data class Choose(val readiness: ZkReadiness) : GateState
-    data class ConfirmDownload(val readiness: ZkReadiness, val extended: Boolean) : GateState
-    data class Downloading(val readiness: ZkReadiness, val extended: Boolean) : GateState
+    /** [choice] is what runs once the download completes: this device, or the self-hosted prover (verification keys only). */
+    data class ConfirmDownload(val readiness: ZkReadiness, val extended: Boolean, val choice: ZkChoiceKind = ZkChoiceKind.ON_DEVICE) : GateState
+    data class Downloading(val readiness: ZkReadiness, val extended: Boolean, val choice: ZkChoiceKind) : GateState
     data class SelfHostRisk(val readiness: ZkReadiness) : GateState
+    data class DesktopRisk(val readiness: ZkReadiness) : GateState
 }
 
 /**
@@ -86,6 +88,8 @@ fun ZkProofGate(
     context: ZkChoiceContext = ZkChoiceContext(),
     /** The prover assets this proof needs, when it needs only some of the backend's (a zkPDF composition). */
     assets: Collection<String>? = null,
+    /** The assets checking a proof made elsewhere (self-hosted prover, desktop wallet) needs: verification keys and CRS. */
+    verifyAssets: Collection<String>? = null,
     onDecision: (choice: ZkChoiceKind, extended: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -94,7 +98,8 @@ fun ZkProofGate(
     LaunchedEffect(kind) {
         val readiness = zk.readiness(kind, assets)
         state = when {
-            !readiness.recommended -> GateState.Choose(readiness)
+            // With a self-hosted prover the holder always picks where the proof is made.
+            !readiness.recommended || context.selfHostConfigured && kind == ZkProofKind.PDF -> GateState.Choose(readiness)
             readiness.missing.isNotEmpty() -> GateState.ConfirmDownload(readiness, extended = false)
             else -> { onDecision(ZkChoiceKind.ON_DEVICE, false); return@LaunchedEffect }
         }
@@ -112,6 +117,8 @@ fun ZkProofGate(
                                 if (s.readiness.missing.isEmpty()) onDecision(ZkChoiceKind.ON_DEVICE, true)
                                 else state = GateState.ConfirmDownload(s.readiness, extended = true)
                             ZkChoiceKind.SELF_HOSTED -> state = GateState.SelfHostRisk(s.readiness)
+                            ZkChoiceKind.DESKTOP -> if (s.readiness.kind.answersVerifier) onDecision(ZkChoiceKind.DESKTOP, false)
+                                else state = GateState.DesktopRisk(s.readiness)
                             else -> onDecision(option.kind, false)
                         }
                     }
@@ -125,17 +132,17 @@ fun ZkProofGate(
             title = { Text("下載電路檔？") },
             text = {
                 Text(
-                    "產生「${kind.label}」需要先下載 ${sizeText(s.readiness.downloadBytes)}，安裝後佔用 ${sizeText(s.readiness.installedBytes)}。" +
+                    (if (s.choice != ZkChoiceKind.ON_DEVICE) "驗證在其他裝置產生的「${kind.label}」" else "產生「${kind.label}」") + "需要先下載 ${sizeText(s.readiness.downloadBytes)}，安裝後佔用 ${sizeText(s.readiness.installedBytes)}。" +
                         "建議使用 Wi-Fi；可隨時停止，下次會從中斷處續傳。每個檔案都會比對清單上的 SHA-256。",
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
-                    state = GateState.Downloading(s.readiness, s.extended)
+                    state = GateState.Downloading(s.readiness, s.extended, s.choice)
                     scope.launch {
                         zk.download(s.readiness.missing.map { it.id }).join()
                         val statuses = zk.assetStatus.value
-                        if (s.readiness.missing.all { statuses[it.id] == ZkAssetStatus.READY }) onDecision(ZkChoiceKind.ON_DEVICE, s.extended)
+                        if (s.readiness.missing.all { statuses[it.id] == ZkAssetStatus.READY }) onDecision(s.choice, s.extended)
                     }
                 }) { Text("下載") }
             },
@@ -164,7 +171,7 @@ fun ZkProofGate(
                     }
                 },
                 confirmButton = {
-                    if (failed != null) TextButton(onClick = { state = GateState.ConfirmDownload(s.readiness, s.extended) }) { Text("重試") }
+                    if (failed != null) TextButton(onClick = { state = GateState.ConfirmDownload(s.readiness, s.extended, s.choice) }) { Text("重試") }
                 },
                 dismissButton = {
                     TextButton(onClick = { zk.cancelDownload(); onDismiss() }) { Text(if (failed != null) "關閉" else "停止下載") }
@@ -174,13 +181,42 @@ fun ZkProofGate(
         is GateState.SelfHostRisk -> RiskConfirmDialog(
             title = "把文件送到自架主機？",
             lines = listOf(
-                "主機會收到整份文件，包含不打算揭露的欄位。",
-                "請只使用你自己管理、信任的主機；傳輸與保存由主機負責。",
-                "回傳的證明會先在這台裝置驗證，不通過就不使用。",
+                "主機會收到 PDF 第 1 頁的內容（含不打算揭露的欄位）與證明需要的私密資料，但不是整份文件。",
+                "請只使用你自己管理、信任的主機；傳輸與保存由主機負責，結果最多保留一小時。",
+                "回傳的證明會先在這台裝置驗證，不通過就不使用；驗證需要電路的驗證金鑰。",
             ),
             confirm = "送出",
-            onConfirm = { onDecision(ZkChoiceKind.SELF_HOSTED, false) },
+            onConfirm = {
+                scope.launch { state = verifyFirst(zk, kind, verifyAssets, ZkChoiceKind.SELF_HOSTED, onDecision) }
+            },
+            onDismiss = { state = GateState.Choose(s.readiness) },
+        )
+        is GateState.DesktopRisk -> RiskConfirmDialog(
+            title = "匯出證明請求檔？",
+            lines = listOf(
+                "請求檔含 PDF 第 1 頁的內容（含不打算揭露的欄位）與證明需要的私密資料，但不是整份文件。",
+                "請只在你自己的電腦版錢包開啟，傳送後刪除；證明產生前請求一直保留在這台裝置等待。",
+                "匯入的證明會先在這台裝置驗證，不通過就不使用；驗證需要電路的驗證金鑰。",
+            ),
+            confirm = "匯出",
+            onConfirm = {
+                scope.launch { state = verifyFirst(zk, kind, verifyAssets, ZkChoiceKind.DESKTOP, onDecision) }
+            },
             onDismiss = { state = GateState.Choose(s.readiness) },
         )
     }
+}
+
+/** Decides [choice] once the verification assets are installed; otherwise asks to download them first. */
+private suspend fun verifyFirst(
+    zk: ZkModel,
+    kind: ZkProofKind,
+    assets: Collection<String>?,
+    choice: ZkChoiceKind,
+    onDecision: (ZkChoiceKind, Boolean) -> Unit,
+): GateState {
+    val verifying = zk.readiness(kind, assets)
+    if (verifying.missing.isNotEmpty()) return GateState.ConfirmDownload(verifying, extended = false, choice = choice)
+    onDecision(choice, false)
+    return GateState.Checking
 }

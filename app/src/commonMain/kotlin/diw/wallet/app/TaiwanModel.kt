@@ -1,6 +1,7 @@
 package diw.wallet.app
 
 import androidx.compose.ui.graphics.ImageBitmap
+import diw.wallet.app.legal.Integration
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.oid4vci.JwtVcIssuerKeys
@@ -161,6 +162,8 @@ sealed class OfflineUi {
         val scanned: String? = null,
         /** Technical details, shown folded. */
         val details: List<String> = emptyList(),
+        /** Runs through an age host, so the other party's server can be scanned to use instead. */
+        val peerable: Boolean = false,
     ) : OfflineUi()
 
     /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */
@@ -231,6 +234,8 @@ sealed class OfflineUi {
         val forFile: String? = null,
         /** The verifier host's status address for a session this device opened there, to read why a proof failed. */
         val hostState: String? = null,
+        /** Why the holder may not reach the verifier through the routes its server policy allows, and what to do. */
+        val routeHint: String? = null,
     ) : OfflineUi()
 
     /**
@@ -366,6 +371,7 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** Loads the counter services and the card catalogue; a load already running is not started again. */
     fun loadServices() {
+        if (!model.legal.enabled(Integration.TWDIW)) return
         if (servicesJob?.isActive == true) return
         servicesJob = model.scope.launch {
             servicesError.value = null
@@ -405,6 +411,10 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** Counter pickup (e.g. 7-ELEVEN): present the card, then show the barcode the verifier module returns. */
     fun startPickup(service: TwdiwOfflineService, allowUnlisted: Boolean = false) {
+        if (!model.legal.enabled(Integration.TWDIW)) {
+            model.message.value = model.legal.disabledMessage(Integration.TWDIW)
+            return
+        }
         offline.value = OfflineUi.Working("向 ${service.name} 建立取貨交易")
         model.screen.value = Screen.Offline
         model.scope.launch {
@@ -459,6 +469,7 @@ class TaiwanModel(private val model: WalletModel) {
      * when [refresh] is set.
      */
     fun loadTrust(refresh: Boolean = false) = model.scope.launch {
+        if (!model.legal.enabled(Integration.TWDIW)) return@launch
         trustError.value = null
         try {
             val list = model.twdiwTrust
@@ -475,6 +486,7 @@ class TaiwanModel(private val model: WalletModel) {
 
     /** Checks the organisations of the loaded list, three at a time, updating each row as its check ends. */
     fun verifyAll(force: Boolean) {
+        if (!model.legal.enabled(Integration.TWDIW)) return
         if (verifyAllJob?.isActive == true) return
         val now = Clock.System.now().toEpochMilliseconds()
         val due = trustRows.value.orEmpty().filter { force || it.checkedAt == null || now - it.checkedAt > TRUST_RECHECK.inWholeMilliseconds }
@@ -921,6 +933,7 @@ class TaiwanModel(private val model: WalletModel) {
         "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
 
     fun closeOffline() {
+        model.server.clearPeer()
         age.stop()
         ageVerifier.stop()
         zkTls.stop()

@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -101,9 +102,14 @@ fun WalletApp(
     val msg by model.message.collectAsState()
     val proximityListening by model.proximity.listening.collectAsState()
     val pin by model.pinRequest.collectAsState()
+    val notice by model.integrationNotice.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var addSheet by remember { mutableStateOf(false) }
     var scanning by remember { mutableStateOf<Boolean?>(null) }
+    val consent by model.legal.consent.collectAsState()
+    // Shown at the first start and after a legal text changed; stays up on its summary page until the holder leaves it.
+    var onboarding by remember { mutableStateOf(false) }
+    LaunchedEffect(ready, consent.complete) { if (ready && !consent.complete) onboarding = true }
 
     LaunchedEffect(msg) {
         msg?.let { snackbar.showSnackbar(it); model.message.value = null }
@@ -122,79 +128,91 @@ fun WalletApp(
     val readQr: suspend () -> String? = scanQr ?: { model.qrFromImage() }
 
     WalletTheme {
-        Scaffold(
-            topBar = {
-                Column {
-                    TopAppBar(
-                        title = { Text(if (screen == Screen.Proximity && !proximityListening) "出示證件" else titleFor(screen, tab)) },
-                        navigationIcon = {
-                            if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
-                        },
-                        actions = {
-                            if (screen == Screen.Home) {
-                                if (tab == HomeTab.DOCUMENTS) IconButton(onClick = { addSheet = true }) { Icon(WalletIcons.Add, contentDescription = "加入證件") }
-                                IconButton(onClick = { model.screen.value = Screen.Settings }) { Icon(WalletIcons.Settings, contentDescription = "設定") }
+        CompositionLocalProvider(LocalQrReader provides readQr) {
+            if (ready && onboarding) {
+                Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
+                    Box(Modifier.padding(padding).fillMaxSize()) { OnboardingScreen(model) { onboarding = false } }
+                }
+            } else {
+                Scaffold(
+                    topBar = {
+                        Column {
+                            TopAppBar(
+                                title = { Text(if (screen == Screen.Proximity && !proximityListening) "出示證件" else titleFor(screen, tab)) },
+                                navigationIcon = {
+                                    if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
+                                },
+                                actions = {
+                                    if (screen == Screen.Home) {
+                                        if (tab == HomeTab.DOCUMENTS) IconButton(onClick = { addSheet = true }) { Icon(WalletIcons.Add, contentDescription = "加入證件") }
+                                        IconButton(onClick = { model.screen.value = Screen.Settings }) { Icon(WalletIcons.Settings, contentDescription = "設定") }
+                                    }
+                                },
+                            )
+                            if (settings.testEnvironment) TestEnvironmentBanner()
+                        }
+                    },
+                    bottomBar = { if (ready && screen == Screen.Home) HomeNavigationBar(tab) { model.tab.value = it } },
+                    snackbarHost = { SnackbarHost(snackbar) },
+                ) { padding ->
+                    Box(Modifier.padding(padding).fillMaxSize()) {
+                        if (!ready) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                        } else when (val s = screen) {
+                            Screen.Home -> when (tab) {
+                                HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
+                                HomeTab.FILES -> FilesTab(model)
+                                HomeTab.USE -> UseTab(model, scan)
+                                HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
+                                HomeTab.HISTORY -> HistoryTab(model)
                             }
-                        },
-                    )
-                    if (settings.testEnvironment) TestEnvironmentBanner()
-                }
-            },
-            bottomBar = { if (ready && screen == Screen.Home) HomeNavigationBar(tab) { model.tab.value = it } },
-            snackbarHost = { SnackbarHost(snackbar) },
-        ) { padding ->
-            Box(Modifier.padding(padding).fillMaxSize()) {
-                if (!ready) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                } else when (val s = screen) {
-                    Screen.Home -> when (tab) {
-                        HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
-                        HomeTab.FILES -> FilesTab(model)
-                        HomeTab.USE -> UseTab(model, scan)
-                        HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
-                        HomeTab.HISTORY -> HistoryTab(model)
+                            Screen.Settings -> SettingsScreen(model)
+                            is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
+                            Screen.Issuance -> IssuanceScreen(model)
+                            Screen.Presentation -> PresentationScreen(model)
+                            is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
+                            is Screen.Certificate -> CertificateScreen(model, s)
+                            Screen.AddDocument -> AddDocumentScreen(model)
+                            Screen.TrustList -> TrustListScreen(model)
+                            Screen.TrustAnchors -> TrustAnchorsScreen(model)
+                            Screen.CustomTrust -> CustomTrustScreen(model)
+                            Screen.ZkSettings -> ZkSettingsScreen(model)
+                            is Screen.OpenPgpKeys -> OpenPgpKeysScreen(model, s)
+                            Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
+                            Screen.MsIssuance -> MsIssuanceScreen(model)
+                            Screen.Proximity -> ProximityScreen(model)
+                            Screen.Reader -> ReaderScreen(model)
+                            is Screen.FileDetail -> FileDetailScreen(model, s)
+                            is Screen.FileSign -> FileSignScreen(model, s)
+                            is Screen.FileDerive -> FileDeriveScreen(model, s)
+                            is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
+                            is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
+                            is Screen.NationalId -> NationalIdScreen(model, s)
+                            Screen.DocumentSources -> DocumentSourcesScreen(model)
+                            is Screen.Portal -> PortalScreen(model, s)
+                            is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
+                            is Screen.LegalText -> LegalTextScreen(model, s)
+                            is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
+                        }
                     }
-                    Screen.Settings -> SettingsScreen(model)
-                    is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
-                    Screen.Issuance -> IssuanceScreen(model)
-                    Screen.Presentation -> PresentationScreen(model)
-                    is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
-                    is Screen.Certificate -> CertificateScreen(model, s)
-                    Screen.AddDocument -> AddDocumentScreen(model)
-                    Screen.TrustList -> TrustListScreen(model)
-                    Screen.TrustAnchors -> TrustAnchorsScreen(model)
-                    Screen.CustomTrust -> CustomTrustScreen(model)
-                    Screen.ZkSettings -> ZkSettingsScreen(model)
-                    is Screen.OpenPgpKeys -> OpenPgpKeysScreen(model, s)
-                    Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
-                    Screen.MsIssuance -> MsIssuanceScreen(model)
-                    Screen.Proximity -> ProximityScreen(model)
-                    Screen.Reader -> ReaderScreen(model)
-                    is Screen.FileDetail -> FileDetailScreen(model, s)
-                    is Screen.FileSign -> FileSignScreen(model, s)
-                    is Screen.FileDerive -> FileDeriveScreen(model, s)
-                    is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
-                    is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
-                    is Screen.NationalId -> NationalIdScreen(model, s)
-                    Screen.DocumentSources -> DocumentSourcesScreen(model)
-                    is Screen.Portal -> PortalScreen(model, s)
-                    is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                 }
+                if (addSheet) {
+                    AddDocumentSheet(
+                        model = model,
+                        onDismiss = { addSheet = false },
+                        onList = { addSheet = false; model.screen.value = Screen.AddDocument },
+                        scan = ScanActions(
+                            camera = scan.camera?.let { start -> { addSheet = false; start() } },
+                            image = { addSheet = false; scan.image() },
+                        ),
+                    )
+                }
+                pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
+                NfcScanSheet(model)
+                PendingShareDialog(model)
+                notice?.let { n -> IntegrationNoticeDialog(model, n) }
             }
         }
-        if (addSheet) {
-            AddDocumentSheet(
-                model = model,
-                onDismiss = { addSheet = false },
-                onList = { addSheet = false; model.screen.value = Screen.AddDocument },
-                scan = ScanActions(
-                    camera = scan.camera?.let { start -> { addSheet = false; start() } },
-                    image = { addSheet = false; scan.image() },
-                ),
-            )
-        }
-        pin?.let { PinDialog(it.reason, onResult = { v -> it.result.complete(v) }) }
-        NfcScanSheet(model)
     }
 }
 
@@ -231,6 +249,29 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.DocumentSources -> "取得文件"
     is Screen.Portal -> "取得文件"
     is Screen.OfficialBundle -> "公文容器"
+    is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
+    is Screen.IntegrationStatement -> diw.wallet.app.legal.LegalStrings.STATEMENTS_TITLE
+}
+
+/** The one-time reminder before the first request of an integration; reading the statement leaves the request undone. */
+@Composable
+private fun IntegrationNoticeDialog(model: WalletModel, n: WalletModel.IntegrationNotice) {
+    val cancel = { model.integrationNotice.value = null }
+    AlertDialog(
+        onDismissRequest = cancel,
+        title = { Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_TITLE) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_WARNING)
+                TextButton(onClick = {
+                    cancel()
+                    model.screen.value = Screen.IntegrationStatement(n.integration)
+                }) { Text(diw.wallet.app.legal.LegalStrings.READ_STATEMENT) }
+            }
+        },
+        confirmButton = { Button(onClick = { model.continueNotice() }) { Text(diw.wallet.app.legal.LegalStrings.TWDIW_COMPATIBILITY_CONTINUE) } },
+        dismissButton = { TextButton(onClick = cancel) { Text(diw.wallet.app.legal.LegalStrings.CANCEL) } },
+    )
 }
 
 @Composable

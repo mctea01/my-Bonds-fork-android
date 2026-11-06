@@ -26,14 +26,23 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.ServerStrings
 import diw.wallet.app.WalletModel
+import diw.wallet.app.ZkJobPhase
+import diw.wallet.app.ZkMeasurement
 import diw.wallet.core.zk.ZkAsset
 import diw.wallet.core.zk.ZkAssetStatus
 import diw.wallet.core.zk.ZkBackend
+import diw.wallet.core.zk.RemoteZkPdfEngine
 import diw.wallet.core.zk.ZkCapability
+import diw.wallet.core.zk.ZkPdfStatement
+import diw.wallet.core.zk.ZkProverHost
+import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.zk.ZkTier
 import kotlinx.coroutines.launch
 
@@ -173,7 +182,15 @@ fun ZkSettingsScreen(model: WalletModel) {
         ServerSection(model)
         HorizontalDivider()
         SectionTitle("自架主機")
-        ActionRow(WalletIcons.Link, "加入自架主機", "zkPDF 完成後開放：手機算力不足時可把文件送到自己的主機產生證明，手機先驗證再使用", enabled = false) {}
+        ProverSection(model)
+        if (info?.isDesktop == true) {
+            HorizontalDivider()
+            SectionTitle("代手機產生 zkPDF 證明")
+            PhoneRequestSection(model)
+        }
+        HorizontalDivider()
+        SectionTitle("證明效能紀錄")
+        MeasurementSection(model)
     }
 
     confirmDownload?.let { assets ->
@@ -311,6 +328,9 @@ private fun ServerSection(model: WalletModel) {
     }
     server.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     server.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    ServerShareSection(model)
+    HorizontalDivider()
+    ServerPolicySection(model)
 
     server.pending?.let { info ->
         AlertDialog(
@@ -325,6 +345,12 @@ private fun ServerSection(model: WalletModel) {
                     }
                     info.verifierDid?.let { Text("網頁查驗端 DID：$it", style = MaterialTheme.typography.bodySmall) }
                     if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+                    info.federation?.let {
+                        Text(ServerStrings.FEDERATION_CONFIRMED + ServerStrings.federationVerified(it), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (info.sharedFingerprint) Text(ServerStrings.shareFingerprintMatches(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    info.settingsSha256?.let { Text(ServerStrings.SETTINGS_DIGEST + it.take(16), style = MaterialTheme.typography.bodySmall) }
                     info.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     Text(
                         "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示，" +
@@ -338,6 +364,147 @@ private fun ServerSection(model: WalletModel) {
             dismissButton = { TextButton(onClick = { model.server.dismiss() }) { Text("取消") } },
         )
     }
+}
+
+/**
+ * The self-hosted zkPDF prover (tools/zk-prover-server): its address and access token, and a check that it answers
+ * and which circuit compositions it can prove. Proofs it returns are verified on this device before they are used.
+ */
+@Composable
+private fun ProverSection(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    var url by remember(settings.zkProverUrl) { mutableStateOf(settings.zkProverUrl) }
+    var token by remember(settings.zkProverToken) { mutableStateOf(settings.zkProverToken) }
+    var result by remember(settings.zkProverUrl, settings.zkProverToken) { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val urlProblem = url.takeIf { it.isNotEmpty() }?.let { ZkProverHost.problem(it) }
+    val tokenProblem = if (url.isNotEmpty() && token.length < ZkProverHost.MIN_TOKEN) "存取權杖至少 ${ZkProverHost.MIN_TOKEN} 個字元" else null
+    Text(
+        "這台裝置算力不足時，可把 PDF 第 1 頁的內容與證明需要的私密資料送到你自己架設的 zk-prover-server 產生 zkPDF 證明，" +
+            "不會送出整份文件；回傳的證明會先在這台裝置驗證，不通過就不使用。請只使用你自己管理、信任的主機。",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedTextField(
+        value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text("主機網址（https；區域網路可用 http）") }, isError = urlProblem != null,
+        supportingText = urlProblem?.let { { Text(it) } },
+    )
+    OutlinedTextField(
+        value = token, onValueChange = { token = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+        label = { Text("存取權杖") }, visualTransformation = PasswordVisualTransformation(), isError = tokenProblem != null,
+        supportingText = tokenProblem?.let { { Text(it) } },
+    )
+    Text("權杖只送給這台主機，以加密方式存在這台裝置。", style = MaterialTheme.typography.bodySmall)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(
+            onClick = { model.updateSettings { it.copy(zkProverUrl = url.trimEnd('/'), zkProverToken = if (url.isEmpty()) "" else token) } },
+            enabled = urlProblem == null && tokenProblem == null && (url.trimEnd('/') != settings.zkProverUrl || token != settings.zkProverToken),
+        ) { Text("儲存") }
+        OutlinedButton(
+            onClick = {
+                checking = true
+                scope.launch {
+                    result = try {
+                        val local = model.zk.pdf()
+                        if (local == null) "這個版本或裝置沒有 zkPDF 引擎，無法驗證主機回傳的證明"
+                        else when (val r = RemoteZkPdfEngine(ZkProverHost("自架主機", settings.zkProverUrl, settings.zkProverToken), local, model.http).compositions()) {
+                            is ZkResult.Ok -> if (r.value.isEmpty()) "主機可連線，但沒有完整的 zkPDF 電路檔"
+                                else "主機可連線，可產生：" + r.value.joinToString("、") { compositionTitle(it) }
+                            is ZkResult.Failed -> r.reason
+                            ZkResult.Cancelled -> null
+                        }
+                    } finally {
+                        checking = false
+                    }
+                }
+            },
+            enabled = settings.zkProverUrl.isNotEmpty() && !checking && url.trimEnd('/') == settings.zkProverUrl,
+        ) { Text(if (checking) "連線中…" else "測試連線") }
+        if (settings.zkProverUrl.isNotEmpty()) {
+            TextButton(onClick = { model.updateSettings { it.copy(zkProverUrl = "", zkProverToken = "") } }) { Text("移除") }
+        }
+    }
+    result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+}
+
+/**
+ * Desktop wallet: proves a request file (.zkpdfreq) a phone exported and saves the proof file (.zkpdf) for the phone
+ * to import. The request is used once and not kept; the phone verifies the proof before it uses it.
+ */
+@Composable
+private fun PhoneRequestSection(model: WalletModel) {
+    val busy by model.files.busy.collectAsState()
+    val error by model.files.error.collectAsState()
+    val jobs by model.zk.jobs.collectAsState()
+    val running = jobs[diw.wallet.app.FilesModel.PHONE_JOB]?.active == true
+    Text(
+        "手機算力不足時，可在手機匯出證明請求檔（${diw.wallet.core.zk.ZkPdfRemote.REQUEST_EXTENSION}），在這裡用電腦版電路產生證明，" +
+            "再把證明檔（${diw.wallet.core.zk.ZkPdfRemote.RESPONSE_EXTENSION}）匯入手機。請求檔含 PDF 第 1 頁的內容，用完請刪除；這裡不保存它。",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = { model.files.proveForPhone() }, enabled = busy == null) { Text("開啟證明請求檔") }
+        if (running) TextButton(onClick = { model.zk.cancel(diw.wallet.app.FilesModel.PHONE_JOB) }) { Text("停止") }
+    }
+    busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
+    error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+}
+
+/**
+ * The latest proofs of this session with their time and memory peak, so a holder can report how a device performs.
+ * The text holds no proof input, only the device class, the composition and the numbers.
+ */
+@Composable
+private fun MeasurementSection(model: WalletModel) {
+    val entries by model.zk.measurements.collectAsState()
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    Text(
+        "這次開啟 App 後完成或停止的證明，記錄耗時與記憶體峰值（不含證明內容），可複製後回報，用來調整裝置建議。關閉 App 後清除。",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (entries.isEmpty()) {
+        Text("尚無紀錄", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    entries.forEach { Text(measurementLine(it), style = MaterialTheme.typography.bodySmall) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = {
+            clipboard.setText(AnnotatedString(measurementReport(entries)))
+            copied = true
+        }) { Text("複製紀錄") }
+        if (copied) Text("已複製", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+internal fun measurementLine(m: ZkMeasurement): String {
+    val outcome = when (m.phase) {
+        ZkJobPhase.DONE -> "完成"
+        ZkJobPhase.FAILED -> "失敗"
+        ZkJobPhase.TIMED_OUT -> "逾時"
+        ZkJobPhase.CANCELLED -> "已停止"
+        else -> m.phase.name
+    }
+    val peak = m.peakMemoryMb?.let { "，記憶體峰值 $it MB" } ?: ""
+    val note = m.note?.let { "（$it）" } ?: ""
+    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { "，停在「$it」" } ?: ""
+    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak$step"
+}
+
+/** Plain lines for a report: device class first, then one line per proof. */
+internal fun measurementReport(entries: List<ZkMeasurement>): String {
+    val device = entries.firstNotNullOfOrNull { it.platform }?.let {
+        "裝置：${it.abi}，記憶體 ${it.totalRamMb} MB（偵測時可用 ${it.availableRamMb} MB），${if (it.isDesktop) "電腦版" else "手機版"}"
+    } ?: "裝置：未知"
+    return (listOf(device) + entries.map { "${it.at} ${it.kind.name} ${measurementLine(it)}" }).joinToString("\n")
+}
+
+internal fun compositionTitle(id: String): String = when (id) {
+    ZkPdfStatement.PHONE -> "手機版電路"
+    ZkPdfStatement.DESKTOP -> "電腦版電路"
+    else -> id
 }
 
 /** A SHA-256 hex in groups of four for comparing by eye. */

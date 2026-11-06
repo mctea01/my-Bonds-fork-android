@@ -205,6 +205,11 @@ class Oid4vciClient(
     private val didTrust: DidTrust = DidTrust.NONE,
     /** OpenID Federation Trust Anchors; an issuer that resolves to one takes its metadata and tier from the chain. */
     federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
+    /**
+     * Called with the credential issuer before anything is fetched from it; throws to stop the session (the app
+     * blocks issuers of services the holder switched off).
+     */
+    private val checkIssuer: (credentialIssuer: String) -> Unit = {},
 ) {
     private val loopback = environment.insecureLoopbackAllowed
     private val metadata = MetadataFetcher(
@@ -224,6 +229,7 @@ class Oid4vciClient(
     suspend fun startFromOffer(uri: String, entryHint: String? = null): IssuanceSession {
         val compat = DialectSet(dialects)
         val offer = offers.resolve(uri, compat)
+        checkIssuer(offer.credentialIssuer)
         compat.claimFor(offer.credentialIssuer, entryHint)
         val issuer = withDialectTrust(metadata.issuer(offer.credentialIssuer, compat), compat)
         val unknown = offer.credentialConfigurationIds.filter { it !in issuer.configurations }
@@ -237,6 +243,7 @@ class Oid4vciClient(
 
     suspend fun startWalletInitiated(credentialIssuer: String, configurationIds: List<String>, entryHint: String? = null): IssuanceSession {
         val compat = DialectSet(dialects)
+        checkIssuer(credentialIssuer)
         compat.claimFor(credentialIssuer, entryHint)
         val issuer = withDialectTrust(metadata.issuer(credentialIssuer, compat), compat)
         val asMeta = authorizationServer(issuer, null, compat)

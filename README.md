@@ -27,7 +27,7 @@
   - **查驗**：App 作為查驗方。
   - **紀錄**：只記欄位名稱，不記內容。
 
-  設定在右上齒輪，依用途分為安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、關於八組，清單上直接顯示各組目前的設定。
+  設定在右上齒輪，依用途分為安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、法律聲明與同意、關於九組，清單上直接顯示各組目前的設定。
 - **信任一眼可辨**：發行端、查驗方與文件簽署者都標示信任等級。
   - **T1**：官方清單並經額外驗證。
   - **T2**：連到信任根，視為高可信。
@@ -158,7 +158,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 錢包的設定方式與領卡、出示的步驟見 [docs/guides/windows-local-test.md](docs/guides/windows-local-test.md)。
 
-正式環境的服務端（中繼、zkTLS 查驗主機與網頁證明回執、年齡查驗主機、網頁查驗）在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，可部署到自己的主機、Cloud Run 或 Cloudflare Containers。錢包在「設定 > 零知識證明 > 正式服務端」填入網址與存取權杖，按「加入信任」比對簽章根憑證的 SHA-256 後，服務端簽的查驗請求與回執以使用者匯入（T2）顯示。
+正式環境的服務端（中繼、zkTLS 查驗主機與網頁證明回執、年齡查驗主機、網頁查驗）在 [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，可部署到自己的主機、Cloud Run 或 Cloudflare Containers。錢包在「設定 > 零知識證明 > 正式服務端」填入網址與存取權杖，按「加入信任」比對簽章根憑證的 SHA-256 後，服務端簽的查驗請求與回執以使用者匯入（T2）顯示。「分享設定」以 QR Code 或 `diw-server://` 連結把服務端交給別人（指紋一起分享，權杖只在勾選時包含），服務端在使用者信任的 OpenID Federation 中時不必逐字比對指紋。兩支手機之間只需一方有服務端：查驗方可掃描出示方的服務端 QR Code，兩方都有時依「雙方都有服務端時」的選擇協商使用哪一台。
 
 ## 專案結構
 
@@ -184,6 +184,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 ## 隱私
 
+- **政策與聲明**：[隱私權政策](docs/legal/privacy-policy.md)、[用戶協議](docs/legal/terms-of-use.md)，以及數位憑證皮夾、Microsoft Verified ID、行動自然人憑證與 MyData 的[專門聲明](docs/legal/README.md)。首次啟動時確認；中央營運的服務不同意即停用。
 - **紀錄**：只保存欄位名稱，不保存內容。
 - **密碼**：PIN 與文件密碼只存在這次執行的記憶體。
 - **衍生憑證**：只揭露持有人選擇的欄位。

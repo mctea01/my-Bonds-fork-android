@@ -122,7 +122,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 | 標記 | 選與「工具」「生產力」相關、描述憑證與文件的標記；不要選「政府」相關 |
 | 聯絡電子郵件 | 開發者帳號的公開聯絡信箱（必填，會公開顯示） |
 | 網站 | `https://github.com/mctea01/my-Bonds-fork-android` |
-| 隱私權政策 | 法律聲明完成後的公開網址（第 6.1 節） |
+| 隱私權政策 | https://github.com/mctea01/my-Bonds-fork-android/blob/main/docs/legal/privacy-policy.md（第 6.1 節） |
 
 名稱不要使用「數位憑證皮夾」：這是數位發展部官方 App 的名稱，Play 會以冒用政策（Impersonation）審查。
 
@@ -240,7 +240,7 @@ DIW_PLAY_SCREENSHOTS=$PWD/distribution/play/screenshots ./gradlew :app:desktopTe
 
 ### 6.1 隱私權政策
 
-必填，需要公開、不需登入、不能是 PDF 的網址，內容要與資料安全表單一致，並寫明開發者名稱與聯絡方式。政策名稱為「DIW MY WALLET 隱私權政策」，原文在 repo 的 `docs/legal/privacy-policy.md`（法律聲明的工作），填寫時用 GitHub 上該檔案的公開網址，或之後的 GitHub Pages 網址。它已涵蓋第 6.6 節列出的資料類型、各傳輸對象（發證端、查驗方、簽章與時戳服務、使用者自行設定的正式服務端）、持有者 DID 的可關聯性，以及 Bonds 相容連線不加密這件事；第 6.6 節修改時要一併核對政策內容。
+必填，需要公開、不需登入、不能是 PDF 的網址，內容要與資料安全表單一致，並寫明開發者名稱與聯絡方式。政策名稱為「DIW MY WALLET 隱私權政策」，原文在 repo 的 `docs/legal/privacy-policy.md`（法律聲明的工作），填寫時用 GitHub 上該檔案的公開網址 https://github.com/mctea01/my-Bonds-fork-android/blob/main/docs/legal/privacy-policy.md，之後改用 GitHub Pages 時再更新。它已涵蓋第 6.6 節列出的資料類型、各傳輸對象（發證端、查驗方、簽章與時戳服務、使用者自行設定的正式服務端）、持有者 DID 的可關聯性，以及 Bonds 相容連線不加密這件事；第 6.6 節修改時要一併核對政策內容。
 
 ### 6.2 廣告
 
@@ -328,8 +328,8 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 
 | 項目 | 負責 | 狀態 |
 |---|---|---|
-| 隱私權政策公開網址、用戶協議 | 法律聲明（`docs/legal/`，PR #80） | 文件完成，待合併後取得公開網址 |
-| 首次啟動頁與 TWDIW、Microsoft Verified ID 專門聲明 | 法律聲明（PR #80） | 待合併 |
+| 隱私權政策公開網址、用戶協議 | 法律聲明（`docs/legal/`，PR #80） | 完成（已合併進 main） |
+| 首次啟動頁與 TWDIW、Microsoft Verified ID 專門聲明 | 法律聲明（PR #80） | 完成（已合併進 main） |
 | 介面多語系、英文商店資訊與英文截圖 | i18n（[design/i18n.md](design/i18n.md)） | 法律聲明與 zkPassport 研究完成後 |
 | 圖示 PNG、主題圖片、截圖 | 上架 | 完成（`distribution/play/`） |
-| `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 已放入本分支（PR #79） |
+| `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 已放入本分支 |
