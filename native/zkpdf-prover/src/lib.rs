@@ -34,6 +34,13 @@ pub use runtime::{prove, prove_with_metrics, verify, SegmentMetrics};
 pub fn write_vk(crs_directory: &std::path::Path, artifact: &[u8]) -> Result<Vec<u8>> {
     backend::Session::open(crs_directory)?.vk(artifact)
 }
+/// Verifies another circuit's zero-knowledge UltraHonk (Poseidon2) proof with its verification key, as
+/// zkPassport's subproofs are. `crs_directory` may hold the authenticated full CRS; without it only the
+/// two ceremony constants verification needs are installed, and proving needs the process to start again.
+#[cfg(feature = "bb")]
+pub fn verify_ultrahonk(crs_directory: Option<&std::path::Path>, vk: &[u8], proof: &[u8], public_inputs: &[u8]) -> Result<()> {
+    backend::Session::open_verifier(crs_directory)?.verify_any(vk, proof, public_inputs)
+}
 mod opening;
 pub use opening::verify_opening;
 

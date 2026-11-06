@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 bindgen = ["uniffi/cli"]
-zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb"]
+zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify"]
 tlsn = ["dep:zktls"]
 openac = ["dep:openac-age"]
 
@@ -23,6 +23,7 @@ thiserror.workspace = true
 zkpdf-prover = { path = "../zkpdf-prover", optional = true }
 zktls = { path = "../zktls", optional = true }
 openac-age = { path = "../openac-age", optional = true }
+zkpassport-verify = { path = "../zkpassport-verify", optional = true }
 
 [[bin]]
 name = "uniffi-bindgen"

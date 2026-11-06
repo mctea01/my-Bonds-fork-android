@@ -5,9 +5,17 @@ use std::{
     path::Path,
     sync::{Mutex, MutexGuard},
 };
-static BACKEND: Mutex<bool> = Mutex::new(false);
+/// The process-global CRS: none yet, verification only ([1]_1 and [x]_2), or the full G1 prefix.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Crs {
+    None,
+    Verifier,
+    Full,
+}
+static BACKEND: Mutex<Crs> = Mutex::new(Crs::None);
 unsafe extern "C" {
     fn zkpdf_bb_init(g1: *const u8, n1: usize, g2: *const u8, n2: usize) -> i32;
+    fn zkpdf_bb_init_verifier() -> i32;
     fn zkpdf_bb_prove(
         acir: *const u8,
         na: usize,
@@ -51,20 +59,49 @@ fn unpack(data: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 pub struct Session {
-    _guard: MutexGuard<'static, bool>,
+    _guard: MutexGuard<'static, Crs>,
 }
 impl Session {
     pub fn open(directory: &Path) -> Result<Self> {
         // Authenticate even if another caller initialized the shared CRS.
         let (g1, g2) = assets::crs(directory)?;
         let mut guard = BACKEND.lock().map_err(|_| Error("backend_state"))?;
-        if !*guard {
-            // SAFETY: verified buffers remain live, sizes are exact, the mutex
-            // excludes all other calls, and C++ catches every exception.
-            if unsafe { zkpdf_bb_init(g1.as_ptr(), g1.len(), g2.as_ptr(), g2.len()) } != 0 {
+        match *guard {
+            Crs::Full => {}
+            // Barretenberg keeps the first CRS; proving needs the app to start again.
+            Crs::Verifier => return Err(Error("crs_verifier_only")),
+            Crs::None => {
+                // SAFETY: verified buffers remain live, sizes are exact, the mutex
+                // excludes all other calls, and C++ catches every exception.
+                if unsafe { zkpdf_bb_init(g1.as_ptr(), g1.len(), g2.as_ptr(), g2.len()) } != 0 {
+                    return Err(Error("crs_initialize"));
+                }
+                *guard = Crs::Full;
+            }
+        }
+        Ok(Self { _guard: guard })
+    }
+    /// A session for verification only. With `directory` holding the authenticated full CRS that CRS is
+    /// installed (so later proving still works); without it only the two ceremony constants are.
+    pub fn open_verifier(directory: Option<&Path>) -> Result<Self> {
+        if let Some(d) = directory {
+            if assets::crs(d).is_ok() {
+                return match Self::open(d) {
+                    Err(Error("crs_verifier_only")) => Self::verifier_only(),
+                    other => other,
+                };
+            }
+        }
+        Self::verifier_only()
+    }
+    fn verifier_only() -> Result<Self> {
+        let mut guard = BACKEND.lock().map_err(|_| Error("backend_state"))?;
+        if *guard == Crs::None {
+            // SAFETY: no buffers cross the boundary; the mutex excludes all other calls.
+            if unsafe { zkpdf_bb_init_verifier() } != 0 {
                 return Err(Error("crs_initialize"));
             }
-            *guard = true;
+            *guard = Crs::Verifier;
         }
         Ok(Self { _guard: guard })
     }
@@ -125,6 +162,14 @@ impl Session {
     }
     pub fn verify(&self, vk: &[u8], proof: &[u8], pi: &[u8]) -> Result<()> {
         public::decode(proof, crate::PROOF_BYTES / 32)?;
+        self.verify_any(vk, proof, pi)
+    }
+    /// Any zero-knowledge UltraHonk (Poseidon2) proof: the size is checked by Barretenberg against the key.
+    pub fn verify_any(&self, vk: &[u8], proof: &[u8], pi: &[u8]) -> Result<()> {
+        if proof.is_empty() || proof.len() % 32 != 0 || pi.len() % 32 != 0 {
+            return Err(Error("proof_encoding"));
+        }
+        public::decode(proof, proof.len() / 32)?;
         public::decode(pi, pi.len() / 32)?;
         // SAFETY: verified VK and canonically encoded fields are live slices;
         // the session lock excludes concurrent mutations of global state.
