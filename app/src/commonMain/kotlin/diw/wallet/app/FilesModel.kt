@@ -46,7 +46,12 @@ import diw.wallet.core.document.zkpdf.ZkPdfPredicate
 import diw.wallet.core.document.zkpdf.ZkPdfProfile
 import diw.wallet.core.document.zkpdf.ZkPdfProfiles
 import diw.wallet.core.document.zkpdf.ZkPdfProofs
+import diw.wallet.core.zk.RemoteZkPdfEngine
+import diw.wallet.core.zk.ZkPdfRemote
+import diw.wallet.core.zk.ZkPdfWitness
 import diw.wallet.core.zk.ZkPdfEngine
+import diw.wallet.core.zk.ZkPdfStatement
+import diw.wallet.core.zk.ZkProverHost
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
@@ -122,6 +127,9 @@ import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonPrimitive
 import org.multipaz.crypto.EcPublicKey
+import org.multipaz.securearea.SecureArea
+import org.multipaz.util.fromBase64Url
+import org.multipaz.util.toBase64Url
 import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
 import org.multipaz.crypto.X509Cert
 import org.multipaz.sdjwt.credential.KeyBoundSdJwtVcCredential
@@ -189,7 +197,36 @@ data class StoredFile(
      * authorities, collected by the wallet so the signatures can be checked after the certificates expire.
      */
     val signatureValidation: ValidationData? = null,
+    /** A zkPDF proof request exported for the desktop wallet, waiting for its proof file. */
+    val zkPdfPending: ZkPdfPending? = null,
 )
+
+/**
+ * What finishing a derived credential needs once the desktop wallet returns the zkPDF proof: the request it answers,
+ * the credential key the proof is bound to (by its secure area and alias), the template, conditions, composition
+ * and field salts the request was built with, and the choices made on the derive screen.
+ */
+@Serializable
+data class ZkPdfPending(
+    val requestId: String,
+    val keyAlias: String,
+    val secureArea: String,
+    val profileId: String,
+    val predicates: List<Predicate>,
+    val composition: String,
+    /** Field salts, base64url; they open the committed values, so they stay with the file. */
+    val salts: List<String>,
+    val claims: List<Claim>,
+    val timestamp: Boolean,
+    val validDays: Int? = null,
+    val createdAt: Long,
+) {
+    @Serializable
+    data class Predicate(val kind: Int, val claim: String, val cutoff: Int)
+
+    @Serializable
+    data class Claim(val name: String, val value: String, val label: String? = null)
+}
 
 /** What the file screen shows of a file's content. */
 sealed class FilePreview {
@@ -716,8 +753,16 @@ class FilesModel(private val model: WalletModel) {
     /**
      * A zkPDF proof to add to a derived credential: the template, the date conditions (at most two), the circuit
      * composition, and [extended] when the user chose to prove here against the device advice (longer time limit).
+     * [selfHosted] proves on the self-hosted prover of the settings instead, in the largest composition it offers
+     * that this device can verify.
      */
-    class ZkPdfChoice(val profileId: String, val predicates: List<ZkPdfPredicate>, val composition: String, val extended: Boolean)
+    class ZkPdfChoice(
+        val profileId: String,
+        val predicates: List<ZkPdfPredicate>,
+        val composition: String,
+        val extended: Boolean,
+        val selfHosted: Boolean = false,
+    )
 
     /** The templates that fit [pdf] (unencrypted, or encrypted with an empty open password; one document signature). */
     private fun zkPdfMatches(pdf: ByteArray): List<ZkPdfMatch> = ZkPdfProfiles.available(model.settings.testEnvironment).mapNotNull { profile ->
@@ -1967,18 +2012,54 @@ class FilesModel(private val model: WalletModel) {
         val data = data(f.id)
         // A zkPDF proof is planned first, so a file the template does not fit fails before anything is created.
         val zkPlan = zk?.let { choice ->
-            val profile = ZkPdfProfiles.find(choice.profileId, model.settings.testEnvironment) ?: throw SigningException("找不到文件版型，請更新版型")
-            val plan = withContext(Dispatchers.Default) {
-                try { ZkPdfPlanner.plan(data, profile, choice.predicates) } catch (_: PdfException) { null }
-            } ?: throw SigningException("這份 PDF 不符合文件版型「${profile.title}」")
-            if (plan.slots.isEmpty()) throw SigningException("文件版型「${profile.title}」在這份 PDF 中沒有可證明的欄位")
-            val engine = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
-            if (!engine.ready(choice.composition, true)) throw SigningException("zkPDF 的電路檔尚未下載完成")
-            Triple(choice, plan, engine)
+            val plan = zkPdfPlan(data, choice.profileId, choice.predicates)
+            val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+            if (choice.selfHosted) {
+                val (remote, composition) = selfHostedProver(local)
+                // A remote proof waits on the host's queue as well, so it gets the longer time limit.
+                Triple(ZkPdfChoice(choice.profileId, choice.predicates, composition, extended = true, selfHosted = true), plan, remote)
+            } else {
+                if (!local.ready(choice.composition, true)) throw SigningException("zkPDF 的電路檔尚未下載完成")
+                Triple(choice, plan, local)
+            }
         }
-        val zkNames = zkPlan?.second?.slots?.map { it.claim }.orEmpty().toSet()
+        issueDerived(f, data, claims, timestamp, validDays, zkPlan?.second, key = null) { holderKey ->
+            zkPlan?.let { (choice, plan, engine) -> provePdf(f, data, plan, holderKey, choice, engine) }
+        }
+    }
+
+    /** The zkPDF plan of [data] for the template [profileId]; fails when the template does not fit or proves nothing. */
+    private suspend fun zkPdfPlan(data: ByteArray, profileId: String, predicates: List<ZkPdfPredicate>): ZkPdfPlan {
+        val profile = ZkPdfProfiles.find(profileId, model.settings.testEnvironment) ?: throw SigningException("找不到文件版型，請更新版型")
+        val plan = withContext(Dispatchers.Default) {
+            try { ZkPdfPlanner.plan(data, profile, predicates) } catch (_: PdfException) { null }
+        } ?: throw SigningException("這份 PDF 不符合文件版型「${profile.title}」")
+        if (plan.slots.isEmpty()) throw SigningException("文件版型「${profile.title}」在這份 PDF 中沒有可證明的欄位")
+        return plan
+    }
+
+    /** A credential key made before its credential: the desktop route binds the proof to it before anything is issued. */
+    private class HeldKey(val secureArea: SecureArea, val alias: String)
+
+    /**
+     * Issues the derived credential of [f] and stores it. [prove] runs once the credential key exists (a key in
+     * [key] when the proof was made for it earlier) and before signing, so a proof is always bound to the key of the
+     * credential that carries it.
+     */
+    private suspend fun issueDerived(
+        f: StoredFile,
+        data: ByteArray,
+        claims: List<DerivedClaim>,
+        timestamp: Boolean,
+        validDays: Int?,
+        plan: ZkPdfPlan?,
+        key: HeldKey?,
+        prove: suspend (EcPublicKey) -> ZkPdfCreated?,
+    ) {
+        val zkNames = plan?.slots?.map { it.claim }.orEmpty().toSet()
         // A proven field replaces a field of the same name read from the text layer.
         val textClaims = claims.filter { it.name !in zkNames && !DerivedCredentials.isProofClaim(it.name) }
+        if (textClaims.isEmpty() && plan == null) throw SigningException("請至少選擇一個欄位")
         // The evidence states the result as of now, never a report cached from an earlier check.
         val report = refreshed(f).report ?: DocumentInspector.inspect(data, f.name, trustSource)
         val now = Clock.System.now()
@@ -1990,17 +2071,16 @@ class FilesModel(private val model: WalletModel) {
                 ?: if (timestamp) { busy.value = "向時戳機構取得時戳"; timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
         }
-        if (textClaims.isEmpty() && zkPlan == null) throw SigningException("請至少選擇一個欄位")
-        val zkLabels = zkPlan?.second?.let { plan ->
-            plan.slots.associate { s -> s.claim to (plan.profile.field(s.claim)?.label ?: s.claim) } +
-                plan.slots.associate { s -> ZkPdfEvidence.OPEN_PREFIX + s.claim to "「${plan.profile.field(s.claim)?.label ?: s.claim}」的零知識開啟資料" } +
+        val zkLabels = plan?.let { p ->
+            p.slots.associate { s -> s.claim to (p.profile.field(s.claim)?.label ?: s.claim) } +
+                p.slots.associate { s -> ZkPdfEvidence.OPEN_PREFIX + s.claim to "「${p.profile.field(s.claim)?.label ?: s.claim}」的零知識開啟資料" } +
                 (ZkPdfEvidence.CLAIM to "zkPDF 零知識證明（出示文件欄位時一併勾選）")
         }.orEmpty()
         val doc = withContext(model.unlockProvider) {
             busy.value = "產生衍生憑證"
             val issuer = identity(HolderIdentities.DOCUMENT_ISSUER)
             val keys = model.keyRequest()
-            val title = textClaims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: zkPlan?.second?.profile?.title ?: f.name
+            val title = textClaims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: plan?.profile?.title ?: f.name
             val record = IssuanceRecord(
                 credentialIssuer = issuer.did!!,
                 configurationId = CONFIGURATION,
@@ -2019,13 +2099,16 @@ class FilesModel(private val model: WalletModel) {
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = "文件衍生憑證", appData = record.encode())
             try {
-                val credential = KeyBoundSdJwtVcCredential.create(
-                    created, null, CredentialDomains.SD_JWT, keys.secureArea, DerivedCredentials.VCT,
-                    keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
-                )
+                val credential = if (key != null) {
+                    KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, DerivedCredentials.VCT, key.alias)
+                } else {
+                    KeyBoundSdJwtVcCredential.create(
+                        created, null, CredentialDomains.SD_JWT, keys.secureArea, DerivedCredentials.VCT,
+                        keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
+                    )
+                }
                 val holderKey = credential.secureArea.getKeyInfo(credential.alias).ecPublicKey
-                // The proof is bound to this credential's key, so it runs after the key exists and before signing.
-                val proven = zkPlan?.let { (choice, plan, engine) -> provePdf(f, data, plan, holderKey, choice, engine) }
+                val proven = prove(holderKey)
                 val disclosures = DerivedCredentials.jsonDisclosures(
                     textClaims.map { it.name to JsonPrimitive(it.value) } + proven?.disclosures().orEmpty(),
                 )
@@ -2036,17 +2119,17 @@ class FilesModel(private val model: WalletModel) {
                 model.documentStore.deleteDocument(created.identifier)
                 throw e
             }
-            // A credential derived earlier from the same file is replaced.
+            // A credential derived earlier from the same file is replaced, and a request waiting for the desktop is done.
             (file(f.id) ?: f).derivedDocumentId?.let { old -> runCatching { model.documentStore.deleteDocument(old) } }
-            save((file(f.id) ?: f).copy(derivedDocumentId = created.identifier))
+            save((file(f.id) ?: f).copy(derivedDocumentId = created.identifier, zkPdfPending = null))
             created
         }
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
         val labels = textClaims.map { DerivedCredentials.labelOf(it) } +
-            zkPlan?.second?.let { plan -> plan.slots.map { s -> (plan.profile.field(s.claim)?.label ?: s.claim) + "（zkPDF）" } }.orEmpty()
+            plan?.let { p -> p.slots.map { s -> (p.profile.field(s.claim)?.label ?: s.claim) + "（zkPDF）" } }.orEmpty()
         model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), labels)
-        model.message.value = if (zkPlan != null) "已產生含 zkPDF 證明的衍生憑證，可在「證件」出示" else "已產生衍生憑證，可在「證件」出示"
+        model.message.value = if (plan != null) "已產生含 zkPDF 證明的衍生憑證，可在「證件」出示" else "已產生衍生憑證，可在「證件」出示"
         model.screen.value = Screen.FileDetail(f.id)
     }
 
@@ -2071,6 +2154,10 @@ class FilesModel(private val model: WalletModel) {
                 busy.value = text
             })
         }
+        return proofResult(job)
+    }
+
+    private suspend fun <T> proofResult(job: kotlinx.coroutines.Deferred<ZkResult<T>>): T {
         val result = try {
             job.await()
         } catch (e: CancellationException) {
@@ -2082,6 +2169,169 @@ class FilesModel(private val model: WalletModel) {
             is ZkResult.Failed -> throw SigningException(result.reason)
             ZkResult.Cancelled -> throw SigningException("已取消 zkPDF 證明，未產生衍生憑證")
         }
+    }
+
+    // ---------------------------------------------------------------- zkPDF made by the desktop wallet
+
+    /**
+     * Prepares a zkPDF proof of [f] for the desktop wallet: creates the credential key the proof binds to, keeps
+     * what finishing needs with the file ([StoredFile.zkPdfPending]) and saves the proof request (page 1 content, the
+     * private image and the field salts, never the whole PDF) for the holder to open in the desktop wallet. The
+     * request is made for the desktop composition; an earlier request of the file is replaced.
+     */
+    fun exportZkPdfRequest(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, choice: ZkPdfChoice) =
+        run("準備電腦版證明請求") {
+            val data = data(f.id)
+            val plan = zkPdfPlan(data, choice.profileId, choice.predicates)
+            val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎，無法驗證電腦版回傳的證明")
+            val composition = ZkPdfStatement.DESKTOP
+            if (!local.ready(composition, false)) throw SigningException("請先下載驗證電腦版證明所需的驗證金鑰")
+            val keys = model.keyRequest()
+            val info = withContext(model.unlockProvider) {
+                keys.secureArea.createKey(null, keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))))
+            }
+            val salts = ZkPdfPlanner.salts(plan.slots.size)
+            val statement = ZkPdfProofs.statement(plan, composition, ZkPdfProofs.binding(info.ecPublicKey.toJwk()))
+            val request = ZkPdfRemote.Request(ZkPdfRemote.newId(), statement, ZkPdfWitness(plan.privateData, salts))
+            val bytes = ZkPdfRemote.encodeRequest(request).toString().encodeToByteArray()
+            val name = f.name.substringBeforeLast('.') + ZkPdfRemote.REQUEST_EXTENSION
+            val saved = if (model.platform.canShareFiles) model.platform.shareFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)
+                else model.platform.saveFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)
+            if (!saved) {
+                runCatching { keys.secureArea.deleteKey(info.alias) }
+                throw SigningException("未保存證明請求")
+            }
+            val current = file(f.id) ?: f
+            current.zkPdfPending?.let { old -> dropPendingKey(old) }
+            save(current.copy(zkPdfPending = ZkPdfPending(
+                requestId = request.id,
+                keyAlias = info.alias,
+                secureArea = keys.secureArea.identifier,
+                profileId = choice.profileId,
+                predicates = choice.predicates.map { ZkPdfPending.Predicate(it.kind, it.claim, it.cutoff) },
+                composition = composition,
+                salts = salts.map { it.toBase64Url() },
+                claims = claims.map { ZkPdfPending.Claim(it.name, it.value, it.label) },
+                timestamp = timestamp,
+                validDays = validDays,
+                createdAt = Clock.System.now().epochSeconds,
+            )))
+            model.message.value = "已保存證明請求；在電腦版錢包的「零知識證明」設定頁開啟它產生證明，再把 ${ZkPdfRemote.RESPONSE_EXTENSION} 檔匯入這裡"
+        }
+
+    /**
+     * Finishes the request waiting on [f] with a proof file the desktop wallet made: the proof must answer that
+     * request, every segment must verify here against the statement this device builds again from the PDF and the
+     * waiting key, and the field openings must match; only then is the credential issued with that key.
+     */
+    fun importZkPdfProof(f: StoredFile) = run("匯入電腦版產生的證明") {
+        val pending = (file(f.id) ?: f).zkPdfPending ?: throw SigningException("這份文件沒有等待中的證明請求")
+        val picked = model.platform.pickFile() ?: return@run
+        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException("檔案過大，不是證明檔")
+        val response = try {
+            ZkPdfRemote.parseResponse(ZkPdfRemote.parse(picked.bytes))
+        } catch (_: IllegalArgumentException) {
+            throw SigningException("這不是 zkPDF 證明檔")
+        }
+        if (response.requestId != pending.requestId) throw SigningException("這個證明檔不是這份文件目前的請求產生的，請匯入最新請求的證明")
+        val secureArea = model.backends.map { it.secureArea }.firstOrNull { it.identifier == pending.secureArea }
+            ?: throw SigningException("找不到證明請求使用的金鑰，請重新產生請求")
+        val holderKey = try {
+            secureArea.getKeyInfo(pending.keyAlias).ecPublicKey
+        } catch (_: Exception) {
+            throw SigningException("找不到證明請求使用的金鑰，請重新產生請求")
+        }
+        val data = data(f.id)
+        val plan = zkPdfPlan(data, pending.profileId, pending.predicates.map { ZkPdfPredicate(it.kind, it.claim, it.cutoff) })
+        val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+        if (!local.ready(pending.composition, false)) throw SigningException("請先在設定的「零知識證明」頁下載驗證金鑰")
+        val salts = pending.salts.map { it.fromBase64Url() }
+        // The imported output stands in for a prover: it is accepted only when it verifies against this statement.
+        val imported = object : ZkPdfEngine by local {
+            override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
+                RemoteZkPdfEngine.accept(statement, response.output, local)
+        }
+        busy.value = "驗證電腦版產生的證明"
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true) { step ->
+            step("驗證證明")
+            ZkPdfProofs.create(data, plan, holderKey.toJwk(), pending.composition, imported, { _, _, _ -> }, salts = salts)
+        }
+        val created = proofResult(job)
+        issueDerived(f, data, pending.claims.map { DerivedClaim(it.name, it.value, it.label) }, pending.timestamp, pending.validDays,
+            plan, HeldKey(secureArea, pending.keyAlias)) { key ->
+            if (!ZkPdfProofs.binding(key.toJwk()).contentEquals(created.evidence.binding)) throw SigningException("證明綁定的金鑰與憑證不符")
+            created
+        }
+    }
+
+    /** Drops the request waiting on [f] and its key. */
+    fun cancelZkPdfRequest(f: StoredFile) = run("取消證明請求") {
+        val current = file(f.id) ?: f
+        current.zkPdfPending?.let { dropPendingKey(it) }
+        save(current.copy(zkPdfPending = null))
+    }
+
+    private suspend fun dropPendingKey(p: ZkPdfPending) {
+        model.backends.map { it.secureArea }.firstOrNull { it.identifier == p.secureArea }?.let { area ->
+            runCatching { area.deleteKey(p.keyAlias) }
+        }
+    }
+
+    /**
+     * Proves a request a phone wallet exported (desktop wallet): checks it, proves it here with the local prover in
+     * the background, checks the result like the phone will, and saves the proof file for the phone to import. The
+     * request holds private page content; it is never stored, only proved and dropped.
+     */
+    fun proveForPhone() = run("代手機產生 zkPDF 證明") {
+        val picked = model.platform.pickFile() ?: return@run
+        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException("檔案過大，不是證明請求")
+        val request = try {
+            ZkPdfRemote.parseRequest(ZkPdfRemote.parse(picked.bytes))
+        } catch (_: IllegalArgumentException) {
+            throw SigningException("這不是 zkPDF 證明請求檔")
+        }
+        val engine = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+        val composition = request.statement.composition
+        if (!engine.ready(composition, true)) {
+            throw SigningException("尚未下載${if (composition == ZkPdfStatement.DESKTOP) "電腦版" else "手機版"}電路檔，請在這一頁下載後再試")
+        }
+        val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true) { step ->
+            step("準備")
+            when (val r = engine.prove(request.statement, request.witness) { kind, done, total ->
+                val text = "代手機產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"
+                step(text)
+                busy.value = text
+            }) {
+                is ZkResult.Ok -> RemoteZkPdfEngine.accept(request.statement, r.value, engine)
+                else -> r
+            }
+        }
+        val output = proofResult(job)
+        val bytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(request.id, output)).toString().encodeToByteArray()
+        val name = picked.name.substringBeforeLast('.') + ZkPdfRemote.RESPONSE_EXTENSION
+        if (!model.platform.saveFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)) throw SigningException("未保存證明檔")
+        model.message.value = "已保存 $name；在手機上開啟同一份文件，選擇「匯入電腦版產生的證明」"
+    }
+
+    /**
+     * The self-hosted prover of the settings over [local], and the composition to prove in: the desktop one when the
+     * host has it (fewer, larger segments), else the phone one; either only when this device can verify it.
+     */
+    private suspend fun selfHostedProver(local: ZkPdfEngine): Pair<RemoteZkPdfEngine, String> {
+        val s = model.settings
+        if (s.zkProverUrl.isEmpty()) throw SigningException("尚未在設定的「零知識證明」頁加入自架主機")
+        ZkProverHost.problem(s.zkProverUrl)?.let { throw SigningException("自架主機的網址無法使用：$it") }
+        val remote = RemoteZkPdfEngine(ZkProverHost("自架主機", s.zkProverUrl, s.zkProverToken), local, model.http)
+        busy.value = "連線自架主機"
+        val offered = when (val r = remote.compositions()) {
+            is ZkResult.Ok -> r.value
+            is ZkResult.Failed -> throw SigningException(r.reason)
+            ZkResult.Cancelled -> throw SigningException("已取消 zkPDF 證明，未產生衍生憑證")
+        }
+        if (offered.isEmpty()) throw SigningException("自架主機沒有完整的 zkPDF 電路檔")
+        val composition = SELF_HOST_COMPOSITIONS.firstOrNull { it in offered && local.ready(it, false) }
+            ?: throw SigningException("這台裝置缺少驗證自架主機證明所需的驗證金鑰，請在設定的「零知識證明」頁下載")
+        return remote to composition
     }
 
     /** Stops the zkPDF proof running for the file [fileId]. */
@@ -2231,6 +2481,16 @@ class FilesModel(private val model: WalletModel) {
 
         /** An OpenCerts certificate is checked online again when opened after this long. */
         const val OPENCERT_RECHECK_SECONDS = 12 * 3600L
+
+        /** The background proof a desktop wallet runs for a phone's request. */
+        const val PHONE_JOB = "zkpdf:phone-request"
+
+        /** Compositions a self-hosted prover is asked for, the preferred first. */
+        val SELF_HOST_COMPOSITIONS = listOf(ZkPdfStatement.DESKTOP, ZkPdfStatement.PHONE)
+
+        /** What checking a proof from a self-hosted prover needs on this device, in either composition. */
+        val SELF_HOST_ASSETS: List<String> =
+            SELF_HOST_COMPOSITIONS.flatMap { diw.wallet.core.zk.ZkPdfAssets.required(it, prover = false) }.distinct()
         private val metaTable = StorageTableSpec(name = "DiwFiles", supportPartitions = false, supportExpiration = false)
         private val dataTable = StorageTableSpec(name = "DiwFileData", supportPartitions = false, supportExpiration = false)
 

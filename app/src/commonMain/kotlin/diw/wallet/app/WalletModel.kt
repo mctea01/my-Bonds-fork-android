@@ -161,6 +161,13 @@ data class WalletSettings(
     /** The web verifier DID of [zkVerifierUrl] the user trusted with it, so a changed DID needs a new confirmation. */
     val serverVerifierDid: String = "",
     /**
+     * Self-hosted zkPDF prover (tools/zk-prover-server) that proves when this device is short of resources; empty
+     * when none. Its proofs are verified here before they are used.
+     */
+    val zkProverUrl: String = "",
+    /** Access token of [zkProverUrl], sent only to that address (settings are stored encrypted). */
+    val zkProverToken: String = "",
+    /**
      * Which server a check between two wallets runs through when both have one ([ServerPolicy] id): this wallet's own
      * first, the other party's first, or only its own.
      */

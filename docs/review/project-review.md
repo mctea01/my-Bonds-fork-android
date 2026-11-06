@@ -155,6 +155,7 @@ zkPDF 完成時補齊本節；年齡證明、zkTLS 與 Longfellow 已實作，�
 - 資產：`core/src/commonMain/resources/zk/assets.json` 的 SHA-256 與大小，下載後先比對再載入。
 - 原生程式庫：`native/` 的 Rust 依賴版本鎖定；uniffi 介面的錯誤不會帶出私密輸入；JNA 載入路徑不受外部控制。
 - 信任：zkPDF 的等級取簽署者，不會是 T1；zkTLS 即時模式為 T2，notary 與裝置證明紀錄為 T3。
+- 在其他機器產生（M4c）：`ZkPdfRemote` 請求只帶第 1 頁內容、私密影像與 salt，不帶整份 PDF；`RemoteZkPdfEngine.accept` 以手機自己重建的 statement 驗證每一段並比對輸出，`ZkPdfProofs.create` 再核對開啟資料，任何一項不符都不寫入憑證；電腦版代產生的 `.zkpdf` 必須對上手機等待中的請求編號與金鑰（`FilesModel.importZkPdfProof`）；`tools/zk-prover-server` 每個路由都要權杖、不記錄請求與結果、一次一個證明。
 
 ## 8. 回報格式
 

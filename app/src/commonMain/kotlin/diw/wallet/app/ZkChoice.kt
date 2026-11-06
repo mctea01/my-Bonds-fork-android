@@ -53,7 +53,7 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
                 if (readiness.kind.answersVerifier) "改用電腦版回應" else "在電腦版產生後匯入",
                 when {
                     readiness.kind.answersVerifier -> "在電腦版錢包加入同一張卡片後，掃描查驗方的 QR Code 回應"
-                    context.desktopImport -> "在電腦版開啟同一份文件產生證據檔，再匯入這台裝置；以文件的 SHA-256 確認是同一份"
+                    context.desktopImport -> "匯出證明請求檔（含第 1 頁內容），在電腦版錢包產生證明後匯入這台裝置；證明會先在這台裝置驗證再使用"
                     else -> "電腦版產生後匯入尚未提供；可在電腦版錢包匯入同一份文件，直接在電腦上產生衍生憑證"
                 },
                 enabled = readiness.kind.answersVerifier || context.desktopImport,
@@ -64,7 +64,7 @@ fun zkChoiceOptions(readiness: ZkReadiness, context: ZkChoiceContext = ZkChoiceC
             ZkChoiceOption(
                 ZkChoiceKind.SELF_HOSTED,
                 "送到自架主機產生",
-                if (context.selfHostConfigured) "主機會看到整份文件；回傳的證明會先在這台裝置驗證再使用"
+                if (context.selfHostConfigured) "主機會收到第 1 頁的內容與證明需要的私密資料，不是整份文件；回傳的證明會先在這台裝置驗證再使用"
                 else "需先在設定的「零知識證明」頁加入自架主機",
                 enabled = context.selfHostConfigured,
                 recommended = false,

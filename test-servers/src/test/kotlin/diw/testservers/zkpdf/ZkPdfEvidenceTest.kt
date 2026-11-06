@@ -381,6 +381,43 @@ class ZkPdfEvidenceTest {
         assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.PHONE, lying, { _, _, _ -> }, now))
     }
 
+    /**
+     * M4c: a proof made on another machine (the desktop wallet or a self-hosted prover) from an exported request is
+     * accepted only for that request's key and salts, and only after the requesting side verifies it itself.
+     */
+    @Test fun proofMadeElsewhereFromAnExportedRequest() = runBlocking<Unit> {
+        val engine = FakeEngine()
+        val pdf = resource("student.pdf")
+        val plan = ZkPdfPlanner.plan(pdf, student, listOf(birthCutoff))
+        // Phone: the request carries the statement and the private windows with the salts, never the whole file.
+        val salts = ZkPdfPlanner.salts(plan.slots.size)
+        val statement = ZkPdfProofs.statement(plan, ZkPdfStatement.DESKTOP, ZkPdfProofs.binding(holder))
+        val request = ZkPdfRemote.Request(ZkPdfRemote.newId(), statement, ZkPdfWitness(plan.privateData, salts))
+        val requestBytes = ZkPdfRemote.encodeRequest(request).toString().encodeToByteArray()
+        assertTrue(requestBytes.size < pdf.size * 4)
+        // Desktop: proves the request as it arrived and returns the outputs.
+        val received = ZkPdfRemote.parseRequest(ZkPdfRemote.parse(requestBytes))
+        val output = assertIs<ZkResult.Ok<ZkPdfProofOutput>>(engine.prove(received.statement, received.witness) { _, _, _ -> }).value
+        val responseBytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(received.id, output)).toString().encodeToByteArray()
+        // Phone: the imported outputs stand in for a prover and must verify against the statement built here.
+        val response = ZkPdfRemote.parseResponse(ZkPdfRemote.parse(responseBytes))
+        assertEquals(request.id, response.requestId)
+        val imported = object : ZkPdfEngine by engine {
+            override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
+                RemoteZkPdfEngine.accept(statement, response.output, engine)
+        }
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now, salts),
+        ).value
+        assertEquals(ZkPdfStatement.DESKTOP, created.evidence.composition)
+        assertEquals(Check.PASS, verify(disclosed(created), engine, trust()).check)
+        // Another credential key changes the statement, so the same outputs no longer verify.
+        assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, other, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now, salts))
+        // Fresh salts do not open the commitments the proof carries.
+        assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now,
+            ZkPdfPlanner.salts(plan.slots.size)))
+    }
+
     @Test fun malformedEvidenceIsRejected() = runBlocking<Unit> {
         val engine = FakeEngine()
         val created = created("student.pdf", student, engine)

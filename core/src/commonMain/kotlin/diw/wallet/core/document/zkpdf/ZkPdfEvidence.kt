@@ -230,10 +230,12 @@ object ZkPdfProofs {
         engine: ZkPdfEngine,
         progress: (String, Int, Int) -> Unit,
         now: Instant = Clock.System.now(),
+        /** The field salts; fresh ones unless a proof made elsewhere for an earlier request is being imported. */
+        salts: List<ByteArray> = ZkPdfPlanner.salts(plan.slots.size),
     ): ZkResult<ZkPdfCreated> {
         require(plan.slots.isNotEmpty()) { "No provable field" }
+        require(salts.size == plan.slots.size) { "One salt per field" }
         val statement = statement(plan, composition, binding(cnfJwk))
-        val salts = ZkPdfPlanner.salts(plan.slots.size)
         val proof = when (val r = engine.prove(statement, ZkPdfWitness(plan.privateData, salts), progress)) {
             is ZkResult.Ok -> r.value
             is ZkResult.Failed -> return r

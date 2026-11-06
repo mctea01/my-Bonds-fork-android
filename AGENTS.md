@@ -143,7 +143,7 @@
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
 - 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
-- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、zkPDF 證明與自架主機（P4 開發中）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
+- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun` 輸出錢包簽出的檔案（長期驗證的樣本在 `<資料夾>/lt`），再以 `./gradlew -p tools/dss-check run --args=<資料夾>`（與 `<資料夾>/lt`）用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 

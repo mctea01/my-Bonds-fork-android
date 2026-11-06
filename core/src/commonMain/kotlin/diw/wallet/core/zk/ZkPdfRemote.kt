@@ -170,6 +170,9 @@ object ZkPdfRemote {
 /** A self-hosted prover the holder added in settings: its HTTPS (or private-network) address and access token. */
 class ZkProverHost(val name: String, val url: String, val token: String) {
     companion object {
+        /** The shortest access token the prover accepts (tools/zk-prover-server). */
+        const val MIN_TOKEN = 24
+
         /** Null when [url] is acceptable; otherwise why not. Plain HTTP is only allowed to private-network addresses. */
         fun problem(url: String): String? {
             val parsed = runCatching { Url(url) }.getOrNull() ?: return "網址格式不正確"
@@ -244,6 +247,23 @@ class RemoteZkPdfEngine(
         val response = runCatching { ZkPdfRemote.parseResponse(body) }.getOrNull() ?: return INVALID
         if (response.requestId != request.id) return INVALID
         return accept(statement, response.output, local)
+    }
+
+    /** The compositions the prover has complete assets for (GET /v1/health), or why it cannot be reached. */
+    suspend fun compositions(): ZkResult<List<String>> {
+        val o = try {
+            val response = http.get(prover.url.trimEnd('/') + "/v1/health") { bearerAuth(prover.token) }
+            if (response.status == HttpStatusCode.Unauthorized) return ZkResult.Failed("自架主機拒絕存取，請檢查存取權杖", false)
+            if (!response.status.isSuccess()) return ZkResult.Failed("自架主機回應 HTTP ${response.status.value}", true)
+            json(response) ?: return INVALID
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return UNREACHABLE
+        }
+        val list = (o["compositions"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            ?: return INVALID
+        return ZkResult.Ok(list.filter { it in ZkPdfStatement.COMPOSITIONS })
     }
 
     private suspend fun poll(url: String, progress: (String, Int, Int) -> Unit): ZkResult<JsonObject> {

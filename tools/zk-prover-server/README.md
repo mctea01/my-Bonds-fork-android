@@ -40,4 +40,7 @@ All routes need `Authorization: Bearer <token>`.
 | `GET /v1/health` | `{"compositions": [...]}`: the compositions whose assets are complete |
 
 The request and response formats are `ZkPdfRemote` in `core/src/commonMain/kotlin/diw/wallet/core/zk/ZkPdfRemote.kt`;
-the same files are exchanged with the desktop app as `.zkpdfreq` and `.zkpdf`.
+the same files are exchanged with the desktop app as `.zkpdfreq` and `.zkpdf` (Settings, 零知識證明, 代手機產生 zkPDF
+證明 on the desktop; the phone exports the request from the derive screen and imports the proof on the file screen).
+The phone asks for the desktop composition first and falls back to the phone composition, so installing the desktop
+assets on the host is enough.

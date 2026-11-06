@@ -1,6 +1,7 @@
 package diw.wallet.app.ui
 
 import diw.wallet.app.CscPrompt
+import diw.wallet.core.zk.ZkPdfStatement
 import diw.wallet.core.document.sign.CscEnvironment
 import diw.wallet.core.document.sign.CscServices
 import androidx.compose.foundation.clickable
@@ -609,6 +610,22 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
         } else {
             Text("衍生憑證把文件變成可出示的證件（IETF SD-JWT VC），只交出你選的欄位，附上簽章檢查與時戳；原檔不會送出。", style = MaterialTheme.typography.bodySmall)
+        }
+        f.zkPdfPending?.let { pending ->
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("等待電腦版產生的 zkPDF 證明", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "證明請求建立於 ${localTime(pending.createdAt)}。在電腦版錢包的「零知識證明」設定頁開啟請求檔產生證明，" +
+                            "再把 .zkpdf 檔匯入這裡；證明會先在這台裝置驗證，通過才產生衍生憑證。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { model.files.importZkPdfProof(f) }, enabled = busy == null) { Text("匯入證明檔") }
+                        TextButton(onClick = { model.files.cancelZkPdfRequest(f) }, enabled = busy == null) { Text("取消請求") }
+                    }
+                }
+            }
         }
         if (f.nationalId != null) {
             ActionRow(WalletIcons.Person, "國民身分證（Bonds 自發卡）", "由這份 MyData 身分證資料製作，以自然人憑證簽署") {
@@ -2359,13 +2376,22 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
             ZkProofGate(
                 zk = model.zk,
                 kind = ZkProofKind.PDF,
-                context = ZkChoiceContext(withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明", desktopImport = false),
+                context = ZkChoiceContext(
+                    selfHostConfigured = model.settings.zkProverUrl.isNotEmpty(),
+                    withoutZk = "衍生憑證照一般方式產生，不附 zkPDF 證明",
+                    desktopImport = composition == ZkPdfStatement.PHONE,
+                ),
                 assets = ZkPdfAssets.required(composition, true),
+                verifyAssets = FilesModel.SELF_HOST_ASSETS,
                 onDecision = { choice, extended ->
                     zkGate = false
                     when (choice) {
                         ZkChoiceKind.ON_DEVICE -> model.files.derive(f, claims, timestamp, validDays,
                             FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended))
+                        ZkChoiceKind.DESKTOP -> model.files.exportZkPdfRequest(f, claims, timestamp, validDays,
+                            FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, ZkPdfStatement.DESKTOP, extended = true))
+                        ZkChoiceKind.SELF_HOSTED -> model.files.derive(f, claims, timestamp, validDays,
+                            FilesModel.ZkPdfChoice(zkMatch.profile.id, zkForm.predicates(zkMatch).first, composition, extended = true, selfHosted = true))
                         ZkChoiceKind.WITHOUT_ZK -> if (claims.isNotEmpty()) model.files.derive(f, claims, timestamp, validDays)
                             else model.message.value = "請至少選擇一個欄位"
                         else -> model.message.value = "這個方式尚未提供；可在電腦版錢包匯入同一份文件後產生"
