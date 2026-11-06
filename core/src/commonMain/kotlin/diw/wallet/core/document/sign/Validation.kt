@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -125,17 +126,17 @@ data class ValidationData(
     /** One line for the holder: how many OCSP responses and CRLs, and anything not good. */
     fun summary(): String {
         val parts = ArrayList<String>()
-        if (ocsps.isNotEmpty()) parts.add("${ocsps.size} 份 OCSP")
-        if (crls.isNotEmpty()) parts.add("${crls.size} 份 CRL")
-        val head = if (parts.isEmpty()) "沒有取得撤銷資訊" else "已保存撤銷資訊：" + parts.joinToString("、")
+        if (ocsps.isNotEmpty()) parts.add(ct("core_n_ocsp", ocsps.size))
+        if (crls.isNotEmpty()) parts.add(ct("core_n_crl", crls.size))
+        val head = if (parts.isEmpty()) ct("core_revocation_none") else ct("core_revocation_saved") + parts.joinToString(ct("core_sep_list"))
         val bad = statuses.filter { it.status != "GOOD" }.map { s ->
-            s.subject + "：" + when (s.status) {
-                "REVOKED" -> "已撤銷"
-                "UNKNOWN" -> "狀態未知"
-                else -> "無法取得"
+            s.subject + ct("core_colon") + when (s.status) {
+                "REVOKED" -> ct("core_status_revoked")
+                "UNKNOWN" -> ct("core_status_unknown")
+                else -> ct("core_status_unavailable")
             }
         }
-        return if (bad.isEmpty()) head else head + "（" + bad.joinToString("；") + "）"
+        return if (bad.isEmpty()) head else head + ct("core_paren_open_space") + bad.joinToString(ct("core_sep_semicolon")) + ct("core_paren_close")
     }
 }
 
@@ -144,10 +145,10 @@ data class ValidationData(
  * (EN 319 122-1, EN 319 162-1) and XAdES (EN 319 132-1).
  */
 enum class SignatureLevel(val short: String, val detail: String) {
-    B_B("B-B", "簽署憑證與簽章值；沒有可信時間，憑證過期後只能證明完整性"),
-    B_T("B-T", "加上簽章時戳，以時戳機構證明簽署時間"),
-    B_LT("B-LT", "B-T 加上簽署者與時戳機構的憑證鏈及撤銷資訊（OCSP 優先，取不到才用 CRL），憑證過期或憑證機構停止服務後仍可驗證"),
-    B_LTA("B-LTA", "B-LT 再加保存時戳保護長期驗證資料（PDF 為文件時戳，CAdES 與 XAdES 為 archive time stamp），之後可再延長");
+    B_B("B-B", ct("core_level_bb")),
+    B_T("B-T", ct("core_level_bt")),
+    B_LT("B-LT", ct("core_level_blt")),
+    B_LTA("B-LTA", ct("core_level_blta"));
 
     val timestamp: Boolean get() = this != B_B
     val revocation: Boolean get() = this == B_LT || this == B_LTA

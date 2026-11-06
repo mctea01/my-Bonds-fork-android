@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.c2pa.C2paCose
 import diw.wallet.core.document.c2pa.C2paIdentity
 import diw.wallet.core.document.c2pa.C2paInfo
@@ -74,10 +75,10 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
 
     private suspend fun claimSignature(m: C2paManifest, statuses: MutableList<C2paStatus>, binding: C2paStatus?, now: Instant): SignatureInfo? {
         val url = C2paManifests.absolute(m, "self#jumbf=c2pa.signature")
-        val label = "C2PA：" + (m.claim.text("dc:title") ?: m.label)
+        val label = ct("core_c2pa_prefix") + (m.claim.text("dc:title") ?: m.label)
         val cose = m.cose ?: run {
-            statuses += C2paStatus("claimSignature.missing", url, false, "沒有聲明簽章")
-            return checks.failed(SignatureFormat.C2PA, label, "C2PA 聲明沒有簽章")
+            statuses += C2paStatus("claimSignature.missing", url, false, ct("core_c2pa_no_claim_sig"))
+            return checks.failed(SignatureFormat.C2PA, label, ct("core_c2pa_claim_unsigned"))
         }
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
@@ -86,10 +87,10 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
         // The signature always covers the claim as parsed; an embedded payload that is not that claim is a mismatch.
         val payloadMismatch = cose.payload != null && !cose.payload.contentEquals(m.claimBytes)
         val valid = signer != null && !payloadMismatch && runCatching { verify(cose, C2paManifests.toBeSigned(cose.protectedBytes, m.claimBytes), signer) }.getOrDefault(false)
-        val why = when { signer == null -> "簽章沒有附上簽署憑證"; payloadMismatch -> "簽章內嵌的內容不是這份聲明"; else -> "聲明簽章無效" }
+        val why = when { signer == null -> ct("core_sig_no_signing_cert"); payloadMismatch -> ct("core_c2pa_payload_other"); else -> ct("core_c2pa_claim_sig_invalid") }
         statuses += if (valid) C2paStatus("claimSignature.validated", url, true)
         else C2paStatus("claimSignature.mismatch", url, false, why)
-        if (!valid) problems.add(if (signer == null) "C2PA 簽章沒有附上簽署憑證（x5chain）" else "C2PA $why")
+        if (!valid) problems.add(if (signer == null) ct("core_c2pa_no_x5chain") else "C2PA $why")
 
         val timestamp = cose.timestamps.firstOrNull()?.let { (header, token) ->
             val tok = CmsChecks.tokenOf(token)
@@ -111,10 +112,10 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
         failedHashes.forEach { problems.add(it.explanation ?: it.code) }
         val integrity = when {
             !valid || failedHashes.isNotEmpty() -> Check.FAIL
-            binding != null && !binding.success -> { notes.add(binding.explanation ?: "沒有檢查檔案的硬綁定"); Check.WARN }
+            binding != null && !binding.success -> { notes.add(binding.explanation ?: ct("core_c2pa_no_hard_binding")); Check.WARN }
             else -> Check.PASS
         }
-        notes.add("產生工具：" + (C2paManifests.generator(m) ?: "未說明"))
+        notes.add(ct("core_c2pa_generator") + (C2paManifests.generator(m) ?: ct("core_c2pa_unstated_cap")))
         val info = checks.evaluate(
             SignatureFormat.C2PA, label, algorithmName(cose.algorithm), signer, holders, integrity, null, timestamp,
             cose.ocsps, emptyList(), now, problems, notes,
@@ -122,7 +123,7 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
             role = TrustRole.CONTENT,
         )
         info.trust?.let { t ->
-            statuses += if ("UNKNOWN_ANCHOR" in t.labels || t.tier == "T4") C2paStatus("signingCredential.untrusted", url, false, "簽署憑證不在信任錨點")
+            statuses += if ("UNKNOWN_ANCHOR" in t.labels || t.tier == "T4") C2paStatus("signingCredential.untrusted", url, false, ct("core_signing_cert_untrusted"))
             else C2paStatus("signingCredential.trusted", url, true, t.anchorName)
         }
         if (info.certificateValidity == Check.FAIL) statuses += C2paStatus("signingCredential.invalid", url, false, info.problems.lastOrNull())
@@ -138,10 +139,10 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
                 val box = store.resolve(r.url, m)
                 box != null && DocCrypto.digest(C2paManifests.jcaHash(r.algorithm ?: m.algorithm), box.hashedBytes).contentEquals(r.hash)
             }
-            detail.add("綁定 ${refs.size} 個宣告" + if (refsOk) "，雜湊相符" else "，有宣告的雜湊不符")
+            detail.add(ct("core_c2pa_binds", refs.size) + if (refsOk) ct("core_c2pa_hashes_match") else ct("core_c2pa_hash_mismatch"))
             val cose = runCatching { C2paManifests.cose(signature) }.getOrNull()
             when {
-                cose == null -> C2paIdentity(sigType, emptyList(), signature = Check.FAIL, detail = detail + "無法讀取身分簽章")
+                cose == null -> C2paIdentity(sigType, emptyList(), signature = Check.FAIL, detail = detail + ct("core_c2pa_identity_unreadable"))
                 sigType == "cawg.x509.cose" -> {
                     val holders = cose.chain.mapNotNull { Bc.holder(it) }
                     val signer = holders.firstOrNull()
@@ -150,7 +151,7 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
                     val names = listOfNotNull(signer?.let { pki.cn(it.subject) }, signer?.let { Bc.org(it) }).distinct()
                     if (signer != null) {
                         val decision = pki.decide(TrustRole.CONTENT, pki.buildChain(signer, holders), now)
-                        detail.add(if (PkiSupport.unknownAnchor(decision)) "身分憑證不在信任錨點" else "身分憑證信任錨點：${decision.anchorName ?: decision.tier.name}")
+                        detail.add(if (PkiSupport.unknownAnchor(decision)) ct("core_c2pa_identity_untrusted") else ct("core_c2pa_identity_anchor", decision.anchorName ?: decision.tier.name))
                     }
                     C2paIdentity(sigType, names, signer?.let { pki.cn(it.issuer) }, if (ok && refsOk) Check.PASS else Check.FAIL, detail)
                 }
@@ -162,9 +163,9 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
                         val o = e as? JsonObject ?: return@mapNotNull null
                         val who = o.text("name") ?: o.text("username") ?: o.text("uri") ?: return@mapNotNull null
                         val provider = (o["provider"] as? JsonObject)?.text("name")
-                        who + (provider?.let { "（$it）" } ?: "")
+                        who + (provider?.let { ct("core_parenthesized", it) } ?: "")
                     }
-                    detail.add("身分彙整服務的簽章（$issuer）錢包尚未驗證")
+                    detail.add(ct("core_c2pa_aggregator_unverified", issuer))
                     C2paIdentity(sigType, names, issuer, Check.NOT_CHECKED, detail)
                 }
             }

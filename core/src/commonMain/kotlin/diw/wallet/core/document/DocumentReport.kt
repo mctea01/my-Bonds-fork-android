@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
@@ -36,23 +37,26 @@ enum class DocumentFormat(val mediaType: String) {
 
 /** The signature technologies the inspector recognises. */
 @Serializable
-enum class SignatureFormat(val title: String) {
-    PADES("PAdES（ETSI.CAdES.detached）"),
-    PDF_PKCS7("PDF PKCS#7（adbe.pkcs7.detached）"),
-    PDF_PKCS7_SHA1("PDF PKCS#7（adbe.pkcs7.sha1）"),
-    PDF_DOC_TIMESTAMP("PDF 文件時戳（ETSI.RFC3161）"),
-    PDF_X509("PDF X.509（adbe.x509.rsa_sha1）"),
+enum class SignatureFormat(private val text: String) {
+    PADES("core_fmt_pades"),
+    PDF_PKCS7("core_fmt_pdf_pkcs7"),
+    PDF_PKCS7_SHA1("core_fmt_pdf_pkcs7_sha1"),
+    PDF_DOC_TIMESTAMP("core_fmt_pdf_doc_tst"),
+    PDF_X509("core_fmt_pdf_x509"),
     CADES("CAdES / PKCS#7"),
     XADES("XAdES"),
-    XMLDSIG("XML 數位簽章（XMLDSig）"),
-    OFFICIAL_APPROVAL("電子公文線上簽核（簽核點）"),
-    OFD_SEAL("OFD 電子印章（GB/T 38540）"),
-    OFD_SIGN("OFD 數位簽章（GB/T 35275）"),
-    ASIC_CADES("ASiC-E（CAdES）"),
-    RFC3161("RFC 3161 時戳"),
-    OPENCERTS("OpenAttestation（Merkle 證明）"),
+    XMLDSIG("core_fmt_xmldsig"),
+    OFFICIAL_APPROVAL("core_fmt_official_approval"),
+    OFD_SEAL("core_fmt_ofd_seal"),
+    OFD_SIGN("core_fmt_ofd_sign"),
+    ASIC_CADES("core_fmt_asic_cades"),
+    RFC3161("core_fmt_rfc3161"),
+    OPENCERTS("core_fmt_opencerts"),
     OPENPGP("OpenPGP"),
-    C2PA("C2PA 內容憑證（COSE）"),
+    C2PA("core_fmt_c2pa");
+
+    /** The name shown, in the app language; names that are the same in every language are kept as they are. */
+    val title: String get() = if (text.startsWith("core_")) ct(text) else text
 }
 
 /** One check: passed, passed with a caveat, failed, or not possible here. */

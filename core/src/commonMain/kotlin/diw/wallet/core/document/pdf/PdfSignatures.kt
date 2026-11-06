@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pdf
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.LaterChanges
 
 /** A signature dictionary found in a PDF (ISO 32000-1 12.8.1, ETSI EN 319 142-1). */
@@ -277,9 +278,9 @@ class PdfSignatures(private val pdf: PdfFile) {
         val tail = bytes.copyOfRange(signedLength.toInt(), bytes.size)
         if (tail.all { PdfParser.isWhite(it.toInt() and 0xFF) || it == 0.toByte() }) return LaterChanges.NONE to emptyList()
         val later = pdf.revisions.filter { it.xrefOffset >= signedLength }
-        if (later.isEmpty()) return LaterChanges.OTHER to listOf("簽署範圍之後有無法解析的資料")
+        if (later.isEmpty()) return LaterChanges.OTHER to listOf(ct("core_pdf_trailing_garbage"))
         val before = runCatching { PdfFile(bytes.copyOfRange(0, signedLength.toInt())) }.getOrNull()
-            ?: return LaterChanges.OTHER to listOf("無法讀取簽署當時的文件版本")
+            ?: return LaterChanges.OTHER to listOf(ct("core_pdf_signed_version_unreadable"))
         val pageObjects = HashSet<Int>()
         val pageContent = HashSet<Int>()
         runCatching {
@@ -321,13 +322,13 @@ class PdfSignatures(private val pdf: PdfFile) {
                 num == catalogNum -> {
                     val keys = changedKeys(now as? PdfDict, then as? PdfDict)
                     val extra = keys - setOf("AcroForm", "DSS", "Extensions", "Version", "Perms")
-                    if (extra.isNotEmpty()) problems.add("文件目錄的 ${extra.joinToString("、")} 被修改")
+                    if (extra.isNotEmpty()) problems.add(ct("core_pdf_catalog_changed", extra.joinToString(ct("core_sep_list"))))
                 }
-                num in pageContent -> problems.add("頁面內容或資源（物件 $num）被修改")
+                num in pageContent -> problems.add(ct("core_pdf_page_content_changed", num))
                 num in pageObjects -> {
                     val keys = changedKeys(now as? PdfDict, then as? PdfDict)
                     val extra = keys - setOf("Annots")
-                    if (extra.isNotEmpty()) problems.add("頁面的 ${extra.joinToString("、")} 被修改")
+                    if (extra.isNotEmpty()) problems.add(ct("core_pdf_page_changed", extra.joinToString(ct("core_sep_list"))))
                     if ("Annots" in keys) annotationProblems(pdf.array((now as PdfDict)["Annots"]), before.array((then as? PdfDict)?.get("Annots")))?.let { problems.add(it) }
                 }
                 then is PdfArray && now is PdfArray -> {
@@ -338,12 +339,12 @@ class PdfSignatures(private val pdf: PdfFile) {
                     val ft = now.name("FT") ?: pdf.dict(now["Parent"])?.name("FT")
                     val ok = type in setOf("Sig", "DocTimeStamp", "DSS", "VRI", "XRef", "ObjStm") || ft == "Sig" ||
                         now.has("Fields") || now.has("SigFlags")
-                    if (!ok) problems.add("物件 $num（${type ?: now.name("Subtype") ?: "字典"}）被修改")
+                    if (!ok) problems.add(ct("core_pdf_object_type_changed", num, type ?: now.name("Subtype") ?: ct("core_pdf_dictionary")))
                 }
                 then is PdfStream && now is PdfStream -> {
-                    if (now.dict.name("Type") !in setOf("XRef", "ObjStm", "Metadata")) problems.add("資料流物件 $num 被修改")
+                    if (now.dict.name("Type") !in setOf("XRef", "ObjStm", "Metadata")) problems.add(ct("core_pdf_stream_changed", num))
                 }
-                else -> problems.add("物件 $num 被修改")
+                else -> problems.add(ct("core_pdf_object_changed", num))
             }
         }
         return if (problems.isEmpty()) LaterChanges.SIGNATURES_ONLY to emptyList() else LaterChanges.OTHER to problems.distinct()
@@ -359,8 +360,8 @@ class PdfSignatures(private val pdf: PdfFile) {
         }
         val removed = old.filter { it !in now.orEmpty().toSet() }
         return when {
-            bad.isNotEmpty() -> "簽署後加入了簽章以外的註解（${bad.size} 個）"
-            removed.isNotEmpty() -> "簽署後移除了註解（${removed.size} 個）"
+            bad.isNotEmpty() -> ct("core_pdf_annots_added", bad.size)
+            removed.isNotEmpty() -> ct("core_pdf_annots_removed", removed.size)
             else -> null
         }
     }

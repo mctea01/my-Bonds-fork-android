@@ -2,6 +2,7 @@ package diw.wallet.app
 
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
+import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.official.BundleMatch
 import diw.wallet.core.document.image.ImageConversion
 import diw.wallet.core.util.TextEncodings
@@ -960,11 +961,15 @@ class FilesModel(private val model: WalletModel) {
 
     /** True when [f] is an online approval file (線上簽核, .si). */
     fun isApproval(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
-        (f.name.endsWith(".si", ignoreCase = true) || f.report.notes.any { it.contains("（線上簽核）") })
+        (f.name.endsWith(".si", ignoreCase = true) || f.report.notes.any { n -> OFFICIAL_NOTES.any { n.startsWith(it) } && "線上簽核" in n })
+
+    /** The start of the core note on an official document, in the app language and in Chinese (reports saved before). */
+    private val OFFICIAL_NOTES: List<String>
+        get() = listOf(CoreText.prefix("core_official_note"), CoreText.chinese("core_official_note").substringBefore("（"))
 
     /** True when [f] is a file of the official document exchange (公文, .sw, .si...), signed with an approval point. */
     fun isOfficialFile(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
-        (OfficialBundles.isExchangeFile(f.name) || f.report.notes.any { it.startsWith("台灣電子公文") })
+        (OfficialBundles.isExchangeFile(f.name) || f.report.notes.any { n -> OFFICIAL_NOTES.any { n.startsWith(it) } })
 
     /** What an approval point on [f] covers: the approval it is added to (null for a new one) and the case files. */
     class ApprovalCase(val main: StoredFile?, val approval: StoredFile?, val files: List<StoredFile>, val missing: List<String>)
@@ -1712,8 +1717,10 @@ class FilesModel(private val model: WalletModel) {
     /** The baseline level the inspection of [f] found, such as "PAdES B-LT"; null when the report does not say. */
     private fun reachedLevel(f: StoredFile): String? {
         val r = f.report ?: return null
-        val line = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).lastOrNull { "等級：B-" in it } ?: return null
-        return line.replace(" 等級：", " ").replace("等級：", " ")
+        // Notes of either language ("PAdES 等級：B-LT", "PAdES level: B-LT"), so reports saved before a language change work.
+        val level = Regex("([A-Z][A-Za-z]*AdES)[^B]*(B-(?:LTA|LT|T|B))")
+        val match = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).mapNotNull { level.find(it) }.lastOrNull() ?: return null
+        return match.groupValues[1] + " " + match.groupValues[2]
     }
 
     /** A signed PDF whose signatures can be extended: it has a signature or time stamp and is not encrypted. */

@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.trust.TrustRole
 import org.bouncycastle.asn1.ASN1OctetString
 import org.bouncycastle.asn1.cms.Attribute
@@ -57,16 +58,16 @@ internal class CmsChecks(private val pki: PkiSupport) {
                 CMSSignedData(mapOf(SHA256.algorithm.id to contentSha256), ContentInfo.getInstance(Bc.parse(cms)).encoded)
             } else signedData(cms, content)
         } catch (e: Exception) {
-            return listOf(failed(format, label, "無法解析 CMS 簽章：" + (e.message ?: e.javaClass.simpleName)))
+            return listOf(failed(format, label, ct("core_cms_unparsable") + (e.message ?: e.javaClass.simpleName)))
         }
         val certs = sd.certificates.getMatches(null).filterIsInstance<X509CertificateHolder>() +
             extraCerts.flatMap { Bc.certificates(it) }.mapNotNull { Bc.holder(it) }
         val (cmsOcsps, cmsCrls) = pki.cmsRevocation(sd)
         val signers = sd.signerInfos.signers.toList()
-        if (signers.isEmpty()) return listOf(failed(format, label, "簽章檔內沒有簽署者"))
+        if (signers.isEmpty()) return listOf(failed(format, label, ct("core_cms_no_signers")))
         val detachedMissing = content == null && contentSha256 == null && sd.signedContent == null
         return signers.mapIndexed { i, si ->
-            check(si, certs, format, if (signers.size > 1) "$label（簽署者 ${i + 1}）" else label, now, detachedMissing,
+            check(si, certs, format, if (signers.size > 1) ct("core_cms_signer_n", label, i + 1) else label, now, detachedMissing,
                 cmsOcsps + extraOcsps, cmsCrls + extraCrls, claimedTimeOverride, fallbackClaimed, sd, content)
         }
     }
@@ -89,20 +90,20 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val notes = ArrayList<String>()
         val signer = certs.firstOrNull { si.sid.match(it) }
         val algorithm = AlgorithmNames.signature(si.encryptionAlgOID, si.digestAlgOID)
-        if (AlgorithmNames.weak(si.digestAlgOID)) notes.add("使用較弱的摘要演算法 ${AlgorithmNames.digest(si.digestAlgOID)}")
+        if (AlgorithmNames.weak(si.digestAlgOID)) notes.add(ct("core_cms_weak_digest", AlgorithmNames.digest(si.digestAlgOID)))
         val integrity = when {
-            signer == null -> { problems.add("簽章檔沒有附上簽署者憑證"); Check.NOT_CHECKED }
-            detachedMissing -> { notes.add("分離式簽章：需要原始內容檔才能檢查內容是否被修改"); Check.NOT_CHECKED }
+            signer == null -> { problems.add(ct("core_cms_no_signer_cert")); Check.NOT_CHECKED }
+            detachedMissing -> { notes.add(ct("core_sig_detached_needs_content")); Check.NOT_CHECKED }
             else -> try {
                 // Verified with the bare key: BouncyCastle would also reject a certificate not valid at the claimed
                 // signingTime, which signers set wrongly (an e-sign service writes 2010); validity is checked below.
                 val key = JcaX509CertificateConverter().setProvider(Bc.provider).getCertificate(signer).publicKey
                 if (si.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(key))) Check.PASS
-                else { problems.add("簽章值不符"); Check.FAIL }
+                else { problems.add(ct("core_sig_value_mismatch")); Check.FAIL }
             } catch (e: org.bouncycastle.cms.CMSSignerDigestMismatchException) {
-                problems.add("內容摘要不符：文件在簽署後被修改"); Check.FAIL
+                problems.add(ct("core_cms_digest_mismatch")); Check.FAIL
             } catch (e: Exception) {
-                problems.add("簽章驗證失敗：" + (e.message ?: e.javaClass.simpleName)); Check.FAIL
+                problems.add(ct("core_cms_verify_failed") + (e.message ?: e.javaClass.simpleName)); Check.FAIL
             }
         }
         val attrs = si.signedAttributes
@@ -118,18 +119,18 @@ internal class CmsChecks(private val pki: PkiSupport) {
                     val id = v2.certs.first()
                     val alg = id.hashAlgorithm?.algorithm?.id ?: "2.16.840.1.101.3.4.2.1"
                     val expected = DocCrypto.digest(AlgorithmNames.jcaDigest(alg), signer.encoded)
-                    if (expected.contentEquals(id.certHash)) essBound = true else problems.add("簽署憑證屬性與附上的憑證不符")
+                    if (expected.contentEquals(id.certHash)) essBound = true else problems.add(ct("core_cms_signing_cert_mismatch"))
                 }
             }
             attrs.get(PKCSObjectIdentifiers.id_aa_signingCertificate)?.let { a ->
                 runCatching {
                     val v1 = SigningCertificate.getInstance(a.attrValues.getObjectAt(0))
                     if (DocCrypto.digest("SHA-1", signer.encoded).contentEquals(v1.certs.first().certHash)) essBound = true
-                    else problems.add("簽署憑證屬性與附上的憑證不符")
+                    else problems.add(ct("core_cms_signing_cert_mismatch"))
                 }
             }
         }
-        if (!essBound && format == SignatureFormat.PADES) problems.add("PAdES 簽章缺少簽署憑證屬性（ESS signing-certificate）")
+        if (!essBound && format == SignatureFormat.PADES) problems.add(ct("core_cms_pades_no_signing_cert"))
         // Signature time stamp (CAdES-T): an RFC 3161 token over the signature value.
         val tst = si.unsignedAttributes?.get(PKCSObjectIdentifiers.id_aa_signatureTimeStampToken)?.let { a ->
             runCatching { a.attrValues.getObjectAt(0).toASN1Primitive().encoded }.getOrNull()
@@ -144,12 +145,12 @@ internal class CmsChecks(private val pki: PkiSupport) {
             val signed = content ?: (sd.signedContent?.content as? ByteArray)
             val asn = org.bouncycastle.asn1.cms.SignedData.getInstance(sd.toASN1Structure().content)
             val archives = runCatching { CadesArchive.find(asn, si.toASN1Structure(), signed) }.getOrDefault(emptyList())
-            notes.add("CAdES 等級：" + XmlDsig.baselineLevel(timestamp != null, allOcsps.isNotEmpty() || allCrls.isNotEmpty(), archives.isNotEmpty()))
+            notes.add(ct("core_cms_cades_level") + XmlDsig.baselineLevel(timestamp != null, allOcsps.isNotEmpty() || allCrls.isNotEmpty(), archives.isNotEmpty()))
             for (a in archives) {
                 a.problem?.let { if (a.input == null) notes.add(it) else problems.add(it) }
                 val ts = a.input?.let { timestamp(a.token, it) } ?: continue
                 notes.add(XmlDsig.archiveNote(ts))
-                if (ts.imprint == Check.FAIL || ts.signature == Check.FAIL) problems.add("保存時戳無效：" + ts.problems.joinToString("；"))
+                if (ts.imprint == Check.FAIL || ts.signature == Check.FAIL) problems.add(ct("core_cms_archive_invalid") + ts.problems.joinToString(ct("core_sep_semicolon")))
             }
         }
         return evaluate(
@@ -196,20 +197,20 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val validNow = PkiSupport.validAt(signer, now)
         val validity = when {
             trustedTime != null -> if (PkiSupport.validAt(signer, trustedTime)) Check.PASS else {
-                problems.add("時戳時間不在簽署憑證的有效期間內"); Check.FAIL
+                problems.add(ct("core_cms_tst_outside_validity")); Check.FAIL
             }
             validNow -> Check.PASS
             claimed != null && PkiSupport.validAt(signer, Instant.fromEpochSeconds(claimed)) -> {
-                notes.add("簽署憑證已過期；簽署者聲稱的簽署時間在有效期間內，但沒有可信的時戳可以證明"); Check.WARN
+                notes.add(ct("core_cms_cert_expired_claimed")); Check.WARN
             }
-            else -> { problems.add("簽署憑證不在有效期間內"); Check.FAIL }
+            else -> { problems.add(ct("core_cms_cert_not_valid")); Check.FAIL }
         }
         val at = trustedTime ?: if (validNow) now else claimed?.let { Instant.fromEpochSeconds(it) } ?: now
         val decision = pki.decide(role, chain, at)
         if (PkiSupport.unknownAnchor(decision)) {
             val root = chain.last()
-            notes.add(if (pki.selfSigned(root)) "憑證鏈的根憑證「${pki.cn(root.subject) ?: root.subject}」不在信任錨點；確認來源後可信任這個根憑證（T2）"
-            else "找不到完整的憑證鏈（缺少「${pki.cn(root.issuer) ?: root.issuer}」的憑證），連線時會依憑證的 AIA 自動下載")
+            notes.add(if (pki.selfSigned(root)) ct("core_cms_root_untrusted", pki.cn(root.subject) ?: root.subject)
+            else ct("core_cms_chain_incomplete", pki.cn(root.issuer) ?: root.issuer))
         }
         // Embedded revocation data only: a revocation before the trusted time (or now) invalidates the signature.
         val revocation = pki.revocation(signer, chain.getOrNull(1), ocsps, crls)
@@ -219,18 +220,18 @@ internal class CmsChecks(private val pki: PkiSupport) {
                 val when_ = revocation.at
                 val reference = (trustedTime ?: now).epochSeconds
                 if (when_ == null || when_ <= reference) {
-                    problems.add("簽署憑證已被撤銷（${revocation.source}${revocation.reason?.let { "，$it" } ?: ""}）")
+                    problems.add(ct("core_cms_cert_revoked", revocation.source, revocation.reason?.let { ct("core_comma_value", it) } ?: ""))
                     finalValidity = Check.FAIL
                 } else {
-                    notes.add("簽署憑證在可信時戳之後才被撤銷（${revocation.source}），簽章仍有效")
+                    notes.add(ct("core_cms_revoked_after_tst", revocation.source))
                 }
             } else {
-                notes.add("文件內附的撤銷資料（${revocation.source}）顯示簽署憑證未被撤銷")
+                notes.add(ct("core_cms_revocation_good", revocation.source))
             }
         } else {
-            notes.add("沒有內附的撤銷資料，未查詢簽署憑證是否被撤銷")
+            notes.add(ct("core_cms_no_revocation"))
         }
-        if (pki.keyDescription(signer).startsWith("RSA ") && pki.rsaBits(signer) in 1..2047) notes.add("簽署金鑰長度不足 2048 位元")
+        if (pki.keyDescription(signer).startsWith("RSA ") && pki.rsaBits(signer) in 1..2047) notes.add(ct("core_cms_short_key"))
         return SignatureInfo(
             format = format,
             label = label,
@@ -257,30 +258,30 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val tst = try {
             TimeStampToken(ContentInfo.getInstance(Bc.parse(token)))
         } catch (e: Exception) {
-            return TimestampInfo(0, null, Check.FAIL, Check.FAIL, null, problems = listOf("無法解析時戳：" + (e.message ?: "")))
+            return TimestampInfo(0, null, Check.FAIL, Check.FAIL, null, problems = listOf(ct("core_cms_tst_unparsable") + (e.message ?: "")))
         }
         val info = tst.timeStampInfo
         val algOid = info.messageImprintAlgOID.id
         val imprint = if (coveredSha256 != null) coveredSha256.takeIf { algOid == SHA256.algorithm.id }
         else runCatching { DocCrypto.digest(AlgorithmNames.jcaDigest(algOid), covered) }.getOrNull()
         val imprintOk = if (imprint != null && imprint.contentEquals(info.messageImprintDigest)) Check.PASS else {
-            problems.add("時戳涵蓋的資料與文件不符"); Check.FAIL
+            problems.add(ct("core_tst_data_mismatch")); Check.FAIL
         }
         val certs = tst.certificates.getMatches(null).filterIsInstance<X509CertificateHolder>()
         val tsa = certs.firstOrNull { tst.sid.match(it) }
         val signatureOk = when {
-            tsa == null -> { problems.add("時戳沒有附上時戳機構的憑證"); Check.NOT_CHECKED }
+            tsa == null -> { problems.add(ct("core_cms_tst_no_cert")); Check.NOT_CHECKED }
             else -> try {
                 tst.validate(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(tsa)); Check.PASS
             } catch (e: Exception) {
-                problems.add("時戳簽章無效：" + (e.message ?: "")); Check.FAIL
+                problems.add(ct("core_cms_tst_invalid") + (e.message ?: "")); Check.FAIL
             }
         }
         val genTime = Instant.fromEpochMilliseconds(info.genTime.time)
         val chain = tsa?.let { pki.buildChain(it, certs) }.orEmpty()
         val decision = if (tsa != null && signatureOk == Check.PASS) pki.decide(TrustRole.TSA, chain, genTime) else null
         val name = tsa?.let { pki.cn(it.subject) } ?: info.tsa?.name?.toString()
-        if (decision != null && PkiSupport.unknownAnchor(decision)) problems.add("時戳機構「${name ?: "未知"}」不在信任錨點；可在設定匯入其根憑證（用途：時間戳記）")
+        if (decision != null && PkiSupport.unknownAnchor(decision)) problems.add(ct("core_cms_tsa_untrusted", name ?: ct("core_unknown")))
         return TimestampInfo(
             time = genTime.epochSeconds,
             tsa = name,

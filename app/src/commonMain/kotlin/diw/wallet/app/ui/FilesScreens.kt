@@ -4,6 +4,7 @@ import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
 import diw.wallet.app.CscPrompt
+import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.zk.ZkPdfStatement
 import diw.wallet.core.document.sign.CscEnvironment
 import diw.wallet.core.document.sign.CscServices
@@ -587,7 +588,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             // locked-PDF problem no longer holds for the holder.
             val opened = previews[f.id] is FilePreview.Pages
             report.problems.forEach { p ->
-                if (opened && p.startsWith(ENCRYPTED_PDF_PROBLEM)) {
+                if (opened && ENCRYPTED_PDF_PROBLEMS.any { p.startsWith(it) }) {
                     Text(stringResource(Res.string.files_pdf_encrypted), style = MaterialTheme.typography.bodySmall)
                 } else Text(p, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
@@ -847,7 +848,9 @@ fun EvidenceRows(evidence: List<EvidenceResult>) {
 // ---------------------------------------------------------------- signer choice
 
 /** Start of the inspector's problem for a PDF whose open password is not known. */
-private const val ENCRYPTED_PDF_PROBLEM = "PDF 已加密且需要開啟密碼"
+/** The start of the core problem for a PDF that needs an open password, in the app language and in Chinese (older reports). */
+private val ENCRYPTED_PDF_PROBLEMS: List<String>
+    get() = listOf(CoreText.prefix("core_pdf_encrypted_password"), CoreText.chinese("core_pdf_encrypted_password").substringBefore("（"))
 
 private enum class SignerKind(val title: org.jetbrains.compose.resources.StringResource) {
     HARDWARE(Res.string.signer_hardware), MOBILE(Res.string.signer_mobile), CSC(Res.string.signer_csc), SYSTEM(Res.string.signer_system),

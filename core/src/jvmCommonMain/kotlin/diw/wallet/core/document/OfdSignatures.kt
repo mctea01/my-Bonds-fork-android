@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import org.bouncycastle.asn1.ASN1BitString
 import org.bouncycastle.asn1.ASN1Encodable
 import org.bouncycastle.asn1.ASN1GeneralizedTime
@@ -74,13 +75,13 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
     private suspend fun verifyOne(sigPath: String, type: String, id: String, now: Instant): SignatureInfo {
         val seal = type.equals("Seal", true)
         val format = if (seal) SignatureFormat.OFD_SEAL else SignatureFormat.OFD_SIGN
-        val label = (if (seal) "電子印章" else "數位簽章") + if (id.isNotEmpty()) " $id" else ""
-        val sigXml = files[sigPath] ?: return checks.failed(format, label, "找不到簽章描述檔 $sigPath")
+        val label = (if (seal) ct("core_ofd_seal") else ct("core_ofd_signature")) + if (id.isNotEmpty()) " $id" else ""
+        val sigXml = files[sigPath] ?: return checks.failed(format, label, ct("core_ofd_no_descriptor", sigPath))
         val base = dir(sigPath)
         val problems = ArrayList<String>()
         val notes = ArrayList<String>()
         val doc = XmlParsing.parse(sigXml)
-        val signedInfo = XmlParsing.descendants(doc, null, "SignedInfo").firstOrNull() ?: return checks.failed(format, label, "簽章描述檔沒有 SignedInfo")
+        val signedInfo = XmlParsing.descendants(doc, null, "SignedInfo").firstOrNull() ?: return checks.failed(format, label, ct("core_ofd_no_signed_info"))
 
         // Protected files.
         var integrity = Check.PASS
@@ -94,7 +95,7 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
             else -> null
         }
         val covered = HashSet<String>()
-        if (digestAlg == null) { problems.add("不支援的摘要方法 $method"); integrity = Check.NOT_CHECKED }
+        if (digestAlg == null) { problems.add(ct("core_digest_unsupported", method)); integrity = Check.NOT_CHECKED }
         else for (r in XmlParsing.descendants(signedInfo, null, "Reference")) {
             val ref = r.getAttribute("FileRef")
             val p = if (ref.startsWith("/")) normalize(ref) else normalize("$base/$ref")
@@ -102,16 +103,16 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
             val data = files[p]
             val expected = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.descendants(r, null, "CheckValue").firstOrNull()).orEmpty()) }.getOrNull()
             when {
-                data == null -> { problems.add("受保護的檔案 $p 不存在"); integrity = Check.FAIL }
-                expected == null || !DocCrypto.digest(digestAlg, data).contentEquals(expected) -> { problems.add("檔案 $p 在簽署後被修改"); integrity = Check.FAIL }
+                data == null -> { problems.add(ct("core_ofd_protected_missing", p)); integrity = Check.FAIL }
+                expected == null || !DocCrypto.digest(digestAlg, data).contentEquals(expected) -> { problems.add(ct("core_ofd_file_modified", p)); integrity = Check.FAIL }
             }
         }
         // Content outside the signature: anything not protected, other than signature data added later.
         val unprotected = files.keys.filter { it !in covered && it != sigPath && !it.contains("/Signs/") && !it.startsWith("Signs/") && !it.endsWith("Signatures.xml") }
-        if (unprotected.isNotEmpty()) notes.add("簽章沒有涵蓋：" + unprotected.take(5).joinToString("、") + if (unprotected.size > 5) " 等 ${unprotected.size} 個檔案" else "")
+        if (unprotected.isNotEmpty()) notes.add(ct("core_ofd_uncovered") + unprotected.take(5).joinToString(ct("core_sep_list")) + if (unprotected.size > 5) ct("core_ofd_uncovered_more", unprotected.size) else "")
 
         val valuePath = XmlParsing.descendants(doc, null, "SignedValue").firstOrNull()?.textContent?.trim()
-        val value = valuePath?.let { file(it, base) } ?: return checks.failed(format, label, "找不到簽章值檔案（SignedValue）")
+        val value = valuePath?.let { file(it, base) } ?: return checks.failed(format, label, ct("core_ofd_no_signed_value"))
         val claimed0 = XmlParsing.descendants(signedInfo, null, "SignatureDateTime").firstOrNull()?.textContent?.trim()?.let { parseOfdTime(it) }
 
         var signer: X509CertificateHolder? = null
@@ -121,24 +122,24 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         var algorithm: String? = "SM2 SM3"
         if (seal || runCatching { ASN1Sequence.getInstance(Bc.parse(value)).getObjectAt(0) is ASN1Sequence }.getOrDefault(false)) {
             val r = sesSignature(value, sigXml, files.entries.firstOrNull { it.key.endsWith(".esl") && it.key in covered }?.value, problems, notes)
-            if (r == null) return checks.failed(format, label, problems.firstOrNull() ?: "無法解析電子簽章")
+            if (r == null) return checks.failed(format, label, problems.firstOrNull() ?: ct("core_ofd_ses_unparsable"))
             signer = r.signer
             pool = listOfNotNull(r.signer, r.sealCert)
             if (r.integrity != Check.PASS) integrity = if (r.integrity == Check.FAIL) Check.FAIL else if (integrity == Check.PASS) r.integrity else integrity
             claimed = r.time ?: claimed
             algorithm = r.algorithm
             timestamp = r.timestampToken?.let { checks.timestamp(it, r.signatureValue) }
-            r.sealName?.let { notes.add(0, "印章名稱：$it") }
+            r.sealName?.let { notes.add(0, ct("core_ofd_seal_name", it)) }
         } else {
-            val gm = runCatching { GmSignedData.parse(value) }.getOrNull() ?: return checks.failed(format, label, "無法解析數位簽章值")
-            val s = gm.signers.firstOrNull() ?: return checks.failed(format, label, "數位簽章沒有簽署者")
+            val gm = runCatching { GmSignedData.parse(value) }.getOrNull() ?: return checks.failed(format, label, ct("core_ofd_sig_unparsable"))
+            val s = gm.signers.firstOrNull() ?: return checks.failed(format, label, ct("core_ofd_no_signer"))
             signer = gm.signerCertificate(s)
             pool = gm.certificates
             algorithm = AlgorithmNames.signature(s.signatureOid, s.digestOid)
             val content = gm.content ?: sigXml
-            if (gm.content != null && !gm.content.contentEquals(sigXml)) { problems.add("簽章內容與簽章描述檔不符"); integrity = Check.FAIL }
-            if (signer == null) { problems.add("簽章沒有附上簽署者憑證"); integrity = if (integrity == Check.FAIL) Check.FAIL else Check.NOT_CHECKED }
-            else if (gm.verify(s, signer, content) != Check.PASS) { problems.add("簽章值不符"); integrity = Check.FAIL }
+            if (gm.content != null && !gm.content.contentEquals(sigXml)) { problems.add(ct("core_ofd_content_mismatch")); integrity = Check.FAIL }
+            if (signer == null) { problems.add(ct("core_sig_no_signer_cert")); integrity = if (integrity == Check.FAIL) Check.FAIL else Check.NOT_CHECKED }
+            else if (gm.verify(s, signer, content) != Check.PASS) { problems.add(ct("core_sig_value_mismatch")); integrity = Check.FAIL }
         }
         return checks.evaluate(
             format = format, label = label, algorithm = algorithm, signer = signer, pool = pool, integrity = integrity,
@@ -160,7 +161,7 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
 
     /** GB/T 38540 (v4) or GM/T 0031 (v1) SES_Signature over the Signature.xml bytes. */
     private fun sesSignature(der: ByteArray, signed: ByteArray, sealFile: ByteArray?, problems: MutableList<String>, notes: MutableList<String>): SesResult? {
-        val ses = runCatching { ASN1Sequence.getInstance(Bc.parse(der)) }.getOrNull() ?: run { problems.add("無法解析電子簽章（SES_Signature）"); return null }
+        val ses = runCatching { ASN1Sequence.getInstance(Bc.parse(der)) }.getOrNull() ?: run { problems.add(ct("core_ofd_ses_unparsable_named")); return null }
         val toSign = ASN1Sequence.getInstance(ses.getObjectAt(0))
         val v4 = ses.size() >= 4 && ses.getObjectAt(1) is ASN1OctetString
         val certDer: ByteArray
@@ -189,14 +190,14 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         var integrity = Check.PASS
         val dataHash = runCatching { ASN1BitString.getInstance(toSign.getObjectAt(3)).octets }.getOrNull()
         if (dataHash == null || !DocCrypto.digest("SM3", signed).contentEquals(dataHash) && !DocCrypto.digest("SHA-256", signed).contentEquals(dataHash)) {
-            problems.add("電子簽章涵蓋的資料與簽章描述檔不符"); integrity = Check.FAIL
+            problems.add(ct("core_ofd_ses_data_mismatch")); integrity = Check.FAIL
         }
-        if (signer == null) { problems.add("電子簽章沒有簽章者憑證"); integrity = Check.NOT_CHECKED }
-        else if (!GmSignedData.verifySignature(signer, sigOid, null, toSign.encoded, signature)) { problems.add("電子簽章的簽章值不符"); integrity = Check.FAIL }
+        if (signer == null) { problems.add(ct("core_ofd_ses_no_cert")); integrity = Check.NOT_CHECKED }
+        else if (!GmSignedData.verifySignature(signer, sigOid, null, toSign.encoded, signature)) { problems.add(ct("core_ofd_ses_value_mismatch")); integrity = Check.FAIL }
 
         // The seal (SESeal): made and signed by the seal maker; its picture, validity and authorised signers.
         val eseal = ASN1Sequence.getInstance(toSign.getObjectAt(1))
-        if (sealFile != null && !sealFile.contentEquals(eseal.encoded)) notes.add("印章檔與電子簽章內的印章不同")
+        if (sealFile != null && !sealFile.contentEquals(eseal.encoded)) notes.add(ct("core_ofd_seal_differs"))
         val sealInfo = ASN1Sequence.getInstance(eseal.getObjectAt(0))
         val sealCertDer: ByteArray?
         val sealSigOid: String?
@@ -213,21 +214,21 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         }
         val sealCert = sealCertDer?.let { Bc.holder(it) }
         if (sealCert == null || sealSigOid == null || sealSig == null || !GmSignedData.verifySignature(sealCert, sealSigOid, null, sealInfo.encoded, sealSig)) {
-            problems.add("印章本身的製章簽章無效"); integrity = Check.FAIL
-        } else notes.add("印章由「${checksCn(sealCert)}」製作")
+            problems.add(ct("core_ofd_seal_maker_invalid")); integrity = Check.FAIL
+        } else notes.add(ct("core_ofd_seal_maker", checksCn(sealCert)))
         val property = runCatching { ASN1Sequence.getInstance(sealInfo.getObjectAt(2)) }.getOrNull()
         val name = property?.let { runCatching { (it.getObjectAt(1) as ASN1String).string }.getOrNull() }
         if (property != null) {
             val times = property.mapNotNull { e -> runCatching { ASN1GeneralizedTime.getInstance(e).date.time / 1000 }.getOrNull() }
             if (times.size >= 3 && time != null && (time < times[times.size - 2] || time > times[times.size - 1])) {
-                problems.add("簽章時間不在印章有效期間內"); integrity = Check.FAIL
+                problems.add(ct("core_ofd_time_outside_seal")); integrity = Check.FAIL
             }
             // Authorised signer certificates (type 1: certificates; type 2: digests).
             if (signer != null) {
                 val list = property.firstOrNull { it is ASN1Sequence || it is ASN1TaggedObject }?.let { certList(it) }
                 if (list != null && list.isNotEmpty()) {
                     val ok = list.any { it.contentEquals(signer.encoded) || it.contentEquals(DocCrypto.digest("SM3", signer.encoded)) || it.contentEquals(DocCrypto.digest("SHA-256", signer.encoded)) }
-                    if (!ok) { problems.add("簽章者不在印章授權的憑證清單內"); integrity = Check.FAIL }
+                    if (!ok) { problems.add(ct("core_ofd_signer_not_authorized")); integrity = Check.FAIL }
                 }
             }
         }

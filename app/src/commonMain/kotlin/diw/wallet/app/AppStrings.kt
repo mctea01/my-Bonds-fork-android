@@ -3,6 +3,7 @@ package diw.wallet.app
 import androidx.compose.ui.text.intl.Locale
 import diw.wallet.app.res.Res
 import diw.wallet.app.res.allStringResources
+import diw.wallet.core.i18n.CoreText
 import org.jetbrains.compose.resources.ResourceEnvironment
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.getString
@@ -27,7 +28,8 @@ suspend fun AppLanguageStore.text(resource: StringResource, vararg args: Any): S
 
 /**
  * Strings for code outside composition that cannot suspend, such as model messages and detail rows: every string
- * resource of the app language is read once into memory and read again when the language changes.
+ * resource of the app language is read once into memory and read again when the language changes. Core messages
+ * ([CoreText]) are looked up here as well.
  */
 object AppText {
     private var loaded: Pair<String?, Map<String, String>>? = null
@@ -38,6 +40,8 @@ object AppText {
         val env = resourceEnvironment(tag)
         val all = Res.allStringResources
         loaded = tag to all.mapValues { (_, r) -> getString(env, r) }
+        // Core messages (keys core_*) are read from the same strings.
+        CoreText.resolver = { key -> loaded?.second?.get(key) }
     }
 
     /** [resource] in the loaded language with [args] in its %n$s placeholders; the key when nothing is loaded yet. */
