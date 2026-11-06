@@ -81,6 +81,38 @@ data class ZkPassportIncoming(
     val fastMode: Boolean get() = mode == "fast"
 }
 
+/** The chip files an answer is proved from: SOD and DG1 always, DG2 for the face photo hash. */
+class ZkPassportChip(val sod: ByteArray, val dg1: ByteArray, val dg2: ByteArray?)
+
+/** Where an answer stands, for the screen. */
+sealed interface ZkPassportAnswerProgress {
+    data object Registry : ZkPassportAnswerProgress
+    data class Circuits(val count: Int) : ZkPassportAnswerProgress
+    data class Proving(val index: Int, val total: Int, val name: String) : ZkPassportAnswerProgress
+    data object Sending : ZkPassportAnswerProgress
+}
+
+/** Why an answer stopped; [code] names the step (bridge_origin, connection, native_unavailable, crs_missing, inputs, ...). */
+class ZkPassportAnswerFailure(val code: String) : Exception(code)
+
+/** This wallet answering one zkPassport request (Z3): the bridge is open and the requester's origin known. */
+interface ZkPassportAnswer {
+    /** The requester's origin as zkPassport's bridge reports it. */
+    val origin: String
+    /** Whether [origin] is the https origin of the link's domain; otherwise the link may be relayed (5.3). */
+    val originMatches: Boolean
+    suspend fun reject()
+    /** Accepts, proves [chip] against the request on this device and sends the proofs; throws [ZkPassportAnswerFailure]. */
+    suspend fun answer(chip: ZkPassportChip, progress: (ZkPassportAnswerProgress) -> Unit)
+    fun close()
+}
+
+/** Answers zkPassport requests with proofs made on this device. */
+interface ZkPassportHolder {
+    /** Opens the bridge for [incoming]; [rpc] is the Ethereum node for the registries, null for the built-in one. */
+    suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer
+}
+
 /** Where the registries are read; null RPC addresses use the built-in public nodes. */
 data class ZkPassportConfig(
     val mainnetRpc: String? = null,
