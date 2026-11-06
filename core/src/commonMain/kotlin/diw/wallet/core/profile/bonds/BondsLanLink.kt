@@ -1,5 +1,6 @@
 package diw.wallet.core.profile.bonds
 
+import diw.wallet.core.i18n.ct
 import kotlinx.coroutines.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -40,15 +41,19 @@ interface BondsLanLink {
 
 /** A local address and its network card: [label] names the card for people (Wi-Fi, hotspot, Ethernet or the system's name). */
 data class LanInterface(val address: String, val name: String, val label: String, val kind: Kind) {
-    enum class Kind(val title: String) { WIFI("Wi-Fi"), HOTSPOT("熱點"), ETHERNET("有線網路"), OTHER("其他網路") }
+    enum class Kind(private val titleKey: String) {
+        WIFI("Wi-Fi"), HOTSPOT("core_lan_hotspot"), ETHERNET("core_lan_ethernet"), OTHER("core_lan_other");
+
+        val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
+    }
 }
 
 /** Which networks a listener is on, for people: "Wi-Fi、熱點". */
-fun List<LanInterface>.networks(): String = map { it.kind.title }.distinct().joinToString("、").ifEmpty { "區網" }
+fun List<LanInterface>.networks(): String = map { it.kind.title }.distinct().joinToString(ct("core_sep_list")).ifEmpty { ct("core_lan_local") }
 
 /** One line per address: "192.168.1.5（Wi-Fi，Intel(R) Wi-Fi 6 AX201）". */
 fun List<LanInterface>.details(): List<String> = map { i ->
-    i.address + "（" + listOf(i.kind.title, i.label).distinct().joinToString("，") + "）"
+    i.address + ct("core_paren_open_space") + listOf(i.kind.title, i.label).distinct().joinToString(ct("core_sep_comma")) + ct("core_paren_close")
 }
 
 /** The most addresses a request carries: enough for Wi-Fi, hotspot and a wired card, small enough for the QR. */

@@ -231,6 +231,7 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
             implementation(compose.ui)
+            implementation(compose.components.resources)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
             implementation(libs.multipaz.doctypes)
@@ -364,6 +365,10 @@ android {
             }
         }
     }
+    // Every language stays in the base APK: switching the language in the app must not lose the Android resources
+    // (app name, NFC service names) that a Play language split would leave out.
+    bundle { language { enableSplit = false } }
+    androidResources { generateLocaleConfig = false }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -412,6 +417,12 @@ configurations.all {
     resolutionStrategy {
         force("org.bouncycastle:bcprov-jdk18on:1.86", "org.bouncycastle:bcpkix-jdk18on:1.86", "org.bouncycastle:bcpg-jdk18on:1.86")
     }
+}
+
+// Interface strings: composeResources/values (English) and values-zh (Traditional Chinese), see docs/design/i18n.md.
+compose.resources {
+    packageOfResClass = "diw.wallet.app.res"
+    generateResClass = always
 }
 
 compose.desktop {
@@ -480,7 +491,7 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 
 tasks.named<Test>("desktopTest") {
     useJUnitPlatform()
-    jvmArgs("-Dfile.encoding=UTF-8", "-Xmx3g", "--add-modules=java.smartcardio")
+    jvmArgs("-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=TW", "-Xmx3g", "--add-modules=java.smartcardio")
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

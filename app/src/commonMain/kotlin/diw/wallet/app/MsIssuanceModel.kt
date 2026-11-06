@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.profile.msvid.MsIssuanceRequest
 import diw.wallet.core.profile.msvid.MsPresentationRequirement
 import diw.wallet.core.profile.msvid.MsTokenRequirement
@@ -73,7 +75,7 @@ class MsIssuanceModel(private val model: WalletModel) {
         model.screen.value = Screen.MsIssuance
         model.scope.launch {
             try {
-                state.value = MsIssuanceUi.Working("完成登入")
+                state.value = MsIssuanceUi.Working(tr(Res.string.ms_finish_sign_in))
                 issuance().completeLogin(request, redirect)
                 state.value = MsIssuanceUi.Review(request, ++revision)
             } catch (e: Exception) {
@@ -96,7 +98,7 @@ class MsIssuanceModel(private val model: WalletModel) {
         pin: String?,
         presentations: Map<String, W3cVcCredential>,
     ) = model.scope.launch {
-        state.value = MsIssuanceUi.Working("向發行端領取憑證")
+        state.value = MsIssuanceUi.Working(tr(Res.string.ms_collecting))
         try {
             request.selfIssued.putAll(selfIssued.filterValues { it.isNotEmpty() })
             request.pin = pin?.ifEmpty { null }
@@ -124,6 +126,6 @@ class MsIssuanceModel(private val model: WalletModel) {
         val request = current ?: return
         current = null
         model.scope.launch { runCatching { issuance().cancel(request) } }
-        state.value = MsIssuanceUi.Failed("已取消")
+        state.value = MsIssuanceUi.Failed(tr(Res.string.zk_cancelled))
     }
 }

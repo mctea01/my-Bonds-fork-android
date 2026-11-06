@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.env.TrustEnvironment
@@ -72,8 +74,8 @@ class ServerModel(private val model: WalletModel) {
                 val announced = publicUrl?.let { runCatching { Url(it).host }.getOrNull() } ?: return null
                 val entered = runCatching { Url(url).host }.getOrNull() ?: return null
                 if (announced.equals(entered, ignoreCase = true)) return null
-                return "服務端設定的對外網址是 $announced，和你填的 $entered 不同。查驗連結、中繼與網頁查驗都會用 $announced；" +
-                    "如果它連不到，網站查驗會顯示「無法連到查驗方」。請業者把 public_url 改成 https://$entered，或讓 $announced 可以連線。"
+                return tr(Res.string.srv_url_mismatch_1, announced, entered, announced) +
+                    tr(Res.string.srv_url_mismatch_2, entered, announced)
             }
     }
 
@@ -135,7 +137,7 @@ class ServerModel(private val model: WalletModel) {
     private suspend fun info(url: String): JsonObject {
         val response = model.http.get("$url/info")
         if (!response.status.isSuccess()) throw ProtocolException("server_error", "HTTP ${response.status.value}")
-        return DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: throw ProtocolException("server_error", "不是服務端的 /info")
+        return DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject ?: throw ProtocolException("server_error", tr(Res.string.srv_not_info))
     }
 
     private fun features(o: JsonObject) = (o["features"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
@@ -150,7 +152,7 @@ class ServerModel(private val model: WalletModel) {
         if (FEATURE_TWFIDO !in features(o)) return null
         val name = (o["twfido"] as? JsonObject)?.str("environment")
         return MobileMoicaEnvironment.entries.firstOrNull { it.name == name }
-            ?: throw ProtocolException("server_error", "服務端沒有說明它的行動自然人憑證 SP 屬於哪個環境")
+            ?: throw ProtocolException("server_error", tr(Res.string.srv_sp_env_missing))
     }
 
     private suspend fun read(url: String, shared: ServerShare?): Info {
@@ -159,19 +161,19 @@ class ServerModel(private val model: WalletModel) {
         val verifierDid = o.str("verifierDid")?.trim()?.takeIf { it.startsWith("did:") }
         val signing = o["signing"] as? JsonObject
         if (signing == null && verifierDid == null) {
-            throw ProtocolException("unavailable", "這台服務端沒有簽章金鑰或網頁查驗端（未啟用 zktls 或 verifier），不需要加入信任")
+            throw ProtocolException("unavailable", tr(Res.string.srv_nothing_to_trust))
         }
         if (verifierDid != null) {
             // Only a DID this wallet can resolve to a key is offered; the presentation checks its signature with it.
             runCatching { DidResolver(model.http).resolveKey(verifierDid, null) }
-                .getOrElse { throw ProtocolException("server_error", "服務端的網頁查驗端 DID 無法解析") }
+                .getOrElse { throw ProtocolException("server_error", tr(Res.string.srv_verifier_did_bad)) }
         }
         val signed = signing?.let { sig ->
             val root = X509Cert.fromPem(sig.str("root") ?: throw ProtocolException("server_error", "No signing root"))
-            if (!TrustRegistry.isRoot(root)) throw ProtocolException("server_error", "服務端提供的不是根憑證")
+            if (!TrustRegistry.isRoot(root)) throw ProtocolException("server_error", tr(Res.string.srv_not_root))
             val sha = PlatformCrypto.sha256(root.encoded.toByteArray()).joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
             // The fingerprint shown is computed here; the server's own claim must agree with it.
-            if (sig.str("rootSha256")?.lowercase() != sha) throw ProtocolException("server_error", "服務端回報的指紋與憑證不符")
+            if (sig.str("rootSha256")?.lowercase() != sha) throw ProtocolException("server_error", tr(Res.string.srv_fingerprint_bad))
             root to sha
         }
         // A share carries the fingerprint someone else compared: anything else is refused outright.
@@ -223,24 +225,24 @@ class ServerModel(private val model: WalletModel) {
                 var added = 0
                 info.root?.let { root ->
                     for (role in ROLES) {
-                        if (model.trust.addAnchor(role, TrustEnvironment.USER, root, "正式服務端 $host", official = false, source = src)) added++
+                        if (model.trust.addAnchor(role, TrustEnvironment.USER, root, tr(Res.string.srv_anchor_name, host), official = false, source = src)) added++
                     }
                 }
                 val previousDid = model.settings.serverVerifierDid
                 if (previousDid.isNotEmpty() && previousDid != info.verifierDid) model.userDids.remove(previousDid)
                 info.verifierDid?.let { did ->
                     if (model.userDids.all().none { it.did == did && TrustRole.VERIFIER.id in it.roles }) added++
-                    model.userDids.put(did, "正式服務端 $host 網頁查驗", setOf(TrustRole.VERIFIER), Clock.System.now().toEpochMilliseconds())
+                    model.userDids.put(did, tr(Res.string.srv_anchor_web, host), setOf(TrustRole.VERIFIER), Clock.System.now().toEpochMilliseconds())
                 }
                 model.updateSettings { it.copy(serverRootSha256 = info.sha256.orEmpty(), serverVerifierDid = info.verifierDid.orEmpty()) }
                 state.value = State(addressWarning = info.addressWarning, last = info)
-                model.message.value = if (added == 0) "已經信任這台服務端" else "已信任服務端 $host（使用者匯入，信任等級 T2）"
+                model.message.value = if (added == 0) tr(Res.string.srv_already_trusted) else tr(Res.string.srv_trusted, host)
                 model.loadAnchors()
                 if (info.root != null) {
-                    model.status.reevaluateIssuers("信任正式服務端", affected = { it.anchorName == null }, accept = { it.environment != null })
+                    model.status.reevaluateIssuers(tr(Res.string.srv_trusting), affected = { it.anchorName == null }, accept = { it.environment != null })
                 }
             } catch (e: Exception) {
-                model.message.value = "無法加入信任：" + model.describe(e)
+                model.message.value = tr(Res.string.srv_trust_failed) + model.describe(e)
             }
         }
     }

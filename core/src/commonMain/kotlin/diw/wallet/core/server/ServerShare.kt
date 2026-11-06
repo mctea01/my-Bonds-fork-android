@@ -1,5 +1,6 @@
 package diw.wallet.core.server
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
@@ -59,20 +60,20 @@ data class ServerShare(
         /** Reads a share link; [allowHttp] accepts a plain http address (the test environment only). */
         fun parse(link: String, allowHttp: Boolean = false): ServerShare {
             val t = link.trim()
-            fun bad(what: String): Nothing = throw ProtocolException("invalid_request", "這不是有效的服務端分享：$what")
-            if (!t.startsWith(PREFIX)) bad("格式不符")
-            if (t.length > MAX_LINK) bad("內容過長")
+            fun bad(what: String): Nothing = throw ProtocolException("invalid_request", ct("core_ss_invalid", what))
+            if (!t.startsWith(PREFIX)) bad(ct("core_ss_format"))
+            if (t.length > MAX_LINK) bad(ct("core_ss_too_long"))
             val o = runCatching { DiwJson.parseToJsonElement(t.removePrefix(PREFIX).fromBase64Url().decodeToString()) as JsonObject }
-                .getOrElse { bad("無法解碼") }
-            val url = o.str("url")?.trim()?.trimEnd('/') ?: bad("沒有網址")
-            val u = runCatching { Url(url) }.getOrNull() ?: bad("網址無效")
+                .getOrElse { bad(ct("core_ss_undecodable")) }
+            val url = o.str("url")?.trim()?.trimEnd('/') ?: bad(ct("core_ss_no_url"))
+            val u = runCatching { Url(url) }.getOrNull() ?: bad(ct("core_ss_bad_url"))
             val scheme = u.protocol.name
             if (!(scheme == "https" || scheme == "http" && allowHttp) || u.host.isEmpty() || u.user != null || u.encodedQuery.isNotEmpty() || '#' in url) {
-                bad(if (scheme == "http") "只在測試環境接受 http 網址" else "網址必須是 https")
+                bad(if (scheme == "http") ct("core_ss_http_test") else ct("core_ss_https"))
             }
-            val root = o.str("root")?.lowercase()?.also { if (!HEX64.matches(it)) bad("指紋格式錯誤") }
-            val did = o.str("did")?.trim()?.also { if (!it.startsWith("did:") || it.length > 1024) bad("DID 格式錯誤") }
-            val fed = o.str("fed")?.trim()?.trimEnd('/')?.also { if (!it.startsWith("https://") && !(allowHttp && it.startsWith("http://"))) bad("信任聯盟識別碼無效") }
+            val root = o.str("root")?.lowercase()?.also { if (!HEX64.matches(it)) bad(ct("core_ss_fingerprint")) }
+            val did = o.str("did")?.trim()?.also { if (!it.startsWith("did:") || it.length > 1024) bad(ct("core_ss_did")) }
+            val fed = o.str("fed")?.trim()?.trimEnd('/')?.also { if (!it.startsWith("https://") && !(allowHttp && it.startsWith("http://"))) bad(ct("core_ss_federation")) }
             return ServerShare(
                 url = url,
                 name = o.str("name")?.filter { !it.isISOControl() }?.take(60)?.takeIf { it.isNotBlank() },

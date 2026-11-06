@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.official.BundleMatch
 import diw.wallet.core.document.image.ImageConversion
 import diw.wallet.core.util.TextEncodings
@@ -151,16 +154,19 @@ data class StoredTimestamp(
 
 /** How a file came into the vault. */
 @Serializable
-enum class FileOrigin(val title: String) {
-    IMPORTED("匯入"),
-    DOWNLOADED("App 內下載"),
-    EXTRACTED("從壓縮檔解出"),
-    SIGNED("本錢包簽署"),
-    COMPOSED("本錢包製作"),
-    LETTER("本錢包製作的公文"),
-    ENCRYPTED("本錢包加密（OpenPGP）"),
-    DECRYPTED("以 OpenPGP 卡解密"),
-    UNWRAPPED("從 OpenPGP 訊息取出"),
+enum class FileOrigin(private val titleRes: org.jetbrains.compose.resources.StringResource) {
+    IMPORTED(Res.string.origin_imported),
+    DOWNLOADED(Res.string.origin_downloaded),
+    EXTRACTED(Res.string.origin_extracted),
+    SIGNED(Res.string.origin_signed),
+    COMPOSED(Res.string.origin_composed),
+    LETTER(Res.string.origin_letter),
+    ENCRYPTED(Res.string.origin_encrypted),
+    DECRYPTED(Res.string.origin_decrypted),
+    UNWRAPPED(Res.string.origin_unwrapped),
+    ;
+
+    val title: String get() = tr(titleRes)
 }
 
 /** A file in the vault: its fingerprint, the last inspection, time stamps, and the credential derived from it. */
@@ -278,27 +284,27 @@ object DocumentSources {
     private const val MYDATA = "https://mydata.nat.gov.tw/"
 
     /** MyData items, by the item paths Bonds uses (personal/detail/API.<code>). */
-    val myData = listOf(
-        DocumentSource("mydata-id", "國民身分證資料（製作身分證卡）", "下載後輸入身分證統一編號開啟 PDF，再以自然人憑證簽成 Bonds 身分證卡", MYDATA + "personal/detail/API.idPhotoRev", myData = true, nationalId = true),
-        DocumentSource("mydata", "MyData 個人文件", "登入後在「個人專區／個人文件」下載已完成的文件，可連續下載多份", MYDATA + "signin", myData = true),
-        DocumentSource("mydata-household", "現戶全戶戶籍資料", "內政部戶政司", MYDATA + "personal/detail/API.UDauDOLyZg", myData = true),
-        DocumentSource("mydata-income", "個人所得資料", "財政部財政資訊中心；MyData 約需兩小時產生，完成後到個人文件下載", MYDATA + "personal/detail/API.syWqjr4flJ", myData = true),
-        DocumentSource("mydata-tax-cert", "綜合所得稅納稅證明書", "財政部財政資訊中心", MYDATA + "personal/detail/API.TeV2Md7SIx", myData = true),
-        DocumentSource("mydata-labor-insurance", "被保險人投保資料（勞保、就保、災保）", "勞動部勞工保險局", MYDATA + "personal/detail/API.UZQkKbsOpz", myData = true),
-        DocumentSource("mydata-labor-pension", "勞工提繳異動資料", "勞動部勞工保險局", MYDATA + "personal/detail/API.yqkllwwTYl", myData = true),
-        DocumentSource("mydata-health-insurance", "個人投退保資料（健保）", "衛生福利部中央健康保險署", MYDATA + "personal/detail/API.zH584wn59r", myData = true),
-        DocumentSource("mydata-nhi-premium", "保費繳納紀錄（健保）", "衛生福利部中央健康保險署", MYDATA + "personal/detail/API.1qIr0nM0BT", myData = true),
-        DocumentSource("mydata-land", "地籍及實價資料", "內政部地政司", MYDATA + "personal/detail/API.KvvyRZSc5K", myData = true),
+    val myData: List<DocumentSource> get() = listOf(
+        DocumentSource("mydata-id", tr(Res.string.src_mydata_id), tr(Res.string.src_mydata_id_text), MYDATA + "personal/detail/API.idPhotoRev", myData = true, nationalId = true),
+        DocumentSource("mydata", tr(Res.string.src_mydata), tr(Res.string.src_mydata_text), MYDATA + "signin", myData = true),
+        DocumentSource("mydata-household", tr(Res.string.src_household), tr(Res.string.src_household_by), MYDATA + "personal/detail/API.UDauDOLyZg", myData = true),
+        DocumentSource("mydata-income", tr(Res.string.src_income), tr(Res.string.src_income_by), MYDATA + "personal/detail/API.syWqjr4flJ", myData = true),
+        DocumentSource("mydata-tax-cert", tr(Res.string.src_tax_cert), tr(Res.string.src_tax_cert_by), MYDATA + "personal/detail/API.TeV2Md7SIx", myData = true),
+        DocumentSource("mydata-labor-insurance", tr(Res.string.src_labor), tr(Res.string.src_labor_by), MYDATA + "personal/detail/API.UZQkKbsOpz", myData = true),
+        DocumentSource("mydata-labor-pension", tr(Res.string.src_pension), tr(Res.string.src_labor_by), MYDATA + "personal/detail/API.yqkllwwTYl", myData = true),
+        DocumentSource("mydata-health-insurance", tr(Res.string.src_nhi), tr(Res.string.src_nhi_by), MYDATA + "personal/detail/API.zH584wn59r", myData = true),
+        DocumentSource("mydata-nhi-premium", tr(Res.string.src_nhi_premium), tr(Res.string.src_nhi_by), MYDATA + "personal/detail/API.1qIr0nM0BT", myData = true),
+        DocumentSource("mydata-land", tr(Res.string.src_land), tr(Res.string.src_land_by), MYDATA + "personal/detail/API.KvvyRZSc5K", myData = true),
     )
 
-    val others = listOf(
-        DocumentSource("mydoc", "臺北市 MyDoc 電子文件服務平台", "高中職電子畢業證書等臺北市政府電子文件", "https://mydoc.gov.taipei/"),
-        DocumentSource("moe", "教育部 大專校院數位證書驗證系統", "大專校院數位學位證書的驗證與新版本檢查", "https://dcert.moe.gov.tw/"),
-        DocumentSource("dcert", "數位證明管理中心", "上傳學校核發的數位 PDF 學位證書，產生 QR 碼加入數位憑證皮夾卡片", "https://dcmc.csie.ncku.edu.tw/"),
-        DocumentSource("ris", "內政部戶政司 全國戶政服務", "電子戶籍謄本（.asdt 只能保存原檔，內容需送戶政司查驗）", "https://www.ris.gov.tw/app/portal/"),
-        DocumentSource("land", "地政電子謄本", "土地與建物登記謄本、地籍圖謄本", "https://ep.land.nat.gov.tw/"),
-        DocumentSource("etax", "財政部 稅務入口網", "綜合所得稅、各類所得與納稅證明等申報與查詢；以自然人憑證或行動自然人憑證登入，下載的文件直接保存", "https://www.etax.nat.gov.tw/etwmain"),
-        DocumentSource("nia", "內政部移民署 入出國日期證明書", "以自然人憑證登入申請入出國日期證明書，下載的 PDF 直接保存", "https://ncp.immigration.gov.tw/niaweb/entryExitQuery"),
+    val others: List<DocumentSource> get() = listOf(
+        DocumentSource("mydoc", tr(Res.string.src_mydoc), tr(Res.string.src_mydoc_text), "https://mydoc.gov.taipei/"),
+        DocumentSource("moe", tr(Res.string.src_moe), tr(Res.string.src_moe_text), "https://dcert.moe.gov.tw/"),
+        DocumentSource("dcert", tr(Res.string.src_dcert), tr(Res.string.src_dcert_text), "https://dcmc.csie.ncku.edu.tw/"),
+        DocumentSource("ris", tr(Res.string.src_ris), tr(Res.string.src_ris_text), "https://www.ris.gov.tw/app/portal/"),
+        DocumentSource("land", tr(Res.string.src_land_transcript), tr(Res.string.src_land_transcript_text), "https://ep.land.nat.gov.tw/"),
+        DocumentSource("etax", tr(Res.string.src_etax), tr(Res.string.src_etax_text), "https://www.etax.nat.gov.tw/etwmain"),
+        DocumentSource("nia", tr(Res.string.src_nia), tr(Res.string.src_nia_text), "https://ncp.immigration.gov.tw/niaweb/entryExitQuery"),
     )
 
     val all = myData + others
@@ -400,14 +406,18 @@ sealed class SignerChoice {
 data class MobileMoicaSp(val environment: MobileMoicaEnvironment, val serviceId: String, val aesKeyBase64: String, val builtIn: Boolean = false)
 
 /** The signature a file gets. */
-enum class SignForm(val title: String, val detail: String) {
-    PADES("PDF 簽章（PAdES）", "簽章寫在 PDF 內，Adobe Reader 與 DSS 可驗證；已有的簽章保持有效"),
-    XADES("XML 簽章（XAdES）", "包覆在 XML 內的簽章，適用一般 XML 文件"),
-    APPROVAL("電子公文簽核（線上簽核 .si）", "依文書處理手冊的簽核電子檔：在 .si 加一個簽核點，涵蓋公文、附件與前一個簽核點；公文與附件本身不改動"),
-    CADES_DETACHED("分離式簽章檔（.p7s）", "原檔不變，另存一個簽章檔"),
-    CADES_ENVELOPING("包覆式簽章檔（.p7m）", "原檔包在簽章檔內"),
-    ASIC("ASiC-E 容器（.asice）", "原檔與 CAdES 簽章放在同一個容器"),
-    OPENPGP_DETACHED("OpenPGP 分離式簽章（.asc）", "以 OpenPGP 卡或 YubiKey 簽署，原檔不變，另存 .asc；GnuPG 等 OpenPGP 工具都能驗證"),
+enum class SignForm(private val titleRes: org.jetbrains.compose.resources.StringResource, private val detailRes: org.jetbrains.compose.resources.StringResource) {
+    PADES(Res.string.sign_form_pades, Res.string.sign_form_pades_text),
+    XADES(Res.string.sign_form_xades, Res.string.sign_form_xades_text),
+    APPROVAL(Res.string.sign_form_approval, Res.string.sign_form_approval_text),
+    CADES_DETACHED(Res.string.sign_form_detached, Res.string.sign_form_detached_text),
+    CADES_ENVELOPING(Res.string.sign_form_enveloping, Res.string.sign_form_enveloping_text),
+    ASIC(Res.string.sign_form_asic, Res.string.sign_form_asic_text),
+    OPENPGP_DETACHED(Res.string.sign_form_pgp, Res.string.sign_form_pgp_text),
+    ;
+
+    val title: String get() = tr(titleRes)
+    val detail: String get() = tr(detailRes)
 }
 
 /**
@@ -459,7 +469,7 @@ class FilesModel(private val model: WalletModel) {
     fun file(id: String): StoredFile? = files.value.firstOrNull { it.id == id }
 
     suspend fun data(id: String): ByteArray =
-        Blobs.get(model.storage.getTable(dataTable), id) ?: throw IllegalStateException("找不到檔案內容")
+        Blobs.get(model.storage.getTable(dataTable), id) ?: throw IllegalStateException(tr(Res.string.msg_file_no_content))
 
     /** Serializes writes of file records, so [patch] never writes back a record older than one saved meanwhile. */
     private val saving = Mutex()
@@ -491,14 +501,14 @@ class FilesModel(private val model: WalletModel) {
     ): StoredFile {
         // Names that went through the wrong decoder on the way (a server's raw header, a percent-encoded link) are repaired.
         val name = TextEncodings.repairName(givenName)
-        if (bytes.isEmpty()) throw SigningException("檔案是空的")
-        if (bytes.size > MAX_FILE_BYTES) throw SigningException("檔案超過 ${MAX_FILE_BYTES / 1024 / 1024} MB，無法保存")
+        if (bytes.isEmpty()) throw SigningException(tr(Res.string.msg_file_empty))
+        if (bytes.size > MAX_FILE_BYTES) throw SigningException(tr(Res.string.msg_file_too_large, MAX_FILE_BYTES / 1024 / 1024))
         val detached = contentId?.let { data(it) }
         val report = DocumentInspector.inspect(bytes, name, trustSource, detached, related = relatedFor(bytes))
         files.value.firstOrNull { it.sha256 == report.sha256 }?.let { return it }
         val f = StoredFile(
             id = WalletModel.randomId(),
-            name = name.ifBlank { "未命名檔案" },
+            name = name.ifBlank { tr(Res.string.msg_unnamed_file) },
             mediaType = mediaTypeOf(report, name),
             size = bytes.size.toLong(),
             sha256 = report.sha256,
@@ -536,7 +546,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Lets the user pick a file and stores it. */
-    fun pickAndImport() = run("讀取並檢查檔案") {
+    fun pickAndImport() = run(tr(Res.string.step_read_check)) {
         val picked = model.platform.pickFiles()
         when (picked.size) {
             0 -> return@run
@@ -545,11 +555,11 @@ class FilesModel(private val model: WalletModel) {
                 val before = files.value.size
                 val stored = ArrayList<StoredFile>()
                 picked.forEachIndexed { i, p ->
-                    busy.value = "讀取並檢查檔案（${i + 1}／${picked.size}）"
+                    busy.value = tr(Res.string.step_read_check_n, i + 1, picked.size)
                     stored.addAll(ingest(p, FileOrigin.IMPORTED, null))
                 }
                 val added = files.value.size - before
-                model.message.value = "已保存 $added 個檔案" + if (added < stored.size) "，${stored.size - added} 個先前已保存" else ""
+                model.message.value = tr(Res.string.msg_saved_files, added) + if (added < stored.size) tr(Res.string.msg_saved_before, stored.size - added) else ""
                 if (proposeBundles(stored)) return@run
                 model.showTab(HomeTab.FILES)
             }
@@ -572,7 +582,7 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** A file handed over by another app or downloaded from a source site. */
-    fun import(picked: PickedFile, origin: FileOrigin, source: String?) = run("讀取並檢查檔案") { importNow(picked, origin, source) }
+    fun import(picked: PickedFile, origin: FileOrigin, source: String?) = run(tr(Res.string.step_read_check)) { importNow(picked, origin, source) }
 
     private suspend fun importNow(picked: PickedFile, origin: FileOrigin, source: String?) = receive(picked, origin, source, null)
 
@@ -597,11 +607,11 @@ class FilesModel(private val model: WalletModel) {
         val children = when {
             f.report?.format != DocumentFormat.ZIP -> emptyList()
             myData -> {
-                busy.value = "解出 MyData 壓縮檔"
+                busy.value = tr(Res.string.step_extract_mydata)
                 extractNow(f).first
             }
             hasExchangeFiles(f) -> {
-                busy.value = "解出電子公文壓縮檔"
+                busy.value = tr(Res.string.step_extract_official)
                 extractNow(f, unpackOfficial = true).first
             }
             else -> emptyList()
@@ -611,13 +621,13 @@ class FilesModel(private val model: WalletModel) {
         val nationalId = site?.nationalId == true || item?.nationalId == true || pdfs.any { MyDataFiles.recognize(it.name)?.nationalId == true }
         if (nationalId && pdfs.isNotEmpty()) {
             val pdf = pdfs.firstOrNull { MyDataFiles.recognize(it.name)?.nationalId == true } ?: pdfs.first()
-            model.message.value = if (unlock(pdf, data(pdf.id), null) != null) "已解出 MyData 檔案，確認身分證資料" else "已解出 MyData 檔案，輸入身分證統一編號開啟身分證資料"
+            model.message.value = if (unlock(pdf, data(pdf.id), null) != null) tr(Res.string.msg_mydata_confirm_id) else tr(Res.string.msg_mydata_enter_id)
             model.screen.value = Screen.NationalIdCreate(pdf.id)
             return
         }
         model.message.value = null
         if (proposeBundles(children.ifEmpty { listOf(f) })) {
-            if (children.isNotEmpty()) model.message.value = "已解出 ${children.size} 個檔案。" + (model.message.value ?: "確認哪些放進公文容器")
+            if (children.isNotEmpty()) model.message.value = tr(Res.string.msg_extracted_n, children.size) + (model.message.value ?: tr(Res.string.msg_confirm_container))
             return
         }
         val target = when {
@@ -626,10 +636,10 @@ class FilesModel(private val model: WalletModel) {
             else -> f
         }
         model.message.value = when {
-            children.isNotEmpty() && myData -> "已解出 ${children.size} 個 MyData 檔案"
-            children.isNotEmpty() -> "已解出 ${children.size} 個檔案"
-            files.value.size == known -> "這份文件已經保存過"
-            else -> "已保存：${f.name}"
+            children.isNotEmpty() && myData -> tr(Res.string.msg_extracted_mydata, children.size)
+            children.isNotEmpty() -> tr(Res.string.msg_extracted_files, children.size)
+            files.value.size == known -> tr(Res.string.msg_already_saved)
+            else -> tr(Res.string.msg_saved_name, f.name)
         }
         model.screen.value = Screen.FileDetail(target.id)
     }
@@ -688,7 +698,7 @@ class FilesModel(private val model: WalletModel) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            FilePreview.Unavailable("無法預覽：" + model.describe(e))
+            FilePreview.Unavailable(tr(Res.string.msg_no_preview) + model.describe(e))
         }
         previews.value = previews.value + (f.id to result)
         (result as? FilePreview.Pages)?.text?.let { text -> runCatching { annotatePeriod(file(f.id) ?: f, text) } }
@@ -805,12 +815,12 @@ class FilesModel(private val model: WalletModel) {
         return when (f.report?.format) {
             DocumentFormat.PDF -> {
                 val pdf = unlock(f, bytes, password) ?: return FilePreview.NeedsPassword(wrong = password != null)
-                pdf.encryptionProblem?.let { return FilePreview.Unavailable("無法解密這份 PDF：$it") }
+                pdf.encryptionProblem?.let { return FilePreview.Unavailable(tr(Res.string.msg_pdf_decrypt_failed, it)) }
                 val plain = if (pdf.encrypted) PdfPlain.of(pdf) else bytes
                 val pages = model.platform.renderPdf(plain, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH)
                 val text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.trim()?.ifEmpty { null }
                 val total = runCatching { PdfTextExtractor.pages(pdf).size }.getOrDefault(pages.size)
-                if (pages.isEmpty() && text == null) FilePreview.Unavailable("這個平台無法繪製這份 PDF，也沒有可擷取的文字")
+                if (pages.isEmpty() && text == null) FilePreview.Unavailable(tr(Res.string.msg_pdf_no_render))
                 else FilePreview.Pages(
                     pages, total, text, text?.let { MovementRecord.parse(it) },
                     text?.let { runCatching { HouseholdTranscripts.parse(it, holderHints()) }.getOrNull() },
@@ -821,11 +831,11 @@ class FilesModel(private val model: WalletModel) {
                 // A TIFF can hold several pages (official document page images); each is shown like a PDF page.
                 ImageKind.TIFF -> {
                     val pages = ImageConversion.tiffPages(bytes, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH).mapNotNull { model.platform.decodeImage(it) }
-                    if (pages.isEmpty()) FilePreview.Unavailable("無法讀取這個 TIFF 檔（可能是不支援的壓縮方式），請匯出後以其他軟體開啟")
+                    if (pages.isEmpty()) FilePreview.Unavailable(tr(Res.string.msg_tiff_unreadable))
                     else FilePreview.Pages(pages, TiffDecoder.pageCount(bytes), null)
                 }
                 else -> model.platform.decodeImage(bytes)?.let { FilePreview.Picture(it) }
-                    ?: FilePreview.Unavailable("這個平台無法顯示${kind?.title?.let { " $it " } ?: ""}圖片，請匯出後以其他軟體開啟")
+                    ?: FilePreview.Unavailable(tr(Res.string.msg_image_no_render, kind?.title?.let { " $it " } ?: " "))
             }
             DocumentFormat.XML -> {
                 val text = bytes.decodeToString().removePrefix("\uFEFF")
@@ -842,42 +852,42 @@ class FilesModel(private val model: WalletModel) {
                 val clear = pgp?.clearText
                 when {
                     clear != null -> FilePreview.Text(clear.take(FilePreview.TEXT_LIMIT), clear.length > FilePreview.TEXT_LIMIT)
-                    pgp?.kind == OpenPgpKind.ENCRYPTED -> FilePreview.Unavailable("加密的 OpenPGP 訊息，請在下方以 OpenPGP 卡解密")
+                    pgp?.kind == OpenPgpKind.ENCRYPTED -> FilePreview.Unavailable(tr(Res.string.msg_pgp_encrypted))
                     pgp?.kind == OpenPgpKind.SIGNED_MESSAGE || pgp?.kind == OpenPgpKind.LITERAL ->
-                        FilePreview.Unavailable("內容包在 OpenPGP 訊息內，請在下方取出內容後預覽")
-                    else -> FilePreview.Unavailable("OpenPGP 簽章與金鑰沒有內容預覽，請看下方的 OpenPGP 資訊")
+                        FilePreview.Unavailable(tr(Res.string.msg_pgp_wrapped))
+                    else -> FilePreview.Unavailable(tr(Res.string.msg_pgp_no_preview))
                 }
             }
-            DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable("壓縮檔與容器請看下方的內容清單；ZIP 解出後可逐一預覽")
-            DocumentFormat.OFFICE -> FilePreview.Unavailable("Office 文件無法在錢包內預覽，請匯出後以 Office 等軟體開啟")
-            DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable("加密給特定對象的檔案，錢包無法開啟內容")
+            DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable(tr(Res.string.msg_archive_preview))
+            DocumentFormat.OFFICE -> FilePreview.Unavailable(tr(Res.string.msg_office_preview))
+            DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable(tr(Res.string.msg_envelope_preview))
             else -> {
                 // A signature with its content inside (.p7m) previews the content when it is a known kind.
                 val inner = runCatching { DocumentInspector.encapsulatedContent(bytes) }.getOrNull()
                 when {
                     inner != null && PdfFile.isPdf(inner) -> model.platform.renderPdf(inner, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH)
-                        .takeIf { it.isNotEmpty() }?.let { FilePreview.Pages(it, it.size, null) } ?: FilePreview.Unavailable("無法繪製包覆的 PDF")
+                        .takeIf { it.isNotEmpty() }?.let { FilePreview.Pages(it, it.size, null) } ?: FilePreview.Unavailable(tr(Res.string.msg_wrapped_pdf))
                     inner != null && runCatching { inner.decodeToString(throwOnInvalidSequence = true) }.isSuccess ->
                         inner.decodeToString().let { FilePreview.Text(it.take(FilePreview.TEXT_LIMIT), it.length > FilePreview.TEXT_LIMIT) }
-                    else -> FilePreview.Unavailable("這種格式沒有內容預覽")
+                    else -> FilePreview.Unavailable(tr(Res.string.msg_no_format_preview))
                 }
             }
         }
     }
 
     /** Checks the file again with the current trust anchors. */
-    fun reinspect(f: StoredFile) = run("重新檢查簽章") { refreshed(f) }
+    fun reinspect(f: StoredFile) = run(tr(Res.string.step_recheck)) { refreshed(f) }
 
     /** Pairs a detached signature (.p7s) with the file it signs and checks it again. */
-    fun attachContent(signature: StoredFile, content: StoredFile) = run("檢查分離式簽章") {
+    fun attachContent(signature: StoredFile, content: StoredFile) = run(tr(Res.string.step_check_detached)) {
         val report = DocumentInspector.inspect(data(signature.id), signature.name, trustSource, data(content.id))
         save(signature.copy(report = report, contentId = content.id))
     }
 
     /** Stores every file of a ZIP archive as its own entry; a MyData archive is removed afterwards. */
-    fun extract(f: StoredFile) = run("解出壓縮檔") {
+    fun extract(f: StoredFile) = run(tr(Res.string.step_extract)) {
         val (stored, added) = extractNow(f)
-        model.message.value = "已解出 $added 個檔案"
+        model.message.value = tr(Res.string.msg_extracted_files, added)
         if (file(f.id) == null) {
             val only = stored.singleOrNull()
             if (only != null) model.screen.value = Screen.FileDetail(only.id) else model.showTab(HomeTab.FILES)
@@ -888,10 +898,10 @@ class FilesModel(private val model: WalletModel) {
      * Opens one file of a container (ASiC-E, OFD or ZIP) on its own: it is stored as a file taken from [f], which
      * keeps the container and its signatures as they are, and its detail screen opens.
      */
-    fun openEntry(f: StoredFile, entry: String) = run("開啟容器內的檔案") {
+    fun openEntry(f: StoredFile, entry: String) = run(tr(Res.string.step_open_member)) {
         val files = DocumentSigning.unzip(data(f.id))
         val bytes = files[entry] ?: files.entries.firstOrNull { it.key.endsWith("/$entry") }?.value
-            ?: throw SigningException("容器內找不到「$entry」")
+            ?: throw SigningException(tr(Res.string.msg_member_missing, entry))
         val name = OfficialBundles.decodeZipName(entry.substringAfterLast('/'))
         val stored = store(name, bytes, FileOrigin.EXTRACTED, f.source ?: f.name, parentId = f.id, archive = f.name)
         model.screen.value = Screen.FileDetail(stored.id)
@@ -951,11 +961,15 @@ class FilesModel(private val model: WalletModel) {
 
     /** True when [f] is an online approval file (線上簽核, .si). */
     fun isApproval(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
-        (f.name.endsWith(".si", ignoreCase = true) || f.report.notes.any { it.contains("（線上簽核）") })
+        (f.name.endsWith(".si", ignoreCase = true) || f.report.notes.any { n -> OFFICIAL_NOTES.any { n.startsWith(it) } && "線上簽核" in n })
+
+    /** The start of the core note on an official document, in the app language and in Chinese (reports saved before). */
+    private val OFFICIAL_NOTES: List<String>
+        get() = listOf(CoreText.prefix("core_official_note"), CoreText.chinese("core_official_note").substringBefore("（"))
 
     /** True when [f] is a file of the official document exchange (公文, .sw, .si...), signed with an approval point. */
     fun isOfficialFile(f: StoredFile): Boolean = f.report?.format == DocumentFormat.XML &&
-        (OfficialBundles.isExchangeFile(f.name) || f.report.notes.any { it.startsWith("台灣電子公文") })
+        (OfficialBundles.isExchangeFile(f.name) || f.report.notes.any { n -> OFFICIAL_NOTES.any { n.startsWith(it) } })
 
     /** What an approval point on [f] covers: the approval it is added to (null for a new one) and the case files. */
     class ApprovalCase(val main: StoredFile?, val approval: StoredFile?, val files: List<StoredFile>, val missing: List<String>)
@@ -995,7 +1009,7 @@ class FilesModel(private val model: WalletModel) {
         val changed: List<String>,
         val missing: List<String>,
     ) {
-        val title: String get() = "簽核點 ${index + 1}" + (signer?.let { "：$it" } ?: "") + (action?.let { "（$it）" } ?: "")
+        val title: String get() = tr(Res.string.approval_point_n, index + 1) + (signer?.let { tr(Res.string.colon_value, it) } ?: "") + (action?.let { tr(Res.string.parenthesized, it) } ?: "")
     }
 
     /** A container laid out by the signing points of its online approval [approval]; [others] are files it does not list. */
@@ -1065,10 +1079,10 @@ class FilesModel(private val model: WalletModel) {
             val left = incoming.filter { it.id != main.id && it.id !in placed && file(it.id)?.bundleOf == null && it.nationalId == null }
             recheckApprovals(main)
             if (left.isEmpty()) {
-                model.message.value = "已依簽核檔建立公文容器，放入 ${placed.size} 個檔案"
+                model.message.value = tr(Res.string.msg_container_made, placed.size)
                 model.screen.value = Screen.FileDetail(main.id)
             } else {
-                model.message.value = "已依簽核檔放入 ${placed.size} 個檔案，請確認其餘 ${left.size} 個檔案"
+                model.message.value = tr(Res.string.msg_container_partial, placed.size, left.size)
                 model.screen.value = Screen.OfficialBundle(main.id, left.map { it.id }, emptyList())
             }
             return true
@@ -1173,9 +1187,9 @@ class FilesModel(private val model: WalletModel) {
      * Puts [ids] into the container of [main] after the holder confirmed them, then goes on with the next document
      * of the same import, if any.
      */
-    fun confirmBundle(main: StoredFile, ids: Collection<String>, only: List<String>?, next: List<String>) = run("放入公文容器") {
+    fun confirmBundle(main: StoredFile, ids: Collection<String>, only: List<String>?, next: List<String>) = run(tr(Res.string.step_put_container)) {
         ids.mapNotNull { file(it) }.forEach { save(it.copy(bundleOf = main.id)) }
-        if (ids.isNotEmpty()) model.message.value = "已把 ${ids.size} 個檔案放入「${main.name}」的容器"
+        if (ids.isNotEmpty()) model.message.value = tr(Res.string.msg_put_container, ids.size, main.name)
         recheckApprovals(main)
         val following = next.firstNotNullOfOrNull { file(it) }
         if (following != null) {
@@ -1187,18 +1201,18 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Takes [member] out of its container; it is listed on its own again. */
-    fun leaveBundle(member: StoredFile) = run("移出公文容器") {
+    fun leaveBundle(member: StoredFile) = run(tr(Res.string.step_move_out)) {
         save(member.copy(bundleOf = null))
-        model.message.value = "已移出容器：${member.name}"
+        model.message.value = tr(Res.string.msg_moved_out, member.name)
     }
 
     /** Picks related files from the device for the container of [main]; the holder confirms them next. */
-    fun importIntoBundle(main: StoredFile) = run("讀取並檢查檔案") {
+    fun importIntoBundle(main: StoredFile) = run(tr(Res.string.step_read_check)) {
         val picked = model.platform.pickFiles()
         if (picked.isEmpty()) return@run
         val stored = ArrayList<StoredFile>()
         picked.forEachIndexed { i, p ->
-            busy.value = "讀取並檢查檔案（${i + 1}／${picked.size}）"
+            busy.value = tr(Res.string.step_read_check_n, i + 1, picked.size)
             stored.addAll(ingest(p, FileOrigin.IMPORTED, null))
         }
         model.screen.value = Screen.OfficialBundle(main.id, stored.filter { it.id != main.id }.map { it.id }.distinct(), emptyList())
@@ -1272,14 +1286,14 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** A download from a source site in the app. */
-    fun importDownload(picked: PickedFile, src: DocumentSource) = run("保存並檢查下載的文件") {
+    fun importDownload(picked: PickedFile, src: DocumentSource) = run(tr(Res.string.step_save_download)) {
         receive(picked, FileOrigin.DOWNLOADED, src.name, src)
     }
 
     fun timestamper(): Timestamper = TsaClient(model.signedDataHttp, TsaServices.byId(model.settings.tsaId).url)
 
     /** Gets an RFC 3161 time stamp over the file from the chosen authority (only the hash is sent). */
-    fun addTimestamp(f: StoredFile) = run("向時戳機構取得時戳") { addTimestampNow(f) }
+    fun addTimestamp(f: StoredFile) = run(tr(Res.string.step_get_timestamp)) { addTimestampNow(f) }
 
     private suspend fun addTimestampNow(f: StoredFile) {
         val data = data(f.id)
@@ -1289,8 +1303,8 @@ class FilesModel(private val model: WalletModel) {
         val validation = if (model.settings.timestampRevocation) timestampValidation(token) else null
         val stamp = StoredTimestamp(token.toBase64(), info.time, info.tsa, info.trusted, validation)
         save((file(f.id) ?: f).let { it.copy(timestamps = it.timestamps + stamp) })
-        model.message.value = (if (info.trusted) "已加上時戳（${info.tsa ?: "時戳機構"}）" else "已加上時戳，但時戳機構不在信任錨點") +
-            (validation?.let { "；" + it.summary() } ?: "")
+        model.message.value = (if (info.trusted) tr(Res.string.msg_timestamped, info.tsa ?: tr(Res.string.tsa_fallback)) else tr(Res.string.msg_timestamped_untrusted)) +
+            (validation?.let { tr(Res.string.sep_semicolon) + it.summary() } ?: "")
     }
 
     /** Revocation data of the authority of [token]; null when nothing could be fetched at all. */
@@ -1302,20 +1316,20 @@ class FilesModel(private val model: WalletModel) {
     val revocationFetch: HttpFetch by lazy { SignedDataFetch(model.signedDataHttp) }
 
     /** Fetches the authority's revocation data for a stamp made before it was kept, or again. */
-    fun refreshTimestampValidation(f: StoredFile, index: Int) = run("取得時戳機構的撤銷資訊") {
+    fun refreshTimestampValidation(f: StoredFile, index: Int) = run(tr(Res.string.step_tsa_revocation)) {
         val t = f.timestamps.getOrNull(index) ?: return@run
-        val v = timestampValidation(t.token.fromBase64()) ?: throw SigningException("無法取得撤銷資訊")
+        val v = timestampValidation(t.token.fromBase64()) ?: throw SigningException(tr(Res.string.msg_no_revocation))
         val latest = file(f.id) ?: f
         save(latest.copy(timestamps = latest.timestamps.mapIndexed { i, s -> if (i == index) s.copy(validation = v) else s }))
         model.message.value = v.summary()
     }
 
     /** Removes the time stamp at [index] of [f] (a stamp made without revocation data can be replaced by a new one). */
-    fun removeTimestamp(f: StoredFile, index: Int) = run("移除時戳") {
+    fun removeTimestamp(f: StoredFile, index: Int) = run(tr(Res.string.step_remove_timestamp)) {
         val latest = file(f.id) ?: return@run
         if (index !in latest.timestamps.indices) return@run
         save(latest.copy(timestamps = latest.timestamps.filterIndexed { i, _ -> i != index }))
-        model.message.value = "已移除時戳"
+        model.message.value = tr(Res.string.msg_timestamp_removed)
     }
 
     /**
@@ -1347,8 +1361,8 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Fetches and keeps the revocation data of the signatures in [f] (OCSP first, else CRL). */
-    fun collectSignatureValidation(f: StoredFile) = run("取得簽章的撤銷資訊") {
-        val v = storeSignatureValidation(f.id) ?: throw SigningException("這份文件沒有可取得撤銷資訊的簽章")
+    fun collectSignatureValidation(f: StoredFile) = run(tr(Res.string.step_signature_revocation)) {
+        val v = storeSignatureValidation(f.id) ?: throw SigningException(tr(Res.string.msg_no_revocable))
         model.message.value = v.summary()
     }
 
@@ -1356,12 +1370,12 @@ class FilesModel(private val model: WalletModel) {
      * Fetches and keeps revocation data for every file in the container of [main] that has signatures, and for their
      * time stamps that were made without it.
      */
-    fun collectContainerValidation(main: StoredFile) = run("取得容器內簽章的撤銷資訊") {
+    fun collectContainerValidation(main: StoredFile) = run(tr(Res.string.files_container_revocation)) {
         val all = (listOf(main) + members(main)).distinctBy { it.id }
         var done = 0
         var bad = 0
         all.forEachIndexed { i, m ->
-            busy.value = "取得容器內簽章的撤銷資訊（${i + 1}／${all.size}）"
+            busy.value = tr(Res.string.step_container_revocation_n, i + 1, all.size)
             storeSignatureValidation(m.id)?.let { done++; if (!it.allGood) bad++ }
             val latest = file(m.id) ?: return@forEachIndexed
             if (latest.timestamps.any { it.validation == null }) {
@@ -1369,7 +1383,7 @@ class FilesModel(private val model: WalletModel) {
                 save(latest.copy(timestamps = stamps))
             }
         }
-        model.message.value = if (done == 0) "容器內沒有含簽章的檔案" else "已為 $done 個含簽章的檔案保存撤銷資訊" + if (bad > 0) "，其中 $bad 個有無法確認的憑證" else ""
+        model.message.value = if (done == 0) tr(Res.string.msg_container_no_signed) else tr(Res.string.msg_container_revocation_done, done) + if (bad > 0) tr(Res.string.msg_container_revocation_bad, bad) else ""
     }
 
     // ---------------------------------------------------------------- OpenCerts
@@ -1410,30 +1424,30 @@ class FilesModel(private val model: WalletModel) {
         return !unreachable
     }
 
-    fun recheckOpenCert(f: StoredFile) = run("查驗發行狀態與發行者身分") {
-        if (!verifyOpenCertNow(f, force = true)) model.message.value = "無法連線查驗，保留上一次的結果"
+    fun recheckOpenCert(f: StoredFile) = run(tr(Res.string.step_oa_check)) {
+        if (!verifyOpenCertNow(f, force = true)) model.message.value = tr(Res.string.msg_oa_offline)
     }
 
     /** Stores an attachment of the certificate [f] as its own file in the vault. */
-    fun storeOpenCertAttachment(f: StoredFile, a: OaAttachment) = run("保存附件") {
+    fun storeOpenCertAttachment(f: StoredFile, a: OaAttachment) = run(tr(Res.string.step_save_attachment)) {
         val known = files.value.size
-        val stored = store(a.name, a.bytes, FileOrigin.EXTRACTED, source = "OpenCerts 附件", parentId = f.id, archive = f.name)
-        model.message.value = if (files.value.size == known) "這個附件已經保存過" else "已保存：${stored.name}"
+        val stored = store(a.name, a.bytes, FileOrigin.EXTRACTED, source = tr(Res.string.oa_attachment_source), parentId = f.id, archive = f.name)
+        model.message.value = if (files.value.size == known) tr(Res.string.msg_attachment_saved) else tr(Res.string.msg_saved_name, stored.name)
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
-    fun exportOpenCertAttachment(a: OaAttachment, share: Boolean = false) = run(if (share) "分享附件" else "匯出附件") {
+    fun exportOpenCertAttachment(a: OaAttachment, share: Boolean = false) = run(if (share) tr(Res.string.step_share_attachment) else tr(Res.string.step_export_attachment)) {
         deliver(a.name, a.type ?: "application/octet-stream", a.bytes, share)
     }
 
-    fun export(f: StoredFile, share: Boolean = false) = run(if (share) "分享檔案" else "匯出檔案") {
+    fun export(f: StoredFile, share: Boolean = false) = run(if (share) tr(Res.string.step_share_file) else tr(Res.string.step_export_file)) {
         deliver(f.name, f.mediaType, data(f.id), share)
     }
 
     /** Saves [bytes] through the platform save dialog, or hands them to another app when [share]. */
     private suspend fun deliver(name: String, mediaType: String, bytes: ByteArray, share: Boolean): Boolean {
         val done = if (share) model.platform.shareFile(name, mediaType, bytes) else model.platform.saveFile(name, mediaType, bytes)
-        if (!done) model.message.value = if (share) "未分享" else "未匯出"
+        if (!done) model.message.value = if (share) tr(Res.string.msg_not_shared) else tr(Res.string.msg_not_exported)
         return done
     }
 
@@ -1441,12 +1455,12 @@ class FilesModel(private val model: WalletModel) {
     fun hasEvidence(f: StoredFile): Boolean = f.timestamps.isNotEmpty() || f.signatureValidation != null
 
     /** Exports [f] with its time stamps and revocation data as a ZIP, for checking elsewhere. */
-    fun exportWithEvidence(f: StoredFile, share: Boolean = false) = run(if (share) "分享文件與證據" else "匯出文件與證據") {
+    fun exportWithEvidence(f: StoredFile, share: Boolean = false) = run(if (share) tr(Res.string.files_share_evidence) else tr(Res.string.files_export_evidence)) {
         val entries = ArrayList<Pair<String, ByteArray>>()
         entries.add(f.name to data(f.id))
         entries.addAll(evidenceEntries(f, ""))
-        entries.add("說明.txt" to evidenceReadme(listOf(f), null).encodeToByteArray())
-        val name = f.name.substringBeforeLast('.').ifBlank { f.name } + "（含證據）.zip"
+        entries.add(tr(Res.string.export_readme_name) to evidenceReadme(listOf(f), null).encodeToByteArray())
+        val name = f.name.substringBeforeLast('.').ifBlank { f.name } + tr(Res.string.export_evidence_suffix)
         deliver(name, "application/zip", DocumentSigning.zip(entries), share)
     }
 
@@ -1455,7 +1469,7 @@ class FilesModel(private val model: WalletModel) {
      * names them, so other systems can check it), their evidence under 證據/, and a list of the files by signing
      * point with what the wallet found.
      */
-    fun exportContainer(main: StoredFile, share: Boolean = false) = run(if (share) "分享公文容器" else "匯出公文容器") {
+    fun exportContainer(main: StoredFile, share: Boolean = false) = run(if (share) tr(Res.string.files_container_share) else tr(Res.string.files_container_export)) {
         val all = (listOf(main) + members(main)).distinctBy { it.id }
         val entries = ArrayList<Pair<String, ByteArray>>()
         val used = HashSet<String>()
@@ -1466,12 +1480,12 @@ class FilesModel(private val model: WalletModel) {
                 (f.name.substringAfterLast('.', "").let { if (it.isEmpty()) "" else ".$it" })
             used.add(name)
             entries.add(name to data(f.id))
-            entries.addAll(evidenceEntries(f, "證據/$name/"))
+            entries.addAll(evidenceEntries(f, tr(Res.string.export_evidence_dir, name)))
         }
-        entries.add("說明.txt" to evidenceReadme(all, containerLayout(main)).encodeToByteArray())
-        val name = main.name.substringBeforeLast('.').ifBlank { main.name } + "（公文容器）.zip"
+        entries.add(tr(Res.string.export_readme_name) to evidenceReadme(all, containerLayout(main)).encodeToByteArray())
+        val name = main.name.substringBeforeLast('.').ifBlank { main.name } + tr(Res.string.export_container_suffix)
         if (deliver(name, "application/zip", DocumentSigning.zip(entries), share)) {
-            model.message.value = (if (share) "已分享 " else "已匯出 ") + "${all.size} 個檔案與它們的證據"
+            model.message.value = (if (share) tr(Res.string.msg_shared_prefix) else tr(Res.string.msg_exported_prefix)) + tr(Res.string.msg_files_with_evidence, all.size)
         }
     }
 
@@ -1479,45 +1493,45 @@ class FilesModel(private val model: WalletModel) {
     private fun evidenceEntries(f: StoredFile, dir: String): List<Pair<String, ByteArray>> = buildList {
         val prefix = dir.ifEmpty { f.name.substringBeforeLast('.').ifBlank { f.name } + "." }
         f.timestamps.forEachIndexed { i, t ->
-            add("${prefix}時戳${i + 1}.tsr" to t.token.fromBase64())
-            t.validation?.let { addAll(validationEntries(it, "${prefix}時戳${i + 1}-")) }
+            add(tr(Res.string.export_tsr_name, prefix, i + 1) to t.token.fromBase64())
+            t.validation?.let { addAll(validationEntries(it, tr(Res.string.export_tsr_prefix, prefix, i + 1))) }
         }
-        f.signatureValidation?.let { addAll(validationEntries(it, "${prefix}簽章-")) }
+        f.signatureValidation?.let { addAll(validationEntries(it, tr(Res.string.export_signature_prefix, prefix))) }
     }
 
     private fun validationEntries(v: ValidationData, prefix: String): List<Pair<String, ByteArray>> = buildList {
-        v.certificates.forEachIndexed { i, c -> add("${prefix}憑證${i + 1}.cer" to c.fromBase64()) }
+        v.certificates.forEachIndexed { i, c -> add(tr(Res.string.export_cert_name, prefix, i + 1) to c.fromBase64()) }
         v.ocsps.forEachIndexed { i, o -> add("${prefix}OCSP${i + 1}.der" to o.fromBase64()) }
         v.crls.forEachIndexed { i, c -> add("${prefix}CRL${i + 1}.crl" to c.fromBase64()) }
     }
 
     /** The text that goes with an export: each file's digest and check, its evidence and, for a container, the points. */
     private fun evidenceReadme(list: List<StoredFile>, layout: ContainerLayout?): String = buildString {
-        append("本壓縮檔由 DIW Wallet 匯出，匯出時間 ").append(Instant.fromEpochSeconds(Clock.System.now().epochSeconds)).append("（UTC）。\n")
-        append("時戳（.tsr）為 RFC 3161 時戳回應，涵蓋檔案的 SHA-256；憑證為 DER（.cer），OCSP 回應與 CRL 為 DER。\n\n")
+        append(tr(Res.string.export_readme_intro)).append(Instant.fromEpochSeconds(Clock.System.now().epochSeconds)).append(tr(Res.string.export_readme_utc))
+        append(tr(Res.string.export_readme_formats))
         for (f in list) {
-            append("檔案：").append(f.name).append("\n")
-            append("  SHA-256：").append(f.sha256).append("\n")
+            append(tr(Res.string.export_readme_file)).append(f.name).append("\n")
+            append(tr(Res.string.export_readme_sha)).append(f.sha256).append("\n")
             f.report?.let { r ->
-                append("  檢查結果：").append(r.verdict.name).append("（").append(Instant.fromEpochSeconds(r.checkedAt)).append("）\n")
-                r.signatures.forEach { sig -> append("  簽章：").append(sig.label).append("　").append(sig.verdict.name).append("\n") }
+                append(tr(Res.string.export_readme_check)).append(r.verdict.name).append(tr(Res.string.paren_open)).append(Instant.fromEpochSeconds(r.checkedAt)).append(tr(Res.string.export_readme_paren_close))
+                r.signatures.forEach { sig -> append(tr(Res.string.export_readme_signature)).append(sig.label).append(tr(Res.string.sep_space)).append(sig.verdict.name).append("\n") }
             }
             f.timestamps.forEachIndexed { i, t ->
-                append("  時戳").append(i + 1).append("：").append(t.tsa ?: "時戳機構").append("　").append(Instant.fromEpochSeconds(t.time)).append("\n")
+                append(tr(Res.string.export_readme_timestamp)).append(i + 1).append(tr(Res.string.label_colon_sep)).append(t.tsa ?: tr(Res.string.tsa_fallback)).append(tr(Res.string.sep_space)).append(Instant.fromEpochSeconds(t.time)).append("\n")
                 t.validation?.let { append("    ").append(it.summary()).append("\n") }
             }
-            f.signatureValidation?.let { append("  簽章撤銷資訊：").append(it.summary()).append("\n") }
+            f.signatureValidation?.let { append(tr(Res.string.export_readme_revocation)).append(it.summary()).append("\n") }
         }
         if (layout != null) {
-            append("\n線上簽核檔：").append(layout.approval.name).append("\n")
+            append(tr(Res.string.export_readme_approval)).append(layout.approval.name).append("\n")
             layout.points.forEach { p ->
-                append(p.title).append(p.signature?.let { "　" + it.verdict.name } ?: "").append("\n")
+                append(p.title).append(p.signature?.let { tr(Res.string.sep_space) + it.verdict.name } ?: "").append("\n")
                 p.files.forEach { append("  ").append(it.name).append("\n") }
-                p.changed.forEach { append("  ").append(it).append("（內容與簽核時不同）\n") }
-                p.missing.forEach { append("  ").append(it).append("（不在容器內）\n") }
+                p.changed.forEach { append("  ").append(it).append(tr(Res.string.export_readme_changed)) }
+                p.missing.forEach { append("  ").append(it).append(tr(Res.string.export_readme_absent)) }
             }
             if (layout.others.isNotEmpty()) {
-                append("簽核檔未列出的檔案\n")
+                append(tr(Res.string.export_readme_unlisted))
                 layout.others.forEach { append("  ").append(it.name).append("\n") }
             }
         }
@@ -1527,11 +1541,11 @@ class FilesModel(private val model: WalletModel) {
      * Deletes [f]. The files in its container go back to being files of their own, or are deleted with it when
      * [withMembers] (files inherited from the document it was signed from stay with that document).
      */
-    fun delete(f: StoredFile, withMembers: Boolean = false) = run("刪除檔案") {
+    fun delete(f: StoredFile, withMembers: Boolean = false) = run(tr(Res.string.step_delete_file)) {
         val members = files.value.filter { it.bundleOf == f.id }
         if (withMembers) members.forEach { remove(it) } else members.forEach { save(it.copy(bundleOf = null)) }
         remove(f)
-        if (withMembers && members.isNotEmpty()) model.message.value = "已刪除公文與容器內 ${members.size} 個檔案"
+        if (withMembers && members.isNotEmpty()) model.message.value = tr(Res.string.msg_deleted_container, members.size)
         model.showTab(HomeTab.FILES)
     }
 
@@ -1566,35 +1580,35 @@ class FilesModel(private val model: WalletModel) {
         certification: Int? = null,
         /** Show the PDF signature on a page; null keeps it invisible. */
         visible: VisibleSignature? = null,
-    ) = run("準備簽署") {
+    ) = run(tr(Res.string.step_prepare_sign)) {
         if (form == SignForm.OPENPGP_DETACHED) {
-            signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException("OpenPGP 簽章需要 OpenPGP 卡（或 YubiKey 等安全金鑰）"))
+            signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException(tr(Res.string.msg_pgp_needs_card)))
             return@run
         }
         val case = if (form == SignForm.APPROVAL) approvalCase(f).also { c ->
-            if (c.missing.isNotEmpty()) throw SigningException("簽核檔列出的檔案不在錢包內：" + c.missing.joinToString("、") + "。請先匯入同一案件的檔案")
-            if (c.files.isEmpty()) throw SigningException("沒有要簽核的公文檔案")
+            if (c.missing.isNotEmpty()) throw SigningException(tr(Res.string.msg_approval_missing) + c.missing.joinToString(tr(Res.string.sep_list)) + tr(Res.string.msg_approval_import))
+            if (c.files.isEmpty()) throw SigningException(tr(Res.string.msg_approval_none))
         } else null
         val data = data(f.id)
-        val signer = withContext(model.unlockProvider) { signer(choice, "DIW MY WALLET 簽署：" + f.name) }
+        val signer = withContext(model.unlockProvider) { signer(choice, tr(Res.string.sign_reason_prefix) + f.name) }
         // A CSC service that offers signatures/timestamp time-stamps its own signatures (falling back to the chosen authority).
         val cscTs = (signer as? CscSigner)?.let { runCatching { it.timestamper() }.getOrNull() }
         val ts = if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
         // A CSC service without signatures/signHash but with signatures/signDoc builds the PAdES CMS itself.
         val viaSignDoc = form == SignForm.PADES && signer is CscSigner && !signer.supportsSignHash() && signer.supportsSignDoc()
         if (signer is CscSigner && !viaSignDoc && !signer.supportsSignHash()) {
-            throw SigningException(if (signer.supportsSignDoc()) "這個遠端簽章服務只提供 signatures/signDoc，目前只能用於 PAdES（PDF）簽章" else "這個遠端簽章服務沒有提供 signatures/signHash 或 signatures/signDoc")
+            throw SigningException(if (signer.supportsSignDoc()) tr(Res.string.msg_csc_signdoc_only) else tr(Res.string.msg_csc_no_sign))
         }
         val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
         val archive = form != SignForm.APPROVAL && level.archive
         if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
-            is SignerChoice.Card -> "簽署中：依提示再次感應自然人憑證卡（同一張卡）"
-            is SignerChoice.Piv -> "簽署中：依提示再次感應 PIV 卡（同一張卡）"
-            is SignerChoice.OpenPgp -> if (choice.reader.external) "簽署中：請讓 OpenPGP 卡或 YubiKey 保持接上" else "簽署中：依提示再次感應 OpenPGP 卡（同一張卡）"
-            is SignerChoice.MobileMoica -> "簽署中：請在行動自然人憑證 App 確認"
-            is SignerChoice.Csc -> "簽署中：請依畫面授權這次簽章"
-            else -> "簽署中"
+            is SignerChoice.Card -> tr(Res.string.step_sign_moica)
+            is SignerChoice.Piv -> tr(Res.string.step_sign_piv)
+            is SignerChoice.OpenPgp -> if (choice.reader.external) tr(Res.string.step_sign_pgp_usb) else tr(Res.string.step_sign_pgp_nfc)
+            is SignerChoice.MobileMoica -> tr(Res.string.step_sign_mobile)
+            is SignerChoice.Csc -> tr(Res.string.step_sign_csc)
+            else -> tr(Res.string.step_signing)
         }
         val signerName = DocumentSigning.certificateSummary(signer.certificateChain.first())?.first
         if (case != null) {
@@ -1625,14 +1639,14 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
         }
-        busy.value = "檢查並保存簽署結果"
+        busy.value = tr(Res.string.step_check_save_signed)
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
         // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
         val reached = reachedLevel(file(stored.id) ?: stored)
-        val levelNote = "，" + (reached ?: level.short) + (certification?.let { "，認證簽章 P=$it" } ?: "")
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = "${form.title}$levelNote，以${signer.source.title}簽署")
+        val levelNote = tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
+        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
         val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-        model.message.value = "已簽署並保存：${stored.name}" + (reached?.let { "（$it" + if (lower) "，低於所選的 ${level.short}：取不到撤銷資訊）" else "）" } ?: "")
+        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1660,10 +1674,10 @@ class FilesModel(private val model: WalletModel) {
 
     /** The text of a visible signature: who signed, when (local time), and the reason and location when given. */
     fun appearanceLines(signerName: String, epochSeconds: Long, reason: String, location: String): List<String> = buildList {
-        add("數位簽署：" + signerName.take(40))
-        add("時間：" + localTime(epochSeconds))
-        reason.trim().takeIf { it.isNotEmpty() }?.let { add("原因：" + it.take(40)) }
-        location.trim().takeIf { it.isNotEmpty() }?.let { add("地點：" + it.take(40)) }
+        add(tr(Res.string.appearance_signed) + signerName.take(40))
+        add(tr(Res.string.appearance_time) + localTime(epochSeconds))
+        reason.trim().takeIf { it.isNotEmpty() }?.let { add(tr(Res.string.appearance_reason) + it.take(40)) }
+        location.trim().takeIf { it.isNotEmpty() }?.let { add(tr(Res.string.appearance_location) + it.take(40)) }
     }
 
     /**
@@ -1703,8 +1717,10 @@ class FilesModel(private val model: WalletModel) {
     /** The baseline level the inspection of [f] found, such as "PAdES B-LT"; null when the report does not say. */
     private fun reachedLevel(f: StoredFile): String? {
         val r = f.report ?: return null
-        val line = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).lastOrNull { "等級：B-" in it } ?: return null
-        return line.replace(" 等級：", " ").replace("等級：", " ")
+        // Notes of either language ("PAdES 等級：B-LT", "PAdES level: B-LT"), so reports saved before a language change work.
+        val level = Regex("([A-Z][A-Za-z]*AdES)[^B]*(B-(?:LTA|LT|T|B))")
+        val match = (r.notes + r.signatures.lastOrNull()?.notes.orEmpty()).mapNotNull { level.find(it) }.lastOrNull() ?: return null
+        return match.groupValues[1] + " " + match.groupValues[2]
     }
 
     /** A signed PDF whose signatures can be extended: it has a signature or time stamp and is not encrypted. */
@@ -1715,14 +1731,14 @@ class FilesModel(private val model: WalletModel) {
      * Extends every signature of a signed PDF (延長保存): their chains and revocation data go into the DSS and a
      * document time stamp covers it all (PAdES B-LTA). The result is a new file; the original stays as it is.
      */
-    fun extendPdf(f: StoredFile) = run("取得撤銷資訊並加上文件時戳") {
+    fun extendPdf(f: StoredFile) = run(tr(Res.string.step_extend)) {
         val result = DocumentSigning.extendPdf(data(f.id), revocationFetch, timestamper())
-        busy.value = "檢查並保存延長後的檔案"
+        busy.value = tr(Res.string.step_check_save_extended)
         val stored = store(f.name.substringBeforeLast('.') + "-ltv.pdf", result.pdf, FileOrigin.SIGNED, f.name, parentId = f.id)
         val reached = reachedLevel(file(stored.id) ?: stored)
         model.record(HistoryKind.SIGNED, TsaServices.byId(model.settings.tsaId).name, null, listOf(f.name),
-            note = "延長保存：${result.signatures} 個簽章或時戳加上長期驗證資料與文件時戳" + (reached?.let { "，$it" } ?: ""))
-        model.message.value = "已延長保存：${stored.name}；" + result.validation.summary()
+            note = tr(Res.string.history_extend_note, result.signatures) + (reached?.let { tr(Res.string.cert_path_len_sep, it) } ?: ""))
+        model.message.value = tr(Res.string.msg_extended_saved, stored.name) + result.validation.summary()
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1736,21 +1752,21 @@ class FilesModel(private val model: WalletModel) {
         val bytes = withContext(model.unlockProvider) {
             DocumentSigning.signApproval(previous?.let { data(it.id) }, case.files.map { it.name to data(it.id) }, signer, point)
         }
-        busy.value = "檢查並保存簽核檔"
+        busy.value = tr(Res.string.step_check_save_approval)
         val owner = case.main ?: f
-        val name = previous?.name ?: (owner.name.substringBeforeLast('.') + "-簽核.si")
+        val name = previous?.name ?: (owner.name.substringBeforeLast('.') + tr(Res.string.approval_file_suffix))
         var stored = store(name, bytes, FileOrigin.SIGNED, previous?.name ?: owner.name, parentId = previous?.id ?: owner.id)
         case.main?.let { main ->
             stored = (file(stored.id) ?: stored).copy(bundleOf = main.id).also { save(it) }
             previous?.takeIf { it.bundleOf == main.id }?.let { old -> save((file(old.id) ?: old).copy(bundleOf = null)) }
         }
         if (timestamp) runCatching { addTimestampNow(file(stored.id) ?: stored) }
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, case.files.map { it.name }, note = "${SignForm.APPROVAL.title}（${point.action}），以${signer.source.title}簽署")
-        model.message.value = "已加上簽核點：${stored.name}，涵蓋 ${case.files.size} 個檔案" + if (previous != null && case.main != null) "；前一版簽核檔移出容器，仍保存在文件分頁" else ""
+        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, case.files.map { it.name }, note = tr(Res.string.history_approval_note, SignForm.APPROVAL.title, point.action, signer.source.title))
+        model.message.value = tr(Res.string.msg_approval_added, stored.name, case.files.size) + if (previous != null && case.main != null) tr(Res.string.msg_approval_previous) else ""
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
-    private suspend fun signer(choice: SignerChoice, hint: String = "DIW MY WALLET 文件簽署"): DocumentSigner = when (choice) {
+    private suspend fun signer(choice: SignerChoice, hint: String = tr(Res.string.sign_default_reason)): DocumentSigner = when (choice) {
         is SignerChoice.Card -> cardSigner(choice)
         is SignerChoice.Piv -> pivSigner(choice)
         is SignerChoice.Pkcs12 -> DocumentSigning.pkcs12Signer(choice.file, choice.password)
@@ -1767,11 +1783,11 @@ class FilesModel(private val model: WalletModel) {
      * certificate, the certificate the card signed for itself before, or a new self-issued one (kept for next time).
      */
     private suspend fun openPgpSigner(choice: SignerChoice.OpenPgp, x509: Boolean): OpenPgpTapSigner {
-        busy.value = OpenPgpModel.tapMessage(choice.reader, "讀取卡片")
+        busy.value = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_read_card))
         val signer = OpenPgpTapSigner(
             choice.reader.reader, choice.pin, model.openPgp.knownBodies(), { model.openPgp.selfIssuedCertificate(it) },
-            tapMessage = OpenPgpModel.tapMessage(choice.reader, "讀取卡片"),
-            signMessage = OpenPgpModel.tapMessage(choice.reader, "以同一張卡完成簽署"),
+            tapMessage = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_read_card)),
+            signMessage = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_same_card)),
         )
         signer.load(x509)
         val made = signer.selfIssued
@@ -1787,18 +1803,18 @@ class FilesModel(private val model: WalletModel) {
     private suspend fun signOpenPgp(f: StoredFile, choice: SignerChoice.OpenPgp) {
         val data = data(f.id)
         val signer = openPgpSigner(choice, x509 = false)
-        val info = signer.info ?: throw SigningException("尚未讀取 OpenPGP 卡")
+        val info = signer.info ?: throw SigningException(tr(Res.string.msg_pgp_not_read))
         val key = signer.signatureKey
         val fpr = key.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
         val listed = fpr?.let { model.openPgp.holder(it) }
         val added = if (listed == null || (listed.trust == OpenPgpTrust.UNVERIFIED)) runCatching { model.openPgp.addCard(info) }.isSuccess else false
-        busy.value = OpenPgpModel.tapMessage(choice.reader, "以同一張卡完成簽署")
+        busy.value = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_same_card))
         val bytes = signer.signDetached(data)
-        busy.value = "檢查並保存簽署結果"
+        busy.value = tr(Res.string.step_check_save_signed)
         val stored = store("${f.name}.asc", bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = f.id)
         val name = model.openPgp.holder(fpr ?: "")?.info?.name ?: info.cardholder ?: info.label
-        model.record(HistoryKind.SIGNED, name, null, listOf(f.name), note = "${SignForm.OPENPGP_DETACHED.title}，以${SignerSource.OPENPGP.title}簽署（${key.algorithm}）")
-        model.message.value = "已簽署並保存：${stored.name}" + if (added) "；這張卡的公開金鑰已加入 OpenPGP 公開金鑰清單（自己的卡）" else ""
+        model.record(HistoryKind.SIGNED, name, null, listOf(f.name), note = tr(Res.string.history_pgp_note, SignForm.OPENPGP_DETACHED.title, SignerSource.OPENPGP.title, key.algorithm))
+        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + if (added) tr(Res.string.msg_pgp_key_added) else ""
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1810,26 +1826,26 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Decrypts the OpenPGP message [f] with the card on [reader] and stores the content (and the signatures inside). */
-    fun decryptOpenPgp(f: StoredFile, reader: NfcReaderOption, pin: String) = run("以 OpenPGP 卡解密") {
+    fun decryptOpenPgp(f: StoredFile, reader: NfcReaderOption, pin: String) = run(tr(Res.string.pgp_decrypt)) {
         val bytes = data(f.id)
-        busy.value = OpenPgpModel.tapMessage(reader, "解密這份訊息")
+        busy.value = OpenPgpModel.tapMessage(reader, tr(Res.string.step_decrypt))
         val (info, session) = OpenPgpCards.sessionKey(
-            reader.reader, OpenPgpModel.tapMessage(reader, "解密這份訊息"), pin, bytes, model.openPgp.knownBodies(),
+            reader.reader, OpenPgpModel.tapMessage(reader, tr(Res.string.step_decrypt)), pin, bytes, model.openPgp.knownBodies(),
         )
-        busy.value = "解密並檢查完整性"
+        busy.value = tr(Res.string.step_decrypt_check)
         val plain = withContext(Dispatchers.Default) { OpenPgp.decrypt(bytes, session.first, session.second) }
         val dec = info.key(OpenPgpKeySlot.DECRYPTION)?.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
         if (dec != null && model.openPgp.holder(dec) == null) runCatching { model.openPgp.addCard(info) }
         val stored = storePlain(f, plain, FileOrigin.DECRYPTED)
-        model.message.value = "已解密並保存：${stored.name}" + if (plain.detachedSignature != null) "（內含的簽章另存為 .asc）" else ""
+        model.message.value = tr(Res.string.msg_decrypted_saved, stored.name) + if (plain.detachedSignature != null) tr(Res.string.msg_decrypted_sig) else ""
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
     /** Takes the content out of a signed (or plain) OpenPGP message [f], keeping its signatures as a detached signature. */
-    fun unwrapOpenPgp(f: StoredFile) = run("取出 OpenPGP 訊息的內容") {
-        val plain = withContext(Dispatchers.Default) { OpenPgp.literal(data(f.id)) } ?: throw SigningException("這份 OpenPGP 訊息沒有可取出的內容")
+    fun unwrapOpenPgp(f: StoredFile) = run(tr(Res.string.step_unwrap)) {
+        val plain = withContext(Dispatchers.Default) { OpenPgp.literal(data(f.id)) } ?: throw SigningException(tr(Res.string.msg_unwrap_none))
         val stored = storePlain(f, plain, FileOrigin.UNWRAPPED)
-        model.message.value = "已取出並保存：${stored.name}"
+        model.message.value = tr(Res.string.msg_unwrapped_saved, stored.name)
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1848,14 +1864,14 @@ class FilesModel(private val model: WalletModel) {
      * Encrypts [f] to the listed keys [fingerprints] (AES-256 with integrity protection) and stores the message as
      * `.asc` when [armor], else `.gpg`.
      */
-    fun encryptOpenPgp(f: StoredFile, fingerprints: List<String>, armor: Boolean) = run("以 OpenPGP 加密") {
-        if (fingerprints.isEmpty()) throw SigningException("請至少選擇一位收件人")
+    fun encryptOpenPgp(f: StoredFile, fingerprints: List<String>, armor: Boolean) = run(tr(Res.string.pgp_encrypt_title)) {
+        if (fingerprints.isEmpty()) throw SigningException(tr(Res.string.msg_choose_recipient))
         val entries = fingerprints.mapNotNull { model.openPgp.entry(it) }
         val certs = entries.map { it.certificate.fromBase64() }
         val cardKeys = entries.flatMap { it.cardKeySet }.toSet()
         val bytes = withContext(Dispatchers.Default) { OpenPgp.encrypt(data(f.id), f.name, certs, armor, cardKeys) }
         val stored = store(f.name + if (armor) ".asc" else ".gpg", bytes, FileOrigin.ENCRYPTED, f.name, parentId = f.id)
-        model.message.value = "已加密給 ${entries.size} 位收件人並保存：${stored.name}"
+        model.message.value = tr(Res.string.msg_encrypted_saved, entries.size, stored.name)
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
@@ -1886,14 +1902,14 @@ class FilesModel(private val model: WalletModel) {
             val environment = try {
                 model.server.mobileMoica(server)
             } catch (e: Exception) {
-                throw SigningException("無法確認正式服務端是否提供行動自然人憑證簽署：" + model.describe(e), e)
-            } ?: throw SigningException("正式服務端沒有提供行動自然人憑證簽署（未啟用 twfido），身分證統一編號沒有送出")
+                throw SigningException(tr(Res.string.moica_server_unknown) + model.describe(e), e)
+            } ?: throw SigningException(tr(Res.string.msg_moica_server_none))
             val serverClient = ServerMobileMoicaClient(model.http, server, model.server.tokenFor(server))
             fromServer = serverClient to environment
             client = serverClient
             cacheKey = "server:" + server + ":" + choice.idNumber
         } else {
-            if (sp == null) throw SigningException("沒有選擇行動自然人憑證的 SP 帳號")
+            if (sp == null) throw SigningException(tr(Res.string.msg_moica_no_sp))
             if (!sp.builtIn) mobileMoicaSp = sp
             client = TwFidoClient(model.http, sp.environment, MobileMoicaCredentials(sp.serviceId.trim(), sp.aesKeyBase64.trim()))
             cacheKey = sp.environment.name + ":" + sp.serviceId + ":" + choice.idNumber
@@ -1906,7 +1922,7 @@ class FilesModel(private val model: WalletModel) {
         )
         val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         val cert = mobileMoicaCerts[cacheKey] ?: run {
-            busy.value = "第一次使用：先在行動自然人憑證 App 確認一次以取得憑證，接著再確認簽署"
+            busy.value = tr(Res.string.step_moica_first)
             val c = signer.load()
             fromServer?.let { (serverClient, environment) -> checkServerCertificate(serverClient, environment, c, moica) }
             c.also { mobileMoicaCerts[cacheKey] = it }
@@ -1923,13 +1939,13 @@ class FilesModel(private val model: WalletModel) {
     private fun checkServerCertificate(client: ServerMobileMoicaClient, expected: MobileMoicaEnvironment, cert: ByteArray, moica: ByteArray) {
         val ran = client.environment
         if (ran != null && ran != expected) {
-            throw SigningException("正式服務端這次使用的行動自然人憑證環境（${ran.title}）與它宣告的（${expected.title}）不同，已停止")
+            throw SigningException(tr(Res.string.msg_moica_env_mismatch, ran.title, expected.title))
         }
         when (expected) {
             MobileMoicaEnvironment.PRODUCTION -> if (!PlatformCrypto.certificateSignedBy(cert, moica)) {
-                throw SigningException("正式服務端回傳的憑證不是內政部憑證管理中心（MOICA G3）簽發，無法確認它真的經由行動自然人憑證簽署，已停止")
+                throw SigningException(tr(Res.string.msg_moica_not_g3))
             }
-            MobileMoicaEnvironment.UAT -> busy.value = "正式服務端使用行動自然人憑證測試環境（UAT），簽出的憑證僅供測試"
+            MobileMoicaEnvironment.UAT -> busy.value = tr(Res.string.msg_moica_uat)
         }
     }
 
@@ -1946,7 +1962,7 @@ class FilesModel(private val model: WalletModel) {
 
     /** A card signer with its certificate read (first tap); MOICA G3 is added to the chain when it issued the card. */
     private suspend fun cardSigner(choice: SignerChoice.Card): GpkiTapSigner {
-        busy.value = if (choice.reader.external) "請把自然人憑證卡插入讀卡機「${choice.reader.name}」，讀取期間請勿拔出。" else "請將自然人憑證卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
+        busy.value = if (choice.reader.external) tr(Res.string.step_insert_moica, choice.reader.name) else tr(Res.string.step_tap_moica)
         val moica = TwPkiAnchors.moicaG3.encoded.toByteArray()
         val probe = GpkiTapSigner(choice.reader.reader, choice.pin)
         val cert = probe.load()
@@ -1959,7 +1975,7 @@ class FilesModel(private val model: WalletModel) {
      * slot, so only the leaf certificate is used; the verifier builds the chain from its trust store.
      */
     private suspend fun pivSigner(choice: SignerChoice.Piv): PivTapSigner {
-        busy.value = if (choice.reader.external) "請讓 PIV 卡或 YubiKey 透過「${choice.reader.name}」保持接上手機，簽署期間請勿拔除。" else "請將 PIV 卡（IC 晶片面）貼近手機背面的 NFC 感應區，讀取期間保持貼合不要移動。"
+        busy.value = if (choice.reader.external) tr(Res.string.step_keep_piv, choice.reader.name) else tr(Res.string.step_tap_piv)
         val signer = PivTapSigner(choice.reader.reader, choice.pin, choice.slot)
         signer.load()
         return signer
@@ -1970,8 +1986,8 @@ class FilesModel(private val model: WalletModel) {
      * certificates and let the user pick a slot instead of the wallet choosing one.
      */
     suspend fun pivCertificates(reader: NfcReaderOption): List<PivCard.KeyInfo> {
-        val message = if (reader.external) "請讓 PIV 卡或 YubiKey 透過「${reader.name}」保持接上手機，讀取卡片上的憑證清單。"
-            else "請將 PIV 卡（IC 晶片面）貼近 NFC 感應區讀取卡片上的憑證清單。"
+        val message = if (reader.external) tr(Res.string.step_keep_piv_list, reader.name)
+            else tr(Res.string.step_tap_piv_list)
         return reader.reader.scan(message, tagInteractionFunc = { tag ->
             val card = PivCard(NfcCardChannel(tag))
             card.connect()
@@ -1982,7 +1998,7 @@ class FilesModel(private val model: WalletModel) {
     /** The wallet's own P-256 key (document-signer identity) with a self-issued certificate in [name]. */
     private suspend fun walletSigner(name: String): DocumentSigner {
         val key = identity(HolderIdentities.DOCUMENT_SIGNER)
-        val subject = name.trim().ifEmpty { "DIW MY WALLET 使用者" }
+        val subject = name.trim().ifEmpty { tr(Res.string.wallet_user) }
         val certKey = "wallet-cert:" + key.alias + ":" + subject
         val t = model.storage.getTable(metaTable)
         val cert = t.get(certKey)?.toByteArray() ?: DocumentSigning.selfIssuedCertificate(
@@ -2009,18 +2025,18 @@ class FilesModel(private val model: WalletModel) {
      * document issuer key, with the document check and a time stamp as evidence. Signing the document itself is a
      * separate step (PAdES, CAdES, XAdES); a signature made before deriving is part of the document check.
      */
-    fun derive(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, zk: ZkPdfChoice? = null) = run("產生衍生憑證") {
+    fun derive(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, zk: ZkPdfChoice? = null) = run(tr(Res.string.step_derive)) {
         val data = data(f.id)
         // A zkPDF proof is planned first, so a file the template does not fit fails before anything is created.
         val zkPlan = zk?.let { choice ->
             val plan = zkPdfPlan(data, choice.profileId, choice.predicates)
-            val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+            val local = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf))
             if (choice.selfHosted) {
                 val (remote, composition) = selfHostedProver(local)
                 // A remote proof waits on the host's queue as well, so it gets the longer time limit.
                 Triple(ZkPdfChoice(choice.profileId, choice.predicates, composition, extended = true, selfHosted = true), plan, remote)
             } else {
-                if (!local.ready(choice.composition, true)) throw SigningException("zkPDF 的電路檔尚未下載完成")
+                if (!local.ready(choice.composition, true)) throw SigningException(tr(Res.string.msg_zkpdf_circuits))
                 Triple(choice, plan, local)
             }
         }
@@ -2031,11 +2047,11 @@ class FilesModel(private val model: WalletModel) {
 
     /** The zkPDF plan of [data] for the template [profileId]; fails when the template does not fit or proves nothing. */
     private suspend fun zkPdfPlan(data: ByteArray, profileId: String, predicates: List<ZkPdfPredicate>): ZkPdfPlan {
-        val profile = ZkPdfProfiles.find(profileId, model.settings.testEnvironment) ?: throw SigningException("找不到文件版型，請更新版型")
+        val profile = ZkPdfProfiles.find(profileId, model.settings.testEnvironment) ?: throw SigningException(tr(Res.string.msg_no_layout))
         val plan = withContext(Dispatchers.Default) {
             try { ZkPdfPlanner.plan(data, profile, predicates) } catch (_: PdfException) { null }
-        } ?: throw SigningException("這份 PDF 不符合文件版型「${profile.title}」")
-        if (plan.slots.isEmpty()) throw SigningException("文件版型「${profile.title}」在這份 PDF 中沒有可證明的欄位")
+        } ?: throw SigningException(tr(Res.string.msg_layout_mismatch, profile.title))
+        if (plan.slots.isEmpty()) throw SigningException(tr(Res.string.msg_layout_no_fields, profile.title))
         return plan
     }
 
@@ -2060,7 +2076,7 @@ class FilesModel(private val model: WalletModel) {
         val zkNames = plan?.slots?.map { it.claim }.orEmpty().toSet()
         // A proven field replaces a field of the same name read from the text layer.
         val textClaims = claims.filter { it.name !in zkNames && !DerivedCredentials.isProofClaim(it.name) }
-        if (textClaims.isEmpty() && plan == null) throw SigningException("請至少選擇一個欄位")
+        if (textClaims.isEmpty() && plan == null) throw SigningException(tr(Res.string.derive_choose_one))
         // The evidence states the result as of now, never a report cached from an earlier check.
         val report = refreshed(f).report ?: DocumentInspector.inspect(data, f.name, trustSource)
         val now = Clock.System.now()
@@ -2069,16 +2085,16 @@ class FilesModel(private val model: WalletModel) {
         val evidence = buildList {
             add(DerivedCredentials.signatureEvidence(report))
             val stamp = f.timestamps.lastOrNull { it.trusted }?.let { it.token.fromBase64() }
-                ?: if (timestamp) { busy.value = "向時戳機構取得時戳"; timestamper().timestamp(data) } else null
+                ?: if (timestamp) { busy.value = tr(Res.string.step_get_timestamp); timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
         }
         val zkLabels = plan?.let { p ->
             p.slots.associate { s -> s.claim to (p.profile.field(s.claim)?.label ?: s.claim) } +
-                p.slots.associate { s -> ZkPdfEvidence.OPEN_PREFIX + s.claim to "「${p.profile.field(s.claim)?.label ?: s.claim}」的零知識開啟資料" } +
-                (ZkPdfEvidence.CLAIM to "zkPDF 零知識證明（出示文件欄位時一併勾選）")
+                p.slots.associate { s -> ZkPdfEvidence.OPEN_PREFIX + s.claim to tr(Res.string.derive_zk_opening, p.profile.field(s.claim)?.label ?: s.claim) } +
+                (ZkPdfEvidence.CLAIM to tr(Res.string.derive_zk_claim))
         }.orEmpty()
         val doc = withContext(model.unlockProvider) {
-            busy.value = "產生衍生憑證"
+            busy.value = tr(Res.string.step_derive)
             val issuer = identity(HolderIdentities.DOCUMENT_ISSUER)
             val keys = model.keyRequest()
             val title = textClaims.firstOrNull { it.name == DerivedCredentials.CLAIM_TITLE }?.value ?: plan?.profile?.title ?: f.name
@@ -2090,7 +2106,7 @@ class FilesModel(private val model: WalletModel) {
                 tier = TrustTier.T3.name,
                 environment = TrustEnvironment.USER.id,
                 official = false,
-                anchorName = "本錢包（文件衍生）",
+                anchorName = tr(Res.string.derive_issuer_name),
                 labels = listOf(TrustLabel.SELF_ISSUED.name),
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
@@ -2098,7 +2114,7 @@ class FilesModel(private val model: WalletModel) {
                 claimNames = DerivedCredentials.claimLabels + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
                 profile = PROFILE,
             )
-            val created = model.documentStore.createDocument(displayName = title, typeDisplayName = "文件衍生憑證", appData = record.encode())
+            val created = model.documentStore.createDocument(displayName = title, typeDisplayName = tr(Res.string.files_derived), appData = record.encode())
             try {
                 val credential = if (key != null) {
                     KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, DerivedCredentials.VCT, key.alias)
@@ -2128,9 +2144,9 @@ class FilesModel(private val model: WalletModel) {
         model.documents.value = model.documentStore.listDocuments()
         model.platform.registerDigitalCredentials(model)
         val labels = textClaims.map { DerivedCredentials.labelOf(it) } +
-            plan?.let { p -> p.slots.map { s -> (p.profile.field(s.claim)?.label ?: s.claim) + "（zkPDF）" } }.orEmpty()
-        model.record(HistoryKind.ISSUED, "本錢包（文件衍生）", null, listOf(doc.displayName ?: f.name), labels)
-        model.message.value = if (plan != null) "已產生含 zkPDF 證明的衍生憑證，可在「證件」出示" else "已產生衍生憑證，可在「證件」出示"
+            plan?.let { p -> p.slots.map { s -> (p.profile.field(s.claim)?.label ?: s.claim) + tr(Res.string.derive_zk_suffix) } }.orEmpty()
+        model.record(HistoryKind.ISSUED, tr(Res.string.derive_issuer_name), null, listOf(doc.displayName ?: f.name), labels)
+        model.message.value = if (plan != null) tr(Res.string.msg_derived_zk) else tr(Res.string.msg_derived)
         model.screen.value = Screen.FileDetail(f.id)
     }
 
@@ -2147,10 +2163,10 @@ class FilesModel(private val model: WalletModel) {
         engine: ZkPdfEngine,
     ): ZkPdfCreated {
         val jwk = holderKey.toJwk()
-        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, choice.extended, if (choice.selfHosted) "${compositionTitle(choice.composition)}，自架主機" else compositionTitle(choice.composition)) { step ->
-            step("準備")
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, choice.extended, if (choice.selfHosted) tr(Res.string.zk_job_self_host, compositionTitle(choice.composition)) else compositionTitle(choice.composition)) { step ->
+            step(tr(Res.string.step_prepare))
             ZkPdfProofs.create(pdf, plan, jwk, choice.composition, engine, { kind, done, total ->
-                val text = "產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"
+                val text = tr(Res.string.step_zkpdf_progress, segmentName(kind), done, total)
                 step(text)
                 busy.value = text
             })
@@ -2168,7 +2184,7 @@ class FilesModel(private val model: WalletModel) {
         return when (result) {
             is ZkResult.Ok -> result.value
             is ZkResult.Failed -> throw SigningException(result.reason)
-            ZkResult.Cancelled -> throw SigningException("已取消 zkPDF 證明，未產生衍生憑證")
+            ZkResult.Cancelled -> throw SigningException(tr(Res.string.msg_zkpdf_cancelled))
         }
     }
 
@@ -2181,12 +2197,12 @@ class FilesModel(private val model: WalletModel) {
      * request is made for the desktop composition; an earlier request of the file is replaced.
      */
     fun exportZkPdfRequest(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, choice: ZkPdfChoice) =
-        run("準備電腦版證明請求") {
+        run(tr(Res.string.step_prepare_desktop)) {
             val data = data(f.id)
             val plan = zkPdfPlan(data, choice.profileId, choice.predicates)
-            val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎，無法驗證電腦版回傳的證明")
+            val local = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf_verify))
             val composition = ZkPdfStatement.DESKTOP
-            if (!local.ready(composition, false)) throw SigningException("請先下載驗證電腦版證明所需的驗證金鑰")
+            if (!local.ready(composition, false)) throw SigningException(tr(Res.string.msg_download_vk))
             val keys = model.keyRequest()
             val info = withContext(model.unlockProvider) {
                 keys.secureArea.createKey(null, keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))))
@@ -2200,7 +2216,7 @@ class FilesModel(private val model: WalletModel) {
                 else model.platform.saveFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)
             if (!saved) {
                 runCatching { keys.secureArea.deleteKey(info.alias) }
-                throw SigningException("未保存證明請求")
+                throw SigningException(tr(Res.string.msg_request_not_saved))
             }
             val current = file(f.id) ?: f
             current.zkPdfPending?.let { old -> dropPendingKey(old) }
@@ -2217,7 +2233,7 @@ class FilesModel(private val model: WalletModel) {
                 validDays = validDays,
                 createdAt = Clock.System.now().epochSeconds,
             )))
-            model.message.value = "已保存證明請求；在電腦版錢包的「零知識證明」設定頁開啟它產生證明，再把 ${ZkPdfRemote.RESPONSE_EXTENSION} 檔匯入這裡"
+            model.message.value = tr(Res.string.msg_request_saved, ZkPdfRemote.RESPONSE_EXTENSION)
         }
 
     /**
@@ -2225,48 +2241,48 @@ class FilesModel(private val model: WalletModel) {
      * request, every segment must verify here against the statement this device builds again from the PDF and the
      * waiting key, and the field openings must match; only then is the credential issued with that key.
      */
-    fun importZkPdfProof(f: StoredFile) = run("匯入電腦版產生的證明") {
-        val pending = (file(f.id) ?: f).zkPdfPending ?: throw SigningException("這份文件沒有等待中的證明請求")
+    fun importZkPdfProof(f: StoredFile) = run(tr(Res.string.step_import_desktop)) {
+        val pending = (file(f.id) ?: f).zkPdfPending ?: throw SigningException(tr(Res.string.msg_no_pending))
         val picked = model.platform.pickFile() ?: return@run
-        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException("檔案過大，不是證明檔")
+        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException(tr(Res.string.msg_proof_too_large))
         val response = try {
             ZkPdfRemote.parseResponse(ZkPdfRemote.parse(picked.bytes))
         } catch (_: IllegalArgumentException) {
-            throw SigningException("這不是 zkPDF 證明檔")
+            throw SigningException(tr(Res.string.msg_not_proof))
         }
-        if (response.requestId != pending.requestId) throw SigningException("這個證明檔不是這份文件目前的請求產生的，請匯入最新請求的證明")
+        if (response.requestId != pending.requestId) throw SigningException(tr(Res.string.msg_proof_other_request))
         val secureArea = model.backends.map { it.secureArea }.firstOrNull { it.identifier == pending.secureArea }
-            ?: throw SigningException("找不到證明請求使用的金鑰，請重新產生請求")
+            ?: throw SigningException(tr(Res.string.msg_request_key_missing))
         val holderKey = try {
             secureArea.getKeyInfo(pending.keyAlias).ecPublicKey
         } catch (_: Exception) {
-            throw SigningException("找不到證明請求使用的金鑰，請重新產生請求")
+            throw SigningException(tr(Res.string.msg_request_key_missing))
         }
         val data = data(f.id)
         val plan = zkPdfPlan(data, pending.profileId, pending.predicates.map { ZkPdfPredicate(it.kind, it.claim, it.cutoff) })
-        val local = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
-        if (!local.ready(pending.composition, false)) throw SigningException("請先在設定的「零知識證明」頁下載驗證金鑰")
+        val local = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf))
+        if (!local.ready(pending.composition, false)) throw SigningException(tr(Res.string.msg_download_vk_settings))
         val salts = pending.salts.map { it.fromBase64Url() }
         // The imported output stands in for a prover: it is accepted only when it verifies against this statement.
         val imported = object : ZkPdfEngine by local {
             override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
                 RemoteZkPdfEngine.accept(statement, response.output, local)
         }
-        busy.value = "驗證電腦版產生的證明"
-        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true, "${compositionTitle(pending.composition)}，匯入電腦版證明") { step ->
-            step("驗證證明")
+        busy.value = tr(Res.string.step_verify_desktop)
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true, tr(Res.string.zk_job_desktop_import, compositionTitle(pending.composition))) { step ->
+            step(tr(Res.string.step_verify_proof))
             ZkPdfProofs.create(data, plan, holderKey.toJwk(), pending.composition, imported, { _, _, _ -> }, salts = salts)
         }
         val created = proofResult(job)
         issueDerived(f, data, pending.claims.map { DerivedClaim(it.name, it.value, it.label) }, pending.timestamp, pending.validDays,
             plan, HeldKey(secureArea, pending.keyAlias)) { key ->
-            if (!ZkPdfProofs.binding(key.toJwk()).contentEquals(created.evidence.binding)) throw SigningException("證明綁定的金鑰與憑證不符")
+            if (!ZkPdfProofs.binding(key.toJwk()).contentEquals(created.evidence.binding)) throw SigningException(tr(Res.string.msg_proof_key_mismatch))
             created
         }
     }
 
     /** Drops the request waiting on [f] and its key. */
-    fun cancelZkPdfRequest(f: StoredFile) = run("取消證明請求") {
+    fun cancelZkPdfRequest(f: StoredFile) = run(tr(Res.string.step_cancel_request)) {
         val current = file(f.id) ?: f
         current.zkPdfPending?.let { dropPendingKey(it) }
         save(current.copy(zkPdfPending = null))
@@ -2283,23 +2299,23 @@ class FilesModel(private val model: WalletModel) {
      * the background, checks the result like the phone will, and saves the proof file for the phone to import. The
      * request holds private page content; it is never stored, only proved and dropped.
      */
-    fun proveForPhone() = run("代手機產生 zkPDF 證明") {
+    fun proveForPhone() = run(tr(Res.string.zk_phone_requests)) {
         val picked = model.platform.pickFile() ?: return@run
-        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException("檔案過大，不是證明請求")
+        if (picked.bytes.size > ZkPdfRemote.MAX_BYTES) throw SigningException(tr(Res.string.msg_request_too_large))
         val request = try {
             ZkPdfRemote.parseRequest(ZkPdfRemote.parse(picked.bytes))
         } catch (_: IllegalArgumentException) {
-            throw SigningException("這不是 zkPDF 證明請求檔")
+            throw SigningException(tr(Res.string.msg_not_request))
         }
-        val engine = model.zk.pdf() ?: throw SigningException("此版本或裝置沒有 zkPDF 引擎")
+        val engine = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf))
         val composition = request.statement.composition
         if (!engine.ready(composition, true)) {
-            throw SigningException("尚未下載${if (composition == ZkPdfStatement.DESKTOP) "電腦版" else "手機版"}電路檔，請在這一頁下載後再試")
+            throw SigningException(tr(Res.string.msg_circuits_missing, if (composition == ZkPdfStatement.DESKTOP) tr(Res.string.zk_desktop_spaced) else tr(Res.string.zk_phone_spaced)))
         }
-        val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true, "${compositionTitle(composition)}，代手機產生") { step ->
-            step("準備")
+        val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true, tr(Res.string.zk_job_for_phone, compositionTitle(composition))) { step ->
+            step(tr(Res.string.step_prepare))
             when (val r = engine.prove(request.statement, request.witness) { kind, done, total ->
-                val text = "代手機產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"
+                val text = tr(Res.string.step_for_phone_progress, segmentName(kind), done, total)
                 step(text)
                 busy.value = text
             }) {
@@ -2310,8 +2326,8 @@ class FilesModel(private val model: WalletModel) {
         val output = proofResult(job)
         val bytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(request.id, output)).toString().encodeToByteArray()
         val name = picked.name.substringBeforeLast('.') + ZkPdfRemote.RESPONSE_EXTENSION
-        if (!model.platform.saveFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)) throw SigningException("未保存證明檔")
-        model.message.value = "已保存 $name；在手機上開啟同一份文件，選擇「匯入電腦版產生的證明」"
+        if (!model.platform.saveFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)) throw SigningException(tr(Res.string.msg_proof_not_saved))
+        model.message.value = tr(Res.string.msg_proof_saved, name)
     }
 
     /**
@@ -2320,18 +2336,18 @@ class FilesModel(private val model: WalletModel) {
      */
     private suspend fun selfHostedProver(local: ZkPdfEngine): Pair<RemoteZkPdfEngine, String> {
         val s = model.settings
-        if (s.zkProverUrl.isEmpty()) throw SigningException("尚未在設定的「零知識證明」頁加入自架主機")
-        ZkProverHost.problem(s.zkProverUrl, model.platform::cleartextPermitted)?.let { throw SigningException("自架主機的網址無法使用：$it") }
-        val remote = RemoteZkPdfEngine(ZkProverHost("自架主機", s.zkProverUrl, s.zkProverToken), local, model.http)
-        busy.value = "連線自架主機"
+        if (s.zkProverUrl.isEmpty()) throw SigningException(tr(Res.string.msg_no_self_host))
+        ZkProverHost.problem(s.zkProverUrl, model.platform::cleartextPermitted)?.let { throw SigningException(tr(Res.string.msg_self_host_bad, it)) }
+        val remote = RemoteZkPdfEngine(ZkProverHost(tr(Res.string.zk_self_host), s.zkProverUrl, s.zkProverToken), local, model.http)
+        busy.value = tr(Res.string.step_connect_host)
         val offered = when (val r = remote.compositions()) {
             is ZkResult.Ok -> r.value
             is ZkResult.Failed -> throw SigningException(r.reason)
-            ZkResult.Cancelled -> throw SigningException("已取消 zkPDF 證明，未產生衍生憑證")
+            ZkResult.Cancelled -> throw SigningException(tr(Res.string.msg_zkpdf_cancelled))
         }
-        if (offered.isEmpty()) throw SigningException("自架主機沒有完整的 zkPDF 電路檔")
+        if (offered.isEmpty()) throw SigningException(tr(Res.string.zk_prover_no_circuits_short))
         val composition = SELF_HOST_COMPOSITIONS.firstOrNull { it in offered && local.ready(it, false) }
-            ?: throw SigningException("這台裝置缺少驗證自架主機證明所需的驗證金鑰，請在設定的「零知識證明」頁下載")
+            ?: throw SigningException(tr(Res.string.msg_self_host_vk))
         return remote to composition
     }
 
@@ -2341,12 +2357,12 @@ class FilesModel(private val model: WalletModel) {
     fun zkJobId(fileId: String) = "zkpdf:$fileId"
 
     private fun segmentName(kind: String): String = when (kind) {
-        "sha_content", "sha_opaque" -> "文件雜湊"
-        "inflate0", "inflate" -> "解壓縮"
-        "lex" -> "文字解析"
-        "claim" -> "欄位承諾"
-        "pred" -> "日期條件"
-        else -> "證明"
+        "sha_content", "sha_opaque" -> tr(Res.string.zk_segment_hash)
+        "inflate0", "inflate" -> tr(Res.string.zk_segment_inflate)
+        "lex" -> tr(Res.string.zk_segment_text)
+        "claim" -> tr(Res.string.zk_segment_commit)
+        "pred" -> tr(Res.string.zk_segment_dates)
+        else -> tr(Res.string.zk_segment_proof)
     }
 
     /** Clears the link of every file to the derived credential [documentId], after that credential was deleted. */
@@ -2400,8 +2416,8 @@ class FilesModel(private val model: WalletModel) {
     private suspend fun sourceText(f: StoredFile): String = withContext(Dispatchers.Default) {
         val bytes = data(f.id)
         if (f.report?.format == DocumentFormat.PDF) {
-            val pdf = unlock(f, bytes, null) ?: throw HolderDerivedException("${f.name} 有密碼，請先在文件分頁輸入身分證統一編號開啟")
-            PdfTextExtractor.extract(pdf, 50).takeIf { it.isNotBlank() } ?: throw HolderDerivedException("${f.name} 沒有文字層")
+            val pdf = unlock(f, bytes, null) ?: throw HolderDerivedException(tr(Res.string.msg_pdf_needs_id, f.name))
+            PdfTextExtractor.extract(pdf, 50).takeIf { it.isNotBlank() } ?: throw HolderDerivedException(tr(Res.string.msg_pdf_no_text, f.name))
         } else bytes.decodeToString()
     }
 
@@ -2418,13 +2434,13 @@ class FilesModel(private val model: WalletModel) {
      * Opens the MyData national ID PDF [f] with the holder's ID number (its user password) and reads the fields, as
      * Bonds does; [idNumber] is used for this only and never stored.
      */
-    fun readNationalId(f: StoredFile, idNumber: String) = run("開啟並讀取身分證資料") {
+    fun readNationalId(f: StoredFile, idNumber: String) = run(tr(Res.string.step_open_id)) {
         nationalIdDraft.value = null
         val bytes = data(f.id)
         val text = withContext(Dispatchers.Default) { BondsNationalId.readPdf(bytes, idNumber) }
         passwords[f.id] = listOf(idNumber, BondsNationalId.normalizePassword(idNumber)).first { !PdfFile(bytes, it).passwordRequired }
-        val fields = BondsNationalId.parse(text) ?: throw SigningException("這份 PDF 不是 MyData 的國民身分證資料（找不到統號、姓名或出生日期）")
-        if (fields.unifiedNo == null || fields.name == null) throw SigningException("讀不到身分證統一編號或姓名，無法製作身分證卡")
+        val fields = BondsNationalId.parse(text) ?: throw SigningException(tr(Res.string.msg_not_id_pdf))
+        if (fields.unifiedNo == null || fields.name == null) throw SigningException(tr(Res.string.msg_id_unreadable))
         nationalIdDraft.value = NationalIdDraft(f.id, fields, BondsNationalId.over18(fields.birthdate, Clock.System.now()))
     }
 
@@ -2439,11 +2455,11 @@ class FilesModel(private val model: WalletModel) {
 
     /** Signs the confirmed fields with the citizen certificate card and stores the card with the file. */
     fun issueNationalId(draft: NationalIdDraft, card: SignerChoice.Card) =
-        issueNationalId(draft, if (card.reader.external) "簽署中" else "簽署中：依提示再次感應卡片") { cardSigner(card) }
+        issueNationalId(draft, if (card.reader.external) tr(Res.string.step_signing) else tr(Res.string.step_sign_tap_again)) { cardSigner(card) }
 
     /** Signs with the RSA certificate [signer] gives (the card, read with its first tap); tests pass their own. */
-    internal fun issueNationalId(draft: NationalIdDraft, signing: String, signer: suspend () -> DocumentSigner) = run("製作身分證卡") {
-        val f = file(draft.fileId) ?: throw SigningException("找不到身分證資料檔案")
+    internal fun issueNationalId(draft: NationalIdDraft, signing: String, signer: suspend () -> DocumentSigner) = run(tr(Res.string.step_make_national_id)) {
+        val f = file(draft.fileId) ?: throw SigningException(tr(Res.string.msg_id_file_missing))
         val cardSigner = signer()
         val issued = withContext(model.unlockProvider) {
             val self = identity(HolderIdentities.BONDS_SELF_ISSUED)
@@ -2453,21 +2469,21 @@ class FilesModel(private val model: WalletModel) {
         save((file(f.id) ?: f).copy(nationalId = issued.serialized()))
         nationalIdDraft.value = null
         model.record(
-            HistoryKind.ISSUED, "本人（自然人憑證簽署）", null, listOf("國民身分證（Bonds 自發卡）"),
+            HistoryKind.ISSUED, tr(Res.string.national_id_holder_self), null, listOf(tr(Res.string.national_id_bonds)),
             BondsNationalId.claims(draft.fields, Clock.System.now()).map { BondsNationalId.claimLabels[it.first] ?: it.first },
         )
-        model.message.value = "已製作身分證卡，可回應 Bonds 的自然人憑證自發卡查驗"
+        model.message.value = tr(Res.string.msg_id_made)
         model.screen.value = Screen.NationalId(f.id)
     }
 
     /** Exports the national ID card as Bonds vc+moica JSON. */
-    fun exportNationalId(f: StoredFile, share: Boolean = false) = run(if (share) "分享身分證卡" else "匯出身分證卡") {
-        val card = f.nationalId ?: throw SigningException("這份文件沒有身分證卡")
+    fun exportNationalId(f: StoredFile, share: Boolean = false) = run(if (share) tr(Res.string.step_share_id) else tr(Res.string.step_export_id)) {
+        val card = f.nationalId ?: throw SigningException(tr(Res.string.msg_no_id_card))
         deliver("national-id.vc-moica.json", "application/vc+moica", card.encodeToByteArray(), share)
     }
 
     /** Removes the national ID card; the PDF it was made from stays in the vault. */
-    fun deleteNationalId(f: StoredFile) = run("刪除身分證卡") {
+    fun deleteNationalId(f: StoredFile) = run(tr(Res.string.national_id_delete)) {
         save((file(f.id) ?: f).copy(nationalId = null))
         model.showTab(HomeTab.DOCUMENTS)
     }
@@ -2516,7 +2532,7 @@ class FilesModel(private val model: WalletModel) {
 
         /** SubjectPublicKeyInfo DER of a P-256 public key. */
         fun spki(key: EcPublicKey): ByteArray {
-            val k = key as? EcPublicKeyDoubleCoordinate ?: throw SigningException("錢包金鑰不是 P-256")
+            val k = key as? EcPublicKeyDoubleCoordinate ?: throw SigningException(tr(Res.string.msg_wallet_key_not_p256))
             val prefix = "3059301306072a8648ce3d020106082a8648ce3d030107034200"
             val head = ByteArray(prefix.length / 2) { prefix.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
             return head + byteArrayOf(0x04) + k.x + k.y

@@ -1,5 +1,6 @@
 package diw.wallet.core.document.derived
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.did.DidKeys
 import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentVerdict
@@ -198,7 +199,7 @@ object DerivedCredentials {
         now: Instant = Clock.System.now(),
         validUntil: Instant? = null,
     ): String {
-        val iss = issuer.did ?: throw SigningException("文件發行金鑰沒有 DID")
+        val iss = issuer.did ?: throw SigningException(ct("core_dc_no_did"))
         val jwk = holderKey.toJwk()
         val payload = buildJsonObject {
             put("iss", iss)

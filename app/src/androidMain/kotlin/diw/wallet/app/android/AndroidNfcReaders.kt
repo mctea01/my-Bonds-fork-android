@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -53,22 +56,22 @@ internal object AndroidNfcReaders {
         val problems = mutableListOf<String>()
         val adapter = NfcAdapter.getDefaultAdapter(context)
         when {
-            adapter == null -> problems += "這支手機沒有 NFC。"
-            !adapter.isEnabled -> problems += "NFC 未開啟，請到系統設定開啟後再重新尋找。"
-            else -> readers += NfcReaderOption("這支手機的 NFC", external = false, reader = ReaderModeTagReader(context, platform), bluetooth = true)
+            adapter == null -> problems += tr(Res.string.nfcr_none)
+            !adapter.isEnabled -> problems += tr(Res.string.nfcr_off)
+            else -> readers += NfcReaderOption(tr(Res.string.nfcr_this_phone), external = false, reader = ReaderModeTagReader(context, platform), bluetooth = true)
         }
         val usb = context.getSystemService(UsbManager::class.java)
         usb?.deviceList?.values?.forEach { device ->
             val index = (0 until device.interfaceCount).firstOrNull { device.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_CSCID }
             if (index == null) {
                 // A security key with only FIDO or OTP turned on has no smart card interface for PIV or OpenPGP.
-                tokenName(device)?.let { problems += "$it 已接上，但沒有開啟智慧卡（CCID）介面，無法使用 PIV 或 OpenPGP。請以 Yubico Authenticator 等工具在 USB 介面設定開啟 CCID；只支援 FIDO 的 Security Key 系列沒有這兩種功能。" }
+                tokenName(device)?.let { problems += tr(Res.string.nfcr_no_ccid, it) }
                 return@forEach
             }
-            val name = tokenName(device) ?: device.productName?.takeIf { it.isNotBlank() } ?: "USB 讀卡機"
-            readers += NfcReaderOption("$name（USB）", external = true, reader = UsbCcidTagReader(context, usb, device, index))
+            val name = tokenName(device) ?: device.productName?.takeIf { it.isNotBlank() } ?: tr(Res.string.nfcr_usb_reader)
+            readers += NfcReaderOption(tr(Res.string.nfcr_usb_named, name), external = true, reader = UsbCcidTagReader(context, usb, device, index))
         }
-        if (readers.isEmpty()) problems += "也可以用 OTG 接上 USB 非接觸式讀卡機（CCID），或直接插上 YubiKey 等 USB 安全金鑰。"
+        if (readers.isEmpty()) problems += tr(Res.string.nfcr_otg_hint)
         return NfcReaderList(readers, problems.joinToString("").ifEmpty { null })
     }
 
@@ -111,8 +114,8 @@ private class ReaderModeTagReader(private val context: Context, private val plat
         options: NfcScanOptions,
         context: CoroutineContext,
     ): T {
-        val adapter = NfcAdapter.getDefaultAdapter(this.context) ?: throw IllegalStateException("這支手機沒有 NFC")
-        if (!adapter.isEnabled) throw IllegalStateException("NFC 未開啟，請到系統設定開啟")
+        val adapter = NfcAdapter.getDefaultAdapter(this.context) ?: throw IllegalStateException(tr(Res.string.nfcr_none_short))
+        if (!adapter.isEnabled) throw IllegalStateException(tr(Res.string.nfc_off))
         val outcome = CompletableDeferred<T>()
         // A failure inside one tap ends the scan through [outcome], not by failing the caller's job.
         val guard = SupervisorJob(currentCoroutineContext()[Job])
@@ -136,11 +139,11 @@ private class ReaderModeTagReader(private val context: Context, private val plat
             }
         }
         val enable: (Activity) -> Unit = { a -> adapter.enableReaderMode(a, callback, FLAGS, null) }
-        val host = platform.activity ?: throw IllegalStateException("請先開啟錢包畫面")
+        val host = platform.activity ?: throw IllegalStateException(tr(Res.string.nfcr_open_wallet))
         platform.readerMode = enable
         // Show the scan sheet only while reader mode is actually waiting for a tap, so the user taps at the right
         // moment and a tap outside this window is not left for the system to report as an unhandled tag.
-        platform.nfcScanPromptState.value = message ?: "請將卡片貼近手機背面的 NFC 感應區"
+        platform.nfcScanPromptState.value = message ?: tr(Res.string.nfcr_hold_card)
         withContext(Dispatchers.Main) { enable(host) }
         try {
             return outcome.await()
@@ -178,7 +181,7 @@ private class UsbCcidTagReader(
         options: NfcScanOptions,
         context: CoroutineContext,
     ): T {
-        if (!usb.hasPermission(device) && !requestPermission()) throw IllegalStateException("沒有取得 USB 讀卡機的使用權限")
+        if (!usb.hasPermission(device) && !requestPermission()) throw IllegalStateException(tr(Res.string.nfcr_usb_denied))
         // Talk to the CCID interface directly rather than through the SDK's USB driver, which failed to read the
         // bulk-in endpoint on these security keys. The wallet's own CCID framing waits long enough for PIV and OpenPGP
         // card operations and handles the reader's time-extension replies.
@@ -190,13 +193,13 @@ private class UsbCcidTagReader(
             if (ep.type != UsbConstants.USB_ENDPOINT_XFER_BULK) continue
             if (ep.direction == UsbConstants.USB_DIR_IN) bulkIn = ep else bulkOut = ep
         }
-        if (bulkIn == null || bulkOut == null) throw IllegalStateException("這張 CCID 介面沒有可用的傳輸端點")
-        val connection = usb.openDevice(device) ?: throw IllegalStateException("無法開啟 USB 讀卡機")
+        if (bulkIn == null || bulkOut == null) throw IllegalStateException(tr(Res.string.nfcr_no_endpoints))
+        val connection = usb.openDevice(device) ?: throw IllegalStateException(tr(Res.string.nfcr_usb_open_failed))
         try {
-            if (!connection.claimInterface(iface, true)) throw IllegalStateException("無法取得 USB 智慧卡介面（可能被其他程式占用）")
+            if (!connection.claimInterface(iface, true)) throw IllegalStateException(tr(Res.string.nfcr_usb_claim_failed))
             val tag = UsbCcidTag(connection, bulkOut, bulkIn)
             tag.powerOn()
-            return withContext(context) { tagInteractionFunc(tag) } ?: throw IllegalStateException("讀卡沒有取得結果")
+            return withContext(context) { tagInteractionFunc(tag) } ?: throw IllegalStateException(tr(Res.string.nfcr_no_result))
         } finally {
             withContext(NonCancellable) {
                 runCatching { connection.releaseInterface(iface) }
@@ -250,10 +253,10 @@ private class UsbCcidTag(
             writeMessage(0x62, ByteArray(0)) // bPowerSelect = 0 (automatic voltage)
             var msg = readMessage()
             while (msg.size >= 10 && ((msg[7].toInt() shr 6) and 0x03) == 2) msg = readMessage() // time extension
-            if (msg.size < 10) throw NfcTagLostException("CCID 回應標頭不完整")
+            if (msg.size < 10) throw NfcTagLostException(tr(Res.string.nfcr_short_header))
             if (((msg[7].toInt() shr 6) and 0x03) == 0) return@withContext // slot powered: a card is present
             // Failed, usually because no card is present yet; wait and poll again until a card appears.
-            if (waited >= POWER_ON_TIMEOUT_MS) throw NfcTagLostException("讀卡機上沒有偵測到卡片")
+            if (waited >= POWER_ON_TIMEOUT_MS) throw NfcTagLostException(tr(Res.string.nfcr_no_card))
             delay(POWER_ON_POLL_MS.toLong())
             waited += POWER_ON_POLL_MS
         }
@@ -261,7 +264,7 @@ private class UsbCcidTag(
 
     override suspend fun transceive(command: CommandApdu): ResponseApdu {
         val resp = exchange(0x6F, command.encode())
-        if (resp.size < 2) throw NfcTagLostException("CCID 回應過短，缺少狀態位元組")
+        if (resp.size < 2) throw NfcTagLostException(tr(Res.string.nfcr_short_response))
         val sw = ((resp[resp.size - 2].toInt() and 0xFF) shl 8) or (resp[resp.size - 1].toInt() and 0xFF)
         return ResponseApdu(sw, ByteString(resp.copyOfRange(0, resp.size - 2)))
     }
@@ -279,10 +282,10 @@ private class UsbCcidTag(
         var result: ByteArray? = null
         while (result == null) {
             val msg = readMessage()
-            if (msg.size < 10) throw NfcTagLostException("CCID 回應標頭不完整")
+            if (msg.size < 10) throw NfcTagLostException(tr(Res.string.nfcr_short_header))
             when ((msg[7].toInt() shr 6) and 0x03) {
                 2 -> {} // time extension requested: the reader is still working, wait for the next block
-                1 -> throw NfcTagLostException("CCID 指令失敗（bError 0x" + (msg[8].toInt() and 0xFF).toString(16) + "）")
+                1 -> throw NfcTagLostException(tr(Res.string.nfcr_command_failed) + (msg[8].toInt() and 0xFF).toString(16) + tr(Res.string.paren_close))
                 else -> result = msg.copyOfRange(10, msg.size)
             }
         }
@@ -302,7 +305,7 @@ private class UsbCcidTag(
         var off = 0
         while (off < msg.size) {
             val n = connection.bulkTransfer(bulkOut, msg.copyOfRange(off, msg.size), msg.size - off, WRITE_TIMEOUT_MS)
-            if (n < 0) throw NfcTagLostException("送出 CCID 指令失敗（bulk-out）")
+            if (n < 0) throw NfcTagLostException(tr(Res.string.nfcr_bulk_out))
             off += n
         }
     }
@@ -314,7 +317,7 @@ private class UsbCcidTag(
         var need = 10
         while (true) {
             val n = connection.bulkTransfer(bulkIn, chunk, chunk.size, READ_TIMEOUT_MS)
-            if (n < 0) throw NfcTagLostException("讀取 CCID 回應失敗（bulk-in）")
+            if (n < 0) throw NfcTagLostException(tr(Res.string.nfcr_bulk_in))
             if (n == 0) continue
             out.write(chunk, 0, n)
             if (out.size() >= 10 && need == 10) {

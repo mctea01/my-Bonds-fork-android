@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -44,23 +47,23 @@ data class ZkPdfDeriveForm(
      * The predicates for [match], or the reason they cannot be proven: a date that does not parse, more than two
      * conditions, or a condition the document's own date does not meet (the circuit would refuse it).
      */
-    fun predicates(match: FilesModel.ZkPdfMatch): Pair<List<ZkPdfPredicate>, String?> {
+    fun predicates(match: FilesModel.ZkPdfMatch): Pair<List<ZkPdfPredicate>, Pair<org.jetbrains.compose.resources.StringResource, String>?> {
         val list = ArrayList<ZkPdfPredicate>()
         for ((claim, c) in conditions) {
             val field = match.fields.firstOrNull { it.name == claim } ?: continue
             val label = field.label ?: claim
             val date = runCatching { LocalDate.parse(c.date.trim()) }.getOrNull()
-                ?: return emptyList<ZkPdfPredicate>() to "「$label」的條件日期格式為 年-月-日"
+                ?: return emptyList<ZkPdfPredicate>() to (Res.string.zkpdf_date_format to label)
             val cutoff = date.year * 10000 + (date.month.ordinal + 1) * 100 + date.day
-            if (cutoff !in 10000101..99991231) return emptyList<ZkPdfPredicate>() to "「$label」的條件日期超出範圍"
+            if (cutoff !in 10000101..99991231) return emptyList<ZkPdfPredicate>() to (Res.string.zkpdf_date_range to label)
             val value = runCatching { LocalDate.parse(field.value) }.getOrNull()
                 ?.let { it.year * 10000 + (it.month.ordinal + 1) * 100 + it.day }
-                ?: return emptyList<ZkPdfPredicate>() to "「$label」不是日期，無法加條件"
+                ?: return emptyList<ZkPdfPredicate>() to (Res.string.zkpdf_not_date to label)
             val holds = if (c.kind == ZkPdfPredicate.DATE_LE) value <= cutoff else value >= cutoff
-            if (!holds) return emptyList<ZkPdfPredicate>() to "文件中的「$label」不符合這個條件，無法證明"
+            if (!holds) return emptyList<ZkPdfPredicate>() to (Res.string.zkpdf_not_met to label)
             list += ZkPdfPredicate(c.kind, claim, cutoff)
         }
-        if (list.size > 2) return emptyList<ZkPdfPredicate>() to "最多加兩個日期條件"
+        if (list.size > 2) return emptyList<ZkPdfPredicate>() to (Res.string.zkpdf_max_conditions to "")
         return list to null
     }
 }
@@ -91,8 +94,8 @@ fun ZkPdfDeriveSection(
     if (matches == null) return
     if (matches.isEmpty()) {
         Text(
-            "zkPDF 零知識證明：沒有符合這份 PDF 的文件版型。版型隨發布更新" +
-                (if (settings.testEnvironment) "；測試環境可在設定的「零知識證明」頁匯入測試版型" else "") + "。",
+            stringResource(Res.string.zkpdf_no_profile) +
+                (if (settings.testEnvironment) stringResource(Res.string.zkpdf_no_profile_test) else "") + stringResource(Res.string.sentence_end),
             style = MaterialTheme.typography.bodySmall,
         )
         return
@@ -100,58 +103,58 @@ fun ZkPdfDeriveSection(
     val match = form.match(matches) ?: return
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = form.on, onCheckedChange = { onChange(form.copy(on = it, profileId = match.profile.id)) })
-        Text("附上 zkPDF 零知識證明（證明欄位出自 PDF 內的簽章，查驗方不需要原檔）")
+        Text(stringResource(Res.string.zkpdf_attach))
     }
     if (!form.on) return
     if (matches.size > 1) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             matches.forEach { m ->
                 FilterChip(selected = m.profile.id == match.profile.id, onClick = { onChange(form.copy(profileId = m.profile.id, conditions = emptyMap())) },
-                    label = { Text(m.profile.title + if (m.profile.test) "（測試）" else "") })
+                    label = { Text(m.profile.title + if (m.profile.test) stringResource(Res.string.test_suffix) else "") })
             }
         }
     }
-    Text("文件版型：${match.profile.title}（${match.profile.id}）" + if (match.profile.test) "・測試版型，只在測試環境查驗" else "",
+    Text(stringResource(Res.string.zkpdf_profile, match.profile.title, match.profile.id) + if (match.profile.test) stringResource(Res.string.zkpdf_test_profile) else "",
         style = MaterialTheme.typography.bodySmall)
-    Text("可證明的欄位（出示時可個別選擇是否揭露）", style = MaterialTheme.typography.bodyMedium)
+    Text(stringResource(Res.string.zkpdf_provable), style = MaterialTheme.typography.bodyMedium)
     match.fields.forEach { field ->
         LabelValue(field.label ?: field.name, field.value)
         if (match.profile.field(field.name)?.normalize == ZkPdfNormalize.DATE) {
             val c = form.conditions[field.name]
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = c == null, onClick = { onChange(form.copy(conditions = form.conditions - field.name)) }, label = { Text("不加條件") })
+                FilterChip(selected = c == null, onClick = { onChange(form.copy(conditions = form.conditions - field.name)) }, label = { Text(stringResource(Res.string.zkpdf_no_condition)) })
                 FilterChip(selected = c?.kind == ZkPdfPredicate.DATE_LE,
                     onClick = { onChange(form.copy(conditions = form.conditions + (field.name to ZkPdfConditionInput(ZkPdfPredicate.DATE_LE, c?.date ?: "")))) },
-                    label = { Text("不晚於") })
+                    label = { Text(stringResource(Res.string.zkpdf_not_after)) })
                 FilterChip(selected = c?.kind == ZkPdfPredicate.DATE_GE,
                     onClick = { onChange(form.copy(conditions = form.conditions + (field.name to ZkPdfConditionInput(ZkPdfPredicate.DATE_GE, c?.date ?: "")))) },
-                    label = { Text("不早於") })
+                    label = { Text(stringResource(Res.string.zkpdf_not_before)) })
             }
             if (c != null) {
                 OutlinedTextField(
                     value = c.date,
                     onValueChange = { onChange(form.copy(conditions = form.conditions + (field.name to c.copy(date = it.take(10))))) },
-                    label = { Text("日期（2008-01-01）") },
+                    label = { Text(stringResource(Res.string.zkpdf_date_label)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Text("查驗方可只看到「${field.label ?: field.name}${if (c.kind == ZkPdfPredicate.DATE_LE) "不晚於" else "不早於"}這個日期」，不必揭露實際日期。",
+                Text(stringResource(Res.string.zkpdf_condition_note, field.label ?: field.name, if (c.kind == ZkPdfPredicate.DATE_LE) stringResource(Res.string.zkpdf_not_after_inline) else stringResource(Res.string.zkpdf_not_before_inline)),
                     style = MaterialTheme.typography.bodySmall)
             }
         }
     }
     if (match.unavailable.isNotEmpty()) {
-        Text("無法證明的欄位", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.zkpdf_unprovable), style = MaterialTheme.typography.bodyMedium)
         match.unavailable.forEach { (label, why) ->
-            Text("$label：$why", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.pair_colon, label, why), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
     }
-    form.predicates(match).second?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Text("證明在背景產生：電腦約需 2 到 10 分鐘，手機需要 10 分鐘以上、佔用約 2.5 GB 記憶體，建議改用電腦版或自架主機；可隨時取消，未完成時不會產生憑證。只支援單頁、沒有開啟密碼且只有一個文件簽章的 PDF。",
+    form.predicates(match).second?.let { Text(stringResource(it.first, it.second), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    Text(stringResource(Res.string.zkpdf_background),
         style = MaterialTheme.typography.bodySmall)
     if (job != null && job.active) {
-        Text(job.step ?: if (job.phase == ZkJobPhase.QUEUED) "等待其他證明完成" else "產生中", style = MaterialTheme.typography.bodySmall,
+        Text(job.step ?: if (job.phase == ZkJobPhase.QUEUED) stringResource(Res.string.zkpdf_waiting) else stringResource(Res.string.zkpdf_making), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary)
-        OutlinedButton(onClick = { model.files.cancelZkPdf(fileId) }) { Text("取消 zkPDF 證明") }
+        OutlinedButton(onClick = { model.files.cancelZkPdf(fileId) }) { Text(stringResource(Res.string.zkpdf_cancel)) }
     }
 }

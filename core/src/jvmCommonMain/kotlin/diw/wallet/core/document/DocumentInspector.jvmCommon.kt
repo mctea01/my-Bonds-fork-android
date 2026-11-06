@@ -1,5 +1,7 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
+import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
@@ -61,7 +63,7 @@ actual object DocumentInspector {
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
         } catch (e: Exception) {
-            base.copy(format = sniff(data, fileName), problems = listOf("無法讀取檔案：" + (e.message ?: e.javaClass.simpleName)))
+            base.copy(format = sniff(data, fileName), problems = listOf(ct("core_file_unreadable") + (e.message ?: e.javaClass.simpleName)))
         }
     }
 
@@ -71,11 +73,11 @@ actual object DocumentInspector {
         val text = runCatching { bytes.decodeToString(throwOnInvalidSequence = true) }.getOrNull()?.trim() ?: return bytes to null
         val pem = Regex("-----BEGIN ([A-Z0-9 ]+)-----([A-Za-z0-9+/=\\s]+)-----END \\1-----").find(text)
         if (pem != null && pem.groupValues[1] in setOf("PKCS7", "CMS", "PKCS #7 SIGNED DATA")) {
-            return Base64.getMimeDecoder().decode(pem.groupValues[2]) to "檔案是 PEM 文字，已解碼"
+            return Base64.getMimeDecoder().decode(pem.groupValues[2]) to ct("core_file_pem_decoded")
         }
         if (text.length >= 64 && text.all { it.isLetterOrDigit() || it in "+/=\r\n " }) {
             val decoded = runCatching { Base64.getMimeDecoder().decode(text) }.getOrNull()
-            if (decoded != null && decoded.isNotEmpty() && decoded[0] == 0x30.toByte()) return decoded to "檔案是 base64 文字，已解碼"
+            if (decoded != null && decoded.isNotEmpty() && decoded[0] == 0x30.toByte()) return decoded to ct("core_file_base64_decoded")
         }
         return bytes to null
     }
@@ -129,19 +131,19 @@ actual object DocumentInspector {
     private fun officePackage(files: Map<String, ByteArray>): String? {
         files["[Content_Types].xml"]?.decodeToString()?.let { types ->
             return when {
-                "wordprocessingml" in types -> "Word 文件（OOXML）"
-                "spreadsheetml" in types -> "Excel 試算表（OOXML）"
-                "presentationml" in types -> "PowerPoint 簡報（OOXML）"
-                else -> "Office Open XML 文件"
+                "wordprocessingml" in types -> ct("core_office_word")
+                "spreadsheetml" in types -> ct("core_office_excel")
+                "presentationml" in types -> ct("core_office_powerpoint")
+                else -> ct("core_office_ooxml")
             }
         }
         val mime = files["mimetype"]?.decodeToString()?.trim() ?: return null
         if (!mime.startsWith("application/vnd.oasis.opendocument")) return null
         return when {
-            mime.endsWith(".text") -> "ODF 文字文件"
-            mime.endsWith(".spreadsheet") -> "ODF 試算表"
-            mime.endsWith(".presentation") -> "ODF 簡報"
-            else -> "ODF 文件"
+            mime.endsWith(".text") -> ct("core_odf_text")
+            mime.endsWith(".spreadsheet") -> ct("core_odf_spreadsheet")
+            mime.endsWith(".presentation") -> ct("core_odf_presentation")
+            else -> ct("core_odf_document")
         }
     }
 
@@ -150,20 +152,20 @@ actual object DocumentInspector {
         val ext = name?.substringAfterLast('.', "")?.lowercase()
         if (!Zip.isZip(b)) {
             val kind = when (ext) {
-                "xls" -> "Excel 97-2003 試算表"
-                "ppt" -> "PowerPoint 97-2003 簡報"
-                else -> "Word 97-2003 文件"
+                "xls" -> ct("core_office_excel_97")
+                "ppt" -> ct("core_office_powerpoint_97")
+                else -> ct("core_office_word_97")
             }
-            return listOf("$kind（OLE 複合文件）。錢包保存原檔，不解析內容；請以 Office 等軟體開啟。")
+            return listOf(ct("core_office_ole_kept", kind))
         }
-        val files = runCatching { Zip.read(b) }.getOrNull() ?: return listOf("Office 文件")
-        val kind = officePackage(files) ?: "Office 文件"
-        val notes = mutableListOf("$kind。錢包保存原檔，不解析內容；請以 Office 等軟體開啟。")
+        val files = runCatching { Zip.read(b) }.getOrNull() ?: return listOf(ct("core_office_document"))
+        val kind = officePackage(files) ?: ct("core_office_document")
+        val notes = mutableListOf(ct("core_office_kept", kind))
         if ((ext == "doc" || ext == "xls" || ext == "ppt") && files.containsKey("[Content_Types].xml")) {
-            notes.add("副檔名是 .$ext，但內容是新版 OOXML 格式")
+            notes.add(ct("core_office_ext_mismatch", ext))
         }
         if (files.keys.any { it.startsWith("_xmlsignatures/") } || files.containsKey("META-INF/documentsignatures.xml")) {
-            notes.add("檔案內含 Office 數位簽章，錢包目前不驗證這種簽章；可另以 CAdES 或 ASiC-E 簽署整個檔案")
+            notes.add(ct("core_office_signature_unchecked"))
         }
         return notes
     }
@@ -171,21 +173,21 @@ actual object DocumentInspector {
     /** The kind of picture, and for a TIFF its pages and coding (page images of official documents are CCITT G4 scans). */
     private fun imageNote(b: ByteArray): String? {
         val kind = ImageKind.of(b) ?: return null
-        if (kind != ImageKind.TIFF) return "${kind.title} 圖片"
-        val pages = runCatching { TiffDecoder.directories(b) }.getOrNull() ?: return "TIFF 圖片（無法讀取頁面資訊）"
-        return "TIFF 圖片，共 ${pages.size} 頁；第 1 頁 ${pages.first().describe()}"
+        if (kind != ImageKind.TIFF) return ct("core_image_kind", kind.title)
+        val pages = runCatching { TiffDecoder.directories(b) }.getOrNull() ?: return ct("core_tiff_unreadable")
+        return ct("core_tiff_pages", pages.size, pages.first().describe())
     }
 
     /** Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one. */
     private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, now: Instant): DocumentReport {
         val store = runCatching { C2paManifests.read(b) }.getOrNull() ?: return report
         val (info, signature) = C2paSignatures(pki, checks).inspect(store, now)
-        val note = "含 C2PA 內容憑證（${info.manifests.size} 份 manifest，存放於 ${store.container}）"
+        val note = ct("core_c2pa_present", info.manifests.size, store.container)
         return report.copy(c2pa = info, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
     }
 
     private fun certificateNote(b: ByteArray): String? =
-        Bc.holder(b)?.let { "這是一張 X.509 憑證（${it.subject}），可在設定的信任錨點匯入" }
+        Bc.holder(b)?.let { ct("core_x509_file", it.subject) }
 
     // ---- PDF ----
 
@@ -204,45 +206,45 @@ actual object DocumentInspector {
         val fields = PdfSignatures(PdfFile(bytes)).fields().sortedBy { it.signedLength }
         val index = fields.indexOfFirst { it.byteRange == range }
         val report = pdf(bytes, base, checks, now, range to sha256)
-        if (index < 0) return report.copy(signatures = emptyList(), problems = report.problems + "找不到被證明的簽章")
-        val label = fields[index].fieldName ?: "簽章 ${index + 1}"
+        if (index < 0) return report.copy(signatures = emptyList(), problems = report.problems + ct("core_attested_sig_missing"))
+        val label = fields[index].fieldName ?: ct("core_signature_n", index + 1)
         return report.copy(signatures = report.signatures.filter { it.label == label })
     }
 
     private suspend fun pdf(bytes: ByteArray, base: DocumentReport, checks: CmsChecks, now: Instant,
         withheld: Pair<List<Long>, ByteArray>? = null): DocumentReport {
         val pdf = try { PdfFile(bytes) } catch (e: PdfException) {
-            return base.copy(format = DocumentFormat.PDF, problems = listOf("PDF 結構無法讀取：" + e.message))
+            return base.copy(format = DocumentFormat.PDF, problems = listOf(ct("core_pdf_unreadable") + e.message))
         }
         val sigs = PdfSignatures(pdf)
         val notes = ArrayList<String>()
         val problems = ArrayList<String>()
-        if (pdf.reconstructed) notes.add("PDF 的交互參照表損壞，已以掃描方式讀取")
+        if (pdf.reconstructed) notes.add(ct("core_pdf_xref_repaired"))
         if (pdf.encrypted) {
-            if (pdf.encryptionProblem != null) problems.add("PDF 已加密且需要開啟密碼（${pdf.encryptionProblem}）；仍會檢查簽章")
-            else notes.add("PDF 有加密（開啟密碼為空，只限制複製或修改）")
+            if (pdf.encryptionProblem != null) problems.add(ct("core_pdf_encrypted_password", pdf.encryptionProblem))
+            else notes.add(ct("core_pdf_encrypted_empty"))
         }
         val dss = sigs.dss()
         val fields = sigs.fields().sortedBy { it.signedLength }
         val fileEnd = significantEnd(bytes)
         val results = ArrayList<Pair<PdfSignatureField, SignatureInfo>>()
         for ((i, f) in fields.withIndex()) {
-            val label = f.fieldName ?: "簽章 ${i + 1}"
+            val label = f.fieldName ?: ct("core_signature_n", i + 1)
             val info = pdfSignature(f, bytes, label, dss, checks, now, withheld?.takeIf { it.first == f.byteRange }?.second)
             val whole = f.signedLength >= fileEnd
             val (changes, changeProblems) = if (whole) LaterChanges.NONE to emptyList() else sigs.changesAfter(f.signedLength)
             val p = info.problems.toMutableList()
             val n = info.notes.toMutableList()
             var integrity = info.integrity
-            if (!f.gapIsContentsOnly) { p.add("簽章範圍（ByteRange）沒有涵蓋簽章值以外的全部內容"); integrity = Check.FAIL }
+            if (!f.gapIsContentsOnly) { p.add(ct("core_pdf_byterange_gap")); integrity = Check.FAIL }
             p.addAll(changeProblems)
             // ISO 32000-2 12.8.2.2: a DSS and document time stamps may follow any certification, P=1 included.
             val laterSignature = fields.any { it.signedLength > f.signedLength && it.subFilter != "ETSI.RFC3161" }
             if (f.docMdpPermission == 1 && changes != LaterChanges.NONE && (changes != LaterChanges.SIGNATURES_ONLY || laterSignature)) {
-                p.add("此認證簽章不允許任何修改，但之後仍有更新")
+                p.add(ct("core_pdf_docmdp_violated"))
             }
-            if (f.docMdpPermission != null) n.add("認證簽章（DocMDP P=${f.docMdpPermission}）")
-            if (!whole && changes == LaterChanges.SIGNATURES_ONLY) n.add("簽署後只加入簽章、時戳或驗證資料")
+            if (f.docMdpPermission != null) n.add(ct("core_pdf_docmdp", f.docMdpPermission))
+            if (!whole && changes == LaterChanges.SIGNATURES_ONLY) n.add(ct("core_pdf_only_sig_updates"))
             results.add(f to info.copy(
                 integrity = integrity,
                 coversWholeDocument = whole,
@@ -262,11 +264,11 @@ actual object DocumentInspector {
             if (info.certificateValidity == Check.PASS || info.timestamp?.trusted == true || info.signer == null) return@map f to info
             val later = docStamps.filter { it.first.signedLength > f.signedLength }.minByOrNull { it.first.signedLength } ?: return@map f to info
             val t = later.second.timestamp!!.time
-            if (t in info.signer.notBefore..info.signer.notAfter && info.problems.none { it.contains("撤銷") }) {
+            if (t in info.signer.notBefore..info.signer.notAfter && info.problems.none { it.startsWith(CoreText.prefix("core_cms_cert_revoked")) }) {
                 f to info.copy(
                     certificateValidity = Check.PASS,
-                    problems = info.problems.filterNot { it == "簽署憑證不在有效期間內" },
-                    notes = info.notes.filterNot { it.startsWith("簽署憑證已過期") } + "簽署憑證在之後的文件時戳時間仍有效，簽章可長期驗證",
+                    problems = info.problems.filterNot { it == ct("core_cms_cert_not_valid") },
+                    notes = info.notes.filterNot { it.startsWith(ct("core_cert_expired_prefix")) } + ct("core_cert_valid_at_doc_tst"),
                 )
             } else f to info
         }
@@ -277,7 +279,7 @@ actual object DocumentInspector {
         val placements = sigs.placements().filter { it.fieldName != null && it.fieldName in labels }.map {
             SignaturePlacementInfo(it.fieldName!!, it.page, it.x0, it.y0, it.x1, it.y1, it.visible)
         }
-        if (dss != null) notes.add("文件含長期驗證資料（DSS）：${dss.certificates.size} 張憑證、${dss.ocsps.size} 份 OCSP、${dss.crls.size} 份 CRL")
+        if (dss != null) notes.add(ct("core_pdf_dss", dss.certificates.size, dss.ocsps.size, dss.crls.size))
         return base.copy(
             format = DocumentFormat.PDF,
             title = sigs.title(),
@@ -310,7 +312,7 @@ actual object DocumentInspector {
             ownTs || docTsAfter >= 1 -> "B-T"
             else -> "B-B"
         }
-        return "PAdES 等級：$level"
+        return ct("core_pades_level", level)
     }
 
     private suspend fun pdfSignature(f: PdfSignatureField, bytes: ByteArray, label: String, dss: diw.wallet.core.document.pdf.PdfDss?, checks: CmsChecks, now: Instant,
@@ -318,14 +320,14 @@ actual object DocumentInspector {
         if (withheldSha256 != null) {
             // Parts of the signed bytes are withheld (zkPDF): the proven SHA-256 stands for them. Only SHA-256 CMS.
             if (f.subFilter !in setOf("ETSI.CAdES.detached", "adbe.pkcs7.detached")) {
-                return checks.failed(SignatureFormat.PADES, label, "這種簽章格式不能用於零知識證明")
+                return checks.failed(SignatureFormat.PADES, label, ct("core_zk_format_unsupported"))
             }
             val format = if (f.subFilter == "ETSI.CAdES.detached") SignatureFormat.PADES else SignatureFormat.PDF_PKCS7
             return checks.verify(trimDer(f.contents), null, format, label, now, dss?.certificates.orEmpty(), dss?.ocsps.orEmpty(),
                 dss?.crls.orEmpty(), fallbackClaimed = PdfDates.parse(f.claimedTime), contentSha256 = withheldSha256).first()
         }
         val signed = try { f.signedData(bytes) } catch (e: PdfException) {
-            return checks.failed(SignatureFormat.PADES, label, "簽章範圍無效：" + e.message)
+            return checks.failed(SignatureFormat.PADES, label, ct("core_sig_range_invalid") + e.message)
         }
         val contents = trimDer(f.contents)
         val dssCerts = dss?.certificates.orEmpty()
@@ -342,8 +344,8 @@ actual object DocumentInspector {
                 val r = checks.verify(contents, null, SignatureFormat.PDF_PKCS7_SHA1, label, now, dssCerts, dssOcsps, dssCrls, fallbackClaimed = m).first()
                 val inner = runCatching { CmsChecks.signedData(contents, null).signedContent?.content as? ByteArray }.getOrNull()
                 if (inner == null || !inner.contentEquals(DocCrypto.digest("SHA-1", signed))) {
-                    r.copy(integrity = Check.FAIL, problems = r.problems + "SHA-1 摘要與文件內容不符")
-                } else r.copy(notes = r.notes + "使用較弱的 SHA-1（adbe.pkcs7.sha1）")
+                    r.copy(integrity = Check.FAIL, problems = r.problems + ct("core_sha1_digest_mismatch"))
+                } else r.copy(notes = r.notes + ct("core_weak_sha1_pkcs7"))
             }
             "adbe.x509.rsa_sha1" -> x509RsaSha1(f, signed, contents, label, checks, now)
             "ETSI.CAdES.detached" -> checks.verify(contents, signed, SignatureFormat.PADES, label, now, dssCerts, dssOcsps, dssCrls, fallbackClaimed = m).first()
@@ -374,15 +376,15 @@ actual object DocumentInspector {
         val signer = certs.firstOrNull()
         val value = runCatching { ASN1OctetString.getInstance(Bc.parse(contents)).octets }.getOrDefault(contents)
         val problems = ArrayList<String>()
-        val integrity = if (signer == null) { problems.add("簽章沒有附上憑證"); Check.NOT_CHECKED } else {
+        val integrity = if (signer == null) { problems.add(ct("core_sig_no_cert")); Check.NOT_CHECKED } else {
             val ok = runCatching {
                 val key = org.bouncycastle.cert.jcajce.JcaX509CertificateConverter().setProvider(Bc.provider).getCertificate(signer).publicKey
                 Signature.getInstance("SHA1withRSA", Bc.provider).run { initVerify(key); update(signed); verify(value) }
             }.getOrDefault(false)
-            if (ok) Check.PASS else { problems.add("簽章值不符"); Check.FAIL }
+            if (ok) Check.PASS else { problems.add(ct("core_sig_value_mismatch")); Check.FAIL }
         }
         return checks.evaluate(SignatureFormat.PDF_X509, label, "RSA SHA-1", signer, certs, integrity, null, null, emptyList(), emptyList(), now,
-            problems, mutableListOf("使用較弱的 SHA-1（adbe.x509.rsa_sha1）"))
+            problems, mutableListOf(ct("core_weak_sha1_x509")))
     }
 
     private fun timestampSignature(ts: TimestampInfo, format: SignatureFormat, label: String, checks: CmsChecks, token: ByteArray): SignatureInfo {
@@ -411,7 +413,7 @@ actual object DocumentInspector {
             certificateValidity = validity,
             signerName = ts.tsa,
             problems = ts.problems,
-            notes = listOf("時戳機構：${ts.tsa ?: "未知"}"),
+            notes = listOf(ct("core_tsa_line", ts.tsa ?: ct("core_unknown"))),
         )
     }
 
@@ -426,29 +428,29 @@ actual object DocumentInspector {
                 val cert = gm.signerCertificate(s)
                 val problems = ArrayList<String>()
                 val integrity = when {
-                    cert == null -> { problems.add("簽章沒有附上簽署者憑證"); Check.NOT_CHECKED }
+                    cert == null -> { problems.add(ct("core_sig_no_signer_cert")); Check.NOT_CHECKED }
                     content == null -> Check.NOT_CHECKED
-                    else -> gm.verify(s, cert, content).also { if (it == Check.FAIL) problems.add("簽章值不符") }
+                    else -> gm.verify(s, cert, content).also { if (it == Check.FAIL) problems.add(ct("core_sig_value_mismatch")) }
                 }
-                val n = if (content == null) mutableListOf("分離式簽章：需要原始內容檔才能檢查內容是否被修改") else mutableListOf()
-                checks.evaluate(SignatureFormat.CADES, fileName ?: "簽署者 ${i + 1}", AlgorithmNames.signature(s.signatureOid, s.digestOid), cert,
+                val n = if (content == null) mutableListOf(ct("core_sig_detached_needs_content")) else mutableListOf()
+                checks.evaluate(SignatureFormat.CADES, fileName ?: ct("core_signer_n", i + 1), AlgorithmNames.signature(s.signatureOid, s.digestOid), cert,
                     gm.certificates, integrity, null, null, emptyList(), emptyList(), now, problems, n, coversWhole = content != null)
             }
-            return base.copy(format = DocumentFormat.CMS_SIGNED, signatures = sigs, notes = listOf("國密 SignedData（GM/T 0010）"))
+            return base.copy(format = DocumentFormat.CMS_SIGNED, signatures = sigs, notes = listOf(ct("core_gm_signed_data")))
         }
         val sd = CmsChecks.signedData(bytes, null)
         val encapsulated = sd.signedContent?.content as? ByteArray
         if (sd.signerInfos.size() == 0) {
             val n = sd.certificates.getMatches(null).size
-            return base.copy(format = DocumentFormat.CMS_SIGNED, notes = listOf("只含 $n 張憑證的 PKCS#7 檔（.p7b），沒有簽章"))
+            return base.copy(format = DocumentFormat.CMS_SIGNED, notes = listOf(ct("core_p7b_only", n)))
         }
         val content = encapsulated ?: detached
-        if (encapsulated != null) notes.add("內含原始內容（${encapsulated.size} 位元組），可另存原檔")
-        else if (detached != null) notes.add("已以選擇的原始檔檢查分離式簽章")
-        val sigs = checks.verify(bytes, if (encapsulated == null) detached else null, SignatureFormat.CADES, fileName ?: "CMS 簽章", now)
+        if (encapsulated != null) notes.add(ct("core_encapsulated_content", encapsulated.size))
+        else if (detached != null) notes.add(ct("core_detached_checked"))
+        val sigs = checks.verify(bytes, if (encapsulated == null) detached else null, SignatureFormat.CADES, fileName ?: ct("core_cms_signature"), now)
             .map { it.copy(coversWholeDocument = content != null) }
         val inner = encapsulated?.let { sniff(it, null) }
-        if (inner != null && inner != DocumentFormat.OTHER) notes.add("內含的檔案是 ${inner.name}")
+        if (inner != null && inner != DocumentFormat.OTHER) notes.add(ct("core_inner_file", inner.name))
         return base.copy(format = DocumentFormat.CMS_SIGNED, signatures = sigs, notes = notes)
     }
 
@@ -461,16 +463,16 @@ actual object DocumentInspector {
             val ri = RecipientInfo.getInstance(r).info
             if (ri is KeyTransRecipientInfo) {
                 val iss = runCatching { org.bouncycastle.asn1.cms.IssuerAndSerialNumber.getInstance(ri.recipientIdentifier.id) }.getOrNull()
-                recipients.add(if (iss != null) "${iss.name}（序號 ${iss.serialNumber.value.toString(16)}）" else "以金鑰識別碼指定的收件者")
+                recipients.add(if (iss != null) ct("core_recipient_issuer", iss.name, iss.serialNumber.value.toString(16)) else ct("core_recipient_key_id"))
                 keyAlgs.add(algName(ri.keyEncryptionAlgorithm))
-            } else recipients.add("其他類型的收件者")
+            } else recipients.add(ct("core_recipient_other"))
         }
         val eci = env.encryptedContentInfo
         val info = EnvelopeInfo(recipients, algName(eci.contentEncryptionAlgorithm), keyAlgs.distinct(), eci.encryptedContent?.octets?.size ?: 0)
         val notes = ArrayList<String>()
-        notes.add("這是加密信封（CMS EnvelopedData），只有收件者能解開，沒有簽章可以在本機驗證")
+        notes.add(ct("core_enveloped_only"))
         val asdt = fileName?.lowercase()?.endsWith(".asdt") == true || recipients.any { it.contains("www.ris.gov.tw") }
-        if (asdt) notes.add("電子戶籍謄本檔（.asdt）：加密給內政部戶政司，請到戶政司網站上傳查驗；錢包保存原檔與時戳")
+        if (asdt) notes.add(ct("core_asdt_note"))
         return base.copy(format = DocumentFormat.CMS_ENVELOPED, envelope = info, notes = notes)
     }
 
@@ -488,9 +490,9 @@ actual object DocumentInspector {
     private suspend fun timestampFile(bytes: ByteArray, detached: ByteArray?, base: DocumentReport, checks: CmsChecks): DocumentReport {
         val token = CmsChecks.tokenOf(bytes)
         val ts = checks.timestamp(token, detached ?: ByteArray(0))
-        val info = if (detached == null) ts.copy(imprint = Check.NOT_CHECKED, problems = ts.problems.filterNot { it == "時戳涵蓋的資料與文件不符" }) else ts
-        val sig = timestampSignature(info, SignatureFormat.RFC3161, "時戳", checks, token)
-        val notes = if (detached == null) listOf("需要被時戳的原始檔才能確認時戳涵蓋的內容") else emptyList()
+        val info = if (detached == null) ts.copy(imprint = Check.NOT_CHECKED, problems = ts.problems.filterNot { it == ct("core_tst_data_mismatch") }) else ts
+        val sig = timestampSignature(info, SignatureFormat.RFC3161, ct("core_time_stamp"), checks, token)
+        val notes = if (detached == null) listOf(ct("core_tst_needs_content")) else emptyList()
         return base.copy(format = DocumentFormat.TIMESTAMP, signatures = listOf(sig.copy(coversWholeDocument = detached != null)), notes = notes)
     }
 
@@ -498,18 +500,18 @@ actual object DocumentInspector {
 
     private suspend fun xml(bytes: ByteArray, fileName: String?, base: DocumentReport, checks: CmsChecks, now: Instant, related: Map<String, ByteArray>): DocumentReport {
         val doc = runCatching { XmlParsing.parse(bytes) }.getOrElse {
-            return base.copy(format = DocumentFormat.XML, problems = listOf("XML 格式錯誤：" + (it.message ?: "")))
+            return base.copy(format = DocumentFormat.XML, problems = listOf(ct("core_xml_malformed") + (it.message ?: "")))
         }
         val notes = ArrayList<String>()
         val official = if (doc.documentElement != null) OfficialDocuments.parse(bytes) else null
         val title = official?.let { o ->
-            notes.add("台灣電子公文（${o.category?.takeIf { it != o.kind }?.let { c -> "${o.kind}，$c" } ?: o.kind}）")
+            notes.add(ct("core_official_note", o.category?.takeIf { it != o.kind }?.let { c -> ct("core_pair_comma", o.kind, c) } ?: o.kind))
             if (o.kind == "線上簽核") {
-                notes.add("線上簽核檔不是 XAdES：每個簽核點以 XML 簽章涵蓋同一案件的公文檔、附件、自己的異動資訊與前一個簽核點；案件檔案都在錢包內才能逐一比對")
+                notes.add(ct("core_approval_not_xades"))
             }
-            if (o.kind == "線上簽核") "線上簽核檔（${o.steps.size} 個簽核點）" else (o.subject ?: o.title).take(80)
+            if (o.kind == "線上簽核") ct("core_approval_title", o.steps.size) else (o.subject ?: o.title).take(80)
         }
-        val sigs = XmlDsig.verify(bytes, fileName ?: "XML 簽章", checks, now) +
+        val sigs = XmlDsig.verify(bytes, fileName ?: ct("core_xml_signature"), checks, now) +
             if (ApprovalSignatures.isApproval(doc)) ApprovalSignatures.verify(bytes, checks, now, related) else emptyList()
         return base.copy(format = DocumentFormat.XML, title = title, signatures = sigs, notes = notes)
     }
@@ -523,7 +525,7 @@ actual object DocumentInspector {
                 base.copy(format = DocumentFormat.OFD, title = ofd.title(), pages = ofd.pageCount(), signatures = ofd.verify(now), entries = entries)
             }
             Asic.isAsic(files) -> base.copy(format = DocumentFormat.ASIC_E, signatures = Asic.verify(files, checks, now), entries = entries.filter { !it.startsWith("META-INF/") && it != "mimetype" })
-            else -> base.copy(format = DocumentFormat.ZIP, entries = entries, notes = listOf("壓縮檔內有 ${entries.size} 個檔案，可逐一解出保存與檢查"))
+            else -> base.copy(format = DocumentFormat.ZIP, entries = entries, notes = listOf(ct("core_zip_entries", entries.size)))
         }
     }
 
@@ -533,12 +535,12 @@ actual object DocumentInspector {
             version = doc.version,
             name = doc.name,
             issuers = doc.issuers.mapNotNull { it.name },
-            identityProofs = doc.issuers.mapNotNull { i -> i.identityType?.let { t -> t + (i.identityLocation?.let { "：$it" } ?: "") } },
+            identityProofs = doc.issuers.mapNotNull { i -> i.identityType?.let { t -> t + (i.identityLocation?.let { ct("core_colon_value", it) } ?: "") } },
             fields = doc.fields(),
             integrity = doc.integrity,
             issuerVerified = Check.NOT_CHECKED,
         )
-        val notes = listOf("已檢查內容與 Merkle 證明是否一致；發行者是否確實發行與發行者身分以網路查詢以太坊與 DNS 紀錄")
+        val notes = listOf(ct("core_opencerts_checked"))
         return base.copy(format = DocumentFormat.OPENCERTS, title = info.name, openCert = info, notes = notes)
     }
 
@@ -562,7 +564,7 @@ actual object DocumentInspector {
     actual fun timestampToken(response: ByteArray): ByteArray {
         val resp = TimeStampResponse(response)
         val token = resp.timeStampToken
-        if (token == null) throw IllegalStateException("時戳機構拒絕：" + (resp.statusString ?: "狀態 ${resp.status}"))
+        if (token == null) throw IllegalStateException(ct("core_tsa_refused") + (resp.statusString ?: ct("core_status_n", resp.status)))
         return token.encoded
     }
 

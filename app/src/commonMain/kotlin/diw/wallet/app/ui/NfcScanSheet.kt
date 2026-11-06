@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -51,7 +54,7 @@ fun NfcScanSheet(model: WalletModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Text("準備感應", style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(Res.string.nfc_ready), style = MaterialTheme.typography.titleLarge)
                 val transition = rememberInfiniteTransition(label = "nfc")
                 val alpha by transition.animateFloat(
                     initialValue = 0.3f,

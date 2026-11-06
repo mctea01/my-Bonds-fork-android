@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,30 +57,30 @@ fun ProximityScreen(model: WalletModel) {
         ) {
             CircularProgressIndicator()
             Text(s.message, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-            Text("請讓手機保持在查驗設備旁，直到完成。", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
-            OutlinedButton(onClick = { model.proximity.again() }) { Text("取消") }
+            Text(stringResource(Res.string.prox_keep_near), style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
+            OutlinedButton(onClick = { model.proximity.again() }) { Text(stringResource(Res.string.action_cancel)) }
         }
         is ProximityUi.Consent -> ConsentView(model, s)
         is ProximityUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.PASS, "已出示", listOf("已將「${s.documents.joinToString("、")}」交給 ${s.verifier}。", "出示的對象與欄位名稱記在「紀錄」。"))
+            VerdictCard(Verdict.PASS, stringResource(Res.string.flow_presented), listOf(stringResource(Res.string.prox_handed, s.documents.joinToString(stringResource(Res.string.sep_list)), s.verifier), stringResource(Res.string.flow_presented_history)))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { model.back() }) { Text("完成") }
+                Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_done)) }
                 // "Present again" restarts the in-person listening flow; a DC API request is driven by the browser, not retriable here.
                 if (s.channel != diw.wallet.app.ProximityChannel.DC_API) {
-                    OutlinedButton(onClick = { model.proximity.again() }) { Text("再出示一次") }
+                    OutlinedButton(onClick = { model.proximity.again() }) { Text(stringResource(Res.string.prox_again)) }
                 }
             }
         }
         is ProximityUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.FAIL, "無法完成", listOf(s.message))
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(s.message))
             // A DC API request cannot be retried inside the wallet (the browser owns it); "再試一次" would otherwise drop
             // the user onto the NFC sensing screen, which never answers the original online request.
             if (s.channel == diw.wallet.app.ProximityChannel.DC_API) {
-                Button(onClick = { model.back() }) { Text("離開") }
+                Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_leave)) }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.proximity.again() }) { Text("再試一次") }
-                    OutlinedButton(onClick = { model.back() }) { Text("離開") }
+                    Button(onClick = { model.proximity.again() }) { Text(stringResource(Res.string.action_try_again)) }
+                    OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_leave)) }
                 }
             }
         }
@@ -100,30 +103,30 @@ private fun ReadyView(model: WalletModel, s: ProximityUi.Ready) {
         ) {
             Column(Modifier.padding(20.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Icon(WalletIcons.Nfc, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(72.dp))
-                Text("將手機靠近查驗設備", style = MaterialTheme.typography.titleLarge)
-                Text("手機背面貼近讀卡機。感應後，對方要求的欄位會顯示在這支手機上，由你決定是否出示。資料依 ISO/IEC 18013-5 加密，經藍牙或 NFC 傳送。",
+                Text(stringResource(Res.string.prox_hold_near), style = MaterialTheme.typography.titleLarge)
+                Text(stringResource(Res.string.prox_hold_text),
                     style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
-                if (nfcReason == null) VerdictPill(Verdict.PASS, "NFC 感應已就緒")
+                if (nfcReason == null) VerdictPill(Verdict.PASS, stringResource(Res.string.prox_nfc_ready))
                 else VerdictPill(Verdict.CAUTION, nfcReason)
             }
         }
-        bleReason?.let { Text("藍牙：$it。感應後的資料傳輸通常需要藍牙。", style = MaterialTheme.typography.bodySmall) }
+        bleReason?.let { Text(stringResource(Res.string.prox_bluetooth, it), style = MaterialTheme.typography.bodySmall) }
         if (mdocs == 0) {
-            Text("這支手機還沒有 mdoc 格式的證件（例如行動駕照）。近距離出示適用 mdoc 證件，其他證件請改用「掃描 QR Code」出示。",
+            Text(stringResource(Res.string.prox_no_mdoc),
                 style = MaterialTheme.typography.bodySmall)
         }
-        SectionTitle("對方沒有感應區時")
+        SectionTitle(stringResource(Res.string.prox_no_nfc))
         val qr = s.qr
         if (qr == null) {
             OutlinedButton(onClick = { model.proximity.showQr() }) {
                 Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("　改用 QR Code")
+                Text(stringResource(Res.string.prox_use_qr))
             }
         } else {
-            Text("請查驗設備掃描這個 QR Code，接著以藍牙連線。", style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.prox_qr_text), style = MaterialTheme.typography.bodyMedium)
             QrImage(qr, Modifier.fillMaxWidth().widthIn(max = 360.dp).align(Alignment.CenterHorizontally), ecc = QrEncoder.Ecc.L)
         }
-        OutlinedButton(onClick = { model.back() }) { Text("取消") }
+        OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
     }
 }
 
@@ -131,21 +134,21 @@ private fun ReadyView(model: WalletModel, s: ProximityUi.Ready) {
 private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         val extra = buildList {
-            add("出示方式：${s.channel.title}（${s.channel.spec}）")
-            if (s.chain.isEmpty()) add("對方沒有提供身分憑證（reader authentication），無法確認是誰在讀取。")
-            if (s.retained.isNotEmpty()) add("對方表示會保存：" + s.retained.joinToString("、"))
+            add(stringResource(Res.string.prox_channel, s.channel.title, s.channel.spec))
+            if (s.chain.isEmpty()) add(stringResource(Res.string.prox_no_reader_auth))
+            if (s.retained.isNotEmpty()) add(stringResource(Res.string.prox_will_retain) + s.retained.joinToString(stringResource(Res.string.sep_list)))
         }
-        TrustCard(if (s.channel == diw.wallet.app.ProximityChannel.DC_API) "查驗方" else "查驗設備", s.verifier, s.trust, extra)
+        TrustCard(if (s.channel == diw.wallet.app.ProximityChannel.DC_API) stringResource(Res.string.role_verifier) else stringResource(Res.string.prox_reader), s.verifier, s.trust, extra)
         if (s.chain.isNotEmpty()) {
-            LabelValue("查驗設備憑證", s.chain.first().displaySubject(), small = true) {
+            LabelValue(stringResource(Res.string.prox_reader_cert), s.chain.first().displaySubject(), small = true) {
                 model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity)
             }
         }
         val statusOk = requestedDocuments(model, s.items, s.risk, s.trust.tier, s)
         val ok = riskAcknowledgement(s.trust)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk) { Text("同意分享") }
-            OutlinedButton(onClick = { model.proximity.decline(s) }) { Text("拒絕") }
+            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk) { Text(stringResource(Res.string.flow_agree_share)) }
+            OutlinedButton(onClick = { model.proximity.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
         }
     }
 }

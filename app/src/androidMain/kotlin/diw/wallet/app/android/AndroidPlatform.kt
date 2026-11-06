@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -143,6 +146,7 @@ class KeystoreValueCipher(private val alias: String = "diw-storage-v1") : ValueC
 class AndroidPlatform(private val context: Context) : PlatformServices {
     override val platformName = "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})"
     override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
+    override val languageStore = AndroidLanguageStore(context)
 
     /** Prompt model of the activity in the foreground; biometric prompts need one. */
     @Volatile var promptModel: AndroidPromptModel? = null
@@ -323,23 +327,23 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     @Volatile private var nfcPresentationActive = false
 
     override fun nfcPresentationUnavailableReason(): String? {
-        val adapter = NfcAdapter.getDefaultAdapter(context) ?: return "此裝置沒有 NFC"
-        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) return "此裝置不支援 NFC 卡片模擬"
-        if (!adapter.isEnabled) return "NFC 未開啟，請到系統設定開啟"
+        val adapter = NfcAdapter.getDefaultAdapter(context) ?: return tr(Res.string.nfc_none)
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_NFC_HOST_CARD_EMULATION)) return tr(Res.string.nfc_no_hce)
+        if (!adapter.isEnabled) return tr(Res.string.nfc_off)
         return null
     }
 
     override suspend fun proximityTransportUnavailableReason(): String? {
-        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return "此裝置沒有藍牙"
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return tr(Res.string.ble_none)
         val needed = if (android.os.Build.VERSION.SDK_INT >= 31) {
             arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT)
         } else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val missing = needed.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (missing.isNotEmpty()) {
             activity?.let { a -> a.runOnUiThread { a.requestPermissions(missing.toTypedArray(), PROXIMITY_PERMISSION_REQUEST) } }
-            return "請允許「附近的裝置」權限"
+            return tr(Res.string.ble_permission)
         }
-        if (!adapter.isEnabled) return "藍牙未開啟"
+        if (!adapter.isEnabled) return tr(Res.string.ble_off)
         return null
     }
 
@@ -428,7 +432,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     override fun keyUnlockProvider(pinPrompt: suspend () -> String?): KeyUnlockDataProvider =
         PinOrPlatformUnlock(pinPrompt, object : KeyUnlockDataProvider {
             override suspend fun getKeyUnlockData(secureArea: SecureArea, alias: String, algorithm: Algorithm, unlockReason: Reason): KeyUnlockData {
-                val pm = promptModel ?: throw KeyLockedException("請先開啟錢包畫面再進行驗證")
+                val pm = promptModel ?: throw KeyLockedException(tr(Res.string.ap_open_wallet_first))
                 return withContext(pm) { AndroidKeystoreDefaultKeyUnlockDataProvider.getKeyUnlockData(secureArea, alias, algorithm, unlockReason) }
             }
         })
@@ -492,7 +496,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         model.dcApiRegistration.value = try {
             val dc = DigitalCredentialsCredman.create()
             if (!dc.registerAvailable) {
-                DcApiRegistration(0, notListable(model), emptySet(), "此裝置沒有提供 Digital Credentials API 註冊", now)
+                DcApiRegistration(0, notListable(model), emptySet(), tr(Res.string.ap_no_dc_api), now)
             } else {
                 // OpenID4VP goes through the DIW request validation layer and org-iso-mdoc (ISO/IEC 18013-7 Annex C) through
                 // the wallet's mdoc consent; both use the wallet's own screens.
@@ -566,7 +570,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
      */
     private suspend fun registerIssuance(appName: String) {
         val matcher = withContext(Dispatchers.IO) { context.assets.open(ISSUANCE_MATCHER_ASSET).use { it.readBytes() } }
-        val options = creationOptions(appName, "存入 $appName", launcherIconPng())
+        val options = creationOptions(appName, tr(Res.string.ap_save_to, appName), launcherIconPng())
         IdentityCredentialManager.getClient(context)
             .registerCreationOptions(RegisterCreationOptionsRequest(options, matcher, DIGITAL_CREDENTIAL_TYPE, ISSUANCE_ID, ""))
             .awaitResult()
@@ -618,14 +622,14 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
      * different doctype or vct, or no claims when the wallet could not read them).
      */
     private fun describeEntry(item: DataItem): String {
-        val title = item.getOrNull("title")?.asTstr ?: "證件"
+        val title = item.getOrNull("title")?.asTstr ?: tr(Res.string.credential_fallback)
         item.getOrNull("mdoc")?.let { mdoc ->
             val claims = mdoc.getOrNull("namespaces")?.asMap?.values?.sumOf { it.asMap.size } ?: 0
-            return "$title：mdoc ${mdoc.getOrNull("docType")?.asTstr.orEmpty()}，$claims 個欄位"
+            return tr(Res.string.ap_entry_mdoc, title, mdoc.getOrNull("docType")?.asTstr.orEmpty(), claims)
         }
         item.getOrNull("sdjwt")?.let { sdJwt ->
             val claims = sdJwt.getOrNull("claims")?.asMap?.size ?: 0
-            return "$title：SD-JWT VC ${sdJwt.getOrNull("vct")?.asTstr.orEmpty()}，$claims 個欄位"
+            return tr(Res.string.ap_entry_sdjwt, title, sdJwt.getOrNull("vct")?.asTstr.orEmpty(), claims)
         }
         return title
     }

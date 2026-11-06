@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.official.ApprovalPoint
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.sign.DocumentSigner
@@ -44,23 +45,27 @@ internal object ApprovalSignatures {
             val person = info?.let { XmlParsing.child(it, null, "簽核人員") }
             val name = person?.let { XmlParsing.text(XmlParsing.child(it, null, "姓名")) }?.ifBlank { null }
             val action = info?.let { XmlParsing.text(XmlParsing.child(it, null, "異動別")) }?.ifBlank { null }
-            val label = "簽核點 ${i + 1}" + (name?.let { "：$it" } ?: "") + (action?.let { "（$it）" } ?: "")
+            val label = ct("core_approval_point_n", i + 1) + (name?.let { ct("core_colon_value", it) } ?: "") + (action?.let { ct("core_parenthesized", it) } ?: "")
             val checked = XmlDsig.integrity(doc, sig, { related[it] }, ns = null)
+            val missing = template("core_ref_file_missing")
+            val modified = template("core_ref_modified")
             val notes = checked.notes.map { n ->
-                n.replace(Regex("參照的檔案「(.*)」不在檔案內，無法檢查"), "簽核的檔案「$1」不在錢包內，無法比對；把同一案件的檔案匯入或放入公文容器後會重新檢查")
+                missing.matchEntire(n)?.let { ct("core_approval_file_missing", it.groupValues[1]) } ?: n
             }.toMutableList()
-            val problems = checked.problems.map { it.replace("的內容在簽署後被修改", "與簽核時的內容不同") }.toMutableList()
+            val problems = checked.problems.map { p ->
+                modified.matchEntire(p)?.let { ct("core_approval_ref_changed", it.groupValues[1]) } ?: p
+            }.toMutableList()
             val refs = XmlParsing.childrenNamed(XmlParsing.child(sig, null, "SignedInfo")!!, null, "Reference").mapNotNull { it.getAttribute("URI").ifEmpty { null } }
             val fileRefs = refs.filter { !it.startsWith("#") }
             val listed = XmlParsing.child(point, null, "Object")?.let { o ->
                 XmlParsing.descendants(o, null, "電子檔案資訊").mapNotNull { XmlParsing.text(XmlParsing.child(it, null, "檔案名稱"))?.ifBlank { null } }
             }.orEmpty()
             val objectId = XmlParsing.child(point, null, "Object")?.getAttribute("Id")
-            if (objectId.isNullOrEmpty() || "#$objectId" !in refs) problems.add("簽章沒有涵蓋這個簽核點的異動資訊（簽核人員、意見）")
-            listed.filter { it !in fileRefs }.forEach { notes.add("檔案清單列出「$it」，但簽章沒有涵蓋") }
+            if (objectId.isNullOrEmpty() || "#$objectId" !in refs) problems.add(ct("core_approval_info_unsigned"))
+            listed.filter { it !in fileRefs }.forEach { notes.add(ct("core_approval_listed_unsigned", it)) }
             val previous = list.getOrNull(i - 1)?.first?.getAttribute("Id")
-            if (previous != null && previous.isNotEmpty() && "#$previous" !in refs) notes.add("這個簽核點沒有涵蓋前一個簽核點")
-            notes.add(0, "涵蓋 ${fileRefs.size} 個檔案" + (if (previous != null && "#$previous" in refs) "與前一個簽核點" else ""))
+            if (previous != null && previous.isNotEmpty() && "#$previous" !in refs) notes.add(ct("core_approval_previous_unsigned"))
+            notes.add(0, ct("core_approval_covers", fileRefs.size) + (if (previous != null && "#$previous" in refs) ct("core_approval_and_previous") else ""))
             notes.addAll(conformance(doc, point, sig, checked.method, related))
             val alg = XmlDsig.signatureName(checked.method)
             val claimed = info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽章時間")) }?.let { ApprovalPoint.parseRocTime(it)?.epochSeconds }
@@ -79,8 +84,14 @@ internal object ApprovalSignatures {
                 problems = problems,
                 notes = notes,
                 coversWhole = null,
-            ).copy(signerName = name, reason = listOfNotNull(action?.let { if (info?.getAttribute("退文") == "Y") "$it（退文）" else it }, info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽核意見")) }?.ifBlank { null }).joinToString("：").ifEmpty { null })
+            ).copy(signerName = name, reason = listOfNotNull(action?.let { if (info?.getAttribute("退文") == "Y") ct("core_approval_returned", it) else it }, info?.let { XmlParsing.text(XmlParsing.child(it, null, "簽核意見")) }?.ifBlank { null }).joinToString(ct("core_colon")).ifEmpty { null })
         }
+    }
+
+    /** A pattern matching core message [key] (one %1$s) in the app language, the argument as group 1. */
+    private fun template(key: String): Regex {
+        val parts = ct(key).split("%1\$s")
+        return Regex(Regex.escape(parts.first()) + "(.*)" + Regex.escape(parts.getOrElse(1) { "" }))
     }
 
     /**
@@ -91,15 +102,15 @@ internal object ApprovalSignatures {
     private fun conformance(doc: Document, point: Element, sig: Element, method: String?, related: Map<String, ByteArray>): List<String> {
         val out = ArrayList<String>()
         if (method != null && method != XmlDsig.RSA_SHA256) {
-            out.add("規範指定的簽章演算法是 RSA-SHA256，這個簽核點使用 ${XmlDsig.signatureName(method)?.first ?: method}，機關的公文系統可能不接受")
+            out.add(ct("core_approval_alg_nonstandard", XmlDsig.signatureName(method)?.first ?: method))
         }
         val c14n = XmlParsing.child(sig, null, "SignedInfo")?.let { XmlParsing.child(it, null, "CanonicalizationMethod") }?.getAttribute("Algorithm")
-        if (!c14n.isNullOrEmpty() && c14n != XmlC14n.C14N) out.add("規範指定 Canonical XML 1.0，這個簽核點使用 $c14n")
+        if (!c14n.isNullOrEmpty() && c14n != XmlC14n.C14N) out.add(ct("core_approval_c14n_nonstandard", c14n))
         val flowIds = XmlParsing.descendants(doc, null, "簽核流程").mapNotNull { it.getAttribute("Id").ifEmpty { null } }.toSet()
         val flow = point.getAttribute("URI").removePrefix("#")
         when {
-            flow.isEmpty() -> out.add("簽核點沒有以 URI 指向線上簽核流程的簽核流程")
-            flow !in flowIds -> out.add("簽核點指向的簽核流程「$flow」不在線上簽核流程內")
+            flow.isEmpty() -> out.add(ct("core_approval_no_flow_uri"))
+            flow !in flowIds -> out.add(ct("core_approval_flow_missing", flow))
         }
         val info = XmlParsing.child(point, null, "Object")?.let { XmlParsing.descendants(it, null, "異動資訊").firstOrNull() }
         val borrowed = info?.getAttribute("借卡") == "Y" || (info?.let { XmlParsing.child(it, null, "借卡") } != null)
@@ -111,13 +122,13 @@ internal object ApprovalSignatures {
                 sig2?.let { XmlDsig.integrity(doc, it, { name -> related[name] }, ns = null) }
             }
             out.add(when {
-                checks.isEmpty() -> "以臨時憑證（借卡）簽核，尚未補簽追認；規範要求歸檔前以本人的正式憑證補簽"
+                checks.isEmpty() -> ct("core_borrowed_unconfirmed")
                 checks.any { it?.integrity == Check.PASS } -> {
                     val who = checks.first { it?.integrity == Check.PASS }!!.signer?.let { runCatching { Bc.cn(it) }.getOrNull() }
-                    "以臨時憑證（借卡）簽核，已有補簽追認" + (who?.let { "（補簽者 $it）" } ?: "")
+                    ct("core_borrowed_confirmed") + (who?.let { ct("core_borrowed_by", it) } ?: "")
                 }
-                checks.any { it?.integrity == Check.NOT_CHECKED } -> "以臨時憑證（借卡）簽核，補簽追認的簽章涵蓋不在錢包內的檔案，無法確認"
-                else -> "以臨時憑證（借卡）簽核，補簽追認沒有簽章或簽章不成立，不算完成追認"
+                checks.any { it?.integrity == Check.NOT_CHECKED } -> ct("core_borrowed_unknown")
+                else -> ct("core_borrowed_invalid")
             })
         }
         return out
@@ -129,13 +140,13 @@ internal object ApprovalSignatures {
      * and to its own Object. The rest of the file is kept byte for byte, so earlier points stay valid.
      */
     suspend fun sign(approval: ByteArray?, files: List<Pair<String, ByteArray>>, signer: DocumentSigner, point: ApprovalPoint): ByteArray {
-        require(files.isNotEmpty()) { "沒有要簽核的檔案" }
+        require(files.isNotEmpty()) { ct("core_approval_no_files") }
         val bom = approval?.decodeToString()?.startsWith("\uFEFF") == true
         val text0 = approval?.decodeToString()?.removePrefix("\uFEFF") ?: newApproval(files.first().first, point)
         val declared = Regex("<\\?xml[^>]*encoding=[\"']([^\"']+)[\"']").find(text0.take(200))?.groupValues?.get(1)
-        if (declared != null && !declared.equals("UTF-8", true) && !declared.equals("UTF8", true)) throw IllegalArgumentException("只能在 UTF-8 編碼的線上簽核檔加簽（此檔案為 $declared）")
+        if (declared != null && !declared.equals("UTF-8", true) && !declared.equals("UTF8", true)) throw IllegalArgumentException(ct("core_approval_utf8_only", declared))
         val doc0 = XmlParsing.parse(text0.toByteArray(Charsets.UTF_8))
-        if (!isApproval(doc0)) throw IllegalArgumentException("這個檔案不是線上簽核檔（.si）")
+        if (!isApproval(doc0)) throw IllegalArgumentException(ct("core_approval_not_si"))
         val existing = points(doc0)
         val ids = HashSet<String>()
         fun walkIds(n: org.w3c.dom.Node) {
@@ -152,7 +163,7 @@ internal object ApprovalSignatures {
         // The flow gets a node for this point; the flow is not covered by any signature.
         val text = insertBefore(text0, "</線上簽核流程>") { indent -> "$indent  <簽核流程 Id=\"FLOW_P$n\" 異動別=\"${esc(point.action.take(ApprovalPoint.ACTION_MAX))}\" />\n" }
         val infoEnd = text.indexOf("</線上簽核資訊>")
-        if (infoEnd < 0) throw IllegalArgumentException("線上簽核檔沒有簽核資訊（線上簽核資訊）")
+        if (infoEnd < 0) throw IllegalArgumentException(ct("core_approval_no_info"))
         val pad = lineIndent(text, infoEnd) + "  "
         val chain = signer.certificateChain
         val method = if (signer.keyType == SignerKeyType.RSA) XmlDsig.RSA_SHA256 else XmlDsig.ECDSA_SHA256
@@ -268,7 +279,7 @@ internal object ApprovalSignatures {
         val sig = XmlParsing.child(XmlParsing.byId(doc, pointId)!!, null, "Signature")!!
         val related = files.toMap()
         val check = XmlDsig.integrity(doc, sig, { related[it] }, ns = null)
-        if (check.integrity != Check.PASS) throw IllegalStateException("簽核點簽章檢查失敗：" + check.problems.joinToString("；"))
+        if (check.integrity != Check.PASS) throw IllegalStateException(ct("core_approval_check_failed") + check.problems.joinToString(ct("core_sep_semicolon")))
         return out
     }
 

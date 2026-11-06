@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,7 +24,7 @@ import androidx.compose.ui.unit.dp
 class ScanActions(val camera: (() -> Unit)?, val image: () -> Unit) {
     /** The camera, or reading a picture where there is none. */
     val primary: () -> Unit get() = camera ?: image
-    val primaryLabel: String get() = if (camera != null) "掃描 QR Code" else "從圖片讀取 QR Code"
+    val primaryLabel: String @Composable get() = if (camera != null) stringResource(Res.string.action_scan_qr) else stringResource(Res.string.action_qr_from_image)
 }
 
 /** The camera button with "from a picture" beside it; only the picture button where there is no camera. */
@@ -37,7 +40,7 @@ fun ScanButtons(scan: ScanActions, enabled: Boolean = true) {
             OutlinedButton(onClick = scan.image, enabled = enabled) {
                 Icon(WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("從圖片讀取")
+                Text(stringResource(Res.string.action_from_image))
             }
         }
     }

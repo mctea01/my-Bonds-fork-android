@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import diw.wallet.core.util.TextEncodings
 import android.annotation.SuppressLint
 import android.net.Uri
@@ -95,19 +98,19 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                 addJavascriptInterface(object {
                     @JavascriptInterface
                     fun onTooLarge() {
-                        post { onError("檔案超過 64 MB") }
+                        post { onError(tr(Res.string.file_over_64mb)) }
                     }
 
                     @JavascriptInterface
                     fun onFailed() {
-                        post { onError("無法讀取下載的檔案，請在網站上重新下載") }
+                        post { onError(tr(Res.string.portal_download_unreadable)) }
                     }
 
                     @JavascriptInterface
                     fun onBlob(name: String, dataUrl: String) {
                         // Any page can call this interface, so the size is checked before anything is decoded.
                         if (dataUrl.length > MAX_DATA_URL) {
-                            post { onError("檔案超過 64 MB") }
+                            post { onError(tr(Res.string.file_over_64mb)) }
                             return
                         }
                         val comma = dataUrl.indexOf(',')
@@ -152,7 +155,7 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                             val bytes = withContext(Dispatchers.IO) { download(link, userAgent) }
                             onFile(PickedFile(name, bytes, mime))
                         } catch (e: Exception) {
-                            onError("無法下載文件：" + (e.message ?: e::class.simpleName))
+                            onError(tr(Res.string.portal_download_failed) + (e.message ?: e::class.simpleName))
                         }
                     }
                 }
@@ -173,7 +176,7 @@ private fun quote(s: String): String = "'" + s.replace("\\", "\\\\").replace("'"
 
 private fun download(link: String, userAgent: String): ByteArray {
     val uri = Uri.parse(link)
-    if (uri.scheme != "https" && uri.scheme != "http") throw IllegalArgumentException("不支援的下載網址")
+    if (uri.scheme != "https" && uri.scheme != "http") throw IllegalArgumentException(tr(Res.string.portal_bad_download_url))
     val conn = URL(link).openConnection() as HttpURLConnection
     try {
         conn.instanceFollowRedirects = true
@@ -189,7 +192,7 @@ private fun download(link: String, userAgent: String): ByteArray {
                 val n = input.read(buf)
                 if (n < 0) break
                 out.write(buf, 0, n)
-                if (out.size() > MAX_DOWNLOAD) throw IllegalStateException("檔案超過 64 MB")
+                if (out.size() > MAX_DOWNLOAD) throw IllegalStateException(tr(Res.string.file_over_64mb))
             }
         }
         return out.toByteArray()

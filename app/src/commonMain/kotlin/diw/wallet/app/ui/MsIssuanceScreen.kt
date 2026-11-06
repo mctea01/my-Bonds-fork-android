@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,19 +45,19 @@ import org.multipaz.document.Document
 fun MsIssuanceScreen(model: WalletModel) {
     val state by model.ms.state.collectAsState()
     when (val s = state) {
-        MsIssuanceUi.Loading -> Busy("讀取發行要求")
+        MsIssuanceUi.Loading -> Busy(stringResource(Res.string.ms_reading))
         is MsIssuanceUi.Working -> Busy(s.message)
         is MsIssuanceUi.Failed -> Failure(s.message) { model.screen.value = Screen.Home }
         is MsIssuanceUi.WaitingForLogin -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
-            Text("請在瀏覽器登入 ${hostOf(s.requirement.configuration)}，完成後會自動返回", Modifier.padding(vertical = 12.dp))
-            OutlinedButton(onClick = { model.back() }) { Text("取消") }
+            Text(stringResource(Res.string.ms_login, hostOf(s.requirement.configuration)), Modifier.padding(vertical = 12.dp))
+            OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }
         is MsIssuanceUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.PASS, "已加入證件")
+            VerdictCard(Verdict.PASS, stringResource(Res.string.ms_added))
             CredentialCard(model, s.document) { model.screen.value = Screen.DocumentDetail(s.document.identifier) }
-            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text("完成") }
+            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text(stringResource(Res.string.action_done)) }
         }
         // A new revision (after a sign-in) recomposes the review with the request's new tokens.
         is MsIssuanceUi.Review -> androidx.compose.runtime.key(s.revision) { ReviewView(model, s.request) }
@@ -73,33 +76,33 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
         candidates = request.presentationRequirements.associate { it.credentialType to model.ms.candidates(it) }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        TrustCard("發行端", request.issuedBy ?: request.clientName ?: request.issuerDid, request.trust,
-            listOf("DID：${request.issuerDid}", "發證端點：${request.credentialIssuer}"))
-        Text(request.cardTitle ?: "Verified ID 憑證", style = MaterialTheme.typography.titleLarge)
+        TrustCard(stringResource(Res.string.role_issuer), request.issuedBy ?: request.clientName ?: request.issuerDid, request.trust,
+            listOf(stringResource(Res.string.flow_verifier_did, request.issuerDid), stringResource(Res.string.ms_endpoint, request.credentialIssuer)))
+        Text(request.cardTitle ?: stringResource(Res.string.ms_credential), style = MaterialTheme.typography.titleLarge)
         request.consentTitle?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-        if (request.selfIssuedClaims.isNotEmpty()) Text("請填寫：", style = MaterialTheme.typography.titleSmall)
+        if (request.selfIssuedClaims.isNotEmpty()) Text(stringResource(Res.string.ms_fill), style = MaterialTheme.typography.titleSmall)
         request.selfIssuedClaims.forEach { c ->
             OutlinedTextField(
                 value = selfIssued[c.claim].orEmpty(),
                 onValueChange = { selfIssued[c.claim] = it },
-                label = { Text(c.claim + if (c.required) "（必填）" else "") },
+                label = { Text(c.claim + if (c.required) stringResource(Res.string.ms_required) else "") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
         request.tokenRequirements.forEach { t ->
             when {
-                t.injected -> Text("已由發行端提供登入資訊（${hostOf(t.configuration)}）", style = MaterialTheme.typography.bodySmall)
-                request.tokens[t.configuration] != null -> Text("已登入 ${hostOf(t.configuration)}", color = MaterialTheme.colorScheme.primary)
+                t.injected -> Text(stringResource(Res.string.ms_token_given, hostOf(t.configuration)), style = MaterialTheme.typography.bodySmall)
+                request.tokens[t.configuration] != null -> Text(stringResource(Res.string.ms_signed_in, hostOf(t.configuration)), color = MaterialTheme.colorScheme.primary)
                 else -> OutlinedButton(onClick = { model.ms.login(request, t) }) {
-                    Text("登入 ${hostOf(t.configuration)}" + if (t.required) "（必要）" else "")
+                    Text(stringResource(Res.string.ms_sign_in, hostOf(t.configuration)) + if (t.required) stringResource(Res.string.ms_needed) else "")
                 }
             }
         }
         request.presentationRequirements.forEach { p ->
-            Text("需要出示：${p.credentialType}" + if (p.required) "（必要）" else "", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.ms_present_needed, p.credentialType) + if (p.required) stringResource(Res.string.ms_needed) else "", style = MaterialTheme.typography.titleSmall)
             val list = candidates[p.credentialType].orEmpty()
-            if (list.isEmpty()) Text("錢包內沒有符合的憑證", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            if (list.isEmpty()) Text(stringResource(Res.string.ms_no_match), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             list.forEach { (doc, cred) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = chosen[p.credentialType] === cred, onClick = { chosen[p.credentialType] = cred })
@@ -111,7 +114,7 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
             OutlinedTextField(
                 value = pin,
                 onValueChange = { v -> pin = (if (r.type == "numeric") v.filter { it.isDigit() } else v).take(r.length) },
-                label = { Text("發行端提供的 ${r.length} 位 PIN 碼") },
+                label = { Text(stringResource(Res.string.ms_pin, r.length)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = if (r.type == "numeric") KeyboardType.NumberPassword else KeyboardType.Password),
@@ -124,8 +127,8 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
             (request.pinRequirement == null || pin.length == request.pinRequirement!!.length)
         val ok = riskAcknowledgement(request.trust)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.ms.complete(request, selfIssued.toMap(), pin, chosen.toMap()) }, enabled = ready && ok) { Text("加入") }
-            OutlinedButton(onClick = { model.back() }) { Text("取消") }
+            Button(onClick = { model.ms.complete(request, selfIssued.toMap(), pin, chosen.toMap()) }, enabled = ready && ok) { Text(stringResource(Res.string.action_add)) }
+            OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }
     }
 }

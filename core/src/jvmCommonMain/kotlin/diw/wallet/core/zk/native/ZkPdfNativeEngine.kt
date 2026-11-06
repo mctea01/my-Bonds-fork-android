@@ -1,5 +1,6 @@
 package diw.wallet.core.zk.native
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.zk.ZkErrors
 import diw.wallet.core.zk.ZkPdfAssets
 import diw.wallet.core.zk.ZkPdfCost
@@ -125,8 +126,8 @@ class ZkPdfNativeEngine(private val store: FileZkAssetStore) : ZkPdfEngine {
     }
 
     companion object {
-        val MISSING_ASSETS = ZkResult.Failed("zkPDF 的電路檔尚未下載完成", false)
-        val SELF_CHECK_FAILED = ZkResult.Failed("產生的證明沒有通過這台裝置的驗證，未寫入憑證", true)
+        val MISSING_ASSETS get() = ZkResult.Failed(ct("core_zkpdf_circuit_missing"), false)
+        val SELF_CHECK_FAILED get() = ZkResult.Failed(ct("core_zkpdf_not_verified"), true)
 
         private fun record(r: diw.wallet.core.document.zkpdf.ZkPdfTextRecord) = ZkPdfRecord(r.font, r.kind.toUByte(), r.strings)
 

@@ -1,5 +1,8 @@
 package diw.wallet.app.android
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import android.app.Application
 import diw.wallet.app.WalletModel
 import kotlinx.coroutines.flow.first
@@ -28,7 +31,7 @@ class WalletApplication : Application() {
                 // Forced once per launch: Multipaz skips unchanged data even when the system refused the previous registration.
                 platform.registerDigitalCredentials(model, force = true)
             } catch (e: Exception) {
-                model.message.value = "錢包初始化失敗：${e.message}"
+                model.message.value = tr(Res.string.app_init_failed, e.message)
             }
         }
     }

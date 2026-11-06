@@ -1,5 +1,6 @@
 package diw.wallet.core.document.zkpdf
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.pdf.*
 
@@ -190,15 +191,15 @@ object ZkPdfPlanner {
             val slots = ArrayList<ZkPdfSlotPlan>()
             for (rule in profile.fields) {
                 val before = anchor(rule.before, -1)
-                if (before == null) { unavailable[rule.claim] = "標籤「${rule.before.first()}」找不到或不只一處"; continue }
+                if (before == null) { unavailable[rule.claim] = ct("core_zkpdf_label_ambiguous", rule.before.first()); continue }
                 val beforeOp = anchorAt.entries.first { it.value == before }.key
                 val after = anchor(rule.after, beforeOp)
-                if (after == null) { unavailable[rule.claim] = "標籤「${rule.after.first()}」找不到或不只一處"; continue }
+                if (after == null) { unavailable[rule.claim] = ct("core_zkpdf_label_ambiguous", rule.after.first()); continue }
                 val afterOp = anchorAt.entries.first { it.value == after }.key
                 val between = (beforeOp + 1 until afterOp).map { texts[it] }
                 val value = if (between.isEmpty() || between.any { it == null }) null
                 else rule.normalize.apply(between.joinToString(""))
-                if (value == null) { unavailable[rule.claim] = "「${rule.label}」的內容不符合版型"; continue }
+                if (value == null) { unavailable[rule.claim] = ct("core_zkpdf_value_mismatch", rule.label); continue }
                 opOf[before] = beforeOp
                 opOf[after] = afterOp
                 slots += ZkPdfSlotPlan(rule.claim, slots.size, before, after, value)

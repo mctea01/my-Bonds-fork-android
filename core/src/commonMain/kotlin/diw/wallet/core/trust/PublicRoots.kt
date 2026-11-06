@@ -1,5 +1,6 @@
 package diw.wallet.core.trust
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.x509.displaySubject
 import org.multipaz.asn1.OID
 import org.multipaz.crypto.X509Cert
@@ -28,28 +29,28 @@ object PublicRoots {
             val roots = BuiltInPublicRoots.mainlandChina.validAt(at)
             Pkix.anchorOf(chain, roots.map { it.certificate }, at)?.let { a ->
                 val r = roots.first { it.certificate == a }
-                return Found(a, "中國大陸憑證機構：${r.name}", BuiltInPublicRoots.MAINLAND_SOURCE, "CN")
+                return Found(a, ct("core_pr_china", r.name), BuiltInPublicRoots.MAINLAND_SOURCE, "CN")
             }
         }
         if (platform) {
-            SystemTrustStore.anchorOf(chain, at)?.let { a -> return Found(a, "系統憑證庫：" + commonName(a), "system", null) }
+            SystemTrustStore.anchorOf(chain, at)?.let { a -> return Found(a, ct("core_pr_system") + commonName(a), "system", null) }
             val services = BuiltInPublicRoots.services.validAt(at)
             Pkix.anchorOf(chain, services.map { it.certificate }, at)?.let { a ->
                 val r = services.first { it.certificate == a }
-                return Found(a, "常用服務憑證機構：${r.name}", BuiltInPublicRoots.SERVICE_SOURCE, null)
+                return Found(a, ct("core_pr_common", r.name), BuiltInPublicRoots.SERVICE_SOURCE, null)
             }
             if (contentCredentials) {
                 val roots = BuiltInPublicRoots.contentCredentials.validAt(at)
                 Pkix.anchorOf(chain, roots.map { it.certificate }, at)?.let { a ->
                     val r = roots.first { it.certificate == a }
-                    return Found(a, "C2PA 信任清單：${r.name}", BuiltInPublicRoots.CONTENT_CREDENTIALS_SOURCE, null)
+                    return Found(a, ct("core_pr_c2pa", r.name), BuiltInPublicRoots.CONTENT_CREDENTIALS_SOURCE, null)
                 }
             }
             if (timestamping) {
                 val tsa = BuiltInPublicRoots.timestamping.validAt(at)
                 Pkix.anchorOf(chain, tsa.map { it.certificate }, at)?.let { a ->
                     val r = tsa.first { it.certificate == a }
-                    return Found(a, "時間戳記憑證機構：${r.name}", BuiltInPublicRoots.TIMESTAMPING_SOURCE, null)
+                    return Found(a, ct("core_pr_tsa", r.name), BuiltInPublicRoots.TIMESTAMPING_SOURCE, null)
                 }
             }
         }

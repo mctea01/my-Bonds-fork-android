@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderIdentities
 import diw.wallet.core.holder.HolderKey
@@ -40,7 +42,7 @@ class ZkTlsKeep(private val model: WalletModel) {
             credentialIssuer = "", configurationId = CONFIGURATION, format = "dc+sd-jwt", vct = WebProofCredentials.VCT_RECORD,
             tier = TrustTier.T3.name, issuedAt = Clock.System.now().epochSeconds, keyStorage = keys.keyStorage, profile = PROFILE,
         )
-        val created = model.documentStore.createDocument(displayName = "網站查驗結果", typeDisplayName = TYPE_NAME, appData = record.encode())
+        val created = model.documentStore.createDocument(displayName = tr(Res.string.files_web_result), typeDisplayName = TYPE_NAME, appData = record.encode())
         try {
             val credential = KeyBoundSdJwtVcCredential.create(
                 created, null, CredentialDomains.SD_JWT, keys.secureArea, WebProofCredentials.VCT_RECORD,
@@ -74,10 +76,10 @@ class ZkTlsKeep(private val model: WalletModel) {
         var note: String? = null
         val receipt = proved.receipt?.let { r ->
             runCatching { WebProofCredentials.checkReceipt(r, session, model.didResolver(), p.jwk, outcome); r }
-                .onFailure { note = "查驗方的回執無法驗證（${model.describe(it)}），改存為本機紀錄" }
+                .onFailure { note = tr(Res.string.zkk_receipt_bad, model.describe(it)) }
                 .getOrNull()
         }
-        if (proved.receipt == null) note = "查驗方沒有簽發回執，改存為本機紀錄"
+        if (proved.receipt == null) note = tr(Res.string.zkk_no_receipt)
         if (receipt == null) return@unlocked writeRecord(p, outcome, proved.time, proved.certChainDer, proved.cipherSuite, note)
         val tier = when (verifierTrust?.tier) {
             TrustTier.T1, TrustTier.T2 -> TrustTier.T2
@@ -90,7 +92,7 @@ class ZkTlsKeep(private val model: WalletModel) {
             anchorName = verifierName, labels = verifierTrust?.labels.orEmpty().map { it.name },
             issuedAt = Clock.System.now().epochSeconds, keyStorage = p.keyStorage,
             specs = listOf("IETF SD-JWT VC", "TLSNotary"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
-            profile = PROFILE, displayDescription = "zkTLS 網站查驗證明：${outcome.profile.host}，由查驗方簽發",
+            profile = PROFILE, displayDescription = tr(Res.string.zkk_receipt_desc, outcome.profile.host),
         )
         certify(p, receipt, record, title)
         model.record(HistoryKind.ISSUED, verifierName, verifierTrust, listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name })
@@ -118,14 +120,14 @@ class ZkTlsKeep(private val model: WalletModel) {
         val record = IssuanceRecord(
             credentialIssuer = issuer.did!!, configurationId = CONFIGURATION, format = "dc+sd-jwt",
             vct = WebProofCredentials.VCT_RECORD, tier = TrustTier.T3.name, environment = TrustEnvironment.USER.id,
-            official = false, anchorName = "本錢包（網站紀錄）",
+            official = false, anchorName = tr(Res.string.zkk_self_anchor),
             labels = listOf(TrustLabel.SELF_ISSUED.name) + if (issuer.keyInfo.attestation.certChain == null) listOf(TrustLabel.KEY_NOT_ATTESTED.name) else emptyList(),
             issuedAt = now.epochSeconds, keyStorage = p.keyStorage,
             specs = listOf("IETF SD-JWT VC"), claimNames = WebProofCredentials.claimLabels(outcome.profile),
-            profile = PROFILE, displayDescription = "裝置證明，不是零知識證明：本機讀取 ${outcome.profile.host} 的紀錄",
+            profile = PROFILE, displayDescription = tr(Res.string.zkk_device_desc, outcome.profile.host),
         )
         certify(p, compact, record, title)
-        model.record(HistoryKind.ISSUED, "本錢包（網站紀錄）", null, listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name })
+        model.record(HistoryKind.ISSUED, tr(Res.string.zkk_self_anchor), null, listOf(title), WebProofCredentials.claims(outcome).map { it.label ?: it.name })
         return Kept(p.document.identifier, false, note)
     }
 
@@ -161,6 +163,6 @@ class ZkTlsKeep(private val model: WalletModel) {
     companion object {
         const val PROFILE = "web-proof"
         const val CONFIGURATION = "zktls-web"
-        const val TYPE_NAME = "網站查驗結果"
+        val TYPE_NAME: String get() = tr(Res.string.files_web_result)
     }
 }

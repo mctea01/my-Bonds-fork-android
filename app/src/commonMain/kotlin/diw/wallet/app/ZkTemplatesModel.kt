@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.document.sign.DocumentSigning
 import diw.wallet.core.document.zkpdf.ZkPdfProfile
 import diw.wallet.core.document.zkpdf.ZkPdfProfiles
@@ -102,10 +104,10 @@ class ZkTemplatesModel(private val model: WalletModel) {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        problems += "$name：" + (e.message ?: e::class.simpleName)
+                        problems += tr(Res.string.label_colon, name) + (e.message ?: e::class.simpleName)
                     }
                 }
-                val found = best ?: throw IllegalStateException("下載失敗（${problems.joinToString("；")}）")
+                val found = best ?: throw IllegalStateException(tr(Res.string.zkt_download_failed, problems.joinToString(tr(Res.string.sep_semicolon))))
                 val t = model.storage.getTable(table)
                 if (found.third.version > (state.value.version ?: 0)) store(found.second, found.third, found.first)
                 val now = Clock.System.now().epochSeconds
@@ -151,12 +153,12 @@ class ZkTemplatesModel(private val model: WalletModel) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                notes += "${f.name}：" + (e.message ?: e::class.simpleName)
+                notes += tr(Res.string.label_colon, f.name) + (e.message ?: e::class.simpleName)
             }
         }
         if (pages.isNotEmpty()) notes += addTestPages(pages)
         if (docs.isNotEmpty()) notes += addTestDocuments(docs)
-        return notes.joinToString("\n").ifEmpty { "檔案中沒有版型" }
+        return notes.joinToString("\n").ifEmpty { tr(Res.string.zkt_no_templates) }
     }
 
     /** Removes the pages and document templates imported for testing. */
@@ -165,13 +167,13 @@ class ZkTemplatesModel(private val model: WalletModel) {
             runCatching { Blobs.delete(model.storage.getTable(table), TEST_PAGES) }
             runCatching { Blobs.delete(model.storage.getTable(table), TEST_DOCUMENTS) }
             ZkPdfProfiles.installTest(emptyList())
-            state.value = state.value.copy(testPages = emptyList(), testDocuments = emptyList(), notice = "已清除測試查驗頁與文件版型")
+            state.value = state.value.copy(testPages = emptyList(), testDocuments = emptyList(), notice = tr(Res.string.zkt_cleared))
         }
     }
 
     /** The files of a picked file: the entries of a ZIP (a downloaded CI artifact), else the file itself. */
     private fun entries(name: String, bytes: ByteArray): List<Pair<String, ByteArray>> {
-        if (bytes.size > MAX_FILE) throw IllegalArgumentException("檔案過大")
+        if (bytes.size > MAX_FILE) throw IllegalArgumentException(tr(Res.string.zkt_too_large))
         if (bytes.size < 4 || bytes[0] != 'P'.code.toByte() || bytes[1] != 'K'.code.toByte()) return listOf(name to bytes)
         return DocumentSigning.unzip(bytes).filter { (n, b) -> b.isNotEmpty() && (n.endsWith(".jwt") || n.endsWith(".json")) && b.size <= MAX_FILE }
             .map { (n, b) -> n.substringAfterLast('/') to b }
@@ -180,9 +182,9 @@ class ZkTemplatesModel(private val model: WalletModel) {
     private suspend fun importPack(jws: String): String {
         val pack = ZkTemplatePack.verify(jws, ZkTemplatePack.trustedKeys(), highest())
         val current = state.value.version ?: 0
-        if (pack.version <= current) return "版型包 ${pack.version} 不比已安裝的版本新，未變更"
-        store(jws, pack, "檔案")
-        return "已安裝版型包：${pack.zktls.size} 個查驗頁、${pack.zkpdf.size} 個文件版型"
+        if (pack.version <= current) return tr(Res.string.zkt_not_newer, pack.version)
+        store(jws, pack, tr(Res.string.label_file))
+        return tr(Res.string.zkt_installed, pack.zktls.size, pack.zkpdf.size)
     }
 
     /**
@@ -190,18 +192,18 @@ class ZkTemplatesModel(private val model: WalletModel) {
      * test server's {"profiles": [...]}, or an unsigned pack payload with "zktls" and "zkpdf".
      */
     private fun unsigned(name: String, text: String): Pair<List<ZkTlsProfile>, List<ZkPdfProfile>> {
-        if (!model.settings.testEnvironment) throw ProtocolException("invalid_templates", "未簽章的版型只能在測試環境匯入")
+        if (!model.settings.testEnvironment) throw ProtocolException("invalid_templates", tr(Res.string.zkt_unsigned_test_only))
         val o = runCatching { DiwJson.parseToJsonElement(text) as JsonObject }.getOrNull()
-            ?: throw ProtocolException("invalid_templates", "$name 不是版型包或版型描述檔")
+            ?: throw ProtocolException("invalid_templates", tr(Res.string.zkt_not_a_pack, name))
         fun document(e: JsonElement): ZkPdfProfile = runCatching { ZkPdfProfile.parse(e as JsonObject) }
-            .getOrElse { throw ProtocolException("invalid_templates", "$name 的文件版型格式錯誤") }
+            .getOrElse { throw ProtocolException("invalid_templates", tr(Res.string.zkt_bad_document, name)) }
         // zkTLS pages have "fields" too; a document template's fields are delimited by "before" labels.
         val documentFields = (o["fields"] as? JsonArray)?.firstOrNull() as? JsonObject
         if (documentFields?.containsKey("before") == true) return emptyList<ZkTlsProfile>() to listOf(document(o))
         val pages = (o["profiles"] ?: o["zktls"]) as? JsonArray
         val docs = (o["zkpdf"] as? JsonArray)?.map(::document).orEmpty()
         if (pages == null && o["zkpdf"] != null) return emptyList<ZkTlsProfile>() to docs
-        return (pages?.map { (it as? JsonObject)?.let(ZkTlsProfile::parse) ?: throw ProtocolException("invalid_templates", "$name 的查驗頁格式錯誤") }
+        return (pages?.map { (it as? JsonObject)?.let(ZkTlsProfile::parse) ?: throw ProtocolException("invalid_templates", tr(Res.string.zkt_bad_page, name)) }
             ?: listOf(ZkTlsProfile.parse(o))) to docs
     }
 
@@ -214,8 +216,8 @@ class ZkTemplatesModel(private val model: WalletModel) {
         ZkPdfProfiles.installTest(merged)
         state.value = state.value.copy(testDocuments = ZkPdfProfiles.testProfiles)
         return buildString {
-            append("已匯入 ${fresh.size} 個測試文件版型（只在測試環境使用）")
-            if (clash.isNotEmpty()) append("；${clash.joinToString("、") { it.id }} 與已簽章的文件版型同名，未匯入")
+            append(tr(Res.string.zkt_imported_docs, fresh.size))
+            if (clash.isNotEmpty()) append(tr(Res.string.zkt_doc_clash, clash.joinToString(tr(Res.string.sep_list)) { it.id }))
         }
     }
 
@@ -230,8 +232,8 @@ class ZkTemplatesModel(private val model: WalletModel) {
         Blobs.put(model.storage.getTable(table), TEST_PAGES, array.toString().encodeToByteArray())
         state.value = state.value.copy(testPages = merged)
         return buildString {
-            append("已匯入 ${fresh.size} 個測試查驗頁")
-            if (clash.isNotEmpty()) append("；${clash.joinToString("、") { it.id }} 與已簽章的查驗頁同名，未匯入")
+            append(tr(Res.string.zkt_imported_pages, fresh.size))
+            if (clash.isNotEmpty()) append(tr(Res.string.zkt_page_clash, clash.joinToString(tr(Res.string.sep_list)) { it.id }))
         }
     }
 

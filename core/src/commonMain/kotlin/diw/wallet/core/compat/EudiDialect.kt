@@ -1,5 +1,6 @@
 package diw.wallet.core.compat
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.oid4vci.AuthServerMetadata
 
 /**
@@ -9,7 +10,7 @@ import diw.wallet.core.oid4vci.AuthServerMetadata
  */
 class EudiDialect : IssuanceDialect {
     override val id = "eudi"
-    override val spec = "EUDI 參考實作"
+    override val spec: String get() = ct("core_eudi_reference")
 
     /**
      * Accepts an iss below the published issuer identifier when the token endpoint is below that iss too: the code

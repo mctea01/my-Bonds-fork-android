@@ -1,5 +1,6 @@
 package diw.wallet.core.zk.native
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.zk.*
 import io.ktor.client.HttpClient
 import io.ktor.client.request.*
@@ -134,7 +135,7 @@ class FileZkAssetStore(
                             // A transport interruption retains a prefix for a later Range request.
                         }
                     }
-                    if (!downloaded) return@withLock ZkResult.Failed("下載中斷，可稍後續傳", true)
+                    if (!downloaded) return@withLock ZkResult.Failed(ct("core_asset_interrupted"), true)
                     if (!matches(partial(asset), asset.gzipBytes, asset.gzipSha256)) throw IntegrityFailure()
                     var written = 0L
                     val digest = MessageDigest.getInstance("SHA-256")
@@ -164,10 +165,10 @@ class FileZkAssetStore(
                     throw e
                 } catch (_: IntegrityFailure) {
                     erase(asset)
-                    ZkResult.Failed("證明資產完整性檢查失敗，已刪除下載內容", true)
+                    ZkResult.Failed(ct("core_asset_integrity"), true)
                 } catch (_: Exception) {
                     erase(asset)
-                    ZkResult.Failed("無法安裝證明資產，請重試", true)
+                    ZkResult.Failed(ct("core_asset_install_failed"), true)
                 }
             }
         }

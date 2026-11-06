@@ -1,5 +1,6 @@
 package diw.wallet.core.document.zkpdf
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.jwkThumbprint
@@ -250,7 +251,7 @@ object ZkPdfProofs {
                     ?.let { plan.profile.field(s.claim)?.normalize?.apply(it) } == s.value
         }
         if (!consistent || proof.midOuts.size != plan.layout.windows.size) {
-            return ZkResult.Failed("產生的證明與文件內容不一致，未寫入憑證", false)
+            return ZkResult.Failed(ct("core_zkpdf_inconsistent"), false)
         }
         val evidence = ZkPdfEvidence(
             profile = plan.profile.id,

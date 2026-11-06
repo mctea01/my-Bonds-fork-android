@@ -1,5 +1,7 @@
 package diw.wallet.core.document.pdf
 
+import diw.wallet.core.i18n.ct
+
 /**
  * A copy of an encrypted PDF without its encryption, for page rendering where the platform renderer cannot take a
  * password (Android's PdfRenderer before API 35). Every object is written decrypted as a plain object (object streams
@@ -11,7 +13,7 @@ object PdfPlain {
     fun of(bytes: ByteArray, password: String = ""): ByteArray {
         val pdf = PdfFile(bytes, password)
         if (!pdf.encrypted) return bytes
-        if (pdf.passwordRequired) throw PdfPasswordException("需要開啟密碼")
+        if (pdf.passwordRequired) throw PdfPasswordException(ct("core_pdf_password_needed"))
         pdf.encryptionProblem?.let { throw PdfException(it) }
         return of(pdf)
     }

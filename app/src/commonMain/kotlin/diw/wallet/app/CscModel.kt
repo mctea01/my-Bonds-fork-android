@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.document.sign.CscClient
 import diw.wallet.core.document.sign.CscEnvironment
 import diw.wallet.core.document.sign.CscService
@@ -45,11 +47,11 @@ class CscModel(private val model: WalletModel) {
 
     /** Checks a service the user is adding; null when it can be saved, else what is wrong. */
     fun problem(name: String, baseUrl: String, clientId: String, redirectUri: String): String? = when {
-        name.isBlank() -> "請輸入服務名稱"
+        name.isBlank() -> tr(Res.string.csc_name_needed)
         !baseUrl.trim().startsWith("https://") && !(model.settings.allowLoopbackHttp && baseUrl.trim().startsWith("http://")) ->
-            "CSC API 位址必須是 https"
-        clientId.isBlank() -> "請輸入 client_id"
-        ':' !in redirectUri -> "請輸入完整的 redirect_uri"
+            tr(Res.string.csc_https_needed)
+        clientId.isBlank() -> tr(Res.string.csc_client_id_needed)
+        ':' !in redirectUri -> tr(Res.string.csc_redirect_needed)
         else -> null
     }
 
@@ -138,14 +140,14 @@ class CscModel(private val model: WalletModel) {
                             val body = runCatching { r.bodyAsText() }.getOrDefault("")
                             val said = Regex("\"(?:message|error_description|error)\"\\s*:\\s*\"([^\"]{1,200})\"").find(body)?.groupValues?.get(1)
                                 ?: body.replace(Regex("<[^>]*>"), " ").replace(Regex("\\s+"), " ").trim().take(160).ifEmpty { null }
-                            throw SigningException("遠端簽章服務拒絕授權要求（HTTP ${r.status.value}，${next.substringBefore('?')}）" + (said?.let { "：$it" } ?: ""))
+                            throw SigningException(tr(Res.string.csc_auth_refused, r.status.value, next.substringBefore('?')) + (said?.let { tr(Res.string.colon_value, it) } ?: ""))
                         }
                     }
                 }
                 else -> return null
             }
         }
-        throw SigningException("遠端簽章服務的授權轉址次數過多")
+        throw SigningException(tr(Res.string.csc_too_many_redirects))
     }
 
     private suspend fun browser(url: String, redirectUri: String, purpose: String): String {
@@ -153,7 +155,7 @@ class CscModel(private val model: WalletModel) {
         prompt.value = CscPrompt.Browser(purpose, redirectUri, answer)
         return try {
             model.platform.openBrowser(url)
-            answer.await() ?: throw SigningException("已取消授權")
+            answer.await() ?: throw SigningException(tr(Res.string.csc_auth_cancelled))
         } finally {
             prompt.value = null
         }

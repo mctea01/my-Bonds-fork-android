@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import org.bouncycastle.asn1.ASN1Encodable
 import org.bouncycastle.asn1.ASN1EncodableVector
 import org.bouncycastle.asn1.ASN1Encoding
@@ -117,10 +118,10 @@ internal object CadesArchive {
             val index = tsi.unsignedAttributes?.get(HASH_INDEX_V3)?.attrValues?.getObjectAt(0)
             val imprintAlg = org.bouncycastle.tsp.TimeStampToken(tst).timeStampInfo.messageImprintAlgOID.id
             index to imprintAlg
-        }.getOrNull() ?: return Found(token, null, "無法解析保存時戳")
+        }.getOrNull() ?: return Found(token, null, ct("core_ats_unparsable"))
         val (index, imprintAlg) = parsed
-        if (index == null) return Found(token, null, "保存時戳缺少 ats-hash-index-v3，無法確認涵蓋的資料")
-        if (content == null) return Found(token, null, "需要原始內容檔才能檢查保存時戳")
+        if (index == null) return Found(token, null, ct("core_ats_no_index"))
+        if (content == null) return Found(token, null, ct("core_ats_needs_content"))
         val seq = ASN1Sequence.getInstance(index)
         // hashIndAlgorithm is present only when it is not SHA-256.
         val offset = if (seq.size() == 4) 1 else 0
@@ -129,7 +130,7 @@ internal object CadesArchive {
         val alg = AlgorithmNames.jcaDigest(indexAlg)
         val present = listOf(certificateItems(sd), revocationItems(sd), attributeItems(si)).map { hashes(it, alg) }
         val missing = listed.indices.any { i -> listed[i].any { h -> present[i].none { it.contentEquals(h) } } }
-        val problem = if (missing) "保存時戳之後有憑證、撤銷資訊或未簽署屬性被移除或修改" else null
+        val problem = if (missing) ct("core_ats_changed") else null
         return Found(token, imprintInput(sd, si, DocCrypto.digest(AlgorithmNames.jcaDigest(imprintAlg), content), index), problem)
     }
 }

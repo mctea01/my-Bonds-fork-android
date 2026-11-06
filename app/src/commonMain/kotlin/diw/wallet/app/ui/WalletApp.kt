@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.widthIn
@@ -95,6 +98,15 @@ fun WalletApp(
     scanQr: (suspend () -> String?)? = null,
     scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
 ) {
+    AppLocaleScope(model.platform.languageStore) { WalletAppContent(model, scanQr, scanQrStream) }
+}
+
+@Composable
+private fun WalletAppContent(
+    model: WalletModel,
+    scanQr: (suspend () -> String?)?,
+    scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+) {
     val ready by model.ready.collectAsState()
     val screen by model.screen.collectAsState()
     val tab by model.tab.collectAsState()
@@ -138,14 +150,14 @@ fun WalletApp(
                     topBar = {
                         Column {
                             TopAppBar(
-                                title = { Text(if (screen == Screen.Proximity && !proximityListening) "出示證件" else titleFor(screen, tab)) },
+                                title = { Text(if (screen == Screen.Proximity && !proximityListening) stringResource(Res.string.screen_presentation) else titleFor(screen, tab)) },
                                 navigationIcon = {
-                                    if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = "返回") }
+                                    if (screen != Screen.Home) IconButton(onClick = { model.back() }) { Icon(WalletIcons.Back, contentDescription = stringResource(Res.string.action_back)) }
                                 },
                                 actions = {
                                     if (screen == Screen.Home) {
-                                        if (tab == HomeTab.DOCUMENTS) IconButton(onClick = { addSheet = true }) { Icon(WalletIcons.Add, contentDescription = "加入證件") }
-                                        IconButton(onClick = { model.screen.value = Screen.Settings }) { Icon(WalletIcons.Settings, contentDescription = "設定") }
+                                        if (tab == HomeTab.DOCUMENTS) IconButton(onClick = { addSheet = true }) { Icon(WalletIcons.Add, contentDescription = stringResource(Res.string.action_add_credential)) }
+                                        IconButton(onClick = { model.screen.value = Screen.Settings }) { Icon(WalletIcons.Settings, contentDescription = stringResource(Res.string.screen_settings)) }
                                     }
                                 },
                             )
@@ -216,39 +228,40 @@ fun WalletApp(
     }
 }
 
+@Composable
 private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     Screen.Home -> when (tab) {
-        HomeTab.DOCUMENTS -> "證件"
-        HomeTab.FILES -> "文件"
-        HomeTab.USE -> "使用"
-        HomeTab.VERIFY -> "查驗"
-        HomeTab.HISTORY -> "紀錄"
+        HomeTab.DOCUMENTS -> stringResource(Res.string.tab_documents)
+        HomeTab.FILES -> stringResource(Res.string.tab_files)
+        HomeTab.USE -> stringResource(Res.string.tab_use)
+        HomeTab.VERIFY -> stringResource(Res.string.tab_verify)
+        HomeTab.HISTORY -> stringResource(Res.string.tab_history)
     }
-    Screen.Settings -> "設定"
-    is Screen.SettingsPage -> s.section.title
-    Screen.Issuance -> "加入證件"
-    Screen.Presentation -> "出示證件"
-    is Screen.DocumentDetail -> "證件內容"
-    is Screen.Certificate -> "證書詳情"
-    Screen.AddDocument -> "從清單選擇"
-    Screen.TrustList -> "信任清單"
-    Screen.TrustAnchors -> "信任錨點"
-    Screen.CustomTrust -> "自訂信任"
-    Screen.ZkSettings -> "零知識證明"
-    is Screen.OpenPgpKeys -> "OpenPGP 公開金鑰"
-    Screen.Offline -> "出示與查驗"
-    Screen.MsIssuance -> "加入 Verified ID"
-    Screen.Proximity -> "感應出示"
-    Screen.Reader -> "感應查驗"
-    is Screen.FileDetail -> "文件內容"
-    is Screen.FileSign -> "簽署文件"
-    is Screen.FileDerive -> "產生衍生憑證"
-    is Screen.OpenCertRender -> if (s.offline) "離線顯示證書" else "發證機構樣式"
-    is Screen.NationalIdCreate -> "製作身分證卡"
-    is Screen.NationalId -> "身分證卡"
-    Screen.DocumentSources -> "取得文件"
-    is Screen.Portal -> "取得文件"
-    is Screen.OfficialBundle -> "公文容器"
+    Screen.Settings -> stringResource(Res.string.screen_settings)
+    is Screen.SettingsPage -> stringResource(s.section.title)
+    Screen.Issuance -> stringResource(Res.string.action_add_credential)
+    Screen.Presentation -> stringResource(Res.string.screen_presentation)
+    is Screen.DocumentDetail -> stringResource(Res.string.screen_document_detail)
+    is Screen.Certificate -> stringResource(Res.string.screen_certificate)
+    Screen.AddDocument -> stringResource(Res.string.screen_add_document)
+    Screen.TrustList -> stringResource(Res.string.screen_trust_list)
+    Screen.TrustAnchors -> stringResource(Res.string.screen_trust_anchors)
+    Screen.CustomTrust -> stringResource(Res.string.screen_custom_trust)
+    Screen.ZkSettings -> stringResource(Res.string.screen_zk_settings)
+    is Screen.OpenPgpKeys -> stringResource(Res.string.screen_openpgp_keys)
+    Screen.Offline -> stringResource(Res.string.screen_offline)
+    Screen.MsIssuance -> stringResource(Res.string.screen_ms_issuance)
+    Screen.Proximity -> stringResource(Res.string.screen_proximity)
+    Screen.Reader -> stringResource(Res.string.screen_reader)
+    is Screen.FileDetail -> stringResource(Res.string.screen_file_detail)
+    is Screen.FileSign -> stringResource(Res.string.screen_file_sign)
+    is Screen.FileDerive -> stringResource(Res.string.screen_file_derive)
+    is Screen.OpenCertRender -> if (s.offline) stringResource(Res.string.screen_opencert_offline) else stringResource(Res.string.screen_opencert_issuer)
+    is Screen.NationalIdCreate -> stringResource(Res.string.screen_national_id_create)
+    is Screen.NationalId -> stringResource(Res.string.screen_national_id)
+    Screen.DocumentSources -> stringResource(Res.string.screen_document_sources)
+    is Screen.Portal -> stringResource(Res.string.screen_document_sources)
+    is Screen.OfficialBundle -> stringResource(Res.string.screen_official_bundle)
     is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
     is Screen.IntegrationStatement -> diw.wallet.app.legal.LegalStrings.STATEMENTS_TITLE
 }
@@ -279,7 +292,7 @@ fun PinDialog(reason: String, onResult: (String?) -> Unit) {
     var value by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = { onResult(null) },
-        title = { Text("輸入 App PIN") },
+        title = { Text(stringResource(Res.string.pin_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(reason)
@@ -292,8 +305,8 @@ fun PinDialog(reason: String, onResult: (String?) -> Unit) {
                 )
             }
         },
-        confirmButton = { Button(onClick = { onResult(value) }, enabled = value.length >= 6) { Text("確認") } },
-        dismissButton = { TextButton(onClick = { onResult(null) }) { Text("取消") } },
+        confirmButton = { Button(onClick = { onResult(value) }, enabled = value.length >= 6) { Text(stringResource(Res.string.action_confirm)) } },
+        dismissButton = { TextButton(onClick = { onResult(null) }) { Text(stringResource(Res.string.action_cancel)) } },
     )
 }
 
@@ -394,7 +407,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
             }.orEmpty()
         if (web && first is SdJwtVcCredential) runCatching {
             val compact = first.issuerProvidedData.decodeToString()
-            webSource = webSourceLines(Json.parseToJsonElement(compact.substringBefore('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject)
+            webSource = webSourceLines(model, Json.parseToJsonElement(compact.substringBefore('~').split('.')[1].fromBase64Url().decodeToString()).jsonObject)
         }
         details = runCatching { CredentialDetails.credential(record, first) }.getOrDefault(emptyList())
         if (derived && first is SdJwtVcCredential) runCatching {
@@ -406,7 +419,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
                     d["mediaType"]?.jsonPrimitive?.content,
                     size?.let { sizeText(it) },
                     d["sha256"]?.jsonPrimitive?.content?.let { "SHA-256 " + it.take(16) + "..." },
-                ).joinToString("，")
+                ).joinToString(model.text(Res.string.sep_comma))
             }
             val disclosed = SdJwtDisclosures.parse(compact).disclosures.mapNotNull { d -> d.name?.let { it to d.value } }.toMap()
             evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true, disclosed = disclosed, zk = model.zkPdfContext)
@@ -414,10 +427,10 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         CredentialCard(model, doc) {}
-        assuranceText(record)?.let { LabelValue("身分保證等級（IAL）", it) }
-        storedTrust(doc)?.let { TrustCard("發行端", doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
+        assuranceText(record)?.let { LabelValue(stringResource(Res.string.credential_ial), it) }
+        storedTrust(doc)?.let { TrustCard(stringResource(Res.string.credential_issuer), doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }
         if (record?.pendingTransactionId == null) StatusPanel(model, doc)
-        if (claims.isNotEmpty()) SectionTitle("證件資料")
+        if (claims.isNotEmpty()) SectionTitle(stringResource(Res.string.credential_claims))
         claims.forEach { (k, v, picture) ->
             if (picture != null) {
                 Text(k, style = MaterialTheme.typography.bodySmall)
@@ -425,22 +438,22 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
                     modifier = Modifier.widthIn(max = 240.dp).aspectRatio(picture.width.toFloat() / picture.height.coerceAtLeast(1)).clip(RoundedCornerShape(8.dp)))
             } else LabelValue(k, v)
         }
-        source?.let { LabelValue("來源文件", it, small = true) }
+        source?.let { LabelValue(stringResource(Res.string.credential_source_document), it, small = true) }
         if (webSource.isNotEmpty()) {
-            SectionTitle("查詢來源")
+            SectionTitle(stringResource(Res.string.credential_query_source))
             webSource.forEach { (k, v) -> LabelValue(k, v) }
         }
         if (evidence.isNotEmpty()) EvidenceRows(evidence)
         if (record?.pendingTransactionId == null) PresentThisDocument(model, doc, scan)
-        SectionTitle("證件資訊")
+        SectionTitle(stringResource(Res.string.credential_info))
         record?.let {
-            LabelValue("格式", CredentialDetails.formatName(it))
-            (it.vct ?: it.docType)?.let { t -> LabelValue("類型", t) }
-            LabelValue("規格", CredentialDetails.specs(it).joinToString("、"))
+            LabelValue(stringResource(Res.string.credential_format), CredentialDetails.formatName(it))
+            (it.vct ?: it.docType)?.let { t -> LabelValue(stringResource(Res.string.credential_type), t) }
+            LabelValue(stringResource(Res.string.credential_specs), CredentialDetails.specs(it).joinToString(stringResource(Res.string.sep_list)))
         }
-        LabelValue("可用次數", "$count（批次憑證數）")
-        record?.keyStorage?.let { LabelValue("金鑰保護", CredentialDetails.keyStorageName(it)) }
-        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
+        LabelValue(stringResource(Res.string.credential_uses), stringResource(Res.string.credential_uses_value, count))
+        record?.keyStorage?.let { LabelValue(stringResource(Res.string.credential_key_protection), keyStorageLabel(it)) }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) stringResource(Res.string.action_hide_details) else stringResource(Res.string.action_show_details)) }
         if (showDetails) {
             statuses[id]?.status?.let { DetailSections(model, CredentialDetails.status(it)) }
             DetailSections(model, details)
@@ -449,44 +462,44 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text("刪除證件", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.action_delete_credential), color = MaterialTheme.colorScheme.error)
         }
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("刪除這張證件？") },
-            text = { Text("證件與它的金鑰會從這支手機刪除，無法復原。需要時請向發行端重新申請。") },
+            title = { Text(stringResource(Res.string.credential_delete_title)) },
+            text = { Text(stringResource(Res.string.credential_delete_text)) },
             confirmButton = {
-                TextButton(onClick = { confirmDelete = false; model.deleteDocument(doc) }) { Text("刪除證件", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { confirmDelete = false; model.deleteDocument(doc) }) { Text(stringResource(Res.string.action_delete_credential), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
 
 /** Where and how a web query result was read, from its payload's source, method and session. */
-private fun webSourceLines(payload: JsonObject): List<Pair<String, String>> {
+private suspend fun webSourceLines(model: WalletModel, payload: JsonObject): List<Pair<String, String>> {
     fun JsonObject.text(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
     val source = payload["source"] as? JsonObject
     val session = payload["session"] as? JsonObject
     return buildList {
-        source?.text("profileTitle")?.let { add("查驗頁" to it) }
+        source?.text("profileTitle")?.let { add(model.text(Res.string.web_proof_page) to it) }
         source?.text("host")?.let { h ->
-            add("網站" to h + (source.text("port")?.let { ":$it" } ?: "") + if (source.text("official") == "true") "（政府網站）" else "")
+            add(model.text(Res.string.web_proof_site) to h + (source.text("port")?.let { ":$it" } ?: "") + if (source.text("official") == "true") model.text(Res.string.web_proof_government) else "")
         }
-        source?.text("retrievedAt")?.let { t -> runCatching { Instant.parse(t) }.getOrNull()?.let { add("查詢時間" to localTime(it.epochSeconds)) } }
+        source?.text("retrievedAt")?.let { t -> runCatching { Instant.parse(t) }.getOrNull()?.let { add(model.text(Res.string.web_proof_time) to localTime(it.epochSeconds)) } }
         payload.text("method")?.let { m ->
-            add("證明方式" to when (m) {
-                WebProofCredentials.METHOD_PROXY -> "zkTLS（查驗方以代理模式驗證後簽發）"
-                WebProofCredentials.METHOD_MPC -> "zkTLS（查驗方以 MPC 模式驗證後簽發）"
-                WebProofCredentials.METHOD_DEVICE -> "裝置證明（本錢包簽署，不是零知識證明）"
+            add(model.text(Res.string.web_proof_method) to when (m) {
+                WebProofCredentials.METHOD_PROXY -> model.text(Res.string.web_proof_proxy)
+                WebProofCredentials.METHOD_MPC -> model.text(Res.string.web_proof_mpc)
+                WebProofCredentials.METHOD_DEVICE -> model.text(Res.string.web_proof_device)
                 else -> m
             })
         }
-        session?.text("purpose")?.let { add("查驗用途" to it) }
+        session?.text("purpose")?.let { add(model.text(Res.string.web_proof_purpose) to it) }
         source?.let { s -> listOfNotNull(s.text("tlsVersion")?.let { "TLS $it" }, s.text("cipherSuite")) }
-            ?.takeIf { it.isNotEmpty() }?.let { add("連線" to it.joinToString("，")) }
+            ?.takeIf { it.isNotEmpty() }?.let { add(model.text(Res.string.web_proof_connection) to it.joinToString(model.text(Res.string.sep_comma))) }
     }
 }
 
@@ -498,32 +511,32 @@ private fun webSourceLines(payload: JsonObject): List<Pair<String, String>> {
 private fun PresentThisDocument(model: WalletModel, doc: Document, scan: ScanActions?) {
     val record = doc.issuanceRecord
     var pasted by remember(doc.identifier) { mutableStateOf("") }
-    SectionTitle("出示這張證件")
+    SectionTitle(stringResource(Res.string.present_this_title))
     if (record?.format == "mso_mdoc") {
-        ActionRow(WalletIcons.Nfc, "感應出示", "手機靠近查驗設備，或讓對方掃描 QR Code（ISO/IEC 18013-5）") { model.proximity.open() }
+        ActionRow(WalletIcons.Nfc, stringResource(Res.string.screen_proximity), stringResource(Res.string.present_proximity_detail)) { model.proximity.open() }
     }
     if (scan != null) {
-        val detail = "線上請求（OpenID4VP）或離線查驗挑戰；離線出示時這張證件排在最前面"
+        val detail = stringResource(Res.string.present_scan_detail)
         scan.camera?.let { camera ->
-            ActionRow(WalletIcons.Scan, "掃描查驗方的 QR Code", detail) {
+            ActionRow(WalletIcons.Scan, stringResource(Res.string.present_scan), detail) {
                 model.taiwan.preferredDocument = doc.identifier
                 camera()
             }
         }
-        ActionRow(WalletIcons.Image, "從圖片讀取查驗方的 QR Code", if (scan.camera == null) detail else "查驗方的 QR Code 在截圖或圖片裡時使用") {
+        ActionRow(WalletIcons.Image, stringResource(Res.string.present_scan_image), if (scan.camera == null) detail else stringResource(Res.string.present_scan_image_detail)) {
             model.taiwan.preferredDocument = doc.identifier
             scan.image()
         }
     }
     if (scan?.camera == null) {
-        Text("也可以貼上查驗方給的連結或查驗挑戰。", style = MaterialTheme.typography.bodySmall)
-        OutlinedTextField(value = pasted, onValueChange = { pasted = it }, label = { Text("查驗方的連結或挑戰") }, singleLine = true,
+        Text(stringResource(Res.string.present_paste_hint), style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value = pasted, onValueChange = { pasted = it }, label = { Text(stringResource(Res.string.present_paste_label)) }, singleLine = true,
             modifier = Modifier.fillMaxWidth())
         OutlinedButton(onClick = {
             model.taiwan.preferredDocument = doc.identifier
             model.handleUri(pasted.trim())
             pasted = ""
-        }, enabled = pasted.isNotBlank()) { Text("出示") }
+        }, enabled = pasted.isNotBlank()) { Text(stringResource(Res.string.action_present)) }
     }
 }
 
@@ -535,9 +548,9 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(cert.displaySubject(), style = MaterialTheme.typography.titleMedium)
         if (screen.chain.size > 1) {
-            Text("憑證鏈（由簽署憑證往根憑證）", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(Res.string.certificate_chain), style = MaterialTheme.typography.titleSmall)
             screen.chain.forEachIndexed { i, c ->
-                LabelValue("第 ${i + 1} 張", c.displaySubject(), small = true, onClick = if (i == index) null else ({ index = i }))
+                LabelValue(stringResource(Res.string.certificate_nth, i + 1), c.displaySubject(), small = true, onClick = if (i == index) null else ({ index = i }))
             }
         }
         DetailSections(model, CredentialDetails.certificate(cert))
@@ -550,9 +563,9 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
 @Composable
 private fun TrustThisRoot(model: WalletModel, cert: X509Cert) {
     var roles by remember(cert) { mutableStateOf(setOf(TrustRole.DOCUMENT)) }
-    SectionTitle("信任這張根憑證")
-    Text("如果這張根憑證不在內建清單（例如其他國家或企業的憑證機構），可以自行加入信任錨點。加入後屬於使用者自訂，信任等級為 T3，不會顯示為官方；請確認來源後再加入。",
+    SectionTitle(stringResource(Res.string.certificate_trust_root))
+    Text(stringResource(Res.string.certificate_trust_root_text),
         style = MaterialTheme.typography.bodySmall)
     RoleChips(listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.ISSUER, TrustRole.VERIFIER), roles) { roles = it }
-    OutlinedButton(onClick = { model.importAnchor(cert.toPem(), "", roles) }, enabled = roles.isNotEmpty()) { Text("加入信任錨點") }
+    OutlinedButton(onClick = { model.importAnchor(cert.toPem(), "", roles) }, enabled = roles.isNotEmpty()) { Text(stringResource(Res.string.action_add_trust_anchor)) }
 }

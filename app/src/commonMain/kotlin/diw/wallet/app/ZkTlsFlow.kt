@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.holder.HolderKey
 import diw.wallet.core.jose.PlatformCrypto
@@ -144,14 +146,14 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     fun start(link: String) {
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("讀取網站查驗請求")
+        ui.value = OfflineUi.Working(tr(Res.string.zktls_reading_request))
         job = model.scope.launch {
             ui.value = try {
                 consentFor(link, null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                OfflineUi.Failed("無法讀取網站查驗請求：" + model.describe(e))
+                OfflineUi.Failed(tr(Res.string.zktls_request_unreadable) + model.describe(e))
             }
             (ui.value as? OfflineUi.ZkTlsConsent)?.let { if (ZkTlsPrepare.needed(it.profile)) refreshCaptcha(it) }
         }
@@ -162,7 +164,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         val verified = ZkTlsSessionRequest.verify(ZkTlsSessionRequest.jwsOf(link), model.didResolver(), insecureHosts = insecureHosts())
         val profile = ZkTlsProfiles.resolve(verified.request, allowInline = model.settings.testEnvironment)
         val unknown = verified.request.fields.filter { profile.field(it) == null }
-        if (unknown.isNotEmpty()) throw ProtocolException("invalid_request", "查驗頁沒有欄位 ${unknown.joinToString("、")}")
+        if (unknown.isNotEmpty()) throw ProtocolException("invalid_request", tr(Res.string.zktls_unknown_fields, unknown.joinToString(tr(Res.string.sep_list))))
         val chain = verified.chain
         val (name, trust) = if (chain != null) {
             chain.first().displaySubject() to model.trust.decide(TrustRole.VERIFIER, chain)
@@ -189,7 +191,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                consent.copy(captcha = null, preparing = false, error = "無法取得驗證碼：" + model.describe(e))
+                consent.copy(captcha = null, preparing = false, error = tr(Res.string.zktls_captcha_failed) + model.describe(e))
             }
             val now = ui.value
             if (now is OfflineUi.ZkTlsConsent && now.session.jws == consent.session.jws) ui.value = next
@@ -215,7 +217,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             return
         }
         if (ZkTlsPrepare.needed(consent.profile) && consent.captcha == null) {
-            ui.value = consent.copy(error = "請先取得驗證碼")
+            ui.value = consent.copy(error = tr(Res.string.zktls_captcha_first))
             return
         }
         val bytes = try {
@@ -264,15 +266,15 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
                                     } catch (e: CancellationException) {
                                         throw e
                                     } catch (e: Exception) {
-                                        shown.copy(keepError = "無法保存查詢結果：" + model.describe(e))
+                                        shown.copy(keepError = tr(Res.string.zktls_keep_failed) + model.describe(e))
                                     }
                                 }
                                 ui.value = shown
-                                if (proved.outcome.passed) null else proved.outcome.problems.firstOrNull() ?: "查驗頁沒有找到資料"
+                                if (proved.outcome.passed) null else proved.outcome.problems.firstOrNull() ?: tr(Res.string.zktls_page_no_data)
                             }
                             is ZkResult.Failed -> {
                                 val fresh = request.isFresh(Clock.System.now())
-                                val reason = hostReason(consent)?.let { "查驗主機回報：$it" } ?: result.reason
+                                val reason = hostReason(consent)?.let { tr(Res.string.zktls_host_reported, it) } ?: result.reason
                                 ui.value = OfflineUi.ZkTlsHolderResult(consent, null, null, reason, retry = result.retryable && fresh)
                                 reason
                             }
@@ -296,7 +298,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             model.record(
                 HistoryKind.PRESENTED, consent.verifier, consent.trust, listOf(consent.profile.title),
                 request.fields.mapNotNull { consent.profile.field(it)?.label },
-                "網站查驗證明（zkTLS，${consent.profile.host}），用途：${request.purpose.ifEmpty { "未說明" }}", failure,
+                tr(Res.string.zktls_history_presented, consent.profile.host, request.purpose.ifEmpty { tr(Res.string.age_unstated) }), failure,
             )
         }
     }
@@ -334,7 +336,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     fun openSetup() {
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("讀取可查驗的網站")
+        ui.value = OfflineUi.Working(tr(Res.string.zktls_reading_pages))
         job = model.scope.launch {
             val (pages, testPages, note) = availablePages()
             ui.value = OfflineUi.ZkTlsVerifierSetup(pages, testPages, note)
@@ -357,15 +359,15 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                note = "無法從 ${Url(base).host} 取得測試查驗頁：" + model.describe(e)
+                note = tr(Res.string.zktls_test_pages_failed, Url(base).host) + model.describe(e)
                 emptyList()
             }
         }.orEmpty()
         val offered = imported + served.filter { p -> imported.none { it.id == p.id } }
         val pages = installed + offered.filter { p -> installed.none { it.id == p.id } }
         if (pages.isEmpty()) {
-            val why = if (model.zkTemplates.state.value.version == null) "尚未安裝查驗頁版型，請到設定的「零知識證明」頁更新或匯入版型。" else "已安裝的版型沒有查驗頁。"
-            note = listOfNotNull(note, why, if (test) null else "測試用的查驗頁只在測試環境提供。").joinToString("\n")
+            val why = if (model.zkTemplates.state.value.version == null) tr(Res.string.zktls_no_templates) else tr(Res.string.zktls_templates_no_pages)
+            note = listOfNotNull(note, why, if (test) null else tr(Res.string.zktls_test_pages_only)).joinToString("\n")
         }
         return Triple(pages, offered.map { it.id }.toSet() - installed.map { it.id }.toSet(), note)
     }
@@ -376,7 +378,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     fun openSelf(fileId: String?) {
         stop()
         model.screen.value = Screen.Offline
-        ui.value = OfflineUi.Working("讀取可查詢的網站")
+        ui.value = OfflineUi.Working(tr(Res.string.zktls_reading_query_pages))
         job = model.scope.launch {
             val (pages, testPages, note) = availablePages()
             ui.value = OfflineUi.ZkTlsSelfPick(fileId, pages, testPages, host(), note)
@@ -389,10 +391,10 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
      */
     fun selfThroughHost(pick: OfflineUi.ZkTlsSelfPick, profile: ZkTlsProfile) {
         stop()
-        ui.value = OfflineUi.Working("向查驗主機建立網站查驗")
+        ui.value = OfflineUi.Working(tr(Res.string.zktls_creating_on_host))
         job = model.scope.launch {
             ui.value = try {
-                val base = host() ?: throw ProtocolException("unavailable", "尚未設定查驗主機（設定的「零知識證明」頁）")
+                val base = host() ?: throw ProtocolException("unavailable", tr(Res.string.zktls_host_unset))
                 val body = buildJsonObject {
                     put("profile", profile.id)
                     putJsonArray("fields") { profile.fields.forEach { add(it.name) } }
@@ -405,7 +407,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                OfflineUi.Failed("無法透過查驗主機查詢：" + model.describe(e))
+                OfflineUi.Failed(tr(Res.string.zktls_host_query_failed) + model.describe(e))
             }
             (ui.value as? OfflineUi.ZkTlsConsent)?.let { if (ZkTlsPrepare.needed(it.profile)) refreshCaptcha(it) }
         }
@@ -431,7 +433,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                state.copy(captcha = null, preparing = false, error = "無法取得驗證碼：" + model.describe(e))
+                state.copy(captcha = null, preparing = false, error = tr(Res.string.zktls_captcha_failed) + model.describe(e))
             }
             val now = ui.value
             if (now is OfflineUi.ZkTlsSelf && now.profile.id == state.profile.id) ui.value = next
@@ -445,7 +447,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
      */
     fun queryDirect(state: OfflineUi.ZkTlsSelf, inputs: Map<String, String>) {
         if (ZkTlsPrepare.needed(state.profile) && state.captcha == null) {
-            ui.value = state.copy(error = "請先取得驗證碼")
+            ui.value = state.copy(error = tr(Res.string.zktls_captcha_first))
             return
         }
         val bytes = try {
@@ -526,19 +528,19 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     fun startVerifier(profile: ZkTlsProfile, fields: List<String>, purpose: String) {
         stop()
         lastVerifier = Triple(profile, fields, purpose)
-        ui.value = OfflineUi.Working("建立網站查驗請求")
+        ui.value = OfflineUi.Working(tr(Res.string.zktls_creating_request))
         job = model.scope.launch {
             try {
                 model.platform.keepScreenOn(true)
                 when (val local = engines()) {
                     is ZkResult.Ok -> verifyHere(local.value, profile, fields, purpose)
-                    is ZkResult.Failed -> verifyOnHost(profile, fields, purpose, "這台裝置無法驗證（${local.reason}），改由查驗主機驗證。")
+                    is ZkResult.Failed -> verifyOnHost(profile, fields, purpose, tr(Res.string.zktls_local_fallback, local.reason))
                     ZkResult.Cancelled -> Unit
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                ui.value = OfflineUi.Failed("無法建立網站查驗：" + model.describe(e))
+                ui.value = OfflineUi.Failed(tr(Res.string.zktls_create_failed) + model.describe(e))
             } finally {
                 // A request opened again (the other party's server) has its own session by now: leave that one alone.
                 if (job == null || job === currentCoroutineContext()[Job]) {
@@ -580,11 +582,11 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         // The relay is optional when a local address opened; say so, since a holder elsewhere then cannot reach this side.
         val relayMissing = relay != null && opened.transports.none { it is ZkTlsTransport.Relay }
         val peerMissing = model.server.peer.value?.let { p -> opened.transports.none { it is ZkTlsTransport.Relay && hostOf(it.url) == p.host } } == true
-        val where = opened.transports.joinToString("、") { routeName(it) } + if (relayMissing) "（中繼 ${hostOf(relay!!)} 連不上，只能在同一個網路查驗）" else ""
+        val where = opened.transports.joinToString(tr(Res.string.sep_list)) { routeName(it) } + if (relayMissing) tr(Res.string.zktls_relay_down_note, hostOf(relay!!)) else ""
         val details = transportDetails(request) + listOfNotNull(
-            "中繼：無法連到 $relay/zktls/relay，不在同一個網路的出示者連不到這裡".takeIf { relayMissing },
-            "對方的服務端 ${model.server.peer.value?.host} 的中繼連不上".takeIf { peerMissing && !relayMissing },
-            "查驗方 DID：${key.did}", "請求 id：${request.sessionId}",
+            tr(Res.string.zktls_relay_down_detail, relay).takeIf { relayMissing },
+            tr(Res.string.zktls_peer_relay_down, model.server.peer.value?.host).takeIf { peerMissing && !relayMissing },
+            tr(Res.string.zktls_verifier_did, key.did), tr(Res.string.zktls_request_id, request.sessionId),
         )
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, ZkTlsSessionRequest.link(jws), profile, where, local = true, details = details)
         // A holder that keeps the result gets a receipt signed with the key that signed the request.
@@ -626,7 +628,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             setBody(body.toString())
         }
         if (response.status == HttpStatusCode.Unauthorized) {
-            throw ProtocolException("unauthorized", if (token == null) "查驗主機需要存取權杖，請到設定的「零知識證明」頁填入" else "查驗主機不接受這個存取權杖，請到設定的「零知識證明」頁更新")
+            throw ProtocolException("unauthorized", if (token == null) tr(Res.string.zktls_token_needed) else tr(Res.string.zktls_token_rejected))
         }
         val created = DiwJson.parseToJsonElement(response.bodyAsText()) as? JsonObject
             ?: throw ProtocolException("server_error", "HTTP ${response.status.value}")
@@ -635,7 +637,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     }
 
     private suspend fun verifyOnHost(profile: ZkTlsProfile, fields: List<String>, purpose: String, note: String) {
-        val base = host() ?: throw ProtocolException("unavailable", "$note 但尚未設定查驗主機（設定的「零知識證明」頁，測試環境會使用測試伺服器）。")
+        val base = host() ?: throw ProtocolException("unavailable", tr(Res.string.zktls_no_host_note, note))
         val body = buildJsonObject {
             put("profile", profile.id)
             putJsonArray("fields") { fields.forEach { add(it) } }
@@ -649,7 +651,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             insecureHosts = insecureHosts()).request.payload(), insecureHosts())
         val where = Url(base).host
         ui.value = OfflineUi.ZkTlsVerifierWaiting(request, link, profile, where, local = false, note = note,
-            details = transportDetails(request) + listOf("查驗主機：$base", "請求 id：$sid"))
+            details = transportDetails(request) + listOf(tr(Res.string.zktls_host_line, base), tr(Res.string.zktls_request_id, sid)))
         var verdict: JsonObject? = null
         while (Clock.System.now() < request.expiresAt + GRACE) {
             delay(POLL)
@@ -658,7 +660,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             }.getOrNull() ?: continue
             when (state.str("status")) {
                 "verifying" -> (ui.value as? OfflineUi.ZkTlsVerifierWaiting)?.takeIf { it.request == request && it.step == null }
-                    ?.let { ui.value = it.copy(step = "出示者已連線，查驗主機正在查驗") }
+                    ?.let { ui.value = it.copy(step = tr(Res.string.zktls_holder_connected)) }
                 "done", "failed" -> {
                     verdict = state
                     break
@@ -671,7 +673,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
             v.str("status") == "done" -> OfflineUi.ZkTlsVerifierResult(profile, request,
                 (v["outcome"] as? JsonObject)?.let { ZkTlsOutcome.fromJson(it, profile) }, null, local = false, where = where, error = null,
                 receipt = (v["receipt"] as? kotlinx.serialization.json.JsonPrimitive)?.content == "true")
-            else -> OfflineUi.ZkTlsVerifierResult(profile, request, null, null, local = false, where = where, error = v.str("reason") ?: "查驗失敗")
+            else -> OfflineUi.ZkTlsVerifierResult(profile, request, null, null, local = false, where = where, error = v.str("reason") ?: tr(Res.string.zktls_check_failed))
         }
         ui.value = shown
         record(shown)
@@ -685,10 +687,10 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
      */
     private fun noRoute(relay: String?): String {
         val lan = model.platform.bondsLan?.localInterfaces().orEmpty()
-        val network = if (lan.isEmpty()) "這支手機沒有連上 Wi-Fi 或開啟熱點（只用行動數據時，對方的手機連不到這支手機）" else "無法在 ${lan.networks()} 上開啟連線"
-        val host = if (relay == null) "也沒有設定查驗主機，所以沒有中繼可用" else "也連不到查驗主機 $relay 的中繼（/zktls/relay）"
-        return "$network，$host。請讓兩支手機連同一個 Wi-Fi，或由其中一支開熱點讓另一支連上；" +
-            "兩支手機不在同一個網路時，請在設定「零知識證明」頁填入有提供中繼的查驗主機。"
+        val network = if (lan.isEmpty()) tr(Res.string.zktls_no_network) else tr(Res.string.zktls_listen_failed, lan.networks())
+        val host = if (relay == null) tr(Res.string.zktls_no_host_relay) else tr(Res.string.zktls_host_relay_down, relay)
+        return tr(Res.string.zktls_no_route_1, network, host) +
+            tr(Res.string.zktls_no_route_2)
     }
 
     private suspend fun verifierKey(): HolderKey {
@@ -700,30 +702,30 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     private fun hostOf(url: String): String = runCatching { Url(url).host }.getOrDefault(url)
 
     private fun routeName(t: ZkTlsTransport): String = when (t) {
-        is ZkTlsTransport.Lan -> "區網"
-        is ZkTlsTransport.Relay -> "中繼 " + runCatching { Url(t.url).host }.getOrDefault(t.url)
-        is ZkTlsTransport.Wss -> "查驗主機 " + runCatching { Url(t.url).host }.getOrDefault(t.url)
+        is ZkTlsTransport.Lan -> tr(Res.string.age_route_label_lan)
+        is ZkTlsTransport.Relay -> tr(Res.string.zktls_route_relay, hostOf(t.url))
+        is ZkTlsTransport.Wss -> tr(Res.string.zktls_route_host, hostOf(t.url))
     }
 
     private fun transportDetails(request: ZkTlsSessionRequest): List<String> = request.transports.map { t ->
         when (t) {
-            is ZkTlsTransport.Lan -> "區網監聽：${t.host}:${t.port}（TCP）"
-            is ZkTlsTransport.Relay -> "中繼：${t.url}（房間 ${t.room.take(6)}…）"
-            is ZkTlsTransport.Wss -> "查驗主機連線：${t.url}"
+            is ZkTlsTransport.Lan -> tr(Res.string.zktls_lan_listen, t.host, t.port)
+            is ZkTlsTransport.Relay -> tr(Res.string.zktls_relay_room, t.url, t.room.take(6))
+            is ZkTlsTransport.Wss -> tr(Res.string.zktls_host_connection, t.url)
         }
-    } + "通道：Noise（綁定這個請求的簽章，傳輸路線只看到密文）"
+    } + tr(Res.string.zktls_channel)
 
     private fun record(r: OfflineUi.ZkTlsVerifierResult) {
         val failure = when {
             r.error != null -> r.error
-            r.outcome == null -> "查驗主機沒有回傳結果"
-            !r.outcome.passed -> r.outcome.problems.firstOrNull() ?: "查驗頁沒有找到資料"
+            r.outcome == null -> tr(Res.string.zktls_no_result)
+            !r.outcome.passed -> r.outcome.problems.firstOrNull() ?: tr(Res.string.zktls_page_no_data)
             else -> null
         }
         model.record(
-            HistoryKind.VERIFIED, "網站查驗出示者", null, listOf(r.profile.title),
+            HistoryKind.VERIFIED, tr(Res.string.zktls_holder_name), null, listOf(r.profile.title),
             r.request.fields.mapNotNull { r.profile.field(it)?.label },
-            "網站查驗證明（zkTLS，${r.profile.host}，${if (r.local) "在這台裝置驗證" else "由 ${r.where} 驗證"}），用途：${r.request.purpose.ifEmpty { "未說明" }}",
+            tr(Res.string.zktls_history_verified, r.profile.host, if (r.local) tr(Res.string.zktls_verified_here) else tr(Res.string.zktls_verified_by, r.where), r.request.purpose.ifEmpty { tr(Res.string.age_unstated) }),
             failure,
         )
     }
@@ -744,12 +746,12 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
 
     companion object {
         /** The purpose of a query the holder starts to keep the result. */
-        const val SELF_PURPOSE = "保存網站查驗結果"
+        val SELF_PURPOSE: String get() = tr(Res.string.zktls_saving_result)
         private val DOCUMENT_FORMATS = setOf(DocumentFormat.PDF, DocumentFormat.TEXT, DocumentFormat.XML)
 
         const val VERIFIER_PROFILE = "zktls-verifier"
-        const val EXPIRED = "這個請求已過期（10 分鐘內有效），請對方重新產生 QR Code。"
-        const val EXPIRED_VERIFIER = "請求已過期，沒有收到出示。"
+        val EXPIRED: String get() = tr(Res.string.zktls_request_expired)
+        val EXPIRED_VERIFIER: String get() = tr(Res.string.zktls_expired_no_presentation)
         private val POLL = 2.seconds
         private val GRACE = 30.seconds
         private const val HOST_REASON_TRIES = 3

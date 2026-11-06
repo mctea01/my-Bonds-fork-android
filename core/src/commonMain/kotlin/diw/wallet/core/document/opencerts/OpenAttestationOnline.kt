@@ -1,5 +1,6 @@
 package diw.wallet.core.document.opencerts
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
@@ -66,11 +67,11 @@ class OpenAttestationOnline(
         var anyValid = false
         var unreachable = false
         for (issuer in doc.issuers) {
-            val who = issuer.name ?: "發行者"
+            val who = issuer.name ?: ct("core_oa_issuer")
             val inRegistry = registry?.entries?.firstOrNull { e -> issuer.value != null && e.key.equals(issuer.value, ignoreCase = true) }
             if (inRegistry != null) {
                 anyValid = true
-                lines.add("$who：文件庫列在 OpenCerts 官方登錄（${inRegistry.value}）")
+                lines.add(ct("core_oa_in_registry", who, inRegistry.value))
             }
             val location = issuer.identityLocation
             when (issuer.identityType) {
@@ -81,14 +82,14 @@ class OpenAttestationOnline(
                         throw e
                     } catch (e: Exception) {
                         unreachable = true
-                        lines.add("$who：無法查詢 $location 的 DNS 紀錄（${e.message ?: e::class.simpleName}）")
+                        lines.add(ct("core_oa_dns_failed", who, location, e.message ?: e::class.simpleName))
                         null
                     }
                     if (found != null) {
                         if (found.isNotEmpty()) {
                             anyValid = true
-                            lines.add("$who：$location 的 DNS TXT 紀錄指向這個文件庫（網路 ${netName(found.first().netId)}）")
-                        } else lines.add("$who：$location 的 DNS 紀錄沒有這個文件庫，網域無法證明發行者身分")
+                            lines.add(ct("core_oa_dns_points", who, location, netName(found.first().netId)))
+                        } else lines.add(ct("core_oa_dns_missing", who, location))
                     }
                 }
                 "DNS-DID" -> if (location != null && issuer.identityKey != null) {
@@ -98,18 +99,18 @@ class OpenAttestationOnline(
                         throw e
                     } catch (e: Exception) {
                         unreachable = true
-                        lines.add("$who：無法查詢 $location 的 DNS 紀錄（${e.message ?: e::class.simpleName}）")
+                        lines.add(ct("core_oa_dns_failed", who, location, e.message ?: e::class.simpleName))
                         null
                     }
                     if (found == true) {
                         anyValid = true
-                        lines.add("$who：$location 的 DNS 紀錄列出簽署金鑰 ${issuer.identityKey}")
-                    } else if (found == false) lines.add("$who：$location 的 DNS 紀錄沒有簽署金鑰 ${issuer.identityKey}")
+                        lines.add(ct("core_oa_dns_key", who, location, issuer.identityKey))
+                    } else if (found == false) lines.add(ct("core_oa_dns_no_key", who, location, issuer.identityKey))
                 }
-                else -> if (inRegistry == null) lines.add("$who：沒有 DNS 身分證明（${issuer.identityType ?: "未提供"}），也不在 OpenCerts 登錄")
+                else -> if (inRegistry == null) lines.add(ct("core_oa_no_identity", who, issuer.identityType ?: ct("core_not_provided")))
             }
         }
-        if (registry == null && registryUrl != null) lines.add("無法讀取 OpenCerts 官方登錄")
+        if (registry == null && registryUrl != null) lines.add(ct("core_oa_registry_failed"))
         val check = when {
             anyValid -> Check.PASS
             unreachable -> Check.NOT_CHECKED
@@ -121,24 +122,24 @@ class OpenAttestationOnline(
     // ---------------------------------------------------------------- issuance and revocation
 
     private suspend fun issuance(doc: OpenAttestationDocument, dns: suspend (String) -> List<OaDnsRecord>): Outcome {
-        val root = doc.merkleRoot ?: return Outcome(Check.FAIL, listOf("文件沒有 Merkle root"))
-        val target = doc.targetHash ?: return Outcome(Check.FAIL, listOf("文件沒有 target hash"))
+        val root = doc.merkleRoot ?: return Outcome(Check.FAIL, listOf(ct("core_oa_no_root")))
+        val target = doc.targetHash ?: return Outcome(Check.FAIL, listOf(ct("core_oa_no_target")))
         val lines = ArrayList<String>()
         val results = ArrayList<Check>()
-        if (doc.issuers.isEmpty()) return Outcome(Check.FAIL, listOf("文件沒有發行者"))
+        if (doc.issuers.isEmpty()) return Outcome(Check.FAIL, listOf(ct("core_oa_no_issuers")))
         for (issuer in doc.issuers) {
-            val who = issuer.name ?: "發行者"
+            val who = issuer.name ?: ct("core_oa_issuer")
             val result = try {
                 when (issuer.method) {
                     OaMethod.DOCUMENT_STORE -> documentStore(issuer, root, target, doc.proofs, chainFor(issuer, dns), who, lines)
                     OaMethod.TOKEN_REGISTRY -> tokenRegistry(issuer, root, chainFor(issuer, dns), who, lines)
                     OaMethod.DID -> didSigned(doc, issuer, root, target, who, lines)
-                    OaMethod.NONE -> { lines.add("$who：沒有文件庫、權杖登錄或 DID，無法查驗是否確實發行"); Check.FAIL }
+                    OaMethod.NONE -> { lines.add(ct("core_oa_nothing_to_check", who)); Check.FAIL }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                lines.add("$who：無法查詢（${e.message ?: e::class.simpleName}）")
+                lines.add(ct("core_oa_query_failed", who, e.message ?: e::class.simpleName))
                 Check.NOT_CHECKED
             }
             results.add(result)
@@ -165,20 +166,20 @@ class OpenAttestationOnline(
         val issued = try {
             abiBool(call(chain, store, if (batchable) batchCall(IS_ISSUED_BATCH, root, target, proofs) else IS_ISSUED + word(root)))
         } catch (e: RpcRevert) {
-            lines.add("$who：文件庫 $store 在 ${netName(chain)} 上無法呼叫（${e.message}）")
+            lines.add(ct("core_oa_store_call_failed", who, store, netName(chain), e.message))
             return Check.FAIL
         }
         if (!issued) {
-            lines.add("$who：文件庫 $store（${netName(chain)}）沒有發行這份文件")
+            lines.add(ct("core_oa_not_issued", who, store, netName(chain)))
             return Check.FAIL
         }
         val revoked = if (batchable) abiBool(call(chain, store, batchCall(IS_REVOKED_BATCH, root, target, proofs)))
         else OpenAttestationDocument.intermediateHashes(target, proofs).any { h -> abiBool(call(chain, store, IS_REVOKED + word(h))) }
         if (revoked) {
-            lines.add("$who：文件庫 $store（${netName(chain)}）已撤銷這份文件")
+            lines.add(ct("core_oa_store_revoked", who, store, netName(chain)))
             return Check.FAIL
         }
-        lines.add("$who：文件庫 $store（${netName(chain)}）已發行且未撤銷")
+        lines.add(ct("core_oa_issued", who, store, netName(chain)))
         return Check.PASS
     }
 
@@ -186,10 +187,10 @@ class OpenAttestationOnline(
         val registry = issuer.value ?: return Check.FAIL
         return try {
             val owner = "0x" + call(chain, registry, OWNER_OF + word(root)).removePrefix("0x").takeLast(40)
-            lines.add("$who：權杖登錄 $registry（${netName(chain)}）已鑄造這份文件，持有者 $owner")
+            lines.add(ct("core_oa_token_minted", who, registry, netName(chain), owner))
             Check.PASS
         } catch (e: RpcRevert) {
-            lines.add("$who：權杖登錄 $registry（${netName(chain)}）沒有這份文件（${e.message}）")
+            lines.add(ct("core_oa_token_missing", who, registry, netName(chain), e.message))
             Check.FAIL
         }
     }
@@ -198,12 +199,12 @@ class OpenAttestationOnline(
         val key = issuer.identityKey ?: issuer.value?.let { v -> doc.didSignatures.firstOrNull { it.key.startsWith(v, ignoreCase = true) }?.key }
         val sig = doc.didSignatures.firstOrNull { key != null && it.key.equals(key, ignoreCase = true) } ?: doc.didSignatures.singleOrNull()
         if (sig == null) {
-            lines.add("$who：沒有 DID 簽章")
+            lines.add(ct("core_oa_no_did_sig", who))
             return Check.FAIL
         }
         val address = ethrAddress(sig.key)
         if (address == null) {
-            lines.add("$who：只支援 did:ethr 金鑰（${sig.key}）")
+            lines.add(ct("core_oa_ethr_only", who, sig.key))
             return Check.NOT_CHECKED
         }
         // ethers verifyMessage: EIP-191 personal message over the 32 bytes of the Merkle root.
@@ -211,32 +212,32 @@ class OpenAttestationOnline(
         val hash = DocCrypto.keccak256("\u0019Ethereum Signed Message:\n32".encodeToByteArray() + message)
         val recovered = runCatching { DocCrypto.ecRecoverAddress(hash, DocCryptoUtil.unhex(sig.signature.removePrefix("0x"))) }.getOrNull()
         if (recovered == null || !DocCryptoUtil.hex(recovered).equals(address, ignoreCase = true)) {
-            lines.add("$who：Merkle root 不是由 ${sig.key} 簽署")
+            lines.add(ct("core_oa_root_not_signed", who, sig.key))
             return Check.FAIL
         }
-        lines.add("$who：Merkle root 由 ${sig.key} 簽署")
+        lines.add(ct("core_oa_root_signed", who, sig.key))
         return when (issuer.revocationType) {
-            null, "NONE" -> { lines.add("$who：發行者未設撤銷機制"); Check.PASS }
+            null, "NONE" -> { lines.add(ct("core_oa_no_revocation", who)); Check.PASS }
             "REVOCATION_STORE" -> {
                 val store = issuer.revocationLocation ?: return Check.FAIL
                 val revoked = OpenAttestationDocument.intermediateHashes(target, doc.proofs).any { h -> abiBool(call("1", store, IS_REVOKED + word(h))) }
-                if (revoked) { lines.add("$who：撤銷登錄 $store 已撤銷這份文件"); Check.FAIL } else { lines.add("$who：撤銷登錄 $store 未撤銷"); Check.PASS }
+                if (revoked) { lines.add(ct("core_oa_registry_revoked", who, store)); Check.FAIL } else { lines.add(ct("core_oa_registry_not_revoked", who, store)); Check.PASS }
             }
             "OCSP_RESPONDER" -> {
                 val location = issuer.revocationLocation ?: return Check.FAIL
                 for (h in OpenAttestationDocument.intermediateHashes(target, doc.proofs)) {
                     val resp = http.get(location.trimEnd('/') + "/0x" + h)
-                    if (!resp.status.isSuccess()) throw IllegalStateException("OCSP 回應 ${resp.status.value}")
-                    val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException("OCSP 回應格式不正確")
+                    if (!resp.status.isSuccess()) throw IllegalStateException(ct("core_oa_ocsp_status", resp.status.value))
+                    val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException(ct("core_oa_ocsp_format"))
                     if ((o["revoked"] as? JsonPrimitive)?.contentOrNull == "true") {
-                        lines.add("$who：OCSP 服務 $location 回報已撤銷（原因碼 ${(o["reasonCode"] as? JsonPrimitive)?.contentOrNull ?: "未提供"}）")
+                        lines.add(ct("core_oa_ocsp_revoked", who, location, (o["reasonCode"] as? JsonPrimitive)?.contentOrNull ?: ct("core_not_provided")))
                         return Check.FAIL
                     }
                 }
-                lines.add("$who：OCSP 服務 $location 回報未撤銷")
+                lines.add(ct("core_oa_ocsp_good", who, location))
                 Check.PASS
             }
-            else -> { lines.add("$who：不支援的撤銷方式 ${issuer.revocationType}"); Check.NOT_CHECKED }
+            else -> { lines.add(ct("core_oa_revocation_type", who, issuer.revocationType)); Check.NOT_CHECKED }
         }
     }
 
@@ -252,8 +253,8 @@ class OpenAttestationOnline(
                     parameter("type", "TXT")
                     header(HttpHeaders.Accept, "application/dns-json")
                 }
-                if (!resp.status.isSuccess()) throw IllegalStateException("DNS 查詢回應 ${resp.status.value}")
-                val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException("DNS 回應格式不正確")
+                if (!resp.status.isSuccess()) throw IllegalStateException(ct("core_oa_dns_status", resp.status.value))
+                val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException(ct("core_oa_dns_format"))
                 val answers = (o["Answer"] as? JsonArray).orEmpty().mapNotNull { a ->
                     val r = a as? JsonObject ?: return@mapNotNull null
                     if ((r["type"] as? JsonPrimitive)?.contentOrNull != "16") return@mapNotNull null
@@ -266,7 +267,7 @@ class OpenAttestationOnline(
                 last = e
             }
         }
-        throw last ?: IllegalStateException("沒有可用的 DNS 查詢服務")
+        throw last ?: IllegalStateException(ct("core_oa_no_dns"))
     }
 
     // ---------------------------------------------------------------- Ethereum
@@ -275,7 +276,7 @@ class OpenAttestationOnline(
 
     /** eth_call on [chain]: the hex result, [RpcRevert] when the contract reverts or is missing. */
     private suspend fun call(chain: String, to: String, data: String): String {
-        val endpoints = rpc[chain] ?: throw IllegalStateException("不支援的以太坊網路 ${netName(chain)}")
+        val endpoints = rpc[chain] ?: throw IllegalStateException(ct("core_oa_network_unsupported", netName(chain)))
         var last: Exception? = null
         for (url in endpoints) {
             try {
@@ -292,16 +293,16 @@ class OpenAttestationOnline(
                     contentType(ContentType.Application.Json)
                     setBody(body.toString())
                 }
-                if (!resp.status.isSuccess()) throw IllegalStateException("RPC 回應 ${resp.status.value}")
-                val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException("RPC 回應格式不正確")
+                if (!resp.status.isSuccess()) throw IllegalStateException(ct("core_oa_rpc_status", resp.status.value))
+                val o = DiwJson.parseToJsonElement(resp.bodyAsText()) as? JsonObject ?: throw IllegalStateException(ct("core_oa_rpc_format"))
                 (o["error"] as? JsonObject)?.let { err ->
                     val message = (err["message"] as? JsonPrimitive)?.contentOrNull ?: "execution reverted"
                     if (message.contains("revert", ignoreCase = true)) throw RpcRevert(message)
                     throw IllegalStateException(message)
                 }
-                val result = (o["result"] as? JsonPrimitive)?.contentOrNull ?: throw IllegalStateException("RPC 沒有結果")
+                val result = (o["result"] as? JsonPrimitive)?.contentOrNull ?: throw IllegalStateException(ct("core_oa_rpc_no_result"))
                 // A call to an address without code returns 0x.
-                if (result == "0x") throw RpcRevert("合約不存在")
+                if (result == "0x") throw RpcRevert(ct("core_oa_no_contract"))
                 return result
             } catch (e: RpcRevert) {
                 throw e
@@ -311,12 +312,12 @@ class OpenAttestationOnline(
                 last = e
             }
         }
-        throw last ?: IllegalStateException("沒有可用的以太坊節點")
+        throw last ?: IllegalStateException(ct("core_oa_no_node"))
     }
 
     private suspend fun registry(url: String): Map<String, String> {
         val resp = http.get(url)
-        if (!resp.status.isSuccess()) throw IllegalStateException("登錄回應 ${resp.status.value}")
+        if (!resp.status.isSuccess()) throw IllegalStateException(ct("core_oa_registry_status", resp.status.value))
         val issuers = (DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject)["issuers"] as JsonObject
         return issuers.mapValues { (_, v) -> ((v as? JsonObject)?.get("name") as? JsonPrimitive)?.contentOrNull ?: "" }
     }
@@ -334,9 +335,9 @@ class OpenAttestationOnline(
             "80002" to listOf("https://polygon-amoy-bor-rpc.publicnode.com"),
         )
 
-        private val NETWORKS = mapOf("1" to "以太坊主網", "11155111" to "Sepolia 測試網", "137" to "Polygon", "80002" to "Polygon Amoy 測試網", "3" to "Ropsten 測試網（已停止）", "5" to "Goerli 測試網（已停止）")
+        private val NETWORKS: Map<String, String> get() = mapOf("1" to ct("core_eth_mainnet"), "11155111" to ct("core_eth_sepolia"), "137" to "Polygon", "80002" to ct("core_eth_amoy"), "3" to ct("core_eth_ropsten"), "5" to ct("core_eth_goerli"))
 
-        fun netName(id: String?): String = NETWORKS[id ?: "1"] ?: "鏈 $id"
+        fun netName(id: String?): String = NETWORKS[id ?: "1"] ?: ct("core_eth_chain", id)
 
         private fun selector(signature: String): String = "0x" + DocCryptoUtil.hex(DocCrypto.keccak256(signature.encodeToByteArray())).take(8)
 

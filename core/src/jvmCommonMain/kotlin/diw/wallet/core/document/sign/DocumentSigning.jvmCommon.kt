@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.ApprovalSignatures
 import diw.wallet.core.document.Asic
 import diw.wallet.core.document.Bc
@@ -74,7 +75,7 @@ actual object DocumentSigning {
         content: ByteArray, signer: DocumentSigner, encapsulate: Boolean, pades: Boolean, timestamper: Timestamper?,
         validation: HttpFetch? = null, archive: Boolean = false,
     ): ByteArray {
-        if (archive && (timestamper == null || validation == null)) throw SigningException("B-LTA 需要時戳機構與撤銷資訊")
+        if (archive && (timestamper == null || validation == null)) throw SigningException(ct("core_lta_needs_tsa_revocation"))
         val chain = signer.certificateChain.map { X509CertificateHolder(it) }
         val leaf = chain.first()
         val attrs = ASN1EncodableVector()
@@ -121,28 +122,28 @@ actual object DocumentSigning {
         )
         var der = ContentInfo(CMSObjectIdentifiers.signedData, sd).getEncoded("DER")
         if (archive) {
-            if (lt?.empty != false) throw SigningException("取不到撤銷資訊（OCSP 與 CRL 都無法取得），無法做到 B-LTA：" + (lt?.summary() ?: ""))
+            if (lt?.empty != false) throw SigningException(ct("core_lta_no_revocation") + (lt?.summary() ?: ""))
             der = CadesArchive.addArchiveTimestamp(der, content) { timestamper!!.timestamp(it) }
         }
         // The result must verify like any third party would verify it.
         val parsed = if (encapsulate) CMSSignedData(der) else CMSSignedData(CMSProcessableByteArray(content), der)
         val ok = parsed.signerInfos.signers.first().verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(leaf))
-        if (!ok) throw SigningException("產生的簽章無法通過驗證")
+        if (!ok) throw SigningException(ct("core_sign_self_check_failed"))
         return der
     }
 
     actual fun verifyDetached(cms: ByteArray, content: ByteArray, certificate: ByteArray) {
         val cert = X509CertificateHolder(certificate)
-        val parsed = runCatching { CMSSignedData(CMSProcessableByteArray(content), cms) }.getOrElse { throw SigningException("遠端簽章服務回傳的不是有效的 CMS 簽章") }
-        val signer = parsed.signerInfos.signers.singleOrNull() ?: throw SigningException("遠端簽章服務回傳的簽章不是單一簽署者")
-        if (!signer.sid.match(cert)) throw SigningException("遠端簽章服務回傳的簽章不是以選擇的憑證簽署")
+        val parsed = runCatching { CMSSignedData(CMSProcessableByteArray(content), cms) }.getOrElse { throw SigningException(ct("core_csc_bad_cms")) }
+        val signer = parsed.signerInfos.signers.singleOrNull() ?: throw SigningException(ct("core_csc_not_single"))
+        if (!signer.sid.match(cert)) throw SigningException(ct("core_csc_wrong_cert"))
         val ok = runCatching { signer.verify(JcaSimpleSignerInfoVerifierBuilder().setProvider(Bc.provider).build(cert)) }.getOrDefault(false)
-        if (!ok) throw SigningException("遠端簽章服務回傳的簽章無法通過驗證（摘要或簽章不符）")
+        if (!ok) throw SigningException(ct("core_csc_sig_invalid"))
     }
 
     private fun verifyRaw(cert: X509CertificateHolder, type: SignerKeyType, data: ByteArray, signature: ByteArray) {
         val ok = GmSignedData.verifySignature(cert, if (type == SignerKeyType.RSA) "1.2.840.113549.1.1.11" else "1.2.840.10045.4.3.2", null, data, signature)
-        if (!ok) throw SigningException("簽章無法以憑證的公開金鑰驗證：卡片或金鑰與憑證不相符")
+        if (!ok) throw SigningException(ct("core_sign_key_mismatch"))
     }
 
     actual suspend fun signPdf(pdf: ByteArray, signer: DocumentSigner, options: PdfSignOptions, timestamper: Timestamper?): ByteArray {
@@ -153,7 +154,7 @@ actual object DocumentSigning {
         options.validation?.let { fetch ->
             val token = signatureTimestamp(cms)
             val v = collectValidation(signer.certificateChain, fetch).plus(token?.let { timestampValidation(it, fetch) } ?: ValidationData())
-            if (v.empty && options.requireValidation) throw SigningException("取不到撤銷資訊（OCSP 與 CRL 都無法取得）：" + v.summary())
+            if (v.empty && options.requireValidation) throw SigningException(ct("core_revocation_unavailable") + v.summary())
             val dec = java.util.Base64.getDecoder()
             out = PdfIncrementalSigner.addValidationData(
                 out, v.certificates.map { dec.decode(it) }, v.ocsps.map { dec.decode(it) }, v.crls.map { dec.decode(it) },
@@ -161,7 +162,7 @@ actual object DocumentSigning {
             )
         }
         // B-LTA: a document time stamp over everything, the validation data included.
-        if (options.documentTimestamp) out = documentTimestamp(out, timestamper ?: throw SigningException("B-LTA 需要時戳機構"))
+        if (options.documentTimestamp) out = documentTimestamp(out, timestamper ?: throw SigningException(ct("core_lta_needs_tsa")))
         return out
     }
 
@@ -175,10 +176,10 @@ actual object DocumentSigning {
     }
 
     actual suspend fun extendPdf(pdf: ByteArray, validation: HttpFetch, timestamper: Timestamper?): PdfExtension {
-        val file = try { PdfFile(pdf) } catch (e: PdfException) { throw SigningException("PDF 結構無法讀取：" + e.message, e) }
+        val file = try { PdfFile(pdf) } catch (e: PdfException) { throw SigningException(ct("core_pdf_unreadable") + e.message, e) }
         val sigs = PdfSignatures(file)
         val fields = sigs.fields().filter { it.contents.isNotEmpty() }
-        if (fields.isEmpty()) throw SigningException("這份 PDF 沒有簽章或時戳可以延長")
+        if (fields.isEmpty()) throw SigningException(ct("core_pdf_nothing_to_extend"))
         val known = sigs.dss()?.certificates.orEmpty()
         var v = ValidationData()
         val vriKeys = ArrayList<String>()
@@ -193,7 +194,7 @@ actual object DocumentSigning {
             if (chain.isNotEmpty()) v = v.plus(collectValidation(chain, validation, known))
             signatureTimestamp(contents)?.let { v = v.plus(timestampValidation(it, validation, known)) }
         }
-        if (v.empty) throw SigningException("取不到撤銷資訊（OCSP 與 CRL 都無法取得）：" + v.summary())
+        if (v.empty) throw SigningException(ct("core_revocation_unavailable") + v.summary())
         val dec = java.util.Base64.getDecoder()
         var out = PdfIncrementalSigner.addValidationData(pdf, v.certificates.map { dec.decode(it) }, v.ocsps.map { dec.decode(it) }, v.crls.map { dec.decode(it) }, vriKeys)
         if (timestamper != null) out = documentTimestamp(out, timestamper)
@@ -217,7 +218,7 @@ actual object DocumentSigning {
 
     actual suspend fun timestampValidation(token: ByteArray, fetch: HttpFetch, known: List<ByteArray>): ValidationData {
         val chain = timestampChain(token)
-        if (chain.isEmpty()) return ValidationData(statuses = listOf(RevocationStatus("時戳機構", "NONE", "UNAVAILABLE", "時戳沒有附上時戳機構的憑證")))
+        if (chain.isEmpty()) return ValidationData(statuses = listOf(RevocationStatus(ct("core_tsa"), "NONE", "UNAVAILABLE", ct("core_cms_tst_no_cert"))))
         return ValidationCollector.collect(chain, fetch, known)
     }
 
@@ -242,7 +243,7 @@ actual object DocumentSigning {
         require(files.isNotEmpty())
         val names = files.map { it.first }
         if (names.toSet().size != names.size || names.any { it.startsWith("META-INF/") || it == "mimetype" || it.contains("..") }) {
-            throw SigningException("檔名重複或不合法")
+            throw SigningException(ct("core_asic_bad_name"))
         }
         val sigPath = "META-INF/signature001.p7s"
         val manifest = Asic.manifest(files, sigPath)
@@ -256,7 +257,7 @@ actual object DocumentSigning {
     }
 
     actual suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray {
-        if (archive && (timestamper == null || validation == null)) throw SigningException("B-LTA 需要時戳機構與撤銷資訊")
+        if (archive && (timestamper == null || validation == null)) throw SigningException(ct("core_lta_needs_tsa_revocation"))
         return XmlDsig.signEnveloped(
             xml, signer, Clock.System.now(), timestamper?.let { t -> { data: ByteArray -> t.timestamp(data) } },
             validation?.let { f -> { token: ByteArray? -> collectValidation(signer.certificateChain, f).plus(token?.let { timestampValidation(it, f) } ?: ValidationData()) } },
@@ -275,15 +276,15 @@ actual object DocumentSigning {
         val ks = try {
             KeyStore.getInstance("PKCS12", Bc.provider).apply { load(ByteArrayInputStream(p12), password.toCharArray()) }
         } catch (e: Exception) {
-            throw SigningException("無法開啟憑證檔：密碼錯誤或格式不支援", e)
+            throw SigningException(ct("core_p12_open_failed"), e)
         }
-        val alias = ks.aliases().toList().firstOrNull { ks.isKeyEntry(it) } ?: throw SigningException("憑證檔內沒有私密金鑰")
-        val key = ks.getKey(alias, password.toCharArray()) as? PrivateKey ?: throw SigningException("憑證檔內沒有私密金鑰")
-        val chain = ks.getCertificateChain(alias)?.map { (it as X509Certificate).encoded } ?: throw SigningException("憑證檔內沒有憑證")
+        val alias = ks.aliases().toList().firstOrNull { ks.isKeyEntry(it) } ?: throw SigningException(ct("core_p12_no_key"))
+        val key = ks.getKey(alias, password.toCharArray()) as? PrivateKey ?: throw SigningException(ct("core_p12_no_key"))
+        val chain = ks.getCertificateChain(alias)?.map { (it as X509Certificate).encoded } ?: throw SigningException(ct("core_p12_no_cert"))
         val type = when (key.algorithm) {
             "RSA" -> SignerKeyType.RSA
             "EC", "ECDSA" -> SignerKeyType.EC_P256
-            else -> throw SigningException("不支援的金鑰類型 ${key.algorithm}")
+            else -> throw SigningException(ct("core_key_type_unsupported", key.algorithm))
         }
         return object : DocumentSigner {
             override val certificateChain = chain
@@ -332,7 +333,7 @@ actual object DocumentSigning {
         val cert = Certificate.getInstance(DERSequence(v))
         val holder = X509CertificateHolder(cert)
         if (!holder.isSignatureValid(org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder().setProvider(Bc.provider).build(holder))) {
-            throw SigningException("錢包金鑰產生的憑證簽章無效")
+            throw SigningException(ct("core_wallet_cert_invalid"))
         }
         return cert.encoded
     }

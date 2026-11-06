@@ -1,5 +1,6 @@
 package diw.wallet.core.oid4vci
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.compat.DialectSet
 import diw.wallet.core.compat.Draft11Dialect
 import diw.wallet.core.compat.HolderProfile
@@ -709,7 +710,7 @@ class Oid4vciClient(
         session.dpop?.updateNonce(endpoint, resp.headers["DPoP-Nonce"])
         if (!resp.status.isSuccess()) {
             throw ProtocolException("invalid_nonce", "Nonce endpoint returned ${resp.status.value}" +
-                if (resp.status.value in 502..504) "（發行端伺服器暫時無法回應，請稍後再試）" else "")
+                if (resp.status.value in 502..504) ct("core_oid4vci_unavailable") else "")
         }
         return parseJsonObject(resp.bodyAsText(), "invalid_nonce").str("c_nonce")
             ?: throw ProtocolException("invalid_nonce", "Nonce response without c_nonce")

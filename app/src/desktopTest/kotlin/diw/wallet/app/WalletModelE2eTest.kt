@@ -793,7 +793,7 @@ class WalletModelE2eTest {
         assertEquals("行動駕照", d.title)
         // The test issuer chains to the test IACA: verified, but never official.
         assertEquals(TrustEnvironment.TEST, d.issuerTrust.environment)
-        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdict(d, diw.wallet.core.status.RiskLevel.MEDIUM).first)
+        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdictOf(d, diw.wallet.core.status.RiskLevel.MEDIUM))
         assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, d.status.state)
 
         val entry = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
@@ -2607,12 +2607,23 @@ class WalletModelE2eTest {
         assertTrue(hosts.none { it.endsWith("wallet.gov.tw") }, "contacted: $hosts")
     }
 
-    /** Renders the first-start pages and the legal settings for review; DIW_SCREENSHOTS names the output folder. */
+    /**
+     * Renders the first-start pages and the legal settings for review, in Traditional Chinese (legal-*) and English
+     * (legal-en-*); DIW_SCREENSHOTS names the output folder.
+     */
     @Test
     fun legalScreenshots() = runBlocking<Unit> {
         val dir = System.getenv("DIW_SCREENSHOTS")
         org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
-        val out = java.io.File(dir!!).apply { mkdirs() }
+        try {
+            legalScreens(java.io.File(dir!!).apply { mkdirs() }, AppLanguage.TRADITIONAL_CHINESE, "legal-")
+            legalScreens(java.io.File(dir).apply { mkdirs() }, AppLanguage.ENGLISH, "legal-en-")
+        } finally {
+            ProcessLanguageStore.set(AppLanguage.SYSTEM)
+        }
+    }
+
+    private suspend fun legalScreens(out: java.io.File, language: AppLanguage, prefix: String) {
         val p = TestPlatform(EphemeralStorage())
         val m = WalletModel(p)
         p.model = m
@@ -2632,25 +2643,30 @@ class WalletModelE2eTest {
             }
         }
         val app: @androidx.compose.runtime.Composable () -> Unit = { diw.wallet.app.ui.WalletApp(m, scanQr = { null }) }
+        m.setAppLanguage(language)
 
-        shot("legal-01-welcome", content = app)
+        shot(prefix + "01-welcome", content = app)
         // An earlier version on record skips the welcome page and shows the terms page.
         m.legal.consent.value = LegalConsent(terms = ConsentRecord(0, true, 0), privacy = ConsentRecord(0, true, 0))
-        shot("legal-02-terms", 1500, app)
+        shot(prefix + "02-terms", 1500, app)
         m.legal.acceptBasics().join()
-        shot("legal-03-statement-twdiw", 2600, app)
+        shot(prefix + "03-statement-twdiw", 2600, app)
         m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, true).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
-        shot("legal-04-statement-mydata", 2000, app)
+        shot(prefix + "04-statement-mydata", 2000, app)
         m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
-        shot("legal-05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
+        shot(prefix + "05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
         m.screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
-        shot("legal-06-settings", content = app)
+        shot(prefix + "06-settings", content = app)
         m.screen.value = Screen.IntegrationStatement(diw.wallet.app.legal.Integration.TWDIW, pendingUri = "modadigitalwallet://authorize?x=1")
-        shot("legal-07-statement-from-link", 2600, app)
+        shot(prefix + "07-statement-from-link", 2600, app)
         m.screen.value = Screen.Home
         m.tab.value = HomeTab.USE
-        shot("legal-08-use-twdiw-off", content = app)
+        shot(prefix + "08-use-twdiw-off", content = app)
+        m.screen.value = Screen.SettingsPage(SettingsSection.GENERAL)
+        shot(prefix + "09-settings-language", content = app)
+        m.screen.value = Screen.Settings
+        shot(prefix + "10-settings", content = app)
     }
 }

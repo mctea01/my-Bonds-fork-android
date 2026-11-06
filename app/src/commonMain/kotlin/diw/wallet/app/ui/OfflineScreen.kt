@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -83,18 +86,18 @@ fun OfflineScreen(
 ) {
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
-        is OfflineUi.Working -> Busy(s.message.ifEmpty { "處理中" })
+        is OfflineUi.Working -> Busy(s.message.ifEmpty { stringResource(Res.string.state_processing) })
         is OfflineUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.FAIL, "無法完成", listOf(s.message))
-            Button(onClick = { model.back() }) { Text("返回") }
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(s.message))
+            Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
         }
         is OfflineUi.Unlisted -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            VerdictCard(Verdict.FAIL, "查驗模組無法確認（T4）", listOf(s.message, "如果這是你自己架設或熟悉的測試環境，可以確認風險後繼續；出示前仍會顯示同意畫面。"))
-            if (riskOverride(s.service.vpUid, "仍要繼續（自行承擔風險）", "向未列名的查驗模組出示",
-                    listOf("${s.service.name} 的查驗模組沒有列在數位憑證皮夾信任清單，也不在皮夾平台網域，或與區塊鏈上的註冊不符。", "對方可能不是它宣稱的機構，出示的資料可能被濫用。"))) {
-                Button(onClick = { model.taiwan.startPickup(s.service, allowUnlisted = true) }) { Text("繼續建立交易") }
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.offline_t4_title), listOf(s.message, stringResource(Res.string.offline_t4_text)))
+            if (riskOverride(s.service.vpUid, stringResource(Res.string.action_continue_at_risk), stringResource(Res.string.offline_unlisted_title),
+                    listOf(stringResource(Res.string.offline_unlisted_text, s.service.name), stringResource(Res.string.offline_unlisted_risk)))) {
+                Button(onClick = { model.taiwan.startPickup(s.service, allowUnlisted = true) }) { Text(stringResource(Res.string.offline_continue)) }
             }
-            TextButton(onClick = { model.back() }) { Text("返回") }
+            TextButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
         }
         is OfflineUi.Barcode -> BarcodeView(model, s)
         is OfflineUi.BondsChoose -> BondsChooseView(model, s)
@@ -124,16 +127,16 @@ private fun BarcodeView(model: WalletModel, s: OfflineUi.Barcode) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(s.serviceName, style = MaterialTheme.typography.titleLarge)
-        Text("請出示給店員掃描", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.offline_show_clerk), style = MaterialTheme.typography.bodyMedium)
         if (s.image != null && left > 0) {
-            Image(s.image, contentDescription = "取貨條碼", contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp))
+            Image(s.image, contentDescription = stringResource(Res.string.offline_barcode), contentScale = ContentScale.FillWidth, modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp))
         } else if (s.image == null) {
-            Text("條碼影像無法顯示", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.offline_barcode_broken), color = MaterialTheme.colorScheme.error)
         }
-        Text(if (left > 0) "有效時間剩餘 ${mmss(left)}" else "條碼已過期，請重新出示", style = MaterialTheme.typography.titleMedium,
+        Text(if (left > 0) stringResource(Res.string.offline_time_left, mmss(left)) else stringResource(Res.string.offline_barcode_expired), style = MaterialTheme.typography.titleMedium,
             color = if (left > 30) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-        Text("條碼由服務方系統產生並加密，錢包只負責證明您持有這張憑證。", style = MaterialTheme.typography.bodySmall)
-        Button(onClick = { model.back() }) { Text("完成") }
+        Text(stringResource(Res.string.offline_barcode_note), style = MaterialTheme.typography.bodySmall)
+        Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_done)) }
     }
 }
 
@@ -145,16 +148,16 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("查驗方要求出示", style = MaterialTheme.typography.titleMedium)
-                Text("用途：${s.request.purpose}")
-                s.request.audience?.let { Text("查驗方：$it") }
-                Text("挑戰建立時間：${s.request.createdAt}", style = MaterialTheme.typography.bodySmall)
-                Text("Bonds 的查驗挑戰沒有查驗方簽章，無法確認對方身分；請確認用途與眼前的對象相符再出示。",
+                Text(stringResource(Res.string.offline_request), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(Res.string.age_purpose, s.request.purpose))
+                s.request.audience?.let { Text(stringResource(Res.string.offline_verifier, it)) }
+                Text(stringResource(Res.string.offline_challenge_time, s.request.createdAt), style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(Res.string.offline_unsigned),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 Text(LegalStrings.BONDS_UNENCRYPTED_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
-        Text("選擇憑證", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.offline_choose), style = MaterialTheme.typography.titleSmall)
         s.cards.forEachIndexed { i, c ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RadioButton(selected = i == cardIndex, onClick = { cardIndex = i })
@@ -164,10 +167,10 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
                 }
             }
         }
-        Text("要出示的欄位", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.offline_fields), style = MaterialTheme.typography.titleSmall)
         val record = card.document?.issuanceRecord
         if (!card.selective) {
-            Text("這張證件不支援選擇性揭露，會出示下列全部欄位。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.offline_no_sd), style = MaterialTheme.typography.bodySmall)
         }
         card.claims.forEach { (name, value) ->
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -181,24 +184,26 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.taiwan.presentBonds(s.request, card, chosen) }) { Text("出示") }
-            OutlinedButton(onClick = { model.back() }) { Text("取消") }
+            Button(onClick = { model.taiwan.presentBonds(s.request, card, chosen) }) { Text(stringResource(Res.string.action_present)) }
+            OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }
     }
 }
 
+@Composable
 private fun bondsKindLabel(kind: BondsCardKind): String = when (kind) {
-    BondsCardKind.W3C_SD_JWT -> "W3C VC（SD-JWT），可選擇欄位"
-    BondsCardKind.SD_JWT_VC -> "SD-JWT VC，可選擇欄位"
-    BondsCardKind.JWT_VC -> "W3C VC（JWT），出示全部欄位"
-    BondsCardKind.MOICA -> "自然人憑證簽署（vc+moica），姓名一定揭露"
+    BondsCardKind.W3C_SD_JWT -> stringResource(Res.string.bonds_kind_w3c_sd)
+    BondsCardKind.SD_JWT_VC -> stringResource(Res.string.bonds_kind_sd_jwt)
+    BondsCardKind.JWT_VC -> stringResource(Res.string.bonds_kind_jwt)
+    BondsCardKind.MOICA -> stringResource(Res.string.bonds_kind_moica)
 }
 
 /** What a verifier's challenge accepts, in the holder's and the verifier's words. */
+@Composable
 internal fun bondsSourceLabel(source: BondsCredentialSource): String = when (source) {
-    BondsCredentialSource.TWDIW -> "政府皮夾卡片（與 Bonds 相容）"
-    BondsCredentialSource.ANY -> "任何綁定金鑰的證件（SD-JWT VC、W3C VC）"
-    BondsCredentialSource.SELF_ISSUED -> "自然人憑證自發卡片"
+    BondsCredentialSource.TWDIW -> stringResource(Res.string.bonds_source_twdiw)
+    BondsCredentialSource.ANY -> stringResource(Res.string.bonds_source_any)
+    BondsCredentialSource.SELF_ISSUED -> stringResource(Res.string.bonds_source_self)
 }
 
 @Composable
@@ -215,33 +220,33 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(if (s.showQr) "請讓查驗方掃描" else "正在送給查驗方", style = MaterialTheme.typography.titleMedium)
-        Text("用途：${s.request.purpose}", style = MaterialTheme.typography.bodyMedium)
+        Text(if (s.showQr) stringResource(Res.string.offline_let_scan) else stringResource(Res.string.offline_sending), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(Res.string.age_purpose, s.request.purpose), style = MaterialTheme.typography.bodyMedium)
         s.lan?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) }
         if (left > 0 && !s.showQr) {
-            Text("出示內容經區網或藍牙直接送給查驗方，不需要掃描。剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
-            OutlinedButton(onClick = { model.taiwan.showFramesQr() }) { Text("改顯示 QR Code") }
+            Text(stringResource(Res.string.offline_direct, mmss(left)), style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(onClick = { model.taiwan.showFramesQr() }) { Text(stringResource(Res.string.offline_show_qr)) }
         } else if (left > 0 && s.fountain != null) {
             AnimatedQr(s.fountain, Modifier.fillMaxWidth().widthIn(max = 420.dp))
-            Text("動態 QR Code，漏掉幾張也能收齊　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.offline_frames, mmss(left)), style = MaterialTheme.typography.bodySmall)
         } else if (left > 0) {
             QrImage(s.frames[index], Modifier.fillMaxWidth().widthIn(max = 420.dp), QrEncoder.Ecc.Q)
-            Text("第 ${index + 1} / ${s.frames.size} 張　剩餘 ${mmss(left)}", style = MaterialTheme.typography.bodySmall)
-            if (s.frames.size > 1) OutlinedButton(onClick = { paused = !paused }) { Text(if (paused) "繼續輪播" else "暫停輪播") }
+            Text(stringResource(Res.string.offline_frame_n, index + 1, s.frames.size, mmss(left)), style = MaterialTheme.typography.bodySmall)
+            if (s.frames.size > 1) OutlinedButton(onClick = { paused = !paused }) { Text(if (paused) stringResource(Res.string.offline_resume) else stringResource(Res.string.offline_pause)) }
         } else {
-            Text("出示已逾時（5 分鐘），請請對方重新產生挑戰。", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.offline_timeout), color = MaterialTheme.colorScheme.error)
         }
         val link = model.platform.bondsLink
         if (s.request.linkServiceId != null && link != null && left > 0) {
             OutlinedButton(onClick = { confirmLink = true }) {
                 Icon(WalletIcons.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(" 改用藍牙傳送")
+                Text(stringResource(Res.string.offline_use_bluetooth))
             }
         }
         s.link?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        Text("出示內容以本機的持有者金鑰簽章，綁定查驗方的挑戰與用途，無法轉用於其他查驗。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.offline_bound), style = MaterialTheme.typography.bodySmall)
         TechDetails(s.details, "frames-${s.request.challenge}")
-        Button(onClick = { model.back() }) { Text("完成") }
+        Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_done)) }
     }
     if (confirmLink) {
         AlertDialog(
@@ -264,6 +269,8 @@ private fun VerifierChallengeView(
 ) {
     var scanning by remember { mutableStateOf(false) }
     var pasted by remember { mutableStateOf("") }
+    // The scanner callback runs outside composition, so it fills a pattern resolved here.
+    val receivedPattern = stringResource(Res.string.offline_received, "{1}", "{2}")
     LaunchedEffect(scanning) {
         if (scanning) {
             if (streamQr != null) {
@@ -271,7 +278,7 @@ private fun VerifierChallengeView(
                 streamQr { code ->
                     model.handleUri(code)
                     val now = model.taiwan.offline.value as? OfflineUi.VerifierChallenge
-                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { progressText(it) })
+                    QrScanStep(!model.taiwan.verifying, now?.takeIf { it.total > 0 }?.let { receivedPattern.replace("{1}", it.received.toString()).replace("{2}", it.total.toString()) })
                 }
             } else {
                 // One scan per frame until the presentation is complete or the user closes the scanner; a picture
@@ -286,14 +293,14 @@ private fun VerifierChallengeView(
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("請出示者用錢包或 Bonds 掃描", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(Res.string.offline_scan_with), style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
-        Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）", style = MaterialTheme.typography.bodyMedium)
-        Text("接受：" + bondsSourceLabel(s.request.source), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.offline_purpose_risk, s.request.purpose, StatusTexts.risk(s.risk)), style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.age_accepts) + bondsSourceLabel(s.request.source), style = MaterialTheme.typography.bodySmall)
         if (s.request.source == BondsCredentialSource.ANY) {
-            Text("這是本錢包的擴充格式，請對方使用本錢包出示；Bonds App 只能出示政府皮夾卡片。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.offline_extension), style = MaterialTheme.typography.bodySmall)
         }
-        s.request.audience?.let { Text("查驗方：$it", style = MaterialTheme.typography.bodyMedium) }
+        s.request.audience?.let { Text(stringResource(Res.string.offline_verifier, it), style = MaterialTheme.typography.bodyMedium) }
         if (s.total > 0) {
             LinearProgressIndicator(progress = { (s.received.toFloat() / s.total).coerceAtMost(1f) }, modifier = Modifier.fillMaxWidth())
             Text(progressText(s), style = MaterialTheme.typography.bodySmall)
@@ -303,72 +310,73 @@ private fun VerifierChallengeView(
         TechDetails(s.details, "challenge-${s.request.challenge}")
         Button(onClick = { scanning = true }, enabled = !scanning) {
             Icon(if (hasCamera) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(if (hasCamera) " 掃描對方畫面" else " 從圖片讀取對方畫面")
+            Text(if (hasCamera) stringResource(Res.string.offline_scan_other) else stringResource(Res.string.offline_scan_other_image))
         }
         if (!hasCamera) {
-            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text("貼上對方畫面的內容（BTWVP1:...）") },
+            OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text(stringResource(Res.string.offline_paste)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedButton(onClick = { model.handleUri(pasted); pasted = "" }, enabled = pasted.isNotEmpty()) { Text("加入") }
+            OutlinedButton(onClick = { model.handleUri(pasted); pasted = "" }, enabled = pasted.isNotEmpty()) { Text(stringResource(Res.string.action_add)) }
         }
-        OutlinedButton(onClick = { model.back() }) { Text("取消") }
+        OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
     }
 }
 
 /** Pictures for BTWVP1 frames, blocks for a fountain QR (the holder picks which), so the unit is left out. */
-private fun progressText(s: OfflineUi.VerifierChallenge): String = "對方畫面已收到 ${s.received} / ${s.total}"
+@Composable
+private fun progressText(s: OfflineUi.VerifierChallenge): String = stringResource(Res.string.offline_received, s.received, s.total)
 
 @Composable
 private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val r = s.result
         if (r == null) {
-            VerdictCard(Verdict.FAIL, "查驗未通過", listOf(s.error ?: "出示內容無法驗證"))
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.age_failed), listOf(s.error ?: stringResource(Res.string.offline_invalid)))
         } else {
             val official = s.issuerTrust?.tier == TrustTier.T1 || s.issuerTrust?.tier == TrustTier.T2
             val test = s.issuerTrust?.environment == TrustEnvironment.TEST
             val status = s.statusDecision
-            val statusLine = status?.let { StatusTexts.summary(it) + "。" + StatusTexts.explain(it.finding) }
-            val issuerLine = (if (official && !test) "簽章與這次的挑戰相符。" else "") + issuerTrustLine(s.issuerTrust)
+            val statusLine = status?.let { StatusTexts.summary(it) + stringResource(Res.string.sentence_end) + StatusTexts.explain(it.finding) }
+            val issuerLine = (if (official && !test) stringResource(Res.string.offline_challenge_match) else "") + issuerTrustLine(s.issuerTrust)
             when {
                 status?.verdict == StatusVerdict.REJECT -> VerdictCard(
-                    Verdict.FAIL, "查驗未通過：證件狀態不符",
-                    listOfNotNull(statusLine, "用途風險為${StatusTexts.risk(s.risk)}，" + StatusTexts.verdict(StatusVerdict.REJECT) + "這張證件。", issuerLine),
+                    Verdict.FAIL, stringResource(Res.string.reader_status_failed),
+                    listOfNotNull(statusLine, stringResource(Res.string.reader_purpose_risk_line, StatusTexts.risk(s.risk)) + StatusTexts.verdict(StatusVerdict.REJECT) + stringResource(Res.string.reader_this_credential), issuerLine),
                 )
                 s.risk == RiskLevel.HIGH && (!official || test) -> VerdictCard(
-                    Verdict.FAIL, "查驗未通過：發行端無法確認",
-                    listOfNotNull(issuerLine, "高風險用途只接受官方信任清單（T1）或政府憑證確認身分（T2）的發行端。", statusLine),
+                    Verdict.FAIL, stringResource(Res.string.reader_issuer_failed),
+                    listOfNotNull(issuerLine, stringResource(Res.string.reader_high_needs_official), statusLine),
                 )
                 official && !test && status?.verdict != StatusVerdict.CAUTION -> VerdictCard(
-                    Verdict.PASS, "查驗通過", listOfNotNull(issuerLine, statusLine),
+                    Verdict.PASS, stringResource(Res.string.reader_passed), listOfNotNull(issuerLine, statusLine),
                 )
-                official && !test -> VerdictCard(Verdict.CAUTION, "簽章相符，證件狀態需留意", listOfNotNull(issuerLine, statusLine))
+                official && !test -> VerdictCard(Verdict.CAUTION, stringResource(Res.string.reader_status_caution), listOfNotNull(issuerLine, statusLine))
                 else -> VerdictCard(
-                    Verdict.CAUTION, "簽章相符，發行端無法確認",
-                    listOfNotNull("出示者的簽章與這次的挑戰相符。", issuerLine, statusLine),
+                    Verdict.CAUTION, stringResource(Res.string.reader_issuer_caution),
+                    listOfNotNull(stringResource(Res.string.offline_holder_match), issuerLine, statusLine),
                 )
             }
-            Text("用途：${s.request.purpose}（${StatusTexts.risk(s.risk)}）")
-            specStatus(s.status)?.let { Text("規格狀態值：$it", style = MaterialTheme.typography.bodySmall) }
-            Text("出示時間：${r.created}", style = MaterialTheme.typography.bodySmall)
-            Text("出示者：${r.holder}", style = MaterialTheme.typography.bodySmall)
-            val issuer = r.moica?.let { "自然人憑證持有人 ${it.cardholderName}（憑證序號 ${it.certificateSerialHex}）" } ?: r.issuer ?: "未知"
-            if (s.issuerTrust != null) TrustCard("發行端", issuer, s.issuerTrust)
-            else Text("發行端：$issuer（不在任何信任來源，無法確認發行端身分）", color = tierColor(diw.wallet.core.trust.TrustTier.T3))
-            Text("出示的資料", style = MaterialTheme.typography.titleSmall)
-            r.credentialType?.let { LabelValue("證件類型", it, small = true) }
+            Text(stringResource(Res.string.offline_purpose_risk, s.request.purpose, StatusTexts.risk(s.risk)))
+            specStatus(s.status)?.let { Text(stringResource(Res.string.status_spec_value, it), style = MaterialTheme.typography.bodySmall) }
+            Text(stringResource(Res.string.offline_presented_at, r.created), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.offline_holder, r.holder), style = MaterialTheme.typography.bodySmall)
+            val issuer = r.moica?.let { stringResource(Res.string.offline_moica_holder, it.cardholderName, it.certificateSerialHex) } ?: r.issuer ?: stringResource(Res.string.state_unknown)
+            if (s.issuerTrust != null) TrustCard(stringResource(Res.string.role_issuer), issuer, s.issuerTrust)
+            else Text(stringResource(Res.string.offline_issuer_unknown, issuer), color = tierColor(diw.wallet.core.trust.TrustTier.T3))
+            Text(stringResource(Res.string.offline_presented_data), style = MaterialTheme.typography.titleSmall)
+            r.credentialType?.let { LabelValue(stringResource(Res.string.credential_kind), it, small = true) }
             r.issuerChain?.let { chain ->
-                LabelValue("發行端憑證", chain.first().displaySubject(), small = true) {
+                LabelValue(stringResource(Res.string.reader_issuer_cert), chain.first().displaySubject(), small = true) {
                     model.screen.value = Screen.Certificate(chain, 0, Screen.Offline)
                 }
             }
             r.claims.forEach { (k, v) -> ClaimRow(model, model.claimLabel(k.split('.'), null, null), v) }
-            if (r.claims.isEmpty()) Text("對方沒有揭露任何欄位", style = MaterialTheme.typography.bodySmall)
-            r.moica?.let { if (it.withheldClaims > 0) Text("另有 ${it.withheldClaims} 個欄位未揭露", style = MaterialTheme.typography.bodySmall) }
+            if (r.claims.isEmpty()) Text(stringResource(Res.string.reader_nothing_disclosed), style = MaterialTheme.typography.bodySmall)
+            r.moica?.let { if (it.withheldClaims > 0) Text(stringResource(Res.string.offline_withheld, it.withheldClaims), style = MaterialTheme.typography.bodySmall) }
             EvidenceRows(r.evidence)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk, s.request.source) }) { Text("再次查驗") }
-            OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text("完成") }
+            Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk, s.request.source) }) { Text(stringResource(Res.string.reader_again)) }
+            OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_done)) }
         }
     }
 }

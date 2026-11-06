@@ -1,5 +1,7 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
 import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.document.zkpdf.ZkPdfProfiles
 import diw.wallet.core.compat.Draft11Dialect
@@ -245,16 +247,16 @@ data class WalletSettings(
 enum class HomeTab { DOCUMENTS, FILES, USE, VERIFY, HISTORY }
 
 /** The groups of the settings screen, each on its own page. */
-enum class SettingsSection(val title: String) {
-    SECURITY("安全與隱私"),
-    CREDENTIALS("證件與出示"),
-    DOCUMENTS("文件與簽章"),
-    TRUST("信任"),
-    INTEROP("互通"),
-    DEVELOPER("開發者與測試"),
-    GENERAL("顯示"),
-    LEGAL(diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION),
-    ABOUT("關於"),
+enum class SettingsSection(val title: org.jetbrains.compose.resources.StringResource) {
+    SECURITY(Res.string.settings_section_security),
+    CREDENTIALS(Res.string.settings_section_credentials),
+    DOCUMENTS(Res.string.settings_section_documents),
+    TRUST(Res.string.settings_section_trust),
+    INTEROP(Res.string.settings_section_interop),
+    DEVELOPER(Res.string.settings_section_developer),
+    GENERAL(Res.string.settings_section_general),
+    LEGAL(Res.string.legal_settings_section),
+    ABOUT(Res.string.settings_section_about),
 }
 
 sealed class Screen {
@@ -511,12 +513,30 @@ class WalletModel(val platform: PlatformServices) {
     /** Error data for the DC API caller once the user leaves a failed request; null cancels the flow instead. */
     private var dcApiError: JsonObject? = null
 
-    /** The user's languages (BCP 47, most preferred first) with English as the last fallback. */
-    val locales: List<String> by lazy {
-        (androidx.compose.ui.text.intl.LocaleList.current.localeList.map { it.toLanguageTag() } + "en").distinct()
-    }
+    /** The interface language chosen in the app; null follows the system. */
+    val appLanguage: StateFlow<String?> get() = platform.languageStore.tag
+
+    fun setAppLanguage(language: AppLanguage) = platform.languageStore.set(language)
+
+    /** An interface string in the chosen language, for messages and other text made outside composition. */
+    suspend fun text(resource: org.jetbrains.compose.resources.StringResource, vararg args: Any): String =
+        platform.languageStore.text(resource, *args)
+
+    /** The user's languages (BCP 47, most preferred first): the language chosen in the app, the system's, then English. */
+    val locales: List<String>
+        get() = (listOfNotNull(appLanguage.value) + androidx.compose.ui.text.intl.LocaleList.current.localeList.map { it.toLanguageTag() } + "en").distinct()
+
+    private val learnedLabels = mutableMapOf<String, String>()
+    private var labelsFor: List<String>? = null
+    private var labels: ClaimLabels? = null
+
     /** Claim names in the user's language; names learned from issuer metadata are cached in storage. */
-    val claimLabels by lazy { ClaimLabels(locales) }
+    val claimLabels: ClaimLabels
+        get() {
+            val current = locales
+            labels?.takeIf { labelsFor == current }?.let { return it }
+            return ClaimLabels(current, learnedLabels).also { labels = it; labelsFor = current }
+        }
 
     val settings: WalletSettings get() = settingsFlow.value
     val environmentPolicy: EnvironmentPolicy
@@ -531,9 +551,12 @@ class WalletModel(val platform: PlatformServices) {
             },
         )
 
-    val unlockProvider by lazy { platform.keyUnlockProvider { operationPin("使用軟體金鑰需要 App PIN") } }
+    val unlockProvider by lazy { platform.keyUnlockProvider { operationPin(tr(Res.string.pin_reason_software_key)) } }
 
     suspend fun init() {
+        // Strings read outside composition follow the app language from the first message on.
+        AppText.load(platform.languageStore.tag.value)
+        scope.launch { platform.languageStore.tag.collect { AppText.load(it) } }
         storage = platform.openStorage()
         settingsFlow.value = loadSettings()
         legal.load(storage)
@@ -622,20 +645,20 @@ class WalletModel(val platform: PlatformServices) {
         // Held credentials keep the trust judged at issuance: with the public CAs switched on or off, those that had no
         // anchor or that rest on a public CA are judged again, as after importing or removing an anchor.
         if (s.systemTrustStore != old.systemTrustStore || s.mainlandChinaRoots != old.mainlandChinaRoots) {
-            status.reevaluateIssuers("變更公開憑證機構設定", affected = { it.anchorName == null || it.trustEnvironment == TrustEnvironment.SYSTEM })
+            status.reevaluateIssuers(tr(Res.string.pin_reason_public_ca), affected = { it.anchorName == null || it.trustEnvironment == TrustEnvironment.SYSTEM })
         }
     }
 
     /** Imports the TEST anchors published by the DIW test servers (issuer IACA, verifier root, wallet provider root). */
     fun importTestAnchors() = scope.launch {
         if (!settings.testEnvironment) {
-            message.value = "請先開啟「使用自訂測試伺服器」並設定網址"
+            message.value = tr(Res.string.msg_enable_test_server)
             return@launch
         }
         try {
             val base = settings.testServerUrl.trimEnd('/')
             if (!isAcceptableEndpoint(base, environmentPolicy.insecureLoopbackAllowed)) {
-                message.value = "測試伺服器網址需為 https；本機或區網的 http 位址請先開啟「允許本機與區網 HTTP」"
+                message.value = tr(Res.string.msg_test_server_https)
                 return@launch
             }
             val pairs = listOf(
@@ -647,7 +670,7 @@ class WalletModel(val platform: PlatformServices) {
             // A Multipaz OpenID4VCI server has no /pki; its IACA is served per credential configuration.
             if (!http.get("$base/pki/iaca.pem").status.isSuccess()) {
                 val n = addMultipazIssuerAnchors(base)
-                message.value = "已從 Multipaz 發行端匯入 $n 個測試信任錨點（結果標示為測試）"
+                message.value = tr(Res.string.msg_imported_multipaz_issuer, n)
                 return@launch
             }
             var added = 0
@@ -657,9 +680,9 @@ class WalletModel(val platform: PlatformServices) {
                 val cert = X509Cert.fromPem(resp.bodyAsText())
                 if (trust.addAnchor(role, TrustEnvironment.TEST, cert, name, official = false, source = base)) added++
             }
-            message.value = "已匯入 $added 個測試信任錨點（結果標示為測試）"
+            message.value = tr(Res.string.msg_imported_test, added)
         } catch (e: Exception) {
-            message.value = "匯入失敗：${e.message}"
+            message.value = tr(Res.string.msg_import_failed, e.message.toString())
         }
     }
 
@@ -675,12 +698,12 @@ class WalletModel(val platform: PlatformServices) {
                 if (!resp.status.isSuccess()) throw ProtocolException("anchor_fetch", "$name HTTP ${resp.status.value}")
                 val cert = X509Cert.fromPem(resp.bodyAsText())
                 for (role in listOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST)) {
-                    if (trust.addAnchor(role, TrustEnvironment.TEST, cert, "EUDI 參考實作 $name", official = false, source = EUDI_ANCHORS)) added++
+                    if (trust.addAnchor(role, TrustEnvironment.TEST, cert, tr(Res.string.msg_eudi_reference, name), official = false, source = EUDI_ANCHORS)) added++
                 }
             }
-            message.value = "已匯入 $added 個 EUDI 測試信任錨點（結果標示為測試）"
+            message.value = tr(Res.string.msg_imported_eudi, added)
         } catch (e: Exception) {
-            message.value = "匯入失敗：${e.message}"
+            message.value = tr(Res.string.msg_import_failed, e.message.toString())
         }
     }
 
@@ -693,10 +716,10 @@ class WalletModel(val platform: PlatformServices) {
         var added = 0
         val failures = mutableListOf<String>()
         for ((label, base) in listOf("issuer" to MULTIPAZ_ISSUER, "utopia" to UTOPIA_ISSUER)) {
-            try { added += addMultipazIssuerAnchors(base) } catch (e: Exception) { failures += "$label：${e.message}" }
+            try { added += addMultipazIssuerAnchors(base) } catch (e: Exception) { failures += tr(Res.string.pair_colon, label, e.message.toString()) }
         }
-        message.value = if (failures.isEmpty()) "已匯入 $added 個 Multipaz 測試信任錨點（issuer 與 utopia，結果標示為測試）"
-            else "已匯入 $added 個 Multipaz 測試信任錨點，部分失敗：${failures.joinToString("；")}"
+        message.value = if (failures.isEmpty()) tr(Res.string.msg_imported_multipaz, added)
+            else tr(Res.string.msg_imported_multipaz_partial, added, failures.joinToString(tr(Res.string.sep_semicolon)))
     }
 
     /**
@@ -709,13 +732,13 @@ class WalletModel(val platform: PlatformServices) {
             val r = http.get("$candidate/.well-known/openid-credential-issuer")
             if (!r.status.isSuccess()) null
             else runCatching { DiwJson.parseToJsonElement(r.bodyAsText()) as JsonObject }.getOrNull()?.let { candidate to it }
-        } ?: throw ProtocolException("anchor_fetch", "$root 不是 DIW 測試伺服器（無 /pki/iaca.pem），也不是 Multipaz 發行端")
+        } ?: throw ProtocolException("anchor_fetch", tr(Res.string.msg_not_test_server, root))
         val configs = (meta["credential_configurations_supported"] as? JsonObject)?.keys.orEmpty()
         val certs = configs.mapNotNull { id ->
             val r = http.get("$issuer/signing_certificate?credential_id=$id")
             if (r.status.isSuccess()) runCatching { X509Cert.fromPem(r.bodyAsText()) }.getOrNull() else null
         }.distinctBy { it.encoded }
-        if (certs.isEmpty()) throw ProtocolException("anchor_fetch", "$issuer 沒有提供 signing_certificate")
+        if (certs.isEmpty()) throw ProtocolException("anchor_fetch", tr(Res.string.msg_no_signing_cert, issuer))
         var added = 0
         for (cert in certs) {
             val name = "Multipaz " + (cert.subject.components[OID.COMMON_NAME.oid]?.value ?: issuer)
@@ -977,14 +1000,14 @@ class WalletModel(val platform: PlatformServices) {
             doc.getCertifiedCredentials().firstOrNull()?.let { c -> ClaimReader.read(c, documentTypes).firstNotNullOfOrNull { it.picture } }
         }.getOrNull()?.let { platform.decodeImage(it) }
         return CardArtSpec(
-            title = doc.displayName ?: "證件",
+            title = doc.displayName ?: tr(Res.string.credential_fallback),
             issuer = doc.typeDisplayName ?: record?.anchorName ?: record?.credentialIssuer ?: "",
             background = background.toArgb(),
             foreground = foreground.toArgb(),
             logo = logo,
             picture = picture,
             face = face,
-            badge = if (record?.isTestEnvironment == true) "測試" else null,
+            badge = if (record?.isTestEnvironment == true) tr(Res.string.csc_test) else null,
         )
     }
 
@@ -1026,11 +1049,11 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            message.value = "無法讀取圖片：" + describe(e)
+            message.value = tr(Res.string.msg_image_unreadable) + describe(e)
             return null
         } ?: return null
         val text = withContext(Dispatchers.Default) { qrTextsIn(picked.bytes) }.firstOrNull()
-        if (text == null) message.value = "「${picked.name}」中找不到 QR Code，請選擇清楚、完整含有 QR Code 的圖片"
+        if (text == null) message.value = tr(Res.string.msg_no_qr_in_image, picked.name)
         return text
     }
 
@@ -1125,7 +1148,7 @@ class WalletModel(val platform: PlatformServices) {
             // A bare issuer address: list what it issues and let the user pick (wallet-initiated issuance).
             scheme == "https" || scheme == "http" -> startFromIssuer(u)
             '.' in u && ' ' !in u && ':' !in u -> startFromIssuer("https://$u")
-            else -> message.value = "無法辨識的連結"
+            else -> message.value = tr(Res.string.msg_unknown_link)
         }
     }
 
@@ -1315,7 +1338,7 @@ class WalletModel(val platform: PlatformServices) {
                     preAuthorized = session.offer?.preAuthorized != null,
                     unsupported = session.offer?.credentialConfigurationIds.orEmpty()
                         .filter { it !in session.issuer.configurations }
-                        .map { it to (session.issuer.unsupported[it] ?: "發行端資訊未列出此設定") },
+                        .map { it to (session.issuer.unsupported[it] ?: tr(Res.string.msg_config_not_listed)) },
                     requestedBy = requestedBy,
                 )
             } catch (e: Exception) {
@@ -1345,7 +1368,7 @@ class WalletModel(val platform: PlatformServices) {
                 val issuer = session.issuer
                 learnLabels(issuer.configurations.values)
                 if (session.authServer.authorizationEndpoint == null) {
-                    throw ProtocolException("unsupported_grant", "此發行端只接受由它產生的領卡連結（預授權碼），請從發行端網頁取得 QR Code 或連結")
+                    throw ProtocolException("unsupported_grant", tr(Res.string.msg_preauth_only))
                 }
                 issuance.value = IssuanceUi.Review(
                     session = session,
@@ -1366,10 +1389,10 @@ class WalletModel(val platform: PlatformServices) {
     fun acceptOffer(review: IssuanceUi.Review, txCode: String?, selected: List<String> = review.configurations.map { it.id }) = scope.launch {
         val c = oid4vci()
         try {
-            if (selected.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種憑證")
+            if (selected.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_choose_credential))
             review.session.select(selected)
             if (review.preAuthorized) {
-                issuance.value = IssuanceUi.Working("向發行端取得授權")
+                issuance.value = IssuanceUi.Working(tr(Res.string.step_authorize))
                 try {
                     c.authorizePreAuthorized(review.session, txCode)
                 } catch (e: Exception) {
@@ -1380,7 +1403,7 @@ class WalletModel(val platform: PlatformServices) {
             } else {
                 val url = c.beginAuthorizationCode(review.session, platform.oid4vciRedirectUri)
                 if (!Oid4vciClient.isSafeAuthorizationUrl(url, environmentPolicy.insecureLoopbackAllowed)) {
-                    throw ProtocolException("invalid_request", "授權頁面網址不安全")
+                    throw ProtocolException("invalid_request", tr(Res.string.msg_auth_url_unsafe))
                 }
                 issuance.value = IssuanceUi.WaitingForBrowser(review.session)
                 platform.openBrowser(url)
@@ -1409,24 +1432,24 @@ class WalletModel(val platform: PlatformServices) {
         scope.launch {
             kotlinx.coroutines.delay(2500)
             if (issuance.value === waiting) {
-                issuance.value = IssuanceUi.Failed("登入或授權沒有完成：瀏覽器已關閉，或發行端在網頁上回報錯誤。可以重新掃描或輸入領卡連結再試一次。")
+                issuance.value = IssuanceUi.Failed(tr(Res.string.msg_auth_unfinished))
             }
         }
     }
 
     /** User gave up waiting for the browser. */
     fun cancelBrowserWait() {
-        if (issuance.value is IssuanceUi.WaitingForBrowser) issuance.value = IssuanceUi.Failed("已取消登入")
+        if (issuance.value is IssuanceUi.WaitingForBrowser) issuance.value = IssuanceUi.Failed(tr(Res.string.msg_login_cancelled))
         issuanceSession = null
     }
 
     private fun completeAuthorization(redirect: String) {
-        val session = issuanceSession ?: run { message.value = "沒有進行中的發證流程"; return }
+        val session = issuanceSession ?: run { message.value = tr(Res.string.msg_no_issuance); return }
         screen.value = Screen.Issuance
         scope.launch {
             val c = oid4vci()
             try {
-                issuance.value = IssuanceUi.Working("完成授權")
+                issuance.value = IssuanceUi.Working(tr(Res.string.step_finish_auth))
                 c.completeAuthorizationCode(session, redirect)
             } catch (e: Exception) {
                 recordIssuanceFailure(session, describe(e))
@@ -1449,7 +1472,7 @@ class WalletModel(val platform: PlatformServices) {
             withContext(unlockProvider) {
                 for (config in session.selectedConfigurations) {
                     val name = config.display.pick(locales)?.name ?: config.id
-                    issuance.value = IssuanceUi.Working("領取 $name")
+                    issuance.value = IssuanceUi.Working(tr(Res.string.step_receive, name))
                     try {
                         var r = c.issue(session, config.id, keyRequest())
                         var polls = 0
@@ -1475,8 +1498,8 @@ class WalletModel(val platform: PlatformServices) {
         results.forEach { r ->
             record(
                 HistoryKind.ISSUED, issuerName, (r as? IssuanceResult.Issued)?.trust ?: session.issuer.trust,
-                documents = listOf(r.document.displayName ?: "證件"),
-                note = if (r is IssuanceResult.Deferred) "發行端尚未完成（延遲發證）" else null,
+                documents = listOf(r.document.displayName ?: tr(Res.string.credential_fallback)),
+                note = if (r is IssuanceResult.Deferred) tr(Res.string.flow_issuer_pending_deferred) else null,
             )
         }
         failures.forEach { (name, reason) -> record(HistoryKind.ISSUED, issuerName, session.issuer.trust, listOf(name), failure = reason) }
@@ -1539,7 +1562,7 @@ class WalletModel(val platform: PlatformServices) {
                 presentation.value = consentFor(h.prepare(request), fields, offline)
             } catch (e: Exception) {
                 presentation.value = PresentationUi.Failed(describe(e))
-                endAuthorizationPresentation(null, "無法處理身分驗證要求：" + describe(e))
+                endAuthorizationPresentation(null, tr(Res.string.msg_presentation_failed) + describe(e))
             }
         }
     }
@@ -1554,7 +1577,7 @@ class WalletModel(val platform: PlatformServices) {
     suspend fun presentForAuthorization(uri: String): String {
         val back = screen.value
         val done = CompletableDeferred<String>()
-        authorizationPresentation?.completeExceptionally(SigningException("已有另一個身分驗證進行中"))
+        authorizationPresentation?.completeExceptionally(SigningException(tr(Res.string.msg_presentation_busy)))
         authorizationPresentation = done
         startPresentation(uri)
         try {
@@ -1604,7 +1627,7 @@ class WalletModel(val platform: PlatformServices) {
      * credential the holder did not pick.
      */
     suspend fun resolveSelectedDocuments(ids: List<String>): List<Document> = ids.map { id ->
-        documentStore.lookupDocument(id) ?: throw ProtocolException("access_denied", "選取的證件已不存在")
+        documentStore.lookupDocument(id) ?: throw ProtocolException("access_denied", tr(Res.string.msg_credential_gone))
     }
 
     /**
@@ -1650,7 +1673,7 @@ class WalletModel(val platform: PlatformServices) {
                 if (chosen == null && preselected.isNotEmpty()) {
                     val honoured = selection.matches.map { it.credential.document.identifier }.toSet()
                     if (preselected.any { it.identifier !in honoured }) {
-                        throw ProtocolException("access_denied", "選取的證件無法符合此請求")
+                        throw ProtocolException("access_denied", tr(Res.string.msg_credential_no_match))
                     }
                 }
                 val alternatives = standardAlternatives(prepared.queryResult, selection)
@@ -1660,7 +1683,7 @@ class WalletModel(val platform: PlatformServices) {
                     val labels = m.claims.values.map { claimLabel(ClaimReader.pathOf(it), it.displayName, doc.issuanceRecord) }
                     val sensitivity = ClaimSensitivity.ofAll(paths)
                     ConsentItem(
-                        documentName = doc.displayName ?: "憑證",
+                        documentName = doc.displayName ?: tr(Res.string.credential_label),
                         claims = labels,
                         documentTrust = null,
                         documentId = doc.identifier,
@@ -1690,7 +1713,7 @@ class WalletModel(val platform: PlatformServices) {
                     val paths = m.claims.map { listOf("credentialSubject", it) }
                     val labels = m.claims.map { BondsNationalId.claimLabels[it] ?: DerivedCredentials.claimLabels[it] ?: it }
                     val sensitivity = ClaimSensitivity.ofAll(paths)
-                    ConsentItem(m.card.name, labels.ifEmpty { listOf("卡片簽章與自然人憑證（不含欄位）") }, null,
+                    ConsentItem(m.card.name, labels.ifEmpty { listOf(tr(Res.string.consent_card_signature)) }, null,
                         sensitivity = sensitivity, notable = notable(paths, labels, sensitivity))
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)
@@ -1698,11 +1721,11 @@ class WalletModel(val platform: PlatformServices) {
             is PreparedDerived -> {
                 val plan = prepared.plan
                 val paths = plan.requested.map { listOf(it) }
-                val labels = plan.requested.map { c -> (plan.type.claimLabels[c] ?: c) + "：" + answerText(plan.answers[c]) }
+                val labels = plan.requested.map { c -> (plan.type.claimLabels[c] ?: c) + tr(Res.string.label_colon_sep) + answerText(plan.answers[c]) }
                 val sensitivity = ClaimSensitivity.ofAll(paths)
                 val item = ConsentItem(
-                    "${plan.type.title}（出示時由 ${plan.source.name} 產生，持有人從文件衍生）",
-                    listOf("查驗方的問題：" + plan.rule.question) + labels,
+                    tr(Res.string.consent_derived, plan.type.title, plan.source.name),
+                    listOf(tr(Res.string.consent_verifier_question) + plan.rule.question) + labels,
                     null,
                     sensitivity = sensitivity,
                     notable = notable(paths, labels, sensitivity),
@@ -1716,7 +1739,7 @@ class WalletModel(val platform: PlatformServices) {
         if (chosen == null && preselected.isNotEmpty() && prepared !is PreparedPresentation) {
             val honoured = consent.items.mapNotNull { it.documentId }.toSet()
             if (preselected.any { it.identifier !in honoured }) {
-                throw ProtocolException("access_denied", "選取的證件無法符合此請求")
+                throw ProtocolException("access_denied", tr(Res.string.msg_credential_no_match))
             }
         }
         val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
@@ -1767,7 +1790,7 @@ class WalletModel(val platform: PlatformServices) {
             }
             if (presentation.value === consent) presentation.value = next
         } catch (e: Exception) {
-            message.value = "無法更改憑證：" + describe(e)
+            message.value = tr(Res.string.msg_change_failed) + describe(e)
         }
     }
 
@@ -1788,14 +1811,14 @@ class WalletModel(val platform: PlatformServices) {
         val labels = paths.map { claimLabels.label(it, record?.claimNames.orEmpty(), null) }
         val fields = ClaimSensitivity.ofAll(paths)
         val sensitivity = if (whole) RiskLevel.max(fields, StatusMonitor.riskOf(record)) else fields
-        return LineDisclosure(labels.ifEmpty { listOf("整張證件") }, sensitivity, notable(paths, labels, fields), whole)
+        return LineDisclosure(labels.ifEmpty { listOf(tr(Res.string.consent_whole)) }, sensitivity, notable(paths, labels, fields), whole)
     }
 
     /** A derived answer as the holder reads it: predicates as yes or no. */
     private fun answerText(v: String?): String = when (v) {
-        "true" -> "是"
-        "false" -> "否"
-        null -> "無"
+        "true" -> tr(Res.string.answer_yes)
+        "false" -> tr(Res.string.answer_no)
+        null -> tr(Res.string.value_none)
         else -> v
     }
 
@@ -1807,7 +1830,7 @@ class WalletModel(val platform: PlatformServices) {
 
     /** [values] are the holder's entries for the request's custom fields, by field name. */
     fun approve(consent: PresentationUi.Consent, values: Map<String, String> = emptyMap()) = scope.launch {
-        presentation.value = PresentationUi.Working("產生並送出回應")
+        presentation.value = PresentationUi.Working(tr(Res.string.step_respond))
         try {
             if (consent.fields.isNotEmpty()) {
                 twdiwPresentation.attachCustomData(consent.request.nonce, consent.fields.map { it.copy(value = values[it.ename].orEmpty()) })
@@ -1829,7 +1852,7 @@ class WalletModel(val platform: PlatformServices) {
                     dcApiResult?.complete(outcome.data)
                     dcApiResult = null
                 }
-                is PresentationOutcome.Posted -> if (!endAuthorizationPresentation(outcome.redirectUri, "簽章服務沒有提供下一步的位址")) {
+                is PresentationOutcome.Posted -> if (!endAuthorizationPresentation(outcome.redirectUri, tr(Res.string.msg_csc_no_next))) {
                     outcome.redirectUri?.let { platform.openRedirect(it) }
                 }
                 is PresentationOutcome.Redirect -> if (!endAuthorizationPresentation(outcome.url, "")) platform.openRedirect(outcome.url)
@@ -1846,13 +1869,13 @@ class WalletModel(val platform: PlatformServices) {
         } catch (e: Exception) {
             recordPresentation(HistoryKind.PRESENTED, consent, describe(e))
             presentation.value = PresentationUi.Failed(describe(e))
-            endAuthorizationPresentation(null, "身分驗證失敗：" + describe(e))
+            endAuthorizationPresentation(null, tr(Res.string.msg_auth_failed) + describe(e))
         }
     }
 
     private fun recordPresentation(kind: HistoryKind, consent: PresentationUi.Consent, failure: String? = null) {
         val v = consent.request.verifier
-        val note = consent.offline?.service?.name ?: if (consent.request.responseMode.dcApi) "經由瀏覽器或 App（Digital Credentials API）" else null
+        val note = consent.offline?.service?.name ?: if (consent.request.responseMode.dcApi) tr(Res.string.consent_dc_api) else null
         record(kind, v.displayName, v.trust, consent.items.map { it.documentName }, consent.items.flatMap { it.claims }, note, failure)
     }
 
@@ -1862,13 +1885,13 @@ class WalletModel(val platform: PlatformServices) {
         recordPresentation(HistoryKind.DECLINED, consent)
         dcApiResult?.complete((outcome as? PresentationOutcome.DcApi)?.data)
         dcApiResult = null
-        presentation.value = PresentationUi.Failed("已拒絕分享")
-        endAuthorizationPresentation(null, "已拒絕分享身分資料，簽署已取消")
+        presentation.value = PresentationUi.Failed(tr(Res.string.msg_share_declined))
+        endAuthorizationPresentation(null, tr(Res.string.msg_share_declined_sign))
     }
 
     /** Ends a pending DC API request when the user leaves the presentation: a reportable failure goes to the caller, anything else cancels. */
     fun leaveDcApi() {
-        endAuthorizationPresentation(null, "已離開身分驗證畫面，簽署已取消")
+        endAuthorizationPresentation(null, tr(Res.string.msg_left_auth))
         dcApiResult?.complete(dcApiError)
         dcApiResult = null
         dcApiError = null
@@ -1878,9 +1901,9 @@ class WalletModel(val platform: PlatformServices) {
     val mdocLists = MutableStateFlow<List<diw.wallet.core.trust.StoredSignedList>>(emptyList())
 
     private suspend fun fetchSignedList(url: String): ByteArray {
-        if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", "簽署清單只接受 HTTPS 來源")
+        if (!isAcceptableEndpoint(url, false)) throw ProtocolException("invalid_request", tr(Res.string.msg_list_https))
         val reply = http.get(url)
-        if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", "下載失敗：HTTP ${reply.status.value}")
+        if (!reply.status.isSuccess()) throw ProtocolException("trust_list_download", tr(Res.string.msg_download_failed, reply.status.value))
         return reply.readRawBytes()
     }
 
@@ -1891,13 +1914,13 @@ class WalletModel(val platform: PlatformServices) {
     fun importMdocTrustList(kind: String, url: String, name: String) = scope.launch {
         try {
             val summary = trust.importSignedMdocTrustList(kind, fetchSignedList(url), name, url)
-            message.value = "已驗證並匯入簽署清單：$summary（使用者信任，T2，不標示官方）"
+            message.value = tr(Res.string.msg_list_imported, summary)
             loadAnchors()
-            status.reevaluateIssuers("匯入 mdoc 簽署清單", affected = { true }, accept = { true })
+            status.reevaluateIssuers(tr(Res.string.pin_reason_import_list), affected = { true }, accept = { true })
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            message.value = "簽署清單匯入失敗：" + describe(e)
+            message.value = tr(Res.string.msg_list_import_failed) + describe(e)
         }
     }
 
@@ -1910,23 +1933,23 @@ class WalletModel(val platform: PlatformServices) {
             if (quiet && mdocLists.value.isEmpty() && trust.mdocTrustLists().isEmpty()) return@launch
             val result = trust.refreshDueMdocTrustLists { url -> fetchSignedList(url) }
             loadAnchors()
-            if (result.refreshed > 0) status.reevaluateIssuers("更新 mdoc 簽署清單", affected = { true }, accept = { true })
+            if (result.refreshed > 0) status.reevaluateIssuers(tr(Res.string.pin_reason_update_lists), affected = { true }, accept = { true })
             if (result.failures.isNotEmpty()) {
-                message.value = "部分簽署清單更新失敗：" + result.failures.joinToString("；")
+                message.value = tr(Res.string.msg_list_partial) + result.failures.joinToString(tr(Res.string.sep_semicolon))
             } else if (!quiet || result.refreshed > 0) {
-                message.value = "簽署清單更新完成：${result.refreshed} 份新版本"
+                message.value = tr(Res.string.msg_list_updated, result.refreshed)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            message.value = "簽署清單更新失敗：" + describe(e)
+            message.value = tr(Res.string.msg_list_update_failed) + describe(e)
         }
     }
 
     fun removeMdocTrustList(list: diw.wallet.core.trust.StoredSignedList) = scope.launch {
         trust.removeMdocTrustList(list)
         loadAnchors()
-        status.reevaluateIssuers("移除 mdoc 簽署清單「${list.name}」", affected = { true })
+        status.reevaluateIssuers(tr(Res.string.pin_reason_remove_list, list.name), affected = { true })
     }
 
     // ---------------------------------------------------------------- trust anchors
@@ -1949,40 +1972,40 @@ class WalletModel(val platform: PlatformServices) {
             val text = input.trim()
             val source = if (text.startsWith("https://") || text.startsWith("http://")) text else "pasted"
             val pem = if (source != "pasted") {
-                if (!isAcceptableEndpoint(text, environmentPolicy.insecureLoopbackAllowed)) throw ProtocolException("invalid_request", "憑證網址需為 https")
+                if (!isAcceptableEndpoint(text, environmentPolicy.insecureLoopbackAllowed)) throw ProtocolException("invalid_request", tr(Res.string.msg_cert_url_https))
                 val resp = http.get(text)
                 if (!resp.status.isSuccess()) throw ProtocolException("anchor_fetch", "HTTP ${resp.status.value}")
                 resp.bodyAsText()
             } else text
             val certs = PEM_CERT.findAll(pem).map { X509Cert.fromPem(it.value) }.toList()
-            if (certs.isEmpty()) throw ProtocolException("invalid_request", "找不到 PEM 格式的憑證（-----BEGIN CERTIFICATE-----）")
+            if (certs.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_no_pem))
             val now = kotlin.time.Clock.System.now()
             certs.firstOrNull { !TrustRegistry.isRoot(it) && !TrustRegistry.isIntermediate(it) }?.let {
-                throw ProtocolException("invalid_request", "「${commonName(it)}」不是憑證機構的憑證，不能當作根憑證或中繼憑證")
+                throw ProtocolException("invalid_request", tr(Res.string.msg_not_ca, commonName(it)))
             }
-            if (certs.any { TrustRegistry.isRoot(it) } && roles.isEmpty()) throw ProtocolException("invalid_request", "根憑證請至少選擇一種用途")
+            if (certs.any { TrustRegistry.isRoot(it) } && roles.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_needs_use))
             var roots = 0
             var middle = 0
             for (cert in certs) {
-                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", "「${commonName(cert)}」已於 ${cert.validityNotAfter} 過期")
+                if (cert.validityNotAfter < now) throw ProtocolException("invalid_request", tr(Res.string.msg_cert_expired, commonName(cert), cert.validityNotAfter))
                 val cn = commonName(cert)
-                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) "$it（$cn）" else it }
+                val label = name.trim().ifEmpty { cn }.let { if (certs.size > 1 && name.isNotBlank()) tr(Res.string.files_group_count, it, cn) else it }
                 if (TrustRegistry.isRoot(cert)) {
                     for (role in roles) if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
                 } else if (trust.addIntermediate(cert, label, source)) middle++
             }
             message.value = when {
-                roots == 0 && middle == 0 -> "這些憑證已經匯入過"
+                roots == 0 && middle == 0 -> tr(Res.string.msg_already_imported)
                 else -> listOfNotNull(
-                    if (roots > 0) "已加入 $roots 個信任錨點（使用者匯入，信任等級 T2）" else null,
-                    if (middle > 0) "已加入 $middle 張中繼憑證（只用來補足憑證鏈）" else null,
-                ).joinToString("；")
+                    if (roots > 0) tr(Res.string.msg_anchors_added, roots) else null,
+                    if (middle > 0) tr(Res.string.msg_intermediates_added, middle) else null,
+                ).joinToString(tr(Res.string.sep_semicolon))
             }
             loadAnchors()
             // Documents whose issuer had no anchor may chain to the new root, or through the new intermediate.
-            if (roots > 0 || middle > 0) status.reevaluateIssuers("加入信任錨點或中繼憑證", affected = { it.anchorName == null }, accept = { it.environment != null })
+            if (roots > 0 || middle > 0) status.reevaluateIssuers(tr(Res.string.pin_reason_add_anchor), affected = { it.anchorName == null }, accept = { it.environment != null })
         } catch (e: Exception) {
-            message.value = "匯入失敗：" + describe(e)
+            message.value = tr(Res.string.msg_import_failed_prefix) + describe(e)
         }
     }
 
@@ -1993,26 +2016,26 @@ class WalletModel(val platform: PlatformServices) {
     fun trustRootCertificate(der: ByteArray, onDone: () -> Unit = {}) = scope.launch {
         try {
             val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
-            if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", "這張憑證不是根憑證")
-            if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", "根憑證已過期")
+            if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", tr(Res.string.msg_not_root))
+            if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_expired))
             val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
             var added = 0
             for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)) {
                 if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
             }
-            message.value = if (added == 0) "「$name」已經是信任錨點" else "已信任「$name」（文件簽章、時間戳記與內容憑證，信任等級 T2）"
+            message.value = if (added == 0) tr(Res.string.msg_already_anchor, name) else tr(Res.string.msg_root_trusted, name)
             loadAnchors()
-            status.reevaluateIssuers("信任根憑證「$name」", affected = { it.anchorName == null }, accept = { it.environment != null })
+            status.reevaluateIssuers(tr(Res.string.files_trust_root_named, name), affected = { it.anchorName == null }, accept = { it.environment != null })
             onDone()
         } catch (e: Exception) {
-            message.value = "無法信任：" + describe(e)
+            message.value = tr(Res.string.msg_cannot_trust) + describe(e)
         }
     }
 
     fun removeIntermediate(i: diw.wallet.core.trust.StoredIntermediate) = scope.launch {
         trust.removeIntermediate(i)
         loadAnchors()
-        status.reevaluateIssuers("移除中繼憑證「${i.name}」", affected = { it.anchorName != null && it.trustEnvironment != TrustEnvironment.TEST })
+        status.reevaluateIssuers(tr(Res.string.pin_reason_remove_intermediate, i.name), affected = { it.anchorName != null && it.trustEnvironment != TrustEnvironment.TEST })
     }
 
     private fun commonName(c: X509Cert): String = c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject()
@@ -2023,22 +2046,22 @@ class WalletModel(val platform: PlatformServices) {
         loadAnchors()
         // Documents trusted through this anchor are judged again and no longer show it.
         val name = anchor.metadata.displayName
-        status.reevaluateIssuers("移除信任錨點「$name」", affected = { it.trustEnvironment == anchor.environment && it.anchorName == name })
+        status.reevaluateIssuers(tr(Res.string.pin_reason_remove_anchor, name.toString()), affected = { it.trustEnvironment == anchor.environment && it.anchorName == name })
     }
 
     /** Trusts [did] for [roles] as the user's own anchor. */
     fun trustDid(did: String, name: String, roles: Set<TrustRole>) = scope.launch {
         try {
-            if (roles.isEmpty()) throw ProtocolException("invalid_request", "請至少選擇一種用途")
+            if (roles.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_choose_use))
             val d = did.trim()
             // The DID must resolve, so a typo is caught now rather than at the next issuance.
             didResolver().resolveKey(d, null)
             userDids.put(d, name, roles, kotlin.time.Clock.System.now().epochSeconds)
-            message.value = "已信任 ${name.trim().ifEmpty { d }}"
+            message.value = tr(Res.string.msg_trusted_name, name.trim().ifEmpty { d })
             loadAnchors()
-            status.reevaluateIssuers("信任 DID", affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
+            status.reevaluateIssuers(tr(Res.string.pin_reason_trust_did), affected = { it.anchorName == null }, accept = { it.environment == TrustEnvironment.USER })
         } catch (e: Exception) {
-            message.value = "無法加入：" + describe(e)
+            message.value = tr(Res.string.msg_cannot_add) + describe(e)
         }
     }
 
@@ -2047,7 +2070,7 @@ class WalletModel(val platform: PlatformServices) {
         userDids.remove(did)
         loadAnchors()
         if (name != null) {
-            status.reevaluateIssuers("不再信任 DID「$name」", affected = { it.trustEnvironment == TrustEnvironment.USER && it.anchorName == name })
+            status.reevaluateIssuers(tr(Res.string.pin_reason_untrust_did, name), affected = { it.trustEnvironment == TrustEnvironment.USER && it.anchorName == name })
         }
     }
 
@@ -2058,7 +2081,7 @@ class WalletModel(val platform: PlatformServices) {
     fun fetchFederationAnchor(entityId: String, name: String, environment: TrustEnvironment) = scope.launch {
         try {
             val id = entityId.trim()
-            if (environment == TrustEnvironment.TEST && !settings.testEnvironment) throw ProtocolException("invalid_request", "測試錨點需先開啟測試環境")
+            if (environment == TrustEnvironment.TEST && !settings.testEnvironment) throw ProtocolException("invalid_request", tr(Res.string.msg_test_anchor_needs_test))
             val ec = FederationResolver(http, { emptyList() }, environmentPolicy.insecureLoopbackAllowed).configuration(id)
             ec.checkTime(kotlin.time.Clock.System.now().epochSeconds, 120)
             val organization = ec.metadata.obj("federation_entity")?.str("organization_name")
@@ -2072,10 +2095,10 @@ class WalletModel(val platform: PlatformServices) {
             )
             pendingFederationAnchor.value = PendingFederationAnchor(
                 anchor, organization, ec.authorityHints,
-                ec.jwks.map { k -> (k.str("kid")?.let { "$it：" } ?: "") + runCatching { jwkThumbprint(k) }.getOrDefault("無法計算") },
+                ec.jwks.map { k -> (k.str("kid")?.let { tr(Res.string.label_colon, it) } ?: "") + runCatching { jwkThumbprint(k) }.getOrDefault(tr(Res.string.msg_cannot_compute)) },
             )
         } catch (e: Exception) {
-            message.value = "無法取得 Trust Anchor：" + describe(e)
+            message.value = tr(Res.string.msg_ta_fetch_failed) + describe(e)
         }
     }
 
@@ -2084,10 +2107,10 @@ class WalletModel(val platform: PlatformServices) {
         pendingFederationAnchor.value = null
         try {
             federationAnchors.put(p.anchor)
-            message.value = "已信任 OpenID Federation Trust Anchor「${p.anchor.name}」"
+            message.value = tr(Res.string.msg_ta_trusted, p.anchor.name)
             loadAnchors()
         } catch (e: Exception) {
-            message.value = "無法加入：" + describe(e)
+            message.value = tr(Res.string.msg_cannot_add) + describe(e)
         }
     }
 
@@ -2099,23 +2122,23 @@ class WalletModel(val platform: PlatformServices) {
     // ---------------------------------------------------------------- helpers
 
     fun describe(e: Throwable): String = when (e) {
-        is diw.wallet.core.oid4vp.RequestValidationException -> "請求驗證失敗（${e.code}）：${e.message}"
-        is ProtocolException -> "協定錯誤（${e.code}）：${e.message}" + hint(e)
+        is diw.wallet.core.oid4vp.RequestValidationException -> tr(Res.string.msg_request_invalid, e.code, e.message.toString())
+        is ProtocolException -> tr(Res.string.msg_protocol_error, e.code, e.message.toString()) + hint(e)
         // Platform errors wrap the reason (e.g. Android Keystore "Error creating key"), so the causes are shown too.
         else -> generateSequence(e) { it.cause }.take(4).mapNotNull { it.message ?: it::class.simpleName }.distinct()
-            .joinToString("：").ifEmpty { "未知錯誤" }
+            .joinToString(tr(Res.string.label_colon_sep)).ifEmpty { tr(Res.string.msg_unknown_error) }
     }
 
     /** A next step for failures with a known cause. */
     private fun hint(e: ProtocolException): String {
         val m = e.message ?: return ""
         return when {
-            "No test found with alias" in m -> "\n這是 OpenID 認證測試套件：需先在套件網頁啟動測試模組，等它顯示等待錢包時再掃描或貼上它給的連結。"
-            Regex("\\b1010\\b").containsMatchIn(m) || ("403" in m && "wallet.gov.tw" in m) -> "\n數位憑證皮夾的伺服器拒絕了連線，可在設定調整送往 wallet.gov.tw 的 User-Agent 後再試。"
+            "No test found with alias" in m -> tr(Res.string.msg_hint_conformance)
+            Regex("\\b1010\\b").containsMatchIn(m) || ("403" in m && "wallet.gov.tw" in m) -> tr(Res.string.msg_hint_twdiw_ua)
             // A credential 5xx does not establish that every issuer-side compatibility check passed.
             "Credential request failed (5" in m && "TWDIW resp_code" in m ->
-                "\n發證端回報錯誤，可能是服務異常或領卡流程不相容。請到發證網站重新產生 QR Code 再試；若官方 App 可正常領卡，請回報 DIW 版本與此錯誤碼。"
-            e.code == "untrusted_verifier" ->"\n對方不在數位憑證皮夾的信任清單或未在區塊鏈上註冊，為保護資料已停止。"
+                tr(Res.string.msg_hint_issuer_error)
+            e.code == "untrusted_verifier" ->tr(Res.string.msg_hint_not_listed)
             else -> ""
         }
     }
@@ -2130,7 +2153,7 @@ class WalletModel(val platform: PlatformServices) {
                 is JsonPrimitive -> if (o.isString) DiwJson.parseToJsonElement(o.content) as? JsonObject else null
                 else -> null
             } ?: data.takeIf { "credential_issuer" in it }?.let { JsonObject(it - "credential_issuer_metadata" - "authorization_server_metadata") }
-                ?: throw ProtocolException("invalid_request", "Digital Credentials API 請求沒有領卡資訊（credential offer）")
+                ?: throw ProtocolException("invalid_request", tr(Res.string.msg_dc_no_offer))
             return "openid-credential-offer://?credential_offer=" + DiwJson.encodeToString(JsonObject.serializer(), offer).encodeURLParameter()
         }
 
@@ -2145,10 +2168,10 @@ class WalletModel(val platform: PlatformServices) {
         const val EUDI_ANCHORS = "https://raw.githubusercontent.com/eu-digital-identity-wallet/eudi-app-android-wallet-ui/main/resources-logic/src/main/res/raw"
 
         fun tierTitle(t: TrustTier): String = when (t) {
-            TrustTier.T1 -> "T1 官方已驗證"
-            TrustTier.T2 -> "T2 連到信任根"
-            TrustTier.T3 -> "T3 未連到信任根"
-            TrustTier.T4 -> "T4 無法驗證"
+            TrustTier.T1 -> tr(Res.string.tier_t1)
+            TrustTier.T2 -> tr(Res.string.tier_t2)
+            TrustTier.T3 -> tr(Res.string.tier_t3)
+            TrustTier.T4 -> tr(Res.string.tier_t4)
         }
 
         fun randomId() = PlatformCrypto.randomBytes(9).toBase64Url()

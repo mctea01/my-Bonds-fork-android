@@ -1,5 +1,6 @@
 package diw.wallet.core.trust
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.util.DiwJson
 import kotlinx.io.bytestring.ByteString
@@ -11,12 +12,14 @@ import org.multipaz.util.toBase64
 import kotlin.time.Instant
 
 /** The public trust lists for document signatures and time stamps that the wallet can follow. */
-enum class TrustListKind(val id: String, val title: String) {
+enum class TrustListKind(val id: String, private val titleKey: String) {
     /** Adobe Approved Trust List: roots Acrobat trusts for document signatures and time stamps. */
-    AATL("aatl", "Adobe 核可信任清單（AATL）"),
+    AATL("aatl", "core_tlk_aatl"),
 
     /** The EU list of trusted lists (eIDAS): qualified CAs and time-stamp services of the member states. */
-    EUTL("eutl", "歐盟信任清單（EUTL）"),
+    EUTL("eutl", "core_tlk_eutl");
+
+    val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
 }
 
 /** A period in which a listed service was granted (epoch seconds; [until] null while it still is). */
@@ -81,7 +84,7 @@ data class TrustListSnapshot(
 ) {
     val listKind: TrustListKind? get() = TrustListKind.entries.firstOrNull { it.id == kind }
     val services: List<ListedService> get() = parts.flatMap { it.services }
-    val errors: List<String> get() = parts.mapNotNull { p -> p.error?.let { "${p.territory}：$it" } }
+    val errors: List<String> get() = parts.mapNotNull { p -> p.error?.let { ct("core_label_value", p.territory, it) } }
 
     fun encode(): ByteArray = DiwJson.encodeToString(serializer(), this).encodeToByteArray()
 

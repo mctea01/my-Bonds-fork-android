@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -12,6 +15,6 @@ import diw.wallet.app.PickedFile
 @Composable
 actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill?) {
     Column(modifier.padding(16.dp)) {
-        Text("電腦版在系統瀏覽器開啟：$url")
+        Text(stringResource(Res.string.portal_desktop_browser, url))
     }
 }

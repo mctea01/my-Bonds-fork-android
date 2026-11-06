@@ -1,5 +1,8 @@
 package diw.wallet.app
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.StringResource
 import diw.wallet.core.zk.ZkAsset
 import diw.wallet.core.zk.ZkAssetStatus
 import diw.wallet.core.zk.ZkBackend
@@ -44,15 +47,17 @@ import kotlin.time.Instant
  */
 enum class ZkProofKind(
     val backend: ZkBackend,
-    val label: String,
+    private val labelRes: StringResource,
     val timeout: Duration,
     val peakMemoryMb: Long?,
     val extendedTimeout: Duration = 30.minutes,
 ) {
-    PDF(ZkBackend.NOIR_ULTRAHONK, "PDF 簽章零知識證明", 10.minutes, 2600, 60.minutes),
-    AGE(ZkBackend.OPENAC_SPARTAN2, "年齡零知識證明", 5.minutes, 2325),
-    TLS(ZkBackend.TLSN, "網站查驗證明", 2.minutes, null),
-    MDOC_AGE(ZkBackend.LONGFELLOW, "mdoc 年齡零知識證明", 3.minutes, null);
+    PDF(ZkBackend.NOIR_ULTRAHONK, Res.string.zk_kind_pdf, 10.minutes, 2600, 60.minutes),
+    AGE(ZkBackend.OPENAC_SPARTAN2, Res.string.agev_age_proof, 5.minutes, 2325),
+    TLS(ZkBackend.TLSN, Res.string.zk_kind_tls, 2.minutes, null),
+    MDOC_AGE(ZkBackend.LONGFELLOW, Res.string.zk_kind_mdoc_age, 3.minutes, null);
+
+    val label: String get() = tr(labelRes)
 
     /** Answers a verifier's request, so it cannot be produced elsewhere and imported later. */
     val answersVerifier: Boolean get() = this == AGE || this == MDOC_AGE
@@ -197,12 +202,12 @@ class ZkModel(
         val info = platformInfo.value
         val canRun = kind.backend in capable.backends
         val advice = when {
-            !canRun -> nativeProblem.value ?: capable.reasons[kind.backend] ?: "此版本尚未包含此證明後端"
+            !canRun -> nativeProblem.value ?: capable.reasons[kind.backend] ?: tr(Res.string.zk_engine_missing)
             capable.reasons[kind.backend] != null -> capable.reasons[kind.backend]
             info != null && kind.peakMemoryMb != null && info.availableRamMb < kind.peakMemoryMb ->
-                "可用記憶體約 ${info.availableRamMb} MB，低於預估峰值 ${kind.peakMemoryMb} MB，可能被系統中止"
+                tr(Res.string.zk_low_memory, info.availableRamMb, kind.peakMemoryMb)
             info != null && missing.sumOf { it.installedBytes } / MIB > info.freeDiskMb ->
-                "可用儲存空間不足以安裝所需的證明資產"
+                tr(Res.string.zk_low_storage)
             else -> null
         }
         ZkReadiness(kind, canRun, advice, missing, info)
@@ -224,10 +229,10 @@ class ZkModel(
     suspend fun ageVerifier(): ZkResult<OpenAcAgeVerifier> {
         val capable = withContext(dispatcher) { capability.value ?: evaluate() }
         if (ZkBackend.OPENAC_SPARTAN2 !in capable.backends) {
-            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.OPENAC_SPARTAN2] ?: "此版本沒有年齡零知識證明引擎", false)
+            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.OPENAC_SPARTAN2] ?: tr(Res.string.zk_no_age_engine), false)
         }
         if (missingVerifierAssets(ZkBackend.OPENAC_SPARTAN2).isNotEmpty()) {
-            return ZkResult.Failed("需先在設定的「零知識證明」頁下載年齡證明的電路檔", false)
+            return ZkResult.Failed(tr(Res.string.zk_age_circuit_needed), false)
         }
         val engine = environment?.ageVerifier ?: return ZkErrors.unsupported
         return ZkResult.Ok(object : OpenAcAgeVerifier {
@@ -241,7 +246,7 @@ class ZkModel(
     suspend fun tls(): ZkResult<ZkTlsEngine> {
         val capable = withContext(dispatcher) { capability.value ?: evaluate() }
         if (ZkBackend.TLSN !in capable.backends) {
-            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.TLSN] ?: "此版本沒有網站查驗證明引擎（zkTLS）", false)
+            return ZkResult.Failed(nativeProblem.value ?: capable.reasons[ZkBackend.TLSN] ?: tr(Res.string.zk_no_tls_engine), false)
         }
         return environment?.tls?.let { ZkResult.Ok(it) } ?: ZkErrors.unsupported
     }
@@ -271,7 +276,7 @@ class ZkModel(
                     assetStatus.update { it + (id to ZkAssetStatus.MISSING) }
                     throw e
                 } catch (_: Exception) {
-                    ZkResult.Failed("無法下載證明資產，請重試", true)
+                    ZkResult.Failed(tr(Res.string.zk_download_failed), true)
                 }
                 assetStatus.update { it + (id to runCatching { store.status(id) }.getOrDefault(ZkAssetStatus.CORRUPT)) }
                 if (result is ZkResult.Failed) {
@@ -345,7 +350,7 @@ class ZkModel(
                     }
                 }
             } catch (e: CancellationException) {
-                set(ZkJob(id, kind, ZkJobPhase.CANCELLED, message = "已取消", retryable = true, timeout = limit))
+                set(ZkJob(id, kind, ZkJobPhase.CANCELLED, message = tr(Res.string.zk_cancelled), retryable = true, timeout = limit))
                 throw e
             } finally {
                 running.update { it - id }
@@ -355,7 +360,7 @@ class ZkModel(
         task.invokeOnCompletion { cause ->
             if (cause is CancellationException) _jobs.update { jobs ->
                 val job = jobs[id]
-                if (job != null && job.active) jobs + (id to job.copy(phase = ZkJobPhase.CANCELLED, step = null, message = "已取消", retryable = true)) else jobs
+                if (job != null && job.active) jobs + (id to job.copy(phase = ZkJobPhase.CANCELLED, step = null, message = tr(Res.string.zk_cancelled), retryable = true)) else jobs
             }
             running.update { it - id }
         }
@@ -370,7 +375,7 @@ class ZkModel(
             jobs + (id to when (result) {
                 is ZkResult.Ok -> job.copy(phase = ZkJobPhase.DONE, step = null, message = null)
                 is ZkResult.Failed -> job.copy(phase = ZkJobPhase.FAILED, step = null, message = result.reason, retryable = result.retryable)
-                ZkResult.Cancelled -> job.copy(phase = ZkJobPhase.CANCELLED, step = null, message = "已取消", retryable = true)
+                ZkResult.Cancelled -> job.copy(phase = ZkJobPhase.CANCELLED, step = null, message = tr(Res.string.zk_cancelled), retryable = true)
             })
         }
         return result
@@ -420,8 +425,8 @@ class ZkModel(
         val VERIFY_TIMEOUT = 2.minutes
         private val SAMPLE_INTERVAL = 500.milliseconds
         const val MEASUREMENTS = 10
-        const val TIMED_OUT = "證明逾時，已停止，可重試"
-        const val NO_RUNTIME = "此平台沒有零知識執行環境"
+        val TIMED_OUT: String get() = tr(Res.string.zk_timed_out)
+        val NO_RUNTIME: String get() = tr(Res.string.zk_no_runtime)
         private const val MIB = 1024L * 1024L
         private val UNKNOWN_PLATFORM = ZkPlatformInfo("unknown", 0, 0, 0, false)
     }

@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -120,7 +123,7 @@ internal fun ServerShareDialog(model: WalletModel, peerOnly: Boolean, onDismiss:
                 val link = share.link()
                 QrImage(link, Modifier.fillMaxWidth().widthIn(max = 320.dp))
                 Text(share.url, style = MaterialTheme.typography.bodyMedium)
-                share.rootSha256?.let { Text("SHA-256：" + it.uppercase().chunked(4).joinToString(" "), style = MaterialTheme.typography.bodySmall) }
+                share.rootSha256?.let { Text(stringResource(Res.string.sha256_prefix) + it.uppercase().chunked(4).joinToString(" "), style = MaterialTheme.typography.bodySmall) }
                 share.verifierDid?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 if (peerOnly) {
                     Text(ServerStrings.SHARE_PEER_NOTE, style = MaterialTheme.typography.bodySmall)
@@ -156,10 +159,10 @@ internal fun PendingShareDialog(model: WalletModel) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 share.name?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 Text(share.url, style = MaterialTheme.typography.bodyMedium)
-                share.rootSha256?.let { Text("SHA-256：" + it.uppercase().chunked(4).joinToString(" "), style = MaterialTheme.typography.bodySmall) }
+                share.rootSha256?.let { Text(stringResource(Res.string.sha256_prefix) + it.uppercase().chunked(4).joinToString(" "), style = MaterialTheme.typography.bodySmall) }
                 share.verifierDid?.let { Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                share.federation?.let { Text("OpenID Federation：$it", style = MaterialTheme.typography.bodySmall) }
-                if (share.features.isNotEmpty()) Text("提供功能：" + share.features.joinToString("、"), style = MaterialTheme.typography.bodySmall)
+                share.federation?.let { Text(stringResource(Res.string.server_federation, it), style = MaterialTheme.typography.bodySmall) }
+                if (share.features.isNotEmpty()) Text(stringResource(Res.string.server_features) + share.features.joinToString(stringResource(Res.string.sep_list)), style = MaterialTheme.typography.bodySmall)
                 if (share.token != null) Text(ServerStrings.IMPORT_TOKEN, style = MaterialTheme.typography.bodySmall)
                 if (current != null && current != share.url) {
                     Text(ServerStrings.IMPORT_REPLACES + current, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -194,7 +197,7 @@ internal fun PeerServerButton(model: WalletModel) {
     OutlinedButton(onClick = {
         scope.launch {
             val text = readQr() ?: return@launch
-            if (ServerShare.looksLike(text)) model.server.scanPeer(text) else model.message.value = "這不是服務端 QR Code"
+            if (ServerShare.looksLike(text)) model.server.scanPeer(text) else model.message.value = model.text(Res.string.server_not_share_qr)
         }
     }) { Text(ServerStrings.USE_PEER) }
     Text(ServerStrings.USE_PEER_NOTE, style = MaterialTheme.typography.bodySmall)

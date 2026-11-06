@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -86,7 +89,7 @@ fun StatusChip(model: WalletModel, doc: Document) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             CircularProgressIndicator(Modifier.size(12.dp), strokeWidth = 2.dp)
-            Text("查詢狀態中", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(Res.string.status_checking), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurface)
         }
         return
     }
@@ -110,25 +113,25 @@ fun StatusPanel(model: WalletModel, doc: Document) {
             Icon(v.icon, contentDescription = null, tint = v.color, modifier = Modifier.size(28.dp))
             Column(Modifier.weight(1f)) {
                 Text(StatusTexts.finding(d.finding), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text("依證件用途（${StatusTexts.risk(d.risk)}）：${StatusTexts.verdict(d.verdict)}" + StatusTexts.qualifiers(d),
+                Text(stringResource(Res.string.status_by_purpose, StatusTexts.risk(d.risk), StatusTexts.verdict(d.verdict)) + StatusTexts.qualifiers(d),
                     style = MaterialTheme.typography.bodySmall)
             }
             if (doc.identifier in checking) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-            else TextButton(onClick = { model.checkStatus(doc) }) { Text("查詢") }
+            else TextButton(onClick = { model.checkStatus(doc) }) { Text(stringResource(Res.string.action_check)) }
         }
         Text(StatusTexts.explain(d.finding), style = MaterialTheme.typography.bodyMedium)
-        specStatus(current?.status)?.let { Text("規格狀態值：$it", style = MaterialTheme.typography.bodySmall) }
+        specStatus(current?.status)?.let { Text(stringResource(Res.string.status_spec_value, it), style = MaterialTheme.typography.bodySmall) }
         current?.status?.mechanism?.let { m ->
-            Text("撤銷機制：$m" + (current.status.uri?.let { "（$it）" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.status_mechanism, m) + (current.status.uri?.let { stringResource(Res.string.parenthesized, it) } ?: ""), style = MaterialTheme.typography.bodySmall)
         }
         current?.let {
             Text(
-                "查詢時間：${localTime(it.status.checkedAt)}" + if (d.stale) "（超過${StatusTexts.risk(d.risk)}證件允許的時間，需重新查詢）" else "",
+                stringResource(Res.string.status_checked_at, localTime(it.status.checkedAt)) + if (d.stale) stringResource(Res.string.status_too_old, StatusTexts.risk(d.risk)) else "",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         current?.lastError?.let {
-            Text("最近一次查詢失敗（${localTime(current.attemptedAt)}）：$it。上方是前一次的結果。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.status_last_failed, localTime(current.attemptedAt), it), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -136,7 +139,7 @@ fun StatusPanel(model: WalletModel, doc: Document) {
 /** One line per document of a request: its status judged at the request's risk. */
 @Composable
 fun RequestStatusLine(d: StatusDecision) {
-    VerdictPill(verdictOf(d.verdict), StatusTexts.finding(d.finding) + "，" + StatusTexts.verdict(d.verdict) + StatusTexts.qualifiers(d))
+    VerdictPill(verdictOf(d.verdict), StatusTexts.finding(d.finding) + stringResource(Res.string.sep_comma) + StatusTexts.verdict(d.verdict) + StatusTexts.qualifiers(d))
 }
 
 /** Picks the risk of a purpose: low, medium or high, with examples. */
@@ -148,12 +151,13 @@ fun RiskSelector(selected: RiskLevel, onSelect: (RiskLevel) -> Unit) {
                 FilterChip(selected = r == selected, onClick = { onSelect(r) }, label = { Text(StatusTexts.risk(r)) })
             }
         }
-        Text("例如" + StatusTexts.riskExamples(selected) + "。" + riskRule(selected), style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.for_example) + StatusTexts.riskExamples(selected) + stringResource(Res.string.sentence_end) + riskRule(selected), style = MaterialTheme.typography.bodySmall)
     }
 }
 
+@Composable
 private fun riskRule(r: RiskLevel): String = when (r) {
-    RiskLevel.LOW -> "狀態無法確認（例如離線）時仍接受，已撤銷則拒絕。"
-    RiskLevel.MEDIUM -> "狀態無法確認或清單未經驗證時標示需留意，暫停或撤銷則拒絕。"
-    RiskLevel.HIGH -> "必須在線上確認狀態有效，發行端也必須在信任清單內，否則拒絕。"
+    RiskLevel.LOW -> stringResource(Res.string.risk_rule_low)
+    RiskLevel.MEDIUM -> stringResource(Res.string.risk_rule_medium)
+    RiskLevel.HIGH -> stringResource(Res.string.risk_rule_high)
 }

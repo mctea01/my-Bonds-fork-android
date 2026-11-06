@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.Bc
 import org.bouncycastle.asn1.x509.AccessDescription
 import org.bouncycastle.asn1.x509.AuthorityInformationAccess
@@ -40,7 +41,7 @@ internal object ValidationCollector {
             val subject = Bc.cn(cert) ?: cert.subject.toString()
             val issuer = chain.getOrNull(i + 1)?.takeIf { issued(cert, it) }
             if (issuer == null) {
-                statuses.add(RevocationStatus(subject, "NONE", "UNAVAILABLE", "缺少發行者憑證"))
+                statuses.add(RevocationStatus(subject, "NONE", "UNAVAILABLE", ct("core_vc_no_issuer_cert")))
                 continue
             }
             val ocsp = ocsp(cert, issuer, fetch)
@@ -55,7 +56,7 @@ internal object ValidationCollector {
                 crls.add(crl.first)
                 statuses.add(RevocationStatus(subject, "CRL", crl.second, crl.third))
             } else {
-                statuses.add(RevocationStatus(subject, "NONE", "UNAVAILABLE", "憑證沒有可用的 OCSP 或 CRL 位址，或連線失敗"))
+                statuses.add(RevocationStatus(subject, "NONE", "UNAVAILABLE", ct("core_vc_no_responder")))
             }
         }
         return ValidationData(
@@ -114,8 +115,8 @@ internal object ValidationCollector {
             } ?: continue
             val (status, detail) = when (val s = single.certStatus) {
                 null -> "GOOD" to null
-                is RevokedStatus -> "REVOKED" to "撤銷於 ${s.revocationTime.toInstant()}"
-                is UnknownStatus -> "UNKNOWN" to "回應者不認得這張憑證"
+                is RevokedStatus -> "REVOKED" to ct("core_vc_revoked_at", s.revocationTime.toInstant())
+                is UnknownStatus -> "UNKNOWN" to ct("core_vc_ocsp_unknown")
                 else -> "UNKNOWN" to null
             }
             return OcspResult(raw, status, detail, listOfNotNull(responder.takeIf { it != issuer }?.encoded))
@@ -137,7 +138,7 @@ internal object ValidationCollector {
             val crl = runCatching { X509CRLHolder(raw) }.getOrNull() ?: continue
             if (crl.issuer != issuer.subject || !runCatching { crl.isSignatureValid(Bc.contentVerifier(issuer)) }.getOrDefault(false)) continue
             val entry = crl.getRevokedCertificate(cert.serialNumber)
-            return if (entry != null) Triple(crl.encoded, "REVOKED", "撤銷於 ${entry.revocationDate.toInstant()}")
+            return if (entry != null) Triple(crl.encoded, "REVOKED", ct("core_vc_revoked_at", entry.revocationDate.toInstant()))
             else Triple(crl.encoded, "GOOD", null)
         }
         return null

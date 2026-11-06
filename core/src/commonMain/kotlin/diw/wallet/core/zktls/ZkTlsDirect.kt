@@ -1,5 +1,6 @@
 package diw.wallet.core.zktls
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.ProtocolException
 
 /**
@@ -29,7 +30,7 @@ class ZkTlsFetched(
 object ZkTlsDirectRead {
     fun outcome(profile: ZkTlsProfile, request: ByteArray, fetched: ZkTlsFetched, purpose: String): ZkTlsOutcome {
         if (fetched.received.size > profile.limits.maxRecv) {
-            throw ProtocolException("invalid_response", "網站回應超過查驗頁描述檔的上限（${profile.limits.maxRecv} 位元組）")
+            throw ProtocolException("invalid_response", ct("core_zkp_recv_limit", profile.limits.maxRecv))
         }
         val fields = profile.fields.map { it.name }
         val plan = ZkTlsPlanner.receivedReveal(profile, fields, fetched.received)

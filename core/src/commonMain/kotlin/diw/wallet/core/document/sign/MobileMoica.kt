@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
 import io.ktor.client.HttpClient
@@ -26,9 +27,11 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 /** TW FidO (mobile citizen certificate) service hosts; UAT needs its own SP account. */
-enum class MobileMoicaEnvironment(val baseUrl: String, val title: String) {
-    PRODUCTION("https://fidoapi.moi.gov.tw/", "正式環境"),
-    UAT("https://fido-test.moi.gov.tw/", "測試環境（UAT）"),
+enum class MobileMoicaEnvironment(val baseUrl: String, private val titleKey: String) {
+    PRODUCTION("https://fidoapi.moi.gov.tw/", "core_mm_env_production"),
+    UAT("https://fido-test.moi.gov.tw/", "core_mm_env_uat");
+
+    val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
 }
 
 /**
@@ -39,7 +42,7 @@ enum class MobileMoicaEnvironment(val baseUrl: String, val title: String) {
 class MobileMoicaCredentials(val serviceId: String, val aesKeyBase64: String) {
     internal val key: ByteArray by lazy {
         val k = runCatching { Base64.decode(aesKeyBase64.trim()) }.getOrNull()
-        if (k == null || k.size != 32) throw SigningException("SP 金鑰必須是 base64 編碼的 32 位元組 AES 金鑰")
+        if (k == null || k.size != 32) throw SigningException(ct("core_mm_sp_key_format"))
         k
     }
 }
@@ -111,18 +114,18 @@ class TwFidoClient(
             if (isPending(code)) return null
             throw MobileMoicaException(code, describe(code, envelope))
         }
-        val result = envelope["result"] as? JsonObject ?: throw MobileMoicaException(code, "行動自然人憑證服務的回應缺少 result")
+        val result = envelope["result"] as? JsonObject ?: throw MobileMoicaException(code, ct("core_mm_no_result"))
         val hashed = result.text("hashed_id_num").orEmpty()
         val signed = result.text("signed_response").orEmpty()
         val idp = result.text("idp_checksum")?.takeIf { it.isNotEmpty() }
-            ?: throw MobileMoicaException(code, "行動自然人憑證服務的回應缺少 idp_checksum，無法確認來源")
+            ?: throw MobileMoicaException(code, ct("core_mm_no_checksum"))
         if (!verifyChecksum(idp, ticket.transactionId + code + hashed + signed, credentials.key)) {
-            throw MobileMoicaException(code, "行動自然人憑證服務的回應無法以 SP 金鑰驗證（idp_checksum 不符）")
+            throw MobileMoicaException(code, ct("core_mm_checksum_mismatch"))
         }
-        val cert = result.text("cert")?.takeIf { it.isNotEmpty() } ?: throw MobileMoicaException(code, "回應缺少憑證")
-        if (signed.isEmpty()) throw MobileMoicaException(code, "回應缺少簽章值")
-        val certDer = runCatching { Base64.decode(cert) }.getOrNull() ?: throw MobileMoicaException(code, "回應的憑證不是 base64")
-        val sigBytes = runCatching { Base64.decode(signed) }.getOrNull() ?: throw MobileMoicaException(code, "回應的簽章值不是 base64")
+        val cert = result.text("cert")?.takeIf { it.isNotEmpty() } ?: throw MobileMoicaException(code, ct("core_mm_no_certificate"))
+        if (signed.isEmpty()) throw MobileMoicaException(code, ct("core_mm_no_signature"))
+        val certDer = runCatching { Base64.decode(cert) }.getOrNull() ?: throw MobileMoicaException(code, ct("core_mm_cert_not_base64"))
+        val sigBytes = runCatching { Base64.decode(signed) }.getOrNull() ?: throw MobileMoicaException(code, ct("core_mm_sig_not_base64"))
         return MobileMoicaResult(sigBytes, certDer, hashed)
     }
 
@@ -131,7 +134,7 @@ class TwFidoClient(
         while (true) {
             delay(pollInterval)
             result(ticket)?.let { return it }
-            if (Clock.System.now() > deadline) throw MobileMoicaException(null, "等待逾時：沒有在 $timeLimit 秒內於行動自然人憑證 App 完成簽署")
+            if (Clock.System.now() > deadline) throw MobileMoicaException(null, ct("core_mm_timeout", timeLimit))
         }
     }
 
@@ -168,18 +171,18 @@ class TwFidoClient(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw MobileMoicaException(null, "無法連線到行動自然人憑證服務（${environment.title}）")
+            throw MobileMoicaException(null, ct("core_mm_unreachable", environment.title))
         }
-        if (resp.status.value != 200) throw MobileMoicaException(null, "行動自然人憑證服務回應 HTTP ${resp.status.value}")
+        if (resp.status.value != 200) throw MobileMoicaException(null, ct("core_mm_http", resp.status.value))
         return runCatching { DiwJson.parseToJsonElement(resp.bodyAsText()) as JsonObject }.getOrNull()
-            ?: throw MobileMoicaException(null, "行動自然人憑證服務的回應不是 JSON")
+            ?: throw MobileMoicaException(null, ct("core_mm_not_json"))
     }
 
     private fun ticket(envelope: JsonObject): MobileMoicaTicket {
         val code = errorCode(envelope)
         if (code != "0") throw MobileMoicaException(code, describe(code, envelope))
         val spTicket = (envelope["result"] as? JsonObject)?.text("sp_ticket")?.takeIf { it.isNotEmpty() }
-            ?: throw MobileMoicaException(code, "行動自然人憑證服務的回應缺少 sp_ticket")
+            ?: throw MobileMoicaException(code, ct("core_mm_no_ticket"))
         return parseTicket(spTicket)
     }
 
@@ -212,12 +215,12 @@ class TwFidoClient(
         /** sp_ticket is base64url(json) "." digest; split at the last dot. */
         fun parseTicket(spTicket: String): MobileMoicaTicket {
             val dot = spTicket.lastIndexOf('.')
-            if (dot <= 0) throw MobileMoicaException(null, "sp_ticket 格式錯誤")
+            if (dot <= 0) throw MobileMoicaException(null, ct("core_mm_ticket_format"))
             val json = runCatching {
                 DiwJson.parseToJsonElement(Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(spTicket.substring(0, dot)).decodeToString()) as JsonObject
-            }.getOrNull() ?: throw MobileMoicaException(null, "sp_ticket 內容不是 JSON")
-            val txn = json.text("transaction_id") ?: throw MobileMoicaException(null, "sp_ticket 缺少 transaction_id")
-            val id = json.text("sp_ticket_id") ?: throw MobileMoicaException(null, "sp_ticket 缺少 sp_ticket_id")
+            }.getOrNull() ?: throw MobileMoicaException(null, ct("core_mm_ticket_not_json"))
+            val txn = json.text("transaction_id") ?: throw MobileMoicaException(null, ct("core_mm_ticket_no_tx"))
+            val id = json.text("sp_ticket_id") ?: throw MobileMoicaException(null, ct("core_mm_ticket_no_id"))
             return MobileMoicaTicket(spTicket, txn, id)
         }
 
@@ -233,7 +236,7 @@ class TwFidoClient(
         fun isPending(code: String): Boolean = code.substringBefore(':').trim() in PENDING
 
         fun checkTimeLimit(timeLimit: Int) {
-            if (timeLimit !in TIME_LIMITS) throw SigningException("等待時間必須在 ${TIME_LIMITS.first} 到 ${TIME_LIMITS.last} 秒之間")
+            if (timeLimit !in TIME_LIMITS) throw SigningException(ct("core_mm_time_limit", TIME_LIMITS.first, TIME_LIMITS.last))
         }
 
         /** Upper-case UUID v4, the form Bonds sends. */
@@ -249,7 +252,7 @@ class TwFidoClient(
 
         private fun describe(code: String, envelope: JsonObject): String {
             val msg = (envelope["error_message"] as? JsonPrimitive)?.content
-            return "行動自然人憑證服務拒絕要求（$code）" + if (msg.isNullOrBlank()) "" else "：$msg"
+            return ct("core_mm_refused", code) + if (msg.isNullOrBlank()) "" else ct("core_colon_value", msg)
         }
 
         private fun JsonObject.text(name: String): String? = (this[name] as? JsonPrimitive)?.let { runCatching { it.jsonPrimitive.content }.getOrNull() }
@@ -286,9 +289,9 @@ class TwFidoClient(
 /** How the signing request reaches the holder. */
 enum class MobileMoicaMode(val title: String) {
     /** The service pushes a prompt to the phones bound to the ID number. */
-    PUSH("推播到手機"),
+    PUSH(ct("core_mm_push")),
     /** This phone opens the mobile citizen certificate app with the ticket. */
-    APP_TO_APP("開啟行動自然人憑證 App"),
+    APP_TO_APP(ct("core_mm_open_app")),
 }
 
 /**
@@ -314,14 +317,14 @@ class MobileMoicaSigner(
     private var cert: ByteArray? = certificate
 
     override val certificateChain: List<ByteArray>
-        get() = listOf(cert ?: throw SigningException("尚未取得行動自然人憑證的憑證")) + intermediates
+        get() = listOf(cert ?: throw SigningException(ct("core_mm_no_cert_yet"))) + intermediates
     override val keyType = SignerKeyType.RSA
     override val source = SignerSource.MOBILE_MOICA
 
     /** Gets the holder's certificate through one signature over a confirmation text. */
     suspend fun load(): ByteArray {
         val text = "DIW MY WALLET certificate request " + Clock.System.now().toString()
-        val r = request(text.encodeToByteArray(), "取得簽署憑證")
+        val r = request(text.encodeToByteArray(), ct("core_mm_getting_cert"))
         cert = r.certificate
         return r.certificate
     }
@@ -332,9 +335,9 @@ class MobileMoicaSigner(
     )
 
     override suspend fun sign(data: ByteArray): ByteArray {
-        val expected = cert ?: throw SigningException("尚未取得行動自然人憑證的憑證")
+        val expected = cert ?: throw SigningException(ct("core_mm_no_cert_yet"))
         val r = request(data, hint)
-        if (!r.certificate.contentEquals(expected)) throw SigningException("簽署者的憑證與先前取得的不同，請使用同一個行動自然人憑證")
+        if (!r.certificate.contentEquals(expected)) throw SigningException(ct("core_mm_cert_changed"))
         return r.signature
     }
 
@@ -345,22 +348,22 @@ class MobileMoicaSigner(
                 MobileMoicaMode.APP_TO_APP -> client.requestAppToApp(idNumber, hintText, data, timeLimit)
             }
         } catch (e: MobileMoicaException) {
-            throw SigningException(e.message ?: "行動自然人憑證要求失敗", e)
+            throw SigningException(e.message ?: ct("core_mm_request_failed"), e)
         }
         when (mode) {
-            MobileMoicaMode.PUSH -> onStatus("已推播到你的手機：請在行動自然人憑證 App 確認「$hintText」")
+            MobileMoicaMode.PUSH -> onStatus(ct("core_mm_pushed", hintText))
             MobileMoicaMode.APP_TO_APP -> {
-                if (!openApp(TwFidoClient.deepLink(ticket, returnUrl))) throw SigningException("這支手機沒有安裝行動自然人憑證 App")
-                onStatus("請在行動自然人憑證 App 確認「$hintText」，完成後回到這裡")
+                if (!openApp(TwFidoClient.deepLink(ticket, returnUrl))) throw SigningException(ct("core_mm_no_app"))
+                onStatus(ct("core_mm_confirm_return", hintText))
             }
         }
         val r = try {
             client.await(ticket, timeLimit, pollInterval)
         } catch (e: MobileMoicaException) {
-            throw SigningException(e.message ?: "行動自然人憑證簽署失敗", e)
+            throw SigningException(e.message ?: ct("core_mm_sign_failed"), e)
         }
-        val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(r.certificate) ?: throw SigningException("行動自然人憑證的憑證不是 RSA 金鑰")
-        if (!PlatformCrypto.verifyRsa("RS256", rsa, data, r.signature)) throw SigningException("行動自然人憑證回傳的簽章與憑證不符")
+        val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(r.certificate) ?: throw SigningException(ct("core_mm_not_rsa"))
+        if (!PlatformCrypto.verifyRsa("RS256", rsa, data, r.signature)) throw SigningException(ct("core_mm_sig_mismatch"))
         return r
     }
 }

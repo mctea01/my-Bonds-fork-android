@@ -1,5 +1,9 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.tr
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
+import diw.wallet.app.res.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,30 +51,32 @@ import diw.wallet.core.zk.ZkTier
 import kotlinx.coroutines.launch
 
 internal val ZkBackend.title: String
-    get() = when (this) {
-        ZkBackend.NOIR_ULTRAHONK -> "PDF 簽章證明（zkPDF）"
-        ZkBackend.TLSN -> "網站查驗證明（zkTLS）"
-        ZkBackend.OPENAC_SPARTAN2 -> "年齡證明（OpenAC）"
-        ZkBackend.LONGFELLOW -> "mdoc 年齡證明（Longfellow）"
+    @Composable get() = when (this) {
+        ZkBackend.NOIR_ULTRAHONK -> stringResource(Res.string.zk_backend_pdf)
+        ZkBackend.TLSN -> stringResource(Res.string.zk_backend_tls)
+        ZkBackend.OPENAC_SPARTAN2 -> stringResource(Res.string.zk_backend_openac)
+        ZkBackend.LONGFELLOW -> stringResource(Res.string.zk_backend_longfellow)
     }
 
 internal val ZkTier.title: String
-    get() = when (this) {
-        ZkTier.A -> "等級 A：建議在這台裝置產生"
-        ZkTier.B -> "等級 B：多數證明可在這台裝置產生"
-        ZkTier.C -> "等級 C：建議在電腦版產生"
+    @Composable get() = when (this) {
+        ZkTier.A -> stringResource(Res.string.zk_tier_a)
+        ZkTier.B -> stringResource(Res.string.zk_tier_b)
+        ZkTier.C -> stringResource(Res.string.zk_tier_c)
     }
 
 /** The settings-list summary: the device tier once it is known. */
+@androidx.compose.runtime.Composable
 internal fun zkSummary(capability: ZkCapability?): String =
-    capability?.let { "零知識：等級 ${it.tier.name}" } ?: "零知識：尚未評估"
+    capability?.let { org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_summary_tier, it.tier.name) }
+        ?: org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_summary_unknown)
 
 private val ZkAssetStatus.title: String
-    get() = when (this) {
-        ZkAssetStatus.MISSING -> "未下載"
-        ZkAssetStatus.PARTIAL -> "下載未完成，可續傳"
-        ZkAssetStatus.READY -> "已安裝"
-        ZkAssetStatus.CORRUPT -> "檢查不符，需重新下載"
+    @Composable get() = when (this) {
+        ZkAssetStatus.MISSING -> stringResource(Res.string.zk_asset_missing)
+        ZkAssetStatus.PARTIAL -> stringResource(Res.string.zk_asset_partial)
+        ZkAssetStatus.READY -> stringResource(Res.string.zk_asset_ready)
+        ZkAssetStatus.CORRUPT -> stringResource(Res.string.zk_asset_corrupt)
     }
 
 /**
@@ -95,29 +101,29 @@ fun ZkSettingsScreen(model: WalletModel) {
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
-            "零知識證明讓查驗方只看到要證明的結論（例如已滿 18 歲、文件由某機關簽署），看不到其他內容。證明在這台裝置產生，" +
-                "私密內容不離開裝置；需要的電路檔較大，使用前才下載。",
+            stringResource(Res.string.zk_intro_1) +
+                stringResource(Res.string.zk_intro_2),
             style = MaterialTheme.typography.bodySmall,
         )
-        SectionTitle("這台裝置")
+        SectionTitle(stringResource(Res.string.zk_this_device))
         val cap = capability
-        if (cap == null) Text(if (refreshing) "正在評估…" else "尚未評估", style = MaterialTheme.typography.bodyMedium)
+        if (cap == null) Text(if (refreshing) stringResource(Res.string.zk_assessing) else stringResource(Res.string.zk_not_assessed), style = MaterialTheme.typography.bodyMedium)
         else {
             Text(cap.tier.title, style = MaterialTheme.typography.titleSmall)
             info?.let { i ->
                 Text(
-                    "架構 ${i.abi}・記憶體 ${i.totalRamMb} MB（可用 ${i.availableRamMb} MB）・可用儲存空間 ${i.freeDiskMb} MB",
+                    stringResource(Res.string.zk_device_info, i.abi, i.totalRamMb, i.availableRamMb, i.freeDiskMb),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Text("等級只是建議，不會阻止產生；算力不足時開始前會讓你選擇在這台裝置產生、改用電腦版或不加零知識證據。",
+            Text(stringResource(Res.string.zk_tier_note),
                 style = MaterialTheme.typography.bodySmall)
         }
         problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 
         HorizontalDivider()
-        SectionTitle("證明引擎")
-        native?.version?.takeIf { it.isNotEmpty() }?.let { Text("原生程式庫版本 $it", style = MaterialTheme.typography.bodySmall) }
+        SectionTitle(stringResource(Res.string.zk_engines))
+        native?.version?.takeIf { it.isNotEmpty() }?.let { Text(stringResource(Res.string.zk_native_version, it), style = MaterialTheme.typography.bodySmall) }
         ZkBackend.entries.forEach { backend ->
             val available = cap != null && backend in cap.backends
             val reason = cap?.reasons?.get(backend)
@@ -125,10 +131,10 @@ fun ZkSettingsScreen(model: WalletModel) {
                 Text(backend.title, style = MaterialTheme.typography.titleSmall)
                 Text(
                     when {
-                        cap == null -> "尚未評估"
-                        available && reason == null -> "可在這台裝置產生"
-                        available -> "可產生；$reason"
-                        else -> reason ?: "此版本尚未包含此證明後端"
+                        cap == null -> stringResource(Res.string.zk_not_assessed)
+                        available && reason == null -> stringResource(Res.string.zk_engine_ok)
+                        available -> stringResource(Res.string.zk_engine_reason, reason.toString())
+                        else -> reason ?: stringResource(Res.string.zk_engine_missing)
                     },
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -136,23 +142,23 @@ fun ZkSettingsScreen(model: WalletModel) {
         }
 
         HorizontalDivider()
-        SectionTitle("電路檔")
-        if (zk.catalog.isEmpty()) Text("此版本沒有附電路檔清單。", style = MaterialTheme.typography.bodySmall)
+        SectionTitle(stringResource(Res.string.zk_circuits))
+        if (zk.catalog.isEmpty()) Text(stringResource(Res.string.zk_no_manifest), style = MaterialTheme.typography.bodySmall)
         zk.catalog.groupBy { it.backend }.forEach { (backend, assets) ->
             val installed = assets.filter { statuses[it.id] == ZkAssetStatus.READY }
             val missing = assets - installed.toSet()
             Text(backend.title, style = MaterialTheme.typography.titleSmall)
             Text(
-                "已安裝 ${installed.size} / ${assets.size}・佔用 ${sizeText(installed.sumOf { it.installedBytes })}" +
-                    if (missing.isNotEmpty()) "・尚需下載 ${sizeText(missing.sumOf { it.gzipBytes })}" else "",
+                stringResource(Res.string.zk_installed, installed.size, assets.size, sizeText(installed.sumOf { it.installedBytes })) +
+                    if (missing.isNotEmpty()) stringResource(Res.string.zk_to_download, sizeText(missing.sumOf { it.gzipBytes })) else "",
                 style = MaterialTheme.typography.bodySmall,
             )
             assets.forEach { asset ->
                 val download = downloads[asset.id]
                 Column(Modifier.fillMaxWidth().padding(start = 8.dp)) {
                     Text(
-                        "${asset.id}・${if ("verifier" in asset.role) "產生與查驗" else "產生"}・安裝後 ${sizeText(asset.installedBytes)}・" +
-                            (statuses[asset.id]?.title ?: if (refreshing) "檢查中" else "未檢查"),
+                        stringResource(Res.string.zk_asset_line, asset.id, if ("verifier" in asset.role) stringResource(Res.string.zk_role_prove_verify) else stringResource(Res.string.zk_role_prove), sizeText(asset.installedBytes)) +
+                            (statuses[asset.id]?.title ?: if (refreshing) stringResource(Res.string.zk_checking) else stringResource(Res.string.zk_unchecked)),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     if (download != null && download.error == null) {
@@ -166,59 +172,59 @@ fun ZkSettingsScreen(model: WalletModel) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 val busy = assets.any { downloads[it.id]?.error == null && it.id in downloads }
-                if (busy) OutlinedButton(onClick = { zk.cancelDownload() }) { Text("停止下載") }
-                else if (missing.isNotEmpty()) OutlinedButton(onClick = { confirmDownload = missing }) { Text("下載") }
-                if (installed.isNotEmpty() && !busy) OutlinedButton(onClick = { confirmDelete = installed }) { Text("刪除") }
+                if (busy) OutlinedButton(onClick = { zk.cancelDownload() }) { Text(stringResource(Res.string.zk_stop_download)) }
+                else if (missing.isNotEmpty()) OutlinedButton(onClick = { confirmDownload = missing }) { Text(stringResource(Res.string.action_download)) }
+                if (installed.isNotEmpty() && !busy) OutlinedButton(onClick = { confirmDelete = installed }) { Text(stringResource(Res.string.action_delete)) }
             }
         }
-        OutlinedButton(onClick = { zk.refresh() }, enabled = !refreshing) { Text(if (refreshing) "檢查中…" else "重新檢查") }
+        OutlinedButton(onClick = { zk.refresh() }, enabled = !refreshing) { Text(if (refreshing) stringResource(Res.string.zk_checking_dots) else stringResource(Res.string.zk_check_again)) }
 
         HorizontalDivider()
-        SectionTitle("查驗頁與文件版型")
+        SectionTitle(stringResource(Res.string.zk_templates))
         ZkTemplatesSection(model)
 
         HorizontalDivider()
-        SectionTitle("正式服務端")
+        SectionTitle(stringResource(Res.string.zk_server))
         ServerSection(model)
         HorizontalDivider()
-        SectionTitle("自架主機")
+        SectionTitle(stringResource(Res.string.zk_self_host))
         ProverSection(model)
         if (info?.isDesktop == true) {
             HorizontalDivider()
-            SectionTitle("代手機產生 zkPDF 證明")
+            SectionTitle(stringResource(Res.string.zk_phone_requests))
             PhoneRequestSection(model)
         }
         HorizontalDivider()
-        SectionTitle("證明效能紀錄")
+        SectionTitle(stringResource(Res.string.zk_measurements))
         MeasurementSection(model)
     }
 
     confirmDownload?.let { assets ->
         AlertDialog(
             onDismissRequest = { confirmDownload = null },
-            title = { Text("下載電路檔？") },
+            title = { Text(stringResource(Res.string.zk_download_title)) },
             text = {
                 Text(
-                    "將下載 ${sizeText(assets.sumOf { it.gzipBytes })}，安裝後佔用 ${sizeText(assets.sumOf { it.installedBytes })}。" +
-                        "建議使用 Wi-Fi；可隨時停止，下次會從中斷處續傳。每個檔案都會比對清單上的 SHA-256，不符就刪除。",
+                    stringResource(Res.string.zk_download_will, sizeText(assets.sumOf { it.gzipBytes }), sizeText(assets.sumOf { it.installedBytes })) +
+                        stringResource(Res.string.zk_download_hint_delete),
                 )
             },
-            confirmButton = { TextButton(onClick = { confirmDownload = null; zk.download(assets.map { it.id }) }) { Text("下載") } },
-            dismissButton = { TextButton(onClick = { confirmDownload = null }) { Text("取消") } },
+            confirmButton = { TextButton(onClick = { confirmDownload = null; zk.download(assets.map { it.id }) }) { Text(stringResource(Res.string.action_download)) } },
+            dismissButton = { TextButton(onClick = { confirmDownload = null }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
     confirmDelete?.let { assets ->
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
-            title = { Text("刪除電路檔？") },
-            text = { Text("將釋放 ${sizeText(assets.sumOf { it.installedBytes })}。之後要產生這類證明時需重新下載。已產生的證明不受影響。") },
+            title = { Text(stringResource(Res.string.zk_delete_title)) },
+            text = { Text(stringResource(Res.string.zk_delete_text, sizeText(assets.sumOf { it.installedBytes }))) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = null
                     scope.launch { assets.forEach { zk.delete(it.id) } }
-                }) { Text("刪除", color = MaterialTheme.colorScheme.error) }
+                }) { Text(stringResource(Res.string.action_delete), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
@@ -228,35 +234,35 @@ fun ZkSettingsScreen(model: WalletModel) {
 private fun ZkTemplatesSection(model: WalletModel) {
     val st by model.zkTemplates.state.collectAsState()
     val settings by model.settingsFlow.collectAsState()
-    Text("zkTLS 查驗頁與 zkPDF 文件版型隨每次發布更新，不需要更新 App。版型只描述要揭露的欄位，電路仍以 App 內的版本為準；" +
-        "版型包須有本專案發布金鑰的簽章，也不會被較舊的版本取代。", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.zk_templates_text_1) +
+        stringResource(Res.string.zk_templates_text_2), style = MaterialTheme.typography.bodySmall)
     val lines = buildList {
-        if (!st.keyConfigured) add("此版本尚未設定版型簽章金鑰，暫時只能使用查驗方在測試環境附上的查驗頁。")
-        if (st.version != null) add("已安裝：${st.pages} 個查驗頁、${st.documents} 個文件版型・發布於 ${localTime(st.issuedAt!!)}" + (st.source?.let { "・來源：$it" } ?: ""))
-        else if (st.keyConfigured) add(if (st.running) "下載中" else "尚未下載")
-        st.checkedAt?.let { add("上次檢查：${localTime(it)}") }
-        st.error?.let { add("最近一次更新失敗：$it" + if (st.version != null) "（仍使用已安裝的版型）" else "") }
+        if (!st.keyConfigured) add(stringResource(Res.string.zk_templates_no_key))
+        if (st.version != null) add(stringResource(Res.string.zk_templates_installed, st.pages, st.documents, localTime(st.issuedAt!!)) + (st.source?.let { stringResource(Res.string.zk_templates_source, it) } ?: ""))
+        else if (st.keyConfigured) add(if (st.running) stringResource(Res.string.zk_templates_downloading) else stringResource(Res.string.zk_templates_not_downloaded))
+        st.checkedAt?.let { add(stringResource(Res.string.zk_templates_checked, localTime(it))) }
+        st.error?.let { add(stringResource(Res.string.zk_templates_failed, it) + if (st.version != null) stringResource(Res.string.zk_templates_still) else "") }
     }
     lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text("立即更新") }
-        OutlinedButton(enabled = !st.running, onClick = { model.zkTemplates.importFiles() }) { Text("從檔案匯入") }
+        OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text(stringResource(Res.string.zk_update_now)) }
+        OutlinedButton(enabled = !st.running, onClick = { model.zkTemplates.importFiles() }) { Text(stringResource(Res.string.zk_import_file)) }
     }
     Text(
-        "可匯入發布的 zk-templates.jwt，或 CI 產物的 ZIP 檔，簽章與版本檢查和線上更新相同。" +
-            if (settings.testEnvironment) "測試環境另可匯入未簽章的查驗頁描述檔與 zkPDF 文件版型（.json），只在測試環境使用；查驗頁會附在請求中，文件版型則雙方都要匯入，對方也須開啟測試環境。" else "",
+        stringResource(Res.string.zk_import_text) +
+            if (settings.testEnvironment) stringResource(Res.string.zk_import_test_text) else "",
         style = MaterialTheme.typography.bodySmall,
     )
     st.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     if (st.testPages.isNotEmpty() || st.testDocuments.isNotEmpty()) {
-        Text("測試版型" + if (settings.testEnvironment) "" else "（測試環境關閉中，不會使用）", style = MaterialTheme.typography.titleSmall)
+        Text(stringResource(Res.string.zk_test_templates) + if (settings.testEnvironment) "" else stringResource(Res.string.zk_test_off), style = MaterialTheme.typography.titleSmall)
         st.testPages.forEach { p ->
-            Text("查驗頁：${p.title}（${p.id}）・${p.host}" + if (p.port != 443) ":${p.port}" else "", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.zk_test_page, p.title, p.id, p.host) + if (p.port != 443) ":${p.port}" else "", style = MaterialTheme.typography.bodySmall)
         }
         st.testDocuments.forEach { d ->
-            Text("文件版型：${d.title}（${d.id}）・${d.fields.size} 個欄位", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.zk_test_document, d.title, d.id, d.fields.size), style = MaterialTheme.typography.bodySmall)
         }
-        OutlinedButton(onClick = { model.zkTemplates.clearTestPages() }) { Text("清除測試版型") }
+        OutlinedButton(onClick = { model.zkTemplates.clearTestPages() }) { Text(stringResource(Res.string.zk_clear_test)) }
     }
 }
 
@@ -264,7 +270,14 @@ private fun ZkTemplatesSection(model: WalletModel) {
 @Composable
 internal fun ZkSettingsRow(model: WalletModel, onOpen: () -> Unit) {
     val capability by model.zk.capability.collectAsState()
-    ActionRow(WalletIcons.Shield, "零知識證明", zkSummary(capability).removePrefix("零知識：") + "・電路檔下載與刪除", onClick = onOpen)
+    val tier = capability?.let { org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_tier, it.tier.name) }
+        ?: org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_unknown)
+    ActionRow(
+        WalletIcons.Shield,
+        org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.screen_zk_settings),
+        tier + org.jetbrains.compose.resources.stringResource(diw.wallet.app.res.Res.string.zk_row_assets),
+        onClick = onOpen,
+    )
 }
 
 /**
@@ -283,19 +296,19 @@ private fun ServerSection(model: WalletModel) {
     val trustedAny = settings.serverRootSha256.isNotEmpty() || settings.serverVerifierDid.isNotEmpty()
     LaunchedEffect(settings.zkVerifierUrl) { if (saved && trustedAny) model.server.check(confirm = false) }
     Text(
-        "轉送、網站查驗（zkTLS）與年齡查驗都使用這台服務端；它只轉送與查驗，看不到你的出生日期或文件其他內容。" +
-            "可部署 diw-wallet-server 或專案的測試伺服器（test-servers）。留空時在測試環境使用測試伺服器。",
+        stringResource(Res.string.zk_server_text) +
+            stringResource(Res.string.zk_server_deploy),
         style = MaterialTheme.typography.bodySmall,
     )
     OutlinedTextField(
         value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("服務端網址（https）") }, isError = !valid,
+        label = { Text(stringResource(Res.string.zk_server_url)) }, isError = !valid,
     )
     OutlinedTextField(
         value = token, onValueChange = { token = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("存取權杖（服務端要求時才填）") }, visualTransformation = PasswordVisualTransformation(),
+        label = { Text(stringResource(Res.string.zk_server_token)) }, visualTransformation = PasswordVisualTransformation(),
     )
-    Text("權杖只送給上面這台服務端，以加密方式存在這台裝置。", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.zk_server_token_note), style = MaterialTheme.typography.bodySmall)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(
             onClick = {
@@ -309,20 +322,20 @@ private fun ServerSection(model: WalletModel) {
                 }
             },
             enabled = valid && (url != settings.zkVerifierUrl || token != settings.serverToken),
-        ) { Text("儲存") }
+        ) { Text(stringResource(Res.string.action_save)) }
         OutlinedButton(onClick = { model.server.check(confirm = true) }, enabled = saved && !server.checking && url == settings.zkVerifierUrl) {
-            Text(if (server.checking) "讀取中…" else if (!trustedAny) "加入信任" else "重新確認信任")
+            Text(if (server.checking) stringResource(Res.string.state_loading) else if (!trustedAny) stringResource(Res.string.zk_server_add_trust) else stringResource(Res.string.zk_server_retrust))
         }
     }
     if (settings.serverRootSha256.isNotEmpty()) {
-        Text("已信任簽章根憑證 SHA-256：${fingerprint(settings.serverRootSha256)}", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.zk_server_root, fingerprint(settings.serverRootSha256)), style = MaterialTheme.typography.bodySmall)
     }
     if (settings.serverVerifierDid.isNotEmpty()) {
-        Text("已信任網頁查驗端：${settings.serverVerifierDid}", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Text(stringResource(Res.string.zk_server_verifier, settings.serverVerifierDid), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
     if (server.changed) {
         Text(
-            "這台服務端的簽章根憑證或網頁查驗端 DID 和你先前信任的不同。可能是業者換了金鑰，也可能不是原本的服務端；請向業者確認後再按「重新確認信任」。",
+            stringResource(Res.string.zk_server_changed),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error,
         )
     }
@@ -335,16 +348,16 @@ private fun ServerSection(model: WalletModel) {
     server.pending?.let { info ->
         AlertDialog(
             onDismissRequest = { model.server.dismiss() },
-            title = { Text("信任這台服務端？") },
+            title = { Text(stringResource(Res.string.zk_server_trust_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("服務端：${info.url}", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(Res.string.zk_server_line, info.url), style = MaterialTheme.typography.bodySmall)
                     if (info.sha256 != null) {
-                        Text("簽章根憑證：${info.subject}", style = MaterialTheme.typography.bodySmall)
-                        Text("SHA-256：${fingerprint(info.sha256)}", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(Res.string.zk_server_root_subject, info.subject.toString()), style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(Res.string.sha256_line, fingerprint(info.sha256)), style = MaterialTheme.typography.bodySmall)
                     }
-                    info.verifierDid?.let { Text("網頁查驗端 DID：$it", style = MaterialTheme.typography.bodySmall) }
-                    if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+                    info.verifierDid?.let { Text(stringResource(Res.string.zk_server_verifier_did, it), style = MaterialTheme.typography.bodySmall) }
+                    if (info.features.isNotEmpty()) Text(stringResource(Res.string.zk_server_features, info.features.joinToString(stringResource(Res.string.sep_list))), style = MaterialTheme.typography.bodySmall)
                     info.federation?.let {
                         Text(ServerStrings.FEDERATION_CONFIRMED + ServerStrings.federationVerified(it), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary)
@@ -353,15 +366,15 @@ private fun ServerSection(model: WalletModel) {
                     info.settingsSha256?.let { Text(ServerStrings.SETTINGS_DIGEST + it.take(16), style = MaterialTheme.typography.bodySmall) }
                     info.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     Text(
-                        "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示，" +
-                            "它的網頁查驗端向你要求出示卡片時也顯示為使用者信任（T2）；網頁查驗端 DID 只由這個網址確認，沒有另外的指紋。" +
-                            "可在「自訂信任」頁移除。",
+                        stringResource(Res.string.zk_server_trust_text_1) +
+                            stringResource(Res.string.zk_server_trust_text_2) +
+                            stringResource(Res.string.zk_server_trust_text_3),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             },
-            confirmButton = { TextButton(onClick = { model.server.confirm(info) }) { Text(if (info.sha256 != null) "指紋相符，信任" else "信任") } },
-            dismissButton = { TextButton(onClick = { model.server.dismiss() }) { Text("取消") } },
+            confirmButton = { TextButton(onClick = { model.server.confirm(info) }) { Text(if (info.sha256 != null) stringResource(Res.string.zk_server_trust_match) else stringResource(Res.string.zk_server_trust)) } },
+            dismissButton = { TextButton(onClick = { model.server.dismiss() }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }
@@ -379,38 +392,38 @@ private fun ProverSection(model: WalletModel) {
     var checking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val urlProblem = url.takeIf { it.isNotEmpty() }?.let { ZkProverHost.problem(it, model.platform::cleartextPermitted) }
-    val tokenProblem = if (url.isNotEmpty() && token.length < ZkProverHost.MIN_TOKEN) "存取權杖至少 ${ZkProverHost.MIN_TOKEN} 個字元" else null
+    val tokenProblem = if (url.isNotEmpty() && token.length < ZkProverHost.MIN_TOKEN) stringResource(Res.string.zk_token_min, ZkProverHost.MIN_TOKEN) else null
     Text(
-        "這台裝置算力不足時，可把 PDF 第 1 頁的內容與證明需要的私密資料送到你自己架設的 zk-prover-server 產生 zkPDF 證明，" +
-            "不會送出整份文件；回傳的證明會先在這台裝置驗證，不通過就不使用。請只使用你自己管理、信任的主機。",
+        stringResource(Res.string.zk_prover_text_1) +
+            stringResource(Res.string.zk_prover_text_2),
         style = MaterialTheme.typography.bodySmall,
     )
     OutlinedTextField(
         value = url, onValueChange = { url = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text(if (model.platform.cleartextPermitted("192.168.0.1")) "主機網址（https；區域網路可用 http）" else "主機網址（https）") }, isError = urlProblem != null,
+        label = { Text(if (model.platform.cleartextPermitted("192.168.0.1")) stringResource(Res.string.zk_prover_url_lan) else stringResource(Res.string.zk_prover_url)) }, isError = urlProblem != null,
         supportingText = urlProblem?.let { { Text(it) } },
     )
     OutlinedTextField(
         value = token, onValueChange = { token = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-        label = { Text("存取權杖") }, visualTransformation = PasswordVisualTransformation(), isError = tokenProblem != null,
+        label = { Text(stringResource(Res.string.zk_prover_token)) }, visualTransformation = PasswordVisualTransformation(), isError = tokenProblem != null,
         supportingText = tokenProblem?.let { { Text(it) } },
     )
-    Text("權杖只送給這台主機，以加密方式存在這台裝置。", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.zk_prover_token_note), style = MaterialTheme.typography.bodySmall)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         OutlinedButton(
             onClick = { model.updateSettings { it.copy(zkProverUrl = url.trimEnd('/'), zkProverToken = if (url.isEmpty()) "" else token) } },
             enabled = urlProblem == null && tokenProblem == null && (url.trimEnd('/') != settings.zkProverUrl || token != settings.zkProverToken),
-        ) { Text("儲存") }
+        ) { Text(stringResource(Res.string.action_save)) }
         OutlinedButton(
             onClick = {
                 checking = true
                 scope.launch {
                     result = try {
                         val local = model.zk.pdf()
-                        if (local == null) "這個版本或裝置沒有 zkPDF 引擎，無法驗證主機回傳的證明"
-                        else when (val r = RemoteZkPdfEngine(ZkProverHost("自架主機", settings.zkProverUrl, settings.zkProverToken), local, model.http).compositions()) {
-                            is ZkResult.Ok -> if (r.value.isEmpty()) "主機可連線，但沒有完整的 zkPDF 電路檔"
-                                else "主機可連線，可產生：" + r.value.joinToString("、") { compositionTitle(it) }
+                        if (local == null) model.text(Res.string.zk_prover_no_engine)
+                        else when (val r = RemoteZkPdfEngine(ZkProverHost(model.text(Res.string.zk_self_host), settings.zkProverUrl, settings.zkProverToken), local, model.http).compositions()) {
+                            is ZkResult.Ok -> if (r.value.isEmpty()) model.text(Res.string.zk_prover_no_circuits)
+                                else model.text(Res.string.zk_prover_can) + r.value.joinToString(model.text(Res.string.sep_list)) { compositionTitle(it) }
                             is ZkResult.Failed -> r.reason
                             ZkResult.Cancelled -> null
                         }
@@ -420,9 +433,9 @@ private fun ProverSection(model: WalletModel) {
                 }
             },
             enabled = settings.zkProverUrl.isNotEmpty() && !checking && url.trimEnd('/') == settings.zkProverUrl,
-        ) { Text(if (checking) "連線中…" else "測試連線") }
+        ) { Text(if (checking) stringResource(Res.string.state_connecting) else stringResource(Res.string.zk_test_connection)) }
         if (settings.zkProverUrl.isNotEmpty()) {
-            TextButton(onClick = { model.updateSettings { it.copy(zkProverUrl = "", zkProverToken = "") } }) { Text("移除") }
+            TextButton(onClick = { model.updateSettings { it.copy(zkProverUrl = "", zkProverToken = "") } }) { Text(stringResource(Res.string.action_remove)) }
         }
     }
     result?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -439,13 +452,13 @@ private fun PhoneRequestSection(model: WalletModel) {
     val jobs by model.zk.jobs.collectAsState()
     val running = jobs[diw.wallet.app.FilesModel.PHONE_JOB]?.active == true
     Text(
-        "手機算力不足時，可在手機匯出證明請求檔（${diw.wallet.core.zk.ZkPdfRemote.REQUEST_EXTENSION}），在這裡用電腦版電路產生證明，" +
-            "再把證明檔（${diw.wallet.core.zk.ZkPdfRemote.RESPONSE_EXTENSION}）匯入手機。請求檔含 PDF 第 1 頁的內容，用完請刪除；這裡不保存它。",
+        stringResource(Res.string.zk_phone_text_1, diw.wallet.core.zk.ZkPdfRemote.REQUEST_EXTENSION) +
+            stringResource(Res.string.zk_phone_text_2, diw.wallet.core.zk.ZkPdfRemote.RESPONSE_EXTENSION),
         style = MaterialTheme.typography.bodySmall,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedButton(onClick = { model.files.proveForPhone() }, enabled = busy == null) { Text("開啟證明請求檔") }
-        if (running) TextButton(onClick = { model.zk.cancel(diw.wallet.app.FilesModel.PHONE_JOB) }) { Text("停止") }
+        OutlinedButton(onClick = { model.files.proveForPhone() }, enabled = busy == null) { Text(stringResource(Res.string.zk_open_request)) }
+        if (running) TextButton(onClick = { model.zk.cancel(diw.wallet.app.FilesModel.PHONE_JOB) }) { Text(stringResource(Res.string.action_stop)) }
     }
     busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
@@ -462,11 +475,11 @@ private fun MeasurementSection(model: WalletModel) {
     val clipboard = LocalClipboardManager.current
     var copied by remember { mutableStateOf(false) }
     Text(
-        "這次開啟 App 後完成或停止的證明，記錄耗時與記憶體峰值（不含證明內容），可複製後回報，用來調整裝置建議。關閉 App 後清除。",
+        stringResource(Res.string.zk_measurements_text),
         style = MaterialTheme.typography.bodySmall,
     )
     if (entries.isEmpty()) {
-        Text("尚無紀錄", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.zk_no_measurements), style = MaterialTheme.typography.bodySmall)
         return
     }
     entries.forEach { Text(measurementLine(it), style = MaterialTheme.typography.bodySmall) }
@@ -474,36 +487,36 @@ private fun MeasurementSection(model: WalletModel) {
         OutlinedButton(onClick = {
             clipboard.setText(AnnotatedString(measurementReport(entries)))
             copied = true
-        }) { Text("複製紀錄") }
-        if (copied) Text("已複製", style = MaterialTheme.typography.bodySmall)
+        }) { Text(stringResource(Res.string.zk_copy_log)) }
+        if (copied) Text(stringResource(Res.string.zk_copied), style = MaterialTheme.typography.bodySmall)
     }
 }
 
 internal fun measurementLine(m: ZkMeasurement): String {
     val outcome = when (m.phase) {
-        ZkJobPhase.DONE -> "完成"
-        ZkJobPhase.FAILED -> "失敗"
-        ZkJobPhase.TIMED_OUT -> "逾時"
-        ZkJobPhase.CANCELLED -> "已停止"
+        ZkJobPhase.DONE -> tr(Res.string.zkm_done)
+        ZkJobPhase.FAILED -> tr(Res.string.zkm_failed)
+        ZkJobPhase.TIMED_OUT -> tr(Res.string.zkm_timed_out)
+        ZkJobPhase.CANCELLED -> tr(Res.string.zkm_stopped)
         else -> m.phase.name
     }
-    val peak = m.peakMemoryMb?.let { "，記憶體峰值 $it MB" } ?: ""
-    val note = m.note?.let { "（$it）" } ?: ""
-    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { "，停在「$it」" } ?: ""
-    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak$step"
+    val peak = m.peakMemoryMb?.let { tr(Res.string.zkm_peak, it) } ?: ""
+    val note = m.note?.let { tr(Res.string.parenthesized, it) } ?: ""
+    val step = m.lastStep?.takeIf { m.phase != ZkJobPhase.DONE }?.let { tr(Res.string.zkm_stopped_at, it) } ?: ""
+    return tr(Res.string.zkm_line, m.kind.label, note, outcome, m.seconds, peak, step)
 }
 
 /** Plain lines for a report: device class first, then one line per proof. */
 internal fun measurementReport(entries: List<ZkMeasurement>): String {
     val device = entries.firstNotNullOfOrNull { it.platform }?.let {
-        "裝置：${it.abi}，記憶體 ${it.totalRamMb} MB（偵測時可用 ${it.availableRamMb} MB），${if (it.isDesktop) "電腦版" else "手機版"}"
-    } ?: "裝置：未知"
+        tr(Res.string.zkm_device, it.abi, it.totalRamMb, it.availableRamMb, if (it.isDesktop) tr(Res.string.zkm_desktop) else tr(Res.string.zkm_phone))
+    } ?: tr(Res.string.zkm_device_unknown)
     return (listOf(device) + entries.map { "${it.at} ${it.kind.name} ${measurementLine(it)}" }).joinToString("\n")
 }
 
 internal fun compositionTitle(id: String): String = when (id) {
-    ZkPdfStatement.PHONE -> "手機版電路"
-    ZkPdfStatement.DESKTOP -> "電腦版電路"
+    ZkPdfStatement.PHONE -> tr(Res.string.zkm_phone_circuit)
+    ZkPdfStatement.DESKTOP -> tr(Res.string.zkm_desktop_circuit)
     else -> id
 }
 

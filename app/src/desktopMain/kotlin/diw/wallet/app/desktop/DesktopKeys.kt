@@ -1,5 +1,8 @@
 package diw.wallet.app.desktop
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.tr
 import diw.wallet.app.ExternalKeyOption
 import diw.wallet.app.ExternalKeys
 import diw.wallet.core.document.sign.DocumentSigner
@@ -32,47 +35,47 @@ object DesktopKeys : ExternalKeys {
 
     override val systemUnavailableReason: String? = when {
         windows || mac -> null
-        else -> "Linux 沒有統一的系統金鑰庫，請改用硬體憑證（PKCS#11）或憑證檔"
+        else -> tr(Res.string.dk_linux_no_store)
     }
 
     override val tokenUnavailableReason: String?
-        get() = if (Security.getProvider("SunPKCS11") == null) "這個 Java 執行環境沒有 SunPKCS11 模組" else null
+        get() = if (Security.getProvider("SunPKCS11") == null) tr(Res.string.dk_no_sunpkcs11_module) else null
 
     override fun tokenLibraries(): List<String> = CANDIDATES.filter { File(it).isFile }
 
     private fun systemStore(): KeyStore = when {
         windows -> KeyStore.getInstance("Windows-MY").apply { load(null, null) }
         mac -> KeyStore.getInstance("KeychainStore").apply { load(null, null) }
-        else -> throw SigningException(systemUnavailableReason ?: "沒有系統金鑰庫")
+        else -> throw SigningException(systemUnavailableReason ?: tr(Res.string.dk_no_store))
     }
 
     override suspend fun systemKeys(): List<ExternalKeyOption> = withContext(Dispatchers.IO) {
         val ks = try { systemStore() } catch (e: SigningException) { throw e } catch (e: Exception) {
-            throw SigningException("無法開啟系統金鑰庫：" + (e.message ?: e::class.simpleName), e)
+            throw SigningException(tr(Res.string.dk_store_failed) + (e.message ?: e::class.simpleName), e)
         }
         options(ks)
     }
 
     override suspend fun systemSigner(id: String?): DocumentSigner = withContext(Dispatchers.IO) {
-        val alias = id ?: throw SigningException("請先選擇金鑰")
+        val alias = id ?: throw SigningException(tr(Res.string.dk_choose_key))
         val ks = systemStore()
         // The keychain exports the key under a passphrase of our choosing; the Windows store ignores it.
         val key = runCatching { ks.getKey(alias, KEYCHAIN_PASSPHRASE) as? PrivateKey }.getOrElse {
-            throw SigningException("系統拒絕使用這把金鑰：" + (it.message ?: it::class.simpleName), it)
-        } ?: throw SigningException("這個項目沒有私密金鑰")
+            throw SigningException(tr(Res.string.key_refused) + (it.message ?: it::class.simpleName), it)
+        } ?: throw SigningException(tr(Res.string.dk_no_private_key))
         JcaDocumentSigner(key, chainOf(ks, alias), SignerSource.SYSTEM_KEYSTORE)
     }
 
     private fun token(library: String): Provider = synchronized(tokens) {
         tokens.getOrPut(library) {
-            if (!File(library).isFile) throw SigningException("找不到 PKCS#11 模組：$library")
-            val base = Security.getProvider("SunPKCS11") ?: throw SigningException(tokenUnavailableReason ?: "沒有 SunPKCS11")
+            if (!File(library).isFile) throw SigningException(tr(Res.string.dk_module_missing, library))
+            val base = Security.getProvider("SunPKCS11") ?: throw SigningException(tokenUnavailableReason ?: tr(Res.string.dk_no_sunpkcs11))
             val name = "diw" + tokens.size
             val config = "--name=$name\nlibrary=${library.replace("\\", "/")}\n"
             try {
                 base.configure(config)
             } catch (e: Exception) {
-                throw SigningException("無法載入 PKCS#11 模組（讀卡機或卡片未就緒，或模組不相容）：" + (e.message ?: e::class.simpleName), e)
+                throw SigningException(tr(Res.string.dk_module_load_failed) + (e.message ?: e::class.simpleName), e)
             }
         }
     }
@@ -84,7 +87,7 @@ object DesktopKeys : ExternalKeys {
         } catch (e: Exception) {
             val text = generateSequence(e as Throwable) { it.cause }.mapNotNull { it.message }.joinToString(" ")
             throw SigningException(
-                if ("CKR_PIN_INCORRECT" in text) "PIN 碼錯誤" else if ("CKR_PIN_LOCKED" in text) "PIN 碼已鎖定" else "無法開啟硬體憑證：$text",
+                if ("CKR_PIN_INCORRECT" in text) tr(Res.string.dk_pin_wrong) else if ("CKR_PIN_LOCKED" in text) tr(Res.string.dk_pin_locked) else tr(Res.string.dk_token_failed, text),
                 e,
             )
         }
@@ -97,14 +100,14 @@ object DesktopKeys : ExternalKeys {
 
     override suspend fun tokenSigner(library: String, pin: String, id: String): DocumentSigner = withContext(Dispatchers.IO) {
         val (ks, provider) = tokenStore(library, pin)
-        val key = ks.getKey(id, pin.toCharArray()) as? PrivateKey ?: throw SigningException("這個項目沒有私密金鑰")
+        val key = ks.getKey(id, pin.toCharArray()) as? PrivateKey ?: throw SigningException(tr(Res.string.dk_no_private_key))
         JcaDocumentSigner(key, chainOf(ks, id), SignerSource.PKCS11, provider)
     }
 
     private fun chainOf(ks: KeyStore, alias: String): List<X509Certificate> =
         ks.getCertificateChain(alias)?.filterIsInstance<X509Certificate>()?.takeIf { it.isNotEmpty() }
             ?: (ks.getCertificate(alias) as? X509Certificate)?.let { listOf(it) }
-            ?: throw SigningException("這把金鑰沒有憑證")
+            ?: throw SigningException(tr(Res.string.key_no_certificate))
 
     /** Key entries with a certificate that can sign, newest expiry first. */
     private fun options(ks: KeyStore): List<ExternalKeyOption> {
@@ -118,7 +121,7 @@ object DesktopKeys : ExternalKeys {
             cert to ExternalKeyOption(
                 alias,
                 cn(cert.subjectX500Principal) ?: alias,
-                "發行者：" + (cn(cert.issuerX500Principal) ?: cert.issuerX500Principal.name) + "，有效至 " + day.format(cert.notAfter),
+                tr(Res.string.dk_issuer) + (cn(cert.issuerX500Principal) ?: cert.issuerX500Principal.name) + tr(Res.string.dk_valid_until) + day.format(cert.notAfter),
             )
         }.sortedByDescending { it.first.notAfter }.map { it.second }
     }

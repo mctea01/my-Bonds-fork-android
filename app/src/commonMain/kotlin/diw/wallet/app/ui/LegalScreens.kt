@@ -62,6 +62,7 @@ internal val Integration.icon: ImageVector
     }
 
 /** The holder's decision on [i] in one line. */
+@Composable
 private fun statusLine(c: LegalConsent, i: Integration): String {
     val r = c.record(i)
     return when {
@@ -101,6 +102,7 @@ internal fun legalAnnotated(text: String): AnnotatedString = buildAnnotatedStrin
 fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(LegalStrings.versionLine(doc.version, doc.effectiveDate), style = MaterialTheme.typography.bodySmall)
+        TranslationNote()
         if (withSummary) SummaryCard(doc.summary)
         doc.sections.forEachIndexed { i, s ->
             Text("${i + 1}. ${s.heading}", style = MaterialTheme.typography.titleSmall)
@@ -108,11 +110,19 @@ fun LegalDocumentView(doc: LegalDocument, withSummary: Boolean = true) {
                 when (b) {
                     is LegalBlock.Paragraph -> Text(legalAnnotated(b.text), style = MaterialTheme.typography.bodyMedium)
                     is LegalBlock.Bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        b.items.forEach { Text(legalAnnotated("・$it"), style = MaterialTheme.typography.bodyMedium) }
+                        b.items.forEach { Text(legalAnnotated((if (doc.language == "zh") "・" else "• ") + it), style = MaterialTheme.typography.bodyMedium) }
                     }
                 }
             }
         }
+    }
+}
+
+/** The legal texts are Chinese only; outside Chinese the reader is told which text they accept. */
+@Composable
+private fun TranslationNote() {
+    LegalStrings.TRANSLATION_NOTE.takeIf { it.isNotBlank() }?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
     }
 }
 
@@ -168,7 +178,7 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
     }
     PageColumn {
         when (step) {
-            OnboardingStep.WELCOME -> WelcomePage { welcomed = true }
+            OnboardingStep.WELCOME -> WelcomePage(model) { welcomed = true }
             OnboardingStep.BASICS -> BasicsPage(updated = !firstStart) { model.legal.acceptBasics() }
             OnboardingStep.STATEMENTS -> {
                 val i = consent.undecided.first()
@@ -184,8 +194,9 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
 }
 
 @Composable
-private fun WelcomePage(onStart: () -> Unit) {
+private fun WelcomePage(model: WalletModel, onStart: () -> Unit) {
     Icon(WalletIcons.Wallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+    LanguageChooser(model)
     Text(LegalStrings.WELCOME_TITLE, style = MaterialTheme.typography.headlineSmall)
     Text(LegalStrings.WELCOME_TEXT, style = MaterialTheme.typography.bodyMedium)
     LegalStrings.WELCOME_POINTS.forEach { (title, text) ->
@@ -204,6 +215,7 @@ private fun BasicsPage(updated: Boolean, onAccept: () -> Unit) {
     var refused by remember { mutableStateOf(false) }
     Text(LegalStrings.BASICS_TITLE, style = MaterialTheme.typography.headlineSmall)
     Text(if (updated) LegalStrings.BASICS_UPDATED else LegalStrings.BASICS_TEXT, style = MaterialTheme.typography.bodyMedium)
+    TranslationNote()
     listOf(LegalTexts.terms, LegalTexts.privacy).forEach { doc ->
         HorizontalDivider()
         Text(doc.title, style = MaterialTheme.typography.titleMedium)
@@ -286,10 +298,11 @@ fun LegalSettingsPage(model: WalletModel) {
     }
     HorizontalDivider()
     SectionTitle(LegalStrings.SETTINGS_ONLINE)
-    LabelValue("GitHub", LegalTexts.PUBLISHED_URL, small = true) { model.platform.openBrowser(LegalTexts.PUBLISHED_URL) }
+    LabelValue("GitHub", LegalTexts.onlineFolder, small = true) { model.platform.openBrowser(LegalTexts.onlineFolder) }
 }
 
 /** The settings summary line of the legal page. */
+@Composable
 fun legalSummary(model: WalletModel): String {
     val c = model.legal.consent.value
     val shipped = Integration.entries.filter { it.available }
@@ -303,7 +316,7 @@ fun LegalTextScreen(model: WalletModel, screen: Screen.LegalText) {
     PageColumn {
         Text(doc.title, style = MaterialTheme.typography.headlineSmall)
         LegalDocumentView(doc)
-        OutlinedButton(onClick = { model.platform.openBrowser(LegalTexts.PUBLISHED_URL + "/" + doc.id + ".md") }) { Text(LegalStrings.OPEN_ONLINE) }
+        OutlinedButton(onClick = { model.platform.openBrowser(LegalTexts.onlineUrl(doc)) }) { Text(LegalStrings.OPEN_ONLINE) }
     }
 }
 
@@ -344,7 +357,7 @@ fun IntegrationStatementScreen(model: WalletModel, screen: Screen.IntegrationSta
                 }
             }
         }
-        OutlinedButton(onClick = { model.platform.openBrowser(LegalTexts.PUBLISHED_URL + "/" + st.document.id + ".md") }) { Text(LegalStrings.OPEN_ONLINE) }
+        OutlinedButton(onClick = { model.platform.openBrowser(LegalTexts.onlineUrl(st.document)) }) { Text(LegalStrings.OPEN_ONLINE) }
     }
     if (confirmWithdraw) {
         AlertDialog(

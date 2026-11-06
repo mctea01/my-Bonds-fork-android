@@ -2,6 +2,8 @@
 
 本資料夾是 App 內法律文字的網頁版，內容由 `app/src/commonMain/kotlin/diw/wallet/app/legal/LegalTexts.kt` 產生，兩者必須一致（`LegalDocumentsTest` 會檢查）。修改文字時改 `LegalTexts.kt`，再以 `DIW_UPDATE_LEGAL=1 ./gradlew :app:desktopTest --tests 'diw.wallet.app.legal.*'` 重新產生本資料夾的檔案；內容有實質變更時調高該文件的 `version`，使用者下次開啟 App 會被要求重新確認。
 
+英文譯本在 [en/](en/)（由 `LegalTextsEn.kt` 產生，App 介面為英文時顯示），內容與中文原文逐節對應，兩者不一致時以中文原文為準。修改文字時兩種語言都要改；同一文件的兩種語言共用 `version`。英文隱私權政策網址可用於英文商店資訊：`docs/legal/en/privacy-policy.md`。
+
 | 文件 | 內容 |
 |---|---|
 | [privacy-policy.md](privacy-policy.md) | 隱私權政策（應用程式商店的隱私權政策網址） |

@@ -1,5 +1,9 @@
 package diw.wallet.app.desktop
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import diw.wallet.app.text
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,33 +62,36 @@ fun main(args: Array<String>) {
     Security.addProvider(BouncyCastleProvider())
     val dir = dataDir()
     val startUri = args.firstOrNull()
+    val language = DesktopLanguageStore()
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
         val icon = remember { appIcon() }
         Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
-            val m = model
-            if (m == null) {
-                UnlockScreen(firstRun = !PinValueCipher.isInitialized(dir)) { pin ->
-                    val cipher = withContext(Dispatchers.Default) { PinValueCipher.unlock(dir, pin) } ?: return@UnlockScreen false
-                    lateinit var created: WalletModel
-                    val platform = DesktopPlatform(dir, cipher) { uri -> created.handleUri(uri) }
-                    created = WalletModel(platform)
-                    created.init()
-                    startUri?.let { created.handleUri(it) }
-                    model = created
-                    true
-                }
-            } else {
-                // Losing focus to the browser and getting it back without a redirect ends the login wait.
-                androidx.compose.runtime.DisposableEffect(m) {
-                    val listener = object : java.awt.event.WindowFocusListener {
-                        override fun windowLostFocus(e: java.awt.event.WindowEvent?) = m.onAppPaused()
-                        override fun windowGainedFocus(e: java.awt.event.WindowEvent?) = m.onAppResumed()
+            diw.wallet.app.ui.AppLocaleScope(language) {
+                val m = model
+                if (m == null) {
+                    UnlockScreen(language, firstRun = !PinValueCipher.isInitialized(dir)) { pin ->
+                        val cipher = withContext(Dispatchers.Default) { PinValueCipher.unlock(dir, pin) } ?: return@UnlockScreen false
+                        lateinit var created: WalletModel
+                        val platform = DesktopPlatform(dir, cipher, language) { uri -> created.handleUri(uri) }
+                        created = WalletModel(platform)
+                        created.init()
+                        startUri?.let { created.handleUri(it) }
+                        model = created
+                        true
                     }
-                    window.addWindowFocusListener(listener)
-                    onDispose { window.removeWindowFocusListener(listener) }
+                } else {
+                    // Losing focus to the browser and getting it back without a redirect ends the login wait.
+                    androidx.compose.runtime.DisposableEffect(m) {
+                        val listener = object : java.awt.event.WindowFocusListener {
+                            override fun windowLostFocus(e: java.awt.event.WindowEvent?) = m.onAppPaused()
+                            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) = m.onAppResumed()
+                        }
+                        window.addWindowFocusListener(listener)
+                        onDispose { window.removeWindowFocusListener(listener) }
+                    }
+                    WalletApp(m)
                 }
-                WalletApp(m)
             }
         }
     }
@@ -92,7 +99,7 @@ fun main(args: Array<String>) {
 
 /** Startup PIN: creates the App PIN on first run, then unlocks the encrypted storage. */
 @Composable
-private fun UnlockScreen(firstRun: Boolean, onUnlock: suspend (String) -> Boolean) {
+private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUnlock: suspend (String) -> Boolean) {
     var pin by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -103,7 +110,7 @@ private fun UnlockScreen(firstRun: Boolean, onUnlock: suspend (String) -> Boolea
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("DIW MY WALLET", style = MaterialTheme.typography.headlineSmall)
-                Text(if (firstRun) "請設定 App PIN（至少 6 位數字），用於加密資料與保護軟體金鑰" else "請輸入 App PIN")
+                Text(if (firstRun) stringResource(Res.string.unlock_set_pin) else stringResource(Res.string.unlock_enter_pin))
                 val field = @Composable { value: String, label: String, onChange: (String) -> Unit ->
                     OutlinedTextField(
                         value = value,
@@ -116,19 +123,19 @@ private fun UnlockScreen(firstRun: Boolean, onUnlock: suspend (String) -> Boolea
                     )
                 }
                 field(pin, "App PIN") { pin = it }
-                if (firstRun) field(confirm, "再次輸入") { confirm = it }
+                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat)) { confirm = it }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Button(enabled = valid && !busy, onClick = {
                     busy = true
                     scope.launch {
                         error = try {
-                            if (onUnlock(pin)) null else "PIN 錯誤"
+                            if (onUnlock(pin)) null else language.text(Res.string.unlock_wrong_pin)
                         } catch (e: Exception) {
-                            "無法開啟錢包：${e.message}"
+                            language.text(Res.string.unlock_failed, e.message.toString())
                         }
                         busy = false
                     }
-                }) { Text(if (busy) "處理中" else if (firstRun) "建立錢包" else "解鎖") }
+                }) { Text(if (busy) stringResource(Res.string.state_working) else if (firstRun) stringResource(Res.string.unlock_create) else stringResource(Res.string.unlock_unlock)) }
             }
         }
     }

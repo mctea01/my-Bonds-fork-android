@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,77 +56,78 @@ fun AddDocumentScreen(model: WalletModel) {
     var issuer by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if (cards == null && error == null) model.taiwan.loadServices() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("向發行端申請證件，或用自己的文件與自然人憑證製作。發行端的 QR Code 請在「使用」掃描。", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(Res.string.catalog_intro), style = MaterialTheme.typography.bodyMedium)
         if (model.twdiwPlatform != TwdiwPlatform.PRODUCTION) {
-            Text("測試平台：${model.twdiwPlatform.frontendUrl}（結果不具效力）", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.catalog_test_platform, model.twdiwPlatform.frontendUrl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
-        SectionTitle("政府皮夾卡片")
-        Text("在發行端網站完成申請後，卡片自動加入這支手機。", style = MaterialTheme.typography.bodySmall)
+        SectionTitle(stringResource(Res.string.catalog_government))
+        Text(stringResource(Res.string.catalog_government_text), style = MaterialTheme.typography.bodySmall)
         when {
-            !model.legal.enabled(Integration.TWDIW) -> IntegrationOffRow(model, Integration.TWDIW, "政府皮夾卡片")
+            !model.legal.enabled(Integration.TWDIW) -> IntegrationOffRow(model, Integration.TWDIW, stringResource(Res.string.catalog_government))
             error != null -> InlineError(error!!) { model.taiwan.loadServices() }
             cards == null -> CircularProgressIndicator(Modifier.size(24.dp))
-            cards!!.isEmpty() -> Text("目前沒有可申請的卡片。", style = MaterialTheme.typography.bodySmall)
+            cards!!.isEmpty() -> Text(stringResource(Res.string.catalog_none), style = MaterialTheme.typography.bodySmall)
             else -> cards!!.forEach { c ->
                 ActionRow(
                     WalletIcons.Government, c.name,
                     when {
-                        c.issuerServiceUrl == null -> "發行端沒有提供申請頁面"
-                        c.opensExternally -> "前往發行端網站申請"
-                        else -> "在發行端頁面完成申請後自動加入"
+                        c.issuerServiceUrl == null -> stringResource(Res.string.catalog_no_page)
+                        c.opensExternally -> stringResource(Res.string.catalog_apply)
+                        else -> stringResource(Res.string.catalog_apply_text)
                     },
                     enabled = c.issuerServiceUrl != null,
                     leading = c.logoUrl?.let { logo -> { CardLogo(model, logo, WalletIcons.Government, MaterialTheme.colorScheme.primary, size = 28) } },
                 ) { model.taiwan.applyFor(c) }
             }
         }
-        SectionTitle("自己製作")
-        Text("內容來自你下載的官方文件，由你的自然人憑證簽署，表示你本人聲明；不是發證機關核發。", style = MaterialTheme.typography.bodySmall)
+        SectionTitle(stringResource(Res.string.catalog_self_made))
+        Text(stringResource(Res.string.catalog_self_made_text), style = MaterialTheme.typography.bodySmall)
         val idSource = DocumentSources.byId("mydata-id")!!
         val idPdf = files.firstOrNull { f ->
-            f.nationalId == null && f.report?.format == DocumentFormat.PDF && (MyDataFiles.recognize(f.name)?.nationalId == true || f.source?.contains("國民身分證資料") == true)
+            f.nationalId == null && f.report?.format == DocumentFormat.PDF && (MyDataFiles.recognize(f.name)?.nationalId == true || f.source?.contains(stringResource(Res.string.catalog_national_id_data)) == true)
         }
         val hasCard = files.any { it.nationalId != null }
-        if (!model.legal.enabled(Integration.MYDATA)) IntegrationOffRow(model, Integration.MYDATA, "國民身分證卡（Bonds 自發卡）")
+        if (!model.legal.enabled(Integration.MYDATA)) IntegrationOffRow(model, Integration.MYDATA, stringResource(Res.string.catalog_national_id_card))
         else ActionRow(
-            WalletIcons.Person, "國民身分證卡（Bonds 自發卡）",
-            if (hasCard) "已有身分證卡；從 MyData 重新下載可再製作" else "從 MyData 下載國民身分證資料，以自然人憑證簽成卡片，可回應 Bonds 的自然人憑證自發卡查驗",
+            WalletIcons.Person, stringResource(Res.string.catalog_national_id_card),
+            if (hasCard) stringResource(Res.string.catalog_national_id_exists) else stringResource(Res.string.catalog_national_id_text),
         ) {
             if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(idSource.id) else model.platform.openBrowser(idSource.url)
         }
         idPdf?.let { f ->
-            ActionRow(WalletIcons.Document, "用已保存的身分證資料製作", f.name) { model.screen.value = Screen.NationalIdCreate(f.id) }
+            ActionRow(WalletIcons.Document, stringResource(Res.string.catalog_national_id_saved), f.name) { model.screen.value = Screen.NationalIdCreate(f.id) }
         }
         ActionRow(
-            WalletIcons.Card, "文件衍生憑證",
-            "在「文件」選一份文件（MyData、在學證明、公文、OpenCerts 等），由內容產生可出示的 SD-JWT VC（本錢包簽發，與 Bonds 身分證卡的 vc+moica 結構不同）",
+            WalletIcons.Card, stringResource(Res.string.catalog_derived),
+            stringResource(Res.string.catalog_derived_text),
         ) { model.showTab(HomeTab.FILES) }
         ActionRow(
-            WalletIcons.Shield, "年齡證明（零知識）",
-            "不用另外加卡：政府皮夾卡片（含出生日期）或身分證卡就能以 OpenAC 證明年滿指定年齡而不交出生日；到「使用」掃描查驗方的 QR Code",
+            WalletIcons.Shield, stringResource(Res.string.catalog_age),
+            stringResource(Res.string.catalog_age_text),
         ) { model.showTab(HomeTab.USE) }
-        SectionTitle("其他發行端")
-        Text("輸入支援 OpenID4VCI 的發行端網址，列出它提供的證件後再選擇。", style = MaterialTheme.typography.bodySmall)
+        SectionTitle(stringResource(Res.string.catalog_other_issuers))
+        Text(stringResource(Res.string.catalog_other_issuers_text), style = MaterialTheme.typography.bodySmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = issuer,
                 onValueChange = { issuer = it.trim() },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                label = { Text("發行端網址") },
+                label = { Text(stringResource(Res.string.catalog_issuer_url)) },
             )
-            Button(onClick = { model.handleUri(issuer) }, enabled = issuer.isNotEmpty()) { Text("查詢") }
+            Button(onClick = { model.handleUri(issuer) }, enabled = issuer.isNotEmpty()) { Text(stringResource(Res.string.action_query)) }
         }
     }
 }
 
+@Composable
 private fun anchorText(anchor: String?): String = when (anchor?.let { runCatching { AnchorState.valueOf(it) }.getOrNull() }) {
-    AnchorState.VERIFIED -> "已在 Arbitrum 區塊鏈註冊且內容相符"
-    AnchorState.NOT_ANCHORED -> "未在區塊鏈註冊"
-    AnchorState.MISMATCH -> "與區塊鏈註冊內容不符"
-    AnchorState.UNAVAILABLE -> "暫時無法查詢區塊鏈"
-    AnchorState.DEVELOPMENT_SANDBOX -> "測試平台（不查區塊鏈）"
-    null -> "尚未驗證"
+    AnchorState.VERIFIED -> stringResource(Res.string.anchor_verified)
+    AnchorState.NOT_ANCHORED -> stringResource(Res.string.anchor_not_anchored)
+    AnchorState.MISMATCH -> stringResource(Res.string.anchor_mismatch)
+    AnchorState.UNAVAILABLE -> stringResource(Res.string.anchor_unavailable)
+    AnchorState.DEVELOPMENT_SANDBOX -> stringResource(Res.string.anchor_sandbox)
+    null -> stringResource(Res.string.anchor_unchecked)
 }
 
 /** The TWDIW trust list: listed issuers and verifiers, their DID documents and Arbitrum registrations. */
@@ -136,23 +140,23 @@ fun TrustListScreen(model: WalletModel) {
     // Opening the list checks every organisation not checked in the last day, without a tap per entry.
     LaunchedEffect(Unit) { if (rows == null) model.taiwan.loadTrust() else model.taiwan.verifyAll(force = false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("數位憑證皮夾公布的發行端與查驗方。組織的 DID 文件需自簽有效，並與 Arbitrum One 上的註冊內容相符，才列為官方已驗證（T1）。開啟清單時會自動查驗一天內未查驗的組織。",
+        Text(stringResource(Res.string.trust_list_text),
             style = MaterialTheme.typography.bodyMedium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = filter,
                 onValueChange = { filter = it },
                 leadingIcon = { Icon(WalletIcons.Search, contentDescription = null) },
-                label = { Text("搜尋名稱或統一編號") },
+                label = { Text(stringResource(Res.string.trust_list_search)) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = { model.taiwan.loadTrust(refresh = true) }) { Text("重新整理") }
+            TextButton(onClick = { model.taiwan.loadTrust(refresh = true) }) { Text(stringResource(Res.string.action_refresh)) }
         }
         error?.let { InlineError(it) { model.taiwan.loadTrust(refresh = true) } }
         progress?.let { (done, total) ->
             LinearProgressIndicator(progress = { if (total == 0) 0f else done.toFloat() / total }, modifier = Modifier.fillMaxWidth())
-            Text("正在查驗 DID 文件與區塊鏈註冊：$done / $total", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.trust_list_checking, done, total), style = MaterialTheme.typography.bodySmall)
         }
         val list = rows
         if (list == null && error == null) CircularProgressIndicator(Modifier.size(24.dp))
@@ -176,14 +180,14 @@ private fun TrustRowCard(model: WalletModel, row: TwdiwTrustRow) {
                     e.nameEn?.takeIf { it != e.name }?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
-            val roles = buildList { if (1 in e.orgTypes) add("發行端"); if (2 in e.orgTypes) add("查驗方") }
-            Text(roles.joinToString("、") + (e.taxId?.let { "　統一編號 $it" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            val roles = buildList { if (1 in e.orgTypes) add(stringResource(Res.string.role_issuer)); if (2 in e.orgTypes) add(stringResource(Res.string.role_verifier)) }
+            Text(roles.joinToString(stringResource(Res.string.sep_list)) + (e.taxId?.let { stringResource(Res.string.trust_list_tax_id, it) } ?: ""), style = MaterialTheme.typography.bodySmall)
             Text(e.did, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            if (e.hosts.isNotEmpty()) Text("服務網域：" + e.hosts.joinToString(), style = MaterialTheme.typography.bodySmall)
-            Text("區塊鏈：" + anchorText(row.anchor) + (row.checkedAt?.let { "（${localTime(kotlin.time.Instant.fromEpochMilliseconds(it))} 查驗）" } ?: ""),
+            if (e.hosts.isNotEmpty()) Text(stringResource(Res.string.trust_list_hosts) + e.hosts.joinToString(), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.trust_list_anchor) + anchorText(row.anchor) + (row.checkedAt?.let { stringResource(Res.string.trust_list_checked_at, localTime(kotlin.time.Instant.fromEpochMilliseconds(it))) } ?: ""),
                 style = MaterialTheme.typography.bodySmall)
             row.decision?.let { TierBadge(it) }
-            TextButton(onClick = { model.taiwan.verifyEntry(row) }) { Text(if (row.decision == null) "驗證" else "重新驗證") }
+            TextButton(onClick = { model.taiwan.verifyEntry(row) }) { Text(if (row.decision == null) stringResource(Res.string.action_verify) else stringResource(Res.string.action_verify_again)) }
         }
     }
 }

@@ -1,5 +1,6 @@
 package diw.wallet.core.document.pdf
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.sign.HttpFetch
 import diw.wallet.core.document.sign.SigningException
@@ -180,7 +181,7 @@ object PdfIncrementalSigner {
 
         fun finish(cms: ByteArray): ByteArray {
             val room = (contentsEnd - contentsStart - 2) / 2
-            if (cms.size > room) throw SigningException("簽章資料（${cms.size} 位元組）超過預留空間（$room 位元組）")
+            if (cms.size > room) throw SigningException(ct("core_pdfw_no_room", cms.size, room))
             val out = bytes.copyOf()
             val hex = StringBuilder()
             for (x in cms) { val v = x.toInt() and 0xFF; hex.append("0123456789ABCDEF"[v shr 4]).append("0123456789ABCDEF"[v and 15]) }
@@ -190,28 +191,28 @@ object PdfIncrementalSigner {
     }
 
     fun prepare(original: ByteArray, options: PdfSignOptions, fieldName: String? = null): Prepared {
-        val pdf = try { PdfFile(original) } catch (e: PdfException) { throw SigningException("PDF 結構無法讀取：" + e.message, e) }
-        if (pdf.encrypted) throw SigningException("加密的 PDF 無法加簽；請先另存為未加密的檔案")
-        if (pdf.reconstructed) throw SigningException("PDF 的交互參照表損壞，無法以增量方式加簽")
+        val pdf = try { PdfFile(original) } catch (e: PdfException) { throw SigningException(ct("core_pdf_unreadable") + e.message, e) }
+        if (pdf.encrypted) throw SigningException(ct("core_pdfw_encrypted"))
+        if (pdf.reconstructed) throw SigningException(ct("core_pdfw_xref"))
         val sigs = PdfSignatures(pdf)
-        if (!options.allowBreakingCertification && sigs.fields().any { it.docMdpPermission == 1 }) throw SigningException("此文件有不允許任何修改的認證簽章，無法再加簽")
+        if (!options.allowBreakingCertification && sigs.fields().any { it.docMdpPermission == 1 }) throw SigningException(ct("core_pdfw_locked"))
         options.certification?.let { p ->
-            if (p !in 1..3) throw SigningException("認證簽章的允許修改等級只能是 1、2 或 3")
-            if (sigs.fields().isNotEmpty()) throw SigningException("文件已有簽章；認證簽章只能是第一個簽章")
+            if (p !in 1..3) throw SigningException(ct("core_pdfw_mdp_level"))
+            if (sigs.fields().isNotEmpty()) throw SigningException(ct("core_pdfw_mdp_first"))
         }
 
-        val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException("PDF 沒有文件目錄")
+        val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException(ct("core_pdfw_no_catalog"))
         val catalog = pdf.catalog
         var next = pdf.size
         val sigNum = next++
         val fieldNum = next++
         val fieldRef = PdfRef(fieldNum, 0)
         val pages = PdfPages.list(pdf)
-        if (pages.isEmpty()) throw SigningException("PDF 沒有頁面")
+        if (pages.isEmpty()) throw SigningException(ct("core_pdfw_no_pages"))
         val visible = options.appearance?.takeIf { options.subFilter != "ETSI.RFC3161" }
         val pageInfo = if (visible == null) pages.first() else {
             val i = if (visible.page < 0) pages.size + visible.page else visible.page
-            pages.getOrNull(i) ?: throw SigningException("PDF 只有 ${pages.size} 頁，沒有第 ${i + 1} 頁")
+            pages.getOrNull(i) ?: throw SigningException(ct("core_pdfw_no_page", pages.size, i + 1))
         }
         val pageRef = pageInfo.ref
         val page = pageInfo.dict
@@ -316,7 +317,7 @@ object PdfIncrementalSigner {
 
         val bytes = out.bytes()
         val range = "[0 $contentsStart $contentsEnd ${bytes.size - contentsEnd}]"
-        if (range.length > brPlaceholder.length) throw SigningException("檔案太大，無法加簽")
+        if (range.length > brPlaceholder.length) throw SigningException(ct("core_pdfw_too_large"))
         (range.dropLast(1) + " ".repeat(brPlaceholder.length - range.length) + "]").encodeToByteArray().copyInto(bytes, brStart)
         return Prepared(bytes, contentsStart, contentsEnd)
     }
@@ -328,9 +329,9 @@ object PdfIncrementalSigner {
      * the catalog's /DSS changes.
      */
     fun addValidationData(original: ByteArray, certs: List<ByteArray>, ocsps: List<ByteArray>, crls: List<ByteArray>, vriKeys: List<String>): ByteArray {
-        val pdf = try { PdfFile(original) } catch (e: PdfException) { throw SigningException("PDF 結構無法讀取：" + e.message, e) }
-        if (pdf.encrypted) throw SigningException("加密的 PDF 無法加入長期驗證資料")
-        val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException("PDF 沒有文件目錄")
+        val pdf = try { PdfFile(original) } catch (e: PdfException) { throw SigningException(ct("core_pdf_unreadable") + e.message, e) }
+        if (pdf.encrypted) throw SigningException(ct("core_pdfw_encrypted_ltv"))
+        val catalogRef = pdf.trailer["Root"] as? PdfRef ?: throw SigningException(ct("core_pdfw_no_catalog"))
         val catalog = pdf.catalog
         val stored = PdfSignatures(pdf).dss()
         val dssObj = catalog["DSS"]

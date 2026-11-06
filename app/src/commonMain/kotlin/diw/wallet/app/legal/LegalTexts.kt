@@ -1,5 +1,9 @@
 package diw.wallet.app.legal
 
+import diw.wallet.app.res.Res
+import diw.wallet.app.res.legal_language
+import diw.wallet.app.tr
+
 /** A block of a legal text: a paragraph or a bulleted list. */
 sealed class LegalBlock {
     data class Paragraph(val text: String) : LegalBlock()
@@ -9,8 +13,9 @@ sealed class LegalBlock {
 class LegalSection(val heading: String, val blocks: List<LegalBlock>)
 
 /**
- * A legal text shown in the app and published under docs/legal/[id].md. Raising [version] asks every user to read and
- * decide again on the next start; fix typos without raising it.
+ * A legal text shown in the app and published under docs/legal/[path]. Raising [version] asks every user to read and
+ * decide again on the next start; fix typos without raising it. The translations of a text share its [id] and
+ * [version], so a consent holds whatever language the text was read in.
  */
 class LegalDocument(
     val id: String,
@@ -19,12 +24,19 @@ class LegalDocument(
     val effectiveDate: String,
     val summary: List<String>,
     val sections: List<LegalSection>,
+    /** "zh" (the original, Traditional Chinese) or "en" (its translation). */
+    val language: String = "zh",
 ) {
+    /** Where the published form lives below docs/legal: the Chinese original at the top, translations in a folder per language. */
+    val path: String get() = (if (language == "zh") "" else "$language/") + id + ".md"
+
     /** The published Markdown form (docs/legal), generated from this text so both stay the same. */
     fun toMarkdown(): String = buildString {
+        val en = language == "en"
         append("# ").append(title).append("\n\n")
-        append(LegalStrings.versionLine(version, effectiveDate)).append("\n\n")
-        append("## ").append(LegalStrings.SUMMARY).append("\n\n")
+        append(if (en) "Version $version, effective $effectiveDate" else "版本 $version・生效日期 $effectiveDate").append("\n\n")
+        if (en) append("> ").append(LegalTexts.TRANSLATION_NOTE).append("\n\n")
+        append(if (en) "## Key points" else "## 重點摘要").append("\n\n")
         summary.forEach { append("- ").append(it).append('\n') }
         sections.forEachIndexed { i, s ->
             append("\n## ").append(i + 1).append(". ").append(s.heading).append("\n\n")
@@ -58,31 +70,84 @@ enum class Integration(val id: String, val available: Boolean = true) {
 /** The statement of an [integration]: [name] as the UI shows it and the statement itself. */
 class IntegrationStatement(val integration: Integration, val name: String, val operator: String, val document: LegalDocument)
 
-private class SectionsBuilder {
+internal class SectionsBuilder {
     val sections = ArrayList<LegalSection>()
     fun section(heading: String, vararg blocks: LegalBlock) {
         sections.add(LegalSection(heading, blocks.toList()))
     }
 }
 
-private fun p(text: String) = LegalBlock.Paragraph(text)
-private fun list(vararg items: String) = LegalBlock.Bullets(items.toList())
+internal fun p(text: String) = LegalBlock.Paragraph(text)
+internal fun list(vararg items: String) = LegalBlock.Bullets(items.toList())
 
-private fun document(id: String, title: String, version: Int, date: String, summary: List<String>, build: SectionsBuilder.() -> Unit) =
-    LegalDocument(id, title, version, date, summary, SectionsBuilder().apply(build).sections)
+internal fun document(
+    id: String, title: String, version: Int, date: String, summary: List<String>, language: String = "zh",
+    build: SectionsBuilder.() -> Unit,
+) = LegalDocument(id, title, version, date, summary, SectionsBuilder().apply(build).sections, language)
+
+/** The legal texts of one language. */
+internal class LegalTextSet(
+    val language: String,
+    val developer: String,
+    val terms: LegalDocument,
+    val privacy: LegalDocument,
+    val statements: List<IntegrationStatement>,
+) {
+    val all: List<LegalDocument> get() = listOf(terms, privacy) + statements.map { it.document }
+}
 
 /**
- * Every legal text of the app in Traditional Chinese, kept in one place for translation. The developer and contact
- * details are those of the published app; forks that publish their own builds must replace them. No e-mail address is
- * published in the repository: private contact goes through the one on the app store listing.
+ * The legal texts in the language of the app: the Traditional Chinese original ([LegalTextsZh]) or its English
+ * translation ([LegalTextsEn]), where the Chinese text prevails. The developer and contact details are those of the
+ * published app; forks that publish their own builds must replace them. No e-mail address is published in the
+ * repository: private contact goes through the one on the app store listing.
  */
 object LegalTexts {
-    /** The developer's name in this language (LIN, CHE-CHUAN in English). */
-    const val DEVELOPER = "林哲全"
     const val SOURCE_URL = "https://github.com/mctea01/my-Bonds-fork-android"
     const val ISSUES_URL = "$SOURCE_URL/issues"
     /** Where the published Markdown versions live (docs/legal on the main branch). */
     const val PUBLISHED_URL = "$SOURCE_URL/blob/main/docs/legal"
+    /** The languages the texts are published in; the first is the original. */
+    val LANGUAGES = listOf("zh", "en")
+    /** At the top of every translated text. */
+    const val TRANSLATION_NOTE = "This English text is a translation of the Traditional Chinese original. If the two differ, the Chinese text prevails."
+
+    /** "en" when the app is in English; otherwise, and before the app strings are loaded, the Chinese original. */
+    val language: String get() = if (tr(Res.string.legal_language) == "en") "en" else "zh"
+
+    internal fun texts(language: String): LegalTextSet = if (language == "en") LegalTextsEn.set else LegalTextsZh.set
+
+    private val current: LegalTextSet get() = texts(language)
+
+    /** The developer's name in the language of the app. */
+    val DEVELOPER: String get() = current.developer
+    val terms: LegalDocument get() = current.terms
+    val privacy: LegalDocument get() = current.privacy
+    val statements: List<IntegrationStatement> get() = current.statements
+
+    fun statement(integration: Integration): IntegrationStatement = statements.first { it.integration == integration }
+
+    /** Every text in the language of the app: the terms, the privacy policy and the statements. */
+    val all: List<LegalDocument> get() = current.all
+
+    /** Every text in every language, as published under docs/legal. */
+    val published: List<LegalDocument> get() = LANGUAGES.flatMap { texts(it).all }
+
+    fun byId(id: String): LegalDocument? = all.firstOrNull { it.id == id }
+
+    /** The folder of the web versions in the language of the app. */
+    val onlineFolder: String get() = if (language == "zh") PUBLISHED_URL else "$PUBLISHED_URL/$language"
+
+    /** The web version of [doc] on GitHub. */
+    fun onlineUrl(doc: LegalDocument): String = "$PUBLISHED_URL/${doc.path}"
+}
+
+/** Every legal text of the app in Traditional Chinese, the original the translations follow. */
+internal object LegalTextsZh {
+    /** The developer's name in this language (LIN, CHE-CHUAN in English). */
+    const val DEVELOPER = "林哲全"
+    private const val SOURCE_URL = LegalTexts.SOURCE_URL
+    private const val ISSUES_URL = LegalTexts.ISSUES_URL
 
     private const val DATE = "2026-11-05"
 
@@ -674,10 +739,5 @@ object LegalTexts {
         IntegrationStatement(Integration.ZKPASSPORT, "zkPassport", "zkPassport", zkPassport),
     )
 
-    fun statement(integration: Integration): IntegrationStatement = statements.first { it.integration == integration }
-
-    /** Every published text: the terms, the privacy policy and the statements. */
-    val all: List<LegalDocument> get() = listOf(terms, privacy) + statements.map { it.document }
-
-    fun byId(id: String): LegalDocument? = all.firstOrNull { it.id == id }
+    val set = LegalTextSet("zh", DEVELOPER, terms, privacy, statements)
 }

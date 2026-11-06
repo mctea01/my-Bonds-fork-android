@@ -1,5 +1,6 @@
 package diw.wallet.core.document.card
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.sign.SigningException
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.nfc.CommandApdu
@@ -38,6 +39,6 @@ class NfcCardChannel(private val tag: NfcIsoTag) : CardChannel {
         val r = tag.transceive(c)
         CardResponse(r.status, r.payload.toByteArray())
     } catch (e: NfcTagLostException) {
-        throw SigningException("卡片已離開讀卡區域，請重新感應並保持不動", e)
+        throw SigningException(ct("core_card_left"), e)
     }
 }

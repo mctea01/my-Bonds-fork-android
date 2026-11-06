@@ -1,5 +1,6 @@
 package diw.wallet.core.document.c2pa
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.util.DiwJson
@@ -360,9 +361,9 @@ object C2paManifests {
         val box = store.resolve(r.url, m)
         val abs = absolute(m, r.url)
         when {
-            box == null -> C2paStatus("assertion.missing", abs, false, "找不到宣告 ${r.url}")
+            box == null -> C2paStatus("assertion.missing", abs, false, ct("core_c2pa_assertion_missing", r.url))
             DocCrypto.digest(jcaHash(r.algorithm ?: m.algorithm), box.hashedBytes).contentEquals(r.hash) -> C2paStatus("assertion.hashedURI.match", abs, true)
-            else -> C2paStatus("assertion.hashedURI.mismatch", abs, false, "宣告 ${r.url} 的雜湊與聲明不符")
+            else -> C2paStatus("assertion.hashedURI.mismatch", abs, false, ct("core_c2pa_assertion_hash", r.url))
         }
     }
 
@@ -375,12 +376,12 @@ object C2paManifests {
         val hashBox = signed.firstOrNull { it.label?.startsWith("c2pa.hash.data") == true }
         if (hashBox == null) {
             val other = signed.firstOrNull { l -> listOf("c2pa.hash.boxes", "c2pa.hash.bmff", "c2pa.hash.collection").any { l.label?.startsWith(it) == true } }
-            if (other != null) return C2paStatus("assertion.hardBinding.notChecked", absolute(m, "self#jumbf=c2pa.assertions/${other.label}"), false, "這種綁定（${other.label}）錢包尚未檢查")
+            if (other != null) return C2paStatus("assertion.hardBinding.notChecked", absolute(m, "self#jumbf=c2pa.assertions/${other.label}"), false, ct("core_c2pa_binding_unchecked", other.label))
             val unsigned = m.box.child("c2pa.assertions")?.children.orEmpty().firstOrNull { it.label?.startsWith("c2pa.hash.") == true } ?: return null
-            return C2paStatus("claim.hardBindings.missing", absolute(m, "self#jumbf=c2pa.assertions/${unsigned.label}"), false, "硬綁定宣告（${unsigned.label}）沒有被簽署的聲明引用")
+            return C2paStatus("claim.hardBindings.missing", absolute(m, "self#jumbf=c2pa.assertions/${unsigned.label}"), false, ct("core_c2pa_hard_binding_unsigned", unsigned.label))
         }
         val url = absolute(m, "self#jumbf=c2pa.assertions/${hashBox.label}")
-        val asset = store.asset ?: return C2paStatus("assertion.dataHash.notChecked", url, false, "獨立的 manifest 檔沒有附上原始檔案，無法檢查")
+        val asset = store.asset ?: return C2paStatus("assertion.dataHash.notChecked", url, false, ct("core_c2pa_sidecar_no_asset"))
         val d = Cbor.decode(hashBox.content("cbor") ?: return C2paStatus("assertion.dataHash.malformed", url, false))
         val expected = (d.getOrNullAny("hash") as? Bstr)?.value ?: return C2paStatus("assertion.dataHash.malformed", url, false)
         val ranges = (d.getOrNullAny("exclusions") as? CborArray)?.items.orEmpty().mapNotNull { e ->
@@ -389,7 +390,7 @@ object C2paManifests {
             start to length
         }.sortedBy { it.first }
         if (ranges.any { it.first < 0 || it.second < 0 || it.first + it.second > asset.size }) {
-            return C2paStatus("assertion.dataHash.mismatch", url, false, "排除範圍超出檔案大小")
+            return C2paStatus("assertion.dataHash.mismatch", url, false, ct("core_c2pa_exclusion_range"))
         }
         val kept = ArrayList<ByteArray>()
         var pos = 0L
@@ -403,7 +404,7 @@ object C2paManifests {
         for (k in kept) { k.copyInto(total, o); o += k.size }
         val alg = (d.getOrNullAny("alg") as? Tstr)?.value ?: m.algorithm
         return if (DocCrypto.digest(jcaHash(alg), total).contentEquals(expected)) C2paStatus("assertion.dataHash.match", url, true)
-        else C2paStatus("assertion.dataHash.mismatch", url, false, "檔案內容與資料雜湊不符，簽署後被修改過")
+        else C2paStatus("assertion.dataHash.mismatch", url, false, ct("core_c2pa_data_hash_mismatch"))
     }
 
     /**
@@ -482,8 +483,8 @@ object C2paManifests {
     fun training(m: C2paManifest): List<String> = assertion(m, "c2pa.training-mining", "cawg.training-mining").flatMap { (_, v) ->
         ((v as? JsonObject)?.get("entries") as? JsonObject)?.entries.orEmpty().map { (k, e) ->
             val use = (e as? JsonObject)?.str("use")
-            val text = when (use) { "allowed" -> "允許"; "notAllowed" -> "不允許"; "constrained" -> "有條件允許"; else -> use ?: "未說明" }
-            "${k.substringAfter('.')}：$text"
+            val text = when (use) { "allowed" -> ct("core_c2pa_allowed"); "notAllowed" -> ct("core_c2pa_not_allowed"); "constrained" -> ct("core_c2pa_constrained"); else -> use ?: ct("core_c2pa_unstated") }
+            ct("core_label_value", k.substringAfter('.'), text)
         }
     }
 

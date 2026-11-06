@@ -1,5 +1,6 @@
 package diw.wallet.core.document.sign
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.str
 import io.ktor.client.HttpClient
@@ -49,7 +50,7 @@ class ServerMobileMoicaClient(
         private set
 
     override suspend fun requestPush(idNumber: String, hint: String, data: ByteArray, timeLimit: Int, deviceAlias: String?): MobileMoicaTicket {
-        if (deviceAlias != null) throw MobileMoicaException(null, "正式服務端不支援指定推播裝置")
+        if (deviceAlias != null) throw MobileMoicaException(null, ct("core_smm_no_device"))
         return create(MODE_PUSH, idNumber, hint, data, timeLimit)
     }
 
@@ -77,17 +78,17 @@ class ServerMobileMoicaClient(
             throw when (response.status) {
                 HttpStatusCode.Unauthorized -> MobileMoicaException(
                     "unauthorized",
-                    if (token == null) "正式服務端需要存取權杖，請到設定的「零知識證明」頁填入" else "正式服務端不接受這個存取權杖，請到設定的「零知識證明」頁更新",
+                    if (token == null) ct("core_smm_token_needed") else ct("core_smm_token_rejected"),
                 )
-                HttpStatusCode.NotFound -> MobileMoicaException(null, "這台正式服務端沒有啟用行動自然人憑證簽署")
-                else -> MobileMoicaException(o?.str("error"), o?.str("error_description") ?: "正式服務端拒絕簽署要求（HTTP ${response.status.value}）")
+                HttpStatusCode.NotFound -> MobileMoicaException(null, ct("core_smm_disabled"))
+                else -> MobileMoicaException(o?.str("error"), o?.str("error_description") ?: ct("core_smm_refused", response.status.value))
             }
         }
         val sessionId = o?.str("sessionId")
         val readToken = o?.str("token")
         val spTicket = o?.str("spTicket")
         if (sessionId.isNullOrEmpty() || readToken.isNullOrEmpty() || spTicket.isNullOrEmpty()) {
-            throw MobileMoicaException(null, "正式服務端的回應缺少簽署要求")
+            throw MobileMoicaException(null, ct("core_smm_no_request"))
         }
         environment = MobileMoicaEnvironment.entries.firstOrNull { it.name == o.str("environment") }
         val ticket = TwFidoClient.parseTicket(spTicket)
@@ -96,7 +97,7 @@ class ServerMobileMoicaClient(
     }
 
     override suspend fun await(ticket: MobileMoicaTicket, timeLimit: Int, pollInterval: Duration): MobileMoicaResult {
-        val (sessionId, readToken) = requests[ticket.spTicketId] ?: throw MobileMoicaException(null, "這個簽署要求不是由正式服務端建立")
+        val (sessionId, readToken) = requests[ticket.spTicketId] ?: throw MobileMoicaException(null, ct("core_smm_not_ours"))
         try {
             val deadline = Clock.System.now() + timeLimit.seconds + 20.seconds
             val url = "$base/twfido/sign/" + sessionId.encodeURLPathPart() + "?token=" + readToken.encodeURLParameter()
@@ -104,22 +105,22 @@ class ServerMobileMoicaClient(
                 delay(pollInterval)
                 val response = call { http.get(url) }
                 val o = json(response)
-                if (response.status == HttpStatusCode.NotFound) throw MobileMoicaException(null, "正式服務端的簽署要求已過期")
+                if (response.status == HttpStatusCode.NotFound) throw MobileMoicaException(null, ct("core_smm_expired"))
                 if (!response.status.isSuccess() || o == null) {
-                    throw MobileMoicaException(o?.str("error"), o?.str("error_description") ?: "正式服務端無法回報簽署結果（HTTP ${response.status.value}）")
+                    throw MobileMoicaException(o?.str("error"), o?.str("error_description") ?: ct("core_smm_result_failed", response.status.value))
                 }
                 when (o.str("status")) {
                     "pending" -> Unit
                     "done" -> {
                         val signature = o.str("signature")?.let { runCatching { Base64.decode(it) }.getOrNull() }
                         val certificate = o.str("certificate")?.let { runCatching { Base64.decode(it) }.getOrNull() }
-                        if (signature == null || certificate == null) throw MobileMoicaException(null, "正式服務端的回應缺少簽章值或憑證")
+                        if (signature == null || certificate == null) throw MobileMoicaException(null, ct("core_smm_no_signature"))
                         return MobileMoicaResult(signature, certificate, o.str("hashedIdNumber").orEmpty())
                     }
-                    "failed" -> throw MobileMoicaException(o.str("code"), o.str("reason") ?: "行動自然人憑證簽署失敗")
-                    else -> throw MobileMoicaException(null, "正式服務端回報了不明的狀態")
+                    "failed" -> throw MobileMoicaException(o.str("code"), o.str("reason") ?: ct("core_mm_sign_failed"))
+                    else -> throw MobileMoicaException(null, ct("core_smm_unknown_state"))
                 }
-                if (Clock.System.now() > deadline) throw MobileMoicaException(null, "等待逾時：沒有在 $timeLimit 秒內於行動自然人憑證 App 完成簽署")
+                if (Clock.System.now() > deadline) throw MobileMoicaException(null, ct("core_mm_timeout", timeLimit))
             }
         } finally {
             requests.remove(ticket.spTicketId)
@@ -131,7 +132,7 @@ class ServerMobileMoicaClient(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        throw MobileMoicaException(null, "無法連線到正式服務端：" + (e.message ?: e::class.simpleName))
+        throw MobileMoicaException(null, ct("core_smm_unreachable") + (e.message ?: e::class.simpleName))
     }
 
     private suspend fun json(response: HttpResponse): JsonObject? =

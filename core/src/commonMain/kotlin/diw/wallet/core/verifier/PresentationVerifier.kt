@@ -1,5 +1,6 @@
 package diw.wallet.core.verifier
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.did.DidResolver
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.derived.DerivedCredentials
@@ -339,7 +340,7 @@ class PresentationVerifier(
             .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content ?: v.toString() }
         // A document-derived credential is the holder wallet's own statement (T3); its evidence is what a verifier weighs.
         val trust = if (derived) {
-            TrustDecision(TrustTier.T3, TrustEnvironment.USER, official = false, anchorName = "持有人錢包（文件衍生）", labels = setOf(TrustLabel.SELF_ISSUED))
+            TrustDecision(TrustTier.T3, TrustEnvironment.USER, official = false, anchorName = ct("core_pv_holder_wallet"), labels = setOf(TrustLabel.SELF_ISSUED))
         } else TrustDecision.unknown("issuer identified by a DID that this verifier does not trust")
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, trust.anchorName ?: iss)
         else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")

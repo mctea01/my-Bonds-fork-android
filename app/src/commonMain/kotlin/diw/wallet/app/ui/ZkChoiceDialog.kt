@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,8 +43,8 @@ import kotlinx.coroutines.launch
 fun ZkChoicePanel(readiness: ZkReadiness, options: List<ZkChoiceOption>, onPick: (ZkChoiceOption) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            readiness.advice?.let { "這台裝置產生「${readiness.kind.label}」可能不順利：$it" }
-                ?: "產生「${readiness.kind.label}」前需要你確認。",
+            readiness.advice?.let { stringResource(Res.string.zk_readiness_warn, readiness.kind.label, it) }
+                ?: stringResource(Res.string.zk_readiness_confirm, readiness.kind.label),
             style = MaterialTheme.typography.bodyMedium,
         )
         options.forEach { option ->
@@ -55,7 +58,7 @@ fun ZkChoicePanel(readiness: ZkReadiness, options: List<ZkChoiceOption>, onPick:
             ) {
                 Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                     Text(
-                        option.title + if (option.recommended) "（建議）" else "",
+                        option.title + if (option.recommended) stringResource(Res.string.zk_recommended) else "",
                         style = MaterialTheme.typography.titleSmall,
                         color = if (option.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
                     )
@@ -108,7 +111,7 @@ fun ZkProofGate(
         GateState.Checking -> Unit
         is GateState.Choose -> AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("選擇產生方式") },
+            title = { Text(stringResource(Res.string.zk_choose_method)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     ZkChoicePanel(s.readiness, zkChoiceOptions(s.readiness, context)) { option ->
@@ -125,15 +128,15 @@ fun ZkProofGate(
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
         )
         is GateState.ConfirmDownload -> AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("下載電路檔？") },
+            title = { Text(stringResource(Res.string.zk_download_title)) },
             text = {
                 Text(
-                    (if (s.choice != ZkChoiceKind.ON_DEVICE) "驗證在其他裝置產生的「${kind.label}」" else "產生「${kind.label}」") + "需要先下載 ${sizeText(s.readiness.downloadBytes)}，安裝後佔用 ${sizeText(s.readiness.installedBytes)}。" +
-                        "建議使用 Wi-Fi；可隨時停止，下次會從中斷處續傳。每個檔案都會比對清單上的 SHA-256。",
+                    (if (s.choice != ZkChoiceKind.ON_DEVICE) stringResource(Res.string.zk_verify_other, kind.label) else stringResource(Res.string.zk_make, kind.label)) + stringResource(Res.string.zk_download_size, sizeText(s.readiness.downloadBytes), sizeText(s.readiness.installedBytes)) +
+                        stringResource(Res.string.zk_download_hint),
                 )
             },
             confirmButton = {
@@ -144,16 +147,16 @@ fun ZkProofGate(
                         val statuses = zk.assetStatus.value
                         if (s.readiness.missing.all { statuses[it.id] == ZkAssetStatus.READY }) onDecision(s.choice, s.extended)
                     }
-                }) { Text("下載") }
+                }) { Text(stringResource(Res.string.action_download)) }
             },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
         )
         is GateState.Downloading -> {
             val downloads by zk.downloads.collectAsState()
             val failed = s.readiness.missing.firstNotNullOfOrNull { downloads[it.id]?.error }
             AlertDialog(
                 onDismissRequest = {},
-                title = { Text(if (failed != null) "下載未完成" else "正在下載電路檔") },
+                title = { Text(if (failed != null) stringResource(Res.string.zk_download_incomplete) else stringResource(Res.string.zk_downloading)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val received = s.readiness.missing.sumOf { a ->
@@ -171,34 +174,34 @@ fun ZkProofGate(
                     }
                 },
                 confirmButton = {
-                    if (failed != null) TextButton(onClick = { state = GateState.ConfirmDownload(s.readiness, s.extended, s.choice) }) { Text("重試") }
+                    if (failed != null) TextButton(onClick = { state = GateState.ConfirmDownload(s.readiness, s.extended, s.choice) }) { Text(stringResource(Res.string.action_retry)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { zk.cancelDownload(); onDismiss() }) { Text(if (failed != null) "關閉" else "停止下載") }
+                    TextButton(onClick = { zk.cancelDownload(); onDismiss() }) { Text(if (failed != null) stringResource(Res.string.action_close) else stringResource(Res.string.zk_stop_download)) }
                 },
             )
         }
         is GateState.SelfHostRisk -> RiskConfirmDialog(
-            title = "把文件送到自架主機？",
+            title = stringResource(Res.string.zk_host_title),
             lines = listOf(
-                "主機會收到 PDF 第 1 頁的內容（含不打算揭露的欄位）與證明需要的私密資料，但不是整份文件。",
-                "請只使用你自己管理、信任的主機；傳輸與保存由主機負責，結果最多保留一小時。",
-                "回傳的證明會先在這台裝置驗證，不通過就不使用；驗證需要電路的驗證金鑰。",
+                stringResource(Res.string.zk_host_text),
+                stringResource(Res.string.zk_host_trust),
+                stringResource(Res.string.zk_host_verify),
             ),
-            confirm = "送出",
+            confirm = stringResource(Res.string.action_send),
             onConfirm = {
                 scope.launch { state = verifyFirst(zk, kind, verifyAssets, ZkChoiceKind.SELF_HOSTED, onDecision) }
             },
             onDismiss = { state = GateState.Choose(s.readiness) },
         )
         is GateState.DesktopRisk -> RiskConfirmDialog(
-            title = "匯出證明請求檔？",
+            title = stringResource(Res.string.zk_export_title),
             lines = listOf(
-                "請求檔含 PDF 第 1 頁的內容（含不打算揭露的欄位）與證明需要的私密資料，但不是整份文件。",
-                "請只在你自己的電腦版錢包開啟，傳送後刪除；證明產生前請求一直保留在這台裝置等待。",
-                "匯入的證明會先在這台裝置驗證，不通過就不使用；驗證需要電路的驗證金鑰。",
+                stringResource(Res.string.zk_export_text),
+                stringResource(Res.string.zk_export_trust),
+                stringResource(Res.string.zk_import_verify),
             ),
-            confirm = "匯出",
+            confirm = stringResource(Res.string.action_export),
             onConfirm = {
                 scope.launch { state = verifyFirst(zk, kind, verifyAssets, ZkChoiceKind.DESKTOP, onDecision) }
             },

@@ -1,5 +1,6 @@
 package diw.wallet.core.document.card
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.sign.DocumentSigner
@@ -39,13 +40,13 @@ class GpkiCard(private val channel: CardChannel) {
                 return generation
             }
         }
-        throw SigningException("這張卡片不是自然人憑證或政府憑證卡（找不到 GPKI 應用程式）")
+        throw SigningException(ct("core_gpki_not_gpki"))
     }
 
     private suspend fun selectMf() {
         val ok = if (generation == Generation.GEN2) channel.transmit(0x00, 0xA4, 0x04, 0x0C, GPPKI_AID, 256).ok
         else channel.transmit(cla, 0xA4, 0x00, 0x00, byteArrayOf(0x3F, 0x00), 0).ok
-        if (!ok) throw SigningException("無法選取卡片的應用程式")
+        if (!ok) throw SigningException(ct("core_gpki_select_app"))
     }
 
     private suspend fun selectFid(fid: Int): Boolean {
@@ -58,11 +59,11 @@ class GpkiCard(private val channel: CardChannel) {
         var i = 0
         if (path.size >= 2 && path[0] == 0x3F.toByte() && path[1] == 0x00.toByte()) { selectMf(); i = 2 }
         else if (path.size > 2) selectMf()
-        else { selectMf(); if (!selectFid(CARD_DF)) throw SigningException("無法選取卡片目錄") }
+        else { selectMf(); if (!selectFid(CARD_DF)) throw SigningException(ct("core_gpki_select_dir")) }
         while (i + 1 < path.size) {
             val fid = ((path[i].toInt() and 0xFF) shl 8) or (path[i + 1].toInt() and 0xFF)
             if (fid == 0x7FFF && generation == Generation.GEN2) selectMf()
-            else if (!selectFid(fid)) throw SigningException("無法選取卡片檔案 " + DocCryptoUtil.hex(path))
+            else if (!selectFid(fid)) throw SigningException(ct("core_gpki_select_file") + DocCryptoUtil.hex(path))
             i += 2
         }
     }
@@ -111,13 +112,13 @@ class GpkiCard(private val channel: CardChannel) {
     suspend fun signingKey(): KeyInfo {
         val keys = Der.records(readDirectory(PRKDF)).mapNotNull { parseKey(it) }
         val certs = Der.records(readDirectory(CDF)).mapNotNull { parseCert(it) }
-        if (keys.isEmpty() || certs.isEmpty()) throw SigningException("讀不到卡片上的金鑰或憑證")
+        if (keys.isEmpty() || certs.isEmpty()) throw SigningException(ct("core_gpki_no_key"))
         val key = keys.filter { it.canSign }.let { s -> s.firstOrNull { it.id.contentEquals(SIGN_ID) || it.label.contains("SIGN", true) } ?: s.firstOrNull() }
             ?: keys.first()
         val cert = certs.firstOrNull { it.first.contentEquals(key.id) } ?: certs.first()
         selectPath(cert.second.path)
         val raw = readRange(cert.second.index, if (cert.second.length > 0) cert.second.length else 4096)
-        val der = Der.firstObject(raw) ?: throw SigningException("卡片上的憑證格式錯誤")
+        val der = Der.firstObject(raw) ?: throw SigningException(ct("core_gpki_cert_format"))
         return KeyInfo(key.label, key.id, key.keyRef, der)
     }
 
@@ -138,16 +139,16 @@ class GpkiCard(private val channel: CardChannel) {
                 for (i in 0 until 2) {
                     val more = i == 0
                     val r = sm(0x80, 0xEA, if (more) 0x82 else 0x02, keyRef, block.copyOfRange(i * 128, i * 128 + 128), if (more) 0 else 0x80, true)
-                    if (!r.ok) throw SigningException("卡片拒絕簽章（${hex4(r.sw)}）")
+                    if (!r.ok) throw SigningException(ct("core_gpki_sign_refused", hex4(r.sw)))
                     out += r.data
                 }
                 var guard = 0
                 while (out.size < RSA_LEN && guard++ < 4) {
                     val r = sm(0x80, 0xC1, 0x00, 0x80, ByteArray(0), 0x80, false)
-                    if (!r.ok || r.data.isEmpty()) throw SigningException("讀取簽章結果失敗（${hex4(r.sw)}）")
+                    if (!r.ok || r.data.isEmpty()) throw SigningException(ct("core_gpki_sign_read", hex4(r.sw)))
                     out += r.data
                 }
-                if (out.size < RSA_LEN) throw SigningException("卡片回傳的簽章長度不正確")
+                if (out.size < RSA_LEN) throw SigningException(ct("core_gpki_sig_length"))
                 out.copyOf(RSA_LEN)
             }
             Generation.GEN1 -> {
@@ -156,7 +157,7 @@ class GpkiCard(private val channel: CardChannel) {
                 var out = ByteArray(0)
                 for (i in 0 until 2) {
                     val r = channel.transmit(0x80, 0xEA, if (i == 0) 0x82 else 0x02, keyRef, block.copyOfRange(i * 128, i * 128 + 128), 0)
-                    if (!r.ok) throw SigningException("卡片拒絕簽章（${hex4(r.sw)}）")
+                    if (!r.ok) throw SigningException(ct("core_gpki_sign_refused", hex4(r.sw)))
                     out += r.data
                 }
                 var guard = 0
@@ -164,10 +165,10 @@ class GpkiCard(private val channel: CardChannel) {
                     val off = out.size
                     val want = minOf(128, RSA_LEN - off)
                     val r = channel.transmit(0x80, 0xC1, off shr 8, off and 0xFF, ByteArray(0), want)
-                    if (!r.ok || r.data.isEmpty()) throw SigningException("讀取簽章結果失敗（${hex4(r.sw)}）")
+                    if (!r.ok || r.data.isEmpty()) throw SigningException(ct("core_gpki_sign_read", hex4(r.sw)))
                     out += r.data
                 }
-                if (out.size != RSA_LEN) throw SigningException("卡片回傳的簽章長度不正確")
+                if (out.size != RSA_LEN) throw SigningException(ct("core_gpki_sig_length"))
                 out
             }
         }
@@ -176,11 +177,11 @@ class GpkiCard(private val channel: CardChannel) {
     private suspend fun selectKeyEf() {
         if (selectFid(KEY_EF)) return
         selectMf()
-        if (!selectFid(CARD_DF) || !selectFid(KEY_EF)) throw SigningException("無法選取卡片的金鑰檔")
+        if (!selectFid(CARD_DF) || !selectFid(KEY_EF)) throw SigningException(ct("core_gpki_select_key"))
     }
 
     private fun pinBytes(pin: String): ByteArray {
-        if (pin.length !in PIN_MIN..PIN_MAX || pin.any { it.code > 0x7E || it.code < 0x20 }) throw SigningException("PIN 碼格式不正確（應為 $PIN_MIN 至 $PIN_MAX 碼）")
+        if (pin.length !in PIN_MIN..PIN_MAX || pin.any { it.code > 0x7E || it.code < 0x20 }) throw SigningException(ct("core_pin_format_digits", PIN_MIN, PIN_MAX))
         val b = ByteArray(PIN_MAX) { 0xFF.toByte() }
         pin.encodeToByteArray().copyInto(b)
         return b
@@ -189,12 +190,12 @@ class GpkiCard(private val channel: CardChannel) {
     private fun pinResult(sw: Int) {
         when {
             sw == 0x9000 -> {}
-            sw == 0x6983 -> throw SigningException("PIN 碼已鎖定，請到戶政事務所或以 PUK 解鎖")
+            sw == 0x6983 -> throw SigningException(ct("core_gpki_pin_locked"))
             sw and 0xFFF0 == 0x63C0 -> {
                 val left = sw and 0x0F
-                throw SigningException(if (left == 0) "PIN 碼錯誤，卡片已鎖定" else "PIN 碼錯誤，還可以再試 $left 次。為避免鎖卡，已停止簽署。")
+                throw SigningException(if (left == 0) ct("core_pin_wrong_locked") else ct("core_pin_wrong_left_sign", left))
             }
-            else -> throw SigningException("卡片拒絕 PIN 驗證（${hex4(sw)}）")
+            else -> throw SigningException(ct("core_gpki_pin_refused", hex4(sw)))
         }
     }
 
@@ -210,12 +211,12 @@ class GpkiCard(private val channel: CardChannel) {
     private class Scp03(val sEnc: ByteArray, val sMac: ByteArray, var mcv: ByteArray, var counter: Int)
 
     private suspend fun staticKeys(): Pair<ByteArray, ByteArray> {
-        if (!channel.transmit(0x00, 0xA4, 0x04, 0x00, ISD_CM_AID, 0).let { it.ok || it.warning }) throw SigningException("無法選取卡片管理程式")
+        if (!channel.transmit(0x00, 0xA4, 0x04, 0x00, ISD_CM_AID, 0).let { it.ok || it.warning }) throw SigningException(ct("core_gpki_select_manager"))
         val e0 = channel.transmit(0x80, 0xCA, 0x00, 0xE0, ByteArray(0), 256)
-        if (!e0.ok || e0.data.size < 8 || e0.data[0] != 0xE0.toByte() || e0.data[7].toInt() != 16) throw SigningException("卡片的安全通道參數不支援")
-        if (!channel.transmit(0x00, 0xA4, 0x04, 0x00, ISD_AID, 0).let { it.ok || it.warning }) throw SigningException("無法選取卡片管理程式")
+        if (!e0.ok || e0.data.size < 8 || e0.data[0] != 0xE0.toByte() || e0.data[7].toInt() != 16) throw SigningException(ct("core_gpki_scp_unsupported"))
+        if (!channel.transmit(0x00, 0xA4, 0x04, 0x00, ISD_AID, 0).let { it.ok || it.warning }) throw SigningException(ct("core_gpki_select_manager"))
         val t45 = channel.transmit(0x80, 0xCA, 0x00, 0x45, ByteArray(0), 256)
-        if (!t45.ok || t45.data.size < 12 || t45.data[0] != 0x45.toByte() || t45.data[1] != 0x0A.toByte()) throw SigningException("讀不到卡片識別碼")
+        if (!t45.ok || t45.data.size < 12 || t45.data[0] != 0x45.toByte() || t45.data[1] != 0x0A.toByte()) throw SigningException(ct("core_gpki_no_cuid"))
         val cardId = t45.data.copyOfRange(2, 12)
         return diversify(cardId)
     }
@@ -223,19 +224,19 @@ class GpkiCard(private val channel: CardChannel) {
     private suspend fun openScp03() {
         scp = null
         val (kEnc, kMac) = staticKeys()
-        if (!channel.transmit(0x00, 0xA4, 0x04, 0x0C, GPPKI_AID, 256).ok) throw SigningException("無法選取卡片的應用程式")
+        if (!channel.transmit(0x00, 0xA4, 0x04, 0x0C, GPPKI_AID, 256).ok) throw SigningException(ct("core_gpki_select_app"))
         val host = DocCrypto.randomBytes(8)
         val iu = channel.transmit(0x80, 0x50, 0x01, 0x00, host, 256)
-        if (!iu.ok || iu.data.size < 29 || iu.data[11].toInt() != 0x03) throw SigningException("卡片不接受安全通道（${hex4(iu.sw)}）")
+        if (!iu.ok || iu.data.size < 29 || iu.data[11].toInt() != 0x03) throw SigningException(ct("core_gpki_scp_refused", hex4(iu.sw)))
         val session = establish(kEnc, kMac, host, iu.data.copyOfRange(13, 21), iu.data.copyOfRange(21, 29))
-            ?: throw SigningException("卡片的安全通道驗證失敗")
+            ?: throw SigningException(ct("core_gpki_scp_failed"))
         val ea = channel.transmit(0x84, 0x82, 0x03, 0x00, session.second, 0)
-        if (!ea.ok) throw SigningException("卡片拒絕安全通道（${hex4(ea.sw)}）")
+        if (!ea.ok) throw SigningException(ct("core_gpki_scp_rejected", hex4(ea.sw)))
         scp = session.first
     }
 
     private suspend fun sm(cla0: Int, ins: Int, p1: Int, p2: Int, data: ByteArray, le: Int, encrypt: Boolean): CardResponse {
-        val s = scp ?: throw SigningException("安全通道尚未建立")
+        val s = scp ?: throw SigningException(ct("core_gpki_scp_missing"))
         val (header, body) = wrap(s, cla0, ins, p1, p2, data, encrypt)
         return channel.transmit(header[0].toInt() and 0xFF, ins, p1, p2, body, le)
     }
@@ -244,7 +245,7 @@ class GpkiCard(private val channel: CardChannel) {
 
     private suspend fun smSelect(fid: Int) {
         val r = sm(0x00, 0xA4, 0x00, 0x04, byteArrayOf((fid shr 8).toByte(), fid.toByte()), 0, true)
-        if (!r.ok && !r.warning) throw SigningException("無法選取卡片的金鑰檔（${hex4(r.sw)}）")
+        if (!r.ok && !r.warning) throw SigningException(ct("core_gpki_select_key_sw", hex4(r.sw)))
     }
 
     // ---- PKCS#15 ----

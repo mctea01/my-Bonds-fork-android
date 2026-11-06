@@ -1,5 +1,6 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.SignerKeyType
 import org.bouncycastle.asn1.ASN1EncodableVector
@@ -86,7 +87,7 @@ internal object XmlDsig {
     ): List<SignatureInfo> {
         val doc = XmlParsing.parse(bytes)
         val sigs = XmlParsing.descendants(doc, DS, "Signature").filter { XmlParsing.child(it, DS, "SignedInfo") != null }
-        return sigs.mapIndexed { i, s -> verifyOne(doc, s, if (sigs.size > 1) "$label（簽章 ${i + 1}）" else label, checks, now, resolve) }
+        return sigs.mapIndexed { i, s -> verifyOne(doc, s, if (sigs.size > 1) ct("core_xml_sig_n", label, i + 1) else label, checks, now, resolve) }
     }
 
     private suspend fun verifyOne(
@@ -125,8 +126,8 @@ internal object XmlDsig {
                     val v = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(cd, DS, "DigestValue")).orEmpty()) }.getOrNull()
                     v != null && DocCrypto.digest(a, signer.encoded).contentEquals(v)
                 }
-                if (!bound) problems.add("XAdES 簽署憑證屬性與附上的憑證不符")
-            } else if (signer != null) notes.add("XAdES 沒有簽署憑證屬性（SigningCertificate）")
+                if (!bound) problems.add(ct("core_xades_signing_cert_mismatch"))
+            } else if (signer != null) notes.add(ct("core_xades_no_signing_cert"))
             XmlParsing.descendants(qp, null, "SignatureTimeStamp").firstOrNull()?.let { ts ->
                 val token = XmlParsing.descendants(ts, null, "EncapsulatedTimeStamp").firstOrNull()?.textContent?.trim()
                     ?.let { runCatching { Base64.getMimeDecoder().decode(it) }.getOrNull() }
@@ -142,7 +143,7 @@ internal object XmlDsig {
                     ?.let { runCatching { Base64.getMimeDecoder().decode(it) }.getOrNull() } ?: return@forEach
                 val alg2 = XmlParsing.child(ats, DS, "CanonicalizationMethod")?.getAttribute("Algorithm")?.takeIf { it in XmlC14n.supported } ?: XmlC14n.C14N
                 val input = archiveInput(doc, sig, ats, alg2, resolve)
-                if (input == null) notes.add("保存時戳涵蓋的檔案不在檔案內，無法檢查")
+                if (input == null) notes.add(ct("core_archive_file_missing"))
                 else archives.add(checks.timestamp(token, input))
             }
             XmlParsing.descendants(qp, null, "EncapsulatedOCSPValue").forEach { e -> runCatching { ocsps.add(Base64.getMimeDecoder().decode(e.textContent.trim())) } }
@@ -151,11 +152,11 @@ internal object XmlDsig {
                 runCatching { Bc.holder(Base64.getMimeDecoder().decode(e.textContent.trim()))?.let { extra.add(it) } }
             }
         }
-        if (method == "http://www.w3.org/2000/09/xmldsig#rsa-sha1") notes.add("使用較弱的簽章演算法 RSA SHA-1")
+        if (method == "http://www.w3.org/2000/09/xmldsig#rsa-sha1") notes.add(ct("core_weak_rsa_sha1"))
         if (qp != null) {
-            notes.add("XAdES 等級：" + baselineLevel(timestamp != null, ocsps.isNotEmpty() || crls.isNotEmpty(), archives.isNotEmpty()))
+            notes.add(ct("core_xades_level") + baselineLevel(timestamp != null, ocsps.isNotEmpty() || crls.isNotEmpty(), archives.isNotEmpty()))
             archives.forEach { notes.add(archiveNote(it)) }
-            archives.filter { it.imprint == Check.FAIL || it.signature == Check.FAIL }.forEach { problems.add("保存時戳無效：" + it.problems.joinToString("；")) }
+            archives.filter { it.imprint == Check.FAIL || it.signature == Check.FAIL }.forEach { problems.add(ct("core_cms_archive_invalid") + it.problems.joinToString(ct("core_sep_semicolon"))) }
         }
         return checks.evaluate(
             format = format,
@@ -187,7 +188,7 @@ internal object XmlDsig {
     fun archiveNote(ts: TimestampInfo): String {
         val ok = ts.imprint == Check.PASS && ts.signature == Check.PASS
         val time = kotlin.time.Instant.fromEpochSeconds(ts.time).toString().replace('T', ' ').removeSuffix("Z") + " UTC"
-        return "保存時戳（${ts.tsa ?: "時戳機構"}，$time）" + if (ok) "涵蓋簽章與長期驗證資料，檢查通過" else "檢查未通過"
+        return ct("core_archive_tst", ts.tsa ?: ct("core_tsa"), time) + if (ok) ct("core_archive_tst_ok") else ct("core_check_failed")
     }
 
     /** What the integrity check of one signature found; [integrity] covers every reference and the signature value. */
@@ -229,19 +230,19 @@ internal object XmlDsig {
             val transforms = XmlParsing.child(ref, ns, "Transforms")?.let { XmlParsing.childrenNamed(it, ns, "Transform") }.orEmpty()
             val digestAlg = digestName(XmlParsing.child(ref, ns, "DigestMethod")?.getAttribute("Algorithm"))
             val expected = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(ref, ns, "DigestValue")).orEmpty()) }.getOrNull()
-            if (digestAlg == null || expected == null) { problems.add("參照 ${uri ?: ""} 的摘要演算法不支援"); integrity = worst(integrity, Check.NOT_CHECKED); continue }
+            if (digestAlg == null || expected == null) { problems.add(ct("core_ref_digest_unsupported", uri ?: "")); integrity = worst(integrity, Check.NOT_CHECKED); continue }
             val data: ByteArray? = try {
                 referenceData(doc, sig, uri, transforms, resolve)
             } catch (e: UnsupportedOperationException) {
-                problems.add(e.message ?: "不支援的轉換"); integrity = worst(integrity, Check.NOT_CHECKED); continue
+                problems.add(e.message ?: ct("core_transform_unsupported")); integrity = worst(integrity, Check.NOT_CHECKED); continue
             }
             if (data == null) {
-                notes.add("參照的檔案「${uri ?: ""}」不在檔案內，無法檢查")
+                notes.add(ct("core_ref_file_missing", uri ?: ""))
                 integrity = worst(integrity, Check.NOT_CHECKED)
                 continue
             }
             if (!DocCrypto.digest(digestAlg, data).contentEquals(expected)) {
-                problems.add("參照「${uri?.ifEmpty { "整份文件" } ?: "整份文件"}」的內容在簽署後被修改")
+                problems.add(ct("core_ref_modified", uri?.ifEmpty { ct("core_whole_document") } ?: ct("core_whole_document")))
                 integrity = Check.FAIL
             }
             if (uri == "" && transforms.any { it.getAttribute("Algorithm") in setOf(ENVELOPED, FILTER2) }) coversWhole = true
@@ -251,15 +252,15 @@ internal object XmlDsig {
                 if (target != null && target === doc.documentElement) coversWhole = true
             }
         }
-        if (qp != null && signedProps != null && !signedPropsCovered) problems.add("XAdES 的簽署屬性沒有被簽章涵蓋")
+        if (qp != null && signedProps != null && !signedPropsCovered) problems.add(ct("core_xades_props_unsigned"))
 
         // Signature value over the canonical SignedInfo.
         val alg = signatureName(method)
         val value = runCatching { Base64.getMimeDecoder().decode(XmlParsing.text(XmlParsing.child(sig, ns, "SignatureValue")).orEmpty()) }.getOrNull()
         when {
-            signer == null -> { problems.add("簽章沒有附上簽署者憑證"); integrity = worst(integrity, Check.NOT_CHECKED) }
-            alg == null || value == null -> { problems.add("不支援的簽章演算法 $method"); integrity = worst(integrity, Check.NOT_CHECKED) }
-            c14n !in XmlC14n.supported -> { problems.add("不支援的標準化方法 $c14n"); integrity = worst(integrity, Check.NOT_CHECKED) }
+            signer == null -> { problems.add(ct("core_sig_no_signer_cert")); integrity = worst(integrity, Check.NOT_CHECKED) }
+            alg == null || value == null -> { problems.add(ct("core_sig_alg_unsupported", method)); integrity = worst(integrity, Check.NOT_CHECKED) }
+            c14n !in XmlC14n.supported -> { problems.add(ct("core_c14n_unsupported", c14n)); integrity = worst(integrity, Check.NOT_CHECKED) }
             else -> {
                 val prefixes = inclusivePrefixes(c14nEl)
                 val canonical = XmlC14n.canonicalize(signedInfo, c14n, inclusivePrefixes = prefixes)
@@ -271,7 +272,7 @@ internal object XmlDsig {
                     s.update(canonical)
                     s.verify(sigBytes)
                 }.getOrDefault(false)
-                if (!ok) { problems.add("簽章值不符"); integrity = Check.FAIL }
+                if (!ok) { problems.add(ct("core_sig_value_mismatch")); integrity = Check.FAIL }
             }
         }
 
@@ -325,10 +326,10 @@ internal object XmlDsig {
                     for (x in XmlParsing.children(t)) {
                         val expr = x.textContent.trim()
                         when {
-                            x.getAttribute("Filter") != "subtract" -> throw UnsupportedOperationException("不支援的 XPath 篩選 ${x.getAttribute("Filter")}")
+                            x.getAttribute("Filter") != "subtract" -> throw UnsupportedOperationException(ct("core_xpath_unsupported", x.getAttribute("Filter")))
                             expr.matches(Regex("/descendant::\\w*:?Signature")) -> exclude.addAll(XmlParsing.descendants(doc, DS, "Signature"))
                             expr.matches(Regex("here\\(\\)/ancestor::\\w*:?Signature\\[1]")) -> exclude.add(sig)
-                            else -> throw UnsupportedOperationException("不支援的 XPath 篩選 $expr")
+                            else -> throw UnsupportedOperationException(ct("core_xpath_unsupported", expr))
                         }
                     }
                 }
@@ -344,7 +345,7 @@ internal object XmlDsig {
                     octets = Base64.getMimeDecoder().decode(text.filter { !it.isWhitespace() })
                     nodeSet = null
                 }
-                else -> throw UnsupportedOperationException("不支援的轉換 $alg")
+                else -> throw UnsupportedOperationException(ct("core_transform_unsupported_n", alg))
             }
         }
         if (nodeSet != null) octets = XmlC14n.canonicalize(nodeSet, XmlC14n.C14N, exclude)
@@ -395,15 +396,15 @@ internal object XmlDsig {
         /** Add an ArchiveTimeStamp over the signature and its validation data (B-LTA); needs [timestamper]. */
         archive: Boolean = false,
     ): ByteArray {
-        if (archive && timestamper == null) throw IllegalArgumentException("B-LTA 需要時戳機構")
+        if (archive && timestamper == null) throw IllegalArgumentException(ct("core_lta_needs_tsa"))
         val text = xml.decodeToString().removePrefix("﻿")
         val declared = Regex("<\\?xml[^>]*encoding=[\"']([^\"']+)[\"']").find(text.take(200))?.groupValues?.get(1)
-        if (declared != null && !declared.equals("UTF-8", true) && !declared.equals("UTF8", true)) throw IllegalArgumentException("只能簽署 UTF-8 編碼的 XML（此檔案為 $declared）")
+        if (declared != null && !declared.equals("UTF-8", true) && !declared.equals("UTF8", true)) throw IllegalArgumentException(ct("core_xml_utf8_only", declared))
         val doc0 = XmlParsing.parse(xml)
-        val root = doc0.documentElement ?: throw IllegalArgumentException("XML 沒有根元素")
+        val root = doc0.documentElement ?: throw IllegalArgumentException(ct("core_xml_no_root"))
         val endTag = "</" + root.nodeName
         val insertAt = text.lastIndexOf(endTag)
-        if (insertAt < 0) throw IllegalArgumentException("XML 的根元素沒有結束標籤")
+        if (insertAt < 0) throw IllegalArgumentException(ct("core_xml_root_unclosed"))
         val id = DocCryptoUtil.hex(DocCrypto.randomBytes(8))
         val certs = signer.certificateChain
         val leaf = certs.first()
@@ -486,7 +487,7 @@ internal object XmlDsig {
         if (archive) {
             val draftLt = XmlParsing.parse(assemble(signature(docDigest, propDigest, value, unsigned.toString() + close)))
             val sigLt = XmlParsing.descendants(draftLt, DS, "Signature").first { it.getAttribute("Id") == "sig-$id" }
-            val input = archiveInput(draftLt, sigLt, null, XmlC14n.EXC) ?: throw IllegalStateException("無法計算保存時戳涵蓋的資料")
+            val input = archiveInput(draftLt, sigLt, null, XmlC14n.EXC) ?: throw IllegalStateException(ct("core_archive_data_failed"))
             unsigned.append("<xadesv141:ArchiveTimeStamp xmlns:xadesv141=\"$XADES141\"><ds:CanonicalizationMethod Algorithm=\"${XmlC14n.EXC}\"/><xades:EncapsulatedTimeStamp>")
                 .append(b64.encodeToString(timestamper!!(input))).append("</xades:EncapsulatedTimeStamp></xadesv141:ArchiveTimeStamp>")
         }

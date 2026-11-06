@@ -1,5 +1,6 @@
 package diw.wallet.core.zk.native
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.zk.OpenAcAgeInput
 import diw.wallet.core.zk.OpenAcAgeProof
 import diw.wallet.core.zk.OpenAcAgeProver
@@ -73,7 +74,7 @@ class OpenAcAgeNativeProver(
         val keys = File(path, "keys")
         val entry = input.cacheKey?.let { File(cacheDirectory, sha256(it)) }
         val cached = entry?.let { restore(it, keys) }
-        step("準備憑證")
+        step(ct("core_age_step_prepare"))
         var started = System.nanoTime()
         val (claimName, format) = cached ?: run {
             val prepared = createAgePrepareInput(path, input.sdJwt, input.issuerKeyX, input.issuerKeyY)
@@ -85,13 +86,13 @@ class OpenAcAgeNativeProver(
         var prepareMs = elapsed(started)
         val cutoff = input.cutoff(format).toULong()
 
-        step("產生年齡證明")
+        step(ct("core_age_step_prove"))
         started = System.nanoTime()
         createAgeShowInput(path, input.nonce, input.deviceSignature, claimName, format.toUByte(), cutoff)
         proveShow(path, token)
         var showMs = elapsed(started)
 
-        step("重新隨機化證明")
+        step(ct("core_age_step_rerandomize"))
         started = System.nanoTime()
         generateSharedBlinds(path, token)
         reblindJwt(path, token)
@@ -100,7 +101,7 @@ class OpenAcAgeNativeProver(
         reblindShow(path, token)
         showMs += elapsed(started)
 
-        step("在這台裝置驗證證明")
+        step(ct("core_age_step_verify"))
         val accepted = verifyAgePresentation(path, input.nonce, claimName, format.toUByte(), cutoff,
             input.issuerKeyX, input.issuerKeyY, token)
         if (!accepted) {
@@ -160,8 +161,8 @@ class OpenAcAgeNativeProver(
         private const val CLAIM = "claim.txt"
         const val CACHE_DAYS = 30L
         private const val DAY_MS = 86_400_000L
-        val MISSING_ASSETS = ZkResult.Failed("年齡證明的電路檔尚未下載完成", false)
-        val SELF_CHECK_FAILED = ZkResult.Failed("產生的證明沒有通過這台裝置的驗證，未送出", true)
+        val MISSING_ASSETS get() = ZkResult.Failed(ct("core_age_circuit_missing"), false)
+        val SELF_CHECK_FAILED get() = ZkResult.Failed(ct("core_age_not_verified"), true)
     }
 }
 
