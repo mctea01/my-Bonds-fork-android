@@ -68,6 +68,13 @@
                 <data android:scheme="diw-zktls" />
             </intent-filter>
             <intent-filter>
+                <!-- Shared production server settings (diw-server://v1?c=...). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-server" />
+            </intent-filter>
+            <intent-filter>
                 <!-- TWDIW deep links (credential_offer, authorize, staticqrcode). -->
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

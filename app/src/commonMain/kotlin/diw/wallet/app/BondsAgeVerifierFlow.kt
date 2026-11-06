@@ -34,6 +34,7 @@ import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -67,17 +68,33 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
     fun host(): String? = model.settings.zkVerifierUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
         ?: model.settings.takeIf { it.testEnvironment }?.testServerUrl?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
 
-    /** Plain http is allowed for the test server only, in the test environment. */
-    fun insecureHosts(): Set<String> = model.settings.takeIf { it.testEnvironment }?.testServerUrl
-        ?.let { runCatching { Url(it.trim()) }.getOrNull() }?.takeIf { it.protocol == URLProtocol.HTTP }
-        ?.let { setOf("${it.host}:${it.port}") }.orEmpty()
+    /**
+     * Plain http is allowed in the test environment only: for the test server, this wallet's own server and the
+     * other party's server when they were given an http address (accepted only there).
+     */
+    fun insecureHosts(): Set<String> {
+        if (!model.settings.testEnvironment) return emptySet()
+        return listOfNotNull(model.settings.testServerUrl, model.server.base(), model.server.peer.value?.url)
+            .mapNotNull { runCatching { Url(it.trim()) }.getOrNull() }.filter { it.protocol == URLProtocol.HTTP }
+            .map { "${it.host}:${it.port}" }.toSet()
+    }
+
+    /** The last request sent through an age host, to send again through the other party's server. */
+    private var lastStart: Triple<Int, BondsCredentialSource, String>? = null
+
+    /** Sends the last request again, now through the server [ServerModel.ageHost] picks (the other party's, once scanned). */
+    fun restart() {
+        val (minimumAge, source, purpose) = lastStart ?: return
+        start(minimumAge, source, purpose)
+    }
 
     fun start(minimumAge: Int, source: BondsCredentialSource, purpose: String) {
-        val host = host() ?: run {
-            model.message.value = "請先在設定的「零知識證明」頁填入年齡查驗主機"
+        val host = model.server.ageHost() ?: run {
+            model.message.value = ServerStrings.AGE_NO_HOST
             return
         }
         stop()
+        lastStart = Triple(minimumAge, source, purpose)
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.Working("建立年齡查驗請求")
         job = model.scope.launch {
@@ -91,14 +108,15 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
                 val note = (local as? ZkResult.Failed)?.let { "這支手機無法驗證（${it.reason}），改由查驗主機驗證。" }
                 model.platform.keepScreenOn(true)
                 ui.value = OfflineUi.AgeVerifierWaiting(request, Url(host).host, engine != null, note,
-                    details = LanDetails.age(request) + "回應網址：${request.responseUrl}")
+                    details = LanDetails.age(request) + "回應網址：${request.responseUrl}", peerable = true)
                 follow(host, session, token, request, engine, note)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 ui.value = OfflineUi.Failed("無法建立年齡查驗：" + model.describe(e))
             } finally {
-                model.platform.keepScreenOn(false)
+                // A request sent again through another server keeps the screen on for itself.
+                if (job == null || job === currentCoroutineContext()[Job]) model.platform.keepScreenOn(false)
             }
         }
     }

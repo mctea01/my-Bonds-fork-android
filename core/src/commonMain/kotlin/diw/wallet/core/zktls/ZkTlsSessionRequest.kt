@@ -49,6 +49,26 @@ sealed interface ZkTlsTransport {
     }
 
     companion object {
+        /** ws or wss address of the relay on a server given as http(s) or ws(s), keeping its port and path. */
+        fun relayAddress(base: String): String {
+            val u = io.ktor.http.Url(base.trim().trimEnd('/'))
+            val scheme = when (u.protocol) {
+                io.ktor.http.URLProtocol.HTTPS, io.ktor.http.URLProtocol.WSS -> "wss"
+                io.ktor.http.URLProtocol.HTTP, io.ktor.http.URLProtocol.WS -> "ws"
+                else -> throw ProtocolException("invalid_request", "The relay must be a web address")
+            }
+            val port = if (u.port == u.protocol.defaultPort) "" else ":${u.port}"
+            return "$scheme://${u.host.lowercase()}$port${u.encodedPath.trimEnd('/')}/zktls/relay"
+        }
+
+        /** True when the relay [url] is the one [relayAddress] gives for [base]: same scheme, host, port and path. */
+        fun sameRelay(url: String, base: String): Boolean = runCatching {
+            val a = io.ktor.http.Url(url.trim().trimEnd('/'))
+            val b = io.ktor.http.Url(relayAddress(base))
+            a.protocol.name == b.protocol.name && a.host.equals(b.host, ignoreCase = true) && a.port == b.port &&
+                a.encodedPath.trimEnd('/') == b.encodedPath.trimEnd('/')
+        }.getOrDefault(false)
+
         /** Null for an unknown or malformed entry, which the holder skips. */
         fun parse(o: JsonObject, insecureHosts: Set<String> = emptySet()): ZkTlsTransport? = when (o.str("type")) {
             "wss" -> o.str("url")?.takeIf { webSocketUrl(it, insecureHosts) }?.let { Wss(it) }

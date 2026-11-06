@@ -161,6 +161,8 @@ sealed class OfflineUi {
         val scanned: String? = null,
         /** Technical details, shown folded. */
         val details: List<String> = emptyList(),
+        /** Runs through an age host, so the other party's server can be scanned to use instead. */
+        val peerable: Boolean = false,
     ) : OfflineUi()
 
     /** The age check's outcome: verified here ([verification]), the host's [remote] verdict, or why there is none. */
@@ -231,6 +233,8 @@ sealed class OfflineUi {
         val forFile: String? = null,
         /** The verifier host's status address for a session this device opened there, to read why a proof failed. */
         val hostState: String? = null,
+        /** Why the holder may not reach the verifier through the routes its server policy allows, and what to do. */
+        val routeHint: String? = null,
     ) : OfflineUi()
 
     /**
@@ -921,6 +925,7 @@ class TaiwanModel(private val model: WalletModel) {
         "離線查驗，用途：${request.purpose}" + (request.audience?.let { "，以「$it」查驗" } ?: "")
 
     fun closeOffline() {
+        model.server.clearPeer()
         age.stop()
         ageVerifier.stop()
         zkTls.stop()

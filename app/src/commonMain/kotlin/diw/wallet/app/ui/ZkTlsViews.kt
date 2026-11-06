@@ -159,6 +159,8 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
             }
         }
         s.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        s.routeHint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        HolderServerButton(model)
         Text(if (left > 0) "請求剩餘 ${clock(left)}" else "請求已過期，請對方重新產生 QR Code", style = MaterialTheme.typography.bodySmall,
             color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,6 +280,7 @@ internal fun ZkTlsVerifierSetupView(model: WalletModel, s: OfflineUi.ZkTlsVerifi
         Text("對方用自己的手機連到官方網站查詢，你只看到查詢狀態與選擇的欄位，看不到對方輸入的證號或驗證碼。",
             style = MaterialTheme.typography.bodyMedium)
         s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        PeerServerButton(model)
         if (s.pages.isEmpty()) {
             OutlinedButton(onClick = { model.back() }) { Text("返回") }
             return@Column
@@ -335,6 +338,7 @@ internal fun ZkTlsVerifierWaitingView(model: WalletModel, s: OfflineUi.ZkTlsVeri
                 color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         }
         TechDetails(s.details, "zktls-${s.request.sessionId}")
+        if (s.local && s.step == null) PeerServerButton(model)
         OutlinedButton(onClick = { model.back() }) { Text("取消") }
     }
 }

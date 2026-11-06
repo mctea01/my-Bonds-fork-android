@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import diw.wallet.app.ServerStrings
 import diw.wallet.app.WalletModel
 import diw.wallet.core.zk.ZkAsset
 import diw.wallet.core.zk.ZkAssetStatus
@@ -311,6 +312,9 @@ private fun ServerSection(model: WalletModel) {
     }
     server.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     server.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    ServerShareSection(model)
+    HorizontalDivider()
+    ServerPolicySection(model)
 
     server.pending?.let { info ->
         AlertDialog(
@@ -325,6 +329,12 @@ private fun ServerSection(model: WalletModel) {
                     }
                     info.verifierDid?.let { Text("網頁查驗端 DID：$it", style = MaterialTheme.typography.bodySmall) }
                     if (info.features.isNotEmpty()) Text("提供功能：${info.features.joinToString("、")}", style = MaterialTheme.typography.bodySmall)
+                    info.federation?.let {
+                        Text(ServerStrings.FEDERATION_CONFIRMED + ServerStrings.federationVerified(it), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    if (info.sharedFingerprint) Text(ServerStrings.shareFingerprintMatches(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                    info.settingsSha256?.let { Text(ServerStrings.SETTINGS_DIGEST + it.take(16), style = MaterialTheme.typography.bodySmall) }
                     info.addressWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
                     Text(
                         "請和業者公布的指紋逐字比對，相符再信任。信任後，這台服務端簽的網站查驗請求與收據會以使用者匯入（T2）顯示，" +

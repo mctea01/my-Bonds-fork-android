@@ -23,10 +23,14 @@ interface ZkTlsEngine {
     ): ZkResult<ZkTlsProved>
 
     /**
-     * Verifier: a fresh X25519 key and listeners on the local network ([lan]) and on the relay at [relayUrl] (a ws or
-     * wss base address). Throws when neither opens.
+     * Verifier: a fresh X25519 key and listeners on the local network ([lan]) and in a room on each relay of
+     * [relayUrls] (ws or wss base addresses, or the http(s) address of a server with a relay), so the holder can take
+     * whichever it prefers or reaches. Relays that do not answer are left out. Throws when nothing opens.
      */
-    suspend fun open(lan: Boolean, relayUrl: String?): ZkTlsVerifierSession
+    suspend fun open(lan: Boolean, relayUrls: List<String>): ZkTlsVerifierSession
+
+    /** [open] with at most one relay. */
+    suspend fun open(lan: Boolean, relayUrl: String?): ZkTlsVerifierSession = open(lan, listOfNotNull(relayUrl))
 }
 
 /** One verifier session; [verify] can run once. */
