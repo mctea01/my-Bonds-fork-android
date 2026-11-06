@@ -115,10 +115,49 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         return summary
     }
 
+    /**
+     * A registry file by [url], cached by its address: certificate packages are named by root, manifests by version
+     * and packaged circuits by key hash, so a copy never goes stale. Only zkPassport's own HTTPS hosts are fetched.
+     */
+    suspend fun file(url: String, code: String): String {
+        val host = runCatching { java.net.URI(url) }.getOrNull()?.takeIf { it.scheme == "https" }?.host.orEmpty()
+        if (host != "zkpassport.id" && !host.endsWith(".zkpassport.id")) throw Unreachable(code)
+        val file = fileFor(url)
+        if (file.isFile) runCatching { return file.readText() }
+        val text = fetch(url, code).decodeToString()
+        runCatching { file.writeText(text) }
+        return text
+    }
+
+    private fun fileFor(url: String): File = cached(
+        "file-" + java.security.MessageDigest.getInstance("SHA-256").digest(url.encodeToByteArray())
+            .joinToString("") { "%02x".format(it.toInt() and 255) },
+    )
+
+    /** Drops the cached copy of [url] after its content failed a check. */
+    fun forgetFile(url: String) {
+        runCatching { fileFor(url).delete() }
+    }
+
+    /** `latestRoot(registryId)` on the root registry, as 0x and 64 hex digits. */
+    suspend fun latestRoot(chain: Long, rpc: String?, registry: Int): String {
+        val result = call(chain, rpc, LATEST_ROOT + word(registry.toString(16)))
+        val hex = result.removePrefix("0x").lowercase()
+        if (hex.length != 64 || hex.any { it !in "0123456789abcdef" } || hex.all { it == '0' }) throw Unreachable("registry_unreachable")
+        return "0x$hex"
+    }
+
+    private fun word(hex: String) = hex.removePrefix("0x").lowercase().padStart(64, '0')
+
     /** `isRootValid(registryId, root, timestamp)` on the root registry. */
     suspend fun rootValid(chain: Long, rpc: String?, registry: Int, root: String, timestamp: Long): Boolean {
-        val word = { hex: String -> hex.removePrefix("0x").lowercase().padStart(64, '0') }
         val data = IS_ROOT_VALID + word(registry.toString(16)) + word(root) + word(timestamp.toString(16))
+        val result = call(chain, rpc, data)
+        return result.removePrefix("0x").toBigIntegerOrNull(16)?.let { it == java.math.BigInteger.ONE } == true
+    }
+
+    /** An `eth_call` to the root registry; the hex result. */
+    private suspend fun call(chain: Long, rpc: String?, data: String): String {
         val body = buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", 1)
@@ -136,13 +175,13 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         }
         val o = runCatching { Json.parseToJsonElement(bytes(response, "registry_unreachable").decodeToString()).jsonObject }
             .getOrElse { throw Unreachable("registry_unreachable") }
-        val result = (o["result"] as? JsonPrimitive)?.contentOrNull ?: throw Unreachable("registry_unreachable")
-        return result.removePrefix("0x").toBigIntegerOrNull(16)?.let { it == java.math.BigInteger.ONE } == true
+        return (o["result"] as? JsonPrimitive)?.contentOrNull ?: throw Unreachable("registry_unreachable")
     }
 
     companion object {
         const val ROOT_REGISTRY = "0x1D0000020038d6E40E1d98e09fA1bb3A7DAA8B70"
         const val IS_ROOT_VALID = "0x2aae4296"
+        const val LATEST_ROOT = "0xc3bc16e8"
         const val CERTIFICATE_REGISTRY = 1
         const val CIRCUIT_REGISTRY = 2
         const val MAINNET_RPC = ZkPassport.MAINNET_RPC

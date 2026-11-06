@@ -181,9 +181,17 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 使用分頁的掃描器辨識 `https://zkpassport.id/r?…`（Android 無法驗證 zkpassport.id 的 App Links，所以以 App 內掃描為主，不註冊攔截該網域）。
 - 同意畫面：顯示 `d`、bridge 回報的建立者 origin、服務名稱與用途、每項要求；`d` 與 origin 不一致或 origin 不是 https 時以 `RiskConfirmDialog` 強提示（第 7 節的轉送攻擊）。服務名稱與 logo 來自請求本身，一律標示「未經驗證」，除非能對上 zkPassport dashboard 的網域註冊【推論：dashboard 有公開查詢介面需確認】。
 - 基礎證明在 Z1 讀取護照後背景產生並快取（依 p4-zkp.md 第 8 節的裝置分級與前景服務）；揭露證明在同意後產生，產生後先本機驗證再送出。
-- 使用 zkPassport 發佈的電路包，依 manifest 與註冊表根核對 SHA-256 後才載入，與 P4 的資產規則一致（不從清單外載入）。
+- 使用 zkPassport 發佈的電路包；執行前以本機 bb 由電路 ACIR 算出 vkey，其 Poseidon2 雜湊必須等於 manifest 的葉，manifest 再以 Poseidon2 樹根對鏈上電路註冊表（不從清單外載入，與 P4 的資產規則一致）。只核對檔案雜湊不夠：電路決定哪些值公開，清單外的電路可以把晶片資料變成公開輸入。
 - 請求要 FaceMatch 或 OPRF 時，本錢包可以用本專案的值產生（5.5），但 zkPassport 的查驗端會拒絕；同意畫面先說明這一點，使用者仍要送出才產生。`compressed` 模式需要 zkPassport 雲端證明器，預設不做，使用者同意後才交給它。
 - 協定沒有公開規格，SDK 升級曾要求 App 最低版本（SDK 0.17 需要 App 1.4.0）；以 SDK 的 e2e 測試與 bridge acceptance 測試建立回歸測試，並以設定頁顯示支援的協定版本。
+
+手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
+
+- 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/third_party/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo，`src/` 不改）。電路的選擇、順序與輸入都與官方 App 相同。
+- `diw-zk-ffi` 匯出 `ZkPassportProofSession`（driver 的 next／provide）與 `zkpassport_prove`（執行電路並以 bb v6 證明，回傳公開輸入接證明的 hex 與 vkey；先做上一節的 vkey 雜湊核對，不符回 `circuit_vkey_mismatch`）。compare_age 在 x86_64 release 約 4 秒（含 vkey 計算）。
+- Kotlin `ZkPassportProver`（jvmCommonMain）：鏈上 `latestRoot` 取最新憑證根，憑證包要雜湊到該根，manifest 的電路根要在註冊表有效，之後下載電路逐一證明；註冊表檔案以網址快取（憑證包以根、manifest 以版本、電路以雜湊命名，不會過期），只接受 zkpassport.id 的 HTTPS 主機。bridge 的 `proof` 訊息補上 SDK 需要的 `vkeyHash` 與 `version`。鹽為每次新產生的 248 位元亂數。
+- 預設電路版本 `0.22.0`（第一個以 bb v6 產生 vkey 的版本，尚未發佈）；0.21.1 的電路在 vkey 核對就會停下，因為 bb v6 算出的 vkey 與發佈的不同（4.2）。若使用者決定加入 bb v5，這裡改為依電路包的 `bb_version` 選擇後端。
+- 測試：原生 `cargo test -p diw-zk-ffi --features zkpdf`（含以 compare_age 實際證明並驗證的 ignored 測試）；`ZkPassportProverTest` 以真實憑證包與 0.21.1 manifest 檢查核對順序與錯誤碼。完整流程需要真實護照與 0.22.0 電路，排在實機驗證。
 
 ### 5.4 Z4 文件與憑證整合
 

@@ -14,6 +14,7 @@ import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.profile.bonds.SocketBondsLanLink
 import diw.wallet.core.zkpassport.JvmZkPassportVerifier
+import diw.wallet.core.zkpassport.ZkPassportProver
 import diw.wallet.core.zkpassport.ZkPassportVerifier
 import diw.wallet.core.zktls.NativeZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsEngine
@@ -60,12 +61,20 @@ class JvmZkEnvironment(
 
     override val pdf: ZkPdfEngine? by lazy { store?.let { ZkPdfNativeEngine(it) } }
 
+    /** The folder of the installed zkPDF CRS, shared with zkPassport; null until both files are installed. */
+    private fun crsDirectory(): File? =
+        store?.let { s -> ZkPdfAssets.CRS.map { s.installedFile(it) ?: return@let null }.first().parentFile }
+
+    private suspend fun ultraHonkReady(): Boolean =
+        (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.NOIR_ULTRAHONK) == true
+
     override val zkPassport: ZkPassportVerifier by lazy {
-        JvmZkPassportVerifier(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = {
-            store?.let { s -> ZkPdfAssets.CRS.map { s.installedFile(it) ?: return@let null }.first().parentFile }
-        }, nativeReady = {
-            (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.NOIR_ULTRAHONK) == true
-        })
+        JvmZkPassportVerifier(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
+    }
+
+    /** zkPassport proofs made on this device from a passport's chip files, with the same CRS and cache. */
+    val zkPassportProver: ZkPassportProver by lazy {
+        ZkPassportProver(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
     }
 
     override val tls: ZkTlsEngine by lazy {

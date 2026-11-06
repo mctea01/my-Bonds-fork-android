@@ -1,5 +1,7 @@
 [workspace]
 members = ["diw-zk-ffi", "zkpdf-prover", "zktls", "openac-age", "zkpassport-verify"]
+# Vendored upstream sources, built only as dependencies (their own tests need upstream fixtures).
+exclude = ["third_party"]
 resolver = "2"
 
 [workspace.package]
