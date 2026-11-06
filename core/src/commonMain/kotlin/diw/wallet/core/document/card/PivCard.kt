@@ -1,5 +1,6 @@
 package diw.wallet.core.document.card
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.sign.DocumentSigner
@@ -29,7 +30,7 @@ class PivCard(private val channel: CardChannel) {
     /** Selects the PIV application. */
     suspend fun connect() {
         if (!channel.transmit(0x00, 0xA4, 0x04, 0x00, PIV_AID, 256).let { it.ok || it.warning }) {
-            throw SigningException("這張卡片不是 PIV 卡（找不到 PIV 應用程式）")
+            throw SigningException(ct("core_piv_not_piv"))
         }
     }
 
@@ -48,7 +49,7 @@ class PivCard(private val channel: CardChannel) {
             val info = runCatching { keyInfo(slot, cert) }.getOrElse { lastError = it.message; null } ?: continue
             return info
         }
-        throw SigningException(lastError ?: "這張 PIV 卡沒有可用的簽章憑證")
+        throw SigningException(lastError ?: ct("core_piv_no_sign_cert"))
     }
 
     /**
@@ -65,20 +66,20 @@ class PivCard(private val channel: CardChannel) {
 
     /** GET DATA for the X.509 certificate object of [slot]; decompresses it when the CertInfo byte says gzip. */
     private suspend fun readCertificate(slot: Int): ByteArray {
-        val oid = CERT_OID[slot] ?: throw SigningException("不支援的 PIV 金鑰槽")
+        val oid = CERT_OID[slot] ?: throw SigningException(ct("core_piv_bad_slot"))
         val r = channel.transmit(0x00, 0xCB, 0x3F, 0xFF, byteArrayOf(0x5C, 0x03) + oid, 256)
-        if (!r.ok) throw SigningException(if (r.sw == 0x6A82) "這個金鑰槽沒有憑證" else "讀取 PIV 憑證失敗（${hex4(r.sw)}）")
-        val outer = Der.read(r.data, 0) ?: throw SigningException("PIV 憑證資料格式錯誤")
-        if (outer.tag != 0x53) throw SigningException("PIV 憑證資料格式錯誤")
+        if (!r.ok) throw SigningException(if (r.sw == 0x6A82) ct("core_piv_slot_empty") else ct("core_piv_read_failed", hex4(r.sw)))
+        val outer = Der.read(r.data, 0) ?: throw SigningException(ct("core_piv_cert_format"))
+        if (outer.tag != 0x53) throw SigningException(ct("core_piv_cert_format"))
         var cert: ByteArray? = null
         var gzip = false
         for (t in Der.children(outer.value)) when (t.tag) {
             0x70 -> cert = t.value
             0x71 -> gzip = t.value.isNotEmpty() && (t.value[0].toInt() and 0x01) == 1
         }
-        val der = cert ?: throw SigningException("PIV 憑證資料沒有憑證")
-        if (der.isEmpty()) throw SigningException("這個金鑰槽沒有憑證")
-        return if (gzip) runCatching { PlatformCrypto.gunzip(der, 64 * 1024) }.getOrElse { throw SigningException("PIV 憑證為壓縮格式且無法解壓", it) } else der
+        val der = cert ?: throw SigningException(ct("core_piv_cert_missing"))
+        if (der.isEmpty()) throw SigningException(ct("core_piv_slot_empty"))
+        return if (gzip) runCatching { PlatformCrypto.gunzip(der, 64 * 1024) }.getOrElse { throw SigningException(ct("core_piv_cert_compressed"), it) } else der
     }
 
     /**
@@ -98,30 +99,30 @@ class PivCard(private val channel: CardChannel) {
         val inner = berTag(0x82, ByteArray(0)) + berTag(0x81, payload)
         val template = berTag(0x7C, inner)
         val resp = generalAuthenticate(alg, key.slot, template)
-        val top = Der.read(resp, 0) ?: throw SigningException("PIV 簽章回應格式錯誤")
-        if (top.tag != 0x7C) throw SigningException("PIV 簽章回應格式錯誤")
+        val top = Der.read(resp, 0) ?: throw SigningException(ct("core_piv_sig_format"))
+        if (top.tag != 0x7C) throw SigningException(ct("core_piv_sig_format"))
         val sig = Der.children(top.value).firstOrNull { it.tag == 0x82 }?.value
-            ?: throw SigningException("PIV 簽章回應沒有簽章值")
-        if (key.keyType == SignerKeyType.RSA && sig.size != key.rsaBytes) throw SigningException("PIV 回傳的 RSA 簽章長度不正確")
+            ?: throw SigningException(ct("core_piv_sig_missing"))
+        if (key.keyType == SignerKeyType.RSA && sig.size != key.rsaBytes) throw SigningException(ct("core_piv_rsa_length"))
         return sig
     }
 
     /** VERIFY the PIV application PIN (reference 0x80), padded to 8 bytes with 0xFF. */
     private suspend fun verifyPin(pin: String) {
         if (pin.length !in PIN_MIN..PIN_MAX || pin.any { it.code !in 0x20..0x7E }) {
-            throw SigningException("PIN 碼格式不正確（應為 $PIN_MIN 至 $PIN_MAX 碼）")
+            throw SigningException(ct("core_pin_format_digits", PIN_MIN, PIN_MAX))
         }
         val block = ByteArray(8) { 0xFF.toByte() }
         pin.encodeToByteArray().copyInto(block)
         val r = channel.transmit(0x00, 0x20, 0x00, 0x80, block, 0)
         when {
             r.ok -> {}
-            r.sw == 0x6983 || r.sw == 0x6984 -> throw SigningException("PIN 碼已鎖定，請以 PUK 解鎖")
+            r.sw == 0x6983 || r.sw == 0x6984 -> throw SigningException(ct("core_piv_pin_locked"))
             r.sw and 0xFFF0 == 0x63C0 -> {
                 val left = r.sw and 0x0F
-                throw SigningException(if (left == 0) "PIN 碼錯誤，卡片已鎖定" else "PIN 碼錯誤，還可以再試 $left 次。為避免鎖卡，已停止簽署。")
+                throw SigningException(if (left == 0) ct("core_pin_wrong_locked") else ct("core_pin_wrong_left_sign", left))
             }
-            else -> throw SigningException("PIV 卡拒絕 PIN 驗證（${hex4(r.sw)}）")
+            else -> throw SigningException(ct("core_piv_pin_refused", hex4(r.sw)))
         }
     }
 
@@ -129,7 +130,7 @@ class PivCard(private val channel: CardChannel) {
     private suspend fun generalAuthenticate(alg: Int, slot: Int, template: ByteArray): ByteArray {
         if (template.size <= 255) {
             val r = channel.transmit(0x00, 0x87, alg, slot, template, 256)
-            if (!r.ok) throw SigningException("PIV 卡拒絕簽章（${hex4(r.sw)}）")
+            if (!r.ok) throw SigningException(ct("core_piv_sign_refused", hex4(r.sw)))
             return r.data
         }
         var off = 0
@@ -139,13 +140,13 @@ class PivCard(private val channel: CardChannel) {
             val chunk = template.copyOfRange(off, end)
             val r = channel.transmit(if (last) 0x00 else 0x10, 0x87, alg, slot, chunk, if (last) 256 else 0)
             if (last) {
-                if (!r.ok) throw SigningException("PIV 卡拒絕簽章（${hex4(r.sw)}）")
+                if (!r.ok) throw SigningException(ct("core_piv_sign_refused", hex4(r.sw)))
                 return r.data
             }
-            if (!r.ok && !r.warning) throw SigningException("PIV 卡拒絕簽章指令（${hex4(r.sw)}）")
+            if (!r.ok && !r.warning) throw SigningException(ct("core_piv_sign_cmd_refused", hex4(r.sw)))
             off = end
         }
-        throw SigningException("PIV 簽章指令未完成")
+        throw SigningException(ct("core_piv_sign_incomplete"))
     }
 
     companion object {
@@ -181,11 +182,11 @@ class PivCard(private val channel: CardChannel) {
 
         /** A human label for a slot, for the certificate chooser. */
         fun slotName(slot: Int): String = when (slot) {
-            SLOT_AUTH -> "PIV 認證（9A）"
-            SLOT_SIGNATURE -> "數位簽章（9C）"
-            SLOT_KEY_MGMT -> "金鑰管理（9D）"
-            SLOT_CARD_AUTH -> "卡片認證（9E）"
-            in RETIRED_SLOTS -> "保留金鑰管理 ${slot - 0x81}（${hex2(slot)}）"
+            SLOT_AUTH -> ct("core_piv_slot_auth")
+            SLOT_SIGNATURE -> ct("core_piv_slot_sign")
+            SLOT_KEY_MGMT -> ct("core_piv_slot_mgmt")
+            SLOT_CARD_AUTH -> ct("core_piv_slot_card_auth")
+            in RETIRED_SLOTS -> ct("core_piv_slot_retired", slot - 0x81, hex2(slot))
             else -> hex2(slot)
         }
 
@@ -206,8 +207,8 @@ class PivCard(private val channel: CardChannel) {
                 return KeyInfo(slot, SignerKeyType.RSA, certificate, slotName(slot), rsaBytes = (bits + 7) / 8)
             }
             val ec = runCatching { X509Cert(ByteString(certificate)).ecPublicKey }.getOrNull()
-                ?: throw SigningException("無法讀取 PIV 憑證的公開金鑰")
-            if (ec.curve != EcCurve.P256) throw SigningException("PIV 憑證的金鑰（${ec.curve.name}）不支援，只支援 RSA 與 EC P-256")
+                ?: throw SigningException(ct("core_piv_key_unreadable"))
+            if (ec.curve != EcCurve.P256) throw SigningException(ct("core_piv_key_unsupported", ec.curve.name))
             return KeyInfo(slot, SignerKeyType.EC_P256, certificate, slotName(slot))
         }
 
@@ -228,12 +229,12 @@ class PivCard(private val channel: CardChannel) {
             2048 -> 0x07
             3072 -> 0x05
             4096 -> 0x16
-            else -> throw SigningException("PIV 的 RSA 金鑰長度（$bits 位元）不支援，支援 1024/2048/3072/4096 與 EC P-256")
+            else -> throw SigningException(ct("core_piv_rsa_bits", bits))
         }
 
         /** EMSA-PKCS1-v1_5 encoding of [t] to [len] bytes (the key's modulus length). */
         private fun pkcs1Block(t: ByteArray, len: Int): ByteArray {
-            if (t.size > len - 11) throw SigningException("PIV 簽章資料過長，無法以此金鑰長度簽署")
+            if (t.size > len - 11) throw SigningException(ct("core_piv_data_too_long"))
             val b = ByteArray(len) { 0xFF.toByte() }
             b[0] = 0; b[1] = 1
             b[len - t.size - 1] = 0
@@ -274,13 +275,13 @@ class PivTapSigner(
     private val pin: String,
     private val slot: Int? = null,
     private val intermediates: List<ByteArray> = emptyList(),
-    private val tapMessage: String = "請將 PIV 卡（IC 晶片面）貼近 NFC 感應區，讀取期間請保持貼合、不要移動卡片。",
+    private val tapMessage: String = ct("core_piv_hold"),
 ) : DocumentSigner {
     private var key: PivCard.KeyInfo? = null
 
     override val certificateChain: List<ByteArray>
-        get() = listOf((key ?: throw SigningException("尚未讀取卡片憑證")).certificate) + intermediates
-    override val keyType: SignerKeyType get() = (key ?: throw SigningException("尚未讀取卡片憑證")).keyType
+        get() = listOf((key ?: throw SigningException(ct("core_card_not_read"))).certificate) + intermediates
+    override val keyType: SignerKeyType get() = (key ?: throw SigningException(ct("core_card_not_read"))).keyType
     override val source = SignerSource.PIV
 
     /** Reads the chosen slot's signing certificate (no PIN needed). */
@@ -295,9 +296,9 @@ class PivTapSigner(
     }
 
     override suspend fun sign(data: ByteArray): ByteArray {
-        val k = key ?: throw SigningException("尚未讀取卡片憑證")
+        val k = key ?: throw SigningException(ct("core_card_not_read"))
         val digest = DocCrypto.digest("SHA-256", data)
-        val signature = reader.scan("請再次將 PIV 卡貼近 NFC 感應區完成簽署，簽署期間請保持不動，完成前請勿移開卡片。", tagInteractionFunc = { tag ->
+        val signature = reader.scan(ct("core_piv_hold_again"), tagInteractionFunc = { tag ->
             val card = PivCard(NfcCardChannel(tag))
             card.connect()
             card.sign(pin, k, digest)
@@ -310,15 +311,15 @@ class PivTapSigner(
     private fun verify(k: PivCard.KeyInfo, data: ByteArray, signature: ByteArray) {
         when (k.keyType) {
             SignerKeyType.RSA -> {
-                val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(k.certificate) ?: throw SigningException("卡片憑證不是 RSA 金鑰")
-                if (!PlatformCrypto.verifyRsa("RS256", rsa, data, signature)) throw SigningException("簽章與先前讀取的憑證不符，請使用同一張卡片")
+                val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(k.certificate) ?: throw SigningException(ct("core_card_not_rsa"))
+                if (!PlatformCrypto.verifyRsa("RS256", rsa, data, signature)) throw SigningException(ct("core_card_sig_mismatch"))
             }
             SignerKeyType.EC_P256 -> {
                 val ec = org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(k.certificate)).ecPublicKey
-                    as? org.multipaz.crypto.EcPublicKeyDoubleCoordinate ?: throw SigningException("PIV 憑證不是 EC 金鑰")
-                val raw = ecdsaDerToRaw(signature) ?: throw SigningException("PIV 回傳的 ECDSA 簽章格式錯誤")
+                    as? org.multipaz.crypto.EcPublicKeyDoubleCoordinate ?: throw SigningException(ct("core_piv_not_ec"))
+                val raw = ecdsaDerToRaw(signature) ?: throw SigningException(ct("core_piv_ecdsa_format"))
                 if (!PlatformCrypto.verifyEcdsaRaw("secp256r1", ec.x, ec.y, data, raw)) {
-                    throw SigningException("簽章與先前讀取的憑證不符，請使用同一張卡片")
+                    throw SigningException(ct("core_card_sig_mismatch"))
                 }
             }
         }

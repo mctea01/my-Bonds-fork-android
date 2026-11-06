@@ -8,7 +8,7 @@ enum class ImageKind(val title: String, val mediaType: String) {
     WEBP("WebP", "image/webp"),
     BMP("BMP", "image/bmp"),
     TIFF("TIFF", "image/tiff"),
-    HEIF("HEIF／HEIC", "image/heif"),
+    HEIF("HEIF/HEIC", "image/heif"),
     AVIF("AVIF", "image/avif"),
     JPEG2000("JPEG 2000", "image/jp2"),
     ICO("ICO", "image/x-icon");

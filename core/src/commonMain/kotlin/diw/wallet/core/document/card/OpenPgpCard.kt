@@ -1,14 +1,17 @@
 package diw.wallet.core.document.card
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.sign.SigningException
 
 /** The three keys of an OpenPGP card: control reference template, algorithm attribute tag, 7F21 occurrence, PIN. */
-enum class OpenPgpKeySlot(val crt: Int, val attributeTag: Int, val certificateOccurrence: Int, val pinReference: Int, val title: String) {
-    SIGNATURE(0xB6, 0xC1, 2, 0x81, "簽章金鑰"),
-    DECRYPTION(0xB8, 0xC2, 1, 0x82, "解密金鑰"),
-    AUTHENTICATION(0xA4, 0xC3, 0, 0x82, "認證金鑰"),
+enum class OpenPgpKeySlot(val crt: Int, val attributeTag: Int, val certificateOccurrence: Int, val pinReference: Int, private val titleKey: String) {
+    SIGNATURE(0xB6, 0xC1, 2, 0x81, "core_pgp_slot_sign"),
+    DECRYPTION(0xB8, 0xC2, 1, 0x82, "core_pgp_slot_decrypt"),
+    AUTHENTICATION(0xA4, 0xC3, 0, 0x82, "core_pgp_slot_auth");
+
+    val title: String get() = if (titleKey.startsWith("core_")) ct(titleKey) else titleKey
 }
 
 /** Elliptic curves an OpenPGP card names by OID in its algorithm attributes (RFC 6637, RFC 9580). */
@@ -49,7 +52,7 @@ sealed class OpenPgpAlgorithm(val pgpId: Int) {
     }
 
     class Unsupported(val raw: ByteArray) : OpenPgpAlgorithm(raw.firstOrNull()?.toInt()?.and(0xFF) ?: 0) {
-        override fun toString() = "不支援的演算法（" + DocCryptoUtil.hex(raw).uppercase() + "）"
+        override fun toString() = ct("core_pgp_alg_unsupported") + DocCryptoUtil.hex(raw).uppercase() + ct("core_paren_close")
     }
 
     companion object {
@@ -120,7 +123,7 @@ class OpenPgpCardInfo(
     val manufacturerName: String get() = OpenPgpCard.manufacturerName(manufacturer)
 
     /** A label for lists and trust: "OpenPGP 卡 Yubico 12345678". */
-    val label: String get() = "OpenPGP 卡 $manufacturerName $serial"
+    val label: String get() = ct("core_pgp_card_name", manufacturerName, serial)
 
     fun key(slot: OpenPgpKeySlot): OpenPgpCardKey? = keys.firstOrNull { it.slot == slot && it.present }
 
@@ -140,15 +143,15 @@ class OpenPgpCard(private val channel: CardChannel) {
     /** Selects the OpenPGP application. */
     suspend fun connect() {
         val r = channel.transmit(0x00, 0xA4, 0x04, 0x00, AID_PREFIX, 0)
-        if (!r.ok && !r.warning) throw SigningException("這張卡片不是 OpenPGP 卡（找不到 OpenPGP 應用程式）")
+        if (!r.ok && !r.warning) throw SigningException(ct("core_pgp_not_openpgp"))
     }
 
     /** Reads the card's identity, PIN state, keys, fingerprints, generation times and cardholder certificates. */
     suspend fun readInfo(): OpenPgpCardInfo {
-        val app = getData(0x6E) ?: throw SigningException("無法讀取 OpenPGP 卡的應用程式資料")
+        val app = getData(0x6E) ?: throw SigningException(ct("core_pgp_app_data"))
         val tlvs = Tlv.parse(app)
-        val aid = Tlv.find(tlvs, 0x4F)?.value ?: throw SigningException("OpenPGP 卡沒有回傳 AID")
-        if (aid.size < 14) throw SigningException("OpenPGP 卡的 AID 格式不正確")
+        val aid = Tlv.find(tlvs, 0x4F)?.value ?: throw SigningException(ct("core_pgp_no_aid"))
+        if (aid.size < 14) throw SigningException(ct("core_pgp_bad_aid"))
         val major = aid[6].toInt() and 0xFF
         val minor = aid[7].toInt() and 0xFF
         val manufacturer = ((aid[8].toInt() and 0xFF) shl 8) or (aid[9].toInt() and 0xFF)
@@ -220,7 +223,7 @@ class OpenPgpCard(private val channel: CardChannel) {
     private suspend fun session(): Session {
         session?.let { return it }
         info?.let { i -> return Session(i.pinStatus, i.kdf, i.keys.fold(ByteArray(0)) { a, k -> a + (k.fingerprint ?: ByteArray(20)) }).also { session = it } }
-        val tlvs = Tlv.parse(getData(0x6E) ?: throw SigningException("無法讀取 OpenPGP 卡的應用程式資料"))
+        val tlvs = Tlv.parse(getData(0x6E) ?: throw SigningException(ct("core_pgp_app_data")))
         val pin = Tlv.find(tlvs, 0xC4)?.value?.takeIf { it.size >= 7 }?.let {
             OpenPgpPinStatus(it[0].toInt() != 0, it[1].toInt() and 0xFF, it[4].toInt() and 0xFF, it[5].toInt() and 0xFF, it[6].toInt() and 0xFF)
         }
@@ -241,19 +244,19 @@ class OpenPgpCard(private val channel: CardChannel) {
         val s = session()
         val max = s.pinStatus?.pw1MaxLength?.takeIf { it > 0 } ?: PIN_MAX
         val bytes = pin.encodeToByteArray()
-        if (bytes.size < PIN_MIN || bytes.size > max) throw SigningException("PIN 碼長度不正確（應為 $PIN_MIN 至 $max 個字元）")
-        if (s.pinStatus?.pw1Tries == 0) throw SigningException("PIN 碼已鎖定，請在電腦上以重設碼或管理 PIN 解鎖（例如 gpg --card-edit）")
+        if (bytes.size < PIN_MIN || bytes.size > max) throw SigningException(ct("core_pin_length_chars", PIN_MIN, max))
+        if (s.pinStatus?.pw1Tries == 0) throw SigningException(ct("core_pgp_pin_locked"))
         val sent = s.kdf?.let { s2k(it, bytes) } ?: bytes
         val r = channel.transmit(0x00, 0x20, 0x00, reference, sent, 0)
         when {
             r.ok -> {}
-            r.sw == 0x6983 -> throw SigningException("PIN 碼已鎖定，請在電腦上以重設碼或管理 PIN 解鎖（例如 gpg --card-edit）")
+            r.sw == 0x6983 -> throw SigningException(ct("core_pgp_pin_locked"))
             r.sw and 0xFFF0 == 0x63C0 -> {
                 val left = r.sw and 0x0F
-                throw SigningException(if (left == 0) "PIN 碼錯誤，卡片已鎖定" else "PIN 碼錯誤，還可以再試 $left 次。為避免鎖卡，已停止。")
+                throw SigningException(if (left == 0) ct("core_pin_wrong_locked") else ct("core_pin_wrong_left", left))
             }
-            r.sw == 0x6982 -> throw SigningException("PIN 碼錯誤（卡片未說明剩餘次數）。為避免鎖卡，已停止。")
-            else -> throw SigningException("OpenPGP 卡拒絕 PIN 驗證（${PivCard.hex4(r.sw)}）")
+            r.sw == 0x6982 -> throw SigningException(ct("core_pin_wrong_unknown"))
+            else -> throw SigningException(ct("core_pgp_pin_refused", PivCard.hex4(r.sw)))
         }
     }
 
@@ -265,9 +268,9 @@ class OpenPgpCard(private val channel: CardChannel) {
         verifyPin(pin, OpenPgpKeySlot.SIGNATURE.pinReference)
         val r = transmitChained(0x2A, 0x9E, 0x9A, input)
         if (!r.ok) throw SigningException(when (r.sw) {
-            0x6982 -> "OpenPGP 卡要求重新輸入 PIN 碼"
-            0x6A88, 0x6A80 -> "OpenPGP 卡上沒有可用的簽章金鑰"
-            else -> "OpenPGP 卡拒絕簽章（${PivCard.hex4(r.sw)}）"
+            0x6982 -> ct("core_pgp_pin_again")
+            0x6A88, 0x6A80 -> ct("core_pgp_no_sign_key")
+            else -> ct("core_pgp_sign_refused", PivCard.hex4(r.sw))
         })
         return r.data
     }
@@ -282,14 +285,14 @@ class OpenPgpCard(private val channel: CardChannel) {
         val data = when (val alg = key.algorithm) {
             is OpenPgpAlgorithm.Rsa -> byteArrayOf(0x00) + input
             is OpenPgpAlgorithm.Ec -> berTlv(0xA6, berTlv(0x7F49, berTlv(0x86, input)))
-            is OpenPgpAlgorithm.Unsupported -> throw SigningException("OpenPGP 卡的解密金鑰演算法不支援：$alg")
+            is OpenPgpAlgorithm.Unsupported -> throw SigningException(ct("core_pgp_decrypt_alg", alg))
         }
         val r = transmitChained(0x2A, 0x80, 0x86, data)
         if (!r.ok) throw SigningException(when (r.sw) {
-            0x6982 -> "OpenPGP 卡要求重新輸入 PIN 碼"
-            0x6A80 -> "OpenPGP 卡無法解開這份資料（不是寄給這張卡，或資料損毀）"
-            0x6A88 -> "OpenPGP 卡上沒有解密金鑰"
-            else -> "OpenPGP 卡拒絕解密（${PivCard.hex4(r.sw)}）"
+            0x6982 -> ct("core_pgp_pin_again")
+            0x6A80 -> ct("core_pgp_cannot_decrypt")
+            0x6A88 -> ct("core_pgp_no_decrypt_key")
+            else -> ct("core_pgp_decrypt_refused", PivCard.hex4(r.sw))
         })
         return r.data
     }
@@ -398,11 +401,11 @@ class OpenPgpCard(private val channel: CardChannel) {
             0xBA53 -> "c-base"
             0xBD0E -> "Paranoidlabs"
             0xF1D0 -> "CanoKeys"
-            0xF517 -> "FSIJ（Gnuk）"
+            0xF517 -> ct("core_pgp_fsij")
             0xF5EC -> "F-Secure"
-            0x0000, 0xFFFF -> "測試卡"
-            in 0xFF00..0xFFFE -> "測試卡"
-            else -> "廠商 " + id.toString(16).uppercase().padStart(4, '0')
+            0x0000, 0xFFFF -> ct("core_pgp_test_card")
+            in 0xFF00..0xFFFE -> ct("core_pgp_test_card")
+            else -> ct("core_pgp_vendor") + id.toString(16).uppercase().padStart(4, '0')
         }
     }
 }

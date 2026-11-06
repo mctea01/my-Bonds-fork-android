@@ -1,5 +1,6 @@
 package diw.wallet.core.credential
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.w3c.W3cEncoding
@@ -63,7 +64,7 @@ object ClaimPictures {
     }.getOrNull()
 
     /** What a picture claim shows as text. */
-    fun describe(b: ByteArray): String = "圖片（" + (ImageKind.of(b)?.title?.let { "$it，" } ?: "") + "${(b.size + 1023) / 1024} KB）"
+    fun describe(b: ByteArray): String = ct("core_picture_start") + (ImageKind.of(b)?.title?.let { ct("core_picture_kind", it) } ?: "") + ct("core_picture_size", (b.size + 1023) / 1024)
 }
 
 /**
@@ -136,15 +137,15 @@ object ClaimReader {
         is CborInt -> v.asNumber.toString()
         is CborDouble -> v.value.toString()
         is CborFloat -> v.value.toString()
-        is Simple -> runCatching { if (v.asBoolean) "是" else "否" }.getOrDefault("")
+        is Simple -> runCatching { if (v.asBoolean) ct("core_yes") else ct("core_no") }.getOrDefault("")
         is Bstr -> v.value.let { if (ClaimPictures.isImage(it)) ClaimPictures.describe(it) else "${(it.size + 1023) / 1024} KB" }
         is Tagged -> when (v.tagNumber) {
             Tagged.FULL_DATE_STRING -> runCatching { v.asDateString.toString() }.getOrElse { mdocStructured(v.taggedItem) }
             Tagged.DATE_TIME_STRING -> runCatching { v.asDateTimeString.toString() }.getOrElse { mdocStructured(v.taggedItem) }
             else -> mdocStructured(v.taggedItem)
         }
-        is CborArray -> v.items.joinToString("；") { mdocStructured(it) }
-        is CborMap -> v.items.entries.joinToString("，") { (k, x) ->
+        is CborArray -> v.items.joinToString(ct("core_sep_semicolon")) { mdocStructured(it) }
+        is CborMap -> v.items.entries.joinToString(ct("core_sep_comma")) { (k, x) ->
             val key = (k as? Tstr)?.value?.let { mdocFieldLabels[it] ?: it } ?: mdocStructured(k)
             "$key: ${mdocStructured(x)}"
         }
@@ -156,14 +157,14 @@ object ClaimReader {
      * (restrictions and endorsements). The code itself is always shown as its value; the full per-jurisdiction meaning
      * of a vehicle category or restriction code is left to the planned localisation work.
      */
-    private val mdocFieldLabels = mapOf(
-        "vehicle_category_code" to "類別代號",
-        "issue_date" to "核發日",
-        "expiry_date" to "到期日",
-        "codes" to "附註",
-        "code" to "代號",
-        "sign" to "條件",
-        "value" to "值",
+    private val mdocFieldLabels: Map<String, String> get() = mapOf(
+        "vehicle_category_code" to ct("core_mdoc_vehicle_category"),
+        "issue_date" to ct("core_mdoc_issue_date"),
+        "expiry_date" to ct("core_mdoc_expiry_date"),
+        "codes" to ct("core_mdoc_codes"),
+        "code" to ct("core_mdoc_code"),
+        "sign" to ct("core_mdoc_sign"),
+        "value" to ct("core_mdoc_value"),
     )
 
     /** The keys of one mDL driving_privileges entry rendered separately, so they are not merged into the line below. */
@@ -178,20 +179,20 @@ object ClaimReader {
      * document type carries on an entry is appended by its label so nothing is dropped.
      */
     private fun drivingPrivileges(v: CborArray): String {
-        if (v.items.isEmpty()) return "無"
+        if (v.items.isEmpty()) return ct("core_none")
         return v.items.joinToString("\n") { item ->
             if (item !is CborMap) return@joinToString mdocStructured(item)
             val category = item.field("vehicle_category_code")?.let { mdocStructured(it) }
             val parts = buildList {
-                item.field("issue_date")?.let { add("核發 ${mdocStructured(it)}") }
-                item.field("expiry_date")?.let { add("到期 ${mdocStructured(it)}") }
-                item.field("codes")?.let { add("附註 ${mdocStructured(it)}") }
+                item.field("issue_date")?.let { add(ct("core_mdoc_issued", mdocStructured(it))) }
+                item.field("expiry_date")?.let { add(ct("core_mdoc_expires", mdocStructured(it))) }
+                item.field("codes")?.let { add(ct("core_mdoc_codes_value", mdocStructured(it))) }
                 for ((k, x) in item.items) {
                     val key = (k as? Tstr)?.value ?: continue
                     if (key !in drivingPrivilegeKeys) add("${mdocFieldLabels[key] ?: key}: ${mdocStructured(x)}")
                 }
             }
-            (category?.let { "$it 類" } ?: "權限") + if (parts.isEmpty()) "" else "　" + parts.joinToString("，")
+            (category?.let { ct("core_mdoc_category", it) } ?: ct("core_mdoc_privilege")) + if (parts.isEmpty()) "" else ct("core_mdoc_gap") + parts.joinToString(ct("core_sep_comma"))
         }
     }
 
@@ -199,8 +200,8 @@ object ClaimReader {
     private fun sexCode(name: String, v: JsonElement): String? {
         if (name != "sex" && name != "gender") return null
         val code = (v as? JsonPrimitive)?.content?.toIntOrNull() ?: return null
-        val word = when (code) { 0 -> "未知"; 1 -> "男"; 2 -> "女"; 9 -> "不適用"; else -> return null }
-        return "$word（$code）"
+        val word = when (code) { 0 -> ct("core_sex_unknown"); 1 -> ct("core_sex_male"); 2 -> ct("core_sex_female"); 9 -> ct("core_sex_na"); else -> return null }
+        return ct("core_word_code", word, code)
     }
 
     /** Claim path: namespace and element for mdoc, the JSON path for SD-JWT VC. */
@@ -258,23 +259,23 @@ object ClaimReader {
 
     private fun render(v: JsonElement): String = when (v) {
         is JsonPrimitive -> v.content
-        is JsonArray -> v.joinToString("；") { render(it) }
+        is JsonArray -> v.joinToString(ct("core_sep_semicolon")) { render(it) }
         is JsonObject -> {
             // A formatted address line, when the issuer sends one, reads better than the parts joined.
             val formatted = (v["formatted"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.replace("\n", " ")
             formatted ?: v.entries.filterNot { (_, x) -> x is JsonNull }
-                .joinToString("，") { (k, x) -> "${jsonFieldLabels[k] ?: k}: ${render(x)}" }
+                .joinToString(ct("core_sep_comma")) { (k, x) -> "${jsonFieldLabels[k] ?: k}: ${render(x)}" }
         }
     }
 
     /** Readable names for the sub-fields of structured JSON claims such as address and place_of_birth. */
-    private val jsonFieldLabels = mapOf(
-        "street_address" to "街道",
-        "house_number" to "門牌",
-        "locality" to "縣市",
-        "region" to "地區",
-        "country" to "國家",
-        "postal_code" to "郵遞區號",
-        "formatted" to "完整地址",
+    private val jsonFieldLabels: Map<String, String> get() = mapOf(
+        "street_address" to ct("core_addr_street"),
+        "house_number" to ct("core_addr_house"),
+        "locality" to ct("core_addr_locality"),
+        "region" to ct("core_addr_region"),
+        "country" to ct("core_addr_country"),
+        "postal_code" to ct("core_addr_postal"),
+        "formatted" to ct("core_addr_formatted"),
     )
 }

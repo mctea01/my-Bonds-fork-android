@@ -1,5 +1,6 @@
 package diw.wallet.core.oid4vp
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
@@ -32,12 +33,12 @@ object WalletTransactionTypes {
         val type = obj?.str("type")
         if (type == PaymentTransaction.identifier) {
             runCatching { describePayment(PaymentTransaction.parseJson(encoded.encodeToByteString()).payload) }.getOrNull()?.let { return it }
-            return listOf("付款授權：交易資料格式不正確")
+            return listOf(ct("core_pay_bad_data"))
         }
         if (obj != null && type in EudiPaymentTransaction.IDENTIFIERS) {
-            return describeEudiPayment(obj) ?: listOf("付款授權：交易資料缺少收款方或金額")
+            return describeEudiPayment(obj) ?: listOf(ct("core_pay_missing"))
         }
-        return listOf("交易資料（" + (type ?: "未知類型") + "）")
+        return listOf(ct("core_tx_data_start") + (type ?: ct("core_tx_unknown_type")) + ct("core_paren_close"))
     }
 
     /**
@@ -56,12 +57,12 @@ object WalletTransactionTypes {
         if (payee == null || amount == null) return null
         val sum = if (currency != null) "$amount $currency" else amount
         return buildList {
-            add("付款授權：向 $payee 支付 $sum")
-            p.obj("payee")?.str("website")?.let { add("收款方網站：$it") }
-            (p.str("transaction_id") ?: p.str("transactionId"))?.let { add("交易編號：$it") }
-            (p.str("date_time") ?: p.str("dateTime"))?.let { add("建立時間：$it") }
-            (p.str("execution_date") ?: p.str("executionDate"))?.let { add("預定執行日：$it") }
-            if (p.obj("recurrence") != null || p.obj("recurring_schedule") != null) add("此為定期付款授權")
+            add(ct("core_pay_to", payee, sum))
+            p.obj("payee")?.str("website")?.let { add(ct("core_pay_website", it)) }
+            (p.str("transaction_id") ?: p.str("transactionId"))?.let { add(ct("core_pay_tx_id", it)) }
+            (p.str("date_time") ?: p.str("dateTime"))?.let { add(ct("core_pay_created", it)) }
+            (p.str("execution_date") ?: p.str("executionDate"))?.let { add(ct("core_pay_execution", it)) }
+            if (p.obj("recurrence") != null || p.obj("recurring_schedule") != null) add(ct("core_pay_recurring_note"))
         }
     }
 
@@ -75,30 +76,30 @@ object WalletTransactionTypes {
 
     private fun describePayment(p: PaymentTransaction.Payload): List<String> = buildList {
         val amount = money(p.amount, p.currency)
-        add("付款授權：向 ${p.payee.name} 支付 $amount" + if (p.amountEstimated == true) "（預估金額）" else "")
-        add("收款方：${p.payee.name}（代碼 ${p.payee.id}）" + (p.payee.website?.let { "，$it" } ?: ""))
-        add("交易編號：${p.transactionId}")
-        p.dateTime?.let { add("建立時間：$it") }
-        p.executionDate?.let { add("預定執行日：$it") }
-        if (p.amountEarmarked == true) add("款項會先行圈存")
-        if (p.sctInst == true) add("以 SEPA 即時轉帳執行")
-        p.pisp?.let { add("付款發起服務：${it.brandName}（${it.legalName}，${it.domainName}）") }
+        add(ct("core_pay_to", p.payee.name, amount) + if (p.amountEstimated == true) ct("core_pay_estimated") else "")
+        add(ct("core_pay_payee", p.payee.name, p.payee.id) + (p.payee.website?.let { ct("core_comma_value", it) } ?: ""))
+        add(ct("core_pay_tx_id", p.transactionId))
+        p.dateTime?.let { add(ct("core_pay_created", it)) }
+        p.executionDate?.let { add(ct("core_pay_execution", it)) }
+        if (p.amountEarmarked == true) add(ct("core_pay_earmarked"))
+        if (p.sctInst == true) add(ct("core_pay_sct_inst"))
+        p.pisp?.let { add(ct("core_pay_pisp", it.brandName, it.legalName, it.domainName)) }
         p.recurrence?.let { r ->
-            add("定期付款：" + frequency(r.frequency) +
-                (r.startDate?.let { "，自 $it" } ?: "") + (r.endDate?.let { "，至 $it" } ?: "") + (r.number?.let { "，共 $it 次" } ?: ""))
+            add(ct("core_pay_recurring") + frequency(r.frequency) +
+                (r.startDate?.let { ct("core_pay_from", it) } ?: "") + (r.endDate?.let { ct("core_pay_until", it) } ?: "") + (r.number?.let { ct("core_pay_times", it) } ?: ""))
         }
         p.mitOptions?.let { m ->
             val parts = buildList {
-                if (m.amountVariable == true) add("金額依實際用量")
-                m.minAmount?.let { add("每次最低 " + money(it, p.currency)) }
-                m.maxAmount?.let { add("每次最高 " + money(it, p.currency)) }
-                m.totalAmount?.let { add("總額上限 " + money(it, p.currency)) }
-                m.initialAmount?.let { add("首期 " + money(it, p.currency) + (m.initialAmountNumber?.let { n -> " 共 $n 期" } ?: "")) }
-                m.apr?.let { add("年利率 $it%") }
+                if (m.amountVariable == true) add(ct("core_pay_variable"))
+                m.minAmount?.let { add(ct("core_pay_min") + money(it, p.currency)) }
+                m.maxAmount?.let { add(ct("core_pay_max") + money(it, p.currency)) }
+                m.totalAmount?.let { add(ct("core_pay_total") + money(it, p.currency)) }
+                m.initialAmount?.let { add(ct("core_pay_initial") + money(it, p.currency) + (m.initialAmountNumber?.let { n -> ct("core_pay_installments", n) } ?: "")) }
+                m.apr?.let { add(ct("core_pay_apr", it)) }
             }
-            add("商家發起扣款" + if (parts.isEmpty()) "" else "：" + parts.joinToString("，"))
+            add(ct("core_pay_mit") + if (parts.isEmpty()) "" else ct("core_colon") + parts.joinToString(ct("core_sep_comma")))
         }
-        if (p.tipRequested == true) add("收款方提供小費選項；本錢包不另加小費")
+        if (p.tipRequested == true) add(ct("core_pay_tip"))
     }
 
     private fun money(amount: Double, currency: String): String {
@@ -110,18 +111,18 @@ object WalletTransactionTypes {
     }
 
     private fun frequency(f: PaymentTransaction.Frequency): String = when (f) {
-        PaymentTransaction.Frequency.INDA -> "每日多次"
-        PaymentTransaction.Frequency.DAIL -> "每日"
-        PaymentTransaction.Frequency.WEEK -> "每週"
-        PaymentTransaction.Frequency.TOWK -> "每兩週"
-        PaymentTransaction.Frequency.TWMN -> "每月兩次"
-        PaymentTransaction.Frequency.MNTH -> "每月"
-        PaymentTransaction.Frequency.TOMN -> "每兩個月"
-        PaymentTransaction.Frequency.QUTR -> "每季"
-        PaymentTransaction.Frequency.FOMN -> "每四個月"
-        PaymentTransaction.Frequency.SEMI -> "每半年"
-        PaymentTransaction.Frequency.YEAR -> "每年"
-        PaymentTransaction.Frequency.TYEA -> "每兩年"
+        PaymentTransaction.Frequency.INDA -> ct("core_freq_inda")
+        PaymentTransaction.Frequency.DAIL -> ct("core_freq_dail")
+        PaymentTransaction.Frequency.WEEK -> ct("core_freq_week")
+        PaymentTransaction.Frequency.TOWK -> ct("core_freq_towk")
+        PaymentTransaction.Frequency.TWMN -> ct("core_freq_twmn")
+        PaymentTransaction.Frequency.MNTH -> ct("core_freq_mnth")
+        PaymentTransaction.Frequency.TOMN -> ct("core_freq_tomn")
+        PaymentTransaction.Frequency.QUTR -> ct("core_freq_qutr")
+        PaymentTransaction.Frequency.FOMN -> ct("core_freq_fomn")
+        PaymentTransaction.Frequency.SEMI -> ct("core_freq_semi")
+        PaymentTransaction.Frequency.YEAR -> ct("core_freq_year")
+        PaymentTransaction.Frequency.TYEA -> ct("core_freq_tyea")
     }
 }
 
@@ -132,7 +133,7 @@ object WalletTransactionTypes {
  * transaction_data_hashes bound, instead of being rejected with invalid_transaction_data.
  */
 class EudiPaymentTransaction(identifier: String) : TransactionType<JsonObject>(
-    displayName = "付款授權",
+    displayName = ct("core_pay_authorization"),
     identifier = identifier,
 ) {
     override fun parseOpenId4VpRequest(jsonString: String): JsonObject {
