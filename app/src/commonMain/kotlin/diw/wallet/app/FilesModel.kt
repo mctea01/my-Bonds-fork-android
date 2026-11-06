@@ -68,6 +68,7 @@ import diw.wallet.core.document.opencerts.OpenCertRenderer
 import diw.wallet.core.document.opencerts.OpenCertView
 import diw.wallet.core.document.pdf.PdfFile
 import diw.wallet.core.document.pdf.PdfPlain
+import diw.wallet.app.ui.compositionTitle
 import diw.wallet.app.ui.localTime
 import diw.wallet.core.document.pdf.PdfAppearanceImage
 import diw.wallet.core.document.pdf.PdfSignOptions
@@ -2146,7 +2147,7 @@ class FilesModel(private val model: WalletModel) {
         engine: ZkPdfEngine,
     ): ZkPdfCreated {
         val jwk = holderKey.toJwk()
-        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, choice.extended) { step ->
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, choice.extended, if (choice.selfHosted) "${compositionTitle(choice.composition)}，自架主機" else compositionTitle(choice.composition)) { step ->
             step("準備")
             ZkPdfProofs.create(pdf, plan, jwk, choice.composition, engine, { kind, done, total ->
                 val text = "產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"
@@ -2252,7 +2253,7 @@ class FilesModel(private val model: WalletModel) {
                 RemoteZkPdfEngine.accept(statement, response.output, local)
         }
         busy.value = "驗證電腦版產生的證明"
-        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true) { step ->
+        val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true, "${compositionTitle(pending.composition)}，匯入電腦版證明") { step ->
             step("驗證證明")
             ZkPdfProofs.create(data, plan, holderKey.toJwk(), pending.composition, imported, { _, _, _ -> }, salts = salts)
         }
@@ -2295,7 +2296,7 @@ class FilesModel(private val model: WalletModel) {
         if (!engine.ready(composition, true)) {
             throw SigningException("尚未下載${if (composition == ZkPdfStatement.DESKTOP) "電腦版" else "手機版"}電路檔，請在這一頁下載後再試")
         }
-        val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true) { step ->
+        val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true, "${compositionTitle(composition)}，代手機產生") { step ->
             step("準備")
             when (val r = engine.prove(request.statement, request.witness) { kind, done, total ->
                 val text = "代手機產生 zkPDF 證明：${segmentName(kind)}（${done}／${total}）"

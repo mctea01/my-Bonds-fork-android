@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -33,6 +34,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Clock
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -79,6 +81,20 @@ data class ZkJob(
     val active: Boolean get() = phase == ZkJobPhase.QUEUED || phase == ZkJobPhase.RUNNING
 }
 
+/**
+ * How long a finished proof took and the most resident memory seen while it ran, kept for this session so the
+ * device thresholds can be tuned from real devices. It holds no proof input; [note] names the circuit composition.
+ */
+data class ZkMeasurement(
+    val kind: ZkProofKind,
+    val phase: ZkJobPhase,
+    val seconds: Long,
+    val peakMemoryMb: Long?,
+    val note: String?,
+    val platform: ZkPlatformInfo?,
+    val at: Instant,
+)
+
 data class ZkDownload(val id: String, val received: Long, val total: Long, val error: String? = null)
 
 /**
@@ -105,6 +121,8 @@ class ZkModel(
     private val _jobs = MutableStateFlow<Map<String, ZkJob>>(emptyMap())
     val jobs: StateFlow<Map<String, ZkJob>> = _jobs
     val refreshing = MutableStateFlow(false)
+    /** The latest finished proofs, newest first, at most [MEASUREMENTS]. */
+    val measurements = MutableStateFlow<List<ZkMeasurement>>(emptyList())
 
     private val nativeLock = Mutex()
     private var nativeTried = false
@@ -272,6 +290,7 @@ class ZkModel(
         id: String,
         kind: ZkProofKind,
         extended: Boolean = false,
+        note: String? = null,
         prove: suspend (step: (String) -> Unit) -> ZkResult<T>,
     ): Deferred<ZkResult<T>> {
         val limit = timeoutFor(kind, extended)
@@ -281,20 +300,33 @@ class ZkModel(
                 proving.withLock {
                     val capable = capability.value ?: evaluate()
                     if (kind.backend !in capable.backends) return@withLock finish(id, ZkErrors.unsupported)
-                    set(ZkJob(id, kind, ZkJobPhase.RUNNING, startedAt = clock.now(), timeout = limit))
-                    val result = withTimeoutOrNull(limit) {
-                        try {
-                            prove { step -> _jobs.update { jobs -> jobs[id]?.let { jobs + (id to it.copy(step = step)) } ?: jobs } }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (_: Exception) {
-                            ZkErrors.internal
+                    val started = clock.now()
+                    set(ZkJob(id, kind, ZkJobPhase.RUNNING, startedAt = started, timeout = limit))
+                    val meter = Meter(started, kind, note)
+                    try {
+                        val result = withTimeoutOrNull(limit) {
+                            try {
+                                prove { step -> _jobs.update { jobs -> jobs[id]?.let { jobs + (id to it.copy(step = step)) } ?: jobs } }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                ZkErrors.internal
+                            }
                         }
+                        if (result == null) {
+                            set(ZkJob(id, kind, ZkJobPhase.TIMED_OUT, message = TIMED_OUT, retryable = true, timeout = limit))
+                            meter.stop(ZkJobPhase.TIMED_OUT)
+                            ZkResult.Failed(TIMED_OUT, true)
+                        } else finish(id, result).also { r ->
+                            meter.stop(when (r) {
+                                is ZkResult.Ok -> ZkJobPhase.DONE
+                                is ZkResult.Failed -> ZkJobPhase.FAILED
+                                ZkResult.Cancelled -> ZkJobPhase.CANCELLED
+                            })
+                        }
+                    } finally {
+                        meter.stop(ZkJobPhase.CANCELLED)
                     }
-                    if (result == null) {
-                        set(ZkJob(id, kind, ZkJobPhase.TIMED_OUT, message = TIMED_OUT, retryable = true, timeout = limit))
-                        ZkResult.Failed(TIMED_OUT, true)
-                    } else finish(id, result)
                 }
             } catch (e: CancellationException) {
                 set(ZkJob(id, kind, ZkJobPhase.CANCELLED, message = "已取消", retryable = true, timeout = limit))
@@ -328,6 +360,35 @@ class ZkModel(
         return result
     }
 
+    /** Samples resident memory while one proof runs and records the measurement once, when it stops. */
+    private inner class Meter(private val started: Instant, private val kind: ZkProofKind, private val note: String?) {
+        private val peak = MutableStateFlow<Long?>(null)
+        private var recorded = false
+        private val sampler: Job? = environment?.let { env ->
+            scope.launch(Dispatchers.Default) {
+                while (true) {
+                    sample(env)
+                    delay(SAMPLE_INTERVAL)
+                }
+            }
+        }
+
+        private fun sample(env: ZkEnvironment) {
+            val now = runCatching { env.residentMemoryMb() }.getOrNull() ?: return
+            peak.update { maxOf(it ?: 0, now) }
+        }
+
+        fun stop(phase: ZkJobPhase) {
+            if (recorded) return
+            recorded = true
+            sampler?.cancel()
+            environment?.let { sample(it) }
+            val entry = ZkMeasurement(kind, phase, (clock.now() - started).inWholeSeconds, peak.value, note,
+                platformInfo.value, clock.now())
+            measurements.update { (listOf(entry) + it).take(MEASUREMENTS) }
+        }
+    }
+
     private fun set(job: ZkJob) = _jobs.update { it + (job.id to job) }
 
     /** Stops a queued or running proof; the native call sees the cancellation through its token. */
@@ -341,6 +402,8 @@ class ZkModel(
     companion object {
         val EXTENDED_TIMEOUT = 30.minutes
         val VERIFY_TIMEOUT = 2.minutes
+        private val SAMPLE_INTERVAL = 500.milliseconds
+        const val MEASUREMENTS = 10
         const val TIMED_OUT = "證明逾時，已停止，可重試"
         const val NO_RUNTIME = "此平台沒有零知識執行環境"
         private const val MIB = 1024L * 1024L

@@ -63,6 +63,13 @@ class JvmZkEnvironment(
         }
     }
 
+    /** VmRSS from /proc (Linux and Android); other systems report none. */
+    override fun residentMemoryMb(): Long? = runCatching {
+        File("/proc/self/status").useLines { lines ->
+            lines.firstOrNull { it.startsWith("VmRSS:") }?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.div(1024)
+        }
+    }.getOrNull()
+
     override fun close() {
         if (opened.isInitialized()) store?.close()
     }

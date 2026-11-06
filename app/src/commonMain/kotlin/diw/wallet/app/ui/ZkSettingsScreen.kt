@@ -26,11 +26,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.ServerStrings
 import diw.wallet.app.WalletModel
+import diw.wallet.app.ZkJobPhase
+import diw.wallet.app.ZkMeasurement
 import diw.wallet.core.zk.ZkAsset
 import diw.wallet.core.zk.ZkAssetStatus
 import diw.wallet.core.zk.ZkBackend
@@ -184,6 +188,9 @@ fun ZkSettingsScreen(model: WalletModel) {
             SectionTitle("代手機產生 zkPDF 證明")
             PhoneRequestSection(model)
         }
+        HorizontalDivider()
+        SectionTitle("證明效能紀錄")
+        MeasurementSection(model)
     }
 
     confirmDownload?.let { assets ->
@@ -442,6 +449,55 @@ private fun PhoneRequestSection(model: WalletModel) {
     }
     busy?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
     error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+}
+
+/**
+ * The latest proofs of this session with their time and memory peak, so a holder can report how a device performs.
+ * The text holds no proof input, only the device class, the composition and the numbers.
+ */
+@Composable
+private fun MeasurementSection(model: WalletModel) {
+    val entries by model.zk.measurements.collectAsState()
+    @Suppress("DEPRECATION")
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    Text(
+        "這次開啟 App 後完成或停止的證明，記錄耗時與記憶體峰值（不含證明內容），可複製後回報，用來調整裝置建議。關閉 App 後清除。",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (entries.isEmpty()) {
+        Text("尚無紀錄", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    entries.forEach { Text(measurementLine(it), style = MaterialTheme.typography.bodySmall) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = {
+            clipboard.setText(AnnotatedString(measurementReport(entries)))
+            copied = true
+        }) { Text("複製紀錄") }
+        if (copied) Text("已複製", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+internal fun measurementLine(m: ZkMeasurement): String {
+    val outcome = when (m.phase) {
+        ZkJobPhase.DONE -> "完成"
+        ZkJobPhase.FAILED -> "失敗"
+        ZkJobPhase.TIMED_OUT -> "逾時"
+        ZkJobPhase.CANCELLED -> "已停止"
+        else -> m.phase.name
+    }
+    val peak = m.peakMemoryMb?.let { "，記憶體峰值 $it MB" } ?: ""
+    val note = m.note?.let { "（$it）" } ?: ""
+    return "${m.kind.label}$note：$outcome，${m.seconds} 秒$peak"
+}
+
+/** Plain lines for a report: device class first, then one line per proof. */
+internal fun measurementReport(entries: List<ZkMeasurement>): String {
+    val device = entries.firstNotNullOfOrNull { it.platform }?.let {
+        "裝置：${it.abi}，記憶體 ${it.totalRamMb} MB（偵測時可用 ${it.availableRamMb} MB），${if (it.isDesktop) "電腦版" else "手機版"}"
+    } ?: "裝置：未知"
+    return (listOf(device) + entries.map { "${it.at} ${it.kind.name} ${measurementLine(it)}" }).joinToString("\n")
 }
 
 internal fun compositionTitle(id: String): String = when (id) {

@@ -59,7 +59,9 @@ class ZkModelTest {
         val native: ZkResult<ZkNativeStatus>,
     ) : ZkEnvironment {
         var loads = 0
+        var resident = 0L
         override suspend fun platformInfo() = info
+        override fun residentMemoryMb(): Long = resident
         override suspend fun loadNative(): ZkResult<ZkNativeStatus> { loads++; return native }
     }
 
@@ -190,5 +192,30 @@ class ZkModelTest {
         } finally {
             dir.deleteRecursively()
         }
+    }
+
+    @Test
+    fun finishedProofsRecordTimeAndMemoryPeak() = runBlocking {
+        val env = FakeEnvironment(emptyList(), null, desktop, openac)
+        val zk = model(env)
+        val result = zk.prove("m", ZkProofKind.AGE, note = "test") {
+            env.resident = 900
+            kotlinx.coroutines.delay(1200)
+            env.resident = 300
+            ZkResult.Ok(1)
+        }.await()
+        assertTrue(result is ZkResult.Ok)
+        val m = zk.measurements.value.single()
+        assertEquals(ZkJobPhase.DONE, m.phase)
+        assertEquals(900L, m.peakMemoryMb)
+        assertEquals("test", m.note)
+        assertTrue(m.seconds >= 1)
+        assertEquals(desktop, m.platform)
+        val failed = zk.prove("f", ZkProofKind.AGE) { ZkResult.Failed("x", false) }.await()
+        assertTrue(failed is ZkResult.Failed)
+        assertEquals(listOf(ZkJobPhase.FAILED, ZkJobPhase.DONE), zk.measurements.value.map { it.phase })
+        val report = diw.wallet.app.ui.measurementReport(zk.measurements.value)
+        assertTrue(report.startsWith("裝置：linux-x86_64"))
+        assertTrue("記憶體峰值 900 MB" in report)
     }
 }
