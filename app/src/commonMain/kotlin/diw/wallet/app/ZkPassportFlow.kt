@@ -67,7 +67,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         ui.value = OfflineUi.ZkPassportWaiting(request, null, ZkPassportState.Connecting)
         model.platform.keepScreenOn(true)
         job = model.scope.launch {
-            val opened = engine.open(request, config.copy(cscaAnchors = cscaAnchors()), model.scope)
+            val opened = engine.open(request, config.copy(cscaAnchors = cscaAnchors(), oprfKeyHash = oprfKeyHash()), model.scope)
             session = opened
             try {
                 var url: String? = null
@@ -97,6 +97,13 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         listOf(TrustEnvironment.PRODUCTION, TrustEnvironment.USER).flatMap { env ->
             runCatching { model.trust.anchors(TrustRole.TRAVEL_DOCUMENT, env) }.getOrDefault(emptyList()).map { it.first.encoded.toByteArray() }
         }
+
+    /**
+     * The OPRF key hash this wallet's server publishes (5.5), read fresh at each request; salted identifiers are
+     * accepted only under it. Null without a server or when it offers no OPRF, so salted identifiers are refused.
+     */
+    private suspend fun oprfKeyHash(): String? =
+        model.server.base()?.let { runCatching { model.server.oprfKeyHash(it) }.getOrNull() }
 
     fun stop() {
         session?.close()
@@ -183,7 +190,8 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 e.startsWith("date_expired") -> tr(Res.string.zkp_err_date_expired)
                 e.startsWith("date_future") -> tr(Res.string.zkp_err_date_future)
                 e == "mock" -> tr(Res.string.zkp_err_mock)
-                e == "oprf_key" || e == "nullifier_mismatch" -> tr(Res.string.zkp_err_nullifier)
+                e == "oprf_key" -> tr(Res.string.zkp_err_oprf_key)
+                e == "nullifier_mismatch" -> tr(Res.string.zkp_err_nullifier)
                 e.startsWith("query") || e.startsWith("missing:") -> tr(Res.string.zkp_err_query)
                 else -> tr(Res.string.zkp_err_bundle)
             }

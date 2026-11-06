@@ -4215,6 +4215,7 @@
     <string name="zkp_err_mock">測試護照的證明，只在接受測試護照時採用。</string>
     <string name="zkp_err_native">這個裝置沒有可驗證 zkPassport 證明的元件。</string>
     <string name="zkp_err_nullifier">證明中的識別碼不一致或屬不支援的類型。</string>
+    <string name="zkp_err_oprf_key">加鹽識別碼只接受本錢包服務端的 OPRF 金鑰；證明使用其他金鑰，或尚未設定提供 OPRF 的服務端。</string>
     <string name="zkp_err_proof">零知識證明驗證失敗。</string>
     <string name="zkp_err_query">證明沒有涵蓋所有要求的條件。</string>
     <string name="zkp_err_registry">無法讀取以太坊註冊表，請檢查網路或設定中的節點。</string>
