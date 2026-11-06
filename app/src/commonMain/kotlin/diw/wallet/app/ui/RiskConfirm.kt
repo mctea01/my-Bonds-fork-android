@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,14 +41,14 @@ fun RiskConfirmDialog(title: String, lines: List<String>, confirm: String, onCon
                 lines.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = ack, onCheckedChange = { ack = it })
-                    Text("我了解風險，並自行承擔後果", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(Res.string.risk_ack), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = ack) { Text(confirm, color = if (ack) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(Res.string.action_cancel)) } },
     )
 }
 
@@ -58,12 +61,12 @@ fun riskOverride(key: Any?, button: String, title: String, lines: List<String>):
     var confirmed by remember(key) { mutableStateOf(false) }
     var asking by remember(key) { mutableStateOf(false) }
     if (confirmed) {
-        Text("你已確認自行承擔風險：$title", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(Res.string.risk_accepted, title), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         return true
     }
     OutlinedButton(onClick = { asking = true }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
         Text(button)
     }
-    if (asking) RiskConfirmDialog(title, lines, "仍要繼續", onConfirm = { confirmed = true; asking = false }, onDismiss = { asking = false })
+    if (asking) RiskConfirmDialog(title, lines, stringResource(Res.string.action_continue_anyway), onConfirm = { confirmed = true; asking = false }, onDismiss = { asking = false })
     return false
 }

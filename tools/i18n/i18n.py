@@ -21,6 +21,54 @@ RES = ROOT / "app/src/commonMain/composeResources"
 HAN = re.compile(r"[\u3400-\u9fff\uff00-\uffef\u3000-\u303f]")
 
 
+def skip_char(src, i):
+    """Index after the char literal starting at i."""
+    j = i + 1
+    while j < len(src) and src[j] != "'":
+        j += 2 if src[j] == "\\" else 1
+    return j + 1
+
+
+def skip_expr(src, i):
+    """Index after the template expression whose body starts at i (just after the opening brace)."""
+    depth, n = 1, len(src)
+    while i < n and depth:
+        c = src[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+        elif c == "'":
+            i = skip_char(src, i)
+            continue
+        elif c == '"':
+            i = skip_string(src, i)
+            continue
+        i += 1
+    return i
+
+
+def skip_string(src, i):
+    """Index after the ordinary or raw string literal starting at i."""
+    n = len(src)
+    if src.startswith('"""', i):
+        j = i + 3
+        while j < n and not src.startswith('"""', j):
+            j = skip_expr(src, j + 2) if src.startswith("${", j) else j + 1
+        return j + 3
+    j = i + 1
+    while j < n:
+        if src[j] == "\\":
+            j += 2
+        elif src.startswith("${", j):
+            j = skip_expr(src, j + 2)
+        elif src[j] == '"':
+            return j + 1
+        else:
+            j += 1
+    return n
+
+
 def literals(src):
     """(start, end, body) of every ordinary string literal outside comments."""
     out, i, n = [], 0, len(src)
@@ -35,41 +83,15 @@ def literals(src):
             i = n if j < 0 else j + 2
             continue
         if src.startswith('"""', i):
-            j = src.find('"""', i + 3)
-            i = n if j < 0 else j + 3
+            i = skip_string(src, i)
             continue
         if c == "'":
-            j = i + 1
-            while j < n and src[j] != "'":
-                j += 2 if src[j] == "\\" else 1
-            i = j + 1
+            i = skip_char(src, i)
             continue
         if c == '"':
-            j, depth = i + 1, 0
-            while j < n:
-                ch = src[j]
-                if ch == "\\":
-                    j += 2
-                    continue
-                if src.startswith("${", j):
-                    depth, j = 1, j + 2
-                    while j < n and depth:
-                        if src[j] == "{":
-                            depth += 1
-                        elif src[j] == "}":
-                            depth -= 1
-                        elif src[j] == '"':
-                            k = j + 1
-                            while k < n and src[k] != '"':
-                                k += 2 if src[k] == "\\" else 1
-                            j = k
-                        j += 1
-                    continue
-                if ch == '"':
-                    break
-                j += 1
-            out.append((i, j + 1, src[i + 1:j]))
-            i = j + 1
+            j = skip_string(src, i)
+            out.append((i, j, src[i + 1:j - 1]))
+            i = j
             continue
         i += 1
     return out
@@ -80,10 +102,7 @@ def template(body):
     text, args, i, n = [], [], 0, len(body)
     while i < n:
         if body.startswith("${", i):
-            depth, j = 1, i + 2
-            while j < n and depth:
-                depth += {"{": 1, "}": -1}.get(body[j], 0)
-                j += 1
+            j = skip_expr(body, i + 2)
             args.append(body[i + 2:j - 1].strip())
             text.append("%%%d$s" % len(args))
             i = j

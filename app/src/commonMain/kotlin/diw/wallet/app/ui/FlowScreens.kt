@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import diw.wallet.core.oid4vp.WalletTransactionTypes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -65,8 +68,8 @@ internal fun Busy(text: String) {
 @Composable
 internal fun Failure(text: String, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        VerdictCard(Verdict.FAIL, "無法完成", listOf(text))
-        Button(onClick = onClose) { Text("回首頁") }
+        VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(text))
+        Button(onClick = onClose) { Text(stringResource(Res.string.action_home)) }
     }
 }
 
@@ -80,14 +83,14 @@ internal fun riskAcknowledgement(trust: TrustDecision): Boolean {
     var ack by remember(trust) { mutableStateOf(false) }
     if (tier.highlyTrusted) return true
     if (tier == TrustTier.T4) {
-        return riskOverride(trust, "仍要繼續（對方身分無法驗證）", "對方身分無法驗證", listOf(
-            "簽章、憑證鏈或信任清單的檢查失敗，無法確認對方是誰，也可能是冒充的服務。",
-            "只在你確定來源（例如自己架設的測試環境）時繼續。",
+        return riskOverride(trust, stringResource(Res.string.flow_untrusted_continue), stringResource(Res.string.flow_untrusted_title), listOf(
+            stringResource(Res.string.flow_untrusted_text),
+            stringResource(Res.string.flow_untrusted_hint),
         ) + trust.reasons.take(3))
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(checked = ack, onCheckedChange = { ack = it })
-        Text("我了解對方沒有連到任何信任根，仍要繼續")
+        Text(stringResource(Res.string.flow_untrusted_ack))
     }
     return ack
 }
@@ -96,12 +99,12 @@ internal fun riskAcknowledgement(trust: TrustDecision): Boolean {
 fun IssuanceScreen(model: WalletModel) {
     val state by model.issuance.collectAsState()
     when (val s = state) {
-        IssuanceUi.Loading -> Busy("讀取發行端資訊")
+        IssuanceUi.Loading -> Busy(stringResource(Res.string.flow_reading_issuer))
         is IssuanceUi.Working -> Busy(s.message)
         is IssuanceUi.WaitingForBrowser -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator()
-            Text("請在瀏覽器完成登入與授權，完成後會自動返回", Modifier.padding(vertical = 12.dp))
-            OutlinedButton(onClick = { model.cancelBrowserWait() }) { Text("取消") }
+            Text(stringResource(Res.string.flow_browser_login), Modifier.padding(vertical = 12.dp))
+            OutlinedButton(onClick = { model.cancelBrowserWait() }) { Text(stringResource(Res.string.action_cancel)) }
         }
         is IssuanceUi.Failed -> Failure(s.message) { model.screen.value = Screen.Home }
         is IssuanceUi.Review -> {
@@ -110,11 +113,11 @@ fun IssuanceScreen(model: WalletModel) {
             var selected by remember(s) { mutableStateOf(if (s.walletInitiated) emptySet() else s.configurations.map { it.id }.toSet()) }
             val tx = s.session.txCode
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TrustCard("發行端", s.issuerName, s.trust, listOf(s.session.issuer.credentialIssuer))
-                s.requestedBy?.let { Text("由 $it 經 Digital Credentials API 要求存入錢包", style = MaterialTheme.typography.bodySmall) }
-                Text(if (s.walletInitiated) "此發行端提供下列憑證，請選擇要加入的項目：" else "將加入下列憑證：", style = MaterialTheme.typography.titleSmall)
+                TrustCard(stringResource(Res.string.role_issuer), s.issuerName, s.trust, listOf(s.session.issuer.credentialIssuer))
+                s.requestedBy?.let { Text(stringResource(Res.string.flow_dc_requested_by, it), style = MaterialTheme.typography.bodySmall) }
+                Text(if (s.walletInitiated) stringResource(Res.string.flow_pick_offers) else stringResource(Res.string.flow_will_add), style = MaterialTheme.typography.titleSmall)
                 if (s.walletInitiated) {
-                    Text("部分發行端（如 walt.id）只接受它自己產生的領卡連結；若登入頁顯示錯誤，請改用發行端網頁的 QR Code。", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(Res.string.flow_waltid_hint), style = MaterialTheme.typography.bodySmall)
                 }
                 s.configurations.forEach { c ->
                     Card(Modifier.fillMaxWidth()) {
@@ -124,16 +127,16 @@ fun IssuanceScreen(model: WalletModel) {
                                 Text(c.display.pick(model.locales)?.name ?: c.id, style = MaterialTheme.typography.titleMedium)
                                 Text("${c.raw["format"]?.toString()?.trim('"') ?: c.format.wire}  ${c.docType ?: c.vct ?: ""}", style = MaterialTheme.typography.bodySmall)
                                 if (c.proofTypes.values.any { it.keyAttestationsRequired != null }) {
-                                    Text("發行端要求金鑰證明（由錢包提供者出具）；沒有時改送一般證明，由發行端決定是否接受", style = MaterialTheme.typography.bodySmall)
+                                    Text(stringResource(Res.string.flow_key_attestation), style = MaterialTheme.typography.bodySmall)
                                 }
                             }
                         }
                     }
                 }
                 if (s.unsupported.isNotEmpty()) {
-                    Text("另有 ${s.unsupported.size} 種憑證格式本錢包尚不支援：", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(Res.string.flow_unsupported_formats, s.unsupported.size), style = MaterialTheme.typography.bodySmall)
                     s.unsupported.take(20).forEach { (id, reason) ->
-                        Text("$id：$reason", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                        Text(stringResource(Res.string.pair_colon, id, reason), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                     }
                     if (s.unsupported.size > 20) Text("…", style = MaterialTheme.typography.bodySmall)
                 }
@@ -141,7 +144,7 @@ fun IssuanceScreen(model: WalletModel) {
                     OutlinedTextField(
                         value = txCode,
                         onValueChange = { v -> txCode = if (tx.inputMode == "numeric") v.filter { it.isDigit() } else v },
-                        label = { Text(tx.description ?: "請輸入發行端提供的交易碼") },
+                        label = { Text(tx.description ?: stringResource(Res.string.flow_tx_code)) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = if (tx.inputMode == "numeric") KeyboardType.Number else KeyboardType.Text),
                     )
@@ -150,36 +153,36 @@ fun IssuanceScreen(model: WalletModel) {
                 val txOk = tx == null || (tx.length == null && txCode.isNotEmpty()) || txCode.length == tx.length
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { model.acceptOffer(s, txCode.ifEmpty { null }, selected.toList()) }, enabled = ok && txOk && selected.isNotEmpty()) {
-                        Text(if (s.preAuthorized) "加入" else "前往登入")
+                        Text(if (s.preAuthorized) stringResource(Res.string.action_add) else stringResource(Res.string.flow_go_login))
                     }
-                    OutlinedButton(onClick = { model.screen.value = Screen.Home }) { Text("取消") }
+                    OutlinedButton(onClick = { model.screen.value = Screen.Home }) { Text(stringResource(Res.string.action_cancel)) }
                 }
             }
         }
         is IssuanceUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val issued = s.results.count { it is IssuanceResult.Issued }
             when {
-                s.failures.isEmpty() && issued == s.results.size -> VerdictCard(Verdict.PASS, "已加入 $issued 張證件")
-                issued > 0 -> VerdictCard(Verdict.CAUTION, "部分證件已加入", listOf("已加入 $issued 張，其餘未完成，原因列在下方。"))
-                else -> VerdictCard(Verdict.CAUTION, "發行端尚未完成", listOf("完成後會出現在「證件」。"))
+                s.failures.isEmpty() && issued == s.results.size -> VerdictCard(Verdict.PASS, stringResource(Res.string.flow_added_count, issued))
+                issued > 0 -> VerdictCard(Verdict.CAUTION, stringResource(Res.string.flow_partly_added), listOf(stringResource(Res.string.flow_partly_added_text, issued)))
+                else -> VerdictCard(Verdict.CAUTION, stringResource(Res.string.flow_issuer_pending), listOf(stringResource(Res.string.flow_issuer_pending_text)))
             }
-            if (issued > 0) Text("點選證件可查看內容", style = MaterialTheme.typography.bodySmall)
+            if (issued > 0) Text(stringResource(Res.string.flow_tap_to_view), style = MaterialTheme.typography.bodySmall)
             s.results.forEach { r ->
                 when (r) {
                     is IssuanceResult.Issued -> TrustCard(
-                        "已加入",
+                        stringResource(Res.string.flow_added),
                         r.document.displayName ?: "",
                         r.trust,
-                        listOf("共 ${r.credentials.size} 份可用憑證"),
+                        listOf(stringResource(Res.string.flow_credential_count, r.credentials.size)),
                         onClick = { model.screen.value = Screen.DocumentDetail(r.document.identifier, from = Screen.Issuance) },
                     )
-                    is IssuanceResult.Deferred -> Text("${r.document.displayName}：發行端尚未完成，稍後會再嘗試")
+                    is IssuanceResult.Deferred -> Text(stringResource(Res.string.flow_pending_line, r.document.displayName.toString()))
                 }
             }
             s.failures.forEach { (name, reason) ->
-                Text("$name：未加入（$reason）", color = MaterialTheme.colorScheme.error)
+                Text(stringResource(Res.string.flow_not_added_line, name, reason), color = MaterialTheme.colorScheme.error)
             }
-            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text("完成") }
+            Button(onClick = { model.showTab(HomeTab.DOCUMENTS) }) { Text(stringResource(Res.string.action_done)) }
         }
     }
 }
@@ -188,49 +191,49 @@ fun IssuanceScreen(model: WalletModel) {
 fun PresentationScreen(model: WalletModel) {
     val state by model.presentation.collectAsState()
     when (val s = state) {
-        PresentationUi.Loading -> Busy("驗證請求中")
+        PresentationUi.Loading -> Busy(stringResource(Res.string.flow_checking_request))
         is PresentationUi.Working -> Busy(s.message)
         // Leaving through back() also ends a pending DC API request, returning the caller to its page.
         is PresentationUi.Failed -> Failure(s.message) { model.back() }
         is PresentationUi.Done -> Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             VerdictCard(
-                Verdict.PASS, "已出示",
+                Verdict.PASS, stringResource(Res.string.flow_presented),
                 listOf(
                     when (val o = s.outcome) {
-                        is PresentationOutcome.Posted -> if (o.redirectUri != null) "查驗方已接收，將開啟對方頁面。" else "查驗方已接收。"
-                        is PresentationOutcome.DcApi -> "已回傳給呼叫的網站或 App。"
-                        is PresentationOutcome.Redirect -> "已交給對方頁面。"
+                        is PresentationOutcome.Posted -> if (o.redirectUri != null) stringResource(Res.string.flow_presented_redirect) else stringResource(Res.string.flow_presented_received)
+                        is PresentationOutcome.DcApi -> stringResource(Res.string.flow_presented_returned)
+                        is PresentationOutcome.Redirect -> stringResource(Res.string.flow_presented_handed)
                     },
-                    "出示的對象與欄位名稱記在「紀錄」。",
+                    stringResource(Res.string.flow_presented_history),
                 ),
             )
-            Button(onClick = { model.screen.value = Screen.Home }) { Text("完成") }
+            Button(onClick = { model.screen.value = Screen.Home }) { Text(stringResource(Res.string.action_done)) }
         }
         is PresentationUi.Consent -> {
             val req = s.request
             val v = req.verifier
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 val extra = buildList {
-                    add("識別方式：${v.clientId.prefix.wire}")
-                    if (v.dnsNames.isNotEmpty()) add("網域：${v.dnsNames.joinToString()}")
-                    v.did?.let { add("DID：$it") }
-                    req.origin?.let { add("呼叫來源：$it") }
-                    req.target?.let { add("回應送往：$it") }
-                    if (req.specs.isNotEmpty()) add("採用規格：" + req.specs.joinToString("、"))
-                    s.offline?.let { add("臨櫃服務：${it.service.name}，出示後會顯示取貨條碼") }
+                    add(stringResource(Res.string.flow_verifier_id_scheme, v.clientId.prefix.wire.toString()))
+                    if (v.dnsNames.isNotEmpty()) add(stringResource(Res.string.flow_verifier_domain, v.dnsNames.joinToString()))
+                    v.did?.let { add(stringResource(Res.string.flow_verifier_did, it)) }
+                    req.origin?.let { add(stringResource(Res.string.flow_verifier_origin, it)) }
+                    req.target?.let { add(stringResource(Res.string.flow_verifier_response, it)) }
+                    if (req.specs.isNotEmpty()) add(stringResource(Res.string.flow_verifier_specs) + req.specs.joinToString(stringResource(Res.string.sep_list)))
+                    s.offline?.let { add(stringResource(Res.string.flow_counter_service, it.service.name)) }
                     addAll(req.warnings)
                 }
-                TrustCard("查驗方", v.displayName, v.trust, extra)
+                TrustCard(stringResource(Res.string.role_verifier), v.displayName, v.trust, extra)
                 s.terms?.let { ConsentTermsCard(model, it) }
                 s.attestations.forEach { VerifierAttestationCard(it) }
                 val settings by model.settingsFlow.collectAsState()
                 var showDetails by remember(settings.showDetails) { mutableStateOf(settings.showDetails) }
-                TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏詳細資訊" else "顯示詳細資訊") }
+                TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) stringResource(Res.string.flow_hide_info) else stringResource(Res.string.flow_show_info)) }
                 if (showDetails) DetailSections(model, CredentialDetails.request(req))
                 val statusOk = requestedDocuments(model, s.items, s.risk, v.trust.tier, s) { i, id -> model.changeCredential(s, i, id) }
-                if (s.items.isEmpty()) Text("對方只要求確認持有者身分（不含憑證資料）", style = MaterialTheme.typography.bodyMedium)
+                if (s.items.isEmpty()) Text(stringResource(Res.string.flow_holder_only), style = MaterialTheme.typography.bodyMedium)
                 if (req.transactionData.isNotEmpty()) {
-                    Text("此請求包含 ${req.transactionData.size} 筆交易資料，同意即代表授權以下交易：")
+                    Text(stringResource(Res.string.flow_transactions, req.transactionData.size))
                     req.transactionData.forEach { entry ->
                         WalletTransactionTypes.describe(entry).forEachIndexed { i, line ->
                             Text(line, style = if (i == 0) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium)
@@ -239,7 +242,7 @@ fun PresentationScreen(model: WalletModel) {
                 }
                 // Kept when the holder changes a credential, which replaces the consent state of the same request.
                 val values = remember(req) { androidx.compose.runtime.mutableStateMapOf<String, String>() }
-                if (s.fields.isNotEmpty()) Text("對方要求填寫：", style = MaterialTheme.typography.titleSmall)
+                if (s.fields.isNotEmpty()) Text(stringResource(Res.string.flow_fill_in), style = MaterialTheme.typography.titleSmall)
                 s.fields.forEach { f ->
                     val value = values[f.ename].orEmpty()
                     val bad = value.isNotEmpty() && f.regex != null && runCatching { !Regex(f.regex!!).matches(value) }.getOrDefault(false)
@@ -247,7 +250,7 @@ fun PresentationScreen(model: WalletModel) {
                         value = value,
                         onValueChange = { values[f.ename] = it },
                         label = { Text(f.cname) },
-                        supportingText = { Text(if (bad) "格式不符" else f.description ?: f.ename) },
+                        supportingText = { Text(if (bad) stringResource(Res.string.flow_bad_format) else f.description ?: f.ename) },
                         isError = bad,
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -259,14 +262,14 @@ fun PresentationScreen(model: WalletModel) {
                 }
                 val ok = riskAcknowledgement(v.trust)
                 val failed = s.attestations.filter { it.verdict == AttestationVerdict.INVALID }
-                val attestationsOk = failed.isEmpty() || riskOverride(s, "仍要分享（查驗方的登錄證明不成立）", "查驗方的登錄證明不成立",
-                    failed.flatMap { it.problems }.distinct().take(5) + "登錄證明說明查驗方是誰、可以要求哪些資料；不成立時，對方可能冒用身分或超出用途。")
+                val attestationsOk = failed.isEmpty() || riskOverride(s, stringResource(Res.string.flow_registration_continue), stringResource(Res.string.flow_registration_title),
+                    failed.flatMap { it.problems }.distinct().take(5) + stringResource(Res.string.flow_registration_text))
                 if (s.terms?.termsUri != null) {
-                    Text("點選「同意分享」即表示已閱讀知情同意書並同意提供上列資料。", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(Res.string.flow_terms_agree_note), style = MaterialTheme.typography.bodySmall)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk && statusOk && attestationsOk) { Text("同意分享") }
-                    OutlinedButton(onClick = { model.decline(s) }) { Text("拒絕") }
+                    Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk && statusOk && attestationsOk) { Text(stringResource(Res.string.flow_agree_share)) }
+                    OutlinedButton(onClick = { model.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
                 }
             }
         }
@@ -278,13 +281,13 @@ fun PresentationScreen(model: WalletModel) {
 private fun ConsentTermsCard(model: WalletModel, terms: ConsentTerms) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            terms.recipient?.let { LabelValue("提供資料的對象", it) }
-            terms.scenario?.let { LabelValue("使用情境", it) }
-            terms.purpose?.let { LabelValue("用途", it) }
+            terms.recipient?.let { LabelValue(stringResource(Res.string.flow_recipient), it) }
+            terms.scenario?.let { LabelValue(stringResource(Res.string.flow_occasion), it) }
+            terms.purpose?.let { LabelValue(stringResource(Res.string.flow_purpose), it) }
             terms.termsUri?.let { uri ->
-                val title = (terms.scenario?.let { "「$it」" } ?: "") + "知情同意書"
-                TextButton(onClick = { model.platform.openBrowser(uri) }) { Text("閱讀$title") }
-                Text("由查驗方提供，在瀏覽器開啟：$uri", style = MaterialTheme.typography.bodySmall)
+                val title = (terms.scenario?.let { stringResource(Res.string.quoted, it) } ?: "") + stringResource(Res.string.flow_terms)
+                TextButton(onClick = { model.platform.openBrowser(uri) }) { Text(stringResource(Res.string.flow_read_terms, title)) }
+                Text(stringResource(Res.string.flow_terms_source, uri), style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -308,9 +311,9 @@ internal fun requestedDocuments(
     val statuses by model.statuses.collectAsState()
     val documents by model.documents.collectAsState()
     val decisions = items.map { item -> item.documentId?.let { StatusPolicy.decide(statuses[it]?.status, risk) } }
-    Text("這次請求的風險：" + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(Res.string.flow_request_risk) + StatusTexts.risk(risk), style = MaterialTheme.typography.titleSmall)
     Text(requestRiskReason(risk, items, verifierTier), style = MaterialTheme.typography.bodySmall)
-    Text("對方要求的資料：", style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(Res.string.flow_requested_data), style = MaterialTheme.typography.titleSmall)
     items.forEachIndexed { i, item ->
         Card(Modifier.fillMaxWidth()) {
             Box(Modifier.padding(12.dp)) {
@@ -318,14 +321,14 @@ internal fun requestedDocuments(
                     Text(item.documentName, style = MaterialTheme.typography.titleMedium)
                     val current = documents.firstOrNull { it.identifier == item.documentId }
                     assuranceText(current?.issuanceRecord)?.let {
-                        Text("身分保證等級（IAL）：$it", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(Res.string.flow_ial, it), style = MaterialTheme.typography.bodySmall)
                     }
                     decisions[i]?.let { RequestStatusLine(it) }
                     if (onChange != null && item.alternatives.isNotEmpty() && current != null) {
                         CredentialChooser(item, current, documents.filter { it.identifier in item.alternatives }) { onChange(i, it) }
                     }
                     if (item.whole) {
-                        Text("對方要求整張證件。這張證件無法只出示部分欄位，下列欄位都會交給對方：", style = MaterialTheme.typography.bodySmall)
+                        Text(stringResource(Res.string.flow_whole_credential), style = MaterialTheme.typography.bodySmall)
                     }
                     item.claims.forEach { Text("・$it", style = MaterialTheme.typography.bodyMedium) }
                 }
@@ -336,23 +339,23 @@ internal fun requestedDocuments(
     val checking by model.status.checking.collectAsState()
     var overridden = false
     if (rejected.isNotEmpty()) {
-        VerdictCard(Verdict.FAIL, "證件狀態不符合這次請求，不建議出示", rejected.map { d -> statusWarning(d.finding, risk) }.distinct())
+        VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_status_mismatch), rejected.map { d -> statusWarning(d.finding, risk) }.distinct())
         // Unconfirmed states may clear with a fresh query; a revocation never does.
         if (rejected.any { it.finding != StatusFinding.REVOKED }) {
             val ids = items.mapIndexedNotNull { i, item -> item.documentId.takeIf { decisions[i]?.verdict == StatusVerdict.REJECT } }
             val busy = ids.any { it in checking }
             OutlinedButton(onClick = {
                 model.documents.value.filter { it.identifier in ids }.forEach { model.checkStatus(it) }
-            }, enabled = !busy) { Text(if (busy) "查詢中" else "重新查詢狀態") }
+            }, enabled = !busy) { Text(if (busy) stringResource(Res.string.state_checking) else stringResource(Res.string.flow_recheck_status)) }
         }
         val revoked = rejected.any { it.finding == StatusFinding.REVOKED }
-        overridden = riskOverride(key, "仍要出示（自行承擔風險）", if (revoked) "出示已撤銷的證件？" else "出示狀態不符的證件？",
+        overridden = riskOverride(key, stringResource(Res.string.flow_present_anyway), if (revoked) stringResource(Res.string.flow_present_revoked) else stringResource(Res.string.flow_present_mismatch),
             rejected.map { d -> statusWarning(d.finding, risk) }.distinct() + listOfNotNull(
-                "對方依規格應拒絕這張證件；即使接受，之後也可能認定出示無效。",
-                if (revoked) "證件已被發行端撤銷，出示可能違反發行端或查驗方的規定，後果由你自行承擔。" else null,
+                stringResource(Res.string.flow_present_mismatch_text),
+                if (revoked) stringResource(Res.string.flow_present_revoked_text) else null,
             ))
     } else if (decisions.any { it?.verdict == StatusVerdict.CAUTION }) {
-        Text("部分證件的狀態無法完全確認，對方可能另行查證。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.flow_status_partly), style = MaterialTheme.typography.bodySmall)
     }
     return rejected.isEmpty() || overridden
 }
@@ -364,14 +367,14 @@ internal fun requestedDocuments(
 @Composable
 private fun CredentialChooser(item: ConsentItem, current: org.multipaz.document.Document, others: List<org.multipaz.document.Document>, onPick: (String) -> Unit) {
     var open by remember(item.documentId) { mutableStateOf(false) }
-    TextButton(onClick = { open = !open }) { Text(if (open) "收合" else "更改憑證（另有 ${others.size} 張符合）") }
+    TextButton(onClick = { open = !open }) { Text(if (open) stringResource(Res.string.action_collapse) else stringResource(Res.string.flow_change_credential, others.size)) }
     if (!open) return
-    Text("這一項只會出示一張證件，點選其他證件即可更換。", style = MaterialTheme.typography.bodySmall)
+    Text(stringResource(Res.string.flow_change_credential_text), style = MaterialTheme.typography.bodySmall)
     val options = (listOf(current) + others).sortedByDescending { TwdiwAssurance.rank(it.issuanceRecord?.displayDescription) }
     options.forEach { doc ->
         val record = doc.issuanceRecord
         val detail = listOfNotNull(
-            assuranceText(record)?.let { "IAL：$it" },
+            assuranceText(record)?.let { stringResource(Res.string.flow_ial_short, it) },
             record?.anchorName ?: record?.credentialIssuer,
         ).joinToString("・")
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -379,7 +382,7 @@ private fun CredentialChooser(item: ConsentItem, current: org.multipaz.document.
                 if (doc.identifier != current.identifier) { open = false; onPick(doc.identifier) }
             })
             Column(Modifier.weight(1f)) {
-                Text(doc.displayName ?: "證件", style = MaterialTheme.typography.bodyMedium)
+                Text(doc.displayName ?: stringResource(Res.string.credential_fallback), style = MaterialTheme.typography.bodyMedium)
                 if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -387,24 +390,26 @@ private fun CredentialChooser(item: ConsentItem, current: org.multipaz.document.
 }
 
 /** Why a request has its risk: the most sensitive field asked for, or a verifier that is not on an official list. */
+@Composable
 private fun requestRiskReason(risk: RiskLevel, items: List<ConsentItem>, verifier: TrustTier): String {
     val fields = items.maxOfOrNull { it.sensitivity } ?: RiskLevel.LOW
     val named = items.filter { it.sensitivity == fields }.flatMap { it.notable }.distinct()
-    val which = if (named.isEmpty()) "" else "「" + named.take(4).joinToString("、") + "」" + if (named.size > 4) "等" else ""
-    val whole = if (items.any { it.whole && it.sensitivity == fields }) "（對方要求整張證件，這些欄位會一併交出）" else ""
+    val which = if (named.isEmpty()) "" else stringResource(Res.string.quote_open) + named.take(4).joinToString(stringResource(Res.string.sep_list)) + stringResource(Res.string.quote_close) + if (named.size > 4) stringResource(Res.string.list_more) else ""
+    val whole = if (items.any { it.whole && it.sensitivity == fields }) stringResource(Res.string.flow_whole_note) else ""
     return when {
-        risk == RiskLevel.LOW -> "查驗方連到信任根，只要求一般欄位。"
+        risk == RiskLevel.LOW -> stringResource(Res.string.risk_reason_low)
         fields == risk && fields == RiskLevel.HIGH ->
-            (if (which.isEmpty()) "要求身分證號、照片、地址等高敏感欄位" else "要交出的資料含有高敏感欄位$which") + whole + "，證件狀態必須在線上確認有效。"
-        fields == risk -> (if (which.isEmpty()) "要求姓名、出生日期等個人資料" else "要交出的資料含有個人資料$which") + whole + "。"
-        verifier == TrustTier.T4 -> "查驗方身分無法驗證。"
-        verifier == TrustTier.T3 -> "查驗方沒有連到任何信任根。"
-        else -> "查驗方的登錄證明不成立，或要求了登錄範圍以外的資料。"
+            (if (which.isEmpty()) stringResource(Res.string.risk_reason_high) else stringResource(Res.string.risk_reason_high_named, which)) + whole + stringResource(Res.string.risk_reason_high_tail)
+        fields == risk -> (if (which.isEmpty()) stringResource(Res.string.risk_reason_medium) else stringResource(Res.string.risk_reason_medium_named, which)) + whole + stringResource(Res.string.sentence_end)
+        verifier == TrustTier.T4 -> stringResource(Res.string.risk_reason_t4)
+        verifier == TrustTier.T3 -> stringResource(Res.string.risk_reason_t3)
+        else -> stringResource(Res.string.risk_reason_registration)
     }
 }
 
+@Composable
 private fun statusWarning(f: StatusFinding, risk: RiskLevel): String = when (f) {
-    StatusFinding.REVOKED -> "證件已被發行端撤銷，對方不應接受。"
-    StatusFinding.SUSPENDED -> "證件目前暫停使用，恢復前對方不應接受。"
-    else -> "證件${StatusTexts.finding(f)}；${StatusTexts.risk(risk)}的請求需要線上確認有效的狀態，請連線後重新查詢。"
+    StatusFinding.REVOKED -> stringResource(Res.string.status_warning_revoked)
+    StatusFinding.SUSPENDED -> stringResource(Res.string.status_warning_suspended)
+    else -> stringResource(Res.string.status_warning_online, StatusTexts.finding(f), StatusTexts.risk(risk))
 }

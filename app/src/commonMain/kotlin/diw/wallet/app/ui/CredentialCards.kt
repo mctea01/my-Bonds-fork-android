@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -59,11 +62,11 @@ fun parseColor(hex: String?): Color? {
  * Groups of the documents list, as Bonds groups its cards. A category only orders and filters the one list; no
  * issuer or profile gets a page of its own.
  */
-enum class DocumentCategory(val title: String, val icon: ImageVector) {
-    IDENTITY("身分證件", WalletIcons.Person),
-    GOVERNMENT("政府皮夾卡片", WalletIcons.Government),
-    ORGANIZATION("組織與會員卡", WalletIcons.Organization),
-    OTHER("其他證件", WalletIcons.Card),
+enum class DocumentCategory(val title: org.jetbrains.compose.resources.StringResource, val icon: ImageVector) {
+    IDENTITY(Res.string.category_identity, WalletIcons.Person),
+    GOVERNMENT(Res.string.category_government, WalletIcons.Government),
+    ORGANIZATION(Res.string.category_organization, WalletIcons.Organization),
+    OTHER(Res.string.category_other, WalletIcons.Card),
 }
 
 fun categoryOf(record: IssuanceRecord?): DocumentCategory = when {
@@ -79,10 +82,11 @@ fun categoryOf(record: IssuanceRecord?): DocumentCategory = when {
  * Identity assurance level of a TWDIW card (from its display description), as the official wallet shows it; null
  * for other credentials and cards whose issuer wrote none.
  */
+@Composable
 fun assuranceText(record: IssuanceRecord?): String? {
     if (record?.profile != TaiwanModel.TWDIW) return null
     val level = TwdiwAssurance.level(record.displayDescription) ?: return null
-    return if (level.isEmpty()) "發行端未選擇" else "IAL $level"
+    return if (level.isEmpty()) stringResource(Res.string.ial_not_chosen) else "IAL $level"
 }
 
 /** Category icon of a credential when the issuer gives no logo. */
@@ -129,12 +133,12 @@ private fun FaceCard(model: WalletModel, doc: Document, record: IssuanceRecord, 
         Column(Modifier.align(Alignment.TopStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(doc.typeDisplayName ?: record.credentialIssuer, style = MaterialTheme.typography.bodySmall, color = Color.White,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = Color.White,
+            Text(doc.displayName ?: stringResource(Res.string.credential_label), style = MaterialTheme.typography.titleMedium, color = Color.White,
                 maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             if (record.pendingTransactionId != null) {
-                Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = Color.White)
+                Text(stringResource(Res.string.credential_deferred), style = MaterialTheme.typography.bodySmall, color = Color.White)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 storedTrust(doc)?.let { TierBadge(it) }
@@ -156,7 +160,7 @@ private fun ColourCard(model: WalletModel, doc: Document, record: IssuanceRecord
                 CardLogo(model, record?.logoUri, categoryIcon(record), if (background != null) text else MaterialTheme.colorScheme.primary)
                 // Room for the test watermark in the corner, so it never covers the name or the status chips.
                 Column(Modifier.weight(1f).padding(end = if (record?.isTestEnvironment == true) 88.dp else 0.dp)) {
-                    Text(doc.displayName ?: "憑證", style = MaterialTheme.typography.titleMedium, color = text)
+                    Text(doc.displayName ?: stringResource(Res.string.credential_label), style = MaterialTheme.typography.titleMedium, color = text)
                     Text(doc.typeDisplayName ?: record?.credentialIssuer ?: "", style = MaterialTheme.typography.bodySmall, color = text)
                 }
             }
@@ -165,10 +169,10 @@ private fun ColourCard(model: WalletModel, doc: Document, record: IssuanceRecord
                 if (record?.pendingTransactionId == null) StatusChip(model, doc)
             }
             record?.let {
-                Text((listOf(CredentialDetails.formatLabel(it)) + CredentialDetails.specs(it)).joinToString("、"),
+                Text((listOf(CredentialDetails.formatLabel(it)) + CredentialDetails.specs(it)).joinToString(stringResource(Res.string.sep_list)),
                     style = MaterialTheme.typography.bodySmall, color = text)
             }
-            if (record?.pendingTransactionId != null) Text("等待發行端完成（延遲發證）", style = MaterialTheme.typography.bodySmall, color = text)
+            if (record?.pendingTransactionId != null) Text(stringResource(Res.string.credential_deferred), style = MaterialTheme.typography.bodySmall, color = text)
         }
         if (record?.isTestEnvironment == true) TestWatermark(Modifier.align(Alignment.TopEnd).padding(top = 16.dp, end = 16.dp), fontSize = 20)
     }
@@ -181,7 +185,7 @@ private fun contrastOn(c: Color): Color = if (0.299 * c.red + 0.587 * c.green + 
 fun QrImage(text: String, modifier: Modifier = Modifier, ecc: QrEncoder.Ecc = QrEncoder.Ecc.M) {
     val matrix = androidx.compose.runtime.remember(text, ecc) { runCatching { QrEncoder.encode(text, ecc) }.getOrNull() }
     if (matrix == null) {
-        Text("內容過長，無法產生 QR Code", modifier = modifier)
+        Text(stringResource(Res.string.qr_too_long), modifier = modifier)
         return
     }
     Canvas(modifier.aspectRatio(1f).background(Color.White)) {

@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -132,8 +135,8 @@ fun CollapsibleSection(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title + (count?.let { "（$it）" } ?: ""), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-        Text(if (open) "收合" else "展開", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(title + (count?.let { stringResource(Res.string.parenthesized, it) } ?: ""), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Text(if (open) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
         Icon(
             WalletIcons.Chevron, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(20.dp).rotate(if (open) 90f else 0f),
@@ -182,7 +185,7 @@ fun ActionRow(
 fun InlineError(text: String, onRetry: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-        OutlinedButton(onClick = onRetry) { Text("重試") }
+        OutlinedButton(onClick = onRetry) { Text(stringResource(Res.string.action_retry)) }
     }
 }
 
@@ -191,7 +194,7 @@ fun InlineError(text: String, onRetry: () -> Unit) {
 fun TechDetails(lines: List<String>, key: String) {
     if (lines.isEmpty()) return
     Column(Modifier.fillMaxWidth()) {
-        CollapsibleSection("技術細節", key = key) {
+        CollapsibleSection(stringResource(Res.string.technical_details), key = key) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }

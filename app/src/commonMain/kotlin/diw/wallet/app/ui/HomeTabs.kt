@@ -132,7 +132,7 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
         if (categories.size > 1) item(key = "filters") {
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text(stringResource(Res.string.filter_all)) })
-                categories.forEach { c -> FilterChip(selected = filter == c, onClick = { filter = if (filter == c) null else c }, label = { Text(c.title) }) }
+                categories.forEach { c -> FilterChip(selected = filter == c, onClick = { filter = if (filter == c) null else c }, label = { Text(stringResource(c.title)) }) }
             }
         }
         // The Bonds national ID card lives with the MyData PDF it was made from; it is listed here with the cards.
@@ -143,7 +143,7 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
             }
         }
         groups.forEach { (category, list) ->
-            if (groups.size > 1 || hasNationalId) item(key = "h-" + category.name) { SectionTitle(category.title) }
+            if (groups.size > 1 || hasNationalId) item(key = "h-" + category.name) { SectionTitle(stringResource(category.title)) }
             items(list, key = { it.identifier }) { doc ->
                 CredentialCard(model, doc) { model.screen.value = Screen.DocumentDetail(doc.identifier) }
             }
