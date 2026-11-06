@@ -58,6 +58,9 @@ fn unpack(data: &[u8]) -> Result<Vec<u8>> {
     }
     Ok(out)
 }
+/// Room for the proof of any circuit this backend proves (ZK UltraHonk proofs are a few hundred fields).
+const ANY_PROOF_CAPACITY: usize = 1 << 20;
+
 pub struct Session {
     _guard: MutexGuard<'static, Crs>,
 }
@@ -132,6 +135,39 @@ impl Session {
         }
         if written != crate::PROOF_BYTES {
             return Err(Error("proof_size"));
+        }
+        proof.truncate(written);
+        if pi != executed.public_inputs {
+            return Err(Error("proof_public_mismatch"));
+        }
+        Ok(proof)
+    }
+    /// Proves any circuit executed by [crate::acir::execute] (zkPassport's circuits) under [vk]: the proof is as long
+    /// as the circuit size makes it, and its public inputs must equal the executed ones.
+    pub fn prove_any(&self, vk: &[u8], executed: &Executed) -> Result<Vec<u8>> {
+        let bytecode = unpack(&executed.bytecode)?;
+        let witness = unpack(&executed.witness)?;
+        let mut proof = vec![0; ANY_PROOF_CAPACITY];
+        let mut written = 0usize;
+        let mut pi = vec![0; executed.public_inputs.len()];
+        // SAFETY: slices remain live and all output capacity is provided.
+        let status = unsafe {
+            zkpdf_bb_prove(
+                bytecode.as_ptr(),
+                bytecode.len(),
+                vk.as_ptr(),
+                vk.len(),
+                witness.as_ptr(),
+                witness.len(),
+                proof.as_mut_ptr(),
+                proof.len(),
+                &mut written,
+                pi.as_mut_ptr(),
+                pi.len(),
+            )
+        };
+        if status != 0 || written == 0 || written > proof.len() {
+            return Err(Error("proof_failed"));
         }
         proof.truncate(written);
         if pi != executed.public_inputs {

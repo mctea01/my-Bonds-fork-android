@@ -41,6 +41,19 @@ pub fn write_vk(crs_directory: &std::path::Path, artifact: &[u8]) -> Result<Vec<
 pub fn verify_ultrahonk(crs_directory: Option<&std::path::Path>, vk: &[u8], proof: &[u8], public_inputs: &[u8]) -> Result<()> {
     backend::Session::open_verifier(crs_directory)?.verify_any(vk, proof, public_inputs)
 }
+/// Executes a Noir artifact (`abi` and `bytecode`, as zkPassport publishes its circuits) with [inputs] and proves
+/// it under [vk] with the authenticated CRS in `crs_directory`: the zero-knowledge UltraHonk (Poseidon2) proof and
+/// its public inputs, 32 bytes per field.
+#[cfg(feature = "bb")]
+pub fn prove_ultrahonk(crs_directory: &std::path::Path, artifact: &[u8], vk: &[u8], inputs: &serde_json::Value) -> Result<(Vec<u8>, Vec<u8>)> {
+    let executed = acir::execute(artifact, inputs)?;
+    let proof = backend::Session::open(crs_directory)?.prove_any(vk, &executed)?;
+    Ok((proof, executed.public_inputs.clone()))
+}
+/// The public inputs of [artifact] executed with [inputs], 32 bytes per field, without proving.
+pub fn execute_public_inputs(artifact: &[u8], inputs: &serde_json::Value) -> Result<Vec<u8>> {
+    Ok(acir::execute(artifact, inputs)?.public_inputs)
+}
 mod opening;
 pub use opening::verify_opening;
 
