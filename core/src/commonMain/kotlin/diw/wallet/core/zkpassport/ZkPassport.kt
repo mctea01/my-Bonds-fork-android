@@ -54,6 +54,33 @@ data class ZkPassportRequest(
     val validitySeconds: Long = ZkPassport.DEFAULT_VALIDITY,
 )
 
+/**
+ * A zkPassport request this wallet answers as the holder (Z3, docs/design/zkpassport.md 5.3), read from the
+ * `https://zkpassport.id/r` link. [domain] is what the link claims; only the bridge's report of the creator's origin
+ * says where it came from, and the service name, logo and purpose are the requester's own words.
+ */
+data class ZkPassportIncoming(
+    val domain: String,
+    /** The requester's compressed secp256k1 key in hex: the bridge id and the ECDH key. */
+    val verifierPublicKey: String,
+    val query: JsonObject,
+    val service: JsonObject,
+    /** `fast` (proofs made here) or a `compressed` mode that needs zkPassport's cloud prover. */
+    val mode: String,
+    val sdkVersion: String?,
+    val devMode: Boolean,
+    val link: String,
+) {
+    private fun text(key: String) = (service[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
+    val name: String? get() = text("name")
+    val purpose: String? get() = text("purpose")
+    val logo: String? get() = text("logo")
+    val scope: String? get() = text("scope")
+    /** The https origin the bridge must report for the creator: the link's domain. */
+    val expectedOrigin: String get() = "https://$domain"
+    val fastMode: Boolean get() = mode == "fast"
+}
+
 /** Where the registries are read; null RPC addresses use the built-in public nodes. */
 data class ZkPassportConfig(
     val mainnetRpc: String? = null,
@@ -207,6 +234,29 @@ object ZkPassport {
         return "https://zkpassport.id/r?d=${normalizeDomain(request.domain)}&t=$bridgeId&c=${encode(config)}&s=${encode(service)}" +
             "&p=$bridgeId&m=fast&v=$SDK_VERSION&dt=${nowSeconds - request.validitySeconds}&dev=${if (request.devMode) 1 else 0}"
     }
+
+    /**
+     * Reads a request link (`https://zkpassport.id/r?...`, or `/c` of the App Clip); null for anything else or when
+     * the domain, the requester's key or the query is missing or malformed.
+     */
+    fun parseLink(link: String): ZkPassportIncoming? {
+        val url = runCatching { io.ktor.http.Url(link.trim()) }.getOrNull() ?: return null
+        if (url.protocol.name != "https" || url.host != "zkpassport.id" || url.encodedPath !in setOf("/r", "/c")) return null
+        val p = url.parameters
+        val domain = p["d"]?.let(::normalizeDomain)?.takeIf { DOMAIN.matches(it) } ?: return null
+        val key = p["p"]?.lowercase()?.takeIf { KEY.matches(it) } ?: return null
+        fun json(name: String): JsonObject? = p[name]?.let { v ->
+            runCatching { Json.parseToJsonElement(Base64.decode(v.replace(' ', '+')).decodeToString()) as? JsonObject }.getOrNull()
+        }
+        val query = json("c") ?: return null
+        return ZkPassportIncoming(
+            domain = domain, verifierPublicKey = key, query = query, service = json("s") ?: JsonObject(emptyMap()),
+            mode = p["m"]?.takeIf { it.isNotBlank() } ?: "fast", sdkVersion = p["v"], devMode = p["dev"] == "1", link = link.trim(),
+        )
+    }
+
+    private val DOMAIN = Regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$")
+    private val KEY = Regex("^0[23][0-9a-f]{64}$")
 
     /** encodeURIComponent for the base64 alphabet. */
     private fun encode(s: String): String = s.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
