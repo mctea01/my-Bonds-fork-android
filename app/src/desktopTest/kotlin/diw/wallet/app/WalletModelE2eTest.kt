@@ -895,6 +895,54 @@ class WalletModelE2eTest {
         assertEquals(listOf("是"), d.claims.map { it.value })
     }
 
+    /**
+     * A passport read from its chip becomes a Photo ID mdoc that another wallet reads over NFC: self-issued (T3),
+     * and without the security object its data cannot be checked against the issuing state. A stored text naming
+     * the passport number is listed as a related document.
+     */
+    @Test
+    fun photoIdFromPassportIsReadOverNfc() = runBlocking<Unit> {
+        val (holder, _) = newWallet()
+        val zone = ("P<TWNLIN<<CHE<CHUAN".padEnd(44, '<') + "3123456780TWN9001155M3001017" + "A123456789<<<<" + "24").encodeToByteArray()
+        fun tlv(tag: ByteArray, value: ByteArray) = tag + (if (value.size < 128) byteArrayOf(value.size.toByte()) else byteArrayOf(0x81.toByte(), value.size.toByte())) + value
+        val dg1 = tlv(byteArrayOf(0x61), tlv(byteArrayOf(0x5F, 0x1F), zone))
+        val dump = diw.wallet.core.document.mrtd.MrtdDump(files = mapOf("DG1" to kotlin.io.encoding.Base64.encode(dg1)), access = "BAC", readAt = kotlin.time.Clock.System.now().epochSeconds)
+        holder.files.import(PickedFile("passport.emrtd.json", dump.encode()), FileOrigin.IMPORTED, null).join()
+        holder.files.import(PickedFile("note.txt", "護照號碼 312345678，LIN CHE CHUAN".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
+        val passport = holder.files.files.value.first { it.report?.format == diw.wallet.core.document.DocumentFormat.EMRTD }
+        val links = holder.files.travelDocumentLinks(passport)
+        assertEquals(listOf("note.txt"), links.map { it.file.name })
+        assertTrue(links.single().sameName)
+
+        holder.files.issuePhotoId(passport).join()
+        assertNull(holder.files.error.value, "photo id: ${holder.files.error.value}")
+        val photoId = holder.documents.value.single { it.identifier == holder.files.file(passport.id)?.photoIdDocumentId }
+        assertEquals(diw.wallet.core.document.derived.TravelDocumentPhotoId.DOCTYPE, photoId.issuanceRecord?.docType)
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)))
+        val (verifier, _) = newWallet()
+        verifier.reader.open()
+        verifier.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)), ReaderRequest.PHOTO_ID, diw.wallet.core.status.RiskLevel.MEDIUM)
+        val consent = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        holder.proximity.approve(assertIs<ProximityUi.Consent>(consent, "consent: $consent; reader: ${verifier.reader.state.value}"))
+        val result = assertIs<ReaderUi.Result>(withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } })
+        assertNull(result.integrityError)
+        val d = result.documents.single()
+        assertEquals(diw.wallet.core.trust.TrustTier.T3, d.issuerTrust.tier)
+        assertTrue(diw.wallet.core.trust.TrustLabel.SELF_ISSUED in d.issuerTrust.labels)
+        assertTrue(d.claims.any { it.value == "LIN" }, "claims: ${d.claims}")
+        assertEquals(listOf(diw.wallet.core.document.Check.NOT_CHECKED), d.evidence.map { it.check }, "evidence: ${d.evidence}")
+        withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+    }
+
     /** Without PC/SC (no pcscd, no reader) the list is empty with a reason, never an error. */
     @Test
     fun pcscListWithoutReaders() {
