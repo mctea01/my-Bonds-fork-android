@@ -1,5 +1,8 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.res.*
+import diw.wallet.app.res.Res
+import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -68,11 +71,11 @@ fun NationalIdCardView(name: String?, issued: String?, onClick: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(WalletIcons.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(name ?: "國民身分證", style = MaterialTheme.typography.titleMedium)
-                    Text("國民身分證（Bonds 自發卡）", style = MaterialTheme.typography.bodySmall)
+                    Text(name ?: stringResource(Res.string.national_id), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(Res.string.national_id_bonds), style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text("自然人憑證簽署、vc+moica" + (issued?.let { "、$it 製作" } ?: ""), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.national_id_signed) + (issued?.let { stringResource(Res.string.national_id_made, it) } ?: ""), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -113,52 +116,53 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
         model.files.readNationalIdIfKnown(f)
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("把 MyData 下載的「國民身分證資料」PDF 做成 Bonds 相容的身分證卡：欄位由你的自然人憑證簽署，查驗方可以只看你選的欄位（例如只看是否年滿 18 歲）。",
+        Text(stringResource(Res.string.national_id_intro),
             style = MaterialTheme.typography.bodyMedium)
-        LabelValue("檔案", f.name)
+        LabelValue(stringResource(Res.string.label_file), f.name)
         val d = draft?.takeIf { it.fileId == f.id }
         if (d == null) {
-            SectionTitle("開啟檔案")
+            SectionTitle(stringResource(Res.string.action_open_file))
             OutlinedTextField(
                 value = idNumber,
                 onValueChange = { v -> idNumber = v.filter { it.isLetterOrDigit() }.take(10) },
-                label = { Text("身分證統一編號") },
+                label = { Text(stringResource(Res.string.national_id_number)) },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, keyboardType = KeyboardType.Ascii),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Text("MyData 的身分證資料 PDF 以你的身分證統一編號加密。編號只用來開啟這份檔案，不會保存或記錄。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.national_id_number_text), style = MaterialTheme.typography.bodySmall)
             BusyLine(busy, error)
-            Button(onClick = { model.files.readNationalId(f, idNumber) }, enabled = busy == null && idNumber.isNotBlank()) { Text("開啟並讀取") }
+            Button(onClick = { model.files.readNationalId(f, idNumber) }, enabled = busy == null && idNumber.isNotBlank()) { Text(stringResource(Res.string.national_id_open_read)) }
             return@Column
         }
-        SectionTitle("確認欄位")
+        SectionTitle(stringResource(Res.string.national_id_confirm))
         val claims = BondsNationalId.claims(d.fields, kotlin.time.Clock.System.now()).toMap()
         BondsNationalId.claimOrder.forEach { name -> claims[name]?.let { LabelValue(BondsNationalId.claimLabels[name] ?: name, if (name == BondsNationalId.CLAIM_OVER_18) yesNo(it) else it) } }
-        if (d.over18 == null) Text("出生日期不是可辨識的民國日期格式，卡片不含「年滿 18 歲」欄位。", style = MaterialTheme.typography.bodySmall)
+        if (d.over18 == null) Text(stringResource(Res.string.national_id_bad_birth), style = MaterialTheme.typography.bodySmall)
         VerdictCard(
             Verdict.CAUTION,
-            "由你本人聲明，不是戶政機關簽發",
+            stringResource(Res.string.national_id_self_stated),
             listOf(
-                "MyData 下載的檔案本身沒有政府簽章；身分證卡由你的自然人憑證簽署，表示你本人聲明這些內容。",
-                "自然人憑證上的姓名必須與上面的姓名相同，查驗方會比對。",
+                stringResource(Res.string.national_id_self_stated_text),
+                stringResource(Res.string.national_id_name_match),
             ),
         )
-        SectionTitle("以自然人憑證簽署")
+        SectionTitle(stringResource(Res.string.national_id_sign_moica))
         CardPicker(model) { card = it }
-        ActionRow(WalletIcons.Phone, "改用行動自然人憑證", "需要內政部核發的服務提供者（SP）帳號才能發出簽章請求，目前只能使用實體卡", enabled = false) {}
+        ActionRow(WalletIcons.Phone, stringResource(Res.string.national_id_mobile_moica), stringResource(Res.string.national_id_mobile_moica_text), enabled = false) {}
         BusyLine(busy, error)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { card?.let { model.files.issueNationalId(d, it) } }, enabled = busy == null && card != null) { Text("簽署並製作") }
-            OutlinedButton(onClick = { model.files.nationalIdDraft.value = null }, enabled = busy == null) { Text("重新輸入") }
+            Button(onClick = { card?.let { model.files.issueNationalId(d, it) } }, enabled = busy == null && card != null) { Text(stringResource(Res.string.national_id_sign_make)) }
+            OutlinedButton(onClick = { model.files.nationalIdDraft.value = null }, enabled = busy == null) { Text(stringResource(Res.string.national_id_reenter)) }
         }
     }
 }
 
+@Composable
 private fun yesNo(v: String): String = when (v) {
-    "true" -> "是"
-    "false" -> "否"
+    "true" -> stringResource(Res.string.answer_yes)
+    "false" -> stringResource(Res.string.answer_no)
     else -> v
 }
 
@@ -172,7 +176,7 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
     val f: StoredFile? = files.firstOrNull { it.id == screen.fileId }
     val card = remember(f?.nationalId) { f?.nationalId?.let { runCatching { MoicaSignedCredential.parse(it) }.getOrNull() } }
     if (f == null || card == null) {
-        EmptyState(WalletIcons.Person, "找不到這張身分證卡", "卡片或它的來源檔案可能已刪除。", "回到證件") { model.showTab(HomeTab.DOCUMENTS) }
+        EmptyState(WalletIcons.Person, stringResource(Res.string.national_id_missing), stringResource(Res.string.national_id_missing_text), stringResource(Res.string.national_id_back)) { model.showTab(HomeTab.DOCUMENTS) }
         return
     }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -180,20 +184,20 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         NationalIdCardView(name, issuedAt(card)) {}
         BusyLine(busy, error)
-        SectionTitle("欄位")
+        SectionTitle(stringResource(Res.string.label_fields))
         TaiwanModel.nationalIdClaims(card).forEach { (k, v) ->
             LabelValue(BondsNationalId.claimLabels[k] ?: k, if (k == BondsNationalId.CLAIM_OVER_18) yesNo(v) else v)
         }
-        SectionTitle("簽署")
-        name?.let { LabelValue("自然人憑證持有人", it) }
-        issuedAt(card)?.let { LabelValue("製作時間", it) }
-        LabelValue("格式", "Bonds vc+moica（W3C VC 2.0，欄位以 SD-JWT 雜湊承諾）")
-        LabelValue("來源檔案", f.name, onClick = { model.screen.value = Screen.FileDetail(f.id) })
-        Text("出示：查驗方產生「自然人憑證自發卡」的 Bonds 查驗挑戰後，在「使用」掃描它，選這張卡與要揭露的欄位；姓名一定會揭露，並由查驗方與自然人憑證比對。",
+        SectionTitle(stringResource(Res.string.label_signature))
+        name?.let { LabelValue(stringResource(Res.string.national_id_holder), it) }
+        issuedAt(card)?.let { LabelValue(stringResource(Res.string.national_id_made_at), it) }
+        LabelValue(stringResource(Res.string.credential_format), stringResource(Res.string.national_id_format))
+        LabelValue(stringResource(Res.string.national_id_source), f.name, onClick = { model.screen.value = Screen.FileDetail(f.id) })
+        Text(stringResource(Res.string.national_id_present_text),
             style = MaterialTheme.typography.bodySmall)
-        Text("這張卡證明的是「你以自然人憑證聲明了這些內容」，不是戶政機關的背書。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(Res.string.national_id_meaning), style = MaterialTheme.typography.bodySmall)
         var showDetails by remember { mutableStateOf(model.settings.showDetails) }
-        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) "隱藏技術細節" else "顯示技術細節") }
+        TextButton(onClick = { showDetails = !showDetails }) { Text(if (showDetails) stringResource(Res.string.action_hide_details) else stringResource(Res.string.action_show_details)) }
         if (showDetails) {
             // Checked again as a verifier would: signature, MOICA chain, commitments and the name.
             val check by produceState<Result<MoicaVerification>?>(null, card) {
@@ -201,26 +205,26 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
             }
             DetailSections(model, CredentialDetails.moica(card, check, BondsNationalId.claimLabels))
         }
-        SectionTitle("動作")
-        ActionRow(WalletIcons.Scan, "出示", "到「使用」掃描查驗方的 QR Code") { model.showTab(HomeTab.USE) }
-        ActionRow(WalletIcons.Send, "匯出 vc+moica", "Bonds 自然人憑證自發卡片的 JSON，含全部欄位") { model.files.exportNationalId(f) }
+        SectionTitle(stringResource(Res.string.label_actions))
+        ActionRow(WalletIcons.Scan, stringResource(Res.string.action_present), stringResource(Res.string.national_id_present_hint)) { model.showTab(HomeTab.USE) }
+        ActionRow(WalletIcons.Send, stringResource(Res.string.national_id_export), stringResource(Res.string.national_id_export_text)) { model.files.exportNationalId(f) }
         if (model.platform.canShareFiles) {
-            ActionRow(WalletIcons.Share, "分享 vc+moica", "同一份 JSON 直接交給其他 App，不另存檔") { model.files.exportNationalId(f, share = true) }
+            ActionRow(WalletIcons.Share, stringResource(Res.string.national_id_share), stringResource(Res.string.national_id_share_text)) { model.files.exportNationalId(f, share = true) }
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { confirmDelete = true }) {
             Icon(WalletIcons.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))
-            Text("刪除身分證卡", color = MaterialTheme.colorScheme.error)
+            Text(stringResource(Res.string.national_id_delete), color = MaterialTheme.colorScheme.error)
         }
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("刪除這張身分證卡？") },
-            text = { Text("卡片會從這支裝置刪除；來源 PDF 保留在「文件」，之後可以再用自然人憑證重新製作。") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.deleteNationalId(f) }) { Text("刪除", color = MaterialTheme.colorScheme.error) } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } },
+            title = { Text(stringResource(Res.string.national_id_delete_title)) },
+            text = { Text(stringResource(Res.string.national_id_delete_text)) },
+            confirmButton = { TextButton(onClick = { confirmDelete = false; model.files.deleteNationalId(f) }) { Text(stringResource(Res.string.action_delete), color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(stringResource(Res.string.action_cancel)) } },
         )
     }
 }

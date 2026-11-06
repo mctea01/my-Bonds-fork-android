@@ -793,7 +793,7 @@ class WalletModelE2eTest {
         assertEquals("行動駕照", d.title)
         // The test issuer chains to the test IACA: verified, but never official.
         assertEquals(TrustEnvironment.TEST, d.issuerTrust.environment)
-        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdict(d, diw.wallet.core.status.RiskLevel.MEDIUM).first)
+        assertEquals(diw.wallet.app.ui.Verdict.CAUTION, diw.wallet.app.ui.readVerdictOf(d, diw.wallet.core.status.RiskLevel.MEDIUM))
         assertEquals(org.multipaz.revocation.RevocationCheckState.VALID, d.status.state)
 
         val entry = withTimeout(10.seconds) { verifier.history.first { h -> h.any { it.kind == HistoryKind.VERIFIED } } }.first { it.kind == HistoryKind.VERIFIED }
