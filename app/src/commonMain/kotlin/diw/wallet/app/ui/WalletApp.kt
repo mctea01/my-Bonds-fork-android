@@ -201,6 +201,7 @@ private fun WalletAppContent(
                             is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                             is Screen.NationalId -> NationalIdScreen(model, s)
                             Screen.DocumentSources -> DocumentSourcesScreen(model)
+                            Screen.PassportRead -> PassportReadScreen(model)
                             is Screen.Portal -> PortalScreen(model, s)
                             is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                             is Screen.LegalText -> LegalTextScreen(model, s)
@@ -260,6 +261,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.NationalIdCreate -> stringResource(Res.string.screen_national_id_create)
     is Screen.NationalId -> stringResource(Res.string.screen_national_id)
     Screen.DocumentSources -> stringResource(Res.string.screen_document_sources)
+    Screen.PassportRead -> stringResource(Res.string.screen_passport_read)
     is Screen.Portal -> stringResource(Res.string.screen_document_sources)
     is Screen.OfficialBundle -> stringResource(Res.string.screen_official_bundle)
     is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION

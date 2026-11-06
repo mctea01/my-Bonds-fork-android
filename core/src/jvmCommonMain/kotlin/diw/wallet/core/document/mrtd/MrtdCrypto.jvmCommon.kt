@@ -198,6 +198,22 @@ actual object MrtdCrypto {
         }
     }.getOrNull()
 
+    actual fun masterList(bytes: ByteArray): MasterList? = runCatching {
+        val sd = org.bouncycastle.cms.CMSSignedData(bytes)
+        if (sd.signedContentTypeOID != "2.23.136.1.1.2") return null
+        val content = sd.signedContent?.content as? ByteArray ?: return null
+        val seq = ASN1Sequence.getInstance(ASN1Primitive.fromByteArray(content))
+        val set = org.bouncycastle.asn1.ASN1Set.getInstance(seq.getObjectAt(1))
+        val certs = set.map { it.toASN1Primitive().encoded }
+        val holders = sd.certificates.getMatches(null).filterIsInstance<org.bouncycastle.cert.X509CertificateHolder>()
+        val signerInfo = sd.signerInfos.signers.firstOrNull()
+        val signerCert = signerInfo?.let { si -> holders.firstOrNull { si.sid.match(it) } }
+        val valid = signerInfo != null && signerCert != null && runCatching {
+            signerInfo.verify(org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder().setProvider(org.bouncycastle.jce.provider.BouncyCastleProvider()).build(signerCert))
+        }.getOrDefault(false)
+        MasterList(certs, signerCert?.subject?.toString(), valid)
+    }.getOrNull()
+
     /** The name of a standard curve given with explicit parameters, as DG14 and DG15 usually do. */
     private fun namedFor(x9: X9ECParameters): String? {
         val names = ECNamedCurveTable.getNames().toList().filterIsInstance<String>()
