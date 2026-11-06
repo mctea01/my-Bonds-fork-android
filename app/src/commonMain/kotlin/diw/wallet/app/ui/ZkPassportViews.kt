@@ -16,6 +16,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +37,7 @@ import diw.wallet.app.ZkPassportFlow
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.core.zkpassport.ZkPassport
+import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
 import diw.wallet.core.zkpassport.ZkPassportField
 import diw.wallet.core.zkpassport.ZkPassportRequest
 import diw.wallet.core.zkpassport.ZkPassportState
@@ -225,6 +227,118 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
             Button(onClick = { model.taiwan.zkPassport.start(s.request) }) { Text(stringResource(Res.string.zkp_again)) }
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
         }
+    }
+}
+
+@Composable
+internal fun ZkPassportAnswerConnectingView(model: WalletModel, s: OfflineUi.ZkPassportAnswerConnecting) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
+        Text(s.incoming.domain + stringResource(Res.string.zkp_answer_unverified), style = MaterialTheme.typography.bodyMedium)
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+        Text(stringResource(Res.string.zkp_answer_connecting), style = MaterialTheme.typography.titleSmall)
+        OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
+    }
+}
+
+/**
+ * The holder's consent to a zkPassport request: who asks (as the link and the bridge say, neither verified), what the
+ * proofs would establish, and the stored passport to prove it from. A relayed link (another origin) needs a risk
+ * confirmation before the proofs are made.
+ */
+@Composable
+internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPassportAnswerConsent) {
+    val incoming = s.incoming
+    var chosen by remember(s) { mutableStateOf(s.passports.firstOrNull()?.id) }
+    var risk by remember(s) { mutableStateOf(false) }
+    val unverified = stringResource(Res.string.zkp_answer_unverified)
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
+        if (!s.originMatches) {
+            VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_answer_origin_mismatch), listOf(stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)))
+        }
+        if (incoming.devMode) Text(stringResource(Res.string.zkp_answer_dev), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        Text(stringResource(Res.string.zkp_answer_from, incoming.domain) + unverified, style = MaterialTheme.typography.bodyLarge)
+        incoming.name?.takeIf { it.isNotBlank() }?.let { Text(stringResource(Res.string.zkp_answer_service, it) + unverified, style = MaterialTheme.typography.bodyMedium) }
+        incoming.purpose?.takeIf { it.isNotBlank() }?.let { Text(stringResource(Res.string.zkp_answer_purpose, it) + unverified, style = MaterialTheme.typography.bodyMedium) }
+        SectionTitle(stringResource(Res.string.zkp_answer_asks))
+        ZkPassportFlow.asks(incoming.query).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        s.unsupported?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+        if (s.unsupported == null) {
+            SectionTitle(stringResource(Res.string.zkp_answer_choose))
+            if (s.passports.isEmpty()) Text(stringResource(Res.string.zkp_answer_no_passport), style = MaterialTheme.typography.bodyMedium)
+            s.passports.forEach { f ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = chosen == f.id, onClick = { chosen = f.id })
+                    Text(f.name, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            Text(stringResource(Res.string.zkp_answer_note), style = MaterialTheme.typography.bodySmall)
+        }
+        TechDetails(
+            listOf(
+                stringResource(Res.string.zkp_tech_domain, incoming.domain),
+                stringResource(Res.string.zkp_answer_tech_origin, s.origin),
+                stringResource(Res.string.zkp_answer_tech_mode, incoming.mode, incoming.sdkVersion ?: "-"),
+            ) + listOfNotNull(incoming.scope?.let { stringResource(Res.string.zkp_tech_scope, it) }) + incoming.query.toString(),
+            "zkpassport-answer",
+        )
+        val file = s.passports.firstOrNull { it.id == chosen }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { if (s.originMatches) model.taiwan.zkPassport.accept(file!!) else risk = true },
+                enabled = s.unsupported == null && file != null,
+            ) { Text(stringResource(Res.string.zkp_answer_accept)) }
+            OutlinedButton(onClick = { model.taiwan.zkPassport.reject() }) { Text(stringResource(Res.string.zkp_answer_reject)) }
+        }
+    }
+    if (risk) {
+        RiskConfirmDialog(
+            stringResource(Res.string.zkp_answer_risk_title),
+            listOf(stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)),
+            stringResource(Res.string.zkp_answer_risk_confirm),
+            onConfirm = {
+                risk = false
+                s.passports.firstOrNull { it.id == chosen }?.let { model.taiwan.zkPassport.accept(it) }
+            },
+            onDismiss = { risk = false },
+        )
+    }
+}
+
+@Composable
+internal fun ZkPassportAnswerProvingView(model: WalletModel, s: OfflineUi.ZkPassportAnswerProving) {
+    Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
+        when (val p = s.progress) {
+            is ZkPassportAnswerProgress.Proving -> LinearProgressIndicator(
+                progress = { if (p.total <= 0) 0f else p.index.toFloat() / p.total }, modifier = Modifier.fillMaxWidth(),
+            )
+            else -> LinearProgressIndicator(Modifier.fillMaxWidth())
+        }
+        Text(
+            when (val p = s.progress) {
+                null, ZkPassportAnswerProgress.Registry -> stringResource(Res.string.zkp_answer_registry)
+                is ZkPassportAnswerProgress.Circuits -> stringResource(Res.string.zkp_answer_circuits, p.count)
+                is ZkPassportAnswerProgress.Proving -> stringResource(Res.string.zkp_answer_proving, p.index + 1, p.total, p.name)
+                ZkPassportAnswerProgress.Sending -> stringResource(Res.string.zkp_answer_sending)
+            },
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(stringResource(Res.string.zkp_answer_wait), style = MaterialTheme.typography.bodySmall)
+        OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
+    }
+}
+
+@Composable
+internal fun ZkPassportAnswerDoneView(model: WalletModel, s: OfflineUi.ZkPassportAnswerDone) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        when {
+            s.sent -> VerdictCard(Verdict.PASS, stringResource(Res.string.zkp_answer_sent), listOf(stringResource(Res.string.zkp_answer_sent_note, s.incoming.domain)))
+            s.error != null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_answer_failed), listOf(s.error))
+            else -> VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_declined))
+        }
+        OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
     }
 }
 
