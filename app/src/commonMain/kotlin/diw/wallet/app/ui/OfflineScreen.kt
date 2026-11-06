@@ -121,6 +121,10 @@ fun OfflineScreen(
         is OfflineUi.ZkPassportSetup -> ZkPassportSetupView(model, s)
         is OfflineUi.ZkPassportWaiting -> ZkPassportWaitingView(model, s)
         is OfflineUi.ZkPassportVerified -> ZkPassportResultView(model, s)
+        is OfflineUi.ZkPassportAnswerConnecting -> ZkPassportAnswerConnectingView(model, s)
+        is OfflineUi.ZkPassportAnswerConsent -> ZkPassportAnswerConsentView(model, s)
+        is OfflineUi.ZkPassportAnswerProving -> ZkPassportAnswerProvingView(model, s)
+        is OfflineUi.ZkPassportAnswerDone -> ZkPassportAnswerDoneView(model, s)
     }
 }
 

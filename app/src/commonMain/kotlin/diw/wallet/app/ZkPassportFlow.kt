@@ -3,21 +3,36 @@ package diw.wallet.app
 import diw.wallet.app.legal.Integration
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
+import diw.wallet.core.document.mrtd.LdsFile
+import diw.wallet.core.document.mrtd.MrtdDump
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.zkpassport.ZkPassport
+import diw.wallet.core.zkpassport.ZkPassportAnswer
+import diw.wallet.core.zkpassport.ZkPassportAnswerFailure
+import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
+import diw.wallet.core.zkpassport.ZkPassportChip
 import diw.wallet.core.zkpassport.ZkPassportCscaCheck
 import diw.wallet.core.zkpassport.ZkPassportConfig
 import diw.wallet.core.zkpassport.ZkPassportField
+import diw.wallet.core.zkpassport.ZkPassportIncoming
 import diw.wallet.core.zkpassport.ZkPassportRequest
 import diw.wallet.core.zkpassport.ZkPassportResult
 import diw.wallet.core.zkpassport.ZkPassportSession
 import diw.wallet.core.zkpassport.ZkPassportState
 import io.ktor.http.Url
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
 
 /**
  * The wallet as a zkPassport verifier (docs/design/zkpassport.md 5.2): a request QR for the holder's zkPassport app,
@@ -27,6 +42,7 @@ import kotlinx.coroutines.launch
 class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStateFlow<OfflineUi>) {
     private var session: ZkPassportSession? = null
     private var job: Job? = null
+    private var answer: ZkPassportAnswer? = null
 
     /** The domain requests are made for: the user's setting, else the host of this wallet's own server. */
     fun defaultDomain(): String = model.settings.zkPassportDomain.trim().ifEmpty {
@@ -105,7 +121,111 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     private suspend fun oprfKeyHash(): String? =
         model.server.base()?.let { runCatching { model.server.oprfKeyHash(it) }.getOrNull() }
 
+    /**
+     * Answers a zkPassport request link with a passport stored in this wallet (Z3, docs/design/zkpassport.md 5.3):
+     * the bridge is opened first, so the consent screen can show the origin the bridge reports for the requester.
+     * Only in the test environment until the zkPassport statement covers answering requests.
+     */
+    fun answer(incoming: ZkPassportIncoming) {
+        if (!model.legal.enabled(Integration.ZKPASSPORT)) {
+            model.screen.value = Screen.IntegrationStatement(Integration.ZKPASSPORT, pendingUri = incoming.link)
+            return
+        }
+        stop()
+        model.screen.value = Screen.Offline
+        if (!model.settings.testEnvironment) {
+            ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, tr(Res.string.zkp_answer_test_only))
+            return
+        }
+        val holder = model.platform.zk?.zkPassportHolder ?: run {
+            ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, tr(Res.string.zkp_answer_no_engine))
+            return
+        }
+        ui.value = OfflineUi.ZkPassportAnswerConnecting(incoming)
+        job = model.scope.launch {
+            val opened = try {
+                holder.connect(incoming, rpc(incoming))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "connection"))
+                return@launch
+            }
+            answer = opened
+            ui.value = OfflineUi.ZkPassportAnswerConsent(incoming, opened.origin, opened.originMatches, passports(), unsupported(incoming))
+        }
+    }
+
+    /** Proves the request from the stored passport [file] and sends the proofs. */
+    fun accept(file: StoredFile) {
+        val a = answer ?: return
+        val incoming = (ui.value as? OfflineUi.ZkPassportAnswerConsent)?.incoming ?: return
+        ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null)
+        model.platform.keepScreenOn(true)
+        job = model.scope.launch {
+            try {
+                val chip = chip(file) ?: throw ZkPassportAnswerFailure("passport")
+                a.answer(chip) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
+                answered(incoming, a.origin, file, null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                answered(incoming, a.origin, file, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"))
+            } finally {
+                a.close()
+                if (answer === a) answer = null
+                model.platform.keepScreenOn(false)
+            }
+        }
+    }
+
+    /** Tells the requester the holder declined. */
+    fun reject() {
+        val a = answer ?: return
+        val incoming = (ui.value as? OfflineUi.ZkPassportAnswerConsent)?.incoming ?: return
+        answer = null
+        job = model.scope.launch {
+            try {
+                runCatching { a.reject() }
+            } finally {
+                a.close()
+            }
+            ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, null)
+            model.record(
+                HistoryKind.DECLINED, incoming.domain, null, emptyList(), asks(incoming.query),
+                tr(Res.string.zkp_answer_history_note, a.origin),
+            )
+        }
+    }
+
+    private fun answered(incoming: ZkPassportIncoming, origin: String, file: StoredFile, error: String?) {
+        ui.value = OfflineUi.ZkPassportAnswerDone(incoming, error == null, error)
+        model.record(
+            HistoryKind.PRESENTED, incoming.domain, null, listOf(file.name), asks(incoming.query),
+            tr(Res.string.zkp_answer_history_note, origin) + (if (incoming.devMode) tr(Res.string.zkp_answer_history_test) else ""),
+            error,
+        )
+    }
+
+    /** The Ethereum node for the registries of the request's chain; null uses the built-in one. */
+    private fun rpc(incoming: ZkPassportIncoming): String? =
+        (if (incoming.devMode) model.settings.zkPassportSepoliaRpc else model.settings.zkPassportMainnetRpc).trim().ifEmpty { null }
+
+    /** The electronic passports stored in this wallet, newest first. */
+    private fun passports(): List<StoredFile> =
+        model.files.files.value.filter { it.report?.format == DocumentFormat.EMRTD }.sortedByDescending { it.addedAt }
+
+    /** The chip files of the stored passport [file]; null when its read lacks the SOD or DG1. */
+    private suspend fun chip(file: StoredFile): ZkPassportChip? = withContext(Dispatchers.Default) {
+        val dump = MrtdDump.decode(model.files.data(file.id)) ?: return@withContext null
+        val sod = dump.file(LdsFile.SOD) ?: return@withContext null
+        val dg1 = dump.file(LdsFile.DG1) ?: return@withContext null
+        ZkPassportChip(sod, dg1, dump.file(LdsFile.DG2))
+    }
+
     fun stop() {
+        answer?.close()
+        answer = null
         session?.close()
         session = null
         job?.cancel()
@@ -235,6 +355,58 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 check.error != null -> tr(Res.string.zkp_trust_unchecked, if (check.error == "certificates_root") tr(Res.string.zkp_err_certificates_root) else tr(Res.string.zkp_err_certificates))
                 else -> tr(Res.string.zkp_trust_partial, check.countries.joinToString(sep), check.inPackage, check.anchored)
             }
+        }
+
+        /** Why this wallet cannot answer [incoming], or null: FaceMatch and modes other than fast are not offered. */
+        fun unsupported(incoming: ZkPassportIncoming): String? = when {
+            "facematch" in incoming.query -> tr(Res.string.zkp_answer_unsupported_facematch)
+            !incoming.fastMode -> tr(Res.string.zkp_answer_unsupported_mode, incoming.mode.ifEmpty { "-" })
+            else -> null
+        }
+
+        /** What a request's query asks for, one line each, in the order of the query. */
+        fun asks(query: JsonObject): List<String> = buildList {
+            for ((key, value) in query) {
+                val o = value as? JsonObject
+                val field = ZkPassportField.entries.firstOrNull { it.key == key }
+                when {
+                    key == "age" && o != null -> {
+                        val gte = (o["gte"] as? JsonPrimitive)?.intOrNull
+                        val lt = (o["lt"] as? JsonPrimitive)?.intOrNull
+                        when {
+                            gte != null && o.size == 1 -> add(tr(Res.string.zkp_age_at_least, gte))
+                            lt != null && o.size == 1 -> add(tr(Res.string.zkp_age_below, lt))
+                            else -> add(tr(Res.string.zkp_answer_ask_condition, tr(Res.string.zkp_answer_age)))
+                        }
+                    }
+                    key == "bind" && o != null -> {
+                        val data = (o["custom_data"] as? JsonPrimitive)?.contentOrNull
+                        if (data != null) add(tr(Res.string.zkp_bound, data))
+                        if (o.keys.any { it != "custom_data" }) add(tr(Res.string.zkp_answer_ask_other, key))
+                    }
+                    key == "sanctions" -> add(tr(Res.string.zkp_answer_ask_sanctions))
+                    key == "facematch" -> add(tr(Res.string.zkp_answer_ask_facematch))
+                    o != null -> {
+                        val title = field?.let(::fieldTitle) ?: key
+                        if ((o["disclose"] as? JsonPrimitive)?.contentOrNull == "true") add(tr(Res.string.zkp_answer_ask_disclose, title))
+                        if (o.keys.any { it != "disclose" }) add(tr(Res.string.zkp_answer_ask_condition, title))
+                    }
+                    else -> add(tr(Res.string.zkp_answer_ask_other, key))
+                }
+            }
+        }
+
+        /** An answer's failure code in words. */
+        fun answerFailure(code: String): String = when {
+            code == "bridge_origin" -> tr(Res.string.zkp_answer_err_origin)
+            code == "connection" -> tr(Res.string.zkp_fail_connection)
+            code == "passport" -> tr(Res.string.zkp_answer_err_passport)
+            code == "native_unavailable" -> tr(Res.string.zkp_answer_no_engine)
+            code == "crs_missing" -> tr(Res.string.zkp_answer_err_crs)
+            code == "inputs" -> tr(Res.string.zkp_answer_err_inputs)
+            code.startsWith("registry") -> tr(Res.string.zkp_err_registry)
+            code.endsWith("_root") || code.startsWith("vkey:") -> tr(Res.string.zkp_answer_err_circuit)
+            else -> tr(Res.string.zkp_answer_err_other, code)
         }
 
         const val MAX_COUNTRIES = 200

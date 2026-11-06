@@ -338,6 +338,34 @@ sealed class OfflineUi {
         val error: String?,
     ) : OfflineUi()
 
+    /** Answering a zkPassport request (Z3): the bridge to the requester is opening. */
+    data class ZkPassportAnswerConnecting(val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming) : OfflineUi()
+
+    /**
+     * What the requester asks for and the stored passports to answer with. [origin] is what the bridge reports for
+     * the requester; [unsupported] says why this wallet cannot answer, so only declining is offered.
+     */
+    data class ZkPassportAnswerConsent(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val origin: String,
+        val originMatches: Boolean,
+        val passports: List<StoredFile>,
+        val unsupported: String?,
+    ) : OfflineUi()
+
+    /** The proofs are being made on this device; [progress] is null until the prover reports. */
+    data class ZkPassportAnswerProving(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val progress: diw.wallet.core.zkpassport.ZkPassportAnswerProgress?,
+    ) : OfflineUi()
+
+    /** The answer's end: [sent] when the proofs reached the requester; neither sent nor [error] means declined. */
+    data class ZkPassportAnswerDone(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val sent: Boolean,
+        val error: String?,
+    ) : OfflineUi()
+
     data class VerifierResult(
         val request: BondsPresentationRequest,
         val result: BondsVerifiedPresentation?,

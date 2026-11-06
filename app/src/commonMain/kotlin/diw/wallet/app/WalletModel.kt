@@ -1126,6 +1126,10 @@ class WalletModel(val platform: PlatformServices) {
             taiwan.startBonds(u)
             return
         }
+        diw.wallet.core.zkpassport.ZkPassport.parseLink(u)?.let {
+            taiwan.zkPassport.answer(it)
+            return
+        }
         // A document chosen for an offline presentation only applies to the next challenge.
         taiwan.preferredDocument = null
         if (BondsQrTransport.isFrame(u)) {
