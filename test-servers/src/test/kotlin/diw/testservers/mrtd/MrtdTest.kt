@@ -135,7 +135,12 @@ class MrtdTest {
         return BerTlv.encode(0x75, BerTlv.encode(0x7F61, BerTlv.encode(0x02, byteArrayOf(1)) + bit))
     }
 
-    private fun sod(files: Map<LdsFile, ByteArray>, signer: KeyPair = dscKey, signerCert: X509CertificateHolder = dsc): ByteArray {
+    private fun sod(
+        files: Map<LdsFile, ByteArray>,
+        signer: KeyPair = dscKey,
+        signerCert: X509CertificateHolder = dsc,
+        contentType: String = MrtdOids.LDS_SECURITY_OBJECT,
+    ): ByteArray {
         val hashes = ASN1EncodableVector()
         for ((f, b) in files) {
             val n = f.dataGroup ?: continue
@@ -146,7 +151,7 @@ class MrtdTest {
         gen.addSignerInfoGenerator(JcaSignerInfoGeneratorBuilder(JcaDigestCalculatorProviderBuilder().setProvider(bc).build())
             .build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(signer.private), signerCert))
         gen.addCertificates(JcaCertStore(listOf(signerCert)))
-        val cms = gen.generate(CMSProcessableByteArray(ASN1ObjectIdentifier(MrtdOids.LDS_SECURITY_OBJECT), lso), true).encoded
+        val cms = gen.generate(CMSProcessableByteArray(ASN1ObjectIdentifier(contentType), lso), true).encoded
         return BerTlv.encode(0x77, cms)
     }
 
@@ -406,6 +411,49 @@ class MrtdTest {
         val report = inspect(read(c))
         assertEquals(DocumentVerdict.INVALID, report.verdict)
         assertEquals(listOf(1), report.travelDocument?.mismatched)
+    }
+
+    @Test fun securityObjectNamedIdDataIsRead() {
+        // Some documents issued in mainland China name the LDS security object id-data.
+        val dump = read(chip())
+        val groups = LdsFile.entries.filter { it.dataGroup != null }.mapNotNull { f -> dump.file(f)?.let { f to it } }.toMap()
+        val idData = dump.copy(files = dump.files + (LdsFile.SOD.name to Base64.encode(sod(groups, contentType = "1.2.840.113549.1.7.1"))))
+        val report = inspect(idData)
+        assertEquals(DocumentVerdict.VALID, report.verdict, report.signatures.single().problems.toString())
+        assertTrue(1 in report.travelDocument!!.matched)
+        assertTrue(report.signatures.single().notes.any { "1.2.840.113549.1.7.1" in it } || report.notes.any { "1.2.840.113549.1.7.1" in it })
+        // Any other content type is refused, and the reason is given.
+        val other = dump.copy(files = dump.files + (LdsFile.SOD.name to Base64.encode(sod(groups, contentType = "1.2.3.4"))))
+        val refused = inspect(other)
+        assertEquals(DocumentVerdict.INVALID, refused.verdict)
+        assertTrue(refused.signatures.single().problems.any { "1.2.3.4" in it }, refused.signatures.single().problems.toString())
+    }
+
+    @Test fun mainlandChinaPermitCardLayout() {
+        // A travel permit for Taiwan residents (CT) with made-up data: number, issue count, expiry, sex and birth on
+        // line 1, the Chinese name as GB 2312 hex letters on line 2, the romanised name on line 3.
+        fun c(s: String) = s + Mrz.checkDigit(s)
+        val line1 = "CT" + c("12345678<") + c("03") + c("300115") + "F" + c("950620")
+        val line2 = "MNPFNAKBMDPH<<<<" + "ABC1234567890<"
+        val line3 = "WANG<<XIAO<MING".padEnd(26, '<') + "1100"
+        val m = Mrz.parse(line1 + line2 + line3)!!
+        assertEquals(Mrz.Format.CN_PERMIT, m.format)
+        assertTrue(m.checkDigitsValid, m.failedChecks.toString())
+        assertEquals("CT", m.documentCode)
+        assertEquals("CHN", m.issuingState)
+        assertEquals("12345678", m.documentNumber)
+        assertEquals("3", m.issueCount)
+        assertEquals("300115", m.expiryDate)
+        assertEquals("950620", m.birthDate)
+        assertEquals("F", m.sex)
+        assertEquals("", m.nationality)
+        assertEquals("WANG", m.primaryIdentifier)
+        assertEquals(listOf("XIAO", "MING"), m.givenNames)
+        assertEquals(MrzKey("12345678", "950620", "300115"), m.accessKey)
+        val claims = diw.wallet.core.document.derived.TravelDocumentFields.claims(m, 2026)
+        assertTrue(claims.none { it.name == diw.wallet.core.document.derived.TravelDocumentFields.NATIONALITY })
+        // An ICAO TD1 card is not taken for a permit.
+        assertEquals(Mrz.Format.TD1, Mrz.parse("I<UTOD231458907<<<<<<<<<<<<<<<\n7408122F1204159UTO<<<<<<<<<<<6\nERIKSSON<<ANNA<MARIA<<<<<<<<<<")!!.format)
     }
 
     @Test fun tamperedDumpIsCaught() {

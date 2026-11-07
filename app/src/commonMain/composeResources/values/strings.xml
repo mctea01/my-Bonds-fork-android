@@ -936,6 +936,7 @@
     <string name="core_mrtd_no_sod">The security object (EF.SOD) was not read, so passive authentication is not possible</string>
     <string name="core_mrtd_not_covered">These data groups are not covered by the security object: %1$s</string>
     <string name="core_mrtd_sha1">The security object uses SHA-1 hashes (common in older passports)</string>
+    <string name="core_mrtd_content_type">The security object names its content %1$s instead of the ICAO LDS security object identifier (as some documents issued in mainland China do); it was read as an LDS security object</string>
     <string name="core_mrtd_sod_label">Security object (EF.SOD)</string>
     <string name="core_mrtd_unreadable">The electronic passport file cannot be read</string>
     <string name="core_mrtd_unreadable_files">Files not read: %1$s (fingerprints and iris need a government terminal authentication)</string>
@@ -2334,6 +2335,8 @@
     <string name="mrtd_kind_travel_document">Travel document</string>
     <string name="mrtd_lds_version">LDS version</string>
     <string name="mrtd_number">Document number</string>
+    <string name="mrtd_issue_count">Issue count</string>
+    <string name="mrtd_kind_cn_permit">Mainland China permit card (%1$s)</string>
     <string name="mrtd_other_names">Other names</string>
     <string name="mrtd_other_persons">Other persons</string>
     <string name="mrtd_personal_number">Personal number</string>

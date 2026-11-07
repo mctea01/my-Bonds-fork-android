@@ -27,24 +27,40 @@ import kotlin.time.Instant
  * as it went while the chip was read.
  */
 internal object MrtdInspection {
-    /** The security object: the hash algorithm and the hash of each data group by number. */
-    class SecurityObject(val hashAlgorithm: String, val hashes: Map<Int, ByteArray>, val ldsVersion: String?)
+    /**
+     * The security object: the hash algorithm, the hash of each data group by number, and [contentType] as the
+     * signed content names it.
+     */
+    class SecurityObject(val hashAlgorithm: String, val hashes: Map<Int, ByteArray>, val ldsVersion: String?, val contentType: String)
 
-    fun securityObject(sd: CMSSignedData): SecurityObject? {
-        if (sd.signedContentTypeOID != MrtdOids.LDS_SECURITY_OBJECT) return null
-        val content = sd.signedContent?.content as? ByteArray ?: return null
-        val seq = ASN1Sequence.getInstance(ASN1Primitive.fromByteArray(content))
+    /** Why the signed content could not be read as a security object. */
+    class NotSecurityObject(message: String) : Exception(message)
+
+    /**
+     * The LDSSecurityObject of [sd]. Besides id-icao-ldsSecurityObject, the content may be named id-data (some
+     * documents issued in mainland China) or by the old 1.3.27.1.1.1; the content must still parse as an
+     * LDSSecurityObject, which is what the data groups are checked against.
+     */
+    fun securityObject(sd: CMSSignedData): SecurityObject {
+        val type = sd.signedContentTypeOID
+        if (type !in LDS_CONTENT_TYPES) throw NotSecurityObject("content type $type")
+        val content = sd.signedContent?.content as? ByteArray ?: throw NotSecurityObject("no encapsulated content")
+        val seq = ASN1Sequence.getInstance(org.bouncycastle.asn1.ASN1InputStream(content).use { it.readObject() } ?: throw NotSecurityObject("empty content"))
         val alg = AlgorithmIdentifier.getInstance(seq.getObjectAt(1)).algorithm.id
         val hashes = ASN1Sequence.getInstance(seq.getObjectAt(2)).map { e ->
             val dg = ASN1Sequence.getInstance(e)
             ASN1Integer.getInstance(dg.getObjectAt(0)).intValueExact() to ASN1OctetString.getInstance(dg.getObjectAt(1)).octets
         }.toMap()
+        if (hashes.isEmpty()) throw NotSecurityObject("no data group hashes")
         val lds = if (seq.size() > 3) runCatching {
             val v = ASN1Sequence.getInstance(seq.getObjectAt(3))
             org.bouncycastle.asn1.ASN1PrintableString.getInstance(v.getObjectAt(0)).string
         }.getOrNull() else null
-        return SecurityObject(AlgorithmNames.jcaDigest(alg), hashes, lds)
+        return SecurityObject(AlgorithmNames.jcaDigest(alg), hashes, lds, type)
     }
+
+    /** id-icao-ldsSecurityObject, id-data and the old 1.3.27.1.1.1. */
+    private val LDS_CONTENT_TYPES = setOf(MrtdOids.LDS_SECURITY_OBJECT, "1.2.840.113549.1.7.1", "1.3.27.1.1.1")
 
     /** The CMS SignedData inside EF.SOD (tag 77). */
     fun sodCms(sod: ByteArray): ByteArray {
@@ -62,14 +78,17 @@ internal object MrtdInspection {
         val label = ct("core_mrtd_sod_label")
         val sig = checks.verify(cms, null, SignatureFormat.ICAO_PA, label, now, role = TrustRole.TRAVEL_DOCUMENT).first()
         val sd = runCatching { CMSSignedData(cms) }.getOrNull()
-        val so = sd?.let { runCatching { securityObject(it) }.getOrNull() }
+        val parsed = sd?.let { runCatching { securityObject(it) } }
+        val so = parsed?.getOrNull()
         val matched = ArrayList<Int>()
         val mismatched = ArrayList<Int>()
         val notRead = ArrayList<Int>()
         val notCovered = ArrayList<Int>()
         if (so == null) {
-            problems.add(ct("core_mrtd_no_lds_object"))
+            val reason = parsed?.exceptionOrNull()?.let { it.message ?: it.javaClass.simpleName } ?: "CMS"
+            problems.add(ct("core_mrtd_no_lds_object") + " (" + reason + ")")
         } else {
+            if (so.contentType != MrtdOids.LDS_SECURITY_OBJECT) notes.add(ct("core_mrtd_content_type", so.contentType))
             for ((n, expected) in so.hashes.toSortedMap()) {
                 val f = LdsFile.ofDataGroup(n)
                 val data = f?.let { dump.file(it) }

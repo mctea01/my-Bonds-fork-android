@@ -359,6 +359,7 @@ object CoreStrings {
         "core_mrtd_no_sod" to "沒有讀到安全物件（EF.SOD），無法做被動驗證",
         "core_mrtd_not_covered" to "下列資料群組沒有被安全物件涵蓋：%1\$s",
         "core_mrtd_sha1" to "安全物件使用 SHA-1 雜湊（較舊的護照常見）",
+        "core_mrtd_content_type" to "安全物件的內容類型標示為 %1\$s，不是 ICAO 的 LDS 安全物件識別碼（部分中國大陸核發的證件如此），已依 LDS 安全物件結構比對",
         "core_mrtd_sod_label" to "安全物件（EF.SOD）",
         "core_mrtd_unreadable" to "電子護照讀取檔無法解析",
         "core_mrtd_unreadable_files" to "未讀取的檔案：%1\$s（指紋與虹膜需要政府端的終端驗證）",
