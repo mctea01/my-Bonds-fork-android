@@ -75,7 +75,7 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Cache cargo-ndk
         id: cargo-ndk
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cargo/bin/cargo-ndk
           key: cargo-ndk-4.1.2-${{ runner.os }}-${{ runner.arch }}
@@ -87,7 +87,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
       # Barretenberg for zkPDF, built for this ABI with the pinned NDK; reused while build_bb.py and the NDK are unchanged.
       - name: Cache Barretenberg (Android ${{ matrix.abi }})
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/target/bb-source
@@ -143,7 +143,7 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
       # Barretenberg for zkPDF is a pinned C++ build of several minutes; reuse it while build_bb.py is unchanged.
       - name: Cache Barretenberg
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/target/bb-source
@@ -216,7 +216,7 @@ jobs:
       # Barretenberg for zkPDF (Apple clang, arm64); reused while build_bb.py is unchanged.
       - name: Cache Barretenberg (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/target/bb-source
@@ -237,7 +237,7 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Cache zkPDF assets (macOS)
         if: runner.os == 'macOS'
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/zkpdf-assets
           key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
@@ -292,7 +292,7 @@ jobs:
           name: zk-native-linux
           path: native/dist/resources
       - name: Cache zkPDF assets
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/zkpdf-assets
           key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
