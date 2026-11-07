@@ -4292,7 +4292,6 @@
     <string name="zkp_err_certificates_root">The downloaded certificate package does not hash to the registry root of the proofs, so it was not used.</string>
     <string name="zkp_answer_title">zkPassport request</string>
     <string name="zkp_answer_unverified"> (as the request states, not verified)</string>
-    <string name="zkp_answer_test_only">Answering zkPassport requests is available only in the test environment for now. Turn on the test environment in Settings to try it.</string>
     <string name="zkp_answer_no_engine">This version of the app cannot make zkPassport proofs on this platform.</string>
     <string name="zkp_answer_connecting">Connecting to the requester through zkPassport's bridge...</string>
     <string name="zkp_answer_from">From %1$s</string>

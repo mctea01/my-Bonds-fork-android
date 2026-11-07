@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 tlsn = { git = "https://github.com/tlsnotary/tlsn", rev = "47aee45b53e06648c1b2ad3689b367b8c923fdec", default-features = false, features = ["mozilla-certs"] }
-snow = "=0.9.6"
+snow = "=0.10.0"
 tokio = { version = "1.48", features = ["rt", "net", "io-util", "time", "sync", "macros"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
