@@ -2721,7 +2721,7 @@ class WalletModelE2eTest {
     }
 
     /**
-     * Answering a zkPassport request link (Z3): gated by the statement and the test environment, the consent lists
+     * Answering a zkPassport request link (Z3): gated by the statement, the consent lists
      * what is asked and the stored passports, the proofs are made from the chosen passport, and declining, an
      * unsupported request and a bridge failure each end on their own result.
      */
@@ -2745,13 +2745,6 @@ class WalletModelE2eTest {
         assertTrue(fake.incoming.isEmpty())
 
         m.legal.decide(zkp, true).join()
-        m.updateSettings { it.copy(testEnvironment = false) }.join()
-        m.handleUri(link)
-        val outside = assertIs<OfflineUi.ZkPassportAnswerDone>(m.taiwan.offline.value)
-        assertTrue("測試環境" in outside.error!!, outside.error)
-        assertTrue(fake.incoming.isEmpty(), "outside the test environment nothing is connected")
-
-        m.updateSettings { it.copy(testEnvironment = true) }.join()
         val zone = ("P<TWNLIN<<CHE<CHUAN".padEnd(44, '<') + "3123456780TWN9001155M3001017" + "A123456789<<<<" + "24").encodeToByteArray()
         fun tlv(tag: ByteArray, value: ByteArray) = tag + byteArrayOf(value.size.toByte()) + value
         val dg1 = tlv(byteArrayOf(0x61), tlv(byteArrayOf(0x5F, 0x1F), zone))

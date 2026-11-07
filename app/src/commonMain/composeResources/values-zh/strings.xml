@@ -4292,7 +4292,6 @@
     <string name="zkp_err_certificates_root">下載的憑證包雜湊不等於證明使用的註冊表根，已捨棄。</string>
     <string name="zkp_answer_title">zkPassport 請求</string>
     <string name="zkp_answer_unverified">（請求所述，未經驗證）</string>
-    <string name="zkp_answer_test_only">回應 zkPassport 請求目前只在測試環境提供。可在設定中開啟測試環境後試用。</string>
     <string name="zkp_answer_no_engine">此版本的 App 在這個平台無法產生 zkPassport 證明。</string>
     <string name="zkp_answer_connecting">正在透過 zkPassport 傳送服務連線到請求方...</string>
     <string name="zkp_answer_from">來自 %1$s</string>

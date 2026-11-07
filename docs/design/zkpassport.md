@@ -185,14 +185,14 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 請求要 FaceMatch 或 OPRF 時，本錢包可以用本專案的值產生（5.5），但 zkPassport 的查驗端會拒絕；同意畫面先說明這一點，使用者仍要送出才產生。`compressed` 模式需要 zkPassport 雲端證明器，預設不做，使用者同意後才交給它。
 - 協定沒有公開規格，SDK 升級曾要求 App 最低版本（SDK 0.17 需要 App 1.4.0）；以 SDK 的 e2e 測試與 bridge acceptance 測試建立回歸測試，並以設定頁顯示支援的協定版本。
 
-Z3 進度（2026-11-06，core 與 App 流程完成，只在測試環境）：
+Z3 進度（2026-11-07，core 與 App 流程完成，依聲明 v3 正式開放）：
 
 - `ZkPassport.parseLink` 讀 `https://zkpassport.id/r`（與 App Clip 的 `/c`）連結成 `ZkPassportIncoming`（網域、查驗方公鑰、查詢、服務資訊、模式、SDK 版本、dev）。
 - `ZkPassportHolderBridge` 是 bridge 的持有端：第一次連線以 `moc` 帶交握、以 `ooc` 向 bridge 取得建立者連線的 origin；之後 bridge 標示其他 origin 的訊框一律丟棄（與 @obsidion/bridge 的 joiner 相同）。加解密與建立端共用 `ZkPassportBridgeChannel`。
 - `ZkPassportResponder`：連線並取得 origin（`originMatches` 比對連結的網域，不符時 App 以強提示確認）、送 `accept`／`reject`，再送證明器產生的訊息；證明期間連線中斷時重新連線。
 - 測試以本機 bridge 讓本錢包的查驗端與回應器完整交換一次。完整流程仍需 0.22.0 電路。
-- App（`ZkPassportFlow.answer`）：`WalletModel.handleUri` 辨識請求連結（掃描或開啟），需要 zkPassport 聲明，且在 v3 聲明審閱並寫入 `LegalTexts.kt` 前只在測試環境開放（正式環境顯示說明，不連線）。先以 `ZkPassportHolder.connect` 開 bridge 取得 origin，同意畫面（`OfflineUi.ZkPassportAnswerConsent`）列出請求自述的網域、服務與用途（標示未經驗證）、`asks` 整理的每項要求與已保存的電子護照；origin 不符時以 `RiskConfirmDialog` 再確認。同意後以該護照 `MrtdDump` 的 SOD、DG1、DG2 證明並送出，拒絕送 `reject`；兩者都記入紀錄（不保存證明）。FaceMatch 與 fast 以外的模式只能拒絕；回應時不使用 OPRF（未加鹽識別碼）。e2e 測試 `zkPassportAnswerFlow`。
-- 聲明 v3 草稿（涵蓋回應請求與 OPRF）待使用者審閱，審閱前不改 `LegalTexts.kt`。
+- App（`ZkPassportFlow.answer`）：`WalletModel.handleUri` 辨識請求連結（掃描或開啟），需要 zkPassport 聲明（v3 涵蓋回應請求，2026-11-07 使用者決定直接正式開放，不限測試環境）。先以 `ZkPassportHolder.connect` 開 bridge 取得 origin，同意畫面（`OfflineUi.ZkPassportAnswerConsent`）列出請求自述的網域、服務與用途（標示未經驗證）、`asks` 整理的每項要求與已保存的電子護照；origin 不符時以 `RiskConfirmDialog` 再確認。同意後以該護照 `MrtdDump` 的 SOD、DG1、DG2 證明並送出，拒絕送 `reject`；兩者都記入紀錄（不保存證明）。FaceMatch 與 fast 以外的模式只能拒絕；回應時不使用 OPRF（未加鹽識別碼）。e2e 測試 `zkPassportAnswerFlow`。
+- 專門聲明 v3（中英文，`LegalTexts.kt`／`LegalTextsEn.kt` version 3）涵蓋回應請求與本 App 服務端的 OPRF；已同意 v2 的使用者下次開啟 App 會被要求重新確認。
 
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 

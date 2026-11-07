@@ -124,7 +124,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     /**
      * Answers a zkPassport request link with a passport stored in this wallet (Z3, docs/design/zkpassport.md 5.3):
      * the bridge is opened first, so the consent screen can show the origin the bridge reports for the requester.
-     * Only in the test environment until the zkPassport statement covers answering requests.
+     * Covered by version 3 of the zkPassport statement.
      */
     fun answer(incoming: ZkPassportIncoming) {
         if (!model.legal.enabled(Integration.ZKPASSPORT)) {
@@ -133,10 +133,6 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
         stop()
         model.screen.value = Screen.Offline
-        if (!model.settings.testEnvironment) {
-            ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, tr(Res.string.zkp_answer_test_only))
-            return
-        }
         val holder = model.platform.zk?.zkPassportHolder ?: run {
             ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, tr(Res.string.zkp_answer_no_engine))
             return
