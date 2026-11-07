@@ -11,7 +11,7 @@ spartan2 = { git = "https://github.com/0xVikasRushi/Spartan2.git", rev = "d687db
 base64 = "0.23"
 chrono = "0.4"
 ff = "0.13"
-num-bigint = "0.4"
+num-bigint = "0.5"
 num-traits = "0.2"
 p256 = { version = "0.14", features = ["ecdsa"] }
 rand_core = { version = "0.10", features = ["getrandom"] }
