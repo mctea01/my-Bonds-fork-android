@@ -83,6 +83,20 @@
         "xml-apis:xml-apis"
       ],
       "enabled": false
+    },
+    {
+      "description": "sha2 stays on 0.10: the native crates share digest 0.10 with k256, p256 and rsa, and zkpdf-prover needs the compress feature that 0.11 removed",
+      "matchPackageNames": [
+        "sha2"
+      ],
+      "allowedVersions": "<0.11.0"
+    },
+    {
+      "description": "Rust crates wait for review: native/Cargo.lock was not refreshed with the sha2 0.11 and snow 0.10 bumps, and both reached main while the locked native builds failed",
+      "matchManagers": [
+        "cargo"
+      ],
+      "automerge": false
     }
   ]
 }

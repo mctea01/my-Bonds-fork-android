@@ -53,6 +53,7 @@ import java.net.ServerSocket
 import java.nio.file.Files
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
@@ -84,6 +85,10 @@ class WalletModelE2eTest {
         override val platformName: String = "test",
         /** No local network: the zkTLS verifier is reachable through a relay only. */
         val noLan: Boolean = false,
+        /** Replaces the zkPassport verifier, so its sessions can be driven without zkPassport's services. */
+        val zkPassport: diw.wallet.core.zkpassport.ZkPassportVerifier? = null,
+        /** Replaces the zkPassport holder, so answers can be driven without a prover or the bridge. */
+        val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder? = null,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
@@ -129,7 +134,13 @@ class WalletModelE2eTest {
 
         override val zk by lazy {
             val dir = kotlin.io.path.createTempDirectory("diw-zk").toFile().apply { deleteOnExit() }
-            diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+            val real = diw.wallet.core.zk.native.JvmZkEnvironment(dir, http) { diw.wallet.app.desktop.desktopZkInfo(dir) }
+            val fake = zkPassport
+            val holder = zkPassportHolder
+            if (fake == null && holder == null) real else object : diw.wallet.core.zk.ZkEnvironment by real {
+                override val zkPassport = fake ?: real.zkPassport
+                override val zkPassportHolder = holder ?: real.zkPassportHolder
+            }
         }
     }
 
@@ -889,6 +900,54 @@ class WalletModelE2eTest {
         assertEquals(listOf("是"), d.claims.map { it.value })
     }
 
+    /**
+     * A passport read from its chip becomes a Photo ID mdoc that another wallet reads over NFC: self-issued (T3),
+     * and without the security object its data cannot be checked against the issuing state. A stored text naming
+     * the passport number is listed as a related document.
+     */
+    @Test
+    fun photoIdFromPassportIsReadOverNfc() = runBlocking<Unit> {
+        val (holder, _) = newWallet()
+        val zone = ("P<TWNLIN<<CHE<CHUAN".padEnd(44, '<') + "3123456780TWN9001155M3001017" + "A123456789<<<<" + "24").encodeToByteArray()
+        fun tlv(tag: ByteArray, value: ByteArray) = tag + (if (value.size < 128) byteArrayOf(value.size.toByte()) else byteArrayOf(0x81.toByte(), value.size.toByte())) + value
+        val dg1 = tlv(byteArrayOf(0x61), tlv(byteArrayOf(0x5F, 0x1F), zone))
+        val dump = diw.wallet.core.document.mrtd.MrtdDump(files = mapOf("DG1" to kotlin.io.encoding.Base64.encode(dg1)), access = "BAC", readAt = kotlin.time.Clock.System.now().epochSeconds)
+        holder.files.import(PickedFile("passport.emrtd.json", dump.encode()), FileOrigin.IMPORTED, null).join()
+        holder.files.import(PickedFile("note.txt", "護照號碼 312345678，LIN CHE CHUAN".encodeToByteArray()), FileOrigin.IMPORTED, null).join()
+        val passport = holder.files.files.value.first { it.report?.format == diw.wallet.core.document.DocumentFormat.EMRTD }
+        val links = holder.files.travelDocumentLinks(passport)
+        assertEquals(listOf("note.txt"), links.map { it.file.name })
+        assertTrue(links.single().sameName)
+
+        holder.files.issuePhotoId(passport).join()
+        assertNull(holder.files.error.value, "photo id: ${holder.files.error.value}")
+        val photoId = holder.documents.value.single { it.identifier == holder.files.file(passport.id)?.photoIdDocumentId }
+        assertEquals(diw.wallet.core.document.derived.TravelDocumentPhotoId.DOCTYPE, photoId.issuanceRecord?.docType)
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = object : org.multipaz.mdoc.transport.MdocTransportFactory {
+            override fun createTransport(
+                connectionMethod: org.multipaz.mdoc.connectionmethod.MdocConnectionMethod,
+                role: org.multipaz.mdoc.role.MdocRole,
+                options: org.multipaz.mdoc.transport.MdocTransportOptions,
+            ): org.multipaz.mdoc.transport.MdocTransport = org.multipaz.mdoc.transport.NfcTransportMdoc(role, options, connectionMethod)
+        }
+        holder.proximity.open()
+        val tag = LoopbackTag(assertNotNull(holder.proximity.nfcEngagement(staticHandover = false)))
+        val (verifier, _) = newWallet()
+        verifier.reader.open()
+        verifier.reader.start(NfcReaderOption("Loopback", external = true, reader = LoopbackReader(tag)), ReaderRequest.PHOTO_ID, diw.wallet.core.status.RiskLevel.MEDIUM)
+        val consent = withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+        holder.proximity.approve(assertIs<ProximityUi.Consent>(consent, "consent: $consent; reader: ${verifier.reader.state.value}"))
+        val result = assertIs<ReaderUi.Result>(withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } })
+        assertNull(result.integrityError)
+        val d = result.documents.single()
+        assertEquals(diw.wallet.core.trust.TrustTier.T3, d.issuerTrust.tier)
+        assertTrue(diw.wallet.core.trust.TrustLabel.SELF_ISSUED in d.issuerTrust.labels)
+        assertTrue(d.claims.any { it.value == "LIN" }, "claims: ${d.claims}")
+        assertEquals(listOf(diw.wallet.core.document.Check.NOT_CHECKED), d.evidence.map { it.check }, "evidence: ${d.evidence}")
+        withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+    }
+
     /** Without PC/SC (no pcscd, no reader) the list is empty with a reason, never an error. */
     @Test
     fun pcscListWithoutReaders() {
@@ -1027,6 +1086,32 @@ class WalletModelE2eTest {
      * The production server: the access token goes only to that server, its signing root is trusted only after the
      * fingerprint the wallet computes matches the one the server states, and a changed root is flagged, not accepted.
      */
+    /** The OPRF key hash comes from the server's /info only when it lists the oprf feature and a well-formed hash. */
+    @Test
+    fun theServersOprfKeyHashIsReadFromItsInfo() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        var features = listOf("relay")
+        var hash: String? = "0x2999856dbf71ded2838925cd1c239540bdc4f8a4a828872c6a9fca6"
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            if (request.url.host == host && request.url.encodedPath == "/info") respond(buildJsonObject {
+                putJsonArray("features") { features.forEach { add(it) } }
+                put("oprf", buildJsonObject { put("keyId", "1"); put("pk", buildJsonObject { put("x", "0x1"); put("y", "0x2"); hash?.let { put("hash", it) } }) })
+            }.toString(), io.ktor.http.HttpStatusCode.OK, io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json"))
+            else respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        assertNull(m.server.oprfKeyHash("https://$host"), "not listed as a feature")
+        features = listOf("relay", "oprf")
+        assertEquals(hash, m.server.oprfKeyHash("https://$host"))
+        hash = "not-a-hash"
+        assertNull(m.server.oprfKeyHash("https://$host"))
+        hash = null
+        assertNull(m.server.oprfKeyHash("https://$host"))
+    }
+
     /**
      * Signing through the production server's SP: the server is used only when its /info lists twfido with an
      * environment, the ID number is not sent otherwise, and in the production environment the certificate the first
@@ -2514,6 +2599,205 @@ class WalletModelE2eTest {
         withTimeout(10.seconds) { templates.state.first { it.testPages.isEmpty() } }
     }
 
+    /** A zkPassport verifier session driven by hand: what the holder's app would do over the bridge. */
+    private class FakeZkPassport : diw.wallet.core.zkpassport.ZkPassportVerifier {
+        val requests = ArrayList<diw.wallet.core.zkpassport.ZkPassportRequest>()
+        val state = kotlinx.coroutines.flow.MutableStateFlow<diw.wallet.core.zkpassport.ZkPassportState>(diw.wallet.core.zkpassport.ZkPassportState.Connecting)
+        var closed = 0
+        override fun open(request: diw.wallet.core.zkpassport.ZkPassportRequest, config: diw.wallet.core.zkpassport.ZkPassportConfig, scope: CoroutineScope): diw.wallet.core.zkpassport.ZkPassportSession {
+            requests.add(request)
+            state.value = diw.wallet.core.zkpassport.ZkPassportState.Connecting
+            return object : diw.wallet.core.zkpassport.ZkPassportSession {
+                override val state = this@FakeZkPassport.state
+                override fun close() { closed++ }
+            }
+        }
+    }
+
+    /**
+     * zkPassport verification: gated by its statement, the setup starts from this wallet's own server domain, the
+     * request link is shown once the bridge is connected, and the result and a rejection end in the history.
+     */
+    @Test
+    fun zkPassportVerifierFlow() = runBlocking<Unit> {
+        val fake = FakeZkPassport()
+        val p = TestPlatform(EphemeralStorage(), zkPassport = fake)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        val zkp = diw.wallet.app.legal.Integration.ZKPASSPORT
+        m.legal.decide(zkp, false).join()
+        m.taiwan.zkPassport.openSetup()
+        assertEquals(Screen.IntegrationStatement(zkp), m.screen.value)
+        m.taiwan.zkPassport.start(diw.wallet.core.zkpassport.ZkPassportRequest("example.org", "n", "p"))
+        assertTrue(fake.requests.isEmpty(), "nothing is asked without the statement")
+
+        m.legal.decide(zkp, true).join()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://wallet.example.org:8443/base") }.join()
+        m.taiwan.zkPassport.openSetup()
+        val setup = assertIs<OfflineUi.ZkPassportSetup>(m.taiwan.offline.value)
+        assertEquals("wallet.example.org", setup.domain)
+        assertNull(setup.note)
+        assertEquals(listOf("TWN", "JPN"), ZkPassportFlow.countries("twn, JPN;twn"))
+        assertNull(ZkPassportFlow.countries("TW"))
+        assertNotNull(ZkPassportFlow.domainProblem("not a domain"))
+        assertNull(ZkPassportFlow.domainProblem("https://Example.org/path"))
+
+        val request = diw.wallet.core.zkpassport.ZkPassportRequest(
+            domain = "https://Verify.Example.org/x", name = "DIW", purpose = "age check", minAge = 18,
+            disclose = setOf(diw.wallet.core.zkpassport.ZkPassportField.NATIONALITY),
+        )
+        m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.isEmpty()) delay(20) }
+        assertEquals(request, fake.requests.single())
+        assertEquals("verify.example.org", m.settings.zkPassportDomain, "the domain used is kept for next time")
+        val url = "https://zkpassport.id/r?d=verify.example.org&t=00"
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Waiting(url)
+        val waiting = withTimeout(5.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkPassportWaiting && it.url == url } as OfflineUi.ZkPassportWaiting
+        }
+        assertIs<diw.wallet.core.zkpassport.ZkPassportState.Waiting>(waiting.state)
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Receiving(1, 3)
+        withTimeout(5.seconds) { m.taiwan.offline.first { (it as? OfflineUi.ZkPassportWaiting)?.state is diw.wallet.core.zkpassport.ZkPassportState.Receiving } }
+
+        val result = diw.wallet.core.zkpassport.ZkPassport.result(
+            """{"verified":true,"errors":[],"version":"0.21.1","date":1762387200,"uniqueIdentifier":"123456789012345","uniqueIdentifierType":"NON_SALTED",""" +
+                """"disclosed":{"documentCode":"P","issuingCountry":"TWN","nationality":"TWN","layout":"td3"},""" +
+                """"conditions":{"compare_age":{"minAge":18,"maxAge":0}},"devMode":false}""",
+        )
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Done(result)
+        val shown = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified } as OfflineUi.ZkPassportVerified }
+        assertEquals(result, shown.result)
+        assertTrue("T2" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 2)))
+        assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 1)))
+        assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 0, 0, "certificates_unavailable")))
+        val claims = ZkPassportFlow.claims(result)
+        assertTrue("國籍：TWN" in claims && "發證國：TWN" in claims && "年齡：至少 18 歲" in claims, claims.toString())
+        val entry = withTimeout(5.seconds) { m.history.first { h -> h.any { it.party == "zkPassport" } } }.first { it.party == "zkPassport" }
+        assertEquals(HistoryKind.VERIFIED, entry.kind)
+        assertNull(entry.failure)
+        assertTrue(entry.note!!.contains("verify.example.org"), entry.note)
+
+        m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.size < 2) delay(20) }
+        fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Rejected
+        val rejected = withTimeout(5.seconds) {
+            m.taiwan.offline.first { it is OfflineUi.ZkPassportVerified && it.result == null } as OfflineUi.ZkPassportVerified
+        }
+        assertEquals("對方拒絕了請求。", rejected.error)
+        assertEquals(listOf("零知識證明驗證失敗。", "電路不在 zkPassport 電路註冊表中。"), ZkPassportFlow.problems(listOf("proof:disclose_bytes:x", "vkey:a", "circuit_root_mismatch", "proof:b")))
+
+        val closed = fake.closed
+        m.taiwan.zkPassport.start(request)
+        withTimeout(5.seconds) { while (fake.requests.size < 3) delay(20) }
+        m.back()
+        withTimeout(5.seconds) { while (fake.closed == closed) delay(20) }
+    }
+
+    /** A zkPassport holder answered by hand: what this wallet's prover and the bridge would do. */
+    private class FakeZkPassportHolder : diw.wallet.core.zkpassport.ZkPassportHolder {
+        val incoming = ArrayList<diw.wallet.core.zkpassport.ZkPassportIncoming>()
+        val chips = ArrayList<diw.wallet.core.zkpassport.ZkPassportChip>()
+        var rejected = 0
+        var origin = "https://verify.example.org"
+        var failure: String? = null
+        override suspend fun connect(incoming: diw.wallet.core.zkpassport.ZkPassportIncoming, rpc: String?): diw.wallet.core.zkpassport.ZkPassportAnswer {
+            this.incoming.add(incoming)
+            failure?.let { throw diw.wallet.core.zkpassport.ZkPassportAnswerFailure(it) }
+            val from = origin
+            return object : diw.wallet.core.zkpassport.ZkPassportAnswer {
+                override val origin = from
+                override val originMatches = from == incoming.expectedOrigin
+                override suspend fun reject() { rejected++ }
+                override suspend fun answer(chip: diw.wallet.core.zkpassport.ZkPassportChip, progress: (diw.wallet.core.zkpassport.ZkPassportAnswerProgress) -> Unit) {
+                    progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Proving(0, 2, "disclose_bytes"))
+                    chips.add(chip)
+                    progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Sending)
+                }
+                override fun close() {}
+            }
+        }
+    }
+
+    /**
+     * Answering a zkPassport request link (Z3): gated by the statement, the consent lists
+     * what is asked and the stored passports, the proofs are made from the chosen passport, and declining, an
+     * unsupported request and a bridge failure each end on their own result.
+     */
+    @Test
+    fun zkPassportAnswerFlow() = runBlocking<Unit> {
+        val fake = FakeZkPassportHolder()
+        val p = TestPlatform(EphemeralStorage(), zkPassportHolder = fake)
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        val zkp = diw.wallet.app.legal.Integration.ZKPASSPORT
+        m.legal.decide(zkp, false).join()
+        val request = diw.wallet.core.zkpassport.ZkPassportRequest(
+            domain = "verify.example.org", name = "DIW", purpose = "Age check",
+            disclose = setOf(diw.wallet.core.zkpassport.ZkPassportField.NATIONALITY), minAge = 18,
+        )
+        val link = diw.wallet.core.zkpassport.ZkPassport.url(request, "02" + "11".repeat(32), 1_800_000_000)
+        m.handleUri(link)
+        assertEquals(Screen.IntegrationStatement(zkp, pendingUri = link), m.screen.value)
+        assertTrue(fake.incoming.isEmpty())
+
+        m.legal.decide(zkp, true).join()
+        val zone = ("P<TWNLIN<<CHE<CHUAN".padEnd(44, '<') + "3123456780TWN9001155M3001017" + "A123456789<<<<" + "24").encodeToByteArray()
+        fun tlv(tag: ByteArray, value: ByteArray) = tag + byteArrayOf(value.size.toByte()) + value
+        val dg1 = tlv(byteArrayOf(0x61), tlv(byteArrayOf(0x5F, 0x1F), zone))
+        val sod = byteArrayOf(0x77, 0x03, 0x01, 0x02, 0x03)
+        val dump = diw.wallet.core.document.mrtd.MrtdDump(
+            files = mapOf("DG1" to kotlin.io.encoding.Base64.encode(dg1), "SOD" to kotlin.io.encoding.Base64.encode(sod)),
+            access = "BAC", readAt = kotlin.time.Clock.System.now().epochSeconds,
+        )
+        m.files.import(PickedFile("passport.emrtd.json", dump.encode()), FileOrigin.IMPORTED, null).join()
+        val passport = m.files.files.value.first { it.report?.format == diw.wallet.core.document.DocumentFormat.EMRTD }
+
+        m.handleUri(link)
+        val consent = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerConsent } as OfflineUi.ZkPassportAnswerConsent }
+        assertEquals("verify.example.org", fake.incoming.single().domain)
+        assertTrue(consent.originMatches)
+        assertNull(consent.unsupported)
+        assertEquals(listOf(passport.id), consent.passports.map { it.id })
+        val asks = ZkPassportFlow.asks(consent.incoming.query)
+        assertTrue("國籍（揭露）" in asks && "年齡：至少 18 歲" in asks && "發證國（揭露）" in asks, asks.toString())
+        m.taiwan.zkPassport.accept(passport)
+        val sent = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerDone } as OfflineUi.ZkPassportAnswerDone }
+        assertTrue(sent.sent, sent.error)
+        assertContentEquals(sod, fake.chips.single().sod)
+        assertContentEquals(dg1, fake.chips.single().dg1)
+        val entry = withTimeout(5.seconds) { m.history.first { h -> h.any { it.party == "verify.example.org" } } }.first { it.party == "verify.example.org" }
+        assertEquals(HistoryKind.PRESENTED, entry.kind)
+        assertNull(entry.failure)
+        assertEquals(listOf("passport.emrtd.json"), entry.documents)
+
+        // A face match cannot be answered; declining tells the requester.
+        val incoming = assertNotNull(diw.wallet.core.zkpassport.ZkPassport.parseLink(link))
+        val facematch = incoming.copy(query = kotlinx.serialization.json.JsonObject(incoming.query + ("facematch" to kotlinx.serialization.json.buildJsonObject { put("mode", kotlinx.serialization.json.JsonPrimitive("regular")) })))
+        m.taiwan.zkPassport.answer(facematch)
+        val unsupported = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerConsent } as OfflineUi.ZkPassportAnswerConsent }
+        assertNotNull(unsupported.unsupported)
+        m.taiwan.zkPassport.reject()
+        val declined = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerDone } as OfflineUi.ZkPassportAnswerDone }
+        assertTrue(!declined.sent && declined.error == null)
+        assertEquals(1, fake.rejected)
+
+        // A link relayed from another origin is shown as such.
+        fake.origin = "https://evil.example"
+        m.handleUri(link)
+        val relayed = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerConsent } as OfflineUi.ZkPassportAnswerConsent }
+        assertTrue(!relayed.originMatches)
+        assertEquals("https://evil.example", relayed.origin)
+
+        fake.failure = "bridge_origin"
+        m.handleUri(link)
+        val failed = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerDone } as OfflineUi.ZkPassportAnswerDone }
+        assertEquals(ZkPassportFlow.answerFailure("bridge_origin"), failed.error)
+    }
+
     /**
      * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
      * decisions survive a restart.
@@ -2536,7 +2820,9 @@ class WalletModelE2eTest {
         m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, false).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
-        assertTrue(m.legal.complete, "the reserved zkPassport statement is not asked for yet")
+        assertFalse(m.legal.complete, "zkPassport verification is offered, so its statement is asked for too")
+        m.legal.decide(diw.wallet.app.legal.Integration.ZKPASSPORT, false).join()
+        assertTrue(m.legal.complete)
         withTimeout(5.seconds) { m.message.first { it == "無法辨識的連結" } }
 
         val twdiw = diw.wallet.app.legal.Integration.TWDIW

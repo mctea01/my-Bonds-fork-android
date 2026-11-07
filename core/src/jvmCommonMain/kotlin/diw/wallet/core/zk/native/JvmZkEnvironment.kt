@@ -8,10 +8,14 @@ import diw.wallet.core.zk.OpenAcAgeProver
 import diw.wallet.core.zk.OpenAcAgeVerifier
 import diw.wallet.core.zk.ZkEnvironment
 import diw.wallet.core.zk.ZkNativeStatus
+import diw.wallet.core.zk.ZkPdfAssets
 import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.zk.ZkPlatformInfo
 import diw.wallet.core.zk.ZkResult
 import diw.wallet.core.profile.bonds.SocketBondsLanLink
+import diw.wallet.core.zkpassport.JvmZkPassportVerifier
+import diw.wallet.core.zkpassport.ZkPassportProver
+import diw.wallet.core.zkpassport.ZkPassportVerifier
 import diw.wallet.core.zktls.NativeZkTlsEngine
 import diw.wallet.core.zktls.ZkTlsEngine
 import io.ktor.client.HttpClient
@@ -56,6 +60,26 @@ class JvmZkEnvironment(
     override val ageVerifier: OpenAcAgeVerifier? by lazy { store?.let { OpenAcAgeNativeVerifier(it, File(dataDirectory, "zk-verify")) } }
 
     override val pdf: ZkPdfEngine? by lazy { store?.let { ZkPdfNativeEngine(it) } }
+
+    /** The folder of the installed zkPDF CRS, shared with zkPassport; null until both files are installed. */
+    private fun crsDirectory(): File? =
+        store?.let { s -> ZkPdfAssets.CRS.map { s.installedFile(it) ?: return@let null }.first().parentFile }
+
+    private suspend fun ultraHonkReady(): Boolean =
+        (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.NOIR_ULTRAHONK) == true
+
+    override val zkPassport: ZkPassportVerifier by lazy {
+        JvmZkPassportVerifier(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
+    }
+
+    /** zkPassport proofs made on this device from a passport's chip files, with the same CRS and cache. */
+    val zkPassportProver: ZkPassportProver by lazy {
+        ZkPassportProver(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
+    }
+
+    override val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder by lazy {
+        diw.wallet.core.zkpassport.JvmZkPassportHolder(http, zkPassportProver)
+    }
 
     override val tls: ZkTlsEngine by lazy {
         NativeZkTlsEngine(http, lan::localAddresses, lan::preferred, socketFactoryFor) {

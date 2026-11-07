@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,6 +57,7 @@ private fun roleName(r: TrustRole): String = when (r) {
     TrustRole.TSA -> stringResource(Res.string.role_timestamp)
     TrustRole.DOCUMENT -> stringResource(Res.string.role_document_signing)
     TrustRole.CONTENT -> stringResource(Res.string.role_c2pa)
+    TrustRole.TRAVEL_DOCUMENT -> stringResource(Res.string.role_travel_document)
 }
 
 @Composable
@@ -442,10 +444,12 @@ private fun ImportAnchorSection(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Text(stringResource(Res.string.import_anchor_uses), style = MaterialTheme.typography.labelLarge)
-    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
+    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.TRAVEL_DOCUMENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
         Text(stringResource(Res.string.action_import))
     }
+    Text(stringResource(Res.string.master_list_text), style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { model.importMasterList() }) { Text(stringResource(Res.string.master_list_import)) }
 }
 
 /**

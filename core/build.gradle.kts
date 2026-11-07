@@ -16,11 +16,11 @@ plugins {
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
     .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
 
-/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn and zkpdf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn, zkpdf and oprf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
 val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
     .getOrElse("").also { f ->
-        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf") } && l.toSet().size == l.size }) {
-            "diw.zkFeatures must be empty or a comma list of openac, tlsn and zkpdf"
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf", "oprf") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac, tlsn, zkpdf and oprf"
         }
     }
 

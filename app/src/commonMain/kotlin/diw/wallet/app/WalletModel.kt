@@ -236,6 +236,14 @@ data class WalletSettings(
     val manualMobileMoicaSp: Boolean = false,
     /** Remote signing services (CSC API) the user added; the built-in ones are in CscServices. */
     val cscServices: List<CscService> = emptyList(),
+    /** Domain zkPassport requests are made for; empty uses the host of [zkVerifierUrl]. */
+    val zkPassportDomain: String = "",
+    /** Ethereum JSON-RPC for the zkPassport registry on mainnet; empty uses the built-in public node. */
+    val zkPassportMainnetRpc: String = "",
+    /** The same for Sepolia, read by zkPassport checks in the test environment. */
+    val zkPassportSepoliaRpc: String = "",
+    /** Let zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
+    val zkPassportVerifierApi: Boolean = false,
 )
 
 /**
@@ -304,6 +312,8 @@ sealed class Screen {
     data class NationalId(val fileId: String, val from: Screen = Home) : Screen()
     /** The sites that issue documents (MyData and others), opened from the files tab. */
     data object DocumentSources : Screen()
+    /** Reading an electronic passport chip by NFC, opened from the files tab. */
+    data object PassportRead : Screen()
     /** A document source site opened inside the app. */
     data class Portal(val sourceId: String) : Screen()
     /**
@@ -430,6 +440,7 @@ class WalletModel(val platform: PlatformServices) {
     val documentTypes = DocumentTypeRepository().apply {
         addDocumentType(DrivingLicense.getDocumentType())
         addDocumentType(EUPersonalID.getDocumentType())
+        addDocumentType(org.multipaz.documenttype.knowntypes.PhotoID.getDocumentType())
         WalletTransactionTypes.all.forEach { addTransactionType(it) }
     }
     lateinit var source: SimplePresentmentSource
@@ -833,6 +844,7 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.NationalIdCreate -> screen.value = Screen.FileDetail(s.fileId)
             is Screen.NationalId -> if (s.from is Screen.FileDetail) screen.value = s.from else showTab(HomeTab.DOCUMENTS)
             Screen.DocumentSources -> showTab(HomeTab.FILES)
+            Screen.PassportRead -> showTab(HomeTab.FILES)
             is Screen.Portal -> screen.value = Screen.DocumentSources
             is Screen.OfficialBundle -> screen.value = Screen.FileDetail(s.mainId)
             is Screen.LegalText -> screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
@@ -982,7 +994,7 @@ class WalletModel(val platform: PlatformServices) {
 
     private suspend fun cardArtSpec(doc: Document): CardArtSpec {
         val record = doc.issuanceRecord
-        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier }
+        val derived = files.files.value.firstOrNull { it.derivedDocumentId == doc.identifier || it.photoIdDocumentId == doc.identifier }
         val background = parseColor(record?.backgroundColor) ?: when {
             derived != null -> Color(0xFF334155)
             else -> when (categoryOf(record)) {
@@ -1112,6 +1124,10 @@ class WalletModel(val platform: PlatformServices) {
         }
         if (BondsPresentationRequest.looksLike(u)) {
             taiwan.startBonds(u)
+            return
+        }
+        diw.wallet.core.zkpassport.ZkPassport.parseLink(u)?.let {
+            taiwan.zkPassport.answer(it)
             return
         }
         // A document chosen for an offline presentation only applies to the next challenge.
@@ -1960,6 +1976,40 @@ class WalletModel(val platform: PlatformServices) {
         intermediates.value = trust.intermediates().sortedBy { it.name }
         mdocLists.value = trust.mdocTrustLists().sortedBy { it.name }
         federationAnchorList.value = federationAnchors.all().sortedBy { it.name }
+    }
+
+    /**
+     * Imports the country signing CAs of ICAO master lists the user picked (.ml, as Germany's BSI and other states
+     * publish them) as the user's own travel document anchors; link certificates between CSCA generations become
+     * intermediates. Expired certificates are left out, since no document they signed is still valid.
+     */
+    fun importMasterList() = scope.launch {
+        try {
+            val picked = platform.pickFiles()
+            if (picked.isEmpty()) return@launch
+            var roots = 0
+            var middle = 0
+            var expired = 0
+            val now = kotlin.time.Clock.System.now()
+            for (p in picked) {
+                val list = diw.wallet.core.document.mrtd.MrtdCrypto.masterList(p.bytes)
+                    ?: throw ProtocolException("invalid_request", tr(Res.string.msg_not_master_list, p.name))
+                if (!list.signatureValid) throw ProtocolException("invalid_request", tr(Res.string.msg_master_list_signature, p.name))
+                for (der in list.certificates) {
+                    val cert = runCatching { X509Cert(kotlinx.io.bytestring.ByteString(der)) }.getOrNull() ?: continue
+                    if (cert.validityNotAfter < now) { expired++; continue }
+                    val label = "CSCA " + (cert.subject.components[OID.COUNTRY_NAME.oid]?.value?.let { "$it " } ?: "") + commonName(cert)
+                    if (TrustRegistry.isRoot(cert)) {
+                        if (trust.addAnchor(TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.USER, cert, label, official = false, source = "masterlist:" + p.name)) roots++
+                    } else if (TrustRegistry.isIntermediate(cert) && trust.addIntermediate(cert, label, "masterlist:" + p.name)) middle++
+                }
+            }
+            message.value = tr(Res.string.msg_master_list_imported, roots, middle, expired)
+            loadAnchors()
+            if (roots > 0 || middle > 0) status.reevaluateIssuers(tr(Res.string.pin_reason_add_anchor), affected = { it.anchorName == null }, accept = { it.environment != null })
+        } catch (e: Exception) {
+            message.value = tr(Res.string.msg_import_failed_prefix) + describe(e)
+        }
     }
 
     /**

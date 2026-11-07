@@ -20,7 +20,7 @@ if [[ -n "$features" ]]; then
     IFS=',' read -ra backends <<< "$features"
     for backend in "${backends[@]}"; do
         case "$backend" in
-            openac|tlsn|zkpdf) ;;
+            openac|tlsn|zkpdf|oprf) ;;
             *) echo "Unsupported DIW_ZK_FEATURES entry" >&2; exit 1 ;;
         esac
     done

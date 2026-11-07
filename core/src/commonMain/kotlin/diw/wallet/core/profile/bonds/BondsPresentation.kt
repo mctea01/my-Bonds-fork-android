@@ -676,9 +676,9 @@ class BondsOfflineVerifier(
         if ((holderKey as? VerificationKey.Ec)?.key != cnf) throw ProtocolException("invalid_credential", "Card not bound to the presenter")
         sdJwt.validUntil?.let { if (it < now) throw ProtocolException("invalid_credential", "Card expired") }
         sdJwt.validFrom?.let { if (it > now + 2.minutes) throw ProtocolException("invalid_credential", "Card not yet valid") }
-        val derived = sdJwt.credentialType == DerivedCredentials.VCT
+        val derived = DerivedCredentials.isDerived(sdJwt.credentialType)
         val claims = flatten(JsonObject(processed.filterKeys {
-            it !in SD_JWT_VC_TECHNICAL && !(derived && (it == "evidence" || DerivedCredentials.isProofClaim(it)))
+            it !in SD_JWT_VC_TECHNICAL && !(derived && (it == "evidence" || DerivedCredentials.isTechnicalClaim(it)))
         }))
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(compact).issuerJwt).payload

@@ -32,6 +32,11 @@ enum class TrustRole(val id: String) {
     DOCUMENT("document"),
     /** Signers of content credentials (C2PA manifests on pictures and other media). */
     CONTENT("content"),
+    /**
+     * Country signing CAs (CSCA) of travel documents: the roots of the document signer certificates in an
+     * electronic passport's security object (ICAO 9303 part 12). Never shared with the other roles.
+     */
+    TRAVEL_DOCUMENT("travel-document"),
 }
 
 /** Metadata extension keys stored in [TrustMetadata.extensions]. */
@@ -127,7 +132,7 @@ class TrustRegistry(
         private val SYSTEM_ROLES = setOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.STATUS_LIST, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)
 
         /** Roles whose chains are validated with PKIX only (RFC 5280), not with the mdoc trust profile. */
-        private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)
+        private val PKIX_ROLES = setOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.TRAVEL_DOCUMENT)
 
         private fun isEc(c: X509Cert): Boolean = runCatching { c.ecPublicKey }.isSuccess
 

@@ -51,11 +51,12 @@ object DerivedEvidence {
         val document = credential.obj("document")
         val sha256 = document?.str("sha256")
         val evidence = (credential["evidence"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-        val listed = evidence.map { e ->
+        val listed = evidence.flatMap { e ->
             when (e.str("type")) {
-                DerivedCredentials.EVIDENCE_TIMESTAMP -> timestamp(e, sha256, trust)
-                DerivedCredentials.EVIDENCE_SIGNATURE -> signature(e, own)
-                else -> EvidenceResult(e.str("type") ?: "", "其他證據", Check.NOT_CHECKED, "本錢包不認識這種證據")
+                DerivedCredentials.EVIDENCE_TIMESTAMP -> listOf(timestamp(e, sha256, trust))
+                DerivedCredentials.EVIDENCE_SIGNATURE -> listOf(signature(e, own))
+                TravelDocumentFields.EVIDENCE -> TravelDocumentFields.verify(e, disclosed, trust, own, now)
+                else -> listOf(EvidenceResult(e.str("type") ?: "", "其他證據", Check.NOT_CHECKED, "本錢包不認識這種證據"))
             }
         }
         val bundle = disclosed[ZkPdfEvidence.CLAIM] ?: return listed
