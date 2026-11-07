@@ -67,7 +67,8 @@ object TravelDocumentFields {
         mrz.primaryIdentifier.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(SURNAME, it, "姓")) }
         mrz.secondaryIdentifier.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(GIVEN_NAMES, it, "名")) }
         add(DerivedClaim(DOCUMENT_NUMBER, mrz.documentNumber, "證件號碼"))
-        add(DerivedClaim(NATIONALITY, mrz.nationality, "國籍"))
+        // Permit cards of mainland China state no nationality.
+        mrz.nationality.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(NATIONALITY, it, "國籍")) }
         add(DerivedClaim(BIRTH_DATE, date(mrz.birthDate, false, currentYear), "出生日期"))
         mrz.sex.takeIf { it.isNotBlank() }?.let { add(DerivedClaim(SEX, it, "性別")) }
         add(DerivedClaim(EXPIRY_DATE, date(mrz.expiryDate, true, currentYear), "效期截止日"))

@@ -171,7 +171,11 @@ internal fun PassportDataView(v: PassportView) {
     ) {
         val m = v.mrz
         Text(
-            if (m?.documentCode?.startsWith("P") != false) stringResource(Res.string.mrtd_kind_passport) else stringResource(Res.string.mrtd_kind_travel_document),
+            when {
+                m?.format == diw.wallet.core.document.mrtd.Mrz.Format.CN_PERMIT -> stringResource(Res.string.mrtd_kind_cn_permit, m.documentCode)
+                m?.documentCode?.startsWith("P") != false -> stringResource(Res.string.mrtd_kind_passport)
+                else -> stringResource(Res.string.mrtd_kind_travel_document)
+            },
             style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
         )
         if (v.portraits.isNotEmpty()) {
@@ -193,7 +197,7 @@ internal fun PassportDataView(v: PassportView) {
         v.personal?.fullName?.let { LabelValue(stringResource(Res.string.mrtd_full_name), it, small = true) }
         v.personal?.otherNames?.takeIf { it.isNotEmpty() }?.let { LabelValue(stringResource(Res.string.mrtd_other_names), it.joinToString("; "), small = true) }
         m?.let {
-            LabelValue(stringResource(Res.string.field_nationality), it.nationality, small = true)
+            if (it.nationality.isNotEmpty()) LabelValue(stringResource(Res.string.field_nationality), it.nationality, small = true)
             LabelValue(stringResource(Res.string.field_sex), it.sex, small = true)
             LabelValue(stringResource(Res.string.field_birth_date), Passports.fullDate(v.personal?.fullBirthDate) ?: Passports.date(it.birthDate, false, year), small = true)
         }
@@ -209,6 +213,7 @@ internal fun PassportDataView(v: PassportView) {
             LabelValue(stringResource(Res.string.mrtd_document_code), it.documentCode, small = true)
             LabelValue(stringResource(Res.string.mrtd_issuing_state), it.issuingState, small = true)
             LabelValue(stringResource(Res.string.mrtd_number), it.documentNumber, small = true)
+            it.issueCount?.let { n -> LabelValue(stringResource(Res.string.mrtd_issue_count), n, small = true) }
             LabelValue(stringResource(Res.string.mrtd_expiry_date), Passports.date(it.expiryDate, true, year), small = true)
         }
         v.document?.issueDate?.let { LabelValue(stringResource(Res.string.field_issued_at), Passports.fullDate(it) ?: it, small = true) }
