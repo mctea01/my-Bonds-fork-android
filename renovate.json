@@ -90,6 +90,13 @@
         "sha2"
       ],
       "allowedVersions": "<0.11.0"
+    },
+    {
+      "description": "Rust crates wait for review: native/Cargo.lock was not refreshed with the sha2 0.11 and snow 0.10 bumps, and both reached main while the locked native builds failed",
+      "matchManagers": [
+        "cargo"
+      ],
+      "automerge": false
     }
   ]
 }
