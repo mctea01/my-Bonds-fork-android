@@ -287,7 +287,7 @@ jobs:
       # The Linux desktop library (with zkPDF) from native-linux, where core's JVM resources expect it. The core
       # Android unit tests run on the JVM and do not load the Android library.
       - name: ZK native library
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: zk-native-linux
           path: native/dist/resources
@@ -328,7 +328,7 @@ jobs:
           mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
       - name: Upload template pack
         if: success() && github.event_name == 'push'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zk-templates
           path: dist/zk-templates.jwt
@@ -405,7 +405,7 @@ jobs:
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
       # Both ABIs from native-android, merged into native/dist/android/<abi>/libdiw_zk.so (the jniLibs directory).
       - name: ZK native libraries
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: zk-native-android-*
           path: native/dist/android
@@ -530,7 +530,7 @@ jobs:
         run: bash tools/app-version.sh >> "$GITHUB_ENV"
       # This OS's library from native-linux or native-desktop, where core's JVM resources expect it.
       - name: ZK native library
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: zk-native-${{ matrix.name }}
           path: native/dist/resources
@@ -580,7 +580,7 @@ jobs:
       - name: Version
         run: bash tools/app-version.sh >> "$GITHUB_ENV"
       # Only the release files; the zk-native-* libraries are already inside the packages.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: "{android,windows,linux,macos,zk-templates}"
           path: dist
