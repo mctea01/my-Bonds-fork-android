@@ -1,0 +1,66 @@
+# Isolated native dependency probes
+
+These tools are research artifacts, not application integrations. They never
+modify the production loader, Cargo manifests, Gradle configuration, or CI.
+Run them from the repository root on Linux x86_64 with Python 3.11+, a C
+compiler, and binutils. Use only libraries from the pinned trusted sources.
+
+## DIW runtime without JVM
+
+Install Rust **1.99.1**, as pinned in `native/rust-toolchain.toml`. The workspace
+MSRV of 1.95 and older documentation do not override that pin. Use a separate
+build directory and preserve `Cargo.lock`:
+
+```sh
+CARGO_TARGET_DIR=/tmp/diw-runtime-target cargo +1.99.1 build \
+  --manifest-path native/Cargo.toml --locked -p diw-zk-ffi --no-default-features
+python3 tools/native-research/probe_runtime.py \
+  --library /tmp/diw-runtime-target/debug/libdiw_zk.so \
+  --out /tmp/diw-runtime-probe
+```
+
+The runner compiles a C caller, inspects ELF imports/exports, then uses `dlopen`
+and the versioned UniFFI C ABI. It checks contract 29 and the two function
+checksums before calling the SHA-256 self-test and reading/freeing native info.
+It does not test proof engines or all serialized fields. `result.json` contains
+commands, exit codes, source/library hashes, and the observed status. Diagnostic
+metadata failures remain visible in command exit codes; smoke status describes
+the C call, not successful completion of every inspection command.
+
+## OPRF Rust vectors
+
+```sh
+CARGO_TARGET_DIR=/tmp/diw-oprf-target cargo +1.99.1 test \
+  --manifest-path native/Cargo.toml --locked -p diw-zk-ffi \
+  --no-default-features --features oprf --lib
+```
+
+This tests Rust API behavior, including public synthetic keys, randomized
+blinding, proof/key binding, invalid inputs, and a public zkPassport key hash.
+It does not exercise the OPRF C ABI or the BB-backed disclosure circuit.
+
+## Longfellow without JVM
+
+```sh
+python3 tools/native-research/longfellow_probe.py \
+  --output /tmp/diw-longfellow.json
+```
+
+The runner downloads the Linux x86_64 library from the fixed Multipaz commit,
+checks its SHA-256 before use, and links a C caller in a disposable directory.
+`--library /path/to/libzkp.so` uses a local copy with the same hash check.
+All six exports are called, but proof generation and successful proof
+verification remain untested. The source declarations follow the fixed Rust
+exports because the upstream C header is stale.
+
+Reports and limits: [research summary](../../docs/research/native-dependencies/research-summary.md).
+
+## Archive inventory
+
+```sh
+python3 tools/native-research/inspect_archives.py /path/to/library.jar /path/to/library.aar > /tmp/native-entries.csv
+```
+
+This hashes each archive and its native/WASM entries without extracting or
+executing them. It does not recursively inspect nested archives, resolve
+dependencies, or claim that observed entries are used by a particular target.

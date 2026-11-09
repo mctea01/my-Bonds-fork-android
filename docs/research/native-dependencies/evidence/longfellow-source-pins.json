@@ -1,0 +1,95 @@
+{
+  "multipaz_tag": "0.102.0",
+  "annotated_tag_object": "c1ceb0dfa1af52bd57c064efb4b9e9de53427274",
+  "multipaz_commit": "a015c9d93874fe6e09df1354006353ce6f94751d",
+  "longfellow_submodule_commit": "d5e6be77336933d50bf7f25a954f8ec273eb51ce",
+  "evidence_kind": "GitHub tree metadata; blob presence is not runtime validation",
+  "tree_entries": [
+    {
+      "path": "multipaz-longfellow/compile_rust.sh",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "2ac5a47811c54f4409e75e3bbe49b4c260016b35",
+      "size": 5147,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/2ac5a47811c54f4409e75e3bbe49b4c260016b35"
+    },
+    {
+      "path": "multipaz-longfellow/rust/.cargo/config.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "d9de194f57bec8755b4dc0384340ef451327760b",
+      "size": 163,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/d9de194f57bec8755b4dc0384340ef451327760b"
+    },
+    {
+      "path": "multipaz-longfellow/rust/Cargo.toml",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "a71cfbcbac066c2008a790f5db58c9a739c1a247",
+      "size": 513,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/a71cfbcbac066c2008a790f5db58c9a739c1a247"
+    },
+    {
+      "path": "multipaz-longfellow/rust/include/mdoc_zk.h",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "14a2d2d7fa6387c54ba60af886204e82f7d5a282",
+      "size": 9148,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/14a2d2d7fa6387c54ba60af886204e82f7d5a282"
+    },
+    {
+      "path": "multipaz-longfellow/rust/longfellow-zk",
+      "mode": "160000",
+      "type": "commit",
+      "sha": "d5e6be77336933d50bf7f25a954f8ec273eb51ce"
+    },
+    {
+      "path": "multipaz-longfellow/rust/src/lib.rs",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "b49cb57f1dc7dd57e4c5330979d9d3069e6f81d3",
+      "size": 10604,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/b49cb57f1dc7dd57e4c5330979d9d3069e6f81d3"
+    },
+    {
+      "path": "multipaz-longfellow/src/androidMain/jniLibs/arm64-v8a/libzkp.so",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "bf4f778977881e4f39b9cff294ed5dc06ad84693",
+      "size": 2087072,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/bf4f778977881e4f39b9cff294ed5dc06ad84693"
+    },
+    {
+      "path": "multipaz-longfellow/src/androidMain/jniLibs/x86_64/libzkp.so",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "705d923635140a574bed4ba3f9d2c72940c5e50f",
+      "size": 2652416,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/705d923635140a574bed4ba3f9d2c72940c5e50f"
+    },
+    {
+      "path": "multipaz-longfellow/src/jvmMain/resources/nativeLibs/linux-x86_64/libzkp.so",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "06ece4aee0576e8c2fe5ad19b7f039dffdb7a29c",
+      "size": 2557544,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/06ece4aee0576e8c2fe5ad19b7f039dffdb7a29c"
+    },
+    {
+      "path": "multipaz-longfellow/src/jvmMain/resources/nativeLibs/macos-arm64/libzkp.dylib",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "70ebad9ed58a71f3ef650310d9ec6349a49358aa",
+      "size": 2005856,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/70ebad9ed58a71f3ef650310d9ec6349a49358aa"
+    },
+    {
+      "path": "multipaz-longfellow/src/jvmMain/resources/nativeLibs/macos-x86_64/libzkp.dylib",
+      "mode": "100755",
+      "type": "blob",
+      "sha": "74bebc1ff67ee3e2299049ba43275b3b415d667f",
+      "size": 2503760,
+      "url": "https://api.github.com/repos/openwallet-foundation/multipaz/git/blobs/74bebc1ff67ee3e2299049ba43275b3b415d667f"
+    }
+  ]
+}

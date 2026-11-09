@@ -1,0 +1,23 @@
+[
+  {
+    "url": "https://maven-central.storage-download.googleapis.com/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+    "file": "jna-5.19.1.jar",
+    "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+    "size": 1950853,
+    "status": "downloaded"
+  },
+  {
+    "url": "https://maven-central.storage-download.googleapis.com/maven2/org/multipaz/multipaz-longfellow-jvm/0.102.0/multipaz-longfellow-jvm-0.102.0.jar",
+    "file": "multipaz-longfellow-jvm-0.102.0.jar",
+    "sha256": "9123e93633b610b29ff860c09140034d45ee1506612aa448f2f99462a77b30a1",
+    "size": 4949425,
+    "status": "downloaded"
+  },
+  {
+    "url": "https://maven-central.storage-download.googleapis.com/maven2/org/multipaz/multipaz-longfellow-android/0.102.0/multipaz-longfellow-android-0.102.0.aar",
+    "file": "multipaz-longfellow-android-0.102.0.aar",
+    "sha256": "f4a151c57ae79652db888ad37dd647578dac967778ac985924a6cc6cb90313b0",
+    "size": 3932658,
+    "status": "downloaded"
+  }
+]

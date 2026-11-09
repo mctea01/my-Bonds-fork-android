@@ -1,0 +1,108 @@
+{
+  "baseline": "3428b8ee12ac5e644f478d4c6e43854376202fa4",
+  "method": "SHA-256 of vendored runtime files compared with VERSIONS.json runtime_bundle_sha256; no execution of the runtime",
+  "files": [
+    {
+      "file": "Cargo.toml",
+      "expected": "684c091833b70018a5f5a97730a0ac4859c249e55a9ae411f52018417bb4108a",
+      "actual": "684c091833b70018a5f5a97730a0ac4859c249e55a9ae411f52018417bb4108a",
+      "matches": true
+    },
+    {
+      "file": "LICENSE",
+      "expected": "1f2a80459a263e363f977e0135cfe427b26acb06b07f95c150792be6a54a2952",
+      "actual": "1f2a80459a263e363f977e0135cfe427b26acb06b07f95c150792be6a54a2952",
+      "matches": true
+    },
+    {
+      "file": "build.rs",
+      "expected": "3ee9c7e0444c3e51d441eeae3521a4f452a7cc31668560aac90bb0be4c896fbd",
+      "actual": "3ee9c7e0444c3e51d441eeae3521a4f452a7cc31668560aac90bb0be4c896fbd",
+      "matches": true
+    },
+    {
+      "file": "include/graph_witness.h",
+      "expected": "7b3c8e86c6606a0e62f9fab7a73b065236af569c682cf753efdfb5e33904f9ea",
+      "actual": "7b3c8e86c6606a0e62f9fab7a73b065236af569c682cf753efdfb5e33904f9ea",
+      "matches": true
+    },
+    {
+      "file": "protos/messages.proto",
+      "expected": "308ff064f8c60dc4413fb0662e2ff2b9168815f488eb999134acc25d5895d98e",
+      "actual": "308ff064f8c60dc4413fb0662e2ff2b9168815f488eb999134acc25d5895d98e",
+      "matches": true
+    },
+    {
+      "file": "protos/vm.proto",
+      "expected": "e31c779fc0e4c92c79504ec9cc7b9716e82eac954889575bb26dc21109d9530a",
+      "actual": "e31c779fc0e4c92c79504ec9cc7b9716e82eac954889575bb26dc21109d9530a",
+      "matches": true
+    },
+    {
+      "file": "src/ast.rs",
+      "expected": "328939bf3350a6bb5818874b7ebb049cbc717758d7b25205bc266f1e351d8755",
+      "actual": "328939bf3350a6bb5818874b7ebb049cbc717758d7b25205bc266f1e351d8755",
+      "matches": true
+    },
+    {
+      "file": "src/field.rs",
+      "expected": "4748943fa72118de81eadb0f6318ca5d4ba732ebd49ad3c3d5627341d3ad8f07",
+      "actual": "4748943fa72118de81eadb0f6318ca5d4ba732ebd49ad3c3d5627341d3ad8f07",
+      "matches": true
+    },
+    {
+      "file": "src/graph.rs",
+      "expected": "41bf030f8328ef1ac15ceb28f085b158384817235bc660be1558ecd1677af112",
+      "actual": "41bf030f8328ef1ac15ceb28f085b158384817235bc660be1558ecd1677af112",
+      "matches": true
+    },
+    {
+      "file": "src/lib.rs",
+      "expected": "8ea0a3c6a2555e69cbfa49f7ff82432d2dfe2464db094ee3b8759d603391e730",
+      "actual": "8ea0a3c6a2555e69cbfa49f7ff82432d2dfe2464db094ee3b8759d603391e730",
+      "matches": true
+    },
+    {
+      "file": "src/parser/mod.rs",
+      "expected": "a45955c09ecba44d2857db22ac0b25b60e1179798dbbfe1b5e90d016cebd4f14",
+      "actual": "a45955c09ecba44d2857db22ac0b25b60e1179798dbbfe1b5e90d016cebd4f14",
+      "matches": true
+    },
+    {
+      "file": "src/storage/proto_deserializer.rs",
+      "expected": "fd4e4ed822ab537773700a57e47104088b21cc4809b5c25090ce00ea1e5a406e",
+      "actual": "fd4e4ed822ab537773700a57e47104088b21cc4809b5c25090ce00ea1e5a406e",
+      "matches": true
+    },
+    {
+      "file": "src/storage.rs",
+      "expected": "448864c51aab04b217dfc31b1e23eba45d8f786fa1040d7ff9d3e93ee40b928b",
+      "actual": "448864c51aab04b217dfc31b1e23eba45d8f786fa1040d7ff9d3e93ee40b928b",
+      "matches": true
+    },
+    {
+      "file": "src/vm.rs",
+      "expected": "d0f811edb34fcec19b6b0e66302787a8fd3adc51313717fd821817b0c2bd0bad",
+      "actual": "d0f811edb34fcec19b6b0e66302787a8fd3adc51313717fd821817b0c2bd0bad",
+      "matches": true
+    },
+    {
+      "file": "src/vm2.rs",
+      "expected": "b4e26bb177a0aa546544d2fe42847f0b93e7a93fa296c97e2aacf8066f0a3cd0",
+      "actual": "b4e26bb177a0aa546544d2fe42847f0b93e7a93fa296c97e2aacf8066f0a3cd0",
+      "matches": true
+    },
+    {
+      "file": "src/vm2_setup.rs",
+      "expected": "101fafbddf0babbc6bbef22535f566bd8f71fbe82dd6e6fa3b2ed778247355c0",
+      "actual": "101fafbddf0babbc6bbef22535f566bd8f71fbe82dd6e6fa3b2ed778247355c0",
+      "matches": true
+    },
+    {
+      "file": "src/vm2_setup_tests.rs",
+      "expected": "e7fa84b474149256dfe8524e59e126dbc7d86f498d4f07e21130aebb0c56544d",
+      "actual": "e7fa84b474149256dfe8524e59e126dbc7d86f498d4f07e21130aebb0c56544d",
+      "matches": true
+    }
+  ]
+}

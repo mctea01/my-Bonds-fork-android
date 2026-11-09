@@ -20,6 +20,7 @@
 
 | 文件 | 內容 |
 |---|---|
+| [research/native-dependencies/research-summary.md](research/native-dependencies/research-summary.md) | 原生依賴跨架構研究（PC Native 導向）：固定版本清冊、14 target 工具鏈／ABI 矩陣、Windows BB 與 Longfellow 缺口、隔離 C PoC、OPRF 向量及後續實作清單；未新增 App 平台支援 |
 | [research/twdiw.md](research/twdiw.md) | TWDIW 官方 App 與平台的發證、出示、信任清單與互通細節 |
 | [research/twdiw-device-registration.md](research/twdiw-device-registration.md) | 裝置金鑰註冊查證：官方分割 APK 簽章與 assetlinks 核對、SDK 封裝及簽章呼叫鏈、frontend API、nonce 前綴、TLS 限制與待確認契約 |
 | [research/twdiw-1.0.14-issuance-review.md](research/twdiw-1.0.14-issuance-review.md) | 領卡與簽章分析附件核對：VM 成功路徑的 appHash／keyId 映射、公鑰雙層 reader 與指紋、DEX 交接、nonce／grant_type 校正 |

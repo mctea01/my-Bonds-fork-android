@@ -1,0 +1,70 @@
+{
+  "baseline": "3428b8ee12ac5e644f478d4c6e43854376202fa4",
+  "retrieved_at": "2026-11-09",
+  "sources": [
+    {
+      "file": "spartan-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/0xVikasRushi/Spartan2/d687dbb639eccbdd21e62fecec97c5826bc4dbbf/Cargo.toml",
+      "sha256": "029960f4947fcc6398f7881cc5f45f31c5804967276c894f2a4187b66cbc0d55",
+      "status": 200
+    },
+    {
+      "file": "scotia-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/0xVikasRushi/circom-scotia/bd39c019dba20d32ce5727e2408632dbca269e82/Cargo.toml",
+      "sha256": "113ceab3112aa846b21d8a7b1c22d89020773afa63e87d61a0507aa779227399",
+      "status": 200
+    },
+    {
+      "file": "mpz-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/Cargo.toml",
+      "sha256": "157306275316d0e9f7faf0c32f13aef7b147b8da58e1a1d0db17ef542433b98d",
+      "status": 200
+    },
+    {
+      "file": "mpz-core-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/mpz-core/Cargo.toml",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "file": "mpz-core-block.rs",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/mpz-core/src/block.rs",
+      "error": "HTTP Error 404: Not Found"
+    },
+    {
+      "file": "tlsn-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/tlsnotary/tlsn/47aee45b53e06648c1b2ad3689b367b8c923fdec/Cargo.toml",
+      "sha256": "d6d8cb3de92d103bf3aa931c9e453e5cd4d41c6d0d928eab266db5899f10ccfe",
+      "status": 200
+    },
+    {
+      "file": "mpz-crates-core-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/core/Cargo.toml",
+      "sha256": "e94996e2863c341abf81dff84b51a0958b589542ff8b1588cc23c9a55614b5ea",
+      "status": 200
+    },
+    {
+      "file": "mpz-crates-core-src-block.rs",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/core/src/block.rs",
+      "sha256": "dbb672e46f82cd747722bdfe3084b631a677fb09e3cee4ebf4746ff9049e4f27",
+      "status": 200
+    },
+    {
+      "file": "mpz-crates-clmul-src-lib.rs",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/clmul/src/lib.rs",
+      "sha256": "faa5ebdc4189575b0653a3dc109b9b1e0c06b24bb2ce8ea968bffcc2a72b899e",
+      "status": 200
+    },
+    {
+      "file": "mpz-crates-clmul-Cargo.toml",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/clmul/Cargo.toml",
+      "sha256": "3780176288fab34167514e90e0966a7ec9ec1bd149335ff0a2cfaea81b21d11f",
+      "status": 200
+    },
+    {
+      "file": "mpz-clmul-backend.rs",
+      "url": "https://raw.githubusercontent.com/privacy-ethereum/mpz/6ebfe619490c3155a589fc6a3be83b0976de19dc/crates/clmul/src/backend.rs",
+      "sha256": "cb6567b6993a1b58c57064ff8704338c6086cc77e836bc9e659ffa080be3a779",
+      "status": 200
+    }
+  ]
+}
