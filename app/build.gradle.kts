@@ -208,6 +208,56 @@ val generateAppBuild by tasks.registering(GenerateAppBuild::class) {
     outputDir.set(layout.buildDirectory.dir("generated/appBuild/kotlin"))
 }
 
+/**
+ * The interface languages, read from the translation files: every composeResources values directory whose
+ * strings.xml has language_tag (BCP 47) and language_self (the language's name in itself) is offered, so a new
+ * language needs only its strings.xml. Writes AppLanguages.kt and Android's locales_config.xml (per-app language).
+ */
+abstract class GenerateAppLanguages : DefaultTask() {
+    @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val resources: ConfigurableFileCollection
+    @get:OutputDirectory abstract val kotlinDir: DirectoryProperty
+    @get:OutputDirectory abstract val resDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        fun value(xml: String, name: String): String? =
+            Regex("<string name=\"" + name + "\"[^>]*>([^<]*)</string>").find(xml)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+        val found = resources.files.filter { it.name == "strings.xml" && it.parentFile.name.startsWith("values") }
+            .sortedBy { it.parentFile.name }
+            .mapNotNull { f ->
+                val xml = f.readText(Charsets.UTF_8)
+                val tag = value(xml, "language_tag") ?: return@mapNotNull null
+                val self = value(xml, "language_self") ?: throw GradleException("${f.parentFile.name}/strings.xml has language_tag but no language_self")
+                if (!Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*").matches(tag)) throw GradleException("Bad language_tag \"$tag\" in ${f.parentFile.name}")
+                tag to self.replace("&amp;", "&")
+            }
+        if (found.isEmpty()) throw GradleException("No strings.xml names its language_tag")
+        if (found.map { it.first.lowercase() }.toSet().size != found.size) throw GradleException("Two translation files name the same language_tag")
+        fun lit(x: String) = "\"" + x.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+        val dir = kotlinDir.get().asFile.resolve("diw/wallet/app").apply { mkdirs() }
+        dir.resolve("AppLanguages.kt").writeText(
+            "package diw.wallet.app\n\n/** Generated from the translation files (language_tag, language_self); not committed. */\n" +
+                "internal object AppLanguages {\n    val all: List<AppLanguage> = listOf(\n" +
+                found.joinToString("") { (tag, self) -> "        AppLanguage(${lit(tag)}, ${lit(self)}),\n" } +
+                "    )\n}\n",
+            Charsets.UTF_8,
+        )
+        val xmlDir = resDir.get().asFile.resolve("xml").apply { mkdirs() }
+        xmlDir.resolve("locales_config.xml").writeText(
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!-- Generated from the translation files: languages offered in the system per-app language settings. -->\n" +
+                "<locale-config xmlns:android=\"http://schemas.android.com/apk/res/android\">\n" +
+                found.joinToString("") { "    <locale android:name=\"${it.first}\" />\n" } + "</locale-config>\n",
+            Charsets.UTF_8,
+        )
+    }
+}
+
+val generateAppLanguages by tasks.registering(GenerateAppLanguages::class) {
+    resources.from(fileTree("src/commonMain/composeResources") { include("values*/strings.xml") })
+    kotlinDir.set(layout.buildDirectory.dir("generated/appLanguages/kotlin"))
+    resDir.set(layout.buildDirectory.dir("generated/appLanguages/res"))
+}
+
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
     jvm("desktop") {
@@ -224,6 +274,7 @@ kotlin {
     sourceSets {
         commonMain.get().kotlin.srcDir(generateBuiltInSp.map { it.outputDir })
         commonMain.get().kotlin.srcDir(generateAppBuild.map { it.outputDir })
+        commonMain.get().kotlin.srcDir(generateAppLanguages.map { it.kotlinDir })
         commonMain.get().kotlin.srcDir(generateTwdiwApplicationKey.map { twdiwApplicationKeySources.get() })
         commonMain.dependencies {
             implementation(project(":core"))
@@ -495,5 +546,11 @@ tasks.named<Test>("desktopTest") {
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.res?.addGeneratedSourceDirectory(generateAppLanguages, GenerateAppLanguages::resDir)
     }
 }

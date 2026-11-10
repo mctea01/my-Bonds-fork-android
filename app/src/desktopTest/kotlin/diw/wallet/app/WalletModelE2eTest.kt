@@ -2651,7 +2651,7 @@ class WalletModelE2eTest {
         m.taiwan.zkPassport.start(request)
         withTimeout(5.seconds) { while (fake.requests.isEmpty()) delay(20) }
         assertEquals(request, fake.requests.single())
-        assertEquals("verify.example.org", m.settings.zkPassportDomain, "the domain used is kept for next time")
+        assertEquals("", m.settings.zkPassportDomain, "a request's domain does not overwrite the setting, so an empty one keeps its fallback")
         val url = "https://zkpassport.id/r?d=verify.example.org&t=00"
         fake.state.value = diw.wallet.core.zkpassport.ZkPassportState.Waiting(url)
         val waiting = withTimeout(5.seconds) {
@@ -2902,8 +2902,8 @@ class WalletModelE2eTest {
         val dir = System.getenv("DIW_SCREENSHOTS")
         org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
         try {
-            legalScreens(java.io.File(dir!!).apply { mkdirs() }, AppLanguage.TRADITIONAL_CHINESE, "legal-")
-            legalScreens(java.io.File(dir).apply { mkdirs() }, AppLanguage.ENGLISH, "legal-en-")
+            legalScreens(java.io.File(dir!!).apply { mkdirs() }, AppLanguage.of("zh-TW"), "legal-")
+            legalScreens(java.io.File(dir).apply { mkdirs() }, AppLanguage.of("en"), "legal-en-")
         } finally {
             ProcessLanguageStore.set(AppLanguage.SYSTEM)
         }

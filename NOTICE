@@ -68,6 +68,10 @@ its own license:
 - TACEO taceo-oprf-core 0.6.3, taceo-ark-babyjubjub 0.6, taceo-ark-serde-compat
   0.6 and taceo-poseidon2 0.3 (the project OPRF), arkworks 0.6, uuid and
   itertools - MIT or Apache License 2.0
+- Country signing CA certificates (core BuiltInCscas) taken from the German
+  CSCA master list published by the Federal Office for Information Security
+  (BSI), checked against BSI's published self-signed root; public certificates
+  of the issuing states, no change other than selection
 
 Development and test tools that are not shipped in the application:
 

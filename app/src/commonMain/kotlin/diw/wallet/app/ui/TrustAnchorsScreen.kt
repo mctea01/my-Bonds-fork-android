@@ -129,6 +129,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
             }
         }
         SystemStoreSection(model)
+        CscaSection(model)
         TrustListsSection(model)
         IntermediateSection(model)
     }
@@ -338,6 +339,33 @@ private fun SystemStoreSection(model: WalletModel) {
     CollapsibleSection(stringResource(Res.string.china_programs), programs.size, key = "roots-mainland") { BuiltInRootList(model, programs) }
     if (sm2.isNotEmpty()) CollapsibleSection(stringResource(Res.string.china_sm2), sm2.size, key = "roots-sm2") { BuiltInRootList(model, sm2) }
     Text(stringResource(Res.string.china_updated, diw.wallet.core.trust.BuiltInPublicRoots.UPDATED),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+}
+
+/** The built-in country signing CAs for travel documents, by country; a tap opens the certificate. */
+@Composable
+private fun CscaSection(model: WalletModel) {
+    val cscas = diw.wallet.core.trust.BuiltInCscas
+    val byCountry = remember { cscas.all.groupBy { it.country }.toList().sortedBy { it.first } }
+    HorizontalDivider()
+    SectionTitle(stringResource(Res.string.csca_title))
+    Text(stringResource(Res.string.csca_text, cscas.all.size, byCountry.size, cscas.PUBLISHER), style = MaterialTheme.typography.bodySmall)
+    CollapsibleSection(stringResource(Res.string.csca_countries), byCountry.size, key = "csca-countries") {
+        byCountry.forEach { (country, list) ->
+            CollapsibleSection(country, list.size, key = "csca-$country") {
+                list.forEach { c ->
+                    Column(Modifier.fillMaxWidth().clickable {
+                        model.screen.value = Screen.Certificate(listOf(c.certificate), 0, Screen.TrustAnchors)
+                    }.padding(vertical = 4.dp)) {
+                        Text(c.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(c.algorithm + "・" + stringResource(Res.string.valid_until) + localTime(c.certificate.validityNotAfter),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                }
+            }
+        }
+    }
+    Text(stringResource(Res.string.csca_updated, cscas.UPDATED, cscas.LIST),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
 }
 

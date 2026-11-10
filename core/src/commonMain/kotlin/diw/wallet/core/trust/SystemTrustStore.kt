@@ -23,7 +23,9 @@ expect object SystemTrustStore {
 expect object Pkix {
     /**
      * The anchor among [anchors] that [chain] (leaf first) validates to at [at], or null. A chain that ends with an
-     * anchor may include it; a chain that is an anchor itself matches it. Revocation is not checked.
+     * anchor may include it; a chain that is an anchor itself matches it. Revocation is not checked. With
+     * [bouncyCastle], a path the platform providers refuse is tried with BouncyCastle too: travel document CSCAs
+     * often use brainpool curves with explicit parameters, which the platform providers lack.
      */
-    fun anchorOf(chain: List<X509Cert>, anchors: List<X509Cert>, at: Instant): X509Cert?
+    fun anchorOf(chain: List<X509Cert>, anchors: List<X509Cert>, at: Instant, bouncyCastle: Boolean = false): X509Cert?
 }

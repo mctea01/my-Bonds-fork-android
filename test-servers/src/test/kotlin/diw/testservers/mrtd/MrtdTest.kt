@@ -422,6 +422,9 @@ class MrtdTest {
         assertEquals(DocumentVerdict.VALID, report.verdict, report.signatures.single().problems.toString())
         assertTrue(1 in report.travelDocument!!.matched)
         assertTrue(report.signatures.single().notes.any { "1.2.840.113549.1.7.1" in it } || report.notes.any { "1.2.840.113549.1.7.1" in it })
+        // Taiwan's passports name it 2.23.136.1.1.6.2.
+        val taiwan = inspect(dump.copy(files = dump.files + (LdsFile.SOD.name to Base64.encode(sod(groups, contentType = "2.23.136.1.1.6.2")))))
+        assertEquals(DocumentVerdict.VALID, taiwan.verdict, taiwan.signatures.single().problems.toString())
         // Any other content type is refused, and the reason is given.
         val other = dump.copy(files = dump.files + (LdsFile.SOD.name to Base64.encode(sod(groups, contentType = "1.2.3.4"))))
         val refused = inspect(other)

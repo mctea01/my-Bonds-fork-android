@@ -138,6 +138,9 @@ class TrustRegistry(
 
         private const val MAX_FETCHES = 3
         private const val MAX_CHAIN = 8
+
+        /** OID 2.5.4.6 (countryName). */
+        private const val COUNTRY_NAME = "2.5.4.6"
     }
 
     private val managers = mutableMapOf<Pair<TrustRole, TrustEnvironment>, TrustManager>()
@@ -459,16 +462,41 @@ class TrustRegistry(
             // Only when Multipaz could not evaluate the chain: an EC chain it found untrusted stays untrusted.
             val point = if (result != null) result.trustPoints.firstOrNull()?.takeIf { result.isTrusted } else {
                 val points = m.getTrustPoints()
-                Pkix.anchorOf(chain, points.map { it.certificate }, atTime)?.let { a -> points.first { it.certificate == a } }
+                Pkix.anchorOf(chain, points.map { it.certificate }, atTime, bouncyCastle = role == TrustRole.TRAVEL_DOCUMENT)
+                    ?.let { a -> points.first { it.certificate == a } }
             }
             if (point != null) {
                 val official = point.metadata.extensions[TrustMetadataKeys.OFFICIAL] == "true" &&
                     env == TrustEnvironment.PRODUCTION
                 return AnchorMatch(env, point.metadata, official, point.certificate)
             }
+            if (role == TrustRole.TRAVEL_DOCUMENT && env == TrustEnvironment.PRODUCTION) builtInCsca(chain, atTime)?.let { return it }
         }
         return null
     }
+
+    /**
+     * A match with the built-in CSCAs ([BuiltInCscas], from the master list the German BSI signs): a PRODUCTION
+     * anchor that is not official (T2). Only the CSCAs of the country the chain's top certificate names are tried
+     * first, then all of them, since a few states name their CSCA under another country (Hong Kong and Macao: CN).
+     */
+    private fun builtInCsca(chain: List<X509Cert>, atTime: Instant): AnchorMatch? {
+        val valid = BuiltInCscas.validAt(atTime)
+        if (valid.isEmpty()) return null
+        val country = runCatching { chain.last().issuer.components[COUNTRY_NAME]?.value?.uppercase() }.getOrNull()
+        val same = valid.filter { it.country == country }
+        val found = (if (same.isNotEmpty()) Pkix.anchorOf(chain, same.map { it.certificate }, atTime, bouncyCastle = true) else null)
+            ?: Pkix.anchorOf(chain, (valid - same.toSet()).map { it.certificate }, atTime, bouncyCastle = true)
+            ?: return null
+        val csca = valid.first { it.certificate == found }
+        val name = "CSCA " + (csca.country.takeIf { it.isNotEmpty() }?.let { "$it " } ?: "") + csca.name
+        return AnchorMatch(TrustEnvironment.PRODUCTION, trustMetadata(name, TrustEnvironment.PRODUCTION, official = false, source = BuiltInCscas.SOURCE), false, found)
+    }
+
+    /** The built-in CSCAs valid now, with the stored [TrustRole.TRAVEL_DOCUMENT] anchors of [environment]. */
+    suspend fun travelDocumentAnchors(environment: TrustEnvironment): List<X509Cert> =
+        anchors(TrustRole.TRAVEL_DOCUMENT, environment).map { it.first } +
+            (if (environment == TrustEnvironment.PRODUCTION) BuiltInCscas.validAt(Clock.System.now()).map { it.certificate } else emptyList())
 
     /** A match through an enabled trust list: a PRODUCTION anchor that is not official (T2), tagged with the list. */
     private fun listMatch(role: TrustRole, chain: List<X509Cert>, atTime: Instant): AnchorMatch? {

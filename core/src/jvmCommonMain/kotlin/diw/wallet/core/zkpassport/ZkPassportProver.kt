@@ -294,11 +294,8 @@ class ZkPassportProver(
     }
 
     companion object {
-        /**
-         * The first circuit version keyed by the Barretenberg this app ships (bb v6). Earlier versions were keyed
-         * by bb 5 and their proofs do not verify under bb v6 keys, so the app does not prove them.
-         */
-        const val CIRCUIT_VERSION = "0.22.0"
+        /** See [ZkPassport.CIRCUIT_VERSION]. */
+        const val CIRCUIT_VERSION = ZkPassport.CIRCUIT_VERSION
         private const val MAX_COMMANDS = 256
         private val random = SecureRandom()
 

@@ -936,7 +936,7 @@
     <string name="core_mrtd_no_sod">沒有讀到安全物件（EF.SOD），無法做被動驗證</string>
     <string name="core_mrtd_not_covered">下列資料群組沒有被安全物件涵蓋：%1$s</string>
     <string name="core_mrtd_sha1">安全物件使用 SHA-1 雜湊（較舊的護照常見）</string>
-    <string name="core_mrtd_content_type">安全物件的內容類型標示為 %1$s，不是 ICAO 的 LDS 安全物件識別碼（部分中國大陸核發的證件如此），已依 LDS 安全物件結構比對</string>
+    <string name="core_mrtd_content_type">安全物件的內容類型標示為 %1$s，不是 ICAO 的 LDS 安全物件識別碼（部分中國大陸與台灣核發的證件如此），已依 LDS 安全物件結構比對</string>
     <string name="core_mrtd_sod_label">安全物件（EF.SOD）</string>
     <string name="core_mrtd_unreadable">電子護照讀取檔無法解析</string>
     <string name="core_mrtd_unreadable_files">未讀取的檔案：%1$s（指紋與虹膜需要政府端的終端驗證）</string>
@@ -2211,8 +2211,6 @@
     <string name="lan_screen_diwq">對方畫面：DIWQ1 動態 QR Code（噴泉碼），Bonds 為 BTWVP1 輪播</string>
     <string name="lan_transport_age">區網傳輸：HTTP，證明包只含零知識證明與發卡者，不含出生日期</string>
     <string name="lan_transport_encrypted">區網傳輸：HTTP，出示內容另以這次挑戰的一次性金鑰加密（ECDH-ES P-256，A256GCM），其他裝置無法讀取</string>
-    <string name="language_en">English</string>
-    <string name="language_zh_hant">繁體中文</string>
     <string name="legal_accept_enable">同意並啟用</string>
     <string name="legal_accepted_line">版本 %1$s・%2$s 同意</string>
     <string name="legal_agree_continue">同意並繼續</string>
@@ -4204,7 +4202,6 @@
     <string name="zkp_document">電子護照（zkPassport）</string>
     <string name="zkp_domain">請求網域</string>
     <string name="zkp_domain_caveat">證明是為 %1$s 產生；沒有任何證明說明誰經營該網域。</string>
-    <string name="zkp_domain_default">空白時使用 %1$s（你的伺服器主機）。</string>
     <string name="zkp_domain_invalid">請輸入網域名稱，例如 example.com。</string>
     <string name="zkp_domain_missing">請輸入請求所用的網域。</string>
     <string name="zkp_domain_note">對方 App 會顯示這個網域，證明也針對它產生；請使用你能控制的網域。</string>
@@ -4339,4 +4336,24 @@
     <string name="zkp_answer_err_circuit">電路或憑證與 zkPassport 註冊表不符，未產生證明。</string>
     <string name="zkp_answer_err_other">無法產生證明（%1$s）。</string>
     <string name="derive_chip_file">晶片檔案，%1$d 位元組。可讓查驗方重做被動驗證；內含完整機讀區，只在需要時出示。</string>
+    <string name="zk_asset_list">檔案清單</string>
+    <string name="zk_configured">（已設定）</string>
+    <string name="zk_advanced">進階：自架主機</string>
+    <string name="zk_advanced_text">只有在你自己架設 diw-wallet-server 或 zk-prover-server 時才需要。沒有設定時，上方的功能都在這台裝置上運作，並只連線聲明中列出的公開服務。</string>
+    <string name="zkp_domain_server">空白時使用 %1$s（你的正式服務端主機）。</string>
+    <string name="zkp_domain_none">空白時：建立請求時再填網域（尚未設定正式服務端）。</string>
+    <!-- This file's language: language_tag (BCP 47) and language_self (its name in itself) list it in the language menu. -->
+    <string name="language_tag" translatable="false">zh-TW</string>
+    <string name="language_self" translatable="false">繁體中文</string>
+    <string name="csca_title">旅行證件簽發機構（CSCA）</string>
+    <string name="csca_text">內建 %2$d 個國家與地區的 %1$d 張國家簽章憑證機構憑證，取自%3$s的 CSCA 主清單。只用於電子護照與旅行證件，等級為 T2（正式、非官方）。台胞證等未公開 CSCA 的證件仍需自行匯入。</string>
+    <string name="csca_countries">依國家</string>
+    <string name="csca_updated">內建清單更新於 %1$s（%2$s）。清單隨 App 更新，到期的 CSCA 自動停用。</string>
+    <string name="zkp_needs_engine">UltraHonk 引擎：</string>
+    <string name="zkp_needs_ok">就緒</string>
+    <string name="zkp_needs_engine_missing">這個版本或裝置不可用</string>
+    <string name="zkp_needs_crs">證明參數（CRS，與 zkPDF 共用，%1$s）：</string>
+    <string name="zkp_needs_crs_missing">尚未下載，下載前無法回應請求</string>
+    <string name="zkp_needs_crs_download">下載證明參數（%1$s）</string>
+    <string name="zkp_needs_circuits">電路：zkPassport %1$s。電路不需預先下載：回應請求時依證件與請求內容從 zkPassport 取得所需電路，與鏈上電路註冊表核對後保存供下次使用。</string>
 </resources>

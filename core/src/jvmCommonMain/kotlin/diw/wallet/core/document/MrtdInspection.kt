@@ -38,20 +38,29 @@ internal object MrtdInspection {
 
     /**
      * The LDSSecurityObject of [sd]. Besides id-icao-ldsSecurityObject, the content may be named id-data (some
-     * documents issued in mainland China) or by the old 1.3.27.1.1.1; the content must still parse as an
-     * LDSSecurityObject, which is what the data groups are checked against.
+     * documents issued in mainland China), by the old 1.3.27.1.1.1, or by 2.23.136.1.1.6.2 (Taiwan's passports, in the
+     * arc of ICAO certificate extensions); the content must still parse as an LDSSecurityObject, which is what the data
+     * groups are checked against, and a type that is not the standard one is shown as a note. Any other type is refused.
      */
     fun securityObject(sd: CMSSignedData): SecurityObject {
         val type = sd.signedContentTypeOID
-        if (type !in LDS_CONTENT_TYPES) throw NotSecurityObject("content type $type")
         val content = sd.signedContent?.content as? ByteArray ?: throw NotSecurityObject("no encapsulated content")
-        val seq = ASN1Sequence.getInstance(org.bouncycastle.asn1.ASN1InputStream(content).use { it.readObject() } ?: throw NotSecurityObject("empty content"))
-        val alg = AlgorithmIdentifier.getInstance(seq.getObjectAt(1)).algorithm.id
-        val hashes = ASN1Sequence.getInstance(seq.getObjectAt(2)).map { e ->
-            val dg = ASN1Sequence.getInstance(e)
-            ASN1Integer.getInstance(dg.getObjectAt(0)).intValueExact() to ASN1OctetString.getInstance(dg.getObjectAt(1)).octets
-        }.toMap()
+        if (type !in LDS_CONTENT_TYPES) throw NotSecurityObject("content type $type")
+        val (alg, hashes, seq) = try {
+            val seq = ASN1Sequence.getInstance(org.bouncycastle.asn1.ASN1InputStream(content).use { it.readObject() } ?: throw NotSecurityObject("empty content"))
+            val alg = AlgorithmIdentifier.getInstance(seq.getObjectAt(1)).algorithm.id
+            val hashes = ASN1Sequence.getInstance(seq.getObjectAt(2)).map { e ->
+                val dg = ASN1Sequence.getInstance(e)
+                ASN1Integer.getInstance(dg.getObjectAt(0)).intValueExact() to ASN1OctetString.getInstance(dg.getObjectAt(1)).octets
+            }.toMap()
+            Triple(alg, hashes, seq)
+        } catch (e: NotSecurityObject) {
+            throw e
+        } catch (e: Exception) {
+            throw NotSecurityObject("content of type $type is not an LDSSecurityObject")
+        }
         if (hashes.isEmpty()) throw NotSecurityObject("no data group hashes")
+        if (hashes.keys.any { it !in 1..16 }) throw NotSecurityObject("data group numbers out of range")
         val lds = if (seq.size() > 3) runCatching {
             val v = ASN1Sequence.getInstance(seq.getObjectAt(3))
             org.bouncycastle.asn1.ASN1PrintableString.getInstance(v.getObjectAt(0)).string
@@ -59,8 +68,8 @@ internal object MrtdInspection {
         return SecurityObject(AlgorithmNames.jcaDigest(alg), hashes, lds, type)
     }
 
-    /** id-icao-ldsSecurityObject, id-data and the old 1.3.27.1.1.1. */
-    private val LDS_CONTENT_TYPES = setOf(MrtdOids.LDS_SECURITY_OBJECT, "1.2.840.113549.1.7.1", "1.3.27.1.1.1")
+    /** id-icao-ldsSecurityObject, id-data, the old 1.3.27.1.1.1 and the type of Taiwan passports. */
+    private val LDS_CONTENT_TYPES = setOf(MrtdOids.LDS_SECURITY_OBJECT, "1.2.840.113549.1.7.1", "1.3.27.1.1.1", "2.23.136.1.1.6.2")
 
     /** The CMS SignedData inside EF.SOD (tag 77). */
     fun sodCms(sod: ByteArray): ByteArray {

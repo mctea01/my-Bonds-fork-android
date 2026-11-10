@@ -216,6 +216,12 @@ object ZkPassport {
     const val MAINNET = 1L
     const val SEPOLIA = 11155111L
     /** Built-in public Ethereum nodes the registries are read from when the user has not set their own. */
+    /**
+     * The first circuit version keyed by the Barretenberg this app ships (bb v6). Earlier versions were keyed by
+     * bb 5 and their proofs do not verify under bb v6 keys, so the app does not prove them.
+     */
+    const val CIRCUIT_VERSION = "0.22.0"
+
     const val MAINNET_RPC = "https://ethereum-rpc.publicnode.com"
     const val SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com"
 

@@ -936,7 +936,7 @@
     <string name="core_mrtd_no_sod">The security object (EF.SOD) was not read, so passive authentication is not possible</string>
     <string name="core_mrtd_not_covered">These data groups are not covered by the security object: %1$s</string>
     <string name="core_mrtd_sha1">The security object uses SHA-1 hashes (common in older passports)</string>
-    <string name="core_mrtd_content_type">The security object names its content %1$s instead of the ICAO LDS security object identifier (as some documents issued in mainland China do); it was read as an LDS security object</string>
+    <string name="core_mrtd_content_type">The security object names its content %1$s instead of the ICAO LDS security object identifier (as some documents issued in mainland China and Taiwan do); it was read as an LDS security object</string>
     <string name="core_mrtd_sod_label">Security object (EF.SOD)</string>
     <string name="core_mrtd_unreadable">The electronic passport file cannot be read</string>
     <string name="core_mrtd_unreadable_files">Files not read: %1$s (fingerprints and iris need a government terminal authentication)</string>
@@ -2211,8 +2211,6 @@
     <string name="lan_screen_diwq">Other screen: DIWQ1 dynamic QR code (fountain code); Bonds uses the BTWVP1 carousel</string>
     <string name="lan_transport_age">Local network transport: HTTP; the proof package holds only the zero-knowledge proof and the card issuer, not the date of birth</string>
     <string name="lan_transport_encrypted">Local network transport: HTTP; the presentation is also encrypted with this challenge's one-time key (ECDH-ES P-256, A256GCM), so other devices cannot read it</string>
-    <string name="language_en">English</string>
-    <string name="language_zh_hant">繁體中文</string>
     <string name="legal_accept_enable">Accept and enable</string>
     <string name="legal_accepted_line">Version %1$s · accepted %2$s</string>
     <string name="legal_agree_continue">Accept and continue</string>
@@ -4204,7 +4202,6 @@
     <string name="zkp_document">E-passport (zkPassport)</string>
     <string name="zkp_domain">Request domain</string>
     <string name="zkp_domain_caveat">The proofs were made for %1$s; nothing proves who runs that domain.</string>
-    <string name="zkp_domain_default">Empty uses %1$s (the host of your server).</string>
     <string name="zkp_domain_invalid">Enter a domain name such as example.com.</string>
     <string name="zkp_domain_missing">Enter the domain the request is made for.</string>
     <string name="zkp_domain_note">The holder's app shows this domain and the proofs are made for it; use a domain you control.</string>
@@ -4339,4 +4336,24 @@
     <string name="zkp_answer_err_circuit">The circuits or certificates do not match zkPassport's registries, so no proof was made.</string>
     <string name="zkp_answer_err_other">The proofs could not be made (%1$s).</string>
     <string name="derive_chip_file">Chip file, %1$d bytes. Lets a verifier repeat passive authentication; it holds the whole zone, so present it only when needed.</string>
+    <string name="zk_asset_list">Files</string>
+    <string name="zk_configured"> (set up)</string>
+    <string name="zk_advanced">Advanced: hosts you run</string>
+    <string name="zk_advanced_text">Only needed when you run your own diw-wallet-server or zk-prover-server. Without them, everything above works on this device and with the public services the statements list.</string>
+    <string name="zkp_domain_server">Empty uses %1$s (the host of your production server).</string>
+    <string name="zkp_domain_none">Empty: enter a domain when you create a request (no production server is set).</string>
+    <!-- This file's language: language_tag (BCP 47) and language_self (its name in itself) list it in the language menu. -->
+    <string name="language_tag" translatable="false">en</string>
+    <string name="language_self" translatable="false">English</string>
+    <string name="csca_title">Travel document signers (CSCA)</string>
+    <string name="csca_text">%1$d country signing CAs from %2$d countries and regions, taken from the CSCA master list of %3$s. They are used only for electronic passports and travel documents, as T2 (production, not official). Taiwan Compatriot Permits and other documents whose CSCA is not published need their CSCA imported.</string>
+    <string name="csca_countries">By country</string>
+    <string name="csca_updated">The built-in list was updated %1$s (%2$s). It updates with the app, and expired CSCAs are disabled automatically.</string>
+    <string name="zkp_needs_engine">UltraHonk engine: </string>
+    <string name="zkp_needs_ok">ready</string>
+    <string name="zkp_needs_engine_missing">not available in this build or on this device</string>
+    <string name="zkp_needs_crs">Proof parameters (CRS, shared with zkPDF, %1$s): </string>
+    <string name="zkp_needs_crs_missing">not downloaded; requests cannot be answered until they are</string>
+    <string name="zkp_needs_crs_download">Download the proof parameters (%1$s)</string>
+    <string name="zkp_needs_circuits">Circuits: zkPassport %1$s. They are not downloaded in advance: when you answer a request, the circuits for that document and request are fetched from zkPassport, checked against the on-chain circuit registry and kept for later.</string>
 </resources>

@@ -360,10 +360,14 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
     val rpcProblem = stringResource(Res.string.zkp_rpc_invalid)
     fun bad(url: String) = url.isNotEmpty() && !(url.startsWith("https://") && url.length > 8)
     Text(stringResource(Res.string.zkp_settings_text), style = MaterialTheme.typography.bodySmall)
+    ZkPassportReadiness(model)
     OutlinedTextField(
         value = domain, onValueChange = { domain = it.trim().take(253) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
         label = { Text(stringResource(Res.string.zkp_domain)) }, isError = domainProblem != null,
-        supportingText = { Text(domainProblem ?: stringResource(Res.string.zkp_domain_default, model.taiwan.zkPassport.defaultDomain().ifEmpty { "-" })) },
+        supportingText = {
+            val server = model.taiwan.zkPassport.serverDomain()
+            Text(domainProblem ?: if (server.isEmpty()) stringResource(Res.string.zkp_domain_none) else stringResource(Res.string.zkp_domain_server, server))
+        },
     )
     OutlinedTextField(
         value = mainnet, onValueChange = { mainnet = it.trim() }, singleLine = true, modifier = Modifier.fillMaxWidth(),
@@ -391,4 +395,42 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
             Text(stringResource(Res.string.zkp_verifier_api_note), style = MaterialTheme.typography.bodySmall)
         }
     }
+}
+
+/**
+ * What answering zkPassport requests on this phone needs: the UltraHonk engine, the proof parameters shared with
+ * zkPDF (offered for download here), and the circuits, which are fetched per request and checked on the registry.
+ */
+@Composable
+private fun ZkPassportReadiness(model: WalletModel) {
+    val zk = model.zk
+    val capability by zk.capability.collectAsState()
+    val statuses by zk.assetStatus.collectAsState()
+    val downloads by zk.downloads.collectAsState()
+    val crs = zk.catalog.filter { it.id in diw.wallet.core.zk.ZkPdfAssets.CRS }
+    val engine = capability?.let { diw.wallet.core.zk.ZkBackend.NOIR_ULTRAHONK in it.backends }
+    val crsReady = crs.isNotEmpty() && crs.all { statuses[it.id] == diw.wallet.core.zk.ZkAssetStatus.READY }
+    val busy = crs.any { downloads[it.id]?.let { d -> d.error == null } == true }
+    Text(
+        stringResource(Res.string.zkp_needs_engine) + when (engine) {
+            null -> stringResource(Res.string.zk_not_assessed)
+            true -> stringResource(Res.string.zkp_needs_ok)
+            false -> stringResource(Res.string.zkp_needs_engine_missing)
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text(
+        stringResource(Res.string.zkp_needs_crs, sizeText(crs.sumOf { it.installedBytes })) +
+            if (crsReady) stringResource(Res.string.zkp_needs_ok) else stringResource(Res.string.zkp_needs_crs_missing),
+        style = MaterialTheme.typography.bodySmall,
+        color = if (crsReady || crs.isEmpty()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+    )
+    crs.mapNotNull { downloads[it.id]?.error }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    if (!crsReady && crs.isNotEmpty()) {
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        else OutlinedButton(onClick = { zk.download(crs.filter { statuses[it.id] != diw.wallet.core.zk.ZkAssetStatus.READY }.map { it.id }) }) {
+            Text(stringResource(Res.string.zkp_needs_crs_download, sizeText(crs.sumOf { it.gzipBytes })))
+        }
+    }
+    Text(stringResource(Res.string.zkp_needs_circuits, ZkPassport.CIRCUIT_VERSION), style = MaterialTheme.typography.bodySmall)
 }

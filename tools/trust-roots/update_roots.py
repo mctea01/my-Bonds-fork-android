@@ -16,10 +16,13 @@ Sources (tools/trust-roots/roots.json):
   - every pinned file above is compared with the certificate its source URL publishes on each run: a root re-issued
     with the same key and an intermediate a built-in root signed replace the file and its pin automatically; a new
     key, or the first certificate of a new entry, is written with a warning so that a person checks it;
-  - GPKI: the Taiwan government CA repositories, compared with the built-in GPKI anchors (report only).
+  - GPKI: the Taiwan government CA repositories, compared with the built-in GPKI anchors (report only);
+  - CSCA master list: the travel document CSCAs of the master list the German BSI signs; its CMS signature is
+    checked and its signer must be issued by a pinned German CSCA root (csca/), and only certificates valid now are
+    built in (BuiltInCscas, travel documents only). A failed check keeps the built-in set and warns.
 
-Writes core/.../trust/BuiltInPublicRoots.kt only when the set of roots changes, and keeps its UPDATED date
-otherwise, so that a scheduled run opens a pull request only for a real change.
+Writes core/.../trust/BuiltInPublicRoots.kt (BuiltInPublicRoots, then BuiltInCscas) only when a set changes, and
+keeps each UPDATED date otherwise, so that a scheduled run opens a pull request only for a real change.
 
 Usage:
   python3 -I tools/trust-roots/update_roots.py [--report FILE] [--check] [--strict]
@@ -142,6 +145,10 @@ def key_algorithm(text):
     if alg == "id-ecPublicKey":
         m = re.search(r"NIST CURVE: (\S+)", text) or re.search(r"ASN1 OID: (\S+)", text)
         curve = m.group(1) if m else ""
+        if not curve:
+            # Explicit curve parameters, as most CSCAs with brainpool keys give.
+            bits = re.search(r"Public-Key: \((\d+) bit\)", text)
+            return "ECC explicit " + (bits.group(1) if bits else "")
         return "SM2" if curve in ("SM2", "1.2.156.10197.1.301") else "ECC " + curve
     if alg in ("SM2", "sm2"):
         return "SM2"
@@ -539,6 +546,237 @@ def check_gpki(cfg, warn_until):
     return lines
 
 
+# ---- CSCA master list -------------------------------------------------------------------------------------------
+
+def der_items(data, start=0, end=None):
+    """The (offset, length) of each DER element from [start] to [end]; lengths include the header."""
+    end = len(data) if end is None else end
+    out = []
+    i = start
+    while i < end:
+        j = i + 2
+        n = data[i + 1]
+        if n & 0x80:
+            k = n & 0x7F
+            n = int.from_bytes(data[j:j + k], "big")
+            j += k
+        out.append((i, j - i, n))
+        i = j + n
+    return out
+
+
+def der_children(data, offset):
+    """The children of the constructed DER element at [offset]."""
+    i, h, n = der_items(data, offset)[0]
+    return der_items(data, i + h, i + h + n)
+
+
+DIGESTS = {"ecdsa-with-SHA256": "sha256", "ecdsa-with-SHA384": "sha384", "ecdsa-with-SHA512": "sha512",
+           "sha256WithRSAEncryption": "sha256", "sha384WithRSAEncryption": "sha384", "sha512WithRSAEncryption": "sha512"}
+
+
+def issued_by_key(cert_der, root_der):
+    """
+    Whether the key of [root_der] signed [cert_der]. Checked on the signature itself: openssl verify refuses CSCA
+    keys with explicit EC parameters, as the German ones have.
+    """
+    (tbs_o, tbs_h, tbs_n), _, (sig_o, sig_h, sig_n) = der_children(cert_der, 0)
+    tbs = cert_der[tbs_o:tbs_o + tbs_h + tbs_n]
+    sig = cert_der[sig_o + sig_h + 1:sig_o + sig_h + sig_n]
+    text = openssl(["x509", "-inform", "DER", "-noout", "-text"], cert_der).decode("utf-8", "replace")
+    m = re.search(r"Signature Algorithm: (\S+)", text)
+    digest = DIGESTS.get(m.group(1) if m else "")
+    if digest is None:
+        return False
+    with tempfile.TemporaryDirectory() as d:
+        key, s, t = os.path.join(d, "k.pem"), os.path.join(d, "s.bin"), os.path.join(d, "t.bin")
+        open(key, "wb").write(openssl(["x509", "-inform", "DER", "-noout", "-pubkey"], root_der))
+        open(s, "wb").write(sig)
+        open(t, "wb").write(tbs)
+        r = subprocess.run(["openssl", "dgst", "-" + digest, "-verify", key, "-signature", s, t], capture_output=True)
+        return r.returncode == 0
+
+
+def master_list_file(data):
+    """The .ml file in a download (the BSI publishes it in a ZIP), and its name."""
+    if data[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for i in z.infolist():
+                if i.filename.lower().endswith(".ml"):
+                    return z.read(i), os.path.basename(i.filename)
+        raise RuntimeError("the download holds no .ml file")
+    return data, "master-list.ml"
+
+
+def csca_master_list(cfg, data):
+    """
+    The CSCA certificates of the master list, valid now, after checking its CMS signature and that a pinned signer
+    root issued its signer; raises when any check fails. Returns (entries, list file name, signer subject).
+    """
+    roots = []
+    for s in cfg["signerRoots"]:
+        der = pem_blocks(open(os.path.join(HERE, s["file"]), encoding="utf-8").read())[0]
+        if sha256(der) != s["sha256"]:
+            raise RuntimeError(f"{s['file']} does not match its pinned SHA-256")
+        c = Cert(der)
+        if not c.valid_at(TODAY):
+            warn(f"主清單簽署根憑證 {s['name']} 已過期，需要從 {cfg['page']} 取得新版")
+            continue
+        if c.not_after < TODAY + datetime.timedelta(days=540):
+            notes.append(f"主清單簽署根憑證 {s['name']} 將於 {c.not_after.date()} 到期")
+        roots.append(der)
+    ml, name = master_list_file(data)
+    with tempfile.TemporaryDirectory() as d:
+        path, signer, content = os.path.join(d, "l.ml"), os.path.join(d, "s.pem"), os.path.join(d, "c.der")
+        open(path, "wb").write(ml)
+        # The signature under the certificate the list carries; the chain is checked below.
+        r = subprocess.run(["openssl", "cms", "-verify", "-noverify", "-binary", "-inform", "DER", "-in", path,
+                            "-signer", signer, "-out", content], capture_output=True)
+        if r.returncode != 0:
+            raise RuntimeError("the master list signature does not verify: " + r.stderr.decode("utf-8", "replace").strip()[:200])
+        signer_der = pem_blocks(open(signer, encoding="utf-8").read())[0]
+        body = open(content, "rb").read()
+        econtent = openssl(["cms", "-cmsout", "-inform", "DER", "-in", path, "-noout", "-print"]).decode("utf-8", "replace")
+    if "2.23.136.1.1.2" not in econtent and "id-icao-cscaMasterList" not in econtent:
+        raise RuntimeError("the download is not a CSCA master list")
+    sc = Cert(signer_der)
+    if not sc.valid_at(TODAY):
+        raise RuntimeError(f"the master list signer expired on {sc.not_after.date()}")
+    if not any(issued_by_key(signer_der, r) for r in roots):
+        raise RuntimeError("the master list signer is not issued by a pinned signer root: " + sc.issuer)
+    # CscaMasterList ::= SEQUENCE { version, certList SET OF Certificate }
+    _, (set_o, _, _) = der_children(body, 0)
+    entries = {}
+    for o, h, n in der_children(body, set_o):
+        der = body[o:o + h + n]
+        try:
+            c = Cert(der)
+        except Exception:
+            continue
+        if not c.valid_at(TODAY) or not c.ca:
+            continue
+        fp = sha256(der)
+        m = re.search(r"(?:^|, )C=([A-Za-z]{2})(?:,|$)", c.subject)
+        entries[fp] = {"country": m.group(1).upper() if m else "", "name": common_name(c.subject) or c.subject,
+                       "algorithm": c.algorithm, "sha256": fp, "der": der, "not_after": c.not_after}
+    if len(entries) < 100:
+        raise RuntimeError(f"the master list holds only {len(entries)} valid certificates")
+    return sorted(entries.values(), key=lambda e: (e["country"], e["not_after"], e["sha256"])), name, sc.subject
+
+
+def kotlin_cscas(entries, list_name, publisher, url, updated):
+    blocks = []
+    for e in entries:
+        blocks.append(f"""        Csca(
+            country = "{e['country']}",
+            name = "{kstr(e['name'])}",
+            algorithm = "{kstr(e['algorithm'])}",
+            sha256 = "{e['sha256']}",
+            b64 = {kotlin_b64(e['der'])},
+        ),""")
+    return """
+/**
+ * Country signing CAs (CSCA) of travel documents, built in from the CSCA master list that the German BSI signs
+ * (ICAO 9303 part 12, 9). Generated by tools/trust-roots/update_roots.py; do not edit by hand.
+ *
+ * The list's CMS signature is checked, and its signer must be issued by a pinned German CSCA root whose SHA-256 the
+ * BSI publishes; only certificates valid when the list was taken are kept. A passport whose document signer chains
+ * to one of them is T2, like any trust root ([TrustRole.TRAVEL_DOCUMENT] only, never another role).
+ */
+object BuiltInCscas {
+    class Csca(
+        /** ISO 3166-1 alpha-2 of the subject (Hong Kong and Macao CSCAs name CN). */
+        val country: String,
+        val name: String,
+        val algorithm: String,
+        val sha256: String,
+        private val b64: String,
+    ) {
+        val certificate: X509Cert by lazy { X509Cert(ByteString(b64.fromBase64())) }
+    }
+
+    /** The date the set of CSCAs last changed (UTC). */
+    const val UPDATED = \"""" + updated + """\"
+
+    /** The master list file the set was taken from. */
+    const val LIST = \"""" + kstr(list_name) + """\"
+    const val PUBLISHER = \"""" + kstr(publisher) + """\"
+    const val URL = \"""" + kstr(url) + """\"
+    const val SOURCE = "builtin:csca-master-list"
+
+    val all: List<Csca> by lazy {
+        listOf(
+""" + "\n".join(blocks) + """
+        )
+    }
+
+    /** The CSCAs valid at [at]. */
+    fun validAt(at: Instant): List<Csca> = all.filter { at in it.certificate.validityNotBefore..it.certificate.validityNotAfter }
+
+    /** The countries the set covers, with how many CSCAs each. */
+    val countries: Map<String, Int> by lazy { all.groupingBy { it.country }.eachCount().toSortedMap() }
+}
+"""
+
+
+CSCA_MARKER = "\n/**\n * Country signing CAs (CSCA)"
+
+
+class Unreachable(Exception):
+    pass
+
+
+def cscas_section(cfg, old_text):
+    """
+    The Kotlin of the built-in CSCAs, the report lines, and whether the set changed. The previous text is kept when
+    the set is the same (the list is re-issued every few weeks with the same certificates), or when the list cannot
+    be downloaded or fails a check.
+    """
+    lines = ["## 電子護照 CSCA（" + cfg["name"] + "）", "", "來源：" + cfg["url"], ""]
+    old_fps = dict((fp, c) for c, fp in re.findall(r'Csca\(\s*country = "([A-Z]*)",(?:.|\n)*?sha256 = "([0-9A-F]{64})"', old_text))
+    empty = old_text or kotlin_cscas([], "", cfg["publisher"], cfg["url"], TODAY.strftime("%Y-%m-%d"))
+    try:
+        try:
+            data = fetch(cfg["url"])
+        except Exception as e:
+            raise Unreachable(str(e))
+        entries, name, signer = csca_master_list(cfg, data)
+    except Unreachable as e:
+        notes.append("CSCA 主清單這次無法下載，沿用內建的清單")
+        return empty, lines + ["沿用內建的清單（" + str(e).splitlines()[0][:120] + "）", ""], False
+    except Exception as e:
+        warn("CSCA 主清單沒有通過檢查，沿用內建的清單：" + str(e).splitlines()[0][:200])
+        return empty, lines + ["沒有通過檢查，沿用內建的清單", ""], False
+    by_country = {}
+    for e in entries:
+        by_country[e["country"]] = by_country.get(e["country"], 0) + 1
+    lines += [f"- 清單檔：{name}；簽署者：{signer}",
+              f"- 有效的 CSCA {len(entries)} 張，{len(by_country)} 個國家或地區", ""]
+    new_fps = {e["sha256"]: e["country"] for e in entries}
+    if set(new_fps) == set(old_fps):
+        lines += ["與內建的清單相同", ""]
+        return old_text, lines, False
+    added, removed = {}, {}
+    for fp, c in new_fps.items():
+        if fp not in old_fps:
+            added[c] = added.get(c, 0) + 1
+    for fp, c in old_fps.items():
+        if fp not in new_fps:
+            removed[c] = removed.get(c, 0) + 1
+    if not old_fps:
+        notes.append(f"首次內建 CSCA 主清單：{len(entries)} 張，{len(by_country)} 個國家或地區")
+    else:
+        if added:
+            notes.append("CSCA 新增：" + "、".join(f"{c} {n} 張" for c, n in sorted(added.items())))
+        if removed:
+            notes.append("CSCA 移除（過期或不再列入）：" + "、".join(f"{c} {n} 張" for c, n in sorted(removed.items())))
+        gone = sorted(c for c in set(old_fps.values()) if c not in by_country)
+        if gone:
+            warn("CSCA 主清單不再涵蓋：" + "、".join(gone) + "，請確認後合併")
+    lines += ["| 國家或地區 | 張數 |", "|---|---|"] + [f"| {c or '-'} | {n} |" for c, n in sorted(by_country.items())] + [""]
+    return kotlin_cscas(entries, name, cfg["publisher"], cfg["url"], TODAY.strftime("%Y-%m-%d")), lines, True
+
+
 # ---- Kotlin -----------------------------------------------------------------------------------------------------
 
 def kstr(s):
@@ -627,6 +865,7 @@ def kotlin(entries, intermediates, importable, updated):
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.X509Cert
 import org.multipaz.util.fromBase64
+import kotlin.time.Instant
 
 /**
  * Public CA roots built into the wallet. Generated by tools/trust-roots/update_roots.py; do not edit by hand.
@@ -983,18 +1222,27 @@ def main():
     # GPKI: report only.
     report += ["## 政府憑證（GPKI，只檢查）", ""] + check_gpki(cfg["gpki"], warn_until) + [""]
 
+    # CSCA master list: kept in the same file, after the public roots.
     old_date, old_roots, old_text = previous()
+    cut = old_text.find(CSCA_MARKER)
+    old_roots_text, old_csca_text = (old_text[:cut], old_text[cut:]) if cut >= 0 else (old_text, "")
+    csca_text, csca_lines, csca_changed = cscas_section(cfg["cscaMasterList"], old_csca_text)
+    report += csca_lines
+    csca_count = len(re.findall(r"\n        Csca\(", csca_text))
+
     text = kotlin(ordered, intermediates, importable, old_date or TODAY.strftime("%Y-%m-%d"))
-    changed = text != old_text
-    if changed:
+    roots_changed = text != old_roots_text
+    if roots_changed:
         text = kotlin(ordered, intermediates, importable, TODAY.strftime("%Y-%m-%d"))
+    text += csca_text
+    changed = text != old_text
     added = [e for e in ordered if e["sha256"] not in old_roots]
     removed = [(fp, n) for fp, n in old_roots.items() if fp not in entries]
 
     report[4:4] = ["## 摘要", "",
                    f"- 內建根憑證 {len(ordered)} 個：中國大陸 {sum(1 for e in ordered if e['group'] == 'MAINLAND_CHINA')} 個"
                    f"（SM2 {sum(1 for e in ordered if e['algorithm'] == 'SM2')} 個），常用服務 {sum(1 for e in ordered if e['group'] == 'SERVICE')} 個"
-                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個，C2PA {sum(1 for e in ordered if e['group'] == 'CONTENT_CREDENTIALS')} 個；中繼憑證 {len(intermediates)} 個，可匯入的根憑證 {len(importable)} 個",
+                   f"，時間戳記 {sum(1 for e in ordered if e['group'] == 'TIMESTAMPING')} 個，C2PA {sum(1 for e in ordered if e['group'] == 'CONTENT_CREDENTIALS')} 個；中繼憑證 {len(intermediates)} 個，可匯入的根憑證 {len(importable)} 個；電子護照 CSCA {csca_count} 張",
                    "- 檔案" + ("有變更" if changed else "沒有變更"),
                    *[f"- 新增：{e['name']}（{e['owner']}，SHA-256 {e['sha256']}）" for e in added],
                    *[f"- 移除：{n}（SHA-256 {fp}）" for fp, n in removed],

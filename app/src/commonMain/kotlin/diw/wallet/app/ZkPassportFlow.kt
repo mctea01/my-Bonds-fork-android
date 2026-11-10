@@ -6,7 +6,6 @@ import diw.wallet.app.res.Res
 import diw.wallet.core.document.mrtd.LdsFile
 import diw.wallet.core.document.mrtd.MrtdDump
 import diw.wallet.core.env.TrustEnvironment
-import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.document.DocumentFormat
 import diw.wallet.core.zkpassport.ZkPassport
 import diw.wallet.core.zkpassport.ZkPassportAnswer
@@ -44,10 +43,12 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     private var job: Job? = null
     private var answer: ZkPassportAnswer? = null
 
-    /** The domain requests are made for: the user's setting, else the host of this wallet's own server. */
-    fun defaultDomain(): String = model.settings.zkPassportDomain.trim().ifEmpty {
+    /** The domain requests are made for: the user's setting, else [serverDomain]. */
+    fun defaultDomain(): String = model.settings.zkPassportDomain.trim().ifEmpty { serverDomain() }
+
+    /** The host of this wallet's own production server, what an empty domain setting falls back to; empty without one. */
+    fun serverDomain(): String =
         model.settings.zkVerifierUrl.trim().takeIf { it.isNotEmpty() }?.let { runCatching { Url(it).host }.getOrNull() }.orEmpty()
-    }
 
     fun openSetup() {
         if (!model.legal.enabled(Integration.ZKPASSPORT)) {
@@ -76,9 +77,6 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             sepoliaRpc = settings.zkPassportSepoliaRpc.trim().ifEmpty { null },
             verifierApi = settings.zkPassportVerifierApi,
         )
-        if (ZkPassport.normalizeDomain(request.domain) != settings.zkPassportDomain.trim()) {
-            model.updateSettings { it.copy(zkPassportDomain = ZkPassport.normalizeDomain(request.domain)) }
-        }
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.ZkPassportWaiting(request, null, ZkPassportState.Connecting)
         model.platform.keepScreenOn(true)
@@ -111,8 +109,8 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     /** This wallet's CSCA anchors (production and the user's own), as DER. */
     private suspend fun cscaAnchors(): List<ByteArray> =
         listOf(TrustEnvironment.PRODUCTION, TrustEnvironment.USER).flatMap { env ->
-            runCatching { model.trust.anchors(TrustRole.TRAVEL_DOCUMENT, env) }.getOrDefault(emptyList()).map { it.first.encoded.toByteArray() }
-        }
+            runCatching { model.trust.travelDocumentAnchors(env) }.getOrDefault(emptyList()).map { it.encoded.toByteArray() }
+        }.distinctBy { it.toList() }
 
     /**
      * The OPRF key hash this wallet's server publishes (5.5), read fresh at each request; salted identifiers are
