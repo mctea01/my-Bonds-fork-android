@@ -1,0 +1,108 @@
+{
+  "status": "relocation-smoke-tested-under-wine",
+  "native_windows_execution": "not-tested",
+  "prover": "not-tested",
+  "commands": [
+    {
+      "argv": [
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_assets_probe.c",
+        "/workspace/native-research-env/longfellow/embedded/target/x86_64-pc-windows-gnu/release/libzkp.dll.a",
+        "-o",
+        "/workspace/native-research-env/longfellow/relocation-verified/relocated/assets.exe"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/relocation-verified",
+      "log": "assets-c-link.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+        "/workspace/native-research-env/longfellow/relocation-verified/control/probe.exe",
+        "Z:\\workspace\\native-research-env\\longfellow\\relocation-verified\\reference\\8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+        "Z:\\workspace\\native-research-env\\longfellow\\relocation-verified\\reference\\proof.bin"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/relocation-verified/control",
+      "log": "baseline-missing-source.log",
+      "exit_code": 9,
+      "seconds": 0.468
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+        "/workspace/native-research-env/longfellow/relocation-verified/relocated/assets.exe",
+        "Z:\\workspace\\native-research-env\\longfellow\\relocation-verified\\reference"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/relocation-verified/relocated",
+      "log": "all-assets-relocated.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+        "/workspace/native-research-env/longfellow/relocation-verified/relocated/probe.exe",
+        "Z:\\workspace\\native-research-env\\longfellow\\relocation-verified\\reference\\8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+        "Z:\\workspace\\native-research-env\\longfellow\\relocation-verified\\reference\\proof.bin"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/relocation-verified/relocated",
+      "log": "proof-relocated.log",
+      "exit_code": 0,
+      "seconds": 10.64
+    }
+  ],
+  "inputs": {
+    "baseline_build_report": {
+      "sha256": "0a8cf7dbc82f6573e67f4f820204af9aa7e0379a155900cec86a9edca82dcc58"
+    },
+    "embedded_build_report": {
+      "sha256": "753586030e6fa2a3c53858606547ce9b5019a7049cf6b3fab8e1cfc970f032cc"
+    },
+    "baseline_dll": {
+      "sha256": "9e9b2444030b10b570af1c5e807aa3f93bd431b746c88363554940c1951da9ff",
+      "bytes": 2801664
+    },
+    "embedded_dll": {
+      "sha256": "510009cbad60e0f14b5694de100e8cd1aa3371a7f1b081569b0c0a681d504845",
+      "bytes": 8010240
+    },
+    "proof_caller": {
+      "sha256": "41b24d0240de1c3f789fa4524064f8b53bcb483ee5e19f2724ba1fb7750a61e3"
+    },
+    "runner": {
+      "sha256": "16188f55925fcc266b0850bcc2c31406836b051cb0025adbb1823b434887d911"
+    },
+    "assets_probe": {
+      "sha256": "6170aea6c87bd596342321d562d4ba4ed427f3e67d885b092df7d615ae3c1425"
+    },
+    "asset_catalog": {
+      "sha256": "6b4a2ad02fa7308670c86cba78254021b5bb7615e084f1e5f1679e5231388e29"
+    },
+    "proof": {
+      "sha256": "3cb762b110ddc5b309f3b067ff3e891381a479f291dd4903e8c19c5d987bbe91"
+    },
+    "assets_exe": {
+      "sha256": "bb2b0781c24efb1b9544d0c3a1688faa7505215cf99f71187e92396458125d71"
+    }
+  },
+  "source_restored": true,
+  "wine_environment": {
+    "WINEPREFIX": "/workspace/native-research-env/windows-bb/wine-probe3",
+    "WINEARCH": "win64",
+    "WINELOADER": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+    "WINEDEBUG": "-all",
+    "WINEDLLOVERRIDES": "mscoree,mshtml,winedbg=d",
+    "WINESERVER": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wineserver64",
+    "WINEDLLPATH": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/x86_64-linux-gnu/wine"
+  },
+  "source_path": "/workspace/native-research-env/longfellow/multipaz",
+  "hidden_source_path": "/workspace/native-research-env/longfellow/multipaz.relocation-hidden",
+  "source_absent_during_tests": true,
+  "baseline_control": "expected nonzero exit with missing source archive panic"
+}

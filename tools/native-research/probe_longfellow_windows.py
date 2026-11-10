@@ -36,6 +36,7 @@ def main():
         parser.add_argument("--" + name, type=Path, required=True)
     for name in ["wine", "wineserver", "wine-prefix", "wine-dll-path"]:
         parser.add_argument("--" + name, type=Path)
+    parser.add_argument("--embed-assets", action="store_true", help="Also require the isolated LFA2 embedding patch")
     args = parser.parse_args()
     here = Path(__file__).resolve().parent
     repo = here.parents[1]
@@ -91,7 +92,23 @@ def main():
             raise ValueError("Multipaz must differ only in its research-patched submodule")
         patch = here / "longfellow-windows-sha2.patch"
         actual_patch = run(["git", "diff", "--no-ext-diff", "--unified=0", "HEAD"], "longfellow-patch", cwd=upstream)
-        if actual_patch != patch.read_text():
+        expected_patch = patch.read_text()
+        if args.embed_assets:
+            asset_patch = here / "longfellow-embedded-assets.patch"
+            # Git emits paths in sorted order; artifacts precedes the six manifests.
+            expected_patch = asset_patch.read_text() + expected_patch
+            report["inputs"]["asset_patch"] = {"path": str(asset_patch), "sha256": digest(asset_patch)}
+            catalog_path = here / "longfellow-embedded-assets.json"
+            catalog = json.loads(catalog_path.read_text())
+            if catalog["longfellow_revision"] != LONGFELLOW or len(catalog["assets"]) != 12:
+                raise ValueError("Unexpected embedded asset catalog")
+            for asset in catalog["assets"]:
+                path = upstream / asset["path"]
+                if digest(path) != asset["sha256"] or path.stat().st_size != asset["bytes"]:
+                    raise ValueError("Embedded asset SHA-256 mismatch")
+            report["inputs"]["asset_catalog"] = {"path": str(catalog_path), "sha256": digest(catalog_path)}
+            report["scope"] += "; 12 unchanged prior-version LFA2 archives embedded"
+        if actual_patch != expected_patch:
             raise ValueError("Longfellow must have exactly the supplied research patch")
         lock = here / "longfellow-windows.Cargo.lock"
         if digest(wrapper / "Cargo.lock") != digest(lock):

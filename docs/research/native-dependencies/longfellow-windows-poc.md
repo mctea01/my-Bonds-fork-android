@@ -1,5 +1,7 @@
 # Longfellow Windows GNU：來源建置、DLL 與 proof PoC
 
+**後續更新**：[來源目錄移除／搬移 PoC](longfellow-relocation-poc.md) 已重現缺檔 panic，並用另一份隔離 patch 嵌入 12 份原始 LFA2。新 DLL 在來源路徑不存在時通過所有舊版電路比對及公開 proof 測試。本文保留前輪單獨 SHA-2 patch 的結果與當時限制。
+
 日期：2026-11-10。延續 BB 的 Windows 研究，這輪將 Multipaz 0.102.0 的固定 Longfellow 來源建成 Windows GNU `zkp.dll`，以直接 C caller 在 Wine 驗證 ABI、電路資料配置／釋放，以及公開 v7／1 attribute proof。**成功路徑需要隔離研究 patch；原版來源的 Windows 建置會失敗。** 正式 App、Kotlin、Gradle、CI、native build scripts 與密碼學參數沒有修改。
 
 ## 原版阻塞與最小 patch

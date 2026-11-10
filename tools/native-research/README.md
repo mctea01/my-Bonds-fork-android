@@ -100,3 +100,20 @@ allocation/free, and an upstream public proof with changed attribute/transcript/
 proof rejection. v7 materialization still reads the compile-time source path;
 this experiment does not provide relocatable packaging, native Windows or MSVC
 acceptance, or a successful prover. All outputs remain outside the repository.
+
+## Longfellow embedded assets and relocation
+
+After saving a baseline Windows build, apply `longfellow-embedded-assets.patch`
+to the same external checkout and rerun `probe_longfellow_windows.py` with
+`--embed-assets`, Wine, and a new output directory. It pins all 12 unchanged LFA2
+archives using `longfellow-embedded-assets.json`.
+
+`probe_longfellow_relocation.py --build-dir /external/embedded --baseline-dir
+/external/baseline --out /external/new-empty-relocation` compares both DLLs while
+temporarily renaming the dedicated source checkout. Do not run builds against
+that checkout concurrently. It restores the source in `finally`, expects the
+baseline's missing-file panic, and requires all 12 materializations and the
+public proof suite to pass with the embedded DLL. See the
+[relocation report](../../docs/research/native-dependencies/longfellow-relocation-poc.md)
+for recovery and limits. This tests prior-version circuits under Wine; current
+circuit generation, prover, native Windows and MSVC remain untested.

@@ -1,0 +1,77 @@
+{
+  "longfellow_revision": "d5e6be77336933d50bf7f25a954f8ec273eb51ce",
+  "assets": [
+    {
+      "spec_hash": "8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+      "bytes": 480913,
+      "sha256": "94c665e8a4067f5cd10153c96164afcecfbb1a41afa513f4a8c99ae01723a2f0"
+    },
+    {
+      "spec_hash": "6a5810683e62b6d7766ebd0d7ca72518a2b8325418142adcadb10d51dbbcd5ad",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/6a5810683e62b6d7766ebd0d7ca72518a2b8325418142adcadb10d51dbbcd5ad.lfa2",
+      "bytes": 498114,
+      "sha256": "678ed5b549ed0ab1b00f92d390e31100da5d30fcceac4405d2a16bc67ed4489b"
+    },
+    {
+      "spec_hash": "8ee4849ae1293ae6fe5f9082ce3e5e15c4f198f2998c682fa1b727237d6d252f",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/8ee4849ae1293ae6fe5f9082ce3e5e15c4f198f2998c682fa1b727237d6d252f.lfa2",
+      "bytes": 520473,
+      "sha256": "6f0a7a965ebf711a12a8500f471314f826a5e293d00164d40eee73d7a948da74"
+    },
+    {
+      "spec_hash": "5aebdaaafe17296a3ef3ca6c80c6e7505e09291897c39700410a365fb278e460",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/5aebdaaafe17296a3ef3ca6c80c6e7505e09291897c39700410a365fb278e460.lfa2",
+      "bytes": 540415,
+      "sha256": "a22f6449daedee2ce1b2e4bb975c6bc38eb9ea89bb7533f3815ab0ee1ad7a7a2"
+    },
+    {
+      "spec_hash": "137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/137e5a75ce72735a37c8a72da1a8a0a5df8d13365c2ae3d2c2bd6a0e7197c7c6.lfa2",
+      "bytes": 450918,
+      "sha256": "293f3f73ae64ec3f8607dbe63e9c86577ccb8eba66144ce27fbeca98c6448d7a"
+    },
+    {
+      "spec_hash": "b4bb6f01b7043f4f51d8302a30b36e3d4d2d0efc3c24557ab9212ad524a9764e",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/b4bb6f01b7043f4f51d8302a30b36e3d4d2d0efc3c24557ab9212ad524a9764e.lfa2",
+      "bytes": 461174,
+      "sha256": "227ad58f2d522f54b1093a2c3c6c1ec00b3a0a11921e893b8af82f881fd3ef0a"
+    },
+    {
+      "spec_hash": "b2211223b954b34a1081e3fbf71b8ea2de28efc888b4be510f532d6ba76c2010",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/b2211223b954b34a1081e3fbf71b8ea2de28efc888b4be510f532d6ba76c2010.lfa2",
+      "bytes": 482287,
+      "sha256": "ed9adee5b79175bfd8873938dc082f81d2d869dbe49537fe6df45b51cb65e526"
+    },
+    {
+      "spec_hash": "c70b5f44a1365c53847eb8948ad5b4fdc224251a2bc02d958c84c862823c49d6",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/c70b5f44a1365c53847eb8948ad5b4fdc224251a2bc02d958c84c862823c49d6.lfa2",
+      "bytes": 497899,
+      "sha256": "ba4c91b979fb022414c83b91e3b6cf031a613d96c20d6cc956d1877973798058"
+    },
+    {
+      "spec_hash": "f88a39e561ec0be02bb3dfe38fb609ad154e98decbbe632887d850fc612fea6f",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/f88a39e561ec0be02bb3dfe38fb609ad154e98decbbe632887d850fc612fea6f.lfa2",
+      "bytes": 307237,
+      "sha256": "89c3ec7c4f845dd2e7f3279ba8f1b9ca3827be20ef6f75c99bbf1454da75bbe3"
+    },
+    {
+      "spec_hash": "f51b7248b364462854d306326abded169854697d752d3bb6d9a9446ff7605ddb",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/f51b7248b364462854d306326abded169854697d752d3bb6d9a9446ff7605ddb.lfa2",
+      "bytes": 318940,
+      "sha256": "0d2794ce535f19ed15bcead3cd383d9572e1dc92b32bf3ea9ef89d814d73a27f"
+    },
+    {
+      "spec_hash": "c27195e03e22c9ab4efe9e1dabd2c33aa8b2429cc4e86410c6f12542d3c5e0a1",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/c27195e03e22c9ab4efe9e1dabd2c33aa8b2429cc4e86410c6f12542d3c5e0a1.lfa2",
+      "bytes": 324350,
+      "sha256": "fe513d2409ed925b4555d5232e245830e6499b2e303c93edae220d977fb7b9c3"
+    },
+    {
+      "spec_hash": "fa5fadfb2a916d3b71144e9b412eff78f71fd6a6d4607eac10de66b195868b7a",
+      "path": "rust/applications/mdoc_zk/artifacts/circuits/fa5fadfb2a916d3b71144e9b412eff78f71fd6a6d4607eac10de66b195868b7a.lfa2",
+      "bytes": 328984,
+      "sha256": "2fe177bd2f0156d8f63b5db7cc2b5ad176d34fe0611f6ba04ff2b4a983593c16"
+    }
+  ]
+}

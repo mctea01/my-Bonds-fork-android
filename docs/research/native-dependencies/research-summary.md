@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第五輪更新（2026-11-10）**：[Longfellow 資產搬移 PoC](longfellow-relocation-poc.md) 重現前版 DLL 缺少來源目錄時 panic；隔離 patch 嵌入 12 份不變的 LFA2 bytes 後，原路徑不存在仍可通過電路逐 byte 比對與公開 proof 正反向測試。DLL 約 2.8 MB → 8.0 MB，原生 Windows 與正式部署仍未驗收。
+
 **第四輪更新（2026-11-10）**：[Longfellow Windows PoC](longfellow-windows-poc.md) 找出原版 sha2-asm 的 Windows compile guard；隔離的六份 manifest patch 保留同版 SHA-2，成功建出 DLL，並在 Wine 通過 LLP64、電路配置／釋放及公開 proof 正反向驗證。v7 電路仍依賴編譯時來源目錄，尚不能直接部署。
 
 **第三輪更新（2026-11-10）**：[Windows GNU 公開 proof PoC](bb-windows-proof-poc.md) 在 Wine 接受固定合成 UltraHonk fixture，拒絕修改 public input／proof 與整個 field 截斷，還原後再次接受。這是使用 fixture 自帶 key 的驗證，未涵蓋 registry／錢包政策、prover、原生 Windows 或跨架構互通。

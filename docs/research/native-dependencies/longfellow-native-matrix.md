@@ -1,5 +1,7 @@
 # R02：Multipaz Longfellow 原生依賴與直接 C ABI
 
+**最新進度（2026-11-10）**：[Longfellow 搬移 PoC](longfellow-relocation-poc.md) 在額外嵌入原始 LFA2 的研究 patch 下，通過來源目錄移除後的 12 份舊版電路配置／比對／釋放及公開 proof 正反向驗證。正式上游來源、current-version、prover 與原生 Windows 支援未因此改變。
+
 **後續實測（2026-11-10）**：[Windows GNU DLL／proof PoC](longfellow-windows-poc.md) 已在隔離的六份 manifest patch 與研究 lockfile 下完成 source-build、直接 C ABI、電路配置／釋放及 Wine 公開 proof 正反向測試。原版 Windows 被 sha2-asm guard 阻塞；可搬移資產、原生 Windows、MSVC 與 prover 未驗證。以下第一輪的「未編譯／未驗 proof」保留其當時範圍。
 
 研究日期：2026-11-09。DIW 基準 `3428b8ee12ac5e644f478d4c6e43854376202fa4`。本輪不更動 Kotlin、loader、電路、參數或正式建置腳本；不研究 iOS。上游目錄中的 iOS archives 僅確認存在，不評估。
