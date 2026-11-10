@@ -1,5 +1,7 @@
 # R12：後續原生移植實作清單
 
+**P2 Linux ARM64 BB 進度**：[官方 archive／原 DIW bridge](bb-linux-arm64-poc.md) 已連結並在 QEMU max／cortex-a53 通過 C ABI 子集及公開 proof 正反向。下一個可執行工作包為 ARM64 OPRF／其他 Rust features；BB 全庫重建、實體 runner、prover、最低 CPU／glibc 及雙向 proof 生成仍待完成。
+
 **P2 Linux ARM64 進度**：[DIW runtime-only／Longfellow](linux-arm64-poc.md) 已從未修改來源交叉建置並在 QEMU 跑過 C 子集與公開 proof 正反向驗證。剩餘重點為 BB ARM64、其他 Rust features、原生 runner／最低 glibc 與 CPU、資產搬移、prover 及跨架構雙向 proof。
 
 **P1 Longfellow 資產進度**：[搬移 PoC](longfellow-relocation-poc.md) 已用隔離 patch 嵌入 12 份原始 LFA2，通過來源移開後的逐 byte 比對及公開 proof 測試。後續重點為原生 Windows／CPU、MSVC C host、prover、current-version 及正式資產打包審查；不再把研究 DLL 的舊版來源路徑問題列為未解。

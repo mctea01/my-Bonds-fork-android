@@ -26,6 +26,7 @@
 | [Longfellow Windows GNU PoC](research/native-dependencies/longfellow-windows-poc.md) | 原版編譯阻塞、隔離 patch／鎖檔、DLL C ABI 與公開 proof 驗證 |
 | [Longfellow 資產搬移 PoC](research/native-dependencies/longfellow-relocation-poc.md) | 原版缺檔對照、嵌入 12 份原始電路、來源移除後的 C／proof 驗證 |
 | [Linux ARM64 原生 C PoC](research/native-dependencies/linux-arm64-poc.md) | 未修改來源的 Longfellow／DIW runtime 交叉建置、QEMU proof／ABI 與 CPU／glibc 證據 |
+| [BB Linux ARM64 C／proof PoC](research/native-dependencies/bb-linux-arm64-poc.md) | 官方 ARM64 archive、原 DIW bridge、QEMU 兩個 CPU 模型的公開 proof 正反向與 libc 證據 |
 | [research/twdiw.md](research/twdiw.md) | TWDIW 官方 App 與平台的發證、出示、信任清單與互通細節 |
 | [research/twdiw-device-registration.md](research/twdiw-device-registration.md) | 裝置金鑰註冊查證：官方分割 APK 簽章與 assetlinks 核對、SDK 封裝及簽章呼叫鏈、frontend API、nonce 前綴、TLS 限制與待確認契約 |
 | [research/twdiw-1.0.14-issuance-review.md](research/twdiw-1.0.14-issuance-review.md) | 領卡與簽章分析附件核對：VM 成功路徑的 appHash／keyId 映射、公鑰雙層 reader 與指紋、DEX 交接、nonce／grant_type 校正 |

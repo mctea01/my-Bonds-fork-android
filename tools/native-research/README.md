@@ -129,3 +129,17 @@ The [ARM64 report](../../docs/research/native-dependencies/linux-arm64-poc.md)
 contains package pins, commands and limits. Neither Windows research patch is
 applied. Proof verification uses the same public corpus as Windows, with no new
 proof generation, hardware validation or performance claim.
+
+## Barretenberg Linux ARM64 with QEMU
+
+`probe_bb_arm64.py` links the hash-pinned official BB 6.0.0 ARM64 archive with
+the original DIW bridge and source-built libdeflate using Zig 0.15.1. It reuses
+the existing Windows-named C callers without changing their test logic, checks
+AArch64 ELF headers, and runs ABI/hooks plus the pinned public UltraHonk fixture
+under QEMU `max` and `cortex-a53`. Compile flags explicitly select
+`aarch64-linux-gnu.2.35` and `baseline`. Outputs and source checkouts must stay
+outside this repository, with a new empty output directory.
+
+See [the report](../../docs/research/native-dependencies/bb-linux-arm64-poc.md)
+for preparation, the full command and evidence. Physical ARM64, minimum CPU/OS,
+BB source rebuild, shared-library deployment and proof generation remain untested.

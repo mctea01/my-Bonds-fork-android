@@ -1,5 +1,7 @@
 # Linux ARM64：Longfellow 與 DIW runtime 原生 C PoC
 
+**後續 BB 進度**：[BB Linux ARM64 PoC](bb-linux-arm64-poc.md) 已完成官方 archive 與原 bridge 的連結、QEMU C／公開 proof 正反向測試；以下保留本輪 runtime／Longfellow 的範圍。
+
 日期：2026-11-10。本輪開始 Windows 以外的 CPU／OS 驗證：將固定 Longfellow 與 DIW runtime-only 交叉編譯為 `aarch64-unknown-linux-gnu` ELF 動態庫，以 ARM64 C caller 在 x86_64 Linux 上的 **QEMU user、`-cpu max`** 執行。兩條路徑均不經 JVM／JNI／JNA；這是 ARM64 指令模擬證據，不是實體 ARM64 或完整 App 支援。
 
 ## 固定來源與工具鏈

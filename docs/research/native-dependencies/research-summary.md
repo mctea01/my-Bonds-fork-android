@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第七輪更新（2026-11-10）**：[BB Linux ARM64 PoC](bb-linux-arm64-poc.md) 將官方靜態庫與原 DIW bridge 連結為 AArch64 C executables；QEMU max／cortex-a53 均通過 ABI、環境 hooks 及相同公開 UltraHonk proof 的正反向驗證。BB 主體未 source-build，實體 ARM64、prover 與雙向 proof 生成仍未測。
+
 **第六輪更新（2026-11-10）**：[Linux ARM64 PoC](linux-arm64-poc.md) 已從未修改的固定來源建出 Longfellow 與 DIW runtime-only，QEMU 下通過 C ABI、runtime self-test／free，以及同一公開 Longfellow proof 的正反向測試。兩庫最高 GLIBC symbol 為 2.34；ARM64 實體硬體、最低 CPU／OS 和跨架構雙向 proving 未測。
 
 **第五輪更新（2026-11-10）**：[Longfellow 資產搬移 PoC](longfellow-relocation-poc.md) 重現前版 DLL 缺少來源目錄時 panic；隔離 patch 嵌入 12 份不變的 LFA2 bytes 後，原路徑不存在仍可通過電路逐 byte 比對與公開 proof 正反向測試。DLL 約 2.8 MB → 8.0 MB，原生 Windows 與正式部署仍未驗收。

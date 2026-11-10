@@ -1,5 +1,7 @@
 # R01：Barretenberg 6.0.0／zkPDF 原生可移植性
 
+**Linux ARM64 更新**：[C bridge／公開 proof PoC](bb-linux-arm64-poc.md) 已使用官方 ARM64 archive、Zig 0.15.1 與原 DIW bridge，在 QEMU max／cortex-a53 通過 C 子集與公開 proof 正反向測試。以下第一輪來源研究保留歷史範圍；未重建 BB 主體或驗收實體硬體。
+
 **第三輪更新**：[公開 proof PoC](bb-windows-proof-poc.md) 已在 Wine 完成單一固定 fixture 的正反向驗證；前兩輪的 proof 未測描述保留為歷史紀錄。
 
 **第二輪更新**：[Windows GNU 連結與 Wine PoC](bb-windows-link-poc.md) 已完成；本文件以下保留第一輪來源研究的歷史結論。「未連結／未執行」描述的是第一輪，最新狀態與限制以第二輪報告及矩陣為準。

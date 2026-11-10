@@ -1,0 +1,839 @@
+{
+  "project_revision": "d7b05cdb5bd023147285d2186ecd7d8035231b96",
+  "host": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "target": "aarch64-linux-gnu.2.35",
+  "status": "smoke-tested-under-qemu",
+  "physical_arm64_execution": "not-tested",
+  "prover": "not-tested",
+  "cross_architecture_proof_generation": "not-tested",
+  "positive_proof": "passed-under-qemu; pinned upstream synthetic fixture",
+  "bb_source_build": "not-tested",
+  "scope": "official BB archive + source-built libdeflate + unmodified DIW bridge",
+  "inputs": {
+    "zig": {
+      "path": "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+      "sha256": "0ee27482eb2e7b19fad58579c107364aa93fbfb54be2d2b9c52cef5f955d6225"
+    },
+    "qemu": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+      "sha256": "73cc2584f119f9e74c85c0a8549dbb6fd104ae3897a06a7500797f9e5b4d0943"
+    },
+    "target_libc": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu/lib/libc.so.6",
+      "sha256": "ce67859ef338d8558a7fd7cff9a1effe5677ff9f7eea90641a2c051c51fab7ac"
+    },
+    "target_loader": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu/lib/ld-linux-aarch64.so.1",
+      "sha256": "393ca646b316f6cb31dc82dc72becff344bf6491458f98c07036fea73f1db55e"
+    },
+    "bb_source": {
+      "path": "/workspace/native-research-env/windows-bb/source",
+      "revision": "0219f11d8133970df3974fe5ae65e006bf8c193a"
+    },
+    "msgpack_source": {
+      "path": "/workspace/native-research-env/windows-bb/msgpack",
+      "revision": "c0334576ed657fb3b3c49e8e61402989fb84146d"
+    },
+    "tracy_source": {
+      "path": "/workspace/native-research-env/windows-bb/tracy",
+      "revision": "5d542dc09f3d9378d005092a4ad446bd405f819a"
+    },
+    "deflate_source": {
+      "path": "/workspace/native-research-env/windows-bb/libdeflate",
+      "revision": "96836d7d9d10e3e0d53e6edb54eb908514e336c4"
+    },
+    "bb_archive": {
+      "path": "/workspace/native-research-env/bb-arm64/libbb-external.a",
+      "sha256": "332e6bde4d9c040e83035aafb4cd817fb8b1c2e28b19587ed46ff30cdc13d1a1"
+    },
+    "bridge": {
+      "path": "/workspace/my-Bonds-fork-android/native/zkpdf-prover/cpp/bridge.cpp",
+      "sha256": "645bdd6f584a0969318391b8d3cc71f6a320cdbc8854af39a9cd777808faf16b"
+    },
+    "constants": {
+      "path": "/workspace/my-Bonds-fork-android/native/zkpdf-prover/cpp/aztec_constants.hpp",
+      "sha256": "6367ab71dbdf5d3362289ed1cf3dd4517a94c9e8113f5fed10378aa49a730873"
+    },
+    "probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_probe.c",
+      "sha256": "b702114686fde6965204d6b0484b6878f4dc34be863b60c22d9d38f6a197271c"
+    },
+    "hooks": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_hooks.cpp",
+      "sha256": "a91a47c3aba99f2f8c337b6cdfed2d22f3770eb3d34a9f413064422de3741197"
+    },
+    "runner": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/probe_bb_arm64.py",
+      "sha256": "0ad19d4ddb8b370738c041329079415d69ee468dfac8f3404356b769e18a8921"
+    },
+    "proof_fixture": {
+      "path": "/workspace/native-research-env/windows-bb/proof-inputs/outer_count_4_disclose.json",
+      "sha256": "a7470d4c4e71a24da90cfed8ec026cae24d4c7adbbd6f905bfffecad5655067d",
+      "encoded_fields": {
+        "vkeyFields": {
+          "fields": 115,
+          "bytes": 3680,
+          "sha256": "7b97e308ef35e12f62eb6d718119dce1a80de9d58d9f124e9151a676eee17db7"
+        },
+        "proof": {
+          "fields": 458,
+          "bytes": 14656,
+          "sha256": "f9867d667aa28a66bdb548537e4378b1ff06b70106ce77f03812893cce78c7ab"
+        },
+        "publicInputs": {
+          "fields": 9,
+          "bytes": 288,
+          "sha256": "c153a42da1e7111eeb437e557a82bd3aff7776b7ed4edf626f19a89bdddadfcc"
+        }
+      }
+    },
+    "proof_probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_proof_probe.c",
+      "sha256": "1e8b67c612c2a70f7354389f540e2d5a15ecb17a50a080e46779d5565935a961"
+    }
+  },
+  "commands": [
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "--version"
+      ],
+      "log": "qemu-version.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "version"
+      ],
+      "log": "zig-version.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/source",
+        "rev-parse",
+        "HEAD"
+      ],
+      "log": "bb_source-revision.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/source",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal"
+      ],
+      "log": "bb_source-status.log",
+      "exit_code": 0,
+      "seconds": 0.022
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/msgpack",
+        "rev-parse",
+        "HEAD"
+      ],
+      "log": "msgpack_source-revision.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/msgpack",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal"
+      ],
+      "log": "msgpack_source-status.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/tracy",
+        "rev-parse",
+        "HEAD"
+      ],
+      "log": "tracy_source-revision.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/tracy",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal"
+      ],
+      "log": "tracy_source-status.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "rev-parse",
+        "HEAD"
+      ],
+      "log": "deflate_source-revision.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "git",
+        "-C",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "status",
+        "--porcelain",
+        "--untracked-files=normal"
+      ],
+      "log": "deflate_source-status.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/arm/cpu_features.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-0.o"
+      ],
+      "log": "deflate-0.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/utils.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-1.o"
+      ],
+      "log": "deflate-1.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/x86/cpu_features.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-2.o"
+      ],
+      "log": "deflate-2.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/deflate_compress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-3.o"
+      ],
+      "log": "deflate-3.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/deflate_decompress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-4.o"
+      ],
+      "log": "deflate-4.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/adler32.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-5.o"
+      ],
+      "log": "deflate-5.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/zlib_compress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-6.o"
+      ],
+      "log": "deflate-6.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/zlib_decompress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-7.o"
+      ],
+      "log": "deflate-7.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/crc32.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-8.o"
+      ],
+      "log": "deflate-8.log",
+      "exit_code": 0,
+      "seconds": 0.017
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/gzip_compress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-9.o"
+      ],
+      "log": "deflate-9.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-O2",
+        "-DNDEBUG",
+        "-I",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "-c",
+        "/workspace/native-research-env/windows-bb/libdeflate/lib/gzip_decompress.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-10.o"
+      ],
+      "log": "deflate-10.log",
+      "exit_code": 0,
+      "seconds": 0.017
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "ar",
+        "rcs",
+        "/workspace/native-research-env/bb-arm64/verified/libdeflate.a",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-0.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-1.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-2.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-3.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-4.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-5.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-6.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-7.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-8.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-9.o",
+        "/workspace/native-research-env/bb-arm64/verified/deflate-10.o"
+      ],
+      "log": "deflate-archive.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "c++",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-std=c++20",
+        "-O2",
+        "-DDISABLE_ASM=1",
+        "-DDISABLE_AZTEC_VM=1",
+        "-DNO_PAR_ALGOS",
+        "-DNDEBUG",
+        "-DMSGPACK_NO_BOOST",
+        "-DMSGPACK_USE_STD_VARIANT_ADAPTOR",
+        "-DZKPDF_WORKERS=2",
+        "-I",
+        "/workspace/native-research-env/bb-arm64/verified/include",
+        "-I",
+        "/workspace/native-research-env/windows-bb/source/barretenberg/cpp/src",
+        "-I",
+        "/workspace/native-research-env/windows-bb/msgpack/include",
+        "-I",
+        "/workspace/native-research-env/windows-bb/tracy/public",
+        "-c",
+        "/workspace/my-Bonds-fork-android/native/zkpdf-prover/cpp/bridge.cpp",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/diw_bridge.o"
+      ],
+      "log": "bridge-compile.log",
+      "exit_code": 0,
+      "seconds": 12.399
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "c++",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-std=c++20",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-c",
+        "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_hooks.cpp",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/hooks.o"
+      ],
+      "log": "hooks-compile.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/workspace/native-research-env/bb-arm64/verified",
+        "-c",
+        "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_probe.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.o"
+      ],
+      "log": "bbapi-compile.log",
+      "exit_code": 0,
+      "seconds": 0.032
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "c++",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.o",
+        "/workspace/native-research-env/bb-arm64/libbb-external.a",
+        "/workspace/native-research-env/bb-arm64/verified/libdeflate.a",
+        "-pthread",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-link.log",
+      "exit_code": 0,
+      "seconds": 0.165
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-header.log",
+      "exit_code": 0,
+      "seconds": 0.002
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-DDIW_BRIDGE_TEST",
+        "-I",
+        "/workspace/native-research-env/bb-arm64/verified",
+        "-c",
+        "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_probe.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.o"
+      ],
+      "log": "diw-bridge-compile.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "c++",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.o",
+        "/workspace/native-research-env/bb-arm64/verified/hooks.o",
+        "/workspace/native-research-env/bb-arm64/verified/diw_bridge.o",
+        "/workspace/native-research-env/bb-arm64/libbb-external.a",
+        "/workspace/native-research-env/bb-arm64/verified/libdeflate.a",
+        "-pthread",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-link.log",
+      "exit_code": 0,
+      "seconds": 0.165
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-header.log",
+      "exit_code": 0,
+      "seconds": 0.002
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "cc",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/workspace/native-research-env/bb-arm64/verified",
+        "-c",
+        "/workspace/my-Bonds-fork-android/tools/native-research/bb_windows_proof_probe.c",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.o"
+      ],
+      "log": "diw-proof-compile.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "c++",
+        "-target",
+        "aarch64-linux-gnu.2.35",
+        "-mcpu=baseline",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.o",
+        "/workspace/native-research-env/bb-arm64/verified/hooks.o",
+        "/workspace/native-research-env/bb-arm64/verified/diw_bridge.o",
+        "/workspace/native-research-env/bb-arm64/libbb-external.a",
+        "/workspace/native-research-env/bb-arm64/verified/libdeflate.a",
+        "-pthread",
+        "-o",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-link.log",
+      "exit_code": 0,
+      "seconds": 0.165
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-header.log",
+      "exit_code": 0,
+      "seconds": 0.002
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-qemu-max.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-qemu-max.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-qemu-max.log",
+      "exit_code": 0,
+      "seconds": 0.415
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "cortex-a53",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/bbapi.elf"
+      ],
+      "log": "bbapi-qemu-cortex-a53.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "cortex-a53",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/diw-bridge.elf"
+      ],
+      "log": "diw-bridge-qemu-cortex-a53.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "cortex-a53",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/bb-arm64/verified/diw-proof.elf"
+      ],
+      "log": "diw-proof-qemu-cortex-a53.log",
+      "exit_code": 0,
+      "seconds": 0.465
+    }
+  ],
+  "artifacts": {
+    "libdeflate.a": {
+      "sha256": "7ebc4ba7f2bedede6bf6fb66c1b59e778662b56f7c1c1627c4277ded9738093f",
+      "status": "object-produced"
+    },
+    "diw_bridge.o": {
+      "sha256": "040167ff319383a84cab2f5301db5ea278dd4707040ee9a80faa43f3e14c752a",
+      "status": "object-produced"
+    },
+    "bbapi.elf": {
+      "sha256": "720aae786aa5c273c14b470cf7bac99c913a3a4a290c65f49a683d41322a4d91",
+      "bytes": 45357544,
+      "status": "smoke-tested-under-qemu"
+    },
+    "diw-bridge.elf": {
+      "sha256": "00b4518313eeb1f2874e598dc51fee38f3b61bd2396fe40469708a8becfeddc0",
+      "bytes": 46402176,
+      "status": "smoke-tested-under-qemu"
+    },
+    "diw-proof.elf": {
+      "sha256": "52693bc5a83358b35cb80ee61728ce196b3907bb620e903a037284e0f02aad88",
+      "bytes": 44266168,
+      "status": "smoke-tested-under-qemu"
+    }
+  },
+  "execution_environment": "QEMU user-mode on x86_64; target glibc sysroot",
+  "sysroot": "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+  "negative_proof": "passed-under-qemu; changed public input, changed proof field, truncated field",
+  "qemu_cpu_models": [
+    "max",
+    "cortex-a53"
+  ]
+}
