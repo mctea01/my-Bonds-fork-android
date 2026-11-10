@@ -1,5 +1,7 @@
 # R01：Barretenberg 6.0.0／zkPDF 原生可移植性
 
+**第二輪更新**：[Windows GNU 連結與 Wine PoC](bb-windows-link-poc.md) 已完成；本文件以下保留第一輪來源研究的歷史結論。「未連結／未執行」描述的是第一輪，最新狀態與限制以第二輪報告及矩陣為準。
+
 研究日期：2026-11-09。專案基準 `3428b8ee12ac5e644f478d4c6e43854376202fa4`；BB 固定為 `0219f11d8133970df3974fe5ae65e006bf8c193a`，Noir 為 `5a7ee9bf5ed8973076df7bb0d2b723024db09ae7`。用途為 `runtime-conditional`（`zkpdf`，同時服務 zkPassport 證明／驗證）；CLI 的資產產製屬 build-only。此報告沒有變更正式來源、電路、金鑰或證明格式。
 
 ## 本輪結論與證據界線

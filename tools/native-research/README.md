@@ -64,3 +64,14 @@ python3 tools/native-research/inspect_archives.py /path/to/library.jar /path/to/
 This hashes each archive and its native/WASM entries without extracting or
 executing them. It does not recursively inspect nested archives, resolve
 dependencies, or claim that observed entries are used by a particular target.
+
+## Windows GNU BB without JVM
+
+See the [Windows BB report](../../docs/research/native-dependencies/bb-windows-link-poc.md)
+for pinned checkouts, archive hashes, prerequisites, and the complete command.
+`probe_bb_windows.py` builds the original DIW bridge and isolated C callers with
+Zig 0.15.1, inspects PE imports, and optionally runs them under Wine. Inputs are
+revision/hash checked; use a new empty output directory outside the repository.
+No production build script is changed. The C++ helper tests original environment
+hooks and error redaction. Wine smoke results do not establish native Windows,
+MSVC, minimum CPU compatibility, or successful cryptographic proof verification.

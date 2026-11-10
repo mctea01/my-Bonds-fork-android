@@ -1,5 +1,7 @@
 # R11：PC Native 依賴就緒度
 
+**第二輪補充**：[Windows GNU BB](bb-windows-link-poc.md) 已取得不經 JVM 的 PE 連結與 Wine 下 C caller 子集證據。範圍只含公開 hash、buffer ownership、verifier 初始化與 DIW hooks；原生 Windows／完整 proof／DLL／MSVC host 仍待驗證。
+
 PC 整體 Native 化仍是長期目標，本輪沒有選擇主程式／UI 技術。既有 `tools/desktop-native.sh` 的 GraalVM 實驗只能作歷史背景，不能代替各依賴的直接 FFI 驗證，也不代表 Kotlin/Native、GraalVM、Rust/C++ 或 Compose 可互換。
 
 **已取得兩條不依賴 JVM 的 Linux x86_64 證據**：本輪從固定來源編譯的 DIW runtime 由 C 動態載入並通過合成測試；固定 Multipaz commit 的 Longfellow 預建庫由 C 連結並完成 ABI 子集測試。這是依賴呼叫可行性，不是 PC Native App 可建置的證明。

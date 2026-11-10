@@ -1,0 +1,31 @@
+{
+  "argv": [
+    "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+    "c++",
+    "-target",
+    "x86_64-windows-gnu",
+    "/workspace/native-research-env/windows-bb/run3/diw-bridge.o",
+    "/workspace/native-research-env/windows-bb/run3/hooks.o",
+    "/workspace/native-research-env/windows-bb/run3/diw_bridge.o",
+    "/tmp/diw-bb-research/windows/libbb-external.a",
+    "-lbcrypt",
+    "-lws2_32",
+    "-lpsapi",
+    "-o",
+    "/workspace/native-research-env/windows-bb/run3/without-deflate.exe"
+  ],
+  "exit_code": 0,
+  "log": "without-deflate.log",
+  "purpose": "Determine whether this bridge link actually requires an external libdeflate archive",
+  "wine_control": {
+    "argv": [
+      "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+      "/workspace/native-research-env/windows-bb/run3/without-deflate.exe"
+    ],
+    "exit_code": 0,
+    "stdout": "bbapi_blake2s_abc=passed scratch=passed allocation_free=passed malformed=passed\ndiw_bridge_verifier_init=passed invalid_lengths=passed workers=2 redaction=passed low_memory=off\npositive_proof=not-tested native_windows_execution=not-tested\n",
+    "stderr": "",
+    "scope": "same smoke subset only;not proof or dependency removal approval"
+  },
+  "exe_sha256": "9125f502cf4ee1444f47dff983c0eccd8656abe0aa681176dfa2770677731337"
+}

@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第二輪更新（2026-11-10）**：[Windows GNU BB PoC](bb-windows-link-poc.md) 已將官方 archive 與原 DIW bridge 連結為 PE executable，並在 Wine 通過 C API、buffer ownership、初始化與環境 hooks 子集。原生 Windows、有效 proof、BB 全庫重建與 MSVC 仍未測。下列第一輪紀錄保留其當時範圍；CSV 已反映第二輪證據。
+
 日期：2026-11-09。研究分支：`claude/native-dependencies-pc-research`。重新取得指定遠端 `claude/project-thread-lu73pi`，HEAD 為 `3428b8ee12ac5e644f478d4c6e43854376202fa4`，與 v3 附件基準無差異。原環境的 `work` 分支不是該研究基準；沒有在其上修改產品。來源／規格雜湊與命令見 [baseline.json](evidence/baseline.json)。
 
 本輪完成依賴來源盤點、14 個 target 的研究表、PC 直接 FFI 評估，以及可重現的隔離 PoC。**Linux x86_64 上，DIW runtime 與 Longfellow 均已取得不經 JVM/JNA 的 C 呼叫證據。其他架構仍以來源研究為主，沒有宣稱新增 App 平台支援。**

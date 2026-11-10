@@ -1,0 +1,93 @@
+{
+  "scope": "Delivery consistency and runner input guards; no additional platform acceptance",
+  "checks": {
+    "34_successful_commands_and_retained_artifact_hashes": "passed",
+    "python_syntax_and_independent_blake2s_vector": "passed",
+    "matrix_counts_unique_keys_lf_and_deferred_app": "passed",
+    "research_json_and_local_markdown_links": "passed",
+    "production_tracked_files_unchanged_from_baseline": "passed",
+    "input_guard_failures_precede_build": "passed"
+  },
+  "input_recheck": {
+    "bb_archive": "Original /tmp archive no longer present after environment restart; prior run hash retained, not rechecked",
+    "bridge": "sha256-matched",
+    "constants": "sha256-matched",
+    "probe": "sha256-matched",
+    "hooks": "sha256-matched",
+    "runner": "sha256-matched"
+  },
+  "negative_guards": [
+    {
+      "name": "inside-repository",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_bb_windows.py",
+        "--zig",
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "--bb-source",
+        "/workspace/native-research-env/windows-bb/source",
+        "--msgpack-source",
+        "/workspace/native-research-env/windows-bb/msgpack",
+        "--tracy-source",
+        "/workspace/native-research-env/windows-bb/tracy",
+        "--deflate-source",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "--bb-archive",
+        "/workspace/native-research-env/bb-input-guards-ll6gn0z5/bad.a",
+        "--out",
+        "/workspace/my-Bonds-fork-android/probe-output"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "outside the repository",
+      "passed": true
+    },
+    {
+      "name": "nonempty-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_bb_windows.py",
+        "--zig",
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "--bb-source",
+        "/workspace/native-research-env/windows-bb/source",
+        "--msgpack-source",
+        "/workspace/native-research-env/windows-bb/msgpack",
+        "--tracy-source",
+        "/workspace/native-research-env/windows-bb/tracy",
+        "--deflate-source",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "--bb-archive",
+        "/workspace/native-research-env/bb-input-guards-ll6gn0z5/bad.a",
+        "--out",
+        "/workspace/native-research-env/bb-input-guards-ll6gn0z5/nonempty"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "new empty output",
+      "passed": true
+    },
+    {
+      "name": "archive-hash",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_bb_windows.py",
+        "--zig",
+        "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+        "--bb-source",
+        "/workspace/native-research-env/windows-bb/source",
+        "--msgpack-source",
+        "/workspace/native-research-env/windows-bb/msgpack",
+        "--tracy-source",
+        "/workspace/native-research-env/windows-bb/tracy",
+        "--deflate-source",
+        "/workspace/native-research-env/windows-bb/libdeflate",
+        "--bb-archive",
+        "/workspace/native-research-env/bb-input-guards-ll6gn0z5/bad.a",
+        "--out",
+        "/workspace/native-research-env/bb-input-guards-ll6gn0z5/bad-output"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "bb_archive SHA-256 mismatch",
+      "passed": true
+    }
+  ]
+}
