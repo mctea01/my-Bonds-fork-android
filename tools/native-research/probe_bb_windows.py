@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import time
@@ -23,6 +24,7 @@ PINS = {
 ARCHIVE_SHA256 = "f401bb3a644d5be1163d1df95a2968f33fa053d4e2c7b065f16f436cbb644699"
 CONSTANTS_SHA256 = "6367ab71dbdf5d3362289ed1cf3dd4517a94c9e8113f5fed10378aa49a730873"
 BRIDGE_SHA256 = "645bdd6f584a0969318391b8d3cc71f6a320cdbc8854af39a9cd777808faf16b"
+FIXTURE_SHA256 = "a7470d4c4e71a24da90cfed8ec026cae24d4c7adbbd6f905bfffecad5655067d"
 DEFLATE_SOURCES = [
     "lib/arm/cpu_features.c", "lib/utils.c", "lib/x86/cpu_features.c",
     "lib/deflate_compress.c", "lib/deflate_decompress.c", "lib/adler32.c",
@@ -43,6 +45,7 @@ def main():
     for name in PINS:
         parser.add_argument("--" + name.replace("_", "-"), type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--proof-fixture", type=Path, help="Optional pinned outer_count_4_disclose.json fixture")
     parser.add_argument("--wine", type=Path, help="Optional wine64 executable")
     parser.add_argument("--wineserver", type=Path, help="Optional server path for a portable Wine installation")
     parser.add_argument("--wine-prefix", type=Path, help="Optional prepared Wine prefix outside the repository")
@@ -108,6 +111,33 @@ def main():
             report["inputs"][name] = {"path": str(path), "sha256": actual}
         for name, path in [("probe", probe), ("hooks", hooks), ("runner", Path(__file__).resolve())]:
             report["inputs"][name] = {"path": str(path), "sha256": digest(path)}
+        if args.proof_fixture:
+            fixture = args.proof_fixture.resolve(strict=True)
+            if digest(fixture) != FIXTURE_SHA256:
+                raise ValueError("proof fixture SHA-256 mismatch")
+            data = json.loads(fixture.read_text())
+            if data["bbVersion"] != "6.0.0" or data["circuit"] != "outer_count_4":
+                raise ValueError("Unexpected proof fixture metadata")
+            header = ["/* Generated from the hash-pinned public synthetic fixture. */"]
+            encoded_fields = {}
+            for key, name, count in [("vkeyFields", "vk", 115), ("proof", "proof", 458),
+                                     ("publicInputs", "public", 9)]:
+                values = data[key]
+                if len(values) != count or any(not isinstance(v, str) or
+                        not re.fullmatch(r"0x[0-9a-fA-F]{1,64}", v) for v in values):
+                    raise ValueError("Unexpected fixture field encoding/count")
+                raw = b"".join(int(v, 16).to_bytes(32, "big") for v in values)
+                encoded_fields[key] = {"fields": count, "bytes": len(raw),
+                                       "sha256": hashlib.sha256(raw).hexdigest()}
+                header.append("static uint8_t fixture_" + name + "[] = {\n" +
+                              ",\n".join(",".join(f"0x{b:02x}" for b in raw[i:i + 16])
+                                          for i in range(0, len(raw), 16)) + "\n};")
+            (out / "proof_fixture.h").write_text("\n".join(header) + "\n")
+            proof_probe = probe.with_name("bb_windows_proof_probe.c")
+            report["inputs"]["proof_fixture"] = {"path": str(fixture), "sha256": FIXTURE_SHA256,
+                                                   "encoded_fields": encoded_fields}
+            report["inputs"]["proof_probe"] = {"path": str(proof_probe), "sha256": digest(proof_probe)}
+            report["negative_proof"] = "not-tested"
         report["status"] = "build-attempted"
         cc = [zig, "cc", "-target", "x86_64-windows-gnu"]
         cxx = [zig, "c++", "-target", "x86_64-windows-gnu"]
@@ -135,14 +165,16 @@ def main():
         report["artifacts"][bridge_obj.name] = {"sha256": digest(bridge_obj), "status": "object-produced"}
         hooks_obj = out / "hooks.o"
         run(cxx + ["-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-c", hooks, "-o", hooks_obj], "hooks-compile")
-        for mode in ["bbapi", "diw-bridge"]:
+        modes = ["bbapi", "diw-bridge"] + (["diw-proof"] if args.proof_fixture else [])
+        for mode in modes:
             obj = out / (mode + ".o")
             defines = ["-DDIW_BRIDGE_TEST"] if mode == "diw-bridge" else []
+            caller = proof_probe if mode == "diw-proof" else probe
             run(cc + ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", *defines,
-                      "-c", probe, "-o", obj], mode + "-compile")
+                      "-I", out, "-c", caller, "-o", obj], mode + "-compile")
             exe = out / (mode + ".exe")
             # Lazy archive extraction preserves DIW-provided env hooks. Never whole-archive.
-            inputs = [obj, hooks_obj, bridge_obj] if mode == "diw-bridge" else [obj]
+            inputs = [obj, hooks_obj, bridge_obj] if mode != "bbapi" else [obj]
             run(cxx + inputs + [archive, deflate, "-lbcrypt", "-lws2_32", "-lpsapi",
                                 "-o", exe],
                 mode + "-link", timeout=900)
@@ -177,13 +209,17 @@ def main():
             report["wine_environment"] = {key: environment[key] for key in
                                            ["WINEPREFIX", "WINEARCH", "WINEDEBUG", "WINEDLLOVERRIDES", "WINESERVER", "WINEDLLPATH", "WINELOADER"]
                                            if key in environment}
-            for mode in ["bbapi", "diw-bridge"]:
+            for mode in modes:
                 stdout = run([wine, out / (mode + ".exe")], mode + "-wine", timeout=180, env=environment)
-                if "DIW_SYNTHETIC_" in stdout or "bbapi_blake2s_abc=passed" not in stdout:
+                marker = "valid_after_rejections=passed" if mode == "diw-proof" else "bbapi_blake2s_abc=passed"
+                if "DIW_SYNTHETIC_" in stdout or marker not in stdout:
                     raise RuntimeError("Probe result missing or diagnostic canary leaked")
                 if mode == "diw-bridge" and "redaction=passed low_memory=off" not in stdout:
                     raise RuntimeError("DIW environment hook validation missing")
                 report["artifacts"][mode + ".exe"]["status"] = "smoke-tested-under-wine"
+                if mode == "diw-proof":
+                    report["positive_proof"] = "passed-under-wine; pinned upstream synthetic fixture"
+                    report["negative_proof"] = "passed-under-wine; changed public input, changed proof field, truncated field"
             report["status"] = "smoke-tested"
             report["execution_environment"] = "Wine compatibility layer on Linux; not native Windows"
     except Exception as error:
@@ -191,7 +227,8 @@ def main():
         raise
     finally:
         (out / "result.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(report["status"] + ": positive proof and native Windows execution remain not-tested")
+    print(report["status"] + ": positive_proof=" + report["positive_proof"] +
+          "; native Windows execution remains not-tested")
 
 
 if __name__ == "__main__":

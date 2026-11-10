@@ -1,0 +1,56 @@
+{
+  "scope": "Consistency and guard tests only; execution remains Wine",
+  "checks": {
+    "all_input_and_artifact_hashes": "passed",
+    "39_commands_and_normalized_logs": "passed",
+    "generated_c_arrays_match_big_endian_fields": "passed",
+    "positive_negative_and_recovery_output": "passed",
+    "python_syntax": "passed",
+    "changed_fixture_rejected_before_build": "passed",
+    "matrix_counts_uniqueness_and_deferred_app": "passed",
+    "production_files_unchanged_from_baseline": "passed",
+    "research_json_and_local_links": "passed"
+  },
+  "mutations": {
+    "public_input_byte": {
+      "sha256": "cd679870b6f29aa00f18d2df072e74054bb101f9ba42cfd1dd3099e3f59059ec",
+      "bytes": 288,
+      "expected_status": 1
+    },
+    "proof_byte": {
+      "sha256": "6e4add1bd8473e1062fece0ffff46dbf06721a8ddda20ec2ffa68cddf6f6986e",
+      "bytes": 14656,
+      "expected_status": 1
+    },
+    "truncated_proof": {
+      "sha256": "93348b64c56814a7a570a7962091d96e1dfcb892eed60d6ee34742c156ffec6d",
+      "bytes": 14624,
+      "expected_status": 1
+    }
+  },
+  "fixture_hash_guard": {
+    "argv": [
+      "python3",
+      "/workspace/my-Bonds-fork-android/tools/native-research/probe_bb_windows.py",
+      "--zig",
+      "/workspace/native-research-env/windows-bb/zig-x86_64-linux-0.15.1/zig",
+      "--bb-archive",
+      "/workspace/native-research-env/windows-bb/proof-inputs/libbb-external.a",
+      "--bb-source",
+      "/workspace/native-research-env/windows-bb/source",
+      "--msgpack-source",
+      "/workspace/native-research-env/windows-bb/msgpack",
+      "--tracy-source",
+      "/workspace/native-research-env/windows-bb/tracy",
+      "--deflate-source",
+      "/workspace/native-research-env/windows-bb/libdeflate",
+      "--proof-fixture",
+      "/workspace/native-research-env/bb-proof-guards-saeafmuy/changed.json",
+      "--out",
+      "/workspace/native-research-env/bb-proof-guards-saeafmuy/output"
+    ],
+    "exit_code": 1,
+    "diagnostic": "proof fixture SHA-256 mismatch",
+    "build_started": false
+  }
+}

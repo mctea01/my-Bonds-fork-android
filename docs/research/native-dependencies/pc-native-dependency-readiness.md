@@ -1,5 +1,7 @@
 # R11：PC Native 依賴就緒度
 
+**第三輪補充**：[Windows GNU 公開 proof](bb-windows-proof-poc.md) 已在 Wine 通過固定 fixture 與三個負向案例；僅限 fixture 自帶 key 的直接 C verifier，尚未測錢包資產／registry 政策、prover 或原生 Windows。
+
 **第二輪補充**：[Windows GNU BB](bb-windows-link-poc.md) 已取得不經 JVM 的 PE 連結與 Wine 下 C caller 子集證據。範圍只含公開 hash、buffer ownership、verifier 初始化與 DIW hooks；原生 Windows／完整 proof／DLL／MSVC host 仍待驗證。
 
 PC 整體 Native 化仍是長期目標，本輪沒有選擇主程式／UI 技術。既有 `tools/desktop-native.sh` 的 GraalVM 實驗只能作歷史背景，不能代替各依賴的直接 FFI 驗證，也不代表 Kotlin/Native、GraalVM、Rust/C++ 或 Compose 可互換。

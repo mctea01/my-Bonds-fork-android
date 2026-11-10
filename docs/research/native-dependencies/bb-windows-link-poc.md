@@ -1,5 +1,7 @@
 # Barretenberg Windows GNU：連結與 Wine PoC
 
+**後續進度**：[第三輪公開 proof PoC](bb-windows-proof-poc.md) 已補上 Wine 下單一 fixture 的正反向驗證。本文的 `positive_proof=not-tested` 是本次連結實驗當時的範圍，原始證據不改寫。
+
 第二輪整理日期：2026-11-10。沿用第一輪固定版本，以 Zig 0.15.1 將官方 Windows BB archive 與**未修改的 DIW bridge.cpp** 連成兩個 x86_64 Windows PE executable，並在 Linux 上的 Wine 10.0 通過下列子集。這已超過來源檢查，但不等同原生 Windows 驗收、完整 zkPDF 功能或 MSVC 支援。
 
 完整命令、exit code、來源與產物雜湊見 [result.json](evidence/bb-windows-link/result.json)。34 個命令皆 exit 0；產物保留在 repo 外。此輪沒有修改正式 App、loader、Rust/Cargo、Gradle、CI、native build scripts、電路、CRS、金鑰或證明格式。

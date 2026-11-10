@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第三輪更新（2026-11-10）**：[Windows GNU 公開 proof PoC](bb-windows-proof-poc.md) 在 Wine 接受固定合成 UltraHonk fixture，拒絕修改 public input／proof 與整個 field 截斷，還原後再次接受。這是使用 fixture 自帶 key 的驗證，未涵蓋 registry／錢包政策、prover、原生 Windows 或跨架構互通。
+
 **第二輪更新（2026-11-10）**：[Windows GNU BB PoC](bb-windows-link-poc.md) 已將官方 archive 與原 DIW bridge 連結為 PE executable，並在 Wine 通過 C API、buffer ownership、初始化與環境 hooks 子集。原生 Windows、有效 proof、BB 全庫重建與 MSVC 仍未測。下列第一輪紀錄保留其當時範圍；CSV 已反映第二輪證據。
 
 日期：2026-11-09。研究分支：`claude/native-dependencies-pc-research`。重新取得指定遠端 `claude/project-thread-lu73pi`，HEAD 為 `3428b8ee12ac5e644f478d4c6e43854376202fa4`，與 v3 附件基準無差異。原環境的 `work` 分支不是該研究基準；沒有在其上修改產品。來源／規格雜湊與命令見 [baseline.json](evidence/baseline.json)。

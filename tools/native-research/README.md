@@ -74,4 +74,14 @@ Zig 0.15.1, inspects PE imports, and optionally runs them under Wine. Inputs are
 revision/hash checked; use a new empty output directory outside the repository.
 No production build script is changed. The C++ helper tests original environment
 hooks and error redaction. Wine smoke results do not establish native Windows,
-MSVC, minimum CPU compatibility, or successful cryptographic proof verification.
+MSVC, or minimum CPU compatibility. Without a fixture, proof verification is
+not tested.
+
+Add `--proof-fixture /external/outer_count_4_disclose.json` to also build a C
+verifier for the hash-pinned public synthetic fixture. With Wine, it accepts the
+original proof, rejects changed public inputs/proof and whole-field truncation,
+and accepts the restored original again. The runner rejects any other fixture
+before compilation. The [proof report](../../docs/research/native-dependencies/bb-windows-proof-poc.md)
+provides its exact URL/hash and limits: embedded fixture key only, no registry or
+wallet policy acceptance, no prover or proof regeneration. Without `--wine`,
+this remains a link experiment and `positive_proof` stays `not-tested`.

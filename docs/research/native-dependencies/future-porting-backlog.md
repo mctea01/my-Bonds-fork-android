@@ -1,5 +1,7 @@
 # R12：後續原生移植實作清單
 
+**P1 新進度**：[Windows GNU 公開 proof PoC](bb-windows-proof-poc.md) 已在 Wine 接受合成 fixture、拒絕三種修改並驗證狀態可恢復。完整 zkPDF 流程、原生 Windows、CPU 基準及 DLL／MSVC 邊界仍待完成。
+
 **P1 進度（2026-11-10）**：Windows x86_64 GNU 的第一個里程碑已完成：[C executable 連結與 Wine 子集測試](bb-windows-link-poc.md)，涵蓋 verifier 初始化、錯誤長度及 redaction hooks。有效 proof、原生 Windows、最低 CPU、DLL／MSVC 與正式整合仍未完成；下列工時為原始工作包估計，未重新估算剩餘工時。
 
 此清單是下一階段建議，不代表本輪修改正式產品的授權或完成度。優先維持所有演算法、電路、CRS、金鑰與 proof 格式；先在研究目錄取得可重現證據，再進行各自的正式整合階段。工時是單一熟悉專案工程師的研究人日，不含完整 UI/App 驗收。
