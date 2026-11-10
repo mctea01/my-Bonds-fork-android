@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第四輪更新（2026-11-10）**：[Longfellow Windows PoC](longfellow-windows-poc.md) 找出原版 sha2-asm 的 Windows compile guard；隔離的六份 manifest patch 保留同版 SHA-2，成功建出 DLL，並在 Wine 通過 LLP64、電路配置／釋放及公開 proof 正反向驗證。v7 電路仍依賴編譯時來源目錄，尚不能直接部署。
+
 **第三輪更新（2026-11-10）**：[Windows GNU 公開 proof PoC](bb-windows-proof-poc.md) 在 Wine 接受固定合成 UltraHonk fixture，拒絕修改 public input／proof 與整個 field 截斷，還原後再次接受。這是使用 fixture 自帶 key 的驗證，未涵蓋 registry／錢包政策、prover、原生 Windows 或跨架構互通。
 
 **第二輪更新（2026-11-10）**：[Windows GNU BB PoC](bb-windows-link-poc.md) 已將官方 archive 與原 DIW bridge 連結為 PE executable，並在 Wine 通過 C API、buffer ownership、初始化與環境 hooks 子集。原生 Windows、有效 proof、BB 全庫重建與 MSVC 仍未測。下列第一輪紀錄保留其當時範圍；CSV 已反映第二輪證據。

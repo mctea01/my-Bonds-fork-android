@@ -1,0 +1,11 @@
+begin_abi_subset; proof checks follow
+ABI smoke passed: all six Rust exports linked and called without JVM/JNA
+spec v7/1 matched; null-input errors matched; proof correctness not tested
+llp64_size_t_high_bits=passed
+circuit_materialize_compare_free=passed
+prior_proof_verifier_status=0
+longfellow_public_proof=passed
+changed_attribute=rejected
+changed_transcript=rejected
+changed_proof=rejected
+valid_after_rejections=passed

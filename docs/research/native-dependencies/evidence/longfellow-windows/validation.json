@@ -1,0 +1,104 @@
+{
+  "scope": "Delivery consistency and input guards; no additional platform acceptance",
+  "checks": {
+    "all_inputs_and_retained_artifacts_sha256": "passed",
+    "19_successful_commands_and_normalized_logs": "passed",
+    "patch_only_conditions_sha2_asm_in_six_manifests": "passed",
+    "locked_dependency_graph_windows_no_asm_linux_retains_asm": "passed",
+    "six_exports_and_positive_negative_recovery_markers": "passed",
+    "python_syntax": "passed",
+    "four_guards_and_source_restoration": "passed",
+    "matrix_counts_unique_keys_and_deferred_app": "passed",
+    "production_files_unchanged_from_baseline": "passed",
+    "research_json_and_local_markdown_links": "passed"
+  },
+  "lock_packages": 139,
+  "guard_tests": [
+    {
+      "name": "repo-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+        "--multipaz",
+        "/workspace/native-research-env/longfellow/multipaz",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--gcc",
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "--out",
+        "/workspace/my-Bonds-fork-android/probe-output"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "outside the repository"
+    },
+    {
+      "name": "nonempty-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+        "--multipaz",
+        "/workspace/native-research-env/longfellow/multipaz",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--gcc",
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "--out",
+        "/workspace/native-research-env/longfellow/verified3"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "new empty output directory"
+    },
+    {
+      "name": "changed-lock",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+        "--multipaz",
+        "/workspace/native-research-env/longfellow/multipaz",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--gcc",
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "--out",
+        "/workspace/native-research-env/longfellow/lf-guards-m43tnmlp/bad-lock"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "Use the supplied experimental Cargo.lock",
+      "build_started": false
+    },
+    {
+      "name": "unexpected-source-edit",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+        "--multipaz",
+        "/workspace/native-research-env/longfellow/multipaz",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--gcc",
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "--out",
+        "/workspace/native-research-env/longfellow/lf-guards-m43tnmlp/bad-patch"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "Longfellow must have exactly the supplied research patch",
+      "build_started": false
+    }
+  ]
+}

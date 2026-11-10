@@ -1,5 +1,7 @@
 # R12：後續原生移植實作清單
 
+**P1 Longfellow 進度**：[隔離 Windows GNU DLL PoC](longfellow-windows-poc.md) 已驗明 sha2-asm 阻塞並用六份 manifest 的 Windows feature 條件化修補，Wine 下通過公開 proof 正反向及電路配置／釋放。下一步處理編譯時資產絕對路徑、原生 Windows／CPU 基準、MSVC host 與 prover；正式產品未改。
+
 **P1 新進度**：[Windows GNU 公開 proof PoC](bb-windows-proof-poc.md) 已在 Wine 接受合成 fixture、拒絕三種修改並驗證狀態可恢復。完整 zkPDF 流程、原生 Windows、CPU 基準及 DLL／MSVC 邊界仍待完成。
 
 **P1 進度（2026-11-10）**：Windows x86_64 GNU 的第一個里程碑已完成：[C executable 連結與 Wine 子集測試](bb-windows-link-poc.md)，涵蓋 verifier 初始化、錯誤長度及 redaction hooks。有效 proof、原生 Windows、最低 CPU、DLL／MSVC 與正式整合仍未完成；下列工時為原始工作包估計，未重新估算剩餘工時。

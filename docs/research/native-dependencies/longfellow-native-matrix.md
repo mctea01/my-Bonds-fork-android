@@ -1,5 +1,7 @@
 # R02：Multipaz Longfellow 原生依賴與直接 C ABI
 
+**後續實測（2026-11-10）**：[Windows GNU DLL／proof PoC](longfellow-windows-poc.md) 已在隔離的六份 manifest patch 與研究 lockfile 下完成 source-build、直接 C ABI、電路配置／釋放及 Wine 公開 proof 正反向測試。原版 Windows 被 sha2-asm guard 阻塞；可搬移資產、原生 Windows、MSVC 與 prover 未驗證。以下第一輪的「未編譯／未驗 proof」保留其當時範圍。
+
 研究日期：2026-11-09。DIW 基準 `3428b8ee12ac5e644f478d4c6e43854376202fa4`。本輪不更動 Kotlin、loader、電路、參數或正式建置腳本；不研究 iOS。上游目錄中的 iOS archives 僅確認存在，不評估。
 
 ## 結論與證據等級
@@ -66,7 +68,7 @@ CPU 來源：[architecture selection](https://github.com/longfellow-zk/longfello
 
 ## 已執行的隔離 PoC
 
-由固定 Multipaz commit 下載 Linux SO，SHA-256 `d7b7a64ea444a268b5bf444fa4f283ddf0f5ae38e7d0a65f10d2dd3dc`。Python runner 先驗 hash，再以 host C compiler 連結，所有 binaries 均在自動清除的暫存目錄。報告保存 compiler／glibc、完整命令、return code、readelf 與 nm 輸出、probe 原始碼 hash；不保存私密輸入。
+由固定 Multipaz commit 下載 Linux SO，SHA-256 `d7b7a64ea444a268b5bf444fa4f283ddf0f551ef0f5ae38e7d0a65f10d2dd3dc`。Python runner 先驗 hash，再以 host C compiler 連結，所有 binaries 均在自動清除的暫存目錄。報告保存 compiler／glibc、完整命令、return code、readelf 與 nm 輸出、probe 原始碼 hash；不保存私密輸入。
 
 ```sh
 python3 tools/native-research/longfellow_probe.py \

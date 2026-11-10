@@ -1,0 +1,10 @@
+   Compiling sha2-asm v0.6.4
+   Compiling compile-logic v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic)
+error: crate does not support Windows targets
+  --> /workspace/native-research-env/cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sha2-asm-0.6.4/src/lib.rs:17:1
+   |
+17 | compile_error!("crate does not support Windows targets");
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: could not compile `sha2-asm` (lib) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

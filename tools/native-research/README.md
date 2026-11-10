@@ -85,3 +85,18 @@ before compilation. The [proof report](../../docs/research/native-dependencies/b
 provides its exact URL/hash and limits: embedded fixture key only, no registry or
 wallet policy acceptance, no prover or proof regeneration. Without `--wine`,
 this remains a link experiment and `positive_proof` stays `not-tested`.
+
+## Longfellow Windows GNU source build
+
+`probe_longfellow_windows.py` checks the fixed Multipaz/submodule revisions,
+exact research patch and experimental Cargo.lock, builds a DLL with Rust 1.99.1
+and MinGW GCC, and optionally runs a C verifier under Wine. Prepare the external
+checkout using the [Longfellow Windows report](../../docs/research/native-dependencies/longfellow-windows-poc.md).
+The six-manifest patch enables sha2/asm only outside Windows; unchanged upstream
+source fails on Windows. No algorithm, version, circuit or proof format changes.
+
+The C probe checks all six exports, LLP64/high size_t bits, a successful circuit
+allocation/free, and an upstream public proof with changed attribute/transcript/
+proof rejection. v7 materialization still reads the compile-time source path;
+this experiment does not provide relocatable packaging, native Windows or MSVC
+acceptance, or a successful prover. All outputs remain outside the repository.

@@ -1,5 +1,7 @@
 # R11：PC Native 依賴就緒度
 
+**Longfellow 更新**：[Windows GNU source-build／C proof](longfellow-windows-poc.md) 已在研究 patch 下通過 Wine；原版來源仍受 sha2-asm 阻塞。DLL 使用 GNU/MSVCRT，不能與 BB 的 UCRT 跨庫 free；v7 資產路徑、正式 wrapper、原生 Windows 與 MSVC host 仍待處理。
+
 **第三輪補充**：[Windows GNU 公開 proof](bb-windows-proof-poc.md) 已在 Wine 通過固定 fixture 與三個負向案例；僅限 fixture 自帶 key 的直接 C verifier，尚未測錢包資產／registry 政策、prover 或原生 Windows。
 
 **第二輪補充**：[Windows GNU BB](bb-windows-link-poc.md) 已取得不經 JVM 的 PE 連結與 Wine 下 C caller 子集證據。範圍只含公開 hash、buffer ownership、verifier 初始化與 DIW hooks；原生 Windows／完整 proof／DLL／MSVC host 仍待驗證。
