@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+import os,sys
+os.environ['LD_LIBRARY_PATH']='/workspace/native-research-env/arm64/toolchain/usr/lib/x86_64-linux-gnu'
+gcc='/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14'
+os.execv(gcc,[gcc,'--sysroot=/workspace/native-research-env/arm64/toolchain',*sys.argv[1:]])

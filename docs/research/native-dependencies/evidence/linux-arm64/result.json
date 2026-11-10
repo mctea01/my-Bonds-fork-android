@@ -1,0 +1,488 @@
+{
+  "host": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "target": "aarch64-unknown-linux-gnu",
+  "project_revision": "7a837ff19e0f457d3c77736eff90418003ac0010",
+  "status": "smoke-tested-under-qemu",
+  "physical_arm64": "not-tested",
+  "prover": "not-tested",
+  "cross_architecture_proof_generation": "not-tested",
+  "cpu_model": "QEMU max",
+  "scope": "Unmodified Longfellow sources; experimental lock; DIW runtime-only; QEMU user emulation",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz",
+      "log": "multipaz-revision.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain",
+        "--untracked-files=all"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz",
+      "log": "multipaz-status.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "log": "longfellow-revision.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain",
+        "--untracked-files=all"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "log": "longfellow-status.log",
+      "exit_code": 0,
+      "seconds": 0.007
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "cargo-version.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/verified/cross-cc",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "gcc-version.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-ar",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "ar-version.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "qemu-version.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/rustc",
+        "+1.99.1",
+        "--print",
+        "cfg",
+        "--target",
+        "aarch64-unknown-linux-gnu",
+        "-C",
+        "target-feature=+aes,+sha2"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-target-cfg.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "tree",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu",
+        "-e",
+        "features",
+        "-i",
+        "sha2-asm"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-asm-enabled.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-build.log",
+      "exit_code": 0,
+      "seconds": 49.49
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu",
+        "-p",
+        "diw-zk-ffi",
+        "--no-default-features"
+      ],
+      "cwd": "/workspace/my-Bonds-fork-android/native",
+      "log": "runtime-build.log",
+      "exit_code": 0,
+      "seconds": 21.405
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/verified/cross-cc",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/workspace/native-research-env/arm64/verified",
+        "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_arm64_probe.c",
+        "-L/workspace/native-research-env/arm64/verified",
+        "-Wl,-rpath,$ORIGIN",
+        "-lzkp",
+        "-o",
+        "/workspace/native-research-env/arm64/verified/longfellow-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-c-link.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/verified/cross-cc",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "/workspace/my-Bonds-fork-android/tools/native-research/runtime_probe.c",
+        "-ldl",
+        "-o",
+        "/workspace/native-research-env/arm64/verified/runtime-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "runtime-c-link.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/arm64/verified/libzkp.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libzkp.so-header.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/arm64/verified/libzkp.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libzkp.so-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/arm64/verified/libzkp.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libzkp.so-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/arm64/verified/libdiw_zk.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libdiw_zk.so-header.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/arm64/verified/libdiw_zk.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libdiw_zk.so-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/arm64/verified/libdiw_zk.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "libdiw_zk.so-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/arm64/verified/longfellow-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-probe-header.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/arm64/verified/longfellow-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-probe-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/arm64/verified/longfellow-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-probe-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/arm64/verified/runtime-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "runtime-probe-header.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/workspace/native-research-env/arm64/verified/runtime-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "runtime-probe-dynamic.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/workspace/native-research-env/arm64/verified/runtime-probe"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "runtime-probe-versions.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/workspace/native-research-env/arm64/verified/libzkp.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust",
+      "log": "longfellow-exports.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/arm64/verified/runtime-probe",
+        "/workspace/native-research-env/arm64/verified/libdiw_zk.so"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/verified",
+      "log": "runtime-qemu.log",
+      "exit_code": 0,
+      "seconds": 0.064
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/arm64/verified/longfellow-probe",
+        "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+        "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/proofs/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin"
+      ],
+      "cwd": "/workspace/native-research-env/arm64/verified",
+      "log": "longfellow-qemu.log",
+      "exit_code": 0,
+      "seconds": 14.104
+    }
+  ],
+  "inputs": {
+    "multipaz": {
+      "path": "/workspace/native-research-env/arm64/multipaz",
+      "revision": "a015c9d93874fe6e09df1354006353ce6f94751d"
+    },
+    "longfellow": {
+      "path": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "revision": "d5e6be77336933d50bf7f25a954f8ec273eb51ce"
+    },
+    "runner": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/probe_linux_arm64.py",
+      "sha256": "c321c469f69007c760a10537984959bc2e9cada1b3bafdba2f03624215b112bc"
+    },
+    "pin_module": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+      "sha256": "0e42ef044425133b32b6c312b1ca63b3cbcffd91826d7833a5b07ecf7828e400"
+    },
+    "lock": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow-windows.Cargo.lock",
+      "sha256": "89c9ffe86bba0d4ddbc421f54dd62ff9e3c82274badb0e92fd73540c67a73761"
+    },
+    "arm64_probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_arm64_probe.c",
+      "sha256": "659cf61bc34f146210cf1f0dd949b0e0043aca0de1dd57ec9db4310d67faa23c"
+    },
+    "abi_probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_probe.c",
+      "sha256": "c99c84b5b6f48ae02ab376d176d83e6344fa656518df991bcd2009ba1c506226"
+    },
+    "runtime_probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/runtime_probe.c",
+      "sha256": "29ed5abf370319899c71b5da7d7963ff612af581e886626c1e1cd775fe7cc49c"
+    },
+    "diw_lock": {
+      "path": "/workspace/my-Bonds-fork-android/native/Cargo.lock",
+      "sha256": "5dda1198e907f603cd79a85f764d85e03dc0d491df510f9f4f2796667379988a"
+    },
+    "gcc": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14",
+      "sha256": "fb743ca27a77466c91da66047eec879a615993feaabd860aaf3750e7b222b131"
+    },
+    "ar": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-ar",
+      "sha256": "16b0d0f1dab8223859aa4b16ca3fc63b962d9c3494f6bc7f240ab168440eecdf"
+    },
+    "qemu": {
+      "path": "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+      "sha256": "73cc2584f119f9e74c85c0a8549dbb6fd104ae3897a06a7500797f9e5b4d0943"
+    },
+    "testcases/src/vectors.rs": {
+      "path": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/testcases/src/vectors.rs",
+      "sha256": "c540b0a1c1eaf948a5dc7a82a3fb66cb19ae072d6ad4f801da64041f21323817"
+    },
+    "artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2": {
+      "path": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+      "sha256": "94c665e8a4067f5cd10153c96164afcecfbb1a41afa513f4a8c99ae01723a2f0"
+    },
+    "artifacts/proofs/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin": {
+      "path": "/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/proofs/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin",
+      "sha256": "3cb762b110ddc5b309f3b067ff3e891381a479f291dd4903e8c19c5d987bbe91"
+    }
+  },
+  "artifacts": {
+    "libzkp.so": {
+      "sha256": "4e36461c9007f3fdceaf85a170d5523bf634a70a91a075081ac6c9a5c9b6ded4",
+      "bytes": 2202816
+    },
+    "libdiw_zk.so": {
+      "sha256": "457acea458c02739daa9960a250a49bb008f736e4c18055ce64608e6d40c1d6b",
+      "bytes": 937056
+    },
+    "longfellow-probe": {
+      "sha256": "775daa2cb609a8728afbe847125d444eb42b00b320434750f0eef486e3658f60",
+      "bytes": 71832
+    },
+    "runtime-probe": {
+      "sha256": "9f8bedf7d88da3db6b69174d70468f5fc059ad7108b2f00b23e1651036489fb7",
+      "bytes": 70920
+    }
+  },
+  "longfellow_build_environment": {
+    "CARGO_HOME": "/workspace/native-research-env/cargo",
+    "RUSTUP_HOME": "/workspace/native-research-env/rustup",
+    "CARGO_TARGET_DIR": "/workspace/native-research-env/arm64/verified/target-longfellow",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTFLAGS": "-C target-feature=+aes,+sha2",
+    "CC_aarch64_unknown_linux_gnu": "/workspace/native-research-env/arm64/verified/cross-cc",
+    "AR_aarch64_unknown_linux_gnu": "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-ar",
+    "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "/workspace/native-research-env/arm64/verified/cross-cc",
+    "LD_LIBRARY_PATH": "/workspace/native-research-env/arm64/toolchain/usr/lib/x86_64-linux-gnu"
+  },
+  "runtime_build_environment": {
+    "CARGO_HOME": "/workspace/native-research-env/cargo",
+    "RUSTUP_HOME": "/workspace/native-research-env/rustup",
+    "CARGO_TARGET_DIR": "/workspace/native-research-env/arm64/verified/target-runtime",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTFLAGS": "",
+    "CC_aarch64_unknown_linux_gnu": "/workspace/native-research-env/arm64/verified/cross-cc",
+    "AR_aarch64_unknown_linux_gnu": "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-ar",
+    "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER": "/workspace/native-research-env/arm64/verified/cross-cc",
+    "LD_LIBRARY_PATH": "/workspace/native-research-env/arm64/toolchain/usr/lib/x86_64-linux-gnu"
+  },
+  "runtime": "C dlopen, UniFFI handshake, SHA-256 abc, native_info/free passed",
+  "longfellow": "LP64, crypto HWCAP, circuit allocation/free, public proof accepted, attribute/transcript/proof changes rejected, original accepted again"
+}

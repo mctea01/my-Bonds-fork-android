@@ -1,5 +1,7 @@
 # R11：PC Native 依賴就緒度
 
+**Linux ARM64 更新**：[runtime 與 Longfellow C PoC](linux-arm64-poc.md) 已交叉建置並在 QEMU 通過；前者驗 UniFFI／SHA-256／free，後者驗公開 proof 正反向與電路配置／free。這不是實體 ARM64 或完整 App 驗收，亦未驗雙向 proof 生成。
+
 **Longfellow 資產更新**：[隔離嵌入 PoC](longfellow-relocation-poc.md) 已移除實測 v5–v7 電路的編譯來源路徑依賴，來源移開時 12 份電路及公開 proof 通過。約增加 5 MB DLL；此修補尚未整合正式產品，不代表已完成乾淨 Windows 安裝或 MSVC host 驗證。
 
 **Longfellow 更新**：[Windows GNU source-build／C proof](longfellow-windows-poc.md) 已在研究 patch 下通過 Wine；原版來源仍受 sha2-asm 阻塞。DLL 使用 GNU/MSVCRT，不能與 BB 的 UCRT 跨庫 free；v7 資產路徑、正式 wrapper、原生 Windows 與 MSVC host 仍待處理。

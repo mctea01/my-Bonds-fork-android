@@ -1,5 +1,7 @@
 # R03–R05：Rust 原生證明依賴研究
 
+**ARM64 runtime 補充**：[Linux ARM64 PoC](linux-arm64-poc.md) 已用原 lock／未修改來源建置 `diw-zk-ffi --no-default-features`，QEMU 下通過 C ABI、SHA-256 與 native_info/free。這不增加 OPRF／OpenAC／TLSn／zkPDF 的 ARM64 驗證範圍。
+
 研究基準：`3428b8ee12ac5e644f478d4c6e43854376202fa4`；日期：2026-11-09。本文的編譯／執行結論限於本工作包：所有候選 target 均為 `source-reviewed`，`experimental_result=not-tested`。沒有宣稱跨架構互通或錢包支援；沒有修改電路、資產、正式建置腳本與 App。iOS 不在本輪研究範圍。
 
 ## 已確認的依賴邊界

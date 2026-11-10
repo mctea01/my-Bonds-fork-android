@@ -1,5 +1,7 @@
 # R12：後續原生移植實作清單
 
+**P2 Linux ARM64 進度**：[DIW runtime-only／Longfellow](linux-arm64-poc.md) 已從未修改來源交叉建置並在 QEMU 跑過 C 子集與公開 proof 正反向驗證。剩餘重點為 BB ARM64、其他 Rust features、原生 runner／最低 glibc 與 CPU、資產搬移、prover 及跨架構雙向 proof。
+
 **P1 Longfellow 資產進度**：[搬移 PoC](longfellow-relocation-poc.md) 已用隔離 patch 嵌入 12 份原始 LFA2，通過來源移開後的逐 byte 比對及公開 proof 測試。後續重點為原生 Windows／CPU、MSVC C host、prover、current-version 及正式資產打包審查；不再把研究 DLL 的舊版來源路徑問題列為未解。
 
 **P1 Longfellow 進度**：[隔離 Windows GNU DLL PoC](longfellow-windows-poc.md) 已驗明 sha2-asm 阻塞並用六份 manifest 的 Windows feature 條件化修補，Wine 下通過公開 proof 正反向及電路配置／釋放。下一步處理編譯時資產絕對路徑、原生 Windows／CPU 基準、MSVC host 與 prover；正式產品未改。

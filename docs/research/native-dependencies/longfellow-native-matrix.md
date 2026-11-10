@@ -1,5 +1,7 @@
 # R02：Multipaz Longfellow 原生依賴與直接 C ABI
 
+**Linux ARM64 實測更新**：[未修改來源的 ARM64 GNU build／QEMU C proof](linux-arm64-poc.md) 已通過，保留上游 `+aes,+sha2` 與 sha2-asm。這使用公開固定 proof，未執行 prover／實體 ARM64，且原來源路徑資產依賴仍在。
+
 **最新進度（2026-11-10）**：[Longfellow 搬移 PoC](longfellow-relocation-poc.md) 在額外嵌入原始 LFA2 的研究 patch 下，通過來源目錄移除後的 12 份舊版電路配置／比對／釋放及公開 proof 正反向驗證。正式上游來源、current-version、prover 與原生 Windows 支援未因此改變。
 
 **後續實測（2026-11-10）**：[Windows GNU DLL／proof PoC](longfellow-windows-poc.md) 已在隔離的六份 manifest patch 與研究 lockfile 下完成 source-build、直接 C ABI、電路配置／釋放及 Wine 公開 proof 正反向測試。原版 Windows 被 sha2-asm guard 阻塞；可搬移資產、原生 Windows、MSVC 與 prover 未驗證。以下第一輪的「未編譯／未驗 proof」保留其當時範圍。

@@ -1,0 +1,35 @@
+
+Version symbols section '.gnu.version' contains 63 entries:
+ Addr: 0x00000000000008b8  Offset: 0x000008b8  Link: 2 (.dynsym)
+  000:   0 (*local*)       0 (*local*)       0 (*local*)       0 (*local*)
+  004:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  008:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    3 (GCC_3.0)       2 (GLIBC_2.17)
+  00c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  010:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  014:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    4 (GLIBC_2.34)    2 (GLIBC_2.17)
+  018:   5 (GLIBC_2.29)    3 (GCC_3.0)       6 (GCC_4.2.0)     3 (GCC_3.0)
+  01c:   3 (GCC_3.0)       3 (GCC_3.0)       7 (GLIBC_2.30)    2 (GLIBC_2.17)
+  020:   2 (GLIBC_2.17)    8 (GCC_3.3)       3 (GCC_3.0)       9 (GLIBC_2.33)
+  024:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  028:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    9 (GLIBC_2.33)    a (GLIBC_2.28)
+  02c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  030:   3 (GCC_3.0)       3 (GCC_3.0)       2 (GLIBC_2.17)    b (GLIBC_2.25)
+  034:   0 (*local*)       0 (*local*)       0 (*local*)       0 (*local*)
+  038:   2 (GLIBC_2.17)    1 (*global*)      1 (*global*)      1 (*global*)
+  03c:   1 (*global*)      1 (*global*)      1 (*global*)
+
+Version needs section '.gnu.version_r' contains 3 entries:
+ Addr: 0x0000000000000938  Offset: 0x00000938  Link: 6 (.dynstr)
+  000000: Version: 1  File: libgcc_s.so.1  Cnt: 3
+  0x0030:   Name: GCC_3.0  Flags: none  Version: 3
+  0x0040:   Name: GCC_3.3  Flags: none  Version: 8
+  0x0050:   Name: GCC_4.2.0  Flags: none  Version: 6
+  0x0010: Version: 1  File: libm.so.6  Cnt: 1
+  0x0060:   Name: GLIBC_2.29  Flags: none  Version: 5
+  0x0020: Version: 1  File: libc.so.6  Cnt: 6
+  0x0070:   Name: GLIBC_2.17  Flags: none  Version: 2
+  0x0080:   Name: GLIBC_2.25  Flags: WEAK  Version: 11
+  0x0090:   Name: GLIBC_2.28  Flags: WEAK  Version: 10
+  0x00a0:   Name: GLIBC_2.30  Flags: WEAK  Version: 7
+  0x00b0:   Name: GLIBC_2.33  Flags: none  Version: 9
+  0x00c0:   Name: GLIBC_2.34  Flags: none  Version: 4

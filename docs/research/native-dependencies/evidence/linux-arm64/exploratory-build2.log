@@ -1,0 +1,63 @@
+   Compiling compile-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/algebra)
+   Compiling sha2-asm v0.6.4
+   Compiling runtime-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/algebra)
+   Compiling cpufeatures v0.2.17
+   Compiling block-buffer v0.10.4
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling core-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/proto)
+   Compiling compile-logic v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic)
+   Compiling compile-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/proto)
+   Compiling compile-eval v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/eval)
+   Compiling circuits-polynomial v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/polynomial)
+   Compiling circuits-boolean v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/boolean)
+   Compiling circuits-lookup v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/lookup)
+   Compiling inout v0.1.4
+   Compiling circuits-arithmetic v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/arithmetic)
+   Compiling getrandom v0.3.4
+   Compiling circuits-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec)
+   Compiling cipher v0.4.4
+   Compiling circuits-analog-decoder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_decoder)
+   Compiling pkg-config v0.3.34
+   Compiling circuits-bit-plucker v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bit_plucker)
+   Compiling aes v0.8.4
+   Compiling zstd-sys v2.1.2+zstd.1.5.7
+   Compiling runtime-random v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/random)
+   Compiling runtime-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/proto)
+   Compiling circuits-analog-adder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_adder)
+   Compiling circuits-bignum v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bignum)
+   Compiling zstd-safe v7.4.0
+   Compiling circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec)
+   Compiling circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256)
+   Compiling runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle)
+   Compiling circuits-gf2-128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/gf2_128)
+   Compiling circuits-ec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ec)
+   Compiling bumpalo v3.20.3
+   Compiling compile-compiler v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/compiler)
+   Compiling circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2)
+   Compiling circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac)
+   Compiling runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero)
+   Compiling circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg)
+   Compiling circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128)
+   Compiling circuits-routing v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing)
+   Compiling circuits-memcmp v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp)
+   Compiling mdoc-zk-testcases v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/testcases)
+   Compiling mdoc-zk-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/proto)
+   Compiling mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits)
+   Compiling runtime-sumcheck v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck)
+   Compiling runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk)
+   Compiling mdoc-zk-artifacts v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts)
+   Compiling zstd v0.13.4
+   Compiling mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile)
+   Compiling mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime)
+   Compiling multipaz-longfellow-ffi v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust)
+error: linking with `/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14` failed: exit status: 1
+  |
+  = note:  "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14" "-Wl,--version-script=/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/deps/rustcQ7MB49/list" "-Wl,--no-undefined-version" "-Wl,--fix-cortex-a53-843419" "<1 object files omitted>" "-Wl,--as-needed" "-Wl,-Bstatic" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/deps/rustcQ7MB49/libzstd_sys-2022da01dfdc28f3.rlib" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib/libcompiler_builtins-*.rlib" "-Wl,-Bdynamic" "-lgcc_s" "-lutil" "-lrt" "-lpthread" "-lm" "-ldl" "-lc" "-L" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/deps/rustcQ7MB49/raw-dylibs" "-Wl,--eh-frame-hdr" "-Wl,-z,noexecstack" "-L" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/build/sha2-asm-c18ae1d2709efbbc/out" "-L" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/build/zstd-sys-5229261a9a83fedd/out" "-L" "<sysroot>/lib/rustlib/aarch64-unknown-linux-gnu/lib" "-o" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/deps/libzkp.so" "-Wl,--gc-sections" "-shared" "-Wl,-z,relro,-z,now" "-Wl,-O1" "-Wl,--strip-all" "-nodefaultlibs"
+  = note: some arguments are omitted. use `--verbose` to show all linker arguments
+  = note: /workspace/native-research-env/arm64/toolchain/usr/bin/../lib/gcc-cross/aarch64-linux-gnu/14/../../../../aarch64-linux-gnu/bin/ld: cannot find /usr/aarch64-linux-gnu/lib/libm.so.6: No such file or directory
+          /workspace/native-research-env/arm64/toolchain/usr/bin/../lib/gcc-cross/aarch64-linux-gnu/14/../../../../aarch64-linux-gnu/bin/ld: cannot find /usr/aarch64-linux-gnu/lib/libmvec.so.1: No such file or directory
+          collect2: error: ld returned 1 exit status
+
+
+error: could not compile `multipaz-longfellow-ffi` (lib) due to 1 previous error

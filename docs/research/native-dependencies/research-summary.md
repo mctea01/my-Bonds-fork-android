@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**第六輪更新（2026-11-10）**：[Linux ARM64 PoC](linux-arm64-poc.md) 已從未修改的固定來源建出 Longfellow 與 DIW runtime-only，QEMU 下通過 C ABI、runtime self-test／free，以及同一公開 Longfellow proof 的正反向測試。兩庫最高 GLIBC symbol 為 2.34；ARM64 實體硬體、最低 CPU／OS 和跨架構雙向 proving 未測。
+
 **第五輪更新（2026-11-10）**：[Longfellow 資產搬移 PoC](longfellow-relocation-poc.md) 重現前版 DLL 缺少來源目錄時 panic；隔離 patch 嵌入 12 份不變的 LFA2 bytes 後，原路徑不存在仍可通過電路逐 byte 比對與公開 proof 正反向測試。DLL 約 2.8 MB → 8.0 MB，原生 Windows 與正式部署仍未驗收。
 
 **第四輪更新（2026-11-10）**：[Longfellow Windows PoC](longfellow-windows-poc.md) 找出原版 sha2-asm 的 Windows compile guard；隔離的六份 manifest patch 保留同版 SHA-2，成功建出 DLL，並在 Wine 通過 LLP64、電路配置／釋放及公開 proof 正反向驗證。v7 電路仍依賴編譯時來源目錄，尚不能直接部署。

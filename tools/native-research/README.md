@@ -117,3 +117,15 @@ public proof suite to pass with the embedded DLL. See the
 [relocation report](../../docs/research/native-dependencies/longfellow-relocation-poc.md)
 for recovery and limits. This tests prior-version circuits under Wine; current
 circuit generation, prover, native Windows and MSVC remain untested.
+
+## Linux ARM64 with QEMU user
+
+`probe_linux_arm64.py` builds unmodified pinned Longfellow and DIW runtime-only
+with Rust 1.99.1, an external ARM64 GCC/sysroot, and the existing experimental
+Longfellow lockfile. It checks clean upstream checkouts, hashes public fixtures,
+records ELF metadata, and runs two C callers with qemu-aarch64 max. Longfellow
+uses the upstream +aes,+sha2 requirement; runtime-only has no added ISA flags.
+The [ARM64 report](../../docs/research/native-dependencies/linux-arm64-poc.md)
+contains package pins, commands and limits. Neither Windows research patch is
+applied. Proof verification uses the same public corpus as Windows, with no new
+proof generation, hardware validation or performance claim.

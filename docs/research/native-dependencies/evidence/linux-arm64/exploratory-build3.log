@@ -1,0 +1,64 @@
+   Compiling typenum v1.20.1
+   Compiling num-traits v0.2.19
+   Compiling core-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/algebra)
+   Compiling generic-array v0.14.7
+   Compiling libc v0.2.191
+   Compiling crypto-common v0.1.7
+   Compiling num-integer v0.1.47
+   Compiling num-bigint v0.4.8
+   Compiling rustc-hash v2.1.3
+   Compiling cfg-if v1.0.5
+   Compiling util v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/util)
+   Compiling sha2-asm v0.6.4
+   Compiling cpufeatures v0.2.17
+   Compiling block-buffer v0.10.4
+   Compiling runtime-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/algebra)
+   Compiling digest v0.10.7
+   Compiling sha2 v0.10.9
+   Compiling compile-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/algebra)
+   Compiling core-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/proto)
+   Compiling compile-logic v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic)
+   Compiling compile-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/proto)
+   Compiling compile-eval v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/eval)
+   Compiling circuits-boolean v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/boolean)
+   Compiling circuits-polynomial v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/polynomial)
+   Compiling circuits-lookup v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/lookup)
+   Compiling circuits-arithmetic v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/arithmetic)
+   Compiling inout v0.1.4
+   Compiling cipher v0.4.4
+   Compiling circuits-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec)
+   Compiling circuits-analog-decoder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_decoder)
+   Compiling aes v0.8.4
+   Compiling circuits-bit-plucker v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bit_plucker)
+   Compiling getrandom v0.3.4
+   Compiling runtime-random v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/random)
+   Compiling zstd-sys v2.1.2+zstd.1.5.7
+   Compiling runtime-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/proto)
+   Compiling circuits-analog-adder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_adder)
+   Compiling circuits-bignum v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bignum)
+   Compiling circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec)
+   Compiling circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256)
+   Compiling runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle)
+   Compiling circuits-gf2-128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/gf2_128)
+   Compiling circuits-ec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ec)
+   Compiling bumpalo v3.20.3
+   Compiling compile-compiler v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/compiler)
+   Compiling circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2)
+   Compiling circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac)
+   Compiling runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero)
+   Compiling circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg)
+   Compiling circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128)
+   Compiling circuits-routing v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing)
+   Compiling circuits-memcmp v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp)
+   Compiling mdoc-zk-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/proto)
+   Compiling mdoc-zk-testcases v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/testcases)
+   Compiling mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits)
+   Compiling runtime-sumcheck v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck)
+   Compiling runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk)
+   Compiling mdoc-zk-artifacts v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts)
+   Compiling zstd-safe v7.4.0
+   Compiling zstd v0.13.4
+   Compiling mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile)
+   Compiling mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime)
+   Compiling multipaz-longfellow-ffi v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust)
+    Finished `release` profile [optimized] target(s) in 47.76s
