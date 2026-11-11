@@ -262,6 +262,67 @@ data class Mrz(
             return fallback
         }
 
+        /**
+         * The zone in camera OCR text, only when every check digit holds: OCR confusions are corrected by position
+         * first (O for 0 in dates and check digits, 0 for O in country codes and names), then the document number is
+         * tried as read and with its letters that look like digits read as digits. A partial read returns null, so a
+         * caller keeps scanning frames until one is complete.
+         */
+        fun recognize(ocr: String): Mrz? {
+            // OCR puts stray spaces between characters and sometimes reads fillers as spaces: both readings are tried.
+            for (spaces in listOf("", "<")) recognizeLines(ocr.lines().map { normalize(it.replace(" ", spaces)) })?.let { return it }
+            return null
+        }
+
+        private fun recognizeLines(lines: List<String>): Mrz? {
+            val candidates = lines.filter { it.length >= 28 }.map { fit(it) }
+            for (count in listOf(2, 3)) for (i in 0..candidates.size - count) {
+                val group = candidates.subList(i, i + count)
+                if (group.map { it.length }.toSet().size != 1) continue
+                for (fixed in corrected(group)) {
+                    val m = parse(fixed.joinToString("\n")) ?: continue
+                    if (m.checkDigitsValid) return m
+                }
+            }
+            return null
+        }
+
+        private val TO_DIGIT = mapOf('O' to '0', 'Q' to '0', 'D' to '0', 'U' to '0', 'I' to '1', 'L' to '1', 'Z' to '2', 'S' to '5', 'B' to '8', 'G' to '6', 'T' to '7')
+        private val TO_LETTER = mapOf('0' to 'O', '1' to 'I', '2' to 'Z', '5' to 'S', '8' to 'B', '6' to 'G')
+
+        private fun String.digitsAt(range: IntRange): String =
+            mapIndexed { i, c -> if (i in range) TO_DIGIT[c] ?: c else c }.joinToString("")
+
+        private fun String.lettersAt(range: IntRange): String =
+            mapIndexed { i, c -> if (i in range) TO_LETTER[c] ?: c else c }.joinToString("")
+
+        /** The group with positional corrections, the document number as read and with digit look-alikes as digits. */
+        private fun corrected(l: List<String>): List<List<String>> {
+            val n = l[0].length
+            val fixed: List<String>
+            val number: Pair<Int, IntRange>
+            when {
+                n == 30 && l.size == 3 && l[0][0] == 'C' && l[0][1] != '<' -> {
+                    // Permit layout: line 1 holds the number, issue count, expiry, sex and birth date.
+                    fixed = listOf(l[0].lettersAt(0..1).digitsAt(11..21).digitsAt(23..29), l[1], l[2].lettersAt(0..29))
+                    number = 0 to 2..10
+                }
+                n == 30 && l.size == 3 -> {
+                    fixed = listOf(l[0].lettersAt(0..4).digitsAt(14..14), l[1].digitsAt(0..6).digitsAt(8..14).lettersAt(15..17).digitsAt(29..29), l[2].lettersAt(0..29))
+                    number = 0 to 5..13
+                }
+                (n == 44 || n == 36) && l.size == 2 -> {
+                    val last = n - 1
+                    fixed = listOf(l[0].lettersAt(0..n - 1), l[1].digitsAt(9..9).lettersAt(10..12).digitsAt(13..19).digitsAt(21..27).digitsAt(last..last))
+                    number = 1 to 0..8
+                }
+                else -> return listOf(l)
+            }
+            val (line, range) = number
+            val asDigits = fixed.toMutableList().also { it[line] = it[line].digitsAt(range.first + 1..range.last) }
+            return listOf(fixed, asDigits).distinct()
+        }
+
         /** An OCR line one or two characters off a known length, padded or cut to it. */
         private fun fit(line: String): String {
             for (n in listOf(44, 36, 30)) if (line.length in n - 2..n + 2) return line.padEnd(n, '<').take(n)

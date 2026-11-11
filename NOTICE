@@ -72,6 +72,10 @@ its own license:
   CSCA master list published by the Federal Office for Information Security
   (BSI), checked against BSI's published self-signed root; public certificates
   of the issuing states, no change other than selection
+- Tesseract4Android 4.9.0 (Tesseract OCR 5 for Android) - Apache License 2.0;
+  with Leptonica - BSD 2-Clause, libjpeg-turbo - IJG and BSD 3-Clause, libpng -
+  libpng License; tessdata_fast eng.traineddata (app/src/androidMain/assets/
+  tessdata) - Apache License 2.0
 
 Development and test tools that are not shipped in the application:
 

@@ -124,7 +124,7 @@ internal object LegalTextsEn {
     }
 
     val privacy = document(
-        "privacy-policy", "DIW MY WALLET Privacy Policy", 1, DATE,
+        "privacy-policy", "DIW MY WALLET Privacy Policy", 2, "2026-11-11",
         listOf(
             "This app needs no developer account and has no ads, usage analytics, crash reporting or built-in tracking; the developer currently runs no back-end server that receives wallet credentials, documents or usage records.",
             "Credentials, keys, documents, settings and consent records are stored mainly in the app's protected private storage on the device; but features such as presenting, signing, lookups or background verification may send the necessary data to third parties.",
@@ -210,8 +210,8 @@ internal object LegalTextsEn {
         section(
             "Device permissions",
             list(
-                "**Camera:** for scanning QR codes.",
-                "**NFC:** for reading certificate cards by tapping, and for proximity presentation or verification.",
+                "**Camera:** for scanning QR codes, and for recognizing the machine readable zone of travel documents such as e-passports to fill in the document number, date of birth and expiry date needed to read the chip; recognition runs on the device in real time with the built-in Tesseract engine, and images are neither kept nor sent.",
+                "**NFC:** for reading certificate cards and chip documents such as e-passports by tapping, and for proximity presentation or verification.",
                 "**Bluetooth:** for proximity transfers; Android 11 and earlier may also ask for location permission to use Bluetooth, but this app does not use that permission to read or record your location.",
                 "**Biometrics:** for user confirmation on the device; this app does not obtain or keep biometric templates.",
                 "**USB:** for connecting compatible smart card readers.",

@@ -87,6 +87,7 @@ import org.multipaz.util.fromBase64Url
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
  * scanner; it returns the scanned text or null. [scanQrStream] keeps that camera open for an animated code, handing
  * each new code to its callback until the callback says done. Reading a QR Code from a picture is offered everywhere.
+ * [scanMrz] reads a travel document's machine readable zone with the camera and returns its lines, or null.
  *
  * The home screen has five tabs: the documents list and the history log as in the EUDI wallet, Use as in Bonds
  * (present, counter services, add), Files for signed files and official documents, and Verify for the wallet
@@ -97,8 +98,9 @@ fun WalletApp(
     model: WalletModel,
     scanQr: (suspend () -> String?)? = null,
     scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
+    scanMrz: (suspend () -> String?)? = null,
 ) {
-    AppLocaleScope(model.platform.languageStore) { WalletAppContent(model, scanQr, scanQrStream) }
+    AppLocaleScope(model.platform.languageStore) { WalletAppContent(model, scanQr, scanQrStream, scanMrz) }
 }
 
 @Composable
@@ -106,6 +108,7 @@ private fun WalletAppContent(
     model: WalletModel,
     scanQr: (suspend () -> String?)?,
     scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+    scanMrz: (suspend () -> String?)?,
 ) {
     val ready by model.ready.collectAsState()
     val screen by model.screen.collectAsState()
@@ -201,7 +204,7 @@ private fun WalletAppContent(
                             is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                             is Screen.NationalId -> NationalIdScreen(model, s)
                             Screen.DocumentSources -> DocumentSourcesScreen(model)
-                            Screen.PassportRead -> PassportReadScreen(model)
+                            Screen.PassportRead -> PassportReadScreen(model, scanMrz)
                             is Screen.Portal -> PortalScreen(model, s)
                             is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                             is Screen.LegalText -> LegalTextScreen(model, s)

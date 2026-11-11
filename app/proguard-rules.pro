@@ -31,6 +31,10 @@
 -keep class org.multipaz.digitalcredentials.DigitalCredentialsCredmanKt { public static *** calculateCredentialDatabase(...); }
 -dontwarn org.multipaz.**
 
+# Tesseract4Android: the native library reads and calls these classes through JNI by name (42 small classes).
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
+
 # Wallet state stored as JSON (kotlinx.serialization keeps generated serializers through its own rules).
 -keep class diw.wallet.core.oid4vci.IssuanceRecord { *; }
 -keepclassmembers class diw.wallet.** {

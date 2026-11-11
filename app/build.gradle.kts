@@ -290,6 +290,8 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.multipaz.compose)
             implementation(libs.multipaz.dcapi)
+            implementation(libs.tesseract4android)
+            implementation(libs.androidx.camera.core)
             implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.fragment)
             implementation(libs.androidx.browser)

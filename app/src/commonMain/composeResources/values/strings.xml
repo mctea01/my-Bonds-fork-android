@@ -4359,4 +4359,12 @@
     <string name="zkp_answer_err_certificates">The certificate package of the zkPassport registry could not be downloaded.</string>
     <string name="zkp_answer_origin_same_site">Sent by another page of the same site</string>
     <string name="zkp_answer_origin_same_site_detail">The zkPassport bridge reports the requester as %1$s, and the request names %2$s. Both belong to the same site; the proof is bound to the domain the request names.</string>
+    <string name="scan_qr_title">Scan a QR Code</string>
+    <string name="scan_qr_hint">Hold the QR Code inside the frame.</string>
+    <string name="scan_mrz_title">Scan the machine readable zone</string>
+    <string name="scan_mrz_hint">Hold the two or three lines of letters and &lt; at the bottom of the data page inside the frame, flat and without glare.</string>
+    <string name="scan_mrz_reading">Reading %1$d lines; hold still until every check digit matches.</string>
+    <string name="scan_camera_needed_mrz">The camera is needed to read the machine readable zone.</string>
+    <string name="mrtd_scan_zone">Scan the machine readable zone with the camera</string>
+    <string name="mrtd_scan_zone_text">The zone is read on this device and only fills the fields below; no image is kept.</string>
 </resources>

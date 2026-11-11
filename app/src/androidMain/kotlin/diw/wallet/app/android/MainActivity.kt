@@ -51,6 +51,7 @@ class MainActivity : FragmentActivity() {
     private val app get() = application as WalletApplication
     private val promptModel = AndroidPromptModel.Builder().apply { addCommonDialogs() }.build()
     private val scanRequest = MutableStateFlow<ScanRequest?>(null)
+    private val mrzRequest = MutableStateFlow<MrzScanRequest?>(null)
     private val fileAccess = AndroidFileAccess(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,9 +66,16 @@ class MainActivity : FragmentActivity() {
             val tab by app.model.tab.collectAsState()
             BackHandler(enabled = screen != Screen.Home || tab != HomeTab.DOCUMENTS) { app.model.back() }
             PromptDialogs(promptModel)
-            WalletApp(app.model, scanQr = { scan(ScanRequest(null)) }, scanQrStream = { onCode -> scan(ScanRequest(onCode)) })
+            WalletApp(
+                app.model,
+                scanQr = { scan(ScanRequest(null)) },
+                scanQrStream = { onCode -> scan(ScanRequest(onCode)) },
+                scanMrz = { scanMrz() },
+            )
             val scan by scanRequest.collectAsState()
             scan?.let { QrScanDialog(it) { app.model.qrFromImage() } }
+            val mrz by mrzRequest.collectAsState()
+            mrz?.let { MrzScanDialog(it) { mrzTextReader(this) } }
         }
         handle(intent)
     }
@@ -75,6 +83,12 @@ class MainActivity : FragmentActivity() {
     private suspend fun scan(request: ScanRequest): String? {
         scanRequest.value = request
         return try { request.result.await() } finally { scanRequest.value = null }
+    }
+
+    private suspend fun scanMrz(): String? {
+        val request = MrzScanRequest()
+        mrzRequest.value = request
+        return try { request.result.await() } finally { mrzRequest.value = null }
     }
 
     override fun onResume() {
@@ -141,63 +155,5 @@ class MainActivity : FragmentActivity() {
     companion object {
         /** Sent by the NFC service once a reader completed the ISO/IEC 18013-5 engagement. */
         const val ACTION_PROXIMITY = "diw.wallet.action.PROXIMITY"
-    }
-}
-
-/** A camera scan: one code completes [result]; with [stream], every new code goes to it until it says done. */
-private class ScanRequest(val stream: ((String) -> QrScanStep)?) {
-    val result = CompletableDeferred<String?>()
-}
-
-@Composable
-private fun QrScanDialog(request: ScanRequest, readImage: suspend () -> String?) {
-    val result = request.result
-    val permission = rememberCameraPermissionState()
-    val scope = rememberCoroutineScope()
-    var last by remember(request) { mutableStateOf<String?>(null) }
-    var progress by remember(request) { mutableStateOf<String?>(null) }
-    LaunchedEffect(permission.isGranted) {
-        if (!permission.isGranted) permission.launchPermissionRequest()
-    }
-    Dialog(onDismissRequest = { result.complete(null) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (permission.isGranted) {
-                    QrCodeScanner(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        cameraSelection = CameraSelection.DEFAULT_BACK_CAMERA,
-                        captureResolution = CameraCaptureResolution.MEDIUM,
-                        showCameraPreview = true,
-                        onCodeScanned = { code ->
-                            val stream = request.stream
-                            when {
-                                code == null || code == last -> {}
-                                stream == null -> result.complete(code)
-                                else -> {
-                                    // The camera sees each frame many times; only a new one is handed on.
-                                    last = code
-                                    val step = stream(code)
-                                    progress = step.progress
-                                    if (step.done) result.complete(null)
-                                }
-                            }
-                        },
-                    )
-                } else {
-                    Text(stringResource(Res.string.scan_camera_needed))
-                    Button(onClick = { scope.launch { permission.launchPermissionRequest() } }) { Text(stringResource(Res.string.scan_allow_camera)) }
-                }
-                progress?.let { Text(it) }
-                // A code on this phone's own screen (an issuer page, a screenshot) cannot be scanned with its camera.
-                if (request.stream == null) {
-                    OutlinedButton(onClick = { scope.launch { readImage()?.let { result.complete(it) } } }, modifier = Modifier.fillMaxWidth()) {
-                        Text(stringResource(Res.string.scan_from_image))
-                    }
-                }
-                OutlinedButton(onClick = { result.complete(null) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (request.stream == null) stringResource(Res.string.action_cancel) else stringResource(Res.string.scan_stop))
-                }
-            }
-        }
     }
 }

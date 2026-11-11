@@ -37,6 +37,10 @@ bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncycastle" 
 xerces = { module = "xerces:xercesImpl", version = "2.12.2" }
 # QR Code reading from images; the version Multipaz's Android camera scanner already brings in.
 zxing-core = { module = "com.google.zxing:core", version = "3.5.4" }
+# Machine readable zone OCR on Android (Tesseract 5, Apache-2.0), with tessdata_fast eng in the app assets.
+# The camera frames of Multipaz's Camera composable (same version it brings in), turned into bitmaps for OCR.
+androidx-camera-core = { module = "androidx.camera:camera-core", version = "1.5.1" }
+tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version = "4.9.0" }
 xml-apis = { module = "xml-apis:xml-apis", version = "1.4.01" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.54.1.0" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }

@@ -41,7 +41,7 @@ Google 建議兩件事都要做：
 | 權限 | 用途 | Play 申報 |
 |---|---|---|
 | `INTERNET`、`ACCESS_NETWORK_STATE` | 領卡、出示、時戳、撤銷資訊 | 不需要 |
-| `CAMERA` | 掃描 QR Code | 不需要（只在裝置上處理） |
+| `CAMERA` | 掃描 QR Code；以 Tesseract 在本機辨識護照機讀區並填入讀取晶片所需欄位，不保存影像 | 不需要（只在裝置上處理） |
 | `NFC` | 自然人憑證卡、mdoc 感應出示與查驗（HCE） | 不需要 |
 | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；舊版的 `BLUETOOTH`、`BLUETOOTH_ADMIN`、`ACCESS_FINE_LOCATION`（只到 API 30） | ISO 18013-5 與 Bonds 近距離傳輸 | 不需要；不取得位置 |
 | `USE_BIOMETRIC`、`USE_FINGERPRINT` | 解鎖金鑰 | 不需要 |

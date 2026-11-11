@@ -1,6 +1,6 @@
 # DIW MY WALLET Privacy Policy
 
-Version 1, effective 2026-11-05
+Version 2, effective 2026-11-11
 
 > This English text is a translation of the Traditional Chinese original. If the two differ, the Chinese text prevails.
 
@@ -74,8 +74,8 @@ Declining or withdrawing a dedicated statement stops only further connections an
 
 ## 7. Device permissions
 
-- **Camera:** for scanning QR codes.
-- **NFC:** for reading certificate cards by tapping, and for proximity presentation or verification.
+- **Camera:** for scanning QR codes, and for recognizing the machine readable zone of travel documents such as e-passports to fill in the document number, date of birth and expiry date needed to read the chip; recognition runs on the device in real time with the built-in Tesseract engine, and images are neither kept nor sent.
+- **NFC:** for reading certificate cards and chip documents such as e-passports by tapping, and for proximity presentation or verification.
 - **Bluetooth:** for proximity transfers; Android 11 and earlier may also ask for location permission to use Bluetooth, but this app does not use that permission to read or record your location.
 - **Biometrics:** for user confirmation on the device; this app does not obtain or keep biometric templates.
 - **USB:** for connecting compatible smart card readers.

@@ -68,6 +68,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 
@@ -430,6 +431,23 @@ class MrtdTest {
         val refused = inspect(other)
         assertEquals(DocumentVerdict.INVALID, refused.verdict)
         assertTrue(refused.signatures.single().problems.any { "1.2.3.4" in it }, refused.signatures.single().problems.toString())
+    }
+
+    @Test fun cameraOcrIsCorrectedByPosition() {
+        // ICAO 9303 specimen zones read with typical OCR confusions, spaces and a dropped filler.
+        val td3 = Mrz.recognize("PASSPORT\nP<UT0ERIKSS0N<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UT0 7408I22F12O4159ZE184226B<<<<<1O\n")
+        assertNotNull(td3)
+        assertEquals("L898902C3", td3.documentNumber)
+        assertEquals("740812", td3.birthDate)
+        assertEquals("120415", td3.expiryDate)
+        assertEquals("ERIKSSON", td3.primaryIdentifier)
+        val td1 = Mrz.recognize("I<UTOD231458907<<<<<<<<<<<<<<<\n74O8122F12O4159UT0<<<<<<<<<<<6\nERIKSS0N<<ANNA<MARIA<<<<<<<<<<")
+        assertNotNull(td1)
+        assertEquals("D23145890", td1.documentNumber)
+        assertEquals("740812", td1.birthDate)
+        // A partial or wrong read gives nothing, so scanning goes on.
+        assertNull(Mrz.recognize("L898902C36UTO7408122F1204159ZE184226B<<<<<10"))
+        assertNull(Mrz.recognize("P<UTOERIKSSON<<ANNA<MARIA<<<<<<<<<<<<<<<<<<<\nL898902C36UTO7408122F1204159ZE184226B<<<<<11"))
     }
 
     @Test fun mainlandChinaPermitCardLayout() {

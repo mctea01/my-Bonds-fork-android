@@ -59,7 +59,7 @@ import kotlin.time.Clock
  * a document that has one), then the chip is read while it stays on the phone.
  */
 @Composable
-fun PassportReadScreen(model: WalletModel) {
+fun PassportReadScreen(model: WalletModel, scanMrz: (suspend () -> String?)? = null) {
     val busy by model.files.busy.collectAsState()
     val error by model.files.error.collectAsState()
     var number by remember { mutableStateOf("") }
@@ -93,6 +93,13 @@ fun PassportReadScreen(model: WalletModel) {
             FilterChip(selected = useCan, onClick = { useCan = true }, label = { Text(stringResource(Res.string.mrtd_by_can)) })
         }
         if (!useCan) {
+            // The camera reads the zone and fills the three fields; the scan only ends on a zone whose check digits hold.
+            if (scanMrz != null) {
+                Button(onClick = { scope.launch { scanMrz()?.let { zone = it } } }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(Res.string.mrtd_scan_zone))
+                }
+                Text(stringResource(Res.string.mrtd_scan_zone_text), style = MaterialTheme.typography.bodySmall)
+            }
             OutlinedTextField(
                 value = number, onValueChange = { v -> number = Mrz.normalize(v).take(20) },
                 label = { Text(stringResource(Res.string.mrtd_number)) }, singleLine = true, modifier = Modifier.fillMaxWidth(),

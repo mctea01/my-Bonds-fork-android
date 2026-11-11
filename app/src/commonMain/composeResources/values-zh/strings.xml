@@ -4359,4 +4359,12 @@
     <string name="zkp_answer_err_certificates">無法下載 zkPassport 註冊表的憑證包。</string>
     <string name="zkp_answer_origin_same_site">請求由同一網站的另一個網址送出</string>
     <string name="zkp_answer_origin_same_site_detail">zkPassport 傳送服務回報請求方為 %1$s，請求寫的是 %2$s，兩者屬於同一網站。證明綁定的是請求寫的網域。</string>
+    <string name="scan_qr_title">掃描 QR Code</string>
+    <string name="scan_qr_hint">將 QR Code 對準框內。</string>
+    <string name="scan_mrz_title">掃描機讀區</string>
+    <string name="scan_mrz_hint">將資料頁底部由英數字與 &lt; 組成的兩到三行對準框內，保持平整、避免反光。</string>
+    <string name="scan_mrz_reading">正在讀取 %1$d 行，請保持穩定直到檢查碼全部正確。</string>
+    <string name="scan_camera_needed_mrz">需要相機權限才能讀取機讀區。</string>
+    <string name="mrtd_scan_zone">用相機掃描機讀區</string>
+    <string name="mrtd_scan_zone_text">機讀區在本機辨識，只用來填入下方欄位，不保存影像。</string>
 </resources>
