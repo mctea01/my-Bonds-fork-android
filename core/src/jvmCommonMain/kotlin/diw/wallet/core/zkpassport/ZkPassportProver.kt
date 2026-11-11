@@ -288,7 +288,8 @@ class ZkPassportProver(
             put("chain_id", chain)
             put("circuit_version", job.circuitVersion)
             put("certificates_root", certificateRoot)
-            put("sod", b64.encodeToString(chip.sod))
+            // Strict DER for the native reader: some passports encode EF.SOD with indefinite lengths.
+            put("sod", b64.encodeToString(diw.wallet.core.document.mrtd.BerToDer.sod(chip.sod)))
             put("dg1", b64.encodeToString(chip.dg1))
             chip.dg2?.let { put("dg2", b64.encodeToString(it)) }
             put("query", job.query)

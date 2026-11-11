@@ -1759,7 +1759,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             }
         }
         is FilePreview.Picture -> PreviewImage(p.image, f.name)
-        is FilePreview.Passport -> PassportDataView(p.view)
+        is FilePreview.Passport -> PassportDataView(p.view) { pic, n, original -> model.files.exportPicture(pic, n, original) }
         is FilePreview.Text -> {
             SelectableText(p.text)
             if (p.truncated) Text(stringResource(Res.string.preview_text_limit, FilePreview.TEXT_LIMIT), style = MaterialTheme.typography.bodySmall)

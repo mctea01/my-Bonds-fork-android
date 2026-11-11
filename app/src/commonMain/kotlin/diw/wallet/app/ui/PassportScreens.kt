@@ -1,6 +1,18 @@
 package diw.wallet.app.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Surface
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import diw.wallet.app.PassportPicture
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -170,8 +182,10 @@ private fun check(c: ChipCheck): org.jetbrains.compose.resources.StringResource 
 
 /** A travel document laid out as its data page: portrait, holder, document and chip. Every given name is shown. */
 @Composable
-internal fun PassportDataView(v: PassportView) {
+internal fun PassportDataView(v: PassportView, onExport: ((PassportPicture, Int, Boolean) -> Unit)? = null) {
     val year = remember { Clock.System.now().toString().take(4).toIntOrNull() ?: 2026 }
+    var opened by remember { mutableStateOf<Int?>(null) }
+    opened?.let { i -> v.pictures.getOrNull(i)?.let { PictureDialog(it, i + 1, onExport) { opened = null } } }
     Column(
         Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -187,14 +201,22 @@ internal fun PassportDataView(v: PassportView) {
         )
         if (v.portraits.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                v.portraits.forEach { img ->
-                    Image(img, stringResource(Res.string.mrtd_portrait), Modifier.width(120.dp).height(160.dp).padding(4.dp), contentScale = ContentScale.Fit)
+                v.pictures.forEachIndexed { i, p ->
+                    p.bitmap?.let { img ->
+                        Image(img, stringResource(Res.string.mrtd_portrait), Modifier.width(120.dp).height(160.dp).padding(4.dp).clickable { opened = i },
+                            contentScale = ContentScale.Fit)
+                    }
                 }
             }
+            Text(stringResource(Res.string.mrtd_picture_tap), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
         }
         if (v.undecodedPortraits.isNotEmpty()) {
             Text(stringResource(Res.string.mrtd_portrait_undecoded, v.undecodedPortraits.distinct().joinToString(", ")),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+            if (onExport != null) v.pictures.forEachIndexed { i, p ->
+                if (p.bitmap == null) OutlinedButton(onClick = { onExport(p, i + 1, true) }) { Text(stringResource(Res.string.mrtd_picture_export_original, i + 1)) }
+            }
         }
         Text(stringResource(Res.string.section_personal), style = MaterialTheme.typography.titleSmall)
         m?.let {
@@ -257,4 +279,50 @@ internal fun TravelDocumentSection(t: diw.wallet.core.document.TravelDocumentChe
         LabelValue(stringResource(Res.string.mrtd_signer_country), (t.signerCountry ?: "-") + " / " + (t.issuingState ?: "-"), small = true)
     }
     LabelValue(stringResource(Res.string.mrtd_aa_now), stringResource(check(t.activeAuthentication)), small = true)
+}
+
+/** A travel document picture full screen: pinch or double tap to zoom, drag to move, and export. */
+@Composable
+private fun PictureDialog(p: PassportPicture, number: Int, onExport: ((PassportPicture, Int, Boolean) -> Unit)?, onClose: () -> Unit) {
+    val img = p.bitmap ?: return
+    val jp2 = p.image.mediaType == "image/jp2" || p.image.mediaType == "image/j2k"
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(
+                    Modifier.fillMaxWidth().weight(1f).clipToBounds()
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(1f, 8f)
+                                offset = if (scale == 1f) Offset.Zero else offset + pan
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = {
+                                if (scale > 1f) { scale = 1f; offset = Offset.Zero } else scale = 3f
+                            })
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        img, stringResource(Res.string.mrtd_portrait), contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize().graphicsLayer(scaleX = scale, scaleY = scale, translationX = offset.x, translationY = offset.y),
+                    )
+                }
+                Text(stringResource(Res.string.mrtd_picture_info, img.width, img.height, p.image.mediaType, p.image.data.size),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    if (onExport != null) {
+                        Button(onClick = { onExport(p, number, false) }) {
+                            Text(stringResource(if (jp2) Res.string.mrtd_picture_export_png else Res.string.mrtd_picture_export))
+                        }
+                        if (jp2) OutlinedButton(onClick = { onExport(p, number, true) }) { Text(stringResource(Res.string.mrtd_picture_export_jp2)) }
+                    }
+                    OutlinedButton(onClick = onClose) { Text(stringResource(Res.string.action_close)) }
+                }
+            }
+        }
+    }
 }

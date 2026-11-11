@@ -2349,6 +2349,13 @@
     <string name="mrtd_personal_number">Personal number</string>
     <string name="mrtd_place_of_birth">Place of birth</string>
     <string name="mrtd_place_on_reader">Place the passport data page on %1$s and keep it still</string>
+    <string name="mrtd_picture_export">Export picture</string>
+    <string name="mrtd_picture_export_jp2">Export JPEG 2000 original</string>
+    <string name="mrtd_picture_export_original">Export the original of picture %1$s</string>
+    <string name="mrtd_picture_export_png">Export picture (PNG)</string>
+    <string name="mrtd_picture_file">Chip picture %1$s</string>
+    <string name="mrtd_picture_info">%1$s x %2$s pixels, stored on the chip as %3$s, %4$s bytes. Pinch or double tap to zoom.</string>
+    <string name="mrtd_picture_tap">Tap a picture to enlarge or export it</string>
     <string name="mrtd_portrait">Chip portrait</string>
     <string name="mrtd_portrait_undecoded">The chip portrait format (%1$s) cannot be shown on this device; the original data is kept</string>
     <string name="mrtd_privacy">The chip data stays in the wallet on this device; reading does not use the network.</string>
@@ -2479,6 +2486,7 @@
     <string name="msg_master_list_imported">Imported %1$s CSCA anchors and %2$s link certificates; skipped %3$s expired certificates</string>
     <string name="msg_ldif_skipped">; also skipped %1$s master lists whose signature does not verify, %2$s document signer certificates (DSC) and %3$s CRLs</string>
     <string name="msg_ldif_no_csca">%1$s has no master list or CSCA certificate, only %2$s document signer certificates (DSC) and %3$s CRLs; for CSCAs, import the master list file of the ICAO PKD (icaopkd-002)</string>
+    <string name="msg_master_list_unreadable">; %1$s certificates could not be parsed and were skipped</string>
     <string name="msg_master_list_signature">The master list signature of %1$s does not verify; nothing was imported</string>
     <string name="msg_member_missing">\"%1$s\" cannot be found in the container</string>
     <string name="msg_moica_env_mismatch">The mobile citizen certificate environment the production server used this time (%1$s) differs from the one it declared (%2$s), so it stopped</string>
@@ -4342,7 +4350,7 @@
     <string name="zkp_answer_failed">The proofs were not sent</string>
     <string name="zkp_answer_history_note">zkPassport request, requester origin %1$s.</string>
     <string name="zkp_answer_history_test"> Test request.</string>
-    <string name="zkp_answer_err_origin">zkPassport's bridge did not report where the request comes from, so it was not answered.</string>
+    <string name="zkp_answer_err_origin">zkPassport's bridge did not report where the request comes from within 15 seconds, so it was not answered. Usually the request page was closed, timed out or its QR code was already used; create a new QR code on the request page and try again.</string>
     <string name="zkp_answer_err_passport">The stored passport read lacks the chip files the proofs need (SOD and DG1). Read the chip again.</string>
     <string name="zkp_answer_err_crs">The proving parameters are not available on this device yet.</string>
     <string name="zkp_answer_err_inputs">This passport is not supported by zkPassport's circuits yet. The requester was told.</string>

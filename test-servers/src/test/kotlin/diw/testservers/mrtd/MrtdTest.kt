@@ -9,6 +9,7 @@ import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.card.CardResponse
 import diw.wallet.core.document.mrtd.AccessSecret
 import diw.wallet.core.document.mrtd.BerTlv
+import diw.wallet.core.document.mrtd.BerToDer
 import diw.wallet.core.document.mrtd.ChipCheck
 import diw.wallet.core.document.mrtd.Lds
 import diw.wallet.core.document.mrtd.LdsFile
@@ -483,6 +484,29 @@ class MrtdTest {
         // A CRL signed by a key that is not trusted is not used, so the passport is still read as before.
         val untrusted = report(crl(true, newKey), listOf(csca))
         assertEquals(DocumentVerdict.VALID, untrusted.verdict, untrusted.signatures.single().problems.toString())
+    }
+
+    @Test fun securityObjectWithIndefiniteLengthsBecomesDer() {
+        // Some passports encode EF.SOD with indefinite lengths and chunked OCTET STRINGs; the native prover reads DER only.
+        val lso = DERSequence(arrayOf(ASN1Integer(0), AlgorithmIdentifier(NISTObjectIdentifiers.id_sha256), DERSequence())).encoded
+        val gen = org.bouncycastle.cms.CMSSignedDataStreamGenerator()
+        gen.addSignerInfoGenerator(JcaSignerInfoGeneratorBuilder(JcaDigestCalculatorProviderBuilder().setProvider(bc).build())
+            .build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(dscKey.private), dsc))
+        gen.addCertificates(JcaCertStore(listOf(dsc)))
+        val out = ByteArrayOutputStream()
+        gen.setBufferSize(16)
+        gen.open(ASN1ObjectIdentifier(MrtdOids.LDS_SECURITY_OBJECT), out, true).use { it.write(lso) }
+        val ber = out.toByteArray()
+        assertTrue(ber.indices.any { ber[it] == 0x80.toByte() && it > 0 && ber[it - 1].toInt() and 0x20 != 0 }, "the stream generator writes indefinite lengths")
+        val der = assertNotNull(BerToDer.convert(ber))
+        assertContentEquals(org.bouncycastle.cms.CMSSignedData(ber).getEncoded("DER"), der)
+        assertTrue(org.bouncycastle.cms.CMSSignedData(der).signerInfos.signers.single()
+            .verify(org.bouncycastle.cms.jcajce.JcaSimpleSignerInfoVerifierBuilder().setProvider(bc).build(dsc)))
+        // The 0x77 wrapper is removed and DER input is kept byte for byte.
+        assertContentEquals(der, BerToDer.sod(BerTlv.encode(0x77, ber)))
+        assertContentEquals(der, BerToDer.convert(der))
+        assertContentEquals(der, BerToDer.sod(BerTlv.encode(0x77, der)))
+        assertNull(BerToDer.convert(byteArrayOf(0x30, 0x80.toByte(), 0x02)))
     }
 
     @Test fun cameraOcrIsCorrectedByPosition() {

@@ -1512,6 +1512,22 @@ class FilesModel(private val model: WalletModel) {
         deliver(f.name, f.mediaType, data(f.id), share)
     }
 
+    /**
+     * Saves a travel document picture: a JPEG as the chip stores it; a JPEG 2000 as PNG (few apps open JPEG 2000)
+     * unless [original] asks for the chip's own bytes. Named by its place on the chip, never by the holder.
+     */
+    fun exportPicture(picture: PassportPicture, number: Int, original: Boolean = false) = run(tr(Res.string.step_export_file)) {
+        val img = picture.image
+        val jp2 = img.mediaType == "image/jp2" || img.mediaType == "image/j2k"
+        val png = if (jp2 && !original) picture.bitmap?.let { encodePng(it) } else null
+        val name = tr(Res.string.mrtd_picture_file, number)
+        when {
+            png != null -> deliver("$name.png", "image/png", png, false)
+            jp2 -> deliver(name + (if (img.mediaType == "image/j2k") ".j2k" else ".jp2"), img.mediaType, img.data, false)
+            else -> deliver("$name.jpg", "image/jpeg", img.data, false)
+        }
+    }
+
     /** Saves [bytes] through the platform save dialog, or hands them to another app when [share]. */
     private suspend fun deliver(name: String, mediaType: String, bytes: ByteArray, share: Boolean): Boolean {
         val done = if (share) model.platform.shareFile(name, mediaType, bytes) else model.platform.saveFile(name, mediaType, bytes)

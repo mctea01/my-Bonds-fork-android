@@ -237,12 +237,13 @@ class JvmZkPassportVerifier(
                     registry.remember(chain, version, manifest, vkeys, hashes)
                 }
                 // Only a Barretenberg rejection is worth a second opinion; every other failure is final.
-                val decided = if (!result.verified && config.verifierApi && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
-                    if (verifierApi(request, proofs, queryResult) == true) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
-                    else result
-                } else result
-                // Proofs keyed by Barretenberg 5 cannot verify here at all; say so rather than calling them invalid.
-                .let {
+                val decided = (
+                    if (!result.verified && config.verifierApi && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
+                        if (verifierApi(request, proofs, queryResult) == true) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
+                        else result
+                    } else result
+                ).let {
+                    // Proofs keyed by Barretenberg 5 cannot verify here at all; say so rather than calling them invalid.
                     if (!it.verified && ZkPassport.legacyBackend(version) && it.errors.isNotEmpty() && it.errors.all { e -> e.startsWith("proof:") }) {
                         it.copy(errors = listOf("backend_legacy:$version") + it.errors)
                     } else it
@@ -266,10 +267,12 @@ class JvmZkPassportVerifier(
     private suspend fun csca(chain: Long, root: String, result: ZkPassportResult, anchors: List<ByteArray>): ZkPassportCscaCheck? {
         val countries = result.disclosed?.issuingCountry?.takeIf { it.length == 3 }?.let(::listOf) ?: result.issuingCountryIn
         if (countries.isEmpty()) return null
+        // The proof's own package; when it cannot be fetched, a package of another root already checked against the
+        // registry still lists the country's CSCAs, which is all this comparison needs.
         val summary = try {
             registry.certificates(chain, root) { zkpassportCertificates(it) }
         } catch (e: ZkPassportRegistry.Unreachable) {
-            return ZkPassportCscaCheck(countries, 0, 0, e.code)
+            registry.cachedCertificates(chain) ?: return ZkPassportCscaCheck(countries, 0, 0, e.code)
         }
         val keys = summary["certificates"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
             .filter { (it["country"] as? JsonPrimitive)?.contentOrNull in countries }

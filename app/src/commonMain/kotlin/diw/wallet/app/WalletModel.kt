@@ -1998,14 +1998,22 @@ class WalletModel(val platform: PlatformServices) {
             var ldif = false
             val seen = HashSet<kotlinx.io.bytestring.ByteString>()
             val now = kotlin.time.Clock.System.now()
+            var unreadable = 0
+            // A certificate the parser cannot read (some master lists carry unusual encodings) is skipped, not fatal.
             suspend fun add(der: ByteArray, source: String) {
                 if (!seen.add(kotlinx.io.bytestring.ByteString(der))) return
-                val cert = runCatching { X509Cert(kotlinx.io.bytestring.ByteString(der)) }.getOrNull() ?: return
-                if (cert.validityNotAfter < now) { expired++; return }
-                val label = "CSCA " + (cert.subject.components[OID.COUNTRY_NAME.oid]?.value?.let { "$it " } ?: "") + commonName(cert)
-                if (TrustRegistry.isRoot(cert)) {
-                    if (trust.addAnchor(TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
-                } else if (TrustRegistry.isIntermediate(cert) && trust.addIntermediate(cert, label, source)) middle++
+                try {
+                    val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
+                    if (cert.validityNotAfter < now) { expired++; return }
+                    val label = "CSCA " + (cert.subject.components[OID.COUNTRY_NAME.oid]?.value?.let { "$it " } ?: "") + commonName(cert)
+                    if (TrustRegistry.isRoot(cert)) {
+                        if (trust.addAnchor(TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
+                    } else if (TrustRegistry.isIntermediate(cert) && trust.addIntermediate(cert, label, source)) middle++
+                } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    unreadable++
+                }
             }
             for (p in picked) {
                 val source = "masterlist:" + p.name
@@ -2031,7 +2039,8 @@ class WalletModel(val platform: PlatformServices) {
                 crls += pkd.crls
             }
             message.value = tr(Res.string.msg_master_list_imported, roots, middle, expired) +
-                (if (ldif) tr(Res.string.msg_ldif_skipped, badLists, signers, crls) else "")
+                (if (ldif) tr(Res.string.msg_ldif_skipped, badLists, signers, crls) else "") +
+                (if (unreadable > 0) tr(Res.string.msg_master_list_unreadable, unreadable) else "")
             loadAnchors()
             if (roots > 0 || middle > 0) status.reevaluateIssuers(tr(Res.string.pin_reason_add_anchor), affected = { it.anchorName == null }, accept = { it.environment != null })
         } catch (e: Exception) {

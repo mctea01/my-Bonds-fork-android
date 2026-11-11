@@ -2349,6 +2349,13 @@
     <string name="mrtd_personal_number">個人號碼</string>
     <string name="mrtd_place_of_birth">出生地</string>
     <string name="mrtd_place_on_reader">把護照資料頁放在 %1$s 上並保持不動</string>
+    <string name="mrtd_picture_export">匯出照片</string>
+    <string name="mrtd_picture_export_jp2">匯出 JPEG 2000 原始檔</string>
+    <string name="mrtd_picture_export_original">匯出第 %1$s 張照片的原始檔</string>
+    <string name="mrtd_picture_export_png">匯出照片（PNG）</string>
+    <string name="mrtd_picture_file">晶片照片 %1$s</string>
+    <string name="mrtd_picture_info">%1$s x %2$s 像素，晶片內格式 %3$s，%4$s 位元組。雙指縮放或點兩下放大。</string>
+    <string name="mrtd_picture_tap">點照片可放大檢視或匯出</string>
     <string name="mrtd_portrait">晶片相片</string>
     <string name="mrtd_portrait_undecoded">晶片相片的格式（%1$s）無法在這台裝置顯示，原始資料已保存</string>
     <string name="mrtd_privacy">晶片資料只存在這台裝置的錢包內，讀取時不會連網。</string>
@@ -2479,6 +2486,7 @@
     <string name="msg_master_list_imported">已匯入 %1$s 個 CSCA 信任錨點、%2$s 個連結憑證，略過 %3$s 個過期憑證</string>
     <string name="msg_ldif_skipped">；另略過 %1$s 個簽章不符的主清單、%2$s 張文件簽署憑證（DSC）與 %3$s 份 CRL</string>
     <string name="msg_ldif_no_csca">%1$s 沒有主清單或 CSCA 憑證，只有 %2$s 張文件簽署憑證（DSC）與 %3$s 份 CRL；CSCA 請匯入 ICAO PKD 的主清單檔（icaopkd-002）</string>
+    <string name="msg_master_list_unreadable">；%1$s 張憑證無法解析，已略過</string>
     <string name="msg_master_list_signature">%1$s 的主清單簽章不符，未匯入</string>
     <string name="msg_member_missing">容器內找不到「%1$s」</string>
     <string name="msg_moica_env_mismatch">正式服務端這次使用的行動自然人憑證環境（%1$s）與它宣告的（%2$s）不同，已停止</string>
@@ -4342,7 +4350,7 @@
     <string name="zkp_answer_failed">證明未送出</string>
     <string name="zkp_answer_history_note">zkPassport 請求，請求方來源 %1$s。</string>
     <string name="zkp_answer_history_test"> 測試請求。</string>
-    <string name="zkp_answer_err_origin">zkPassport 傳送服務沒有回報請求來源，因此未回應。</string>
+    <string name="zkp_answer_err_origin">zkPassport 傳送服務在 15 秒內沒有回報請求來源，因此未回應。通常是請求頁已關閉、逾時或 QR 碼已用過，請在請求頁重新產生 QR 碼再試。</string>
     <string name="zkp_answer_err_passport">保存的護照讀取資料缺少證明所需的晶片檔案（SOD 與 DG1），請重新讀取晶片。</string>
     <string name="zkp_answer_err_crs">本機尚未取得證明參數。</string>
     <string name="zkp_answer_err_inputs">zkPassport 電路尚不支援這本護照，已告知請求方。</string>

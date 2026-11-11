@@ -29,7 +29,12 @@ class PassportView(
     val document: DocumentDetails?,
     val portraits: List<ImageBitmap>,
     val undecodedPortraits: List<String>,
+    /** Every picture of DG2 and DG5 as stored on the chip, with its bitmap when the device decoded it. */
+    val pictures: List<PassportPicture> = emptyList(),
 )
+
+/** One picture of a travel document: the chip's encoded [image] and its [bitmap], null when it could not be decoded. */
+class PassportPicture(val image: diw.wallet.core.document.mrtd.MrtdImage, val bitmap: ImageBitmap?)
 
 object Passports {
     /** The structured view of [dump]; [decode] turns an encoded picture into a bitmap, null when it cannot. */
@@ -43,6 +48,7 @@ object Passports {
             document = dump.file(LdsFile.DG12)?.let { Lds.dg12(it) },
             portraits = decoded.mapNotNull { it.second },
             undecodedPortraits = decoded.filter { it.second == null }.map { it.first.mediaType },
+            pictures = decoded.map { PassportPicture(it.first, it.second) },
         )
     }
 

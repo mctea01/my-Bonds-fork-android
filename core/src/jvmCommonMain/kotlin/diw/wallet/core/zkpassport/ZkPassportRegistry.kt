@@ -59,14 +59,19 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
      * The CDN answers with Content-Encoding gzip whatever was asked. Asking for gzip ourselves keeps OkHttp (Android)
      * from decoding it transparently, which breaks the body on these responses; [bytes] inflates it instead.
      */
-    private suspend fun fetch(url: String, code: String): ByteArray =
-        try {
-            bytes(http.get(url) { header(HttpHeaders.AcceptEncoding, "gzip") }, code)
-        } catch (e: Unreachable) {
-            throw e
-        } catch (e: Exception) {
-            throw Unreachable(code)
+    private suspend fun fetch(url: String, code: String): ByteArray {
+        // One retry: a mobile connection that drops once should not cost a whole check.
+        repeat(2) { attempt ->
+            try {
+                return bytes(http.get(url) { header(HttpHeaders.AcceptEncoding, "gzip") }, code)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (attempt == 1) throw e as? Unreachable ?: Unreachable(code)
+            }
         }
+        throw Unreachable(code)
+    }
 
     private fun cached(name: String): File = File(cache, name).also { cache.mkdirs() }
 
@@ -126,6 +131,12 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         runCatching { file.writeText(summary.toString()) }
         return summary
     }
+
+    /** The newest certificate package of [chain] already in the cache (any root); null when none is. */
+    fun cachedCertificates(chain: Long): JsonObject? =
+        cache.listFiles { f -> f.name.startsWith("certificates-$chain-") && f.name.endsWith(".json") }.orEmpty()
+            .sortedByDescending { it.lastModified() }
+            .firstNotNullOfOrNull { runCatching { Json.parseToJsonElement(it.readText()).jsonObject }.getOrNull() }
 
     /**
      * A registry file by [url], cached by its address: certificate packages are named by root, manifests by version
