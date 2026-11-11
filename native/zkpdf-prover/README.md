@@ -17,7 +17,7 @@ See `NOTICE` and `../Cargo.lock` for licenses and dependency pins.
 
 ## Build on Linux
 
-Prerequisites: Rust 1.95, C++20 compiler (tested GCC 14), CMake, Ninja, Git and
+Prerequisites: the Rust version pinned in `../rust-toolchain.toml` (1.99.1), C++20 compiler (tested GCC 13 and 14), CMake, Ninja, Git and
 Python 3. Full workspace tests additionally need protoc and libclang for OpenAC.
 The C++ build tool fetches pinned sources during this explicit build step only.
 

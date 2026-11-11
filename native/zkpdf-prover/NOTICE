@@ -7,7 +7,7 @@ https://github.com/noir-lang/noir/tree/5a7ee9bf5ed8973076df7bb0d2b723024db09ae7
 Copyright the Noir contributors. Upstream license texts accompany the sources.
 
 Other direct dependencies: base64 (MIT OR Apache-2.0), serde and serde_json
-(MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0), bincode (MIT), flate2 (MIT OR Apache-2.0).
+(MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0), flate2 (MIT OR Apache-2.0).
 Exact transitive revisions are recorded in ../Cargo.lock.
 
 Barretenberg: v6.0.0, commit 0219f11d8133970df3974fe5ae65e006bf8c193a,
@@ -21,7 +21,7 @@ before 0.22.0 and ships as an optional component.
 https://github.com/AztecProtocol/aztec-packages/tree/7aa2bd616d632801fe65d97ee8a4434f26886b40/barretenberg
 Both builds use the BB_LITE configuration (no LMDB, world state or IPC) and
 x86_64 objects target x86-64-v2 instead of upstream's Skylake default. Their
-pinned build dependencies include msgpack-c (Boost Software License 1.0),
+pinned build dependencies include msgpack-c (headers only, Boost Software License 1.0),
 libdeflate v1.24 (MIT, 96836d7d9d10e3e0d53e6edb54eb908514e336c4) and Tracy
 headers (BSD-3-Clause, 5d542dc09f3d9378d005092a4ad446bd405f819a); the
 upstream CMake files pin these sources.

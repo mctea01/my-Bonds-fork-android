@@ -1,6 +1,7 @@
 # ZK native runtime
 
-The native runtime uses Rust 1.95.0 (TLSNotary alpha.15 needs it), UniFFI 0.29.4, cargo-ndk 4.1.2,
+The native runtime uses the Rust version pinned in rust-toolchain.toml (1.99.1; the workspace minimum of
+1.95 comes from TLSNotary alpha.15), UniFFI 0.29.4, cargo-ndk 4.1.2,
 and Android NDK 28.2.13676358. Dependencies are locked in Cargo.lock.
 Install the toolchain through rustup, install cargo-ndk with
 `cargo install cargo-ndk --version 4.1.2 --locked`, and install the pinned
