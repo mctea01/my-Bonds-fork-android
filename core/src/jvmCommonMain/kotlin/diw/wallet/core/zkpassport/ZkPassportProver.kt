@@ -231,11 +231,17 @@ class ZkPassportProver(
         }
     }
 
+    /**
+     * Feeds [data] back to the driver. Input generation runs once the certificates and the manifest are in, so a
+     * failure there is the passport's: its reason is kept (as `inputs:` and printable text) for the details.
+     */
     private fun provide(session: ZkPassportProofSession, id: String, data: String) {
         try {
             session.provide(id, data)
         } catch (e: ZkException) {
-            throw Failure(if (id == "manifest" || id == "certs") "inputs" else "driver")
+            if (id != "manifest" && id != "certs") throw Failure("driver")
+            val reason = (e as? ZkException.InvalidInput)?.reason.orEmpty().filter { it in ' '..'~' }.take(160)
+            throw Failure(if (reason.isEmpty()) "inputs" else "inputs:$reason")
         }
     }
 

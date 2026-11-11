@@ -231,8 +231,11 @@ object Lds {
     private fun u16(b: ByteArray, p: Int) = ((b[p].toInt() and 0xFF) shl 8) or (b[p + 1].toInt() and 0xFF)
     private fun u32(b: ByteArray, p: Int) = (u16(b, p) shl 16) or u16(b, p + 2)
 
-    /** Text of a DG11 or DG12 field: UTF-8, fillers as spaces, a double filler (name parts) as a comma. */
-    private fun text(b: ByteArray?): String? = b?.decodeToString()?.let { s ->
+    /**
+     * Text of a DG11 or DG12 field: UTF-8, fillers as spaces, a double filler (name parts) as a comma. Control
+     * characters some issuers pad fields with (such as NUL) count as spaces, so they do not show as gaps.
+     */
+    private fun text(b: ByteArray?): String? = b?.decodeToString()?.map { if (it.isISOControl()) ' ' else it }?.joinToString("")?.let { s ->
         if (s.contains("<<")) {
             val idx = s.indexOf("<<")
             val primary = s.substring(0, idx).replace('<', ' ').trim()

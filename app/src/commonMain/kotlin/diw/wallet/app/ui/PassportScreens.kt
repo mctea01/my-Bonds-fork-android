@@ -202,7 +202,7 @@ internal fun PassportDataView(v: PassportView) {
             if (it.givenNames.isNotEmpty()) LabelValue(stringResource(Res.string.mrtd_given_names), it.givenNames.joinToString(" "), small = true)
         }
         v.personal?.fullName?.let { LabelValue(stringResource(Res.string.mrtd_full_name), it, small = true) }
-        v.personal?.otherNames?.takeIf { it.isNotEmpty() }?.let { LabelValue(stringResource(Res.string.mrtd_other_names), it.joinToString("; "), small = true) }
+        v.personal?.otherNames?.takeIf { it.isNotEmpty() }?.let { LabelValue(stringResource(Res.string.mrtd_other_names), it.joinToString("\n"), small = true) }
         m?.let {
             if (it.nationality.isNotEmpty()) LabelValue(stringResource(Res.string.field_nationality), it.nationality, small = true)
             LabelValue(stringResource(Res.string.field_sex), it.sex, small = true)

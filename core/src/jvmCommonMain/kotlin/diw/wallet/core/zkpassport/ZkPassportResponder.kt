@@ -284,7 +284,7 @@ class JvmZkPassportHolder(
                     else -> "other:" + (e::class.simpleName ?: "error")
                 }
                 // The requester's app reads these texts; the one for documents without inputs is the SDK's own.
-                val text = if (code == "inputs") "This ID is not supported yet" else "Proof generation failed: $code"
+                val text = if (code == "inputs" || code.startsWith("inputs:")) "This ID is not supported yet" else "Proof generation failed: $code"
                 runCatching { responder.send(listOf("error" to buildJsonObject { put("error", text) })) }
                 throw ZkPassportAnswerFailure(code)
             }

@@ -241,6 +241,12 @@ class JvmZkPassportVerifier(
                     if (verifierApi(request, proofs, queryResult) == true) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
                     else result
                 } else result
+                // Proofs keyed by Barretenberg 5 cannot verify here at all; say so rather than calling them invalid.
+                .let {
+                    if (!it.verified && ZkPassport.legacyBackend(version) && it.errors.isNotEmpty() && it.errors.all { e -> e.startsWith("proof:") }) {
+                        it.copy(errors = listOf("backend_legacy:$version") + it.errors)
+                    } else it
+                }
                 if (decided.verified && !dev) decided.copy(csca = csca(chain, certificateRoot, decided, config.cscaAnchors)) else decided
             } catch (e: ZkPassportRegistry.Unreachable) {
                 ZkPassport.failure(e.code, dev)

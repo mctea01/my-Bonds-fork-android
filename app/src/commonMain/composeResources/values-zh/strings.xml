@@ -2359,7 +2359,7 @@
     <string name="mrtd_unread">未讀取</string>
     <string name="mrtd_zone">機讀區（可貼上）</string>
     <string name="mrtd_zone_bad">機讀區檢查碼不符：%1$s，請確認內容</string>
-    <string name="mrtd_zone_ok">機讀區正確：%1$s</string>
+    <string name="mrtd_zone_ok">機讀區檢查碼正確：%1$s（姓名沒有檢查碼，以晶片資料為準）</string>
     <string name="ms_added">已加入證件</string>
     <string name="ms_collecting">向發行端領取憑證</string>
     <string name="ms_credential">Verified ID 憑證</string>
@@ -4217,6 +4217,7 @@
     <string name="zkp_err_nullifier">證明中的識別碼不一致或屬不支援的類型。</string>
     <string name="zkp_err_oprf_key">加鹽識別碼只接受本錢包服務端的 OPRF 金鑰；證明使用其他金鑰，或尚未設定提供 OPRF 的服務端。</string>
     <string name="zkp_err_proof">零知識證明驗證失敗。</string>
+    <string name="zkp_err_backend_legacy">這份證明使用 zkPassport %1$s 版電路，需要 Barretenberg 5 驗證；本 App 只內建 Barretenberg 6（0.22.0 版起），無法在本機判斷真偽。可在設定開啟「允許 zkPassport 查驗服務判定」交由官方服務判斷，或請對方將 App 更新到使用 0.22.0 版電路後重試。</string>
     <string name="zkp_err_query">證明沒有涵蓋所有要求的條件。</string>
     <string name="zkp_err_registry">無法讀取以太坊註冊表，請檢查網路或設定中的節點。</string>
     <string name="zkp_err_scope">證明不是為這個網域或用途產生。</string>
@@ -4226,6 +4227,7 @@
     <string name="zkp_fail_proof">對方 App 無法產生所有要求的證明。</string>
     <string name="zkp_fail_unsupported">zkPassport 尚不支援對方的證件。</string>
     <string name="zkp_failed">zkPassport 證明未通過</string>
+    <string name="zkp_not_checked">無法在這台裝置驗證 zkPassport 證明</string>
     <string name="zkp_field_birthdate">出生日期</string>
     <string name="zkp_field_document_number">證件號碼</string>
     <string name="zkp_field_document_type">證件種類</string>
@@ -4333,6 +4335,7 @@
     <string name="zkp_answer_err_passport">保存的護照讀取資料缺少證明所需的晶片檔案（SOD 與 DG1），請重新讀取晶片。</string>
     <string name="zkp_answer_err_crs">本機尚未取得證明參數。</string>
     <string name="zkp_answer_err_inputs">zkPassport 電路尚不支援這本護照，已告知請求方。</string>
+    <string name="zkp_answer_err_reason">原因：%1$s</string>
     <string name="zkp_answer_err_circuit">電路或憑證與 zkPassport 註冊表不符，未產生證明。</string>
     <string name="zkp_answer_err_other">無法產生證明（%1$s）。</string>
     <string name="derive_chip_file">晶片檔案，%1$d 位元組。可讓查驗方重做被動驗證；內含完整機讀區，只在需要時出示。</string>

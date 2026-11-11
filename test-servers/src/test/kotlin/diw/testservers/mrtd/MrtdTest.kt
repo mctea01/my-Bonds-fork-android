@@ -441,6 +441,10 @@ class MrtdTest {
         assertEquals("740812", td3.birthDate)
         assertEquals("120415", td3.expiryDate)
         assertEquals("ERIKSSON", td3.primaryIdentifier)
+        // Fillers after the names read as letters: the name has no check digit, so they are cleaned by position.
+        val noisy = Mrz.recognize("P<UTOERIKSSON<<ANNA<MARIA<<<<<<GGG<GGG<GGGG00\nL898902C36UTO7408122F1204159ZE184226B<<<<<10")
+        assertNotNull(noisy)
+        assertEquals("ERIKSSON, ANNA MARIA", noisy.fullName)
         val td1 = Mrz.recognize("I<UTOD231458907<<<<<<<<<<<<<<<\n74O8122F12O4159UT0<<<<<<<<<<<6\nERIKSS0N<<ANNA<MARIA<<<<<<<<<<")
         assertNotNull(td1)
         assertEquals("D23145890", td1.documentNumber)
@@ -511,5 +515,12 @@ class MrtdTest {
         val report = inspect(read(chip()), anchor = false)
         assertEquals(DocumentVerdict.PARTIAL, report.verdict)
         assertEquals(Check.PASS, report.signatures.single().integrity)
+    }
+
+    @Test fun otherNamesPaddedWithControlCharactersAreTrimmed() {
+        val padded = "DOE<<JANE<ANN".encodeToByteArray() + ByteArray(8)
+        val local = "\u6E2C\u8A66".encodeToByteArray() + byteArrayOf(0, 0, 0)
+        val dg11 = BerTlv.encode(0x6B, BerTlv.encode(0xA0, BerTlv.encode(0x02, byteArrayOf(2)) + BerTlv.encode(0x5F0F, padded) + BerTlv.encode(0x5F0F, local)))
+        assertEquals(listOf("DOE, JANE ANN", "\u6E2C\u8A66"), Lds.dg11(dg11)?.otherNames)
     }
 }

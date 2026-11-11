@@ -876,6 +876,8 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -896,6 +898,8 @@ internal interface IntegrityCheckingUniffiLib : Library {
 fun uniffi_diw_zk_checksum_func_create_age_show_input(
 ): Short
 fun uniffi_diw_zk_checksum_func_generate_shared_blinds(
+): Short
+fun uniffi_diw_zk_checksum_func_jpeg2000_decode(
 ): Short
 fun uniffi_diw_zk_checksum_func_native_info(
 ): Short
@@ -1049,6 +1053,8 @@ fun uniffi_diw_zk_fn_func_create_age_prepare_input(`documentsPath`: RustBuffer.B
 fun uniffi_diw_zk_fn_func_create_age_show_input(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`deviceSignature`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_diw_zk_fn_func_generate_shared_blinds(`documentsPath`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_jpeg2000_decode(`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_native_info(uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1229,6 +1235,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_generate_shared_blinds() != 56882.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_jpeg2000_decode() != 5095.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_native_info() != 9623.toShort()) {
@@ -2301,6 +2310,45 @@ public object FfiConverterTypeOpenAcPublicSignals: FfiConverterRustBuffer<OpenAc
     override fun write(value: OpenAcPublicSignals, buf: ByteBuffer) {
             FfiConverterSequenceString.write(value.`prepare`, buf)
             FfiConverterSequenceString.write(value.`show`, buf)
+    }
+}
+
+
+
+/**
+ * A decoded picture as 8-bit RGBA rows, top to bottom.
+ */
+data class RgbaImage (
+    var `width`: kotlin.UInt, 
+    var `height`: kotlin.UInt, 
+    var `rgba`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeRgbaImage: FfiConverterRustBuffer<RgbaImage> {
+    override fun read(buf: ByteBuffer): RgbaImage {
+        return RgbaImage(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: RgbaImage) = (
+            FfiConverterUInt.allocationSize(value.`width`) +
+            FfiConverterUInt.allocationSize(value.`height`) +
+            FfiConverterByteArray.allocationSize(value.`rgba`)
+    )
+
+    override fun write(value: RgbaImage, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`width`, buf)
+            FfiConverterUInt.write(value.`height`, buf)
+            FfiConverterByteArray.write(value.`rgba`, buf)
     }
 }
 
@@ -4180,6 +4228,19 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_generate_shared_blinds(
         FfiConverterString.lower(`documentsPath`),FfiConverterTypeZkCancelToken.lower(`cancel`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Decodes a JPEG 2000 file (JP2) or bare codestream (J2K) into RGBA.
+         */
+    @Throws(ZkException::class) fun `jpeg2000Decode`(`data`: kotlin.ByteArray): RgbaImage {
+            return FfiConverterTypeRgbaImage.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_jpeg2000_decode(
+        FfiConverterByteArray.lower(`data`),_status)
 }
     )
     }

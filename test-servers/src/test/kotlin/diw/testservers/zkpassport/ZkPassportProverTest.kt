@@ -112,6 +112,15 @@ class ZkPassportProverTest {
         assertTrue(fetched.none { it.contains("/by-hash/") }, "no circuit is fetched before inputs exist")
     }
 
+    @Test fun proofsBeforeCircuitsZeroTwentyTwoNeedBarretenbergFive() {
+        // zkPassport's SDK picks bb.js 5 below 0.22.0 and 6 from it; this app ships only Barretenberg 6.
+        kotlin.test.assertTrue(diw.wallet.core.zkpassport.ZkPassport.legacyBackend("0.21.0"))
+        kotlin.test.assertTrue(diw.wallet.core.zkpassport.ZkPassport.legacyBackend("0.9.30"))
+        kotlin.test.assertFalse(diw.wallet.core.zkpassport.ZkPassport.legacyBackend("0.22.0"))
+        kotlin.test.assertFalse(diw.wallet.core.zkpassport.ZkPassport.legacyBackend("1.0.0"))
+        kotlin.test.assertFalse(diw.wallet.core.zkpassport.ZkPassport.legacyBackend("next"))
+    }
+
     @Test fun saltsAreFreshFieldElements() {
         val a = ZkPassportProver.salt().toBigInteger()
         val b = ZkPassportProver.salt().toBigInteger()

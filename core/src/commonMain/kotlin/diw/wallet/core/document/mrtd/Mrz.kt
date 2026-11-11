@@ -304,16 +304,16 @@ data class Mrz(
             when {
                 n == 30 && l.size == 3 && l[0][0] == 'C' && l[0][1] != '<' -> {
                     // Permit layout: line 1 holds the number, issue count, expiry, sex and birth date.
-                    fixed = listOf(l[0].lettersAt(0..1).digitsAt(11..21).digitsAt(23..29), l[1], l[2].lettersAt(0..29))
+                    fixed = listOf(l[0].lettersAt(0..1).digitsAt(11..21).digitsAt(23..29), l[1], l[2].lettersAt(0..25).nameIn(0..25))
                     number = 0 to 2..10
                 }
                 n == 30 && l.size == 3 -> {
-                    fixed = listOf(l[0].lettersAt(0..4).digitsAt(14..14), l[1].digitsAt(0..6).digitsAt(8..14).lettersAt(15..17).digitsAt(29..29), l[2].lettersAt(0..29))
+                    fixed = listOf(l[0].lettersAt(0..4).digitsAt(14..14), l[1].digitsAt(0..6).digitsAt(8..14).lettersAt(15..17).digitsAt(29..29), l[2].lettersAt(0..29).nameIn(0..29))
                     number = 0 to 5..13
                 }
                 (n == 44 || n == 36) && l.size == 2 -> {
                     val last = n - 1
-                    fixed = listOf(l[0].lettersAt(0..n - 1), l[1].digitsAt(9..9).lettersAt(10..12).digitsAt(13..19).digitsAt(21..27).digitsAt(last..last))
+                    fixed = listOf(l[0].lettersAt(0..n - 1).nameIn(5..n - 1), l[1].digitsAt(9..9).lettersAt(10..12).digitsAt(13..19).digitsAt(21..27).digitsAt(last..last))
                     number = 1 to 0..8
                 }
                 else -> return listOf(l)
@@ -321,6 +321,16 @@ data class Mrz(
             val (line, range) = number
             val asDigits = fixed.toMutableList().also { it[line] = it[line].digitsAt(range.first + 1..range.last) }
             return listOf(fixed, asDigits).distinct()
+        }
+
+        /**
+         * The name field in [range] with what OCR made of its fillers cleaned up: names never hold three fillers in
+         * a row, so everything after the first such run is filler (OCR reads `<` as K, G, C or 0 there). The name has
+         * no check digit, so this is the only correction it gets.
+         */
+        private fun String.nameIn(range: IntRange): String {
+            val run = indexOf("<<<", range.first).takeIf { it in range } ?: return this
+            return substring(0, run) + "<".repeat(range.last + 1 - run) + substring(range.last + 1)
         }
 
         /** An OCR line one or two characters off a known length, padded or cut to it. */

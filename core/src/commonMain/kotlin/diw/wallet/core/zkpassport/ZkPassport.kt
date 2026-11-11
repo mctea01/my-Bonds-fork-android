@@ -244,6 +244,18 @@ object ZkPassport {
      */
     const val CIRCUIT_VERSION = "0.22.0"
 
+    /**
+     * Whether proofs of circuit [version] need Barretenberg 5, which this app does not ship: versions before
+     * [CIRCUIT_VERSION], as zkPassport's SDK decides (a malformed version counts as current).
+     */
+    fun legacyBackend(version: String): Boolean {
+        val parts = version.split('.').map { it.toIntOrNull() ?: return false }
+        if (parts.size != 3) return false
+        val current = CIRCUIT_VERSION.split('.').map { it.toInt() }
+        for (i in 0 until 3) if (parts[i] != current[i]) return parts[i] < current[i]
+        return false
+    }
+
     const val MAINNET_RPC = "https://ethereum-rpc.publicnode.com"
     const val SEPOLIA_RPC = "https://ethereum-sepolia-rpc.publicnode.com"
 

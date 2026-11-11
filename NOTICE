@@ -76,6 +76,8 @@ its own license:
   with Leptonica - BSD 2-Clause, libjpeg-turbo - IJG and BSD 3-Clause, libpng -
   libpng License; tessdata_fast eng.traineddata (app/src/androidMain/assets/
   tessdata) - Apache License 2.0
+- hayro-jpeg2000 0.5.0 (JPEG 2000 decoding of chip portraits, in the native
+  library) with fearless_simd - Apache License 2.0 or MIT
 
 Development and test tools that are not shipped in the application:
 

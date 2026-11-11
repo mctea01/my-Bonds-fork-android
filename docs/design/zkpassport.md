@@ -176,7 +176,8 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - Kotlin `core/zkpassport`：請求網址與 SDK 查詢（`ZkPassport`）、bridge 建立端（`ZkPassportBridgeProtocol`，ECDH、AES-GCM、zlib 分塊、ping、重連與 replay）、電路清單與金鑰、憑證包、`isRootValid`（`ZkPassportRegistry`，依清單版本與憑證樹根快取在本機）、工作階段（`JvmZkPassportVerifier`，最多重連 5 次）。證明全部失敗於 bb 且使用者開啟時才問 zkPassport 查驗 API，結果標示。
 - 信任：揭露或限定的發證國，其憑證包中的 CSCA 金鑰全部是本 App 的 `TRAVEL_DOCUMENT` 錨點時為 T2（結果卡通過），否則 T3（結果卡注意）並列出比對數；憑證包下載失敗或雜湊不符時維持 T3。
 - App：查驗分頁「以 zkPassport 查驗護照」（需同意 zkPassport 專門聲明 v2），設定網域、服務名稱、用途、揭露欄位、最低年齡、國籍與發證國條件、綁定資料，測試環境可接受測試護照；QR 與在本機開啟、進度、結果卡（揭露值、條件、識別碼與其可關聯性、證明日期、技術細節）與歷史紀錄。零知識證明設定頁有網域、主網與 Sepolia 節點（空白用內建公開節點）與查驗 API 開關（預設關閉）。Windows 沒有 zkPDF 原生元件，入口會說明無法查驗。
-- 未驗證：zkPassport 目前鏈上的 0.21.1 電路是 bb 5 產生的證明，以 bb v6 驗證尚未以實機與官方 App 測試；離線時註冊表查詢會失敗，「註冊表狀態截至」的離線模式尚未提供。
+- 2026-11-11 實機：官方 App 以 0.21.0 電路回傳的證明以 bb v6 驗證失敗（`proof_invalid`），與 4.2 一致。使用者決定：電路版本低於 0.22.0 且只有子證明驗證失敗時，結果改為「無法在這台裝置驗證」並說明需要 Barretenberg 5（錯誤碼 `backend_legacy:<版本>`），開啟「允許 zkPassport 查驗服務判定」時交由官方服務判斷，不內建 bb 5。
+- 未驗證：離線時註冊表查詢會失敗，「註冊表狀態截至」的離線模式尚未提供。
 
 ### 5.3 Z3 zkPassport 相容回應
 

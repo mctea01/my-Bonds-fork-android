@@ -188,6 +188,8 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when {
             r == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_not_finished), listOfNotNull(s.error))
+            !r.verified && r.errors.any { it.startsWith("backend_legacy:") } ->
+                VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_not_checked), ZkPassportFlow.problems(r.errors))
             !r.verified -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_failed), ZkPassportFlow.problems(r.errors))
             else -> {
                 val caveats = buildList {

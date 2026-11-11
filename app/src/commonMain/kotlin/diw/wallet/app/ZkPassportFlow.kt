@@ -291,13 +291,17 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
 
         /** The checker's error codes in words, each kind once. */
-        fun problems(errors: List<String>): List<String> = errors.map { e ->
+        fun problems(errors: List<String>): List<String> = errors.filterNot { e ->
+            // A proof Barretenberg 5 keyed was never checked here, so it is not reported as invalid.
+            e.startsWith("proof:") && errors.any { it.startsWith("backend_legacy:") }
+        }.map { e ->
             when {
                 e == "native_unavailable" -> tr(Res.string.zkp_err_native)
                 e == "registry_unreachable" -> tr(Res.string.zkp_err_registry)
                 e == "manifest_unavailable" || e == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn)
                 e.startsWith("certificate_root") -> tr(Res.string.zkp_err_certificate_root)
                 e.startsWith("circuit_root") || e.startsWith("manifest") || e.startsWith("vkey:") -> tr(Res.string.zkp_err_circuit_root)
+                e.startsWith("backend_legacy:") -> tr(Res.string.zkp_err_backend_legacy, e.substringAfter(':'))
                 e.startsWith("proof:") -> tr(Res.string.zkp_err_proof)
                 e.startsWith("commitment:") -> tr(Res.string.zkp_err_commitment)
                 e.startsWith("scope:") -> tr(Res.string.zkp_err_scope)
@@ -398,6 +402,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code == "native_unavailable" -> tr(Res.string.zkp_answer_no_engine)
             code == "crs_missing" -> tr(Res.string.zkp_answer_err_crs)
             code == "inputs" -> tr(Res.string.zkp_answer_err_inputs)
+            code.startsWith("inputs:") -> tr(Res.string.zkp_answer_err_inputs) + "\n" + tr(Res.string.zkp_answer_err_reason, code.substringAfter(':'))
             code.startsWith("registry") -> tr(Res.string.zkp_err_registry)
             code == "manifest_unavailable" || code == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn)
             code == "certificates_unavailable" -> tr(Res.string.zkp_answer_err_certificates)
