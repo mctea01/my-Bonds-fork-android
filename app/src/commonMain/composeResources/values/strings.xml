@@ -4236,7 +4236,9 @@
     <string name="zkp_err_nullifier">The identifier in the proofs is inconsistent or of an unsupported kind.</string>
     <string name="zkp_err_oprf_key">Salted identifiers are accepted only under the OPRF key of this wallet's server; the proofs use another key, or no server with the OPRF is set.</string>
     <string name="zkp_err_proof">A zero-knowledge proof did not verify.</string>
-    <string name="zkp_err_backend_legacy">These proofs use zkPassport circuit version %1$s, which needs Barretenberg 5 to verify; this app only includes Barretenberg 6 (from version 0.22.0), so it cannot tell here whether they are genuine. You can turn on "Let zkPassport's verifier service decide" in settings to let the official service decide, or ask the other person to update their app to circuits 0.22.0 and try again.</string>
+    <string name="zkp_err_backend_legacy">These proofs use zkPassport circuit version %1$s, which needs Barretenberg 5 to verify, and that component is not on this device yet, so it cannot tell here whether they are genuine. With the app from Google Play, install it with the button below or in the zkPassport section of settings; the full APK released on GitHub and the desktop app include it. You can also turn on \"Let zkPassport's verifier service decide\" in settings to let the official service decide.</string>
+    <string name="zkp_err_api_rejected">As set, zkPassport's verifier service was asked to decide, and it answered that the proofs did not verify.</string>
+    <string name="zkp_err_api_unavailable">As set, zkPassport's verifier service was asked to decide, but it gave no answer (HTTP %1$s; 0 means no connection or a timeout). Ask again later to retry.</string>
     <string name="zkp_err_query">The proofs do not cover every condition asked for.</string>
     <string name="zkp_err_registry">The Ethereum registry cannot be read. Check the connection or the node in the settings.</string>
     <string name="zkp_err_scope">The proofs were not made for this domain or purpose.</string>
@@ -4378,6 +4380,13 @@
     <string name="zkp_needs_crs_missing">not downloaded; requests cannot be answered until they are</string>
     <string name="zkp_needs_crs_download">Download the proof parameters (%1$s)</string>
     <string name="zkp_needs_circuits">Circuits: zkPassport %1$s. They are not downloaded in advance: when you answer a request, the circuits for that document and request are fetched from zkPassport, checked against the on-chain circuit registry and kept for later.</string>
+    <string name="zkp_legacy_error">Installation failed: %1$s</string>
+    <string name="zkp_legacy_installed">The verifier for older circuits is installed. Tap \"Ask again\" to have the other person present once more.</string>
+    <string name="zkp_legacy_installing">Installing the verifier for older circuits (%1$d%%)</string>
+    <string name="zkp_legacy_install">Install the verifier for older circuits</string>
+    <string name="zkp_needs_legacy_unavailable">not in this package and cannot be installed from the app; the full APK released on GitHub includes it</string>
+    <string name="zkp_needs_legacy_missing">not installed; proofs of those versions cannot be verified on this device</string>
+    <string name="zkp_needs_legacy">Verifier for older circuits (before %1$s), Barretenberg 5: </string>
     <string name="zkp_answer_err_certificates">The certificate package of the zkPassport registry could not be downloaded.</string>
     <string name="zkp_answer_origin_same_site">Sent by another page of the same site</string>
     <string name="zkp_answer_origin_same_site_detail">The zkPassport bridge reports the requester as %1$s, and the request names %2$s. Both belong to the same site; the proof is bound to the domain the request names.</string>

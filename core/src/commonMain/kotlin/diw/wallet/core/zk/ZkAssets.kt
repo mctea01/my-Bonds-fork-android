@@ -55,6 +55,9 @@ interface ZkEnvironment {
     /** zkPassport requests answered with proofs made on this device (Z3); null where the platform has none. */
     val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder? get() = null
 
+    /** Barretenberg 5, which verifies zkPassport proofs of circuits before 0.22.0; null where the platform has none. */
+    val zkPassportLegacy: ZkComponent? get() = null
+
     /** Resident memory of this process in MiB, sampled while a proof runs to measure its peak; null where unknown. */
     fun residentMemoryMb(): Long? = null
 }

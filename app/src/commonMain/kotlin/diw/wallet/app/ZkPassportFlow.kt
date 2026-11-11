@@ -76,6 +76,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             mainnetRpc = settings.zkPassportMainnetRpc.trim().ifEmpty { null },
             sepoliaRpc = settings.zkPassportSepoliaRpc.trim().ifEmpty { null },
             verifierApi = settings.zkPassportVerifierApi,
+            verifierApiNow = { model.settings.zkPassportVerifierApi },
         )
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.ZkPassportWaiting(request, null, ZkPassportState.Connecting)
@@ -302,6 +303,8 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 e.startsWith("certificate_root") -> tr(Res.string.zkp_err_certificate_root)
                 e.startsWith("circuit_root") || e.startsWith("manifest") || e.startsWith("vkey:") -> tr(Res.string.zkp_err_circuit_root)
                 e.startsWith("backend_legacy:") -> tr(Res.string.zkp_err_backend_legacy, e.substringAfter(':'))
+                e == "verifier_api:rejected" -> tr(Res.string.zkp_err_api_rejected)
+                e.startsWith("verifier_api:") -> tr(Res.string.zkp_err_api_unavailable, e.substringAfterLast(':'))
                 e.startsWith("proof:") -> tr(Res.string.zkp_err_proof)
                 e.startsWith("commitment:") -> tr(Res.string.zkp_err_commitment)
                 e.startsWith("scope:") -> tr(Res.string.zkp_err_scope)

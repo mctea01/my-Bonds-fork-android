@@ -35,8 +35,10 @@ import java.util.Base64
 
 /**
  * The holder (joiner) side of zkPassport's bridge. The first connection carries the handshake in `moc` and asks
- * with `ooc` for the creator connection's origin, which the bridge reports itself; once known, frames the bridge
- * marks with another origin are dropped, as @obsidion/bridge's joiner does. Pure frame logic, tested without a network.
+ * with `ooc` for the creator connection's origin, which the bridge reports itself. As in @obsidion/bridge's joiner,
+ * the origin the bridge stamps on the requester's encrypted `hello` (its answer to the handshake) counts too when
+ * no `ooc` came first; once known, frames the bridge marks with another origin are dropped. Pure frame logic,
+ * tested without a network.
  */
 class ZkPassportHolderBridge(verifierPublicKey: String, private val random: SecureRandom = SecureRandom()) {
     sealed interface Event {
@@ -92,9 +94,15 @@ class ZkPassportHolderBridge(verifierPublicKey: String, private val random: Secu
         if (method != "encryptedMessage" || !seen.add(id)) return none
         if (seen.size > 4096) seen.remove(seen.first())
         val pinned = origin
-        if (pinned != null && data["origin"].text()?.let(::originOf) != pinned) return none
+        val stamped = data["origin"].text()?.let(::originOf)
+        if (pinned != null && stamped != pinned) return none
         val payload = ((data["params"] as? JsonObject)?.get("payload")).text() ?: return none
         val message = channel.message(payload) ?: return none
+        // Only the requester holds the channel key, so a frame that decrypts is its own; the bridge stamped the origin.
+        if (pinned == null && stamped != null) {
+            origin = stamped
+            return emptyList<String>() to listOf(Event.Origin(stamped), Event.Message(message.method, message.params))
+        }
         return emptyList<String>() to listOf(Event.Message(message.method, message.params))
     }
 

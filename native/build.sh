@@ -14,19 +14,29 @@ fi
 targets=${targets//host/$host}
 # Optional proof backends (DIW_ZK_FEATURES, set by Gradle's diw.zkFeatures). The exports exist in every build;
 # a backend left out reports Unsupported. OpenAC needs protoc and libclang to build its witness runtime.
+# bb5 is not a feature of diw-zk-ffi but the separate Barretenberg 5 library (zkpassport-bb5) for zkPassport proofs
+# of circuits before 0.22.0; it needs zkpdf and goes to dist/android-bb5 (the on-demand module) or next to diw_zk.
 features=${DIW_ZK_FEATURES:-}
 if [[ -n "$features" ]]; then
     [[ "$features" != ,* && "$features" != *, && "$features" != *,,* ]] || { echo "Invalid DIW_ZK_FEATURES list" >&2; exit 1; }
     IFS=',' read -ra backends <<< "$features"
     for backend in "${backends[@]}"; do
         case "$backend" in
-            openac|tlsn|zkpdf|oprf) ;;
+            openac|tlsn|zkpdf|oprf|bb5) ;;
             *) echo "Unsupported DIW_ZK_FEATURES entry" >&2; exit 1 ;;
         esac
     done
 fi
+with_bb5=false
+if [[ ",$features," == *,bb5,* ]]; then
+    [[ ",$features," == *,zkpdf,* ]] || { echo "bb5 needs zkpdf in DIW_ZK_FEATURES" >&2; exit 1; }
+    with_bb5=true
+    ffi_features=$(printf '%s' ",$features," | sed 's/,bb5,/,/; s/^,//; s/,$//')
+else
+    ffi_features=$features
+fi
 feature_args=()
-[[ -z "$features" ]] || feature_args=(--features "$features")
+[[ -z "$ffi_features" ]] || feature_args=(--features "$ffi_features")
 # Android ABIs for the android target (DIW_ZK_ANDROID_ABIS, a comma list); CI builds one ABI per job to bound disk use.
 android_abis=${DIW_ZK_ANDROID_ABIS:-arm64-v8a,x86_64}
 IFS=',' read -ra abis <<< "$android_abis"
@@ -46,6 +56,16 @@ build_zkpdf() {
     export ZKPDF_BB_BUILD=${bb_build_override:-"$PWD/target/bb-$bb_target"}
     if [[ ! -f "$ZKPDF_BB_BUILD/lib/libbarretenberg.a" || ! -f "$ZKPDF_BB_BUILD/_deps/libdeflate-build/libdeflate.a" ]]; then
         python3 -I zkpdf-prover/tools/build_bb.py --source "$ZKPDF_BB_SOURCE" --build "$ZKPDF_BB_BUILD" --target "$bb_target"
+    fi
+}
+# Barretenberg 5 for the zkpassport-bb5 library, built the same way from its own pinned source.
+build_bb5() {
+    local bb_target=$1
+    "$with_bb5" || return 0
+    export DIW_BB5_SOURCE=${DIW_BB5_SOURCE:-"$PWD/target/bb-v5"}
+    export DIW_BB5_BUILD="$PWD/target/bb5-$bb_target"
+    if [[ ! -f "$DIW_BB5_BUILD/lib/libbarretenberg.a" || ! -f "$DIW_BB5_BUILD/_deps/libdeflate-build/libdeflate.a" ]]; then
+        python3 -I zkpdf-prover/tools/build_bb.py --version v5 --source "$DIW_BB5_SOURCE" --build "$DIW_BB5_BUILD" --target "$bb_target"
     fi
 }
 IFS=',' read -ra selected <<< "$targets"
@@ -72,6 +92,11 @@ for target in "${selected[@]}"; do
                 ZKPDF_CXX="$zkpdf_cxx" ZKPDF_AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
                 printf 'zkpdf_android abi=%s build_seconds=%s library_bytes=%s\n' \
                     "$abi" "$((SECONDS - abi_started))" "$(wc -c < "dist/android/$abi/libdiw_zk.so")"
+                if "$with_bb5"; then
+                    build_bb5 "$rust_target"
+                    ZKPDF_CXX="$zkpdf_cxx" ZKPDF_AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android-bb5 build --release --locked -p zkpassport-bb5 --features bb
+                    printf 'bb5_android abi=%s library_bytes=%s\n' "$abi" "$(wc -c < "dist/android-bb5/$abi/libdiw_bb5.so")"
+                fi
             done
         else
             cargo ndk "${abi_args[@]}" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
@@ -87,11 +112,19 @@ for target in "${selected[@]}"; do
         build_zkpdf "$target"
         rustup target add "$target"
         cargo build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"} --target "$target"
+        libraries=("$library")
+        if "$with_bb5"; then
+            build_bb5 "$target"
+            cargo build --release --locked -p zkpassport-bb5 --features bb --target "$target"
+            libraries+=("${library/diw_zk/diw_bb5}")
+        fi
         mkdir -p "dist/resources/zk/native/$platform"
-        cp "target/$target/release/$library" "dist/resources/zk/native/$platform/$library"
-        # sha256sum on Linux and Git for Windows, shasum on macOS.
-        path="dist/resources/zk/native/$platform/$library"
-        if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
-        printf '%s\n' "${digest%% *}" > "$path.sha256"
+        for name in "${libraries[@]}"; do
+            cp "target/$target/release/$name" "dist/resources/zk/native/$platform/$name"
+            # sha256sum on Linux and Git for Windows, shasum on macOS.
+            path="dist/resources/zk/native/$platform/$name"
+            if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
+            printf '%s\n' "${digest%% *}" > "$path.sha256"
+        done
     fi
 done

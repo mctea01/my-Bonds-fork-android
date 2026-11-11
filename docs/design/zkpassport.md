@@ -177,6 +177,10 @@ zkPassport 的證明只證明「DSC 由憑證註冊表裡的某個 CSCA 簽發�
 - 信任：揭露或限定的發證國，其憑證包中的 CSCA 金鑰全部是本 App 的 `TRAVEL_DOCUMENT` 錨點時為 T2（結果卡通過），否則 T3（結果卡注意）並列出比對數；憑證包下載失敗或雜湊不符時維持 T3。
 - App：查驗分頁「以 zkPassport 查驗護照」（需同意 zkPassport 專門聲明 v2），設定網域、服務名稱、用途、揭露欄位、最低年齡、國籍與發證國條件、綁定資料，測試環境可接受測試護照；QR 與在本機開啟、進度、結果卡（揭露值、條件、識別碼與其可關聯性、證明日期、技術細節）與歷史紀錄。零知識證明設定頁有網域、主網與 Sepolia 節點（空白用內建公開節點）與查驗 API 開關（預設關閉）。Windows 沒有 zkPDF 原生元件，入口會說明無法查驗。
 - 2026-11-11 實機：官方 App 以 0.21.0 電路回傳的證明以 bb v6 驗證失敗（`proof_invalid`），與 4.2 一致。使用者決定：電路版本低於 0.22.0 且只有子證明驗證失敗時，結果改為「無法在這台裝置驗證」並說明需要 Barretenberg 5（錯誤碼 `backend_legacy:<版本>`），開啟「允許 zkPassport 查驗服務判定」時交由官方服務判斷，不內建 bb 5。
+- 2026-11-11 使用者改決定：加入 bb 5 作為選用元件，所有版本功能一致。`native/zkpassport-bb5` 是獨立的動態函式庫 `diw_bb5`（aztec-packages `v5.0.0`，`7aa2bd616d632801fe65d97ee8a4434f26886b40`，同一個 `build_bb.py --version v5` 建置），只匯出 `diw_bb5_abi`、`diw_bb5_revision`、`diw_bb5_verify` 三個函式，所以它的 C++ 符號不會和 `diw_zk` 裡的 bb v6 衝突；`diw-zk-ffi` 以 `zkpassport_legacy_backend` 開啟它，`zkpassport_verify_legacy` 做與 `zkpassport_verify` 相同的檢查，只是子證明改由 bb 5 驗證。只驗證、不產生證明，CRS 只用 [1]₁ 與 Aztec 儀式的 [x]₂。
+  - 查證：本機以這個 bb 5 從 zkPassport 發佈的 0.21.1 compare_age 電路包重新推導 vkey，與發佈的 vkey 逐位元組相同（`zkpassport-bb5` 的 `derives_the_published_key`，需要電路包與 CRS 前段）；在同一個行程裡先後使用 bb 5 與 bb v6 都正常（`diw-zk-ffi` 的 `legacy_backend_loads_beside_barretenberg_6`）。目前沒有公開的 bb 5 證明可當測試向量，真實證明的驗證待實機確認。
+  - 交付：Google Play 版是隨選動態功能模組 `features/bb5`，在設定的 zkPassport 區段或查驗結果頁安裝；GitHub 的 APK 與電腦版已內含（[release.md](../release.md)「Android 選用元件與 APK」）。沒有元件時仍回 `backend_legacy:<版本>`，開啟「允許 zkPassport 查驗服務判定」時交由官方服務；服務的回覆會記在錯誤裡（`verifier_api:rejected`、`verifier_api:unavailable:<HTTP 狀態>`），開關在證明送達時讀取，請求進行中切換也有效。
+  - 建置：上游 `cmake/arch.cmake` 對 x86_64 一律加 `-march=skylake`（AVX2），`build_bb.py` 以 `tools/portable_x86_64.cmake` 拿掉它並改用 x86-64-v2（Android x86_64 ABI 的基準），bb v6 與 bb 5 都適用。
 - 未驗證：離線時註冊表查詢會失敗，「註冊表狀態截至」的離線模式尚未提供。
 
 ### 5.3 Z3 zkPassport 相容回應

@@ -5,6 +5,7 @@ import diw.wallet.core.zk.native.bindings.zkpassportCertificates
 import diw.wallet.core.zk.native.bindings.zkpassportCircuitRoot
 import diw.wallet.core.zk.native.bindings.zkpassportInspect
 import diw.wallet.core.zk.native.bindings.zkpassportVerify
+import diw.wallet.core.zk.native.bindings.zkpassportVerifyLegacy
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocketSession
@@ -52,7 +53,8 @@ import java.time.ZoneId
 /**
  * zkPassport requests over the bridge, verified by the native checker (native/zkpassport-verify) with keys from the
  * circuit registry. [crsDirectory] is the zkPDF asset folder when its full CRS is installed, so zkPDF proving keeps
- * working after a verification in the same process; [nativeReady] reports whether the library has the zkPDF backend.
+ * working after a verification in the same process; [nativeReady] reports whether the library has the zkPDF backend
+ * and [legacyReady] whether Barretenberg 5 is open for circuit versions before 0.22.0 (ZkEnvironment.zkPassportLegacy).
  */
 class JvmZkPassportVerifier(
     http: HttpClient,
@@ -61,6 +63,7 @@ class JvmZkPassportVerifier(
     private val nativeReady: suspend () -> Boolean,
     /** zkPassport's bridge; tests point it at a local relay. */
     private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
+    private val legacyReady: suspend () -> Boolean = { false },
 ) : ZkPassportVerifier {
     private val client = http.config { followRedirects = true; install(WebSockets) }
     private val registry = ZkPassportRegistry(client, cache)
@@ -232,19 +235,26 @@ class JvmZkPassportVerifier(
                     put("circuitRootValid", circuitValid)
                     config.oprfKeyHash?.let { put("oprfPublicKeyHash", it) }
                 }.toString()
-                val result = ZkPassport.result(zkpassportVerify(requestJson, crsDirectory()?.absolutePath))
+                // Circuits before 0.22.0 were keyed by Barretenberg 5, which an optional component brings.
+                val legacy = ZkPassport.legacyBackend(version) && legacyReady()
+                val result = ZkPassport.result(
+                    if (legacy) zkpassportVerifyLegacy(requestJson) else zkpassportVerify(requestJson, crsDirectory()?.absolutePath),
+                )
                 if (result.errors.none { it.startsWith("vkey:") || it.startsWith("circuit_root") || it == "manifest_root" }) {
                     registry.remember(chain, version, manifest, vkeys, hashes)
                 }
                 // Only a Barretenberg rejection is worth a second opinion; every other failure is final.
                 val decided = (
-                    if (!result.verified && config.verifierApi && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
-                        if (verifierApi(request, proofs, queryResult) == true) result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
-                        else result
+                    if (!result.verified && config.verifierApiAllowed() && result.errors.isNotEmpty() && result.errors.all { it.startsWith("proof:") }) {
+                        // Its answer is kept with the errors, so a refusal or an outage is visible, not silent.
+                        when (val answer = verifierApi(request, proofs, queryResult)) {
+                            "verified" -> result.copy(verified = true, errors = emptyList(), viaVerifierApi = true)
+                            else -> result.copy(errors = result.errors + "verifier_api:$answer")
+                        }
                     } else result
                 ).let {
-                    // Proofs keyed by Barretenberg 5 cannot verify here at all; say so rather than calling them invalid.
-                    if (!it.verified && ZkPassport.legacyBackend(version) && it.errors.isNotEmpty() && it.errors.all { e -> e.startsWith("proof:") }) {
+                    // Without Barretenberg 5 such proofs cannot verify here at all; say so rather than calling them invalid.
+                    if (!it.verified && !legacy && ZkPassport.legacyBackend(version) && it.errors.isNotEmpty() && it.errors.all { e -> e.startsWith("proof:") }) {
                         it.copy(errors = listOf("backend_legacy:$version") + it.errors)
                     } else it
                 }
@@ -281,8 +291,8 @@ class JvmZkPassportVerifier(
         return ZkPassportCscaCheck(countries, keys.size, keys.count { k -> anchorKeys.any { ZkPassportCsca.same(it, k) } })
     }
 
-    /** zkPassport's verifier service; null when it gave no usable answer. */
-    private suspend fun verifierApi(request: ZkPassportRequest, proofs: List<JsonObject>, queryResult: JsonElement): Boolean? = runCatching {
+    /** zkPassport's verifier service: verified, rejected, or unavailable with the HTTP status (0 without an answer). */
+    private suspend fun verifierApi(request: ZkPassportRequest, proofs: List<JsonObject>, queryResult: JsonElement): String = runCatching {
         val body = buildJsonObject {
             put("proofs", JsonArray(proofs))
             put("originalQuery", ZkPassport.query(request))
@@ -297,9 +307,13 @@ class JvmZkPassportVerifier(
         val response = withTimeout(60_000) {
             client.post(ZkPassportRegistry.VERIFIER_API) { contentType(ContentType.Application.Json); setBody(body.toString()) }
         }
-        if (response.status.value >= 500) return null
-        (Json.parseToJsonElement(response.bodyAsText()).jsonObject["verified"] as? JsonPrimitive)?.booleanOrNull
-    }.getOrNull()
+        val verified = runCatching { (Json.parseToJsonElement(response.bodyAsText()).jsonObject["verified"] as? JsonPrimitive)?.booleanOrNull }.getOrNull()
+        when {
+            response.status.value in 200..299 && verified == true -> "verified"
+            response.status.value in 200..499 && verified == false -> "rejected"
+            else -> "unavailable:${response.status.value}"
+        }
+    }.getOrElse { if (it is kotlinx.coroutines.CancellationException) throw it else "unavailable:0" }
 
     companion object {
         private const val CONNECT_MS = 20_000L

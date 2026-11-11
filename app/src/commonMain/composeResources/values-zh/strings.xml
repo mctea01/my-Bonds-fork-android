@@ -4236,7 +4236,9 @@
     <string name="zkp_err_nullifier">證明中的識別碼不一致或屬不支援的類型。</string>
     <string name="zkp_err_oprf_key">加鹽識別碼只接受本錢包服務端的 OPRF 金鑰；證明使用其他金鑰，或尚未設定提供 OPRF 的服務端。</string>
     <string name="zkp_err_proof">零知識證明驗證失敗。</string>
-    <string name="zkp_err_backend_legacy">這份證明使用 zkPassport %1$s 版電路，需要 Barretenberg 5 驗證；本 App 只內建 Barretenberg 6（0.22.0 版起），無法在本機判斷真偽。可在設定開啟「允許 zkPassport 查驗服務判定」交由官方服務判斷，或請對方將 App 更新到使用 0.22.0 版電路後重試。</string>
+    <string name="zkp_err_backend_legacy">這份證明使用 zkPassport %1$s 版電路，需要 Barretenberg 5 驗證，這台裝置還沒有這個元件，因此無法在本機判斷真偽。從 Google Play 安裝的 App 可按下方按鈕或在設定的 zkPassport 區段安裝；GitHub 發佈的完整 APK 與電腦版已內含。也可在設定開啟「允許 zkPassport 查驗服務判定」交由官方服務判斷。</string>
+    <string name="zkp_err_api_rejected">已依設定交由 zkPassport 查驗服務判定，服務回覆證明未通過。</string>
+    <string name="zkp_err_api_unavailable">已依設定交由 zkPassport 查驗服務判定，但服務沒有給出結果（HTTP %1$s，0 表示無法連線或逾時），稍後可重新要求再試。</string>
     <string name="zkp_err_query">證明沒有涵蓋所有要求的條件。</string>
     <string name="zkp_err_registry">無法讀取以太坊註冊表，請檢查網路或設定中的節點。</string>
     <string name="zkp_err_scope">證明不是為這個網域或用途產生。</string>
@@ -4378,6 +4380,13 @@
     <string name="zkp_needs_crs_missing">尚未下載，下載前無法回應請求</string>
     <string name="zkp_needs_crs_download">下載證明參數（%1$s）</string>
     <string name="zkp_needs_circuits">電路：zkPassport %1$s。電路不需預先下載：回應請求時依證件與請求內容從 zkPassport 取得所需電路，與鏈上電路註冊表核對後保存供下次使用。</string>
+    <string name="zkp_legacy_error">安裝失敗：%1$s</string>
+    <string name="zkp_legacy_installed">舊版電路驗證元件已安裝。請按「重新要求」再請對方出示一次。</string>
+    <string name="zkp_legacy_installing">正在安裝舊版電路驗證元件（%1$d%%）</string>
+    <string name="zkp_legacy_install">安裝舊版電路驗證元件</string>
+    <string name="zkp_needs_legacy_unavailable">這份安裝檔不含，也無法在 App 內安裝；GitHub 發佈的完整 APK 已內含</string>
+    <string name="zkp_needs_legacy_missing">未安裝；收到這些版本的證明時無法在本機驗證</string>
+    <string name="zkp_needs_legacy">舊版電路（%1$s 以前）驗證元件 Barretenberg 5：</string>
     <string name="zkp_answer_err_certificates">無法下載 zkPassport 註冊表的憑證包。</string>
     <string name="zkp_answer_origin_same_site">請求由同一網站的另一個網址送出</string>
     <string name="zkp_answer_origin_same_site_detail">zkPassport 傳送服務回報請求方為 %1$s，請求寫的是 %2$s，兩者屬於同一網站。證明綁定的是請求寫的網域。</string>

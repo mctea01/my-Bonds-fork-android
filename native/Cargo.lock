@@ -1870,6 +1870,7 @@ dependencies = [
  "base64 0.23.1",
  "hayro-jpeg2000",
  "hex",
+ "libloading",
  "num-bigint 0.4.8",
  "openac-age",
  "rand 0.8.8",
@@ -6255,6 +6256,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "zkpassport-bb5"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "flate2",
+ "serde_json",
 ]
 
 [[package]]

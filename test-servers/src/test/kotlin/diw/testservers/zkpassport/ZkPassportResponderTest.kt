@@ -110,6 +110,24 @@ class ZkPassportResponderTest {
         assertEquals("""{"method":"pong","params":{},"nocache":true}""", holder.receive("""{"method":"ping","params":{}}""").first.single())
     }
 
+    @Test
+    fun theRequestersStampedHelloGivesTheOriginWithoutOoc() {
+        val creator = ZkPassportBridgeProtocol()
+        val holder = ZkPassportHolderBridge(creator.bridgeId)
+        val url = holder.connectUrl("wss://bridge.example")
+        val moc = java.net.URLDecoder.decode(url.substringAfter("&moc=").substringBefore("&ooc"), "UTF-8")
+        val (hello, _) = creator.receive(String(Base64.getDecoder().decode(moc)), 1)
+        val stamped = JsonObject(Json.parseToJsonElement(hello.single()).jsonObject + ("origin" to JsonPrimitive("https://Demo.Example.org"))).toString()
+        val events = holder.receive(stamped).second
+        assertEquals(ZkPassportHolderBridge.Event.Origin("https://demo.example.org"), events.first())
+        assertEquals("hello", (events[1] as ZkPassportHolderBridge.Event.Message).method)
+        assertEquals("https://demo.example.org", holder.origin)
+        // A later ooc does not replace it, and frames stamped with another origin are dropped.
+        assertTrue(holder.receive("""{"method":"ooc","params":{"origin":"https://evil.example"}}""").second.isEmpty())
+        val other = creator.encrypted("note", buildJsonObject { put("x", 1) }).single()
+        assertTrue(holder.receive(JsonObject(Json.parseToJsonElement(other).jsonObject + ("origin" to JsonPrimitive("https://evil.example"))).toString()).second.isEmpty())
+    }
+
     /** A bridge as @obsidion/bridge's server behaves: moc forwarded, ooc answered, the creator's origin added to its frames. */
     private class Relay {
         var creator: DefaultWebSocketServerSession? = null

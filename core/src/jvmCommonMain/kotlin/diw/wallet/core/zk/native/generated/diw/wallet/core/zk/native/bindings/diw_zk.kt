@@ -878,6 +878,10 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -933,9 +937,13 @@ fun uniffi_diw_zk_checksum_func_zkpassport_circuit_root(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_inspect(
 ): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_legacy_backend(
+): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_prove(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_verify_legacy(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpdf_check(
 ): Short
@@ -1088,9 +1096,13 @@ fun uniffi_diw_zk_fn_func_zkpassport_circuit_root(`manifestJson`: RustBuffer.ByV
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_inspect(`proofsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_legacy_backend(`library`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_prove(`commandJson`: RustBuffer.ByValue,`vkeyHash`: RustBuffer.ByValue,`crsDir`: RustBuffer.ByValue,`cancel`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_verify(`requestJson`: RustBuffer.ByValue,`crsDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_verify_legacy(`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpdf_check(`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1288,10 +1300,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_inspect() != 36238.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_legacy_backend() != 42527.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_prove() != 7312.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_verify() != 55767.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_verify_legacy() != 20076.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpdf_check() != 47012.toShort()) {
@@ -4431,6 +4449,20 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     
 
         /**
+         * Opens the Barretenberg 5 library at [library] (a path, or a name the platform loader already loaded) for
+         * [zkpassport_verify_legacy]; returns its Barretenberg revision. Later calls return the library opened first.
+         */
+    @Throws(ZkException::class) fun `zkpassportLegacyBackend`(`library`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_legacy_backend(
+        FfiConverterString.lower(`library`),_status)
+}
+    )
+    }
+    
+
+        /**
          * Proves one `prove` command of [ZkPassportProofSession] with the full CRS in `crs_dir`. The key this
          * Barretenberg derives from the command's packaged circuit must hash to `vkey_hash`, the circuit's leaf in a
          * manifest already checked against the circuit registry, before the circuit runs on the chip data: a circuit the
@@ -4457,6 +4489,20 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_verify(
         FfiConverterString.lower(`requestJson`),FfiConverterOptionalString.lower(`crsDir`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * [zkpassport_verify] for bundles of circuit versions before 0.22.0, with the Barretenberg 5 library that
+         * [zkpassport_legacy_backend] opened. Every check other than the proofs themselves is the same.
+         */
+    @Throws(ZkException::class) fun `zkpassportVerifyLegacy`(`requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_verify_legacy(
+        FfiConverterString.lower(`requestJson`),_status)
 }
     )
     }

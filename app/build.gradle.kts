@@ -20,11 +20,11 @@ val zkNdkVersion = "28.2.13676358"
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
     .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
 
-/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn, zkpdf and oprf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn, zkpdf, oprf and bb5 (Barretenberg 5 for old zkPassport circuits, needs zkpdf). Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
 val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
     .getOrElse("").also { f ->
-        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf", "oprf") } && l.toSet().size == l.size }) {
-            "diw.zkFeatures must be empty or a comma list of openac, tlsn, zkpdf and oprf"
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf", "oprf", "bb5") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac, tlsn, zkpdf, oprf and bb5"
         }
     }
 
@@ -41,7 +41,12 @@ fun zkCommandOutput(vararg command: String): String? = runCatching {
 
 /** With diw.zkNative=prebuilt, fails unless both ABIs that native/build.sh android writes are already in native/dist. */
 val checkZkAndroidPrebuilt by tasks.registering {
-    val libraries = listOf("arm64-v8a", "x86_64").map { rootProject.file("native/dist/android/$it/libdiw_zk.so") }
+    val libraries = listOf("arm64-v8a", "x86_64").flatMap { abi ->
+        listOfNotNull(
+            rootProject.file("native/dist/android/$abi/libdiw_zk.so"),
+            rootProject.file("native/dist/android-bb5/$abi/libdiw_bb5.so").takeIf { "bb5" in zkFeatures.split(',') },
+        )
+    }
     onlyIf("diw.zkNative=prebuilt") { zkNativeMode == "prebuilt" }
     doLast {
         val missing = libraries.filterNot { it.isFile }
@@ -56,6 +61,8 @@ val buildZkAndroid by tasks.registering(Exec::class) {
     inputs.property("zkFeatures", zkFeatures)
     inputs.files(rootProject.fileTree("native") { exclude("target/**", "dist/**") })
     outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android"))
+    // The Barretenberg 5 library of the on-demand module (features/bb5), when DIW_ZK_FEATURES has bb5.
+    outputs.dir(rootProject.layout.projectDirectory.dir("native/dist/android-bb5"))
     dependsOn(checkZkAndroidPrebuilt)
     onlyIf("the Rust toolchain, cargo-ndk and the pinned NDK are installed, or diw.zkNative=require") {
         when (zkNativeMode) {
@@ -298,6 +305,7 @@ kotlin {
             implementation(libs.androidx.credentials)
             implementation(libs.androidx.credentials.registry)
             implementation(libs.play.services.identity.credentials)
+            implementation(libs.play.feature.delivery)
             implementation(libs.ktor.client.okhttp)
             implementation(libs.coroutines.android)
             implementation(libs.bcprov)
@@ -421,6 +429,8 @@ android {
     // Every language stays in the base APK: switching the language in the app must not lose the Android resources
     // (app name, NFC service names) that a Play language split would leave out.
     bundle { language { enableSplit = false } }
+    // On-demand native components (ZkComponent); every package not from Google Play includes them.
+    dynamicFeatures += setOf(":bb5")
     androidResources { generateLocaleConfig = false }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

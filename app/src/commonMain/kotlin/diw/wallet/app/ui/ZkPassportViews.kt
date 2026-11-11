@@ -21,6 +21,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -188,8 +189,10 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         when {
             r == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_not_finished), listOfNotNull(s.error))
-            !r.verified && r.errors.any { it.startsWith("backend_legacy:") } ->
+            !r.verified && r.errors.any { it.startsWith("backend_legacy:") } -> {
                 VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_not_checked), ZkPassportFlow.problems(r.errors))
+                ZkPassportLegacyComponent(model, status = false)
+            }
             !r.verified -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_failed), ZkPassportFlow.problems(r.errors))
             else -> {
                 val caveats = buildList {
@@ -439,4 +442,37 @@ private fun ZkPassportReadiness(model: WalletModel) {
         }
     }
     Text(stringResource(Res.string.zkp_needs_circuits, ZkPassport.CIRCUIT_VERSION), style = MaterialTheme.typography.bodySmall)
+    ZkPassportLegacyComponent(model, status = true)
+}
+
+/**
+ * Barretenberg 5, which verifies proofs of circuits before 0.22.0: its state with [status], and an install button
+ * where the app can fetch it (Google Play). Shows nothing where the platform has no such component.
+ */
+@Composable
+internal fun ZkPassportLegacyComponent(model: WalletModel, status: Boolean) {
+    val zk = model.zk
+    LaunchedEffect(Unit) { zk.checkLegacy() }
+    val c = zk.legacy.collectAsState().value ?: return
+    if (status) {
+        Text(
+            stringResource(Res.string.zkp_needs_legacy, ZkPassport.CIRCUIT_VERSION) + when {
+                c.present -> stringResource(Res.string.zkp_needs_ok)
+                c.installable -> stringResource(Res.string.zkp_needs_legacy_missing)
+                else -> stringResource(Res.string.zkp_needs_legacy_unavailable)
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+    } else if (c.present) {
+        Text(stringResource(Res.string.zkp_legacy_installed), style = MaterialTheme.typography.bodySmall)
+    }
+    c.error?.let { Text(stringResource(Res.string.zkp_legacy_error, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    val progress = c.progress
+    when {
+        progress != null -> {
+            Text(stringResource(Res.string.zkp_legacy_installing, (progress * 100).toInt()), style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        }
+        !c.present && c.installable -> OutlinedButton(onClick = { zk.installLegacy() }) { Text(stringResource(Res.string.zkp_legacy_install)) }
+    }
 }

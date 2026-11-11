@@ -3,6 +3,8 @@ package diw.wallet.core.zk.native
 import diw.wallet.core.zk.ZkAsset
 import diw.wallet.core.zk.ZkAssetStore
 import diw.wallet.core.zk.ZkBackend
+import diw.wallet.core.zk.ZkComponent
+import diw.wallet.core.zk.native.bindings.zkpassportLegacyBackend
 import diw.wallet.core.zk.LongfellowNative
 import diw.wallet.core.zk.OpenAcAgeProver
 import diw.wallet.core.zk.OpenAcAgeVerifier
@@ -35,6 +37,8 @@ class JvmZkEnvironment(
     /** The local network for zkTLS between devices: listening addresses, subnet order and per-address sockets. */
     private val lan: SocketBondsLanLink = SocketBondsLanLink(),
     private val socketFactoryFor: (String) -> SocketFactory? = { null },
+    /** Barretenberg 5 for zkPassport circuits before 0.22.0: in the package itself unless the platform delivers it apart. */
+    private val legacy: ZkComponent? = BundledZkComponent(dataDirectory, "diw_bb5"),
     private val info: () -> ZkPlatformInfo,
 ) : ZkEnvironment, AutoCloseable {
     private val opened = lazy { runCatching { FileZkAssetStore.bundled(File(dataDirectory, "zk-assets"), http) }.getOrNull() }
@@ -68,8 +72,24 @@ class JvmZkEnvironment(
     private suspend fun ultraHonkReady(): Boolean =
         (loadNative() as? ZkResult.Ok)?.value?.backends?.contains(ZkBackend.NOIR_ULTRAHONK) == true
 
+    override val zkPassportLegacy: ZkComponent? get() = legacy
+
+    @Volatile private var legacyOpened = false
+
+    /** Whether Barretenberg 5 is open in the native library; checked again after the component is installed. */
+    private suspend fun legacyReady(): Boolean = withContext(Dispatchers.IO) {
+        if (legacyOpened) return@withContext true
+        if (!ultraHonkReady()) return@withContext false
+        val library = legacy?.load() ?: return@withContext false
+        legacyOpened = runCatching { zkpassportLegacyBackend(library) }.isSuccess
+        legacyOpened
+    }
+
     override val zkPassport: ZkPassportVerifier by lazy {
-        JvmZkPassportVerifier(http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady)
+        JvmZkPassportVerifier(
+            http, File(dataDirectory, "zkpassport-cache"), crsDirectory = ::crsDirectory, nativeReady = ::ultraHonkReady,
+            legacyReady = ::legacyReady,
+        )
     }
 
     /** zkPassport proofs made on this device from a passport's chip files, with the same CRS and cache. */

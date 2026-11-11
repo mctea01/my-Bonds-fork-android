@@ -79,6 +79,99 @@ pub fn zkpassport_verify(request_json: String, crs_dir: Option<String>) -> Resul
     })
 }
 
+/// The optional Barretenberg 5 library (zkpassport-bb5), opened once and kept for the life of the process.
+#[cfg(feature = "zkpdf")]
+mod legacy {
+    use std::sync::Mutex;
+
+    pub type Verify = unsafe extern "C" fn(*const u8, usize, *const u8, usize, *const u8, usize) -> i32;
+    const ABI: u32 = 1;
+
+    pub struct Backend {
+        _library: libloading::Library,
+        pub verify: Verify,
+        pub revision: String,
+    }
+
+    pub static BACKEND: Mutex<Option<&'static Backend>> = Mutex::new(None);
+
+    pub fn open(library: &str) -> Result<&'static Backend, String> {
+        let mut slot = BACKEND.lock().map_err(|_| "backend_state".to_string())?;
+        if let Some(backend) = *slot {
+            return Ok(backend);
+        }
+        // SAFETY: the library is the project's own zkpassport-bb5 build; its initializers only set up
+        // Barretenberg's statics, and the ABI version is checked before any other symbol is used.
+        let backend = unsafe {
+            let library = libloading::Library::new(library).map_err(|_| "legacy_backend_missing".to_string())?;
+            let abi: libloading::Symbol<unsafe extern "C" fn() -> u32> =
+                library.get(b"diw_bb5_abi\0").map_err(|_| "legacy_backend_abi".to_string())?;
+            if abi() != ABI {
+                return Err("legacy_backend_abi".into());
+            }
+            let revision: libloading::Symbol<unsafe extern "C" fn() -> *const std::os::raw::c_char> =
+                library.get(b"diw_bb5_revision\0").map_err(|_| "legacy_backend_abi".to_string())?;
+            let revision = std::ffi::CStr::from_ptr(revision()).to_string_lossy().into_owned();
+            let verify: libloading::Symbol<Verify> =
+                library.get(b"diw_bb5_verify\0").map_err(|_| "legacy_backend_abi".to_string())?;
+            let verify = *verify;
+            Backend { _library: library, verify, revision }
+        };
+        let backend: &'static Backend = Box::leak(Box::new(backend));
+        *slot = Some(backend);
+        Ok(backend)
+    }
+
+    pub fn loaded() -> Option<&'static Backend> {
+        BACKEND.lock().ok().and_then(|slot| *slot)
+    }
+}
+
+/// Opens the Barretenberg 5 library at [library] (a path, or a name the platform loader already loaded) for
+/// [zkpassport_verify_legacy]; returns its Barretenberg revision. Later calls return the library opened first.
+#[uniffi::export]
+pub fn zkpassport_legacy_backend(library: String) -> Result<String, ZkError> {
+    #[cfg(feature = "zkpdf")]
+    {
+        legacy::open(&library).map(|b| b.revision.clone()).map_err(|reason| ZkError::Unsupported { reason })
+    }
+    #[cfg(not(feature = "zkpdf"))]
+    {
+        let _ = library;
+        Err(disabled())
+    }
+}
+
+/// [zkpassport_verify] for bundles of circuit versions before 0.22.0, with the Barretenberg 5 library that
+/// [zkpassport_legacy_backend] opened. Every check other than the proofs themselves is the same.
+#[uniffi::export]
+pub fn zkpassport_verify_legacy(request_json: String) -> Result<String, ZkError> {
+    run_worker(64 * 1024 * 1024, ZkCancelToken::new(), move |_| {
+        #[cfg(feature = "zkpdf")]
+        {
+            let backend = legacy::loaded().ok_or_else(|| ZkError::Unsupported { reason: "legacy_backend_missing".into() })?;
+            zkpassport_verify::verify_json(&request_json, |vk, proof, public| {
+                // SAFETY: the slices are live for the call and the library copies them.
+                let status = unsafe {
+                    (backend.verify)(vk.as_ptr(), vk.len(), proof.as_ptr(), proof.len(), public.as_ptr(), public.len())
+                };
+                match status {
+                    0 => Ok(()),
+                    1 => Err("proof_rejected".into()),
+                    2 => Err("proof_encoding".into()),
+                    _ => Err("backend_failure".into()),
+                }
+            })
+            .map_err(invalid)
+        }
+        #[cfg(not(feature = "zkpdf"))]
+        {
+            let _ = request_json;
+            Err(disabled())
+        }
+    })
+}
+
 /// zkPassport's proving pipeline (Z3), sequenced by its own sans-IO driver: `next` returns the command as JSON
 /// (`fetch`, `prove`, `bridge_send`, `done`, `error` or `await`) and `provide` feeds back a fetched body or, for
 /// `prove`, the hex of public inputs and proof that [zkpassport_prove] returns. The config carries the request
@@ -230,6 +323,24 @@ mod tests {
         assert!(
             zkpassport_prove("{}".into(), "0x1".into(), ".".into(), ZkCancelToken::new()).is_err()
         );
+    }
+
+    /// Opens the Barretenberg 5 library named by DIW_BB5_LIBRARY next to this library's Barretenberg 6 and runs a
+    /// legacy verification: a bundle with no proofs is refused by the checks, not by either backend.
+    #[test]
+    #[ignore = "requires a zkpassport-bb5 build"]
+    fn legacy_backend_loads_beside_barretenberg_6() {
+        assert!(zkpassport_legacy_backend("/nonexistent/libdiw_bb5.so".into()).is_err());
+        let library = std::env::var("DIW_BB5_LIBRARY").expect("DIW_BB5_LIBRARY");
+        let revision = zkpassport_legacy_backend(library.clone()).unwrap();
+        assert!(revision.starts_with("5.0.0+"));
+        assert_eq!(zkpassport_legacy_backend(library).unwrap(), revision);
+        let backend = legacy::loaded().unwrap();
+        let forged = vec![1u8; 32 * 458];
+        // SAFETY: live slices for the call.
+        let status = unsafe { (backend.verify)(forged.as_ptr(), forged.len(), forged.as_ptr(), forged.len(), forged.as_ptr(), 32) };
+        assert!(status == 1 || status == 3, "{status}");
+        assert!(zkpassport_verify_legacy("{".into()).is_err());
     }
 
     /// Proves a published zkPassport circuit and verifies the proof under the returned key:

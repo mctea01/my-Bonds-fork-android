@@ -1,23 +1,29 @@
 zkPDF native runtime dependencies
 
 Noir acvm, acir, brillig_vm, bn254_blackbox_solver, noirc_abi and associated
-workspace crates: v1.0.0-beta.15, commit
-83245db91dcf63420ef4bcbbd85b98f397fee663, MIT OR Apache-2.0.
-https://github.com/noir-lang/noir/tree/83245db91dcf63420ef4bcbbd85b98f397fee663
+workspace crates: v1.0.0-rc.3, commit
+5a7ee9bf5ed8973076df7bb0d2b723024db09ae7, MIT OR Apache-2.0.
+https://github.com/noir-lang/noir/tree/5a7ee9bf5ed8973076df7bb0d2b723024db09ae7
 Copyright the Noir contributors. Upstream license texts accompany the sources.
 
 Other direct dependencies: base64 (MIT OR Apache-2.0), serde and serde_json
 (MIT OR Apache-2.0), sha2 (MIT OR Apache-2.0), getrandom (MIT OR Apache-2.0), bincode (MIT), flate2 (MIT OR Apache-2.0).
 Exact transitive revisions are recorded in ../Cargo.lock.
 
-Barretenberg: v2.1.9, commit f2bed7ed073966bb2a2dcdd02a133d11bf2996d3,
+Barretenberg: v6.0.0, commit 0219f11d8133970df3974fe5ae65e006bf8c193a,
 Apache-2.0, Copyright Aztec Labs and contributors.
-https://github.com/AztecProtocol/aztec-packages/tree/f2bed7ed073966bb2a2dcdd02a133d11bf2996d3/barretenberg
+https://github.com/AztecProtocol/aztec-packages/tree/0219f11d8133970df3974fe5ae65e006bf8c193a/barretenberg
 Statically linked with logging disabled by the application environment hooks.
-Its pinned build dependencies include msgpack-c (Boost Software License 1.0,
-5ee9a1c8c325658b29867829677c7eb79c433a98), libdeflate (MIT,
-b03254d978d7af21a7512dee8fdc3367bc15c656), Tracy headers (BSD-3-Clause,
-5d542dc09f3d9378d005092a4ad446bd405f819a), and LMDB
-(OpenLDAP Public License 2.8, ddd0a773e2f44d38e4e31ec9ed81af81f4e4ccbb). Upstream CMake files pin these sources.
+Barretenberg v5.0.0, commit 7aa2bd616d632801fe65d97ee8a4434f26886b40 (same
+license), is statically linked into the separate libdiw_bb5 library
+(native/zkpassport-bb5), which only verifies zkPassport proofs of circuits
+before 0.22.0 and ships as an optional component.
+https://github.com/AztecProtocol/aztec-packages/tree/7aa2bd616d632801fe65d97ee8a4434f26886b40/barretenberg
+Both builds use the BB_LITE configuration (no LMDB, world state or IPC) and
+x86_64 objects target x86-64-v2 instead of upstream's Skylake default. Their
+pinned build dependencies include msgpack-c (Boost Software License 1.0),
+libdeflate v1.24 (MIT, 96836d7d9d10e3e0d53e6edb54eb908514e336c4) and Tracy
+headers (BSD-3-Clause, 5d542dc09f3d9378d005092a4ad446bd405f819a); the
+upstream CMake files pin these sources.
 The BN254 CRS is the public Aztec Ignition ceremony transcript prefix, not a
 secret setup key. Runtime never downloads it; exact hashes are in assets.json.

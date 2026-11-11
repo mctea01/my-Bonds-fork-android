@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 bindgen = ["uniffi/cli"]
-zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:serde_json", "dep:hex", "dep:base64", "oprf"]
+zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:serde_json", "dep:hex", "dep:base64", "dep:libloading", "oprf"]
 # The project OPRF (zkPassport 5.5): light, no Barretenberg; zkPassport proving turns it on.
 oprf = ["dep:taceo-oprf-core", "dep:taceo-poseidon2", "dep:ark-babyjubjub", "dep:ark-ec", "dep:ark-ff", "dep:num-bigint", "dep:rand", "dep:serde_json"]
 tlsn = ["dep:zktls"]
@@ -30,6 +30,8 @@ zkpassport-verify = { path = "../zkpassport-verify", optional = true }
 zkpassport-ffi = { path = "../vendor/zkpassport/zkpassport-ffi", optional = true }
 serde_json = { version = "=1.0.154", optional = true }
 hex = { version = "0.4", optional = true }
+# Opens the optional Barretenberg 5 library (zkpassport-bb5) for zkPassport proofs of circuits before 0.22.0.
+libloading = { version = "=0.8.9", optional = true }
 base64 = { version = "=0.23.1", optional = true }
 taceo-oprf-core = { version = "=0.6.3", default-features = false, optional = true }
 taceo-poseidon2 = { version = "0.3", default-features = false, features = ["bn254", "t4"], optional = true }

@@ -148,7 +148,11 @@ data class ZkPassportConfig(
      * under any other key, zkPassport's included, are refused. Null accepts none.
      */
     val oprfKeyHash: String? = null,
-)
+    /** The current [verifierApi] setting, read when the proofs arrive, so a change during a request still applies. */
+    val verifierApiNow: (() -> Boolean)? = null,
+) {
+    fun verifierApiAllowed(): Boolean = verifierApiNow?.invoke() ?: verifierApi
+}
 
 /**
  * The registry's CSCA keys for the issuing country the proofs disclose (or limit to), checked against this wallet's
@@ -239,14 +243,15 @@ object ZkPassport {
     const val SEPOLIA = 11155111L
     /** Built-in public Ethereum nodes the registries are read from when the user has not set their own. */
     /**
-     * The first circuit version keyed by the Barretenberg this app ships (bb v6). Earlier versions were keyed by
-     * bb 5 and their proofs do not verify under bb v6 keys, so the app does not prove them.
+     * The first circuit version keyed by the Barretenberg this app proves with (bb v6). Earlier versions were keyed by
+     * bb 5 and their proofs do not verify under bb v6 keys, so the app does not prove them; it verifies them with
+     * the optional Barretenberg 5 component.
      */
     const val CIRCUIT_VERSION = "0.22.0"
 
     /**
-     * Whether proofs of circuit [version] need Barretenberg 5, which this app does not ship: versions before
-     * [CIRCUIT_VERSION], as zkPassport's SDK decides (a malformed version counts as current).
+     * Whether proofs of circuit [version] need Barretenberg 5 (the optional ZkEnvironment.zkPassportLegacy component):
+     * versions before [CIRCUIT_VERSION], as zkPassport's SDK decides (a malformed version counts as current).
      */
     fun legacyBackend(version: String): Boolean {
         val parts = version.split('.').map { it.toIntOrNull() ?: return false }
