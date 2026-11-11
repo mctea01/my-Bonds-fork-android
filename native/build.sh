@@ -103,7 +103,7 @@ for target in "${selected[@]}"; do
             done
             if "$with_bb5"; then
                 # bundletool needs every module with native code to list the base's ABIs, and the base carries 32-bit
-                # libraries from its dependencies. There is no 32-bit Barretenberg (nor diw_zk): those get an empty one.
+                # libraries from its dependencies. There is no 32-bit Barretenberg: those get an empty one.
                 for abi in armeabi-v7a x86; do
                     if [[ "$abi" == x86 ]]; then clang_target=i686-linux-android; else clang_target=armv7a-linux-androideabi; fi
                     mkdir -p "dist/android-bb5/$abi"
