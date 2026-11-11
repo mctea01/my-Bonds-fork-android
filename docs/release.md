@@ -41,7 +41,7 @@ versionCode 由版本算出，換新版本線時一定變大（0.4 起為 40000 
 
 GitHub 的 APK 與 `.apks` 由 CI 用 `tools/bundle-apks.sh` 從 Google Play 收到的同一個 AAB 產生（bundletool，版本與 SHA-256 釘選在腳本裡），所以程式碼、版本號與簽章都和 Play 版相同：`.apk` 已含所有模組，`.apks` 的模組是獨立分割。電腦版把同一個函式庫放在 JAR 的資源裡，所以每個版本的功能一致。新增這類元件時照同樣方式：加一個 `features/` 模組並列入 `app` 的 `dynamicFeatures`，在 `ZkComponent` 的實作裡載入，桌面版放進資源。
 
-本機建置 Android 時要在 `DIW_ZK_FEATURES` 加上 `bb5`（需要 `zkpdf`），`native/build.sh` 才會建置 `native/dist/android-bb5`；沒有時模組是空的，App 會顯示元件不可用。
+本機建置 Android 時要在 `DIW_ZK_FEATURES` 加上 `bb5`（需要 `zkpdf`），`native/build.sh` 才會建置 `native/dist/android-bb5`；沒有時模組是空的，App 會顯示元件不可用。bundletool 要求有原生程式碼的模組都支援和 base 相同的 ABI，而 base 含相依套件（JNA、Tesseract、CameraX 等）的 32 位元函式庫；32 位元沒有 Barretenberg（也沒有 `diw_zk`），所以 `build.sh` 在 `armeabi-v7a` 與 `x86` 放一個空的 `libdiw_bb5_none.so`，App 不會載入它。
 
 ## Android 簽章
 

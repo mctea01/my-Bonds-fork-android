@@ -98,6 +98,16 @@ for target in "${selected[@]}"; do
                     printf 'bb5_android abi=%s library_bytes=%s\n' "$abi" "$(wc -c < "dist/android-bb5/$abi/libdiw_bb5.so")"
                 fi
             done
+            if "$with_bb5"; then
+                # bundletool needs every module with native code to list the base's ABIs, and the base carries 32-bit
+                # libraries from its dependencies. There is no 32-bit Barretenberg (nor diw_zk): those get an empty one.
+                for abi in armeabi-v7a x86; do
+                    if [[ "$abi" == x86 ]]; then clang_target=i686-linux-android; else clang_target=armv7a-linux-androideabi; fi
+                    mkdir -p "dist/android-bb5/$abi"
+                    "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/${clang_target}29-clang" -shared -nostdlib \
+                        -Wl,-soname,libdiw_bb5_none.so -o "dist/android-bb5/$abi/libdiw_bb5_none.so" -x c /dev/null
+                done
+            fi
         else
             cargo ndk "${abi_args[@]}" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
         fi
