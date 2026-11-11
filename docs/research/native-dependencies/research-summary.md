@@ -12,7 +12,7 @@
 
 **第二輪更新（2026-11-10）**：[Windows GNU BB PoC](bb-windows-link-poc.md) 已將官方 archive 與原 DIW bridge 連結為 PE executable，並在 Wine 通過 C API、buffer ownership、初始化與環境 hooks 子集。原生 Windows、有效 proof、BB 全庫重建與 MSVC 仍未測。下列第一輪紀錄保留其當時範圍；CSV 已反映第二輪證據。
 
-日期：2026-11-09。研究分支：`claude/native-dependencies-pc-research`。重新取得指定遠端 `claude/project-thread-lu73pi`，HEAD 為 `3428b8ee12ac5e644f478d4c6e43854376202fa4`，與 v3 附件基準無差異。原環境的 `work` 分支不是該研究基準；沒有在其上修改產品。來源／規格雜湊與命令見 [baseline.json](evidence/baseline.json)。
+日期：2026-11-09。研究分支：`codex/native-dependencies-pc-research`（`baseline.json` 記錄的是研究環境當時的本機分支名）。重新取得指定遠端 `claude/project-thread-lu73pi`，HEAD 為 `3428b8ee12ac5e644f478d4c6e43854376202fa4`，與 v3 附件基準無差異。原環境的 `work` 分支不是該研究基準；沒有在其上修改產品。來源／規格雜湊與命令見 [baseline.json](evidence/baseline.json)。
 
 本輪完成依賴來源盤點、14 個 target 的研究表、PC 直接 FFI 評估，以及可重現的隔離 PoC。**Linux x86_64 上，DIW runtime 與 Longfellow 均已取得不經 JVM/JNA 的 C 呼叫證據。其他架構仍以來源研究為主，沒有宣稱新增 App 平台支援。**
 
@@ -25,7 +25,7 @@
 | OPRF Rust API | 10 tests passed，包含 3 項 OPRF 測試：public key hash、無效 keys/points、隨機 blinding 與 proof/key binding | [oprf-tests.log](evidence/oprf-tests.log)；OpenAC/TLSn 在此組合關閉，BB disclosure circuit 與 OPRF C ABI 未測 |
 | Longfellow C caller | 連結並呼叫六個 exports；已知 v7/1 spec、LP64 layout、null-input 拒絕通過 | [longfellow-linux-x86_64.json](evidence/longfellow-linux-x86_64.json)；使用釘選預建庫，未 source-build、未驗正向 proof／成功 allocation-free 路徑 |
 | BB Windows static | 下載 v6.0.0 release archive、hash 符合 GitHub digest，確認 PE/COFF objects、C/C++ symbols | [bb-release-inspection.json](evidence/bb-release-inspection.json)；沒有 Windows 編譯／連結／執行，也未驗證建置 provenance |
-| Gradle 依賴圖 | desktopRuntimeClasspath、releaseRuntimeClasspath 連網解析成功，沒有 FAILED 節點 | [desktop](evidence/gradle-desktop-online.txt)、[Android](evidence/gradle-android-online.txt)；先前離線 FAILED 記錄保留；不是 App 建置 |
+| Gradle 依賴圖 | desktopRuntimeClasspath、releaseRuntimeClasspath 連網解析成功，沒有 FAILED 節點 | [desktop](evidence/gradle-desktop-online.txt)、[Android](evidence/gradle-android-online.txt)；不是 App 建置 |
 | 預建檔盤點 | JNA 5.19.1 有 27 native entries；Longfellow JVM JAR 有 3、Android AAR 有 2；Linux SO 與已測上游 blob hash 相同 | [Maven 來源](evidence/maven-downloads.json)、[entries](evidence/maven-native-entries.csv)；其他項目為 [快取檢查](evidence/cached-native-entries.csv)，未逐一載入 |
 
 兩個 C PoC 的工具、重現指令與輸出說明在 [tools/native-research](../../../tools/native-research/README.md)。所有二進位、下載來源與編譯產物放在 repo 外；repo 只加入研究文字、工具原始碼與無個資記錄。

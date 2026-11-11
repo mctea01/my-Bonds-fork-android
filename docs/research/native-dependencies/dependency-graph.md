@@ -37,6 +37,6 @@ flowchart TD
 
 Cargo 鎖檔共有 581 個套件記錄，完整來源與 checksum 見 [cargo-lock-packages.csv](evidence/cargo-lock-packages.csv)。這是 workspace、optional、dev 與多 target 的聯集，不能直接算成 581 個 runtime dependencies。各後端的來源分析見 [rust-backends.md](rust-backends.md)。本輪 runtime 與 OPRF 的實際建置使用原鎖檔，沒有變更套件解析結果。
 
-Gradle 離線依賴報告見 [desktop](evidence/gradle-desktop-dependencies.txt) 與 [Android](evidence/gradle-android-dependencies.txt)。報告雖 exit 0，內含 `FAILED` 節點，因此不是完整解析成功。後續 [desktop-online](evidence/gradle-desktop-online.txt) 與 [Android-online](evidence/gradle-android-online.txt) 均成功且未出現 `FAILED` 節點；這驗證所查 configuration 的依賴圖，不代表全部 artifacts 已下載／載入。快取掃描的 archive/entry SHA-256 在 [cached-native-entries.csv](evidence/cached-native-entries.csv)；另實際下載 JNA 5.19.1、Longfellow 0.102.0 JAR/AAR，清單見 [maven-native-entries.csv](evidence/maven-native-entries.csv)。這些是實際檔案證據，並非所有候選 target 的發行保證。
+Gradle 依賴報告見 [desktop](evidence/gradle-desktop-online.txt) 與 [Android](evidence/gradle-android-online.txt)：兩個 configuration 連網解析成功，沒有 `FAILED` 節點（最初的離線報告含 `FAILED` 節點，已由這兩份取代，不再保存）。這驗證所查 configuration 的依賴圖，不代表全部 artifacts 已下載／載入。快取掃描的 archive/entry SHA-256 在 [cached-native-entries.csv](evidence/cached-native-entries.csv)；另實際下載 JNA 5.19.1、Longfellow 0.102.0 JAR/AAR，清單見 [maven-native-entries.csv](evidence/maven-native-entries.csv)。這些是實際檔案證據，並非所有候選 target 的發行保證。
 
 尚待補齊的盤點邊界：每個 target 完整解析後的 Gradle runtime artifacts、最終 APK／桌面包、JDK 本身原生組件、各庫的所有傳遞授權與 CPU 指令。這些缺口列入後續清單，不能以本輪來源盤點替代發行稽核。
