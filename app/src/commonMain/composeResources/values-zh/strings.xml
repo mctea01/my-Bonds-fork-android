@@ -4352,7 +4352,7 @@
     <string name="zkp_answer_failed">證明未送出</string>
     <string name="zkp_answer_history_note">zkPassport 請求，請求方來源 %1$s。</string>
     <string name="zkp_answer_history_test"> 測試請求。</string>
-    <string name="zkp_answer_err_origin">zkPassport 傳送服務在 15 秒內沒有回報請求來源，因此未回應。通常是請求頁已關閉、逾時或 QR 碼已用過，請在請求頁重新產生 QR 碼再試。</string>
+    <string name="zkp_answer_err_origin">zkPassport 傳送服務在 45 秒內（含重新連線）沒有回報請求來源，因此未回應。傳送服務只在請求頁仍連線時回報來源：請讓請求頁保持開啟（在同一支手機上請先切回瀏覽器讓頁面重新連線），或在請求頁重新產生 QR 碼再試。</string>
     <string name="zkp_answer_err_passport">保存的護照讀取資料缺少證明所需的晶片檔案（SOD 與 DG1），請重新讀取晶片。</string>
     <string name="zkp_answer_err_crs">本機尚未取得證明參數。</string>
     <string name="zkp_answer_err_inputs">zkPassport 電路尚不支援這本護照，已告知請求方。</string>

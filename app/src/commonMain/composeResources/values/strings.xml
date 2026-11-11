@@ -4352,7 +4352,7 @@
     <string name="zkp_answer_failed">The proofs were not sent</string>
     <string name="zkp_answer_history_note">zkPassport request, requester origin %1$s.</string>
     <string name="zkp_answer_history_test"> Test request.</string>
-    <string name="zkp_answer_err_origin">zkPassport's bridge did not report where the request comes from within 15 seconds, so it was not answered. Usually the request page was closed, timed out or its QR code was already used; create a new QR code on the request page and try again.</string>
+    <string name="zkp_answer_err_origin">zkPassport's bridge did not report where the request comes from within 45 seconds (reconnecting included), so it was not answered. The bridge reports it only while the request page is connected: keep the request page open (on the same phone, switch back to the browser first so the page reconnects), or create a new QR code on the request page and try again.</string>
     <string name="zkp_answer_err_passport">The stored passport read lacks the chip files the proofs need (SOD and DG1). Read the chip again.</string>
     <string name="zkp_answer_err_crs">The proving parameters are not available on this device yet.</string>
     <string name="zkp_answer_err_inputs">This passport is not supported by zkPassport's circuits yet. The requester was told.</string>

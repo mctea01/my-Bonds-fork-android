@@ -171,7 +171,9 @@ class ZkPassportProver(
                     } catch (e: ZkException.Cancelled) {
                         throw kotlinx.coroutines.CancellationException("cancelled")
                     } catch (e: ZkException.InvalidInput) {
-                        throw Failure(if (e.reason == "circuit_vkey_mismatch") "circuit_backend:$name" else "proof:$name")
+                        if (e.reason == "circuit_vkey_mismatch") throw Failure("circuit_backend:$name")
+                        // An integrity circuit's failure names the check it failed (no document data).
+                        throw Failure("proof:$name" + (ZkPassportIntegrity.diagnose(name, inputs)?.let { ":$it" } ?: ""))
                     } catch (e: ZkException) {
                         throw Failure("proof:$name")
                     }

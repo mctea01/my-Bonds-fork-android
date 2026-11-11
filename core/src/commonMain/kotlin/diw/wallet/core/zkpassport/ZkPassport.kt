@@ -313,11 +313,15 @@ object ZkPassport {
     }
 
     /**
-     * Reads a request link (`https://zkpassport.id/r?...`, or `/c` of the App Clip); null for anything else or when
-     * the domain, the requester's key or the query is missing or malformed.
+     * Reads a request link (`https://zkpassport.id/r?...`, `/c` of the App Clip, or `zkpassport:///r?...` that request
+     * pages open on a phone); null for anything else or when the domain, the requester's key or the query is missing
+     * or malformed.
      */
     fun parseLink(link: String): ZkPassportIncoming? {
-        val url = runCatching { io.ktor.http.Url(link.trim()) }.getOrNull() ?: return null
+        val trimmed = link.trim()
+        val app = Regex("^zkpassport://(/[rc])(\\?.*)$", RegexOption.IGNORE_CASE).find(trimmed)
+        val https = app?.let { "https://zkpassport.id" + it.groupValues[1].lowercase() + it.groupValues[2] } ?: trimmed
+        val url = runCatching { io.ktor.http.Url(https) }.getOrNull() ?: return null
         if (url.protocol.name != "https" || url.host != "zkpassport.id" || url.encodedPath !in setOf("/r", "/c")) return null
         val p = url.parameters
         val domain = p["d"]?.let(::normalizeDomain)?.takeIf { DOMAIN.matches(it) } ?: return null
@@ -328,7 +332,7 @@ object ZkPassport {
         val query = json("c") ?: return null
         return ZkPassportIncoming(
             domain = domain, verifierPublicKey = key, query = query, service = json("s") ?: JsonObject(emptyMap()),
-            mode = p["m"]?.takeIf { it.isNotBlank() } ?: "fast", sdkVersion = p["v"], devMode = p["dev"] == "1", link = link.trim(),
+            mode = p["m"]?.takeIf { it.isNotBlank() } ?: "fast", sdkVersion = p["v"], devMode = p["dev"] == "1", link = https,
         )
     }
 

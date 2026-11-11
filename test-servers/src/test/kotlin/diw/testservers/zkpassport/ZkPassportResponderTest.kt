@@ -75,6 +75,45 @@ class ZkPassportResponderTest {
         assertNull(ZkPassport.parseLink(link.replace("&p=${creator.bridgeId}", "")))
         assertNull(ZkPassport.parseLink(link.replace("&c=", "&c=x")))
         assertNull(ZkPassport.parseLink("http://zkpassport.id/r?" + link.substringAfter('?')))
+        // Request pages on a phone open the same query as zkpassport:///r.
+        val app = assertNotNull(ZkPassport.parseLink("zkpassport:///r?" + link.substringAfter('?')))
+        assertEquals(incoming.copy(link = app.link), app)
+        assertEquals(link, app.link)
+        assertNull(ZkPassport.parseLink("zkpassport:///x?" + link.substringAfter('?')))
+    }
+
+    @Test
+    fun theOriginIsAskedForAgainWhenTheFirstConnectionGetsNone() = runBlocking<Unit> {
+        // The bridge reports the origin only while the request page is connected: here not on the first connection.
+        var connections = 0
+        val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
+            install(WebSockets)
+            routing {
+                webSocket("/") {
+                    if (++connections >= 2) send(Frame.Text(buildJsonObject {
+                        put("method", "ooc"); putJsonObject("params") { put("origin", "https://verify.example.org") }
+                    }.toString()))
+                    for (frame in incoming) { }
+                }
+            }
+        }.start(wait = false)
+        try {
+            val port = server.engine.resolvedConnectors().first().port
+            val link = ZkPassport.url(request, ZkPassportBridgeProtocol().bridgeId, 1_800_000_000)
+            val http = HttpClient(io.ktor.client.engine.java.Java)
+            val responder = ZkPassportResponder(http, assertNotNull(ZkPassport.parseLink(link)), "ws://127.0.0.1:$port/", originWaitMs = 500)
+            assertEquals("https://verify.example.org", responder.connect())
+            assertEquals(2, connections)
+            responder.close()
+            // Without any report the answer stops after the last attempt.
+            connections = -10
+            val silent = ZkPassportResponder(http, assertNotNull(ZkPassport.parseLink(link)), "ws://127.0.0.1:$port/", originWaitMs = 200)
+            assertEquals("bridge_origin:3x", kotlin.test.assertFailsWith<ZkPassportResponder.Failure> { silent.connect() }.code)
+            assertEquals(-7, connections)
+            silent.close()
+        } finally {
+            server.stop(100, 1000)
+        }
     }
 
     @Test

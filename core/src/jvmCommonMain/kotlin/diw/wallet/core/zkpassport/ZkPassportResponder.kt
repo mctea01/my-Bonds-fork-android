@@ -26,6 +26,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
@@ -134,6 +136,8 @@ class ZkPassportResponder(
     http: HttpClient,
     private val incoming: ZkPassportIncoming,
     private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
+    /** How long each connection waits for the origin before it is opened again. */
+    private val originWaitMs: Long = ORIGIN_MS,
 ) {
     class Failure(val code: String) : Exception(code)
 
@@ -144,6 +148,7 @@ class ZkPassportResponder(
     private var ws: WebSocketSession? = null
     private var reader: Job? = null
     private var originKnown = CompletableDeferred<String>()
+    private val received = ArrayList<String>()
 
     /** The requester's origin as the bridge reports it. */
     val origin: String? get() = bridge.origin
@@ -151,10 +156,19 @@ class ZkPassportResponder(
     /** Whether the bridge's origin is the https origin of the link's domain (5.3; a relay attack otherwise). */
     val originMatches: Boolean get() = bridge.origin == incoming.expectedOrigin
 
-    /** Connects and waits for the bridge's report of the requester's origin; returns it. */
+    /**
+     * Connects and waits for the bridge's report of the requester's origin; returns it. The bridge reports it only
+     * while the request page is connected, and a page in a phone's background may have lost its connection, so the
+     * connection is opened again a few times before giving up.
+     */
     suspend fun connect(): String {
-        lock.withLock { open(bridge.connectUrl(bridgeUrl)) }
-        return withTimeoutOrNull(ORIGIN_MS) { originKnown.await() } ?: throw Failure("bridge_origin")
+        repeat(ORIGIN_ATTEMPTS) {
+            lock.withLock { open(bridge.connectUrl(bridgeUrl)) }
+            withTimeoutOrNull(originWaitMs) { originKnown.await() }?.let { return it }
+        }
+        // What the bridge sent meanwhile (methods only), so the failure tells a silent bridge from a refusal.
+        val methods = synchronized(received) { received.toList() }
+        throw Failure("bridge_origin:${ORIGIN_ATTEMPTS}x" + methods.joinToString(",", prefix = if (methods.isEmpty()) "" else ":"))
     }
 
     suspend fun accept() = send(listOf("accept" to null))
@@ -205,8 +219,10 @@ class ZkPassportResponder(
         } catch (_: Exception) {
             throw Failure("connection")
         }
+        val previous = ws
         ws = socket
         reader?.cancel()
+        if (previous != null) scope.launch { runCatching { previous.close() } }
         reader = scope.launch {
             val pinger = launch {
                 while (isActive) {
@@ -217,7 +233,11 @@ class ZkPassportResponder(
             try {
                 for (frame in socket.incoming) {
                     if (frame !is Frame.Text) continue
-                    val (replies, events) = bridge.receive(frame.readText())
+                    val text = frame.readText()
+                    if (!originKnown.isCompleted) synchronized(received) {
+                        if (received.size < MAX_RECORDED) received.add(methodOf(text))
+                    }
+                    val (replies, events) = bridge.receive(text)
                     replies.forEach { socket.send(Frame.Text(it)) }
                     events.forEach { if (it is ZkPassportHolderBridge.Event.Origin) originKnown.complete(it.origin) }
                 }
@@ -232,9 +252,17 @@ class ZkPassportResponder(
         }
     }
 
+    /** A frame's JSON-RPC method, limited to a short word: the bridge's frames are not shown otherwise. */
+    private fun methodOf(text: String): String =
+        runCatching { (Json.parseToJsonElement(text).jsonObject["method"] as? JsonPrimitive)?.contentOrNull }.getOrNull()
+            ?.takeIf { METHOD.matches(it) } ?: "?"
+
     companion object {
+        private val METHOD = Regex("^[A-Za-z_]{1,24}$")
+        private const val MAX_RECORDED = 8
         private const val CONNECT_MS = 15_000L
         private const val ORIGIN_MS = 15_000L
+        private const val ORIGIN_ATTEMPTS = 3
         private const val PING_MS = 25_000L
         private const val MAX_RECONNECTS = 3
         private const val PING = """{"method":"ping","params":{},"nocache":true}"""
