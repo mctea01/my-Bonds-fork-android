@@ -12,6 +12,8 @@
 
 **P1 進度（2026-11-10）**：Windows x86_64 GNU 的第一個里程碑已完成：[C executable 連結與 Wine 子集測試](bb-windows-link-poc.md)，涵蓋 verifier 初始化、錯誤長度及 redaction hooks。有效 proof、原生 Windows、最低 CPU、DLL／MSVC 與正式整合仍未完成；下列工時為原始工作包估計，未重新估算剩餘工時。
 
+**狀態更新（2026-11-11）**：P0 兩項、P1 Windows x86_64 BB（到 Wine 驗證為止）與 P2 Linux ARM64 的 BB 建置已實作，P1 FFI 契約的 RustBufferByReference 項目取消，P4 Android 32 位元結論為只提供 runtime；細節見 [follow-up-implementation.md](follow-up-implementation.md)。下表保留原始規劃。
+
 此清單是下一階段建議，不代表本輪修改正式產品的授權或完成度。優先維持所有演算法、電路、CRS、金鑰與 proof 格式；先在研究目錄取得可重現證據，再進行各自的正式整合階段。工時是單一熟悉專案工程師的研究人日，不含完整 UI/App 驗收。
 
 | 優先／目標 | 要處理的 native 來源／build system | 可審查交付與驗收 | 估計／風險 |

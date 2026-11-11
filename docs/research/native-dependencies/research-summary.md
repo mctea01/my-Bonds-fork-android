@@ -1,5 +1,7 @@
 # 原生依賴跨架構研究：第一輪結果
 
+**後續查證與實作（2026-11-11）**：[follow-up-implementation.md](follow-up-implementation.md) 把研究結論落到正式建置：量測並確認 x86_64 的 Skylake 基準問題（已改為 x86-64-v2）、Android 32 位元只能提供 runtime、Windows x86_64 的 zkPDF 與 Barretenberg 5 由 Linux 交叉建置並在 Wine 下完成實際證明、Linux ARM64 的 Barretenberg 從原始碼建置。該文件也更正了下文第 5 點的 `RustBufferByReference` 風險（該類別未被使用）。以下各輪記錄保留當時的範圍。
+
 **第七輪更新（2026-11-10）**：[BB Linux ARM64 PoC](bb-linux-arm64-poc.md) 將官方靜態庫與原 DIW bridge 連結為 AArch64 C executables；QEMU max／cortex-a53 均通過 ABI、環境 hooks 及相同公開 UltraHonk proof 的正反向驗證。BB 主體未 source-build，實體 ARM64、prover 與雙向 proof 生成仍未測。
 
 **第六輪更新（2026-11-10）**：[Linux ARM64 PoC](linux-arm64-poc.md) 已從未修改的固定來源建出 Longfellow 與 DIW runtime-only，QEMU 下通過 C ABI、runtime self-test／free，以及同一公開 Longfellow proof 的正反向測試。兩庫最高 GLIBC symbol 為 2.34；ARM64 實體硬體、最低 CPU／OS 和跨架構雙向 proving 未測。

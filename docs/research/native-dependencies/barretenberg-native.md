@@ -34,7 +34,7 @@
 | [src/CMakeLists.txt](https://github.com/AztecProtocol/aztec-packages/blob/0219f11d8133970df3974fe5ae65e006bf8c193a/barretenberg/cpp/src/CMakeLists.txt#L236) | `bb-external` 包含 core、env、vm2_stub；`barretenberg` 排除 env | 官方 archive 與 DIW 現有三個 archive 組合不同；env hooks 必須核對，不能直接換檔名 |
 | [arch.cmake](https://github.com/AztecProtocol/aztec-packages/blob/0219f11d8133970df3974fe5ae65e006bf8c193a/barretenberg/cpp/cmake/arch.cmake) | x86_64 無條件 `-march=skylake` | **`DISABLE_ASM=ON` 不表示 x86-64 v1；AVX2 等 compiler-generated instructions 仍可能出現** |
 
-專案 [`build_bb.py`](../../../native/zkpdf-prover/tools/build_bb.py) 僅接受 Linux x86_64、macOS arm64、Android arm64/x86_64；其他 target 一律退出 `bb_windows_port_required`，此訊息也會誤涵蓋 Linux aarch64／macOS Intel。它傳入 `TARGET_ARCH=x86-64`，但本次檢查的 pinned 上游 CMake 不讀此變數；不能據此聲稱最低 CPU 為 x86-64 v1。應先保留 verbose compile commands，檢查最後實際 `-march`，再做 baseline machine／CPU mask 測試。
+專案 [`build_bb.py`](../../../native/zkpdf-prover/tools/build_bb.py) 僅接受 Linux x86_64、macOS arm64、Android arm64/x86_64；其他 target 一律退出 `bb_windows_port_required`，此訊息也會誤涵蓋 Linux aarch64／macOS Intel。它傳入 `TARGET_ARCH=x86-64`，但本次檢查的 pinned 上游 CMake 不讀此變數；不能據此聲稱最低 CPU 為 x86-64 v1。應先保留 verbose compile commands，檢查最後實際 `-march`，再做 baseline machine／CPU mask 測試。（2026-11-11 更新：`build_bb.py` 已加入 Linux aarch64 與 Windows GNU 目標，未知目標改以 `bb_target_unsupported` 結束，x86_64 的基準為 x86-64-v2 並已量測；見 [follow-up-implementation.md](follow-up-implementation.md)。）
 
 [`build.rs`](../../../native/zkpdf-prover/build.rs) 假定 GNU style `-fPIC`、`-pthread`、`ar crs` 與 archive 命名，Windows 會走 `stdc++`／`pthread` 分支；沒有 MSVC 選項、DLL export 策略或 Windows 專屬 system libraries。這是專案 build integration 限制，不是整個 BB 原始碼不可移植的證明。
 

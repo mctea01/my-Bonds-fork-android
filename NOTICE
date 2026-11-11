@@ -64,6 +64,10 @@ its own license:
   0219f11d8133970df3974fe5ae65e006bf8c193a - Apache License 2.0; built with
   msgpack-c headers (Boost Software License 1.0) and libdeflate 1.24 (MIT
   License); details in native/zkpdf-prover/NOTICE
+- MinGW-w64 runtime in the Windows native libraries (mingw-w64 CRT - Zope
+  Public License 2.1 and public domain; winpthreads - MIT and BSD 3-Clause
+  License; libstdc++ and libgcc of GCC 13 - GPL-3.0-or-later with the GCC
+  Runtime Library Exception 3.1)
 - Noir 1.0.0-rc.3 crates (acvm, acir, brillig_vm, bn254_blackbox_solver,
   noirc_abi), revision 5a7ee9bf5ed8973076df7bb0d2b723024db09ae7 - MIT or
   Apache License 2.0

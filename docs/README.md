@@ -21,6 +21,7 @@
 | 文件 | 內容 |
 |---|---|
 | [research/native-dependencies/research-summary.md](research/native-dependencies/research-summary.md) | 原生依賴跨架構研究（PC Native 導向）：固定版本清冊、14 target 工具鏈／ABI 矩陣、Windows BB 與 Longfellow 缺口、隔離 C PoC、OPRF 向量及後續實作清單；未新增 App 平台支援 |
+| [原生依賴後續查證與實作](research/native-dependencies/follow-up-implementation.md) | x86_64 CPU 基準量測、Android 32 位元結論、Windows zkPDF 交叉建置與 Wine 下的實際證明、Linux ARM64 的 Barretenberg 建置，以及對先前研究的更正 |
 | [Windows GNU BB 連結與 Wine PoC](research/native-dependencies/bb-windows-link-poc.md) | 官方 archive 與原 DIW bridge 的隔離 C caller、ABI 與測試限制 |
 | [Windows GNU BB 公開 proof PoC](research/native-dependencies/bb-windows-proof-poc.md) | 固定合成 UltraHonk fixture 的正反向驗證、信任邊界與重現證據 |
 | [Longfellow Windows GNU PoC](research/native-dependencies/longfellow-windows-poc.md) | 原版編譯阻塞、隔離 patch／鎖檔、DLL C ABI 與公開 proof 驗證 |

@@ -26,6 +26,8 @@
 | 非同步 ABI | binding 中有 future poll/complete/free helpers；存在 helpers 不代表目前所有 exported API 都是 async。現行 zktls exported fn 以 worker 包住同步回傳（zktls.rs:76–97）。 |
 | 系統 imports | Rust std 的 thread、entropy、allocator、動態 loader/OS runtime 及 feature 引入的原生依賴；精確 imports/glibc 最低版只能從每個產物觀測。本輪不能用主機 glibc 2.41 當產品最低需求。 |
 
+**更正（2026-11-11）**：下述類別在生成的 Kotlin 裡只有定義、沒有任何使用處（UniFFI 0.29.4 的樣板固定輸出），不構成風險，也不需要重現；見 [follow-up-implementation.md](follow-up-implementation.md)。原文保留如下。
+
 **具體待驗證缺口**：binding 的 `RustBufferByReference : ByReference(16)`（97）在 offset 16 寫入 pointer（106），讀回時還以 `getLong(16)`（117）存入 pointer 欄位。在 64-bit 下前兩個 u64 已用滿 16 bytes，另需 pointer；32-bit 下也不能假設 pointer 是 64-bit。這是來源可見的大小／型別不一致，須以 callback 路徑與記憶體檢查重現，再向生成器或生成流程修正；本輪不手改 generated Kotlin，也不宣稱已觀察到當機。直接 C PoC 應依原生型別 `sizeof/offsetof` 建立契約，不能照抄這個配置。
 
 ## zkPDF / Barretenberg bridge
