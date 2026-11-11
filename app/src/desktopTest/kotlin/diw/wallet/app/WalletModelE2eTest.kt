@@ -2525,7 +2525,10 @@ class WalletModelE2eTest {
         assertEquals(diw.wallet.core.zktls.WebProofCredentials.METHOD_DEVICE, claims.str("method"))
         assertEquals(record.NAME, claims.str("name"))
         assertEquals(record.DATE, claims.str("date"))
-        assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString() && record.CODE !in claims.toString())
+        // The short code is only looked for outside the random members (key, digests, times), where it could occur by chance.
+        val content = kotlinx.serialization.json.JsonObject(claims.filterKeys { it !in setOf("cnf", "source", "session", "iat", "nbf", "_sd", "_sd_alg") })
+        assertTrue(record.SERIAL !in claims.toString() && record.HIDDEN !in claims.toString(), claims.toString())
+        assertTrue(record.CODE !in content.toString() && "\"${record.CODE}\"" !in claims.toString(), claims.toString())
         assertEquals(listOf(kept.documentId), m.files.files.value.single().webProofIds)
         assertTrue(m.history.value.none { record.SERIAL in it.toString() || record.CODE in it.note.orEmpty() })
 
