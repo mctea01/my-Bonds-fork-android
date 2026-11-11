@@ -453,6 +453,23 @@ class FilesModel(private val model: WalletModel) {
 
         override suspend fun openPgpKeys(): List<OpenPgpTrustedKey> = model.openPgp.trustedKeys()
 
+        override suspend fun fetchRevocationList(url: String): ByteArray? = try {
+            if (!url.startsWith("http://") && !url.startsWith("https://")) null
+            else {
+                val r = model.signedDataHttp.exchange(url, null, null, null)
+                r.body.takeIf { r.success && it.isNotEmpty() && it.size <= MAX_CRL_BYTES }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+
+        override suspend fun revocationSigners(role: TrustRole): List<ByteArray> =
+            if (role != TrustRole.TRAVEL_DOCUMENT) emptyList()
+            else TrustEnvironment.entries.flatMap { env -> runCatching { model.trust.travelDocumentAnchors(env) }.getOrDefault(emptyList()) }
+                .map { it.encoded.toByteArray() }
+
         override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) emptyList()
             else {
@@ -2615,6 +2632,7 @@ class FilesModel(private val model: WalletModel) {
         /** Width of rendered PDF pages, in pixels. */
         const val PREVIEW_WIDTH = 1080
         private const val MAX_AIA_BYTES = 256 * 1024
+        private const val MAX_CRL_BYTES = 8 * 1024 * 1024
 
         /** An OpenCerts certificate is checked online again when opened after this long. */
         const val OPENCERT_RECHECK_SECONDS = 12 * 3600L

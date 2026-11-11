@@ -1980,8 +1980,10 @@ class WalletModel(val platform: PlatformServices) {
 
     /**
      * Imports the country signing CAs of ICAO master lists the user picked (.ml, as Germany's BSI and other states
-     * publish them) as the user's own travel document anchors; link certificates between CSCA generations become
-     * intermediates. Expired certificates are left out, since no document they signed is still valid.
+     * publish them, or the LDIF downloads of the ICAO PKD, whose master lists and CA certificates are taken) as the
+     * user's own travel document anchors; link certificates between CSCA generations become intermediates. Expired
+     * certificates are left out, since no document they signed is still valid. Document signer certificates and CRLs
+     * of a PKD download are counted but not imported: they are not anchors.
      */
     fun importMasterList() = scope.launch {
         try {
@@ -1990,21 +1992,46 @@ class WalletModel(val platform: PlatformServices) {
             var roots = 0
             var middle = 0
             var expired = 0
+            var badLists = 0
+            var signers = 0
+            var crls = 0
+            var ldif = false
+            val seen = HashSet<kotlinx.io.bytestring.ByteString>()
             val now = kotlin.time.Clock.System.now()
-            for (p in picked) {
-                val list = diw.wallet.core.document.mrtd.MrtdCrypto.masterList(p.bytes)
-                    ?: throw ProtocolException("invalid_request", tr(Res.string.msg_not_master_list, p.name))
-                if (!list.signatureValid) throw ProtocolException("invalid_request", tr(Res.string.msg_master_list_signature, p.name))
-                for (der in list.certificates) {
-                    val cert = runCatching { X509Cert(kotlinx.io.bytestring.ByteString(der)) }.getOrNull() ?: continue
-                    if (cert.validityNotAfter < now) { expired++; continue }
-                    val label = "CSCA " + (cert.subject.components[OID.COUNTRY_NAME.oid]?.value?.let { "$it " } ?: "") + commonName(cert)
-                    if (TrustRegistry.isRoot(cert)) {
-                        if (trust.addAnchor(TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.USER, cert, label, official = false, source = "masterlist:" + p.name)) roots++
-                    } else if (TrustRegistry.isIntermediate(cert) && trust.addIntermediate(cert, label, "masterlist:" + p.name)) middle++
-                }
+            suspend fun add(der: ByteArray, source: String) {
+                if (!seen.add(kotlinx.io.bytestring.ByteString(der))) return
+                val cert = runCatching { X509Cert(kotlinx.io.bytestring.ByteString(der)) }.getOrNull() ?: return
+                if (cert.validityNotAfter < now) { expired++; return }
+                val label = "CSCA " + (cert.subject.components[OID.COUNTRY_NAME.oid]?.value?.let { "$it " } ?: "") + commonName(cert)
+                if (TrustRegistry.isRoot(cert)) {
+                    if (trust.addAnchor(TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.USER, cert, label, official = false, source = source)) roots++
+                } else if (TrustRegistry.isIntermediate(cert) && trust.addIntermediate(cert, label, source)) middle++
             }
-            message.value = tr(Res.string.msg_master_list_imported, roots, middle, expired)
+            for (p in picked) {
+                val source = "masterlist:" + p.name
+                val list = diw.wallet.core.document.mrtd.MrtdCrypto.masterList(p.bytes)
+                if (list != null) {
+                    if (!list.signatureValid) throw ProtocolException("invalid_request", tr(Res.string.msg_master_list_signature, p.name))
+                    for (der in list.certificates) add(der, source)
+                    continue
+                }
+                val pkd = diw.wallet.core.document.mrtd.PkdLdif.parse(p.bytes)
+                    ?: throw ProtocolException("invalid_request", tr(Res.string.msg_not_master_list, p.name))
+                if (pkd.masterLists.isEmpty() && pkd.caCertificates.isEmpty()) {
+                    throw ProtocolException("invalid_request", tr(Res.string.msg_ldif_no_csca, p.name, pkd.documentSigners, pkd.crls))
+                }
+                ldif = true
+                for (raw in pkd.masterLists) {
+                    val inner = diw.wallet.core.document.mrtd.MrtdCrypto.masterList(raw)
+                    if (inner == null || !inner.signatureValid) { badLists++; continue }
+                    for (der in inner.certificates) add(der, source)
+                }
+                for (der in pkd.caCertificates) add(der, source)
+                signers += pkd.documentSigners
+                crls += pkd.crls
+            }
+            message.value = tr(Res.string.msg_master_list_imported, roots, middle, expired) +
+                (if (ldif) tr(Res.string.msg_ldif_skipped, badLists, signers, crls) else "")
             loadAnchors()
             if (roots > 0 || middle > 0) status.reevaluateIssuers(tr(Res.string.pin_reason_add_anchor), affected = { it.anchorName == null }, accept = { it.environment != null })
         } catch (e: Exception) {

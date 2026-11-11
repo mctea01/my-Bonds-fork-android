@@ -698,6 +698,15 @@
     <string name="core_cms_pades_no_signing_cert">The PAdES signature lacks the signing certificate attribute (ESS signing-certificate)</string>
     <string name="core_cms_revocation_good">The revocation data in the document (%1$s) shows the signing certificate is not revoked</string>
     <string name="core_cms_revoked_after_tst">The signing certificate was revoked after the trusted time stamp (%1$s); the signature remains valid</string>
+    <string name="core_crl_online_good">A CRL fetched online (issued %1$s) shows the signing certificate is not revoked</string>
+    <string name="core_crl_online_no_issuer">The signing certificate names a CRL distribution point, but without the issuing certificate the CRL cannot be verified, so revocation was not checked</string>
+    <string name="core_crl_online_other_key">The CRL is signed by another key of the same issuer (%1$s, a trusted certificate), as a CSCA does after changing keys</string>
+    <string name="core_crl_online_page">The CRL distribution point is a web page (%1$s); the CRL file linked from it was used: %2$s</string>
+    <string name="core_crl_online_page_none">The CRL distribution point is a web page, not a CRL file (%1$s), and no usable CRL link was found on it, so revocation was not checked</string>
+    <string name="core_crl_online_source">online CRL</string>
+    <string name="core_crl_online_stale">The CRL fetched online is past its next update (%1$s), so the revocation status may not be current</string>
+    <string name="core_crl_online_unavailable">The CRL could not be downloaded (%1$s), so revocation was not checked</string>
+    <string name="core_crl_online_unverified">A CRL was downloaded, but its issuer or signature does not match the issuing certificate, so it was not used</string>
     <string name="core_cms_root_untrusted">The root certificate \"%1$s\" of the chain is not a trust anchor; after confirming its source you can trust this root certificate (T2)</string>
     <string name="core_cms_short_key">The signing key is shorter than 2048 bits</string>
     <string name="core_cms_signature">CMS signature</string>
@@ -2277,8 +2286,8 @@
     <string name="list_more"> etc.</string>
     <string name="main_file_unreadable">Cannot read this file</string>
     <string name="main_other_app">Other app</string>
-    <string name="master_list_import">Import CSCA master list (.ml)</string>
-    <string name="master_list_text">Country signing CAs (CSCA) of electronic passports can be imported from the ICAO master lists states publish, such as Germany's BSI list. Imported certificates are used only for passive authentication of e-passports and are listed as your own trust anchors.</string>
+    <string name="master_list_import">Import CSCA master list (.ml or ICAO PKD .ldif)</string>
+    <string name="master_list_text">Country signing CAs (CSCA) of electronic passports can be imported from the ICAO master lists states publish, such as Germany's BSI list, or from the master list LDIF of the ICAO PKD download (icaopkd-002). Imported certificates are used only for passive authentication of e-passports and are listed as your own trust anchors.</string>
     <string name="moica_builtin">Uses the SP account built into this version (%1$s).</string>
     <string name="moica_checking_server">Checking whether the production server offers mobile citizen certificate signing...</string>
     <string name="moica_confirm_twice">The first signature needs two confirmations in the app: first to get your certificate, then to sign the document; after that, one confirmation is enough during this run.</string>
@@ -2468,6 +2477,8 @@
     <string name="msg_list_updated">Signing lists updated: %1$s new versions</string>
     <string name="msg_login_cancelled">Sign-in cancelled</string>
     <string name="msg_master_list_imported">Imported %1$s CSCA anchors and %2$s link certificates; skipped %3$s expired certificates</string>
+    <string name="msg_ldif_skipped">; also skipped %1$s master lists whose signature does not verify, %2$s document signer certificates (DSC) and %3$s CRLs</string>
+    <string name="msg_ldif_no_csca">%1$s has no master list or CSCA certificate, only %2$s document signer certificates (DSC) and %3$s CRLs; for CSCAs, import the master list file of the ICAO PKD (icaopkd-002)</string>
     <string name="msg_master_list_signature">The master list signature of %1$s does not verify; nothing was imported</string>
     <string name="msg_member_missing">\"%1$s\" cannot be found in the container</string>
     <string name="msg_moica_env_mismatch">The mobile citizen certificate environment the production server used this time (%1$s) differs from the one it declared (%2$s), so it stopped</string>

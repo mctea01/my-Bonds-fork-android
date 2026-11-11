@@ -20,6 +20,7 @@ import diw.wallet.core.document.mrtd.MrtdOids
 import diw.wallet.core.document.mrtd.MrtdReader
 import diw.wallet.core.document.mrtd.Mrz
 import diw.wallet.core.document.mrtd.MrzKey
+import diw.wallet.core.document.mrtd.PkdLdif
 import diw.wallet.core.document.mrtd.SecureChannel
 import diw.wallet.core.document.mrtd.SmCipher
 import diw.wallet.core.env.EnvironmentPolicy
@@ -38,9 +39,16 @@ import org.bouncycastle.asn1.nist.NISTObjectIdentifiers
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.AlgorithmIdentifier
 import org.bouncycastle.asn1.x509.BasicConstraints
+import org.bouncycastle.asn1.x509.CRLDistPoint
+import org.bouncycastle.asn1.x509.CRLReason
+import org.bouncycastle.asn1.x509.DistributionPoint
+import org.bouncycastle.asn1.x509.DistributionPointName
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
+import org.bouncycastle.asn1.x509.GeneralNames
 import org.bouncycastle.asn1.x509.KeyUsage
 import org.bouncycastle.cert.X509CertificateHolder
+import org.bouncycastle.cert.X509v2CRLBuilder
 import org.bouncycastle.cert.jcajce.JcaCertStore
 import org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
@@ -80,13 +88,15 @@ class MrtdTest {
 
     private fun rsa(bits: Int = 2048): KeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(bits) }.generateKeyPair()
 
-    private fun cert(subject: String, issuer: String, key: PublicKey, signer: KeyPair, ca: Boolean): X509CertificateHolder {
+    private fun cert(subject: String, issuer: String, key: PublicKey, signer: KeyPair, ca: Boolean, crl: String? = null): X509CertificateHolder {
         val b = JcaX509v3CertificateBuilder(X500Name(issuer), BigInteger.valueOf(System.nanoTime()), Date(now - 30 * day), Date(now + 3650 * day), X500Name(subject), key)
         val ext = JcaX509ExtensionUtils()
         b.addExtension(Extension.subjectKeyIdentifier, false, ext.createSubjectKeyIdentifier(key))
         b.addExtension(Extension.authorityKeyIdentifier, false, ext.createAuthorityKeyIdentifier(signer.public))
         if (ca) b.addExtension(Extension.basicConstraints, true, BasicConstraints(0))
         b.addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature))
+        if (crl != null) b.addExtension(Extension.cRLDistributionPoints, false, CRLDistPoint(arrayOf(DistributionPoint(
+            DistributionPointName(GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, crl))), null, null))))
         return b.build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(signer.private))
     }
 
@@ -433,6 +443,48 @@ class MrtdTest {
         assertTrue(refused.signatures.single().problems.any { "1.2.3.4" in it }, refused.signatures.single().problems.toString())
     }
 
+    @Test fun travelDocumentSignerIsCheckedAgainstItsOnlineCrl() {
+        // The distribution point is a web page that links the CRL file, as Taiwan's is; the CSCA signs the CRL with a
+        // newer key under the same name.
+        val page = "https://crl.test/cp-1.html"
+        val file = "https://crl.test/dl-2.html"
+        val signed = cert("C=TW,O=Test Ministry,CN=Test DSC", "C=TW,O=Test Ministry,CN=Test CSCA", dscKey.public, cscaKey, false, crl = page)
+        val newKey = rsa()
+        val newCsca = cert("C=TW,O=Test Ministry,CN=Test CSCA", "C=TW,O=Test Ministry,CN=Test CSCA", newKey.public, newKey, true)
+        fun crl(revoked: Boolean, key: KeyPair): ByteArray {
+            val b = X509v2CRLBuilder(X500Name("C=TW,O=Test Ministry,CN=Test CSCA"), Date(now - day))
+            b.setNextUpdate(Date(now + 30 * day))
+            if (revoked) b.addCRLEntry(signed.serialNumber, Date(now - 2 * day), CRLReason.keyCompromise)
+            return b.build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build(key.private)).encoded
+        }
+        val html = "<html><body><a href=\"/np-3.html\" title=\"Certificate Revocation Lists(CRLs)\">CRLs</a>" +
+            "<a href=\"$file\" title=\"Certificate+Revocation+Lists(CRL+file).crlAttachment\">crl</a></body></html>"
+        val dump = read(chip())
+        val groups = LdsFile.entries.filter { it.dataGroup != null }.mapNotNull { f -> dump.file(f)?.let { f to it } }.toMap()
+        val passport = dump.copy(files = dump.files + (LdsFile.SOD.name to Base64.encode(sod(groups, signerCert = signed))))
+        val fetched = ArrayList<String>()
+        fun report(list: ByteArray, signers: List<X509CertificateHolder>) = runBlocking {
+            val base = trust(true)
+            DocumentInspector.inspect(passport.encode(), "passport." + MrtdDump.FILE_EXTENSION, object : DocumentTrustSource by base {
+                override suspend fun fetchRevocationList(url: String): ByteArray? {
+                    fetched.add(url)
+                    return when (url) { page -> html.encodeToByteArray(); file -> list; else -> null }
+                }
+                override suspend fun revocationSigners(role: TrustRole) = signers.map { it.encoded }
+            })
+        }
+        val good = report(crl(false, newKey), listOf(csca, newCsca))
+        assertEquals(DocumentVerdict.VALID, good.verdict, good.signatures.single().problems.toString())
+        assertTrue(good.signatures.single().notes.any { file in it }, good.signatures.single().notes.toString())
+        assertEquals(page, fetched.first())
+        val revoked = report(crl(true, newKey), listOf(csca, newCsca))
+        assertEquals(DocumentVerdict.INVALID, revoked.verdict)
+        assertEquals(Check.FAIL, revoked.signatures.single().certificateValidity)
+        // A CRL signed by a key that is not trusted is not used, so the passport is still read as before.
+        val untrusted = report(crl(true, newKey), listOf(csca))
+        assertEquals(DocumentVerdict.VALID, untrusted.verdict, untrusted.signatures.single().problems.toString())
+    }
+
     @Test fun cameraOcrIsCorrectedByPosition() {
         // ICAO 9303 specimen zones read with typical OCR confusions, spaces and a dropped filler.
         val td3 = Mrz.recognize("PASSPORT\nP<UT0ERIKSS0N<<ANNA<MARIA<<<<<<<<<<<<<<<<<<\nL898902C36UT0 7408I22F12O4159ZE184226B<<<<<1O\n")
@@ -509,6 +561,17 @@ class MrtdTest {
         }
         assertEquals(false, MrtdCrypto.masterList(tampered)?.signatureValid)
         assertEquals(null, MrtdCrypto.masterList(BerTlv.encode(0x77, ByteArray(4))))
+        // The ICAO PKD download wraps master lists in LDIF, with values folded over lines.
+        fun folded(attribute: String, der: ByteArray) = (attribute + ":: " + Base64.encode(der)).chunked(76).joinToString("\r\n ")
+        val ldif = "version: 1\r\n\r\n# master lists\r\ndn: cn=Test,o=ml,c=TW,dc=data\r\n" + folded("pkdMasterListContent", signed(content)) +
+            "\r\nobjectClass: pkdMasterList\r\n\r\ndn: cn=DSC,o=dsc,c=TW,dc=data\r\n" + folded("userCertificate;binary", dsc.encoded) +
+            "\r\n\r\ndn: cn=CRL,o=crl,c=TW,dc=data\r\ncertificateRevocationList;binary:: AAAA\r\n"
+        val pkd = assertNotNull(PkdLdif.parse(ldif.encodeToByteArray()))
+        assertEquals(1, pkd.masterLists.size)
+        assertEquals(1, pkd.documentSigners)
+        assertEquals(1, pkd.crls)
+        assertTrue(assertNotNull(MrtdCrypto.masterList(pkd.masterLists.single())).signatureValid)
+        assertNull(PkdLdif.parse(signed(content)))
     }
 
     @Test fun unknownCountrySigningCaIsPartial() {

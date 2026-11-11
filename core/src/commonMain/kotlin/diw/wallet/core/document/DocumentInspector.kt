@@ -17,6 +17,12 @@ interface DocumentTrustSource {
     /** Certificates published at an AIA caIssuers URL (DER or PKCS#7 certs-only); empty when offline or not allowed. */
     suspend fun fetchIssuerCertificates(url: String): List<ByteArray>
 
+    /** A CRL published at a certificate's CRL distribution point (DER); null when offline, not allowed or failed. */
+    suspend fun fetchRevocationList(url: String): ByteArray? = null
+
+    /** Trusted certificates (anchors) that may sign the CRLs of [role] signers under the same name, in DER. */
+    suspend fun revocationSigners(role: TrustRole): List<ByteArray> = emptyList()
+
     /**
      * Intermediate certificates (built in and imported) and built-in roots that are offered for import, in DER: they
      * complete chains whose signatures leave issuers out. They never make a chain trusted by themselves.

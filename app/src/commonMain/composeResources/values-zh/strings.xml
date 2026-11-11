@@ -698,6 +698,15 @@
     <string name="core_cms_pades_no_signing_cert">PAdES 簽章缺少簽署憑證屬性（ESS signing-certificate）</string>
     <string name="core_cms_revocation_good">文件內附的撤銷資料（%1$s）顯示簽署憑證未被撤銷</string>
     <string name="core_cms_revoked_after_tst">簽署憑證在可信時戳之後才被撤銷（%1$s），簽章仍有效</string>
+    <string name="core_crl_online_good">線上取得的 CRL（發布於 %1$s）顯示簽署憑證未被撤銷</string>
+    <string name="core_crl_online_no_issuer">簽署憑證列有 CRL 發布點，但缺少上層憑證，無法驗證 CRL，未查詢是否被撤銷</string>
+    <string name="core_crl_online_other_key">CRL 由同一簽發者的另一把金鑰簽署（%1$s，為受信任的憑證），CSCA 更換金鑰後即如此</string>
+    <string name="core_crl_online_page">CRL 發布點是網頁（%1$s），已改用頁面上連結的 CRL 檔案：%2$s</string>
+    <string name="core_crl_online_page_none">CRL 發布點是網頁而不是 CRL 檔案（%1$s），頁面上也找不到可用的 CRL 連結，未查詢簽署憑證是否被撤銷</string>
+    <string name="core_crl_online_source">線上 CRL</string>
+    <string name="core_crl_online_stale">線上取得的 CRL 已超過下次更新時間（%1$s），撤銷狀態可能不是最新</string>
+    <string name="core_crl_online_unavailable">無法下載 CRL（%1$s），未查詢簽署憑證是否被撤銷</string>
+    <string name="core_crl_online_unverified">已下載 CRL，但簽發者或簽章與上層憑證不符，未採用</string>
     <string name="core_cms_root_untrusted">憑證鏈的根憑證「%1$s」不在信任錨點；確認來源後可信任這個根憑證（T2）</string>
     <string name="core_cms_short_key">簽署金鑰長度不足 2048 位元</string>
     <string name="core_cms_signature">CMS 簽章</string>
@@ -2277,8 +2286,8 @@
     <string name="list_more">等</string>
     <string name="main_file_unreadable">無法讀取這個檔案</string>
     <string name="main_other_app">其他 App</string>
-    <string name="master_list_import">匯入 CSCA 主清單（.ml）</string>
-    <string name="master_list_text">電子護照的簽發根憑證（CSCA）可從各國公布的 ICAO 主清單匯入，例如德國 BSI 的主清單。匯入的憑證只用於電子護照的被動驗證，列為你自己的信任錨點。</string>
+    <string name="master_list_import">匯入 CSCA 主清單（.ml 或 ICAO PKD .ldif）</string>
+    <string name="master_list_text">電子護照的簽發根憑證（CSCA）可從各國公布的 ICAO 主清單匯入，例如德國 BSI 的主清單，或 ICAO PKD 下載的主清單 LDIF 檔（icaopkd-002）。匯入的憑證只用於電子護照的被動驗證，列為你自己的信任錨點。</string>
     <string name="moica_builtin">使用本版內建的 SP 帳號（%1$s）。</string>
     <string name="moica_checking_server">正在確認正式服務端是否提供行動自然人憑證簽署…</string>
     <string name="moica_confirm_twice">第一次簽署需在 App 確認兩次：先取得你的憑證，再簽署文件；之後這次執行內只需確認一次。</string>
@@ -2468,6 +2477,8 @@
     <string name="msg_list_updated">簽署清單更新完成：%1$s 份新版本</string>
     <string name="msg_login_cancelled">已取消登入</string>
     <string name="msg_master_list_imported">已匯入 %1$s 個 CSCA 信任錨點、%2$s 個連結憑證，略過 %3$s 個過期憑證</string>
+    <string name="msg_ldif_skipped">；另略過 %1$s 個簽章不符的主清單、%2$s 張文件簽署憑證（DSC）與 %3$s 份 CRL</string>
+    <string name="msg_ldif_no_csca">%1$s 沒有主清單或 CSCA 憑證，只有 %2$s 張文件簽署憑證（DSC）與 %3$s 份 CRL；CSCA 請匯入 ICAO PKD 的主清單檔（icaopkd-002）</string>
     <string name="msg_master_list_signature">%1$s 的主清單簽章不符，未匯入</string>
     <string name="msg_member_missing">容器內找不到「%1$s」</string>
     <string name="msg_moica_env_mismatch">正式服務端這次使用的行動自然人憑證環境（%1$s）與它宣告的（%2$s）不同，已停止</string>

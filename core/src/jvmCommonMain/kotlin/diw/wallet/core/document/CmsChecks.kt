@@ -216,8 +216,12 @@ internal class CmsChecks(private val pki: PkiSupport) {
             notes.add(if (pki.selfSigned(root)) ct("core_cms_root_untrusted", pki.cn(root.subject) ?: root.subject)
             else ct("core_cms_chain_incomplete", pki.cn(root.issuer) ?: root.issuer))
         }
-        // Embedded revocation data only: a revocation before the trusted time (or now) invalidates the signature.
-        val revocation = pki.revocation(signer, chain.getOrNull(1), ocsps, crls)
+        // Embedded revocation data first; travel documents carry none, so their signer's CRL is fetched when online.
+        // A revocation before the trusted time (or now) invalidates the signature.
+        val embedded = pki.revocation(signer, chain.getOrNull(1), ocsps, crls)
+        val online = if (embedded == null && role == TrustRole.TRAVEL_DOCUMENT) pki.onlineCrl(signer, chain.getOrNull(1), role, now) else null
+        val revocation = embedded ?: online?.revocation
+        online?.notes?.let { notes.addAll(it) }
         var finalValidity = validity
         if (revocation != null) {
             if (revocation.revoked) {
@@ -230,9 +234,10 @@ internal class CmsChecks(private val pki: PkiSupport) {
                     notes.add(ct("core_cms_revoked_after_tst", revocation.source))
                 }
             } else {
-                notes.add(ct("core_cms_revocation_good", revocation.source))
+                notes.add(if (revocation === online?.revocation) ct("core_crl_online_good", PkiSupport.day(revocation.producedAt))
+                else ct("core_cms_revocation_good", revocation.source))
             }
-        } else {
+        } else if (online == null) {
             notes.add(ct("core_cms_no_revocation"))
         }
         if (pki.keyDescription(signer).startsWith("RSA ") && pki.rsaBits(signer) in 1..2047) notes.add(ct("core_cms_short_key"))
