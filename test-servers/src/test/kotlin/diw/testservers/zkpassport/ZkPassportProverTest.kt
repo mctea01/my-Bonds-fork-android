@@ -106,7 +106,9 @@ class ZkPassportProverTest {
 
         // With the right root the manifest is checked next, then the synthetic chip fails input generation.
         val fetched = ArrayList<String>()
-        assertEquals("inputs", assertFailsWith<ZkPassportProver.Failure> { prover(registry(root, fetched), crs).prove(chip, job) }.code)
+        // The code carries the native reason after "inputs:", shown to the holder.
+        val code = assertFailsWith<ZkPassportProver.Failure> { prover(registry(root, fetched), crs).prove(chip, job) }.code
+        assertTrue(code == "inputs" || code.startsWith("inputs:"), code)
         assertTrue(fetched.any { it.endsWith("/$root.json") })
         assertTrue(fetched.any { it.contains("/by-version/0.21.1/manifest.json") })
         assertTrue(fetched.none { it.contains("/by-hash/") }, "no circuit is fetched before inputs exist")
