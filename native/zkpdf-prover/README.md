@@ -48,9 +48,24 @@ build directory. `build.sh` supplies the API-29 NDK wrapper through
 `ZKPDF_CXX`/`ZKPDF_AR`, independently of cargo-ndk's rewritten `CXX` and
 `CXXFLAGS`. It reports elapsed seconds and library bytes for each ABI.
 Android build results are recorded in `docs/research/p4-benchmarks.md`.
-macOS has not been built in this Linux workspace. Windows is currently blocked by upstream POSIX dependencies
-(`sys/random.h`, `sys/mman.h` and allocation/file APIs); the build tool fails
-explicitly rather than substituting a different backend version. Windows zkPDF is currently unsupported; no POSIX port is attempted.
+macOS has not been built in this Linux workspace.
+
+Linux arm64 (`--target aarch64-unknown-linux-gnu`) builds natively on an arm64 host and, on an x86_64 host, with
+the distribution's GNU cross compiler (`g++-aarch64-linux-gnu`); `native/build.sh aarch64-unknown-linux-gnu`
+sets the matching linker and bridge compiler.
+
+Windows x86_64 (`--target x86_64-pc-windows-gnu`) is cross-built on Linux, the way upstream builds it, here with
+the distribution's `clang`, `lld` and `g++-mingw-w64-x86-64-posix` (`tools/windows_mingw.cmake`); GCC's own MinGW
+compiler stops in this source with an internal compiler error. `tools/mingw_libstdcxx.h` is included before every
+C++ file for the two places where libstdc++ on MinGW differs from the libc++ upstream uses, and clang is told to
+use emulated TLS as libstdc++ does. `native/build.sh x86_64-pc-windows-gnu` builds Barretenberg and the whole
+library this way; the result depends on system DLLs only. A Windows host cannot build the zkPDF backend.
+
+On Windows every call into Barretenberg runs on one thread that lives as long as the process
+(`src/bbthread.rs`). Barretenberg keeps its worker pool in a thread-local whose destructor joins the workers;
+Windows runs it while the calling thread exits, under the loader lock, where the workers cannot finish exiting.
+
+32-bit targets are not supported: Barretenberg needs 128-bit integers and a 64-bit `size_t`.
 
 ## Assets
 

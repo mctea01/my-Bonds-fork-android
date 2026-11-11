@@ -49,6 +49,9 @@ for abi in "${abis[@]}"; do
 done
 # Static C++ sources are acquired only by this explicit build step.
 bb_build_override=${ZKPDF_BB_BUILD:-}
+# The bridge compiler and archiver given by the caller; a cross target sets its own and must not pass it on.
+bridge_cxx_override=${ZKPDF_CXX:-}
+bridge_ar_override=${ZKPDF_AR:-}
 build_zkpdf() {
     local bb_target=$1
     [[ ",$features," == *,zkpdf,* ]] || return 0
@@ -76,7 +79,7 @@ for target in "${selected[@]}"; do
         [[ -f "$ANDROID_NDK_HOME/source.properties" ]] || { echo "Pinned NDK is missing" >&2; exit 1; }
         grep -Eq "Pkg.Revision *= *$NDK_VERSION$" "$ANDROID_NDK_HOME/source.properties" || exit 1
         [[ "$(cargo ndk --version)" == "cargo-ndk $CARGO_NDK_VERSION" ]] || { echo "Pinned cargo-ndk is required" >&2; exit 1; }
-        rustup target add aarch64-linux-android x86_64-linux-android
+        rustup target add aarch64-linux-android x86_64-linux-android armv7-linux-androideabi i686-linux-android
         if [[ ",$features," == *,zkpdf,* ]]; then
             for abi in "${abis[@]}"; do
                 abi_started=$SECONDS
@@ -111,10 +114,40 @@ for target in "${selected[@]}"; do
         else
             cargo ndk "${abi_args[@]}" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
         fi
+        # The 32-bit ABIs have no proof backend: Barretenberg needs 128-bit integers and a 64-bit size_t, Multipaz ships
+        # no 32-bit Longfellow, and the provers need more memory than a 32-bit process has. The app still installs
+        # there and decodes JPEG 2000 portraits with this library, so each 64-bit ABI brings the runtime-only library
+        # of its 32-bit sibling (about 1 MB).
+        for abi in "${abis[@]}"; do
+            if [[ "$abi" == arm64-v8a ]]; then sibling=armeabi-v7a; else sibling=x86; fi
+            cargo ndk -t "$sibling" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi
+        done
     else
+        if [[ -n "$bridge_cxx_override" ]]; then export ZKPDF_CXX=$bridge_cxx_override; else unset ZKPDF_CXX; fi
+        if [[ -n "$bridge_ar_override" ]]; then export ZKPDF_AR=$bridge_ar_override; else unset ZKPDF_AR; fi
         case "$target" in
             x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
-            x86_64-pc-windows-gnu|x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll ;;
+            aarch64-unknown-linux-gnu) platform=linux-aarch64; library=libdiw_zk.so
+                # From an x86_64 host the distribution's GNU cross tools (g++-aarch64-linux-gnu) compile and link it.
+                if [[ "$host" != "$target" ]]; then
+                    export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER:-aarch64-linux-gnu-gcc}
+                    export CC_aarch64_unknown_linux_gnu=${CC_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-gcc}
+                    export CXX_aarch64_unknown_linux_gnu=${CXX_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-g++}
+                    export AR_aarch64_unknown_linux_gnu=${AR_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-ar}
+                    export ZKPDF_CXX=${bridge_cxx_override:-aarch64-linux-gnu-g++} ZKPDF_AR=${bridge_ar_override:-aarch64-linux-gnu-ar}
+                fi ;;
+            x86_64-pc-windows-gnu|x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll
+                # A Windows host builds its own target, without zkPDF. With zkPDF the library is cross-built on Linux
+                # for the GNU ABI with clang, lld and MinGW-w64 (clang, lld, g++-mingw-w64-x86-64-posix on Ubuntu),
+                # the way Barretenberg is: zkpdf-prover/tools/windows_mingw.cmake.
+                if [[ "$target" == x86_64-pc-windows-gnu && "$(uname -s)" == Linux ]]; then
+                    export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:-clang}
+                    export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS=${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS:-"-C link-arg=--target=x86_64-w64-mingw32 -C link-arg=-fuse-ld=lld -C strip=symbols"}
+                    export CC_x86_64_pc_windows_gnu=${CC_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-gcc-posix}
+                    export CXX_x86_64_pc_windows_gnu=${CXX_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-g++-posix}
+                    export AR_x86_64_pc_windows_gnu=${AR_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-ar}
+                    export ZKPDF_CXX=${bridge_cxx_override:-clang++} ZKPDF_AR=${bridge_ar_override:-x86_64-w64-mingw32-ar}
+                fi ;;
             # One minimum macOS for Barretenberg, the bridge and rustc (otherwise each object targets a different one).
             aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib; export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0} ;;
             *) echo "Unsupported desktop target" >&2; exit 1 ;;

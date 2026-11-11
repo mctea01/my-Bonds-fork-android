@@ -25,5 +25,9 @@ pinned build dependencies include msgpack-c (headers only, Boost Software Licens
 libdeflate v1.24 (MIT, 96836d7d9d10e3e0d53e6edb54eb908514e336c4) and Tracy
 headers (BSD-3-Clause, 5d542dc09f3d9378d005092a4ad446bd405f819a); the
 upstream CMake files pin these sources.
+The Windows libraries are cross-built with clang against MinGW-w64 and link its
+runtime statically: the mingw-w64 CRT (Zope Public License 2.1 and public
+domain parts) and winpthreads (MIT and BSD 3-Clause), with libstdc++ and
+libgcc of GCC 13 (GPL-3.0-or-later with the GCC Runtime Library Exception 3.1).
 The BN254 CRS is the public Aztec Ignition ceremony transcript prefix, not a
 secret setup key. Runtime never downloads it; exact hashes are in assets.json.

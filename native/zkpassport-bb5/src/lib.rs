@@ -15,6 +15,11 @@ const MODULUS: [u8; 32] = [
     0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
 ];
 
+// The same rule as for the bb v6 backend: on Windows Barretenberg runs on one thread that never exits.
+#[cfg(feature = "bb")]
+#[path = "../../zkpdf-prover/src/bbthread.rs"]
+mod bbthread;
+
 #[cfg(feature = "bb")]
 unsafe extern "C" {
     fn diw_bb5_bridge_init() -> i32;
@@ -52,12 +57,12 @@ pub fn verify(vk: &[u8], proof: &[u8], public_inputs: &[u8]) -> Result<(), Error
     {
         // SAFETY: the bridge catches every C++ exception and copies the slices, which stay live for the call.
         if !*ready {
-            if unsafe { diw_bb5_bridge_init() } != 0 {
+            if bbthread::call(|| unsafe { diw_bb5_bridge_init() }) != 0 {
                 return Err(Error::Backend);
             }
             *ready = true;
         }
-        match unsafe {
+        match bbthread::call(|| unsafe {
             diw_bb5_bridge_verify(
                 vk.as_ptr(),
                 vk.len(),
@@ -66,7 +71,7 @@ pub fn verify(vk: &[u8], proof: &[u8], public_inputs: &[u8]) -> Result<(), Error
                 public_inputs.as_ptr(),
                 public_inputs.len(),
             )
-        } {
+        }) {
             0 => Ok(()),
             1 => Err(Error::Rejected),
             _ => Err(Error::Backend),
@@ -85,14 +90,14 @@ pub fn write_vk(g1: &[u8], acir: &[u8]) -> Option<Vec<u8>> {
     let mut ready = READY.lock().ok()?;
     // SAFETY: as in [verify]; Barretenberg keeps the first CRS, so this runs before any verification.
     if !*ready {
-        if unsafe { diw_bb5_bridge_init_full(g1.as_ptr(), g1.len()) } != 0 {
+        if bbthread::call(|| unsafe { diw_bb5_bridge_init_full(g1.as_ptr(), g1.len()) }) != 0 {
             return None;
         }
         *ready = true;
     }
     let mut vk = vec![0; 16384];
     let mut written = 0usize;
-    let status = unsafe { diw_bb5_bridge_vk(acir.as_ptr(), acir.len(), vk.as_mut_ptr(), vk.len(), &mut written) };
+    let status = bbthread::call(|| unsafe { diw_bb5_bridge_vk(acir.as_ptr(), acir.len(), vk.as_mut_ptr(), vk.len(), &mut written) });
     (status == 0 && written > 0 && written <= vk.len()).then(|| {
         vk.truncate(written);
         vk

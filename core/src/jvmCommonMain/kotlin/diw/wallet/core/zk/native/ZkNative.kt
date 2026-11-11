@@ -47,6 +47,7 @@ object ZkNative {
         val arch = System.getProperty("os.arch", "").orEmpty().lowercase()
         return when {
             os.contains("linux") && arch in setOf("amd64", "x86_64") -> "linux-x86_64"
+            os.contains("linux") && arch in setOf("aarch64", "arm64") -> "linux-aarch64"
             os.contains("windows") && arch in setOf("amd64", "x86_64") -> "windows-x86_64"
             os.contains("mac") && arch in setOf("aarch64", "arm64") -> "macos-aarch64"
             else -> null

@@ -1,5 +1,5 @@
 //! Serialized access to Barretenberg's process-global CRS and worker state.
-use crate::{acir::Executed, assets, public, Error, Result};
+use crate::{acir::Executed, assets, bbthread, public, Error, Result};
 use std::io::Read;
 use std::{
     path::Path,
@@ -76,7 +76,7 @@ impl Session {
             Crs::None => {
                 // SAFETY: verified buffers remain live, sizes are exact, the mutex
                 // excludes all other calls, and C++ catches every exception.
-                if unsafe { zkpdf_bb_init(g1.as_ptr(), g1.len(), g2.as_ptr(), g2.len()) } != 0 {
+                if bbthread::call(|| unsafe { zkpdf_bb_init(g1.as_ptr(), g1.len(), g2.as_ptr(), g2.len()) }) != 0 {
                     return Err(Error("crs_initialize"));
                 }
                 *guard = Crs::Full;
@@ -101,7 +101,7 @@ impl Session {
         let mut guard = BACKEND.lock().map_err(|_| Error("backend_state"))?;
         if *guard == Crs::None {
             // SAFETY: no buffers cross the boundary; the mutex excludes all other calls.
-            if unsafe { zkpdf_bb_init_verifier() } != 0 {
+            if bbthread::call(|| unsafe { zkpdf_bb_init_verifier() }) != 0 {
                 return Err(Error("crs_initialize"));
             }
             *guard = Crs::Verifier;
@@ -115,7 +115,7 @@ impl Session {
         let mut written = 0usize;
         let mut pi = vec![0; executed.public_inputs.len()];
         // SAFETY: slices remain live and all output capacity is provided.
-        let status = unsafe {
+        let status = bbthread::call(|| unsafe {
             zkpdf_bb_prove(
                 bytecode.as_ptr(),
                 bytecode.len(),
@@ -129,7 +129,7 @@ impl Session {
                 pi.as_mut_ptr(),
                 pi.len(),
             )
-        };
+        });
         if status != 0 {
             return Err(Error("proof_failed"));
         }
@@ -151,7 +151,7 @@ impl Session {
         let mut written = 0usize;
         let mut pi = vec![0; executed.public_inputs.len()];
         // SAFETY: slices remain live and all output capacity is provided.
-        let status = unsafe {
+        let status = bbthread::call(|| unsafe {
             zkpdf_bb_prove(
                 bytecode.as_ptr(),
                 bytecode.len(),
@@ -165,7 +165,7 @@ impl Session {
                 pi.as_mut_ptr(),
                 pi.len(),
             )
-        };
+        });
         if status != 0 || written == 0 || written > proof.len() {
             return Err(Error("proof_failed"));
         }
@@ -181,7 +181,7 @@ impl Session {
         let mut vk = vec![0; 16384];
         let mut written = 0usize;
         // SAFETY: slices remain live, capacity is passed and C++ catches every exception.
-        let status = unsafe {
+        let status = bbthread::call(|| unsafe {
             zkpdf_bb_vk(
                 bytecode.as_ptr(),
                 bytecode.len(),
@@ -189,7 +189,7 @@ impl Session {
                 vk.len(),
                 &mut written,
             )
-        };
+        });
         if status != 0 || written == 0 || written > vk.len() {
             return Err(Error("vk_failed"));
         }
@@ -209,7 +209,7 @@ impl Session {
         public::decode(pi, pi.len() / 32)?;
         // SAFETY: verified VK and canonically encoded fields are live slices;
         // the session lock excludes concurrent mutations of global state.
-        if unsafe {
+        if bbthread::call(|| unsafe {
             zkpdf_bb_verify(
                 vk.as_ptr(),
                 vk.len(),
@@ -218,7 +218,7 @@ impl Session {
                 pi.as_ptr(),
                 pi.len(),
             )
-        } == 0
+        }) == 0
         {
             Ok(())
         } else {

@@ -1,8 +1,15 @@
 /* Research-only UniFFI 0.29.4 caller for the pinned DIW runtime.
  * No JVM, JNA, JNI, cryptographic keys, or proof assets are used.
- * This is a Linux/POSIX smoke probe, not a supported public C SDK.
+ * A smoke probe for POSIX systems and Windows, not a supported public C SDK.
  */
+#ifdef _WIN32
+#include <windows.h>
+#define dlopen(path, mode) ((void *)LoadLibraryA(path))
+#define dlsym(library, name) ((void *)GetProcAddress((HMODULE)(library), name))
+#define dlclose(library) (FreeLibrary((HMODULE)(library)) ? 0 : 1)
+#else
 #include <dlfcn.h>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,7 +45,7 @@ static int success(RustCallStatus *status, FreeBuffer release) {
 
 int main(int argc, char **argv) {
     if (argc != 2) {
-        fprintf(stderr, "usage: runtime_probe /absolute/path/libdiw_zk.so\n");
+        fprintf(stderr, "usage: runtime_probe /absolute/path/libdiw_zk.so (or diw_zk.dll)\n");
         return 2;
     }
     void *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -73,6 +80,12 @@ int main(int argc, char **argv) {
     int valid = buffer.data != NULL && buffer.len >= sizeof(prefix)
         && buffer.len <= buffer.capacity
         && memcmp(buffer.data, prefix, sizeof(prefix)) == 0;
+    /* The rest lists the backends built in (public names such as zkpdf), each behind a big-endian length. */
+    if (valid) {
+        fputs("native_info=", stdout);
+        for (uint64_t i = 4; i < buffer.len; i++) putchar(buffer.data[i] >= 0x20 && buffer.data[i] < 0x7f ? buffer.data[i] : ' ');
+        putchar('\n');
+    }
     status = (RustCallStatus){0};
     release(buffer, &status);
     if (!success(&status, release) || !valid) goto done;
