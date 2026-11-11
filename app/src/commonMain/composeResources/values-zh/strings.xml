@@ -4356,4 +4356,7 @@
     <string name="zkp_needs_crs_missing">尚未下載，下載前無法回應請求</string>
     <string name="zkp_needs_crs_download">下載證明參數（%1$s）</string>
     <string name="zkp_needs_circuits">電路：zkPassport %1$s。電路不需預先下載：回應請求時依證件與請求內容從 zkPassport 取得所需電路，與鏈上電路註冊表核對後保存供下次使用。</string>
+    <string name="zkp_answer_err_certificates">無法下載 zkPassport 註冊表的憑證包。</string>
+    <string name="zkp_answer_origin_same_site">請求由同一網站的另一個網址送出</string>
+    <string name="zkp_answer_origin_same_site_detail">zkPassport 傳送服務回報請求方為 %1$s，請求寫的是 %2$s，兩者屬於同一網站。證明綁定的是請求寫的網域。</string>
 </resources>

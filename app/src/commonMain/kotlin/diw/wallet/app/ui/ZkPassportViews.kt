@@ -254,7 +254,11 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
     val unverified = stringResource(Res.string.zkp_answer_unverified)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
-        if (!s.originMatches) {
+        // Another page of the same site (zkPassport's demo answers through verify.zkpassport.id) is a caution only.
+        val sameSite = !s.originMatches && incoming.sameSite(s.origin)
+        if (sameSite) {
+            VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_origin_same_site), listOf(stringResource(Res.string.zkp_answer_origin_same_site_detail, s.origin, incoming.expectedOrigin)))
+        } else if (!s.originMatches) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_answer_origin_mismatch), listOf(stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)))
         }
         if (incoming.devMode) Text(stringResource(Res.string.zkp_answer_dev), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -286,7 +290,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         val file = s.passports.firstOrNull { it.id == chosen }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { if (s.originMatches) model.taiwan.zkPassport.accept(file!!) else risk = true },
+                onClick = { if (s.originMatches || sameSite) model.taiwan.zkPassport.accept(file!!) else risk = true },
                 enabled = s.unsupported == null && file != null,
             ) { Text(stringResource(Res.string.zkp_answer_accept)) }
             OutlinedButton(onClick = { model.taiwan.zkPassport.reject() }) { Text(stringResource(Res.string.zkp_answer_reject)) }

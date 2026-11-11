@@ -2,11 +2,13 @@ package diw.wallet.core.zkpassport
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.readRawBytes
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.Json
@@ -53,8 +55,18 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         } else raw
     }
 
+    /**
+     * The CDN answers with Content-Encoding gzip whatever was asked. Asking for gzip ourselves keeps OkHttp (Android)
+     * from decoding it transparently, which breaks the body on these responses; [bytes] inflates it instead.
+     */
     private suspend fun fetch(url: String, code: String): ByteArray =
-        try { bytes(http.get(url), code) } catch (e: Unreachable) { throw e } catch (e: Exception) { throw Unreachable(code) }
+        try {
+            bytes(http.get(url) { header(HttpHeaders.AcceptEncoding, "gzip") }, code)
+        } catch (e: Unreachable) {
+            throw e
+        } catch (e: Exception) {
+            throw Unreachable(code)
+        }
 
     private fun cached(name: String): File = File(cache, name).also { cache.mkdirs() }
 

@@ -4356,4 +4356,7 @@
     <string name="zkp_needs_crs_missing">not downloaded; requests cannot be answered until they are</string>
     <string name="zkp_needs_crs_download">Download the proof parameters (%1$s)</string>
     <string name="zkp_needs_circuits">Circuits: zkPassport %1$s. They are not downloaded in advance: when you answer a request, the circuits for that document and request are fetched from zkPassport, checked against the on-chain circuit registry and kept for later.</string>
+    <string name="zkp_answer_err_certificates">The certificate package of the zkPassport registry could not be downloaded.</string>
+    <string name="zkp_answer_origin_same_site">Sent by another page of the same site</string>
+    <string name="zkp_answer_origin_same_site_detail">The zkPassport bridge reports the requester as %1$s, and the request names %2$s. Both belong to the same site; the proof is bound to the domain the request names.</string>
 </resources>

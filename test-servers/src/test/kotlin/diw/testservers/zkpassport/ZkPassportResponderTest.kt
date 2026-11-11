@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import diw.wallet.core.zkpassport.ZkPassportIncoming
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -176,5 +177,15 @@ class ZkPassportResponderTest {
         } finally {
             server.stop(100, 1000)
         }
+    }
+
+    @Test fun anotherPageOfTheSameSiteIsOnlyACaution() {
+        fun incoming(domain: String) = ZkPassportIncoming(domain, "02" + "00".repeat(32), JsonObject(emptyMap()), JsonObject(emptyMap()), "fast", null, false, "")
+        assertTrue(incoming("demo.zkpassport.id").sameSite("https://verify.zkpassport.id"))
+        assertTrue(incoming("www.example.com.tw").sameSite("https://pay.example.com.tw"))
+        assertFalse(incoming("demo.zkpassport.id").sameSite("https://zkpassport.example"))
+        assertFalse(incoming("a.example.com.tw").sameSite("https://b.other.com.tw"))
+        assertFalse(incoming("demo.zkpassport.id").sameSite("http://verify.zkpassport.id"))
+        assertFalse(incoming("demo.zkpassport.id").sameSite(null))
     }
 }

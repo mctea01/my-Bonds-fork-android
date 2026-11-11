@@ -275,11 +275,18 @@ class JvmZkPassportHolder(
                         },
                     )
                 }
-            } catch (e: ZkPassportProver.Failure) {
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                // Registry downloads fail with their own code; anything else is named by its type for the details.
+                val code = when (e) {
+                    is ZkPassportProver.Failure -> e.code
+                    is ZkPassportRegistry.Unreachable -> e.code
+                    else -> "other:" + (e::class.simpleName ?: "error")
+                }
                 // The requester's app reads these texts; the one for documents without inputs is the SDK's own.
-                val text = if (e.code == "inputs") "This ID is not supported yet" else "Proof generation failed: ${e.code}"
+                val text = if (code == "inputs") "This ID is not supported yet" else "Proof generation failed: $code"
                 runCatching { responder.send(listOf("error" to buildJsonObject { put("error", text) })) }
-                throw ZkPassportAnswerFailure(e.code)
+                throw ZkPassportAnswerFailure(code)
             }
             progress(ZkPassportAnswerProgress.Sending)
             bridged { responder.send(proved) }

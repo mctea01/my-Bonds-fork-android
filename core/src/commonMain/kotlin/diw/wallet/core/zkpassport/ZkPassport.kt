@@ -79,6 +79,28 @@ data class ZkPassportIncoming(
     /** The https origin the bridge must report for the creator: the link's domain. */
     val expectedOrigin: String get() = "https://$domain"
     val fastMode: Boolean get() = mode == "fast"
+
+    /**
+     * Whether a reported [origin] that is not [expectedOrigin] is still an https page of the same site (the same
+     * registrable domain, e.g. verify.zkpassport.id for demo.zkpassport.id): the request did not come from someone
+     * else, it was sent by another page of the site it names.
+     */
+    fun sameSite(origin: String?): Boolean {
+        val host = origin?.takeIf { it.startsWith("https://") }?.removePrefix("https://")?.substringBefore('/')?.substringBefore(':')?.lowercase()
+            ?: return false
+        val site = registrable(host) ?: return false
+        return site == registrable(domain.lowercase().substringBefore(':'))
+    }
+
+    private fun registrable(host: String): String? {
+        val labels = host.trimEnd('.').split('.')
+        if (labels.size < 2 || labels.any { it.isEmpty() }) return null
+        // Two-letter country codes with a second level such as com.tw or co.uk keep three labels.
+        val secondLevel = labels.size >= 3 && labels.last().length == 2 &&
+            labels[labels.size - 2] in setOf("com", "net", "org", "gov", "edu", "co", "ac", "go", "or", "ne", "idv", "mil")
+        val n = if (secondLevel) 3 else 2
+        return labels.takeLast(n).joinToString(".")
+    }
 }
 
 /** The chip files an answer is proved from: SOD and DG1 always, DG2 for the face photo hash. */

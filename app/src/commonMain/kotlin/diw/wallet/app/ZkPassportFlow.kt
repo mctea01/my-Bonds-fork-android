@@ -399,6 +399,8 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code == "crs_missing" -> tr(Res.string.zkp_answer_err_crs)
             code == "inputs" -> tr(Res.string.zkp_answer_err_inputs)
             code.startsWith("registry") -> tr(Res.string.zkp_err_registry)
+            code == "manifest_unavailable" || code == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn)
+            code == "certificates_unavailable" -> tr(Res.string.zkp_answer_err_certificates)
             code.endsWith("_root") || code.startsWith("vkey:") -> tr(Res.string.zkp_answer_err_circuit)
             else -> tr(Res.string.zkp_answer_err_other, code)
         }
