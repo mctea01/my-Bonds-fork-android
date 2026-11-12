@@ -233,6 +233,7 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
                 val (loc, defaultOrder) = templates[t.attributes["TemplateID"]] ?: continue
                 val tplPath = resolve(loc, docDir) ?: continue
                 val tpl = xml(tplPath) ?: continue
+                for (res in tpl.all("PageRes")) resolve(res.text, dir(tplPath))?.let { loadRes(it) }
                 val objects = content(tpl, origin)
                 if ((t.attributes["ZOrder"] ?: defaultOrder).equals("Foreground", true)) front.addAll(objects) else back.addAll(objects)
             }

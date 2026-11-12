@@ -281,7 +281,8 @@ internal object OfdNumbers {
 /**
  * Where a signature's seal shows on a page (the StampAnnot of Signature.xml) with the seal picture from the
  * electronic seal: [pictureFormat] as the seal names it (png, jpg, gif, bmp, svg, ofd), null for a digital
- * signature without a seal picture. [label] is the label of the signature in the document report.
+ * signature without a seal picture. [label] is the label of the signature in the document report; [signature] is
+ * the path of its Signature.xml, which tells which document of the package the page belongs to.
  */
 class OfdStamp(
     val label: String,
@@ -290,4 +291,5 @@ class OfdStamp(
     val clip: OfdBox?,
     val pictureFormat: String?,
     val picture: ByteArray?,
+    val signature: String = "",
 )

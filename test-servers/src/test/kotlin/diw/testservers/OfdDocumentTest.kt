@@ -165,6 +165,37 @@ class OfdDocumentTest {
     }
 
     @Test
+    fun loadsTemplateResourcesAndEveryDocument() {
+        val png = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte(), 13, 10, 26, 10)
+        fun doc(d: Int, withTemplate: Boolean) = listOf(
+            "Doc_$d/Document.xml" to "<ofd:Document $ns><ofd:CommonData><ofd:MaxUnitID>9</ofd:MaxUnitID>" +
+                "<ofd:PageArea><ofd:PhysicalBox>0 0 100 50</ofd:PhysicalBox></ofd:PageArea>" +
+                (if (withTemplate) "<ofd:TemplatePage ID=\"2\" BaseLoc=\"Tpls/Tpl_0/Content.xml\"/>" else "") +
+                "</ofd:CommonData><ofd:Pages><ofd:Page ID=\"3\" BaseLoc=\"Pages/Page_0/Content.xml\"/></ofd:Pages></ofd:Document>",
+            "Doc_$d/Pages/Page_0/Content.xml" to "<ofd:Page $ns>" +
+                (if (withTemplate) "<ofd:Template TemplateID=\"2\"/>" else "") +
+                "<ofd:Content><ofd:Layer ID=\"4\"/></ofd:Content></ofd:Page>",
+        )
+        val files = listOf(
+            "OFD.xml" to "<ofd:OFD $ns Version=\"1.0\" DocType=\"OFD\">" +
+                "<ofd:DocBody><ofd:DocInfo><ofd:DocID>a</ofd:DocID></ofd:DocInfo><ofd:DocRoot>Doc_0/Document.xml</ofd:DocRoot></ofd:DocBody>" +
+                "<ofd:DocBody><ofd:DocInfo><ofd:DocID>b</ofd:DocID></ofd:DocInfo><ofd:DocRoot>Doc_1/Document.xml</ofd:DocRoot></ofd:DocBody></ofd:OFD>",
+        ) + doc(0, true) + doc(1, false) + listOf(
+            "Doc_0/Tpls/Tpl_0/Content.xml" to "<ofd:Page $ns><ofd:PageRes>TplRes.xml</ofd:PageRes><ofd:Content><ofd:Layer ID=\"5\">" +
+                "<ofd:ImageObject ID=\"6\" Boundary=\"0 0 10 10\" CTM=\"10 0 0 10 0 0\" ResourceID=\"7\"/></ofd:Layer></ofd:Content></ofd:Page>",
+            "Doc_0/Tpls/Tpl_0/TplRes.xml" to "<ofd:Res $ns BaseLoc=\"Res\"><ofd:MultiMedias><ofd:MultiMedia ID=\"7\" Type=\"Image\">" +
+                "<ofd:MediaFile>logo.png</ofd:MediaFile></ofd:MultiMedia></ofd:MultiMedias></ofd:Res>",
+        )
+        val bytes = DocumentSigning.zip(files.map { it.first to it.second.encodeToByteArray() } + ("Doc_0/Tpls/Tpl_0/Res/logo.png" to png))
+        val pkg = pkg(bytes)
+        assertEquals(2, pkg.documents.size)
+        assertEquals(2, pkg.pageCount)
+        val image = pkg.documents[0].pages.single().objects.filterIsInstance<OfdObject.Image>().single()
+        assertNotNull(image.media, "the template image comes from the template's own PageRes")
+        assertEquals("Doc_0/Tpls/Tpl_0/Res/logo.png", image.media!!.path)
+    }
+
+    @Test
     fun parsesPathsWithArcs() {
         val page = pkg(invoice(withTags = false)).pages.single()
         val path = page.objects.filterIsInstance<OfdObject.Path>().single()

@@ -911,13 +911,24 @@ class FilesModel(private val model: WalletModel) {
         runCatching { ChinaInvoice.parse(text, pkg.documents.firstOrNull()?.tagValues().orEmpty()) }.getOrNull()
             ?: text?.let { t -> runCatching { ParsedCertificate.parse(t) }.getOrNull() }
 
-    /** The first [maxPages] pages of an OFD drawn [width] pixels wide, with each signature's seal where it was stamped. */
+    /**
+     * The first [maxPages] pages of an OFD (every document of the package in order) drawn [width] pixels wide, with
+     * each signature's seal where it was stamped. A seal belongs to the document whose folder holds its signature,
+     * or to the first document when none does.
+     */
     private fun renderOfd(pkg: OfdPackage, bytes: ByteArray, maxPages: Int, width: Int): List<ImageBitmap> {
         val renderer = OfdRenderer(model.platform.fontFamilyResolver) { media -> ofdImage(media, width) }
         val stamps = runCatching { DocumentInspector.ofdStamps(bytes) }.getOrDefault(emptyList())
         val seals = HashMap<OfdStamp, ImageBitmap?>()
-        return pkg.documents.firstOrNull()?.pages.orEmpty().take(maxPages).mapNotNull { page ->
-            val overlays = stamps.filter { it.pageId == page.id }.mapNotNull { st ->
+        val docs = pkg.documents
+        fun folder(d: Int) = docs[d].root.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+        fun owner(st: OfdStamp): Int {
+            val path = st.signature.trimStart('/')
+            return docs.indices.firstOrNull { d -> folder(d).isNotEmpty() && path.startsWith(folder(d)) } ?: 0
+        }
+        val pages = docs.indices.flatMap { d -> docs[d].pages.map { d to it } }.take(maxPages)
+        return pages.mapNotNull { (d, page) ->
+            val overlays = stamps.filter { it.pageId == page.id && owner(it) == d }.mapNotNull { st ->
                 val picture = seals.getOrPut(st) { sealPicture(st) } ?: return@mapNotNull null
                 OfdRenderer.Overlay(picture, st.boundary.x - page.box.x, st.boundary.y - page.box.y, st.boundary.w, st.boundary.h)
             }

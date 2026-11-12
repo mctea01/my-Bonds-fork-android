@@ -101,7 +101,7 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
             val picture = eseal?.let { runCatching { sealPicture(it) }.getOrNull() }
             annots.mapNotNull { a ->
                 val box = OfdBox.parse(a.getAttribute("Boundary")) ?: return@mapNotNull null
-                OfdStamp(e.label, a.getAttribute("PageRef"), box, OfdBox.parse(a.getAttribute("Clip")), picture?.first, picture?.second)
+                OfdStamp(e.label, a.getAttribute("PageRef"), box, OfdBox.parse(a.getAttribute("Clip")), picture?.first, picture?.second, e.path)
             }
         }.getOrDefault(emptyList())
     }
