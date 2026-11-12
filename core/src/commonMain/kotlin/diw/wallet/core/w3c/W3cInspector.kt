@@ -19,6 +19,7 @@ import diw.wallet.core.util.obj
 import diw.wallet.core.util.parseJsonObject
 import diw.wallet.core.util.str
 import diw.wallet.core.util.wellKnownUrl
+import diw.wallet.core.w3c.bbs.BbsHolderSecrets
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -45,6 +46,8 @@ data class InspectedW3c(
     val validUntil: Instant?,
     /** The credential object with selectively disclosable claims resolved. */
     val credential: JsonObject,
+    /** A bbs-2023 credential's verified base proof (feature, holder secrets with nym_secret); null otherwise. */
+    val bbs: BbsProofInfo? = null,
 )
 
 /**
@@ -74,13 +77,14 @@ class W3cInspector(
         sdJwtAllowed: Boolean = true,
         compat: DialectSet? = null,
         now: Instant = Clock.System.now(),
+        bbsSecrets: BbsHolderSecrets? = null,
     ): InspectedW3c {
         val encoding = W3cEncoding.detect(raw)
         if (encoding == W3cEncoding.SD_JWT && !sdJwtAllowed) {
             throw ProtocolException("invalid_credential", "Issuer returned an SD-JWT for a W3C credential format")
         }
         val result = when (encoding) {
-            W3cEncoding.JSON_LD -> inspectJsonLd(raw)
+            W3cEncoding.JSON_LD -> inspectJsonLd(raw, bbsSecrets)
             else -> inspectJwt(raw, encoding, expectedIssuer, compat)
         }
         if (expectedTypes.isNotEmpty()) {
@@ -159,9 +163,10 @@ class W3cInspector(
         )
     }
 
-    private suspend fun inspectJsonLd(raw: String): InspectedW3c {
+    private suspend fun inspectJsonLd(raw: String, bbsSecrets: BbsHolderSecrets?): InspectedW3c {
         val doc = W3cVc.credentialObject(raw, W3cEncoding.JSON_LD)
-        val proof = dataIntegrity.verify(doc, expectedPurpose = "assertionMethod")
+        val proof = dataIntegrity.verify(doc, expectedPurpose = "assertionMethod", bbsSecrets = bbsSecrets)
+        if (proof.bbs?.derived == true) throw ProtocolException("invalid_credential", "An issued bbs-2023 credential must carry a base proof")
         val issuer = doc.idOf("issuer") ?: throw ProtocolException("invalid_credential", "Credential without issuer")
         if (proof.verificationMethod.substringBefore('#') != issuer) {
             throw ProtocolException("invalid_credential", "Proof verification method does not belong to the issuer $issuer")
@@ -183,6 +188,7 @@ class W3cInspector(
             validFrom = from,
             validUntil = until,
             credential = doc,
+            bbs = proof.bbs,
         )
     }
 

@@ -51,6 +51,12 @@ object DidKeys {
         else -> throw ProtocolException("invalid_key", "Unsupported key type")
     }
 
+    /** did:key of a BLS12-381 G2 public key (multicodec bls12_381-g2-pub 0xeb), as bbs-2023 issuers use. */
+    fun didKeyBls12381G2(publicKey: ByteArray): String {
+        if (publicKey.size != 96) throw ProtocolException("invalid_key", "BLS12-381 G2 public keys are 96 bytes")
+        return "did:key:z" + Base58.encode(varint(0xeb) + publicKey)
+    }
+
     /** Verification method id of a single-key DID (did:jwk uses #0, did:key repeats the multibase value). */
     fun verificationMethod(did: String): String = when {
         did.startsWith("did:jwk:") -> "$did#0"

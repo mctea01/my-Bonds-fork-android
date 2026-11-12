@@ -7,6 +7,14 @@ import diw.wallet.core.jose.verifySignature
 import diw.wallet.core.util.Jcs
 import diw.wallet.core.util.ProtocolException
 import diw.wallet.core.util.str
+import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsBaseProof
+import diw.wallet.core.w3c.bbs.BbsDerivedProof
+import diw.wallet.core.w3c.bbs.BbsFailure
+import diw.wallet.core.w3c.bbs.BbsFeature
+import diw.wallet.core.w3c.bbs.BbsHolderSecrets
+import diw.wallet.core.w3c.bbs.BbsUnavailable
+import diw.wallet.core.w3c.ld.RdfcCanonicalizer
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -36,19 +44,47 @@ data class VerifiedProof(
     val challenge: String?,
     val domain: String?,
     val created: Instant?,
+    /** What a bbs-2023 proof established; null for other cryptosuites. */
+    val bbs: BbsProofInfo? = null,
 )
 
 /**
- * W3C Data Integrity proofs (ldp_vc, ldp_vp, di_vp): the JCS cryptosuites ecdsa-jcs-2019 and eddsa-jcs-2022 natively,
- * and the RDFC cryptosuites (ecdsa-rdfc-2019, eddsa-rdfc-2022, Ed25519Signature2020, JsonWebSignature2020,
- * EcdsaSecp256k1Signature2019) when an [LdCanonicalizer] is available.
+ * A verified bbs-2023 proof. A [derived] proof is a presentation: [pseudonym] is set for the pseudonym features
+ * ([nymDomain] is the verifier it was made for) and [presentationHeader] is what the holder bound it to. A base proof
+ * (a credential as issued) returns the holder [secrets] with nym_secret computed.
+ */
+class BbsProofInfo(
+    val feature: BbsFeature,
+    val derived: Boolean,
+    val pseudonym: ByteArray? = null,
+    val nymDomain: String? = null,
+    val presentationHeader: ByteArray? = null,
+    val secrets: BbsHolderSecrets? = null,
+)
+
+/**
+ * W3C Data Integrity proofs (ldp_vc, ldp_vp, di_vp): the JCS cryptosuites ecdsa-jcs-2019 and eddsa-jcs-2022, the RDFC
+ * cryptosuites (ecdsa-rdfc-2019, eddsa-rdfc-2022, Ed25519Signature2020, JsonWebSignature2020,
+ * EcdsaSecp256k1Signature2019) through [canonicalizer], and bbs-2023 base and derived proofs.
  */
 class DataIntegrity(
     private val didResolver: DidResolver,
-    private val canonicalizer: LdCanonicalizer? = null,
+    private val canonicalizer: LdCanonicalizer? = RdfcCanonicalizer.Default,
+    private val bbs: Bbs2023 = Bbs2023(),
 ) {
-    /** Verifies the (single, or first matching) proof of [secured]. Throws [ProtocolException] when no proof verifies. */
-    suspend fun verify(secured: JsonObject, expectedPurpose: String? = null, challenge: String? = null, domain: String? = null): VerifiedProof {
+    /**
+     * Verifies the (single, or first matching) proof of [secured]. Throws [ProtocolException] when no proof verifies.
+     * For bbs-2023, [bbsSecrets] are the holder's secrets of an optional-feature credential (base proofs) and
+     * [nymDomain] the verifier's identifier a pseudonym must be made for (derived proofs; [domain] when null).
+     */
+    suspend fun verify(
+        secured: JsonObject,
+        expectedPurpose: String? = null,
+        challenge: String? = null,
+        domain: String? = null,
+        bbsSecrets: BbsHolderSecrets? = null,
+        nymDomain: String? = null,
+    ): VerifiedProof {
         val proofs = when (val p = secured["proof"]) {
             is JsonObject -> listOf(p)
             is JsonArray -> p.filterIsInstance<JsonObject>()
@@ -58,7 +94,7 @@ class DataIntegrity(
         var failure: Exception? = null
         for (proof in proofs) {
             try {
-                return verifyOne(unsecured, proof, expectedPurpose, challenge, domain)
+                return verifyOne(unsecured, proof, expectedPurpose, challenge, domain, bbsSecrets, nymDomain ?: domain)
             } catch (e: Exception) {
                 failure = e
             }
@@ -66,7 +102,15 @@ class DataIntegrity(
         throw failure as? ProtocolException ?: ProtocolException("invalid_proof", failure?.message ?: "No proof verified", failure)
     }
 
-    private suspend fun verifyOne(unsecured: JsonObject, proof: JsonObject, expectedPurpose: String?, challenge: String?, domain: String?): VerifiedProof {
+    private suspend fun verifyOne(
+        unsecured: JsonObject,
+        proof: JsonObject,
+        expectedPurpose: String?,
+        challenge: String?,
+        domain: String?,
+        bbsSecrets: BbsHolderSecrets?,
+        nymDomain: String?,
+    ): VerifiedProof {
         val type = proof.str("type") ?: throw ProtocolException("invalid_proof", "Proof without type")
         val suite = proof.str("cryptosuite")
         val vm = proof.str("verificationMethod") ?: throw ProtocolException("invalid_proof", "Proof without verificationMethod")
@@ -79,6 +123,10 @@ class DataIntegrity(
         proof.str("expires")?.let { W3cVc.date(it) }?.let { if (it < Clock.System.now()) throw ProtocolException("invalid_proof", "Proof expired") }
         val method = didResolver.resolveKey(vm.substringBefore('#'), vm)
         val key = method.key
+        if (type == "DataIntegrityProof" && suite == Bbs2023.SUITE) {
+            val info = verifyBbs(JsonObject(unsecured + ("proof" to proof)), key, bbsSecrets, nymDomain)
+            return VerifiedProof(type, suite, vm, purpose, key, proof.str("challenge"), proof.str("domain"), W3cVc.date(proof.str("created")), info)
+        }
         val ok = when {
             type == "DataIntegrityProof" && (suite == "ecdsa-jcs-2019" || suite == "eddsa-jcs-2022") -> {
                 val sig = multibase(proof.str("proofValue"))
@@ -139,6 +187,26 @@ class DataIntegrity(
         val raw = sig.toCoseEncoded()
         val proof = JsonObject(options + ("proofValue" to JsonPrimitive("z" + Base58.encode(raw))))
         return JsonObject(unsecured + ("proof" to proof))
+    }
+
+    private suspend fun verifyBbs(secured: JsonObject, key: VerificationKey, secrets: BbsHolderSecrets?, nymDomain: String?): BbsProofInfo {
+        val publicKey = (key as? VerificationKey.Bls12381G2)?.publicKey
+            ?: throw ProtocolException("invalid_proof", "bbs-2023 needs a BLS12-381 G2 verification method")
+        val value = (secured["proof"] as JsonObject).str("proofValue") ?: throw ProtocolException("invalid_proof", "Proof without proofValue")
+        return try {
+            if (BbsBaseProof.isBase(value)) {
+                val (base, finalized) = bbs.verifyBase(secured, publicKey, secrets)
+                BbsProofInfo(base.feature, derived = false, secrets = finalized)
+            } else {
+                val verified = bbs.verifyDerived(secured, publicKey, nymDomain)
+                BbsProofInfo(verified.feature, derived = true, pseudonym = verified.pseudonym, nymDomain = verified.nymDomain,
+                    presentationHeader = BbsDerivedProof.parse(value).presentationHeader)
+            }
+        } catch (_: BbsUnavailable) {
+            throw ProtocolException("unsupported_proof", "BBS signatures are not available in this build")
+        } catch (e: BbsFailure) {
+            throw ProtocolException("invalid_proof", e.message ?: "bbs-2023 proof is invalid")
+        }
     }
 
     private fun jcsProofConfig(proof: JsonObject, unsecured: JsonObject): ByteArray = Jcs.canonicalBytes(proofConfigWithContext(proof, unsecured))

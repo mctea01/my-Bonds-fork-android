@@ -25,6 +25,10 @@ import diw.wallet.core.w3c.DataIntegrity
 import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
+import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsFeature
+import diw.wallet.core.w3c.bbs.BbsProfile
+import diw.wallet.core.w3c.bbs.BbsUnavailable
 import io.ktor.client.HttpClient
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
@@ -78,8 +82,11 @@ data class ChosenCredential(
     val intentToRetain: Boolean,
 )
 
-/** One line of the consent screen: a credential and the claims it discloses (claim paths joined with '.'). */
-data class ConsentLine(val document: Document, val documentName: String, val claims: List<String>)
+/**
+ * One line of the consent screen: a credential and the claims it discloses (claim paths joined with '.'). [bbs] is the
+ * bbs-2023 feature of a credential presented as an unlinkable derived proof (BASELINE without optional features).
+ */
+data class ConsentLine(val document: Document, val documentName: String, val claims: List<String>, val bbs: BbsFeature? = null)
 
 /**
  * An extended request matched against the wallet, ready for consent. [chosen] and [lines] are index aligned; the
@@ -197,7 +204,7 @@ class ExtendedPresenter(
     private fun lines(chosen: List<ChosenCredential>) = chosen.map { c ->
         // Structural members a filter matches on (the card type, schema, status) carry no personal data; they are not listed.
         val shown = c.memberPaths.filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
-        ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct())
+        ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct(), bbsFeatureOf(c.credential))
     }
 
     private fun DescriptorMatch.toChosen() = ChosenCredential(
@@ -207,6 +214,11 @@ class ExtendedPresenter(
         null,
         fields.any { it.field.intentToRetain },
     )
+
+    private fun bbsFeatureOf(c: WalletCredential): BbsFeature? {
+        if (c.family != CredentialFamily.W3C_LDP || !Bbs2023.isBbs(c.json["proof"])) return null
+        return (c.credential as? W3cVcCredential)?.bbsSecrets?.feature ?: BbsFeature.BASELINE
+    }
 
     private fun label(path: List<String>): String = if (path.isEmpty()) "*" else
         path.joinToString(".").removePrefix("vc.").removePrefix("credentialSubject.")
@@ -253,7 +265,7 @@ class ExtendedPresenter(
         val w3c = prepared.chosen.filter { it.credential.family == CredentialFamily.W3C_JWT || it.credential.family == CredentialFamily.W3C_SD_JWT || it.credential.family == CredentialFamily.W3C_LDP }
         // Keyless W3C credentials are presented as they are; key bound ones inside a presentation signed by their holder.
         for (c in w3c.filter { holders[it] == null }) {
-            val token: JsonElement = if (c.credential.family == CredentialFamily.W3C_LDP) parseJsonObject(c.credential.raw) else JsonPrimitive(embedded(c))
+            val token: JsonElement = if (c.credential.family == CredentialFamily.W3C_LDP) ldpCredential(c, false, audience, request.nonce) else JsonPrimitive(embedded(c))
             if (prepared.dcql != null) dcqlTokens.getOrPut(c.queryId!!) { mutableListOf() } += token
             else {
                 val idx = tokens.size
@@ -422,7 +434,7 @@ class ExtendedPresenter(
             putJsonArray("@context") { add(if (v2) W3cVc.CONTEXT_V2 else W3cVc.CONTEXT_V1) }
             putJsonArray("type") { add("VerifiablePresentation") }
             put("holder", did)
-            putJsonArray("verifiableCredential") { group.forEach { add(parseJsonObject(it.credential.raw)) } }
+            putJsonArray("verifiableCredential") { group.forEach { add(ldpCredential(it, true, audience, request.nonce)) } }
         }
         return DataIntegrity(DidResolver(httpClient, allowInsecureLoopback)).sign(
             unsecured = vp,
@@ -432,6 +444,22 @@ class ExtendedPresenter(
             challenge = request.nonce,
             domain = audience,
         )
+    }
+
+    /**
+     * The credential as embedded in an ldp presentation. A bbs-2023 credential is derived for this request: it discloses
+     * the chosen claims and the issuer's mandatory ones, is bound to the request through the presentation header, and
+     * (pseudonym features) carries the pseudonym for this verifier. Other Data Integrity credentials are sent as issued.
+     */
+    private suspend fun ldpCredential(c: ChosenCredential, includeSubjectId: Boolean, audience: String, nonce: String): JsonObject {
+        val doc = parseJsonObject(c.credential.raw)
+        if (!Bbs2023.isBbs(doc["proof"])) return doc
+        val secrets = (c.credential.credential as? W3cVcCredential)?.bbsSecrets
+        return try {
+            Bbs2023().derive(doc, BbsProfile.pointers(doc, c.memberPaths, includeSubjectId), BbsProfile.presentationHeader(audience, nonce), secrets, audience)
+        } catch (_: BbsUnavailable) {
+            throw ProtocolException("access_denied", "BBS signatures are not available in this build")
+        }
     }
 
     /** SIOPv2 id_token: subject is a DID (did:jwk) unless the Verifier only accepts JWK thumbprints. */
