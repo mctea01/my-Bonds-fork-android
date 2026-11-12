@@ -4062,4 +4062,15 @@
     <string name="zktls_version">TLS 版本：%1$s</string>
     <string name="zktls_via_host">透過查驗主機（zkTLS）</string>
     <string name="zktls_via_host_text">查驗主機 %1$s 與這支手機協同查詢並驗證連線，簽發回執後存為網站查驗證明，他人可驗證。主機看不到你填的資料。</string>
+    <string name="bbs_feature_baseline">選擇性揭露（bbs-2023）</string>
+    <string name="bbs_feature_anonymous_holder_binding">匿名持有者綁定（bbs-2023）</string>
+    <string name="bbs_feature_pseudonym">假名（bbs-2023）</string>
+    <string name="bbs_feature_holder_binding_pseudonym">持有者綁定假名（bbs-2023）</string>
+    <string name="cd_bbs_feature">bbs-2023 功能</string>
+    <string name="cd_bbs_secrets">持有者秘密</string>
+    <string name="cd_bbs_secrets_value">只保存在本錢包，不會送出</string>
+    <string name="consent_bbs_baseline">只揭露下列欄位，並為這次請求產生新的證明；對方無法以簽章把這張證件的多次出示連結起來。</string>
+    <string name="consent_bbs_anonymous_holder_binding">只揭露下列欄位，並證明是您持有這張證件；不會送出任何持有者識別碼，多次出示也無法互相連結。</string>
+    <string name="consent_bbs_pseudonym">對方會收到一個專屬於它的假名：每次出示給它都相同，其他對方看到的假名都不同。</string>
+    <string name="consent_bbs_holder_binding_pseudonym">對方會收到一個專屬於它的假名（每次相同、與其他對方不同），並收到您持有這張證件的證明。</string>
 </resources>

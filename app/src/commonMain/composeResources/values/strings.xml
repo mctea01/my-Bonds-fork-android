@@ -4062,4 +4062,15 @@
     <string name="zktls_version">TLS version: %1$s</string>
     <string name="zktls_via_host">Through a verification host (zkTLS)</string>
     <string name="zktls_via_host_text">The verification host %1$s queries together with this phone and verifies the connection, then issues a receipt saved as a website check proof that others can verify. The host cannot see what you fill in.</string>
+    <string name="bbs_feature_baseline">Selective disclosure (bbs-2023)</string>
+    <string name="bbs_feature_anonymous_holder_binding">Anonymous holder binding (bbs-2023)</string>
+    <string name="bbs_feature_pseudonym">Pseudonym (bbs-2023)</string>
+    <string name="bbs_feature_holder_binding_pseudonym">Holder bound pseudonym (bbs-2023)</string>
+    <string name="cd_bbs_feature">bbs-2023 feature</string>
+    <string name="cd_bbs_secrets">Holder secret</string>
+    <string name="cd_bbs_secrets_value">Kept only in this wallet; never sent</string>
+    <string name="consent_bbs_baseline">Only the fields below are disclosed, through a new proof made for this request. Presentations of this credential cannot be linked through its signature.</string>
+    <string name="consent_bbs_anonymous_holder_binding">Only the fields below are disclosed, with a proof that you hold this credential. No holder identifier is sent, and presentations cannot be linked to each other.</string>
+    <string name="consent_bbs_pseudonym">The other party receives a pseudonym of its own: the same each time you present to it, different at every other party.</string>
+    <string name="consent_bbs_holder_binding_pseudonym">The other party receives a pseudonym of its own (the same each time, different at every other party) and a proof that you hold this credential.</string>
 </resources>

@@ -142,7 +142,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 | --- | --- | --- | --- | --- | --- | --- |
 | Longfellow | mdoc（ECDSA P-256） | 不需要，但 MSO 需 ≤ 2533 bytes | Pixel 6 Pro 產生 0.8–1.2 秒、驗證約 0.6 秒、證明約 400 KB | IETF draft-google-cfrg-libzk-02，EUDI TS13 | Multipaz multipaz-longfellow（僅 arm64-v8a、x86\_64） | 短期主力 |
 | OpenAC | SD-JWT ES256、mdoc | 不需要 | Pixel 10 Pro 準備 5.2 秒（峰值 2.27 GiB）、每次出示 308 ms | 無 | ethereum／zkID（MIT），Mopro／UniFFI；已有 TWDIW 年齡證明 PoC，電路內建民國日期 | 補 SD-JWT、TWDIW 年齡證明 |
-| BBS／bbs-2023 | 新格式（W3C Data Integrity） | 需要改用 BLS12-381 簽章 | 證明 < 2 ms | CFRG draft-12、W3C CRD | zkryptium 等（Rust） | 中長期、預留介面 |
+| BBS／bbs-2023 | 新格式（W3C Data Integrity） | 需要改用 BLS12-381 簽章 | 證明 < 2 ms | CFRG draft、W3C CRD | zkryptium 0.8.1（Rust，UniFFI） | 2026-11-12 已實作，含三種可選功能，見 [bbs-2023.md](bbs-2023.md) |
 | Groth16 應證鏈證明 | 自然人憑證 X.509（RSA-4096／2048） | 不需要 | 資產約 1 GB | 無 | Bonds（Apache-2.0） | 可選，有可重放的已知風險 |
 
 - 大型電路與金鑰依 circuit hash 按需下載並以 SHA-256 驗證，不放進 APK。

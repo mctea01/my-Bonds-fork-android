@@ -27,6 +27,12 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# JSON-LD (bbs-2023 and the RDFC cryptosuites): Titanium finds the Jakarta JSON provider through ServiceLoader or by
+# its class name; its own HTTP document loader is never used (contexts load through LdContextLoader).
+-keep class org.glassfish.json.JsonProviderImpl { <init>(); }
+-dontwarn com.apicatalog.jsonld.http.**
+-dontwarn jakarta.json.bind.**
+
 # Ktor and coroutines are discovered through ServiceLoader.
 -keep class io.ktor.client.engine.okhttp.OkHttpEngineContainer { *; }
 -keep class kotlinx.coroutines.android.AndroidDispatcherFactory { *; }

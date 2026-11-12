@@ -12,6 +12,8 @@ import diw.wallet.core.status.W3cStatusEntry
 import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
+import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsBaseProof
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.x509.subjectAltNames
@@ -159,8 +161,15 @@ object CredentialDetails {
                     c.holderDid?.let { add(DetailRow(tr(Res.string.cd_holder_did), it)) }
                     c.secureArea?.let { add(DetailRow(tr(Res.string.cd_key_location), it.displayName)) }
                     if (c.sharedKey) add(DetailRow(tr(Res.string.cd_key_use), tr(Res.string.cd_shared_key)))
-                    if (!c.keyBound) add(DetailRow(tr(Res.string.cd_holder_binding), tr(Res.string.cd_no_binding)))
-                    else add(DetailRow(tr(Res.string.cd_private_key), tr(Res.string.cd_private_key_value)))
+                    val bbs = c.bbsSecrets
+                    when {
+                        bbs != null -> {
+                            add(DetailRow(tr(Res.string.cd_holder_binding), if (bbs.feature.holderBound) BbsTexts.name(bbs.feature) else tr(Res.string.cd_no_binding)))
+                            add(DetailRow(tr(Res.string.cd_bbs_secrets), tr(Res.string.cd_bbs_secrets_value)))
+                        }
+                        !c.keyBound -> add(DetailRow(tr(Res.string.cd_holder_binding), tr(Res.string.cd_no_binding)))
+                        else -> add(DetailRow(tr(Res.string.cd_private_key), tr(Res.string.cd_private_key_value)))
+                    }
                 }
                 r?.keyStorage?.let { add(DetailRow(tr(Res.string.credential_key_protection), keyStorageName(it))) }
             }),
@@ -228,6 +237,9 @@ object CredentialDetails {
                 listOfNotNull(
                     p.text("type")?.let { DetailRow(tr(Res.string.cd_proof_type), it) },
                     p.text("cryptosuite")?.let { DetailRow(tr(Res.string.cd_cryptosuite), it) },
+                    p.text("proofValue")?.takeIf { p.text("cryptosuite") == Bbs2023.SUITE }
+                        ?.let { v -> runCatching { BbsBaseProof.parse(v).feature }.getOrNull() }
+                        ?.let { DetailRow(tr(Res.string.cd_bbs_feature), BbsTexts.name(it)) },
                     p.text("verificationMethod")?.let { DetailRow(tr(Res.string.cd_verification_method), it) },
                     p.text("created")?.let { DetailRow(tr(Res.string.cd_created), it) },
                 )

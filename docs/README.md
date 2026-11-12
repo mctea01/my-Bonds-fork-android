@@ -13,6 +13,7 @@
 | [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
 | [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
 | [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
+| [design/bbs-2023.md](design/bbs-2023.md) | bbs-2023：規格與測試向量差異、原生 BBS 與 JSON-LD／RDFC-1.0 實作、可選功能的 DIW 發證擴充、出示時的 presentation header 與假名網域、查驗端檢查與測試伺服器設定 |
 | [design/i18n.md](design/i18n.md) | 多語系規劃：現況字串量、Compose resources 機制、預設語言與 App 內切換、core 訊息代碼化、術語表、分階段工作與檢查 |
 
 ## 研究
