@@ -344,17 +344,26 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         val file = s.passports.firstOrNull { it.id == chosen }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { if (s.originMatches || sameSite) model.taiwan.zkPassport.accept(file!!, target) else risk = true },
+                // Another origin, or passport data leaving for a prover, each needs the strong confirmation first.
+                onClick = {
+                    if ((s.originMatches || sameSite) && ZkPassportFlow.targetAddress(target) == null) model.taiwan.zkPassport.accept(file!!, target)
+                    else risk = true
+                },
                 enabled = s.unsupported == null && file != null,
             ) { Text(stringResource(Res.string.zkp_answer_accept)) }
             OutlinedButton(onClick = { model.taiwan.zkPassport.reject() }) { Text(stringResource(Res.string.zkp_answer_reject)) }
         }
     }
     if (risk) {
+        val otherOrigin = !(s.originMatches || incoming.sameSite(s.origin))
+        val address = ZkPassportFlow.targetAddress(target)
         RiskConfirmDialog(
-            stringResource(Res.string.zkp_answer_risk_title),
-            listOf(stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)),
-            stringResource(Res.string.zkp_answer_risk_confirm),
+            stringResource(if (otherOrigin) Res.string.zkp_answer_risk_title else Res.string.zkp_answer_remote_risk_title),
+            listOfNotNull(
+                if (otherOrigin) stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin) else null,
+                address?.let { stringResource(Res.string.zkp_answer_where_note, it) },
+            ),
+            stringResource(if (otherOrigin) Res.string.zkp_answer_risk_confirm else Res.string.zkp_answer_remote_risk_confirm),
             onConfirm = {
                 risk = false
                 s.passports.firstOrNull { it.id == chosen }?.let { model.taiwan.zkPassport.accept(it, target) }

@@ -4347,6 +4347,8 @@
     <string name="zkp_answer_dev">Test request: the requester accepts test passports and the proofs are checked against the test registries.</string>
     <string name="zkp_answer_risk_title">Send proofs to another origin?</string>
     <string name="zkp_answer_risk_confirm">Send anyway</string>
+    <string name="zkp_answer_remote_risk_title">Send passport data to the prover?</string>
+    <string name="zkp_answer_remote_risk_confirm">Send and prove</string>
     <string name="zkp_answer_tech_origin">Requester origin (bridge): %1$s</string>
     <string name="zkp_answer_tech_mode">Mode: %1$s, SDK version: %2$s</string>
     <string name="zkp_answer_registry">Checking the passport against zkPassport's registries...</string>

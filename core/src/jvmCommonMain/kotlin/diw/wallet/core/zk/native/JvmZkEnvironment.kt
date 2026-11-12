@@ -98,7 +98,7 @@ class JvmZkEnvironment(
     }
 
     override val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder by lazy {
-        diw.wallet.core.zkpassport.JvmZkPassportHolder(http, zkPassportProver)
+        diw.wallet.core.zkpassport.JvmZkPassportHolder(http, zkPassportProver, network = socketFactoryFor)
     }
 
     override val tls: ZkTlsEngine by lazy {

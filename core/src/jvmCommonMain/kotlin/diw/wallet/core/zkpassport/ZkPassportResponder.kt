@@ -283,6 +283,8 @@ class JvmZkPassportHolder(
     private val http: HttpClient,
     private val prover: ZkPassportProver,
     private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
+    /** The socket factory of the local network that reaches a paired prover (Android); null for the default route. */
+    private val network: (String) -> javax.net.SocketFactory? = { null },
 ) : ZkPassportHolder {
     override suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer {
         val responder = ZkPassportResponder(http, incoming, bridgeUrl)
@@ -296,7 +298,7 @@ class JvmZkPassportHolder(
     }
 
     override suspend fun pair(link: String): ZkPassportPairedProver = try {
-        ZkPassportPairedClient.pair(link)
+        ZkPassportPairedClient.pair(link, network)
     } catch (e: ZkPassportProver.Failure) {
         throw ZkPassportAnswerFailure(e.code)
     }

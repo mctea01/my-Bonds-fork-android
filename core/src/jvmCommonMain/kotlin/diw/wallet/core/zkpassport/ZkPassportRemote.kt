@@ -23,10 +23,12 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
 import java.io.IOException
-import java.net.HttpURLConnection
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.URI
-import java.net.URL
+import java.net.InetSocketAddress
 import java.net.URLDecoder
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -38,8 +40,9 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import javax.net.ssl.HttpsURLConnection
+import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import javax.net.ssl.X509TrustManager
 
@@ -162,11 +165,12 @@ object ZkPassportRemote {
  * A session with a temporary prover (diw-server prover, DESIGN 3.10). The pairing code's secret only keys an HMAC
  * once; the session key comes from it and both nonces. TLS is pinned to the certificate the code names, and every
  * call also carries a sealed counter, method and path with sealed bodies, so nothing on the network can read or
- * replay it. Kept in memory only.
+ * replay it. Kept in memory only. Connections are plain HTTP/1.1 over a socket from [Link.plain], so on Android they
+ * use the network whose subnet holds the prover even when that Wi-Fi has no internet and mobile data is on.
  */
 class ZkPassportPairedClient private constructor(
     override val url: String,
-    private val socketFactory: SSLSocketFactory,
+    private val link: Link,
     private val session: String,
     private val key: SecretKeySpec,
 ) : ZkPassportPairedProver, ZkPassportRemote.Transport {
@@ -181,7 +185,7 @@ class ZkPassportPairedClient private constructor(
         }.toString().encodeToByteArray()
         val auth = "DIW-Session $session." + encrypt(key, claims, "$AUTH $session")
         val sealed = body?.let { buildJsonObject { put("sealed", encrypt(key, it.toString().encodeToByteArray(), "$session $n request")) } }
-        val (code, reply) = exchange(url, socketFactory, method, path, auth, sealed)
+        val (code, reply) = exchange(url, link, method, path, auth, sealed)
         if (code !in 200..299 || reply == null) return code to reply
         val opened = (reply["sealed"] as? JsonPrimitive)?.contentOrNull?.let { decrypt(key, it, "$session $n response") }
             ?: throw ZkPassportProver.Failure("remote_protocol")
@@ -191,6 +195,9 @@ class ZkPassportPairedClient private constructor(
     override suspend fun end() {
         runCatching { call("DELETE", "/zkpassport/v1/pair", null) }
     }
+
+    /** Pinned TLS over sockets from [plain]. */
+    private class Link(val tls: SSLSocketFactory, val plain: SocketFactory)
 
     companion object {
         private const val AUTH = "diw-prover auth v1"
@@ -216,10 +223,14 @@ class ZkPassportPairedClient private constructor(
             return Triple(url, secret, pin)
         }
 
-        /** Pairs with the prover [link] names; the link is spent on the prover either way. */
-        suspend fun pair(link: String): ZkPassportPairedClient {
+        /**
+         * Pairs with the prover [link] names; the link is spent on the prover either way. [network] gives the socket
+         * factory of the local network that reaches a host (Android), null for the default route.
+         */
+        suspend fun pair(link: String, network: (String) -> SocketFactory? = { null }): ZkPassportPairedClient {
             val (url, secret, pin) = parse(link) ?: throw ZkPassportProver.Failure("pairing_link")
-            val factory = pinned(pin)
+            val host = URI(url).host.removePrefix("[").removeSuffix("]")
+            val factory = Link(pinned(pin), network(host) ?: SocketFactory.getDefault())
             val nonce = ByteArray(16).also(SecureRandom()::nextBytes)
             val body = buildJsonObject {
                 put("nonce", B64.encodeToString(nonce))
@@ -269,33 +280,110 @@ class ZkPassportPairedClient private constructor(
         }
 
         private suspend fun exchange(
-            base: String, factory: SSLSocketFactory, method: String, path: String, authorization: String?, body: JsonObject?,
+            base: String, link: Link, method: String, path: String, authorization: String?, body: JsonObject?,
         ): Pair<Int, JsonObject?> = withContext(Dispatchers.IO) {
+            val uri = URI(base)
+            val host = uri.host.removePrefix("[").removeSuffix("]")
             try {
-                val connection = URL(base + path).openConnection() as HttpsURLConnection
+                val raw = link.plain.createSocket()
                 try {
-                    connection.sslSocketFactory = factory
-                    connection.hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
-                    connection.instanceFollowRedirects = false
-                    connection.connectTimeout = 10_000
-                    connection.readTimeout = 60_000
-                    connection.requestMethod = method
-                    authorization?.let { connection.setRequestProperty("Authorization", it) }
-                    if (body != null) {
-                        connection.doOutput = true
-                        connection.setRequestProperty("Content-Type", "application/json")
-                        connection.outputStream.use { it.write(body.toString().encodeToByteArray()) }
+                    raw.connect(InetSocketAddress(InetAddress.getByName(host), uri.port), 10_000)
+                } catch (e: IOException) {
+                    raw.close()
+                    throw e
+                }
+                (link.tls.createSocket(raw, host, uri.port, true) as SSLSocket).use { socket ->
+                    socket.soTimeout = 60_000
+                    socket.startHandshake()
+                    val payload = body?.toString()?.encodeToByteArray() ?: ByteArray(0)
+                    val head = buildString {
+                        append("$method $path HTTP/1.1\r\n")
+                        append("Host: ${uri.rawAuthority}\r\n")
+                        append("Connection: close\r\n")
+                        authorization?.let { append("Authorization: $it\r\n") }
+                        if (body != null) append("Content-Type: application/json\r\n")
+                        append("Content-Length: ${payload.size}\r\n\r\n")
                     }
-                    val code = connection.responseCode
-                    val stream = if (code >= HttpURLConnection.HTTP_BAD_REQUEST) connection.errorStream else connection.inputStream
-                    val text = stream?.use { it.readBytes().decodeToString() }.orEmpty()
-                    code to ZkPassportRemote.parse(text)
-                } finally {
-                    connection.disconnect()
+                    socket.outputStream.apply {
+                        write(head.encodeToByteArray())
+                        write(payload)
+                        flush()
+                    }
+                    val input = BufferedInputStream(socket.inputStream)
+                    val status = line(input).split(' ').getOrNull(1)?.toIntOrNull() ?: throw IOException("no status line")
+                    var length = -1
+                    var chunked = false
+                    while (true) {
+                        val header = line(input)
+                        if (header.isEmpty()) break
+                        val name = header.substringBefore(':').trim().lowercase()
+                        val value = header.substringAfter(':', "").trim()
+                        if (name == "content-length") length = value.toIntOrNull()?.takeIf { it in 0..MAX_RESPONSE } ?: throw IOException("bad length")
+                        if (name == "transfer-encoding" && "chunked" in value.lowercase()) chunked = true
+                    }
+                    val bytes = when {
+                        chunked -> chunked(input)
+                        length >= 0 -> exactly(input, length)
+                        else -> upTo(input, MAX_RESPONSE)
+                    }
+                    status to ZkPassportRemote.parse(bytes.decodeToString())
                 }
             } catch (e: IOException) {
                 throw ZkPassportProver.Failure("remote_unreachable")
             }
+        }
+
+        /** A proof set is a few hundred KB; anything far larger is not the prover. */
+        private const val MAX_RESPONSE = 16 shl 20
+
+        /** One header line without its CRLF, at most 8 KB. */
+        private fun line(input: InputStream): String {
+            val out = ByteArrayOutputStream()
+            while (true) {
+                val b = input.read()
+                if (b < 0) throw IOException("connection closed")
+                if (b == '\n'.code) break
+                if (out.size() >= 8192) throw IOException("header too long")
+                out.write(b)
+            }
+            return out.toByteArray().decodeToString().removeSuffix("\r")
+        }
+
+        private fun exactly(input: InputStream, length: Int): ByteArray {
+            val bytes = ByteArray(length)
+            var read = 0
+            while (read < length) {
+                val n = input.read(bytes, read, length - read)
+                if (n < 0) throw IOException("body cut short")
+                read += n
+            }
+            return bytes
+        }
+
+        private fun upTo(input: InputStream, limit: Int): ByteArray {
+            val out = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                if (out.size() + n > limit) throw IOException("body too large")
+                out.write(buffer, 0, n)
+            }
+            return out.toByteArray()
+        }
+
+        private fun chunked(input: InputStream): ByteArray {
+            val out = ByteArrayOutputStream()
+            while (true) {
+                val size = line(input).substringBefore(';').trim().toIntOrNull(16) ?: throw IOException("bad chunk")
+                if (size == 0) break
+                if (size < 0 || out.size() + size > MAX_RESPONSE) throw IOException("body too large")
+                out.write(exactly(input, size))
+                line(input)
+            }
+            // Trailers end with an empty line.
+            while (line(input).isNotEmpty()) Unit
+            return out.toByteArray()
         }
 
         private fun hmac(key: ByteArray, label: ByteArray, data: ByteArray): ByteArray =

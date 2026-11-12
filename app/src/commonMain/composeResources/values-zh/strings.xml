@@ -4347,6 +4347,8 @@
     <string name="zkp_answer_dev">測試請求：請求方接受測試護照，證明以測試註冊表檢查。</string>
     <string name="zkp_answer_risk_title">要把證明送給其他來源嗎？</string>
     <string name="zkp_answer_risk_confirm">仍要送出</string>
+    <string name="zkp_answer_remote_risk_title">要把護照資料送到證明器嗎？</string>
+    <string name="zkp_answer_remote_risk_confirm">送出並產生證明</string>
     <string name="zkp_answer_tech_origin">請求方來源（傳送服務）：%1$s</string>
     <string name="zkp_answer_tech_mode">模式：%1$s，SDK 版本：%2$s</string>
     <string name="zkp_answer_registry">正在以 zkPassport 註冊表檢查護照...</string>
