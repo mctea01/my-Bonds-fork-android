@@ -14,7 +14,8 @@ import urllib.request
 
 RELEASE = "20251104"
 ASSET = "llvm-mingw-" + RELEASE + "-ucrt-ubuntu-22.04-x86_64.tar.xz"
-SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+# The release publishes no checksum: this is the asset as first fetched by CI on 2026-11-12.
+SHA256 = "3aed6fa47be909884cb3e5634d6b7254604d7104832d6312f8435fb23d5a9bab"
 NATIVE = Path(__file__).resolve().parents[2]
 
 
