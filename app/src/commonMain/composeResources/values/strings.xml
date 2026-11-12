@@ -4255,6 +4255,8 @@
     <string name="zkp_field_document_type">Document type</string>
     <string name="zkp_field_expiry_date">Date of expiry</string>
     <string name="zkp_field_fullname">Name</string>
+    <string name="zkp_field_firstname">First name</string>
+    <string name="zkp_field_lastname">Surname</string>
     <string name="zkp_field_gender">Sex</string>
     <string name="zkp_field_issuing_country">Issuing country</string>
     <string name="zkp_field_nationality">Nationality</string>
@@ -4334,6 +4336,8 @@
     <string name="zkp_answer_choose">Passport to prove from</string>
     <string name="zkp_answer_no_passport">No electronic passport is stored in this wallet. Read your passport's chip under Documents first.</string>
     <string name="zkp_answer_note">The proofs are made on this device from the stored chip read. Only what is listed above reaches the requester, through zkPassport's bridge. Making them can take several minutes.</string>
+    <string name="zkp_answer_preview">What the chosen passport would send</string>
+    <string name="zkp_answer_firstname_cut">zkPassport's first name holds only the first part of the given names in the machine readable zone; the other parts are not sent (TAI&lt;MING in the zone is sent as TAI). This is a rule of zkPassport's circuits and SDK that the wallet cannot change; a requester that needs the whole name should ask for the full name.</string>
     <string name="zkp_answer_accept">Prove and send</string>
     <string name="zkp_answer_reject">Decline</string>
     <string name="zkp_answer_origin_mismatch">The request does not come from the domain it names</string>

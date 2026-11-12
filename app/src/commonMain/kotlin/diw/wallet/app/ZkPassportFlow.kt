@@ -3,7 +3,9 @@ package diw.wallet.app
 import diw.wallet.app.legal.Integration
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
+import diw.wallet.core.document.mrtd.Lds
 import diw.wallet.core.document.mrtd.LdsFile
+import diw.wallet.core.document.mrtd.Mrz
 import diw.wallet.core.document.mrtd.MrtdDump
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.document.DocumentFormat
@@ -210,6 +212,19 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     private fun passports(): List<StoredFile> =
         model.files.files.value.filter { it.report?.format == DocumentFormat.EMRTD }.sortedByDescending { it.addedAt }
 
+    /**
+     * What answering [query] with the stored passport [file] would send, one line per disclosed field as zkPassport
+     * reads it, and whether its first name leaves out given-name components.
+     */
+    suspend fun preview(file: StoredFile, query: JsonObject): Pair<List<String>, Boolean> = withContext(Dispatchers.Default) {
+        val none = emptyList<String>() to false
+        val dg1 = MrtdDump.decode(model.files.data(file.id))?.file(LdsFile.DG1) ?: return@withContext none
+        val mrz = Lds.dg1(dg1)?.takeIf { it.format == Mrz.Format.TD3 || it.format == Mrz.Format.TD1 }?.text ?: return@withContext none
+        val values = ZkPassport.disclosedPreview(mrz, query)
+        val lines = values.map { (key, value) -> tr(Res.string.zkp_line, keyTitle(key), value.ifEmpty { "-" }) }
+        lines to (values.any { it.first == "firstname" } && ZkPassport.firstNameDropsParts(mrz))
+    }
+
     /** The chip files of the stored passport [file]; null when its read lacks the SOD or DG1. */
     private suspend fun chip(file: StoredFile): ZkPassportChip? = withContext(Dispatchers.Default) {
         val dump = MrtdDump.decode(model.files.data(file.id)) ?: return@withContext null
@@ -264,6 +279,13 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             ZkPassportField.EXPIRY_DATE -> tr(Res.string.zkp_field_expiry_date)
             ZkPassportField.DOCUMENT_NUMBER -> tr(Res.string.zkp_field_document_number)
             ZkPassportField.GENDER -> tr(Res.string.zkp_field_gender)
+        }
+
+        /** A query key in words: the fields this wallet asks for, and the first name and surname others may ask. */
+        fun keyTitle(key: String): String = when (key) {
+            "firstname" -> tr(Res.string.zkp_field_firstname)
+            "lastname" -> tr(Res.string.zkp_field_lastname)
+            else -> ZkPassportField.entries.firstOrNull { it.key == key }?.let(::fieldTitle) ?: key
         }
 
         /** ISO 3166-1 alpha-3 codes from free text (commas, spaces or semicolons), or null when one is not a code. */
@@ -389,7 +411,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                     key == "sanctions" -> add(tr(Res.string.zkp_answer_ask_sanctions))
                     key == "facematch" -> add(tr(Res.string.zkp_answer_ask_facematch))
                     o != null -> {
-                        val title = field?.let(::fieldTitle) ?: key
+                        val title = field?.let(::fieldTitle) ?: keyTitle(key)
                         if ((o["disclose"] as? JsonPrimitive)?.contentOrNull == "true") add(tr(Res.string.zkp_answer_ask_disclose, title))
                         if (o.keys.any { it != "disclose" }) add(tr(Res.string.zkp_answer_ask_condition, title))
                     }
