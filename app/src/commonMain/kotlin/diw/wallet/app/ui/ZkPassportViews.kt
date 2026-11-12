@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +42,9 @@ import diw.wallet.app.res.Res
 import diw.wallet.core.zkpassport.ZkPassport
 import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
 import diw.wallet.core.zkpassport.ZkPassportField
+import diw.wallet.core.zkpassport.ZkPassportProverTarget
+import diw.wallet.core.zkpassport.ZkPassportPairingLink
+import kotlinx.coroutines.launch
 import diw.wallet.core.zkpassport.ZkPassportRequest
 import diw.wallet.core.zkpassport.ZkPassportState
 import org.jetbrains.compose.resources.stringResource
@@ -257,6 +261,17 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
     val incoming = s.incoming
     var chosen by remember(s) { mutableStateOf(s.passports.firstOrNull()?.id) }
     var risk by remember(s) { mutableStateOf(false) }
+    val paired by model.taiwan.zkPassport.paired.collectAsState()
+    val targets = remember(s, paired) { model.taiwan.zkPassport.targets() }
+    val deviceCan = model.taiwan.zkPassport.deviceCanProve()
+    // A paired prover was set up for this; otherwise this device, unless it cannot prove.
+    var target by remember(s, paired) {
+        mutableStateOf(
+            targets.firstOrNull { it is ZkPassportProverTarget.Paired }
+                ?: if (deviceCan == false) targets.firstOrNull { it != ZkPassportProverTarget.Device } ?: ZkPassportProverTarget.Device
+                else ZkPassportProverTarget.Device,
+        )
+    }
     val unverified = stringResource(Res.string.zkp_answer_unverified)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
@@ -293,6 +308,29 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
                 preview.first.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 if (preview.second) Text(stringResource(Res.string.zkp_answer_firstname_cut), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
+            if (targets.size > 1 || deviceCan == false) {
+                SectionTitle(stringResource(Res.string.zkp_answer_where))
+                targets.forEach { t ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = target == t, onClick = { target = t })
+                        Text(
+                            when (t) {
+                                ZkPassportProverTarget.Device -> stringResource(Res.string.zkp_answer_where_device)
+                                is ZkPassportProverTarget.Host -> stringResource(Res.string.zkp_answer_where_host, t.url)
+                                is ZkPassportProverTarget.Paired -> stringResource(Res.string.zkp_answer_where_paired, t.prover.url)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+                if (deviceCan == false && target == ZkPassportProverTarget.Device) {
+                    Text(stringResource(Res.string.zkp_answer_where_device_missing), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            // Passport data leaves this device only to the owner's prover the holder picked here.
+            ZkPassportFlow.targetAddress(target)?.let { address ->
+                Text(stringResource(Res.string.zkp_answer_where_note, address), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
             Text(stringResource(Res.string.zkp_answer_note), style = MaterialTheme.typography.bodySmall)
         }
         TechDetails(
@@ -306,7 +344,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         val file = s.passports.firstOrNull { it.id == chosen }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                onClick = { if (s.originMatches || sameSite) model.taiwan.zkPassport.accept(file!!) else risk = true },
+                onClick = { if (s.originMatches || sameSite) model.taiwan.zkPassport.accept(file!!, target) else risk = true },
                 enabled = s.unsupported == null && file != null,
             ) { Text(stringResource(Res.string.zkp_answer_accept)) }
             OutlinedButton(onClick = { model.taiwan.zkPassport.reject() }) { Text(stringResource(Res.string.zkp_answer_reject)) }
@@ -319,7 +357,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
             stringResource(Res.string.zkp_answer_risk_confirm),
             onConfirm = {
                 risk = false
-                s.passports.firstOrNull { it.id == chosen }?.let { model.taiwan.zkPassport.accept(it) }
+                s.passports.firstOrNull { it.id == chosen }?.let { model.taiwan.zkPassport.accept(it, target) }
             },
             onDismiss = { risk = false },
         )
@@ -408,12 +446,46 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
         },
         enabled = changed && domainProblem == null && !bad(mainnet) && !bad(sepolia),
     ) { Text(stringResource(Res.string.action_save)) }
+    ZkPassportRemoteSection(model)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Switch(checked = settings.zkPassportVerifierApi, onCheckedChange = { on -> model.updateSettings { it.copy(zkPassportVerifierApi = on) } })
         Column {
             Text(stringResource(Res.string.zkp_verifier_api))
             Text(stringResource(Res.string.zkp_verifier_api_note), style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/**
+ * Proving answers on the owner's own computer: the self-hosted prover from the advanced settings, and a temporary
+ * prover (diw-server prover) paired by scanning its one-time code. Each request's consent screen picks the place.
+ */
+@Composable
+private fun ZkPassportRemoteSection(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    val paired by model.taiwan.zkPassport.paired.collectAsState()
+    val readQr = LocalQrReader.current
+    val scope = rememberCoroutineScope()
+    SectionTitle(stringResource(Res.string.zkp_remote_title))
+    Text(stringResource(Res.string.zkp_remote_text), style = MaterialTheme.typography.bodySmall)
+    Text(
+        if (settings.zkProverUrl.isNotEmpty() && settings.zkProverToken.isNotEmpty()) stringResource(Res.string.zkp_remote_host, settings.zkProverUrl)
+        else stringResource(Res.string.zkp_remote_host_none),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Text(
+        paired?.let { stringResource(Res.string.zkp_remote_paired, it.url) } ?: stringResource(Res.string.zkp_remote_paired_none),
+        style = MaterialTheme.typography.bodyMedium,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(onClick = {
+            scope.launch {
+                readQr()?.let { text ->
+                    if (ZkPassportPairingLink.looksLike(text)) model.taiwan.zkPassport.pair(text.trim()) else model.handleUri(text)
+                }
+            }
+        }) { Text(stringResource(Res.string.zkp_remote_scan)) }
+        if (paired != null) OutlinedButton(onClick = { model.taiwan.zkPassport.endPairing() }) { Text(stringResource(Res.string.zkp_remote_end)) }
     }
 }
 

@@ -18,6 +18,8 @@ import diw.wallet.core.zkpassport.ZkPassportCscaCheck
 import diw.wallet.core.zkpassport.ZkPassportConfig
 import diw.wallet.core.zkpassport.ZkPassportField
 import diw.wallet.core.zkpassport.ZkPassportIncoming
+import diw.wallet.core.zkpassport.ZkPassportPairedProver
+import diw.wallet.core.zkpassport.ZkPassportProverTarget
 import diw.wallet.core.zkpassport.ZkPassportRequest
 import diw.wallet.core.zkpassport.ZkPassportResult
 import diw.wallet.core.zkpassport.ZkPassportSession
@@ -44,6 +46,54 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     private var session: ZkPassportSession? = null
     private var job: Job? = null
     private var answer: ZkPassportAnswer? = null
+
+    /** The temporary prover this wallet is paired with (diw-server prover); in memory only, gone with the app. */
+    val paired = MutableStateFlow<ZkPassportPairedProver?>(null)
+
+    /**
+     * Pairs with a temporary prover from its one-time code. Nothing about a passport is sent here: the consent screen
+     * of each request names where the proofs are made.
+     */
+    fun pair(link: String) {
+        if (!model.legal.enabled(Integration.ZKPASSPORT)) {
+            model.message.value = model.legal.disabledMessage(Integration.ZKPASSPORT)
+            return
+        }
+        val holder = model.platform.zk?.zkPassportHolder ?: run {
+            model.message.value = tr(Res.string.zkp_answer_no_engine)
+            return
+        }
+        model.scope.launch {
+            try {
+                val prover = holder.pair(link)
+                paired.value?.let { old -> runCatching { old.end() } }
+                paired.value = prover
+                model.message.value = tr(Res.string.zkp_pair_done, prover.url)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                model.message.value = tr(Res.string.zkp_pair_failed, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"))
+            }
+        }
+    }
+
+    /** Ends the session with the temporary prover. */
+    fun endPairing() {
+        val prover = paired.value ?: return
+        paired.value = null
+        model.scope.launch { runCatching { prover.end() } }
+    }
+
+    /** Where an answer can be proved: this device, the self-hosted prover when set, the paired one when paired. */
+    fun targets(): List<ZkPassportProverTarget> = buildList {
+        add(ZkPassportProverTarget.Device)
+        val s = model.settings
+        if (s.zkProverUrl.isNotEmpty() && s.zkProverToken.isNotEmpty()) add(ZkPassportProverTarget.Host(s.zkProverUrl, s.zkProverToken))
+        paired.value?.let { add(ZkPassportProverTarget.Paired(it)) }
+    }
+
+    /** Whether this device can prove itself (UltraHonk in its native library); null while not yet known. */
+    fun deviceCanProve(): Boolean? = model.zk.capability.value?.backends?.contains(diw.wallet.core.zk.ZkBackend.NOIR_ULTRAHONK)
 
     /** The domain requests are made for: the user's setting, else [serverDomain]. */
     fun defaultDomain(): String = model.settings.zkPassportDomain.trim().ifEmpty { serverDomain() }
@@ -154,7 +204,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
     }
 
     /** Proves the request from the stored passport [file] and sends the proofs. */
-    fun accept(file: StoredFile) {
+    fun accept(file: StoredFile, target: ZkPassportProverTarget = ZkPassportProverTarget.Device) {
         val a = answer ?: return
         val incoming = (ui.value as? OfflineUi.ZkPassportAnswerConsent)?.incoming ?: return
         ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null)
@@ -162,12 +212,12 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         job = model.scope.launch {
             try {
                 val chip = chip(file) ?: throw ZkPassportAnswerFailure("passport")
-                a.answer(chip) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
-                answered(incoming, a.origin, file, null)
+                a.answer(chip, target) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
+                answered(incoming, a.origin, file, null, target)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                answered(incoming, a.origin, file, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"))
+                answered(incoming, a.origin, file, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"), target)
             } finally {
                 a.close()
                 if (answer === a) answer = null
@@ -195,11 +245,12 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
     }
 
-    private fun answered(incoming: ZkPassportIncoming, origin: String, file: StoredFile, error: String?) {
+    private fun answered(incoming: ZkPassportIncoming, origin: String, file: StoredFile, error: String?, target: ZkPassportProverTarget) {
         ui.value = OfflineUi.ZkPassportAnswerDone(incoming, error == null, error)
         model.record(
             HistoryKind.PRESENTED, incoming.domain, null, listOf(file.name), asks(incoming.query),
-            tr(Res.string.zkp_answer_history_note, origin) + (if (incoming.devMode) tr(Res.string.zkp_answer_history_test) else ""),
+            tr(Res.string.zkp_answer_history_note, origin) + (if (incoming.devMode) tr(Res.string.zkp_answer_history_test) else "") +
+                (targetAddress(target)?.let { tr(Res.string.zkp_answer_history_remote, it) } ?: ""),
             error,
         )
     }
@@ -439,7 +490,22 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
 
         /** An answer's failure code in words. */
+        /** The prover's address for [target]; null on this device. */
+        fun targetAddress(target: ZkPassportProverTarget): String? = when (target) {
+            ZkPassportProverTarget.Device -> null
+            is ZkPassportProverTarget.Host -> target.url
+            is ZkPassportProverTarget.Paired -> target.prover.url
+        }
+
         fun answerFailure(code: String): String = when {
+            code == "remote_unreachable" -> tr(Res.string.zkp_answer_err_remote_unreachable)
+            code == "remote_unauthorized" || code == "pairing_lost" -> tr(Res.string.zkp_answer_err_remote_auth)
+            code == "remote_busy" -> tr(Res.string.zkp_answer_err_remote_busy)
+            code == "remote_unavailable" -> tr(Res.string.zkp_answer_err_remote_unavailable)
+            code == "remote_lost" -> tr(Res.string.zkp_answer_err_remote_lost)
+            code == "pairing_link" -> tr(Res.string.zkp_pair_err_link)
+            code == "pairing_used" -> tr(Res.string.zkp_pair_err_used)
+            code == "pairing_refused" -> tr(Res.string.zkp_pair_err_refused)
             code == "bridge_origin" -> tr(Res.string.zkp_answer_err_origin)
             code == "bridge_unknown_request" -> tr(Res.string.zkp_answer_err_unknown_request)
             code.startsWith("bridge_origin:") -> tr(Res.string.zkp_answer_err_origin) + "\n" + tr(Res.string.zkp_answer_err_reason, code.substringAfter(':'))
