@@ -21,6 +21,17 @@ data class OfdMatrix(val a: Double, val b: Double, val c: Double, val d: Double,
     /** The factor lengths are scaled by (the square root of the determinant). */
     val scale: Double get() = sqrt(abs(a * d - b * c))
 
+    /** The inverse transform, or null when this one is singular. */
+    fun inverse(): OfdMatrix? {
+        val det = a * d - b * c
+        if (abs(det) < 1e-12) return null
+        val ia = d / det
+        val ib = -b / det
+        val ic = -c / det
+        val id = a / det
+        return OfdMatrix(ia, ib, ic, id, -(e * ia + f * ic), -(e * ib + f * id))
+    }
+
     /** True when the transform only scales and moves (no rotation or skew). */
     val axisAligned: Boolean get() = abs(b) < 1e-9 && abs(c) < 1e-9
 
@@ -80,8 +91,65 @@ data class OfdTextCode(
     val text: String,
 )
 
-/** A character placed on the page (millimetres, page space): [x], [y] is the start of its baseline, [size] the font size there. */
-data class OfdGlyph(val x: Double, val y: Double, val size: Double, val width: Double, val text: String, val objectId: String?)
+/**
+ * A character placed on the page (millimetres, page space): [x], [y] is the start of its baseline, [size] the font
+ * size there. [ox], [oy] is the same point in the text object's own space and [index] the character's position in
+ * the object's text (what CGTransform counts).
+ */
+data class OfdGlyph(
+    val x: Double,
+    val y: Double,
+    val size: Double,
+    val width: Double,
+    val text: String,
+    val objectId: String?,
+    val ox: Double = 0.0,
+    val oy: Double = 0.0,
+    val index: Int = 0,
+)
+
+/** A CGTransform: the characters [start] to start + [count] - 1 of a text object are drawn with glyph indices [glyphs]. */
+data class OfdCgTransform(val start: Int, val count: Int, val glyphs: List<Int>)
+
+/**
+ * One area of a clip (GB/T 33190 8.4) in page space through [matrix]: a path (with its fill rule) or the outline of
+ * a text, whichever it holds.
+ */
+data class OfdClipArea(val matrix: OfdMatrix, val commands: List<OfdPathCommand>, val evenOdd: Boolean, val text: OfdObject.Text?)
+
+/** A clip: the union of its areas. The clips of an object intersect. */
+data class OfdClip(val areas: List<OfdClipArea>)
+
+/** A colour stop of a gradient: [position] from 0 to 1. */
+data class OfdColorStop(val position: Double, val color: OfdColor)
+
+/** A point of a Gouraud shading with its colour. */
+data class OfdShadePoint(val x: Double, val y: Double, val color: OfdColor)
+
+/** A shading or pattern that fills or strokes instead of a plain colour, in the object's own space. */
+sealed class OfdShade {
+    /** AxialShd: colour along StartPoint to EndPoint; [mapType] Direct, Repeat or Reflect with [mapUnit] the period. */
+    data class Axial(
+        val x0: Double, val y0: Double, val x1: Double, val y1: Double, val stops: List<OfdColorStop>,
+        val extendStart: Boolean, val extendEnd: Boolean, val mapType: String, val mapUnit: Double,
+    ) : OfdShade()
+
+    /** RadialShd: from the circle at x0, y0 radius r0 to the one at x1, y1 radius r1, elliptical by [eccentricity] at [angle] degrees. */
+    data class Radial(
+        val x0: Double, val y0: Double, val r0: Double, val x1: Double, val y1: Double, val r1: Double,
+        val eccentricity: Double, val angle: Double, val stops: List<OfdColorStop>,
+        val extendStart: Boolean, val extendEnd: Boolean, val mapType: String, val mapUnit: Double,
+    ) : OfdShade()
+
+    /** GouraudShd and LaGouraudShd as triangles (three points each); [back] fills outside them when [extend]. */
+    data class Gouraud(val triangles: List<List<OfdShadePoint>>, val extend: Boolean, val back: OfdColor?) : OfdShade()
+
+    /** Pattern: [objects] of one cell [width] by [height], repeated every [xStep], [yStep] through [matrix]; [reflect] mirrors rows or columns. */
+    data class Pattern(
+        val width: Double, val height: Double, val xStep: Double, val yStep: Double, val matrix: OfdMatrix,
+        val reflect: String, val relativeToPage: Boolean, val objects: List<OfdObject>,
+    ) : OfdShade()
+}
 
 /**
  * A drawable object of a page, in page space through [matrix] (the object's CTM, then its boundary's origin and
@@ -91,6 +159,7 @@ sealed class OfdObject {
     abstract val id: String?
     abstract val matrix: OfdMatrix
     abstract val alpha: Int
+    abstract val clips: List<OfdClip>
 
     data class Text(
         override val id: String?,
@@ -106,12 +175,23 @@ sealed class OfdObject {
         val readDirection: Int,
         val charDirection: Int,
         val codes: List<OfdTextCode>,
+        val cg: List<OfdCgTransform> = emptyList(),
+        val fillShade: OfdShade? = null,
+        override val clips: List<OfdClip> = emptyList(),
     ) : OfdObject() {
+        /** The glyph indices CGTransform gives the character at [index]: null when it gives none, empty when the character joins a previous glyph. */
+        fun glyphIds(index: Int): List<Int>? {
+            val t = cg.lastOrNull { index >= it.start && index < it.start + maxOf(1, it.count) } ?: return null
+            if (t.count == t.glyphs.size) return listOf(t.glyphs[index - t.start])
+            return if (index == t.start) t.glyphs else emptyList()
+        }
+
         /** Every character with its place on the page. */
         fun glyphs(): List<OfdGlyph> {
             val out = ArrayList<OfdGlyph>()
             var cx = 0.0
             var cy = 0.0
+            var index = 0
             val pageSize = size * matrix.scale
             for (code in codes) {
                 if (code.x != null) cx = code.x
@@ -124,7 +204,7 @@ sealed class OfdObject {
                     val dx = code.deltaX.getOrNull(i) ?: if (vertical) 0.0 else if (readDirection == 180) -natural else natural
                     val dy = code.deltaY.getOrNull(i) ?: if (!vertical) 0.0 else if (readDirection == 270) -size else size
                     val width = if (vertical || abs(dx) < 1e-9) natural else abs(dx)
-                    out.add(OfdGlyph(matrix.x(cx, cy), matrix.y(cx, cy), pageSize, width * matrix.scale, ch, id))
+                    out.add(OfdGlyph(matrix.x(cx, cy), matrix.y(cx, cy), pageSize, width * matrix.scale, ch, id, cx, cy, index++))
                     // After the last character this is where a following TextCode without X or Y continues.
                     cx += dx
                     cy += dy
@@ -146,6 +226,10 @@ sealed class OfdObject {
         val cap: String,
         val join: String,
         val dash: List<Double>,
+        val fillShade: OfdShade? = null,
+        val strokeShade: OfdShade? = null,
+        val miterLimit: Double = 4.234,
+        override val clips: List<OfdClip> = emptyList(),
     ) : OfdObject()
 
     data class Image(
@@ -153,6 +237,7 @@ sealed class OfdObject {
         override val matrix: OfdMatrix,
         override val alpha: Int,
         val media: OfdMedia?,
+        override val clips: List<OfdClip> = emptyList(),
     ) : OfdObject()
 }
 

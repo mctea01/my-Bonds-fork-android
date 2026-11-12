@@ -272,12 +272,14 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
                         val p = param(e.attributes["DrawParam"]) ?: inherited
                         val alpha = e.attributes["Alpha"]?.toIntOrNull()?.coerceIn(0, 255) ?: 255
                         val id = e.attributes["ID"]
+                        val clips = clips(e, b, base, depth)
                         when (e.name) {
-                            "TextObject" -> out.add(text(e, id, m, alpha, p))
-                            "PathObject" -> out.add(path(e, id, m, alpha, p))
-                            "ImageObject" -> out.add(OfdObject.Image(id, m, alpha, e.attributes["ResourceID"]?.let { medias[it] }))
+                            "TextObject" -> out.add(text(e, id, m, alpha, p, depth, clips))
+                            "PathObject" -> out.add(path(e, id, m, alpha, p, depth, clips))
+                            "ImageObject" -> out.add(OfdObject.Image(id, m, alpha, e.attributes["ResourceID"]?.let { medias[it] }, clips))
                             else -> e.attributes["ResourceID"]?.let { units[it] }?.let { u ->
-                                out.addAll(objects(u.element.child("Content")?.children.orEmpty(), OfdMatrix.parse(e.attributes["CTM"]).then(OfdMatrix.translate(b.x, b.y)).then(base), p, depth + 1))
+                                val inner = objects(u.element.child("Content")?.children.orEmpty(), m, p, depth + 1)
+                                out.addAll(if (clips.isEmpty()) inner else inner.map { withClips(it, clips) })
                             }
                         }
                     }
@@ -286,25 +288,45 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
             return out
         }
 
-        fun text(e: XmlElement, id: String?, m: OfdMatrix, alpha: Int, p: DrawParam?): OfdObject.Text {
+        fun text(e: XmlElement, id: String?, m: OfdMatrix, alpha: Int, p: DrawParam?, depth: Int, clips: List<OfdClip>): OfdObject.Text {
             val a = e.attributes
             val fill = if (a["Fill"] == "false") null else e.child("FillColor")?.let { color(it) } ?: p?.fill ?: OfdColor.BLACK
             val stroke = if (a["Stroke"] != "true") null else e.child("StrokeColor")?.let { color(it) } ?: p?.stroke ?: OfdColor.BLACK
+            fun clean(c: XmlElement) = c.rawText.replace("\r", "").replace("\n", "")
             val codes = e.all("TextCode").map { c ->
                 OfdTextCode(
                     c.attributes["X"]?.toDoubleOrNull(), c.attributes["Y"]?.toDoubleOrNull(),
                     OfdNumbers.deltas(c.attributes["DeltaX"]), OfdNumbers.deltas(c.attributes["DeltaY"]),
-                    c.rawText.replace("\r", "").replace("\n", ""),
+                    clean(c),
                 )
             }
+            // CGTransform counts characters of the TextCode that follows it (positions run on across TextCodes).
+            val cg = ArrayList<OfdCgTransform>()
+            val pending = ArrayList<XmlElement>()
+            var offset = 0
+            fun flush() {
+                for (t in pending) {
+                    val glyphs = t.child("Glyphs")?.text?.trim()?.split(Regex("\\s+"))?.mapNotNull { it.toIntOrNull() }.orEmpty()
+                    if (glyphs.isEmpty()) continue
+                    cg.add(OfdCgTransform(offset + (t.attributes["CodePosition"]?.toIntOrNull() ?: 0), t.attributes["CodeCount"]?.toIntOrNull() ?: 1, glyphs))
+                }
+                pending.clear()
+            }
+            for (c in e.children) when (c.name) {
+                "CGTransform" -> pending.add(c)
+                "TextCode" -> { flush(); offset += OfdNumbers.codePoints(clean(c)).size }
+            }
+            offset = 0
+            flush()
             return OfdObject.Text(
                 id, m, alpha, a["Font"]?.let { fonts[it] }, a["Size"]?.toDoubleOrNull() ?: 3.5, fill, stroke,
                 a["HScale"]?.toDoubleOrNull() ?: 1.0, a["Weight"]?.toIntOrNull() ?: 400, a["Italic"] == "true",
-                a["ReadDirection"]?.toIntOrNull() ?: 0, a["CharDirection"]?.toIntOrNull() ?: 0, codes,
+                a["ReadDirection"]?.toIntOrNull() ?: 0, a["CharDirection"]?.toIntOrNull() ?: 0, codes, cg,
+                e.child("FillColor")?.let { shade(it, depth) }, clips,
             )
         }
 
-        fun path(e: XmlElement, id: String?, m: OfdMatrix, alpha: Int, p: DrawParam?): OfdObject.Path {
+        fun path(e: XmlElement, id: String?, m: OfdMatrix, alpha: Int, p: DrawParam?, depth: Int, clips: List<OfdClip>): OfdObject.Path {
             val a = e.attributes
             val fill = if (a["Fill"] != "true") null else e.child("FillColor")?.let { color(it) } ?: p?.fill ?: OfdColor.BLACK
             val stroke = if (a["Stroke"] == "false") null else e.child("StrokeColor")?.let { color(it) } ?: p?.stroke ?: OfdColor.BLACK
@@ -313,7 +335,159 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
                 a["LineWidth"]?.toDoubleOrNull() ?: p?.lineWidth ?: 0.353,
                 a["Rule"].equals("Even-Odd", true), a["Cap"] ?: p?.cap ?: "Butt", a["Join"] ?: p?.join ?: "Miter",
                 a["DashPattern"]?.let { OfdNumbers.list(it) } ?: p?.dash.orEmpty(),
+                if (fill != null) e.child("FillColor")?.let { shade(it, depth) } else null,
+                if (stroke != null) e.child("StrokeColor")?.let { shade(it, depth) } else null,
+                a["MiterLimit"]?.toDoubleOrNull() ?: 4.234,
+                clips,
             )
+        }
+
+        fun withClips(o: OfdObject, c: List<OfdClip>): OfdObject = when (o) {
+            is OfdObject.Text -> o.copy(clips = o.clips + c)
+            is OfdObject.Path -> o.copy(clips = o.clips + c)
+            is OfdObject.Image -> o.copy(clips = o.clips + c)
+        }
+
+        // ------------------------------------------------------------ clips and shadings
+
+        /** The points of [cmds] through [m]. */
+        fun bounds(cmds: List<OfdPathCommand>, m: OfdMatrix): DoubleArray? {
+            var minX = Double.MAX_VALUE; var minY = Double.MAX_VALUE; var maxX = -Double.MAX_VALUE; var maxY = -Double.MAX_VALUE
+            fun add(x: Double, y: Double) {
+                val px = m.x(x, y); val py = m.y(x, y)
+                minX = minOf(minX, px); minY = minOf(minY, py); maxX = maxOf(maxX, px); maxY = maxOf(maxY, py)
+            }
+            for (c in cmds) when (c) {
+                is OfdPathCommand.Move -> add(c.x, c.y)
+                is OfdPathCommand.Line -> add(c.x, c.y)
+                is OfdPathCommand.Quad -> { add(c.x1, c.y1); add(c.x, c.y) }
+                is OfdPathCommand.Cubic -> { add(c.x1, c.y1); add(c.x2, c.y2); add(c.x, c.y) }
+                OfdPathCommand.Close -> {}
+            }
+            return if (minX == Double.MAX_VALUE) null else doubleArrayOf(minX, minY, maxX, maxY)
+        }
+
+        fun overlaps(a: DoubleArray?, b: DoubleArray?) = a != null && b != null && a[0] <= b[2] && b[0] <= a[2] && a[1] <= b[3] && b[1] <= a[3]
+
+        /**
+         * The clips of an object (GB/T 33190 8.4): areas in the object's coordinate space (its Boundary), each with its
+         * own CTM. Some producers give the clip path in page space instead; a path that only meets the object that way
+         * is read so.
+         */
+        fun clips(e: XmlElement, b: OfdBox, base: OfdMatrix, depth: Int): List<OfdClip> {
+            val list = e.child("Clips")?.all("Clip").orEmpty()
+            if (list.isEmpty()) return emptyList()
+            val objectSpace = OfdMatrix.translate(b.x, b.y).then(base)
+            val objectBox = bounds(listOf(OfdPathCommand.Move(0.0, 0.0), OfdPathCommand.Line(b.w, b.h), OfdPathCommand.Line(0.0, b.h), OfdPathCommand.Line(b.w, 0.0)), objectSpace)
+            return list.mapNotNull { c ->
+                val areas = c.all("Area").mapNotNull { a ->
+                    val actm = OfdMatrix.parse(a.attributes["CTM"])
+                    val p = param(a.attributes["DrawParam"])
+                    val pe = a.child("Path")
+                    val te = a.child("Text")
+                    fun origin(x: XmlElement): OfdMatrix {
+                        val n = OfdNumbers.list(x.attributes["Boundary"])
+                        return OfdMatrix.parse(x.attributes["CTM"]).then(OfdMatrix.translate(n.getOrElse(0) { 0.0 }, n.getOrElse(1) { 0.0 }))
+                    }
+                    when {
+                        pe != null -> {
+                            val cmds = abbreviated(pe.child("AbbreviatedData")?.text.orEmpty())
+                            val inner = origin(pe).then(actm)
+                            val primary = inner.then(objectSpace)
+                            val alternative = inner.then(base)
+                            val m = if (!overlaps(bounds(cmds, primary), objectBox) && overlaps(bounds(cmds, alternative), objectBox)) alternative else primary
+                            OfdClipArea(m, cmds, pe.attributes["Rule"].equals("Even-Odd", true), null)
+                        }
+                        te != null -> {
+                            val m = origin(te).then(actm).then(objectSpace)
+                            OfdClipArea(m, emptyList(), false, text(te, null, m, 255, p, depth + 1, emptyList()))
+                        }
+                        else -> null
+                    }
+                }
+                if (areas.isEmpty()) null else OfdClip(areas)
+            }
+        }
+
+        fun point(s: String?): Pair<Double, Double>? = OfdNumbers.list(s).takeIf { it.size >= 2 }?.let { it[0] to it[1] }
+
+        fun stops(e: XmlElement): List<OfdColorStop> {
+            val segs = e.all("Segment")
+            return segs.mapIndexedNotNull { i, sg ->
+                val c = sg.child("Color") ?: return@mapIndexedNotNull null
+                val pos = sg.attributes["Position"]?.toDoubleOrNull() ?: if (segs.size > 1) i.toDouble() / (segs.size - 1) else 0.0
+                OfdColorStop(pos.coerceIn(0.0, 1.0), color(c))
+            }.sortedBy { it.position }
+        }
+
+        /** The shading or pattern of a FillColor or StrokeColor, or null for a plain colour. */
+        fun shade(c: XmlElement, depth: Int): OfdShade? {
+            c.child("AxialShd")?.let { a ->
+                val (x0, y0) = point(a.attributes["StartPoint"]) ?: return null
+                val (x1, y1) = point(a.attributes["EndPoint"]) ?: return null
+                val ext = a.attributes["Extend"]?.toIntOrNull() ?: 0
+                val st = stops(a).ifEmpty { return null }
+                return OfdShade.Axial(x0, y0, x1, y1, st, ext == 1 || ext == 3, ext == 2 || ext == 3, a.attributes["MapType"] ?: "Direct", a.attributes["MapUnit"]?.toDoubleOrNull() ?: 0.0)
+            }
+            c.child("RadialShd")?.let { a ->
+                val (x0, y0) = point(a.attributes["StartPoint"]) ?: return null
+                val (x1, y1) = point(a.attributes["EndPoint"]) ?: return null
+                val ext = a.attributes["Extend"]?.toIntOrNull() ?: 0
+                val st = stops(a).ifEmpty { return null }
+                return OfdShade.Radial(
+                    x0, y0, a.attributes["StartRadius"]?.toDoubleOrNull() ?: 0.0, x1, y1, a.attributes["EndRadius"]?.toDoubleOrNull() ?: return null,
+                    (a.attributes["Eccentricity"]?.toDoubleOrNull() ?: 0.0).coerceIn(0.0, 0.999), a.attributes["Angle"]?.toDoubleOrNull() ?: 0.0,
+                    st, ext == 1 || ext == 3, ext == 2 || ext == 3, a.attributes["MapType"] ?: "Direct", a.attributes["MapUnit"]?.toDoubleOrNull() ?: 0.0,
+                )
+            }
+            fun shadePoint(pe: XmlElement): OfdShadePoint? {
+                val x = pe.attributes["X"]?.toDoubleOrNull() ?: return null
+                val y = pe.attributes["Y"]?.toDoubleOrNull() ?: return null
+                return OfdShadePoint(x, y, pe.child("Color")?.let { color(it) } ?: OfdColor.BLACK)
+            }
+            c.child("GouraudShd")?.let { g ->
+                // Triangles as in a free-form mesh: EdgeFlag 0 starts one, 1 and 2 add one from the previous triangle's points.
+                val tris = ArrayList<List<OfdShadePoint>>()
+                var cur = ArrayList<OfdShadePoint>()
+                for (pe in g.all("Point")) {
+                    val pt = shadePoint(pe) ?: continue
+                    val flag = pe.attributes["EdgeFlag"]?.toIntOrNull() ?: 0
+                    val last = tris.lastOrNull()
+                    when {
+                        cur.size < 3 && (flag == 0 || last == null) -> { cur.add(pt); if (cur.size == 3) { tris.add(cur); cur = ArrayList() } }
+                        flag == 1 && last != null -> tris.add(listOf(last[1], last[2], pt))
+                        flag == 2 && last != null -> tris.add(listOf(last[0], last[2], pt))
+                        else -> { cur = arrayListOf(pt) }
+                    }
+                }
+                if (tris.isEmpty()) return null
+                return OfdShade.Gouraud(tris, g.attributes["Extend"] == "1", g.child("BackColor")?.let { color(it) })
+            }
+            c.child("LaGouraudShd")?.let { g ->
+                val perRow = g.attributes["VerticesPerRow"]?.toIntOrNull()?.takeIf { it >= 2 } ?: return null
+                val pts = g.all("Point").mapNotNull { shadePoint(it) }
+                val rows = pts.size / perRow
+                val tris = ArrayList<List<OfdShadePoint>>()
+                for (r in 0 until rows - 1) for (k in 0 until perRow - 1) {
+                    val a0 = pts[r * perRow + k]; val a1 = pts[r * perRow + k + 1]
+                    val b0 = pts[(r + 1) * perRow + k]; val b1 = pts[(r + 1) * perRow + k + 1]
+                    tris.add(listOf(a0, a1, b0)); tris.add(listOf(a1, b1, b0))
+                }
+                if (tris.isEmpty()) return null
+                return OfdShade.Gouraud(tris, g.attributes["Extend"] == "1", g.child("BackColor")?.let { color(it) })
+            }
+            c.child("Pattern")?.let { pt ->
+                if (depth > 8) return null
+                val w = pt.attributes["Width"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: return null
+                val h = pt.attributes["Height"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: return null
+                val cell = pt.child("CellContent") ?: return null
+                return OfdShade.Pattern(
+                    w, h, pt.attributes["XStep"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: w, pt.attributes["YStep"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: h,
+                    OfdMatrix.parse(pt.attributes["CTM"]), pt.attributes["ReflectMethod"] ?: "Normal",
+                    pt.attributes["RelativeTo"].equals("Page", true), objects(cell.children, OfdMatrix.IDENTITY, null, depth + 1),
+                )
+            }
+            return null
         }
 
         // ------------------------------------------------------------ annotations, attachments, tags, info

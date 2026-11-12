@@ -60,8 +60,15 @@ expect object DocumentSigning {
      * signer gives GB/T 35275 SignedData (SM3 digests, the national OIDs); an RSA or P-256 signer gives PKCS#7
      * SignedData with SHA-256, which some mainland China readers do not accept. With [timestamper] the signer info
      * carries an RFC 3161 token over the signature value. Earlier signatures stay valid. Returns the new package.
+     *
+     * With [seal] the signature is an electronic seal instead (Type "Seal", GB/T 38540 SES_Signature with the SM3
+     * digest of Signature.xml, or the GM/T 0031 version 1 form for a version 1 seal), stamped where the options
+     * say; it needs an SM2 signer the seal allows.
      */
-    suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?): ByteArray
+    suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, seal: OfdSealOptions? = null): ByteArray
+
+    /** The contents of an electronic seal file (.esl, an SESeal), or null when it is none. */
+    fun ofdSealInfo(eseal: ByteArray): OfdSealInfo?
 
     /**
      * A PKCS#12 file with a new SM2 key and a self-issued certificate for it (SM3 with SM2), for OFD signatures

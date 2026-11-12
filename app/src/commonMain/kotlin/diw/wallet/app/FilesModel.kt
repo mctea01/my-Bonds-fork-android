@@ -65,6 +65,8 @@ import diw.wallet.core.document.ofd.OfdMedia
 import diw.wallet.core.document.ofd.OfdPackage
 import diw.wallet.core.document.ofd.OfdStamp
 import diw.wallet.core.document.ofd.OfdText
+import diw.wallet.core.document.ofd.OfdShading
+import diw.wallet.core.document.sign.OfdSealOptions
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialDocuments
@@ -378,6 +380,27 @@ object MyDataFiles {
  * and an optional picture such as a handwritten signature. The text lines are filled in at signing time.
  */
 class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Position, val image: PdfAppearanceImage? = null)
+
+/**
+ * An electronic seal for an OFD signature: an issued seal file ([file], .esl) or, without one, a seal the wallet
+ * makes for the signing key, named [name] (blank: the certificate's name), round for an organisation or square for a
+ * person, with [image] or else the drawn seal, [widthMm] wide; stamped on [page] (negative from the end) at [position].
+ */
+class OfdSealChoice(
+    val page: Int = -1,
+    val position: PdfSignatureAppearance.Position = PdfSignatureAppearance.Position.BOTTOM_RIGHT,
+    val file: ByteArray? = null,
+    val fileName: String? = null,
+    val name: String = "",
+    val personal: Boolean = false,
+    val widthMm: Double = 40.0,
+    val image: PdfAppearanceImage? = null,
+) {
+    fun copy(
+        page: Int = this.page, position: PdfSignatureAppearance.Position = this.position, file: ByteArray? = this.file, fileName: String? = this.fileName,
+        name: String = this.name, personal: Boolean = this.personal, widthMm: Double = this.widthMm, image: PdfAppearanceImage? = this.image,
+    ) = OfdSealChoice(page, position, file, fileName, name, personal, widthMm, image)
+}
 
 sealed class SignerChoice {
     /** The citizen digital certificate (or another GPKI) card on [reader]; the PIN is used for this signing only. */
@@ -936,10 +959,11 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
-    /** An image resource of an OFD, decoded by the platform (TIFF page by page); null for JBIG2 and other formats it cannot show. */
+    /** An image resource of an OFD, decoded by the platform (TIFF and JBIG2 converted first); null for formats it cannot show. */
     private fun ofdImage(media: OfdMedia, width: Int): ImageBitmap? = when (media.format) {
         "TIFF" -> ImageConversion.tiffPages(media.bytes, 1, width).firstOrNull()?.let { model.platform.decodeImage(it) }
-        "JB2", "OFD", "UNKNOWN" -> null
+        "JB2", "JBIG2" -> ImageConversion.jbig2(media.bytes, width)?.let { model.platform.decodeImage(it) }
+        "OFD", "UNKNOWN" -> null
         else -> model.platform.decodeImage(media.bytes)
     }
 
@@ -1661,6 +1685,8 @@ class FilesModel(private val model: WalletModel) {
         certification: Int? = null,
         /** Show the PDF signature on a page; null keeps it invisible. */
         visible: VisibleSignature? = null,
+        /** Stamp an OFD with an electronic seal instead of a digital signature. */
+        seal: OfdSealChoice? = null,
     ) = run(tr(Res.string.step_prepare_sign)) {
         if (form == SignForm.OPENPGP_DETACHED) {
             signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException(tr(Res.string.msg_pgp_needs_card)))
@@ -1720,7 +1746,8 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
                 SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
                 SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
-                SignForm.OFD -> DocumentSigning.signOfd(data, signer, ts) to "$base-signed.ofd"
+                SignForm.OFD -> if (seal != null) DocumentSigning.signOfd(data, signer, ts, sealOptions(seal, signerName)) to "$base-sealed.ofd"
+                    else DocumentSigning.signOfd(data, signer, ts) to "$base-signed.ofd"
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
                 SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
@@ -1735,6 +1762,16 @@ class FilesModel(private val model: WalletModel) {
         val lower = form != SignForm.OFD && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
         model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** What the core needs for [seal]: the issued seal file, or the picture of the seal to make (the chosen image or the drawn one). */
+    private fun sealOptions(seal: OfdSealChoice, signerName: String?): OfdSealOptions {
+        if (seal.file != null) return OfdSealOptions(page = seal.page, position = seal.position, sealFile = seal.file)
+        val name = seal.name.trim().ifEmpty { signerName.orEmpty() }
+        val picture = seal.image?.let { OfdShading.png(it.width, it.height, it.argb) }
+            ?: model.platform.fontFamilyResolver?.let { encodePng(SealPicture.draw(name, seal.personal, it)) }
+            ?: throw SigningException(tr(Res.string.msg_seal_no_picture))
+        return OfdSealOptions(page = seal.page, position = seal.position, picture = picture, name = name, personal = seal.personal, widthMm = seal.widthMm)
     }
 
     /**

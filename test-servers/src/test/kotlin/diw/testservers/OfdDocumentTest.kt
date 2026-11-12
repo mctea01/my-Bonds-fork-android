@@ -46,6 +46,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** OFD content (pages, text, custom tags, seals), the invoice read from it, and OFD digital signatures the wallet makes. */
@@ -269,6 +270,102 @@ class OfdDocumentTest {
         assertEquals(DocumentVerdict.INVALID, tampered.verdict)
     }
 
+    private val sealPicture = diw.wallet.core.document.ofd.OfdShading.png(8, 8, IntArray(64) { 0xFFCC0000.toInt() })
+
+    /** A GM/T 0031-2014 (version 1) seal allowing [signer], signed by the signer as its own seal maker. */
+    private suspend fun v1Seal(signer: DocumentSigner, name: String): ByteArray {
+        val cert = signer.certificateChain.first()
+        fun utc(offsetDays: Int) = org.bouncycastle.asn1.DERUTCTime(Date(System.currentTimeMillis() + offsetDays * 86_400_000L))
+        val info = org.bouncycastle.asn1.DERSequence(
+            arrayOf(
+                org.bouncycastle.asn1.DERSequence(arrayOf(org.bouncycastle.asn1.DERIA5String("ES"), org.bouncycastle.asn1.ASN1Integer(1), org.bouncycastle.asn1.DERIA5String("T"))),
+                org.bouncycastle.asn1.DERIA5String("T0001"),
+                org.bouncycastle.asn1.DERSequence(
+                    arrayOf(
+                        org.bouncycastle.asn1.ASN1Integer(1), org.bouncycastle.asn1.DERUTF8String(name),
+                        org.bouncycastle.asn1.DERSequence(org.bouncycastle.asn1.DEROctetString(cert)), utc(-1), utc(-1), utc(10),
+                    ),
+                ),
+                org.bouncycastle.asn1.DERSequence(
+                    arrayOf(org.bouncycastle.asn1.DERIA5String("PNG"), org.bouncycastle.asn1.DEROctetString(sealPicture), org.bouncycastle.asn1.ASN1Integer(42), org.bouncycastle.asn1.ASN1Integer(42)),
+                ),
+            ),
+        )
+        val signInfo = org.bouncycastle.asn1.DERSequence(
+            arrayOf(org.bouncycastle.asn1.DEROctetString(cert), org.bouncycastle.asn1.ASN1ObjectIdentifier("1.2.156.10197.1.501"), org.bouncycastle.asn1.DERBitString(signer.sign(info.encoded))),
+        )
+        return org.bouncycastle.asn1.DERSequence(arrayOf(info, signInfo)).encoded
+    }
+
+    @Test
+    fun stampsElectronicSeals() = runBlocking<Unit> {
+        val signer = sm2Signer()
+        val options = diw.wallet.core.document.sign.OfdSealOptions(picture = sealPicture, name = "測試印章", widthMm = 30.0)
+        val sealed = DocumentSigning.signOfd(sample("unsigned.ofd"), signer, timestamper, options)
+        val r = DocumentInspector.inspect(sealed, "sealed.ofd", trust)
+        val s = r.signatures.single()
+        assertEquals(SignatureFormat.OFD_SEAL, s.format)
+        assertEquals(Check.PASS, s.integrity, s.problems.toString())
+        assertEquals(true, s.coversWholeDocument, s.notes.toString())
+        assertTrue(s.notes.any { "GB/T 38540" in it }, s.notes.toString())
+        assertTrue(s.notes.any { "測試印章" in it }, s.notes.toString())
+        assertEquals(Check.PASS, assertNotNull(s.timestamp).imprint, s.timestamp.toString())
+
+        // The stamp shows the picture on the last page, 30 mm square at the bottom right.
+        val page = pkg(sealed).pages.last()
+        val stamp = DocumentInspector.ofdStamps(sealed).single()
+        assertEquals(page.id, stamp.pageId)
+        assertTrue(sealPicture.contentEquals(stamp.picture), "the seal picture")
+        assertEquals(30.0, stamp.boundary.w, 1e-6)
+        assertEquals(30.0, stamp.boundary.h, 1e-6)
+        assertTrue(stamp.boundary.x + stamp.boundary.w <= page.box.x + page.box.w && stamp.boundary.x > page.box.w / 2, stamp.boundary.toString())
+        assertTrue(stamp.boundary.y > page.box.h / 2, stamp.boundary.toString())
+
+        // The seal made for the key, kept in the package, says what it is.
+        val files = DocumentSigning.unzip(sealed)
+        val esl = files.entries.single { it.key.endsWith("Seal.esl") }.value
+        val info = assertNotNull(DocumentSigning.ofdSealInfo(esl))
+        assertEquals(4, info.version)
+        assertEquals("測試印章", info.name)
+        assertTrue(info.personal)
+        assertEquals(1, info.signers)
+        assertEquals(30.0, info.widthMm)
+        assertNull(DocumentSigning.ofdSealInfo("x".encodeToByteArray()))
+
+        // The same seal again elsewhere, and over it a digital signature: all stay valid.
+        val again = DocumentSigning.signOfd(sealed, signer, null, diw.wallet.core.document.sign.OfdSealOptions(page = 0, position = diw.wallet.core.document.pdf.PdfSignatureAppearance.Position.TOP_LEFT, sealFile = esl))
+        val signed = DocumentSigning.signOfd(again, signer, null)
+        val r3 = DocumentInspector.inspect(signed, "s3.ofd", trust)
+        assertEquals(listOf(SignatureFormat.OFD_SEAL, SignatureFormat.OFD_SEAL, SignatureFormat.OFD_SIGN), r3.signatures.map { it.format })
+        assertTrue(r3.signatures.all { it.integrity == Check.PASS }, r3.signatures.map { it.problems }.toString())
+        assertEquals(2, DocumentInspector.ofdStamps(signed).size)
+
+        // A seal that does not list the signer, and a changed page, both fail.
+        assertFailsWith<SigningException> { DocumentSigning.signOfd(sample("unsigned.ofd"), sm2Signer(), null, diw.wallet.core.document.sign.OfdSealOptions(sealFile = esl)) }
+        assertFailsWith<SigningException> { DocumentSigning.signOfd(sample("unsigned.ofd"), signer, null, diw.wallet.core.document.sign.OfdSealOptions()) }
+        val changed = LinkedHashMap(files)
+        val content = changed.keys.first { it.endsWith("Content.xml") }
+        changed[content] = changed[content]!!.decodeToString().replace("100", "900").encodeToByteArray()
+        val tampered = DocumentInspector.inspect(DocumentSigning.zip(changed.entries.map { it.key to it.value }), "t.ofd", trust)
+        assertEquals(Check.FAIL, tampered.signatures.single().integrity)
+    }
+
+    @Test
+    fun stampsWithVersion1Seal() = runBlocking<Unit> {
+        val signer = sm2Signer()
+        val esl = v1Seal(signer, "舊版印章")
+        val info = assertNotNull(DocumentSigning.ofdSealInfo(esl))
+        assertEquals(1, info.version)
+        assertEquals(42.0, info.heightMm)
+        assertTrue(!info.personal)
+        val sealed = DocumentSigning.signOfd(sample("unsigned.ofd"), signer, null, diw.wallet.core.document.sign.OfdSealOptions(sealFile = esl))
+        val s = DocumentInspector.inspect(sealed, "v1.ofd", trust).signatures.single()
+        assertEquals(SignatureFormat.OFD_SEAL, s.format)
+        assertEquals(Check.PASS, s.integrity, s.problems.toString())
+        assertTrue(s.notes.any { "GM/T 0031-2014" in it }, s.notes.toString())
+        assertEquals(42.0, DocumentInspector.ofdStamps(sealed).single().boundary.w, 1e-6, "the seal's own size")
+    }
+
     @Test
     fun signsWithRsaAsPkcs7AndRefusesSm2Elsewhere() = runBlocking<Unit> {
         val key = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
@@ -289,5 +386,8 @@ class OfdDocumentTest {
 
         assertFailsWith<SigningException> { DocumentSigning.signCades("x".encodeToByteArray(), sm2Signer(), true, null) }
         assertFailsWith<SigningException> { DocumentSigning.signOfd("not an ofd".encodeToByteArray(), rsa, null) }
+        assertFailsWith<SigningException>("seals need SM2") {
+            DocumentSigning.signOfd(sample("unsigned.ofd"), rsa, null, diw.wallet.core.document.sign.OfdSealOptions(picture = sealPicture))
+        }
     }
 }

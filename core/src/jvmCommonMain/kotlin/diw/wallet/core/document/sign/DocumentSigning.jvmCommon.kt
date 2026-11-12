@@ -282,8 +282,10 @@ actual object DocumentSigning {
 
     actual fun zip(files: List<Pair<String, ByteArray>>): ByteArray = Zip.write(files)
 
-    actual suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?): ByteArray =
-        OfdSigning.sign(ofd, signer, timestamper)
+    actual suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, seal: OfdSealOptions?): ByteArray =
+        OfdSigning.sign(ofd, signer, timestamper, seal = seal)
+
+    actual fun ofdSealInfo(eseal: ByteArray): OfdSealInfo? = OfdSeals.info(eseal)
 
     actual fun sm2Pkcs12(subjectName: String, password: String, validDays: Int): ByteArray {
         val gen = java.security.KeyPairGenerator.getInstance("EC", Bc.provider)

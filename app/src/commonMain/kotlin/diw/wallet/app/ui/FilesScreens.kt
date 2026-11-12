@@ -59,6 +59,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
 import diw.wallet.app.VisibleSignature
+import diw.wallet.app.OfdSealChoice
+import diw.wallet.app.SealPicture
+import diw.wallet.core.document.ofd.OfdShading
 import diw.wallet.core.document.c2pa.C2paInfo
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
@@ -1421,6 +1424,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         var level by remember { mutableStateOf(SignatureLevel.of(model.settings.padesLevel)) }
         var certification by remember { mutableStateOf<Int?>(null) }
         var visible by remember { mutableStateOf<VisibleSignature?>(null) }
+        var seal by remember { mutableStateOf<OfdSealChoice?>(null) }
         val firstSignature = f.report?.signatures.isNullOrEmpty()
         var action by remember { mutableStateOf(ApprovalPoint().action) }
         var organization by remember { mutableStateOf("") }
@@ -1497,7 +1501,10 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 Text(stringResource(Res.string.sign_pgp_level),
                     style = MaterialTheme.typography.bodySmall)
             }
-            SignForm.OFD -> OfdSignOptions(model, timestamp, tsaName) { timestamp = it }
+            SignForm.OFD -> {
+                OfdSignOptions(model, timestamp, tsaName) { timestamp = it }
+                OfdSealPicker(model, f, seal) { seal = it }
+            }
             else -> {
                 SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
@@ -1527,6 +1534,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                     ),
                     level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
                     visible = visible.takeIf { form == SignForm.PADES },
+                    seal = seal.takeIf { form == SignForm.OFD },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text(stringResource(Res.string.files_sign))
         }
@@ -1663,6 +1671,117 @@ private fun OfdSignOptions(model: WalletModel, timestamp: Boolean, tsaName: Stri
             visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
         )
         OutlinedButton(onClick = { model.files.createSm2Pkcs12(name, password) }, enabled = password.length >= 6) { Text(stringResource(Res.string.sign_sm2_save)) }
+    }
+}
+
+/**
+ * Whether an OFD signature is an electronic seal (Type "Seal"), and which: one the wallet makes for the signing key
+ * (name, round organisation or square personal seal, own picture, width) or an issued seal file (.esl) with what it
+ * says; and where it is stamped (page and position).
+ */
+@Composable
+private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoice?, onChange: (OfdSealChoice?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = value != null, onCheckedChange = { onChange(if (it) OfdSealChoice() else null) })
+        Text(stringResource(Res.string.sign_ofd_seal))
+    }
+    if (value == null) {
+        Text(stringResource(Res.string.sign_ofd_seal_off), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    Text(stringResource(Res.string.sign_ofd_seal_sm2), style = MaterialTheme.typography.bodySmall)
+    var note by remember(f.id) { mutableStateOf<String?>(null) }
+    var fileMode by remember(f.id) { mutableStateOf(value.file != null) }
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = !fileMode, onClick = { fileMode = false; note = null; onChange(value.copy(file = null, fileName = null)) }, label = { Text(stringResource(Res.string.sign_seal_make)) })
+        FilterChip(selected = fileMode, onClick = { fileMode = true }, label = { Text(stringResource(Res.string.sign_seal_file)) })
+    }
+    if (!fileMode) {
+        OutlinedTextField(value = value.name, onValueChange = { onChange(value.copy(name = it.take(24))) }, label = { Text(stringResource(Res.string.sign_seal_name)) },
+            singleLine = true, modifier = Modifier.fillMaxWidth())
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = !value.personal, onClick = { onChange(value.copy(personal = false, widthMm = 40.0)) }, label = { Text(stringResource(Res.string.sign_seal_org)) })
+            FilterChip(selected = value.personal, onClick = { onChange(value.copy(personal = true, widthMm = 20.0)) }, label = { Text(stringResource(Res.string.sign_seal_person)) })
+        }
+        var widthText by remember(f.id, value.personal) { mutableStateOf(value.widthMm.toInt().toString()) }
+        OutlinedTextField(
+            value = widthText,
+            onValueChange = { t ->
+                widthText = t.filter { it.isDigit() }.take(3)
+                widthText.toIntOrNull()?.takeIf { it in 5..150 }?.let { onChange(value.copy(widthMm = it.toDouble())) }
+            },
+            label = { Text(stringResource(Res.string.sign_seal_size)) }, singleLine = true, modifier = Modifier.width(140.dp),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = {
+                scope.launch {
+                    val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
+                    val img = runCatching { model.files.signatureImage(picked.bytes) }.getOrNull()
+                    note = if (img == null) model.text(Res.string.sign_image_bad) else model.text(Res.string.sign_image_chosen) + picked.name
+                    if (img != null) onChange(value.copy(image = img))
+                }
+            }) { Text(stringResource(Res.string.sign_seal_own_image)) }
+            if (value.image != null) TextButton(onClick = { note = null; onChange(value.copy(image = null)) }) { Text(stringResource(Res.string.sign_remove_image)) }
+        }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        val resolver = androidx.compose.ui.platform.LocalFontFamilyResolver.current
+        val shown = value.name.trim().ifEmpty { stringResource(Res.string.sign_seal_sample_name) }
+        val preview = remember(shown, value.personal, value.image) {
+            value.image?.let { img -> model.platform.decodeImage(OfdShading.png(img.width, img.height, img.argb)) } ?: SealPicture.draw(shown, value.personal, resolver, 240)
+        }
+        preview?.let { Image(it, contentDescription = stringResource(Res.string.sign_seal_preview), modifier = Modifier.size(96.dp)) }
+        Text(stringResource(Res.string.sign_seal_made_note), style = MaterialTheme.typography.bodySmall)
+    } else {
+        OutlinedButton(onClick = {
+            scope.launch {
+                val picked = runCatching { model.platform.pickFile() }.getOrNull() ?: return@launch
+                if (DocumentSigning.ofdSealInfo(picked.bytes) == null) {
+                    note = model.text(Res.string.sign_seal_bad)
+                    onChange(value.copy(file = null, fileName = null))
+                } else {
+                    note = null
+                    onChange(value.copy(file = picked.bytes, fileName = picked.name))
+                }
+            }
+        }) { Text(stringResource(Res.string.sign_seal_pick)) }
+        note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        val info = remember(value.file) { value.file?.let { DocumentSigning.ofdSealInfo(it) } }
+        if (info != null) {
+            fun day(t: Long?) = t?.let { kotlin.time.Instant.fromEpochSeconds(it).toString().take(10) } ?: "-"
+            val kind = if (info.personal) stringResource(Res.string.sign_seal_type_person) else stringResource(Res.string.sign_seal_type_org)
+            InfoCard(stringResource(Res.string.sign_seal_info_title) + (value.fileName?.let { "  $it" } ?: ""), listOf(
+                stringResource(Res.string.sign_seal_info_name, info.name, kind),
+                stringResource(Res.string.sign_seal_info_version, info.version),
+                stringResource(Res.string.sign_seal_info_valid, day(info.validFrom), day(info.validTo)),
+                stringResource(Res.string.sign_seal_info_maker, info.maker ?: "-"),
+                if (info.signers == 0) stringResource(Res.string.sign_seal_info_any) else stringResource(Res.string.sign_seal_info_signers, info.signers),
+            ))
+            val pic = remember(value.file) { model.platform.decodeImage(info.picture) }
+            pic?.let { Image(it, contentDescription = stringResource(Res.string.sign_seal_preview), modifier = Modifier.size(96.dp)) }
+        }
+    }
+    // Where it is stamped.
+    val total = (f.report?.pages ?: 1).coerceAtLeast(1)
+    var pageText by remember(f.id) { mutableStateOf(total.toString()) }
+    Text(stringResource(Res.string.sign_page_count, total), style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(value.copy(page = 0)) }, label = { Text(stringResource(Res.string.sign_first_page)) })
+        FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(value.copy(page = -1)) }, label = { Text(stringResource(Res.string.sign_last_page)) })
+        OutlinedTextField(
+            value = pageText,
+            onValueChange = { t ->
+                pageText = t.filter { it.isDigit() }.take(5)
+                pageText.toIntOrNull()?.takeIf { it in 1..total }?.let { onChange(value.copy(page = it - 1)) }
+            },
+            label = { Text(stringResource(Res.string.sign_page_number)) }, singleLine = true, modifier = Modifier.width(110.dp),
+        )
+    }
+    Text(stringResource(Res.string.sign_position), style = MaterialTheme.typography.bodyMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        PdfSignatureAppearance.Position.entries.forEach { pos ->
+            FilterChip(selected = pos == value.position, onClick = { onChange(value.copy(position = pos)) }, label = { Text(pos.title) })
+        }
     }
 }
 
