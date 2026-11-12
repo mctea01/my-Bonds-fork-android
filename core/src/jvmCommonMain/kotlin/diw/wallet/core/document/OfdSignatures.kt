@@ -1,5 +1,7 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.document.ofd.OfdBox
+import diw.wallet.core.document.ofd.OfdStamp
 import diw.wallet.core.i18n.ct
 import org.bouncycastle.asn1.ASN1BitString
 import org.bouncycastle.asn1.ASN1Encodable
@@ -21,7 +23,9 @@ import kotlin.time.Instant
  * 1) and digital signatures (GB/T 35275 SignedData). The signature covers Signature.xml, whose References hold the
  * SM3 (or other) digest of every protected file in the container.
  */
-internal class OfdSignatures(private val files: Map<String, ByteArray>, private val checks: CmsChecks) {
+internal class OfdSignatures(private val files: Map<String, ByteArray>, private val checker: CmsChecks? = null) {
+    /** Checks need trust; reading the stamps does not. */
+    private val checks: CmsChecks get() = checker ?: error("OfdSignatures without CmsChecks cannot verify")
 
     private fun file(path: String, base: String): ByteArray? {
         val p = if (path.startsWith("/")) path.removePrefix("/") else (if (base.isEmpty()) path else "$base/$path")
@@ -53,29 +57,74 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         XmlParsing.descendants(doc, null, "Page").size
     }.getOrNull()
 
-    suspend fun verify(now: Instant): List<SignatureInfo> {
+    /** One signature listed in a Signatures.xml: its descriptor, type (Seal or Sign), ID and report label. */
+    private class Entry(val path: String, val seal: Boolean, val id: String) {
+        val label: String get() = (if (seal) ct("core_ofd_seal") else ct("core_ofd_signature")) + if (id.isNotEmpty()) " $id" else ""
+    }
+
+    private fun entries(): List<Entry> {
         val ofd = XmlParsing.parse(files["OFD.xml"] ?: return emptyList())
-        val out = ArrayList<SignatureInfo>()
+        val out = ArrayList<Entry>()
         for (sigsRef in XmlParsing.descendants(ofd, null, "Signatures")) {
             val path = sigsRef.textContent.trim().ifEmpty { continue }
             val sigsBytes = file(path, "") ?: continue
             val base = dir(path.removePrefix("/"))
-            val sigs = XmlParsing.parse(sigsBytes)
+            val sigs = runCatching { XmlParsing.parse(sigsBytes) }.getOrNull() ?: continue
             for (s in XmlParsing.descendants(sigs, null, "Signature")) {
                 val loc = s.getAttribute("BaseLoc").ifEmpty { continue }
                 val type = s.getAttribute("Type").ifEmpty { "Seal" }
-                val id = s.getAttribute("ID")
                 val sigPath = if (loc.startsWith("/")) normalize(loc) else normalize("$base/$loc")
-                out.add(verifyOne(sigPath, type, id, now))
+                out.add(Entry(sigPath, type.equals("Seal", true), s.getAttribute("ID")))
             }
         }
         return out
     }
 
-    private suspend fun verifyOne(sigPath: String, type: String, id: String, now: Instant): SignatureInfo {
-        val seal = type.equals("Seal", true)
+    suspend fun verify(now: Instant): List<SignatureInfo> = entries().map { verifyOne(it.path, it.seal, it.label, now) }
+
+    /**
+     * Where each signature's seal shows (its StampAnnot elements) with the seal picture: from the electronic seal
+     * inside the signature value (Seal type) or the seal file the descriptor names (Seal/BaseLoc).
+     */
+    fun stamps(): List<OfdStamp> = entries().flatMap { e ->
+        runCatching {
+            val xml = files[e.path] ?: return@runCatching emptyList()
+            val doc = XmlParsing.parse(xml)
+            val base = dir(e.path)
+            val annots = XmlParsing.descendants(doc, null, "StampAnnot")
+            if (annots.isEmpty()) return@runCatching emptyList()
+            val sealBytes = XmlParsing.descendants(doc, null, "Seal").firstOrNull()?.let { s ->
+                XmlParsing.descendants(s, null, "BaseLoc").firstOrNull()?.textContent?.trim()?.let { file(it, base) }
+            }
+            val value = XmlParsing.descendants(doc, null, "SignedValue").firstOrNull()?.textContent?.trim()?.let { file(it, base) }
+            val eseal = value?.let { v -> runCatching { sesSeal(v) }.getOrNull() } ?: sealBytes
+            val picture = eseal?.let { runCatching { sealPicture(it) }.getOrNull() }
+            annots.mapNotNull { a ->
+                val box = OfdBox.parse(a.getAttribute("Boundary")) ?: return@mapNotNull null
+                OfdStamp(e.label, a.getAttribute("PageRef"), box, OfdBox.parse(a.getAttribute("Clip")), picture?.first, picture?.second)
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    /** The DER of the electronic seal (SESeal) inside an SES_Signature, or null for another value. */
+    private fun sesSeal(der: ByteArray): ByteArray? {
+        val ses = ASN1Sequence.getInstance(Bc.parse(der))
+        val toSign = ses.getObjectAt(0) as? ASN1Sequence ?: return null
+        return (toSign.getObjectAt(1) as? ASN1Sequence)?.encoded
+    }
+
+    /** Type and data of the picture of an electronic seal (SES_ESPictrueInfo in SES_SealInfo, v1 to v5). */
+    private fun sealPicture(eseal: ByteArray): Pair<String, ByteArray>? {
+        val seal = ASN1Sequence.getInstance(Bc.parse(eseal))
+        val info = ASN1Sequence.getInstance(seal.getObjectAt(0))
+        val pic = info.firstOrNull { e ->
+            e is ASN1Sequence && e.size() >= 2 && e.getObjectAt(0) is ASN1String && e.getObjectAt(1) is ASN1OctetString
+        } as? ASN1Sequence ?: return null
+        return (pic.getObjectAt(0) as ASN1String).string.lowercase() to ASN1OctetString.getInstance(pic.getObjectAt(1)).octets
+    }
+
+    private suspend fun verifyOne(sigPath: String, seal: Boolean, label: String, now: Instant): SignatureInfo {
         val format = if (seal) SignatureFormat.OFD_SEAL else SignatureFormat.OFD_SIGN
-        val label = (if (seal) ct("core_ofd_seal") else ct("core_ofd_signature")) + if (id.isNotEmpty()) " $id" else ""
         val sigXml = files[sigPath] ?: return checks.failed(format, label, ct("core_ofd_no_descriptor", sigPath))
         val base = dir(sigPath)
         val problems = ArrayList<String>()
@@ -140,6 +189,8 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
             if (gm.content != null && !gm.content.contentEquals(sigXml)) { problems.add(ct("core_ofd_content_mismatch")); integrity = Check.FAIL }
             if (signer == null) { problems.add(ct("core_sig_no_signer_cert")); integrity = if (integrity == Check.FAIL) Check.FAIL else Check.NOT_CHECKED }
             else if (gm.verify(s, signer, content) != Check.PASS) { problems.add(ct("core_sig_value_mismatch")); integrity = Check.FAIL }
+            if (gm.isGmOids) notes.add(ct("core_ofd_gbt35275")) else notes.add(ct("core_ofd_pkcs7_sign"))
+            timestamp = s.timestampToken?.let { checks.timestamp(it, s.signature) }
         }
         return checks.evaluate(
             format = format, label = label, algorithm = algorithm, signer = signer, pool = pool, integrity = integrity,
@@ -188,6 +239,7 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         }
         val signer = Bc.holder(certDer)
         var integrity = Check.PASS
+        version(ses, v4)?.let { notes.add(it) }
         val dataHash = runCatching { ASN1BitString.getInstance(toSign.getObjectAt(3)).octets }.getOrNull()
         if (dataHash == null || !DocCrypto.digest("SM3", signed).contentEquals(dataHash) && !DocCrypto.digest("SHA-256", signed).contentEquals(dataHash)) {
             problems.add(ct("core_ofd_ses_data_mismatch")); integrity = Check.FAIL
@@ -234,6 +286,18 @@ internal class OfdSignatures(private val files: Map<String, ByteArray>, private 
         }
         return SesResult(signer, sealCert, integrity, time, AlgorithmNames.signature(sigOid, "1.2.156.10197.1.401"), signature, token, name)
     }
+
+    /**
+     * The version the seal header states (SES_Header: ID "ES", version, vendor ID): 1 is GM/T 0031-2014, 4 is
+     * GB/T 38540-2020, 5 is GM/T 0031-2025 (same structure as 4). Read from the seal inside the signature.
+     */
+    private fun version(ses: ASN1Sequence, v4: Boolean): String? = runCatching {
+        val toSign = ASN1Sequence.getInstance(ses.getObjectAt(0))
+        val header = ASN1Sequence.getInstance(ASN1Sequence.getInstance(ASN1Sequence.getInstance(toSign.getObjectAt(1)).getObjectAt(0)).getObjectAt(0))
+        val n = org.bouncycastle.asn1.ASN1Integer.getInstance(header.getObjectAt(1)).value.toInt()
+        val standard = when (n) { 1, 2, 3 -> "GM/T 0031-2014"; 4 -> "GB/T 38540-2020"; 5 -> "GM/T 0031-2025"; else -> null }
+        ct("core_ofd_ses_version", n, standard ?: if (v4) "GB/T 38540" else "GM/T 0031")
+    }.getOrNull()
 
     private fun certList(e: ASN1Encodable): List<ByteArray> = runCatching {
         val seq = if (e is ASN1TaggedObject) ASN1Sequence.getInstance(e.baseObject.toASN1Primitive()) else ASN1Sequence.getInstance(e)

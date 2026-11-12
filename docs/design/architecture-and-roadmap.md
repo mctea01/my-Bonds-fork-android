@@ -155,7 +155,7 @@ TWDIW 實際方言（由原始碼與 Bonds 實機紀錄交叉確認）與標準�
 
 沒有開源庫能在 commonMain 完整驗證 PAdES、XAdES 或 OFD，因此共用層只放資料模型、ByteRange 規則、OFD 解析、JWS 與保存功能，密碼驗證先放 Android／JVM；驗證結果統一用 ETSI EN 319 102-1 的 Indication／SubIndication 表示。
 
-P3 的實作結果：PDF 解析（含加密與增量更新）、文字擷取、PAdES 簽署在 `core/document/pdf` 以純 Kotlin 完成；CMS、XMLDSig、XAdES、OFD 與 SES、SM2 由 BouncyCastle 與自寫程式驗證；電子公文的線上簽核（.si）是自訂的 XMLDSig 結構，不是 XAdES。下表的 PdfBox-Android、Santuario、ofdrw 沒有用在 App 內，EU DSS 只用於交叉驗證。結果以 `DocumentReport` 表示（VALID、PARTIAL、INVALID、UNSIGNED），細節見 AGENTS.md 的 P3 要點。
+P3 的實作結果：PDF 解析（含加密與增量更新）、文字擷取、PAdES 簽署在 `core/document/pdf` 以純 Kotlin 完成；CMS、XMLDSig、XAdES、OFD 與 SES、SM2 由 BouncyCastle 與自寫程式驗證；電子公文的線上簽核（.si）是自訂的 XMLDSig 結構，不是 XAdES。下表的 PdfBox-Android、Santuario、ofdrw 沒有用在 App 內，EU DSS 只用於交叉驗證。結果以 `DocumentReport` 表示（VALID、PARTIAL、INVALID、UNSIGNED），細節見 AGENTS.md 的 P3 要點。2026-11-12 起 OFD 的內容（頁面、範本、圖層、註釋、資源、附件、自訂標籤與文字層）也在 commonMain 以純 Kotlin 解析（`document/ofd`），App 以 Compose 繪製預覽並顯示電子印章，中國大陸電子發票以結構化畫面呈現並可產生衍生憑證；錢包可在 OFD 內加數位簽章（SM2 金鑰為 GB/T 35275，其他金鑰為 PKCS#7）。仍未支援：內嵌字型、JBIG2 影像、裁切區與漸層的精確繪製、OFD 電子印章（Seal 類型）的製作，以及 OFD 的 zk 證明。
 
 | 格式 | Android／JVM 實作 | iOS 實作 | 授權風險 | 重點問題 |
 | --- | --- | --- | --- | --- |

@@ -10,7 +10,7 @@ sealed interface ParsedCertificate {
 
     companion object {
         /** The certificate [text] holds, of any kind the wallet reads as a structure; null for other documents. */
-        fun parse(text: String): ParsedCertificate? = StudentStatusProof.parse(text) ?: MainlandPermitLink.parse(text)
+        fun parse(text: String): ParsedCertificate? = StudentStatusProof.parse(text) ?: MainlandPermitLink.parse(text) ?: ChinaInvoice.parse(text)
     }
 }
 

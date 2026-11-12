@@ -77,4 +77,7 @@ expect object DocumentInspector {
 
     /** Content of an enveloping CMS signature (.p7m), or null when the signature is detached. */
     fun encapsulatedContent(cms: ByteArray): ByteArray?
+
+    /** The seals of an OFD package's signatures as they show on its pages (empty for an unsigned or other file). */
+    fun ofdStamps(bytes: ByteArray): List<diw.wallet.core.document.ofd.OfdStamp>
 }

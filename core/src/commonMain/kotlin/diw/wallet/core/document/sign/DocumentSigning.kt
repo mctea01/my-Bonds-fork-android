@@ -54,6 +54,21 @@ expect object DocumentSigning {
      */
     suspend fun signApproval(approval: ByteArray?, files: List<Pair<String, ByteArray>>, signer: DocumentSigner, point: ApprovalPoint): ByteArray
 
+    /**
+     * Adds an OFD digital signature (GB/T 33190 section 18, Type "Sign") to the first document of [ofd]: a new
+     * Signature.xml whose References hold the digest of every file of the package, and its signature value. An SM2
+     * signer gives GB/T 35275 SignedData (SM3 digests, the national OIDs); an RSA or P-256 signer gives PKCS#7
+     * SignedData with SHA-256, which some mainland China readers do not accept. With [timestamper] the signer info
+     * carries an RFC 3161 token over the signature value. Earlier signatures stay valid. Returns the new package.
+     */
+    suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?): ByteArray
+
+    /**
+     * A PKCS#12 file with a new SM2 key and a self-issued certificate for it (SM3 with SM2), for OFD signatures
+     * where no SM2 certificate from a certificate authority is at hand; it is trusted only where it is imported.
+     */
+    fun sm2Pkcs12(subjectName: String, password: String, validDays: Int): ByteArray
+
     /** Files of a ZIP archive (such as a MyData download), directories omitted. */
     fun unzip(bytes: ByteArray): Map<String, ByteArray>
 

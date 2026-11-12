@@ -144,6 +144,10 @@ class DesktopPlatform(
         }
     }
 
+    override val fontFamilyResolver: androidx.compose.ui.text.font.FontFamily.Resolver by lazy {
+        androidx.compose.ui.text.font.createFontFamilyResolver()
+    }
+
     override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
         runCatching {
             Loader.loadPDF(bytes).use { doc ->

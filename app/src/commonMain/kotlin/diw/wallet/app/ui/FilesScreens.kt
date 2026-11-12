@@ -124,6 +124,7 @@ import diw.wallet.core.document.derived.DocumentFields
 import diw.wallet.core.document.derived.EntryExitCertificate
 import diw.wallet.core.document.derived.MainlandEntryExitRecord
 import diw.wallet.core.document.derived.MainlandPermitLink
+import diw.wallet.core.document.derived.ChinaInvoice
 import diw.wallet.core.document.derived.StudentStatusProof
 import diw.wallet.core.document.sign.TsaServices
 import kotlinx.coroutines.launch
@@ -1496,6 +1497,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 Text(stringResource(Res.string.sign_pgp_level),
                     style = MaterialTheme.typography.bodySmall)
             }
+            SignForm.OFD -> OfdSignOptions(model, timestamp, tsaName) { timestamp = it }
             else -> {
                 SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
@@ -1638,6 +1640,32 @@ private fun LevelPicker(format: String, level: SignatureLevel, onPick: (Signatur
     }
 }
 
+/**
+ * Options of an OFD digital signature: the time stamp, what each key type produces, and making an SM2 key with a
+ * self-issued certificate (saved as a PKCS#12 file, then chosen as the PKCS#12 signer) when the holder has none.
+ */
+@Composable
+private fun OfdSignOptions(model: WalletModel, timestamp: Boolean, tsaName: String, onTimestamp: (Boolean) -> Unit) {
+    Text(stringResource(Res.string.sign_ofd_keys), style = MaterialTheme.typography.bodySmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = timestamp, onCheckedChange = onTimestamp)
+        Text(stringResource(Res.string.sign_ofd_timestamp, tsaName))
+    }
+    var open by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    TextButton(onClick = { open = !open }) { Text(stringResource(Res.string.sign_sm2_make)) }
+    if (open) {
+        Text(stringResource(Res.string.sign_sm2_make_text), style = MaterialTheme.typography.bodySmall)
+        OutlinedTextField(value = name, onValueChange = { name = it.take(60) }, label = { Text(stringResource(Res.string.sign_sm2_name)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value = password, onValueChange = { password = it.take(64) }, label = { Text(stringResource(Res.string.files_p12_password)) }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedButton(onClick = { model.files.createSm2Pkcs12(name, password) }, enabled = password.length >= 6) { Text(stringResource(Res.string.sign_sm2_save)) }
+    }
+}
+
 /** What the chosen form and options put in the signature, for the expandable technical details. */
 @Composable
 private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false): List<String> = when (form) {
@@ -1663,6 +1691,12 @@ private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolea
         if (level.timestamp) add(stringResource(Res.string.tech_xades_bt))
         if (level.revocation) add(stringResource(Res.string.tech_xades_lt))
         if (level.archive) add(stringResource(Res.string.tech_xades_lta))
+    }
+    SignForm.OFD -> buildList {
+        add(stringResource(Res.string.tech_ofd_1))
+        add(stringResource(Res.string.tech_ofd_2))
+        if (timestamp) add(stringResource(Res.string.tech_ofd_ts))
+        add(stringResource(Res.string.tech_verify_after))
     }
     SignForm.OPENPGP_DETACHED -> listOf(
         stringResource(Res.string.tech_pgp_1),
@@ -1703,6 +1737,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             when (val c = p.certificate) {
                 is StudentStatusProof -> StudentStatusView(c)
                 is MainlandPermitLink -> PermitLinkView(c)
+                is ChinaInvoice -> InvoiceView(c)
                 null -> {}
             }
             if (p.pages.isNotEmpty()) {
@@ -1716,6 +1751,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
                     TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text(stringResource(Res.string.files_next_page)) }
                 }
                 SignaturePlacementLegend(placements, signatures, i, p.pages.size)
+                if (p.systemFonts) Text(stringResource(Res.string.preview_system_fonts), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                 if (p.total > p.pages.size) Text(stringResource(Res.string.preview_first_pages, p.pages.size), style = MaterialTheme.typography.bodySmall)
             } else {
                 Text(stringResource(Res.string.preview_text_only), style = MaterialTheme.typography.bodySmall)
@@ -1904,6 +1940,42 @@ private fun PermitLinkView(c: MainlandPermitLink) {
         c.queryDate?.let { LabelValue(stringResource(Res.string.field_query_date), it.toString(), small = true) }
         c.validUntil?.let { LabelValue(stringResource(Res.string.field_valid_until), stringResource(Res.string.permits_valid_days, it, c.validDays.toString()), small = true) }
         c.pages?.let { LabelValue(stringResource(Res.string.files_pages), stringResource(Res.string.page_count, it), small = true) }
+    }
+}
+
+/**
+ * A mainland China electronic invoice laid out as its parts: the invoice, the buyer, the seller and the amounts.
+ * Whether it is genuine is for the tax authority's verification platform to say; the note says so.
+ */
+@Composable
+private fun InvoiceView(c: ChinaInvoice) {
+    Column(
+        Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(8.dp)).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(c.kind, style = MaterialTheme.typography.titleMedium, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+        c.number?.let { LabelValue(stringResource(Res.string.invoice_number), it, small = true) }
+        c.code?.let { LabelValue(stringResource(Res.string.invoice_code), it, small = true) }
+        c.issueDate?.let { LabelValue(stringResource(Res.string.invoice_date), it.toString(), small = true) }
+        c.checkCode?.let { LabelValue(stringResource(Res.string.invoice_check_code), it, small = true) }
+        if (c.buyerName != null || c.buyerTaxId != null) {
+            Text(stringResource(Res.string.invoice_buyer), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            c.buyerName?.let { LabelValue(stringResource(Res.string.invoice_party_name), it, small = true) }
+            c.buyerTaxId?.let { LabelValue(stringResource(Res.string.invoice_tax_id), it, small = true) }
+        }
+        if (c.sellerName != null || c.sellerTaxId != null) {
+            Text(stringResource(Res.string.invoice_seller), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+            c.sellerName?.let { LabelValue(stringResource(Res.string.invoice_party_name), it, small = true) }
+            c.sellerTaxId?.let { LabelValue(stringResource(Res.string.invoice_tax_id), it, small = true) }
+        }
+        Text(stringResource(Res.string.invoice_amounts), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
+        if (c.items.isNotEmpty()) LabelValue(stringResource(Res.string.invoice_items), c.items.joinToString("\n"), small = true)
+        c.amount?.let { LabelValue(stringResource(Res.string.invoice_amount), it, small = true) }
+        c.tax?.let { LabelValue(stringResource(Res.string.invoice_tax), it, small = true) }
+        c.total?.let { LabelValue(stringResource(Res.string.invoice_total), it, small = true) }
+        c.totalInWords?.let { LabelValue(stringResource(Res.string.invoice_total_words), it, small = true) }
+        c.issuedBy?.let { LabelValue(stringResource(Res.string.invoice_issued_by), it, small = true) }
+        Text(stringResource(Res.string.invoice_verify_note), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
 }
 

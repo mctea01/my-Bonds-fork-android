@@ -94,6 +94,7 @@ class PivCard(private val channel: CardChannel) {
         val (alg, payload) = when (key.keyType) {
             SignerKeyType.RSA -> rsaAlgId(key.rsaBytes * 8) to pkcs1Block(GpkiCard.SHA256_DIGEST_INFO + sha256, key.rsaBytes)
             SignerKeyType.EC_P256 -> 0x11 to sha256
+            SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
         }
         // Dynamic authentication template: 7C { 82 (empty response) 81 (data to sign) }.
         val inner = berTag(0x82, ByteArray(0)) + berTag(0x81, payload)
@@ -322,6 +323,7 @@ class PivTapSigner(
                     throw SigningException(ct("core_card_sig_mismatch"))
                 }
             }
+            SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
         }
     }
 

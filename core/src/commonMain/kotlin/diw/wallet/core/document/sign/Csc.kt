@@ -672,6 +672,7 @@ class CscSigner(
                     else throw SigningException(ct("core_csc_no_ecdsa"))
                 SignerKeyType.RSA -> if (algos.isEmpty() || CscClient.RSA_SHA256 in algos) CscClient.RSA_SHA256
                     else throw SigningException(ct("core_csc_no_rsa"))
+                SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
             }
         }
     }
