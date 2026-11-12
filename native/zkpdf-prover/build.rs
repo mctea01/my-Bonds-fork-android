@@ -71,10 +71,6 @@ fn main() {
         .arg(build.join("_deps/tracy-src/public"))
         .args(["-c", "cpp/bridge.cpp", "-o"])
         .arg(out.join("bridge.o"));
-    if target.contains("windows-gnu") {
-        // Built like Barretenberg itself (tools/windows_mingw.cmake): clang for MinGW-w64 with its libstdc++.
-        compiler.args(["--target=x86_64-w64-mingw32", "-femulated-tls", "-include", "tools/mingw_libstdcxx.h"]);
-    }
     assert!(
         compiler.status().expect("bb_bridge_compiler").success(),
         "bb_bridge_compile"
@@ -106,11 +102,9 @@ fn main() {
     println!("cargo:rustc-link-lib=static=barretenberg");
     println!("cargo:rustc-link-lib=static=zkpdf_vm2_stub");
     println!("cargo:rustc-link-lib=static=deflate");
-    if target.contains("windows-gnu") {
-        // The C++ runtime and winpthreads go into the DLL, which then needs system libraries only.
-        for name in ["stdc++", "winpthread"] {
-            println!("cargo:rustc-link-lib=static:-bundle={name}");
-        }
+    if target.contains("windows-gnullvm") {
+        // llvm-mingw's libc++ (with its ABI library) goes into the DLL, which then needs system libraries only.
+        println!("cargo:rustc-link-lib=static:-bundle=c++");
         // Barretenberg's random engine.
         println!("cargo:rustc-link-lib=bcrypt");
         return;

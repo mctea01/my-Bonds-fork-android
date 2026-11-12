@@ -6,5 +6,10 @@ include_guard(GLOBAL)
 function(add_compile_options)
     set(options ${ARGV})
     list(REMOVE_ITEM options "-march=skylake")
+    # The Windows toolchain (llvm-mingw) has a newer clang than upstream builds with; a warning it adds must not
+    # stop the build of a pinned source.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+        list(REMOVE_ITEM options "-Werror")
+    endif()
     _add_compile_options(${options})
 endfunction()

@@ -89,16 +89,17 @@ def main():
         flags += ["-DCMAKE_TOOLCHAIN_FILE=" + str(ndk / "build/cmake/android.toolchain.cmake"),
                   "-DANDROID_ABI=" + abi, "-DANDROID_PLATFORM=android-29", "-DANDROID_STL=c++_static"]
         flags += ["-DARM=ON"] if abi == "arm64-v8a" else portable
-    elif args.target == "x86_64-pc-windows-gnu":
-        # Upstream builds Windows only from Linux (with zig), and its dependency fetches run through sh. The same
-        # here, with the distribution's clang, lld and MinGW-w64: see windows_mingw.cmake and mingw_libstdcxx.h.
-        # libstdc++ for MinGW keeps its thread-local variables in emulated TLS, which clang must be told to use.
+    elif args.target == "x86_64-pc-windows-gnullvm":
+        # Upstream builds Windows only from Linux, with zig (clang, libc++ and mingw-w64), and its dependency fetches
+        # run through sh. The same here with llvm-mingw, the same components as a pinned toolchain: llvm_mingw.py
+        # and windows_mingw.cmake.
         if platform.system() != "Linux":
             raise SystemExit("native_linux_host_required")
+        if not os.environ.get("LLVM_MINGW_ROOT"):
+            raise SystemExit("llvm_mingw_root")
         tools = Path(__file__).resolve().parent
-        flags += ["-DCMAKE_TOOLCHAIN_FILE=" + str(tools / "windows_mingw.cmake"), *portable[:2],
-                  portable[2] + " -femulated-tls -include " + str(tools / "mingw_libstdcxx.h")]
-        archiver = "x86_64-w64-mingw32-ar"
+        flags += ["-DCMAKE_TOOLCHAIN_FILE=" + str(tools / "windows_mingw.cmake"), *portable]
+        archiver = str(Path(os.environ["LLVM_MINGW_ROOT"]) / "bin/llvm-ar")
     else:
         raise SystemExit("bb_target_unsupported")
     run(["cmake", "-S", source / "barretenberg/cpp", "-B", build, "-G", "Ninja", *flags])

@@ -9,7 +9,7 @@ CARGO_NDK_VERSION=4.1.2
 host=$(rustc -vV | sed -n 's/^host: //p')
 targets=${1:-all}
 if [[ "$targets" == all ]]; then
-    targets=x86_64-unknown-linux-gnu,x86_64-pc-windows-gnu,aarch64-apple-darwin,android
+    targets=x86_64-unknown-linux-gnu,x86_64-pc-windows-gnullvm,aarch64-apple-darwin,android
 fi
 targets=${targets//host/$host}
 # Optional proof backends (DIW_ZK_FEATURES, set by Gradle's diw.zkFeatures). The exports exist in every build;
@@ -136,18 +136,28 @@ for target in "${selected[@]}"; do
                     export AR_aarch64_unknown_linux_gnu=${AR_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-ar}
                     export ZKPDF_CXX=${bridge_cxx_override:-aarch64-linux-gnu-g++} ZKPDF_AR=${bridge_ar_override:-aarch64-linux-gnu-ar}
                 fi ;;
-            x86_64-pc-windows-gnu|x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll
-                # A Windows host builds its own target, without zkPDF. With zkPDF the library is cross-built on Linux
-                # for the GNU ABI with clang, lld and MinGW-w64 (clang, lld, g++-mingw-w64-x86-64-posix on Ubuntu),
-                # the way Barretenberg is: zkpdf-prover/tools/windows_mingw.cmake.
-                if [[ "$target" == x86_64-pc-windows-gnu && "$(uname -s)" == Linux ]]; then
-                    export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER:-clang}
-                    export CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS=${CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUSTFLAGS:-"-C link-arg=--target=x86_64-w64-mingw32 -C link-arg=-fuse-ld=lld -C strip=symbols"}
-                    export CC_x86_64_pc_windows_gnu=${CC_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-gcc-posix}
-                    export CXX_x86_64_pc_windows_gnu=${CXX_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-g++-posix}
-                    export AR_x86_64_pc_windows_gnu=${AR_x86_64_pc_windows_gnu:-x86_64-w64-mingw32-ar}
-                    export ZKPDF_CXX=${bridge_cxx_override:-clang++} ZKPDF_AR=${bridge_ar_override:-x86_64-w64-mingw32-ar}
-                fi ;;
+            # A Windows host builds its own target, without zkPDF.
+            x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll ;;
+            # With zkPDF the library is cross-built on Linux, the way Barretenberg is, with llvm-mingw
+            # (zkpdf-prover/tools/llvm_mingw.py fetches the pinned release): clang and lld with libc++, libunwind,
+            # compiler-rt and the mingw-w64 UCRT, so the DLL carries no GCC runtime (libstdc++, libgcc).
+            # x86_64-pc-windows-gnu is accepted as the earlier name of this build.
+            x86_64-pc-windows-gnullvm|x86_64-pc-windows-gnu) target=x86_64-pc-windows-gnullvm
+                platform=windows-x86_64; library=diw_zk.dll
+                [[ "$(uname -s)" == Linux ]] || { echo "The Windows library is cross-built on Linux" >&2; exit 1; }
+                LLVM_MINGW_ROOT=$(python3 -I zkpdf-prover/tools/llvm_mingw.py)
+                export LLVM_MINGW_ROOT
+                mingw_bin=$LLVM_MINGW_ROOT/bin
+                export CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER=$mingw_bin/x86_64-w64-mingw32-clang
+                # crt-static links libunwind into the DLL instead of importing libunwind.dll.
+                export CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_RUSTFLAGS="-C target-feature=+crt-static -C strip=symbols"
+                export CC_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang
+                export CXX_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang++
+                export AR_x86_64_pc_windows_gnullvm=$mingw_bin/llvm-ar
+                # OpenAC's witness runtime reads its C header with libclang.
+                export BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnullvm="--sysroot=$LLVM_MINGW_ROOT"
+                export ZKPDF_CXX=${bridge_cxx_override:-$mingw_bin/x86_64-w64-mingw32-clang++}
+                export ZKPDF_AR=${bridge_ar_override:-$mingw_bin/llvm-ar} ;;
             # One minimum macOS for Barretenberg, the bridge and rustc (otherwise each object targets a different one).
             aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib; export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0} ;;
             *) echo "Unsupported desktop target" >&2; exit 1 ;;
@@ -168,6 +178,20 @@ for target in "${selected[@]}"; do
             path="dist/resources/zk/native/$platform/$name"
             if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
             printf '%s\n' "${digest%% *}" > "$path.sha256"
+            if [[ "$target" == x86_64-pc-windows-gnullvm ]]; then
+                # The DLL may import Windows system libraries only (the UCRT is part of Windows 10 and later), and
+                # nothing compiled by GCC may be in it: such objects carry a "GCC: (" ident string.
+                imports=$("$LLVM_MINGW_ROOT/bin/llvm-objdump" -p "$path" | sed -n 's/^[[:space:]]*DLL Name: //p' | tr 'A-Z' 'a-z' | sort -u)
+                for import in $imports; do
+                    case "$import" in
+                        kernel32.dll|ntdll.dll|advapi32.dll|bcrypt.dll|bcryptprimitives.dll|ws2_32.dll|userenv.dll|psapi.dll) ;;
+                        api-ms-win-core-*.dll|api-ms-win-crt-*.dll) ;;
+                        *) echo "$name imports $import" >&2; exit 1 ;;
+                    esac
+                done
+                if grep -a -q 'GCC: (' "$path"; then echo "$name contains GCC-built objects" >&2; exit 1; fi
+                printf 'windows_library name=%s bytes=%s imports=%s\n' "$name" "$(wc -c < "$path")" "$(echo $imports)"
+            fi
         done
     fi
 done

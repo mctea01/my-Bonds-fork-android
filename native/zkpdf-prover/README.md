@@ -54,12 +54,14 @@ Linux arm64 (`--target aarch64-unknown-linux-gnu`) builds natively on an arm64 h
 the distribution's GNU cross compiler (`g++-aarch64-linux-gnu`); `native/build.sh aarch64-unknown-linux-gnu`
 sets the matching linker and bridge compiler.
 
-Windows x86_64 (`--target x86_64-pc-windows-gnu`) is cross-built on Linux, the way upstream builds it, here with
-the distribution's `clang`, `lld` and `g++-mingw-w64-x86-64-posix` (`tools/windows_mingw.cmake`); GCC's own MinGW
-compiler stops in this source with an internal compiler error. `tools/mingw_libstdcxx.h` is included before every
-C++ file for the two places where libstdc++ on MinGW differs from the libc++ upstream uses, and clang is told to
-use emulated TLS as libstdc++ does. `native/build.sh x86_64-pc-windows-gnu` builds Barretenberg and the whole
-library this way; the result depends on system DLLs only. A Windows host cannot build the zkPDF backend.
+Windows x86_64 (`--target x86_64-pc-windows-gnullvm`) is cross-built on Linux, the way upstream builds it. Upstream
+uses zig; here it is llvm-mingw, the same components (clang, lld, libc++, libunwind, compiler-rt, mingw-w64 UCRT)
+as a release pinned by SHA-256 (`tools/llvm_mingw.py`, `tools/windows_mingw.cmake`). All of them have permissive
+licences, and no GCC runtime is linked: with the distribution's MinGW-w64 the library would contain libstdc++ and
+libgcc (GPL with the GCC Runtime Library Exception). `-Werror` is dropped for this target because the toolchain's
+clang is newer than the one upstream builds with. `native/build.sh x86_64-pc-windows-gnullvm` builds Barretenberg
+and the whole library this way; the result depends on system DLLs only. A Windows host cannot build the zkPDF
+backend.
 
 On Windows every call into Barretenberg runs on one thread that lives as long as the process
 (`src/bbthread.rs`). Barretenberg keeps its worker pool in a thread-local whose destructor joins the workers;

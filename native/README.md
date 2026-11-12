@@ -43,16 +43,20 @@ the two Android ABIs. Cross compiling requires the appropriate platform SDK
 and Cargo linker configuration. It fails if any requested target cannot be
 built; it never silently substitutes a host binary.
 
-Two desktop targets are cross-built on a Linux x86_64 host with distribution
-packages only, and `build.sh` sets the linker and compilers for them:
+Two desktop targets are cross-built on a Linux x86_64 host, and `build.sh`
+sets the linker and compilers for them:
 
 - `native/build.sh aarch64-unknown-linux-gnu` (`linux-aarch64`): needs
   `g++-aarch64-linux-gnu`. An arm64 host builds it as `host`.
-- `native/build.sh x86_64-pc-windows-gnu` (`windows-x86_64`, GNU ABI): needs
-  `clang`, `lld` and `g++-mingw-w64-x86-64-posix`. This is the only way to get
-  the zkPDF backend on Windows (see `zkpdf-prover/README.md`); the DLLs depend
-  on system libraries only. A Windows host still builds its own MSVC library
-  without zkPDF.
+- `native/build.sh x86_64-pc-windows-gnullvm` (`windows-x86_64`): uses
+  llvm-mingw (clang, lld, libc++, libunwind, compiler-rt and the mingw-w64
+  UCRT), which `zkpdf-prover/tools/llvm_mingw.py` fetches as a release pinned
+  by SHA-256 into `target/`; `LLVM_MINGW_ROOT` names an existing copy instead.
+  This is the only way to get the zkPDF backend on Windows (see
+  `zkpdf-prover/README.md`). The script checks that the DLLs import Windows
+  system libraries only (the UCRT is part of Windows 10 and later) and that
+  nothing built by GCC is in them, so they carry no libstdc++ or libgcc. A
+  Windows host still builds its own MSVC library without zkPDF.
 
 CI (`.github/workflows/github-actions-ci.yml`) builds the libraries in their
 own jobs: `native-android` runs `android` on Linux once per ABI

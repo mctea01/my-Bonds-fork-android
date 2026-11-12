@@ -62,7 +62,7 @@ Barretenberg 的阻礙有兩層，都在上游原始碼：
 
 另一個只在執行時才看得到的問題：**Barretenberg 的工作池是 `thread_local`，解構時會 join 工作執行緒。** Windows 在呼叫端執行緒結束時、持有載入器鎖的狀態下執行這個解構，而工作執行緒要結束也需要載入器鎖，於是死結。Wine 下的現象是驗證本身完成、測試執行緒卻永遠結束不了，連除錯器都附加不上。這與編譯器或標準函式庫無關，上游的 Windows 建置只在主執行緒使用所以沒遇到。本專案每次呼叫都在新的工作執行緒上執行，JVM 的執行緒也會回收，所以一定會遇到。修正是 `native/zkpdf-prover/src/bbthread.rs`：在 Windows 上所有進入 Barretenberg 的呼叫都轉到一條與行程同壽命的執行緒，其他系統直接呼叫。Barretenberg 5 的函式庫共用同一個模組。
 
-以 `native/build.sh x86_64-pc-windows-gnu`（`DIW_ZK_FEATURES=openac,tlsn,zkpdf,bb5`）建出的結果：
+以當時的 `native/build.sh x86_64-pc-windows-gnu`（`DIW_ZK_FEATURES=openac,tlsn,zkpdf,bb5`，Ubuntu 的 MinGW-w64 與 libstdc++）建出的結果；工具鏈之後已更換，見本節最後：
 
 | 檢查 | 結果 |
 |---|---|
@@ -80,6 +80,22 @@ Barretenberg 的阻礙有兩層，都在上游原始碼：
 - 沒有經過 JVM 與 JNA 載入，也沒有在真正的 Windows 上執行。CI workflow 的修改稿讓 Windows runner 載入交叉建置的 DLL 並跑 `ZkNativeTest` 與 `ZkPdfCircuitTest`，要由這一步確認。
 - Windows 產生的證明沒有拿到其他平台驗證（反方向有：公開 fixture 不是 Windows 產生的）。
 - Longfellow 的 Windows 版不在這一輪：研究列出的 `sha2-asm`、電路嵌入與 Multipaz JNA 的 `NativeLong` 問題都要改上游或 Multipaz，沒有動。
+
+### 2026-11-12：改用 llvm-mingw，不再連結 GCC 執行階段
+
+上面的結果是用 Ubuntu 的 MinGW-w64 與 libstdc++ 建出來的。那樣的 DLL 靜態連結了 libstdc++ 與 libgcc（GPL-3.0-or-later 加 GCC Runtime Library Exception）。例外條款允許這樣散布，但專案規則是隨 App 散布的原生程式碼不含 GPL 家族元件，所以改掉。
+
+現在的 Windows 目標是 `x86_64-pc-windows-gnullvm`，工具鏈是 llvm-mingw（`native/zkpdf-prover/tools/llvm_mingw.py` 下載以 SHA-256 固定的版本）：clang、lld、libc++、libunwind、compiler-rt 與 mingw-w64 UCRT，授權都是寬鬆授權，與上游用 zig 建 Windows 的組合相同。影響：
+
+- 上面針對 libstdc++ 的三項調整（`mingw_libstdcxx.h`、`-femulated-tls`）不再需要，已移除。
+- 工具鏈的 clang 比上游使用的新，Windows 目標不帶 `-Werror`。
+- DLL 改為引入 UCRT（`api-ms-win-crt-*.dll`，Windows 10 起內建），不再引入 `msvcrt.dll`。
+- `native/build.sh` 建完後檢查兩件事：只引入 Windows 系統 DLL；檔案內沒有 GCC 編譯的目的檔。這類目的檔帶有 `GCC: (` 字串，原本的兩個 DLL 各有約兩百個。
+- 執行緒結束死結與 `bbthread.rs` 和標準函式庫無關，照舊。
+
+曾評估改走 MSVC ABI（xwin 加 clang-cl），沒有採用：Barretenberg 無條件引入 `<cxxabi.h>` 與 `unistd.h`；64 個檔案使用 `unsigned __int128`，MSVC 的函式庫沒有 128 位元除法的輔助函式，微軟的 STL 也不把它當整數型別，`serialize.hpp` 的 `std::integral auto` 多載會編譯失敗或選到別的版本；連結進 DLL 的會是微軟專有授權的 CRT。
+
+**驗證狀況：** 這個容器無法取得 llvm-mingw，新工具鏈沒有在容器內建置，也沒有以 Wine 執行。它由 CI 驗證：`native-windows` 工作建置並執行上述兩項檢查，Windows 桌面版工作在真正的 Windows 上載入 DLL 並跑 `ZkNativeTest` 與 `ZkPdfCircuitTest`。
 
 ## Linux ARM64
 
