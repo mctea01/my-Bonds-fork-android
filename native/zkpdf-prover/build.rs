@@ -102,6 +102,13 @@ fn main() {
     println!("cargo:rustc-link-lib=static=barretenberg");
     println!("cargo:rustc-link-lib=static=zkpdf_vm2_stub");
     println!("cargo:rustc-link-lib=static=deflate");
+    if target.contains("windows-gnullvm") {
+        // llvm-mingw's libc++ (with its ABI library) goes into the DLL, which then needs system libraries only.
+        println!("cargo:rustc-link-lib=static:-bundle=c++");
+        // Barretenberg's random engine.
+        println!("cargo:rustc-link-lib=bcrypt");
+        return;
+    }
     println!(
         "cargo:rustc-link-lib={}",
         if target.contains("android") {

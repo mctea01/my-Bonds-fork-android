@@ -1,0 +1,36 @@
+[
+  {
+    "Package": "binutils-mingw-w64-x86-64",
+    "Version": "2.44-3+12+b1",
+    "SHA256": "b53f4a091b16a0d0952b8e3bd6027931641386258f96b37db1f0c62c787221d3",
+    "Filename": "pool/main/b/binutils-mingw-w64/binutils-mingw-w64-x86-64_2.44-3+12+b1_amd64.deb",
+    "Depends": "libc6 (>= 2.38), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.2.0), binutils-common (>= 2.44)"
+  },
+  {
+    "Package": "gcc-mingw-w64-x86-64-posix",
+    "Version": "14.2.0-19+27+b1",
+    "SHA256": "e32d24cfd1482394f16d9a84c1d0a9f5aa08ee826a79acc383c70cc8c23c4fe5",
+    "Filename": "pool/main/g/gcc-mingw-w64/gcc-mingw-w64-x86-64-posix_14.2.0-19+27+b1_amd64.deb",
+    "Depends": "binutils-mingw-w64-x86-64 (>= 2.30~), mingw-w64-x86-64-dev, gcc-mingw-w64-x86-64-posix-runtime (= 14.2.0-19+27+b1), gcc-mingw-w64-base (= 14.2.0-19+27+b1), libc6 (>= 2.38), libgcc-s1 (>= 3.0), libgmp10 (>= 2:6.3.0+dfsg), libisl23 (>= 0.15), libmpc3 (>= 1.1.0), libmpfr6 (>= 3.1.3), libstdc++6 (>= 5), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4)"
+  },
+  {
+    "Package": "gcc-mingw-w64-x86-64-posix-runtime",
+    "Version": "14.2.0-19+27+b1",
+    "SHA256": "c898d96177574a8a7238564a1e799d8ddfed5a3d2ea005510305f9ad466a6f59",
+    "Filename": "pool/main/g/gcc-mingw-w64/gcc-mingw-w64-x86-64-posix-runtime_14.2.0-19+27+b1_amd64.deb",
+    "Depends": "gcc-mingw-w64-base (= 14.2.0-19+27+b1)"
+  },
+  {
+    "Package": "mingw-w64-common",
+    "Version": "12.0.0-5",
+    "SHA256": "97dce5d0d8aff1cade4786ad4ef5078345477a598829afcac2e7f2fbc5399990",
+    "Filename": "pool/main/m/mingw-w64/mingw-w64-common_12.0.0-5_all.deb"
+  },
+  {
+    "Package": "mingw-w64-x86-64-dev",
+    "Version": "12.0.0-5",
+    "SHA256": "0bf89cf7454cccb49cd2a46a6f7b33896f6ae3a1a2fe33e02c40be6155bbb385",
+    "Filename": "pool/main/m/mingw-w64/mingw-w64-x86-64-dev_12.0.0-5_all.deb",
+    "Depends": "mingw-w64-common"
+  }
+]

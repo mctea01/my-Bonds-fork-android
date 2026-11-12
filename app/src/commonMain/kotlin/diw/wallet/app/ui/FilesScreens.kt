@@ -203,6 +203,7 @@ private fun formatTitle(f: DocumentFormat): String = when (f) {
     DocumentFormat.IMAGE -> stringResource(Res.string.format_image)
     DocumentFormat.TEXT -> stringResource(Res.string.format_text)
     DocumentFormat.OPENPGP -> "OpenPGP"
+    DocumentFormat.EMRTD -> stringResource(Res.string.format_emrtd)
     DocumentFormat.OTHER -> stringResource(Res.string.format_other)
 }
 
@@ -229,6 +230,11 @@ fun FilesTab(model: WalletModel) {
                 Spacer(Modifier.width(6.dp))
                 Text(stringResource(Res.string.files_from_web))
             }
+        }
+        OutlinedButton(onClick = { model.screen.value = Screen.PassportRead }, enabled = busy == null) {
+            Icon(WalletIcons.Person, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(Res.string.files_read_passport))
         }
         BusyLine(busy, error)
         if (files.isEmpty()) {
@@ -572,6 +578,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             report.openPgp?.let { pgp -> OpenPgpFileSection(model, f, report, pgp, busy) }
             report.c2pa?.let { C2paSection(f, it) }
+            report.travelDocument?.let { TravelDocumentSection(it) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
                 CollapsibleSection(stringResource(Res.string.files_container_files), report.entries.size, initiallyExpanded = report.entries.size <= 10, key = "entries-${f.id}") {
@@ -618,6 +625,32 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
         } else {
             Text(stringResource(Res.string.files_derived_text), style = MaterialTheme.typography.bodySmall)
+        }
+        if (report?.format == DocumentFormat.EMRTD) {
+            val photoId = f.photoIdDocumentId?.let { id -> docs.firstOrNull { it.identifier == id } }
+            if (photoId != null) {
+                ActionRow(WalletIcons.Card, photoId.displayName ?: stringResource(Res.string.files_photo_id), stringResource(Res.string.files_photo_id_exists)) {
+                    model.screen.value = Screen.DocumentDetail(photoId.identifier, Screen.FileDetail(f.id))
+                }
+            } else {
+                Text(stringResource(Res.string.files_photo_id_text), style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedButton(onClick = { model.files.issuePhotoId(f) }, enabled = busy == null) {
+                Text(if (photoId != null) stringResource(Res.string.files_photo_id_remake) else stringResource(Res.string.files_photo_id_make))
+            }
+        }
+        if (report?.format == DocumentFormat.EMRTD) {
+            val links by produceState<List<FilesModel.TravelDocumentLink>?>(null, f.id, files.size) { value = model.files.travelDocumentLinks(f) }
+            SectionTitle(stringResource(Res.string.files_passport_links))
+            when {
+                links == null -> Text(stringResource(Res.string.files_passport_links_reading), style = MaterialTheme.typography.bodySmall)
+                links!!.isEmpty() -> Text(stringResource(Res.string.files_passport_links_none), style = MaterialTheme.typography.bodySmall)
+                else -> links!!.forEach { link ->
+                    val text = if (link.sameName) stringResource(Res.string.files_passport_link_name, link.number) else stringResource(Res.string.files_passport_link, link.number)
+                    ActionRow(WalletIcons.Document, link.file.report?.title ?: link.file.name, text) { model.screen.value = Screen.FileDetail(link.file.id) }
+                }
+            }
+            Text(stringResource(Res.string.files_passport_links_text), style = MaterialTheme.typography.bodySmall)
         }
         f.zkPdfPending?.let { pending ->
             Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
@@ -1726,6 +1759,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
             }
         }
         is FilePreview.Picture -> PreviewImage(p.image, f.name)
+        is FilePreview.Passport -> PassportDataView(p.view) { pic, n, original -> model.files.exportPicture(pic, n, original) }
         is FilePreview.Text -> {
             SelectableText(p.text)
             if (p.truncated) Text(stringResource(Res.string.preview_text_limit, FilePreview.TEXT_LIMIT), style = MaterialTheme.typography.bodySmall)
@@ -2324,7 +2358,11 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 Checkbox(checked = c.name in chosen, onCheckedChange = { chosen = if (it) chosen + c.name else chosen - c.name })
                 Column {
                     Text(DerivedCredentials.labelOf(c), style = MaterialTheme.typography.bodyMedium)
-                    Text(c.value, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        if (diw.wallet.core.document.derived.TravelDocumentFields.isRaw(c.name)) stringResource(Res.string.derive_chip_file, c.value.length * 3 / 4)
+                        else c.value,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             }
         }

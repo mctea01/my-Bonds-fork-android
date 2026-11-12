@@ -1,0 +1,104 @@
+{
+  "attempts": [
+    {
+      "log": "windows-build.log",
+      "exit_code": 101,
+      "observation": "Original source; Zig shim rejected cc-rs Rust-format --target triple",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    },
+    {
+      "log": "windows-build2.log",
+      "exit_code": 101,
+      "observation": "Original source; translated triple; sha2-asm compile_error rejects Windows",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    },
+    {
+      "log": "windows-build3.log",
+      "exit_code": 101,
+      "observation": "Four runtime manifest edits insufficient; core/proto and mdoc circuits still enable asm",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    },
+    {
+      "log": "windows-build4.log",
+      "exit_code": 101,
+      "observation": "Complete six-manifest patch; missing MinGW dlltool executable",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    },
+    {
+      "log": "windows-build5.log",
+      "exit_code": 101,
+      "observation": "Complete patch and Zig dlltool shim; Zig linker rejects Rust GNU .def argument",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    },
+    {
+      "log": "windows-build6.log",
+      "exit_code": 0,
+      "observation": "Complete patch with MinGW GCC; DLL and static archive successfully built",
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "scope": "Exploratory build; final runner records complete successful environment and input hashes"
+    }
+  ],
+  "final_runner_setup_fixes": [
+    "Git porcelain uses uppercase M for dirty submodule",
+    "Preserve cargo symlink basename for rustup multicall"
+  ]
+}

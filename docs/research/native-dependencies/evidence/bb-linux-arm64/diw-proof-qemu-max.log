@@ -1,0 +1,6 @@
+ultrahonk_public_fixture=passed
+changed_public_input=rejected
+changed_proof_field=rejected
+truncated_proof_field=rejected
+valid_after_rejections=passed
+prover=not-tested native_windows_execution=not-tested

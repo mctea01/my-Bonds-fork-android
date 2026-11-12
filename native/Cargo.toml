@@ -1,6 +1,6 @@
 [workspace]
-members = ["diw-zk-ffi", "zkpdf-prover", "zktls", "openac-age"]
-# vendor/ holds patched third-party crates used as path dependencies; they are not workspace members.
+members = ["diw-zk-ffi", "zkpdf-prover", "zktls", "openac-age", "zkpassport-verify", "zkpassport-bb5"]
+# Vendored upstream sources, built only as dependencies (their own tests need upstream fixtures).
 exclude = ["vendor"]
 resolver = "2"
 

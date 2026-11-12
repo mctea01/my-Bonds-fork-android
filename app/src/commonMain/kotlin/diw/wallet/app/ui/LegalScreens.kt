@@ -140,11 +140,14 @@ private fun SummaryCard(points: List<String>) {
     }
 }
 
+/** A scrolling page; a new [page] (the next step or statement) starts at the top. */
 @Composable
-private fun PageColumn(content: @Composable () -> Unit) {
+private fun PageColumn(page: Any? = null, content: @Composable () -> Unit) {
+    val scroll = rememberScrollState()
+    androidx.compose.runtime.LaunchedEffect(page) { scroll.scrollTo(0) }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
-            Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 24.dp),
+            Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) { content() }
     }
@@ -176,7 +179,7 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
         consent.undecided.isNotEmpty() -> OnboardingStep.STATEMENTS
         else -> OnboardingStep.DONE
     }
-    PageColumn {
+    PageColumn(page = step to consent.undecided.firstOrNull()) {
         when (step) {
             OnboardingStep.WELCOME -> WelcomePage(model) { welcomed = true }
             OnboardingStep.BASICS -> BasicsPage(updated = !firstStart) { model.legal.acceptBasics() }

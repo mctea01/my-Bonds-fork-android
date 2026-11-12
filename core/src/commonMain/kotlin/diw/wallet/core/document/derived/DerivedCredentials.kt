@@ -149,6 +149,12 @@ object DerivedCredentials {
     /** Claims that carry zkPDF proof data rather than a value for people (the bundle and the field openings). */
     fun isProofClaim(name: String): Boolean = name == ZkPdfEvidence.CLAIM || name.startsWith(ZkPdfEvidence.OPEN_PREFIX)
 
+    /** Claims shown as evidence rather than data: proof data and the chip files of a travel document. */
+    fun isTechnicalClaim(name: String): Boolean = isProofClaim(name) || TravelDocumentFields.isRaw(name)
+
+    /** A credential this wallet derives from a document: from any file, or from a travel document chip. */
+    fun isDerived(vct: String?): Boolean = vct == VCT || vct == TravelDocumentFields.VCT
+
     /**
      * [names] to disclose, plus the zkPDF opening of each disclosed field when the zkPDF bundle is among them, so a
      * field shown with the proof can be checked against it (p4-zkp.md 5.1). Without the bundle nothing is added.
@@ -198,6 +204,7 @@ object DerivedCredentials {
         disclosures: List<String>,
         now: Instant = Clock.System.now(),
         validUntil: Instant? = null,
+        vct: String = VCT,
     ): String {
         val iss = issuer.did ?: throw SigningException(ct("core_dc_no_did"))
         val jwk = holderKey.toJwk()
@@ -206,7 +213,7 @@ object DerivedCredentials {
             put("iat", now.epochSeconds)
             put("nbf", now.epochSeconds)
             validUntil?.let { put("exp", it.epochSeconds) }
-            put("vct", VCT)
+            put("vct", vct)
             putJsonObject("cnf") { put("jwk", jwk) }
             put("document", documentObject(document))
             if (evidence.isNotEmpty()) put("evidence", JsonArray(evidence))

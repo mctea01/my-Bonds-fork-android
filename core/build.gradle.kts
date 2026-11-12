@@ -16,11 +16,11 @@ plugins {
 val zkNativeMode = providers.gradleProperty("diw.zkNative").orElse(providers.environmentVariable("DIW_ZK_NATIVE"))
     .getOrElse("auto").also { require(it in setOf("auto", "require", "skip", "prebuilt")) { "diw.zkNative must be auto, require, skip or prebuilt" } }
 
-/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn and zkpdf. Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
+/** Optional native proof backends passed to native/build.sh: empty (runtime only) or a comma list of openac, tlsn, zkpdf, oprf and bb5 (Barretenberg 5 for old zkPassport circuits, needs zkpdf). Set with -Pdiw.zkFeatures or DIW_ZK_FEATURES. */
 val zkFeatures = providers.gradleProperty("diw.zkFeatures").orElse(providers.environmentVariable("DIW_ZK_FEATURES"))
     .getOrElse("").also { f ->
-        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf") } && l.toSet().size == l.size }) {
-            "diw.zkFeatures must be empty or a comma list of openac, tlsn and zkpdf"
+        require(f.isEmpty() || f.split(',').let { l -> l.all { it in setOf("openac", "tlsn", "zkpdf", "oprf", "bb5") } && l.toSet().size == l.size }) {
+            "diw.zkFeatures must be empty or a comma list of openac, tlsn, zkpdf, oprf and bb5"
         }
     }
 
@@ -40,6 +40,7 @@ val zkDesktopLibrary: String? = System.getProperty("os.name").let { os ->
     val x64 = System.getProperty("os.arch") in setOf("amd64", "x86_64")
     when {
         os.startsWith("Linux") && x64 -> "linux-x86_64/libdiw_zk.so"
+        os.startsWith("Linux") && System.getProperty("os.arch") == "aarch64" -> "linux-aarch64/libdiw_zk.so"
         os.startsWith("Windows") && x64 -> "windows-x86_64/diw_zk.dll"
         os.startsWith("Mac") && System.getProperty("os.arch") == "aarch64" -> "macos-aarch64/libdiw_zk.dylib"
         else -> null

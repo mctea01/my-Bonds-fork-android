@@ -792,5 +792,20 @@
   "c2pa": {
     "url": "https://raw.githubusercontent.com/c2pa-org/conformance-public/main/trust-list/C2PA-TRUST-LIST.pem",
     "file": "c2pa/C2PA-TRUST-LIST.pem"
+  },
+  "cscaMasterList": {
+    "name": "德國 BSI CSCA 主清單",
+    "publisher": "德國聯邦資訊安全局（BSI）",
+    "url": "https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/ElekAusweise/CSCA/GermanMasterList.zip?__blob=publicationFile",
+    "page": "https://www.bsi.bund.de/EN/Themen/Oeffentliche-Verwaltung/Elektronische-Identitaeten/Public-Key-Infrastrukturen/CSCA/Root_Cert_Germany/Root_Certificate_node.html",
+    "comment": "The list's signer must be issued by one of the pinned German CSCA roots, whose SHA-256 the page publishes. Only certificates valid now are built in; a new signer root needs a person to pin it.",
+    "signerRoots": [
+      {
+        "file": "csca/csca-germany-2024-10.pem",
+        "name": "csca-germany（2024 年 10 月，自簽）",
+        "url": "https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/ElekAusweise/CSCA/csca-germany_10-2024_self_signed.zip?__blob=publicationFile&v=2",
+        "sha256": "2084AED7A991B3158E63AD750D3DC38BC6C9DCF5958F28D1162F49884E91ADA8"
+      }
+    ]
   }
 }

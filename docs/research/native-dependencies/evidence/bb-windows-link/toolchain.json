@@ -1,0 +1,23 @@
+{
+  "zig": {
+    "tarball": "https://ziglang.org/download/0.15.1/zig-x86_64-linux-0.15.1.tar.xz",
+    "shasum": "c61c5da6edeea14ca51ecd5e4520c6f4189ef5250383db33d01848293bfafe05",
+    "size": "53734456"
+  },
+  "upstream_build_image": "https://github.com/AztecProtocol/aztec-packages/blob/0219f11d8133970df3974fe5ae65e006bf8c193a/build-images/src/Dockerfile#L163",
+  "wine": "10.0 Debian trixie;packages extracted under user-owned workspace;no system install",
+  "portable_wine_adjustments": [
+    "usr/lib/wine/wineserver -> wineserver64 (preserve Debian shell wrapper separately)",
+    "usr/share/wine/wine -> . (relocated NLS lookup)",
+    "copy usr/x86_64-w64-mingw32/lib/zlib1.dll into prepared prefix drive_c/windows/system32",
+    "explicit WINELOADER and WINEDLLPATH;disable Mono/Gecko overrides"
+  ],
+  "zlib_dll_sha256": "c17c73cb781ed3b14f7a9b5b28bf59a7ff45af2b8f3f869bd40ef219c2f57688",
+  "cpu_validation": "Only this host under Wine; minimum CPU not-tested",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "earlier_tooling_failures": [
+    "Zig GNU-style -Wl,-Map rejected; removed unsupported diagnostic flag",
+    "Portable Wine Debian server wrapper/NLS paths and missing zlib1.dll fixed in user directory"
+  ],
+  "source_code_changed": "No production source, build scripts, or crypto parameters modified"
+}

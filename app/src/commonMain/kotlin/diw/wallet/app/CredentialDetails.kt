@@ -276,7 +276,8 @@ object CredentialDetails {
         val status = when (val s = mso.revocationStatus) {
             is RevocationStatus.StatusList -> statusReference(s.uri, s.idx.toLong())
             null -> emptyList()
-            else -> listOf(DetailRow(tr(Res.string.cd_status_mechanism), s::class.simpleName ?: "unknown"))
+            // The MSO's status member name as the standard writes it (class names do not survive R8).
+            else -> listOf(DetailRow(tr(Res.string.cd_status_mechanism), if (s is RevocationStatus.IdentifierList) "identifier_list" else "unknown"))
         }
         val other = listOf(
             DetailRow(tr(Res.string.cd_mso_version), mso.version),

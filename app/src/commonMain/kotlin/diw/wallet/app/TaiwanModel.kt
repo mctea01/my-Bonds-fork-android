@@ -321,6 +321,51 @@ sealed class OfflineUi {
         val receipt: Boolean = false,
     ) : OfflineUi()
 
+    /** zkPassport verifier setup; [test]: the test environment, where test passports may be accepted. */
+    data class ZkPassportSetup(val domain: String, val test: Boolean, val note: String?) : OfflineUi()
+
+    /** A zkPassport request in progress: [url] is the request link once the bridge is connected. */
+    data class ZkPassportWaiting(
+        val request: diw.wallet.core.zkpassport.ZkPassportRequest,
+        val url: String?,
+        val state: diw.wallet.core.zkpassport.ZkPassportState,
+    ) : OfflineUi()
+
+    /** The zkPassport check's outcome, or why there is none ([error]). */
+    data class ZkPassportVerified(
+        val request: diw.wallet.core.zkpassport.ZkPassportRequest,
+        val result: diw.wallet.core.zkpassport.ZkPassportResult?,
+        val error: String?,
+    ) : OfflineUi()
+
+    /** Answering a zkPassport request (Z3): the bridge to the requester is opening. */
+    data class ZkPassportAnswerConnecting(val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming) : OfflineUi()
+
+    /**
+     * What the requester asks for and the stored passports to answer with. [origin] is what the bridge reports for
+     * the requester; [unsupported] says why this wallet cannot answer, so only declining is offered.
+     */
+    data class ZkPassportAnswerConsent(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val origin: String,
+        val originMatches: Boolean,
+        val passports: List<StoredFile>,
+        val unsupported: String?,
+    ) : OfflineUi()
+
+    /** The proofs are being made on this device; [progress] is null until the prover reports. */
+    data class ZkPassportAnswerProving(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val progress: diw.wallet.core.zkpassport.ZkPassportAnswerProgress?,
+    ) : OfflineUi()
+
+    /** The answer's end: [sent] when the proofs reached the requester; neither sent nor [error] means declined. */
+    data class ZkPassportAnswerDone(
+        val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
+        val sent: Boolean,
+        val error: String?,
+    ) : OfflineUi()
+
     data class VerifierResult(
         val request: BondsPresentationRequest,
         val result: BondsVerifiedPresentation?,
@@ -362,6 +407,7 @@ class TaiwanModel(private val model: WalletModel) {
     val age = BondsAgeFlow(model, offline)
     val ageVerifier = BondsAgeVerifierFlow(model, offline)
     val zkTls = ZkTlsFlow(model, offline)
+    val zkPassport = ZkPassportFlow(model, offline)
     private var verifyAllJob: Job? = null
 
     /** TWDIW cards: issued under the TWDIW profile. */
@@ -939,6 +985,7 @@ class TaiwanModel(private val model: WalletModel) {
         age.stop()
         ageVerifier.stop()
         zkTls.stop()
+        zkPassport.stop()
         linkJob?.cancel()
         linkJob = null
         lanJob?.cancel()

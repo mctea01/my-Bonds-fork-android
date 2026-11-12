@@ -1,0 +1,6 @@
+0000000000049aa8 T find_zk_spec_by_attributes
+0000000000049e0c T free_circuit_bytes
+0000000000049e0c T free_mdoc_proof
+0000000000049e18 T generate_circuit
+000000000004a630 T run_mdoc_prover
+000000000004aa10 T run_mdoc_verifier

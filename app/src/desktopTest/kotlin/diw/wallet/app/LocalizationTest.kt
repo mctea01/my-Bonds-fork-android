@@ -35,7 +35,7 @@ class LocalizationTest {
         val zh = strings("values-zh")
         assertEquals(en.keys, zh.keys, "keys only in one language")
         en.forEach { (k, v) ->
-            if (k != "language_zh_hant") assertTrue(!han.containsMatchIn(v), "Chinese text in the English string $k: $v")
+            assertTrue(!han.containsMatchIn(v), "Chinese text in the English string $k: $v")
             val z = zh.getValue(k)
             if (z.isNotEmpty()) assertEquals(placeholders(z), placeholders(v), "placeholders of $k")
         }
@@ -71,12 +71,17 @@ class LocalizationTest {
     fun languageChoiceIsKept() {
         val store = MemoryLanguageStore()
         assertEquals(null, store.tag.value)
-        store.set(AppLanguage.ENGLISH)
+        // The languages come from the translation files, named in themselves.
+        assertEquals(listOf("en" to "English", "zh-TW" to "繁體中文"), AppLanguage.all.map { it.tag to it.name })
+        val english = AppLanguage.of("en")
+        store.set(english)
         assertEquals("en", store.tag.value)
-        assertEquals(AppLanguage.ENGLISH, AppLanguage.of(store.tag.value))
+        assertEquals(english, AppLanguage.of(store.tag.value))
+        assertEquals(english, AppLanguage.of("en-GB"))
         store.set(AppLanguage.SYSTEM)
         assertEquals(null, store.tag.value)
-        assertEquals(AppLanguage.TRADITIONAL_CHINESE, AppLanguage.of("zh-Hant-TW"))
+        assertEquals("zh-TW", AppLanguage.of("zh-Hant-TW").tag)
+        assertEquals("zh-TW", AppLanguage.of("zh_TW").tag)
         assertEquals(AppLanguage.SYSTEM, AppLanguage.of("ja"))
     }
 

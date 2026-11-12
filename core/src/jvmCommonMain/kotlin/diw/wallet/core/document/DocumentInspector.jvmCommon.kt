@@ -55,6 +55,7 @@ actual object DocumentInspector {
                 DocumentFormat.XML -> xml(data, fileName, base, checks, now, related)
                 DocumentFormat.OFD, DocumentFormat.ASIC_E, DocumentFormat.ZIP -> container(data, base, checks, now)
                 DocumentFormat.OPENCERTS -> openCerts(data, base)
+                DocumentFormat.EMRTD -> MrtdInspection.inspect(data, base, checks, pki, now)
                 DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
                 DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, now)
@@ -117,7 +118,8 @@ actual object DocumentInspector {
         return when {
             head.startsWith("<") -> DocumentFormat.XML
             head.startsWith("{") -> {
-                if (OpenAttestationDocument.parse(b) != null) DocumentFormat.OPENCERTS else DocumentFormat.JSON
+                if (diw.wallet.core.document.mrtd.MrtdDump.detect(b)) DocumentFormat.EMRTD
+                else if (OpenAttestationDocument.parse(b) != null) DocumentFormat.OPENCERTS else DocumentFormat.JSON
             }
             ext in setOf("txt", "csv", "md") -> DocumentFormat.TEXT
             else -> DocumentFormat.OTHER

@@ -5,6 +5,7 @@ import diw.wallet.core.did.DidResolver
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.DerivedEvidence
+import diw.wallet.core.document.derived.TravelDocumentPhotoId
 import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.jose.VerificationKey
@@ -265,14 +266,19 @@ class PresentationVerifier(
             is MdocVerifiedPresentation -> Triple(
                 if (vp.zkpUsed) "mso_mdoc_zk" else "mso_mdoc",
                 vp.docType,
-                vp.issuerSignedClaims.associate { "${it.namespaceName}.${it.dataElementName}" to it.value.toString() }
+                vp.issuerSignedClaims.associate { c ->
+                    // Chip files of a Photo ID are shown by size; the evidence checks their content.
+                    "${c.namespaceName}.${c.dataElementName}" to if (c.namespaceName == TravelDocumentPhotoId.DATAGROUPS_NAMESPACE) {
+                        runCatching { "${c.value.asBstr.size} bytes" }.getOrDefault(c.value.toString())
+                    } else c.value.toString()
+                }
             )
             else -> Triple("unknown", "unknown", emptyMap())
         }
         vp.validFrom?.let { checks += if (it <= now) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         vp.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
 
-        val trust = if (chain == null) {
+        val anchored = if (chain == null) {
             TrustDecision.unknown("no issuer certificate chain")
         } else {
             val docType = (vp as? MdocVerifiedPresentation)?.docType
@@ -280,9 +286,27 @@ class PresentationVerifier(
             m?.let { checks += revocation(vp, it.anchor) }
             trustRegistry.decision(m)
         }
+        // A Photo ID made by a holder wallet from a passport is that wallet's own statement (T3); the chip files it
+        // carries are what a verifier weighs, as with a document-derived credential.
+        val photoId = vp is MdocVerifiedPresentation && vp.docType == TravelDocumentPhotoId.DOCTYPE
+        val trust = if (photoId && anchored.environment == null) {
+            TrustDecision(TrustTier.T3, TrustEnvironment.USER, official = false, anchorName = ct("core_pv_holder_wallet"), labels = setOf(TrustLabel.SELF_ISSUED))
+        } else anchored
+        val evidence = if (photoId) {
+            val disclosed = (vp as MdocVerifiedPresentation).issuerSignedClaims.groupBy { it.namespaceName }
+                .mapValues { (_, list) -> list.associate { it.dataElementName to it.value } }
+            TravelDocumentPhotoId.verify(disclosed, documentTrust, now).map { e -> Check(e.title, checkStatus(e.check), e.detail) }
+        } else emptyList()
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, "${trust.anchorName} (${trust.environment.id})")
         else Check("issuer trust", CheckStatus.FAIL, "issuer chain not anchored in an enabled environment")
-        return CredentialVerification(id, format, typeName, claims, checks, trust)
+        return CredentialVerification(id, format, typeName, claims, checks, trust, evidence)
+    }
+
+    private fun checkStatus(c: DocumentCheck): CheckStatus = when (c) {
+        DocumentCheck.PASS -> CheckStatus.PASS
+        DocumentCheck.FAIL -> CheckStatus.FAIL
+        DocumentCheck.WARN -> CheckStatus.WARN
+        DocumentCheck.NOT_CHECKED -> CheckStatus.UNKNOWN
     }
 
     /** The SD-JWT VC (with KB-JWT) in [entry] when its issuer is a DID and it carries no x5c; null otherwise. */
@@ -345,20 +369,13 @@ class PresentationVerifier(
         checks += requestedClaims(query, processed)
         sdJwt.validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         sdJwt.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
-        val derived = vct == DerivedCredentials.VCT
+        val derived = DerivedCredentials.isDerived(vct)
         val evidence = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(token.substringBeforeLast('~') + "~").issuerJwt).payload
-            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now).map { e ->
-                Check(e.title, when (e.check) {
-                    DocumentCheck.PASS -> CheckStatus.PASS
-                    DocumentCheck.FAIL -> CheckStatus.FAIL
-                    DocumentCheck.WARN -> CheckStatus.WARN
-                    DocumentCheck.NOT_CHECKED -> CheckStatus.UNKNOWN
-                }, e.detail)
-            }
+            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now).map { e -> Check(e.title, checkStatus(e.check), e.detail) }
         } else emptyList()
         val technical = setOf("iss", "iat", "nbf", "exp", "vct", "cnf", "status", "_sd_alg", "sub")
-        val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isProofClaim(k))) }
+        val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isTechnicalClaim(k))) }
             .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content ?: v.toString() }
         // A document-derived credential is the holder wallet's own statement (T3); its evidence is what a verifier weighs.
         val trust = if (derived) {

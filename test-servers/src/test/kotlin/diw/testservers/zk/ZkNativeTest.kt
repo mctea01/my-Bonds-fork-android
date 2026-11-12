@@ -19,11 +19,13 @@ class ZkNativeTest {
             assertEquals("0.1.0", nativeInfo().crateVersion)
             val info = nativeInfo()
             // A requested backend must not silently fall back to the runtime-only library.
-            val requested = System.getProperty("diw.zkFeatures").orEmpty().split(',').filter { it.isNotEmpty() }
+            // bb5 is its own library (ZkPassportLegacyTest), not a feature of this one.
+            val requested = System.getProperty("diw.zkFeatures").orEmpty().split(',').filter { it.isNotEmpty() && it != "bb5" }
             requested.forEach { assertTrue(it in info.features, "$it requested but not built") }
             assertTrue(selfTest())
             ZkCancelToken().use { it.cancel() }
-            assertEquals(listOf("runtime", "bbs") + listOf("openac", "tlsn", "zkpdf").filter { it in info.features }, info.features)
+            assertEquals(listOf("runtime", "bbs") + listOf("openac", "tlsn", "zkpdf", "oprf").filter { it in info.features }, info.features)
+            if ("zkpdf" in info.features) assertTrue("oprf" in info.features, "zkPassport proving needs the OPRF")
             if ("openac" in info.features) {
                 assertEquals("b395e09c225ff45b003f0087c28e2e208e22f944", info.zkid)
             } else {

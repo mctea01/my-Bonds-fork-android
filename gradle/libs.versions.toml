@@ -37,6 +37,10 @@ bcpg = { module = "org.bouncycastle:bcpg-jdk18on", version.ref = "bouncycastle" 
 xerces = { module = "xerces:xercesImpl", version = "2.12.2" }
 # QR Code reading from images; the version Multipaz's Android camera scanner already brings in.
 zxing-core = { module = "com.google.zxing:core", version = "3.5.4" }
+# Machine readable zone OCR on Android (Tesseract 5, Apache-2.0), with tessdata_fast eng in the app assets.
+# The camera frames of Multipaz's Camera composable (same version it brings in), turned into bitmaps for OCR.
+androidx-camera-core = { module = "androidx.camera:camera-core", version = "1.5.1" }
+tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version = "4.9.0" }
 xml-apis = { module = "xml-apis:xml-apis", version = "1.4.01" }
 # JSON-LD 1.1 for the RDFC Data Integrity cryptosuites (bbs-2023, ecdsa-rdfc-2019). Its OkHttp loader is excluded:
 # contexts come from core's own loader. The Glassfish jar carries the Jakarta JSON API Titanium declares as provided.
@@ -50,3 +54,5 @@ androidx-credentials = { module = "androidx.credentials:credentials", version = 
 androidx-credentials-registry = { module = "androidx.credentials.registry:registry-provider", version = "1.0.0-alpha05" }
 # Same version multipaz-dcapi-credman registers with; used directly to await the registration result.
 play-services-identity-credentials = { module = "com.google.android.gms:play-services-identity-credentials", version = "16.0.0-alpha12" }
+# Play Feature Delivery: installs the on-demand native modules (features/) on Google Play installs.
+play-feature-delivery = { module = "com.google.android.play:feature-delivery", version = "2.1.0" }

@@ -3,4 +3,5 @@
     <string name="nfc_presentation_service">DIW MY WALLET 感應出示</string>
     <string name="nfc_engagement_aid_group">ISO/IEC 18013-5 NFC 交握（NDEF）</string>
     <string name="nfc_data_transfer_aid_group">ISO/IEC 18013-5 NFC 資料傳輸</string>
+    <string name="bb5_module_title">zkPassport 舊版電路驗證元件</string>
 </resources>

@@ -1,0 +1,460 @@
+multipaz-longfellow-ffi v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust)
+├── libc feature "default"
+│   ├── libc v0.2.191
+│   └── libc feature "std"
+│       └── libc v0.2.191
+├── mdoc-zk-runtime feature "default"
+│   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime)
+│       ├── libc feature "default" (*)
+│       ├── circuits-analog-adder feature "default"
+│       │   └── circuits-analog-adder v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_adder)
+│       │       ├── circuits-bitvec feature "default"
+│       │       │   └── circuits-bitvec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec)
+│       │       │       ├── circuits-arithmetic feature "default"
+│       │       │       │   └── circuits-arithmetic v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/arithmetic)
+│       │       │       │       ├── circuits-boolean feature "default"
+│       │       │       │       │   └── circuits-boolean v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/boolean)
+│       │       │       │       │       ├── compile-algebra feature "default"
+│       │       │       │       │       │   └── compile-algebra v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/algebra)
+│       │       │       │       │       │       ├── core-algebra feature "default"
+│       │       │       │       │       │       │   └── core-algebra v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/algebra)
+│       │       │       │       │       │       ├── num-bigint feature "default"
+│       │       │       │       │       │       │   ├── num-bigint v0.4.8
+│       │       │       │       │       │       │   │   ├── num-integer feature "i128"
+│       │       │       │       │       │       │   │   │   └── num-integer v0.1.47
+│       │       │       │       │       │       │   │   │       └── num-traits feature "i128"
+│       │       │       │       │       │       │   │   │           └── num-traits v0.2.19
+│       │       │       │       │       │       │   │   │               [build-dependencies]
+│       │       │       │       │       │       │   │   │               └── autocfg feature "default"
+│       │       │       │       │       │       │   │   │                   └── autocfg v1.5.1
+│       │       │       │       │       │       │   │   └── num-traits feature "i128" (*)
+│       │       │       │       │       │       │   └── num-bigint feature "std"
+│       │       │       │       │       │       │       ├── num-bigint v0.4.8 (*)
+│       │       │       │       │       │       │       ├── num-integer feature "std"
+│       │       │       │       │       │       │       │   ├── num-integer v0.1.47 (*)
+│       │       │       │       │       │       │       │   └── num-traits feature "std"
+│       │       │       │       │       │       │       │       └── num-traits v0.2.19 (*)
+│       │       │       │       │       │       │       └── num-traits feature "std" (*)
+│       │       │       │       │       │       └── num-traits feature "default"
+│       │       │       │       │       │           ├── num-traits v0.2.19 (*)
+│       │       │       │       │       │           └── num-traits feature "std" (*)
+│       │       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       │       ├── compile-eval feature "default"
+│       │       │       │       │       │   └── compile-eval v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/eval)
+│       │       │       │       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       │       │       ├── compile-logic feature "default"
+│       │       │       │       │       │       │   └── compile-logic v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic)
+│       │       │       │       │       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       │       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       │       │       │       ├── runtime-algebra feature "default"
+│       │       │       │       │       │       │       │   └── runtime-algebra v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/algebra)
+│       │       │       │       │       │       │       │       └── core-algebra feature "default" (*)
+│       │       │       │       │       │       │       └── util feature "default"
+│       │       │       │       │       │       │           └── util v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/util)
+│       │       │       │       │       │       │               └── rustc-hash feature "default"
+│       │       │       │       │       │       │                   ├── rustc-hash v2.1.3
+│       │       │       │       │       │       │                   └── rustc-hash feature "std"
+│       │       │       │       │       │       │                       └── rustc-hash v2.1.3
+│       │       │       │       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       │       │       │       ├── compile-proto feature "default"
+│       │       │       │       │       │       │   └── compile-proto v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/proto)
+│       │       │       │       │       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       │       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       │       │       │       ├── compile-logic feature "default" (*)
+│       │       │       │       │       │       │       ├── util feature "default" (*)
+│       │       │       │       │       │       │       └── core-proto feature "default"
+│       │       │       │       │       │       │           └── core-proto v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/proto)
+│       │       │       │       │       │       │               ├── compile-algebra feature "default" (*)
+│       │       │       │       │       │       │               ├── core-algebra feature "default" (*)
+│       │       │       │       │       │       │               ├── util feature "default" (*)
+│       │       │       │       │       │       │               └── sha2 feature "default"
+│       │       │       │       │       │       │                   ├── sha2 v0.10.9
+│       │       │       │       │       │       │                   │   ├── cfg-if feature "default"
+│       │       │       │       │       │       │                   │   │   └── cfg-if v1.0.5
+│       │       │       │       │       │       │                   │   ├── cpufeatures feature "default"
+│       │       │       │       │       │       │                   │   │   └── cpufeatures v0.2.17
+│       │       │       │       │       │       │                   │   └── digest feature "default"
+│       │       │       │       │       │       │                   │       ├── digest v0.10.7
+│       │       │       │       │       │       │                   │       │   ├── block-buffer feature "default"
+│       │       │       │       │       │       │                   │       │   │   └── block-buffer v0.10.4
+│       │       │       │       │       │       │                   │       │   │       └── generic-array feature "default"
+│       │       │       │       │       │       │                   │       │   │           └── generic-array v0.14.7
+│       │       │       │       │       │       │                   │       │   │               └── typenum feature "default"
+│       │       │       │       │       │       │                   │       │   │                   └── typenum v1.20.1
+│       │       │       │       │       │       │                   │       │   │               [build-dependencies]
+│       │       │       │       │       │       │                   │       │   │               └── version_check feature "default"
+│       │       │       │       │       │       │                   │       │   │                   └── version_check v0.9.5
+│       │       │       │       │       │       │                   │       │   └── crypto-common feature "default"
+│       │       │       │       │       │       │                   │       │       └── crypto-common v0.1.7
+│       │       │       │       │       │       │                   │       │           ├── generic-array feature "default" (*)
+│       │       │       │       │       │       │                   │       │           ├── generic-array feature "more_lengths"
+│       │       │       │       │       │       │                   │       │           │   └── generic-array v0.14.7 (*)
+│       │       │       │       │       │       │                   │       │           └── typenum feature "default" (*)
+│       │       │       │       │       │       │                   │       └── digest feature "core-api"
+│       │       │       │       │       │       │                   │           ├── digest v0.10.7 (*)
+│       │       │       │       │       │       │                   │           └── digest feature "block-buffer"
+│       │       │       │       │       │       │                   │               └── digest v0.10.7 (*)
+│       │       │       │       │       │       │                   └── sha2 feature "std"
+│       │       │       │       │       │       │                       ├── sha2 v0.10.9 (*)
+│       │       │       │       │       │       │                       └── digest feature "std"
+│       │       │       │       │       │       │                           ├── digest v0.10.7 (*)
+│       │       │       │       │       │       │                           ├── digest feature "alloc"
+│       │       │       │       │       │       │                           │   └── digest v0.10.7 (*)
+│       │       │       │       │       │       │                           └── crypto-common feature "std"
+│       │       │       │       │       │       │                               └── crypto-common v0.1.7 (*)
+│       │       │       │       │       │       └── core-proto feature "default" (*)
+│       │       │       │       │       ├── compile-logic feature "default" (*)
+│       │       │       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       │       │       └── util feature "default" (*)
+│       │       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       ├── compile-logic feature "default" (*)
+│       │       │       │       └── util feature "default" (*)
+│       │       │       ├── circuits-boolean feature "default" (*)
+│       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       ├── compile-eval feature "default" (*)
+│       │       │       ├── compile-logic feature "default" (*)
+│       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       └── util feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       └── compile-logic feature "default" (*)
+│       ├── circuits-bitvec feature "default" (*)
+│       ├── circuits-bitvec feature "testonly"
+│       │   ├── circuits-bitvec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec) (*)
+│       │   ├── circuits-boolean feature "testonly"
+│       │   │   ├── circuits-boolean v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/boolean) (*)
+│       │   │   └── compile-logic feature "testonly"
+│       │   │       ├── compile-logic v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic) (*)
+│       │   │       ├── compile-logic feature "runtime-algebra"
+│       │   │       │   └── compile-logic v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/logic) (*)
+│       │   │       └── runtime-algebra feature "testonly"
+│       │   │           └── runtime-algebra v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/algebra) (*)
+│       │   └── compile-logic feature "testonly" (*)
+│       ├── compile-algebra feature "default" (*)
+│       ├── core-algebra feature "default" (*)
+│       ├── num-bigint feature "default" (*)
+│       ├── compile-logic feature "default" (*)
+│       ├── compile-logic feature "testonly" (*)
+│       ├── runtime-algebra feature "default" (*)
+│       ├── core-proto feature "default" (*)
+│       ├── sha2 feature "default" (*)
+│       ├── circuits-bit-plucker feature "default"
+│       │   └── circuits-bit-plucker v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bit_plucker)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       └── circuits-analog-decoder feature "default"
+│       │           └── circuits-analog-decoder v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_decoder)
+│       │               ├── circuits-boolean feature "default" (*)
+│       │               ├── compile-algebra feature "default" (*)
+│       │               ├── core-algebra feature "default" (*)
+│       │               ├── compile-logic feature "default" (*)
+│       │               └── circuits-lookup feature "default"
+│       │                   └── circuits-lookup v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/lookup)
+│       │                       ├── compile-algebra feature "default" (*)
+│       │                       ├── core-algebra feature "default" (*)
+│       │                       ├── compile-logic feature "default" (*)
+│       │                       └── circuits-polynomial feature "default"
+│       │                           └── circuits-polynomial v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/polynomial)
+│       │                               ├── compile-algebra feature "default" (*)
+│       │                               └── compile-logic feature "default" (*)
+│       ├── circuits-ec feature "default"
+│       │   └── circuits-ec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ec)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       └── runtime-algebra feature "default" (*)
+│       ├── circuits-ec feature "testonly"
+│       │   ├── circuits-ec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ec) (*)
+│       │   └── compile-logic feature "testonly" (*)
+│       ├── circuits-ecdsa2 feature "default"
+│       │   └── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── circuits-arithmetic feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       ├── circuits-lookup feature "default" (*)
+│       │       ├── circuits-ec feature "default" (*)
+│       │       └── circuits-big-bitvec feature "default"
+│       │           └── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec)
+│       │               ├── circuits-bitvec feature "default" (*)
+│       │               ├── circuits-boolean feature "default" (*)
+│       │               ├── compile-algebra feature "default" (*)
+│       │               ├── core-algebra feature "default" (*)
+│       │               ├── compile-eval feature "default" (*)
+│       │               ├── compile-logic feature "default" (*)
+│       │               ├── runtime-algebra feature "default" (*)
+│       │               └── circuits-bignum feature "default"
+│       │                   └── circuits-bignum v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bignum)
+│       │                       ├── circuits-boolean feature "default" (*)
+│       │                       ├── compile-algebra feature "default" (*)
+│       │                       ├── core-algebra feature "default" (*)
+│       │                       ├── compile-logic feature "default" (*)
+│       │                       └── util feature "default" (*)
+│       ├── circuits-ecdsa2 feature "testonly"
+│       │   ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+│       │   ├── circuits-bitvec feature "testonly" (*)
+│       │   ├── circuits-boolean feature "testonly" (*)
+│       │   ├── compile-logic feature "testonly" (*)
+│       │   ├── circuits-ec feature "testonly" (*)
+│       │   └── circuits-big-bitvec feature "testonly"
+│       │       ├── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec) (*)
+│       │       ├── circuits-bitvec feature "testonly" (*)
+│       │       ├── circuits-boolean feature "testonly" (*)
+│       │       └── compile-logic feature "testonly" (*)
+│       ├── circuits-mac feature "default"
+│       │   └── circuits-mac v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       ├── circuits-bit-plucker feature "default" (*)
+│       │       └── circuits-gf2-128 feature "default"
+│       │           └── circuits-gf2-128 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/gf2_128)
+│       │               ├── circuits-bitvec feature "default" (*)
+│       │               ├── circuits-boolean feature "default" (*)
+│       │               ├── compile-algebra feature "default" (*)
+│       │               ├── core-algebra feature "default" (*)
+│       │               └── compile-logic feature "default" (*)
+│       ├── circuits-mac feature "testonly"
+│       │   ├── circuits-mac v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac) (*)
+│       │   ├── circuits-bitvec feature "testonly" (*)
+│       │   ├── circuits-boolean feature "testonly" (*)
+│       │   └── compile-logic feature "testonly" (*)
+│       ├── circuits-sha256 feature "default"
+│       │   └── circuits-sha256 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256)
+│       │       ├── circuits-analog-adder feature "default" (*)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       └── circuits-bit-plucker feature "default" (*)
+│       ├── circuits-sha256 feature "testonly"
+│       │   ├── circuits-sha256 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256) (*)
+│       │   ├── circuits-bitvec feature "testonly" (*)
+│       │   └── compile-logic feature "testonly" (*)
+│       ├── circuits-sha256msg feature "default"
+│       │   └── circuits-sha256msg v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg)
+│       │       ├── circuits-analog-adder feature "default" (*)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       ├── circuits-bit-plucker feature "default" (*)
+│       │       └── circuits-sha256 feature "default" (*)
+│       ├── circuits-sha256msg feature "testonly"
+│       │   ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+│       │   ├── circuits-bitvec feature "testonly" (*)
+│       │   ├── circuits-boolean feature "testonly" (*)
+│       │   ├── compile-logic feature "testonly" (*)
+│       │   └── circuits-sha256 feature "testonly" (*)
+│       ├── compile-compiler feature "default"
+│       │   └── compile-compiler v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/compiler)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── util feature "default" (*)
+│       │       ├── rustc-hash feature "default" (*)
+│       │       ├── compile-proto feature "default" (*)
+│       │       ├── core-proto feature "default" (*)
+│       │       └── bumpalo feature "default"
+│       │           └── bumpalo v3.20.3
+│       ├── mdoc-zk-artifacts feature "default"
+│       │   └── mdoc-zk-artifacts v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts)
+│       ├── mdoc-zk-circuits feature "default"
+│       │   └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits)
+│       │       ├── circuits-analog-adder feature "default" (*)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── num-bigint feature "default" (*)
+│       │       ├── compile-eval feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       ├── sha2 feature "default" (*)
+│       │       ├── circuits-ecdsa2 feature "default" (*)
+│       │       ├── circuits-big-bitvec feature "default" (*)
+│       │       ├── circuits-mac feature "default" (*)
+│       │       ├── circuits-sha256 feature "default" (*)
+│       │       ├── circuits-sha256msg feature "default" (*)
+│       │       ├── compile-compiler feature "default" (*)
+│       │       ├── circuits-mac-gf128 feature "default"
+│       │       │   └── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128)
+│       │       │       ├── circuits-bitvec feature "default" (*)
+│       │       │       ├── circuits-boolean feature "default" (*)
+│       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       ├── core-algebra feature "default" (*)
+│       │       │       ├── compile-eval feature "default" (*)
+│       │       │       ├── compile-logic feature "default" (*)
+│       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       └── circuits-bit-plucker feature "default" (*)
+│       │       ├── circuits-memcmp feature "default"
+│       │       │   └── circuits-memcmp v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp)
+│       │       │       ├── circuits-bitvec feature "default" (*)
+│       │       │       ├── circuits-arithmetic feature "default" (*)
+│       │       │       ├── circuits-boolean feature "default" (*)
+│       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       └── compile-logic feature "default" (*)
+│       │       ├── circuits-routing feature "default"
+│       │       │   └── circuits-routing v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing)
+│       │       │       ├── circuits-bitvec feature "default" (*)
+│       │       │       ├── circuits-arithmetic feature "default" (*)
+│       │       │       ├── circuits-boolean feature "default" (*)
+│       │       │       ├── compile-algebra feature "default" (*)
+│       │       │       └── compile-logic feature "default" (*)
+│       │       ├── mdoc-zk-proto feature "default"
+│       │       │   └── mdoc-zk-proto v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/proto)
+│       │       └── mdoc-zk-testcases feature "default"
+│       │           └── mdoc-zk-testcases v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/testcases)
+│       ├── mdoc-zk-circuits feature "testonly"
+│       │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+│       │   ├── circuits-bitvec feature "testonly" (*)
+│       │   ├── circuits-boolean feature "testonly" (*)
+│       │   ├── compile-logic feature "testonly" (*)
+│       │   ├── runtime-algebra feature "testonly" (*)
+│       │   ├── circuits-ecdsa2 feature "testonly" (*)
+│       │   ├── circuits-big-bitvec feature "testonly" (*)
+│       │   ├── circuits-mac feature "testonly" (*)
+│       │   ├── circuits-sha256 feature "testonly" (*)
+│       │   ├── circuits-sha256msg feature "testonly" (*)
+│       │   ├── mdoc-zk-circuits feature "runtime-algebra"
+│       │   │   └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+│       │   └── circuits-mac-gf128 feature "testonly"
+│       │       ├── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128) (*)
+│       │       ├── circuits-bitvec feature "testonly" (*)
+│       │       ├── circuits-boolean feature "testonly" (*)
+│       │       └── compile-logic feature "testonly" (*)
+│       ├── mdoc-zk-proto feature "default" (*)
+│       ├── mdoc-zk-compile feature "default"
+│       │   └── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile)
+│       │       ├── circuits-analog-adder feature "default" (*)
+│       │       ├── circuits-bitvec feature "default" (*)
+│       │       ├── circuits-boolean feature "default" (*)
+│       │       ├── compile-algebra feature "default" (*)
+│       │       ├── core-algebra feature "default" (*)
+│       │       ├── compile-logic feature "default" (*)
+│       │       ├── runtime-algebra feature "default" (*)
+│       │       ├── core-proto feature "default" (*)
+│       │       ├── circuits-bit-plucker feature "default" (*)
+│       │       ├── circuits-ec feature "default" (*)
+│       │       ├── circuits-ecdsa2 feature "default" (*)
+│       │       ├── circuits-mac feature "default" (*)
+│       │       ├── circuits-sha256 feature "default" (*)
+│       │       ├── circuits-sha256msg feature "default" (*)
+│       │       ├── compile-compiler feature "default" (*)
+│       │       ├── mdoc-zk-circuits feature "default" (*)
+│       │       ├── runtime-ligero feature "default"
+│       │       │   └── runtime-ligero v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero)
+│       │       │       ├── core-algebra feature "default" (*)
+│       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       ├── util feature "default" (*)
+│       │       │       ├── sha2 feature "default" (*)
+│       │       │       ├── runtime-merkle feature "default"
+│       │       │       │   └── runtime-merkle v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle)
+│       │       │       │       ├── sha2 feature "default" (*)
+│       │       │       │       ├── runtime-proto feature "default"
+│       │       │       │       │   └── runtime-proto v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/proto)
+│       │       │       │       │       ├── core-algebra feature "default" (*)
+│       │       │       │       │       ├── runtime-algebra feature "default" (*)
+│       │       │       │       │       ├── util feature "default" (*)
+│       │       │       │       │       └── core-proto feature "default" (*)
+│       │       │       │       └── runtime-random feature "default"
+│       │       │       │           └── runtime-random v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/random)
+│       │       │       │               ├── core-algebra feature "default" (*)
+│       │       │       │               ├── runtime-algebra feature "default" (*)
+│       │       │       │               ├── sha2 feature "default" (*)
+│       │       │       │               ├── aes feature "default"
+│       │       │       │               │   └── aes v0.8.4
+│       │       │       │               │       ├── cfg-if feature "default" (*)
+│       │       │       │               │       ├── cpufeatures feature "default" (*)
+│       │       │       │               │       └── cipher feature "default"
+│       │       │       │               │           └── cipher v0.4.4
+│       │       │       │               │               ├── crypto-common feature "default" (*)
+│       │       │       │               │               └── inout feature "default"
+│       │       │       │               │                   └── inout v0.1.4
+│       │       │       │               │                       └── generic-array feature "default" (*)
+│       │       │       │               └── getrandom feature "default"
+│       │       │       │                   └── getrandom v0.3.4
+│       │       │       │                       └── cfg-if feature "default" (*)
+│       │       │       ├── runtime-proto feature "default" (*)
+│       │       │       └── runtime-random feature "default" (*)
+│       │       ├── runtime-proto feature "default" (*)
+│       │       └── zstd feature "default"
+│       │           ├── zstd v0.13.4
+│       │           │   └── zstd-safe feature "std"
+│       │           │       ├── zstd-safe v7.4.0
+│       │           │       │   └── zstd-sys v2.1.2+zstd.1.5.7
+│       │           │       │       [build-dependencies]
+│       │           │       │       ├── cc feature "default"
+│       │           │       │       │   └── cc v1.11.1
+│       │           │       │       │       ├── jobserver v0.1.35
+│       │           │       │       │       │   └── libc feature "default"
+│       │           │       │       │       │       ├── libc v0.2.191
+│       │           │       │       │       │       └── libc feature "std"
+│       │           │       │       │       │           └── libc v0.2.191
+│       │           │       │       │       ├── libc v0.2.191
+│       │           │       │       │       ├── find-msvc-tools feature "default"
+│       │           │       │       │       │   └── find-msvc-tools v0.1.15
+│       │           │       │       │       └── shlex feature "default"
+│       │           │       │       │           ├── shlex v2.0.1
+│       │           │       │       │           └── shlex feature "std"
+│       │           │       │       │               └── shlex v2.0.1
+│       │           │       │       ├── cc feature "parallel"
+│       │           │       │       │   └── cc v1.11.1 (*)
+│       │           │       │       └── pkg-config feature "default"
+│       │           │       │           └── pkg-config v0.3.34
+│       │           │       └── zstd-sys feature "std"
+│       │           │           └── zstd-sys v2.1.2+zstd.1.5.7 (*)
+│       │           ├── zstd feature "arrays"
+│       │           │   ├── zstd v0.13.4 (*)
+│       │           │   └── zstd-safe feature "arrays"
+│       │           │       └── zstd-safe v7.4.0 (*)
+│       │           ├── zstd feature "legacy"
+│       │           │   ├── zstd v0.13.4 (*)
+│       │           │   └── zstd-safe feature "legacy"
+│       │           │       ├── zstd-safe v7.4.0 (*)
+│       │           │       └── zstd-sys feature "legacy"
+│       │           │           └── zstd-sys v2.1.2+zstd.1.5.7 (*)
+│       │           └── zstd feature "zdict_builder"
+│       │               ├── zstd v0.13.4 (*)
+│       │               └── zstd-safe feature "zdict_builder"
+│       │                   ├── zstd-safe v7.4.0 (*)
+│       │                   └── zstd-sys feature "zdict_builder"
+│       │                       └── zstd-sys v2.1.2+zstd.1.5.7 (*)
+│       ├── runtime-ligero feature "default" (*)
+│       ├── runtime-proto feature "default" (*)
+│       ├── runtime-random feature "default" (*)
+│       ├── zstd feature "default" (*)
+│       └── runtime-zk feature "default"
+│           └── runtime-zk v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk)
+│               ├── core-algebra feature "default" (*)
+│               ├── runtime-algebra feature "default" (*)
+│               ├── core-proto feature "default" (*)
+│               ├── runtime-ligero feature "default" (*)
+│               ├── runtime-proto feature "default" (*)
+│               ├── runtime-random feature "default" (*)
+│               └── runtime-sumcheck feature "default"
+│                   └── runtime-sumcheck v0.1.0 (/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck)
+│                       ├── core-algebra feature "default" (*)
+│                       ├── runtime-algebra feature "default" (*)
+│                       ├── core-proto feature "default" (*)
+│                       ├── runtime-proto feature "default" (*)
+│                       └── runtime-random feature "default" (*)
+└── zstd feature "default" (*)

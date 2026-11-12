@@ -58,7 +58,7 @@ actual object Pkix {
     private val bc: Provider by lazy { BouncyCastleProvider() }
     private val bcFactory: CertificateFactory by lazy { CertificateFactory.getInstance("X.509", bc) }
 
-    actual fun anchorOf(chain: List<X509Cert>, anchors: List<X509Cert>, at: Instant): X509Cert? {
+    actual fun anchorOf(chain: List<X509Cert>, anchors: List<X509Cert>, at: Instant, bouncyCastle: Boolean): X509Cert? {
         if (chain.isEmpty() || anchors.isEmpty()) return null
         val first = chain.first()
         if (first in anchors) return first.takeIf { at in it.validityNotBefore..it.validityNotAfter }
@@ -66,7 +66,7 @@ actual object Pkix {
         val path = chain.takeWhile { it !in anchors }
         // Shorter paths too: a bundle may carry a cross-signed copy of a root (DigiCert Trusted Root G4 signed by
         // Assured ID Root CA), whose own issuer is not an anchor while the self-signed root with the same key is.
-        val national = (path + anchors).any { isNational(it) }
+        val national = bouncyCastle || (path + anchors).any { isNational(it) }
         for (n in path.size downTo 1) {
             val p = path.subList(0, n)
             // The platform providers first; SM2 chains, or anchors that are SM2 roots, need BouncyCastle.

@@ -136,6 +136,14 @@ class DesktopPlatform(
 
     override val zk: ZkEnvironment by lazy { JvmZkEnvironment(dataDir, httpClient()) { desktopZkInfo(dataDir) } }
 
+    /** JPEG 2000 chip portraits need the native library, which is loaded (once) before decoding them. */
+    override fun decodeImage(bytes: ByteArray): androidx.compose.ui.graphics.ImageBitmap? {
+        if (diw.wallet.core.document.image.ImageKind.of(bytes) == diw.wallet.core.document.image.ImageKind.JPEG2000) {
+            diw.wallet.core.zk.native.ZkNative.load(dataDir)
+        }
+        return diw.wallet.app.decodeImageBytes(bytes)
+    }
+
     override fun openBrowser(url: String) {
         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
             Desktop.getDesktop().browse(URI(url))
@@ -223,6 +231,7 @@ internal fun desktopZkInfo(dataDir: File): ZkPlatformInfo {
     val x64 = arch == "amd64" || arch == "x86_64"
     val abi = when {
         os.contains("linux") && x64 -> "linux-x86_64"
+        os.contains("linux") && (arch == "aarch64" || arch == "arm64") -> "linux-aarch64"
         os.contains("windows") && x64 -> "windows-x86_64"
         os.contains("mac") && (arch == "aarch64" || arch == "arm64") -> "macos-aarch64"
         else -> "$os-$arch"

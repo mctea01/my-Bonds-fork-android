@@ -1,0 +1,58 @@
+   Compiling libc v0.2.191
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.15
+   Compiling version_check v0.9.5
+   Compiling generic-array v0.14.7
+   Compiling autocfg v1.5.1
+   Compiling typenum v1.20.1
+   Compiling jobserver v0.1.35
+   Compiling cc v1.11.1
+   Compiling num-traits v0.2.19
+   Compiling core-algebra v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/algebra)
+   Compiling num-integer v0.1.47
+   Compiling crypto-common v0.1.7
+   Compiling num-bigint v0.4.8
+   Compiling sha2-asm v0.6.4
+   Compiling cfg-if v1.0.5
+   Compiling rustc-hash v2.1.3
+   Compiling util v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/util)
+warning: sha2-asm@0.6.4: /workspace/native-research-env/arm64/toolchain/usr/bin/../lib/gcc-cross/aarch64-linux-gnu/14/../../../../aarch64-linux-gnu/bin/as: error while loading shared libraries: libopcodes-2.44-arm64.so: cannot open shared object file: No such file or directory
+error: failed to run custom build command for `sha2-asm v0.6.4`
+
+Caused by:
+  process didn't exit successfully: `/workspace/native-research-env/arm64/target/release/build/sha2-asm-c01ceec288493796/build-script-build` (exit status: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=CC_FORCE_DISABLE
+  CC_FORCE_DISABLE = None
+  cargo:rerun-if-env-changed=CC_aarch64-unknown-linux-gnu
+  CC_aarch64-unknown-linux-gnu = None
+  cargo:rerun-if-env-changed=CC_aarch64_unknown_linux_gnu
+  CC_aarch64_unknown_linux_gnu = Some(/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14)
+  cargo:rerun-if-env-changed=CC_ENABLE_DEBUG_OUTPUT
+  cargo:rerun-if-env-changed=CPATH
+  cargo:rerun-if-env-changed=C_INCLUDE_PATH
+  cargo:rerun-if-env-changed=CPLUS_INCLUDE_PATH
+  cargo:rerun-if-env-changed=OBJC_INCLUDE_PATH
+  cargo:rerun-if-env-changed=OBJCPLUS_INCLUDE_PATH
+  cargo:rerun-if-env-changed=COMPILER_PATH
+  cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH
+  cargo:rerun-if-env-changed=GCC_EXEC_PREFIX
+  cargo:rerun-if-env-changed=CRATE_CC_NO_DEFAULTS
+  CRATE_CC_NO_DEFAULTS = None
+  cargo:rerun-if-env-changed=CFLAGS
+  CFLAGS = None
+  cargo:rerun-if-env-changed=TARGET_CFLAGS
+  TARGET_CFLAGS = None
+  cargo:rerun-if-env-changed=CFLAGS_aarch64_unknown_linux_gnu
+  CFLAGS_aarch64_unknown_linux_gnu = None
+  cargo:rerun-if-env-changed=CFLAGS_aarch64-unknown-linux-gnu
+  CFLAGS_aarch64-unknown-linux-gnu = None
+  cargo:warning=/workspace/native-research-env/arm64/toolchain/usr/bin/../lib/gcc-cross/aarch64-linux-gnu/14/../../../../aarch64-linux-gnu/bin/as: error while loading shared libraries: libopcodes-2.44-arm64.so: cannot open shared object file: No such file or directory
+
+  --- stderr
+
+
+  error occurred in cc-rs: command did not execute successfully (status code exit status: 1): "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-gcc-14" "-O3" "-ffunction-sections" "-fdata-sections" "-fPIC" "-Wall" "-Wextra" "-march=armv8-a+crypto" "-c" "-o" "/workspace/native-research-env/arm64/target/aarch64-unknown-linux-gnu/release/build/sha2-asm-c18ae1d2709efbbc/out/bad235c715801076-sha256_aarch64.o" "-c" "src/sha256_aarch64.S"
+
+
+warning: build failed, waiting for other jobs to finish...

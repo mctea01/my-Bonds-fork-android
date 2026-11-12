@@ -23,8 +23,10 @@ env:
   # again. Local builds keep the default ("auto"), which still builds it from source.
   DIW_ZK_NATIVE: prebuilt
   # Link the OpenAC age-proof (needs protoc and libclang), TLSNotary and zkPDF (Barretenberg, a C++ build with CMake and
-  # Ninja) backends. The desktop matrix leaves zkPDF out on Windows (no port of Barretenberg 6.0.0).
-  DIW_ZK_FEATURES: openac,tlsn,zkpdf
+  # Ninja) backends. bb5 also builds the
+  # separate Barretenberg 5 library (native/zkpassport-bb5) for zkPassport circuits before 0.22.0: the Play on-demand
+  # module features/bb5 on Android, a resource next to libdiw_zk on the desktop.
+  DIW_ZK_FEATURES: openac,tlsn,zkpdf,bb5
   # Release Rust builds are not incremental anyway; this keeps a stray dev build from writing incremental state, and
   # no debug info is generated (smaller target directories on the small runner disks).
   CARGO_INCREMENTAL: 0
@@ -92,18 +94,28 @@ jobs:
           path: |
             native/target/bb-source
             native/target/bb-${{ matrix.target }}
-          key: bb-6.0.0-${{ matrix.target }}-ndk28.2.13676358-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
-      - name: Build libdiw_zk.so (${{ matrix.abi }})
+          key: bb-6.0.0-${{ matrix.target }}-ndk28.2.13676358-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
+      - name: Cache Barretenberg 5 (Android ${{ matrix.abi }})
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-v5
+            native/target/bb5-${{ matrix.target }}
+          key: bb-5.0.0-${{ matrix.target }}-ndk28.2.13676358-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
+      - name: Build libdiw_zk.so and libdiw_bb5.so (${{ matrix.abi }})
         run: |
           bash native/build.sh android
-          ls -l native/dist/android/*/
+          ls -l native/dist/android/*/ native/dist/android-bb5/*/
           df -h /
       - name: Upload ${{ matrix.abi }} library
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: zk-native-android-${{ matrix.abi }}
-          # The directory, so the artifact keeps the <abi>/libdiw_zk.so layout that jniLibs expects.
-          path: native/dist/android/
+          # Both directories, so the artifact keeps the android/<abi>/libdiw_zk.so and android-bb5/<abi>/libdiw_bb5.so
+          # layout under native/dist that the jniLibs of app and features/bb5 expect.
+          path: |
+            native/dist/android/
+            native/dist/android-bb5/
           if-no-files-found: error
           retention-days: 3
           compression-level: 6
@@ -148,8 +160,15 @@ jobs:
           path: |
             native/target/bb-source
             native/target/bb-x86_64-unknown-linux-gnu
-          key: bb-6.0.0-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
-      - name: Build libdiw_zk.so (linux-x86_64)
+          key: bb-6.0.0-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
+      - name: Cache Barretenberg 5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-v5
+            native/target/bb5-x86_64-unknown-linux-gnu
+          key: bb-5.0.0-x86_64-linux-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
+      - name: Build libdiw_zk.so and libdiw_bb5.so (linux-x86_64)
         run: |
           bash native/build.sh host
           ls -lR native/dist/resources
@@ -169,20 +188,86 @@ jobs:
           if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' -exec rm -rf {} +; fi
           df -h /
 
-  # Windows (without zkPDF, see DIW_ZK_FEATURES above) and macOS desktop libraries. On macOS the zkPDF backend is also
-  # checked end to end: ZkPdfCircuitTest proves and verifies the synthetic document with the published assets.
+  # The Windows library, cross-built on Linux with llvm-mingw (clang, lld, libc++, libunwind, compiler-rt and the
+  # mingw-w64 UCRT; native/build.sh fetches the pinned release): Barretenberg (zkPDF and the Barretenberg 5 library)
+  # cannot be built on a Windows host. native/build.sh checks that the DLLs import system libraries only and hold
+  # nothing built by GCC; the Windows leg of the desktop job loads them and proves a document on a real Windows
+  # runner.
+  native-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # Large preinstalled toolchains this job never uses, the Android SDK included.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/swift \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/microsoft /opt/google /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /usr/local/lib/android
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Only the crate registry and git checkouts; see native-android.
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native
+          shared-key: zk-native
+          cache-targets: false
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # protoc and libclang for OpenAC, Ninja and CMake for Barretenberg. The Windows cross toolchain is llvm-mingw,
+      # which native/build.sh fetches itself.
+      - name: ZK native build tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
+      - name: Cache Barretenberg (Windows)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-x86_64-pc-windows-gnullvm
+          key: bb-6.0.0-x86_64-windows-gnullvm-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/llvm_mingw.py') }}
+      - name: Cache Barretenberg 5 (Windows)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-v5
+            native/target/bb5-x86_64-pc-windows-gnullvm
+          key: bb-5.0.0-x86_64-windows-gnullvm-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/llvm_mingw.py') }}
+      - name: Build diw_zk.dll and diw_bb5.dll (windows-x86_64)
+        run: |
+          bash native/build.sh x86_64-pc-windows-gnullvm
+          ls -lR native/dist/resources
+          df -h /
+      - name: Upload windows library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-native-windows
+          path: native/dist/resources/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+      # Leaves only the cached Barretenberg directories, so saving the caches has room for its archive.
+      - name: Drop intermediate build files
+        if: always()
+        run: |
+          if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' ! -name 'bb5-*' -exec rm -rf {} +; fi
+          df -h /
+
+  # The macOS desktop library. The zkPDF backend is also checked end to end: ZkPdfCircuitTest proves and verifies the
+  # synthetic document with the published assets.
   native-desktop:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: windows
-            features: openac,tlsn
           # Apple silicon.
           - os: macos-latest
             name: macos
-            features: openac,tlsn,zkpdf
+            features: openac,tlsn,zkpdf,bb5
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
@@ -202,12 +287,6 @@ jobs:
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
-      - name: Install Windows build tools
-        if: runner.os == 'Windows'
-        run: |
-          choco install protoc -y --no-progress
-          if [ ! -f "/c/Program Files/LLVM/bin/libclang.dll" ]; then choco install llvm -y --no-progress; fi
-          printf '%s\n' 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
       - name: Install macOS build tools
         if: runner.os == 'macOS'
         run: |
@@ -221,7 +300,15 @@ jobs:
           path: |
             native/target/bb-source
             native/target/bb-aarch64-apple-darwin
-          key: bb-6.0.0-aarch64-apple-darwin-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py') }}
+          key: bb-6.0.0-aarch64-apple-darwin-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
+      - name: Cache Barretenberg 5 (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-v5
+            native/target/bb5-aarch64-apple-darwin
+          key: bb-5.0.0-aarch64-apple-darwin-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake') }}
       - name: Build the ${{ matrix.name }} library
         run: |
           bash native/build.sh host
@@ -313,6 +400,9 @@ jobs:
       - name: Application signing key build tests
         run: python3 tools/twdiw/test_generate_application_key.py
       - name: Core and protocol tests
+        env:
+          # The Linux library from native-linux carries Barretenberg 5; ZkPassportLegacyTest must not skip.
+          DIW_REQUIRE_BB5: "1"
         run: ./gradlew --no-daemon --stacktrace --continue :core:allTests :test-servers:test
       - name: App flow tests (desktop)
         if: success() || failure()
@@ -403,12 +493,13 @@ jobs:
       # cargo-ndk and the C++ tools are in native-android.
       - name: Pinned NDK
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;28.2.13676358' > /dev/null
-      # Both ABIs from native-android, merged into native/dist/android/<abi>/libdiw_zk.so (the jniLibs directory).
+      # Both ABIs from native-android, merged into native/dist/android/<abi>/libdiw_zk.so and
+      # native/dist/android-bb5/<abi>/libdiw_bb5.so (the jniLibs directories of app and features/bb5).
       - name: ZK native libraries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: zk-native-android-*
-          path: native/dist/android
+          path: native/dist
           merge-multiple: true
 
       - name: Signing keys
@@ -454,19 +545,22 @@ jobs:
           rm -f "$RUNNER_TEMP/keys.txt"
           echo "DIW_KEYSTORE_FILE=$jks" >> "$GITHUB_ENV"
           echo "Using the release keystore from secrets"
+      # The APKs come from the bundle with bundletool (tools/bundle-apks.sh), so they carry the on-demand modules of
+      # features/ that Google Play installs separately, with the same code, version and signature as the bundle.
       - name: Android APK and AAB (debug)
         run: |
-          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleDebug :app:bundleDebug
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:bundleDebug
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/DIW-MY-WALLET-$APP_VERSION-debug.apk"
           cp app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug.aab"
+          bash tools/bundle-apks.sh debug app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug" --universal-only
       - name: Android APK and AAB (release)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:assembleRelease :app:bundleRelease
+          ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:bundleRelease
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/DIW-MY-WALLET-$APP_VERSION.apk"
           cp app/build/outputs/bundle/release/app-release.aab "dist/DIW-MY-WALLET-$APP_VERSION.aab"
+          # One APK with everything, one per ABI, and the split set (.apks) as Play would deliver it.
+          bash tools/bundle-apks.sh release app/build/outputs/bundle/release/app-release.aab "dist/DIW-MY-WALLET-$APP_VERSION"
           # R8 mapping of this build, uploaded to Google Play with the bundle to read obfuscated crash reports.
           cp app/build/outputs/mapping/release/mapping.txt "dist/DIW-MY-WALLET-$APP_VERSION-mapping.txt"
       - name: Upload Android packages
@@ -476,6 +570,7 @@ jobs:
           name: android
           path: |
             dist/*.apk
+            dist/*.apks
             dist/*.aab
             dist/*-mapping.txt
           retention-days: 14
@@ -483,7 +578,7 @@ jobs:
   desktop:
     # Each package needs its own library. The legs still run when a native job of another OS failed; a leg whose library
     # is missing fails at the download step.
-    needs: [native-linux, native-desktop]
+    needs: [native-linux, native-windows, native-desktop]
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -492,7 +587,7 @@ jobs:
           - os: windows-latest
             name: windows
             tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
-            features: openac,tlsn
+            features: openac,tlsn,zkpdf
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
@@ -534,6 +629,29 @@ jobs:
         with:
           name: zk-native-${{ matrix.name }}
           path: native/dist/resources
+      - name: Cache zkPDF assets (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/zkpdf-assets
+          key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
+      # The cross-built library on a real Windows: it must load with every backend it was built with (ZkNativeTest),
+      # and prove and verify the synthetic document with the published assets (ZkPdfCircuitTest).
+      - name: ZK native library and zkPDF proof on Windows
+        if: runner.os == 'Windows'
+        run: |
+          python -I native/circuits/tools/fetch_assets.py --output "$HOME/zkpdf-assets"
+          ZKPDF_ASSETS_DIR="$HOME/zkpdf-assets" ./gradlew --no-daemon --stacktrace :test-servers:test \
+            --tests 'diw.testservers.zk.ZkNativeTest' --tests 'diw.testservers.zkpdf.ZkPdfCircuitTest' -Pdiw.zkNative=prebuilt
+          python -I - <<'PY'
+          import pathlib, sys, xml.etree.ElementTree as ET
+          reports = list(pathlib.Path("test-servers/build/test-results/test").glob("*.xml"))
+          cases = [c for r in reports for c in ET.parse(r).getroot().iter("testcase")]
+          proofs = [c for c in cases if c.get("name", "").startswith("syntheticDocumentThroughUniffi")]
+          loads = [c for c in cases if c.get("classname", "").endswith("ZkNativeTest")]
+          if not proofs or not loads or any(c.find("skipped") is not None for c in proofs + loads):
+              sys.exit("the ZK native library tests did not run on Windows")
+          PY
       # fakeroot builds the .deb; xvfb starts the release build below.
       - name: Install deb tools
         if: runner.os == 'Linux'
@@ -594,7 +712,7 @@ jobs:
           cat > notes.md <<EOF
           Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
 
-          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized), with .aab for bundle distribution and -mapping.txt (R8 mapping, for Google Play). The -debug.apk and -debug.aab are test builds.
+          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized, both ABIs and every optional component), -arm64-v8a.apk and -x86_64.apk (one ABI, smaller), .apks (split set for split installers), .aab for bundle distribution and -mapping.txt (R8 mapping, for Google Play). All are made from the same bundle as the Google Play release. The -debug.apk and -debug.aab are test builds.
           - Windows: .msi installer, no admin rights needed
           - Linux: .deb package (Debian, Ubuntu)
           - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar

@@ -1,0 +1,5 @@
+
+/workspace/native-research-env/windows-bb/verified/diw-bridge.exe:     file format pei-x86-64
+architecture: i386:x86-64, flags 0x0000012f:
+HAS_RELOC, EXEC_P, HAS_LINENO, HAS_DEBUG, HAS_LOCALS, D_PAGED
+start address 0x00000001400098d0

@@ -222,4 +222,5 @@ private fun DocumentResult(model: WalletModel, d: ReadDocument, risk: RiskLevel)
     d.claims.filter { it.picture == null }.forEach { c -> LabelValue(c.label, c.value) }
     if (d.claims.isEmpty()) Text(stringResource(Res.string.reader_nothing_disclosed), style = MaterialTheme.typography.bodySmall)
     if (d.withheld.isNotEmpty()) Text(stringResource(Res.string.reader_not_given) + d.withheld.joinToString(stringResource(Res.string.sep_list)), style = MaterialTheme.typography.bodySmall)
+    EvidenceRows(d.evidence)
 }

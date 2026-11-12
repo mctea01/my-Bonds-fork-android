@@ -28,7 +28,10 @@ fn protect_worker_panics() {
 uniffi::setup_scaffolding!("diw_zk");
 
 mod bbs;
+mod image;
 mod openac;
+mod oprf;
+mod zkpassport;
 mod zkpdf;
 mod zktls;
 
@@ -129,6 +132,9 @@ pub fn native_info() -> ZkNativeInfo {
             }
             if cfg!(feature = "zkpdf") {
                 features.push("zkpdf".into());
+            }
+            if cfg!(feature = "oprf") {
+                features.push("oprf".into());
             }
             features
         },

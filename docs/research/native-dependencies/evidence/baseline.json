@@ -1,0 +1,95 @@
+{
+  "date": "2026-11-09",
+  "repository": "https://github.com/mctea01/my-Bonds-fork-android",
+  "branch": "claude/native-dependencies-pc-research",
+  "baseline": "3428b8ee12ac5e644f478d4c6e43854376202fa4",
+  "specified_baseline": "3428b8ee12ac5e644f478d4c6e43854376202fa4",
+  "baseline_difference": "none",
+  "initial_branch": "work",
+  "initial_commit": "894e0527f65599b7125fcc2e090f0ecc4e591779",
+  "source_sha256": {
+    "native/Cargo.toml": "3f3a9607509087902655abcb1411f8e882f8f7385f44e500e50a3b6910811a43",
+    "native/Cargo.lock": "5dda1198e907f603cd79a85f764d85e03dc0d491df510f9f4f2796667379988a",
+    "native/rust-toolchain.toml": "d13306be0ecda81ce779baa290ffb417380d525928477f16200884b5169cca33",
+    "gradle/libs.versions.toml": "2c8ec30e497091c7f67bc99c8d4ec70a2c78cea7f352800d26f230a1fb58e1b5",
+    "native/zkpdf-prover/tools/build_bb.py": "f4d5f15f2a40d78d364beeaee1a7bd80b0dd1e13a6ac482d26748b9493d2d5b7",
+    "native/zkpdf-prover/build.rs": "985a02999c3f4802fc0339fb97ddd3561ebc96505c464575695809b812847614",
+    "native/zkpdf-prover/cpp/bridge.cpp": "645bdd6f584a0969318391b8d3cc71f6a320cdbc8854af39a9cd777808faf16b"
+  },
+  "rust_toolchain": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+  "cargo_target_dir": "/workspace/native-research-env/target",
+  "commands": [
+    {
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "build",
+        "--manifest-path",
+        "native/Cargo.toml",
+        "--locked",
+        "-p",
+        "diw-zk-ffi",
+        "--no-default-features"
+      ],
+      "exit_code": 0,
+      "log": "runtime-build.log"
+    },
+    {
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "test",
+        "--manifest-path",
+        "native/Cargo.toml",
+        "--locked",
+        "-p",
+        "diw-zk-ffi",
+        "--no-default-features",
+        "--features",
+        "oprf",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "target_dir": "/workspace/native-research-env/target-oprf",
+      "log": "oprf-tests.log",
+      "result": "10 passed; 0 failed; includes 3 OPRF tests; no BB proof verification"
+    },
+    {
+      "argv": [
+        "./gradlew",
+        ":app:dependencies",
+        "--configuration",
+        "desktopRuntimeClasspath",
+        "-Pdiw.zkNative=skip",
+        "--console=plain",
+        "--no-daemon"
+      ],
+      "environment": {
+        "JAVA_HOME": "/workspace/jdk-21",
+        "GRADLE_USER_HOME": "/workspace/gradle-home"
+      },
+      "exit_code": 0,
+      "log": "gradle-desktop-online.txt",
+      "result": "resolved dependency report;no FAILED nodes;not application build"
+    },
+    {
+      "argv": [
+        "./gradlew",
+        ":app:dependencies",
+        "--configuration",
+        "releaseRuntimeClasspath",
+        "-Pdiw.zkNative=skip",
+        "--console=plain",
+        "--no-daemon"
+      ],
+      "environment": {
+        "JAVA_HOME": "/workspace/jdk-21",
+        "GRADLE_USER_HOME": "/workspace/gradle-home"
+      },
+      "exit_code": 0,
+      "log": "gradle-android-online.txt",
+      "result": "resolved dependency report;no FAILED nodes;not application build"
+    }
+  ],
+  "request_spec_sha256": "624fadc7260540f46e38059761841e671349534eaf9bc501a037f8093da68ce9"
+}

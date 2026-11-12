@@ -1,8 +1,18 @@
-# Release build (R8). Libraries below load classes by name, through JNI or ServiceLoader,
-# so they are kept whole; the app and remaining libraries are shrunk and optimized.
+# Release build (R8). Only what is loaded by name, through JNI or ServiceLoader is kept, and no wider than that:
+# Google Play reports package-wide keep rules as insufficient DEX optimization.
 
-# Bouncy Castle JCA provider: algorithm classes are looked up by name.
--keep class org.bouncycastle.** { *; }
+# Bouncy Castle JCA providers register their algorithm classes by name and create them by reflection, so those
+# classes keep their names and constructors; the rest of Bouncy Castle is shrunk and optimized like other code.
+-keep class org.bouncycastle.jcajce.provider.** { <init>(...); }
+-keep class org.bouncycastle.jce.provider.** { <init>(...); }
+-keep class org.bouncycastle.pqc.jcajce.provider.** { <init>(...); }
+# Multipaz reaches the ML-DSA and ML-KEM lightweight API by reflection (org.multipaz.crypto.BouncyCastlePqc).
+-keep class org.bouncycastle.pqc.crypto.mldsa.** { *; }
+-keep class org.bouncycastle.pqc.crypto.mlkem.** { *; }
+-keep class org.bouncycastle.crypto.AsymmetricCipherKeyPair { *; }
+-keep class org.bouncycastle.crypto.SecretWithEncapsulation { *; }
+-keep class org.bouncycastle.crypto.KeyGenerationParameters { *; }
+-keep class org.bouncycastle.crypto.params.AsymmetricKeyParameter { *; }
 -dontwarn org.bouncycastle.**
 
 # Xerces DOM for XML with non-ASCII names; the factory is created by reflection and loads its parts by name.
@@ -16,9 +26,14 @@
 -dontwarn javax.xml.**
 -dontwarn org.apache.xml.resolver.**
 
-# Multipaz: CBOR/COSE types, secure areas and Android Keystore glue.
--keep class org.multipaz.** { *; }
+# Multipaz is shrunk and optimized; its Longfellow natives are kept by the library's own rules. The credential
+# database function is called by name (AndroidPlatform.credentialDatabase).
+-keep class org.multipaz.digitalcredentials.DigitalCredentialsCredmanKt { public static *** calculateCredentialDatabase(...); }
 -dontwarn org.multipaz.**
+
+# Tesseract4Android: the native library reads and calls these classes through JNI by name (42 small classes).
+-keep class com.googlecode.tesseract.android.** { *; }
+-keep class com.googlecode.leptonica.android.** { *; }
 
 # Wallet state stored as JSON (kotlinx.serialization keeps generated serializers through its own rules).
 -keep class diw.wallet.core.oid4vci.IssuanceRecord { *; }

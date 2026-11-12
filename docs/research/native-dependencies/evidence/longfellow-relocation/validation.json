@@ -1,0 +1,85 @@
+{
+  "scope": "Consistency and guard checks for Wine relocation experiment",
+  "checks": {
+    "all_recorded_inputs_and_artifacts_sha256": "passed",
+    "19_successful_build_commands_and_expected_relocation_control_exit9": "passed",
+    "source_restored_exactly_two_research_patches": "passed",
+    "only_lfa2_loader_changed_all_12_archive_bytes_match_git": "passed",
+    "12_materializations_invalid_spec_and_public_proof_suite": "passed",
+    "dll_import_set_unchanged": "passed",
+    "four_guards_before_source_rename": "passed",
+    "python_matrices_and_no_production_changes": "passed",
+    "research_json_and_local_markdown_links": "passed"
+  },
+  "asset_bytes": 5211704,
+  "dll_bytes": {
+    "baseline": 2801664,
+    "embedded": 8010240
+  },
+  "guards": [
+    {
+      "name": "repo-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_relocation.py",
+        "--build-dir",
+        "/workspace/native-research-env/longfellow/embedded",
+        "--baseline-dir",
+        "/workspace/native-research-env/longfellow/verified3",
+        "--out",
+        "/workspace/my-Bonds-fork-android/probe-output"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "outside the repository",
+      "source_untouched": true
+    },
+    {
+      "name": "nonempty-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_relocation.py",
+        "--build-dir",
+        "/workspace/native-research-env/longfellow/embedded",
+        "--baseline-dir",
+        "/workspace/native-research-env/longfellow/verified3",
+        "--out",
+        "/workspace/native-research-env/longfellow/relocation-verified"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "new empty output",
+      "source_untouched": true
+    },
+    {
+      "name": "baseline-hash",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_relocation.py",
+        "--build-dir",
+        "/workspace/native-research-env/longfellow/embedded",
+        "--baseline-dir",
+        "/workspace/native-research-env/longfellow/relocation-guards-zrrrzz5y/bad-baseline",
+        "--out",
+        "/workspace/native-research-env/longfellow/relocation-guards-zrrrzz5y/out-baseline"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "baseline DLL SHA-256 mismatch",
+      "source_untouched": true
+    },
+    {
+      "name": "embedded-hash",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_relocation.py",
+        "--build-dir",
+        "/workspace/native-research-env/longfellow/relocation-guards-zrrrzz5y/bad-build",
+        "--baseline-dir",
+        "/workspace/native-research-env/longfellow/verified3",
+        "--out",
+        "/workspace/native-research-env/longfellow/relocation-guards-zrrrzz5y/out-build"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "embedded DLL SHA-256 mismatch",
+      "source_untouched": true
+    }
+  ]
+}
