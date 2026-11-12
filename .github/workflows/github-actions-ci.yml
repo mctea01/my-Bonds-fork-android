@@ -23,7 +23,7 @@ env:
   # again. Local builds keep the default ("auto"), which still builds it from source.
   DIW_ZK_NATIVE: prebuilt
   # Link the OpenAC age-proof (needs protoc and libclang), TLSNotary and zkPDF (Barretenberg, a C++ build with CMake and
-  # Ninja) backends. The desktop matrix leaves zkPDF out on Windows (no port of Barretenberg 6.0.0). bb5 also builds the
+  # Ninja) backends. bb5 also builds the
   # separate Barretenberg 5 library (native/zkpassport-bb5) for zkPassport circuits before 0.22.0: the Play on-demand
   # module features/bb5 on Android, a resource next to libdiw_zk on the desktop.
   DIW_ZK_FEATURES: openac,tlsn,zkpdf,bb5
@@ -188,16 +188,91 @@ jobs:
           if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' -exec rm -rf {} +; fi
           df -h /
 
-  # Windows (without zkPDF, see DIW_ZK_FEATURES above) and macOS desktop libraries. On macOS the zkPDF backend is also
-  # checked end to end: ZkPdfCircuitTest proves and verifies the synthetic document with the published assets.
+  # The Windows library, cross-built on Linux for the GNU ABI with clang, lld and MinGW-w64: Barretenberg (zkPDF and
+  # the Barretenberg 5 library) cannot be built on a Windows host. The DLLs depend on system libraries only; the
+  # Windows leg of the desktop job loads them and proves a document on a real Windows runner.
+  native-windows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      # Large preinstalled toolchains this job never uses, the Android SDK included.
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/local/share/swift \
+            /usr/share/swift /usr/local/share/powershell /usr/local/share/chromium /opt/microsoft /opt/google /opt/az \
+            /usr/local/julia* /opt/hostedtoolcache/go /opt/hostedtoolcache/PyPy /opt/hostedtoolcache/Ruby \
+            /usr/local/lib/android
+          sudo docker image prune --all --force > /dev/null || true
+          df -h /
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Only the crate registry and git checkouts; see native-android.
+      - name: Cache Rust crates
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native
+          shared-key: zk-native
+          cache-targets: false
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # protoc and libclang for OpenAC, Ninja and CMake for Barretenberg; clang, lld and MinGW-w64 (headers, runtime,
+      # libstdc++ and binutils) are the Windows cross toolchain of native/build.sh.
+      - name: ZK native build tools and the Windows cross toolchain
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake clang lld g++-mingw-w64-x86-64-posix
+      - name: Cache Barretenberg (Windows)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-source
+            native/target/bb-x86_64-pc-windows-gnu
+          key: bb-6.0.0-x86_64-windows-gnu-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/mingw_libstdcxx.h') }}
+      - name: Cache Barretenberg 5 (Windows)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            native/target/bb-v5
+            native/target/bb5-x86_64-pc-windows-gnu
+          key: bb-5.0.0-x86_64-windows-gnu-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/mingw_libstdcxx.h') }}
+      - name: Build diw_zk.dll and diw_bb5.dll (windows-x86_64)
+        run: |
+          bash native/build.sh x86_64-pc-windows-gnu
+          ls -lR native/dist/resources
+          # Nothing but Windows system libraries may be imported.
+          for dll in native/dist/resources/zk/native/windows-x86_64/*.dll; do
+            imports=$(x86_64-w64-mingw32-objdump -p "$dll" | sed -n 's/^\s*DLL Name: //p' | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
+            echo "$dll imports: $imports"
+            for name in $imports; do
+              case "$name" in
+                kernel32.dll|ntdll.dll|msvcrt.dll|advapi32.dll|bcrypt.dll|bcryptprimitives.dll|ws2_32.dll|userenv.dll|api-ms-win-core-synch-l1-2-0.dll) ;;
+                *) echo "::error::$dll imports $name"; exit 1 ;;
+              esac
+            done
+          done
+          df -h /
+      - name: Upload windows library
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: zk-native-windows
+          path: native/dist/resources/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+      # Leaves only the cached Barretenberg directories, so saving the caches has room for its archive.
+      - name: Drop intermediate build files
+        if: always()
+        run: |
+          if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' ! -name 'bb5-*' -exec rm -rf {} +; fi
+          df -h /
+
+  # The macOS desktop library. The zkPDF backend is also checked end to end: ZkPdfCircuitTest proves and verifies the
+  # synthetic document with the published assets.
   native-desktop:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            name: windows
-            features: openac,tlsn
           # Apple silicon.
           - os: macos-latest
             name: macos
@@ -221,12 +296,6 @@ jobs:
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # OpenAC's witness runtime runs protoc and bindgen (libclang) at build time.
-      - name: Install Windows build tools
-        if: runner.os == 'Windows'
-        run: |
-          choco install protoc -y --no-progress
-          if [ ! -f "/c/Program Files/LLVM/bin/libclang.dll" ]; then choco install llvm -y --no-progress; fi
-          printf '%s\n' 'LIBCLANG_PATH=C:\Program Files\LLVM\bin' >> "$GITHUB_ENV"
       - name: Install macOS build tools
         if: runner.os == 'macOS'
         run: |
@@ -518,7 +587,7 @@ jobs:
   desktop:
     # Each package needs its own library. The legs still run when a native job of another OS failed; a leg whose library
     # is missing fails at the download step.
-    needs: [native-linux, native-desktop]
+    needs: [native-linux, native-windows, native-desktop]
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
@@ -527,7 +596,7 @@ jobs:
           - os: windows-latest
             name: windows
             tasks: ":app:packageReleaseMsi :app:packageReleaseUberJarForCurrentOS"
-            features: openac,tlsn
+            features: openac,tlsn,zkpdf
           - os: ubuntu-latest
             name: linux
             tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
@@ -569,6 +638,29 @@ jobs:
         with:
           name: zk-native-${{ matrix.name }}
           path: native/dist/resources
+      - name: Cache zkPDF assets (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/zkpdf-assets
+          key: zkpdf-assets-${{ hashFiles('native/assets.json') }}
+      # The cross-built library on a real Windows: it must load with every backend it was built with (ZkNativeTest),
+      # and prove and verify the synthetic document with the published assets (ZkPdfCircuitTest).
+      - name: ZK native library and zkPDF proof on Windows
+        if: runner.os == 'Windows'
+        run: |
+          python -I native/circuits/tools/fetch_assets.py --output "$HOME/zkpdf-assets"
+          ZKPDF_ASSETS_DIR="$HOME/zkpdf-assets" ./gradlew --no-daemon --stacktrace :test-servers:test \
+            --tests 'diw.testservers.zk.ZkNativeTest' --tests 'diw.testservers.zkpdf.ZkPdfCircuitTest' -Pdiw.zkNative=prebuilt
+          python -I - <<'PY'
+          import pathlib, sys, xml.etree.ElementTree as ET
+          reports = list(pathlib.Path("test-servers/build/test-results/test").glob("*.xml"))
+          cases = [c for r in reports for c in ET.parse(r).getroot().iter("testcase")]
+          proofs = [c for c in cases if c.get("name", "").startswith("syntheticDocumentThroughUniffi")]
+          loads = [c for c in cases if c.get("classname", "").endswith("ZkNativeTest")]
+          if not proofs or not loads or any(c.find("skipped") is not None for c in proofs + loads):
+              sys.exit("the ZK native library tests did not run on Windows")
+          PY
       # fakeroot builds the .deb; xvfb starts the release build below.
       - name: Install deb tools
         if: runner.os == 'Linux'
