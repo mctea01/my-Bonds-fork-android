@@ -59,11 +59,12 @@ where
             .parse()
             .map_err(|_| Error::Worker)?,
     )
-    .prologue(&request_hash);
+    .prologue(&request_hash)
+    .map_err(|_| Error::Input)?;
     let mut handshake = if initiator {
-        builder.remote_public_key(&key[..]).build_initiator()
+        builder.remote_public_key(&key[..]).and_then(|b| b.build_initiator())
     } else {
-        builder.local_private_key(&key[..]).build_responder()
+        builder.local_private_key(&key[..]).and_then(|b| b.build_responder())
     }
     .map_err(|_| Error::Input)?;
     let mut buffer = Zeroizing::new(vec![0; MAX_FRAME]);

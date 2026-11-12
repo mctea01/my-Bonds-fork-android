@@ -1,6 +1,7 @@
 # ZK native runtime
 
-The native runtime uses Rust 1.95.0 (TLSNotary alpha.15 needs it), UniFFI 0.29.4, cargo-ndk 4.1.2,
+The native runtime uses the Rust version pinned in rust-toolchain.toml (1.99.1; the workspace minimum of
+1.95 comes from TLSNotary alpha.15), UniFFI 0.29.4, cargo-ndk 4.1.2,
 and Android NDK 28.2.13676358. Dependencies are locked in Cargo.lock.
 Install the toolchain through rustup, install cargo-ndk with
 `cargo install cargo-ndk --version 4.1.2 --locked`, and install the pinned
@@ -26,7 +27,12 @@ always builds and fails without the tools; `skip` never builds; `prebuilt`
 never builds but fails unless the libraries are already in `native/dist` (CI
 builds them in separate jobs and passes them in as artifacts).
 `DIW_ZK_ANDROID_ABIS` (default `arm64-v8a,x86_64`) limits `native/build.sh
-android` to some ABIs.
+android` to some ABIs. Each 64-bit ABI also builds the runtime-only library
+of its 32-bit sibling (`armeabi-v7a`, `x86`, about 1 MB): the app installs on
+32-bit devices and decodes JPEG 2000 portraits with it, but no proof backend
+exists there (Barretenberg needs 128-bit integers and a 64-bit `size_t`,
+Multipaz ships no 32-bit Longfellow, and the provers need more memory than a
+32-bit process has).
 On Windows the tasks run Git for Windows' bash, because `bash` there starts WSL. Both use release Rust libraries. The Android
 application uses its existing R8 release build plus native/zk.pro. Do not edit
 the generated Kotlin binding. It uses the JNA cleaner on both platforms,
@@ -36,6 +42,21 @@ including Android versions without java.lang.ref.Cleaner.
 the two Android ABIs. Cross compiling requires the appropriate platform SDK
 and Cargo linker configuration. It fails if any requested target cannot be
 built; it never silently substitutes a host binary.
+
+Two desktop targets are cross-built on a Linux x86_64 host, and `build.sh`
+sets the linker and compilers for them:
+
+- `native/build.sh aarch64-unknown-linux-gnu` (`linux-aarch64`): needs
+  `g++-aarch64-linux-gnu`. An arm64 host builds it as `host`.
+- `native/build.sh x86_64-pc-windows-gnullvm` (`windows-x86_64`): uses
+  llvm-mingw (clang, lld, libc++, libunwind, compiler-rt and the mingw-w64
+  UCRT), which `zkpdf-prover/tools/llvm_mingw.py` fetches as a release pinned
+  by SHA-256 into `target/`; `LLVM_MINGW_ROOT` names an existing copy instead.
+  This is the only way to get the zkPDF backend on Windows (see
+  `zkpdf-prover/README.md`). The script checks that the DLLs import Windows
+  system libraries only (the UCRT is part of Windows 10 and later) and that
+  nothing built by GCC is in them, so they carry no libstdc++ or libgcc. A
+  Windows host still builds its own MSVC library without zkPDF.
 
 CI (`.github/workflows/github-actions-ci.yml`) builds the libraries in their
 own jobs: `native-android` runs `android` on Linux once per ABI

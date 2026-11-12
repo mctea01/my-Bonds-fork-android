@@ -1,0 +1,18 @@
+[
+  {
+    "argv": [
+      "/workspace/native-research-env/runtime-probe/runtime_probe",
+      "/no/such/libdiw_zk.so"
+    ],
+    "exit_code": 1,
+    "stderr": "library_load_failed\n"
+  },
+  {
+    "argv": [
+      "/workspace/native-research-env/runtime-probe/runtime_probe",
+      "/lib/x86_64-linux-gnu/libc.so.6"
+    ],
+    "exit_code": 1,
+    "stderr": "required_symbol_missing\n"
+  }
+]

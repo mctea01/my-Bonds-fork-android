@@ -1,0 +1,50 @@
+{
+  "attempts": [
+    {
+      "log": "exploratory-build.log",
+      "exit_code": 101,
+      "observation": "Relocated assembler cannot find host libopcodes/libbfd",
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "scope": "Exploration; final result.json captures successful exact environment"
+    },
+    {
+      "log": "exploratory-build2.log",
+      "exit_code": 101,
+      "observation": "Host library path fixed; cross linker scripts still resolve absolute /usr/aarch64-linux-gnu paths",
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "scope": "Exploration; final result.json captures successful exact environment"
+    },
+    {
+      "log": "exploratory-build3.log",
+      "exit_code": 0,
+      "observation": "Compiler wrapper supplies --sysroot and host library path; unmodified source builds successfully",
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "aarch64-unknown-linux-gnu"
+      ],
+      "scope": "Exploration; final result.json captures successful exact environment"
+    }
+  ],
+  "source_changes": "none; toolchain extraction paths only"
+}

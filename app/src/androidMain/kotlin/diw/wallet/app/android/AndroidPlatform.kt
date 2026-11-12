@@ -447,6 +447,7 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
         diw.wallet.core.zk.native.JvmZkEnvironment(
             context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },
             { host -> localNetworkFor(host)?.socketFactory },
+            PlayFeatureComponent(context, "bb5", "diw_bb5") { activity },
         ) {
             val memory = android.app.ActivityManager.MemoryInfo()
             context.getSystemService(android.app.ActivityManager::class.java)?.getMemoryInfo(memory)

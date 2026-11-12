@@ -4,7 +4,9 @@ cd "$(dirname "$0")/.."
 host=$(rustc -vV | sed -n 's/^host: //p')
 targets=${1:-host}
 targets=${targets//host/$host}
-[[ "$(rustc --version)" == 'rustc 1.95.0 '* ]] || { echo 'Rust 1.95.0 is required' >&2; exit 1; }
+# The version rustup selects from native/rust-toolchain.toml; a different rustc on PATH is refused.
+pinned=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+[[ -n "$pinned" && "$(rustc --version)" == "rustc $pinned "* ]] || { echo "Rust $pinned is required" >&2; exit 1; }
 python3 -I openac-age/prepare.py --sources-only
 IFS=',' read -ra selected <<< "$targets"
 for target in "${selected[@]}"; do

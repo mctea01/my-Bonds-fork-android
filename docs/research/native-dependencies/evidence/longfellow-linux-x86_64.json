@@ -1,0 +1,87 @@
+{
+  "upstream_revision": "a015c9d93874fe6e09df1354006353ce6f94751d",
+  "url": "https://raw.githubusercontent.com/openwallet-foundation/multipaz/a015c9d93874fe6e09df1354006353ce6f94751d/multipaz-longfellow/src/jvmMain/resources/nativeLibs/linux-x86_64/libzkp.so",
+  "sha256": "d7b7a64ea444a268b5bf444fa4f283ddf0f551ef0f5ae38e7d0a65f10d2dd3dc",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "commands": [
+    {
+      "argv": [
+        "cc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cc (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "getconf",
+        "GNU_LIBC_VERSION"
+      ],
+      "returncode": 0,
+      "stdout": "glibc 2.41\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "readelf",
+        "-d",
+        "/tmp/diw-longfellow-_p6iw6lg/libzkp.so"
+      ],
+      "returncode": 0,
+      "stdout": "\nDynamic section at offset 0x26ef40 contains 27 entries:\n  Tag        Type                         Name/Value\n 0x0000000000000001 (NEEDED)             Shared library: [libm.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]\n 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]\n 0x0000000000000001 (NEEDED)             Shared library: [libpthread.so.0]\n 0x0000000000000001 (NEEDED)             Shared library: [libdl.so.2]\n 0x000000000000001e (FLAGS)              BIND_NOW\n 0x000000006ffffffb (FLAGS_1)            Flags: NOW\n 0x0000000000000007 (RELA)               0xe50\n 0x0000000000000008 (RELASZ)             29976 (bytes)\n 0x0000000000000009 (RELAENT)            24 (bytes)\n 0x000000006ffffff9 (RELACOUNT)          1208\n 0x0000000000000017 (JMPREL)             0x8368\n 0x0000000000000002 (PLTRELSZ)           576 (bytes)\n 0x0000000000000003 (PLTGOT)             0x271328\n 0x0000000000000014 (PLTREL)             RELA\n 0x0000000000000006 (SYMTAB)             0x270\n 0x000000000000000b (SYMENT)             24 (bytes)\n 0x0000000000000005 (STRTAB)             0xb4c\n 0x000000000000000a (STRSZ)              772 (bytes)\n 0x000000006ffffef5 (GNU_HASH)           0x938\n 0x0000000000000004 (HASH)               0x974\n 0x0000000000000019 (INIT_ARRAY)         0x270f38\n 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)\n 0x000000006ffffff0 (VERSYM)             0x7e0\n 0x000000006ffffffe (VERNEED)            0x854\n 0x000000006fffffff (VERNEEDNUM)         5\n 0x0000000000000000 (NULL)               0x0\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "readelf",
+        "--version-info",
+        "/tmp/diw-longfellow-_p6iw6lg/libzkp.so"
+      ],
+      "returncode": 0,
+      "stdout": "\nVersion symbols section '.gnu.version' contains 58 entries:\n Addr: 0x00000000000007e0  Offset: 0x000007e0  Link: 1 (.dynsym)\n  000:   0 (*local*)       2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  004:   2 (GLIBC_2.2.5)   3 (GLIBC_2.14)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  008:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   4 (GLIBC_2.3)  \n  00c:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  010:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   5 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  014:   6 (GLIBC_2.2.5)   0 (*local*)       2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  018:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  01c:   2 (GLIBC_2.2.5)   7 (GLIBC_2.3)     0 (*local*)       8 (GLIBC_2.3.4)\n  020:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   9 (GLIBC_2.17) \n  024:   0 (*local*)       0 (*local*)       0 (*local*)       0 (*local*)    \n  028:   0 (*local*)       2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  02c:   a (GLIBC_2.2.5)   a (GLIBC_2.2.5)   5 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  030:   a (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)\n  034:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)   \n  038:   1 (*global*)      1 (*global*)   \n\nVersion needs section '.gnu.version_r' contains 5 entries:\n Addr: 0x0000000000000854  Offset: 0x00000854  Link: 6 (.dynstr)\n  000000: Version: 1  File: libm.so.6  Cnt: 1\n  0x0050:   Name: GLIBC_2.2.5  Flags: none  Version: 6\n  0x0010: Version: 1  File: libc.so.6  Cnt: 5\n  0x0060:   Name: GLIBC_2.2.5  Flags: none  Version: 2\n  0x0070:   Name: GLIBC_2.3  Flags: none  Version: 7\n  0x0080:   Name: GLIBC_2.3.4  Flags: none  Version: 8\n  0x0090:   Name: GLIBC_2.14  Flags: none  Version: 3\n  0x00a0:   Name: GLIBC_2.17  Flags: none  Version: 9\n  0x0020: Version: 1  File: ld-linux-x86-64.so.2  Cnt: 1\n  0x00b0:   Name: GLIBC_2.3  Flags: none  Version: 4\n  0x0030: Version: 1  File: libpthread.so.0  Cnt: 1\n  0x00c0:   Name: GLIBC_2.2.5  Flags: none  Version: 10\n  0x0040: Version: 1  File: libdl.so.2  Cnt: 1\n  0x00d0:   Name: GLIBC_2.2.5  Flags: none  Version: 5\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "nm",
+        "-D",
+        "--defined-only",
+        "/tmp/diw-longfellow-_p6iw6lg/libzkp.so"
+      ],
+      "returncode": 0,
+      "stdout": "000000000003a030 T find_zk_spec_by_attributes\n000000000003a430 T free_circuit_bytes\n000000000003a430 T free_mdoc_proof\n000000000003a440 T generate_circuit\n000000000003aef0 T run_mdoc_prover\n000000000003b540 T run_mdoc_verifier\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_probe.c",
+        "-L/tmp/diw-longfellow-_p6iw6lg",
+        "-Wl,-rpath,/tmp/diw-longfellow-_p6iw6lg",
+        "-lzkp",
+        "-o",
+        "/tmp/diw-longfellow-_p6iw6lg/probe"
+      ],
+      "returncode": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/tmp/diw-longfellow-_p6iw6lg/probe"
+      ],
+      "returncode": 0,
+      "stdout": "ABI smoke passed: all six Rust exports linked and called without JVM/JNA\nspec v7/1 matched; null-input errors matched; proof correctness not tested\n",
+      "stderr": ""
+    }
+  ],
+  "status": "smoke-tested",
+  "proof_correctness": "not-tested",
+  "actual_sha256": "d7b7a64ea444a268b5bf444fa4f283ddf0f551ef0f5ae38e7d0a65f10d2dd3dc",
+  "probe_source_sha256": "c99c84b5b6f48ae02ab376d176d83e6344fa656518df991bcd2009ba1c506226"
+}

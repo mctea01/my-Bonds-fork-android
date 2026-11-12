@@ -1,0 +1,63 @@
+diff --git a/rust/applications/mdoc_zk/circuits/Cargo.toml b/rust/applications/mdoc_zk/circuits/Cargo.toml
+index 3e0c376d..be14aba3 100644
+--- a/rust/applications/mdoc_zk/circuits/Cargo.toml
++++ b/rust/applications/mdoc_zk/circuits/Cargo.toml
+@@ -26 +26 @@ num-bigint = "0.4"
+-sha2 = { version = "0.10", features = ["asm"] }
++sha2 = "0.10"
+@@ -53,0 +54,3 @@ zstd = "0.13"
++
++[target.'cfg(not(windows))'.dependencies]
++sha2 = { version = "0.10", features = ["asm"] }
+diff --git a/rust/applications/mdoc_zk/runtime/Cargo.toml b/rust/applications/mdoc_zk/runtime/Cargo.toml
+index 480a56d9..be08d6ac 100644
+--- a/rust/applications/mdoc_zk/runtime/Cargo.toml
++++ b/rust/applications/mdoc_zk/runtime/Cargo.toml
+@@ -33 +33 @@ zstd = "0.13"
+-sha2 = { version = "0.10", features = ["asm"] }
++sha2 = "0.10"
+@@ -67,0 +68,3 @@ path = "src/bin/convert_circuits.rs"
++
++[target.'cfg(not(windows))'.dependencies]
++sha2 = { version = "0.10", features = ["asm"] }
+diff --git a/rust/core/proto/Cargo.toml b/rust/core/proto/Cargo.toml
+index d4531166..96173f08 100644
+--- a/rust/core/proto/Cargo.toml
++++ b/rust/core/proto/Cargo.toml
+@@ -13 +13 @@ util = { path = "../../util" }
+-sha2 = { version = "0.10", features = ["asm"] }
++sha2 = "0.10"
+@@ -19,0 +20,3 @@ compile-eval = { path = "../../compile/eval" }
++
++[target.'cfg(not(windows))'.dependencies]
++sha2 = { version = "0.10", features = ["asm"] }
+diff --git a/rust/runtime/ligero/Cargo.toml b/rust/runtime/ligero/Cargo.toml
+index f97b3a11..f280cfb5 100644
+--- a/rust/runtime/ligero/Cargo.toml
++++ b/rust/runtime/ligero/Cargo.toml
+@@ -15 +15 @@ runtime-merkle = { path = "../merkle" }
+-sha2 = { version = "0.10.8", features = ["asm"] }
++sha2 = "0.10.8"
+@@ -16,0 +17,3 @@ core-algebra = { path = "../../core/algebra" }
++
++[target.'cfg(not(windows))'.dependencies]
++sha2 = { version = "0.10.8", features = ["asm"] }
+diff --git a/rust/runtime/merkle/Cargo.toml b/rust/runtime/merkle/Cargo.toml
+index 9c08b8d7..ea17100f 100644
+--- a/rust/runtime/merkle/Cargo.toml
++++ b/rust/runtime/merkle/Cargo.toml
+@@ -11,0 +12,3 @@ runtime-random = { path = "../random" }
++sha2 = "0.10.8"
++
++[target.'cfg(not(windows))'.dependencies]
+diff --git a/rust/runtime/random/Cargo.toml b/rust/runtime/random/Cargo.toml
+index 583622a4..66c448c0 100644
+--- a/rust/runtime/random/Cargo.toml
++++ b/rust/runtime/random/Cargo.toml
+@@ -10 +10 @@ workspace = true
+-sha2 = { version = "0.10.8", features = ["asm"] }
++sha2 = "0.10.8"
+@@ -17,0 +18,3 @@ testonly = []
++
++[target.'cfg(not(windows))'.dependencies]
++sha2 = { version = "0.10.8", features = ["asm"] }

@@ -1,0 +1,22 @@
+[package]
+name = "zkpassport-bb5"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Barretenberg 5 UltraHonk verifier for zkPassport circuits before 0.22.0, loaded at run time by diw-zk-ffi"
+
+[lib]
+name = "diw_bb5"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+bb = []
+# Tests only: derives a circuit's verification key, so a build can be checked against zkPassport's published keys.
+vk = ["bb"]
+
+[dev-dependencies]
+serde_json = "=1.0.154"
+base64 = "=0.23.1"
+flate2 = "=1.1.10"

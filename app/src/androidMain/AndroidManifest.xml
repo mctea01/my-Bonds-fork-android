@@ -69,6 +69,13 @@
                 <data android:scheme="diw-zktls" />
             </intent-filter>
             <intent-filter>
+                <!-- zkPassport requests that a page opens on the same phone (zkpassport:///r?...). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="zkpassport" />
+            </intent-filter>
+            <intent-filter>
                 <!-- Shared production server settings (diw-server://v1?c=...). -->
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

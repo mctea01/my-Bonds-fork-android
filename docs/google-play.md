@@ -32,6 +32,7 @@ Google 建議兩件事都要做：
 | 64 位元 | 有原生程式庫時需提供 64 位元版本 | arm64-v8a 與 x86_64 齊全 |
 | 16 KB 分頁 | 目標 Android 15 以上需支援 16 KB 分頁 | 64 位元的 `.so` 全部以 16 KB 對齊（`libdiw_zk`、Multipaz 的 `libzkp`、JNA、CameraX、AndroidX） |
 | 格式 | 新應用程式需 AAB | CI 已建置 `:app:bundleRelease`（R8 縮減與最佳化），nightly 附 `DIW-MY-WALLET-<版本>.aab` |
+| 隨選模組 | 可執行程式碼只能經由 Play 下載（裝置與網路濫用政策） | 2026-11-11 起 AAB 含隨選動態功能模組 `bb5`（只有 `libdiw_bb5.so`，驗證 zkPassport 0.22.0 以前的證明），由 Play Feature Delivery 安裝，不從其他來源下載程式碼；不傳送任何資料，資料安全答案不變 |
 | 大小 | 單一裝置下載壓縮後不超過 200 MB | debug AAB 61 MB（含兩個 ABI 的零知識程式庫），依 ABI 分割後遠低於上限 |
 | 套件名稱 | 上傳後不能更改 | `diw.wallet.app`；Play 商店上目前沒有同名的公開應用程式 |
 | 權限 | 受限權限需另外申報 | 沒有受限權限（見下表） |
@@ -41,7 +42,7 @@ Google 建議兩件事都要做：
 | 權限 | 用途 | Play 申報 |
 |---|---|---|
 | `INTERNET`、`ACCESS_NETWORK_STATE` | 領卡、出示、時戳、撤銷資訊 | 不需要 |
-| `CAMERA` | 掃描 QR Code | 不需要（只在裝置上處理） |
+| `CAMERA` | 掃描 QR Code；以 Tesseract 在本機辨識護照機讀區並填入讀取晶片所需欄位，不保存影像 | 不需要（只在裝置上處理） |
 | `NFC` | 自然人憑證卡、mdoc 感應出示與查驗（HCE） | 不需要 |
 | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；舊版的 `BLUETOOTH`、`BLUETOOTH_ADMIN`、`ACCESS_FINE_LOCATION`（只到 API 30） | ISO 18013-5 與 Bonds 近距離傳輸 | 不需要；不取得位置 |
 | `USE_BIOMETRIC`、`USE_FINGERPRINT` | 解鎖金鑰 | 不需要 |

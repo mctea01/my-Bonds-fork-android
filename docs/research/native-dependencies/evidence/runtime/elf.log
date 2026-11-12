@@ -1,0 +1,145 @@
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              DYN (Shared object file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x0
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          9884624 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         11
+  Size of section headers:           64 (bytes)
+  Number of section headers:         40
+  Section header string table index: 38
+
+Dynamic section at offset 0x119a00 contains 28 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libgcc_s.so.1]
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x0000000000000001 (NEEDED)             Shared library: [ld-linux-x86-64.so.2]
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW
+ 0x0000000000000007 (RELA)               0x4b68
+ 0x0000000000000008 (RELASZ)             90624 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000006ffffff9 (RELACOUNT)          3701
+ 0x0000000000000017 (JMPREL)             0x1ad68
+ 0x0000000000000002 (PLTRELSZ)           120 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x121480
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000006 (SYMTAB)             0x2d0
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000005 (STRTAB)             0x2624
+ 0x000000000000000a (STRSZ)              9539 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x2018
+ 0x0000000000000019 (INIT_ARRAY)         0x117418
+ 0x000000000000001b (INIT_ARRAYSZ)       16 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x117410
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000000000000c (INIT)               0x535f4
+ 0x000000000000000d (FINI)               0x5360c
+ 0x000000006ffffff0 (VERSYM)             0x1cc8
+ 0x000000006ffffffe (VERNEED)            0x1ef4
+ 0x000000006fffffff (VERNEEDNUM)         3
+ 0x0000000000000000 (NULL)               0x0
+
+Version symbols section '.gnu.version' contains 277 entries:
+ Addr: 0x0000000000001cc8  Offset: 0x00001cc8  Link: 2 (.dynsym)
+  000:   0 (*local*)       0 (*local*)       0 (*local*)       0 (*local*)
+  004:   2 (GLIBC_2.2.5)   3 (GCC_3.0)       4 (GLIBC_2.14)    2 (GLIBC_2.2.5)
+  008:   5 (GLIBC_2.3)     2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  00c:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  010:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   6 (GLIBC_2.33)
+  014:   3 (GCC_3.0)       7 (GLIBC_2.30)    2 (GLIBC_2.2.5)   8 (GCC_3.3)
+  018:   8 (GCC_3.3)       3 (GCC_3.0)       3 (GCC_3.0)       2 (GLIBC_2.2.5)
+  01c:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  020:   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  024:   9 (GLIBC_2.34)    9 (GLIBC_2.34)    2 (GLIBC_2.2.5)   9 (GLIBC_2.34)
+  028:   2 (GLIBC_2.2.5)   9 (GLIBC_2.34)    9 (GLIBC_2.34)    9 (GLIBC_2.34)
+  02c:   8 (GCC_3.3)       2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  030:   a (GLIBC_2.32)    9 (GLIBC_2.34)    2 (GLIBC_2.2.5)   2 (GLIBC_2.2.5)
+  034:   6 (GLIBC_2.33)    9 (GLIBC_2.34)    2 (GLIBC_2.2.5)   b (GLIBC_2.3)
+  038:   2 (GLIBC_2.2.5)   c (GLIBC_2.28)    d (GLIBC_2.18)    e (GLIBC_2.3.4)
+  03c:   9 (GLIBC_2.34)    2 (GLIBC_2.2.5)   f (GLIBC_2.16)    2 (GLIBC_2.2.5)
+  040:   9 (GLIBC_2.34)    9 (GLIBC_2.34)    3 (GCC_3.0)      10 (GCC_4.2.0)
+  044:   3 (GCC_3.0)       3 (GCC_3.0)       3 (GCC_3.0)       3 (GCC_3.0)
+  048:   3 (GCC_3.0)       1 (*global*)      1 (*global*)      1 (*global*)
+  04c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  050:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  054:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  058:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  05c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  060:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  064:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  068:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  06c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  070:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  074:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  078:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  07c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  080:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  084:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  088:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  08c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  090:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  094:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  098:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  09c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0ac:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0bc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0cc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0dc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0ec:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0fc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  100:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  104:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  108:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  10c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  110:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  114:   1 (*global*)
+
+Version needs section '.gnu.version_r' contains 3 entries:
+ Addr: 0x0000000000001ef4  Offset: 0x00001ef4  Link: 6 (.dynstr)
+  000000: Version: 1  File: libgcc_s.so.1  Cnt: 3
+  0x0030:   Name: GCC_3.0  Flags: none  Version: 3
+  0x0040:   Name: GCC_3.3  Flags: none  Version: 8
+  0x0050:   Name: GCC_4.2.0  Flags: none  Version: 16
+  0x0010: Version: 1  File: libc.so.6  Cnt: 11
+  0x0060:   Name: GLIBC_2.2.5  Flags: none  Version: 2
+  0x0070:   Name: GLIBC_2.3  Flags: none  Version: 11
+  0x0080:   Name: GLIBC_2.3.4  Flags: none  Version: 14
+  0x0090:   Name: GLIBC_2.14  Flags: none  Version: 4
+  0x00a0:   Name: GLIBC_2.16  Flags: none  Version: 15
+  0x00b0:   Name: GLIBC_2.18  Flags: WEAK  Version: 13
+  0x00c0:   Name: GLIBC_2.28  Flags: WEAK  Version: 12
+  0x00d0:   Name: GLIBC_2.30  Flags: WEAK  Version: 7
+  0x00e0:   Name: GLIBC_2.32  Flags: none  Version: 10
+  0x00f0:   Name: GLIBC_2.33  Flags: none  Version: 6
+  0x0100:   Name: GLIBC_2.34  Flags: none  Version: 9
+  0x0020: Version: 1  File: ld-linux-x86-64.so.2  Cnt: 1
+  0x0110:   Name: GLIBC_2.3  Flags: none  Version: 5

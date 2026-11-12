@@ -1,0 +1,336 @@
+{
+  "host": "Linux-6.18.57-x86_64-with-glibc2.41",
+  "target": "x86_64-pc-windows-gnu",
+  "status": "smoke-tested-under-wine",
+  "proof_verification": "public v7/1 proof accepted; attribute/transcript/proof changes rejected; restored proof accepted",
+  "native_windows_execution": "not-tested",
+  "prover": "not-tested",
+  "scope": "Research-only six-manifest patch; DLL C ABI and public v7/1 fixture",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz",
+      "log": "multipaz-revision.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "git",
+        "ls-files",
+        "--others",
+        "--exclude-standard"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz",
+      "log": "multipaz-untracked.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "HEAD"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "log": "longfellow-revision.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "git",
+        "ls-files",
+        "--others",
+        "--exclude-standard"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "log": "longfellow-untracked.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "git",
+        "status",
+        "--porcelain"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz",
+      "log": "multipaz-status.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--no-ext-diff",
+        "--unified=0",
+        "HEAD"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "log": "longfellow-patch.log",
+      "exit_code": 0,
+      "seconds": 0.008
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "cargo-version.log",
+      "exit_code": 0,
+      "seconds": 0.016
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "gcc-version.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-ar",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "ar-version.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "tree",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu",
+        "-e",
+        "features"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "windows-features.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "tree",
+        "--locked",
+        "--target",
+        "x86_64-unknown-linux-gnu",
+        "-e",
+        "features",
+        "-i",
+        "sha2-asm"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "linux-asm-preserved.log",
+      "exit_code": 0,
+      "seconds": 0.115
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "+1.99.1",
+        "build",
+        "--release",
+        "--locked",
+        "--target",
+        "x86_64-pc-windows-gnu"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "build.log",
+      "exit_code": 0,
+      "seconds": 46.501
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/workspace/native-research-env/longfellow/verified3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_windows_probe.c",
+        "/workspace/native-research-env/longfellow/verified3/target/x86_64-pc-windows-gnu/release/libzkp.dll.a",
+        "-o",
+        "/workspace/native-research-env/longfellow/verified3/probe.exe"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "c-link.log",
+      "exit_code": 0,
+      "seconds": 0.114
+    },
+    {
+      "argv": [
+        "objdump",
+        "-f",
+        "/workspace/native-research-env/longfellow/verified3/zkp.dll"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "zkp.dll-format.log",
+      "exit_code": 0,
+      "seconds": 0.004
+    },
+    {
+      "argv": [
+        "objdump",
+        "-p",
+        "/workspace/native-research-env/longfellow/verified3/zkp.dll"
+      ],
+      "log": "zkp.dll-imports-exports.log",
+      "exit_code": 0,
+      "filter": "Before The Function Table; omit unwind tables"
+    },
+    {
+      "argv": [
+        "objdump",
+        "-f",
+        "/workspace/native-research-env/longfellow/verified3/probe.exe"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "probe.exe-format.log",
+      "exit_code": 0,
+      "seconds": 0.003
+    },
+    {
+      "argv": [
+        "objdump",
+        "-p",
+        "/workspace/native-research-env/longfellow/verified3/probe.exe"
+      ],
+      "log": "probe.exe-imports-exports.log",
+      "exit_code": 0,
+      "filter": "Before The Function Table; omit unwind tables"
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+        "--version"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust",
+      "log": "wine-version.log",
+      "exit_code": 0,
+      "seconds": 0.001
+    },
+    {
+      "argv": [
+        "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+        "/workspace/native-research-env/longfellow/verified3/probe.exe",
+        "Z:\\workspace\\native-research-env\\longfellow\\multipaz\\multipaz-longfellow\\rust\\longfellow-zk\\rust\\applications\\mdoc_zk\\artifacts\\circuits\\8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+        "Z:\\workspace\\native-research-env\\longfellow\\multipaz\\multipaz-longfellow\\rust\\longfellow-zk\\rust\\applications\\mdoc_zk\\artifacts\\proofs\\8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin"
+      ],
+      "cwd": "/workspace/native-research-env/longfellow/verified3",
+      "log": "wine-probe.log",
+      "exit_code": 0,
+      "seconds": 10.995
+    }
+  ],
+  "inputs": {
+    "multipaz": {
+      "path": "/workspace/native-research-env/longfellow/multipaz",
+      "revision": "a015c9d93874fe6e09df1354006353ce6f94751d"
+    },
+    "longfellow": {
+      "path": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk",
+      "revision": "d5e6be77336933d50bf7f25a954f8ec273eb51ce"
+    },
+    "patch": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow-windows-sha2.patch",
+      "sha256": "fdcfb5fd0fc44dc37b2902ad13584b6911878d3b2bc0da91654d6ef870b29263"
+    },
+    "lock": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow-windows.Cargo.lock",
+      "sha256": "89c9ffe86bba0d4ddbc421f54dd62ff9e3c82274badb0e92fd73540c67a73761"
+    },
+    "runner": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/probe_longfellow_windows.py",
+      "sha256": "e42c53cfdbbdd1632597cf91b68f31ebfa1749758410999209e100f3abd2f50c"
+    },
+    "probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_windows_probe.c",
+      "sha256": "3d9a7dcc85345faabbe45072d2c936b155eeaa563724f35fa6bee72745b1544f"
+    },
+    "abi_probe": {
+      "path": "/workspace/my-Bonds-fork-android/tools/native-research/longfellow_probe.c",
+      "sha256": "c99c84b5b6f48ae02ab376d176d83e6344fa656518df991bcd2009ba1c506226"
+    },
+    "testcases/src/vectors.rs": {
+      "path": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/testcases/src/vectors.rs",
+      "sha256": "c540b0a1c1eaf948a5dc7a82a3fb66cb19ae072d6ad4f801da64041f21323817"
+    },
+    "artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2": {
+      "path": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.lfa2",
+      "sha256": "94c665e8a4067f5cd10153c96164afcecfbb1a41afa513f4a8c99ae01723a2f0"
+    },
+    "artifacts/proofs/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin": {
+      "path": "/workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/proofs/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.bin",
+      "sha256": "3cb762b110ddc5b309f3b067ff3e891381a479f291dd4903e8c19c5d987bbe91"
+    }
+  },
+  "artifacts": {
+    "zkp.dll": {
+      "sha256": "9e9b2444030b10b570af1c5e807aa3f93bd431b746c88363554940c1951da9ff",
+      "bytes": 2801664,
+      "dll_imports": [
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "ntdll.dll",
+        "bcryptprimitives.dll",
+        "api-ms-win-core-synch-l1-2-0.dll"
+      ]
+    },
+    "libzkp.dll.a": {
+      "sha256": "0763779e974548860fd503cd1eeaa28284d61a816c9febc660603b4460ce977a",
+      "bytes": 4774
+    },
+    "libzkp.a": {
+      "sha256": "6602da30c74fb20325c72cb6aaba594c2abcad8e9fac278e206b66296ae0641e",
+      "bytes": 8716700
+    },
+    "probe.exe": {
+      "sha256": "bd861bed56816cb4b0c4920cb8ba6b3201b27ffb0cba20371f40b8bf3eec8c29",
+      "dll_imports": [
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "zkp.dll"
+      ]
+    }
+  },
+  "build_environment": {
+    "CARGO_HOME": "/workspace/native-research-env/cargo",
+    "RUSTUP_HOME": "/workspace/native-research-env/rustup",
+    "CARGO_TARGET_DIR": "/workspace/native-research-env/longfellow/verified3/target",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTFLAGS": "",
+    "CC_x86_64_pc_windows_gnu": "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix",
+    "AR_x86_64_pc_windows_gnu": "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-ar",
+    "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER": "/workspace/native-research-env/longfellow/mingw/root/usr/bin/x86_64-w64-mingw32-gcc-posix"
+  },
+  "wine_environment": {
+    "WINEPREFIX": "/workspace/native-research-env/windows-bb/wine-probe3",
+    "WINEARCH": "win64",
+    "WINELOADER": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wine64",
+    "WINEDEBUG": "-all",
+    "WINEDLLOVERRIDES": "mscoree,mshtml=d",
+    "WINESERVER": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/wine/wineserver64",
+    "WINEDLLPATH": "/workspace/native-research-env/windows-bb/wine/root/usr/lib/x86_64-linux-gnu/wine"
+  }
+}

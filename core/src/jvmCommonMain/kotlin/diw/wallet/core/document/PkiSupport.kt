@@ -191,17 +191,17 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
         return null
     }
 
-    private fun reason(st: RevokedStatus): String? = runCatching {
-        if (!st.hasRevocationReason()) null else when (st.revocationReason) {
-            CRLReason.keyCompromise -> ct("core_crl_key_compromise")
-            CRLReason.cACompromise -> ct("core_crl_ca_compromise")
-            CRLReason.affiliationChanged -> ct("core_crl_affiliation")
-            CRLReason.superseded -> ct("core_crl_superseded")
-            CRLReason.cessationOfOperation -> ct("core_crl_cessation")
-            CRLReason.certificateHold -> ct("core_crl_hold")
-            else -> null
-        }
-    }.getOrNull()
+    private fun reason(st: RevokedStatus): String? = runCatching { if (!st.hasRevocationReason()) null else reasonName(st.revocationReason) }.getOrNull()
+
+    private fun reasonName(code: Int): String? = when (code) {
+        CRLReason.keyCompromise -> ct("core_crl_key_compromise")
+        CRLReason.cACompromise -> ct("core_crl_ca_compromise")
+        CRLReason.affiliationChanged -> ct("core_crl_affiliation")
+        CRLReason.superseded -> ct("core_crl_superseded")
+        CRLReason.cessationOfOperation -> ct("core_crl_cessation")
+        CRLReason.certificateHold -> ct("core_crl_hold")
+        else -> null
+    }
 
     /** OCSP responses and CRLs carried by a CMS SignedData (crls and otherRevocationInfo). */
     fun cmsRevocation(sd: org.bouncycastle.cms.CMSSignedData): Pair<List<ByteArray>, List<ByteArray>> {
@@ -235,7 +235,117 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
 
     class Revocation(val revoked: Boolean, val at: Long?, val source: String, val producedAt: Long, val reason: String? = null)
 
+    /** What an online CRL check found: a [revocation] from a CRL a trusted issuer signed, or a [note] on why there is none. */
+    class OnlineCrl(val revocation: Revocation?, val notes: List<String>)
+
+    /**
+     * The status of [cert] in the CRL its distribution points publish (HTTP or HTTPS), downloaded through the trust
+     * source. The CRL must name the issuer of [cert] and be signed by [issuer] or by a trusted [role] certificate with
+     * that name (a CSCA signs its CRL with its newest key). A distribution point that is a web page is searched for
+     * links to CRL files. Without any certificate to check the signature, nothing is downloaded.
+     */
+    suspend fun onlineCrl(cert: X509CertificateHolder, issuer: X509CertificateHolder?, role: TrustRole, now: Instant): OnlineCrl? {
+        val urls = crlUrls(cert)
+        if (urls.isEmpty()) return null
+        val anchors = runCatching { trust.revocationSigners(role) }.getOrDefault(emptyList()).mapNotNull { Bc.holder(it) }
+        val signers = (listOfNotNull(issuer) + anchors).filter { it.subject == cert.issuer }.distinct()
+        if (signers.isEmpty()) return OnlineCrl(null, listOf(ct("core_crl_online_no_issuer")))
+        val notes = ArrayList<String>()
+        var downloaded = false
+        var fetches = 0
+        for (url in urls.take(3)) {
+            val raw = runCatching { trust.fetchRevocationList(url) }.getOrNull().also { fetches++ } ?: continue
+            val crls = ArrayList<Pair<String, X509CRLHolder>>()
+            val direct = crl(raw)
+            if (direct != null) crls.add(url to direct)
+            else if (html(raw)) {
+                val links = crlLinks(String(raw, Charsets.UTF_8), url)
+                for (link in links.take(3)) {
+                    if (fetches >= 6) break
+                    val linked = runCatching { trust.fetchRevocationList(link) }.getOrNull().also { fetches++ }?.let { crl(it) } ?: continue
+                    crls.add(link to linked)
+                }
+                if (crls.isEmpty()) notes.add(ct("core_crl_online_page_none", url))
+            }
+            for ((from, crl) in crls) {
+                downloaded = true
+                if (crl.issuer != cert.issuer) continue
+                val signer = signers.firstOrNull { runCatching { crl.isSignatureValid(Bc.contentVerifier(it)) }.getOrDefault(false) } ?: continue
+                val entry = crl.getRevokedCertificate(cert.serialNumber)
+                val produced = crl.thisUpdate.time / 1000
+                val source = ct("core_crl_online_source")
+                val revocation = if (entry != null) Revocation(true, entry.revocationDate.time / 1000, source, produced, crlReason(entry))
+                else Revocation(false, null, source, produced)
+                val out = ArrayList<String>()
+                if (from != url) out.add(ct("core_crl_online_page", url, from))
+                crl.nextUpdate?.let { if (it.time / 1000 < now.epochSeconds) out.add(ct("core_crl_online_stale", day(it.time / 1000))) }
+                if (signer != issuer && issuer != null) out.add(ct("core_crl_online_other_key", cn(signer.subject) ?: signer.subject.toString()))
+                return OnlineCrl(revocation, out)
+            }
+        }
+        if (downloaded) notes.add(ct("core_crl_online_unverified"))
+        else if (notes.isEmpty()) notes.add(ct("core_crl_online_unavailable", urls.joinToString(", ")))
+        return OnlineCrl(null, notes)
+    }
+
+    private fun crl(raw: ByteArray): X509CRLHolder? = runCatching {
+        val der = if (raw.size > 10 && String(raw, 0, 10, Charsets.US_ASCII).startsWith("-----BEGIN")) {
+            val text = String(raw, Charsets.US_ASCII)
+            Base64.getMimeDecoder().decode(text.substringAfter("-----BEGIN X509 CRL-----").substringBefore("-----END"))
+        } else raw
+        X509CRLHolder(der)
+    }.getOrNull()
+
+    private fun crlReason(entry: org.bouncycastle.cert.X509CRLEntryHolder): String? = runCatching {
+        val ext = entry.extensions?.getExtension(org.bouncycastle.asn1.x509.Extension.reasonCode) ?: return null
+        reasonName(org.bouncycastle.asn1.x509.CRLReason.getInstance(ext.parsedValue).value.toInt())
+    }.getOrNull()
+
+    /** The HTTP and HTTPS CRL distribution points of [h]. */
+    fun crlUrls(h: X509CertificateHolder): List<String> = runCatching {
+        val dp = org.bouncycastle.asn1.x509.CRLDistPoint.fromExtensions(h.extensions) ?: return emptyList()
+        dp.distributionPoints.flatMap { p ->
+            val name = p.distributionPoint?.takeIf { it.type == org.bouncycastle.asn1.x509.DistributionPointName.FULL_NAME }?.name as? org.bouncycastle.asn1.x509.GeneralNames
+            name?.names.orEmpty().filter { it.tagNo == GeneralName.uniformResourceIdentifier }.map { it.name.toString() }
+        }.filter { it.startsWith("http://") || it.startsWith("https://") }.distinct()
+    }.getOrDefault(emptyList())
+
     companion object {
+        private val LINK = Regex("<a\\b([^>]*)>(.*?)</a>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+        private val HREF = Regex("href\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOption.IGNORE_CASE)
+
+        /** The UTC date of [epochSeconds], as YYYY-MM-DD. */
+        fun day(epochSeconds: Long): String = Instant.fromEpochSeconds(epochSeconds).toString().substringBefore('T')
+
+        /** Whether [raw] looks like an HTML page rather than a CRL. */
+        fun html(raw: ByteArray): Boolean {
+            val head = String(raw, 0, minOf(raw.size, 512), Charsets.UTF_8).trimStart().lowercase()
+            return head.startsWith("<!doctype html") || head.startsWith("<html") || "<html" in head
+        }
+
+        /**
+         * Links on the web page [html] at [base] that name a CRL (in the address, title or text), on the same host,
+         * most likely first: addresses ending in .crl, then links that mention ".crl", then the rest.
+         */
+        fun crlLinks(html: String, base: String): List<String> {
+            val baseUri = runCatching { java.net.URI(base) }.getOrNull() ?: return emptyList()
+            return LINK.findAll(html).mapNotNull { m ->
+                val attrs = m.groupValues[1]
+                val text = attrs + " " + m.groupValues[2]
+                if (!text.contains("crl", ignoreCase = true)) return@mapNotNull null
+                val href = HREF.find(attrs)?.groupValues?.get(1)?.trim('"', '\'')?.replace("&amp;", "&") ?: return@mapNotNull null
+                val uri = runCatching { baseUri.resolve(href.trim()) }.getOrNull() ?: return@mapNotNull null
+                val url = uri.toString().substringBefore('#')
+                if (uri.scheme !in setOf("http", "https") || !uri.host.equals(baseUri.host, ignoreCase = true) || url == base) return@mapNotNull null
+                val rank = when {
+                    uri.path.orEmpty().endsWith(".crl", ignoreCase = true) -> 0
+                    text.contains(".crl", ignoreCase = true) -> 1
+                    else -> 2
+                }
+                rank to url
+            }.distinctBy { it.second }.sortedBy { it.first }.map { it.second }.toList()
+        }
+
         val ADOBE_REVOCATION = ASN1ObjectIdentifier("1.2.840.113583.1.1.8")
 
         fun validAt(h: X509CertificateHolder, at: Instant): Boolean = h.isValidOn(Date(at.toEpochMilliseconds()))

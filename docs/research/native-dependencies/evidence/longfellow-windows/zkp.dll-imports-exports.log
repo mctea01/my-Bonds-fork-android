@@ -1,0 +1,211 @@
+
+/workspace/native-research-env/longfellow/verified3/zkp.dll:     file format pei-x86-64
+
+Characteristics 0x222e
+	executable
+	line numbers stripped
+	symbols stripped
+	large address aware
+	debugging information removed
+	DLL
+
+Time/Date		Tue Nov 10 01:02:42 2026
+Magic			020b	(PE32+)
+MajorLinkerVersion	2
+MinorLinkerVersion	44
+SizeOfCode		000000000027fe00
+SizeOfInitializedData	000000000002be00
+SizeOfUninitializedData	0000000000000200
+AddressOfEntryPoint	0000000000001330
+BaseOfCode		0000000000001000
+ImageBase		0000000180000000
+SectionAlignment	00001000
+FileAlignment		00000200
+MajorOSystemVersion	4
+MinorOSystemVersion	0
+MajorImageVersion	0
+MinorImageVersion	0
+MajorSubsystemVersion	5
+MinorSubsystemVersion	2
+Win32Version		00000000
+SizeOfImage		002b2000
+SizeOfHeaders		00000400
+CheckSum		002ae3fa
+Subsystem		00000003	(Windows CUI)
+DllCharacteristics	00000160
+					HIGH_ENTROPY_VA
+					DYNAMIC_BASE
+					NX_COMPAT
+SizeOfStackReserve	0000000000200000
+SizeOfStackCommit	0000000000001000
+SizeOfHeapReserve	0000000000100000
+SizeOfHeapCommit	0000000000001000
+LoaderFlags		00000000
+NumberOfRvaAndSizes	00000010
+
+The Data Directory
+Entry 0 00000000002ae000 000000dd Export Directory [.edata (or where ever we found it)]
+Entry 1 00000000002af000 00000d0c Import Directory [parts of .idata]
+Entry 2 0000000000000000 00000000 Resource Directory [.rsrc]
+Entry 3 000000000029d000 00005ab4 Exception Directory [.pdata]
+Entry 4 0000000000000000 00000000 Security Directory
+Entry 5 00000000002b1000 000009ac Base Relocation Directory [.reloc]
+Entry 6 0000000000000000 00000000 Debug Directory
+Entry 7 0000000000000000 00000000 Description Directory
+Entry 8 0000000000000000 00000000 Special Directory
+Entry 9 0000000000297c00 00000028 Thread Storage Directory [.tls]
+Entry a 0000000000000000 00000000 Load Configuration Directory
+Entry b 0000000000000000 00000000 Bound Import Directory
+Entry c 00000000002af330 000002b8 Import Address Table Directory
+Entry d 0000000000000000 00000000 Delay Import Directory
+Entry e 0000000000000000 00000000 CLR Runtime Header
+Entry f 0000000000000000 00000000 Reserved
+
+There is an import table in .idata at 0x1802af000
+
+The Import Tables (interpreted .idata section contents)
+ vma:            Hint    Time      Forward  DLL       First
+                 Table   Stamp     Chain    Name      Thunk
+ 002af000	002af078 00000000 00000000 002afc44 002af330
+
+	DLL Name: KERNEL32.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	002af330  <none>  0094  CloseHandle
+	002af338  <none>  00d5  CreateFileMappingA
+	002af340  <none>  00dc  CreateFileW
+	002af348  <none>  010d  CreateToolhelp32Snapshot
+	002af350  <none>  0124  DeleteCriticalSection
+	002af358  <none>  0142  DuplicateHandle
+	002af360  <none>  014a  EnterCriticalSection
+	002af368  <none>  01b5  FlsAlloc
+	002af370  <none>  01b6  FlsFree
+	002af378  <none>  01b8  FlsSetValue
+	002af380  <none>  01c2  FormatMessageW
+	002af388  <none>  0218  GetConsoleMode
+	002af390  <none>  021c  GetConsoleOutputCP
+	002af398  <none>  022d  GetCurrentDirectoryW
+	002af3a0  <none>  0234  GetCurrentProcess
+	002af3a8  <none>  0239  GetCurrentThreadId
+	002af3b0  <none>  0259  GetEnvironmentVariableW
+	002af3b8  <none>  0269  GetFileInformationByHandle
+	002af3c0  <none>  026a  GetFileInformationByHandleEx
+	002af3c8  <none>  027b  GetFullPathNameW
+	002af3d0  <none>  0283  GetLastError
+	002af3d8  <none>  029b  GetModuleHandleExW
+	002af3e0  <none>  029c  GetModuleHandleW
+	002af3e8  <none>  02dc  GetProcessHeap
+	002af3f0  <none>  02fb  GetStdHandle
+	002af3f8  <none>  0374  HeapAlloc
+	002af400  <none>  037a  HeapFree
+	002af408  <none>  037e  HeapReAlloc
+	002af410  <none>  038a  InitOnceBeginInitialize
+	002af418  <none>  038b  InitOnceComplete
+	002af420  <none>  0391  InitializeCriticalSection
+	002af428  <none>  03b7  IsThreadAFiber
+	002af430  <none>  03ef  LeaveCriticalSection
+	002af438  <none>  0412  MapViewOfFile
+	002af440  <none>  0417  Module32FirstW
+	002af448  <none>  0419  Module32NextW
+	002af450  <none>  0423  MultiByteToWideChar
+	002af458  <none>  0484  QueryPerformanceCounter
+	002af460  <none>  0485  QueryPerformanceFrequency
+	002af468  <none>  049b  RaiseException
+	002af470  <none>  04e2  RtlCaptureContext
+	002af478  <none>  04ea  RtlLookupFunctionEntry
+	002af480  <none>  04f0  RtlUnwindEx
+	002af488  <none>  04f1  RtlVirtualUnwind
+	002af490  <none>  0542  SetFileInformationByHandle
+	002af498  <none>  0548  SetFileTime
+	002af4a0  <none>  0554  SetLastError
+	002af4a8  <none>  05a3  Sleep
+	002af4b0  <none>  05c5  TlsAlloc
+	002af4b8  <none>  05c6  TlsFree
+	002af4c0  <none>  05c7  TlsGetValue
+	002af4c8  <none>  05c8  TlsSetValue
+	002af4d0  <none>  05d8  UnmapViewOfFile
+	002af4d8  <none>  05f6  VirtualProtect
+	002af4e0  <none>  05f8  VirtualQuery
+	002af4e8  <none>  0601  WaitForSingleObject
+	002af4f0  <none>  0640  WriteConsoleW
+
+ 002af014	002af248 00000000 00000000 002afc9c 002af500
+
+	DLL Name: msvcrt.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	002af500  <none>  0094  __iob_func
+	002af508  <none>  00c0  _amsg_exit
+	002af510  <none>  017c  _initterm
+	002af518  <none>  01e3  _lock
+	002af520  <none>  03af  _unlock
+	002af528  <none>  0411  abort
+	002af530  <none>  0421  calloc
+	002af538  <none>  0445  free
+	002af540  <none>  044d  fwrite
+	002af548  <none>  047a  malloc
+	002af550  <none>  047f  memcmp
+	002af558  <none>  0480  memcpy
+	002af560  <none>  0481  memmove
+	002af568  <none>  0482  memset
+	002af570  <none>  0492  realloc
+	002af578  <none>  04ad  strlen
+	002af580  <none>  04af  strncmp
+	002af588  <none>  04d1  vfprintf
+
+ 002af028	002af2e0 00000000 00000000 002afcb4 002af598
+
+	DLL Name: ntdll.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	002af598  <none>  0233  NtReadFile
+	002af5a0  <none>  02c2  NtWriteFile
+	002af5a8  <none>  0540  RtlNtStatusToDosError
+
+ 002af03c	002af300 00000000 00000000 002afcc4 002af5b8
+
+	DLL Name: bcryptprimitives.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	002af5b8  <none>  0000  ProcessPrng
+
+ 002af050	002af310 00000000 00000000 002afce8 002af5c8
+
+	DLL Name: api-ms-win-core-synch-l1-2-0.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	002af5c8  <none>  0000  WaitOnAddress
+	002af5d0  <none>  0001  WakeByAddressAll
+	002af5d8  <none>  0002  WakeByAddressSingle
+
+ 002af064	00000000 00000000 00000000 00000000 00000000
+
+There is an export table in .edata at 0x1802ae000
+
+The Export Tables (interpreted .edata section contents)
+
+Export Flags 			0
+Time/Date stamp 		6af26d32
+Major/Minor 			0/0
+Name 				00000000002ae064 zkp.dll
+Ordinal Base 			1
+Number in:
+	Export Address Table 		00000006
+	[Name Pointer/Ordinal] Table	00000006
+Table Addresses
+	Export Address Table 		00000000002ae028
+	Name Pointer Table 		00000000002ae040
+	Ordinal Table 			00000000002ae058
+
+Export Address Table -- Ordinal Base 1
+	          Ordinal  Address  Type
+	[   0] +base[   1] 000022a0 Export RVA
+	[   1] +base[   2] 000026d0 Export RVA
+	[   2] +base[   3] 000026d0 Export RVA
+	[   3] +base[   4] 000026e0 Export RVA
+	[   4] +base[   5] 00003290 Export RVA
+	[   5] +base[   6] 000039f0 Export RVA
+
+[Ordinal/Name Pointer] Table -- Ordinal Base 1
+	          Ordinal   Hint Name
+	[   0] +base[   1]  0000 find_zk_spec_by_attributes
+	[   1] +base[   2]  0001 free_circuit_bytes
+	[   2] +base[   3]  0002 free_mdoc_proof
+	[   3] +base[   4]  0003 generate_circuit
+	[   4] +base[   5]  0004 run_mdoc_prover
+	[   5] +base[   6]  0005 run_mdoc_verifier

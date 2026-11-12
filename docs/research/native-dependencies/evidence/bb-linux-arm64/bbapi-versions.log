@@ -1,0 +1,62 @@
+
+Version symbols section '.gnu.version' contains 193 entries:
+ Addr: 0x0000000001001538  Offset: 0x00001538  Link: 3 (.dynsym)
+  000:   0 (*local*)       2 (GLIBC_2.34)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  004:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  008:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  00c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  010:   3 (GLIBC_2.17)    4 (GLIBC_2.33)    3 (GLIBC_2.17)    4 (GLIBC_2.33)
+  014:   3 (GLIBC_2.17)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    3 (GLIBC_2.17)
+  018:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    4 (GLIBC_2.33)    5 (GLIBC_2.25)
+  01c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  020:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  024:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  028:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  02c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  030:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  034:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  038:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  03c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  040:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    6 (GLIBC_2.18)    3 (GLIBC_2.17)
+  044:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  048:   4 (GLIBC_2.33)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  04c:   3 (GLIBC_2.17)    7 (GLIBC_2.27)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  050:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  054:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  058:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  05c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  060:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  064:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  068:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  06c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  070:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  074:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  078:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  07c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  080:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  084:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  088:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  08c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  090:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  094:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  098:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  09c:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  0a0:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  0a4:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  0a8:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)    3 (GLIBC_2.17)
+  0ac:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    2 (GLIBC_2.34)    3 (GLIBC_2.17)
+  0b0:   2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    3 (GLIBC_2.17)
+  0b4:   2 (GLIBC_2.34)    3 (GLIBC_2.17)    2 (GLIBC_2.34)    2 (GLIBC_2.34)
+  0b8:   3 (GLIBC_2.17)    3 (GLIBC_2.17)    2 (GLIBC_2.34)    2 (GLIBC_2.34)
+  0bc:   2 (GLIBC_2.34)    2 (GLIBC_2.34)    2 (GLIBC_2.34)    3 (GLIBC_2.17)
+  0c0:   2 (GLIBC_2.34)
+
+Version needs section '.gnu.version_r' contains 1 entry:
+ Addr: 0x00000000010016bc  Offset: 0x000016bc  Link: 8 (.dynstr)
+  000000: Version: 1  File: libc.so.6  Cnt: 6
+  0x0010:   Name: GLIBC_2.17  Flags: none  Version: 3
+  0x0020:   Name: GLIBC_2.18  Flags: none  Version: 6
+  0x0030:   Name: GLIBC_2.25  Flags: none  Version: 5
+  0x0040:   Name: GLIBC_2.27  Flags: none  Version: 7
+  0x0050:   Name: GLIBC_2.33  Flags: none  Version: 4
+  0x0060:   Name: GLIBC_2.34  Flags: none  Version: 2

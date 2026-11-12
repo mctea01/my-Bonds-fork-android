@@ -1,0 +1,8 @@
+{
+  "name": "barretenberg-static-arm64-linux.tar.gz",
+  "size": 20710168,
+  "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-linux.tar.gz",
+  "digest": "sha256:1e66295cd42ebaa62112c13ae9e689b1818d493deff7fea63a14408a7044fa19",
+  "archive_sha256": "332e6bde4d9c040e83035aafb4cd817fb8b1c2e28b19587ed46ff30cdc13d1a1",
+  "archive_bytes": 93393426
+}
