@@ -114,7 +114,14 @@ pub fn get_public_salt(salt: &BigUint) -> BigUint {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect::<Vec<u8>>()
     };
-    BigUint::from_bytes_be(&Sha256::digest(&bytes))
+    // Reduced to the BN254 scalar field: a SHA-256 digest is at or above the modulus about four times in five, and
+    // the circuits' input parser refuses such a Field (the commitments, hashed in the field, are the same either way).
+    let modulus = BigUint::parse_bytes(
+        b"30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+        16,
+    )
+    .expect("BN254 scalar field modulus");
+    BigUint::from_bytes_be(&Sha256::digest(&bytes)) % modulus
 }
 
 impl InputGenSalts {
@@ -346,6 +353,32 @@ mod tests {
             public_key: SodPublicKey::Rsa { modulus, exponent: 65537 },
             authority_key_identifier: None,
         }
+    }
+
+    #[test]
+    fn the_public_salt_is_a_field_element() {
+        let modulus = BigUint::parse_bytes(
+            b"30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+            16,
+        )
+        .unwrap();
+        let mut above = 0;
+        for i in 1u32..200 {
+            let salt = BigUint::from(i) << 200;
+            let mut hex = format!("{salt:x}");
+            if hex.len() % 2 == 1 {
+                hex.pop();
+            }
+            let bytes: Vec<u8> = (0..hex.len()).step_by(2).map(|j| u8::from_str_radix(&hex[j..j + 2], 16).unwrap()).collect();
+            let raw = BigUint::from_bytes_be(&Sha256::digest(&bytes));
+            let public = get_public_salt(&salt);
+            assert!(public < modulus);
+            assert_eq!(public, &raw % &modulus);
+            if raw >= modulus {
+                above += 1;
+            }
+        }
+        assert!(above > 0, "some digests are above the modulus");
     }
 
     #[test]

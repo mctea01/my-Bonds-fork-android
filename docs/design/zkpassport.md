@@ -204,7 +204,7 @@ Z3 進度（2026-11-07，core 與 App 流程完成，依聲明 v3 正式開放�
 
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 
-- 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo；`src/` 只改了 RSA 簽章補零一處，見 `native/vendor/zkpassport/README.md`）。電路的選擇、順序與輸入都與官方 App 相同。
+- 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo；`src/` 只改了公開鹽取模與 RSA 簽章補零兩處，見 `native/vendor/zkpassport/README.md`）。電路的選擇、順序與輸入都與官方 App 相同。
 - `diw-zk-ffi` 匯出 `ZkPassportProofSession`（driver 的 next／provide）與 `zkpassport_prove`（執行電路並以 bb v6 證明，回傳公開輸入接證明的 hex 與 vkey；先做上一節的 vkey 雜湊核對，不符回 `circuit_vkey_mismatch`）。compare_age 在 x86_64 release 約 4 秒（含 vkey 計算）。
 - Kotlin `ZkPassportProver`（jvmCommonMain）：鏈上 `latestRoot` 取最新憑證根，憑證包要雜湊到該根，manifest 的電路根要在註冊表有效，之後下載電路逐一證明；註冊表檔案以網址快取（憑證包以根、manifest 以版本、電路以雜湊命名，不會過期），只接受 zkpassport.id 的 HTTPS 主機。bridge 的 `proof` 訊息補上 SDK 需要的 `vkeyHash` 與 `version`。鹽為每次新產生的 248 位元亂數。
 - 預設電路版本 `0.22.0`（第一個以 bb v6 產生 vkey 的版本，尚未發佈）；0.21.1 的電路在 vkey 核對就會停下，因為 bb v6 算出的 vkey 與發佈的不同（4.2）。使用者 2026-11-06 決定只用 bb v6、等 0.22.0，不加入 bb v5。

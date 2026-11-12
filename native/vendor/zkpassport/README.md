@@ -20,12 +20,19 @@ Changes from upstream, all in the `Cargo.toml` files only:
   and `repository` values taken from the upstream workspace manifest;
 - `[lib] crate-type` removed, so the crates build as plain Rust libraries.
 
-One change in `src/`: `processed_sod_signature` (`zkpassport-core/src/input_gen.rs`)
-left-pads an RSA signature to the modulus size, as `id_data.rs` already does for
-the ID-data circuit. The integrity circuit checks a commitment over the private
-nullifier that the ID-data circuit computed from the padded signature, so an
-unpadded signature shorter than the modulus failed the integrity proof. Keep
-this change when updating unless upstream has made it.
+Two changes in `src/`, both in `zkpassport-core/src/input_gen.rs`:
+
+- `get_public_salt` reduces its SHA-256 digest modulo the BN254 scalar field. The
+  digest is at or above the modulus about four times in five, and the circuits'
+  input parser refuses such a Field, so the integrity circuit (which takes the
+  public salt as `expiry_date_salt` and `dg2_hash_salt`) failed with `acir_input`
+  on most attempts. The field element, and so every commitment, is unchanged.
+- `processed_sod_signature` left-pads an RSA signature to the modulus size, as
+  `id_data.rs` already does for the ID-data circuit: the integrity circuit checks
+  a commitment over the private nullifier that the ID-data circuit computed from
+  the padded signature.
+
+Keep these changes when updating unless upstream has made them.
 
 Tests, fixtures and the wasm crate are not copied.
 
@@ -52,4 +59,4 @@ SOFTWARE.
 
 To update: copy `rust/crates/{zkpassport-core,zkpassport-ffi,zkpassport-bridge}/src`
 and `Cargo.toml` from the new revision, reapply the two manifest changes, update
-the revision here and in NOTICE, reapply the `src/` change above, and rerun `cargo test -p diw-zk-ffi --features zkpdf`.
+the revision here and in NOTICE, reapply the `src/` changes above, and rerun `cargo test -p diw-zk-ffi --features zkpdf`.
