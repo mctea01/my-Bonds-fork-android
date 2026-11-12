@@ -20,7 +20,14 @@ Changes from upstream, all in the `Cargo.toml` files only:
   and `repository` values taken from the upstream workspace manifest;
 - `[lib] crate-type` removed, so the crates build as plain Rust libraries.
 
-`src/` is unchanged. Tests, fixtures and the wasm crate are not copied.
+One change in `src/`: `processed_sod_signature` (`zkpassport-core/src/input_gen.rs`)
+left-pads an RSA signature to the modulus size, as `id_data.rs` already does for
+the ID-data circuit. The integrity circuit checks a commitment over the private
+nullifier that the ID-data circuit computed from the padded signature, so an
+unpadded signature shorter than the modulus failed the integrity proof. Keep
+this change when updating unless upstream has made it.
+
+Tests, fixtures and the wasm crate are not copied.
 
 License: the upstream Rust workspace declares `license = "MIT"`; the
 repository has no root license file for these crates. The MIT terms:
@@ -45,4 +52,4 @@ SOFTWARE.
 
 To update: copy `rust/crates/{zkpassport-core,zkpassport-ffi,zkpassport-bridge}/src`
 and `Cargo.toml` from the new revision, reapply the two manifest changes, update
-the revision here and in NOTICE, and rerun `cargo test -p diw-zk-ffi --features zkpdf`.
+the revision here and in NOTICE, reapply the `src/` change above, and rerun `cargo test -p diw-zk-ffi --features zkpdf`.

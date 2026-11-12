@@ -86,13 +86,16 @@ class ZkPassportResponderTest {
     fun theOriginIsAskedForAgainWhenTheFirstConnectionGetsNone() = runBlocking<Unit> {
         // The bridge reports the origin only while the request page is connected: here not on the first connection.
         var connections = 0
+        var unknown = false
+        fun ooc(origin: String) = Frame.Text(buildJsonObject { put("method", "ooc"); putJsonObject("params") { put("origin", origin) } }.toString())
         val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
             install(WebSockets)
             routing {
                 webSocket("/") {
-                    if (++connections >= 2) send(Frame.Text(buildJsonObject {
-                        put("method", "ooc"); putJsonObject("params") { put("origin", "https://verify.example.org") }
-                    }.toString()))
+                    // The bridge's answer for a topic no request page has opened.
+                    if (unknown) send(ooc("none"))
+                    else if (++connections == 1) send(ooc("none"))
+                    else if (connections >= 2) send(ooc("https://verify.example.org"))
                     for (frame in incoming) { }
                 }
             }
@@ -111,6 +114,11 @@ class ZkPassportResponderTest {
             assertEquals("bridge_origin:3x", kotlin.test.assertFailsWith<ZkPassportResponder.Failure> { silent.connect() }.code)
             assertEquals(-7, connections)
             silent.close()
+            // When every connection gets "none", the bridge does not know the request at all.
+            unknown = true
+            val gone = ZkPassportResponder(http, assertNotNull(ZkPassport.parseLink(link)), "ws://127.0.0.1:$port/", originWaitMs = 200)
+            assertEquals("bridge_unknown_request", kotlin.test.assertFailsWith<ZkPassportResponder.Failure> { gone.connect() }.code)
+            gone.close()
         } finally {
             server.stop(100, 1000)
         }

@@ -168,6 +168,8 @@ class ZkPassportResponder(
         }
         // What the bridge sent meanwhile (methods only), so the failure tells a silent bridge from a refusal.
         val methods = synchronized(received) { received.toList() }
+        // The bridge reports the origin "none" for a topic no request page ever opened, or one it no longer knows.
+        if (methods.isNotEmpty() && methods.all { it == OOC_NONE }) throw Failure("bridge_unknown_request")
         throw Failure("bridge_origin:${ORIGIN_ATTEMPTS}x" + methods.joinToString(",", prefix = if (methods.isEmpty()) "" else ":"))
     }
 
@@ -252,13 +254,20 @@ class ZkPassportResponder(
         }
     }
 
-    /** A frame's JSON-RPC method, limited to a short word: the bridge's frames are not shown otherwise. */
-    private fun methodOf(text: String): String =
-        runCatching { (Json.parseToJsonElement(text).jsonObject["method"] as? JsonPrimitive)?.contentOrNull }.getOrNull()
-            ?.takeIf { METHOD.matches(it) } ?: "?"
+    /**
+     * A frame's JSON-RPC method, limited to a short word: the bridge's frames are not shown otherwise. An origin
+     * report of "none" is told apart, as it means the bridge does not know the request.
+     */
+    private fun methodOf(text: String): String {
+        val data = runCatching { Json.parseToJsonElement(text).jsonObject }.getOrNull() ?: return "?"
+        val method = (data["method"] as? JsonPrimitive)?.contentOrNull?.takeIf { METHOD.matches(it) } ?: return "?"
+        val origin = ((data["params"] as? JsonObject)?.get("origin") as? JsonPrimitive)?.contentOrNull
+        return if (method == "ooc" && origin == "none") OOC_NONE else method
+    }
 
     companion object {
         private val METHOD = Regex("^[A-Za-z_]{1,24}$")
+        private const val OOC_NONE = "ooc:none"
         private const val MAX_RECORDED = 8
         private const val CONNECT_MS = 15_000L
         private const val ORIGIN_MS = 15_000L

@@ -43,4 +43,15 @@ class ZkPassportIntegrityTest {
         val oneByte = dg1.copyOf(95).also { it[93] = 0x3C }
         assertEquals("dg1_padding", ZkPassportIntegrity.diagnose(name, inputs(e, d = oneByte)))
     }
+
+    @Test fun theDataTheIdDataCircuitCommittedToIsCompared() {
+        val e = eContent()
+        val good = inputs(e)
+        fun id(i: JsonObject) = JsonObject(mapOf("dg1" to (i["salted_dg1"] as JsonObject)["value"]!!, "e_content" to i["e_content"]!!, "signed_attributes" to i["signed_attributes"]!!))
+        assertNull(ZkPassportIntegrity.diagnose(name, good, id(good)))
+        val other = eContent(dg1Hash = sha(dg1 + byteArrayOf(0)))
+        assertEquals("id_e_content", ZkPassportIntegrity.diagnose(name, good, id(inputs(other))))
+        val signed = JsonObject(id(good) + ("signed_attributes" to array(ByteArray(256))))
+        assertEquals("id_signed_attributes", ZkPassportIntegrity.diagnose(name, good, signed))
+    }
 }

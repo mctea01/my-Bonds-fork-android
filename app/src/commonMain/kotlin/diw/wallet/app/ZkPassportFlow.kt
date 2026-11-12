@@ -401,6 +401,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         /** An answer's failure code in words. */
         fun answerFailure(code: String): String = when {
             code == "bridge_origin" -> tr(Res.string.zkp_answer_err_origin)
+            code == "bridge_unknown_request" -> tr(Res.string.zkp_answer_err_unknown_request)
             code.startsWith("bridge_origin:") -> tr(Res.string.zkp_answer_err_origin) + "\n" + tr(Res.string.zkp_answer_err_reason, code.substringAfter(':'))
             code == "connection" -> tr(Res.string.zkp_fail_connection)
             code == "passport" -> tr(Res.string.zkp_answer_err_passport)

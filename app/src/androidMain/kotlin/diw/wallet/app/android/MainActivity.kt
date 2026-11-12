@@ -77,7 +77,11 @@ class MainActivity : FragmentActivity() {
             val mrz by mrzRequest.collectAsState()
             mrz?.let { MrzScanDialog(it) { mrzTextReader(this) } }
         }
-        handle(intent)
+        // A recreated activity, or one started again from Recents, gets the intent it was first started with: a link
+        // handled then (a zkPassport request whose bridge topic is gone by now) or a file imported then is not
+        // handled again.
+        val fromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        if (savedInstanceState == null && !fromHistory) handle(intent)
     }
 
     private suspend fun scan(request: ScanRequest): String? {

@@ -3,7 +3,7 @@
 //!
 //! Composes the ported builders exactly as the TS ProofService pipeline does.
 
-use crate::bytes::right_pad_with_zeros;
+use crate::bytes::{left_pad_with_zeros, right_pad_with_zeros};
 use crate::commitments::IntegrityToDisclosureSalts;
 use crate::curves;
 use crate::disclosure::DisclosureInput;
@@ -168,7 +168,13 @@ pub fn processed_sod_signature(parsed: &ParsedSod) -> Result<Vec<u8>, String> {
                 &hex_to_biguint(n_hex),
             ))
         }
-        SodPublicKey::Rsa { .. } => Ok(parsed.signer_signature.clone()),
+        // Left-padded to the modulus size, as the ID-data circuit gets it (id_data.rs): the private nullifier the
+        // integrity and disclosure circuits commit to must be the one that circuit computed, and a signature
+        // shorter than the modulus (its leading zero bytes dropped) would otherwise give another nullifier.
+        SodPublicKey::Rsa { modulus, .. } => Ok(left_pad_with_zeros(
+            &parsed.signer_signature,
+            (BigUint::from_bytes_be(modulus).bits() as usize).div_ceil(8),
+        )),
     }
 }
 
@@ -316,4 +322,41 @@ pub fn generate_all_inputs(p: &GenerateParams, salts: &InputGenSalts) -> Result<
         "disclosed": disclosed,
         "query_result": query_result,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rsa_sod(modulus: Vec<u8>, signature: Vec<u8>) -> ParsedSod {
+        ParsedSod {
+            e_content: vec![],
+            signed_attributes: vec![],
+            signer_signature: signature,
+            signer_sig_alg: String::new(),
+            signer_sig_alg_params: None,
+            signer_digest_alg: String::new(),
+            dg_hash_alg: String::new(),
+            dg_hashes: vec![],
+            tbs_certificate: vec![],
+            cert_sig_alg: String::new(),
+            cert_sig_alg_params: None,
+            cert_signature: vec![],
+            dsc_country: String::new(),
+            public_key: SodPublicKey::Rsa { modulus, exponent: 65537 },
+            authority_key_identifier: None,
+        }
+    }
+
+    #[test]
+    fn a_short_rsa_signature_is_padded_as_the_id_data_circuit_gets_it() {
+        let modulus = vec![0xc5; 256];
+        let short = rsa_sod(modulus.clone(), vec![0x7f; 255]);
+        let processed = processed_sod_signature(&short).unwrap();
+        assert_eq!(processed.len(), 256);
+        assert_eq!(processed[0], 0);
+        assert_eq!(&processed[1..], &[0x7f; 255][..]);
+        let full = rsa_sod(modulus, vec![0x7f; 256]);
+        assert_eq!(processed_sod_signature(&full).unwrap(), vec![0x7f; 256]);
+    }
 }
