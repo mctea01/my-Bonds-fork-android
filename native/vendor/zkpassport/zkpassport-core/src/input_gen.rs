@@ -3,7 +3,7 @@
 //!
 //! Composes the ported builders exactly as the TS ProofService pipeline does.
 
-use crate::bytes::right_pad_with_zeros;
+use crate::bytes::{left_pad_with_zeros, right_pad_with_zeros};
 use crate::commitments::IntegrityToDisclosureSalts;
 use crate::curves;
 use crate::disclosure::DisclosureInput;
@@ -114,7 +114,14 @@ pub fn get_public_salt(salt: &BigUint) -> BigUint {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect::<Vec<u8>>()
     };
-    BigUint::from_bytes_be(&Sha256::digest(&bytes))
+    // Reduced to the BN254 scalar field: a SHA-256 digest is at or above the modulus about four times in five, and
+    // the circuits' input parser refuses such a Field (the commitments, hashed in the field, are the same either way).
+    let modulus = BigUint::parse_bytes(
+        b"30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+        16,
+    )
+    .expect("BN254 scalar field modulus");
+    BigUint::from_bytes_be(&Sha256::digest(&bytes)) % modulus
 }
 
 impl InputGenSalts {
@@ -168,7 +175,13 @@ pub fn processed_sod_signature(parsed: &ParsedSod) -> Result<Vec<u8>, String> {
                 &hex_to_biguint(n_hex),
             ))
         }
-        SodPublicKey::Rsa { .. } => Ok(parsed.signer_signature.clone()),
+        // Left-padded to the modulus size, as the ID-data circuit gets it (id_data.rs): the private nullifier the
+        // integrity and disclosure circuits commit to must be the one that circuit computed, and a signature
+        // shorter than the modulus (its leading zero bytes dropped) would otherwise give another nullifier.
+        SodPublicKey::Rsa { modulus, .. } => Ok(left_pad_with_zeros(
+            &parsed.signer_signature,
+            (BigUint::from_bytes_be(modulus).bits() as usize).div_ceil(8),
+        )),
     }
 }
 
@@ -316,4 +329,67 @@ pub fn generate_all_inputs(p: &GenerateParams, salts: &InputGenSalts) -> Result<
         "disclosed": disclosed,
         "query_result": query_result,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rsa_sod(modulus: Vec<u8>, signature: Vec<u8>) -> ParsedSod {
+        ParsedSod {
+            e_content: vec![],
+            signed_attributes: vec![],
+            signer_signature: signature,
+            signer_sig_alg: String::new(),
+            signer_sig_alg_params: None,
+            signer_digest_alg: String::new(),
+            dg_hash_alg: String::new(),
+            dg_hashes: vec![],
+            tbs_certificate: vec![],
+            cert_sig_alg: String::new(),
+            cert_sig_alg_params: None,
+            cert_signature: vec![],
+            dsc_country: String::new(),
+            public_key: SodPublicKey::Rsa { modulus, exponent: 65537 },
+            authority_key_identifier: None,
+        }
+    }
+
+    #[test]
+    fn the_public_salt_is_a_field_element() {
+        let modulus = BigUint::parse_bytes(
+            b"30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001",
+            16,
+        )
+        .unwrap();
+        let mut above = 0;
+        for i in 1u32..200 {
+            let salt = BigUint::from(i) << 200;
+            let mut hex = format!("{salt:x}");
+            if hex.len() % 2 == 1 {
+                hex.pop();
+            }
+            let bytes: Vec<u8> = (0..hex.len()).step_by(2).map(|j| u8::from_str_radix(&hex[j..j + 2], 16).unwrap()).collect();
+            let raw = BigUint::from_bytes_be(&Sha256::digest(&bytes));
+            let public = get_public_salt(&salt);
+            assert!(public < modulus);
+            assert_eq!(public, &raw % &modulus);
+            if raw >= modulus {
+                above += 1;
+            }
+        }
+        assert!(above > 0, "some digests are above the modulus");
+    }
+
+    #[test]
+    fn a_short_rsa_signature_is_padded_as_the_id_data_circuit_gets_it() {
+        let modulus = vec![0xc5; 256];
+        let short = rsa_sod(modulus.clone(), vec![0x7f; 255]);
+        let processed = processed_sod_signature(&short).unwrap();
+        assert_eq!(processed.len(), 256);
+        assert_eq!(processed[0], 0);
+        assert_eq!(&processed[1..], &[0x7f; 255][..]);
+        let full = rsa_sod(modulus, vec![0x7f; 256]);
+        assert_eq!(processed_sod_signature(&full).unwrap(), vec![0x7f; 256]);
+    }
 }

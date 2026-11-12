@@ -200,10 +200,11 @@ Z3 進度（2026-11-07，core 與 App 流程完成，依聲明 v3 正式開放�
 - 測試以本機 bridge 讓本錢包的查驗端與回應器完整交換一次。完整流程仍需 0.22.0 電路。
 - App（`ZkPassportFlow.answer`）：`WalletModel.handleUri` 辨識請求連結（掃描或開啟），需要 zkPassport 聲明（v3 涵蓋回應請求，2026-11-07 使用者決定直接正式開放，不限測試環境）。先以 `ZkPassportHolder.connect` 開 bridge 取得 origin，同意畫面（`OfflineUi.ZkPassportAnswerConsent`）列出請求自述的網域、服務與用途（標示未經驗證）、`asks` 整理的每項要求與已保存的電子護照；origin 不符時以 `RiskConfirmDialog` 再確認。同意後以該護照 `MrtdDump` 的 SOD、DG1、DG2 證明並送出，拒絕送 `reject`；兩者都記入紀錄（不保存證明）。FaceMatch 與 fast 以外的模式只能拒絕；回應時不使用 OPRF（未加鹽識別碼）。e2e 測試 `zkPassportAnswerFlow`。
 - 專門聲明 v3（中英文，`LegalTexts.kt`／`LegalTextsEn.kt` version 3）涵蓋回應請求與本 App 服務端的 OPRF；已同意 v2 的使用者下次開啟 App 會被要求重新確認。
+- 名字的揭露規則（2026-11-12）：zkPassport 的 `firstname` 只含機讀區名字欄的第一段（遮罩範圍與 SDK 的 DisclosedData 都到第一個填充字元為止），連字號或空格分隔的名字只送出第一段。這是上游規則，錢包改不了，已回報為 zkpassport-packages issue #421（https://github.com/zkpassport/zkpassport-packages/issues/421）。同意畫面以 `ZkPassport.disclosedPreview` 依相同規則預覽所選護照將送出的值，名字會被截掉時另外提示；需要完整名字的查驗方應請求 `fullname`。
 
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 
-- 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo，`src/` 不改）。電路的選擇、順序與輸入都與官方 App 相同。
+- 輸入產生與流程沿用 zkPassport 官方的 Rust 實作（`zkpassport-core` 與 `zkpassport-ffi` 的 sans-IO driver，MIT），收在 `native/vendor/zkpassport`（以 git 相依取得時，上游子模組的 SSH 網址會讓 Cargo 失敗，所以收進 repo；`src/` 只改了公開鹽取模與 RSA 簽章補零兩處，見 `native/vendor/zkpassport/README.md`）。電路的選擇、順序與輸入都與官方 App 相同。
 - `diw-zk-ffi` 匯出 `ZkPassportProofSession`（driver 的 next／provide）與 `zkpassport_prove`（執行電路並以 bb v6 證明，回傳公開輸入接證明的 hex 與 vkey；先做上一節的 vkey 雜湊核對，不符回 `circuit_vkey_mismatch`）。compare_age 在 x86_64 release 約 4 秒（含 vkey 計算）。
 - Kotlin `ZkPassportProver`（jvmCommonMain）：鏈上 `latestRoot` 取最新憑證根，憑證包要雜湊到該根，manifest 的電路根要在註冊表有效，之後下載電路逐一證明；註冊表檔案以網址快取（憑證包以根、manifest 以版本、電路以雜湊命名，不會過期），只接受 zkpassport.id 的 HTTPS 主機。bridge 的 `proof` 訊息補上 SDK 需要的 `vkeyHash` 與 `version`。鹽為每次新產生的 248 位元亂數。
 - 預設電路版本 `0.22.0`（第一個以 bb v6 產生 vkey 的版本，尚未發佈）；0.21.1 的電路在 vkey 核對就會停下，因為 bb v6 算出的 vkey 與發佈的不同（4.2）。使用者 2026-11-06 決定只用 bb v6、等 0.22.0，不加入 bb v5。

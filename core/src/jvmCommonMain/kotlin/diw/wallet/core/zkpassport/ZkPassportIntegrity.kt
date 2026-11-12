@@ -18,8 +18,12 @@ object ZkPassportIntegrity {
     private const val DG1_LENGTH = 95
     private const val PASSPORT_DG1_LENGTH = 93
 
-    /** The first check [inputs] fail for the circuit [name]; null when they pass or [name] is not an integrity circuit. */
-    fun diagnose(name: String, inputs: JsonObject): String? {
+    /**
+     * The first check [inputs] fail for the circuit [name]; null when they pass or [name] is not an integrity circuit.
+     * With [idData], the inputs of the ID-data circuit proved before it, the data both commit to is compared too: the
+     * integrity circuit's commitment check fails when they differ.
+     */
+    fun diagnose(name: String, inputs: JsonObject, idData: JsonObject? = null): String? {
         val match = NAME.find(name) ?: return null
         val sa = algorithm(match.groupValues[1]) ?: return null
         val dg = algorithm(match.groupValues[2]) ?: return null
@@ -43,6 +47,11 @@ object ZkPassportIntegrity {
         if (at < 2 || at + DG2_HASH_DER.size >= eContent.size || eContent[at - 2] != 0x30.toByte() || eContent[at - 1] != (5 + size).toByte() ||
             eContent[at + DG2_HASH_DER.size] != size.toByte() || at + DG2_HASH_DER.size + 1 + size > eSize
         ) return "dg2_hash"
+        if (idData != null) {
+            if (!bytes(idData["dg1"]).contentEquals(dg1)) return "id_dg1"
+            if (!bytes(idData["e_content"]).contentEquals(eContent)) return "id_e_content"
+            if (!bytes(idData["signed_attributes"]).contentEquals(signedAttributes)) return "id_signed_attributes"
+        }
         return null
     }
 

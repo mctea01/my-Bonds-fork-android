@@ -321,6 +321,53 @@ object ZkPassport {
      * pages open on a phone); null for anything else or when the domain, the requester's key or the query is missing
      * or malformed.
      */
+    /**
+     * The values the disclosures of [query] would send from the zone [mrz] (DG1's text, 88 characters for a passport
+     * or 90 for a card), read as zkPassport's circuits and SDK read them (zkpassport-core disclosure.rs). Its
+     * "firstname" is the given names' first component only: a given name written TAI<MING is sent as TAI. Fields asked
+     * with disclose true, in query order; empty for another zone layout.
+     */
+    fun disclosedPreview(mrz: String, query: JsonObject): List<Pair<String, String>> {
+        val card = mrz.length == 90
+        if (mrz.length != 88 && !card) return emptyList()
+        fun part(a: Int, b: Int) = mrz.substring(a, b)
+        fun name(text: String) = text.replace('<', ' ').split(' ').filter { it.isNotEmpty() }.joinToString(" ")
+        val (last, given) = names(mrz)
+        val code = part(0, 2).replace("<", "")
+        val values = mapOf(
+            "firstname" to name(given.substringBefore('<')),
+            "lastname" to name(last),
+            "fullname" to name("$given $last"),
+            "nationality" to if (card) part(45, 48) else part(54, 57),
+            "issuing_country" to part(2, 5),
+            "document_number" to (if (card) part(5, 14) else part(44, 53)).trim('<').replace('<', ' '),
+            "document_type" to when {
+                code.startsWith("P") -> "passport"
+                code == "IR" || code == "AR" -> "residence_permit"
+                code.startsWith("I") -> "id_card"
+                else -> "other"
+            },
+            "gender" to if (card) part(37, 38) else part(64, 65),
+            "birthdate" to if (card) part(30, 36) else part(57, 63),
+            "expiry_date" to if (card) part(38, 44) else part(65, 71),
+        )
+        return query.mapNotNull { (key, value) ->
+            val disclose = ((value as? JsonObject)?.get("disclose") as? JsonPrimitive)?.contentOrNull == "true"
+            values[key]?.takeIf { disclose }?.let { key to it }
+        }
+    }
+
+    /** Whether [mrz]'s given names have more than one component, which zkPassport's "firstname" leaves out. */
+    fun firstNameDropsParts(mrz: String): Boolean =
+        (mrz.length == 88 || mrz.length == 90) && names(mrz).second.trim('<').contains('<')
+
+    /** Surname and given names of the zone's name field, fillers kept. */
+    private fun names(mrz: String): Pair<String, String> {
+        val raw = if (mrz.length == 90) mrz.substring(60, 90) else mrz.substring(5, 44)
+        val split = raw.indexOf("<<")
+        return if (split < 0) "" to "" else raw.substring(0, split) to raw.substring(split + 2)
+    }
+
     fun parseLink(link: String): ZkPassportIncoming? {
         val trimmed = link.trim()
         val app = Regex("^zkpassport://(/[rc])(\\?.*)$", RegexOption.IGNORE_CASE).find(trimmed)

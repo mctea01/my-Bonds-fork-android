@@ -4255,6 +4255,8 @@
     <string name="zkp_field_document_type">證件種類</string>
     <string name="zkp_field_expiry_date">效期截止日</string>
     <string name="zkp_field_fullname">姓名</string>
+    <string name="zkp_field_firstname">名字</string>
+    <string name="zkp_field_lastname">姓氏</string>
     <string name="zkp_field_gender">性別</string>
     <string name="zkp_field_issuing_country">發證國</string>
     <string name="zkp_field_nationality">國籍</string>
@@ -4334,6 +4336,8 @@
     <string name="zkp_answer_choose">用來證明的護照</string>
     <string name="zkp_answer_no_passport">錢包中沒有電子護照。請先在文件中讀取護照晶片。</string>
     <string name="zkp_answer_note">證明在本機以保存的晶片讀取資料產生，請求方只會透過 zkPassport 傳送服務收到上面列出的內容。產生可能需要數分鐘。</string>
+    <string name="zkp_answer_preview">以所選護照將送出的內容</string>
+    <string name="zkp_answer_firstname_cut">zkPassport 的「名字」只含機讀區的第一個名字部分，其餘部分不會送出（例如機讀區的 TAI&lt;MING 只送出 TAI）。這是 zkPassport 電路與 SDK 的規則，錢包無法改變；請求方需要完整名字時應改為請求姓名。</string>
     <string name="zkp_answer_accept">產生並送出</string>
     <string name="zkp_answer_reject">拒絕</string>
     <string name="zkp_answer_origin_mismatch">請求不是來自它所寫的網域</string>
@@ -4355,6 +4359,7 @@
     <string name="zkp_answer_history_note">zkPassport 請求，請求方來源 %1$s。</string>
     <string name="zkp_answer_history_test"> 測試請求。</string>
     <string name="zkp_answer_err_origin">zkPassport 傳送服務在 45 秒內（含重新連線）沒有回報請求來源，因此未回應。傳送服務只在請求頁仍連線時回報來源：請讓請求頁保持開啟（在同一支手機上請先切回瀏覽器讓頁面重新連線），或在請求頁重新產生 QR 碼再試。</string>
+    <string name="zkp_answer_err_unknown_request">zkPassport 傳送服務回報它不知道這個請求（來源為 none），因此未回應。請求頁可能已關閉、逾時或重新產生了請求，也可能是錢包重新開啟了先前的舊連結。請在請求頁重新開始，再從新的 QR 碼或「開啟 App」按鈕進入。</string>
     <string name="zkp_answer_err_passport">保存的護照讀取資料缺少證明所需的晶片檔案（SOD 與 DG1），請重新讀取晶片。</string>
     <string name="zkp_answer_err_crs">本機尚未取得證明參數。</string>
     <string name="zkp_answer_err_inputs">zkPassport 電路尚不支援這本護照，已告知請求方。</string>

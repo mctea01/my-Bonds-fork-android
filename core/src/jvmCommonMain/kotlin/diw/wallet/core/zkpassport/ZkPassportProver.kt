@@ -123,6 +123,7 @@ class ZkPassportProver(
         val messages = ArrayList<Pair<String, JsonElement>>()
         var total = 0
         var salted: Pair<String, JsonObject>? = null
+        var idData: JsonObject? = null
         repeat(MAX_COMMANDS) {
             ensureActive()
             val command = Json.parseToJsonElement(session.next()).jsonObject
@@ -172,12 +173,15 @@ class ZkPassportProver(
                         throw kotlinx.coroutines.CancellationException("cancelled")
                     } catch (e: ZkException.InvalidInput) {
                         if (e.reason == "circuit_vkey_mismatch") throw Failure("circuit_backend:$name")
-                        // An integrity circuit's failure names the check it failed (no document data).
-                        throw Failure("proof:$name" + (ZkPassportIntegrity.diagnose(name, inputs)?.let { ":$it" } ?: ""))
+                        // The native reason is a fixed code; an integrity circuit's failure also names the check it
+                        // failed. Neither carries document data.
+                        val reason = e.reason.takeIf { REASON.matches(it) } ?: "other"
+                        throw Failure("proof:$name:$reason" + (ZkPassportIntegrity.diagnose(name, inputs, idData)?.let { ":$it" } ?: ""))
                     } catch (e: ZkException) {
                         throw Failure("proof:$name")
                     }
                     val proof = out.text("proof") ?: throw Failure("proof:$name")
+                    if (name.startsWith(ID_DATA)) idData = inputs
                     proofs.add(Proof(name, proof, out.text("vkey").orEmpty(), hash, version, null))
                     provide(session, index.toString(), proof)
                 }
@@ -307,6 +311,9 @@ class ZkPassportProver(
         const val CIRCUIT_VERSION = ZkPassport.CIRCUIT_VERSION
         private const val MAX_COMMANDS = 256
         private val random = SecureRandom()
+
+        private val REASON = Regex("^[a-z0-9_]{1,40}$")
+        private const val ID_DATA = "sig_check_id_data"
 
         /** A fresh master salt below the BN254 scalar field, in decimal. */
         fun salt(): String = BigInteger(1, ByteArray(31).also(random::nextBytes)).toString()

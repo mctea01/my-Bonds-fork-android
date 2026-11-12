@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -281,6 +282,16 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
                     RadioButton(selected = chosen == f.id, onClick = { chosen = f.id })
                     Text(f.name, style = MaterialTheme.typography.bodyMedium)
                 }
+            }
+            // The values the chosen passport would send, read as zkPassport reads them.
+            val picked = s.passports.firstOrNull { it.id == chosen }
+            val preview by produceState(emptyList<String>() to false, picked) {
+                value = picked?.let { model.taiwan.zkPassport.preview(it, incoming.query) } ?: (emptyList<String>() to false)
+            }
+            if (preview.first.isNotEmpty()) {
+                SectionTitle(stringResource(Res.string.zkp_answer_preview))
+                preview.first.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                if (preview.second) Text(stringResource(Res.string.zkp_answer_firstname_cut), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             Text(stringResource(Res.string.zkp_answer_note), style = MaterialTheme.typography.bodySmall)
         }
