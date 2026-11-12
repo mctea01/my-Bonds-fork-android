@@ -1,0 +1,206 @@
+sha2-asm v0.6.4
+└── sha2-asm feature "default"
+    └── sha2 v0.10.9
+        ├── sha2 feature "asm"
+        │   ├── core-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/proto)
+        │   │   └── core-proto feature "default"
+        │   │       ├── compile-compiler v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/compiler)
+        │   │       │   └── compile-compiler feature "default"
+        │   │       │       ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits)
+        │   │       │       │   ├── mdoc-zk-circuits feature "default"
+        │   │       │       │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile)
+        │   │       │       │   │   │   └── mdoc-zk-compile feature "default"
+        │   │       │       │   │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime)
+        │   │       │       │   │   │           └── mdoc-zk-runtime feature "default"
+        │   │       │       │   │   │               └── multipaz-longfellow-ffi v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust)
+        │   │       │       │   │   │                   └── multipaz-longfellow-ffi feature "default" (command-line)
+        │   │       │       │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   ├── mdoc-zk-circuits feature "runtime-algebra"
+        │   │       │       │   │   └── mdoc-zk-circuits feature "testonly"
+        │   │       │       │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       ├── compile-eval v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/eval)
+        │   │       │   └── compile-eval feature "default"
+        │   │       │       ├── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec)
+        │   │       │       │   ├── circuits-big-bitvec feature "default"
+        │   │       │       │   │   ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2)
+        │   │       │       │   │   │   ├── circuits-ecdsa2 feature "default"
+        │   │       │       │   │   │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │   └── circuits-ecdsa2 feature "testonly"
+        │   │       │       │   │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │   │   └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   └── circuits-big-bitvec feature "testonly"
+        │   │       │       │       ├── circuits-ecdsa2 feature "testonly" (*)
+        │   │       │       │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       ├── circuits-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec)
+        │   │       │       │   ├── circuits-bitvec feature "default"
+        │   │       │       │   │   ├── circuits-analog-adder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_adder)
+        │   │       │       │   │   │   └── circuits-analog-adder feature "default"
+        │   │       │       │   │   │       ├── circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256)
+        │   │       │       │   │   │       │   ├── circuits-sha256 feature "default"
+        │   │       │       │   │   │       │   │   ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg)
+        │   │       │       │   │   │       │   │   │   ├── circuits-sha256msg feature "default"
+        │   │       │       │   │   │       │   │   │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │       │   │   │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │       │   │   │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │   │   │   └── circuits-sha256msg feature "testonly"
+        │   │       │       │   │   │       │   │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │   │   │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │   │   │       │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │       │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │       │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │   └── circuits-sha256 feature "testonly"
+        │   │       │       │   │   │       │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │       ├── circuits-sha256msg feature "testonly" (*)
+        │   │       │       │   │   │       │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │   │   │       ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+        │   │       │       │   │   │       ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   ├── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec) (*)
+        │   │       │       │   │   ├── circuits-bit-plucker v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bit_plucker)
+        │   │       │       │   │   │   └── circuits-bit-plucker feature "default"
+        │   │       │       │   │   │       ├── circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac)
+        │   │       │       │   │   │       │   ├── circuits-mac feature "default"
+        │   │       │       │   │   │       │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │       │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │       │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │   └── circuits-mac feature "testonly"
+        │   │       │       │   │   │       │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   │       │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │   │   │       ├── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128)
+        │   │       │       │   │   │       │   ├── circuits-mac-gf128 feature "default"
+        │   │       │       │   │   │       │   │   └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   │       │   └── circuits-mac-gf128 feature "testonly"
+        │   │       │       │   │   │       │       └── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │   │   │       ├── circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256) (*)
+        │   │       │       │   │   │       ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+        │   │       │       │   │   │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   │   ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+        │   │       │       │   │   ├── circuits-gf2-128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/gf2_128)
+        │   │       │       │   │   │   └── circuits-gf2-128 feature "default"
+        │   │       │       │   │   │       └── circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac) (*)
+        │   │       │       │   │   ├── circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac) (*)
+        │   │       │       │   │   ├── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128) (*)
+        │   │       │       │   │   ├── circuits-memcmp v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp)
+        │   │       │       │   │   │   └── circuits-memcmp feature "default"
+        │   │       │       │   │   │       └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   ├── circuits-routing v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing)
+        │   │       │       │   │   │   └── circuits-routing feature "default"
+        │   │       │       │   │   │       └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   ├── circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256) (*)
+        │   │       │       │   │   ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+        │   │       │       │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   └── circuits-bitvec feature "testonly"
+        │   │       │       │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │       ├── circuits-ecdsa2 feature "testonly" (*)
+        │   │       │       │       ├── circuits-big-bitvec feature "testonly" (*)
+        │   │       │       │       ├── circuits-mac feature "testonly" (*)
+        │   │       │       │       ├── circuits-sha256 feature "testonly" (*)
+        │   │       │       │       ├── circuits-sha256msg feature "testonly" (*)
+        │   │       │       │       ├── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │       └── circuits-mac-gf128 feature "testonly" (*)
+        │   │       │       ├── circuits-boolean v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/boolean)
+        │   │       │       │   ├── circuits-boolean feature "default"
+        │   │       │       │   │   ├── circuits-analog-adder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_adder) (*)
+        │   │       │       │   │   ├── circuits-analog-decoder v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/analog_decoder)
+        │   │       │       │   │   │   └── circuits-analog-decoder feature "default"
+        │   │       │       │   │   │       └── circuits-bit-plucker v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bit_plucker) (*)
+        │   │       │       │   │   ├── circuits-arithmetic v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/arithmetic)
+        │   │       │       │   │   │   └── circuits-arithmetic feature "default"
+        │   │       │       │   │   │       ├── circuits-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec) (*)
+        │   │       │       │   │   │       ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+        │   │       │       │   │   │       ├── circuits-memcmp v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp) (*)
+        │   │       │       │   │   │       └── circuits-routing v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing) (*)
+        │   │       │       │   │   ├── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec) (*)
+        │   │       │       │   │   ├── circuits-bignum v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bignum)
+        │   │       │       │   │   │   └── circuits-bignum feature "default"
+        │   │       │       │   │   │       └── circuits-big-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/big_bitvec) (*)
+        │   │       │       │   │   ├── circuits-bitvec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/bitvec) (*)
+        │   │       │       │   │   ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+        │   │       │       │   │   ├── circuits-gf2-128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/gf2_128) (*)
+        │   │       │       │   │   ├── circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac) (*)
+        │   │       │       │   │   ├── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128) (*)
+        │   │       │       │   │   ├── circuits-memcmp v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/memcmp) (*)
+        │   │       │       │   │   ├── circuits-routing v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/routing) (*)
+        │   │       │       │   │   ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+        │   │       │       │   │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       │       │   │   └── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   └── circuits-boolean feature "testonly"
+        │   │       │       │       ├── circuits-bitvec feature "testonly" (*)
+        │   │       │       │       ├── circuits-ecdsa2 feature "testonly" (*)
+        │   │       │       │       ├── circuits-big-bitvec feature "testonly" (*)
+        │   │       │       │       ├── circuits-mac feature "testonly" (*)
+        │   │       │       │       ├── circuits-sha256msg feature "testonly" (*)
+        │   │       │       │       ├── mdoc-zk-circuits feature "testonly" (*)
+        │   │       │       │       └── circuits-mac-gf128 feature "testonly" (*)
+        │   │       │       ├── circuits-ec v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ec)
+        │   │       │       │   ├── circuits-ec feature "default"
+        │   │       │       │   │   ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+        │   │       │       │   │   ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │   │   └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │   └── circuits-ec feature "testonly"
+        │   │       │       │       └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │       └── circuits-ecdsa2 feature "testonly" (*)
+        │   │       │       ├── circuits-ecdsa2 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/ecdsa2) (*)
+        │   │       │       ├── circuits-mac v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac) (*)
+        │   │       │       ├── circuits-mac-gf128 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/mac_gf128) (*)
+        │   │       │       ├── circuits-sha256 v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256) (*)
+        │   │       │       ├── circuits-sha256msg v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/circuits/sha256msg) (*)
+        │   │       │       └── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   │       ├── compile-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/proto)
+        │   │       │   └── compile-proto feature "default"
+        │   │       │       ├── compile-compiler v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/compiler) (*)
+        │   │       │       └── compile-eval v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/compile/eval) (*)
+        │   │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       ├── runtime-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/proto)
+        │   │       │   └── runtime-proto feature "default"
+        │   │       │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       ├── runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero)
+        │   │       │       │   └── runtime-ligero feature "default"
+        │   │       │       │       ├── mdoc-zk-compile v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/compile) (*)
+        │   │       │       │       ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       │       └── runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk)
+        │   │       │       │           └── runtime-zk feature "default"
+        │   │       │       │               └── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   │       │       ├── runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle)
+        │   │       │       │   └── runtime-merkle feature "default"
+        │   │       │       │       └── runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero) (*)
+        │   │       │       ├── runtime-sumcheck v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck)
+        │   │       │       │   └── runtime-sumcheck feature "default"
+        │   │       │       │       └── runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk) (*)
+        │   │       │       └── runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk) (*)
+        │   │       ├── runtime-sumcheck v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck) (*)
+        │   │       └── runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk) (*)
+        │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   ├── runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero) (*)
+        │   ├── runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle) (*)
+        │   └── runtime-random v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/random)
+        │       └── runtime-random feature "default"
+        │           ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │           ├── runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero) (*)
+        │           ├── runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle) (*)
+        │           ├── runtime-sumcheck v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/sumcheck) (*)
+        │           └── runtime-zk v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/zk) (*)
+        ├── sha2 feature "default"
+        │   ├── core-proto v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/core/proto) (*)
+        │   ├── mdoc-zk-circuits v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/circuits) (*)
+        │   ├── mdoc-zk-runtime v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/runtime) (*)
+        │   ├── runtime-ligero v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/ligero) (*)
+        │   ├── runtime-merkle v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/merkle) (*)
+        │   └── runtime-random v0.1.0 (/workspace/native-research-env/arm64/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/runtime/random) (*)
+        ├── sha2 feature "sha2-asm"
+        │   └── sha2 feature "asm" (*)
+        └── sha2 feature "std"
+            └── sha2 feature "default" (*)

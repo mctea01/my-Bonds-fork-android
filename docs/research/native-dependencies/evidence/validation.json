@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-09",
+  "checks": {
+    "markdown_local_links": "passed",
+    "inventory_source_paths": "passed",
+    "csv_shape_and_counts": "passed",
+    "json_parse": "passed",
+    "python_syntax": "passed",
+    "archive_scanner_synthetic_hash_and_filter": "passed",
+    "maven_longfellow_matches_smoked_blob": "passed",
+    "baseline_source_hashes_unchanged": "passed",
+    "matrix_unique_keys_no_ios_no_app_support_claim": "passed",
+    "online_gradle_no_failed_nodes": "passed",
+    "existing_tracked_changes_docs_index_only": "passed",
+    "staged_diff_whitespace": "passed after LF/log whitespace normalization"
+  },
+  "csv_row_counts": {
+    "toolchain-targets.csv": 14,
+    "native-dependency-inventory.csv": 45,
+    "other-native-dependencies.csv": 10,
+    "pc-native-ffi-matrix.csv": 91,
+    "native-support-matrix.csv": 98,
+    "evidence/cached-native-entries.csv": 36,
+    "evidence/cargo-lock-packages.csv": 581,
+    "evidence/maven-native-entries.csv": 32
+  },
+  "limits": "Validation checks documentation/tools; does not add platform or proof acceptance."
+}

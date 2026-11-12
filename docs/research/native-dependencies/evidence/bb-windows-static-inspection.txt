@@ -1,0 +1,34 @@
+Commands ran on Linux x86_64; inspection only, no Windows execution.
+sha256sum barretenberg-static-amd64-windows.tar.gz: 27653ef44281c79cc92ab724d2c2dba63e70a8692c88d16c9737e1d8f6751af3
+tar -tzf: libbb-external.a
+archive bytes: 159485574
+objdump -f (first member):
+In archive /tmp/diw-bb-research/windows/libbb-external.a:
+
+bbapi_avm.cpp.obj:     file format pe-x86-64
+architecture: i386:x86-64, flags 0x0000003d:
+HAS_RELOC, HAS_LINENO, HAS_DEBUG, HAS_SYMS, HAS_LOCALS
+start address 0x0000000000000000
+
+
+nm -g --defined-only (selected):
+0000000000000070 T _ZNO2bb5bbapi12CircuitProve7executeERKNS0_12BBApiRequestE
+0000000000001660 T _ZNO2bb5bbapi13CircuitVerify7executeERKNS0_12BBApiRequestE
+00000000000001a0 T bbapi
+0000000000000000 T env_hardware_concurrency
+0000000000000050 T logstr
+0000000000000000 T throw_or_abort_impl
+nm -u (selected unique imports; not a final dynamic import table):
+                 U BCryptGenRandom
+                 U __cxa_throw
+                 U __imp_WSAStartup
+                 U __imp__aligned_free
+                 U __imp__aligned_malloc
+                 U libdeflate_alloc_compressor
+                 U libdeflate_alloc_decompressor
+                 U libdeflate_free_compressor
+                 U libdeflate_free_decompressor
+                 U libdeflate_gzip_compress
+                 U libdeflate_gzip_compress_bound
+                 U libdeflate_gzip_decompress
+C++ standard-library namespace: 0000000000000000 T _ZNSt3__120__throw_length_errorB8ne200100EPKc

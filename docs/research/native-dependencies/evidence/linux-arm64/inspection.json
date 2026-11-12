@@ -1,0 +1,52 @@
+{
+  "elf": {
+    "libzkp.so": {
+      "highest_glibc_symbol": "2.34",
+      "needed": [
+        "libgcc_s.so.1",
+        "libm.so.6",
+        "libc.so.6"
+      ]
+    },
+    "libdiw_zk.so": {
+      "highest_glibc_symbol": "2.34",
+      "needed": [
+        "libgcc_s.so.1",
+        "libc.so.6"
+      ]
+    },
+    "longfellow-probe": {
+      "highest_glibc_symbol": "2.34",
+      "needed": [
+        "libzkp.so",
+        "libc.so.6"
+      ]
+    },
+    "runtime-probe": {
+      "highest_glibc_symbol": "2.34",
+      "needed": [
+        "libc.so.6"
+      ]
+    }
+  },
+  "instruction_scan": {
+    "argv": [
+      "/workspace/native-research-env/arm64/toolchain/usr/bin/aarch64-linux-gnu-objdump",
+      "-d",
+      "/workspace/native-research-env/arm64/verified/libzkp.so"
+    ],
+    "exit_code": 0,
+    "filter": "count selected instruction mnemonics; full disassembly not retained",
+    "counts": {
+      "pmull": 300,
+      "pmull2": 444,
+      "aese": 0,
+      "aesmc": 0,
+      "sha256h": 240,
+      "sha256h2": 240,
+      "sha256su0": 180,
+      "sha256su1": 180
+    }
+  },
+  "limits": "Symbol and ISA observations are not minimum OS/CPU acceptance; QEMU max only"
+}

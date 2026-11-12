@@ -40,6 +40,7 @@ val zkDesktopLibrary: String? = System.getProperty("os.name").let { os ->
     val x64 = System.getProperty("os.arch") in setOf("amd64", "x86_64")
     when {
         os.startsWith("Linux") && x64 -> "linux-x86_64/libdiw_zk.so"
+        os.startsWith("Linux") && System.getProperty("os.arch") == "aarch64" -> "linux-aarch64/libdiw_zk.so"
         os.startsWith("Windows") && x64 -> "windows-x86_64/diw_zk.dll"
         os.startsWith("Mac") && System.getProperty("os.arch") == "aarch64" -> "macos-aarch64/libdiw_zk.dylib"
         else -> null

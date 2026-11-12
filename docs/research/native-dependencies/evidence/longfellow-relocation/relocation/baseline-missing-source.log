@@ -1,0 +1,4 @@
+
+thread '<unnamed>' (36) panicked at longfellow-zk/rust/applications/mdoc_zk/artifacts/src/lib.rs:45:29:
+Failed to read lfa2 archive file at /workspace/native-research-env/longfellow/multipaz/multipaz-longfellow/rust/longfellow-zk/rust/applications/mdoc_zk/artifacts/circuits/8d079211715200ff06c5109639245502bfe94aa869908d31176aae4016182121.v2
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace

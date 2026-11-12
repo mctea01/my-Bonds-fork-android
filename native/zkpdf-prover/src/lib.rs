@@ -24,6 +24,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[cfg(feature = "bb")]
 mod backend;
 #[cfg(feature = "bb")]
+mod bbthread;
+#[cfg(feature = "bb")]
 mod runtime;
 #[cfg(feature = "bb")]
 pub use runtime::{prove, prove_with_metrics, verify, SegmentMetrics};

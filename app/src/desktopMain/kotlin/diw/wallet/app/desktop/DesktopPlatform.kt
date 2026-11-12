@@ -231,6 +231,7 @@ internal fun desktopZkInfo(dataDir: File): ZkPlatformInfo {
     val x64 = arch == "amd64" || arch == "x86_64"
     val abi = when {
         os.contains("linux") && x64 -> "linux-x86_64"
+        os.contains("linux") && (arch == "aarch64" || arch == "arm64") -> "linux-aarch64"
         os.contains("windows") && x64 -> "windows-x86_64"
         os.contains("mac") && (arch == "aarch64" || arch == "arm64") -> "macos-aarch64"
         else -> "$os-$arch"

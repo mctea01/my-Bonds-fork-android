@@ -1,0 +1,35 @@
+{
+  "url": "https://raw.githubusercontent.com/zkpassport/zkpassport-packages/dae2129a0722e9391a4a243c6d53df0a134a74f8/packages/aztec/test-harness/fixtures/outer_count_4_disclose.json",
+  "revision": "dae2129a0722e9391a4a243c6d53df0a134a74f8",
+  "sha256": "a7470d4c4e71a24da90cfed8ec026cae24d4c7adbbd6f905bfffecad5655067d",
+  "bytes": 45363,
+  "metadata": {
+    "generator": "test-harness/generate-proof-fixtures.ts (zkpassport-aztec)",
+    "kind": "disclose",
+    "circuit": "outer_count_4",
+    "disclosureCircuit": "disclose_bytes",
+    "bbVersion": "6.0.0",
+    "circuitsCommit": "1a1836eb958b7d7bbb47fab060128757748dba6a"
+  },
+  "circuit_gitlink": {
+    "api_url": "https://api.github.com/repos/zkpassport/zkpassport-packages/git/trees/dae2129a0722e9391a4a243c6d53df0a134a74f8?recursive=1",
+    "entry": {
+      "path": "packages/aztec/test-harness/circuits",
+      "mode": "160000",
+      "type": "commit",
+      "sha": "1a1836eb958b7d7bbb47fab060128757748dba6a"
+    }
+  },
+  "source_review": [
+    {
+      "url": "https://raw.githubusercontent.com/zkpassport/zkpassport-packages/dae2129a0722e9391a4a243c6d53df0a134a74f8/packages/aztec/test-harness/generate-proof-fixtures.ts",
+      "sha256": "9bd4ddc72982abae1dfadb87542b5e578744768e5efbdbb1f7ff64590a66ff2a"
+    },
+    {
+      "url": "https://raw.githubusercontent.com/zkpassport/zkpassport-packages/dae2129a0722e9391a4a243c6d53df0a134a74f8/packages/aztec/test-harness/fixture-conformance.test.ts",
+      "sha256": "cf582c364131d4cde766e1c0964b77da16e4f451313b4be293376c8e32df6490"
+    }
+  ],
+  "synthetic_data": "Generator uses fictional MRZ and test signing certificates; raw disclosure fields are not copied to research logs",
+  "limits": "Fixture verifies against its embedded VK; no independent key derivation, registry authentication, proof regeneration, or upstream Bun test execution"
+}

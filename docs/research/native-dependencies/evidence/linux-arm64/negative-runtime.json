@@ -1,0 +1,37 @@
+{
+  "execution_environment": "QEMU user; not physical ARM64",
+  "tests": [
+    {
+      "name": "missing-library",
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/arm64/verified/runtime-probe",
+        "/workspace/native-research-env/arm64/verified/missing.so"
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "library_load_failed\n",
+      "expected_diagnostic": "library_load_failed"
+    },
+    {
+      "name": "wrong-library",
+      "argv": [
+        "/workspace/native-research-env/arm64/toolchain/usr/bin/qemu-aarch64",
+        "-cpu",
+        "max",
+        "-L",
+        "/workspace/native-research-env/arm64/toolchain/usr/aarch64-linux-gnu",
+        "/workspace/native-research-env/arm64/verified/runtime-probe",
+        "/workspace/native-research-env/arm64/verified/libzkp.so"
+      ],
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "required_symbol_missing\n",
+      "expected_diagnostic": "required_symbol_missing"
+    }
+  ]
+}

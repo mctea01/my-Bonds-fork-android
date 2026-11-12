@@ -1,0 +1,180 @@
+{
+  "retrieved_utc": "2026-11-09T01:12:52.409207+00:00",
+  "project_revision": "3428b8ee12ac5e644f478d4c6e43854376202fa4",
+  "upstream_revision": "0219f11d8133970df3974fe5ae65e006bf8c193a",
+  "tag_ref_url": "https://api.github.com/repos/AztecProtocol/aztec-packages/git/refs/tags/v6.0.0",
+  "release_url": "https://github.com/AztecProtocol/aztec-packages/releases/tag/v6.0.0",
+  "release_target_commitish": "next",
+  "release_id": 420686731,
+  "assets": [
+    {
+      "name": "barretenberg-amd64-darwin.tar.gz",
+      "size": 9731159,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-amd64-darwin.tar.gz",
+      "digest": "sha256:b0f872ad96ba35a57a3b8b91a7e1b8baf39dbe6e33a8a5b969e5d110638f1161"
+    },
+    {
+      "name": "barretenberg-amd64-linux.tar.gz",
+      "size": 10562528,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-amd64-linux.tar.gz",
+      "digest": "sha256:6a310ede6457cf47e6dcf11f8d6b59dd709328c272a70c03afb1417c5a798b67"
+    },
+    {
+      "name": "barretenberg-amd64-windows.tar.gz",
+      "size": 8390827,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-amd64-windows.tar.gz",
+      "digest": "sha256:0e4a356ad74ea6fe75b1915ca1aac8f31b7ff4aa60b43e33d372a8f213fac1cb"
+    },
+    {
+      "name": "barretenberg-arm64-darwin.tar.gz",
+      "size": 8865873,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-arm64-darwin.tar.gz",
+      "digest": "sha256:48bd18a7d53781a2820e7538dfd89584ca5b4d76c7908e8be4910ce994e7c35e"
+    },
+    {
+      "name": "barretenberg-arm64-linux.tar.gz",
+      "size": 10361320,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-arm64-linux.tar.gz",
+      "digest": "sha256:cbdf8cb01b80cca089b63834c543e49e65d1e4e0b969844ce7f302c3de30b432"
+    },
+    {
+      "name": "barretenberg-avm-amd64-linux.tar.gz",
+      "size": 19786747,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-avm-amd64-linux.tar.gz",
+      "digest": "sha256:51e9132e061b99656ca2861daab2c7e212f95cf2c1f39e67df3b0ad7ce6226aa"
+    },
+    {
+      "name": "barretenberg-avm-arm64-linux.tar.gz",
+      "size": 21635190,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-avm-arm64-linux.tar.gz",
+      "digest": "sha256:2787c895fd090d374f032bc4cc02c9cdd4a24d051c759c6e486bbc2795891d3b"
+    },
+    {
+      "name": "barretenberg-static-amd64-darwin.tar.gz",
+      "size": 16927289,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-amd64-darwin.tar.gz",
+      "digest": "sha256:9321bff6c6f68036d8ed651cdf4d09824892c9f7ccfed37e255115fb60b7716d"
+    },
+    {
+      "name": "barretenberg-static-amd64-linux.tar.gz",
+      "size": 18573700,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-amd64-linux.tar.gz",
+      "digest": "sha256:4040c25d374f20d0641824642db328abaf3847959e503a835060fb03a5a95d9f"
+    },
+    {
+      "name": "barretenberg-static-amd64-windows.tar.gz",
+      "size": 21279594,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-amd64-windows.tar.gz",
+      "digest": "sha256:27653ef44281c79cc92ab724d2c2dba63e70a8692c88d16c9737e1d8f6751af3"
+    },
+    {
+      "name": "barretenberg-static-arm64-android.tar.gz",
+      "size": 20854945,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-android.tar.gz",
+      "digest": "sha256:f861c899bc617807b3b55dddbf0e88cb80297e356831ca813f32b3c3115112d3"
+    },
+    {
+      "name": "barretenberg-static-arm64-darwin.tar.gz",
+      "size": 17930689,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-darwin.tar.gz",
+      "digest": "sha256:310b2baaee0f8c8a96725d9cc246ffd41243ed8606965ad0c87f99428288d964"
+    },
+    {
+      "name": "barretenberg-static-arm64-ios-sim.tar.gz",
+      "size": 17904144,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-ios-sim.tar.gz",
+      "digest": "sha256:5ca108540b0cf88731cb6e6c3017eb630efbcfa3091c234971b78f0fb012f494"
+    },
+    {
+      "name": "barretenberg-static-arm64-ios.tar.gz",
+      "size": 17901605,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-ios.tar.gz",
+      "digest": "sha256:c7350fb21963da64d59d1b94835dfcdf71a78ea05752ed56af7004e5fa7f671d"
+    },
+    {
+      "name": "barretenberg-static-arm64-linux.tar.gz",
+      "size": 20710168,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-arm64-linux.tar.gz",
+      "digest": "sha256:1e66295cd42ebaa62112c13ae9e689b1818d493deff7fea63a14408a7044fa19"
+    },
+    {
+      "name": "barretenberg-static-x86_64-android.tar.gz",
+      "size": 19428666,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-static-x86_64-android.tar.gz",
+      "digest": "sha256:85fba8c73d66206f1b2322a92fd854c98bfe9bc6b17b63e453d9532069516f76"
+    },
+    {
+      "name": "barretenberg-threads-wasm.tar.gz",
+      "size": 4099488,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-threads-wasm.tar.gz",
+      "digest": "sha256:a91100b1de993f0bdcbd5db3c8f44ef944e84962c8f3128c2b1d646544175cea"
+    },
+    {
+      "name": "barretenberg-wasm.tar.gz",
+      "size": 4094252,
+      "url": "https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-wasm.tar.gz",
+      "digest": "sha256:060885d3f62662cd4ea80bef19c7417b6464cb4c207c922b5127177c0b1e0695"
+    }
+  ],
+  "inspected_archive": {
+    "name": "barretenberg-static-amd64-windows.tar.gz",
+    "sha256": "27653ef44281c79cc92ab724d2c2dba63e70a8692c88d16c9737e1d8f6751af3",
+    "member": "libbb-external.a",
+    "member_sha256": "f401bb3a644d5be1163d1df95a2968f33fa053d4e2c7b065f16f436cbb644699",
+    "bytes": 159485574
+  },
+  "source_sha256": {
+    "barretenberg/LICENSE": "677540d945f4d7b296a885c1a08c0af3e53dcfe66f591c88c507d1a8c5cf1ea7",
+    "barretenberg/bootstrap.sh": "30ea62de7ef1ea0bade4fb60091d1e317fc5d5710a8aec04fb087cc3ba177b13",
+    "barretenberg/cpp/CMakeLists.txt": "7b4fb9e05c95251976f38a342ffa22a8ed54ac7a23e7c932b258eb7e77d05dd8",
+    "barretenberg/cpp/CMakePresets.json": "05ff3c3851411ef51d91a33eb3dd71fc3a5ba79ce70acb21d02b0e2e1986d425",
+    "barretenberg/cpp/cmake/arch.cmake": "48b4dfef2712c3c0bc23fd4e0d534cd1740233c21e243ffc23c1b41a9c3e7b35",
+    "barretenberg/cpp/cmake/avm-transpiler.cmake": "8052efd78f42114db3c881b73f86adcdc1111a2991b60dfeb621ef1fc826ff8e",
+    "barretenberg/cpp/cmake/backward-cpp.cmake": "77801b8ff4173a66456b705c794a0bb211c6a2b6c7cc8354318b69576b36c5e1",
+    "barretenberg/cpp/cmake/barretenberg.pc.in": "ba5bd9ac6675b00128e0cc009026dff75711b4ff19786acba254ad712696ba98",
+    "barretenberg/cpp/cmake/benchmark.cmake": "66c8f8f0e6c24cd50f8739a631dae644ab44499f80c5208319482f796d9ed2a1",
+    "barretenberg/cpp/cmake/build.cmake": "ebf442e039ced39dc484382af2610bb96111d8f7ef5ee83e847c0d3af719752d",
+    "barretenberg/cpp/cmake/disable-compiler-checks.cmake": "b074c8ba882bed6b7e84cf103e19109a55537864d87711456a5dda37f8fdc313",
+    "barretenberg/cpp/cmake/fuzzing-avm-ignorelist.txt": "99cbaa8c75b251e346e63aabb5767c985fa8a95e56d41b82ee7acd053e7fbf35",
+    "barretenberg/cpp/cmake/gtest.cmake": "a7e6da3cc11dc2f40834901aa07e94d407dadbfc91f5bba9a30bf0b5a2a59ac5",
+    "barretenberg/cpp/cmake/httplib.cmake": "a81d651844d4d06e3368dbb57ddfb54d2302aad9b410b8fa37ba3462b8a451ec",
+    "barretenberg/cpp/cmake/libdeflate.cmake": "7a92f666a55c1b40e9eb06e5d1ac255ef468232f5fc13213d563ca429c350d3a",
+    "barretenberg/cpp/cmake/lmdb.cmake": "3bd8fcba8be25c50c78e7e2690e5d9fb67ad9901403996af504302cf55367279",
+    "barretenberg/cpp/cmake/module.cmake": "475c0cf59653877b3710f3d4a8ad794c719406bd530965ee4ad23ef290b7acb1",
+    "barretenberg/cpp/cmake/msgpack.cmake": "f11f2a308188191c498bb9008432606158308865d155dc01d682c887413723b8",
+    "barretenberg/cpp/cmake/nlohmann_json.cmake": "2bc33314a89df75328b0cdbf6fb2edaa55f57084d73c9ac8f9b4b389922e5fb1",
+    "barretenberg/cpp/cmake/threading.cmake": "3637fbc6f7cebcae11b9d0932b342125aa215aaf3a13c18cdd1366981002cea0",
+    "barretenberg/cpp/cmake/toolchains/aarch64-darwin.cmake": "c353916caa2800ee531b3c0ed35e955e64e7fec0302a5cac16ad1c02910b05b8",
+    "barretenberg/cpp/cmake/toolchains/aarch64-linux.cmake": "01ae38b225b3ee790c7706e48c786cfa822e9185156e6e7188d49a293a15cfd5",
+    "barretenberg/cpp/cmake/toolchains/i386-linux.cmake": "2b3e189685e3c3a742a91d617b65f257ffa5573c132e3c2bb2c16cc955fd467f",
+    "barretenberg/cpp/cmake/toolchains/wasm32-wasi.cmake": "7237b378b55a522d5c9739b3633be3b2159678e58727dddb6d72e0bbd4c2e50d",
+    "barretenberg/cpp/cmake/toolchains/x86_64-darwin.cmake": "90a2751b874b1a0d15c89e3f1d97e916225ba05e7ccb1b5bccecaf92e81277f6",
+    "barretenberg/cpp/cmake/toolchains/x86_64-linux.cmake": "34f7cd6465b4e3ffe9507843f34b3ae91c847a6be11c7534124add99e3e02dc3",
+    "barretenberg/cpp/cmake/tracy.cmake": "6d05d312982ee7aa78546dd8759a996b3ad825a8a38a835ea5626048cd6fa232",
+    "barretenberg/cpp/scripts/preset-build-dir": "3be9201e62ec9f6b2a7c4d34b9ff00cc12f99f60d5dcc6ab9f56e12d2e05f193",
+    "barretenberg/cpp/scripts/zig-ar.sh": "cdedc762ea3f9dadff4515cf440a8dc28c7bb6e3073fcdc055519ae58141e270",
+    "barretenberg/cpp/scripts/zig-c++.sh": "fdb32ee4eb1b4b1c9e36a8be8668523741d03c353bd45e752f4d8ed8247ebc5a",
+    "barretenberg/cpp/scripts/zig-cc.sh": "3c045b14ef929e277b25a4f4e7daae1da398c9d7cb5dca13a13446146bb70254",
+    "barretenberg/cpp/scripts/zig-ranlib.sh": "a8b73d08a2e7e6bdb6ced7501cfab8320f9048368bd05585dc43c7b43f7018ed",
+    "barretenberg/cpp/src/CMakeLists.txt": "15ed2528f02f86d1287abde4aa015926e557ea96db26e01ebc41a8fc2d34117d",
+    "barretenberg/cpp/src/barretenberg/bbapi/c_bind.cpp": "cc60cad4aecd2b13e0e07b9595a1f6fa049f174cb39c9d993788c4b03082c097",
+    "barretenberg/cpp/src/barretenberg/bbapi/c_bind.hpp": "f55e71b1a2544224bd141cbbfa9dae6186cbabc27ed61265a5cd90cede1b011b",
+    "barretenberg/cpp/src/barretenberg/common/mem.hpp": "b0c532a2dad6d1ca210802b29a219c3c2bb4411e3a27c9ddd8f653d897da1c90",
+    "barretenberg/cpp/src/barretenberg/common/thread.cpp": "2d8cabf0f99b490fe563b0efd251bfa5b963b32eb47d5afbf5386e22b74e865c",
+    "barretenberg/cpp/src/barretenberg/common/wasm_export.hpp": "ef6c27f504f201cb3dfb61e76ac4518a175888119a736144f933d98b810c6d79",
+    "barretenberg/cpp/src/barretenberg/numeric/random/engine.cpp": "4c607144aee04189d9cf23abadb9f45b1875f658c38270cd6d34431b6987c66f",
+    "barretenberg/cpp/src/barretenberg/numeric/random/engine.hpp": "6acc4f7ac5bd165c679d521befb9e883d3b7d02c2e886fedf0aa9f9a56082211",
+    "barretenberg/cpp/src/barretenberg/numeric/random/engine.test.cpp": "570b04e39c6a541088db339f7d26939c72cf52d4c77c076d68ee9071081d97bc",
+    "barretenberg/cpp/src/barretenberg/polynomials/backing_memory.cpp": "2043fde02a100928a3b31415c63d3c7461774fe7029becb2dadbf71a751a2235",
+    "barretenberg/cpp/src/barretenberg/polynomials/backing_memory.hpp": "54d0112786aac70755bb27dbae14df9599c7f197444e3ffe340847db6792ce2a",
+    "barretenberg/cpp/src/barretenberg/serialize/cbind_fwd.hpp": "846f8f63863e1d4bc396a1a8b25e8bce5d5d8dd5a30ee09d67e4ae1781263409",
+    "barretenberg/cpp/src/barretenberg/serialize/msgpack_impl/msgpack_impl.hpp": "e1095b2581d7ba849e97338a7067f49f7e5431e5150d768359ff1524200e46bf",
+    "barretenberg/cpp/src/barretenberg/serialize/msgpack_impl.hpp": "438f44d9b8125aa193182da48b91e49787573f93ac133d35bddf6f84a8e3493e"
+  },
+  "result": "source-reviewed",
+  "build": "not-tested",
+  "link": "not-tested",
+  "load": "not-tested",
+  "function": "not-tested",
+  "provenance_limit": "Tag resolves to pinned commit; release asset digest matches download. No independent reproducible-build or signed provenance verification performed."
+}

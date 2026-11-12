@@ -58,6 +58,7 @@ def main():
              "-DENABLE_PIC=ON", "-DCMAKE_POSITION_INDEPENDENT_CODE=ON", "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
              "-DCMAKE_CXX_FLAGS=-Wno-error=missing-field-initializers -Wno-error=array-bounds"]
     # Replaces the CMAKE_CXX_FLAGS above (the last -D wins) with the same warnings plus the baseline.
+    archiver = "ar"
     portable = ["-DCMAKE_PROJECT_INCLUDE=" + str(Path(__file__).resolve().parent / "portable_x86_64.cmake"),
                 "-DCMAKE_C_FLAGS=-march=x86-64-v2",
                 "-DCMAKE_CXX_FLAGS=-march=x86-64-v2 -Wno-error=missing-field-initializers -Wno-error=array-bounds"]
@@ -65,6 +66,17 @@ def main():
         if platform.system() != "Linux":
             raise SystemExit("native_linux_host_required")
         flags += portable
+    elif args.target == "aarch64-unknown-linux-gnu":
+        if platform.system() != "Linux":
+            raise SystemExit("native_linux_host_required")
+        # GCC 13 for aarch64 reports a vector push_back in hash_to_curve as an overflow (a false positive that the
+        # x86_64 compiler does not raise); upstream builds with -Werror.
+        flags += ["-DARM=ON", "-DCMAKE_CXX_FLAGS=-Wno-error=missing-field-initializers -Wno-error=array-bounds "
+                  "-Wno-error=stringop-overflow"]
+        # On an x86_64 host the distribution's GNU cross compiler builds it; upstream reads the processor name.
+        if platform.machine() not in ("aarch64", "arm64"):
+            flags += ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=aarch64",
+                      "-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc", "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"]
     elif args.target == "aarch64-apple-darwin":
         if platform.system() != "Darwin":
             raise SystemExit("native_macos_host_required")
@@ -77,10 +89,18 @@ def main():
         flags += ["-DCMAKE_TOOLCHAIN_FILE=" + str(ndk / "build/cmake/android.toolchain.cmake"),
                   "-DANDROID_ABI=" + abi, "-DANDROID_PLATFORM=android-29", "-DANDROID_STL=c++_static"]
         flags += ["-DARM=ON"] if abi == "arm64-v8a" else portable
+    elif args.target == "x86_64-pc-windows-gnu":
+        # Upstream builds Windows only from Linux (with zig), and its dependency fetches run through sh. The same
+        # here, with the distribution's clang, lld and MinGW-w64: see windows_mingw.cmake and mingw_libstdcxx.h.
+        # libstdc++ for MinGW keeps its thread-local variables in emulated TLS, which clang must be told to use.
+        if platform.system() != "Linux":
+            raise SystemExit("native_linux_host_required")
+        tools = Path(__file__).resolve().parent
+        flags += ["-DCMAKE_TOOLCHAIN_FILE=" + str(tools / "windows_mingw.cmake"), *portable[:2],
+                  portable[2] + " -femulated-tls -include " + str(tools / "mingw_libstdcxx.h")]
+        archiver = "x86_64-w64-mingw32-ar"
     else:
-        # Upstream only cross-compiles Windows from Linux with its zig toolchain, and its
-        # dependency fetches run through sh; a CLI executable would break the runtime contract.
-        raise SystemExit("bb_windows_port_required")
+        raise SystemExit("bb_target_unsupported")
     run(["cmake", "-S", source / "barretenberg/cpp", "-B", build, "-G", "Ninja", *flags])
     run(["cmake", "--build", build, "--target", "barretenberg", "vm2_stub", "libdeflate_static", "--parallel", args.jobs])
     # acir_format references the AVM recursion entry points; upstream links their stubs into
@@ -88,7 +108,8 @@ def main():
     stub = build / "src/barretenberg/vm2_stub/CMakeFiles/vm2_stub.dir"
     archive = build / "lib/libzkpdf_vm2_stub.a"
     archive.unlink(missing_ok=True)
-    run([os.environ.get("ZKPDF_AR") or os.environ.get("AR", "ar"), "rcs", archive, *sorted(stub.rglob("*.o"))])
+    objects = sorted([*stub.rglob("*.o"), *stub.rglob("*.obj")])
+    run([os.environ.get("ZKPDF_AR") or os.environ.get("AR", archiver), "rcs", archive, *objects])
     result = {"revision": revision, "target": args.target,
               "build_seconds": round(time.monotonic() - started, 3),
               "static_library_bytes": (build / "lib/libbarretenberg.a").stat().st_size}
