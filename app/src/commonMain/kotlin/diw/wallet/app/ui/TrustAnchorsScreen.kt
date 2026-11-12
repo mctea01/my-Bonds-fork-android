@@ -19,6 +19,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -71,7 +72,15 @@ private fun environmentTitle(e: TrustEnvironment): String = when (e) {
 /** One certificate in one environment with every role it is an anchor for. */
 private data class AnchorGroup(val environment: TrustEnvironment, val anchors: List<StoredAnchor>) {
     val first: StoredAnchor get() = anchors.first()
+    /** An imported CSCA: trusted for travel documents only. These are many and listed on their own. */
+    val csca: Boolean get() = environment != TrustEnvironment.PRODUCTION && anchors.all { it.role == TrustRole.TRAVEL_DOCUMENT }
+    /** The country code the CSCA names (its subject's C, else its issuer's), or "?". */
+    val country: String get() = runCatching {
+        first.certificate.subject.components[COUNTRY_NAME]?.value ?: first.certificate.issuer.components[COUNTRY_NAME]?.value
+    }.getOrNull()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: "?"
 }
+
+private const val COUNTRY_NAME = "2.5.4.6"
 
 /**
  * Trust anchors of every kind, not only TWDIW: X.509 roots by environment and role, the DID trust sources (the
@@ -110,7 +119,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
         val list = anchors
         if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
-            val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }
+            val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }.filter { !it.csca }
             TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.forEach { env ->
                 val inEnv = groups.filter { it.environment == env }
                 // Long lists start folded; the user's own imports stay open so a new import is seen at once.
@@ -130,6 +139,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
         }
         SystemStoreSection(model)
         CscaSection(model)
+        list?.let { ImportedCscaSection(model, it) }
         TrustListsSection(model)
         IntermediateSection(model)
     }
@@ -173,10 +183,11 @@ fun CustomTrustScreen(model: WalletModel) {
         if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
             val groups = list.filter { it.environment == TrustEnvironment.USER }
-                .groupBy { it.certificate }.map { (_, v) -> AnchorGroup(TrustEnvironment.USER, v) }
+                .groupBy { it.certificate }.map { (_, v) -> AnchorGroup(TrustEnvironment.USER, v) }.filter { !it.csca }
             if (groups.isEmpty()) Text(stringResource(Res.string.custom_roots_none),
                 style = MaterialTheme.typography.bodySmall)
             groups.forEach { g -> AnchorCard(g) { removing = g } }
+            ImportedCscaSection(model, list, Screen.CustomTrust)
         }
 
         HorizontalDivider()
@@ -367,6 +378,86 @@ private fun CscaSection(model: WalletModel) {
     }
     Text(stringResource(Res.string.csca_updated, cscas.UPDATED, cscas.LIST),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+}
+
+/**
+ * CSCAs the user imported (from master lists or ICAO PKD files, often hundreds), apart from other anchors: grouped
+ * by the country code they name, each country folded, and removable one by one, by country or by selection.
+ */
+@Composable
+private fun ImportedCscaSection(model: WalletModel, anchors: List<StoredAnchor>, from: Screen = Screen.TrustAnchors) {
+    val groups = remember(anchors) {
+        anchors.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }.filter { it.csca }
+    }
+    val byCountry = remember(groups) { groups.groupBy { it.country }.toList().sortedBy { it.first } }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember(groups) { mutableStateOf(emptySet<AnchorGroup>()) }
+    var confirm by remember { mutableStateOf<List<AnchorGroup>?>(null) }
+    HorizontalDivider()
+    CollapsibleSection(stringResource(Res.string.csca_imported_title), groups.size, initiallyExpanded = groups.size <= 3, key = "csca-imported") {
+        Text(stringResource(Res.string.csca_imported_text, groups.size, byCountry.size), style = MaterialTheme.typography.bodySmall)
+        if (groups.isEmpty()) return@CollapsibleSection
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { selecting = !selecting; selected = emptySet() }) {
+                Text(stringResource(if (selecting) Res.string.action_cancel else Res.string.csca_select))
+            }
+            if (selecting) {
+                TextButton(onClick = { selected = if (selected.size == groups.size) emptySet() else groups.toSet() }) {
+                    Text(stringResource(if (selected.size == groups.size) Res.string.csca_select_none else Res.string.csca_select_all))
+                }
+                TextButton(onClick = { confirm = selected.toList() }, enabled = selected.isNotEmpty()) {
+                    Text(stringResource(Res.string.csca_remove_selected, selected.size), color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+        byCountry.forEach { (country, list) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selecting) Checkbox(
+                    checked = list.all { it in selected },
+                    onCheckedChange = { on -> selected = if (on) selected + list else selected - list.toSet() },
+                )
+                Column(Modifier.weight(1f)) {
+                    CollapsibleSection(country, list.size, key = "csca-imported-$country") {
+                        list.sortedBy { it.first.certificate.validityNotAfter }.forEach { g ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (selecting) Checkbox(
+                                    checked = g in selected,
+                                    onCheckedChange = { on -> selected = if (on) selected + g else selected - g },
+                                )
+                                Column(Modifier.weight(1f).clickable {
+                                    model.screen.value = Screen.Certificate(listOf(g.first.certificate), 0, from)
+                                }.padding(vertical = 4.dp)) {
+                                    Text(g.first.metadata.displayName ?: g.first.certificate.displaySubject(), style = MaterialTheme.typography.bodyMedium)
+                                    Text(environmentTitle(g.environment) + "・" + stringResource(Res.string.valid_until) + localTime(g.first.certificate.validityNotAfter),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                                if (!selecting) TextButton(onClick = { confirm = listOf(g) }) { Text(stringResource(Res.string.action_remove)) }
+                            }
+                        }
+                        if (!selecting && list.size > 1) TextButton(onClick = { confirm = list }) {
+                            Text(stringResource(Res.string.csca_remove_country, country, list.size), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    confirm?.let { targets ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(stringResource(Res.string.anchor_remove_title)) },
+            text = { Text(stringResource(Res.string.csca_remove_text, targets.size, targets.map { it.country }.distinct().sorted().joinToString(stringResource(Res.string.sep_list)))) },
+            confirmButton = {
+                TextButton(onClick = {
+                    model.removeAnchors(targets.flatMap { it.anchors })
+                    selected = selected - targets.toSet()
+                    if (selected.isEmpty()) selecting = false
+                    confirm = null
+                }) { Text(stringResource(Res.string.action_remove), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(Res.string.action_cancel)) } },
+        )
+    }
 }
 
 /** The public trust lists for document signers and time-stamp authorities: on or off, what is stored, and updates. */

@@ -2887,6 +2887,7 @@
     <string name="pin_reason_public_ca">Change the public CA settings</string>
     <string name="pin_reason_recheck_lists">Re-check trust lists and blockchain registrations</string>
     <string name="pin_reason_remove_anchor">Remove the trust anchor \"%1$s\"</string>
+    <string name="pin_reason_remove_anchors">Remove %1$d trust anchors</string>
     <string name="pin_reason_remove_intermediate">Remove the intermediate certificate \"%1$s\"</string>
     <string name="pin_reason_remove_list">Remove the mdoc signing list \"%1$s\"</string>
     <string name="pin_reason_software_key">Using the software key needs the App PIN</string>
@@ -4374,6 +4375,14 @@
     <string name="csca_text">%1$d country signing CAs from %2$d countries and regions, taken from the CSCA master list of %3$s. They are used only for electronic passports and travel documents, as T2 (production, not official). Taiwan Compatriot Permits and other documents whose CSCA is not published need their CSCA imported.</string>
     <string name="csca_countries">By country</string>
     <string name="csca_updated">The built-in list was updated %1$s (%2$s). It updates with the app, and expired CSCAs are disabled automatically.</string>
+    <string name="csca_imported_title">Imported CSCAs</string>
+    <string name="csca_imported_text">%1$d certificates, %2$d country or area codes, grouped by the code each names. Used for travel documents such as ePassports only.</string>
+    <string name="csca_select">Select</string>
+    <string name="csca_select_all">Select all</string>
+    <string name="csca_select_none">Select none</string>
+    <string name="csca_remove_selected">Remove selected (%1$d)</string>
+    <string name="csca_remove_country">Remove all of %1$s (%2$d)</string>
+    <string name="csca_remove_text">Remove %1$d imported CSCAs (%2$s)? Documents checked against them are judged again.</string>
     <string name="zkp_needs_engine">UltraHonk engine: </string>
     <string name="zkp_needs_ok">ready</string>
     <string name="zkp_needs_engine_missing">not available in this build or on this device</string>

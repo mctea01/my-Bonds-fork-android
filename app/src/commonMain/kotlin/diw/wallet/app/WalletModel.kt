@@ -2135,6 +2135,16 @@ class WalletModel(val platform: PlatformServices) {
         status.reevaluateIssuers(tr(Res.string.pin_reason_remove_anchor, name.toString()), affected = { it.trustEnvironment == anchor.environment && it.anchorName == name })
     }
 
+    /** Removes [anchors] at once (imported CSCAs, often many), judging the affected documents again once. */
+    fun removeAnchors(anchors: List<StoredAnchor>) = scope.launch {
+        val removable = anchors.filter { it.environment != TrustEnvironment.PRODUCTION }
+        if (removable.isEmpty()) return@launch
+        removable.forEach { trust.removeAnchor(it) }
+        loadAnchors()
+        val names = removable.map { it.environment to it.metadata.displayName }.toSet()
+        status.reevaluateIssuers(tr(Res.string.pin_reason_remove_anchors, removable.size), affected = { (it.trustEnvironment to it.anchorName) in names })
+    }
+
     /** Trusts [did] for [roles] as the user's own anchor. */
     fun trustDid(did: String, name: String, roles: Set<TrustRole>) = scope.launch {
         try {

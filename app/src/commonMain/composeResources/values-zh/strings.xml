@@ -2887,6 +2887,7 @@
     <string name="pin_reason_public_ca">變更公開憑證機構設定</string>
     <string name="pin_reason_recheck_lists">重新查驗信任清單與區塊鏈註冊</string>
     <string name="pin_reason_remove_anchor">移除信任錨點「%1$s」</string>
+    <string name="pin_reason_remove_anchors">移除 %1$d 個信任錨點</string>
     <string name="pin_reason_remove_intermediate">移除中繼憑證「%1$s」</string>
     <string name="pin_reason_remove_list">移除 mdoc 簽署清單「%1$s」</string>
     <string name="pin_reason_software_key">使用軟體金鑰需要 App PIN</string>
@@ -4374,6 +4375,14 @@
     <string name="csca_text">內建 %2$d 個國家與地區的 %1$d 張國家簽章憑證機構憑證，取自%3$s的 CSCA 主清單。只用於電子護照與旅行證件，等級為 T2（正式、非官方）。台胞證等未公開 CSCA 的證件仍需自行匯入。</string>
     <string name="csca_countries">依國家</string>
     <string name="csca_updated">內建清單更新於 %1$s（%2$s）。清單隨 App 更新，到期的 CSCA 自動停用。</string>
+    <string name="csca_imported_title">匯入的 CSCA</string>
+    <string name="csca_imported_text">%1$d 張，%2$d 個國家或地區代碼，依憑證載明的代碼分組。只用於電子護照等旅行證件。</string>
+    <string name="csca_select">選取</string>
+    <string name="csca_select_all">全選</string>
+    <string name="csca_select_none">全不選</string>
+    <string name="csca_remove_selected">移除所選（%1$d）</string>
+    <string name="csca_remove_country">移除 %1$s 全部（%2$d）</string>
+    <string name="csca_remove_text">移除 %1$d 張匯入的 CSCA（%2$s）？以它們驗證的證件會重新判定信任等級。</string>
     <string name="zkp_needs_engine">UltraHonk 引擎：</string>
     <string name="zkp_needs_ok">就緒</string>
     <string name="zkp_needs_engine_missing">這個版本或裝置不可用</string>
