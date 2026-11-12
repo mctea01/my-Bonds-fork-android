@@ -4250,7 +4250,9 @@
     <string name="zkp_fail_unsupported">zkPassport 尚不支援對方的證件。</string>
     <string name="zkp_failed">zkPassport 證明未通過</string>
     <string name="zkp_not_checked">無法在這台裝置驗證 zkPassport 證明</string>
+    <string name="zkp_field_age">年齡</string>
     <string name="zkp_field_birthdate">出生日期</string>
+    <string name="zkp_field_bound">綁定資料</string>
     <string name="zkp_field_document_number">證件號碼</string>
     <string name="zkp_field_document_type">證件種類</string>
     <string name="zkp_field_expiry_date">效期截止日</string>

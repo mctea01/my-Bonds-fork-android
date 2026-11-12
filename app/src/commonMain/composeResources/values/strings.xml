@@ -4250,7 +4250,9 @@
     <string name="zkp_fail_unsupported">The holder's document is not supported by zkPassport yet.</string>
     <string name="zkp_failed">The zkPassport proofs did not pass</string>
     <string name="zkp_not_checked">The zkPassport proofs cannot be verified on this device</string>
+    <string name="zkp_field_age">Age</string>
     <string name="zkp_field_birthdate">Date of birth</string>
+    <string name="zkp_field_bound">Bound data</string>
     <string name="zkp_field_document_number">Document number</string>
     <string name="zkp_field_document_type">Document type</string>
     <string name="zkp_field_expiry_date">Date of expiry</string>

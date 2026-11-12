@@ -2684,6 +2684,8 @@ class WalletModelE2eTest {
         assertEquals(HistoryKind.VERIFIED, entry.kind)
         assertNull(entry.failure)
         assertTrue(entry.note!!.contains("verify.example.org"), entry.note)
+        // The log keeps the names of what was proved, never the values.
+        assertEquals(listOf("證件種類", "發證國", "國籍", "年齡"), entry.claims)
 
         m.taiwan.zkPassport.start(request)
         withTimeout(5.seconds) { while (fake.requests.size < 2) delay(20) }

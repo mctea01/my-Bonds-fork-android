@@ -132,12 +132,6 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         return summary
     }
 
-    /** The newest certificate package of [chain] already in the cache (any root); null when none is. */
-    fun cachedCertificates(chain: Long): JsonObject? =
-        cache.listFiles { f -> f.name.startsWith("certificates-$chain-") && f.name.endsWith(".json") }.orEmpty()
-            .sortedByDescending { it.lastModified() }
-            .firstNotNullOfOrNull { runCatching { Json.parseToJsonElement(it.readText()).jsonObject }.getOrNull() }
-
     /**
      * A registry file by [url], cached by its address: certificate packages are named by root, manifests by version
      * and packaged circuits by key hash, so a copy never goes stale. Only zkPassport's own HTTPS hosts are fetched.

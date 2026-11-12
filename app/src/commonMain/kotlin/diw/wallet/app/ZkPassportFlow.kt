@@ -255,7 +255,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         model.record(
             HistoryKind.VERIFIED, "zkPassport", null,
             listOf(tr(Res.string.zkp_document)),
-            result?.let { claims(it) }.orEmpty(),
+            result?.let { claimNames(it) }.orEmpty(),
             tr(Res.string.zkp_history_note, ZkPassport.normalizeDomain(request.domain), request.purpose) +
                 (if (request.devMode) tr(Res.string.zkp_history_test) else "") +
                 (if (result?.viaVerifierApi == true) tr(Res.string.zkp_history_api) else ""),
@@ -341,6 +341,24 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }.distinct()
 
         /** What the proofs establish, one line each, as committed to by the proofs. */
+        /** The names of what [r] disclosed or proved, without the values: what the history log keeps. */
+        fun claimNames(r: ZkPassportResult): List<String> = buildList {
+            r.disclosed?.let { d ->
+                if (d.documentCode != null) add(fieldTitle(ZkPassportField.DOCUMENT_TYPE))
+                if (d.issuingCountry != null) add(fieldTitle(ZkPassportField.ISSUING_COUNTRY))
+                if (d.nationality != null) add(fieldTitle(ZkPassportField.NATIONALITY))
+                if (!d.lastName.isNullOrEmpty() || !d.givenNames.isNullOrEmpty()) add(fieldTitle(ZkPassportField.FULLNAME))
+                if (d.birthdate != null) add(fieldTitle(ZkPassportField.BIRTHDATE))
+                if (d.expiryDate != null) add(fieldTitle(ZkPassportField.EXPIRY_DATE))
+                if (d.documentNumber != null) add(fieldTitle(ZkPassportField.DOCUMENT_NUMBER))
+                if (d.gender != null) add(fieldTitle(ZkPassportField.GENDER))
+            }
+            if ((r.minAge ?: 0) > 0 || r.maxAge?.takeIf { it in 1..149 } != null) add(tr(Res.string.zkp_field_age))
+            if (r.nationalityIn.isNotEmpty() || r.nationalityOut.isNotEmpty()) add(fieldTitle(ZkPassportField.NATIONALITY))
+            if (r.issuingCountryIn.isNotEmpty() || r.issuingCountryOut.isNotEmpty()) add(fieldTitle(ZkPassportField.ISSUING_COUNTRY))
+            if (r.boundData != null) add(tr(Res.string.zkp_field_bound))
+        }.distinct()
+
         fun claims(r: ZkPassportResult): List<String> = buildList {
             r.disclosed?.let { d ->
                 d.documentCode?.let { add(tr(Res.string.zkp_line, fieldTitle(ZkPassportField.DOCUMENT_TYPE), it)) }

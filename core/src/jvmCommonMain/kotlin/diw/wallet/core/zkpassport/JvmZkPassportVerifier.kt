@@ -277,12 +277,12 @@ class JvmZkPassportVerifier(
     private suspend fun csca(chain: Long, root: String, result: ZkPassportResult, anchors: List<ByteArray>): ZkPassportCscaCheck? {
         val countries = result.disclosed?.issuingCountry?.takeIf { it.length == 3 }?.let(::listOf) ?: result.issuingCountryIn
         if (countries.isEmpty()) return null
-        // The proof's own package; when it cannot be fetched, a package of another root already checked against the
-        // registry still lists the country's CSCAs, which is all this comparison needs.
+        // Only the package of the proof's own root (fetched or cached under that root): another root may list other
+        // CSCAs, so without it the comparison stays undecided.
         val summary = try {
             registry.certificates(chain, root) { zkpassportCertificates(it) }
         } catch (e: ZkPassportRegistry.Unreachable) {
-            registry.cachedCertificates(chain) ?: return ZkPassportCscaCheck(countries, 0, 0, e.code)
+            return ZkPassportCscaCheck(countries, 0, 0, e.code)
         }
         val entries = summary["certificates"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
             .filter { (it["country"] as? JsonPrimitive)?.contentOrNull in countries }
