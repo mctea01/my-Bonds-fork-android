@@ -287,4 +287,21 @@ class Bbs2023Test {
             "\"credentialSubject\": {\"isAdult\": true}}").jsonObject
         assertFailsWith<ProtocolException> { jsonLd.toRdf(v1) }
     }
+
+    /** Byte strings wrapped in CBOR tag 64 (RFC 8746 uint8 typed array) read the same as plain ones. */
+    @Test fun tag64ByteStringsAreRead() {
+        val base = BbsBaseProof.parse(proofValue(obj("addSignedSDBase.json")))
+        fun head(major: Int, n: Int): ByteArray = when {
+            n < 24 -> byteArrayOf(((major shl 5) or n).toByte())
+            n < 256 -> byteArrayOf(((major shl 5) or 24).toByte(), n.toByte())
+            else -> byteArrayOf(((major shl 5) or 25).toByte(), (n shr 8).toByte(), n.toByte())
+        }
+        fun tagged(b: ByteArray) = byteArrayOf(0xd8.toByte(), 0x40) + head(2, b.size) + b
+        val pointers = base.mandatoryPointers.fold(head(4, base.mandatoryPointers.size)) { acc, p -> acc + head(3, p.encodeToByteArray().size) + p.encodeToByteArray() }
+        val cbor = byteArrayOf(0xd9.toByte(), 0x5d, 0x02) + head(4, 5) + tagged(base.signature) + tagged(base.header) + tagged(base.publicKey) + tagged(base.hmacKey) + pointers
+        val parsed = BbsBaseProof.parse("u" + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(cbor))
+        assertContentEquals(base.signature, parsed.signature)
+        assertContentEquals(base.hmacKey, parsed.hmacKey)
+        assertEquals(base.mandatoryPointers, parsed.mandatoryPointers)
+    }
 }

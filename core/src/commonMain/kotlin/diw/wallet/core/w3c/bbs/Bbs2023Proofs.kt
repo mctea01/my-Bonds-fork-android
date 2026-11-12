@@ -218,7 +218,12 @@ internal object MiniCbor {
                         k.toInt() to x.toInt()
                     })
                 }
-                6 -> if (n == 2L) Bignum(read() as? ByteArray ?: fail()) else fail()
+                6 -> when (n) {
+                    2L -> Bignum(read() as? ByteArray ?: fail())
+                    // RFC 8746 uint8 typed array around a byte string, as some encoders (and Digital Bazaar's reader) use.
+                    64L -> read() as? ByteArray ?: fail()
+                    else -> fail()
+                }
                 else -> fail()
             }
             depth--
