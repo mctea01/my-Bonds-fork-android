@@ -235,4 +235,56 @@ class Bbs2023Test {
             }
         }
     }
+
+
+    /**
+     * A holder cannot relabel a derived proof as another feature (e.g. a plain pseudonym as holder bound): the number
+     * of hidden messages in the BBS proof decides the feature, not the header.
+     */
+    @Test fun featureHeaderCannotBeRelabelled() = runBlocking<Unit> {
+        val issuer = Bbs.generateKeyPair(Bbs.randomScalar() + Bbs.randomScalar())
+        val doc = obj("windDoc.json")
+        val relabel = mapOf(
+            BbsFeature.PSEUDONYM to BbsFeature.HOLDER_BINDING_PSEUDONYM,
+            BbsFeature.HOLDER_BINDING_PSEUDONYM to BbsFeature.PSEUDONYM,
+            BbsFeature.BASELINE to BbsFeature.ANONYMOUS_HOLDER_BINDING,
+            BbsFeature.ANONYMOUS_HOLDER_BINDING to BbsFeature.PSEUDONYM,
+        )
+        for ((feature, claimed) in relabel) {
+            val (secrets, commitment) = if (feature == BbsFeature.BASELINE) null to null else BbsHolderSecrets.create(feature)
+            val signed = suite.sign(doc, issuer.secretKey, issuer.publicKey, "did:example:issuer#key-1", strings("windMandatory.json"), feature, commitment)
+            val (_, finalized) = suite.verifyBase(signed, issuer.publicKey, secrets)
+            val derived = suite.derive(signed, strings("windSelective.json"), ByteArray(0), finalized, "https://a.example")
+            val d = BbsDerivedProof.parse(proofValue(derived))
+            val forged = BbsDerivedProof(
+                claimed, d.bbsProof, d.labelMap, d.mandatoryIndexes, d.selectiveIndexes, d.presentationHeader,
+                nymDomain = if (claimed.pseudonymous) "https://a.example" else null,
+                pseudonym = d.pseudonym ?: ByteArray(48).also { it[0] = 0xc0.toByte() },
+                signerMessageCount = d.signerMessageCount ?: (d.selectiveIndexes.size + (d.bbsProof.size - 272) / 32),
+            ).encode()
+            val proof = derived["proof"] as JsonObject
+            val tampered = JsonObject(derived + ("proof" to JsonObject(proof + ("proofValue" to JsonPrimitive(forged)))))
+            // Either the proof fails, or it is read as what it really is (the vectors' 0x09 label on plain pseudonyms).
+            val read = runCatching { suite.verifyDerived(tampered, issuer.publicKey, "https://a.example").feature }.getOrNull()
+            assertTrue(read == null || read == feature, "$feature relabelled as $claimed was accepted as $read")
+        }
+    }
+
+    /**
+     * Members the contexts do not define would be left out of the signed RDF but still read from the JSON: a derived
+     * credential that adds one (through a context mapping it to null, or with no definition) must not verify.
+     */
+    @Test fun undefinedMembersAreRejected() = runBlocking<Unit> {
+        val reveal = obj("HolderBinding/derivedRevealDocument.json")
+        suite.verifyDerived(reveal, pk)
+        fun withSubjectMember(doc: JsonObject, context: JsonElement): JsonObject {
+            val subject = doc["credentialSubject"]!!.jsonObject
+            return JsonObject(doc + ("@context" to context) + ("credentialSubject" to JsonObject(subject + ("isAdult" to JsonPrimitive(true)))))
+        }
+        val nulled = JsonArray(reveal["@context"]!!.jsonArray + Json.parseToJsonElement("{\"isAdult\": null}"))
+        assertFailsWith<ProtocolException> { suite.verifyDerived(withSubjectMember(reveal, nulled), pk) }
+        val v1 = Json.parseToJsonElement("{\"@context\": [\"https://www.w3.org/2018/credentials/v1\"], \"type\": [\"VerifiableCredential\"], " +
+            "\"credentialSubject\": {\"isAdult\": true}}").jsonObject
+        assertFailsWith<ProtocolException> { jsonLd.toRdf(v1) }
+    }
 }

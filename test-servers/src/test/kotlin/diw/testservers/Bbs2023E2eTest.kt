@@ -124,10 +124,16 @@ class Bbs2023E2eTest {
         val o = DiwJson.parseToJsonElement(text).jsonObject
         val prepared = w.holder.prepare(w.holder.resolveUri(o["uri"]!!.jsonPrimitive.content))
         assertIs<PreparedExtended>(prepared)
-        assertNotNull(prepared.prepared.lines.single().bbs)
+        val line = prepared.prepared.lines.single()
+        assertNotNull(line.bbs)
+        // The consent line lists the issuer's mandatory members, which every presentation discloses.
+        assertTrue("validFrom" in line.claims && "validUntil" in line.claims && "name" in line.claims, "consent: ${line.claims}")
+        if (holderBinding && prefix == "x509_san_dns") lastClaims = line.claims
         assertTrue(w.holder.respondDefault(prepared) is PresentationOutcome.Posted)
         return DiwJson.parseToJsonElement(servers.httpClient.get("$base/verifier/sessions/${o["id"]!!.jsonPrimitive.content}").bodyAsText()).jsonObject
     }
+
+    private var lastClaims: List<String> = emptyList()
 
     private fun assertPassed(r: JsonObject) = assertEquals("passed", r["status"]!!.jsonPrimitive.content, "verifier result: $r")
 
@@ -150,6 +156,8 @@ class Bbs2023E2eTest {
         assertNull(claims["credentialSubject.birthDate"], "claims: $claims")
         assertNull(claims["credentialSubject.memberLevel"], "claims: $claims")
         assertNull(claims["pseudonym"])
+        // The holder DID goes into the presentation, so the consent line names it.
+        assertTrue("id" in lastClaims, "consent: $lastClaims")
     }
 
     @Test
@@ -163,6 +171,7 @@ class Bbs2023E2eTest {
         val claims = claims(first)
         assertNull(claims["credentialSubject.id"], "claims: $claims")
         assertNull(claims["credentialSubject.nationality"], "claims: $claims")
+        assertTrue("id" !in lastClaims, "consent: $lastClaims")
         assertPassed(present(w))
     }
 

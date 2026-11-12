@@ -18,7 +18,8 @@ object ZkNative {
     /** Loads the library on first use (for callers such as bbs-2023 that do not go through a ZkEnvironment). */
     fun ensureLoaded(): Boolean {
         if (loaded != null) return true
-        val dir = directory ?: File(System.getProperty("java.io.tmpdir"), "diw-wallet-native")
+        // Without the app's private directory, a fresh owner-only temporary directory (never a shared, predictable one).
+        val dir = directory ?: Files.createTempDirectory("diw-wallet-native").toFile().also { directory = it }
         return load(dir) is ZkResult.Ok
     }
 

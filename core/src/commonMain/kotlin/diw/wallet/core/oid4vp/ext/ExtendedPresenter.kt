@@ -26,6 +26,8 @@ import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
 import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsBaseProof
+import diw.wallet.core.w3c.sd.SdPrimitives
 import diw.wallet.core.w3c.bbs.BbsFeature
 import diw.wallet.core.w3c.bbs.BbsProfile
 import diw.wallet.core.w3c.bbs.BbsUnavailable
@@ -203,7 +205,7 @@ class ExtendedPresenter(
 
     private fun lines(chosen: List<ChosenCredential>) = chosen.map { c ->
         // Structural members a filter matches on (the card type, schema, status) carry no personal data; they are not listed.
-        val shown = c.memberPaths.filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
+        val shown = (c.memberPaths + bbsAlwaysDisclosed(c.credential)).filter { p -> p.dropWhile { it == "vc" }.joinToString(".") !in STRUCTURAL_MEMBERS }
         ConsentLine(c.credential.document, c.credential.displayName, shown.map { p -> label(p) }.distinct(), bbsFeatureOf(c.credential))
     }
 
@@ -214,6 +216,44 @@ class ExtendedPresenter(
         null,
         fields.any { it.field.intentToRetain },
     )
+
+    /**
+     * What a bbs-2023 presentation discloses besides the requested claims: every member under the issuer's mandatory
+     * pointers, and the subject id of a credential bound to a holder DID (it goes into the presentation).
+     */
+    private fun bbsAlwaysDisclosed(c: WalletCredential): List<List<String>> {
+        if (bbsFeatureOf(c) == null) return emptyList()
+        val proof = (c.json["proof"] as? JsonObject) ?: (c.json["proof"] as? JsonArray)?.filterIsInstance<JsonObject>()?.firstOrNull { Bbs2023.isBbs(it) }
+        val pointers = runCatching { BbsBaseProof.parse(proof?.str("proofValue")!!).mandatoryPointers }.getOrDefault(emptyList())
+        val out = mutableListOf<List<String>>()
+        for (pointer in pointers) {
+            val path = runCatching { SdPrimitives.jsonPointerToPaths(pointer).map { it.toString() } }.getOrNull() ?: continue
+            leaves(c.json, path, out)
+        }
+        val subject = c.json["credentialSubject"] as? JsonObject
+        if ((c.credential as? W3cVcCredential)?.keyBound == true && subject?.containsKey("id") == true) out += listOf("credentialSubject", "id")
+        return out
+    }
+
+    /** The leaf member paths at or under [path] in [root]; array elements keep the path of their array. */
+    private fun leaves(root: JsonElement, path: List<String>, out: MutableList<List<String>>) {
+        var node: JsonElement? = root
+        for (seg in path) node = when (val n = node) {
+            is JsonObject -> n[seg]
+            is JsonArray -> seg.toIntOrNull()?.let { n.getOrNull(it) }
+            else -> null
+        }
+        val clean = path.filter { it.toIntOrNull() == null }
+        fun walk(e: JsonElement?, p: List<String>) {
+            when (e) {
+                null -> {}
+                is JsonObject -> if (e.isEmpty()) out += p else e.forEach { (k, v) -> if (k != "@context") walk(v, p + k) }
+                is JsonArray -> if (e.none { it is JsonObject }) out += p else e.forEach { walk(it, p) }
+                else -> out += p
+            }
+        }
+        walk(node, clean)
+    }
 
     private fun bbsFeatureOf(c: WalletCredential): BbsFeature? {
         if (c.family != CredentialFamily.W3C_LDP || !Bbs2023.isBbs(c.json["proof"])) return null

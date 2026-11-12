@@ -58,6 +58,9 @@ internal actual object JsonLdEngine {
         val options = JsonLdOptions(loader).apply {
             isOrdered = false
             isProduceGeneralizedRdf = false
+            // Safe mode: a member the contexts do not define would be dropped from the signed RDF while staying in the
+            // JSON a verifier reads, so it fails instead.
+            undefinedTermsPolicy = JsonLdOptions.ProcessingPolicy.Fail
         }
         return try {
             block(options)

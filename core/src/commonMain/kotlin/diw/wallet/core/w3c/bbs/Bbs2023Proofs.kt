@@ -14,6 +14,16 @@ enum class BbsFeature(val id: String, val baseHeader: Int, val derivedHeader: In
     val holderBound: Boolean get() = this == ANONYMOUS_HOLDER_BINDING || this == HOLDER_BINDING_PSEUDONYM
     val pseudonymous: Boolean get() = this == PSEUDONYM || this == HOLDER_BINDING_PSEUDONYM
 
+    /**
+     * Messages a derived proof hides beyond the signer's: the holder secret and secret_prover_blind (anonymous holder
+     * binding), secret_prover_blind and nym_secret (pseudonym), or all three (holder bound pseudonym).
+     */
+    val committedMessages: Int get() = when (this) {
+        BASELINE -> 0
+        ANONYMOUS_HOLDER_BINDING, PSEUDONYM -> 2
+        HOLDER_BINDING_PSEUDONYM -> 3
+    }
+
     companion object {
         fun of(id: String): BbsFeature? = entries.firstOrNull { it.id == id }
     }

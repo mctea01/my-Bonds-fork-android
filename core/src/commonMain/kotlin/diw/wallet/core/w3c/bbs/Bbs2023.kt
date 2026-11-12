@@ -211,9 +211,23 @@ class Bbs2023(private val jsonLd: JsonLd = JsonLd.Default) {
         val mandatory = nquads.filterIndexed { i, _ -> i in mandatorySet }
         val nonMandatory = nquads.filterIndexed { i, _ -> i !in mandatorySet }
         if (nonMandatory.size != derived.selectiveIndexes.size) throw invalid()
+        // The feature label is the holder's to write: the proof must hide exactly the messages that feature commits to,
+        // so a plain pseudonym cannot pass as holder bound (both verify through the same pseudonym check).
+        val feature = if (derived.feature == BbsFeature.BASELINE) BbsFeature.BASELINE else {
+            val signerCount = derived.signerMessageCount!!
+            val hidden = (derived.bbsProof.size - PROOF_FIXED_BYTES).takeIf { it >= 0 && it % 32 == 0 }?.div(32) ?: throw invalid()
+            if (signerCount < nonMandatory.size) throw invalid()
+            val committed = hidden - (signerCount - nonMandatory.size)
+            when {
+                committed == derived.feature.committedMessages -> derived.feature
+                // The published pseudonym vectors label plain pseudonym proofs with the holder bound header (0x09).
+                derived.feature == BbsFeature.HOLDER_BINDING_PSEUDONYM && committed == BbsFeature.PSEUDONYM.committedMessages -> BbsFeature.PSEUDONYM
+                else -> throw invalid()
+            }
+        }
         val header = proofHash + SdPrimitives.hashMandatory(mandatory)
         val disclosed = nonMandatory.map { it.encodeToByteArray() }
-        val ok = when (derived.feature) {
+        val ok = when (feature) {
             BbsFeature.BASELINE -> Bbs.proofVerify(publicKey, derived.bbsProof, header, derived.presentationHeader, disclosed, derived.selectiveIndexes)
             BbsFeature.ANONYMOUS_HOLDER_BINDING ->
                 Bbs.blindProofVerify(publicKey, derived.bbsProof, header, derived.presentationHeader, derived.signerMessageCount!!, disclosed, derived.selectiveIndexes)
@@ -229,8 +243,8 @@ class Bbs2023(private val jsonLd: JsonLd = JsonLd.Default) {
         }
         if (!ok) throw invalid()
         return BbsVerified(
-            unsecured, derived.feature, proof.str("verificationMethod") ?: "", derived.pseudonym,
-            if (derived.feature.pseudonymous) derived.nymDomain ?: expectedNymDomain else null, W3cVc.date(proof.str("created")),
+            unsecured, feature, proof.str("verificationMethod") ?: "", derived.pseudonym,
+            if (feature.pseudonymous) derived.nymDomain ?: expectedNymDomain else null, W3cVc.date(proof.str("created")),
         )
     }
 
@@ -256,6 +270,9 @@ class Bbs2023(private val jsonLd: JsonLd = JsonLd.Default) {
 
     companion object {
         const val SUITE = "bbs-2023"
+
+        /** A BBS proof without its hidden message responses: Abar, Bbar, D (G1) and e^, r1^, r3^, challenge (scalars). */
+        private const val PROOF_FIXED_BYTES = 3 * 48 + 4 * 32
 
         /** True when [proof] is a bbs-2023 proof object. */
         fun isBbs(proof: JsonElement?): Boolean = (proof as? JsonObject)?.str("cryptosuite") == SUITE ||
