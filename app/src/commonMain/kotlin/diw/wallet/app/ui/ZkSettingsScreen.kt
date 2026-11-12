@@ -122,22 +122,23 @@ fun ZkSettingsScreen(model: WalletModel) {
         problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
 
         HorizontalDivider()
-        SectionTitle(stringResource(Res.string.zk_engines))
-        native?.version?.takeIf { it.isNotEmpty() }?.let { Text(stringResource(Res.string.zk_native_version, it), style = MaterialTheme.typography.bodySmall) }
-        ZkBackend.entries.forEach { backend ->
-            val available = cap != null && backend in cap.backends
-            val reason = cap?.reasons?.get(backend)
-            Column {
-                Text(backend.title, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    when {
-                        cap == null -> stringResource(Res.string.zk_not_assessed)
-                        available && reason == null -> stringResource(Res.string.zk_engine_ok)
-                        available -> stringResource(Res.string.zk_engine_reason, reason.toString())
-                        else -> reason ?: stringResource(Res.string.zk_engine_missing)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                )
+        CollapsibleSection(stringResource(Res.string.zk_engines), cap?.backends?.size, key = "zk-engines") {
+            native?.version?.takeIf { it.isNotEmpty() }?.let { Text(stringResource(Res.string.zk_native_version, it), style = MaterialTheme.typography.bodySmall) }
+            ZkBackend.entries.forEach { backend ->
+                val available = cap != null && backend in cap.backends
+                val reason = cap?.reasons?.get(backend)
+                Column {
+                    Text(backend.title, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        when {
+                            cap == null -> stringResource(Res.string.zk_not_assessed)
+                            available && reason == null -> stringResource(Res.string.zk_engine_ok)
+                            available -> stringResource(Res.string.zk_engine_reason, reason.toString())
+                            else -> reason ?: stringResource(Res.string.zk_engine_missing)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
             }
         }
 
@@ -147,56 +148,68 @@ fun ZkSettingsScreen(model: WalletModel) {
         zk.catalog.groupBy { it.backend }.forEach { (backend, assets) ->
             val installed = assets.filter { statuses[it.id] == ZkAssetStatus.READY }
             val missing = assets - installed.toSet()
+            val active = assets.mapNotNull { downloads[it.id]?.takeIf { d -> d.error == null } }
+            val busy = active.isNotEmpty()
             Text(backend.title, style = MaterialTheme.typography.titleSmall)
             Text(
                 stringResource(Res.string.zk_installed, installed.size, assets.size, sizeText(installed.sumOf { it.installedBytes })) +
                     if (missing.isNotEmpty()) stringResource(Res.string.zk_to_download, sizeText(missing.sumOf { it.gzipBytes })) else "",
                 style = MaterialTheme.typography.bodySmall,
             )
-            assets.forEach { asset ->
-                val download = downloads[asset.id]
-                Column(Modifier.fillMaxWidth().padding(start = 8.dp)) {
-                    Text(
-                        stringResource(Res.string.zk_asset_line, asset.id, if ("verifier" in asset.role) stringResource(Res.string.zk_role_prove_verify) else stringResource(Res.string.zk_role_prove), sizeText(asset.installedBytes)) +
-                            (statuses[asset.id]?.title ?: if (refreshing) stringResource(Res.string.zk_checking) else stringResource(Res.string.zk_unchecked)),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    if (download != null && download.error == null) {
-                        LinearProgressIndicator(
-                            progress = { if (download.total <= 0) 0f else download.received.toFloat() / download.total },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    download?.error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-                }
+            // The whole backend's progress stays visible while the file list is collapsed.
+            if (busy) {
+                val total = active.sumOf { it.total }
+                LinearProgressIndicator(
+                    progress = { if (total <= 0) 0f else active.sumOf { it.received }.toFloat() / total },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
+            assets.mapNotNull { downloads[it.id]?.error }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                val busy = assets.any { downloads[it.id]?.error == null && it.id in downloads }
                 if (busy) OutlinedButton(onClick = { zk.cancelDownload() }) { Text(stringResource(Res.string.zk_stop_download)) }
                 else if (missing.isNotEmpty()) OutlinedButton(onClick = { confirmDownload = missing }) { Text(stringResource(Res.string.action_download)) }
                 if (installed.isNotEmpty() && !busy) OutlinedButton(onClick = { confirmDelete = installed }) { Text(stringResource(Res.string.action_delete)) }
+            }
+            CollapsibleSection(stringResource(Res.string.zk_asset_list), assets.size, key = "zk-assets-${backend.name}") {
+                assets.forEach { asset ->
+                    val download = downloads[asset.id]
+                    Column(Modifier.fillMaxWidth().padding(start = 8.dp)) {
+                        Text(
+                            stringResource(Res.string.zk_asset_line, asset.id, if ("verifier" in asset.role) stringResource(Res.string.zk_role_prove_verify) else stringResource(Res.string.zk_role_prove), sizeText(asset.installedBytes)) +
+                                (statuses[asset.id]?.title ?: if (refreshing) stringResource(Res.string.zk_checking) else stringResource(Res.string.zk_unchecked)),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (download != null && download.error == null) {
+                            LinearProgressIndicator(
+                                progress = { if (download.total <= 0) 0f else download.received.toFloat() / download.total },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
             }
         }
         OutlinedButton(onClick = { zk.refresh() }, enabled = !refreshing) { Text(if (refreshing) stringResource(Res.string.zk_checking_dots) else stringResource(Res.string.zk_check_again)) }
 
         HorizontalDivider()
-        SectionTitle(stringResource(Res.string.zk_templates))
-        ZkTemplatesSection(model)
+        SectionTitle(stringResource(Res.string.zkp_settings_title))
+        ZkPassportSettingsSection(model)
 
         HorizontalDivider()
-        SectionTitle(stringResource(Res.string.zk_server))
-        ServerSection(model)
+        CollapsibleSection(stringResource(Res.string.zk_templates), key = "zk-templates") { ZkTemplatesSection(model) }
+
+        // Hosts the user runs: most people configure none of them, so they stay folded away under one heading.
         HorizontalDivider()
-        SectionTitle(stringResource(Res.string.zk_self_host))
-        ProverSection(model)
+        val settings by model.settingsFlow.collectAsState()
+        val configured = stringResource(Res.string.zk_configured)
+        SectionTitle(stringResource(Res.string.zk_advanced))
+        Text(stringResource(Res.string.zk_advanced_text), style = MaterialTheme.typography.bodySmall)
+        CollapsibleSection(stringResource(Res.string.zk_server) + if (settings.zkVerifierUrl.isNotEmpty()) configured else "", key = "zk-server") { ServerSection(model) }
+        CollapsibleSection(stringResource(Res.string.zk_self_host) + if (settings.zkProverUrl.isNotEmpty()) configured else "", key = "zk-prover") { ProverSection(model) }
         if (info?.isDesktop == true) {
-            HorizontalDivider()
-            SectionTitle(stringResource(Res.string.zk_phone_requests))
-            PhoneRequestSection(model)
+            CollapsibleSection(stringResource(Res.string.zk_phone_requests), key = "zk-phone") { PhoneRequestSection(model) }
         }
-        HorizontalDivider()
-        SectionTitle(stringResource(Res.string.zk_measurements))
-        MeasurementSection(model)
+        CollapsibleSection(stringResource(Res.string.zk_measurements), key = "zk-measurements") { MeasurementSection(model) }
     }
 
     confirmDownload?.let { assets ->

@@ -32,7 +32,7 @@ object ZkThresholds {
 object ZkCapabilities {
     fun evaluate(platform: ZkPlatformInfo, native: ZkNativeStatus?): ZkCapability {
         val abi = platform.abi.lowercase()
-        val arm64 = abi in setOf("arm64-v8a", "aarch64", "arm64", "macos-aarch64")
+        val arm64 = abi in setOf("arm64-v8a", "aarch64", "arm64", "macos-aarch64", "linux-aarch64")
         val supported = arm64 || abi in setOf("x86_64", "amd64", "linux-x86_64", "windows-x86_64")
         val tier = when {
             arm64 && platform.totalRamMb >= ZkThresholds.TIER_A_RAM_MB -> ZkTier.A

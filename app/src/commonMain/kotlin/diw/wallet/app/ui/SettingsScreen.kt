@@ -53,6 +53,11 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 
 @Composable
 private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
@@ -470,24 +475,31 @@ fun KeyProtection.label(): String = stringResource(
 fun keyStorageLabel(wire: String): String = KeyProtection.entries.firstOrNull { it.wire == wire }?.label() ?: wire
 
 @Composable
-private fun languageName(l: AppLanguage) = when (l) {
-    AppLanguage.SYSTEM -> stringResource(Res.string.settings_language_system)
-    AppLanguage.TRADITIONAL_CHINESE -> stringResource(Res.string.language_zh_hant)
-    AppLanguage.ENGLISH -> stringResource(Res.string.language_en)
-}
+private fun languageName(l: AppLanguage) = if (l == AppLanguage.SYSTEM) stringResource(Res.string.settings_language_system) else l.name
 
-/** The interface language: the system's, Traditional Chinese or English; Android 13 and later keep it as the per-app language. */
+/**
+ * The interface language as a menu: the system's, then every language a translation file provides, each named in
+ * itself; Android 13 and later keep it as the per-app language.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LanguageChooser(model: WalletModel) {
     val tag by model.appLanguage.collectAsState()
     val current = AppLanguage.of(tag)
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(stringResource(Res.string.settings_language), style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AppLanguage.entries.forEach { l ->
-                FilterChip(selected = l == current, onClick = { model.setAppLanguage(l) }, label = {
-                    Text(languageName(l))
-                })
+    var open by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = open, onExpandedChange = { open = it }) {
+        OutlinedTextField(
+            value = languageName(current), onValueChange = {}, readOnly = true, singleLine = true,
+            label = { Text(stringResource(Res.string.settings_language)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = open) },
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            (listOf(AppLanguage.SYSTEM) + AppLanguage.all).forEach { l ->
+                DropdownMenuItem(
+                    text = { Text(languageName(l)) },
+                    onClick = { open = false; model.setAppLanguage(l) },
+                )
             }
         }
     }

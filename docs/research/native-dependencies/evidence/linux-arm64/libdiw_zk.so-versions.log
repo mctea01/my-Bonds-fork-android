@@ -1,0 +1,87 @@
+
+Version symbols section '.gnu.version' contains 274 entries:
+ Addr: 0x0000000000001c80  Offset: 0x00001c80  Link: 2 (.dynsym)
+  000:   0 (*local*)       0 (*local*)       0 (*local*)       0 (*local*)
+  004:   2 (GLIBC_2.17)    3 (GCC_3.0)       2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  008:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  00c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  010:   2 (GLIBC_2.17)    4 (GLIBC_2.33)    3 (GCC_3.0)       5 (GLIBC_2.30)
+  014:   2 (GLIBC_2.17)    6 (GCC_3.3)       6 (GCC_3.3)       3 (GCC_3.0)
+  018:   3 (GCC_3.0)       2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  01c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)
+  020:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    7 (GLIBC_2.34)    7 (GLIBC_2.34)
+  024:   2 (GLIBC_2.17)    7 (GLIBC_2.34)    7 (GLIBC_2.34)    2 (GLIBC_2.17)
+  028:   7 (GLIBC_2.34)    7 (GLIBC_2.34)    6 (GCC_3.3)       2 (GLIBC_2.17)
+  02c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    8 (GLIBC_2.32)    7 (GLIBC_2.34)
+  030:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    4 (GLIBC_2.33)    7 (GLIBC_2.34)
+  034:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    2 (GLIBC_2.17)    9 (GLIBC_2.28)
+  038:   a (GLIBC_2.18)    2 (GLIBC_2.17)    7 (GLIBC_2.34)    2 (GLIBC_2.17)
+  03c:   2 (GLIBC_2.17)    2 (GLIBC_2.17)    7 (GLIBC_2.34)    3 (GCC_3.0)
+  040:   b (GCC_4.2.0)     3 (GCC_3.0)       3 (GCC_3.0)       3 (GCC_3.0)
+  044:   3 (GCC_3.0)       3 (GCC_3.0)       1 (*global*)      1 (*global*)
+  048:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  04c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  050:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  054:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  058:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  05c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  060:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  064:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  068:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  06c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  070:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  074:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  078:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  07c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  080:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  084:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  088:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  08c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  090:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  094:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  098:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  09c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0a8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0ac:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0b8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0bc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0c8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0cc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0d8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0dc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0e8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0ec:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f0:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f4:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0f8:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  0fc:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  100:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  104:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  108:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  10c:   1 (*global*)      1 (*global*)      1 (*global*)      1 (*global*)
+  110:   1 (*global*)      1 (*global*)
+
+Version needs section '.gnu.version_r' contains 2 entries:
+ Addr: 0x0000000000001ea4  Offset: 0x00001ea4  Link: 6 (.dynstr)
+  000000: Version: 1  File: libgcc_s.so.1  Cnt: 3
+  0x0020:   Name: GCC_3.0  Flags: none  Version: 3
+  0x0030:   Name: GCC_3.3  Flags: none  Version: 6
+  0x0040:   Name: GCC_4.2.0  Flags: none  Version: 11
+  0x0010: Version: 1  File: libc.so.6  Cnt: 7
+  0x0050:   Name: GLIBC_2.17  Flags: none  Version: 2
+  0x0060:   Name: GLIBC_2.18  Flags: WEAK  Version: 10
+  0x0070:   Name: GLIBC_2.28  Flags: WEAK  Version: 9
+  0x0080:   Name: GLIBC_2.30  Flags: WEAK  Version: 5
+  0x0090:   Name: GLIBC_2.32  Flags: none  Version: 8
+  0x00a0:   Name: GLIBC_2.33  Flags: none  Version: 4
+  0x00b0:   Name: GLIBC_2.34  Flags: none  Version: 7

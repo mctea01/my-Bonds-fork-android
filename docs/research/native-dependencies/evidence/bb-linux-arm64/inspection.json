@@ -1,0 +1,48 @@
+{
+  "commands": [
+    {
+      "argv": [
+        "readelf",
+        "-h",
+        "/workspace/native-research-env/bb-arm64/libbb-external.a"
+      ],
+      "exit_code": 0,
+      "filter": "Count Machine lines and require all AArch64; full output omitted"
+    }
+  ],
+  "elfs": {
+    "bbapi.elf": {
+      "highest_required_glibc": "GLIBC_2.34",
+      "needed": [
+        "libc.so.6"
+      ],
+      "machine": "AArch64"
+    },
+    "diw-bridge.elf": {
+      "highest_required_glibc": "GLIBC_2.34",
+      "needed": [
+        "libc.so.6"
+      ],
+      "machine": "AArch64"
+    },
+    "diw-proof.elf": {
+      "highest_required_glibc": "GLIBC_2.34",
+      "needed": [
+        "libc.so.6"
+      ],
+      "machine": "AArch64"
+    }
+  },
+  "source_files": {
+    "barretenberg/cpp/CMakePresets.json": "05ff3c3851411ef51d91a33eb3dd71fc3a5ba79ce70acb21d02b0e2e1986d425",
+    "barretenberg/cpp/cmake/arch.cmake": "48b4dfef2712c3c0bc23fd4e0d534cd1740233c21e243ffc23c1b41a9c3e7b35",
+    "barretenberg/cpp/scripts/zig-c++.sh": "fdb32ee4eb1b4b1c9e36a8be8668523741d03c353bd45e752f4d8ed8247ebc5a"
+  },
+  "limits": "QEMU models are not physical CPU or oldest-glibc acceptance; archive provenance is not independently verified.",
+  "archive": {
+    "members_with_elf_headers": 191,
+    "machines": [
+      "AArch64"
+    ]
+  }
+}

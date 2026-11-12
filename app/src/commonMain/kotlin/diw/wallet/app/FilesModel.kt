@@ -68,6 +68,12 @@ import diw.wallet.core.document.ofd.OfdText
 import diw.wallet.core.document.ofd.OfdShading
 import diw.wallet.core.document.sign.OfdSealOptions
 import diw.wallet.core.document.derived.DerivedDocument
+import diw.wallet.core.document.derived.TravelDocumentFields
+import diw.wallet.core.document.derived.TravelDocumentPhotoId
+import diw.wallet.core.document.derived.TravelDocumentLinks
+import diw.wallet.core.document.mrtd.Lds
+import diw.wallet.core.document.mrtd.LdsFile
+import diw.wallet.core.document.mrtd.MrtdDump
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OaAttachment
@@ -144,6 +150,7 @@ import org.multipaz.util.toBase64Url
 import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
 import org.multipaz.crypto.X509Cert
 import org.multipaz.sdjwt.credential.KeyBoundSdJwtVcCredential
+import org.multipaz.mdoc.credential.MdocCredential
 import org.multipaz.storage.StorageTableSpec
 import org.multipaz.util.fromBase64
 import org.multipaz.util.toBase64
@@ -171,6 +178,8 @@ enum class FileOrigin(private val titleRes: org.jetbrains.compose.resources.Stri
     ENCRYPTED(Res.string.origin_encrypted),
     DECRYPTED(Res.string.origin_decrypted),
     UNWRAPPED(Res.string.origin_unwrapped),
+    /** Read from a document chip (an electronic passport) over NFC. */
+    CHIP(Res.string.origin_chip),
     ;
 
     val title: String get() = tr(titleRes)
@@ -196,6 +205,8 @@ data class StoredFile(
     val parentId: String? = null,
     /** The derived SD-JWT VC (a document in the documents list); cleared when that credential is deleted. */
     val derivedDocumentId: String? = null,
+    /** The ISO/IEC 23220 Photo ID mdoc made from this electronic passport; cleared when that credential is deleted. */
+    val photoIdDocumentId: String? = null,
     /** Web query results kept as evidence of this file (web-proof or web-record credentials in the documents list). */
     val webProofIds: List<String> = emptyList(),
     /** The Bonds national ID card (vc+moica NationalIDCredential) made from this MyData national ID PDF. */
@@ -254,10 +265,12 @@ sealed class FilePreview {
         val household: HouseholdTranscript? = null,
         /** A certificate laid out as its parts (a proof of student status, a mainland permit association, an invoice). */
         val certificate: ParsedCertificate? = null,
-        /** The pages were drawn with system fonts (an OFD), so glyph shapes can differ from the original. */
+        /** Some text of the pages (an OFD) has no embedded font and was drawn with system fonts, so its glyph shapes can differ. */
         val systemFonts: Boolean = false,
     ) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
+    /** A travel document read from its chip, laid out as its data page. */
+    class Passport(val view: PassportView) : FilePreview()
     class Text(val text: String, val truncated: Boolean) : FilePreview()
     /** An official document (公文) laid out as a reader sees it; [source] is the XML, shown only on request. */
     class Official(val document: OfficialDocument, val source: String, val truncated: Boolean) : FilePreview()
@@ -471,6 +484,23 @@ class FilesModel(private val model: WalletModel) {
 
         override suspend fun openPgpKeys(): List<OpenPgpTrustedKey> = model.openPgp.trustedKeys()
 
+        override suspend fun fetchRevocationList(url: String): ByteArray? = try {
+            if (!url.startsWith("http://") && !url.startsWith("https://")) null
+            else {
+                val r = model.signedDataHttp.exchange(url, null, null, null)
+                r.body.takeIf { r.success && it.isNotEmpty() && it.size <= MAX_CRL_BYTES }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+
+        override suspend fun revocationSigners(role: TrustRole): List<ByteArray> =
+            if (role != TrustRole.TRAVEL_DOCUMENT) emptyList()
+            else TrustEnvironment.entries.flatMap { env -> runCatching { model.trust.travelDocumentAnchors(env) }.getOrDefault(emptyList()) }
+                .map { it.encoded.toByteArray() }
+
         override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) emptyList()
             else {
@@ -610,6 +640,18 @@ class FilesModel(private val model: WalletModel) {
             hasExchangeFiles(f) -> extractNow(f, unpackOfficial = true).first
             else -> listOf(f)
         }
+    }
+
+    /**
+     * Reads a travel document chip on [reader] with [secret] (the zone's access key or the card access number) and
+     * stores what it read as a file; passive authentication runs as for any file, and the file screen opens.
+     */
+    fun readPassport(reader: NfcReaderOption, secret: diw.wallet.core.document.mrtd.AccessSecret) = run(tr(Res.string.mrtd_stage_access)) {
+        val dump = Passports.read(reader, secret) { busy.value = it }
+        busy.value = tr(Res.string.step_read_check)
+        val f = store(Passports.fileName(dump), dump.encode(), FileOrigin.CHIP, tr(Res.string.mrtd_source))
+        model.message.value = tr(Res.string.msg_saved_name, f.name)
+        model.screen.value = Screen.FileDetail(f.id)
     }
 
     /** A file handed over by another app or downloaded from a source site. */
@@ -766,6 +808,24 @@ class FilesModel(private val model: WalletModel) {
         }?.takeIf { it.isNotBlank() }
     }
 
+    /** Another stored file that names the passport [f]: by number, and by surname as well when [sameName]. */
+    class TravelDocumentLink(val file: StoredFile, val number: String, val sameName: Boolean)
+
+    /**
+     * The stored documents that carry the passport number of the electronic passport [f] (an entry and exit
+     * certificate, a mainland China entry and exit record and the like), read locally from their text.
+     */
+    suspend fun travelDocumentLinks(f: StoredFile): List<TravelDocumentLink> {
+        if (f.report?.format != DocumentFormat.EMRTD) return emptyList()
+        val mrz = withContext(Dispatchers.Default) {
+            MrtdDump.decode(data(f.id))?.file(LdsFile.DG1)?.let { Lds.dg1(it) }
+        } ?: return emptyList()
+        return files.value.filter { it.id != f.id && it.report?.format in LINKABLE }.mapNotNull { other ->
+            val text = runCatching { documentText(other) }.getOrNull() ?: return@mapNotNull null
+            TravelDocumentLinks.mention(mrz, text)?.let { TravelDocumentLink(other, it.number, it.sameName) }
+        }
+    }
+
     /** The first page of a PDF (opened with the session password) or the image of [f], for card art; null otherwise. */
     suspend fun firstPage(f: StoredFile): ImageBitmap? = withContext(Dispatchers.Default) {
         val bytes = data(f.id)
@@ -843,6 +903,11 @@ class FilesModel(private val model: WalletModel) {
             }
             else -> {}
         }
+        if (report.format == DocumentFormat.EMRTD) {
+            // A travel document's claims are its zone, never the file name or a typed value.
+            val dump = MrtdDump.decode(bytes) ?: return@withContext DeriveFields(emptyList(), false)
+            return@withContext DeriveFields(TravelDocumentFields.claims(dump, Clock.System.now().toString().take(4).toInt()), false)
+        }
         val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints(), structured)
         val zk = if (report.format == DocumentFormat.PDF) zkPdfMatches(bytes) else emptyList()
         DeriveFields(suggested.claims, locked, suggested.notice, text?.let { MovementRecord.parse(it) }, zk)
@@ -905,9 +970,14 @@ class FilesModel(private val model: WalletModel) {
                     pages, pkg.pageCount, text, text?.let { MovementRecord.parse(it) },
                     text?.let { runCatching { HouseholdTranscripts.parse(it, holderHints()) }.getOrNull() },
                     ofdStructure(pkg, text),
-                    systemFonts = pages.isNotEmpty(),
+                    systemFonts = pages.isNotEmpty() && pkg.pages.take(FilePreview.PREVIEW_PAGES).any { pg ->
+                        pg.objects.any { it is diw.wallet.core.document.ofd.OfdObject.Text && it.font?.file == null }
+                    },
                 )
             }
+            DocumentFormat.EMRTD -> diw.wallet.core.document.mrtd.MrtdDump.decode(bytes)
+                ?.let { FilePreview.Passport(Passports.view(it) { b -> model.platform.decodeImage(b) }) }
+                ?: FilePreview.Unavailable(tr(Res.string.core_mrtd_unreadable))
             DocumentFormat.ZIP, DocumentFormat.ASIC_E -> FilePreview.Unavailable(tr(Res.string.msg_archive_preview))
             DocumentFormat.OFFICE -> FilePreview.Unavailable(tr(Res.string.msg_office_preview))
             DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable(tr(Res.string.msg_envelope_preview))
@@ -1548,6 +1618,22 @@ class FilesModel(private val model: WalletModel) {
         deliver(f.name, f.mediaType, data(f.id), share)
     }
 
+    /**
+     * Saves a travel document picture: a JPEG as the chip stores it; a JPEG 2000 as PNG (few apps open JPEG 2000)
+     * unless [original] asks for the chip's own bytes. Named by its place on the chip, never by the holder.
+     */
+    fun exportPicture(picture: PassportPicture, number: Int, original: Boolean = false) = run(tr(Res.string.step_export_file)) {
+        val img = picture.image
+        val jp2 = img.mediaType == "image/jp2" || img.mediaType == "image/j2k"
+        val png = if (jp2 && !original) picture.bitmap?.let { encodePng(it) } else null
+        val name = tr(Res.string.mrtd_picture_file, number)
+        when {
+            png != null -> deliver("$name.png", "image/png", png, false)
+            jp2 -> deliver(name + (if (img.mediaType == "image/j2k") ".j2k" else ".jp2"), img.mediaType, img.data, false)
+            else -> deliver("$name.jpg", "image/jpeg", img.data, false)
+        }
+    }
+
     /** Saves [bytes] through the platform save dialog, or hands them to another app when [share]. */
     private suspend fun deliver(name: String, mediaType: String, bytes: ByteArray, share: Boolean): Boolean {
         val done = if (share) model.platform.shareFile(name, mediaType, bytes) else model.platform.saveFile(name, mediaType, bytes)
@@ -2180,6 +2266,67 @@ class FilesModel(private val model: WalletModel) {
         }
     }
 
+    /**
+     * Issues an ISO/IEC 23220 Photo ID mdoc from the electronic passport [f] (docs/design/zkpassport.md 5.4 item 3):
+     * the person fields from DG1, the portrait from DG2, and DG1, DG2 and the security object in the data groups
+     * namespace, signed by the wallet's document issuer key under a self-signed certificate. A Photo ID made from the
+     * same file earlier is replaced.
+     */
+    fun issuePhotoId(f: StoredFile) = run(tr(Res.string.step_photo_id)) {
+        val dump = MrtdDump.decode(data(f.id)) ?: throw SigningException(tr(Res.string.msg_photo_id_no_dg1))
+        val now = Clock.System.now()
+        val elements = TravelDocumentPhotoId.elements(dump, now) ?: throw SigningException(tr(Res.string.msg_photo_id_no_dg1))
+        val validUntil = TravelDocumentPhotoId.validUntil(dump, now)
+        if (validUntil <= now) throw SigningException(tr(Res.string.msg_photo_id_expired))
+        val doc = withContext(model.unlockProvider) {
+            val issuer = identity(HolderIdentities.DOCUMENT_ISSUER)
+            val keys = model.keyRequest()
+            val person = elements[TravelDocumentPhotoId.NAMESPACE].orEmpty()
+            val name = listOfNotNull(person["given_name"], person["family_name"]).joinToString(" ") { it.asTstr }
+            val record = IssuanceRecord(
+                credentialIssuer = issuer.did!!,
+                configurationId = PHOTO_ID_CONFIGURATION,
+                format = "mso_mdoc",
+                docType = TravelDocumentPhotoId.DOCTYPE,
+                tier = TrustTier.T3.name,
+                environment = TrustEnvironment.USER.id,
+                official = false,
+                anchorName = tr(Res.string.derive_issuer_name),
+                labels = listOf(TrustLabel.SELF_ISSUED.name),
+                issuedAt = now.epochSeconds,
+                keyStorage = keys.keyStorage,
+                specs = listOf("ISO/IEC 23220-2", "ISO/IEC 18013-5"),
+                claimNames = TravelDocumentPhotoId.labels,
+                profile = PROFILE,
+            )
+            val created = model.documentStore.createDocument(
+                displayName = tr(Res.string.photo_id_title) + if (name.isNotBlank()) "・$name" else "",
+                typeDisplayName = tr(Res.string.photo_id_type),
+                appData = record.encode(),
+            )
+            try {
+                val credential = MdocCredential.create(
+                    created, null, CredentialDomains.MDOC, keys.secureArea, TravelDocumentPhotoId.DOCTYPE,
+                    keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
+                )
+                val deviceKey = credential.secureArea.getKeyInfo(credential.alias).ecPublicKey
+                credential.certify(TravelDocumentPhotoId.issuerSigned(issuer, elements, deviceKey, now, validUntil))
+                created.edit { provisioned = true }
+            } catch (e: Exception) {
+                model.documentStore.deleteDocument(created.identifier)
+                throw e
+            }
+            (file(f.id) ?: f).photoIdDocumentId?.let { old -> runCatching { model.documentStore.deleteDocument(old) } }
+            save((file(f.id) ?: f).copy(photoIdDocumentId = created.identifier))
+            created
+        }
+        model.documents.value = model.documentStore.listDocuments()
+        model.platform.registerDigitalCredentials(model)
+        val labels = elements.values.flatMap { it.keys }.map { TravelDocumentPhotoId.labels[it] ?: it }
+        model.record(HistoryKind.ISSUED, tr(Res.string.derive_issuer_name), null, listOf(doc.displayName ?: f.name), labels)
+        model.message.value = tr(Res.string.msg_photo_id_issued)
+    }
+
     /** The zkPDF plan of [data] for the template [profileId]; fails when the template does not fit or proves nothing. */
     private suspend fun zkPdfPlan(data: ByteArray, profileId: String, predicates: List<ZkPdfPredicate>): ZkPdfPlan {
         val profile = ZkPdfProfiles.find(profileId, model.settings.testEnvironment) ?: throw SigningException(tr(Res.string.msg_no_layout))
@@ -2217,8 +2364,11 @@ class FilesModel(private val model: WalletModel) {
         val now = Clock.System.now()
         val validUntil = validDays?.let { now + it.days }
         val document = DerivedDocument(f.sha256, f.mediaType, f.size)
+        val travel = if (report.format == DocumentFormat.EMRTD) MrtdDump.decode(data) else null
+        val vct = if (travel != null) TravelDocumentFields.VCT else DerivedCredentials.VCT
         val evidence = buildList {
-            add(DerivedCredentials.signatureEvidence(report))
+            if (travel != null) TravelDocumentFields.evidence(report, travel)?.let { add(it) }
+            else add(DerivedCredentials.signatureEvidence(report))
             val stamp = f.timestamps.lastOrNull { it.trusted }?.let { it.token.fromBase64() }
                 ?: if (timestamp) { busy.value = tr(Res.string.step_get_timestamp); timestamper().timestamp(data) } else null
             stamp?.let { add(DerivedCredentials.timestampEvidence(it, DocumentInspector.verifyTimestamp(it, data, trustSource))) }
@@ -2237,7 +2387,7 @@ class FilesModel(private val model: WalletModel) {
                 credentialIssuer = issuer.did!!,
                 configurationId = CONFIGURATION,
                 format = "dc+sd-jwt",
-                vct = DerivedCredentials.VCT,
+                vct = vct,
                 tier = TrustTier.T3.name,
                 environment = TrustEnvironment.USER.id,
                 official = false,
@@ -2246,16 +2396,16 @@ class FilesModel(private val model: WalletModel) {
                 issuedAt = now.epochSeconds,
                 keyStorage = keys.keyStorage,
                 specs = listOf("IETF SD-JWT VC"),
-                claimNames = DerivedCredentials.claimLabels + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
+                claimNames = DerivedCredentials.claimLabels + (if (travel != null) TravelDocumentFields.labels else emptyMap()) + textClaims.filter { it.label != null }.associate { it.name to it.label!! } + zkLabels,
                 profile = PROFILE,
             )
             val created = model.documentStore.createDocument(displayName = title, typeDisplayName = tr(Res.string.files_derived), appData = record.encode())
             try {
                 val credential = if (key != null) {
-                    KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, DerivedCredentials.VCT, key.alias)
+                    KeyBoundSdJwtVcCredential.createForExistingAlias(created, null, CredentialDomains.SD_JWT, key.secureArea, vct, key.alias)
                 } else {
                     KeyBoundSdJwtVcCredential.create(
-                        created, null, CredentialDomains.SD_JWT, keys.secureArea, DerivedCredentials.VCT,
+                        created, null, CredentialDomains.SD_JWT, keys.secureArea, vct,
                         keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))),
                     )
                 }
@@ -2264,7 +2414,7 @@ class FilesModel(private val model: WalletModel) {
                 val disclosures = DerivedCredentials.jsonDisclosures(
                     textClaims.map { it.name to JsonPrimitive(it.value) } + proven?.disclosures().orEmpty(),
                 )
-                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil)
+                val compact = DerivedCredentials.sdJwtVc(issuer, holderKey, document, evidence, disclosures, now, validUntil, vct)
                 credential.certify(compact.encodeToByteString())
                 created.edit { provisioned = true }
             } catch (e: Exception) {
@@ -2503,12 +2653,14 @@ class FilesModel(private val model: WalletModel) {
     /** Clears the link of every file to the derived credential [documentId], after that credential was deleted. */
     suspend fun forgetDerived(documentId: String) {
         files.value.filter { it.derivedDocumentId == documentId }.forEach { save(it.copy(derivedDocumentId = null)) }
+        files.value.filter { it.photoIdDocumentId == documentId }.forEach { save(it.copy(photoIdDocumentId = null)) }
         files.value.filter { documentId in it.webProofIds }.forEach { save(it.copy(webProofIds = it.webProofIds - documentId)) }
     }
 
     /** Clears links to derived credentials and web query results that no longer exist (deleted while the link was not updated). */
     suspend fun reconcileDerived(existing: Set<String>) {
         files.value.filter { it.derivedDocumentId != null && it.derivedDocumentId !in existing }.forEach { save(it.copy(derivedDocumentId = null)) }
+        files.value.filter { it.photoIdDocumentId != null && it.photoIdDocumentId !in existing }.forEach { save(it.copy(photoIdDocumentId = null)) }
         files.value.filter { f -> f.webProofIds.any { it !in existing } }.forEach { f -> save(f.copy(webProofIds = f.webProofIds.filter { it in existing })) }
     }
 
@@ -2626,6 +2778,9 @@ class FilesModel(private val model: WalletModel) {
     companion object {
         const val PROFILE = "document"
         const val CONFIGURATION = "document-derived"
+        const val PHOTO_ID_CONFIGURATION = "travel-document-photo-id"
+        /** The formats whose text can name a passport. */
+        val LINKABLE = setOf(DocumentFormat.PDF, DocumentFormat.TEXT, DocumentFormat.XML)
         const val MAX_FILE_BYTES = 64 * 1024 * 1024
         /** Width of rendered PDF pages, in pixels. */
         const val PREVIEW_WIDTH = 1080
@@ -2634,6 +2789,7 @@ class FilesModel(private val model: WalletModel) {
         /** Width a seal picture kept as OFD is drawn at before it is placed on the page. */
         const val SEAL_WIDTH = 480
         private const val MAX_AIA_BYTES = 256 * 1024
+        private const val MAX_CRL_BYTES = 8 * 1024 * 1024
 
         /** An OpenCerts certificate is checked online again when opened after this long. */
         const val OPENCERT_RECHECK_SECONDS = 12 * 3600L

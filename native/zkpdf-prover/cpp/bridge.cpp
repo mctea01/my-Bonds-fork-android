@@ -1,6 +1,7 @@
 // A narrow, exception-safe ABI for the frozen UltraZK/Poseidon2 backend.
 #include "barretenberg/bbapi/bbapi_ultra_honk.hpp"
 #include "barretenberg/srs/global_crs.hpp"
+#include "barretenberg/srs/factories/bn254_crs_data.hpp"
 #include "barretenberg/common/serialize.hpp"
 #include <cstring>
 #include <stdexcept>
@@ -51,6 +52,17 @@ extern "C" int zkpdf_bb_init(const uint8_t* g1, size_t g1_size, const uint8_t* g
         for (size_t i = 0; i < g1_size; i += 64) points.push_back(from_buffer<bb::g1::affine_element>(g1, i));
         // Memory factories have no file or network fallback.
         bb::srs::init_bn254_mem_crs_factory(points, from_buffer<bb::g2::affine_element>(g2));
+        return 0;
+    } catch (...) { return 1; }
+}
+// Verification only needs [1]_1 and the trusted-setup point [x]_2, both constants of the Aztec ceremony,
+// so other UltraHonk proofs can be verified without the 134 MB G1 prefix. Barretenberg keeps the first CRS
+// it is given; the Rust caller only uses this when no full CRS was installed.
+extern "C" int zkpdf_bb_init_verifier() noexcept {
+    try {
+        slow_low_memory = false;
+        std::vector<bb::g1::affine_element> points{ bb::g1::affine_one };
+        bb::srs::init_bn254_mem_crs_factory(points, bb::srs::get_bn254_g2_crs_element());
         return 0;
     } catch (...) { return 1; }
 }

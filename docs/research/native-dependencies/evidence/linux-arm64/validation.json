@@ -1,0 +1,102 @@
+{
+  "scope": "Consistency and guard checks; emulated ARM64 only",
+  "checks": {
+    "all_recorded_input_and_artifact_hashes": "passed",
+    "29_successful_commands_and_normalized_logs": "passed",
+    "both_upstream_checkouts_clean_and_lock_unchanged": "passed",
+    "same_public_fixture_as_windows": "passed",
+    "arm64_elf_glibc_symbols_and_crypto_feature_evidence": "passed",
+    "runtime_and_proof_positive_negative_recovery_markers": "passed",
+    "four_input_guards_before_build_and_source_restoration": "passed",
+    "python_matrices_and_no_production_changes": "passed",
+    "research_json_and_local_links": "passed"
+  },
+  "guards": [
+    {
+      "name": "repo-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_linux_arm64.py",
+        "--multipaz",
+        "/workspace/native-research-env/arm64/multipaz",
+        "--toolchain-root",
+        "/workspace/native-research-env/arm64/toolchain",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--out",
+        "/workspace/my-Bonds-fork-android/probe-output"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "outside the repository"
+    },
+    {
+      "name": "nonempty-output",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_linux_arm64.py",
+        "--multipaz",
+        "/workspace/native-research-env/arm64/multipaz",
+        "--toolchain-root",
+        "/workspace/native-research-env/arm64/toolchain",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--out",
+        "/workspace/native-research-env/arm64/verified"
+      ],
+      "exit_code": 2,
+      "expected_diagnostic": "new empty output"
+    },
+    {
+      "name": "changed-lock",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_linux_arm64.py",
+        "--multipaz",
+        "/workspace/native-research-env/arm64/multipaz",
+        "--toolchain-root",
+        "/workspace/native-research-env/arm64/toolchain",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--out",
+        "/workspace/native-research-env/arm64/arm64-guards-w08dkwhm/changed-lock"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "Use the existing experimental Longfellow Cargo.lock",
+      "build_started": false
+    },
+    {
+      "name": "dirty-source",
+      "argv": [
+        "python3",
+        "/workspace/my-Bonds-fork-android/tools/native-research/probe_linux_arm64.py",
+        "--multipaz",
+        "/workspace/native-research-env/arm64/multipaz",
+        "--toolchain-root",
+        "/workspace/native-research-env/arm64/toolchain",
+        "--cargo",
+        "/workspace/native-research-env/cargo/bin/cargo",
+        "--cargo-home",
+        "/workspace/native-research-env/cargo",
+        "--rustup-home",
+        "/workspace/native-research-env/rustup",
+        "--out",
+        "/workspace/native-research-env/arm64/arm64-guards-w08dkwhm/dirty-source"
+      ],
+      "exit_code": 1,
+      "expected_diagnostic": "multipaz must be clean at the pinned revision",
+      "build_started": false
+    }
+  ]
+}

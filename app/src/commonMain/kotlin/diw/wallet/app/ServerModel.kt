@@ -155,6 +155,17 @@ class ServerModel(private val model: WalletModel) {
             ?: throw ProtocolException("server_error", tr(Res.string.srv_sp_env_missing))
     }
 
+    /**
+     * The `oprf_pk_hash` (0x hex) of the project OPRF key [url] publishes for zkPassport salted identifiers
+     * (docs/design/zkpassport.md 5.5), read fresh from `/info`; null when the server offers no OPRF.
+     */
+    suspend fun oprfKeyHash(url: String): String? {
+        val o = info(url)
+        if (FEATURE_OPRF !in features(o)) return null
+        val hash = ((o["oprf"] as? JsonObject)?.get("pk") as? JsonObject)?.str("hash")?.trim()
+        return hash?.takeIf { OPRF_HASH.matches(it) }
+    }
+
     private suspend fun read(url: String, shared: ServerShare?): Info {
         val o = info(url)
         val features = features(o)
@@ -396,6 +407,8 @@ class ServerModel(private val model: WalletModel) {
     companion object {
         const val SOURCE_PREFIX = "server:"
         const val FEATURE_TWFIDO = "twfido"
+        const val FEATURE_OPRF = "oprf"
+        private val OPRF_HASH = Regex("^0x[0-9a-fA-F]{1,64}$")
         /** The OpenID Federation entity type diw-wallet-server publishes its signing root and verifier DID under. */
         const val SERVER_TYPE = "diw_wallet_server"
         /** Requests the server signs (verifier) and the web-proof receipts it issues (issuer). */

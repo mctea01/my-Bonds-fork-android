@@ -31,6 +31,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -138,6 +139,46 @@ class Oid4vpE2eTest {
                "claims":[{"path":["org.iso.18013.5.1","given_name"]},{"path":["org.iso.18013.5.1","age_over_18"]}]}]}"""
         ).jsonObject
         presentAndCheck("x509_san_dns", "direct_post.jwt", dcql = dcql); Unit
+    }
+
+    /**
+     * A Photo ID the wallet made from a passport is presented over the standard mdoc path: self-issued (T3) and,
+     * without the chip's security object, its data cannot be checked against the issuing state.
+     */
+    @Test
+    fun photoIdFromPassportIsSelfIssued() = runBlocking {
+        val w = wallet()
+        val mrz = "P<TWNLIN<<CHE<CHUAN".padEnd(44, '<') + "\n" + "3123456780TWN9001155M3001017" + "A123456789<<<<" + "24"
+        val zone = mrz.replace("\n", "").encodeToByteArray()
+        fun tlv(tag: ByteArray, value: ByteArray) = tag + (if (value.size < 128) byteArrayOf(value.size.toByte()) else byteArrayOf(0x81.toByte(), value.size.toByte())) + value
+        val dg1 = tlv(byteArrayOf(0x61), tlv(byteArrayOf(0x5F, 0x1F), zone))
+        val dump = diw.wallet.core.document.mrtd.MrtdDump(files = mapOf("DG1" to kotlin.io.encoding.Base64.encode(dg1)), access = "BAC", readAt = 0)
+        val photoId = diw.wallet.core.document.derived.TravelDocumentPhotoId
+        val now = kotlin.time.Clock.System.now()
+        val elements = assertNotNull(photoId.elements(dump, now))
+        val issuer = w.holderIdentities.getOrCreate(diw.wallet.core.holder.HolderIdentities.DOCUMENT_ISSUER, "did:key", w.secureArea,
+            org.multipaz.securearea.software.SoftwareCreateKeySettings.Builder().build())
+        val doc = w.documentStore.createDocument(displayName = "Photo ID")
+        val cred = org.multipaz.mdoc.credential.MdocCredential.create(doc, null, "mdoc", w.secureArea, photoId.DOCTYPE,
+            org.multipaz.securearea.software.SoftwareCreateKeySettings.Builder().build())
+        cred.certify(photoId.issuerSigned(issuer, elements, cred.getAttestation().ecPublicKey, now, photoId.validUntil(dump, now)))
+        val dcql = DiwJson.parseToJsonElement(
+            """{"credentials":[{"id":"photo","format":"mso_mdoc","meta":{"doctype_value":"org.iso.23220.photoid.1"},
+               "claims":[{"path":["org.iso.23220.1","family_name"]},{"path":["org.iso.23220.1","age_over_18"]},{"path":["org.iso.23220.datagroups.1","dg1"]}]}]}"""
+        ).jsonObject
+        val (id, uri) = createSession(buildJsonObject {
+            put("client_id_prefix", "x509_san_dns"); put("response_mode", "direct_post.jwt"); put("request_uri_method", "get"); put("dcql_query", dcql)
+        })
+        val prepared = w.holder.prepare(w.holder.resolveUri(uri))
+        assertTrue(w.holder.respondDefault(prepared) is PresentationOutcome.Posted)
+        val c = result(id)["credentials"]!!.jsonArray.single().jsonObject
+        assertEquals("org.iso.23220.photoid.1", c["type"]!!.jsonPrimitive.content, "result: $c")
+        assertEquals("T3", c["issuer_trust_tier"]!!.jsonPrimitive.content, "result: $c")
+        val claims = c["claims"]!!.jsonObject
+        assertTrue("\"LIN\"" in claims["org.iso.23220.1.family_name"]!!.jsonPrimitive.content, "claims: $claims")
+        assertTrue(claims["org.iso.23220.datagroups.1.dg1"]!!.jsonPrimitive.content.endsWith("bytes"), "claims: $claims")
+        val evidence = c["evidence"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content }
+        assertEquals(listOf("UNKNOWN"), evidence, "result: $c")
     }
 
     private suspend fun expectRejected(tamper: String, code: String, trustRoot: Boolean = true) {

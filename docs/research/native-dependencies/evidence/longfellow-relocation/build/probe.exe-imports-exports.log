@@ -1,0 +1,142 @@
+
+/workspace/native-research-env/longfellow/embedded/probe.exe:     file format pei-x86-64
+
+Characteristics 0x26
+	executable
+	line numbers stripped
+	large address aware
+
+Time/Date		Tue Nov 10 07:28:11 2026
+Magic			020b	(PE32+)
+MajorLinkerVersion	2
+MinorLinkerVersion	44
+SizeOfCode		0000000000007a00
+SizeOfInitializedData	0000000000003000
+SizeOfUninitializedData	0000000000000c00
+AddressOfEntryPoint	00000000000013f0
+BaseOfCode		0000000000001000
+ImageBase		0000000140000000
+SectionAlignment	00001000
+FileAlignment		00000200
+MajorOSystemVersion	4
+MinorOSystemVersion	0
+MajorImageVersion	0
+MinorImageVersion	0
+MajorSubsystemVersion	5
+MinorSubsystemVersion	2
+Win32Version		00000000
+SizeOfImage		0003f000
+SizeOfHeaders		00000600
+CheckSum		0003e9e2
+Subsystem		00000003	(Windows CUI)
+DllCharacteristics	00000160
+					HIGH_ENTROPY_VA
+					DYNAMIC_BASE
+					NX_COMPAT
+SizeOfStackReserve	0000000000200000
+SizeOfStackCommit	0000000000001000
+SizeOfHeapReserve	0000000000100000
+SizeOfHeapCommit	0000000000001000
+LoaderFlags		00000000
+NumberOfRvaAndSizes	00000010
+
+The Data Directory
+Entry 0 0000000000000000 00000000 Export Directory [.edata (or where ever we found it)]
+Entry 1 000000000000f000 000008e0 Import Directory [parts of .idata]
+Entry 2 0000000000000000 00000000 Resource Directory [.rsrc]
+Entry 3 000000000000c000 0000048c Exception Directory [.pdata]
+Entry 4 0000000000000000 00000000 Security Directory
+Entry 5 0000000000011000 0000007c Base Relocation Directory [.reloc]
+Entry 6 0000000000000000 00000000 Debug Directory
+Entry 7 0000000000000000 00000000 Description Directory
+Entry 8 0000000000000000 00000000 Special Directory
+Entry 9 000000000000a4a0 00000028 Thread Storage Directory [.tls]
+Entry a 0000000000000000 00000000 Load Configuration Directory
+Entry b 0000000000000000 00000000 Bound Import Directory
+Entry c 000000000000f250 00000200 Import Address Table Directory
+Entry d 0000000000000000 00000000 Delay Import Directory
+Entry e 0000000000000000 00000000 CLR Runtime Header
+Entry f 0000000000000000 00000000 Reserved
+
+There is an import table in .idata at 0x14000f000
+
+The Import Tables (interpreted .idata section contents)
+ vma:            Hint    Time      Forward  DLL       First
+                 Table   Stamp     Chain    Name      Thunk
+ 0000f000	0000f050 00000000 00000000 0000f7e0 0000f250
+
+	DLL Name: zkp.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	0000f250  <none>  0000  find_zk_spec_by_attributes
+	0000f258  <none>  0001  free_circuit_bytes
+	0000f260  <none>  0002  free_mdoc_proof
+	0000f268  <none>  0003  generate_circuit
+	0000f270  <none>  0004  run_mdoc_prover
+	0000f278  <none>  0005  run_mdoc_verifier
+
+ 0000f014	0000f088 00000000 00000000 0000f81c 0000f288
+
+	DLL Name: KERNEL32.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	0000f288  <none>  0124  DeleteCriticalSection
+	0000f290  <none>  014a  EnterCriticalSection
+	0000f298  <none>  0283  GetLastError
+	0000f2a0  <none>  0391  InitializeCriticalSection
+	0000f2a8  <none>  03ac  IsDBCSLeadByteEx
+	0000f2b0  <none>  03ef  LeaveCriticalSection
+	0000f2b8  <none>  0423  MultiByteToWideChar
+	0000f2c0  <none>  0593  SetUnhandledExceptionFilter
+	0000f2c8  <none>  05a3  Sleep
+	0000f2d0  <none>  05c7  TlsGetValue
+	0000f2d8  <none>  05f6  VirtualProtect
+	0000f2e0  <none>  05f8  VirtualQuery
+	0000f2e8  <none>  062d  WideCharToMultiByte
+
+ 0000f028	0000f0f8 00000000 00000000 0000f8d4 0000f2f8
+
+	DLL Name: msvcrt.dll
+	vma:     Ordinal  Hint  Member-Name  Bound-To
+	0000f2f8  <none>  006a  __C_specific_handler
+	0000f300  <none>  007e  ___lc_codepage_func
+	0000f308  <none>  0081  ___mb_cur_max_func
+	0000f310  <none>  0092  __getmainargs
+	0000f318  <none>  0093  __initenv
+	0000f320  <none>  0094  __iob_func
+	0000f328  <none>  00a1  __set_app_type
+	0000f330  <none>  00a3  __setusermatherr
+	0000f338  <none>  00c0  _amsg_exit
+	0000f340  <none>  00d3  _cexit
+	0000f348  <none>  00e1  _commode
+	0000f350  <none>  010b  _errno
+	0000f358  <none>  012d  _fmode
+	0000f360  <none>  017c  _initterm
+	0000f368  <none>  01e3  _lock
+	0000f370  <none>  028c  _onexit
+	0000f378  <none>  03af  _unlock
+	0000f380  <none>  0411  abort
+	0000f388  <none>  0421  calloc
+	0000f390  <none>  042d  exit
+	0000f398  <none>  0431  fclose
+	0000f3a0  <none>  043e  fopen
+	0000f3a8  <none>  043f  fprintf
+	0000f3b0  <none>  0440  fputc
+	0000f3b8  <none>  0444  fread
+	0000f3c0  <none>  0445  free
+	0000f3c8  <none>  0449  fseek
+	0000f3d0  <none>  044b  ftell
+	0000f3d8  <none>  044d  fwrite
+	0000f3e0  <none>  0473  localeconv
+	0000f3e8  <none>  047a  malloc
+	0000f3f0  <none>  047f  memcmp
+	0000f3f8  <none>  0480  memcpy
+	0000f400  <none>  0482  memset
+	0000f408  <none>  048c  puts
+	0000f410  <none>  049b  signal
+	0000f418  <none>  04a7  strcmp
+	0000f420  <none>  04ab  strerror
+	0000f428  <none>  04ad  strlen
+	0000f430  <none>  04af  strncmp
+	0000f438  <none>  04d1  vfprintf
+	0000f440  <none>  04e3  wcslen
+
+ 0000f03c	00000000 00000000 00000000 00000000 00000000

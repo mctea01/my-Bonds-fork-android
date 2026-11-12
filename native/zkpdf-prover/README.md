@@ -17,7 +17,7 @@ See `NOTICE` and `../Cargo.lock` for licenses and dependency pins.
 
 ## Build on Linux
 
-Prerequisites: Rust 1.95, C++20 compiler (tested GCC 14), CMake, Ninja, Git and
+Prerequisites: the Rust version pinned in `../rust-toolchain.toml` (1.99.1), C++20 compiler (tested GCC 13 and 14), CMake, Ninja, Git and
 Python 3. Full workspace tests additionally need protoc and libclang for OpenAC.
 The C++ build tool fetches pinned sources during this explicit build step only.
 
@@ -48,9 +48,26 @@ build directory. `build.sh` supplies the API-29 NDK wrapper through
 `ZKPDF_CXX`/`ZKPDF_AR`, independently of cargo-ndk's rewritten `CXX` and
 `CXXFLAGS`. It reports elapsed seconds and library bytes for each ABI.
 Android build results are recorded in `docs/research/p4-benchmarks.md`.
-macOS has not been built in this Linux workspace. Windows is currently blocked by upstream POSIX dependencies
-(`sys/random.h`, `sys/mman.h` and allocation/file APIs); the build tool fails
-explicitly rather than substituting a different backend version. Windows zkPDF is currently unsupported; no POSIX port is attempted.
+macOS has not been built in this Linux workspace.
+
+Linux arm64 (`--target aarch64-unknown-linux-gnu`) builds natively on an arm64 host and, on an x86_64 host, with
+the distribution's GNU cross compiler (`g++-aarch64-linux-gnu`); `native/build.sh aarch64-unknown-linux-gnu`
+sets the matching linker and bridge compiler.
+
+Windows x86_64 (`--target x86_64-pc-windows-gnullvm`) is cross-built on Linux, the way upstream builds it. Upstream
+uses zig; here it is llvm-mingw, the same components (clang, lld, libc++, libunwind, compiler-rt, mingw-w64 UCRT)
+as a release pinned by SHA-256 (`tools/llvm_mingw.py`, `tools/windows_mingw.cmake`). All of them have permissive
+licences, and no GCC runtime is linked: with the distribution's MinGW-w64 the library would contain libstdc++ and
+libgcc (GPL with the GCC Runtime Library Exception). `-Werror` is dropped for this target because the toolchain's
+clang is newer than the one upstream builds with. `native/build.sh x86_64-pc-windows-gnullvm` builds Barretenberg
+and the whole library this way; the result depends on system DLLs only. A Windows host cannot build the zkPDF
+backend.
+
+On Windows every call into Barretenberg runs on one thread that lives as long as the process
+(`src/bbthread.rs`). Barretenberg keeps its worker pool in a thread-local whose destructor joins the workers;
+Windows runs it while the calling thread exits, under the loader lock, where the workers cannot finish exiting.
+
+32-bit targets are not supported: Barretenberg needs 128-bit integers and a 64-bit `size_t`.
 
 ## Assets
 

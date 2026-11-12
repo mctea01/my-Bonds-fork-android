@@ -19,12 +19,14 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,6 +58,7 @@ private fun roleName(r: TrustRole): String = when (r) {
     TrustRole.TSA -> stringResource(Res.string.role_timestamp)
     TrustRole.DOCUMENT -> stringResource(Res.string.role_document_signing)
     TrustRole.CONTENT -> stringResource(Res.string.role_c2pa)
+    TrustRole.TRAVEL_DOCUMENT -> stringResource(Res.string.role_travel_document)
 }
 
 @Composable
@@ -69,7 +72,15 @@ private fun environmentTitle(e: TrustEnvironment): String = when (e) {
 /** One certificate in one environment with every role it is an anchor for. */
 private data class AnchorGroup(val environment: TrustEnvironment, val anchors: List<StoredAnchor>) {
     val first: StoredAnchor get() = anchors.first()
+    /** An imported CSCA: trusted for travel documents only. These are many and listed on their own. */
+    val csca: Boolean get() = environment != TrustEnvironment.PRODUCTION && anchors.all { it.role == TrustRole.TRAVEL_DOCUMENT }
+    /** The country code the CSCA names (its subject's C, else its issuer's), or "?". */
+    val country: String get() = runCatching {
+        first.certificate.subject.components[COUNTRY_NAME]?.value ?: first.certificate.issuer.components[COUNTRY_NAME]?.value
+    }.getOrNull()?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: "?"
 }
+
+private const val COUNTRY_NAME = "2.5.4.6"
 
 /**
  * Trust anchors of every kind, not only TWDIW: X.509 roots by environment and role, the DID trust sources (the
@@ -108,7 +119,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
         val list = anchors
         if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
-            val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }
+            val groups = list.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }.filter { !it.csca }
             TrustEnvironment.entries.filter { it != TrustEnvironment.SYSTEM }.forEach { env ->
                 val inEnv = groups.filter { it.environment == env }
                 // Long lists start folded; the user's own imports stay open so a new import is seen at once.
@@ -127,6 +138,8 @@ fun TrustAnchorsScreen(model: WalletModel) {
             }
         }
         SystemStoreSection(model)
+        CscaSection(model)
+        list?.let { ImportedCscaSection(model, it) }
         TrustListsSection(model)
         IntermediateSection(model)
     }
@@ -170,10 +183,11 @@ fun CustomTrustScreen(model: WalletModel) {
         if (list == null) CircularProgressIndicator(Modifier.size(24.dp))
         else {
             val groups = list.filter { it.environment == TrustEnvironment.USER }
-                .groupBy { it.certificate }.map { (_, v) -> AnchorGroup(TrustEnvironment.USER, v) }
+                .groupBy { it.certificate }.map { (_, v) -> AnchorGroup(TrustEnvironment.USER, v) }.filter { !it.csca }
             if (groups.isEmpty()) Text(stringResource(Res.string.custom_roots_none),
                 style = MaterialTheme.typography.bodySmall)
             groups.forEach { g -> AnchorCard(g) { removing = g } }
+            ImportedCscaSection(model, list, Screen.CustomTrust)
         }
 
         HorizontalDivider()
@@ -339,6 +353,113 @@ private fun SystemStoreSection(model: WalletModel) {
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
 }
 
+/** The built-in country signing CAs for travel documents, by country; a tap opens the certificate. */
+@Composable
+private fun CscaSection(model: WalletModel) {
+    val cscas = diw.wallet.core.trust.BuiltInCscas
+    val byCountry = remember { cscas.all.groupBy { it.country }.toList().sortedBy { it.first } }
+    HorizontalDivider()
+    SectionTitle(stringResource(Res.string.csca_title))
+    Text(stringResource(Res.string.csca_text, cscas.all.size, byCountry.size, cscas.PUBLISHER), style = MaterialTheme.typography.bodySmall)
+    CollapsibleSection(stringResource(Res.string.csca_countries), byCountry.size, key = "csca-countries") {
+        byCountry.forEach { (country, list) ->
+            CollapsibleSection(country, list.size, key = "csca-$country") {
+                list.forEach { c ->
+                    Column(Modifier.fillMaxWidth().clickable {
+                        model.screen.value = Screen.Certificate(listOf(c.certificate), 0, Screen.TrustAnchors)
+                    }.padding(vertical = 4.dp)) {
+                        Text(c.name, style = MaterialTheme.typography.bodyMedium)
+                        Text(c.algorithm + "・" + stringResource(Res.string.valid_until) + localTime(c.certificate.validityNotAfter),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                }
+            }
+        }
+    }
+    Text(stringResource(Res.string.csca_updated, cscas.UPDATED, cscas.LIST),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+}
+
+/**
+ * CSCAs the user imported (from master lists or ICAO PKD files, often hundreds), apart from other anchors: grouped
+ * by the country code they name, each country folded, and removable one by one, by country or by selection.
+ */
+@Composable
+private fun ImportedCscaSection(model: WalletModel, anchors: List<StoredAnchor>, from: Screen = Screen.TrustAnchors) {
+    val groups = remember(anchors) {
+        anchors.groupBy { it.environment to it.certificate }.map { (k, v) -> AnchorGroup(k.first, v) }.filter { it.csca }
+    }
+    val byCountry = remember(groups) { groups.groupBy { it.country }.toList().sortedBy { it.first } }
+    var selecting by remember { mutableStateOf(false) }
+    var selected by remember(groups) { mutableStateOf(emptySet<AnchorGroup>()) }
+    var confirm by remember { mutableStateOf<List<AnchorGroup>?>(null) }
+    HorizontalDivider()
+    CollapsibleSection(stringResource(Res.string.csca_imported_title), groups.size, initiallyExpanded = groups.size <= 3, key = "csca-imported") {
+        Text(stringResource(Res.string.csca_imported_text, groups.size, byCountry.size), style = MaterialTheme.typography.bodySmall)
+        if (groups.isEmpty()) return@CollapsibleSection
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = { selecting = !selecting; selected = emptySet() }) {
+                Text(stringResource(if (selecting) Res.string.action_cancel else Res.string.csca_select))
+            }
+            if (selecting) {
+                TextButton(onClick = { selected = if (selected.size == groups.size) emptySet() else groups.toSet() }) {
+                    Text(stringResource(if (selected.size == groups.size) Res.string.csca_select_none else Res.string.csca_select_all))
+                }
+                TextButton(onClick = { confirm = selected.toList() }, enabled = selected.isNotEmpty()) {
+                    Text(stringResource(Res.string.csca_remove_selected, selected.size), color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+        byCountry.forEach { (country, list) ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selecting) Checkbox(
+                    checked = list.all { it in selected },
+                    onCheckedChange = { on -> selected = if (on) selected + list else selected - list.toSet() },
+                )
+                Column(Modifier.weight(1f)) {
+                    CollapsibleSection(country, list.size, key = "csca-imported-$country") {
+                        list.sortedBy { it.first.certificate.validityNotAfter }.forEach { g ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (selecting) Checkbox(
+                                    checked = g in selected,
+                                    onCheckedChange = { on -> selected = if (on) selected + g else selected - g },
+                                )
+                                Column(Modifier.weight(1f).clickable {
+                                    model.screen.value = Screen.Certificate(listOf(g.first.certificate), 0, from)
+                                }.padding(vertical = 4.dp)) {
+                                    Text(g.first.metadata.displayName ?: g.first.certificate.displaySubject(), style = MaterialTheme.typography.bodyMedium)
+                                    Text(environmentTitle(g.environment) + "・" + stringResource(Res.string.valid_until) + localTime(g.first.certificate.validityNotAfter),
+                                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                                }
+                                if (!selecting) TextButton(onClick = { confirm = listOf(g) }) { Text(stringResource(Res.string.action_remove)) }
+                            }
+                        }
+                        if (!selecting && list.size > 1) TextButton(onClick = { confirm = list }) {
+                            Text(stringResource(Res.string.csca_remove_country, country, list.size), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    confirm?.let { targets ->
+        AlertDialog(
+            onDismissRequest = { confirm = null },
+            title = { Text(stringResource(Res.string.anchor_remove_title)) },
+            text = { Text(stringResource(Res.string.csca_remove_text, targets.size, targets.map { it.country }.distinct().sorted().joinToString(stringResource(Res.string.sep_list)))) },
+            confirmButton = {
+                TextButton(onClick = {
+                    model.removeAnchors(targets.flatMap { it.anchors })
+                    selected = selected - targets.toSet()
+                    if (selected.isEmpty()) selecting = false
+                    confirm = null
+                }) { Text(stringResource(Res.string.action_remove), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(stringResource(Res.string.action_cancel)) } },
+        )
+    }
+}
+
 /** The public trust lists for document signers and time-stamp authorities: on or off, what is stored, and updates. */
 @Composable
 private fun TrustListsSection(model: WalletModel) {
@@ -442,10 +563,12 @@ private fun ImportAnchorSection(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     Text(stringResource(Res.string.import_anchor_uses), style = MaterialTheme.typography.labelLarge)
-    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
+    RoleChips(listOf(TrustRole.ISSUER, TrustRole.STATUS_LIST, TrustRole.VERIFIER, TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT, TrustRole.TRAVEL_DOCUMENT, TrustRole.WALLET_PROVIDER, TrustRole.TRUST_LIST_PROVIDER), roles) { roles = it }
     Button(onClick = { model.importAnchor(pem, name, roles); pem = ""; name = "" }, enabled = pem.isNotBlank() && roles.isNotEmpty()) {
         Text(stringResource(Res.string.action_import))
     }
+    Text(stringResource(Res.string.master_list_text), style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { model.importMasterList() }) { Text(stringResource(Res.string.master_list_import)) }
 }
 
 /**

@@ -292,6 +292,37 @@ class ZkModel(
         downloadJob?.cancel()
     }
 
+    /**
+     * Barretenberg 5 for zkPassport proofs of circuits before 0.22.0: null when the platform has none, else whether it
+     * is here, whether the app can fetch it (Google Play), install progress and the last install error.
+     */
+    data class LegacyComponent(val present: Boolean, val installable: Boolean, val progress: Float? = null, val error: String? = null)
+
+    val legacy = MutableStateFlow<LegacyComponent?>(null)
+
+    /** Reads whether the component is here; cheap, so screens call it when shown. */
+    fun checkLegacy(): Job = scope.launch(dispatcher) {
+        val c = environment?.zkPassportLegacy ?: return@launch
+        val present = runCatching { c.present() }.getOrDefault(false)
+        legacy.update { LegacyComponent(present, c.installable, it?.progress, it?.error) }
+    }
+
+    /** Installs the component through the platform (a Play on-demand module); the result lands in [legacy]. */
+    fun installLegacy(): Job = scope.launch(dispatcher) {
+        val c = environment?.zkPassportLegacy ?: return@launch
+        if (legacy.value?.progress != null) return@launch
+        legacy.value = LegacyComponent(false, c.installable, progress = 0f)
+        val error = try {
+            c.install { f -> legacy.update { it?.copy(progress = f) } }
+        } catch (e: CancellationException) {
+            legacy.value = LegacyComponent(false, c.installable)
+            throw e
+        } catch (e: Exception) {
+            "install_failed"
+        }
+        legacy.value = LegacyComponent(error == null && runCatching { c.present() }.getOrDefault(false), c.installable, null, error)
+    }
+
     suspend fun delete(id: String) = withContext(dispatcher) {
         val store = environment?.assets ?: return@withContext
         store.delete(id)

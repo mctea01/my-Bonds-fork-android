@@ -4,8 +4,10 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 
 | 檔案 | 說明 |
 |---|---|
-| `DIW-MY-WALLET-<版本>.apk` | Android release 版：R8 縮減與最佳化，網路安全設定只允許本機與模擬器主機的 HTTP |
-| `DIW-MY-WALLET-<版本>-debug.apk` | Android debug 版：未最佳化，允許區網測試伺服器的 HTTP |
+| `DIW-MY-WALLET-<版本>.apk` | Android release 版：R8 縮減與最佳化，網路安全設定只允許本機與模擬器主機的 HTTP；兩個 ABI 與所有選用元件都在裡面 |
+| `DIW-MY-WALLET-<版本>-arm64-v8a.apk`、`-x86_64.apk` | 同上，只含一個 ABI，檔案較小（一般手機用 arm64-v8a） |
+| `DIW-MY-WALLET-<版本>.apks` | 同一版的分割 APK 組，與 Google Play 的分割相同，選用元件是獨立分割；用 `bundletool install-apks` 或 SAI 等分割安裝程式安裝，可以只裝需要的部分 |
+| `DIW-MY-WALLET-<版本>-debug.apk` | Android debug 版：未最佳化，允許區網測試伺服器的 HTTP；含所有選用元件 |
 | `DIW-MY-WALLET-<版本>.aab`、`DIW-MY-WALLET-<版本>-debug.aab` | release／debug App Bundle，供 Google Play 或 bundletool 使用，不能直接安裝 |
 | `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄（套用 `diw-wallet/play/` 的 CI 修改後才有） |
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
@@ -15,7 +17,7 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 
 Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 nightly 取 AAB 上傳）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
 
-每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android 與 Linux 另連結 zkPDF（Barretenberg 6.0.0，`openac,tlsn,zkpdf`），Windows 暫不支援、macOS 尚未建置。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
+每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android、Linux 與 macOS 另連結 zkPDF（Barretenberg 6.0.0，`openac,tlsn,zkpdf`）。Windows 的 zkPDF 不能在 Windows 主機上建置，要在 Linux 上交叉建置整個函式庫（`native/build.sh x86_64-pc-windows-gnullvm`，腳本會下載固定版本的 llvm-mingw；產物靜態連結 libc++ 等寬鬆授權的執行階段，不含 libstdc++ 與 libgcc）；CI 的 Windows 函式庫改用這個方式之前仍不含 zkPDF。Android 的 32 位元 ABI（`armeabi-v7a`、`x86`）只有不含證明後端的 runtime 函式庫，用來解碼 JPEG 2000 相片。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
 零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-desktop`（Windows、macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 
@@ -32,6 +34,14 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 ni
 修訂號需要完整的 git 歷史：CI 的 checkout 使用 `fetch-depth: 0`，`tools/app-version.sh` 在歷史不完整時讓發佈檔案的工作失敗；只跑測試的工作只警告並以修訂號 0 繼續。修訂號達 10,000 時建置要求換新的版本線。
 
 versionCode 由版本算出，換新版本線時一定變大（0.4 起為 40000 以上，大於舊規則的 CI 執行次數），所以新建置能覆蓋安裝舊版（同一把簽章金鑰時）；同一版本線內只要從 main 依序建置，也一定變大。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本（`0.4.<修訂號>`）。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以 `tools/app-version.sh`（與 Gradle 同一規則）算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
+
+## Android 選用元件與 APK
+
+少數人需要、體積又大的原生元件放在隨選動態功能模組（`features/`），目前只有 `features/bb5`：Barretenberg 5（`native/zkpassport-bb5`），用來驗證 zkPassport 0.22.0 以前電路的證明。Google Play 版在用到時由 App 向 Play 要求安裝（設定的 zkPassport 區段或查驗結果頁的按鈕）；Play 政策不允許從 Play 以外下載可執行程式碼，所以不另外提供下載。
+
+GitHub 的 APK 與 `.apks` 由 CI 用 `tools/bundle-apks.sh` 從 Google Play 收到的同一個 AAB 產生（bundletool，版本與 SHA-256 釘選在腳本裡），所以程式碼、版本號與簽章都和 Play 版相同：`.apk` 已含所有模組，`.apks` 的模組是獨立分割。電腦版把同一個函式庫放在 JAR 的資源裡，所以每個版本的功能一致。新增這類元件時照同樣方式：加一個 `features/` 模組並列入 `app` 的 `dynamicFeatures`，在 `ZkComponent` 的實作裡載入，桌面版放進資源。
+
+本機建置 Android 時要在 `DIW_ZK_FEATURES` 加上 `bb5`（需要 `zkpdf`），`native/build.sh` 才會建置 `native/dist/android-bb5`；沒有時模組是空的，App 會顯示元件不可用。bundletool 要求有原生程式碼的模組都支援和 base 相同的 ABI，而 base 含相依套件（JNA、Tesseract、CameraX 等）的 32 位元函式庫；32 位元沒有 Barretenberg（`diw_zk` 在 32 位元只有 runtime），所以 `build.sh` 在 `armeabi-v7a` 與 `x86` 放一個空的 `libdiw_bb5_none.so`，App 不會載入它。
 
 ## Android 簽章
 

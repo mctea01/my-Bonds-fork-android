@@ -87,6 +87,7 @@ import org.multipaz.util.fromBase64Url
  * Root composable shared by Android and desktop. [scanQr] is offered when the platform has a camera
  * scanner; it returns the scanned text or null. [scanQrStream] keeps that camera open for an animated code, handing
  * each new code to its callback until the callback says done. Reading a QR Code from a picture is offered everywhere.
+ * [scanMrz] reads a travel document's machine readable zone with the camera and returns its lines, or null.
  *
  * The home screen has five tabs: the documents list and the history log as in the EUDI wallet, Use as in Bonds
  * (present, counter services, add), Files for signed files and official documents, and Verify for the wallet
@@ -97,8 +98,9 @@ fun WalletApp(
     model: WalletModel,
     scanQr: (suspend () -> String?)? = null,
     scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)? = null,
+    scanMrz: (suspend () -> String?)? = null,
 ) {
-    AppLocaleScope(model.platform.languageStore) { WalletAppContent(model, scanQr, scanQrStream) }
+    AppLocaleScope(model.platform.languageStore) { WalletAppContent(model, scanQr, scanQrStream, scanMrz) }
 }
 
 @Composable
@@ -106,6 +108,7 @@ private fun WalletAppContent(
     model: WalletModel,
     scanQr: (suspend () -> String?)?,
     scanQrStream: (suspend (onCode: (String) -> QrScanStep) -> Unit)?,
+    scanMrz: (suspend () -> String?)?,
 ) {
     val ready by model.ready.collectAsState()
     val screen by model.screen.collectAsState()
@@ -201,6 +204,7 @@ private fun WalletAppContent(
                             is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
                             is Screen.NationalId -> NationalIdScreen(model, s)
                             Screen.DocumentSources -> DocumentSourcesScreen(model)
+                            Screen.PassportRead -> PassportReadScreen(model, scanMrz)
                             is Screen.Portal -> PortalScreen(model, s)
                             is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                             is Screen.LegalText -> LegalTextScreen(model, s)
@@ -260,6 +264,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.NationalIdCreate -> stringResource(Res.string.screen_national_id_create)
     is Screen.NationalId -> stringResource(Res.string.screen_national_id)
     Screen.DocumentSources -> stringResource(Res.string.screen_document_sources)
+    Screen.PassportRead -> stringResource(Res.string.screen_passport_read)
     is Screen.Portal -> stringResource(Res.string.screen_document_sources)
     is Screen.OfficialBundle -> stringResource(Res.string.screen_official_bundle)
     is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
@@ -368,7 +373,7 @@ fun storedTrust(doc: Document): TrustDecision? = doc.issuanceRecord?.let { r ->
         anchorName = r.anchorName,
         // Credentials derived before the label existed are recognised by their type.
         labels = r.labels.mapNotNull { runCatching { TrustLabel.valueOf(it) }.getOrNull() }.toSet() +
-            (if (r.vct == DerivedCredentials.VCT) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
+            (if (DerivedCredentials.isDerived(r.vct)) setOf(TrustLabel.SELF_ISSUED) else emptySet()),
         reasons = r.reasons,
     )
 }
@@ -395,11 +400,11 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
         count = creds.size
         val first = creds.firstOrNull()
         // A derived credential's document and evidence objects are shown as checked evidence, not as raw data.
-        val derived = record?.vct == DerivedCredentials.VCT
+        val derived = DerivedCredentials.isDerived(record?.vct)
         // A web query result's source, method and session are shown as where the values came from.
         val web = WebProofCredentials.isWebCredential(record?.vct)
         claims = first?.let { ClaimReader.read(it, model.documentTypes) }
-            ?.filterNot { derived && (it.path.firstOrNull() in setOf("document", "evidence") || it.path.firstOrNull()?.let(DerivedCredentials::isProofClaim) == true) }
+            ?.filterNot { derived && (it.path.firstOrNull() in setOf("document", "evidence") || it.path.firstOrNull()?.let(DerivedCredentials::isTechnicalClaim) == true) }
             ?.filterNot { web && it.path.firstOrNull() in WebProofCredentials.SOURCE_CLAIMS }
             ?.map {
                 val value = if (web && it.path == listOf(WebProofCredentials.CLAIM_STATUS)) WebProofCredentials.plainStatus(it.value) else it.value

@@ -1,0 +1,15 @@
+ABI smoke passed: all six Rust exports linked and called without JVM/JNA
+spec v7/1 matched; null-input errors matched; proof correctness not tested
+circuit_v5_attributes1=matched_and_freed
+circuit_v5_attributes2=matched_and_freed
+circuit_v5_attributes3=matched_and_freed
+circuit_v5_attributes4=matched_and_freed
+circuit_v6_attributes1=matched_and_freed
+circuit_v6_attributes2=matched_and_freed
+circuit_v6_attributes3=matched_and_freed
+circuit_v6_attributes4=matched_and_freed
+circuit_v7_attributes1=matched_and_freed
+circuit_v7_attributes2=matched_and_freed
+circuit_v7_attributes3=matched_and_freed
+circuit_v7_attributes4=matched_and_freed
+unknown_spec=rejected all_12_prior_circuits=passed

@@ -4,6 +4,7 @@ import diw.wallet.core.env.EnvironmentPolicy
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.profile.bonds.TwPkiAnchors
 import diw.wallet.core.trust.BuiltInAnchors
+import diw.wallet.core.trust.BuiltInCscas
 import diw.wallet.core.trust.BuiltInPublicRoots
 import diw.wallet.core.trust.BuiltInTestAnchors
 import diw.wallet.core.trust.Pkix
@@ -352,5 +353,33 @@ class TrustAnchorsTest {
             assertEquals(TrustTier.T2, d.tier, "$role with ${chain.size} certificates: ${d.reasons}")
             assertTrue(TrustLabel.IDENTITY_VERIFIED in d.labels)
         }
+    }
+
+    /** The CSCAs of the master list: parseable and unique, Taiwan and mainland China present, T2 for travel documents only. */
+    @Test
+    fun builtInCscasAnchorTravelDocuments() = runBlocking<Unit> {
+        val all = BuiltInCscas.all
+        assertTrue(all.size >= 100, "${all.size} CSCAs")
+        assertEquals(all.size, all.map { it.sha256 }.toSet().size, "a CSCA is listed twice")
+        for (c in all) {
+            val der = c.certificate.encoded.toByteArray()
+            val sha = MessageDigest.getInstance("SHA-256").digest(der).joinToString("") { "%02X".format(it) }
+            assertEquals(c.sha256, sha, c.name)
+            assertTrue(Regex("[A-Z]{2}").matches(c.country), c.country)
+        }
+        assertTrue("TW" in BuiltInCscas.countries && "CN" in BuiltInCscas.countries)
+        val now = Clock.System.now()
+        val tw = BuiltInCscas.validAt(now).first { it.country == "TW" }.certificate
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        val d = registry.decide(TrustRole.TRAVEL_DOCUMENT, listOf(tw))
+        assertEquals(TrustEnvironment.PRODUCTION, d.environment, d.reasons.toString())
+        assertEquals(TrustTier.T2, d.tier, d.reasons.toString())
+        assertTrue(d.anchorName.orEmpty().startsWith("CSCA TW"), d.anchorName)
+        // A CSCA anchors nothing but travel documents.
+        for (role in listOf(TrustRole.ISSUER, TrustRole.VERIFIER, TrustRole.DOCUMENT)) {
+            assertTrue(registry.decide(role, listOf(tw)).anchorName.orEmpty().startsWith("CSCA").not(), "$role")
+        }
+        assertTrue(registry.travelDocumentAnchors(TrustEnvironment.PRODUCTION).any { it == tw })
+        assertTrue(registry.travelDocumentAnchors(TrustEnvironment.TEST).none { it == tw })
     }
 }
