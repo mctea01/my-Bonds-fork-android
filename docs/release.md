@@ -21,6 +21,8 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 ni
 
 零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-desktop`（Windows、macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 
+桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows，macOS 只嘗試），先跑執行檔的 `--self-check` 與定時啟動視窗，通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天）。這個工作 `continue-on-error`，失敗不影響其他工作，也不進 nightly。原生版不設堆積上限，預設最多使用實體記憶體的 80%。
+
 ## 版本號
 
 版本號只記在 repo 根目錄的 `version.properties`（`version=主版號.次版號`，進入新階段或正式發佈時手動修改），建置時補上修訂號：從最後一次修改 `version=` 那一行的 commit 起算的 commit 數。同一個 commit 在任何機器算出的版本都相同，換新的主版號或次版號時修訂號從 0 重新開始，之後每合併一次到 main 加 1。不再使用 CI 執行次數。

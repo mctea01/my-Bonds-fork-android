@@ -555,6 +555,14 @@ tasks.matching { it.name == "proguardReleaseJars" }.configureEach {
 tasks.named<Test>("desktopTest") {
     useJUnitPlatform()
     jvmArgs("-Dfile.encoding=UTF-8", "-Duser.language=zh", "-Duser.country=TW", "-Xmx3g", "--add-modules=java.smartcardio")
+    // -Pdiw.nativeAgent=<dir> (tools/desktop-native.sh): the tests run on GraalVM ($GRAALVM_HOME) under the tracing
+    // agent, which merges the reflection, JNI and resources they reach into <dir> for the native executable.
+    (findProperty("diw.nativeAgent") as String?)?.let { dir ->
+        val graal = System.getenv("GRAALVM_HOME") ?: throw GradleException("diw.nativeAgent needs GRAALVM_HOME")
+        executable = File(graal, if (System.getProperty("os.name").startsWith("Windows")) "bin/java.exe" else "bin/java").path
+        jvmArgs("-agentlib:native-image-agent=config-merge-dir=${File(dir).absolutePath}")
+        outputs.upToDateWhen { false }
+    }
     testLogging {
         events("passed", "failed", "skipped")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
