@@ -157,16 +157,20 @@ data class ZkPassportConfig(
 /**
  * The registry's CSCA keys for the issuing country the proofs disclose (or limit to), checked against this wallet's
  * CSCA anchors (docs/design/zkpassport.md 4.3). The circuits bind the CSCA's country to the document's issuing
- * state, so when every such key is an anchor the signer chains to one of them.
+ * state, so when every such key is an anchor the signer chains to one of them. Keys whose CSCA certificate has
+ * expired are left out, as this wallet's anchors are: a CSCA stays valid as long as the documents it signed for, so
+ * only an expired document can chain to an expired CSCA.
  */
 data class ZkPassportCscaCheck(
     val countries: List<String>,
-    /** Keys of [countries] in the certificate package the proofs' registry root was built from. */
+    /** Keys of [countries] in the certificate package the proofs' registry root was built from, still valid. */
     val inPackage: Int,
     /** Of those, the keys that are also this wallet's anchors. */
     val anchored: Int,
     /** Why the package could not be checked (`certificates_unavailable`, `certificates_root`), or null. */
     val error: String? = null,
+    /** Keys of [countries] in the package whose CSCA certificate has expired, not counted in [inPackage]. */
+    val expired: Int = 0,
 ) {
     val allAnchored: Boolean get() = error == null && inPackage > 0 && anchored == inPackage
 }

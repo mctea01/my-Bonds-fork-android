@@ -284,11 +284,14 @@ class JvmZkPassportVerifier(
         } catch (e: ZkPassportRegistry.Unreachable) {
             registry.cachedCertificates(chain) ?: return ZkPassportCscaCheck(countries, 0, 0, e.code)
         }
-        val keys = summary["certificates"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
+        val entries = summary["certificates"]?.jsonArray.orEmpty().mapNotNull { it as? JsonObject }
             .filter { (it["country"] as? JsonPrimitive)?.contentOrNull in countries }
-            .mapNotNull { (it["publicKey"] as? JsonPrimitive)?.contentOrNull }
+        // Expired CSCAs are left out on both sides: the anchors are the ones valid now.
+        val now = System.currentTimeMillis() / 1000
+        val (valid, expired) = entries.partition { e -> (e["notAfter"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()?.let { it >= now } ?: true }
+        val keys = valid.mapNotNull { (it["publicKey"] as? JsonPrimitive)?.contentOrNull }
         val anchorKeys = anchors.mapNotNull { ZkPassportCsca.publicKey(it) }
-        return ZkPassportCscaCheck(countries, keys.size, keys.count { k -> anchorKeys.any { ZkPassportCsca.same(it, k) } })
+        return ZkPassportCscaCheck(countries, keys.size, keys.count { k -> anchorKeys.any { ZkPassportCsca.same(it, k) } }, expired = expired.size)
     }
 
     /** zkPassport's verifier service: verified, rejected, or unavailable with the HTTP status (0 without an answer). */

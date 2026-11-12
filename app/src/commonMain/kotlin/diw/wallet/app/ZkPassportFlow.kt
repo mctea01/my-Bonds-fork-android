@@ -350,12 +350,13 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         /** The trust line of a passed check (docs/design/zkpassport.md 4.3): T2 when every key is an anchor. */
         fun trust(check: ZkPassportCscaCheck?): String {
             val sep = tr(Res.string.sep_list)
-            return when {
+            val line = when {
                 check == null -> tr(Res.string.zkp_trust_registry)
                 check.allAnchored -> tr(Res.string.zkp_trust_anchored, check.countries.joinToString(sep))
                 check.error != null -> tr(Res.string.zkp_trust_unchecked, if (check.error == "certificates_root") tr(Res.string.zkp_err_certificates_root) else tr(Res.string.zkp_err_certificates))
                 else -> tr(Res.string.zkp_trust_partial, check.countries.joinToString(sep), check.inPackage, check.anchored)
             }
+            return if (check != null && check.error == null && check.expired > 0) line + " " + tr(Res.string.zkp_trust_expired, check.expired) else line
         }
 
         /** Why this wallet cannot answer [incoming], or null: FaceMatch and modes other than fast are not offered. */

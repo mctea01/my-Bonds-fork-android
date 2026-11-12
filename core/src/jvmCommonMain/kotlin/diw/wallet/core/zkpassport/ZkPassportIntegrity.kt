@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import java.security.MessageDigest
+import diw.wallet.core.document.DocCrypto
 
 /**
  * The checks of zkPassport's integrity circuits (data_check_integrity_sa_X_dg_Y, circuits lib data-check/integrity),
@@ -34,9 +34,9 @@ object ZkPassportIntegrity {
         if (eSize > eContent.size) return "e_content_length"
         if ((eSize until eContent.size).any { eContent[it] != 0.toByte() }) return "e_content_padding"
         val content = eContent.copyOf(eSize)
-        val dg1Hash = MessageDigest.getInstance(dg).digest(dg1.copyOf(if (idCard) DG1_LENGTH else PASSPORT_DG1_LENGTH))
+        val dg1Hash = DocCrypto.digest(dg, dg1.copyOf(if (idCard) DG1_LENGTH else PASSPORT_DG1_LENGTH))
         if (indexOf(content, dg1Hash) < 0) return "dg1_hash"
-        if (indexOf(signedAttributes, MessageDigest.getInstance(sa).digest(content)) < 0) return "e_content_hash"
+        if (indexOf(signedAttributes, DocCrypto.digest(sa, content)) < 0) return "e_content_hash"
         // DG2's hash is found by the DER that precedes it: SEQUENCE { INTEGER 2, OCTET STRING hash }.
         val size = dg1Hash.size
         val at = indexOf(eContent, DG2_HASH_DER)
@@ -46,6 +46,7 @@ object ZkPassportIntegrity {
         return null
     }
 
+    /** The circuits' hash names; SHA-1 and SHA-224 only because older documents were signed with them. */
     private fun algorithm(name: String) = when (name) {
         "sha1" -> "SHA-1"
         "sha224" -> "SHA-224"

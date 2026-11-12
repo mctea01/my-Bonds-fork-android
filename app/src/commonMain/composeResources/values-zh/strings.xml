@@ -4308,8 +4308,9 @@
     <string name="zkp_unverified_suffix">（網域依輸入，未經驗證）</string>
     <string name="zkp_verifier_api">允許 zkPassport 查驗服務判定</string>
     <string name="zkp_verifier_api_note">只在這支手機無法自行驗證證明時使用；證明與請求會送到 zkPassport。預設關閉。</string>
-    <string name="zkp_trust_anchored">信任：zkPassport 註冊表中 %1$s 的 CSCA 全部在本 App 的信任錨點中（T2）。</string>
-    <string name="zkp_trust_partial">信任：依 zkPassport 憑證註冊表（T3）。其中 %1$s 的 CSCA 金鑰有 %2$d 個，%3$d 個在本 App 的信任錨點中；匯入該國 CSCA（例如 ICAO 主清單）後可達 T2。</string>
+    <string name="zkp_trust_anchored">信任：zkPassport 註冊表中 %1$s 的有效 CSCA 全部在本 App 的信任錨點中（T2）。</string>
+    <string name="zkp_trust_partial">信任：依 zkPassport 憑證註冊表（T3）。其中 %1$s 的有效 CSCA 金鑰有 %2$d 個，%3$d 個在本 App 的信任錨點中；匯入該國 CSCA（例如 ICAO 主清單）後可達 T2。</string>
+    <string name="zkp_trust_expired">註冊表另有 %1$d 個已過期的 CSCA 不計入（CSCA 的效期涵蓋其簽發證件的效期，只有已過期的證件會連到已過期的 CSCA）。</string>
     <string name="zkp_trust_unchecked">信任：依 zkPassport 憑證註冊表（T3）。%1$s</string>
     <string name="zkp_err_certificates">無法下載註冊表的憑證包，未能將發證國 CSCA 與本 App 的信任錨點比對。</string>
     <string name="zkp_err_certificates_root">下載的憑證包雜湊不等於證明使用的註冊表根，已捨棄。</string>

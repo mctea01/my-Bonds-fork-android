@@ -2674,6 +2674,9 @@ class WalletModelE2eTest {
         assertEquals(result, shown.result)
         assertTrue("T2" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 2)))
         assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 2, 1)))
+        // Expired registry keys are not counted, and the line says so.
+        val expired = ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 4, 4, expired = 2))
+        assertTrue("T2" in expired && "2" in expired, expired)
         assertTrue("T3" in ZkPassportFlow.trust(diw.wallet.core.zkpassport.ZkPassportCscaCheck(listOf("TWN"), 0, 0, "certificates_unavailable")))
         val claims = ZkPassportFlow.claims(result)
         assertTrue("國籍：TWN" in claims && "發證國：TWN" in claims && "年齡：至少 18 歲" in claims, claims.toString())
