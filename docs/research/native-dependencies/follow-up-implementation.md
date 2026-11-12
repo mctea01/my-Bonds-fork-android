@@ -95,7 +95,17 @@ Barretenberg 的阻礙有兩層，都在上游原始碼：
 
 曾評估改走 MSVC ABI（xwin 加 clang-cl），沒有採用：Barretenberg 無條件引入 `<cxxabi.h>` 與 `unistd.h`；64 個檔案使用 `unsigned __int128`，MSVC 的函式庫沒有 128 位元除法的輔助函式，微軟的 STL 也不把它當整數型別，`serialize.hpp` 的 `std::integral auto` 多載會編譯失敗或選到別的版本；連結進 DLL 的會是微軟專有授權的 CRT。
 
-**驗證狀況：** 這個容器無法取得 llvm-mingw，新工具鏈沒有在容器內建置，也沒有以 Wine 執行。它由 CI 驗證：`native-windows` 工作建置並執行上述兩項檢查，Windows 桌面版工作在真正的 Windows 上載入 DLL 並跑 `ZkNativeTest` 與 `ZkPdfCircuitTest`。
+**驗證狀況：** 這個容器無法取得 llvm-mingw，新工具鏈只由 CI 驗證（PR #121，2026-11-12）：
+
+| 檢查 | 結果 |
+|---|---|
+| Barretenberg 6.0.0 與 5.0.0 以 llvm-mingw 20251104 從原始碼建置 | 成功，6.0.0 約 13 分鐘 |
+| `diw_zk.dll`（`openac,tlsn,zkpdf,bb5`） | 47 MB（原本 60 MB）；引入 kernel32、ntdll、advapi32、bcrypt、bcryptprimitives、ws2_32、`api-ms-win-core-synch-l1-2-0` 與 UCRT |
+| `diw_bb5.dll` | 18.7 MB（原本 20 MB）；同上，不含 advapi32、bcryptprimitives |
+| 沒有 GCC 編譯的目的檔 | 兩個 DLL 都通過 |
+| 真正的 Windows（windows-latest） | `ZkNativeTest` 與 `ZkPdfCircuitTest` 通過，zkPDF 證明產生並驗證成功 |
+
+llvm-mingw 發行頁沒有公布雜湊，`llvm_mingw.py` 釘選的 SHA-256 是 CI 第一次下載時取得的值。DLL 最低需要 Windows 10（UCRT 內建）；Windows 7／8.1 要另裝 UCRT 更新，未測試。
 
 ## Linux ARM64
 

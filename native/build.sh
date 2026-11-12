@@ -141,8 +141,7 @@ for target in "${selected[@]}"; do
             # With zkPDF the library is cross-built on Linux, the way Barretenberg is, with llvm-mingw
             # (zkpdf-prover/tools/llvm_mingw.py fetches the pinned release): clang and lld with libc++, libunwind,
             # compiler-rt and the mingw-w64 UCRT, so the DLL carries no GCC runtime (libstdc++, libgcc).
-            # x86_64-pc-windows-gnu is accepted as the earlier name of this build.
-            x86_64-pc-windows-gnullvm|x86_64-pc-windows-gnu) target=x86_64-pc-windows-gnullvm
+            x86_64-pc-windows-gnullvm)
                 platform=windows-x86_64; library=diw_zk.dll
                 [[ "$(uname -s)" == Linux ]] || { echo "The Windows library is cross-built on Linux" >&2; exit 1; }
                 LLVM_MINGW_ROOT=$(python3 -I zkpdf-prover/tools/llvm_mingw.py)
