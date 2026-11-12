@@ -188,9 +188,11 @@ jobs:
           if [ -d native/target ]; then find native/target -mindepth 1 -maxdepth 1 ! -name 'bb-*' -exec rm -rf {} +; fi
           df -h /
 
-  # The Windows library, cross-built on Linux for the GNU ABI with clang, lld and MinGW-w64: Barretenberg (zkPDF and
-  # the Barretenberg 5 library) cannot be built on a Windows host. The DLLs depend on system libraries only; the
-  # Windows leg of the desktop job loads them and proves a document on a real Windows runner.
+  # The Windows library, cross-built on Linux with llvm-mingw (clang, lld, libc++, libunwind, compiler-rt and the
+  # mingw-w64 UCRT; native/build.sh fetches the pinned release): Barretenberg (zkPDF and the Barretenberg 5 library)
+  # cannot be built on a Windows host. native/build.sh checks that the DLLs import system libraries only and hold
+  # nothing built by GCC; the Windows leg of the desktop job loads them and proves a document on a real Windows
+  # runner.
   native-windows:
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -215,41 +217,30 @@ jobs:
           cache-targets: false
           cache-bin: false
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # protoc and libclang for OpenAC, Ninja and CMake for Barretenberg; clang, lld and MinGW-w64 (headers, runtime,
-      # libstdc++ and binutils) are the Windows cross toolchain of native/build.sh.
-      - name: ZK native build tools and the Windows cross toolchain
+      # protoc and libclang for OpenAC, Ninja and CMake for Barretenberg. The Windows cross toolchain is llvm-mingw,
+      # which native/build.sh fetches itself.
+      - name: ZK native build tools
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake clang lld g++-mingw-w64-x86-64-posix
+          sudo apt-get install -y -q protobuf-compiler libclang-dev ninja-build cmake
       - name: Cache Barretenberg (Windows)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/target/bb-source
-            native/target/bb-x86_64-pc-windows-gnu
-          key: bb-6.0.0-x86_64-windows-gnu-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/mingw_libstdcxx.h') }}
+            native/target/bb-x86_64-pc-windows-gnullvm
+          key: bb-6.0.0-x86_64-windows-gnullvm-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/llvm_mingw.py') }}
       - name: Cache Barretenberg 5 (Windows)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             native/target/bb-v5
-            native/target/bb5-x86_64-pc-windows-gnu
-          key: bb-5.0.0-x86_64-windows-gnu-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/mingw_libstdcxx.h') }}
+            native/target/bb5-x86_64-pc-windows-gnullvm
+          key: bb-5.0.0-x86_64-windows-gnullvm-${{ hashFiles('native/zkpdf-prover/tools/build_bb.py', 'native/zkpdf-prover/tools/portable_x86_64.cmake', 'native/zkpdf-prover/tools/windows_mingw.cmake', 'native/zkpdf-prover/tools/llvm_mingw.py') }}
       - name: Build diw_zk.dll and diw_bb5.dll (windows-x86_64)
         run: |
-          bash native/build.sh x86_64-pc-windows-gnu
+          bash native/build.sh x86_64-pc-windows-gnullvm
           ls -lR native/dist/resources
-          # Nothing but Windows system libraries may be imported.
-          for dll in native/dist/resources/zk/native/windows-x86_64/*.dll; do
-            imports=$(x86_64-w64-mingw32-objdump -p "$dll" | sed -n 's/^\s*DLL Name: //p' | tr 'A-Z' 'a-z' | sort -u | tr '\n' ' ')
-            echo "$dll imports: $imports"
-            for name in $imports; do
-              case "$name" in
-                kernel32.dll|ntdll.dll|msvcrt.dll|advapi32.dll|bcrypt.dll|bcryptprimitives.dll|ws2_32.dll|userenv.dll|api-ms-win-core-synch-l1-2-0.dll) ;;
-                *) echo "::error::$dll imports $name"; exit 1 ;;
-              esac
-            done
-          done
           df -h /
       - name: Upload windows library
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
