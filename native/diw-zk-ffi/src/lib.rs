@@ -27,6 +27,7 @@ fn protect_worker_panics() {
 
 uniffi::setup_scaffolding!("diw_zk");
 
+mod bbs;
 mod openac;
 mod zkpdf;
 mod zktls;
@@ -119,7 +120,7 @@ pub fn native_info() -> ZkNativeInfo {
     ZkNativeInfo {
         crate_version: env!("CARGO_PKG_VERSION").into(),
         features: {
-            let mut features = vec!["runtime".to_string()];
+            let mut features = vec!["runtime".to_string(), "bbs".to_string()];
             if cfg!(feature = "openac") {
                 features.push("openac".into());
             }

@@ -848,6 +848,40 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -863,7 +897,41 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_diw_zk_checksum_func_create_age_prepare_input(
+    fun uniffi_diw_zk_checksum_func_bbs_blind_proof_gen(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_blind_proof_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_blind_sign(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_blind_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_commit(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_generate_key_pair(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_nym_commit(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_nym_finalize(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_nym_proof_gen(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_nym_proof_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_nym_sign(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_proof_gen(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_proof_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_public_key(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_random_scalar(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_sign(
+): Short
+fun uniffi_diw_zk_checksum_func_bbs_verify(
+): Short
+fun uniffi_diw_zk_checksum_func_create_age_prepare_input(
 ): Short
 fun uniffi_diw_zk_checksum_func_create_age_show_input(
 ): Short
@@ -980,6 +1048,40 @@ fun uniffi_diw_zk_fn_init_callback_vtable_zktlsreceiptissuer(`vtable`: UniffiVTa
 ): Unit
 fun uniffi_diw_zk_fn_init_callback_vtable_zktlsrevealchooser(`vtable`: UniffiVTableCallbackInterfaceZkTlsRevealChooser,
 ): Unit
+fun uniffi_diw_zk_fn_func_bbs_blind_proof_gen(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,`committedMessages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,`secretProverBlind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_blind_proof_verify(`publicKeyBytes`: RustBuffer.ByValue,`proofBytes`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`lengthMessages`: Long,`disclosedMessages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_diw_zk_fn_func_bbs_blind_sign(`secretKeyBytes`: RustBuffer.ByValue,`publicKeyBytes`: RustBuffer.ByValue,`commitmentWithProof`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_blind_verify(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,`committedMessages`: RustBuffer.ByValue,`secretProverBlind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_diw_zk_fn_func_bbs_commit(`committedMessages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_generate_key_pair(`keyMaterial`: RustBuffer.ByValue,`keyInfo`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_nym_commit(`committedMessages`: RustBuffer.ByValue,`proverNym`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_nym_finalize(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,`committedMessages`: RustBuffer.ByValue,`proverNym`: RustBuffer.ByValue,`signerNymEntropy`: RustBuffer.ByValue,`secretProverBlind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_nym_proof_gen(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`nymSecretBytes`: RustBuffer.ByValue,`contextId`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,`committedMessages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,`secretProverBlind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_nym_proof_verify(`publicKeyBytes`: RustBuffer.ByValue,`proofBytes`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`pseudonym`: RustBuffer.ByValue,`contextId`: RustBuffer.ByValue,`lengthMessages`: Long,`disclosedMessages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_diw_zk_fn_func_bbs_nym_sign(`secretKeyBytes`: RustBuffer.ByValue,`publicKeyBytes`: RustBuffer.ByValue,`commitmentWithProof`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`signerNymEntropy`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_proof_gen(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_proof_verify(`publicKeyBytes`: RustBuffer.ByValue,`proofBytes`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`presentationHeader`: RustBuffer.ByValue,`disclosedMessages`: RustBuffer.ByValue,`disclosedIndexes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_diw_zk_fn_func_bbs_public_key(`secretKeyBytes`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_random_scalar(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_sign(`secretKeyBytes`: RustBuffer.ByValue,`publicKeyBytes`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_bbs_verify(`publicKeyBytes`: RustBuffer.ByValue,`signature`: RustBuffer.ByValue,`header`: RustBuffer.ByValue,`messages`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_diw_zk_fn_func_create_age_prepare_input(`documentsPath`: RustBuffer.ByValue,`sdJwt`: RustBuffer.ByValue,`issuerKeyX`: RustBuffer.ByValue,`issuerKeyY`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_create_age_show_input(`documentsPath`: RustBuffer.ByValue,`nonce`: RustBuffer.ByValue,`deviceSignature`: RustBuffer.ByValue,`claimName`: RustBuffer.ByValue,`claimFormat`: Byte,`cutoff`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1138,6 +1240,57 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_diw_zk_checksum_func_bbs_blind_proof_gen() != 60275.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_blind_proof_verify() != 25878.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_blind_sign() != 35731.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_blind_verify() != 51141.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_commit() != 43205.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_generate_key_pair() != 21239.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_nym_commit() != 38613.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_nym_finalize() != 27362.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_nym_proof_gen() != 9515.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_nym_proof_verify() != 4679.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_nym_sign() != 3533.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_proof_gen() != 50713.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_proof_verify() != 43394.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_public_key() != 10057.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_random_scalar() != 62956.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_sign() != 39874.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_bbs_verify() != 47376.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_diw_zk_checksum_func_create_age_prepare_input() != 2782.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1819,6 +1972,102 @@ public object FfiConverterTypeAgePrepareInput: FfiConverterRustBuffer<AgePrepare
     override fun write(value: AgePrepareInput, buf: ByteBuffer) {
             FfiConverterString.write(value.`claimName`, buf)
             FfiConverterUByte.write(value.`claimFormat`, buf)
+    }
+}
+
+
+
+data class BbsCommitment (
+    var `commitmentWithProof`: kotlin.ByteArray, 
+    var `secretProverBlind`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBbsCommitment: FfiConverterRustBuffer<BbsCommitment> {
+    override fun read(buf: ByteBuffer): BbsCommitment {
+        return BbsCommitment(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BbsCommitment) = (
+            FfiConverterByteArray.allocationSize(value.`commitmentWithProof`) +
+            FfiConverterByteArray.allocationSize(value.`secretProverBlind`)
+    )
+
+    override fun write(value: BbsCommitment, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`commitmentWithProof`, buf)
+            FfiConverterByteArray.write(value.`secretProverBlind`, buf)
+    }
+}
+
+
+
+data class BbsKeyPair (
+    var `secretKey`: kotlin.ByteArray, 
+    var `publicKey`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBbsKeyPair: FfiConverterRustBuffer<BbsKeyPair> {
+    override fun read(buf: ByteBuffer): BbsKeyPair {
+        return BbsKeyPair(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BbsKeyPair) = (
+            FfiConverterByteArray.allocationSize(value.`secretKey`) +
+            FfiConverterByteArray.allocationSize(value.`publicKey`)
+    )
+
+    override fun write(value: BbsKeyPair, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`secretKey`, buf)
+            FfiConverterByteArray.write(value.`publicKey`, buf)
+    }
+}
+
+
+
+data class BbsNymProof (
+    var `proof`: kotlin.ByteArray, 
+    var `pseudonym`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBbsNymProof: FfiConverterRustBuffer<BbsNymProof> {
+    override fun read(buf: ByteBuffer): BbsNymProof {
+        return BbsNymProof(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: BbsNymProof) = (
+            FfiConverterByteArray.allocationSize(value.`proof`) +
+            FfiConverterByteArray.allocationSize(value.`pseudonym`)
+    )
+
+    override fun write(value: BbsNymProof, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`proof`, buf)
+            FfiConverterByteArray.write(value.`pseudonym`, buf)
     }
 }
 
@@ -3393,6 +3642,34 @@ public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>
 /**
  * @suppress
  */
+public object FfiConverterSequenceULong: FfiConverterRustBuffer<List<kotlin.ULong>> {
+    override fun read(buf: ByteBuffer): List<kotlin.ULong> {
+        val len = buf.getInt()
+        return List<kotlin.ULong>(len) {
+            FfiConverterULong.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.ULong>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterULong.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.ULong>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterULong.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
@@ -3750,6 +4027,195 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
         }
     }
 }
+        /**
+         * Proof for a blind signature. The committed messages (the holder_secret) stay hidden.
+         */
+    @Throws(ZkException::class) fun `bbsBlindProofGen`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>, `committedMessages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>, `secretProverBlind`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_blind_proof_gen(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterSequenceByteArray.lower(`messages`),FfiConverterSequenceByteArray.lower(`committedMessages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),FfiConverterByteArray.lower(`secretProverBlind`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * `length_messages` is the number of signer messages (lengthBBSMessages of bbs-2023).
+         */ fun `bbsBlindProofVerify`(`publicKeyBytes`: kotlin.ByteArray, `proofBytes`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `lengthMessages`: kotlin.ULong, `disclosedMessages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_blind_proof_verify(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`proofBytes`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterULong.lower(`lengthMessages`),FfiConverterSequenceByteArray.lower(`disclosedMessages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `bbsBlindSign`(`secretKeyBytes`: kotlin.ByteArray, `publicKeyBytes`: kotlin.ByteArray, `commitmentWithProof`: kotlin.ByteArray, `header`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_blind_sign(
+        FfiConverterByteArray.lower(`secretKeyBytes`),FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`commitmentWithProof`),FfiConverterByteArray.lower(`header`),FfiConverterSequenceByteArray.lower(`messages`),_status)
+}
+    )
+    }
+    
+ fun `bbsBlindVerify`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>, `committedMessages`: List<kotlin.ByteArray>, `secretProverBlind`: kotlin.ByteArray): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_blind_verify(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterSequenceByteArray.lower(`messages`),FfiConverterSequenceByteArray.lower(`committedMessages`),FfiConverterByteArray.lower(`secretProverBlind`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Commitment for anonymous holder binding (Blind BBS): committed_messages holds the holder_secret.
+         */
+    @Throws(ZkException::class) fun `bbsCommit`(`committedMessages`: List<kotlin.ByteArray>): BbsCommitment {
+            return FfiConverterTypeBbsCommitment.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_commit(
+        FfiConverterSequenceByteArray.lower(`committedMessages`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * KeyGen of the BBS draft: a deterministic key pair from at least 32 bytes of key material.
+         */
+    @Throws(ZkException::class) fun `bbsGenerateKeyPair`(`keyMaterial`: kotlin.ByteArray, `keyInfo`: kotlin.ByteArray): BbsKeyPair {
+            return FfiConverterTypeBbsKeyPair.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_generate_key_pair(
+        FfiConverterByteArray.lower(`keyMaterial`),FfiConverterByteArray.lower(`keyInfo`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Commitment for credential-bound pseudonyms: committed_messages is empty (pseudonym) or holds the holder_secret
+         * (holder binding and pseudonym); prover_nym is the holder's part of the nym secret.
+         */
+    @Throws(ZkException::class) fun `bbsNymCommit`(`committedMessages`: List<kotlin.ByteArray>, `proverNym`: kotlin.ByteArray): BbsCommitment {
+            return FfiConverterTypeBbsCommitment.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_nym_commit(
+        FfiConverterSequenceByteArray.lower(`committedMessages`),FfiConverterByteArray.lower(`proverNym`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Verification and finalization: checks the signature and returns the nym_secret (prover_nym + signer_nym_entropy).
+         */
+    @Throws(ZkException::class) fun `bbsNymFinalize`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>, `committedMessages`: List<kotlin.ByteArray>, `proverNym`: kotlin.ByteArray, `signerNymEntropy`: kotlin.ByteArray, `secretProverBlind`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_nym_finalize(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterSequenceByteArray.lower(`messages`),FfiConverterSequenceByteArray.lower(`committedMessages`),FfiConverterByteArray.lower(`proverNym`),FfiConverterByteArray.lower(`signerNymEntropy`),FfiConverterByteArray.lower(`secretProverBlind`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `bbsNymProofGen`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `nymSecretBytes`: kotlin.ByteArray, `contextId`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>, `committedMessages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>, `secretProverBlind`: kotlin.ByteArray): BbsNymProof {
+            return FfiConverterTypeBbsNymProof.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_nym_proof_gen(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterByteArray.lower(`nymSecretBytes`),FfiConverterByteArray.lower(`contextId`),FfiConverterSequenceByteArray.lower(`messages`),FfiConverterSequenceByteArray.lower(`committedMessages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),FfiConverterByteArray.lower(`secretProverBlind`),_status)
+}
+    )
+    }
+    
+ fun `bbsNymProofVerify`(`publicKeyBytes`: kotlin.ByteArray, `proofBytes`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `pseudonym`: kotlin.ByteArray, `contextId`: kotlin.ByteArray, `lengthMessages`: kotlin.ULong, `disclosedMessages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_nym_proof_verify(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`proofBytes`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterByteArray.lower(`pseudonym`),FfiConverterByteArray.lower(`contextId`),FfiConverterULong.lower(`lengthMessages`),FfiConverterSequenceByteArray.lower(`disclosedMessages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `bbsNymSign`(`secretKeyBytes`: kotlin.ByteArray, `publicKeyBytes`: kotlin.ByteArray, `commitmentWithProof`: kotlin.ByteArray, `header`: kotlin.ByteArray, `signerNymEntropy`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_nym_sign(
+        FfiConverterByteArray.lower(`secretKeyBytes`),FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`commitmentWithProof`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`signerNymEntropy`),FfiConverterSequenceByteArray.lower(`messages`),_status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `bbsProofGen`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_proof_gen(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterSequenceByteArray.lower(`messages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),_status)
+}
+    )
+    }
+    
+ fun `bbsProofVerify`(`publicKeyBytes`: kotlin.ByteArray, `proofBytes`: kotlin.ByteArray, `header`: kotlin.ByteArray, `presentationHeader`: kotlin.ByteArray, `disclosedMessages`: List<kotlin.ByteArray>, `disclosedIndexes`: List<kotlin.ULong>): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_proof_verify(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`proofBytes`),FfiConverterByteArray.lower(`header`),FfiConverterByteArray.lower(`presentationHeader`),FfiConverterSequenceByteArray.lower(`disclosedMessages`),FfiConverterSequenceULong.lower(`disclosedIndexes`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * SkToPk.
+         */
+    @Throws(ZkException::class) fun `bbsPublicKey`(`secretKeyBytes`: kotlin.ByteArray): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_public_key(
+        FfiConverterByteArray.lower(`secretKeyBytes`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * A uniformly random non-zero scalar (prover_nym, signer_nym_entropy).
+         */ fun `bbsRandomScalar`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_random_scalar(
+        _status)
+}
+    )
+    }
+    
+
+    @Throws(ZkException::class) fun `bbsSign`(`secretKeyBytes`: kotlin.ByteArray, `publicKeyBytes`: kotlin.ByteArray, `header`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_sign(
+        FfiConverterByteArray.lower(`secretKeyBytes`),FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`header`),FfiConverterSequenceByteArray.lower(`messages`),_status)
+}
+    )
+    }
+    
+ fun `bbsVerify`(`publicKeyBytes`: kotlin.ByteArray, `signature`: kotlin.ByteArray, `header`: kotlin.ByteArray, `messages`: List<kotlin.ByteArray>): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_bbs_verify(
+        FfiConverterByteArray.lower(`publicKeyBytes`),FfiConverterByteArray.lower(`signature`),FfiConverterByteArray.lower(`header`),FfiConverterSequenceByteArray.lower(`messages`),_status)
+}
+    )
+    }
+    
+
     @Throws(ZkException::class) fun `createAgePrepareInput`(`documentsPath`: kotlin.String, `sdJwt`: kotlin.String, `issuerKeyX`: kotlin.String, `issuerKeyY`: kotlin.String): AgePrepareInput {
             return FfiConverterTypeAgePrepareInput.lift(
     uniffiRustCallWithError(ZkException) { _status ->

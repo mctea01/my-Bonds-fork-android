@@ -693,6 +693,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayref"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -983,6 +989,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "710f1dd022ef4e93f8a438b4ba958de7f64308434fa6a87104481645cc30068b"
 dependencies = [
  "hybrid-array",
+]
+
+[[package]]
+name = "bls12_381_plus"
+version = "0.8.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fa37cf2a8c96054d2dc3d708efe35cc0347014af0d30b86c736b4388ff8491c"
+dependencies = [
+ "arrayref",
+ "elliptic-curve 0.13.8",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "hex",
+ "pairing",
+ "rand_core 0.6.4",
+ "serde",
+ "sha2 0.10.9",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -1786,11 +1811,14 @@ dependencies = [
 name = "diw-zk-ffi"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "openac-age",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "uniffi",
  "zkpdf-prover",
+ "zkryptium",
  "zktls",
 ]
 
@@ -6009,6 +6037,24 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "zkryptium"
+version = "0.8.1"
+dependencies = [
+ "bls12_381_plus",
+ "digest 0.10.7",
+ "elliptic-curve 0.13.8",
+ "ff 0.13.1",
+ "group 0.13.0",
+ "hex",
+ "rand 0.8.8",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sha3",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

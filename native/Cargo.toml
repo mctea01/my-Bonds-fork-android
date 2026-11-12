@@ -1,5 +1,7 @@
 [workspace]
 members = ["diw-zk-ffi", "zkpdf-prover", "zktls", "openac-age"]
+# vendor/ holds patched third-party crates used as path dependencies; they are not workspace members.
+exclude = ["vendor"]
 resolver = "2"
 
 [workspace.package]

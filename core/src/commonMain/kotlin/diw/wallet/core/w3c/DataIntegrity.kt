@@ -172,6 +172,7 @@ class DataIntegrity(
             }
             is VerificationKey.Secp256k1 -> "ES256K"
             is VerificationKey.Rsa -> "RS256"
+            is VerificationKey.Bls12381G2 -> throw ProtocolException("unsupported_proof", "A BLS12-381 key only verifies bbs-2023 proofs")
         }
         return verifySignature(alg, key, data, sig)
     }
