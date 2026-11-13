@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The desktop app as a GraalVM native executable (experimental; the JVM packages stay the release). Linux x86_64 and
 # Windows x86_64; macOS on Apple silicon is attempted. Steps:
-#   1. the release uber jar, without Bouncy Castle's signature files and marked Multi-Release (sqlite-jdbc's
-#      native-image feature lives under META-INF/versions/9);
+#   1. the release uber jar, without Bouncy Castle's signature files and with its META-INF/versions/ entries moved
+#      to the root (native-image does not read them from the class path, and sqlite-jdbc's feature lives there);
 #   2. GraalVM's tracing agent records reflection, JNI, proxies and resources into one directory from the desktop tests
 #      (AGENT_TESTS=0 skips them), the self-check (--self-check) and the app itself for AGENT_SECONDS (under Xvfb on
 #      Linux); tools/native-metadata-filter.py then drops what only the tests use;
@@ -44,17 +44,22 @@ jar=$(ls -t app/build/compose/jars/*-release.jar 2>/dev/null | head -1 || true)
 "$python" -I - "$jar" "$work/app.jar" <<'PY'
 import re, sys, zipfile
 signature = re.compile(r"META-INF/[^/]+\.(SF|RSA|DSA|EC)$", re.I)
+versioned = re.compile(r"META-INF/versions/(\d+)/(.+)$")
 with zipfile.ZipFile(sys.argv[1]) as source, zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED) as target:
-    for info in source.infolist():
-        if signature.match(info.filename):
-            continue
-        data = source.read(info)
-        if info.filename == "META-INF/MANIFEST.MF":
-            text = data.decode("utf-8").rstrip("\r\n")
-            if not re.search(r"^Multi-Release:", text, re.M):
-                text += "\r\nMulti-Release: true"
-            data = (text + "\r\n\r\n").encode("utf-8")
-        target.writestr(info, data)
+    entries = [i for i in source.infolist() if not signature.match(i.filename)]
+    # The newest version up to 25 of each versioned entry replaces the base one, as a Java 25 runtime would pick it.
+    best = {}
+    for info in entries:
+        m = versioned.match(info.filename)
+        if m and int(m[1]) <= 25 and not m[2].endswith("/") and m[2] != "module-info.class":
+            if m[2] not in best or int(m[1]) > best[m[2]][0]:
+                best[m[2]] = (int(m[1]), info)
+    for info in entries:
+        if info.filename not in best:
+            target.writestr(info, source.read(info))
+    for name, (_, info) in best.items():
+        target.writestr(zipfile.ZipInfo(name, info.date_time), source.read(info), zipfile.ZIP_DEFLATED)
+    print(f"app.jar: {len(best)} versioned entries flattened")
 PY
 
 echo "== tracing agent"
