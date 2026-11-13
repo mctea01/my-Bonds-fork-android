@@ -683,9 +683,9 @@ jobs:
   # Experimental: the desktop app as a GraalVM Community 25 native executable (tools/desktop-native.sh: tracing agent
   # over the desktop tests, the self-check and the window; native-image; then the executable's own self-check and a
   # timed start of its window). A failure never blocks the JVM packages or the nightly release; the executables are
-  # kept as artifacts only. macOS is attempted: native-image's window support there is not established.
+  # kept as artifacts only. Not macOS: GraalVM's AWT support there cannot load libawt (see tools/desktop-native.sh).
   desktop-native:
-    needs: [native-linux, native-windows, native-desktop]
+    needs: [native-linux, native-windows]
     if: ${{ !cancelled() }}
     continue-on-error: true
     strategy:
@@ -698,11 +698,8 @@ jobs:
           - os: windows-latest
             name: windows
             features: openac,tlsn,zkpdf
-          - os: macos-latest
-            name: macos
-            features: openac,tlsn
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 150
+    timeout-minutes: 90
     env:
       DIW_ZK_FEATURES: ${{ matrix.features }}
     defaults:
