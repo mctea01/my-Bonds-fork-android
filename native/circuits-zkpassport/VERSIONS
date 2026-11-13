@@ -1,0 +1,10 @@
+nargo=1.0.0
+noirc_commit=275d3ab1a5c916c6ea73e8d6b943f685f574500c
+bb=6.0.0
+proof_system=ultra_honk
+oracle_hash=poseidon2
+zkpassport_circuits_commit=2c5673df14d496a1b0baf7a92e883ca19fbb618b
+zkpassport_circuits_version=0.22.0
+
+# No ACIR or verification key hashes yet: the circuits are not published as assets and the
+# wallet does not use them. They are recorded here when the first asset release is made.

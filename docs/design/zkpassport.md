@@ -239,7 +239,7 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 - 電路驗證 Android 金鑰證明鏈（Google 根金鑰）、裝置金鑰對 client data 的簽章（含 DG2 雜湊與比對模式）、Play Integrity 權杖的簽章，並把 app id、Play Integrity 驗證公鑰、環境、模式放進參數承諾。
 - 本專案的值：app id 為本 App 的套件名稱；Play Integrity 驗證公鑰是本專案在 Play Console 取得的值（公開常數，寫進查驗端）；權杖的解密金鑰是私密值，存在 diw-wallet-server 的 secret（例如 `DIW_PLAY_INTEGRITY_DECRYPTION_KEY`，Cloud Run 用 Secret Manager、Cloudflare 用 secret），由伺服器解密後把 Google 簽署的權杖交回手機放進電路，不放進 APK。
 - 人臉比對在手機上做：DG2（JPEG 2000）與現場自拍以 Multipaz `multipaz-facenet` 比對，活體檢查沿用 zkPassport 的「轉頭」流程概念。比對結果與模式由裝置金鑰簽進 client data，電路只證明簽章與承諾，不證明比對演算法本身；這與 zkPassport 的信任假設相同（信任 App 與裝置）。
-- 前提：Play Integrity 只在 Google Play 安裝的版本可用，所以 FaceMatch 只在 Play 版提供；GitHub Release 或側載的 APK 顯示停用列並寫明原因。本專案的 Google Play 上架正在另一串進行。
+- 前提（2026-11-13 更正）：Play Integrity 不限 Google Play 安裝的版本，裝置有 Google Play 服務就能取得權杖。電路對權杖的判定不是通過或失敗：`appRecognitionVerdict` 不是 `PLAY_RECOGNIZED`，或裝置未達 `MEETS_DEVICE_INTEGRITY` 時，電路把 environment 承諾為 development，由查驗端決定是否接受【確認：`circuits/src/noir/lib/facematch/src/android/token.nr` 的 `verify_integrity_token`】。所以 GitHub Release 或側載的 APK 也能產生這種證明，查驗結果標示「非 Play 安裝」；與 Play 版同簽章、同版本號的 APK 是否得到 `PLAY_RECOGNIZED` 未實測。沒有 Google Play 服務的環境（桌面、AOSP）拿不到權杖，改用第 5.6 節的替代電路。
 - iOS 版（P6）用 App Attest 的同一套電路，屆時再補。
 
 **加鹽唯一識別碼（OPRF）**【確認：`oprf-auth` 電路與 `zkpassport-utils/src/oprf`】：
@@ -258,6 +258,78 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 
 **互通性**：上述證明只有本專案的查驗端（Z2、diw-wallet-server 的查驗網頁）接受；zkPassport 的 SDK 會因 app id 或 OPRF 公鑰雜湊不符而拒絕【確認：`public-input-checker.ts`】。畫面與聲明都要寫明。
 
+### 5.6 FaceMatch 各平台電路的差異與本專案的替代電路（2026-11-13）
+
+使用者要求比較 zkPassport 各平台的 FaceMatch 電路，並實作替代檢查或無檢查的版本。電路已寫好並在本機通過測試（`native/circuits-zkpassport`），尚未接進錢包。
+
+**官方電路證明的是什麼**【確認：`circuits` repo 修訂 `2c5673d`（0.22.0）的 `src/noir/bin/facematch`、`src/noir/lib/facematch`】
+
+人臉比對本身不在電路裡。電路證明「某個經平台證明的 App，以裝置金鑰簽了一份聲明（比對模式與 DG2 雜湊）」，並把這份聲明綁到同一本證件（`comm_in`）與同一個 scope 的 nullifier。所以它的保證全部來自平台對 App 與裝置的證明。兩個平台共用的部分：效期檢查、`nullify`、client data（DER 的 `ZKPassportAppAttest`，電路只讀模式與 DG2 雜湊）、參數承諾 Poseidon2(類型, 根金鑰葉, environment, app id 雜湊, 完整性公鑰雜湊, 模式)。
+
+| | iOS（1 個電路） | Android（78 個電路） |
+| --- | --- | --- |
+| 根金鑰 | Apple App Attest 根（P-384） | Google 硬體金鑰證明根：RSA-4096（舊）或 P-384（新） |
+| 憑證鏈 | 固定：根、1 個中繼（P-384）、credential | 1 到 3 個中繼，每個可為 P-256／SHA-256、P-384／SHA-256、P-384／SHA-384，所以依形狀展開 |
+| App 身分 | credential 憑證擴充欄位裡的 app id（Apple 簽發） | 金鑰證明擴充欄位 `attestationApplicationId` 的套件名稱（作業系統填報，在 softwareEnforced） |
+| 聲明如何綁定 | 憑證的 nonce 擴充欄位等於 SHA-256(authData ‖ client data 雜湊)：每次比對都是一次新的 App Attest 證明 | 金鑰庫金鑰對 client data 簽章（P-256）：金鑰可重複使用 |
+| 正式或開發環境 | authData 的 AAGUID（`appattest` 或 `appattestdevelop`） | Play Integrity 權杖：`PLAY_RECOGNIZED` 且裝置達 `MEETS_DEVICE_INTEGRITY` 為正式，否則開發 |
+| 額外的服務 | 無 | Play Integrity 權杖（App 專屬驗證金鑰的簽章、套件名稱、nonce 等於 SHA-256(client data 雜湊 ‖ 簽章)） |
+| 完整性公鑰雜湊 | 固定為 0 | Play Integrity 驗證公鑰的雜湊 |
+
+Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：金鑰證明的安全等級、金鑰來源（`constants.nr` 有 `TODO: Only accept GENERATED`，未接上）、開機狀態（rootOfTrust）、`attestationChallenge`、`attestationApplicationId` 裡的簽署憑證雜湊、權杖的時間戳與 `certificateSha256Digest`、Play Protect 判定（程式碼中註解掉）。這是觀察，不是漏洞：這些在它的設計裡由 Google 伺服器端的判定涵蓋。
+
+換句話說，Android 電路去掉 Play Integrity 之後，形狀就是 iOS 電路（憑證鏈、憑證裡的 App 身分、對聲明的綁定），但少了能代表「裝置與 App 沒被改過」的依據。替代檢查版就是把這個依據改從金鑰證明本身讀出來。
+
+**替代檢查版：`diw_facematch_keyattest_*`（只用 Android 金鑰證明）**
+
+憑證鏈、client data 簽章、模式與 DG2 雜湊的檢查與官方 Android 電路相同，拿掉 Play Integrity 權杖，改讀 credential 憑證的金鑰證明擴充欄位（`src/lib/diw_facematch/src/keyattest.nr`）：
+
+- 必須成立，否則無法證明：`attestationSecurityLevel` 與 `keyMintSecurityLevel` 都是 TEE 或 StrongBox；金鑰來源 `origin`（硬體清單）是 GENERATED。
+- 讀出後放進承諾：`rootOfTrust`（只認硬體清單裡的）決定 environment：已鎖定且開機狀態 Verified 為 1（與官方的 production 同值）；已鎖定且 SelfSigned（使用者自己安裝金鑰的系統，例如 GrapheneOS）為 2；其餘為 0。
+- App 身分：套件名稱（沿用官方的讀法）與簽署憑證的 SHA-256 雜湊。後者放在官方放 Play Integrity 公鑰雜湊的位置，所以查驗端能確認是哪一把簽章金鑰簽的 App，這比官方只核對套件名稱多一項。
+- 清單逐項依標籤位置走訪，`attestationChallenge`（證明者可任意填）整段跳過，所以塞在 challenge 裡的假 rootOfTrust 不會被讀到（有測試）。
+
+不需要 Google Play 服務、Play Console 金鑰或任何伺服器，所以現在就能在實機測試。形狀與官方相同，共 78 種，由 `tools/keyattest.py` 從單一範本產生。
+
+**無檢查版：`diw_facematch_self`（自我聲明）**
+
+沒有任何平台證明。電路只檢查效期與模式、做 `nullify`，並把承諾固定為「無根金鑰、environment 0、無簽署者」加上錢包自稱的 app id。它本身不增加任何保證：只是讓「錢包聲稱做過人臉比對」這句話與其他證明綁在同一本證件、同一個 scope，並讓查驗端能明確分辨這是自我聲明。原本考慮保留一個未經證明的金鑰簽章，但那個簽章任何人都能產生，只會增加證明時間，所以不放。供沒有 App 證明機制的平台使用（桌面版、模擬器）。
+
+**公開介面與查驗**
+
+兩種電路的公開輸入輸出與官方 FaceMatch 完全相同（`comm_in`、`current_date`、`service_scope`、`service_subscope`；參數承諾、nullifier 類型、nullifier、OPRF 公鑰雜湊），參數承諾也用官方的公式，所以能與官方的其他子證明串接（fast 模式逐一驗證子證明）。查驗端以驗證金鑰雜湊分辨是哪一種電路：這些電路不在 zkPassport 的電路註冊表裡，要另列本專案自己的清單，zkPassport 的查驗端一律不接受。查驗結果建議分三級顯示，由查驗方選擇接受到哪一級：
+
+| 等級 | 電路 | 查驗端核對 |
+| --- | --- | --- |
+| 平台完整性（5.5） | 官方 Android 電路，本專案的值 | Google 根、environment、本專案 app id、本專案 Play Integrity 公鑰 |
+| 金鑰證明 | `diw_facematch_keyattest_*` | Google 根、environment（1，或依政策接受 2）、本專案 app id、本專案簽署憑證雜湊 |
+| 自我聲明 | `diw_facematch_self` | 只確認承諾是「無證明」；顯示為未經證明 |
+
+**限制（要寫進畫面與聲明）**
+
+- 金鑰證明版無法發現已外洩或已撤銷的證明金鑰。Google 的撤銷清單以憑證序號查詢，而憑證鏈是電路的私密輸入，查驗端看不到；公開憑證鏈又會讓不同服務能認出同一台裝置。以外洩金鑰偽造開機狀態的裝置（常見於已 root 並偽裝的手機）能通過金鑰證明版，Play Integrity 有機會擋下。所以它的保證低於 5.5，不能互相取代。
+- 套件名稱與簽署憑證雜湊由作業系統填報，只有 environment 為 1 或 2 時才有意義；environment 為 0 時等同自我聲明。
+- 與官方電路相同：不檢查憑證效期、不檢查聲明的新鮮度（同一份已簽的 client data 可以重複使用）。
+- 桌面沒有對等的機制：TPM 或 Secure Enclave 只能證明金鑰在硬體裡，不能證明是哪個程式在用。macOS 原生 App 能否使用 App Attest 未查證；本專案的桌面版是 JVM 程式，不適用。桌面只能用自我聲明版，或日後改由配對的手機代做人臉比對（未設計）。
+
+**實作狀態與量測（2026-11-13）**
+
+- 原始碼在 `native/circuits-zkpassport`（nargo 1.0.0、bb 6.0.0，與官方電路相同），依賴的官方程式庫原樣收在 `native/vendor/zkpassport-circuits`（Apache-2.0）。
+- 測試：程式庫 8 項、自我聲明版 4 項（`nargo test`）。金鑰證明版以合成憑證鏈（新產生的金鑰、虛構的 App、官方測試用的樣本證件）執行，ECDSA 根與 RSA 根各一種形狀，各 13 項：四種開機狀態各自得到預期的承諾；軟體證明、軟體金鑰、匯入的金鑰、rootOfTrust 只在軟體清單、他人的 client data 簽章、被改過的憑證、模式不符、DG2 不符都無法證明；challenge 裡的假 rootOfTrust 不被採用。合成鏈的根不是 Google 的根：電路只承諾根金鑰，由查驗端比對。
+- 規模（雲端 x86_64、4 執行緒，bb 6.0.0 UltraHonk，證明後皆驗證通過）：
+
+| 電路 | 閘數 | 證明時間 |
+| --- | --- | --- |
+| 自我聲明版 | 9,604 | 0.3 秒 |
+| 金鑰證明版，P-384 根、1 個中繼（P-384／SHA-384） | 927,292 | 17.6 秒 |
+| 金鑰證明版，RSA 根、2 個中繼（P-256／SHA-256、P-384／SHA-384） | 849,214 | 9.9 秒 |
+| 金鑰證明版，P-384 根、3 個中繼（皆 P-384／SHA-384），最大的形狀 | 1,639,456 | 未量測（只編譯） |
+| 官方 Android 電路，P-384 根、1 個中繼（P-384／SHA-384），供對照 | 1,177,595 | 未量測 |
+
+- 單一中繼的形狀在 2^20 閘以內，官方同形狀超過（需要 2^21 的 SRS）；三個中繼的形狀仍會超過 2^20。
+- 未驗證：真實裝置的憑證鏈（合成的擴充欄位依 Android 文件的結構產生，實機的欄位順序與長度可能不同）；手機上的證明時間；程式庫修訂 `2c5673d` 的承諾與線上 0.22.0 電路是否一致，接進錢包、與真實子證明串接時才能確認。
+- 未做：發佈電路資產與驗證金鑰雜湊、錢包端證明與查驗、人臉比對與活體、畫面、專門聲明更新。接進錢包前，FaceMatch 的請求仍只能拒絕。
+
 ## 6. 對外服務與法律聲明
 
 依使用者 2026-11-05 的要求，與 TWDIW、Microsoft Verified ID 類似、依賴特定營運方服務的支援，需要專門的法律聲明與確認頁，不同意即停用。zkPassport 屬於此類：
@@ -270,7 +342,7 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 | 查驗 API | 本機驗證失敗時退回 | 整份證明與查詢結果 | 預設關閉 |
 | 雲端證明器 | `compressed` 模式 | 子證明（不是證件原始資料）【推論】 | 預設不做 |
 | 本專案 OPRF 端點（diw-wallet-server） | 本專案的加鹽識別碼（5.5） | IP、時間、盲化查詢與授權用的證明；看不到 nullifier 與證件資料 | 不用時只能用未加鹽識別碼 |
-| Google Play Integrity、本專案的權杖解密端點 | 本專案的 FaceMatch（5.5） | Google 看得到裝置完整性查詢；本專案伺服器看得到完整性結果，看不到人臉與證件資料 | 非 Play 版不提供 FaceMatch |
+| Google Play Integrity、本專案的權杖解密端點 | 本專案的 FaceMatch（5.5） | Google 看得到裝置完整性查詢；本專案伺服器看得到完整性結果，看不到人臉與證件資料 | 沒有 Google Play 服務時改用不經任何服務的替代電路（5.6） |
 
 聲明要寫明：zkPassport 不是本專案的服務、上述各項的資料流向、本專案的 FaceMatch 與加鹽識別碼只被本專案的查驗端接受、zkPassport 服務條款允許營運方隨時變更或停止服務（Terms 第 11、17 節）、以及未加鹽唯一識別碼可被發證國推算。聲明頁與停用開關由「法律聲明與初始化頁面」那串統一設計；Z1 不依賴 zkPassport，不受此停用影響。
 
