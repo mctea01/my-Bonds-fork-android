@@ -149,7 +149,7 @@ $env:DIW_TWDIW_APP_PUBLIC_KEY = [IO.File]::ReadAllText((Resolve-Path "my-applica
 
 Secrets 保護的是 repo 與建置輸入；這項設計會把應用簽章能力放進發行產物，不能把客戶端內嵌私鑰視為無法擷取的機密。不得提供不允許散布在客戶端的金鑰；未來平台若要求非匯出金鑰或後端簽署，需依正式契約另接 signer。
 
-應用身分使用本專案 `diw.wallet.app`、本次版本與平台，keyId 是該配對 Base64 SPKI 文字的 SHA-256。自動生成或合法匯入不代表官方平台已准入；正式受理仍須官方授權與端到端驗收。新版／舊版流程與驗證紀錄見 [TWDIW 新版領卡實作](acceptance/twdiw-application-signature.md)。
+應用身分的 appHash 固定為 `tw.gov.moda.diw`（`TwdiwAppIdentity.DEFAULT.appId`，2026-11-13 使用者確認以此為準，與本專案的套件名稱 `diw.wallet.app` 無關），appVersion 是本次建置的版本，appPlatform 依平台為 `Android` 或 `Desktop`；keyId 是該配對 Base64 SPKI 文字的 SHA-256。自動生成或合法匯入不代表官方平台已准入；正式受理仍須官方授權與端到端驗收。新版／舊版流程與驗證紀錄見 [TWDIW 新版領卡實作](acceptance/twdiw-application-signature.md)。
 
 ## 行動自然人憑證 SP 帳號
 

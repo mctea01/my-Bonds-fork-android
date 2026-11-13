@@ -1260,7 +1260,11 @@ class WalletModel(val platform: PlatformServices) {
         )
     }
 
-    /** This wallet's own TWDIW ecosystem identity: its own application id, version and platform, never the official app's. */
+    /**
+     * The identity in this wallet's TWDIW application signature: appHash stays the app id the platform's format names
+     * ([TwdiwAppIdentity.DEFAULT], kept on purpose), with this build's version and platform. The signing key is this
+     * wallet's own application pair, never the official app's.
+     */
     fun twdiwAppIdentity(): TwdiwAppIdentity = TwdiwAppIdentity(
         appId = TwdiwAppIdentity.DEFAULT.appId,
         appVersion = AppBuild.version ?: TwdiwAppIdentity.DEFAULT.appVersion,

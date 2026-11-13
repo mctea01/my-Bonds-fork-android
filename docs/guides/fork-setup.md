@@ -54,7 +54,7 @@ push 到 main 後，CI 會建立「nightly」預先發行版。沒有 secret 時
 |---|---|---|
 | Android 套件名稱 | `app/build.gradle.kts` 的 `applicationId` | 改這一個就夠，`namespace` 與程式的 package 不必動。Google Play 的套件名稱上傳後不能更改 |
 | Google Play 套件名稱 | `.github/workflows/google-play.yml` 的 `PLAY_PACKAGE` | 與 `applicationId` 相同 |
-| TWDIW 應用簽章的應用身分 | `WalletModel.twdiwAppIdentity()` | 與 `applicationId` 無關，改套件名稱不會改變它；目前的取值有待確認的不一致，見 [STATUS.md](../STATUS.md#4-未完成與待決定) |
+| TWDIW 應用簽章的應用身分 | `WalletModel.twdiwAppIdentity()` | appHash 固定為 `tw.gov.moda.diw`，與 `applicationId` 無關，改套件名稱不會改變它，也不要改 |
 | 桌面安裝檔 | `app/build.gradle.kts` 的 `nativeDistributions`：`packageName`、`vendor`、`menuGroup`、`upgradeUuid` | `upgradeUuid` 一定要換成新的 UUID，否則你的 .msi 會被 Windows 當成上游 App 的升級版 |
 | App 名稱與圖示 | `app/src/commonMain/composeResources` 的字串、`app/src/androidMain/res` | Apache-2.0 不授予商標使用權；對外發佈的修改版建議換名稱與圖示，避免被當成上游的版本 |
 

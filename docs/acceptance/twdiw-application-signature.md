@@ -2,7 +2,7 @@
 
 日期：2026-11-03。使用者要求修正新版 TWDIW 領卡、保留舊版、支援合法應用金鑰 secrets／空值生成及 AAB。
 
-> **後續（2026-11-13）：** 本文提到「待手動套用」的 CI 修改都已在 main：`build` 與 `desktop` 工作只在 push 時注入 `TWDIW_APP_PRIVATE_KEY`／`TWDIW_APP_PUBLIC_KEY`，nightly 附 release 與 debug 的 AAB。官方平台是否接受本錢包的應用簽章仍未驗收，見 [專案現況](../STATUS.md)。
+> **後續（2026-11-13）：** 本文提到「待手動套用」的 CI 修改都已在 main：`build` 與 `desktop` 工作只在 push 時注入 `TWDIW_APP_PRIVATE_KEY`／`TWDIW_APP_PUBLIC_KEY`，nightly 附 release 與 debug 的 AAB。官方平台是否接受本錢包的應用簽章仍未驗收，見 [專案現況](../STATUS.md)。下文寫「程式使用本專案身分 `diw.wallet.app`」之處與程式不符：App 送出的 appHash 是 `tw.gov.moda.diw`（`WalletModel.twdiwAppIdentity()` 取 `TwdiwAppIdentity.DEFAULT.appId`），使用者於 2026-11-13 確認以此為準；簽章金鑰仍是本錢包自己的應用配對。
 
 ## 問題與結果
 
