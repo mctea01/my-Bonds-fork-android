@@ -1,6 +1,6 @@
 # P4 零知識證明：總體設計與約定
 
-撰寫日期：2026-10-16。狀態：D1 到 D6 已於 2026-10-16 決定（第 2 節），實作依 [p4-work-packages.md](p4-work-packages.md) 分包進行。2026-10-25：年齡證明、zkTLS 與 mdoc ZK 已實作並可使用，zkPDF 的電路與證明器開發中（各工作包狀態見 p4-work-packages.md 第 2.1 節）；電路細節見 [p4-circuits.md](p4-circuits.md)。本文的「約定」是所有工作包（含交給 ChatGPT Codex 的部分）共同遵守的介面與規則，修改時要同步更新三份文件與 AGENTS.md。
+性質：規格。撰寫日期：2026-10-16。D1 到 D6 已於 2026-10-16 決定（第 2 節）；四種證據都已實作，P4 於 2026-11-06 合併進 main（PR #12），目前狀態見 [專案現況](../STATUS.md)。電路細節見 [p4-circuits.md](p4-circuits.md)，工作包的完成紀錄見 [p4-work-packages.md](p4-work-packages.md)。本文的「約定」是零知識證明相關程式共同遵守的介面與規則，修改時要同步更新 p4-circuits.md 與 AGENTS.md。
 
 標記：**【確認】** 已讀過原始碼、規格或實測；**【推論】** 依已知資料推論，尚待工作包實測。
 
@@ -266,7 +266,7 @@ Kotlin 介面以 p4-work-packages.md 為準，這裡只列共同規則：
 - 中階 Android 機（等級 B）完成：zkTLS 即時出示（學信網）兩次，一次電腦版當查驗方、一次另一支手機當查驗方（區域網路與中繼各一次）；一次 OpenAC 年齡證明出示並由本 App 與 Bonds 查驗通過、一次 Longfellow mDL 年齡出示並驗證。
 - zkPDF：福州大學在學證明產生證據（手機或電腦版，畫面標明在哪裡產生），另一台裝置查驗通過，只揭露選定欄位；竄改遮蔽套件的任一位元組、換用他人的 `cnf`、改錨點序數都會被拒絕。
 - 所有負向測試列在 p4-circuits.md 的測試清單，並在 `test-servers` 以合成文件與測試 PKI 執行。
-- 驗收紀錄寫在 `docs/acceptance/p4-acceptance.md`。
+- P4 沒有另寫驗收文件：自動測試的結果記在 [p4-work-packages.md](p4-work-packages.md) 第 2.1 節，量測在 [p4-benchmarks.md](../research/p4-benchmarks.md)；上面的實機項目還沒有完整紀錄，列在 [專案現況](../STATUS.md) 的待實機驗證。
 
 ## 13. 風險
 

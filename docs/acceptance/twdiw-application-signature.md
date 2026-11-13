@@ -2,6 +2,8 @@
 
 日期：2026-11-03。使用者要求修正新版 TWDIW 領卡、保留舊版、支援合法應用金鑰 secrets／空值生成及 AAB。
 
+> **後續（2026-11-13）：** 本文提到「待手動套用」的 CI 修改都已在 main：`build` 與 `desktop` 工作只在 push 時注入 `TWDIW_APP_PRIVATE_KEY`／`TWDIW_APP_PUBLIC_KEY`，nightly 附 release 與 debug 的 AAB。官方平台是否接受本錢包的應用簽章仍未驗收，見 [專案現況](../STATUS.md)。
+
 ## 問題與結果
 
 原流程會丟掉 `/oid4vci` 前綴、對 appId 再做 SHA-256、使用小寫 android、增加 Header.kid，並嘗試未獲證實的 `/api/did/` 手機註冊與 holder-key fallback。即使本機驗簽成功，也不能據此符合 1.0.14 的應用簽章格式。
@@ -69,4 +71,4 @@ AAB 已可透過下列 Gradle 命令建置，使用同 build type 的 signingCon
 
 已確認 `dwapp201i_private.txt` 是目前 `dwapp-201i` 簽章 reader 的來源，`dwapp201i_public.txt` 的文字摘要用於 payload.keyId。無副檔名的兩份資產未找到具體成功呼叫鏈，不能斷言是舊版／測試／備援，沒有放進本專案的 signer 或環境選擇邏輯。兩個 private 資產均未解碼，也未做數學配對驗證。
 
-詳見 [四個金鑰資產用途核對](../research/twdiw-1.0.14-key-asset-usage.md)。正式平台是否接受本錢包身分與合法配對仍需官方准入及端到端驗收；目前沒有可用來宣稱正式領卡成功的實機 JWS 或合法正式測試配對。
+詳見 [四個金鑰資產用途核對](../research/twdiw-1.0.14/twdiw-1.0.14-key-asset-usage.md)。正式平台是否接受本錢包身分與合法配對仍需官方准入及端到端驗收；目前沒有可用來宣稱正式領卡成功的實機 JWS 或合法正式測試配對。

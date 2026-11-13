@@ -44,6 +44,6 @@ python -m unittest discover -s tools/twdiw-assets -p 'test_*.py' -v
 
 `dwapp201i_public` 與 `dwapp201i_public.txt` 是兩把不同的公鑰。只有 `.txt` reader 已綁定目前研究的 `dwapp-201i` keyId；本工具沒有以私鑰確認任何配對。
 
-完整結果見 [資產解析報告](../../docs/research/twdiw-1.0.14-assets.md)。原始第三方資源及 reader 定位匯出屬分析資料，不放入 repo 原始碼或當成本專案的美術／字型資產使用。
+完整結果見 [資產解析報告](../../docs/research/twdiw-1.0.14/twdiw-1.0.14-assets.md)。原始第三方資源及 reader 定位匯出屬分析資料，不放入 repo 原始碼或當成本專案的美術／字型資產使用。
 
-逐層算法、每檔流程、shader schema 版本及 ART checksum 限制見 [資產解碼說明](../../docs/research/twdiw-1.0.14-asset-decoding-guide.md)。
+逐層算法、每檔流程、shader schema 版本及 ART checksum 限制見 [資產解碼說明](../../docs/research/twdiw-1.0.14/twdiw-1.0.14-asset-decoding-guide.md)。

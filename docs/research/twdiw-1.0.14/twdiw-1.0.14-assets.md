@@ -61,7 +61,7 @@ stage-b `o.JcPQWBA` 的 `ISyARpnL(AssetManager, String)` 以相對檔名的 FNV 
 - selector 2：`WNTdXCgQ`／`YHqZjOUd`／`Z93PHtg` 的 10-round Rijndael 變體，自訂列置換、ECB。
 - selector 3：`VoUJXo4w` 的 16-round TEA 變體、CBC，delta 為 signed-short `-25033`。
 
-私鑰資產只保留密文；其餘 15 個受保護資產均通過對應 block padding 與格式解析。工具及使用方法見 [twdiw-assets](../../tools/twdiw-assets/README.md)。HTML 不經瀏覽器執行；分析只讀其文字與標籤。
+私鑰資產只保留密文；其餘 15 個受保護資產均通過對應 block padding 與格式解析。工具及使用方法見 [twdiw-assets](../../../tools/twdiw-assets/README.md)。HTML 不經瀏覽器執行；分析只讀其文字與標籤。
 
 驗證包括：JSON 解析、AssetManifest StandardMessageCodec 消耗完整輸入、gzip／zlib 解壓校驗與長度、fontTools 字型 tables、公鑰匯入及既有 `.txt` 指紋核對、shader IPLR magic。profile 保留解壓後的原始資料，不宣稱已有完整方法名稱反查；shader 保留 bundle 並抽文字，不宣稱完整反編譯 GPU binary。
 

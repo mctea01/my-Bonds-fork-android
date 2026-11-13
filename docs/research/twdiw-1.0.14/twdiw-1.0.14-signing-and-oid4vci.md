@@ -240,4 +240,4 @@ stage-b 定位是 DEX **file offset**；AOT 定位是程式位址，兩者不可
 - [裝置註冊、SDK 與端點研究](twdiw-device-registration.md)。
 - [native helper 模擬驗證](twdiw-native-helper-emulation.md)。
 - [本機 JWS 工具與驗證結果](twdiw-jws-local-generation.md)。
-- [Bonds 歷史互通紀錄](bonds.md)：只用於歷史交叉參考，其中「沒有應用准入門檻」等舊結論不適用於這次新增應用簽章的已見路徑。
+- [Bonds 歷史互通紀錄](../bonds.md)：只用於歷史交叉參考，其中「沒有應用准入門檻」等舊結論不適用於這次新增應用簽章的已見路徑。

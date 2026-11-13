@@ -46,4 +46,4 @@ Dart `Utils.callDwapp201i`（`0x2c143c`）由 `did_sdk_channel` 呼叫 `dwapp-20
 
 新專案不內建上列官方資產或指紋作為自身應用身分；建置配對的 keyId 由本次自有公鑰重新計算。
 
-完整 reader／DTO 證據見 [領卡附件核對](twdiw-1.0.14-issuance-review.md)、[資產解碼說明](twdiw-1.0.14-asset-decoding-guide.md) 與 [新版領卡實作驗收](../acceptance/twdiw-application-signature.md)。本輪名稱與用途核對結果另存 `/workspace/scratch/twdiw-asset-key-usage.json`，不含金鑰內容。
+完整 reader／DTO 證據見 [領卡附件核對](twdiw-1.0.14-issuance-review.md)、[資產解碼說明](twdiw-1.0.14-asset-decoding-guide.md) 與 [新版領卡實作驗收](../../acceptance/twdiw-application-signature.md)。本輪名稱與用途核對結果另存 `/workspace/scratch/twdiw-asset-key-usage.json`，不含金鑰內容。

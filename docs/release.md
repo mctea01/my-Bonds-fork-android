@@ -9,7 +9,7 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<版本>.apks` | 同一版的分割 APK 組，與 Google Play 的分割相同，選用元件是獨立分割；用 `bundletool install-apks` 或 SAI 等分割安裝程式安裝，可以只裝需要的部分 |
 | `DIW-MY-WALLET-<版本>-debug.apk` | Android debug 版：未最佳化，允許區網測試伺服器的 HTTP；含所有選用元件 |
 | `DIW-MY-WALLET-<版本>.aab`、`DIW-MY-WALLET-<版本>-debug.aab` | release／debug App Bundle，供 Google Play 或 bundletool 使用，不能直接安裝 |
-| `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄（套用 `diw-wallet/play/` 的 CI 修改後才有） |
+| `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄 |
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
 | `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
@@ -19,7 +19,7 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 ni
 
 每個平台都連結零知識證明的 OpenAC 年齡證明與 TLSNotary（zkTLS）後端（Android、Windows、Linux、macOS，CI 以 `DIW_ZK_FEATURES=openac,tlsn` 建置）；Android、Linux 與 macOS 另連結 zkPDF（Barretenberg 6.0.0，`openac,tlsn,zkpdf`）。Windows 的 zkPDF 不能在 Windows 主機上建置，要在 Linux 上交叉建置整個函式庫（`native/build.sh x86_64-pc-windows-gnullvm`，腳本會下載固定版本的 llvm-mingw；產物靜態連結 libc++ 等寬鬆授權的執行階段，不含 libstdc++ 與 libgcc）；CI 的 Windows 函式庫改用這個方式之前仍不含 zkPDF。Android 的 32 位元 ABI（`armeabi-v7a`、`x86`）只有不含證明後端的 runtime 函式庫，用來解碼 JPEG 2000 相片。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
-零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-desktop`（Windows、macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
+零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-windows`（在 Linux 以 llvm-mingw 交叉建置 Windows 版）、`native-desktop`（macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 
 桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows；macOS 的 GraalVM 視窗支援無法載入 libawt，不建置），先跑執行檔的 `--self-check` 與定時啟動視窗，通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天）。這個工作 `continue-on-error`，失敗不影響其他工作，也不進 nightly。原生版不設堆積上限，預設最多使用實體記憶體的 80%。
 
@@ -157,5 +157,5 @@ SP 帳號在建置時由 `DIW_MOICA_SP_SERVICE_ID`、`DIW_MOICA_SP_AES_KEY`、`D
 
 ## 縮減規則
 
-- Android：`app/proguard-rules.pro`。Bouncy Castle 與 Multipaz 以類別名稱載入演算法與格式，整包保留。
+- Android：`app/proguard-rules.pro`。Bouncy Castle 只保留 JCA provider 的類別名稱與建構子，以及 Multipaz 以反射取用的 ML-DSA、ML-KEM 類別；Multipaz 只保留反射用到的進入點。不要用整包的萬用字元保留規則（Google Play 會回報 DEX 最佳化不足），程式也不可依賴第三方類別的 simpleName。
 - 桌面版：`app/compose-desktop.pro`，另保留 SQLite JDBC 與 Ktor Java 引擎；不做名稱混淆。

@@ -60,8 +60,9 @@ sets the linker and compilers for them:
 
 CI (`.github/workflows/github-actions-ci.yml`) builds the libraries in their
 own jobs: `native-android` runs `android` on Linux once per ABI
-(`DIW_ZK_ANDROID_ABIS`), `native-linux` runs `host` on Linux x86_64, and
-`native-desktop` runs `host` on Windows x86_64 (Git bash) and macOS arm64.
+(`DIW_ZK_ANDROID_ABIS`), `native-linux` runs `host` on Linux x86_64,
+`native-windows` cross-builds `x86_64-pc-windows-gnullvm` on Linux, and
+`native-desktop` runs `host` on macOS arm64.
 Each uploads only `dist/android/<abi>/libdiw_zk.so` or `dist/resources` as a
 `zk-native-*` artifact; the Gradle jobs download them back into the same
 `native/dist` paths and run with `DIW_ZK_NATIVE=prebuilt`, so they need no
@@ -71,20 +72,26 @@ Rust, NDK, protoc, libclang or CMake. Local builds are unchanged: without
 Before invoking generated bindings, call `ZkNative.load(appPrivateDirectory)`.
 On desktop it verifies the packaged library digest and atomically extracts a
 versioned copy into that directory. Android resolves the library from APK JNI
-directories through JNA. App platform information and settings UI are owned
-by the integration work package; the core runtime does not query platform APIs.
+directories through JNA. The core runtime does not query platform APIs; the
+app supplies platform information.
 
-`native_info()` advertises only implemented backends. The `zkpdf`, `tlsn`,
-and `openac` Cargo features reserve dependencies for WP3b, WP5, and WP7;
-their empty crates do not advertise proof capability. `self_test()` runs the
+`native_info()` advertises only the backends compiled in. The Cargo features
+`openac` (age proof), `tlsn` (zkTLS), `zkpdf` (zkPDF, zkPassport verification
+and proving; it implies `oprf`), `oprf` (the project OPRF alone) and `bb5`
+(the separate Barretenberg 5 library for zkPassport circuits before 0.22.0,
+needs `zkpdf`) select them; `DIW_ZK_FEATURES` passes
+the list to `build.sh`, and release builds use `openac,tlsn,zkpdf` plus `bb5`
+where that library ships. A library built without a feature keeps the
+exported functions and answers `Unsupported`. Which platform carries which
+backend is in `docs/STATUS.md` (section 3.5). `self_test()` runs the
 shared SHA-256 known-answer test on a dedicated worker. Backend work must use
 `run_worker`, poll `ZkCancelToken::check()` at bounded intervals, and self-verify
 before returning proof output. The caller chooses the stack size (64 MiB for
 OpenAC). Workers are joined even when cancelled. Backend errors must contain
 fixed codes, never private input; do not panic with private data or log it.
 
-The asset resource `zk/assets.json` is generated from native/assets.json to
-stay within WP0's file allowlist. Its SHA-256 is pinned in ZkAssetManifest.
+The asset resource `zk/assets.json` is generated from native/assets.json.
+Its SHA-256 is pinned in ZkAssetManifest.
 `FileZkAssetStore.bundled` verifies that digest before accepting the manifest.
 The explicit catalog constructor is for synthetic tests or another independently
 verified catalog; do not pass catalogs from credentials, URLs, or user input.

@@ -3,32 +3,112 @@ Copyright 2026 LIN, CHE-CHUAN
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-This product includes or links the following third-party software, each under
-its own license:
+This product includes or links the third-party software and data listed below,
+each under its own license. Exact versions are pinned in
+gradle/libs.versions.toml, the Gradle dependency graph and native/Cargo.lock;
+this file names a version or revision only where the provenance depends on it.
+When a dependency is added, removed or replaced, update this file in the same
+change.
+
+========================================================================
+1. Kotlin and JVM libraries (Android and desktop)
+========================================================================
 
 - Multipaz (org.multipaz:multipaz, multipaz-doctypes, multipaz-compose,
-  multipaz-dcapi, multipaz-longfellow 0.102.0) - Apache License 2.0
-- Longfellow ZK (Google, native libraries and default circuits distributed
-  by multipaz-longfellow) - Apache License 2.0
+  multipaz-dcapi-credman, multipaz-longfellow) - Apache License 2.0
 - Kotlin standard library, kotlinx.coroutines, kotlinx.serialization,
-  kotlinx-io, kotlinx-datetime - Apache License 2.0
-- Ktor - Apache License 2.0
-- Compose Multiplatform and AndroidX (activity, fragment, browser,
-  credentials, credentials registry) - Apache License 2.0
-- Google Play services identity credentials - Android Software Development
-  Kit License
-- Bouncy Castle (bcprov, bcpkix) - MIT-style Bouncy Castle License
+  kotlinx-io, kotlinx-datetime, atomicfu - Apache License 2.0
+- Ktor client (core, OkHttp engine on Android, Java engine on desktop) -
+  Apache License 2.0
+- Compose Multiplatform (JetBrains; runtime, foundation, material3, ui,
+  components-resources, navigation, lifecycle, savedstate) and the AndroidX
+  libraries it builds on - Apache License 2.0
+- Bouncy Castle (bcprov, bcpkix, bcutil, bcpg) - MIT-style Bouncy Castle
+  License
 - ZXing core (com.google.zxing:core, QR Code reading from images) - Apache
   License 2.0
-- Apache Xerces2 (xercesImpl 2.12.2) and xml-apis - Apache License 2.0
-  (xml-apis also carries the W3C and SAX public domain notices)
-- Apache PDFBox (desktop preview only) - Apache License 2.0
-- SQLite JDBC (org.xerial:sqlite-jdbc, desktop) - Apache License 2.0;
-  SQLite itself is in the public domain
-- UniFFI 0.29.4 (Rust/Kotlin bindings) - Mozilla Public License 2.0
-- JNA 5.19.1 - Apache License 2.0 or LGPL 2.1 or later
-- RustCrypto sha2 0.10.9 - Apache License 2.0 or MIT
-- thiserror 2.0.17 - Apache License 2.0 or MIT
+- Titanium JSON-LD (com.apicatalog:titanium-json-ld-jre8) - Apache License 2.0
+- Eclipse Parsson / Glassfish Jakarta JSON Processing
+  (org.glassfish:jakarta.json) - Eclipse Public License 2.0 (used under
+  EPL-2.0; also offered under GPL 2.0 with the Classpath Exception)
+- JNA (net.java.dev.jna:jna) - Apache License 2.0 or LGPL 2.1 or later
+- Google Tink (com.google.crypto.tink) - Apache License 2.0
+- Guava, failureaccess and listenablefuture; Gson - Apache License 2.0
+- SLF4J API (org.slf4j:slf4j-api) - MIT License
+- Annotation-only artifacts: JSpecify, Error Prone annotations, JSR-305,
+  J2ObjC annotations, AutoValue annotations, JetBrains annotations, SKIE
+  configuration annotations - Apache License 2.0
+
+========================================================================
+2. Android only
+========================================================================
+
+- AndroidX (activity, fragment, browser, credentials, credentials registry
+  provider, CameraX, lifecycle, navigation, appcompat, core, emoji2 and
+  their dependencies) and Material Components for Android - Apache
+  License 2.0
+- Google Play services (identity-credentials, auth, fido, base, basement,
+  tasks) and Google ID (com.google.android.libraries.identity.googleid) -
+  Android Software Development Kit License
+- Play Feature Delivery (com.google.android.play:feature-delivery, on-demand
+  delivery of the optional Barretenberg 5 component) - Play Core Software
+  Development Kit Terms of Service
+- OkHttp and Okio (Square) - Apache License 2.0
+- Coil 3 (io.coil-kt.coil3) and Accompanist (com.google.accompanist) - Apache
+  License 2.0
+- Compottie and keight (io.github.alexzhirkevich) - MIT License
+- JJ2000 (edu.ucar:jj2000, JPEG 2000 decoding) - JJ2000 License
+- Apache Xerces2 (xercesImpl) and a subset of xml-apis (W3C DOM and StAX
+  interface classes Android lacks) - Apache License 2.0; xml-apis also
+  carries the W3C Software License and SAX public domain notices
+- Tesseract4Android (Tesseract OCR 5 for Android) - Apache License 2.0;
+  with Leptonica - BSD 2-Clause, libjpeg-turbo - IJG and BSD 3-Clause, libpng -
+  libpng License; tessdata_fast eng.traineddata (app/src/androidMain/assets/
+  tessdata) - Apache License 2.0
+- CMWallet credential provisioning matcher (Google digital-credentials
+  sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
+  License 2.0
+
+========================================================================
+3. Desktop only
+========================================================================
+
+- Skiko (JetBrains) - Apache License 2.0; it embeds Skia (BSD 3-Clause) and
+  the third-party components Skia is built with
+- JetBrains Runtime API (org.jetbrains.runtime:jbr-api) - Apache License 2.0
+- Apache PDFBox, FontBox and pdfbox-io (PDF preview) with Apache Commons
+  Logging - Apache License 2.0
+- SQLite JDBC (org.xerial:sqlite-jdbc) - Apache License 2.0; SQLite itself is
+  in the public domain
+- Android Key Attestation library (com.android.keyattestation), cbor-java
+  (co.nstant.in:cbor) - Apache License 2.0; Protocol Buffers (javalite,
+  kotlin-lite) - BSD 3-Clause
+- Java runtime packaged in the .msi and .deb installers: a jlink image of
+  Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath Exception.
+  The jar distributions carry no Java runtime.
+- Experimental native executables (CI artifacts only, not part of a release)
+  are built with GraalVM Community native-image and contain its Substrate VM
+  runtime and the JDK class library - GNU GPL 2.0 with the Classpath
+  Exception
+
+========================================================================
+4. Native libraries (native/, Rust and C++)
+========================================================================
+
+Bindings and common crates
+
+- UniFFI (Rust/Kotlin bindings) - Mozilla Public License 2.0
+- RustCrypto sha2, sha1, sha3, digest, p256, k256, elliptic-curve, ff, group,
+  aes-gcm, rand, rand_core, getrandom, num-bigint, num-traits, rayon,
+  chrono, serde, serde_json, base64, hex, flate2, tempfile, thiserror, uuid,
+  itertools, futures, zeroize - MIT or Apache License 2.0
+- miniz_oxide - MIT, Zlib or Apache License 2.0
+- libloading - ISC License
+- hayro-jpeg2000 (JPEG 2000 decoding of chip portraits) with fearless_simd -
+  Apache License 2.0 or MIT
+
+Age proof (OpenAC)
+
 - Bonds-iOS OpenACAge overlay (predicate.rs and zkid-mobile.patch), revision
   e22de5f114a593e90f28b0525f6e4f230154c641 - Apache License 2.0
 - zkID OpenAC wallet-unit-poc, revision
@@ -40,86 +120,96 @@ its own license:
   d48eb7c97857d46b8a75c94ab96f769207263245, with the secq256r1 patch - MIT
 - arkworks ark-ff, ark-bn254 and ark-serialize, halo2curves, ruint,
   prost, wtns-file, winnow and their runtime dependencies - MIT or Apache 2.0
-- RustCrypto p256 0.13, ff 0.13, rand_core 0.6, num-bigint 0.4,
-  num-traits 0.2, rayon, chrono, serde_json and tempfile -
-  MIT or Apache License 2.0
+
+zkTLS (TLSNotary)
+
 - TLSNotary 0.1.0-alpha.15, revision
   47aee45b53e06648c1b2ad3689b367b8c923fdec - MIT or Apache License 2.0
 - mpz 0.1.0-alpha.6 (TLSNotary MPC dependencies), tlsn-utils / futures-plex -
   MIT or Apache License 2.0 (repository README license declarations)
-- snow 0.10.0 (Noise), futures 0.3, serde 1.0 and zeroize 1.9 -
-  MIT or Apache License 2.0
-- Tokio 1.54, tokio-util 0.7, tracing 0.1 and bincode 1.3.3 - MIT License
+- snow (Noise) - MIT or Apache License 2.0
+- Tokio, tokio-util, tracing and bincode - MIT License
 - rustls and TLSNotary TLS forks - Apache License 2.0, MIT or ISC;
   rustls-webpki and untrusted - ISC; ring - Apache License 2.0 AND ISC
 - Mozilla root certificate data (webpki-root-certs / webpki-roots) -
   Community Data License Agreement - Permissive 2.0
 - curve25519-dalek and subtle - BSD 3-Clause; blake3 and constant_time_eq -
   Apache License 2.0 option; tiny-keccak - CC0 1.0
-- zkryptium 0.8.1 (BBS signatures, BBS part only, patched for W3C
-  bbs-2023; native/vendor/zkryptium) - Apache License 2.0
-- bls12_381_plus, elliptic-curve, group, pairing, digest, sha3, hex and rand -
-  MIT or Apache License 2.0; subtle - BSD 3-Clause
-- Titanium JSON-LD 1.7.0 (com.apicatalog:titanium-json-ld-jre8) - Apache
-  License 2.0
-- Eclipse Parsson / Glassfish Jakarta JSON Processing 2.0.1
-  (org.glassfish:jakarta.json) - Eclipse Public License 2.0 (used under
-  EPL-2.0; also offered under GPL 2.0 with the Classpath Exception)
-- W3C and W3C Credentials Community Group JSON-LD context documents built into
-  core (w3c/ld/LdContexts.kt) - W3C Software and Document License
-- CMWallet credential provisioning matcher (Google digital-credentials
-  sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
-  License 2.0
-- Barretenberg 6.0.0 (Aztec Labs, UltraHonk prover and verifier statically
-  linked into the native library), revision
-  0219f11d8133970df3974fe5ae65e006bf8c193a - Apache License 2.0; built with
-  msgpack-c headers (Boost Software License 1.0) and libdeflate 1.24 (MIT
-  License); details in native/zkpdf-prover/NOTICE
-- llvm-mingw 20251104 runtime in the Windows native libraries (libc++,
-  libc++abi, libunwind and compiler-rt of LLVM - Apache License 2.0 with LLVM
-  Exceptions; mingw-w64 CRT - Zope Public License 2.1 and public domain;
-  winpthreads - MIT and BSD 3-Clause License)
+
+zkPDF and zkPassport (Noir, Barretenberg)
+
 - Noir 1.0.0-rc.3 crates (acvm, acir, brillig_vm, bn254_blackbox_solver,
   noirc_abi), revision 5a7ee9bf5ed8973076df7bb0d2b723024db09ae7 - MIT or
   Apache License 2.0
+- Barretenberg 6.0.0 (Aztec Labs, UltraHonk prover and verifier statically
+  linked into the native library), revision
+  0219f11d8133970df3974fe5ae65e006bf8c193a - Apache License 2.0
+- Barretenberg 5.0.0, revision 7aa2bd616d632801fe65d97ee8a4434f26886b40
+  (statically linked into the optional libdiw_bb5 library, which only
+  verifies zkPassport proofs of circuits before 0.22.0) - Apache License 2.0
+- Both Barretenberg builds use msgpack-c headers (Boost Software License
+  1.0), libdeflate 1.24 (MIT License) and Tracy headers (BSD 3-Clause);
+  details in native/zkpdf-prover/NOTICE
 - zkPassport zkpassport-packages Rust crates (zkpassport-core, zkpassport-ffi,
   zkpassport-bridge), revision dae2129a0722e9391a4a243c6d53df0a134a74f8,
   vendored in native/vendor/zkpassport - MIT License (as declared in the
   crates' Cargo manifests; see native/vendor/zkpassport/README.md)
-- taceo-poseidon2 0.2, k256 0.13, aes-gcm 0.10, sha1 0.10, base64 and hex -
-  MIT or Apache License 2.0; miniz_oxide 0.8 - MIT, Zlib or Apache License 2.0
-- TACEO taceo-oprf-core 0.6.3, taceo-ark-babyjubjub 0.6, taceo-ark-serde-compat
-  0.6 and taceo-poseidon2 0.3 (the project OPRF), arkworks 0.6, uuid and
-  itertools - MIT or Apache License 2.0
+- TACEO taceo-oprf-core, taceo-ark-babyjubjub, taceo-ark-serde-compat and
+  taceo-poseidon2 (the project OPRF and Poseidon2), arkworks 0.6 - MIT or
+  Apache License 2.0
+
+BBS signatures
+
+- zkryptium 0.8.1 (BBS part only, patched for W3C bbs-2023;
+  native/vendor/zkryptium) - Apache License 2.0
+- bls12_381_plus and pairing - MIT or Apache License 2.0
+
+mdoc ZK
+
+- Longfellow ZK (Google, native libraries and default circuits distributed
+  by multipaz-longfellow) - Apache License 2.0
+
+Windows runtime
+
+- llvm-mingw 20251104 runtime in the Windows native libraries (libc++,
+  libc++abi, libunwind and compiler-rt of LLVM - Apache License 2.0 with LLVM
+  Exceptions; mingw-w64 CRT - Zope Public License 2.1 and public domain;
+  winpthreads - MIT and BSD 3-Clause License). No GCC runtime is linked.
+
+========================================================================
+5. Built-in data, certificates and layouts
+========================================================================
+
+- W3C and W3C Credentials Community Group JSON-LD context documents built into
+  core (w3c/ld/LdContexts.kt) - W3C Software and Document License
 - Country signing CA certificates (core BuiltInCscas) taken from the German
   CSCA master list published by the Federal Office for Information Security
   (BSI), checked against BSI's published self-signed root; public certificates
   of the issuing states, no change other than selection
-- Tesseract4Android 4.9.0 (Tesseract OCR 5 for Android) - Apache License 2.0;
-  with Leptonica - BSD 2-Clause, libjpeg-turbo - IJG and BSD 3-Clause, libpng -
-  libpng License; tessdata_fast eng.traineddata (app/src/androidMain/assets/
-  tessdata) - Apache License 2.0
-- hayro-jpeg2000 0.5.0 (JPEG 2000 decoding of chip portraits, in the native
-  library) with fearless_simd - Apache License 2.0 or MIT
+- Built-in trust anchors (core/.../trust/BuiltInAnchors.kt,
+  BuiltInPublicRoots.kt, BuiltInTestAnchors.kt) are public certificates
+  published by their certification authorities and by the Multipaz project;
+  they are reproduced for certificate path validation only. The same holds
+  for the certificates tools/trust-roots keeps in its pinned files (downloaded
+  from each CA's own site), for the partner CA certificates in
+  tools/trust-roots/esign-partners (taken from the certificate bundle the
+  e-sign platform esign.cn publishes for its partner CAs), and for the public
+  service certificates in test-servers/src/test/resources/chains.
+- Public trust lists: the Adobe Approved Trust List and the EU trusted lists
+  (ETSI TS 119 612, published by the European Commission and the member
+  states) are downloaded and verified by the application at run time; only
+  SHA-256 fingerprints of their signing certificates are built in.
+- The offline OpenCerts layouts (core/.../opencerts/OpenCertOffline.kt)
+  follow the templates of the OpenCerts demo renderer
+  (demo-renderer.opencerts.io, GovTech Singapore); they were written anew and
+  contain no logos or pictures from it.
+- The JBIG2 decoder (core/.../document/image/Jbig2.kt) was written following
+  ITU-T T.88 and the structure of the JBIG2 decoder in pdf.js (Mozilla
+  Foundation, Apache License 2.0, https://github.com/mozilla/pdf.js).
 
-Development and test tools that are not shipped in the application:
-
-- fontTools (tools/twdiw-assets, offline font resource inspection) - MIT License
-- cryptography (TWDIW offline public-key inspection and local signing tools) -
-  Apache License 2.0 or BSD 3-Clause
-- SPIRV-Tools (optional tools/twdiw-assets shader disassembly and validation) -
-  Apache License 2.0
-- EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
-- Rust 1.99.1 - Apache License 2.0 or MIT
-- cargo-ndk 4.1.2 - Apache License 2.0 or MIT
-- Circom 2.2.3 - GNU GPL 3.0
-- circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0
-- Protocol Buffers protoc 30.2 - BSD 3-Clause
-- libclang / bindgen - Apache 2.0 with LLVM exceptions / BSD 3-Clause
-- open-attestation (used once to generate the fictional OpenCerts samples in
-  test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
-
-Downloaded proof assets (not embedded in the application):
+========================================================================
+6. Downloaded proof assets (not embedded in the application)
+========================================================================
 
 - openac-age-v1 (Bonds R1CS and proving/verifying keys) and
   openac-age-graph-v1 (witness graphs) compile zkID circuits (MIT) and
@@ -129,43 +219,44 @@ Downloaded proof assets (not embedded in the application):
   https://github.com/iden3/circomlib/tree/v2.0.5 ; @zk-email/circuits 6.3.4.
   Rebuild with native/openac-age/build-graphs.sh; source revisions, the
   secq256r1 patch and asset hashes are pinned in that package's VERSIONS.json.
+- The BN254 CRS used by Barretenberg is the public Aztec Ignition ceremony
+  transcript prefix; hashes are in native/zkpdf-prover/assets.json.
 
-Public trust lists: the Adobe Approved Trust List and the EU trusted lists
-(ETSI TS 119 612, published by the European Commission and the member states)
-are downloaded and verified by the application at run time; only SHA-256
-fingerprints of their signing certificates are built in.
+========================================================================
+7. Development and test tools (not shipped in the application)
+========================================================================
 
-The offline OpenCerts layouts (core/.../opencerts/OpenCertOffline.kt) follow
-the templates of the OpenCerts demo renderer (demo-renderer.opencerts.io,
-GovTech Singapore); they were written anew and contain no logos or pictures
-from it.
+- Ktor server (core, Netty engine, WebSockets, test host) and Netty (test
+  servers, tools/zk-prover-server and tests) - Apache License 2.0
+- SLF4J Simple (test servers and tools) - MIT License
+- EU DSS (tools/dss-check, downloaded at build time) - GNU LGPL 2.1
+- Rust toolchain, cargo-ndk - Apache License 2.0 or MIT
+- Circom 2.2.3 - GNU GPL 3.0
+- circom-witnesscalc build-circuit (links the Circom compiler) - GNU GPL 3.0
+- Protocol Buffers protoc - BSD 3-Clause
+- libclang / bindgen - Apache 2.0 with LLVM exceptions / BSD 3-Clause
+- fontTools (tools/twdiw-assets, offline font resource inspection) - MIT License
+- cryptography (TWDIW offline public-key inspection and local signing tools) -
+  Apache License 2.0 or BSD 3-Clause
+- SPIRV-Tools (optional tools/twdiw-assets shader disassembly and validation) -
+  Apache License 2.0
+- open-attestation (used once to generate the fictional OpenCerts samples in
+  test-servers/src/test/resources/documents/opencerts) - Apache License 2.0
+- Synthetic zkPDF test documents include a subset of Noto Sans CJK SC Regular
+  2.004, Copyright 2014-2021 Adobe (http://www.adobe.com/), licensed under the
+  SIL Open Font License 1.1. The subset, full license and reproducible
+  subsetting script are in tools/zkpdf-testdocs/. Upstream source:
+  https://github.com/notofonts/noto-cjk/tree/Sans2.004
+- The JBIG2 test uses one stream from the pdf.js test suite
+  (jbig2_file_header.pdf, Apache License 2.0). The synthetic fonts in
+  test-servers/src/test/resources/documents/fonts were made by
+  tools/test-fonts/make_test_fonts.py and contain no third-party glyphs.
 
-Built-in trust anchors (core/.../trust/BuiltInAnchors.kt,
-BuiltInPublicRoots.kt, BuiltInTestAnchors.kt) are public certificates
-published by their certification authorities and by the Multipaz project; they
-are reproduced for certificate path validation only. The same holds for the
-certificates tools/trust-roots keeps in its pinned files (downloaded from each
-CA's own site), for the partner CA certificates in
-tools/trust-roots/esign-partners (taken from the certificate bundle the e-sign
-platform esign.cn publishes for its partner CAs), and for the public service
-certificates in test-servers/src/test/resources/chains.
+========================================================================
+8. Compatibility implementations
+========================================================================
 
-Except for the explicitly attributed P4 OpenACAge overlay above, compatibility
-with Bonds (bonds.tw) and open-gpki-pkcs11 was implemented from their observable
-formats and public documentation. OpenAC source licenses and pinned build
-sources are documented under native/openac-age.
-
-Synthetic zkPDF test documents include a subset of Noto Sans CJK SC Regular
-2.004, Copyright 2014-2021 Adobe (http://www.adobe.com/), licensed under the
-SIL Open Font License 1.1. The subset, full license and reproducible subsetting
-script are in tools/zkpdf-testdocs/. Upstream source:
-https://github.com/notofonts/noto-cjk/tree/Sans2.004
-These font assets are used by test fixtures, not bundled into the application.
-
-The JBIG2 decoder (core/.../document/image/Jbig2.kt) was written following
-ITU-T T.88 and the structure of the JBIG2 decoder in pdf.js (Mozilla
-Foundation, Apache License 2.0, https://github.com/mozilla/pdf.js). Its test
-uses one stream from the pdf.js test suite (jbig2_file_header.pdf, Apache
-License 2.0). The synthetic fonts in
-test-servers/src/test/resources/documents/fonts were made by
-tools/test-fonts/make_test_fonts.py and contain no third-party glyphs.
+Except for the explicitly attributed OpenACAge overlay above, compatibility
+with Bonds (bonds.tw) and open-gpki-pkcs11 was implemented from their
+observable formats and public documentation. OpenAC source licenses and
+pinned build sources are documented under native/openac-age.

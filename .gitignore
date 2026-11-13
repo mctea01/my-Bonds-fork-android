@@ -1,8 +1,58 @@
+# Build output
 build/
+# Research evidence keeps a folder with this name
+!docs/research/native-dependencies/evidence/**/build/
 .gradle/
-local.properties
-*.iml
-.idea/
 .kotlin/
+out/
+*.hprof
+hs_err_pid*.log
+/*.log
+
+# Native build output is listed in native/.gitignore and the .gitignore files next to each tool.
+
+# IDE and OS files
+.idea/
+*.iml
+.vscode/
+.fleet/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local configuration, keys and secrets; never commit
+local.properties
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+/*.p12
+/*.pfx
+/*.pem
+/*.key
+
+# Packaged apps (published by CI, not kept in the repository)
+*.apk
+*.aab
+*.apks
+*.msi
+*.deb
+*.dmg
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Python tools
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node tools
+node_modules/
+
 # Local probes against real documents (personal data); never commit
 test-servers/src/test/kotlin/diw/testservers/local/
