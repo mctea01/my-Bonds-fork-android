@@ -1,10 +1,10 @@
 # zkPassport 支援與整合：研究與方案
 
-撰寫日期：2026-11-05。狀態：方案已定（第 8 節，2026-11-05 使用者決定）；2026-11-06 起實作，Z1 已完成（第 5.1 節），接著 Z2。
+性質：規格。撰寫日期：2026-11-05。方案已定（第 8 節，2026-11-05 使用者決定）；Z1 到 Z4、本專案 OPRF 與「交給自己的證明器」都已實作並合併進 main（PR #121、#127），人臉比對不提供。各小節內註明日期的段落是實作時的更正與進度。目前狀態見 [專案現況](../STATUS.md)。
 
 標記：**【確認】** 已讀過 zkPassport 原始碼（`zkpassport/circuits`、`zkpassport/zkpassport-packages`、`zkpassport/noir_rs`、`zkpassport/zkpassport-docs`，2026-11-04 的 main）或本 repo 程式碼；**【推論】** 依已知資料推論，需在實作時驗證。
 
-P4 的設計文件（`p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`）目前在 P4 整合分支上，本文以檔名引用。
+P4 的設計文件（`p4-zkp.md`、`p4-circuits.md`、`p4-work-packages.md`）在同一個資料夾，本文以檔名引用。
 
 ## 1. 結論
 

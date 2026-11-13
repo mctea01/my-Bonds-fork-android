@@ -1,6 +1,6 @@
 # TWDIW 格式 JWS 本機建立（2026-11-02）
 
-已依研究格式完成可執行的 [簽署與驗證工具](../../tools/twdiw-jws/README.md)，並產生一份實際 Compact JWS。本次用新產生的本機 P-256 測試金鑰、自有測試 App ID `diw.local.test`、版本 `0.1.0-local`、合成 nonce 與測試 body；沒有讀取或重用官方私鑰，也沒有向官方服務發送請求。
+已依研究格式完成可執行的 [簽署與驗證工具](../../../tools/twdiw-jws/README.md)，並產生一份實際 Compact JWS。本次用新產生的本機 P-256 測試金鑰、自有測試 App ID `diw.local.test`、版本 `0.1.0-local`、合成 nonce 與測試 body；沒有讀取或重用官方私鑰，也沒有向官方服務發送請求。
 
 ## 結果與檔案
 

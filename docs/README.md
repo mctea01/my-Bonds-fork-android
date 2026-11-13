@@ -1,56 +1,80 @@
 # 文件索引
 
-設計與研究文件記錄的是撰寫當時的判斷，之後的決定以 [AGENTS.md](../AGENTS.md) 為準（例如階段順序、方言常駐啟用、信任分層的細節）。內容已與實作不同的設計與驗收文件，開頭有「現況（2026-10-16）」說明哪些部分已改變；研究文件與實機紀錄保留原貌。P4 尚未實作的部分以 P4 的三份設計文件為準，各工作包的實作狀態見 [p4-work-packages.md](design/p4-work-packages.md#21-實作狀態2026-10-25)。正式服務端（查驗網頁、年齡查驗主機、zkTLS 中繼）在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，部署說明在該 repo。研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。
+## 先讀什麼
+
+| 想知道 | 讀這份 |
+|---|---|
+| 專案現在做到哪裡、還缺什麼、哪些待實機驗證 | [STATUS.md](STATUS.md)（單頁，狀態的唯一來源） |
+| 有哪些功能、怎麼下載與建置 | [../README.md](../README.md) |
+| 開發規則、模組職責、各領域的實作要點 | [../AGENTS.md](../AGENTS.md) |
+| 某個領域的設計規格 | 下方「設計」中標為現行規格的文件 |
+| 第三方元件與授權 | [../NOTICE](../NOTICE)、[../LICENSE](../LICENSE) |
+
+多數工作只需要前三份。設計、研究與驗收文件在要動到該領域時才讀。
+
+## 文件的性質
+
+每份文件屬於下列一種，索引的「性質」欄標明：
+
+- **現行**：與 main 的程式一致，功能改變時要一起更新。與程式不一致時視為文件的缺陷。
+- **規格**：某個領域的設計約定，仍然有效；實作狀態不寫在裡面，見 STATUS.md。
+- **紀錄**：撰寫當時的研究、規劃、驗收或實機結果，保留原貌、不回頭改寫。開頭註明日期，內容與現況不同處以 STATUS.md 與 AGENTS.md 為準。
+
+研究中提到的 `validation/` 原始記錄（實機 log、APK、伺服器輸出）只存在專案的共用資料夾，沒有收入 repo。正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)。
+
+## 現況、使用與發佈
+
+| 文件 | 性質 | 內容 |
+|---|---|---|
+| [STATUS.md](STATUS.md) | 現行 | 階段、功能狀態、平台、未完成項目、待實機驗證、外部條件、相依版本 |
+| [release.md](release.md) | 現行 | CI 發佈的檔案、版本號規則、Android 選用元件、簽章 secrets、TWDIW 應用金鑰、縮減規則 |
+| [google-play.md](google-play.md) | 現行 | Google Play 上架：上架前檢查、簽署金鑰、自動提交 workflow、商店資訊、資料安全與內容分級答案 |
+| [legal/README.md](legal/README.md) | 現行 | 隱私權政策、用戶協議與專門聲明的網頁版（由 App 內文字產生，中文與英文） |
+| [guides/fork-setup.md](guides/fork-setup.md) | 現行 | 新 Fork 的配置：GitHub 設定、secrets、要改成自己的識別與金鑰、版型與資產來源、與上游同步 |
+| [guides/windows-local-test.md](guides/windows-local-test.md) | 現行 | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
+| [research/device-test-checklist.md](research/device-test-checklist.md) | 現行 | 實機測試清單：步驟與判定 |
+| [../templates/README.md](../templates/README.md) | 現行 | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |
+| [../native/README.md](../native/README.md) | 現行 | 原生函式庫的建置、目標平台與 CI |
 
 ## 設計
 
-| 文件 | 內容 |
-|---|---|
-| [design/architecture-and-roadmap.md](design/architecture-and-roadmap.md) | 技術背景與跨平台轉換規劃：參考來源、TWDIW 官方 App 現況、目標架構、協定支援矩陣、驗證者身分與目的、ZKP 策略、電子文件、軟體兜底、PKI 分區、判定模型、P2 實作規劃、分階段路線圖、P0 驗證與風險 |
-| [design/document-credentials.md](design/document-credentials.md) | 文件憑證方案：每份文件產生衍生憑證再疊加證據；zkPDF、zkTLS、Bonds、OpenCerts 的比較，各類台灣與中國大陸文件的樣本分析與查驗方式，主動簽署、自然人憑證卡與行動自然人憑證 |
-| [design/p4-zkp.md](design/p4-zkp.md) | P4 零知識證明總體設計與約定：四種證據（zkPDF、zkTLS、年齡證明、mdoc ZK）、D1 到 D6 的決定、架構與套件邊界、資料格式、信任與隱私、裝置分級、資產、驗收與風險 |
-| [design/p4-circuits.md](design/p4-circuits.md) | P4 電路規格：樣本結構量測、zkPDF 電路（SHA-256 中間狀態窗口、inflate、lexer、錨點、欄位承諾、日期述詞）、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
-| [design/p4-work-packages.md](design/p4-work-packages.md) | P4 工作包拆分（Codex 與 Claude 分工）：分支與 PR 規則、各工作包的實作狀態、WP0 到 WP10 的介面、相依、驗收條件與交接範本 |
-| [design/openpgp.md](design/openpgp.md) | OpenPGP 與 OpenPGP 卡：卡片 APDU、YubiKey 與 Android 傳輸、由卡片重建公開金鑰、.asc 與 X.509 簽署、查驗、公開金鑰清單與信任等級、WKD 與 keys.openpgp.org 查詢、加密與以卡解密 |
-| [design/review-followups.md](design/review-followups.md) | 全專案 Review 後續：報告查證、已修正項目（CI 供應鏈、Multipaz 測試身分、用戶端驗證顯示、依賴 CVE）、TWDIW 註冊、B 類標準補全與 C 類新需求的研究與建議順序 |
-| [design/bbs-2023.md](design/bbs-2023.md) | bbs-2023：規格與測試向量差異、原生 BBS 與 JSON-LD／RDFC-1.0 實作、可選功能的 DIW 發證擴充、出示時的 presentation header 與假名網域、查驗端檢查與測試伺服器設定 |
-| [design/i18n.md](design/i18n.md) | 多語系規劃：現況字串量、Compose resources 機制、預設語言與 App 內切換、core 訊息代碼化、術語表、分階段工作與檢查 |
-| [design/zkpassport.md](design/zkpassport.md) | zkPassport 支援與整合研究：元件與授權、請求與 bridge 協定、查驗與信任模型、FaceMatch 的 App 綁定、與 P4 的契合點（bb 版本、SRS、NFC、CSCA 錨點、Photo ID mdoc）、Z1 電子護照到 Z4 文件與憑證整合的方案、對外服務與法律聲明、安全審查重點與待決事項 |
+| 文件 | 性質 | 內容 |
+|---|---|---|
+| [design/p4-zkp.md](design/p4-zkp.md) | 規格 | 零知識證明總體設計：四種證據、資料格式、信任與隱私、裝置分級、資產 |
+| [design/p4-circuits.md](design/p4-circuits.md) | 規格 | 電路規格：zkPDF 電路與分段證明、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
+| [design/zkpassport.md](design/zkpassport.md) | 規格 | 電子護照與 zkPassport：請求與 bridge 協定、查驗與信任、Z1 到 Z4、自己的證明器、OPRF、法律聲明 |
+| [design/bbs-2023.md](design/bbs-2023.md) | 規格 | bbs-2023：原生 BBS、JSON-LD 與 RDFC-1.0、可選功能的 DIW 發證擴充、出示與查驗 |
+| [design/openpgp.md](design/openpgp.md) | 規格 | OpenPGP 與 OpenPGP 卡：APDU、簽署與解密、公開金鑰清單與信任等級 |
+| [design/i18n.md](design/i18n.md) | 規格 | 多語系：字串資源機制、語言切換、core 訊息代碼化、術語表 |
+| [design/review-followups.md](design/review-followups.md) | 紀錄 | 2026-10-29 全專案 Review 的查證結果與各項的處理 |
+| [design/p4-work-packages.md](design/p4-work-packages.md) | 紀錄 | P4 工作包拆分、介面、驗收條件與各工作包的完成紀錄（P4 已完成） |
+| [design/document-credentials.md](design/document-credentials.md) | 紀錄 | 2026-10-11 文件憑證方案比較：衍生憑證、zkPDF、zkTLS、Bonds、OpenCerts 與樣本分析 |
+| [design/architecture-and-roadmap.md](design/architecture-and-roadmap.md) | 紀錄 | 2026-10-10 P0 規劃：參考來源、目標架構、協定支援矩陣、信任與判定模型、分階段路線圖 |
+| [review/project-review.md](review/project-review.md) | 規格 | 全專案審查指南：閱讀順序、熱點檔案、規則對應的程式位置、安全審查重點、回報格式 |
+
+沒有獨立設計文件的領域（文件與簽章、OFD、電子公文、TWDIW 與 Bonds、近距離、信任分層、法律聲明）以 AGENTS.md 的對應章節為規格。
 
 ## 研究
 
+全部是紀錄。
+
 | 文件 | 內容 |
 |---|---|
-| [research/native-dependencies/research-summary.md](research/native-dependencies/research-summary.md) | 原生依賴跨架構研究（PC Native 導向）：固定版本清冊、14 target 工具鏈／ABI 矩陣、Windows BB 與 Longfellow 缺口、隔離 C PoC、OPRF 向量及後續實作清單；未新增 App 平台支援 |
-| [原生依賴後續查證與實作](research/native-dependencies/follow-up-implementation.md) | x86_64 CPU 基準量測、Android 32 位元結論、Windows zkPDF 交叉建置與 Wine 下的實際證明、Linux ARM64 的 Barretenberg 建置，以及對先前研究的更正 |
-| [Windows GNU BB 連結與 Wine PoC](research/native-dependencies/bb-windows-link-poc.md) | 官方 archive 與原 DIW bridge 的隔離 C caller、ABI 與測試限制 |
-| [Windows GNU BB 公開 proof PoC](research/native-dependencies/bb-windows-proof-poc.md) | 固定合成 UltraHonk fixture 的正反向驗證、信任邊界與重現證據 |
-| [Longfellow Windows GNU PoC](research/native-dependencies/longfellow-windows-poc.md) | 原版編譯阻塞、隔離 patch／鎖檔、DLL C ABI 與公開 proof 驗證 |
-| [Longfellow 資產搬移 PoC](research/native-dependencies/longfellow-relocation-poc.md) | 原版缺檔對照、嵌入 12 份原始電路、來源移除後的 C／proof 驗證 |
-| [Linux ARM64 原生 C PoC](research/native-dependencies/linux-arm64-poc.md) | 未修改來源的 Longfellow／DIW runtime 交叉建置、QEMU proof／ABI 與 CPU／glibc 證據 |
-| [BB Linux ARM64 C／proof PoC](research/native-dependencies/bb-linux-arm64-poc.md) | 官方 ARM64 archive、原 DIW bridge、QEMU 兩個 CPU 模型的公開 proof 正反向與 libc 證據 |
 | [research/twdiw.md](research/twdiw.md) | TWDIW 官方 App 與平台的發證、出示、信任清單與互通細節 |
-| [research/twdiw-device-registration.md](research/twdiw-device-registration.md) | 裝置金鑰註冊查證：官方分割 APK 簽章與 assetlinks 核對、SDK 封裝及簽章呼叫鏈、frontend API、nonce 前綴、TLS 限制與待確認契約 |
-| [research/twdiw-1.0.14-issuance-review.md](research/twdiw-1.0.14-issuance-review.md) | 領卡與簽章分析附件核對：VM 成功路徑的 appHash／keyId 映射、公鑰雙層 reader 與指紋、DEX 交接、nonce／grant_type 校正 |
-| [research/twdiw-native-helper-emulation.md](research/twdiw-native-helper-emulation.md) | 雲端 unidbg 執行驗證：98 筆 JNI 註冊、四個 helper 與算術區塊綁定、appPlatform 確認為 Android、空間用量與重現產物 |
-| [research/twdiw-jws-local-generation.md](research/twdiw-jws-local-generation.md) | 自有測試金鑰建立 TWDIW 格式 JWS、原始 bytes／七欄驗證、OpenSSL 獨立驗簽與可重現工具 |
-| [research/twdiw-1.0.14-signing-and-oid4vci.md](research/twdiw-1.0.14-signing-and-oid4vci.md) | 1.0.14 簽章與領卡整合流程：holder／應用／發行者金鑰來源、dwapp-201i 七欄 JWS、兩種 nonce、Token 與 Credential 請求及證據界線 |
-| [research/twdiw-1.0.14-assets.md](research/twdiw-1.0.14-assets.md) | 完整 19 檔 assets 盤點：中英文 HTML、Lottie、Flutter 清單／授權聲明／字型／shader 解碼與可讀衍生物、兩個不同公鑰、原始資產交付 |
-| [research/twdiw-1.0.14-asset-decoding-guide.md](research/twdiw-1.0.14-asset-decoding-guide.md) | 資產逐層解碼：FNV／PCG／三種 reader、完整字型 TTX、shader FlatBuffer／SPIR-V、ART 方法索引與旗標、checksum 對照限制及 v2 重現包 |
-| [research/twdiw-1.0.14-key-asset-usage.md](research/twdiw-1.0.14-key-asset-usage.md) | 四個金鑰資產用途：已確認 .txt 簽章／keyId 來源、不同公鑰指紋，以及無副檔名資產尚未確定的消費者 |
-| [acceptance/twdiw-application-signature.md](acceptance/twdiw-application-signature.md) | 新版 TWDIW 應用簽章與舊版領卡、合法金鑰／空值生成、APK／AAB 本機驗證及待手動套用的 CI 設定 |
+| [research/twdiw-1.0.14/](research/twdiw-1.0.14/README.md) | 官方 App 1.0.14 的應用簽章分析（8 份，資料夾內有結論與導覽） |
 | [research/bonds.md](research/bonds.md) | Bonds 的離線出示、自發卡（vc+moica）、MyData 流程與已知問題 |
 | [research/multipaz-eudi-ms.md](research/multipaz-eudi-ms.md) | Multipaz、EUDI 參考實作與 Microsoft Entra Verified ID |
 | [research/documents-signatures.md](research/documents-signatures.md) | 簽章電子文件格式（PAdES、CAdES、XAdES、OFD、ASiC、時戳）與驗證 |
-| [research/official-document-files.md](research/official-document-files.md) | 電子公文檔案結構（DI、SI、外部檔案、文稿頁面檔）、SI 簽核點，以及檔案管理局健檢類別與錢包的對應 |
+| [research/official-document-files.md](research/official-document-files.md) | 電子公文檔案結構、線上簽核點、檔案管理局健檢類別與錢包的對應 |
 | [research/zkp-verifier.md](research/zkp-verifier.md) | ZKP 全景、驗證者身分與意圖揭露、信任分級 UI |
-| [research/p4-benchmarks.md](research/p4-benchmarks.md) | P4 證明系統的電腦版效能量測（實機量測待補） |
-| [research/validation-2026-10-10.md](research/validation-2026-10-10.md) | P0 本地驗證結果 |
-| [research/validation-network-2026-10-10.md](research/validation-network-2026-10-10.md) | 需要外部網路的補驗結果 |
-| [research/device-test-checklist.md](research/device-test-checklist.md) | 實機測試清單 |
+| [research/p4-benchmarks.md](research/p4-benchmarks.md) | P4 證明系統的效能量測 |
+| [research/native-dependencies/](research/native-dependencies/README.md) | 原生依賴跨平台研究與 PoC（資料夾內有結論與導覽） |
+| [research/validation-2026-10-10.md](research/validation-2026-10-10.md)、[research/validation-network-2026-10-10.md](research/validation-network-2026-10-10.md) | P0 本地驗證與需要外部網路的補驗 |
 | [research/device-results-D1-2026-10-10.md](research/device-results-D1-2026-10-10.md) | D1 實機結果（金鑰證明、NFC 讀取自然人憑證） |
 
 ## 驗收
+
+全部是紀錄，記的是該階段合併當時的測試結果。
 
 | 文件 | 內容 |
 |---|---|
@@ -58,24 +82,14 @@
 | [acceptance/p2-acceptance.md](acceptance/p2-acceptance.md) | P2 OpenID4VC 全組合與相容 Profile |
 | [acceptance/p2-followup.md](acceptance/p2-followup.md) | P2 後續：狀態、風險與信任錨點 |
 | [acceptance/p3-acceptance.md](acceptance/p3-acceptance.md) | P3 文件、簽章與衍生憑證 |
-| [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：OpenID4VCI 用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
+| [acceptance/p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) | P1 到 P3 補強：用戶端驗證、DC API 多重簽章、加密要求物件、mdoc transaction_data、VICAL 與 RICAL、CSC |
+| [acceptance/twdiw-application-signature.md](acceptance/twdiw-application-signature.md) | TWDIW 新版應用簽章與舊版領卡相容、應用金鑰與建置驗證 |
 
-## Review
+P4 與其後的工作沒有獨立的驗收文件：結果記在各設計文件與 [STATUS.md](STATUS.md)。
 
-| 文件 | 內容 |
-|---|---|
-| [review/project-review.md](review/project-review.md) | 全專案審查指南：閱讀順序、熱點檔案、設計規則對照的程式位置、安全審查重點、已知未驗證項目、P4 審查依據與回報格式 |
-## 法律聲明
+## 新增或修改文件
 
-| 文件 | 內容 |
-|---|---|
-| [legal/README.md](legal/README.md) | 隱私權政策、用戶協議與各中央營運服務的專門聲明（網頁版，由 App 內文字產生），以及同意與停用的規則 |
-
-## 使用與發佈
-
-| 文件 | 內容 |
-|---|---|
-| [guides/windows-local-test.md](guides/windows-local-test.md) | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
-| [release.md](release.md) | CI 發佈的檔案與簽章 secrets |
-| [google-play.md](google-play.md) | Google Play 上架：帳號活動要求、上架前檢查、簽署金鑰選擇、自動提交 workflow、商店資訊、資料安全與內容分級等表單答案 |
-| [../templates/README.md](../templates/README.md) | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |
+- 狀態只寫在 STATUS.md。設計文件寫約定與理由，不寫「目前進度」；需要提到時連到 STATUS.md。
+- 新文件加入本索引並標明性質。紀錄類文件在第一行之後註明撰寫日期。
+- 文件內不放個資：實機記錄的卡號、UID、憑證效期、姓名與證號先遮蔽；含個資的真實文件不可提交。
+- 已被取代的內容直接刪除或改寫，不保留「以下為原規劃」之類的舊段落；歷史在 git 裡。

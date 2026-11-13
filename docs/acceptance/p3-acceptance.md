@@ -4,7 +4,7 @@
 
 > **現況（2026-10-16）：** 本文是 P3 驗收當時的紀錄，P3 已合併（PR #8、#9）。之後的變更：App 內製作 PDF 與電子公文已移除（2026-10-15，改由外部產生，PdfComposer 只留在測試）；行動自然人憑證 SP 改為編譯時設定、CSC 遠端簽章已實作；PR #9 加入 did:key `#0` 出示修正、依 DTD 的線上簽核點、設定分八組與關於頁、自訂信任頁、文件分頁重整，以及 Android release 以 `CleartextHttp` 取得 http 公布的時戳、OCSP、CRL 與 AIA。之後的 P1 到 P3 補強（用戶端驗證、DC API 多重簽章、mdoc 簽署清單、CSC 強化）見 [p1-p3-followup-2026-10-16.md](p1-p3-followup-2026-10-16.md)。現行規則見 AGENTS.md 的 P3 要點。
 >
-> **後續（2026-10-25）：** 保證層級 B-B 到 B-LTA 擴及 CAdES、XAdES 與 ASiC-E（CAdES 為 archive-time-stamp-v3，XAdES 為 `xadesv141:ArchiveTimeStamp`），PDF 可選認證簽章（DocMDP P=1 到 3），已簽署的 PDF 可「延長保存」（為全部簽章補上長期驗證資料與文件時戳）；簽完顯示實際達到的層級。EU DSS 比對結果加在下方「錢包簽出、DSS 驗證」的表格。公文交換收發與 zkPDF 仍是停用列，zkTLS 已在 P4 實作。
+> **後續（2026-10-25）：** 保證層級 B-B 到 B-LTA 擴及 CAdES、XAdES 與 ASiC-E（CAdES 為 archive-time-stamp-v3，XAdES 為 `xadesv141:ArchiveTimeStamp`），PDF 可選認證簽章（DocMDP P=1 到 3），已簽署的 PDF 可「延長保存」（為全部簽章補上長期驗證資料與文件時戳）；簽完顯示實際達到的層級。EU DSS 比對結果加在下方「錢包簽出、DSS 驗證」的表格。公文交換收發仍是停用列；zkTLS 與 zkPDF 已在 P4 實作。目前狀態見 [專案現況](../STATUS.md)。
 
 ## 本地自動測試
 

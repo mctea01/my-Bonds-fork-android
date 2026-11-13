@@ -1,6 +1,6 @@
 # 專案 Review 指南
 
-給 P4 完成後接手全專案 Review 的代理或審查者。P1 到 P3 的 PR 審查沒有完整進行，這份文件把審查需要的背景、規則對應的程式位置、要優先檢查的地方與已知未驗證項目整理在一起，讓審查可以直接開始。
+性質：規格（審查指南）。給接手全專案 Review 的代理或審查者；2026-10-29 已有一輪外部 Review，結果見 [review-followups.md](../design/review-followups.md)。P1 到 P3 的 PR 審查沒有完整進行，這份文件把審查需要的背景、規則對應的程式位置、要優先檢查的地方與已知未驗證項目整理在一起，讓審查可以直接開始。
 
 這份文件只列「要檢查什麼、去哪裡看」，不是審查結論。標為「疑似」的項目是撰寫時讀程式碼推論出來的，需要審查者確認或推翻。
 
@@ -128,7 +128,7 @@
 - TWDIW 正式平台與 Microsoft Verified ID 的互通只在當時的網路狀況下驗過一次（見 [validation-network-2026-10-10.md](../research/validation-network-2026-10-10.md)），平台改版後要重測。
 - 公文線上簽核的公開範例檔簽章值是佔位，驗證結果顯示「簽章值不符」是預期行為。
 - P1 到 P3 補強的實機項目（公開發證端領卡、正式錢包後端、DC API 多重簽章、mdoc transaction_data、VICAL 與 RICAL），見 [device-test-checklist.md](../research/device-test-checklist.md)。
-- P4 已實作部分的實機項目：Android 兩機的年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離出示、release APK 的原生函式庫載入；zkPDF 尚未實作（見 [p4-work-packages.md](../design/p4-work-packages.md) 第 2.1 節）。
+- P4 已實作部分的實機項目：Android 兩機的年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離出示、release APK 的原生函式庫載入、zkPDF 在手機上的完整時間。
 - 簽章層級的實機項目：以自然人憑證卡與 CSC 遠端簽章各簽一次 PAdES B-LTA、CAdES 與 XAdES B-LTA，以及對已簽 PDF「延長保存」（見 [p3-acceptance.md](../acceptance/p3-acceptance.md) 的後續補充）。
 
 ## 6. 指令
@@ -148,7 +148,7 @@ python3 -I tools/trust-roots/update_roots.py --check
 
 ## 7. P4 審查
 
-zkPDF 完成時補齊本節；年齡證明、zkTLS 與 Longfellow 已實作，審查重點見第 4.5 節。審查依據：
+四種證據都已實作，審查重點另見第 4.5 節。審查依據：
 
 - 電路：[p4-circuits.md](../design/p4-circuits.md) 第 7 節列出的安全性問題，逐項對照 Noir 程式與測試 Z1 到 Z14。
 - 公開輸入：Kotlin 端（`core/document/zkpdf`）重算的公開輸入與電路宣告的順序完全一致；驗證端不採用證明附帶的任何未經重算的值。

@@ -58,4 +58,4 @@ python -m unittest discover -s tools/twdiw-jws -p 'test_*.py' -v
 
 涵蓋原始 bytes 綁定、文字公鑰指紋與 DER 指紋的區分、錯誤 key／nonce／body 拒絕、payload／signature 竄改、P-256 限制、Header.kid 拒絕，以及獨立由 JWS 段重組 DER 後以 OpenSSL 驗簽。OpenSSL 未安裝時，該項外部驗證會顯示 skipped。
 
-本工具維持獨立的離線 CLI；App 的 `TwdiwDialect` 已另外採用相同的簽章契約並移除推測性註冊，見 [新版領卡驗收](../../docs/acceptance/twdiw-application-signature.md)。本工具早期驗證結果見 [本機 JWS 建立結果](../../docs/research/twdiw-jws-local-generation.md)。
+本工具維持獨立的離線 CLI；App 的 `TwdiwDialect` 已另外採用相同的簽章契約並移除推測性註冊，見 [新版領卡驗收](../../docs/acceptance/twdiw-application-signature.md)。本工具早期驗證結果見 [本機 JWS 建立結果](../../docs/research/twdiw-1.0.14/twdiw-jws-local-generation.md)。

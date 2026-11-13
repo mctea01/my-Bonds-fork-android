@@ -334,6 +334,6 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 |---|---|---|
 | 隱私權政策公開網址、用戶協議 | 法律聲明（`docs/legal/`，PR #80） | 完成（已合併進 main） |
 | 首次啟動頁與 TWDIW、Microsoft Verified ID 專門聲明 | 法律聲明（PR #80） | 完成（已合併進 main） |
-| 介面多語系、英文商店資訊與英文截圖 | i18n（[design/i18n.md](design/i18n.md)） | 法律聲明與 zkPassport 研究完成後 |
+| 介面多語系 | i18n（[design/i18n.md](design/i18n.md)，PR #89） | 完成（已合併進 main）；英文商店資訊與英文截圖在 Play Console 補上 |
 | 圖示 PNG、主題圖片、截圖 | 上架 | 完成（`distribution/play/`） |
-| `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 已放入本分支 |
+| `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 完成（已在 main） |
