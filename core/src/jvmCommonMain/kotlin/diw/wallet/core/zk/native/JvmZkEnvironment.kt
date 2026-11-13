@@ -41,6 +41,8 @@ class JvmZkEnvironment(
     private val legacy: ZkComponent? = BundledZkComponent(dataDirectory, "diw_bb5"),
     private val info: () -> ZkPlatformInfo,
 ) : ZkEnvironment, AutoCloseable {
+    init { ZkNative.directory = dataDirectory }
+
     private val opened = lazy { runCatching { FileZkAssetStore.bundled(File(dataDirectory, "zk-assets"), http) }.getOrNull() }
     private val store: FileZkAssetStore? by opened
 

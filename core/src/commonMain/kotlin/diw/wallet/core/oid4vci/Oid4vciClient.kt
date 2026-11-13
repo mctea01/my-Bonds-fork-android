@@ -17,6 +17,8 @@ import diw.wallet.core.trust.DidTrust
 import diw.wallet.core.w3c.DataIntegrity
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cInspector
+import diw.wallet.core.w3c.bbs.BbsHolderSecrets
+import diw.wallet.core.w3c.bbs.BbsProfile
 import diw.wallet.core.w3c.W3cVc
 import diw.wallet.core.w3c.W3cVcCredential
 import org.multipaz.cbor.Bstr
@@ -576,9 +578,12 @@ class Oid4vciClient(
         val compat = session.compat
         val profile = if (config.format.isW3c) compat.owned { it.holderProfile(session.issuer) } else null
         // A shared holder identity has one key, so one credential is requested.
-        val count = if (profile != null) 1 else keys.count.coerceIn(1, session.issuer.batchSize)
+        // bbs-2023 optional features (DIW extension): one credential, bound to fresh holder secrets.
+        val bbsFeature = if (config.format == CredentialFormatId.LDP_VC) BbsProfile.choose(config.raw) else null
+        val bbs = bbsFeature?.let { BbsHolderSecrets.create(it) }
+        val count = if (profile != null || bbs != null) 1 else keys.count.coerceIn(1, session.issuer.batchSize)
         var nonce = fetchNonce(session, token, compat)
-        var pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
+        var pending = createPendingCredentials(session, document, config, keys, nonce, count, profile, bbs?.first)
         var attempt = 0
         // A dialect that answered a rejected 1.0 request, with that rejection; later attempts use its request shape.
         var alternative: Triple<IssuanceDialect, HttpStatusCode, JsonObject>? = null
@@ -601,6 +606,7 @@ class Oid4vciClient(
                     ?: buildJsonObject {
                         if (identifier != null) put("credential_identifier", identifier) else put("credential_configuration_id", config.id)
                         proofs?.let { put("proofs", it) }
+                        bbs?.let { (secrets, commitment) -> put(BbsProfile.REQUEST, BbsProfile.requestMember(secrets.feature, commitment)) }
                     }
                 credentialEndpointCall(session, session.issuer.credentialEndpoint, body, token, signingHolder = holderKeys.firstOrNull())
             }
@@ -619,7 +625,7 @@ class Oid4vciClient(
                 // Key attestation challenges are bound at key creation, so attested keys must be recreated.
                 if (config.proofTypes.values.any { it.keyAttestationsRequired != null } || "jwt" !in config.proofTypes) {
                     pending.forEach { document.deleteCredential(it.identifier) }
-                    pending = createPendingCredentials(session, document, config, keys, nonce, count, profile)
+                    pending = createPendingCredentials(session, document, config, keys, nonce, count, profile, bbs?.first)
                 }
                 continue
             }
@@ -724,11 +730,12 @@ class Oid4vciClient(
         nonce: String?,
         count: Int,
         profile: HolderProfile?,
+        bbsSecrets: BbsHolderSecrets? = null,
     ): List<Credential> {
         val compat = session.compat
         if (!config.keyBound) {
             return listOf(
-                if (config.format.isW3c) W3cVcCredential.createKeyless(document, CredentialDomains.W3C, config.format.wire, config.types)
+                if (config.format.isW3c) W3cVcCredential.createKeyless(document, CredentialDomains.W3C, config.format.wire, config.types, bbsSecrets)
                 else KeylessSdJwtVcCredential.create(document, null, CredentialDomains.SD_JWT_KEYLESS, sdJwtType(config, compat))
             )
         }
@@ -738,14 +745,14 @@ class Oid4vciClient(
                 val identities = holderIdentities
                     ?: throw ProtocolException("holder_identity_unavailable", "Profile ${profile.id} needs a wallet holder identity store")
                 val hk = identities.getOrCreate(profile.id, profile.didMethod, keys.secureArea, settings)
-                return listOf(W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, hk.secureArea, hk.alias, true, hk.did))
+                return listOf(W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, hk.secureArea, hk.alias, true, hk.did, bbsSecrets))
             }
             val style = compat.owned { it.proofStyle(session.issuer, config) }
             val needsDid = config.prefersDidKid || (style != null && style.kid != ProofKid.JWK)
             return List(count) {
                 val info = keys.secureArea.createKey(null, settings)
                 val did = if (needsDid) HolderKey.didFor(info.ecPublicKey, didMethodFor(config)) else null
-                W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, keys.secureArea, info.alias, false, did)
+                W3cVcCredential.createKeyBound(document, CredentialDomains.W3C, config.format.wire, config.types, keys.secureArea, info.alias, false, did, bbsSecrets)
             }
         }
         return List(count) {
@@ -1057,7 +1064,8 @@ class Oid4vciClient(
                 // A dialect that allows SD-JWT delivery is recorded only when the issuer actually sent one: a plain
                 // JWT VC from another issuer must not be labelled with that dialect.
                 val sdJwtDialect = compat.firstWhere { it.w3cDeliveredAsSdJwt(config) }
-                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtDialect != null, compat)
+                val bbsSecrets = pending.filterIsInstance<W3cVcCredential>().firstNotNullOfOrNull { it.bbsSecrets }
+                val inspected = w3cInspector.inspect(raw, config.types, session.issuer.credentialIssuer, sdJwtDialect != null, compat, bbsSecrets = bbsSecrets)
                 if (sdJwtDialect != null && inspected.encoding == W3cEncoding.SD_JWT) compat.record(sdJwtDialect)
                 // A credential bound to nothing this wallet can check (e.g. a did:web subject) is matched to the only key.
                 val target = (byKey.remove(inspected.boundKey) ?: if (inspected.boundKey == null && byKey.size == 1) byKey.remove(byKey.keys.first()) else null)
@@ -1067,6 +1075,8 @@ class Oid4vciClient(
                     throw ProtocolException("invalid_credential", "Issued credential is bound to a different holder DID")
                 }
                 target.setIssuedFormBeforeCertify(inspected.encoding, inspected.types, inspected.holderDid)
+                // A credential issued without the requested feature (a baseline proof) keeps no secrets.
+                target.setBbsSecrets(inspected.bbs?.secrets?.takeIf { inspected.bbs.feature == it.feature })
                 target.certify(raw.encodeToByteString())
                 holderDid = target.holderDid
                 certified += target

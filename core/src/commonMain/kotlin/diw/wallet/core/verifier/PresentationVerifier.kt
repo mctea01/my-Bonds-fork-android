@@ -13,6 +13,13 @@ import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.util.obj
 import diw.wallet.core.w3c.SdJwtDisclosures
+import diw.wallet.core.w3c.DataIntegrity
+import diw.wallet.core.w3c.W3cVc
+import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsProfile
+import diw.wallet.core.trust.DidTrust
+import diw.wallet.core.util.bool
+import org.multipaz.util.toBase64Url
 import kotlinx.serialization.json.JsonElement
 import org.multipaz.sdjwt.SdJwtKb
 import diw.wallet.core.document.Check as DocumentCheck
@@ -131,6 +138,8 @@ class PresentationVerifier(
     /** Checks the time stamp and the zkPDF proof of a document-derived credential; null leaves them unchecked. */
     private val documentTrust: DocumentTrustSource? = null,
     private val zkPdf: ZkPdfContext? = null,
+    /** Trust for issuers of Data Integrity credentials (ldp_vc), which name a DID; unknown DIDs fail issuer trust. */
+    private val didTrust: DidTrust = DidTrust.NONE,
 ) {
     /** Verifies a direct_post / direct_post.jwt body (form parameters). */
     suspend fun verifyDirectPost(form: Map<String, String>, session: VerifierSession): PresentationVerification {
@@ -199,14 +208,22 @@ class PresentationVerifier(
         else Check("state", CheckStatus.FAIL, "state mismatch")
         val vpToken = payload["vp_token"] as? JsonObject
             ?: return PresentationVerification(emptyList(), "invalid_response", "vp_token missing or not an object", sessionChecks)
-        val queryData = QueryData.fromDcql(session.dcqlQuery).associateBy { it.id!! }
-        val unknown = vpToken.keys - queryData.keys
+        // Multipaz parses the mdoc and SD-JWT VC queries; Data Integrity queries (ldp_vc) are matched here.
+        val queries = (session.dcqlQuery["credentials"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+        val ldpIds = queries.filter { it.str("format") in LDP_FORMATS }.mapNotNull { it.str("id") }.toSet()
+        val multipazDcql = if (ldpIds.isEmpty()) session.dcqlQuery
+            else JsonObject(session.dcqlQuery - "credential_sets" + ("credentials" to JsonArray(queries.filter { it.str("id") !in ldpIds })))
+        val queryData = (if (ldpIds.size == queries.size) emptyList() else QueryData.fromDcql(multipazDcql)).associateBy { it.id!! }
+        val requestedIds = queryData.keys + ldpIds
+        val unknown = vpToken.keys - requestedIds
         if (unknown.isNotEmpty()) sessionChecks += Check("vp_token ids", CheckStatus.FAIL, "unrequested ids $unknown")
 
         val now = Clock.System.now()
         // SD-JWT VCs whose issuer is a DID (no x5c) are verified here; the rest go through Multipaz.
         val didIssued = vpToken.keys.filter { id -> didIssuedSdJwt(vpToken[id]) != null }.toSet()
-        val standard = JsonObject(vpToken.filterKeys { it !in didIssued })
+        // Data Integrity credentials and presentations (ldp_vc, ldp_vp) are verified here as well.
+        val ldp = vpToken.keys.filter { id -> id in ldpIds && ldpEntry(vpToken[id]) != null }.toSet()
+        val standard = JsonObject(vpToken.filterKeys { it !in didIssued && it !in ldp })
         val presentations: List<VerifiedPresentation> = if (standard.isEmpty()) emptyList() else try {
             VerificationUtil.verifyOpenID4VPResponse(
                 now = now,
@@ -215,7 +232,7 @@ class PresentationVerifier(
                 nonce = session.nonce,
                 documentTypeRepository = documentTypeRepository,
                 zkSystemRepository = zkSystemRepository,
-                queryData = queryData.filterKeys { it !in didIssued },
+                queryData = queryData.filterKeys { it !in didIssued && it !in ldp },
             )
         } catch (e: Exception) {
             return PresentationVerification(emptyList(), "invalid_presentation", "signature/binding verification failed: ${e.message}", sessionChecks)
@@ -225,8 +242,13 @@ class PresentationVerifier(
                 val query = (session.dcqlQuery["credentials"] as? JsonArray)?.filterIsInstance<JsonObject>()?.firstOrNull { it.str("id") == id }
                     ?: return@mapNotNull null
                 verifyDidIssued(id, didIssuedSdJwt(vpToken[id])!!, query, session.nonce, expectedAud, now)
+            } +
+            ldp.mapNotNull { id ->
+                val query = (session.dcqlQuery["credentials"] as? JsonArray)?.filterIsInstance<JsonObject>()?.firstOrNull { it.str("id") == id }
+                    ?: return@mapNotNull null
+                verifyLdp(id, ldpEntry(vpToken[id])!!, query, session.nonce, expectedAud, now)
             }
-        val missing = queryData.keys.filter { id -> results.none { it.queryId == id } }
+        val missing = requestedIds.filter { id -> results.none { it.queryId == id } }
         if (missing.isNotEmpty()) sessionChecks += Check("requested credentials", CheckStatus.WARN, "not returned: $missing")
         return PresentationVerification(results, sessionChecks = sessionChecks)
     }
@@ -364,6 +386,111 @@ class PresentationVerifier(
         return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence)
     }
 
+    /** The JSON-LD credential or presentation in [entry] (a DCQL array of one, or the object itself); null otherwise. */
+    private fun ldpEntry(entry: JsonElement?): JsonObject? {
+        if (didResolver == null) return null
+        val obj = ((entry as? JsonArray)?.singleOrNull() ?: entry) as? JsonObject ?: return null
+        return obj.takeIf { "@context" in it && "proof" in it }
+    }
+
+    /**
+     * A Data Integrity credential, bare or inside a presentation. A presentation's proof must name the holder, the
+     * request nonce (challenge) and this verifier (domain); its credential is then bound when its subject is the
+     * holder. A bare bbs-2023 derived credential is bound to the request through its presentation header, and to the
+     * holder when issued with anonymous holder binding or a holder bound pseudonym. Pseudonyms are checked for this
+     * verifier's nym_domain. Then the type, requested claims, validity window and issuer trust (a DID).
+     */
+    private suspend fun verifyLdp(
+        id: String,
+        entry: JsonObject,
+        query: JsonObject,
+        nonce: String,
+        expectedAud: String,
+        now: Instant,
+    ): CredentialVerification {
+        val checks = mutableListOf<Check>()
+        val format = query.str("format") ?: "ldp_vc"
+        fun failed(reason: String) = CredentialVerification(id, format, "unknown", emptyMap(), checks + Check("signature and holder binding", CheckStatus.FAIL, reason),
+            TrustDecision.unknown(reason))
+        val di = DataIntegrity(didResolver!!)
+        val requireBinding = query.bool("require_cryptographic_holder_binding") ?: true
+        val presentation = "VerifiablePresentation" in W3cVc.types(entry)
+        var holder: String? = null
+        val vc: JsonObject = if (presentation) {
+            val proof = try {
+                di.verify(entry, expectedPurpose = "authentication", challenge = nonce, domain = expectedAud)
+            } catch (e: Exception) {
+                return failed("presentation proof invalid: ${e.message}")
+            }
+            holder = entry.idOf("holder")
+            if (holder == null || proof.verificationMethod.substringBefore('#') != holder) return failed("presentation is not signed by its holder")
+            (entry["verifiableCredential"] as? JsonArray)?.singleOrNull() as? JsonObject
+                ?: entry["verifiableCredential"] as? JsonObject
+                ?: return failed("presentation must carry exactly one credential")
+        } else entry
+        val issuer = W3cVc.issuer(vc, null) ?: return failed("credential has no issuer")
+        val proof = try {
+            di.verify(vc, expectedPurpose = "assertionMethod", nymDomain = expectedAud)
+        } catch (e: Exception) {
+            return failed("issuer proof invalid: ${e.message}")
+        }
+        if (proof.verificationMethod.substringBefore('#') != issuer) return failed("credential is not signed by its issuer")
+        val bbs = proof.bbs
+        val expectedHeader = BbsProfile.presentationHeader(expectedAud, nonce)
+        val fresh = bbs?.derived == true && bbs.presentationHeader?.contentEquals(expectedHeader) == true
+        if (bbs != null && !bbs.derived) return failed("bbs-2023 base proofs are not presentations")
+        if (bbs != null && !fresh && !presentation) return failed("bbs-2023 presentation header does not match this request")
+        val subject = W3cVc.subject(vc, null)
+        val bound = when {
+            presentation -> subject != null && subject == holder && (bbs == null || fresh)
+            else -> bbs?.feature?.holderBound == true && fresh
+        }
+        when {
+            bound -> checks += Check("signature and holder binding", CheckStatus.PASS, buildString {
+                append("issuer ").append(issuer).append(" (").append(proof.cryptosuite ?: proof.type).append(")")
+                if (presentation) append("; presentation by ").append(holder).append(", nonce and domain")
+                else append("; ").append(bbs!!.feature.id).append(" proof for this request")
+            })
+            requireBinding -> return failed(if (presentation) "credential subject is not the presentation holder" else "credential is not bound to a holder")
+            else -> checks += Check("signature and holder binding", CheckStatus.PASS, "issuer $issuer (${proof.cryptosuite ?: proof.type}); holder binding not requested")
+        }
+        if (bbs != null && bbs.feature.pseudonymous) {
+            val nym = bbs.pseudonym
+            checks += if (nym != null && bbs.nymDomain == expectedAud) Check("pseudonym", CheckStatus.PASS, nym.toBase64Url())
+            else Check("pseudonym", CheckStatus.FAIL, "pseudonym not made for this verifier")
+        }
+        val types = W3cVc.types(vc)
+        val typeValues = (query.obj("meta")?.get("type_values") as? JsonArray)?.mapNotNull { set -> (set as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } }
+        checks += if (typeValues.isNullOrEmpty() || typeValues.any { set -> set.all { want -> types.any { it == want || want.endsWith("#$it") || want.endsWith("/$it") } } })
+            Check("type", CheckStatus.PASS, types.joinToString())
+        else Check("type", CheckStatus.FAIL, "${types.joinToString()} not requested")
+        checks += requestedClaims(query, vc)
+        val (validFrom, validUntil) = W3cVc.validity(vc, null)
+        validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
+        validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
+        val trust = didTrust.decide(issuer, TrustRole.ISSUER) ?: TrustDecision.unknown("issuer identified by a DID that this verifier does not trust")
+        checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, trust.anchorName ?: issuer)
+        else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")
+        val skip = setOf("@context", "type", "proof", "issuer", "id", "validFrom", "validUntil", "issuanceDate", "expirationDate", "credentialStatus", "credentialSchema")
+        val claims = linkedMapOf<String, String>()
+        fun flatten(prefix: String, e: JsonElement) {
+            when (e) {
+                is JsonObject -> e.forEach { (k, v) -> if (!(prefix.isEmpty() && k in skip)) flatten(if (prefix.isEmpty()) k else "$prefix.$k", v) }
+                is JsonPrimitive -> claims[prefix] = if (e.isString) e.content else e.toString()
+                else -> claims[prefix] = e.toString()
+            }
+        }
+        flatten("", vc)
+        bbs?.pseudonym?.let { claims["pseudonym"] = it.toBase64Url() }
+        return CredentialVerification(id, format, W3cVc.displayType(types) ?: types.lastOrNull() ?: "unknown", claims, checks, trust)
+    }
+
+    private fun JsonObject.idOf(key: String): String? = when (val v = this[key]) {
+        is JsonPrimitive -> v.contentOrNull
+        is JsonObject -> v.str("id")
+        else -> null
+    }
+
     /**
      * The DCQL `claims` (and `claim_sets`) of [query] against the disclosed claims [disclosed]: every path is resolved
      * in full (keys, array indices and null for all elements), a claim that selects nothing is missing, and a claim
@@ -451,6 +578,9 @@ class PresentationVerifier(
     }
 
     companion object {
+        /** DCQL formats of Data Integrity credentials and presentations. */
+        val LDP_FORMATS = setOf("ldp_vc", "ldp_vp", "ldp", "di_vc", "di_vp")
+
         /** SessionTranscript for OpenID4VP redirect-based flows (OpenID4VPHandover, B.2.6.1). */
         suspend fun sessionTranscript(clientId: String, nonce: String, encKey: EcPrivateKey?, responseUri: String?): DataItem {
             val thumb = encKey?.publicKey?.toJwkThumbprint(Algorithm.SHA256)?.toByteArray()

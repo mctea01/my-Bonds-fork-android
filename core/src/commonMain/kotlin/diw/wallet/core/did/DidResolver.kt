@@ -38,7 +38,7 @@ data class DidDocument(
 }
 
 /**
- * Resolves did:jwk, did:key (P-256, P-384, Ed25519, jwk_jcs-pub 0xEB51) and did:web.
+ * Resolves did:jwk, did:key (P-256, P-384, Ed25519, BLS12-381 G2 0xEB01, jwk_jcs-pub 0xEB51) and did:web.
  * did:web is fetched over HTTPS; loopback HTTP is allowed only when [allowInsecureLoopback] is set.
  */
 class DidResolver(
@@ -98,6 +98,8 @@ class DidResolver(
                 EcPublicKeyDoubleCoordinate.fromUncompressedPointEncoding(EcCurve.P384, PlatformCrypto.decompressEcPoint("secp384r1", keyBytes))
             ) to null
             0xedL -> VerificationKey.Ec(EcPublicKeyOkp(EcCurve.ED25519, keyBytes)) to null
+            // bls12_381-g2-pub (0xeb, varint bytes eb 01).
+            0xebL -> VerificationKey.Bls12381G2(keyBytes) to null
             0xeb51L -> {
                 val jwk = DiwJson.parseToJsonElement(keyBytes.decodeToString()) as JsonObject
                 VerificationKey.fromJwk(jwk) to jwk

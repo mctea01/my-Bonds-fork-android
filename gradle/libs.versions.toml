@@ -42,6 +42,10 @@ zxing-core = { module = "com.google.zxing:core", version = "3.5.4" }
 androidx-camera-core = { module = "androidx.camera:camera-core", version = "1.5.1" }
 tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version = "4.9.0" }
 xml-apis = { module = "xml-apis:xml-apis", version = "1.4.01" }
+# JSON-LD 1.1 for the RDFC Data Integrity cryptosuites (bbs-2023, ecdsa-rdfc-2019). Its OkHttp loader is excluded:
+# contexts come from core's own loader. The Glassfish jar carries the Jakarta JSON API Titanium declares as provided.
+titanium-jsonld = { module = "com.apicatalog:titanium-json-ld-jre8", version = "1.7.0" }
+jakarta-json = { module = "org.glassfish:jakarta.json", version = "2.0.1" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version = "3.54.1.0" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }
 androidx-fragment = { module = "androidx.fragment:fragment-ktx", version = "1.9.1" }

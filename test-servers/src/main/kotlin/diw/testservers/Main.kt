@@ -63,15 +63,23 @@ class TestServers(
         override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: kotlin.time.Instant) = trust.decide(role, chain, at)
         override suspend fun fetchIssuerCertificates(url: String) = emptyList<ByteArray>()
     }
+    val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
+    /** The test issuer's bbs-2023 DID is a TEST issuer for the verifier (its ldp_vc credentials name no X.509 chain). */
+    val issuerDidTrust = diw.wallet.core.trust.DidTrust(listOf(object : diw.wallet.core.trust.DidTrustSource {
+        override suspend fun decide(did: String, role: TrustRole) = if (role == TrustRole.ISSUER && did == issuer.bbsIssuerDid) {
+            diw.wallet.core.trust.TrustDecision(diw.wallet.core.trust.TrustTier.T2, TrustEnvironment.TEST, official = false,
+                anchorName = "DIW TEST bbs-2023 issuer", labels = setOf(diw.wallet.core.trust.TrustLabel.TEST_ANCHOR))
+        } else null
+    }))
     val presentationVerifier = PresentationVerifier(
         trust, documentTypes, CachingRevocationChecker(storage, httpClient), zkSystemRepository = longfellow.repository,
         acceptUnsecuredJwtResponse = true,
         didResolver = diw.wallet.core.did.DidResolver(httpClient, allowInsecureLoopback = true),
         documentTrust = documentTrust,
         zkPdf = zkPdf,
+        didTrust = issuerDidTrust,
     )
     val verifier = VerifierService(baseUrl, pki, presentationVerifier)
-    val issuer = IssuerService(baseUrl, pki, trust, issuerOptions)
     val walletProvider = WalletProviderService(baseUrl, pki)
     val bondsAge = BondsAgeService(baseUrl, ageVerifier, diw.wallet.core.did.DidResolver(httpClient))
 

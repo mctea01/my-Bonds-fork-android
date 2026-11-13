@@ -327,6 +327,7 @@ internal fun requestedDocuments(
                     if (onChange != null && item.alternatives.isNotEmpty() && current != null) {
                         CredentialChooser(item, current, documents.filter { it.identifier in item.alternatives }) { onChange(i, it) }
                     }
+                    item.privacyNote?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     if (item.whole) {
                         Text(stringResource(Res.string.flow_whole_credential), style = MaterialTheme.typography.bodySmall)
                     }

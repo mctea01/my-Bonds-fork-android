@@ -365,6 +365,8 @@ data class ConsentItem(
     val notable: List<String> = emptyList(),
     /** Other held documents that can answer this part of the request instead (the holder may change the credential). */
     val alternatives: List<String> = emptyList(),
+    /** What a privacy preserving proof (bbs-2023) tells the other party beyond [claims]. */
+    val privacyNote: String? = null,
 )
 
 sealed class PresentationUi {
@@ -1720,6 +1722,7 @@ class WalletModel(val platform: PlatformServices) {
                         whole = d.whole,
                         notable = d.notable,
                         alternatives = prepared.prepared.alternatives(i).map { it.document.identifier },
+                        privacyNote = line.bbs?.let { BbsTexts.consent(it) },
                     )
                 }
                 PresentationUi.Consent(prepared, null, items, fields, offline)

@@ -11,6 +11,18 @@ import java.security.MessageDigest
 object ZkNative {
     private var loaded: ZkNativeStatus? = null
 
+    /** Where [ensureLoaded] unpacks the library; [JvmZkEnvironment] sets the app's private data directory. */
+    @Volatile
+    var directory: File? = null
+
+    /** Loads the library on first use (for callers such as bbs-2023 that do not go through a ZkEnvironment). */
+    fun ensureLoaded(): Boolean {
+        if (loaded != null) return true
+        // Without the app's private directory, a fresh owner-only temporary directory (never a shared, predictable one).
+        val dir = directory ?: Files.createTempDirectory("diw-wallet-native").toFile().also { directory = it }
+        return load(dir) is ZkResult.Ok
+    }
+
     @Synchronized
     fun load(dataDirectory: File): ZkResult<ZkNativeStatus> {
         loaded?.let { return ZkResult.Ok(it) }

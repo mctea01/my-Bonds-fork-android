@@ -1,5 +1,7 @@
 package diw.testservers
 
+import diw.wallet.core.did.DidKeys
+import diw.wallet.core.did.DidResolver
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.jose.VerificationKey
@@ -11,12 +13,20 @@ import diw.wallet.core.util.long
 import diw.wallet.core.util.obj
 import diw.wallet.core.util.str
 import diw.wallet.core.util.strList
+import diw.wallet.core.w3c.W3cVc
+import diw.wallet.core.w3c.bbs.Bbs
+import diw.wallet.core.w3c.bbs.Bbs2023
+import diw.wallet.core.w3c.bbs.BbsFeature
+import diw.wallet.core.w3c.bbs.BbsProfile
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.java.Java
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.Parameters
 import io.ktor.http.URLBuilder
 import io.ktor.http.parseQueryString
 import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
@@ -109,6 +119,12 @@ class IssuerService(
     private val encKid = "enc-1"
     private val w3cKey = kotlinx.coroutines.runBlocking { Crypto.createEcPrivateKey(EcCurve.P256) }
     private val w3cKid = "w3c-1"
+    /** bbs-2023 issuer key (BLS12-381 G2), created on first use so servers without the native library still start. */
+    private val bbsKeys by lazy { Bbs.generateKeyPair(PlatformCrypto.randomBytes(32), "diw-test-bbs-2023".encodeToByteArray()) }
+    /** The bbs-2023 issuer's DID (did:key of its BLS12-381 G2 key); naming it creates the key. */
+    val bbsIssuerDid: String by lazy { DidKeys.didKeyBls12381G2(bbsKeys.publicKey) }
+    /** Resolves holder DIDs named by proof kids (did:key, did:jwk need no network). */
+    private val didResolver by lazy { DidResolver(HttpClient(Java)) }
     @Volatile private var dpopNonce = PlatformCrypto.randomBytes(16).toBase64Url()
 
     private class PreAuth(val configIds: List<String>, val txCode: String?)
@@ -163,6 +179,20 @@ class IssuerService(
         }
     }
 
+    private fun bbsPrivateConfig(scope: String, name: String, features: List<BbsFeature>) = buildJsonObject {
+        put("format", "ldp_vc")
+        put("scope", scope)
+        putJsonObject("credential_definition") {
+            putJsonArray("@context") { add(W3cVc.CONTEXT_V2); add(EXAMPLES_V2) }
+            putJsonArray("type") { add("VerifiableCredential"); add("TestCard") }
+        }
+        putJsonArray("credential_signing_alg_values_supported") { add(Bbs2023.SUITE) }
+        putJsonArray(BbsProfile.METADATA) { features.forEach { add(it.id) } }
+        putJsonObject("credential_metadata") {
+            putJsonArray("display") { addJsonObject { put("name", name); put("locale", "zh-TW") } }
+        }
+    }
+
     val configurations: JsonObject = buildJsonObject {
         put("pid_sd_jwt", sdJwtConfig("pid", "測試身分憑證", jwtProof(false)))
         put("pid_sd_jwt_attested", sdJwtConfig("pid_attested", "測試身分憑證（金鑰證明）", jwtProof(true)))
@@ -184,11 +214,26 @@ class IssuerService(
             put("proof_types_supported", jwtProof(false))
             putJsonArray("display") { addJsonObject { put("name", "測試卡（W3C 舊式）"); put("locale", "zh-TW") } }
         })
-        // A format this wallet does not implement; wallets must list it as unsupported, not fail on the whole metadata.
+        // ldp_vc with a bbs-2023 base proof, bound to the holder's did:key (credentialSubject.id).
         put("w3c_ldp_vc", buildJsonObject {
             put("format", "ldp_vc")
-            putJsonObject("credential_definition") { putJsonArray("type") { add("VerifiableCredential"); add("TestCard") } }
+            put("scope", "w3c_ldp")
+            putJsonObject("credential_definition") {
+                putJsonArray("@context") { add(W3cVc.CONTEXT_V2); add(EXAMPLES_V2) }
+                putJsonArray("type") { add("VerifiableCredential"); add("TestCard") }
+            }
+            putJsonArray("cryptographic_binding_methods_supported") { add("did:key") }
+            putJsonArray("credential_signing_alg_values_supported") { add(Bbs2023.SUITE) }
+            put("proof_types_supported", jwtProof(false))
+            putJsonObject("credential_metadata") {
+                putJsonArray("display") { addJsonObject { put("name", "測試卡（bbs-2023）"); put("locale", "zh-TW") } }
+            }
         })
+        // ldp_vc with a bbs-2023 proof and no holder DID: the holder picks an optional feature (DIW extension).
+        put("w3c_ldp_vc_private", bbsPrivateConfig("w3c_ldp_private", "測試卡（bbs-2023 匿名）",
+            listOf(BbsFeature.ANONYMOUS_HOLDER_BINDING, BbsFeature.HOLDER_BINDING_PSEUDONYM, BbsFeature.PSEUDONYM)))
+        put("w3c_ldp_vc_pseudonym", bbsPrivateConfig("w3c_ldp_pseudonym", "測試卡（bbs-2023 綁定假名）", listOf(BbsFeature.HOLDER_BINDING_PSEUDONYM)))
+        put("w3c_ldp_vc_nym", bbsPrivateConfig("w3c_ldp_nym", "測試卡（bbs-2023 假名）", listOf(BbsFeature.PSEUDONYM)))
         put("mdl_mdoc", buildJsonObject {
             put("format", "mso_mdoc")
             put("doctype", DrivingLicense.MDL_DOCTYPE)
@@ -539,9 +584,12 @@ class IssuerService(
             ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_credential_request", "No credential requested")
         if (configId !in info.configIds) throw IssuerError(HttpStatusCode.BadRequest, "invalid_credential_request", "Not authorized for $configId")
         val config = configurations[configId] as JsonObject
-        val keys = if (config.obj("proof_types_supported") == null) listOf(null) else holderKeys(config, req.obj("proofs"))
-        if (keys.size > options.batchSize) throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "Batch size exceeded")
-        val minted = keys.map { issueOne(config, it) }
+        val minted: List<JsonElement> = if (config.str("format") == "ldp_vc") mintBbs(config, req)
+        else {
+            val keys = if (config.obj("proof_types_supported") == null) listOf(null) else holderKeys(config, req.obj("proofs"))
+            if (keys.size > options.batchSize) throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "Batch size exceeded")
+            keys.map { JsonPrimitive(issueOne(config, it)) }
+        }
         val credentials = buildJsonArray { minted.forEach { c -> addJsonObject { put("credential", c) } } }
         if (configId.endsWith("_deferred")) {
             val tx = PlatformCrypto.randomBytes(12).toBase64Url()
@@ -605,7 +653,7 @@ class IssuerService(
                 val ka = jws.header.str("key_attestation")
                 val keys = if (ka != null) verifyKeyAttestation(ka, null, info) else {
                     if (attestationRequired) throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "key_attestation required")
-                    listOf(EcPublicKey.fromJwk(jws.jwk ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "jwk")))
+                    listOf(jws.jwk?.let { EcPublicKey.fromJwk(it) } ?: didKey(jws.header.str("kid")))
                 }
                 val signer = keys.firstOrNull { k ->
                     runCatching { jws.verify(VerificationKey.Ec(k)); true }.getOrDefault(false)
@@ -623,6 +671,14 @@ class IssuerService(
         } ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "Unsupported proof type")
         usedNonces.forEach { cNonces.remove(it) }
         return result.distinct()
+    }
+
+    /** The EC key a proof kid names (a did:key or did:jwk URL). */
+    private suspend fun didKey(kid: String?): EcPublicKey {
+        if (kid == null || !kid.startsWith("did:")) throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "jwk or DID kid required")
+        val key = runCatching { didResolver.resolveKey(kid.substringBefore('#'), kid).key }.getOrNull() as? VerificationKey.Ec
+            ?: throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "kid does not resolve to an EC key")
+        return key.key
     }
 
     private suspend fun verifyKeyAttestation(jwt: String, nonce: String?, proofInfo: JsonObject): List<EcPublicKey> {
@@ -699,6 +755,56 @@ class IssuerService(
         return jwt + disclosures.joinToString("") { "~$it" } + "~"
     }
 
+    /**
+     * ldp_vc with a bbs-2023 base proof. A key bound configuration issues one credential per proof with the holder's
+     * DID as credentialSubject.id; a configuration listing optional features signs the holder's commitment (blind or
+     * pseudonym signature). The issuer's mandatory pointers keep issuer and validity always disclosed.
+     */
+    private suspend fun mintBbs(config: JsonObject, req: JsonObject): List<JsonElement> {
+        val offered = BbsProfile.offered(config)
+        val commitment = BbsProfile.parseRequest(req)
+        if (commitment != null && commitment.first !in offered) {
+            throw IssuerError(HttpStatusCode.BadRequest, "invalid_credential_request", "bbs-2023 feature ${commitment.first.id} is not offered")
+        }
+        val subjects: List<String?> = if (config.obj("proof_types_supported") != null) {
+            val keys = holderKeys(config, req.obj("proofs"))
+            if (keys.size > options.batchSize) throw IssuerError(HttpStatusCode.BadRequest, "invalid_proof", "Batch size exceeded")
+            keys.map { DidKeys.didKey(it) }
+        } else listOf(null)
+        // A wallet without the extension gets a baseline credential: it can still disclose selectively.
+        val now = Clock.System.now()
+        val keys = try {
+            bbsKeys
+        } catch (e: Exception) {
+            throw IssuerError(HttpStatusCode.InternalServerError, "server_error", "BBS signatures are not available on this server")
+        }
+        return subjects.map { subject ->
+            val unsecured = buildJsonObject {
+                putJsonArray("@context") { add(W3cVc.CONTEXT_V2); add(EXAMPLES_V2) }
+                putJsonArray("type") { add("VerifiableCredential"); add("TestCard") }
+                put("issuer", bbsIssuerDid)
+                put("validFrom", kotlin.time.Instant.fromEpochSeconds(now.epochSeconds).toString())
+                put("validUntil", kotlin.time.Instant.fromEpochSeconds((now + 365.days).epochSeconds).toString())
+                putJsonObject("credentialSubject") {
+                    subject?.let { put("id", it) }
+                    put("name", "王小明")
+                    put("birthDate", "1990-01-01")
+                    put("nationality", "TW")
+                    put("memberLevel", "gold")
+                }
+            }
+            Bbs2023().sign(
+                unsecured = unsecured,
+                secretKey = keys.secretKey,
+                publicKey = keys.publicKey,
+                verificationMethod = DidKeys.verificationMethod(bbsIssuerDid),
+                mandatoryPointers = listOf("/issuer", "/validFrom", "/validUntil"),
+                feature = commitment?.first ?: BbsFeature.BASELINE,
+                commitmentWithProof = commitment?.second,
+            )
+        }
+    }
+
     private suspend fun issueOne(config: JsonObject, holder: EcPublicKey?): String {
         val now = Clock.System.now()
         if (config.str("scope") == "w3c_legacy") return mintW3cSdJwt(holder!!)
@@ -756,6 +862,8 @@ class IssuerService(
     }
 
     companion object {
+        const val EXAMPLES_V2 = "https://www.w3.org/ns/credentials/examples/v2"
+
         fun parseForm(text: String): Parameters = parseQueryString(text)
     }
 }

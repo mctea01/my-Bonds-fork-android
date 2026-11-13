@@ -29,9 +29,18 @@ sealed class VerificationKey {
         override fun equals(other: Any?) = other is Secp256k1 && x.contentEquals(other.x) && y.contentEquals(other.y)
         override fun hashCode() = x.contentHashCode() * 31 + y.contentHashCode()
     }
+    /** A BLS12-381 G2 public key (compressed, 96 bytes), used only by the bbs-2023 cryptosuite. */
+    data class Bls12381G2(val publicKey: ByteArray) : VerificationKey() {
+        init { if (publicKey.size != 96) throw ProtocolException("invalid_key", "BLS12-381 G2 public key must be 96 bytes") }
+        override fun equals(other: Any?) = other is Bls12381G2 && publicKey.contentEquals(other.publicKey)
+        override fun hashCode() = publicKey.contentHashCode()
+    }
 
     companion object {
-        fun fromJwk(jwk: JsonObject): VerificationKey = when (if (jwk.str("crv") == "secp256k1") "secp256k1" else jwk.str("kty")) {
+        fun fromJwk(jwk: JsonObject): VerificationKey = when (
+            when (jwk.str("crv")) { "secp256k1" -> "secp256k1"; "BLS12381G2", "Bls12381G2" -> "bls"; else -> jwk.str("kty") }
+        ) {
+            "bls" -> Bls12381G2((jwk.str("x") ?: throw ProtocolException("invalid_key", "BLS JWK without x")).fromBase64Url())
             "secp256k1" -> Secp256k1(
                 (jwk.str("x") ?: throw ProtocolException("invalid_key", "EC JWK without x")).fromBase64Url(),
                 (jwk.str("y") ?: throw ProtocolException("invalid_key", "EC JWK without y")).fromBase64Url(),
@@ -152,6 +161,8 @@ fun ecAlgorithmFor(alg: String): Algorithm = when (alg) {
 }
 
 suspend fun verifySignature(alg: String, key: VerificationKey, data: ByteArray, signature: ByteArray): Boolean = when (key) {
+    // BBS signatures are not JWS signatures; only the bbs-2023 cryptosuite verifies them.
+    is VerificationKey.Bls12381G2 -> false
     is VerificationKey.Secp256k1 -> alg == "ES256K" && PlatformCrypto.verifyEcdsaRaw("secp256k1", key.x, key.y, data, signature)
     is VerificationKey.Rsa -> {
         if (!alg.startsWith("RS") && !alg.startsWith("PS")) false
