@@ -80,8 +80,8 @@ private fun exitAfter(seconds: Long) {
 }
 
 /**
- * A native executable has no Java home of its own. Skiko loads the JAWT library from java.home (lib/ on Linux and
- * macOS, bin/ on Windows), and tools/desktop-native.sh puts it next to the executable.
+ * A native executable has no Java home of its own. Skiko loads the JAWT library from java.home (lib/ on Linux, bin/
+ * on Windows), and tools/desktop-native.sh puts it next to the executable.
  */
 private fun nativeJavaHome() {
     if (!SelfCheck.nativeImage) return

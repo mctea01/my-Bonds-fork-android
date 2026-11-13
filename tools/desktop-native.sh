@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The desktop app as a GraalVM native executable (experimental; the JVM packages stay the release). Linux x86_64 and
-# Windows x86_64; macOS on Apple silicon is attempted. Steps:
+# Windows x86_64. Not macOS: native-image builds there (in about an hour on a 7 GB runner) and passes the self-check,
+# but the window fails because GraalVM ships no JDK library shims for macOS and libawt cannot be loaded. Steps:
 #   1. the uber jar without ProGuard (native-image keeps only what is reachable itself; ProGuard dropped sqlite-jdbc's
 #      native-image feature), without Bouncy Castle's signature files and with the newest META-INF/versions/ entry
 #      up to 25 moved to the root (native-image does not read them from the class path);
@@ -21,7 +22,7 @@ cd "$(dirname "$0")/.."
 case "$(uname -s)" in
     Linux) os=linux; exe=diw-desktop ;;
     MINGW* | MSYS* | CYGWIN*) os=windows; exe=diw-desktop.exe ;;
-    Darwin) os=macos; exe=diw-desktop ;;
+    Darwin) echo "macOS is not supported: GraalVM's AWT cannot load libawt there" >&2; exit 1 ;;
     *) echo "Unsupported host $(uname -s)" >&2; exit 1 ;;
 esac
 python=$(command -v python3 || command -v python)
@@ -82,6 +83,8 @@ echo "== native-image"
 args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta" --no-fallback -march=compatibility
     -H:+UnlockExperimentalVMOptions -H:+ReportExceptionStackTraces --enable-url-protocols=http,https
     -Dfile.encoding=UTF-8 --add-modules=java.smartcardio
+    # Every charset (GBK, Big5 and the Windows code pages in documents and native.encoding) and every locale.
+    -H:+AddAllCharsets -H:+IncludeAllLocales
     # Every resource but classes: images, fonts and strings of screens the agent never opened are still there.
     "-H:IncludeResources=.*" "-H:ExcludeResources=.*\\.class\$"
     -o "$out/diw-desktop")
@@ -109,11 +112,10 @@ else
     "$graal/bin/native-image" "${args[@]}"
 fi
 
-# Skiko loads JAWT from java.home: lib/ on Linux and macOS, bin/ on Windows (and the executable's own folder, where
+# Skiko loads JAWT from java.home: lib/ on Linux, bin/ on Windows (and the executable's own folder, where
 # Windows looks for a DLL's dependencies first).
 case $os in
     linux) mkdir -p "$out/lib" && cp "$graal/lib/libjawt.so" "$out/lib/" ;;
-    macos) mkdir -p "$out/lib" && cp "$graal/lib/libjawt.dylib" "$out/lib/" ;;
     windows) mkdir -p "$out/bin" && cp "$graal/bin/jawt.dll" "$out/bin/" && cp "$graal/bin/jawt.dll" "$out/" ;;
 esac
 
