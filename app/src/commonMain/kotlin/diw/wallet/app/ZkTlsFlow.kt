@@ -747,7 +747,7 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     companion object {
         /** The purpose of a query the holder starts to keep the result. */
         val SELF_PURPOSE: String get() = tr(Res.string.zktls_saving_result)
-        private val DOCUMENT_FORMATS = setOf(DocumentFormat.PDF, DocumentFormat.TEXT, DocumentFormat.XML)
+        private val DOCUMENT_FORMATS = setOf(DocumentFormat.PDF, DocumentFormat.OFD, DocumentFormat.TEXT, DocumentFormat.XML)
 
         const val VERIFIER_PROFILE = "zktls-verifier"
         val EXPIRED: String get() = tr(Res.string.zktls_request_expired)

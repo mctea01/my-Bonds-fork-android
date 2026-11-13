@@ -21,6 +21,8 @@ internal class GmSignedData private constructor(
     val certificates: List<X509CertificateHolder>,
     val signers: List<Signer>,
     val content: ByteArray?,
+    /** True for the national OIDs (GB/T 35275), false for a PKCS#7 SignedData. */
+    val isGmOids: Boolean,
 ) {
     class Signer(
         val issuerAndSerial: IssuerAndSerialNumber?,
@@ -28,6 +30,8 @@ internal class GmSignedData private constructor(
         val signatureOid: String,
         val signedAttributes: ASN1Set?,
         val signature: ByteArray,
+        /** An RFC 3161 token over the signature value (unsigned attribute id-aa-signatureTimeStampToken). */
+        val timestampToken: ByteArray? = null,
     )
 
     /** Verifies [signer] over [data] (the detached or encapsulated content) with [cert]. */
@@ -51,6 +55,7 @@ internal class GmSignedData private constructor(
     companion object {
         const val GM_SIGNED_DATA = "1.2.156.10197.6.1.4.2.2"
         const val GM_DATA = "1.2.156.10197.6.1.4.2.1"
+        const val TIMESTAMP_TOKEN = "1.2.840.113549.1.9.16.2.14"
 
         fun isGm(der: ByteArray): Boolean = runCatching {
             ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(Bc.parse(der)).getObjectAt(0)).id == GM_SIGNED_DATA
@@ -76,7 +81,7 @@ internal class GmSignedData private constructor(
                 }
             }
             val signers = signerInfos?.map { parseSigner(ASN1Sequence.getInstance(it)) }.orEmpty()
-            return GmSignedData(certs, signers, content)
+            return GmSignedData(certs, signers, content, ASN1ObjectIdentifier.getInstance(ci.getObjectAt(0)).id == GM_SIGNED_DATA)
         }
 
         private fun parseSigner(s: ASN1Sequence): Signer {
@@ -91,8 +96,11 @@ internal class GmSignedData private constructor(
                 i++
             }
             val sigOid = algOid(s.getObjectAt(i++))
-            val value = ASN1OctetString.getInstance(s.getObjectAt(i)).octets
-            return Signer(sid, digestOid, sigOid, attrs, value)
+            val value = ASN1OctetString.getInstance(s.getObjectAt(i++)).octets
+            val unsigned = (s.takeIf { i < it.size() }?.getObjectAt(i) as? ASN1TaggedObject)?.takeIf { it.tagNo == 1 }?.let { ASN1Set.getInstance(it, false) }
+            val token = unsigned?.map { Attribute.getInstance(it) }?.firstOrNull { it.attrType.id == TIMESTAMP_TOKEN }
+                ?.attrValues?.getObjectAt(0)?.toASN1Primitive()?.encoded
+            return Signer(sid, digestOid, sigOid, attrs, value, token)
         }
 
         private fun algOid(e: ASN1Encodable): String = ASN1ObjectIdentifier.getInstance(ASN1Sequence.getInstance(e).getObjectAt(0)).id

@@ -2,8 +2,11 @@ package diw.wallet.core.document.sign
 
 import diw.wallet.core.i18n.ct
 
-/** Key type of a [DocumentSigner]; the signature algorithm is always with SHA-256. */
-enum class SignerKeyType { RSA, EC_P256 }
+/**
+ * Key type of a [DocumentSigner]: RSA and EC P-256 sign with SHA-256; SM2 (the Chinese national curve sm2p256v1)
+ * signs with SM3 and the default user ID 1234567812345678, and is used only for OFD digital signatures.
+ */
+enum class SignerKeyType { RSA, EC_P256, SM2 }
 
 /** Where a signing key lives, shown on the signing screen and recorded with the signed file. */
 enum class SignerSource(private val titleKey: String) {
@@ -42,7 +45,7 @@ interface DocumentSigner {
 
     /**
      * Signs [data]: RSASSA-PKCS1-v1_5 with SHA-256 for RSA keys, ECDSA P-256 with SHA-256 (DER encoded) for EC
-     * keys. A smart card may ask for the PIN here; failures surface as exceptions with a user-facing message.
+     * keys, SM2 with SM3 (DER encoded, GB/T 32918 and GB/T 35276) for SM2 keys. A smart card may ask for the PIN here; failures surface as exceptions with a user-facing message.
      */
     suspend fun sign(data: ByteArray): ByteArray
 }

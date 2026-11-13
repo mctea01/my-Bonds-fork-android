@@ -1,11 +1,15 @@
 package diw.wallet.core.document
 
-/** An XML element as plain data: its local name, attributes, child elements and its own (direct) text, trimmed. */
+/**
+ * An XML element as plain data: its local name, attributes, child elements and its own (direct) text, trimmed;
+ * [rawText] is that text as written (OFD text codes place every character, spaces included).
+ */
 data class XmlElement(
     val name: String,
     val attributes: Map<String, String>,
     val children: List<XmlElement>,
     val text: String,
+    val rawText: String = text,
 ) {
     fun child(name: String): XmlElement? = children.firstOrNull { it.name == name }
 

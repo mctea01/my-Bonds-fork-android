@@ -198,6 +198,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val embeddedBrowser: Boolean get() = true
 
+    override val fontFamilyResolver: androidx.compose.ui.text.font.FontFamily.Resolver by lazy {
+        androidx.compose.ui.text.font.createFontFamilyResolver(context)
+    }
+
     override suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = withContext(Dispatchers.IO) {
         // PdfRenderer reads a seekable file descriptor; the copy lives in the app's cache only while it draws.
         val file = java.io.File.createTempFile("preview", ".pdf", context.cacheDir)

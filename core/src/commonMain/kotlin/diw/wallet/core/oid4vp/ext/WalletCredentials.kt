@@ -78,7 +78,7 @@ class WalletCredential(
         CredentialFamily.W3C_LDP -> setOf("ldp_vc", "ldp_vp", "ldp", "di_vc", "di_vp")
     }
 
-    val keyBound: Boolean get() = credential is SecureAreaBoundCredential || (credential as? W3cVcCredential)?.keyBound == true
+    val keyBound: Boolean get() = credential is SecureAreaBoundCredential || (credential as? W3cVcCredential)?.let { it.keyBound || it.bbsHolderBound } == true
 
     val raw: String get() = credential.issuerProvidedData.decodeToString()
 

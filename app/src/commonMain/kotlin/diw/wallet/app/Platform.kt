@@ -156,6 +156,9 @@ interface PlatformServices {
      */
     suspend fun renderPdf(bytes: ByteArray, maxPages: Int, widthPx: Int): List<ImageBitmap> = emptyList()
 
+    /** Font resolution for drawing text outside composition (OFD page previews); null where the platform has none. */
+    val fontFamilyResolver: androidx.compose.ui.text.font.FontFamily.Resolver? get() = null
+
     /** Card art (PNG) for [spec], the image a credential carries for the system credential picker; null where not drawn. */
     suspend fun renderCardArt(spec: CardArtSpec): ByteArray? = null
 

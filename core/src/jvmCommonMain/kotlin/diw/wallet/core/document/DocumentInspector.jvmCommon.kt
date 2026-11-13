@@ -5,6 +5,10 @@ import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
+import diw.wallet.core.document.derived.ChinaInvoice
+import diw.wallet.core.document.ofd.OfdPackage
+import diw.wallet.core.document.ofd.OfdStamp
+import diw.wallet.core.document.ofd.OfdText
 import diw.wallet.core.document.official.OfficialDocuments
 import diw.wallet.core.document.opencerts.OpenAttestationDocument
 import diw.wallet.core.document.pdf.PdfDates
@@ -524,12 +528,43 @@ actual object DocumentInspector {
         return when {
             "OFD.xml" in files -> {
                 val ofd = OfdSignatures(files, checks)
-                base.copy(format = DocumentFormat.OFD, title = ofd.title(), pages = ofd.pageCount(), signatures = ofd.verify(now), entries = entries)
+                val pkg = runCatching { OfdPackage.read(files) }.getOrNull()
+                val doc = pkg?.documents?.firstOrNull()
+                val title = ofd.title() ?: doc?.let { d -> ChinaInvoice.parse(OfdText.extract(pkg, 1), d.tagValues())?.kind }
+                val attachments = pkg?.documents.orEmpty().flatMap { it.attachments }
+                val notes = buildList {
+                    if (attachments.isNotEmpty()) add(ct("core_ofd_attachments", attachments.joinToString(ct("core_sep_list")) { it.name }))
+                    if (pkg != null && pkg.documents.size > 1) add(ct("core_ofd_documents", pkg.documents.size))
+                }
+                base.copy(
+                    format = DocumentFormat.OFD, title = title, pages = pkg?.pageCount ?: ofd.pageCount(), signatures = ofd.verify(now),
+                    entries = entries, signaturePlacements = pkg?.let { ofdPlacements(it, ofd.stamps()) }.orEmpty(), notes = notes,
+                )
             }
             Asic.isAsic(files) -> base.copy(format = DocumentFormat.ASIC_E, signatures = Asic.verify(files, checks, now), entries = entries.filter { !it.startsWith("META-INF/") && it != "mimetype" })
             else -> base.copy(format = DocumentFormat.ZIP, entries = entries, notes = listOf(ct("core_zip_entries", entries.size)))
         }
     }
+
+    /** Each seal's place on its page, as fractions of the page (origin top left), for the frames over the preview. */
+    private fun ofdPlacements(pkg: OfdPackage, stamps: List<OfdStamp>): List<SignaturePlacementInfo> {
+        val pages = pkg.documents.firstOrNull()?.pages.orEmpty()
+        return stamps.mapNotNull { st ->
+            val page = pages.firstOrNull { it.id == st.pageId } ?: pages.getOrNull(st.pageId.toIntOrNull()?.minus(1) ?: -1) ?: return@mapNotNull null
+            val b = page.box
+            SignaturePlacementInfo(
+                st.label, page.index,
+                ((st.boundary.x - b.x) / b.w).toFloat().coerceIn(0f, 1f), ((st.boundary.y - b.y) / b.h).toFloat().coerceIn(0f, 1f),
+                ((st.boundary.x + st.boundary.w - b.x) / b.w).toFloat().coerceIn(0f, 1f), ((st.boundary.y + st.boundary.h - b.y) / b.h).toFloat().coerceIn(0f, 1f),
+                true,
+            )
+        }
+    }
+
+    actual fun ofdStamps(bytes: ByteArray): List<OfdStamp> = runCatching {
+        val files = Zip.read(bytes)
+        if ("OFD.xml" !in files) emptyList() else OfdSignatures(files).stamps()
+    }.getOrDefault(emptyList())
 
     private fun openCerts(bytes: ByteArray, base: DocumentReport): DocumentReport {
         val doc = OpenAttestationDocument.parse(bytes) ?: return base.copy(format = DocumentFormat.JSON)

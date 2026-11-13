@@ -11,6 +11,8 @@
 -keep class org.apache.fontbox.** { *; }
 -keep class org.apache.commons.logging.** { *; }
 -keep class diw.wallet.core.oid4vci.IssuanceRecord { *; }
+# JSON-LD (bbs-2023, RDFC cryptosuites): the Jakarta JSON provider is found by ServiceLoader or class name.
+-keep class org.glassfish.json.JsonProviderImpl { <init>(); }
 -keepclassmembers class diw.wallet.** {
     *** Companion;
     kotlinx.serialization.KSerializer serializer(...);
@@ -18,6 +20,8 @@
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 
 -dontwarn org.bouncycastle.**
+-dontwarn com.apicatalog.jsonld.http.**
+-dontwarn jakarta.json.bind.**
 -dontwarn org.multipaz.**
 -dontwarn io.ktor.**
 -dontwarn kotlinx.**

@@ -2,12 +2,15 @@ package diw.wallet.core.w3c
 
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.util.str
+import diw.wallet.core.w3c.bbs.BbsFeature
+import diw.wallet.core.w3c.bbs.BbsHolderSecrets
 import kotlinx.io.bytestring.decodeToString
 import kotlinx.serialization.json.JsonObject
 import org.multipaz.cbor.CborBuilder
 import org.multipaz.cbor.DataItem
 import org.multipaz.cbor.MapBuilder
 import org.multipaz.cbor.buildCborArray
+import org.multipaz.cbor.buildCborMap
 import org.multipaz.claim.Claim
 import org.multipaz.credential.Credential
 import org.multipaz.crypto.EcPublicKey
@@ -70,6 +73,20 @@ class W3cVcCredential : Credential {
     /** Holder identifier the issuer bound the credential to (DID), when there is one. */
     var holderDid: String? = null
         private set
+    /**
+     * The holder's secrets of a bbs-2023 credential issued with an optional feature (holder binding, pseudonyms). They
+     * never leave the wallet: presentations prove knowledge of them. Kept in the document store like the credential.
+     */
+    var bbsSecrets: BbsHolderSecrets? = null
+        private set
+
+    /** True when presentations of this credential prove the holder through its bbs-2023 holder secret. */
+    val bbsHolderBound: Boolean get() = bbsSecrets?.feature?.holderBound == true
+
+    /** Records the bbs-2023 holder secrets (before the request, and again with nym_secret once the credential verified). */
+    fun setBbsSecrets(secrets: BbsHolderSecrets?) {
+        bbsSecrets = secrets
+    }
 
     private constructor(
         document: Document,
@@ -119,6 +136,17 @@ class W3cVcCredential : Credential {
         sharedKey = dataItem.getOrNull("sharedKey")?.asBoolean ?: false
         holderDid = dataItem.getOrNull("holderDid")?.asTstr
         secureArea = dataItem.getOrNull("secureAreaIdentifier")?.asTstr?.let { secureAreas?.getImplementation(it) }
+        bbsSecrets = dataItem.getOrNull("bbsSecrets")?.let { b ->
+            BbsFeature.of(b["feature"].asTstr)?.let { feature ->
+                BbsHolderSecrets(
+                    feature = feature,
+                    secretProverBlind = b["secretProverBlind"].asBstr,
+                    holderSecret = b.getOrNull("holderSecret")?.asBstr,
+                    proverNym = b.getOrNull("proverNym")?.asBstr,
+                    nymSecret = b.getOrNull("nymSecret")?.asBstr,
+                )
+            }
+        }
     }
 
     override fun addSerializedData(builder: MapBuilder<CborBuilder>) {
@@ -130,6 +158,15 @@ class W3cVcCredential : Credential {
         secureArea?.let { builder.put("secureAreaIdentifier", it.identifier) }
         builder.put("sharedKey", sharedKey)
         holderDid?.let { builder.put("holderDid", it) }
+        bbsSecrets?.let { b ->
+            builder.put("bbsSecrets", buildCborMap {
+                put("feature", b.feature.id)
+                put("secretProverBlind", b.secretProverBlind)
+                b.holderSecret?.let { put("holderSecret", it) }
+                b.proverNym?.let { put("proverNym", it) }
+                b.nymSecret?.let { put("nymSecret", it) }
+            })
+        }
     }
 
     /** Records what the issued bytes turned out to be before [certify] (an SD-JWT where a JWT was announced). */
@@ -170,13 +207,20 @@ class W3cVcCredential : Credential {
             alias: String,
             sharedKey: Boolean,
             holderDid: String?,
+            bbsSecrets: BbsHolderSecrets? = null,
         ): W3cVcCredential {
             secureArea.getKeyInfo(alias)
-            return W3cVcCredential(document, domain, format, types, secureArea, alias, sharedKey, holderDid).apply { addToDocument() }
+            return W3cVcCredential(document, domain, format, types, secureArea, alias, sharedKey, holderDid).apply {
+                this.bbsSecrets = bbsSecrets
+                addToDocument()
+            }
         }
 
-        suspend fun createKeyless(document: Document, domain: String, format: String, types: List<String>): W3cVcCredential =
-            W3cVcCredential(document, domain, format, types, null, null, false, null).apply { addToDocument() }
+        suspend fun createKeyless(document: Document, domain: String, format: String, types: List<String>, bbsSecrets: BbsHolderSecrets? = null): W3cVcCredential =
+            W3cVcCredential(document, domain, format, types, null, null, false, null).apply {
+                this.bbsSecrets = bbsSecrets
+                addToDocument()
+            }
     }
 }
 

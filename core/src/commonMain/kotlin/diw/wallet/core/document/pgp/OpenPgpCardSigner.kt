@@ -193,6 +193,7 @@ class OpenPgpTapSigner(
                 val ec = X509Cert(ByteString(cert)).ecPublicKey as? EcPublicKeyDoubleCoordinate
                 ec != null && PlatformCrypto.verifyEcdsaRaw("secp256r1", ec.x, ec.y, data, ecdsaRaw(signature, 32))
             }
+            SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
         }
         if (!ok) throw SigningException(ct("core_pgpc_sig_mismatch"))
         return signature
@@ -242,6 +243,7 @@ class OpenPgpTapSigner(
             SignerKeyType.EC_P256 -> OpenPgpCards.ecdsaDer(card.sign(pin, digest).also {
                 if (it.size != 64) throw SigningException(ct("core_pgpc_ecdsa_length"))
             })
+            SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
         }
     }
 

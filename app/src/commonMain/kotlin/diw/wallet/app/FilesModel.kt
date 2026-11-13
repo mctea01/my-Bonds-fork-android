@@ -60,6 +60,13 @@ import diw.wallet.core.document.derived.DerivedClaim
 import diw.wallet.core.document.derived.DerivedCredentials
 import diw.wallet.core.document.derived.MovementRecord
 import diw.wallet.core.document.derived.ParsedCertificate
+import diw.wallet.core.document.derived.ChinaInvoice
+import diw.wallet.core.document.ofd.OfdMedia
+import diw.wallet.core.document.ofd.OfdPackage
+import diw.wallet.core.document.ofd.OfdStamp
+import diw.wallet.core.document.ofd.OfdText
+import diw.wallet.core.document.ofd.OfdShading
+import diw.wallet.core.document.sign.OfdSealOptions
 import diw.wallet.core.document.derived.DerivedDocument
 import diw.wallet.core.document.derived.TravelDocumentFields
 import diw.wallet.core.document.derived.TravelDocumentPhotoId
@@ -256,8 +263,10 @@ sealed class FilePreview {
         val pages: List<ImageBitmap>, val total: Int, val text: String?, val entryExit: MovementRecord? = null,
         /** A household transcript read person by person, the holder first. */
         val household: HouseholdTranscript? = null,
-        /** A certificate laid out as its parts (a proof of student status, a mainland permit association). */
+        /** A certificate laid out as its parts (a proof of student status, a mainland permit association, an invoice). */
         val certificate: ParsedCertificate? = null,
+        /** Some text of the pages (an OFD) has no embedded font and was drawn with system fonts, so its glyph shapes can differ. */
+        val systemFonts: Boolean = false,
     ) : FilePreview()
     class Picture(val image: ImageBitmap) : FilePreview()
     /** A travel document read from its chip, laid out as its data page. */
@@ -385,6 +394,27 @@ object MyDataFiles {
  */
 class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Position, val image: PdfAppearanceImage? = null)
 
+/**
+ * An electronic seal for an OFD signature: an issued seal file ([file], .esl) or, without one, a seal the wallet
+ * makes for the signing key, named [name] (blank: the certificate's name), round for an organisation or square for a
+ * person, with [image] or else the drawn seal, [widthMm] wide; stamped on [page] (negative from the end) at [position].
+ */
+class OfdSealChoice(
+    val page: Int = -1,
+    val position: PdfSignatureAppearance.Position = PdfSignatureAppearance.Position.BOTTOM_RIGHT,
+    val file: ByteArray? = null,
+    val fileName: String? = null,
+    val name: String = "",
+    val personal: Boolean = false,
+    val widthMm: Double = 40.0,
+    val image: PdfAppearanceImage? = null,
+) {
+    fun copy(
+        page: Int = this.page, position: PdfSignatureAppearance.Position = this.position, file: ByteArray? = this.file, fileName: String? = this.fileName,
+        name: String = this.name, personal: Boolean = this.personal, widthMm: Double = this.widthMm, image: PdfAppearanceImage? = this.image,
+    ) = OfdSealChoice(page, position, file, fileName, name, personal, widthMm, image)
+}
+
 sealed class SignerChoice {
     /** The citizen digital certificate (or another GPKI) card on [reader]; the PIN is used for this signing only. */
     class Card(val reader: NfcReaderOption, val pin: String) : SignerChoice()
@@ -427,6 +457,7 @@ enum class SignForm(private val titleRes: org.jetbrains.compose.resources.String
     CADES_ENVELOPING(Res.string.sign_form_enveloping, Res.string.sign_form_enveloping_text),
     ASIC(Res.string.sign_form_asic, Res.string.sign_form_asic_text),
     OPENPGP_DETACHED(Res.string.sign_form_pgp, Res.string.sign_form_pgp_text),
+    OFD(Res.string.sign_form_ofd, Res.string.sign_form_ofd_text),
     ;
 
     val title: String get() = tr(titleRes)
@@ -772,6 +803,7 @@ class FilesModel(private val model: WalletModel) {
                 runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()
             }
             DocumentFormat.TEXT, DocumentFormat.XML -> data(f.id).takeIf { it.size <= FilePreview.TEXT_LIMIT * 4 }?.decodeToString()
+            DocumentFormat.OFD -> ofdPackage(data(f.id))?.let { OfdText.extract(it, FilePreview.PREVIEW_PAGES) }
             else -> null
         }?.takeIf { it.isNotBlank() }
     }
@@ -803,6 +835,7 @@ class FilesModel(private val model: WalletModel) {
                 else model.platform.renderPdf(if (pdf.encrypted) PdfPlain.of(pdf) else bytes, 1, CardArtSpec.WIDTH).firstOrNull()
             }
             DocumentFormat.IMAGE -> model.platform.decodeImage(bytes)
+            DocumentFormat.OFD -> ofdPackage(bytes)?.let { renderOfd(it, bytes, 1, CardArtSpec.WIDTH).firstOrNull() }
             else -> null
         }
     }
@@ -856,6 +889,7 @@ class FilesModel(private val model: WalletModel) {
         var locked = false
         var text: String? = null
         var xml: String? = null
+        var structured: ParsedCertificate? = null
         when (report.format) {
             DocumentFormat.PDF -> {
                 val pdf = unlock(f, bytes, password)
@@ -863,6 +897,10 @@ class FilesModel(private val model: WalletModel) {
                 else text = runCatching { PdfTextExtractor.extract(pdf, FilePreview.PREVIEW_PAGES) }.getOrNull()?.takeIf { it.isNotBlank() }
             }
             DocumentFormat.XML -> xml = bytes.decodeToString().removePrefix("\uFEFF").takeIf { OfficialDocuments.parse(bytes) != null }
+            DocumentFormat.OFD -> ofdPackage(bytes)?.let { pkg ->
+                text = OfdText.extract(pkg, FilePreview.PREVIEW_PAGES).takeIf { it.isNotBlank() }
+                structured = ofdStructure(pkg, text)
+            }
             else -> {}
         }
         if (report.format == DocumentFormat.EMRTD) {
@@ -870,7 +908,7 @@ class FilesModel(private val model: WalletModel) {
             val dump = MrtdDump.decode(bytes) ?: return@withContext DeriveFields(emptyList(), false)
             return@withContext DeriveFields(TravelDocumentFields.claims(dump, Clock.System.now().toString().take(4).toInt()), false)
         }
-        val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints())
+        val suggested = DerivedCredentials.suggested(report, f.name, f.source, text, xml, holderHints(), structured)
         val zk = if (report.format == DocumentFormat.PDF) zkPdfMatches(bytes) else emptyList()
         DeriveFields(suggested.claims, locked, suggested.notice, text?.let { MovementRecord.parse(it) }, zk)
     }
@@ -923,10 +961,24 @@ class FilesModel(private val model: WalletModel) {
                     else -> FilePreview.Unavailable(tr(Res.string.msg_pgp_no_preview))
                 }
             }
+            DocumentFormat.OFD -> {
+                val pkg = ofdPackage(bytes) ?: return FilePreview.Unavailable(tr(Res.string.msg_ofd_unreadable))
+                val pages = renderOfd(pkg, bytes, FilePreview.PREVIEW_PAGES, PREVIEW_WIDTH)
+                val text = OfdText.extract(pkg, FilePreview.PREVIEW_PAGES).trim().ifEmpty { null }
+                if (pages.isEmpty() && text == null) FilePreview.Unavailable(tr(Res.string.msg_ofd_empty))
+                else FilePreview.Pages(
+                    pages, pkg.pageCount, text, text?.let { MovementRecord.parse(it) },
+                    text?.let { runCatching { HouseholdTranscripts.parse(it, holderHints()) }.getOrNull() },
+                    ofdStructure(pkg, text),
+                    systemFonts = pages.isNotEmpty() && pkg.pages.take(FilePreview.PREVIEW_PAGES).any { pg ->
+                        pg.objects.any { it is diw.wallet.core.document.ofd.OfdObject.Text && it.font?.file == null }
+                    },
+                )
+            }
             DocumentFormat.EMRTD -> diw.wallet.core.document.mrtd.MrtdDump.decode(bytes)
                 ?.let { FilePreview.Passport(Passports.view(it) { b -> model.platform.decodeImage(b) }) }
                 ?: FilePreview.Unavailable(tr(Res.string.core_mrtd_unreadable))
-            DocumentFormat.ZIP, DocumentFormat.ASIC_E, DocumentFormat.OFD -> FilePreview.Unavailable(tr(Res.string.msg_archive_preview))
+            DocumentFormat.ZIP, DocumentFormat.ASIC_E -> FilePreview.Unavailable(tr(Res.string.msg_archive_preview))
             DocumentFormat.OFFICE -> FilePreview.Unavailable(tr(Res.string.msg_office_preview))
             DocumentFormat.CMS_ENVELOPED -> FilePreview.Unavailable(tr(Res.string.msg_envelope_preview))
             else -> {
@@ -940,6 +992,60 @@ class FilesModel(private val model: WalletModel) {
                     else -> FilePreview.Unavailable(tr(Res.string.msg_no_format_preview))
                 }
             }
+        }
+    }
+
+    // ---------------------------------------------------------------- OFD
+
+    private fun ofdPackage(bytes: ByteArray): OfdPackage? = runCatching { OfdPackage.read(DocumentSigning.unzip(bytes)) }.getOrNull()
+
+    /** What an OFD is as a structure: an invoice from its custom tags or text, else what its text is read as. */
+    private fun ofdStructure(pkg: OfdPackage, text: String?): ParsedCertificate? =
+        runCatching { ChinaInvoice.parse(text, pkg.documents.firstOrNull()?.tagValues().orEmpty()) }.getOrNull()
+            ?: text?.let { t -> runCatching { ParsedCertificate.parse(t) }.getOrNull() }
+
+    /**
+     * The first [maxPages] pages of an OFD (every document of the package in order) drawn [width] pixels wide, with
+     * each signature's seal where it was stamped. A seal belongs to the document whose folder holds its signature,
+     * or to the first document when none does.
+     */
+    private fun renderOfd(pkg: OfdPackage, bytes: ByteArray, maxPages: Int, width: Int): List<ImageBitmap> {
+        val renderer = OfdRenderer(model.platform.fontFamilyResolver) { media -> ofdImage(media, width) }
+        val stamps = runCatching { DocumentInspector.ofdStamps(bytes) }.getOrDefault(emptyList())
+        val seals = HashMap<OfdStamp, ImageBitmap?>()
+        val docs = pkg.documents
+        fun folder(d: Int) = docs[d].root.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+        fun owner(st: OfdStamp): Int {
+            val path = st.signature.trimStart('/')
+            return docs.indices.firstOrNull { d -> folder(d).isNotEmpty() && path.startsWith(folder(d)) } ?: 0
+        }
+        val pages = docs.indices.flatMap { d -> docs[d].pages.map { d to it } }.take(maxPages)
+        return pages.mapNotNull { (d, page) ->
+            val overlays = stamps.filter { it.pageId == page.id && owner(it) == d }.mapNotNull { st ->
+                val picture = seals.getOrPut(st) { sealPicture(st) } ?: return@mapNotNull null
+                OfdRenderer.Overlay(picture, st.boundary.x - page.box.x, st.boundary.y - page.box.y, st.boundary.w, st.boundary.h)
+            }
+            runCatching { renderer.render(page, width, overlays) }.getOrNull()
+        }
+    }
+
+    /** An image resource of an OFD, decoded by the platform (TIFF and JBIG2 converted first); null for formats it cannot show. */
+    private fun ofdImage(media: OfdMedia, width: Int): ImageBitmap? = when (media.format) {
+        "TIFF" -> ImageConversion.tiffPages(media.bytes, 1, width).firstOrNull()?.let { model.platform.decodeImage(it) }
+        "JB2", "JBIG2" -> ImageConversion.jbig2(media.bytes, width)?.let { model.platform.decodeImage(it) }
+        "OFD", "UNKNOWN" -> null
+        else -> model.platform.decodeImage(media.bytes)
+    }
+
+    /** The picture of a seal: an image, or the first page of the OFD the seal carries as its picture (drawn without a background). */
+    private fun sealPicture(st: OfdStamp): ImageBitmap? {
+        val bytes = st.picture ?: return null
+        return when (st.pictureFormat?.lowercase()) {
+            "ofd" -> ofdPackage(bytes)?.let { seal ->
+                val page = seal.pages.firstOrNull() ?: return null
+                OfdRenderer(model.platform.fontFamilyResolver) { m -> ofdImage(m, SEAL_WIDTH) }.render(page, SEAL_WIDTH, background = false)
+            }
+            else -> model.platform.decodeImage(bytes)
         }
     }
 
@@ -1642,6 +1748,7 @@ class FilesModel(private val model: WalletModel) {
             // Official documents are signed with an approval point (線上簽核); XAdES would change the files the
             // approval names by their digests.
             DocumentFormat.XML -> add(if (isOfficialFile(f)) SignForm.APPROVAL else SignForm.XADES)
+            DocumentFormat.OFD -> add(SignForm.OFD)
             else -> if (f.bundleOf != null) add(SignForm.APPROVAL)
         }
         add(SignForm.CADES_DETACHED)
@@ -1664,6 +1771,8 @@ class FilesModel(private val model: WalletModel) {
         certification: Int? = null,
         /** Show the PDF signature on a page; null keeps it invisible. */
         visible: VisibleSignature? = null,
+        /** Stamp an OFD with an electronic seal instead of a digital signature. */
+        seal: OfdSealChoice? = null,
     ) = run(tr(Res.string.step_prepare_sign)) {
         if (form == SignForm.OPENPGP_DETACHED) {
             signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException(tr(Res.string.msg_pgp_needs_card)))
@@ -1677,15 +1786,19 @@ class FilesModel(private val model: WalletModel) {
         val signer = withContext(model.unlockProvider) { signer(choice, tr(Res.string.sign_reason_prefix) + f.name) }
         // A CSC service that offers signatures/timestamp time-stamps its own signatures (falling back to the chosen authority).
         val cscTs = (signer as? CscSigner)?.let { runCatching { it.timestamper() }.getOrNull() }
-        val ts = if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
+        if (signer.keyType == SignerKeyType.SM2 && form != SignForm.OFD) throw SigningException(tr(Res.string.msg_sm2_ofd_only))
+        // OFD signatures carry a time stamp when asked ([timestamp]); they have no long-term levels.
+        val ts = if (form == SignForm.OFD) (if (timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null)
+        else if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
         // A CSC service without signatures/signHash but with signatures/signDoc builds the PAdES CMS itself.
         val viaSignDoc = form == SignForm.PADES && signer is CscSigner && !signer.supportsSignHash() && signer.supportsSignDoc()
         if (signer is CscSigner && !viaSignDoc && !signer.supportsSignHash()) {
             throw SigningException(if (signer.supportsSignDoc()) tr(Res.string.msg_csc_signdoc_only) else tr(Res.string.msg_csc_no_sign))
         }
-        val validation = if (form != SignForm.APPROVAL && level.revocation) revocationFetch else null
-        val archive = form != SignForm.APPROVAL && level.archive
-        if (form != SignForm.APPROVAL) model.updateSettings { it.copy(padesLevel = level.name) }
+        val levelled = form != SignForm.APPROVAL && form != SignForm.OFD
+        val validation = if (levelled && level.revocation) revocationFetch else null
+        val archive = levelled && level.archive
+        if (levelled) model.updateSettings { it.copy(padesLevel = level.name) }
         busy.value = when (choice) {
             is SignerChoice.Card -> tr(Res.string.step_sign_moica)
             is SignerChoice.Piv -> tr(Res.string.step_sign_piv)
@@ -1719,6 +1832,8 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.CADES_DETACHED -> DocumentSigning.signCades(data, signer, true, ts, validation, archive) to "${f.name}.p7s"
                 SignForm.CADES_ENVELOPING -> DocumentSigning.signCades(data, signer, false, ts, validation, archive) to "${f.name}.p7m"
                 SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
+                SignForm.OFD -> if (seal != null) DocumentSigning.signOfd(data, signer, ts, sealOptions(seal, signerName)) to "$base-sealed.ofd"
+                    else DocumentSigning.signOfd(data, signer, ts) to "$base-signed.ofd"
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
                 SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
@@ -1727,11 +1842,33 @@ class FilesModel(private val model: WalletModel) {
         val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
         // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
         val reached = reachedLevel(file(stored.id) ?: stored)
-        val levelNote = tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
+        val levelNote = if (form == SignForm.OFD) tr(Res.string.sep_comma) + (if (ts != null) "B-T" else "B-B")
+            else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
         model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
-        val lower = SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
+        val lower = form != SignForm.OFD && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
+        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /** What the core needs for [seal]: the issued seal file, or the picture of the seal to make (the chosen image or the drawn one). */
+    private fun sealOptions(seal: OfdSealChoice, signerName: String?): OfdSealOptions {
+        if (seal.file != null) return OfdSealOptions(page = seal.page, position = seal.position, sealFile = seal.file)
+        val name = seal.name.trim().ifEmpty { signerName.orEmpty() }
+        val picture = seal.image?.let { OfdShading.png(it.width, it.height, it.argb) }
+            ?: model.platform.fontFamilyResolver?.let { encodePng(SealPicture.draw(name, seal.personal, it)) }
+            ?: throw SigningException(tr(Res.string.msg_seal_no_picture))
+        return OfdSealOptions(page = seal.page, position = seal.position, picture = picture, name = name, personal = seal.personal, widthMm = seal.widthMm)
+    }
+
+    /**
+     * Makes a PKCS#12 file with a new SM2 key and a self-issued certificate in [name], protected by [password], and
+     * lets the holder save it; it then signs OFD documents as a PKCS#12 signer. Nothing is kept in the wallet.
+     */
+    fun createSm2Pkcs12(name: String, password: String) = run(tr(Res.string.step_make_sm2)) {
+        val bytes = withContext(Dispatchers.Default) { DocumentSigning.sm2Pkcs12(name.ifBlank { tr(Res.string.sm2_default_name) }, password, SM2_VALID_DAYS) }
+        val file = "sm2-" + name.ifBlank { "self" }.replace(Regex("[^\\p{L}\\p{N}_-]+"), "_").take(40) + ".p12"
+        if (!model.platform.saveFile(file, "application/x-pkcs12", bytes)) throw SigningException(tr(Res.string.msg_sm2_not_saved))
+        model.message.value = tr(Res.string.msg_sm2_saved, file)
     }
 
     /** Tries [first]; when it fails, [second], so a missing remote time stamp never stops a signature. */
@@ -2647,6 +2784,10 @@ class FilesModel(private val model: WalletModel) {
         const val MAX_FILE_BYTES = 64 * 1024 * 1024
         /** Width of rendered PDF pages, in pixels. */
         const val PREVIEW_WIDTH = 1080
+        /** Days a self-issued SM2 certificate is valid. */
+        const val SM2_VALID_DAYS = 365 * 3
+        /** Width a seal picture kept as OFD is drawn at before it is placed on the page. */
+        const val SEAL_WIDTH = 480
         private const val MAX_AIA_BYTES = 256 * 1024
         private const val MAX_CRL_BYTES = 8 * 1024 * 1024
 

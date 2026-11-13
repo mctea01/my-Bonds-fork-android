@@ -24,7 +24,7 @@ class JcaDocumentSigner(
     override val keyType: SignerKeyType = typeOf(certificate)
 
     override suspend fun sign(data: ByteArray): ByteArray {
-        val alg = if (keyType == SignerKeyType.RSA) "SHA256withRSA" else "SHA256withECDSA"
+        val alg = when (keyType) { SignerKeyType.RSA -> "SHA256withRSA"; SignerKeyType.SM2 -> "SM3withSM2"; else -> "SHA256withECDSA" }
         val signature = try {
             val s = if (provider != null) Signature.getInstance(alg, provider) else Signature.getInstance(alg)
             s.initSign(key)
@@ -34,7 +34,8 @@ class JcaDocumentSigner(
             throw SigningException(ct("core_jds_sign_failed") + (e.message ?: e::class.simpleName), e)
         }
         val ok = runCatching {
-            Signature.getInstance(alg).run { initVerify(certificate.publicKey); update(data); verify(signature) }
+            (if (keyType == SignerKeyType.SM2) Signature.getInstance(alg, diw.wallet.core.document.Bc.provider) else Signature.getInstance(alg))
+                .run { initVerify(certificate.publicKey); update(data); verify(signature) }
         }.getOrDefault(false)
         if (!ok) throw SigningException(ct("core_jds_mismatch"))
         return signature
@@ -46,7 +47,8 @@ class JcaDocumentSigner(
             val pub = certificate.publicKey
             return when (pub.algorithm) {
                 "RSA" -> SignerKeyType.RSA
-                "EC", "ECDSA" -> {
+                "EC", "ECDSA", "SM2" -> {
+                    if (OfdSigning.isSm2Key(pub.encoded)) return SignerKeyType.SM2
                     val bits = (pub as? ECPublicKey)?.params?.curve?.field?.fieldSize
                     if (bits != null && bits != 256) throw SigningException(ct("core_jds_p256_only", bits))
                     SignerKeyType.EC_P256

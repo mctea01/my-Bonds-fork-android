@@ -42,6 +42,12 @@ num-bigint = { version = "0.4", optional = true }
 rand = { version = "0.8", optional = true }
 # JPEG 2000 chip photos (Apache-2.0 OR MIT, pure Rust); always built, it needs no proof backend.
 hayro-jpeg2000 = { version = "=0.5.0", default-features = false, features = ["std", "simd"] }
+# BBS for bbs-2023, always built: see ../vendor/zkryptium/README.md for the W3C pseudonym patch.
+zkryptium = { path = "../vendor/zkryptium", default-features = false, features = ["bbsplus", "bbsplus_blind", "bbsplus_nym"] }
+
+[dev-dependencies]
+serde_json = "1"
+hex = "0.4"
 
 [[bin]]
 name = "uniffi-bindgen"
