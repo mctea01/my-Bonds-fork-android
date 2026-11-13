@@ -53,6 +53,6 @@ androidx-browser = { module = "androidx.browser:browser", version = "1.10.0" }
 androidx-credentials = { module = "androidx.credentials:credentials", version = "1.6.0" }
 androidx-credentials-registry = { module = "androidx.credentials.registry:registry-provider", version = "1.0.0-alpha05" }
 # Same version multipaz-dcapi-credman registers with; used directly to await the registration result.
-play-services-identity-credentials = { module = "com.google.android.gms:play-services-identity-credentials", version = "16.0.0-alpha12" }
+play-services-identity-credentials = { module = "com.google.android.gms:play-services-identity-credentials", version = "16.0.0-alpha13" }
 # Play Feature Delivery: installs the on-demand native modules (features/) on Google Play installs.
 play-feature-delivery = { module = "com.google.android.play:feature-delivery", version = "2.1.0" }
