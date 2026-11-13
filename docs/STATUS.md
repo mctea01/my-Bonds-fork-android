@@ -113,6 +113,7 @@ P4 之後合併的工作：
 | P5 驗證者透明與主動驗證 | 查驗方聲明、代表身分、線上查驗、衍生憑證與 ZK 證明的查驗政策 | 排程 |
 | P6 iOS | | 排程 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作，官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
+| TWDIW 應用簽章的 appHash | 文件（[release.md](release.md)、[驗收紀錄](acceptance/twdiw-application-signature.md)）寫的是本專案的 `diw.wallet.app`，App 實際送出的是 `TwdiwAppIdentity.DEFAULT` 的 `tw.gov.moda.diw`（`WalletModel.twdiwAppIdentity()`），兩者不一致 | 使用者決定以哪個為準，再改程式或文件 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
 | zkPDF 多頁文件 | v1 只接受單頁，2 頁的出入境記錄沒有版型 | 排程 |
