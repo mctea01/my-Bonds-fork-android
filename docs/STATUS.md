@@ -116,7 +116,7 @@ P4 之後合併的工作：
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
 | zkPDF 多頁文件 | v1 只接受單頁，2 頁的出入境記錄沒有版型 | 排程 |
-| zkPassport 人臉比對與加鹽唯一識別碼 | 人臉比對不提供；本專案 OPRF 的服務端已實作 | Play Integrity 金鑰、排程 |
+| zkPassport 人臉比對與加鹽唯一識別碼 | 人臉比對不提供；替代電路（金鑰證明版、自我聲明版，`native/circuits-zkpassport`）已寫好並通過本機測試，尚未接進錢包；本專案 OPRF 的服務端已實作 | Play Integrity 金鑰、實機憑證鏈驗證、排程 |
 | zkPassport 離線註冊表模式 | 離線時無法查驗 | 排程 |
 | 加密 request object 的解密金鑰登錄 | 程式路徑已有，App 沒有登錄金鑰 | 排程 |
 | CSC `authorization_details` | RFC 9396 | 可測的服務 |

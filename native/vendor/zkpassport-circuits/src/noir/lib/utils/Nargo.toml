@@ -1,0 +1,9 @@
+[package]
+name = "utils"
+type = "lib"
+authors = ["Theo Madzou", "Michael Elliot"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+poseidon = { tag = "v0.3.0", git = "https://github.com/noir-lang/poseidon" }
+babyjubjub = { tag = "v1.0.0", git = "https://github.com/TaceoLabs/oprf-nr", directory = "babyjubjub" }

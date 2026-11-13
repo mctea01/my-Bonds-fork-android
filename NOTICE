@@ -247,6 +247,17 @@ Windows runtime
   SIL Open Font License 1.1. The subset, full license and reproducible
   subsetting script are in tools/zkpdf-testdocs/. Upstream source:
   https://github.com/notofonts/noto-cjk/tree/Sans2.004
+- zkPassport circuits Noir libraries (utils, commitment, facematch, sig-check,
+  data-check), revision 2c5673df14d496a1b0baf7a92e883ca19fbb618b, vendored
+  unmodified in native/vendor/zkpassport-circuits - Apache License 2.0. They
+  are dependencies of the project's own FaceMatch circuits in
+  native/circuits-zkpassport, which are not built into or downloaded by the
+  application yet; Nargo fetches their Noir dependencies (noir-lang poseidon,
+  sha256 and base64, zkPassport sha512, noir-bignum, noir-ecdsa, noir_bigcurve,
+  noir_rsa and noir_json_parser, noir-date, TACEO oprf-nr, sha1) when the
+  circuits are compiled.
+- Noir nargo 1.0.0 and Barretenberg bb 6.0.0 command-line tools (compiling
+  and checking those circuits) - MIT or Apache License 2.0 / Apache License 2.0
 - The JBIG2 test uses one stream from the pdf.js test suite
   (jbig2_file_header.pdf, Apache License 2.0). The synthetic fonts in
   test-servers/src/test/resources/documents/fonts were made by
