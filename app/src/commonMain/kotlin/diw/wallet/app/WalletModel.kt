@@ -1120,6 +1120,10 @@ class WalletModel(val platform: PlatformServices) {
             server.receive(u)
             return
         }
+        if (diw.wallet.core.zkpassport.ZkPassportPairingLink.looksLike(u)) {
+            taiwan.zkPassport.pair(u)
+            return
+        }
         if (BondsAgeRequest.looksLike(u)) {
             taiwan.startBondsAge(u)
             return

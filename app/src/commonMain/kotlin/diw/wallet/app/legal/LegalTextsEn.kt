@@ -539,9 +539,9 @@ internal object LegalTextsEn {
     }
 
     private val zkPassport = document(
-        "zkpassport", "zkPassport Statement", 3, "2026-11-07",
+        "zkpassport", "zkPassport Statement", 4, "2026-11-12",
         listOf(
-            "**This app offers two uses:** verifying others, where this app creates a zkPassport request, the other person answers with zero-knowledge proofs from a zkPassport compatible app, and this app verifies them on the device; and answering requests, where you open someone else's zkPassport request with this app, choose a stored e-passport, and this app makes the proofs on the device and returns them to the requester.",
+            "**This app offers two uses:** verifying others, where this app creates a zkPassport request, the other person answers with zero-knowledge proofs from a zkPassport compatible app, and this app verifies them on the device; and answering requests, where you open someone else's zkPassport request with this app, choose a stored e-passport, and this app makes the proofs on the device (or, if you choose, has your own prover make them) and returns them to the requester.",
             "Both uses connect to third parties: the zkPassport relay service, the circuit and certificate package download servers and a public node for the Ethereum registry contract (which you can replace with your own node in settings). They may see your IP address, the connection time and some metadata.",
             "When you answer a request, the requester only receives what the consent screen lists; but the domain, service name and purpose in a request are entered by the requester, and this app cannot confirm the requester's real identity.",
             "Declining means the zkPassport service is not used; NFC reading and local verification of e-passports are not affected.",
@@ -556,6 +556,8 @@ internal object LegalTextsEn {
             p("**Answering requests:** after you scan or open a zkPassport request link with this app, this app first connects to the relay service to learn the requester's origin, then shows a consent screen: the domain, service name and purpose the requester states, what the proofs would establish, and the stored e-passports you can use. " +
                 "When you agree, this app makes the proofs on the device from the chip data of that passport read earlier and kept on the device (the SOD, DG1 and, when kept, the DG2 photo hash), and sends them to the requester through the relay service; when you decline, the requester is only told that you declined. " +
                 "When the origin the relay service reports differs from the domain the request names, this app warns that the link may have been passed on by another site and sends only after you confirm again."),
+            p("**Handing off to your own prover:** when the device cannot make the proofs or you prefer not to, you can choose on the consent screen to have your own prover make them: a proving service you set up yourself and reach with a dedicated token, or a temporary prover started with `diw-server prover` on a computer in the same local network and paired with a one-time pairing code. " +
+                "This app then sends the SOD and DG1 of that passport (all the machine-readable zone data, such as name, passport number, date of birth and expiry) with the request to that prover, without the DG2 photo; the proofs come back to this app and are still sent to the requester through the relay service."),
             p("**Not offered yet:** cloud proving (modes that need zkPassport's servers to make the proofs) and FaceMatch face matching; answers also do not use salted identifiers. Requests that ask for these can only be declined. When features or data flows change materially, this statement is updated and you are asked to choose again."),
         )
         section(
@@ -572,6 +574,8 @@ internal object LegalTextsEn {
                 "**zkPassport online verification API (`verifier.zkpassport.id`, off by default, only for verifying others):** only when you enable it in settings and the local Barretenberg verification fails are the whole proofs, the request conditions and the result the other person's app returned sent to that service for its decision; " +
                 "the result is then marked as decided by that service.",
                 "**This app's server:** when verifying others, this app reads the public OPRF key information (`/info`) of the server you have set up, without sending any proof content. You set up the server yourself; it is not operated by zkPassport.",
+                "**Your own prover (used only when you choose it):** you run it yourself; it is not operated by zkPassport or the developer of this app. This project's prover program handles passport data in memory only, deletes a result once it is read and deletes unread jobs after 10 minutes; " +
+                "the temporary prover accepts local network connections only, encrypts traffic with a TLS certificate made for that run and carried in the pairing code, and clears its pairings and data when closed. Modified programs or other people's computers cannot be guaranteed to do the same, so use only your own computer. The prover itself connects to Ethereum nodes and the circuit and certificate package download servers.",
             ),
             p("The services the other person's app connects to (such as its proving or download flows) are decided by that app and are outside this statement. When you answer a request, how the requester keeps, uses or passes on the proofs is decided by the requester and is outside this statement."),
         )
@@ -592,10 +596,10 @@ internal object LegalTextsEn {
             list(
                 "**What is sent:** the requester receives the proofs and their public inputs: the disclosed fields the consent screen lists, whether each condition holds (for example that you are at least a certain age, not your date of birth), bound data, and an identifier that stays the same for the requester's domain and purpose. " +
                 "A requester with the same domain and purpose can use the identifier to recognize the same passport presented again; identifiers differ between domains.",
-                "**What is not sent:** the raw chip data, fields that are not listed and the passport photo itself are not sent; the proofs are made on this device, and making them does not send passport data to any server.",
+                "**What is not sent:** the raw chip data, fields that are not listed and the passport photo itself are not sent to the requester; when the proofs are made on this device, making them does not send passport data to any server; when you choose your own prover, the SOD and DG1 go only to the prover you chose.",
                 "**The requester's identity cannot be confirmed:** the domain, service name, purpose and logo are entered by the requester; the origin the relay service reports only shows which site the link was opened from, and does not mean that the requester's real identity or purpose has been confirmed. Answer only requests you trust.",
                 "**Unsupported passports:** the signature algorithms of some passports are not supported by zkPassport's circuits yet; this app then tells the requester that the passport is not supported and sends nothing else.",
-                "**Records:** this app keeps, in the history on the device, the requester's domain and origin, the file name of the passport used and what the proofs established, but not the proofs themselves; you can delete the history in the app.",
+                "**Records:** this app keeps, in the history on the device, the requester's domain and origin, the file name of the passport used, what the proofs established and (when your own prover is used) its address, but not the proofs themselves; you can delete the history in the app.",
                 "**Test requests:** when a request is marked as a test, the requester accepts test passports and uses the test network registry.",
             ),
         )

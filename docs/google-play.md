@@ -164,7 +164,8 @@ DIW MY WALLET 是開放原始碼的整合數位皮夾：在同一個 App 內領�
 【零知識證明】
 ・年齡證明：只證明「已滿某個年齡」，不交出生日
 ・網站查驗證明（zkTLS）與 mdoc 零知識出示
-・證明在你的裝置上產生；需要的電路參數從專案的 GitHub Release 下載並核對雜湊
+・zkPassport：以電子護照查驗他人或回應零知識證明請求
+・證明預設在你的裝置上產生，zkPassport 回應也可以交給你自己的電腦產生；需要的電路參數從專案的 GitHub Release 下載並核對雜湊
 
 【查驗】
 ・App 也可以當查驗方，以 NFC、QR Code 或藍牙查驗證件與年齡證明
@@ -203,7 +204,8 @@ Documents and signatures
 Zero-knowledge proofs
 - Prove you are over an age without revealing your birth date
 - zkTLS website proofs and mdoc zero-knowledge presentation
-- Proofs are made on your device; circuit parameters are downloaded from the project's GitHub releases and checked against their hashes
+- zkPassport: verify others or answer zero-knowledge proof requests with your e-passport
+- Proofs are made on your device by default, and zkPassport answers can also be made on your own computer; circuit parameters are downloaded from the project's GitHub releases and checked against their hashes
 
 Privacy
 - Credentials, documents and keys are stored encrypted on your device only
@@ -291,6 +293,7 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 | 相片和影片 | 相片 | mdoc 等證件的照片欄位 |
 | 財務資訊 | 其他財務資訊 | MyData 所得衍生憑證（mydata-income）出示所得年度、扣繳單位數與「所得在門檻內」；所得文件也可能作為 zkPDF 證據或衍生憑證附件送出 |
 | 檔案和文件 | 檔案和文件 | 文件衍生憑證與 zkPDF 證據可能附上文件的簽署版本；OpenCerts 證書選擇「以發證機構樣式顯示」時，整份證書送到證書指定的發證機構顯示程式（`OpenCertRenderer`） |
+| 個人資訊 | 姓名、使用者 ID、其他資訊（zkPassport） | 回應 zkPassport 請求時，請求方收到同意畫面列出的揭露欄位與條件結果；使用者選擇自己的證明器（自架服務端或內網的臨時證明器）時，護照的 SOD 與 DG1（姓名、護照號碼、出生日期、國籍、效期等機讀區資料，不含照片）送到該證明器，送出前有強提示確認 |
 | 裝置或其他 ID | 裝置或其他 ID | 領卡時送出持有者公鑰、DID 與 Android 金鑰證明；TWDIW 與 Verified ID 卡片共用持有者金鑰，持有者 DID 是跨查驗方固定的識別碼 |
 
 不申報的類別與原因：
@@ -299,13 +302,13 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 - 健康：目前只出示「當天是否有勞保」，不是健康資料；以後加入健保或就醫文件的衍生憑證時要改成申報。
 - 財務資訊的其他類型（付款資訊、信用評分等）、訊息、通訊錄、日曆、App 活動、網頁瀏覽記錄、App 資訊與效能：沒有傳出裝置。
 - 背景的狀態與信任查詢：只送出清單請求與 IP，不含上表的資料類型。
-- zkPassport：尚未上線，不產生任何連線。
+- zkPassport 的傳送服務、電路與憑證包下載、以太坊節點：只送出加密的請求與證明、下載清單與查詢，不含上表以外的資料類型；護照資料只在上表兩種情況送出。
 - 相機畫面、生物辨識、自然人憑證卡讀出的資料：只在裝置上處理；簽章傳給使用者選擇的服務時，傳的是簽章值與文件雜湊，不是檔案。
 - 時戳、OCSP、CRL：傳的是文件雜湊與憑證序號，不屬於上表的使用者資料類型。
 - OpenCerts 線上查驗：以 DNS over HTTPS 查發證機構網域、向公開區塊鏈節點查文件庫的 Merkle root，不含證書欄位。
 - 取件入口（MyData（數位發展部）、移民署等網站）：在 App 內 WebView 瀏覽政府網站，屬於 Play 豁免的「在網頁檢視中瀏覽開放網路」；下載的檔案只存在裝置上。
 
-以後若加入當機回報、分析、正式服務端的預設網址，或把文件傳到伺服器產生證明（例如 zkPDF 證明器），要更新這一節。
+以後若加入當機回報、分析、正式服務端的預設網址，或把其他文件傳到伺服器產生證明（例如 zkPDF 證明器），要更新這一節。
 
 ### 6.7 其他聲明
 

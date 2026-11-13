@@ -201,6 +201,8 @@ Z3 進度（2026-11-07，core 與 App 流程完成，依聲明 v3 正式開放�
 - App（`ZkPassportFlow.answer`）：`WalletModel.handleUri` 辨識請求連結（掃描或開啟），需要 zkPassport 聲明（v3 涵蓋回應請求，2026-11-07 使用者決定直接正式開放，不限測試環境）。先以 `ZkPassportHolder.connect` 開 bridge 取得 origin，同意畫面（`OfflineUi.ZkPassportAnswerConsent`）列出請求自述的網域、服務與用途（標示未經驗證）、`asks` 整理的每項要求與已保存的電子護照；origin 不符時以 `RiskConfirmDialog` 再確認。同意後以該護照 `MrtdDump` 的 SOD、DG1、DG2 證明並送出，拒絕送 `reject`；兩者都記入紀錄（不保存證明）。FaceMatch 與 fast 以外的模式只能拒絕；回應時不使用 OPRF（未加鹽識別碼）。e2e 測試 `zkPassportAnswerFlow`。
 - 專門聲明 v3（中英文，`LegalTexts.kt`／`LegalTextsEn.kt` version 3）涵蓋回應請求與本 App 服務端的 OPRF；已同意 v2 的使用者下次開啟 App 會被要求重新確認。
 - 名字的揭露規則（2026-11-12）：zkPassport 的 `firstname` 只含機讀區名字欄的第一段（遮罩範圍與 SDK 的 DisclosedData 都到第一個填充字元為止），連字號或空格分隔的名字只送出第一段。這是上游規則，錢包改不了，已回報為 zkpassport-packages issue #421（https://github.com/zkpassport/zkpassport-packages/issues/421）。同意畫面以 `ZkPassport.disclosedPreview` 依相同規則預覽所選護照將送出的值，名字會被截掉時另外提示；需要完整名字的查驗方應請求 `fullname`。
+- 交給自己的證明器（2026-11-12，聲明 v4）：同意畫面可選「在這台裝置」「自架證明器」（設定的 `zkProverUrl`／`zkProverToken`）或「臨時證明器」（`diw-server prover` 印出的一次性 QR，`diw-prover://v1?u=&p=&c=`，只接受內網位址，釘選連結內的 TLS 憑證 SHA-256）。core 的 `ZkPassportProverTarget`（Device、Host、Paired）與 `ZkPassportRemote`（工作 POST／輪詢 GET／取消 DELETE，只送 SOD 與 DG1，不送 DG2）；配對協定與服務端見 diw-wallet-server 的 DESIGN 3.9、3.10。設定頁「zkPassport 證明器」顯示自架與配對狀態，可掃描配對碼或結束配對；紀錄附記證明器位址。互通測試在服務端 `ZkPassportClientInteropTest`（以真實錢包用戶端對 TLS 前端配對與權杖模式）。
+- 專門聲明 v4（中英文 version 4，2026-11-12）加入「交給自己的證明器」與其資料流；已同意 v3 的使用者會被要求重新確認。
 
 手機端證明（2026-11-06 完成基礎，Z3、Z4-4、5.5 共用）：
 

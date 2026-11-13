@@ -76,6 +76,13 @@
                 <data android:scheme="zkpassport" />
             </intent-filter>
             <intent-filter>
+                <!-- One-time pairing codes of a temporary zkPassport prover (diw-prover://v1?...). -->
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="diw-prover" />
+            </intent-filter>
+            <intent-filter>
                 <!-- Shared production server settings (diw-server://v1?c=...). -->
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

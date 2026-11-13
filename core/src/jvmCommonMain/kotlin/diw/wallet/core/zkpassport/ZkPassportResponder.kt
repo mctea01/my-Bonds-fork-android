@@ -283,6 +283,8 @@ class JvmZkPassportHolder(
     private val http: HttpClient,
     private val prover: ZkPassportProver,
     private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
+    /** The socket factory of the local network that reaches a paired prover (Android); null for the default route. */
+    private val network: (String) -> javax.net.SocketFactory? = { null },
 ) : ZkPassportHolder {
     override suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer {
         val responder = ZkPassportResponder(http, incoming, bridgeUrl)
@@ -295,6 +297,12 @@ class JvmZkPassportHolder(
         return Answer(responder, incoming, origin, rpc)
     }
 
+    override suspend fun pair(link: String): ZkPassportPairedProver = try {
+        ZkPassportPairedClient.pair(link, network)
+    } catch (e: ZkPassportProver.Failure) {
+        throw ZkPassportAnswerFailure(e.code)
+    }
+
     private inner class Answer(
         private val responder: ZkPassportResponder,
         private val incoming: ZkPassportIncoming,
@@ -305,20 +313,30 @@ class JvmZkPassportHolder(
 
         override suspend fun reject() = bridged { responder.reject() }
 
-        override suspend fun answer(chip: ZkPassportChip, progress: (ZkPassportAnswerProgress) -> Unit) {
+        override suspend fun answer(chip: ZkPassportChip, target: ZkPassportProverTarget, progress: (ZkPassportAnswerProgress) -> Unit) {
             bridged { responder.accept() }
             val job = ZkPassportProver.Job(
                 query = incoming.query, domain = incoming.domain, scope = incoming.scope, devMode = incoming.devMode, rpc = rpc,
             )
+            val step: (ZkPassportProver.Progress) -> Unit = { p ->
+                progress(
+                    when (p) {
+                        ZkPassportProver.Progress.Registry -> ZkPassportAnswerProgress.Registry
+                        is ZkPassportProver.Progress.Circuits -> ZkPassportAnswerProgress.Circuits(p.count)
+                        is ZkPassportProver.Progress.Proving -> ZkPassportAnswerProgress.Proving(p.index, p.total, p.name)
+                    },
+                )
+            }
             val proved = try {
-                prover.prove(ZkPassportProver.Chip(chip.sod, chip.dg1, chip.dg2), job) { p ->
-                    progress(
-                        when (p) {
-                            ZkPassportProver.Progress.Registry -> ZkPassportAnswerProgress.Registry
-                            is ZkPassportProver.Progress.Circuits -> ZkPassportAnswerProgress.Circuits(p.count)
-                            is ZkPassportProver.Progress.Proving -> ZkPassportAnswerProgress.Proving(p.index, p.total, p.name)
-                        },
-                    )
+                when (target) {
+                    ZkPassportProverTarget.Device -> prover.prove(ZkPassportProver.Chip(chip.sod, chip.dg1, chip.dg2), job, progress = step)
+                    // DG2 never leaves this device; the prover reads the registries from its own node.
+                    is ZkPassportProverTarget.Host ->
+                        ZkPassportRemote.prove(ZkPassportRemote.Host(http, target.url, target.token), ZkPassportProver.Chip(chip.sod, chip.dg1, null), job, step)
+                    is ZkPassportProverTarget.Paired -> {
+                        val client = target.prover as? ZkPassportPairedClient ?: throw ZkPassportProver.Failure("pairing_lost")
+                        ZkPassportRemote.prove(client, ZkPassportProver.Chip(chip.sod, chip.dg1, null), job, step)
+                    }
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

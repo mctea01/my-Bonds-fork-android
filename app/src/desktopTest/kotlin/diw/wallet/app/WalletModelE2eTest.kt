@@ -2718,7 +2718,7 @@ class WalletModelE2eTest {
                 override val origin = from
                 override val originMatches = from == incoming.expectedOrigin
                 override suspend fun reject() { rejected++ }
-                override suspend fun answer(chip: diw.wallet.core.zkpassport.ZkPassportChip, progress: (diw.wallet.core.zkpassport.ZkPassportAnswerProgress) -> Unit) {
+                override suspend fun answer(chip: diw.wallet.core.zkpassport.ZkPassportChip, target: diw.wallet.core.zkpassport.ZkPassportProverTarget, progress: (diw.wallet.core.zkpassport.ZkPassportAnswerProgress) -> Unit) {
                     progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Proving(0, 2, "disclose_bytes"))
                     chips.add(chip)
                     progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Sending)

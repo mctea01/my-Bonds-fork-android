@@ -124,15 +124,46 @@ interface ZkPassportAnswer {
     /** Whether [origin] is the https origin of the link's domain; otherwise the link may be relayed (5.3). */
     val originMatches: Boolean
     suspend fun reject()
-    /** Accepts, proves [chip] against the request on this device and sends the proofs; throws [ZkPassportAnswerFailure]. */
-    suspend fun answer(chip: ZkPassportChip, progress: (ZkPassportAnswerProgress) -> Unit)
+    /**
+     * Accepts, proves [chip] against the request where [target] says and sends the proofs from this device; throws
+     * [ZkPassportAnswerFailure].
+     */
+    suspend fun answer(chip: ZkPassportChip, target: ZkPassportProverTarget, progress: (ZkPassportAnswerProgress) -> Unit)
     fun close()
 }
 
-/** Answers zkPassport requests with proofs made on this device. */
+/**
+ * Where an answer is proved. Off this device the prover sees the SOD and DG1 (never DG2) and the request; the
+ * proofs still go to the requester from this device (diw-wallet-server DESIGN 3.9 and 3.10).
+ */
+sealed interface ZkPassportProverTarget {
+    data object Device : ZkPassportProverTarget
+    /** The owner's self-hosted prover with its access token. */
+    data class Host(val url: String, val token: String) : ZkPassportProverTarget
+    /** A temporary prover paired by its one-time QR code. */
+    data class Paired(val prover: ZkPassportPairedProver) : ZkPassportProverTarget
+}
+
+/** A session with a temporary prover (diw-server prover), kept in memory only. */
+interface ZkPassportPairedProver {
+    /** The prover's address, for the consent screen. */
+    val url: String
+    /** Ends the session on the prover; failures are ignored. */
+    suspend fun end()
+}
+
+/** Answers zkPassport requests with proofs made on this device or on the owner's prover. */
 interface ZkPassportHolder {
     /** Opens the bridge for [incoming]; [rpc] is the Ethereum node for the registries, null for the built-in one. */
     suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer
+    /** Pairs with a temporary prover from its one-time code (`diw-prover://v1?...`); throws [ZkPassportAnswerFailure]. */
+    suspend fun pair(link: String): ZkPassportPairedProver = throw ZkPassportAnswerFailure("pairing_unsupported")
+}
+
+/** The one-time pairing code of a temporary prover. */
+object ZkPassportPairingLink {
+    const val PREFIX = "diw-prover://v1?"
+    fun looksLike(text: String): Boolean = text.trim().startsWith(PREFIX)
 }
 
 /** Where the registries are read; null RPC addresses use the built-in public nodes. */
