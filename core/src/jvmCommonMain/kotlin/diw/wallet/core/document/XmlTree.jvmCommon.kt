@@ -31,6 +31,6 @@ actual object XmlTree {
             }
             c = c.nextSibling
         }
-        return XmlElement(e.localName ?: e.nodeName, attrs, children, text.toString().trim())
+        return XmlElement(e.localName ?: e.nodeName, attrs, children, text.toString().trim(), text.toString())
     }
 }

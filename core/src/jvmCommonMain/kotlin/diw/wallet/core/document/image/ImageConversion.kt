@@ -7,7 +7,8 @@ import java.util.zip.Deflater
 import java.util.zip.DeflaterOutputStream
 
 /**
- * Images the platform decoder may not read, turned into PNG: every page of a TIFF (Android has no TIFF decoder).
+ * Images the platform decoder may not read, turned into PNG: every page of a TIFF (Android has no TIFF decoder) and
+ * JBIG2 images (no platform decodes them).
  * Large pages are scaled down to [maxWidth] so a 300 dpi scan stays light to show.
  */
 object ImageConversion {
@@ -20,6 +21,10 @@ object ImageConversion {
 
     /** PNG of the first page or picture of [b] when the platform decoder needs help, else null. */
     fun toPng(b: ByteArray, maxWidth: Int = 2048): ByteArray? = tiffPages(b, 1, maxWidth).firstOrNull()
+
+    /** PNG of the first page of a JBIG2 image (file or embedded stream, with optional [globals]); null when it cannot be read. */
+    fun jbig2(b: ByteArray, maxWidth: Int = 1600, globals: ByteArray? = null): ByteArray? =
+        runCatching { png(scaled(Jbig2.decode(b, globals).toRaster(), maxWidth)) }.getOrNull()
 
     /** [img] scaled down by a whole factor (box filter) so it is at most [maxWidth] wide. */
     fun scaled(img: RasterImage, maxWidth: Int): RasterImage {

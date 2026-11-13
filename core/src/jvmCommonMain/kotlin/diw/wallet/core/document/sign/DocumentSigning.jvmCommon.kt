@@ -146,7 +146,13 @@ actual object DocumentSigning {
         if (!ok) throw SigningException(ct("core_sign_key_mismatch"))
     }
 
+    /** SM2 keys sign OFD digital signatures only; the other formats name SHA-256 with RSA or ECDSA. */
+    private fun notSm2(signer: DocumentSigner) {
+        if (signer.keyType == SignerKeyType.SM2) throw SigningException(ct("core_sm2_key_only_ofd"))
+    }
+
     actual suspend fun signPdf(pdf: ByteArray, signer: DocumentSigner, options: PdfSignOptions, timestamper: Timestamper?): ByteArray {
+        notSm2(signer)
         val prepared = PdfIncrementalSigner.prepare(pdf, options)
         val cms = cms(prepared.signedData(), signer, encapsulate = false, pades = options.subFilter == "ETSI.CAdES.detached", timestamper = timestamper)
         var out = prepared.finish(cms)
@@ -211,7 +217,7 @@ actual object DocumentSigning {
     }.getOrDefault(emptyList())
 
     actual suspend fun signCades(content: ByteArray, signer: DocumentSigner, detached: Boolean, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray =
-        cms(content, signer, encapsulate = !detached, pades = false, timestamper = timestamper, validation = validation, archive = archive)
+        run { notSm2(signer); cms(content, signer, encapsulate = !detached, pades = false, timestamper = timestamper, validation = validation, archive = archive) }
 
     actual suspend fun collectValidation(chain: List<ByteArray>, fetch: HttpFetch, known: List<ByteArray>): ValidationData =
         ValidationCollector.collect(chain, fetch, known)
@@ -241,6 +247,7 @@ actual object DocumentSigning {
 
     actual suspend fun buildAsic(files: List<Pair<String, ByteArray>>, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray {
         require(files.isNotEmpty())
+        notSm2(signer)
         val names = files.map { it.first }
         if (names.toSet().size != names.size || names.any { it.startsWith("META-INF/") || it == "mimetype" || it.contains("..") }) {
             throw SigningException(ct("core_asic_bad_name"))
@@ -258,6 +265,7 @@ actual object DocumentSigning {
 
     actual suspend fun signXml(xml: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, validation: HttpFetch?, archive: Boolean): ByteArray {
         if (archive && (timestamper == null || validation == null)) throw SigningException(ct("core_lta_needs_tsa_revocation"))
+        notSm2(signer)
         return XmlDsig.signEnveloped(
             xml, signer, Clock.System.now(), timestamper?.let { t -> { data: ByteArray -> t.timestamp(data) } },
             validation?.let { f -> { token: ByteArray? -> collectValidation(signer.certificateChain, f).plus(token?.let { timestampValidation(it, f) } ?: ValidationData()) } },
@@ -265,12 +273,42 @@ actual object DocumentSigning {
         )
     }
 
-    actual suspend fun signApproval(approval: ByteArray?, files: List<Pair<String, ByteArray>>, signer: DocumentSigner, point: ApprovalPoint): ByteArray =
-        ApprovalSignatures.sign(approval, files, signer, point)
+    actual suspend fun signApproval(approval: ByteArray?, files: List<Pair<String, ByteArray>>, signer: DocumentSigner, point: ApprovalPoint): ByteArray {
+        notSm2(signer)
+        return ApprovalSignatures.sign(approval, files, signer, point)
+    }
 
     actual fun unzip(bytes: ByteArray): Map<String, ByteArray> = Zip.read(bytes)
 
     actual fun zip(files: List<Pair<String, ByteArray>>): ByteArray = Zip.write(files)
+
+    actual suspend fun signOfd(ofd: ByteArray, signer: DocumentSigner, timestamper: Timestamper?, seal: OfdSealOptions?): ByteArray =
+        OfdSigning.sign(ofd, signer, timestamper, seal = seal)
+
+    actual fun ofdSealInfo(eseal: ByteArray): OfdSealInfo? = OfdSeals.info(eseal)
+
+    actual fun sm2Pkcs12(subjectName: String, password: String, validDays: Int): ByteArray {
+        val gen = java.security.KeyPairGenerator.getInstance("EC", Bc.provider)
+        gen.initialize(java.security.spec.ECGenParameterSpec("sm2p256v1"), java.security.SecureRandom())
+        val pair = gen.generateKeyPair()
+        val name = X500Name("CN=" + subjectName.replace(",", " ").replace("=", " ") + ",O=DIW MY WALLET self-issued SM2")
+        val now = System.currentTimeMillis()
+        val spki = SubjectPublicKeyInfo.getInstance(pair.public.encoded)
+        val keyIds = org.bouncycastle.cert.bc.BcX509ExtensionUtils()
+        val builder = org.bouncycastle.cert.X509v3CertificateBuilder(
+            name, BigInteger(1, DocCrypto.randomBytes(16)), java.util.Date(now - 60_000), java.util.Date(now + validDays * 86_400_000L), name, spki,
+        )
+            .addExtension(Extension.basicConstraints, true, BasicConstraints(false))
+            .addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
+            .addExtension(Extension.subjectKeyIdentifier, false, keyIds.createSubjectKeyIdentifier(spki))
+            .addExtension(Extension.authorityKeyIdentifier, false, keyIds.createAuthorityKeyIdentifier(spki))
+        val signer = org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SM3withSM2").setProvider(Bc.provider).build(pair.private)
+        val cert = org.bouncycastle.cert.jcajce.JcaX509CertificateConverter().setProvider(Bc.provider).getCertificate(builder.build(signer))
+        val ks = KeyStore.getInstance("PKCS12", Bc.provider)
+        ks.load(null, null)
+        ks.setKeyEntry("sm2", pair.private, password.toCharArray(), arrayOf(cert))
+        return java.io.ByteArrayOutputStream().also { ks.store(it, password.toCharArray()) }.toByteArray()
+    }
 
     actual fun pkcs12Signer(p12: ByteArray, password: String): DocumentSigner {
         val ks = try {
@@ -283,7 +321,7 @@ actual object DocumentSigning {
         val chain = ks.getCertificateChain(alias)?.map { (it as X509Certificate).encoded } ?: throw SigningException(ct("core_p12_no_cert"))
         val type = when (key.algorithm) {
             "RSA" -> SignerKeyType.RSA
-            "EC", "ECDSA" -> SignerKeyType.EC_P256
+            "EC", "ECDSA", "SM2" -> if (OfdSigning.isSm2Key(ks.getCertificate(alias).publicKey.encoded)) SignerKeyType.SM2 else SignerKeyType.EC_P256
             else -> throw SigningException(ct("core_key_type_unsupported", key.algorithm))
         }
         return object : DocumentSigner {
@@ -291,7 +329,7 @@ actual object DocumentSigning {
             override val keyType = type
             override val source = SignerSource.PKCS12
             override suspend fun sign(data: ByteArray): ByteArray {
-                val s = Signature.getInstance(if (type == SignerKeyType.RSA) "SHA256withRSA" else "SHA256withECDSA", Bc.provider)
+                val s = Signature.getInstance(when (type) { SignerKeyType.RSA -> "SHA256withRSA"; SignerKeyType.SM2 -> "SM3withSM2"; else -> "SHA256withECDSA" }, Bc.provider)
                 s.initSign(key)
                 s.update(data)
                 return s.sign()

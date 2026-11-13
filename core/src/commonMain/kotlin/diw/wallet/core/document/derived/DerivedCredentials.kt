@@ -82,7 +82,8 @@ object DerivedCredentials {
 
     /**
      * [suggestedClaims] with a note for the holder. A household record is read per person and only the holder's
-     * own block (picked by [holders]) gives personal claims.
+     * own block (picked by [holders]) gives personal claims. [structured] is a document already read as a structure
+     * from more than its text (an OFD invoice with its custom tags); it is used instead of reading the text.
      */
     fun suggested(
         report: DocumentReport,
@@ -91,6 +92,7 @@ object DerivedCredentials {
         text: String? = null,
         xml: String? = null,
         holders: List<HolderHint> = emptyList(),
+        structured: ParsedCertificate? = null,
     ): DocumentFields.ContentFields {
         val base = baseClaims(report, fileName, source, text)
         var notice: String? = null
@@ -100,7 +102,8 @@ object DerivedCredentials {
                 addAll(DocumentFields.fromOfficialLetter(it))
                 OfficialDocuments.parse(it.encodeToByteArray())?.let { doc -> addAll(DocumentFields.fromOfficial(doc)) }
             }
-            text?.let { t ->
+            if (structured != null) addAll(structured.claims())
+            else text?.let { t ->
                 val household = DocumentFields.fromHousehold(t, holders)
                 if (household != null) {
                     notice = household.notice

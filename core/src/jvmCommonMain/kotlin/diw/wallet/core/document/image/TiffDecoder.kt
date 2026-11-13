@@ -390,8 +390,13 @@ internal class Ccitt(
             fill(out, y * rowBytes, changes)
             ref = changes + intArrayOf(width, width)
         }
+        // Group 4 data may end with EOFB (two EOLs); it belongs to this block.
+        if (compression == 4 && peek(24) == 0x001001) pos += 24
         return out
     }
+
+    /** Bytes of [data] read by [decode], counting a partly read last byte. */
+    fun bytesUsed(): Int = ((minOf(pos, total) + 7) / 8).toInt()
 
     private fun alignByte() { if (pos % 8 != 0L) pos += 8 - pos % 8 }
 

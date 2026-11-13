@@ -150,3 +150,11 @@ SIL Open Font License 1.1. The subset, full license and reproducible subsetting
 script are in tools/zkpdf-testdocs/. Upstream source:
 https://github.com/notofonts/noto-cjk/tree/Sans2.004
 These font assets are used by test fixtures, not bundled into the application.
+
+The JBIG2 decoder (core/.../document/image/Jbig2.kt) was written following
+ITU-T T.88 and the structure of the JBIG2 decoder in pdf.js (Mozilla
+Foundation, Apache License 2.0, https://github.com/mozilla/pdf.js). Its test
+uses one stream from the pdf.js test suite (jbig2_file_header.pdf, Apache
+License 2.0). The synthetic fonts in
+test-servers/src/test/resources/documents/fonts were made by
+tools/test-fonts/make_test_fonts.py and contain no third-party glyphs.
