@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-13（main 到 PR #130）。
+最後更新：2026-11-13（main 到 PR #131，加上 OFD 寫錯名稱的還原）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -39,6 +39,7 @@ P4 之後合併的工作：
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成；人臉比對不提供 | [zkpassport.md](design/zkpassport.md) |
 | 原生依賴跨平台：Windows zkPDF（無 GPL 執行階段）、Linux ARM64、Android 32 位元（PR #121） | 完成 | [native-dependencies](research/native-dependencies/README.md) |
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
+| OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
@@ -77,7 +78,7 @@ P4 之後合併的工作：
 | 檢查：PAdES、CAdES、XAdES、ASiC、.si、OFD 與 SES、RFC 3161、OpenCerts、SM2、OpenPGP、C2PA | 可用 | C2PA 不含 BMFF（影片、HEIC）、PDF 內嵌與 `c2pa.hash.boxes` |
 | 簽署：自然人憑證卡、PIV、OpenPGP 卡、PKCS#11、PKCS#12、系統金鑰、錢包金鑰、CSC、行動自然人憑證 | 可用 | CSC 的 `authorization_details`（RFC 9396）未做 |
 | 保證層級 B-B 到 B-LTA、PDF 認證簽章、可見簽章、延長保存 | 可用 | |
-| OFD 預覽、發票欄位、數位簽章與電子印章 | 可用 | SM2 金鑰只用於 OFD |
+| OFD 預覽、發票欄位、數位簽章與電子印章 | 可用 | SM2 金鑰只用於 OFD；名稱寫錯的頁面與資源檔會還原並加註，頁面清單以外的結構檔（Document.xml 等）寫錯則不處理 |
 | 電子公文容器、線上簽核點、交換檔（.en、.esw）讀取 | 可用 | .esw 不解密；交換檔尚無真實樣本比對 |
 | 公文交換收發 | 停用列 | 需要機關的公文電子交換帳號與憑證 |
 | 衍生憑證（SD-JWT VC、vc+moica）、Bonds 身分證卡 | 可用 | |

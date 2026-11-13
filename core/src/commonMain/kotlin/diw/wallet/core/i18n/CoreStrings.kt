@@ -448,6 +448,7 @@ object CoreStrings {
         "core_ofd_no_signer" to "數位簽章沒有簽署者",
         "core_ofd_pkcs7_sign" to "數位簽章使用 PKCS#7 簽章資料（非國密），部分中國大陸閱讀器可能不承認",
         "core_ofd_protected_missing" to "受保護的檔案 %1\$s 不存在",
+        "core_ofd_repaired" to "檔案的頁面內容有寫錯的元素或屬性名稱，目前顯示的是依數值還原的結果，請與開立方的版本核對",
         "core_ofd_seal" to "電子印章",
         "core_ofd_seal_bad" to "電子印章檔無法讀取（不是 GB/T 38540 或 GM/T 0031 的 SESeal）",
         "core_ofd_seal_cert_expired" to "簽章憑證已過期，無法製作電子印章",

@@ -117,11 +117,11 @@ class OfdGraphicsTest {
                 "<ofd:Point X=\"0\" Y=\"20\" EdgeFlag=\"0\"><ofd:Color Value=\"0 0 255\"/></ofd:Point>" +
                 "<ofd:Point X=\"20\" Y=\"20\" EdgeFlag=\"1\"><ofd:Color Value=\"0 0 0\"/></ofd:Point>" +
                 "<ofd:BackColor Value=\"255 255 255\"/></ofd:GouraudShd></ofd:FillColor>$square</ofd:PathObject>" +
-                // A lattice of two rows of two points.
-                "<ofd:PathObject ID=\"13\" Boundary=\"60 40 20 20\" Fill=\"true\" Stroke=\"false\"><ofd:FillColor><ofd:LaGouraudShd VerticesPerRow=\"2\">" +
+                // A lattice of two rows of two points, under the name the schema of the standard gives it.
+                "<ofd:PathObject ID=\"13\" Boundary=\"60 40 20 20\" Fill=\"true\" Stroke=\"false\"><ofd:FillColor><ofd:LaGourandShd VerticesPerRow=\"2\">" +
                 "<ofd:Point X=\"0\" Y=\"0\"><ofd:Color Value=\"255 0 0\"/></ofd:Point><ofd:Point X=\"20\" Y=\"0\"><ofd:Color Value=\"0 255 0\"/></ofd:Point>" +
                 "<ofd:Point X=\"0\" Y=\"20\"><ofd:Color Value=\"0 0 255\"/></ofd:Point><ofd:Point X=\"20\" Y=\"20\"><ofd:Color Value=\"0 0 0\"/></ofd:Point>" +
-                "</ofd:LaGouraudShd></ofd:FillColor>$square</ofd:PathObject>" +
+                "</ofd:LaGourandShd></ofd:FillColor>$square</ofd:PathObject>" +
                 // A pattern of small squares, mirrored every other column.
                 "<ofd:PathObject ID=\"14\" Boundary=\"0 70 30 30\" Fill=\"true\" Stroke=\"false\"><ofd:FillColor>" +
                 "<ofd:Pattern Width=\"5\" Height=\"5\" XStep=\"6\" YStep=\"6\" ReflectMethod=\"Column\"><ofd:CellContent>" +
