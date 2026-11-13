@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The desktop app as a GraalVM native executable (experimental; the JVM packages stay the release). Linux x86_64 and
 # Windows x86_64; macOS on Apple silicon is attempted. Steps:
-#   1. the release uber jar, without Bouncy Castle's signature files and with its META-INF/versions/ entries moved
-#      to the root (native-image does not read them from the class path, and sqlite-jdbc's feature lives there);
+#   1. the uber jar without ProGuard (native-image keeps only what is reachable itself; ProGuard dropped sqlite-jdbc's
+#      native-image feature), without Bouncy Castle's signature files and with the newest META-INF/versions/ entry
+#      up to 25 moved to the root (native-image does not read them from the class path);
 #   2. GraalVM's tracing agent records reflection, JNI, proxies and resources into one directory from the desktop tests
 #      (AGENT_TESTS=0 skips them), the self-check (--self-check) and the app itself for AGENT_SECONDS (under Xvfb on
 #      Linux); tools/native-metadata-filter.py then drops what only the tests use;
@@ -37,10 +38,10 @@ native_path() { if [ "$os" = windows ]; then cygpath -w "$PWD/$1"; else echo "$P
 # On Linux the window needs a display; elsewhere the runner's own desktop session is used.
 with_display() { if [ "$os" = linux ]; then xvfb-run -a -s "-screen 0 1280x900x24" "$@"; else "$@"; fi; }
 
-echo "== release uber jar"
-./gradlew --no-daemon -q :app:packageReleaseUberJarForCurrentOS
-jar=$(ls -t app/build/compose/jars/*-release.jar 2>/dev/null | head -1 || true)
-[ -n "$jar" ] || { echo "No release uber jar" >&2; exit 1; }
+echo "== uber jar"
+./gradlew --no-daemon -q :app:packageUberJarForCurrentOS
+jar=$(ls -t app/build/compose/jars/*.jar 2>/dev/null | grep -v -- '-release\.jar$' | head -1 || true)
+[ -n "$jar" ] || { echo "No uber jar" >&2; exit 1; }
 "$python" -I - "$jar" "$work/app.jar" <<'PY'
 import re, sys, zipfile
 signature = re.compile(r"META-INF/[^/]+\.(SF|RSA|DSA|EC)$", re.I)
@@ -54,12 +55,14 @@ with zipfile.ZipFile(sys.argv[1]) as source, zipfile.ZipFile(sys.argv[2], "w", z
         if m and int(m[1]) <= 25 and not m[2].endswith("/") and m[2] != "module-info.class":
             if m[2] not in best or int(m[1]) > best[m[2]][0]:
                 best[m[2]] = (int(m[1]), info)
+    # Read before writing: writestr() moves a ZipInfo's offset to the target file.
+    promoted = {name: (info.date_time, source.read(info)) for name, (_, info) in best.items()}
     for info in entries:
-        if info.filename not in best:
+        if info.filename not in promoted:
             target.writestr(info, source.read(info))
-    for name, (_, info) in best.items():
-        target.writestr(zipfile.ZipInfo(name, info.date_time), source.read(info), zipfile.ZIP_DEFLATED)
-    print(f"app.jar: {len(best)} versioned entries flattened")
+    for name, (date_time, data) in promoted.items():
+        target.writestr(zipfile.ZipInfo(name, date_time), data, zipfile.ZIP_DEFLATED)
+    print(f"app.jar: {len(promoted)} versioned entries flattened")
 PY
 
 echo "== tracing agent"
