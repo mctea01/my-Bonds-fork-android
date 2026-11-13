@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.File
 import java.security.Security
+import kotlin.system.exitProcess
 
 private fun dataDir(): File {
     val override = System.getenv("DIW_WALLET_HOME")
@@ -58,7 +60,41 @@ private fun appIcon(): BitmapPainter? =
         ?.use { decodeImageBytes(it.readBytes()) }
         ?.let { BitmapPainter(it) }
 
+/** Set once the first screen has been composed; the timed exit of DIW_EXIT_AFTER_SECONDS reports it. */
+@Volatile private var composed = false
+@Volatile private var uncaught: Throwable? = null
+
+/**
+ * DIW_EXIT_AFTER_SECONDS (tests and the native build only): ends the app after that many seconds, through a normal
+ * exit so the tracing agent writes what it recorded. Exit code 0 when the first screen was composed and nothing was
+ * thrown, 1 after an uncaught exception, 2 when nothing was composed.
+ */
+private fun exitAfter(seconds: Long) {
+    Thread.setDefaultUncaughtExceptionHandler { _, e -> uncaught = e; e.printStackTrace() }
+    Thread({
+        Thread.sleep(seconds * 1000)
+        val problem = uncaught
+        println("timed exit: composed=$composed uncaught=${problem?.let { it::class.java.name + ": " + it.message }}")
+        exitProcess(if (problem != null) 1 else if (!composed) 2 else 0)
+    }, "timed-exit").apply { isDaemon = true; start() }
+}
+
+/**
+ * A native executable has no Java home of its own. Skiko loads the JAWT library from java.home (lib/ on Linux, bin/
+ * on Windows), and tools/desktop-native.sh puts it next to the executable.
+ */
+private fun nativeJavaHome() {
+    if (!SelfCheck.nativeImage) return
+    val current = System.getProperty("java.home")
+    if (!current.isNullOrEmpty() && File(current).isDirectory) return
+    val exe = ProcessHandle.current().info().command().orElse(null)?.let(::File) ?: return
+    exe.absoluteFile.parentFile?.let { System.setProperty("java.home", it.path) }
+}
+
 fun main(args: Array<String>) {
+    nativeJavaHome()
+    if (args.firstOrNull() == "--self-check") exitProcess(SelfCheck.run(args.getOrNull(1)?.let(::File)))
+    System.getenv("DIW_EXIT_AFTER_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }?.let(::exitAfter)
     Security.addProvider(BouncyCastleProvider())
     val dir = dataDir()
     val startUri = args.firstOrNull()
@@ -106,6 +142,7 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val valid = pin.length >= 6 && (!firstRun || pin == confirm)
+    LaunchedEffect(Unit) { composed = true }
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {

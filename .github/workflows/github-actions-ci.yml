@@ -680,6 +680,65 @@ jobs:
           path: dist/*
           retention-days: 14
 
+  # Experimental: the desktop app as a GraalVM Community 25 native executable (tools/desktop-native.sh: tracing agent
+  # over the desktop tests, the self-check and the window; native-image; then the executable's own self-check and a
+  # timed start of its window). A failure never blocks the JVM packages or the nightly release; the executables are
+  # kept as artifacts only. Not macOS: GraalVM's AWT support there cannot load libawt (see tools/desktop-native.sh).
+  desktop-native:
+    needs: [native-linux, native-windows]
+    if: ${{ !cancelled() }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux
+            features: openac,tlsn,zkpdf
+          - os: windows-latest
+            name: windows
+            features: openac,tlsn,zkpdf
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      DIW_ZK_FEATURES: ${{ matrix.features }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      # Gradle runs on Java 21 as in the other jobs; the tracing agent and native-image come from GRAALVM_HOME.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: graalvm/setup-graalvm@f70bc8032f90a104502824a54bcb94b6f01715bc # v1.6.8
+        with:
+          java-version: "25"
+          distribution: graalvm-community
+          set-java-home: false
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: ZK native library
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zk-native-${{ matrix.name }}
+          path: native/dist/resources
+      - name: Install Xvfb
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q xvfb
+      - name: Native executable (${{ matrix.name }})
+        run: bash tools/desktop-native.sh
+      - name: Upload ${{ matrix.name }} native executable
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: desktop-native-${{ matrix.name }}
+          path: build/desktop-native/${{ matrix.name }}
+          retention-days: 14
+
   # Every push to main replaces the "nightly" pre-release; release files are downloaded as-is, not zipped.
   # Published only when the tests passed too; drop "test" from needs to publish regardless.
   release:
