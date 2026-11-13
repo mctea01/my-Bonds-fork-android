@@ -1,6 +1,7 @@
 package diw.testservers
 
 import diw.wallet.core.document.XmlTree
+import diw.wallet.core.document.ofd.OfdColor
 import diw.wallet.core.document.ofd.OfdObject
 import diw.wallet.core.document.ofd.OfdPackage
 import diw.wallet.core.document.ofd.OfdText
@@ -183,6 +184,18 @@ class OfdRepairTest {
         val page = read(own, res)
         assertFalse(page.repaired)
         assertEquals(read(clean, res).objects.map { shown(it) }, page.objects.map { shown(it) })
+        // The same beside an object with wrong names: the page is rebuilt, what is the producer's own stays out of it.
+        val mixed = read(own.swap("ID=\"27\" Boundary=", "ID=\"27\" CodeCount=").swap("<ofd:TextObject ID=\"29\"", "<ofd:TextObject xmlns:w=\"urn:vendor\" w:Mark=\"7 7 7 7\" ID=\"29\""), res)
+        assertTrue(mixed.repaired)
+        assertEquals(read(clean, res).objects.map { shown(it) }, mixed.objects.map { shown(it) })
+        assertEquals("Z", mixed.texts["32"])
+        // A well written path with both colours keeps them when another object of the page is rebuilt.
+        val both = "<ofd:PathObject ID=\"50\" Boundary=\"5 90 94.2646 0.2646\" Rule=\"Even-Odd\" Fill=\"false\" Stroke=\"true\" LineWidth=\"0.26460000872612\" Cap=\"Butt\" Join=\"Miter\" MiterLimit=\"3.5278000831604004\">" +
+            "<ofd:FillColor Value=\"255 0 0\" /><ofd:StrokeColor Value=\"0 0 255\" /><ofd:AbbreviatedData>M 0 0 L 94 0</ofd:AbbreviatedData></ofd:PathObject>"
+        val colours = read(clean.swap("ID=\"27\" Boundary=", "ID=\"27\" CodeCount=") + both, res)
+        assertTrue(colours.repaired)
+        val path = colours.objects.filterIsInstance<OfdObject.Path>().single { it.id == "50" }
+        assertEquals(listOf(null, OfdColor(0, 0, 255, 255)), listOf(path.fill, path.stroke))
         // Text that reads like numbers or path data stays text.
         val odd = read(clean.swap(">12.50<", ">M 1 2<").swap(">AB中<", ">123<"), res)
         assertFalse(odd.repaired)

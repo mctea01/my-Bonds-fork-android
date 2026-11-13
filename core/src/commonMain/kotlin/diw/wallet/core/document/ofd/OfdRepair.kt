@@ -39,10 +39,15 @@ internal object OfdRepair {
         "ImageObject" to setOf("Border", "Clips", "Actions"),
     )
 
-    /** Names of the format: one of these where the standard does not put it is a wrong name, not a producer's own. */
+    /**
+     * Names of the format: one of these where the standard does not put it is a wrong name. Any other name is a
+     * producer's own and is never touched, also on a page that is rebuilt.
+     */
     private val VOCABULARY: Set<String> = VALID.values.flatten().toSet() + VALID.keys + OBJECTS + setOf(
         "Glyphs", "AbbreviatedData", "Clips", "Clip", "Area", "Path", "Text", "Layer", "Content", "Page", "Color", "Border", "Actions",
         "TransFlag", "FontName", "FamilyName", "FontFile", "Type", "Format", "MediaFile", "BaseLoc", "PhysicalBox", "Template",
+        "Res", "Fonts", "Font", "MultiMedias", "MultiMedia", "ColorSpaces", "ColorSpace", "DrawParams", "DrawParam",
+        "CompositeGraphicUnits", "CompositeGraphicUnit",
     )
 
     /** Attributes an object cannot be drawn without. */
@@ -108,6 +113,7 @@ internal object OfdRepair {
     /** The kind of a page object from what it holds, for an element whose name is not one. */
     private fun objectKind(e: XmlElement, ids: Ids): String? = when {
         e.name in OBJECTS -> e.name
+        e.name !in VOCABULARY -> null
         e.children.any { isCg(it) } -> "TextObject"
         e.children.any { isPathData(it) } -> "PathObject"
         e.children.any { isTextLike(it) } -> "TextObject"
@@ -120,12 +126,13 @@ internal object OfdRepair {
     private fun childName(kind: String, c: XmlElement, flags: Map<String, String>, hasStroke: Boolean): String {
         val known = CHILDREN[kind].orEmpty()
         return when {
+            c.name !in VOCABULARY -> c.name
             kind == "TextObject" && isCg(c) -> "CGTransform"
             kind == "TextObject" && c.name != "TextCode" && isTextLike(c) -> "TextCode"
             kind == "PathObject" && c.name != "AbbreviatedData" && isPathData(c) -> "AbbreviatedData"
             c.name !in known && c.children.any { it.name == "Clip" } -> "Clips"
             c.name in known && c.name != "CGTransform" -> when {
-                // A stroked, unfilled path with one colour: the colour is the stroke's whatever it is called.
+                // A stroked, unfilled path whose one colour is called FillColor: the colour is the stroke's.
                 kind == "PathObject" && c.name == "FillColor" && c.children.isEmpty() && !hasStroke &&
                     word(flags["Fill"] ?: "false", "false") && !word(flags["Stroke"] ?: "true", "false") && "Fill" in flags -> "StrokeColor"
                 else -> c.name
@@ -189,10 +196,11 @@ internal object OfdRepair {
             if (at > last && fits(e.key, e.value, ids, false)) { anchor[i] = at; last = at }
         }
         val out = LinkedHashMap<String, String>()
-        for ((i, e) in entries.withIndex()) if (anchor[i] >= 0) out[e.key] = e.value
+        fun foreign(name: String) = name !in valid && name !in VOCABULARY
+        for ((i, e) in entries.withIndex()) if (anchor[i] >= 0 || foreign(e.key)) out[e.key] = e.value
         val loose = ArrayList<Map.Entry<String, String>>()
         for ((i, e) in entries.withIndex()) {
-            if (anchor[i] >= 0) continue
+            if (anchor[i] >= 0 || foreign(e.key)) continue
             val before = (i - 1 downTo 0).firstOrNull { anchor[it] >= 0 }?.let { anchor[it] } ?: -1
             val after = (i + 1 until entries.size).firstOrNull { anchor[it] >= 0 }?.let { anchor[it] } ?: order.size
             // A value under a name that could be its own only moves to a name the object cannot do without.
@@ -204,7 +212,7 @@ internal object OfdRepair {
         for (e in loose) {
             val own = e.key in valid && e.key !in out && fits(e.key, e.value, ids, false)
             val name = if (own) e.key else (CORE[kind].orEmpty() + order + valid).firstOrNull { it !in out && it != "Name" && fits(it, e.value, ids, true) }
-            if (name != null) out[name] = e.value else if (e.key !in VOCABULARY && e.key !in out) out[e.key] = e.value
+            if (name != null) out[name] = e.value
         }
         return out
     }
@@ -240,7 +248,7 @@ internal object OfdRepair {
             val files = group.children.mapNotNull { fileChild(it)?.text }
             val kind = when {
                 group.name in GROUPS -> group.name
-                group.children.isEmpty() -> return@map group
+                group.name !in VOCABULARY || group.children.isEmpty() -> return@map group
                 group.children.any { "FontName" in it.attributes } ||
                     (files.isNotEmpty() && files.all { it.substringAfterLast('.', "").lowercase() in FONT_FILES }) -> "Fonts"
                 files.size == group.children.size -> "MultiMedias"
@@ -248,7 +256,8 @@ internal object OfdRepair {
             }
             val entry = GROUPS.getValue(kind)
             fun withFile(e: XmlElement, name: String, valid: Set<String>): XmlElement {
-                val file = e.child(name) ?: fileChild(e)
+                if (e.name !in VOCABULARY) return e
+                val file = e.child(name) ?: fileChild(e)?.takeIf { it.name in VOCABULARY }
                 return e.copy(name = entry, attributes = withId(e.attributes, valid), children = e.children.map { if (it === file) it.copy(name = name) else it })
             }
             group.copy(
@@ -257,7 +266,7 @@ internal object OfdRepair {
                     when (kind) {
                         "Fonts" -> withFile(e, "FontFile", FONT_ATTRS)
                         "MultiMedias" -> withFile(e, "MediaFile", MEDIA_ATTRS)
-                        else -> if (e.name == entry) e else e.copy(name = entry)
+                        else -> if (e.name == entry || e.name !in VOCABULARY) e else e.copy(name = entry)
                     }
                 },
             )
@@ -289,7 +298,8 @@ internal object OfdRepair {
                 kind == "PageBlock" -> Draft(kind, o, emptyList(), drafts(o.children))
                 kind == null || kind == "CompositeObject" -> Draft("", o, emptyList(), null)
                 else -> {
-                    var hasStroke = false
+                    // A colour is taken for the stroke's only when the object has no StrokeColor of its own.
+                    var hasStroke = o.children.any { it.name == "StrokeColor" }
                     Draft(kind, o, o.children.map { c -> childName(kind, c, o.attributes, hasStroke).also { if (it == "StrokeColor") hasStroke = true } to c }, null)
                 }
             }
