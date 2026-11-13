@@ -79,8 +79,21 @@ with_display "$java" "${agent[@]}" --self-check "$work/self-check-jvm.txt" || { 
 # The app closes itself after AGENT_SECONDS through a normal exit, so the agent writes what it saw.
 DIW_WALLET_HOME="$work/home" DIW_EXIT_AFTER_SECONDS="${AGENT_SECONDS:-60}" with_display "$java" "${agent[@]}"
 
+# What the agent sees only by chance: AWT's toolkit thread looks up Thread.yield through JNI only when its event loop
+# has to wait, so a run may or may not record it, and without it the window's toolkit thread dies.
+extra=$work/extra
+mkdir -p "$extra"
+cat > "$extra/reachability-metadata.json" <<'JSON'
+{
+  "reflection": [
+    { "type": "java.lang.Thread", "jniAccessible": true,
+      "methods": [ { "name": "yield", "parameterTypes": [] }, { "name": "currentThread", "parameterTypes": [] } ] }
+  ]
+}
+JSON
+
 echo "== native-image"
-args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta" --no-fallback -march=compatibility
+args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra" --no-fallback -march=compatibility
     -H:+UnlockExperimentalVMOptions -H:+ReportExceptionStackTraces --enable-url-protocols=http,https
     -Dfile.encoding=UTF-8 --add-modules=java.smartcardio
     # Every charset (GBK, Big5 and the Windows code pages in documents and native.encoding) and every locale.
