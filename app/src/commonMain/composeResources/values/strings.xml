@@ -4457,6 +4457,7 @@
     <string name="core_key_sm2_unsupported">This signing source does not support SM2 keys</string>
     <string name="core_ofd_attachments">Attachments: %1$s</string>
     <string name="core_ofd_documents">The file holds %1$s documents</string>
+    <string name="core_ofd_repaired">The page content of this file had wrong element or attribute names. It is shown as rebuilt from the values, so check it against the copy from the issuer</string>
     <string name="core_ofd_gbt35275">The digital signature is GB/T 35275 SignedData (SM2 signed message syntax)</string>
     <string name="core_ofd_pkcs7_sign">The digital signature uses PKCS#7 SignedData (not the national algorithms); some mainland China readers may not accept it</string>
     <string name="core_ofd_seal_bad">The electronic seal file cannot be read (it is no GB/T 38540 or GM/T 0031 SESeal)</string>

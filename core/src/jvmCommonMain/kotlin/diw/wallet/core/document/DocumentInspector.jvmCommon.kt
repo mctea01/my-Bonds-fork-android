@@ -535,6 +535,7 @@ actual object DocumentInspector {
                 val notes = buildList {
                     if (attachments.isNotEmpty()) add(ct("core_ofd_attachments", attachments.joinToString(ct("core_sep_list")) { it.name }))
                     if (pkg != null && pkg.documents.size > 1) add(ct("core_ofd_documents", pkg.documents.size))
+                    if (pkg != null && pkg.pages.any { it.repaired }) add(ct("core_ofd_repaired"))
                 }
                 base.copy(
                     format = DocumentFormat.OFD, title = title, pages = pkg?.pageCount ?: ofd.pageCount(), signatures = ofd.verify(now),
