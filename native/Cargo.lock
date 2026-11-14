@@ -1906,6 +1906,7 @@ dependencies = [
  "taceo-poseidon2 0.3.1",
  "thiserror 2.0.21",
  "uniffi",
+ "zkpassport-core",
  "zkpassport-ffi",
  "zkpassport-verify",
  "zkpdf-prover",

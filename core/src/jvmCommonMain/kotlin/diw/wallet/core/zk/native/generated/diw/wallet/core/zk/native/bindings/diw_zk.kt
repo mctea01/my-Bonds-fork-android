@@ -882,6 +882,46 @@ internal open class UniffiVTableCallbackInterfaceZkTlsRevealChooser(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -968,6 +1008,12 @@ fun uniffi_diw_zk_checksum_func_verify_age_presentation(
 fun uniffi_diw_zk_checksum_func_zkpassport_certificates(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_circuit_root(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_facematch_circuits(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_facematch_inputs(
+): Short
+fun uniffi_diw_zk_checksum_func_zkpassport_facematch_statement(
 ): Short
 fun uniffi_diw_zk_checksum_func_zkpassport_inspect(
 ): Short
@@ -1161,6 +1207,12 @@ fun uniffi_diw_zk_fn_func_verify_age_presentation(`documentsPath`: RustBuffer.By
 fun uniffi_diw_zk_fn_func_zkpassport_certificates(`packageJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_circuit_root(`manifestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_facematch_circuits(uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_facematch_inputs(`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_diw_zk_fn_func_zkpassport_facematch_statement(`requestJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_diw_zk_fn_func_zkpassport_inspect(`proofsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1414,6 +1466,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_circuit_root() != 54841.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_facematch_circuits() != 2176.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_facematch_inputs() != 34464.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_diw_zk_checksum_func_zkpassport_facematch_statement() != 32256.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_diw_zk_checksum_func_zkpassport_inspect() != 36238.toShort()) {
@@ -4862,6 +4923,51 @@ public object FfiConverterSequenceTypeZkTlsCommitment: FfiConverterRustBuffer<Li
     uniffiRustCallWithError(ZkException) { _status ->
     UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_circuit_root(
         FfiConverterString.lower(`manifestJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The verification key hashes of this project's FaceMatch circuits: `{"version", "circuits": {name: hash}}`.
+         */
+    @Throws(ZkException::class) fun `zkpassportFacematchCircuits`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_facematch_circuits(
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The inputs of a FaceMatch circuit for a document. The request carries `kind` (`self` or `keyattest`), the
+         * document and service fields of the proof session (`sod`, `dg1`, `dg2`, `salt`, `service_scope`,
+         * `service_subscope`, `current_date_timestamp`), `mode` and `app_id`; for `keyattest` also `chain` (base64 DER,
+         * leaf first), `client_data`, `signature` and `signer_digest`. The answer names the circuit (and holds the
+         * self-declared one), its `inputs`, the `committed` inputs and the commitment per `environments`.
+         */
+    @Throws(ZkException::class) fun `zkpassportFacematchInputs`(`requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_facematch_inputs(
+        FfiConverterString.lower(`requestJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The statement of a face comparison for the keystore key to sign. The request carries `sod` and optionally
+         * `dg2` (base64), `app_version`, `mode` (`regular` or `strict`), the reference `embedding`, and the `cosine`
+         * score and `threshold` as integers; the answer `clientData` and the 32 bytes `toSign` (base64).
+         */
+    @Throws(ZkException::class) fun `zkpassportFacematchStatement`(`requestJson`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCallWithError(ZkException) { _status ->
+    UniffiLib.INSTANCE.uniffi_diw_zk_fn_func_zkpassport_facematch_statement(
+        FfiConverterString.lower(`requestJson`),_status)
 }
     )
     }

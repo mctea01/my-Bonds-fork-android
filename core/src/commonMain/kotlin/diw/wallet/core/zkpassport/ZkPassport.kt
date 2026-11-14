@@ -52,6 +52,59 @@ data class ZkPassportRequest(
     /** Accepts mock documents (zkPassport's test passports) and uses the Sepolia registry. */
     val devMode: Boolean = false,
     val validitySeconds: Long = ZkPassport.DEFAULT_VALIDITY,
+    /** Asks the holder to prove a face comparison with the document's photo; null asks for none. */
+    val faceMatch: ZkPassportFaceMatchRequest? = null,
+)
+
+/**
+ * The kinds of FaceMatch proof (docs/design/zkpassport.md 5.6). They state the same thing and differ in who vouches
+ * for it: zkPassport's own circuits (its attested app), this project's key attestation circuits (a hardware key of a
+ * named Android app, without Play Integrity) and this project's self-declared circuit (nothing but the wallet's word).
+ */
+object ZkPassportFaceMatchKind {
+    const val OFFICIAL = "official"
+    const val KEY_ATTESTATION = "keyattest"
+    const val SELF = "self"
+}
+
+/** An app trusted to have made the comparison: its package name and the SHA-256 (hex) of its signing certificates. */
+data class ZkPassportFaceMatchApp(val appId: String, val signers: List<String>)
+
+/**
+ * FaceMatch as a verifier asks for it. zkPassport's own proofs are always accepted; this project's kinds only when
+ * listed, and a key attested proof only from one of [apps].
+ */
+data class ZkPassportFaceMatchRequest(
+    /** zkPassport's strict mode (a stricter liveness check in its app); this wallet's holder treats both alike. */
+    val strict: Boolean = false,
+    val keyAttestation: Boolean = false,
+    val selfDeclared: Boolean = false,
+    val apps: List<ZkPassportFaceMatchApp> = emptyList(),
+    /** Accepts a locked device whose system is signed with its owner's key. */
+    val allowSelfSigned: Boolean = false,
+    /** Attestation roots (registry leaves) accepted besides Google's, for test devices. */
+    val extraRoots: List<String> = emptyList(),
+) {
+    val mode: String get() = if (strict) "strict" else "regular"
+    /** This project's kinds the request lists, for the query's `diw` extension. */
+    val projectKinds: List<String>
+        get() = buildList {
+            if (keyAttestation) add(ZkPassportFaceMatchKind.KEY_ATTESTATION)
+            if (selfDeclared) add(ZkPassportFaceMatchKind.SELF)
+        }
+}
+
+/** The FaceMatch proof of a verified answer, as the native checker reports it. */
+data class ZkPassportFaceMatch(
+    /** One of [ZkPassportFaceMatchKind]. */
+    val kind: String,
+    val strict: Boolean,
+    /** `production`, `self_signed` (key attestation only) or `development`. */
+    val environment: String,
+    val appId: String?,
+    val signerDigest: String?,
+    /** `ios` or `android` for zkPassport's own proofs. */
+    val platform: String?,
 )
 
 /**
@@ -80,6 +133,18 @@ data class ZkPassportIncoming(
     val expectedOrigin: String get() = "https://$domain"
     val fastMode: Boolean get() = mode == "fast"
 
+    private val faceMatch: JsonObject? get() = query["facematch"] as? JsonObject
+    /** The FaceMatch mode the request asks for (`regular` or `strict`), or null. An unknown mode reads as strict. */
+    val faceMatchMode: String?
+        get() = faceMatch?.let { if ((it["mode"] as? JsonPrimitive)?.contentOrNull == "regular") "regular" else "strict" }
+    /**
+     * This project's FaceMatch kinds the requester says it takes (the query's `diw` extension). zkPassport's SDK
+     * sends none and accepts only its own app's proofs.
+     */
+    val faceMatchKinds: List<String>
+        get() = (faceMatch?.get("diw") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+            ?.filter { it == ZkPassportFaceMatchKind.KEY_ATTESTATION || it == ZkPassportFaceMatchKind.SELF }.orEmpty()
+
     /**
      * Whether a reported [origin] that is not [expectedOrigin] is still an https page of the same site (the same
      * registrable domain, e.g. verify.zkpassport.id for demo.zkpassport.id): the request did not come from someone
@@ -106,6 +171,24 @@ data class ZkPassportIncoming(
 /** The chip files an answer is proved from: SOD and DG1 always, DG2 for the face photo hash. */
 class ZkPassportChip(val sod: ByteArray, val dg1: ByteArray, val dg2: ByteArray?)
 
+/** The statement of a face comparison (zkPassport's `ZKPassportAppAttest`) and the 32 bytes a keystore key signs. */
+class ZkPassportFaceMatchStatement(val clientData: ByteArray, val toSign: ByteArray)
+
+/**
+ * A hardware key's signature over a [ZkPassportFaceMatchStatement]: the key's attestation [chain] (DER, the key's
+ * certificate first and the root last) and the DER ECDSA [signature] (SHA256withECDSA over the statement's `toSign`).
+ */
+class ZkPassportFaceMatchAttestation(val clientData: ByteArray, val chain: List<ByteArray>, val signature: ByteArray, val signerDigest: String)
+
+/**
+ * A face comparison this wallet made for an answer: the holder's live face against the document's photo passed. With
+ * [attestation] the proof is the key attestation kind, without it the self-declared kind. [appId] is this app's
+ * package name.
+ */
+class ZkPassportFaceMatchEvidence(val strict: Boolean, val appId: String, val attestation: ZkPassportFaceMatchAttestation?) {
+    val kind: String get() = if (attestation == null) ZkPassportFaceMatchKind.SELF else ZkPassportFaceMatchKind.KEY_ATTESTATION
+}
+
 /** Where an answer stands, for the screen. */
 sealed interface ZkPassportAnswerProgress {
     data object Registry : ZkPassportAnswerProgress
@@ -126,9 +209,14 @@ interface ZkPassportAnswer {
     suspend fun reject()
     /**
      * Accepts, proves [chip] against the request where [target] says and sends the proofs from this device; throws
-     * [ZkPassportAnswerFailure].
+     * [ZkPassportAnswerFailure]. [faceMatch] adds the FaceMatch proof a request asks for.
      */
-    suspend fun answer(chip: ZkPassportChip, target: ZkPassportProverTarget, progress: (ZkPassportAnswerProgress) -> Unit)
+    suspend fun answer(
+        chip: ZkPassportChip,
+        target: ZkPassportProverTarget,
+        faceMatch: ZkPassportFaceMatchEvidence? = null,
+        progress: (ZkPassportAnswerProgress) -> Unit,
+    )
     fun close()
 }
 
@@ -158,6 +246,20 @@ interface ZkPassportHolder {
     suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer
     /** Pairs with a temporary prover from its one-time code (`diw-prover://v1?...`); throws [ZkPassportAnswerFailure]. */
     suspend fun pair(link: String): ZkPassportPairedProver = throw ZkPassportAnswerFailure("pairing_unsupported")
+
+    /**
+     * The statement of a face comparison with [chip]'s photo for a hardware key to sign: the app's version, the mode,
+     * the photo's hash, the hash of the reference [embedding] and the [cosine] score with its [threshold] (both times
+     * 10^8, as zkPassport's app writes them). Throws [ZkPassportAnswerFailure].
+     */
+    suspend fun faceMatchStatement(
+        chip: ZkPassportChip,
+        appVersion: String,
+        strict: Boolean,
+        embedding: FloatArray,
+        cosine: Long,
+        threshold: Long,
+    ): ZkPassportFaceMatchStatement = throw ZkPassportAnswerFailure("facematch_unsupported")
 }
 
 /** The one-time pairing code of a temporary prover. */
@@ -244,6 +346,8 @@ data class ZkPassportResult(
     val viaVerifierApi: Boolean = false,
     /** The issuing country's CSCA keys against this wallet's anchors; null without an issuing country or a pass. */
     val csca: ZkPassportCscaCheck? = null,
+    /** The FaceMatch proof of the answer; null when it has none. */
+    val faceMatch: ZkPassportFaceMatch? = null,
 )
 
 sealed interface ZkPassportState {
@@ -329,6 +433,26 @@ object ZkPassport {
         }
         request.minAge?.let { age -> putJsonObject("age") { put("gte", age) } }
         request.customData?.takeIf { it.isNotEmpty() }?.let { data -> putJsonObject("bind") { put("custom_data", data) } }
+        request.faceMatch?.let { face ->
+            putJsonObject("facematch") {
+                put("mode", face.mode)
+                // An extension zkPassport's app ignores: the kinds of this project's proofs the requester takes.
+                if (face.projectKinds.isNotEmpty()) putJsonArray("diw") { face.projectKinds.forEach { add(JsonPrimitive(it)) } }
+            }
+        }
+    }
+
+    /** The native checker's FaceMatch policy for [face]: the accepted kinds and, for key attestation, the apps. */
+    fun faceMatchPolicy(face: ZkPassportFaceMatchRequest): JsonObject = buildJsonObject {
+        putJsonArray("accept") { (listOf(ZkPassportFaceMatchKind.OFFICIAL) + face.projectKinds).forEach { add(JsonPrimitive(it)) } }
+        putJsonArray("apps") {
+            for (app in face.apps) add(buildJsonObject {
+                put("appId", app.appId)
+                putJsonArray("signers") { app.signers.forEach { add(JsonPrimitive(it.lowercase())) } }
+            })
+        }
+        put("allowSelfSigned", face.allowSelfSigned)
+        putJsonArray("roots") { face.extraRoots.forEach { add(JsonPrimitive(it)) } }
     }
 
     /** The service object of the request URL. */
@@ -458,6 +582,13 @@ object ZkPassport {
             boundData = (conditions["bind"] as? JsonObject)?.get("data")?.let { it as? JsonObject }?.get("custom_data").text(),
             devMode = o["devMode"]?.jsonPrimitive?.booleanOrNull == true,
             viaVerifierApi = viaVerifierApi,
+            faceMatch = (o["facematch"] as? JsonObject)?.let { f ->
+                ZkPassportFaceMatch(
+                    kind = f["kind"].text() ?: return@let null, strict = f["mode"].text() == "strict",
+                    environment = f["environment"].text() ?: "development", appId = f["appId"].text(),
+                    signerDigest = f["signerDigest"].text(), platform = f["platform"].text(),
+                )
+            },
         )
     }
 

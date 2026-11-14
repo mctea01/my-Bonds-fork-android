@@ -151,6 +151,25 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
             .joinToString("") { "%02x".format(it.toInt() and 255) },
     )
 
+    /**
+     * A packaged FaceMatch circuit of this project by [name], from the project's release and cached by name. The
+     * prover hashes its key against the list built into the native library before the circuit runs, so the file
+     * needs no digest of its own.
+     */
+    suspend fun projectCircuit(name: String): String {
+        if (!PROJECT_CIRCUIT.matches(name)) throw Unreachable("circuit_unavailable")
+        val file = cached("$name.json")
+        if (file.isFile) runCatching { return file.readText() }
+        val text = fetch("$PROJECT_CIRCUITS/$name.json.gz", "circuit_unavailable").decodeToString()
+        runCatching { file.writeText(text) }
+        return text
+    }
+
+    /** Drops the cached copy of project circuit [name] after its key failed the check. */
+    fun forgetProjectCircuit(name: String) {
+        if (PROJECT_CIRCUIT.matches(name)) runCatching { cached("$name.json").delete() }
+    }
+
     /** Drops the cached copy of [url] after its content failed a check. */
     fun forgetFile(url: String) {
         runCatching { fileFor(url).delete() }
@@ -208,6 +227,9 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         const val VERIFIER_API = "https://verifier.zkpassport.id/verify"
         const val MAINNET_CERTIFICATES = "https://certificates.zkpassport.id/mainnet"
         const val TESTNET_CERTIFICATES = "https://certificates.zkpassport.id/testnet"
+        /** The release holding this project's key attestation circuits (native/circuits-zkpassport). */
+        const val PROJECT_CIRCUITS = "https://github.com/mctea01/my-Bonds-fork-android/releases/download/zkpassport-facematch-v1"
+        private val PROJECT_CIRCUIT = Regex("^diw_facematch_keyattest_[a-z0-9_]{1,160}$")
         private const val MAX_DOWNLOAD = 32 * 1024 * 1024
     }
 }

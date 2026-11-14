@@ -14,6 +14,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 mod zk;
 pub mod certificates;
+mod facematch;
+pub use facematch::{diw_circuits_json, expected_commitment as facematch_commitment, FaceMatchApp, FaceMatchPolicy};
 use zk::{merkle_root, num_public_inputs, pack_be_bits, pack_be_bytes, poseidon2_hash, vkey_fields, CIRCUIT_REGISTRY_HEIGHT};
 
 /// The SDK's default validity of the proven current date, in seconds.
@@ -63,6 +65,9 @@ impl Proof {
     fn disclosure(&self) -> bool {
         self.rank >= CHAIN.len()
     }
+    fn facematch(&self) -> Option<facematch::Kind> {
+        facematch::kind(&self.name)
+    }
     fn input(&self, i: usize) -> &BigUint {
         &self.public[i]
     }
@@ -76,6 +81,8 @@ fn rank(name: &str) -> Option<usize> {
         .iter()
         .position(|p| name.starts_with(p))
         .or_else(|| DISCLOSURES.iter().position(|d| *d == name).map(|i| i + CHAIN.len()))
+        // One FaceMatch proof at most, after the SDK's disclosures.
+        .or_else(|| facematch::kind(name).map(|_| CHAIN.len() + DISCLOSURES.len()))
 }
 
 fn parse(p: &ProofResult) -> Result<Proof, String> {
@@ -86,13 +93,14 @@ fn parse(p: &ProofResult) -> Result<Proof, String> {
         return Err(format!("encoding:{}", p.name));
     }
     let (head, body) = bytes.split_at(n * 32);
+    let committed_key = if facematch::kind(&p.name).is_some() { facematch::COMMITTED_KEY } else { p.name.as_str() };
     Ok(Proof {
         name: p.name.clone(),
         rank,
         public: head.chunks(32).map(BigUint::from_bytes_be).collect(),
         public_bytes: head.to_vec(),
         body: body.to_vec(),
-        committed: p.committed_inputs.as_ref().and_then(|c| c.get(&p.name)).cloned().unwrap_or(Value::Null),
+        committed: p.committed_inputs.as_ref().and_then(|c| c.get(committed_key)).cloned().unwrap_or(Value::Null),
         vkey_hash: p.vkey_hash.clone(),
     })
 }
@@ -430,6 +438,8 @@ fn check_query(query: &Value, proofs: &[Proof], errors: &mut Vec<String>) {
             "age" => vec!["gt", "gte", "lt", "lte", "range", "eq"],
             "nationality" | "issuing_country" => vec!["in", "out", "disclose"],
             "bind" => vec!["user_address", "custom_data", "chain"],
+            // `diw` lists the kinds of this project's FaceMatch the verifier takes; the holder reads it.
+            "facematch" => vec!["mode", "diw"],
             f if DISCLOSABLE.contains(&f) => vec!["disclose"],
             _ => vec![],
         };
@@ -465,6 +475,13 @@ fn check_query(query: &Value, proofs: &[Proof], errors: &mut Vec<String>) {
             errors.push("query:bind".into());
         }
     }
+    if q.get("facematch").is_some_and(Value::is_object) {
+        let asked = facematch::asked_mode(query).filter(|m| ["regular", "strict"].contains(m));
+        let proven = proofs.iter().find(|p| p.facematch().is_some()).and_then(|p| p.committed.get("mode")).and_then(Value::as_str);
+        if asked.is_none() || proven != asked {
+            errors.push("query:facematch".into());
+        }
+    }
 }
 
 // ---- Verification -----------------------------------------------------------------------------------------
@@ -495,6 +512,9 @@ pub struct Request {
     /// Poseidon2 hash of the accepted OPRF public key, for salted identifiers.
     #[serde(default)]
     pub oprf_public_key_hash: Option<String>,
+    /// The kinds of FaceMatch this verifier accepts, and for key attestation the apps it trusts.
+    #[serde(default)]
+    pub facematch: Option<FaceMatchPolicy>,
 }
 
 fn nullifier_type(n: &BigUint) -> &'static str {
@@ -564,6 +584,7 @@ pub fn verify(req: &Request, mut bb: impl FnMut(&[u8], &[u8], &[u8]) -> Result<(
 
     // Each disclosure: service scope, proven date and parameters.
     let validity = req.validity.unwrap_or(DEFAULT_VALIDITY) as i64;
+    let mut face = Value::Null;
     let (scope, subscope) = (scope_hash(Some(&req.domain)), scope_hash(req.scope.as_deref()));
     for p in proofs.iter().filter(|p| p.disclosure()) {
         if p.input(2) != &scope || p.input(3) != &subscope {
@@ -575,13 +596,23 @@ pub fn verify(req: &Request, mut bb: impl FnMut(&[u8], &[u8], &[u8]) -> Result<(
         } else if date.saturating_sub(req.today) > FUTURE_TOLERANCE {
             errors.push(format!("date_future:{}", p.name));
         }
-        if parameters(p).as_ref() != Some(p.input(4)) {
-            errors.push(format!("parameters:{}", p.name));
+        match p.facematch() {
+            Some(kind) => {
+                face = facematch::check(&p.name, kind, &p.committed, p.input(4), req.facematch.as_ref(), req.dev_mode, &mut errors);
+                // Its identifier is not the bundle's (it carries no OPRF proof), but a mock document shows here too.
+                match nullifier_type(p.tail(3)) {
+                    "INVALID" => errors.push("nullifier_type".into()),
+                    "NON_SALTED_MOCK" | "SALTED_MOCK" if !req.dev_mode => errors.push("mock".into()),
+                    _ => {}
+                }
+            }
+            None if parameters(p).as_ref() != Some(p.input(4)) => errors.push(format!("parameters:{}", p.name)),
+            None => {}
         }
     }
 
     // One identifier for the whole bundle.
-    let disclosures: Vec<&Proof> = proofs.iter().filter(|p| p.disclosure()).collect();
+    let disclosures: Vec<&Proof> = proofs.iter().filter(|p| p.disclosure() && p.facematch().is_none()).collect();
     let nullifiers = distinct(disclosures.iter().map(|p| p.tail(2).clone()), &big(0));
     let types = distinct(disclosures.iter().map(|p| nullifier_type(p.tail(3))), &"NONE");
     let oprf = distinct(disclosures.iter().map(|p| p.tail(1).clone()), &big(0));
@@ -611,7 +642,13 @@ pub fn verify(req: &Request, mut bb: impl FnMut(&[u8], &[u8], &[u8]) -> Result<(
     // Keys: each must be the one the (registry-checked) manifest lists for that circuit.
     let mut keys = Vec::new();
     for p in proofs {
-        let listed = req.manifest.get("circuits").and_then(|c| c.get(&p.name)).and_then(|c| c.get("hash")).and_then(Value::as_str).and_then(field);
+        // This project's FaceMatch circuits are not in zkPassport's manifest; their keys are pinned in this build.
+        let listed = match p.facematch() {
+            Some(facematch::Kind::Official) | None => {
+                req.manifest.get("circuits").and_then(|c| c.get(&p.name)).and_then(|c| c.get("hash")).and_then(Value::as_str).and_then(field)
+            }
+            Some(_) => facematch::diw_hash(&p.name),
+        };
         let vkey = req.vkeys.get(&p.name).and_then(|v| base64::engine::general_purpose::STANDARD.decode(v).ok());
         let claimed_ok = p.vkey_hash.as_deref().is_none_or(|h| field(h) == listed);
         match (vkey, listed) {
@@ -646,6 +683,7 @@ pub fn verify(req: &Request, mut bb: impl FnMut(&[u8], &[u8], &[u8]) -> Result<(
         "uniqueIdentifierType": id_type,
         "disclosed": committed("disclose_bytes").and_then(|c| Disclosed::new(&c)).map(|d| d.values()).unwrap_or(Value::Null),
         "conditions": Value::Object(conditions),
+        "facematch": face,
         "certificateRoot": hex32(proofs[0].input(0)),
         "circuitRoot": req.circuit_root,
         "devMode": req.dev_mode,

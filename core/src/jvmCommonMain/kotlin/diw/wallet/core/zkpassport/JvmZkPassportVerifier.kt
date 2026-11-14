@@ -3,6 +3,7 @@ package diw.wallet.core.zkpassport
 import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zk.native.bindings.zkpassportCertificates
 import diw.wallet.core.zk.native.bindings.zkpassportCircuitRoot
+import diw.wallet.core.zk.native.bindings.zkpassportFacematchCircuits
 import diw.wallet.core.zk.native.bindings.zkpassportInspect
 import diw.wallet.core.zk.native.bindings.zkpassportVerify
 import diw.wallet.core.zk.native.bindings.zkpassportVerifyLegacy
@@ -215,10 +216,19 @@ class JvmZkPassportVerifier(
                 val certificateValid = registry.rootValid(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY, certificateRoot, timestamp)
                 val circuitValid = registry.rootValid(chain, rpc, ZkPassportRegistry.CIRCUIT_REGISTRY, circuitRoot, timestamp)
                 val circuits = manifest["circuits"]?.jsonObject ?: JsonObject(emptyMap())
+                val pinned = runCatching { Json.parseToJsonElement(zkpassportFacematchCircuits()).jsonObject["circuits"]?.jsonObject }.getOrNull()
                 val hashes = names.associateWith { name ->
-                    circuits[name]?.jsonObject?.get("hash")?.jsonPrimitive?.content ?: return@withContext ZkPassport.failure("vkey:$name", dev)
+                    (if (name.startsWith(PROJECT_FACEMATCH)) pinned?.get(name) else circuits[name]?.jsonObject?.get("hash"))?.jsonPrimitive?.content
+                        ?: return@withContext ZkPassport.failure("vkey:$name", dev)
                 }
-                val vkeys = hashes.mapValues { (_, hash) -> registry.vkey(chain, hash) }
+                // This project's FaceMatch circuits are in no manifest: the proof brings its key, which the checker
+                // hashes against the list built into the native library.
+                val own = proofs.mapNotNull { p ->
+                    val name = (p["name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.startsWith(PROJECT_FACEMATCH) }
+                    val key = (p["vkey"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.length in 1..MAX_VKEY }
+                    if (name != null && key != null) name to key else null
+                }.toMap()
+                val vkeys = hashes.mapValues { (name, hash) -> own[name] ?: registry.vkey(chain, hash) }
                 val requestJson = buildJsonObject {
                     put("proofs", JsonArray(proofs))
                     put("query", ZkPassport.query(request))
@@ -234,6 +244,7 @@ class JvmZkPassportVerifier(
                     put("circuitRoot", circuitRoot)
                     put("circuitRootValid", circuitValid)
                     config.oprfKeyHash?.let { put("oprfPublicKeyHash", it) }
+                    request.faceMatch?.let { put("facematch", ZkPassport.faceMatchPolicy(it)) }
                 }.toString()
                 // Circuits before 0.22.0 were keyed by Barretenberg 5, which an optional component brings.
                 val legacy = ZkPassport.legacyBackend(version) && legacyReady()
@@ -241,7 +252,7 @@ class JvmZkPassportVerifier(
                     if (legacy) zkpassportVerifyLegacy(requestJson) else zkpassportVerify(requestJson, crsDirectory()?.absolutePath),
                 )
                 if (result.errors.none { it.startsWith("vkey:") || it.startsWith("circuit_root") || it == "manifest_root" }) {
-                    registry.remember(chain, version, manifest, vkeys, hashes)
+                    registry.remember(chain, version, manifest, vkeys - own.keys, hashes - own.keys)
                 }
                 // Only a Barretenberg rejection is worth a second opinion; every other failure is final.
                 val decided = (
@@ -323,5 +334,7 @@ class JvmZkPassportVerifier(
         private const val PING_MS = 30_000L
         private const val MAX_RECONNECTS = 5
         private const val MAX_PROOFS = 32
+        private const val PROJECT_FACEMATCH = "diw_facematch_"
+        private const val MAX_VKEY = 16 * 1024
     }
 }

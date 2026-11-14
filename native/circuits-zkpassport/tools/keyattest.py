@@ -15,6 +15,7 @@ copies, and with --bb also proves and verifies. The root of a synthetic chain is
 Google's: the circuit commits to the root key and the verifier compares it, outside.
 """
 import argparse
+import gzip
 import hashlib
 import itertools
 import json
@@ -384,7 +385,8 @@ def certificate(subject, key, issuer, issuer_key, digest, extension=None, ca=Tru
 
 
 def chain(shape, description):
-    """Inputs of the chain for `shape`, and the credential key."""
+    """Inputs of the chain for `shape`, the credential key, and the certificates as a keystore
+    returns them (credential first, self-signed root last)."""
     _, hashes, ec, rsa, _ = crypto()
     root, iks = shape
     curves = {'p256': ec.SECP256R1(), 'p384': ec.SECP384R1()}
@@ -400,6 +402,7 @@ def chain(shape, description):
         values['root_key'] = list(point(signer_key, 96))
         signer_digest, signer_size = 'sha384', 96
     issuer = 'Fixture root'
+    ders = [certificate(issuer, signer_key, issuer, signer_key, signer_digest)]
     for i, (curve, digest) in enumerate(iks, 1):
         key = ec.generate_private_key(curves[curve])
         cert = certificate('Fixture intermediate %d' % i, key, issuer, signer_key, signer_digest)
@@ -407,6 +410,7 @@ def chain(shape, description):
         values['intermediate_%d_tbs' % i] = pad(cert.tbs_certificate_bytes, TBS_MAX)
         values['intermediate_%d_sig' % i] = list(
             cert.signature if signer_size is None else raw_signature(cert.signature, signer_size))
+        ders.append(cert)
         signer_key, signer_digest, signer_size = key, digest, KEY_BYTES[curve]
         issuer = 'Fixture intermediate %d' % i
     credential = ec.generate_private_key(ec.SECP256R1())
@@ -416,7 +420,8 @@ def chain(shape, description):
     values['credential_tbs'] = pad(cert.tbs_certificate_bytes, CREDENTIAL_TBS_MAX)
     values['credential_sig'] = list(
         cert.signature if signer_size is None else raw_signature(cert.signature, signer_size))
-    return values, credential
+    ders.append(cert)
+    return values, credential, ders[::-1]
 
 
 # --- Running nargo ---------------------------------------------------------------------
@@ -501,7 +506,7 @@ def probe(nargo, root_key, data, environment, mode):
 def fixture(nargo, shape, description, mode=1, environment=1):
     """Inputs of the circuit for `shape`, and the parameter commitment it must return."""
     _, hashes, ec, _, _ = crypto()
-    values, credential = chain(shape, description)
+    values, credential, _ = chain(shape, description)
     data = client_data(mode)
     data_hash, dg2_hash, comm_in, commitment = probe(nargo, values['root_key'], data, environment, mode)
     signature = credential.sign(data_hash, ec.ECDSA(hashes.SHA256()))
@@ -681,6 +686,101 @@ fn ignores_a_root_of_trust_planted_in_the_challenge() {
     (ROOT / 'src/lib/diw_facematch/src/tests.nr').write_text('\n'.join(out))
 
 
+def wallet_fixture(path):
+    """Test data for the wallet's input builder (native/diw-zk-ffi) and prover tests: for two
+    shapes, the chain as a keystore returns it, a signed statement, the inputs the circuit takes
+    for them and the credential key."""
+    import base64
+    _, hashes, ec, _, _ = crypto()
+    from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
+    b64 = lambda data: base64.b64encode(data).decode()
+    by_name = {shape_name(s): s for s in shapes()}
+    cases = []
+    for name in ('rk_ecdsa_ik_p384_sha384', 'rk_rsa_ik_p256_sha256_ik_p384_sha384'):
+        values, credential, ders = chain(by_name[name], key_description())
+        data = client_data()
+        signature = credential.sign(b'\x09' * 32, ec.ECDSA(hashes.SHA256()))
+        values['client_data'] = pad(data, CLIENT_DATA_MAX)
+        values['client_data_sig'] = list(raw_signature(signature, 64))
+        cases.append({'name': package_name(by_name[name]), 'chain': [b64(c.public_bytes(Encoding.DER)) for c in ders],
+                      'client_data': b64(data), 'signature': b64(signature), 'app_id': PACKAGE.decode(),
+                      'signer_digest': SIGNER.hex(), 'inputs': values,
+                      # The fixture's own throwaway key, so a test can sign another statement with it.
+                      'credential_key': b64(credential.private_bytes(Encoding.DER, PrivateFormat.PKCS8, NoEncryption()))})
+    Path(path).write_text(json.dumps(cases, separators=(',', ':')) + '\n')
+
+
+# --- Packaging -------------------------------------------------------------------------
+
+def package_one(nargo, vk_tool, hash_tool, crs, out, name, cwd):
+    """Compiles `name`, writes the artifact the wallet downloads and returns its key hash.
+    A circuit whose artifact and entry are already in `out` is not built again."""
+    packed_path, entry_path = out / (name + '.json.gz'), out / (name + '.entry')
+    if packed_path.exists() and entry_path.exists():
+        entry = json.loads(entry_path.read_text())
+        if entry['sha256'] == hashlib.sha256(packed_path.read_bytes()).hexdigest():
+            return name, entry
+    done = subprocess.run([nargo, 'compile', '--package', name], cwd=cwd, capture_output=True, text=True)
+    if done.returncode != 0:
+        raise RuntimeError('%s: %s' % (name, done.stderr.strip()[-400:]))
+    target = cwd / 'target' / (name + '.json')
+    compiled = json.loads(target.read_text())
+    target.unlink()
+    versions = dict(line.split('=', 1) for line in (ROOT / 'VERSIONS').read_text().splitlines()
+                    if '=' in line and not line.startswith('#'))
+    artifact = json.dumps({'name': name, 'noir_version': compiled['noir_version'], 'bb_version': versions['bb'],
+                           'abi': compiled['abi'], 'bytecode': compiled['bytecode']},
+                          separators=(',', ':')).encode()
+    plain = out / (name + '.json')
+    plain.write_bytes(artifact)
+    key = out / (name + '.vk')
+    try:
+        subprocess.run([vk_tool, str(crs), str(plain), str(key)], check=True, capture_output=True)
+        digest = subprocess.run([hash_tool, str(key)], check=True, capture_output=True, text=True).stdout.strip()
+    finally:
+        plain.unlink()
+        key.unlink(missing_ok=True)
+    if not re.fullmatch(r'0x[0-9a-f]{64}', digest):
+        raise RuntimeError('%s: unexpected key hash %r' % (name, digest))
+    # mtime 0 so the same artifact always gives the same file.
+    packed = gzip.compress(artifact, 9, mtime=0)
+    entry = {'hash': digest, 'sha256': hashlib.sha256(packed).hexdigest(), 'bytes': len(packed)}
+    packed_path.write_bytes(packed)
+    entry_path.write_text(json.dumps(entry))
+    return name, entry
+
+
+def package(nargo, vk_tool, hash_tool, crs, out, names, jobs, pin):
+    """Packages the circuits into `out`: one gzip artifact each and index.json (hash of the
+    verification key, hash and size of the file). `pin` also rewrites circuits.json, the key
+    hashes the wallet and the verifier are built with."""
+    from concurrent.futures import ThreadPoolExecutor
+    generate()
+    out.mkdir(parents=True, exist_ok=True)
+    work = [('diw_facematch_self', ROOT / 'src')] + [(package_name(s), GEN) for s in shapes()]
+    if names:
+        work = [w for w in work if w[0] in names or w[0].removeprefix('diw_facematch_keyattest_') in names]
+    index = {}
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        for name, entry in pool.map(lambda w: package_one(nargo, vk_tool, hash_tool, crs, out, *w), work):
+            index[name] = entry
+            print(name, entry['hash'], entry['bytes'], flush=True)
+    index = dict(sorted(index.items()))
+    for stale in out.glob('*.entry'):
+        stale.unlink()
+    (out / 'index.json').write_text(json.dumps({'version': 1, 'circuits': index}, indent=1) + '\n')
+    pinned = ROOT / 'circuits.json'
+    hashes = {name: entry['hash'] for name, entry in index.items()}
+    if pin:
+        pinned.write_text(json.dumps({'version': 1, 'circuits': hashes}, indent=1) + '\n')
+        return 0
+    known = json.loads(pinned.read_text())['circuits']
+    different = sorted(n for n, h in hashes.items() if known.get(n) != h)
+    for name in different:
+        print('key hash differs from circuits.json:', name)
+    return 1 if different else 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest='command', required=True)
@@ -692,7 +792,23 @@ def main():
     check.add_argument('--bb')
     check.add_argument('--crs', type=Path)
     check.add_argument('shapes', nargs='*', help='shape names (default: one per kind of root)')
+    sub.add_parser('walletfixture').add_argument('out', type=Path)
+    pack = sub.add_parser('package')
+    pack.add_argument('--nargo', default='nargo')
+    pack.add_argument('--vk', required=True, help='zkpdf-vk of native/zkpdf-prover')
+    pack.add_argument('--vkey-hash', required=True, help='the vkey_hash example of native/zkpassport-verify')
+    pack.add_argument('--crs', type=Path, required=True)
+    pack.add_argument('--out', type=Path, required=True)
+    pack.add_argument('--jobs', type=int, default=1)
+    pack.add_argument('--pin', action='store_true', help='rewrite circuits.json instead of comparing with it')
+    pack.add_argument('names', nargs='*', help='circuit or shape names (default: all)')
     args = parser.parse_args()
+    if args.command == 'walletfixture':
+        wallet_fixture(args.out)
+        return
+    if args.command == 'package':
+        sys.exit(package(args.nargo, args.vk, args.vkey_hash, args.crs.resolve(), args.out.resolve(), args.names,
+                         args.jobs, args.pin))
     if args.command == 'gen':
         print('%d circuits in %s' % (generate(), GEN))
     elif args.command == 'libtests':

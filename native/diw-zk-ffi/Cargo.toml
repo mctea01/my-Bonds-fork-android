@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 bindgen = ["uniffi/cli"]
-zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:serde_json", "dep:hex", "dep:base64", "dep:libloading", "oprf"]
+zkpdf = ["dep:zkpdf-prover", "zkpdf-prover/bb", "dep:zkpassport-verify", "dep:zkpassport-ffi", "dep:zkpassport-core", "dep:serde_json", "dep:hex", "dep:base64", "dep:libloading", "oprf"]
 # The project OPRF (zkPassport 5.5): light, no Barretenberg; zkPassport proving turns it on.
 oprf = ["dep:taceo-oprf-core", "dep:taceo-poseidon2", "dep:ark-babyjubjub", "dep:ark-ec", "dep:ark-ff", "dep:num-bigint", "dep:rand", "dep:serde_json"]
 tlsn = ["dep:zktls"]
@@ -28,6 +28,7 @@ openac-age = { path = "../openac-age", optional = true }
 zkpassport-verify = { path = "../zkpassport-verify", optional = true }
 # zkPassport's own input generation and session driver (MIT), vendored from a reviewed revision.
 zkpassport-ffi = { path = "../vendor/zkpassport/zkpassport-ffi", optional = true }
+zkpassport-core = { path = "../vendor/zkpassport/zkpassport-core", optional = true }
 serde_json = { version = "=1.0.154", optional = true }
 hex = { version = "0.4", optional = true }
 # Opens the optional Barretenberg 5 library (zkpassport-bb5) for zkPassport proofs of circuits before 0.22.0.
