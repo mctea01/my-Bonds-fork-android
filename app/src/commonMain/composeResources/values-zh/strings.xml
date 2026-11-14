@@ -4457,6 +4457,7 @@
     <string name="core_key_sm2_unsupported">這個簽章來源不支援 SM2 金鑰</string>
     <string name="core_ofd_attachments">附件：%1$s</string>
     <string name="core_ofd_documents">檔案內含 %1$s 份文件</string>
+    <string name="core_ofd_repaired">檔案的頁面內容有寫錯的元素或屬性名稱，目前顯示的是依數值還原的結果，請與開立方的版本核對</string>
     <string name="core_ofd_gbt35275">數位簽章為 GB/T 35275 國密簽章資料（SM2 簽名訊息語法）</string>
     <string name="core_ofd_pkcs7_sign">數位簽章使用 PKCS#7 簽章資料（非國密），部分中國大陸閱讀器可能不承認</string>
     <string name="core_ofd_seal_bad">電子印章檔無法讀取（不是 GB/T 38540 或 GM/T 0031 的 SESeal）</string>

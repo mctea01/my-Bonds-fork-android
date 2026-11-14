@@ -85,6 +85,9 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
         val units = HashMap<String, Unit>()
         var defaultCs: String? = null
 
+        /** True once a resource file had to be read as rebuilt by [OfdRepair]. */
+        var resRepaired = false
+
         /** [path] named in the file at [from]: absolute, relative to that file, to the document or to the package. */
         fun resolve(path: String, from: String): String? {
             val p = path.trim().ifEmpty { return null }
@@ -106,13 +109,15 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
             val templates = common?.all("TemplatePage").orEmpty().associate { t ->
                 t.attributes["ID"].orEmpty() to (t.attributes["BaseLoc"].orEmpty() to (t.attributes["ZOrder"] ?: "Background"))
             }
-            val pageRefs = doc.child("Pages")?.all("Page").orEmpty()
+            // Pages holds nothing but page references, so each child is one whatever it is called.
+            val pageRefs = doc.child("Pages")?.children.orEmpty()
             val annotations = annotations(doc)
             val pages = ArrayList<OfdPage>()
             for ((index, ref) in pageRefs.withIndex()) {
                 if (index >= maxPages) break
                 val id = ref.attributes["ID"].orEmpty()
-                val path = resolve(ref.attributes["BaseLoc"].orEmpty(), docDir) ?: continue
+                val path = resolve(ref.attributes["BaseLoc"].orEmpty(), docDir)
+                    ?: ref.attributes.values.firstNotNullOfOrNull { v -> resolve(v, docDir)?.takeIf { v.contains('.') || v.contains('/') } } ?: continue
                 val page = runCatching { page(id, index, path, pageArea, templates, annotations[id].orEmpty()) }.getOrNull() ?: continue
                 pages.add(page)
             }
@@ -130,7 +135,8 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
         // ------------------------------------------------------------ resources
 
         fun loadRes(path: String) {
-            val res = xml(path) ?: return
+            val (res, fixed) = OfdRepair.res(xml(path) ?: return)
+            if (fixed) resRepaired = true
             val base = res.attributes["BaseLoc"]?.let { b -> if (b.startsWith("/")) normalize(b) else normalize(dir(path) + "/" + b) } ?: dir(path)
             fun file(name: String?): String? {
                 val n = name?.trim()?.ifEmpty { null } ?: return null
@@ -223,8 +229,10 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
             id: String, index: Int, path: String, pageArea: OfdBox?,
             templates: Map<String, Pair<String, String>>, annots: List<XmlElement>,
         ): OfdPage {
-            val page = xml(path) ?: error("page missing")
-            for (res in page.all("PageRes")) resolve(res.text, dir(path))?.let { loadRes(it) }
+            val raw = xml(path) ?: error("page missing")
+            for (res in raw.all("PageRes")) resolve(res.text, dir(path))?.let { loadRes(it) }
+            val (page, repaired) = OfdRepair.page(raw, fonts.keys, medias.keys)
+            var anyRepaired = repaired
             val box = page.child("Area")?.let { area(it) } ?: pageArea ?: OfdBox.A4
             val origin = OfdMatrix.translate(-box.x, -box.y)
             val back = ArrayList<OfdObject>()
@@ -232,15 +240,17 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
             for (t in page.all("Template")) {
                 val (loc, defaultOrder) = templates[t.attributes["TemplateID"]] ?: continue
                 val tplPath = resolve(loc, docDir) ?: continue
-                val tpl = xml(tplPath) ?: continue
-                for (res in tpl.all("PageRes")) resolve(res.text, dir(tplPath))?.let { loadRes(it) }
+                val rawTpl = xml(tplPath) ?: continue
+                for (res in rawTpl.all("PageRes")) resolve(res.text, dir(tplPath))?.let { loadRes(it) }
+                val (tpl, tplRepaired) = OfdRepair.page(rawTpl, fonts.keys, medias.keys)
+                if (tplRepaired) anyRepaired = true
                 val objects = content(tpl, origin)
                 if ((t.attributes["ZOrder"] ?: defaultOrder).equals("Foreground", true)) front.addAll(objects) else back.addAll(objects)
             }
             val objects = back + content(page, origin) + front + annots.flatMap { annot(it, origin) }
             val texts = LinkedHashMap<String, String>()
             objects.filterIsInstance<OfdObject.Text>().forEach { t -> t.id?.let { texts[it] = (texts[it].orEmpty() + t.codes.joinToString("") { c -> c.text }) } }
-            return OfdPage(id, index, box, objects, texts)
+            return OfdPage(id, index, box, objects, texts, anyRepaired || resRepaired)
         }
 
         /** The layers of a page or template, background first, then body, then foreground. */
@@ -463,7 +473,8 @@ class OfdPackage private constructor(val files: Map<String, ByteArray>, val docu
                 if (tris.isEmpty()) return null
                 return OfdShade.Gouraud(tris, g.attributes["Extend"] == "1", g.child("BackColor")?.let { color(it) })
             }
-            c.child("LaGouraudShd")?.let { g ->
+            // The schema of the standard spells the element LaGourandShd (its type is CT_LaGouraudShd); both are read.
+            (c.child("LaGourandShd") ?: c.child("LaGouraudShd"))?.let { g ->
                 val perRow = g.attributes["VerticesPerRow"]?.toIntOrNull()?.takeIf { it >= 2 } ?: return null
                 val pts = g.all("Point").mapNotNull { shadePoint(it) }
                 val rows = pts.size / perRow

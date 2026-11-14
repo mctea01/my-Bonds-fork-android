@@ -278,6 +278,8 @@ data class OfdPage(
     val objects: List<OfdObject>,
     /** The ID of each TextObject on the page with its text (for custom tags that point at objects). */
     val texts: Map<String, String>,
+    /** True when the page's content or resources had wrong element or attribute names and were read as rebuilt by [OfdRepair]. */
+    val repaired: Boolean = false,
 )
 
 /** A file the document carries as an attachment (such as the XML of an invoice). */
