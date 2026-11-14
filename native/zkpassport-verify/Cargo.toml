@@ -10,7 +10,7 @@ description = "Checks zkPassport proof bundles (fast mode): public inputs, param
 # The Noir revision zkpdf-prover already pins, for the BN254 field and the Poseidon2 permutation.
 acvm = { git = "https://github.com/noir-lang/noir.git", rev = "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7", features = ["bn254"] }
 bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir.git", rev = "5a7ee9bf5ed8973076df7bb0d2b723024db09ae7" }
-num-bigint = "0.4"
+num-bigint = "0.5"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
 sha2.workspace = true
