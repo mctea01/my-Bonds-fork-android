@@ -11,7 +11,7 @@ license = "Apache-2.0"
 rust-version = "1.95"
 
 [workspace.dependencies]
-uniffi = "=0.29.4"
+uniffi = "=0.32.2"
 sha2 = "=0.10.9"
 thiserror = "=2.0.21"
 
