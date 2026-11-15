@@ -1,0 +1,13 @@
+[package]
+name = "diw_facematch_self"
+type = "bin"
+authors = ["DIW MY WALLET"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+diw_facematch = { path = "../../lib/diw_facematch" }
+facematch = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/facematch" }
+data_check_expiry = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/data-check/expiry" }
+commitment = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/commitment/scoped-nullifier" }
+commitment_common = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/commitment/common" }
+utils = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/utils" }

@@ -13,6 +13,7 @@ multipaz = { module = "org.multipaz:multipaz", version.ref = "multipaz" }
 multipaz-longfellow = { module = "org.multipaz:multipaz-longfellow", version.ref = "multipaz" }
 multipaz-doctypes = { module = "org.multipaz:multipaz-doctypes", version.ref = "multipaz" }
 multipaz-compose = { module = "org.multipaz:multipaz-compose", version.ref = "multipaz" }
+multipaz-facenet = { module = "org.multipaz:multipaz-facenet", version.ref = "multipaz" }
 multipaz-dcapi = { module = "org.multipaz:multipaz-dcapi-credman", version.ref = "multipaz" }
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }

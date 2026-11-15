@@ -16,6 +16,11 @@ import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
 import diw.wallet.core.zkpassport.ZkPassportChip
 import diw.wallet.core.zkpassport.ZkPassportCscaCheck
 import diw.wallet.core.zkpassport.ZkPassportConfig
+import diw.wallet.core.zkpassport.ZkPassportFaceMatch
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchApp
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchAttestation
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchEvidence
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchKind
 import diw.wallet.core.zkpassport.ZkPassportField
 import diw.wallet.core.zkpassport.ZkPassportIncoming
 import diw.wallet.core.zkpassport.ZkPassportPairedProver
@@ -199,7 +204,9 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 return@launch
             }
             answer = opened
-            ui.value = OfflineUi.ZkPassportAnswerConsent(incoming, opened.origin, opened.originMatches, passports(), unsupported(incoming))
+            ui.value = OfflineUi.ZkPassportAnswerConsent(
+                incoming, opened.origin, opened.originMatches, passports(), unsupported(incoming, model.platform.faceMatch != null),
+            )
         }
     }
 
@@ -212,7 +219,9 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         job = model.scope.launch {
             try {
                 val chip = chip(file) ?: throw ZkPassportAnswerFailure("passport")
-                a.answer(chip, target) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
+                // The comparison comes before the request is accepted, so a failed one sends the requester nothing.
+                val face = incoming.faceMatchMode?.let { faceEvidence(chip, incoming, it == "strict") }
+                a.answer(chip, target, face) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
                 answered(incoming, a.origin, file, null, target)
             } catch (e: CancellationException) {
                 throw e
@@ -224,6 +233,36 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 model.platform.keepScreenOn(false)
             }
         }
+    }
+
+    /**
+     * FaceMatch for an answer (docs/design/zkpassport.md 5.6): the holder's face is compared with the photo of
+     * [chip] on this device, then a new hardware key signs the statement of that comparison where the requester
+     * takes key attested proofs and the device attests its keys; otherwise the proof is the self-declared kind,
+     * when the requester takes that. Nothing is claimed without a comparison that passed.
+     */
+    private suspend fun faceEvidence(chip: ZkPassportChip, incoming: ZkPassportIncoming, strict: Boolean): ZkPassportFaceMatchEvidence {
+        val service = model.platform.faceMatch ?: throw ZkPassportAnswerFailure("facematch_unsupported")
+        val holder = model.platform.zk?.zkPassportHolder ?: throw ZkPassportAnswerFailure("native_unavailable")
+        val kinds = incoming.faceMatchKinds
+        if (kinds.isEmpty()) throw ZkPassportAnswerFailure("facematch_unsupported")
+        val photo = withContext(Dispatchers.Default) { chip.dg2?.let { Lds.dg2(it).firstOrNull() }?.data }
+            ?: throw ZkPassportAnswerFailure("facematch_photo")
+        ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null, comparing = true)
+        val comparison = try {
+            service.compare(photo, strict)
+        } catch (e: FaceMatchFailure) {
+            throw ZkPassportAnswerFailure("facematch_" + e.code)
+        }
+        ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null)
+        val attestation = if (ZkPassportFaceMatchKind.KEY_ATTESTATION in kinds) {
+            val statement = holder.faceMatchStatement(chip, service.appVersion, strict, comparison.embedding, comparison.cosine, comparison.threshold)
+            service.attest(statement.toSign)?.let { ZkPassportFaceMatchAttestation(statement.clientData, it.chain, it.signature, it.signerDigest) }
+        } else {
+            null
+        }
+        if (attestation == null && ZkPassportFaceMatchKind.SELF !in kinds) throw ZkPassportAnswerFailure("facematch_attestation")
+        return ZkPassportFaceMatchEvidence(strict, service.appId, attestation)
     }
 
     /** Tells the requester the holder declined. */
@@ -386,6 +425,12 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 e == "mock" -> tr(Res.string.zkp_err_mock)
                 e == "oprf_key" -> tr(Res.string.zkp_err_oprf_key)
                 e == "nullifier_mismatch" -> tr(Res.string.zkp_err_nullifier)
+                e.startsWith("facematch_level:") -> tr(Res.string.zkp_err_facematch_level, faceKind(e.substringAfter(':')))
+                e == "facematch_root" -> tr(Res.string.zkp_err_facematch_root)
+                e == "facematch_app" -> tr(Res.string.zkp_err_facematch_app)
+                e == "facematch_environment" -> tr(Res.string.zkp_err_facematch_environment)
+                e == "query:facematch" -> tr(Res.string.zkp_err_facematch_mode)
+                e.startsWith("parameters:") || e.startsWith("facematch") -> tr(Res.string.zkp_err_facematch)
                 e.startsWith("query") || e.startsWith("missing:") -> tr(Res.string.zkp_err_query)
                 else -> tr(Res.string.zkp_err_bundle)
             }
@@ -408,6 +453,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             if (r.nationalityIn.isNotEmpty() || r.nationalityOut.isNotEmpty()) add(fieldTitle(ZkPassportField.NATIONALITY))
             if (r.issuingCountryIn.isNotEmpty() || r.issuingCountryOut.isNotEmpty()) add(fieldTitle(ZkPassportField.ISSUING_COUNTRY))
             if (r.boundData != null) add(tr(Res.string.zkp_field_bound))
+            if (r.faceMatch != null) add(tr(Res.string.zkp_field_facematch))
         }.distinct()
 
         fun claims(r: ZkPassportResult): List<String> = buildList {
@@ -436,6 +482,50 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             if (r.issuingCountryIn.isNotEmpty()) add(tr(Res.string.zkp_issuing_in, r.issuingCountryIn.joinToString(sep)))
             if (r.issuingCountryOut.isNotEmpty()) add(tr(Res.string.zkp_issuing_out, r.issuingCountryOut.joinToString(sep)))
             r.boundData?.let { add(tr(Res.string.zkp_bound, it)) }
+            r.faceMatch?.let { add(tr(Res.string.zkp_facematch_line, faceMode(it.strict), faceKind(it.kind))) }
+        }
+
+        /** A FaceMatch kind in words. */
+        fun faceKind(kind: String): String = when (kind) {
+            ZkPassportFaceMatchKind.OFFICIAL -> tr(Res.string.zkp_facematch_kind_official)
+            ZkPassportFaceMatchKind.KEY_ATTESTATION -> tr(Res.string.zkp_facematch_kind_keyattest)
+            ZkPassportFaceMatchKind.SELF -> tr(Res.string.zkp_facematch_kind_self)
+            else -> kind
+        }
+
+        fun faceMode(strict: Boolean): String = tr(if (strict) Res.string.zkp_facematch_mode_strict else Res.string.zkp_facematch_mode_regular)
+
+        /** Who vouches for a verified FaceMatch proof and what it leaves open, one line each. */
+        fun faceCaveats(f: ZkPassportFaceMatch): List<String> = buildList {
+            when (f.kind) {
+                ZkPassportFaceMatchKind.OFFICIAL -> add(tr(Res.string.zkp_facematch_official_note, f.platform ?: "-"))
+                ZkPassportFaceMatchKind.KEY_ATTESTATION -> {
+                    add(tr(Res.string.zkp_facematch_keyattest_note, f.appId ?: "-"))
+                    when (f.environment) {
+                        "production" -> add(tr(Res.string.zkp_facematch_env_production))
+                        "self_signed" -> add(tr(Res.string.zkp_facematch_env_self_signed))
+                        else -> add(tr(Res.string.zkp_facematch_env_development))
+                    }
+                }
+                else -> add(tr(Res.string.zkp_facematch_self_note, f.appId ?: "-"))
+            }
+        }
+
+        /**
+         * The apps of the setting's text (one per line: package name, then signing certificate digests) and the
+         * lines that do not read as one.
+         */
+        fun faceApps(text: String): Pair<List<ZkPassportFaceMatchApp>, List<String>> {
+            val apps = ArrayList<ZkPassportFaceMatchApp>()
+            val bad = ArrayList<String>()
+            for (line in text.lines().map { it.trim() }.filter { it.isNotEmpty() }) {
+                val parts = line.split(' ', ',', ';', '\t').filter { it.isNotEmpty() }
+                val signers = parts.drop(1).map { it.replace(":", "").lowercase() }
+                val named = Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+").matches(parts[0]) && parts[0].length <= MAX_APP_ID
+                if (named && signers.isNotEmpty() && signers.all { Regex("[0-9a-f]{64}").matches(it) }) apps.add(ZkPassportFaceMatchApp(parts[0], signers))
+                else bad.add(line)
+            }
+            return apps to bad
         }
 
         /** The trust line of a passed check (docs/design/zkpassport.md 4.3): T2 when every key is an anchor. */
@@ -450,11 +540,28 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             return if (check != null && check.error == null && check.expired > 0) line + " " + tr(Res.string.zkp_trust_expired, check.expired) else line
         }
 
-        /** Why this wallet cannot answer [incoming], or null: FaceMatch and modes other than fast are not offered. */
-        fun unsupported(incoming: ZkPassportIncoming): String? = when {
-            "facematch" in incoming.query -> tr(Res.string.zkp_answer_unsupported_facematch)
+        /**
+         * Why this wallet cannot answer [incoming], or null: modes other than fast are not offered, and a FaceMatch
+         * needs a requester that takes this project's proofs and, with [canCompare], a camera screen on this device.
+         */
+        fun unsupported(incoming: ZkPassportIncoming, canCompare: Boolean = false): String? = when {
             !incoming.fastMode -> tr(Res.string.zkp_answer_unsupported_mode, incoming.mode.ifEmpty { "-" })
+            incoming.faceMatchMode == null -> null
+            incoming.faceMatchKinds.isEmpty() -> tr(Res.string.zkp_answer_unsupported_facematch)
+            !canCompare -> tr(Res.string.zkp_answer_unsupported_facematch_device)
             else -> null
+        }
+
+        /** How this wallet would answer the FaceMatch of [incoming], for the consent screen; empty without one. */
+        fun faceNotes(incoming: ZkPassportIncoming): List<String> {
+            val mode = incoming.faceMatchMode ?: return emptyList()
+            val kinds = incoming.faceMatchKinds
+            return buildList {
+                add(tr(if (mode == "strict") Res.string.zkp_answer_facematch_strict else Res.string.zkp_answer_facematch_regular))
+                add(tr(Res.string.zkp_answer_facematch_private))
+                if (ZkPassportFaceMatchKind.KEY_ATTESTATION in kinds) add(tr(Res.string.zkp_answer_facematch_keyattest))
+                if (ZkPassportFaceMatchKind.SELF in kinds) add(tr(Res.string.zkp_answer_facematch_self))
+            }
         }
 
         /** What a request's query asks for, one line each, in the order of the query. */
@@ -511,6 +618,14 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code.startsWith("bridge_origin:") -> tr(Res.string.zkp_answer_err_origin) + "\n" + tr(Res.string.zkp_answer_err_reason, code.substringAfter(':'))
             code == "connection" -> tr(Res.string.zkp_fail_connection)
             code == "passport" -> tr(Res.string.zkp_answer_err_passport)
+            code == "facematch_unsupported" -> tr(Res.string.zkp_answer_unsupported_facematch)
+            code == "facematch_unavailable" -> tr(Res.string.zkp_answer_unsupported_facematch_device)
+            code == "facematch_remote" -> tr(Res.string.zkp_answer_err_facematch_remote)
+            code == "facematch_photo" -> tr(Res.string.zkp_answer_err_facematch_photo)
+            code == "facematch_cancelled" -> tr(Res.string.zkp_answer_err_facematch_cancelled)
+            code == "facematch_no_match" -> tr(Res.string.zkp_answer_err_facematch_no_match)
+            code == "facematch_attestation" -> tr(Res.string.zkp_answer_err_facematch_attestation)
+            code.startsWith("facematch") -> tr(Res.string.zkp_answer_err_facematch, code)
             code == "native_unavailable" -> tr(Res.string.zkp_answer_no_engine)
             code == "crs_missing" -> tr(Res.string.zkp_answer_err_crs)
             code == "inputs" -> tr(Res.string.zkp_answer_err_inputs)
@@ -523,5 +638,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }
 
         const val MAX_COUNTRIES = 200
+        /** The longest package name the circuits take. */
+        const val MAX_APP_ID = 100
     }
 }

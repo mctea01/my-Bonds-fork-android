@@ -1,0 +1,2 @@
+[workspace]
+members = ["lib/diw_facematch", "bin/facematch_self"]

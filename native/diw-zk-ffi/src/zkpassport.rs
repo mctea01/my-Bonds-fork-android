@@ -281,6 +281,9 @@ pub fn zkpassport_prove(
             let (proof, public, vk) =
                 zkpdf_prover::prove_ultrahonk(crs, circuit.as_bytes(), Some(&vk), inputs)
                     .map_err(|e| invalid(e.0.to_string()))?;
+            // A proof that does not verify under the key just checked must not leave this device as an answer.
+            zkpdf_prover::verify_ultrahonk(Some(crs), &vk, &proof, &public)
+                .map_err(|_| invalid("proof_self_check".into()))?;
             token.check()?;
             let mut joined = public;
             joined.extend_from_slice(&proof);

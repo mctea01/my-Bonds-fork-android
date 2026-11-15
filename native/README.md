@@ -47,7 +47,9 @@ Two desktop targets are cross-built on a Linux x86_64 host, and `build.sh`
 sets the linker and compilers for them:
 
 - `native/build.sh aarch64-unknown-linux-gnu` (`linux-aarch64`): needs
-  `g++-aarch64-linux-gnu`. An arm64 host builds it as `host`.
+  `g++-aarch64-linux-gnu`; clang compiles Barretenberg against it. An arm64
+  host builds it as `host`. Linux builds of Barretenberg need clang (see
+  `zkpdf-prover/README.md`).
 - `native/build.sh x86_64-pc-windows-gnullvm` (`windows-x86_64`): uses
   llvm-mingw (clang, lld, libc++, libunwind, compiler-rt and the mingw-w64
   UCRT), which `zkpdf-prover/tools/llvm_mingw.py` fetches as a release pinned

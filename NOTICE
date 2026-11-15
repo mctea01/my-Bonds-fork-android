@@ -15,7 +15,8 @@ change.
 ========================================================================
 
 - Multipaz (org.multipaz:multipaz, multipaz-doctypes, multipaz-compose,
-  multipaz-dcapi-credman, multipaz-longfellow) - Apache License 2.0
+  multipaz-dcapi-credman, multipaz-longfellow; multipaz-facenet on Android,
+  section 2) - Apache License 2.0
 - Kotlin standard library, kotlinx.coroutines, kotlinx.serialization,
   kotlinx-io, kotlinx-datetime, atomicfu - Apache License 2.0
 - Ktor client (core, OkHttp engine on Android, Java engine on desktop) -
@@ -68,6 +69,19 @@ change.
 - CMWallet credential provisioning matcher (Google digital-credentials
   sample, app/src/androidMain/assets/openid4vci_provision.wasm) - Apache
   License 2.0
+- Multipaz FaceNet (org.multipaz:multipaz-facenet, face comparison for
+  zkPassport FaceMatch answers) - Apache License 2.0. It embeds the MediaPipe
+  BlazeFace short-range face detection model (Google, Apache License 2.0) and
+  the MiniFASNetV2 passive anti-spoofing model (Silent-Face-Anti-Spoofing,
+  Minivision, Apache License 2.0)
+- LiteRT (com.google.ai.edge.litert:litert and litert-support, the
+  TensorFlow Lite runtime those models run on) - Apache License 2.0
+- MobileFaceNet face embedding model (Qualcomm Technologies, Qualcomm AI Hub
+  release v0.62.2, float TFLite export; app/src/androidMain/assets/facenet/
+  mobile_facenet.tflite, SHA-256
+  2254b01065c1f69ff501e9501042441b85323710e3d5a7b6be04a5084b647651, the copy
+  in the Multipaz repository's multipaz-facenet-test-data) - Apache License
+  2.0. Model card: https://huggingface.co/qualcomm/MobileFaceNet
 
 ========================================================================
 3. Desktop only
@@ -157,6 +171,18 @@ zkPDF and zkPassport (Noir, Barretenberg)
 - TACEO taceo-oprf-core, taceo-ark-babyjubjub, taceo-ark-serde-compat and
   taceo-poseidon2 (the project OPRF and Poseidon2), arkworks 0.6 - MIT or
   Apache License 2.0
+- The project's self-declared FaceMatch circuit (native/circuits-zkpassport/
+  artifacts/diw_facematch_self.json, compiled Noir embedded in the native
+  library) is built from the project's own source and the zkPassport circuits
+  Noir libraries (utils, commitment, facematch, data-check), revision
+  2c5673df14d496a1b0baf7a92e883ca19fbb618b, vendored unmodified in
+  native/vendor/zkpassport-circuits - Apache License 2.0; with their Noir
+  dependencies: noir-lang poseidon, noir_base64, noir_sort and
+  noir_check_shuffle, zac-williamson sha1, zkPassport noir-bignum, noir-ecdsa,
+  noir_rsa, noir_json_parser and sha512 - Apache License 2.0; TACEO
+  noir-poseidon and oprf-nr, noir-date - MIT License; noir-lang sha256 0.3.0
+  and zkPassport noir_bigcurve 0.15.0-1 carry no licence file in those tags
+  (their upstream repositories are MIT or Apache License 2.0)
 
 BBS signatures
 
@@ -221,6 +247,13 @@ Windows runtime
   secq256r1 patch and asset hashes are pinned in that package's VERSIONS.json.
 - The BN254 CRS used by Barretenberg is the public Aztec Ignition ceremony
   transcript prefix; hashes are in native/zkpdf-prover/assets.json.
+- The project's key attestation FaceMatch circuits (78 compiled Noir
+  circuits, release zkpassport-facematch-v1 of this repository; the wallet
+  downloads the one matching the device's attestation chain) are built from
+  native/circuits-zkpassport with the libraries listed for the self-declared
+  circuit in section 4, plus the zkPassport sig-check library - Apache
+  License 2.0. Their verification key hashes are pinned in
+  native/circuits-zkpassport/circuits.json.
 
 ========================================================================
 7. Development and test tools (not shipped in the application)
@@ -247,6 +280,10 @@ Windows runtime
   SIL Open Font License 1.1. The subset, full license and reproducible
   subsetting script are in tools/zkpdf-testdocs/. Upstream source:
   https://github.com/notofonts/noto-cjk/tree/Sans2.004
+- Nargo fetches the Noir dependencies of the project's FaceMatch circuits
+  (sections 4 and 6) when the circuits are compiled; they are not vendored.
+- Noir nargo 1.0.0 and Barretenberg bb 6.0.0 command-line tools (compiling
+  and checking those circuits) - MIT or Apache License 2.0 / Apache License 2.0
 - The JBIG2 test uses one stream from the pdf.js test suite
   (jbig2_file_header.pdf, Apache License 2.0). The synthetic fonts in
   test-servers/src/test/resources/documents/fonts were made by

@@ -5,6 +5,8 @@ import diw.wallet.core.zk.native.bindings.ZkException
 import diw.wallet.core.zk.native.bindings.ZkPassportProofSession
 import diw.wallet.core.zk.native.bindings.zkpassportCertificates
 import diw.wallet.core.zk.native.bindings.zkpassportCircuitRoot
+import diw.wallet.core.zk.native.bindings.zkpassportFacematchCircuits
+import diw.wallet.core.zk.native.bindings.zkpassportFacematchInputs
 import diw.wallet.core.zk.native.bindings.oprfBlind
 import diw.wallet.core.zk.native.bindings.oprfFinalize
 import diw.wallet.core.zk.native.bindings.zkpassportProve
@@ -16,11 +18,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import java.io.File
 import java.math.BigInteger
 import java.security.SecureRandom
@@ -31,13 +35,17 @@ import java.util.Base64
  * driver (vendored under native/vendor/zkpassport) decide which circuits run and in what order; this class
  * only fetches, checks and proves. Every fetched file is checked before use: the certificate package must hash to
  * the registry's latest root, the manifest to a circuit root the registry lists, and each circuit's key, derived
- * here, to its manifest leaf, so no circuit outside the registry runs on the chip data.
+ * here, to its manifest leaf, so no circuit outside the registry runs on the chip data. The FaceMatch proof of a
+ * request is this project's own circuit (docs/design/zkpassport.md 5.6): its key must hash to the list built into
+ * the native library, and it is proved after zkPassport's proofs with the same salts, so it joins their commitment.
  */
 class ZkPassportProver(
     http: HttpClient,
     cache: File,
     private val crsDirectory: () -> File?,
     private val nativeReady: suspend () -> Boolean,
+    /** A packaged key attestation circuit by name; null downloads it from this project's release. */
+    private val faceMatchCircuit: (suspend (String) -> String)? = null,
 ) {
     private val registry = ZkPassportRegistry(http.config { followRedirects = true }, cache)
 
@@ -69,6 +77,8 @@ class ZkPassportProver(
         val rpc: String? = null,
         val nowSeconds: Long = System.currentTimeMillis() / 1000,
         val oprf: Oprf? = null,
+        /** The face comparison to prove when [query] asks for FaceMatch. */
+        val faceMatch: ZkPassportFaceMatchEvidence? = null,
     )
 
     sealed interface Progress {
@@ -100,16 +110,19 @@ class ZkPassportProver(
             val chain = ZkPassport.chain(job.devMode)
             progress(Progress.Registry)
             val certificateRoot = registry.latestRoot(chain, job.rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY)
+            val salt = salt()
             val session = try {
-                ZkPassportProofSession(config(chip, job, chain, certificateRoot).toString())
+                ZkPassportProofSession(config(chip, job, chain, certificateRoot, salt).toString())
             } catch (e: ZkException) {
                 throw Failure("session")
             }
-            session.use { run(it, job, chain, certificateRoot, crs, cancel, progress) }
+            session.use { run(it, chip, salt, job, chain, certificateRoot, crs, cancel, progress) }
         }
 
     private suspend fun run(
         session: ZkPassportProofSession,
+        chip: Chip,
+        salt: String,
         job: Job,
         chain: Long,
         certificateRoot: String,
@@ -131,7 +144,7 @@ class ZkPassportProver(
                 "fetch" -> {
                     val requests = command["requests"] as? kotlinx.serialization.json.JsonArray ?: throw Failure("driver")
                     if (requests.any { (it as? JsonObject)?.text("id")?.toIntOrNull() != null }) {
-                        total = requests.size
+                        total = requests.size + if (job.faceMatch != null) 1 else 0
                         progress(Progress.Circuits(total))
                     }
                     for (r in requests) {
@@ -196,7 +209,8 @@ class ZkPassportProver(
                     val committed = messages.filter { it.first == "proof" }.associate { (_, p) ->
                         (p as JsonObject).text("name").orEmpty() to p["committedInputs"]
                     }
-                    return@withContext Proved(proofs.map { it.copy(committedInputs = committed[it.name]) }, messages, queryResult)
+                    val proved = Proved(proofs.map { it.copy(committedInputs = committed[it.name]) }, messages, queryResult)
+                    return@withContext job.faceMatch?.let { faceMatch(proved, it, chip, salt, job, version, crs, cancel, progress) } ?: proved
                 }
                 "error" -> throw Failure("driver:" + command.text("message").orEmpty().take(120))
                 else -> throw Failure("driver")
@@ -204,6 +218,115 @@ class ZkPassportProver(
         }
         throw Failure("driver")
     }
+
+    /**
+     * Adds the FaceMatch proof to [proved]: this project's circuit for [face], on the document and with the salts of
+     * the session, so its `comm_in` is the commitment zkPassport's proofs carry. The circuit hides the private
+     * nullifier, so the proof holds no identifier of its own. [salt] is the session's master salt and [version] the
+     * circuit version of its proofs.
+     */
+    suspend fun faceMatch(
+        proved: Proved,
+        face: ZkPassportFaceMatchEvidence,
+        chip: Chip,
+        salt: String,
+        job: Job,
+        version: String,
+        crs: String,
+        cancel: ZkCancelToken = ZkCancelToken(),
+        progress: (Progress) -> Unit = {},
+    ): Proved = withContext(Dispatchers.IO) {
+        val b64 = Base64.getEncoder()
+        val mode = if (face.strict) "strict" else "regular"
+        val request = buildJsonObject {
+            put("kind", face.kind)
+            put("sod", b64.encodeToString(diw.wallet.core.document.mrtd.BerToDer.sod(chip.sod)))
+            put("dg1", b64.encodeToString(chip.dg1))
+            chip.dg2?.let { put("dg2", b64.encodeToString(it)) }
+            put("salt", salt)
+            put("service_scope", ZkPassport.normalizeDomain(job.domain))
+            put("service_subscope", job.scope.orEmpty())
+            put("current_date_timestamp", job.nowSeconds)
+            put("mode", mode)
+            put("app_id", face.appId)
+            face.attestation?.let { a ->
+                putJsonArray("chain") { a.chain.forEach { add(b64.encodeToString(it)) } }
+                put("client_data", b64.encodeToString(a.clientData))
+                put("signature", b64.encodeToString(a.signature))
+                put("signer_digest", a.signerDigest.lowercase())
+            }
+        }
+        val built = try {
+            Json.parseToJsonElement(zkpassportFacematchInputs(request.toString())).jsonObject
+        } catch (e: ZkException.InvalidInput) {
+            // A fixed code: the chain's shape has no circuit, the photo is not the document's, and the like.
+            throw Failure("facematch:" + (e.reason.takeIf { REASON.matches(it) } ?: "other"))
+        } catch (e: ZkException) {
+            throw Failure("facematch")
+        }
+        val name = built.text("name") ?: throw Failure("facematch")
+        val inputs = built["inputs"] as? JsonObject ?: throw Failure("facematch")
+        val hash = runCatching {
+            (Json.parseToJsonElement(zkpassportFacematchCircuits()).jsonObject["circuits"] as? JsonObject)?.text(name)
+        }.getOrNull() ?: throw Failure("vkey:$name")
+        val index = proved.proofs.size
+        progress(Progress.Proving(index, index + 1, name))
+        val circuit = built.text("circuit") ?: (faceMatchCircuit ?: registry::projectCircuit)(name)
+        val command = buildJsonObject {
+            put("circuit", circuit)
+            put("inputs", inputs)
+        }
+        val out = try {
+            Json.parseToJsonElement(zkpassportProve(command.toString(), hash, crs, cancel)).jsonObject
+        } catch (e: ZkException.Cancelled) {
+            throw kotlinx.coroutines.CancellationException("cancelled")
+        } catch (e: ZkException.InvalidInput) {
+            if (e.reason == "circuit_vkey_mismatch") {
+                if (built["circuit"] == null) registry.forgetProjectCircuit(name)
+                throw Failure("circuit_backend:$name")
+            }
+            throw Failure("proof:$name:" + (e.reason.takeIf { REASON.matches(it) } ?: "other"))
+        } catch (e: ZkException) {
+            throw Failure("proof:$name")
+        }
+        val proof = out.text("proof") ?: throw Failure("proof:$name")
+        // The circuit decides the environment from the attestation; the fifth public value says which it found.
+        val commitment = proof.drop(4 * 64).take(64).lowercase()
+        val environment = (built["environments"] as? JsonObject)?.entries
+            ?.firstOrNull { (_, v) -> (v as? JsonPrimitive)?.contentOrNull?.removePrefix("0x")?.lowercase() == commitment }?.key
+            ?: throw Failure("facematch_commitment")
+        val committed = buildJsonObject {
+            put(FACEMATCH, JsonObject((built["committed"] as? JsonObject ?: throw Failure("facematch")) + ("environment" to JsonPrimitive(environment))))
+        }
+        val vkey = out.text("vkey").orEmpty()
+        val message = buildJsonObject {
+            put("proof", proof)
+            put("name", name)
+            put("index", index)
+            put("total", index + 1)
+            put("committedInputs", committed)
+            put("vkeyHash", hash)
+            put("version", version)
+            // Not in zkPassport's registry: the verifier hashes this key against this project's list.
+            put("vkey", vkey)
+        }
+        val messages = ArrayList<Pair<String, JsonElement>>()
+        for ((method, params) in proved.messages) {
+            when (method) {
+                "proof" -> messages.add(method to JsonObject((params as JsonObject) + ("total" to JsonPrimitive(index + 1))))
+                "done" -> {
+                    messages.add("proof" to message)
+                    messages.add(method to faceMatchResult(params, mode))
+                }
+                else -> messages.add(method to params)
+            }
+        }
+        Proved(proved.proofs + Proof(name, proof, vkey, hash, version, committed), messages, faceMatchResult(proved.queryResult, mode))
+    }
+
+    /** The SDK's query result with its `facematch` entry. */
+    private fun faceMatchResult(result: JsonElement, mode: String): JsonElement =
+        JsonObject((result as? JsonObject ?: JsonObject(emptyMap())) + (FACEMATCH to buildJsonObject { put("mode", mode); put("passed", true) }))
 
     /**
      * The OPRF round for private nullifier [query]: blinds it here, asks the service and checks the answer's proof
@@ -287,7 +410,7 @@ class ZkPassportProver(
         return JsonObject(o + mapOf("vkeyHash" to JsonPrimitive(hashes[name] ?: throw Failure("vkey:$name")), "version" to JsonPrimitive(version)))
     }
 
-    private fun config(chip: Chip, job: Job, chain: Long, certificateRoot: String): JsonObject {
+    private fun config(chip: Chip, job: Job, chain: Long, certificateRoot: String, salt: String): JsonObject {
         val b64 = Base64.getEncoder()
         return buildJsonObject {
             put("mode", "fast")
@@ -298,11 +421,12 @@ class ZkPassportProver(
             put("sod", b64.encodeToString(diw.wallet.core.document.mrtd.BerToDer.sod(chip.sod)))
             put("dg1", b64.encodeToString(chip.dg1))
             chip.dg2?.let { put("dg2", b64.encodeToString(it)) }
-            put("query", job.query)
+            // zkPassport's driver plans the document proofs; FaceMatch is added by this class.
+            put("query", JsonObject(job.query - FACEMATCH))
             put("service_scope", ZkPassport.normalizeDomain(job.domain))
             put("service_subscope", job.scope.orEmpty())
             put("current_date_timestamp", job.nowSeconds)
-            put("salt", salt())
+            put("salt", salt)
         }
     }
 
@@ -314,6 +438,7 @@ class ZkPassportProver(
 
         private val REASON = Regex("^[a-z0-9_]{1,40}$")
         private const val ID_DATA = "sig_check_id_data"
+        private const val FACEMATCH = "facematch"
 
         /** A fresh master salt below the BN254 scalar field, in decimal. */
         fun salt(): String = BigInteger(1, ByteArray(31).also(random::nextBytes)).toString()

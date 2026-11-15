@@ -296,6 +296,8 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.multipaz.compose)
+            // Face comparison for zkPassport FaceMatch answers (docs/design/zkpassport.md 5.6).
+            implementation(libs.multipaz.facenet)
             implementation(libs.multipaz.dcapi)
             implementation(libs.tesseract4android)
             implementation(libs.androidx.camera.core)

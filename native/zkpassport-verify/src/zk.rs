@@ -67,6 +67,12 @@ pub fn pack_be_bytes(bytes: &[u8], chunk: usize) -> Vec<BigUint> {
     out
 }
 
+/// `poseidon2_hash_packed` of zkPassport's circuits: Poseidon2 over the 31-byte little-endian chunks of the bytes.
+pub fn hash_packed(bytes: &[u8]) -> BigUint {
+    let fields: Vec<BigUint> = bytes.chunks(31).map(BigUint::from_bytes_le).collect();
+    poseidon2_hash(&fields)
+}
+
 /// `ultraVkToFields`: the key's 32-byte big-endian fields.
 pub fn vkey_fields(vkey: &[u8]) -> Vec<BigUint> {
     vkey.chunks(32).map(BigUint::from_bytes_be).collect()

@@ -77,6 +77,19 @@ object ZkPassportRemote {
             job.scope?.let { put("scope", it) }
             put("dev_mode", job.devMode)
             put("circuit_version", job.circuitVersion)
+            // The comparison was made and signed on this device; the prover only builds the proof from it.
+            job.faceMatch?.let { face ->
+                put("facematch", buildJsonObject {
+                    put("strict", face.strict)
+                    put("app_id", face.appId)
+                    face.attestation?.let { a ->
+                        put("client_data", encoder.encodeToString(a.clientData))
+                        put("chain", JsonArray(a.chain.map { JsonPrimitive(encoder.encodeToString(it)) }))
+                        put("signature", encoder.encodeToString(a.signature))
+                        put("signer_digest", a.signerDigest)
+                    }
+                })
+            }
         }
         val (code, created) = transport.call("POST", JOBS, request)
         if (code != 202) throw ZkPassportProver.Failure(failure(code))

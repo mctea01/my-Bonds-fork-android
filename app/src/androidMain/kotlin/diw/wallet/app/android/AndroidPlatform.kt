@@ -447,6 +447,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     override fun cleartextPermitted(host: String): Boolean =
         android.security.NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted(host)
 
+    override val faceMatch: diw.wallet.app.FaceMatchService by lazy { AndroidFaceMatch(context) { promptModel } }
+
     override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
         diw.wallet.core.zk.native.JvmZkEnvironment(
             context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },

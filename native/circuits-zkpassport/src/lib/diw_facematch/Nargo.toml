@@ -1,0 +1,9 @@
+[package]
+name = "diw_facematch"
+type = "lib"
+authors = ["DIW MY WALLET"]
+compiler_version = ">=1.0.0"
+
+[dependencies]
+utils = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/utils" }
+facematch = { path = "../../../../vendor/zkpassport-circuits/src/noir/lib/facematch" }

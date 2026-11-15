@@ -123,6 +123,7 @@ fn request(c: &Case) -> Request {
         circuit_root: root,
         circuit_root_valid: true,
         oprf_public_key_hash: None,
+        facematch: None,
     }
 }
 
@@ -303,8 +304,8 @@ fn every_check_rejects_its_tampering() {
     let (out, _) = run(&request(&c));
     assert_eq!(errors(&out), vec!["missing:sig_check_dsc".to_string()]);
     let mut c = case(0);
-    c.proofs.push(result("facematch", vec![big(0); 8], Value::Null));
-    assert_eq!(errors(&run(&request(&c)).0), vec!["unsupported:facematch".to_string()]);
+    c.proofs.push(result("compare_birthdate", vec![big(0); 8], Value::Null));
+    assert_eq!(errors(&run(&request(&c)).0), vec!["unsupported:compare_birthdate".to_string()]);
 }
 
 #[test]
@@ -385,4 +386,209 @@ fn published_certificates_hash_to_the_registry_root() {
     assert_ne!(hex32(&certificates::root(&package).unwrap()), out["root"].as_str().unwrap());
     package["version"] = json!(2);
     assert_eq!(certificates::root(&package).unwrap_err(), "certificates_version");
+}
+
+// ---- FaceMatch --------------------------------------------------------------------------------------------
+
+const FIXTURE_APP: &str = "diw.wallet.fixture";
+const FIXTURE_SIGNER: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11";
+const FIXTURE_ROOT: u64 = 0x4242;
+
+/// A FaceMatch proof chained to the case's documents whose commitment is `commitment`.
+fn face(name: &str, committed: Value, commitment: BigUint, nullifier_type: u64) -> ProofResult {
+    let public = vec![big(33), big(DATE), scope_hash(Some(DOMAIN)), big(0), commitment, big(nullifier_type), big(0), big(0)];
+    ProofResult {
+        proof: encode(&public),
+        name: name.into(),
+        version: Some("0.21.1".into()),
+        vkey_hash: None,
+        committed_inputs: Some(json!({ "facematch": committed })),
+    }
+}
+
+fn face_commitment(root: BigUint, environment: u64, app: BigUint, fourth: BigUint, mode: u64) -> BigUint {
+    poseidon2_hash(&[big(10), big(5), root, big(environment), app, fourth, big(mode)])
+}
+
+fn key_attested(environment: &str, code: u64, mode: &str) -> ProofResult {
+    let signer = hex::decode(FIXTURE_SIGNER).unwrap();
+    face(
+        "diw_facematch_keyattest_rk_ecdsa_ik_p384_sha384",
+        json!({ "mode": mode, "environment": environment, "rootKeyLeaf": hex32(&big(FIXTURE_ROOT)), "appId": FIXTURE_APP, "signerDigest": FIXTURE_SIGNER }),
+        face_commitment(big(FIXTURE_ROOT), code, zk::hash_packed(FIXTURE_APP.as_bytes()), zk::hash_packed(&signer), if mode == "strict" { 2 } else { 1 }),
+        4,
+    )
+}
+
+fn self_declared(mode: &str) -> ProofResult {
+    face(
+        "diw_facematch_self",
+        json!({ "mode": mode, "appId": FIXTURE_APP }),
+        face_commitment(big(0), 0, zk::hash_packed(FIXTURE_APP.as_bytes()), big(0), if mode == "strict" { 2 } else { 1 }),
+        4,
+    )
+}
+
+fn policy(accept: &[&str]) -> FaceMatchPolicy {
+    FaceMatchPolicy {
+        accept: accept.iter().map(|a| a.to_string()).collect(),
+        apps: vec![FaceMatchApp { app_id: FIXTURE_APP.into(), signers: vec![FIXTURE_SIGNER.to_uppercase()] }],
+        allow_self_signed: false,
+        roots: vec![hex32(&big(FIXTURE_ROOT))],
+    }
+}
+
+/// The case with a FaceMatch proof and the query asking for `asked`. This project's circuits are pinned in the
+/// build, so the fixture key cannot hash to them: their key error is expected and removed.
+fn face_run(proof: ProofResult, asked: &str, policy: Option<FaceMatchPolicy>, dev_mode: bool) -> (Value, Vec<String>) {
+    let mut c = case(0);
+    let name = proof.name.clone();
+    c.proofs.push(proof);
+    c.query["facematch"] = json!({ "mode": asked });
+    let mut req = request(&c);
+    req.facematch = policy;
+    req.dev_mode = dev_mode;
+    let (out, _) = run(&req);
+    let own = format!("vkey:{name}");
+    let errors = errors(&out).into_iter().filter(|e| !(name.starts_with("diw_") && *e == own)).collect();
+    (out, errors)
+}
+
+#[test]
+fn packed_hashes_match_the_circuits() {
+    // The official app ids, whose hashes the SDK publishes.
+    assert_eq!(hex32(&zk::hash_packed(b"app.zkpassport.zkpassport")), "0x24d9929b248be7eeecaa98e105c034a50539610f3fdd4cb9c8983ef4100d615d");
+    assert_eq!(hex32(&zk::hash_packed(b"YL5MS3Z639.app.zkpassport.zkpassport")), "0x1fa73686cf510f8f85757b0602de0dd72a13e68ae2092462be8b72662e7f179b");
+    // Google's attestation roots (android.googleapis.com/attestation/root): registry leaf of key type 2.
+    let keys: Value = serde_json::from_slice(&fixture("google-attestation-root-keys.json")).unwrap();
+    let leaf = |kind: &str| {
+        let mut bytes = vec![2u8];
+        bytes.extend(hex::decode(keys[kind].as_str().unwrap()).unwrap());
+        hex32(&zk::hash_packed(&bytes))
+    };
+    assert_eq!(leaf("rsa"), "0x16700a2d9168a194fc85f237af5829b5a2be05b8ae8ac4879ada34cf54a9c211");
+    assert_eq!(leaf("p384"), "0x0e1889bec6c1d686abcf08360ff404f803ab345881ea8cba6aad33b7f7f7ffe0");
+}
+
+#[test]
+fn pinned_circuits_are_listed() {
+    let list: Value = serde_json::from_str(diw_circuits_json()).unwrap();
+    let circuits = list["circuits"].as_object().unwrap();
+    assert!(circuits.contains_key("diw_facematch_self"));
+    assert!(circuits.iter().all(|(name, hash)| facematch::kind(name).is_some_and(|k| k != facematch::Kind::Official)
+        && hash.as_str().and_then(field).is_some()));
+    assert_eq!(facematch::kind("facematch_ios"), Some(facematch::Kind::Official));
+    assert_eq!(facematch::kind("facematch_android_rk_rsa_ik_count_1_ik_ecdsa_p256_sha256_evm"), None);
+}
+
+#[test]
+fn facematch_kinds_follow_the_policy() {
+    // Self-declared: accepted only when the verifier says so, and reported as such.
+    let (out, e) = face_run(self_declared("regular"), "regular", Some(policy(&["self"])), false);
+    assert!(e.is_empty(), "{e:?}");
+    assert_eq!(out["facematch"]["kind"], "self");
+    assert_eq!(out["facematch"]["appId"], FIXTURE_APP);
+    assert_eq!(out["facematch"]["environment"], "development");
+    assert!(out["facematch"].get("rootKeyLeaf").is_none());
+    // The bundle's identifier still comes from the other proofs.
+    assert_eq!(out["uniqueIdentifierType"], "NON_SALTED");
+    assert_eq!(face_run(self_declared("regular"), "regular", None, false).1, vec!["facematch_level:self"]);
+    assert_eq!(face_run(self_declared("regular"), "regular", Some(policy(&["official", "keyattest"])), false).1, vec!["facematch_level:self"]);
+
+    // Key attestation: the root, the app and the boot state are the verifier's to accept.
+    let (out, e) = face_run(key_attested("production", 1, "strict"), "strict", Some(policy(&["keyattest"])), false);
+    assert!(e.is_empty(), "{e:?}");
+    assert_eq!(out["facematch"]["kind"], "keyattest");
+    assert_eq!(out["facematch"]["signerDigest"], FIXTURE_SIGNER);
+    assert_eq!(out["facematch"]["mode"], "strict");
+    let mut other_root = policy(&["keyattest"]);
+    other_root.roots.clear();
+    assert_eq!(face_run(key_attested("production", 1, "regular"), "regular", Some(other_root), false).1, vec!["facematch_root"]);
+    let mut other_app = policy(&["keyattest"]);
+    other_app.apps[0].signers = vec!["bb".repeat(32)];
+    assert_eq!(face_run(key_attested("production", 1, "regular"), "regular", Some(other_app), false).1, vec!["facematch_app"]);
+    let mut no_apps = policy(&["keyattest"]);
+    no_apps.apps.clear();
+    assert_eq!(face_run(key_attested("production", 1, "regular"), "regular", Some(no_apps), false).1, vec!["facematch_app"]);
+    assert_eq!(face_run(key_attested("self_signed", 2, "regular"), "regular", Some(policy(&["keyattest"])), false).1, vec!["facematch_environment"]);
+    let mut own_system = policy(&["keyattest"]);
+    own_system.allow_self_signed = true;
+    let (out, e) = face_run(key_attested("self_signed", 2, "regular"), "regular", Some(own_system), false);
+    assert!(e.is_empty(), "{e:?}");
+    assert_eq!(out["facematch"]["environment"], "self_signed");
+    assert_eq!(face_run(key_attested("development", 0, "regular"), "regular", Some(policy(&["keyattest"])), false).1, vec!["facematch_environment"]);
+    assert!(face_run(key_attested("development", 0, "regular"), "regular", Some(policy(&["keyattest"])), true).1.is_empty());
+    // A claimed environment the proof does not commit to.
+    assert_eq!(
+        face_run(key_attested("production", 0, "regular"), "regular", Some(policy(&["keyattest"])), false).1,
+        vec!["parameters:diw_facematch_keyattest_rk_ecdsa_ik_p384_sha384"]
+    );
+}
+
+#[test]
+fn official_facematch_follows_the_sdk() {
+    let android = |environment: &str, code: u64| {
+        let app = field("0x24d9929b248be7eeecaa98e105c034a50539610f3fdd4cb9c8983ef4100d615d").unwrap();
+        let root = field("0x16700a2d9168a194fc85f237af5829b5a2be05b8ae8ac4879ada34cf54a9c211").unwrap();
+        let play: BigUint = "8544227306600425492560068004835614964118871262589609739238120993689090208159".parse().unwrap();
+        face(
+            "facematch_android_rk_rsa_ik_count_1_ik_ecdsa_p256_sha256",
+            json!({ "mode": "regular", "environment": environment, "rootKeyLeaf": hex32(&root), "appIdHash": hex32(&app) }),
+            face_commitment(root, code, app, play, 1),
+            0,
+        )
+    };
+    // Accepted without a policy; its own identifier does not have to be the bundle's.
+    let (out, e) = face_run(android("production", 1), "regular", None, false);
+    assert!(e.is_empty(), "{e:?}");
+    assert_eq!(out["facematch"]["kind"], "official");
+    assert_eq!(out["facematch"]["platform"], "android");
+    assert_eq!(face_run(android("development", 0), "regular", None, false).1, vec!["facematch_environment"]);
+    assert!(face_run(android("development", 0), "regular", None, true).1.is_empty());
+    assert_eq!(face_run(android("production", 1), "regular", Some(policy(&["keyattest", "self"])), false).1, vec!["facematch_level:official"]);
+
+    let ios = |app: &str| {
+        let app = field(app).unwrap();
+        let root = field("0x2532418a107c5306fa8308c22255792cf77e4a290cbce8a840a642a3e591340b").unwrap();
+        face(
+            "facematch_ios",
+            json!({ "mode": "strict", "environment": "production", "rootKeyLeaf": hex32(&root), "appIdHash": hex32(&app) }),
+            face_commitment(root, 1, app, big(0), 2),
+            0,
+        )
+    };
+    let (out, e) = face_run(ios("0x1fa73686cf510f8f85757b0602de0dd72a13e68ae2092462be8b72662e7f179b"), "strict", None, false);
+    assert!(e.is_empty(), "{e:?}");
+    assert_eq!(out["facematch"]["platform"], "ios");
+    // Another app under Apple's root, and a mode the verifier did not ask for.
+    assert_eq!(face_run(ios("0x1234"), "strict", None, false).1, vec!["facematch_app"]);
+    assert_eq!(face_run(ios("0x1fa73686cf510f8f85757b0602de0dd72a13e68ae2092462be8b72662e7f179b"), "regular", None, false).1, vec!["query:facematch"]);
+}
+
+#[test]
+fn facematch_is_bound_to_the_bundle() {
+    // Asked for but not proven, and an unknown mode.
+    let mut c = case(0);
+    c.query["facematch"] = json!({ "mode": "regular" });
+    assert_eq!(errors(&run(&request(&c)).0), vec!["query:facematch"]);
+    assert_eq!(face_run(self_declared("regular"), "lenient", Some(policy(&["self"])), false).1, vec!["query:facematch"]);
+    // A FaceMatch of another document: the commitment chain breaks.
+    let mut other = self_declared("regular");
+    let mut public = vec![big(34), big(DATE), scope_hash(Some(DOMAIN)), big(0)];
+    public.push(face_commitment(big(0), 0, zk::hash_packed(FIXTURE_APP.as_bytes()), big(0), 1));
+    public.extend([big(4), big(0), big(0)]);
+    other.proof = encode(&public);
+    assert_eq!(face_run(other, "regular", Some(policy(&["self"])), false).1, vec!["commitment:diw_facematch_self"]);
+    // A mock document shows in the FaceMatch proof even when nothing else carries an identifier.
+    let mut mock = self_declared("regular");
+    public[0] = big(33);
+    public[5] = big(2);
+    mock.proof = encode(&public);
+    assert_eq!(face_run(mock.clone(), "regular", Some(policy(&["self"])), false).1, vec!["mock"]);
+    assert!(face_run(mock, "regular", Some(policy(&["self"])), true).1.is_empty());
+    // Two FaceMatch proofs in one bundle.
+    let mut c = case(0);
+    c.proofs.push(self_declared("regular"));
+    c.proofs.push(key_attested("production", 1, "regular"));
+    assert_eq!(errors(&run(&request(&c)).0), vec!["duplicate"]);
 }

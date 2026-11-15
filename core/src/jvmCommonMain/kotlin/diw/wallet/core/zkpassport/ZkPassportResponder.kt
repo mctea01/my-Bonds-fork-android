@@ -21,6 +21,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
@@ -31,7 +32,10 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import diw.wallet.core.zk.native.bindings.ZkException
+import diw.wallet.core.zk.native.bindings.zkpassportFacematchStatement
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -303,6 +307,42 @@ class JvmZkPassportHolder(
         throw ZkPassportAnswerFailure(e.code)
     }
 
+    override suspend fun faceMatchStatement(
+        chip: ZkPassportChip,
+        appVersion: String,
+        strict: Boolean,
+        embedding: FloatArray,
+        cosine: Long,
+        threshold: Long,
+    ): ZkPassportFaceMatchStatement = withContext(Dispatchers.IO) {
+        val b64 = Base64.getEncoder()
+        val request = buildJsonObject {
+            put("sod", b64.encodeToString(diw.wallet.core.document.mrtd.BerToDer.sod(chip.sod)))
+            chip.dg2?.let { put("dg2", b64.encodeToString(it)) }
+            put("app_version", appVersion)
+            put("mode", if (strict) "strict" else "regular")
+            putJsonArray("embedding") { embedding.forEach { add(JsonPrimitive(it)) } }
+            put("cosine", cosine)
+            put("threshold", threshold)
+        }
+        try {
+            val o = Json.parseToJsonElement(zkpassportFacematchStatement(request.toString())).jsonObject
+            val decoder = Base64.getDecoder()
+            ZkPassportFaceMatchStatement(
+                decoder.decode((o["clientData"] as JsonPrimitive).content), decoder.decode((o["toSign"] as JsonPrimitive).content),
+            )
+        } catch (e: ZkException.InvalidInput) {
+            throw ZkPassportAnswerFailure("facematch:" + (e.reason.takeIf { Regex("^[a-z0-9_]{1,40}$").matches(it) } ?: "other"))
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            throw ZkPassportAnswerFailure("facematch_unsupported")
+        }
+    }
+
+    private companion object {
+        const val PROJECT_FACEMATCH = "diw_facematch_"
+    }
+
     private inner class Answer(
         private val responder: ZkPassportResponder,
         private val incoming: ZkPassportIncoming,
@@ -313,10 +353,21 @@ class JvmZkPassportHolder(
 
         override suspend fun reject() = bridged { responder.reject() }
 
-        override suspend fun answer(chip: ZkPassportChip, target: ZkPassportProverTarget, progress: (ZkPassportAnswerProgress) -> Unit) {
+        override suspend fun answer(
+            chip: ZkPassportChip,
+            target: ZkPassportProverTarget,
+            faceMatch: ZkPassportFaceMatchEvidence?,
+            progress: (ZkPassportAnswerProgress) -> Unit,
+        ) {
+            // Checked before the requester hears "accept": an answer that cannot hold what was asked is not started.
+            val asked = incoming.faceMatchMode
+            if (asked != null && (faceMatch == null || faceMatch.kind !in incoming.faceMatchKinds || (asked == "strict") != faceMatch.strict)) {
+                throw ZkPassportAnswerFailure("facematch_unsupported")
+            }
             bridged { responder.accept() }
             val job = ZkPassportProver.Job(
                 query = incoming.query, domain = incoming.domain, scope = incoming.scope, devMode = incoming.devMode, rpc = rpc,
+                faceMatch = faceMatch.takeIf { asked != null },
             )
             val step: (ZkPassportProver.Progress) -> Unit = { p ->
                 progress(
@@ -337,6 +388,9 @@ class JvmZkPassportHolder(
                         val client = target.prover as? ZkPassportPairedClient ?: throw ZkPassportProver.Failure("pairing_lost")
                         ZkPassportRemote.prove(client, ZkPassportProver.Chip(chip.sod, chip.dg1, null), job, step)
                     }
+                }.also { proved ->
+                    // A prover from before FaceMatch ignores that part of the job; the answer would lack the proof.
+                    if (job.faceMatch != null && proved.proofs.none { it.name.startsWith(PROJECT_FACEMATCH) }) throw ZkPassportProver.Failure("facematch_remote")
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e

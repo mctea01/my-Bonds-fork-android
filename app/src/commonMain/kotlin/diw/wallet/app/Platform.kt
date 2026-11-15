@@ -229,6 +229,9 @@ interface PlatformServices {
 
     /** Device resources, the native proof library and the verified circuit assets; null where proofs cannot run. */
     val zk: diw.wallet.core.zk.ZkEnvironment? get() = null
+
+    /** Comparing the holder's face with a document photo, for zkPassport FaceMatch; null where there is no camera screen. */
+    val faceMatch: FaceMatchService? get() = null
 }
 
 /** A key in the system store or on a token, as listed for the user to pick. */

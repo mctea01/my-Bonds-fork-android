@@ -1,0 +1,115 @@
+name: zkPassport FaceMatch assets
+
+# Builds this project's 78 key attestation FaceMatch circuits (native/circuits-zkpassport) with the pinned nargo,
+# derives each verification key with the pinned bb CLI, requires every key hash to equal the one in
+# native/circuits-zkpassport/circuits.json (the list the wallet and the verifier are built with), and publishes the
+# gzip artifacts to the zkpassport-facematch-v1 release that ZkPassportRegistry.PROJECT_CIRCUITS points to. Run it
+# by hand. The files never change for this toolchain, so an existing release is only completed, never overwritten.
+# The self-declared circuit is embedded in the native library and is not published.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: zkpassport-facematch-assets
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  LANG: C.UTF-8
+  RELEASE_TAG: zkpassport-facematch-v1
+  NOIR_URL: https://github.com/noir-lang/noir/releases/download/v1.0.0/noir-x86_64-unknown-linux-gnu.tar.gz
+  NOIR_SHA256: a62f5b44a6db8ca8f0c20f841aa788ea56776e5aaf2ebd672c02dcf397901264
+  BB_URL: https://github.com/AztecProtocol/aztec-packages/releases/download/v6.0.0/barretenberg-amd64-linux.tar.gz
+  BB_SHA256: 6a310ede6457cf47e6dcf11f8d6b59dd709328c272a70c03afb1417c5a798b67
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Pinned nargo and bb
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          curl -sSLf -o "$RUNNER_TEMP/noir.tgz" "$NOIR_URL"
+          echo "$NOIR_SHA256  $RUNNER_TEMP/noir.tgz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/noir.tgz" -C "$RUNNER_TEMP/tools" ./nargo
+          curl -sSLf -o "$RUNNER_TEMP/bb.tgz" "$BB_URL"
+          echo "$BB_SHA256  $RUNNER_TEMP/bb.tgz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/bb.tgz" -C "$RUNNER_TEMP/tools" bb
+          "$RUNNER_TEMP/tools/nargo" --version | grep -q 275d3ab1a5c916c6ea73e8d6b943f685f574500c
+          test "$("$RUNNER_TEMP/tools/bb" --version | sed 's/^v//')" = 6.0.0
+          echo "NARGO=$RUNNER_TEMP/tools/nargo" >> "$GITHUB_ENV"
+          echo "BB=$RUNNER_TEMP/tools/bb" >> "$GITHUB_ENV"
+      # The registry leaf of a verification key, as the wallet and the verifier compute it (pure Rust, no C++).
+      - name: Key hash tool
+        run: |
+          cargo build --release --locked --manifest-path native/Cargo.toml -p zkpassport-verify --example vkey_hash
+          echo "VKEY_HASH=$PWD/native/target/release/examples/vkey_hash" >> "$GITHUB_ENV"
+      # The CRS prefix zkPDF uses (2^21 points), checked by size and SHA-256 as native/circuits/tools/build_assets.py does.
+      - name: CRS
+        run: |
+          mkdir -p "$RUNNER_TEMP/crs"
+          python3 -I - "$RUNNER_TEMP/crs" <<'EOF'
+          import hashlib, pathlib, sys, urllib.request
+          crs = {"bn254_g1.dat": (134217792, "ea6069e3563ad79f186d1c0088499309cbdaeb54254346760ffec7fe15ae49cd", "g1.dat"),
+                 "bn254_g2.dat": (128, "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f", "g2.dat")}
+          for name, (size, expected, remote) in crs.items():
+              request = urllib.request.Request("https://crs.aztec.network/" + remote, headers={"Range": "bytes=0-%d" % (size - 1)})
+              with urllib.request.urlopen(request, timeout=300) as response:
+                  data = response.read(size + 1)
+              if len(data) != size or hashlib.sha256(data).hexdigest() != expected:
+                  raise SystemExit("crs_integrity:" + name)
+              (pathlib.Path(sys.argv[1]) / name).write_bytes(data)
+          EOF
+      # Exits non-zero when any key hash differs from circuits.json.
+      - name: Build and check circuits
+        run: |
+          python3 -I native/circuits-zkpassport/tools/keyattest.py package --nargo "$NARGO" --bb "$BB" \
+            --vkey-hash "$VKEY_HASH" --crs "$RUNNER_TEMP/crs" --out "$RUNNER_TEMP/out" --jobs 2
+      - name: Collect release files
+        run: |
+          mkdir -p dist
+          python3 -I - "$RUNNER_TEMP/out" <<'EOF'
+          import hashlib, json, pathlib, shutil, sys
+          out = pathlib.Path(sys.argv[1])
+          index = json.loads((out / "index.json").read_text())["circuits"]
+          pinned = json.loads(pathlib.Path("native/circuits-zkpassport/circuits.json").read_text())["circuits"]
+          names = sorted(n for n in index if n.startswith("diw_facematch_keyattest_"))
+          if len(names) != 78 or set(names) != {n for n in pinned if n.startswith("diw_facematch_keyattest_")}:
+              raise SystemExit("expected the 78 key attestation circuits of circuits.json")
+          for name in names:
+              source = out / (name + ".json.gz")
+              if index[name]["hash"] != pinned[name] or hashlib.sha256(source.read_bytes()).hexdigest() != index[name]["sha256"]:
+                  raise SystemExit("mismatch: " + name)
+              shutil.copyfile(source, pathlib.Path("dist") / source.name)
+          EOF
+          (cd dist && sha256sum *.json.gz > SHA256SUMS && wc -l SHA256SUMS && du -sh .)
+      - name: Publish to the zkpassport-facematch-v1 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "This project's FaceMatch key attestation circuits (native/circuits-zkpassport at ${GITHUB_SHA::7}),"
+            echo "compiled with nargo 1.0.0 for bb 6.0.0 UltraHonk. The wallet downloads the one its device's attestation"
+            echo "chain needs and checks its verification key against native/circuits-zkpassport/circuits.json."
+            echo "SHA256SUMS lists the gzip files."
+          } > notes.md
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # Frozen files: upload only what is missing; a different file under the same name is an error.
+            existing=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')
+            for file in dist/*; do
+              name=$(basename "$file")
+              if printf '%s\n' "$existing" | grep -qx "$name"; then
+                gh release download "$RELEASE_TAG" --pattern "$name" --output "$RUNNER_TEMP/check" --clobber
+                cmp -s "$file" "$RUNNER_TEMP/check" || { echo "::error::$name differs from the published file"; exit 1; }
+              else
+                gh release upload "$RELEASE_TAG" "$file"
+              fi
+            done
+          else
+            gh release create "$RELEASE_TAG" dist/* --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "zkPassport FaceMatch circuits v1 (bb 6.0.0)" --notes-file notes.md
+          fi

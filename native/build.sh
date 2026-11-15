@@ -126,7 +126,9 @@ for target in "${selected[@]}"; do
         if [[ -n "$bridge_cxx_override" ]]; then export ZKPDF_CXX=$bridge_cxx_override; else unset ZKPDF_CXX; fi
         if [[ -n "$bridge_ar_override" ]]; then export ZKPDF_AR=$bridge_ar_override; else unset ZKPDF_AR; fi
         case "$target" in
-            x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
+            # Barretenberg is built with clang on Linux (zkpdf-prover/tools/build_bb.py); the bridge uses it too.
+            x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so
+                export ZKPDF_CXX=${bridge_cxx_override:-clang++} ;;
             aarch64-unknown-linux-gnu) platform=linux-aarch64; library=libdiw_zk.so
                 # From an x86_64 host the distribution's GNU cross tools (g++-aarch64-linux-gnu) compile and link it.
                 if [[ "$host" != "$target" ]]; then
@@ -135,6 +137,8 @@ for target in "${selected[@]}"; do
                     export CXX_aarch64_unknown_linux_gnu=${CXX_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-g++}
                     export AR_aarch64_unknown_linux_gnu=${AR_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-ar}
                     export ZKPDF_CXX=${bridge_cxx_override:-aarch64-linux-gnu-g++} ZKPDF_AR=${bridge_ar_override:-aarch64-linux-gnu-ar}
+                else
+                    export ZKPDF_CXX=${bridge_cxx_override:-clang++}
                 fi ;;
             # A Windows host builds its own target, without zkPDF.
             x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll ;;
@@ -153,8 +157,9 @@ for target in "${selected[@]}"; do
                 export CC_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang
                 export CXX_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang++
                 export AR_x86_64_pc_windows_gnullvm=$mingw_bin/llvm-ar
-                # OpenAC's witness runtime reads its C header with libclang.
-                export BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnullvm="--sysroot=$LLVM_MINGW_ROOT"
+                # OpenAC's witness runtime reads its C header with libclang. bindgen passes Rust's triple, whose
+                # environment "gnullvm" clang 21 (Ubuntu 26.04) rejects; the mingw-w64 triple means the same target.
+                export BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnullvm="--target=x86_64-w64-windows-gnu --sysroot=$LLVM_MINGW_ROOT"
                 export ZKPDF_CXX=${bridge_cxx_override:-$mingw_bin/x86_64-w64-mingw32-clang++}
                 export ZKPDF_AR=${bridge_ar_override:-$mingw_bin/llvm-ar} ;;
             # One minimum macOS for Barretenberg, the bridge and rustc (otherwise each object targets a different one).

@@ -73,14 +73,15 @@ App 註冊的連結 scheme（`diw-wallet://`、`diw-zktls://`、`diw-server://`�
 
 ### 3.3 版型包與證明資產的來源
 
-App 內寫死了兩類下載位址，都指向上游 repo 的 Release，並以內建的公鑰或雜湊驗證。
+App 內寫死了三類下載位址，都指向上游 repo 的 Release，並以內建的公鑰或雜湊驗證。
 
 | 項目 | 位置 | 不改 | 要自己發佈時 |
 |---|---|---|---|
 | 零知識版型包 | `core/.../zk/ZkTemplatePack.kt` 的 `RELEASE_URL`、`MANUAL_URL`、`TRUSTED_KEYS` | 繼續使用上游簽章的版型包；你的 `ZK_TEMPLATES_KEY` 簽的包 App 不會接受 | 產生自己的 P-256 金鑰（[templates/README.md](../../templates/README.md)），公鑰加進 `TRUSTED_KEYS`，兩個網址改成自己的 repo，私鑰放進 `ZK_TEMPLATES_KEY` |
 | 年齡證明的 witness graph、zkPDF 電路與 CRS | `native/assets.json` 的 `urls`、`native/openac-age/package_graphs.py` | 繼續從上游的 `openac-age-graph-v1`、`zkpdf-v1-bb6` Release 下載，雜湊已釘選，內容被換掉時 App 會拒絕 | 網址改成自己的 repo，再手動執行 `zkPDF assets` workflow 從原始碼建置並發佈；它會檢查 `assets.json` 的網址與執行的 repo 相同 |
+| zkPassport 人臉比對的金鑰證明版電路 | `core/.../zkpassport/ZkPassportRegistry.kt` 的 `PROJECT_CIRCUITS` | 繼續從上游的 `zkpassport-facematch-v1` Release 下載，金鑰雜湊已釘選在 `native/circuits-zkpassport/circuits.json` | 網址改成自己的 repo，再手動執行 `zkPassport FaceMatch assets` workflow 建置並發佈 |
 
-上游的 Release 不保證永久存在。長期維護的 fork 建議把兩類資產都改由自己發佈。
+上游的 Release 不保證永久存在。長期維護的 fork 建議把這些資產都改由自己發佈。
 
 ### 3.4 授權與標示
 
