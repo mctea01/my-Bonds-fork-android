@@ -157,8 +157,9 @@ for target in "${selected[@]}"; do
                 export CC_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang
                 export CXX_x86_64_pc_windows_gnullvm=$mingw_bin/x86_64-w64-mingw32-clang++
                 export AR_x86_64_pc_windows_gnullvm=$mingw_bin/llvm-ar
-                # OpenAC's witness runtime reads its C header with libclang.
-                export BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnullvm="--sysroot=$LLVM_MINGW_ROOT"
+                # OpenAC's witness runtime reads its C header with libclang. bindgen passes Rust's triple, whose
+                # environment "gnullvm" clang 21 (Ubuntu 26.04) rejects; the mingw-w64 triple means the same target.
+                export BINDGEN_EXTRA_CLANG_ARGS_x86_64_pc_windows_gnullvm="--target=x86_64-w64-windows-gnu --sysroot=$LLVM_MINGW_ROOT"
                 export ZKPDF_CXX=${bridge_cxx_override:-$mingw_bin/x86_64-w64-mingw32-clang++}
                 export ZKPDF_AR=${bridge_ar_override:-$mingw_bin/llvm-ar} ;;
             # One minimum macOS for Barretenberg, the bridge and rustc (otherwise each object targets a different one).
