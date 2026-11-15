@@ -75,7 +75,8 @@ class RequestResolver(
                     throw RequestValidationException("invalid_request", "client_id is required with request_uri")
                 }
                 val method = outer["request_uri_method"] ?: "get"
-                val (jwt, walletNonce) = fetchRequestObject(requestUri, method)
+                val lanHost = if (policy.allowLanEndpoints && !isAcceptableEndpoint(requestUri, allowInsecureLoopback)) LanEndpoints.host(requestUri) else null
+                val (jwt, walletNonce) = fetchRequestObject(requestUri, method, lanHost != null)
                 if (clientId == null && jwt.startsWith("{")) {
                     throw RequestValidationException("invalid_request", "client_id is required with an unsigned request_uri object")
                 }
@@ -88,7 +89,7 @@ class RequestResolver(
                     if (jws == null && clientId != null && claims.str("client_id") != clientId) {
                         throw RequestValidationException("invalid_request_object", "Encrypted request client_id differs from invocation")
                     }
-                    RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, walletNonce, entryHint = entryHint)
+                    RawAuthorizationRequest(RequestChannel.URI, outer, jws, claims, null, walletNonce, entryHint = entryHint, lanHost = lanHost?.takeIf { jws != null })
                 }
             }
             requestValue != null -> {
@@ -241,8 +242,8 @@ class RequestResolver(
         return jws
     }
 
-    private suspend fun fetchRequestObject(requestUri: String, method: String): Pair<String, String?> {
-        if (!isAcceptableEndpoint(requestUri, allowInsecureLoopback)) {
+    private suspend fun fetchRequestObject(requestUri: String, method: String, lan: Boolean = false): Pair<String, String?> {
+        if (!lan && !isAcceptableEndpoint(requestUri, allowInsecureLoopback)) {
             throw RequestValidationException("invalid_request_uri", "request_uri must use https")
         }
         // The request object type first; verifiers that serve the request as plain JSON (walt.id with the

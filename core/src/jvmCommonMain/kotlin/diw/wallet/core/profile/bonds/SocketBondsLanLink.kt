@@ -103,6 +103,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         maxPayload: Int,
         onListening: (urls: List<String>) -> Unit,
         answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
+        get: (suspend (target: String) -> Pair<String, ByteArray>?)?,
     ): ByteArray {
         val servers = withContext(Dispatchers.IO) {
             addresses.distinct().mapNotNull { a -> runCatching { a to ServerSocket(0, 8, InetAddress.getByName(a)) }.getOrNull() }
@@ -123,7 +124,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
                     launch {
                         while (!done.isCompleted) {
                             val socket = try { withContext(Dispatchers.IO) { server.accept() } } catch (_: IOException) { break }
-                            socket.use { handle(it, path, maxPayload, ended) }?.let { done.complete(it) }
+                            socket.use { handle(it, path, maxPayload, ended, get) }?.let { done.complete(it) }
                         }
                     }
                 }
@@ -141,7 +142,13 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
     }
 
     /** Answers one connection; returns the body when it ended the exchange. */
-    private suspend fun handle(socket: Socket, path: String, maxPayload: Int, answer: suspend (ByteArray) -> Pair<ByteArray, Boolean>): ByteArray? {
+    private suspend fun handle(
+        socket: Socket,
+        path: String,
+        maxPayload: Int,
+        answer: suspend (ByteArray) -> Pair<ByteArray, Boolean>,
+        get: (suspend (String) -> Pair<String, ByteArray>?)?,
+    ): ByteArray? {
         val (method, target, body) = try {
             withContext(Dispatchers.IO) {
                 socket.soTimeout = READ_TIMEOUT_MS
@@ -149,6 +156,11 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
             }
         } catch (e: IOException) {
             respond(socket, if (e is TooLarge) 413 else 400, ERROR)
+            return null
+        }
+        if (method == "GET" && get != null) {
+            val content = get(target)
+            if (content == null) respond(socket, 404, ERROR) else respond(socket, 200, content.second, content.first)
             return null
         }
         if (method != "POST" || target != path) {
@@ -198,12 +210,12 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         }
     }
 
-    private suspend fun respond(socket: Socket, status: Int, body: ByteArray) = withContext(Dispatchers.IO) {
+    private suspend fun respond(socket: Socket, status: Int, body: ByteArray, type: String = "application/json") = withContext(Dispatchers.IO) {
         runCatching {
             val reason = when (status) { 200 -> "OK"; 404 -> "Not Found"; 413 -> "Payload Too Large"; else -> "Bad Request" }
             val out = socket.getOutputStream()
             out.write(
-                ("HTTP/1.1 $status $reason\r\nContent-Type: application/json\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n")
+                ("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n")
                     .toByteArray(Charsets.ISO_8859_1),
             )
             out.write(body)

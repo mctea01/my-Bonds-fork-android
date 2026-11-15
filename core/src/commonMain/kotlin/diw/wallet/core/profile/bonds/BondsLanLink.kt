@@ -22,7 +22,8 @@ interface BondsLanLink {
      * Listens on each of [addresses] at a free port and answers POSTs to [path]: [answer] turns a body into the JSON
      * reply and says whether the exchange is over. [onListening] receives the URLs to put in the request, in the order
      * of [addresses] (an address that cannot be bound is left out). Returns the body that ended the exchange; cancel
-     * to stop listening.
+     * to stop listening. With [get], GET requests are answered too: it maps the request target to a content type and
+     * body, or null for 404 (the OpenID4VP request object of a wallet verifying on the local network).
      */
     suspend fun serve(
         addresses: List<String>,
@@ -30,6 +31,7 @@ interface BondsLanLink {
         maxPayload: Int,
         onListening: (urls: List<String>) -> Unit,
         answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
+        get: (suspend (target: String) -> Pair<String, ByteArray>?)? = null,
     ): ByteArray
 
     /** Posts [body] as JSON to a LAN [url] and returns the status and reply text; the verifier checks before it answers. */
