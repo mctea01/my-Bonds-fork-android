@@ -13,6 +13,10 @@ import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.trust.highlyTrusted
+import diw.wallet.core.verifier.declaration.DeclarationBinding
+import diw.wallet.core.verifier.declaration.VerifierDeclaration
+import diw.wallet.core.verifier.declaration.VerifierDeclarationCheck
+import diw.wallet.core.verifier.declaration.VerifierIdentity
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -66,6 +70,8 @@ data class VerifierAttestation(
     val credentialIds: List<String> = emptyList(),
     val problems: List<String> = emptyList(),
     val notes: List<String> = emptyList(),
+    /** For a verifier declaration ([VerifierDeclaration.FORMAT]): who the verifier is, as checked. */
+    val identity: VerifierIdentity? = null,
 )
 
 /**
@@ -78,14 +84,24 @@ data class VerifierAttestation(
 class VerifierInfoChecker(
     private val trustRegistry: TrustRegistry,
     private val statusChecker: CredentialStatusChecker?,
+    /** Checks DIW verifier declarations; null leaves them unsupported (shown as such). */
+    private val declarations: VerifierDeclarationCheck? = null,
 ) {
-    suspend fun check(request: ValidatedAuthorizationRequest, now: Instant = Clock.System.now()): List<VerifierAttestation> =
-        request.verifierInfo.map { e ->
+    suspend fun check(request: ValidatedAuthorizationRequest, now: Instant = Clock.System.now()): List<VerifierAttestation> {
+        // Registration certificates first: a declaration is compared with the subject of a valid one.
+        val others = request.verifierInfo.filter { it.format != VerifierDeclaration.FORMAT }.map { e ->
             runCatching { check(e, request, now) }.getOrElse { ex ->
                 VerifierAttestation(e.format, null, AttestationVerdict.INVALID, credentialIds = e.credentialIds,
                     problems = listOf(ct("core_vi_unreadable") + (ex.message ?: ex::class.simpleName)))
             }
         }
+        val registration = others.firstOrNull { it.type == RC_TYP && it.verdict != AttestationVerdict.INVALID && it.boundToVerifier == true }
+        val binding = DeclarationBinding(request.verifier.effectiveClientId, request.nonce, request.verifier.certificateChain, request.verifier.did, request.verifier.trust)
+        val declared = request.verifierInfo.filter { it.format == VerifierDeclaration.FORMAT }.map { e ->
+            declaration(e, binding, request.dcqlQuery.takeIf { it.isNotEmpty() }, registration, declarations, now)
+        }
+        return others + declared
+    }
 
     private suspend fun check(e: VerifierInfoEntry, request: ValidatedAuthorizationRequest, now: Instant): VerifierAttestation {
         val compact = (e.data as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
@@ -193,6 +209,55 @@ class VerifierInfoChecker(
     }
 
     companion object {
+        /**
+         * Checks a verifier declaration entry [e] against [binding] (an OpenID4VP request or an ISO 18013-5 session):
+         * the result keeps the party as name and identifier, the purpose and the full [VerifierIdentity].
+         */
+        suspend fun declaration(
+            e: VerifierInfoEntry,
+            binding: DeclarationBinding,
+            dcql: JsonObject?,
+            registration: VerifierAttestation?,
+            checker: VerifierDeclarationCheck?,
+            now: Instant = Clock.System.now(),
+        ): VerifierAttestation {
+            val compact = VerifierDeclaration.data(e.data)
+            if (checker == null || compact == null) {
+                return VerifierAttestation(e.format, VerifierDeclaration.TYP, AttestationVerdict.UNSUPPORTED, credentialIds = e.credentialIds,
+                    notes = listOf(ct("core_vi_not_jwt", e.format)))
+            }
+            return runCatching {
+                val id = checker.check(compact, binding, dcql, registration?.subject, registration?.trust, now)
+                val c = id.content
+                VerifierAttestation(
+                    format = e.format,
+                    type = VerifierDeclaration.TYP,
+                    verdict = when {
+                        !id.bound -> AttestationVerdict.INVALID
+                        id.confirmed -> AttestationVerdict.VALID
+                        else -> AttestationVerdict.PARTIAL
+                    },
+                    signer = c?.party?.name,
+                    trust = binding.requestTrust.copy(tier = id.tier),
+                    name = c?.party?.name,
+                    subject = c?.party?.id?.value,
+                    purposes = listOfNotNull(c?.purpose?.text),
+                    publicBody = c?.party?.publicBody,
+                    privacyPolicy = c?.purpose?.privacyPolicy,
+                    boundToVerifier = id.bound,
+                    outsideRegistration = id.outsideDeclaration,
+                    expiresAt = id.expiresAt,
+                    credentialIds = e.credentialIds,
+                    problems = id.problems,
+                    notes = id.notes,
+                    identity = id,
+                )
+            }.getOrElse { ex ->
+                VerifierAttestation(e.format, VerifierDeclaration.TYP, AttestationVerdict.INVALID, credentialIds = e.credentialIds,
+                    problems = listOf(ct("core_vi_unreadable") + (ex.message ?: ex::class.simpleName)))
+            }
+        }
+
         /** Problems (by message key) that make an attestation invalid rather than only unconfirmed. */
         private val INVALIDATING = listOf("core_vi_expired", "core_vi_not_this_verifier")
 

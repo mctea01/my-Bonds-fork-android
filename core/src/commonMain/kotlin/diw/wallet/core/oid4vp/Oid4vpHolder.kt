@@ -228,6 +228,38 @@ class Oid4vpHolder(
         return result.copy(credentialSets = sets)
     }
 
+    /**
+     * Presents one held credential as evidence of a verifier declaration (docs/design/p5-verifier.md section 4): the
+     * DCQL [query] (mdoc or SD-JWT VC) is answered as if [clientId] had asked with [nonce], the mdoc handover naming
+     * [diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI]. [documentId] picks the
+     * document when several match. Returns the vp_token object.
+     */
+    suspend fun evidence(clientId: String, nonce: String, query: JsonObject, documentId: String? = null): JsonObject {
+        val request = ValidatedAuthorizationRequest(
+            raw = RawAuthorizationRequest(RequestChannel.URI, emptyMap(), null, JsonObject(emptyMap()), null, null),
+            verifier = VerifierIdentityInfo(ClientId.parse(clientId), clientId, clientId, null, emptyList(), null, diw.wallet.core.trust.TrustDecision.unknown()),
+            responseMode = ResponseMode.DIRECT_POST,
+            responseUri = diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI,
+            nonce = nonce,
+            state = null,
+            dcqlQuery = JsonObject(mapOf("credentials" to kotlinx.serialization.json.JsonArray(listOf(query)))),
+            transactionData = emptyList(),
+            clientMetadata = null,
+            verifierInfo = emptyList(),
+            expectedOrigins = emptyList(),
+            warnings = emptyList(),
+        )
+        val prepared = prepareStandard(request)
+        val all = prepared.queryResult.select(emptyList())
+        val selection = if (documentId == null) all else {
+            val wanted = prepared.queryResult.credentialSets.flatMap { it.options }.flatMap { it.members }.flatMap { it.matches }
+                .firstOrNull { it.credential.document.identifier == documentId }
+                ?: throw ProtocolException("access_denied", "The chosen document does not answer the evidence query")
+            all.copy(matches = listOf(wanted))
+        }
+        return builder.build(request, selection).vpToken
+    }
+
     /** Responds to a request prepared by the wallet's own engine with its chosen credentials. */
     /** Responds with the default choice: the first match of each standard query, or the engine's choice for extended requests. */
     suspend fun respondDefault(prepared: PreparedRequest): PresentationOutcome = when (prepared) {

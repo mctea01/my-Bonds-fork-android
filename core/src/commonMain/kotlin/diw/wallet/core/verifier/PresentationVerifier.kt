@@ -95,6 +95,10 @@ data class CredentialVerification(
      * fields). A failed entry fails the credential; one that could not be checked is shown but does not.
      */
     val evidence: List<Check> = emptyList(),
+    /** A credential the holder's wallet derived from a document or a travel document chip. */
+    val derived: Boolean = false,
+    /** A zero-knowledge proof backs the disclosed values (mdoc ZK, or a zkPDF proof that verified). */
+    val zkProof: Boolean = false,
 ) {
     val passed: Boolean
         get() = checks.all { it.status == CheckStatus.PASS } && issuerTrust.environment != null &&
@@ -185,6 +189,26 @@ class PresentationVerifier(
             addCborArray { add("OpenID4VPDCAPIHandover"); add(Bstr(Crypto.digest(Algorithm.SHA256, handover))) }
         }
         return verifyPayload(payload, session, transcript, expectedAud = "origin:$origin")
+    }
+
+    /**
+     * Verifies an evidence presentation of a verifier declaration (docs/design/p5-verifier.md section 4.2): [vpToken]
+     * answers the single DCQL [query], bound to [clientId] (KB-JWT and VP audience) and [nonce]; mdoc presentations
+     * use the OpenID4VP handover with [diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI].
+     */
+    suspend fun verifyEvidence(query: JsonObject, vpToken: JsonObject, clientId: String, nonce: String): CredentialVerification {
+        val responseUri = diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI
+        val session = VerifierSession(nonce, clientId, "direct_post", JsonObject(mapOf("credentials" to JsonArray(listOf(query)))), responseUri)
+        val transcript = sessionTranscript(clientId, nonce, null, responseUri)
+        val result = verifyPayload(JsonObject(mapOf("vp_token" to vpToken)), session, transcript, expectedAud = clientId)
+        val id = query.str("id") ?: "?"
+        result.credentials.firstOrNull { it.queryId == id }?.let { c ->
+            val failed = result.sessionChecks.filter { it.status == CheckStatus.FAIL }
+            return if (failed.isEmpty()) c else c.copy(checks = c.checks + failed)
+        }
+        return CredentialVerification(id, query.str("format") ?: "unknown", "unknown", emptyMap(),
+            listOf(Check("signature and holder binding", CheckStatus.FAIL, result.errorDescription ?: result.error ?: "no presentation")),
+            TrustDecision.unknown("not verified"))
     }
 
     private suspend fun decrypt(jwe: String, session: VerifierSession): JsonObject? {
@@ -299,7 +323,8 @@ class PresentationVerifier(
         } else emptyList()
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, "${trust.anchorName} (${trust.environment.id})")
         else Check("issuer trust", CheckStatus.FAIL, "issuer chain not anchored in an enabled environment")
-        return CredentialVerification(id, format, typeName, claims, checks, trust, evidence)
+        return CredentialVerification(id, format, typeName, claims, checks, trust, evidence,
+            derived = photoId, zkProof = (vp as? MdocVerifiedPresentation)?.zkpUsed == true)
     }
 
     private fun checkStatus(c: DocumentCheck): CheckStatus = when (c) {
@@ -370,10 +395,12 @@ class PresentationVerifier(
         sdJwt.validFrom?.let { checks += if (it <= now + 2.minutes) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         sdJwt.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
         val derived = DerivedCredentials.isDerived(vct)
-        val evidence = if (derived) {
+        val results = if (derived) {
             val signed = Jws.parse(SdJwtDisclosures.parse(token.substringBeforeLast('~') + "~").issuerJwt).payload
-            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now).map { e -> Check(e.title, checkStatus(e.check), e.detail) }
+            DerivedEvidence.verify(signed, documentTrust, disclosed = processed, zk = zkPdf, now = now)
         } else emptyList()
+        val evidence = results.map { e -> Check(e.title, checkStatus(e.check), e.detail) }
+        val zkProof = results.any { it.type == diw.wallet.core.document.zkpdf.ZkPdfEvidence.TYPE && it.check == DocumentCheck.PASS }
         val technical = setOf("iss", "iat", "nbf", "exp", "vct", "cnf", "status", "_sd_alg", "sub")
         val claims = processed.filterKeys { k -> k !in technical && !(derived && (k == "evidence" || DerivedCredentials.isTechnicalClaim(k))) }
             .mapValues { (_, v) -> (v as? JsonPrimitive)?.takeIf { it.isString }?.content ?: v.toString() }
@@ -383,7 +410,7 @@ class PresentationVerifier(
         } else TrustDecision.unknown("issuer identified by a DID that this verifier does not trust")
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, trust.anchorName ?: iss)
         else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")
-        return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence)
+        return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence, derived = derived, zkProof = zkProof)
     }
 
     /** The JSON-LD credential or presentation in [entry] (a DCQL array of one, or the object itself); null otherwise. */
