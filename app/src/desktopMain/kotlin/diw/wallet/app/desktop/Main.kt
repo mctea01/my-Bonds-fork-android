@@ -3,7 +3,6 @@ package diw.wallet.app.desktop
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.app.text
-import diw.wallet.app.tr
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,6 +44,7 @@ import diw.wallet.app.decodeImageBytes
 import diw.wallet.app.ui.WalletApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.File
@@ -107,17 +107,22 @@ private fun exitAfter(seconds: Long) {
 
 /**
  * Replaces Compose's default handler, which shows only "Error" and the exception's message (often empty): the error
- * is saved under the data folder, the dialog names the file, and the window closes as before.
+ * is saved under the data folder, the dialog names the file, and the window closes as before. The strings are read
+ * from the resources directly, since an error on the unlock screen comes before the wallet loads [tr]'s strings.
  */
 @OptIn(ExperimentalComposeUiApi::class)
-private val windowErrors = WindowExceptionHandlerFactory { window ->
+private fun windowErrors(language: DesktopLanguageStore) = WindowExceptionHandlerFactory { window ->
     WindowExceptionHandler { e ->
         uncaught = e
         e.printStackTrace()
         val file = ErrorLog.write(e)
         SwingUtilities.invokeLater {
-            val message = tr(Res.string.desktop_error_log, "${e::class.java.name}: ${e.message.orEmpty()}", file?.path ?: "-")
-            JOptionPane.showMessageDialog(window, message, tr(Res.string.desktop_error_title), JOptionPane.ERROR_MESSAGE)
+            val error = "${e::class.java.name}: ${e.message.orEmpty()}"
+            val path = file?.path ?: "-"
+            val (title, message) = runCatching {
+                runBlocking { language.text(Res.string.desktop_error_title) to language.text(Res.string.desktop_error_log, error, path) }
+            }.getOrElse { "DIW MY WALLET" to "$error\n\n$path" }
+            JOptionPane.showMessageDialog(window, message, title, JOptionPane.ERROR_MESSAGE)
             window.dispatchEvent(WindowEvent(window, WindowEvent.WINDOW_CLOSING))
         }
     }
@@ -150,7 +155,7 @@ fun main(args: Array<String>) {
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
         val icon = remember { appIcon() }
-        CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides windowErrors) {
+        CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides windowErrors(language)) {
             Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
                 if (InputExercise.enabled) {
                     val density = LocalDensity.current.density
@@ -218,8 +223,8 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
                         modifier = Modifier.width(280.dp).exerciseTarget(target),
                     )
                 }
-                field(pin, "App PIN", "pin") { pin = it; InputExercise.pin = it }
-                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat), "confirm") { confirm = it; InputExercise.confirm = it }
+                field(pin, "App PIN", "pin") { pin = it; if (InputExercise.enabled) InputExercise.pin = it }
+                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat), "confirm") { confirm = it; if (InputExercise.enabled) InputExercise.confirm = it }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Button(enabled = valid && !busy, modifier = Modifier.exerciseTarget("unlock"), onClick = {
                     busy = true
