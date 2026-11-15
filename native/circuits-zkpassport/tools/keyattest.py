@@ -278,7 +278,11 @@ def generate():
         (directory / 'Nargo.toml').write_text(nargo_toml(package_name(shape), shape[0] == 'rsa', '../../..'))
         (directory / 'src/main.nr').write_text(main_nr(shape))
         members.append('keyattest/' + shape_name(shape))
+    # The probe is a workspace member, so it must be a valid package before any nargo command runs in
+    # the workspace; probe() rewrites it for each root key size.
     (GEN / 'probe/src').mkdir(parents=True, exist_ok=True)
+    (GEN / 'probe/Nargo.toml').write_text(nargo_toml('diw_facematch_probe', False, '../..'))
+    (GEN / 'probe/src/main.nr').write_text(probe_source(96))
     members.append('probe')
     (GEN / 'Nargo.toml').write_text('[workspace]\nmembers = [' + ', '.join(json.dumps(m) for m in members) + ']\n')
     return len(members) - 1
