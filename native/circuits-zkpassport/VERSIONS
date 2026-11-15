@@ -6,5 +6,7 @@ oracle_hash=poseidon2
 zkpassport_circuits_commit=2c5673df14d496a1b0baf7a92e883ca19fbb618b
 zkpassport_circuits_version=0.22.0
 
-# No ACIR or verification key hashes yet: the circuits are not published as assets and the
-# wallet does not use them. They are recorded here when the first asset release is made.
+release=zkpassport-facematch-v1
+
+# Verification key hashes (registry leaves) of every circuit are in circuits.json; the wallet and the
+# verifier are built with that list. The release holds the gzip artifacts of the key attestation circuits.

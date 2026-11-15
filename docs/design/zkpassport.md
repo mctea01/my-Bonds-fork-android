@@ -260,7 +260,7 @@ zkPassport 的這兩項只能被它自己的查驗端接受，這裡做的是同
 
 ### 5.6 FaceMatch 各平台電路的差異與本專案的替代電路（2026-11-13）
 
-使用者要求比較 zkPassport 各平台的 FaceMatch 電路，並實作替代檢查或無檢查的版本。電路已寫好並在本機通過測試（`native/circuits-zkpassport`），尚未接進錢包。
+使用者要求比較 zkPassport 各平台的 FaceMatch 電路，並實作替代檢查或無檢查的版本。電路在 `native/circuits-zkpassport`，2026-11-14 接進錢包的持有端與查驗端（本節最後的「接進錢包」）。
 
 **官方電路證明的是什麼**【確認：`circuits` repo 修訂 `2c5673d`（0.22.0）的 `src/noir/bin/facematch`、`src/noir/lib/facematch`】
 
@@ -293,7 +293,7 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 
 **無檢查版：`diw_facematch_self`（自我聲明）**
 
-沒有任何平台證明。電路只檢查效期與模式、做 `nullify`，並把承諾固定為「無根金鑰、environment 0、無簽署者」加上錢包自稱的 app id。它本身不增加任何保證：只是讓「錢包聲稱做過人臉比對」這句話與其他證明綁在同一本證件、同一個 scope，並讓查驗端能明確分辨這是自我聲明。原本考慮保留一個未經證明的金鑰簽章，但那個簽章任何人都能產生，只會增加證明時間，所以不放。供沒有 App 證明機制的平台使用（桌面版、模擬器）。
+沒有任何平台證明。電路只檢查效期與模式、做 `nullify`，並把承諾固定為「無根金鑰、environment 0、無簽署者」加上錢包自稱的 app id。它本身不增加任何保證：只是讓「錢包聲稱做過人臉比對」這句話與其他證明綁在同一本證件、同一個 scope，並讓查驗端能明確分辨這是自我聲明。原本考慮保留一個未經證明的金鑰簽章，但那個簽章任何人都能產生，只會增加證明時間，所以不放。供沒有硬體金鑰證明的裝置使用（模擬器、沒有 TEE 金鑰證明的手機）；錢包仍然要真的做過比對才會產生這種證明，所以沒有相機比對畫面的桌面版不提供。
 
 **公開介面與查驗**
 
@@ -327,8 +327,45 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 | 官方 Android 電路，P-384 根、1 個中繼（P-384／SHA-384），供對照 | 1,177,595 | 未量測 |
 
 - 單一中繼的形狀在 2^20 閘以內，官方同形狀超過（需要 2^21 的 SRS）；三個中繼的形狀仍會超過 2^20。
-- 未驗證：真實裝置的憑證鏈（合成的擴充欄位依 Android 文件的結構產生，實機的欄位順序與長度可能不同）；手機上的證明時間；程式庫修訂 `2c5673d` 的承諾與線上 0.22.0 電路是否一致，接進錢包、與真實子證明串接時才能確認。
-- 未做：發佈電路資產與驗證金鑰雜湊、錢包端證明與查驗、人臉比對與活體、畫面、專門聲明更新。接進錢包前，FaceMatch 的請求仍只能拒絕。
+- 未驗證：真實裝置的憑證鏈（合成的擴充欄位依 Android 文件的結構產生，實機的欄位順序與長度可能不同）；手機上的證明時間；程式庫修訂 `2c5673d` 的承諾與線上 0.22.0 電路是否一致，要與真實子證明串接時才能確認。
+
+**接進錢包（2026-11-14）**
+
+請求與回應：
+
+- 查驗方在 zkPassport 的查詢裡加 `"facematch": {"mode": "regular" | "strict", "diw": ["keyattest", "self"]}`。`mode` 是 zkPassport 自己的欄位；`diw` 是本專案的擴充，列出查驗方願意接受的本專案證明種類，zkPassport 的 App 不認得這個鍵【未實測它是否忽略】。沒有 `diw` 的請求只接受 zkPassport 官方 App 的證明，本錢包只能拒絕。
+- 持有端的 driver（`native/vendor/zkpassport`，不改）不認得 `facematch`，所以錢包把這一項從交給 driver 的查詢拿掉，等 driver 完成其他子證明後，以同一個鹽、scope 與日期另外產生 FaceMatch 證明（`ZkPassportProver.faceMatch`），它的 `comm_in` 因此等於證明組的承諾；私密 nullifier 不公開（nullifier 輸出為 0）。證明訊息與官方格式相同，另帶 `vkey`（驗證金鑰）與 `committedInputs.facematch`（`mode`、`environment`、`appId`，金鑰證明版另有 `rootKeyLeaf`、`signerDigest`），查詢結果加上 `facematch: {mode, passed: true}`。
+- 電路執行前先由電路算出驗證金鑰並核對雜湊在釘選清單內（`native/circuits-zkpassport/circuits.json`，79 項，建置時內嵌在原生函式庫）；證明產生後先在本機驗證一次才送出。
+
+人臉比對（Android，`AndroidFaceMatch`）：
+
+- 以 Multipaz `multipaz-facenet` 0.102.0 比對：BlazeFace 找臉、MobileFaceNet（Qualcomm AI Hub 的模型，隨 App 放在 `assets/facenet`）算 128 維特徵、MiniFASNetV2 做單張的被動活體判定。相機畫面是 Multipaz 的 `FaceMatcherPromptDialog`，參考照片是晶片讀出的 DG2（JPEG 或 JPEG 2000）。比對通過的條件是餘弦相似度達 0.63 且被動活體分數達 0.5（Multipaz 的預設值）。
+- `regular`：一次相機比對。`strict`：比對通過後再做一次轉頭檢查（正面、左、右，左右順序隨機），那一次拍到的正面照也要與 DG2 相符。
+- 比對在同意之後、向請求方回覆接受之前進行；沒有通過、取消或讀不到照片時不回覆接受，請求方收不到任何證明。相機影像、特徵與分數只在記憶體，不保存、不傳送、不寫入紀錄。
+- Multipaz 明說這個模組不保證比對準確度與防偽能力；被動活體擋得住的是翻拍照片與螢幕，擋不住的攻擊（高品質面具、注入相機畫面）不在保證範圍。這項限制寫在專門聲明裡。
+
+金鑰證明與種類的選擇：
+
+- 請求接受 `keyattest` 時，錢包把比對結果寫成 zkPassport 的 `ZKPassportAppAttest`（App 版本、模式、DG2 雜湊、特徵雜湊、分數與門檻），在 Android Keystore 新產生一把 P-256 金鑰（帶金鑰證明，challenge 為聲明的 32 位元組雜湊）簽署，用完即刪。錢包先讀憑證的金鑰證明擴充欄位（`KeyAttestationInfo`，與電路相同的讀法）：兩個安全等級都是 TEE 或 StrongBox、套件名稱是本 App、有簽署憑證雜湊，才採用；否則視為沒有金鑰證明。
+- 沒有可用的金鑰證明時，請求也接受 `self` 就改用自我聲明版；只接受 `keyattest` 則失敗並說明。兩者都接受時優先用金鑰證明版。
+- 金鑰證明版的 78 個電路共約 528 MB，不隨 App 散布：錢包依這台裝置憑證鏈的形狀只下載用到的那一個（50 KB 到 12 MB），來源是本 repo 的 release `zkpassport-facematch-v1`。檔案是資料（ACIR 電路描述），不是可執行程式碼；下載後由電路算出驗證金鑰並核對釘選的雜湊，不符就丟棄。自我聲明版（72 KB）內嵌在原生函式庫。
+- 以遠端證明主機產生時，工作內容多帶 `facematch`（聲明、憑證鏈、簽章）；主機要支援才會回傳 FaceMatch 證明，否則錢包以 `facematch_remote` 結束，不送出缺這一項的證明組。diw-wallet-server 的證明主機尚未支援。
+
+查驗端：
+
+- 原生查驗核心（`native/zkpassport-verify/src/facematch.rs`）依電路名稱分辨種類，從承諾的輸入重算參數承諾並比對證明的公開值，再套用查驗方的政策：`accept`（接受的種類，官方一律接受）、`apps`（金鑰證明版接受的 App：套件名稱加簽署憑證雜湊）、`allowSelfSigned`（接受 environment 2）、`roots`（測試裝置的額外根）。證明的模式必須等於請求的模式。
+- 錯誤代碼：`facematch_level:<種類>`、`facematch_root`、`facematch_app`、`facematch_environment`、`query:facematch`、`parameters:*`。
+- 查驗畫面可選模式、是否接受金鑰證明版（列出接受的 App，可一鍵加入本 App 自己的套件名稱與簽署憑證雜湊，清單存在設定）、是否接受 environment 2、是否接受自我聲明版。結果列出種類、模式、App 與 environment；自我聲明版與 environment 不是 1 的金鑰證明版一律標示為需留意，不會是「通過」。
+
+驗證金鑰與編譯器（2026-11-15）：
+
+- 以 GCC 13 編譯的 Barretenberg（先前 Linux 桌面版與本機建置的做法）對含 secp256r1 ECDSA 黑盒的電路算出的驗證金鑰，與上游 bb 指令、clang 編譯的版本及 zkPassport 線上清單都不同；最小的單一 P-256 驗章電路就能重現。官方 Android FaceMatch 電路與本專案金鑰證明版都用這個黑盒；其他抽查的官方電路（iOS FaceMatch、DSC 與 ID 資料簽章、資料完整性、制裁清單）一致。原因沒有追到程式碼層級；上游只以 clang 建置。
+- 因此 Linux 的 Barretenberg 與橋接程式改用 clang 編譯（`native/zkpdf-prover/tools/build_bb.py`、`native/build.sh`），`circuits.json` 的金鑰雜湊以上游 bb 指令重算。Android（NDK clang）、Windows（llvm-mingw clang）與 macOS（Apple clang）本來就用 clang。Linux ARM64 改為 clang 交叉編譯後尚未重新驗證。
+
+已驗證與未驗證：
+
+- 已驗證（雲端 x86_64）：自我聲明版（約 1 秒）與金鑰證明版（P-384 根、1 個中繼；clang 版後端重新釘選金鑰後，整個測試含算出金鑰、核對清單、證明與自我驗證約 59 秒）由錢包的證明器實際產生，承諾等於查驗核心重算的值；查驗核心對三種種類與各項政策的測試；App 流程測試（比對在接受之前、金鑰證明優先、退回自我聲明、各種失敗）。
+- 未驗證：Android 實機上的相機比對、金鑰證明的實際憑證鏈能否對上 78 種形狀、手機上的證明時間與記憶體；完整證明組（真實護照的子證明加 FaceMatch）端到端；zkPassport 官方 App 產生的 FaceMatch 證明在本錢包查驗端的結果。79 個電路都能以現有 CRS（2^21）算出驗證金鑰，最大的形狀也在範圍內。
 
 ## 6. 對外服務與法律聲明
 

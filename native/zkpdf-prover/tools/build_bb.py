@@ -62,21 +62,25 @@ def main():
     portable = ["-DCMAKE_PROJECT_INCLUDE=" + str(Path(__file__).resolve().parent / "portable_x86_64.cmake"),
                 "-DCMAKE_C_FLAGS=-march=x86-64-v2",
                 "-DCMAKE_CXX_FLAGS=-march=x86-64-v2 -Wno-error=missing-field-initializers -Wno-error=array-bounds"]
+    # Linux builds use clang, as upstream does. GCC 13 builds a backend that derives other verification keys for
+    # circuits with the secp256r1 ECDSA black box (zkPassport's Android FaceMatch, this project's key attestation
+    # circuits) than bb, clang builds and zkPassport's registry do; other circuits agree.
+    clang = ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
     if args.target == "x86_64-unknown-linux-gnu":
         if platform.system() != "Linux":
             raise SystemExit("native_linux_host_required")
-        flags += portable
+        flags += clang + portable
     elif args.target == "aarch64-unknown-linux-gnu":
         if platform.system() != "Linux":
             raise SystemExit("native_linux_host_required")
-        # GCC 13 for aarch64 reports a vector push_back in hash_to_curve as an overflow (a false positive that the
-        # x86_64 compiler does not raise); upstream builds with -Werror.
-        flags += ["-DARM=ON", "-DCMAKE_CXX_FLAGS=-Wno-error=missing-field-initializers -Wno-error=array-bounds "
-                  "-Wno-error=stringop-overflow"]
-        # On an x86_64 host the distribution's GNU cross compiler builds it; upstream reads the processor name.
+        flags += ["-DARM=ON", *clang]
+        # On an x86_64 host clang cross-compiles against the distribution's GNU cross toolchain (headers, libstdc++
+        # and binutils of g++-aarch64-linux-gnu); upstream reads the processor name.
         if platform.machine() not in ("aarch64", "arm64"):
             flags += ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=aarch64",
-                      "-DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc", "-DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"]
+                      "-DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu", "-DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu",
+                      "-DCMAKE_AR=" + str(shutil.which("aarch64-linux-gnu-ar") or "aarch64-linux-gnu-ar"),
+                      "-DCMAKE_RANLIB=" + str(shutil.which("aarch64-linux-gnu-ranlib") or "aarch64-linux-gnu-ranlib")]
     elif args.target == "aarch64-apple-darwin":
         if platform.system() != "Darwin":
             raise SystemExit("native_macos_host_required")

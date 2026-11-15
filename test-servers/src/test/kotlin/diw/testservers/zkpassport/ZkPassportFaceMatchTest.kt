@@ -5,6 +5,7 @@ import diw.wallet.core.zk.native.ZkNative
 import diw.wallet.core.zk.native.bindings.nativeInfo
 import diw.wallet.core.zk.native.bindings.zkpassportFacematchCircuits
 import diw.wallet.core.zk.native.bindings.zkpassportFacematchStatement
+import diw.wallet.core.zkpassport.KeyAttestationInfo
 import diw.wallet.core.zkpassport.ZkPassport
 import diw.wallet.core.zkpassport.ZkPassportFaceMatchApp
 import diw.wallet.core.zkpassport.ZkPassportFaceMatchAttestation
@@ -58,6 +59,7 @@ import java.util.zip.GZIPInputStream
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -185,6 +187,21 @@ class ZkPassportFaceMatchTest {
         assertEquals("self_signed", read.environment)
         assertEquals("diw.wallet.app", read.appId)
         assertNull(ZkPassport.result("""{"verified":true,"errors":[],"facematch":null}""").faceMatch)
+    }
+
+    /** The wallet reads the app and the key's level from an attestation the way the circuits do. */
+    @Test fun anAttestationNamesItsAppAndKeyLevel() {
+        val fixtures = Json.parseToJsonElement(File("../native/diw-zk-ffi/tests/data/keyattest-chains.json").readText()).jsonArray
+        for (fixture in fixtures.map { it.jsonObject }) {
+            val chain = fixture["chain"]!!.jsonArray.map { Base64.getDecoder().decode(it.jsonPrimitive.content) }
+            val stated = assertNotNull(KeyAttestationInfo.read(chain.first()))
+            assertEquals(fixture["app_id"]!!.jsonPrimitive.content, stated.packageName)
+            assertEquals(fixture["signer_digest"]!!.jsonPrimitive.content, stated.signerDigest)
+            assertTrue(stated.provable)
+            // A certificate without the extension (an intermediate) is not an attestation.
+            assertNull(KeyAttestationInfo.read(chain[1]))
+        }
+        assertNull(KeyAttestationInfo.read(byteArrayOf(0x30, 0x00)))
     }
 
     @Test fun aSelfDeclaredProofJoinsTheAnswer() = runBlocking<Unit> {

@@ -17,7 +17,7 @@ See `NOTICE` and `../Cargo.lock` for licenses and dependency pins.
 
 ## Build on Linux
 
-Prerequisites: the Rust version pinned in `../rust-toolchain.toml` (1.99.1), C++20 compiler (tested GCC 13 and 14), CMake, Ninja, Git and
+Prerequisites: the Rust version pinned in `../rust-toolchain.toml` (1.99.1), clang (tested 18; the build script selects it), CMake, Ninja, Git and
 Python 3. Full workspace tests additionally need protoc and libclang for OpenAC.
 The C++ build tool fetches pinned sources during this explicit build step only.
 
@@ -36,9 +36,14 @@ cd ..
 `generate-bindings.sh` emits all exports in a runtime-only build. It does not
 need to link a proof backend to generate the identical transport API.
 
-The C++ compiler suppresses two GCC 14 warnings as errors in upstream sources
-(missing aggregate initializers and vector insertion array-bounds diagnostics).
-It retains other upstream diagnostics and does not alter circuit or proof code.
+Linux builds use clang, as upstream does. A backend built with GCC 13 derives
+different verification keys for circuits that use the secp256r1 ECDSA black box
+(zkPassport's Android FaceMatch circuits and this project's key attestation
+circuits) than the upstream bb CLI, clang builds and zkPassport's registry;
+every other circuit checked agreed. The build keeps two upstream warnings from
+being errors (missing aggregate initializers and vector insertion array-bounds
+diagnostics), retains the other diagnostics and does not alter circuit or proof
+code.
 
 For macOS arm64, run the same build on a macOS arm64 host using
 `--target aarch64-apple-darwin` and AppleClang. For Android, install the pinned

@@ -41,6 +41,8 @@ import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.core.zkpassport.ZkPassport
 import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchKind
+import diw.wallet.core.zkpassport.ZkPassportFaceMatchRequest
 import diw.wallet.core.zkpassport.ZkPassportField
 import diw.wallet.core.zkpassport.ZkPassportProverTarget
 import diw.wallet.core.zkpassport.ZkPassportPairingLink
@@ -63,6 +65,15 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
     var issuingIn by remember { mutableStateOf("") }
     var custom by remember { mutableStateOf("") }
     var dev by remember { mutableStateOf(false) }
+    var face by remember { mutableStateOf(false) }
+    var faceStrict by remember { mutableStateOf(false) }
+    var faceKey by remember { mutableStateOf(false) }
+    var faceSelf by remember { mutableStateOf(false) }
+    var faceSelfSigned by remember { mutableStateOf(false) }
+    val settings by model.settingsFlow.collectAsState()
+    var faceApps by remember(settings.zkPassportFaceApps) { mutableStateOf(settings.zkPassportFaceApps) }
+    val (faceAppList, faceAppsBad) = remember(faceApps) { ZkPassportFlow.faceApps(faceApps) }
+    val faceProblem = face && faceKey && (faceAppList.isEmpty() || faceAppsBad.isNotEmpty())
     val domainProblem = if (domain.isBlank()) null else ZkPassportFlow.domainProblem(domain)
     val minAge = age.trim().takeIf { it.isNotEmpty() }?.toIntOrNull()
     val ageProblem = age.isNotBlank() && (minAge == null || minAge !in 1..120)
@@ -116,6 +127,61 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
             label = { Text(stringResource(Res.string.zkp_custom_data)) },
             supportingText = { Text(stringResource(Res.string.zkp_custom_data_note)) },
         )
+        Text(stringResource(Res.string.zkp_face_title), style = MaterialTheme.typography.titleSmall)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Switch(checked = face, onCheckedChange = { face = it })
+            Column {
+                Text(stringResource(Res.string.zkp_face_require))
+                Text(stringResource(Res.string.zkp_face_require_note), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (face) {
+            listOf(false to Res.string.zkp_face_mode_regular, true to Res.string.zkp_face_mode_strict).forEach { (strict, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = faceStrict == strict, onClick = { faceStrict = strict })
+                    Text(stringResource(label))
+                }
+            }
+            Text(stringResource(Res.string.zkp_face_official), style = MaterialTheme.typography.bodySmall)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = faceKey, onCheckedChange = { faceKey = it })
+                Column {
+                    Text(stringResource(Res.string.zkp_face_keyattest))
+                    Text(stringResource(Res.string.zkp_face_keyattest_note), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            if (faceKey) {
+                OutlinedTextField(
+                    value = faceApps, onValueChange = { faceApps = it.take(4000) }, modifier = Modifier.fillMaxWidth(), minLines = 2,
+                    label = { Text(stringResource(Res.string.zkp_face_apps)) }, isError = faceProblem,
+                    supportingText = {
+                        Text(
+                            when {
+                                faceAppsBad.isNotEmpty() -> stringResource(Res.string.zkp_face_apps_invalid, faceAppsBad.first().take(60))
+                                faceAppList.isEmpty() -> stringResource(Res.string.zkp_face_apps_missing)
+                                else -> stringResource(Res.string.zkp_face_apps_note)
+                            },
+                        )
+                    },
+                )
+                // This very build, as a key attestation names it: the usual choice when both sides run this wallet.
+                val own = model.platform.faceMatch?.let { f -> f.ownSigner?.let { f.appId + " " + it } }
+                if (own != null && faceAppList.none { it.appId + " " + it.signers.joinToString(" ") == own }) {
+                    OutlinedButton(onClick = { faceApps = (faceApps.trim() + "\n" + own).trim() }) { Text(stringResource(Res.string.zkp_face_apps_add_own)) }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = faceSelfSigned, onCheckedChange = { faceSelfSigned = it })
+                    Text(stringResource(Res.string.zkp_face_self_signed))
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = faceSelf, onCheckedChange = { faceSelf = it })
+                Column {
+                    Text(stringResource(Res.string.zkp_face_self))
+                    Text(stringResource(Res.string.zkp_face_self_note), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
         if (s.test) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Switch(checked = dev, onCheckedChange = { dev = it })
@@ -126,10 +192,11 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
             }
         }
         val ready = domain.isNotBlank() && domainProblem == null && name.isNotBlank() && purpose.isNotBlank() && !ageProblem &&
-            inList != null && outList != null && issuingList != null && s.note == null
+            inList != null && outList != null && issuingList != null && s.note == null && !faceProblem
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
+                    if (face && faceKey && faceApps != settings.zkPassportFaceApps) model.updateSettings { it.copy(zkPassportFaceApps = faceApps.trim()) }
                     model.taiwan.zkPassport.start(
                         ZkPassportRequest(
                             domain = domain, name = name.trim(), purpose = purpose.trim(),
@@ -139,6 +206,14 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
                             issuingCountryIn = issuingList.orEmpty(),
                             customData = custom.trim().ifEmpty { null },
                             devMode = s.test && dev,
+                            faceMatch = if (face) {
+                                ZkPassportFaceMatchRequest(
+                                    strict = faceStrict, keyAttestation = faceKey, selfDeclared = faceSelf,
+                                    apps = if (faceKey) faceAppList else emptyList(), allowSelfSigned = faceKey && faceSelfSigned,
+                                )
+                            } else {
+                                null
+                            },
                         ),
                     )
                 },
@@ -204,10 +279,15 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
                     if (r.devMode) add(stringResource(Res.string.zkp_test_caveat))
                     if (r.viaVerifierApi) add(stringResource(Res.string.zkp_api_caveat))
                     add(ZkPassportFlow.trust(r.csca))
+                    r.faceMatch?.let { addAll(ZkPassportFlow.faceCaveats(it)) }
                     add(stringResource(Res.string.zkp_domain_caveat, domain))
                 }
+                // A face match nothing but the holder's wallet vouches for, or one from an unverified system, is a caution.
+                val faceCaution = r.faceMatch?.let {
+                    it.kind == ZkPassportFaceMatchKind.SELF || (it.kind == ZkPassportFaceMatchKind.KEY_ATTESTATION && it.environment != "production")
+                } == true
                 VerdictCard(
-                    if (r.devMode || r.viaVerifierApi || r.csca?.allAnchored != true) Verdict.CAUTION else Verdict.PASS,
+                    if (r.devMode || r.viaVerifierApi || r.csca?.allAnchored != true || faceCaution) Verdict.CAUTION else Verdict.PASS,
                     if (r.devMode) stringResource(Res.string.zkp_passed_test) else stringResource(Res.string.zkp_passed),
                     caveats,
                 )
@@ -227,6 +307,10 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
                 r?.version?.let { add(stringResource(Res.string.zkp_tech_version, it)) }
                 r?.identifierType?.let { add(stringResource(Res.string.zkp_tech_identifier_type, it)) }
                 r?.uniqueIdentifier?.let { add(stringResource(Res.string.zkp_tech_identifier, it)) }
+                r?.faceMatch?.let { f ->
+                    add(stringResource(Res.string.zkp_tech_facematch, f.kind, if (f.strict) "strict" else "regular", f.environment))
+                    f.appId?.let { add(stringResource(Res.string.zkp_tech_facematch_app, it, f.signerDigest ?: "-")) }
+                }
                 if (r != null && r.errors.isNotEmpty()) add(stringResource(Res.string.zkp_tech_errors, r.errors.joinToString(", ")))
                 add(stringResource(Res.string.zkp_tech_domain, domain))
                 s.request.scope?.let { add(stringResource(Res.string.zkp_tech_scope, it)) }
@@ -290,6 +374,11 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         ZkPassportFlow.asks(incoming.query).forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
         s.unsupported?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
         if (s.unsupported == null) {
+            val faceNotes = ZkPassportFlow.faceNotes(incoming)
+            if (faceNotes.isNotEmpty()) {
+                SectionTitle(stringResource(Res.string.zkp_answer_facematch_title))
+                faceNotes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
             SectionTitle(stringResource(Res.string.zkp_answer_choose))
             if (s.passports.isEmpty()) Text(stringResource(Res.string.zkp_answer_no_passport), style = MaterialTheme.typography.bodyMedium)
             s.passports.forEach { f ->
@@ -330,6 +419,9 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
             // Passport data leaves this device only to the owner's prover the holder picked here.
             ZkPassportFlow.targetAddress(target)?.let { address ->
                 Text(stringResource(Res.string.zkp_answer_where_note, address), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                if (incoming.faceMatchMode != null) {
+                    Text(stringResource(Res.string.zkp_answer_facematch_remote), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
             }
             Text(stringResource(Res.string.zkp_answer_note), style = MaterialTheme.typography.bodySmall)
         }
@@ -385,7 +477,8 @@ internal fun ZkPassportAnswerProvingView(model: WalletModel, s: OfflineUi.ZkPass
         }
         Text(
             when (val p = s.progress) {
-                null, ZkPassportAnswerProgress.Registry -> stringResource(Res.string.zkp_answer_registry)
+                null -> stringResource(if (s.comparing) Res.string.zkp_answer_comparing else Res.string.zkp_answer_registry)
+                ZkPassportAnswerProgress.Registry -> stringResource(Res.string.zkp_answer_registry)
                 is ZkPassportAnswerProgress.Circuits -> stringResource(Res.string.zkp_answer_circuits, p.count)
                 is ZkPassportAnswerProgress.Proving -> stringResource(Res.string.zkp_answer_proving, p.index + 1, p.total, p.name)
                 ZkPassportAnswerProgress.Sending -> stringResource(Res.string.zkp_answer_sending)

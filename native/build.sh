@@ -126,7 +126,9 @@ for target in "${selected[@]}"; do
         if [[ -n "$bridge_cxx_override" ]]; then export ZKPDF_CXX=$bridge_cxx_override; else unset ZKPDF_CXX; fi
         if [[ -n "$bridge_ar_override" ]]; then export ZKPDF_AR=$bridge_ar_override; else unset ZKPDF_AR; fi
         case "$target" in
-            x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so ;;
+            # Barretenberg is built with clang on Linux (zkpdf-prover/tools/build_bb.py); the bridge uses it too.
+            x86_64-unknown-linux-gnu) platform=linux-x86_64; library=libdiw_zk.so
+                export ZKPDF_CXX=${bridge_cxx_override:-clang++} ;;
             aarch64-unknown-linux-gnu) platform=linux-aarch64; library=libdiw_zk.so
                 # From an x86_64 host the distribution's GNU cross tools (g++-aarch64-linux-gnu) compile and link it.
                 if [[ "$host" != "$target" ]]; then
@@ -135,6 +137,8 @@ for target in "${selected[@]}"; do
                     export CXX_aarch64_unknown_linux_gnu=${CXX_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-g++}
                     export AR_aarch64_unknown_linux_gnu=${AR_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-ar}
                     export ZKPDF_CXX=${bridge_cxx_override:-aarch64-linux-gnu-g++} ZKPDF_AR=${bridge_ar_override:-aarch64-linux-gnu-ar}
+                else
+                    export ZKPDF_CXX=${bridge_cxx_override:-clang++}
                 fi ;;
             # A Windows host builds its own target, without zkPDF.
             x86_64-pc-windows-msvc) platform=windows-x86_64; library=diw_zk.dll ;;

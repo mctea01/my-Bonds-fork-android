@@ -110,6 +110,9 @@ class WalletModelE2eTest {
         }
         override fun openRedirect(url: String) {}
 
+        /** The camera comparison of zkPassport FaceMatch answers; none unless a test sets one. */
+        override var faceMatch: FaceMatchService? = null
+
         /** What the file picker returns. */
         var picks: List<PickedFile> = emptyList()
         override suspend fun pickFiles(): List<PickedFile> = picks
@@ -2707,6 +2710,8 @@ class WalletModelE2eTest {
     private class FakeZkPassportHolder : diw.wallet.core.zkpassport.ZkPassportHolder {
         val incoming = ArrayList<diw.wallet.core.zkpassport.ZkPassportIncoming>()
         val chips = ArrayList<diw.wallet.core.zkpassport.ZkPassportChip>()
+        val faces = ArrayList<diw.wallet.core.zkpassport.ZkPassportFaceMatchEvidence?>()
+        val statements = ArrayList<Pair<Boolean, Long>>()
         var rejected = 0
         var origin = "https://verify.example.org"
         var failure: String? = null
@@ -2718,7 +2723,13 @@ class WalletModelE2eTest {
                 override val origin = from
                 override val originMatches = from == incoming.expectedOrigin
                 override suspend fun reject() { rejected++ }
-                override suspend fun answer(chip: diw.wallet.core.zkpassport.ZkPassportChip, target: diw.wallet.core.zkpassport.ZkPassportProverTarget, progress: (diw.wallet.core.zkpassport.ZkPassportAnswerProgress) -> Unit) {
+                override suspend fun answer(
+                    chip: diw.wallet.core.zkpassport.ZkPassportChip,
+                    target: diw.wallet.core.zkpassport.ZkPassportProverTarget,
+                    faceMatch: diw.wallet.core.zkpassport.ZkPassportFaceMatchEvidence?,
+                    progress: (diw.wallet.core.zkpassport.ZkPassportAnswerProgress) -> Unit,
+                ) {
+                    faces.add(faceMatch)
                     progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Proving(0, 2, "disclose_bytes"))
                     chips.add(chip)
                     progress(diw.wallet.core.zkpassport.ZkPassportAnswerProgress.Sending)
@@ -2726,6 +2737,28 @@ class WalletModelE2eTest {
                 override fun close() {}
             }
         }
+        override suspend fun faceMatchStatement(
+            chip: diw.wallet.core.zkpassport.ZkPassportChip, appVersion: String, strict: Boolean, embedding: FloatArray, cosine: Long, threshold: Long,
+        ): diw.wallet.core.zkpassport.ZkPassportFaceMatchStatement {
+            statements.add(strict to cosine)
+            return diw.wallet.core.zkpassport.ZkPassportFaceMatchStatement(byteArrayOf(9), byteArrayOf(7, 7))
+        }
+    }
+
+    /** A camera comparison answered by hand. */
+    private class FakeFaceMatch : FaceMatchService {
+        override val appId = "diw.wallet.test"
+        override val appVersion = "1.0"
+        var failure: String? = null
+        var attests = true
+        val compared = ArrayList<Boolean>()
+        override suspend fun compare(portrait: ByteArray, strict: Boolean): FaceComparison {
+            failure?.let { throw FaceMatchFailure(it) }
+            compared.add(strict)
+            return FaceComparison(floatArrayOf(0.5f, -0.25f), 71_000_000, 63_000_000)
+        }
+        override suspend fun attest(toSign: ByteArray): FaceKeyAttestation? =
+            if (attests) FaceKeyAttestation(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3)), toSign.reversedArray(), "ab".repeat(32)) else null
     }
 
     /**
@@ -2792,6 +2825,71 @@ class WalletModelE2eTest {
         val declined = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerDone } as OfflineUi.ZkPassportAnswerDone }
         assertTrue(!declined.sent && declined.error == null)
         assertEquals(1, fake.rejected)
+
+        // A requester that takes this project's proofs still cannot be answered without a camera screen.
+        fun asking(mode: String, vararg kinds: String) = incoming.copy(
+            query = kotlinx.serialization.json.JsonObject(
+                incoming.query + ("facematch" to kotlinx.serialization.json.buildJsonObject {
+                    put("mode", kotlinx.serialization.json.JsonPrimitive(mode))
+                    put("diw", kotlinx.serialization.json.JsonArray(kinds.map { kotlinx.serialization.json.JsonPrimitive(it) }))
+                }),
+            ),
+        )
+        assertNotNull(ZkPassportFlow.unsupported(asking("regular", "self"), canCompare = false))
+        assertNull(ZkPassportFlow.unsupported(asking("regular", "self"), canCompare = true))
+
+        // With one (FaceMatch, 5.6) the face is compared before the request is accepted. A passport read without
+        // its photo cannot be compared.
+        val face = FakeFaceMatch()
+        p.faceMatch = face
+        suspend fun answerWith(request: diw.wallet.core.zkpassport.ZkPassportIncoming, file: StoredFile): OfflineUi.ZkPassportAnswerDone {
+            m.taiwan.zkPassport.answer(request)
+            val asked = withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerConsent && it.incoming == request } as OfflineUi.ZkPassportAnswerConsent }
+            assertNull(asked.unsupported)
+            m.taiwan.zkPassport.accept(file)
+            return withTimeout(5.seconds) { m.taiwan.offline.first { it is OfflineUi.ZkPassportAnswerDone } as OfflineUi.ZkPassportAnswerDone }
+        }
+        assertEquals(ZkPassportFlow.answerFailure("facematch_photo"), answerWith(asking("regular", "keyattest", "self"), passport).error)
+        assertTrue(face.compared.isEmpty() && fake.faces.size == 1)
+
+        val photo = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0x10, 0x4A, 0x46, 0x49, 0x46) + ByteArray(8)
+        val dg2 = tlv(byteArrayOf(0x75), tlv(byteArrayOf(0x7F, 0x61), tlv(byteArrayOf(0x7F, 0x60), tlv(byteArrayOf(0x5F, 0x2E), photo))))
+        val pictured = dump.copy(files = dump.files + ("DG2" to kotlin.io.encoding.Base64.encode(dg2)))
+        m.files.import(PickedFile("pictured.emrtd.json", pictured.encode()), FileOrigin.IMPORTED, null).join()
+        val withPhoto = m.files.files.value.first { it.name == "pictured.emrtd.json" }
+
+        // A hardware key vouches for the comparison where the requester takes that and the device attests its keys.
+        val first = answerWith(asking("regular", "keyattest", "self"), withPhoto)
+        assertTrue(first.sent, first.error)
+        val attested = assertNotNull(fake.faces.last())
+        assertEquals(diw.wallet.core.zkpassport.ZkPassportFaceMatchKind.KEY_ATTESTATION, attested.kind)
+        assertEquals("diw.wallet.test", attested.appId)
+        assertTrue(!attested.strict)
+        assertEquals("ab".repeat(32), attested.attestation?.signerDigest)
+        assertContentEquals(byteArrayOf(9), attested.attestation?.clientData)
+        assertEquals(listOf(false to 71_000_000L), fake.statements)
+        assertEquals(listOf(false), face.compared)
+
+        // Without an attestation the proof is self-declared, when the requester takes that; the strict mode is passed on.
+        face.attests = false
+        assertTrue(answerWith(asking("strict", "keyattest", "self"), withPhoto).sent)
+        val declared = assertNotNull(fake.faces.last())
+        assertEquals(diw.wallet.core.zkpassport.ZkPassportFaceMatchKind.SELF, declared.kind)
+        assertTrue(declared.strict && declared.attestation == null)
+        assertEquals(listOf(false, true), face.compared)
+        val answers = fake.faces.size
+        assertEquals(ZkPassportFlow.answerFailure("facematch_attestation"), answerWith(asking("regular", "keyattest"), withPhoto).error)
+
+        // A comparison that does not pass ends the answer before anything is accepted.
+        face.failure = "no_match"
+        assertEquals(ZkPassportFlow.answerFailure("facematch_no_match"), answerWith(asking("regular", "self"), withPhoto).error)
+        assertEquals(answers, fake.faces.size)
+        p.faceMatch = null
+
+        // The verifier's list of accepted apps: a package name and its signing certificate digests per line.
+        val (apps, unread) = ZkPassportFlow.faceApps("diw.wallet.app " + "AB:".repeat(31) + "AB\nnot an app\n\n")
+        assertEquals(listOf(diw.wallet.core.zkpassport.ZkPassportFaceMatchApp("diw.wallet.app", listOf("ab".repeat(32)))), apps)
+        assertEquals(listOf("not an app"), unread)
 
         // A link relayed from another origin is shown as such.
         fake.origin = "https://evil.example"

@@ -353,10 +353,14 @@ sealed class OfflineUi {
         val unsupported: String?,
     ) : OfflineUi()
 
-    /** The proofs are being made on this device; [progress] is null until the prover reports. */
+    /**
+     * The proofs are being made on this device; [progress] is null until the prover reports. [comparing]: the camera
+     * is comparing the holder's face with the passport photo first (FaceMatch).
+     */
     data class ZkPassportAnswerProving(
         val incoming: diw.wallet.core.zkpassport.ZkPassportIncoming,
         val progress: diw.wallet.core.zkpassport.ZkPassportAnswerProgress?,
+        val comparing: Boolean = false,
     ) : OfflineUi()
 
     /** The answer's end: [sent] when the proofs reached the requester; neither sent nor [error] means declined. */

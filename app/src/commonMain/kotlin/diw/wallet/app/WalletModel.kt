@@ -244,6 +244,11 @@ data class WalletSettings(
     val zkPassportSepoliaRpc: String = "",
     /** Let zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
     val zkPassportVerifierApi: Boolean = false,
+    /**
+     * Apps whose key attested FaceMatch proofs zkPassport checks accept, one per line: the package name, then the
+     * SHA-256 (hex) of its signing certificates, separated by spaces.
+     */
+    val zkPassportFaceApps: String = "",
 )
 
 /**

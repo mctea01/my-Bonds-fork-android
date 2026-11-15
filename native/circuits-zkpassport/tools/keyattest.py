@@ -20,6 +20,7 @@ import hashlib
 import itertools
 import json
 import re
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -712,8 +713,9 @@ def wallet_fixture(path):
 
 # --- Packaging -------------------------------------------------------------------------
 
-def package_one(nargo, vk_tool, hash_tool, crs, out, name, cwd):
+def package_one(nargo, vk_tool, bb, hash_tool, crs, out, name, cwd):
     """Compiles `name`, writes the artifact the wallet downloads and returns its key hash.
+    The key comes from `vk_tool` (zkpdf-vk) or from the upstream `bb` CLI; both give the same key.
     A circuit whose artifact and entry are already in `out` is not built again."""
     packed_path, entry_path = out / (name + '.json.gz'), out / (name + '.entry')
     if packed_path.exists() and entry_path.exists():
@@ -733,24 +735,33 @@ def package_one(nargo, vk_tool, hash_tool, crs, out, name, cwd):
                           separators=(',', ':')).encode()
     plain = out / (name + '.json')
     plain.write_bytes(artifact)
-    key = out / (name + '.vk')
+    keys = out / (name + '.keys')
+    key = keys / 'vk'
+    keys.mkdir(exist_ok=True)
     try:
-        subprocess.run([vk_tool, str(crs), str(plain), str(key)], check=True, capture_output=True)
+        if vk_tool:
+            subprocess.run([vk_tool, str(crs), str(plain), str(key)], check=True, capture_output=True)
+        else:
+            subprocess.run([bb, 'write_vk', '-s', 'ultra_honk', '--oracle_hash', 'poseidon2',
+                            '-b', str(plain), '-o', str(keys), '-c', str(crs)], check=True, capture_output=True)
         digest = subprocess.run([hash_tool, str(key)], check=True, capture_output=True, text=True).stdout.strip()
     finally:
         plain.unlink()
-        key.unlink(missing_ok=True)
+        shutil.rmtree(keys, ignore_errors=True)
     if not re.fullmatch(r'0x[0-9a-f]{64}', digest):
         raise RuntimeError('%s: unexpected key hash %r' % (name, digest))
-    # mtime 0 so the same artifact always gives the same file.
-    packed = gzip.compress(artifact, 9, mtime=0)
+    # mtime 0 and a fixed OS byte (Python 3.13 writes 255 where older versions write 3), so the same
+    # artifact always gives the same file.
+    packed = bytearray(gzip.compress(artifact, 9, mtime=0))
+    packed[9] = 3
+    packed = bytes(packed)
     entry = {'hash': digest, 'sha256': hashlib.sha256(packed).hexdigest(), 'bytes': len(packed)}
     packed_path.write_bytes(packed)
     entry_path.write_text(json.dumps(entry))
     return name, entry
 
 
-def package(nargo, vk_tool, hash_tool, crs, out, names, jobs, pin):
+def package(nargo, vk_tool, bb, hash_tool, crs, out, names, jobs, pin):
     """Packages the circuits into `out`: one gzip artifact each and index.json (hash of the
     verification key, hash and size of the file). `pin` also rewrites circuits.json, the key
     hashes the wallet and the verifier are built with."""
@@ -762,7 +773,7 @@ def package(nargo, vk_tool, hash_tool, crs, out, names, jobs, pin):
         work = [w for w in work if w[0] in names or w[0].removeprefix('diw_facematch_keyattest_') in names]
     index = {}
     with ThreadPoolExecutor(max_workers=jobs) as pool:
-        for name, entry in pool.map(lambda w: package_one(nargo, vk_tool, hash_tool, crs, out, *w), work):
+        for name, entry in pool.map(lambda w: package_one(nargo, vk_tool, bb, hash_tool, crs, out, *w), work):
             index[name] = entry
             print(name, entry['hash'], entry['bytes'], flush=True)
     index = dict(sorted(index.items()))
@@ -795,7 +806,8 @@ def main():
     sub.add_parser('walletfixture').add_argument('out', type=Path)
     pack = sub.add_parser('package')
     pack.add_argument('--nargo', default='nargo')
-    pack.add_argument('--vk', required=True, help='zkpdf-vk of native/zkpdf-prover')
+    pack.add_argument('--vk', help='zkpdf-vk of native/zkpdf-prover')
+    pack.add_argument('--bb', help='the bb CLI, used when --vk is not given')
     pack.add_argument('--vkey-hash', required=True, help='the vkey_hash example of native/zkpassport-verify')
     pack.add_argument('--crs', type=Path, required=True)
     pack.add_argument('--out', type=Path, required=True)
@@ -807,8 +819,10 @@ def main():
         wallet_fixture(args.out)
         return
     if args.command == 'package':
-        sys.exit(package(args.nargo, args.vk, args.vkey_hash, args.crs.resolve(), args.out.resolve(), args.names,
-                         args.jobs, args.pin))
+        if not args.vk and not args.bb:
+            sys.exit('package needs --vk or --bb')
+        sys.exit(package(args.nargo, args.vk, args.bb, args.vkey_hash, args.crs.resolve(), args.out.resolve(),
+                         args.names, args.jobs, args.pin))
     if args.command == 'gen':
         print('%d circuits in %s' % (generate(), GEN))
     elif args.command == 'libtests':

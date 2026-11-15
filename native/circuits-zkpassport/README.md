@@ -10,15 +10,21 @@ official circuits and limits: `docs/design/zkpassport.md` section 5.6.
 | Circuit | Evidence | Where |
 | --- | --- | --- |
 | `diw_facematch_keyattest_*` (78 chain shapes, generated) | Android key attestation: hardware key, boot state, package name and signing certificate | Android devices with a hardware keystore, with or without Google Play services |
-| `diw_facematch_self` | None: the wallet's own statement | Any platform, including desktop |
+| `diw_facematch_self` | None: the wallet's own statement | Android devices without a usable attestation, when the requester accepts it (desktop has no camera comparison and declines FaceMatch) |
 
 All of them have the public inputs and outputs of zkPassport's FaceMatch circuits
 (`comm_in`, `current_date`, `service_scope`, `service_subscope`; parameter
 commitment, nullifier type, nullifier, OPRF key hash) and use zkPassport's
 commitment and nullifier code from `native/vendor/zkpassport-circuits`.
 
-Not wired into the wallet yet: no assets are published and neither the prover
-nor the verifier knows these circuits.
+The wallet proves them on Android after its own camera comparison and the
+verifier accepts them when a request lists them (`"facematch": {"diw": [...]}`).
+`circuits.json` lists the verification key hash of every circuit; the native
+library embeds it, and the prover and the verifier take no circuit whose key
+hashes elsewhere. The self-declared circuit is embedded (`artifacts/`); the key
+attestation circuits are downloaded on demand from the `zkpassport-facematch-v1`
+release, which the `zkPassport FaceMatch assets` workflow builds from these
+sources and publishes.
 
 ## Layout
 
@@ -27,6 +33,8 @@ nor the verifier knows these circuits.
 - `tools/keyattest.py`: generates the key attestation circuits into `gen/`
   (ignored by git) and checks them with synthetic chains.
 - `VERSIONS`: toolchain and upstream revision.
+- `circuits.json`: verification key hash of every circuit, built into the wallet and the verifier.
+- `artifacts/`: the self-declared circuit as the native library embeds it.
 
 ## Checks
 
@@ -46,6 +54,20 @@ circuit on it (four boot states, each with its expected commitment) and on nine
 tampered or unacceptable variants that must fail or be read correctly, and with
 `--bb` proves and verifies. Without shape names it checks one ECDSA-root and one
 RSA-root shape. The document is the specimen of zkPassport's own tests.
+
+`package` compiles the circuits, derives their keys and writes the gzip
+artifacts the wallet downloads, then compares the key hashes with
+`circuits.json` (`--pin` rewrites it instead, only for a deliberate change):
+
+```sh
+cargo build --release --manifest-path ../Cargo.toml -p zkpassport-verify --example vkey_hash
+python3 -I tools/keyattest.py package --nargo nargo --bb bb \
+  --vkey-hash ../target/release/examples/vkey_hash --crs /path/to/crs --out /tmp/facematch --jobs 2
+```
+
+Keys come from the upstream bb CLI (`--bb`) or from `zkpdf-vk` (`--vk`) built
+with clang; a Barretenberg built with GCC derives other keys for these circuits
+(see `../zkpdf-prover/README.md`).
 
 `python3 -I tools/keyattest.py libtests` rewrites the library's test vectors
 (`src/lib/diw_facematch/src/tests.nr`) after a change to the fixtures.

@@ -75,7 +75,7 @@ data class ZkPassportFaceMatchApp(val appId: String, val signers: List<String>)
  * listed, and a key attested proof only from one of [apps].
  */
 data class ZkPassportFaceMatchRequest(
-    /** zkPassport's strict mode (a stricter liveness check in its app); this wallet's holder treats both alike. */
+    /** zkPassport's strict mode (a stricter liveness check in its app; this wallet's holder adds a head turn challenge). */
     val strict: Boolean = false,
     val keyAttestation: Boolean = false,
     val selfDeclared: Boolean = false,
