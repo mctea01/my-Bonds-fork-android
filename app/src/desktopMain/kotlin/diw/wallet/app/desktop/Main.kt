@@ -3,6 +3,7 @@ package diw.wallet.app.desktop
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.app.text
+import diw.wallet.app.tr
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,12 +25,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowExceptionHandler
+import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import diw.wallet.app.WalletModel
@@ -39,7 +48,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.File
+import java.awt.event.WindowEvent
 import java.security.Security
+import javax.swing.JOptionPane
+import javax.swing.SwingUtilities
 import kotlin.system.exitProcess
 
 private fun dataDir(): File {
@@ -64,19 +76,51 @@ private fun appIcon(): BitmapPainter? =
 @Volatile private var composed = false
 @Volatile private var uncaught: Throwable? = null
 
+/** Records and logs every uncaught exception; the timed exit reports it. */
+private fun handleUncaught() {
+    Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+        uncaught = e
+        e.printStackTrace()
+        ErrorLog.write(e, thread.name)
+    }
+}
+
 /**
  * DIW_EXIT_AFTER_SECONDS (tests and the native build only): ends the app after that many seconds, through a normal
- * exit so the tracing agent writes what it recorded. Exit code 0 when the first screen was composed and nothing was
- * thrown, 1 after an uncaught exception, 2 when nothing was composed.
+ * exit so the tracing agent writes what it recorded. With DIW_EXERCISE_INPUT=1 it waits up to as long again for the
+ * input exercise to finish. Exit code 0 when the first screen was composed and nothing was thrown, 1 after an uncaught
+ * exception, 2 when nothing was composed, 3 when the input exercise failed.
  */
 private fun exitAfter(seconds: Long) {
-    Thread.setDefaultUncaughtExceptionHandler { _, e -> uncaught = e; e.printStackTrace() }
     Thread({
         Thread.sleep(seconds * 1000)
+        if (InputExercise.enabled) {
+            val end = System.nanoTime() + seconds * 1_000_000_000L
+            while (InputExercise.result == null && uncaught == null && System.nanoTime() < end) Thread.sleep(200)
+        }
         val problem = uncaught
-        println("timed exit: composed=$composed uncaught=${problem?.let { it::class.java.name + ": " + it.message }}")
-        exitProcess(if (problem != null) 1 else if (!composed) 2 else 0)
+        val exercise = if (InputExercise.enabled) InputExercise.result ?: "did not finish" else "ok"
+        println("timed exit: composed=$composed uncaught=${problem?.let { it::class.java.name + ": " + it.message }} input=$exercise")
+        exitProcess(if (problem != null) 1 else if (!composed) 2 else if (exercise != "ok") 3 else 0)
     }, "timed-exit").apply { isDaemon = true; start() }
+}
+
+/**
+ * Replaces Compose's default handler, which shows only "Error" and the exception's message (often empty): the error
+ * is saved under the data folder, the dialog names the file, and the window closes as before.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+private val windowErrors = WindowExceptionHandlerFactory { window ->
+    WindowExceptionHandler { e ->
+        uncaught = e
+        e.printStackTrace()
+        val file = ErrorLog.write(e)
+        SwingUtilities.invokeLater {
+            val message = tr(Res.string.desktop_error_log, "${e::class.java.name}: ${e.message.orEmpty()}", file?.path ?: "-")
+            JOptionPane.showMessageDialog(window, message, tr(Res.string.desktop_error_title), JOptionPane.ERROR_MESSAGE)
+            window.dispatchEvent(WindowEvent(window, WindowEvent.WINDOW_CLOSING))
+        }
+    }
 }
 
 /**
@@ -91,47 +135,62 @@ private fun nativeJavaHome() {
     exe.absoluteFile.parentFile?.let { System.setProperty("java.home", it.path) }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 fun main(args: Array<String>) {
     nativeJavaHome()
     if (args.firstOrNull() == "--self-check") exitProcess(SelfCheck.run(args.getOrNull(1)?.let(::File)))
-    System.getenv("DIW_EXIT_AFTER_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }?.let(::exitAfter)
-    Security.addProvider(BouncyCastleProvider())
     val dir = dataDir()
+    ErrorLog.dir = dir
+    handleUncaught()
+    System.getenv("DIW_EXIT_AFTER_SECONDS")?.toLongOrNull()?.takeIf { it > 0 }?.let(::exitAfter)
+    InputExercise.start()
+    Security.addProvider(BouncyCastleProvider())
     val startUri = args.firstOrNull()
     val language = DesktopLanguageStore()
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
         val icon = remember { appIcon() }
-        Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
-            diw.wallet.app.ui.AppLocaleScope(language) {
-                val m = model
-                if (m == null) {
-                    UnlockScreen(language, firstRun = !PinValueCipher.isInitialized(dir)) { pin ->
-                        val cipher = withContext(Dispatchers.Default) { PinValueCipher.unlock(dir, pin) } ?: return@UnlockScreen false
-                        lateinit var created: WalletModel
-                        val platform = DesktopPlatform(dir, cipher, language) { uri -> created.handleUri(uri) }
-                        created = WalletModel(platform)
-                        created.init()
-                        startUri?.let { created.handleUri(it) }
-                        model = created
-                        true
-                    }
-                } else {
-                    // Losing focus to the browser and getting it back without a redirect ends the login wait.
-                    androidx.compose.runtime.DisposableEffect(m) {
-                        val listener = object : java.awt.event.WindowFocusListener {
-                            override fun windowLostFocus(e: java.awt.event.WindowEvent?) = m.onAppPaused()
-                            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) = m.onAppResumed()
+        CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides windowErrors) {
+            Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
+                if (InputExercise.enabled) {
+                    val density = LocalDensity.current.density
+                    LaunchedEffect(density) { InputExercise.density = density; InputExercise.window = window }
+                }
+                diw.wallet.app.ui.AppLocaleScope(language) {
+                    val m = model
+                    if (m == null) {
+                        UnlockScreen(language, firstRun = !PinValueCipher.isInitialized(dir)) { pin ->
+                            val cipher = withContext(Dispatchers.Default) { PinValueCipher.unlock(dir, pin) } ?: return@UnlockScreen false
+                            lateinit var created: WalletModel
+                            val platform = DesktopPlatform(dir, cipher, language) { uri -> created.handleUri(uri) }
+                            created = WalletModel(platform)
+                            created.init()
+                            startUri?.let { created.handleUri(it) }
+                            model = created
+                            true
                         }
-                        window.addWindowFocusListener(listener)
-                        onDispose { window.removeWindowFocusListener(listener) }
+                    } else {
+                        // Losing focus to the browser and getting it back without a redirect ends the login wait.
+                        androidx.compose.runtime.DisposableEffect(m) {
+                            val listener = object : java.awt.event.WindowFocusListener {
+                                override fun windowLostFocus(e: java.awt.event.WindowEvent?) = m.onAppPaused()
+                                override fun windowGainedFocus(e: java.awt.event.WindowEvent?) = m.onAppResumed()
+                            }
+                            window.addWindowFocusListener(listener)
+                            onDispose { window.removeWindowFocusListener(listener) }
+                        }
+                        if (InputExercise.enabled) LaunchedEffect(m) { InputExercise.mainScreen = true }
+                        WalletApp(m)
                     }
-                    WalletApp(m)
                 }
             }
         }
     }
 }
+
+/** Reports where a target is to the input exercise; does nothing otherwise. */
+private fun Modifier.exerciseTarget(name: String): Modifier =
+    if (InputExercise.enabled) onGloballyPositioned { InputExercise.place(name, it.boundsInWindow()) } else this
 
 /** Startup PIN: creates the App PIN on first run, then unlocks the encrypted storage. */
 @Composable
@@ -148,7 +207,7 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("DIW MY WALLET", style = MaterialTheme.typography.headlineSmall)
                 Text(if (firstRun) stringResource(Res.string.unlock_set_pin) else stringResource(Res.string.unlock_enter_pin))
-                val field = @Composable { value: String, label: String, onChange: (String) -> Unit ->
+                val field = @Composable { value: String, label: String, target: String, onChange: (String) -> Unit ->
                     OutlinedTextField(
                         value = value,
                         onValueChange = { v -> onChange(v.filter { it.isDigit() }.take(12)) },
@@ -156,13 +215,13 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        modifier = Modifier.width(280.dp),
+                        modifier = Modifier.width(280.dp).exerciseTarget(target),
                     )
                 }
-                field(pin, "App PIN") { pin = it }
-                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat)) { confirm = it }
+                field(pin, "App PIN", "pin") { pin = it; InputExercise.pin = it }
+                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat), "confirm") { confirm = it; InputExercise.confirm = it }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(enabled = valid && !busy, onClick = {
+                Button(enabled = valid && !busy, modifier = Modifier.exerciseTarget("unlock"), onClick = {
                     busy = true
                     scope.launch {
                         error = try {

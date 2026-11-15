@@ -7,12 +7,16 @@
 #      up to 25 moved to the root (native-image does not read them from the class path);
 #   2. GraalVM's tracing agent records reflection, JNI, proxies and resources into one directory from the desktop tests
 #      (AGENT_TESTS=0 skips them), the self-check (--self-check) and the app itself for AGENT_SECONDS (under Xvfb on
-#      Linux); tools/native-metadata-filter.py then drops what only the tests use;
+#      Linux), while java.awt.Robot types, pastes and right-clicks in it (DIW_EXERCISE_INPUT, InputExercise.kt);
+#      tools/native-metadata-filter.py then drops what only the tests use. tools/NativeAwtJni.java adds JNI metadata
+#      for every callback AWT's native libraries can make (key, mouse and input method events, the clipboard), since a
+#      run only records the ones it happened to use and GraalVM registers none of them;
 #   3. native-image with GraalVM 25. No heap limit is given: the executable may use up to 80 % of the machine's memory
 #      (GraalVM's default MaximumHeapSizePercent), and the proving libraries run outside the heap anyway;
 #   4. build/desktop-native/<os>/ holds the executable, the JDK libraries native-image puts beside it and the JAWT
 #      library where Skiko looks for it (the app points java.home at the executable's folder);
-#   5. the executable must pass its self-check and show its first screen (DIW_EXIT_AFTER_SECONDS).
+#   5. the executable must pass its self-check, show its first screen (DIW_EXIT_AFTER_SECONDS) and take the same
+#      typing, pasting and right-clicks as the JVM did (skipped with a warning when Robot did not work under the JVM).
 # Needs GRAALVM_HOME (GraalVM 25), ANDROID_HOME and Python 3; on Linux xvfb-run, on Windows Visual Studio's C++ tools
 # (found with vswhere when cl.exe is not on the PATH). NATIVE_IMAGE_XMX caps native-image's own memory (about 11 GB
 # are needed). Usage: tools/desktop-native.sh
@@ -76,8 +80,29 @@ fi
 agent=(-agentlib:native-image-agent=config-merge-dir="$meta" --add-modules=java.smartcardio
     --add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED -Dfile.encoding=UTF-8 -jar "$work/app.jar")
 with_display "$java" "${agent[@]}" --self-check "$work/self-check-jvm.txt" || { cat "$work/self-check-jvm.txt" || true; exit 1; }
-# The app closes itself after AGENT_SECONDS through a normal exit, so the agent writes what it saw.
-DIW_WALLET_HOME="$work/home" DIW_EXIT_AFTER_SECONDS="${AGENT_SECONDS:-60}" with_display "$java" "${agent[@]}"
+# The app closes itself after AGENT_SECONDS through a normal exit, so the agent writes what it saw. Exit code 3: the
+# input exercise failed under the JVM too (Robot cannot drive this desktop), so the native run does not repeat it.
+exercise=1
+code=0
+DIW_WALLET_HOME="$work/home" DIW_EXIT_AFTER_SECONDS="${AGENT_SECONDS:-60}" DIW_EXERCISE_INPUT=1 \
+    with_display "$java" "${agent[@]}" || code=$?
+case $code in
+    0) ;;
+    3) exercise=0; echo "::warning::the input exercise failed under the JVM; the native executable is not checked for input" ;;
+    *) echo "The app failed under the tracing agent (exit $code)" >&2; exit 1 ;;
+esac
+
+# JNI callbacks of AWT's native libraries (tools/NativeAwtJni.java), from the libraries and classes of this GraalVM.
+awt=$work/awt-jni
+mkdir -p "$awt"
+libs=()
+for name in awt awt_xawt fontmanager jawt lcms mlib_image javajpeg; do
+    for f in "$graal/bin/$name.dll" "$graal/lib/lib$name.so"; do
+        [ -f "$f" ] && libs+=("$([ "$os" = windows ] && cygpath -w "$f" || echo "$f")")
+    done
+done
+[ ${#libs[@]} -gt 0 ] || { echo "No AWT libraries found in $GRAALVM_HOME" >&2; exit 1; }
+"$java" tools/NativeAwtJni.java "$awt/reachability-metadata.json" "${libs[@]}"
 
 # What the agent sees only by chance: AWT's toolkit thread looks up Thread.yield through JNI only when its event loop
 # has to wait, so a run may or may not record it, and without it the window's toolkit thread dies.
@@ -93,7 +118,7 @@ cat > "$extra/reachability-metadata.json" <<'JSON'
 JSON
 
 echo "== native-image"
-args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra" --no-fallback -march=compatibility
+args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra,$awt" --no-fallback -march=compatibility
     -H:+UnlockExperimentalVMOptions -H:+ReportExceptionStackTraces --enable-url-protocols=http,https
     -Dfile.encoding=UTF-8 --add-modules=java.smartcardio
     # Every charset (GBK, Big5 and the Windows code pages in documents and native.encoding) and every locale.
@@ -138,8 +163,13 @@ with_display "$out/$exe" --self-check "$work/self-check-native.txt" || code=$?
 cat "$work/self-check-native.txt" || true
 [ "$code" = 0 ] || { echo "The native self-check failed (exit $code)" >&2; exit 1; }
 code=0
-DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-20}" with_display "$out/$exe" || code=$?
-[ "$code" = 0 ] || { echo "The native executable did not show its first screen (exit $code)" >&2; exit 1; }
+DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-30}" DIW_EXERCISE_INPUT=$exercise \
+    with_display "$out/$exe" || code=$?
+case $code in
+    0) ;;
+    3) echo "The native executable did not take keyboard, clipboard or right-click input (exit 3)" >&2; exit 1 ;;
+    *) echo "The native executable did not show its first screen (exit $code)" >&2; exit 1 ;;
+esac
 cp "$work/self-check-native.txt" "$out/self-check.txt"
 ls -l "$out"
 echo "Built $out/$exe"

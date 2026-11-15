@@ -21,7 +21,7 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 ni
 
 零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-windows`（在 Linux 以 llvm-mingw 交叉建置 Windows 版）、`native-desktop`（macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 
-桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows；macOS 的 GraalVM 視窗支援無法載入 libawt，不建置），先跑執行檔的 `--self-check` 與定時啟動視窗，通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天）。這個工作 `continue-on-error`，失敗不影響其他工作，也不進 nightly。原生版不設堆積上限，預設最多使用實體記憶體的 80%。
+桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows；macOS 的 GraalVM 視窗支援無法載入 libawt，不建置），先跑執行檔的 `--self-check` 與定時啟動視窗，並以 java.awt.Robot 在視窗裡打字、右鍵、貼上與解鎖（`DIW_EXERCISE_INPUT`），通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天）。這個工作 `continue-on-error`，失敗不影響其他工作，也不進 nightly。原生版不設堆積上限，預設最多使用實體記憶體的 80%。桌面版（JVM 與原生）結束程式的錯誤會寫到資料夾的 `logs/error-*.txt`（Windows 在 `%APPDATA%\DIW-MY-WALLET\logs`），對話框會顯示檔案位置。
 
 ## 版本號
 
