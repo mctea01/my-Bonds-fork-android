@@ -3287,7 +3287,7 @@
     <string name="settings_section_general">顯示與語言</string>
     <string name="settings_section_interop">互通</string>
     <string name="settings_section_security">安全與隱私</string>
-    <string name="settings_section_trust">信任</string>
+    <string name="settings_section_trust">憑證、金鑰與信任</string>
     <string name="settings_self_attestation">自簽錢包證明兜底</string>
     <string name="settings_self_attestation_note">只能讓不檢查提供者的沙箱／示範發證端（如 Animo）接受；正式發證端（如 Bundesdruckerei）仍會拒絕。設有註冊提供者時不生效。</string>
     <string name="settings_self_attestation_text">向要求錢包證明或金鑰證明、但本錢包沒有註冊提供者的發證端，改送本錢包自簽的證明。這把金鑰沒有任何發證端信任，</string>
@@ -4797,4 +4797,25 @@
     <string name="vp_pgp">OpenPGP 卡（可選）</string>
     <string name="vp_pgp_text">你自己的 OpenPGP 卡對每次請求的 client_id 與 nonce 簽章。這是本錢包的延伸格式：持卡人以自己的 OpenPGP 清單查驗，並顯示指紋與信任等級。</string>
     <string name="vp_pgp_none">OpenPGP 清單裡還沒有你自己的卡，請先在清單讀取卡片。</string>
+    <string name="screen_key_viewer">簽署金鑰與憑證</string>
+    <string name="keys_mine">我的金鑰與憑證</string>
+    <string name="keys_viewer_text">讀取卡片、PIV、PKCS#11、系統或 PKCS#12 金鑰、行動自然人憑證或 CSC 服務，查看它的憑證</string>
+    <string name="keys_pgp_text">你的 OpenPGP 卡與保存的公開金鑰：%1$d 把</string>
+    <string name="keys_profiles_text">查驗時以誰的身分、用哪把金鑰與哪些證明：%1$d 個</string>
+    <string name="keys_x509_trust">X.509 信任</string>
+    <string name="keys_pgp_trust">OpenPGP 信任</string>
+    <string name="keys_pgp_trust_text">OpenPGP 沒有憑證機構，信任由你在 OpenPGP 清單逐把設定（自己的卡、已核對指紋、未核對、不信任）。</string>
+    <string name="keys_viewer_intro">選擇金鑰所在的位置後讀取。這裡不會簽署任何東西，PIN 只用於這次讀取，不會保存。</string>
+    <string name="keys_read">讀取憑證</string>
+    <string name="keys_trust_title">作為文件簽章的信任</string>
+    <string name="keys_subject">主體</string>
+    <string name="keys_issuer">簽發者</string>
+    <string name="keys_validity">有效期間</string>
+    <string name="keys_key_type">金鑰</string>
+    <string name="keys_sm2_note">SM2 金鑰只能簽 OFD 文件，不能簽查驗請求。</string>
+    <string name="keys_rsa_note">RSA 金鑰可簽線上查驗請求；近距離（ISO 18013-5）的讀取端驗證需要 EC 金鑰。</string>
+    <string name="keys_fingerprint">SHA-256 指紋</string>
+    <string name="keys_client_id">作為查驗方的 client_id</string>
+    <string name="keys_show_chain">查看憑證鏈（%1$d 張）</string>
+    <string name="settings_keys_summary">OpenPGP %1$d 把、查驗身分 %2$d 個</string>
 </resources>

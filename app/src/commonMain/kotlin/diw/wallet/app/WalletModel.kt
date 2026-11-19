@@ -309,6 +309,8 @@ sealed class Screen {
     data object OnlineVerify : Screen()
     /** Who this wallet says it is when it verifies: verifier profiles with their evidence and mandates. */
     data object VerifierProfiles : Screen()
+    /** Reads any signing key and shows its certificate, opened from the certificates, keys and trust settings. */
+    data object KeyViewer : Screen()
     /** A stored file with its signature report. */
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
@@ -827,6 +829,7 @@ class WalletModel(val platform: PlatformServices) {
             Screen.AddDocument -> screen.value = Screen.Home
             Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.KeyViewer -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             is Screen.OpenPgpKeys -> {

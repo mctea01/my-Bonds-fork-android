@@ -3287,7 +3287,7 @@
     <string name="settings_section_general">Display and language</string>
     <string name="settings_section_interop">Interoperability</string>
     <string name="settings_section_security">Security and privacy</string>
-    <string name="settings_section_trust">Trust</string>
+    <string name="settings_section_trust">Certificates, keys and trust</string>
     <string name="settings_self_attestation">Self-signed wallet attestation fallback</string>
     <string name="settings_self_attestation_note">so only sandbox and demo issuers that do not check the provider (such as Animo) accept it; production issuers (such as Bundesdruckerei) still refuse it. Not used when a registered provider is set.</string>
     <string name="settings_self_attestation_text">Issuers that ask for a wallet or key attestation, when this wallet has no registered provider, get attestations this wallet signs itself. No issuer trusts this key, </string>
@@ -4797,4 +4797,25 @@
     <string name="vp_pgp">OpenPGP card (optional)</string>
     <string name="vp_pgp_text">Your own OpenPGP card signs each request's client_id and nonce. This is a DIW extension: the holder checks it against its own OpenPGP list and shows the fingerprint and its trust.</string>
     <string name="vp_pgp_none">No OpenPGP card of yours is in the OpenPGP list. Read your card there first.</string>
+    <string name="screen_key_viewer">Signing keys and certificates</string>
+    <string name="keys_mine">My keys and certificates</string>
+    <string name="keys_viewer_text">Read a card, PIV, PKCS#11, system or PKCS#12 key, the mobile citizen certificate or a CSC service and see its certificate</string>
+    <string name="keys_pgp_text">Your OpenPGP cards and the public keys you keep: %1$d</string>
+    <string name="keys_profiles_text">Who you verify as, its signing key and evidence: %1$d</string>
+    <string name="keys_x509_trust">X.509 trust</string>
+    <string name="keys_pgp_trust">OpenPGP trust</string>
+    <string name="keys_pgp_trust_text">OpenPGP has no certification authorities: you set the trust of each key in the OpenPGP list (your own card, fingerprint compared, unverified, refused).</string>
+    <string name="keys_viewer_intro">Choose where the key is and read it. Nothing is signed; a PIN is used for this read only and is not stored.</string>
+    <string name="keys_read">Read the certificate</string>
+    <string name="keys_trust_title">Trust for document signatures</string>
+    <string name="keys_subject">Subject</string>
+    <string name="keys_issuer">Issuer</string>
+    <string name="keys_validity">Valid</string>
+    <string name="keys_key_type">Key</string>
+    <string name="keys_sm2_note">SM2 keys sign OFD documents only; they cannot sign verification requests.</string>
+    <string name="keys_rsa_note">RSA keys can sign online verification requests; in-person (ISO 18013-5) reader authentication needs an EC key.</string>
+    <string name="keys_fingerprint">SHA-256 fingerprint</string>
+    <string name="keys_client_id">client_id as a verifier</string>
+    <string name="keys_show_chain">Show the certificate chain (%1$d)</string>
+    <string name="settings_keys_summary">OpenPGP %1$d, verifier identities %2$d</string>
 </resources>
