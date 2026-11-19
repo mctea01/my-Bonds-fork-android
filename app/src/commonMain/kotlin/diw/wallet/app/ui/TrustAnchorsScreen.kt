@@ -49,7 +49,7 @@ import diw.wallet.core.x509.displaySubject
 import kotlin.time.Instant
 
 @Composable
-private fun roleName(r: TrustRole): String = when (r) {
+internal fun roleName(r: TrustRole): String = when (r) {
     TrustRole.ISSUER -> stringResource(Res.string.role_issuer)
     TrustRole.VERIFIER -> stringResource(Res.string.role_verifier)
     TrustRole.STATUS_LIST -> stringResource(Res.string.role_status_list)
@@ -62,7 +62,7 @@ private fun roleName(r: TrustRole): String = when (r) {
 }
 
 @Composable
-private fun environmentTitle(e: TrustEnvironment): String = when (e) {
+internal fun environmentTitle(e: TrustEnvironment): String = when (e) {
     TrustEnvironment.PRODUCTION -> stringResource(Res.string.env_production)
     TrustEnvironment.USER -> stringResource(Res.string.env_user)
     TrustEnvironment.TEST -> stringResource(Res.string.env_test)

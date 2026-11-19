@@ -28,4 +28,10 @@ expect object Pkix {
      * often use brainpool curves with explicit parameters, which the platform providers lack.
      */
     fun anchorOf(chain: List<X509Cert>, anchors: List<X509Cert>, at: Instant, bouncyCastle: Boolean = false): X509Cert?
+
+    /**
+     * Whether [issuer]'s key verifies the signature on [child] (any key type the platform or BouncyCastle knows,
+     * brainpool and SM2 included). Names, validity and extensions are not checked: this only links two certificates.
+     */
+    fun signedBy(child: X509Cert, issuer: X509Cert): Boolean
 }

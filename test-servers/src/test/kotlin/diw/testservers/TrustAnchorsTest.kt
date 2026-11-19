@@ -7,7 +7,9 @@ import diw.wallet.core.trust.BuiltInAnchors
 import diw.wallet.core.trust.BuiltInCscas
 import diw.wallet.core.trust.BuiltInPublicRoots
 import diw.wallet.core.trust.BuiltInTestAnchors
+import diw.wallet.core.trust.PathSource
 import diw.wallet.core.trust.Pkix
+import diw.wallet.core.trust.RootListing
 import diw.wallet.core.trust.SystemTrustStore
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
@@ -381,5 +383,77 @@ class TrustAnchorsTest {
         }
         assertTrue(registry.travelDocumentAnchors(TrustEnvironment.PRODUCTION).any { it == tw })
         assertTrue(registry.travelDocumentAnchors(TrustEnvironment.TEST).none { it == tw })
+    }
+
+    /**
+     * A chain is shown up to its root whatever the sender left out: the intermediate from the user's intermediates,
+     * the root from the anchors, each link's signature checked; a root that anchors another use is still shown (and
+     * named) while the tier stays T3, and a chain whose issuer is nowhere stops at the highest certificate found.
+     */
+    @Test
+    fun pathReachesTheRoot() = runBlocking<Unit> {
+        val gen = KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }
+        val rootKey = gen.generateKeyPair()
+        val midKey = gen.generateKeyPair()
+        val leafKey = gen.generateKeyPair()
+        val root = ecCert("CN=Path Test Root,C=TW", "CN=Path Test Root,C=TW", rootKey, rootKey.private, ca = true)
+        val mid = ecCert("CN=Path Test CA,C=TW", "CN=Path Test Root,C=TW", midKey, rootKey.private, ca = true)
+        val leaf = ecCert("CN=signer.example,C=TW", "CN=Path Test CA,C=TW", leafKey, midKey.private, ca = false)
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, root, "Path Test Root", official = false, source = "test")
+        registry.addIntermediate(mid, "Path Test CA", "test")
+
+        val p = registry.path(listOf(leaf), TrustRole.DOCUMENT)
+        assertEquals(listOf(leaf, mid, root), p.steps.map { it.certificate })
+        assertEquals(listOf(PathSource.PRESENTED, PathSource.USER_INTERMEDIATE, PathSource.TRUST_SOURCE), p.steps.map { it.source })
+        assertTrue(p.rootReached)
+        assertTrue(p.steps.all { it.signatureValid == true })
+        assertEquals(listOf(false, false, true), p.steps.map { it.anchor })
+        assertEquals(registry.decide(TrustRole.DOCUMENT, listOf(leaf)), p.decision)
+        assertEquals(TrustTier.T2, p.decision?.tier)
+        val listing = p.rootListings.single()
+        assertEquals(RootListing.Kind.STORED_ANCHOR, listing.kind)
+        assertEquals(TrustRole.DOCUMENT, listing.role)
+        assertTrue(p.anchoredFor(TrustRole.DOCUMENT) && !p.anchoredFor(TrustRole.ISSUER))
+
+        // Another use: the root is still found and shown, but the chain is T3 for it.
+        val issuer = registry.path(listOf(leaf), TrustRole.ISSUER)
+        assertTrue(issuer.rootReached)
+        assertEquals(root, issuer.top)
+        assertTrue(TrustLabel.UNKNOWN_ANCHOR in issuer.decision!!.labels)
+        assertTrue(issuer.steps.none { it.anchor })
+
+        // Certificates sent out of order are put in order; one that is not on the path is listed apart.
+        val stray = ecCert("CN=Stray CA,C=TW", "CN=Stray CA,C=TW", gen.generateKeyPair(), rootKey.private, ca = true)
+        val sent = registry.path(listOf(leaf, stray, root, mid))
+        assertEquals(listOf(leaf, mid, root), sent.steps.map { it.certificate })
+        assertEquals(PathSource.PRESENTED, sent.steps[1].source)
+        assertEquals(listOf(stray), sent.extras)
+        assertNull(sent.decision)
+
+        // A name match whose key does not verify is a broken link, not a path to the root.
+        val impostor = ecCert("CN=Path Test CA,C=TW", "CN=Path Test Root,C=TW", gen.generateKeyPair(), rootKey.private, ca = true)
+        val fresh = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        val broken = fresh.path(listOf(leaf, impostor))
+        assertEquals(false, broken.steps.first().signatureValid)
+        assertTrue(!broken.rootReached)
+
+        // Nothing issued the leaf: the path stops at it.
+        val alone = fresh.path(listOf(leaf), TrustRole.DOCUMENT)
+        assertEquals(listOf(leaf), alone.steps.map { it.certificate })
+        assertTrue(!alone.rootReached && alone.rootListings.isEmpty())
+    }
+
+    /** A passport's document signer chain is completed with the built-in CSCA, named as the master list's. */
+    @Test
+    fun pathNamesBuiltInCsca() = runBlocking<Unit> {
+        val tw = BuiltInCscas.validAt(Clock.System.now()).first { it.country == "TW" }.certificate
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        val p = registry.path(listOf(tw), TrustRole.TRAVEL_DOCUMENT)
+        assertTrue(p.rootReached, p.steps.toString())
+        assertTrue(p.steps.single().anchor)
+        assertTrue(p.rootListings.any { it.kind == RootListing.Kind.BUILT_IN_CSCA && it.name.startsWith("CSCA TW") })
+        assertTrue(p.anchoredFor(TrustRole.TRAVEL_DOCUMENT))
+        assertEquals(TrustTier.T2, p.decision?.tier)
     }
 }

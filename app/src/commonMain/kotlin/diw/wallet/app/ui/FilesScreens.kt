@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -562,7 +563,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
 
         if (report != null) {
             SectionTitle(if (report.signatures.isEmpty()) stringResource(Res.string.files_check_result) else stringResource(Res.string.files_signatures, report.signatures.size))
-            report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) { model.files.reinspect(f) } }
+            report.signatures.forEachIndexed { i, s -> SignatureCard(model, s, i, report.signatures.size) }
             if (report.signatures.isNotEmpty()) {
                 val v = f.signatureValidation
                 if (v != null) LabelValue(stringResource(Res.string.files_signature_revocation), v.summary() + stringResource(Res.string.files_got_at, localTime(v.collectedAt)), small = true)
@@ -796,14 +797,13 @@ private fun ReportVerdict(report: DocumentReport) {
 private fun certOf(c: CertInfo): X509Cert? = runCatching { X509Cert(ByteString(c.der.fromBase64())) }.getOrNull()
 
 @Composable
-private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int, onTrusted: () -> Unit) {
+private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int) {
     val (verdict, text) = verdictOf(s.verdict)
-    var trusting by remember(s) { mutableStateOf(false) }
-    // The chain ends in a self-issued root that no enabled anchor holds: the user may trust it after confirming.
-    val untrustedRoot = s.chain.lastOrNull()?.takeIf { root ->
-        s.integrity == Check.PASS && s.chain.size > 1 && root.subject == root.issuer &&
-            s.trust.let { t -> t == null || t.anchorName == null || "UNKNOWN_ANCHOR" in t.labels }
-    }
+    val role = signatureRole(s.format)
+    // The signature is intact but its chain leads to no enabled anchor (T3): the chain and its root can be reviewed,
+    // and the root trusted, on the certificate screen.
+    val reviewRoot = s.integrity == Check.PASS && s.format != SignatureFormat.OPENPGP &&
+        s.trust.let { t -> t == null || t.anchorName == null || "UNKNOWN_ANCHOR" in t.labels }
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -818,7 +818,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 // otherwise the X.509 certificate screen would be opened on empty bytes and crash.
                 val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
                 LabelValue(stringResource(Res.string.files_signer), signer.commonName ?: signer.subject,
-                    onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value) }))
+                    onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role) }))
             }
             s.trust?.let { t ->
                 val d = t.decision()
@@ -828,19 +828,11 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 }
                 Text(signerTrustLine(d), style = MaterialTheme.typography.bodySmall)
             }
-            untrustedRoot?.let { root ->
-                TextButton(onClick = { trusting = true }) { Text(stringResource(Res.string.files_trust_root_named, root.commonName ?: root.subject)) }
-                if (trusting) RiskConfirmDialog(
-                    title = stringResource(Res.string.platform_trust_title, root.commonName ?: root.subject),
-                    lines = listOf(
-                        stringResource(Res.string.files_root_unknown),
-                        stringResource(Res.string.files_root_check),
-                        stringResource(Res.string.files_root_effect),
-                    ),
-                    confirm = stringResource(Res.string.zk_server_trust),
-                    onConfirm = { trusting = false; model.trustRootCertificate(root.der.fromBase64(), onTrusted) },
-                    onDismiss = { trusting = false },
-                )
+            if (reviewRoot) {
+                val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
+                if (chain.isNotEmpty()) TextButton(onClick = {
+                    model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role, focusRoot = true)
+                }) { Text(stringResource(Res.string.files_review_chain_root)) }
             }
             val openPgp = s.format == SignatureFormat.OPENPGP
             if (openPgp) s.signer?.let { LabelValue(stringResource(Res.string.files_key_fingerprint), groupedFingerprint(it.serialHex), small = true) }
@@ -854,7 +846,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                     LaterChanges.OTHER -> stringResource(Res.string.files_changes_other)
                 }, small = true)
             }
-            s.timestamp?.let { TimestampLine(it) } ?: s.claimedTime?.let { LabelValue(stringResource(Res.string.files_claimed_time), localTime(it) + stringResource(Res.string.files_claimed_unproven), small = true) }
+            s.timestamp?.let { TimestampLine(model, it) } ?: s.claimedTime?.let { LabelValue(stringResource(Res.string.files_claimed_time), localTime(it) + stringResource(Res.string.files_claimed_unproven), small = true) }
             if (!openPgp) LabelValue(stringResource(Res.string.files_revocation), if (s.revocationData) stringResource(Res.string.files_revocation_embedded) else stringResource(Res.string.files_revocation_none), small = true)
             s.reason?.let { LabelValue(stringResource(Res.string.files_reason), it, small = true) }
             s.location?.let { LabelValue(stringResource(Res.string.files_location), it, small = true) }
@@ -864,9 +856,20 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
     }
 }
 
+/** The trust role a signature's chain is evaluated for: travel documents and content credentials have their own anchors. */
+private fun signatureRole(f: SignatureFormat): TrustRole = when (f) {
+    SignatureFormat.ICAO_PA -> TrustRole.TRAVEL_DOCUMENT
+    SignatureFormat.C2PA -> TrustRole.CONTENT
+    SignatureFormat.RFC3161, SignatureFormat.PDF_DOC_TIMESTAMP -> TrustRole.TSA
+    else -> TrustRole.DOCUMENT
+}
+
+/** A signature's time stamp; its authority's chain opens on the certificate screen, up to the root. */
 @Composable
-private fun TimestampLine(t: TimestampInfo) {
-    LabelValue(stringResource(Res.string.files_tag_timestamp), localTime(t.time) + stringResource(Res.string.sep_space) + (t.tsa ?: "") + if (t.trusted) "" else stringResource(Res.string.parenthesized, checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)), small = true)
+private fun TimestampLine(model: WalletModel, t: TimestampInfo) {
+    val chain = t.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
+    LabelValue(stringResource(Res.string.files_tag_timestamp), localTime(t.time) + stringResource(Res.string.sep_space) + (t.tsa ?: "") + if (t.trusted) "" else stringResource(Res.string.parenthesized, checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)), small = true,
+        onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, TrustRole.TSA) }))
 }
 
 /** Checked evidence of a derived credential, for the verifier result. */
