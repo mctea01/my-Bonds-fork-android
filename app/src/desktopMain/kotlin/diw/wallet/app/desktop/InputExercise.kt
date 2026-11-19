@@ -101,16 +101,44 @@ internal object InputExercise {
         return if (pin != before) "reached the field" else "did not reach the field"
     }
 
-    /** Whether the Skia canvas takes the focus when asked, and whether keys posted to it reach the field then. */
+    /**
+     * Whether Compose handles input that AWT delivers: the Skia canvas is given the focus, a click is posted on the
+     * PIN field through the event queue, then keys. If the field fills, only the platform's delivery is broken.
+     * Also whether the OS reports this window under the pointer, and which windows exist (a hidden modal dialog
+     * would disable the main window).
+     */
     private fun canvasFocus(): String {
         var canvas: java.awt.Component? = null
         SwingUtilities.invokeAndWait { canvas = window?.let { all(it) }?.firstOrNull { it.javaClass.name.startsWith("org.jetbrains.skiko.SkiaLayer$") } }
         val c = canvas ?: return "no skia canvas"
+        var under = "?"
+        var windows = "?"
+        SwingUtilities.invokeAndWait {
+            val w = window!!
+            under = "enabled=${w.isEnabled}/${c.isEnabled} active=${w.isActive} focused=${w.isFocused} " +
+                "underPointer=${w.getMousePosition(true)} canvasAt=${c.locationOnScreen}"
+            windows = java.awt.Window.getWindows().joinToString(",") { x ->
+                "${x.javaClass.simpleName}(visible=${x.isVisible},modal=${(x as? java.awt.Dialog)?.isModal})"
+            }
+        }
         var asked = false
         SwingUtilities.invokeAndWait { asked = c.requestFocusInWindow() }
         Thread.sleep(1000)
         val owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.javaClass?.name
-        return "canvas ${c.javaClass.name} asked=$asked owner=$owner keys ${postKeys(c, pin)}"
+        val clicked = targets["pin"]?.let { b ->
+            val x = (b.center.x / density).toInt()
+            val y = (b.center.y / density).toInt()
+            val queue = Toolkit.getDefaultToolkit().systemEventQueue
+            val now = System.currentTimeMillis()
+            val mask = java.awt.event.InputEvent.BUTTON1_DOWN_MASK
+            queue.postEvent(java.awt.event.MouseEvent(c, java.awt.event.MouseEvent.MOUSE_MOVED, now, 0, x, y, 0, false, 0))
+            queue.postEvent(java.awt.event.MouseEvent(c, java.awt.event.MouseEvent.MOUSE_PRESSED, now, mask, x, y, 1, false, 1))
+            queue.postEvent(java.awt.event.MouseEvent(c, java.awt.event.MouseEvent.MOUSE_RELEASED, now, 0, x, y, 1, false, 1))
+            queue.postEvent(java.awt.event.MouseEvent(c, java.awt.event.MouseEvent.MOUSE_CLICKED, now, 0, x, y, 1, false, 1))
+            Thread.sleep(1000)
+            postKeys(c, pin)
+        } ?: "no pin target"
+        return "$under windows=[$windows] canvas asked=$asked owner=$owner after posted click keys $clicked"
     }
 
     private fun all(root: java.awt.Component): List<java.awt.Component> =
