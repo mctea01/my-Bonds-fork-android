@@ -25,6 +25,15 @@ import org.multipaz.asn1.OID
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.DataItem
 import org.multipaz.cbor.Simple
+import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.Tagged
+import org.multipaz.cbor.buildCborArray
+import org.multipaz.crypto.EcPublicKey
+import org.multipaz.crypto.X509CertChain
+import diw.wallet.core.oid4vp.AttestationVerdict
+import diw.wallet.core.oid4vp.VerifierAttestation
+import diw.wallet.core.verifier.declaration.ProximityDeclaration
+import diw.wallet.core.verifier.declaration.VerifierDeclaration
 import org.multipaz.crypto.Crypto
 import org.multipaz.crypto.EcCurve
 import org.multipaz.crypto.EcPrivateKey
@@ -82,6 +91,10 @@ sealed class ProximityUi {
         val retained: List<String>,
         val risk: RiskLevel,
         internal val answer: CompletableDeferred<Boolean>,
+        /** The reader's registration certificate and verifier declaration as checked, from the request's requestInfo. */
+        val attestations: List<VerifierAttestation> = emptyList(),
+        /** Why a declaration the reader sent could not be checked; null when there was none or it was checked. */
+        val declarationNote: String? = null,
     ) : ProximityUi()
 
     data class Done(val verifier: String, val documents: List<String>, val channel: ProximityChannel = ProximityChannel.NFC) : ProximityUi()
@@ -203,6 +216,32 @@ class ProximityModel(private val model: WalletModel) {
 
     private class Engaged(val eDeviceKey: EcPrivateKey, val deviceEngagement: DataItem, val handover: DataItem, val transports: List<MdocTransport>)
 
+    /** The encoded SessionTranscript of [engaged] with the reader's encoded EReaderKey [eReaderKey]. */
+    private fun sessionTranscript(engaged: Engaged, eReaderKey: ByteArray): ByteArray = Cbor.encode(buildCborArray {
+        add(Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(engaged.deviceEngagement))))
+        add(Tagged(Tagged.ENCODED_CBOR, Bstr(eReaderKey)))
+        add(engaged.handover)
+    })
+
+    /** Passes [inner] through and keeps the encoded EReaderKey of the reader's SessionEstablishment message. */
+    private class TranscriptTap(private val inner: MdocTransport) : MdocTransport() {
+        var eReaderKey: ByteArray? = null
+            private set
+        override val state get() = inner.state
+        override val role get() = inner.role
+        override val connectionMethod get() = inner.connectionMethod
+        override val scanningTime get() = inner.scanningTime
+        override suspend fun advertise() = inner.advertise()
+        override suspend fun open(eSenderKey: EcPublicKey) = inner.open(eSenderKey)
+        override suspend fun sendMessage(message: ByteArray) = inner.sendMessage(message)
+        override suspend fun close() = inner.close()
+        override suspend fun waitForMessage(): ByteArray = inner.waitForMessage().also { m ->
+            if (eReaderKey == null && m.isNotEmpty()) {
+                eReaderKey = runCatching { (Cbor.decode(m)["eReaderKey"] as Tagged).taggedItem.asBstr }.getOrNull()
+            }
+        }
+    }
+
     /** What the user agreed to, for the history once the response is sent. */
     private class Shared(val verifier: String, val trust: TrustDecision, val items: List<ConsentItem>)
 
@@ -226,9 +265,14 @@ class ProximityModel(private val model: WalletModel) {
         try {
             if (channel == ProximityChannel.NFC) state.value = ProximityUi.Working(tr(Res.string.prox_tapped))
             engaged = engage()
-            transport = withTimeout(CONNECT_TIMEOUT) { engaged.transports.waitForConnection(eSenderKey = engaged.eDeviceKey.publicKey) }
+            val connected = withTimeout(CONNECT_TIMEOUT) { engaged.transports.waitForConnection(eSenderKey = engaged.eDeviceKey.publicKey) }
+            // Over Bluetooth the reader's EReaderKey is read from its first message, so that a declaration can be
+            // checked against this SessionTranscript. NFC data transfer is handed over untouched.
+            val tap = if (connected.connectionMethod is MdocConnectionMethodBle) TranscriptTap(connected) else null
+            transport = tap ?: connected
             state.value = ProximityUi.Working(tr(Res.string.prox_waiting))
-            val source = source(channel, onShared = { shared = it }, onRefused = { refused = it })
+            val transcript = { tap?.eReaderKey?.let { sessionTranscript(engaged, it) } }
+            val source = source(channel, onShared = { shared = it }, onRefused = { refused = it }, transcript = transcript)
             withContext(model.unlockProvider) {
                 Iso18013Presentment(
                     transport = transport,
@@ -344,12 +388,17 @@ class ProximityModel(private val model: WalletModel) {
     val longfellow by lazy { diw.wallet.core.zk.LongfellowZk(model.platform.platformName) }
 
     /** The presentment source: the wallet's documents, with the wallet's consent screen in place of Multipaz's prompt. */
-    private fun source(channel: ProximityChannel, onShared: (Shared) -> Unit, onRefused: (Shared) -> Unit) = SimplePresentmentSource(
+    private fun source(
+        channel: ProximityChannel,
+        onShared: (Shared) -> Unit,
+        onRefused: (Shared) -> Unit,
+        transcript: () -> ByteArray? = { null },
+    ) = SimplePresentmentSource(
         documentStore = model.documentStore,
         documentTypeRepository = model.documentTypes,
         zkSystemRepository = longfellow.repository,
         showConsentPromptFn = { requester, _, consentData, preselected, onDocumentsInFocus ->
-            consent(channel, requester, consentData, preselected, onDocumentsInFocus, onShared, onRefused)
+            consent(channel, requester, consentData, preselected, onDocumentsInFocus, onShared, onRefused, transcript())
         },
         preferSignatureToKeyAgreement = true,
         domainsMdocSignature = listOf(CredentialDomains.MDOC),
@@ -365,6 +414,7 @@ class ProximityModel(private val model: WalletModel) {
         onDocumentsInFocus: (List<org.multipaz.document.Document>) -> Unit,
         onShared: (Shared) -> Unit,
         onRefused: (Shared) -> Unit,
+        transcript: ByteArray?,
     ): CredentialSelection? {
         val selection = consentData.credentialQueryResult.select(preselected)
         // Multipaz 0.101 can otherwise fall back to ordinary mdoc when no ZK circuit matches.
@@ -404,10 +454,14 @@ class ProximityModel(private val model: WalletModel) {
         }
         val verifier = chain.firstOrNull()?.let { c -> c.subject.components[OID.COMMON_NAME.oid]?.value ?: c.displaySubject() }
             ?: requester.origin ?: requester.appId ?: tr(Res.string.prox_anonymous_reader)
-        val risk = WalletModel.requestRisk(items, trust.tier)
+        val sources = selection.matches.mapNotNull { it.source as? org.multipaz.presentment.CredentialMatchSourceIso18013 }
+        val (attestations, declarationNote) = declarations(sources, chain, trust, verifier, transcript)
+        // A failed declaration or one the request goes beyond makes the request high risk, as online.
+        val attestationRisk = if (attestations.any { it.verdict == AttestationVerdict.INVALID || !it.outsideRegistration.isNullOrEmpty() }) RiskLevel.HIGH else RiskLevel.LOW
+        val risk = RiskLevel.max(WalletModel.requestRisk(items, trust.tier), attestationRisk)
         model.status.refreshFor(items.mapNotNull { it.documentId }, risk)
         val answer = CompletableDeferred<Boolean>()
-        state.value = ProximityUi.Consent(channel, verifier, trust, chain, items, retained, risk, answer)
+        state.value = ProximityUi.Consent(channel, verifier, trust, chain, items, retained, risk, answer, attestations, declarationNote)
         val s = Shared(verifier, trust, items)
         return if (answer.await()) {
             onShared(s)
@@ -417,6 +471,30 @@ class ProximityModel(private val model: WalletModel) {
             onRefused(s)
             null
         }
+    }
+
+    /**
+     * The registration certificate and declaration in the requestInfo of [sources], checked against the reader
+     * certificate [chain] and the SessionTranscript; a note instead when they cannot be checked here.
+     */
+    private suspend fun declarations(
+        sources: List<org.multipaz.presentment.CredentialMatchSourceIso18013>,
+        chain: List<X509Cert>,
+        trust: TrustDecision,
+        verifier: String,
+        transcript: ByteArray?,
+    ): Pair<List<VerifierAttestation>, String?> {
+        val entries = sources.flatMap { ProximityDeclaration.entries(it.docRequest.docRequestInfo?.otherInfo.orEmpty()) }.distinct()
+        if (entries.isEmpty()) return emptyList<VerifierAttestation>() to null
+        if (chain.isEmpty()) return emptyList<VerifierAttestation>() to tr(Res.string.prox_declaration_unsigned)
+        if (transcript == null) return emptyList<VerifierAttestation>() to tr(Res.string.prox_declaration_nfc)
+        val dcql = ProximityDeclaration.dcql(sources.map { s -> s.docRequest.docType to s.docRequest.nameSpaces.mapValues { (_, e) -> e.keys.toList() } })
+        val checked = runCatching {
+            model.verifierInfoChecker().check(
+                entries, ProximityDeclaration.verifier(X509CertChain(chain), trust, verifier), VerifierDeclaration.proximityNonce(transcript), dcql,
+            )
+        }.getOrElse { return emptyList<VerifierAttestation>() to tr(Res.string.prox_declaration_failed) + model.describe(it) }
+        return checked to null
     }
 
     companion object {

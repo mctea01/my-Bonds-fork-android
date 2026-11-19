@@ -42,6 +42,7 @@
 |---|---|---|
 | [design/p4-zkp.md](design/p4-zkp.md) | 規格 | 零知識證明總體設計：四種證據、資料格式、信任與隱私、裝置分級、資產 |
 | [design/p4-circuits.md](design/p4-circuits.md) | 規格 | 電路規格：zkPDF 電路與分段證明、zkTLS 揭露規則、OpenAC 與 Longfellow 的引用方式、安全審查重點 |
+| [design/p5-verifier.md](design/p5-verifier.md) | 規格 | 驗證者透明與主動查驗：查驗方身分與證據、查驗方聲明與 WRPRC、授權書、線上與近距離查驗、Bonds 藍牙加密、衍生憑證與 ZK 查驗政策 |
 | [design/zkpassport.md](design/zkpassport.md) | 規格 | 電子護照與 zkPassport：請求與 bridge 協定、查驗與信任、Z1 到 Z4、自己的證明器、OPRF、法律聲明 |
 | [design/bbs-2023.md](design/bbs-2023.md) | 規格 | bbs-2023：原生 BBS、JSON-LD 與 RDFC-1.0、可選功能的 DIW 發證擴充、出示與查驗 |
 | [design/openpgp.md](design/openpgp.md) | 規格 | OpenPGP 與 OpenPGP 卡：APDU、簽署與解密、公開金鑰清單與信任等級 |

@@ -80,7 +80,11 @@ class RequestValidator(
             if (responseUri == null) throw RequestValidationException("invalid_request", "response_uri is required for ${responseMode.wire}")
             if (p.containsKey("redirect_uri")) throw RequestValidationException("invalid_request", "redirect_uri must not be used with ${responseMode.wire}")
             if (!isAcceptableEndpoint(responseUri, allowInsecureLoopback)) {
-                throw RequestValidationException("invalid_request", "response_uri must be an https URL")
+                // DIW extension: a wallet verifying on the same local network (PresentationPolicy.allowLanEndpoints).
+                val lan = policy.allowLanEndpoints && raw.lanHost != null && raw.requestObject != null &&
+                    responseMode == ResponseMode.DIRECT_POST_JWT && LanEndpoints.host(responseUri) == raw.lanHost
+                if (!lan) throw RequestValidationException("invalid_request", "response_uri must be an https URL")
+                warnings += "The response goes over the local network to ${raw.lanHost} (encrypted)"
             }
         }
         val clientMetadata = p.obj("client_metadata")

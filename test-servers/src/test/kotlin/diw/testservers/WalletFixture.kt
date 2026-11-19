@@ -51,6 +51,8 @@ class WalletFixture(
     val httpClient: HttpClient = HttpClient(Java) { followRedirects = false },
     val zkSystemRepository: org.multipaz.mdoc.zkp.ZkSystemRepository? = null,
     val env: EnvironmentPolicy = EnvironmentPolicy(testEnvironmentEnabled = true, allowInsecureLoopbackHttp = true),
+    /** Clear text to a wallet verifying on the local network (PresentationPolicy.allowLanEndpoints). */
+    val lanHttp: diw.wallet.core.document.sign.SignedDataHttp? = null,
 ) {
     val storage = EphemeralStorage()
     val trust = TrustRegistry(storage, env)
@@ -83,7 +85,7 @@ class WalletFixture(
             trust.addAnchor(TrustRole.VERIFIER, TrustEnvironment.TEST, pki.readerRootCert, "DIW TEST Verifier Root", false, "test")
         }
         if (trustIssuer && pki != null) trust.addAnchor(TrustRole.ISSUER, TrustEnvironment.TEST, pki.iacaCert, "DIW TEST IACA", false, "test")
-        holder = Oid4vpHolder(httpClient, trust, source, env, policy, holderIdentities)
+        holder = Oid4vpHolder(httpClient, trust, source, env, policy, holderIdentities, lanHttp = lanHttp)
         return this
     }
 

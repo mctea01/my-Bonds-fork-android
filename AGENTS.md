@@ -88,9 +88,9 @@
 7. **兜底實作。** 平台或 SDK 不支援時改用純軟體實作（軟體金鑰、純 Kotlin QR 編碼），模擬器、AOSP、桌面都要能用。
 8. **金鑰證明只確認金鑰有效，不檢查 RKP。**
 9. **CI release 產物必須經 R8 / ProGuard 最佳化**，不可只是 debug 建置。
-10. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（上方「匯入文件」與「從網站取得」，下方文件清單；取件入口在 `Screen.DocumentSources`；文件內容頁依序為標題與判定、常用動作（簽署、時戳、衍生憑證、匯出）、公文容器、預覽、簽章、時戳、證件與證明，檔案資訊收合在下方）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪，依用途分為九組（`SettingsSection`：安全與隱私、證件與出示、文件與簽章、信任、互通、開發者與測試、顯示、法律聲明與同意、關於；關於頁的版本與 commit 由建置產生的 `AppBuild` 提供，關於頁列出主要的第三方元件並連到完整的 `NOTICE`），清單每列顯示目前的設定，點選進入該組的頁面（`Screen.SettingsPage`）；新增設定時放進對應的組並更新清單的摘要。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
+10. **介面以 EUDI Wallet 與 Bonds 的設計為準，不為發行端或 Profile 另開專區。** 首頁五個分頁：證件（所有證件同一清單，分組與篩選）、文件（上方「匯入文件」與「從網站取得」，下方文件清單；取件入口在 `Screen.DocumentSources`；文件內容頁依序為標題與判定、常用動作（簽署、時戳、衍生憑證、匯出）、公文容器、預覽、簽章、時戳、證件與證明，檔案資訊收合在下方）、使用（出示、臨櫃條碼、加入證件）、查驗（App 作為查驗方）、紀錄（只存欄位名稱，不存內容）；設定在右上齒輪，依用途分為九組（`SettingsSection`：安全與隱私、證件與出示、文件與簽章、憑證金鑰與信任（`TRUST`，畫面名稱「憑證、金鑰與信任」：先列自己的金鑰與憑證，即簽署金鑰檢視、OpenPGP 金鑰、查驗方身分，再列 X.509 信任與 OpenPGP 信任；所有 X.509 與 OpenPGP 畫面都從這裡進入，內容在 `ui/KeysScreen`）、互通、開發者與測試、顯示、法律聲明與同意、關於；關於頁的版本與 commit 由建置產生的 `AppBuild` 提供，關於頁列出主要的第三方元件並連到完整的 `NOTICE`），清單每列顯示目前的設定，點選進入該組的頁面（`Screen.SettingsPage`）；新增設定時放進對應的組並更新清單的摘要。方言帶來的功能併入這些共同位置：卡片目錄在「從清單選擇」、臨櫃條碼在「使用」、信任清單在設定。
 11. **設計 token 沿用 Bonds**（`ui/UiKit.kt`）：互動主色為靛色，綠、橙、紅只用於判定（判定卡為 0.14 透明度色底、符號與文字三者並用，「部分」不可看起來像「通過」）；空狀態附直達動作；尚未實作的功能顯示為停用列並寫明原因，不隱藏；結果用畫面或判定卡呈現，警示對話框只用於確認有後果的動作。
-12. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T2，不會顯示為官方；匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 信任 > 自訂信任」（`Screen.CustomTrust`），信任錨點頁只列出全部錨點。
+12. **狀態主動更新，信任錨點不限 TWDIW。** `StatusMonitor` 在開啟與回到 App 時，於背景查詢逾時的狀態（依證件風險，同時最多 3 張），結果存在儲存區供離線使用；查詢失敗保留前一次有意義的結果並註明；狀態或發行端信任改變時通知並寫入紀錄（`HistoryKind.STATUS`）。所持 TWDIW 卡片的發行端每 12 小時重新查驗信任清單與 Arbitrum 註冊，離線或鏈上無法查詢時不變更。使用者可匯入任何 X.509 根憑證（USER 環境）或自行信任 DID（`trust/UserDidTrust`），兩者都是 T2，不會顯示為官方；匯入的根憑證、中繼憑證、mdoc 簽署清單與信任的 DID 集中在「設定 > 憑證、金鑰與信任 > 自訂信任」（`Screen.CustomTrust`），信任錨點頁只列出全部錨點。
 
 13. **近距離與 NFC。** mdoc 近距離出示與查驗都走 ISO/IEC 18013-5，同意畫面與一般出示共用（`requestedDocuments`、`riskAcknowledgement`）。只有「感應出示」畫面開著時，NFC 感應才會回應查驗設備。PC/SC 讀卡機只能讀取，電腦不提供 NFC 出示。
 
@@ -104,6 +104,8 @@
 - `java.smartcardio` 不在 class path 預設解析的模組內：桌面編譯加 `-Xadd-modules=java.smartcardio`，執行與測試加 `--add-modules=java.smartcardio`，jlink 模組清單也要列入。
 - Android 讀卡模式依 Multipaz：NFC-A/B、略過 NDEF 檢查、無系統音效，標籤在 callback 內處理，transceive 逾時 20 秒；Activity 回到前景時重新開啟讀卡模式。
 - DC API 的 `org-iso-mdoc`（ISO 18013-7 Annex C）由 `ProximityModel.presentDcApi` 處理，Android 註冊時要列出這個 protocol。
+- 讀取端除了 NFC 感應，也可掃描持卡人的 QR Code（`ReaderModel.startQr`，`mdoc:` 加 base64url DeviceEngagement，資料走藍牙，handover 為 null）。以查驗方身分讀取時（`ReaderIdentity`），請求以該身分的錢包金鑰做 reader authentication（自簽的讀卡機憑證，`VerifierModel.readerKey`），`requestInfo` 帶查驗方聲明；簽署要包在 `withContext(model.unlockProvider)` 內，否則軟體金鑰會回「Key is locked」。
+- 持有端以 `ProximityModel.TranscriptTap` 包住藍牙傳輸，從第一個訊息取出 `eReaderKey` 重建 SessionTranscript 以核對聲明；NFC 資料傳輸（`NfcHybridTransportMdoc`）不可包裝，因為 `Iso18013Presentment` 以型別判斷 NFC，所以 NFC 傳輸時聲明顯示為未核對。桌面測試以 `LoopbackBle`（desktopTest）模擬兩支手機的藍牙。
 - 查驗端用 Multipaz 驗證 ISO 回應內的 SD-JWT VC（OtherDocument，ISO 18013-5 第二版）時，`nbf` 是必要欄位（`OtherDocument.verifySdJwtVc`）；SD-JWT VC 規格中 `nbf` 是選填，EUDI 的 PID 沒有這個欄位，查驗端會回「No nbf claim」。這是查驗端程式庫的限制，錢包端無法補上。
 
 ## 文件、簽章與衍生憑證要點（P3）
@@ -156,7 +158,8 @@
 - 卡片影像：向 Digital Credentials API 註冊前，沒有 `cardArt` 的證件由 `WalletModel.ensureCardArt` 產生（名稱、發行端、顏色、標誌；衍生憑證放文件第一頁，有照片欄位時放照片），Android 以 `android.graphics` 繪製，系統選擇器以它列出證件。發行端的 display 有 `background_image` 時當作卡面（證件清單的 `FaceCard` 與系統選擇器的卡片影像都以它為底，置中裁切並加上下陰影與白字）；`logo` 與 `background_image` 的網址可能回圖片本身或文字形式的 `data:image/...;base64`（TWDIW），一律經 `CardImages.fromBody` 解讀，空字串視為沒有圖片。已持有證件的卡面由 `WalletModel.refreshCardFaces` 補取，重新讀取 display 後記在 `IssuanceRecord.displayCheckedAt`。
 - 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
-- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、查驗分頁的線上查驗（OpenID4VP）與「以誰的身分查驗」（P5）、沒有 SP 帳號時的行動自然人憑證。
+- 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、沒有 SP 帳號時的行動自然人憑證。
+- 簽章金鑰來源的選擇（卡片、PIV、PKCS#11、系統、PKCS#12、行動自然人憑證、CSC）是共用元件 `ui/KeySources`（`SignerPicker`、`CscPromptPanel`），文件簽署、金鑰檢視與查驗方身分都用它；讀取金鑰一律經 `FilesModel.signer(choice)`。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun` 輸出錢包簽出的檔案（長期驗證的樣本在 `<資料夾>/lt`），再以 `./gradlew -p tools/dss-check run --args=<資料夾>`（與 `<資料夾>/lt`）用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。
 
@@ -184,6 +187,15 @@
 - 全專案審查從 `docs/review/project-review.md` 開始。
 - bbs-2023（2026-11-12，見 `docs/design/bbs-2023.md`）：原生 BBS 來自 `native/vendor/zkryptium`（`nativeInfo().features` 含 `bbs`），JSON-LD 用 Titanium（context 只經 `LdContextLoader`：內建 `LdContexts` 或 HTTPS），RDFC-1.0 為自建 `Rdfc10`。測試向量與規格本文不一致處寫出依本文、讀取兩者都收。可選功能的發證是 DIW 擴充（`diw_bbs_features`、`diw_bbs_commitment`，`BbsProfile`），與標準路徑分開；持有者秘密只存在 `W3cVcCredential.bbsSecrets`，不可送出或記錄。出示時每次即時衍生，presentation header 為 JCS 的 `{aud, nonce}`，nym_domain 為 audience；沒有 DID 的持有者綁定憑證直接放衍生 VC。`LdContexts.kt` 由 `tools/ld/update_contexts.py` 產生，不手改。
 
+## 驗證者透明與查驗方要點（P5）
+
+設計與格式在 `docs/design/p5-verifier.md`。
+
+- 查驗方聲明、授權書與 OpenPGP 證據是本專案格式，放在 `core/verifier/declaration`，其他皮夾會忽略；標準的 client_id、WRPRC 與 reader authentication 一定保留，缺少聲明時不影響標準判定。
+- 錢包中的證件是查驗方身分的主要證據，可同時多份並自選揭露欄位（`EvidenceQueries`，未選時只揭露識別欄位）；X.509 金鑰（任何 `DocumentSigner` 來源）與 OpenPGP 卡都是可選。X.509 金鑰只用於線上查驗，近距離一律用身分的錢包金鑰。
+- 持有端的檢查都經 `WalletModel.verifierInfoChecker()`：線上用 `check(request)`，近距離用 `check(entries, verifier, nonce, dcql)`（`ProximityDeclaration` 產生讀取端身分與 DCQL）。新增證據類型時兩條路徑都要有測試（`test-servers` 的 `VerifierDeclarationTest` 與 desktopTest 的 `qrBluetoothReadAsVerifierProfile`）。
+- 查驗方身分的簽章（線上請求、授權書、近距離 reader authentication）都在 `model.unlockProvider` 內執行。
+
 ## TWDIW 與 Bonds 要點
 
 - TWDIW 新版領卡的應用簽章（`TwdiwDialect.outboundCredentialHeaders`，2026-11-03）：新版夥伴卡平台在標準流程之外要求一層應用簽章。預設只對 moda.wallet.gov.tw，以獨立的 P-256 應用配對（`TwdiwApplicationKey`）簽出官方 App 1.0.14 格式的 ES256 JWS，放在 `Twdiw-Signature` 標頭，綁定送出位元組的 SHA-256 與新取得的 ecosystem nonce。Header 只有 alg 與 typ、不加 kid；payload 七欄順序固定：appHash 固定為 `tw.gov.moda.diw` 的原文（`TwdiwAppIdentity.DEFAULT.appId`，不做雜湊；2026-11-13 使用者確認以此為準，不改用本專案的套件名稱 `diw.wallet.app`）、appPlatform 為 `Android`、keyId 是自有公鑰正規化 Base64 SPKI 文字的 SHA-256。nonce base 取 applyVCUrl 在 `/api/` 之前的部分並保留 `/oid4vci`（`/oid4vci/api/ext/nonce/generate?type=ecosyst`）；擴充 nonce 端點回 404 或 410 表示舊端點沒有這個擴充，照舊版不帶簽章領卡，其餘錯誤不默默降級。不呼叫推測性的手機註冊（`api/did` 是發行者查詢與機構 DID 註冊，不是裝置金鑰註冊），不拿 holder 金鑰代替，也不取用官方 App 內建的私鑰；`TwdiwDeviceKeys` 只供讀取與刪除舊紀錄。自行產生或合法提供的配對不代表正式平台已准入，官方平台是否接受還沒有驗收。驗證紀錄見 `docs/acceptance/twdiw-application-signature.md`，官方 App 1.0.14 的分析與證據界線見 `docs/research/twdiw-1.0.14/README.md`。
@@ -202,7 +214,7 @@
 - Microsoft Verified ID 出示：`openid-vc://?request_uri=...` 沒有外層 client_id，client_id 在已簽章的要求物件內；`claims.vp_token.presentation_definition` 表示回應要帶 vp_token；PE v1 的 `schema[].uri` 是憑證類型。`path_nested` 為 `jwt_vc` 且路徑是 `$.verifiableCredential[i]`（相對於 vp claim，見 `PresentationDialect.nestedPath`），寫成 `$.vp.verifiableCredential[i]` 時驗證端回 401「presentation does not include any verifiable credentials」。
 - Bonds：持有者是 BLE GATT 周邊，以要求中的一次性 UUID 廣播；frames characteristic `2B1D0001-…` notify，查驗方寫 `0x01` 到 `2B1D0002-…` 表示收齊。QR 分幀前綴 `BTWVP1`，以 ECC Q 顯示。
 - Bonds 請求的 `k`：`g` 政府皮夾卡片、`s` 自然人憑證自發卡、`a` 本錢包擴充（任何綁定金鑰的證件）。回應 `g` 時只列 TWDIW 卡片，保持與 Bonds 相容。`a` 的封裝：`data:application/dc+sd-jwt,`（IETF SD-JWT VC 以 `vct` 辨識，持有者 DID 為 cnf 金鑰的 did:jwk；W3C SD-JWT 沿用 TWDIW 檢查）與 `data:application/vc+jwt,`（W3C JWT VC，`sub` 或 credentialSubject.id 為持有者 DID）。SD-JWT VC 的發行端金鑰依序來自 x5c、DID iss、JWT VC issuer metadata（需要網路）。
-- Bonds 非 ZKP 出示的本錢包延伸（Bonds 忽略未知鍵）：本錢包產生的查驗挑戰一律加 `q:1`，出示端改顯示 `DIWQ1:` 噴泉碼動態 QR（沒有 `q` 時仍是 BTWVP1，與 Bonds 相容），查驗端的 `acceptVerifierFrame` 兩種畫面都收。查驗端有區網位址時另加 `l`（私有 IPv4 的 http 網址陣列，每張網卡一個，`BondsLanPresentation.acceptableUrl`；解析也接受單一字串）與 `e`（一次性 P-256 公鑰，base64url 未壓縮點），出示端按下出示後自動以 `BondsLanPresentation.seal` 把出示 JWS 以 JWE（ECDH-ES、A256GCM）封裝成 `{"jwe":...}` POST 過去；與年齡證明不同，出示內容含欄位值，所以區網上不可明文。查驗端只接受解得開且挑戰相符的資料，其餘回錯誤並繼續等待；藍牙、區網、相機先完成者驗證，其他停止（`stopVerifierTransports`）。Android 的區網 socket 綁在子網包含對方位址的網路（`AndroidPlatform.localNetworkFor`），否則 Wi-Fi 沒有網際網路時會走行動數據。
+- Bonds 非 ZKP 出示的本錢包延伸（Bonds 忽略未知鍵）：本錢包產生的查驗挑戰一律加 `q:1`，出示端改顯示 `DIWQ1:` 噴泉碼動態 QR（沒有 `q` 時仍是 BTWVP1，與 Bonds 相容），查驗端的 `acceptVerifierFrame` 兩種畫面都收。查驗端一律加 `e`（一次性 P-256 公鑰，base64url 未壓縮點），有區網位址時另加 `l`（私有 IPv4 的 http 網址陣列，每張網卡一個，`BondsLanPresentation.acceptableUrl`；解析也接受單一字串；有 `l` 必須有 `e`，反之不必），出示端按下出示後自動以 `BondsLanPresentation.seal` 把出示 JWS 以 JWE（ECDH-ES、A256GCM）封裝成 `{"jwe":...}` POST 過去；與年齡證明不同，出示內容含欄位值，所以區網上不可明文。查驗端只接受解得開且挑戰相符的資料，其餘回錯誤並繼續等待；藍牙、區網、相機先完成者驗證，其他停止（`stopVerifierTransports`）。藍牙也以同一把金鑰封裝：出示端看到 `e` 時送 `{"jwe":...}`（`BondsLanPresentation.linkPayload`），查驗端以 `fromLink` 開啟；原版 Bonds App 忽略 `e`，送來的明文 JWS 照常查驗並標示「未加密」，對沒有 `e` 的 Bonds 查驗方則送明文並在畫面寫明。Android 的區網 socket 綁在子網包含對方位址的網路（`AndroidPlatform.localNetworkFor`），否則 Wi-Fi 沒有網際網路時會走行動數據。
 
 ## Android 平台要點
 

@@ -28,12 +28,16 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.TimeZone
 import kotlin.time.Clock
 import org.multipaz.asn1.OID
 import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.Simple
+import org.multipaz.mdoc.request.DeviceRequest
+import org.multipaz.util.fromBase64Url
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.DataItem
 import org.multipaz.cbor.Tagged
@@ -102,6 +106,10 @@ enum class ReaderRequest(
 
     val title: String get() = tr(titleRes)
     val detail: String get() = tr(detailRes)
+
+    /** The request as a DCQL credential query, as a declaration lists it. */
+    val query: kotlinx.serialization.json.JsonObject
+        get() = diw.wallet.core.verifier.declaration.ProximityDeclaration.query("q0", docType, mapOf(namespace to elements) + more)
 }
 
 private const val MDL = "org.iso.18013.5.1.mDL"
@@ -144,6 +152,9 @@ data class ReadZkDocument(
     override fun toString() = "ReadZkDocument"
 }
 
+/** Who verifies in person: a verifier profile with the purpose and the OpenPGP cards it signs with in this run. */
+data class ReaderIdentity(val profile: VerifierProfile, val purpose: String, val keys: VerifierKeys = VerifierKeys())
+
 /** What the in-person verification screen shows. */
 sealed class ReaderUi {
     /** Choosing what to ask for, the risk of the purpose and the reader. */
@@ -152,12 +163,14 @@ sealed class ReaderUi {
     data class Result(
         val request: ReaderRequest,
         val risk: RiskLevel,
-        /** How the data came: NFC or Bluetooth after the tap. */
+        /** How the data came: NFC or Bluetooth after the tap, or Bluetooth after scanning the holder's QR code. */
         val transport: String,
         val documents: List<ReadDocument>,
         /** Why the response could not be verified; null when every document passed the integrity checks. */
         val integrityError: String?,
         val zkDocuments: List<ReadZkDocument> = emptyList(),
+        /** The profile the request was made as, with reader authentication and the declaration; null when anonymous. */
+        val asProfile: String? = null,
     ) : ReaderUi()
     data class Failed(val request: ReaderRequest, val message: String) : ReaderUi()
 }
@@ -209,10 +222,54 @@ class ReaderModel(private val model: WalletModel) {
         job = null
     }
 
-    /** Waits for a tap. [requireZk] requests only age_over_18 and forbids ordinary mdoc responses. */
-    fun start(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false) {
+    /**
+     * Waits for a tap. [requireZk] requests only age_over_18 and forbids ordinary mdoc responses. With [identity] the
+     * request is signed by the profile's reader key and carries its declaration.
+     */
+    fun start(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false, identity: ReaderIdentity? = null) {
         cancel()
-        job = model.scope.launch { read(option, request, risk, requireZk) }
+        job = model.scope.launch { read(option, request, risk, requireZk, identity) }
+    }
+
+    /** Engages with the holder's QR code ("mdoc:" device engagement, ISO/IEC 18013-5 clause 8.2.2.3) and reads over Bluetooth. */
+    fun startQr(qr: String, request: ReaderRequest, risk: RiskLevel, identity: ReaderIdentity? = null) {
+        cancel()
+        job = model.scope.launch { readQr(qr, request, risk, identity) }
+    }
+
+    internal suspend fun readQr(qr: String, request: ReaderRequest, risk: RiskLevel, identity: ReaderIdentity? = null) {
+        state.value = ReaderUi.Scanning(request, tr(Res.string.reader_qr_connecting))
+        guarded(request) {
+            val encoded = engagementOf(qr) ?: throw Unavailable(tr(Res.string.reader_qr_invalid))
+            model.platform.proximityTransportUnavailableReason()?.let { throw Unavailable(it) }
+            val engagement = DeviceEngagement.fromDataItem(Cbor.decode(encoded))
+            val methods = MdocConnectionMethod.disambiguate(engagement.connectionMethods, MdocRole.MDOC_READER)
+            val ble = methods.firstOrNull { it is MdocConnectionMethodBle } ?: throw Unavailable(tr(Res.string.reader_qr_no_ble))
+            val received = exchange(
+                transportFactory.createTransport(ble, MdocRole.MDOC_READER, transportOptions), encoded, Simple.NULL,
+                Crypto.createEcPrivateKey(EcCurve.P256), request, tr(Res.string.reader_via_qr), emptyList(), identity,
+            )
+            state.value = ReaderUi.Scanning(request, tr(Res.string.reader_verifying))
+            state.value = evaluate(received, request, risk, identity)
+        }
+    }
+
+    /** Runs [block], turning a failure into the failed state and a history entry. */
+    private suspend fun guarded(request: ReaderRequest, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: NotImplementedError) {
+            // A transport the platform does not implement (Bluetooth on the desktop).
+            val message = tr(Res.string.reader_no_ble)
+            model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(request, null), failure = message)
+            state.value = ReaderUi.Failed(request, message)
+        } catch (e: Exception) {
+            val message = failure(e)
+            model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(request, null), failure = message)
+            state.value = ReaderUi.Failed(request, message)
+        }
     }
 
     private class Unavailable(message: String) : Exception(message)
@@ -225,10 +282,10 @@ class ReaderModel(private val model: WalletModel) {
         class Bluetooth(val handover: MdocReaderNfcHandoverResult) : Tapped()
     }
 
-    internal suspend fun read(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false) {
+    internal suspend fun read(option: NfcReaderOption, request: ReaderRequest, risk: RiskLevel, requireZk: Boolean = false, identity: ReaderIdentity? = null) {
         val where = if (option.external) tr(Res.string.reader_named, option.name) else tr(Res.string.reader_phone_back)
         state.value = ReaderUi.Scanning(request, tr(Res.string.reader_tap_hint, where))
-        try {
+        guarded(request) {
             val zkSpecs = if (requireZk) {
                 if (request != ReaderRequest.AGE_OVER_18) throw Unavailable(tr(Res.string.reader_zk_age_only))
                 longfellow.unavailableReason?.let { throw Unavailable(it) }
@@ -257,7 +314,9 @@ class ReaderModel(private val model: WalletModel) {
                         state.value = ReaderUi.Scanning(request, tr(Res.string.reader_tapped))
                         val transport = NfcTransportMdocReader(MdocRole.MDOC_READER, transportOptions, nfc)
                         transport.setTag(tag)
-                        Tapped.Done(exchange(transport, handover, eReaderKey, request, "NFC", zkSpecs))
+                        // An OpenPGP card cannot be tapped while the holder's phone is on the reader.
+                        if (identity?.profile?.openPgp?.isNotEmpty() == true) throw Unavailable(tr(Res.string.reader_pgp_needs_ble))
+                        Tapped.Done(exchange(transport, handover.encodedDeviceEngagement.toByteArray(), handover.handover, eReaderKey, request, "NFC", zkSpecs, identity))
                     }
                 },
             )
@@ -272,41 +331,32 @@ class ReaderModel(private val model: WalletModel) {
                         )
                     }
                     state.value = ReaderUi.Scanning(request, tr(Res.string.reader_tapped_ble))
-                    exchange(transportFactory.createTransport(ble, MdocRole.MDOC_READER, transportOptions), tapped.handover, eReaderKey, request, tr(Res.string.age_route_label_bluetooth), zkSpecs)
+                    exchange(transportFactory.createTransport(ble, MdocRole.MDOC_READER, transportOptions), tapped.handover.encodedDeviceEngagement.toByteArray(),
+                        tapped.handover.handover, eReaderKey, request, tr(Res.string.age_route_label_bluetooth), zkSpecs, identity)
                 }
             }
             state.value = ReaderUi.Scanning(request, tr(Res.string.reader_verifying))
-            state.value = evaluate(received, request, risk)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: NotImplementedError) {
-            // A transport the platform does not implement (Bluetooth on the desktop).
-            val message = tr(Res.string.reader_no_ble)
-            model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(request, null), failure = message)
-            state.value = ReaderUi.Failed(request, message)
-        } catch (e: Exception) {
-            val message = failure(e)
-            model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(request, null), failure = message)
-            state.value = ReaderUi.Failed(request, message)
+            state.value = evaluate(received, request, risk, identity)
         }
     }
 
     /** Sends the request on [transport] and waits for the holder's answer; closes the transport. */
     private suspend fun exchange(
         transport: MdocTransport,
-        handover: MdocReaderNfcHandoverResult,
+        encodedEngagement: ByteArray,
+        handover: DataItem,
         eReaderKey: EcPrivateKey,
         request: ReaderRequest,
         via: String,
         zkSpecs: List<ZkSystemSpec>,
+        identity: ReaderIdentity?,
     ): Received {
         try {
-            val encodedEngagement = handover.encodedDeviceEngagement.toByteArray()
             val engagement = DeviceEngagement.fromDataItem(Cbor.decode(encodedEngagement))
             val transcript = buildCborArray {
                 add(Tagged(Tagged.ENCODED_CBOR, Bstr(encodedEngagement)))
                 add(Tagged(Tagged.ENCODED_CBOR, Bstr(Cbor.encode(eReaderKey.publicKey.toCoseKey().toDataItem()))))
-                add(handover.handover)
+                add(handover)
             }
             val encodedTranscript = Cbor.encode(transcript)
             val session = SessionEncryption(
@@ -315,14 +365,24 @@ class ReaderModel(private val model: WalletModel) {
                 remotePublicKey = engagement.eDeviceKey,
                 encodedSessionTranscript = encodedTranscript,
             )
-            val deviceRequest = if (zkSpecs.isNotEmpty()) Cbor.encode(buildDeviceRequest(transcript) {
+            val items = mapOf(request.namespace to request.elements.associateWith { false }) +
+                request.more.mapValues { (_, names) -> names.associateWith { false } }
+            val deviceRequest = if (identity != null) withContext(model.unlockProvider) {
+                // Reader authentication with the profile key, and the declaration bound to this SessionTranscript.
+                val key = model.verifier.readerKey(identity.profile)
+                val info = model.verifier.proximityRequestInfo(identity.profile, identity.purpose, request.query, key, encodedTranscript, identity.keys) {
+                    state.value = ReaderUi.Scanning(request, it)
+                }
+                val zk = if (zkSpecs.isEmpty()) null else ZkRequest(systemSpecs = zkSpecs, zkRequired = true)
+                val asked = if (zk == null) items else mapOf(request.namespace to mapOf("age_over_18" to false))
+                Cbor.encode(DeviceRequest.Builder(transcript).addDocRequest(request.docType, asked, DocRequestInfo(zkRequest = zk, otherInfo = info), key).build().toDataItem())
+            } else if (zkSpecs.isNotEmpty()) Cbor.encode(buildDeviceRequest(transcript) {
                 addDocRequest(request.docType, mapOf(request.namespace to mapOf("age_over_18" to false)),
                     DocRequestInfo(zkRequest = ZkRequest(systemSpecs = zkSpecs, zkRequired = true)))
             }.toDataItem()) else DeviceRequestGenerator(encodedTranscript).addDocumentRequest(
                 docType = request.docType,
                 // Nothing is kept: the wallet records field names only.
-                itemsToRequest = mapOf(request.namespace to request.elements.associateWith { false }) +
-                    request.more.mapValues { (_, names) -> names.associateWith { false } },
+                itemsToRequest = items,
                 requestInfo = null,
                 readerKey = null,
                 signatureAlgorithm = Algorithm.UNSET,
@@ -358,7 +418,8 @@ class ReaderModel(private val model: WalletModel) {
         }
     }
 
-    private suspend fun evaluate(received: Received, request: ReaderRequest, risk: RiskLevel): ReaderUi {
+    private suspend fun evaluate(received: Received, request: ReaderRequest, risk: RiskLevel, identity: ReaderIdentity? = null): ReaderUi {
+        val asProfile = identity?.profile?.partyName
         val response = DeviceResponse.fromDataItem(Cbor.decode(received.response))
         // Issuer signature, digests, validity at this time and device authentication bound to this session.
         val integrity = try {
@@ -379,7 +440,7 @@ class ReaderModel(private val model: WalletModel) {
         }
         if (integrity != null) {
             model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(request, received.transport), failure = integrity)
-            return ReaderUi.Result(request, risk, received.transport, emptyList(), integrity)
+            return ReaderUi.Result(request, risk, received.transport, emptyList(), integrity, asProfile = asProfile)
         }
         if (received.zkSpecs.isNotEmpty()) {
             val documents = response.zkDocuments.map { zkDocument(it) }
@@ -387,7 +448,7 @@ class ReaderModel(private val model: WalletModel) {
                 model.record(HistoryKind.VERIFIED, tr(Res.string.reader_zk_age_proof), d.issuerTrust,
                     claims = d.claims.map { it.label }, note = note(request, received.transport) + tr(Res.string.reader_zk_note))
             }
-            return ReaderUi.Result(request, risk, received.transport, emptyList(), null, documents)
+            return ReaderUi.Result(request, risk, received.transport, emptyList(), null, documents, asProfile)
         }
         if (response.status != DeviceResponse.STATUS_OK && response.documents.isEmpty()) {
             throw Unavailable(tr(Res.string.reader_error_status, response.status))
@@ -402,7 +463,7 @@ class ReaderModel(private val model: WalletModel) {
                 note(request, received.transport) + tr(Res.string.sep_semicolon) + StatusTexts.summary(d.statusDecision),
             )
         }
-        return ReaderUi.Result(request, risk, received.transport, documents, null)
+        return ReaderUi.Result(request, risk, received.transport, documents, null, asProfile = asProfile)
     }
 
     private suspend fun zkDocument(proof: ZkDocument): ReadZkDocument {
@@ -496,6 +557,15 @@ class ReaderModel(private val model: WalletModel) {
         private val CONNECT_TIMEOUT = 1.minutes
         private val ANSWER_TIMEOUT = 3.minutes
         private val STATUS_TIMEOUT = 8.seconds
+
+        /** The encoded DeviceEngagement of a holder QR code ("mdoc:" and base64url); null when it is not one. */
+        fun engagementOf(qr: String): ByteArray? {
+            val text = qr.trim()
+            if (!text.startsWith("mdoc:", ignoreCase = true)) return null
+            return runCatching {
+                text.substring(5).fromBase64Url().also { DeviceEngagement.fromDataItem(Cbor.decode(it)) }
+            }.getOrNull()
+        }
 
         fun documentTitle(docType: String, typeName: String?): String = when (docType) {
             MDL -> tr(Res.string.reader_mdl)

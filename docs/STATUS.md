@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-19（main 到 PR #151：zkPassport 查詢結果日期格式、信任鏈完整顯示到根憑證；加上 Linux 原生程式庫的相容版與載入順序）。
+最後更新：2026-11-19（main 到 PR #152：zkPassport 查詢結果日期格式、信任鏈完整顯示到根憑證、P5 驗證者透明與主動查驗；加上 Linux 原生程式庫的相容版與載入順序）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -9,7 +9,7 @@
 ## 1. 一眼看完
 
 - 版本線 `0.4`（[version.properties](../version.properties)），main 每次更新由 CI 發佈 nightly。
-- P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）、P6（iOS）尚未開始。
+- P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）已完成並合併（PR #152），P6（iOS）尚未開始。
 - 平台：Android（API 29 以上）與 Windows、Linux 桌面版為正式發佈；macOS 只提供 jar。
 - 正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，狀態見該 repo 的 `docs/STATUS.md`。
 - 多數功能以自動測試與測試伺服器驗收，實機驗證只做了一部分，見第 5 節。
@@ -23,7 +23,7 @@
 | P2 | OpenID4VC 全組合與相容 Profile（TWDIW、Bonds、Verified ID、草案 11／13、EUDI）、ISO 18013-5 近距離 | 完成（PR #5、#7） | [p2-acceptance.md](acceptance/p2-acceptance.md)、[p2-followup.md](acceptance/p2-followup.md) |
 | P3 | 文件、簽章、時戳、衍生憑證、電子公文、取件入口 | 完成（PR #8、#9、#11） | [p3-acceptance.md](acceptance/p3-acceptance.md)、[p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) |
 | P4 | 零知識證明：zkPDF、zkTLS、年齡證明、mdoc ZK | 完成（PR #12，2026-11-06） | [p4-zkp.md](design/p4-zkp.md)、[p4-work-packages.md](design/p4-work-packages.md) |
-| P5 | 驗證者透明與主動驗證（查驗方身分、代表關係、線上查驗） | 未開始；出示端的 verifier_info 檢查已在 P3 完成 | [architecture-and-roadmap.md](design/architecture-and-roadmap.md) |
+| P5 | 驗證者透明與主動驗證（查驗方身分、代表關係、線上與近距離查驗） | 完成（PR #152）；實機驗收見第 5 節 | [p5-verifier.md](design/p5-verifier.md) |
 | P6 | iOS | 未開始 | 同上 |
 
 P4 之後合併的工作：
@@ -62,7 +62,7 @@ P4 之後合併的工作：
 | OpenID Federation 1.0（查驗方與發證端） | 可用 | |
 | 狀態清單（Token Status List、Bitstring、StatusList2021、RevocationList2020、IdentifierList） | 可用 | |
 | 查驗分頁：離線挑戰、感應查驗、年齡、網站查驗、zkPassport | 可用 | |
-| 查驗分頁：線上查驗（OpenID4VP）、以誰的身分查驗 | 停用列 | 屬 P5 |
+| 查驗分頁：線上查驗（OpenID4VP，服務端轉送與區網直連）、近距離 QR + 藍牙查驗、以誰的身分查驗（錢包憑證、X.509、OpenPGP 卡） | 可用 | X.509 金鑰只用於線上查驗；NFC 資料傳輸時持有端無法核對近距離聲明，標示「未核對」 |
 
 ### 3.2 相容 Profile
 
@@ -114,7 +114,6 @@ P4 之後合併的工作：
 
 | 項目 | 說明 | 等待 |
 |---|---|---|
-| P5 驗證者透明與主動驗證 | 查驗方聲明、代表身分、線上查驗、衍生憑證與 ZK 證明的查驗政策 | 排程 |
 | P6 iOS | | 排程 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
@@ -143,6 +142,7 @@ P4 之後合併的工作：
 | TWDIW | 新版夥伴卡領卡、平台改版後的出示重測 |
 | 簽章 | 自然人憑證卡與 CSC 的 B-LTA、延長保存、PDF 可見簽章（以 Acrobat 檢查）、PIV、OpenPGP 卡（YubiKey NFC 與 USB） |
 | 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、分享到常用 App 的檔名 |
+| 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
 | 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw`）、人臉比對的相機與轉頭檢查、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
 | 桌面 | PC/SC 讀卡機、PKCS#11、Windows 與 Linux 安裝檔 |

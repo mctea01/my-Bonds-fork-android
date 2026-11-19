@@ -364,6 +364,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
                 )
             }
             Text(stringResource(Res.string.offline_purpose_risk, s.request.purpose, StatusTexts.risk(s.risk)))
+            s.delivery?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             specStatus(s.status)?.let { Text(stringResource(Res.string.status_spec_value, it), style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(Res.string.offline_presented_at, r.created), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(Res.string.offline_holder, r.holder), style = MaterialTheme.typography.bodySmall)
