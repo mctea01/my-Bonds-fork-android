@@ -135,6 +135,13 @@ sealed class DeclarationEvidence {
     /** A mandate signed by the party, naming the verifier key as agent ([VerifierMandate]). */
     data class Mandate(val jws: String) : DeclarationEvidence()
 
+    /**
+     * A DIW extension: an OpenPGP detached [signature] (armored) over [openPgpStatement] of this request's client_id
+     * and nonce, made with the verifier's OpenPGP key (usually a card). [certificate] is the signer's public
+     * certificate (base64), so a holder without it in its list can still check the signature, at the lowest trust.
+     */
+    data class OpenPgp(val role: String, val signature: String, val certificate: String?) : DeclarationEvidence()
+
     fun toJson(): JsonObject = when (this) {
         is Presentation -> buildJsonObject {
             put("type", "presentation")
@@ -145,6 +152,12 @@ sealed class DeclarationEvidence {
         is Mandate -> buildJsonObject {
             put("type", "mandate")
             put("jws", jws)
+        }
+        is OpenPgp -> buildJsonObject {
+            put("type", "openpgp")
+            put("role", role)
+            put("signature", signature)
+            certificate?.let { put("certificate", it) }
         }
     }
 
@@ -160,8 +173,17 @@ sealed class DeclarationEvidence {
                 if (role in listOf(ROLE_PARTY, ROLE_AGENT) && query != null && token != null) Presentation(role!!, query, token) else null
             }
             "mandate" -> o.str("jws")?.let { Mandate(it) }
+            "openpgp" -> {
+                val role = o.str("role")
+                val signature = o.str("signature")
+                if (role in listOf(ROLE_PARTY, ROLE_AGENT) && signature != null) OpenPgp(role!!, signature, o.str("certificate")) else null
+            }
             else -> null
         }
+
+        /** What an OpenPGP evidence signature covers: the request's client_id and nonce, one per line. */
+        fun openPgpStatement(clientId: String, nonce: String): ByteArray =
+            "urn:diw-wallet:verifier-openpgp:1\nclient_id=$clientId\nnonce=$nonce\n".encodeToByteArray()
     }
 }
 

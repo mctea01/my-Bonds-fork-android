@@ -56,6 +56,15 @@ import org.multipaz.crypto.X509CertChain
 import org.multipaz.documenttype.knowntypes.DrivingLicense
 import org.multipaz.documenttype.knowntypes.EUPersonalID
 import org.multipaz.mdoc.util.MdocUtil
+import diw.wallet.core.document.DocumentTrustSource
+import diw.wallet.core.document.pgp.OpenPgpTapSigner
+import diw.wallet.core.document.pgp.OpenPgpTrust
+import diw.wallet.core.document.pgp.OpenPgpTrustedKey
+import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.verifier.declaration.InspectorOpenPgpEvidenceVerifier
+import org.multipaz.crypto.X509Cert
+import org.multipaz.util.toBase64
+import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -285,6 +294,58 @@ class VerifierDeclarationTest {
             signer.clientId, nonce, emptyList(), signer)
         val (_, b) = checked(s.holder, request(signer, nonce, listOf(VerifierDeclaration.entry(wrong))))
         assertTrue(b.identity!!.checks.any { it.status == CheckStatus.FAIL }, b.identity!!.checks.toString())
+    }
+
+    @Test
+    fun openPgpCardSignsTheRequest() = runBlocking<Unit> {
+        val s = setup()
+        val signer = didSigner()
+        val nonce = "nonce-openpgp-0123456789"
+        val sim = OpenPgpCardSim(SimKey.ED25519, null)
+        val card = OpenPgpTapSigner(sim.reader(), sim.pin)
+        card.load(x509 = false)
+        val asc = card.signDetached(DeclarationEvidence.openPgpStatement(signer.clientId, nonce)).decodeToString()
+        val cert = sim.certificate.getEncoded(true)
+        val person = VerifierParty(legal = false, name = "Chu Lin")
+        suspend fun declaration(signature: String, sent: ByteArray?) = VerifierDeclaration.sign(
+            DeclarationContent(VerifierKind.NATURAL_PERSON, person, null, purpose, declaredAge), signer.clientId, nonce,
+            listOf(DeclarationEvidence.OpenPgp(DeclarationEvidence.ROLE_PARTY, signature, sent?.toBase64())), signer,
+        )
+        suspend fun identity(listed: List<OpenPgpTrustedKey>, declaration: String): diw.wallet.core.verifier.declaration.VerifierIdentity {
+            val source = object : DocumentTrustSource {
+                override suspend fun decide(role: TrustRole, chain: List<X509Cert>, at: Instant) = TrustDecision(TrustTier.T4, null, false, null, emptySet())
+                override suspend fun fetchIssuerCertificates(url: String): List<ByteArray> = emptyList()
+                override suspend fun openPgpKeys(): List<OpenPgpTrustedKey> = listed
+            }
+            val w = s.holder
+            val check = VerifierDeclarationCheck(w.trust, DidResolver(w.httpClient, true), DidTrust.NONE, null, InspectorOpenPgpEvidenceVerifier(source))
+            val validated = w.holder.resolveUri(request(signer, nonce, listOf(VerifierDeclaration.entry(declaration))))
+            return VerifierInfoChecker(w.trust, null, check).check(validated).single { it.format == VerifierDeclaration.FORMAT }.identity!!
+        }
+
+        // The holder verified this key: the signature names the person, at T2.
+        val verified = identity(listOf(OpenPgpTrustedKey(cert, "Chu Lin", OpenPgpTrust.VERIFIED)), declaration(asc, null))
+        val e = verified.evidence.single()
+        assertTrue(e.passed, e.toString())
+        assertEquals(TrustTier.T2, e.trust?.tier)
+        assertEquals("Chu Lin", e.claims["name"])
+        assertEquals("chu@example.org", e.claims["email"])
+        assertTrue(verified.checks.any { it.status == CheckStatus.PASS && it.detail == e.title }, verified.checks.toString())
+
+        // Not in the holder's list: the sent certificate checks the signature, but only as unverified (T3).
+        val sent = identity(emptyList(), declaration(asc, cert)).evidence.single()
+        assertTrue(sent.passed, sent.toString())
+        assertEquals(TrustTier.T3, sent.trust?.tier)
+
+        // Neither listed nor sent: nothing to check it with.
+        assertFalse(identity(emptyList(), declaration(asc, null)).evidence.single().passed)
+
+        // A signature over another request's nonce does not verify.
+        val other = card.signDetached(DeclarationEvidence.openPgpStatement(signer.clientId, "another-nonce-0123456789")).decodeToString()
+        assertFalse(identity(listOf(OpenPgpTrustedKey(cert, "Chu Lin", OpenPgpTrust.VERIFIED)), declaration(other, null)).evidence.single().passed)
+
+        // A key the holder refused is not accepted.
+        assertFalse(identity(listOf(OpenPgpTrustedKey(cert, "Chu Lin", OpenPgpTrust.DISTRUSTED)), declaration(asc, null)).evidence.single().passed)
     }
 
     @Test

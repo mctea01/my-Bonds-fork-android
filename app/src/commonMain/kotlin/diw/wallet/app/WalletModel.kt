@@ -1608,7 +1608,11 @@ class WalletModel(val platform: PlatformServices) {
         val verifier = presentationVerifier()
         return diw.wallet.core.oid4vp.VerifierInfoChecker(
             trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust),
-            diw.wallet.core.verifier.declaration.VerifierDeclarationCheck(trust, didResolver(), didTrust) { q, t, c, n -> verifier.verifyEvidence(q, t, c, n) },
+            diw.wallet.core.verifier.declaration.VerifierDeclarationCheck(
+                trust, didResolver(), didTrust,
+                { q, t, c, n -> verifier.verifyEvidence(q, t, c, n) },
+                diw.wallet.core.verifier.declaration.InspectorOpenPgpEvidenceVerifier(files.trustSource),
+            ),
         )
     }
 

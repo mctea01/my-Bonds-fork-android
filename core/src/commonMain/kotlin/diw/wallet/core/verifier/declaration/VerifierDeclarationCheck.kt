@@ -16,6 +16,7 @@ import diw.wallet.core.verifier.CheckStatus
 import diw.wallet.core.verifier.CredentialVerification
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import org.multipaz.util.fromBase64
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -42,6 +43,23 @@ data class DeclarationBinding(
 /** Verifies an evidence presentation bound to [clientId] and [nonce]; null when its format cannot be checked here. */
 fun interface EvidenceVerifier {
     suspend fun verify(query: JsonObject, vpToken: JsonObject, clientId: String, nonce: String): CredentialVerification?
+}
+
+/**
+ * What an OpenPGP evidence signature showed: [valid] when it verifies over the statement with a key that is usable and
+ * not revoked; [trust] is the holder's own trust in that key (T2 verified or own, T3 unverified, T4 refused).
+ */
+data class OpenPgpEvidenceResult(
+    val valid: Boolean,
+    val fingerprint: String?,
+    val userId: String?,
+    val trust: TrustDecision?,
+    val problems: List<String> = emptyList(),
+)
+
+/** Checks an OpenPGP detached [signature] over [data] against the holder's OpenPGP list and the sent [certificate]. */
+fun interface OpenPgpEvidenceVerifier {
+    suspend fun verify(data: ByteArray, signature: ByteArray, certificate: ByteArray?): OpenPgpEvidenceResult
 }
 
 /** The result for one piece of declared evidence. */
@@ -93,6 +111,7 @@ class VerifierDeclarationCheck(
     private val didResolver: DidResolver,
     private val didTrust: DidTrust,
     private val evidenceVerifier: EvidenceVerifier?,
+    private val openPgpVerifier: OpenPgpEvidenceVerifier? = null,
 ) {
     suspend fun check(
         compact: String,
@@ -140,6 +159,7 @@ class VerifierDeclarationCheck(
             when (e) {
                 is DeclarationEvidence.Presentation -> presentation(e, binding)
                 is DeclarationEvidence.Mandate -> mandate(e.jws, content, binding, requestDcql, now, checks)
+                is DeclarationEvidence.OpenPgp -> openPgp(e, binding)
             }
         }
 
@@ -252,6 +272,32 @@ class VerifierDeclarationCheck(
             passed = v.passed,
             claims = v.claims,
             problems = failedChecks + if (v.issuerTrust.environment == null) listOf(ct("core_vd_issuer_untrusted")) else emptyList(),
+        )
+    }
+
+    private suspend fun openPgp(e: DeclarationEvidence.OpenPgp, binding: DeclarationBinding): EvidenceResult {
+        val title = ct("core_vd_openpgp")
+        val verifier = openPgpVerifier
+            ?: return EvidenceResult(e.role, false, title, null, null, false, problems = listOf(ct("core_vd_evidence_unchecked")))
+        val certificate = e.certificate?.let { runCatching { it.fromBase64() }.getOrNull() }
+        val r = runCatching { verifier.verify(DeclarationEvidence.openPgpStatement(binding.clientId, binding.nonce), e.signature.encodeToByteArray(), certificate) }
+            .getOrElse { ex -> return EvidenceResult(e.role, false, title, null, null, false, problems = listOf(ex.message ?: ex::class.simpleName.orEmpty())) }
+        val uid = r.userId
+        val name = uid?.substringBefore('<')?.substringBefore('(')?.trim()?.takeIf { it.isNotEmpty() }
+        val email = uid?.substringAfter('<', "")?.substringBefore('>')?.takeIf { it.isNotEmpty() }
+        return EvidenceResult(
+            role = e.role,
+            mandate = false,
+            title = title,
+            signer = listOfNotNull(uid, r.fingerprint).joinToString(" ").ifEmpty { null },
+            trust = r.trust,
+            passed = r.valid && r.trust != null && r.trust.tier != TrustTier.T4,
+            claims = buildMap {
+                name?.let { put("name", it) }
+                email?.let { put("email", it) }
+                r.fingerprint?.let { put("fingerprint", it) }
+            },
+            problems = r.problems + if (r.trust == null) listOf(ct("core_vd_openpgp_unknown")) else emptyList(),
         )
     }
 

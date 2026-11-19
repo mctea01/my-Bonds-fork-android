@@ -50,7 +50,20 @@ import diw.wallet.app.OnlineRoute
 import diw.wallet.app.OnlineVerifyUi
 import diw.wallet.app.StatusTexts
 import diw.wallet.app.VerifierModel
+import diw.wallet.app.OpenPgpProof
+import diw.wallet.app.Screen
+import diw.wallet.app.SignerChoice
+import diw.wallet.app.VerifierKeys
 import diw.wallet.app.VerifierProfile
+import androidx.compose.runtime.produceState
+import diw.wallet.core.document.pgp.OpenPgpTrust
+import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.verifier.declaration.DeclarationEvidence
+import diw.wallet.core.verifier.declaration.EvidenceClaim
+import diw.wallet.core.verifier.declaration.EvidenceQueries
+import org.multipaz.document.Document
+import org.multipaz.util.fromBase64
+import org.multipaz.util.toBase64
 import diw.wallet.app.WalletModel
 import diw.wallet.core.status.RiskLevel
 import diw.wallet.core.verifier.AssuranceLevel
@@ -101,6 +114,7 @@ private fun OnlineSetup(model: WalletModel) {
     val server = model.verifier.serverRoute()
     val lan = model.platform.bondsLan != null
     var route by remember { mutableStateOf(if (server != null) OnlineRoute.SERVER else OnlineRoute.LAN) }
+    var keys by remember(profileId) { mutableStateOf(VerifierKeys()) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             Modifier.fillMaxWidth(),
@@ -131,6 +145,7 @@ private fun OnlineSetup(model: WalletModel) {
             }
         }
         TextButton(onClick = { model.verifier.openProfiles() }) { Text(stringResource(Res.string.ov_manage_profiles)) }
+        profile?.let { pr -> SessionKeys(model, pr, keys) { keys = it } }
         SectionTitle(stringResource(Res.string.reader_requested_data))
         asks.forEach { a ->
             Row(Modifier.fillMaxWidth().clickable { ask = a }, verticalAlignment = Alignment.CenterVertically) {
@@ -174,14 +189,38 @@ private fun OnlineSetup(model: WalletModel) {
             }
         }
         Button(
-            onClick = { model.verifier.start(ask, profile, purpose, risk, VerificationPolicy(accepted, requireZk), route) },
-            enabled = accepted.isNotEmpty() && (route == OnlineRoute.SERVER && server != null || route == OnlineRoute.LAN && lan),
+            onClick = { model.verifier.start(ask, profile, purpose, risk, VerificationPolicy(accepted, requireZk), route, keys) },
+            enabled = accepted.isNotEmpty() && keys.complete(profile) && (route == OnlineRoute.SERVER && server != null || route == OnlineRoute.LAN && lan),
         ) {
             Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(Res.string.ov_start))
         }
     }
 }
+
+/** The keys [p] needs for this verification: its X.509 key and each OpenPGP card; PINs are kept for this run only. */
+@Composable
+private fun SessionKeys(model: WalletModel, p: VerifierProfile, keys: VerifierKeys, onChange: (VerifierKeys) -> Unit) {
+    if (!p.usesX509 && p.openPgp.isEmpty()) return
+    SectionTitle(stringResource(Res.string.ov_keys))
+    Text(stringResource(Res.string.ov_keys_text), style = MaterialTheme.typography.bodySmall)
+    if (p.usesX509) {
+        Text(stringResource(Res.string.ov_x509_key), style = MaterialTheme.typography.titleSmall)
+        p.x509Certificate?.let { Text(stringResource(Res.string.vp_x509_last, certificateName(it)), style = MaterialTheme.typography.bodySmall) }
+        SignerPicker(model) { onChange(keys.copy(x509 = it)) }
+    }
+    p.openPgp.forEach { proof ->
+        Text(stringResource(Res.string.ov_pgp_card, proof.name), style = MaterialTheme.typography.titleSmall)
+        OpenPgpKeyPicker(model, x509 = false) { c ->
+            val card = c as? SignerChoice.OpenPgp
+            onChange(keys.copy(openPgp = if (card == null) keys.openPgp - proof.fingerprint else keys.openPgp + (proof.fingerprint to card)))
+        }
+    }
+}
+
+/** The subject name of a certificate stored as base64 DER. */
+internal fun certificateName(base64: String): String =
+    runCatching { DocumentSigning.certificateSummary(base64.fromBase64())?.first }.getOrNull() ?: "X.509"
 
 @Composable
 private fun OnlineWaiting(model: WalletModel, s: OnlineVerifyUi.Waiting) {
@@ -258,7 +297,8 @@ private fun kindTitle(k: VerifierKind): String = when (k) {
 @Composable
 private fun profileLine(p: VerifierProfile): String = kindTitle(p.verifierKind) +
     (p.agentName?.takeIf { p.verifierKind.representative && it.isNotBlank() }?.let { stringResource(Res.string.sep_comma) + stringResource(Res.string.vd_agent, it) } ?: "") +
-    stringResource(Res.string.sep_comma) + stringResource(Res.string.vp_evidence_count, p.partyEvidence.size + p.agentEvidence.size + p.mandates.size)
+    stringResource(Res.string.sep_comma) + stringResource(Res.string.vp_evidence_count, p.evidenceCount) +
+    (if (p.usesX509) stringResource(Res.string.sep_comma) + stringResource(Res.string.vp_signs_x509) else "")
 
 /** The verifier profiles: who this wallet says it is when it verifies, with its evidence and mandates. */
 @Composable
@@ -286,7 +326,10 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
     var clientId by remember(initial.id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(initial.id) { clientId = model.verifier.clientId(initial) }
+    LaunchedEffect(initial.id, p.signingKey, p.x509Certificate) { clientId = model.verifier.clientId(p) }
+    var x509Choice by remember(initial.id) { mutableStateOf<SignerChoice?>(null) }
+    var x509Problem by remember(initial.id) { mutableStateOf<String?>(null) }
+    var x509Busy by remember(initial.id) { mutableStateOf(false) }
     var mandateText by remember { mutableStateOf("") }
     var issued by remember { mutableStateOf<String?>(null) }
     var agentForMandate by remember { mutableStateOf("") }
@@ -353,22 +396,46 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
         SectionTitle(stringResource(Res.string.vp_evidence))
         Text(stringResource(Res.string.vp_evidence_text), style = MaterialTheme.typography.bodySmall)
         documents.forEach { d ->
-            val name = d.displayName ?: d.identifier
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = d.identifier in p.partyEvidence, onCheckedChange = {
-                    p = p.copy(partyEvidence = if (it) p.partyEvidence + d.identifier else p.partyEvidence - d.identifier)
-                })
-                Text(stringResource(Res.string.vp_evidence_party, name), style = MaterialTheme.typography.bodyMedium)
-            }
-            if (kind.representative) Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = d.identifier in p.agentEvidence, onCheckedChange = {
-                    p = p.copy(agentEvidence = if (it) p.agentEvidence + d.identifier else p.agentEvidence - d.identifier)
-                })
-                Text(stringResource(Res.string.vp_evidence_agent, name), style = MaterialTheme.typography.bodyMedium)
-            }
+            EvidenceDocument(model, d, DeclarationEvidence.ROLE_PARTY, p) { p = it }
+            if (kind.representative) EvidenceDocument(model, d, DeclarationEvidence.ROLE_AGENT, p) { p = it }
         }
+        if (documents.isEmpty()) Text(stringResource(Res.string.vp_no_documents), style = MaterialTheme.typography.bodySmall)
+        OpenPgpProofs(model, p) { p = it }
 
         SectionTitle(stringResource(Res.string.vp_key))
+        Row(Modifier.fillMaxWidth().clickable { p = p.copy(signingKey = VerifierProfile.SIGN_WALLET) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = !p.usesX509, onClick = { p = p.copy(signingKey = VerifierProfile.SIGN_WALLET) })
+            Column {
+                Text(stringResource(Res.string.vp_key_wallet), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(Res.string.vp_key_wallet_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Row(Modifier.fillMaxWidth().clickable { p = p.copy(signingKey = VerifierProfile.SIGN_X509) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = p.usesX509, onClick = { p = p.copy(signingKey = VerifierProfile.SIGN_X509) })
+            Column {
+                Text(stringResource(Res.string.vp_key_x509), style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(Res.string.vp_key_x509_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (p.usesX509) {
+            p.x509Certificate?.let { Text(stringResource(Res.string.vp_x509_last, certificateName(it)), style = MaterialTheme.typography.bodyMedium) }
+            SignerPicker(model) { x509Choice = it }
+            OutlinedButton(
+                onClick = {
+                    val choice = x509Choice ?: return@OutlinedButton
+                    x509Busy = true
+                    x509Problem = null
+                    scope.launch {
+                        runCatching { model.verifier.readX509(choice) }
+                            .onSuccess { p = p.copy(x509Certificate = it.certificateChain.first().toBase64()) }
+                            .onFailure { x509Problem = model.describe(it) }
+                        x509Busy = false
+                    }
+                },
+                enabled = x509Choice != null && !x509Busy,
+            ) { Text(if (x509Busy) stringResource(Res.string.state_reading) else stringResource(Res.string.vp_x509_read)) }
+            x509Problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        }
         clientId?.let { id ->
             Text(id, style = MaterialTheme.typography.bodySmall)
             OutlinedButton(onClick = { clipboard.setText(AnnotatedString(id)) }) { Text(stringResource(Res.string.vp_copy_client_id)) }
@@ -399,11 +466,11 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
                     scope.launch {
                         issued = runCatching {
                             model.verifier.issueMandate(p, agentForMandate, agentRoleForMandate, agentClientId,
-                                listOfNotNull(p.purpose.takeIf { it.isNotBlank() }), mandateDays.toIntOrNull() ?: 180)
+                                listOfNotNull(p.purpose.takeIf { it.isNotBlank() }), mandateDays.toIntOrNull() ?: 180, VerifierKeys(x509 = x509Choice))
                         }.getOrElse { e -> model.message.value = model.describe(e); null }
                     }
                 },
-                enabled = p.partyName.isNotBlank() && agentForMandate.isNotBlank() &&
+                enabled = p.partyName.isNotBlank() && agentForMandate.isNotBlank() && (!p.usesX509 || x509Choice != null) &&
                     (agentClientId.startsWith("decentralized_identifier:") || agentClientId.startsWith("x509_hash:")),
             ) { Text(stringResource(Res.string.vp_issue)) }
             issued?.let { jws ->
@@ -421,3 +488,88 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
         }
     }
 }
+
+/**
+ * One wallet credential as evidence for [role]: whether it is used, and which of its claims are disclosed. Without a
+ * choice the claims that name who the verifier is are disclosed.
+ */
+@Composable
+private fun EvidenceDocument(model: WalletModel, d: Document, role: String, p: VerifierProfile, onChange: (VerifierProfile) -> Unit) {
+    val name = d.displayName ?: d.identifier
+    val ids = if (role == DeclarationEvidence.ROLE_PARTY) p.partyEvidence else p.agentEvidence
+    val used = d.identifier in ids
+    val key = VerifierProfile.claimKey(role, d.identifier)
+    val claims by produceState<List<EvidenceClaim>?>(null, d.identifier) {
+        value = runCatching { d.getCertifiedCredentials().firstOrNull()?.let { EvidenceQueries.claims(it, model.documentTypes) } }.getOrNull().orEmpty()
+    }
+    var open by remember(d.identifier, role) { mutableStateOf(false) }
+    val supported = claims?.isNotEmpty() == true
+    fun setUsed(on: Boolean) {
+        val next = if (on) ids + d.identifier else ids - d.identifier
+        onChange(if (role == DeclarationEvidence.ROLE_PARTY) p.copy(partyEvidence = next) else p.copy(agentEvidence = next))
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = used, enabled = supported || used, onCheckedChange = { setUsed(it) })
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(if (role == DeclarationEvidence.ROLE_PARTY) Res.string.vp_evidence_party else Res.string.vp_evidence_agent, name),
+                style = MaterialTheme.typography.bodyMedium)
+            if (claims != null && !supported) Text(stringResource(Res.string.vp_evidence_unsupported), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    val all = claims.orEmpty()
+    if (!used || all.isEmpty()) return
+    val chosen = p.evidenceClaims[key] ?: all.filter { it.identifying }.map { it.path }
+    TextButton(onClick = { open = !open }) { Text(stringResource(Res.string.vp_claims_choose, chosen.size, all.size)) }
+    if (!open) return
+    Column(Modifier.padding(start = 24.dp)) {
+        all.forEach { c ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = c.path in chosen, onCheckedChange = { on ->
+                    val next = if (on) chosen + listOf(c.path) else chosen.filter { it != c.path }
+                    onChange(p.copy(evidenceClaims = p.evidenceClaims + (key to next)))
+                })
+                Column {
+                    Text(c.label + if (c.identifying) stringResource(Res.string.vp_claim_identifying) else "", style = MaterialTheme.typography.bodyMedium)
+                    Text(c.value, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                }
+            }
+        }
+        if (all.none { it.identifying && it.path in chosen }) {
+            Text(stringResource(Res.string.vp_claims_no_identity), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+        if (chosen.isEmpty()) Text(stringResource(Res.string.vp_claims_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = { onChange(p.copy(evidenceClaims = p.evidenceClaims - key)) }) { Text(stringResource(Res.string.vp_claims_default)) }
+    }
+}
+
+/** The holder's own OpenPGP cards whose signature over each request is added as evidence (a DIW extension). */
+@Composable
+private fun OpenPgpProofs(model: WalletModel, p: VerifierProfile, onChange: (VerifierProfile) -> Unit) {
+    val keys by model.openPgp.keys.collectAsState()
+    val own = keys.filter { it.trust == OpenPgpTrust.OWN_CARD && it.info.canSign }
+    Text(stringResource(Res.string.vp_pgp), style = MaterialTheme.typography.titleSmall)
+    Text(stringResource(Res.string.vp_pgp_text), style = MaterialTheme.typography.bodySmall)
+    if (own.isEmpty()) {
+        Text(stringResource(Res.string.vp_pgp_none), style = MaterialTheme.typography.bodySmall)
+        TextButton(onClick = { model.screen.value = Screen.OpenPgpKeys(null, Screen.VerifierProfiles) }) { Text(stringResource(Res.string.pgp_manage)) }
+        return
+    }
+    val roles = listOfNotNull(DeclarationEvidence.ROLE_PARTY, DeclarationEvidence.ROLE_AGENT.takeIf { p.verifierKind.representative })
+    own.forEach { e ->
+        roles.forEach { role ->
+            val on = p.openPgp.any { it.fingerprint == e.fingerprint && it.role == role }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = on, onCheckedChange = { checked ->
+                    val rest = p.openPgp.filterNot { it.fingerprint == e.fingerprint && it.role == role }
+                    onChange(p.copy(openPgp = if (checked) rest + OpenPgpProof(role, e.fingerprint, e.info.name) else rest))
+                })
+                Column {
+                    Text(stringResource(if (role == DeclarationEvidence.ROLE_PARTY) Res.string.vp_evidence_party else Res.string.vp_evidence_agent, e.info.name),
+                        style = MaterialTheme.typography.bodyMedium)
+                    Text(e.fingerprint.chunked(4).joinToString(" "), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
