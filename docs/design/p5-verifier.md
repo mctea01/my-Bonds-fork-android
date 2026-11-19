@@ -80,6 +80,7 @@ OpenPGP 證據簽的是 UTF-8 文字 `urn:diw-wallet:verifier-openpgp:1\nclient_
 3. 一致性：
    - `party.id` 與 X.509 存取憑證的 organizationIdentifier、WRPRC 的 `sub`、授權書的被代表者、`role=party` 證據中的識別碼欄位比對，不同即標示。
    - `agent.name` 與 `role=agent` 證據中的姓名欄位比對；沒有可比對的欄位時只列出，不判定。
+   - 只有比對通過的證據（以及名稱相符的存取憑證、相符的 WRPRC、授權書）才提升當事人或經辦人的信任等級；沒有揭露姓名或識別碼的證據（例如只出示年齡）不算確認，當事人仍標示為自述。
    - 授權書的受託人必須是本次請求的簽章金鑰（或其 DID），範圍必須涵蓋本次目的與請求的證件。
    - 實際的 DCQL 必須落在聲明的 `credentials` 內，有 WRPRC 時也要落在 WRPRC 的範圍內，超出的欄位逐項列出（沿用 `VerifierInfoChecker.outside`）。
 4. OpenPGP 證據以文件檢查器（`InspectorOpenPgpEvidenceVerifier`）對持卡人的 OpenPGP 清單驗證：清單中已驗證或自己的卡為 T2，未驗證為 T3，不信任為 T4（不通過）；清單沒有、但查驗方附上公開金鑰時只以未驗證（T3）參與這次檢查。簽章對應的不是這次的 client_id 與 nonce 時不通過。使用者 ID 的名稱與 email 列為證據欄位，與當事人或經辦人的名稱比對。
@@ -122,7 +123,7 @@ QR Code 內容為 `openid4vp://?client_id=<client_id>&request_uri=<url>`（`requ
 
 ### 6.3 判定
 
-以 `PresentationVerifier.verifyDirectPost` 驗證，結果依架構文件的六個獨立欄位顯示（簽章、發行端信任、狀態、持有者綁定、業務規則、保證標籤），再加上環境（正式、測試、自訂）。任一欄位未知時不得顯示為通過。結果寫入紀錄（`HistoryKind.VERIFIED`），只記證件類型與欄位名稱。
+以 `PresentationVerifier.verifyDirectPost` 驗證，結果依架構文件的六個獨立欄位顯示（簽章、發行端信任、狀態、持有者綁定、業務規則、保證標籤），再加上環境（正式、測試、自訂）。任一欄位未知時不得顯示為通過。狀態依查驗者選的用途風險以 `StatusPolicy` 判定（`CredentialVerification.passedAt`）：例如沒有狀態參照的證件在高風險下為需留意，狀態清單暫時讀不到在低風險下可接受；不讀狀態清單的路徑（DID 發行的 SD-JWT VC、Data Integrity）有狀態參照時視為未查詢。結果寫入紀錄（`HistoryKind.VERIFIED`），只記證件類型與欄位名稱。
 
 ## 7. 近距離查驗（ISO 18013-5）
 

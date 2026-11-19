@@ -46,13 +46,16 @@ data class VerificationPolicy(
         }
     }
 
-    /** The business rule check of [c] under this policy (never PASS for a credential that failed its own checks). */
-    fun evaluate(c: CredentialVerification): Check {
+    /**
+     * The business rule check of [c] under this policy (never PASS for a credential that failed its own checks).
+     * With [statusJudgedApart] the status check is left out, for a caller that judges it by the use's risk.
+     */
+    fun evaluate(c: CredentialVerification, statusJudgedApart: Boolean = false): Check {
         val level = assurance(c) ?: return Check(ct("core_policy_rule"), CheckStatus.FAIL, ct("core_policy_unjudged"))
         return when {
             level !in accepted -> Check(ct("core_policy_rule"), CheckStatus.FAIL, ct("core_policy_not_accepted", level.title))
             requireZeroKnowledge && !c.zkProof -> Check(ct("core_policy_rule"), CheckStatus.FAIL, ct("core_policy_no_zk"))
-            !c.passed -> Check(ct("core_policy_rule"), CheckStatus.UNKNOWN, ct("core_policy_checks_failed", level.title))
+            !(if (statusJudgedApart) c.passedExceptStatus else c.passed) -> Check(ct("core_policy_rule"), CheckStatus.UNKNOWN, ct("core_policy_checks_failed", level.title))
             else -> Check(ct("core_policy_rule"), CheckStatus.PASS, level.title)
         }
     }

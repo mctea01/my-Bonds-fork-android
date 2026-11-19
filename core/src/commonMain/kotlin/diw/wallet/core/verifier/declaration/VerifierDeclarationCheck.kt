@@ -204,7 +204,7 @@ class VerifierDeclarationCheck(
                 r.role == DeclarationEvidence.ROLE_PARTY -> {
                     val c = partyEvidenceCheck(content.party, r)
                     checks += c
-                    if (c.status != CheckStatus.FAIL) partySupport += tier
+                    if (c.status == CheckStatus.PASS) partySupport += tier
                 }
                 else -> {
                     val agent = content.agent
@@ -213,7 +213,7 @@ class VerifierDeclarationCheck(
                     } else {
                         val c = agentEvidenceCheck(agent, r)
                         checks += c
-                        if (c.status != CheckStatus.FAIL) agentSupport += tier
+                        if (c.status == CheckStatus.PASS) agentSupport += tier
                     }
                 }
             }

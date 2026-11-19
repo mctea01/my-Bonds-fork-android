@@ -158,8 +158,13 @@ data class OnlineAsk(val id: String, val title: String, val query: JsonObject) {
 /** How the holder's wallet reaches this one: the user's server mailbox, or this phone on the local network. */
 enum class OnlineRoute { SERVER, LAN }
 
-/** One presented credential with its assurance and the policy's verdict. */
-data class OnlineCredential(val verification: CredentialVerification, val level: AssuranceLevel?, val rule: Check)
+/** One presented credential with its assurance, the policy's verdict and its status judged at the chosen risk. */
+data class OnlineCredential(
+    val verification: CredentialVerification,
+    val level: AssuranceLevel?,
+    val rule: Check,
+    val status: diw.wallet.core.status.StatusDecision,
+)
 
 sealed class OnlineVerifyUi {
     data object Setup : OnlineVerifyUi()
@@ -172,8 +177,9 @@ sealed class OnlineVerifyUi {
         val policy: VerificationPolicy,
         val verification: PresentationVerification,
         val credentials: List<OnlineCredential>,
+        val risk: RiskLevel,
     ) : OnlineVerifyUi() {
-        val passed: Boolean get() = verification.passed && credentials.all { it.rule.status == diw.wallet.core.verifier.CheckStatus.PASS }
+        val passed: Boolean get() = verification.passedAt(risk) && credentials.all { it.rule.status == diw.wallet.core.verifier.CheckStatus.PASS }
     }
     data class Failed(val message: String) : OnlineVerifyUi()
 }
@@ -545,8 +551,10 @@ class VerifierModel(private val model: WalletModel) {
             return OnlineVerifyUi.Failed(message)
         }
         val verification = model.presentationVerifier().verifyDirectPost(form, request.session)
-        val credentials = verification.credentials.map { c -> OnlineCredential(c, VerificationPolicy.assurance(c), policy.evaluate(c)) }
-        val result = OnlineVerifyUi.Result(ask.title, profile?.partyName, policy, verification, credentials)
+        val credentials = verification.credentials.map { c ->
+            OnlineCredential(c, VerificationPolicy.assurance(c), policy.evaluate(c, statusJudgedApart = true), c.statusDecision(risk))
+        }
+        val result = OnlineVerifyUi.Result(ask.title, profile?.partyName, policy, verification, credentials, risk)
         if (credentials.isEmpty()) {
             model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = note(ask, profile),
                 failure = verification.errorDescription ?: verification.error ?: tr(Res.string.ov_nothing))
@@ -557,7 +565,7 @@ class VerifierModel(private val model: WalletModel) {
                 listOf(c.verification.issuerTrust.anchorName ?: c.verification.typeName),
                 c.verification.claims.keys.toList(),
                 note(ask, profile) + tr(Res.string.sep_semicolon) + (c.level?.title ?: tr(Res.string.ov_unjudged)) +
-                    tr(Res.string.sep_semicolon) + StatusTexts.risk(risk),
+                    tr(Res.string.sep_semicolon) + StatusTexts.summary(c.status),
                 failure = if (result.passed) null else c.rule.detail.ifEmpty { tr(Res.string.ov_not_passed) },
             )
         }

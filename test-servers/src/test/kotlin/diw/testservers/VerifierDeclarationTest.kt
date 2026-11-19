@@ -14,6 +14,8 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.verifier.CheckStatus
 import diw.wallet.core.verifier.CredentialVerification
+import diw.wallet.core.verifier.Check
+import diw.wallet.core.verifier.declaration.VerifierIdentity
 import diw.wallet.core.verifier.PresentationVerifier
 import diw.wallet.core.verifier.RequestObjectBuilder
 import diw.wallet.core.verifier.VerificationPolicy
@@ -66,6 +68,9 @@ import diw.wallet.core.verifier.declaration.InspectorOpenPgpEvidenceVerifier
 import org.multipaz.crypto.X509Cert
 import org.multipaz.util.toBase64
 import kotlin.time.Instant
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusFinding
+import diw.wallet.core.status.StatusVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -395,6 +400,61 @@ class VerifierDeclarationTest {
 
         // A key the holder refused is not accepted.
         assertFalse(identity(listOf(OpenPgpTrustedKey(cert, "Chu Lin", OpenPgpTrust.DISTRUSTED)), declaration(asc, null)).evidence.single().passed)
+    }
+
+    /** Evidence that does not disclose the party's name or identifier leaves the party self-stated. */
+    @Test
+    fun evidenceThatNamesNobodyDoesNotConfirmTheParty() = runBlocking<Unit> {
+        val s = setup()
+        val signer = CertificateJwsSigner(organizationSigner(s.pki, "Example Co", "12345678"))
+        val person = VerifierParty(legal = false, name = "Lin Che-Chuan")
+        val birthdate = buildJsonObject {
+            put("id", "party"); put("format", "dc+sd-jwt")
+            putJsonObject("meta") { putJsonArray("vct_values") { add(EUPersonalID.EUPID_VCT) } }
+            putJsonArray("claims") { addJsonObject { putJsonArray("path") { add("birthdate") } } }
+        }
+        suspend fun identity(query: JsonObject, nonce: String): VerifierIdentity {
+            val vp = s.verifierWallet.holder.evidence(signer.clientId, nonce, query)
+            val d = VerifierDeclaration.sign(
+                DeclarationContent(VerifierKind.NATURAL_PERSON, person, null, purpose, declaredAge), signer.clientId, nonce,
+                listOf(DeclarationEvidence.Presentation(DeclarationEvidence.ROLE_PARTY, query, vp)), signer)
+            return checked(s.holder, request(signer, nonce, listOf(VerifierDeclaration.entry(d)))).second.identity!!
+        }
+        val selfStated = diw.wallet.core.i18n.ct("core_vd_party_self_stated")
+
+        val unnamed = identity(birthdate, "nonce-unnamed-0123456789")
+        assertTrue(unnamed.evidence.single().passed, unnamed.evidence.toString())
+        assertTrue(unnamed.checks.any { it.status == CheckStatus.WARN }, unnamed.checks.toString())
+        assertTrue(selfStated in unnamed.notes, unnamed.notes.toString())
+        assertTrue(unnamed.tier.ordinal >= TrustTier.T3.ordinal, unnamed.tier.toString())
+        assertFalse(unnamed.confirmed)
+
+        val named = identity(pidQuery.let { q -> JsonObject(q + ("id" to kotlinx.serialization.json.JsonPrimitive("party"))) }, "nonce-named-0123456789")
+        assertTrue(named.checks.any { it.status == CheckStatus.PASS && it.detail == EUPersonalID.EUPID_VCT }, named.checks.toString())
+        assertFalse(selfStated in named.notes, named.notes.toString())
+    }
+
+    /** The verifier's chosen risk decides the status, as StatusPolicy does for every other check. */
+    @Test
+    fun statusIsJudgedAtTheChosenRisk() {
+        val t2 = TrustDecision(TrustTier.T2, diw.wallet.core.env.TrustEnvironment.PRODUCTION, false, "root", emptySet())
+        fun cv(finding: StatusFinding?, check: CheckStatus = CheckStatus.PASS) = CredentialVerification(
+            "q", "mso_mdoc", "t", emptyMap(), listOf(Check(CredentialVerification.STATUS_CHECK, check)), t2, status = finding)
+        val none = cv(StatusFinding.NO_STATUS)
+        assertTrue(none.passedAt(RiskLevel.LOW))
+        assertTrue(none.passedAt(RiskLevel.MEDIUM))
+        assertFalse(none.passedAt(RiskLevel.HIGH), "high risk needs a status")
+        val unknown = cv(StatusFinding.UNKNOWN, CheckStatus.UNKNOWN)
+        assertFalse(unknown.passed)
+        assertTrue(unknown.passedAt(RiskLevel.LOW), "an unreadable list is accepted for low risk")
+        assertFalse(unknown.passedAt(RiskLevel.MEDIUM))
+        assertFalse(cv(StatusFinding.REVOKED, CheckStatus.FAIL).passedAt(RiskLevel.LOW))
+        assertTrue(cv(StatusFinding.VALID).passedAt(RiskLevel.HIGH))
+        assertFalse(cv(null).passedAt(RiskLevel.LOW), "a status never asked needs attention")
+        assertEquals(StatusVerdict.CAUTION, none.statusDecision(RiskLevel.HIGH).verdict)
+        val policy = VerificationPolicy()
+        assertEquals(CheckStatus.UNKNOWN, policy.evaluate(unknown).status)
+        assertEquals(CheckStatus.PASS, policy.evaluate(unknown, statusJudgedApart = true).status)
     }
 
     @Test

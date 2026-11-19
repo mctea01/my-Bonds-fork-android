@@ -66,6 +66,8 @@ import org.multipaz.util.fromBase64
 import org.multipaz.util.toBase64
 import diw.wallet.app.WalletModel
 import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusVerdict
+import diw.wallet.core.verifier.CredentialVerification
 import diw.wallet.core.verifier.AssuranceLevel
 import diw.wallet.core.verifier.CheckStatus
 import diw.wallet.core.verifier.VerificationPolicy
@@ -291,10 +293,17 @@ private fun CredentialResult(c: OnlineCredential) {
         else -> tierColor(diw.wallet.core.trust.TrustTier.T3)
     }
     Text(c.rule.name + stringResource(Res.string.sep_comma) + c.rule.detail, style = MaterialTheme.typography.bodyMedium, color = ruleColor)
+    val statusColor = when (c.status.verdict) {
+        StatusVerdict.ACCEPT -> MaterialTheme.colorScheme.onSurface
+        StatusVerdict.REJECT -> MaterialTheme.colorScheme.error
+        StatusVerdict.CAUTION -> tierColor(diw.wallet.core.trust.TrustTier.T3)
+    }
+    Text(StatusTexts.summary(c.status) + stringResource(Res.string.sentence_end) + StatusTexts.explain(c.status.finding),
+        style = MaterialTheme.typography.bodyMedium, color = statusColor)
     SectionTitle(stringResource(Res.string.reader_disclosed))
     v.claims.forEach { (k, value) -> LabelValue(k, value) }
     if (v.claims.isEmpty()) Text(stringResource(Res.string.reader_nothing_disclosed), style = MaterialTheme.typography.bodySmall)
-    (v.checks + v.evidence).forEach { k ->
+    (v.checks.filter { it.name != CredentialVerification.STATUS_CHECK } + v.evidence).forEach { k ->
         Text(k.name + (if (k.detail.isNotEmpty()) stringResource(Res.string.sep_comma) + k.detail else ""), style = MaterialTheme.typography.bodySmall,
             color = if (k.status == CheckStatus.FAIL) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }

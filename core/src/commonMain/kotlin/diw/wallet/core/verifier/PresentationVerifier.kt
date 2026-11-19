@@ -8,6 +8,11 @@ import diw.wallet.core.document.derived.DerivedEvidence
 import diw.wallet.core.document.derived.TravelDocumentPhotoId
 import diw.wallet.core.document.derived.ZkPdfContext
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.status.RiskLevel
+import diw.wallet.core.status.StatusDecision
+import diw.wallet.core.status.StatusFinding
+import diw.wallet.core.status.StatusPolicy
+import diw.wallet.core.status.StatusVerdict
 import diw.wallet.core.jose.VerificationKey
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustTier
@@ -99,10 +104,33 @@ data class CredentialVerification(
     val derived: Boolean = false,
     /** A zero-knowledge proof backs the disclosed values (mdoc ZK, or a zkPDF proof that verified). */
     val zkProof: Boolean = false,
+    /** What the status check found; null when the issuer was not anchored and no status was asked. */
+    val status: StatusFinding? = null,
 ) {
     val passed: Boolean
         get() = checks.all { it.status == CheckStatus.PASS } && issuerTrust.environment != null &&
             evidence.none { it.status == CheckStatus.FAIL }
+
+    /**
+     * Passed for a use of [risk]: every check except the status passed, and [StatusPolicy] accepts the status at
+     * that risk (a status that could not be read is accepted for low risk, a credential without one needs attention
+     * for high risk).
+     */
+    fun passedAt(risk: RiskLevel): Boolean = passedExceptStatus && statusDecision(risk).verdict == StatusVerdict.ACCEPT
+
+    /** Every check but the status passed; the status is left to [statusDecision]. */
+    val passedExceptStatus: Boolean
+        get() = checks.all { it.name == STATUS_CHECK || it.status == CheckStatus.PASS } && issuerTrust.environment != null &&
+            evidence.none { it.status == CheckStatus.FAIL }
+
+    fun statusDecision(risk: RiskLevel): StatusDecision {
+        val finding = status ?: StatusFinding.NOT_CHECKED
+        return StatusDecision(StatusPolicy.verdict(finding, risk), finding, risk, stale = false)
+    }
+
+    companion object {
+        const val STATUS_CHECK = "status"
+    }
 }
 
 data class PresentationVerification(
@@ -115,6 +143,11 @@ data class PresentationVerification(
 ) {
     val passed: Boolean
         get() = error == null && credentials.isNotEmpty() && credentials.all { it.passed } &&
+            sessionChecks.all { it.status == CheckStatus.PASS }
+
+    /** [passed] with each credential's status judged by [StatusPolicy] at [risk]. */
+    fun passedAt(risk: RiskLevel): Boolean =
+        error == null && credentials.isNotEmpty() && credentials.all { it.passedAt(risk) } &&
             sessionChecks.all { it.status == CheckStatus.PASS }
     val testEnvironmentOnly: Boolean get() = credentials.any { it.issuerTrust.environment == TrustEnvironment.TEST }
 }
@@ -315,12 +348,13 @@ class PresentationVerifier(
         vp.validFrom?.let { checks += if (it <= now) Check("validFrom", CheckStatus.PASS) else Check("validFrom", CheckStatus.FAIL, "not yet valid") }
         vp.validUntil?.let { checks += if (it >= now) Check("validUntil", CheckStatus.PASS) else Check("validUntil", CheckStatus.FAIL, "expired") }
 
+        var status: StatusFinding? = null
         val anchored = if (chain == null) {
             TrustDecision.unknown("no issuer certificate chain")
         } else {
             val docType = (vp as? MdocVerifiedPresentation)?.docType
             val m = trustRegistry.match(TrustRole.ISSUER, chain.certificates, now, docType)
-            m?.let { checks += revocation(vp, it.anchor) }
+            m?.let { revocation(vp, it.anchor).let { (check, finding) -> checks += check; status = finding } }
             trustRegistry.decision(m)
         }
         // A Photo ID made by a holder wallet from a passport is that wallet's own statement (T3); the chip files it
@@ -337,7 +371,8 @@ class PresentationVerifier(
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, "${trust.anchorName} (${trust.environment.id})")
         else Check("issuer trust", CheckStatus.FAIL, "issuer chain not anchored in an enabled environment")
         return CredentialVerification(id, format, typeName, claims, checks, trust, evidence,
-            derived = photoId, zkProof = (vp as? MdocVerifiedPresentation)?.zkpUsed == true)
+            derived = photoId, zkProof = (vp as? MdocVerifiedPresentation)?.zkpUsed == true,
+            status = status ?: if (vp.revocationStatus == null) StatusFinding.NO_STATUS else null)
     }
 
     private fun checkStatus(c: DocumentCheck): CheckStatus = when (c) {
@@ -423,7 +458,9 @@ class PresentationVerifier(
         } else TrustDecision.unknown("issuer identified by a DID that this verifier does not trust")
         checks += if (trust.environment != null) Check("issuer trust", CheckStatus.PASS, trust.anchorName ?: iss)
         else Check("issuer trust", CheckStatus.FAIL, "DID issuer not anchored")
-        return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence, derived = derived, zkProof = zkProof)
+        // This path does not read status lists: a credential that names one is reported as not checked.
+        val status = if (processed["status"] == null) StatusFinding.NO_STATUS else StatusFinding.NOT_CHECKED
+        return CredentialVerification(id, "dc+sd-jwt", vct, claims, checks, trust, evidence, derived = derived, zkProof = zkProof, status = status)
     }
 
     /** The JSON-LD credential or presentation in [entry] (a DCQL array of one, or the object itself); null otherwise. */
@@ -522,7 +559,8 @@ class PresentationVerifier(
         }
         flatten("", vc)
         bbs?.pseudonym?.let { claims["pseudonym"] = it.toBase64Url() }
-        return CredentialVerification(id, format, W3cVc.displayType(types) ?: types.lastOrNull() ?: "unknown", claims, checks, trust)
+        val status = if (vc["credentialStatus"] == null) StatusFinding.NO_STATUS else StatusFinding.NOT_CHECKED
+        return CredentialVerification(id, format, W3cVc.displayType(types) ?: types.lastOrNull() ?: "unknown", claims, checks, trust, status = status)
     }
 
     private fun JsonObject.idOf(key: String): String? = when (val v = this[key]) {
@@ -605,15 +643,16 @@ class PresentationVerifier(
         return out
     }
 
-    private suspend fun revocation(vp: VerifiedPresentation, anchor: org.multipaz.crypto.X509Cert): Check {
-        val status = vp.revocationStatus ?: return Check("status", CheckStatus.PASS, "credential carries no status reference")
-        val checker = revocationChecker ?: return Check("status", CheckStatus.UNKNOWN, "status checking disabled")
+    private suspend fun revocation(vp: VerifiedPresentation, anchor: org.multipaz.crypto.X509Cert): Pair<Check, StatusFinding> {
+        val name = CredentialVerification.STATUS_CHECK
+        val status = vp.revocationStatus ?: return Check(name, CheckStatus.PASS, "credential carries no status reference") to StatusFinding.NO_STATUS
+        val checker = revocationChecker ?: return Check(name, CheckStatus.UNKNOWN, "status checking disabled") to StatusFinding.NOT_CHECKED
         val r = checker.check(status, issuerCert = anchor, onlyTrusted = true)
         return when (r.state) {
-            RevocationCheckState.VALID -> Check("status", CheckStatus.PASS, "valid")
-            RevocationCheckState.INVALID -> Check("status", CheckStatus.FAIL, "revoked")
-            RevocationCheckState.SUSPENDED -> Check("status", CheckStatus.FAIL, "suspended")
-            RevocationCheckState.UNKNOWN -> Check("status", CheckStatus.UNKNOWN, r.error?.message ?: "unknown")
+            RevocationCheckState.VALID -> Check(name, CheckStatus.PASS, "valid") to StatusFinding.VALID
+            RevocationCheckState.INVALID -> Check(name, CheckStatus.FAIL, "revoked") to StatusFinding.REVOKED
+            RevocationCheckState.SUSPENDED -> Check(name, CheckStatus.FAIL, "suspended") to StatusFinding.SUSPENDED
+            RevocationCheckState.UNKNOWN -> Check(name, CheckStatus.UNKNOWN, r.error?.message ?: "unknown") to StatusFinding.UNKNOWN
         }
     }
 
