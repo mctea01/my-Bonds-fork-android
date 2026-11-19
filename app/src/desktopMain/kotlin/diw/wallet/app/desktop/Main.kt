@@ -152,9 +152,9 @@ private fun nativeJavaHome() {
 
 /**
  * Java2D's Direct3D pipeline (on by default on Windows) queues its drawing commands in a RenderBuffer that, since
- * JDK 25, writes through memory-segment VarHandles; the native executable fails there, and as the queue is flushed
- * on AWT's toolkit thread, which also runs the Windows message loop, keyboard and mouse input stop and a popup ends
- * the app. Compose draws with Skia, so the native executable uses Java2D's GDI pipeline instead.
+ * JDK 25, writes through memory-segment VarHandles, which the native executable lacks unless registered (a
+ * MissingReflectionRegistrationError whenever AWT syncs the queue). Compose draws with Skia, so the native executable
+ * uses Java2D's GDI pipeline instead.
  */
 private fun nativeGraphics() {
     if (!SelfCheck.nativeImage || !System.getProperty("os.name").orEmpty().startsWith("Windows")) return

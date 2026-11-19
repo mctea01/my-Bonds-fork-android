@@ -47,7 +47,7 @@ internal object InputExercise {
         Thread({
             result = try {
                 run()
-                "ok (${focus()})"
+                "ok (${focus()}; components=${components()}; threads=${threads()})"
             } catch (e: Throwable) {
                 e.printStackTrace()
                 (e.message ?: e::class.java.name) + "; " + diagnostics()
@@ -85,17 +85,55 @@ internal object InputExercise {
     private fun diagnostics(): String = runCatching {
         val focus = focus()
         val before = pin
-        val posted = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.let { owner ->
-            val queue = Toolkit.getDefaultToolkit().systemEventQueue
-            val now = System.currentTimeMillis()
-            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_PRESSED, now, 0, KeyEvent.VK_7, '7'))
-            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_TYPED, now, 0, KeyEvent.VK_UNDEFINED, '7'))
-            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_RELEASED, now, 0, KeyEvent.VK_7, '7'))
-            Thread.sleep(1500)
-            if (pin != before) "reached the field" else "did not reach the field"
-        } ?: "no focus owner"
-        "events=${seen.toSortedMap()} $focus posted keys $posted"
+        val posted = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.let { postKeys(it, before) } ?: "no focus owner"
+        "events=${seen.toSortedMap()} $focus posted keys $posted; ${canvasFocus()}; components=${components()}; " +
+            "os=${System.getProperty("os.version")}; threads=${threads()}"
     }.getOrElse { "diagnostics failed: $it" }
+
+    /** Posts a typed '7' to [target] through the event queue, bypassing the platform's key handling. */
+    private fun postKeys(target: java.awt.Component, before: String): String {
+        val queue = Toolkit.getDefaultToolkit().systemEventQueue
+        val now = System.currentTimeMillis()
+        queue.postEvent(KeyEvent(target, KeyEvent.KEY_PRESSED, now, 0, KeyEvent.VK_7, '7'))
+        queue.postEvent(KeyEvent(target, KeyEvent.KEY_TYPED, now, 0, KeyEvent.VK_UNDEFINED, '7'))
+        queue.postEvent(KeyEvent(target, KeyEvent.KEY_RELEASED, now, 0, KeyEvent.VK_7, '7'))
+        Thread.sleep(1500)
+        return if (pin != before) "reached the field" else "did not reach the field"
+    }
+
+    /** Whether the Skia canvas takes the focus when asked, and whether keys posted to it reach the field then. */
+    private fun canvasFocus(): String {
+        var canvas: java.awt.Component? = null
+        SwingUtilities.invokeAndWait { canvas = window?.let { all(it) }?.firstOrNull { it.javaClass.name.startsWith("org.jetbrains.skiko.SkiaLayer$") } }
+        val c = canvas ?: return "no skia canvas"
+        var asked = false
+        SwingUtilities.invokeAndWait { asked = c.requestFocusInWindow() }
+        Thread.sleep(1000)
+        val owner = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.javaClass?.name
+        return "canvas ${c.javaClass.name} asked=$asked owner=$owner keys ${postKeys(c, pin)}"
+    }
+
+    private fun all(root: java.awt.Component): List<java.awt.Component> =
+        listOf(root) + ((root as? java.awt.Container)?.components?.flatMap { all(it) } ?: emptyList())
+
+    /** The window's components: class, heavyweight or not, focusable, showing, size. */
+    private fun components(): String {
+        var text = "?"
+        SwingUtilities.invokeAndWait {
+            text = window?.let { w ->
+                all(w).joinToString(" ") { c ->
+                    "${c.javaClass.name.substringAfterLast('.')}[${if (c.isLightweight) "lw" else "hw"}" +
+                        "${if (c.isFocusable) ",f" else ""}${if (c.isShowing) ",s" else ""},${c.width}x${c.height}]"
+                }
+            } ?: "no window"
+        }
+        return text
+    }
+
+    /** State and top frames of the AWT, Swing and Skiko threads, to see whether the toolkit thread still pumps. */
+    private fun threads(): String = Thread.getAllStackTraces().entries
+        .filter { (t, _) -> t.name.startsWith("AWT") || t.name.contains("skiko", true) || t.name.contains("Toolkit") }
+        .joinToString(" | ") { (t, stack) -> "${t.name} ${t.state}: " + stack.take(6).joinToString(" < ") }
 
     private fun run() {
         listen()
