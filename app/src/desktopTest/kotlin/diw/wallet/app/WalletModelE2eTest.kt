@@ -342,6 +342,62 @@ class WalletModelE2eTest {
     }
 
     /**
+     * The certificate screen with chains shown up to their roots: a document signer chain whose root no anchor holds
+     * (T3, under review), the same signer sent without its issuers, and a built-in passport CSCA. DIW_SCREENSHOTS
+     * names the output folder.
+     */
+    @Test
+    fun certificateChainScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        start()
+        val (m, _) = newWallet()
+        val gen = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }
+        fun cert(subject: String, issuer: String, key: java.security.KeyPair, signer: java.security.PrivateKey, ca: Boolean): org.multipaz.crypto.X509Cert {
+            val now = System.currentTimeMillis()
+            val b = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+                org.bouncycastle.asn1.x500.X500Name(issuer), java.math.BigInteger.valueOf(System.nanoTime()), java.util.Date(now - 86_400_000L),
+                java.util.Date(now + 3650L * 86_400_000L), org.bouncycastle.asn1.x500.X500Name(subject), key.public,
+            )
+                .addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, org.bouncycastle.asn1.x509.BasicConstraints(ca))
+                .addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier, false,
+                    org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils().createSubjectKeyIdentifier(key.public))
+            return org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(
+                b.build(org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA").build(signer)).encoded))
+        }
+        val rootKey = gen.generateKeyPair()
+        val midKey = gen.generateKeyPair()
+        val root = cert("CN=Example Government Root CA,O=Example Government,C=XX", "CN=Example Government Root CA,O=Example Government,C=XX", rootKey, rootKey.private, true)
+        val mid = cert("CN=Example Signing CA,O=Example Government,C=XX", "CN=Example Government Root CA,O=Example Government,C=XX", midKey, rootKey.private, true)
+        val leaf = cert("CN=Example Agency,O=Example Government,C=XX", "CN=Example Signing CA,O=Example Government,C=XX", gen.generateKeyPair(), midKey.private, false)
+        val tw = diw.wallet.core.trust.BuiltInCscas.validAt(kotlin.time.Clock.System.now()).first { it.country == "TW" }.certificate
+
+        fun shot(name: String, s: Screen, height: Int) {
+            m.screen.value = s
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f)) {
+                diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
+            }
+            try {
+                var image = scene.render(0)
+                for (i in 1..15) {
+                    Thread.sleep(150)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+        val role = diw.wallet.core.trust.TrustRole.DOCUMENT
+        shot("chain-01-unknown-root", Screen.Certificate(listOf(leaf, mid, root), 0, Screen.Home, role, focusRoot = true), 2600)
+        shot("chain-02-missing-issuer", Screen.Certificate(listOf(leaf), 0, Screen.Home, role), 1400)
+        shot("chain-03-csca", Screen.Certificate(listOf(tw), 0, Screen.Home, diw.wallet.core.trust.TrustRole.TRAVEL_DOCUMENT), 1900)
+        val path = m.trustPath(listOf(leaf, mid, root), role)
+        assertTrue(path.rootReached && path.decision?.labels?.contains(diw.wallet.core.trust.TrustLabel.UNKNOWN_ANCHOR) == true)
+    }
+
+    /**
      * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
      * The wallet holds a PID and an mDL from the test issuer and has presented once.
      */
