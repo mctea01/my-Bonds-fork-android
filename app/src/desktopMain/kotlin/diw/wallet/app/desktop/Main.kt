@@ -111,7 +111,7 @@ private fun exitAfter(seconds: Long) {
         val problem = uncaught
         val exercise = if (InputExercise.enabled) InputExercise.result ?: "did not finish" else "ok"
         println("timed exit: composed=$composed uncaught=${problem?.let { it::class.java.name + ": " + it.message }} input=$exercise")
-        exitProcess(if (problem != null) 1 else if (!composed) 2 else if (exercise != "ok") 3 else 0)
+        exitProcess(if (problem != null) 1 else if (!composed) 2 else if (!exercise.startsWith("ok")) 3 else 0)
     }, "timed-exit").apply { isDaemon = true; start() }
 }
 
@@ -150,9 +150,21 @@ private fun nativeJavaHome() {
     exe.absoluteFile.parentFile?.let { System.setProperty("java.home", it.path) }
 }
 
+/**
+ * Java2D's Direct3D pipeline (on by default on Windows) queues its drawing commands in a RenderBuffer that, since
+ * JDK 25, writes through memory-segment VarHandles; the native executable fails there, and as the queue is flushed
+ * on AWT's toolkit thread, which also runs the Windows message loop, keyboard and mouse input stop and a popup ends
+ * the app. Compose draws with Skia, so the native executable uses Java2D's GDI pipeline instead.
+ */
+private fun nativeGraphics() {
+    if (!SelfCheck.nativeImage || !System.getProperty("os.name").orEmpty().startsWith("Windows")) return
+    if (System.getProperty("sun.java2d.d3d") == null) System.setProperty("sun.java2d.d3d", "false")
+}
+
 @OptIn(ExperimentalComposeUiApi::class, FlowPreview::class)
 fun main(args: Array<String>) {
     nativeJavaHome()
+    nativeGraphics()
     if (args.firstOrNull() == "--self-check") exitProcess(SelfCheck.run(args.getOrNull(1)?.let(::File)))
     val dir = dataDir()
     ErrorLog.dir = dir

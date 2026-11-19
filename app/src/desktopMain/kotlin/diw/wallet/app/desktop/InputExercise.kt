@@ -3,6 +3,7 @@ package diw.wallet.app.desktop
 import androidx.compose.ui.geometry.Rect
 import java.awt.AWTEvent
 import java.awt.KeyboardFocusManager
+import java.awt.MouseInfo
 import java.awt.Robot
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -33,7 +34,7 @@ internal object InputExercise {
     @Volatile var confirm = ""
     @Volatile var mainScreen = false
 
-    /** Null while running (or not started); then "ok" or what failed. */
+    /** Null while running (or not started); then "ok" with where the focus was, or what failed. */
     @Volatile var result: String? = null
         private set
 
@@ -46,7 +47,7 @@ internal object InputExercise {
         Thread({
             result = try {
                 run()
-                "ok"
+                "ok (${focus()})"
             } catch (e: Throwable) {
                 e.printStackTrace()
                 (e.message ?: e::class.java.name) + "; " + diagnostics()
@@ -68,13 +69,21 @@ internal object InputExercise {
      * What AWT received, which component had the focus, and whether a key event posted straight to the event queue
      * (bypassing the platform's native key handling) reaches the field.
      */
-    private fun diagnostics(): String = runCatching {
-        var focus = "?"
-        SwingUtilities.invokeAndWait {
-            val kfm = KeyboardFocusManager.getCurrentKeyboardFocusManager()
-            focus = "owner=${kfm.focusOwner?.javaClass?.name} window=${kfm.activeWindow?.javaClass?.name} " +
-                "im=${kfm.focusOwner?.inputContext?.javaClass?.name}"
+    private fun focus(): String {
+        var text = "?"
+        runCatching {
+            SwingUtilities.invokeAndWait {
+                val kfm = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                text = "owner=${kfm.focusOwner?.javaClass?.name} window=${kfm.activeWindow?.javaClass?.name} " +
+                    "im=${kfm.focusOwner?.inputContext?.javaClass?.name} pointer=${MouseInfo.getPointerInfo()?.location} " +
+                    "d3d=${System.getProperty("sun.java2d.d3d")}"
+            }
         }
+        return text
+    }
+
+    private fun diagnostics(): String = runCatching {
+        val focus = focus()
         val before = pin
         val posted = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.let { owner ->
             val queue = Toolkit.getDefaultToolkit().systemEventQueue

@@ -60,6 +60,18 @@ public class NativeAwtJni {
                     .forEach(n -> classNames.add(n.substring(0, n.length() - 6).replace('/', '.')));
             }
         }
+        // Java2D's RenderBuffer (the Direct3D and OpenGL pipelines) writes through memory-segment VarHandles since
+        // JDK 25; their implementation classes are looked up reflectively, so all of them are registered whole.
+        TreeSet<String> whole = new TreeSet<>();
+        Path invoke = jrt.getPath("/modules/java.base/java/lang/invoke");
+        if (Files.isDirectory(invoke)) {
+            try (Stream<Path> files = Files.list(invoke)) {
+                files.map(p -> p.getFileName().toString())
+                    .filter(n -> n.startsWith("VarHandleSegmentAs") && n.endsWith(".class"))
+                    .forEach(n -> whole.add("java.lang.invoke." + n.substring(0, n.length() - 6)));
+            }
+        }
+        classNames.addAll(whole);
         // Classes of other modules (java.lang.String, the exceptions AWT throws) only when the libraries name them.
         for (String s : strings) {
             if (s.indexOf('/') > 0 && s.matches("[a-z][a-z0-9_]*(/[A-Za-z0-9_$]+)+")) classNames.add(s.replace('/', '.'));
@@ -74,24 +86,25 @@ public class NativeAwtJni {
             } catch (Throwable e) {
                 continue;
             }
-            boolean named = present(name.replace('.', '/'));
+            boolean all = whole.contains(name);
+            boolean named = all || present(name.replace('.', '/'));
             boolean matched = named || PACKAGES.stream().anyMatch(name::startsWith);
             if (!matched) continue;
             TreeSet<String> fields = new TreeSet<>();
             List<List<String>> methods = new ArrayList<>();
             try {
                 for (Field f : c.getDeclaredFields()) {
-                    if (present(f.getName()) && present(f.getType().descriptorString())) fields.add(f.getName());
+                    if (all || present(f.getName()) && present(f.getType().descriptorString())) fields.add(f.getName());
                 }
                 for (Method m : c.getDeclaredMethods()) {
                     if (m.isSynthetic() || m.isBridge() || Modifier.isNative(m.getModifiers())) continue;
                     String desc = MethodType.methodType(m.getReturnType(), m.getParameterTypes()).toMethodDescriptorString();
-                    if (present(m.getName()) && present(desc)) methods.add(signature(m.getName(), m.getParameterTypes()));
+                    if (all || present(m.getName()) && present(desc)) methods.add(signature(m.getName(), m.getParameterTypes()));
                 }
                 if (named && !Modifier.isAbstract(c.getModifiers())) {
                     for (Constructor<?> k : c.getDeclaredConstructors()) {
                         String desc = MethodType.methodType(void.class, k.getParameterTypes()).toMethodDescriptorString();
-                        if (present(desc)) methods.add(signature("<init>", k.getParameterTypes()));
+                        if (all || present(desc)) methods.add(signature("<init>", k.getParameterTypes()));
                     }
                 }
             } catch (Throwable e) {

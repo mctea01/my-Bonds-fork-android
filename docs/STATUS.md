@@ -43,7 +43,7 @@ P4 之後合併的工作：
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 電腦版版面與鍵盤操作（PR #146） | 可用：寬視窗改側邊導覽列、內容限寬置中、按鈕列自動換行、捲軸、視窗大小記憶；Esc／Alt+左鍵／滑鼠側鍵返回、Ctrl+1 至 5 切分頁、Ctrl+, 設定、PIN 欄 Enter | [guides/desktop-usage.md](guides/desktop-usage.md) |
-| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；中文輸入法未經實機驗證 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊，會讓 AWT 工具執行緒與 Windows 訊息迴圈出錯）；中文輸入法未經實機驗證 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
 ## 3. 功能狀態
 
