@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.oid4vp.AttestationVerdict
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -144,10 +145,15 @@ private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
                 model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity)
             }
         }
+        s.attestations.forEach { VerifierAttestationCard(it) }
+        s.declarationNote?.let { VerdictCard(Verdict.CAUTION, stringResource(Res.string.prox_declaration_unchecked), listOf(it)) }
         val statusOk = requestedDocuments(model, s.items, s.risk, s.trust.tier, s)
         val ok = riskAcknowledgement(s.trust)
+        val failed = s.attestations.filter { it.verdict == AttestationVerdict.INVALID }
+        val attestationsOk = failed.isEmpty() || riskOverride(s, stringResource(Res.string.flow_registration_continue), stringResource(Res.string.flow_registration_title),
+            failed.flatMap { it.problems }.distinct().take(5) + stringResource(Res.string.flow_registration_text))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk) { Text(stringResource(Res.string.flow_agree_share)) }
+            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk && attestationsOk) { Text(stringResource(Res.string.flow_agree_share)) }
             OutlinedButton(onClick = { model.proximity.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
         }
     }

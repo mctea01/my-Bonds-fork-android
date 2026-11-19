@@ -27,6 +27,7 @@ import diw.wallet.core.verifier.declaration.EvidenceVerifier
 import diw.wallet.core.verifier.declaration.JwsSigner
 import diw.wallet.core.verifier.declaration.MandateContent
 import diw.wallet.core.verifier.declaration.PartyId
+import diw.wallet.core.verifier.declaration.ProximityDeclaration
 import diw.wallet.core.verifier.declaration.VerifierAgent
 import diw.wallet.core.verifier.declaration.VerifierDeclaration
 import diw.wallet.core.verifier.declaration.VerifierDeclarationCheck
@@ -294,6 +295,54 @@ class VerifierDeclarationTest {
             signer.clientId, nonce, emptyList(), signer)
         val (_, b) = checked(s.holder, request(signer, nonce, listOf(VerifierDeclaration.entry(wrong))))
         assertTrue(b.identity!!.checks.any { it.status == CheckStatus.FAIL }, b.identity!!.checks.toString())
+    }
+
+    /**
+     * In person the declaration travels in requestInfo: signed by the reader authentication key, its client_id is the
+     * x509_hash of the reader certificate and its nonce is the hash of the SessionTranscript.
+     */
+    @Test
+    fun proximityDeclarationIsBoundToTheSession() = runBlocking<Unit> {
+        val s = setup()
+        val reader = organizationSigner(s.pki, party.name, "12345678")
+        val chain = X509CertChain(reader.certificateChain.map { X509Cert(kotlinx.io.bytestring.ByteString(it)) })
+        val signer = CertificateJwsSigner(reader)
+        val clientId = ProximityDeclaration.clientId(chain)
+        assertEquals(signer.clientId, clientId)
+        val transcript = "session-transcript".encodeToByteArray() + Crypto.createEcPrivateKey(EcCurve.P256).publicKey.toCoseKey().toDataItem().let { org.multipaz.cbor.Cbor.encode(it) }
+        val nonce = VerifierDeclaration.proximityNonce(transcript)
+        val vp = s.verifierWallet.holder.evidence(clientId, nonce, pidQuery)
+        val declaration = VerifierDeclaration.sign(
+            DeclarationContent(VerifierKind.FOR_LEGAL_PERSON, party, agent, purpose, declaredAge), clientId, nonce,
+            listOf(DeclarationEvidence.Presentation(DeclarationEvidence.ROLE_AGENT, pidQuery, vp)), signer,
+        )
+        val info = ProximityDeclaration.requestInfo(declaration)
+        val entries = ProximityDeclaration.entries(info)
+        assertEquals(listOf(VerifierDeclaration.FORMAT), entries.map { it.format })
+        val trust = s.holder.trust.decide(TrustRole.VERIFIER, chain.certificates)
+        val asked = ProximityDeclaration.dcql(listOf(DrivingLicense.MDL_DOCTYPE to mapOf(DrivingLicense.MDL_NAMESPACE to listOf("age_over_18"))))
+        val verifier = ProximityDeclaration.verifier(chain, trust, party.name)
+
+        val a = checker(s.holder).check(entries, verifier, nonce, asked).single()
+        val id = assertNotNull(a.identity)
+        assertTrue(id.bound, id.problems.toString())
+        assertTrue(id.evidence.single().passed, id.evidence.toString())
+        assertEquals(emptyList(), id.outsideDeclaration)
+        // The reader certificate names the party, so its chain speaks for it.
+        assertTrue(id.checks.any { it.status == CheckStatus.PASS && "Example Co" in it.detail }, id.checks.toString())
+
+        // Another session, or a request asking beyond the declaration.
+        val other = checker(s.holder).check(entries, verifier, VerifierDeclaration.proximityNonce(transcript + 1), asked).single()
+        assertEquals(AttestationVerdict.INVALID, other.verdict)
+        val wider = ProximityDeclaration.dcql(listOf(DrivingLicense.MDL_DOCTYPE to mapOf(DrivingLicense.MDL_NAMESPACE to listOf("age_over_18", "portrait"))))
+        val beyond = checker(s.holder).check(entries, verifier, nonce, wider).single()
+        assertEquals(1, beyond.identity?.outsideDeclaration?.size)
+
+        // Another reader key cannot reuse the declaration.
+        val stranger = organizationSigner(s.pki, party.name, "12345678")
+        val strangerChain = X509CertChain(stranger.certificateChain.map { X509Cert(kotlinx.io.bytestring.ByteString(it)) })
+        val stolen = checker(s.holder).check(entries, ProximityDeclaration.verifier(strangerChain, trust, party.name), nonce, asked).single()
+        assertFalse(stolen.identity!!.bound)
     }
 
     @Test

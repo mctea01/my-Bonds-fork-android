@@ -4818,4 +4818,19 @@
     <string name="keys_client_id">作為查驗方的 client_id</string>
     <string name="keys_show_chain">查看憑證鏈（%1$d 張）</string>
     <string name="settings_keys_summary">OpenPGP %1$d 把、查驗身分 %2$d 個</string>
+    <string name="reader_qr_connecting">正在以藍牙連線到掃描 QR Code 的皮夾...</string>
+    <string name="reader_qr_invalid">這不是近距離出示用的持卡人 QR Code（ISO/IEC 18013-5「mdoc:」）。</string>
+    <string name="reader_qr_no_ble">持卡人的 QR Code 沒有提供藍牙連線。</string>
+    <string name="reader_via_qr">藍牙（QR Code）</string>
+    <string name="reader_pgp_needs_ble">此身分需以 OpenPGP 卡簽署，持卡人手機貼在讀卡處時無法再感應卡片。請改用藍牙或掃描持卡人 QR Code。</string>
+    <string name="reader_x509_online_only">近距離查驗以此身分的錢包金鑰簽署，X.509 金鑰只用於線上查驗。</string>
+    <string name="reader_as_profile_text">請求會以此身分的金鑰簽署（讀取端驗證），並附上查驗方聲明與證明，持卡人的皮夾會在詢問同意前核對。</string>
+    <string name="reader_engage_qr">掃描持卡人的 QR Code</string>
+    <string name="reader_engage_qr_text">持卡人開啟近距離出示並顯示 QR Code，資料隨後經藍牙傳送。任一方手機沒有 NFC 時使用。</string>
+    <string name="reader_scan_qr">掃描 QR Code</string>
+    <string name="reader_as_profile">以「%1$s」身分請求，附讀取端驗證與查驗方聲明。</string>
+    <string name="prox_declaration_unsigned">讀取端送來查驗方聲明但沒有讀取端驗證，無法確認聲明屬於這個讀取端。</string>
+    <string name="prox_declaration_nfc">讀取端送來查驗方聲明，但以 NFC 傳輸資料時本皮夾無法將它與這次連線綁定。改用藍牙或 QR Code 即可核對。</string>
+    <string name="prox_declaration_failed">無法核對查驗方聲明：</string>
+    <string name="prox_declaration_unchecked">查驗方聲明未核對</string>
 </resources>

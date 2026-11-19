@@ -41,6 +41,14 @@ import diw.wallet.app.HomeTab
 import diw.wallet.app.NfcReaderOption
 import diw.wallet.app.ReadDocument
 import diw.wallet.app.ReaderRequest
+import diw.wallet.app.ReaderIdentity
+import diw.wallet.app.ReaderModel
+import diw.wallet.app.VerifierKeys
+import diw.wallet.app.tr
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import diw.wallet.app.ReaderUi
 import diw.wallet.app.Screen
 import diw.wallet.app.StatusTexts
@@ -86,11 +94,22 @@ fun ReaderScreen(model: WalletModel) {
 @Composable
 private fun SetupView(model: WalletModel) {
     val list by model.reader.readers.collectAsState()
+    val profiles by model.verifier.profiles.collectAsState()
     var request by remember { mutableStateOf(ReaderRequest.MDL_IDENTITY) }
     var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
     var chosen by remember { mutableStateOf<String?>(null) }
+    var profileId by remember { mutableStateOf<String?>(null) }
+    var purpose by remember { mutableStateOf("") }
+    var keys by remember(profileId) { mutableStateOf(VerifierKeys()) }
+    var qrProblem by remember { mutableStateOf<String?>(null) }
+    val profile = profiles.firstOrNull { it.id == profileId }
+    val identity = profile?.let { ReaderIdentity(it, purpose, keys) }
+    val ready = keys.complete(profile, proximity = true)
     val readers = list?.readers.orEmpty()
     val selected: NfcReaderOption? = readers.firstOrNull { it.name == chosen } ?: readers.firstOrNull()
+    val readQr = LocalQrReader.current
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(Unit) { model.verifier.load() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(
             Modifier.fillMaxWidth(),
@@ -116,6 +135,39 @@ private fun SetupView(model: WalletModel) {
         }
         SectionTitle(stringResource(Res.string.reader_purpose_risk))
         RiskSelector(risk) { risk = it }
+        ProfileChoice(model, profiles, profileId) { p ->
+            profileId = p?.id
+            if (p != null && purpose.isBlank()) purpose = p.purpose
+        }
+        if (profile != null) {
+            OutlinedTextField(
+                value = purpose,
+                onValueChange = { purpose = it.take(200) },
+                label = { Text(stringResource(Res.string.verify_purpose)) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(stringResource(Res.string.reader_as_profile_text), style = MaterialTheme.typography.bodySmall)
+            SessionKeys(model, profile, keys, proximity = true) { keys = it }
+        } else {
+            Text(stringResource(Res.string.reader_no_auth), style = MaterialTheme.typography.bodySmall)
+        }
+        SectionTitle(stringResource(Res.string.reader_engage_qr))
+        Text(stringResource(Res.string.reader_engage_qr_text), style = MaterialTheme.typography.bodySmall)
+        Button(
+            onClick = {
+                scope.launch {
+                    qrProblem = null
+                    val qr = readQr() ?: return@launch
+                    if (ReaderModel.engagementOf(qr) == null) qrProblem = tr(Res.string.reader_qr_invalid)
+                    else model.reader.startQr(qr, request, risk, identity)
+                }
+            },
+            enabled = ready,
+        ) {
+            Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(stringResource(Res.string.reader_scan_qr))
+        }
+        qrProblem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         SectionTitle(stringResource(Res.string.prox_reader_device))
         if (list == null) {
             CircularProgressIndicator(Modifier.size(24.dp))
@@ -139,11 +191,10 @@ private fun SetupView(model: WalletModel) {
             list?.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             TextButton(onClick = { model.reader.refreshReaders() }) { Text(stringResource(Res.string.reader_find_again)) }
         }
-        Button(onClick = { selected?.let { model.reader.start(it, request, risk) } }, enabled = selected != null) {
+        Button(onClick = { selected?.let { model.reader.start(it, request, risk, identity = identity) } }, enabled = selected != null && ready) {
             Icon(WalletIcons.Nfc, contentDescription = null, modifier = Modifier.size(18.dp))
             Text(stringResource(Res.string.reader_start))
         }
-        Text(stringResource(Res.string.reader_no_auth), style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -155,6 +206,7 @@ private fun ResultView(model: WalletModel, s: ReaderUi.Result) {
         }
         s.documents.forEach { d -> DocumentResult(model, d, s.risk) }
         Text(stringResource(Res.string.reader_summary, s.request.title, StatusTexts.risk(s.risk), s.transport), style = MaterialTheme.typography.bodySmall)
+        s.asProfile?.let { Text(stringResource(Res.string.reader_as_profile, it), style = MaterialTheme.typography.bodySmall) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { model.reader.again() }) { Text(stringResource(Res.string.reader_again)) }
             OutlinedButton(onClick = { model.reader.close(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_done)) }

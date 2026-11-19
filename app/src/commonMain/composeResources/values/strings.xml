@@ -4818,4 +4818,19 @@
     <string name="keys_client_id">client_id as a verifier</string>
     <string name="keys_show_chain">Show the certificate chain (%1$d)</string>
     <string name="settings_keys_summary">OpenPGP %1$d, verifier identities %2$d</string>
+    <string name="reader_qr_connecting">Connecting over Bluetooth to the wallet whose QR code was scanned...</string>
+    <string name="reader_qr_invalid">This is not a holder QR code for in-person presentation (ISO/IEC 18013-5 \"mdoc:\").</string>
+    <string name="reader_qr_no_ble">The holder's QR code offers no Bluetooth connection.</string>
+    <string name="reader_via_qr">Bluetooth (QR code)</string>
+    <string name="reader_pgp_needs_ble">This profile signs with an OpenPGP card, which cannot be tapped while the holder's phone is on the reader. Use Bluetooth or the holder's QR code.</string>
+    <string name="reader_x509_online_only">In person the request is signed with this profile's wallet key; the X.509 key signs online verification only.</string>
+    <string name="reader_as_profile_text">The request is signed with the profile's key (reader authentication) and carries its declaration and evidence, which the holder's wallet checks before asking.</string>
+    <string name="reader_engage_qr">Scan the holder's QR code</string>
+    <string name="reader_engage_qr_text">The holder opens in-person presentation and shows its QR code; the data then goes over Bluetooth. Use this when either phone has no NFC.</string>
+    <string name="reader_scan_qr">Scan QR code</string>
+    <string name="reader_as_profile">Requested as %1$s, with reader authentication and the verifier declaration.</string>
+    <string name="prox_declaration_unsigned">The reader sent a verifier declaration without reader authentication, so it cannot be bound to the reader.</string>
+    <string name="prox_declaration_nfc">The reader sent a verifier declaration, but over NFC data transfer this wallet cannot bind it to the session. Use Bluetooth or the QR code to have it checked.</string>
+    <string name="prox_declaration_failed">The verifier declaration could not be checked: </string>
+    <string name="prox_declaration_unchecked">Verifier declaration not checked</string>
 </resources>

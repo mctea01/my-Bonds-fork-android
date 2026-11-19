@@ -127,24 +127,10 @@ private fun OnlineSetup(model: WalletModel) {
                 Text(stringResource(Res.string.ov_text), style = MaterialTheme.typography.bodyMedium)
             }
         }
-        SectionTitle(stringResource(Res.string.ov_as_whom))
-        Row(Modifier.fillMaxWidth().clickable { profileId = null }, verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = profileId == null, onClick = { profileId = null })
-            Column {
-                Text(stringResource(Res.string.ov_anonymous), style = MaterialTheme.typography.bodyLarge)
-                Text(stringResource(Res.string.ov_anonymous_text), style = MaterialTheme.typography.bodySmall)
-            }
+        ProfileChoice(model, profiles, profileId) { p ->
+            profileId = p?.id
+            if (p != null && purpose.isBlank()) purpose = p.purpose
         }
-        profiles.forEach { p ->
-            Row(Modifier.fillMaxWidth().clickable { profileId = p.id; if (purpose.isBlank()) purpose = p.purpose }, verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = profileId == p.id, onClick = { profileId = p.id; if (purpose.isBlank()) purpose = p.purpose })
-                Column {
-                    Text(p.partyName, style = MaterialTheme.typography.bodyLarge)
-                    Text(profileLine(p), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        TextButton(onClick = { model.verifier.openProfiles() }) { Text(stringResource(Res.string.ov_manage_profiles)) }
         profile?.let { pr -> SessionKeys(model, pr, keys) { keys = it } }
         SectionTitle(stringResource(Res.string.reader_requested_data))
         asks.forEach { a ->
@@ -198,13 +184,41 @@ private fun OnlineSetup(model: WalletModel) {
     }
 }
 
-/** The keys [p] needs for this verification: its X.509 key and each OpenPGP card; PINs are kept for this run only. */
+/** Whom the request is made as: no one (anonymous) or one of the verifier profiles. */
 @Composable
-private fun SessionKeys(model: WalletModel, p: VerifierProfile, keys: VerifierKeys, onChange: (VerifierKeys) -> Unit) {
-    if (!p.usesX509 && p.openPgp.isEmpty()) return
+internal fun ProfileChoice(model: WalletModel, profiles: List<VerifierProfile>, chosen: String?, onChoose: (VerifierProfile?) -> Unit) {
+    SectionTitle(stringResource(Res.string.ov_as_whom))
+    Row(Modifier.fillMaxWidth().clickable { onChoose(null) }, verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = chosen == null, onClick = { onChoose(null) })
+        Column {
+            Text(stringResource(Res.string.ov_anonymous), style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(Res.string.ov_anonymous_text), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    profiles.forEach { p ->
+        Row(Modifier.fillMaxWidth().clickable { onChoose(p) }, verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(selected = chosen == p.id, onClick = { onChoose(p) })
+            Column {
+                Text(p.partyName, style = MaterialTheme.typography.bodyLarge)
+                Text(profileLine(p), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+    TextButton(onClick = { model.verifier.openProfiles() }) { Text(stringResource(Res.string.ov_manage_profiles)) }
+}
+
+/**
+ * The keys [p] needs for this verification: its X.509 key and each OpenPGP card; PINs are kept for this run only.
+ * In person ([proximity]) the request is signed with the profile's wallet key, so no X.509 key is asked for.
+ */
+@Composable
+internal fun SessionKeys(model: WalletModel, p: VerifierProfile, keys: VerifierKeys, proximity: Boolean = false, onChange: (VerifierKeys) -> Unit) {
+    val x509 = p.usesX509 && !proximity
+    if (proximity && p.usesX509) Text(stringResource(Res.string.reader_x509_online_only), style = MaterialTheme.typography.bodySmall)
+    if (!x509 && p.openPgp.isEmpty()) return
     SectionTitle(stringResource(Res.string.ov_keys))
     Text(stringResource(Res.string.ov_keys_text), style = MaterialTheme.typography.bodySmall)
-    if (p.usesX509) {
+    if (x509) {
         Text(stringResource(Res.string.ov_x509_key), style = MaterialTheme.typography.titleSmall)
         p.x509Certificate?.let { Text(stringResource(Res.string.vp_x509_last, certificateName(it)), style = MaterialTheme.typography.bodySmall) }
         SignerPicker(model) { onChange(keys.copy(x509 = it)) }

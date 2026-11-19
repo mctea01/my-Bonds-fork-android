@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -89,9 +90,13 @@ class WalletModelE2eTest {
         val zkPassport: diw.wallet.core.zkpassport.ZkPassportVerifier? = null,
         /** Replaces the zkPassport holder, so answers can be driven without a prover or the bridge. */
         val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder? = null,
+        /** Bluetooth is available (the test replaces the transports with [LoopbackBle]). */
+        val bluetooth: Boolean = false,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
+        override suspend fun proximityTransportUnavailableReason(): String? =
+            if (bluetooth) null else super.proximityTransportUnavailableReason()
         override val refreshTrustListsInBackground = false
         override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
         override suspend fun openStorage() = storage
@@ -147,8 +152,8 @@ class WalletModelE2eTest {
         }
     }
 
-    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false): Pair<WalletModel, TestPlatform> {
-        val p = TestPlatform(storage, platformName = platformName, noLan = noLan)
+    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false, bluetooth: Boolean = false): Pair<WalletModel, TestPlatform> {
+        val p = TestPlatform(storage, platformName = platformName, noLan = noLan, bluetooth = bluetooth)
         val m = WalletModel(p)
         p.model = m
         // Answers every App PIN request like a user would.
@@ -818,6 +823,60 @@ class WalletModelE2eTest {
         assertTrue(verifier.back())
         assertEquals(HomeTab.VERIFY, verifier.tab.value)
         return result
+    }
+
+    /**
+     * Two wallets in person without NFC: the verifier scans the holder's QR code and reads over Bluetooth as a
+     * verifier profile, so the request carries reader authentication and the declaration with the verifier's own
+     * driving licence as evidence; the holder checks the declaration against the session before asking.
+     */
+    @Test
+    fun qrBluetoothReadAsVerifierProfile() = runBlocking<Unit> {
+        start()
+        val ble = LoopbackBle()
+        val (holder, _) = newWallet(bluetooth = true)
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = ble
+        val (verifier, _) = newWallet(bluetooth = true)
+        assertIs<IssuanceResult.Issued>(issue(verifier, offer(listOf("mdl_mdoc")), null).single())
+        verifier.refreshDocuments().join()
+        verifier.reader.transportFactory = ble
+        val ownLicence = verifier.documents.value.single().identifier
+        val profile = VerifierProfile(id = "counter", partyName = "Che-Chuan Lin", purpose = "Identity check at the counter", partyEvidence = listOf(ownLicence))
+        verifier.verifier.save(profile).join()
+        try {
+            holder.proximity.open()
+            holder.proximity.showQr()
+            val qr = withTimeout(10.seconds) { holder.proximity.state.first { (it as? ProximityUi.Ready)?.qr != null || it is ProximityUi.Failed } }
+            val code = assertNotNull((qr as? ProximityUi.Ready)?.qr, "holder: $qr")
+            assertNotNull(ReaderModel.engagementOf(code))
+
+            verifier.reader.open()
+            verifier.reader.startQr(code, ReaderRequest.MDL_IDENTITY, diw.wallet.core.status.RiskLevel.MEDIUM, ReaderIdentity(profile, "Identity check at the counter"))
+            val consent = withTimeoutOrNull(60.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+            assertIs<ProximityUi.Consent>(consent, "consent: ${holder.proximity.state.value}; reader: ${verifier.reader.state.value}")
+            assertEquals(ProximityChannel.QR, consent.channel)
+            assertEquals("Che-Chuan Lin", consent.chain.single().subject.components[org.multipaz.asn1.OID.COMMON_NAME.oid]?.value)
+            assertNull(consent.declarationNote)
+            val declared = consent.attestations.single()
+            val id = assertNotNull(declared.identity, declared.problems.toString())
+            assertTrue(id.bound, id.problems.toString())
+            assertEquals("Che-Chuan Lin", declared.name)
+            assertEquals(listOf("Identity check at the counter"), declared.purposes)
+            assertTrue(id.evidence.single().passed, id.evidence.toString())
+            assertEquals(emptyList(), id.outsideDeclaration)
+            holder.proximity.approve(consent)
+
+            val result = withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } }
+            assertIs<ReaderUi.Result>(result, "result: $result")
+            assertNull(result.integrityError)
+            assertEquals("Che-Chuan Lin", result.asProfile)
+            assertEquals("行動駕照", result.documents.single().title)
+            withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+        } finally {
+            verifier.reader.close(); holder.proximity.close()
+        }
     }
 
     @Test

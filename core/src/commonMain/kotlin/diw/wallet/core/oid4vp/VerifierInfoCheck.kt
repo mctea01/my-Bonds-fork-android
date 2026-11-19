@@ -87,23 +87,37 @@ class VerifierInfoChecker(
     /** Checks DIW verifier declarations; null leaves them unsupported (shown as such). */
     private val declarations: VerifierDeclarationCheck? = null,
 ) {
-    suspend fun check(request: ValidatedAuthorizationRequest, now: Instant = Clock.System.now()): List<VerifierAttestation> {
+    suspend fun check(request: ValidatedAuthorizationRequest, now: Instant = Clock.System.now()): List<VerifierAttestation> =
+        check(request.verifierInfo, request.verifier, request.nonce, request.dcqlQuery, now)
+
+    /**
+     * Checks [entries] sent by [verifier] for a request with [nonce] asking for [dcql] (empty when it is not a DCQL
+     * query). An ISO/IEC 18013-5 session passes its reader certificate as [verifier], the declaration nonce of its
+     * SessionTranscript and its ItemsRequests written as a DCQL query.
+     */
+    suspend fun check(
+        entries: List<VerifierInfoEntry>,
+        verifier: VerifierIdentityInfo,
+        nonce: String,
+        dcql: JsonObject,
+        now: Instant = Clock.System.now(),
+    ): List<VerifierAttestation> {
         // Registration certificates first: a declaration is compared with the subject of a valid one.
-        val others = request.verifierInfo.filter { it.format != VerifierDeclaration.FORMAT }.map { e ->
-            runCatching { check(e, request, now) }.getOrElse { ex ->
+        val others = entries.filter { it.format != VerifierDeclaration.FORMAT }.map { e ->
+            runCatching { check(e, verifier, dcql, now) }.getOrElse { ex ->
                 VerifierAttestation(e.format, null, AttestationVerdict.INVALID, credentialIds = e.credentialIds,
                     problems = listOf(ct("core_vi_unreadable") + (ex.message ?: ex::class.simpleName)))
             }
         }
         val registration = others.firstOrNull { it.type == RC_TYP && it.verdict != AttestationVerdict.INVALID && it.boundToVerifier == true }
-        val binding = DeclarationBinding(request.verifier.effectiveClientId, request.nonce, request.verifier.certificateChain, request.verifier.did, request.verifier.trust)
-        val declared = request.verifierInfo.filter { it.format == VerifierDeclaration.FORMAT }.map { e ->
-            declaration(e, binding, request.dcqlQuery.takeIf { it.isNotEmpty() }, registration, declarations, now)
+        val binding = DeclarationBinding(verifier.effectiveClientId, nonce, verifier.certificateChain, verifier.did, verifier.trust)
+        val declared = entries.filter { it.format == VerifierDeclaration.FORMAT }.map { e ->
+            declaration(e, binding, dcql.takeIf { it.isNotEmpty() }, registration, declarations, now)
         }
         return others + declared
     }
 
-    private suspend fun check(e: VerifierInfoEntry, request: ValidatedAuthorizationRequest, now: Instant): VerifierAttestation {
+    private suspend fun check(e: VerifierInfoEntry, verifier: VerifierIdentityInfo, dcql: JsonObject, now: Instant): VerifierAttestation {
         val compact = (e.data as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
         if (compact == null || compact.count { it == '.' } != 2) {
             return VerifierAttestation(e.format, null, AttestationVerdict.UNSUPPORTED, credentialIds = e.credentialIds,
@@ -159,7 +173,7 @@ class VerifierInfoChecker(
 
         // Binding to the verifier that sent the request.
         val subject = claims.str("sub")
-        val bound = bound(subject, request.verifier)
+        val bound = bound(subject, verifier)
         when (bound) {
             false -> problems.add(ct("core_vi_not_this_verifier", subject ?: ct("core_unstated")))
             null -> notes.add(ct("core_vi_not_comparable", subject ?: ct("core_unstated")))
@@ -168,7 +182,7 @@ class VerifierInfoChecker(
 
         // Registered credentials and claims.
         val registered = (claims["credentials"] as? JsonArray)?.mapNotNull { it as? JsonObject }
-        val outside = if (registered != null && request.dcqlQuery.isNotEmpty()) outside(request.dcqlQuery, registered) else null
+        val outside = if (registered != null && dcql.isNotEmpty()) outside(dcql, registered) else null
         if (!outside.isNullOrEmpty()) {
             problems.add(ct("core_vi_outside") + outside.take(6).joinToString(ct("core_sep_list")) + if (outside.size > 6) ct("core_vi_outside_more", outside.size) else "")
         }

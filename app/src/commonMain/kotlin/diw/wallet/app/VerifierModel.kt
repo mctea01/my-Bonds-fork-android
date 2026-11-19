@@ -28,6 +28,13 @@ import org.multipaz.util.toBase64
 import diw.wallet.core.verifier.declaration.EvidenceQueries
 import diw.wallet.core.verifier.declaration.MandateContent
 import diw.wallet.core.verifier.declaration.PartyId
+import diw.wallet.core.verifier.declaration.ProximityDeclaration
+import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.SignerKeyType
+import org.multipaz.cbor.DataItem
+import org.multipaz.crypto.AsymmetricKey
+import org.multipaz.crypto.X509Cert
+import org.multipaz.crypto.X509CertChain
 import diw.wallet.core.verifier.declaration.VerifierAgent
 import diw.wallet.core.verifier.declaration.VerifierDeclaration
 import diw.wallet.core.verifier.declaration.VerifierKind
@@ -40,6 +47,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.decodeToString
@@ -126,7 +134,8 @@ data class VerifierProfile(
 /** The keys the user unlocked for one verification: the X.509 key and the OpenPGP cards by primary fingerprint. */
 data class VerifierKeys(val x509: SignerChoice? = null, val openPgp: Map<String, SignerChoice.OpenPgp> = emptyMap()) {
     /** Whether every key [p] needs was given. */
-    fun complete(p: VerifierProfile?): Boolean = p == null || (!p.usesX509 || x509 != null) && p.openPgp.all { it.fingerprint in openPgp }
+    fun complete(p: VerifierProfile?, proximity: Boolean = false): Boolean =
+        p == null || (proximity || !p.usesX509 || x509 != null) && p.openPgp.all { it.fingerprint in openPgp }
 }
 
 /** What the online verification asks for: one credential query. */
@@ -135,18 +144,7 @@ data class OnlineAsk(val id: String, val title: String, val query: JsonObject) {
 
     companion object {
         /** The in-person presets as mdoc queries, and the EU PID as an SD-JWT VC. */
-        fun all(): List<OnlineAsk> = ReaderRequest.entries.map { r ->
-            OnlineAsk(r.name, r.title, buildJsonObject {
-                put("id", "q0")
-                put("format", "mso_mdoc")
-                put("meta", buildJsonObject { put("doctype_value", r.docType) })
-                putJsonArray("claims") {
-                    (mapOf(r.namespace to r.elements) + r.more).forEach { (ns, elements) ->
-                        elements.forEach { e -> add(buildJsonObject { put("path", buildJsonArray { add(ns); add(e) }) }) }
-                    }
-                }
-            })
-        } + OnlineAsk("PID_SD_JWT", tr(Res.string.ov_ask_pid_sdjwt), buildJsonObject {
+        fun all(): List<OnlineAsk> = ReaderRequest.entries.map { r -> OnlineAsk(r.name, r.title, r.query) } + OnlineAsk("PID_SD_JWT", tr(Res.string.ov_ask_pid_sdjwt), buildJsonObject {
             put("id", "q0")
             put("format", "dc+sd-jwt")
             put("meta", buildJsonObject { putJsonArray("vct_values") { add("urn:eudi:pid:1") } })
@@ -294,7 +292,7 @@ class VerifierModel(private val model: WalletModel) {
      */
     suspend fun issueMandate(
         p: VerifierProfile, agentName: String, agentRole: String?, agentClientId: String, purposes: List<String>, days: Int, keys: VerifierKeys,
-    ): String {
+    ): String = withContext(model.unlockProvider) {
         val s = signer(p, keys)
         val now = Clock.System.now()
         val content = MandateContent(
@@ -306,7 +304,7 @@ class VerifierModel(private val model: WalletModel) {
             notBefore = now,
             expiresAt = now + days.coerceIn(1, 366).days,
         )
-        return VerifierMandate.sign(content, s, s.clientId, now)
+        VerifierMandate.sign(content, s, s.clientId, now)
     }
 
     fun openOnline() {
@@ -335,7 +333,7 @@ class VerifierModel(private val model: WalletModel) {
     fun start(ask: OnlineAsk, profile: VerifierProfile?, purpose: String, risk: RiskLevel, policy: VerificationPolicy, route: OnlineRoute, keys: VerifierKeys) {
         stop()
         online.value = OnlineVerifyUi.Working(tr(Res.string.ov_preparing))
-        job = model.scope.launch {
+        job = model.scope.launch(model.unlockProvider) {
             try {
                 if (profile?.usesX509 == true) online.value = OnlineVerifyUi.Working(tr(Res.string.ov_reading_x509))
                 val signer = signer(profile, keys)
@@ -367,7 +365,52 @@ class VerifierModel(private val model: WalletModel) {
     private suspend fun declaration(
         p: VerifierProfile, purpose: String, ask: OnlineAsk, clientId: String, nonce: String, signer: JwsSigner, keys: VerifierKeys,
     ): List<JsonObject> {
-        online.value = OnlineVerifyUi.Working(tr(Res.string.ov_evidence))
+        val declared = VerifierDeclaration.entry(declarationJws(p, purpose, ask.query, clientId, nonce, signer, keys) { online.value = OnlineVerifyUi.Working(it) })
+        val registration = registrationOf(p)?.let { buildJsonObject { put("format", "jwt"); put("data", it) } }
+        return listOfNotNull(registration, declared)
+    }
+
+    private fun registrationOf(p: VerifierProfile): String? = p.registration?.trim()?.takeIf { it.count { c -> c == '.' } == 2 }
+
+    /** Reader certificates made in this run, by profile id. */
+    private val readerCertificates = HashMap<String, X509CertChain>()
+
+    /**
+     * The ISO/IEC 18013-5 reader authentication key of [p]: the profile's did:key key with a certificate it issues
+     * itself, naming the agent of a representative and the party otherwise. A holder judges it T3 at most; the
+     * declaration's evidence says who it is. An X.509 profile uses this key too in person.
+     */
+    suspend fun readerKey(p: VerifierProfile): AsymmetricKey.X509CertifiedSecureAreaBased {
+        val k = key(p.id)
+        val chain = readerCertificates[p.id] ?: run {
+            val subject = (p.agent()?.name ?: p.partyName).trim().ifEmpty { tr(Res.string.wallet_user) }
+            val der = DocumentSigning.selfIssuedCertificate(FilesModel.spki(k.publicKey), subject,
+                { data -> k.signingKey("ES256").sign(data).toDerEncoded() }, SignerKeyType.EC_P256, 365)
+            X509CertChain(listOf(X509Cert(ByteString(der)))).also { readerCertificates[p.id] = it }
+        }
+        return AsymmetricKey.X509CertifiedSecureAreaBased(certChain = chain, secureArea = k.secureArea, keyInfo = k.keyInfo, algorithm = k.signingKey("ES256").algorithm)
+    }
+
+    /**
+     * The requestInfo of an in-person request as [p] asking for [query]: the declaration signed by [key], with the
+     * client_id x509_hash of its certificate and the nonce of [encodedTranscript], and the registration certificate.
+     */
+    suspend fun proximityRequestInfo(
+        p: VerifierProfile, purpose: String, query: JsonObject, key: AsymmetricKey.X509CertifiedSecureAreaBased,
+        encodedTranscript: ByteArray, keys: VerifierKeys, progress: (String) -> Unit,
+    ): Map<String, DataItem> {
+        val clientId = ProximityDeclaration.clientId(key.certChain)
+        val nonce = VerifierDeclaration.proximityNonce(encodedTranscript)
+        val jws = declarationJws(p, purpose, query, clientId, nonce, didSigner(p.id), keys, progress)
+        return ProximityDeclaration.requestInfo(jws, registrationOf(p))
+    }
+
+    /** The declaration of [p] for [query], bound to [clientId] and [nonce], with its evidence presented afresh. */
+    private suspend fun declarationJws(
+        p: VerifierProfile, purpose: String, query: JsonObject, clientId: String, nonce: String, signer: JwsSigner, keys: VerifierKeys,
+        progress: (String) -> Unit,
+    ): String {
+        progress(tr(Res.string.ov_evidence))
         val holder = model.holder()
         val evidence = ArrayList<DeclarationEvidence>()
         for ((role, ids) in listOf(DeclarationEvidence.ROLE_PARTY to p.partyEvidence, DeclarationEvidence.ROLE_AGENT to p.agentEvidence)) {
@@ -380,7 +423,7 @@ class VerifierModel(private val model: WalletModel) {
             }
         }
         p.mandates.forEach { evidence += DeclarationEvidence.Mandate(it) }
-        p.openPgp.forEach { proof -> evidence += openPgpEvidence(proof, keys, clientId, nonce) }
+        p.openPgp.forEach { proof -> evidence += openPgpEvidence(proof, keys, clientId, nonce, progress) }
         val content = DeclarationContent(
             kind = p.verifierKind,
             party = p.party(),
@@ -392,17 +435,17 @@ class VerifierModel(private val model: WalletModel) {
                 retention = p.retention,
                 privacyPolicy = p.privacyPolicy?.trim()?.takeIf { it.isNotEmpty() },
             ),
-            credentials = buildJsonArray { add(ask.query) },
+            credentials = buildJsonArray { add(query) },
         )
-        val declared = VerifierDeclaration.entry(VerifierDeclaration.sign(content, clientId, nonce, evidence, signer))
-        val registration = p.registration?.trim()?.takeIf { it.count { c -> c == '.' } == 2 }?.let { buildJsonObject { put("format", "jwt"); put("data", it) } }
-        return listOfNotNull(registration, declared)
+        return VerifierDeclaration.sign(content, clientId, nonce, evidence, signer)
     }
 
     /** The holder's OpenPGP card signs this request's client_id and nonce; the card must hold [proof]'s key. */
-    private suspend fun openPgpEvidence(proof: OpenPgpProof, keys: VerifierKeys, clientId: String, nonce: String): DeclarationEvidence.OpenPgp {
+    private suspend fun openPgpEvidence(
+        proof: OpenPgpProof, keys: VerifierKeys, clientId: String, nonce: String, progress: (String) -> Unit,
+    ): DeclarationEvidence.OpenPgp {
         val choice = keys.openPgp[proof.fingerprint] ?: throw ProtocolException("no_key", tr(Res.string.ov_pgp_needed, proof.name))
-        online.value = OnlineVerifyUi.Working(tr(Res.string.ov_pgp_signing, proof.name))
+        progress(tr(Res.string.ov_pgp_signing, proof.name))
         try {
             val card = model.files.openPgpSigner(choice, x509 = false)
             val fpr = card.signatureKey.fingerprint?.let { DocCryptoUtil.hex(it).uppercase() }
