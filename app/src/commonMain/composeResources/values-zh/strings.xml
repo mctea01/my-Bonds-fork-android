@@ -2219,7 +2219,7 @@
     <string name="lan_screen_btwvp">對方畫面：BTWVP1 輪播 QR Code</string>
     <string name="lan_screen_diwq">對方畫面：DIWQ1 動態 QR Code（噴泉碼），Bonds 為 BTWVP1 輪播</string>
     <string name="lan_transport_age">區網傳輸：HTTP，證明包只含零知識證明與發卡者，不含出生日期</string>
-    <string name="lan_transport_encrypted">區網傳輸：HTTP，出示內容另以這次挑戰的一次性金鑰加密（ECDH-ES P-256，A256GCM），其他裝置無法讀取</string>
+    <string name="lan_transport_encrypted">傳輸加密：經區網或藍牙送來的出示內容以這次挑戰的一次性金鑰加密（ECDH-ES P-256，A256GCM）。原版 Bonds App 不認得此金鑰，它的藍牙傳送未加密</string>
     <string name="legal_accept_enable">同意並啟用</string>
     <string name="legal_accepted_line">版本 %1$s・%2$s 同意</string>
     <string name="legal_agree_continue">同意並繼續</string>
@@ -4833,4 +4833,9 @@
     <string name="prox_declaration_nfc">讀取端送來查驗方聲明，但以 NFC 傳輸資料時本皮夾無法將它與這次連線綁定。改用藍牙或 QR Code 即可核對。</string>
     <string name="prox_declaration_failed">無法核對查驗方聲明：</string>
     <string name="prox_declaration_unchecked">查驗方聲明未核對</string>
+    <string name="tw_ble_sealed">已用查驗方的一次性金鑰加密（ECDH-ES，A256GCM）</string>
+    <string name="tw_ble_plain">未加密：查驗方沒有提供金鑰（原版 Bonds App）</string>
+    <string name="tw_ble_sealed_in">經藍牙收到，已用這次挑戰的一次性金鑰加密。</string>
+    <string name="tw_ble_plain_in">經藍牙收到，未加密（持卡人的 App 不使用挑戰金鑰，例如原版 Bonds App）。</string>
+    <string name="tw_lan_sealed_in">經區網收到，已用這次挑戰的一次性金鑰加密。</string>
 </resources>

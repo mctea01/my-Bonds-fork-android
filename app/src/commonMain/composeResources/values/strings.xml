@@ -2219,7 +2219,7 @@
     <string name="lan_screen_btwvp">Other screen: BTWVP1 carousel QR code</string>
     <string name="lan_screen_diwq">Other screen: DIWQ1 dynamic QR code (fountain code); Bonds uses the BTWVP1 carousel</string>
     <string name="lan_transport_age">Local network transport: HTTP; the proof package holds only the zero-knowledge proof and the card issuer, not the date of birth</string>
-    <string name="lan_transport_encrypted">Local network transport: HTTP; the presentation is also encrypted with this challenge's one-time key (ECDH-ES P-256, A256GCM), so other devices cannot read it</string>
+    <string name="lan_transport_encrypted">Transport encryption: a presentation sent over the local network or Bluetooth is encrypted with this challenge's one-time key (ECDH-ES P-256, A256GCM). The Bonds App does not know this key, so its Bluetooth transfer is not encrypted</string>
     <string name="legal_accept_enable">Accept and enable</string>
     <string name="legal_accepted_line">Version %1$s · accepted %2$s</string>
     <string name="legal_agree_continue">Accept and continue</string>
@@ -4833,4 +4833,9 @@
     <string name="prox_declaration_nfc">The reader sent a verifier declaration, but over NFC data transfer this wallet cannot bind it to the session. Use Bluetooth or the QR code to have it checked.</string>
     <string name="prox_declaration_failed">The verifier declaration could not be checked: </string>
     <string name="prox_declaration_unchecked">Verifier declaration not checked</string>
+    <string name="tw_ble_sealed">encrypted with the verifier's one-time key (ECDH-ES, A256GCM)</string>
+    <string name="tw_ble_plain">not encrypted: the verifier offers no key (Bonds App)</string>
+    <string name="tw_ble_sealed_in">Received over Bluetooth, encrypted with this challenge's one-time key.</string>
+    <string name="tw_ble_plain_in">Received over Bluetooth, not encrypted (the holder's app does not use the challenge key, as the Bonds App).</string>
+    <string name="tw_lan_sealed_in">Received over the local network, encrypted with this challenge's one-time key.</string>
 </resources>

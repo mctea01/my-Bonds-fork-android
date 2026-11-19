@@ -1,5 +1,6 @@
 package diw.wallet.app
 
+import org.multipaz.crypto.EcPrivateKey
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import androidx.compose.ui.graphics.ImageBitmap
@@ -379,6 +380,8 @@ sealed class OfflineUi {
         /** The presented card's status, queried online when the phone has a connection. */
         val status: CredentialStatus? = null,
         val statusDecision: StatusDecision? = null,
+        /** How the presentation arrived and whether it was sealed; null when it was scanned from the screen. */
+        val delivery: String? = null,
     ) : OfflineUi()
 }
 
@@ -407,6 +410,8 @@ class TaiwanModel(private val model: WalletModel) {
     private var linkJob: Job? = null
     private var lanJob: Job? = null
     private var verifierLinkJob: Job? = null
+    /** The one-time key of the challenge on screen; presentations over the network and Bluetooth are sealed to it. */
+    private var verifierKey: EcPrivateKey? = null
     private var verifierLanJob: Job? = null
     val age = BondsAgeFlow(model, offline)
     val ageVerifier = BondsAgeVerifierFlow(model, offline)
@@ -733,8 +738,11 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 link.unavailableReason()?.let { update(tr(Res.string.tw_ble_unavailable, it), showQr = true); return@launch }
                 update(tr(Res.string.tw_ble_waiting), showQr = false)
-                val ok = link.send(uuid, state.presentationJws) { update(it) }
-                update(if (ok) tr(Res.string.tw_verifier_received) else tr(Res.string.tw_ble_incomplete), showQr = !ok)
+                // Sealed to the verifier's one-time key when it is this wallet; the Bonds App sends no key.
+                val (payload, sealed) = BondsLanPresentation.linkPayload(state.presentationJws, state.request)
+                val how = tr(if (sealed) Res.string.tw_ble_sealed else Res.string.tw_ble_plain)
+                val ok = link.send(uuid, payload) { update(it + tr(Res.string.sep_semicolon) + how) }
+                update((if (ok) tr(Res.string.tw_verifier_received) else tr(Res.string.tw_ble_incomplete)) + tr(Res.string.sep_semicolon) + how, showQr = !ok)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -774,23 +782,27 @@ class TaiwanModel(private val model: WalletModel) {
      * card whose status cannot be confirmed (offline, unreadable list) or whose issuer is not listed is accepted.
      */
     fun startVerifier(purpose: String, risk: RiskLevel = verifierRisk, source: BondsCredentialSource = verifierSource) {
-        try {
-            stopVerifierTransports()
-            val plain = BondsPresentationRequest.generate(purpose, source, qr = true)
-            verifierSource = source
-            verifierRisk = risk
-            model.screen.value = Screen.Offline
-            model.platform.keepScreenOn(true)
-            val lan = model.platform.bondsLan
-            val interfaces = lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
-            if (lan == null || interfaces.isEmpty()) {
-                showChallenge(plain, lan?.let { tr(Res.string.tw_lan_no_network) })
-                return
+        stopVerifierTransports()
+        verifierSource = source
+        verifierRisk = risk
+        model.screen.value = Screen.Offline
+        model.platform.keepScreenOn(true)
+        offline.value = OfflineUi.Working(tr(Res.string.tw_preparing_challenge))
+        verifierLanJob = model.scope.launch {
+            try {
+                // One key per challenge: it seals the presentation over the local network and Bluetooth.
+                val key = BondsLanPresentation.newKey()
+                verifierKey = key
+                val plain = BondsPresentationRequest.generate(purpose, source, qr = true, lanKey = BondsLanPresentation.keyText(key.publicKey))
+                val lan = model.platform.bondsLan
+                val interfaces = lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
+                if (lan == null || interfaces.isEmpty()) showChallenge(plain, lan?.let { tr(Res.string.tw_lan_no_network) })
+                else listenOnLan(lan, interfaces, purpose, source, plain, key)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                model.message.value = model.describe(e)
             }
-            offline.value = OfflineUi.Working(tr(Res.string.tw_preparing_challenge))
-            listenOnLan(lan, interfaces, purpose, source, plain)
-        } catch (e: Exception) {
-            model.message.value = model.describe(e)
         }
     }
 
@@ -807,14 +819,15 @@ class TaiwanModel(private val model: WalletModel) {
      * device on the network) is refused without ending the check. Without a listening socket the challenge is
      * shown without an address ([fallback]).
      */
-    private fun listenOnLan(lan: BondsLanLink, interfaces: List<LanInterface>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest) {
+    private fun listenOnLan(
+        lan: BondsLanLink, interfaces: List<LanInterface>, purpose: String, source: BondsCredentialSource, fallback: BondsPresentationRequest, key: EcPrivateKey,
+    ) {
         val addresses = interfaces.map { it.address }
         verifierLanJob = model.scope.launch {
             var request: BondsPresentationRequest? = null
             var presentation: String? = null
             fun active(r: BondsPresentationRequest) = (offline.value as? OfflineUi.VerifierChallenge)?.request == r
             try {
-                val key = BondsLanPresentation.newKey()
                 withTimeoutOrNull(LAN_LISTEN) {
                     lan.serve(addresses, "/vp/" + PlatformCrypto.randomBytes(16).toBase64Url(), BondsLanPresentation.MAX_BODY, onListening = { urls ->
                         val r = BondsPresentationRequest.generate(
@@ -840,7 +853,7 @@ class TaiwanModel(private val model: WalletModel) {
                 }
                 val r = request ?: return@launch
                 val jws = presentation
-                if (jws != null && active(r)) verify(r, jws)
+                if (jws != null && active(r)) verify(r, jws, tr(Res.string.tw_lan_sealed_in))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -882,10 +895,12 @@ class TaiwanModel(private val model: WalletModel) {
             try {
                 central.unavailableReason()?.let { update(tr(Res.string.tw_ble_unavailable_scan, it)); return@launch }
                 update(tr(Res.string.tw_ble_also))
-                val jws = central.receive(uuid, BondsLinkTransport.MAX_PAYLOAD, ::update, null).decodeToString()
+                val payload = central.receive(uuid, BondsLinkTransport.MAX_PAYLOAD, ::update, null)
                 if ((offline.value as? OfflineUi.VerifierChallenge)?.request == request) {
+                    // This wallet seals it to the challenge's key; the Bonds App sends the JWS in clear text.
+                    val (jws, sealed) = BondsLanPresentation.fromLink(payload, verifierKey, request)
                     verifierCollector = null
-                    verify(request, jws)
+                    verify(request, jws, tr(if (sealed) Res.string.tw_ble_sealed_in else Res.string.tw_ble_plain_in))
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -919,7 +934,7 @@ class TaiwanModel(private val model: WalletModel) {
         }
     }
 
-    private fun verify(request: BondsPresentationRequest, jws: String) {
+    private fun verify(request: BondsPresentationRequest, jws: String, delivery: String? = null) {
         // Whichever transport delivered first wins; the others stop (this may be called from one of their jobs).
         stopVerifierTransports()
         offline.value = OfflineUi.Working(tr(Res.string.tw_verifying_presentation))
@@ -946,10 +961,10 @@ class TaiwanModel(private val model: WalletModel) {
                     result.claims.keys.map { model.claimLabel(it.split('.'), null, null) },
                     verifierNote(request) + tr(Res.string.sep_semicolon) + StatusTexts.summary(decision),
                 )
-                OfflineUi.VerifierResult(request, result, trust, null, risk, status, decision)
+                OfflineUi.VerifierResult(request, result, trust, null, risk, status, decision, delivery)
             } catch (e: Exception) {
                 model.record(HistoryKind.VERIFIED, tr(Res.string.tw_holder), null, note = verifierNote(request), failure = model.describe(e))
-                OfflineUi.VerifierResult(request, null, null, model.describe(e), risk)
+                OfflineUi.VerifierResult(request, null, null, model.describe(e), risk, delivery = delivery)
             }
         }
     }

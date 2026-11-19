@@ -63,7 +63,8 @@ enum class BondsCredentialSource(val wire: String) {
  * The challenge a Bonds verifier shows as a plain JSON QR: {v, c, p, t, a?, b?, k}. Everything in it is untrusted
  * text from the person in front of the holder; it does not authenticate the verifier. This wallet's verifier adds
  * keys Bonds ignores: l and e, the local network addresses and a one-time P-256 key ([BondsLanPresentation]), and q:1,
- * which says the presentation can also be shown as an animated fountain QR ([AnimatedQrTransport]).
+ * which says the presentation can also be shown as an animated fountain QR ([AnimatedQrTransport]). The key is sent
+ * without addresses too: a holder that knows it seals the presentation it sends over Bluetooth as well.
  */
 data class BondsPresentationRequest(
     val challenge: String,
@@ -78,7 +79,10 @@ data class BondsPresentationRequest(
      * the sealed presentation can be posted; empty when it is not listening.
      */
     val lanUrls: List<String> = emptyList(),
-    /** The verifier's one-time P-256 key (base64url uncompressed point) the presentation is sealed to; set with [lanUrls]. */
+    /**
+     * The verifier's one-time P-256 key (base64url uncompressed point) the presentation is sealed to over the local
+     * network and Bluetooth; always set with [lanUrls], and alone when the verifier is not listening on a network.
+     */
     val lanKey: String? = null,
     /** The verifier also scans an animated fountain QR (DIWQ1), which survives missed frames. */
     val qr: Boolean = false,
@@ -151,7 +155,7 @@ data class BondsPresentationRequest(
                 if (it.codePointCount() > MAX_AUDIENCE || it.any { c -> displayUnsafe(c) }) throw ProtocolException("invalid_request", "Malformed audience")
             }
             val lan = lanUrls.distinct()
-            if (lan.isEmpty() != (lanKey == null)) throw ProtocolException("invalid_request", "A local network address needs its key")
+            if (lan.isNotEmpty() && lanKey == null) throw ProtocolException("invalid_request", "A local network address needs its key")
             if (lan.size > MAX_LAN_URLS || !lan.all { BondsLanPresentation.acceptableUrl(it) }) {
                 throw ProtocolException("invalid_request", "Malformed local network address")
             }

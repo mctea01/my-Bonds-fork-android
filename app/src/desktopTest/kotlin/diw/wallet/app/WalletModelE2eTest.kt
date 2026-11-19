@@ -1725,20 +1725,28 @@ class WalletModelE2eTest {
         assertTrue(r.moica!!.nameChecked)
 
         // A Bonds verifier's challenge carries a one-time BLE service: this wallet as verifier also listens on it, so the
-        // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back.
+        // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back. Between two of
+        // these wallets the presentation is sealed to the challenge's key; a holder that ignores the key (as the Bonds
+        // App) sends it in clear text, which the verifier takes and marks as not encrypted.
         val (checker, _) = newWallet()
-        checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
-        val challenge = checker.challenge()
-        assertNotNull(challenge.request.linkServiceId)
-        val read = cameraOnly(challenge.request)
-        holder.handleUri(read.encode())
-        val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == read } })
-        holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
-        val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == read } })
-        holder.taiwan.sendOverLink(shown)
-        val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
-        assertEquals(challenge.request, checked.request)
-        withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.link == "查驗方已收到" } }
+        for (sealed in listOf(true, false)) {
+            checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+            val challenge = checker.challenge()
+            assertNotNull(challenge.request.linkServiceId)
+            assertNotNull(challenge.request.lanKey)
+            val read = if (sealed) challenge.request.copy(lanUrls = emptyList()) else cameraOnly(challenge.request)
+            holder.taiwan.offline.value = OfflineUi.Working("")
+            holder.handleUri(read.encode())
+            val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == read } })
+            holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
+            val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == read } })
+            holder.taiwan.sendOverLink(shown)
+            val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+            assertEquals(challenge.request, checked.request)
+            assertEquals(if (sealed) "經藍牙收到，已用這次挑戰的一次性金鑰加密。" else "經藍牙收到，未加密（持卡人的 App 不使用挑戰金鑰，例如原版 Bonds App）。", checked.delivery)
+            val done = withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.link?.startsWith("查驗方已收到") == true } }
+            assertEquals(sealed, "已用查驗方的一次性金鑰加密" in (done as OfflineUi.BondsFrames).link!!)
+        }
 
         // A Bonds web age request offers the national ID card for a self-issued proof and never opens the offline frames.
         holder.handleUri(ageRequest("s"))
