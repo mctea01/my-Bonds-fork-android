@@ -3014,7 +3014,7 @@
     <string name="reader_mdl_identity">行動駕照：身分確認</string>
     <string name="reader_mdl_identity_text">姓名、出生日期、照片、證號與有效期限</string>
     <string name="reader_named">讀卡機「%1$s」</string>
-    <string name="reader_no_auth">這個查驗方不送出身分憑證（reader authentication），對方的錢包會顯示為未提供身分的查驗設備。</string>
+    <string name="reader_no_auth">匿名：請求不附讀取端驗證，對方的錢包會顯示為未提供身分的查驗設備。選擇查驗方身分即可簽署請求並送出你的聲明。</string>
     <string name="reader_no_ble">此平台不支援藍牙近距離傳輸</string>
     <string name="reader_no_circuit">沒有可用的 Longfellow 電路</string>
     <string name="reader_no_document_status">對方沒有提供證件（狀態碼 %1$s）。</string>
@@ -3045,10 +3045,10 @@
     <string name="reader_tap_or_link_lost">感應中斷或連線失敗：請讓對方的手機保持靠近，直到讀取完成。</string>
     <string name="reader_tapped">已感應，請對方在手機上確認分享，期間手機請保持靠近。</string>
     <string name="reader_tapped_ble">已感應，以藍牙連線。請對方在手機上確認分享。</string>
-    <string name="reader_text">以 NFC 讀取對方錢包裡的行動駕照等 mdoc 證件（ISO/IEC 18013-5）。簽章、資料完整性與出示者持有的金鑰都在這裡檢查，有網路時也會查詢證件狀態。這裡不保存對方的資料，紀錄只記欄位名稱。</string>
+    <string name="reader_text">讀取對方錢包裡的行動駕照等 mdoc 證件（ISO/IEC 18013-5），可用 NFC 感應，或掃描對方的 QR Code 後經藍牙讀取。簽章、資料完整性與出示者持有的金鑰都在這裡檢查，有網路時也會查詢證件狀態。這裡不保存對方的資料，紀錄只記欄位名稱。</string>
     <string name="reader_this_credential">這張證件。</string>
     <string name="reader_timeout">等待逾時：對方沒有在時間內回應。請重新感應。</string>
-    <string name="reader_title">感應查驗</string>
+    <string name="reader_title">近距離查驗</string>
     <string name="reader_unknown_issuer">未知的發行端</string>
     <string name="reader_validity">有效期間</string>
     <string name="reader_verify_failed">證件驗證失敗：</string>
@@ -3112,7 +3112,7 @@
     <string name="screen_passport_read">讀取電子護照</string>
     <string name="screen_presentation">出示證件</string>
     <string name="screen_proximity">感應出示</string>
-    <string name="screen_reader">感應查驗</string>
+    <string name="screen_reader">近距離查驗</string>
     <string name="screen_settings">設定</string>
     <string name="screen_trust_anchors">信任錨點</string>
     <string name="screen_trust_list">信任清單</string>
@@ -3825,8 +3825,8 @@
     <string name="verify_others_text">這支手機顯示一次性的查驗挑戰，對方用錢包或 Bonds 掃描後出示，簽章、挑戰與發行端都在這支手機上檢查。有網路時也會查詢證件狀態。</string>
     <string name="verify_purpose">查驗用途（會顯示給出示者）</string>
     <string name="verify_purpose_risk">用途的風險</string>
-    <string name="verify_reader">感應查驗（NFC）</string>
-    <string name="verify_reader_text">以手機的 NFC 或電腦的 PC/SC 讀卡機，讀取對方的行動駕照等 ISO 18013-5 證件</string>
+    <string name="verify_reader">近距離查驗（ISO 18013-5）</string>
+    <string name="verify_reader_text">以 NFC 感應，或掃描持卡人的 QR Code 後經藍牙讀取；可用手機 NFC 或 PC/SC 讀卡機</string>
     <string name="verify_verifier_identity">查驗方身分</string>
     <string name="verify_zktls">官方網站即時查驗（zkTLS）</string>
     <string name="verify_zktls_text">對方用手機連到官方查詢頁，你只看到查詢結果與指定欄位，看不到對方輸入的證號；查驗頁隨版型更新</string>
@@ -4838,4 +4838,13 @@
     <string name="tw_ble_sealed_in">經藍牙收到，已用這次挑戰的一次性金鑰加密。</string>
     <string name="tw_ble_plain_in">經藍牙收到，未加密（持卡人的 App 不使用挑戰金鑰，例如原版 Bonds App）。</string>
     <string name="tw_lan_sealed_in">經區網收到，已用這次挑戰的一次性金鑰加密。</string>
+    <string name="verify_intro">請對方出示憑證，並在這支手機上檢查簽章、發行端信任與狀態。可以匿名查驗，也可以用查驗方身分查驗；對方皮夾會在詢問同意前核對你的聲明與證明。</string>
+    <string name="verify_standard">標準查驗</string>
+    <string name="verify_as_whom_count">%1$d 個查驗方身分及其證明與授權</string>
+    <string name="verify_keys_text">查驗方身分可用的 X.509 與 OpenPGP 金鑰，以及檢查他人時使用的信任錨點</string>
+    <string name="verify_zk">零知識查驗</string>
+    <string name="verify_zk_age_hint">行動駕照的零知識年齡查驗（滿 18 歲）在近距離查驗中；Bonds 年齡查驗在下方。</string>
+    <string name="verify_bonds">Bonds 相容查驗（非標準）</string>
+    <string name="verify_bonds_text">供 Bonds App 與 TWDIW 卡片使用：離線查驗挑戰與年齡查驗。這些依 Bonds 自有格式，不屬於上方的標準協議。</string>
+    <string name="verify_bonds_challenge">Bonds 離線查驗挑戰</string>
 </resources>

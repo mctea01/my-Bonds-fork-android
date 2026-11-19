@@ -420,6 +420,10 @@ class WalletModelE2eTest {
             }
         }
         screen("09-verify", Screen.Home, HomeTab.VERIFY, height = 1900)
+        m.reader.open()
+        screen("09b-reader", Screen.Reader, height = 2400)
+        m.reader.close()
+        screen("09c-key-viewer", Screen.KeyViewer)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)
         screen("13-trust-anchors", Screen.TrustAnchors)

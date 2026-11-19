@@ -3014,7 +3014,7 @@
     <string name="reader_mdl_identity">Driving licence: identity check</string>
     <string name="reader_mdl_identity_text">Name, date of birth, photo, number and validity</string>
     <string name="reader_named">card reader \"%1$s\"</string>
-    <string name="reader_no_auth">This verifier sends no identity certificate (reader authentication); the other wallet shows it as a reader that gave no identity.</string>
+    <string name="reader_no_auth">Anonymous: the request carries no reader authentication, so the other wallet shows an unidentified reader. Choose a verifier identity to sign the request and send your declaration.</string>
     <string name="reader_no_ble">This platform does not support Bluetooth proximity transfer</string>
     <string name="reader_no_circuit">No Longfellow circuit is available</string>
     <string name="reader_no_document_status">The other wallet provided no credential (status code %1$s).</string>
@@ -3045,10 +3045,10 @@
     <string name="reader_tap_or_link_lost">Tap interrupted or the connection failed: keep the other phone close until reading finishes.</string>
     <string name="reader_tapped">Tapped. Ask the other person to confirm sharing on their phone, and keep the phones close meanwhile.</string>
     <string name="reader_tapped_ble">Tapped; connecting over Bluetooth. Ask the other person to confirm sharing on their phone.</string>
-    <string name="reader_text">Reads mdoc credentials such as a mobile driving licence from the other party's wallet over NFC (ISO/IEC 18013-5). The signature, data integrity and the holder's key are checked here, and the status is queried when online. The other party's data is not kept here; History records only the field names.</string>
+    <string name="reader_text">Read mdoc credentials such as a mobile driving licence from the other wallet (ISO/IEC 18013-5), by NFC tap or by scanning its QR code and reading over Bluetooth. Signatures, data integrity and the holder's key are checked here, and the status when online. Nothing of the other person is kept; the history keeps field names only.</string>
     <string name="reader_this_credential">this credential.</string>
     <string name="reader_timeout">Timed out: the other wallet did not answer in time. Tap again.</string>
-    <string name="reader_title">Tap to verify</string>
+    <string name="reader_title">In-person verification</string>
     <string name="reader_unknown_issuer">Unknown issuer</string>
     <string name="reader_validity">Validity</string>
     <string name="reader_verify_failed">Credential verification failed: </string>
@@ -3112,7 +3112,7 @@
     <string name="screen_passport_read">Read e-passport</string>
     <string name="screen_presentation">Present a credential</string>
     <string name="screen_proximity">Tap to present</string>
-    <string name="screen_reader">Tap to verify</string>
+    <string name="screen_reader">In-person verification</string>
     <string name="screen_settings">Settings</string>
     <string name="screen_trust_anchors">Trust anchors</string>
     <string name="screen_trust_list">Trust list</string>
@@ -3819,14 +3819,14 @@
     <string name="verify_identity">Identity check</string>
     <string name="verify_make_challenge">Create a challenge</string>
     <string name="verify_online">Online verification (OpenID4VP)</string>
-    <string name="verify_online_text">Show a QR code, receive the holder's response through your server or the local network and verify it</string>
+    <string name="verify_online_text">Show a QR code; the holder's answer comes through your server or the local network</string>
     <string name="verify_other_methods">Other verification methods</string>
     <string name="verify_others">Verify someone's credential</string>
     <string name="verify_others_text">This phone shows a one-time challenge; the other person scans it with a wallet or Bonds and presents. Signatures, the challenge and the issuer are checked on this phone, and the credential status is queried when online.</string>
     <string name="verify_purpose">Purpose of the check (shown to the presenter)</string>
     <string name="verify_purpose_risk">Risk of the purpose</string>
-    <string name="verify_reader">Tap to verify (NFC)</string>
-    <string name="verify_reader_text">Read the other person's ISO 18013-5 credential, such as a mobile driving licence, with the phone's NFC or a computer's PC/SC reader</string>
+    <string name="verify_reader">In-person verification (ISO 18013-5)</string>
+    <string name="verify_reader_text">NFC tap, or scan the holder's QR code and read over Bluetooth; the phone's NFC or a PC/SC reader</string>
     <string name="verify_verifier_identity">Verifier identity</string>
     <string name="verify_zktls">Live check on an official website (zkTLS)</string>
     <string name="verify_zktls_text">The other person opens the official query page on their phone; you see only the result and the chosen fields, not the ID number they enter. Pages follow site updates</string>
@@ -4838,4 +4838,13 @@
     <string name="tw_ble_sealed_in">Received over Bluetooth, encrypted with this challenge's one-time key.</string>
     <string name="tw_ble_plain_in">Received over Bluetooth, not encrypted (the holder's app does not use the challenge key, as the Bonds App).</string>
     <string name="tw_lan_sealed_in">Received over the local network, encrypted with this challenge's one-time key.</string>
+    <string name="verify_intro">Ask someone for their credentials and check them on this phone: signatures, the issuer's trust and the status. You can verify anonymously or as a verifier identity, whose declaration and evidence the other wallet checks before asking.</string>
+    <string name="verify_standard">Standard verification</string>
+    <string name="verify_as_whom_count">%1$d verifier identities with their evidence and mandates</string>
+    <string name="verify_keys_text">X.509 and OpenPGP keys for your verifier identity, and the trust anchors used to check others</string>
+    <string name="verify_zk">Zero-knowledge verification</string>
+    <string name="verify_zk_age_hint">A zero-knowledge age check (over 18) of an mDL is in in-person verification; Bonds age checks are below.</string>
+    <string name="verify_bonds">Bonds-compatible checks (non-standard)</string>
+    <string name="verify_bonds_text">For the Bonds App and TWDIW cards: an offline challenge and the age check. These follow Bonds' own formats, not the standard protocols above.</string>
+    <string name="verify_bonds_challenge">Bonds offline challenge</string>
 </resources>
