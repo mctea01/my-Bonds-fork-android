@@ -20,7 +20,7 @@ Changes from upstream, all in the `Cargo.toml` files only:
   and `repository` values taken from the upstream workspace manifest;
 - `[lib] crate-type` removed, so the crates build as plain Rust libraries.
 
-Two changes in `src/`, both in `zkpassport-core/src/input_gen.rs`:
+Changes in `src/`, two in `zkpassport-core/src/input_gen.rs` and one in `zkpassport-core/src/query.rs`:
 
 - `get_public_salt` reduces its SHA-256 digest modulo the BN254 scalar field. The
   digest is at or above the modulus about four times in five, and the circuits'
@@ -31,6 +31,14 @@ Two changes in `src/`, both in `zkpassport-core/src/input_gen.rs`:
   `id_data.rs` already does for the ID-data circuit: the integrity circuit checks
   a commitment over the private nullifier that the ID-data circuit computed from
   the padded signature.
+
+- `build_query_result` sends a disclosed `birthdate` or `expiry_date` as an ISO
+  date (`parseDate(YYMMDD).toISOString()`, the century from the proof's current
+  date) instead of the MRZ's YYMMDD. The SDK's checker reads the value as a date,
+  so a YYMMDD string made zkPassport's verifier fail with "Cannot read properties
+  of null (reading 'getFullYear')". Upstream main has the same change (it adds
+  `current_date` to `build_query_result`); `input_gen.rs` passes
+  `current_date_timestamp`.
 
 Keep these changes when updating unless upstream has made them.
 
