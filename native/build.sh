@@ -89,13 +89,24 @@ fi
 glibc_floor=2.28
 zigbuild="$PWD/target/tools/bin/cargo-zigbuild"
 # Puts the pinned Zig on PATH and installs the pinned cargo-zigbuild under target/tools.
+# $1 is the Rust triple. bindgen (OpenAC's witness header) runs the host libclang with cargo-zigbuild's -nostdinc;
+# newer libclang (21 on Ubuntu 26.04) then finds no stddef.h through the options cargo-zigbuild adds, so Zig's own
+# builtin and glibc headers for the target are named with plain -isystem in zig_bindgen_args, ahead of them. They go
+# in the plain BINDGEN_EXTRA_CLANG_ARGS of the zigbuild command only: cargo-zigbuild copies it into both per-target
+# names it sets, and bindgen reads the dashed one first.
 setup_zig() {
-    local zig_root
+    local triple=$1 zig_root arch libc
     zig_root=$(python3 -I zkpdf-prover/tools/zig.py)
     export PATH="$zig_root:$PATH"
     if [[ "$("$zigbuild" --version 2>/dev/null)" != "cargo-zigbuild 0.20.1" ]]; then
         cargo install --locked --root "$PWD/target/tools" cargo-zigbuild@0.20.1
     fi
+    arch=${triple%%-*}
+    libc="$zig_root/lib/libc/include"
+    local family=$arch
+    [[ "$arch" == x86_64 ]] && family=x86
+    zig_bindgen_args="-isystem $zig_root/lib/include -isystem $libc/$arch-linux-gnu -isystem $libc/$family-linux-any"
+    zig_bindgen_args="$zig_bindgen_args -isystem $libc/generic-glibc -isystem $libc/any-linux-any"
 }
 # Fails unless the Linux library at $1 needs no C++ runtime and no glibc symbol newer than the floor.
 check_linux_floor() {
@@ -110,13 +121,13 @@ check_linux_floor() {
 }
 build_compat() {
     local triple=$1 platform=$2
-    setup_zig
+    setup_zig "$triple"
     rustup target add "$triple"
     local args=()
     [[ -z "$compat_features" ]] || args=(--features "$compat_features")
     # zig cc compiles the C parts (OpenAC's witness runtime) for the same glibc; bindgen reads its header with the
     # host libclang as for the full build.
-    CARGO_TARGET_DIR="$PWD/target/compat" "$zigbuild" zigbuild --release --locked -p diw-zk-ffi \
+    CARGO_TARGET_DIR="$PWD/target/compat" BINDGEN_EXTRA_CLANG_ARGS="$zig_bindgen_args" "$zigbuild" zigbuild --release --locked -p diw-zk-ffi \
         ${args[@]+"${args[@]}"} --target "$triple.$glibc_floor"
     local out="dist/resources/zk/native/$platform-compat"
     mkdir -p "$out"
@@ -134,7 +145,7 @@ build_compat() {
 linux_libcxx=false
 zig_linux() {
     local triple=$1
-    setup_zig
+    setup_zig "$triple"
     local arch=${triple%%-*} wrap="$PWD/target/zig-wrap/$triple"
     mkdir -p "$wrap"
     local tool
@@ -265,7 +276,7 @@ for target in "${selected[@]}"; do
         rustup target add "$target"
         if "$linux_libcxx"; then
             cargo_target="$PWD/target/libcxx"
-            build_desktop() { CARGO_TARGET_DIR="$cargo_target" "$zigbuild" zigbuild --release --locked "$@" --target "$target.$glibc_floor"; }
+            build_desktop() { CARGO_TARGET_DIR="$cargo_target" BINDGEN_EXTRA_CLANG_ARGS="$zig_bindgen_args" "$zigbuild" zigbuild --release --locked "$@" --target "$target.$glibc_floor"; }
             bb_suffix=-libcxx
         else
             cargo_target="$PWD/target"
