@@ -52,9 +52,16 @@ import kotlin.time.Instant
 
 /**
  * One line of a details view; a row with [certs] opens the certificate view at [certIndex], where the chain is shown up
- * to its root and evaluated for [role].
+ * to its root and evaluated for [role] (with the mdoc [docType] the chain signs, which limits VICAL issuer CAs).
  */
-data class DetailRow(val label: String, val value: String, val certs: List<X509Cert> = emptyList(), val certIndex: Int = 0, val role: TrustRole? = null)
+data class DetailRow(
+    val label: String,
+    val value: String,
+    val certs: List<X509Cert> = emptyList(),
+    val certIndex: Int = 0,
+    val role: TrustRole? = null,
+    val docType: String? = null,
+)
 
 data class DetailSection(val title: String, val rows: List<DetailRow>)
 
@@ -143,7 +150,7 @@ object CredentialDetails {
                     it.reasons.forEach { v -> add(DetailRow(tr(Res.string.cd_reason), v)) }
                 }
             }),
-            DetailSection(tr(Res.string.cd_issuer_signature), parsed.signature + chainRows(parsed.chain, TrustRole.ISSUER)),
+            DetailSection(tr(Res.string.cd_issuer_signature), parsed.signature + chainRows(parsed.chain, TrustRole.ISSUER, (c as? MdocCredential)?.docType)),
             DetailSection(tr(Res.string.reader_validity), buildList {
                 c?.let {
                     val from = if (it.validFrom.epochSeconds > 0) tr(Res.string.cd_from_to, time(it.validFrom)) else tr(Res.string.cd_to)
@@ -307,13 +314,13 @@ object CredentialDetails {
         )
     }
 
-    private fun chainRows(chain: List<X509Cert>, role: TrustRole): List<DetailRow> = chain.mapIndexed { i, c ->
+    private fun chainRows(chain: List<X509Cert>, role: TrustRole, docType: String? = null): List<DetailRow> = chain.mapIndexed { i, c ->
         val label = when {
             i == 0 -> tr(Res.string.reader_issuer_cert_signer)
             i == chain.lastIndex && c.subject == c.issuer -> tr(Res.string.certificate_trust_root_label)
             else -> tr(Res.string.cd_intermediate_n, i)
         }
-        DetailRow(label, c.displaySubject(), chain, i, role)
+        DetailRow(label, c.displaySubject(), chain, i, role, docType)
     }
 
     /** Parsed status after a status query, by the Token Status List terms. */

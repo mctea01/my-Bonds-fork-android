@@ -141,6 +141,7 @@ import diw.wallet.core.document.opencerts.OpenCertView
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.crypto.X509Cert
 import org.multipaz.util.fromBase64
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /** A script the source site runs on its pages at [host] only (MyData sign-in values), and what to do when it fills inputs. */
@@ -800,6 +801,7 @@ private fun certOf(c: CertInfo): X509Cert? = runCatching { X509Cert(ByteString(c
 private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, count: Int) {
     val (verdict, text) = verdictOf(s.verdict)
     val role = signatureRole(s.format)
+    val at = signatureTime(s)
     // The signature is intact but its chain leads to no enabled anchor (T3): the chain and its root can be reviewed,
     // and the root trusted, on the certificate screen.
     val reviewRoot = s.integrity == Check.PASS && s.format != SignatureFormat.OPENPGP &&
@@ -818,7 +820,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
                 // otherwise the X.509 certificate screen would be opened on empty bytes and crash.
                 val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
                 LabelValue(stringResource(Res.string.files_signer), signer.commonName ?: signer.subject,
-                    onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role) }))
+                    onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role, at = at) }))
             }
             s.trust?.let { t ->
                 val d = t.decision()
@@ -831,7 +833,7 @@ private fun SignatureCard(model: WalletModel, s: SignatureInfo, index: Int, coun
             if (reviewRoot) {
                 val chain = s.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
                 if (chain.isNotEmpty()) TextButton(onClick = {
-                    model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role, focusRoot = true)
+                    model.screen.value = Screen.Certificate(chain, 0, model.screen.value, role, focusRoot = true, at = at)
                 }) { Text(stringResource(Res.string.files_review_chain_root)) }
             }
             val openPgp = s.format == SignatureFormat.OPENPGP
@@ -864,12 +866,24 @@ private fun signatureRole(f: SignatureFormat): TrustRole = when (f) {
     else -> TrustRole.DOCUMENT
 }
 
-/** A signature's time stamp; its authority's chain opens on the certificate screen, up to the root. */
+/**
+ * The time a signature's chain was judged at, as the inspector does: the trusted time stamp; else now while the signer
+ * certificate is valid, otherwise the signing time the signer wrote. Null stands for now.
+ */
+private fun signatureTime(s: SignatureInfo): Instant? {
+    s.timestamp?.takeIf { it.trusted }?.let { return Instant.fromEpochSeconds(it.time) }
+    val signer = s.signer ?: return null
+    val now = Clock.System.now().epochSeconds
+    if (now in signer.notBefore..signer.notAfter) return null
+    return s.claimedTime?.let { Instant.fromEpochSeconds(it) }
+}
+
+/** A signature's time stamp; its authority's chain opens on the certificate screen at its genTime, up to the root. */
 @Composable
 private fun TimestampLine(model: WalletModel, t: TimestampInfo) {
     val chain = t.chain.filter { it.der.isNotBlank() }.mapNotNull { certOf(it) }
     LabelValue(stringResource(Res.string.files_tag_timestamp), localTime(t.time) + stringResource(Res.string.sep_space) + (t.tsa ?: "") + if (t.trusted) "" else stringResource(Res.string.parenthesized, checkText(if (t.signature == Check.PASS) Check.WARN else t.signature)), small = true,
-        onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, TrustRole.TSA) }))
+        onClick = if (chain.isEmpty()) null else ({ model.screen.value = Screen.Certificate(chain, 0, model.screen.value, TrustRole.TSA, at = Instant.fromEpochSeconds(t.time)) }))
 }
 
 /** Checked evidence of a derived credential, for the verifier result. */

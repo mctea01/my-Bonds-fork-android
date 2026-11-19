@@ -565,6 +565,7 @@
     <string name="chain_valid_until">Valid until %1$s</string>
     <string name="chain_expired">Expired on %1$s</string>
     <string name="chain_not_yet">Not valid before %1$s</string>
+    <string name="chain_checked_at">Judged at %1$s (the time the signature was checked for)</string>
     <string name="chain_trust_for">Trust for %1$s</string>
     <string name="chain_anchor_name">Trust anchor: %1$s</string>
     <string name="chain_t3_hint">This chain does not lead to an enabled trust anchor (T3). Review its root certificate below before deciding whether to trust it.</string>

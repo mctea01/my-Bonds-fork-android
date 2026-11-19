@@ -66,7 +66,7 @@ private val REVIEW_ROLES = listOf(
 fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
     var version by remember(screen) { mutableIntStateOf(0) }
     val path by produceState<TrustPath?>(null, screen, version) {
-        value = runCatching { model.trustPath(screen.chain, screen.role, screen.docType) }.getOrNull()
+        value = runCatching { model.trustPath(screen.chain, screen.role, screen.docType, screen.at) }.getOrNull()
             ?: TrustPath(screen.chain.map { PathStep(it, PathSource.PRESENTED, null, false) }, emptyList(), null, emptyList())
     }
     var selected by remember(screen) { mutableStateOf(screen.chain.getOrNull(screen.index) ?: screen.chain.first()) }
@@ -88,8 +88,9 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
             }
         } else {
             p.decision?.let { d -> ChainTrustSummary(d, screen.role) }
+            screen.at?.let { Text(stringResource(Res.string.chain_checked_at, localTime(it)), style = MaterialTheme.typography.bodySmall) }
             SectionTitle(stringResource(Res.string.chain_title))
-            ChainList(p, selected) { selected = it }
+            ChainList(p, selected, screen.at) { selected = it }
             if (!p.rootReached) MissingRoot(model, p)
             if (p.extras.isNotEmpty()) {
                 Text(stringResource(Res.string.chain_extras), style = MaterialTheme.typography.titleSmall)
@@ -121,8 +122,9 @@ private fun ChainTrustSummary(d: TrustDecision, role: TrustRole?) {
 
 /** The chain from the root (or the highest certificate found) down to the leaf, indented by depth. */
 @Composable
-private fun ChainList(p: TrustPath, selected: X509Cert, onSelect: (X509Cert) -> Unit) {
-    val now = Clock.System.now()
+private fun ChainList(p: TrustPath, selected: X509Cert, at: kotlin.time.Instant?, onSelect: (X509Cert) -> Unit) {
+    // Validity is shown for the time the chain was judged at (a trusted signing time), else now.
+    val now = at ?: Clock.System.now()
     val last = p.steps.lastIndex
     p.steps.indices.reversed().forEachIndexed { depth, i ->
         val step = p.steps[i]

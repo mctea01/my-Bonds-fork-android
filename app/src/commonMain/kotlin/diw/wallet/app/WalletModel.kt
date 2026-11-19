@@ -293,6 +293,8 @@ sealed class Screen {
         val role: TrustRole? = null,
         val docType: String? = null,
         val focusRoot: Boolean = false,
+        /** The time the chain was judged at (a trusted signing time, a time stamp's genTime); null for now. */
+        val at: kotlin.time.Instant? = null,
     ) : Screen()
     /** Documents that can be requested: the cards the TWDIW platform lists, or any issuer address. */
     data object AddDocument : Screen()
@@ -2122,9 +2124,9 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
-    /** [chain] completed up to its root, with the evaluation for [role] (see [TrustRegistry.path]). */
-    suspend fun trustPath(chain: List<X509Cert>, role: TrustRole?, docType: String? = null): diw.wallet.core.trust.TrustPath =
-        withContext(Dispatchers.Default) { trust.path(chain, role, docType = docType) }
+    /** [chain] completed up to its root, with the evaluation for [role] at [at] (now when null; see [TrustRegistry.path]). */
+    suspend fun trustPath(chain: List<X509Cert>, role: TrustRole?, docType: String? = null, at: kotlin.time.Instant? = null): diw.wallet.core.trust.TrustPath =
+        withContext(Dispatchers.Default) { trust.path(chain, role, at ?: kotlin.time.Clock.System.now(), docType) }
 
     /**
      * Trusts [der], a self-issued root shown in a chain, as the user's own anchor (T2, never official) for [roles],

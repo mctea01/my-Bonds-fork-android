@@ -565,6 +565,7 @@
     <string name="chain_valid_until">有效至 %1$s</string>
     <string name="chain_expired">已於 %1$s 過期</string>
     <string name="chain_not_yet">%1$s 起才生效</string>
+    <string name="chain_checked_at">判定時間：%1$s（簽章驗證所依據的時間）</string>
     <string name="chain_trust_for">用於「%1$s」的信任判定</string>
     <string name="chain_anchor_name">信任錨點：%1$s</string>
     <string name="chain_t3_hint">這條鏈沒有連到已啟用的信任錨點（T3）。請先審閱下方的根憑證，再決定是否信任。</string>

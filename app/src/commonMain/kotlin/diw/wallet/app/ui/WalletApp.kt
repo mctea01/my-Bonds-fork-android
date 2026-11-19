@@ -357,7 +357,7 @@ fun DetailSections(model: WalletModel, sections: List<DetailSection>) {
         Text(section.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
         section.rows.forEach { row ->
             val open = if (row.certs.isEmpty()) null else {
-                { model.screen.value = Screen.Certificate(row.certs, row.certIndex, model.screen.value, row.role) }
+                { model.screen.value = Screen.Certificate(row.certs, row.certIndex, model.screen.value, row.role, row.docType) }
             }
             LabelValue(row.label, row.value, small = true, onClick = open)
         }
