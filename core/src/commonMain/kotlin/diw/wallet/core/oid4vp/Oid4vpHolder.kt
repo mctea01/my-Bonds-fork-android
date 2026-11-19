@@ -110,8 +110,10 @@ class Oid4vpHolder(
     private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
     /** OpenID Federation Trust Anchors for openid_federation verifiers. */
     federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
+    /** Clear text to a wallet verifying on the local network (request_uri and response_uri under [LanEndpoints]). */
+    private val lanHttp: diw.wallet.core.document.sign.SignedDataHttp? = null,
 ) {
-    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
+    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys, lanHttp)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
     private val validator = RequestValidator(
         trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust,
@@ -363,6 +365,17 @@ class Oid4vpHolder(
     }
 
     private suspend fun post(responseUri: String, payload: JsonObject): PresentationOutcome.Posted {
+        // Only a validated LAN request has an http response_uri (RequestValidator); it goes over the local network.
+        if (lanHttp != null && policy.allowLanEndpoints && LanEndpoints.host(responseUri) != null) {
+            val form = payload.entries.joinToString("&") { (k, v) ->
+                k.encodeURLParameter() + "=" + (if (v is JsonPrimitive && v.isString) v.content else v.toString()).encodeURLParameter()
+            }
+            val reply = lanHttp.exchange(responseUri, form.encodeToByteArray(), "application/x-www-form-urlencoded", "application/json")
+            if (!reply.success) {
+                throw ProtocolException("verifier_error", "Verifier rejected the response: HTTP ${reply.status} ${reply.body.decodeToString().take(200)}")
+            }
+            return PresentationOutcome.Posted(null, reply.status)
+        }
         val resp = httpClient.submitForm(
             url = responseUri,
             formParameters = parameters {

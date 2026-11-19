@@ -1,5 +1,6 @@
 package diw.wallet.core.oid4vp
 
+import diw.wallet.core.document.sign.SignedDataHttp
 import diw.wallet.core.jose.Jws
 import diw.wallet.core.jose.PlatformCrypto
 import diw.wallet.core.util.DiwJson
@@ -16,6 +17,7 @@ import io.ktor.client.statement.bodyAsBytes
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 import io.ktor.http.parameters
 import kotlinx.serialization.json.JsonArray
@@ -44,6 +46,8 @@ class RequestResolver(
     private val allowInsecureLoopback: Boolean,
     /** Wallet-controlled, locally held ECDH-ES request-object keys (never verifier-supplied JWKs). */
     private val decryptionKeys: suspend () -> List<AsymmetricKey> = { emptyList() },
+    /** Clear text to a wallet verifying on the local network ([LanEndpoints]); null uses [httpClient]. */
+    private val lanHttp: SignedDataHttp? = null,
 ) {
     /** Schemes the wallet registers for OpenID4VP invocation. */
     val supportedSchemes = setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "https", "openid-vc", "openid", "siopv2")
@@ -250,6 +254,22 @@ class RequestResolver(
         // redirect_uri prefix) answer 406 unless JSON is acceptable too.
         val accept = "application/oauth-authz-req+jwt, application/jwt;q=0.9, application/json;q=0.8, */*;q=0.1"
         var walletNonce: String? = null
+        if (lan && lanHttp != null) {
+            val body = when (method) {
+                "get" -> null
+                "post" -> {
+                    walletNonce = PlatformCrypto.randomBytes(16).toBase64Url()
+                    ("wallet_metadata=" + walletMetadataJson().toString().encodeURLParameter() + "&wallet_nonce=" + walletNonce).encodeToByteArray()
+                }
+                else -> throw RequestValidationException("invalid_request_uri_method", "Unsupported request_uri_method '$method'")
+            }
+            val reply = lanHttp.exchange(requestUri, body, body?.let { "application/x-www-form-urlencoded" }, accept)
+            if (!reply.success) throw RequestValidationException("invalid_request_uri", "request_uri returned HTTP ${reply.status}")
+            if (reply.body.size > policy.maxRequestObjectBytes) {
+                throw RequestValidationException("invalid_request_uri", "Request object too large (${reply.body.size} bytes)")
+            }
+            return reply.body.decodeToString().trim() to walletNonce
+        }
         val resp: HttpResponse = when (method) {
             "get" -> httpClient.get(requestUri) { header(HttpHeaders.Accept, accept) }
             "post" -> {

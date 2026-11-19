@@ -1,6 +1,7 @@
 package diw.wallet.core.profile.bonds
 
 import diw.wallet.core.document.sign.CleartextHttp
+import diw.wallet.core.document.sign.FetchReply
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -102,8 +103,8 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         path: String,
         maxPayload: Int,
         onListening: (urls: List<String>) -> Unit,
-        answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
         get: (suspend (target: String) -> Pair<String, ByteArray>?)?,
+        answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
     ): ByteArray {
         val servers = withContext(Dispatchers.IO) {
             addresses.distinct().mapNotNull { a -> runCatching { a to ServerSocket(0, 8, InetAddress.getByName(a)) }.getOrNull() }
@@ -224,11 +225,17 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
     }
 
     override suspend fun post(url: String, body: ByteArray, timeout: Duration): Pair<Int, String> {
+        val reply = cleartext(url, timeout, REPLY_MAX).exchange(url, body, "application/json", "application/json")
+        return reply.status to reply.body.decodeToString()
+    }
+
+    override suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?, timeout: Duration): FetchReply =
+        cleartext(url, timeout, EXCHANGE_MAX).exchange(url, body, contentType, accept)
+
+    private fun cleartext(url: String, timeout: Duration, max: Int): CleartextHttp {
         val host = URI(url).host?.removePrefix("[")?.removeSuffix("]")
         val factory = host?.let { socketFactoryFor(it) } ?: SocketFactory.getDefault()
-        val reply = CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = REPLY_MAX, socketFactory = factory)
-            .exchange(url, body, "application/json", "application/json")
-        return reply.status to reply.body.decodeToString()
+        return CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = max, socketFactory = factory)
     }
 
     private companion object {
@@ -236,6 +243,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         const val READ_TIMEOUT_MS = 30_000
         const val MAX_LINE = 8192
         const val REPLY_MAX = 64 * 1024
+        const val EXCHANGE_MAX = 1024 * 1024
         val LOCAL = listOf("wlan", "swlan", "ap", "en", "eth", "wifi", "softap")
         val HOTSPOT = listOf("swlan", "ap", "softap")
         val VIRTUAL_NAMES = listOf("docker", "br-", "veth", "virbr", "vmnet", "vboxnet", "zt", "tailscale", "lxc", "lxd", "cni", "flannel", "podman")

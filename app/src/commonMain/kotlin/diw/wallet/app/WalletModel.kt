@@ -1561,7 +1561,9 @@ class WalletModel(val platform: PlatformServices) {
     // ---------------------------------------------------------------- presentation
 
     fun holder() = Oid4vpHolder(
-        http, trust, source, environmentPolicy, PresentationPolicy(),
+        // A wallet verifying on the local network answers at an http address; only signed direct_post.jwt requests
+        // served from that same address are accepted (RequestValidator).
+        http, trust, source, environmentPolicy, PresentationPolicy(allowLanEndpoints = true),
         holderIdentities = holderIdentities,
         didTrust = didTrust,
         dialects = listOfNotNull(twdiwPresentation, msPresentation.takeIf { legal.enabled(Integration.MS_VERIFIED_ID) }),
@@ -1570,7 +1572,32 @@ class WalletModel(val platform: PlatformServices) {
         derivedSources = { files.holderDerivedSources() },
         derivedHolders = { files.holderHints() },
         federationAnchors = { activeFederationAnchors() },
+        lanHttp = platform.bondsLan?.let { lan ->
+            diw.wallet.core.document.sign.SignedDataHttp { url, body, type, accept -> lan.exchange(url, body, type, accept, LAN_TIMEOUT) }
+        },
     )
+
+    /**
+     * Verifies presentations this wallet receives as a verifier (docs/design/p5-verifier.md section 6.3), and the
+     * evidence presentations in another verifier's declaration.
+     */
+    fun presentationVerifier() = diw.wallet.core.verifier.PresentationVerifier(
+        trust, documentTypes, org.multipaz.revocation.CachingRevocationChecker(storage, http),
+        zkSystemRepository = proximity.longfellow.repository,
+        didResolver = didResolver(),
+        documentTrust = files.trustSource,
+        zkPdf = zkPdfContext,
+        didTrust = didTrust,
+    )
+
+    /** Checks verifier_info: registration certificates and DIW verifier declarations with their evidence. */
+    fun verifierInfoChecker(): diw.wallet.core.oid4vp.VerifierInfoChecker {
+        val verifier = presentationVerifier()
+        return diw.wallet.core.oid4vp.VerifierInfoChecker(
+            trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust),
+            diw.wallet.core.verifier.declaration.VerifierDeclarationCheck(trust, didResolver(), didTrust) { q, t, c, n -> verifier.verifyEvidence(q, t, c, n) },
+        )
+    }
 
     /** Test anchors take part only while the test environment is on, like test X.509 anchors. */
     private suspend fun activeFederationAnchors(): List<FederationAnchor> =
@@ -1775,8 +1802,7 @@ class WalletModel(val platform: PlatformServices) {
             }
         }
         val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
-            diw.wallet.core.oid4vp.VerifierInfoChecker(trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust))
-                .check(consent.request)
+            verifierInfoChecker().check(consent.request)
         }
         // A failed attestation (wrong party, revoked, beyond its registration) makes the request high risk.
         val attestationRisk = if (attestations.any { it.verdict == diw.wallet.core.oid4vp.AttestationVerdict.INVALID || !it.outsideRegistration.isNullOrEmpty() }) RiskLevel.HIGH else RiskLevel.LOW
@@ -2256,6 +2282,9 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        /** One clear-text exchange with a wallet verifying on the local network. */
+        private val LAN_TIMEOUT = kotlin.time.Duration.parse("30s")
+
         /** The credential offer of a DC API create request as an offer URI the OpenID4VCI client reads. */
         internal fun dcApiOfferUri(data: JsonObject): String {
             val uri = (data["credential_offer_uri"] as? JsonPrimitive)?.takeIf { it.isString }?.content
