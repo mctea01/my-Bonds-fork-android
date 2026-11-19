@@ -1,6 +1,6 @@
 # P5 驗證者透明與主動驗證：設計與約定
 
-撰寫日期：2026-11-15。性質：現行設計。各項目的實作狀態只記在 [STATUS.md](../STATUS.md)，本文寫約定與理由。研究來源是 [zkp-verifier.md](../research/zkp-verifier.md) 第 2、3 節與 [architecture-and-roadmap.md](architecture-and-roadmap.md) 的「驗證者身分、代表身分與目的」「主動驗證能力」「判定模型」三節。
+撰寫日期：2026-11-15，2026-11-19 補上 X.509 與 OpenPGP 證據、近距離查驗與 Bonds 藍牙加密。性質：現行設計。各項目的實作狀態只記在 [STATUS.md](../STATUS.md)，本文寫約定與理由。研究來源是 [zkp-verifier.md](../research/zkp-verifier.md) 第 2、3 節與 [architecture-and-roadmap.md](architecture-and-roadmap.md) 的「驗證者身分、代表身分與目的」「主動驗證能力」「判定模型」三節。
 
 ## 1. 範圍與驗收
 
@@ -33,10 +33,13 @@ P5 讓錢包同時做好兩件事：
 | 身分類型 | `natural_person`（個人）、`legal_person`（法人）、`natural_person_for_legal_person`（代表法人的個人）、`natural_person_for_natural_person`（代表個人的個人） |
 | 當事人 `party` | 資料實際交給誰：名稱、識別碼（`scheme` 為 `TW-UBN` 統一編號、`EUID`、`LEI`、`TW-ID` 身分證統一編號只顯示遮蔽值、或其他）、是否公部門 |
 | 經辦人 `agent` | 代表當事人操作的自然人：名稱、職稱；只在代表類型出現 |
-| 簽章 | `did:key`（錢包金鑰，HolderIdentities 的 `verifier:<id>`）或 X.509 簽署者 |
+| 簽章 | 預設 `did:key`（錢包金鑰，HolderIdentities 的 `verifier:<id>`）；可選 X.509 金鑰（任何 `DocumentSigner` 來源：卡片、PIV、PKCS#11、系統金鑰、PKCS#12、行動自然人憑證、CSC）。X.509 金鑰在每次查驗時讀取，最後一次讀到的憑證記在身分裡，用來顯示名稱與 `x509_hash` client_id。SM2 金鑰不能簽 JWS；RSA 金鑰只用於線上查驗 |
 | 註冊憑證 | 使用者匯入的 WRPRC（`rc-wrp+jwt`），原樣放進每個請求 |
-| 證據憑證 | 錢包中持有的證件與要揭露的欄位；每次請求以本次 nonce 重新出示 |
+| 證據憑證 | 錢包中持有的證件，可同時選多份，分別作為當事人或經辦人的證據；每份可自選揭露欄位，未選時只揭露識別欄位（姓名與組織識別碼，`EvidenceQueries`）。每次請求以本次 nonce 重新出示 |
+| OpenPGP 卡 | 可選：使用者自己的 OpenPGP 卡（`OWN_CARD` 且可簽章）每次請求簽一份分離式簽章作為證據（4.1）|
 | 授權書 | 匯入或在錢包中簽出的授權書（第 5 節） |
+
+錢包中的證件是主要證據，X.509 與 OpenPGP 都是可選項目，不取代錢包證件。
 | 目的範本 | 常用目的的文字、法律依據、保存期間、隱私權政策網址與要請求的欄位 |
 
 ## 4. 查驗方聲明（verifier_info）
@@ -62,10 +65,13 @@ P5 讓錢包同時做好兩件事：
   "credentials": [ /* 與 WRPRC 的 credentials 相同結構：format、meta、claim[].path */ ],
   "evidence": [
     {"type": "presentation", "role": "party | agent", "query": { /* 一個 DCQL credential query */ }, "vp_token": { /* 以 query id 為鍵 */ }},
-    {"type": "mandate", "jws": "<授權書>"}
+    {"type": "mandate", "jws": "<授權書>"},
+    {"type": "openpgp", "role": "party | agent", "signature": "<ASCII armor 分離式簽章>", "certificate": "<base64 公開金鑰，可省略>"}
   ]
 }
 ```
+
+OpenPGP 證據簽的是 UTF-8 文字 `urn:diw-wallet:verifier-openpgp:1\nclient_id=<iss>\nnonce=<nonce>\n`，所以每次請求都要重新以卡片簽署。
 
 ### 4.2 持有端的檢查（`VerifierDeclarationCheck`）
 
@@ -76,7 +82,8 @@ P5 讓錢包同時做好兩件事：
    - `agent.name` 與 `role=agent` 證據中的姓名欄位比對；沒有可比對的欄位時只列出，不判定。
    - 授權書的受託人必須是本次請求的簽章金鑰（或其 DID），範圍必須涵蓋本次目的與請求的證件。
    - 實際的 DCQL 必須落在聲明的 `credentials` 內，有 WRPRC 時也要落在 WRPRC 的範圍內，超出的欄位逐項列出（沿用 `VerifierInfoChecker.outside`）。
-4. 結果 `VerifierIdentity`：類型、當事人、經辦人、目的、每一項證據的結果與整體等級（第 2 節 E6）。同意畫面以 `VerifierDeclarationCard` 呈現，聲明無效時與無效的 WRPRC 一樣需要勾選確認後才能繼續。
+4. OpenPGP 證據以文件檢查器（`InspectorOpenPgpEvidenceVerifier`）對持卡人的 OpenPGP 清單驗證：清單中已驗證或自己的卡為 T2，未驗證為 T3，不信任為 T4（不通過）；清單沒有、但查驗方附上公開金鑰時只以未驗證（T3）參與這次檢查。簽章對應的不是這次的 client_id 與 nonce 時不通過。使用者 ID 的名稱與 email 列為證據欄位，與當事人或經辦人的名稱比對。
+5. 結果 `VerifierIdentity`：類型、當事人、經辦人、目的、每一項證據的結果與整體等級（第 2 節 E6）。同意畫面以 `VerifierDeclarationCard` 呈現，聲明無效時與無效的 WRPRC 一樣需要勾選確認後才能繼續。
 
 識別碼的比對欄位：`TW-UBN` 對應工商憑證主體的 `serialNumber` 與 organizationIdentifier 的 `NTRTW-` 前綴值；`EUID`、`LEI` 對應 organizationIdentifier（ETSI EN 319 412-1 的 `LEIXG-` 等前綴）與 LPID 的 `legal_person_id`；證據中的姓名欄位依序找 `name`、`given_name` 與 `family_name`、TWDIW 的 `name`／`姓名`。
 
@@ -107,7 +114,7 @@ P5 讓錢包同時做好兩件事：
 | 路徑 | request_uri 與 response_uri | 適用 |
 |---|---|---|
 | 正式服務端（`oid4vp` 功能） | 查驗方把簽好的請求物件交給服務端，取得 `https://<服務端>/oid4vp/v1/req/<id>` 與 `/resp/<id>`；持有端以標準 `request_uri` 取得請求、以 `direct_post.jwt` 送回加密回應；查驗方以建立時拿到的權杖取回回應 | 任何標準皮夾 |
-| 區網直連 | 查驗方在本機開 http 服務，QR Code 的 `request_uri` 與 `response_uri` 是私有 IPv4 位址 | 兩台本錢包 |
+| 區網直連 | 查驗方在本機開 http 服務（路徑 `/diw-oid4vp/request/<秘密>` 與 `/diw-oid4vp/response/<秘密>`），QR Code 的 `request_uri` 與 `response_uri` 是私有 IPv4 位址 | 兩台本錢包 |
 
 服務端只保存請求物件（本來就給持有端看）與加密回應，取回或逾時（10 分鐘）後刪除，不記錄內容；權杖只存在查驗方手機。區網直連不符合多數皮夾的 https 要求，所以持有端只在下列條件同時成立時接受 http 的 `response_uri`：請求已簽章、`response_mode` 為 `direct_post.jwt`、主機是私有 IPv4、且 `request_uri` 與 `response_uri` 是同一主機。這是本專案的可選放寬，標準驗證器的預設不變。
 
@@ -119,9 +126,26 @@ QR Code 內容為 `openid4vp://?client_id=<client_id>&request_uri=<url>`（`requ
 
 ## 7. 近距離查驗（ISO 18013-5）
 
-- reader authentication：X.509 簽章的查驗方身分以該憑證鏈簽 `ReaderAuthentication`；`did:key` 身分改用以該金鑰自簽的讀卡機憑證（持有端判定為 T3）。
-- `ItemsRequest.requestInfo`：有 WRPRC 時放 `euWrprc`（bstr，TS 119 472-2），查驗方聲明放 `diw.verifierDeclaration`（tstr，JWS），聲明的 `nonce` 為 SessionTranscript 的 SHA-256。
-- 持有端（`ProximityModel`）以同一個 `VerifierDeclarationCheck` 檢查並在同意畫面顯示；reader authentication 失敗時聲明不採用。
+### 7.1 交握與傳輸
+
+App 的讀取端有兩種交握：NFC 感應（靜態或協商式交握，資料走 NFC 或藍牙），以及掃描持卡人的 QR Code（`mdoc:` 加 base64url 的 DeviceEngagement，ISO 18013-5 第 8.2.2.3 節），資料一律走藍牙、handover 為 null。任一方手機沒有 NFC 時用 QR Code。
+
+### 7.2 查驗方身分
+
+- 匿名查驗不送 reader authentication，持有端顯示為未提供身分的查驗設備。
+- 以查驗方身分查驗時，請求一律以該身分的錢包金鑰簽 `ReaderAuthentication`，讀卡機憑證是這把金鑰自簽的憑證（主體為代表類型的經辦人名稱，否則為當事人名稱，有效一年，持有端最多判為 T3）。`AsymmetricKey` 只能包裝 secure area 或明確的私鑰，卡片上的 X.509 金鑰無法用在這裡，所以 X.509 簽章只用於線上查驗；畫面上會寫明。
+- `DocRequestInfo.requestInfo`：查驗方聲明放 `diw.verifierDeclaration`（tstr，JWS），有 WRPRC 時放 `euWrprc`（tstr）。聲明的 `iss` 是讀卡機憑證的 `x509_hash` client_id，`nonce` 為 base64url(SHA-256(SessionTranscript))，簽章金鑰就是讀卡機憑證的金鑰；證據出示也綁定這兩個值（`ProximityDeclaration`）。
+- OpenPGP 卡證據需要在連線前感應卡片，資料走 NFC 時持卡人手機正貼在讀卡處，因此有 OpenPGP 證據的身分只能走藍牙或 QR Code。
+
+### 7.3 持有端
+
+Multipaz 的 `Iso18013Presentment` 不公開 SessionTranscript。持有端在藍牙連線上包一層傳輸，從查驗方的第一個訊息（SessionEstablishment）取出 `eReaderKey`，以自己的 DeviceEngagement 與 handover 重建 SessionTranscript，再以 `VerifierInfoChecker.check(entries, verifier, nonce, dcql)` 檢查聲明；請求的 ItemsRequest 轉成 DCQL，以便比對是否超出聲明範圍。結果與線上查驗相同，顯示在同意畫面，無效時需要確認才能繼續，並把風險提高為高。
+
+以 NFC 傳輸資料時（`NfcHybridTransportMdoc`）無法取得 `eReaderKey`，聲明顯示為「未核對」並說明改用藍牙或 QR Code；沒有 reader authentication 的聲明也不採用。
+
+### 7.4 Bonds 藍牙傳輸加密（非標準）
+
+Bonds 的離線出示在藍牙上傳送的是明文 JWS。本錢包當查驗方時，挑戰一律帶一次性 P-256 金鑰 `e`（也在沒有區網位址時帶），本錢包當持卡人時看到 `e` 就把出示內容以 ECDH-ES、A256GCM 封裝成 `{"jwe": ...}` 再從藍牙送出（`BondsLanPresentation.linkPayload`、`fromLink`），與區網路徑相同。原版 Bonds App 會忽略 `e`：它當持卡人時送明文，查驗端照常查驗並顯示「未加密」；它當查驗方時挑戰沒有 `e`，本錢包送明文並在畫面寫明「未加密」。螢幕上的 QR 幀不加密（只在現場掃描）；年齡證明只含是否滿足年齡，不在此範圍。
 
 ## 8. 衍生憑證與零知識證明的查驗政策
 
@@ -151,5 +175,11 @@ QR Code 內容為 `openid4vp://?client_id=<client_id>&request_uri=<url>`（`requ
 | 以 `DocumentSigner` 簽 JWS | `core/verifier/declaration/SignerJws` |
 | 證據出示驗證 | `PresentationVerifier.verifyEvidence` |
 | 查驗政策 | `core/verifier/VerificationPolicy` |
+| OpenPGP 證據檢查 | `core/verifier/declaration/OpenPgpEvidence`（`InspectorOpenPgpEvidenceVerifier`） |
+| 證據欄位的選擇 | `core/verifier/declaration/EvidenceQueries` |
+| 近距離的聲明格式與綁定 | `core/verifier/declaration/ProximityDeclaration`、`VerifierInfoChecker.check(entries, ...)` |
 | 查驗方身分、線上查驗 | App 的 `VerifierModel`、`ui/VerifierScreens` |
+| 近距離讀取端與持有端 | App 的 `ReaderModel`（`startQr`、`ReaderIdentity`）、`ProximityModel`（`TranscriptTap`） |
+| 簽章金鑰來源的選擇、金鑰檢視 | App 的 `ui/KeySources`、`ui/KeysScreen`（設定頁「憑證、金鑰與信任」） |
+| Bonds 藍牙加密 | `core/profile/bonds/BondsLanPresentation`、App 的 `TaiwanModel` |
 | 服務端轉送 | 服務端 repo 的 `oid4vp` 功能（`Oid4vpMailbox.kt`） |
