@@ -205,7 +205,7 @@ pub fn build_disclosures(
 /// becomes `{field: {op: {expected, result:true}}}`; `disclose` (and `eq` on a
 /// disclosable field) becomes `{field: {disclose: {result: <value>}}}`.
 /// This is the single source of truth for the QueryResult across platforms.
-pub fn build_query_result(query: &Value, disclosed: &Value) -> Value {
+pub fn build_query_result(query: &Value, disclosed: &Value, current_date: u64) -> Value {
     let mut result = serde_json::Map::new();
     let Some(obj) = query.as_object() else {
         return Value::Object(result);
@@ -220,7 +220,11 @@ pub fn build_query_result(query: &Value, disclosed: &Value) -> Value {
         let mut field_result = serde_json::Map::new();
         for (op, value) in cfg {
             if op == "disclose" || (op == "eq" && !comparison_field) {
-                let v = disclosed.get(field).cloned().unwrap_or(Value::Null);
+                let mut v = disclosed.get(field).cloned().unwrap_or(Value::Null);
+                // The SDK reads a disclosed date as a date, so send it as one, not as the MRZ's YYMMDD
+                if field == "birthdate" || field == "expiry_date" {
+                    v = v.as_str().and_then(|s| mrz_date_iso(s, current_date)).map_or(Value::Null, Value::from);
+                }
                 field_result.insert("disclose".into(), json!({ "result": v }));
             } else {
                 field_result.insert(op.clone(), json!({ "expected": value, "result": true }));
@@ -288,6 +292,25 @@ fn year_of_unix(secs: i64) -> i64 {
     let doy = z - (365 * yoe + yoe / 4 - yoe / 100);
     let mp = (5 * doy + 2) / 153;
     if mp < 10 { y } else { y + 1 }
+}
+
+/// Year, month and day of a count of days since 1970-01-01 (Howard Hinnant).
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719468;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    (if month <= 2 { yoe + era * 400 + 1 } else { yoe + era * 400 }, month, day)
+}
+
+/// `parseDate(YYMMDD).toISOString()`: the disclosed date as the SDK reads it.
+fn mrz_date_iso(yymmdd: &str, current_date: u64) -> Option<String> {
+    let (year, month, day) = civil_from_days(parse_mrz_date(yymmdd, current_date)? / 86400);
+    Some(format!("{year:04}-{month:02}-{day:02}T00:00:00.000Z"))
 }
 
 /// `parseDate(YYMMDD)` + `getUnixTimestamp`: 2-digit year → current century unless that
