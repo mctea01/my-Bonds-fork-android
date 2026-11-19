@@ -72,6 +72,10 @@ fn main() {
         .arg(build.join("_deps/tracy-src/public"))
         .args(["-c", "cpp/bridge.cpp", "-o"])
         .arg(out.join("bridge.o"));
+    // Zig's Linux build targets an older glibc than Barretenberg assumes (see cpp/bridge.cpp).
+    if env::var_os("ZKPDF_LIBCXX").is_some() && target.contains("linux-gnu") {
+        compiler.arg("-DDIW_GLIBC_FLOOR");
+    }
     assert!(
         compiler.status().expect("bb_bridge_compiler").success(),
         "bb_bridge_compile"

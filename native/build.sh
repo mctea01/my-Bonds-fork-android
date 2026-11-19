@@ -108,11 +108,15 @@ setup_zig() {
     zig_bindgen_args="-isystem $zig_root/lib/include -isystem $libc/$arch-linux-gnu -isystem $libc/$family-linux-any"
     zig_bindgen_args="$zig_bindgen_args -isystem $libc/generic-glibc -isystem $libc/any-linux-any"
 }
-# Fails unless the Linux library at $1 needs no C++ runtime and no glibc symbol newer than the floor.
+# Fails unless the Linux library at $1 needs no C++ runtime and no glibc symbol newer than the floor. A strong
+# undefined symbol without a version is one the floor's glibc lacks (the link against its stubs left it open), and
+# the loader would refuse the library on such a host.
 check_linux_floor() {
-    local path=$1 needed newest
+    local path=$1 needed newest unversioned
     needed=$(readelf -d "$path" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | tr '\n' ' ')
     case " $needed" in *" libstdc++"*|*" libc++"*) echo "$path needs a C++ runtime: $needed" >&2; exit 1 ;; esac
+    unversioned=$(readelf --dyn-syms -W "$path" | awk '$7 == "UND" && $5 == "GLOBAL" && $8 != "" && $8 !~ /@/ { print $8 }' | sort -u | tr '\n' ' ')
+    if [[ -n "$unversioned" ]]; then echo "$path leaves symbols unresolved: $unversioned" >&2; exit 1; fi
     newest=$(readelf --dyn-syms -W "$path" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
     if [[ -n "$newest" && "$(printf '%s\n' "$newest" "GLIBC_$glibc_floor" | sort -V | tail -1)" != "GLIBC_$glibc_floor" ]]; then
         echo "$path needs $newest" >&2; exit 1

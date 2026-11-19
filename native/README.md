@@ -77,7 +77,15 @@ Linux hosts and older distributions or processors:
   Barretenberg and the bridges compile with `zig c++` against Zig's libc++,
   linked statically (Apache-2.0 with LLVM exceptions), for glibc 2.28; the
   instruction set stays x86-64-v2. Barretenberg goes to
-  `target/bb-<triple>-libcxx`, Cargo to `target/libcxx`.
+  `target/bb-<triple>-libcxx`, Cargo to `target/libcxx`. Barretenberg's memory
+  profile calls `mallinfo2` (glibc 2.33); the bridges then define it from
+  `mallinfo` (`DIW_GLIBC_FLOOR`), and the floor check also fails on any strong
+  undefined symbol without a glibc version. Checked on 2026-11-19 (x86_64):
+  `zkpdf-vk` built this way derives the published keys of `pdf_claim_v1`,
+  `pdf_pred_v1` and `pdf_sha_opaque_v1` and the `circuits.json` hashes of two
+  FaceMatch P-256 key attestation circuits, the bb5 tests pass, and both
+  libraries open on Debian 10 and Ubuntu 22.04. The option is still off by
+  default.
 - `ZkNative` on Linux tries the full library first and then `-compat`. It
   reads `/proc/cpuinfo` and never opens the full x86_64 library on a CPU
   without x86-64-v2 (its code would stop the process with SIGILL); a library
